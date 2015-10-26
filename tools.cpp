@@ -2334,9 +2334,10 @@ bool SafeAsyncQueue_base::runTimerThread = false;
 bool SafeAsyncQueue_base::terminateTimerThread = false;
 
 
-JsonItem::JsonItem(string name, string value) {
+JsonItem::JsonItem(string name, string value, bool null) {
 	this->name = name;
 	this->value = value;
+	this->null = null;
 	this->parse(value);
 }
 
@@ -2353,11 +2354,19 @@ void JsonItem::parse(string valStr) {
 		struct lh_entry *objectItem = objectItems->head;
 		while(objectItem) {
 			string fieldName = (char*)objectItem->k;
-			string value = objectItem->v ?
-					json_object_get_string((json_object*)objectItem->v) :
-					"";
-			////cerr << "objectItem: " << fieldName << " - " << value << endl;
-			JsonItem newItem(fieldName, value);
+			string value;
+			bool null = false;
+			if(objectItem->v) {
+				if(json_object_get_type((json_object*)objectItem->v) == json_type_null) {
+					null = true;
+				} else {
+					value = json_object_get_string((json_object*)objectItem->v);
+				}
+			} else {
+				null = true;
+			}
+			////cerr << "objectItem: " << fieldName << " - " << (null ? "NULL" : value) << endl;
+			JsonItem newItem(fieldName, value, null);
 			this->items.push_back(newItem);
 			objectItem = objectItem->next;
 		}
@@ -2366,13 +2375,20 @@ void JsonItem::parse(string valStr) {
 		for(int i = 0; i < length; i++) {
 			json_object *obj = json_object_array_get_idx(object, i);
 			string value;
+			bool null = false;
 			if(obj) {
-				value = json_object_get_string(obj);
-				////cerr << "arrayItem: " << i << " - " << value << endl;
+				if(json_object_get_type(obj) == json_type_null) {
+					null = true;
+				} else {
+					value = json_object_get_string(obj);
+				}
+				////cerr << "arrayItem: " << i << " - " << (null ? "NULL" : value) << endl;
+			} else {
+				null = true;
 			}
 			stringstream streamIndexName;
 			streamIndexName << i;
-			JsonItem newItem(streamIndexName.str(), value);
+			JsonItem newItem(streamIndexName.str(), value, null);
 			this->items.push_back(newItem);
 		}
 	}

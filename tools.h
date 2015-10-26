@@ -1697,13 +1697,14 @@ void SafeAsyncQueue<type_queue_item>::shiftPush() {
 
 class JsonItem {
 public:
-	JsonItem(string name = "", string value = "");
+	JsonItem(string name = "", string value = "", bool null = false);
 	void parse(string valStr);
 	JsonItem *getItem(string path, int index = -1);
 	string getValue(string path, int index = -1);
 	int getCount(string path);
 	string getLocalName() { return(this->name); }
 	string getLocalValue() { return(this->value); }
+	bool localValueIsNull() { return(this->null); }
 	JsonItem *getLocalItem(int index = -1) { return(index == -1 ? this : &this->items[index]); }
 	size_t getLocalCount() { return(this->items.size()); }
 private:
@@ -1711,6 +1712,7 @@ private:
 	string getPathItemName(string path);
 	string name;
 	string value;
+	bool null;
 	vector<JsonItem> items;
 };
 
