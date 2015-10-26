@@ -62,6 +62,7 @@ public:
 	string implodeFieldContent(string separator = ",", string fieldBorder = "`", string contentBorder = "'", bool enableSqlString = false, bool escapeAll = false);
 	string keyvalList(string separator);
 	size_t getCountFields();
+	void removeFieldsIfNotContainIn(map<string, int> *fields);
 private:
 	SqlDb *sqlDb;
 	vector<SqlDb_rowField> row;

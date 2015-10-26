@@ -282,6 +282,14 @@ size_t SqlDb_row::getCountFields() {
 	return(row.size());
 }
 
+void SqlDb_row::removeFieldsIfNotContainIn(map<string, int> *fields) {
+	for(size_t i = row.size(); i > 0; i--) {
+		if(!(*fields)[row[i - 1].fieldName]) {
+			row.erase(row.begin() + i - 1);
+		}
+	}
+}
+
 
 SqlDb::SqlDb() {
 	this->clearLastError();
@@ -4846,6 +4854,12 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 	u_int64_t useMaxIdInSrc = 0;
 	u_int64_t startIdSrc = max(minIdSrc, maxIdDst + 1);
 	if(startIdSrc <= maxIdSrc) {
+		map<string, int> columnsDest;
+		this->query(string("show columns from ") + tableName);
+		size_t i = 0;
+		while(row = this->fetchRow()) {
+			columnsDest[row["Field"]] = ++i;
+		}
 		vector<string> condSrc;
 		if(startIdSrc) {
 			condSrc.push_back(string("id >= ") + intToString(startIdSrc));
@@ -4877,6 +4891,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 			extern int opt_database_backup_insert_threads;
 			unsigned int insertThreads = opt_database_backup_insert_threads > 1 ? opt_database_backup_insert_threads : 1;
 			while(!is_terminating() && (row = sqlDbSrc->fetchRow(true))) {
+				row.removeFieldsIfNotContainIn(&columnsDest);
 				useMaxIdInSrc = atoll(row["id"].c_str());
 				rows.push_back(row);
 				if(rows.size() >= 100) {
@@ -4958,6 +4973,12 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 			existsCalldateInSlaveTableDst = true;
 		}
 	}
+	map<string, int> columnsDest;
+	this->query(string("show columns from ") + slaveTableName);
+	size_t i = 0;
+	while(row = this->fetchRow()) {
+		columnsDest[row["Field"]] = ++i;
+	}
 	vector<string> condSrc;
 	if(useMinIdMaster || maxIdToMasterInSlaveDst) {
 		condSrc.push_back(string(slaveIdToMasterColumn) + " >= " + intToString(startIdToMasterSrc));
@@ -4999,6 +5020,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 		unsigned long counterRows = 0;
 		while(!is_terminating() && (row = sqlDbSrc->fetchRow(true))) {
 			++counterRows;
+			row.removeFieldsIfNotContainIn(&columnsDest);
 			u_int64_t readMasterId = atoll(row[slaveIdToMasterColumn].c_str());
 			if(readMasterId != lastMasterId) {
 				if(lastMasterId) {
