@@ -101,7 +101,7 @@ struct pcap_block_store {
 		this->destroyRestoreBuffer();
 		this->idFileStore = 0;
 		this->filePosition = 0;
-		this->timestampMS = getTimeMS();
+		this->timestampMS = getTimeMS_rdtsc();
 		#if SYNC_PCAP_BLOCK_STORE
 		this->_sync_packet_lock = 0;
 		#else

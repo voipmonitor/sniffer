@@ -577,7 +577,7 @@ pcap_file_store::pcap_file_store(u_int id, const char *folder) {
 	this->countPush = 0;
 	this->countPop = 0;
 	this->full = false;
-	this->timestampMS = getTimeMS();
+	this->timestampMS = getTimeMS_rdtsc();
 	this->_sync_flush_file = 0;
 }
 

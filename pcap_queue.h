@@ -84,7 +84,7 @@ public:
 		extern size_t opt_pcap_queue_file_store_max_size;
 		extern u_int opt_pcap_queue_file_store_max_time_ms;
 		if(this->fileSize >= opt_pcap_queue_file_store_max_size ||
-		   (this->fileSize && (getTimeMS() - this->timestampMS) >= opt_pcap_queue_file_store_max_time_ms) ||
+		   (this->fileSize && getTimeMS_rdtsc() > (this->timestampMS + opt_pcap_queue_file_store_max_time_ms)) ||
 		   (this->fileSize && forceSetFull)) {
 			this->close(typeHandlePush);
 			this->full = true;
