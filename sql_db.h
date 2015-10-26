@@ -30,10 +30,10 @@ public:
 			this->fieldName = fieldName;
 			this->null = !content;
 		}
-		SqlDb_rowField(string content, string fieldName = "") {
+		SqlDb_rowField(string content, string fieldName = "", bool null = false) {
 			this->content = content;
 			this->fieldName = fieldName;
-			this->null = false;
+			this->null = null;
 		}
 		string content;
 		string fieldName;
@@ -47,7 +47,7 @@ public:
 	string operator [] (int indexField);
 	operator int();
 	void add(const char *content, string fieldName = "");
-	void add(string content, string fieldName = "");
+	void add(string content, string fieldName = "", bool null = false);
 	void add(int content, string fieldName, bool null = false);
 	void add(unsigned int content, string fieldName, bool null = false);
 	void add(long int content,  string fieldName, bool null = false);
@@ -73,6 +73,18 @@ public:
 		_supportPartitions_na,
 		_supportPartitions_ok,
 		_supportPartitions_oldver
+	};
+	struct sCloudDataItem {
+		sCloudDataItem(const char *str, bool null) {
+			if(str) {
+				this->str = str;
+				this->null = null;
+			} else {
+				this->null = true;
+			}
+		}
+		string str;
+		bool null;
 	};
 public:
 	SqlDb();
@@ -202,7 +214,7 @@ protected:
 	bool silentConnect;
 	bool connecting;
 	vector<string> cloud_data_columns;
-	vector<vector<string> > cloud_data;
+	vector<vector<sCloudDataItem> > cloud_data;
 	size_t cloud_data_rows;
 	size_t cloud_data_index;
 	unsigned long maxAllowedPacket;

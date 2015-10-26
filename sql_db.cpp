@@ -123,16 +123,16 @@ void SqlDb_row::add(const char *content, string fieldName) {
 	this->row.push_back(SqlDb_rowField(content, fieldName));
 }
 
-void SqlDb_row::add(string content, string fieldName) {
+void SqlDb_row::add(string content, string fieldName, bool null) {
 	if(fieldName != "") {
 		for(size_t i = 0; i < row.size(); i++) {
 			if(row[i].fieldName == fieldName) {
-				row[i] = SqlDb_rowField(content, fieldName);
+				row[i] = SqlDb_rowField(content, fieldName, null);
 				return;
 			}
 		}
 	}
-	this->row.push_back(SqlDb_rowField(content, fieldName));
+	this->row.push_back(SqlDb_rowField(content, fieldName, null));
 }
 
 void SqlDb_row::add(int content, string fieldName, bool null) {
@@ -425,14 +425,15 @@ bool SqlDb::queryByCurl(string query) {
 								JsonItem *dataJsonItem = dataJsonItems->getLocalItem(i);
 								for(size_t j = 0; j < dataJsonItem->getLocalCount(); j++) {
 									string dataItem = dataJsonItem->getLocalItem(j)->getLocalValue();
+									bool dataItemIsNull = dataJsonItem->getLocalItem(j)->localValueIsNull();
 									if(i == 0) {
 										cloud_data_columns.push_back(dataItem);
 									} else {
 										if(cloud_data.size() < i) {
-											vector<string> row;
+											vector<sCloudDataItem> row;
 											cloud_data.push_back(row);
 										}
-										cloud_data[i-1].push_back(dataItem);
+										cloud_data[i-1].push_back(sCloudDataItem(dataItem.c_str(), dataItemIsNull));
 									}
 								}
 							}
@@ -1029,7 +1030,7 @@ SqlDb_row SqlDb_mysql::fetchRow(bool assoc) {
 		if(cloud_data_index < cloud_data_rows &&
 		   cloud_data_index < cloud_data.size()) {
 			for(size_t i = 0; i < min(cloud_data[cloud_data_index].size(), cloud_data_columns.size()); i++) {
-				row.add(cloud_data[cloud_data_index][i], assoc ? cloud_data_columns[i] : "");
+				row.add(cloud_data[cloud_data_index][i].str, assoc ? cloud_data_columns[i] : "", cloud_data[cloud_data_index][i].null);
 			}
 			++cloud_data_index;
 		}
