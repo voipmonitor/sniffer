@@ -3039,7 +3039,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	char partDayName[20] = "";
 	char limitDay[20] = "";
-	if(opt_cdr_partition) {
+	if(supportPartitions != _supportPartitions_na) {
 		time_t act_time = time(NULL);
 		if(opt_create_old_partitions > 0) {
 			act_time -= opt_create_old_partitions * 24 * 60 * 60;
@@ -3109,7 +3109,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr` (\
-			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`calldate` datetime NOT NULL,\
 			`callend` datetime NOT NULL,\
 			`duration` mediumint unsigned DEFAULT NULL,\
@@ -3450,7 +3450,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_next` (\
-			`cdr_ID` int unsigned NOT NULL,") +
+			`cdr_ID` bigint unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
@@ -3483,17 +3483,14 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_proxy` (\
-			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
-			`cdr_ID` int unsigned NOT NULL,\
+			`cdr_ID` bigint unsigned NOT NULL,\
 			`calldate` datetime NOT NULL,\
 			`src` int unsigned DEFAULT NULL,\
-			`dst` varchar(255) DEFAULT NULL,") +
-		(opt_cdr_partition ? 
-			"PRIMARY KEY (`ID`, `calldate`)," :
-			"PRIMARY KEY (`ID`),") +
-		"KEY `cdr_ID` (`cdr_ID`)," + 
-		"KEY `src` (`src`)," + 
-		"KEY `dst` (`dst`)" + 
+			`dst` varchar(255) DEFAULT NULL,\
+		KEY `cdr_ID` (`cdr_ID`),\
+		KEY `calldate` (`calldate`),\
+		KEY `src` (`src`),\
+		KEY `dst` (`dst`)") + 
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_proxy_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
@@ -3508,8 +3505,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_rtp` (\
-			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
-			`cdr_ID` int unsigned NOT NULL,") +
+			`cdr_ID` bigint unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
@@ -3520,11 +3516,11 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`loss` mediumint unsigned DEFAULT NULL,\
 			`firsttime` float DEFAULT NULL,\
 			`payload` smallint unsigned DEFAULT NULL,\
-			`maxjitter_mult10` smallint unsigned DEFAULT NULL," +
+			`maxjitter_mult10` smallint unsigned DEFAULT NULL,\
+		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
-			"PRIMARY KEY (`ID`, `calldate`)," :
-			"PRIMARY KEY (`ID`),") +
-		"KEY (`cdr_ID`)" + 
+			",KEY (`calldate`)" :
+			"") +
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_rtp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
@@ -3548,19 +3544,18 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
-			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
-			`cdr_ID` int unsigned NOT NULL,") +
+			`cdr_ID` bigint unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
 			"`daddr` int unsigned DEFAULT NULL,\
 			`saddr` int unsigned DEFAULT NULL,\
 			`firsttime` float DEFAULT NULL,\
-			`dtmf` char DEFAULT NULL," +
+			`dtmf` char DEFAULT NULL,\
+		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
-			"PRIMARY KEY (`ID`, `calldate`)," :
-			"PRIMARY KEY (`ID`),") +
-		"KEY (`cdr_ID`)" + 
+			",KEY (`calldate`)" :
+			"") +
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_dtmf_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
@@ -3575,17 +3570,16 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_sipresp` (\
-			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
-			`cdr_ID` int unsigned NOT NULL,") +
+			`cdr_ID` bigint unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
 			"`SIPresponse_id` mediumint unsigned DEFAULT NULL,\
-			`SIPresponseNum` smallint unsigned DEFAULT NULL," +
+			`SIPresponseNum` smallint unsigned DEFAULT NULL,\
+		KEY (`cdr_ID`)" +
 		(opt_cdr_partition ? 
-			"PRIMARY KEY (`ID`, `calldate`)," :
-			"PRIMARY KEY (`ID`),") +
-		"KEY (`cdr_ID`)" + 
+			",KEY (`calldate`)" :
+			"") +
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_sipresp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
@@ -3601,19 +3595,18 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	if(_save_sip_history) {
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `cdr_siphistory` (\
-				`ID` int unsigned NOT NULL AUTO_INCREMENT,\
-				`cdr_ID` int unsigned NOT NULL,") +
+				`cdr_ID` bigint unsigned NOT NULL,") +
 				(opt_cdr_partition ?
 					"`calldate` datetime NOT NULL," :
 					"") + 
 				"`time` bigint unsigned DEFAULT NULL,\
 				`SIPrequest_id` mediumint unsigned DEFAULT NULL,\
 				`SIPresponse_id` mediumint unsigned DEFAULT NULL,\
-				`SIPresponseNum` smallint unsigned DEFAULT NULL," +
+				`SIPresponseNum` smallint unsigned DEFAULT NULL,\
+			KEY (`cdr_ID`)" + 
 			(opt_cdr_partition ? 
-				"PRIMARY KEY (`ID`, `calldate`)," :
-				"PRIMARY KEY (`ID`),") +
-			"KEY (`cdr_ID`)" + 
+				",KEY (`calldate`)" :
+				"") +
 			(opt_cdr_partition ?
 				"" :
 				",CONSTRAINT `cdr_siphistory_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
@@ -3629,17 +3622,16 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_tar_part` (\
-			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
-			`cdr_ID` int unsigned NOT NULL,") +
+			`cdr_ID` bigint unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
 			"`type` tinyint unsigned DEFAULT NULL,\
-			`pos` bigint unsigned DEFAULT NULL," +
+			`pos` bigint unsigned DEFAULT NULL,\
+		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
-			"PRIMARY KEY (`ID`, `calldate`)," :
-			"PRIMARY KEY (`ID`),") +
-		"KEY (`cdr_ID`)" + 
+			",KEY (`calldate`)" :
+			"") +
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_tar_part_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
@@ -3662,7 +3654,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `message` (\
-			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`id_contenttype` int unsigned NOT NULL,\
 			`calldate` datetime NOT NULL,\
 			`caller` varchar(255) DEFAULT NULL,\
@@ -3775,7 +3767,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `register_state` (\
-			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
 			`created_at` datetime NOT NULL,\
@@ -3807,7 +3799,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `register_failed` (\
-			`ID` int unsigned NOT NULL AUTO_INCREMENT,\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
 			`counter` int DEFAULT 0,\
@@ -3942,7 +3934,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `enum_jj` (\
-			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
+			`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\
 			`dnsid` INT UNSIGNED NOT NULL,\
 			`timestamp` DATETIME NOT NULL,\
 			`usec` INT UNSIGNED NOT NULL,\
@@ -3974,7 +3966,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	if(opt_enable_webrtc_table) {
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `webrtc` (\
-			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
+			`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\
 			`timestamp` DATETIME NOT NULL,\
 			`usec` INT UNSIGNED NOT NULL,\
 			`srcip` INT UNSIGNED NOT NULL,\
@@ -4736,7 +4728,7 @@ void SqlDb_mysql::createTable(const char *tableName) {
 		if(this->fetchRow()) {
 			this->query(
 			"CREATE TABLE IF NOT EXISTS `fraud_alert_info` (\
-					`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,\
+					`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\
 					`alert_id` INT NOT NULL,\
 					`at` DATETIME NOT NULL,\
 					`alert_info` TEXT NOT NULL,\

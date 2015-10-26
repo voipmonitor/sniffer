@@ -4809,7 +4809,7 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb) 
 	
 	sqlDb->query(string(
 	"CREATE TABLE IF NOT EXISTS `") + tableName + "` (\
-			`" + idColumn + "` int unsigned NOT NULL," +
+			`" + idColumn + "` bigint unsigned NOT NULL," +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
