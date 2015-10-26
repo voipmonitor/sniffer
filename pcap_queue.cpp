@@ -217,7 +217,7 @@ bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset, int 
 		return(false);
 	}
 	if((this->size + sizeof(pcap_pkthdr_plus) + header->caplen) > opt_pcap_queue_block_max_size ||
-	   (!(this->count % 20) && this->size && (getTimeMS_rdtsc() - this->timestampMS) >= opt_pcap_queue_block_max_time_ms)) {
+	   (!(this->count % 20) && this->size && getTimeMS_rdtsc() > (this->timestampMS + opt_pcap_queue_block_max_time_ms))) {
 		this->full = true;
 		return(false);
 	}
@@ -268,7 +268,7 @@ bool pcap_block_store::isFull_checkTimout() {
 	if(this->full) {
 		return(true);
 	}
-	if(this->size && (getTimeMS_rdtsc() - this->timestampMS) >= opt_pcap_queue_block_max_time_ms) {
+	if(this->size && getTimeMS_rdtsc() > (this->timestampMS + opt_pcap_queue_block_max_time_ms)) {
 		this->full = true;
 		return(true);
 	}
