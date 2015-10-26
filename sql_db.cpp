@@ -534,13 +534,13 @@ int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb
 int SqlDb::getIndexField(string fieldName) {
 	if(isCloud()) {
 		for(size_t i = 0; i < this->cloud_data_columns.size(); i++) {
-			if(this->cloud_data_columns[i] == fieldName) {
+			if(!strcasecmp(this->cloud_data_columns[i].c_str(), fieldName.c_str())) {
 				return(i);
 			}
 		}
 	} else {
 		for(size_t i = 0; i < this->fields.size(); i++) {
-			if(this->fields[i] == fieldName) {
+			if(!strcasecmp(this->fields[i].c_str(), fieldName.c_str())) {
 				return(i);
 			}
 		}
@@ -1165,7 +1165,7 @@ char* SqlDb_odbc_bindBuffer::getColBuffer(unsigned int fieldIndex) {
 
 int SqlDb_odbc_bindBuffer::getIndexField(string fieldName) {
 	for(size_t i = 0; i < this->size(); i++) {
-		if((*this)[i]->fieldName == fieldName) {
+		if(!strcasecmp((*this)[i]->fieldName.c_str(), fieldName.c_str())) {
 			return(i);
 		}
 	}
@@ -1360,7 +1360,7 @@ int SqlDb_odbc::getInsertId() {
 
 int SqlDb_odbc::getIndexField(string fieldName) {
 	for(size_t i = 0; i < this->bindBuffer.size(); i++) {
-		if(this->bindBuffer[i]->fieldName == fieldName) {
+		if(!strcasecmp(this->bindBuffer[i]->fieldName.c_str(), fieldName.c_str())) {
 			return(i);
 		}
 	}
@@ -2781,17 +2781,6 @@ string prepareQueryForPrintf(string &query) {
 
 
 bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
- 
-	const char *cdrMainTables[] = {
-		 "cdr",
-		 "cdr_next",
-		 "cdr_proxy",
-		 "cdr_rtp",
-		 "cdr_dtmf",
-		 "cdr_sipresp",
-		 "cdr_siphistory",
-		 "cdr_tar_part"
-	};
 
 	string compress = "";
 
@@ -3335,7 +3324,8 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	if(opt_cdr_partition) {
 		bool okExplainPartition = false;
 		bool existPartition = false;
-		for(uint i = 0; i < sizeof(cdrMainTables)/sizeof(cdrMainTables[0]); i++) {
+		vector<string> cdrMainTables = this->getSourceTables(tt_main | tt_child, tt2_cdr);
+		for(size_t i = 0; i < cdrMainTables.size(); i++) {
 			this->query(string("EXPLAIN PARTITIONS SELECT * from ") + cdrMainTables[i] + " limit 1");
 			SqlDb_row row;
 			if((row = this->fetchRow())) {
@@ -4921,31 +4911,11 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 	vector<string> slaveTables;
 	string slaveIdToMasterColumn;
 	if(string(tableName) == "cdr") {
-		slaveTables.push_back("cdr_next");
-		if(custom_headers_cdr) {
-			list<string> nextTables = custom_headers_cdr->getAllNextTables();
-			for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
-				slaveTables.push_back(it->c_str());
-			}
-		}
-		slaveTables.push_back("cdr_rtp");
-		slaveTables.push_back("cdr_dtmf");
-		slaveTables.push_back("cdr_sipresp");
-		if(_save_sip_history) {
-			slaveTables.push_back("cdr_siphistory");
-		}
-		slaveTables.push_back("cdr_proxy");
-		slaveTables.push_back("cdr_tar_part");
+		slaveTables = this->getSourceTables(tt_child, tt2_cdr);
 		slaveIdToMasterColumn = "cdr_id";
 	}
 	if(string(tableName) == "message") {
-		if(custom_headers_message) {
-			list<string> nextTables = custom_headers_message->getAllNextTables();
-			for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
-				if(is_terminating()) return;
-				slaveTables.push_back(it->c_str());
-			}
-		}
+		slaveTables = this->getSourceTables(tt_child, tt2_message);
 		slaveIdToMasterColumn = "message_id";
 	}
 	for(size_t i = 0; i < slaveTables.size() && !is_terminating(); i++) {
@@ -5161,7 +5131,7 @@ void SqlDb_mysql::copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tabl
 	system(cmdCopyTable.c_str());
 }
 
-vector<string> SqlDb_mysql::getSourceTables(int typeTables) {
+vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 	vector<string> tables;
 	if(typeTables & tt_minor) {
 		tables.push_back("cdr_sip_response");
@@ -5172,37 +5142,76 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables) {
 		tables.push_back("cdr_ua");
 		tables.push_back("contenttype");
 	}
-	if(typeTables & tt_main) {
-		tables.push_back("cdr");
-		if(typeTables & tt_child) {
-			tables.push_back("cdr_next");
-			if(custom_headers_cdr) {
-				list<string> nextTables = custom_headers_cdr->getAllNextTables();
-				for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
-					tables.push_back(it->c_str());
-				}
+	if(typeTables & (tt_main | tt_child)) {
+		if(typeTables2 == tt2_na || typeTables2 & tt2_cdr_static) {
+			if(typeTables & tt_main) {
+				tables.push_back("cdr");
 			}
-			tables.push_back("cdr_rtp");
-			tables.push_back("cdr_dtmf");
-			tables.push_back("cdr_sipresp");
-			tables.push_back("cdr_siphistory");
-			tables.push_back("cdr_proxy");
-			tables.push_back("cdr_tar_part");
+			if(typeTables & tt_child) {
+				tables.push_back("cdr_next");
+			}
 		}
-		if(opt_enable_http_enum_tables) tables.push_back("http_jj");
-		if(opt_enable_http_enum_tables) tables.push_back("enum_jj");
-		if(opt_enable_webrtc_table) tables.push_back("webrtc");
-		tables.push_back("message");
-		if(typeTables & tt_child) {
-			if(custom_headers_message) {
-				list<string> nextTables = custom_headers_message->getAllNextTables();
-				for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
-					tables.push_back(it->c_str());
+		if(typeTables2 == tt2_na || typeTables2 & tt2_cdr_dynamic) {
+			if(typeTables & tt_child) {
+				if(custom_headers_cdr) {
+					list<string> nextTables = custom_headers_cdr->getAllNextTables();
+					for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
+						tables.push_back(it->c_str());
+					}
 				}
 			}
 		}
-		tables.push_back("register_failed");
-		tables.push_back("register_state");
+		if(typeTables2 == tt2_na || typeTables2 & tt2_cdr_static) {
+			if(typeTables & tt_child) {
+				tables.push_back("cdr_rtp");
+				tables.push_back("cdr_dtmf");
+				tables.push_back("cdr_sipresp");
+				if(_save_sip_history) {
+					tables.push_back("cdr_siphistory");
+				}
+				tables.push_back("cdr_proxy");
+				tables.push_back("cdr_tar_part");
+			}
+		}
+		if(opt_enable_http_enum_tables && 
+		   (typeTables2 == tt2_na || typeTables2 & tt2_http_enum)) {
+			if(typeTables & tt_main) {
+				tables.push_back("http_jj");
+			}
+		}
+		if(opt_enable_http_enum_tables && 
+		   (typeTables2 == tt2_na || typeTables2 & tt2_http_enum)) {
+			if(typeTables & tt_main) {
+				tables.push_back("enum_jj");
+			}
+		}
+		if(opt_enable_webrtc_table && 
+		   (typeTables2 == tt2_na || typeTables2 & tt2_webrtc)) {
+			if(typeTables & tt_main) {
+				tables.push_back("webrtc");
+			}
+		}
+		if(typeTables2 == tt2_na || typeTables2 & tt2_message_static) {
+			if(typeTables & tt_main) {
+				tables.push_back("message");
+			}
+		}
+		if(typeTables2 == tt2_na || typeTables2 & tt2_message_dynamic) {
+			if(typeTables & tt_child) {
+				if(custom_headers_message) {
+					list<string> nextTables = custom_headers_message->getAllNextTables();
+					for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
+						tables.push_back(it->c_str());
+					}
+				}
+			}
+		}
+		if(typeTables2 == tt2_na || typeTables2 & tt2_register) {
+			if(typeTables & tt_main) {
+				tables.push_back("register_failed");
+				tables.push_back("register_state");
+			}
+		}
 	}
 	return(tables);
 }
@@ -5953,22 +5962,15 @@ void _createMysqlPartitionsCdr(int day, SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	vector<string> tablesForCreatePartitions;
-	tablesForCreatePartitions.push_back("cdr");
-	tablesForCreatePartitions.push_back("cdr_next");
-	tablesForCreatePartitions.push_back("cdr_rtp");
-	tablesForCreatePartitions.push_back("cdr_dtmf");
-	tablesForCreatePartitions.push_back("cdr_sipresp");
-	if(_save_sip_history) {
-		tablesForCreatePartitions.push_back("cdr_siphistory");
+	
+	SqlDb_mysql *sqlDbMysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+	if(!sqlDbMysql) {
+		if(_createSqlObject) {
+			delete sqlDb;
+		}
+		return;
 	}
-	tablesForCreatePartitions.push_back("cdr_proxy");
-	tablesForCreatePartitions.push_back("cdr_tar_part");
-	tablesForCreatePartitions.push_back("http_jj");
-	tablesForCreatePartitions.push_back("enum_jj");
-	tablesForCreatePartitions.push_back("message");
-	tablesForCreatePartitions.push_back("register_state");
-	tablesForCreatePartitions.push_back("register_failed");
+	vector<string> tablesForCreatePartitions = sqlDbMysql->getSourceTables(SqlDb_mysql::tt_main | SqlDb_mysql::tt_child, SqlDb_mysql::tt2_static);
 	if(cloud_host[0]) {
 		bool disableLogErrorOld = sqlDb->getDisableLogError();
 		sqlDb->setDisableLogError(true);
@@ -6296,5 +6298,158 @@ void dropMysqlPartitionsRtpStat() {
 		++counterDropPartitions;
 		delete sqlDb;
 		syslog(LOG_NOTICE, "drop old partitions - end");
+	}
+}
+
+static u_int64_t checkMysqlIdCdrChildTables_getAutoIncrement(string table, SqlDb *sqlDb);
+static u_int64_t _checkMysqlIdCdrChildTables_getAutoIncrement(string table, SqlDb *sqlDb);
+static u_int64_t _checkMysqlIdCdrChildTables_getAutoIncrement_v2(string table, SqlDb *sqlDb);
+static bool checkMysqlIdCdrChildTables_setAutoIncrement(string table, u_int64_t autoIncrement, SqlDb *sqlDb);
+static bool _checkMysqlIdCdrChildTables_setAutoIncrement(string table, u_int64_t autoIncrement, SqlDb *sqlDb);
+static bool _checkMysqlIdCdrChildTables_setAutoIncrement_v2(string table, u_int64_t autoIncrement, SqlDb *sqlDb);
+
+void checkMysqlIdCdrChildTables(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	SqlDb_mysql *sqlDbMysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+	if(!sqlDbMysql) {
+		if(_createSqlObject) {
+			delete sqlDb;
+		}
+		return;
+	}
+	vector<string> cdrTables = sqlDbMysql->getSourceTables(SqlDb_mysql::tt_main | SqlDb_mysql::tt_child, SqlDb_mysql::tt2_cdr);
+	for(size_t i = 0; i < cdrTables.size(); i++) {
+		sqlDb->query("show tables like '" + cdrTables[i] + "'");
+		if(!sqlDb->fetchRow()) {
+			continue;
+		}
+		// check id is bigint
+		sqlDb->query("show columns from " + cdrTables[i] + " like 'id'");
+		SqlDb_row row = sqlDb->fetchRow();
+		if(!row) {
+			continue;
+		}
+		string idType = row["type"];
+		std::transform(idType.begin(), idType.end(), idType.begin(), ::toupper);
+		bool idIsBig = idType.find("BIG") != string::npos;
+		if(idIsBig) {
+			continue;
+		}
+		// check max id
+		if(!sqlDb->query("select max(id) from " + cdrTables[i]) ||
+		   !(row = sqlDb->fetchRow())) {
+			syslog(LOG_ERR, "failed get max id for table %s", cdrTables[i].c_str());
+			continue;
+		}
+		u_int64_t maxId = atoll(row[0].c_str());
+		if(maxId < 0xFFFFFFFF - 1e6) {
+			continue;
+		}
+		// check auto increment
+		u_int64_t autoIncrement = checkMysqlIdCdrChildTables_getAutoIncrement(cdrTables[i], sqlDb);
+		if(autoIncrement < 0xFFFFFFFF - 1e6) {
+			continue;
+		}
+		syslog(LOG_ERR, "critical value %lu in column id / table %s", maxId, cdrTables[i].c_str());
+		// check if main tables
+		if(cdrTables[i] == "cdr" || 
+		   reg_match(cdrTables[i].c_str(), "cdr_next")) {
+			continue;
+		}
+		// check if exists calldate
+		sqlDb->query("show columns from " + cdrTables[i] + " like 'calldate'");
+		if(!sqlDb->fetchRow()) {
+			continue;
+		}
+		// check min id
+		sqlDb->query("select min(id) from " + cdrTables[i]);
+		row = sqlDb->fetchRow();
+		u_int64_t minId = atoll(row[0].c_str());
+		if(minId > 0xFFFFFFFF / 4) {
+			bool rstlSetAutoIncrement = checkMysqlIdCdrChildTables_setAutoIncrement(cdrTables[i], 1, sqlDb);
+			syslog(rstlSetAutoIncrement ? LOG_NOTICE : LOG_ERR, 
+			       "switch auto_increment value to 1 in table %s: %s", 
+			       cdrTables[i].c_str(),
+			       rstlSetAutoIncrement ? "SUCCESS" : "FAILED");
+		} else {
+			continue;
+		}
+	}
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+}
+
+u_int64_t checkMysqlIdCdrChildTables_getAutoIncrement(string table, SqlDb *sqlDb) {
+	u_int64_t autoIncrement = _checkMysqlIdCdrChildTables_getAutoIncrement_v2(table, sqlDb);
+	if(autoIncrement != (u_int64_t)-1) {
+		return(autoIncrement);
+	} else {
+		return(_checkMysqlIdCdrChildTables_getAutoIncrement(table, sqlDb));
+	}
+}
+
+u_int64_t _checkMysqlIdCdrChildTables_getAutoIncrement(string table, SqlDb *sqlDb) {
+	SqlDb_row row;
+	if(!sqlDb->query("show table status like '" + table + "'") ||
+	   !(row = sqlDb->fetchRow())) {
+		return((u_int64_t)-1);
+	}
+	return(atoll(row["auto_increment"].c_str()));
+}
+
+u_int64_t _checkMysqlIdCdrChildTables_getAutoIncrement_v2(string table, SqlDb *sqlDb) {
+	if(!sqlDb->query("show tables like '" + table + "_auto_increment'") ||
+	   !sqlDb->fetchRow()) {
+		return((u_int64_t)-1);
+	}
+	SqlDb_row row;
+	if(!sqlDb->query("select auto_increment from " + table + "_auto_increment") ||
+	   !(row = sqlDb->fetchRow())) {
+		return((u_int64_t)-1);
+	}
+	return(atoll(row["auto_increment"].c_str()));
+}
+
+bool checkMysqlIdCdrChildTables_setAutoIncrement(string table, u_int64_t autoIncrement, SqlDb *sqlDb) {
+	if(_checkMysqlIdCdrChildTables_setAutoIncrement(table, autoIncrement, sqlDb) &&
+	   _checkMysqlIdCdrChildTables_getAutoIncrement(table, sqlDb) < autoIncrement + 1000) {
+		return(true);
+	} else {
+		return(_checkMysqlIdCdrChildTables_setAutoIncrement_v2(table, autoIncrement, sqlDb));
+	}
+}
+
+bool _checkMysqlIdCdrChildTables_setAutoIncrement(string table, u_int64_t autoIncrement, SqlDb *sqlDb) {
+	return(sqlDb->query("alter table " + table + " auto_increment = " + intToString(autoIncrement)));
+}
+
+bool _checkMysqlIdCdrChildTables_setAutoIncrement_v2(string table, u_int64_t autoIncrement, SqlDb *sqlDb) {
+	string lockName = table + "_auto_increment_lock";
+	sqlDb->query("show tables like '" + table + "_auto_increment'");
+	if(!sqlDb->fetchRow()) {
+		return(sqlDb->query("CREATE TABLE `" + table + "_auto_increment` (`auto_increment` BIGINT UNSIGNED NULL) ENGINE=InnoDB") &&
+		       sqlDb->query("INSERT INTO `" + table + "_auto_increment` (`auto_increment`) VALUES (" + intToString(autoIncrement) + ");") &&
+		       sqlDb->query("DROP TRIGGER IF EXISTS " + table + "_auto_increment_tr") &&
+		       sqlDb->query("CREATE TRIGGER " + table + "_auto_increment_tr \
+				     BEFORE INSERT ON " + table + " \
+				     FOR EACH ROW \
+					BEGIN \
+					   declare auto_increment_value bigint; \
+					   do get_lock('" + table + "_auto_increment', 60); \
+					   set auto_increment_value = (select auto_increment from " + table + "_auto_increment); \
+					   if not auto_increment_value then \
+					      set auto_increment_value = 1; \
+					   end if; \
+					   update " + table + "_auto_increment set auto_increment = (auto_increment_value + 1); \
+					   do release_lock('" + table + "_auto_increment'); \
+					   set new.id = auto_increment_value; \
+					END"));
+	} else {
+		return(sqlDb->query("UPDATE `" + table + "_auto_increment` set `auto_increment` = " + intToString(autoIncrement)));
 	}
 }

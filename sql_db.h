@@ -226,6 +226,19 @@ public:
 		tt_child = 4,
 		tt_all   = 7
 	};
+	enum eTypeTables2 {
+		tt2_na = 0,
+		tt2_cdr_static = 1,
+		tt2_cdr_dynamic = 2,
+		tt2_cdr = 3,
+		tt2_message_static = 4,
+		tt2_message_dynamic = 8,
+		tt2_message = 12,
+		tt2_register = 16,
+		tt2_http_enum = 32,
+		tt2_webrtc = 64,
+		tt2_static = tt2_cdr_static | tt2_message_static | tt2_register | tt2_http_enum | tt2_webrtc
+	};
 public:
 	SqlDb_mysql();
 	~SqlDb_mysql();
@@ -260,7 +273,7 @@ public:
 	
 	void copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc);
 	void copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tableName);
-	vector<string> getSourceTables(int typeTables = tt_all);
+	vector<string> getSourceTables(int typeTables = tt_all, int typeTables2 = tt2_na);
 	string getTypeDb() {
 		return("mysql");
 	}
@@ -627,5 +640,6 @@ void createMysqlPartitionsIpacc();
 void createMysqlPartitionsBillingAgregation();
 void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsRtpStat();
+void checkMysqlIdCdrChildTables(SqlDb *sqlDb = NULL);
 
 #endif

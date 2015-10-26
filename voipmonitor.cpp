@@ -1152,6 +1152,7 @@ void *storing_cdr( void *dummy ) {
 	time_t dropPartitionRtpStatAt = 0;
 	time_t createPartitionIpaccAt = 0;
 	time_t createPartitionBillingAgregationAt = 0;
+	time_t checkMysqlIdCdrChildTablesAt = 0;
 	bool firstIter = true;
 	while(1) {
 		createPartitions.init();
@@ -1193,6 +1194,13 @@ void *storing_cdr( void *dummy ) {
 		}
 		if(createPartitions.isSet()) {
 			createPartitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
+		}
+		if(opt_cdr_partition and !opt_disable_partition_operations) {
+			time_t actTime = time(NULL);
+			if(actTime - checkMysqlIdCdrChildTablesAt > 1 * 3600) {
+				checkMysqlIdCdrChildTables();
+				checkMysqlIdCdrChildTablesAt = actTime;
+			}
 		}
 		firstIter = false;
 		
