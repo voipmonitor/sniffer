@@ -5986,10 +5986,10 @@ void _createMysqlPartitionsCdr(int day, SqlDb *sqlDb) {
 		return;
 	}
 	vector<string> tablesForCreatePartitions = sqlDbMysql->getSourceTables(SqlDb_mysql::tt_main | SqlDb_mysql::tt_child, SqlDb_mysql::tt2_static);
+	bool disableLogErrorOld = sqlDb->getDisableLogError();
+	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
 	if(cloud_host[0]) {
-		bool disableLogErrorOld = sqlDb->getDisableLogError();
 		sqlDb->setDisableLogError(true);
-		unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
 		sqlDb->setMaxQueryPass(1);
 		for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
 			sqlDb->query(
@@ -6000,10 +6000,18 @@ void _createMysqlPartitionsCdr(int day, SqlDb *sqlDb) {
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 		sqlDb->setDisableLogError(disableLogErrorOld);
 	} else {
+		if(day == 0) {
+			sqlDb->setDisableLogError(true);
+			sqlDb->setMaxQueryPass(2);
+		}
 		for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
 			sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + tablesForCreatePartitions[i] + "', " + 
 				     "'day', " + intToString(day) + ", " + 
 				     (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		}
+		if(day == 0) {
+			sqlDb->setMaxQueryPass(maxQueryPassOld);
+			sqlDb->setDisableLogError(disableLogErrorOld);
 		}
 	}
 	if(_createSqlObject) {
