@@ -1,17 +1,21 @@
-14.0 16.10.2015
-===============
+14.0.1 2.11.2015
+================
 
 Optimizations and new feature
 -----------------------------
-- Optimize t2cpu processing which is now automatically threaded only on demand. This saves a lot of CPU cycles on most installations where inter-thread synchronization is not needed (especially on virtual machines) 
+- Optimize t2cpu processing which is now automatically threaded only on demand. This saves a lot of CPU cycles on most installations where inter-thread synchronization is not needed (especially on virtual machines)
+- Fix t2cpu in multithread which called gettime too often causing higher CPU load even when there were no traffic
 - Optimize processing RTP packets. The limit was around 2.5Gbit / 1.2Millinos RTP packets / second  (CPU lowered from 100% to 40% on t0CPU thread). It probably allows to go over 5Gbit (2Millions RTP packets / second) on Xeon E5-2650 v2 
-- If audio conversion is enabled do not block storing CDR into database if server is not able to process it in realtime. 
-- Use all available CPUs for audio conversion if saveaudio is enabled (or via capture rules) 
+- If audio conversion is enabled do not block storing CDR into database if server is not able to process it in realtime
+- Use all available CPUs for audio conversion if saveaudio is enabled (or via capture rules) - new option audioqueue_threads_max (default 10 threads max)
 - Redesign MOS scoring and sample it every 10 seconds. Final MOS score is calculated from average MOS score sampled every 10 seconds. Result is much more consistent MOS score. Sniffer is storing into the database also minimal 10 seconds samples MOS score alongside with average MOS 
 - .graph: chart now shows MOS score sampled every 10 seconds for jitterbuffer fixed 50ms, fixed 200ms, adaptive 500ms and graphically shows green/yeallow/green indication.
 - .graph: chart now contains silence and consecutive loss duration so now is possible to see when RTP was not sent 
 - .graph: shows DTMF blue line mark which helps to understand gaps/jumps in chart
 - Implement round trip time monitoring for SIP REGISTER from initial registration to 200 OK. The value is in register.rrd_avg and it represents last 10 values [VS-172] 
+- new rtp_stat SQL table stores MOS/loss/jitter every 10 seconds aggregated per RTP src ip address. It will be used in future GUI versions to watch realtime RTP trending
+- listcalls manager command now exports realtime MOS/jitter/delay metrics
+- use bigint for cdr.id to overcome 32bit unsigned limit (which is around 4billions CDR only). 
 
 Buf fixes
 ---------
@@ -23,6 +27,11 @@ Buf fixes
 - fix iLBC packetization and false MOS score
 - do not start new RTP stream for the same SSRC stream if dst ip changes but source ip/port is the same which fixes some false MOS score / graph in some NAT scenarios
 - fix flooding syslog if pcap_next_ex detect error on the interface (like interface is down) 
+- fix some mirroring receiver problems 
+- fix reindexfiles / cleaning loops for some configuration cases
+- fix RTP file creation if RTP are completely turned off in GUI->capture rules (empty RTP files) [VG-718]
+- fix g723 missing audio if stream starts with dtmf or rtp event of any kind. fix sync issues for g723 if packetization > 30ms
+- fix some cloud mode issues with storing to cloud database 
 
 
 12.5.2 6.10.2015
