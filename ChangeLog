@@ -1,3 +1,8 @@
+14.0.2 2.11.2015
+================
+- do not remove caller or called audio for some rare cases (problem started from 14.0)
+
+
 14.0.1 2.11.2015
 ================
 

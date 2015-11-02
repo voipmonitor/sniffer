@@ -909,10 +909,16 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 
 					//codec changed, check if it is not DTMF 
 					if(curpayload >= 96 && curpayload <= 127) {
+						bool found = false;
 						for(int j = 0; j < MAX_RTPMAP; j++) {
 							if(rtp[i]->rtpmap[j] != 0 && curpayload == rtp[i]->rtpmap[j] / 1000) {
 								rtp[i]->codec = rtp[i]->rtpmap[j] - curpayload * 1000;
+								found = true;
 							}
+						}
+						if(!found) {
+							// dynamic type codec changed but was not negotiated - do not create new RTP stream
+							goto end;
 						}
 					} else {
 						rtp[i]->codec = curpayload;
@@ -1481,6 +1487,10 @@ Call::convertRawToWav() {
 				B = rtp[k];
 				if(A == B or A->skip or B->skip) continue; // do not compare with ourself or already removed RTP
 				if(A->ssrc == B->ssrc) {
+					if(A->daddr == B->daddr and A->saddr == B->saddr and A->sport == B->sport and A->dport == B->dport){
+						// A and B have the same SSRC but both is identical ips and ports
+						continue;
+					}
 					// found another stream with the same SSRC 
 
 					if(owner->get_index_by_ip_port(A->daddr, A->dport) >= 0) {
@@ -1505,8 +1515,8 @@ Call::convertRawToWav() {
 								// test is not true which means that if we remove B there will be no other stream with the B.daddr so we can remove A
 								A->skip = true;
 								if(!sverb.noaudiounlink) unlink(raw);
-								if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
-									A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->saddr)).c_str(), A->dport, A->iscaller, k);
+								if(verbosity > 1) syslog(LOG_ERR, "Removing stream [%p] with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
+									A, A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->saddr)).c_str(), A->dport, A->iscaller, k);
 							}
 						} else {
 							// B.daddr is not in SDP so we can remove B because A.dst is in SDP 
