@@ -1230,7 +1230,7 @@ void *storing_cdr( void *dummy ) {
 			createPartitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
 		}
 		checkIdCdrChildTables.init();
-		if(opt_cdr_partition and !opt_disable_partition_operations) {
+		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations) {
 			time_t actTime = time(NULL);
 			if(actTime - checkMysqlIdCdrChildTablesAt > 1 * 3600) {
 				checkIdCdrChildTables.check = true;
