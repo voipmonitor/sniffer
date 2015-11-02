@@ -3829,3 +3829,60 @@ void prepare_string_to_filename(char *str, unsigned int str_length) {
 		}
 	}
 }
+
+unsigned char *conv7bit::encode(unsigned char *data, unsigned int length, unsigned int &rsltLength) {
+	if(!length) {
+		rsltLength = 0;
+		return(NULL);
+	}
+	rsltLength = conv7bit::encode_length(length);
+	unsigned char *rsltData = new FILE_LINE unsigned char[rsltLength + 1];
+	memset(rsltData, 0, rsltLength + 1);
+	for(unsigned int i = 0; i < length; i++) {
+		int mainByteIndex = (i + 1) * 7 / 8;
+		int mainByteBits = (i + 1) * 7 % 8;
+		int prevByteIndex = mainByteIndex > 0 ? mainByteIndex - 1 : 0;
+		int prevByteBits = 7 - mainByteBits;
+		if(mainByteBits) {
+			rsltData[mainByteIndex] |= (data[i] >> (7 - mainByteBits)) & 0xFF;
+		}
+		if(prevByteBits) {
+			rsltData[prevByteIndex] |= (data[i] << (8 - prevByteBits)) & 0xFF;
+		}
+	}
+	return(rsltData);
+}
+
+unsigned char *conv7bit::decode(unsigned char *data, unsigned int length, unsigned int &rsltLength) {
+	if(!length) {
+		rsltLength = 0;
+		return(NULL);
+	}
+	rsltLength = conv7bit::decode_length(length);
+	unsigned char *rsltData = new FILE_LINE unsigned char[rsltLength + 1];
+	memset(rsltData, 0, rsltLength + 1);
+	for(unsigned int i = 0; i < rsltLength; i++) {
+		int mainByteIndex = (i + 1) * 7 / 8;
+		int mainByteBits = (i + 1) * 7 % 8;
+		int prevByteIndex = mainByteIndex > 0 ? mainByteIndex - 1 : 0;
+		int prevByteBits = 7 - mainByteBits;
+		unsigned char ch = 0;
+		if(mainByteBits) {
+			ch |= (data[mainByteIndex] & (0xFF >> (8 - mainByteBits))) & 0xFF;
+		}
+		if(prevByteBits) {
+			ch <<= prevByteBits;
+			ch |= (data[prevByteIndex] >> (8 - prevByteBits)) & 0xFF;
+		}
+		rsltData[i] = ch;
+	}
+	return(rsltData);
+}
+
+unsigned int conv7bit::encode_length(unsigned int length) {
+	return(length * 7 / 8 + (length * 7 % 8 ? 1 : 0));
+}
+
+unsigned int conv7bit::decode_length(unsigned int length) {
+	return(length * 8 / 7);
+}
