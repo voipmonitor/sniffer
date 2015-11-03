@@ -477,6 +477,10 @@ inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_cha
 	__sync_lock_release(&usersniffer_sync);
 }
 
+static int parse_packet__message(char *data, unsigned int datalen, bool strictCheckLength,
+				 char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber, unsigned int *rsltContentLength,
+				 bool maskMessage = false);
+
 /*
    save packet into file 
    type - 1 is SIP, 2 is RTP, 3 is RTCP
@@ -535,6 +539,14 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet,
 					}
 				}
 				if(call->type == MESSAGE && opt_hide_message_content) {
+					const u_char *packet_orig = packet;
+					packet = (const u_char*) new FILE_LINE u_char[header->caplen];
+					memcpy((u_char*)packet, packet_orig, header->caplen);
+					allocPacket = true;
+					parse_packet__message((char*)(packet + dataoffset), datalen, false,
+							      NULL, NULL, NULL, NULL,
+							      true);
+					/* obsolete
 					char *endHeaderSepPos = (char*)memmem(data, datalen, "\r\n\r\n", 4);
 					if(endHeaderSepPos) {
 						const u_char *packet_orig = packet;
@@ -544,6 +556,7 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet,
 						memset((u_char*)message, 'x', min(contentLength, (long int)(header->caplen - (message - packet))));
 						allocPacket = true;
 					}
+					*/
 				}
 			}
 		}
@@ -1983,6 +1996,9 @@ static void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle);
 static int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
 static int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
 					   char *lastSIPresponse, bool *call_cancel_lsr487);
+static int parse_packet__message_content(char *message, unsigned int messageLength,
+					 char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber,
+					 bool maskMessage = false);
 
 u_char *_process_packet_packet;
 pcap_pkthdr *_process_packet_header;
@@ -2695,6 +2711,33 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				}
 
 				// UPDATE TEXT
+				char *rsltMessage;
+				string rsltDestNumber;
+				string rsltSrcNumber;
+				unsigned int rsltContentLength;
+				switch(parse_packet__message(data, datalen, call->message != NULL,
+							     &rsltMessage, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
+				case 2:
+					if(call->message) {
+						delete [] call->message;
+					}
+					call->message = rsltMessage;
+					break;
+				case 1:
+					if(!call->message) {
+						call->message = new FILE_LINE char[1];
+						call->message[0] = '\0';
+					}
+					break;
+				}
+				if(rsltDestNumber.length()) {
+					strncpy(call->called, rsltDestNumber.c_str(), sizeof(call->called));
+					call->updateDstnumFromMessage = true;
+				}
+				if(rsltSrcNumber.length()) {
+					strncpy(call->caller, rsltSrcNumber.c_str(), sizeof(call->caller));
+				}
+				/* obsolete
 				char a = data[datalen - 1];
 				data[datalen - 1] = 0;
 				char *tmp = strstr(data, "\r\n\r\n");
@@ -2738,6 +2781,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				} else {
 					data[datalen - 1] = a;
 				}
+				*/
 			} else if(sip_method == BYE) {
 				
 				call->destroy_call_at = header->ts.tv_sec + 60;
@@ -2817,7 +2861,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 							}
 						}
 						if(opt_update_dstnum_onanswer &&
-						   !call->updateDstnumOnAnswer &&
+						   !call->updateDstnumOnAnswer && !call->updateDstnumFromMessage &&
 						   call->called_invite_branch_map.size()) {
 							char branch[100];
 							if(!get_sip_branch(data, datalen, "via:", branch, sizeof(branch)) &&
@@ -3021,6 +3065,36 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			memcpy(call->contenttype, s, l);
 			call->contenttype[l] = '\0';
 			
+			char *rsltMessage;
+			string rsltDestNumber;
+			string rsltSrcNumber;
+			unsigned int rsltContentLength;
+			data[datalen - 1] = a;
+			switch(parse_packet__message(data, datalen, false,
+						     &rsltMessage, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
+			case 2:
+				call->message = rsltMessage;
+				break;
+			case 1:
+				if(!call->message) {
+					call->message = new FILE_LINE char[1];
+					call->message[0] = '\0';
+				}
+				break;
+			case -1:
+				goto notfound;
+			}
+			if(rsltDestNumber.length()) {
+				strncpy(call->called, rsltDestNumber.c_str(), sizeof(call->called));
+				call->updateDstnumFromMessage = true;
+			}
+			if(rsltSrcNumber.length()) {
+				strncpy(call->caller, rsltSrcNumber.c_str(), sizeof(call->caller));
+			}
+			if(rsltContentLength != (unsigned int)-1) {
+				call->content_length = rsltContentLength;
+			}
+			/* obsolete
 			//find end of a message (\r\n)
 			char *tmp = strstr(s, "\r\n\r\n");;
 			if(!tmp) {
@@ -3057,6 +3131,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				call->message = new FILE_LINE char[1];
 				call->message[0] = '\0';
 			}
+			*/
 			//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
 		} else if(strcasestr(s, "application/sdp")) {
 			*sl = t;
@@ -3722,6 +3797,440 @@ int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_me
 		lastSIPresponseNum = 0;
 	}
 	return(lastSIPresponseNum);
+}
+
+int parse_packet__message(char *data, unsigned int datalen, bool strictCheckLength,
+			  char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber, unsigned int *rsltContentLength,
+			  bool maskMessage) {
+	if(rsltMessage) {
+		*rsltMessage = NULL;
+	}
+	if(rsltContentLength) {
+		*rsltContentLength = (unsigned int)-1;
+	}
+	int setMessage = 0;
+	char endCharData = data[datalen - 1];
+	data[datalen - 1] = 0;
+	char *endHeader = strstr(data, "\r\n\r\n");;
+	if(!endHeader) {
+		data[datalen - 1] = endCharData;
+		return(-1);
+	}
+	char *contentBegin = endHeader + 4;
+	int contentLength = 0;
+	unsigned long l;
+	char *s = gettag(data, datalen, "\nContent-Length:", &l);
+	if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+		char endCharContentLength = s[l];
+		s[l] = '\0';
+		contentLength = atoi(s);
+		if(rsltContentLength) {
+			*rsltContentLength = 0;
+		}
+		s[l] = endCharContentLength;
+	}
+	if(contentLength > 0) {
+		char *contentEnd = strcasestr(contentBegin, "\n\nContent-Length:");
+		if(!contentEnd) {
+			contentEnd = strstr(contentBegin, "\r\n");
+		}
+		if(!contentEnd) {
+			contentEnd = data + datalen;
+		}
+		if(!strictCheckLength || (contentEnd - contentBegin) == contentLength) {
+			if((contentEnd - contentBegin) > contentLength) {
+				contentEnd = contentBegin + contentLength;
+			}
+			data[datalen - 1] = endCharData;
+			if(parse_packet__message_content(contentBegin, contentEnd - contentBegin,
+							 rsltMessage, rsltDestNumber, rsltSrcNumber,
+							 maskMessage)) {
+				setMessage = 2;
+			} else {
+				setMessage = 1;
+			}
+		} else {
+			data[datalen - 1] = endCharData;
+		}
+	} else {
+		setMessage = 1;
+		data[datalen - 1] = endCharData;
+	}
+	return(setMessage);
+}
+
+struct sGsmMessage {
+	enum eGsmMessageType {
+		gsm_mt_na,
+		gsm_mt_data_ms_to_net,
+		gsm_mt_data_net_to_ms,
+		gsm_mt_ack_ms_to_net,
+		gsm_mt_ack_net_to_ms
+	};
+	sGsmMessage() {
+		type = gsm_mt_na;
+		originatorAddressLength = -1;
+		destinationAddressLength = -1;
+		userDataLength = -1;
+	}
+	unsigned int getLength() {
+		switch(type) {
+		case gsm_mt_data_ms_to_net:
+		case gsm_mt_data_net_to_ms:
+			return(2 + 
+			       (originatorAddressLength >= 0 ? 1 + originatorAddressLength : 0) + 
+			       (destinationAddressLength >= 0 ? 1 + destinationAddressLength : 0) +
+			       (userDataLength >= 0 ? 1 + userDataLength : 0));
+		case gsm_mt_ack_ms_to_net:
+			return(2);
+		case gsm_mt_ack_net_to_ms:
+			return(2 + 
+			       1 +
+			       (userDataLength >= 0 ? 1 + userDataLength : 0));
+		case gsm_mt_na:
+			break;
+		}
+		return(0);
+	}
+	unsigned int getOffsetToUserData() {
+		switch(type) {
+		case gsm_mt_data_ms_to_net:
+		case gsm_mt_data_net_to_ms:
+			return(2 + 
+			       1 + originatorAddressLength +
+			       1 + destinationAddressLength +
+			       1);
+		case gsm_mt_ack_ms_to_net:
+			return(0);
+		case gsm_mt_ack_net_to_ms:
+			return(4);
+		case gsm_mt_na:
+			break;
+		}
+		return(0);
+	}
+	bool load(char *message, unsigned int messageLength) {
+		if(!messageLength) {
+			return(false);
+		}
+		if(isDataMStoNET(message)) {
+			type = gsm_mt_data_ms_to_net;
+		} else if(isDataNETtoMS(message)) {
+			type = gsm_mt_data_net_to_ms;
+		} else if(isAckMStoNET(message)) {
+			type = sGsmMessage::gsm_mt_ack_ms_to_net;
+		} else if(isAckNETtoMS(message)) {
+			type = sGsmMessage::gsm_mt_ack_net_to_ms;
+		} else {
+			return(false);
+		}
+		switch(type) {
+		case gsm_mt_data_ms_to_net:
+		case gsm_mt_data_net_to_ms:
+			for(int pass = 0; pass < 3; pass++) {
+				if(messageLength > getLength()) {
+					int value = message[getLength()];
+					switch(pass) {
+					case 0: originatorAddressLength = value; break;
+					case 1: destinationAddressLength = value; break;
+					case 2: userDataLength = value; break;
+					}
+				} else {
+					break;
+				}
+			}
+			break;
+		case gsm_mt_ack_ms_to_net:
+			break;
+		case gsm_mt_ack_net_to_ms:
+			if(messageLength > getLength()) {
+				userDataLength = message[getLength()];
+			}
+			break;
+		case gsm_mt_na:
+			break;
+		}
+		return(messageLength == getLength());
+	}
+	bool isDataMStoNET(char *message) {
+		return(message[0] == 0);
+	}
+	bool isDataNETtoMS(char *message) {
+		return(message[0] == 1);
+	}
+	bool isAckMStoNET(char *message) {
+		return(message[0] == 2);
+	}
+	bool isAckNETtoMS(char *message) {
+		return(message[0] == 3);
+	}
+	eGsmMessageType type;
+	int originatorAddressLength;
+	int destinationAddressLength;
+	int userDataLength;
+};
+
+struct sGsmMessageData {
+	enum eGsmMessageDataType {
+		gsm_mt_data_type_na,
+		gsm_mt_data_type_deliver,
+		gsm_mt_data_type_submit
+	};
+	sGsmMessageData() {
+		type = gsm_mt_data_type_na;
+		addressLength = -1;
+		codingIndication = -1;
+		userDataLength = -1;
+	}
+	unsigned int getLength() {
+		return((type == gsm_mt_data_type_deliver ? 1 : 2) + 
+		       (addressLength >= 0 ? 2 + getAddressLength() + 1 : 0) + 
+		       (codingIndication >= 0 ? (type == gsm_mt_data_type_deliver ? 8 : 1) : 0) + 
+		       (userDataLength >= 0 ? 1 + getUserDataEncodeLength() : 0));
+	}
+	unsigned int getOffsetToAddress() {
+		return((type == gsm_mt_data_type_deliver ? 1 : 2) + 
+		       2);
+	}
+	unsigned int getOffsetToUserData() {
+		return((type == gsm_mt_data_type_deliver ? 1 : 2) + 
+		       2 + getAddressLength() + 1 + 
+		       (type == gsm_mt_data_type_deliver ? 8 : 1) + 
+		       1);
+	}
+	unsigned int getAddressLength() {
+		return(addressLength / 2 + addressLength % 2);
+	}
+	unsigned int getUserDataEncodeLength() {
+		switch(codingIndication) {
+		case 0: 
+			return(conv7bit::encode_length(userDataLength));
+		}
+		return(-1);
+	}
+	bool load(char *data, unsigned int dataLength) {
+		if(!dataLength) {
+			return(-1);
+		}
+		if(isDeliver(data)) {
+			type = gsm_mt_data_type_deliver;
+		} else if(isSubmit(data)) {
+			type = gsm_mt_data_type_submit;
+		} else {
+			return(false);
+		}
+		for(int pass = 0; pass < 3; pass++) {
+			if(dataLength > getLength()) {
+				int value = data[getLength()];
+				switch(pass) {
+				case 0: addressLength = value; break;
+				case 1: codingIndication = value; break;
+				case 2: userDataLength = value; break;
+				}
+			} else {
+				break;
+			}
+		}
+		return(dataLength == getLength());
+	}
+	string getAddress(char *data) {
+		string address;
+		char *addressData = data + getOffsetToAddress();
+		for(int i = 0; i < addressLength; i++) {
+			int addressNumber = (i % 2 ? (addressData[i / 2] >> 4) : addressData[i / 2]) & 0xF;
+			address += '0' + addressNumber;
+		}
+		return(address);
+	}
+	string getUserData(char *data) {
+		if(userDataLength) {
+			switch(codingIndication) {
+			case 0: 
+				return(getUserData_7bit(data));
+			}
+		}
+		return("");
+	}
+	void maskUserData(char *data) {
+		if(userDataLength) {
+			switch(codingIndication) {
+			case 0: 
+				return(maskUserData_7bit(data));
+			}
+		}
+	}
+	string getUserData_7bit(char *data) {
+		unsigned char *userDataSrc = (unsigned char*)data + getOffsetToUserData();
+		unsigned int userDataDecodeLength;
+		unsigned char *userDataDecode = conv7bit::decode(userDataSrc, conv7bit::encode_length(userDataLength), userDataDecodeLength);
+		if(userDataDecode) {
+			string userDataDecodeString = string((char*)userDataDecode, userDataDecodeLength);
+			delete [] userDataDecode;
+			return(userDataDecodeString);
+		} else {
+			return("");
+		}
+	}
+	void maskUserData_7bit(char *data) {
+		unsigned char *userDataSrc = (unsigned char*)data + getOffsetToUserData();
+		string maskData;
+		for(int i = 0; i < userDataLength; i++) {
+			maskData += 'x';
+		}
+		unsigned int userDataEncodeLength;
+		unsigned char *userDataEncode = conv7bit::encode((unsigned char*)maskData.c_str(), maskData.length(), userDataEncodeLength);
+		if(userDataEncode) {
+			memcpy(userDataSrc, userDataEncode, userDataEncodeLength);
+			delete [] userDataEncode;
+		}
+	}
+	bool isDeliver(char *data) {
+		return((data[0] & 0x3) == 0);
+	}
+	bool isSubmit(char *data) {
+		return((data[0] & 0x3) == 1);
+	}
+	eGsmMessageDataType type;
+	int addressLength;
+	int codingIndication;
+	int userDataLength;
+};
+
+struct sGsmMessageAck {
+	sGsmMessageAck() {
+		year = -1;
+		month = -1;
+		day = -1;
+		hour = -1;
+		minute = -1;
+		second = -1;
+		timezone = -1;
+	}
+	bool load(char *data, unsigned int dataLength) {
+		if(dataLength != 9) {
+			return(false);
+		}
+		for(int pass = 0; pass < 7; pass++) {
+			int value = getValue(data[2 + pass]);
+			switch(pass) {
+			case 0: year = value; break;
+			case 1: month = value; break;
+			case 2: day = value; break;
+			case 3: hour = value; break;
+			case 4: minute = value; break;
+			case 5: second = value; break;
+			case 6: timezone = value; break;
+			}
+		}
+		return(checkValues());
+	}
+	bool checkValues() {
+		return(year >=0 && year < 99 &&
+		       month >= 1 && month <= 12 &&
+		       day >= 1 && month <= 31 &&
+		       hour >= 0 && month <= 23 &&
+		       minute >= 0 && month <= 59 &&
+		       second >= 0 && second <= 59 &&
+		       timezone >= 0);
+	}
+	unsigned char getValue(unsigned char value) {
+		return((value & 0xF) * 10 + ((value & 0xF0) >> 4));
+	}
+	int year;
+	int month;
+	int day;
+	int hour;
+	int minute;
+	int second;
+	int timezone;
+};
+
+int parse_packet__message_content(char *message, unsigned int messageLength,
+				  char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber,
+				  bool maskMessage) {
+	int rslt = 0;
+	if(rsltMessage) {
+		*rsltMessage = NULL;
+	}
+	if(messageLength) {
+		sGsmMessage gsmMessage;
+		if(gsmMessage.load(message, messageLength)) {
+			char *userData = message + gsmMessage.getOffsetToUserData();
+			switch(gsmMessage.type) {
+			case sGsmMessage::gsm_mt_data_net_to_ms:
+			case sGsmMessage::gsm_mt_data_ms_to_net:{
+				sGsmMessageData gsmMessageData;
+				if(gsmMessageData.load(userData, gsmMessage.userDataLength)) {
+					if(gsmMessageData.addressLength) {
+						if(rsltDestNumber && gsmMessageData.type == sGsmMessageData::gsm_mt_data_type_submit) {
+							*rsltDestNumber = gsmMessageData.getAddress(userData);
+						} else if(rsltSrcNumber && gsmMessageData.type == sGsmMessageData::gsm_mt_data_type_deliver) {
+							*rsltSrcNumber = gsmMessageData.getAddress(userData);
+						}
+					}
+					if(rsltMessage) {
+						string rslt_message = gsmMessageData.getUserData(userData);
+						if(rslt_message.length()) {
+							*rsltMessage = new FILE_LINE char[rslt_message.length() + 1];
+							memcpy(*rsltMessage, rslt_message.c_str(), rslt_message.length());
+							(*rsltMessage)[rslt_message.length()] = '\0';
+							rslt = 1;
+						}
+					}
+					if(maskMessage) {
+						gsmMessageData.maskUserData(userData);
+					}
+				}
+				}
+				break;
+			case sGsmMessage::gsm_mt_ack_net_to_ms: {
+				sGsmMessageAck sGsmMessageAck;
+				if(sGsmMessageAck.load(userData, gsmMessage.userDataLength)) {
+					if(rsltMessage) {
+						char rslt_message_buff[100];
+						snprintf(rslt_message_buff, 100, 
+							 "ACK 20%02i-%02i-%02i %02i:%02i:%02i (timezone code %i)",
+							 sGsmMessageAck.year,
+							 sGsmMessageAck.month,
+							 sGsmMessageAck.day,
+							 sGsmMessageAck.hour,
+							 sGsmMessageAck.minute,
+							 sGsmMessageAck.second,
+							 sGsmMessageAck.timezone);
+						*rsltMessage = new FILE_LINE char[strlen(rslt_message_buff) + 1];
+						strcpy(*rsltMessage, rslt_message_buff);
+						rslt = 1;
+					}
+				}
+				}
+				break;
+			case sGsmMessage::gsm_mt_ack_ms_to_net: {
+				if(rsltMessage) {
+					char rslt_message_buff[100];
+					snprintf(rslt_message_buff, 100, 
+						 "ACK");
+					*rsltMessage = new FILE_LINE char[strlen(rslt_message_buff) + 1];
+					strcpy(*rsltMessage, rslt_message_buff);
+					rslt = 1;
+				}
+				}
+				break;
+			case sGsmMessage::gsm_mt_na:
+				break;
+			}
+		} else {
+			if(rsltMessage) {
+				*rsltMessage = new FILE_LINE char[messageLength + 1];
+				memcpy(*rsltMessage, message, messageLength);
+				(*rsltMessage)[messageLength] = '\0';
+			}
+			if(maskMessage) {
+				memset(message, 'x', messageLength);
+			}
+			rslt = 1;
+		}
+	}
+	return(rslt);
 }
 
 inline

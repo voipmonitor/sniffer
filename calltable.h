@@ -357,6 +357,7 @@ public:
 	bool onCall_2XX;
 	bool onCall_18X;
 	bool updateDstnumOnAnswer;
+	bool updateDstnumFromMessage;
 	
 	int useSensorId;
 	int useDlt;

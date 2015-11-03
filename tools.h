@@ -1897,4 +1897,12 @@ private:
 
 void prepare_string_to_filename(char *str, unsigned int str_length = 0);
 
+class conv7bit {
+public:
+	static unsigned char *encode(unsigned char *data, unsigned int length, unsigned int &rsltLength);
+	static unsigned char *decode(unsigned char *data, unsigned int length, unsigned int &rsltLength);
+	static unsigned int encode_length(unsigned int length);
+	static unsigned int decode_length(unsigned int length);
+};
+
 #endif
