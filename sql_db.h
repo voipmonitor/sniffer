@@ -163,7 +163,7 @@ public:
 	virtual bool createSchema(SqlDb *sourceDb = NULL) = 0;
 	virtual void createTable(const char *tableName) = 0;
 	virtual void checkDbMode() = 0;
-	virtual void checkSchema() = 0;
+	virtual void checkSchema(bool checkColumns = false) = 0;
 	virtual string getTypeDb() = 0;
 	virtual string getSubtypeDb() = 0;
 	virtual int multi_on() {
@@ -270,7 +270,11 @@ public:
 	bool createSchema(SqlDb *sourceDb = NULL);
 	void createTable(const char *tableName);
 	void checkDbMode();
-	void checkSchema();
+	void checkSchema(bool checkColumns = false);
+	void checkColumns_cdr(bool log = false);
+	void checkColumns_cdr_rtp(bool log = false);
+	void checkColumns_message(bool log = false);
+	bool isExtPrecissionBilling();
 	bool checkSourceTables();
 	void copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc);
 	void copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc);
@@ -364,7 +368,7 @@ public:
 	bool createSchema(SqlDb *sourceDb = NULL);
 	void createTable(const char *tableName);
 	void checkDbMode();
-	void checkSchema();
+	void checkSchema(bool checkColumns = false);
 	string getTypeDb() {
 		return("odbc");
 	}

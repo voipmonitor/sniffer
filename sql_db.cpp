@@ -3069,22 +3069,8 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			existsExtPrecisionBilling = true;
 		}
 	} else {
-		for(int i = 0; i < 2 && !existsExtPrecisionBilling; i++) {
-			string table = string("billing") + (i ? "_rule" : "");
-			this->query("show tables like '" + table + "'");
-			if(this->fetchRow()) {
-				this->query("select * from " + table);
-				SqlDb_row row;
-				while(row = this->fetchRow()) {
-					for(int j = 0; j < 2 && !existsExtPrecisionBilling; j++) {
-						double price = atof(row[i ? (j ? "price_peak" : "price") :
-									    (j ? "default_price_peak" : "default_price")].c_str());
-						if(fabs(round(price * 100) - price * 100) >= 0.1) {
-							existsExtPrecisionBilling = true;
-						}
-					}
-				}
-			}
+		if(this->isExtPrecissionBilling()) {
+			existsExtPrecisionBilling = true;
 		}
 	}
 
@@ -3351,110 +3337,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		}
 	}
 
-
-	if(!opt_cdr_sipport) {
-		this->query("show columns from cdr where Field='sipcallerport'");
-		opt_cdr_sipport = this->fetchRow();
-	}
-
-	this->query("show columns from cdr where Field='a_last_rtp_from_end'");
-	opt_last_rtp_from_end = this->fetchRow();
-	if(!opt_last_rtp_from_end) {
-		syslog(LOG_WARNING, "!!! Your database needs to be upgraded to support new features - ALTER TABLE cdr ADD a_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL, ADD b_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL;");
-	}
-
-	extern int opt_silencedetect;
-	if(opt_silencedetect) {
-		this->query("show columns from cdr where Field='caller_silence'");
-		int res = this->fetchRow();
-		if(!res) {
-			syslog(LOG_WARNING, "!!! You have enabled silencedetect but the database is not yet upgraded. Run this command in your database: ALTER TABLE cdr ADD caller_silence tinyint unsigned default NULL, ADD called_silence tinyint unsigned default NULL, ADD caller_silence_end smallint default NULL, ADD called_silence_end smallint default NULL;");
-			opt_silencedetect = 0;
-		}
-	}
-	extern int opt_clippingdetect;
-	if(opt_clippingdetect) {
-		this->query("show columns from cdr where Field='caller_clipping_div3'");
-		int res = this->fetchRow();
-		if(!res) {
-			syslog(LOG_WARNING, "!!! You have enabled clippingdetect but the database is not yet upgraded. Run this command in your database: ALTER TABLE cdr ADD caller_clipping_div3 smallint unsigned default NULL, ADD called_clipping_div3 smallint unsigned default NULL;");
-			opt_clippingdetect = 0;
-		}
-	}
-
-	this->query("show columns from cdr where Field='a_rtp_ptime'");
-	int res = this->fetchRow();
-	if(!res) {
-		syslog(LOG_WARNING, "Missing ptime columns - ptime feature is disabled. To enable it run this command in your database (it can take hours and will block database during the alter!): ALTER TABLE cdr ADD a_rtp_ptime tinyint unsigned default NULL, ADD b_rtp_ptime tinyint unsigned default NULL;");
-		opt_ptime = 0;
-	}
-
-	this->query("show columns from cdr where Field='price_operator_mult100' or Field='price_operator_mult1000000'");
-	if(!this->fetchRow()) {
-		this->query("show tables like 'billing'");
-		if(this->fetchRow()) {
-			this->logNeedAlter("cdr",
-					   "billing feature",
-					   string("ALTER TABLE cdr ") +
-					   (existsExtPrecisionBilling ?
-						"ADD COLUMN price_operator_mult100 INT UNSIGNED, "
-						"ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
-						"ADD COLUMN price_customer_mult100 INT UNSIGNED, "
-						"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;" :
-						"ADD COLUMN price_operator_mult1000000 BIGINT UNSIGNED, "
-						"ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
-						"ADD COLUMN price_customer_mult1000000 BIGINT UNSIGNED, "
-						"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;"));
-		}
-	}
-	
-	const char *cdrReasonColumns[] = {
-		"reason_sip_cause",
-		"reason_sip_text_id",
-		"reason_q850_cause",
-		"reason_q850_text_id"
-	};
-	bool missing_column_cdr_reason = false;
-	for(unsigned int i = 0; i < sizeof(cdrReasonColumns) / sizeof(cdrReasonColumns[0]); i++) {
-		this->query(string("show columns from cdr where Field='") + cdrReasonColumns[i] + "'");
-		if(!this->fetchRow()) {
-			missing_column_cdr_reason = true;
-		}
-	}
-	if(missing_column_cdr_reason) {
-		this->logNeedAlter("cdr",
-				   "SIP header 'reason'",
-				   "ALTER TABLE cdr "
-				   "ADD COLUMN reason_sip_cause smallint unsigned DEFAULT NULL, "
-				   "ADD COLUMN reason_sip_text_id mediumint unsigned DEFAULT NULL, "
-				   "ADD COLUMN reason_q850_cause smallint unsigned DEFAULT NULL, "
-				   "ADD COLUMN reason_q850_text_id mediumint unsigned DEFAULT NULL, "
-				   "ADD KEY reason_sip_text_id (reason_sip_text_id), "
-				   "ADD KEY reason_q850_text_id (reason_q850_text_id);");
-	} else {
-		exists_columns_cdr_reason = true;
-	}
-	
-	const char *cdrResponseTime[] = {
-		"response_time_100",
-		"response_time_xxx"
-	};
-	bool missing_column_cdr_response_time = false;
-	for(unsigned int i = 0; i < sizeof(cdrResponseTime) / sizeof(cdrResponseTime[0]); i++) {
-		this->query(string("show columns from cdr where Field='") + cdrResponseTime[i] + "'");
-		if(!this->fetchRow()) {
-			missing_column_cdr_response_time = true;
-		}
-	}
-	if(missing_column_cdr_response_time) {
-		this->logNeedAlter("cdr",
-				   "SIP response time",
-				   "ALTER TABLE cdr "
-				   "ADD COLUMN response_time_100 smallint unsigned DEFAULT NULL, "
-				   "ADD COLUMN response_time_xxx smallint unsigned DEFAULT NULL;");
-	} else {
-		exists_columns_cdr_response_time = true;
-	}
+	checkColumns_cdr(true);
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_next` (\
@@ -3541,14 +3424,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 
-	if(!opt_cdr_rtpport) {
-		this->query("show columns from cdr_rtp where Field='dport'");
-		opt_cdr_rtpport = this->fetchRow();
-	}
-	if(!opt_cdr_rtpsrcport) {
-		this->query("show columns from cdr_rtp where Field='sport'");
-		opt_cdr_rtpsrcport = this->fetchRow();
-	}
+	this->checkColumns_cdr_rtp(true);
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
@@ -3727,19 +3603,8 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			ADD COLUMN `") + opt_custom_headers_message[iCustHeaders][1] + "` VARCHAR(255);");
 	}
 	sql_noerror = 0;
-
-	this->query("show columns from message where Field='content_length'");
-	exists_column_message_content_length = this->fetchRow();
 	
-	this->query("show columns from message where Field='response_time'");
-	if(!this->fetchRow()) {
-		this->logNeedAlter("message",
-				   "SIP response time",
-				   "ALTER TABLE message "
-				   "ADD COLUMN response_time smallint unsigned DEFAULT NULL;");
-	} else {
-		exists_column_message_response_time = true;
-	}
+	this->checkColumns_message(true);
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
@@ -4167,23 +4032,6 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	outStrAlter << "drop trigger if exists cdr_bi;" << endl;
 
 	outStrAlter << "end;" << endl;
-
-
-	//14.0
-	this->query("show columns from cdr where Field='a_mos_f1_min_mult10'");
-	if(!this->fetchRow()) {
-		exists_column_cdr_mosmin = false;
-		this->logNeedAlter("cdr",
-				   "SIP header 'reason'",
-				   "ALTER TABLE cdr "
-					"ADD COLUMN a_mos_f1_min_mult10 tinyint unsigned DEFAULT NULL, "
-					"ADD COLUMN a_mos_f2_min_mult10 tinyint unsigned DEFAULT NULL, "
-					"ADD COLUMN a_mos_adapt_min_mult10 tinyint unsigned DEFAULT NULL, "
-					"ADD COLUMN b_mos_f1_min_mult10 tinyint unsigned DEFAULT NULL, "
-					"ADD COLUMN b_mos_f2_min_mult10 tinyint unsigned DEFAULT NULL, "
-					"ADD COLUMN b_mos_adapt_min_mult10 tinyint unsigned DEFAULT NULL;");
-	}
-
 
 	/*
 	cout << "alter procedure" << endl
@@ -4748,7 +4596,7 @@ void SqlDb_mysql::createTable(const char *tableName) {
 	}
 }
 
-void SqlDb_mysql::checkSchema() {
+void SqlDb_mysql::checkSchema(bool checkColumns) {
 	extern bool existsColumnCalldateInCdrNext;
 	extern bool existsColumnCalldateInCdrRtp;
 	extern bool existsColumnCalldateInCdrDtmf;
@@ -4757,8 +4605,8 @@ void SqlDb_mysql::checkSchema() {
 	extern bool existsColumnCalldateInCdrTarPart;
 	extern bool existsColumnRrdcountInRegister;
 
-
 	sql_disable_next_attempt_if_error = 1;
+	
 	this->query("show columns from cdr_next where Field='calldate'");
 	existsColumnCalldateInCdrNext = this->fetchRow();
 	this->query("show columns from cdr_rtp where Field='calldate'");
@@ -4787,7 +4635,183 @@ void SqlDb_mysql::checkSchema() {
 	}
 	this->query("show columns from register where Field='rrd_count'");
 	existsColumnRrdcountInRegister = this->fetchRow();
+	
+	if(checkColumns) {
+		this->checkColumns_cdr();
+		this->checkColumns_cdr_rtp();
+		this->checkColumns_message();
+	}
+	
 	sql_disable_next_attempt_if_error = 0;
+}
+
+void SqlDb_mysql::checkColumns_cdr(bool log) {
+	if(!opt_cdr_sipport) {
+		this->query("show columns from cdr where Field='sipcallerport'");
+		opt_cdr_sipport = this->fetchRow();
+	}
+
+	this->query("show columns from cdr where Field='a_last_rtp_from_end'");
+	opt_last_rtp_from_end = this->fetchRow();
+	if(!opt_last_rtp_from_end) {
+		if(log) syslog(LOG_WARNING, "!!! Your database needs to be upgraded to support new features - ALTER TABLE cdr ADD a_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL, ADD b_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL;");
+	}
+
+	extern int opt_silencedetect;
+	if(opt_silencedetect) {
+		this->query("show columns from cdr where Field='caller_silence'");
+		int res = this->fetchRow();
+		if(!res) {
+			if(log) syslog(LOG_WARNING, "!!! You have enabled silencedetect but the database is not yet upgraded. Run this command in your database: ALTER TABLE cdr ADD caller_silence tinyint unsigned default NULL, ADD called_silence tinyint unsigned default NULL, ADD caller_silence_end smallint default NULL, ADD called_silence_end smallint default NULL;");
+			opt_silencedetect = 0;
+		}
+	}
+	extern int opt_clippingdetect;
+	if(opt_clippingdetect) {
+		this->query("show columns from cdr where Field='caller_clipping_div3'");
+		int res = this->fetchRow();
+		if(!res) {
+			if(log) syslog(LOG_WARNING, "!!! You have enabled clippingdetect but the database is not yet upgraded. Run this command in your database: ALTER TABLE cdr ADD caller_clipping_div3 smallint unsigned default NULL, ADD called_clipping_div3 smallint unsigned default NULL;");
+			opt_clippingdetect = 0;
+		}
+	}
+
+	this->query("show columns from cdr where Field='a_rtp_ptime'");
+	int res = this->fetchRow();
+	if(!res) {
+		if(log) syslog(LOG_WARNING, "Missing ptime columns - ptime feature is disabled. To enable it run this command in your database (it can take hours and will block database during the alter!): ALTER TABLE cdr ADD a_rtp_ptime tinyint unsigned default NULL, ADD b_rtp_ptime tinyint unsigned default NULL;");
+		opt_ptime = 0;
+	}
+
+	this->query("show columns from cdr where Field='price_operator_mult100' or Field='price_operator_mult1000000'");
+	if(!this->fetchRow()) {
+		this->query("show tables like 'billing'");
+		if(this->fetchRow()) {
+			if(log) this->logNeedAlter("cdr",
+						   "billing feature",
+						   string("ALTER TABLE cdr ") +
+						   (this->isExtPrecissionBilling() ?
+							"ADD COLUMN price_operator_mult100 INT UNSIGNED, "
+							"ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
+							"ADD COLUMN price_customer_mult100 INT UNSIGNED, "
+							"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;" :
+							"ADD COLUMN price_operator_mult1000000 BIGINT UNSIGNED, "
+							"ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
+							"ADD COLUMN price_customer_mult1000000 BIGINT UNSIGNED, "
+							"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;"));
+		}
+	}
+	
+	const char *cdrReasonColumns[] = {
+		"reason_sip_cause",
+		"reason_sip_text_id",
+		"reason_q850_cause",
+		"reason_q850_text_id"
+	};
+	bool missing_column_cdr_reason = false;
+	for(unsigned int i = 0; i < sizeof(cdrReasonColumns) / sizeof(cdrReasonColumns[0]); i++) {
+		this->query(string("show columns from cdr where Field='") + cdrReasonColumns[i] + "'");
+		if(!this->fetchRow()) {
+			missing_column_cdr_reason = true;
+		}
+	}
+	if(missing_column_cdr_reason) {
+		if(log) this->logNeedAlter("cdr",
+					   "SIP header 'reason'",
+					   "ALTER TABLE cdr "
+					   "ADD COLUMN reason_sip_cause smallint unsigned DEFAULT NULL, "
+					   "ADD COLUMN reason_sip_text_id mediumint unsigned DEFAULT NULL, "
+					   "ADD COLUMN reason_q850_cause smallint unsigned DEFAULT NULL, "
+					   "ADD COLUMN reason_q850_text_id mediumint unsigned DEFAULT NULL, "
+					   "ADD KEY reason_sip_text_id (reason_sip_text_id), "
+					   "ADD KEY reason_q850_text_id (reason_q850_text_id);");
+	} else {
+		exists_columns_cdr_reason = true;
+	}
+	
+	const char *cdrResponseTime[] = {
+		"response_time_100",
+		"response_time_xxx"
+	};
+	bool missing_column_cdr_response_time = false;
+	for(unsigned int i = 0; i < sizeof(cdrResponseTime) / sizeof(cdrResponseTime[0]); i++) {
+		this->query(string("show columns from cdr where Field='") + cdrResponseTime[i] + "'");
+		if(!this->fetchRow()) {
+			missing_column_cdr_response_time = true;
+		}
+	}
+	if(missing_column_cdr_response_time) {
+		if(log) this->logNeedAlter("cdr",
+					   "SIP response time",
+					   "ALTER TABLE cdr "
+					   "ADD COLUMN response_time_100 smallint unsigned DEFAULT NULL, "
+					   "ADD COLUMN response_time_xxx smallint unsigned DEFAULT NULL;");
+	} else {
+		exists_columns_cdr_response_time = true;
+	}
+
+	//14.0
+	this->query("show columns from cdr where Field='a_mos_f1_min_mult10'");
+	if(!this->fetchRow()) {
+		exists_column_cdr_mosmin = false;
+		if(log) this->logNeedAlter("cdr",
+					   "SIP header 'reason'",
+					   "ALTER TABLE cdr "
+						"ADD COLUMN a_mos_f1_min_mult10 tinyint unsigned DEFAULT NULL, "
+						"ADD COLUMN a_mos_f2_min_mult10 tinyint unsigned DEFAULT NULL, "
+						"ADD COLUMN a_mos_adapt_min_mult10 tinyint unsigned DEFAULT NULL, "
+						"ADD COLUMN b_mos_f1_min_mult10 tinyint unsigned DEFAULT NULL, "
+						"ADD COLUMN b_mos_f2_min_mult10 tinyint unsigned DEFAULT NULL, "
+						"ADD COLUMN b_mos_adapt_min_mult10 tinyint unsigned DEFAULT NULL;");
+	}
+}
+
+void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
+	if(!opt_cdr_rtpport) {
+		this->query("show columns from cdr_rtp where Field='dport'");
+		opt_cdr_rtpport = this->fetchRow();
+	}
+	if(!opt_cdr_rtpsrcport) {
+		this->query("show columns from cdr_rtp where Field='sport'");
+		opt_cdr_rtpsrcport = this->fetchRow();
+	}
+}
+
+void SqlDb_mysql::checkColumns_message(bool log) {
+	this->query("show columns from message where Field='content_length'");
+	exists_column_message_content_length = this->fetchRow();
+	
+	this->query("show columns from message where Field='response_time'");
+	if(!this->fetchRow()) {
+		if(log) this->logNeedAlter("message",
+					   "SIP response time",
+					   "ALTER TABLE message "
+					   "ADD COLUMN response_time smallint unsigned DEFAULT NULL;");
+	} else {
+		exists_column_message_response_time = true;
+	}
+}
+
+bool SqlDb_mysql::isExtPrecissionBilling() {
+	bool existsExtPrecisionBilling = false;
+	for(int i = 0; i < 2 && !existsExtPrecisionBilling; i++) {
+		string table = string("billing") + (i ? "_rule" : "");
+		this->query("show tables like '" + table + "'");
+		if(this->fetchRow()) {
+			this->query("select * from " + table);
+			SqlDb_row row;
+			while(row = this->fetchRow()) {
+				for(int j = 0; j < 2 && !existsExtPrecisionBilling; j++) {
+					double price = atof(row[i ? (j ? "price_peak" : "price") :
+								    (j ? "default_price_peak" : "default_price")].c_str());
+					if(fabs(round(price * 100) - price * 100) >= 0.1) {
+						existsExtPrecisionBilling = true;
+					}
+				}
+			}
+		}
+	}
+	return(existsExtPrecisionBilling);
 }
 
 bool SqlDb_mysql::checkSourceTables() {
@@ -5947,7 +5971,7 @@ void SqlDb_odbc::createTable(const char *tableName) {
 void SqlDb_odbc::checkDbMode() {
 }
 
-void SqlDb_odbc::checkSchema() {
+void SqlDb_odbc::checkSchema(bool checkColumns) {
 }
 
 void createMysqlPartitionsCdr(SqlDb *sqlDb) {

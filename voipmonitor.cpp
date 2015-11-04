@@ -2163,7 +2163,7 @@ int main(int argc, char *argv[]) {
 						connectError = true;
 					}
 				} else {
-					sqlDb->checkSchema();
+					sqlDb->checkSchema(true);
 				}
 			}
 			sensorsMap.fillSensors();
