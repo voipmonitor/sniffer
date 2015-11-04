@@ -4708,6 +4708,7 @@ void SqlDb_mysql::checkDbMode() {
 					opt_cdr_partition_oldver = true;
 					syslog(LOG_NOTICE, "mysql <= 5.1 - use old mode partitions");
 				}
+				opt_rtp_stat_partition_oldver = true;
 			} else {
 				if(opt_cdr_partition) {
 					this->query(string("select partition_description from information_schema.partitions where table_schema='") +mysql_database + 
