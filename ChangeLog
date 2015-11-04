@@ -1,4 +1,9 @@
-14.0.4 2.11.2015
+14.0.4 4.11.2015
+================
+- fix disable_dbupgradecheck option which still has to check for columns in tables 
+
+
+14.0.3 4.11.2015
 ================
 - fix partition creation rtp_stat for older mysql 
 - add support for gsm message content-type [VG-658]
