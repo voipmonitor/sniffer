@@ -3076,7 +3076,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `rtp_stat` (\
-			`id_sensor` smallint unsigned DEFAULT NULL,\
+			`id_sensor` smallint unsigned NOT NULL,\
 			`time` datetime NOT NULL,\
 			`saddr` int unsigned NOT NULL,\
 			`mosf1_min` tinyint unsigned NOT NULL,\
@@ -3756,7 +3756,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `files` (\
 			`datehour` int NOT NULL,\
-			`id_sensor` int unsigned DEFAULT NULL,\
+			`id_sensor` int unsigned NOT NULL,\
 			`sipsize` bigint unsigned DEFAULT 0,\
 			`rtpsize` bigint unsigned DEFAULT 0,\
 			`graphsize` bigint unsigned DEFAULT 0,\
@@ -3870,7 +3870,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `cache_number_location` (\
 			`number` varchar(30) NOT NULL,\
-			`number_ip` int unsigned DEFAULT NULL,\
+			`number_ip` int unsigned NOT NULL,\
 			`ip` int unsigned,\
 			`country_code` char(5),\
 			`continent_code` char(5),\

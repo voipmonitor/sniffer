@@ -2383,9 +2383,7 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap) {
 		node_t *node = &it->second;
 		SqlDb_row cdr_stat;
 		// create queries 
-		if(opt_id_sensor > -1) {
-			cdr_stat.add(opt_id_sensor, "id_sensor");
-		};
+		cdr_stat.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor");
 		cdr_stat.add(sqlDateTimeString(node->time), "time");
 		cdr_stat.add(sqlDateTimeString(node->time), "time");
 		cdr_stat.add(htonl(it->first), "saddr");
