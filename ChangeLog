@@ -1,3 +1,9 @@
+14.0.4 2.11.2015
+================
+- fix partition creation rtp_stat for older mysql 
+- add support for gsm message content-type [VG-658]
+
+
 14.0.2 2.11.2015
 ================
 - do not remove caller or called audio for some rare cases (problem started from 14.0)
