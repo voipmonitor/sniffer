@@ -521,6 +521,11 @@ public:
 		_typeLocation_country,
 		_typeLocation_continent
 	};
+	enum eTypeBy {
+		_typeBy_NA,
+		_typeBy_source_ip,
+		_typeBy_source_number
+	};
 	enum eLocalInternational {
 		_li_local,
 		_li_international,
@@ -568,6 +573,7 @@ protected:
 	virtual bool defFilterUA() { return(false); }
 	virtual bool defFraudDef() { return(false); }
 	virtual bool defConcuretCallsLimit() { return(false); }
+	virtual bool defTypeBy() { return(false); }
 	virtual bool defTypeChangeLocation() { return(false); }
 	virtual bool defChangeLocationOk() { return(false); }
 	virtual bool defDestLocation() { return(false); }
@@ -587,6 +593,7 @@ protected:
 	unsigned int concurentCallsLimitLocal;
 	unsigned int concurentCallsLimitInternational;
 	unsigned int concurentCallsLimitBoth;
+	eTypeBy typeBy;
 	eTypeLocation typeChangeLocation;
 	vector<string> changeLocationOk;
 	vector<string> destLocation;
@@ -602,6 +609,7 @@ protected:
 	bool day_of_week_set;
 friend class FraudAlerts;
 friend class FraudAlert_rcc_base;
+friend class FraudAlert_rcc_timePeriods;
 };
 
 class FraudAlert_rcc_callInfo {
@@ -620,8 +628,6 @@ private:
 	u_int64_t last_alert_info_international;
 	u_int64_t last_alert_info_li;
 friend class FraudAlert_rcc_base;
-friend class FraudAlert_rcc_timePeriods;
-friend class FraudAlert_rcc;
 };
 
 class FraudAlert_rcc_base {
@@ -635,6 +641,8 @@ private:
 		u_int64_t at;
 	};
 public:
+	FraudAlert_rcc_base(class FraudAlert_rcc *parent);
+	~FraudAlert_rcc_base();
 	void evCall_rcc(sFraudCallInfo *callInfo, class FraudAlert_rcc *alert, bool timeperiod);
 protected:
 	virtual bool checkTime(u_int64_t time) { return(true); }
@@ -647,11 +655,13 @@ protected:
 	unsigned int concurentCallsLimitLocal_tp;
 	unsigned int concurentCallsLimitInternational_tp;
 	unsigned int concurentCallsLimitBoth_tp;
-	map<u_int32_t, FraudAlert_rcc_callInfo*> calls;
+	map<u_int32_t, FraudAlert_rcc_callInfo*> calls_by_ip;
+	map<string, FraudAlert_rcc_callInfo*> calls_by_number;
 private:
 	map<u_int32_t, sAlertInfo> alerts_local;
 	map<u_int32_t, sAlertInfo> alerts_international;
 	map<u_int32_t, sAlertInfo> alerts_booth;
+	FraudAlert_rcc *parent;
 };
 
 class FraudAlert_rcc_timePeriods : public FraudAlert_rcc_base {
@@ -673,8 +683,8 @@ public:
 				   int concurentCallsLimitLocal, 
 				   int concurentCallsLimitInternational, 
 				   int concurentCallsLimitBoth,
-				   unsigned int dbId);
-	~FraudAlert_rcc_timePeriods();
+				   unsigned int dbId,
+				   class FraudAlert_rcc *parent);
 	void loadTimePeriods();
 protected: 
 	bool checkTime(u_int64_t time) {
@@ -695,28 +705,35 @@ private:
 	unsigned int dbId;
 	vector<TimePeriod> timePeriods;
 	map<u_int32_t, sAlertInfo> alerts;
+	FraudAlert_rcc *parent;
 };
 
 class FraudAlertInfo_rcc : public FraudAlertInfo {
 public:
 	FraudAlertInfo_rcc(FraudAlert *alert);
-	void set(FraudAlert::eLocalInternational localInternational,
-		 const char *timeperiod_name,
-		 u_int32_t ip, const char *ip_location_code,
-		 unsigned int concurentCalls);
+	void set_ip(FraudAlert::eLocalInternational localInternational,
+		    const char *timeperiod_name,
+		    u_int32_t ip, const char *ip_location_code,
+		    unsigned int concurentCalls);
+	void set_number(FraudAlert::eLocalInternational localInternational,
+			const char *timeperiod_name,
+			string number, const char *number_location_code,
+			unsigned int concurentCalls);
 	string getJson();
 private:
 	FraudAlert::eLocalInternational localInternational;
 	string timeperiod_name;
+	FraudAlert::eTypeBy type_by;
 	u_int32_t ip;
 	string ip_location_code;
+	string number;
+	string number_location_code;
 	unsigned int concurentCalls;
 };
 
 class FraudAlert_rcc : public FraudAlert, FraudAlert_rcc_base {
 public:
 	FraudAlert_rcc(unsigned int dbId);
-	~FraudAlert_rcc();
 	void evCall(sFraudCallInfo *callInfo);
 protected:
 	void addFraudDef(SqlDb_row *row);
@@ -726,6 +743,7 @@ protected:
 	bool defFilterNumber2() { return(true); }
 	bool defFraudDef() { return(true); }
 	bool defConcuretCallsLimit() { return(true); }
+	bool defTypeBy() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:
 	vector<FraudAlert_rcc_timePeriods> timePeriods;
