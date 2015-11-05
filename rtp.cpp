@@ -883,14 +883,20 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		     << endl;
 	}
 	
+	Call *owner = (Call*)call_owner;
+
 	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {
-/*
-		u_long actTime = getTimeMS();
-		if(actTime - 1000 > lastTimeSyslog) {
-			syslog(LOG_NOTICE, "warning - packet from sensor (%i) in RTP created for sensor (%i)", sensor_id, this->sensor_id);
-			lastTimeSyslog = actTime;
+		if(!owner->rtp_from_multiple_sensors) {
+			extern bool opt_disable_rtp_warning;
+			if(!opt_disable_rtp_warning) {
+				u_long actTime = getTimeMS();
+				if(actTime - 1000 > lastTimeSyslog) {
+					syslog(LOG_NOTICE, "warning - packet from sensor (%i) in RTP created for sensor (%i) - call %s", sensor_id, this->sensor_id, owner->fbasename);
+					lastTimeSyslog = actTime;
+				}
+			}
+			owner->rtp_from_multiple_sensors = true;
 		}
-*/
 		return;
 	}
 
@@ -898,8 +904,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		this->first_packet_time = header->ts.tv_sec;
 		this->first_packet_usec = header->ts.tv_usec;
 	}
-
-	Call *owner = (Call*)call_owner;
 
 	if(owner and owner->destroy_call_at_bye && !opt_pb_read_from_file[0] && !is_read_from_file()){
 		// do not process RTP if call is hangedup to prevent false negative statistics

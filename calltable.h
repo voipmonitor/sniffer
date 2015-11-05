@@ -702,6 +702,7 @@ public:
 	bool error_negative_payload_length;
 	bool use_removeRtp;
 	bool use_rtcp_mux;
+	bool rtp_from_multiple_sensors;
 };
 
 typedef struct {

@@ -380,6 +380,7 @@ bool _save_sip_history_request_types[1000];
 bool _save_sip_history_all_requests;
 bool _save_sip_history_all_responses;
 bool opt_cdr_sipresp = false;
+bool opt_disable_rtp_warning = false;
 
 char opt_php_path[1024];
 
@@ -4398,6 +4399,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new cConfigItem_yesno("norecord-dtmf", &opt_norecord_dtmf));
 			addConfigItem(new cConfigItem_string("pauserecordingdtmf", opt_silencedmtfseq, sizeof(opt_silencedmtfseq)));
 			addConfigItem(new cConfigItem_yesno("vlan_siprtpsame", &opt_vlan_siprtpsame));
+				advanced();
+				addConfigItem(new cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
 		subgroup("NAT");
 			addConfigItem(new cConfigItem_nat_aliases("natalias", &nat_aliases));
 			addConfigItem(new cConfigItem_yesno("sdp_reverse_ipport", &opt_sdp_reverse_ipport));
@@ -6518,6 +6521,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "vlan_siprtpsame", NULL))) {
 		opt_vlan_siprtpsame = yesno(value);
+	}
+	if((value = ini.GetValue("general", "disable_rtp_warning", NULL))) {
+		opt_disable_rtp_warning = yesno(value);
 	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strncpy(opt_keycheck, value, 1024);
