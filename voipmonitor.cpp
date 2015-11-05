@@ -659,6 +659,7 @@ map<string, string> hosts;
 
 ip_port sipSendSocket_ip_port;
 SocketSimpleBufferWrite *sipSendSocket = NULL;
+int opt_sip_send_udp;
 int opt_sip_send_before_packetbuffer = 0;
 
 int opt_enable_jitterbuffer_asserts = 0;
@@ -2566,7 +2567,7 @@ int main_init_read() {
 	}
 	
 	if(sipSendSocket_ip_port) {
-		sipSendSocket = new FILE_LINE SocketSimpleBufferWrite("send sip", sipSendSocket_ip_port);
+		sipSendSocket = new FILE_LINE SocketSimpleBufferWrite("send sip", sipSendSocket_ip_port, opt_sip_send_udp);
 		sipSendSocket->startWriteThread();
 	}
 	
@@ -4374,6 +4375,7 @@ void cConfig::addConfigItems() {
 				addConfigItem((new cConfigItem_integer("sip_send_port"))
 					->setNaDefaultValueStr()
 					->setMinor());
+				addConfigItem(new cConfigItem_yesno("sip_send_udp", &opt_sip_send_udp));
 				addConfigItem(new cConfigItem_yesno("sip_send_before_packetbuffer", &opt_sip_send_before_packetbuffer));
 		setDisableIfEnd();
 	group("RTP / DTMF / FAX options");
@@ -6947,6 +6949,9 @@ int eval_config(string inistr) {
 				sipSendSocket_ip_port.set_port(port);
 			}
 		}
+	}
+	if((value = ini.GetValue("general", "sip_send_udp", NULL))) {
+		opt_sip_send_udp = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip_send_before_packetbuffer", NULL))) {
 		opt_sip_send_before_packetbuffer = yesno(value);

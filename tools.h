@@ -1792,7 +1792,7 @@ string json_encode(const string &value);
 
 class SocketSimpleBufferWrite {
 public:
-	SocketSimpleBufferWrite(const char *name, ip_port ipPort, uint64_t maxSize = 100ul * 1024 * 1024);
+	SocketSimpleBufferWrite(const char *name, ip_port ipPort, bool udp = false, uint64_t maxSize = 100ul * 1024 * 1024);
 	~SocketSimpleBufferWrite();
 	void startWriteThread();
 	void stopWriteThread();
@@ -1820,6 +1820,7 @@ private:
 private:
 	string name;
 	ip_port ipPort;
+	bool udp;
 	u_int64_t maxSize;
 	queue<SimpleBuffer*> data;
 	hostent* socketHostEnt;

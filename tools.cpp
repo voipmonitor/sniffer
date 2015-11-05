@@ -3330,9 +3330,10 @@ string json_encode(const string &value) {
 	return escaped.str();
 }
 
-SocketSimpleBufferWrite::SocketSimpleBufferWrite(const char *name, ip_port ipPort, uint64_t maxSize) {
+SocketSimpleBufferWrite::SocketSimpleBufferWrite(const char *name, ip_port ipPort, bool udp, uint64_t maxSize) {
 	this->name = name;
 	this->ipPort = ipPort;
+	this->udp = udp;
 	this->maxSize = maxSize;
 	socketHostEnt = NULL;
 	socketHandle = 0;
@@ -3422,7 +3423,7 @@ bool SocketSimpleBufferWrite::socketConnect() {
 	if(!socketHostEnt) {
 		socketGetHost();
 	}
-	if((socketHandle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+	if((socketHandle = socket(AF_INET, SOCK_STREAM, udp ? IPPROTO_UDP : IPPROTO_TCP)) == -1) {
 		syslog(LOG_NOTICE, "socketwrite %s: cannot create socket", name.c_str());
 		return(false);
 	}
