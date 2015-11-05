@@ -3453,6 +3453,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						blockStore[blockStoreIndex]->add(header, packet, offset, dlink);
 					}
 				}
+			} else {
+				blockStore[blockStoreIndex]->isFull_checkTimout();
 			}
 			for(int i = 0; i < blockStoreCount; i++) {
 				if(fetchPacketOk && i == blockStoreIndex ? blockStore[i]->full : !(blockStore[i]->count % 20) && blockStore[i]->isFull_checkTimout()) {
