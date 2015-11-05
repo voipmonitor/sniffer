@@ -410,7 +410,7 @@ RTP::save_mos_graph(bool delimiter) {
 	}
 	mos_counter++;
 
-	if(sverb.graph) printf("rtp[%p] saddr[%s] ssrc[%x] time[%u] seq[%u] \nMOS F1 cur[%d] min[%d] avg[%f]\nMOS F2 cur[%d] min[%d] avg[%f]\nMOS AD cur[%d] min[%d] avg[%f]\n ------\n", this, inet_ntostring(htonl(saddr)).c_str(), ssrc, (unsigned int)header->ts.tv_sec, seq, 
+	if(sverb.graph) printf("rtp[%p] saddr[%s] ssrc[%x] time[%u] seq[%u] \nMOS F1 cur[%d] min[%d] avg[%f]\nMOS F2 cur[%d] min[%d] avg[%f]\nMOS AD cur[%d] min[%d] avg[%f]\n ------\n", this, inet_ntostring(htonl(saddr)).c_str(), ssrc, (unsigned int)header_ts.tv_sec, seq, 
 		last_interval_mosf1, mosf1_min, mosf1_avg,
 		last_interval_mosf2, mosf2_min, mosf2_avg,
 		last_interval_mosAD, mosAD_min, mosAD_avg
@@ -425,7 +425,7 @@ RTP::save_mos_graph(bool delimiter) {
 
 	last_stat_loss_perc_mult10 = (double)lost / ((double)received + (double)lost) * 100.0;
 
-	rtp_stat.update(saddr, header->ts.tv_sec, last_interval_mosf1, last_interval_mosf2, last_interval_mosAD, jitter, last_stat_loss_perc_mult10);
+	rtp_stat.update(saddr, header_ts.tv_sec, last_interval_mosf1, last_interval_mosf2, last_interval_mosAD, jitter, last_stat_loss_perc_mult10);
 }
 
 /* destructor */
@@ -603,7 +603,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	frame->seqno = getSeqNum();
 	channel->codec = codec;
 	frame->ignore = ignore;
-	memcpy(&frame->delivery, &header->ts, sizeof(struct timeval));
+	memcpy(&frame->delivery, &header_ts, sizeof(struct timeval));
 
 	/* protect for endless loops (it cannot happen in theory but to be sure */
 	if(packetization <= 0) {
@@ -720,10 +720,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	}
 
 	// create jitter buffer structures 
-	ast_jb_do_usecheck(channel, &header->ts);
-	if(channel->jb.timebase.tv_sec == header->ts.tv_sec &&
-	   channel->jb.timebase.tv_usec == header->ts.tv_usec) {
-		channel->last_ts = header->ts;
+	ast_jb_do_usecheck(channel, &header_ts);
+	if(channel->jb.timebase.tv_sec == header_ts.tv_sec &&
+	   channel->jb.timebase.tv_usec == header_ts.tv_usec) {
+		channel->last_ts = header_ts;
 	}
 	
 	if(!channel->jb_reseted) {
@@ -734,19 +734,19 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		
 		ast_jb_empty_and_reset(channel);
 		channel->jb_reseted = 1;
-		memcpy(&channel->last_ts, &header->ts, sizeof(struct timeval));
-		ast_jb_put(channel, frame, &header->ts);
+		memcpy(&channel->last_ts, &header_ts, sizeof(struct timeval));
+		ast_jb_put(channel, frame, &header_ts);
 		this->clearAudioBuff(owner, channel);
 		return;
 	}
 
 	/* calculate time difference between last packet and current packet + packetization time*/ 
-	int msdiff = ast_tvdiff_ms( header->ts, ast_tvadd(channel->last_ts, ast_samp2tv(packetization, 1000)) );
+	int msdiff = ast_tvdiff_ms( header_ts, ast_tvadd(channel->last_ts, ast_samp2tv(packetization, 1000)) );
 	//printf("ms:%d\n", msdiff);
 	if(msdiff > packetization * 10000) {
 		// difference is too big, reseting last_ts to current packet. If we dont check this it could happen to run while cycle endlessly
-		memcpy(&channel->last_ts, &header->ts, sizeof(struct timeval));
-		ast_jb_put(channel, frame, &header->ts);
+		memcpy(&channel->last_ts, &header_ts, sizeof(struct timeval));
+		ast_jb_put(channel, frame, &header_ts);
 		if(verbosity > 4) syslog(LOG_ERR, "big timestamp jump (msdiff:%d packetization: %d) in this file: %s\n", msdiff, packetization, gfilename);
 		this->clearAudioBuff(owner, channel);
 		return;
@@ -765,7 +765,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	 * be ideally equel to zero. Negative values mean that packet arrives earlier and positive 
 	 * values indicates that packet was late 
 	 */
-	long double transit = (timeval_subtract(&tsdiff, header->ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0) - (double)(getTimestamp() - s->lastTimeStampJ)/(double)samplerate/1000;
+	long double transit = (timeval_subtract(&tsdiff, header_ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0) - (double)(getTimestamp() - s->lastTimeStampJ)/(double)samplerate/1000;
 	
 	/* and now if there is bigger (lets say one second) timestamp difference (calculated from packet headers) 
 	 * between two last packets and transit time is equel or smaller than sequencems (with 200ms toleration), 
@@ -793,7 +793,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	}
 
 	//printf("s[%u] codec[%d]\n",getSeqNum(), codec);
-	ast_jb_put(channel, frame, &header->ts);
+	ast_jb_put(channel, frame, &header_ts);
 	
 	this->clearAudioBuff(owner, channel);
 }
@@ -844,7 +844,7 @@ RTP::process_dtmf_rfc2833() {
 		last_end_timestamp = timestamp;
 		Call *owner = (Call*)call_owner;
 		if(owner) {
-			owner->handle_dtmf(resp, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr);
+			owner->handle_dtmf(resp, ts2double(header_ts.tv_sec, header_ts.tv_usec), saddr, daddr);
 		}
 	}
 
@@ -856,7 +856,7 @@ void
 RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport, int seeninviteok, int sensor_id, char *ifname) {
 	this->data = data; 
 	this->len = len;
-	this->header = header;
+	this->header_ts = header->ts;
 	this->saddr =  saddr;
 	this->daddr =  daddr;
 	this->dport = dport;
@@ -1275,7 +1275,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					prevrtp->ignore = 1; 
 					prevrtp->data = data; 
 					prevrtp->len = len;
-					prevrtp->header = header;
+					prevrtp->header_ts = header_ts;
 					prevrtp->codec = prevrtp->prev_codec;
 					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 						// MOS LQO is calculated only if the call is connected 
@@ -1801,7 +1801,7 @@ void
 RTP::fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport) {
 	this->data = data; 
 	this->len = len;
-	this->header = header;
+	this->header_ts = header->ts;
 	this->saddr = saddr;
 	this->daddr = daddr;
 	this->sport = sport;
@@ -1830,7 +1830,7 @@ RTP::update_stats() {
 
 	/* differences between last timestamp and current timestamp (timestamp from ip header)
 	 * frame1.time - frame0.time */
-	tsdiff2 = timeval_subtract(&tsdiff, header->ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
+	tsdiff2 = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
 
 	long double transit = tsdiff2 - (double)(getTimestamp() - last_voice_frame_timestamp)/((double)samplerate/1000.0);
 	mx += transit;
@@ -1842,12 +1842,12 @@ RTP::update_stats() {
 		if(codec != PAYLOAD_TELEVENT) {
 			if(last_voice_frame_ts.tv_sec == 0) {
 				// it is not EVENT frame and it is first voice packet 
-				last_voice_frame_ts = header->ts;
+				last_voice_frame_ts = header_ts;
 				last_voice_frame_timestamp = getTimestamp();
 				return;
 			}
 
-			uint32_t diff = timeval_subtract(&tsdiff, header->ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
+			uint32_t diff = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
 			this->graph.write((char*)&graph_event, 4);
 			this->graph.write((char*)&diff, 4);
 			if(verbosity > 1) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms ip[%u] DTMF\n", this, getSSRC(), seq, diff, saddr);
@@ -1878,12 +1878,12 @@ RTP::update_stats() {
 
 	if(last_voice_frame_ts.tv_sec == 0) {
 		// it is not EVENT frame and it is first voice packet - ignore stats for first voice packet
-		last_voice_frame_ts = header->ts;
+		last_voice_frame_ts = header_ts;
 		last_voice_frame_timestamp = getTimestamp();
 		return;
 	}
 
-	last_voice_frame_ts = header->ts;
+	last_voice_frame_ts = header_ts;
 	last_voice_frame_timestamp = getTimestamp();
 //	printf("rtp[%p] transit[%f]\t[%f]\tseq[%u]\tavgdelay[%f]\n", this, (float)transit, (float)s->fdelay, seq, float(s->avgdelay));
 
@@ -1933,8 +1933,8 @@ RTP::update_stats() {
 	stats.avgjitter = ((stats.avgjitter * ( stats.received - 1 )  + jitter )) / (double)stats.received;
 	//printf("jitter[%f] avg[%llf] [%u] [%u]\n", jitter, stats.avgjitter, stats.received, s->received);
 	if(stats.maxjitter < jitter) stats.maxjitter = jitter;
-	s->lastTimeRec = header->ts;
-	s->lastTimeRecJ = header->ts;
+	s->lastTimeRec = header_ts;
+	s->lastTimeRecJ = header_ts;
 	s->lastTimeStamp = getTimestamp();
 	s->lastTimeStampJ = getTimestamp();
 
@@ -2020,7 +2020,7 @@ RTP::update_seq(u_int16_t seq) {
 
 	struct timeval tsdiff;	
 	double tsdiff2;
-	tsdiff2 = timeval_subtract(&tsdiff, header->ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
+	tsdiff2 = timeval_subtract(&tsdiff, header_ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
 
 	int lost = int((s->cycles + seq - (s->base_seq + 1)) - s->received);
 //	printf("seq[%u] lost[%u] tsdiff2[%f] tsdiff-sec[%d] tsdiff-miscro[%d] header->ts[%u.%u] s->lastTimeRecJ[%u.%u]\n", seq, lost, tsdiff2, tsdiff.tv_sec, tsdiff.tv_usec, header->ts.tv_sec, header->ts.tv_usec, s->lastTimeRecJ.tv_sec, s->lastTimeRecJ.tv_usec);
@@ -2044,8 +2044,8 @@ RTP::update_seq(u_int16_t seq) {
 		init_seq(seq);
 		s->max_seq = seq - 1;
 		s->probation = MIN_SEQUENTIAL;
-		s->lastTimeRec = header->ts;
-		s->lastTimeRecJ = header->ts;
+		s->lastTimeRec = header_ts;
+		s->lastTimeRecJ = header_ts;
 		s->lastTimeStamp = getTimestamp();
 		s->lastTimeStampJ = getTimestamp();
 		return 0;

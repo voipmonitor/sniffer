@@ -487,7 +487,7 @@ private:
 	* Per-source state information
 	*/
 
-	struct pcap_pkthdr *header;
+	struct timeval header_ts;
 	struct timeval ts;
 	bool first;
 	int nintervals;
