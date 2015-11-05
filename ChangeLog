@@ -1,3 +1,11 @@
+14.1 5.11.2015
+==============
+- add support for MySQL 5.7
+- add new antifraud concurrent calls by tel. number (tracking by source ip is done) [VG-719]
+- add support for udp protocol in sip send - add option sip_send_udp (yes / NO) [VS-335]
+- fix bad timestamp in RTP packets in rare case 
+- on very low traffic (like testing one call) the sniffer can hold some packets in buffer not releasing it before another call is done
+
 14.0.4 4.11.2015
 ================
 - fix disable_dbupgradecheck option which still has to check for columns in tables 
