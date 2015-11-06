@@ -6020,7 +6020,7 @@ void _createMysqlPartitionsCdr(int day, SqlDb *sqlDb) {
 			sqlDb->query(
 				string("call create_partition_v2('") + tablesForCreatePartitions[i] + "', " + 
 				       "'day', " + intToString(day) + ", " + 
-				       (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+				       (opt_cdr_partition_oldver ? "true" : "false") + ");");
 		}
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 		sqlDb->setDisableLogError(disableLogErrorOld);
@@ -6032,7 +6032,7 @@ void _createMysqlPartitionsCdr(int day, SqlDb *sqlDb) {
 		for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
 			sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + tablesForCreatePartitions[i] + "', " + 
 				     "'day', " + intToString(day) + ", " + 
-				     (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+				     (opt_cdr_partition_oldver ? "true" : "false") + ");");
 		}
 		if(day == 0) {
 			sqlDb->setMaxQueryPass(maxQueryPassOld);
