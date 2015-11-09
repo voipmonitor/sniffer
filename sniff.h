@@ -21,7 +21,6 @@
 #include "asm/byteorder.h"
 #endif
 
-#define MAXPACKETLENQRING 1600
 #define RTP_FIXED_HEADERLEN 12
 
 #define IP_DF           0x4000          /* Flag: "Don't Fragment"       */
@@ -86,27 +85,6 @@ struct udphdr2 {
 
 typedef struct {
 	Call *call;
-	unsigned char data[MAXPACKETLENQRING];
-	int datalen;
-	int dataoffset;
-	u_int32_t saddr;
-	u_int32_t daddr;
-	unsigned short sport;
-	unsigned short dport;
-	char iscaller;
-	char is_rtcp;
-	int dlt;
-	int sensor_id;
-	char save_packet;
-	const u_char *packet;
-	char istcp;
-	struct pcap_pkthdr header;
-	struct iphdr2 header_ip;
-	volatile char free;
-} rtp_packet;
-
-typedef struct {
-	Call *call;
 	u_int32_t saddr;
 	u_int32_t daddr;
 	unsigned short sport;
@@ -137,14 +115,6 @@ struct rtp_read_thread {
 	rqueue_quick<rtp_packet_pcap_queue> *rtpp_queue_quick;
 	rqueue_quick_boost<rtp_packet_pcap_queue> *rtpp_queue_quick_boost;
 };
-
-typedef struct {
-	struct pcap_pkthdr header;
-	u_char packet[MAXPACKETLENQRING];
-	u_char *packet2;
-	int offset;
-	volatile char free;
-} pcap_packet;
 
 #define MAXLIVEFILTERS 10
 #define MAXLIVEFILTERSCHARS 32

@@ -3326,11 +3326,6 @@ rtpcheck:
 			call->shift_destroy_call_at(header, lastSIPresponseNum);
 
 			int can_thread = !sverb.disable_threads_rtp;
-			if(header->caplen > MAXPACKETLENQRING) {
-				// packets larger than MAXPACKETLENQRING was created in special heap and is destroyd immediately after leaving this functino - thus do not queue it 
-				// TODO: this can be enhanced by pasing flag that the packet should be freed
-				can_thread = 0;
-			}
 
 			if(sdp_flags.is_fax) {
 				call->seenudptl = 1;
@@ -3408,11 +3403,6 @@ rtpcheck:
 			call->shift_destroy_call_at(header, lastSIPresponseNum);
 
 			int can_thread = !sverb.disable_threads_rtp;
-			if(header->caplen > MAXPACKETLENQRING) {
-				// packets larger than MAXPACKETLENQRING was created in special heap and is destroyd immediately after leaving this functino - thus do not queue it 
-				// TODO: this can be enhanced by pasing flag that the packet should be freed
-				can_thread = 0;
-			}
 
 			if(sdp_flags.is_fax) {
 				call->seenudptl = 1;
@@ -4291,16 +4281,6 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		call->shift_destroy_call_at(header);
 
 		int can_thread = !sverb.disable_threads_rtp;
-		if(can_thread && header->caplen > MAXPACKETLENQRING) {
-			// packets larger than MAXPACKETLENQRING was created in special heap and is destroyd immediately after leaving this functino - thus do not queue it 
-			// TODO: this can be enhanced by pasing flag that the packet should be freed
-			if(preSyncRtp) {
-				rsltCall = call;
-				break;
-			} else {
-				can_thread = 0;
-			}
-		}
 
 		if(sdp_flags.is_fax) {
 			call->seenudptl = 1;
