@@ -1,3 +1,8 @@
+14.1.3 9.11.2015
+================
+- fix G729 out of sync for 30ms packetization (ptime)
+
+
 14.1.2 9.11.2015
 ================
 - fix bug in case large random RTP packet arrived to any call and savertp is enabled which might lead to race condition (double write) leading to crash (fixes all versions) 

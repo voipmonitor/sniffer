@@ -417,6 +417,13 @@ void save_empty_frame(struct ast_channel *chan) {
 					if(chan->audiobuf)
 						circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(short int));
 				}
+			} else if(chan->codec == PAYLOAD_G729) {
+				for(i = 1; (i * 10) <= chan->packetization; i++) {
+					if(chan->rawstream)
+						fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
+					if(chan->audiobuf)
+						circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(short int));
+				}
 			} else if(chan->codec == PAYLOAD_OPUS16) {
 				for(i = 1; (i * 20) <= chan->packetization / 2; i++) {
 					if(chan->rawstream)
