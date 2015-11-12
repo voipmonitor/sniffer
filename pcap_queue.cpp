@@ -2910,7 +2910,6 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					if(destroy) {
 						if(header != _header) delete header;
 						if(packet != _packet) delete [] packet;
-						headerPacketRead.packet = NULL;
 					}
 					continue;
 				} else {
@@ -3381,7 +3380,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			} else {
 				res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
 				packet_pcap = packet;
-				if(packet && header->caplen >= 14 + sizeof(iphdr2)) {
+				if(res > 0 && packet && header->caplen >= 14 + sizeof(iphdr2)) {
 					ip_tot_len = ((iphdr2*)(packet + 14))->tot_len;
 				}
 				if(res == -1) {

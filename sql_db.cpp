@@ -6405,7 +6405,7 @@ void checkMysqlIdCdrChildTables(SqlDb *sqlDb) {
 		syslog(LOG_ERR, "critical value %lu in column id / table %s", maxId, cdrTables[i].c_str());
 		// check if main tables
 		if(cdrTables[i] == "cdr" || 
-		   reg_match(cdrTables[i].c_str(), "cdr_next")) {
+		   reg_match(cdrTables[i].c_str(), "cdr_next", __FILE__, __LINE__)) {
 			continue;
 		}
 		// check if exists calldate

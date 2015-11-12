@@ -4648,7 +4648,7 @@ void CustomHeaders::parse(Call *call, char *data, int datalen) {
 					}
 				}
 				if(!iter2->second.regularExpression.empty()) {
-					string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1");
+					string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
 					if(customHeader.empty()) {
 						continue;
 					} else {

@@ -1879,10 +1879,15 @@ int reg_match(const char *string, const char *pattern, const char *file, int lin
 	int status;
 	regex_t re;
 	if(regcomp(&re, pattern, REG_EXTENDED | REG_NOSUB | REG_ICASE) != 0) {
-		if(file) {
-			syslog(LOG_ERR, "regcomp %s error in reg_match - call from %s : %i", pattern, file, line);
-		} else {
-			syslog(LOG_ERR, "regcomp %s error in reg_match", pattern);
+		static u_long lastTimeSyslog = 0;
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			if(file) {
+				syslog(LOG_ERR, "regcomp %s error in reg_match - call from %s : %i", pattern, file, line);
+			} else {
+				syslog(LOG_ERR, "regcomp %s error in reg_match", pattern);
+			}
+			lastTimeSyslog = actTime;
 		}
 		return(0);
 	}
@@ -1895,10 +1900,15 @@ string reg_replace(const char *str, const char *pattern, const char *replace, co
 	int status;
 	regex_t re;
 	if(regcomp(&re, pattern, REG_EXTENDED | REG_ICASE) != 0) {
-		if(file) {
-			syslog(LOG_ERR, "regcomp %s error in reg_replace - call from %s : %i", pattern, file, line);
-		} else {
-			syslog(LOG_ERR, "regcomp %s error in reg_match", pattern);
+		static u_long lastTimeSyslog = 0;
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			if(file) {
+				syslog(LOG_ERR, "regcomp %s error in reg_replace - call from %s : %i", pattern, file, line);
+			} else {
+				syslog(LOG_ERR, "regcomp %s error in reg_match", pattern);
+			}
+			lastTimeSyslog = actTime;
 		}
 		return("");
 	}

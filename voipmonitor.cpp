@@ -1983,7 +1983,7 @@ int main(int argc, char *argv[]) {
 /* resolve is disabled since 27.3.2015 
 	if(!opt_nocdr && isSqlDriver("mysql") && mysql_host[0]) {
 		strcpy(mysql_host_orig, mysql_host);
-		if(!reg_match(mysql_host, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")) {
+		if(!reg_match(mysql_host, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
 			hostent *conn_server_record = gethostbyname(mysql_host);
 			if(conn_server_record == NULL) {
 				syslog(LOG_ERR, "mysql host [%s] failed to resolve to IP address", mysql_host);
@@ -3252,8 +3252,8 @@ void test_parsepacket2() {
 }
 
 void test_reg() {
-	cout << reg_match("123456789", "456") << endl;
-	cout << reg_replace("123456789", "(.*)(456)(.*)", "$1-$2-$3") << endl;
+	cout << reg_match("123456789", "456", __FILE__, __LINE__) << endl;
+	cout << reg_replace("123456789", "(.*)(456)(.*)", "$1-$2-$3", __FILE__, __LINE__) << endl;
 }
 
 void test_escape() {
