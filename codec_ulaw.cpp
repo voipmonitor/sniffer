@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "codec_alaw.h"
+#include "codec_ulaw.h"
 
 short __ulaw[256];
 
