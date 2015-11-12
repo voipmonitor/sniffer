@@ -2808,6 +2808,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 	}
 	pcap_pkthdr *header = NULL, *_header = NULL;
 	u_char *packet = NULL, *_packet = NULL;
+	u_int offset;
 	bool ok_for_header_packet_stack = false;
 	bool destroy = false;
 	int res;
@@ -2989,6 +2990,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			}
 			header = _header = hpii.header;
 			packet = _packet = hpii.packet;
+			offset = hpii.offset;
 			ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
 			counter = hpii.counter;
 			if(opt_dup_check) {
@@ -3009,8 +3011,15 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					}
 					continue;
 				}
+				offset = this->ppd.header_ip_offset;
+			} else {
+				if(!offset) {
+					this->pcapProcess(&header, &packet, &destroy,
+							  false, false, false, false);
+					offset = this->ppd.header_ip_offset;
+				}
 			}
-			this->push(header, packet, ok_for_header_packet_stack, 0, this->ppd.md5, 0, counter);
+			this->push(header, packet, ok_for_header_packet_stack, offset, this->ppd.md5, 0, counter);
 			}
 			break;
 		case dedup: {
@@ -3040,6 +3049,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				}
 				header = _header = hpii.header;
 				packet = _packet = hpii.packet;
+				offset = hpii.offset;
 				ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
 				++this->pop_counter;
 				if(!this->pop_counter) {
@@ -3068,12 +3078,15 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 						}
 						continue;
 					}
-					this->push(header, packet, ok_for_header_packet_stack, this->ppd.header_ip_offset, NULL);
+					offset = this->ppd.header_ip_offset;
 				} else {
-					this->pcapProcess(&header, &packet, &destroy,
-							  false, false, false, true);
-					this->push(header, packet, ok_for_header_packet_stack, this->ppd.header_ip_offset, NULL);
+					if(pcapDumpHandle || !offset) {
+						this->pcapProcess(&header, &packet, &destroy,
+								  false, false, false, pcapDumpHandle);
+						offset = this->ppd.header_ip_offset;
+					}
 				}
+				this->push(header, packet, ok_for_header_packet_stack, offset, NULL);
 			} else {
 				hpi hpii = this->prevThreads[0]->pop();
 				if(!hpii.packet) {
