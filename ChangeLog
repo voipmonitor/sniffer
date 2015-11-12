@@ -1,3 +1,8 @@
+14.2.1 12.11.2015
+=================
+- fix .graph invalid values race condition >= 14 versions)
+
+
 14.2 12.11.2015
 ===============
 - optimize thread mod 4 the last thread which was bottleneck on some older CPU for very high throughputs (>= 1500Mbit) 
