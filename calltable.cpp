@@ -1305,6 +1305,83 @@ Call::convertRawToWav() {
 	int adir = 0;
 	int bdir = 0;
 
+
+	// decide which RTP streams should be skipped 
+	for(int i = 0; i < ssrc_n; i++) {
+		Call *owner = (Call*)rtp[i]->call_owner;
+		if(!owner) continue;
+		//check for SSRC duplicity  - walk all RTP 
+		RTP *A = rtp[i];
+		RTP *B = NULL;
+		RTP *C = NULL;
+		for(int k = 0; owner and k < ssrc_n; k++) {
+			B = rtp[k];
+			if(B->codec == 13 or B->codec == 19) B->skip = true;
+			if(A == B or A->skip or B->skip) continue; // do not compare with ourself or already removed RTP
+			if(A->ssrc == B->ssrc) {
+				if(A->daddr == B->daddr and A->saddr == B->saddr and A->sport == B->sport and A->dport == B->dport){
+					// A and B have the same SSRC but both is identical ips and ports
+					continue;
+				}
+				// found another stream with the same SSRC 
+
+				if(owner->get_index_by_ip_port(A->daddr, A->dport) >= 0) {
+					//A.daddr is in SDP
+					if(owner->get_index_by_ip_port(B->daddr, B->dport) >= 0) {
+						//B.daddr is also in SDP now we have to decide if A or B will be removed. Check if we remove B if there will be still B.dst in some other RTP stream 
+						bool test = false;
+						for(int i = 0; i < ssrc_n; i++) {
+							C = rtp[i];
+							if(C->skip or C == B or C->codec != B->codec) continue; 
+							if(B->daddr == C->daddr){
+								// we have found another stream C with the same B.daddr so we can remove the stream B
+								test = true;
+								break;
+							}
+						}
+						if(test) {
+							B->skip = true;
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 0\n", 
+								B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k);
+						} else {
+							// test is not true which means that if we remove B there will be no other stream with the B.daddr so we can remove A
+							A->skip = true;
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream [%p] with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
+								A, A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
+						}
+					} else {
+						// B.daddr is not in SDP but A.dst is in SDP - but lets check if removing B will not remove all caller/called streams 
+						int caller_called = B->iscaller;
+						bool test = false;
+						for(int i = 0; i < ssrc_n; i++) {
+							C = rtp[i];
+							if(C == B or C->skip) continue;
+							if(C->iscaller == caller_called) {
+								test = true;
+							}
+						}
+						if(test) {
+							// B can be removed because removing it will still leave some caller/called stream
+							B->skip = 1;
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 2B\n", 
+								B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k);
+						} else {
+							// B cannot be removed because the B is the last caller/called stream
+							A->skip = 1;
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 2A\n", 
+								A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
+						}
+					}
+				} else {
+					//A.daddr is not in SDP so we can remove that stream 
+					A->skip = 1;
+					if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 3\n", 
+						A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
+				}
+			}
+		}
+	}
+
 	if(!(flags & FLAG_FORMATAUDIO_OGG)) {
 		snprintf(out, 1023, "%s/%s/%s.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 	} else {
@@ -1317,12 +1394,15 @@ Call::convertRawToWav() {
 	rawInfo[1023] = 0;
 	pl = fopen(rawInfo, "r");
 	if(pl) {
-		adir = 1;
-		fgets(line, sizeof(line), pl);
+		while(fgets(line, sizeof(line), pl)) {
+			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+			if(rtp[ssrc_index]->skip) continue;
+			adir = 1;
+			snprintf(wav0, 1023, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
+			wav0[1023] = 0;
+			break;
+		}
 		fclose(pl);
-		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-		snprintf(wav0, 1023, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
-		wav0[1023] = 0;
 	}
 
 	/* called direction */
@@ -1330,12 +1410,15 @@ Call::convertRawToWav() {
 	rawInfo[1023] = 0;
 	pl = fopen(rawInfo, "r");
 	if(pl) {
-		bdir = 1;
-		fgets(line, sizeof(line), pl);
+		while(fgets(line, sizeof(line), pl)) {
+			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
+			if(rtp[ssrc_index]->skip) continue;
+			bdir = 1;
+			snprintf(wav1, 1023, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
+			wav1[1023] = 0;
+			break;
+		}
 		fclose(pl);
-		sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
-		snprintf(wav1, 1023, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
-		wav1[1023] = 0;
 	}
 
 	if(adir == 0 && bdir == 0) {
@@ -1477,65 +1560,6 @@ Call::convertRawToWav() {
 			rawl.codec = codec;
 			rawl.filename = raw;
 
-			Call *owner = (Call*)rtp[ssrc_index]->call_owner;
-
-			//check for SSRC duplicity  - walk all RTP 
-			RTP *A = rtp[ssrc_index];
-			RTP *B = NULL;
-			RTP *C = NULL;
-			for(int k = 0; owner and k < ssrc_n; k++) {
-				if(A->skip and !sverb.noaudiounlink) unlink(raw); //unlink raw if A is marked to skip 
-				B = rtp[k];
-				if(A == B or A->skip or B->skip) continue; // do not compare with ourself or already removed RTP
-				if(A->ssrc == B->ssrc) {
-					if(A->daddr == B->daddr and A->saddr == B->saddr and A->sport == B->sport and A->dport == B->dport){
-						// A and B have the same SSRC but both is identical ips and ports
-						continue;
-					}
-					// found another stream with the same SSRC 
-
-					if(owner->get_index_by_ip_port(A->daddr, A->dport) >= 0) {
-						//A.daddr is in SDP
-						if(owner->get_index_by_ip_port(B->daddr, B->dport) >= 0) {
-							//B.daddr is also in SDP now we have to decide if A or B will be removed. Check if we remove B if there will be still B.dst in some other RTP stream 
-							bool test = false;
-							for(int i = 0; i < ssrc_n; i++) {
-								C = rtp[i];
-								if(C->skip or C == B or C->codec != B->codec) continue; 
-								if(B->daddr == C->daddr){
-									// we have found another stream C with the same B.daddr so we can remove the stream B
-									test = true;
-									break;
-								}
-							}
-							if(test) {
-								B->skip = true;
-								if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 0\n", 
-									B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->saddr)).c_str(), B->dport, B->iscaller, k);
-							} else {
-								// test is not true which means that if we remove B there will be no other stream with the B.daddr so we can remove A
-								A->skip = true;
-								if(!sverb.noaudiounlink) unlink(raw);
-								if(verbosity > 1) syslog(LOG_ERR, "Removing stream [%p] with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
-									A, A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->saddr)).c_str(), A->dport, A->iscaller, k);
-							}
-						} else {
-							// B.daddr is not in SDP so we can remove B because A.dst is in SDP 
-							B->skip = 1;
-							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 2\n", 
-								B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->saddr)).c_str(), B->dport, B->iscaller, k);
-						}
-					} else {
-						//A.daddr is not in SDP so we can remove that stream 
-					if(!sverb.noaudiounlink) unlink(raw);
-						A->skip = 1;
-						if(!sverb.noaudiounlink) unlink(raw);
-						if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 3\n", 
-							A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->saddr)).c_str(), A->dport, A->iscaller, k);
-					}
-				}
-			}
-
 			if(iter > 0) {
 				if(ssrc_index >= ssrc_n ||
 				   last_ssrc_index >= (unsigned)ssrc_n) {
@@ -1554,13 +1578,16 @@ Call::convertRawToWav() {
 				} else {
 					if(!rtp[rawl.ssrc_index]->skip) {
 						raws.push_back(rawl);
+					} else {
+						if(!sverb.noaudiounlink) unlink(raw);
 					}
 				}
 			} else {
 				if(!rtp[rawl.ssrc_index]->skip) {
 					raws.push_back(rawl);
+				} else {
+					if(!sverb.noaudiounlink) unlink(raw);
 				}
-
 			}
 
 			lasttv.tv_sec = tv0.tv_sec;

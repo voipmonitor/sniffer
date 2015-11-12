@@ -1,4 +1,9 @@
-14.1.3 9.11.2015
+14.1.4 12.11.2015
+================
+- fix audio decode (concatenated caller/called and sync issue) in case there are multiple duplicated RTP streams going to same ports (proper fix for netsapiens)
+
+
+14.1.3 11.11.2015
 ================
 - fix G729 out of sync for 30ms packetization (ptime)
 
