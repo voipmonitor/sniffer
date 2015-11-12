@@ -1,3 +1,9 @@
+14.2 12.11.2015
+===============
+- optimize thread mod 4 the last thread which was bottleneck on some older CPU for very high throughputs (>= 1500Mbit) 
+- enable tcmalloc again (lowers CPU when allocating memory) 
+
+
 14.1.5 12.11.2015
 =================
 - fix memory leak in threading_mode 2 (if dedup or defrag is enabled) (>= 14.X) 
