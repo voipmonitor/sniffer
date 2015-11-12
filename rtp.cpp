@@ -196,6 +196,7 @@ int get_ticks_bycodec(int codec) {
 /* constructor */
 RTP::RTP(int sensor_id) 
  : graph(this) {
+	counter = 0;
 	DSP = NULL;
 	samplerate = 8000;
 	first = true;
@@ -1835,8 +1836,6 @@ RTP::update_stats() {
 	int adelay = 0;
 	struct timeval tsdiff;	
 	double tsdiff2;
-	static double mx = 0;
-	static uint32_t counter = 0;
 
 	//printf("seq[%d] lseq[%d] lost[%d], ((s->cycles[%d] + s->max_seq[%d] - (s->base_seq[%d] + 1)) - s->received[%d]);\n", seq, last_seq, lost, s->cycles, s->max_seq, s->base_seq, s->received);
 
@@ -1847,7 +1846,6 @@ RTP::update_stats() {
 	tsdiff2 = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
 
 	long double transit = tsdiff2 - (double)(getTimestamp() - last_voice_frame_timestamp)/((double)samplerate/1000.0);
-	mx += transit;
 
 //	if(verbosity > 1) printf("transit rtp[%p] ssrc[%x] seq[%u] transit[%f]\n", this, getSSRC(), seq, (float)transit);
 
