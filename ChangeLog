@@ -1,3 +1,9 @@
+14.2.3 13.11.2015
+=================
+- fix race condition leading to crash for RTCP mux calls (>= 12.4)
+- fix terminating sniffer when MEMORY IS FULL 
+
+
 14.2.2 13.11.2015
 =================
 - fix >= 14.1.4 not decoding some audio streams where comfort noise was at the and of it
