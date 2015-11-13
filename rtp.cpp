@@ -231,6 +231,7 @@ RTP::RTP(int sensor_id)
 	last_stat_received = 0;
 	last_stat_loss_perc_mult10 = 0;
 	codecchanged = false;
+	had_audio = false;
 
 	channel_fix1 = new FILE_LINE ast_channel;
 	memset(channel_fix1, 0, sizeof(ast_channel));
@@ -864,6 +865,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->sport = sport;
 	this->ignore = 0;
 	resetgraph = 0;
+
+	if(codec != -1 and codec != 13 and codec != 19 and codec != PAYLOAD_TELEVENT) {
+		had_audio = true;
+	}
 
 	if(last_mos_time == 0) { 
 		last_mos_time = header->ts.tv_sec;

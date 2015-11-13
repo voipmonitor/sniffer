@@ -224,6 +224,7 @@ public:
 	double last_stat_loss_perc_mult10;
 	bool codecchanged;
 	uint32_t counter;
+	bool had_audio;
 
 	/* RTCP data */
 	struct rtcp_t {
