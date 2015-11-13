@@ -362,7 +362,7 @@ Call::hashRemove() {
 		}
 	}
 	
-	if(this->use_rtcp_mux && ct->hashRemove(this)) {
+	if(ct->hashRemove(this)) {
 		syslog(LOG_WARNING, "WARNING: incomplete hash cleanup for callid: %s", this->fbasename);
 	}
 }
@@ -3770,7 +3770,7 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp
 		if (node->addr == addr && node->port == port) {
 			for (node_call = (hash_node_call *)node->calls; node_call != NULL; node_call = node_call->next) {
 				// walk through all calls under the node and check if the call matches
-				if(node_call->call == call && !(rtcp && node_call->sdp_flags.rtcp_mux)) {
+				if(node_call->call == call && (!rtcp || (rtcp && (node_call->is_rtcp || !node_call->sdp_flags.rtcp_mux)))) {
 					// call matches - remote the call from node->calls
 					if (prev_call == NULL) {
 						node->calls = node_call->next;
