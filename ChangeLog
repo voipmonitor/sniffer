@@ -1,3 +1,8 @@
+14.2.2 13.11.2015
+=================
+- fix >= 14.1.4 not decoding some audio streams where comfort noise was at the and of it
+
+
 14.2.1 12.11.2015
 =================
 - fix .graph invalid values race condition >= 14 versions)
