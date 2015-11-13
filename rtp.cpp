@@ -196,6 +196,7 @@ int get_ticks_bycodec(int codec) {
 /* constructor */
 RTP::RTP(int sensor_id) 
  : graph(this) {
+	counter = 0;
 	DSP = NULL;
 	samplerate = 8000;
 	first = true;
@@ -230,6 +231,7 @@ RTP::RTP(int sensor_id)
 	last_stat_received = 0;
 	last_stat_loss_perc_mult10 = 0;
 	codecchanged = false;
+	had_audio = false;
 
 	channel_fix1 = new FILE_LINE ast_channel;
 	memset(channel_fix1, 0, sizeof(ast_channel));
@@ -863,6 +865,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	this->sport = sport;
 	this->ignore = 0;
 	resetgraph = 0;
+
+	if(codec != -1 and codec != 13 and codec != 19 and codec != PAYLOAD_TELEVENT) {
+		had_audio = true;
+	}
 
 	if(last_mos_time == 0) { 
 		last_mos_time = header->ts.tv_sec;
@@ -1835,8 +1841,6 @@ RTP::update_stats() {
 	int adelay = 0;
 	struct timeval tsdiff;	
 	double tsdiff2;
-	static double mx = 0;
-	static uint32_t counter = 0;
 
 	//printf("seq[%d] lseq[%d] lost[%d], ((s->cycles[%d] + s->max_seq[%d] - (s->base_seq[%d] + 1)) - s->received[%d]);\n", seq, last_seq, lost, s->cycles, s->max_seq, s->base_seq, s->received);
 
@@ -1847,7 +1851,6 @@ RTP::update_stats() {
 	tsdiff2 = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
 
 	long double transit = tsdiff2 - (double)(getTimestamp() - last_voice_frame_timestamp)/((double)samplerate/1000.0);
-	mx += transit;
 
 //	if(verbosity > 1) printf("transit rtp[%p] ssrc[%x] seq[%u] transit[%f]\n", this, getSSRC(), seq, (float)transit);
 

@@ -1316,7 +1316,11 @@ Call::convertRawToWav() {
 		RTP *C = NULL;
 		for(int k = 0; owner and k < ssrc_n; k++) {
 			B = rtp[k];
-			if(B->codec == 13 or B->codec == 19) B->skip = true;
+			if(!B->had_audio or B->stats.received == 0) {
+				if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] codec is comfortnoise received[%u]\n", 
+					B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k, B->stats.received);
+				B->skip = true;
+			}
 			if(A == B or A->skip or B->skip) continue; // do not compare with ourself or already removed RTP
 			if(A->ssrc == B->ssrc) {
 				if(A->daddr == B->daddr and A->saddr == B->saddr and A->sport == B->sport and A->dport == B->dport){
@@ -1412,7 +1416,10 @@ Call::convertRawToWav() {
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
-			if(rtp[ssrc_index]->skip) continue;
+			if(rtp[ssrc_index]->skip) {
+				printf("test2\n");
+				continue;
+			}
 			bdir = 1;
 			snprintf(wav1, 1023, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
 			wav1[1023] = 0;
