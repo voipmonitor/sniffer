@@ -1308,6 +1308,14 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 		return;
 	}
 	
+	if(call->type < INVITE || call->type > SKINNY_NEW) {
+		syslog(LOG_ERR, "incorrect call type in add_to_rtp_thread_queue: %i, saddr %s daddr %s sport %u dport %u",
+		       call->type,
+		       inet_ntostring(saddr).c_str(), inet_ntostring(daddr).c_str(),
+		       sport, dport);
+		return;
+	}
+	
 	if(!preSyncRtp) {
 		#if SYNC_CALL_RTP
 		__sync_add_and_fetch(&call->rtppcaketsinqueue, 1);

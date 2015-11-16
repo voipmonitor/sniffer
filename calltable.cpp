@@ -344,6 +344,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	
 	error_negative_payload_length = false;
 	use_removeRtp = false;
+	hash_counter = 0;
 	use_rtcp_mux = false;
 	rtp_from_multiple_sensors = false;
 	
@@ -362,8 +363,14 @@ Call::hashRemove() {
 		}
 	}
 	
-	if(ct->hashRemove(this)) {
-		syslog(LOG_WARNING, "WARNING: incomplete hash cleanup for callid: %s", this->fbasename);
+	if(this->hash_counter) {
+		syslog(LOG_WARNING, "WARNING: rest before hash cleanup for callid: %s: %i", this->fbasename, this->hash_counter);
+		if(this->hash_counter > 0) {
+			ct->hashRemove(this);
+			if(this->hash_counter) {
+				syslog(LOG_WARNING, "WARNING: rest after hash cleanup for callid: %s: %i", this->fbasename, this->hash_counter);
+			}
+		}
 	}
 }
 
@@ -3688,12 +3695,14 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 					// remove this call
 					if(prev) {
 						prev->next = node_call->next;
+						--node_call->call->hash_counter;
 						delete node_call;
 						node_call = prev->next;
 						continue;
 					} else {
 						//removing first node
 						node->calls = node->calls->next;
+						--node_call->call->hash_counter;
 						delete node_call;
 						node_call = node->calls;
 						continue;
@@ -3738,6 +3747,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 
 				//insert at first position
 				node->calls = node_call_new;
+				++call->hash_counter;
 				
 			}
 			unlock_calls_hash();
@@ -3761,12 +3771,14 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 	node->next = (hash_node *)calls_hash[h];
 	node->calls = node_call;
 	calls_hash[h] = node;
+	++call->hash_counter;
 	unlock_calls_hash();
 }
 
 /* remove node from hash */
 void
 Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp) {
+ 
 	hash_node *node = NULL, *prev = NULL;
 	hash_node_call *node_call = NULL, *prev_call = NULL;
 	int h;
@@ -3781,10 +3793,12 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp
 					// call matches - remote the call from node->calls
 					if (prev_call == NULL) {
 						node->calls = node_call->next;
+						--node_call->call->hash_counter;
 						delete node_call;
 						break; 
 					} else {
 						prev_call->next = node_call->next;
+						--node_call->call->hash_counter;
 						delete node_call;
 						break; 
 					}
@@ -3828,10 +3842,12 @@ Calltable::hashRemove(Call *call) {
 					++removeCounter;
 					if(prev_node_call == NULL) {
 						node->calls = node_call->next;
+						--node_call->call->hash_counter;
 						delete node_call;
 						node_call = node->calls; 
 					} else {
 						prev_node_call->next = node_call->next;
+						--node_call->call->hash_counter;
 						delete node_call;
 						node_call = prev_node_call->next;
 					}
