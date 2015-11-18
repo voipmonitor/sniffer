@@ -2586,16 +2586,18 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			cseq = gettag(data, datalen, "\nCSeq:", &cseqlen, &gettagLimitLen);
 			bool cseq_contain_invite = false;
 			if(cseq && cseqlen < 32) {
-				if(memmem(cseq, cseqlen, (call->type == MESSAGE ? "MESSAGE" : "INVITE"), (call->type == MESSAGE ? 7 : 6))) {
-					cseq_contain_invite = true;
-				}
 				if(memmem(call->invitecseq, strlen(call->invitecseq), cseq, cseqlen)) {
+					cseq_contain_invite = true;
 					if(sip_method == (call->type == MESSAGE ? MESSAGE : INVITE)) {
 						call->unrepliedinvite++;
 					} else if(call->unrepliedinvite > 0){
 						call->unrepliedinvite--;
 					}
 					//syslog(LOG_NOTICE, "[%s] unrepliedinvite--\n", call->call_id);
+				}
+				if(!cseq_contain_invite &&
+				   memmem(cseq, cseqlen, (call->type == MESSAGE ? "MESSAGE" : "INVITE"), (call->type == MESSAGE ? 7 : 6))) {
+					cseq_contain_invite = true;
 				}
 			}
 
