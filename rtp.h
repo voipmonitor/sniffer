@@ -236,6 +236,14 @@ public:
 		unsigned int counter;
 	} rtcp;
 
+	struct rtcp_xr_t {
+		uint8_t 	maxfr;
+		double 		avgfr;
+		uint8_t		minmos;
+		double 		avgmos;
+		unsigned int counter;
+	} rtcp_xr;
+
 	unsigned int samplerate;
 
 	struct stats_t {

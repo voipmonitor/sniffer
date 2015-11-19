@@ -104,6 +104,9 @@ typedef struct rtcp_sr_reportblock
 #define RTCP_PACKETTYPE_SDES	202
 #define RTCP_PACKETTYPE_BYE	203
 #define RTCP_PACKETTYPE_APP	204
+#define RTCP_PACKETTYPE_RTPFB	205
+#define RTCP_PACKETTYPE_PSFB	206
+#define RTCP_PACKETTYPE_XR	207
 
 /*
  * RTCP payload type map
@@ -124,6 +127,66 @@ strmap_t rtcp_packettype_map[] =
 	{ 0, ""}
 };
 #endif
+
+
+/*
+ * RTCP XR report block type
+ */
+typedef enum rtcp_xr_report_type_t_ {
+    RTCP_XR_LOSS_RLE = 1,  /* Loss RLE report */
+    RTCP_XR_DUP_RLE,       /* Duplicate RLE report */
+    RTCP_XR_RTCP_TIMES,    /* Packet receipt times report */
+    RTCP_XR_RCVR_RTT,      /* Receiver reference time report */
+    RTCP_XR_DLRR,          /* DLRR report */
+    RTCP_XR_STAT_SUMMARY,  /* Statistics summary report */
+    RTCP_XR_VOIP_METRICS,  /* VoIP metrics report */
+    RTCP_XR_BT_XNQ,        /* BT's eXtended Network Quality report */
+    RTCP_XR_TI_XVQ,        /* TI eXtended VoIP Quality report */
+    RTCP_XR_POST_RPR_LOSS_RLE,  /* Post ER Loss RLE report */
+    RTCP_XR_MA = 200,           /* Media Acquisition report (avoid */
+    RTCP_XR_DC,                 /* Diagnostic Counters report (TBD) */
+    NOT_AN_XR_REPORT       /* this MUST always be LAST */
+} rtcp_xr_report_type_t;
+
+
+typedef struct rtcp_xr_header {
+	rtcp_header_t ch;
+	uint32_t ssrc;
+} rtcp_xr_header_t;
+
+/*
+ * generic XR report definition
+ */
+typedef struct rtcp_xr_gen_t_ {
+    uint8_t  bt;                /* Report Block Type */
+    uint8_t  type_specific;     /* Report Type Specific */
+    uint16_t length;            /* Report Length */
+} rtcp_xr_gen_t;
+
+typedef struct rtcp_xr_voip_metrics_report_block {
+	uint32_t ssrc;
+	uint8_t loss_rate;
+	uint8_t discard_rate;
+	uint8_t burst_density;
+	uint8_t gap_density;
+	uint16_t burst_duration;
+	uint16_t gap_duration;
+	uint16_t round_trip_delay;
+	uint16_t end_system_delay;
+	int8_t signal_level;
+	int8_t noise_level;
+	uint8_t rerl;
+	uint8_t gmin;
+	uint8_t r_factor;
+	uint8_t ext_r_factor;
+	uint8_t mos_lq;
+	uint8_t mos_cq;
+	uint8_t rx_config;
+	uint8_t reserved2;
+	uint16_t jb_nominal;
+	uint16_t jb_maximum;
+	uint16_t jb_abs_max;
+} rtcp_xr_voip_metrics_report_block_t;
 
 extern struct arg_t * my_args;
 
@@ -372,7 +435,7 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 			if(sverb.debug_rtcp) {
 				printf("	Type [%u]\n", type);
 				printf("	Length [%u]\n", length);
-				printf("	SDES [%s]", string);
+				printf("	SDES [%s]\n", string);
 			}
 
 			/* Free string memory */
@@ -402,6 +465,98 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 
 /*----------------------------------------------------------------------------
 **
+** dump_rtcp_xr()
+**
+** Parse RTCP extended report fields
+**
+**----------------------------------------------------------------------------
+*/
+
+void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
+{
+	printf("test\n");
+	char *pkt = data;
+	int reports_seen;
+
+	rtcp_xr_header_t *header = (rtcp_xr_header_t*)pkt;
+
+	if(sverb.debug_rtcp) {
+		printf("sender SSRC [%x]\n", ntohl(header->ssrc));
+	}
+
+	pkt += sizeof(rtcp_xr_header_t);
+	
+	/* Loop over report blocks */
+	count = 1;//workaround
+	reports_seen = 0;
+	while(reports_seen < count) {
+
+		if(pkt + sizeof(rtcp_xr_gen_t) > (data + datalen)) {
+			break;
+		}
+
+		rtcp_xr_gen_t *block = (rtcp_xr_gen_t*)pkt;
+
+		if((rtcp_xr_report_type_t_)block->bt != RTCP_XR_VOIP_METRICS) {
+			pkt += ntohs(block->length) * 4;
+			printf("pica2 [%x]\n", block->bt);
+			break;
+		}
+
+		pkt += sizeof(rtcp_xr_gen_t);
+		rtcp_xr_voip_metrics_report_block_t *xr = (rtcp_xr_voip_metrics_report_block_t*)pkt;
+
+	
+#if 0
+		if(rtp) {
+			rtp->rtcp.counter++;
+			rtp->rtcp.loss = loss;
+			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock.frac_lost) ? reportblock.frac_lost : rtp->rtcp.maxfr;
+			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock.frac_lost) / rtp->rtcp.counter;
+			rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
+			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock.jitter) / rtp->rtcp.counter;
+		} 
+#endif
+		if(rtp) {
+			rtp->rtcp_xr.counter++;
+			rtp->rtcp_xr.maxfr = (rtp->rtcp.maxfr < rtp->rtcp.maxfr) ? xr->loss_rate : rtp->rtcp.maxfr;
+			rtp->rtcp_xr.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + xr->loss_rate) / rtp->rtcp.counter;
+			rtp->rtcp_xr.minmos = (rtp->rtcp.minmos < rtp->rtcp.minmos) ? xr->mos : rtp->rtcp.minmos;
+			rtp->rtcp_xr.avgmos = (rtp->rtcp.avgmos * (rtp->rtcp.counter - 1) + xr->mos) / rtp->rtcp.counter;
+		} 
+
+		if(sverb.debug_rtcp) {
+			printf("identifier [%x]\n", ntohl(xr->ssrc));
+			printf("	Fraction lost [%u]\n", xr->loss_rate);
+			printf("	Fraction discarded [%d]\n", xr->discard_rate);
+			printf("	Burst density [%d]\n", xr->burst_density);
+			printf("	Gap density[%d]\n", xr->gap_density);
+			printf("	Burst duration[%d]\n", ntohs(xr->burst_duration));
+			printf("	Gap duration[%d]\n", ntohs(xr->gap_duration));
+			printf("	Round trip delay[%d]\n", ntohs(xr->round_trip_delay));
+			printf("	End system delay[%d]\n", ntohs(xr->end_system_delay));
+			printf("	Signal Level[%d]\n", xr->signal_level);
+			printf("	Noise level[%d]\n", xr->noise_level);
+			printf("	Residual echo return loss[%d]\n", xr->rerl);
+			printf("	Gmin[%d]\n", xr->gmin);
+			printf("	R Factor[%d]\n", xr->r_factor);
+			printf("	External R Factor[%d]\n", xr->ext_r_factor);
+			printf("	MOS Listening Quality[%d]\n", xr->mos_lq);
+			printf("	MOS Conversational Quality[%d]\n", xr->mos_cq);
+			printf("	rx_config[%d]\n", xr->rx_config);
+			printf("	Nominal jitter buffer size[%d]\n", ntohs(xr->jb_nominal));
+			printf("	Maximum jitter buffer size[%d]\n", ntohs(xr->jb_maximum));
+			printf("	Absolute maximum jitter buffer size[%d]\n", ntohs(xr->jb_abs_max));
+		}
+
+		pkt += ntohs(block->length) * 4;
+		reports_seen++;
+	}
+	return;
+}
+
+/*----------------------------------------------------------------------------
+**
 ** dump_rtcp()
 **
 ** Parse RTCP packet and dump fields
@@ -412,60 +567,64 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 void parse_rtcp(char *data, int datalen, Call* call)
 {
 	char *pkt = data;
-	rtcp_header_t rtcp;
-	u_int8_t			packet_type;
-	u_int8_t			padding;
-	u_int8_t			version;
-	u_int8_t			count;
+	rtcp_header_t *rtcp;
 
 	while(1){
 		/* Get the fixed RTCP header */
 		if((pkt + sizeof(rtcp_header_t)) < (data + datalen)){
-			memcpy(&rtcp, pkt, sizeof(rtcp_header_t));
-			pkt += sizeof(rtcp_header_t);
+			rtcp = (rtcp_header_t*)pkt;
 		} else {
 			break;
 		}
 
-		/* Conversions */
-		packet_type = rtcp.packet_type;
-		padding = rtcp.padding;
-		version = rtcp.version;
-		count = rtcp.rc_sc;
-		rtcp.length = ntohs(rtcp.length);
+		int rtcp_size = ntohs(rtcp->length) * 4 + sizeof(rtcp_header_t);
 
-		if(version != 2) {
+		if(rtcp->version != 2) {
 			if(sverb.debug_rtcp) {
 				printf("[%s] Malformed RTCP packet\n", call->fbasename);
 			}
+			pkt += rtcp_size;
 			break;
 		}
-		
-		
-		/* Set the number of bytes remaining */
-		//u_int16_t bytes_remaining = 4 * rtcp.length;
-		
+	
+		if((pkt + rtcp_size) > (data + datalen)){
+			if(sverb.debug_rtcp) {
+				printf("[%s] Malformed RTCP packet\n", call->fbasename);
+			}
+			//rtcp too big 
+			break;
+		}
+
+		char *rtcp_data = pkt + sizeof(rtcp_header_t);
+	
 		if(sverb.debug_rtcp) {
 			printf("\nRTCP Header\n");
-			printf("Version %d\n", version);
-			printf("Padding %d\n", padding);
-			printf("Report/source count [%d]\n", count);
-			printf("Packet type [%d]\n", packet_type);
-			printf("Length [%d]\n", rtcp.length);
+			printf("Version %d\n", rtcp->version);
+			printf("Padding %d\n", rtcp->padding);
+			printf("Report/source count [%d]\n", rtcp->rc_sc);
+			printf("Packet type [%d]\n", rtcp->packet_type);
+			printf("Length [%d]\n", ntohs(rtcp->length));
 		}
 			
-		switch(packet_type) {
+		switch(rtcp->packet_type) {
 		case RTCP_PACKETTYPE_SR:
-			pkt = dump_rtcp_sr(pkt, data + datalen - pkt, count, call);
+			dump_rtcp_sr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call);
 			break;
 		case RTCP_PACKETTYPE_RR:
-			pkt = dump_rtcp_rr(pkt, data + datalen - pkt, count, call);
+			dump_rtcp_rr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call);
 			break;
 		case RTCP_PACKETTYPE_SDES:
-			pkt = dump_rtcp_sdes(pkt, data + datalen - pkt, count);
+			// we do not need to parse it
+			//dump_rtcp_sdes(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc);
+			break;
+		case RTCP_PACKETTYPE_XR:
+			dump_rtcp_xr(pkt, data + datalen - rtcp_data, rtcp->rc_sc, call);
 			break;
 		default:
-			return;
+			break;
 		}
+
+		pkt += rtcp_size;
 	}
+	exit(0);
 }

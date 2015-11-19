@@ -55,6 +55,7 @@ extern char opt_pb_read_from_file[256];
 extern int opt_enable_fraud;
 extern bool _save_sip_history;
 extern bool exists_column_cdr_mosmin;
+extern bool exists_column_cdr_mos_xr;
 
 extern char sql_driver[256];
 
@@ -3187,15 +3188,19 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`a_mos_f1_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_f2_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_adapt_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`a_mos_xr_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_f1_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_f2_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_adapt_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_xr_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_f1_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_f2_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_adapt_mult10` tinyint unsigned DEFAULT NULL,\
+			`a_mos_xr_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_f1_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_f2_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_adapt_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_xr_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_rtcp_loss` smallint unsigned DEFAULT NULL,\
 			`a_rtcp_maxfr` smallint unsigned DEFAULT NULL,\
 			`a_rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
@@ -4755,7 +4760,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	if(!this->fetchRow()) {
 		exists_column_cdr_mosmin = false;
 		if(log) this->logNeedAlter("cdr",
-					   "SIP header 'reason'",
+					   "MOS min",
 					   "ALTER TABLE cdr "
 						"ADD COLUMN a_mos_f1_min_mult10 tinyint unsigned DEFAULT NULL, "
 						"ADD COLUMN a_mos_f2_min_mult10 tinyint unsigned DEFAULT NULL, "
@@ -4763,6 +4768,18 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 						"ADD COLUMN b_mos_f1_min_mult10 tinyint unsigned DEFAULT NULL, "
 						"ADD COLUMN b_mos_f2_min_mult10 tinyint unsigned DEFAULT NULL, "
 						"ADD COLUMN b_mos_adapt_min_mult10 tinyint unsigned DEFAULT NULL;");
+	}
+	//14.3
+	this->query("show columns from cdr where Field='a_mos_xr_min_mult10'");
+	if(!this->fetchRow()) {
+		exists_column_cdr_mos_xr = false;
+		if(log) this->logNeedAlter("cdr",
+					   "MOS RTPC XR",
+					   "ALTER TABLE cdr "
+						"ADD COLUMN a_mos_xr_min_mult10 tinyint unsigned DEFAULT NULL, "
+						"ADD COLUMN b_mos_xr_min_mult10 tinyint unsigned DEFAULT NULL, "
+						"ADD COLUMN a_mos_xr_mult10 tinyint unsigned DEFAULT NULL, "
+						"ADD COLUMN b_mos_xr_mult10 tinyint unsigned DEFAULT NULL, ");
 	}
 }
 

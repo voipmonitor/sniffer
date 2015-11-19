@@ -712,6 +712,7 @@ bool printConfigStruct = false;
 int opt_ptime = 1;
 
 bool exists_column_cdr_mosmin = true;
+bool exists_column_cdr_mos_xr = true;
 
 
 SensorsMap sensorsMap;
