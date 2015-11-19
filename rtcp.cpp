@@ -517,12 +517,23 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
 			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock.jitter) / rtp->rtcp.counter;
 		} 
 #endif
+
+		RTP *rtp = NULL;
+
+		for(int i = 0; i < call->ssrc_n; i++) {
+			if(call->rtp[i]->ssrc == ntohl(xr->ssrc)) {
+				// found 
+				rtp = call->rtp[i];
+			}
+		}
+                
+
 		if(rtp) {
 			rtp->rtcp_xr.counter++;
-			rtp->rtcp_xr.maxfr = (rtp->rtcp.maxfr < rtp->rtcp.maxfr) ? xr->loss_rate : rtp->rtcp.maxfr;
-			rtp->rtcp_xr.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + xr->loss_rate) / rtp->rtcp.counter;
-			rtp->rtcp_xr.minmos = (rtp->rtcp.minmos < rtp->rtcp.minmos) ? xr->mos : rtp->rtcp.minmos;
-			rtp->rtcp_xr.avgmos = (rtp->rtcp.avgmos * (rtp->rtcp.counter - 1) + xr->mos) / rtp->rtcp.counter;
+			rtp->rtcp_xr.maxfr = (rtp->rtcp_xr.maxfr < rtp->rtcp_xr.maxfr) ? xr->loss_rate : rtp->rtcp_xr.maxfr;
+			rtp->rtcp_xr.avgfr = (rtp->rtcp_xr.avgfr * (rtp->rtcp_xr.counter - 1) + xr->loss_rate) / rtp->rtcp_xr.counter;
+			rtp->rtcp_xr.minmos = (rtp->rtcp_xr.minmos < rtp->rtcp_xr.minmos) ? xr->mos_lq : rtp->rtcp_xr.minmos;
+			rtp->rtcp_xr.avgmos = (rtp->rtcp_xr.avgmos * (rtp->rtcp_xr.counter - 1) + xr->mos_lq) / rtp->rtcp_xr.counter;
 		} 
 
 		if(sverb.debug_rtcp) {
