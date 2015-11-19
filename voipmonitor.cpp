@@ -1097,6 +1097,7 @@ public:
 		dropRtpStat = false;
 		createIpacc = false;
 		createBilling = false;
+		_runInThread = false;
 	}
 	bool isSet() {
 		return(createCdr || dropCdr || 
@@ -1106,9 +1107,13 @@ public:
 	void createPartitions(bool inThread = false) {
 		if(isSet()) {
 			if(inThread) {
+				sCreatePartitions *createPartitionsData = new sCreatePartitions;
+				*createPartitionsData = *this;
+				createPartitionsData->_runInThread = true;
 				pthread_t thread;
-				pthread_create(&thread, NULL, _createPartitions, this);
+				pthread_create(&thread, NULL, _createPartitions, createPartitionsData);
 			} else {
+				this->_runInThread = false;
 				_createPartitions(this);
 			}
 		}
@@ -1121,27 +1126,31 @@ public:
 	bool dropRtpStat;
 	bool createIpacc;
 	bool createBilling;
+	bool _runInThread;
 } createPartitions;
 
 void *sCreatePartitions::_createPartitions(void *arg) {
-	sCreatePartitions *createPartitions = (sCreatePartitions*)arg;
-	if(createPartitions->createCdr) {
+	sCreatePartitions *createPartitionsData = (sCreatePartitions*)arg;
+	if(createPartitionsData->createCdr) {
 		createMysqlPartitionsCdr();
 	}
-	if(createPartitions->dropCdr) {
+	if(createPartitionsData->dropCdr) {
 		dropMysqlPartitionsCdr();
 	}
-	if(createPartitions->createRtpStat) {
+	if(createPartitionsData->createRtpStat) {
 		createMysqlPartitionsRtpStat();
 	}
-	if(createPartitions->dropRtpStat) {
+	if(createPartitionsData->dropRtpStat) {
 		dropMysqlPartitionsRtpStat();
 	}
-	if(createPartitions->createIpacc) {
+	if(createPartitionsData->createIpacc) {
 		createMysqlPartitionsIpacc();
 	}
-	if(createPartitions->createBilling) {
+	if(createPartitionsData->createBilling) {
 		createMysqlPartitionsBillingAgregation();
+	}
+	if(createPartitionsData->_runInThread) {
+		delete createPartitionsData;
 	}
 	return(NULL);
 }

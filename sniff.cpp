@@ -2584,14 +2584,20 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			char *cseq = NULL;
 			long unsigned int cseqlen = 0;
 			cseq = gettag(data, datalen, "\nCSeq:", &cseqlen, &gettagLimitLen);
+			bool cseq_contain_invite = false;
 			if(cseq && cseqlen < 32) {
 				if(memmem(call->invitecseq, strlen(call->invitecseq), cseq, cseqlen)) {
-					if(sip_method == INVITE) {
+					cseq_contain_invite = true;
+					if(sip_method == (call->type == MESSAGE ? MESSAGE : INVITE)) {
 						call->unrepliedinvite++;
 					} else if(call->unrepliedinvite > 0){
 						call->unrepliedinvite--;
 					}
 					//syslog(LOG_NOTICE, "[%s] unrepliedinvite--\n", call->call_id);
+				}
+				if(!cseq_contain_invite &&
+				   memmem(cseq, cseqlen, (call->type == MESSAGE ? "MESSAGE" : "INVITE"), (call->type == MESSAGE ? 7 : 6))) {
+					cseq_contain_invite = true;
 				}
 			}
 
@@ -2617,6 +2623,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				 (call->cancel_lsr487 && lastSIPresponseNum/10 == 48)) &&
 				!call->seeninviteok &&
 			        !(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5)) &&
+			   (lastSIPresponseNum != 200 || cseq_contain_invite) &&
 			   !(call->cancelcseq[0] && cseq && cseqlen < 32 && strncmp(cseq, call->cancelcseq, cseqlen) == 0)) {
 				strncpy(call->lastSIPresponse, lastSIPresponse, 128);
 				call->lastSIPresponseNum = lastSIPresponseNum;
