@@ -637,5 +637,4 @@ void parse_rtcp(char *data, int datalen, Call* call)
 
 		pkt += rtcp_size;
 	}
-	exit(0);
 }
