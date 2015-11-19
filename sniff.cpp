@@ -3483,7 +3483,7 @@ rtpcheck:
 				}
 				return NULL;
 			}
-			snprintf(s, 4092, "%u-%x", (unsigned int)time(NULL), rtp.getSSRC());
+			snprintf(s, 256, "%u-%x", (unsigned int)time(NULL), rtp.getSSRC());
 
 			//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
@@ -4382,7 +4382,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
 		return NULL;
 	}
-	snprintf(s, 4092, "%u-%x", (unsigned int)time(NULL), rtp.getSSRC());
+	snprintf(s, 256, "%u-%x", (unsigned int)time(NULL), rtp.getSSRC());
 
 	//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
