@@ -1,3 +1,8 @@
+14.2.5 19.11.2015
+=================
+- fix MySQL partition creation in some case 
+
+
 14.2.4 16.11.2015
 =================
 - fix performance issue 14.2.3 which might lead to increasing heap when there are many SIP messages (REGISTER/INVITE) 
