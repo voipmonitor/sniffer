@@ -474,7 +474,6 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 
 void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
 {
-	printf("test\n");
 	char *pkt = data;
 	int reports_seen;
 
@@ -499,7 +498,6 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
 
 		if((rtcp_xr_report_type_t_)block->bt != RTCP_XR_VOIP_METRICS) {
 			pkt += ntohs(block->length) * 4;
-			printf("pica2 [%x]\n", block->bt);
 			break;
 		}
 
@@ -532,7 +530,7 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
 			rtp->rtcp_xr.counter++;
 			rtp->rtcp_xr.maxfr = (rtp->rtcp_xr.maxfr < rtp->rtcp_xr.maxfr) ? xr->loss_rate : rtp->rtcp_xr.maxfr;
 			rtp->rtcp_xr.avgfr = (rtp->rtcp_xr.avgfr * (rtp->rtcp_xr.counter - 1) + xr->loss_rate) / rtp->rtcp_xr.counter;
-			rtp->rtcp_xr.minmos = (rtp->rtcp_xr.minmos < rtp->rtcp_xr.minmos) ? xr->mos_lq : rtp->rtcp_xr.minmos;
+			rtp->rtcp_xr.minmos = (rtp->rtcp_xr.minmos > xr->mos_lq) ? xr->mos_lq : rtp->rtcp_xr.minmos;
 			rtp->rtcp_xr.avgmos = (rtp->rtcp_xr.avgmos * (rtp->rtcp_xr.counter - 1) + xr->mos_lq) / rtp->rtcp_xr.counter;
 		} 
 

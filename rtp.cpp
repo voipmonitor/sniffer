@@ -206,6 +206,8 @@ RTP::RTP(int sensor_id)
 	memset(s, 0, sizeof(source));
 	memset(&stats, 0, sizeof(stats));
 	memset(&rtcp, 0, sizeof(rtcp));
+	memset(&rtcp_xr, 0, sizeof(rtcp_xr));
+	rtcp_xr.minmos = 45;
 	nintervals = 1;
 	saddr = 0;
 	daddr = 0;
