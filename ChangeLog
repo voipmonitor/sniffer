@@ -1,3 +1,10 @@
+14.3 20.11.2015
+===============
+- fix issue with convertchar option when download files through tcp manager
+- implement RTCP XR extension - store mos score to rtcp_xr new cdr columns
+- resolve some TCP mirroring issues on very small traffic
+
+
 14.2.6 19.11.2015
 =================
 - fix 14.2.5 exit when rtcp packet is received
