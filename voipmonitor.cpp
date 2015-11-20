@@ -406,6 +406,7 @@ extern int opt_pcap_queue_iface_qring_size;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_queue_suppress_t1_thread;
+extern bool opt_pcap_queues_mirror_nonblock_mode;
 extern int opt_pcap_dispatch;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
@@ -4167,6 +4168,8 @@ void cConfig::addConfigItems() {
 			addConfigItem((new cConfigItem_integer("mirror_destination_port"))
 				->setNaDefaultValueStr()
 				->setMinor());
+			setDisableIfBegin("sniffer_mode=" + snifferMode_read_from_files_str);
+			addConfigItem(new cConfigItem_yesno("mirror_nonblock_mode", &opt_pcap_queues_mirror_nonblock_mode));
 			setDisableIfEnd();
 		subgroup("scaling");
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
@@ -6633,6 +6636,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mirror_bind_dlt", NULL))) {
 		opt_pcap_queue_receive_dlt = atoi(value);
+	}
+	if((value = ini.GetValue("general", "mirror_nonblock_mode", NULL))) {
+		opt_pcap_queues_mirror_nonblock_mode = yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {

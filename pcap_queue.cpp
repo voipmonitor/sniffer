@@ -181,6 +181,7 @@ int opt_pcap_queue_dequeu_window_length			= -1;
 int opt_pcap_queue_dequeu_method			= 2;
 int opt_pcap_dispatch					= 0;
 int opt_pcap_queue_suppress_t1_thread			= 0;
+bool opt_pcap_queues_mirror_nonblock_mode 			= false;
 
 size_t _opt_pcap_queue_block_offset_init_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE * 1.1;
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
@@ -2845,6 +2846,10 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				ip_tot_len = ((iphdr2*)(packet + 14))->tot_len;
 			}
 			*/
+			memcpy(headerPacketRead.header, header, sizeof(pcap_pkthdr));
+			if(!libpcap_buffer) {
+				memcpy(headerPacketRead.packet, packet, header->caplen);
+			}
 			if(!libpcap_buffer_offset) {
 				cout << "detect oneshot buffer" << endl;
 				libpcap_buffer = &(((_pcap_linux*)((struct _pcap*)this->pcapHandle)->priv)->oneshot_buffer);
@@ -2880,10 +2885,6 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					libpcap_buffer_old = packet;
 				}
 				syslog(LOG_NOTICE, "find oneshot libpcap buffer : %s", libpcap_buffer ? "success" : "failed");
-			}
-			memcpy(headerPacketRead.header, header, sizeof(pcap_pkthdr));
-			if(!libpcap_buffer) {
-				memcpy(headerPacketRead.packet, packet, header->caplen);
 			}
 			ok_for_header_packet_stack = true;
 			/* check change packet content - disabled
@@ -3434,19 +3435,22 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 							delete header;
 							delete [] packet;
 						}
-						continue;
+						fetchPacketOk = false;
 					}
-					offset = this->ppd.header_ip_offset;
-					if(ip_tot_len && ip_tot_len != ((iphdr2*)(packet_pcap + 14))->tot_len) {
-						static u_long lastTimeLogErrBuggyKernel = 0;
-						u_long actTime = getTimeMS(header);
-						if(actTime - 1000 > lastTimeLogErrBuggyKernel) {
-							syslog(LOG_ERR, "SUSPICIOUS CHANGE PACKET CONTENT: buggy kernel - contact support@voipmonitor.org");
-							lastTimeLogErrBuggyKernel = actTime;
+					if(fetchPacketOk) {
+						offset = this->ppd.header_ip_offset;
+						if(ip_tot_len && ip_tot_len != ((iphdr2*)(packet_pcap + 14))->tot_len) {
+							static u_long lastTimeLogErrBuggyKernel = 0;
+							u_long actTime = getTimeMS(header);
+							if(actTime - 1000 > lastTimeLogErrBuggyKernel) {
+								syslog(LOG_ERR, "SUSPICIOUS CHANGE PACKET CONTENT: buggy kernel - contact support@voipmonitor.org");
+								lastTimeLogErrBuggyKernel = actTime;
+							}
 						}
 					}
 				}
 			}
+			bool checkFullAllBlockStores = false;
 			if(fetchPacketOk) {
 				++sumPacketsCounterIn[0];
 				extern SocketSimpleBufferWrite *sipSendSocket;
@@ -3466,10 +3470,14 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					}
 				}
 			} else {
-				blockStore[blockStoreIndex]->isFull_checkTimout();
+				for(int i = 0; i < blockStoreCount; i++) {
+					blockStore[i]->isFull_checkTimout();
+				}
+				checkFullAllBlockStores = true;
 			}
 			for(int i = 0; i < blockStoreCount; i++) {
-				if(fetchPacketOk && i == blockStoreIndex ? blockStore[i]->full : !(blockStore[i]->count % 20) && blockStore[i]->isFull_checkTimout()) {
+				if(blockStore[i]->full || 
+				   (i != blockStoreIndex && !checkFullAllBlockStores && !(blockStore[i]->count % 20) && blockStore[i]->isFull_checkTimout())) {
 					if(!opt_pcap_queue_compress && this->instancePcapFifo && opt_pcap_queue_suppress_t1_thread) {
 						this->instancePcapFifo->addBlockStoreToPcapStoreQueue(blockStore[i]);
 					} else if(this->block_qring) {
@@ -4085,7 +4093,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				offsetBufferSyncRead = 0;
 				while(!TERMINATING && !forceStop) {
 					readLen = bufferSize;
-					if(!this->socketRead(buffer + offsetBufferSyncRead, &readLen, arg2) || readLen == 0) {
+					if(!this->socketRead(buffer + offsetBufferSyncRead, &readLen, arg2)) {
 						syslog(LOG_NOTICE, "close connection from %s:%i", this->packetServerConnections[arg2]->socketClientIP.c_str(), this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 						this->packetServerConnections[arg2]->active = false;
 						forceStop = true;
@@ -4187,10 +4195,13 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								}
 							} else {
 								if(offsetBufferSyncRead) {
-									memcpy_heapsafe(buffer, buffer,
+									u_char *buffer2 = new FILE_LINE u_char[bufferSize * 2];
+									memcpy_heapsafe(buffer2, buffer2,
 											buffer + offsetBufferSyncRead, buffer,
 											readLen,
 											__FILE__, __LINE__);
+									delete [] buffer;
+									buffer = buffer2;
 								}
 								offsetBufferSyncRead = readLen;
 								bufferLen = readLen;
@@ -4767,9 +4778,18 @@ bool PcapQueue_readFromFifo::socketConnect() {
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(this->packetServerIpPort.get_port());
 	addr.sin_addr.s_addr = *(long*)this->socketHostEnt->h_addr_list[0];
-	while(connect(this->socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+	while(connect(this->socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1 && !TERMINATING) {
 		syslog(LOG_NOTICE, "packetbuffer %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), inet_ntoa(*(struct in_addr *)this->socketHostEnt->h_addr_list[0]), strerror(errno));
 		sleep(1);
+	}
+	if(TERMINATING) {
+		return(false);
+	}
+	if(opt_pcap_queues_mirror_nonblock_mode) {
+		int flags = fcntl(this->socketHandle, F_GETFL, 0);
+		if(flags >= 0) {
+			fcntl(this->socketHandle, F_SETFL, flags | O_NONBLOCK);
+		}
 	}
 	if(DEBUG_VERBOSE) {
 		cout << this->nameQueue << " - socketConnect: " << this->packetServerIpPort.get_ip() << " : OK" << endl;
@@ -4813,6 +4833,12 @@ bool PcapQueue_readFromFifo::socketListen() {
 		syslog(LOG_NOTICE, "packetbuffer %s: cannot create socket", this->nameQueue.c_str());
 		return(false);
 	}
+	if(opt_pcap_queues_mirror_nonblock_mode) {
+		int flags = fcntl(this->socketHandle, F_GETFL, 0);
+		if(flags >= 0) {
+			fcntl(this->socketHandle, F_SETFL, flags | O_NONBLOCK);
+		}
+	}
 	sockaddr_in addr;
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(this->packetServerIpPort.get_port());
@@ -4821,9 +4847,12 @@ bool PcapQueue_readFromFifo::socketListen() {
 	setsockopt(this->socketHandle, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	int rsltListen;
 	do {
-		while(bind(this->socketHandle, (sockaddr*)&addr, sizeof(addr)) == -1) {
+		while(bind(this->socketHandle, (sockaddr*)&addr, sizeof(addr)) == -1 && !TERMINATING) {
 			syslog(LOG_ERR, "packetbuffer %s: cannot bind to port [%d] - trying again after 5 seconds intervals", this->nameQueue.c_str(), this->packetServerIpPort.get_port());
 			sleep(5);
+		}
+		if(TERMINATING) {
+			return(false);
 		}
 		rsltListen = listen(this->socketHandle, 5);
 		if(rsltListen == -1) {
@@ -4846,6 +4875,12 @@ bool PcapQueue_readFromFifo::socketAwaitConnection(int *socketClient, sockaddr_i
 		tv.tv_usec = 0;
 		if(select(this->socketHandle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
 			*socketClient = accept(this->socketHandle, (sockaddr*)socketClientInfo, &addrlen);
+			if(opt_pcap_queues_mirror_nonblock_mode) {
+				int flags = fcntl(*socketClient, F_GETFL, 0);
+				if(flags >= 0) {
+					fcntl(*socketClient, F_SETFL, flags | O_NONBLOCK);
+				}
+			}
 		}
 		usleep(100000);
 	}
@@ -4874,12 +4909,33 @@ bool PcapQueue_readFromFifo::socketWrite(u_char *data, size_t dataLen) {
 }
 
 bool PcapQueue_readFromFifo::socketRead(u_char *data, size_t *dataLen, int idConnection) {
-	ssize_t recvLen = recv(this->packetServerConnections[idConnection]->socketClient, data, *dataLen, 0);
-	if(recvLen == -1) {
-		*dataLen = 0;
-		return(false);
+	size_t maxDataLen = *dataLen;
+	*dataLen = 0;
+	if(opt_pcap_queues_mirror_nonblock_mode) {
+		fd_set rfds;
+		FD_ZERO(&rfds);
+		FD_SET(this->packetServerConnections[idConnection]->socketClient, &rfds);
+		struct timeval tv;
+		tv.tv_sec = 1;
+		tv.tv_usec = 0;
+		int rsltSelect = select(this->packetServerConnections[idConnection]->socketClient + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
+		if(rsltSelect < 0) {
+			return(false);
+		}
+		if(rsltSelect > 0 && FD_ISSET(this->packetServerConnections[idConnection]->socketClient, &rfds)) {
+			ssize_t recvLen = recv(this->packetServerConnections[idConnection]->socketClient, data, maxDataLen, 0);
+			if(recvLen <= 0) {
+				return(false);
+			}
+			*dataLen = recvLen;
+		}
+	} else {
+		ssize_t recvLen = recv(this->packetServerConnections[idConnection]->socketClient, data, maxDataLen, 0);
+		if(recvLen <= 0) {
+			return(false);
+		}
+		*dataLen = recvLen;
 	}
-	*dataLen = recvLen;
 	return(true);
 }
 
