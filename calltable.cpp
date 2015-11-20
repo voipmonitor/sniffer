@@ -177,6 +177,7 @@ extern unsigned int glob_ssl_calls;
 extern bool opt_cdr_partition;
 
 extern int opt_ptime;
+extern bool exists_column_cdr_mos_xr;
 
 
 /* constructor */
@@ -2364,6 +2365,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(exists_column_cdr_mosmin and rtpab[i]->mosf1_min != -1) {
 				cdr.add(rtpab[i]->mosf1_min, c+"_mos_f1_min_mult10");
+			}
+
+			if(exists_column_cdr_mos_xr and rtpab[i]->rtcp_xr.counter > 0) {
+				cdr.add(rtpab[i]->rtcp_xr.minmos, c+"_mos_xr_min_mult10");
+				cdr.add(rtpab[i]->rtcp_xr.avgmos, c+"_mos_xr_mult10");
 			}
 
 			// calculate MOS score for fixed 200ms 
