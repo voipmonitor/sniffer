@@ -892,7 +892,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	Call *owner = (Call*)call_owner;
 
 	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {
-		if(!owner->rtp_from_multiple_sensors) {
+		if(!owner || !owner->rtp_from_multiple_sensors) {
 			extern bool opt_disable_rtp_warning;
 			if(!opt_disable_rtp_warning) {
 				u_long actTime = getTimeMS();
@@ -901,7 +901,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					lastTimeSyslog = actTime;
 				}
 			}
-			owner->rtp_from_multiple_sensors = true;
+			if(owner) {
+				owner->rtp_from_multiple_sensors = true;
+			}
 		}
 		return;
 	}
@@ -1055,17 +1057,22 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 	}
 
-	unsigned int *lastssrc = iscaller ? 
-		(owner->lastcallerrtp ? &owner->lastcallerrtp->ssrc : NULL) :
-		(owner->lastcalledrtp ? &owner->lastcalledrtp->ssrc : NULL);
-
-	RTP *lastrtp = iscaller ?
-		(owner->lastcallerrtp ? owner->lastcallerrtp : NULL) :
-		(owner->lastcalledrtp ? owner->lastcalledrtp : NULL);
+	unsigned int *lastssrc = NULL;
+	RTP *lastrtp = NULL;
+	if(owner) {
+		lastssrc = iscaller ? 
+			(owner->lastcallerrtp ? &owner->lastcallerrtp->ssrc : NULL) :
+			(owner->lastcalledrtp ? &owner->lastcalledrtp->ssrc : NULL);
+		lastrtp = iscaller ?
+			(owner->lastcallerrtp ? owner->lastcallerrtp : NULL) :
+			(owner->lastcalledrtp ? owner->lastcalledrtp : NULL);
+	}
 	
 	// if packet has Mark bit OR last frame was not dtmf and current frame is voice and last ssrc is different then current ssrc packet AND (last RTP saddr == current RTP saddr)  - reset
 	if(getMarker() or
-		(!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and lastssrc and *lastssrc != ssrc and lastrtp->saddr == this->saddr)
+		(!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and 
+		 lastssrc and *lastssrc != ssrc and 
+		 lastrtp and lastrtp->saddr == this->saddr)
 
 
 	) {
