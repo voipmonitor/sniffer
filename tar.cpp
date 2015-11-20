@@ -1734,7 +1734,9 @@ int untar_gui(const char *args) {
 		return(1);
 	}
 	tar.tar_read_save_parameters(outputFileHandle);
-	tar.tar_read((string(destFile) + ".*").c_str(), destFile, 0, NULL, tarPos);
+	string destFile_conv = destFile;
+	prepare_string_to_filename((char*)destFile_conv.c_str());
+	tar.tar_read((destFile_conv + ".*").c_str(), destFile, 0, NULL, tarPos);
 	fclose(outputFileHandle);
 	
 	return(0);
