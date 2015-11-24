@@ -1142,8 +1142,9 @@ void RtpGraphSaver::auto_open(const char *fileName, const char *fileNameSpoolRel
 void RtpGraphSaver::write(char *buffer, int length) {
 	if(!this->isOpen()) {
 		if(this->enableAutoOpen) {
+			bool rsltOpen = this->open(this->fileName.c_str(), this->fileNameSpoolRelative.c_str());
 			this->enableAutoOpen = false;
-			if(this->open(this->fileName.c_str(), this->fileNameSpoolRelative.c_str())) {
+			if(rsltOpen) {
 				extern unsigned int graph_version;
 				this->write((char*)&graph_version, 4);
 			} else {

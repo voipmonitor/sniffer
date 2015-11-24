@@ -620,7 +620,7 @@ public:
 		return(isOpen() || this->enableAutoOpen);
 	}
 	bool isClose() {
-		return(this->handle == NULL);
+		return(!this->enableAutoOpen && this->handle == NULL);
 	}
 	bool isExistsContent() {
 		return(this->existsContent);

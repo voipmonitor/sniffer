@@ -4376,6 +4376,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new cConfigItem_yesno("sipoverlap", &opt_sipoverlap));
 				addConfigItem(new cConfigItem_yesno("update_dstnum_onanswer", &opt_update_dstnum_onanswer));
 				addConfigItem(new cConfigItem_integer("sdp_multiplication", &opt_sdp_multiplication));
+				addConfigItem(new cConfigItem_yesno("save_sip_responses", &opt_cdr_sipresp));
 				addConfigItem((new cConfigItem_string("save_sip_history", &opt_save_sip_history))
 					->addStringItems("invite|bye|cancel|register|message|info|subscribe|options|notify|ack|prack|publish|refer|update|REQUESTS|RESPONSES|ALL"));
 		subgroup("REGISTER");
@@ -7002,6 +7003,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sdp_multiplication", NULL))) {
 		opt_sdp_multiplication = atoi(value);
+	}
+	if((value = ini.GetValue("general", "save_sip_responses", NULL))) {
+		opt_cdr_sipresp = value;
 	}
 	if((value = ini.GetValue("general", "save_sip_history", NULL))) {
 		opt_save_sip_history = value;
