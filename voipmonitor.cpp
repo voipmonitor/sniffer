@@ -6099,11 +6099,19 @@ int eval_config(string inistr) {
 		case 'y':
 		case 'Y':
 		case '1':
+			opt_onlyRTPheader = 0;
 			opt_saveRTP = 1;
 			break;
 		case 'h':
 		case 'H':
 			opt_onlyRTPheader = 1;
+			opt_saveRTP = 0;
+			break;
+		case 'n':
+		case 'N':
+		case '0':
+			opt_onlyRTPheader = 0;
+			opt_saveRTP = 0;
 			break;
 		}
 	}
@@ -6186,6 +6194,12 @@ int eval_config(string inistr) {
 			opt_saveWAV = 1;
 			opt_audio_format = FORMAT_OGG;
 			break;
+		case 'n':
+		case 'N':
+		case '0':
+			opt_saveWAV = 0;
+			opt_audio_format = 0;
+			break;
 		}
 	}
 	if((value = ini.GetValue("general", "savegraph", NULL))) {
@@ -6194,10 +6208,17 @@ int eval_config(string inistr) {
 		case '1':
 		case 'p':
 			opt_saveGRAPH = 1;
+			opt_gzipGRAPH = FileZipHandler::compress_na;
 			break;
 		case 'g':
 			opt_saveGRAPH = 1;
 			opt_gzipGRAPH = FileZipHandler::gzip;
+			break;
+		case 'n':
+		case 'N':
+		case '0':
+			opt_saveGRAPH = 0;
+			opt_gzipGRAPH = FileZipHandler::compress_na;
 			break;
 		}
 	}
