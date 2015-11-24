@@ -1362,7 +1362,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		calltable->unlock_calls_listMAP();
 		return 0;
 	} else if(strstr(buf, "reload") != NULL) {
-		reload_config();
+		set_request_for_reload_capture_rules();
 		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

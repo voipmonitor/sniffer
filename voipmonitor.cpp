@@ -1580,6 +1580,10 @@ void hot_restart_with_json_config(const char *jsonConfig) {
 	set_terminating();
 }
 
+void set_request_for_reload_capture_rules() {
+	request_iptelnum_reload = 1;
+}
+
 void reload_capture_rules() {
 
 	ipfilter_reload_do = 0;
