@@ -1,3 +1,10 @@
+14.3.1 24.11.2015
+=================
+- reload manager command reloads only capture rules and not the configuration
+- new option save_sip_responses enables sip_response storing 
+- fix possible race condition when savegraph only is enabled
+
+
 14.3 20.11.2015
 ===============
 - fix issue with convertchar option when download files through tcp manager
