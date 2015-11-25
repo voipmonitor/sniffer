@@ -1336,7 +1336,7 @@ void *storing_cdr( void *dummy ) {
 			
 			calltable->unlock_calls_queue();
 
-			if(terminating_storing_cdr && !calls_queue_size) {
+			if(terminating_storing_cdr && (!calls_queue_size || terminating > 1)) {
 				break;
 			}
 		
@@ -1345,7 +1345,7 @@ void *storing_cdr( void *dummy ) {
 		
 		calltable->lock_calls_queue();
 		calls_queue_size = calltable->calls_queue.size();
-		if(terminating_storing_cdr && !calls_queue_size) {
+		if(terminating_storing_cdr && (!calls_queue_size || terminating > 1)) {
 			calltable->unlock_calls_queue();
 			break;
 		}
@@ -1354,17 +1354,19 @@ void *storing_cdr( void *dummy ) {
 	if(verbosity && !opt_nocdr) {
 		syslog(LOG_NOTICE, "terminated - storing cdr / message / register");
 	}
-	int _terminating = terminating;
-	while(terminating == _terminating) {
-		calltable->lock_calls_audioqueue();
-		size_t callsInAudioQueue = calltable->audio_queue.size();
-		calltable->unlock_calls_audioqueue();
-		if(!callsInAudioQueue) {
-			break;
-		}
-		syslog(LOG_NOTICE, "wait for convert audio for %lu calls (or next terminating)", callsInAudioQueue);
-		for(int i = 0; i < 10 && terminating == _terminating; i++) {
-			usleep(100000);
+	if(terminating < 2) {
+		int _terminating = terminating;
+		while(terminating == _terminating) {
+			calltable->lock_calls_audioqueue();
+			size_t callsInAudioQueue = calltable->audio_queue.size();
+			calltable->unlock_calls_audioqueue();
+			if(!callsInAudioQueue) {
+				break;
+			}
+			syslog(LOG_NOTICE, "wait for convert audio for %lu calls (or next terminating)", callsInAudioQueue);
+			for(int i = 0; i < 10 && terminating == _terminating; i++) {
+				usleep(100000);
+			}
 		}
 	}
 	calltable->setAudioQueueTerminating();
