@@ -1,3 +1,9 @@
+14.3.2 26.11.2015
+=================
+- fix sniffer terminating when kill signal is sent 
+- Fixing problem when disabling options used - savertp,saveaudio,savegraph=no in configuration files in conf.d directory
+
+
 14.3.1 24.11.2015
 =================
 - reload manager command reloads only capture rules and not the configuration
