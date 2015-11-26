@@ -581,8 +581,8 @@ Call::closeRawFiles() {
 				if(!rtp[i]->mos_processed or (rtp[i]->last_mos_time + 4 < rtp[i]->_last_ts.tv_sec)) {
 					rtp[i]->save_mos_graph(true);
 				}
-				rtp[i]->graph.close();
 			}
+			rtp[i]->graph.close();
 		}
 	}
 }
