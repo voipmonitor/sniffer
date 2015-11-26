@@ -1,3 +1,8 @@
+14.3.3 26.11.2015
+=================
+- fix critical bug >= 14.3.1 calls were not closing / stroing to the database when .graph storing is enabled (by default) 
+
+
 14.3.2 26.11.2015
 =================
 - fix sniffer terminating when kill signal is sent 
