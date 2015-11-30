@@ -49,14 +49,14 @@ GLIBCFLAGS =$(shell pkg-config --cflags glib-2.0)
 GLIBLIB =$(shell pkg-config --libs glib-2.0)
 
 LIBPNG=@LIBPNG@
-LIBFFTW3=@LIBFFTW3@
+LIBFFT=@LIBFFT@
 LIBLD=@LIBLD@
 LIBLZMA=@LIBLZMA@
 LIBSSH=@LIBSSH@
 LIBGNUTLS=@LIBGNUTLS@
 LIBGNUTLSSTATIC=@LIBGNUTLSSTATIC@ 
-SHARED_LIBS = ${LIBLD} -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} ${LIBSSH} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} -llzo2 ${LIBPNG} ${LIBFFTW3}
-STATIC_LIBS = -static @LIBTCMALLOC@ -lodbc -lltdl ${LIBLD} -lrt -lz ${LIBSSH} -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lz -ldbi -llzma ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBFFTW3}
+SHARED_LIBS = ${LIBLD} -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} ${LIBSSH} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} -llzo2 ${LIBPNG} ${LIBFFT}
+STATIC_LIBS = -static @LIBTCMALLOC@ -lodbc -lltdl ${LIBLD} -lrt -lz ${LIBSSH} -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lz -ldbi -llzma ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBFFT}
 INCLUDES =  -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS}
 LIBS_PATH = -L/usr/local/lib/ 
 CXXFLAGS +=  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) ${MTUNE} ${INCLUDES}

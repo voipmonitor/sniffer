@@ -10,7 +10,7 @@
 #undef HAVE_LIBCURL
 
 /* Define if using libfftw3 */
-#undef HAVE_LIBFFTW3
+#undef HAVE_LIBFFT
 
 /* Define to 1 if you have the `glib-2.0' library (-lglib-2.0). */
 #undef HAVE_LIBGLIB_2_0

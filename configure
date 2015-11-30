@@ -593,7 +593,7 @@ LIBGNUTLS
 LIBSSH
 LIBLZO
 LIBLZMA
-LIBFFTW3
+LIBFFT
 LIBPNG
 MYSQLINCLUDE
 MYSQLLIB
@@ -3805,7 +3805,7 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_fftw3_main" >&5
 $as_echo "$ac_cv_lib_fftw3_main" >&6; }
 if test "x$ac_cv_lib_fftw3_main" = xyes; then :
-  HAVE_LIBFFTW3=1
+  HAVE_LIBFFT=1
 else
   as_fn_error $? "Unable to find libfftw3 library. apt-get install libfftw3-dev | yum install fftw-devel" "$LINENO" 5
 fi
@@ -4242,14 +4242,14 @@ $as_echo "#define HAVE_LIBPNG 1" >>confdefs.h
 	HAVE_LIBPNG_T=yes
 fi
 
-HAVE_LIBFFTW3_T=no
-if test "x$HAVE_LIBFFTW3" = "x1"; then
+HAVE_LIBFFT_T=no
+if test "x$HAVE_LIBFFT" = "x1"; then
 
-$as_echo "#define HAVE_LIBFFTW3 1" >>confdefs.h
+$as_echo "#define HAVE_LIBFFT 1" >>confdefs.h
 
-	LIBFFTW3="-lfftw3"
+	LIBFFT="-lfftw3"
 
-	HAVE_LIBFFTW3_T=yes
+	HAVE_LIBFFT_T=yes
 fi
 
 HAVE_LIBLZMA_T=no
@@ -5635,7 +5635,7 @@ ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
-fftw3 lib found     		       : $HAVE_LIBFFTW3_T
+fftw3 lib found     		       : $HAVE_LIBFFT_T
 
 shared binary: run make
 static binary: run make static
@@ -5663,7 +5663,7 @@ ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
-fftw3 lib found     		       : $HAVE_LIBFFTW3_T
+fftw3 lib found     		       : $HAVE_LIBFFT_T
 
 shared binary: run make
 static binary: run make static

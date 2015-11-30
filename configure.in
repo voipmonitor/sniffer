@@ -49,7 +49,7 @@ AC_CHECK_LIB([ssh], [ssh_forward_accept], HAVE_LIBSSH=1, AC_MSG_NOTICE([Your lib
 AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
 AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c')
 AC_CHECK_LIB([png], [main], HAVE_LIBPNG=1, AC_MSG_ERROR([Unable to find libpng library. apt-get install libpng12-dev | yum install libpng-devel]))
-AC_CHECK_LIB([fftw3], [main], HAVE_LIBFFTW3=1, AC_MSG_ERROR([Unable to find libfftw3 library. apt-get install libfftw3-dev | yum install fftw-devel]))
+AC_CHECK_LIB([fftw3], [main], HAVE_LIBFFT=1, AC_MSG_ERROR([Unable to find libfftw3 library. apt-get install libfftw3-dev | yum install fftw-devel]))
 if test "x$LIBJSON_NAME" = "x"; then
 	AC_MSG_ERROR([Unable to find json(-c) library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | pkg install json-c | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig])
 else
@@ -109,11 +109,11 @@ if test "x$HAVE_LIBPNG" = "x1"; then
 	HAVE_LIBPNG_T=yes
 fi
 
-HAVE_LIBFFTW3_T=no
-if test "x$HAVE_LIBFFTW3" = "x1"; then 
-	AC_DEFINE([HAVE_LIBFFTW3], [1], [Define if using libfftw3])
-	AC_SUBST([LIBFFTW3],["-lfftw3"])
-	HAVE_LIBFFTW3_T=yes
+HAVE_LIBFFT_T=no
+if test "x$HAVE_LIBFFT" = "x1"; then 
+	AC_DEFINE([HAVE_LIBFFT], [1], [Define if using libfftw3])
+	AC_SUBST([LIBFFT],["-lfftw3"])
+	HAVE_LIBFFT_T=yes
 fi
 
 HAVE_LIBLZMA_T=no
@@ -205,7 +205,7 @@ ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
-fftw3 lib found     		       : $HAVE_LIBFFTW3_T
+fftw3 lib found     		       : $HAVE_LIBFFT_T
 
 shared binary: run make 
 static binary: run make static
