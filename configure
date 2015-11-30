@@ -593,6 +593,8 @@ LIBGNUTLS
 LIBSSH
 LIBLZO
 LIBLZMA
+LIBFFTW3
+LIBPNG
 MYSQLINCLUDE
 MYSQLLIB
 MYSQLCXXFLAGS
@@ -3736,6 +3738,78 @@ if test "x$ac_cv_lib_json_c_main" = xyes; then :
   LIBJSON_NAME='json-c'
 fi
 
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lpng" >&5
+$as_echo_n "checking for main in -lpng... " >&6; }
+if ${ac_cv_lib_png_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lpng  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_png_main=yes
+else
+  ac_cv_lib_png_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_png_main" >&5
+$as_echo "$ac_cv_lib_png_main" >&6; }
+if test "x$ac_cv_lib_png_main" = xyes; then :
+  HAVE_LIBPNG=1
+else
+  as_fn_error $? "Unable to find libpng library. apt-get install libpng12-dev | yum install libpng-devel" "$LINENO" 5
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lfftw3" >&5
+$as_echo_n "checking for main in -lfftw3... " >&6; }
+if ${ac_cv_lib_fftw3_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lfftw3  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_fftw3_main=yes
+else
+  ac_cv_lib_fftw3_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_fftw3_main" >&5
+$as_echo "$ac_cv_lib_fftw3_main" >&6; }
+if test "x$ac_cv_lib_fftw3_main" = xyes; then :
+  HAVE_LIBFFTW3=1
+else
+  as_fn_error $? "Unable to find libfftw3 library. apt-get install libfftw3-dev | yum install fftw-devel" "$LINENO" 5
+fi
+
 if test "x$LIBJSON_NAME" = "x"; then
 	as_fn_error $? "Unable to find json(-c) library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | pkg install json-c | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig" "$LINENO" 5
 else
@@ -4157,6 +4231,26 @@ else
 $as_echo "$as_me: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libtcmalloc-minimal4 or compile from source https://code.google.com/p/gperftools/" >&6;}
 fi
 
+
+HAVE_LIBPNG_T=no
+if test "x$HAVE_LIBPNG" = "x1"; then
+
+$as_echo "#define HAVE_LIBPNG 1" >>confdefs.h
+
+	LIBPNG="-lpng"
+
+	HAVE_LIBPNG_T=yes
+fi
+
+HAVE_LIBFFTW3_T=no
+if test "x$HAVE_LIBFFTW3" = "x1"; then
+
+$as_echo "#define HAVE_LIBFFTW3 1" >>confdefs.h
+
+	LIBFFTW3="-lfftw3"
+
+	HAVE_LIBFFTW3_T=yes
+fi
 
 HAVE_LIBLZMA_T=no
 if test "x$HAVE_LIBLZMA" = "x1"; then
@@ -5540,6 +5634,8 @@ lzma compression enabled               : $HAVE_LIBLZMA_T
 ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
+libpng lib found     		       : $HAVE_LIBPNG_T
+fftw3 lib found     		       : $HAVE_LIBFFTW3_T
 
 shared binary: run make
 static binary: run make static
@@ -5566,6 +5662,8 @@ lzma compression enabled               : $HAVE_LIBLZMA_T
 ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
+libpng lib found     		       : $HAVE_LIBPNG_T
+fftw3 lib found     		       : $HAVE_LIBFFTW3_T
 
 shared binary: run make
 static binary: run make static
