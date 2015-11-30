@@ -31,8 +31,12 @@
 #include <fcntl.h>
 #include <math.h>
 #include <signal.h>
+#ifdef HAVE_LIBPNG
 #include <png.h>
+#endif //HAVE_LIBPNG
+#ifdef HAVE_LIBFFT
 #include <fftw3.h>
+#endif //HAVE_LIBFFT
 
 #include "voipmonitor.h"
 
@@ -3953,6 +3957,7 @@ cPng::pixel *cPng::getPixelPointer(size_t x, size_t y) {
 }
 
 bool cPng::write(const char *filePathName, string *error) {
+#ifdef HAVE_LIBPNG
 	FILE *fp = fopen (filePathName, "wb");
 	if(!fp) {
 		if(error) {
@@ -4014,13 +4019,19 @@ bool cPng::write(const char *filePathName, string *error) {
 	png_destroy_write_struct(&png_ptr, &info_ptr);
 	
 	return(true);
+#else
+	if(error) {
+		*error = "missing png library";
+	}
+	return(false);
+#endif //HAVE_LIBPNG
 }
 
 
 bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, 
 				 size_t sampleRate, size_t msPerPixel, size_t height,
 				 u_int8_t channel, u_int8_t channels) {
-
+#ifdef HAVE_LIBFFT
 	u_int8_t bytesPerSample = 2;
 	bool debug_out = false;
  
@@ -4157,4 +4168,7 @@ bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput,
 	delete [] multipliers;
 
 	return(rsltWrite);
+#else
+	return(false);
+#endif //HAVE_LIBFFT
 }
