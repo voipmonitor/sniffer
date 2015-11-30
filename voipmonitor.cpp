@@ -1891,16 +1891,20 @@ int main(int argc, char *argv[]) {
 		chdir(opt_chdir);
 		char inputRaw[1024];
 		char outputSpectrogramPng[2][1024];
+		char outputPeaks[2][1024];
 		unsigned sampleRate;
 		unsigned msPerPixel;
 		unsigned channels;
-		if(sscanf(opt_spectrogram_gui_params, "%s %u %u %i %s %s", inputRaw, &sampleRate, &msPerPixel, &channels, outputSpectrogramPng[0], outputSpectrogramPng[1]) < 5) {
+		if(sscanf(opt_spectrogram_gui_params, "%s %u %u %i %s %s %s %s", 
+			  inputRaw, &sampleRate, &msPerPixel, &channels, 
+			  outputSpectrogramPng[0], outputPeaks[0],
+			  outputSpectrogramPng[1], outputPeaks[1]) < 6) {
 			cerr << "spectrogram: bad arguments" << endl;
 			return(1);
 		}
 		bool rsltCreateSpectrogram = false;
 		for(unsigned ch = 0; ch < channels; ch++) {
-			rsltCreateSpectrogram = create_spectrogram_from_raw(inputRaw, outputSpectrogramPng[ch], 
+			rsltCreateSpectrogram = create_spectrogram_from_raw(inputRaw, outputSpectrogramPng[ch], outputPeaks[ch],
 									    sampleRate, msPerPixel, 0,
 									    ch + 1, channels);
 			if(!rsltCreateSpectrogram) {

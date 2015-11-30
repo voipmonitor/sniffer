@@ -31,14 +31,15 @@
 #include <fcntl.h>
 #include <math.h>
 #include <signal.h>
+
+#include "voipmonitor.h"
+
 #ifdef HAVE_LIBPNG
 #include <png.h>
 #endif //HAVE_LIBPNG
 #ifdef HAVE_LIBFFT
 #include <fftw3.h>
 #endif //HAVE_LIBFFT
-
-#include "voipmonitor.h"
 
 #ifdef FREEBSD
 #include <sys/uio.h>
@@ -4028,7 +4029,7 @@ bool cPng::write(const char *filePathName, string *error) {
 }
 
 
-bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, 
+bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, const char *peaksOutput, 
 				 size_t sampleRate, size_t msPerPixel, size_t height,
 				 u_int8_t channel, u_int8_t channels) {
 #ifdef HAVE_LIBFFT
@@ -4166,6 +4167,27 @@ bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput,
 	fftw_free(fftw_out);
 	
 	delete [] multipliers;
+	
+	if(rsltWrite && peaksOutput) {
+		FILE *peaksOutputHandle = fopen(peaksOutput, "wb");
+		if(peaksOutputHandle) {
+			u_int16_t *peaks = new u_int16_t[width + 10];
+			size_t peaks_count = 0;
+			u_int16_t peak = 0;
+			for(size_t i = 0; i < raw.size(); i++) {
+				if(!(i % stepSamples) && i) {
+				       peaks[peaks_count++] = peak;
+				       peak = 0;
+				}
+				if(raw[i] > peak) {
+					peak = raw[i];
+				}
+			}
+			fwrite(peaks, sizeof(u_int16_t), peaks_count, peaksOutputHandle);
+			fclose(peaksOutputHandle);
+			delete [] peaks;
+		}
+	}
 
 	return(rsltWrite);
 #else

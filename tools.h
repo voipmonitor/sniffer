@@ -1952,7 +1952,7 @@ private:
 	int depth;
 };
 
-bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, 
+bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, const char *peaksOutput,
 				 size_t sampleRate, size_t msPerPixel, size_t height,
 				 u_int8_t channel = 1, u_int8_t channels = 1);
 
