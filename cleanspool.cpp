@@ -1893,6 +1893,13 @@ void runCleanSpoolThread() {
 	}
 }
 
+void termCleanSpoolThread() {
+	if(cleanspool_thread) {
+		pthread_join(cleanspool_thread, NULL);
+		cleanspool_thread = 0;
+	}
+}
+
 string getMaxSpoolDate() {
 	string path = "./";
 	dirent* de;

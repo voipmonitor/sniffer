@@ -11,6 +11,7 @@ bool check_exists_act_files_in_filesindex();
 void clean_obsolete_dirs(const char *path = NULL);
 bool isSetCleanspoolParameters();
 void runCleanSpoolThread();
+void termCleanSpoolThread();
 string getMaxSpoolDate();
 bool check_datehour(const char *datehour);
 

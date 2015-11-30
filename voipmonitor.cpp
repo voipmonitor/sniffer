@@ -2951,6 +2951,8 @@ void main_term_read() {
 	}
 	delete calltable;
 	calltable = NULL;
+	
+	termCleanSpoolThread();
 
 	pthread_mutex_destroy(&mysqlconnect_lock);
 	extern SqlDb *sqlDbSaveCall;
