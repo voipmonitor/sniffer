@@ -1632,6 +1632,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if (opt_rrd) rrdRSSVSZ_vsize =(double)vsize/1024/1024;
 	}
 	outStrStat << "]MB ";
+	outStrStat << "LA[" << getLoadAvgStr() << "] ";
 	pbStatString = outStr.str() + outStrStat.str();
 	pbCountPacketDrop = this->instancePcapHandle ?
 				this->instancePcapHandle->getCountPacketDrop() :
