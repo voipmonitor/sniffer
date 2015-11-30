@@ -9,6 +9,9 @@
 /* Define to 1 if you have the `curl' library (-lcurl). */
 #undef HAVE_LIBCURL
 
+/* Define if using libfftw3 */
+#undef HAVE_LIBFFT
+
 /* Define to 1 if you have the `glib-2.0' library (-lglib-2.0). */
 #undef HAVE_LIBGLIB_2_0
 
@@ -38,6 +41,9 @@
 
 /* Define to 1 if you have the `pcap' library (-lpcap). */
 #undef HAVE_LIBPCAP
+
+/* Define if using liblpng */
+#undef HAVE_LIBPNG
 
 /* Define to 1 if you have the `pthread' library (-lpthread). */
 #undef HAVE_LIBPTHREAD
