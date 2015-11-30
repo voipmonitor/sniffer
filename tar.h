@@ -408,6 +408,8 @@ public:
 	double getCpuUsagePerc(int threadIndex, bool preparePstatData);
 	bool allThreadsEnds();
 	bool flushTar(const char *tarName);
+	u_int64_t sumSizeOpenTars();
+	list<string> listOpenTars();
 
 private:
 	map<unsigned int, vector<data_t> > queue_data[4]; //queue for all, sip, rtp, graph

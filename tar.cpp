@@ -1680,6 +1680,30 @@ bool TarQueue::flushTar(const char *tarName) {
 	return(rslt);
 }
 
+u_int64_t TarQueue::sumSizeOpenTars() {
+	u_int64_t sumSize = 0;
+	map<string, Tar*>::iterator tars_it;
+	pthread_mutex_lock(&tarslock);
+	for(tars_it = tars.begin(); tars_it != tars.end(); tars_it++) {
+		Tar *tar = tars_it->second;
+		sumSize += GetFileSizeDU(tar->pathname.c_str());
+	}
+	pthread_mutex_unlock(&tarslock);
+	return(sumSize);
+}
+
+list<string> TarQueue::listOpenTars() {
+	list<string> listTars;
+	map<string, Tar*>::iterator tars_it;
+	pthread_mutex_lock(&tarslock);
+	for(tars_it = tars.begin(); tars_it != tars.end(); tars_it++) {
+		Tar *tar = tars_it->second;
+		listTars.push_back(tar->pathname);
+	}
+	pthread_mutex_unlock(&tarslock);
+	return(listTars);
+}
+
 void *TarQueueThread(void *dummy) {
 	// run each second flushQueue
 	while(1) {

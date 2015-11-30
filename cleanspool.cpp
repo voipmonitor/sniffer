@@ -17,6 +17,7 @@
 #include "sql_db.h"
 #include "tools.h"
 #include "cleanspool.h"
+#include "tar.h"
 
 
 using namespace std;
@@ -223,6 +224,19 @@ void unlink_dirs(string datehour, int all, int sip, int rtp, int graph, int audi
 	}
 }
 
+unsigned int get_reduk_maxpoolsize() {
+	unsigned int reduk_maxpoolsize = maxpoolsize_set ? maxpoolsize_set : opt_maxpoolsize;
+	extern TarQueue *tarQueue;
+	if(tarQueue) {
+		unsigned int open_tars_size = tarQueue->sumSizeOpenTars() / (1204 * 1024);
+		if(open_tars_size < reduk_maxpoolsize) {
+			reduk_maxpoolsize -= open_tars_size;
+		} else {
+			return(0);
+		}
+	}
+	return(reduk_maxpoolsize);
+}
 void clean_maxpoolsize() {
 
 	if(opt_maxpoolsize == 0 && maxpoolsize_set == 0) {
@@ -257,7 +271,9 @@ void clean_maxpoolsize() {
 		}
 		cout << "]\n";
 	}
-	while(total > (maxpoolsize_set ? maxpoolsize_set : opt_maxpoolsize)) {
+	unsigned int reduk_maxpoolsize;
+	while((reduk_maxpoolsize = get_reduk_maxpoolsize()) > 0 &&
+	      total > reduk_maxpoolsize) {
 		// walk all rows ordered by datehour and delete everything 
 		stringstream q;
 		q << "SELECT datehour FROM files WHERE id_sensor = " << (opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0) << " ORDER BY datehour LIMIT 1";
@@ -1178,6 +1194,15 @@ void check_index_date(string date, SqlDb *sqlDb) {
 	}
 }
 
+bool fileIsOpenTar(list<string> &listOpenTars, string &file) {
+	list<string>::iterator iter;
+	for(iter = listOpenTars.begin(); iter != listOpenTars.end(); iter++) {
+		if(iter->find(file) != string::npos) {
+			return(true);
+		}
+	}
+	return(false);
+}
 long long reindex_date_hour(string date, int h, bool readOnly, map<string, long long> *typeSize, bool quickCheck) {
  
 	bool syslog_start = false;
@@ -1209,6 +1234,12 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 		(*typeSize)["graph"] = 0;
 		(*typeSize)["audio"] = 0;
 	}
+	
+	extern TarQueue *tarQueue;
+	list<string> listOpenTars;
+	if(tarQueue) {
+		listOpenTars = tarQueue->listOpenTars();
+	}
 
 	for(int m = 0; m < 60; m++) {
 
@@ -1239,11 +1270,14 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 							break;
 						}
 						string dhmtf = dhmt + '/' + de2->d_name;
-						long long size = GetFileSizeDU(dhmtf);
-						if(size == 0) size = 1;
-						sipsize += size;
-						if(!readOnly) {
-							(*sipfile) << dhmtf << ":" << size << "\n";
+						if(!tarQueue ||
+						   !fileIsOpenTar(listOpenTars, dhmtf)) {
+							long long size = GetFileSizeDU(dhmtf);
+							if(size == 0) size = 1;
+							sipsize += size;
+							if(!readOnly) {
+								(*sipfile) << dhmtf << ":" << size << "\n";
+							}
 						}
 					}
 					closedir(dp);
@@ -1276,11 +1310,14 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 							break;
 						}
 						string dhmtf = dhmt + '/' + de2->d_name;
-						long long size = GetFileSizeDU(dhmtf);
-						if(size == 0) size = 1;
-						rtpsize += size;
-						if(!readOnly) {
-							(*rtpfile) << dhmtf << ":" << size << "\n";
+						if(!tarQueue ||
+						   !fileIsOpenTar(listOpenTars, dhmtf)) {
+							long long size = GetFileSizeDU(dhmtf);
+							if(size == 0) size = 1;
+							rtpsize += size;
+							if(!readOnly) {
+								(*rtpfile) << dhmtf << ":" << size << "\n";
+							}
 						}
 					}
 					closedir(dp);
@@ -1313,11 +1350,14 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 							break;
 						}
 						string dhmtf = dhmt + '/' + de2->d_name;
-						long long size = GetFileSizeDU(dhmtf);
-						if(size == 0) size = 1;
-						graphsize += size;
-						if(!readOnly) {
-							(*graphfile) << dhmtf << ":" << size << "\n";
+						if(!tarQueue ||
+						   !fileIsOpenTar(listOpenTars, dhmtf)) {
+							long long size = GetFileSizeDU(dhmtf);
+							if(size == 0) size = 1;
+							graphsize += size;
+							if(!readOnly) {
+								(*graphfile) << dhmtf << ":" << size << "\n";
+							}
 						}
 					}
 					closedir(dp);
