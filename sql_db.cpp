@@ -2954,7 +2954,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `filter_telnum` (\
 			`id` int NOT NULL AUTO_INCREMENT,\
-			`prefix` bigint unsigned DEFAULT NULL,\
+			`prefix` char(32) unsigned DEFAULT NULL,\
 			`fixed_len` int unsigned DEFAULT '0',\
 			`direction` tinyint DEFAULT NULL,\
 			`rtp` tinyint DEFAULT NULL,\
@@ -5299,7 +5299,7 @@ bool SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 	"IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'filter_telnum') BEGIN\
 		CREATE TABLE filter_telnum (\
 			id int PRIMARY KEY IDENTITY,\
-			prefix bigint NULL,\
+			prefix char(32) NULL,\
 			fixed_len int DEFAULT '0',\
 			direction tinyint DEFAULT '0',\
 			rtp tinyint DEFAULT '0',\
