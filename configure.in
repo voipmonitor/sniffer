@@ -48,8 +48,8 @@ AC_CHECK_LIB([curl], [main], , AC_MSG_ERROR([Unable to find curl library. apt-ge
 AC_CHECK_LIB([ssh], [ssh_forward_accept], HAVE_LIBSSH=1, AC_MSG_NOTICE([Your libssh is old or missing - cloud feature is disabled. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files]))
 AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
 AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c')
-AC_CHECK_LIB([png], [main], HAVE_LIBPNG=1, AC_MSG_ERROR([Unable to find libpng library. apt-get install libpng12-dev | yum install libpng-devel]))
-AC_CHECK_LIB([fftw3], [main], HAVE_LIBFFT=1, AC_MSG_ERROR([Unable to find libfftw3 library. apt-get install libfftw3-dev | yum install fftw-devel]))
+AC_CHECK_LIB([png], [main], HAVE_LIBPNG=1, AC_MSG_WARN([Unable to find libpng library. apt-get install libpng12-dev | yum install libpng-devel]))
+AC_CHECK_LIB([fftw3], [main], HAVE_LIBFFT=1, AC_MSG_WARN([Unable to find libfftw3 library. apt-get install libfftw3-dev | yum install fftw-devel]))
 if test "x$LIBJSON_NAME" = "x"; then
 	AC_MSG_ERROR([Unable to find json(-c) library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | pkg install json-c | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig])
 else

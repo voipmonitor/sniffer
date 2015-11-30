@@ -3771,7 +3771,8 @@ $as_echo "$ac_cv_lib_png_main" >&6; }
 if test "x$ac_cv_lib_png_main" = xyes; then :
   HAVE_LIBPNG=1
 else
-  as_fn_error $? "Unable to find libpng library. apt-get install libpng12-dev | yum install libpng-devel" "$LINENO" 5
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: Unable to find libpng library. apt-get install libpng12-dev | yum install libpng-devel" >&5
+$as_echo "$as_me: WARNING: Unable to find libpng library. apt-get install libpng12-dev | yum install libpng-devel" >&2;}
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lfftw3" >&5
@@ -3807,7 +3808,8 @@ $as_echo "$ac_cv_lib_fftw3_main" >&6; }
 if test "x$ac_cv_lib_fftw3_main" = xyes; then :
   HAVE_LIBFFT=1
 else
-  as_fn_error $? "Unable to find libfftw3 library. apt-get install libfftw3-dev | yum install fftw-devel" "$LINENO" 5
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: Unable to find libfftw3 library. apt-get install libfftw3-dev | yum install fftw-devel" >&5
+$as_echo "$as_me: WARNING: Unable to find libfftw3 library. apt-get install libfftw3-dev | yum install fftw-devel" >&2;}
 fi
 
 if test "x$LIBJSON_NAME" = "x"; then
