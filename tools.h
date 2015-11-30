@@ -1906,4 +1906,55 @@ public:
 	static unsigned int decode_length(unsigned int length);
 };
 
+
+class cPng {
+public:
+	struct pixel_hsv {
+		pixel_hsv(u_int16_t h = 0, u_int8_t s = 0, u_int8_t v = 0) {
+			hue = h;
+			saturation = s;
+			value = v;
+		}
+		u_int16_t hue;
+		u_int8_t saturation;
+		u_int8_t value;
+	};
+	struct pixel {
+		pixel(u_int8_t r = 0, u_int8_t g = 0, u_int8_t b = 0) {
+			red = r;
+			green = g;
+			blue = b;
+		}
+		void setFromHsv(pixel_hsv p_hsv);
+		u_int8_t red;
+		u_int8_t green;
+		u_int8_t blue;
+	};
+public:
+	cPng(size_t width, size_t height);
+	~cPng();
+	void setPixel(size_t x, size_t y, u_int8_t red, u_int8_t green, u_int8_t blue);
+	void setPixel(size_t x, size_t y, pixel p);
+	pixel getPixel(size_t x, size_t y);
+	pixel *getPixelPointer(size_t x, size_t y);
+	bool write(const char *filePathName, std::string *error = NULL);
+	size_t getWidth() {
+		return(width);
+	}
+	size_t getHeight() {
+		return(height);
+	}
+private:
+	size_t width;
+	size_t height;
+	pixel *pixels;
+	int pixel_size;
+	int depth;
+};
+
+bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, 
+				 size_t sampleRate, size_t msPerPixel, size_t height,
+				 u_int8_t channel = 1, u_int8_t channels = 1);
+
+
 #endif

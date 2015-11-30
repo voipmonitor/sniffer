@@ -31,6 +31,8 @@
 #include <fcntl.h>
 #include <math.h>
 #include <signal.h>
+#include <png.h>
+#include <fftw3.h>
 
 #include "voipmonitor.h"
 
@@ -3897,4 +3899,262 @@ unsigned int conv7bit::encode_length(unsigned int length) {
 
 unsigned int conv7bit::decode_length(unsigned int length) {
 	return(length * 8 / 7);
+}
+
+
+void cPng::pixel::setFromHsv(pixel_hsv p_hsv) {
+	pixel pix;
+	double h, s, v, f, p, q, t;
+	u_int16_t hi;
+	h = p_hsv.hue;
+	s = (double)p_hsv.saturation / 100;
+	v = (double)p_hsv.value / 100;
+	hi = (int)(h/60) % 6;
+	f = (h / 60) - hi;
+	p = v * (1 - s);
+	q = v * (1 - f * s);
+	t = v * (1 - (1 - f) * s);
+	switch(hi) {
+		case 0: *this = pixel(v * 255, t * 255, p * 255); break;
+		case 1: *this = pixel(q * 255, v * 255, p * 255); break;
+		case 2: *this = pixel(p * 255, v * 255, t * 255); break;
+		case 3: *this = pixel(p * 255, q * 255, v * 255); break;
+		case 4: *this = pixel(t * 255 ,p * 255, v * 255); break;
+		case 5: *this = pixel(v * 255, p * 255, q * 255); break;
+	}
+}
+
+cPng::cPng(size_t width, size_t height) {
+	this->width = width;
+	this->height = height;
+	pixels = new pixel[width * height];
+	pixel_size = 3;
+	depth = 8;
+}
+
+cPng::~cPng() {
+	delete [] pixels;
+}
+
+void cPng::setPixel(size_t x, size_t y, u_int8_t red, u_int8_t green, u_int8_t blue) {
+	*getPixelPointer(x, y) = pixel(red, green, blue);
+}
+
+void cPng::setPixel(size_t x, size_t y, pixel p) {
+	*getPixelPointer(x, y) = p;
+}
+
+cPng::pixel cPng::getPixel(size_t x, size_t y) {
+	return(*getPixelPointer(x, y));
+}
+
+cPng::pixel *cPng::getPixelPointer(size_t x, size_t y) {
+	return(pixels + width * y + x);
+}
+
+bool cPng::write(const char *filePathName, string *error) {
+	FILE *fp = fopen (filePathName, "wb");
+	if(!fp) {
+		if(error) {
+			*error = string("open file ") + filePathName + " failed";
+		}
+		return(false);
+	}
+
+	png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+	if(png_ptr == NULL) {
+		if(error) {
+			*error = "png_create_write_struct failed";
+		}
+		fclose(fp);
+		return(false);
+	}
+	
+	png_infop info_ptr = png_create_info_struct (png_ptr);
+	if(info_ptr == NULL) {
+		if(error) {
+			*error = "png_create_info_struct failed";
+		}
+		png_destroy_write_struct(&png_ptr, NULL);
+		fclose(fp);
+		return(false);
+	}
+	
+	png_set_IHDR (png_ptr,
+		      info_ptr,
+		      this->width,
+		      this->height,
+		      depth,
+		      PNG_COLOR_TYPE_RGB,
+		      PNG_INTERLACE_NONE,
+		      PNG_COMPRESSION_TYPE_DEFAULT,
+		      PNG_FILTER_TYPE_DEFAULT);
+	
+	png_byte ** row_pointers = (png_byte**)png_malloc (png_ptr, this->height * sizeof(png_byte*));
+	for(size_t y = 0; y < this->height; y++) {
+		png_byte *row = (png_byte*)png_malloc (png_ptr, sizeof (u_int8_t) * this->width * pixel_size);
+		row_pointers[y] = row;
+		for(size_t x = 0; x < this->width; x++) {
+			pixel * pp = this->getPixelPointer(x, y);
+			*row++ = pp->red;
+			*row++ = pp->green;
+			*row++ = pp->blue;
+	    }
+	}
+	
+	png_init_io(png_ptr, fp);
+	png_set_rows(png_ptr, info_ptr, row_pointers);
+	png_write_png(png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+
+	for(size_t y = 0; y < this->height; y++) {
+		png_free(png_ptr, row_pointers[y]);
+	}
+	png_free(png_ptr, row_pointers);
+	
+	png_destroy_write_struct(&png_ptr, &info_ptr);
+	
+	return(true);
+}
+
+
+bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, 
+				 size_t sampleRate, size_t msPerPixel, size_t height,
+				 u_int8_t channel, u_int8_t channels) {
+
+	u_int8_t bytesPerSample = 2;
+	bool debug_out = false;
+ 
+	vector<int16_t> raw;
+ 
+	FILE *inputRawHandle = fopen(rawInput, "rb");
+	char inputBuff[20000];
+	size_t readLen;
+	while((readLen = fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle)) > 0) {
+		for(size_t i = 0; i < readLen / (bytesPerSample * channels); i++) {
+			raw.push_back(*(int16_t*)(inputBuff + i * (bytesPerSample * channels) + (channel - 1) * bytesPerSample));
+		}
+	}
+	fclose(inputRawHandle);
+	
+	size_t fftSize;
+	if(height) {
+		fftSize = height * 2;
+	} else {
+		fftSize = 128;
+		height = fftSize / 2;
+	}
+	size_t stepSamples = sampleRate * msPerPixel / 1000;
+	size_t width = raw.size() / stepSamples;
+	
+	map<size_t, map<size_t, u_int8_t> >  image;
+
+	double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+	fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+	fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+	
+	/*cPng::pixel palette[256];
+	for (int i=0; i < 32; i++)  {
+	   palette[i].red = 0;
+	   palette[i].green = 0;
+	   palette[i].blue = i * 4;
+	    
+	   palette[i+32].red = 0;
+	   palette[i+32].green = 0;
+	   palette[i+32].blue = 128 + i * 4;
+	    
+	   palette[i+64].red = 0;
+	   palette[i+64].green = i * 4;
+	   palette[i+64].blue = 255;
+	    
+	   palette[i+96].red = 0;
+	   palette[i+96].green = 128 + i * 4;
+	   palette[i+96].blue = 255;
+	    
+	   palette[i+128].red = 0;
+	   palette[i+128].green = 255;
+	   palette[i+128].blue = 255 - i * 8;
+	    
+	   palette[i+160].red = i * 8;
+	   palette[i+160].green = 255;
+	   palette[i+160].blue = 0;
+	    
+	   palette[i+192].red = 255;
+	   palette[i+192].green = 255 - i * 8;
+	   palette[i+192].blue = 0;
+	    
+	   palette[i+224].red = 255;
+	   palette[i+224].green = 0;
+	   palette[i+224].blue = 0;
+	}*/
+	
+	/*cPng::pixel palette[256];
+	for(int i = 1; i < 100; i++) {
+		cPng::pixel_hsv p_hsv(150 - i * 1.5, 100, 50 + i * 0.5);
+		palette[i].setFromHsv(p_hsv);
+	}*/
+	
+	cPng::pixel palette[10];
+	palette[1] = cPng::pixel(0,0,255);
+	palette[2] = cPng::pixel(0,50,255);
+	palette[3] = cPng::pixel(0,100,255);
+	palette[4] = cPng::pixel(0,150,255);
+	palette[5] = cPng::pixel(0,255,0);
+	palette[6] = cPng::pixel(255,150,0);
+	palette[7] = cPng::pixel(255,100,0);
+	palette[8] = cPng::pixel(255,50,0);
+	palette[9] = cPng::pixel(255,0,0);
+	
+	size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
+	
+	double *multipliers = new double[fftSize];
+	for(size_t i = 0; i < fftSize; i++) {
+		multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
+	}
+	
+	double maxout = 0;
+	double minout = 0;
+	double maxout1 = 0;
+	size_t maxout1i = 0;
+	
+	cPng png(width, height);
+	
+	for(size_t x = 0; x < width; x++) {
+	 
+		for(size_t i = 0; i < fftSize; i++) {
+			fftw_in[i] = raw[x * stepSamples + i] * multipliers[i];
+		}
+		fftw_execute(fftw_pl);
+		
+		for(size_t i = 0; i < height; i++) {
+			double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
+			out = log(max(200., out) - 200 + 1);
+			if(debug_out) {
+				if(out > maxout) {
+					maxout = out;
+				}
+				if(out < minout) {
+					minout = out;
+				}
+				if(out > maxout1) {
+					maxout1 = out;
+					maxout1i = i;
+				}
+				cout << out << ",";
+			}
+			png.setPixel(x, height - (i + 1), palette[(int)min((int)(out / 16.635 * palette_size), (int)palette_size - 1)]);
+		}
+		if(debug_out) {
+			cout << endl << minout << " - " << maxout << " / " << maxout1 << " / " << maxout1i << endl;
+		}
+	} 
+	
+	bool rsltWrite = png.write(pngOutput);
+
+	fftw_destroy_plan(fftw_pl);
+	fftw_free(fftw_in); 
+	fftw_free(fftw_out);
+	
+	delete [] multipliers;
+
+	return(rsltWrite);
 }
