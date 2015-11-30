@@ -4065,7 +4065,7 @@ bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, co
 	fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
 	fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
 	
-	/*cPng::pixel palette[256];
+	cPng::pixel palette[256];
 	for (int i=0; i < 32; i++)  {
 	   palette[i].red = 0;
 	   palette[i].green = 0;
@@ -4098,24 +4098,25 @@ bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, co
 	   palette[i+224].red = 255;
 	   palette[i+224].green = 0;
 	   palette[i+224].blue = 0;
-	}*/
+	}
 	
 	/*cPng::pixel palette[256];
-	for(int i = 1; i < 100; i++) {
-		cPng::pixel_hsv p_hsv(150 - i * 1.5, 100, 50 + i * 0.5);
+	for(int i = 0; i < 255; i++) {
+		cPng::pixel_hsv p_hsv(255 - i, 100, (int)(40 + 60 * i / 255.));
 		palette[i].setFromHsv(p_hsv);
 	}*/
 	
-	cPng::pixel palette[10];
-	palette[1] = cPng::pixel(0,0,255);
-	palette[2] = cPng::pixel(0,50,255);
-	palette[3] = cPng::pixel(0,100,255);
-	palette[4] = cPng::pixel(0,150,255);
-	palette[5] = cPng::pixel(0,255,0);
-	palette[6] = cPng::pixel(255,150,0);
-	palette[7] = cPng::pixel(255,100,0);
-	palette[8] = cPng::pixel(255,50,0);
-	palette[9] = cPng::pixel(255,0,0);
+	/*cPng::pixel palette[11];
+	palette[1] = cPng::pixel(0,0,180);
+	palette[2] = cPng::pixel(0,0,255);
+	palette[3] = cPng::pixel(0,50,255);
+	palette[4] = cPng::pixel(0,100,255);
+	palette[5] = cPng::pixel(0,150,255);
+	palette[6] = cPng::pixel(0,255,0);
+	palette[7] = cPng::pixel(255,150,0);
+	palette[8] = cPng::pixel(255,100,0);
+	palette[9] = cPng::pixel(255,50,0);
+	palette[10] = cPng::pixel(255,0,0);*/
 	
 	size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
 	
@@ -4140,7 +4141,7 @@ bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, co
 		
 		for(size_t i = 0; i < height; i++) {
 			double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
-			out = log(max(200., out) - 200 + 1);
+			out = log(max(1., out));
 			if(debug_out) {
 				if(out > maxout) {
 					maxout = out;
@@ -4154,12 +4155,15 @@ bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, co
 				}
 				cout << out << ",";
 			}
-			png.setPixel(x, height - (i + 1), palette[(int)min((int)(out / 16.635 * palette_size), (int)palette_size - 1)]);
+			png.setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
 		}
 		if(debug_out) {
 			cout << endl << minout << " - " << maxout << " / " << maxout1 << " / " << maxout1i << endl;
 		}
 	} 
+	if(debug_out) {
+		cout << maxout << endl;
+	}
 	
 	bool rsltWrite = png.write(pngOutput);
 

@@ -1408,7 +1408,7 @@ Call::convertRawToWav() {
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			if(rtp[ssrc_index]->skip) continue;
+			if(ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip) continue;
 			adir = 1;
 			snprintf(wav0, 1023, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
 			wav0[1023] = 0;
@@ -1424,10 +1424,7 @@ Call::convertRawToWav() {
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
-			if(rtp[ssrc_index]->skip) {
-				printf("test2\n");
-				continue;
-			}
+			if(ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip) continue;
 			bdir = 1;
 			snprintf(wav1, 1023, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
 			wav1[1023] = 0;
