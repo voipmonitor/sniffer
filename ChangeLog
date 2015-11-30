@@ -1,3 +1,9 @@
+14.3.4 30.11.2015
+=================
+- fix rare crash when restarting sniffer 
+- fix possible crash when converting audio 
+
+
 14.3.3 26.11.2015
 =================
 - fix critical bug >= 14.3.1 calls were not closing / stroing to the database when .graph storing is enabled (by default) 
