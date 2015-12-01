@@ -1528,8 +1528,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double t2cpu = this->getCpuUsagePerc(writeThread, true);
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu;
+		double t2cpu_preprocess_packet_out_thread = 0;
 		if(preProcessPacket) {
-			double t2cpu_preprocess_packet_out_thread = preProcessPacket->getCpuUsagePerc(true);
+			t2cpu_preprocess_packet_out_thread = preProcessPacket->getCpuUsagePerc(true);
 			if(t2cpu_preprocess_packet_out_thread >= 0) {
 				outStrStat << "/" << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 				if (opt_rrd) rrdtCPU_t2 = t2cpu_preprocess_packet_out_thread;
@@ -1552,7 +1553,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 				}
 			}
-		} else if(t2cpu > 60) {
+		} else if(preProcessPacket ? t2cpu_preprocess_packet_out_thread > 60 : t2cpu > 60) {
 			ProcessRtpPacket::autoStartProcessRtpPacket();
 		}
 		outStrStat << "%] ";
