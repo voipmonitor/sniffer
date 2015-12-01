@@ -1,3 +1,10 @@
+14.3.5 1.12.2015
+================
+- fix filter_num table creation
+- add load average to syslog output [VS-354]
+- do not count opened files for write when doing reindex files and count opened files when calculating free space for cleaning spool (fixes 100% used space for some cases) [VG-760]
+
+
 14.3.4 30.11.2015
 =================
 - fix rare crash when restarting sniffer 
