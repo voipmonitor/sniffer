@@ -1194,6 +1194,10 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 	}
 }
 
+void RtpGraphSaver::clearAutoOpen() {
+	this->enableAutoOpen = false;
+}
+
 AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, PcapDumper *pcapDumper, const char *file, const char *column, long long writeBytes) {
 	this->call = call;
 	if(call) {

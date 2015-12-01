@@ -613,6 +613,7 @@ public:
 	void auto_open(const char *fileName, const char *fileNameSpoolRelative);
 	void write(char *buffer, int length);
 	void close(bool updateFilesQueue = true);
+	void clearAutoOpen();
 	bool isOpen() {
 		return(this->handle != NULL);
 	}

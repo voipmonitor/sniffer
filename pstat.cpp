@@ -102,3 +102,26 @@ long unsigned int getRss() {
 		return(0);
 	}
 }
+
+void getLoadAvg(double *la_1, double *la_5, double *la_15) {
+	if(la_1) *la_1 = 0;
+	if(la_5) *la_5 = 0;
+	if(la_15) *la_15 = 0;
+	FILE *fla_stat = fopen("/proc/loadavg", "r");
+	if(fla_stat) {
+		double _la_1, _la_5, _la_15;
+		int rslt_fscanf = fscanf(fla_stat, "%lf %lf %lf", &_la_1, &_la_5, &_la_15);
+		if(rslt_fscanf >= 3 && la_15) *la_15 = _la_15;
+		if(rslt_fscanf >= 2 && la_5) *la_5 = _la_5;
+		if(rslt_fscanf >= 1 && la_1) *la_1 = _la_1;
+		fclose(fla_stat);
+	}
+}
+
+std::string getLoadAvgStr() {
+	double la_1, la_5, la_15;
+	getLoadAvg(&la_1, &la_5, &la_15);
+	char buff_rslt[20];
+	snprintf(buff_rslt, sizeof(buff_rslt), "%.2lf %.2lf %.2lf", la_1, la_5, la_15);
+	return(buff_rslt);
+}

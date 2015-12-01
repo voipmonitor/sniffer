@@ -2,6 +2,9 @@
 #define PSTAT_H
 
 
+#include <string>
+
+
 struct pstat_data {
     long long unsigned int utime_ticks;
     long long int cutime_ticks;
@@ -22,6 +25,8 @@ void pstat_calc_cpu_usage(const pstat_data* cur_usage,
 			  long unsigned int* ucpu_usage,
 			  long unsigned int* scpu_usage);
 long unsigned int getRss();
+void getLoadAvg(double *la_1, double *la_5, double *la_15);
+std::string getLoadAvgStr();
 
 
 #endif
