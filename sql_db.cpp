@@ -2954,7 +2954,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `filter_telnum` (\
 			`id` int NOT NULL AUTO_INCREMENT,\
-			`prefix` char(32) unsigned DEFAULT NULL,\
+			`prefix` varchar(32) DEFAULT NULL,\
 			`fixed_len` int unsigned DEFAULT '0',\
 			`direction` tinyint DEFAULT NULL,\
 			`rtp` tinyint DEFAULT NULL,\

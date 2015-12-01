@@ -1,3 +1,8 @@
+14.3.5 1.12.2015
+================
+- fix filter_num table creation
+
+
 14.3.4 30.11.2015
 =================
 - fix rare crash when restarting sniffer 
