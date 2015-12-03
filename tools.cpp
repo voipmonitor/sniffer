@@ -4034,21 +4034,124 @@ bool cPng::write(const char *filePathName, string *error) {
 }
 
 
-bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, const char *peaksOutput, 
-				 size_t sampleRate, size_t msPerPixel, size_t height,
-				 u_int8_t channel, u_int8_t channels) {
-#ifdef HAVE_LIBFFT
+bool create_waveform_from_raw(const char *rawInput,
+			      size_t sampleRate, size_t msPerPixel, u_int8_t channels,
+			      const char waveformOutput[][1024]) {
 	u_int8_t bytesPerSample = 2;
-	bool debug_out = false;
- 
-	vector<int16_t> raw;
+	
+	long long int rawInputSize = GetFileSize(rawInput);
+	if(rawInputSize <= 0) {
+		return(false);
+	}
+	size_t rawSamples = rawInputSize / bytesPerSample / channels;
+	if(rawSamples < 1) {
+		return(false);
+	}
+	
+	int16_t *raw[2] = { NULL, NULL };
+	for(u_int8_t ch = 0; ch < channels; ch++) {
+		raw[ch] = new int16_t[rawSamples];
+	}
  
 	FILE *inputRawHandle = fopen(rawInput, "rb");
 	char inputBuff[20000];
 	size_t readLen;
+	size_t counterSamples;
 	while((readLen = fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle)) > 0) {
-		for(size_t i = 0; i < readLen / (bytesPerSample * channels); i++) {
-			raw.push_back(*(int16_t*)(inputBuff + i * (bytesPerSample * channels) + (channel - 1) * bytesPerSample));
+		for(size_t i = 0; i < readLen / bytesPerSample; i += channels) {
+			for(u_int8_t ch = 0; ch < channels; ch++) {
+				if(counterSamples < rawSamples) {
+					raw[ch][counterSamples] = *(int16_t*)(inputBuff + i * bytesPerSample + ch * bytesPerSample);
+				}
+			}
+			++counterSamples;
+		}
+	}
+	fclose(inputRawHandle);
+	
+	size_t stepSamples = sampleRate * msPerPixel / 1000;
+	size_t width = rawSamples / stepSamples;
+	
+	bool rsltWrite = false;
+	
+	for(u_int8_t ch = 0; ch < channels; ch++) {
+	 
+		FILE *waveformOutputHandle = fopen(waveformOutput[ch], "wb");
+		if(waveformOutputHandle) {
+			u_int16_t *peaks = new u_int16_t[width + 10];
+			size_t peaks_count = 0;
+			u_int16_t peak = 0;
+			int16_t v;
+			for(size_t i = 0; i < rawSamples; i++) {
+				if(!(i % stepSamples) && i) {
+				       peaks[peaks_count++] = peak;
+				       peak = 0;
+				}
+				v = raw[ch][i];
+				if(v < 0) {
+					v = -v;
+				}
+				if(v > peak) {
+					peak = v;
+				}
+			}
+			fwrite(peaks, sizeof(u_int16_t), peaks_count, waveformOutputHandle);
+			fclose(waveformOutputHandle);
+			delete [] peaks;
+			rsltWrite = true;
+		} else {
+			rsltWrite = false;
+		}
+		
+		if(!rsltWrite) {
+			break;
+		}
+		
+	}
+	
+	for(u_int8_t ch = 0; ch < channels; ch++) {
+		if(raw[ch]) {
+			delete [] raw[ch];
+		}
+	}
+	
+	return(rsltWrite);
+}
+
+
+bool create_spectrogram_from_raw(const char *rawInput,
+				 size_t sampleRate, size_t msPerPixel, size_t height, u_int8_t channels,
+				 const char spectrogramOutput[][1024]) {
+#ifdef HAVE_LIBFFT
+	u_int8_t bytesPerSample = 2;
+	bool debug_out = false;
+ 
+	long long int rawInputSize = GetFileSize(rawInput);
+	if(rawInputSize <= 0) {
+		return(false);
+	}
+	size_t rawSamples = rawInputSize / bytesPerSample / channels;
+	if(rawSamples < 1) {
+		return(false);
+	}
+	
+	int16_t *raw[2] = { NULL, NULL };
+	for(u_int8_t ch = 0; ch < channels; ch++) {
+		raw[ch] = new int16_t[rawSamples];
+	}
+ 
+	FILE *inputRawHandle = fopen(rawInput, "rb");
+	char inputBuff[20000];
+	size_t readLen;
+	size_t counterSamples;
+	while((readLen = fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle)) > 0) {
+		for(size_t i = 0; i < readLen / bytesPerSample; i += channels) {
+			for(u_int8_t ch = 0; ch < channels; ch++) {
+				if(counterSamples < rawSamples) {
+					raw[ch][counterSamples] = *(int16_t*)(inputBuff + i * bytesPerSample + ch * bytesPerSample);
+				}
+			}
+			++counterSamples;
 		}
 	}
 	fclose(inputRawHandle);
@@ -4061,143 +4164,138 @@ bool create_spectrogram_from_raw(const char *rawInput, const char *pngOutput, co
 		height = fftSize / 2;
 	}
 	size_t stepSamples = sampleRate * msPerPixel / 1000;
-	size_t width = raw.size() / stepSamples;
+	size_t width = rawSamples / stepSamples;
 	
-	map<size_t, map<size_t, u_int8_t> >  image;
+	bool rsltWrite = false;
+	
+	for(u_int8_t ch = 0; ch < channels; ch++) {
+	
+		map<size_t, map<size_t, u_int8_t> >  image;
 
-	double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
-	fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
-	fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
-	
-	cPng::pixel palette[256];
-	for (int i=0; i < 32; i++)  {
-	   palette[i].red = 0;
-	   palette[i].green = 0;
-	   palette[i].blue = i * 4;
-	    
-	   palette[i+32].red = 0;
-	   palette[i+32].green = 0;
-	   palette[i+32].blue = 128 + i * 4;
-	    
-	   palette[i+64].red = 0;
-	   palette[i+64].green = i * 4;
-	   palette[i+64].blue = 255;
-	    
-	   palette[i+96].red = 0;
-	   palette[i+96].green = 128 + i * 4;
-	   palette[i+96].blue = 255;
-	    
-	   palette[i+128].red = 0;
-	   palette[i+128].green = 255;
-	   palette[i+128].blue = 255 - i * 8;
-	    
-	   palette[i+160].red = i * 8;
-	   palette[i+160].green = 255;
-	   palette[i+160].blue = 0;
-	    
-	   palette[i+192].red = 255;
-	   palette[i+192].green = 255 - i * 8;
-	   palette[i+192].blue = 0;
-	    
-	   palette[i+224].red = 255;
-	   palette[i+224].green = 0;
-	   palette[i+224].blue = 0;
-	}
-	
-	/*cPng::pixel palette[256];
-	for(int i = 0; i < 255; i++) {
-		cPng::pixel_hsv p_hsv(255 - i, 100, (int)(40 + 60 * i / 255.));
-		palette[i].setFromHsv(p_hsv);
-	}*/
-	
-	/*cPng::pixel palette[11];
-	palette[1] = cPng::pixel(0,0,180);
-	palette[2] = cPng::pixel(0,0,255);
-	palette[3] = cPng::pixel(0,50,255);
-	palette[4] = cPng::pixel(0,100,255);
-	palette[5] = cPng::pixel(0,150,255);
-	palette[6] = cPng::pixel(0,255,0);
-	palette[7] = cPng::pixel(255,150,0);
-	palette[8] = cPng::pixel(255,100,0);
-	palette[9] = cPng::pixel(255,50,0);
-	palette[10] = cPng::pixel(255,0,0);*/
-	
-	size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
-	
-	double *multipliers = new double[fftSize];
-	for(size_t i = 0; i < fftSize; i++) {
-		multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
-	}
-	
-	double maxout = 0;
-	double minout = 0;
-	double maxout1 = 0;
-	size_t maxout1i = 0;
-	
-	cPng png(width, height);
-	
-	for(size_t x = 0; x < width; x++) {
-	 
-		for(size_t i = 0; i < fftSize; i++) {
-			fftw_in[i] = raw[x * stepSamples + i] * multipliers[i];
-		}
-		fftw_execute(fftw_pl);
+		double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+		fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+		fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
 		
-		for(size_t i = 0; i < height; i++) {
-			double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
-			out = log(max(1., out));
+		cPng::pixel palette[256];
+		for (int i=0; i < 32; i++)  {
+		   palette[i].red = 0;
+		   palette[i].green = 0;
+		   palette[i].blue = i * 4;
+		    
+		   palette[i+32].red = 0;
+		   palette[i+32].green = 0;
+		   palette[i+32].blue = 128 + i * 4;
+		    
+		   palette[i+64].red = 0;
+		   palette[i+64].green = i * 4;
+		   palette[i+64].blue = 255;
+		    
+		   palette[i+96].red = 0;
+		   palette[i+96].green = 128 + i * 4;
+		   palette[i+96].blue = 255;
+		    
+		   palette[i+128].red = 0;
+		   palette[i+128].green = 255;
+		   palette[i+128].blue = 255 - i * 8;
+		    
+		   palette[i+160].red = i * 8;
+		   palette[i+160].green = 255;
+		   palette[i+160].blue = 0;
+		    
+		   palette[i+192].red = 255;
+		   palette[i+192].green = 255 - i * 8;
+		   palette[i+192].blue = 0;
+		    
+		   palette[i+224].red = 255;
+		   palette[i+224].green = 0;
+		   palette[i+224].blue = 0;
+		}
+		
+		/*cPng::pixel palette[256];
+		for(int i = 0; i < 255; i++) {
+			cPng::pixel_hsv p_hsv(255 - i, 100, (int)(40 + 60 * i / 255.));
+			palette[i].setFromHsv(p_hsv);
+		}*/
+		
+		/*cPng::pixel palette[11];
+		palette[1] = cPng::pixel(0,0,180);
+		palette[2] = cPng::pixel(0,0,255);
+		palette[3] = cPng::pixel(0,50,255);
+		palette[4] = cPng::pixel(0,100,255);
+		palette[5] = cPng::pixel(0,150,255);
+		palette[6] = cPng::pixel(0,255,0);
+		palette[7] = cPng::pixel(255,150,0);
+		palette[8] = cPng::pixel(255,100,0);
+		palette[9] = cPng::pixel(255,50,0);
+		palette[10] = cPng::pixel(255,0,0);*/
+		
+		size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
+		
+		double *multipliers = new double[fftSize];
+		for(size_t i = 0; i < fftSize; i++) {
+			multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
+		}
+		
+		double maxout = 0;
+		double minout = 0;
+		double maxout1 = 0;
+		size_t maxout1i = 0;
+		
+		cPng png(width, height);
+		
+		for(size_t x = 0; x < width; x++) {
+		 
+			for(size_t i = 0; i < fftSize; i++) {
+				fftw_in[i] = raw[ch][x * stepSamples + i] * multipliers[i];
+			}
+			fftw_execute(fftw_pl);
+			
+			for(size_t i = 0; i < height; i++) {
+				double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
+				out = log(max(1., out));
+				if(debug_out) {
+					if(out > maxout) {
+						maxout = out;
+					}
+					if(out < minout) {
+						minout = out;
+					}
+					if(out > maxout1) {
+						maxout1 = out;
+						maxout1i = i;
+					}
+					cout << out << ",";
+				}
+				png.setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
+			}
 			if(debug_out) {
-				if(out > maxout) {
-					maxout = out;
-				}
-				if(out < minout) {
-					minout = out;
-				}
-				if(out > maxout1) {
-					maxout1 = out;
-					maxout1i = i;
-				}
-				cout << out << ",";
+				cout << endl << minout << " - " << maxout << " / " << maxout1 << " / " << maxout1i << endl;
 			}
-			png.setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
-		}
+		} 
 		if(debug_out) {
-			cout << endl << minout << " - " << maxout << " / " << maxout1 << " / " << maxout1i << endl;
+			cout << maxout << endl;
 		}
-	} 
-	if(debug_out) {
-		cout << maxout << endl;
+		
+		rsltWrite = png.write(spectrogramOutput[ch]);
+
+		fftw_destroy_plan(fftw_pl);
+		fftw_free(fftw_in); 
+		fftw_free(fftw_out);
+		
+		delete [] multipliers;
+		
+		if(!rsltWrite) {
+			break;
+		}
+		
 	}
 	
-	bool rsltWrite = png.write(pngOutput);
-
-	fftw_destroy_plan(fftw_pl);
-	fftw_free(fftw_in); 
-	fftw_free(fftw_out);
-	
-	delete [] multipliers;
-	
-	if(rsltWrite && peaksOutput) {
-		FILE *peaksOutputHandle = fopen(peaksOutput, "wb");
-		if(peaksOutputHandle) {
-			u_int16_t *peaks = new u_int16_t[width + 10];
-			size_t peaks_count = 0;
-			u_int16_t peak = 0;
-			for(size_t i = 0; i < raw.size(); i++) {
-				if(!(i % stepSamples) && i) {
-				       peaks[peaks_count++] = peak;
-				       peak = 0;
-				}
-				if(raw[i] > peak) {
-					peak = raw[i];
-				}
-			}
-			fwrite(peaks, sizeof(u_int16_t), peaks_count, peaksOutputHandle);
-			fclose(peaksOutputHandle);
-			delete [] peaks;
+	for(u_int8_t ch = 0; ch < channels; ch++) {
+		if(raw[ch]) {
+			delete [] raw[ch];
 		}
 	}
-
+	
 	return(rsltWrite);
 #else
 	return(false);

@@ -703,6 +703,7 @@ int opt_test = 0;
 
 char *opt_untar_gui_params = NULL;
 char *opt_unlzo_gui_params = NULL;
+char *opt_waveform_gui_params = NULL;
 char *opt_spectrogram_gui_params = NULL;
 char opt_test_str[1024];
 
@@ -1797,13 +1798,6 @@ int main(int argc, char *argv[]) {
 		setenv("TZ", "/etc/localtime", 1);
 	}
  
-	printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
-	syslog(LOG_NOTICE, "start voipmonitor version %s", RTPSENSOR_VERSION);
-	
-	string localActTime = sqlDateTimeString(time(NULL));
-	printf("local time %s\n", localActTime.c_str());
-	syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
- 
 	time(&startTime);
 
 	regfailedcache = new FILE_LINE regcache;
@@ -1865,7 +1859,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	if(!opt_nocdr && 
-	   !opt_untar_gui_params && !opt_unlzo_gui_params && !opt_spectrogram_gui_params &&
+	   !opt_untar_gui_params && !opt_unlzo_gui_params && !opt_waveform_gui_params && !opt_spectrogram_gui_params &&
 	   !printConfigStruct &&
 	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
@@ -1878,6 +1872,17 @@ int main(int argc, char *argv[]) {
 	if(!check_complete_parameters()) {
 		return 1;
 	}
+	
+	if(!is_read_from_file_simple() && 
+	   !opt_untar_gui_params && !opt_unlzo_gui_params && !opt_waveform_gui_params && !opt_spectrogram_gui_params &&
+	   command_line_data.size()) {
+		printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
+		syslog(LOG_NOTICE, "start voipmonitor version %s", RTPSENSOR_VERSION);
+		
+		string localActTime = sqlDateTimeString(time(NULL));
+		printf("local time %s\n", localActTime.c_str());
+		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
+	}
 
 	if(opt_untar_gui_params) {
 		chdir(opt_chdir);
@@ -1887,31 +1892,39 @@ int main(int argc, char *argv[]) {
 		chdir(opt_chdir);
 		return(unlzo_gui(opt_unlzo_gui_params));
 	}
+	if(opt_waveform_gui_params) {
+		chdir(opt_chdir);
+		char inputRaw[1024];
+		char outputWaveform[2][1024];
+		unsigned sampleRate;
+		unsigned msPerPixel;
+		unsigned channels;
+		if(sscanf(opt_waveform_gui_params, "%s %u %u %i %s %s", 
+			  inputRaw, &sampleRate, &msPerPixel, &channels, 
+			  outputWaveform[0], outputWaveform[1]) < 5) {
+			cerr << "waveform: bad arguments" << endl;
+			return(1);
+		}
+		return(!create_waveform_from_raw(inputRaw,
+						 sampleRate, msPerPixel, channels,
+						 outputWaveform));
+	}
 	if(opt_spectrogram_gui_params) {
 		chdir(opt_chdir);
 		char inputRaw[1024];
 		char outputSpectrogramPng[2][1024];
-		char outputPeaks[2][1024];
 		unsigned sampleRate;
 		unsigned msPerPixel;
 		unsigned channels;
-		if(sscanf(opt_spectrogram_gui_params, "%s %u %u %i %s %s %s %s", 
+		if(sscanf(opt_spectrogram_gui_params, "%s %u %u %i %s %s", 
 			  inputRaw, &sampleRate, &msPerPixel, &channels, 
-			  outputSpectrogramPng[0], outputPeaks[0],
-			  outputSpectrogramPng[1], outputPeaks[1]) < 6) {
+			  outputSpectrogramPng[0], outputSpectrogramPng[1]) < 5) {
 			cerr << "spectrogram: bad arguments" << endl;
 			return(1);
 		}
-		bool rsltCreateSpectrogram = false;
-		for(unsigned ch = 0; ch < channels; ch++) {
-			rsltCreateSpectrogram = create_spectrogram_from_raw(inputRaw, outputSpectrogramPng[ch], outputPeaks[ch],
-									    sampleRate, msPerPixel, 0,
-									    ch + 1, channels);
-			if(!rsltCreateSpectrogram) {
-				break;
-			}
-		}
-		return(!rsltCreateSpectrogram);
+		return(!create_spectrogram_from_raw(inputRaw,
+						    sampleRate, msPerPixel, 0, channels,
+						    outputSpectrogramPng));
 	}
 	
 	if(printConfigStruct) {
@@ -4903,7 +4916,8 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"mono", 0, 0, 201},
 	    {"untar-gui", 1, 0, 202},
 	    {"unlzo-gui", 1, 0, 205},
-	    {"spectrogram-gui", 1, 0, 206},
+	    {"waveform-gui", 1, 0, 206},
+	    {"spectrogram-gui", 1, 0, 207},
 	    {"new-config", 0, 0, 203},
 	    {"print-config-struct", 0, 0, 204},
 /*
@@ -4958,6 +4972,10 @@ void get_command_line_arguments() {
 				strcpy(opt_unlzo_gui_params, optarg);
 				break;
 			case 206:
+				opt_waveform_gui_params =  new FILE_LINE char[strlen(optarg) + 1];
+				strcpy(opt_waveform_gui_params, optarg);
+				break;
+			case 207:
 				opt_spectrogram_gui_params =  new FILE_LINE char[strlen(optarg) + 1];
 				strcpy(opt_spectrogram_gui_params, optarg);
 				break;
@@ -5257,7 +5275,7 @@ void set_context_config() {
 	}
 	
 	if(!is_read_from_file_simple() && 
-	   !opt_untar_gui_params && !opt_unlzo_gui_params && !opt_spectrogram_gui_params &&
+	   !opt_untar_gui_params && !opt_unlzo_gui_params && !opt_waveform_gui_params && !opt_spectrogram_gui_params &&
 	   command_line_data.size()) {
 		// restore orig values
 		buffersControl.restoreMaxBufferMemFromOrig();
@@ -5460,7 +5478,7 @@ void set_context_config() {
 
 bool check_complete_parameters() {
 	if (!is_read_from_file() && ifname[0] == '\0' && opt_scanpcapdir[0] == '\0' && 
-	    !opt_untar_gui_params && !opt_unlzo_gui_params && !opt_spectrogram_gui_params &&
+	    !opt_untar_gui_params && !opt_unlzo_gui_params && !opt_waveform_gui_params && !opt_spectrogram_gui_params &&
 	    !printConfigStruct && !is_receiver() &&
 	    !opt_test){
                         /* Ruler to assist with keeping help description to max. 80 chars wide:
