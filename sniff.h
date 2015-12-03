@@ -199,7 +199,7 @@ struct gre_hdr {
 
 class TcpReassemblySip {
 public:
-	struct tcp_stream2_s {
+	struct tcp_stream_packet {
 		u_int64_t packet_number;
 		u_int32_t saddr;
 		u_int16_t source; 
@@ -218,12 +218,24 @@ public:
 		u_int32_t seq;
 		u_int32_t next_seq;
 		u_int32_t ack_seq;
-		tcp_stream2_s *next;
+		tcp_stream_packet *next;
 		int lastpsh;
 	};
-	struct stream_id {
-		stream_id(u_int32_t saddr = 0, u_int16_t source = 0, 
-			  u_int32_t daddr = 0, u_int16_t dest = 0) {
+	struct tcp_stream {
+		tcp_stream() {
+			packets = NULL;
+			last_ts = 0;
+			last_seq = 0;
+			last_ack_seq = 0;
+		}
+		tcp_stream_packet* packets;
+		time_t last_ts;
+		u_int32_t last_seq;
+		u_int32_t last_ack_seq;
+	};
+	struct tcp_stream_id {
+		tcp_stream_id(u_int32_t saddr = 0, u_int16_t source = 0, 
+			      u_int32_t daddr = 0, u_int16_t dest = 0) {
 			this->saddr = saddr;
 			this->source = source;
 			this->daddr = daddr; 
@@ -233,7 +245,7 @@ public:
 		u_int16_t source;
 		u_int32_t daddr;
 		u_int16_t dest;
-		bool operator < (const stream_id& other) const {
+		bool operator < (const tcp_stream_id& other) const {
 			return((this->saddr < other.saddr) ? 1 : (this->saddr > other.saddr) ? 0 :
 			       (this->source < other.source) ? 1 : (this->source > other.source) ? 0 :
 			       (this->daddr < other.daddr) ? 1 : (this->daddr > other.daddr) ? 0 :
@@ -249,42 +261,49 @@ public:
 		bool issip);
 	void clean(time_t ts = 0);
 private:
-	tcp_stream2_s *addPacket(
-		tcp_stream2_s *stream,
+	bool addPacket(
+		tcp_stream *stream,
 		u_int64_t packet_number,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		pcap_t *handle, pcap_pkthdr header, const u_char *packet, struct iphdr2 *header_ip,
 		int dlt, int sensor_id);
 	void complete(
-		tcp_stream2_s *stream, stream_id id);
-	tcp_stream2_s *getLastStreamItem(tcp_stream2_s *stream) {
-		while(stream->next) {
-			stream = stream->next;
+		tcp_stream *stream, tcp_stream_id id);
+	tcp_stream_packet *getLastStreamPacket(tcp_stream *stream) {
+		if(!stream->packets) {
+			return(NULL);
 		}
-		return(stream);
+		tcp_stream_packet *packet = stream->packets;
+		while(packet->next) {
+			packet = packet->next;
+		}
+		return(packet);
 	}
-	bool isCompleteStream(tcp_stream2_s *stream) {
+	bool isCompleteStream(tcp_stream *stream) {
+		if(!stream->packets) {
+			return(false);
+		}
 		bool streamOneItems = false;
-		tcp_stream2_s *lastStreamItem = NULL;
-		if(stream->next) {
-			lastStreamItem = getLastStreamItem(stream);
+		tcp_stream_packet *lastStreamPacket = NULL;
+		if(stream->packets->next) {
+			lastStreamPacket = getLastStreamPacket(stream);
 		} else {
-			lastStreamItem = stream;
+			lastStreamPacket = stream->packets;
 			streamOneItems = true;
 		}
-		if(lastStreamItem->datalen >= 2 && 
-		   lastStreamItem->data[lastStreamItem->datalen - 2] == 0x0d && lastStreamItem->data[lastStreamItem->datalen - 1] == 0x0a) {
+		if(lastStreamPacket->datalen >= 2 && 
+		   lastStreamPacket->data[lastStreamPacket->datalen - 2] == 0x0d && lastStreamPacket->data[lastStreamPacket->datalen - 1] == 0x0a) {
 			return(true);
 		}
 		if(streamOneItems) {
-			char *endHeaderSepPos = (char*)memmem(stream->data, stream->datalen, "\r\n\r\n", 4);
+			char *endHeaderSepPos = (char*)memmem(lastStreamPacket->data, lastStreamPacket->datalen, "\r\n\r\n", 4);
 			if(endHeaderSepPos) {
 				*endHeaderSepPos = 0;
-				char *contentLengthPos = strcasestr(stream->data, "Content-Length: ");
+				char *contentLengthPos = strcasestr(lastStreamPacket->data, "Content-Length: ");
 				bool okLength = false;
 				if(contentLengthPos) {
 					unsigned int contentLength = atol(contentLengthPos + 16);
-					if((endHeaderSepPos - stream->data) + 4 + contentLength == stream->datalen) {
+					if((endHeaderSepPos - lastStreamPacket->data) + 4 + contentLength == lastStreamPacket->datalen) {
 						okLength = true;
 					}
 				}
@@ -296,8 +315,9 @@ private:
 		}
 		return(false);
 	}
+	void cleanStream(tcp_stream *stream, bool deletePackets);
 private:
-	map<stream_id, tcp_stream2_s*> tcp_streams;
+	map<tcp_stream_id, tcp_stream> tcp_streams;
 };
 
 

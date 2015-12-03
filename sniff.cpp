@@ -5008,63 +5008,76 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 }
 
 
+bool debug_reassembly_sip = false;
+
 void TcpReassemblySip::processPacket(
 		u_int64_t packet_number,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		pcap_t *handle, pcap_pkthdr header, const u_char *packet, struct iphdr2 *header_ip,
 		int dlt, int sensor_id,
 		bool issip) {
-	stream_id id(saddr, source, daddr, dest);
-	map<stream_id, tcp_stream2_s*>::iterator it = tcp_streams.find(id);
+	tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + sizeof(*header_ip));
+	tcp_stream_id rev_id(daddr, dest, saddr, source);
+	map<tcp_stream_id, tcp_stream>::iterator rev_it = tcp_streams.find(rev_id);
+	if(rev_it != tcp_streams.end()) {
+		if(rev_it->second.packets) {
+			tcp_stream_packet *lastPacket = getLastStreamPacket(&rev_it->second);
+			if(lastPacket->lastpsh && lastPacket->ack_seq == htonl(header_tcp->seq)) {
+				if(debug_reassembly_sip) {
+					cout << " + call complete (reverse stream)" << endl;
+				}
+				complete(&rev_it->second, rev_id);
+			}
+		}
+		if(debug_reassembly_sip) {
+			cout << " - reset last seq & ack (reverse stream)" << endl;
+		}
+		rev_it->second.last_seq = 0;
+		rev_it->second.last_ack_seq = 0;
+	}
+	tcp_stream_id id(saddr, source, daddr, dest);
+	map<tcp_stream_id, tcp_stream>::iterator it = tcp_streams.find(id);
 	if(it != tcp_streams.end()) {
-		tcp_stream2_s *findStream = it->second;
+		if(it->second.packets && it->second.last_ack_seq &&
+		   it->second.last_ack_seq != htonl(header_tcp->ack_seq)) {
+			if(debug_reassembly_sip) {
+				cout << " + call complete (diff ack)" << endl;
+			}
+			complete(&it->second, id);
+		}
 		addPacket(
-			findStream,
+			&it->second,
 			packet_number,
 			saddr, source, daddr, dest, data, datalen, dataoffset,
 			handle, header, packet, header_ip,
 			dlt, sensor_id);
-		if(isCompleteStream(findStream)) {
-			complete(findStream, id);
+		if(isCompleteStream(&it->second)) {
+			if(debug_reassembly_sip) {
+				cout << " + call complete (check complete)" << endl;
+			}
+			complete(&it->second, id);
 		}
 	} else {
-		stream_id rev_id(daddr, dest, saddr, source);
-		map<stream_id, tcp_stream2_s*>::iterator rev_it = tcp_streams.find(rev_id);
-		if(rev_it != tcp_streams.end()) {
-			tcp_stream2_s *findStream = rev_it->second;
-			tcp_stream2_s *lastStreamItem = getLastStreamItem(findStream);
-			struct tcphdr2 *header_tcp = (struct tcphdr2 *) ((char *) header_ip + sizeof(*header_ip));
-			if(lastStreamItem->lastpsh && lastStreamItem->ack_seq == htonl(header_tcp->seq)) {
-				complete(findStream, rev_id);
-			}
-		}
 		if(issip) {
-			tcp_streams[id] = addPacket(
-				NULL,
+			tcp_stream *stream = &tcp_streams[id];
+			addPacket(
+				stream,
 				packet_number,
 				saddr, source, daddr, dest, data, datalen, dataoffset,
 				handle, header, packet, header_ip,
 				dlt, sensor_id);
-			if(isCompleteStream(tcp_streams[id])) {
-				complete(tcp_streams[id], id);
+			if(isCompleteStream(stream)) {
+				complete(stream, id);
 			}
 		}
 	}
 }
 
 void TcpReassemblySip::clean(time_t ts) {
-	map<stream_id, tcp_stream2_s*>::iterator it;
+	map<tcp_stream_id, tcp_stream>::iterator it;
 	for(it = tcp_streams.begin(); it != tcp_streams.end();) {
-		if(!ts || (ts - it->second->ts) > (10 * 60)) {
-			// remove tcp stream after 10 minutes
-			tcp_stream2_s *tmpstream = it->second;
-			while(tmpstream) {
-				delete [] tmpstream->data;
-				delete [] tmpstream->packet;
-				tcp_stream2_s *next = tmpstream->next;
-				delete tmpstream;
-				tmpstream = next;
-			}
+		if(!ts || (ts - it->second.last_ts) > (10 * 60)) {
+			cleanStream(&it->second, true);
 			tcp_streams.erase(it++);
 		} else {
 			++it;
@@ -5072,63 +5085,106 @@ void TcpReassemblySip::clean(time_t ts) {
 	}
 }
 
-TcpReassemblySip::tcp_stream2_s *TcpReassemblySip::addPacket(
-		tcp_stream2_s *stream,
+bool TcpReassemblySip::addPacket(
+		tcp_stream *stream,
 		u_int64_t packet_number,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
 		pcap_t *handle, pcap_pkthdr header, const u_char *packet, struct iphdr2 *header_ip,
 		int dlt, int sensor_id) {
-	tcp_stream2_s *lastStreamItem = stream ? getLastStreamItem(stream) : NULL;
+	if(debug_reassembly_sip) {
+		cout << header.ts.tv_usec << " / "
+		     << string(data, min(datalen, 15)) << endl;
+	}
+	if(!datalen) {
+		if(debug_reassembly_sip) {
+			cout << " - skip zero datalen" << endl;
+		}
+		return(false);
+	}
+	tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + sizeof(*header_ip));
+	u_int32_t seq = htonl(header_tcp->seq);
+	u_int32_t ack_seq = htonl(header_tcp->ack_seq);
+	if(stream->packets) {
+		for(tcp_stream_packet *packet = stream->packets; packet; packet = packet->next) {
+			if(packet->seq == seq &&
+			   packet->ack_seq == ack_seq) {
+				if(debug_reassembly_sip) {
+					cout << " - skip exists seq & ack" << endl;
+				}
+				return(false);
+			}
+		}
+	} else {
+		if(seq == stream->last_seq && 
+		   ack_seq == stream->last_ack_seq) {
+			if(debug_reassembly_sip) {
+				cout << " - skip previous completed seq & ack" << endl;
+			}
+			return(false);
+		}
+	}
 	
-	tcp_stream2_s *newStreamItem = new FILE_LINE tcp_stream2_s;
-	newStreamItem->next = NULL;
-	newStreamItem->ts = header.ts.tv_sec;
+	tcp_stream_packet *lastPacket = stream->packets ? getLastStreamPacket(stream) : NULL;
+	
+	tcp_stream_packet *newPacket = new FILE_LINE tcp_stream_packet;
+	newPacket->next = NULL;
+	newPacket->ts = header.ts.tv_sec;
 
-	struct tcphdr2 *header_tcp = (struct tcphdr2 *) ((char *) header_ip + sizeof(*header_ip));
-	newStreamItem->lastpsh = header_tcp->psh;
-	newStreamItem->seq = htonl(header_tcp->seq);
-	newStreamItem->ack_seq = htonl(header_tcp->ack_seq);
-	newStreamItem->next_seq = newStreamItem->seq + (unsigned long int)header.caplen - ((unsigned long int)header_tcp - (unsigned long int)packet + header_tcp->doff * 4);
+	newPacket->lastpsh = header_tcp->psh;
+	newPacket->seq = seq;
+	newPacket->ack_seq = ack_seq;
+	newPacket->next_seq = newPacket->seq + (unsigned long int)header.caplen - ((unsigned long int)header_tcp - (unsigned long int)packet + header_tcp->doff * 4);
 
 	// append new created node at the end of list of TCP packets within this TCP connection
-	if(lastStreamItem) {
-		lastStreamItem->next = newStreamItem;
+	if(lastPacket) {
+		lastPacket->next = newPacket;
 	}
 
 	//copy data 
-	newStreamItem->data = new FILE_LINE char[datalen];
-	memcpy(newStreamItem->data, data, datalen);
-	newStreamItem->datalen = datalen;
+	newPacket->data = new FILE_LINE char[datalen];
+	memcpy(newPacket->data, data, datalen);
+	newPacket->datalen = datalen;
 
 	//copy header
-	newStreamItem->header = header;
+	newPacket->header = header;
 
 	//copy packet
-	newStreamItem->packet = new FILE_LINE u_char[header.caplen];
-	memcpy(newStreamItem->packet, packet, header.caplen);
+	newPacket->packet = new FILE_LINE u_char[header.caplen];
+	memcpy(newPacket->packet, packet, header.caplen);
 	
-	newStreamItem->header_ip = (iphdr2*)(newStreamItem->packet + ((u_char*)header_ip - packet));
+	newPacket->header_ip = (iphdr2*)(newPacket->packet + ((u_char*)header_ip - packet));
 
-	newStreamItem->packet_number = packet_number;
-	newStreamItem->saddr = saddr;
-	newStreamItem->source = source;
-	newStreamItem->daddr = daddr;
-	newStreamItem->dest = dest;
-	newStreamItem->dataoffset = dataoffset;
-	newStreamItem->handle = handle;
-	newStreamItem->dlt = dlt;
-	newStreamItem->sensor_id = sensor_id;
+	newPacket->packet_number = packet_number;
+	newPacket->saddr = saddr;
+	newPacket->source = source;
+	newPacket->daddr = daddr;
+	newPacket->dest = dest;
+	newPacket->dataoffset = dataoffset;
+	newPacket->handle = handle;
+	newPacket->dlt = dlt;
+	newPacket->sensor_id = sensor_id;
 	
-	return(newStreamItem);
+	if(!stream->packets) {
+		stream->packets = newPacket;
+	}
+	stream->last_seq = seq;
+	stream->last_ack_seq = ack_seq;
+	stream->last_ts = header.ts.tv_sec;
+	
+	return(true);
 }
 
-void TcpReassemblySip::complete(tcp_stream2_s *stream, stream_id id) {
-	int newlen = 0;
-	for(tcp_stream2_s *tmpstream = stream; tmpstream; tmpstream = tmpstream->next) {
-		newlen += tmpstream->datalen;
+void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id id) {
+	if(!stream->packets) {
+		return;
 	}
-	unsigned long diffLen = newlen - stream->datalen;
-	pcap_pkthdr header = stream->header;
+	int newlen = 0;
+	tcp_stream_packet *firstPacket = stream->packets;
+	for(tcp_stream_packet *packet = firstPacket; packet; packet = packet->next) {
+		newlen += packet->datalen;
+	}
+	unsigned long diffLen = newlen - firstPacket->datalen;
+	pcap_pkthdr header = firstPacket->header;
 	iphdr2 *header_ip;
 	u_char *newdata;
 	u_char *newpacket;
@@ -5136,33 +5192,38 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, stream_id id) {
 	if(diffLen) {
 		newdata = new FILE_LINE u_char[newlen];
 		int len = 0;
-		for(tcp_stream2_s *tmpstream = stream; tmpstream; tmpstream = tmpstream->next) {
-			memcpy(newdata + len, tmpstream->data, tmpstream->datalen);
-			len += tmpstream->datalen;
+		for(tcp_stream_packet *packet = firstPacket; packet; packet = packet->next) {
+			memcpy(newdata + len, packet->data, packet->datalen);
+			len += packet->datalen;
 		}
 		header.caplen += diffLen;
 		header.len += diffLen;
 		newpacket = new FILE_LINE u_char[header.caplen];
 		allocNewpacket = true;
-		memcpy(newpacket, stream->packet, stream->header.caplen - stream->datalen);
-		memcpy(newpacket + (stream->header.caplen - stream->datalen), newdata, newlen);
+		memcpy(newpacket, firstPacket->packet, firstPacket->header.caplen - firstPacket->datalen);
+		memcpy(newpacket + (firstPacket->header.caplen - firstPacket->datalen), newdata, newlen);
 		delete [] newdata;
-		newdata = newpacket + (stream->header.caplen - stream->datalen);
-		header_ip = (iphdr2*)(newpacket + ((u_char*)stream->header_ip - stream->packet));
+		newdata = newpacket + (firstPacket->header.caplen - firstPacket->datalen);
+		header_ip = (iphdr2*)(newpacket + ((u_char*)firstPacket->header_ip - firstPacket->packet));
 		header_ip->tot_len = htons(ntohs(header_ip->tot_len) + diffLen);
 	} else {
-		newpacket = stream->packet;
-		newdata = stream->packet + stream->dataoffset;
-		header_ip = stream->header_ip;
+		newpacket = firstPacket->packet;
+		newdata = firstPacket->packet + firstPacket->dataoffset;
+		header_ip = firstPacket->header_ip;
+	}
+	if(debug_reassembly_sip) {
+		cout << " * COMPLETE "
+		     << stream->last_ack_seq << " / "
+		     << string((char*)newdata, min(newlen, 15)) << endl;
 	}
 	bool deletePackets = true;
 	if(preProcessPacket && opt_enable_preprocess_packet == 2) {
-		preProcessPacket->push(false, stream->packet_number,
-				       stream->saddr, stream->source, stream->daddr, stream->dest, 
-				       (char*)newdata, newlen, stream->dataoffset,
-				       stream->handle, &header, newpacket, true,
+		preProcessPacket->push(false, firstPacket->packet_number,
+				       firstPacket->saddr, firstPacket->source, firstPacket->daddr, firstPacket->dest, 
+				       (char*)newdata, newlen, firstPacket->dataoffset,
+				       firstPacket->handle, &header, newpacket, true,
 				       2, header_ip, 0,
-				       NULL, 0, stream->dlt, stream->sensor_id,
+				       NULL, 0, firstPacket->dlt, firstPacket->sensor_id,
 				       true);
 		if(!diffLen) {
 			deletePackets = false;
@@ -5170,28 +5231,36 @@ void TcpReassemblySip::complete(tcp_stream2_s *stream, stream_id id) {
 	} else {
 		int tmp_was_rtp;
 		int tmp_voippacket;
-		process_packet(false, stream->packet_number,
-			       stream->saddr, stream->source, stream->daddr, stream->dest, 
-			       (char*)newdata, newlen, stream->dataoffset,
-			       stream->handle, &header, newpacket, 
+		process_packet(false, firstPacket->packet_number,
+			       firstPacket->saddr, firstPacket->source, firstPacket->daddr, firstPacket->dest, 
+			       (char*)newdata, newlen, firstPacket->dataoffset,
+			       firstPacket->handle, &header, newpacket, 
 			       2, &tmp_was_rtp, header_ip, &tmp_voippacket, 0,
-			       NULL, 0, stream->dlt, stream->sensor_id, 
+			       NULL, 0, firstPacket->dlt, firstPacket->sensor_id, 
 			       false);
 		if(allocNewpacket) {
 			delete [] newpacket;
 		}
 	}
-	tcp_stream2_s *tmpstream = stream;
-	while(tmpstream) {
-		delete [] tmpstream->data;
-		if(deletePackets) {
-			delete [] tmpstream->packet;
-		}
-		tcp_stream2_s *next = tmpstream->next;
-		delete tmpstream;
-		tmpstream = next;
+	cleanStream(stream, deletePackets);
+	//tcp_streams.erase(id);
+}
+
+void TcpReassemblySip::cleanStream(tcp_stream* stream, bool deletePackets) {
+	if(!stream->packets) {
+		return;
 	}
-	tcp_streams.erase(id);
+	tcp_stream_packet *packet = stream->packets;
+	while(packet) {
+		delete [] packet->data;
+		if(deletePackets) {
+			delete [] packet->packet;
+		}
+		tcp_stream_packet *next = packet->next;
+		delete packet;
+		packet = next;
+	}
+	stream->packets = NULL;
 }
 
 
