@@ -44,6 +44,8 @@ struct sVerbose {
 	int debug_rtcp;
 	int defrag;
 	int dedup;
+	int reassembly_sip;
+	int reassembly_sip_output;
 };
 
 #endif

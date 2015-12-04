@@ -2133,13 +2133,15 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 	if (header_ip->protocol == IPPROTO_UDP) {
 		udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
 		data = (char *) header_udp + sizeof(*header_udp);
-		datalen = (int)(header->caplen - ((u_char*)data - packet));
+		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2), 
+				   header->caplen - ((u_char*)data - packet));
 		sport = header_udp->source;
 		dport = header_udp->dest;
 	} else if (header_ip->protocol == IPPROTO_TCP) {
 		tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
 		data = (char *) header_tcp + (header_tcp->doff * 4);
-		datalen = (int)(header->caplen - ((u_char*)data - packet)); 
+		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(tcphdr2), 
+				   header->caplen - ((u_char*)data - packet)); 
 		sport = header_tcp->source;
 		dport = header_tcp->dest;
 	} else {
@@ -5067,14 +5069,16 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		// prepare packet pointers 
 		header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
 		data = (char *) header_udp + sizeof(*header_udp);
-		datalen = (int)(header->caplen - ((u_char*)data - packet));
+		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2), 
+				   header->caplen - ((u_char*)data - packet));
 		istcp = 0;
 	} else if (header_ip->protocol == IPPROTO_TCP) {
 		header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
 		istcp = 1;
 		// prepare packet pointers 
 		data = (char *) header_tcp + (header_tcp->doff * 4);
-		datalen = (int)(header->caplen - ((u_char*)data - packet)); 
+		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(tcphdr2), 
+				   header->caplen - ((u_char*)data - packet)); 
 		header_udp->source = header_tcp->source;
 		header_udp->dest = header_tcp->dest;
 	} else {

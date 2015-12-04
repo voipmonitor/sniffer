@@ -224,11 +224,13 @@ public:
 	struct tcp_stream {
 		tcp_stream() {
 			packets = NULL;
+			complete_data = NULL;
 			last_ts = 0;
 			last_seq = 0;
 			last_ack_seq = 0;
 		}
 		tcp_stream_packet* packets;
+		SimpleBuffer* complete_data;
 		time_t last_ts;
 		u_int32_t last_seq;
 		u_int32_t last_ack_seq;
@@ -283,34 +285,41 @@ private:
 		if(!stream->packets) {
 			return(false);
 		}
-		bool streamOneItems = false;
-		tcp_stream_packet *lastStreamPacket = NULL;
-		if(stream->packets->next) {
-			lastStreamPacket = getLastStreamPacket(stream);
+		int data_len;
+		u_char *data;
+		if(stream->complete_data) {
+			data_len = stream->complete_data->size();
+			data = stream->complete_data->data();
 		} else {
-			lastStreamPacket = stream->packets;
-			streamOneItems = true;
+			data_len = stream->packets->datalen;
+			data = (u_char*)stream->packets->data;
 		}
-		if(lastStreamPacket->datalen >= 2 && 
-		   lastStreamPacket->data[lastStreamPacket->datalen - 2] == 0x0d && lastStreamPacket->data[lastStreamPacket->datalen - 1] == 0x0a) {
-			return(true);
-		}
-		if(streamOneItems) {
-			char *endHeaderSepPos = (char*)memmem(lastStreamPacket->data, lastStreamPacket->datalen, "\r\n\r\n", 4);
+		while(data_len > 0) {
+			u_char *endHeaderSepPos = (u_char*)memmem(data, data_len, "\r\n\r\n", 4);
 			if(endHeaderSepPos) {
 				*endHeaderSepPos = 0;
-				char *contentLengthPos = strcasestr(lastStreamPacket->data, "Content-Length: ");
-				bool okLength = false;
-				if(contentLengthPos) {
-					unsigned int contentLength = atol(contentLengthPos + 16);
-					if((endHeaderSepPos - lastStreamPacket->data) + 4 + contentLength == lastStreamPacket->datalen) {
-						okLength = true;
-					}
-				}
+				char *contentLengthPos = strcasestr((char*)data, "Content-Length: ");
 				*endHeaderSepPos = '\r';
-				if(okLength) {
-					return(true);
+				unsigned int contentLength = 0;
+				if(contentLengthPos) {
+					contentLength = atol(contentLengthPos + 16);
 				}
+				int sipDataLen = (endHeaderSepPos - data) + 4 + contentLength;
+				extern int check_sip20(char *data, unsigned long len);
+				if(sipDataLen == data_len) {
+					return(true);
+				} else if(sipDataLen < data_len) {
+					if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen)) {
+						return(true);
+					} else {
+						data += sipDataLen;
+						data_len -= sipDataLen;
+					}
+				} else {
+					break;
+				}
+			} else {
+				break;
 			}
 		}
 		return(false);

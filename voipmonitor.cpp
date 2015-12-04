@@ -5150,6 +5150,8 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "debug_rtcp")			sverb.debug_rtcp = 1;
 						else if(verbparams[i] == "defrag")			sverb.defrag = 1;
 						else if(verbparams[i] == "dedup")			sverb.dedup = 1;
+						else if(verbparams[i] == "reassembly_sip")		sverb.reassembly_sip = 1;
+						else if(verbparams[i] == "reassembly_sip_output")	sverb.reassembly_sip_output = 1;
 					}
 				} }
 				break;
