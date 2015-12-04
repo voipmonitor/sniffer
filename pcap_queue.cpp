@@ -3893,7 +3893,7 @@ string PcapQueue_readFromInterface::getInterfaceName(bool simple) {
 }
 
 void PcapQueue_readFromInterface::check_bypass_buffer() {
-	size_t blockStoreBypassQueueSize;
+	size_t blockStoreBypassQueueSize = 0;
 	bool _syslog = true;
 	while(!TERMINATING && (blockStoreBypassQueueSize = blockStoreBypassQueue->getUseSize()) > opt_pcap_queue_bypass_max_size) {
 		if(opt_scanpcapdir[0]) {

@@ -4056,7 +4056,7 @@ bool create_waveform_from_raw(const char *rawInput,
 	FILE *inputRawHandle = fopen(rawInput, "rb");
 	char inputBuff[20000];
 	size_t readLen;
-	size_t counterSamples;
+	size_t counterSamples = 0;
 	while((readLen = fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle)) > 0) {
 		for(size_t i = 0; i < readLen / bytesPerSample; i += channels) {
 			for(u_int8_t ch = 0; ch < channels; ch++) {
@@ -4143,7 +4143,7 @@ bool create_spectrogram_from_raw(const char *rawInput,
 	FILE *inputRawHandle = fopen(rawInput, "rb");
 	char inputBuff[20000];
 	size_t readLen;
-	size_t counterSamples;
+	size_t counterSamples = 0;
 	while((readLen = fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle)) > 0) {
 		for(size_t i = 0; i < readLen / bytesPerSample; i += channels) {
 			for(u_int8_t ch = 0; ch < channels; ch++) {
