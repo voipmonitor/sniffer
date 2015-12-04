@@ -689,46 +689,40 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
 		char outbuf[2048];
-		char *resbuf = new FILE_LINE char[32 * 1024];
-		unsigned int resbufalloc = 32 * 1024, outbuflen = 0, resbuflen = 0;
-		if(outbuf == NULL) {
-			syslog(LOG_ERR, "Cannot allocate memory\n");
-			return -1;
-		}
+		string rslt_data;
 		/* headers */
-		outbuflen = sprintf(outbuf, 
-				    "[[\"callreference\", "
-				    "\"callid\", "
-				    "\"callercodec\", "
-				    "\"calledcodec\", "
-				    "\"caller\", "
-				    "\"callername\", "
-				    "\"callerdomain\", "
-				    "\"called\", "
-				    "\"calleddomain\", "
-				    "\"calldate\", "
-				    "\"duration\", "
-				    "\"connect_duration\", "
-				    "\"callerip\", "
-				    "\"calledip\", "
-				    "\"lastpackettime\", "
-				    "\"lastSIPresponseNum\", "
-				    "\"rtp_src\", "
-				    "\"rtp_dst\", "
-				    "\"src_mosf1\", "
-				    "\"src_mosf2\", "
-				    "\"src_mosAD\", "
-				    "\"src_jitter\", "
-				    "\"src_loss\", "
-				    "\"src_loss_last10sec\", "
-				    "\"dst_mosf1\", "
-				    "\"dst_mosf2\", "
-				    "\"dst_mosAD\", "
-				    "\"dst_jitter\", "
-				    "\"dst_loss\", "
-				    "\"dst_loss_last10sec\"]");
-		memcpy(resbuf + resbuflen, outbuf, outbuflen);
-		resbuflen += outbuflen;
+		snprintf(outbuf, sizeof(outbuf),
+			"[[\"callreference\", "
+			"\"callid\", "
+			"\"callercodec\", "
+			"\"calledcodec\", "
+			"\"caller\", "
+			"\"callername\", "
+			"\"callerdomain\", "
+			"\"called\", "
+			"\"calleddomain\", "
+			"\"calldate\", "
+			"\"duration\", "
+			"\"connect_duration\", "
+			"\"callerip\", "
+			"\"calledip\", "
+			"\"lastpackettime\", "
+			"\"lastSIPresponseNum\", "
+			"\"rtp_src\", "
+			"\"rtp_dst\", "
+			"\"src_mosf1\", "
+			"\"src_mosf2\", "
+			"\"src_mosAD\", "
+			"\"src_jitter\", "
+			"\"src_loss\", "
+			"\"src_loss_last10sec\", "
+			"\"dst_mosf1\", "
+			"\"dst_mosf2\", "
+			"\"dst_mosAD\", "
+			"\"dst_jitter\", "
+			"\"dst_loss\", "
+			"\"dst_loss_last10sec\"]");
+		rslt_data += outbuf;
 		calltable->lock_calls_listMAP();
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = (*callMAPIT).second;
@@ -746,95 +740,78 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			 * sipcalledip htonl(sipcalledip)
 			*/
 			//XXX: escape " or replace it to '
-			outbuflen = sprintf(outbuf, 
-					    ",[\"%p\", "
-					    "\"%s\", "
-					    "\"%d\", "
-					    "\"%d\", "
-					    "\"%s\", "
-					    "\"%s\", "
-					    "\"%s\", "
-					    "\"%s\", "
-					    "\"%s\", "
-					    "\"%s\", "
-					    "\"%d\", "
-					    "\"%d\", "
-					    "\"%u\", "
-					    "\"%u\", "
-					    "\"%u\", "
-					    "\"%d\", " //lastSIPresponseNum
-					    "\"%u\", " //rtp_src
-					    "\"%u\", " //rtp_dst
-					    "\"%d\", " //src_mosf1
-					    "\"%d\", " //src_mosf1
-					    "\"%d\", " //src_mosAD
-					    "\"%d\", " //src_jitter
-					    "\"%f\", " //src_loss
-					    "\"%f\", " //src_loss_last10sec
-					    "\"%d\", " //dst_mosf1
-					    "\"%d\", " //dst_mosf1
-					    "\"%d\", " //dst_mosAD
-					    "\"%d\", " //dst_jitter
-					    "\"%f\", " //dst_loss
-					    "\"%f\"]", //dst_loss_last10sec
-					    call, 
-					    call->call_id.c_str(), 
-					    call->last_callercodec, 
-					    call->last_callercodec, 
-					    call->caller, 
-					    call->callername, 
-					    call->caller_domain,
-					    call->called, 
-					    call->called_domain,
-					    sqlDateTimeString(call->calltime()).c_str(), 
-					    call->duration_active(), 
-					    call->connect_duration_active(), 
-					    htonl(call->sipcallerip[0]), 
-					    htonl(call->sipcalledip[0]), 
-					    (unsigned int)call->get_last_packet_time(), 
-					    call->lastSIPresponseNum,
-						//rtp stat 
-					    (call->lastcallerrtp ? call->lastcallerrtp->saddr : 0),
-					    (call->lastcalledrtp ? call->lastcalledrtp->saddr : 0),
-						//caller
-					    (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosf1 : 45),
-					    (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosf2 : 45),
-					    (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosAD : 45),
-					    (call->lastcallerrtp ? (int)(round(call->lastcallerrtp->jitter)) : 0),
-					    (call->lastcallerrtp and call->lastcallerrtp->stats.received ? (float)((double)call->lastcallerrtp->stats.lost / ((double)call->lastcallerrtp->stats.received + (double)call->lastcallerrtp->stats.lost) * 100.0) : 0),
-					    (call->lastcallerrtp ? (float)(call->lastcallerrtp->last_stat_loss_perc_mult10) : 0),
-						//called
-					    (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosf1 : 45),
-					    (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosf2 : 45),
-					    (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosAD : 45),
-					    (call->lastcalledrtp ? (int)round(call->lastcalledrtp->jitter) : 0),
-					    (call->lastcalledrtp and call->lastcalledrtp->stats.received > 50 ? (float)((double)call->lastcalledrtp->stats.lost / ((double)call->lastcalledrtp->stats.received + (double)call->lastcalledrtp->stats.lost) * 100.0) : 0),
-					    (call->lastcalledrtp ? (float)(call->lastcalledrtp->last_stat_loss_perc_mult10) : 0));
-			if((resbuflen + outbuflen) > resbufalloc) {
-				char *resbufnew = new FILE_LINE char[resbufalloc + 32 * 1024];
-				memcpy(resbufnew, resbuf, resbufalloc);
-				delete [] resbuf;
-				resbuf = resbufnew;
-				resbufalloc += 32 * 1024;
-			}
-			memcpy(resbuf + resbuflen, outbuf, outbuflen);
-			resbuflen += outbuflen;
+			snprintf(outbuf, sizeof(outbuf),
+				 ",[\"%p\", "
+				 "\"%s\", "
+				 "\"%d\", "
+				 "\"%d\", "
+				 "\"%s\", "
+				 "\"%s\", "
+				 "\"%s\", "
+				 "\"%s\", "
+				 "\"%s\", "
+				 "\"%s\", "
+				 "\"%d\", "
+				 "\"%d\", "
+				 "\"%u\", "
+				 "\"%u\", "
+				 "\"%u\", "
+				 "\"%d\", " //lastSIPresponseNum
+				 "\"%u\", " //rtp_src
+				 "\"%u\", " //rtp_dst
+				 "\"%d\", " //src_mosf1
+				 "\"%d\", " //src_mosf1
+				 "\"%d\", " //src_mosAD
+				 "\"%d\", " //src_jitter
+				 "\"%f\", " //src_loss
+				 "\"%f\", " //src_loss_last10sec
+				 "\"%d\", " //dst_mosf1
+				 "\"%d\", " //dst_mosf1
+				 "\"%d\", " //dst_mosAD
+				 "\"%d\", " //dst_jitter
+				 "\"%f\", " //dst_loss
+				 "\"%f\"]", //dst_loss_last10sec
+				 call, 
+				 json_encode(call->call_id).c_str(), 
+				 call->last_callercodec, 
+				 call->last_calledcodec, 
+				 json_encode(call->caller).c_str(), 
+				 json_encode(call->callername).c_str(), 
+				 json_encode(call->caller_domain).c_str(),
+				 json_encode(call->called).c_str(), 
+				 json_encode(call->called_domain).c_str(),
+				 sqlDateTimeString(call->calltime()).c_str(), 
+				 call->duration_active(), 
+				 call->connect_duration_active(), 
+				 htonl(call->sipcallerip[0]), 
+				 htonl(call->sipcalledip[0]), 
+				 (unsigned int)call->get_last_packet_time(), 
+				 call->lastSIPresponseNum,
+				     //rtp stat 
+				 (call->lastcallerrtp ? call->lastcallerrtp->saddr : 0),
+				 (call->lastcalledrtp ? call->lastcalledrtp->saddr : 0),
+				     //caller
+				 (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosf1 : 45),
+				 (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosf2 : 45),
+				 (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosAD : 45),
+				 (call->lastcallerrtp ? (int)(round(call->lastcallerrtp->jitter)) : 0),
+				 (call->lastcallerrtp and call->lastcallerrtp->stats.received ? (float)((double)call->lastcallerrtp->stats.lost / ((double)call->lastcallerrtp->stats.received + (double)call->lastcallerrtp->stats.lost) * 100.0) : 0),
+				 (call->lastcallerrtp ? (float)(call->lastcallerrtp->last_stat_loss_perc_mult10) : 0),
+				     //called
+				 (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosf1 : 45),
+				 (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosf2 : 45),
+				 (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosAD : 45),
+				 (call->lastcalledrtp ? (int)round(call->lastcalledrtp->jitter) : 0),
+				 (call->lastcalledrtp and call->lastcalledrtp->stats.received > 50 ? (float)((double)call->lastcalledrtp->stats.lost / ((double)call->lastcalledrtp->stats.received + (double)call->lastcalledrtp->stats.lost) * 100.0) : 0),
+				 (call->lastcalledrtp ? (float)(call->lastcalledrtp->last_stat_loss_perc_mult10) : 0));
+			rslt_data += outbuf;
 		}
 		calltable->unlock_calls_listMAP();
-		if((resbuflen + 1) > resbufalloc) {
-			char *resbufnew = new FILE_LINE char[resbufalloc + 32 * 1024];
-			memcpy(resbufnew, resbuf, resbufalloc);
-			delete [] resbuf;
-			resbuf = resbufnew;
-			resbufalloc += 32 * 1024;
-		}
-		resbuf[resbuflen] = ']';
-		resbuflen++;
-		if ((size = sendvm(client, sshchannel, resbuf, resbuflen, 0)) == -1){
+		rslt_data += ",[\"encoded\"]]";
+		if ((size = sendvm(client, sshchannel, rslt_data.c_str(), rslt_data.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-		delete [] resbuf;
 		}
 		return 0;
 	} else if(strstr(buf, "d_lc_for_destroy") != NULL) {

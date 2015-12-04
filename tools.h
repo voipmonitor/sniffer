@@ -1789,6 +1789,7 @@ int __gunzip(FILE *zip, FILE *unzip);
 bool isGunzip(const char *zipFilename);
 
 string url_encode(const string &value);
+string json_encode(const char *str);
 string json_encode(const string &value);
 
 class SocketSimpleBufferWrite {

@@ -3335,6 +3335,11 @@ string url_encode(const string &value) {
 	return escaped.str();
 }
 
+string json_encode(const char *str) {
+	string _str = str;
+	return(json_encode(_str));
+}
+
 string json_encode(const string &value) {
 	ostringstream escaped;
 	for (string::const_iterator i = value.begin(), n = value.end(); i != n; ++i) {
