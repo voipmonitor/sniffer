@@ -1557,7 +1557,6 @@ Call::convertRawToWav() {
 			if any of such stream has same SSRC as previous stream and it starts at the same time with 500ms tolerance that stream is eliminated (it is probably duplicate stream)
 		*/
 		while(fgets(line, 256, pl)) {
-			struct raws_t rawl;
 			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
@@ -1566,29 +1565,36 @@ Call::convertRawToWav() {
 			if(maxsamplerate < samplerate) {
 				maxsamplerate = samplerate;
 			}
-
-			rawl.ssrc_index = ssrc_index;
-			rawl.rawiterator = rawiterator;
-			rawl.tv.tv_sec = tv0.tv_sec;
-			rawl.tv.tv_usec = tv0.tv_usec;
-			rawl.codec = codec;
-			rawl.filename = raw;
-
-			if(iter > 0) {
-				if(ssrc_index >= ssrc_n ||
-				   last_ssrc_index >= (unsigned)ssrc_n) {
-					syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] or last_ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x]", 
-					       ssrc_index, last_ssrc_index, 
-					       ssrc_n, fbasename, raw, 
-					       ssrc_index >= ssrc_n ? 0 : rtp[ssrc_index]->ssrc,
-					       last_ssrc_index >= (unsigned)ssrc_n ? 0 : rtp[last_ssrc_index]->ssrc);
-					if(!sverb.noaudiounlink) unlink(raw);
-				} else if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
-					  abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
-					  last_size > 10000) {
-					// ignore this raw file it is duplicate 
-					if(!sverb.noaudiounlink) unlink(raw);
-					//syslog(LOG_NOTICE, "ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+			if(ssrc_index >= ssrc_n ||
+			   last_ssrc_index >= (unsigned)ssrc_n) {
+				syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] or last_ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x]", 
+				       ssrc_index, last_ssrc_index, 
+				       ssrc_n, fbasename, raw, 
+				       ssrc_index >= ssrc_n ? 0 : rtp[ssrc_index]->ssrc,
+				       last_ssrc_index >= (unsigned)ssrc_n ? 0 : rtp[last_ssrc_index]->ssrc);
+				if(!sverb.noaudiounlink) unlink(raw);
+			} else {
+				struct raws_t rawl;
+				rawl.ssrc_index = ssrc_index;
+				rawl.rawiterator = rawiterator;
+				rawl.tv.tv_sec = tv0.tv_sec;
+				rawl.tv.tv_usec = tv0.tv_usec;
+				rawl.codec = codec;
+				rawl.filename = raw;
+				if(iter > 0) {
+					if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
+						  abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
+						  last_size > 10000) {
+						// ignore this raw file it is duplicate 
+						if(!sverb.noaudiounlink) unlink(raw);
+						//syslog(LOG_NOTICE, "ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+					} else {
+						if(!rtp[rawl.ssrc_index]->skip) {
+							raws.push_back(rawl);
+						} else {
+							if(!sverb.noaudiounlink) unlink(raw);
+						}
+					}
 				} else {
 					if(!rtp[rawl.ssrc_index]->skip) {
 						raws.push_back(rawl);
@@ -1596,20 +1602,12 @@ Call::convertRawToWav() {
 						if(!sverb.noaudiounlink) unlink(raw);
 					}
 				}
-			} else {
-				if(!rtp[rawl.ssrc_index]->skip) {
-					raws.push_back(rawl);
-				} else {
-					if(!sverb.noaudiounlink) unlink(raw);
-				}
+				lasttv.tv_sec = tv0.tv_sec;
+				lasttv.tv_usec = tv0.tv_usec;
+				last_ssrc_index = ssrc_index;
+				iter++;
+				last_size = GetFileSize(raw);
 			}
-
-			lasttv.tv_sec = tv0.tv_sec;
-			lasttv.tv_usec = tv0.tv_usec;
-			last_ssrc_index = ssrc_index;
-			iter++;
-			last_size = GetFileSize(raw);
-			
 		}
 		fclose(pl);
 
