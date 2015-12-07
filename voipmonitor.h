@@ -1,5 +1,6 @@
 #include <sys/types.h>
 #include <string>
+#include <netdb.h>
 #include "config.h"
 #include "common.h"
 #include "heap_safe.h"
@@ -171,6 +172,7 @@ bool is_enable_cleanspool();
 bool is_receiver();
 bool is_sender();
 int check_set_rtp_threads(int num_rtp_threads);
+hostent *gethostbyname_lock(const char *name);
 
 enum eSnifferMode {
 	snifferMode_na,

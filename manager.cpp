@@ -724,9 +724,10 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			"\"dst_loss_last10sec\"]");
 		rslt_data += outbuf;
 		calltable->lock_calls_listMAP();
+		unsigned int now = time(NULL);
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = (*callMAPIT).second;
-			if(call->type == REGISTER or call->type == MESSAGE or call->destroy_call_at > 0 or call->destroy_call_at_bye > 0) {
+			if(call->type == REGISTER or call->type == MESSAGE or call->destroy_call_at >= now or call->destroy_call_at_bye >= now) {
 				// skip register or message or calls which are scheduled to be closed
 				continue;
 			}
@@ -2020,7 +2021,7 @@ void *manager_client(void *dummy) {
 	
 
 	while(1) {
-		host = gethostbyname(opt_clientmanager);
+		host = gethostbyname_lock(opt_clientmanager);
 		if (!host) { //Report lookup failure  
 			syslog(LOG_ERR, "Cannot resolv: %s: host [%s] trying again...\n",  hstrerror(h_errno),  opt_clientmanager);  
 			sleep(1);

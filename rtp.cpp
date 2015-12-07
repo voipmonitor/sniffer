@@ -915,7 +915,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		this->first_packet_usec = header->ts.tv_usec;
 	}
 
-	if(owner and owner->destroy_call_at_bye && !opt_pb_read_from_file[0] && !is_read_from_file()){
+	if(owner and owner->destroy_call_at_bye >= header->ts.tv_sec && !opt_pb_read_from_file[0] && !is_read_from_file()){
 		// do not process RTP if call is hangedup to prevent false negative statistics
 		return;
 	}

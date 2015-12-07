@@ -4758,7 +4758,7 @@ bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) 
 bool PcapQueue_readFromFifo::socketGetHost() {
 	this->socketHostEnt = NULL;
 	while(!this->socketHostEnt) {
-		this->socketHostEnt = gethostbyname(this->packetServerIpPort.get_ip().c_str());
+		this->socketHostEnt = gethostbyname_lock(this->packetServerIpPort.get_ip().c_str());
 		if(!this->socketHostEnt) {
 			syslog(LOG_ERR, "packetbuffer %s: cannot resolv: %s: host [%s] - trying again", this->nameQueue.c_str(), hstrerror(h_errno), this->packetServerIpPort.get_ip().c_str());  
 			sleep(1);

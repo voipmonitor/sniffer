@@ -563,6 +563,7 @@ volatile int sipheaderfilter_reload_do = 0;		// for reload in main thread
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 pthread_t scanpcapdir_thread;
+pthread_t defered_service_fork_thread;
 //pthread_t destroy_calls_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_client_thread;	// ID of worker manager thread 
@@ -605,6 +606,7 @@ int manager_socket_server = 0;
 
 pthread_mutex_t mysqlconnect_lock;
 pthread_mutex_t vm_rrd_lock;
+pthread_mutex_t hostbyname_lock;
 
 pthread_t pcap_read_thread;
 
@@ -737,6 +739,7 @@ static void parse_command_line_arguments(int argc, char *argv[]);
 static void get_command_line_arguments();
 static void set_context_config();
 static bool check_complete_parameters();
+static void dns_lookup_common_hostnames();
  
  
 void handle_error(const char *file, int lineno, const char *msg){
@@ -1189,6 +1192,11 @@ void *sCheckIdCdrChildTables::_checkIdCdrChildTables(void *arg) {
 	if(checkIdCdrChildTables->check) {
 		checkMysqlIdCdrChildTables();
 	}
+	return(NULL);
+}
+
+void *defered_service_fork(void *) {
+	dns_lookup_common_hostnames();
 	return(NULL);
 }
 
@@ -1834,6 +1842,7 @@ int main(int argc, char *argv[]) {
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&vm_rrd_lock, NULL);
+	pthread_mutex_init(&hostbyname_lock, NULL);
 	pthread_mutex_init(&tartimemaplock, NULL);
 	pthread_mutex_init(&terminate_packetbuffer_lock, NULL);
 
@@ -2042,7 +2051,7 @@ int main(int argc, char *argv[]) {
 	if(!opt_nocdr && isSqlDriver("mysql") && mysql_host[0]) {
 		strcpy(mysql_host_orig, mysql_host);
 		if(!reg_match(mysql_host, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
-			hostent *conn_server_record = gethostbyname(mysql_host);
+			hostent *conn_server_record = gethostbyname_lock(mysql_host);
 			if(conn_server_record == NULL) {
 				syslog(LOG_ERR, "mysql host [%s] failed to resolve to IP address", mysql_host);
 				exit(1);
@@ -2054,26 +2063,6 @@ int main(int argc, char *argv[]) {
 	}
 */
 	
-	if(opt_fork || !opt_nocdr) {
-		const char *hostnames[] = {
-			"voipmonitor.org",
-			"www.voipmonitor.org",
-			"download.voipmonitor.org",
-			"cloud.voipmonitor.org",
-			"cloud2.voipmonitor.org",
-			"cloud3.voipmonitor.org"
-		};
-		for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]); i++) {
-			hostent *conn_server_record = gethostbyname(hostnames[i]);
-			if(conn_server_record == NULL) {
-				syslog(LOG_ERR, "host [%s] failed to resolve to IP address", hostnames[i]);
-				continue;
-			}
-			in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
-			hosts[hostnames[i]] = inet_ntoa(*conn_server_address);
-		}
-	}
-
 	if(opt_fork && !is_read_from_file() && reloadLoopCounter == 0) {
 		#if ENABLE_SEMAPHOR_FORK_MODE
 		for(int pass = 0; pass < 2; pass ++) {
@@ -2508,6 +2497,10 @@ int main_init_read() {
 	if(is_enable_cleanspool() &&
 	   isSetCleanspoolParameters()) {
 		runCleanSpoolThread();
+	}
+	
+	if(opt_fork) {
+		pthread_create(&defered_service_fork_thread, NULL, defered_service_fork, NULL);
 	}
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
@@ -7378,4 +7371,31 @@ int check_set_rtp_threads(int num_rtp_threads) {
 	if(num_rtp_threads <= 0) num_rtp_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
 	if(num_rtp_threads <= 0) num_rtp_threads = 1;
 	return(num_rtp_threads);
+}
+
+void dns_lookup_common_hostnames() {
+	const char *hostnames[] = {
+		"voipmonitor.org",
+		"www.voipmonitor.org",
+		"download.voipmonitor.org",
+		"cloud.voipmonitor.org",
+		"cloud2.voipmonitor.org",
+		"cloud3.voipmonitor.org"
+	};
+	for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]) && !terminating; i++) {
+		hostent *conn_server_record = gethostbyname_lock(hostnames[i]);
+		if(conn_server_record == NULL) {
+			syslog(LOG_ERR, "host [%s] failed to resolve to IP address", hostnames[i]);
+			continue;
+		}
+		in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
+		hosts[hostnames[i]] = inet_ntoa(*conn_server_address);
+	}
+}
+
+hostent *gethostbyname_lock(const char *name) {
+	pthread_mutex_lock(&hostbyname_lock);
+	hostent *rslt = gethostbyname(name);
+	pthread_mutex_unlock(&hostbyname_lock);
+	return(rslt);
 }

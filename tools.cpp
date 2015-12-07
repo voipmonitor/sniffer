@@ -3438,7 +3438,7 @@ void SocketSimpleBufferWrite::write() {
 bool SocketSimpleBufferWrite::socketGetHost() {
 	socketHostEnt = NULL;
 	while(!socketHostEnt) {
-		socketHostEnt = gethostbyname(ipPort.get_ip().c_str());
+		socketHostEnt = gethostbyname_lock(ipPort.get_ip().c_str());
 		if(!socketHostEnt) {
 			syslog(LOG_ERR, "socketwrite %s: cannot resolv: %s: host [%s] - trying again", name.c_str(), hstrerror(h_errno), ipPort.get_ip().c_str());  
 			sleep(1);
