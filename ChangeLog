@@ -5,6 +5,7 @@
 - fix listcalls manager command (proper char escaping). Fix situation where call can dissapear from listcalls 
 - fix RTP audio decode in case merging legs are enabled 
 - some RTP packets might be ignored on overloaded server (few packets before BYE)
+- do DNS lookup at startup after fork so it will not block init script when server boots and is without the internet
 
 
 14.3.5 1.12.2015
