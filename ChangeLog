@@ -1,3 +1,12 @@
+14.4 7.12.2015
+==============
+- redesign TCP SIP reassembler which can miss some TCP packets or duplicate content inside SIP 
+- fix issue with convertRawToWav on multiple instance and one spool
+- fix listcalls manager command (proper char escaping). Fix situation where call can dissapear from listcalls 
+- fix RTP audio decode in case merging legs are enabled 
+- some RTP packets might be ignored on overloaded server (few packets before BYE)
+
+
 14.3.5 1.12.2015
 ================
 - fix filter_num table creation
