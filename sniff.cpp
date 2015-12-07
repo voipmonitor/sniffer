@@ -2804,7 +2804,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				*/
 			} else if(sip_method == BYE) {
 			
-				if(!call->has_second_merged_leg or (call->has_second_merged_leg and !merged)) {
+				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
 					//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header 
 					call->destroy_call_at = header->ts.tv_sec + 60;
 					call->destroy_call_at_bye = header->ts.tv_sec + 20 * 60;
@@ -2832,7 +2832,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				}
 			} else if(sip_method == CANCEL) {
 				// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
-				if(!call->has_second_merged_leg or (call->has_second_merged_leg and !merged)) {
+				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
 					//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
 					call->destroy_call_at = header->ts.tv_sec + 10;
 				}
@@ -2934,7 +2934,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			if (IS_SIP_RES3XX(sip_method) || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX) {
 				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501 && lastSIPresponseNum != 481 && lastSIPresponseNum != 491) {
 					// save packet 
-					if(!call->has_second_merged_leg or (call->has_second_merged_leg and !merged)) {
+					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
 						call->destroy_call_at = header->ts.tv_sec + (sip_method == RES300 ? 300 : 5);
 					}
 
@@ -2955,13 +2955,13 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				} else if(lastSIPresponseNum == 481) {
 					//481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
 
-					if(!call->has_second_merged_leg or (call->has_second_merged_leg and !merged)) {
+					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
 						call->destroy_call_at = header->ts.tv_sec + 180;
 					}
 				} else if(lastSIPresponseNum == 491) {
 					// do not set timeout for 491
 				} else if(!call->destroy_call_at) {
-					if(!call->has_second_merged_leg or (call->has_second_merged_leg and !merged)) {
+					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
 						call->destroy_call_at = header->ts.tv_sec + 60;
 					}
 				}
