@@ -2096,7 +2096,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 	}
 
 	*was_rtp = 0;
-	//int merged;
+	int merged;
 	_parse_packet_process_packet = parsePacket ? &parsePacket->parse : NULL;
 	
 	if(mainProcess && istcp < 2) {
@@ -2320,7 +2320,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		}
 
 		// check presence of call-id merge header if callidmerge feature is enabled
-		//merged = 0;
+		merged = 0;
 		if(!call and opt_callidmerge_header[0] != '\0') {
 			call = calltable->find_by_mergecall_id(callidstr, strlen(callidstr));
 			if(!call) {
@@ -2352,15 +2352,16 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					if(!call) {
 						// there is no call with the call-id in merge header - this call will be created as new
 					} else {
-						//merged = 1;
+						merged = 1;
 						calltable->lock_calls_mergeMAP();
+						call->has_second_merged_leg = true;
 						calltable->calls_mergeMAP[callidstr] = call;
 						calltable->unlock_calls_mergeMAP();
 						call->mergecalls.push_back(callidstr);
 					}
 				}
 			} else {
-				//merged = 1;
+				merged = 1;
 			}
 		}
 	
@@ -2802,9 +2803,12 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				}
 				*/
 			} else if(sip_method == BYE) {
-				
-				call->destroy_call_at = header->ts.tv_sec + 60;
-				call->destroy_call_at_bye = header->ts.tv_sec + 20 * 60;
+			
+				if(!call->has_second_merged_leg or (call->has_second_merged_leg and !merged)) {
+					//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header 
+					call->destroy_call_at = header->ts.tv_sec + 60;
+					call->destroy_call_at_bye = header->ts.tv_sec + 20 * 60;
+				}
 				
 				//check and save CSeq for later to compare with OK 
 				if(cseq && cseqlen < 32) {
@@ -2828,7 +2832,10 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				}
 			} else if(sip_method == CANCEL) {
 				// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
-				call->destroy_call_at = header->ts.tv_sec + 10;
+				if(!call->has_second_merged_leg or (call->has_second_merged_leg and !merged)) {
+					//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
+					call->destroy_call_at = header->ts.tv_sec + 10;
+				}
 				
 				//check and save CSeq for later to compare with OK 
 				if(cseq && cseqlen < 32) {
@@ -2927,7 +2934,9 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			if (IS_SIP_RES3XX(sip_method) || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX) {
 				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501 && lastSIPresponseNum != 481 && lastSIPresponseNum != 491) {
 					// save packet 
-					call->destroy_call_at = header->ts.tv_sec + (sip_method == RES300 ? 300 : 5);
+					if(!call->has_second_merged_leg or (call->has_second_merged_leg and !merged)) {
+						call->destroy_call_at = header->ts.tv_sec + (sip_method == RES300 ? 300 : 5);
+					}
 
 					if(IS_SIP_RES3XX(sip_method)) {
 						// remove all RTP  
@@ -2945,11 +2954,16 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					goto endsip_save_packet;
 				} else if(lastSIPresponseNum == 481) {
 					//481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
-					call->destroy_call_at = header->ts.tv_sec + 180;
+
+					if(!call->has_second_merged_leg or (call->has_second_merged_leg and !merged)) {
+						call->destroy_call_at = header->ts.tv_sec + 180;
+					}
 				} else if(lastSIPresponseNum == 491) {
 					// do not set timeout for 491
 				} else if(!call->destroy_call_at) {
-					call->destroy_call_at = header->ts.tv_sec + 60;
+					if(!call->has_second_merged_leg or (call->has_second_merged_leg and !merged)) {
+						call->destroy_call_at = header->ts.tv_sec + 60;
+					}
 				}
 			}
 		}

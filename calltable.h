@@ -246,6 +246,7 @@ public:
 	queue<u_int64_t> forcemark_time[2];
 	volatile int _forcemark_lock;
 	int first_codec;
+	bool	has_second_merged_leg;
 
 	float a_mos_lqo;
 	float b_mos_lqo;

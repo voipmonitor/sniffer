@@ -187,6 +187,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
  pcapSip(PcapDumper::sip, this),
  pcapRtp(PcapDumper::rtp, this) {
 	//increaseTartimemap(time);
+	has_second_merged_leg = false;
 	isfax = 0;
 	seenudptl = 0;
 	last_callercodec = -1;
