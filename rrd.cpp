@@ -310,26 +310,13 @@ void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char 
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
 	cmdCreate << "DEF:rss=" << filename << ":RSS:MAX ";
-	cmdCreate << "DEF:vsz=" << filename << ":VSZ:MAX ";
 	if (vm_rrd_version < 10403) {
-		//cmdCreate << "AREA:vsz#0000FF:\"Virtual memory size (VSZ)\\l\" ";
-		cmdCreate << "LINE1:vsz#0000FF:\"Virtual memory size\\t\" ";
-		cmdCreate << "GPRINT:vsz:LAST:\"Cur\\: %5.0lf\" ";
-		cmdCreate << "GPRINT:vsz:AVERAGE:\"Avg\\: %5.2lf\" ";
-		cmdCreate << "GPRINT:vsz:MAX:\"Max\\: %5.0lf\" ";
-		cmdCreate << "GPRINT:vsz:MIN:\"Min\\: %5.0lf\\l\" ";
 		cmdCreate << "AREA:rss#00FF00:\"Used memory\\t\\t\\t\" ";
 		cmdCreate << "GPRINT:rss:LAST:\"Cur\\: %5.0lf\" ";
 		cmdCreate << "GPRINT:rss:AVERAGE:\"Avg\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:rss:MAX:\"Max\\: %5.0lf\" ";
 		cmdCreate << "GPRINT:rss:MIN:\"Min\\: %5.0lf\\l\" ";
 	} else {
-		cmdCreate << "LINE1:vsz#0000FF:\"Virtual memory size (VSZ)\\l\" ";
-		cmdCreate << "COMMENT:\"\\u\" ";
-		cmdCreate << "GPRINT:vsz:LAST:\"Cur\\: %5.0lf\" ";
-		cmdCreate << "GPRINT:vsz:AVERAGE:\"Avg\\: %5.2lf\" ";
-		cmdCreate << "GPRINT:vsz:MAX:\"Max\\: %5.0lf\" ";
-		cmdCreate << "GPRINT:vsz:MIN:\"Min\\: %5.0lf\\r\" ";
 		cmdCreate << "AREA:rss#00FF00:\"Used memory (RSS)\\l\" ";
 		cmdCreate << "COMMENT:\"\\u\" ";
 		cmdCreate << "GPRINT:rss:LAST:\"Cur\\: %5.0lf\" ";
@@ -1032,7 +1019,6 @@ int vm_rrd_create_rrdRSSVSZ(const char *filename) {
     cmdCreate << "create " << filename << " ";
     cmdCreate << "--start N --step 10 ";
     cmdCreate << "DS:RSS:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:VSZ:GAUGE:20:0:1000000 ";
     cmdCreate << "RRA:MIN:0.5:1:760 ";
     cmdCreate << "RRA:MAX:0.5:1:760 ";
     cmdCreate << "RRA:AVERAGE:0.5:1:760 ";

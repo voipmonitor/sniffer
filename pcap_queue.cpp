@@ -1083,7 +1083,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double rrdtacCPU_tar = 0.0;	//last thread load
 //rrd mem consumption file db-RSSVSZ.rrd
 	double rrdRSSVSZ_rss = 0;
-	double rrdRSSVSZ_vsize = 0;
 //rrd net bw to voipmonitor file db-speedmbs.rrd
 	double rrdspeedmbs = 0.0;
 //rrd calls counter file db-callscounter.rrd
@@ -1630,7 +1629,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << '|';
 		}
 		outStrStat << setprecision(0) << (double)vsize/1024/1024;
-		if (opt_rrd) rrdRSSVSZ_vsize =(double)vsize/1024/1024;
 	}
 	outStrStat << "]MB ";
 	outStrStat << "LA[" << getLoadAvgStr() << "] ";
@@ -1707,7 +1705,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			vm_rrd_create_rrdtCPU(filename);
 			sprintf(filename, "%s/rrd/2db-tacCPU.rrd", opt_chdir);
 			vm_rrd_create_rrdtacCPU(filename);
-			sprintf(filename, "%s/rrd/2db-RSSVSZ.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/3db-RSSVSZ.rrd", opt_chdir);
 			vm_rrd_create_rrdRSSVSZ(filename);
 			sprintf(filename, "%s/rrd/2db-speedmbs.rrd", opt_chdir);
 			vm_rrd_create_rrdspeedmbs(filename);
@@ -1778,8 +1776,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			//update rrdRSSVSZ;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdRSSVSZ_rss;
-			cmdUpdate <<  ":" << rrdRSSVSZ_vsize;
-			sprintf(filename, "%s/rrd/2db-RSSVSZ.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/3db-RSSVSZ.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdspeedmbs;
