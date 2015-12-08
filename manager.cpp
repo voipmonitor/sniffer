@@ -576,7 +576,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 				sprintf(filename, "%s/rrd/2db-tacCPU.rrd", opt_chdir);
 				rrd_vm_create_graph_tacCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "RSSVSZ", 7)) {
-				sprintf(filename, "%s/rrd/2db-RSSVSZ.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/3db-RSSVSZ.rrd", opt_chdir);
 				rrd_vm_create_graph_RSSVSZ_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else {
 				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU RSSVSZ\n", manager_args[1]);	

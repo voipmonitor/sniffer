@@ -2836,13 +2836,11 @@ Call *process_packet(PreProcessPacket::packet_s *packetS,
 				}
 				*/
 			} else if(sip_method == BYE) {
-			
 				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
 					//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header 
 					call->destroy_call_at = packetS->header.ts.tv_sec + 60;
 					call->destroy_call_at_bye = packetS->header.ts.tv_sec + 20 * 60;
 				}
-				
 				//check and save CSeq for later to compare with OK 
 				if(cseq && cseqlen < 32) {
 					memcpy(call->byecseq, cseq, cseqlen);
