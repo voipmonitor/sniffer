@@ -1523,7 +1523,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		for(int i = 0; i < 2; i++) {
 			if(preProcessPacket[i]) {
 				t2cpu_preprocess_packet_out_thread[i] = preProcessPacket[i]->getCpuUsagePerc(true);
-				if(t2cpu_preprocess_packet_out_thread >= 0) {
+				if(t2cpu_preprocess_packet_out_thread[i] >= 0) {
 					outStrStat << "/" << setprecision(1) << t2cpu_preprocess_packet_out_thread[i];
 				}
 				if (opt_rrd && i == 1) rrdtCPU_t2 = t2cpu_preprocess_packet_out_thread[i];
