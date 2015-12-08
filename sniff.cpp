@@ -5473,9 +5473,10 @@ void PreProcessPacket::push(packet_s *packetS, bool packetDelete, int forceSip, 
 		break;
 	case ppt_sip:
 		_parse_packet->_getSipMethod = false;
-		if(forceSip ||
-		   sipportmatrix[packetS->source] || 
-		   sipportmatrix[packetS->dest]) {
+		if((forceSip ||
+		    sipportmatrix[packetS->source] || 
+		    sipportmatrix[packetS->dest]) &&
+		   check_sip20(packetS->data, packetS->datalen)) {
 			_parse_packet->sipDataLen = _parse_packet->parse.parseData(packetS->data, packetS->datalen, true);
 			_parse_packet->isSip = _parse_packet->parse.isSip();
 		} else {
