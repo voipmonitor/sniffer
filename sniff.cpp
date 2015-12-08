@@ -5423,6 +5423,7 @@ void PreProcessPacket::push(bool is_ssl, u_int64_t packet_number,
 	_packet->block_store_index = block_store_index; 
 	_packet->dlt = dlt; 
 	_packet->sensor_id = sensor_id;
+	_parse_packet->_getSipMethod = false;
 	if(forceSip ||
 	   sipportmatrix[_packet->source] || 
 	   sipportmatrix[_packet->dest]) {
