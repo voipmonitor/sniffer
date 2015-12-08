@@ -872,7 +872,9 @@ public:
 	void destroyCallsIfPcapsClosed();
 	
 	void lock_calls_hash() {
-		while(__sync_lock_test_and_set(&this->_sync_lock_calls_hash, 1));
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_hash, 1)) {
+			usleep(10);
+		}
 	}
 	void unlock_calls_hash() {
 		__sync_lock_release(&this->_sync_lock_calls_hash);
