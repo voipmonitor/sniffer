@@ -1,3 +1,8 @@
+14.4.1 8.12.2015
+================
+- properly fix RTP audio decode in case merging legs are enabled 
+
+
 14.4 7.12.2015
 ==============
 - redesign TCP SIP reassembler which can miss some TCP packets or duplicate content inside SIP 
