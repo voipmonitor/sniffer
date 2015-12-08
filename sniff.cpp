@@ -206,7 +206,7 @@ extern int opt_passertedidentity;
 extern char cloud_host[256];
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
-extern PreProcessPacket *preProcessPacket;
+extern PreProcessPacket *preProcessPacket[2];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern int opt_enable_process_rtp_packet;
@@ -368,15 +368,14 @@ inline void save_packet_sql(Call *call, struct pcap_pkthdr *header, const u_char
 
 int get_sip_peername(char *data, int data_len, const char *tag, char *peername, unsigned int peername_len);
 
-inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, unsigned char sip_type, 
-			     int dlt, int sensor_id) {
+inline void save_live_packet(Call *call, PreProcessPacket::packet_s *packetS, unsigned char sip_type) {
 	if(!global_livesniffer) {
 		return;
 	}
 	
 	// check saddr and daddr filters
-	daddr = htonl(daddr);
-	saddr = htonl(saddr);
+	unsigned int daddr = htonl(packetS->daddr);
+	unsigned int saddr = htonl(packetS->saddr);
 
 	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 	
@@ -409,17 +408,17 @@ inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_cha
 		}
 		int res;
 		if(needcaller) {
-			res = get_sip_peername(data,datalen,"\nFrom:", caller, sizeof(caller));
+			res = get_sip_peername(packetS->data,packetS->datalen,"\nFrom:", caller, sizeof(caller));
 			if(res) {
 				// try compact header
-				get_sip_peername(data,datalen,"\nf:", caller, sizeof(caller));
+				get_sip_peername(packetS->data,packetS->datalen,"\nf:", caller, sizeof(caller));
 			}
 		}
 		if(needcalled) {
-			res = get_sip_peername(data,datalen,"\nTo:", called, sizeof(called));
+			res = get_sip_peername(packetS->data,packetS->datalen,"\nTo:", called, sizeof(called));
 			if(res) {
 				// try compact header
-				get_sip_peername(data,datalen,"\nt:", called, sizeof(called));
+				get_sip_peername(packetS->data,packetS->datalen,"\nt:", called, sizeof(called));
 			}
 		}
 	}
@@ -469,12 +468,29 @@ inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_cha
 			}
 		}
 		if(save) {
-			save_packet_sql(call, header, packet, saddr, source, daddr, dest, istcp, data, datalen, usersnifferIT->first, 
-					dlt, sensor_id);
+			save_packet_sql(call, &packetS->header, packetS->packet, saddr, packetS->source, daddr, packetS->dest, packetS->istcp, packetS->data, packetS->datalen, usersnifferIT->first, 
+					packetS->dlt, packetS->sensor_id);
 		}
 	}
 	
 	__sync_lock_release(&usersniffer_sync);
+}
+
+inline void save_live_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, int istcp, char *data, int datalen, unsigned char sip_type, 
+			     int dlt, int sensor_id) {
+	PreProcessPacket::packet_s packetS;
+	packetS.header = *header;
+	packetS.packet = packet;
+	packetS.saddr = saddr;
+	packetS.source = source;
+	packetS.daddr = daddr;
+	packetS.dest = dest;
+	packetS.istcp = istcp;
+	packetS.data = data;
+	packetS.datalen = datalen;
+	packetS.dlt = dlt;
+	packetS.sensor_id = sensor_id;
+	save_live_packet(call, &packetS, sip_type);
 }
 
 static int parse_packet__message(char *data, unsigned int datalen, bool strictCheckLength,
@@ -623,42 +639,41 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet,
 	}
 }
 
-inline void save_sip_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, 
-			    unsigned int saddr, int source, unsigned int daddr, int dest, 
-			    int istcp, iphdr2 *header_ip, char *data, unsigned int sipDatalen, unsigned int dataoffset, int type, 
+inline void save_sip_packet(Call *call, PreProcessPacket::packet_s *packetS,
+			    unsigned int sipDatalen, int type, 
 			    unsigned int datalen, unsigned int sipOffset,
-			    int forceSip, int dlt, int sensor_id) {
+			    int forceSip) {
 	if(!enable_save_sip(call)) {
 		return;
 	}
-	if(istcp && 
+	if(packetS->istcp && 
 	   sipDatalen && (sipDatalen < datalen || sipOffset) &&
-	   (unsigned)datalen + sipOffset < header->caplen) {
-		bpf_u_int32  oldcaplen = header->caplen;
-		bpf_u_int32  oldlen = header->len;
-		u_int16_t oldHeaderIpLen = header_ip->tot_len;
+	   (unsigned)datalen + sipOffset < packetS->header.caplen) {
+		bpf_u_int32  oldcaplen = packetS->header.caplen;
+		bpf_u_int32  oldlen = packetS->header.len;
+		u_int16_t oldHeaderIpLen = packetS->header_ip->tot_len;
 		unsigned long datalenWithSipOffset = datalen + sipOffset;
 		unsigned long diffLen = sipOffset + (datalen - sipDatalen);
 		unsigned long newPacketLen = oldcaplen - diffLen;
-		header->caplen -= diffLen;
-		header->len -= diffLen;
-		header_ip->tot_len = htons(ntohs(header_ip->tot_len) - diffLen);
+		packetS->header.caplen -= diffLen;
+		packetS->header.len -= diffLen;
+		packetS->header_ip->tot_len = htons(ntohs(packetS->header_ip->tot_len) - diffLen);
 		u_char *newPacket = new FILE_LINE u_char[newPacketLen];
-		memcpy(newPacket, packet, oldcaplen - datalenWithSipOffset);
-		memcpy(newPacket + (oldcaplen - datalenWithSipOffset), data, sipDatalen);
-		iphdr2 *newHeaderIp = header_ip;
-		if((u_char*)header_ip > packet && (u_char*)header_ip - packet < 100) {
-			newHeaderIp = (iphdr2*)(newPacket + ((u_char*)header_ip - packet));
+		memcpy(newPacket, packetS->packet, oldcaplen - datalenWithSipOffset);
+		memcpy(newPacket + (oldcaplen - datalenWithSipOffset), packetS->data, sipDatalen);
+		iphdr2 *newHeaderIp = packetS->header_ip;
+		if((u_char*)packetS->header_ip > packetS->packet && (u_char*)packetS->header_ip - packetS->packet < 100) {
+			newHeaderIp = (iphdr2*)(newPacket + ((u_char*)packetS->header_ip - packetS->packet));
 		}
-		save_packet(call, header, newPacket, saddr, source, daddr, dest, istcp, newHeaderIp, data, sipDatalen, dataoffset, TYPE_SIP, 
-			    forceSip, dlt, sensor_id);
+		save_packet(call, &packetS->header, newPacket, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->istcp, newHeaderIp, packetS->data, sipDatalen, packetS->dataoffset, TYPE_SIP, 
+			    forceSip, packetS->dlt, packetS->sensor_id);
 		delete [] newPacket;
-		header->caplen = oldcaplen;
-		header->len = oldlen;
-		header_ip->tot_len = oldHeaderIpLen;
+		packetS->header.caplen = oldcaplen;
+		packetS->header.len = oldlen;
+		packetS->header_ip->tot_len = oldHeaderIpLen;
 	} else {
-		save_packet(call, header, packet, saddr, source, daddr, dest, istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
-			    forceSip, dlt, sensor_id);
+		save_packet(call, &packetS->header, packetS->packet, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->istcp, packetS->header_ip, packetS->data, sipDatalen, packetS->dataoffset, TYPE_SIP, 
+			    forceSip, packetS->dlt, packetS->sensor_id);
 	}
 }
 
@@ -1440,8 +1455,7 @@ void *rtp_read_thread_func(void *arg) {
 	return NULL;
 }
 
-Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest,
-			  pcap_t *handle, int dlt, int sensor_id,
+Call *new_invite_register(PreProcessPacket::packet_s *packetS, int sip_method, char *callidstr,
 			  bool *detectUserAgent,
 			  ParsePacket *parsePacket){
  
@@ -1468,44 +1482,44 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 	if (opt_ppreferredidentity || opt_remotepartyid || opt_passertedidentity) {
 		if (opt_remotepartypriority && opt_remotepartyid) {
 			//Caller number is taken from headers (in this order) Remote-Party-ID,P-Asserted-Identity,P-Preferred-Identity,From,F
-			if(!get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller, sizeof(tcaller)) &&
+			if(!get_sip_peername(packetS->data,packetS->datalen,"\nRemote-Party-ID:", tcaller, sizeof(tcaller)) &&
 			  tcaller[0] != '\0') {
 				caller_useRemotePartyID = true;
 			} else {
-				if(opt_passertedidentity && !get_sip_peername(data,datalen,"\nP-Assserted-Identity:", tcaller, sizeof(tcaller)) &&
+				if(opt_passertedidentity && !get_sip_peername(packetS->data,packetS->datalen,"\nP-Assserted-Identity:", tcaller, sizeof(tcaller)) &&
 				  tcaller[0] != '\0') {
 					caller_usePAssertedIdentity = true;
 				} else {
-					if(opt_ppreferredidentity && !get_sip_peername(data,datalen,"\nP-Preferred-Identity:", tcaller, sizeof(tcaller)) &&
+					if(opt_ppreferredidentity && !get_sip_peername(packetS->data,packetS->datalen,"\nP-Preferred-Identity:", tcaller, sizeof(tcaller)) &&
 					  tcaller[0] != '\0') {
 						caller_usePPreferredIdentity = true;
 					} else {
 						caller_useFrom = true;
-						if(!get_sip_peername(data,datalen,"\nFrom:", tcaller, sizeof(tcaller)) &&
+						if(!get_sip_peername(packetS->data,packetS->datalen,"\nFrom:", tcaller, sizeof(tcaller)) &&
 						  tcaller[0] != '\0') {
-							get_sip_peername(data,datalen,"\nf:", tcaller, sizeof(tcaller));
+							get_sip_peername(packetS->data,packetS->datalen,"\nf:", tcaller, sizeof(tcaller));
 						}
 					}
 				}
 			}
 		} else {
 			//Caller number is taken from headers (in this order) P-Asserted-Identity, P-Preferred-Identity, Remote-Party-ID,From, F
-			if(opt_passertedidentity && !get_sip_peername(data,datalen,"\nP-Asserted-Identity:", tcaller, sizeof(tcaller)) &&
+			if(opt_passertedidentity && !get_sip_peername(packetS->data,packetS->datalen,"\nP-Asserted-Identity:", tcaller, sizeof(tcaller)) &&
 			  tcaller[0] != '\0') {
 				caller_usePAssertedIdentity = true;
 			} else {
-				if(opt_ppreferredidentity && !get_sip_peername(data,datalen,"\nP-Preferred-Identity:", tcaller, sizeof(tcaller)) &&
+				if(opt_ppreferredidentity && !get_sip_peername(packetS->data,packetS->datalen,"\nP-Preferred-Identity:", tcaller, sizeof(tcaller)) &&
 				  tcaller[0] != '\0') {
 					caller_usePPreferredIdentity = true;
 				} else {
-					if(opt_remotepartyid && !get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller, sizeof(tcaller)) &&
+					if(opt_remotepartyid && !get_sip_peername(packetS->data,packetS->datalen,"\nRemote-Party-ID:", tcaller, sizeof(tcaller)) &&
 					  tcaller[0] != '\0') {
 						caller_useRemotePartyID = true;
 					} else {
 						caller_useFrom =  true;
-						if(get_sip_peername(data,datalen,"\nFrom:", tcaller, sizeof(tcaller)) ||
+						if(get_sip_peername(packetS->data,packetS->datalen,"\nFrom:", tcaller, sizeof(tcaller)) ||
 						  tcaller[0] == '\0') {
-							get_sip_peername(data,datalen,"\nf:", tcaller, sizeof(tcaller));
+							get_sip_peername(packetS->data,packetS->datalen,"\nf:", tcaller, sizeof(tcaller));
 						}
 					}
 				}
@@ -1514,31 +1528,31 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 	} else {
 		//Caller is taken from header From , F
 		caller_useFrom =  true;
-		if(get_sip_peername(data,datalen,"\nFrom:", tcaller, sizeof(tcaller)) ||
+		if(get_sip_peername(packetS->data,packetS->datalen,"\nFrom:", tcaller, sizeof(tcaller)) ||
 		  tcaller[0] == '\0') {
-			get_sip_peername(data,datalen,"\nf:", tcaller, sizeof(tcaller));
+			get_sip_peername(packetS->data,packetS->datalen,"\nf:", tcaller, sizeof(tcaller));
 		}
 	}
 
 	if (caller_useFrom && !strcasecmp(tcaller, "anonymous")) {
 		//if caller is anonymous
 		char tcaller2[1024];
-		if(opt_remotepartypriority && !get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller2, sizeof(tcaller2)) &&
+		if(opt_remotepartypriority && !get_sip_peername(packetS->data,packetS->datalen,"\nRemote-Party-ID:", tcaller2, sizeof(tcaller2)) &&
 		   tcaller2[0] != '\0') {
 			strncpy(tcaller, tcaller2, sizeof(tcaller));
 			anonymous_useRemotePartyID = true;
 		} else {
-			if(opt_passertedidentity && !get_sip_peername(data,datalen,"\nP-Asserted-Identity:", tcaller2, sizeof(tcaller2)) &&
+			if(opt_passertedidentity && !get_sip_peername(packetS->data,packetS->datalen,"\nP-Asserted-Identity:", tcaller2, sizeof(tcaller2)) &&
 			   tcaller2[0] != '\0') {
 				strncpy(tcaller, tcaller2, sizeof(tcaller));
 				anonymous_usePAssertedIdentity = true;
 			} else {
-				if(opt_ppreferredidentity && !get_sip_peername(data,datalen,"\nP-Preferred-Identity:", tcaller2, sizeof(tcaller2)) &&
+				if(opt_ppreferredidentity && !get_sip_peername(packetS->data,packetS->datalen,"\nP-Preferred-Identity:", tcaller2, sizeof(tcaller2)) &&
 				   tcaller2[0] != '\0') {
 					strncpy(tcaller, tcaller2, sizeof(tcaller));
 					anonymous_usePPreferredIdentity = true;
 				} else {
-					if(!opt_remotepartypriority && !get_sip_peername(data,datalen,"\nRemote-Party-ID:", tcaller2, sizeof(tcaller2)) &&
+					if(!opt_remotepartypriority && !get_sip_peername(packetS->data,packetS->datalen,"\nRemote-Party-ID:", tcaller2, sizeof(tcaller2)) &&
 					   tcaller2[0] != '\0') {
 						strncpy(tcaller, tcaller2, sizeof(tcaller));
 						anonymous_useRemotePartyID = true;
@@ -1551,14 +1565,14 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 	}
 
 	// called number
-	res = get_sip_peername(data,datalen,"\nTo:", tcalled, sizeof(tcalled));
+	res = get_sip_peername(packetS->data,packetS->datalen,"\nTo:", tcalled, sizeof(tcalled));
 	if(res) {
 		// try compact header
-		get_sip_peername(data,datalen,"\nt:", tcalled, sizeof(tcalled));
+		get_sip_peername(packetS->data,packetS->datalen,"\nt:", tcalled, sizeof(tcalled));
 	}
 	if(sip_method == INVITE && opt_destination_number_mode == 2) {
 		char tcalled_invite[1024] = "";
-		if(!get_sip_peername(data,datalen,"INVITE ", tcalled_invite, sizeof(tcalled_invite)) &&
+		if(!get_sip_peername(packetS->data,packetS->datalen,"INVITE ", tcalled_invite, sizeof(tcalled_invite)) &&
 		   tcalled_invite[0] != '\0') {
 			strncpy(tcalled, tcalled_invite, sizeof(tcalled));
 		}
@@ -1568,34 +1582,34 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 	char tcaller_domain[1024] = "", tcalled_domain[1024] = "";
 	// caller domain 
 	if(anonymous_useFrom || caller_useFrom) {
-		res = get_sip_domain(data,datalen,"\nFrom:", tcaller_domain, sizeof(tcaller_domain));
+		res = get_sip_domain(packetS->data,packetS->datalen,"\nFrom:", tcaller_domain, sizeof(tcaller_domain));
 		if(res) {
 			// try compact header
-			get_sip_domain(data,datalen,"\nf:", tcaller_domain, sizeof(tcaller_domain));
+			get_sip_domain(packetS->data,packetS->datalen,"\nf:", tcaller_domain, sizeof(tcaller_domain));
 		}
 	} else {
 		if(anonymous_useRemotePartyID || caller_useRemotePartyID) {
-			get_sip_domain(data,datalen,"\nRemote-Party-ID:", tcaller_domain, sizeof(tcaller_domain));
+			get_sip_domain(packetS->data,packetS->datalen,"\nRemote-Party-ID:", tcaller_domain, sizeof(tcaller_domain));
 		} else {
 			if (anonymous_usePPreferredIdentity || caller_usePPreferredIdentity) {
-				get_sip_domain(data,datalen,"\nP-Preferred-Identity:", tcaller_domain, sizeof(tcaller_domain));
+				get_sip_domain(packetS->data,packetS->datalen,"\nP-Preferred-Identity:", tcaller_domain, sizeof(tcaller_domain));
 			} else {
 				if (anonymous_usePAssertedIdentity || caller_usePAssertedIdentity) {
-					get_sip_domain(data,datalen,"\nP-Asserted-Identity:", tcaller_domain, sizeof(tcaller_domain));
+					get_sip_domain(packetS->data,packetS->datalen,"\nP-Asserted-Identity:", tcaller_domain, sizeof(tcaller_domain));
 				}
 			}
 		}
 	}
 
 	// called domain 
-	res = get_sip_domain(data,datalen,"\nTo:", tcalled_domain, sizeof(tcalled_domain));
+	res = get_sip_domain(packetS->data,packetS->datalen,"\nTo:", tcalled_domain, sizeof(tcalled_domain));
 	if(res) {
 		// try compact header
-		get_sip_domain(data,datalen,"\nt:", tcalled_domain, sizeof(tcalled_domain));
+		get_sip_domain(packetS->data,packetS->datalen,"\nt:", tcalled_domain, sizeof(tcalled_domain));
 	}
 	if(sip_method == INVITE && opt_destination_number_mode == 2) {
 		char tcalled_domain_invite[256] = "";
-		get_sip_domain(data,datalen,"INVITE ", tcalled_domain_invite, sizeof(tcalled_domain_invite));
+		get_sip_domain(packetS->data,packetS->datalen,"INVITE ", tcalled_domain_invite, sizeof(tcalled_domain_invite));
 		if(tcalled_domain_invite[0] != '\0') {
 			strncpy(tcalled_domain, tcalled_domain_invite, sizeof(tcalled_domain));
 		}
@@ -1604,7 +1618,7 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 	//flags
 	unsigned int flags = 0;
 	set_global_flags(flags);
-	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
+	ipfilter->add_call_flags(&flags, ntohl(packetS->saddr), ntohl(packetS->daddr));
 	telnumfilter->add_call_flags(&flags, tcaller, tcalled);
 	domainfilter->add_call_flags(&flags, tcaller_domain, tcalled_domain);
 	sipheaderfilter->add_call_flags(parsePacket, &flags, tcaller_domain, tcalled_domain);
@@ -1617,21 +1631,21 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 
 
 	static char str2[1024];
-	if(is_ssl) {
+	if(packetS->is_ssl) {
 		glob_ssl_calls++;
 	}
 	// store this call only if it starts with invite
-	Call *call = calltable->add(callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), header->ts.tv_sec, saddr, source, handle, dlt, sensor_id);
+	Call *call = calltable->add(callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header.ts.tv_sec, packetS->saddr, packetS->source, packetS->handle, packetS->dlt, packetS->sensor_id);
 	call->chantype = CHAN_SIP;
-	call->is_ssl = is_ssl;
-	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
-	call->sipcallerip[0] = saddr;
-	call->sipcalledip[0] = daddr;
-	call->sipcallerport = source;
-	call->sipcalledport = dest;
+	call->is_ssl = packetS->is_ssl;
+	call->set_first_packet_time(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec);
+	call->sipcallerip[0] = packetS->saddr;
+	call->sipcalledip[0] = packetS->daddr;
+	call->sipcallerport = packetS->source;
+	call->sipcalledport = packetS->dest;
 	call->type = sip_method;
 	call->flags = flags;
-	call->lastsrcip = saddr;
+	call->lastsrcip = packetS->saddr;
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 	call->fbasename[MIN(strlen(callidstr), MAX_FNAME - 1)] = '\0';
 	call->msgcount++;
@@ -1641,7 +1655,7 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 	/* this logic updates call on the first INVITES */
 	if (sip_method == INVITE or sip_method == REGISTER or sip_method == MESSAGE) {
 		//geolocation 
-		s = gettag(data, datalen, "\nGeoPosition:", &l, &gettagLimitLen);
+		s = gettag(packetS->data, packetS->datalen, "\nGeoPosition:", &l, &gettagLimitLen);
 		if(l && l < 255) {
 			char buf[255];
 			memcpy(buf, s, l);
@@ -1654,25 +1668,25 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 		// callername
 		if (caller_useFrom) {
 			//try from header
-			res = get_sip_peercnam(data,datalen,"\nFrom:", call->callername, sizeof(call->callername));
+			res = get_sip_peercnam(packetS->data,packetS->datalen,"\nFrom:", call->callername, sizeof(call->callername));
 			if(res) {
 				// try compact header
-				get_sip_peercnam(data,datalen,"\nf:", call->callername, sizeof(call->callername));
+				get_sip_peercnam(packetS->data,packetS->datalen,"\nf:", call->callername, sizeof(call->callername));
 			}
 		} else {
 			if (caller_useRemotePartyID) {
 				//try Remote-Party-ID
-				res = get_sip_peercnam(data,datalen,"\nRemote-Party-ID:", call->callername, sizeof(call->callername));
+				res = get_sip_peercnam(packetS->data,packetS->datalen,"\nRemote-Party-ID:", call->callername, sizeof(call->callername));
 				if (res) {
 				}
 			} else {
 				if (caller_usePPreferredIdentity) {
 					//try P-Preferred-Identity
-					res = get_sip_peercnam(data,datalen,"\nP-Preferred-Identity:", call->callername, sizeof(call->callername));
+					res = get_sip_peercnam(packetS->data,packetS->datalen,"\nP-Preferred-Identity:", call->callername, sizeof(call->callername));
 				} else {
 					if (caller_usePAssertedIdentity) {
 						//try P-Asserted-Identity
-						res = get_sip_peercnam(data,datalen,"\nP-Asserted-Identity:", call->callername, sizeof(call->callername));
+						res = get_sip_peercnam(packetS->data,packetS->datalen,"\nP-Asserted-Identity:", call->callername, sizeof(call->callername));
 					} else {
 						if(anonymous_useRemotePartyID || anonymous_usePPreferredIdentity || anonymous_usePAssertedIdentity) {
 							strcpy(call->callername, "anonymous");
@@ -1697,19 +1711,19 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 		if(sip_method == REGISTER) {	
 			// destroy all REGISTER from memory within 30 seconds 
 			call->regcount++;
-			call->destroy_call_at = header->ts.tv_sec + opt_register_timeout;
+			call->destroy_call_at = packetS->header.ts.tv_sec + opt_register_timeout;
 
 			// is it first register? set now
 			if (call->regrrddiff == -1) {
 				//struct timeval nowt;
 				//gettimeofday(&nowt, NULL);
-				call->regrrdstart.tv_sec = header->ts.tv_sec;
-				call->regrrdstart.tv_usec = header->ts.tv_usec;
+				call->regrrdstart.tv_sec = packetS->header.ts.tv_sec;
+				call->regrrdstart.tv_usec = packetS->header.ts.tv_usec;
 			}
 
 			// copy contact num <sip:num@domain>
-			s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
-			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+			s = gettag(packetS->data, packetS->datalen, "\nUser-Agent:", &l, &gettagLimitLen);
+			if(l && ((unsigned int)l < ((unsigned int)packetS->datalen - (s - packetS->data)))) {
 				memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
 				call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
 				if(sverb.set_ua) {
@@ -1720,34 +1734,34 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 				*detectUserAgent = true;
 			}
 
-			res = get_sip_peername(data,datalen,"\nContact:", call->contact_num, sizeof(call->contact_num));
+			res = get_sip_peername(packetS->data,packetS->datalen,"\nContact:", call->contact_num, sizeof(call->contact_num));
 			if(res) {
 				// try compact header
-				get_sip_peername(data,datalen,"\nm:", call->contact_num, sizeof(call->contact_num));
+				get_sip_peername(packetS->data,packetS->datalen,"\nm:", call->contact_num, sizeof(call->contact_num));
 			}
 			// copy contact domain <sip:num@domain>
-			res = get_sip_domain(data,datalen,"\nContact:", call->contact_domain, sizeof(call->contact_domain));
+			res = get_sip_domain(packetS->data,packetS->datalen,"\nContact:", call->contact_domain, sizeof(call->contact_domain));
 			if(res) {
 				// try compact header
-				get_sip_domain(data,datalen,"\nm:", call->contact_domain, sizeof(call->contact_domain));
+				get_sip_domain(packetS->data,packetS->datalen,"\nm:", call->contact_domain, sizeof(call->contact_domain));
 			}
 
 			// copy Authorization
-			s = gettag(data, datalen, "\nAuthorization:", &l, &gettagLimitLen);
-			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
-				get_value_stringkeyval(s, datalen - (s - data), "username=\"", call->digest_username, sizeof(call->digest_username));
-				get_value_stringkeyval(s, datalen - (s - data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
+			s = gettag(packetS->data, packetS->datalen, "\nAuthorization:", &l, &gettagLimitLen);
+			if(l && ((unsigned int)l < ((unsigned int)packetS->datalen - (s - packetS->data)))) {
+				get_value_stringkeyval(s, packetS->datalen - (s - packetS->data), "username=\"", call->digest_username, sizeof(call->digest_username));
+				get_value_stringkeyval(s, packetS->datalen - (s - packetS->data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
 			}
 			// get expires header
-			s = gettag(data, datalen, "\nExpires:", &l, &gettagLimitLen);
-			if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+			s = gettag(packetS->data, packetS->datalen, "\nExpires:", &l, &gettagLimitLen);
+			if(l && ((unsigned int)l < ((unsigned int)packetS->datalen - (s - packetS->data)))) {
 				char c = s[l];
 				s[l] = '\0';
 				call->register_expires = atoi(s);
 				s[l] = c;
 			}
 			// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
-			get_expires_from_contact(data, datalen, &call->register_expires);
+			get_expires_from_contact(packetS->data, packetS->datalen, &call->register_expires);
 /*
 			syslog(LOG_NOTICE, "contact_num[%s] contact_domain[%s] from_num[%s] from_name[%s] from_domain[%s] digest_username[%s] digest_realm[%s] expires[%d]\n", 
 				call->contact_num, call->contact_domain, call->caller, call->callername, call->caller_domain, 
@@ -1755,7 +1769,7 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 */
 		}
 		if(opt_enable_fraud) {
-			fraudBeginCall(call, header->ts);
+			fraudBeginCall(call, packetS->header.ts);
 		}
 		++counter_calls;
 		if(sip_method == INVITE) {
@@ -1768,7 +1782,7 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 	}
 
 	if(opt_norecord_header) {
-		s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
+		s = gettag(packetS->data, packetS->datalen, "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
 		if(l && l < 33) {
 			// do 
 			call->stoprecording();
@@ -1836,7 +1850,7 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 		call->set_frtp_pcap(NULL);
 		****/
 		char filenamestr[32];
-		sprintf(filenamestr, "%u%u", (unsigned int)header->ts.tv_sec, (unsigned int)header->ts.tv_usec);
+		sprintf(filenamestr, "%u%u", (unsigned int)packetS->header.ts.tv_sec, (unsigned int)packetS->header.ts.tv_usec);
 		if(opt_newdir and opt_pcap_split) {
 			char pcapFilePath_spool_relative[1024];
 			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "REG" : "", filenamestr);
@@ -1847,13 +1861,13 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 			} else {
 				strcpy(str2, pcapFilePath_spool_relative);
 			}
-			unsigned long long num = header->ts.tv_sec;
-			unsigned long long num2 = header->ts.tv_usec;
+			unsigned long long num = packetS->header.ts.tv_sec;
+			unsigned long long num2 = packetS->header.ts.tv_usec;
 			while(num2 > 0) {
 				num2 /= 10;
 				num *= 10;
 			}
-			call->fname2 = num + header->ts.tv_usec;
+			call->fname2 = num + packetS->header.ts.tv_usec;
 			call->pcapfilename = call->sip_pcapfilename = pcapFilePath_spool_relative;
 			if(call->getPcapSip()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
 				if(verbosity > 3) {
@@ -1932,7 +1946,7 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 	}
 
 	//check and save CSeq for later to compare with OK 
-	s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
+	s = gettag(packetS->data, packetS->datalen, "\nCSeq:", &l, &gettagLimitLen);
 	if(l && l < 32) {
 		memcpy(call->invitecseq, s, l);
 		call->unrepliedinvite++;
@@ -1944,7 +1958,8 @@ Call *new_invite_register(bool is_ssl, int sip_method, char *data, int datalen, 
 	return call;
 }
 
-void process_sdp(Call *call, int sip_method, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, struct iphdr2 *header_ip, char *callidstr, char *ua, unsigned int ua_len){
+void process_sdp(Call *call, PreProcessPacket::packet_s *packetS,
+		 int sip_method, char *data, int datalen, char *callidstr, char *ua, unsigned int ua_len){
 	char *tmp = strstr(data, "\r\n\r\n");
 	if(!tmp) return;
 
@@ -1969,8 +1984,8 @@ void process_sdp(Call *call, int sip_method, unsigned int saddr, int source, uns
 		}
 		// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg
 		if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
-			((call->saddr == saddr && call->sport == source) || 
-			(call->saddr == daddr && call->sport == dest))))
+			((call->saddr == packetS->saddr && call->sport == packetS->source) || 
+			(call->saddr == packetS->daddr && call->sport == packetS->dest))))
 			{
 
 			//printf("sdp [%u] port[%u]\n", tmp_addr, tmp_port);
@@ -1979,17 +1994,17 @@ void process_sdp(Call *call, int sip_method, unsigned int saddr, int source, uns
 			get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 
 			int iscalled;
-			call->handle_dscp(sip_method, header_ip, saddr, daddr, &iscalled, true);
+			call->handle_dscp(sip_method, packetS->header_ip, packetS->saddr, packetS->daddr, &iscalled, true);
 			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
 		
-			call->add_ip_port_hash(saddr, tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
+			call->add_ip_port_hash(packetS->saddr, tmp_addr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				call->add_ip_port_hash(saddr, alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
+				call->add_ip_port_hash(packetS->saddr, alias, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
 			}
 			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(saddr, saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
+				call->add_ip_port_hash(packetS->saddr, packetS->saddr, tmp_port, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
 			}
 		}
 	} else {
@@ -2019,13 +2034,42 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		     pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
 		     int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
 		     pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
-		     bool mainProcess = true, int sipOffset = 0,
-		     PreProcessPacket::packet_parse_s *parsePacket = NULL) {
+		     bool mainProcess, int sipOffset,
+		     PreProcessPacket::packet_parse_s *parsePacket) {
+	PreProcessPacket::packet_s packetS;
+	packetS.packet_number = packet_number;
+	packetS.saddr = saddr;
+	packetS.source = source;
+	packetS.daddr = daddr; 
+	packetS.dest = dest;
+	packetS.data = data; 
+	packetS.datalen = datalen; 
+	packetS.dataoffset = dataoffset;
+	packetS.handle = handle; 
+	packetS.header = *header; 
+	packetS.packet = packet; 
+	packetS.istcp = istcp; 
+	packetS.header_ip = header_ip; 
+	packetS.block_store = block_store; 
+	packetS.block_store_index =  block_store_index; 
+	packetS.dlt = dlt; 
+	packetS.sensor_id = sensor_id;
+	packetS.is_ssl = is_ssl;
+	return(process_packet(&packetS,
+			      was_rtp, voippacket, forceSip,
+			      mainProcess, sipOffset,
+			      parsePacket));
+}
+
+Call *process_packet(PreProcessPacket::packet_s *packetS,
+		     int *was_rtp, int *voippacket, int forceSip,
+		     bool mainProcess, int sipOffset,
+		     PreProcessPacket::packet_parse_s *parsePacket) {
  
-	_process_packet_packet = (u_char*)packet;
-	_process_packet_header = header;
-	_process_packet_data = data;
-	_process_packet_datalen = datalen;
+	_process_packet_packet = (u_char*)packetS->packet;
+	_process_packet_header = &packetS->header;
+	_process_packet_data = packetS->data;
+	_process_packet_datalen = packetS->datalen;
 
 	/*
 	char *dd = (char*)"";
@@ -2042,7 +2086,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 	istcp = 2;
 	*/
 	
-	glob_last_packet_time = header->ts.tv_sec;
+	glob_last_packet_time = packetS->header.ts.tv_sec;
 	Call *call = NULL;
 	int iscaller;
 	int is_rtcp = 0;
@@ -2059,7 +2103,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 	bool detectUserAgent = false;
 	bool call_cancel_lsr487 = false;
 
-	if (header->ts.tv_sec - process_packet__last_filter_reload > 1){
+	if (packetS->header.ts.tv_sec - process_packet__last_filter_reload > 1){
 		if(ipfilter_reload_do) {
 			IPfilter::lock_sync();
 			delete ipfilter;
@@ -2092,52 +2136,52 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			sipheaderfilter_reload_do = 0;
 			SIP_HEADERfilter::unlock_sync();
 		}
-		process_packet__last_filter_reload = header->ts.tv_sec;
+		process_packet__last_filter_reload = packetS->header.ts.tv_sec;
 	}
 
 	*was_rtp = 0;
 	int merged;
 	_parse_packet_process_packet = parsePacket ? &parsePacket->parse : NULL;
 	
-	if(mainProcess && istcp < 2) {
+	if(mainProcess && packetS->istcp < 2) {
 		++counter_all_packets;
 	}
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
-	if (header->ts.tv_sec - process_packet__last_cleanup > 10){
-		process_packet__cleanup(header, handle);
+	if (packetS->header.ts.tv_sec - process_packet__last_cleanup > 10){
+		process_packet__cleanup(&packetS->header, packetS->handle);
 	}
 	
-	if(header->ts.tv_sec - process_packet__last_destroy_calls >= 2) {
+	if(packetS->header.ts.tv_sec - process_packet__last_destroy_calls >= 2) {
 		calltable->destroyCallsIfPcapsClosed();
-		process_packet__last_destroy_calls = header->ts.tv_sec;
+		process_packet__last_destroy_calls = packetS->header.ts.tv_sec;
 	}
 
 	// check if the packet is SKINNY
-	if(istcp && opt_skinny && (source == 2000 || dest == 2000)) {
-		handle_skinny(header, packet, saddr, source, daddr, dest, data, datalen, dataoffset,
-			      handle, dlt, sensor_id);
+	if(packetS->istcp && opt_skinny && (packetS->source == 2000 || packetS->dest == 2000)) {
+		handle_skinny(&packetS->header, packetS->packet, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, packetS->datalen, packetS->dataoffset,
+			      packetS->handle, packetS->dlt, packetS->sensor_id);
 		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-				saddr, source, daddr, dest,
+			logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 				call, "packet is SKINNY");
 		}
 		return NULL;
 	}
 
 	// check if the packet is SIP ports or SKINNY ports
-	if(sipportmatrix[source] || sipportmatrix[dest] || forceSip) {
+	if(sipportmatrix[packetS->source] || sipportmatrix[packetS->dest] || forceSip) {
 	 
 		++counter_sip_packets[0];
 
 		Call *returnCall = NULL;
 		
-		unsigned long origDatalen = datalen;
+		unsigned long origDatalen = packetS->datalen;
 		unsigned long sipDatalen = parsePacket ? 
 					    parsePacket->sipDataLen :
-					    _parse_packet_global.parseData(data, datalen, true);
+					    _parse_packet_global.parseData(packetS->data, packetS->datalen, true);
 		if(sipDatalen > 0) {
-			datalen = sipDatalen;
+			packetS->datalen = sipDatalen;
 		}
 
 		*voippacket = 1;
@@ -2160,40 +2204,40 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		   BYE message, it knows which call to hang up based on the Call-ID.
 		*/
 		
-		int issip = parsePacket ? parsePacket->isSip : check_sip20(data, datalen);
-		if(!istcp and !issip) { 
+		int issip = parsePacket ? parsePacket->isSip : check_sip20(packetS->data, packetS->datalen);
+		if(!packetS->istcp and !issip) { 
 			goto rtpcheck;
 		}
 
 		if(parsePacket && parsePacket->_getCallID_reassembly) {
 			strncpy(callidstr, parsePacket->callid.c_str(), sizeof(callidstr));
 		} else {
-			s = gettag(data, datalen, "\nCall-ID:", &l, &gettagLimitLen);
+			s = gettag(packetS->data, packetS->datalen, "\nCall-ID:", &l, &gettagLimitLen);
 			if(!issip or (l <= 0 || l > 1023)) {
 				// try also compact header
-				s = gettag(data, datalen,"\ni:", &l, &gettagLimitLen);
+				s = gettag(packetS->data, packetS->datalen,"\ni:", &l, &gettagLimitLen);
 				if(!issip or (l <= 0 || l > 1023)) {
 					// no Call-ID found in packet
-					if(istcp == 1 && header_ip) {
-						if(!(preProcessPacket && opt_enable_preprocess_packet == 2)) {
+					if(packetS->istcp == 1 && packetS->header_ip) {
+						if(!(preProcessPacket[1] && opt_enable_preprocess_packet == 2)) {
 							tcpReassemblySip.processPacket(
-								packet_number,
-								saddr, source, daddr, dest, data, origDatalen, dataoffset,
-								handle, *header, packet, header_ip,
-								dlt, sensor_id,
+								packetS->packet_number,
+								packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, origDatalen, packetS->dataoffset,
+								packetS->handle, packetS->header, packetS->packet, packetS->header_ip,
+								packetS->dlt, packetS->sensor_id,
 								issip);
 							if(logPacketSipMethodCall_enable) {
-								logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-									saddr, source, daddr, dest,
+								logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+									packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 									call, "it is TCP and callid not found");
 							}
 						}
 						return NULL;
 					} else {
 						// it is not TCP and callid not found
-						if(!(preProcessPacket && opt_enable_preprocess_packet == 2) && logPacketSipMethodCall_enable) {
-							logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-								saddr, source, daddr, dest,
+						if(!(preProcessPacket[1] && opt_enable_preprocess_packet == 2) && logPacketSipMethodCall_enable) {
+							logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+								packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 								call, "it is not TCP and callid not found");
 						}
 						return NULL;
@@ -2204,17 +2248,17 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			callidstr[MIN(l, 1023)] = '\0';
 
 			// Call-ID is present
-			if(istcp == 1 && datalen >= 2) {
-				if(!(preProcessPacket && opt_enable_preprocess_packet == 2)) {
+			if(packetS->istcp == 1 && packetS->datalen >= 2) {
+				if(!(preProcessPacket[1] && opt_enable_preprocess_packet == 2)) {
 					tcpReassemblySip.processPacket(
-						packet_number,
-						saddr, source, daddr, dest, data, origDatalen, dataoffset,
-						handle, *header, packet, header_ip,
-						dlt, sensor_id,
+						packetS->packet_number,
+						packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, origDatalen, packetS->dataoffset,
+						packetS->handle, packetS->header, packetS->packet, packetS->header_ip,
+						packetS->dlt, packetS->sensor_id,
 						issip);
 					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-							saddr, source, daddr, dest,
+						logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+							packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 							call, "it is TCP and callid found");
 					}
 				}
@@ -2230,15 +2274,15 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			sip_method = parsePacket->sip_method;
 			sip_response = parsePacket->sip_response;
 		} else {
-			sip_method = process_packet__parse_sip_method(data, datalen, &sip_response);
+			sip_method = process_packet__parse_sip_method(packetS->data, packetS->datalen, &sip_response);
 		}
 		
 		if(issip) {
 			if(opt_enable_fraud && isFraudReady()) {
 				char *ua = NULL;
 				unsigned long ua_len = 0;
-				ua = gettag(data, datalen, "\nUser-Agent:", &ua_len);
-				fraudSipPacket(saddr, sip_method, header->ts, ua, ua_len);
+				ua = gettag(packetS->data, packetS->datalen, "\nUser-Agent:", &ua_len);
+				fraudSipPacket(packetS->saddr, sip_method, packetS->header.ts, ua, ua_len);
 			}
 #if 0
 //this block was moved at the end so it will mirror only relevant SIP belonging to real calls 
@@ -2251,9 +2295,9 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			++counter_sip_packets[1];
 			
 			if(sverb.dump_sip) {
-				char *dump_data = new FILE_LINE char[datalen + 1];
-				memcpy(dump_data, data, datalen);
-				dump_data[datalen] = 0;
+				char *dump_data = new FILE_LINE char[packetS->datalen + 1];
+				memcpy(dump_data, packetS->data, packetS->datalen);
+				dump_data[packetS->datalen] = 0;
 				cout << counter_sip_packets[1] << endl
 				     << dump_data << endl;
 				delete [] dump_data;
@@ -2266,8 +2310,8 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			if(opt_enable_fraud && isFraudReady()) {
 				char *ua = NULL;
 				unsigned long ua_len = 0;
-				ua = gettag(data, datalen, "\nUser-Agent:", &ua_len);
-				fraudRegister(saddr, header->ts, ua, ua_len);
+				ua = gettag(packetS->data, packetS->datalen, "\nUser-Agent:", &ua_len);
+				fraudRegister(packetS->saddr, packetS->header.ts, ua, ua_len);
 			}
 			break;
 		case MESSAGE:
@@ -2275,20 +2319,17 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			break;
 		case OPTIONS:
 			if(livesnifferfilterUseSipTypes.u_options) {
-				save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, OPTIONS, 
-						 dlt, sensor_id);
+				save_live_packet(NULL, packetS, OPTIONS);
 			}
 			break;
 		case SUBSCRIBE:
 			if(livesnifferfilterUseSipTypes.u_subscribe) {
-				save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, SUBSCRIBE, 
-						 dlt, sensor_id);
+				save_live_packet(NULL, packetS, SUBSCRIBE);
 			}
 			break;
 		case NOTIFY:
 			if(livesnifferfilterUseSipTypes.u_notify) {
-				save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, NOTIFY, 
-						 dlt, sensor_id);
+				save_live_packet(NULL, packetS, NOTIFY);
 			}
 			break;
 		}
@@ -2299,7 +2340,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			lastSIPresponse[sizeof(lastSIPresponse) - 1] = 0;
 			call_cancel_lsr487 = parsePacket->call_cancel_lsr487;
 		} else {
-			lastSIPresponseNum = parse_packet__last_sip_response(data, datalen, sip_method, sip_response,
+			lastSIPresponseNum = parse_packet__last_sip_response(packetS->data, packetS->datalen, sip_method, sip_response,
 									     lastSIPresponse, &call_cancel_lsr487);
 		}
 
@@ -2309,7 +2350,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		} else {
 			call = calltable->find_by_call_id(callidstr, strlen(callidstr));
 			if(call) {
-				call->handle_dscp(sip_method, header_ip, saddr, daddr, NULL, !IS_SIP_RESXXX(sip_method));
+				call->handle_dscp(sip_method, packetS->header_ip, packetS->saddr, packetS->daddr, NULL, !IS_SIP_RESXXX(sip_method));
 				if(pcap_drop_flag) {
 					call->pcap_drop = pcap_drop_flag;
 				}
@@ -2329,7 +2370,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				char *s2 = NULL;
 				long unsigned int l2 = 0;
 				unsigned char buf[1024];
-				s2 = gettag(data, datalen, opt_callidmerge_header, &l2, &gettagLimitLen);
+				s2 = gettag(packetS->data, packetS->datalen, opt_callidmerge_header, &l2, &gettagLimitLen);
 				if(l2 && l2 < 128) {
 					// header exists
 					if(opt_callidmerge_secret[0] != '\0') {
@@ -2369,16 +2410,16 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			if(call->first_invite_time_usec) {
 				if(lastSIPresponseNum == 100) {
 					if(!call->first_response_100_time_usec) {
-						call->first_response_100_time_usec = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+						call->first_response_100_time_usec = packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec;
 					}
 				} else {
 					if(!call->first_response_xxx_time_usec) {
-						call->first_response_xxx_time_usec = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+						call->first_response_xxx_time_usec = packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec;
 					}
 				}
 			} else if(call->first_message_time_usec && lastSIPresponseNum == 200) {
 				if(!call->first_response_200_time_usec) {
-					call->first_response_200_time_usec = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+					call->first_response_200_time_usec = packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec;
 				}
 			}
 		}
@@ -2390,8 +2431,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					call = parsePacket->call_created;
 					detectUserAgent = parsePacket->detectUserAgent;
 				} else {
-					call = new_invite_register(is_ssl, sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest,
-								   handle, dlt, sensor_id,
+					call = new_invite_register(packetS, sip_method, callidstr,
 								   &detectUserAgent,
 								   parsePacket ? &parsePacket->parse : &_parse_packet_global);
 					if(call == NULL) {
@@ -2404,7 +2444,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 						u_int header_ip_offset;
 						int protocol;
 						int vlan;
-						parseEtherHeader(dlt, (u_char*)packet,
+						parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
 								 header_sll, header_eth, header_ip_offset, protocol, &vlan);
 						call->vlan = vlan;
 					}
@@ -2412,37 +2452,34 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				if(call == NULL) {
 					goto endsip;
 				} else if(sip_method == INVITE && !call->first_invite_time_usec) {
-					call->first_invite_time_usec = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+					call->first_invite_time_usec = packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec;
 				} else if(sip_method == MESSAGE && !call->first_message_time_usec) {
-					call->first_message_time_usec = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+					call->first_message_time_usec = packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec;
 				}
 			} else {
 				// SIP packet does not belong to any call and it is not INVITE 
 				// TODO: check if we have enabled live sniffer for SUBSCRIBE or OPTIONS 
 				// if yes check for cseq OPTIONS or SUBSCRIBE 
-				s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
+				s = gettag(packetS->data, packetS->datalen, "\nCSeq:", &l, &gettagLimitLen);
 				if(l && l < 32) {
 					if(livesnifferfilterUseSipTypes.u_subscribe && memmem(s, l, "SUBSCRIBE", 9)) {
-						save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, SUBSCRIBE, 
-								 dlt, sensor_id);
+						save_live_packet(NULL, packetS, SUBSCRIBE);
 					} else if(livesnifferfilterUseSipTypes.u_options && memmem(s, l, "OPTIONS", 7)) {
-						save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, OPTIONS, 
-								 dlt, sensor_id);
+						save_live_packet(NULL, packetS, OPTIONS);
 					} else if(livesnifferfilterUseSipTypes.u_notify && memmem(s, l, "NOTIFY", 6)) {
-						save_live_packet(NULL, header, packet, saddr, source, daddr, dest, istcp, data, datalen, NOTIFY, 
-								 dlt, sensor_id);
+						save_live_packet(NULL, packetS, NOTIFY);
 					}
 				}
 				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-						saddr, source, daddr, dest,
+					logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 						call, "SIP packet does not belong to any call and it is not INVITE");
 				}
 				goto endsip;
 			}
 		// check if the SIP msg is part of earlier REGISTER
 		} else if(call->type == REGISTER) {
-			if(call->lastsrcip != saddr) { call->oneway = 0; };
+			if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
 			call->lastSIPresponseNum = lastSIPresponseNum;
 			call->msgcount++;
 			bool goto_endsip = false;
@@ -2451,32 +2488,31 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER Call-ID[%s] regcount[%d]", call->call_id.c_str(), call->regcount);
 
 				// update Authorization
-				s = gettag(data, datalen, "\nAuthorization:", &l, &gettagLimitLen);
-				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
-					get_value_stringkeyval(s, datalen - (s - data), "username=\"", call->digest_username, sizeof(call->digest_username));
-					get_value_stringkeyval(s, datalen - (s - data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
+				s = gettag(packetS->data, packetS->datalen, "\nAuthorization:", &l, &gettagLimitLen);
+				if(l && ((unsigned int)l < ((unsigned int)packetS->datalen - (s - packetS->data)))) {
+					get_value_stringkeyval(s, packetS->datalen - (s - packetS->data), "username=\"", call->digest_username, sizeof(call->digest_username));
+					get_value_stringkeyval(s, packetS->datalen - (s - packetS->data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
 				}
 
 				if(call->regcount > 4) {
 					// to much register attempts without OK or 401 responses
 					call->regstate = 4;
 					call->saveregister();
-					call = new_invite_register(is_ssl, sip_method, data, datalen, header, callidstr, saddr, daddr, source, dest,
-								   handle, dlt, sensor_id,
+					call = new_invite_register(packetS, sip_method, callidstr,
 								   &detectUserAgent,
 								   parsePacket ? &parsePacket->parse : &_parse_packet_global);
 					if(call == NULL) {
 						goto endsip;
 					}
 					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-							saddr, source, daddr, dest,
+						logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+							packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 							call, "to much register attempts without OK or 401 responses");
 					}
 					returnCall = call;
 					goto endsip_save_packet;
 				}
-				s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
+				s = gettag(packetS->data, packetS->datalen, "\nCSeq:", &l, &gettagLimitLen);
 				if(l && l < 32) {
 					memcpy(call->invitecseq, s, l);
 					call->invitecseq[l] = '\0';
@@ -2487,40 +2523,39 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				call->seenRES2XX = true;
 				// update expires header from all REGISTER dialog messages (from 200 OK which can override the expire) but not if register_expires == 0
 				if(call->register_expires != 0) {
-					s = gettag(data, datalen, "\nExpires:", &l, &gettagLimitLen);
-					if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+					s = gettag(packetS->data, packetS->datalen, "\nExpires:", &l, &gettagLimitLen);
+					if(l && ((unsigned int)l < ((unsigned int)packetS->datalen - (s - packetS->data)))) {
 						char c = s[l];
 						s[l] = '\0';
 						call->register_expires = atoi(s);
 						s[l] = c;
 					}
 					// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
-					get_expires_from_contact(data, datalen, &call->register_expires);
+					get_expires_from_contact(packetS->data, packetS->datalen, &call->register_expires);
 				}
 				if(opt_enable_fraud) {
-					fraudConnectCall(call, header->ts);
+					fraudConnectCall(call, packetS->header.ts);
 				}
 				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id.c_str());
-                                s = gettag(data, datalen, "\nCSeq:", &l, &gettagLimitLen);
+                                s = gettag(packetS->data, packetS->datalen, "\nCSeq:", &l, &gettagLimitLen);
                                 if(l && strncmp(s, call->invitecseq, l) == 0) {
 					// registration OK 
 					call->regstate = 1;
 
 					// diff in ms
-					call->regrrddiff = 1000 * (header->ts.tv_sec - call->regrrdstart.tv_sec) + (header->ts.tv_usec - call->regrrdstart.tv_usec) / 1000;
+					call->regrrddiff = 1000 * (packetS->header.ts.tv_sec - call->regrrdstart.tv_sec) + (packetS->header.ts.tv_usec - call->regrrdstart.tv_usec) / 1000;
 				} else {
 					// OK to unknown msg close the call
 					call->regstate = 3;
 				}
-				save_sip_packet(call, header, packet, 
-						saddr, source, daddr, dest, 
-						istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
+				save_sip_packet(call, packetS,
+						sipDatalen, TYPE_SIP, 
 						origDatalen, sipOffset,
-						forceSip, dlt, sensor_id);
+						forceSip);
 				call->saveregister();
 				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-						saddr, source, daddr, dest,
+					logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 						call, "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)");
 				}
 				goto_endsip = true;
@@ -2533,15 +2568,14 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				   sip_method == RES403 || sip_method == RES404) {
 					// registration failed
 					call->regstate = 2;
-					save_sip_packet(call, header, packet, 
-							saddr, source, daddr, dest, 
-							istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
+					save_sip_packet(call, packetS,
+							sipDatalen, TYPE_SIP, 
 							origDatalen, sipOffset,
-							forceSip, dlt, sensor_id);
+							forceSip);
 					call->saveregister();
 					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-							saddr, source, daddr, dest,
+						logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+							packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 							call, 
 							sip_method == RES401 ? "REGISTER 401 count > 1" :
 							sip_method == RES403 ? "REGISTER 403" :
@@ -2563,15 +2597,14 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			if(call->msgcount > 20) {
 				// too many REGISTER messages within the same callid
 				call->regstate = 4;
-				save_sip_packet(call, header, packet, 
-						saddr, source, daddr, dest, 
-						istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
+				save_sip_packet(call, packetS,
+						sipDatalen, TYPE_SIP, 
 						origDatalen, sipOffset,
-						forceSip, dlt, sensor_id);
+						forceSip);
 				call->saveregister();
 				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-						saddr, source, daddr, dest,
+					logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 						call, "too many REGISTER messages within the same callid");
 				}
 				goto endsip;
@@ -2579,16 +2612,16 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		// packet is already part of call
 		// check if SIP packet belongs to the first leg 
 		} else if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
-			((call->saddr == saddr && call->sport == source) || 
-			(call->saddr == daddr && call->sport == dest))))
+			((call->saddr == packetS->saddr && call->sport == packetS->source) || 
+			(call->saddr == packetS->daddr && call->sport == packetS->dest))))
 
 			{
 
-			if(call->lastsrcip != saddr) { call->oneway = 0; };
+			if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
 
 			char *cseq = NULL;
 			long unsigned int cseqlen = 0;
-			cseq = gettag(data, datalen, "\nCSeq:", &cseqlen, &gettagLimitLen);
+			cseq = gettag(packetS->data, packetS->datalen, "\nCSeq:", &cseqlen, &gettagLimitLen);
 			bool cseq_contain_invite = false;
 			if(cseq && cseqlen < 32) {
 				if(memmem(call->invitecseq, strlen(call->invitecseq), cseq, cseqlen)) {
@@ -2607,7 +2640,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			}
 
 			if(opt_norecord_header) {
-				s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
+				s = gettag(packetS->data, packetS->datalen, "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
 				if(l && l < 33) {
 					// do 
 					call->stoprecording();
@@ -2615,9 +2648,9 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			}
 
 			// we have packet, extend pending destroy requests
-			call->shift_destroy_call_at(header, lastSIPresponseNum);
+			call->shift_destroy_call_at(&packetS->header, lastSIPresponseNum);
 
-			call->set_last_packet_time(header->ts.tv_sec);
+			call->set_last_packet_time(packetS->header.ts.tv_sec);
 			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
 			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && 
 			   (call->type == MESSAGE ?
@@ -2639,8 +2672,8 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			
 			extern bool exists_columns_cdr_reason;
 			if(exists_columns_cdr_reason) {
-				char *reason = gettag(data, datalen, "reason:", &l);
-				if(l && (l + (reason - data)) < (unsigned)datalen) {
+				char *reason = gettag(packetS->data, packetS->datalen, "reason:", &l);
+				if(l && (l + (reason - packetS->data)) < (unsigned)packetS->datalen) {
 					char oldEndChar = reason[l];
 					reason[l] = 0;
 					char *pointerToCause = strcasestr(reason, ";cause=");
@@ -2686,15 +2719,15 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					call->new_invite_after_lsr487 = true;
 				}
 				//update called number for each invite due to overlap-dialling
-				if (opt_sipoverlap && saddr == call->sipcallerip[0]) {
-					int res = get_sip_peername(data,datalen,"\nTo:", call->called, sizeof(call->called));
+				if (opt_sipoverlap && packetS->saddr == call->sipcallerip[0]) {
+					int res = get_sip_peername(packetS->data,packetS->datalen,"\nTo:", call->called, sizeof(call->called));
 					if(res) {
 						// try compact header
-						get_sip_peername(data,datalen,"\nt:", call->called, sizeof(call->called));
+						get_sip_peername(packetS->data,packetS->datalen,"\nt:", call->called, sizeof(call->called));
 					}
 					if(opt_destination_number_mode == 2) {
 						char called[1024] = "";
-						if(!get_sip_peername(data,datalen,"INVITE ", called, sizeof(called)) &&
+						if(!get_sip_peername(packetS->data,packetS->datalen,"INVITE ", called, sizeof(called)) &&
 						   called[0] != '\0') {
 							strncpy(call->called, called, sizeof(call->called));
 						}
@@ -2709,11 +2742,11 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 						syslog(LOG_NOTICE, "Seen INVITE, CSeq: %s\n", call->invitecseq);
 				}
 			} else if(sip_method == MESSAGE) {
-				call->destroy_call_at = header->ts.tv_sec + 60;
+				call->destroy_call_at = packetS->header.ts.tv_sec + 60;
 				call->seeninviteok = false;
 
-				s = gettag(data, datalen, "\nUser-Agent:", &l, &gettagLimitLen);
-				if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+				s = gettag(packetS->data, packetS->datalen, "\nUser-Agent:", &l, &gettagLimitLen);
+				if(l && ((unsigned int)l < ((unsigned int)packetS->datalen - (s - packetS->data)))) {
 					memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
 					call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
 					if(sverb.set_ua) {
@@ -2735,7 +2768,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				string rsltDestNumber;
 				string rsltSrcNumber;
 				unsigned int rsltContentLength;
-				switch(parse_packet__message(data, datalen, call->message != NULL,
+				switch(parse_packet__message(packetS->data, packetS->datalen, call->message != NULL,
 							     &rsltMessage, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
 				case 2:
 					if(call->message) {
@@ -2806,8 +2839,8 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			
 				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
 					//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header 
-					call->destroy_call_at = header->ts.tv_sec + 60;
-					call->destroy_call_at_bye = header->ts.tv_sec + 20 * 60;
+					call->destroy_call_at = packetS->header.ts.tv_sec + 60;
+					call->destroy_call_at_bye = packetS->header.ts.tv_sec + 20 * 60;
 				}
 				
 				//check and save CSeq for later to compare with OK 
@@ -2821,20 +2854,20 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Seen bye\n");
 					if(opt_enable_fraud) {
-						fraudSeenByeCall(call, header->ts);
+						fraudSeenByeCall(call, packetS->header.ts);
 					}
 				}
 				// save who hanged up 
-				if(call->sipcallerip[0] == saddr) {
+				if(call->sipcallerip[0] == packetS->saddr) {
 					call->whohanged = 0;
-				} else if(call->sipcalledip[0] == saddr) {
+				} else if(call->sipcalledip[0] == packetS->saddr) {
 					call->whohanged = 1;
 				}
 			} else if(sip_method == CANCEL) {
 				// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
 				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
 					//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
-					call->destroy_call_at = header->ts.tv_sec + 10;
+					call->destroy_call_at = packetS->header.ts.tv_sec + 10;
 				}
 				
 				//check and save CSeq for later to compare with OK 
@@ -2848,7 +2881,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				if(!(cseq && cseqlen < 32) || strncmp(cseq, call->byecseq, cseqlen)) {
 					call->seenRES2XX_no_BYE = true;
 					if(!call->progress_time) {
-						call->progress_time = header->ts.tv_sec;
+						call->progress_time = packetS->header.ts.tv_sec;
 					}
 				}
 
@@ -2869,28 +2902,28 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 	first 200 OK will not save the second 200 OK. So rather wait for 5 seconds for some more messages instead of closing the call. 
 */
 						// destroy call after 5 seonds from now 
-						call->destroy_call_at = header->ts.tv_sec + 5;
+						call->destroy_call_at = packetS->header.ts.tv_sec + 5;
 						if(logPacketSipMethodCall_enable) {
-							logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-								saddr, source, daddr, dest,
+							logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+								packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 								call);
 						}
-						process_packet__parse_custom_headers(call, data, datalen);
+						process_packet__parse_custom_headers(call, packetS->data, packetS->datalen);
 						returnCall = call;
 						goto endsip_save_packet;
 					} else if(strncmp(cseq, call->invitecseq, cseqlen) == 0) {
 						call->seeninviteok = true;
 						if(!call->connect_time) {
-							call->connect_time = header->ts.tv_sec;
+							call->connect_time = packetS->header.ts.tv_sec;
 							if(opt_enable_fraud) {
-								fraudConnectCall(call, header->ts);
+								fraudConnectCall(call, packetS->header.ts);
 							}
 						}
 						if(opt_update_dstnum_onanswer &&
 						   !call->updateDstnumOnAnswer && !call->updateDstnumFromMessage &&
 						   call->called_invite_branch_map.size()) {
 							char branch[100];
-							if(!get_sip_branch(data, datalen, "via:", branch, sizeof(branch)) &&
+							if(!get_sip_branch(packetS->data, packetS->datalen, "via:", branch, sizeof(branch)) &&
 							   branch[0] != '\0') {
 								map<string, string>::iterator iter = call->called_invite_branch_map.find(branch);
 								if(iter != call->called_invite_branch_map.end()) {
@@ -2902,7 +2935,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call answered\n");
 					} else if(strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
-						process_packet__parse_custom_headers(call, data, datalen);
+						process_packet__parse_custom_headers(call, packetS->data, packetS->datalen);
 						returnCall = call;
 						goto endsip_save_packet;
 					}
@@ -2910,19 +2943,19 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				if(!call->onCall_2XX) {
 					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
 							     call->sipcallerip[0], call->sipcalledip[0]);
-					sendCallInfoEvCall(call, sSciInfo::sci_200, header->ts);
+					sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->header.ts);
 					call->onCall_2XX = true;
 				}
 
 			} else if(sip_method == RES18X) {
 				call->seenRES18X = true;
 				if(!call->progress_time) {
-					call->progress_time = header->ts.tv_sec;
+					call->progress_time = packetS->header.ts.tv_sec;
 				}
 				if(!call->onCall_18X) {
 					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
 							     call->sipcallerip[0], call->sipcalledip[0]);
-					sendCallInfoEvCall(call, sSciInfo::sci_18X, header->ts);
+					sendCallInfoEvCall(call, sSciInfo::sci_18X, packetS->header.ts);
 					call->onCall_18X = true;
 				}
 				call->destroy_call_at = 0;
@@ -2935,7 +2968,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501 && lastSIPresponseNum != 481 && lastSIPresponseNum != 491) {
 					// save packet 
 					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
-						call->destroy_call_at = header->ts.tv_sec + (sip_method == RES300 ? 300 : 5);
+						call->destroy_call_at = packetS->header.ts.tv_sec + (sip_method == RES300 ? 300 : 5);
 					}
 
 					if(IS_SIP_RES3XX(sip_method)) {
@@ -2945,78 +2978,78 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 						call->ipport_n = 0;
 					}
 					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-							saddr, source, daddr, dest,
+						logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+							packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 							call);
 					}
-					process_packet__parse_custom_headers(call, data, datalen);
+					process_packet__parse_custom_headers(call, packetS->data, packetS->datalen);
 					returnCall = call;
 					goto endsip_save_packet;
 				} else if(lastSIPresponseNum == 481) {
 					//481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
 
 					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
-						call->destroy_call_at = header->ts.tv_sec + 180;
+						call->destroy_call_at = packetS->header.ts.tv_sec + 180;
 					}
 				} else if(lastSIPresponseNum == 491) {
 					// do not set timeout for 491
 				} else if(!call->destroy_call_at) {
 					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
-						call->destroy_call_at = header->ts.tv_sec + 60;
+						call->destroy_call_at = packetS->header.ts.tv_sec + 60;
 					}
 				}
 			}
 		}
 
-		if(call->lastsrcip != saddr) { call->oneway = 0; };
+		if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
 
 		if(sip_method == INVITE || sip_method == MESSAGE) {
 		 
 			bool existInviteSdaddr = false;
 			bool reverseInviteSdaddr = false;
 			for(list<d_u_int32_t>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
-				if(saddr == (*iter)[0] && daddr == (*iter)[1]) {
+				if(packetS->saddr == (*iter)[0] && packetS->daddr == (*iter)[1]) {
 					existInviteSdaddr = true;
-				} else if(daddr == (*iter)[0] && saddr == (*iter)[1]) {
+				} else if(packetS->daddr == (*iter)[0] && packetS->saddr == (*iter)[1]) {
 					reverseInviteSdaddr = true;
 				}
 			}
 			if(!existInviteSdaddr) {
-				call->invite_sdaddr.push_back(d_u_int32_t(saddr, daddr));
+				call->invite_sdaddr.push_back(d_u_int32_t(packetS->saddr, packetS->daddr));
 			}
 		 
 			if(opt_update_dstnum_onanswer) {
 				char branch[100];
-				if(!get_sip_branch(data, datalen, "via:", branch, sizeof(branch)) &&
+				if(!get_sip_branch(packetS->data, packetS->datalen, "via:", branch, sizeof(branch)) &&
 				   branch[0] != '\0') {
 					char called_invite[1024] = "";
-					if(!get_sip_peername(data,datalen,sip_method == MESSAGE ? "MESSAGE " : "INVITE ", called_invite, sizeof(called_invite)) &&
+					if(!get_sip_peername(packetS->data,packetS->datalen,sip_method == MESSAGE ? "MESSAGE " : "INVITE ", called_invite, sizeof(called_invite)) &&
 					   called_invite[0] != '\0') {
 						call->called_invite_branch_map[branch] = called_invite;
 					}
 				}
 			}
-			ipfilter->add_call_flags(&(call->flags), ntohl(saddr), ntohl(daddr));
+			ipfilter->add_call_flags(&(call->flags), ntohl(packetS->saddr), ntohl(packetS->daddr));
 			if(opt_cdrproxy && !reverseInviteSdaddr) {
-				if(call->sipcalledip[0] != daddr and call->sipcallerip[0] != daddr and call->lastsipcallerip != saddr) {
-					if(daddr != 0) {
+				if(call->sipcalledip[0] != packetS->daddr and call->sipcallerip[0] != packetS->daddr and call->lastsipcallerip != packetS->saddr) {
+					if(packetS->daddr != 0) {
 						// daddr is already set, store previous daddr as sipproxy
 						call->proxies.push_back(call->sipcalledip[0]);
 					}
-					call->sipcalledip[0] = daddr;
-					call->sipcalledport = dest;
-					call->lastsipcallerip = saddr;
-				} else if(call->lastsipcallerip == saddr) {
+					call->sipcalledip[0] = packetS->daddr;
+					call->sipcalledport = packetS->dest;
+					call->lastsipcallerip = packetS->saddr;
+				} else if(call->lastsipcallerip == packetS->saddr) {
 					// update sipcalledip to this new one
-					call->sipcalledip[0] = daddr;
-					call->sipcalledport = dest;
-					call->lastsipcallerip = saddr;
+					call->sipcalledip[0] = packetS->daddr;
+					call->sipcalledport = packetS->dest;
+					call->lastsipcallerip = packetS->saddr;
 				}
 			}
 		}
 
 		if(opt_norecord_header) {
-			s = gettag(data, datalen, "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
+			s = gettag(packetS->data, packetS->datalen, "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
 			if(l && l < 33) {
 				// do 
 				call->stoprecording();
@@ -3024,27 +3057,27 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		}
 
 		if(sip_method == INFO) {
-			s = gettag(data, datalen, "\nSignal:", &l, &gettagLimitLen);
+			s = gettag(packetS->data, packetS->datalen, "\nSignal:", &l, &gettagLimitLen);
 			if(l && l < 33) {
 				char *tmp = s + 1;
 				tmp[l - 1] = '\0';
 				if(verbosity >= 2)
 					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-				call->handle_dtmf(*tmp, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr);
+				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr);
 			}
-			s = gettag(data, datalen, "Signal=", &l, &gettagLimitLen);
+			s = gettag(packetS->data, packetS->datalen, "Signal=", &l, &gettagLimitLen);
 			if(l && l < 33) {
 				char *tmp = s;
 				tmp[l] = '\0';
 				if(verbosity >= 2)
 					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-				call->handle_dtmf(*tmp, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr);
+				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr);
 
 			}
 		}
 		
 		// check if we have X-VoipMonitor-Custom1
-		s = gettag(data, datalen, "\nX-VoipMonitor-Custom1:", &l, &gettagLimitLen);
+		s = gettag(packetS->data, packetS->datalen, "\nX-VoipMonitor-Custom1:", &l, &gettagLimitLen);
 		if(l && l < 255) {
 			memcpy(call->custom_header1, s, l);
 			call->custom_header1[l] = '\0';
@@ -3054,7 +3087,7 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 
 		// check for opt_match_header
 		if(opt_match_header[0] != '\0') {
-			s = gettag(data, datalen, opt_match_header, &l, &gettagLimitLen);
+			s = gettag(packetS->data, packetS->datalen, opt_match_header, &l, &gettagLimitLen);
 			if(l && l < 128) {
 				memcpy(call->match_header, s, l);
 				call->match_header[l] = '\0';
@@ -3064,21 +3097,21 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		}
 	
 		// check if we have custom headers
-		process_packet__parse_custom_headers(call, data, datalen);
+		process_packet__parse_custom_headers(call, packetS->data, packetS->datalen);
 		
 		// we have packet, extend pending destroy requests
-		call->shift_destroy_call_at(header, lastSIPresponseNum);
+		call->shift_destroy_call_at(&packetS->header, lastSIPresponseNum);
 
 		// SDP examination
-		s = gettag(data,datalen,"\nContent-Type:",&l,&gettagLimitLen);
+		s = gettag(packetS->data,packetS->datalen,"\nContent-Type:",&l,&gettagLimitLen);
 		if(l <= 0 || l > 1023) {
 			//try compact header
-			s = gettag(data,datalen,"\nc:",&l,&gettagLimitLen);
+			s = gettag(packetS->data,packetS->datalen,"\nc:",&l,&gettagLimitLen);
 		}
 
 		char a;
-		a = data[datalen - 1];
-		data[datalen - 1] = 0;
+		a = packetS->data[packetS->datalen - 1];
+		packetS->data[packetS->datalen - 1] = 0;
 		char t;
 		char *sl;
 
@@ -3102,8 +3135,8 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			string rsltDestNumber;
 			string rsltSrcNumber;
 			unsigned int rsltContentLength;
-			data[datalen - 1] = a;
-			switch(parse_packet__message(data, datalen, false,
+			packetS->data[packetS->datalen - 1] = a;
+			switch(parse_packet__message(packetS->data, packetS->datalen, false,
 						     &rsltMessage, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
 			case 2:
 				call->message = rsltMessage;
@@ -3171,27 +3204,29 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			// prepare User-Agent
 			char *ua = NULL;
 			unsigned long gettagLimitLen = 0, ua_len = 0;
-			ua = gettag(data, datalen, "\nUser-Agent:", &ua_len, &gettagLimitLen);
+			ua = gettag(packetS->data, packetS->datalen, "\nUser-Agent:", &ua_len, &gettagLimitLen);
 			detectUserAgent = true;
-			process_sdp(call, sip_method, saddr, source, daddr, dest, s, (unsigned int)datalen - (s - data), header_ip, callidstr, ua, ua_len);
+			process_sdp(call, packetS,
+				    sip_method, s, (unsigned int)packetS->datalen - (s - packetS->data), callidstr, ua, ua_len);
 		} else if(strcasestr(s, "multipart/mixed")) {
 			*sl = t;
 			char *ua = NULL;
 			unsigned long gettagLimitLen = 0, ua_len = 0;
-			ua = gettag(data, datalen, "\nUser-Agent:", &ua_len, &gettagLimitLen);
+			ua = gettag(packetS->data, packetS->datalen, "\nUser-Agent:", &ua_len, &gettagLimitLen);
 			detectUserAgent = true;
 			while(1) {
 				//continue searching  for another content-type
 				char *s2;
-				s2 = gettag(s, (unsigned int)datalen - (s - data), "\nContent-Type:", &l, NULL);
+				s2 = gettag(s, (unsigned int)packetS->datalen - (s - packetS->data), "\nContent-Type:", &l, NULL);
 				if(l <= 0 || l > 1023) {
 					//try compact header
-					s2 = gettag(s, (unsigned int)datalen - (s - data), "\nc:", &l, NULL);
+					s2 = gettag(s, (unsigned int)packetS->datalen - (s - packetS->data), "\nc:", &l, NULL);
 				}
 				if(s2 and l > 0) {
 					//Content-Type found try if it is SDP 
 					if(l > 0 && strcasestr(s2, "application/sdp")){
-						process_sdp(call, sip_method, saddr, source, daddr, dest, s2, (unsigned int)datalen - (s2 - data), header_ip, callidstr, ua, ua_len);
+						process_sdp(call, packetS,
+							    sip_method, s2, (unsigned int)packetS->datalen - (s2 - packetS->data), callidstr, ua, ua_len);
 						break;	// stop searching
 					} else {
 						// it is not SDP continue searching for another content-type 
@@ -3208,18 +3243,17 @@ Call *process_packet(bool is_ssl, u_int64_t packet_number,
 
 notfound:
 		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-				saddr, source, daddr, dest,
+			logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 				call);
 		}
 		returnCall = call;
-		data[datalen - 1] = a;
+		packetS->data[packetS->datalen - 1] = a;
 endsip_save_packet:
-		save_sip_packet(call, header, packet, 
-				saddr, source, daddr, dest, 
-				istcp, header_ip, data, sipDatalen, dataoffset, TYPE_SIP, 
+		save_sip_packet(call, packetS,
+				sipDatalen, TYPE_SIP, 
 				origDatalen, sipOffset,
-				forceSip, dlt, sensor_id);
+				forceSip);
 endsip:
 		if(_save_sip_history && call) {
 			bool save_request = IS_SIP_RESXXX(sip_method) ?
@@ -3245,7 +3279,7 @@ endsip:
 				   (_lastSIPresponse && _lastSIPresponse[0]) || 
 				   _lastSIPresponseNum) {
 					call->SIPhistory.push_back(Call::sSipHistory(
-						header->ts.tv_sec * 1000000ull + header->ts.tv_usec,
+						packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec,
 						_request,
 						_lastSIPresponse, _lastSIPresponseNum));
 				}
@@ -3254,16 +3288,16 @@ endsip:
 		
 		if(call && call->type != REGISTER && sipSendSocket && !opt_sip_send_before_packetbuffer) {
 			// send packet to socket if enabled
-			u_int16_t header_length = datalen;
+			u_int16_t header_length = packetS->datalen;
 			sipSendSocket->addData(&header_length, 2,
-					       data, datalen);
+					       packetS->data, packetS->datalen);
 		}
 
 		if(!detectUserAgent && sip_method && call) {
 			bool iscaller = 0;
-			if(call->check_is_caller_called(sip_method, saddr, daddr, &iscaller)) {
-				s = gettag(data, sipDatalen, "\nUser-Agent:", &l, &gettagLimitLen);
-				if(l && ((unsigned int)l < ((unsigned int)sipDatalen - (s - data)))) {
+			if(call->check_is_caller_called(sip_method, packetS->saddr, packetS->daddr, &iscaller)) {
+				s = gettag(packetS->data, sipDatalen, "\nUser-Agent:", &l, &gettagLimitLen);
+				if(l && ((unsigned int)l < ((unsigned int)sipDatalen - (s - packetS->data)))) {
 					//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(s).substr(0,l) << endl;
 					//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(data).substr(0,datalen) << endl;
 					if(iscaller) {
@@ -3282,30 +3316,29 @@ endsip:
 				}
 			}
 		}
-		datalen = origDatalen;
-		if(istcp &&
-		   sipDatalen < (unsigned)datalen - 11 &&
-		   (unsigned)datalen + sipOffset < header->caplen) {
+		packetS->datalen = origDatalen;
+		if(packetS->istcp &&
+		   sipDatalen < (unsigned)packetS->datalen - 11 &&
+		   (unsigned)packetS->datalen + sipOffset < packetS->header.caplen) {
 			unsigned long skipSipOffset = 0;
-			if(check_sip20(data + sipDatalen, datalen - sipDatalen)) {
+			if(check_sip20(packetS->data + sipDatalen, packetS->datalen - sipDatalen)) {
 				skipSipOffset = sipDatalen;
 			} else {
-				char *pointToDoubleEndLine = (char*)memmem(data + sipDatalen, datalen - sipDatalen, "\r\n\r\n", 4);
+				char *pointToDoubleEndLine = (char*)memmem(packetS->data + sipDatalen, packetS->datalen - sipDatalen, "\r\n\r\n", 4);
 				if(pointToDoubleEndLine) {
-					unsigned long offsetAfterDoubleEndLine = pointToDoubleEndLine - data + 4;
-					if(offsetAfterDoubleEndLine < (unsigned)datalen - 11 &&
-					   check_sip20(data + offsetAfterDoubleEndLine, datalen - offsetAfterDoubleEndLine)) {
+					unsigned long offsetAfterDoubleEndLine = pointToDoubleEndLine - packetS->data + 4;
+					if(offsetAfterDoubleEndLine < (unsigned)packetS->datalen - 11 &&
+					   check_sip20(packetS->data + offsetAfterDoubleEndLine, packetS->datalen - offsetAfterDoubleEndLine)) {
 						skipSipOffset = offsetAfterDoubleEndLine;
 					}
 				}
 			}
 			if(skipSipOffset) {
-				process_packet(is_ssl, packet_number,
-					       saddr, source, daddr, dest, 
-					       data + skipSipOffset, datalen - skipSipOffset, dataoffset,
-					       handle, header, packet, 
-					       istcp, was_rtp, header_ip, voippacket, forceSip,
-					       block_store, block_store_index, dlt, sensor_id, 
+				PreProcessPacket::packet_s packetS_mod = *packetS;
+				packetS_mod.data += skipSipOffset;
+				packetS_mod.datalen -= skipSipOffset;
+				process_packet(&packetS_mod,
+					       was_rtp, voippacket, forceSip,
 					       false, sipOffset + skipSipOffset);
 			}
 		}
@@ -3314,29 +3347,29 @@ endsip:
 
 rtpcheck:
 
-	if(datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
+	if(packetS->datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
 	if(processRtpPacketHash) {
-		processRtpPacketHash->push(saddr, source, daddr, dest, 
-					   data, datalen, dataoffset,
-					   handle, header, packet, istcp, header_ip,
-					   block_store, block_store_index, dlt, sensor_id,
-					   parsePacket ? parsePacket->hash[0] : tuplehash(saddr, source),
-					   parsePacket ? parsePacket->hash[1] : tuplehash(daddr, dest));
+		processRtpPacketHash->push(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, 
+					   packetS->data, packetS->datalen, packetS->dataoffset,
+					   packetS->handle, &packetS->header, packetS->packet, packetS->istcp, packetS->header_ip,
+					   packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id,
+					   parsePacket ? parsePacket->hash[0] : tuplehash(packetS->saddr, packetS->source),
+					   parsePacket ? parsePacket->hash[1] : tuplehash(packetS->daddr, packetS->dest));
 	} else {
-	if ((calls = calltable->hashfind_by_ip_port(daddr, dest, parsePacket ? parsePacket->hash[1] : 0))){
+	if ((calls = calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, parsePacket ? parsePacket->hash[1] : 0))){
 		++counter_rtp_packets;
 		// packet (RTP) by destination:port is already part of some stored call  
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
 			call = node_call->call;
 			iscaller = node_call->iscaller;
 			sdp_flags = node_call->sdp_flags;
-			is_rtcp = node_call->is_rtcp || (sdp_flags.rtcp_mux && datalen > 1 && (u_char)data[1] == 0xC8);
+			is_rtcp = node_call->is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data[1] == 0xC8);
 			
 			if(sverb.process_rtp) {
 				++process_rtp_counter;
 				cout << "RTP - process_packet -"
-				     << " src: " << inet_ntostring(htonl(saddr)) << " : " << source
-				     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dest
+				     << " src: " << inet_ntostring(htonl(packetS->saddr)) << " : " << packetS->source
+				     << " dst: " << inet_ntostring(htonl(packetS->daddr)) << " : " << packetS->dest
 				     << " iscaller: " << (iscaller ? "caller" : "called") 
 				     << " counter: " << process_rtp_counter
 				     << " #1"
@@ -3348,15 +3381,15 @@ rtpcheck:
 			}
 
 			if(!is_rtcp && !sdp_flags.is_fax &&
-			   (datalen < RTP_FIXED_HEADERLEN ||
-			    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
+			   (packetS->datalen < RTP_FIXED_HEADERLEN ||
+			    packetS->header.caplen <= (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN))) {
 				return(call);
 			}
 
 			*voippacket = 1;
 
 			// we have packet, extend pending destroy requests
-			call->shift_destroy_call_at(header, lastSIPresponseNum);
+			call->shift_destroy_call_at(&packetS->header, lastSIPresponseNum);
 
 			int can_thread = !sverb.disable_threads_rtp;
 
@@ -3366,35 +3399,35 @@ rtpcheck:
 
 			if(is_rtcp) {
 				if(rtp_threaded && can_thread) {
-					add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
-								block_store, block_store_index, 
+					add_to_rtp_thread_queue(call, (unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller, is_rtcp,
+								packetS->block_store, packetS->block_store_index, 
 								enable_save_rtcp(call), 
-								packet, istcp, dlt, sensor_id,
+								packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
 								false);
 				} else {
-					call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller,
+					call->read_rtcp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller,
 							enable_save_rtcp(call), 
-							packet, istcp, dlt, sensor_id);
+							packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id);
 				}
 				return call;
 			}
 
 			*was_rtp = 1;
 			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
-							block_store, block_store_index, 
+				add_to_rtp_thread_queue(call, (unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller, is_rtcp,
+							packetS->block_store, packetS->block_store_index, 
 							enable_save_rtp(call), 
-							packet, istcp, dlt, sensor_id,
+							packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
 							false);
 			} else {
-				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, iscaller,
+				call->read_rtp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, NULL, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller,
 					       enable_save_rtp(call),
-					       packet, istcp, dlt, sensor_id,
-					       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
-				call->set_last_packet_time(header->ts.tv_sec);
+					       packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
+					       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
+				call->set_last_packet_time(packetS->header.ts.tv_sec);
 			}
 		}
-	} else if ((calls = calltable->hashfind_by_ip_port(saddr, source, parsePacket ? parsePacket->hash[0] : 0))){
+	} else if ((calls = calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, parsePacket ? parsePacket->hash[0] : 0))){
 		++counter_rtp_packets;
 		// packet (RTP[C]) by source:port is already part of some stored call 
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
@@ -3407,13 +3440,13 @@ rtpcheck:
 #endif
 			iscaller = node_call->iscaller;
 			sdp_flags = node_call->sdp_flags;
-			is_rtcp = node_call->is_rtcp || (sdp_flags.rtcp_mux && datalen > 1 && (u_char)data[1] == 0xC8);
+			is_rtcp = node_call->is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data[1] == 0xC8);
 
 			if(sverb.process_rtp) {
 				++process_rtp_counter;
 				cout << "RTP - process_packet -"
-				     << " src: " << inet_ntostring(htonl(saddr)) << " : " << source
-				     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dest
+				     << " src: " << inet_ntostring(htonl(packetS->saddr)) << " : " << packetS->source
+				     << " dst: " << inet_ntostring(htonl(packetS->daddr)) << " : " << packetS->dest
 				     << " iscaller: " << (iscaller ? "caller" : "called") 
 				     << " counter: " << process_rtp_counter
 				     << " #2"
@@ -3425,15 +3458,15 @@ rtpcheck:
 			}
 
 			if(!is_rtcp && !sdp_flags.is_fax &&
-			   (datalen < RTP_FIXED_HEADERLEN ||
-			    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
+			   (packetS->datalen < RTP_FIXED_HEADERLEN ||
+			    packetS->header.caplen <= (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN))) {
 				return(call);
 			}
 
 			*voippacket = 1;
 
 			// we have packet, extend pending destroy requests
-			call->shift_destroy_call_at(header, lastSIPresponseNum);
+			call->shift_destroy_call_at(&packetS->header, lastSIPresponseNum);
 
 			int can_thread = !sverb.disable_threads_rtp;
 
@@ -3443,15 +3476,15 @@ rtpcheck:
 
 			if(is_rtcp) {
 				if(rtp_threaded && can_thread) {
-					add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller, is_rtcp,
-								block_store, block_store_index, 
+					add_to_rtp_thread_queue(call, (unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, !iscaller, is_rtcp,
+								packetS->block_store, packetS->block_store_index, 
 								enable_save_rtcp(call), 
-								packet, istcp, dlt, sensor_id,
+								packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
 								false);
 				} else {
-					call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller,
+					call->read_rtcp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, !iscaller,
 							enable_save_rtcp(call),
-							packet, istcp, dlt, sensor_id);
+							packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id);
 				}
 				return call;
 			}
@@ -3459,17 +3492,17 @@ rtpcheck:
 			// as we are searching by source address and find some call, revert iscaller 
 			*was_rtp = 1;
 			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, !iscaller, is_rtcp,
-							block_store, block_store_index, 
+				add_to_rtp_thread_queue(call, (unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, !iscaller, is_rtcp,
+							packetS->block_store, packetS->block_store_index, 
 							enable_save_rtp(call), 
-							packet, istcp, dlt, sensor_id,
+							packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
 							false);
 			} else {
-				call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, !iscaller,
+				call->read_rtp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, NULL, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, !iscaller,
 					       enable_save_rtp(call), 
-					       packet, istcp, dlt, sensor_id,
-					       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
-				call->set_last_packet_time(header->ts.tv_sec);
+					       packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
+					       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
+				call->set_last_packet_time(packetS->header.ts.tv_sec);
 			}
 		}
 
@@ -3478,7 +3511,7 @@ rtpcheck:
 		if(opt_rtpnosip) {
 			unsigned int flags = 0;
 			set_global_flags(flags);
-			ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
+			ipfilter->add_call_flags(&flags, ntohl(packetS->saddr), ntohl(packetS->daddr));
 			if(flags & FLAG_SKIPCDR) {
 				if(verbosity > 1)
 					syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
@@ -3491,12 +3524,12 @@ rtpcheck:
 			int rtpmap[MAX_RTPMAP];
 			memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 
-			rtp.read((unsigned char*)data, datalen, header, saddr, daddr, source, dest, 0, sensor_id);
+			rtp.read((unsigned char*)packetS->data, packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, 0, packetS->sensor_id);
 
 			if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
 				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-						saddr, source, daddr, dest,
+					logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 						call, "decoding RTP without SIP signaling is enabled (rtp.getVersion() != 2 && rtp.getPayload() > 18)");
 				}
 				return NULL;
@@ -3505,13 +3538,13 @@ rtpcheck:
 
 			//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
-			call = calltable->add(s, strlen(s), header->ts.tv_sec, saddr, source, handle, dlt, sensor_id);
+			call = calltable->add(s, strlen(s), packetS->header.ts.tv_sec, packetS->saddr, packetS->source, packetS->handle, packetS->dlt, packetS->sensor_id);
 			call->chantype = CHAN_SIP;
-			call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
-			call->sipcallerip[0] = saddr;
-			call->sipcalledip[0] = daddr;
-			call->sipcallerport = source;
-			call->sipcalledport = dest;
+			call->set_first_packet_time(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec);
+			call->sipcallerip[0] = packetS->saddr;
+			call->sipcalledip[0] = packetS->daddr;
+			call->sipcallerport = packetS->source;
+			call->sipcalledport = packetS->dest;
 			call->type = INVITE;
 			call->flags = flags;
 			strncpy(call->fbasename, s, MAX_FNAME - 1);
@@ -3548,8 +3581,8 @@ rtpcheck:
 				syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
 			}
 
-			call->add_ip_port_hash(saddr, daddr, dest, NULL, s, l, 1, rtpmap, s_sdp_flags(), 0);
-			call->add_ip_port_hash(saddr, saddr, source, NULL, s, l, 0, rtpmap, s_sdp_flags(), 0);
+			call->add_ip_port_hash(packetS->saddr, packetS->daddr, packetS->dest, NULL, s, l, 1, rtpmap, s_sdp_flags(), 0);
+			call->add_ip_port_hash(packetS->saddr, packetS->saddr, packetS->source, NULL, s, l, 0, rtpmap, s_sdp_flags(), 0);
 			
 		}
 		// we are not interested in this packet
@@ -3558,15 +3591,15 @@ rtpcheck:
 			char st2[16];
 			struct in_addr in;
 
-			in.s_addr = saddr;
+			in.s_addr = packetS->saddr;
 			strcpy(st1, inet_ntoa(in));
-			in.s_addr = daddr;
+			in.s_addr = packetS->daddr;
 			strcpy(st2, inet_ntoa(in));
-			syslog(LOG_ERR, "Skipping udp packet %s:%d->%s:%d\n", st1, source, st2, dest);
+			syslog(LOG_ERR, "Skipping udp packet %s:%d->%s:%d\n", st1, packetS->source, st2, packetS->dest);
 		}
 		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-				saddr, source, daddr, dest,
+			logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 				call, "we are not interested in this packet");
 		}
 		return NULL;
@@ -3575,8 +3608,8 @@ rtpcheck:
 	}
 
 	if(logPacketSipMethodCall_enable) {
-		logPacketSipMethodCall(packet_number, sip_method, lastSIPresponseNum, header, 
-			saddr, source, daddr, dest,
+		logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
+			packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 			call, "---");
 		}
 	return NULL;
@@ -3632,7 +3665,7 @@ void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 	
 	process_packet__last_cleanup = header->ts.tv_sec;
 
-	if(!(preProcessPacket && opt_enable_preprocess_packet == 2)) {
+	if(!(preProcessPacket[1] && opt_enable_preprocess_packet == 2)) {
 		// clean tcp_streams_list
 		tcpReassemblySip.clean(header->ts.tv_sec);
 	}
@@ -5299,14 +5332,14 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id id) {
 		     << string((char*)newdata, MIN(string((char*)newdata, newdata_len).find("\r"), MIN(newdata_len, 100))) << endl;
 	}
 	bool deletePackets = true;
-	if(preProcessPacket && opt_enable_preprocess_packet == 2) {
-		preProcessPacket->push(false, firstPacket->packet_number,
-				       firstPacket->saddr, firstPacket->source, firstPacket->daddr, firstPacket->dest, 
-				       (char*)newdata, newdata_len, firstPacket->dataoffset,
-				       firstPacket->handle, &header, newpacket, true,
-				       2, header_ip, 0,
-				       NULL, 0, firstPacket->dlt, firstPacket->sensor_id,
-				       true);
+	if(preProcessPacket[1] && opt_enable_preprocess_packet == 2) {
+		preProcessPacket[1]->push(false, firstPacket->packet_number,
+					  firstPacket->saddr, firstPacket->source, firstPacket->daddr, firstPacket->dest, 
+					  (char*)newdata, newdata_len, firstPacket->dataoffset,
+					  firstPacket->handle, &header, newpacket, true,
+					  2, header_ip, 0,
+					  NULL, 0, firstPacket->dlt, firstPacket->sensor_id,
+					  true);
 		if(!multiplePackets) {
 			deletePackets = false;
 		}
@@ -5352,7 +5385,8 @@ inline void *_PreProcessPacket_outThreadFunction(void *arg) {
 	return(((PreProcessPacket*)arg)->outThreadFunction());
 }
 
-PreProcessPacket::PreProcessPacket() {
+PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
+	this->typePreProcessThread = typePreProcessThread;
 	this->qringmax = opt_preprocess_packets_qring_length;
 	this->readit = 0;
 	this->writeit = 0;
@@ -5360,7 +5394,9 @@ PreProcessPacket::PreProcessPacket() {
 	for(unsigned int i = 0; i < this->qringmax; i++) {
 		this->qring[i] = new FILE_LINE packet_parse_s;
 		this->qring[i]->used = 0;
-		this->qring[i]->parse.setStdParse();
+		if(this->typePreProcessThread == ppt_sip) {
+			this->qring[i]->parse.setStdParse();
+		}
 	}
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->outThreadId = 0;
@@ -5384,73 +5420,102 @@ void PreProcessPacket::push(bool is_ssl, u_int64_t packet_number,
 			    int istcp, struct iphdr2 *header_ip, int forceSip,
 			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 			    bool disableLock) {
- 
-	if(opt_enable_preprocess_packet == 2 &&
-	   header->ts.tv_sec - preprocess_packet__last_cleanup > 10){
-		// clean tcp_streams_list
-		tcpReassemblySip.clean(header->ts.tv_sec);
-		preprocess_packet__last_cleanup = header->ts.tv_sec;
+	PreProcessPacket::packet_s packetS;
+	packetS.packet_number = packet_number;
+	packetS.saddr = saddr;
+	packetS.source = source;
+	packetS.daddr = daddr; 
+	packetS.dest = dest;
+	packetS.data = data; 
+	packetS.datalen = datalen; 
+	packetS.dataoffset = dataoffset;
+	packetS.handle = handle; 
+	packetS.header = *header; 
+	packetS.packet = packet; 
+	packetS.istcp = istcp; 
+	packetS.header_ip = header_ip; 
+	packetS.block_store = block_store; 
+	packetS.block_store_index =  block_store_index; 
+	packetS.dlt = dlt; 
+	packetS.sensor_id = sensor_id;
+	packetS.is_ssl = is_ssl;
+	this->push(&packetS, packetDelete, forceSip, disableLock);
+}
+
+void PreProcessPacket::push(packet_s *packetS, bool packetDelete, int forceSip, bool disableLock) {
+	switch(typePreProcessThread) {
+	case ppt_detach:
+		if(opt_enable_ssl && !disableLock) {
+			this->lock_push();
+		}
+		if(packetS->block_store) {
+			packetS->block_store->lock_packet(packetS->block_store_index);
+		}
+		break;
+	case ppt_sip:
+		if(opt_enable_preprocess_packet == 2 &&
+		   packetS->header.ts.tv_sec - preprocess_packet__last_cleanup > 10){
+			// clean tcp_streams_list
+			tcpReassemblySip.clean(packetS->header.ts.tv_sec);
+			preprocess_packet__last_cleanup = packetS->header.ts.tv_sec;
+		}
+		break;
 	}
  
-	if(opt_enable_ssl && !disableLock) {
-		this->lock_push();
-	}
-	if(block_store) {
-		block_store->lock_packet(block_store_index);
-	}
 	while(this->qring[this->writeit]->used != 0) {
 		usleep(10);
 	}
 	packet_parse_s *_parse_packet = this->qring[this->writeit];
-	packet_s *_packet = &_parse_packet->packet;
-	_packet->is_ssl = is_ssl;
-	_packet->packet_number = packet_number;
-	_packet->saddr = saddr;
-	_packet->source = source;
-	_packet->daddr = daddr; 
-	_packet->dest = dest;
-	_packet->data = data; 
-	_packet->datalen = datalen; 
-	_packet->dataoffset = dataoffset;
-	_packet->handle = handle; 
-	_packet->header = *header; 
-	_packet->packet = packet; 
-	_packet->packetDelete = packetDelete; 
-	_packet->istcp = istcp; 
-	_packet->header_ip = header_ip; 
-	_packet->forceSip = forceSip; 
-	_packet->block_store = block_store; 
-	_packet->block_store_index = block_store_index; 
-	_packet->dlt = dlt; 
-	_packet->sensor_id = sensor_id;
-	_parse_packet->_getSipMethod = false;
-	if(forceSip ||
-	   sipportmatrix[_packet->source] || 
-	   sipportmatrix[_packet->dest]) {
-		_parse_packet->sipDataLen = _parse_packet->parse.parseData(_packet->data, _packet->datalen, true);
-		_parse_packet->isSip = _parse_packet->parse.isSip();
-	} else {
-		_parse_packet->sipDataLen = 0;
-		_parse_packet->isSip = false;
-	}
+	_parse_packet->packet = *packetS;
+	_parse_packet->packetDelete = packetDelete; 
+	_parse_packet->forceSip = forceSip; 
 	
-	if(_parse_packet->isSip) {
-		_parse_packet->init();
-		if(opt_enable_preprocess_packet == 2 &&
-		   !this->sipProcess(_parse_packet)) {
-			if(block_store) {
-				block_store->unlock_packet(block_store_index);
-			}
-			if(opt_enable_ssl && !disableLock) {
-				this->unlock_push();
-			}
-			return;
+	switch(typePreProcessThread) {
+	case ppt_detach:
+		break;
+	case ppt_sip:
+		_parse_packet->_getSipMethod = false;
+		if(forceSip ||
+		   sipportmatrix[packetS->source] || 
+		   sipportmatrix[packetS->dest]) {
+			_parse_packet->sipDataLen = _parse_packet->parse.parseData(packetS->data, packetS->datalen, true);
+			_parse_packet->isSip = _parse_packet->parse.isSip();
+		} else {
+			_parse_packet->sipDataLen = 0;
+			_parse_packet->isSip = false;
 		}
-		_parse_packet->hash[0] = 0;
-		_parse_packet->hash[1] = 0;
-	} else if(datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
-		_parse_packet->hash[0] = tuplehash(saddr, source);
-		_parse_packet->hash[1] = tuplehash(daddr, dest);
+		
+		if(_parse_packet->isSip) {
+			_parse_packet->init();
+			if(opt_enable_preprocess_packet == 2 &&
+			   !this->sipProcess(_parse_packet)) {
+				if(packetS->block_store) {
+					packetS->block_store->unlock_packet(packetS->block_store_index);
+				}
+				if(opt_enable_ssl && !disableLock) {
+					this->unlock_push();
+				}
+				return;
+			}
+			_parse_packet->hash[0] = 0;
+			_parse_packet->hash[1] = 0;
+		} else {
+			if(opt_enable_preprocess_packet == 2 &&
+			   !this->sipProcess_reassembly(_parse_packet)) {
+				if(packetS->block_store) {
+					packetS->block_store->unlock_packet(packetS->block_store_index);
+				}
+				if(opt_enable_ssl && !disableLock) {
+					this->unlock_push();
+				}
+				return;
+			}
+			if(packetS->datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
+				_parse_packet->hash[0] = tuplehash(packetS->saddr, packetS->source);
+				_parse_packet->hash[1] = tuplehash(packetS->daddr, packetS->dest);
+			}
+		}
+		break;
 	}
 	
 	_parse_packet->used = 1;
@@ -5470,23 +5535,28 @@ void *PreProcessPacket::outThreadFunction() {
 	unsigned usleepCounter = 0;
 	while(!this->term_preProcess) {
 		if(this->qring[this->readit]->used == 1) {
-			int was_rtp = 0;
-			int voippacket = 0;
 			packet_parse_s *_parse_packet = this->qring[this->readit];
 			packet_s *_packet = &_parse_packet->packet;
-			process_packet(_packet->is_ssl, _packet->packet_number,
-				       _packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
-				       _packet->data, _packet->datalen, _packet->dataoffset,
-				       _packet->handle, &_packet->header, _packet->packet, 
-				       _packet->istcp, &was_rtp, _packet->header_ip, &voippacket, _packet->forceSip,
-				       _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id, 
-				       true, 0,
-				       _parse_packet);
-			if(_packet->block_store) {
-				_packet->block_store->unlock_packet(_packet->block_store_index);
-			}
-			if(_packet->packetDelete) {
-				delete [] _packet->packet;
+			switch(this->typePreProcessThread) {
+			case ppt_detach:
+				preProcessPacket[1]->push(_packet, false, _parse_packet->forceSip);
+				break;
+			case ppt_sip:
+				{
+				int was_rtp = 0;
+				int voippacket = 0;
+				process_packet(_packet,
+					       &was_rtp, &voippacket, _parse_packet->forceSip,
+					       true, 0,
+					       _parse_packet);
+				if(_packet->block_store) {
+					_packet->block_store->unlock_packet(_packet->block_store_index);
+				}
+				if(_parse_packet->packetDelete) {
+					delete [] _packet->packet;
+				}
+				}
+				break;
 			}
 			_parse_packet->used = 0;
 			if((this->readit + 1) == this->qringmax) {
@@ -5663,9 +5733,7 @@ void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
 	if(!parse_packet->call) {
 		if(parse_packet->sip_method == INVITE || parse_packet->sip_method == MESSAGE || 
 		   (opt_sip_register && parse_packet->sip_method == REGISTER)) {
-			parse_packet->call_created = new_invite_register(false, parse_packet->sip_method, _packet->data, parse_packet->sipDataLen, &_packet->header, (char*)parse_packet->callid.c_str(), 
-									 _packet->saddr, _packet->daddr, _packet->source, _packet->dest,
-									 _packet->handle, _packet->dlt, _packet->sensor_id,
+			parse_packet->call_created = new_invite_register(_packet, parse_packet->sip_method, (char*)parse_packet->callid.c_str(), 
 									 &parse_packet->detectUserAgent,
 									 &parse_packet->parse);
 		}

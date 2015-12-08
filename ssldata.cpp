@@ -23,18 +23,8 @@ extern vector<string> decrypt_ssl(char *data, unsigned int datalen, unsigned int
 vector<string> decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport) { vector<string> nothing; return nothing;}
 #endif
 
-extern Call *process_packet(bool is_tcp, u_int64_t packet_number,
-			    unsigned int saddr, int source, unsigned int daddr, int dest, 
-			    char *data, int datalen, int dataoffset,
-			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
-			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
-			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
-			    bool mainProcess = true, int sipOffset = 0,
-			    PreProcessPacket::packet_parse_s *parsePacket = NULL);
-
-
 extern map<d_u_int32_t, string> ssl_ipport;
-extern PreProcessPacket *preProcessPacket;
+extern PreProcessPacket *preProcessPacket[2];
 
 
 SslData::SslData() {
@@ -142,12 +132,12 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 									  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
 						int was_rtp = 0;
 						int voippacket = 0;
-						if(preProcessPacket) {
-							preProcessPacket->push(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
-									       (char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
-									       handle, udpHeader, udpPacket, true, 
-									       false, (iphdr2*)(udpPacket + ethHeaderLength), 1,
-									       NULL, 0, dlt, sensor_id);
+						if(preProcessPacket[0]) {
+							preProcessPacket[0]->push(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
+										  (char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
+										  handle, udpHeader, udpPacket, true, 
+										  false, (iphdr2*)(udpPacket + ethHeaderLength), 1,
+										  NULL, 0, dlt, sensor_id);
 						} else {
 							process_packet(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
 								       (char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),

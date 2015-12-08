@@ -332,6 +332,10 @@ private:
 
 class PreProcessPacket {
 public:
+	enum eTypePreProcessThread {
+		ppt_detach,
+		ppt_sip
+	};
 	struct packet_s {
 		u_int64_t packet_number;
 		unsigned int saddr;
@@ -344,10 +348,8 @@ public:
 		pcap_t *handle; 
 		pcap_pkthdr header; 
 		const u_char *packet; 
-		bool packetDelete;
 		int istcp; 
 		struct iphdr2 *header_ip; 
-		int forceSip;
 		pcap_block_store *block_store; 
 		int block_store_index; 
 		int dlt; 
@@ -373,6 +375,8 @@ public:
 			_createCall = false;
 		}
 		packet_s packet;
+		bool packetDelete;
+		int forceSip;
 		ParsePacket parse;
 		u_int32_t sipDataLen;
 		bool isSip;
@@ -394,7 +398,7 @@ public:
 		volatile int used;
 	};
 public:
-	PreProcessPacket();
+	PreProcessPacket(eTypePreProcessThread typePreProcessThread);
 	~PreProcessPacket();
 	void push(bool is_ssl, u_int64_t packet_number,
 		  unsigned int saddr, int source, unsigned int daddr, int dest, 
@@ -403,6 +407,7 @@ public:
 		  int istcp, struct iphdr2 *header_ip, int forceSip,
 		  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 		  bool disableLock = false);
+	void push(packet_s *packetS, bool packetDelete = false, int forceSip = 0, bool disableLock = false);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
 	void terminate();
@@ -424,6 +429,7 @@ private:
 		__sync_lock_release(&this->_sync_push);
 	}
 private:
+	eTypePreProcessThread typePreProcessThread;
 	packet_parse_s **qring;
 	unsigned int qringmax;
 	volatile unsigned int readit;
@@ -541,6 +547,20 @@ private:
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);
 };
+
+
+Call *process_packet(bool is_ssl, u_int64_t packet_number,
+		     unsigned int saddr, int source, unsigned int daddr, int dest, 
+		     char *data, int datalen, int dataoffset,
+		     pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
+		     int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
+		     pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
+		     bool mainProcess = true, int sipOffset = 0,
+		     PreProcessPacket::packet_parse_s *parsePacket = NULL);
+Call *process_packet(PreProcessPacket::packet_s *packetS,
+		     int *was_rtp, int *voippacket, int forceSip = 0,
+		     bool mainProcess = true, int sipOffset = 0,
+		     PreProcessPacket::packet_parse_s *parsePacket = NULL);
 
 
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)

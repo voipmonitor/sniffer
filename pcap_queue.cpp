@@ -66,14 +66,6 @@
 
 using namespace std;
 
-extern Call *process_packet(bool is_ssl, u_int64_t packet_number,
-			    unsigned int saddr, int source, unsigned int daddr, int dest, 
-			    char *data, int datalen, int dataoffset,
-			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
-			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
-			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
-			    bool mainProcess = true, int sipOffset = 0,
-			    PreProcessPacket::packet_parse_s *parsePacket = NULL);
 extern int check_sip20(char *data, unsigned long len);
 void daemonizeOutput(string error);
 
@@ -113,7 +105,7 @@ extern MirrorIP *mirrorip;
 extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
-extern PreProcessPacket *preProcessPacket;
+extern PreProcessPacket *preProcessPacket[2];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern TcpReassembly *tcpReassemblyHttp;
@@ -1528,14 +1520,17 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double t2cpu = this->getCpuUsagePerc(writeThread, true);
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu;
-		double t2cpu_preprocess_packet_out_thread = 0;
-		if(preProcessPacket) {
-			t2cpu_preprocess_packet_out_thread = preProcessPacket->getCpuUsagePerc(true);
-			if(t2cpu_preprocess_packet_out_thread >= 0) {
-				outStrStat << "/" << setprecision(1) << t2cpu_preprocess_packet_out_thread;
-				if (opt_rrd) rrdtCPU_t2 = t2cpu_preprocess_packet_out_thread;
+		double t2cpu_preprocess_packet_out_thread[2] = { 0, 0 };
+		for(int i = 0; i < 2; i++) {
+			if(preProcessPacket[i]) {
+				t2cpu_preprocess_packet_out_thread[i] = preProcessPacket[i]->getCpuUsagePerc(true);
+				if(t2cpu_preprocess_packet_out_thread >= 0) {
+					outStrStat << "/" << setprecision(1) << t2cpu_preprocess_packet_out_thread[i];
+				}
+				if (opt_rrd && i == 1) rrdtCPU_t2 = t2cpu_preprocess_packet_out_thread[i];
 			}
-		} else {
+		} 
+		if(!preProcessPacket[1]) {
 			if (opt_rrd) rrdtCPU_t2 = t2cpu;
 		}
 		if(processRtpPacketHash) {
@@ -1553,7 +1548,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 				}
 			}
-		} else if(preProcessPacket ? t2cpu_preprocess_packet_out_thread > 60 : t2cpu > 60) {
+		} else if(preProcessPacket[1] ? t2cpu_preprocess_packet_out_thread[1] > 60 : t2cpu > 60) {
 			ProcessRtpPacket::autoStartProcessRtpPacket();
 		}
 		outStrStat << "%] ";
@@ -5132,13 +5127,27 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	}
 	if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc && !useTcpReassemblySsl && 
 	   opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
-		if(preProcessPacket) {
-			preProcessPacket->push(false, packet_counter_all,
-					       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-					       data, datalen, data - (char*)packet, 
-					       this->getPcapHandle(dlt), header, packet, false,
-					       istcp, header_ip, 0,
-					       block_store, block_store_index, dlt, sensor_id);
+		PreProcessPacket::packet_s packetS;
+		packetS.packet_number = packet_counter_all;
+		packetS.saddr = header_ip->saddr;
+		packetS.source = htons(header_udp->source);
+		packetS.daddr = header_ip->daddr; 
+		packetS.dest = htons(header_udp->dest);
+		packetS.data = data; 
+		packetS.datalen = datalen; 
+		packetS.dataoffset = data - (char*)packet;
+		packetS.handle = this->getPcapHandle(dlt); 
+		packetS.header = *header; 
+		packetS.packet = packet; 
+		packetS.istcp = istcp; 
+		packetS.header_ip = header_ip; 
+		packetS.block_store = block_store; 
+		packetS.block_store_index =  block_store_index; 
+		packetS.dlt = dlt; 
+		packetS.sensor_id = sensor_id;
+		packetS.is_ssl = false;
+		if(preProcessPacket[0]) {
+			preProcessPacket[0]->push(&packetS);
 			if(opt_ipaccount) {
 				//todo: detect if voippacket!
 				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
@@ -5150,23 +5159,15 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 				u_int64_t _counter = 0;
 				do {
 					++_counter;
-					process_packet(false, packet_counter_all,
-						       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-						       data, datalen, data - (char*)packet, 
-						       this->getPcapHandle(dlt), header, packet, 
-						       istcp, &was_rtp, header_ip, &voippacket, 0,
-						       block_store, block_store_index, dlt, sensor_id);
+					process_packet(&packetS,
+						       &was_rtp, &voippacket);
 					if(!(_counter % 50)) {
 						usleep(1);
 					}
 				} while(packet_counter_all == (u_int64_t)sverb.test_rtp_performance);
 			} else {
-				process_packet(false, packet_counter_all,
-					       header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest), 
-					       data, datalen, data - (char*)packet, 
-					       this->getPcapHandle(dlt), header, packet, 
-					       istcp, &was_rtp, header_ip, &voippacket, 0,
-					       block_store, block_store_index, dlt, sensor_id);
+				process_packet(&packetS,
+					       &was_rtp, &voippacket);
 			}
 			// if packet was VoIP add it to ipaccount
 			if(opt_ipaccount) {

@@ -620,7 +620,7 @@ char mac[32] = "";
 PcapQueue_readFromInterface *pcapQueueInterface;
 PcapQueue *pcapQueueStatInterface;
 
-PreProcessPacket *preProcessPacket;
+PreProcessPacket *preProcessPacket[2];
 ProcessRtpPacket *processRtpPacketHash;
 ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 
@@ -1851,6 +1851,14 @@ int main(int argc, char *argv[]) {
 	umask(0000);
 
 	openlog("voipmonitor", LOG_CONS | LOG_PERROR | LOG_PID, LOG_DAEMON);
+
+	/*
+	string args;
+	for(int i = 0; i < argc; i++) {
+		args += string(argv[i]) + " ";
+	}
+	syslog(LOG_NOTICE, args.c_str());
+	*/
 	
 	parse_command_line_arguments(argc, argv);
 	get_command_line_arguments();
@@ -2557,18 +2565,21 @@ int main_init_read() {
 	
 	if((opt_enable_preprocess_packet || opt_enable_ssl) &&
 	   !is_read_from_file_simple()) {
-		preProcessPacket = new FILE_LINE PreProcessPacket();
+		for(int i = 0; i < 2; i++) {
+			preProcessPacket[i] = new FILE_LINE PreProcessPacket(i ? PreProcessPacket::ppt_sip : PreProcessPacket::ppt_detach);
+		}
 	}
-	/*
-	autostart if t2cpu > 50%
-	if(opt_enable_process_rtp_packet && opt_pcap_split &&
+	
+	//autostart if t2cpu > 50% in fork mode
+	if(!opt_fork &&
+	   opt_enable_process_rtp_packet && opt_pcap_split &&
 	   !is_read_from_file_simple()) {
 		processRtpPacketHash = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 			processRtpPacketDistribute[i] = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::distribute, i);
 		}
 	}
-	*/
+	
 
 	if(opt_enable_http) {
 		bool setHttpPorts = false;
@@ -2852,10 +2863,12 @@ void main_term_read() {
 		}
 	}
 	
-	if(preProcessPacket) {
-		preProcessPacket->terminate();
-		delete preProcessPacket;
-		preProcessPacket = NULL;
+	for(int i = 0; i < 2; i++) {
+		if(preProcessPacket[i]) {
+			preProcessPacket[i]->terminate();
+			delete preProcessPacket[i];
+			preProcessPacket[i] = NULL;
+		}
 	}
 	
 	if(sipSendSocket) {

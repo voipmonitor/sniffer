@@ -1949,6 +1949,18 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "convertchars") != NULL) {
+		ostringstream outStrConvertchar;
+		extern char opt_convert_char[64];
+		for(unsigned int i = 0; i < sizeof(opt_convert_char) && opt_convert_char[i]; i++) {
+			outStrConvertchar << opt_convert_char[i] << ',';
+		}
+		outStrConvertchar << endl;
+		string strConvertchar = outStrConvertchar.str();
+		if ((size = sendvm(client, sshchannel, strConvertchar.c_str(), strConvertchar.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "sqlexport") != NULL ||
 		  strstr(buf, "sqlvmexport") != NULL) {
 		bool sqlFormat = strstr(buf, "sqlexport") != NULL;
