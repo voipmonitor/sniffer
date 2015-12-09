@@ -5111,7 +5111,8 @@ void TcpReassemblySip::processPacket(
 				}
 			}
 		}
-		if(addPacket(&it->second,
+		if((it->second.packets || issip) &&
+		   addPacket(&it->second,
 			     packet_number,
 			     saddr, source, daddr, dest, data, datalen, dataoffset,
 			     handle, header, packet, header_ip,
