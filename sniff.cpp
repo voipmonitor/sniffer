@@ -5121,6 +5121,8 @@ void TcpReassemblySip::processPacket(
 					cout << " + call complete (check complete after add 1)" << endl;
 				}
 				complete(&it->second, id);
+			} else if(it->second.complete_data && it->second.complete_data->size() > 65535) {
+				cleanStream(&it->second, true);
 			}
 		}
 	} else {
