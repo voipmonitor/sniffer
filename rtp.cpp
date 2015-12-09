@@ -2398,40 +2398,43 @@ void
 RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap) {
 	lock();
 
-	map<uint32_t, node_t>::iterator it;
+	extern int opt_nocdr;
 	string query_str;
+	if(!opt_nocdr) {
+		map<uint32_t, node_t>::iterator it;
 
-	if(!sqlDbSaveCall) {
-		sqlDbSaveCall = createSqlObject();
-	}
+		if(!sqlDbSaveCall) {
+			sqlDbSaveCall = createSqlObject();
+		}
 
-	for(it = cmap->begin(); it != cmap->end(); it++) {
-		node_t *node = &it->second;
-		SqlDb_row cdr_stat;
-		// create queries 
-		cdr_stat.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor");
-		cdr_stat.add(sqlDateTimeString(node->time), "time");
-		cdr_stat.add(sqlDateTimeString(node->time), "time");
-		cdr_stat.add(htonl(it->first), "saddr");
-		cdr_stat.add(node->mosf1_min, "mosf1_min");
-		cdr_stat.add((int)(node->mosf1_avg), "mosf1_avg");
-		cdr_stat.add(node->mosf2_min, "mosf2_min");
-		cdr_stat.add((int)(node->mosf2_avg), "mosf2_avg");
-		cdr_stat.add(node->mosAD_min, "mosAD_min");
-		cdr_stat.add((int)(node->mosAD_avg), "mosAD_avg");
-		cdr_stat.add(node->jitter_max, "jitter_max");
-		cdr_stat.add((int)(node->jitter_avg), "jitter_avg");
-		cdr_stat.add((int)round(node->loss_max * 10), "loss_max_mult10");
-		cdr_stat.add((int)round(node->loss_avg * 10), "loss_avg_mult10");
-		cdr_stat.add(node->counter, "counter");
-		query_str += sqlDbSaveCall->insertQuery("rtp_stat", cdr_stat, false, false, true) + ";";
+		for(it = cmap->begin(); it != cmap->end(); it++) {
+			node_t *node = &it->second;
+			SqlDb_row cdr_stat;
+			// create queries 
+			cdr_stat.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor");
+			cdr_stat.add(sqlDateTimeString(node->time), "time");
+			cdr_stat.add(sqlDateTimeString(node->time), "time");
+			cdr_stat.add(htonl(it->first), "saddr");
+			cdr_stat.add(node->mosf1_min, "mosf1_min");
+			cdr_stat.add((int)(node->mosf1_avg), "mosf1_avg");
+			cdr_stat.add(node->mosf2_min, "mosf2_min");
+			cdr_stat.add((int)(node->mosf2_avg), "mosf2_avg");
+			cdr_stat.add(node->mosAD_min, "mosAD_min");
+			cdr_stat.add((int)(node->mosAD_avg), "mosAD_avg");
+			cdr_stat.add(node->jitter_max, "jitter_max");
+			cdr_stat.add((int)(node->jitter_avg), "jitter_avg");
+			cdr_stat.add((int)round(node->loss_max * 10), "loss_max_mult10");
+			cdr_stat.add((int)round(node->loss_avg * 10), "loss_avg_mult10");
+			cdr_stat.add(node->counter, "counter");
+			query_str += sqlDbSaveCall->insertQuery("rtp_stat", cdr_stat, false, false, true) + ";";
+		}
 	}
 
 	cmap->clear();
 	unlock();
 
 	//TODO enableBatchIfPossible
-	if(isSqlDriver("mysql")) {
+	if(!opt_nocdr && isSqlDriver("mysql")) {
 		static unsigned int counterSqlStore = 0;
 		int storeId = STORE_PROC_ID_CDR_1 +
 			      (opt_mysqlstore_max_threads_cdr > 1 &&
