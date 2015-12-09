@@ -14,6 +14,7 @@
 #include "voipmonitor.h"
 #include "calltable.h"
 #include "pcap_queue_block.h"
+#include "fraud.h"
 
 #ifdef FREEBSD
 #include <machine/endian.h>
@@ -395,7 +396,26 @@ public:
 		bool _findCall;
 		bool _createCall;
 		unsigned int hash[2];
+	};
+	struct batch_packet_parse_s {
+		batch_packet_parse_s(unsigned max_count) {
+			count = 0;
+			used = 0;
+			batch = new packet_parse_s[max_count];
+			this->max_count = max_count;
+		}
+		~batch_packet_parse_s() {
+			delete [] batch;
+		}
+		void setStdParse() {
+			for(unsigned i = 0; i < max_count; i++) {
+				batch[i].parse.setStdParse();
+			}
+		}
+		packet_parse_s *batch;
+		volatile unsigned count;
 		volatile int used;
+		unsigned max_count;
 	};
 public:
 	PreProcessPacket(eTypePreProcessThread typePreProcessThread);
@@ -430,7 +450,7 @@ private:
 	}
 private:
 	eTypePreProcessThread typePreProcessThread;
-	packet_parse_s **qring;
+	batch_packet_parse_s **qring;
 	unsigned int qringmax;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
@@ -458,22 +478,7 @@ public:
 		bool use_sync;
 	};
 	struct packet_s {
-		unsigned int saddr;
-		int source; 
-		unsigned int daddr; 
-		int dest;
-		char *data; 
-		int datalen; 
-		int dataoffset;
-		pcap_t *handle;
-		pcap_pkthdr header; 
-		const u_char *packet; 
-		int istcp;
-		struct iphdr2 *header_ip; 
-		pcap_block_store *block_store; 
-		int block_store_index; 
-		int dlt; 
-		int sensor_id;
+		PreProcessPacket::packet_s packet;
 		unsigned int hash_s;
 		unsigned int hash_d;
 		rtp_call_info call_info[20];
@@ -484,10 +489,7 @@ public:
 public:
 	ProcessRtpPacket(eType type, int indexThread);
 	~ProcessRtpPacket();
-	void push(unsigned int saddr, int source, unsigned int daddr, int dest, 
-		  char *data, int datalen, int dataoffset,
-		  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, struct iphdr2 *header_ip,
-		  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+	void push(PreProcessPacket::packet_s *packetS,
 		  unsigned int hash_s, unsigned int hash_d);
 	void push(packet_s *_packet);
 	void preparePstatData(bool nextThread = false);

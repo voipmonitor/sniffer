@@ -1311,10 +1311,8 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 }
 
 inline
-void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int dataoffset, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller, int is_rtcp,
-			     pcap_block_store *block_store, int block_store_index, 
-			     int enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id,
-			     int preSyncRtp) {
+void add_to_rtp_thread_queue(Call *call, PreProcessPacket::packet_s *packetS,
+			     int iscaller, int is_rtcp, int enable_save_packet, int preSyncRtp) {
 	#if RTP_PROF
 	unsigned long long __prof_begin = rdtsc();
 	#endif
@@ -1326,8 +1324,8 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 	if(call->type < INVITE || call->type > SKINNY_NEW) {
 		syslog(LOG_ERR, "incorrect call type in add_to_rtp_thread_queue: %i, saddr %s daddr %s sport %u dport %u",
 		       call->type,
-		       inet_ntostring(saddr).c_str(), inet_ntostring(daddr).c_str(),
-		       sport, dport);
+		       inet_ntostring(packetS->saddr).c_str(), inet_ntostring(packetS->daddr).c_str(),
+		       packetS->source, packetS->dest);
 		return;
 	}
 	
@@ -1341,30 +1339,30 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 	
 	rtp_read_thread *params = &(rtp_threads[call->thread_num]);
 
-	if(block_store) {
-		block_store->lock_packet(block_store_index);
+	if(packetS->block_store) {
+		packetS->block_store->lock_packet(packetS->block_store_index);
 	}
 	if(params->rtpp_queue_quick ||
 	   params->rtpp_queue_quick_boost) {
 		rtp_packet_pcap_queue rtpp_pq;
 		rtpp_pq.call = call;
-		rtpp_pq.saddr = saddr;
-		rtpp_pq.daddr = daddr;
-		rtpp_pq.sport = sport;
-		rtpp_pq.dport = dport;
+		rtpp_pq.saddr = packetS->saddr;
+		rtpp_pq.daddr = packetS->daddr;
+		rtpp_pq.sport = packetS->source;
+		rtpp_pq.dport = packetS->dest;
 		rtpp_pq.iscaller = iscaller;
 		rtpp_pq.is_rtcp = is_rtcp;
 		rtpp_pq.save_packet = enable_save_packet;
-		rtpp_pq.packet = packet;
-		rtpp_pq.istcp = istcp;
-		rtpp_pq.dlt = dlt;
-		rtpp_pq.sensor_id = sensor_id;
-		rtpp_pq.data = data;
-		rtpp_pq.datalen = datalen;
-		rtpp_pq.dataoffset = dataoffset;
-		rtpp_pq.header = *header;
-		rtpp_pq.block_store = block_store;
-		rtpp_pq.block_store_index =block_store_index;
+		rtpp_pq.packet = packetS->packet;
+		rtpp_pq.istcp = packetS->istcp;
+		rtpp_pq.dlt = packetS->dlt;
+		rtpp_pq.sensor_id = packetS->sensor_id;
+		rtpp_pq.data = (u_char*)packetS->data;
+		rtpp_pq.datalen = packetS->datalen;
+		rtpp_pq.dataoffset = packetS->dataoffset;
+		rtpp_pq.header = packetS->header;
+		rtpp_pq.block_store = packetS->block_store;
+		rtpp_pq.block_store_index =packetS->block_store_index;
 		if(params->rtpp_queue_quick) {
 			params->rtpp_queue_quick->push(&rtpp_pq, true, opt_enable_process_rtp_packet > 1);
 		} else {
@@ -1377,23 +1375,23 @@ void add_to_rtp_thread_queue(Call *call, unsigned char *data, int datalen, int d
 			usleep(10);
 		}
 		rtpp_pq->call = call;
-		rtpp_pq->saddr = saddr;
-		rtpp_pq->daddr = daddr;
-		rtpp_pq->sport = sport;
-		rtpp_pq->dport = dport;
+		rtpp_pq->saddr = packetS->saddr;
+		rtpp_pq->daddr = packetS->daddr;
+		rtpp_pq->sport = packetS->source;
+		rtpp_pq->dport = packetS->dest;
 		rtpp_pq->iscaller = iscaller;
 		rtpp_pq->is_rtcp = is_rtcp;
 		rtpp_pq->save_packet = enable_save_packet;
-		rtpp_pq->packet = packet;
-		rtpp_pq->istcp = istcp;
-		rtpp_pq->dlt = dlt;
-		rtpp_pq->sensor_id = sensor_id;
-		rtpp_pq->data = data;
-		rtpp_pq->datalen = datalen;
-		rtpp_pq->dataoffset = dataoffset;
-		rtpp_pq->header = *header;
-		rtpp_pq->block_store = block_store;
-		rtpp_pq->block_store_index =block_store_index;
+		rtpp_pq->packet = packetS->packet;
+		rtpp_pq->istcp = packetS->istcp;
+		rtpp_pq->dlt = packetS->dlt;
+		rtpp_pq->sensor_id = packetS->sensor_id;
+		rtpp_pq->data = (u_char*)packetS->data;
+		rtpp_pq->datalen = packetS->datalen;
+		rtpp_pq->dataoffset = packetS->dataoffset;
+		rtpp_pq->header = packetS->header;
+		rtpp_pq->block_store = packetS->block_store;
+		rtpp_pq->block_store_index =packetS->block_store_index;
 		params->rtpp_queue->unlock();
 	}
 
@@ -3347,10 +3345,7 @@ rtpcheck:
 
 	if(packetS->datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
 	if(processRtpPacketHash) {
-		processRtpPacketHash->push(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, 
-					   packetS->data, packetS->datalen, packetS->dataoffset,
-					   packetS->handle, &packetS->header, packetS->packet, packetS->istcp, packetS->header_ip,
-					   packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id,
+		processRtpPacketHash->push(packetS,
 					   parsePacket ? parsePacket->hash[0] : tuplehash(packetS->saddr, packetS->source),
 					   parsePacket ? parsePacket->hash[1] : tuplehash(packetS->daddr, packetS->dest));
 	} else {
@@ -3397,11 +3392,8 @@ rtpcheck:
 
 			if(is_rtcp) {
 				if(rtp_threaded && can_thread) {
-					add_to_rtp_thread_queue(call, (unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller, is_rtcp,
-								packetS->block_store, packetS->block_store_index, 
-								enable_save_rtcp(call), 
-								packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
-								false);
+					add_to_rtp_thread_queue(call, packetS, 
+								iscaller, is_rtcp, enable_save_rtcp(call), false);
 				} else {
 					call->read_rtcp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller,
 							enable_save_rtcp(call), 
@@ -3412,11 +3404,8 @@ rtpcheck:
 
 			*was_rtp = 1;
 			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, (unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller, is_rtcp,
-							packetS->block_store, packetS->block_store_index, 
-							enable_save_rtp(call), 
-							packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
-							false);
+				add_to_rtp_thread_queue(call, packetS, 
+							iscaller, is_rtcp, enable_save_rtp(call), false);
 			} else {
 				call->read_rtp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, NULL, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller,
 					       enable_save_rtp(call),
@@ -3474,11 +3463,8 @@ rtpcheck:
 
 			if(is_rtcp) {
 				if(rtp_threaded && can_thread) {
-					add_to_rtp_thread_queue(call, (unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, !iscaller, is_rtcp,
-								packetS->block_store, packetS->block_store_index, 
-								enable_save_rtcp(call), 
-								packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
-								false);
+					add_to_rtp_thread_queue(call, packetS, 
+								!iscaller, is_rtcp, enable_save_rtcp(call), false);
 				} else {
 					call->read_rtcp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, !iscaller,
 							enable_save_rtcp(call),
@@ -3490,11 +3476,8 @@ rtpcheck:
 			// as we are searching by source address and find some call, revert iscaller 
 			*was_rtp = 1;
 			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, (unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, !iscaller, is_rtcp,
-							packetS->block_store, packetS->block_store_index, 
-							enable_save_rtp(call), 
-							packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
-							false);
+				add_to_rtp_thread_queue(call, packetS, 
+							!iscaller, is_rtcp, enable_save_rtp(call), false);
 			} else {
 				call->read_rtp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, NULL, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, !iscaller,
 					       enable_save_rtp(call), 
@@ -4288,13 +4271,8 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 }
 
 inline
-Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call_info_length,
-			  unsigned int saddr, int source, unsigned int daddr, int dest, 
-			  char *data, int datalen, int dataoffset,
-			  pcap_pkthdr *header, const u_char *packet, int istcp, struct iphdr2 *header_ip,
-			  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
-			  int *voippacket, int *was_rtp,
-			  bool find_by_dest, int preSyncRtp) {
+Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call_info_length, PreProcessPacket::packet_s *packetS,
+			  int *voippacket, int *was_rtp, bool find_by_dest, int preSyncRtp) {
 	#if RTP_PROF
 	unsigned long long __prof_begin = rdtsc();
 	#endif
@@ -4309,13 +4287,13 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		call = call_info[call_info_index].call;
 		iscaller = call_info[call_info_index].iscaller;
 		sdp_flags = call_info[call_info_index].sdp_flags;
-		is_rtcp = call_info[call_info_index].is_rtcp || (sdp_flags.rtcp_mux && datalen > 1 && (u_char)data[1] == 0xC8);
+		is_rtcp = call_info[call_info_index].is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data[1] == 0xC8);
 		
 		if(sverb.process_rtp) {
 			++process_rtp_counter;
 			cout << "RTP - process_packet -"
-			     << (find_by_dest ? " src: " : " SRC: ") << inet_ntostring(htonl(saddr)) << " : " << source
-			     << (find_by_dest ? " DST: " : " dst: ") << inet_ntostring(htonl(daddr)) << " : " << dest
+			     << (find_by_dest ? " src: " : " SRC: ") << inet_ntostring(htonl(packetS->saddr)) << " : " << packetS->source
+			     << (find_by_dest ? " DST: " : " dst: ") << inet_ntostring(htonl(packetS->daddr)) << " : " << packetS->dest
 			     << " iscaller: " << (iscaller ? "caller" : "called") 
 			     << " find_by_dest: " << find_by_dest
 			     << " counter: " << process_rtp_counter
@@ -4331,8 +4309,8 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		}
 
 		if(!is_rtcp && !sdp_flags.is_fax &&
-		   (datalen < RTP_FIXED_HEADERLEN ||
-		    header->caplen <= (unsigned)(datalen - RTP_FIXED_HEADERLEN))) {
+		   (packetS->datalen < RTP_FIXED_HEADERLEN ||
+		    packetS->header.caplen <= (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN))) {
 			rsltCall = call;
 			break;
 		}
@@ -4342,7 +4320,7 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		}
 
 		// we have packet, extend pending destroy requests
-		call->shift_destroy_call_at(header);
+		call->shift_destroy_call_at(&packetS->header);
 
 		int can_thread = !sverb.disable_threads_rtp;
 
@@ -4352,16 +4330,13 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		
 		if(is_rtcp) {
 			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
-							block_store, block_store_index, 
-							enable_save_rtcp(call), 
-							packet, istcp, dlt, sensor_id,
-							preSyncRtp);
+				add_to_rtp_thread_queue(call, packetS,
+							iscaller, is_rtcp, enable_save_rtcp(call), preSyncRtp);
 				call_info[call_info_index].use_sync = true;
 			} else {
-				call->read_rtcp((unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller,
+				call->read_rtcp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller,
 						enable_save_rtcp(call), 
-						packet, istcp, dlt, sensor_id);
+						packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id);
 			}
 			rsltCall = call;
 			break;
@@ -4371,18 +4346,15 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 			*was_rtp = 1;
 		}
 		if(rtp_threaded && can_thread) {
-			add_to_rtp_thread_queue(call, (unsigned char*) data, datalen, dataoffset, header, saddr, daddr, source, dest, iscaller, is_rtcp,
-						block_store, block_store_index, 
-						enable_save_rtp(call), 
-						packet, istcp, dlt, sensor_id,
-						preSyncRtp);
+			add_to_rtp_thread_queue(call, packetS, 
+						iscaller, is_rtcp, enable_save_rtp(call), preSyncRtp);
 			call_info[call_info_index].use_sync = true;
 		} else {
-			call->read_rtp((unsigned char*) data, datalen, dataoffset, header, NULL, saddr, daddr, source, dest, iscaller,
+			call->read_rtp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, NULL, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller,
 				       enable_save_rtp(call), 
-				       packet, istcp, dlt, sensor_id,
-				       block_store && block_store->ifname[0] ? block_store->ifname : NULL);
-			call->set_last_packet_time(header->ts.tv_sec);
+				       packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
+				       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
+			call->set_last_packet_time(packetS->header.ts.tv_sec);
 		}
 	}
 	if(preSyncRtp) {
@@ -5388,15 +5360,15 @@ inline void *_PreProcessPacket_outThreadFunction(void *arg) {
 
 PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	this->typePreProcessThread = typePreProcessThread;
-	this->qringmax = opt_preprocess_packets_qring_length;
+	this->qringmax = 10;
 	this->readit = 0;
 	this->writeit = 0;
-	this->qring = new FILE_LINE packet_parse_s*[this->qringmax];
+	this->qring = new FILE_LINE batch_packet_parse_s*[this->qringmax];
 	for(unsigned int i = 0; i < this->qringmax; i++) {
-		this->qring[i] = new FILE_LINE packet_parse_s;
+		this->qring[i] = new FILE_LINE batch_packet_parse_s(opt_preprocess_packets_qring_length / 10);
 		this->qring[i]->used = 0;
 		if(this->typePreProcessThread == ppt_sip) {
-			this->qring[i]->parse.setStdParse();
+			this->qring[i]->setStdParse();
 		}
 	}
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
@@ -5466,7 +5438,8 @@ void PreProcessPacket::push(packet_s *packetS, bool packetDelete, int forceSip, 
 	while(this->qring[this->writeit]->used != 0) {
 		usleep(10);
 	}
-	packet_parse_s *_parse_packet = this->qring[this->writeit];
+	batch_packet_parse_s *_batch_parse_packet = this->qring[this->writeit];
+	packet_parse_s *_parse_packet = &_batch_parse_packet->batch[_batch_parse_packet->count];
 	_parse_packet->packet = *packetS;
 	_parse_packet->packetDelete = packetDelete; 
 	_parse_packet->forceSip = forceSip; 
@@ -5520,11 +5493,14 @@ void PreProcessPacket::push(packet_s *packetS, bool packetDelete, int forceSip, 
 		break;
 	}
 	
-	_parse_packet->used = 1;
-	if((this->writeit + 1) == this->qringmax) {
-		this->writeit = 0;
-	} else {
-		this->writeit++;
+	++_batch_parse_packet->count;
+	if(_batch_parse_packet->count == _batch_parse_packet->max_count) {
+		_batch_parse_packet->used = 1;
+		if((this->writeit + 1) == this->qringmax) {
+			this->writeit = 0;
+		} else {
+			this->writeit++;
+		}
 	}
 	if(opt_enable_ssl && !disableLock) {
 		this->unlock_push();
@@ -5537,30 +5513,34 @@ void *PreProcessPacket::outThreadFunction() {
 	unsigned usleepCounter = 0;
 	while(!this->term_preProcess) {
 		if(this->qring[this->readit]->used == 1) {
-			packet_parse_s *_parse_packet = this->qring[this->readit];
-			packet_s *_packet = &_parse_packet->packet;
-			switch(this->typePreProcessThread) {
-			case ppt_detach:
-				preProcessPacket[1]->push(_packet, false, _parse_packet->forceSip);
-				break;
-			case ppt_sip:
-				{
-				int was_rtp = 0;
-				int voippacket = 0;
-				process_packet(_packet,
-					       &was_rtp, &voippacket, _parse_packet->forceSip,
-					       true, 0,
-					       _parse_packet);
-				if(_packet->block_store) {
-					_packet->block_store->unlock_packet(_packet->block_store_index);
+			batch_packet_parse_s *_batch_parse_packet = this->qring[this->readit];
+			for(unsigned batch_index = 0; batch_index < _batch_parse_packet->count; batch_index++) {
+				packet_parse_s *_parse_packet = &_batch_parse_packet->batch[batch_index];
+				packet_s *_packet = &_parse_packet->packet;
+				switch(this->typePreProcessThread) {
+				case ppt_detach:
+					preProcessPacket[1]->push(_packet, false, _parse_packet->forceSip);
+					break;
+				case ppt_sip:
+					{
+					int was_rtp = 0;
+					int voippacket = 0;
+					process_packet(_packet,
+						       &was_rtp, &voippacket, _parse_packet->forceSip,
+						       true, 0,
+						       _parse_packet);
+					if(_packet->block_store) {
+						_packet->block_store->unlock_packet(_packet->block_store_index);
+					}
+					if(_parse_packet->packetDelete) {
+						delete [] _packet->packet;
+					}
+					}
+					break;
 				}
-				if(_parse_packet->packetDelete) {
-					delete [] _packet->packet;
-				}
-				}
-				break;
 			}
-			_parse_packet->used = 0;
+			_batch_parse_packet->count = 0;
+			_batch_parse_packet->used = 0;
 			if((this->readit + 1) == this->qringmax) {
 				this->readit = 0;
 			} else {
@@ -5795,34 +5775,16 @@ ProcessRtpPacket::~ProcessRtpPacket() {
 	delete [] this->qring;
 }
 
-void ProcessRtpPacket::push(unsigned int saddr, int source, unsigned int daddr, int dest, 
-			    char *data, int datalen, int dataoffset,
-			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, int istcp, struct iphdr2 *header_ip,
-			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+void ProcessRtpPacket::push(PreProcessPacket::packet_s *packetS,
 			    unsigned int hash_s, unsigned int hash_d) {
-	if(block_store) {
-		block_store->lock_packet(block_store_index);
+	if(packetS->block_store) {
+		packetS->block_store->lock_packet(packetS->block_store_index);
 	}
 	while(this->qring[this->writeit].used != 0) {
 		usleep(10);
 	}
 	packet_s *_packet = &this->qring[this->writeit];
-	_packet->saddr = saddr;
-	_packet->source = source;
-	_packet->daddr = daddr; 
-	_packet->dest = dest;
-	_packet->data = data; 
-	_packet->datalen = datalen; 
-	_packet->dataoffset = dataoffset;
-	_packet->handle = handle;
-	_packet->header = *header; 
-	_packet->packet = packet; 
-	_packet->istcp = istcp;
-	_packet->header_ip = header_ip;
-	_packet->block_store = block_store; 
-	_packet->block_store_index = block_store_index; 
-	_packet->dlt = dlt; 
-	_packet->sensor_id = sensor_id;
+	_packet->packet = *packetS;
 	_packet->hash_s = hash_s;
 	_packet->hash_d = hash_d;
 	_packet->call_info_length = -1;
@@ -5967,7 +5929,7 @@ void ProcessRtpPacket::rtp(packet_s *_packet) {
 		for(unsigned int i = 0; i < hash_blob_size; i++) {
 			_packet = &this->qring[this->readit];
 			ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
-							       processRtpPacketDistribute[min(_packet->source, _packet->dest) / 2 % opt_enable_process_rtp_packet] :
+							       processRtpPacketDistribute[min(_packet->packet.source, _packet->packet.dest) / 2 % opt_enable_process_rtp_packet] :
 							       processRtpPacketDistribute[0];
 			_processRtpPacket->push(_packet);
 			_packet->used = 0;
@@ -5982,24 +5944,19 @@ void ProcessRtpPacket::rtp(packet_s *_packet) {
 			this->find_hash(_packet);
 		}
 		if(_packet->call_info_length) {
-			process_packet__rtp(_packet->call_info, _packet->call_info_length,
-					    _packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
-					    _packet->data, _packet->datalen, _packet->dataoffset,
-					    &_packet->header, _packet->packet, _packet->istcp, _packet->header_ip,
-					    _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id,
-					    NULL, NULL,
-					    _packet->call_info_find_by_dest, indexThread + 1);
+			process_packet__rtp(_packet->call_info, _packet->call_info_length, &_packet->packet, 
+					    NULL, NULL, _packet->call_info_find_by_dest, indexThread + 1);
 		} else {
 			if(opt_rtpnosip) {
-				process_packet__rtp_nosip(_packet->saddr, _packet->source, _packet->daddr, _packet->dest, 
-							  _packet->data, _packet->datalen, _packet->dataoffset,
-							  &_packet->header, _packet->packet, _packet->istcp, _packet->header_ip,
-							  _packet->block_store, _packet->block_store_index, _packet->dlt, _packet->sensor_id,
-							  _packet->handle);
+				process_packet__rtp_nosip(_packet->packet.saddr, _packet->packet.source, _packet->packet.daddr, _packet->packet.dest, 
+							  _packet->packet.data, _packet->packet.datalen, _packet->packet.dataoffset,
+							  &_packet->packet.header, _packet->packet.packet, _packet->packet.istcp, _packet->packet.header_ip,
+							  _packet->packet.block_store, _packet->packet.block_store_index, _packet->packet.dlt, _packet->packet.sensor_id,
+							  _packet->packet.handle);
 			}
 		}
-		if(_packet->block_store) {
-			_packet->block_store->unlock_packet(_packet->block_store_index);
+		if(_packet->packet.block_store) {
+			_packet->packet.block_store->unlock_packet(_packet->packet.block_store_index);
 		}
 	}
 	#if RTP_PROF
@@ -6014,10 +5971,10 @@ void ProcessRtpPacket::find_hash(packet_s *_packet, bool lock) {
 	if(lock) {
 		calltable->lock_calls_hash();
 	}
-	if((calls = calltable->hashfind_by_ip_port(_packet->daddr, _packet->dest, _packet->hash_d, false))) {
+	if((calls = calltable->hashfind_by_ip_port(_packet->packet.daddr, _packet->packet.dest, _packet->hash_d, false))) {
 		_packet->call_info_find_by_dest = true;
 	} else {
-		calls = calltable->hashfind_by_ip_port(_packet->saddr, _packet->source, _packet->hash_s, false);
+		calls = calltable->hashfind_by_ip_port(_packet->packet.saddr, _packet->packet.source, _packet->hash_s, false);
 	}
 	_packet->call_info_length = 0;
 	if(calls) {
