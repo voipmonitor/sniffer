@@ -575,14 +575,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			} else if (!strncmp(manager_args[1], "tacCPU", 7)) {
 				sprintf(filename, "%s/rrd/2db-tacCPU.rrd", opt_chdir);
 				rrd_vm_create_graph_tacCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-			} else if (!strncmp(manager_args[1], "mem_usage", 7)) {
+			} else if (!strncmp(manager_args[1], "memusage", 7)) {
 				sprintf(filename, "%s/rrd/db-memusage.rrd", opt_chdir);
 				rrd_vm_create_graph_memusage_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else {
-				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU mem_usage\n", manager_args[1]);	
+				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage\n", manager_args[1]);	
 				if (verbosity > 0) {
 					syslog(LOG_NOTICE, "creategraph Error: Unrecognized graph type %s", manager_args[1]);
-					syslog(LOG_NOTICE, "    Graph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU mem_usage");
+					syslog(LOG_NOTICE, "    Graph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage");
 				}
 				res = -1;
 			}

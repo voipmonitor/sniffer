@@ -1074,7 +1074,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 //rrd tacCPU consumption file 2db-tacCPU.rrd
 	double rrdtacCPU_zip = 0.0;     //number of threads
 	double rrdtacCPU_tar = 0.0;	//last thread load
-//rrd mem consumption file db-mem.rrd
+//rrd mem consumption file db-memusage.rrd
 	double rrdmem_rss = 0;
 //rrd net bw to voipmonitor file 2db-speedmbs.rrd
 	double rrdspeedmbs = 0.0;
@@ -1772,7 +1772,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			//update rrdmem;
 			cmdUpdate.str(std::string());
 			cmdUpdate << "N:" << rrdmem_rss;
-			sprintf(filename, "%s/rrd/db-mem.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/db-memusage.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdspeedmbs;
