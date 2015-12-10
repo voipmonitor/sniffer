@@ -127,8 +127,8 @@ GPRINT:PSA:AVERAGE:"Avg\: %5.2lf\t" \
 GPRINT:PSA:MAX:"Max\: %5.0lf\t" \
 GPRINT:PSA:MIN:"Min\: %5.0lf\n"
  
-## RSSVSZ 
-$TOOL graph RSSVSZ_graph.png \
+## mem usage  (memusage)
+$TOOL graph memusage_graph.png \
 -w 785 -h 120 -a PNG \
 --slope-mode \
 --start -43200 --end now \
@@ -139,13 +139,7 @@ $TOOL graph RSSVSZ_graph.png \
 --lower-limit 0 \
 --x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R \
 --units-exponent 0 \
-DEF:rss=/var/spool/voipmonitor/rrd/db-RSSVSZ.rrd:RSS:MAX \
-DEF:vsz=/var/spool/voipmonitor/rrd/db-RSSVSZ.rrd:VSZ:MAX \
-AREA:vsz#00FF00:"Mem Usage VSZ\t" \
-GPRINT:vsz:LAST:"Cur\: %5.0lf\t" \
-GPRINT:vsz:AVERAGE:"Avg\: %5.2lf\t" \
-GPRINT:vsz:MAX:"Max\: %5.0lf\t" \
-GPRINT:vsz:MIN:"Min\: %5.0lf\n" \
+DEF:rss=/var/spool/voipmonitor/rrd/db-mem.rrd:RSS:MAX \
 AREA:rss#0000FF:"Mem Usage RSS\t" \
 GPRINT:rss:LAST:"Cur\: %5.0lf\t" \
 GPRINT:rss:AVERAGE:"Avg\: %5.2lf\t" \

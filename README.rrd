@@ -53,7 +53,7 @@
 				creategraph tacCPU now-2weeks now 600 400 0 0 - /tmp/graph_tacCPU.png
 
 			*) Last example sends PNG image to stdout instead of saving it into a file.
-				creategraph RSSVSZ "31.8.2014 00:00" now 600 400
+				creategraph mem_usage "31.8.2014 00:00" now 600 400
 
 	b) You can create graphs that meets your specific needs using 'rrdtool graph'.
 		For its syntax look at: http://oss.oetiker.ch/rrdtool/doc/rrdgraph.en.html
@@ -67,7 +67,7 @@
 
 	Arguments:
 		graphType is one of the following:
-			PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU RSSVSZ
+			PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU mem_usage
 
 		linuxTS_from linuxTS_to
 			both arguments are at-style time format
