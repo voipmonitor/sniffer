@@ -288,7 +288,7 @@ void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char 
 	buffer[length]='\0';
 }
 
-void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
+void rrd_vm_create_graph_memusage_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
 	if (dstfile == NULL) 
@@ -1013,7 +1013,7 @@ int vm_rrd_create_rrdtacCPU(const char *filename) {
 	return (res);
 }
 
-int vm_rrd_create_rrdRSSVSZ(const char *filename) {
+int vm_rrd_create_rrdmemusage(const char *filename) {
     std::ostringstream cmdCreate;
 
     cmdCreate << "create " << filename << " ";

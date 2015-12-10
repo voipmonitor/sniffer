@@ -1046,10 +1046,10 @@ void PcapQueue::setInstancePcapFifo(PcapQueue_readFromFifo *pcapQueue) {
 void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
 //For RRDs files update
-//rrd heap file db-heap.rrd
+//rrd heap file 2db-heap.rrd
 	double rrdheap_buffer = 0;
 	double rrdheap_ratio = 0;
-//rrd drop file db-drop.rrd
+//rrd drop file 2db-drop.rrd
 	unsigned long rrddrop_exceeded = 0;
 	unsigned long rrddrop_packets = 0;
 //rrd packet counters file 2db-PS.rrd
@@ -1060,25 +1060,25 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	uint64_t rrdPS_SM = 0;
 	uint64_t rrdPS_R = 0;
 	uint64_t rrdPS_A = 0;
-//rrd SQL file db-SQL.rrd
+//rrd SQL file 2db-SQL.rrd
 	signed int rrdSQLf_D = 0;	//here is zero alowed
 	signed int rrdSQLq_C = -1;
 	signed int rrdSQLq_M = -1;
 	signed int rrdSQLq_R = -1;
 	signed int rrdSQLq_Cl = -1;
 	signed int rrdSQLq_H = -1;
-//rrd CPU consumption file db-tCPU.rrd
+//rrd CPU consumption file 2db-tCPU.rrd
 	double rrdtCPU_t0 = 0.0;
 	double rrdtCPU_t1 = 0.0;
 	double rrdtCPU_t2 = 0.0;
-//rrd tacCPU consumption file db-tacCPU.rrd
+//rrd tacCPU consumption file 2db-tacCPU.rrd
 	double rrdtacCPU_zip = 0.0;     //number of threads
 	double rrdtacCPU_tar = 0.0;	//last thread load
-//rrd mem consumption file db-RSSVSZ.rrd
-	double rrdRSSVSZ_rss = 0;
-//rrd net bw to voipmonitor file db-speedmbs.rrd
+//rrd mem consumption file db-mem.rrd
+	double rrdmem_rss = 0;
+//rrd net bw to voipmonitor file 2db-speedmbs.rrd
 	double rrdspeedmbs = 0.0;
-//rrd calls counter file db-callscounter.rrd
+//rrd calls counter file 2db-callscounter.rrd
 	int rrdcallscounter = 0;
 
 	if(!VERBOSE && !DEBUG_VERBOSE) {
@@ -1617,7 +1617,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	long unsigned int rss = this->getRssUsage(true);
 	if(rss > 0) {
 		outStrStat << setprecision(0) << (double)rss/1024/1024;
-		if (opt_rrd) rrdRSSVSZ_rss = (double)rss/1024/1024;
+		if (opt_rrd) rrdmem_rss = (double)rss/1024/1024;
 	}
 	long unsigned int vsize = this->getVsizeUsage();
 	if(vsize > 0) {
@@ -1701,8 +1701,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			vm_rrd_create_rrdtCPU(filename);
 			sprintf(filename, "%s/rrd/2db-tacCPU.rrd", opt_chdir);
 			vm_rrd_create_rrdtacCPU(filename);
-			sprintf(filename, "%s/rrd/3db-RSSVSZ.rrd", opt_chdir);
-			vm_rrd_create_rrdRSSVSZ(filename);
+			sprintf(filename, "%s/rrd/db-memusage.rrd", opt_chdir);
+			vm_rrd_create_rrdmemusage(filename);
 			sprintf(filename, "%s/rrd/2db-speedmbs.rrd", opt_chdir);
 			vm_rrd_create_rrdspeedmbs(filename);
 			sprintf(filename, "%s/rrd/2db-callscounter.rrd", opt_chdir);
@@ -1769,10 +1769,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			sprintf(filename, "%s/rrd/2db-tacCPU.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
-			//update rrdRSSVSZ;
+			//update rrdmem;
 			cmdUpdate.str(std::string());
-			cmdUpdate << "N:" << rrdRSSVSZ_rss;
-			sprintf(filename, "%s/rrd/3db-RSSVSZ.rrd", opt_chdir);
+			cmdUpdate << "N:" << rrdmem_rss;
+			sprintf(filename, "%s/rrd/db-mem.rrd", opt_chdir);
 			vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 			//update rrdspeedmbs;

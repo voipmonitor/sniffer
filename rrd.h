@@ -7,7 +7,7 @@ int vm_rrd_create_rrdPS(const char *filename);
 int vm_rrd_create_rrdSQL(const char *filename);
 int vm_rrd_create_rrdtCPU(const char *filename);
 int vm_rrd_create_rrdtacCPU(const char *filename);
-int vm_rrd_create_rrdRSSVSZ(const char *filename);
+int vm_rrd_create_rrdmemusage(const char *filename);
 int vm_rrd_create_rrdspeedmbs(const char *filename);
 int vm_rrd_create_rrdcallscounter(const char *filename);
 
@@ -33,7 +33,7 @@ void rrd_vm_create_graph_heap_command(char *filename, char *fromatstyle, char *t
 void rrd_vm_create_graph_speed_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
-void rrd_vm_create_graph_RSSVSZ_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
+void rrd_vm_create_graph_memusage_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 
 
 
