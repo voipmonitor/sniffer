@@ -58,6 +58,7 @@
 #include "rtp.h"
 #include "calltable.h"
 #include "sniff.h"
+#include "sniff_proc_class.h"
 #include "simpleini/SimpleIni.h"
 #include "manager.h"
 #include "filter_mysql.h"

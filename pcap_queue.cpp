@@ -28,6 +28,7 @@
 #include "filter_mysql.h"
 #include "tcpreassembly.h"
 #include "sniff.h"
+#include "sniff_proc_class.h"
 #include "rrd.h"
 #include "cleanspool.h"
 #include "ssldata.h"
@@ -5124,7 +5125,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	}
 	if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc && !useTcpReassemblySsl && 
 	   opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
-		PreProcessPacket::packet_s packetS;
+		packet_s packetS;
 		packetS.packet_number = packet_counter_all;
 		packetS.saddr = header_ip->saddr;
 		packetS.source = htons(header_udp->source);

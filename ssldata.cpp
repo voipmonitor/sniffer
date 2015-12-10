@@ -11,6 +11,7 @@
 #endif
 
 #include "ssldata.h"
+#include "sniff_proc_class.h"
 #include "sql_db.h"
 
 
