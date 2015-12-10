@@ -211,13 +211,13 @@ public:
 public:
 	PreProcessPacket(eTypePreProcessThread typePreProcessThread);
 	~PreProcessPacket();
-	inline void push(bool is_ssl, u_int64_t packet_number,
-			 unsigned int saddr, int source, unsigned int daddr, int dest, 
-			 char *data, int datalen, int dataoffset,
-			 pcap_t *handle, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
-			 int istcp, struct iphdr2 *header_ip, int forceSip,
-			 pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
-			 bool disableLock = false) {
+	inline void push_packet_1(bool is_ssl, u_int64_t packet_number,
+				  unsigned int saddr, int source, unsigned int daddr, int dest, 
+				  char *data, int datalen, int dataoffset,
+				  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
+				  int istcp, struct iphdr2 *header_ip, int forceSip,
+				  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+				  bool disableLock = false) {
 		packet_s packetS;
 		packetS.packet_number = packet_number;
 		packetS.saddr = saddr;
@@ -237,9 +237,9 @@ public:
 		packetS.dlt = dlt; 
 		packetS.sensor_id = sensor_id;
 		packetS.is_ssl = is_ssl;
-		this->push(&packetS, packetDelete, forceSip, disableLock);
+		this->push_packet_2(&packetS, packetDelete, forceSip, disableLock);
 	}
-	inline void push(packet_s *packetS, bool packetDelete = false, int forceSip = 0, bool disableLock = false) {
+	inline void push_packet_2(packet_s *packetS, bool packetDelete = false, int forceSip = 0, bool disableLock = false) {
 	 
 		extern int opt_enable_ssl;
 		extern int opt_enable_preprocess_packet;
@@ -308,9 +308,6 @@ public:
 					if(packetS->block_store) {
 						packetS->block_store->unlock_packet(packetS->block_store_index);
 					}
-					if(opt_enable_ssl && !disableLock) {
-						this->unlock_push();
-					}
 					return;
 				}
 				_parse_packet->hash[0] = 0;
@@ -320,9 +317,6 @@ public:
 				   !this->sipProcess_reassembly(_parse_packet)) {
 					if(packetS->block_store) {
 						packetS->block_store->unlock_packet(packetS->block_store_index);
-					}
-					if(opt_enable_ssl && !disableLock) {
-						this->unlock_push();
 					}
 					return;
 				}
@@ -337,14 +331,15 @@ public:
 		++_batch_parse_packet->count;
 		if(_batch_parse_packet->count == _batch_parse_packet->max_count) {
 			_batch_parse_packet->used = 1;
-			if((this->writeit + 1) == this->qringmax) {
+			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
 			} else {
 				this->writeit++;
 			}
 			qring_push_index = 0;
 		}
-		if(opt_enable_ssl && !disableLock) {
+		if(typePreProcessThread == ppt_detach &&
+		   opt_enable_ssl && !disableLock) {
 			this->unlock_push();
 		}
 	}
@@ -370,9 +365,10 @@ private:
 	}
 private:
 	eTypePreProcessThread typePreProcessThread;
+	unsigned int qring_batch_item_length;
+	unsigned int qring_length;
 	batch_packet_parse_s **qring;
 	unsigned qring_push_index;
-	unsigned int qringmax;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
@@ -405,14 +401,82 @@ public:
 		rtp_call_info call_info[20];
 		int call_info_length;
 		bool call_info_find_by_dest;
+	};
+	struct batch_packet_rtp_s {
+		batch_packet_rtp_s(unsigned max_count) {
+			count = 0;
+			used = 0;
+			batch = new packet_rtp_s[max_count];
+			this->max_count = max_count;
+		}
+		~batch_packet_rtp_s() {
+			delete [] batch;
+		}
+		packet_rtp_s *batch;
+		unsigned count;
 		volatile int used;
+		unsigned max_count;
 	};
 public:
 	ProcessRtpPacket(eType type, int indexThread);
 	~ProcessRtpPacket();
-	inline void push(packet_s *packetS,
-		         unsigned int hash_s, unsigned int hash_d);
-	inline void push(packet_rtp_s *_packet);
+	inline void push_packet_rtp_1(packet_s *packetS,
+				      unsigned int hash_s, unsigned int hash_d) {
+		if(packetS->block_store) {
+			packetS->block_store->lock_packet(packetS->block_store_index);
+		}
+		if(!qring_push_index) {
+			unsigned usleepCounter = 0;
+			while(this->qring[this->writeit]->used != 0) {
+				usleep(20 *
+				       (usleepCounter > 10 ? 50 :
+					usleepCounter > 5 ? 10 :
+					usleepCounter > 2 ? 5 : 1));
+				++usleepCounter;
+			}
+			qring_push_index = this->writeit + 1;
+		}
+		batch_packet_rtp_s *_batch_rtp_packet = this->qring[qring_push_index - 1];
+		_batch_rtp_packet->batch[_batch_rtp_packet->count].packet = *packetS;
+		_batch_rtp_packet->batch[_batch_rtp_packet->count].hash_s = hash_s;
+		_batch_rtp_packet->batch[_batch_rtp_packet->count].hash_d = hash_d;
+		_batch_rtp_packet->batch[_batch_rtp_packet->count].call_info_length = -1;
+		++_batch_rtp_packet->count;
+		if(_batch_rtp_packet->count == _batch_rtp_packet->max_count) {
+			_batch_rtp_packet->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			qring_push_index = 0;
+		}
+	}
+	inline void push_packet_rtp_2(packet_rtp_s *packet) {
+		if(!qring_push_index) {
+			unsigned usleepCounter = 0;
+			while(this->qring[this->writeit]->used != 0) {
+				usleep(20 *
+				       (usleepCounter > 10 ? 50 :
+					usleepCounter > 5 ? 10 :
+					usleepCounter > 2 ? 5 : 1));
+				++usleepCounter;
+			}
+			qring_push_index = this->writeit + 1;
+		}
+		batch_packet_rtp_s *_batch_rtp_packet = this->qring[qring_push_index - 1];
+		_batch_rtp_packet->batch[_batch_rtp_packet->count] = *packet;
+		++_batch_rtp_packet->count;
+		if(_batch_rtp_packet->count == _batch_rtp_packet->max_count) {
+			_batch_rtp_packet->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			qring_push_index = 0;
+		}
+	}
 	void preparePstatData(bool nextThread = false);
 	double getCpuUsagePerc(bool preparePstatData, bool nextThread = false);
 	void terminate();
@@ -420,52 +484,25 @@ public:
 private:
 	void *outThreadFunction();
 	void *nextThreadFunction();
-	void rtp(packet_rtp_s *_packet);
+	void rtp_batch(batch_packet_rtp_s *_batch_packet);
 	void find_hash(packet_rtp_s *_packet, bool lock = true);
-	packet_rtp_s *qring_item(size_t index) {
-		index += this->readit;
-		if(index >= qringmax) {
-			index -= qringmax;
-		}
-		return(&qring[index]);
-	}
-	size_t qring_size() {
-		unsigned int _writeit = writeit;
-		unsigned int _readit = readit;
-		return(_writeit > _readit ?
-			_writeit - _readit: 
-		       _writeit < _readit ?
-			_writeit - 1 + qringmax - _readit :
-			(qring[_readit].used ? qringmax : 0));
-	}
-	
 public:
-	#if RTP_PROF
-	volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction_begin;
-	volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction;
-	volatile unsigned long long __prof__ProcessRtpPacket_outThreadFunction__usleep;
-	volatile unsigned long long __prof__ProcessRtpPacket_rtp;
-	volatile unsigned long long __prof__ProcessRtpPacket_rtp__hashfind;
-	volatile unsigned long long __prof__ProcessRtpPacket_rtp__fill_call_array;
-	volatile unsigned long long __prof__process_packet__rtp;
-	volatile unsigned long long __prof__add_to_rtp_thread_queue;
-	#endif
 	eType type;
 	int indexThread;
 	int outThreadId;
 	int nextThreadId;
 private:
-	packet_rtp_s *qring;
-	unsigned int qringmax;
-	unsigned int hash_blob_limit;
+	unsigned int qring_batch_item_length;
+	unsigned int qring_length;
+	batch_packet_rtp_s **qring;
+	unsigned qring_push_index;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	pthread_t next_thread_handle;
 	pstat_data threadPstatData[2][2];
 	bool term_processRtp;
-	volatile int hash_buffer_next_thread_process;
-	volatile unsigned int hash_blob_size;
+	volatile batch_packet_rtp_s *hash_batch_thread_process;
 	sem_t sem_sync_next_thread[2];
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);

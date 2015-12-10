@@ -5145,7 +5145,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		packetS.sensor_id = sensor_id;
 		packetS.is_ssl = false;
 		if(preProcessPacket[0]) {
-			preProcessPacket[0]->push(&packetS);
+			preProcessPacket[0]->push_packet_2(&packetS);
 			if(opt_ipaccount) {
 				//todo: detect if voippacket!
 				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);

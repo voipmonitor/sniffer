@@ -134,11 +134,11 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 						int was_rtp = 0;
 						int voippacket = 0;
 						if(preProcessPacket[0]) {
-							preProcessPacket[0]->push(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
-										  (char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
-										  handle, udpHeader, udpPacket, true, 
-										  false, (iphdr2*)(udpPacket + ethHeaderLength), 1,
-										  NULL, 0, dlt, sensor_id);
+							preProcessPacket[0]->push_packet_1(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
+											   (char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
+											   handle, udpHeader, udpPacket, true, 
+											   false, (iphdr2*)(udpPacket + ethHeaderLength), 1,
+											   NULL, 0, dlt, sensor_id);
 						} else {
 							process_packet(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
 								       (char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),

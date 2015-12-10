@@ -1314,10 +1314,6 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 inline
 void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 			     int iscaller, int is_rtcp, int enable_save_packet, int preSyncRtp) {
-	#if RTP_PROF
-	unsigned long long __prof_begin = rdtsc();
-	#endif
- 
 	if(is_terminating()) {
 		return;
 	}
@@ -1395,12 +1391,6 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 		rtpp_pq->block_store_index =packetS->block_store_index;
 		params->rtpp_queue->unlock();
 	}
-
-	#if RTP_PROF
-	if(preSyncRtp) {
-		processRtpPacket[preSyncRtp - 1]->__prof__add_to_rtp_thread_queue += rdtsc() - __prof_begin;
-	}
-	#endif
 }
 
 
@@ -3348,9 +3338,9 @@ rtpcheck:
 
 	if(packetS->datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
 	if(processRtpPacketHash) {
-		processRtpPacketHash->push(packetS,
-					   parsePacket ? parsePacket->hash[0] : tuplehash(packetS->saddr, packetS->source),
-					   parsePacket ? parsePacket->hash[1] : tuplehash(packetS->daddr, packetS->dest));
+		processRtpPacketHash->push_packet_rtp_1(packetS,
+							parsePacket ? parsePacket->hash[0] : tuplehash(packetS->saddr, packetS->source),
+							parsePacket ? parsePacket->hash[1] : tuplehash(packetS->daddr, packetS->dest));
 	} else {
 	if ((calls = calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, parsePacket ? parsePacket->hash[1] : 0))){
 		++counter_rtp_packets;
@@ -4276,9 +4266,6 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 inline
 Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call_info_length, packet_s *packetS,
 			  int *voippacket, int *was_rtp, bool find_by_dest, int preSyncRtp) {
-	#if RTP_PROF
-	unsigned long long __prof_begin = rdtsc();
-	#endif
 	++counter_rtp_packets;
 	Call *call;
 	bool iscaller;
@@ -4371,11 +4358,6 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 			}
 		}
 	}
-	#if RTP_PROF
-	if(preSyncRtp) {
-		processRtpPacket[preSyncRtp - 1]->__prof__process_packet__rtp += rdtsc() - __prof_begin;
-	}
-	#endif
 	return(rsltCall);
 }
 
@@ -5309,13 +5291,13 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id id) {
 	}
 	bool deletePackets = true;
 	if(preProcessPacket[1] && opt_enable_preprocess_packet == 2) {
-		preProcessPacket[1]->push(false, firstPacket->packet_number,
-					  firstPacket->saddr, firstPacket->source, firstPacket->daddr, firstPacket->dest, 
-					  (char*)newdata, newdata_len, firstPacket->dataoffset,
-					  firstPacket->handle, &header, newpacket, true,
-					  2, header_ip, 0,
-					  NULL, 0, firstPacket->dlt, firstPacket->sensor_id,
-					  true);
+		preProcessPacket[1]->push_packet_1(false, firstPacket->packet_number,
+						   firstPacket->saddr, firstPacket->source, firstPacket->daddr, firstPacket->dest, 
+						   (char*)newdata, newdata_len, firstPacket->dataoffset,
+						   firstPacket->handle, &header, newpacket, true,
+						   2, header_ip, 0,
+						   NULL, 0, firstPacket->dlt, firstPacket->sensor_id,
+						   true);
 		if(!multiplePackets) {
 			deletePackets = false;
 		}
@@ -5363,11 +5345,13 @@ inline void *_PreProcessPacket_outThreadFunction(void *arg) {
 
 PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	this->typePreProcessThread = typePreProcessThread;
-	this->qringmax = 10;
+	this->qring_batch_item_length = min(opt_preprocess_packets_qring_length / 10, 1000u);
+	this->qring_length = opt_preprocess_packets_qring_length / this->qring_batch_item_length;
+	
 	this->readit = 0;
 	this->writeit = 0;
-	this->qring = new FILE_LINE batch_packet_parse_s*[this->qringmax];
-	for(unsigned int i = 0; i < this->qringmax; i++) {
+	this->qring = new FILE_LINE batch_packet_parse_s*[this->qring_length];
+	for(unsigned int i = 0; i < this->qring_length; i++) {
 		this->qring[i] = new FILE_LINE batch_packet_parse_s(opt_preprocess_packets_qring_length / 10);
 		this->qring[i]->used = 0;
 		if(this->typePreProcessThread == ppt_sip) {
@@ -5384,7 +5368,7 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 
 PreProcessPacket::~PreProcessPacket() {
 	terminate();
-	for(unsigned int i = 0; i < this->qringmax; i++) {
+	for(unsigned int i = 0; i < this->qring_length; i++) {
 		delete this->qring[i];
 	}
 	delete [] this->qring;
@@ -5402,7 +5386,7 @@ void *PreProcessPacket::outThreadFunction() {
 				packet_s *_packet = &_parse_packet->packet;
 				switch(this->typePreProcessThread) {
 				case ppt_detach:
-					preProcessPacket[1]->push(_packet, false, _parse_packet->forceSip);
+					preProcessPacket[1]->push_packet_2(_packet, false, _parse_packet->forceSip);
 					break;
 				case ppt_sip:
 					{
@@ -5424,7 +5408,7 @@ void *PreProcessPacket::outThreadFunction() {
 			}
 			_batch_parse_packet->count = 0;
 			_batch_parse_packet->used = 0;
-			if((this->readit + 1) == this->qringmax) {
+			if((this->readit + 1) == this->qring_length) {
 				this->readit = 0;
 			} else {
 				this->readit++;
@@ -5617,29 +5601,21 @@ inline void *_ProcessRtpPacket_nextThreadFunction(void *arg) {
 ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	this->type = type;
 	this->indexThread = indexThread;
-	this->qringmax = opt_process_rtp_packets_qring_length;
-	this->hash_blob_limit = min(opt_process_rtp_packets_qring_length / 5, 1000u);
+	this->qring_batch_item_length = min(opt_process_rtp_packets_qring_length / 5, 1000u);
+	this->qring_length = opt_process_rtp_packets_qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
-	this->qring = new FILE_LINE packet_rtp_s[this->qringmax];
-	for(unsigned int i = 0; i < this->qringmax; i++) {
-		this->qring[i].used = 0;
+	this->qring = new FILE_LINE batch_packet_rtp_s*[this->qring_length];
+	for(unsigned int i = 0; i < this->qring_length; i++) {
+		this->qring[i] = new FILE_LINE batch_packet_rtp_s(this->qring_batch_item_length);
+		this->qring[i]->used = 0;
 	}
+	this->qring_push_index = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->outThreadId = 0;
 	this->nextThreadId = 0;
 	this->term_processRtp = false;
-	this->hash_buffer_next_thread_process = 0;
-	#if RTP_PROF
-	__prof__ProcessRtpPacket_outThreadFunction_begin = 0;
-	__prof__ProcessRtpPacket_outThreadFunction = 0;
-	__prof__ProcessRtpPacket_outThreadFunction__usleep = 0;
-	__prof__ProcessRtpPacket_rtp = 0;
-	__prof__ProcessRtpPacket_rtp__hashfind = 0;
-	__prof__ProcessRtpPacket_rtp__fill_call_array = 0;
-	__prof__process_packet__rtp = 0;
-	__prof__add_to_rtp_thread_queue = 0;
-	#endif
+	this->hash_batch_thread_process = 0;
 	for(int i = 0; i < 2; i++) {
 		sem_sync_next_thread[i].__align = 0;
 	}
@@ -5655,100 +5631,34 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 
 ProcessRtpPacket::~ProcessRtpPacket() {
 	terminate();
+	for(unsigned int i = 0; i < this->qring_length; i++) {
+		delete this->qring[i];
+	}
 	delete [] this->qring;
 }
 
-void ProcessRtpPacket::push(packet_s *packetS,
-			    unsigned int hash_s, unsigned int hash_d) {
-	if(packetS->block_store) {
-		packetS->block_store->lock_packet(packetS->block_store_index);
-	}
-	unsigned usleepCounter = 0;
-	while(this->qring[this->writeit].used != 0) {
-		usleep(20 *
-		       (usleepCounter > 10 ? 50 :
-			usleepCounter > 5 ? 10 :
-			usleepCounter > 2 ? 5 : 1));
-		++usleepCounter;
-	}
-	packet_rtp_s *_packet = &this->qring[this->writeit];
-	_packet->packet = *packetS;
-	_packet->hash_s = hash_s;
-	_packet->hash_d = hash_d;
-	_packet->call_info_length = -1;
-	_packet->used = 1;
-	if((this->writeit + 1) == this->qringmax) {
-		this->writeit = 0;
-	} else {
-		this->writeit++;
-	}
-}
-
-void ProcessRtpPacket::push(packet_rtp_s *packet) {
-	unsigned usleepCounter = 0;
-	while(this->qring[this->writeit].used != 0) {
-		usleep(20 *
-		       (usleepCounter > 10 ? 50 :
-			usleepCounter > 5 ? 10 :
-			usleepCounter > 2 ? 5 : 1));
-		++usleepCounter;
-	}
-	packet_rtp_s *_packet = &this->qring[this->writeit];
-	memcpy(_packet, packet, (char*)&_packet->used - (char*)_packet);
-	_packet->used = 1;
-	if((this->writeit + 1) == this->qringmax) {
-		this->writeit = 0;
-	} else {
-		this->writeit++;
-	}
-}
-
 void *ProcessRtpPacket::outThreadFunction() {
-	#if RTP_PROF
-	__prof__ProcessRtpPacket_outThreadFunction_begin = rdtsc();
-	#endif
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start ProcessRtpPacket %s out thread %i", this->type == hash ? "hash" : "distribute", this->outThreadId);
 	unsigned usleepCounter = 0;
 	while(!this->term_processRtp) {
-		if(this->qring[this->readit].used == 1) {
-			if(type == hash) {
-				if(qring_size() > hash_blob_limit ||
-				   usleepCounter * opt_process_rtp_packets_qring_usleep > 50000) {
-					this->rtp(NULL);
-					usleepCounter = 0;
-				} else {
-					usleep(opt_process_rtp_packets_qring_usleep * 
-					       (usleepCounter > 1000 ? 20 :
-						usleepCounter > 100 ? 5 : 1));
-					++usleepCounter;
-				}
+		if(this->qring[this->readit]->used == 1) {
+			batch_packet_rtp_s *_batch_rtp_packet = this->qring[this->readit];
+			this->rtp_batch(_batch_rtp_packet);
+			_batch_rtp_packet->count = 0;
+			_batch_rtp_packet->used = 0;
+			if((this->readit + 1) == this->qring_length) {
+				this->readit = 0;
 			} else {
-				packet_rtp_s *_packet = &this->qring[this->readit];
-				this->rtp(_packet);
-				_packet->used = 0;
-				if((this->readit + 1) == this->qringmax) {
-					this->readit = 0;
-				} else {
-					this->readit++;
-				}
-				usleepCounter = 0;
+				this->readit++;
 			}
+			usleepCounter = 0;
 		} else {
-			#if RTP_PROF
-			unsigned long long __prof_begin2 = rdtsc();
-			#endif
 			usleep(opt_process_rtp_packets_qring_usleep * 
 			       (usleepCounter > 1000 ? 20 :
 				usleepCounter > 100 ? 5 : 1));
-			#if RTP_PROF
-			__prof__ProcessRtpPacket_outThreadFunction__usleep += rdtsc() - __prof_begin2;
-			#endif
 			++usleepCounter;
 		}
-		#if RTP_PROF
-		__prof__ProcessRtpPacket_outThreadFunction = rdtsc() - __prof__ProcessRtpPacket_outThreadFunction_begin;
-		#endif
 	}
 	return(NULL);
 }
@@ -5762,11 +5672,12 @@ void *ProcessRtpPacket::nextThreadFunction() {
 		if(sem_sync_next_thread[0].__align) {
 			sem_wait(&sem_sync_next_thread[0]);
 		}
-		if(this->hash_buffer_next_thread_process) {
-			for(unsigned int i = hash_blob_size / 2; i < hash_blob_size; i++) {
-				this->find_hash(qring_item(i), false);
+		if(this->hash_batch_thread_process) {
+			for(unsigned batch_index = this->hash_batch_thread_process->count / 2; batch_index < this->hash_batch_thread_process->count; batch_index++) {
+				packet_rtp_s *_packet = &this->hash_batch_thread_process->batch[batch_index];
+				this->find_hash(_packet, false);
 			}
-			this->hash_buffer_next_thread_process = 0;
+			this->hash_batch_thread_process = 0;
 			usleepCounter = 0;
 			if(sem_sync_next_thread[1].__align) {
 				sem_post(&sem_sync_next_thread[1]);
@@ -5781,80 +5692,62 @@ void *ProcessRtpPacket::nextThreadFunction() {
 	return(NULL);
 }
 
-void ProcessRtpPacket::rtp(packet_rtp_s *_packet) {
-	#if RTP_PROF
-	unsigned long long __prof_begin = rdtsc();
-	#endif
+void ProcessRtpPacket::rtp_batch(batch_packet_rtp_s *_batch_rtp_packet) {
 	if(type == hash) {
-		hash_blob_size = min(qring_size(), (size_t)hash_blob_limit);
-		for(unsigned int i = 0; i < hash_blob_size; i++) {
-			if(!qring_item(i)->used) {
-				if(i) {
-					hash_blob_size = i;
-					break;
-				} else {
-					return;
-				}
-			}
-		}
 		calltable->lock_calls_hash();
 		if(this->next_thread_handle) {
-			this->hash_buffer_next_thread_process = 1;
+			this->hash_batch_thread_process = _batch_rtp_packet;
 			if(sem_sync_next_thread[0].__align) {
 				sem_post(&sem_sync_next_thread[0]);
 			}
-			for(unsigned int i = 0; i < hash_blob_size / 2; i++) { 
-				this->find_hash(qring_item(i), false); 
+			for(unsigned batch_index = 0; batch_index < _batch_rtp_packet->count / 2; batch_index++) {
+				packet_rtp_s *_packet = &_batch_rtp_packet->batch[batch_index];
+				this->find_hash(_packet, false);
 			}
 			if(sem_sync_next_thread[1].__align) {
 				sem_wait(&sem_sync_next_thread[1]);
 			} else {
-				while(this->hash_buffer_next_thread_process) { 
+				while(this->hash_batch_thread_process) { 
 					usleep(20); 
 				}
 			}
 		} else {
-			for(unsigned int i = 0; i < hash_blob_size; i++) {
-				this->find_hash(qring_item(i), false);
+			for(unsigned batch_index = 0; batch_index < _batch_rtp_packet->count; batch_index++) {
+				packet_rtp_s *_packet = &_batch_rtp_packet->batch[batch_index];
+				this->find_hash(_packet, false);
 			}
 		}
 		calltable->unlock_calls_hash();
-		for(unsigned int i = 0; i < hash_blob_size; i++) {
-			_packet = &this->qring[this->readit];
+		for(unsigned batch_index = 0; batch_index < _batch_rtp_packet->count; batch_index++) {
+			packet_rtp_s *_packet = &_batch_rtp_packet->batch[batch_index];
 			ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
 							       processRtpPacketDistribute[min(_packet->packet.source, _packet->packet.dest) / 2 % opt_enable_process_rtp_packet] :
 							       processRtpPacketDistribute[0];
-			_processRtpPacket->push(_packet);
-			_packet->used = 0;
-			if((this->readit + 1) == this->qringmax) {
-				this->readit = 0;
-			} else {
-				this->readit++;
-			}
+			_processRtpPacket->push_packet_rtp_2(_packet);
 		}
 	} else {
-		if(_packet->call_info_length < 0) {
-			this->find_hash(_packet);
-		}
-		if(_packet->call_info_length) {
-			process_packet__rtp(_packet->call_info, _packet->call_info_length, &_packet->packet, 
-					    NULL, NULL, _packet->call_info_find_by_dest, indexThread + 1);
-		} else {
-			if(opt_rtpnosip) {
-				process_packet__rtp_nosip(_packet->packet.saddr, _packet->packet.source, _packet->packet.daddr, _packet->packet.dest, 
-							  _packet->packet.data, _packet->packet.datalen, _packet->packet.dataoffset,
-							  &_packet->packet.header, _packet->packet.packet, _packet->packet.istcp, _packet->packet.header_ip,
-							  _packet->packet.block_store, _packet->packet.block_store_index, _packet->packet.dlt, _packet->packet.sensor_id,
-							  _packet->packet.handle);
+		for(unsigned batch_index = 0; batch_index < _batch_rtp_packet->count; batch_index++) {
+			packet_rtp_s *_packet = &_batch_rtp_packet->batch[batch_index];
+			if(_packet->call_info_length < 0) {
+				this->find_hash(_packet);
+			}
+			if(_packet->call_info_length) {
+				process_packet__rtp(_packet->call_info, _packet->call_info_length, &_packet->packet, 
+						    NULL, NULL, _packet->call_info_find_by_dest, indexThread + 1);
+			} else {
+				if(opt_rtpnosip) {
+					process_packet__rtp_nosip(_packet->packet.saddr, _packet->packet.source, _packet->packet.daddr, _packet->packet.dest, 
+								  _packet->packet.data, _packet->packet.datalen, _packet->packet.dataoffset,
+								  &_packet->packet.header, _packet->packet.packet, _packet->packet.istcp, _packet->packet.header_ip,
+								  _packet->packet.block_store, _packet->packet.block_store_index, _packet->packet.dlt, _packet->packet.sensor_id,
+								  _packet->packet.handle);
+				}
+			}
+			if(_packet->packet.block_store) {
+				_packet->packet.block_store->unlock_packet(_packet->packet.block_store_index);
 			}
 		}
-		if(_packet->packet.block_store) {
-			_packet->packet.block_store->unlock_packet(_packet->packet.block_store_index);
-		}
 	}
-	#if RTP_PROF
-	__prof__ProcessRtpPacket_rtp += rdtsc() - __prof_begin;
-	#endif
 }
 
 void ProcessRtpPacket::find_hash(packet_rtp_s *_packet, bool lock) {

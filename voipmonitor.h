@@ -49,7 +49,6 @@
 #define SYNC_PCAP_BLOCK_STORE true
 #define SYNC_CALL_RTP true
 
-#define RTP_PROF false
 #define TAR_PROF false
 
 #define MAX_PROCESS_RTP_PACKET_THREADS 6
