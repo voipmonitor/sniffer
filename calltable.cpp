@@ -3997,22 +3997,6 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 	return newcall;
 }
 
-/* find Call by SIP call-id in merge list and return reference to this Call */
-Call*
-Calltable::find_by_mergecall_id(char *call_id, unsigned long call_id_len) {
-	string call_idS = string(call_id, call_id_len);
-	lock_calls_mergeMAP();
-	mergeMAPIT = calls_mergeMAP.find(call_idS);
-	if(mergeMAPIT == calls_mergeMAP.end()) {
-		unlock_calls_mergeMAP();
-		// not found
-		return NULL;
-	} else {
-		unlock_calls_mergeMAP();
-		return (*mergeMAPIT).second;
-	}
-}
-
 Call*
 Calltable::find_by_skinny_partyid(unsigned int partyid) {
 	skinny_partyIDIT = skinny_partyID.find(partyid);

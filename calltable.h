@@ -845,7 +845,18 @@ public:
 		unlock_calls_listMAP();
 		return(rslt_call);
 	}
-	Call *find_by_mergecall_id(char *call_id, unsigned long call_id_len);
+	Call *find_by_mergecall_id(char *call_id, unsigned long call_id_len) {
+		Call *rslt_call = NULL;
+		string call_idS = string(call_id, call_id_len);
+		lock_calls_mergeMAP();
+		mergeMAPIT = calls_mergeMAP.find(call_idS);
+		if(mergeMAPIT != calls_mergeMAP.end() &&
+		   !mergeMAPIT->second->end_call) {
+			rslt_call = mergeMAPIT->second;
+		}
+		unlock_calls_mergeMAP();
+		return(rslt_call);
+	}
 	Call *find_by_skinny_partyid(unsigned int partyid);
 	Call *find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr);
 
