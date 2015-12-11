@@ -774,8 +774,26 @@ public:
 	void lock_calls_audioqueue() { pthread_mutex_lock(&qaudiolock); };
 	void lock_calls_deletequeue() { pthread_mutex_lock(&qdellock); };
 	void lock_files_queue() { pthread_mutex_lock(&flock); };
-	void lock_calls_listMAP() { pthread_mutex_lock(&calls_listMAPlock); };
-	void lock_calls_mergeMAP() { pthread_mutex_lock(&calls_mergeMAPlock); };
+	void lock_calls_listMAP() {
+		unsigned usleepCounter = 0;
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP, 1)) {
+			usleep(10 *
+			       (usleepCounter > 10 ? 50 :
+				usleepCounter > 5 ? 10 :
+				usleepCounter > 2 ? 5 : 1));
+			++usleepCounter;
+		}
+	}
+	void lock_calls_mergeMAP() {
+		unsigned usleepCounter = 0;
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_mergeMAP, 1)) {
+			usleep(10 *
+			       (usleepCounter > 10 ? 50 :
+				usleepCounter > 5 ? 10 :
+				usleepCounter > 2 ? 5 : 1));
+			++usleepCounter;
+		}
+	}
 
 	/**
 	 * @brief unlock calls_queue structure 
@@ -785,9 +803,12 @@ public:
 	void unlock_calls_audioqueue() { pthread_mutex_unlock(&qaudiolock); };
 	void unlock_calls_deletequeue() { pthread_mutex_unlock(&qdellock); };
 	void unlock_files_queue() { pthread_mutex_unlock(&flock); };
-	void unlock_calls_listMAP() { pthread_mutex_unlock(&calls_listMAPlock); };
-	void unlock_calls_mergeMAP() { pthread_mutex_unlock(&calls_mergeMAPlock); };
-	
+	void unlock_calls_listMAP() {
+		__sync_lock_release(&this->_sync_lock_calls_listMAP);
+	}
+	void unlock_calls_mergeMAP() {
+		__sync_lock_release(&this->_sync_lock_calls_mergeMAP);
+	}
 	/**
 	 * @brief lock files_queue structure 
 	 *
@@ -812,7 +833,18 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	Call *find_by_call_id(char *call_id, unsigned long call_id_len);
+	Call *find_by_call_id(char *call_id, unsigned long call_id_len) {
+		Call *rslt_call = NULL;
+		string call_idS = string(call_id, call_id_len);
+		lock_calls_listMAP();
+		callMAPIT = calls_listMAP.find(call_idS);
+		if(callMAPIT != calls_listMAP.end() &&
+		   !callMAPIT->second->end_call) {
+			rslt_call = callMAPIT->second;
+		}
+		unlock_calls_listMAP();
+		return(rslt_call);
+	}
 	Call *find_by_mergecall_id(char *call_id, unsigned long call_id_len);
 	Call *find_by_skinny_partyid(unsigned int partyid);
 	Call *find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr);
@@ -872,8 +904,13 @@ public:
 	void destroyCallsIfPcapsClosed();
 	
 	void lock_calls_hash() {
+		unsigned usleepCounter = 0;
 		while(__sync_lock_test_and_set(&this->_sync_lock_calls_hash, 1)) {
-			usleep(10);
+			usleep(10 *
+			       (usleepCounter > 10 ? 50 :
+				usleepCounter > 5 ? 10 :
+				usleepCounter > 2 ? 5 : 1));
+			++usleepCounter;
 		}
 	}
 	void unlock_calls_hash() {
@@ -884,12 +921,11 @@ private:
 	pthread_mutex_t qaudiolock;	//!< mutex locking calls_audioqueue
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue
 	pthread_mutex_t flock;		//!< mutex locking calls_queue
-	pthread_mutex_t calls_listMAPlock;
-	pthread_mutex_t calls_mergeMAPlock;
-//	pthread_mutexattr_t   calls_listMAPlock_attr;
 
 	void *calls_hash[MAXNODE];
 	volatile int _sync_lock_calls_hash;
+	volatile int _sync_lock_calls_listMAP;
+	volatile int _sync_lock_calls_mergeMAP;
 	
 	list<sAudioQueueThread*> audioQueueThreads;
 	unsigned int audioQueueThreadsMax;

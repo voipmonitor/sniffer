@@ -259,7 +259,7 @@ public:
 			}
 			break;
 		case ppt_sip:
-			if(opt_enable_preprocess_packet == 2 &&
+			if(opt_enable_preprocess_packet >= 2 &&
 			   packetS->header.ts.tv_sec - preprocess_packet__last_cleanup > 10){
 				// clean tcp_streams_list
 				tcpReassemblySip.clean(packetS->header.ts.tv_sec);
@@ -303,7 +303,7 @@ public:
 			
 			if(_parse_packet->isSip) {
 				_parse_packet->init();
-				if(opt_enable_preprocess_packet == 2 &&
+				if(opt_enable_preprocess_packet >= 2 &&
 				   !this->sipProcess(_parse_packet)) {
 					if(packetS->block_store) {
 						packetS->block_store->unlock_packet(packetS->block_store_index);
@@ -313,7 +313,7 @@ public:
 				_parse_packet->hash[0] = 0;
 				_parse_packet->hash[1] = 0;
 			} else {
-				if(opt_enable_preprocess_packet == 2 &&
+				if(opt_enable_preprocess_packet >= 2 &&
 				   !this->sipProcess_reassembly(_parse_packet)) {
 					if(packetS->block_store) {
 						packetS->block_store->unlock_packet(packetS->block_store_index);

@@ -4190,7 +4190,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
 						obsolete();
 						addConfigItem((new cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
-							->addValue("sip", 2));
+							->addValues("sip:2|extend:3"));
 						addConfigItem(new cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
 						addConfigItem(new cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
 						minorEnd();
@@ -6678,7 +6678,8 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
-		opt_enable_preprocess_packet = strcmp(value, "sip") ? yesno(value) : 2;
+		opt_enable_preprocess_packet = !strcmp(value, "extend") ? 3 :
+					       !strcmp(value, "sip") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "enable_process_rtp_packet", NULL)) ||
 	   (value = ini.GetValue("general", "preprocess_rtp_threads", NULL))) {

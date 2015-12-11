@@ -2210,7 +2210,7 @@ Call *process_packet(packet_s *packetS,
 				if(!issip or (l <= 0 || l > 1023)) {
 					// no Call-ID found in packet
 					if(packetS->istcp == 1 && packetS->header_ip) {
-						if(!(preProcessPacket[1] && opt_enable_preprocess_packet == 2)) {
+						if(!(preProcessPacket[1] && opt_enable_preprocess_packet >= 2)) {
 							tcpReassemblySip.processPacket(
 								packetS->packet_number,
 								packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, origDatalen, packetS->dataoffset,
@@ -2226,7 +2226,7 @@ Call *process_packet(packet_s *packetS,
 						return NULL;
 					} else {
 						// it is not TCP and callid not found
-						if(!(preProcessPacket[1] && opt_enable_preprocess_packet == 2) && logPacketSipMethodCall_enable) {
+						if(!(preProcessPacket[1] && opt_enable_preprocess_packet >= 2) && logPacketSipMethodCall_enable) {
 							logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
 								packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 								call, "it is not TCP and callid not found");
@@ -2240,7 +2240,7 @@ Call *process_packet(packet_s *packetS,
 
 			// Call-ID is present
 			if(packetS->istcp == 1 && packetS->datalen >= 2) {
-				if(!(preProcessPacket[1] && opt_enable_preprocess_packet == 2)) {
+				if(!(preProcessPacket[1] && opt_enable_preprocess_packet >= 2)) {
 					tcpReassemblySip.processPacket(
 						packetS->packet_number,
 						packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, origDatalen, packetS->dataoffset,
@@ -3639,7 +3639,7 @@ void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 	
 	process_packet__last_cleanup = header->ts.tv_sec;
 
-	if(!(preProcessPacket[1] && opt_enable_preprocess_packet == 2)) {
+	if(!(preProcessPacket[1] && opt_enable_preprocess_packet >= 2)) {
 		// clean tcp_streams_list
 		tcpReassemblySip.clean(header->ts.tv_sec);
 	}
@@ -5290,7 +5290,7 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id id) {
 		     << string((char*)newdata, MIN(string((char*)newdata, newdata_len).find("\r"), MIN(newdata_len, 100))) << endl;
 	}
 	bool deletePackets = true;
-	if(preProcessPacket[1] && opt_enable_preprocess_packet == 2) {
+	if(preProcessPacket[1] && opt_enable_preprocess_packet >= 2) {
 		preProcessPacket[1]->push_packet_1(false, firstPacket->packet_number,
 						   firstPacket->saddr, firstPacket->source, firstPacket->daddr, firstPacket->dest, 
 						   (char*)newdata, newdata_len, firstPacket->dataoffset,
@@ -5465,9 +5465,10 @@ bool PreProcessPacket::sipProcess(packet_parse_s *parse_packet) {
 	this->sipProcess_getSipMethod(parse_packet);
 	this->sipProcess_getLastSipResponse(parse_packet);
 	
-	// UNUSED - UNSTABLE
-	//this->sipProcess_findCall(parse_packet);
-	//this->sipProcess_createCall(parse_packet);
+	if(opt_enable_preprocess_packet == 3) {
+		this->sipProcess_findCall(parse_packet);
+		this->sipProcess_createCall(parse_packet);
+	}
 	
 	return(true);
 }
@@ -5551,10 +5552,6 @@ void PreProcessPacket::sipProcess_getLastSipResponse(packet_parse_s *parse_packe
 }
 
 void PreProcessPacket::sipProcess_findCall(packet_parse_s *parse_packet) {
-   
-	// UNUSED - UNSTABLE
-	return;
-	
 	packet_s *_packet = &parse_packet->packet;
 	parse_packet->call = calltable->find_by_call_id((char*)parse_packet->callid.c_str(), parse_packet->callid.length());
 	if(parse_packet->call) {
@@ -5574,10 +5571,6 @@ void PreProcessPacket::sipProcess_findCall(packet_parse_s *parse_packet) {
 }
 
 void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
- 
-	// UNUSED - UNSTABLE
-	return;
- 
 	packet_s *_packet = &parse_packet->packet;
 	if(!parse_packet->call) {
 		if(parse_packet->sip_method == INVITE || parse_packet->sip_method == MESSAGE || 

@@ -3649,11 +3649,10 @@ Calltable::Calltable() {
 	pthread_mutex_init(&qdellock, NULL);
 	pthread_mutex_init(&flock, NULL);
 
-	pthread_mutex_init(&calls_listMAPlock, NULL);
-	pthread_mutex_init(&calls_mergeMAPlock, NULL);
-
 	memset(calls_hash, 0x0, sizeof(calls_hash));
 	_sync_lock_calls_hash = 0;
+	_sync_lock_calls_listMAP = 0;
+	_sync_lock_calls_mergeMAP = 0;
 	
 	extern int opt_audioqueue_threads_max;
 	audioQueueThreadsMax = min(max(2l, sysconf( _SC_NPROCESSORS_ONLN ) - 1), (long)opt_audioqueue_threads_max);
@@ -3666,8 +3665,6 @@ Calltable::~Calltable() {
 	pthread_mutex_destroy(&qaudiolock);
 	pthread_mutex_destroy(&qdellock);
 	pthread_mutex_destroy(&flock);
-	pthread_mutex_destroy(&calls_listMAPlock);
-	pthread_mutex_destroy(&calls_mergeMAPlock);
 };
 
 /* add node to hash. collisions are linked list of nodes*/
@@ -3998,32 +3995,6 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 	calls_listMAP[call_idS] = newcall;
 	unlock_calls_listMAP();
 	return newcall;
-}
-
-/* find Call by SIP call-id and  return reference to this Call */
-Call*
-Calltable::find_by_call_id(char *call_id, unsigned long call_id_len) {
-	string call_idS = string(call_id, call_id_len);
-	lock_calls_listMAP();
-	callMAPIT = calls_listMAP.find(call_idS);
-	if(callMAPIT == calls_listMAP.end()) {
-		unlock_calls_listMAP();
-		// not found
-		return NULL;
-	} else {
-		unlock_calls_listMAP();
-		return (*callMAPIT).second->end_call ? NULL : (*callMAPIT).second;
-	}
-	
-/*
-	for (call = calls_list.begin(); call != calls_list.end(); ++call) {
-		if((*call)->call_id_len == call_id_len &&
-		  (memcmp((*call)->call_id, call_id, MIN(call_id_len, MAX_CALL_ID)) == 0)) {
-			return *call;
-		}
-	}
-	return NULL;
-*/
 }
 
 /* find Call by SIP call-id in merge list and return reference to this Call */
