@@ -960,6 +960,7 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->instancePcapFifo = NULL;
 	this->initAllReadThreadsFinished = false;
 	this->counter_calls_old = 0;
+	this->counter_calls_clean_old = 0;
 	this->counter_sip_packets_old[0] = 0;
 	this->counter_sip_packets_old[1] = 0;
 	this->counter_sip_register_packets_old = 0;
@@ -1162,12 +1163,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			if (opt_rrd) rrdcallscounter = calltable->calls_listMAP.size();
 			extern u_int64_t counter_calls;
+			extern u_int64_t counter_calls_clean;
 			extern u_int64_t counter_sip_packets[2];
 			extern u_int64_t counter_sip_register_packets;
 			extern u_int64_t counter_sip_message_packets;
 			extern u_int64_t counter_rtp_packets;
 			extern u_int64_t counter_all_packets;
 			if(this->counter_calls_old ||
+			   this->counter_calls_clean_old ||
 			   this->counter_sip_packets_old[0] ||
 			   this->counter_sip_packets_old[1] ||
 			   this->counter_rtp_packets_old ||
@@ -1176,6 +1179,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				if(this->counter_calls_old) {
 					outStr << (counter_calls - this->counter_calls_old) / statPeriod;
 					if (opt_rrd) rrdPS_C = (counter_calls - this->counter_calls_old) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+				outStr << "/";
+				if(this->counter_calls_clean_old) {
+					outStr << '-' << (counter_calls_clean - this->counter_calls_clean_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
@@ -1225,6 +1234,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStr << "] ";
 			}
 			this->counter_calls_old = counter_calls;
+			this->counter_calls_clean_old = counter_calls_clean;
 			this->counter_sip_packets_old[0] = counter_sip_packets[0];
 			this->counter_sip_packets_old[1] = counter_sip_packets[1];
 			this->counter_sip_register_packets_old = counter_sip_register_packets;

@@ -4139,6 +4139,8 @@ Calltable::cleanup( time_t currtime ) {
 				tv_currtime.tv_usec = 0;
 				fraudEndCall(call, tv_currtime);
 			}
+			extern u_int64_t counter_calls_clean;
+			++counter_calls_clean;
 		} else {
 			++callMAPIT;
 		}
@@ -4165,6 +4167,8 @@ void Call::saveregister() {
 		((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
 	}
 	((Calltable*)calltable)->unlock_calls_listMAP();
+	extern u_int64_t counter_calls_clean;
+	++counter_calls_clean;
 	
 	removeFindTables();
 	this->pcap.close();

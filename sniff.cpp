@@ -248,6 +248,7 @@ TcpReassemblySip tcpReassemblySip;
 ipfrag_data_s ipfrag_data;
 
 u_int64_t counter_calls;
+u_int64_t counter_calls_clean;
 u_int64_t counter_sip_packets[2];
 u_int64_t counter_sip_register_packets;
 u_int64_t counter_sip_message_packets;
@@ -5571,16 +5572,13 @@ void PreProcessPacket::sipProcess_findCall(packet_parse_s *parse_packet) {
 }
 
 void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
-	packet_s *_packet = &parse_packet->packet;
-	if(!parse_packet->call) {
-		if(parse_packet->sip_method == INVITE || parse_packet->sip_method == MESSAGE || 
-		   (opt_sip_register && parse_packet->sip_method == REGISTER)) {
-			parse_packet->call_created = new_invite_register(_packet, parse_packet->sip_method, (char*)parse_packet->callid.c_str(), 
-									 &parse_packet->detectUserAgent,
-									 &parse_packet->parse);
-		}
+	if(parse_packet->_findCall && !parse_packet->call &&
+	   (parse_packet->sip_method == INVITE || parse_packet->sip_method == MESSAGE)) {
+		parse_packet->call_created = new_invite_register(&parse_packet->packet, parse_packet->sip_method, (char*)parse_packet->callid.c_str(), 
+								 &parse_packet->detectUserAgent,
+								 &parse_packet->parse);
+		parse_packet->_createCall = true;
 	}
-	parse_packet->_createCall = true;
 }
 
 inline void *_ProcessRtpPacket_outThreadFunction(void *arg) {
