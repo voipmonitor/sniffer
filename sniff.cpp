@@ -2012,6 +2012,7 @@ static int parse_packet__last_sip_response(char *data, unsigned int datalen, int
 static int parse_packet__message_content(char *message, unsigned int messageLength,
 					 char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber,
 					 bool maskMessage = false);
+static Call *process_packet__merge(packet_s *packetS, char *callidstr, int *merged, long unsigned int *gettagLimitLen);
 
 u_char *_process_packet_packet;
 pcap_pkthdr *_process_packet_header;
@@ -2337,8 +2338,10 @@ Call *process_packet(packet_s *packetS,
 		}
 
 		// find call */
+		merged = 0;
 		if(parsePacket && parsePacket->_findCall) {
 			call = parsePacket->call;
+			merged = parsePacket->merged;
 		} else {
 			call = calltable->find_by_call_id(callidstr, strlen(callidstr));
 			if(call) {
@@ -2349,52 +2352,8 @@ Call *process_packet(packet_s *packetS,
 				if(call_cancel_lsr487) {
 					call->cancel_lsr487 = call_cancel_lsr487;
 				}
-			}
-		}
-
-		// check presence of call-id merge header if callidmerge feature is enabled
-		merged = 0;
-		if(!call and opt_callidmerge_header[0] != '\0') {
-			call = calltable->find_by_mergecall_id(callidstr, strlen(callidstr));
-			if(!call) {
-				// this call-id is not yet tracked either in calls list or callidmerge list 
-				// check if there is SIP callidmerge_header which contains parent call-id call
-				char *s2 = NULL;
-				long unsigned int l2 = 0;
-				unsigned char buf[1024];
-				s2 = gettag(packetS->data, packetS->datalen, opt_callidmerge_header, &l2, &gettagLimitLen);
-				if(l2 && l2 < 128) {
-					// header exists
-					if(opt_callidmerge_secret[0] != '\0') {
-						// header is encoded - decode it 
-						char c;
-						c = s2[l2];
-						s2[l2] = '\0';
-						int enclen = base64decode(buf, (const char*)s2, l2);
-						static int keysize = strlen(opt_callidmerge_secret);
-						s2[l2] = c;
-						for(int i = 0; i < enclen; i++) {
-							buf[i] = buf[i] ^ opt_callidmerge_secret[i % keysize];
-						}
-						// s2 is now decrypted call-id
-						s2 = (char*)buf;
-						l2 = enclen;
-					}
-					// check if the sniffer know about this call-id in mergeheader 
-					call = calltable->find_by_call_id(s2, l2);
-					if(!call) {
-						// there is no call with the call-id in merge header - this call will be created as new
-					} else {
-						merged = 1;
-						calltable->lock_calls_mergeMAP();
-						call->has_second_merged_leg = true;
-						calltable->calls_mergeMAP[callidstr] = call;
-						calltable->unlock_calls_mergeMAP();
-						call->mergecalls.push_back(callidstr);
-					}
-				}
-			} else {
-				merged = 1;
+			} else if(opt_callidmerge_header[0] != '\0') {
+				call = process_packet__merge(packetS, callidstr, &merged, &gettagLimitLen);
 			}
 		}
 	
@@ -3888,6 +3847,51 @@ int parse_packet__message(char *data, unsigned int datalen, bool strictCheckLeng
 		data[datalen - 1] = endCharData;
 	}
 	return(setMessage);
+}
+
+Call *process_packet__merge(packet_s *packetS, char *callidstr, int *merged, long unsigned int *gettagLimitLen) {
+	Call *call = calltable->find_by_mergecall_id(callidstr, strlen(callidstr));
+	if(!call) {
+		// this call-id is not yet tracked either in calls list or callidmerge list 
+		// check if there is SIP callidmerge_header which contains parent call-id call
+		char *s2 = NULL;
+		long unsigned int l2 = 0;
+		unsigned char buf[1024];
+		s2 = gettag(packetS->data, packetS->datalen, opt_callidmerge_header, &l2, gettagLimitLen);
+		if(l2 && l2 < 128) {
+			// header exists
+			if(opt_callidmerge_secret[0] != '\0') {
+				// header is encoded - decode it 
+				char c;
+				c = s2[l2];
+				s2[l2] = '\0';
+				int enclen = base64decode(buf, (const char*)s2, l2);
+				static int keysize = strlen(opt_callidmerge_secret);
+				s2[l2] = c;
+				for(int i = 0; i < enclen; i++) {
+					buf[i] = buf[i] ^ opt_callidmerge_secret[i % keysize];
+				}
+				// s2 is now decrypted call-id
+				s2 = (char*)buf;
+				l2 = enclen;
+			}
+			// check if the sniffer know about this call-id in mergeheader 
+			call = calltable->find_by_call_id(s2, l2);
+			if(!call) {
+				// there is no call with the call-id in merge header - this call will be created as new
+			} else {
+				*merged = 1;
+				calltable->lock_calls_mergeMAP();
+				call->has_second_merged_leg = true;
+				calltable->calls_mergeMAP[callidstr] = call;
+				calltable->unlock_calls_mergeMAP();
+				call->mergecalls.push_back(callidstr);
+			}
+		}
+	} else {
+		*merged = 1;
+	}
+	return(call);
 }
 
 struct sGsmMessage {
@@ -5567,6 +5571,8 @@ void PreProcessPacket::sipProcess_findCall(packet_parse_s *parse_packet) {
 		if(parse_packet->call_cancel_lsr487) {
 			parse_packet->call->cancel_lsr487 = true;
 		}
+	} else if(opt_callidmerge_header[0] != '\0') {
+		parse_packet->call = process_packet__merge(_packet, (char*)parse_packet->callid.c_str(), &parse_packet->merged, NULL);
 	}
 	parse_packet->_findCall = true;
 }

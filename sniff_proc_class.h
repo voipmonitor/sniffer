@@ -158,6 +158,7 @@ public:
 			lastSIPresponseNum = -1;
 			call_cancel_lsr487 = false;
 			call = NULL;
+			merged = 0;
 			call_created = NULL;
 			detectUserAgent = false;
 			_getCallID_reassembly = false;
@@ -179,6 +180,7 @@ public:
 		string lastSIPresponse;
 		bool call_cancel_lsr487;
 		Call *call;
+		int merged;
 		Call *call_created;
 		bool detectUserAgent;
 		bool _getCallID_reassembly;
