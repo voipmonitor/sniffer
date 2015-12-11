@@ -146,7 +146,8 @@ class PreProcessPacket {
 public:
 	enum eTypePreProcessThread {
 		ppt_detach,
-		ppt_sip
+		ppt_sip,
+		ppt_extend
 	};
 	struct packet_parse_s {
 		packet_parse_s() {
@@ -170,7 +171,7 @@ public:
 		packet_s packet;
 		bool packetDelete;
 		int forceSip;
-		ParsePacket parse;
+		ParsePacket *parse;
 		u_int32_t sipDataLen;
 		bool isSip;
 		string callid;
@@ -200,9 +201,19 @@ public:
 		~batch_packet_parse_s() {
 			delete [] batch;
 		}
+		void allocParse() {
+			for(unsigned i = 0; i < max_count; i++) {
+				batch[i].parse = new FILE_LINE ParsePacket;
+			}
+		}
+		void deleteParse() {
+			for(unsigned i = 0; i < max_count; i++) {
+				delete batch[i].parse;
+			}
+		}
 		void setStdParse() {
 			for(unsigned i = 0; i < max_count; i++) {
-				batch[i].parse.setStdParse();
+				batch[i].parse->setStdParse();
 			}
 		}
 		packet_parse_s *batch;
@@ -239,9 +250,9 @@ public:
 		packetS.dlt = dlt; 
 		packetS.sensor_id = sensor_id;
 		packetS.is_ssl = is_ssl;
-		this->push_packet_2(&packetS, packetDelete, forceSip, disableLock);
+		this->push_packet_2(&packetS, NULL, packetDelete, forceSip, disableLock);
 	}
-	inline void push_packet_2(packet_s *packetS, bool packetDelete = false, int forceSip = 0, bool disableLock = false) {
+	inline void push_packet_2(packet_s *packetS, packet_parse_s *packetParseS = NULL, bool packetDelete = false, int forceSip = 0, bool disableLock = false) {
 	 
 		extern int opt_enable_ssl;
 		extern int opt_enable_preprocess_packet;
@@ -268,6 +279,8 @@ public:
 				preprocess_packet__last_cleanup = packetS->header.ts.tv_sec;
 			}
 			break;
+		case ppt_extend:
+			break;
 		}
 	 
 		if(!qring_push_index) {
@@ -283,9 +296,13 @@ public:
 		}
 		batch_packet_parse_s *_batch_parse_packet = this->qring[qring_push_index - 1];
 		packet_parse_s *_parse_packet = &_batch_parse_packet->batch[_batch_parse_packet->count];
-		_parse_packet->packet = *packetS;
-		_parse_packet->packetDelete = packetDelete; 
-		_parse_packet->forceSip = forceSip; 
+		if(packetParseS) {
+			*_parse_packet  = *packetParseS;
+		} else {
+			_parse_packet->packet = *packetS;
+			_parse_packet->packetDelete = packetDelete; 
+			_parse_packet->forceSip = forceSip; 
+		}
 		
 		switch(typePreProcessThread) {
 		case ppt_detach:
@@ -296,8 +313,8 @@ public:
 			    sipportmatrix[packetS->source] || 
 			    sipportmatrix[packetS->dest]) &&
 			   check_sip20(packetS->data, packetS->datalen)) {
-				_parse_packet->sipDataLen = _parse_packet->parse.parseData(packetS->data, packetS->datalen, true);
-				_parse_packet->isSip = _parse_packet->parse.isSip();
+				_parse_packet->sipDataLen = _parse_packet->parse->parseData(packetS->data, packetS->datalen, true);
+				_parse_packet->isSip = _parse_packet->parse->isSip();
 			} else {
 				_parse_packet->sipDataLen = 0;
 				_parse_packet->isSip = false;
@@ -305,18 +322,10 @@ public:
 			
 			if(_parse_packet->isSip) {
 				_parse_packet->init();
-				if(opt_enable_preprocess_packet >= 2 &&
-				   !this->sipProcess(_parse_packet)) {
-					if(packetS->block_store) {
-						packetS->block_store->unlock_packet(packetS->block_store_index);
-					}
-					return;
-				}
 				_parse_packet->hash[0] = 0;
 				_parse_packet->hash[1] = 0;
 			} else {
-				if(opt_enable_preprocess_packet >= 2 &&
-				   !this->sipProcess_reassembly(_parse_packet)) {
+				if(!this->sipProcess_reassembly(_parse_packet)) {
 					if(packetS->block_store) {
 						packetS->block_store->unlock_packet(packetS->block_store_index);
 					}
@@ -325,6 +334,16 @@ public:
 				if(packetS->datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
 					_parse_packet->hash[0] = tuplehash(packetS->saddr, packetS->source);
 					_parse_packet->hash[1] = tuplehash(packetS->daddr, packetS->dest);
+				}
+			}
+			break;
+		case ppt_extend:
+			if(_parse_packet->isSip) {
+				if(!this->sipProcess(_parse_packet)) {
+					if(packetS->block_store) {
+						packetS->block_store->unlock_packet(packetS->block_store_index);
+					}
+					return;
 				}
 			}
 			break;

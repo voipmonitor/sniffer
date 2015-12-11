@@ -621,7 +621,7 @@ char mac[32] = "";
 PcapQueue_readFromInterface *pcapQueueInterface;
 PcapQueue *pcapQueueStatInterface;
 
-PreProcessPacket *preProcessPacket[2];
+PreProcessPacket *preProcessPacket[3];
 ProcessRtpPacket *processRtpPacketHash;
 ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 
@@ -2566,8 +2566,10 @@ int main_init_read() {
 	
 	if((opt_enable_preprocess_packet || opt_enable_ssl) &&
 	   !is_read_from_file_simple()) {
-		for(int i = 0; i < 2; i++) {
-			preProcessPacket[i] = new FILE_LINE PreProcessPacket(i ? PreProcessPacket::ppt_sip : PreProcessPacket::ppt_detach);
+		for(int i = 0; i < min(max(opt_enable_preprocess_packet, opt_enable_ssl ? 1 : 0), 3); i++) {
+			preProcessPacket[i] = new FILE_LINE PreProcessPacket(i == 0 ? PreProcessPacket::ppt_detach : 
+									     i == 1 ? PreProcessPacket::ppt_sip :
+										      PreProcessPacket::ppt_extend);
 		}
 	}
 	
@@ -2808,7 +2810,7 @@ void main_term_read() {
 		}
 	}
 	
-	for(int i = 0; i < 2; i++) {
+	for(int i = 0; i < 3; i++) {
 		if(preProcessPacket[i]) {
 			preProcessPacket[i]->terminate();
 			delete preProcessPacket[i];

@@ -106,7 +106,7 @@ extern MirrorIP *mirrorip;
 extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
-extern PreProcessPacket *preProcessPacket[2];
+extern PreProcessPacket *preProcessPacket[3];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern TcpReassembly *tcpReassemblyHttp;
@@ -1530,19 +1530,17 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double t2cpu = this->getCpuUsagePerc(writeThread, true);
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu;
-		double t2cpu_preprocess_packet_out_thread[2] = { 0, 0 };
-		for(int i = 0; i < 2; i++) {
+		double last_t2cpu_preprocess_packet_out_thread = -2;
+		for(int i = 0; i < 3; i++) {
 			if(preProcessPacket[i]) {
-				t2cpu_preprocess_packet_out_thread[i] = preProcessPacket[i]->getCpuUsagePerc(true);
-				if(t2cpu_preprocess_packet_out_thread[i] >= 0) {
-					outStrStat << "/" << setprecision(1) << t2cpu_preprocess_packet_out_thread[i];
+				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
+				if(t2cpu_preprocess_packet_out_thread >= 0) {
+					outStrStat << "/" << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 				}
-				if (opt_rrd && i == 1) rrdtCPU_t2 = t2cpu_preprocess_packet_out_thread[i];
+				last_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
 			}
 		} 
-		if(!preProcessPacket[1]) {
-			if (opt_rrd) rrdtCPU_t2 = t2cpu;
-		}
+		rrdtCPU_t2 = last_t2cpu_preprocess_packet_out_thread > -2 ? last_t2cpu_preprocess_packet_out_thread : t2cpu;
 		if(processRtpPacketHash) {
 			for(int i = 0; i < 2; i++) {
 				double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(true, i);
@@ -1558,7 +1556,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 				}
 			}
-		} else if(preProcessPacket[1] ? t2cpu_preprocess_packet_out_thread[1] > 60 : t2cpu > 60) {
+		} else if(max(last_t2cpu_preprocess_packet_out_thread, t2cpu) > 60) {
 			ProcessRtpPacket::autoStartProcessRtpPacket();
 		}
 		outStrStat << "%] ";

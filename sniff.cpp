@@ -207,7 +207,7 @@ extern int opt_passertedidentity;
 extern char cloud_host[256];
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
-extern PreProcessPacket *preProcessPacket[2];
+extern PreProcessPacket *preProcessPacket[3];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern int opt_enable_process_rtp_packet;
@@ -2134,7 +2134,7 @@ Call *process_packet(packet_s *packetS,
 
 	*was_rtp = 0;
 	int merged;
-	_parse_packet_process_packet = parsePacket ? &parsePacket->parse : NULL;
+	_parse_packet_process_packet = parsePacket ? parsePacket->parse : NULL;
 	
 	if(mainProcess && packetS->istcp < 2) {
 		++counter_all_packets;
@@ -2384,7 +2384,7 @@ Call *process_packet(packet_s *packetS,
 				} else {
 					call = new_invite_register(packetS, sip_method, callidstr,
 								   &detectUserAgent,
-								   parsePacket ? &parsePacket->parse : &_parse_packet_global);
+								   parsePacket ? parsePacket->parse : &_parse_packet_global);
 					if(call == NULL) {
 						goto endsip;
 					}
@@ -2451,7 +2451,7 @@ Call *process_packet(packet_s *packetS,
 					call->saveregister();
 					call = new_invite_register(packetS, sip_method, callidstr,
 								   &detectUserAgent,
-								   parsePacket ? &parsePacket->parse : &_parse_packet_global);
+								   parsePacket ? parsePacket->parse : &_parse_packet_global);
 					if(call == NULL) {
 						goto endsip;
 					}
@@ -5360,6 +5360,7 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 		this->qring[i] = new FILE_LINE batch_packet_parse_s(opt_preprocess_packets_qring_length / 10);
 		this->qring[i]->used = 0;
 		if(this->typePreProcessThread == ppt_sip) {
+			this->qring[i]->allocParse();
 			this->qring[i]->setStdParse();
 		}
 	}
@@ -5374,6 +5375,9 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 PreProcessPacket::~PreProcessPacket() {
 	terminate();
 	for(unsigned int i = 0; i < this->qring_length; i++) {
+		if(this->typePreProcessThread == ppt_sip) {
+			this->qring[i]->deleteParse();
+		}
 		delete this->qring[i];
 	}
 	delete [] this->qring;
@@ -5389,26 +5393,39 @@ void *PreProcessPacket::outThreadFunction() {
 			for(unsigned batch_index = 0; batch_index < _batch_parse_packet->count; batch_index++) {
 				packet_parse_s *_parse_packet = &_batch_parse_packet->batch[batch_index];
 				packet_s *_packet = &_parse_packet->packet;
+				bool do_process_packet =  false;
 				switch(this->typePreProcessThread) {
 				case ppt_detach:
-					preProcessPacket[1]->push_packet_2(_packet, false, _parse_packet->forceSip);
+					if(opt_enable_preprocess_packet == 1) {
+						do_process_packet = true;
+					} else {
+						preProcessPacket[1]->push_packet_2(_packet, NULL, false, _parse_packet->forceSip);
+					}
 					break;
 				case ppt_sip:
-					{
+					if(opt_enable_preprocess_packet == 2) {
+						do_process_packet = true;
+					} else {
+						preProcessPacket[2]->push_packet_2(NULL, _parse_packet, false, _parse_packet->forceSip);
+					}
+					break;
+				case ppt_extend:
+					do_process_packet = true; 
+					break;
+				}
+				if(do_process_packet) {
 					int was_rtp = 0;
 					int voippacket = 0;
 					process_packet(_packet,
 						       &was_rtp, &voippacket, _parse_packet->forceSip,
 						       true, 0,
-						       _parse_packet);
+						       opt_enable_preprocess_packet == 1 ? NULL : _parse_packet);
 					if(_packet->block_store) {
 						_packet->block_store->unlock_packet(_packet->block_store_index);
 					}
 					if(_parse_packet->packetDelete) {
 						delete [] _packet->packet;
 					}
-					}
-					break;
 				}
 			}
 			_batch_parse_packet->count = 0;
@@ -5482,10 +5499,10 @@ bool PreProcessPacket::sipProcess_getCallID(packet_parse_s *parse_packet) {
 	packet_s *_packet = &parse_packet->packet;
 	char *s;
 	unsigned long l;
-	s = gettag(_packet->data, parse_packet->sipDataLen, "\nCall-ID:", &l, NULL, &parse_packet->parse);
+	s = gettag(_packet->data, parse_packet->sipDataLen, "\nCall-ID:", &l, NULL, parse_packet->parse);
 	if(l <= 0 || l > 1023) {
 		// try also compact header
-		s = gettag(_packet->data, parse_packet->sipDataLen,"\ni:", &l, NULL, &parse_packet->parse);
+		s = gettag(_packet->data, parse_packet->sipDataLen,"\ni:", &l, NULL, parse_packet->parse);
 		if(l <= 0 || l > 1023) {
 			// no Call-ID found in packet
 			if(_packet->istcp == 1 && _packet->header_ip) {
@@ -5582,7 +5599,7 @@ void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
 	   (parse_packet->sip_method == INVITE || parse_packet->sip_method == MESSAGE)) {
 		parse_packet->call_created = new_invite_register(&parse_packet->packet, parse_packet->sip_method, (char*)parse_packet->callid.c_str(), 
 								 &parse_packet->detectUserAgent,
-								 &parse_packet->parse);
+								 parse_packet->parse);
 		parse_packet->_createCall = true;
 	}
 }

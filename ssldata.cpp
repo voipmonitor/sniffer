@@ -25,7 +25,7 @@ vector<string> decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr,
 #endif
 
 extern map<d_u_int32_t, string> ssl_ipport;
-extern PreProcessPacket *preProcessPacket[2];
+extern PreProcessPacket *preProcessPacket[3];
 
 
 SslData::SslData() {
