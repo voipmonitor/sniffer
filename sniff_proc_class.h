@@ -255,7 +255,6 @@ public:
 	inline void push_packet_2(packet_s *packetS, packet_parse_s *packetParseS = NULL, bool packetDelete = false, int forceSip = 0, bool disableLock = false) {
 	 
 		extern int opt_enable_ssl;
-		extern int opt_enable_preprocess_packet;
 		extern unsigned long preprocess_packet__last_cleanup;
 		extern TcpReassemblySip tcpReassemblySip;
 		extern char *sipportmatrix;
@@ -272,8 +271,7 @@ public:
 			}
 			break;
 		case ppt_sip:
-			if(opt_enable_preprocess_packet >= 2 &&
-			   packetS->header.ts.tv_sec - preprocess_packet__last_cleanup > 10){
+			if(packetS->header.ts.tv_sec - preprocess_packet__last_cleanup > 10) {
 				// clean tcp_streams_list
 				tcpReassemblySip.clean(packetS->header.ts.tv_sec);
 				preprocess_packet__last_cleanup = packetS->header.ts.tv_sec;
@@ -319,9 +317,14 @@ public:
 				_parse_packet->sipDataLen = 0;
 				_parse_packet->isSip = false;
 			}
-			
 			if(_parse_packet->isSip) {
 				_parse_packet->init();
+				if(!this->sipProcess_base(_parse_packet)) {
+					if(packetS->block_store) {
+						packetS->block_store->unlock_packet(packetS->block_store_index);
+					}
+					return;
+				}
 				_parse_packet->hash[0] = 0;
 				_parse_packet->hash[1] = 0;
 			} else {
@@ -339,12 +342,7 @@ public:
 			break;
 		case ppt_extend:
 			if(_parse_packet->isSip) {
-				if(!this->sipProcess(_parse_packet)) {
-					if(packetS->block_store) {
-						packetS->block_store->unlock_packet(packetS->block_store_index);
-					}
-					return;
-				}
+				this->sipProcess_extend(_parse_packet);
 			}
 			break;
 		}
@@ -368,7 +366,8 @@ public:
 	double getCpuUsagePerc(bool preparePstatData);
 	void terminate();
 private:
-	bool sipProcess(packet_parse_s *parse_packet);
+	bool sipProcess_base(packet_parse_s *parse_packet);
+	bool sipProcess_extend(packet_parse_s *parse_packet);
 	bool sipProcess_getCallID(packet_parse_s *parse_packet);
 	bool sipProcess_reassembly(packet_parse_s *parse_packet);
 	void sipProcess_getSipMethod(packet_parse_s *parse_packet);

@@ -5419,7 +5419,7 @@ void *PreProcessPacket::outThreadFunction() {
 					process_packet(_packet,
 						       &was_rtp, &voippacket, _parse_packet->forceSip,
 						       true, 0,
-						       opt_enable_preprocess_packet == 1 ? NULL : _parse_packet);
+						       this->typePreProcessThread == ppt_detach ? NULL : _parse_packet);
 					if(_packet->block_store) {
 						_packet->block_store->unlock_packet(_packet->block_store_index);
 					}
@@ -5476,7 +5476,7 @@ void PreProcessPacket::terminate() {
 	pthread_join(this->out_thread_handle, NULL);
 }
 
-bool PreProcessPacket::sipProcess(packet_parse_s *parse_packet) {
+bool PreProcessPacket::sipProcess_base(packet_parse_s *parse_packet) {
 	parse_packet->_getCallID_reassembly = true;
 	if(!this->sipProcess_getCallID(parse_packet)) {
 		return(false);
@@ -5486,12 +5486,12 @@ bool PreProcessPacket::sipProcess(packet_parse_s *parse_packet) {
 	}
 	this->sipProcess_getSipMethod(parse_packet);
 	this->sipProcess_getLastSipResponse(parse_packet);
-	
-	if(opt_enable_preprocess_packet == 3) {
-		this->sipProcess_findCall(parse_packet);
-		this->sipProcess_createCall(parse_packet);
-	}
-	
+	return(true);
+}
+
+bool PreProcessPacket::sipProcess_extend(packet_parse_s *parse_packet) {
+	this->sipProcess_findCall(parse_packet);
+	this->sipProcess_createCall(parse_packet);
 	return(true);
 }
 
