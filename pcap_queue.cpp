@@ -106,7 +106,7 @@ extern MirrorIP *mirrorip;
 extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
-extern PreProcessPacket *preProcessPacket[3];
+extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern TcpReassembly *tcpReassemblyHttp;
@@ -1531,7 +1531,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << setprecision(1) << t2cpu;
 		double last_t2cpu_preprocess_packet_out_thread = -2;
-		for(int i = 0; i < 3; i++) {
+		for(int i = 0; i < MAX_PREPROCESS_PACKET_THREADS; i++) {
 			if(preProcessPacket[i]) {
 				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
 				if(t2cpu_preprocess_packet_out_thread >= 0) {
@@ -5152,7 +5152,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		packetS.dlt = dlt; 
 		packetS.sensor_id = sensor_id;
 		packetS.is_ssl = false;
-		if(preProcessPacket[0]) {
+		if(PreProcessPacket::isEnableDetach()) {
 			preProcessPacket[0]->push_packet_2(&packetS);
 			if(opt_ipaccount) {
 				//todo: detect if voippacket!

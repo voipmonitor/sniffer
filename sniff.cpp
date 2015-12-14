@@ -207,7 +207,7 @@ extern int opt_passertedidentity;
 extern char cloud_host[256];
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
-extern PreProcessPacket *preProcessPacket[3];
+extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern int opt_enable_process_rtp_packet;
@@ -2212,7 +2212,7 @@ Call *process_packet(packet_s *packetS,
 				if(!issip or (l <= 0 || l > 1023)) {
 					// no Call-ID found in packet
 					if(packetS->istcp == 1 && packetS->header_ip) {
-						if(!(preProcessPacket[1] && opt_enable_preprocess_packet >= 2)) {
+						if(!PreProcessPacket::isEnableSip()) {
 							tcpReassemblySip.processPacket(
 								packetS->packet_number,
 								packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, origDatalen, packetS->dataoffset,
@@ -2228,7 +2228,7 @@ Call *process_packet(packet_s *packetS,
 						return NULL;
 					} else {
 						// it is not TCP and callid not found
-						if(!(preProcessPacket[1] && opt_enable_preprocess_packet >= 2) && logPacketSipMethodCall_enable) {
+						if(!PreProcessPacket::isEnableSip() && logPacketSipMethodCall_enable) {
 							logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
 								packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 								call, "it is not TCP and callid not found");
@@ -2242,7 +2242,7 @@ Call *process_packet(packet_s *packetS,
 
 			// Call-ID is present
 			if(packetS->istcp == 1 && packetS->datalen >= 2) {
-				if(!(preProcessPacket[1] && opt_enable_preprocess_packet >= 2)) {
+				if(!PreProcessPacket::isEnableSip()) {
 					tcpReassemblySip.processPacket(
 						packetS->packet_number,
 						packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, origDatalen, packetS->dataoffset,
@@ -3599,7 +3599,7 @@ void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 	
 	process_packet__last_cleanup = header->ts.tv_sec;
 
-	if(!(preProcessPacket[1] && opt_enable_preprocess_packet >= 2)) {
+	if(!PreProcessPacket::isEnableSip()) {
 		// clean tcp_streams_list
 		tcpReassemblySip.clean(header->ts.tv_sec);
 	}
@@ -5295,7 +5295,7 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id id) {
 		     << string((char*)newdata, MIN(string((char*)newdata, newdata_len).find("\r"), MIN(newdata_len, 100))) << endl;
 	}
 	bool deletePackets = true;
-	if(preProcessPacket[1] && opt_enable_preprocess_packet >= 2) {
+	if(PreProcessPacket::isEnableSip()) {
 		preProcessPacket[1]->push_packet_1(false, firstPacket->packet_number,
 						   firstPacket->saddr, firstPacket->source, firstPacket->daddr, firstPacket->dest, 
 						   (char*)newdata, newdata_len, firstPacket->dataoffset,
@@ -5396,17 +5396,17 @@ void *PreProcessPacket::outThreadFunction() {
 				bool do_process_packet =  false;
 				switch(this->typePreProcessThread) {
 				case ppt_detach:
-					if(opt_enable_preprocess_packet == 1) {
-						do_process_packet = true;
-					} else {
+					if(PreProcessPacket::isEnableSip()) {
 						preProcessPacket[1]->push_packet_2(_packet, NULL, false, _parse_packet->forceSip);
+					} else {
+						do_process_packet = true;
 					}
 					break;
 				case ppt_sip:
-					if(opt_enable_preprocess_packet == 2) {
-						do_process_packet = true;
-					} else {
+					if(PreProcessPacket::isEnableExtend()) {
 						preProcessPacket[2]->push_packet_2(NULL, _parse_packet, false, _parse_packet->forceSip);
+					} else {
+						do_process_packet = true;
 					}
 					break;
 				case ppt_extend:

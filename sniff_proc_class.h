@@ -365,6 +365,18 @@ public:
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
 	void terminate();
+	static bool isEnableDetach() {
+		extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+		return(preProcessPacket[0] != NULL);
+	}
+	static bool isEnableSip() {
+		extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+		return(preProcessPacket[1] != NULL);
+	}
+	static bool isEnableExtend() {
+		extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+		return(preProcessPacket[2] != NULL);
+	}
 private:
 	bool sipProcess_base(packet_parse_s *parse_packet);
 	bool sipProcess_extend(packet_parse_s *parse_packet);
