@@ -936,21 +936,32 @@ fail_exit:
 
 
 int get_sip_peername(char *data, int data_len, const char *tag, char *peername, unsigned int peername_len){
+	struct {
+		const char *prefix;
+		unsigned length;
+		unsigned skip;
+		int type;
+	} prefixes[] = {
+		{ "sip:", 4, 4, 0 },
+		{ "sips:", 5, 5, 0 },
+		{ "urn:", 4, 0, 1 }
+	};
 	unsigned long r, r2, peername_tag_len;
 	char *peername_tag = gettag(data, data_len, tag, &peername_tag_len);
 	if(!peername_tag_len) {
 		goto fail_exit;
 	}
-	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "sip:", 4)) == 0){
-		if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "sips:", 4)) == 0){
-			goto fail_exit;
-		} else {
-			r += 5;
+	unsigned i_prefix;
+	for(i_prefix = 0; i_prefix < sizeof(prefixes) / sizeof(prefixes[0]); i_prefix++) {
+		if((r = (unsigned long)memmem(peername_tag, peername_tag_len, prefixes[i_prefix].prefix, prefixes[i_prefix].length))) {
+			r += prefixes[i_prefix].skip;
+			break;
 		}
-	} else {
-		r += 4;
 	}
-	if ((r2 = (unsigned long)memmem((char*)r, peername_tag_len, "@", 1)) == 0){
+	if(i_prefix == sizeof(prefixes) / sizeof(prefixes[0])) {
+		goto fail_exit;
+	}
+	if ((r2 = (unsigned long)memmem((char*)r, peername_tag_len, prefixes[i_prefix].type == 0 ? "@" : ">", 1)) == 0){
 		goto fail_exit;
 	}
 	if (r2 <= r || ((r2 - r) > (unsigned long)peername_len)  ){
