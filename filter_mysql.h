@@ -12,26 +12,28 @@
 #define FLAG_RTP_ALL	(1 << 0)
 #define FLAG_RTP_HEAD	(1 << 1)
 #define FLAG_NORTP      (1 << 2)
-#define FLAG_SIP	(1 << 3)
-#define FLAG_NOSIP      (1 << 4)
-#define FLAG_REGISTER	(1 << 5)
-#define FLAG_NOREGISTER	(1 << 6)
-#define FLAG_GRAPH	(1 << 7)
-#define FLAG_NOGRAPH    (1 << 8)
-#define FLAG_AUDIO	(1 << 9)
-#define FLAG_AUDIO_WAV	(1 << 10)
-#define FLAG_AUDIO_OGG	(1 << 11)
-#define FLAG_NOWAV      (1 << 12)
-#define FLAG_SKIP       (1 << 13)
-#define FLAG_NOSKIP     (1 << 14)
-#define FLAG_SCRIPT     (1 << 15)
-#define FLAG_NOSCRIPT   (1 << 16)
-#define FLAG_AMOSLQO    (1 << 17)
-#define FLAG_BMOSLQO    (1 << 18)
-#define FLAG_ABMOSLQO   (1 << 19)
-#define FLAG_NOMOSLQO   (1 << 20)
-#define FLAG_HIDEMSG	(1 << 21)
-#define FLAG_SHOWMSG	(1 << 22)
+#define FLAG_RTCP	(1 << 3)
+#define FLAG_NORTCP     (1 << 4)
+#define FLAG_SIP	(1 << 5)
+#define FLAG_NOSIP      (1 << 6)
+#define FLAG_REGISTER	(1 << 7)
+#define FLAG_NOREGISTER	(1 << 8)
+#define FLAG_GRAPH	(1 << 9)
+#define FLAG_NOGRAPH    (1 << 10)
+#define FLAG_AUDIO	(1 << 11)
+#define FLAG_AUDIO_WAV	(1 << 12)
+#define FLAG_AUDIO_OGG	(1 << 13)
+#define FLAG_NOWAV      (1 << 14)
+#define FLAG_SKIP       (1 << 15)
+#define FLAG_NOSKIP     (1 << 16)
+#define FLAG_SCRIPT     (1 << 17)
+#define FLAG_NOSCRIPT   (1 << 18)
+#define FLAG_AMOSLQO    (1 << 19)
+#define FLAG_BMOSLQO    (1 << 20)
+#define FLAG_ABMOSLQO   (1 << 21)
+#define FLAG_NOMOSLQO   (1 << 22)
+#define FLAG_HIDEMSG	(1 << 23)
+#define FLAG_SHOWMSG	(1 << 24)
 
 #define MAX_PREFIX 64
 
@@ -39,6 +41,7 @@ struct filter_db_row_base {
 	filter_db_row_base() {
 		direction = 0;
 		rtp = 0;
+		rtcp = 0;
 		sip = 0;
 		reg = 0;
 		graph = 0;
@@ -50,6 +53,7 @@ struct filter_db_row_base {
 	}
 	int direction;
 	int rtp;
+	int rtcp;
 	int sip;
 	int reg;
 	int graph;
@@ -227,6 +231,7 @@ inline void set_global_flags(unsigned int &flags) {
 	extern int opt_saveSIP;
 	extern int opt_saveRTP;
 	extern int opt_onlyRTPheader;
+	extern int opt_saveRTCP;
 	extern int opt_saveWAV;
 	extern int opt_audio_format;
 	extern int opt_saveGRAPH;
@@ -241,6 +246,9 @@ inline void set_global_flags(unsigned int &flags) {
 	}
 	if(opt_onlyRTPheader) {
 		flags |= FLAG_SAVERTPHEADER;
+	}
+	if(opt_saveRTCP) {
+		flags |= FLAG_SAVERTCP;
 	}
 	if(opt_saveWAV) {
 		flags |= (opt_audio_format == FORMAT_OGG ? FLAG_SAVEAUDIO_OGG : FLAG_SAVEAUDIO_WAV);

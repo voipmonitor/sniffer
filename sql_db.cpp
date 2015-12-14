@@ -2934,6 +2934,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`mask` int DEFAULT NULL,\
 			`direction` tinyint DEFAULT NULL,\
 			`rtp` tinyint DEFAULT NULL,\
+			`rtcp` tinyint default NULL,\
 			`sip` tinyint DEFAULT NULL,\
 			`register` tinyint DEFAULT NULL,\
 			`graph` tinyint DEFAULT NULL,\
@@ -2958,6 +2959,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`fixed_len` int unsigned DEFAULT '0',\
 			`direction` tinyint DEFAULT NULL,\
 			`rtp` tinyint DEFAULT NULL,\
+			`rtcp` tinyint default NULL,\
 			`sip` tinyint DEFAULT NULL,\
 			`register` tinyint DEFAULT NULL,\
 			`graph` tinyint DEFAULT NULL,\
@@ -2977,6 +2979,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`domain` char(128) DEFAULT NULL,\
 			`direction` tinyint DEFAULT NULL,\
 			`rtp` tinyint DEFAULT NULL,\
+			`rtcp` tinyint default NULL,\
 			`sip` tinyint DEFAULT NULL,\
 			`register` tinyint DEFAULT NULL,\
 			`graph` tinyint DEFAULT NULL,\
@@ -2998,6 +3001,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`content_type` enum('strict', 'prefix', 'regexp') default NULL,\
 			`direction` tinyint DEFAULT NULL,\
 			`rtp` tinyint DEFAULT NULL,\
+			`rtcp` tinyint default NULL,\
 			`sip` tinyint DEFAULT NULL,\
 			`register` tinyint DEFAULT NULL,\
 			`graph` tinyint DEFAULT NULL,\

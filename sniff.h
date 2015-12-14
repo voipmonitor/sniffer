@@ -234,7 +234,7 @@ Call *process_packet(struct packet_s *packetS,
 
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)
 #define enable_save_register(call)	(call->flags & FLAG_SAVEREGISTER)
-#define enable_save_rtcp(call)		((call->flags & (FLAG_SAVERTP | FLAG_SAVERTPHEADER)) || (call->isfax && opt_saveudptl))
+#define enable_save_rtcp(call)		((call->flags & FLAG_SAVERTCP) || (call->isfax && opt_saveudptl))
 #define enable_save_rtp(call)		((call->flags & (FLAG_SAVERTP | FLAG_SAVERTPHEADER)) || (call->isfax && opt_saveudptl) || opt_saverfc2833)
 #define enable_save_sip_rtp(call)	(enable_save_sip(call) || enable_save_rtp(call))
 #define enable_save_packet(call)	(enable_save_sip(call) || enable_save_register(call) || enable_save_rtp(call))

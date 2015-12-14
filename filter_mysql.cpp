@@ -22,6 +22,7 @@ bool is_number(const std::string& s) {
 void filter_base::loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow) {
 	baseRow->direction = sqlRow->isNull("direction") ? 0 : atoi((*sqlRow)["direction"].c_str());
 	baseRow->rtp = sqlRow->isNull("rtp") ? -1 : atoi((*sqlRow)["rtp"].c_str());
+	baseRow->rtcp = sqlRow->isNull("rtcp") ? -1 : atoi((*sqlRow)["rtcp"].c_str());
 	baseRow->sip = sqlRow->isNull("sip") ? -1 : atoi((*sqlRow)["sip"].c_str());
 	baseRow->reg = sqlRow->isNull("register") ? -1 : atoi((*sqlRow)["register"].c_str());
 	baseRow->graph = sqlRow->isNull("graph") ? -1 : atoi((*sqlRow)["graph"].c_str());
@@ -38,6 +39,9 @@ unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 	if(baseRow->rtp == 1)			flags |= FLAG_RTP_ALL;
 	else if(baseRow->rtp == 2)		flags |= FLAG_RTP_HEAD;
 	else if(baseRow->rtp == 0)		flags |= FLAG_NORTP;
+	
+	if(baseRow->rtcp == 1)			flags |= FLAG_RTCP;
+	else if(baseRow->rtcp == 0)		flags |= FLAG_NORTCP;
 	
 	if(baseRow->sip == 1)			flags |= FLAG_SIP;
 	else if(baseRow->sip == 0)		flags |= FLAG_NOSIP;
@@ -74,6 +78,9 @@ void filter_base::setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned 
 	if(filterFlags & FLAG_RTP_ALL)					{*callFlags |= FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
 	if(filterFlags & FLAG_RTP_HEAD)					{*callFlags |= FLAG_SAVERTPHEADER; *callFlags &= ~FLAG_SAVERTP;}
 	if(filterFlags & FLAG_NORTP) 					{*callFlags &= ~FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
+	
+	if(filterFlags & FLAG_RTCP)					*callFlags |= FLAG_SAVERTCP;
+	if(filterFlags & FLAG_NORTCP)					*callFlags &= ~FLAG_SAVERTCP;
 	
 	if(filterFlags & FLAG_SIP)					*callFlags |= FLAG_SAVESIP;
 	if(filterFlags & FLAG_NOSIP)					*callFlags &= ~FLAG_SAVESIP;
