@@ -132,6 +132,7 @@ extern int opt_sipoverlap;
 extern int readend;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
+extern char opt_fbasename_header[128];
 extern char opt_match_header[128];
 extern char opt_callidmerge_header[128];
 extern char opt_callidmerge_secret[128];
@@ -1636,12 +1637,27 @@ Call *new_invite_register(packet_s *packetS, int sip_method, char *callidstr,
 	call->type = sip_method;
 	call->flags = flags;
 	call->lastsrcip = packetS->saddr;
-	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
-	call->fbasename[MIN(strlen(callidstr), MAX_FNAME - 1)] = '\0';
-	call->msgcount++;
-
+	
 	char *s;
 	unsigned long l;
+	bool use_fbasename_header = false;
+	if(opt_fbasename_header[0]) {
+		s = gettag(packetS->data, packetS->datalen, opt_fbasename_header, &l, &gettagLimitLen);
+		if(l && l < 255) {
+			if(l > MAX_FNAME - 1) {
+				l = MAX_FNAME - 1;
+			}
+			strncpy(call->fbasename, s, l);
+			call->fbasename[l] = 0;
+			use_fbasename_header = true;
+		}
+	}
+	if(!use_fbasename_header) {
+		strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
+		call->fbasename[MIN(strlen(callidstr), MAX_FNAME - 1)] = '\0';
+	}
+	call->msgcount++;
+
 	/* this logic updates call on the first INVITES */
 	if (sip_method == INVITE or sip_method == REGISTER or sip_method == MESSAGE) {
 		//geolocation 

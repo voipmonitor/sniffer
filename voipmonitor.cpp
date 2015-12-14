@@ -465,6 +465,7 @@ char opt_mysql_timezone[256] = "";
 char opt_timezone[256] = "";
 int opt_skiprtpdata = 0;
 
+char opt_fbasename_header[128] = "";
 char opt_match_header[128] = "";
 char opt_callidmerge_header[128] = "";
 char opt_callidmerge_secret[128] = "";
@@ -4357,6 +4358,9 @@ void cConfig::addConfigItems() {
 			addConfigItem(new cConfigItem_ports("sipport", sipportmatrix));
 			addConfigItem(new cConfigItem_yesno("cdr_sipport", &opt_cdr_sipport));
 			addConfigItem(new cConfigItem_integer("domainport", &opt_domainport));
+			addConfigItem((new cConfigItem_string("fbasenameheader", opt_fbasename_header, sizeof(opt_fbasename_header)))
+				->setPrefix("\n")
+				->addAlias("fbasename_header"));
 			addConfigItem((new cConfigItem_string("matchheader", opt_match_header, sizeof(opt_match_header)))
 				->setPrefix("\n")
 				->addAlias("match_header"));
@@ -6159,6 +6163,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "norecord-dtmf", NULL))) {
 		opt_norecord_dtmf = yesno(value);
+	}
+	if((value = ini.GetValue("general", "fbasenameheader", NULL))) {
+		snprintf(opt_fbasename_header, sizeof(opt_fbasename_header), "\n%s:", value);
 	}
 	if((value = ini.GetValue("general", "matchheader", NULL))) {
 		snprintf(opt_match_header, sizeof(opt_match_header), "\n%s:", value);

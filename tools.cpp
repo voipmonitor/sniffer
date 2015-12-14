@@ -2142,6 +2142,15 @@ void ParsePacket::setStdParse() {
 	addNode("username=\"");
 	addNode("realm=\"");
 	
+	extern char opt_fbasename_header[128];
+	if(opt_fbasename_header[0] != '\0') {
+		string findHeader = opt_fbasename_header;
+		if(findHeader[findHeader.length() - 1] != ':') {
+			findHeader.append(":");
+		}
+		addNode(findHeader.c_str());
+	}
+	
 	extern char opt_match_header[128];
 	if(opt_match_header[0] != '\0') {
 		string findHeader = opt_match_header;
