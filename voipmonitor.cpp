@@ -683,7 +683,7 @@ TarQueue *tarQueue = NULL;
 
 pthread_mutex_t terminate_packetbuffer_lock;
 
-extern ParsePacket _parse_packet_global;
+extern ParsePacket _parse_packet_global_process_packet;
 
 cBuffersControl buffersControl;
 
@@ -2248,7 +2248,7 @@ int main(int argc, char *argv[]) {
 			telnumfilter = new FILE_LINE TELNUMfilter;
 			domainfilter =  new FILE_LINE DOMAINfilter;
 			sipheaderfilter =  new FILE_LINE SIP_HEADERfilter;
-			_parse_packet_global.setStdParse();
+			_parse_packet_global_process_packet.setStdParse();
 			test();
 			if(sqlStore) {
 				delete sqlStore;
@@ -2352,7 +2352,7 @@ int main(int argc, char *argv[]) {
 	}
 	// END RELOAD LOOP
 	
-	_parse_packet_global.free();
+	_parse_packet_global_process_packet.free();
 	
 	delete [] sipportmatrix;
 	delete [] httpportmatrix;
@@ -2467,7 +2467,7 @@ int main_init_read() {
 //	domainfilter->dump();
 //	sipheaderfilter->dump();
 
-	_parse_packet_global.setStdParse();
+	_parse_packet_global_process_packet.setStdParse();
 
 	if(opt_ipaccount && !opt_test) {
 		initIpacc();
@@ -2979,7 +2979,7 @@ void main_term_read() {
 	
 	thread_cleanup();
 
-	_parse_packet_global.clear();
+	_parse_packet_global_process_packet.clear();
 }
 
 void main_init_sqlstore() {

@@ -142,7 +142,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 						} else {
 							process_packet(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
 								       (char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
-								       handle, udpHeader, udpPacket, 
+								       handle, udpHeader, udpPacket, NULL,
 								       false, &was_rtp, (iphdr2*)(udpPacket + ethHeaderLength), &voippacket, 1,
 								       NULL, 0, dlt, sensor_id);
 							delete [] udpPacket;

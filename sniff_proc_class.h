@@ -117,11 +117,11 @@ private:
 					contentLength = atol(contentLengthPos + 16);
 				}
 				int sipDataLen = (endHeaderSepPos - data) + 4 + contentLength;
-				extern int check_sip20(char *data, unsigned long len);
+				extern int check_sip20(char *data, unsigned long len, ParsePacket *parsePacket);
 				if(sipDataLen == data_len) {
 					return(true);
 				} else if(sipDataLen < data_len) {
-					if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen)) {
+					if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen, NULL)) {
 						return(true);
 					} else {
 						data += sipDataLen;
@@ -197,6 +197,7 @@ public:
 			used = 0;
 			batch = new packet_parse_s[max_count];
 			this->max_count = max_count;
+			this->batchInPrevQueue = NULL;
 		}
 		~batch_packet_parse_s() {
 			delete [] batch;
@@ -220,6 +221,7 @@ public:
 		unsigned count;
 		volatile int used;
 		unsigned max_count;
+		batch_packet_parse_s *batchInPrevQueue;
 	};
 public:
 	PreProcessPacket(eTypePreProcessThread typePreProcessThread);
@@ -250,16 +252,19 @@ public:
 		packetS.dlt = dlt; 
 		packetS.sensor_id = sensor_id;
 		packetS.is_ssl = is_ssl;
-		this->push_packet_2(&packetS, NULL, packetDelete, forceSip, disableLock);
+		this->push_packet_2(&packetS, NULL, 
+				    packetDelete, forceSip, disableLock);
 	}
-	inline void push_packet_2(packet_s *packetS, packet_parse_s *packetParseS = NULL, bool packetDelete = false, int forceSip = 0, bool disableLock = false) {
+	inline void push_packet_2(packet_s *packetS, packet_parse_s *packetParseS = NULL,
+				  bool packetDelete = false, int forceSip = 0, bool disableLock = false,
+				  bool pushBatch = false, batch_packet_parse_s *batchInPrevQueue = NULL) {
 	 
 		extern int opt_enable_ssl;
 		extern unsigned long preprocess_packet__last_cleanup;
 		extern TcpReassemblySip tcpReassemblySip;
 		extern char *sipportmatrix;
 		
-		extern int check_sip20(char *data, unsigned long len);
+		extern int check_sip20(char *data, unsigned long len, ParsePacket *parsePacket);
 		
 		switch(typePreProcessThread) {
 		case ppt_detach:
@@ -310,7 +315,7 @@ public:
 			if((forceSip ||
 			    sipportmatrix[packetS->source] || 
 			    sipportmatrix[packetS->dest]) &&
-			   check_sip20(packetS->data, packetS->datalen)) {
+			   check_sip20(packetS->data, packetS->datalen, NULL)) {
 				_parse_packet->sipDataLen = _parse_packet->parse->parseData(packetS->data, packetS->datalen, true);
 				_parse_packet->isSip = _parse_packet->parse->isSip();
 			} else {
@@ -348,7 +353,9 @@ public:
 		}
 		
 		++_batch_parse_packet->count;
-		if(_batch_parse_packet->count == _batch_parse_packet->max_count) {
+		if(_batch_parse_packet->count == _batch_parse_packet->max_count || 
+		   pushBatch) {
+			_batch_parse_packet->batchInPrevQueue = batchInPrevQueue;
 			_batch_parse_packet->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;

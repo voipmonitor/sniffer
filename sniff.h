@@ -58,7 +58,7 @@ void *rtp_read_thread_func(void *arg);
 
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
-void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, 
+void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, ParsePacket *parsePacket,
 		 unsigned int saddr, int source, unsigned int daddr, int dest, 
 		 int istcp, iphdr2 *header_ip, char *data, unsigned int datalen, unsigned int dataoffset, int type, 
 		 int forceSip, int dlt, int sensor_id);
@@ -221,15 +221,13 @@ struct packet_s {
 Call *process_packet(bool is_ssl, u_int64_t packet_number,
 		     unsigned int saddr, int source, unsigned int daddr, int dest, 
 		     char *data, int datalen, int dataoffset,
-		     pcap_t *handle, pcap_pkthdr *header, const u_char *packet, 
+		     pcap_t *handle, pcap_pkthdr *header, const u_char *packet, void *parsePacketPreproc,
 		     int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
 		     pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
-		     bool mainProcess = true, int sipOffset = 0,
-		     void *parsePacket = NULL);
-Call *process_packet(struct packet_s *packetS,
+		     bool mainProcess = true, int sipOffset = 0);
+Call *process_packet(struct packet_s *packetS, void *parsePacketPreproc,
 		     int *was_rtp, int *voippacket, int forceSip = 0,
-		     bool mainProcess = true, int sipOffset = 0,
-		     void *parsePacket = NULL);
+		     bool mainProcess = true, int sipOffset = 0);
 
 
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)

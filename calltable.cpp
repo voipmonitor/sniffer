@@ -821,7 +821,7 @@ Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pk
 	parse_rtcp((char*)data, datalen, this);
 	
 	if(enable_save_packet) {
-		save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
+		save_packet(this, header, packet, NULL, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 			    false, dlt, sensor_id);
 	}
 }
@@ -1059,12 +1059,12 @@ end:
 			   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = header->caplen;
 				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-				save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
+				save_packet(this, header, packet, NULL, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 					    false, dlt, sensor_id);
 				header->caplen = tmp_u32;
 			}
 		} else if((this->flags & FLAG_SAVERTP) || this->isfax || record_dtmf) {
-			save_packet(this, header, packet, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
+			save_packet(this, header, packet, NULL, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
 				    false, dlt, sensor_id);
 		}
 	}
@@ -4623,8 +4623,8 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 	unlock_custom_headers();
 }
 
-extern char * gettag(const void *ptr, unsigned long len, const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL,
-		     ParsePacket *parsePacket = NULL);
+extern char * gettag(const void *ptr, unsigned long len, ParsePacket *parsePacket, 
+		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
 void CustomHeaders::parse(Call *call, char *data, int datalen) {
 	lock_custom_headers();
 	unsigned long gettagLimitLen = 0;
@@ -4638,7 +4638,8 @@ void CustomHeaders::parse(Call *call, char *data, int datalen) {
 				findHeader.append(":");
 			}
 			unsigned long l;
-			char *s = gettag(data, datalen, findHeader.c_str(), &l, &gettagLimitLen);
+			char *s = gettag(data, datalen, NULL,
+					 findHeader.c_str(), &l, &gettagLimitLen);
 			if(l) {
 				char customHeaderContent[256];
 				memcpy(customHeaderContent, s, min(l, 255lu));

@@ -67,7 +67,7 @@
 
 using namespace std;
 
-extern int check_sip20(char *data, unsigned long len);
+extern int check_sip20(char *data, unsigned long len, ParsePacket *parsePacket);
 void daemonizeOutput(string error);
 
 extern int verbosity;
@@ -2151,7 +2151,7 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 	
 	if(sipSendSocket && sport && dport &&
 	   (sipportmatrix[htons(sport)] || sipportmatrix[htons(dport)]) &&
-	   check_sip20(data, datalen)) {
+	   check_sip20(data, datalen, NULL)) {
 		u_int16_t header_length = datalen;
 		sipSendSocket->addData(&header_length, 2,
 				       data, datalen);
@@ -5165,14 +5165,14 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 				u_int64_t _counter = 0;
 				do {
 					++_counter;
-					process_packet(&packetS,
+					process_packet(&packetS, NULL,
 						       &was_rtp, &voippacket);
 					if(!(_counter % 50)) {
 						usleep(1);
 					}
 				} while(packet_counter_all == (u_int64_t)sverb.test_rtp_performance);
 			} else {
-				process_packet(&packetS,
+				process_packet(&packetS, NULL,
 					       &was_rtp, &voippacket);
 			}
 			// if packet was VoIP add it to ipaccount
