@@ -521,13 +521,13 @@ static int parse_packet__message(char *data, unsigned int datalen, ParsePacket *
    type - 1 is SIP, 2 is RTP, 3 is RTCP
 
 */
-void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, ParsePacket *parsePacket,
-		 unsigned int saddr, int source, unsigned int daddr, int dest, 
-		 int istcp, iphdr2 *header_ip, char *data, unsigned int datalen, unsigned int dataoffset, int type, 
-		 int forceSip, int dlt, int sensor_id) {
+void save_packet(Call *call, packet_s *packetS, ParsePacket *parsePacket, int type, int forceSip) {
 	bool allocPacket = false;
 	bool allocHeader = false;
-	if(ENABLE_CONVERT_DLT_SLL_TO_EN10(dlt)) {
+	const u_char *packet = packetS->packet;
+	pcap_pkthdr *header = &packetS->header;
+	u_int16_t old_header_ip_tot_len = packetS->header_ip->tot_len;
+	if(ENABLE_CONVERT_DLT_SLL_TO_EN10(packetS->dlt)) {
 		const u_char *packet_orig = packet;
 		pcap_pkthdr *header_orig = header;
 		packet = (const u_char*) new FILE_LINE u_char[header_orig->caplen];
@@ -543,30 +543,30 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, P
 		allocHeader = true;
 	}
 	unsigned int limitCapLen = 65535;
-	if(dataoffset > 0 && dataoffset < 100 &&
+	if(packetS->dataoffset > 0 && packetS->dataoffset < 100 &&
 	   ((call->type == MESSAGE && opt_hide_message_content) || 
-	    (istcp && header->caplen > limitCapLen))) {
+	    (packetS->istcp && header->caplen > limitCapLen))) {
 		unsigned long l;
-		char *s = gettag(data, datalen, parsePacket,
+		char *s = gettag(packetS->data, packetS->datalen, parsePacket,
 				 "\nContent-Length:", &l);
-		if(l && l < datalen) {
+		if(l && l < (unsigned)packetS->datalen) {
 			long int contentLength = atol(s);
 			if(contentLength > 0) {
-				if(istcp &&
+				if(packetS->istcp &&
 				   header->caplen > limitCapLen &&
-				   (u_char*)header_ip > packet && 
-				   (u_char*)header_ip - packet < 100) {
+				   (u_char*)packetS->header_ip > packet && 
+				   (u_char*)packetS->header_ip - packet < 100) {
 					u_int32_t diffLen = header->caplen - limitCapLen;
 					header->caplen -= diffLen;
 					header->len -= diffLen;
-					header_ip->tot_len = htons(ntohs(header_ip->tot_len) - diffLen);
+					packetS->header_ip->tot_len = htons(ntohs(packetS->header_ip->tot_len) - diffLen);
 					contentLength -= diffLen;
 					while(*s == ' ') {
 						++s;
 					}
 					char contLengthStr[10];
 					sprintf(contLengthStr, "%u", (unsigned int)contentLength);
-					char *pointToModifyContLength = (char*)packet + dataoffset + (s - data); 
+					char *pointToModifyContLength = (char*)packet + packetS->dataoffset + (s - packetS->data); 
 					strncpy(pointToModifyContLength, contLengthStr, strlen(contLengthStr));
 					char *pointToEndModifyContLength = pointToModifyContLength + strlen(contLengthStr);
 					while(*pointToEndModifyContLength != '\r') {
@@ -579,7 +579,7 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, P
 					packet = (const u_char*) new FILE_LINE u_char[header->caplen];
 					memcpy((u_char*)packet, packet_orig, header->caplen);
 					allocPacket = true;
-					parse_packet__message((char*)(packet + dataoffset), datalen, parsePacket, false,
+					parse_packet__message((char*)(packet + packetS->dataoffset), packetS->datalen, parsePacket, false,
 							      NULL, NULL, NULL, NULL,
 							      true);
 					/* obsolete
@@ -599,12 +599,12 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, P
 	}
  
 	// check if it should be stored to mysql 
-	if(type == TYPE_SIP and global_livesniffer and (sipportmatrix[source] || sipportmatrix[dest] || forceSip)) {
+	if(type == TYPE_SIP and global_livesniffer and (sipportmatrix[packetS->source] || sipportmatrix[packetS->dest] || forceSip)) {
 		save_live_packet(call, 
 				 header, packet, parsePacket,
-				 saddr, source, daddr, dest, 
-				 istcp, data, datalen, call->type, 
-				 dlt, sensor_id);
+				 packetS->saddr, packetS->source, packetS->daddr, packetS->dest, 
+				 packetS->istcp, packetS->data, packetS->datalen, call->type, 
+				 packetS->dlt, packetS->sensor_id);
 	}
 
 	if(opt_newdir and opt_pcap_split) {
@@ -614,9 +614,9 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, P
 			if(call->getPcapSip()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
 				if(type == TYPE_SIP) {
-					call->getPcapSip()->dump(header, packet, dlt, false, (u_char*)data, datalen, saddr, daddr, source, dest, istcp);
+					call->getPcapSip()->dump(header, packet, packetS->dlt, false, (u_char*)packetS->data, packetS->datalen, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
 				} else {
-					call->getPcapSip()->dump(header, packet, dlt);
+					call->getPcapSip()->dump(header, packet, packetS->dlt);
 				}
 			}
 			break;
@@ -624,7 +624,7 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, P
 		case TYPE_RTCP:
 			if(call->getPcapRtp()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
-				call->getPcapRtp()->dump(header, packet, dlt);
+				call->getPcapRtp()->dump(header, packet, packetS->dlt);
 			} else if(enable_save_rtp(call)) {
 				char pcapFilePath_spool_relative[1024];
 				snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
@@ -638,7 +638,7 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, P
 				if(call->getPcapRtp()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
 					if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 					call->set_last_packet_time(header->ts.tv_sec);
-					call->getPcapRtp()->dump(header, packet, dlt);
+					call->getPcapRtp()->dump(header, packet, packetS->dlt);
 				}
 			}
 			break;
@@ -647,9 +647,9 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, P
 		if (call->getPcap()->isOpen()){
 			call->set_last_packet_time(header->ts.tv_sec);
 			if(type == TYPE_SIP) {
-				call->getPcap()->dump(header, packet, dlt, false, (u_char*)data, datalen, saddr, daddr, source, dest, istcp);
+				call->getPcap()->dump(header, packet, packetS->dlt, false, (u_char*)packetS->data, packetS->datalen, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
 			} else {
-				call->getPcap()->dump(header, packet, dlt);
+				call->getPcap()->dump(header, packet, packetS->dlt);
 			}
 		}
 	}
@@ -660,6 +660,7 @@ void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, P
 	if(allocHeader) {
 		delete header;
 	}
+	packetS->header_ip->tot_len = old_header_ip_tot_len;
 }
 
 inline void save_sip_packet(Call *call, packet_s *packetS, ParsePacket *parsePacket,
@@ -688,15 +689,25 @@ inline void save_sip_packet(Call *call, packet_s *packetS, ParsePacket *parsePac
 		if((u_char*)packetS->header_ip > packetS->packet && (u_char*)packetS->header_ip - packetS->packet < 100) {
 			newHeaderIp = (iphdr2*)(newPacket + ((u_char*)packetS->header_ip - packetS->packet));
 		}
-		save_packet(call, &packetS->header, newPacket, parsePacket, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->istcp, newHeaderIp, packetS->data, sipDatalen, packetS->dataoffset, TYPE_SIP, 
-			    forceSip, packetS->dlt, packetS->sensor_id);
+		const u_char *old_packet = packetS->packet;
+		iphdr2 *old_header_ip = packetS->header_ip;
+		int old_datalen = packetS->datalen;
+		packetS->packet = newPacket;
+		packetS->header_ip = newHeaderIp;
+		packetS->datalen = sipDatalen;
+		save_packet(call, packetS, parsePacket, TYPE_SIP, forceSip);
+		packetS->packet = old_packet;
+		packetS->header_ip = old_header_ip;
+		packetS->datalen = old_datalen;
 		delete [] newPacket;
 		packetS->header.caplen = oldcaplen;
 		packetS->header.len = oldlen;
 		packetS->header_ip->tot_len = oldHeaderIpLen;
 	} else {
-		save_packet(call, &packetS->header, packetS->packet, parsePacket, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->istcp, packetS->header_ip, packetS->data, sipDatalen, packetS->dataoffset, TYPE_SIP, 
-			    forceSip, packetS->dlt, packetS->sensor_id);
+		int old_datalen = packetS->datalen;
+		packetS->datalen = sipDatalen;
+		save_packet(call, packetS, parsePacket, TYPE_SIP, forceSip);
+		packetS->datalen = old_datalen;
 	}
 }
 
@@ -1378,23 +1389,10 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 	   params->rtpp_queue_quick_boost) {
 		rtp_packet_pcap_queue rtpp_pq;
 		rtpp_pq.call = call;
-		rtpp_pq.saddr = packetS->saddr;
-		rtpp_pq.daddr = packetS->daddr;
-		rtpp_pq.sport = packetS->source;
-		rtpp_pq.dport = packetS->dest;
+		rtpp_pq.packet = *packetS;
 		rtpp_pq.iscaller = iscaller;
 		rtpp_pq.is_rtcp = is_rtcp;
 		rtpp_pq.save_packet = enable_save_packet;
-		rtpp_pq.packet = packetS->packet;
-		rtpp_pq.istcp = packetS->istcp;
-		rtpp_pq.dlt = packetS->dlt;
-		rtpp_pq.sensor_id = packetS->sensor_id;
-		rtpp_pq.data = (u_char*)packetS->data;
-		rtpp_pq.datalen = packetS->datalen;
-		rtpp_pq.dataoffset = packetS->dataoffset;
-		rtpp_pq.header = packetS->header;
-		rtpp_pq.block_store = packetS->block_store;
-		rtpp_pq.block_store_index =packetS->block_store_index;
 		if(params->rtpp_queue_quick) {
 			params->rtpp_queue_quick->push(&rtpp_pq, true, opt_enable_process_rtp_packet > 1);
 		} else {
@@ -1407,23 +1405,10 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 			usleep(10);
 		}
 		rtpp_pq->call = call;
-		rtpp_pq->saddr = packetS->saddr;
-		rtpp_pq->daddr = packetS->daddr;
-		rtpp_pq->sport = packetS->source;
-		rtpp_pq->dport = packetS->dest;
+		rtpp_pq->packet = *packetS;
 		rtpp_pq->iscaller = iscaller;
 		rtpp_pq->is_rtcp = is_rtcp;
 		rtpp_pq->save_packet = enable_save_packet;
-		rtpp_pq->packet = packetS->packet;
-		rtpp_pq->istcp = packetS->istcp;
-		rtpp_pq->dlt = packetS->dlt;
-		rtpp_pq->sensor_id = packetS->sensor_id;
-		rtpp_pq->data = (u_char*)packetS->data;
-		rtpp_pq->datalen = packetS->datalen;
-		rtpp_pq->dataoffset = packetS->dataoffset;
-		rtpp_pq->header = packetS->header;
-		rtpp_pq->block_store = packetS->block_store;
-		rtpp_pq->block_store_index =packetS->block_store_index;
 		params->rtpp_queue->unlock();
 	}
 }
@@ -1456,16 +1441,14 @@ void *rtp_read_thread_func(void *arg) {
 		}
 
 		if(rtpp_pq.is_rtcp) {
-			rtpp_pq.call->read_rtcp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.header, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller,
-						rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id);
+			rtpp_pq.call->read_rtcp(&rtpp_pq.packet, rtpp_pq.iscaller, rtpp_pq.save_packet);
 		}  else {
-			rtpp_pq.call->read_rtp(rtpp_pq.data, rtpp_pq.datalen, rtpp_pq.dataoffset, &rtpp_pq.header, NULL, rtpp_pq.saddr, rtpp_pq.daddr, rtpp_pq.sport, rtpp_pq.dport, rtpp_pq.iscaller,
-					       rtpp_pq.save_packet, rtpp_pq.packet, rtpp_pq.istcp, rtpp_pq.dlt, rtpp_pq.sensor_id,
-					       rtpp_pq.block_store && rtpp_pq.block_store->ifname[0] ? rtpp_pq.block_store->ifname : NULL);
+			rtpp_pq.call->read_rtp(&rtpp_pq.packet, rtpp_pq.iscaller, rtpp_pq.save_packet, 
+					       rtpp_pq.packet.block_store && rtpp_pq.packet.block_store->ifname[0] ? rtpp_pq.packet.block_store->ifname : NULL);
 		}
-		rtpp_pq.call->set_last_packet_time(rtpp_pq.header.ts.tv_sec);
-		if(rtpp_pq.block_store) {
-			rtpp_pq.block_store->unlock_packet(rtpp_pq.block_store_index);
+		rtpp_pq.call->set_last_packet_time(rtpp_pq.packet.header.ts.tv_sec);
+		if(rtpp_pq.packet.block_store) {
+			rtpp_pq.packet.block_store->unlock_packet(rtpp_pq.packet.block_store_index);
 		}
 
 		#if SYNC_CALL_RTP
@@ -2095,7 +2078,7 @@ void process_sdp(Call *call, packet_s *packetS,
 	}
 }
 
-static void process_packet__parse_custom_headers(Call *call, char *data, int datalen);
+static void process_packet__parse_custom_headers(Call *call, char *data, int datalen, ParsePacket *parsePacket);
 static void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle);
 static int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
 static int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
@@ -2962,7 +2945,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 								packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 								call);
 						}
-						process_packet__parse_custom_headers(call, packetS->data, packetS->datalen);
+						process_packet__parse_custom_headers(call, packetS->data, packetS->datalen, parsePacket);
 						returnCall = call;
 						goto endsip_save_packet;
 					} else if(strncmp(cseq, call->invitecseq, cseqlen) == 0) {
@@ -2990,7 +2973,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 						if(verbosity > 2)
 							syslog(LOG_NOTICE, "Call answered\n");
 					} else if(strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
-						process_packet__parse_custom_headers(call, packetS->data, packetS->datalen);
+						process_packet__parse_custom_headers(call, packetS->data, packetS->datalen, parsePacket);
 						returnCall = call;
 						goto endsip_save_packet;
 					}
@@ -3037,7 +3020,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 							packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 							call);
 					}
-					process_packet__parse_custom_headers(call, packetS->data, packetS->datalen);
+					process_packet__parse_custom_headers(call, packetS->data, packetS->datalen, parsePacket);
 					returnCall = call;
 					goto endsip_save_packet;
 				} else if(lastSIPresponseNum == 481) {
@@ -3159,7 +3142,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 		}
 	
 		// check if we have custom headers
-		process_packet__parse_custom_headers(call, packetS->data, packetS->datalen);
+		process_packet__parse_custom_headers(call, packetS->data, packetS->datalen, parsePacket);
 		
 		// we have packet, extend pending destroy requests
 		call->shift_destroy_call_at(&packetS->header, lastSIPresponseNum);
@@ -3468,9 +3451,7 @@ rtpcheck:
 					add_to_rtp_thread_queue(call, packetS, 
 								iscaller, is_rtcp, enable_save_rtcp(call), false);
 				} else {
-					call->read_rtcp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller,
-							enable_save_rtcp(call), 
-							packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id);
+					call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 				}
 				return call;
 			}
@@ -3480,9 +3461,7 @@ rtpcheck:
 				add_to_rtp_thread_queue(call, packetS, 
 							iscaller, is_rtcp, enable_save_rtp(call), false);
 			} else {
-				call->read_rtp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, NULL, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller,
-					       enable_save_rtp(call),
-					       packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
+				call->read_rtp(packetS, iscaller, enable_save_rtp(call),
 					       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 				call->set_last_packet_time(packetS->header.ts.tv_sec);
 			}
@@ -3539,9 +3518,7 @@ rtpcheck:
 					add_to_rtp_thread_queue(call, packetS, 
 								!iscaller, is_rtcp, enable_save_rtcp(call), false);
 				} else {
-					call->read_rtcp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, !iscaller,
-							enable_save_rtcp(call),
-							packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id);
+					call->read_rtcp(packetS, !iscaller, enable_save_rtcp(call));
 				}
 				return call;
 			}
@@ -3552,9 +3529,7 @@ rtpcheck:
 				add_to_rtp_thread_queue(call, packetS, 
 							!iscaller, is_rtcp, enable_save_rtp(call), false);
 			} else {
-				call->read_rtp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, NULL, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, !iscaller,
-					       enable_save_rtp(call), 
-					       packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
+				call->read_rtp(packetS, !iscaller, enable_save_rtp(call), 
 					       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 				call->set_last_packet_time(packetS->header.ts.tv_sec);
 			}
@@ -3669,7 +3644,7 @@ rtpcheck:
 	return NULL;
 }
 
-void process_packet__parse_custom_headers(Call *call, char *data, int datalen) {
+void process_packet__parse_custom_headers(Call *call, char *data, int datalen, ParsePacket *parsePacket) {
 	/* obsolete
 	extern vector<dstring> opt_custom_headers_cdr;
 	extern vector<dstring> opt_custom_headers_message;
@@ -3697,7 +3672,7 @@ void process_packet__parse_custom_headers(Call *call, char *data, int datalen) {
 	*/
 	CustomHeaders *customHeaders = call->type == MESSAGE ? custom_headers_message : custom_headers_cdr;
 	if(customHeaders) {
-		 customHeaders->parse(call, data, datalen);
+		 customHeaders->parse(call, data, datalen, parsePacket);
 	}
 }
 
@@ -4451,9 +4426,7 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 							iscaller, is_rtcp, enable_save_rtcp(call), preSyncRtp);
 				call_info[call_info_index].use_sync = true;
 			} else {
-				call->read_rtcp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller,
-						enable_save_rtcp(call), 
-						packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id);
+				call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 			}
 			rsltCall = call;
 			break;
@@ -4467,9 +4440,7 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 						iscaller, is_rtcp, enable_save_rtp(call), preSyncRtp);
 			call_info[call_info_index].use_sync = true;
 		} else {
-			call->read_rtp((unsigned char*) packetS->data, packetS->datalen, packetS->dataoffset, &packetS->header, NULL, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, iscaller,
-				       enable_save_rtp(call), 
-				       packetS->packet, packetS->istcp, packetS->dlt, packetS->sensor_id,
+			call->read_rtp(packetS, iscaller, enable_save_rtp(call), 
 				       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 			call->set_last_packet_time(packetS->header.ts.tv_sec);
 		}

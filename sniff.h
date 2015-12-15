@@ -58,10 +58,7 @@ void *rtp_read_thread_func(void *arg);
 
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
-void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet, ParsePacket *parsePacket,
-		 unsigned int saddr, int source, unsigned int daddr, int dest, 
-		 int istcp, iphdr2 *header_ip, char *data, unsigned int datalen, unsigned int dataoffset, int type, 
-		 int forceSip, int dlt, int sensor_id);
+void save_packet(Call *call, packet_s *packetS, ParsePacket *parsePacket, int type,  int forceSip);
 
 
 typedef std::map<in_addr_t, in_addr_t> nat_aliases_t; //!< 
@@ -84,25 +81,33 @@ struct udphdr2 {
         uint16_t        check;
 };
 
+struct packet_s {
+	u_int64_t packet_number;
+	unsigned int saddr;
+	int source; 
+	unsigned int daddr; 
+	int dest;
+	char *data; 
+	int datalen; 
+	int dataoffset;
+	pcap_t *handle; 
+	pcap_pkthdr header; 
+	const u_char *packet; 
+	int istcp; 
+	struct iphdr2 *header_ip; 
+	pcap_block_store *block_store; 
+	int block_store_index; 
+	int dlt; 
+	int sensor_id;
+	bool is_ssl;
+};
+
 typedef struct {
 	Call *call;
-	u_int32_t saddr;
-	u_int32_t daddr;
-	unsigned short sport;
-	unsigned short dport;
+	packet_s packet;
 	char iscaller;
 	char is_rtcp;
-	int dlt;
-	int sensor_id;
 	char save_packet;
-	const u_char *packet;
-	char istcp;
-	u_char *data;
-	int datalen;
-	int dataoffset;
-	struct pcap_pkthdr header;
-	pcap_block_store *block_store;
-	int block_store_index;
 } rtp_packet_pcap_queue;
 
 struct rtp_read_thread {
@@ -193,28 +198,6 @@ struct gre_hdr {
 #else
 	__be16	protocol;
 #endif
-};
-
-
-struct packet_s {
-	u_int64_t packet_number;
-	unsigned int saddr;
-	int source; 
-	unsigned int daddr; 
-	int dest;
-	char *data; 
-	int datalen; 
-	int dataoffset;
-	pcap_t *handle; 
-	pcap_pkthdr header; 
-	const u_char *packet; 
-	int istcp; 
-	struct iphdr2 *header_ip; 
-	pcap_block_store *block_store; 
-	int block_store_index; 
-	int dlt; 
-	int sensor_id;
-	bool is_ssl;
 };
 
 

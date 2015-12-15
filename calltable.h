@@ -439,8 +439,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtp(unsigned char *data, int datalen, int dataoffset, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller,
-		      char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id, char *ifname = NULL);
+	void read_rtp(struct packet_s *packetS, int iscaller, char enable_save_packet, char *ifname = NULL);
 
 	/**
 	 * @brief read RTCP packet 
@@ -453,8 +452,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtcp(unsigned char *data, int datalen, int dataoffset, pcap_pkthdr*, u_int32_t saddr, u_int32_t daddr, short unsigned int sport, short unsigned int dport, int iscaller,
-		       char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id);
+	void read_rtcp(struct packet_s *packetS, int iscaller, char enable_save_packet);
 
 	/**
 	 * @brief adds RTP stream to the this Call 
@@ -982,7 +980,7 @@ public:
 	void clear(bool lock = true);
 	void refresh(SqlDb *sqlDb = NULL);
 	void addToStdParse(ParsePacket *parsePacket);
-	void parse(Call *call, char *data, int datalen);
+	void parse(Call *call, char *data, int datalen, ParsePacket *parsePacket);
 	void setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content);
 	void prepareSaveRows_cdr(Call *call, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
 	void prepareSaveRows_message(Call *call, class SqlDb_row *message, class SqlDb_row message_next_ch[], char *message_next_ch_name[]);

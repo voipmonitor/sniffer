@@ -801,8 +801,7 @@ Call::get_index_by_sessid(char *sessid, in_addr_t sip_src_addr){
 
 /* analyze rtcp packet */
 void
-Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller,
-		char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id) {
+Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 
 	extern int opt_vlan_siprtpsame;
 	if(opt_vlan_siprtpsame && this->vlan >= 0) {
@@ -811,25 +810,23 @@ Call::read_rtcp(unsigned char* data, int datalen, int dataoffset, struct pcap_pk
 		u_int header_ip_offset;
 		int protocol;
 		int vlan;
-		parseEtherHeader(dlt, (u_char*)packet,
+		parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
 				 header_sll, header_eth, header_ip_offset, protocol, &vlan);
 		if(vlan != this->vlan) {
 			return;
 		}
 	}
 
-	parse_rtcp((char*)data, datalen, this);
+	parse_rtcp((char*)packetS->data, packetS->datalen, this);
 	
 	if(enable_save_packet) {
-		save_packet(this, header, packet, NULL, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
-			    false, dlt, sensor_id);
+		save_packet(this, packetS, NULL, TYPE_RTP, false);
 	}
 }
 
 /* analyze rtp packet */
 void
-Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkthdr *header, struct iphdr2 *header_ip, u_int32_t saddr, u_int32_t daddr, unsigned short sport, unsigned short dport, int iscaller,
-	       char enable_save_packet, const u_char *packet, char istcp, int dlt, int sensor_id, char *ifname) {
+Call::read_rtp(packet_s *packetS, int iscaller, char enable_save_packet, char *ifname) {
  
 	extern int opt_vlan_siprtpsame;
 	if(opt_vlan_siprtpsame && this->vlan >= 0) {
@@ -838,7 +835,7 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 		u_int header_ip_offset;
 		int protocol;
 		int vlan;
-		parseEtherHeader(dlt, (u_char*)packet,
+		parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
 				 header_sll, header_eth, header_ip_offset, protocol, &vlan);
 		if(vlan != this->vlan) {
 			return;
@@ -848,11 +845,11 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 	bool record_dtmf = 0;
 
 	if(first_rtp_time == 0) {
-		first_rtp_time = header->ts.tv_sec;
+		first_rtp_time = packetS->header.ts.tv_sec;
 	}
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
-	tmprtp.fill(data, datalen, header, saddr, daddr, sport, dport);
+	tmprtp.fill((u_char*)packetS->data, packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest);
 	int curpayload = tmprtp.getPayload();
 	
 	// chekc if packet is DTMF and saverfc2833 is enabled 
@@ -867,14 +864,14 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 		goto end;
 	}
 
-	if(opt_dscp && !header_ip) {
-		header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
+	if(opt_dscp && !packetS->header_ip) {
+		packetS->header_ip = (struct iphdr2 *)(packetS->data - sizeof(struct iphdr2) - sizeof(udphdr2));
 	}
 
 	if(iscaller) {
-		last_rtp_a_packet_time = header->ts.tv_sec;
+		last_rtp_a_packet_time = packetS->header.ts.tv_sec;
 	} else {
-		last_rtp_b_packet_time = header->ts.tv_sec;
+		last_rtp_b_packet_time = packetS->header.ts.tv_sec;
 	}
 
 	for(int i = 0; i < ssrc_n; i++) {
@@ -882,22 +879,22 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 /*
 			if(rtp[i]->last_seq == tmprtp.getSeqNum()) {
 				//ignore duplicated RTP with the same sequence
-				//if(verbosity > 1) printf("ignoring lastseq[%u] seq[%u] saddr[%u] dport[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), saddr, dport);
+				//if(verbosity > 1) printf("ignoring lastseq[%u] seq[%u] saddr[%u] dport[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), packetS->saddr, packetS->dest);
 				goto end;
 			}
 */
 
 			if(
-			    (rtp[i]->saddr == saddr and rtp[i]->dport == dport) or (rtp[i]->saddr == saddr and rtp[i]->sport == sport)
-//				or (rtp[i]->daddr == saddr and rtp[i]->dport == sport)
+			    (rtp[i]->saddr == packetS->saddr and rtp[i]->dport == packetS->dest) or (rtp[i]->saddr == packetS->saddr and rtp[i]->sport == packetS->source)
+//				or (rtp[i]->daddr == packetS->saddr and rtp[i]->dport == packetS->source)
 
 			   ) {
-				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), saddr, dport);
+				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), packetS->saddr, packetS->dest);
 				// found 
 				if(opt_dscp) {
-					rtp[i]->dscp = header_ip->tos >> 2;
+					rtp[i]->dscp = packetS->header_ip->tos >> 2;
 					if(sverb.dscp) {
-						cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+						cout << "rtpdscp " << (int)(packetS->header_ip->tos>>2) << endl;
 					}
 				}
 				
@@ -937,7 +934,7 @@ Call::read_rtp(unsigned char* data, int datalen, int dataoffset, struct pcap_pkt
 					}
 					if(rtp[i]->codec == PAYLOAD_TELEVENT) {
 read:
-						rtp[i]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok, sensor_id, ifname);
+						rtp[i]->read((u_char*)packetS->data, packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id, ifname);
 						if(rtp[i]->iscaller) {
 							lastcallerrtp = rtp[i];
 						} else {
@@ -949,7 +946,7 @@ read:
 						//if(verbosity > 1) printf("mchange [%d] [%d]\n", rtp[i]->codec, curpayload);
 						rtp[i]->ssrc2 = 0;
 					} else {
-						//if(verbosity > 1) printf("wtf lastseq[%u] seq[%u] saddr[%u] dport[%u] oldcodec[%u] rtp[i]->codec[%u] rtp[i]->payload2[%u] curpayload[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), saddr, dport, oldcodec, rtp[i]->codec, rtp[i]->payload2, curpayload);
+						//if(verbosity > 1) printf("wtf lastseq[%u] seq[%u] saddr[%u] dport[%u] oldcodec[%u] rtp[i]->codec[%u] rtp[i]->payload2[%u] curpayload[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), packetS->saddr, packetS->dest, oldcodec, rtp[i]->codec, rtp[i]->payload2, curpayload);
 					}
 				}
 			}
@@ -961,18 +958,18 @@ read:
 		if(iscaller) {
 			last_seq_audiobuffer1 = 0;
 			if(lastcallerrtp) {
-				lastcallerrtp->jt_tail(header);
+				lastcallerrtp->jt_tail(&packetS->header);
 			}
 		} else { 
 			last_seq_audiobuffer2 = 0;
 			if(lastcalledrtp) {
-				lastcalledrtp->jt_tail(header);
+				lastcalledrtp->jt_tail(&packetS->header);
 			}
 		}
 		while(__sync_lock_test_and_set(&rtplock, 1)) {
 			usleep(100);
 		}
-		rtp[ssrc_n] = new FILE_LINE RTP(sensor_id);
+		rtp[ssrc_n] = new FILE_LINE RTP(packetS->sensor_id);
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
@@ -982,9 +979,9 @@ read:
 		rtp_cur[iscaller] = rtp[ssrc_n]; 
 		
 		if(opt_dscp) {
-			rtp[ssrc_n]->dscp = header_ip->tos >> 2;
+			rtp[ssrc_n]->dscp = packetS->header_ip->tos >> 2;
 			if(sverb.dscp) {
-				cout << "rtpdscp " << (int)(header_ip->tos>>2) << endl;
+				cout << "rtpdscp " << (int)(packetS->header_ip->tos>>2) << endl;
 			}
 		}
 
@@ -1013,7 +1010,7 @@ read:
 		if(RTPMAP_BY_CALLERD) {
 			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[isFillRtpMap(iscaller) ? iscaller : !iscaller], MAX_RTPMAP * sizeof(int));
 		} else {
-			int i = get_index_by_ip_port(saddr, sport);
+			int i = get_index_by_ip_port(packetS->saddr, packetS->source);
 			if(i >= 0 && isFillRtpMap(i)) {
 				memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
 			} else {
@@ -1027,8 +1024,8 @@ read:
 			}
 		}
 
-		rtp[ssrc_n]->read(data, datalen, header, saddr, daddr, sport, dport, seeninviteok, sensor_id, ifname);
-		if(sverb.check_is_caller_called) printf("new rtp[%p] ssrc[%x] seq[%u] saddr[%s] dport[%u] iscaller[%u]\n", rtp[ssrc_n], curSSRC, rtp[ssrc_n]->seq, inet_ntostring(htonl(saddr)).c_str(), dport, rtp[ssrc_n]->iscaller);
+		rtp[ssrc_n]->read((u_char*)packetS->data, packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id, ifname);
+		if(sverb.check_is_caller_called) printf("new rtp[%p] ssrc[%x] seq[%u] saddr[%s] dport[%u] iscaller[%u]\n", rtp[ssrc_n], curSSRC, rtp[ssrc_n]->seq, inet_ntostring(htonl(packetS->saddr)).c_str(), packetS->dest, rtp[ssrc_n]->iscaller);
 		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
 		this->rtp[ssrc_n]->payload2 = curpayload;
 
@@ -1055,17 +1052,15 @@ read:
 end:
 	if(enable_save_packet) {
 		if((this->silencerecording || (this->flags & FLAG_SAVERTPHEADER)) && !this->isfax && !record_dtmf) {
-			if(datalen >= RTP_FIXED_HEADERLEN &&
-			   header->caplen > (unsigned)(datalen - RTP_FIXED_HEADERLEN)) {
-				unsigned int tmp_u32 = header->caplen;
-				header->caplen = header->caplen - (datalen - RTP_FIXED_HEADERLEN);
-				save_packet(this, header, packet, NULL, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
-					    false, dlt, sensor_id);
-				header->caplen = tmp_u32;
+			if(packetS->datalen >= RTP_FIXED_HEADERLEN &&
+			   packetS->header.caplen > (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN)) {
+				unsigned int tmp_u32 = packetS->header.caplen;
+				packetS->header.caplen = packetS->header.caplen - (packetS->datalen - RTP_FIXED_HEADERLEN);
+				save_packet(this, packetS, NULL, TYPE_RTP, false);
+				packetS->header.caplen = tmp_u32;
 			}
 		} else if((this->flags & FLAG_SAVERTP) || this->isfax || record_dtmf) {
-			save_packet(this, header, packet, NULL, saddr, sport, daddr, dport, istcp, NULL, (char*)data, datalen, dataoffset, TYPE_RTP, 
-				    false, dlt, sensor_id);
+			save_packet(this, packetS, NULL, TYPE_RTP, false);
 		}
 	}
 }
@@ -4625,7 +4620,7 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 
 extern char * gettag(const void *ptr, unsigned long len, ParsePacket *parsePacket, 
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
-void CustomHeaders::parse(Call *call, char *data, int datalen) {
+void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket *parsePacket) {
 	lock_custom_headers();
 	unsigned long gettagLimitLen = 0;
 	map<int, map<int, sCustomHeaderData> >::iterator iter;
@@ -4638,7 +4633,7 @@ void CustomHeaders::parse(Call *call, char *data, int datalen) {
 				findHeader.append(":");
 			}
 			unsigned long l;
-			char *s = gettag(data, datalen, NULL,
+			char *s = gettag(data, datalen, parsePacket,
 					 findHeader.c_str(), &l, &gettagLimitLen);
 			if(l) {
 				char customHeaderContent[256];
