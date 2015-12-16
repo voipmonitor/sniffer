@@ -23,6 +23,11 @@
 using namespace std;
 
 
+#define GZIP_HEADER_LENGTH 10
+#define GZIP_HEADER_CHECK_LENGTH 4
+#define GZIP_HEADER_CHECK(buff, offset) ((u_char)buff[offset+0] == 0x1F && (u_char)buff[offset+1] == 0x8B && (u_char)buff[offset+2] == 0x08 && (u_char)buff[offset+3] == 0x00)
+
+
 /* not tested - obsolete ?
 class DynamicBuffer {
 public:

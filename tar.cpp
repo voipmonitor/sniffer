@@ -442,26 +442,37 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 		}
 	} else {
 		while(!this->readData.end && !this->readData.error && (read_size = read(tar.fd, read_buffer, T_BLOCKSIZE)) > 0) {
-			if(!read_position &&
-			   decompressStream->getTypeCompress() == CompressStream::gzip) {
-				while((u_char)read_buffer[0] == 0x1F && (u_char)read_buffer[1] == 0x8B &&
-				      (u_char)read_buffer[10] == 0x1F && (u_char)read_buffer[11] == 0x8B) {
+			bool findNextDecompressBlock = false;
+			size_t read_size_for_decompress = read_size;
+			if(decompressStream->getTypeCompress() == CompressStream::gzip) {
+				while(read_size_for_decompress > GZIP_HEADER_LENGTH + GZIP_HEADER_CHECK_LENGTH &&
+				      GZIP_HEADER_CHECK(read_buffer, 0) &&
+				      GZIP_HEADER_CHECK(read_buffer, GZIP_HEADER_LENGTH)) {
 					char *new_read_buffer = new FILE_LINE char[T_BLOCKSIZE];
 					memcpy(new_read_buffer, read_buffer + 10, read_size - 10);
 					delete [] read_buffer;
 					read_buffer = new_read_buffer;
-					read_size -= 10;
+					read_size_for_decompress -= 10;
+				}
+				for(size_t pos = 1; pos < read_size - GZIP_HEADER_CHECK_LENGTH; pos ++) {
+					if(GZIP_HEADER_CHECK(read_buffer, pos)) {
+						read_size = pos;
+						read_size_for_decompress = pos;
+						lseek(tar.fd, read_position + read_size, SEEK_SET);
+						findNextDecompressBlock = true;
+						break;
+					}
 				}
 			}
 			read_position += read_size;
 			u_int32_t use_len = 0;
 			unsigned int counter_pass = 0;
-			while(use_len < read_size) {
+			while(use_len < read_size_for_decompress) {
 				if(counter_pass) {
 					decompressStream->termDecompress();
 				}
 				u_int32_t _use_len = 0;
-				if(!decompressStream->decompress(read_buffer + use_len, read_size - use_len, 0, false, this, &_use_len)) {
+				if(!decompressStream->decompress(read_buffer + use_len, read_size_for_decompress - use_len, 0, false, this, &_use_len)) {
 					decompressFailed = true;
 					break;
 				}
@@ -471,8 +482,12 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 				use_len += _use_len;
 				++counter_pass;
 			}
-			if(decompressFailed) {
+			if(decompressFailed && decompressStream->getTypeCompress() != CompressStream::gzip) {
 				break;
+			}
+			if(findNextDecompressBlock) {
+				decompressStream->termDecompress();
+				decompressStream->clearError();
 			}
 		}
 	}
