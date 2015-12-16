@@ -1876,19 +1876,19 @@ getwav:
 		while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 		size_t countLiveSniffers = usersniffer.size();
 		__sync_lock_release(&usersniffer_sync);
-		outStrStat << "{"
-			   << "\"version\": \"" << RTPSENSOR_VERSION << "\","
-			   << "\"rrd_version\": \"" << vm_rrd_version << "\","
-			   << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\","
-			   << "\"pbStatString\": \"" << pbStatString << "\","
-			   << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\","
-			   << "\"uptime\": \"" << getUptime() << "\","
-			   << "\"memory_is_full\": \"" << packetbuffer_memory_is_full << "\","
-			   << "\"count_live_sniffers\": \"" << countLiveSniffers << "\","
-			   << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\","
-			   << "\"use_new_config\": \"" << useNewCONFIG << "\","
-			   << "\"terminating_error\": \"" << terminating_error << "\""
-			   << "}";
+		outStrStat << "{";
+		outStrStat << "\"version\": \"" << RTPSENSOR_VERSION << "\",";
+		outStrStat << "\"rrd_version\": \"" << vm_rrd_version << "\",";
+		outStrStat << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\",";
+		outStrStat << "\"pbStatString\": \"" << pbStatString << "\",";
+		outStrStat << "\"pbCountPacketDrop\": \"" << pbCountPacketDrop << "\",";
+		outStrStat << "\"uptime\": \"" << getUptime() << "\",";
+		outStrStat << "\"memory_is_full\": \"" << packetbuffer_memory_is_full << "\",";
+		outStrStat << "\"count_live_sniffers\": \"" << countLiveSniffers << "\",";
+		outStrStat << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\",";
+		outStrStat << "\"use_new_config\": \"" << useNewCONFIG << "\",";
+		outStrStat << "\"terminating_error\": \"" << terminating_error << "\"";
+		outStrStat << "}";
 		outStrStat << endl;
 		string outStrStatStr = outStrStat.str();
 		if ((size = sendvm(client, sshchannel, outStrStatStr.c_str(), outStrStatStr.length(), 0)) == -1){
