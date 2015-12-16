@@ -553,14 +553,11 @@ public:
 		pthread_mutex_unlock(&mlock);
 	}
 	void update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, double loss);
-	void flush_and_clean(map<uint32_t, node_t> *map);
+	void flush_and_clean(map<uint32_t, node_t> *map, bool needLock = true);
 
 private:
 	map<uint32_t, node_t>	saddr_map[2];
-	map<uint32_t, node_t>	*saddr_map_tmp;
-	map<uint32_t, node_t>	*cmap;
 	map<uint32_t, node_t>	*maps[2];
-	map<uint32_t, node_t>::iterator	saddr_map_it;
 	int mod;
 	pthread_mutex_t mlock;
 	uint32_t lasttime1;

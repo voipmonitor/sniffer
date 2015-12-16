@@ -2311,11 +2311,15 @@ RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uin
 		lasttime2 = curtime;
 	}
 
-
 	if(curtime < lasttime1) {
 		// update time is too old - discard
 		return;
-	} else if(curtime < lasttime2) {
+	}
+	
+	lock();
+	
+	map<uint32_t, node_t> *cmap;
+	if(curtime < lasttime2) {
 		// update time belongs to previous interval
 		cmap = maps[0];
 	} else if(curtime == lasttime2) {
@@ -2325,19 +2329,15 @@ RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uin
 		// update time is new - shift maps left and flush the left one 
 		lasttime1 = lasttime2;
 		lasttime2 = curtime;
-		flush_and_clean(maps[0]);
+		flush_and_clean(maps[0], false);
 		// swap maps 
-		saddr_map_tmp = maps[0];
+		map<uint32_t, node_t> *saddr_map_tmp =maps[0];
 		maps[0] = maps[1];
 		maps[1] = saddr_map_tmp;
 		cmap = maps[1];
 	}
 
-	map<uint32_t, node_t>::iterator saddr_map_it;
-
-	lock();
-
-	saddr_map_it = cmap->find(saddr);
+	map<uint32_t, node_t>::iterator saddr_map_it = cmap->find(saddr);
 
 	if(saddr_map_it == cmap->end()){
 		// not found
@@ -2395,8 +2395,8 @@ walk through saddr_map (all RTP source IPs) and store result to the datbase
 
 */
 void
-RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap) {
-	lock();
+RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap, bool needLock) {
+	if(needLock) lock();
 
 	extern int opt_nocdr;
 	string query_str;
@@ -2431,7 +2431,7 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap) {
 	}
 
 	cmap->clear();
-	unlock();
+	if(needLock) unlock();
 
 	//TODO enableBatchIfPossible
 	if(!opt_nocdr && isSqlDriver("mysql")) {
