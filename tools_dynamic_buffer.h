@@ -210,6 +210,9 @@ public:
 	string getErrorString() {
 		return(errorString);
 	}
+	eTypeCompress getTypeCompress() {
+		return(typeCompress);
+	}
 	static eTypeCompress convTypeCompress(const char *typeCompress);
 	static const char *convTypeCompress(eTypeCompress typeCompress);
 	static string getConfigMenuString();

@@ -442,6 +442,17 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 		}
 	} else {
 		while(!this->readData.end && !this->readData.error && (read_size = read(tar.fd, read_buffer, T_BLOCKSIZE)) > 0) {
+			if(!read_position &&
+			   decompressStream->getTypeCompress() == CompressStream::gzip) {
+				while((u_char)read_buffer[0] == 0x1F && (u_char)read_buffer[1] == 0x8B &&
+				      (u_char)read_buffer[10] == 0x1F && (u_char)read_buffer[11] == 0x8B) {
+					char *new_read_buffer = new FILE_LINE char[T_BLOCKSIZE];
+					memcpy(new_read_buffer, read_buffer + 10, read_size - 10);
+					delete [] read_buffer;
+					read_buffer = new_read_buffer;
+					read_size -= 10;
+				}
+			}
 			read_position += read_size;
 			u_int32_t use_len = 0;
 			unsigned int counter_pass = 0;
@@ -609,10 +620,10 @@ Tar::initZip() {
 	return(true);
 }
        
-void 
+bool
 Tar::flushZip() {
 	if(!writeCounter || writeCounterFlush >= writeCounter) {
-		return;
+		return(false);
 	}
 	do {
 		this->zipStream->avail_out = this->zipBufferLength;
@@ -626,9 +637,10 @@ Tar::flushZip() {
 		}
 	} while(this->zipStream->avail_out == 0);
 	writeCounterFlush = writeCounter;
+	return(true);
 }	
 
-ssize_t
+int
 Tar::writeZip(const void *buf, size_t len) {
 	int flush = 0;
 	if(!this->initZip()) {
@@ -677,10 +689,10 @@ Tar::initLzma() {
 	return(true);
 }
 
-void 
+bool 
 Tar::flushLzma() {
 	if(!writeCounter || writeCounterFlush >= writeCounter) {
-		return;
+		return(false);
 	}
 	int ret_xz;
 //	this->lzmaStream->next_in = NULL;
@@ -704,9 +716,10 @@ Tar::flushLzma() {
 		};
 	} while(1);
 	writeCounterFlush = writeCounter;
+	return(true);
 }	
 
-ssize_t
+int
 Tar::writeLzma(const void *buf, size_t len) {
 	int ret_xz;
 	if(!this->initLzma()) {
@@ -737,36 +750,39 @@ Tar::writeLzma(const void *buf, size_t len) {
 }      
 #endif
 
-void
+bool
 Tar::flush() {
 	tarlock();
 	bool _flush = false;
 #ifdef HAVE_LIBLZMA
 	if(this->lzmaStream) {
-		this->flushLzma();
-		lzma_end(this->lzmaStream);
-		delete this->lzmaStream;
-		delete this->zipBuffer;
-		this->lzmaStream = NULL;
-		this->zipBuffer = NULL;
-		this->initLzma();
-		_flush = true;
+		if(this->flushLzma()) {
+			lzma_end(this->lzmaStream);
+			delete this->lzmaStream;
+			delete this->zipBuffer;
+			this->lzmaStream = NULL;
+			this->zipBuffer = NULL;
+			this->initLzma();
+			_flush = true;
+		}
 	}
 #endif
 	if(this->zipStream) {
-		this->flushZip();
-		deflateEnd(this->zipStream);
-		delete this->zipStream;
-		delete this->zipBuffer;
-		this->zipStream = NULL;
-		this->zipBuffer = NULL;
-		this->initZip();
-		_flush = true;
+		if(this->flushZip()) {
+			deflateEnd(this->zipStream);
+			delete this->zipStream;
+			delete this->zipBuffer;
+			this->zipStream = NULL;
+			this->zipBuffer = NULL;
+			this->initZip();
+			_flush = true;
+		}
 	}
 	if(_flush && sverb.tar) {
 		syslog(LOG_NOTICE, "force flush %s", this->pathname.c_str());
 	}
 	tarunlock();
+	return(_flush);
 }
 
 int
@@ -1671,9 +1687,10 @@ bool TarQueue::flushTar(const char *tarName) {
 	for(tars_it = tars.begin(); tars_it != tars.end(); tars_it++) {
 		Tar *tar = tars_it->second;
 		if(tar->pathname.find(tarNameStr) != string::npos) {
-			tar->flush();
-			tar->lastFlushTime = glob_last_packet_time;
-			rslt = true;
+			if(tar->flush()) {
+				tar->lastFlushTime = glob_last_packet_time;
+				rslt = true;
+			}
 		}
 	}
 	pthread_mutex_unlock(&tarslock);

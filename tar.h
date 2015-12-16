@@ -158,14 +158,14 @@ public:
 	int th_crc_calc();
 	int oct_to_int(char*);
 	int initZip();
-	ssize_t writeZip(const void *buf, size_t len);
-	void flushZip();
+	int writeZip(const void *buf, size_t len);
+	bool flushZip();
 #ifdef HAVE_LIBLZMA
 	int initLzma();
-	void flushLzma();
-	ssize_t writeLzma(const void *buf, size_t len);
+	bool flushLzma();
+	int writeLzma(const void *buf, size_t len);
 #endif
-	void flush();
+	bool flush();
 	void addtofilesqueue();
 	
 	bool isReadError() {
