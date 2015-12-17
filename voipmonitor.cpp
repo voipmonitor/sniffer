@@ -5109,6 +5109,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "dedup")			sverb.dedup = 1;
 						else if(verbparams[i] == "reassembly_sip")		sverb.reassembly_sip = 1;
 						else if(verbparams[i] == "reassembly_sip_output")	sverb.reassembly_sip_output = 1;
+						else if(verbparams[i] == "log_manager_cmd")		sverb.log_manager_cmd = 1;
 					}
 				} }
 				break;

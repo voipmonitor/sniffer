@@ -434,6 +434,9 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 	if(sverb.manager) {
 		cout << "manager command: " << buf << "|END" << endl;
 	}
+	if(sverb.log_manager_cmd) {
+		syslog(LOG_NOTICE, "manager command: %s", buf);
+	}
  
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;

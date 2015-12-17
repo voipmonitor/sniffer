@@ -349,6 +349,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	hash_counter = 0;
 	use_rtcp_mux = false;
 	rtp_from_multiple_sensors = false;
+	in_preprocess_queue_before_process_packet = 0;
 	
 	is_ssl = false;
 }
@@ -3966,8 +3967,12 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int
 
 Call*
 Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
-	       pcap_t *handle, int dlt, int sensorId) {
+	       pcap_t *handle, int dlt, int sensorId,
+	       bool preprocess_queue) {
 	Call *newcall = new FILE_LINE Call(call_id, call_id_len, time);
+	if(preprocess_queue) {
+		newcall->in_preprocess_queue_before_process_packet = true;
+	}
 
 	if(handle) {
 		newcall->useHandle = handle;
@@ -4053,7 +4058,7 @@ Calltable::cleanup( time_t currtime ) {
 			if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
 				call->force_terminate = true;
 			}
-		} else {
+		} else if(!call->in_preprocess_queue_before_process_packet) {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
 			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
@@ -4618,8 +4623,8 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 	unlock_custom_headers();
 }
 
-extern char * gettag(const void *ptr, unsigned long len, ParsePacket *parsePacket, 
-		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
+extern char * gettag_ext(const void *ptr, unsigned long len, ParsePacket *parsePacket, 
+			 const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
 void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket *parsePacket) {
 	lock_custom_headers();
 	unsigned long gettagLimitLen = 0;
@@ -4633,8 +4638,8 @@ void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket *pars
 				findHeader.append(":");
 			}
 			unsigned long l;
-			char *s = gettag(data, datalen, parsePacket,
-					 findHeader.c_str(), &l, &gettagLimitLen);
+			char *s = gettag_ext(data, datalen, parsePacket,
+					     findHeader.c_str(), &l, &gettagLimitLen);
 			if(l) {
 				char customHeaderContent[256];
 				memcpy(customHeaderContent, s, min(l, 255lu));

@@ -201,16 +201,39 @@ struct gre_hdr {
 };
 
 
-Call *process_packet(bool is_ssl, u_int64_t packet_number,
-		     unsigned int saddr, int source, unsigned int daddr, int dest, 
-		     char *data, int datalen, int dataoffset,
-		     pcap_t *handle, pcap_pkthdr *header, const u_char *packet, void *parsePacketPreproc,
-		     int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
-		     pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
-		     bool mainProcess = true, int sipOffset = 0);
 Call *process_packet(struct packet_s *packetS, void *parsePacketPreproc,
 		     int *was_rtp, int *voippacket, int forceSip = 0,
 		     bool mainProcess = true, int sipOffset = 0);
+inline Call *process_packet(bool is_ssl, u_int64_t packet_number,
+			    unsigned int saddr, int source, unsigned int daddr, int dest, 
+			    char *data, int datalen, int dataoffset,
+			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, void *parsePacketPreproc,
+			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
+			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
+			    bool mainProcess = true, int sipOffset = 0) {
+	packet_s packetS;
+	packetS.packet_number = packet_number;
+	packetS.saddr = saddr;
+	packetS.source = source;
+	packetS.daddr = daddr; 
+	packetS.dest = dest;
+	packetS.data = data; 
+	packetS.datalen = datalen; 
+	packetS.dataoffset = dataoffset;
+	packetS.handle = handle; 
+	packetS.header = *header; 
+	packetS.packet = packet; 
+	packetS.istcp = istcp; 
+	packetS.header_ip = header_ip; 
+	packetS.block_store = block_store; 
+	packetS.block_store_index =  block_store_index; 
+	packetS.dlt = dlt; 
+	packetS.sensor_id = sensor_id;
+	packetS.is_ssl = is_ssl;
+	return(process_packet(&packetS, parsePacketPreproc,
+			      was_rtp, voippacket, forceSip,
+			      mainProcess, sipOffset));
+}
 
 
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)

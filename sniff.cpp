@@ -220,8 +220,8 @@ extern bool _save_sip_history_all_requests;
 extern bool _save_sip_history_all_responses;extern int absolute_timeout;
 unsigned int glob_ssl_calls = 0;
 
-char * gettag(const void *ptr, unsigned long len, ParsePacket *parsePacket,
-	      const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
+inline char * gettag(const void *ptr, unsigned long len, ParsePacket *parsePacket,
+		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
 static void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, 
 				   unsigned int saddr, int source, unsigned int daddr, int dest,
 				   Call *call, const char *descr = NULL);
@@ -765,9 +765,15 @@ int check_sip20(char *data, unsigned long len, ParsePacket *parsePacket){
 	return ok;
 }
 
+char * gettag_ext(const void *ptr, unsigned long len, ParsePacket *parsePacket,
+		  const char *tag, unsigned long *gettaglen, unsigned long *limitLen) {
+	return(gettag(ptr, len, parsePacket,
+		      tag, gettaglen, limitLen));
+}
+
 /* get SIP tag from memory pointed to *ptr length of len */
-char * gettag(const void *ptr, unsigned long len, ParsePacket *parsePacket,
-	      const char *tag, unsigned long *gettaglen, unsigned long *limitLen) {
+inline char * gettag(const void *ptr, unsigned long len, ParsePacket *parsePacket,
+		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen) {
  
 	const char *rc_pp = NULL;
 	long l_pp;
@@ -1462,8 +1468,9 @@ void *rtp_read_thread_func(void *arg) {
 	return NULL;
 }
 
-Call *new_invite_register(packet_s *packetS, ParsePacket *parsePacket, 
-			  int sip_method, char *callidstr, bool *detectUserAgent){
+inline Call *new_invite_register(packet_s *packetS, ParsePacket *parsePacket, 
+				 int sip_method, char *callidstr, bool *detectUserAgent,
+				 bool preprocess_queue = false){
  
 	unsigned long gettagLimitLen = 0;
 	int res;
@@ -1668,7 +1675,7 @@ Call *new_invite_register(packet_s *packetS, ParsePacket *parsePacket,
 		glob_ssl_calls++;
 	}
 	// store this call only if it starts with invite
-	Call *call = calltable->add(callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header.ts.tv_sec, packetS->saddr, packetS->source, packetS->handle, packetS->dlt, packetS->sensor_id);
+	Call *call = calltable->add(callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header.ts.tv_sec, packetS->saddr, packetS->source, packetS->handle, packetS->dlt, packetS->sensor_id, preprocess_queue);
 	call->chantype = CHAN_SIP;
 	call->is_ssl = packetS->is_ssl;
 	call->set_first_packet_time(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec);
@@ -2078,51 +2085,20 @@ void process_sdp(Call *call, packet_s *packetS,
 	}
 }
 
-static void process_packet__parse_custom_headers(Call *call, char *data, int datalen, ParsePacket *parsePacket);
-static void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle);
-static int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
-static int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
-					   char *lastSIPresponse, bool *call_cancel_lsr487);
-static int parse_packet__message_content(char *message, unsigned int messageLength,
-					 char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber,
-					 bool maskMessage = false);
-static Call *process_packet__merge(packet_s *packetS, ParsePacket *parsePacket, char *callidstr, int *merged, long unsigned int *gettagLimitLen);
+static inline void process_packet__parse_custom_headers(Call *call, char *data, int datalen, ParsePacket *parsePacket);
+static inline void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle);
+static inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
+static inline int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
+						  char *lastSIPresponse, bool *call_cancel_lsr487);
+static inline int parse_packet__message_content(char *message, unsigned int messageLength,
+						char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber,
+						bool maskMessage = false);
+static inline Call *process_packet__merge(packet_s *packetS, ParsePacket *parsePacket, char *callidstr, int *merged, long unsigned int *gettagLimitLen, bool preprocess_queue = false);
 
 u_char *_process_packet_packet;
 pcap_pkthdr *_process_packet_header;
 char *_process_packet_data;
 int _process_packet_datalen;
-
-Call *process_packet(bool is_ssl, u_int64_t packet_number,
-		     unsigned int saddr, int source, unsigned int daddr, int dest, 
-		     char *data, int datalen, int dataoffset,
-		     pcap_t *handle, pcap_pkthdr *header, const u_char *packet, void *parsePacketPreproc,
-		     int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
-		     pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
-		     bool mainProcess, int sipOffset) {
-	packet_s packetS;
-	packetS.packet_number = packet_number;
-	packetS.saddr = saddr;
-	packetS.source = source;
-	packetS.daddr = daddr; 
-	packetS.dest = dest;
-	packetS.data = data; 
-	packetS.datalen = datalen; 
-	packetS.dataoffset = dataoffset;
-	packetS.handle = handle; 
-	packetS.header = *header; 
-	packetS.packet = packet; 
-	packetS.istcp = istcp; 
-	packetS.header_ip = header_ip; 
-	packetS.block_store = block_store; 
-	packetS.block_store_index =  block_store_index; 
-	packetS.dlt = dlt; 
-	packetS.sensor_id = sensor_id;
-	packetS.is_ssl = is_ssl;
-	return(process_packet(&packetS, parsePacketPreproc,
-			      was_rtp, voippacket, forceSip,
-			      mainProcess, sipOffset));
-}
 
 Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 		     int *was_rtp, int *voippacket, int forceSip,
@@ -2130,6 +2106,15 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
  
 	PreProcessPacket::packet_parse_s *parsePacketPreproc = (PreProcessPacket::packet_parse_s*)_parsePacketPreproc;
 	ParsePacket *parsePacket = parsePacketPreproc ? parsePacketPreproc->parse : NULL;
+	
+	if(parsePacketPreproc && parsePacketPreproc->isSip && PreProcessPacket::isEnableExtend()) {
+		if(parsePacketPreproc->_findCall && parsePacketPreproc->call) {
+			parsePacketPreproc->call->in_preprocess_queue_before_process_packet = false;
+		}
+		if(parsePacketPreproc->_createCall && parsePacketPreproc->call_created) {
+			parsePacketPreproc->call_created->in_preprocess_queue_before_process_packet = false;
+		}
+	}
  
 	_process_packet_packet = (u_char*)packetS->packet;
 	_process_packet_header = &packetS->header;
@@ -2244,7 +2229,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 		if(!parsePacket) {
 			parsePacket = &_parse_packet_global_process_packet;
 		}
-		unsigned long sipDatalen = parsePacketPreproc ? 
+		unsigned long sipDatalen = parsePacketPreproc && parsePacketPreproc->isSip ? 
 					    parsePacketPreproc->sipDataLen :
 					    parsePacket->parseData(packetS->data, packetS->datalen, true);
 		if(sipDatalen > 0) {
@@ -2276,7 +2261,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 			goto rtpcheck;
 		}
 
-		if(parsePacketPreproc && parsePacketPreproc->_getCallID_reassembly) {
+		if(parsePacketPreproc && parsePacketPreproc->isSip && parsePacketPreproc->_getCallID_reassembly) {
 			strncpy(callidstr, parsePacketPreproc->callid.c_str(), sizeof(callidstr));
 		} else {
 			s = gettag(packetS->data, packetS->datalen, parsePacket,
@@ -2339,7 +2324,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 			return(NULL);
 		}
 		
-		if(parsePacketPreproc && parsePacketPreproc->_getSipMethod) {
+		if(parsePacketPreproc && parsePacketPreproc->isSip && parsePacketPreproc->_getSipMethod) {
 			sip_method = parsePacketPreproc->sip_method;
 			sip_response = parsePacketPreproc->sip_response;
 		} else {
@@ -2405,7 +2390,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 			break;
 		}
 		
-		if(parsePacketPreproc && parsePacketPreproc->_getLastSipResponse) {
+		if(parsePacketPreproc && parsePacketPreproc->isSip && parsePacketPreproc->_getLastSipResponse) {
 			lastSIPresponseNum = parsePacketPreproc->lastSIPresponseNum;
 			strncpy(lastSIPresponse, parsePacketPreproc->lastSIPresponse.c_str(), sizeof(lastSIPresponse));
 			lastSIPresponse[sizeof(lastSIPresponse) - 1] = 0;
@@ -2417,9 +2402,11 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 
 		// find call */
 		merged = 0;
-		if(parsePacketPreproc && parsePacketPreproc->_findCall) {
-			call = parsePacketPreproc->call;
-			merged = parsePacketPreproc->merged;
+		if(parsePacketPreproc && parsePacketPreproc->isSip && PreProcessPacket::isEnableExtend()) {
+			if(parsePacketPreproc->_findCall) {
+				call = parsePacketPreproc->call;
+				merged = parsePacketPreproc->merged;
+			}
 		} else {
 			call = calltable->find_by_call_id(callidstr, strlen(callidstr));
 			if(call) {
@@ -2456,9 +2443,12 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 		if (!call){
 			// packet does not belongs to any call yet
 			if (sip_method == INVITE || sip_method == MESSAGE || (opt_sip_register && sip_method == REGISTER)) {
-				if(parsePacketPreproc && parsePacketPreproc->_createCall) {
-					call = parsePacketPreproc->call_created;
-					detectUserAgent = parsePacketPreproc->detectUserAgent;
+				if(parsePacketPreproc && parsePacketPreproc->isSip && PreProcessPacket::isEnableExtend() &&
+				   (sip_method == INVITE || sip_method == MESSAGE)) {
+					if(parsePacketPreproc->_createCall) {
+						call = parsePacketPreproc->call_created;
+						detectUserAgent = parsePacketPreproc->detectUserAgent;
+					}
 				} else {
 					call = new_invite_register(packetS, parsePacket,
 								   sip_method, callidstr, &detectUserAgent);
@@ -3402,10 +3392,14 @@ rtpcheck:
 	if(packetS->datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
 	if(processRtpPacketHash) {
 		processRtpPacketHash->push_packet_rtp_1(packetS,
-							parsePacketPreproc ? parsePacketPreproc->hash[0] : tuplehash(packetS->saddr, packetS->source),
-							parsePacketPreproc ? parsePacketPreproc->hash[1] : tuplehash(packetS->daddr, packetS->dest));
+							parsePacketPreproc && parsePacketPreproc->hash[0] ? 
+							 parsePacketPreproc->hash[0] : 
+							 tuplehash(packetS->saddr, packetS->source),
+							parsePacketPreproc && parsePacketPreproc->hash[1] ? 
+							 parsePacketPreproc->hash[1] : 
+							 tuplehash(packetS->daddr, packetS->dest));
 	} else {
-	if ((calls = calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, parsePacketPreproc ? parsePacketPreproc->hash[1] : 0))){
+	if ((calls = calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, parsePacketPreproc && parsePacketPreproc->hash[1] ? parsePacketPreproc->hash[1] : 0))){
 		++counter_rtp_packets;
 		// packet (RTP) by destination:port is already part of some stored call  
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
@@ -3466,7 +3460,7 @@ rtpcheck:
 				call->set_last_packet_time(packetS->header.ts.tv_sec);
 			}
 		}
-	} else if ((calls = calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, parsePacketPreproc ? parsePacketPreproc->hash[0] : 0))){
+	} else if ((calls = calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, parsePacketPreproc && parsePacketPreproc->hash[0] ? parsePacketPreproc->hash[0] : 0))){
 		++counter_rtp_packets;
 		// packet (RTP[C]) by source:port is already part of some stored call 
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
@@ -3644,7 +3638,7 @@ rtpcheck:
 	return NULL;
 }
 
-void process_packet__parse_custom_headers(Call *call, char *data, int datalen, ParsePacket *parsePacket) {
+inline void process_packet__parse_custom_headers(Call *call, char *data, int datalen, ParsePacket *parsePacket) {
 	/* obsolete
 	extern vector<dstring> opt_custom_headers_cdr;
 	extern vector<dstring> opt_custom_headers_message;
@@ -3676,7 +3670,7 @@ void process_packet__parse_custom_headers(Call *call, char *data, int datalen, P
 	}
 }
 
-void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
+inline void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 
 	if(verbosity > 0 && is_read_from_file_simple()) {
 		if(opt_dup_check) {
@@ -3711,7 +3705,7 @@ void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 #endif
 }
 
-int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response) {
+inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response) {
 	int sip_method = 0;
 	*sip_response =  false;
 	// parse SIP method 
@@ -3846,8 +3840,8 @@ int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip
 	return(sip_method);
 }
 
-int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
-				    char *lastSIPresponse, bool *call_cancel_lsr487) {
+inline int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
+					   char *lastSIPresponse, bool *call_cancel_lsr487) {
 	strcpy(lastSIPresponse, "NO RESPONSE");
 	*call_cancel_lsr487 = false;
 	int lastSIPresponseNum = 0;
@@ -3884,7 +3878,7 @@ int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_me
 	return(lastSIPresponseNum);
 }
 
-int parse_packet__message(char *data, unsigned int datalen, ParsePacket *parsePacket, bool strictCheckLength,
+inline int parse_packet__message(char *data, unsigned int datalen, ParsePacket *parsePacket, bool strictCheckLength,
 			  char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber, unsigned int *rsltContentLength,
 			  bool maskMessage) {
 	if(rsltMessage) {
@@ -3945,8 +3939,8 @@ int parse_packet__message(char *data, unsigned int datalen, ParsePacket *parsePa
 	return(setMessage);
 }
 
-Call *process_packet__merge(packet_s *packetS, ParsePacket *parsePacket, char *callidstr, int *merged, long unsigned int *gettagLimitLen) {
-	Call *call = calltable->find_by_mergecall_id(callidstr, strlen(callidstr));
+inline Call *process_packet__merge(packet_s *packetS, ParsePacket *parsePacket, char *callidstr, int *merged, long unsigned int *gettagLimitLen, bool preprocess_queue) {
+	Call *call = calltable->find_by_mergecall_id(callidstr, strlen(callidstr), preprocess_queue);
 	if(!call) {
 		// this call-id is not yet tracked either in calls list or callidmerge list 
 		// check if there is SIP callidmerge_header which contains parent call-id call
@@ -3973,7 +3967,7 @@ Call *process_packet__merge(packet_s *packetS, ParsePacket *parsePacket, char *c
 				l2 = enclen;
 			}
 			// check if the sniffer know about this call-id in mergeheader 
-			call = calltable->find_by_call_id(s2, l2);
+			call = calltable->find_by_call_id(s2, l2, preprocess_queue);
 			if(!call) {
 				// there is no call with the call-id in merge header - this call will be created as new
 			} else {
@@ -5691,7 +5685,7 @@ void PreProcessPacket::sipProcess_getLastSipResponse(packet_parse_s *parse_packe
 
 void PreProcessPacket::sipProcess_findCall(packet_parse_s *parse_packet) {
 	packet_s *_packet = &parse_packet->packet;
-	parse_packet->call = calltable->find_by_call_id((char*)parse_packet->callid.c_str(), parse_packet->callid.length());
+	parse_packet->call = calltable->find_by_call_id((char*)parse_packet->callid.c_str(), parse_packet->callid.length(), true);
 	if(parse_packet->call) {
 		if(parse_packet->call->type == REGISTER) {
 			parse_packet->call = NULL;
@@ -5705,7 +5699,7 @@ void PreProcessPacket::sipProcess_findCall(packet_parse_s *parse_packet) {
 			parse_packet->call->cancel_lsr487 = true;
 		}
 	} else if(opt_callidmerge_header[0] != '\0') {
-		parse_packet->call = process_packet__merge(_packet, parse_packet->parse, (char*)parse_packet->callid.c_str(), &parse_packet->merged, NULL);
+		parse_packet->call = process_packet__merge(_packet, parse_packet->parse, (char*)parse_packet->callid.c_str(), &parse_packet->merged, NULL, true);
 	}
 	parse_packet->_findCall = true;
 }

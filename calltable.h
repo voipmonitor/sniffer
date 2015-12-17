@@ -704,6 +704,7 @@ public:
 	volatile int hash_counter;
 	volatile bool use_rtcp_mux;
 	bool rtp_from_multiple_sensors;
+	volatile int in_preprocess_queue_before_process_packet;
 };
 
 typedef struct {
@@ -822,7 +823,7 @@ public:
 	 *
 	 * @return reference of the new Call class
 	*/
-	Call *add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port, pcap_t *handle, int dlt, int sensorId);
+	Call *add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port, pcap_t *handle, int dlt, int sensorId, bool preprocess_queue = false);
 
 	/**
 	 * @brief find Call by call_id
@@ -832,7 +833,7 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	Call *find_by_call_id(char *call_id, unsigned long call_id_len) {
+	Call *find_by_call_id(char *call_id, unsigned long call_id_len, bool preprocess_queue = false) {
 		Call *rslt_call = NULL;
 		string call_idS = string(call_id, call_id_len);
 		lock_calls_listMAP();
@@ -840,11 +841,14 @@ public:
 		if(callMAPIT != calls_listMAP.end() &&
 		   !callMAPIT->second->end_call) {
 			rslt_call = callMAPIT->second;
+			if(preprocess_queue) {
+				rslt_call->in_preprocess_queue_before_process_packet = true;
+			}
 		}
 		unlock_calls_listMAP();
 		return(rslt_call);
 	}
-	Call *find_by_mergecall_id(char *call_id, unsigned long call_id_len) {
+	Call *find_by_mergecall_id(char *call_id, unsigned long call_id_len, bool preprocess_queue = false) {
 		Call *rslt_call = NULL;
 		string call_idS = string(call_id, call_id_len);
 		lock_calls_mergeMAP();
@@ -852,6 +856,9 @@ public:
 		if(mergeMAPIT != calls_mergeMAP.end() &&
 		   !mergeMAPIT->second->end_call) {
 			rslt_call = mergeMAPIT->second;
+			if(preprocess_queue) {
+				rslt_call->in_preprocess_queue_before_process_packet = true;
+			}
 		}
 		unlock_calls_mergeMAP();
 		return(rslt_call);
