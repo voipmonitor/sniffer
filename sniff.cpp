@@ -5706,7 +5706,8 @@ void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
 	if(parse_packet->_findCall && !parse_packet->call &&
 	   (parse_packet->sip_method == INVITE || parse_packet->sip_method == MESSAGE)) {
 		parse_packet->call_created = new_invite_register(&parse_packet->packet, parse_packet->parse,
-								 parse_packet->sip_method, (char*)parse_packet->callid.c_str(), &parse_packet->detectUserAgent);
+								 parse_packet->sip_method, (char*)parse_packet->callid.c_str(), &parse_packet->detectUserAgent,
+								 true);
 		parse_packet->_createCall = true;
 	}
 }
