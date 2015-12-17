@@ -5469,6 +5469,18 @@ PreProcessPacket::~PreProcessPacket() {
 }
 
 void *PreProcessPacket::outThreadFunction() {
+	if(this->typePreProcessThread == ppt_extend) {
+		 pthread_t thId = pthread_self();
+		 pthread_attr_t thAttr;
+		 int policy = 0;
+		 int max_prio_for_policy = 0;
+
+		 pthread_attr_init(&thAttr);
+		 pthread_attr_getschedpolicy(&thAttr, &policy);
+		 max_prio_for_policy = sched_get_priority_max(policy);
+		 pthread_setschedprio(thId, max_prio_for_policy);
+		 pthread_attr_destroy(&thAttr);
+	}
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start PreProcessPacket out thread %i", this->outThreadId);
 	unsigned usleepCounter = 0;
@@ -5596,8 +5608,10 @@ bool PreProcessPacket::sipProcess_base(packet_parse_s *parse_packet) {
 }
 
 bool PreProcessPacket::sipProcess_extend(packet_parse_s *parse_packet) {
-	this->sipProcess_findCall(parse_packet);
-	this->sipProcess_createCall(parse_packet);
+	if(parse_packet->sip_method != REGISTER) {
+		this->sipProcess_findCall(parse_packet);
+		this->sipProcess_createCall(parse_packet);
+	}
 	return(true);
 }
 
