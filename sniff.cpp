@@ -2402,11 +2402,10 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 
 		// find call */
 		merged = 0;
-		if(parsePacketPreproc && parsePacketPreproc->isSip && PreProcessPacket::isEnableExtend()) {
-			if(parsePacketPreproc->_findCall) {
-				call = parsePacketPreproc->call;
-				merged = parsePacketPreproc->merged;
-			}
+		if(parsePacketPreproc && parsePacketPreproc->isSip && PreProcessPacket::isEnableExtend() &&
+		   parsePacketPreproc->_findCall) {
+			call = parsePacketPreproc->call;
+			merged = parsePacketPreproc->merged;
 		} else {
 			call = calltable->find_by_call_id(callidstr, strlen(callidstr));
 			if(call) {
@@ -2444,11 +2443,10 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 			// packet does not belongs to any call yet
 			if (sip_method == INVITE || sip_method == MESSAGE || (opt_sip_register && sip_method == REGISTER)) {
 				if(parsePacketPreproc && parsePacketPreproc->isSip && PreProcessPacket::isEnableExtend() &&
+				   parsePacketPreproc->_createCall &&
 				   (sip_method == INVITE || sip_method == MESSAGE)) {
-					if(parsePacketPreproc->_createCall) {
-						call = parsePacketPreproc->call_created;
-						detectUserAgent = parsePacketPreproc->detectUserAgent;
-					}
+					call = parsePacketPreproc->call_created;
+					detectUserAgent = parsePacketPreproc->detectUserAgent;
 				} else {
 					call = new_invite_register(packetS, parsePacket,
 								   sip_method, callidstr, &detectUserAgent);
