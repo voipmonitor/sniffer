@@ -224,7 +224,7 @@ public:
 			}
 		}
 		packet_parse_s **batch;
-		unsigned count;
+		volatile unsigned count;
 		volatile int used;
 		unsigned max_count;
 		batch_packet_parse_s *batchInPrevQueue;
@@ -302,9 +302,10 @@ public:
 				++usleepCounter;
 			}
 			qring_push_index = this->writeit + 1;
+			qring_push_index_count = 0;
 		}
 		batch_packet_parse_s *_batch_parse_packet = this->qring[qring_push_index - 1];
-		packet_parse_s *_parse_packet = _batch_parse_packet->batch[_batch_parse_packet->count];
+		packet_parse_s *_parse_packet = _batch_parse_packet->batch[qring_push_index_count];
 		if(packetParseS) {
 			*_parse_packet  = *packetParseS;
 		} else {
@@ -358,10 +359,11 @@ public:
 			break;
 		}
 		
-		++_batch_parse_packet->count;
-		if(_batch_parse_packet->count == _batch_parse_packet->max_count || 
+		++qring_push_index_count;
+		if(qring_push_index_count == _batch_parse_packet->max_count || 
 		   pushBatch) {
 			_batch_parse_packet->batchInPrevQueue = batchInPrevQueue;
+			_batch_parse_packet->count = qring_push_index_count;
 			_batch_parse_packet->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
@@ -369,6 +371,7 @@ public:
 				this->writeit++;
 			}
 			qring_push_index = 0;
+			qring_push_index_count = 0;
 		}
 		if(typePreProcessThread == ppt_detach &&
 		   opt_enable_ssl && !disableLock) {
@@ -414,6 +417,7 @@ private:
 	unsigned int qring_length;
 	batch_packet_parse_s **qring;
 	unsigned qring_push_index;
+	unsigned qring_push_index_count;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
@@ -464,7 +468,7 @@ public:
 			delete [] batch;
 		}
 		packet_rtp_s **batch;
-		unsigned count;
+		volatile unsigned count;
 		volatile int used;
 		unsigned max_count;
 	};
@@ -486,14 +490,16 @@ public:
 				++usleepCounter;
 			}
 			qring_push_index = this->writeit + 1;
+			qring_push_index_count = 0;
 		}
 		batch_packet_rtp_s *_batch_rtp_packet = this->qring[qring_push_index - 1];
-		_batch_rtp_packet->batch[_batch_rtp_packet->count]->packet = *packetS;
-		_batch_rtp_packet->batch[_batch_rtp_packet->count]->hash_s = hash_s;
-		_batch_rtp_packet->batch[_batch_rtp_packet->count]->hash_d = hash_d;
-		_batch_rtp_packet->batch[_batch_rtp_packet->count]->call_info_length = -1;
-		++_batch_rtp_packet->count;
-		if(_batch_rtp_packet->count == _batch_rtp_packet->max_count) {
+		_batch_rtp_packet->batch[qring_push_index_count]->packet = *packetS;
+		_batch_rtp_packet->batch[qring_push_index_count]->hash_s = hash_s;
+		_batch_rtp_packet->batch[qring_push_index_count]->hash_d = hash_d;
+		_batch_rtp_packet->batch[qring_push_index_count]->call_info_length = -1;
+		++qring_push_index_count;
+		if(qring_push_index_count == _batch_rtp_packet->max_count) {
+			_batch_rtp_packet->count = qring_push_index_count;
 			_batch_rtp_packet->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
@@ -501,6 +507,7 @@ public:
 				this->writeit++;
 			}
 			qring_push_index = 0;
+			qring_push_index_count = 0;
 		}
 	}
 	inline void push_packet_rtp_2(packet_rtp_s *packet) {
@@ -514,11 +521,13 @@ public:
 				++usleepCounter;
 			}
 			qring_push_index = this->writeit + 1;
+			qring_push_index_count = 0;
 		}
 		batch_packet_rtp_s *_batch_rtp_packet = this->qring[qring_push_index - 1];
-		*_batch_rtp_packet->batch[_batch_rtp_packet->count] = *packet;
-		++_batch_rtp_packet->count;
-		if(_batch_rtp_packet->count == _batch_rtp_packet->max_count) {
+		*_batch_rtp_packet->batch[qring_push_index_count] = *packet;
+		++qring_push_index_count;
+		if(qring_push_index_count == _batch_rtp_packet->max_count) {
+			_batch_rtp_packet->count = qring_push_index_count;
 			_batch_rtp_packet->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
@@ -526,6 +535,7 @@ public:
 				this->writeit++;
 			}
 			qring_push_index = 0;
+			qring_push_index_count = 0;
 		}
 	}
 	void preparePstatData(bool nextThread = false);
@@ -547,6 +557,7 @@ private:
 	unsigned int qring_length;
 	batch_packet_rtp_s **qring;
 	unsigned qring_push_index;
+	unsigned qring_push_index_count;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
