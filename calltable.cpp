@@ -350,6 +350,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	use_rtcp_mux = false;
 	rtp_from_multiple_sensors = false;
 	in_preprocess_queue_before_process_packet = 0;
+	in_preprocess_queue_before_process_packet_at = 0;
 	
 	is_ssl = false;
 }
@@ -3971,7 +3972,7 @@ Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t 
 	       bool preprocess_queue) {
 	Call *newcall = new FILE_LINE Call(call_id, call_id_len, time);
 	if(preprocess_queue) {
-		newcall->in_preprocess_queue_before_process_packet = true;
+		newcall->in_preprocess_queue_before_process_packet = 1;
 	}
 
 	if(handle) {
@@ -4058,7 +4059,8 @@ Calltable::cleanup( time_t currtime ) {
 			if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
 				call->force_terminate = true;
 			}
-		} else if(!call->in_preprocess_queue_before_process_packet) {
+		} else if(call->in_preprocess_queue_before_process_packet <= 0 ||
+			  (call->in_preprocess_queue_before_process_packet_at && call->in_preprocess_queue_before_process_packet_at < currtime - 15)) {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
 			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
