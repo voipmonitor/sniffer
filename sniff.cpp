@@ -5491,7 +5491,7 @@ void *PreProcessPacket::outThreadFunction() {
 				_batch_parse_packet->used = -1;
 			}
 			for(unsigned batch_index = 0; batch_index < _batch_parse_packet->count; batch_index++) {
-				packet_parse_s *_parse_packet = &_batch_parse_packet->batch[batch_index];
+				packet_parse_s *_parse_packet = _batch_parse_packet->batch[batch_index];
 				packet_s *_packet = &_parse_packet->packet;
 				bool do_process_packet =  false;
 				switch(this->typePreProcessThread) {
@@ -5813,7 +5813,7 @@ void *ProcessRtpPacket::nextThreadFunction() {
 		}
 		if(this->hash_batch_thread_process) {
 			for(unsigned batch_index = this->hash_batch_thread_process->count / 2; batch_index < this->hash_batch_thread_process->count; batch_index++) {
-				packet_rtp_s *_packet = &this->hash_batch_thread_process->batch[batch_index];
+				packet_rtp_s *_packet = this->hash_batch_thread_process->batch[batch_index];
 				this->find_hash(_packet, false);
 			}
 			this->hash_batch_thread_process = 0;
@@ -5840,7 +5840,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_rtp_s *_batch_rtp_packet) {
 				sem_post(&sem_sync_next_thread[0]);
 			}
 			for(unsigned batch_index = 0; batch_index < _batch_rtp_packet->count / 2; batch_index++) {
-				packet_rtp_s *_packet = &_batch_rtp_packet->batch[batch_index];
+				packet_rtp_s *_packet = _batch_rtp_packet->batch[batch_index];
 				this->find_hash(_packet, false);
 			}
 			if(sem_sync_next_thread[1].__align) {
@@ -5852,13 +5852,13 @@ void ProcessRtpPacket::rtp_batch(batch_packet_rtp_s *_batch_rtp_packet) {
 			}
 		} else {
 			for(unsigned batch_index = 0; batch_index < _batch_rtp_packet->count; batch_index++) {
-				packet_rtp_s *_packet = &_batch_rtp_packet->batch[batch_index];
+				packet_rtp_s *_packet = _batch_rtp_packet->batch[batch_index];
 				this->find_hash(_packet, false);
 			}
 		}
 		calltable->unlock_calls_hash();
 		for(unsigned batch_index = 0; batch_index < _batch_rtp_packet->count; batch_index++) {
-			packet_rtp_s *_packet = &_batch_rtp_packet->batch[batch_index];
+			packet_rtp_s *_packet = _batch_rtp_packet->batch[batch_index];
 			ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
 							       processRtpPacketDistribute[min(_packet->packet.source, _packet->packet.dest) / 2 % opt_enable_process_rtp_packet] :
 							       processRtpPacketDistribute[0];
@@ -5866,7 +5866,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_rtp_s *_batch_rtp_packet) {
 		}
 	} else {
 		for(unsigned batch_index = 0; batch_index < _batch_rtp_packet->count; batch_index++) {
-			packet_rtp_s *_packet = &_batch_rtp_packet->batch[batch_index];
+			packet_rtp_s *_packet = _batch_rtp_packet->batch[batch_index];
 			if(_packet->call_info_length < 0) {
 				this->find_hash(_packet);
 			}

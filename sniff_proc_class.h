@@ -195,29 +195,35 @@ public:
 		batch_packet_parse_s(unsigned max_count) {
 			count = 0;
 			used = 0;
-			batch = new packet_parse_s[max_count];
+			batch = new packet_parse_s*[max_count];
+			for(unsigned i = 0; i < max_count; i++) {
+				batch[i] = new packet_parse_s;
+			}
 			this->max_count = max_count;
 			this->batchInPrevQueue = NULL;
 		}
 		~batch_packet_parse_s() {
+			for(unsigned i = 0; i < max_count; i++) {
+				delete batch[i];
+			}
 			delete [] batch;
 		}
 		void allocParse() {
 			for(unsigned i = 0; i < max_count; i++) {
-				batch[i].parse = new FILE_LINE ParsePacket;
+				batch[i]->parse = new FILE_LINE ParsePacket;
 			}
 		}
 		void deleteParse() {
 			for(unsigned i = 0; i < max_count; i++) {
-				delete batch[i].parse;
+				delete batch[i]->parse;
 			}
 		}
 		void setStdParse() {
 			for(unsigned i = 0; i < max_count; i++) {
-				batch[i].parse->setStdParse();
+				batch[i]->parse->setStdParse();
 			}
 		}
-		packet_parse_s *batch;
+		packet_parse_s **batch;
 		unsigned count;
 		volatile int used;
 		unsigned max_count;
@@ -298,7 +304,7 @@ public:
 			qring_push_index = this->writeit + 1;
 		}
 		batch_packet_parse_s *_batch_parse_packet = this->qring[qring_push_index - 1];
-		packet_parse_s *_parse_packet = &_batch_parse_packet->batch[_batch_parse_packet->count];
+		packet_parse_s *_parse_packet = _batch_parse_packet->batch[_batch_parse_packet->count];
 		if(packetParseS) {
 			*_parse_packet  = *packetParseS;
 		} else {
@@ -445,13 +451,19 @@ public:
 		batch_packet_rtp_s(unsigned max_count) {
 			count = 0;
 			used = 0;
-			batch = new packet_rtp_s[max_count];
+			batch = new packet_rtp_s*[max_count];
+			for(unsigned i = 0; i < max_count; i++) {
+				batch[i] = new packet_rtp_s;
+			}
 			this->max_count = max_count;
 		}
 		~batch_packet_rtp_s() {
+			for(unsigned i = 0; i < max_count; i++) {
+				delete batch[i];
+			}
 			delete [] batch;
 		}
-		packet_rtp_s *batch;
+		packet_rtp_s **batch;
 		unsigned count;
 		volatile int used;
 		unsigned max_count;
@@ -476,10 +488,10 @@ public:
 			qring_push_index = this->writeit + 1;
 		}
 		batch_packet_rtp_s *_batch_rtp_packet = this->qring[qring_push_index - 1];
-		_batch_rtp_packet->batch[_batch_rtp_packet->count].packet = *packetS;
-		_batch_rtp_packet->batch[_batch_rtp_packet->count].hash_s = hash_s;
-		_batch_rtp_packet->batch[_batch_rtp_packet->count].hash_d = hash_d;
-		_batch_rtp_packet->batch[_batch_rtp_packet->count].call_info_length = -1;
+		_batch_rtp_packet->batch[_batch_rtp_packet->count]->packet = *packetS;
+		_batch_rtp_packet->batch[_batch_rtp_packet->count]->hash_s = hash_s;
+		_batch_rtp_packet->batch[_batch_rtp_packet->count]->hash_d = hash_d;
+		_batch_rtp_packet->batch[_batch_rtp_packet->count]->call_info_length = -1;
 		++_batch_rtp_packet->count;
 		if(_batch_rtp_packet->count == _batch_rtp_packet->max_count) {
 			_batch_rtp_packet->used = 1;
@@ -504,7 +516,7 @@ public:
 			qring_push_index = this->writeit + 1;
 		}
 		batch_packet_rtp_s *_batch_rtp_packet = this->qring[qring_push_index - 1];
-		_batch_rtp_packet->batch[_batch_rtp_packet->count] = *packet;
+		*_batch_rtp_packet->batch[_batch_rtp_packet->count] = *packet;
 		++_batch_rtp_packet->count;
 		if(_batch_rtp_packet->count == _batch_rtp_packet->max_count) {
 			_batch_rtp_packet->used = 1;
