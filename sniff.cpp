@@ -5450,6 +5450,7 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 		}
 	}
 	this->qring_push_index = 0;
+	this->qring_push_index_count = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->outThreadId = 0;
 	this->_sync_push = 0;
@@ -5750,6 +5751,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 		this->qring[i]->used = 0;
 	}
 	this->qring_push_index = 0;
+	this->qring_push_index_count = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->outThreadId = 0;
 	this->nextThreadId = 0;
