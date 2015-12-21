@@ -4186,7 +4186,9 @@ void cConfig::addConfigItems() {
 					->addValues("yes:1|y:1|no:0|n:0")
 					->addAlias("enable_process_rtp_packet"));
 					expert();
-					addConfigItem(new cConfigItem_yesno("process_rtp_packets_hash_next_thread", &opt_process_rtp_packets_hash_next_thread));
+					addConfigItem((new cConfigItem_integer("process_rtp_packets_hash_next_thread", &opt_process_rtp_packets_hash_next_thread))
+						->setMaximum(MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS)
+						->addValues("yes:1|y:1|no:0|n:0"));
 					addConfigItem((new cConfigItem_yesno("process_rtp_packets_hash_next_thread_sem_sync", &opt_process_rtp_packets_hash_next_thread_sem_sync))
 						->addValues("2:2"));
 					addConfigItem(new cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
@@ -4917,7 +4919,6 @@ void get_command_line_arguments() {
 				opt_skinny = 1;
 				break;
 			case 201:
-				printf("test\n");
 				opt_saveaudio_stereo = 0;
 				break;
 			case 202:
@@ -6696,7 +6697,7 @@ int eval_config(string inistr) {
 		opt_enable_process_rtp_packet = atoi(value) > 1 ? min(atoi(value), MAX_PROCESS_RTP_PACKET_THREADS) : yesno(value);
 	}
 	if((value = ini.GetValue("general", "process_rtp_packets_hash_next_thread", NULL))) {
-		opt_process_rtp_packets_hash_next_thread = yesno(value);
+		opt_process_rtp_packets_hash_next_thread = atoi(value) > 1 ? min(atoi(value), MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS) : yesno(value);
 	}
 	if((value = ini.GetValue("general", "process_rtp_packets_hash_next_thread_sem_sync", NULL))) {
 		opt_process_rtp_packets_hash_next_thread_sem_sync = atoi(value) == 2 ? 2 :yesno(value);

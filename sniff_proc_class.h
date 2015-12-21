@@ -472,6 +472,10 @@ public:
 		volatile int used;
 		unsigned max_count;
 	};
+	struct arg_next_thread {
+		ProcessRtpPacket *processRtpPacket;
+		int next_thread_id;
+	};
 public:
 	ProcessRtpPacket(eType type, int indexThread);
 	~ProcessRtpPacket();
@@ -538,20 +542,20 @@ public:
 			qring_push_index_count = 0;
 		}
 	}
-	void preparePstatData(bool nextThread = false);
-	double getCpuUsagePerc(bool preparePstatData, bool nextThread = false);
+	void preparePstatData(int nextThreadId = 0);
+	double getCpuUsagePerc(bool preparePstatData, int nextThreadId = 0);
 	void terminate();
 	static void autoStartProcessRtpPacket();
 private:
 	void *outThreadFunction();
-	void *nextThreadFunction();
+	void *nextThreadFunction(int next_thread_index_plus);
 	void rtp_batch(batch_packet_rtp_s *_batch_packet);
 	void find_hash(packet_rtp_s *_packet, bool lock = true);
 public:
 	eType type;
 	int indexThread;
 	int outThreadId;
-	int nextThreadId;
+	int nextThreadId[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 private:
 	unsigned int qring_batch_item_length;
 	unsigned int qring_length;
@@ -561,11 +565,11 @@ private:
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
-	pthread_t next_thread_handle;
-	pstat_data threadPstatData[2][2];
+	pthread_t next_thread_handle[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
+	pstat_data threadPstatData[1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
 	bool term_processRtp;
-	volatile batch_packet_rtp_s *hash_batch_thread_process;
-	sem_t sem_sync_next_thread[2];
+	volatile batch_packet_rtp_s *hash_batch_thread_process[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
+	sem_t sem_sync_next_thread[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);
 };

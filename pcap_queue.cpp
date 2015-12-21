@@ -1542,17 +1542,17 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		} 
 		rrdtCPU_t2 = last_t2cpu_preprocess_packet_out_thread > -2 ? last_t2cpu_preprocess_packet_out_thread : t2cpu;
 		if(processRtpPacketHash) {
-			for(int i = 0; i < 2; i++) {
+			for(int i = 0; i < 1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
 				double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(true, i);
 				if(t2cpu_process_rtp_packet_out_thread >= 0) {
-					outStrStat << "/" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+					outStrStat << "/" << "rh" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
 				}
 			}
 			for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
 				if(processRtpPacketDistribute[i]) {
 					double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(true);
 					if(t2cpu_process_rtp_packet_out_thread >= 0) {
-						outStrStat << "/" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+						outStrStat << "/" << "rd" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
 					}
 				}
 			}
