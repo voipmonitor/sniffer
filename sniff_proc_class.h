@@ -393,6 +393,13 @@ public:
 		extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
 		return(preProcessPacket[2] != NULL);
 	}
+	double getQringFillingPerc() {
+		unsigned int _readit = readit;
+		unsigned int _writeit = writeit;
+		return(_writeit >= _readit ?
+			(double)(_writeit - _readit) / qring_length * 100 :
+			(double)(qring_length - _readit + _writeit) / qring_length * 100);
+	}
 private:
 	bool sipProcess_base(packet_parse_s *parse_packet);
 	bool sipProcess_extend(packet_parse_s *parse_packet);
@@ -546,6 +553,13 @@ public:
 	double getCpuUsagePerc(bool preparePstatData, int nextThreadId = 0);
 	void terminate();
 	static void autoStartProcessRtpPacket();
+	double getQringFillingPerc() {
+		unsigned int _readit = readit;
+		unsigned int _writeit = writeit;
+		return(_writeit >= _readit ?
+			(double)(_writeit - _readit) / qring_length * 100 :
+			(double)(qring_length - _readit + _writeit) / qring_length * 100);
+	}
 private:
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);

@@ -5437,7 +5437,6 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	this->typePreProcessThread = typePreProcessThread;
 	this->qring_batch_item_length = min(opt_preprocess_packets_qring_length / 10, 1000u);
 	this->qring_length = opt_preprocess_packets_qring_length / this->qring_batch_item_length;
-	
 	this->readit = 0;
 	this->writeit = 0;
 	this->qring = new FILE_LINE batch_packet_parse_s*[this->qring_length];
@@ -5475,7 +5474,6 @@ void *PreProcessPacket::outThreadFunction() {
 		 pthread_attr_t thAttr;
 		 int policy = 0;
 		 int max_prio_for_policy = 0;
-
 		 pthread_attr_init(&thAttr);
 		 pthread_attr_getschedpolicy(&thAttr, &policy);
 		 max_prio_for_policy = sched_get_priority_max(policy);
@@ -5794,7 +5792,6 @@ void *ProcessRtpPacket::outThreadFunction() {
 		 pthread_attr_t thAttr;
 		 int policy = 0;
 		 int max_prio_for_policy = 0;
-
 		 pthread_attr_init(&thAttr);
 		 pthread_attr_getschedpolicy(&thAttr, &policy);
 		 max_prio_for_policy = sched_get_priority_max(policy);

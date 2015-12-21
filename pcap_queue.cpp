@@ -1536,6 +1536,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
 				if(t2cpu_preprocess_packet_out_thread >= 0) {
 					outStrStat << "/" << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+					if(sverb.qring_stat) {
+						double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
+						if(qringFillingPerc > 0) {
+							outStrStat << "r" << qringFillingPerc;
+						}
+					}
 				}
 				last_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
 			}
@@ -1546,6 +1552,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(true, i);
 				if(t2cpu_process_rtp_packet_out_thread >= 0) {
 					outStrStat << "/" << "rh" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+					if(i == 0 && sverb.qring_stat) {
+						double qringFillingPerc = processRtpPacketHash->getQringFillingPerc();
+						if(qringFillingPerc > 0) {
+							outStrStat << "r" << qringFillingPerc;
+						}
+					}
 				}
 			}
 			for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
@@ -1553,6 +1565,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(true);
 					if(t2cpu_process_rtp_packet_out_thread >= 0) {
 						outStrStat << "/" << "rd" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+						if(sverb.qring_stat) {
+							double qringFillingPerc = processRtpPacketDistribute[i]->getQringFillingPerc();
+							if(qringFillingPerc > 0) {
+								outStrStat << "r" << qringFillingPerc;
+							}
+						}
 					}
 				}
 			}
