@@ -357,7 +357,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	char *read_buffer = new FILE_LINE char[T_BLOCKSIZE];
 	bool decompressFailed = false;
 	list<u_int64_t> tarPos;
-	if(tarPosString && *tarPosString) {
+	if(tarPosString && *tarPosString && *tarPosString != 'x') {
 		vector<string> tarPosStr = split(tarPosString, ",");
 		for(size_t i = 0; i < tarPosStr.size(); i++) {
 			tarPos.push_back(atoll(tarPosStr[i].c_str()));
@@ -449,10 +449,10 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 				      GZIP_HEADER_CHECK(read_buffer, 0) &&
 				      GZIP_HEADER_CHECK(read_buffer, GZIP_HEADER_LENGTH)) {
 					char *new_read_buffer = new FILE_LINE char[T_BLOCKSIZE];
-					memcpy(new_read_buffer, read_buffer + 10, read_size - 10);
+					memcpy(new_read_buffer, read_buffer + GZIP_HEADER_LENGTH, read_size - GZIP_HEADER_LENGTH);
 					delete [] read_buffer;
 					read_buffer = new_read_buffer;
-					read_size_for_decompress -= 10;
+					read_size_for_decompress -= GZIP_HEADER_LENGTH;
 				}
 				for(size_t pos = 1; pos < read_size - GZIP_HEADER_CHECK_LENGTH; pos ++) {
 					if(GZIP_HEADER_CHECK(read_buffer, pos)) {
