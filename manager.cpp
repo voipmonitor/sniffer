@@ -649,7 +649,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		} else if(strstr(buf, "reindexfiles_date")) {
 			reindex_date(date);
 		} else {
-			convert_filesindex("call from manager");
+			do_convert_filesindex("call from manager");
 		}
 		snprintf(sendbuf, BUFSIZE, "done\r\n");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){

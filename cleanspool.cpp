@@ -59,9 +59,11 @@ bool suspendCleanspool = false;
 
 static unsigned int maxpoolsize_set = 0;
 static bool critical_low_space = false;
+static bool do_convert_filesindex_flag = false;
+static const char *do_convert_filesindex_reason = NULL;
 
 
-#define DISABLE_CLEANSPOOL (suspendCleanspool && !critical_low_space)
+#define DISABLE_CLEANSPOOL ((suspendCleanspool && !critical_low_space) || do_convert_filesindex_flag)
 
 void unlinkfileslist(string fname, string callFrom) {
 	if(DISABLE_CLEANSPOOL) {
@@ -1120,6 +1122,11 @@ void convert_filesindex(const char *reason) {
 	sleep(1);
 }
 
+void do_convert_filesindex(const char *reason) {
+	do_convert_filesindex_flag = true;
+	do_convert_filesindex_reason = reason;
+}
+
 void check_filesindex() {
 	string path = "./";
 	dirent* de;
@@ -1841,9 +1848,15 @@ bool isSetCleanspoolParameters() {
 void *clean_spooldir(void *dummy) {
 	if(debugclean) syslog(LOG_ERR, "run clean_spooldir()");
 	while(!is_terminating()) {
-		if(!check_exists_act_records_in_files() ||
+		if(do_convert_filesindex_flag ||
+		   !check_exists_act_records_in_files() ||
 		   !check_exists_act_files_in_filesindex()) {
-			convert_filesindex("call from clean_spooldir - not exists act records in files and act files in filesindex");
+			const char *reason = do_convert_filesindex_flag ? 
+					      (do_convert_filesindex_reason ? do_convert_filesindex_reason : "set do_convert_filesindex_flag") :
+					      "call from clean_spooldir - not exists act records in files and act files in filesindex";
+			do_convert_filesindex_flag = false;
+			do_convert_filesindex_reason = NULL;
+			convert_filesindex(reason);
 		}
 		bool timeOk = false;
 		if(opt_cleanspool_enable_run_hour_from >= 0 &&
@@ -1919,7 +1932,7 @@ void *clean_spooldir(void *dummy) {
 			maxpoolsize_set = 0;
 			critical_low_space = false;
 		}
-		for(int i = 0; i < 300 && !is_terminating(); i++) {
+		for(int i = 0; i < 300 && !is_terminating() && !do_convert_filesindex_flag; i++) {
 			sleep(1);
 		}
 	}

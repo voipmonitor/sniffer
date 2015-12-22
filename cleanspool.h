@@ -3,6 +3,7 @@
 
 void check_spooldir_filesindex(const char *path = NULL, const char *dirfilter = NULL);
 void convert_filesindex(const char *reason);
+void do_convert_filesindex(const char *reason);
 long long reindex_date(string date);
 long long reindex_date_hour(string date, int h, bool readOnly = false, map<string, long long> *typeSize = NULL, bool quickCheck = false);
 void check_filesindex();
