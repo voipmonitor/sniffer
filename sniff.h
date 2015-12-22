@@ -235,6 +235,8 @@ inline Call *process_packet(bool is_ssl, u_int64_t packet_number,
 			      mainProcess, sipOffset));
 }
 
+void process_packet__push_batch();
+
 
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)
 #define enable_save_register(call)	(call->flags & FLAG_SAVEREGISTER)

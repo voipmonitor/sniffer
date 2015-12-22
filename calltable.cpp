@@ -274,10 +274,10 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	silencerecording = 0;
 	flags1 = 0;
 	#if SYNC_CALL_RTP
-	rtppcaketsinqueue = 0;
+	rtppacketsinqueue = 0;
 	#else
-	rtppcaketsinqueue_p = 0;
-	rtppcaketsinqueue_m = 0;
+	rtppacketsinqueue_p = 0;
+	rtppacketsinqueue_m = 0;
 	#endif
 	end_call = 0;
 	message = NULL;
@@ -498,7 +498,7 @@ Call::_addtocachequeue(string file) {
 void
 Call::removeRTP() {
 	#if SYNC_CALL_RTP
-	while(this->rtppcaketsinqueue > 0) {
+	while(this->rtppacketsinqueue > 0) {
 		usleep(100);
 	}
 	#endif
@@ -4092,9 +4092,9 @@ Calltable::cleanup( time_t currtime ) {
 			call->removeFindTables(true);
 			if(!(
 			     #if SYNC_CALL_RTP
-			     call->rtppcaketsinqueue == 0
+			     call->rtppacketsinqueue == 0
 			     #else
-			     call->rtppcaketsinqueue_p == call->rtppcaketsinqueue_m
+			     call->rtppacketsinqueue_p == call->rtppacketsinqueue_m
 			     #endif 
 			     )) {
 				closeCall = false;
@@ -4105,12 +4105,12 @@ Calltable::cleanup( time_t currtime ) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 			}
 			#if SYNC_CALL_RTP
-			if(currtime == 0 && call->rtppcaketsinqueue) {
-				syslog(LOG_WARNING, "force destroy call (rtppcaketsinqueue > 0)");
+			if(currtime == 0 && call->rtppacketsinqueue) {
+				syslog(LOG_WARNING, "force destroy call (rtppacketsinqueue > 0)");
 			}
 			#else
-			if(currtime == 0 && call->rtppcaketsinqueue_p != call->rtppcaketsinqueue_m) {
-				syslog(LOG_WARNING, "force destroy call (rtppcaketsinqueue_p != rtppcaketsinqueue_m)");
+			if(currtime == 0 && call->rtppacketsinqueue_p != call->rtppacketsinqueue_m) {
+				syslog(LOG_WARNING, "force destroy call (rtppacketsinqueue_p != rtppacketsinqueue_m)");
 			}
 			#endif
 			// Close RTP dump file ASAP to save file handles

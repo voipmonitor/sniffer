@@ -4373,6 +4373,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 	u_int64_t blockInfo_at_first = 0;
 	u_int64_t blockInfo_at_last = 0;
 	sBlockInfo blockInfo[blockInfoCountMax];
+	unsigned usleepCounter = 0;
 	//
 	while(!TERMINATING) {
 		if(DEBUG_SLEEP && access((this->pcapStoreQueue.fileStoreFolder + "/__/sleep").c_str(), F_OK ) != -1) {
@@ -4451,6 +4452,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								listPacketTimeInfo.erase(first);
 								first = listPacketTimeInfo.begin();
 							}
+							usleepCounter = 0;
 						} else {
 							break;
 						}
@@ -4546,6 +4548,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 										    (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec;
 							blockInfo_utime_first = minUtime;
 						}
+						usleepCounter = 0;
 					}
 				}
 			} else {
@@ -4563,11 +4566,16 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							blockStore->sensor_id);
 					}
 					this->blockStoreTrash.push_back(blockStore);
+					usleepCounter = 0;
 				}
 			}
 		}
 		if(!blockStore) {
+			if(usleepCounter && !(usleepCounter % 500)) {
+				this->pushBatchProcessPacket();
+			}
 			usleep(1000);
+			++usleepCounter;
 		}
 		if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
 			this->cleanupBlockStoreTrash();
@@ -5200,6 +5208,14 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		}
 	} else if(opt_ipaccount) {
 		ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
+	}
+}
+
+void PcapQueue_readFromFifo::pushBatchProcessPacket() {
+	if(PreProcessPacket::isEnableDetach()) {
+		preProcessPacket[0]->push_batch();
+	} else {
+		process_packet__push_batch();
 	}
 }
 

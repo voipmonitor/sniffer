@@ -719,6 +719,7 @@ private:
 	void processPacket(pcap_pkthdr_plus *header, u_char *packet,
 			   pcap_block_store *block_store, int block_store_index,
 			   int dlt, int sensor_id);
+	void pushBatchProcessPacket();
 	void checkFreeSizeCachedir();
 	void cleanupBlockStoreTrash(bool all = false);
 	void lock_packetServerConnections() {

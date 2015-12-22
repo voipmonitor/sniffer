@@ -1380,9 +1380,9 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 	
 	if(!preSyncRtp) {
 		#if SYNC_CALL_RTP
-		__sync_add_and_fetch(&call->rtppcaketsinqueue, 1);
+		__sync_add_and_fetch(&call->rtppacketsinqueue, 1);
 		#else
-		++call->rtppcaketsinqueue_p;
+		++call->rtppacketsinqueue_p;
 		#endif
 	}
 	
@@ -1458,9 +1458,9 @@ void *rtp_read_thread_func(void *arg) {
 		}
 
 		#if SYNC_CALL_RTP
-		__sync_sub_and_fetch(&rtpp_pq.call->rtppcaketsinqueue, 1);
+		__sync_sub_and_fetch(&rtpp_pq.call->rtppacketsinqueue, 1);
 		#else
-		++rtpp_pq.call->rtppcaketsinqueue_m;
+		++rtpp_pq.call->rtppacketsinqueue_m;
 		#endif
 
 	}
@@ -2086,7 +2086,7 @@ void process_sdp(Call *call, packet_s *packetS,
 }
 
 static inline void process_packet__parse_custom_headers(Call *call, char *data, int datalen, ParsePacket *parsePacket);
-static inline void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle);
+static inline void process_packet__cleanup(pcap_pkthdr *header, u_long timeS = 0);
 static inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
 static inline int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
 						  char *lastSIPresponse, bool *call_cancel_lsr487);
@@ -2198,7 +2198,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (packetS->header.ts.tv_sec - process_packet__last_cleanup > 10){
-		process_packet__cleanup(&packetS->header, packetS->handle);
+		process_packet__cleanup(&packetS->header);
 	}
 	
 	if(packetS->header.ts.tv_sec - process_packet__last_destroy_calls >= 2) {
@@ -3668,7 +3668,7 @@ inline void process_packet__parse_custom_headers(Call *call, char *data, int dat
 	}
 }
 
-inline void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
+inline void process_packet__cleanup(pcap_pkthdr *header, u_long timeS) {
 
 	if(verbosity > 0 && is_read_from_file_simple()) {
 		if(opt_dup_check) {
@@ -3680,15 +3680,19 @@ inline void process_packet__cleanup(pcap_pkthdr *header, pcap_t *handle) {
 		}
 	}
 	
-	if (process_packet__last_cleanup >= 0){
-		calltable->cleanup(header->ts.tv_sec);
+	if(!timeS && header) {
+		timeS = header->ts.tv_sec;
 	}
 	
-	process_packet__last_cleanup = header->ts.tv_sec;
+	if (process_packet__last_cleanup >= 0){
+		calltable->cleanup(timeS);
+	}
+	
+	process_packet__last_cleanup = timeS;
 
 	if(!PreProcessPacket::isEnableSip()) {
 		// clean tcp_streams_list
-		tcpReassemblySip.clean(header->ts.tv_sec);
+		tcpReassemblySip.clean(timeS);
 	}
 
 	/* You may encounter that voipmonitor process does not have a reduced memory usage although you freed the calls. 
@@ -4441,9 +4445,9 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		for(call_info_index = 0; call_info_index < call_info_length; call_info_index++) {
 			if(!call_info[call_info_index].use_sync) {
 				#if SYNC_CALL_RTP
-				__sync_sub_and_fetch(&call_info[call_info_index].call->rtppcaketsinqueue, 1);
+				__sync_sub_and_fetch(&call_info[call_info_index].call->rtppacketsinqueue, 1);
 				#else
-				++call_info[call_info_index].call->rtppcaketsinqueue_m;
+				++call_info[call_info_index].call->rtppacketsinqueue_m;
 				#endif
 			}
 		}
@@ -5104,6 +5108,17 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 }
 
 
+void process_packet__push_batch() {
+	u_long timeS = getTimeS();
+	if(timeS - process_packet__last_cleanup > 10) {
+		process_packet__cleanup(NULL, timeS);
+	}
+	if(processRtpPacketHash) {
+		processRtpPacketHash->push_batch();
+	}
+}
+
+
 void TcpReassemblySip::processPacket(
 		u_int64_t packet_number,
 		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
@@ -5483,6 +5498,7 @@ void *PreProcessPacket::outThreadFunction() {
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start PreProcessPacket out thread %i", this->outThreadId);
 	unsigned usleepCounter = 0;
+	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_preProcess) {
 		if(this->qring[this->readit]->used == 1) {
 			batch_packet_parse_s *_batch_parse_packet = this->qring[this->readit];
@@ -5553,11 +5569,38 @@ void *PreProcessPacket::outThreadFunction() {
 				this->readit++;
 			}
 			usleepCounter = 0;
+			usleepSumTimeForPushBatch = 0;
 		} else {
-			usleep(opt_preprocess_packets_qring_usleep * 
-			       (usleepCounter > 1000 ? 20 :
-				usleepCounter > 100 ? 5 : 1));
+			if(usleepSumTimeForPushBatch > 500000ull) {
+				bool use_process_packet = false;
+				switch(this->typePreProcessThread) {
+				case ppt_detach:
+					if(PreProcessPacket::isEnableSip()) {
+						preProcessPacket[1]->push_batch();
+					} else {
+						use_process_packet = true;
+					}
+					break;
+				case ppt_sip:
+					if(!PreProcessPacket::isEnableExtend()) {
+						use_process_packet = true;
+					}
+					break;
+				case ppt_extend:
+					use_process_packet = true; 
+					break;
+				}
+				if(use_process_packet) {
+					process_packet__push_batch();
+				}
+				usleepSumTimeForPushBatch = 0;
+			}
+			unsigned usleepTime = opt_preprocess_packets_qring_usleep * 
+					      (usleepCounter > 1000 ? 20 :
+					       usleepCounter > 100 ? 5 : 1);
+			usleep(usleepTime);
 			++usleepCounter;
+			usleepSumTimeForPushBatch += usleepTime;
 		}
 	}
 	return(NULL);
@@ -5801,6 +5844,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start ProcessRtpPacket %s out thread %i", this->type == hash ? "hash" : "distribute", this->outThreadId);
 	unsigned usleepCounter = 0;
+	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_processRtp) {
 		if(this->qring[this->readit]->used == 1) {
 			batch_packet_rtp_s *_batch_rtp_packet = this->qring[this->readit];
@@ -5813,11 +5857,22 @@ void *ProcessRtpPacket::outThreadFunction() {
 				this->readit++;
 			}
 			usleepCounter = 0;
+			usleepSumTimeForPushBatch = 0;
 		} else {
-			usleep(opt_process_rtp_packets_qring_usleep * 
-			       (usleepCounter > 1000 ? 20 :
-				usleepCounter > 100 ? 5 : 1));
+			if(usleepSumTimeForPushBatch > 500000ull) {
+				if(this->type == hash) {
+					for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
+						processRtpPacketDistribute[i]->push_batch();
+					}
+				}
+				usleepSumTimeForPushBatch = 0;
+			}
+			unsigned usleepTime = opt_process_rtp_packets_qring_usleep * 
+					      (usleepCounter > 1000 ? 20 :
+					       usleepCounter > 100 ? 5 : 1);
+			usleep(usleepTime);
 			++usleepCounter;
+			usleepSumTimeForPushBatch += usleepTime;
 		}
 	}
 	return(NULL);
@@ -5944,9 +5999,9 @@ void ProcessRtpPacket::find_hash(packet_rtp_s *_packet, bool lock) {
 			_packet->call_info[_packet->call_info_length].sdp_flags = node_call->sdp_flags;
 			_packet->call_info[_packet->call_info_length].use_sync = false;
 			#if SYNC_CALL_RTP
-			__sync_add_and_fetch(&node_call->call->rtppcaketsinqueue, 1);
+			__sync_add_and_fetch(&node_call->call->rtppacketsinqueue, 1);
 			#else
-			++node_call->call->rtppcaketsinqueue_p;
+			++node_call->call->rtppacketsinqueue_p;
 			#endif
 			++_packet->call_info_length;
 		}

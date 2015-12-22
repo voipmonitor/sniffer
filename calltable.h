@@ -234,10 +234,10 @@ public:
 	int regrrddiff;			// RRD diff time REGISTER<->OK in [ms]- RFC6076
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
 	#if SYNC_CALL_RTP
-	volatile unsigned int rtppcaketsinqueue;
+	volatile unsigned int rtppacketsinqueue;
 	#else
-	volatile u_int32_t rtppcaketsinqueue_p;
-	volatile u_int32_t rtppcaketsinqueue_m;
+	volatile u_int32_t rtppacketsinqueue_p;
+	volatile u_int32_t rtppacketsinqueue_m;
 	#endif
 	volatile int end_call;
 	unsigned int unrepliedinvite;

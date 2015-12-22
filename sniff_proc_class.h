@@ -378,6 +378,27 @@ public:
 			this->unlock_push();
 		}
 	}
+	inline void push_batch() {
+		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
+			this->lock_push();
+		}
+		if(qring_push_index && qring_push_index_count) {
+			batch_packet_parse_s *_batch_parse_packet = this->qring[qring_push_index - 1];
+			_batch_parse_packet->batchInPrevQueue = NULL;
+			_batch_parse_packet->count = qring_push_index_count;
+			_batch_parse_packet->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			qring_push_index = 0;
+			qring_push_index_count = 0;
+		}
+		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
+			this->unlock_push();
+		}
+	}
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
 	void terminate();
@@ -538,6 +559,20 @@ public:
 		*_batch_rtp_packet->batch[qring_push_index_count] = *packet;
 		++qring_push_index_count;
 		if(qring_push_index_count == _batch_rtp_packet->max_count) {
+			_batch_rtp_packet->count = qring_push_index_count;
+			_batch_rtp_packet->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			qring_push_index = 0;
+			qring_push_index_count = 0;
+		}
+	}
+	inline void push_batch() {
+		if(qring_push_index && qring_push_index_count) {
+			batch_packet_rtp_s *_batch_rtp_packet = this->qring[qring_push_index - 1];
 			_batch_rtp_packet->count = qring_push_index_count;
 			_batch_rtp_packet->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
