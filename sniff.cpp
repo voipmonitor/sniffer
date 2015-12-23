@@ -376,12 +376,13 @@ inline void save_packet_sql(Call *call,
 
 int get_sip_peername(char *data, int data_len, ParsePacket *parsePacket,
 		     const char *tag, char *peername, unsigned int peername_len);
+int get_sip_headerstr(char *data, int data_len, ParsePacket *parsePacket,
+                     const char *tag, char *headerstr, unsigned int headerstr_len);
 
 inline void save_live_packet(Call *call, packet_s *packetS, ParsePacket *parsePacket, unsigned char sip_type) {
 	if(!global_livesniffer) {
 		return;
 	}
-	
 	// check saddr and daddr filters
 	unsigned int daddr = htonl(packetS->daddr);
 	unsigned int saddr = htonl(packetS->saddr);
@@ -391,6 +392,49 @@ inline void save_live_packet(Call *call, packet_s *packetS, ParsePacket *parsePa
 	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
 	
 	char caller[1024] = "", called[1024] = "";
+	char fromhstr[1024] = "", tohstr[1024] = "";
+        //Check if we use from/to header for filtering, if yes gather info from packet to fromhstr tohstr
+        {
+                bool needfromhstr = false;
+                bool needtohstr = false;
+                int res;
+                for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
+                        if(!usersnifferIT->second->state.all_all && !usersnifferIT->second->state.all_hstr) {
+                                for(int i = 0; i < MAXLIVEFILTERS; i++) {
+                                        if(!usersnifferIT->second->state.all_fromhstr && usersnifferIT->second->lv_fromhstr[i][0]) {
+                                                needfromhstr = true;
+                                        }
+                                        if(!usersnifferIT->second->state.all_tohstr && usersnifferIT->second->lv_tohstr[i][0]) {
+                                                needtohstr = true;
+                                        }
+                                        if(!usersnifferIT->second->state.all_bothhstr && usersnifferIT->second->lv_bothhstr[i][0]) {
+                                                needfromhstr = true;
+                                                needtohstr = true;
+                                        }
+                                }
+                        }
+                }
+                if(needfromhstr) {
+                        res = get_sip_headerstr(packetS->data,packetS->datalen,parsePacket,
+						"\nFrom:", fromhstr, sizeof(fromhstr));
+                        if(res) {
+                                // try compact header
+                                get_sip_headerstr(packetS->data,packetS->datalen,parsePacket,
+						"\nf:", fromhstr, sizeof(fromhstr));
+
+                        }
+                }
+                if(needtohstr) {
+                        res = get_sip_headerstr(packetS->data,packetS->datalen,parsePacket,
+						"\nTo:", tohstr, sizeof(tohstr));
+                        if(res) {
+                                // try compact header
+                                get_sip_headerstr(packetS->data,packetS->datalen,parsePacket,
+						"\nt:", tohstr, sizeof(tohstr));
+                        }
+                }
+        }
+        //If call is established get caller/called num from packet - else gather it from packet and save to caller called
 	if(call) {
 		strncpy(caller, call->caller, sizeof(caller));
 		caller[sizeof(caller) - 1] = 0;
@@ -468,6 +512,20 @@ inline void save_live_packet(Call *call, packet_s *packetS, ParsePacket *parsePa
 					}
 				}
 			}
+                        bool okHeader = filter->state.all_hstr;
+                        if(!okHeader) {
+                                for(int i = 0; i < MAXLIVEFILTERS && !okHeader; i++) {
+                                        if((filter->state.all_fromhstr || (filter->lv_fromhstr[i][0] &&
+                                                memmem(fromhstr, strlen(fromhstr), filter->lv_fromhstr[i], strlen(filter->lv_fromhstr[i])))) &&
+                                           (filter->state.all_tohstr || (filter->lv_tohstr[i][0] &&
+                                                memmem(tohstr, strlen(tohstr), filter->lv_tohstr[i], strlen(filter->lv_tohstr[i])))) &&
+                                           (filter->state.all_bothhstr || (filter->lv_bothhstr[i][0] &&
+                                                (memmem(fromhstr, strlen(fromhstr), filter->lv_bothhstr[i], strlen(filter->lv_bothhstr[i])) ||
+                                                 memmem(tohstr, strlen(tohstr), filter->lv_bothhstr[i], strlen(filter->lv_bothhstr[i])))))) {
+                                                okHeader = true;
+                                        }
+                                }
+                        }
 			bool okSipType = filter->state.all_siptypes;
 			if(!okSipType) {
 				for(int i = 0; i < MAXLIVEFILTERS && !okSipType; i++) {
@@ -476,7 +534,7 @@ inline void save_live_packet(Call *call, packet_s *packetS, ParsePacket *parsePa
 					}
 				}
 			}
-			if(okAddr && okNum && okSipType) {
+			if(okAddr && okNum && okSipType && okHeader) {
 				save = true;
 			}
 		}
@@ -997,6 +1055,22 @@ int get_sip_peername(char *data, int data_len, ParsePacket *parsePacket,
 	return 0;
 fail_exit:
 	strcpy(peername, "");
+	return 1;
+}
+
+int get_sip_headerstr(char *data, int data_len, ParsePacket *parsePacket,
+		     const char *tag, char *headerstr, unsigned int headerstr_len){
+        unsigned long headerstr_tag_len;
+        char *header_tag = gettag(data, data_len, parsePacket,
+				  tag, &headerstr_tag_len);
+        if(!headerstr_tag_len) {
+                goto fail_exit;
+        }
+        memcpy(headerstr, header_tag, MIN(headerstr_tag_len, headerstr_len));
+        headerstr[headerstr_tag_len - 1] = '\0';
+        return 0;
+fail_exit:
+	strcpy(headerstr, "");
 	return 1;
 }
 
