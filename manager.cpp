@@ -434,9 +434,6 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 	if(sverb.manager) {
 		cout << "manager command: " << buf << "|END" << endl;
 	}
-	if(sverb.log_manager_cmd) {
-		syslog(LOG_NOTICE, "manager command: %s", buf);
-	}
  
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;
@@ -1229,6 +1226,63 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 				tmp << val;
 				tmp >> filter->lv_bothnum[i];
 				//cout << filter->lv_bothnum[i] << "\n";
+				i++;
+			}
+			updateLivesnifferfilters();
+		} else if(strstr(search, "fromhstr")) {
+			int i = 0;
+			//reset filters
+			for(i = 0; i < MAXLIVEFILTERS; i++) {
+				filter->lv_fromhstr[i][0] = '\0';
+			}
+			stringstream  data(value);
+			string val;
+			i = 0;
+			// read all argumens livefilter set fromhstr 123 345 244
+			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				global_livesniffer = 1;
+				stringstream tmp;
+				tmp << val;
+				tmp >> filter->lv_fromhstr[i];
+				//cout << filter->lv_fromhstr[i] << "\n";
+				i++;
+			}
+			updateLivesnifferfilters();
+		} else if(strstr(search, "tohstr")) {
+			int i = 0;
+			//reset filters
+			for(i = 0; i < MAXLIVEFILTERS; i++) {
+				filter->lv_tohstr[i][0] = '\0';
+			}
+			stringstream  data(value);
+			string val;
+			i = 0;
+			// read all argumens livefilter set tohstr 123 345 244
+			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				global_livesniffer = 1;
+				stringstream tmp;
+				tmp << val;
+				tmp >> filter->lv_tohstr[i];
+				//cout << filter->lv_tohstr[i] << "\n";
+				i++;
+			}
+			updateLivesnifferfilters();
+		} else if(strstr(search, "bothhstr")) {
+			int i = 0;
+			//reset filters
+			for(i = 0; i < MAXLIVEFILTERS; i++) {
+				filter->lv_bothhstr[i][0] = '\0';
+			}
+			stringstream  data(value);
+			string val;
+			i = 0;
+			// read all argumens livefilter set bothhstr 123 345 244
+			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				global_livesniffer = 1;
+				stringstream tmp;
+				tmp << val;
+				tmp >> filter->lv_bothhstr[i];
+				//cout << filter->lv_bothhstr[i] << "\n";
 				i++;
 			}
 			updateLivesnifferfilters();
@@ -2391,6 +2445,9 @@ void livesnifferfilter_s::updateState() {
 	new_state.all_srcnum = true;
 	new_state.all_dstnum = true;
 	new_state.all_bothnum = true;
+	new_state.all_fromhstr = true;
+	new_state.all_tohstr = true;
+	new_state.all_bothhstr = true;
 	new_state.all_siptypes = true;
 	for(int i = 0; i < MAXLIVEFILTERS; i++) {
 		if(this->lv_saddr[i]) {
@@ -2411,13 +2468,23 @@ void livesnifferfilter_s::updateState() {
 		if(this->lv_bothnum[i][0]) {
 			new_state.all_bothnum = false;
 		}
+		if(this->lv_fromhstr[i][0]) {
+			new_state.all_fromhstr = false;
+		}
+		if(this->lv_tohstr[i][0]) {
+			new_state.all_tohstr = false;
+		}
+		if(this->lv_bothhstr[i][0]) {
+			new_state.all_bothhstr = false;
+		}
 		if(this->lv_siptypes[i]) {
 			new_state.all_siptypes = false;
 		}
 	}
 	new_state.all_addr = new_state.all_saddr && new_state.all_daddr && new_state.all_bothaddr;
 	new_state.all_num = new_state.all_srcnum && new_state.all_dstnum && new_state.all_bothnum;
-	new_state.all_all = new_state.all_addr && new_state.all_num && new_state.all_siptypes;
+	new_state.all_hstr = new_state.all_fromhstr && new_state.all_tohstr && new_state.all_bothhstr;
+	new_state.all_all = new_state.all_addr && new_state.all_num && new_state.all_hstr && new_state.all_siptypes;
 	this->state = new_state;
 }
 
@@ -2492,6 +2559,34 @@ string livesnifferfilter_s::getStringState() {
 						       << ": ";
 					}
 					outStr << num[i];
+					++counter;
+				}
+			}
+			if(counter) {
+				outStr << " ;   ";
+			}
+		}
+	}
+	for(int pass = 1; pass <= 3; pass++) {
+		if(!(pass == 1 ? this->state.all_fromhstr :
+		     pass == 2 ? this->state.all_tohstr :
+				 this->state.all_bothhstr)) {
+			char (*hstr)[MAXLIVEFILTERSCHARS] = pass == 1 ? this->lv_fromhstr :
+							    pass == 2 ? this->lv_tohstr :
+									this->lv_bothhstr;
+			int counter = 0;
+			for(int i = 0; i < MAXLIVEFILTERS; i++) {
+				if(hstr[i][0]) {
+					if(counter) {
+						outStr << ", ";
+					} else {
+						outStr << (pass == 1 ? "from header" :
+							   pass == 2 ? "to header" :
+							   pass == 3 ? "from/to header" :
+								       "")
+						       << ": ";
+					}
+					outStr << hstr[i];
 					++counter;
 				}
 			}

@@ -135,6 +135,10 @@ typedef struct livesnifferfilter_s {
 		bool all_dstnum;
 		bool all_bothnum;
 		bool all_num;
+                bool all_fromhstr;
+                bool all_tohstr;
+                bool all_bothhstr;
+                bool all_hstr;
 		bool all_siptypes;
 		bool all_all;
 	};
@@ -144,6 +148,9 @@ typedef struct livesnifferfilter_s {
         char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
         char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 	char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+        char lv_fromhstr[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+        char lv_tohstr[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+        char lv_bothhstr[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 	unsigned char lv_siptypes[MAXLIVEFILTERS];
         int uid;
         time_t created_at;
