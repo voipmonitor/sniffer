@@ -478,6 +478,7 @@ public:
 		rtp_call_info call_info[20];
 		int call_info_length;
 		bool call_info_find_by_dest;
+		volatile int hash_find_flag;
 	};
 	struct batch_packet_rtp_s {
 		batch_packet_rtp_s(unsigned max_count) {
@@ -594,6 +595,18 @@ public:
 		return(_writeit >= _readit ?
 			(double)(_writeit - _readit) / qring_length * 100 :
 			(double)(qring_length - _readit + _writeit) / qring_length * 100);
+	}
+	bool isNextThreadsGt2Processing() {
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Warray-bounds"
+		extern int opt_process_rtp_packets_hash_next_thread;
+		for(int i = 2; i < opt_process_rtp_packets_hash_next_thread; i++) {
+			if(this->hash_batch_thread_process[i]) {
+				return(true);
+			}
+		}
+		return(false);
+		#pragma GCC diagnostic pop
 	}
 private:
 	void *outThreadFunction();
