@@ -276,7 +276,7 @@ int opt_generator = 0;
 int opt_generator_channels = 1;
 int opt_skipdefault = 0;
 int opt_filesclean = 1;
-int opt_enable_preprocess_packet = 0;
+int opt_enable_preprocess_packet = -1;
 int opt_enable_process_rtp_packet = 1;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
@@ -2565,7 +2565,7 @@ int main_init_read() {
 		}
 	}
 	
-	if((opt_enable_preprocess_packet || opt_enable_ssl) &&
+	if((opt_enable_preprocess_packet > 0 || opt_enable_ssl) &&
 	   !is_read_from_file_simple()) {
 		for(int i = 0; i < min(max(opt_enable_preprocess_packet, opt_enable_ssl ? 1 : 0), MAX_PREPROCESS_PACKET_THREADS); i++) {
 			preProcessPacket[i] = new FILE_LINE PreProcessPacket(i == 0 ? PreProcessPacket::ppt_detach : 
@@ -4195,7 +4195,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
 						obsolete();
 						addConfigItem((new cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
-							->addValues("sip:2|extend:3"));
+							->addValues("sip:2|extend:3|auto:-1"));
 						addConfigItem(new cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
 						addConfigItem(new cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
 						minorEnd();
@@ -6689,7 +6689,8 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
-		opt_enable_preprocess_packet = !strcmp(value, "extend") ? 3 :
+		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
+					       !strcmp(value, "extend") ? 3 :
 					       !strcmp(value, "sip") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "enable_process_rtp_packet", NULL)) ||

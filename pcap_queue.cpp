@@ -1529,13 +1529,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	double t2cpu = this->getCpuUsagePerc(writeThread, true);
 	if(t2cpu >= 0) {
-		outStrStat << "t2CPU[" << setprecision(1) << t2cpu;
+		outStrStat << "t2CPU[" << "pb" << setprecision(1) << t2cpu;
 		double last_t2cpu_preprocess_packet_out_thread = -2;
 		for(int i = 0; i < MAX_PREPROCESS_PACKET_THREADS; i++) {
 			if(preProcessPacket[i]) {
 				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
 				if(t2cpu_preprocess_packet_out_thread >= 0) {
-					outStrStat << "/" << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+					outStrStat << "/" 
+						   << (i == 0 ? "d" :
+						      (i == 1 ? "s" : "e"))
+						   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 					if(sverb.qring_stat) {
 						double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
 						if(qringFillingPerc > 0) {
@@ -1574,8 +1577,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 				}
 			}
-		} else if(max(last_t2cpu_preprocess_packet_out_thread, t2cpu) > 60) {
+		}
+		if(max(last_t2cpu_preprocess_packet_out_thread, t2cpu) > 50) {
 			ProcessRtpPacket::autoStartProcessRtpPacket();
+			PreProcessPacket::autoStartNextLevelPreProcessPacket();
 		}
 		outStrStat << "%] ";
 	}

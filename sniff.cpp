@@ -5845,6 +5845,19 @@ void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
 	}
 }
 
+void PreProcessPacket::autoStartNextLevelPreProcessPacket() {
+	if(!PreProcessPacket::isEnableDetach()) {
+		PreProcessPacket *_preProcessPacket = new FILE_LINE PreProcessPacket(PreProcessPacket::ppt_detach);
+		preProcessPacket[0] = _preProcessPacket;
+	} else if(!PreProcessPacket::isEnableSip()) {
+		PreProcessPacket *_preProcessPacket = new FILE_LINE PreProcessPacket(PreProcessPacket::ppt_sip);
+		preProcessPacket[1] = _preProcessPacket;
+	} else if(!PreProcessPacket::isEnableExtend()) {
+		PreProcessPacket *_preProcessPacket = new FILE_LINE PreProcessPacket(PreProcessPacket::ppt_extend);
+		preProcessPacket[2] = _preProcessPacket;
+	}
+}
+
 inline void *_ProcessRtpPacket_outThreadFunction(void *arg) {
 	return(((ProcessRtpPacket*)arg)->outThreadFunction());
 }

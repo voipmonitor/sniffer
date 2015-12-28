@@ -414,6 +414,7 @@ public:
 		extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
 		return(preProcessPacket[2] != NULL);
 	}
+	static void autoStartNextLevelPreProcessPacket();
 	double getQringFillingPerc() {
 		unsigned int _readit = readit;
 		unsigned int _writeit = writeit;
