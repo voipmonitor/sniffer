@@ -123,7 +123,7 @@ struct rtp_read_thread {
 };
 
 #define MAXLIVEFILTERS 10
-#define MAXLIVEFILTERSCHARS 32
+#define MAXLIVEFILTERSCHARS 64
 
 typedef struct livesnifferfilter_s {
 	struct state_s {
