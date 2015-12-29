@@ -1497,6 +1497,7 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 void *rtp_read_thread_func(void *arg) {
 	rtp_packet_pcap_queue rtpp_pq;
 	rtp_read_thread *params = (rtp_read_thread*)arg;
+	params->threadId = get_unix_tid();
 	while(1) {
 
 		if(params->rtpp_queue_quick) {
@@ -1540,6 +1541,46 @@ void *rtp_read_thread_func(void *arg) {
 	}
 	
 	return NULL;
+}
+
+void add_rtp_read_thread() {
+	extern int num_threads_max;
+	extern int num_threads_active;
+	if(is_enable_rtp_threads() &&
+	   num_threads_active > 0 && num_threads_max > 0 &&
+	   num_threads_active < num_threads_max) {
+		 pthread_create(&(rtp_threads[num_threads_active].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[num_threads_active]);
+		 ++num_threads_active;
+	}
+}
+
+double get_rtp_sum_cpu_usage() {
+	extern int num_threads_max;
+	extern int num_threads_active;
+	if(is_enable_rtp_threads() &&
+	   num_threads_active > 0 && num_threads_max > 0) {
+		bool set = false;
+		double sum = 0;
+		for(int i = 0; i < num_threads_active; i++) {
+			if(rtp_threads[i].threadId) {
+				if(rtp_threads[i].threadPstatData[0].cpu_total_time) {
+					rtp_threads[i].threadPstatData[1] = rtp_threads[i].threadPstatData[0];
+				}
+				pstat_get_data(rtp_threads[i].threadId, rtp_threads[i].threadPstatData);
+				double ucpu_usage, scpu_usage;
+				if(rtp_threads[i].threadPstatData[0].cpu_total_time && rtp_threads[i].threadPstatData[1].cpu_total_time) {
+					pstat_calc_cpu_usage_pct(
+						&rtp_threads[i].threadPstatData[0], &rtp_threads[i].threadPstatData[1],
+						&ucpu_usage, &scpu_usage);
+					sum += ucpu_usage + scpu_usage;
+					set = true;
+				}
+			}
+		}
+		return(set ? sum : -1);
+	} else {
+		return(-1);
+	}
 }
 
 inline Call *new_invite_register(packet_s *packetS, ParsePacket *parsePacket, 

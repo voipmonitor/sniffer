@@ -91,7 +91,7 @@ extern int rtptimeout;
 extern int sipwithoutrtptimeout;
 extern int absolute_timeout;
 extern unsigned int gthread_num;
-extern int num_threads;
+extern int num_threads_active;
 extern int opt_printinsertid;
 extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
@@ -266,7 +266,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	destroy_call_at_bye = 0;
 	custom_header1[0] = '\0';
 	match_header[0] = '\0';
-	thread_num = num_threads > 0 ? gthread_num % num_threads : 0;
+	thread_num = num_threads_active > 0 ? gthread_num % num_threads_active : 0;
 	gthread_num++;
 	recordstopped = 0;
 	dtmfflag = 0;

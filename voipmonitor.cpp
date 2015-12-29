@@ -531,8 +531,9 @@ char pcapcommand[4092] = "";
 char filtercommand[4092] = "";
 
 int rtp_threaded = 0;
-int num_threads = 0;
 int num_threads_set = 0;
+int num_threads_max = 0;
+int num_threads_active = 0;
 unsigned int rtpthreadbuffer = 20;	// default 20MB
 unsigned int rtp_qring_length = 0;
 unsigned int rtp_qring_usleep = 1000;
@@ -2386,15 +2387,18 @@ int main_init_read() {
 	// if the system has more than one CPU enable threading
 	if(opt_rtpsave_threaded) {
 		if(num_threads_set > 0) {
-			num_threads = num_threads_set;
+			num_threads_max = num_threads_set;
+			num_threads_active = 1;
 		} else {
-			num_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
-			if(num_threads <= 0) num_threads = 1;
+			num_threads_max = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
+			if(num_threads_max <= 0) num_threads_max = 1;
+			num_threads_active = 1;
 		}
 	} else {
-		num_threads = 0;
+		num_threads_max = 0;
+		num_threads_active = 0;
 	}
-	rtp_threaded = num_threads > 0;
+	rtp_threaded = num_threads_max > 0 && num_threads_active > 0;
 
 	// check if sniffer will be reading pcap files from dir and if not if it reads from eth interface or read only one file
 	if(is_read_from_file_simple()) {
@@ -2540,8 +2544,8 @@ int main_init_read() {
 
 	// start reading threads
 	if(is_enable_rtp_threads()) {
-		rtp_threads = new FILE_LINE rtp_read_thread[num_threads];
-		for(int i = 0; i < num_threads; i++) {
+		rtp_threads = new FILE_LINE rtp_read_thread[num_threads_max];
+		for(int i = 0; i < num_threads_max; i++) {
 			size_t _rtp_qring_length = rtp_qring_length ? 
 							rtp_qring_length :
 							rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
@@ -2562,7 +2566,11 @@ int main_init_read() {
 				sprintf(rtpp_queue_name, "rtp thread %i", i + 1);
 				rtp_threads[i].rtpp_queue->setName(rtpp_queue_name);
 			}
-			pthread_create(&(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i]);
+			rtp_threads[i].threadId = 0;
+			memset(rtp_threads[i].threadPstatData, 0, sizeof(rtp_threads[i].threadPstatData));
+			if(i < num_threads_active) {
+				pthread_create(&(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i]);
+			}
 		}
 	}
 	
@@ -2749,8 +2757,10 @@ void main_term_read() {
 
 	// wait for RTP threads
 	if(rtp_threads) {
-		for(int i = 0; i < num_threads; i++) {
-			pthread_join((rtp_threads[i].thread), NULL);
+		for(int i = 0; i < num_threads_max; i++) {
+			if(i < num_threads_active) {
+				pthread_join((rtp_threads[i].thread), NULL);
+			}
 			if(rtp_threads[i].rtpp_queue_quick) {
 				delete rtp_threads[i].rtpp_queue_quick;
 			} else {

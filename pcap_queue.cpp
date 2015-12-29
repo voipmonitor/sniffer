@@ -1609,6 +1609,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		outStrStat << "%] ";
 	}
+	double tRTPcpu = get_rtp_sum_cpu_usage();
+	if(tRTPcpu >= 0) {
+		extern int num_threads_active;
+		outStrStat << "tRTP_CPU[" << setprecision(1) << tRTPcpu << "%/" << num_threads_active << "t] ";
+		if(tRTPcpu / num_threads_active > 50) {
+			add_rtp_read_thread();
+		}
+	}
 	if(tcpReassemblyHttp) {
 		string cpuUsagePerc = tcpReassemblyHttp->getCpuUsagePerc();
 		if(!cpuUsagePerc.empty()) {
