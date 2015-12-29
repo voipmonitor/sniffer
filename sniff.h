@@ -56,6 +56,7 @@ struct iphdr2 {
 
 void *rtp_read_thread_func(void *arg);
 void add_rtp_read_thread();
+void set_remove_rtp_read_thread();
 double get_rtp_sum_cpu_usage();
 
 void readdump_libnids(pcap_t *handle);
@@ -119,11 +120,13 @@ struct rtp_read_thread {
 		this->rtpp_queue_quick_boost = NULL;
 	}
 	pthread_t thread;	       // ID of worker storing CDR thread 
-	int threadId;
+	volatile int threadId;
 	rqueue<rtp_packet_pcap_queue> *rtpp_queue;
 	rqueue_quick<rtp_packet_pcap_queue> *rtpp_queue_quick;
 	rqueue_quick_boost<rtp_packet_pcap_queue> *rtpp_queue_quick_boost;
 	pstat_data threadPstatData[2];
+	volatile bool remove_flag;
+	u_int32_t last_use_time_s;
 };
 
 #define MAXLIVEFILTERS 10

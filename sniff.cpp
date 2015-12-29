@@ -1494,6 +1494,15 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 }
 
 
+static volatile int _sync_add_remove_rtp_threads;
+void lock_add_remove_rtp_threads() {
+	while(__sync_lock_test_and_set(&_sync_add_remove_rtp_threads, 1));
+}
+
+void unlock_add_remove_rtp_threads() {
+	__sync_lock_release(&_sync_add_remove_rtp_threads);
+}
+
 void *rtp_read_thread_func(void *arg) {
 	rtp_packet_pcap_queue rtpp_pq;
 	rtp_read_thread *params = (rtp_read_thread*)arg;
@@ -1501,25 +1510,54 @@ void *rtp_read_thread_func(void *arg) {
 	while(1) {
 
 		if(params->rtpp_queue_quick) {
-			if(!params->rtpp_queue_quick->pop(&rtpp_pq, true) &&
-			   is_terminating()) {
-				return(NULL);
+			if(!params->rtpp_queue_quick->pop(&rtpp_pq, false)) {
+				if(is_terminating()) {
+					return(NULL);
+				} else if(params->remove_flag &&
+					  getTimeS() - params->last_use_time_s > 10 * 60) {
+					lock_add_remove_rtp_threads();
+					if(params->remove_flag) {
+						break;
+					}
+					unlock_add_remove_rtp_threads();
+				}
+				usleep(rtp_qring_usleep);
+				continue;
 			}
 		} else if(params->rtpp_queue_quick_boost) {
-			if(!params->rtpp_queue_quick_boost->pop(&rtpp_pq, true) &&
-			   is_terminating()) {
-				return(NULL);
+			if(!params->rtpp_queue_quick_boost->pop(&rtpp_pq, false)) {
+				if(is_terminating()) {
+					return(NULL);
+				} else if(params->remove_flag &&
+					  getTimeS() - params->last_use_time_s > 10 * 60) {
+					lock_add_remove_rtp_threads();
+					if(params->remove_flag) {
+						break;
+					}
+					unlock_add_remove_rtp_threads();
+				}
+				usleep(rtp_qring_usleep);
+				continue;
 			}
 		} else {
 			if(!params->rtpp_queue->pop(&rtpp_pq, true)) {
 				if(is_terminating() || readend) {
 					return NULL;
+				} else if(params->remove_flag &&
+					  getTimeS() - params->last_use_time_s > 10 * 60) {
+					lock_add_remove_rtp_threads();
+					if(params->remove_flag) {
+						break;
+					}
+					unlock_add_remove_rtp_threads();
 				}
 				// no packet to read, wait and try again
 				usleep(rtp_qring_usleep);
 				continue;
 			}
 		}
+		
+		params->last_use_time_s = rtpp_pq.packet.header.ts.tv_sec;
 
 		if(rtpp_pq.is_rtcp) {
 			rtpp_pq.call->read_rtcp(&rtpp_pq.packet, rtpp_pq.iscaller, rtpp_pq.save_packet);
@@ -1540,18 +1578,45 @@ void *rtp_read_thread_func(void *arg) {
 
 	}
 	
+	if(params->remove_flag) {
+		params->remove_flag = false;
+		params->last_use_time_s = 0;
+	}
+	params->threadId = 0;
+	
+	unlock_add_remove_rtp_threads();
+	
 	return NULL;
 }
 
 void add_rtp_read_thread() {
+	lock_add_remove_rtp_threads();
 	extern int num_threads_max;
 	extern int num_threads_active;
 	if(is_enable_rtp_threads() &&
 	   num_threads_active > 0 && num_threads_max > 0 &&
 	   num_threads_active < num_threads_max) {
-		 pthread_create(&(rtp_threads[num_threads_active].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[num_threads_active]);
-		 ++num_threads_active;
+		if(rtp_threads[num_threads_active].threadId) {
+			if(rtp_threads[num_threads_active].remove_flag) {
+				rtp_threads[num_threads_active].remove_flag = false;
+			}
+		} else {
+			pthread_create(&(rtp_threads[num_threads_active].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[num_threads_active]);
+		}
+		++num_threads_active;
 	}
+	unlock_add_remove_rtp_threads();
+}
+
+void set_remove_rtp_read_thread() {
+	lock_add_remove_rtp_threads();
+	extern int num_threads_active;
+	if(is_enable_rtp_threads() &&
+	   num_threads_active > 1) {
+		rtp_threads[num_threads_active - 1].remove_flag = true;
+		--num_threads_active;
+	}
+	unlock_add_remove_rtp_threads();
 }
 
 double get_rtp_sum_cpu_usage() {

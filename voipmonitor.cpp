@@ -2568,6 +2568,8 @@ int main_init_read() {
 			}
 			rtp_threads[i].threadId = 0;
 			memset(rtp_threads[i].threadPstatData, 0, sizeof(rtp_threads[i].threadPstatData));
+			rtp_threads[i].remove_flag = 0;
+			rtp_threads[i].last_use_time_s = 0;
 			if(i < num_threads_active) {
 				pthread_create(&(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i]);
 			}

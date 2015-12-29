@@ -1615,6 +1615,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStrStat << "tRTP_CPU[" << setprecision(1) << tRTPcpu << "%/" << num_threads_active << "t] ";
 		if(tRTPcpu / num_threads_active > 50) {
 			add_rtp_read_thread();
+		} else if(num_threads_active > 1 &&
+			  tRTPcpu / num_threads_active < 20) {
+			set_remove_rtp_read_thread();
 		}
 	}
 	if(tcpReassemblyHttp) {
