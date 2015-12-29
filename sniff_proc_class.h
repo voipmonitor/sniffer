@@ -590,6 +590,8 @@ public:
 	double getCpuUsagePerc(bool preparePstatData, int nextThreadId = 0);
 	void terminate();
 	static void autoStartProcessRtpPacket();
+	void addRtpRhThread();
+	static void addRtpRdThread();
 	double getQringFillingPerc() {
 		unsigned int _readit = readit;
 		unsigned int _writeit = writeit;
@@ -597,17 +599,20 @@ public:
 			(double)(_writeit - _readit) / qring_length * 100 :
 			(double)(qring_length - _readit + _writeit) / qring_length * 100);
 	}
-	bool isNextThreadsGt2Processing() {
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Warray-bounds"
-		extern int opt_process_rtp_packets_hash_next_thread;
-		for(int i = 2; i < opt_process_rtp_packets_hash_next_thread; i++) {
+	bool isNextThreadsGt2Processing(int process_rtp_packets_hash_next_threads) {
+		//#pragma GCC diagnostic push
+		//#pragma -Warray-bounds
+		for(int i = 2; i < process_rtp_packets_hash_next_threads; i++) {
 			if(this->hash_batch_thread_process[i]) {
 				return(true);
 			}
 		}
 		return(false);
-		#pragma GCC diagnostic pop
+		//#pragma GCC diagnostic pop
+	}
+	bool existsNextThread(int next_thread_index) {
+		return(next_thread_index < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
+		       this->nextThreadId[next_thread_index]);
 	}
 private:
 	void *outThreadFunction();
@@ -620,6 +625,8 @@ public:
 	int outThreadId;
 	int nextThreadId[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 private:
+	int process_rtp_packets_hash_next_threads;
+	volatile int process_rtp_packets_hash_next_threads_use_for_batch;
 	unsigned int qring_batch_item_length;
 	unsigned int qring_length;
 	batch_packet_rtp_s **qring;

@@ -278,6 +278,7 @@ int opt_skipdefault = 0;
 int opt_filesclean = 1;
 int opt_enable_preprocess_packet = -1;
 int opt_enable_process_rtp_packet = 1;
+int process_rtp_packets_distribute_threads_use = 0;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
 unsigned int opt_preprocess_packets_qring_length = 100;
@@ -2578,6 +2579,7 @@ int main_init_read() {
 	if(!opt_fork &&
 	   opt_enable_process_rtp_packet && opt_pcap_split &&
 	   !is_read_from_file_simple()) {
+		process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
 		processRtpPacketHash = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 			processRtpPacketDistribute[i] = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::distribute, i);

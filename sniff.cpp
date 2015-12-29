@@ -163,6 +163,7 @@ extern int opt_saveudptl;
 extern nat_aliases_t nat_aliases;
 extern int opt_enable_preprocess_packet;
 extern int opt_enable_process_rtp_packet;
+extern int process_rtp_packets_distribute_threads_use;
 extern int opt_process_rtp_packets_hash_next_thread;
 extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
 extern unsigned int opt_preprocess_packets_qring_length;
@@ -211,13 +212,12 @@ extern int opt_sip_send_before_packetbuffer;
 extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
-extern int opt_enable_process_rtp_packet;
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 extern bool _save_sip_history;
 extern bool _save_sip_history_request_types[1000];
 extern bool _save_sip_history_all_requests;
-extern bool _save_sip_history_all_responses;extern int absolute_timeout;
+extern bool _save_sip_history_all_responses;
 unsigned int glob_ssl_calls = 0;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket *parsePacket,
@@ -1474,9 +1474,9 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 		rtpp_pq.is_rtcp = is_rtcp;
 		rtpp_pq.save_packet = enable_save_packet;
 		if(params->rtpp_queue_quick) {
-			params->rtpp_queue_quick->push(&rtpp_pq, true, opt_enable_process_rtp_packet > 1);
+			params->rtpp_queue_quick->push(&rtpp_pq, true, process_rtp_packets_distribute_threads_use > 1);
 		} else {
-			params->rtpp_queue_quick_boost->push(&rtpp_pq, true, opt_enable_process_rtp_packet > 1);
+			params->rtpp_queue_quick_boost->push(&rtpp_pq, true, process_rtp_packets_distribute_threads_use > 1);
 		}
 	} else {
 		params->rtpp_queue->lock();
@@ -5869,7 +5869,7 @@ inline void *_ProcessRtpPacket_nextThreadFunction(void *arg) {
 	return(rsltThread);
 }
 
-#define find_hash_only_in_next_threads (opt_process_rtp_packets_hash_next_thread_sem_sync == 1 && opt_process_rtp_packets_hash_next_thread >= 2)
+#define find_hash_only_in_next_threads (opt_process_rtp_packets_hash_next_thread_sem_sync == 1 && this->process_rtp_packets_hash_next_threads >= 1)
 
 ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	this->type = type;
@@ -5897,8 +5897,9 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 		}
 	}
 	pthread_create(&this->out_thread_handle, NULL, _ProcessRtpPacket_outThreadFunction, this);
-	if(type == hash && opt_process_rtp_packets_hash_next_thread) {
-		for(int i = 0; i < opt_process_rtp_packets_hash_next_thread; i++) {
+	this->process_rtp_packets_hash_next_threads = opt_process_rtp_packets_hash_next_thread;
+	if(type == hash && this->process_rtp_packets_hash_next_threads) {
+		for(int i = 0; i < this->process_rtp_packets_hash_next_threads; i++) {
 			for(int j = 0; j < opt_process_rtp_packets_hash_next_thread_sem_sync; j++) {
 				sem_init(&sem_sync_next_thread[i][j], 0, 0);
 			}
@@ -5950,7 +5951,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 		} else {
 			if(usleepSumTimeForPushBatch > 500000ull) {
 				if(this->type == hash) {
-					for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
+					for(int i = 0; i < process_rtp_packets_distribute_threads_use; i++) {
 						processRtpPacketDistribute[i]->push_batch();
 					}
 				}
@@ -5983,12 +5984,12 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 			if(find_hash_only_in_next_threads) {
 				batch_index_start = next_thread_index_plus - 1;
 				batch_index_end = this->hash_batch_thread_process[next_thread_index_plus - 1]->count;
-				batch_index_skip = opt_process_rtp_packets_hash_next_thread;
+				batch_index_skip = this->process_rtp_packets_hash_next_threads_use_for_batch;
 			} else {
-				batch_index_start = this->hash_batch_thread_process[next_thread_index_plus - 1]->count / (opt_process_rtp_packets_hash_next_thread + 1) * next_thread_index_plus;
-				batch_index_end = next_thread_index_plus == opt_process_rtp_packets_hash_next_thread ? 
+				batch_index_start = this->hash_batch_thread_process[next_thread_index_plus - 1]->count / (this->process_rtp_packets_hash_next_threads_use_for_batch + 1) * next_thread_index_plus;
+				batch_index_end = next_thread_index_plus == this->process_rtp_packets_hash_next_threads_use_for_batch ? 
 							this->hash_batch_thread_process[next_thread_index_plus - 1]->count : 
-							this->hash_batch_thread_process[next_thread_index_plus - 1]->count / (opt_process_rtp_packets_hash_next_thread + 1) * (next_thread_index_plus + 1);
+							this->hash_batch_thread_process[next_thread_index_plus - 1]->count / (this->process_rtp_packets_hash_next_threads_use_for_batch + 1) * (next_thread_index_plus + 1);
 				batch_index_skip = 1;
 			}
 			for(unsigned batch_index = batch_index_start; 
@@ -6014,6 +6015,9 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 
 void ProcessRtpPacket::rtp_batch(batch_packet_rtp_s *_batch_rtp_packet) {
 	if(type == hash) {
+		this->process_rtp_packets_hash_next_threads_use_for_batch = this->process_rtp_packets_hash_next_threads;
+		int _process_rtp_packets_hash_next_threads_use_for_batch = this->process_rtp_packets_hash_next_threads_use_for_batch;
+		int _process_rtp_packets_distribute_threads_use = process_rtp_packets_distribute_threads_use;
 		unsigned batch_index_distribute = 0;
 		if(find_hash_only_in_next_threads) {
 			for(unsigned batch_index = 0; batch_index < _batch_rtp_packet->count; batch_index++) {
@@ -6022,7 +6026,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_rtp_s *_batch_rtp_packet) {
 		}
 		calltable->lock_calls_hash();
 		if(this->next_thread_handle[0]) {
-			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread; i++) {
+			for(int i = 0; i < _process_rtp_packets_hash_next_threads_use_for_batch; i++) {
 				this->hash_batch_thread_process[i] = _batch_rtp_packet;
 				if(sem_sync_next_thread[i][0].__align) {
 					sem_post(&sem_sync_next_thread[i][0]);
@@ -6030,12 +6034,12 @@ void ProcessRtpPacket::rtp_batch(batch_packet_rtp_s *_batch_rtp_packet) {
 			}
 			if(find_hash_only_in_next_threads) {
 				while(this->hash_batch_thread_process[0] || this->hash_batch_thread_process[1] ||
-				      (opt_process_rtp_packets_hash_next_thread > 2 &&  this->isNextThreadsGt2Processing())) {
+				      (_process_rtp_packets_hash_next_threads_use_for_batch > 2 && this->isNextThreadsGt2Processing(_process_rtp_packets_hash_next_threads_use_for_batch))) {
 					if(batch_index_distribute < _batch_rtp_packet->count &&
 					   _batch_rtp_packet->batch[batch_index_distribute]->hash_find_flag) {
 						packet_rtp_s *_packet = _batch_rtp_packet->batch[batch_index_distribute];
 						ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
-										       processRtpPacketDistribute[min(_packet->packet.source, _packet->packet.dest) / 2 % opt_enable_process_rtp_packet] :
+										       processRtpPacketDistribute[min(_packet->packet.source, _packet->packet.dest) / 2 % _process_rtp_packets_distribute_threads_use] :
 										       processRtpPacketDistribute[0];
 						_processRtpPacket->push_packet_rtp_2(_packet);
 						++batch_index_distribute;
@@ -6045,12 +6049,12 @@ void ProcessRtpPacket::rtp_batch(batch_packet_rtp_s *_batch_rtp_packet) {
 				}
 			} else {
 				for(unsigned batch_index = 0; 
-				    batch_index < _batch_rtp_packet->count / (opt_process_rtp_packets_hash_next_thread + 1); 
+				    batch_index < _batch_rtp_packet->count / (_process_rtp_packets_hash_next_threads_use_for_batch + 1); 
 				    batch_index++) {
 					packet_rtp_s *_packet = _batch_rtp_packet->batch[batch_index];
 					this->find_hash(_packet, false);
 				}
-				for(int i = 0; i < opt_process_rtp_packets_hash_next_thread; i++) {
+				for(int i = 0; i < _process_rtp_packets_hash_next_threads_use_for_batch; i++) {
 					if(sem_sync_next_thread[i][1].__align) {
 						sem_wait(&sem_sync_next_thread[i][1]);
 					} else {
@@ -6070,7 +6074,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_rtp_s *_batch_rtp_packet) {
 		for(;batch_index_distribute < _batch_rtp_packet->count; batch_index_distribute++) {
 			packet_rtp_s *_packet = _batch_rtp_packet->batch[batch_index_distribute];
 			ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
-							       processRtpPacketDistribute[min(_packet->packet.source, _packet->packet.dest) / 2 % opt_enable_process_rtp_packet] :
+							       processRtpPacketDistribute[min(_packet->packet.source, _packet->packet.dest) / 2 % _process_rtp_packets_distribute_threads_use] :
 							       processRtpPacketDistribute[0];
 			_processRtpPacket->push_packet_rtp_2(_packet);
 		}
@@ -6164,7 +6168,7 @@ double ProcessRtpPacket::getCpuUsagePerc(bool preparePstatData, int nextThreadIn
 void ProcessRtpPacket::terminate() {
 	this->term_processRtp = true;
 	pthread_join(this->out_thread_handle, NULL);
-	for(int i = 0; i < opt_process_rtp_packets_hash_next_thread; i++) {
+	for(int i = 0; i < this->process_rtp_packets_hash_next_threads; i++) {
 		if(this->next_thread_handle[i]) {
 			if(this->sem_sync_next_thread[i][0].__align) {
 				sem_post(&this->sem_sync_next_thread[i][0]);
@@ -6184,10 +6188,33 @@ void ProcessRtpPacket::autoStartProcessRtpPacket() {
 	if(!processRtpPacketHash &&
 	   opt_enable_process_rtp_packet && opt_pcap_split &&
 	   !is_read_from_file_simple()) {
+		process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
 		ProcessRtpPacket *_processRtpPacketHash = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 			processRtpPacketDistribute[i] = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::distribute, i);
 		}
 		processRtpPacketHash = _processRtpPacketHash;
+	}
+}
+
+void ProcessRtpPacket::addRtpRhThread() {
+	if(this->process_rtp_packets_hash_next_threads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS) {
+		for(int j = 0; j < opt_process_rtp_packets_hash_next_thread_sem_sync; j++) {
+			sem_init(&sem_sync_next_thread[this->process_rtp_packets_hash_next_threads][j], 0, 0);
+		}
+		arg_next_thread *arg = new arg_next_thread;
+		arg->processRtpPacket = this;
+		arg->next_thread_id = this->process_rtp_packets_hash_next_threads + 1;
+		pthread_create(&this->next_thread_handle[this->process_rtp_packets_hash_next_threads], NULL, _ProcessRtpPacket_nextThreadFunction, arg);
+		++this->process_rtp_packets_hash_next_threads;
+	}
+}
+
+void ProcessRtpPacket::addRtpRdThread() {
+	if(process_rtp_packets_distribute_threads_use < MAX_PROCESS_RTP_PACKET_THREADS &&
+	   !processRtpPacketDistribute[process_rtp_packets_distribute_threads_use]) {
+		ProcessRtpPacket *_processRtpPacketDistribute = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::distribute, process_rtp_packets_distribute_threads_use);
+		processRtpPacketDistribute[process_rtp_packets_distribute_threads_use] = _processRtpPacketDistribute;
+		++process_rtp_packets_distribute_threads_use;
 	}
 }

@@ -1550,15 +1550,27 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 		} 
 		rrdtCPU_t2 = last_t2cpu_preprocess_packet_out_thread > -2 ? last_t2cpu_preprocess_packet_out_thread : t2cpu;
+		int countRtpRhThreads = 0;
+		bool needAddRtpRhThreads = false;
+		int countRtpRdThreads = 0;
+		bool needAddRtpRdThreads = false;
 		if(processRtpPacketHash) {
 			for(int i = 0; i < 1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
-				double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(true, i);
-				if(t2cpu_process_rtp_packet_out_thread >= 0) {
-					outStrStat << "/" << "rh" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
-					if(i == 0 && sverb.qring_stat) {
-						double qringFillingPerc = processRtpPacketHash->getQringFillingPerc();
-						if(qringFillingPerc > 0) {
-							outStrStat << "r" << qringFillingPerc;
+				if(i == 0 || processRtpPacketHash->existsNextThread(i - 1)) {
+					double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(true, i);
+					if(t2cpu_process_rtp_packet_out_thread >= 0) {
+						outStrStat << "/" << "rh" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+						if(i == 0 && sverb.qring_stat) {
+							double qringFillingPerc = processRtpPacketHash->getQringFillingPerc();
+							if(qringFillingPerc > 0) {
+								outStrStat << "r" << qringFillingPerc;
+							}
+						}
+					}
+					if(i > 0) {
+						++countRtpRhThreads;
+						if(t2cpu_process_rtp_packet_out_thread > 50) {
+							needAddRtpRhThreads = true;
 						}
 					}
 				}
@@ -1575,12 +1587,24 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							}
 						}
 					}
+					++countRtpRdThreads;
+					if(t2cpu_process_rtp_packet_out_thread > 50) {
+						needAddRtpRdThreads = true;
+					}
 				}
 			}
 		}
 		if(max(last_t2cpu_preprocess_packet_out_thread, t2cpu) > 50) {
 			ProcessRtpPacket::autoStartProcessRtpPacket();
 			PreProcessPacket::autoStartNextLevelPreProcessPacket();
+		}
+		if(countRtpRhThreads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
+		   needAddRtpRhThreads) {
+			processRtpPacketHash->addRtpRhThread();
+		}
+		if(countRtpRdThreads < MAX_PROCESS_RTP_PACKET_THREADS &&
+		   needAddRtpRdThreads) {
+			ProcessRtpPacket::addRtpRdThread();
 		}
 		outStrStat << "%] ";
 	}
