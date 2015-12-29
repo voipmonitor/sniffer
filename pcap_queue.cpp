@@ -1529,15 +1529,15 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	double t2cpu = this->getCpuUsagePerc(writeThread, true);
 	if(t2cpu >= 0) {
-		outStrStat << "t2CPU[" << "pb" << setprecision(1) << t2cpu;
+		outStrStat << "t2CPU[" << "pb:" << setprecision(1) << t2cpu;
 		double last_t2cpu_preprocess_packet_out_thread = -2;
 		for(int i = 0; i < MAX_PREPROCESS_PACKET_THREADS; i++) {
 			if(preProcessPacket[i]) {
 				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
 				if(t2cpu_preprocess_packet_out_thread >= 0) {
 					outStrStat << "/" 
-						   << (i == 0 ? "d" :
-						      (i == 1 ? "s" : "e"))
+						   << (i == 0 ? "d:" :
+						      (i == 1 ? "s:" : "e:"))
 						   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 					if(sverb.qring_stat) {
 						double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
@@ -1559,7 +1559,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				if(i == 0 || processRtpPacketHash->existsNextThread(i - 1)) {
 					double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(true, i);
 					if(t2cpu_process_rtp_packet_out_thread >= 0) {
-						outStrStat << "/" << "rh" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+						outStrStat << "/" << (i == 0 ? "rm:" : "rh:")
+							   << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
 						if(i == 0 && sverb.qring_stat) {
 							double qringFillingPerc = processRtpPacketHash->getQringFillingPerc();
 							if(qringFillingPerc > 0) {
@@ -1579,7 +1580,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				if(processRtpPacketDistribute[i]) {
 					double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(true);
 					if(t2cpu_process_rtp_packet_out_thread >= 0) {
-						outStrStat << "/" << "rd" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+						outStrStat << "/" << "rd:" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
 						if(sverb.qring_stat) {
 							double qringFillingPerc = processRtpPacketDistribute[i]->getQringFillingPerc();
 							if(qringFillingPerc > 0) {
