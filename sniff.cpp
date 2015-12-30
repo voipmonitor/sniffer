@@ -1509,52 +1509,34 @@ void *rtp_read_thread_func(void *arg) {
 	params->threadId = get_unix_tid();
 	while(1) {
 
+		bool emptyQueue = false;
 		if(params->rtpp_queue_quick) {
 			if(!params->rtpp_queue_quick->pop(&rtpp_pq, false)) {
-				if(is_terminating()) {
-					return(NULL);
-				} else if(params->remove_flag &&
-					  getTimeS() - params->last_use_time_s > 10 * 60) {
-					lock_add_remove_rtp_threads();
-					if(params->remove_flag) {
-						break;
-					}
-					unlock_add_remove_rtp_threads();
-				}
-				usleep(rtp_qring_usleep);
-				continue;
+				emptyQueue = true;
 			}
 		} else if(params->rtpp_queue_quick_boost) {
 			if(!params->rtpp_queue_quick_boost->pop(&rtpp_pq, false)) {
-				if(is_terminating()) {
-					return(NULL);
-				} else if(params->remove_flag &&
-					  getTimeS() - params->last_use_time_s > 10 * 60) {
-					lock_add_remove_rtp_threads();
-					if(params->remove_flag) {
-						break;
-					}
-					unlock_add_remove_rtp_threads();
-				}
-				usleep(rtp_qring_usleep);
-				continue;
+				emptyQueue = true;
 			}
 		} else {
 			if(!params->rtpp_queue->pop(&rtpp_pq, true)) {
-				if(is_terminating() || readend) {
-					return NULL;
-				} else if(params->remove_flag &&
-					  getTimeS() - params->last_use_time_s > 10 * 60) {
-					lock_add_remove_rtp_threads();
-					if(params->remove_flag) {
-						break;
-					}
-					unlock_add_remove_rtp_threads();
-				}
-				// no packet to read, wait and try again
-				usleep(rtp_qring_usleep);
-				continue;
+				emptyQueue = true;
 			}
+		}
+		if(emptyQueue) {
+			if(is_terminating() || readend) {
+				return NULL;
+			} else if(params->remove_flag &&
+				  ((getTimeMS_rdtsc() / 1000) - params->last_use_time_s) > 10 * 60) {
+				lock_add_remove_rtp_threads();
+				if(params->remove_flag) {
+					break;
+				}
+				unlock_add_remove_rtp_threads();
+			}
+			// no packet to read, wait and try again
+			usleep(rtp_qring_usleep);
+			continue;
 		}
 		
 		params->last_use_time_s = rtpp_pq.packet.header.ts.tv_sec;
@@ -1581,7 +1563,9 @@ void *rtp_read_thread_func(void *arg) {
 	if(params->remove_flag) {
 		params->remove_flag = false;
 		params->last_use_time_s = 0;
+		memset(params->threadPstatData, 0, sizeof(params->threadPstatData));
 	}
+	params->thread = 0;
 	params->threadId = 0;
 	
 	unlock_add_remove_rtp_threads();
