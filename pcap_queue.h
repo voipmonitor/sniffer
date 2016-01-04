@@ -701,12 +701,14 @@ protected:
 	string getCpuUsage(bool writeThread = false, bool preparePstatData = false);
 	bool socketWritePcapBlock(pcap_block_store *blockStore);
 	bool socketGetHost();
+	bool socketReadyForConnect();
 	bool socketConnect();
 	bool socketListen();
 	bool socketAwaitConnection(int *socketClient, sockaddr_in *socketClientInfo);
 	bool socketClose();
-	bool socketWrite(u_char *data, size_t dataLen);
+	bool socketWrite(u_char *data, size_t dataLen, bool disableAutoConnect = false);
 	bool socketRead(u_char *data, size_t *dataLen, int idConnection);
+	bool _socketRead(int socket, u_char *data, size_t *dataLen, int timeout = 1);
 	bool isMirrorSender() {
 		return(this->packetServerDirection == directionWrite);
 	}
@@ -742,7 +744,6 @@ private:
 	u_int cleanupBlockStoreTrash_counter;
 	hostent* socketHostEnt;
 	int socketHandle;
-	int badTimeCounter;
 	map<unsigned int, sPacketServerConnection*> packetServerConnections;
 	volatile int _sync_packetServerConnections;
 	u_long lastCheckFreeSizeCachedir_timeMS;

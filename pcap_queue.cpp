@@ -4008,7 +4008,6 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->cleanupBlockStoreTrash_counter = 0;
 	this->socketHostEnt = NULL;
 	this->socketHandle = 0;
-	this->badTimeCounter = 0;
 	this->_sync_packetServerConnections = 0;
 	this->lastCheckFreeSizeCachedir_timeMS = 0;
 	this->_last_ts.tv_sec = 0;
@@ -4143,7 +4142,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				sockaddr_in socketClientInfo;
 				if(this->socketAwaitConnection(&socketClient, &socketClientInfo)) {
 					if(!TERMINATING && !forceStop) {
-						syslog(LOG_NOTICE, "accept new connection from %s:%i", inet_ntoa(socketClientInfo.sin_addr), socketClientInfo.sin_port);
+						syslog(LOG_NOTICE, "accept new connection from %s:%i, socket: %i", 
+						       inet_ntoa(socketClientInfo.sin_addr), socketClientInfo.sin_port, socketClient);
 						this->createConnection(socketClient, &socketClientInfo);
 					}
 				}
@@ -4226,8 +4226,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 											       sensorId,
 											       sensorTime.c_str());
 											string message = "bad time";
-											send(this->packetServerConnections[arg2]->socketClient, message.c_str(), message.length(), 0);
-											close(this->packetServerConnections[arg2]->socketClient);
+											send(this->packetServerConnections[arg2]->socketClient, message.c_str(), message.length(), 0);	
 											this->packetServerConnections[arg2]->active = false;
 											forceStop = true;
 											break;
@@ -4676,7 +4675,7 @@ bool PcapQueue_readFromFifo::openFifoForRead(void *arg, unsigned int arg2) {
 bool PcapQueue_readFromFifo::openFifoForWrite(void *arg, unsigned int arg2) {
 	if(this->packetServerDirection == directionWrite) {
 		return(this->socketGetHost() &&
-		       this->socketConnect());
+		       this->socketReadyForConnect());
 	}
 	return(true);
 }
@@ -4813,9 +4812,6 @@ string PcapQueue_readFromFifo::getCpuUsage(bool writeThread, bool preparePstatDa
 }
 
 bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) {
-	if(!this->socketHandle) {
-		return(false);
-	}
 	size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
 	u_char *saveBuffer = blockStore->getSaveBuffer();
 	bool rslt = this->socketWrite(saveBuffer, sizeSaveBuffer);
@@ -4838,25 +4834,28 @@ bool PcapQueue_readFromFifo::socketGetHost() {
 	return(true);
 }
 
+bool PcapQueue_readFromFifo::socketReadyForConnect() {
+	return(true);
+}
+
 bool PcapQueue_readFromFifo::socketConnect() {
 	if(!this->socketHostEnt) {
 		this->socketGetHost();
 	}
 	if((this->socketHandle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
-		syslog(LOG_NOTICE, "packetbuffer %s: cannot create socket", this->nameQueue.c_str());
+		syslog(LOG_ERR, "packetbuffer %s: cannot create socket - trying again", this->nameQueue.c_str());
 		return(false);
 	}
 	sockaddr_in addr;
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(this->packetServerIpPort.get_port());
 	addr.sin_addr.s_addr = *(long*)this->socketHostEnt->h_addr_list[0];
-	while(connect(this->socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1 && !TERMINATING) {
-		syslog(LOG_NOTICE, "packetbuffer %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), inet_ntoa(*(struct in_addr *)this->socketHostEnt->h_addr_list[0]), strerror(errno));
-		sleep(1);
-	}
-	if(TERMINATING) {
+	if(connect(this->socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		syslog(LOG_ERR, "packetbuffer %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), inet_ntoa(*(struct in_addr *)this->socketHostEnt->h_addr_list[0]), strerror(errno));
 		return(false);
 	}
+	int flag = 1;
+	setsockopt(this->socketHandle, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
 	if(opt_pcap_queues_mirror_nonblock_mode) {
 		int flags = fcntl(this->socketHandle, F_GETFL, 0);
 		if(flags >= 0) {
@@ -4868,34 +4867,31 @@ bool PcapQueue_readFromFifo::socketConnect() {
 	}
 	char dataSensorIdName[1024];
 	snprintf(dataSensorIdName, sizeof(dataSensorIdName), "sensor_id_name: %i:%s", opt_id_sensor, opt_name_sensor);
-	socketWrite((u_char*)dataSensorIdName, strlen(dataSensorIdName) + 1);
+	if(!socketWrite((u_char*)dataSensorIdName, strlen(dataSensorIdName) + 1, true)) {
+		syslog(LOG_ERR, "packetbuffer write sensor_id_name failed - trying again");
+		this->socketClose();
+		return(false);
+	}
 	char dataTime[40];
 	snprintf(dataTime, sizeof(dataTime), "sensor_time: %s", sqlDateTimeString(time(NULL)).c_str());
-	socketWrite((u_char*)dataTime, strlen(dataTime) + 1);
-	fd_set rfds;
-	FD_ZERO(&rfds);
-	FD_SET(this->socketHandle, &rfds);
-	struct timeval tv;
-	tv.tv_sec = 4;
-	tv.tv_usec = 0;
-	if(select(this->socketHandle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
-		char recv_data[100] = "";
-		size_t recv_data_len = recv(this->socketHandle, recv_data, sizeof(recv_data), 0);
-		if(recv_data_len > 0 && recv_data_len <= sizeof(recv_data) && 
+	if(!socketWrite((u_char*)dataTime, strlen(dataTime) + 1, true)) {
+		syslog(LOG_ERR, "packetbuffer write sensor_time failed - trying again");
+		this->socketClose();
+		return(false);
+	}
+	char recv_data[100] = "";
+	size_t recv_data_len = sizeof(recv_data);
+	bool rsltRead = this->_socketRead(this->socketHandle, (u_char*)recv_data, &recv_data_len, 4);
+	if(rsltRead) {
+		if(recv_data_len > 0 &&
 		   memmem(recv_data, recv_data_len,  "bad time", 8)) {
-			++this->badTimeCounter;
-			string error = "different time between receiver and sender";
-			if(this->badTimeCounter > 4) {
-				syslog(LOG_ERR, "%s - terminating", error.c_str());
-				vm_terminate_error("bad time");
-			} else {
-				syslog(LOG_ERR, "%s - check %i", error.c_str(), this->badTimeCounter);
-			}
-		} else {
-			this->badTimeCounter = 0;
+			syslog(LOG_ERR, "different time between receiver and sender - trying again");
+			this->socketClose();
+			return(false);
 		}
 	} else {
-		this->badTimeCounter = 0;
+		this->socketClose();
+		return(false);
 	}
 	return(true);
 }
@@ -4967,12 +4963,32 @@ bool PcapQueue_readFromFifo::socketClose() {
 	return(true);
 }
 
-bool PcapQueue_readFromFifo::socketWrite(u_char *data, size_t dataLen) {
+bool PcapQueue_readFromFifo::socketWrite(u_char *data, size_t dataLen, bool disableAutoConnect) {
+	if(!this->socketHandle && !disableAutoConnect) {
+		while(!this->socketConnect()) {
+			for(int i = 0; i < 20; i++) {
+				usleep(100000);
+				if(TERMINATING) {
+					return(false);
+				}
+			}
+		}
+	}
 	size_t dataLenWrited = 0;
 	while(dataLenWrited < dataLen && !TERMINATING) {
 		ssize_t _dataLenWrited = send(this->socketHandle, data + dataLenWrited, dataLen - dataLenWrited, 0);
 		if(_dataLenWrited == -1) {
-			this->socketConnect();
+			if(!disableAutoConnect) {
+				this->socketClose();
+				while(!this->socketConnect()) {
+					for(int i = 0; i < 20; i++) {
+						usleep(100000);
+						if(TERMINATING) {
+							return(false);
+						}
+					}
+				}
+			}
 		} else {
 			dataLenWrited += _dataLenWrited;
 		}
@@ -4981,28 +4997,33 @@ bool PcapQueue_readFromFifo::socketWrite(u_char *data, size_t dataLen) {
 }
 
 bool PcapQueue_readFromFifo::socketRead(u_char *data, size_t *dataLen, int idConnection) {
+	return(this->_socketRead(this->packetServerConnections[idConnection]->socketClient, 
+				 data, dataLen));
+}
+
+bool PcapQueue_readFromFifo::_socketRead(int socket, u_char *data, size_t *dataLen, int timeout) {
 	size_t maxDataLen = *dataLen;
 	*dataLen = 0;
 	if(opt_pcap_queues_mirror_nonblock_mode) {
 		fd_set rfds;
 		FD_ZERO(&rfds);
-		FD_SET(this->packetServerConnections[idConnection]->socketClient, &rfds);
+		FD_SET(socket, &rfds);
 		struct timeval tv;
-		tv.tv_sec = 1;
+		tv.tv_sec = timeout;
 		tv.tv_usec = 0;
-		int rsltSelect = select(this->packetServerConnections[idConnection]->socketClient + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
+		int rsltSelect = select(socket + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
 		if(rsltSelect < 0) {
 			return(false);
 		}
-		if(rsltSelect > 0 && FD_ISSET(this->packetServerConnections[idConnection]->socketClient, &rfds)) {
-			ssize_t recvLen = recv(this->packetServerConnections[idConnection]->socketClient, data, maxDataLen, 0);
+		if(rsltSelect > 0 && FD_ISSET(socket, &rfds)) {
+			ssize_t recvLen = recv(socket, data, maxDataLen, 0);
 			if(recvLen <= 0) {
 				return(false);
 			}
 			*dataLen = recvLen;
 		}
 	} else {
-		ssize_t recvLen = recv(this->packetServerConnections[idConnection]->socketClient, data, maxDataLen, 0);
+		ssize_t recvLen = recv(socket, data, maxDataLen, 0);
 		if(recvLen <= 0) {
 			return(false);
 		}
