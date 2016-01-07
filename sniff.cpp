@@ -2885,7 +2885,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 						if(!strcasecmp(type, "SIP")) {
 							call->reason_sip_cause = cause;
 							call->reason_sip_text = text;
-						} else if(!strcasecmp(type, "Q.850")) {
+						} else if(!strcasecmp(type, "Q.850") || !strcasecmp(type, "Q.850 ")) {
 							call->reason_q850_cause = cause;
 							call->reason_q850_text = text;
 						}
