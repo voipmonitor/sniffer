@@ -2868,6 +2868,15 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 						char type[10];
 						memcpy(type, reason, pointerToCause - reason);
 						type[pointerToCause - reason] = 0;
+						//remove spaces from end of string type
+						for(int i = pointerToCause - reason; i > 0; i--) {
+							if(type[i] == ' ') {
+								type[i] = 0;
+							} else {
+								break;
+							}
+						}
+						while(type[pointerToCause - reason - i] == ' ') type[pointerToCause - reason - i] = 0;
 						int cause = atoi(pointerToCause + 7);
 						char text[1024];
 						char *pointerToText = strcasestr(pointerToCause, ";text=\"");
@@ -2885,7 +2894,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 						if(!strcasecmp(type, "SIP")) {
 							call->reason_sip_cause = cause;
 							call->reason_sip_text = text;
-						} else if(!strcasecmp(type, "Q.850") || !strcasecmp(type, "Q.850 ")) {
+						} else if(!strcasecmp(type, "Q.850")) {
 							call->reason_q850_cause = cause;
 							call->reason_q850_text = text;
 						}
