@@ -1439,7 +1439,9 @@ public:
 		doubleEndLine = NULL;
 		contentLength = -1;
 		parseDataPtr = NULL;
+		/*
 		contents_count = 0;
+		*/
 		sip = false;
 		root = NULL;
 		rootCheckSip = NULL;
@@ -1497,11 +1499,13 @@ public:
 	}
 	unsigned long parseData(char *data, unsigned long datalen, bool doClear = false);
 	void clear() {
+		/*
 		for(unsigned int i = 0; i < contents_count; i++) {
 			contents[i]->content = NULL;
 			contents[i]->length = 0;
 		}
 		contents_count = 0;
+		*/
 		doubleEndLine = NULL;
 		contentLength = -1;
 		parseDataPtr = NULL;
@@ -1532,8 +1536,10 @@ private:
 	char *doubleEndLine;
 	long contentLength;
 	const char *parseDataPtr;
+	/*
 	ppContent *contents[100];
 	unsigned int contents_count;
+	*/
 	bool sip;
 	unsigned long timeSync_SIP_HEADERfilter;
 	unsigned long timeSync_custom_headers_cdr;

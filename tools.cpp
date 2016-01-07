@@ -2284,7 +2284,9 @@ unsigned long ParsePacket::parseData(char *data, unsigned long datalen, bool doC
 		} else if(i == 0 || data[i - 1] == '\n') {
 			content = getContent(data + i, &namelength, datalen - i - 1);
 			if(content && !content->content) {
+				/*
 				contents[contents_count++] = content;
+				*/
 				content->content = data + i + namelength;
 				i += namelength;
 				for(; i < datalen; i++) {

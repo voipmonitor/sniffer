@@ -281,9 +281,9 @@ int opt_enable_process_rtp_packet = 1;
 int process_rtp_packets_distribute_threads_use = 0;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
-unsigned int opt_preprocess_packets_qring_length = 100;
+unsigned int opt_preprocess_packets_qring_length = 200;
 unsigned int opt_preprocess_packets_qring_usleep = 10;
-unsigned int opt_process_rtp_packets_qring_length = 500;
+unsigned int opt_process_rtp_packets_qring_length = 2000;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
 int opt_enable_http = 0;
 int opt_enable_webrtc = 0;
@@ -342,7 +342,6 @@ int opt_mysqlloadconfig = 1;
 int opt_last_rtp_from_end = 1;
 int opt_pcap_dump_bufflength = 8192;
 int opt_pcap_dump_asyncwrite = 1;
-int opt_pcap_dump_asyncwrite_limit_new_thread = 80;
 FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
 FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp = 
 	#ifdef HAVE_LIBLZO
@@ -536,7 +535,7 @@ int num_threads_max = 0;
 int num_threads_active = 0;
 unsigned int rtpthreadbuffer = 20;	// default 20MB
 unsigned int rtp_qring_length = 0;
-unsigned int rtp_qring_usleep = 1000;
+unsigned int rtp_qring_usleep = 100;
 int rtp_qring_quick = 1;
 unsigned int gthread_num = 0;
 
@@ -678,6 +677,9 @@ char opt_bogus_dumper_path[1204];
 BogusDumper *bogusDumper;
 
 char opt_syslog_string[256];
+int opt_cpu_limit_warning_t0 = 60;
+int opt_cpu_limit_new_thread = 50;
+int opt_cpu_limit_delete_thread = 5;
 
 extern pthread_mutex_t tartimemaplock;
 
@@ -4461,6 +4463,8 @@ void cConfig::addConfigItems() {
 		addConfigItem(new cConfigItem_yesno("rrd", &opt_rrd));
 		addConfigItem(new cConfigItem_string("php_path", opt_php_path, sizeof(opt_php_path)));
 		addConfigItem(new cConfigItem_string("syslog_string", opt_syslog_string, sizeof(opt_syslog_string)));
+		addConfigItem(new cConfigItem_integer("cpu_limit_new_thread", &opt_cpu_limit_new_thread));
+		addConfigItem(new cConfigItem_integer("cpu_limit_delete_thread", &opt_cpu_limit_delete_thread));
 	group("upgrade");
 		addConfigItem(new cConfigItem_yesno("upgrade_try_http_if_https_fail", &opt_upgrade_try_http_if_https_fail));
 		addConfigItem(new cConfigItem_string("curlproxy", opt_curlproxy, sizeof(opt_curlproxy)));
@@ -4623,7 +4627,6 @@ void cConfig::addConfigItems() {
 					addConfigItem(new cConfigItem_yesno("pcapsplit", &opt_pcap_split));
 					addConfigItem((new cConfigItem_yesno("spooldiroldschema", &opt_newdir))
 						->setNeg());
-					addConfigItem(new cConfigItem_integer("pcap_dump_asyncwrite_limit_new_thread", &opt_pcap_dump_asyncwrite_limit_new_thread));
 					addConfigItem((new cConfigItem_integer("pcap_dump_asyncwrite_maxsize", &opt_pcap_dump_asyncwrite_maxsize))
 						->addAlias("pcap_dump_asyncbuffer"));
 		subgroup("cloud");
@@ -6876,9 +6879,6 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "pcap_dump_asyncwrite", NULL))) {
 		opt_pcap_dump_asyncwrite = yesno(value);
 	}
-	if((value = ini.GetValue("general", "pcap_dump_asyncwrite_limit_new_thread", NULL))) {
-		opt_pcap_dump_asyncwrite_limit_new_thread = atoi(value);
-	}
 	if((value = ini.GetValue("general", "pcap_dump_zip", NULL))) {
 		strlwr((char*)value);
 		opt_pcap_dump_zip_sip = 
@@ -7086,6 +7086,13 @@ int eval_config(string inistr) {
 
 	if((value = ini.GetValue("general", "syslog_string", NULL))) {
 		strncpy(opt_syslog_string, value, sizeof(opt_syslog_string));
+	}
+	
+	if((value = ini.GetValue("general", "cpu_limit_new_thread", NULL))) {
+		opt_cpu_limit_new_thread = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cpu_limit_delete_thread", NULL))) {
+		opt_cpu_limit_delete_thread = atoi(value);
 	}
 
 	if((value = ini.GetValue("general", "preprocess_packets_qring_length", NULL))) {

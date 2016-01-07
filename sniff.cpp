@@ -1507,6 +1507,7 @@ void *rtp_read_thread_func(void *arg) {
 	rtp_packet_pcap_queue rtpp_pq;
 	rtp_read_thread *params = (rtp_read_thread*)arg;
 	params->threadId = get_unix_tid();
+	unsigned usleepCounter = 0;
 	while(1) {
 
 		bool emptyQueue = false;
@@ -1535,8 +1536,15 @@ void *rtp_read_thread_func(void *arg) {
 				unlock_add_remove_rtp_threads();
 			}
 			// no packet to read, wait and try again
-			usleep(rtp_qring_usleep);
+			unsigned usleepTime = rtp_qring_usleep * 
+					      (usleepCounter > 1000 ? 20 :
+					       usleepCounter > 100 ? 10 :
+					       usleepCounter > 10 ? 5 : 1);
+			usleep(usleepTime);
+			++usleepCounter;
 			continue;
+		} else {
+			usleepCounter = 0;
 		}
 		
 		params->last_use_time_s = rtpp_pq.packet.header.ts.tv_sec;
@@ -1603,9 +1611,12 @@ void set_remove_rtp_read_thread() {
 	unlock_add_remove_rtp_threads();
 }
 
-double get_rtp_sum_cpu_usage() {
+double get_rtp_sum_cpu_usage(double *max) {
 	extern int num_threads_max;
 	extern int num_threads_active;
+	if(max) {
+		*max = 0;
+	}
 	if(is_enable_rtp_threads() &&
 	   num_threads_active > 0 && num_threads_max > 0) {
 		bool set = false;
@@ -1622,6 +1633,9 @@ double get_rtp_sum_cpu_usage() {
 						&rtp_threads[i].threadPstatData[0], &rtp_threads[i].threadPstatData[1],
 						&ucpu_usage, &scpu_usage);
 					sum += ucpu_usage + scpu_usage;
+					if(max && ucpu_usage + scpu_usage > *max) {
+						*max = ucpu_usage + scpu_usage;
+					}
 					set = true;
 				}
 			}
