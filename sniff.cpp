@@ -1611,6 +1611,25 @@ void set_remove_rtp_read_thread() {
 	unlock_add_remove_rtp_threads();
 }
 
+int get_index_rtp_read_thread_min_size() {
+	extern int num_threads_active;
+	size_t minSize = 0;
+	int minSizeIndex = -1;
+	for(int i = 0; i < num_threads_active; i++) {
+		if(rtp_threads[i].threadId && !rtp_threads[i].remove_flag) {
+			if(!rtp_threads[i].rtpp_queue_quick) {
+				return(-1);
+			}
+			size_t size = rtp_threads[i].rtpp_queue_quick->size();
+			if(minSizeIndex == -1 || minSize > size) {
+				minSizeIndex = i;
+				minSize = size;
+			}
+		}
+	}
+	return(minSizeIndex);
+}
+
 double get_rtp_sum_cpu_usage(double *max) {
 	extern int num_threads_max;
 	extern int num_threads_active;

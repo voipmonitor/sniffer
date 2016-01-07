@@ -266,8 +266,15 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	destroy_call_at_bye = 0;
 	custom_header1[0] = '\0';
 	match_header[0] = '\0';
-	thread_num = num_threads_active > 0 ? gthread_num % num_threads_active : 0;
-	gthread_num++;
+	if(num_threads_active > 0) {
+		thread_num = get_index_rtp_read_thread_min_size();
+		if(thread_num < 0) {
+			thread_num = gthread_num % num_threads_active;
+		}
+		gthread_num++;
+	} else {
+		thread_num = 0;
+	}
 	recordstopped = 0;
 	dtmfflag = 0;
 	dtmfflag2 = 0;
