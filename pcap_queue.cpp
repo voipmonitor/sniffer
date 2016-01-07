@@ -1046,6 +1046,10 @@ void PcapQueue::setInstancePcapFifo(PcapQueue_readFromFifo *pcapQueue) {
 
 void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
+	extern int opt_cpu_limit_warning_t0;
+	extern int opt_cpu_limit_new_thread;
+	extern int opt_cpu_limit_delete_thread;
+
 //For RRDs files update
 //rrd heap file 2db-heap.rrd
 	double rrdheap_buffer = 0;
@@ -1507,7 +1511,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if (opt_rrd) rrdtCPU_t0 = t0cpu;
 		}
 		static int countOccurencesForWarning = 0;
-		if((sumMaxReadThreads > 60 || t0cpu > 60) && getThreadingMode() < 4) {
+		if((sumMaxReadThreads > opt_cpu_limit_warning_t0 || t0cpu > opt_cpu_limit_warning_t0) && getThreadingMode() < 4) {
 			++countOccurencesForWarning;
 		} else if(countOccurencesForWarning > 0) {
 			--countOccurencesForWarning;
@@ -1570,7 +1574,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 					if(i > 0) {
 						++countRtpRhThreads;
-						if(t2cpu_process_rtp_packet_out_thread > 50) {
+						if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread) {
 							needAddRtpRhThreads = true;
 						}
 					}
@@ -1589,13 +1593,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						}
 					}
 					++countRtpRdThreads;
-					if(t2cpu_process_rtp_packet_out_thread > 50) {
+					if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread) {
 						needAddRtpRdThreads = true;
 					}
 				}
 			}
 		}
-		if(max(last_t2cpu_preprocess_packet_out_thread, t2cpu) > 50) {
+		if(max(last_t2cpu_preprocess_packet_out_thread, t2cpu) > opt_cpu_limit_new_thread) {
 			ProcessRtpPacket::autoStartProcessRtpPacket();
 			PreProcessPacket::autoStartNextLevelPreProcessPacket();
 		}
@@ -1609,14 +1613,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		outStrStat << "%] ";
 	}
-	double tRTPcpu = get_rtp_sum_cpu_usage();
+	double tRTPcpuMax = 0;
+	double tRTPcpu = get_rtp_sum_cpu_usage(&tRTPcpuMax);
 	if(tRTPcpu >= 0) {
 		extern int num_threads_active;
 		outStrStat << "tRTP_CPU[" << setprecision(1) << tRTPcpu << "%/" << num_threads_active << "t] ";
-		if(tRTPcpu / num_threads_active > 50) {
+		if(tRTPcpu / num_threads_active > opt_cpu_limit_new_thread ||
+		   tRTPcpuMax > opt_cpu_limit_new_thread) {
 			add_rtp_read_thread();
 		} else if(num_threads_active > 1 &&
-			  tRTPcpu / num_threads_active < 20) {
+			  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread) {
 			set_remove_rtp_read_thread();
 		}
 	}
@@ -1664,11 +1670,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			outStrStat << "%] ";
 		}
-		extern int opt_pcap_dump_asyncwrite_limit_new_thread;
-		if(last_tac_cpu > opt_pcap_dump_asyncwrite_limit_new_thread) {
+		if(last_tac_cpu > opt_cpu_limit_new_thread) {
 			asyncClose->addThread();
 		}
-		if(last_tac_cpu < 5) {
+		if(last_tac_cpu < opt_cpu_limit_delete_thread) {
 			asyncClose->removeThread();
 		}
 	}
