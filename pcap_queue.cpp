@@ -1620,8 +1620,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		outStrStat << "tRTP_CPU[" << setprecision(1) << tRTPcpu << "%/" 
 		           << tRTPcpuMax << "m/"
 			   << num_threads_active << "t] ";
-		if(tRTPcpu / num_threads_active > opt_cpu_limit_new_thread ||
-		   tRTPcpuMax > opt_cpu_limit_new_thread * 1.5) {
+		if(tRTPcpu / num_threads_active > opt_cpu_limit_new_thread) {
 			add_rtp_read_thread();
 		} else if(num_threads_active > 1 &&
 			  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread) {
