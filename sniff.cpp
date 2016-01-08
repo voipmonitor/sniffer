@@ -2909,7 +2909,6 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 								break;
 							}
 						}
-						while(type[pointerToCause - reason - i] == ' ') type[pointerToCause - reason - i] = 0;
 						int cause = atoi(pointerToCause + 7);
 						char text[1024];
 						char *pointerToText = strcasestr(pointerToCause, ";text=\"");
