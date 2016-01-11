@@ -47,6 +47,7 @@ struct sVerbose {
 	int reassembly_sip;
 	int reassembly_sip_output;
 	int log_manager_cmd;
+	int rtp_extend_stat;
 };
 
 #endif

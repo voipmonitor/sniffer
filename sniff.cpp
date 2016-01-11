@@ -1666,6 +1666,44 @@ double get_rtp_sum_cpu_usage(double *max) {
 	}
 }
 
+string get_rtp_threads_cpu_usage(bool callPstat) {
+	extern int num_threads_max;
+	extern int num_threads_active;
+	if(is_enable_rtp_threads() &&
+	   num_threads_active > 0 && num_threads_max > 0) {
+		ostringstream outStr;
+		outStr << fixed;
+		int counter = 0;
+		for(int i = 0; i < num_threads_active; i++) {
+			if(rtp_threads[i].threadId) {
+				if(callPstat) {
+					if(rtp_threads[i].threadPstatData[0].cpu_total_time) {
+						rtp_threads[i].threadPstatData[1] = rtp_threads[i].threadPstatData[0];
+					}
+					pstat_get_data(rtp_threads[i].threadId, rtp_threads[i].threadPstatData);
+				}
+				double ucpu_usage, scpu_usage;
+				if(rtp_threads[i].threadPstatData[0].cpu_total_time && rtp_threads[i].threadPstatData[1].cpu_total_time) {
+					pstat_calc_cpu_usage_pct(
+						&rtp_threads[i].threadPstatData[0], &rtp_threads[i].threadPstatData[1],
+						&ucpu_usage, &scpu_usage);
+					if(counter) {
+						outStr << ';';
+					}
+					outStr << setprecision(1) << (ucpu_usage + scpu_usage) << '%';
+					if(rtp_threads[i].rtpp_queue_quick) {
+						outStr << 'r' << rtp_threads[i].rtpp_queue_quick->size();
+					}
+					++counter;
+				}
+			}
+		}
+		return(outStr.str());
+	} else {
+		return("");
+	}
+}
+
 inline Call *new_invite_register(packet_s *packetS, ParsePacket::ppContentsX *parseContents, 
 				 int sip_method, char *callidstr, bool *detectUserAgent,
 				 bool preprocess_queue = false){

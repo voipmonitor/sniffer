@@ -1617,9 +1617,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double tRTPcpu = get_rtp_sum_cpu_usage(&tRTPcpuMax);
 	if(tRTPcpu >= 0) {
 		extern int num_threads_active;
-		outStrStat << "tRTP_CPU[" << setprecision(1) << tRTPcpu << "%/" 
-		           << tRTPcpuMax << "m/"
-			   << num_threads_active << "t] ";
+		outStrStat << "tRTP_CPU[" << setprecision(1) << tRTPcpu << "%/";
+		if(sverb.rtp_extend_stat) {
+			outStrStat << get_rtp_threads_cpu_usage(false) << "/";
+		} else {
+			outStrStat << tRTPcpuMax << "m/";
+		}
+		outStrStat << num_threads_active << "t] ";
 		if(tRTPcpu / num_threads_active > opt_cpu_limit_new_thread) {
 			add_rtp_read_thread();
 		} else if(num_threads_active > 1 &&
