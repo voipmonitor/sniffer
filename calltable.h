@@ -994,7 +994,7 @@ public:
 	void clear(bool lock = true);
 	void refresh(SqlDb *sqlDb = NULL);
 	void addToStdParse(ParsePacket *parsePacket);
-	void parse(Call *call, char *data, int datalen, ParsePacket *parsePacket);
+	void parse(Call *call, char *data, int datalen, ParsePacket::ppContentsX *parseContents);
 	void setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content);
 	void prepareSaveRows_cdr(Call *call, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
 	void prepareSaveRows_message(Call *call, class SqlDb_row *message, class SqlDb_row message_next_ch[], char *message_next_ch_name[]);

@@ -503,7 +503,7 @@ SIP_HEADERfilter::load() {
 }
 
 int
-SIP_HEADERfilter::add_call_flags(ParsePacket *parsePacket, unsigned int *flags, char *domain_src, char *domain_dst) {
+SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, unsigned int *flags, char *domain_src, char *domain_dst) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -512,7 +512,7 @@ SIP_HEADERfilter::add_call_flags(ParsePacket *parsePacket, unsigned int *flags, 
 	
 	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
 		header_data *data = &it_header->second;
-		string content = parsePacket->getContentString((it_header->first + ":").c_str());
+		string content = parseContents->getContentString((it_header->first + ":").c_str());
 		if(content.empty()) {
 			continue;
 		}
@@ -558,7 +558,7 @@ SIP_HEADERfilter::add_call_flags(ParsePacket *parsePacket, unsigned int *flags, 
 void 
 SIP_HEADERfilter::addNodes(ParsePacket *parsePacket) {
 	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
-		parsePacket->addNode((it_header->first + ":").c_str());
+		parsePacket->addNode((it_header->first + ":").c_str(), ParsePacket::typeNode_custom);
 	}
 }
 

@@ -62,7 +62,7 @@ double get_rtp_sum_cpu_usage(double *max = NULL);
 
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
-void save_packet(Call *call, packet_s *packetS, ParsePacket *parsePacket, int type,  int forceSip);
+void save_packet(Call *call, packet_s *packetS, ParsePacket::ppContentsX *parseContents, int type,  int forceSip);
 
 
 typedef std::map<in_addr_t, in_addr_t> nat_aliases_t; //!< 

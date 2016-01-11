@@ -2076,8 +2076,85 @@ void ListUA_wb::addBlack(const char *ua) {
 }
 
 
+ParsePacket::ppNode::ppNode() {
+	for(int i = 0; i < 256; i++) {
+		nodes[i] = 0;
+	}
+	leaf = false;
+	typeNode = typeNode_std;
+	nodeIndex = 0;
+	isContentLength = false;
+}
+
+ParsePacket::ppNode::~ppNode() {
+	for(int i = 0; i < 256; i++) {
+		if(nodes[i]) {
+			delete nodes[i];
+		}
+	}
+}
+
+void ParsePacket::ppNode::addNode(const char *nodeName, eTypeNode typeNode, int nodeIndex, bool isContentLength) {
+	while(*nodeName == '\n') {
+		 ++nodeName;
+	}
+	if(*nodeName) {
+		unsigned char nodeChar = (unsigned char)*nodeName;
+		if(nodeChar >= 'A' && nodeChar <= 'Z') {
+			nodeChar -= 'A' - 'a';
+		}
+		ppNode *node = (ppNode*)nodes[nodeChar];
+		if(!node) {
+			node = new FILE_LINE ppNode;
+		}
+		node->addNode(nodeName + 1, typeNode, nodeIndex, isContentLength);
+		if(!nodes[nodeChar]) {
+			nodes[nodeChar] = node;
+		}
+	} else {
+		leaf = true;
+		this->typeNode = typeNode;
+		this->nodeIndex = nodeIndex;
+		this->isContentLength = isContentLength;
+	}
+}
+		
+void ParsePacket::ppNode::debugData(ppContentsX *contents, ParsePacket *parsePacket) {
+	if(leaf) {
+		if(typeNode == typeNode_std && contents->std[nodeIndex].length > 0) {
+			cout << "S " << parsePacket->nodesStd[nodeIndex] 
+			     << " : " << string(contents->parseDataPtr +  contents->std[nodeIndex].offset, contents->std[nodeIndex].length)
+			     << " : L " << contents->std[nodeIndex].length
+			     << endl;
+		} else if(typeNode == typeNode_custom && contents->custom[nodeIndex].length > 0) {
+			cout << "C " << parsePacket->nodesCustom[nodeIndex] 
+			     << " : " << string(contents->parseDataPtr +  contents->custom[nodeIndex].offset, contents->custom[nodeIndex].length)
+			     << " : L " << contents->custom[nodeIndex].length
+			     << endl;
+		}
+	} else {
+		for(int i = 0; i < 256; i++) {
+			if(nodes[i]) {
+				ppNode *node = (ppNode*)nodes[i];
+				node->debugData(contents, parsePacket);
+			}
+		}
+	}
+}
+
+ParsePacket::ParsePacket() {
+	root = NULL;
+	rootCheckSip = NULL;
+	timeSync_SIP_HEADERfilter = 0;
+	timeSync_custom_headers_cdr = 0;
+	timeSync_custom_headers_message = 0;
+}
+
+ParsePacket::~ParsePacket() {
+	free();
+}
+	
 void ParsePacket::setStdParse() {
-	clear();
 	if(root) {
 		delete root;
 		root = NULL;
@@ -2092,55 +2169,55 @@ void ParsePacket::setStdParse() {
 	if(!rootCheckSip) {
 		rootCheckSip = new FILE_LINE ppNode;
 	}
-	addNode("content-length:", true);
-	addNode("l:", true);
-	addNode("INVITE ");
-	addNode("MESSAGE ");
-	addNode("call-id:");
-	addNode("i:");
-	addNode("from:");
-	addNode("f:");
-	addNode("to:");
-	addNode("t:");
-	addNode("contact:");
-	addNode("m:");
-	addNode("remote-party-id:");
+	addNode("content-length:", typeNode_std, true);
+	addNode("l:", typeNode_std, true);
+	addNode("INVITE ", typeNode_std);
+	addNode("MESSAGE ", typeNode_std);
+	addNode("call-id:", typeNode_std);
+	addNode("i:", typeNode_std);
+	addNode("from:", typeNode_std);
+	addNode("f:", typeNode_std);
+	addNode("to:", typeNode_std);
+	addNode("t:", typeNode_std);
+	addNode("contact:", typeNode_std);
+	addNode("m:", typeNode_std);
+	addNode("remote-party-id:", typeNode_std);
 	extern int opt_passertedidentity;
 	if(opt_passertedidentity) {
-		addNode("P-Asserted-Identity:");
+		addNode("P-Asserted-Identity:", typeNode_std);
 	}
 	extern int opt_ppreferredidentity;
 	if(opt_ppreferredidentity) {
-		addNode("P-Preferred-Identity:");
+		addNode("P-Preferred-Identity:", typeNode_std);
 	}
-	addNode("geoposition:");
-	addNode("user-agent:");
-	addNode("authorization:");
-	addNode("expires:");
-	addNode("x-voipmonitor-norecord:");
-	addNode("signal:");
-	addNode("signal=");
-	addNode("x-voipmonitor-custom1:");
-	addNode("content-type:");
-	addNode("c:");
-	addNode("cseq:");
-	addNode("supported:");
-	addNode("proxy-authenticate:");
+	addNode("geoposition:", typeNode_std);
+	addNode("user-agent:", typeNode_std);
+	addNode("authorization:", typeNode_std);
+	addNode("expires:", typeNode_std);
+	addNode("x-voipmonitor-norecord:", typeNode_std);
+	addNode("signal:", typeNode_std);
+	addNode("signal=", typeNode_std);
+	addNode("x-voipmonitor-custom1:", typeNode_std);
+	addNode("content-type:", typeNode_std);
+	addNode("c:", typeNode_std);
+	addNode("cseq:", typeNode_std);
+	addNode("supported:", typeNode_std);
+	addNode("proxy-authenticate:", typeNode_std);
 	extern int opt_update_dstnum_onanswer;
 	if(opt_update_dstnum_onanswer) {
-		addNode("via:");
+		addNode("via:", typeNode_std);
 	}
 	extern bool exists_columns_cdr_reason;
 	if(exists_columns_cdr_reason) {
-		addNode("reason:");
+		addNode("reason:", typeNode_std);
 	}
-	addNode("m=audio ");
-	addNode("a=rtpmap:");
-	addNode("o=");
-	addNode("c=IN IP4 ");
-	addNode("expires=");
-	addNode("username=\"");
-	addNode("realm=\"");
+	addNode("m=audio ", typeNode_std);
+	addNode("a=rtpmap:", typeNode_std);
+	addNode("o=", typeNode_std);
+	addNode("c=IN IP4 ", typeNode_std);
+	addNode("expires=", typeNode_std);
+	addNode("username=\"", typeNode_std);
+	addNode("realm=\"", typeNode_std);
 	
 	extern char opt_fbasename_header[128];
 	if(opt_fbasename_header[0] != '\0') {
@@ -2148,7 +2225,7 @@ void ParsePacket::setStdParse() {
 		if(findHeader[findHeader.length() - 1] != ':') {
 			findHeader.append(":");
 		}
-		addNode(findHeader.c_str());
+		addNode(findHeader.c_str(), typeNode_std);
 	}
 	
 	extern char opt_match_header[128];
@@ -2157,7 +2234,7 @@ void ParsePacket::setStdParse() {
 		if(findHeader[findHeader.length() - 1] != ':') {
 			findHeader.append(":");
 		}
-		addNode(findHeader.c_str());
+		addNode(findHeader.c_str(), typeNode_std);
 	}
 	
 	extern char opt_callidmerge_header[128];
@@ -2166,7 +2243,7 @@ void ParsePacket::setStdParse() {
 		if(findHeader[findHeader.length() - 1] != ':') {
 			findHeader.append(":");
 		}
-		addNode(findHeader.c_str());
+		addNode(findHeader.c_str(), typeNode_std);
 	}
 	
 	extern CustomHeaders *custom_headers_cdr;
@@ -2222,7 +2299,39 @@ void ParsePacket::setStdParse() {
 	}
 }
 
-unsigned long ParsePacket::parseData(char *data, unsigned long datalen, bool doClear) {
+void ParsePacket::addNode(const char *nodeName, eTypeNode typeNode, bool isContentLength) {
+	std::vector<string> *listNodes = typeNode == typeNode_std ? &nodesStd :
+					 typeNode == typeNode_custom ? &nodesCustom : NULL;
+	if(!listNodes) {
+		return;
+	}
+	string nodeNameUpper = string(*nodeName == '\n' ? nodeName + 1 : nodeName);
+	std::transform(nodeNameUpper.begin(), nodeNameUpper.end(), nodeNameUpper.begin(), ::toupper);
+	if(std::find(nodesStd.begin(), nodesStd.end(), nodeNameUpper) == nodesStd.end() &&
+	   std::find(nodesCustom.begin(), nodesCustom.end(), nodeNameUpper) == nodesCustom.end()) {
+		if(listNodes->size() < (typeNode == typeNode_std ? ParsePacket_std_max : ParsePacket_custom_max)) {
+			listNodes->push_back(nodeNameUpper);
+			if(!root) {
+				root = new FILE_LINE ppNode;
+			}
+			root->addNode(nodeName, typeNode, listNodes->size() - 1, isContentLength);
+		} else {
+			syslog(LOG_WARNING, "too much sip nodes for ParsePacket");
+		}
+	}
+}
+
+void ParsePacket::addNodeCheckSip(const char *nodeName) {
+	if(std::find(nodesCheckSip.begin(), nodesCheckSip.end(), nodeName) == nodesCheckSip.end()) {
+		nodesCheckSip.push_back(nodeName);
+		if(!rootCheckSip) {
+			rootCheckSip = new FILE_LINE ppNode;
+		}
+		rootCheckSip->addNode(nodeName, typeNode_checkSip, nodesCheckSip.size() - 1, false);
+	}
+}
+
+u_int32_t ParsePacket::parseData(char *data, unsigned long datalen, ppContentsX *contents) {
 	extern CustomHeaders *custom_headers_cdr;
 	extern CustomHeaders *custom_headers_message;
 	if(!this->timeSync_SIP_HEADERfilter) {
@@ -2258,52 +2367,68 @@ unsigned long ParsePacket::parseData(char *data, unsigned long datalen, bool doC
 		}
 	}
 	unsigned long rsltDataLen = datalen;
-	if(doClear) {
-		clear();
-	}
-	sip = datalen ? isSipContent(data, datalen - 1) : false;
-	ppContent *content;
+	contents->sip = datalen ? isSipContent(data, datalen - 1) : false;
 	unsigned int namelength;
 	for(unsigned long i = 0; i < datalen; i++) {
-		if(!doubleEndLine && 
+		if(!contents->doubleEndLine && 
 		   datalen > 3 &&
 		   data[i] == '\r' && i < datalen - 3 && 
 		   data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
-			doubleEndLine = data + i;
-			if(contentLength > -1) {
-				unsigned long modify_datalen = doubleEndLine + 4 - data + contentLength;
+			contents->doubleEndLine = data + i;
+			if(contents->contentLength > -1) {
+				unsigned long modify_datalen = contents->doubleEndLine + 4 - data + contents->contentLength;
 				if(modify_datalen < datalen) {
 					datalen = modify_datalen;
 					rsltDataLen = datalen;
 				}
 			} else {
-				rsltDataLen = doubleEndLine + 4 - data;
+				rsltDataLen = contents->doubleEndLine + 4 - data;
 				break;
 			}
 			i += 2;
 		} else if(i == 0 || data[i - 1] == '\n') {
-			content = getContent(data + i, &namelength, datalen - i - 1);
-			if(content && !content->content) {
-				contents[contents_count++] = content;
-				content->content = data + i + namelength;
+			ppNode *node = getNode(data + i, datalen - i - 1, &namelength);
+			if(node && !node->isSetNode(contents)) {
+				ppContentItemX *contentItem = node->getPointerToItem(contents);
+				contentItem->offset = i + namelength;
 				i += namelength;
+				bool endLine = false;
 				for(; i < datalen; i++) {
 					if(data[i] == '\r' || data[i] == '\n') {
-						content->length = data + i - content->content;
-						content->trim();
-						if(content->isContentLength && content->content) {
-							contentLength = atoi(content->content);
-						}
-						--i;
+						endLine = true;
 						break;
 					}
-				 
+				}
+				if(endLine || i == datalen) {
+					contentItem->length = i - contentItem->offset;
+					contentItem->trim(data);
+					if(node->isContentLength && contentItem->length) {
+						contents->contentLength = atoi(data + contentItem->offset);
+					}
+					if(endLine) {
+						--i;
+					}
 				}
 			}
 		}
 	}
-	parseDataPtr = data;
+	contents->parseDataPtr = data;
 	return(rsltDataLen);
+}
+
+void ParsePacket::free() {
+	if(root) {
+		delete root;
+		root = NULL;
+	}
+	if(rootCheckSip) {
+		delete rootCheckSip;
+		rootCheckSip = NULL;
+	}
+}
+
+void ParsePacket::debugData(ppContentsX *contents) {
+	root->debugData(contents, this);
 }
 
 

@@ -67,7 +67,7 @@
 
 using namespace std;
 
-extern int check_sip20(char *data, unsigned long len, ParsePacket *parsePacket);
+extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
 void daemonizeOutput(string error);
 
 extern int verbosity;

@@ -1316,67 +1316,98 @@ private:
 	ListUA black;
 };
 
+#define ParsePacket_std_max 100
+#define ParsePacket_custom_max 100
+
 class ParsePacket {
 public:
-	struct ppContent {
-		ppContent() {
-			content = NULL;
+	enum eTypeNode {
+		typeNode_std,
+		typeNode_checkSip,
+		typeNode_custom
+	};
+	struct ppContentItemX {
+		ppContentItemX() {
+			offset = 0;
 			length = 0;
-			isContentLength = false;
 		}
-		void trim() {
-			if(length <= 0) {
-				content = NULL;
-				length = 0;
-			} else {
-				while(length && content[length - 1] == ' ') {
-					--length;
-				}
-				while(length && content[0] == ' ') {
-					++content;
-					--length;
-				}
+		void trim(const char *data) {
+			while(length && data[offset + length - 1] == ' ') {
+				--length;
+			}
+			while(length && data[offset] == ' ') {
+				++offset;
+				--length;
 			}
 		}
-		const char *content;
-		long length;
-		bool isContentLength;
+		u_int32_t offset;
+		u_int32_t length;
+	};
+	struct ppContentsX {
+		ppContentsX(ParsePacket *parser) {
+			this->parser = parser;
+			clean();
+		}
+		void clean() {
+			memset(&std, 0, sizeof(std));
+			memset(&custom, 0, sizeof(custom));
+			doubleEndLine = NULL;
+			contentLength = -1;
+			parseDataPtr = NULL;
+			sip = false;
+		}
+		u_int32_t parse(char *data, unsigned long datalen, bool clean) {
+			if(clean) {
+				this->clean();
+			}
+			return(this->parser->parseData(data, datalen, this));
+		}
+		const char *getContentData(const char *nodeName, u_int32_t *dataLength) {
+			while(*nodeName == '\n') {
+				++nodeName;
+			}
+			ppNode *node = parser->getNode(nodeName, 0, NULL);
+			if(node) {
+				ppContentItemX *contentItem = node->getPointerToItem(this);
+				if(contentItem->length) {
+					*dataLength = contentItem->length;
+					return(parseDataPtr + contentItem->offset);
+				}
+			}
+			*dataLength = 0;
+			return(NULL);
+		}
+		std::string getContentString(const char *nodeName) {
+			u_int32_t dataLength = 0;
+			const char *contentData = getContentData(nodeName, &dataLength);
+			if(contentData && dataLength) {
+				return(std::string(contentData, dataLength));
+			}
+			return("");
+		}
+		const char *getParseData() {
+			return(parseDataPtr);
+		}
+		bool isSip() {
+			return(sip);
+		}
+		void debugData() {
+			parser->debugData(this);
+		}
+		ppContentItemX std[ParsePacket_std_max];
+		ppContentItemX custom[ParsePacket_custom_max];
+		char *doubleEndLine;
+		int32_t contentLength;
+		const char *parseDataPtr;
+		bool sip;
+		ParsePacket *parser;
 	};
 	struct ppNode {
-		ppNode() {
-			for(int i = 0; i < 256; i++) {
-				nodes[i] = 0;
-			}
-			leaf = false;
-		}
-		~ppNode() {
-			for(int i = 0; i < 256; i++) {
-				if(nodes[i]) {
-					delete nodes[i];
-				}
-			}
-		}
-		void addNode(const char *nodeName, bool isContentLength = false) {
-			while(*nodeName == '\n') {
-				 ++nodeName;
-			}
-			if(*nodeName) {
-				unsigned char nodeChar = (unsigned char)*nodeName;
-				if(nodeChar >= 'A' && nodeChar <= 'Z') {
-					nodeChar -= 'A' - 'a';
-				}
-				if(!nodes[nodeChar]) {
-					nodes[nodeChar] = new FILE_LINE ppNode;
-				}
-				nodes[nodeChar]->addNode(nodeName + 1, isContentLength);
-			} else {
-				leaf = true;
-				if(isContentLength) {
-					content.isContentLength = true;
-				}
-			}
-		}
-		ppContent *getContent(const char *nodeName, unsigned int *namelength, unsigned int namelength_limit = UINT_MAX) {
+		ppNode();
+		~ppNode();
+		void addNode(const char *nodeName, eTypeNode typeNode, int nodeIndex, bool isContentLength);
+		ppContentItemX *getContent(const char *nodeName, ppContentsX *contents, ppNode **node_rslt, u_int32_t *namelength_rslt = NULL, 
+					   u_int32_t namelength = 0, u_int32_t namelength_limit = UINT_MAX) {
 			if(!leaf) {
 				if(!*nodeName) {
 					return(NULL);
@@ -1386,155 +1417,84 @@ public:
 					nodeChar -= 'A' - 'a';
 				}
 				if(nodes[nodeChar]) {
-					if(namelength) {
-						++*namelength;
-						if(*namelength > namelength_limit) {
-							return(NULL);
-						}
+					++namelength;
+					if(namelength_limit && namelength > namelength_limit) {
+						return(NULL);
 					}
-					return(nodes[nodeChar]->getContent(nodeName + 1, namelength));
+					ppNode *node = (ppNode*)nodes[nodeChar];
+					return(node->getContent(nodeName + 1, contents, node_rslt, namelength_rslt, 
+								namelength, namelength_limit));
 				} else {
 					return(NULL);
 				}
 			} else {
-				return(&content);
-			}
-		}
-		void clear() {
-			content.content = NULL;
-			content.length = 0;
-			for(int i = 0; i < 256; i++) {
-				if(nodes[i]) {
-					nodes[i]->clear();
+				if(namelength_rslt) {
+					*namelength_rslt = namelength;
 				}
-			}
-		}
-		void debugData(string nodeName) {
-			if(leaf) {
-				string _content;
-				if(content.content && content.length > 0) {
-					_content = string(content.content, content.length);
-					if(nodeName[0] == '\n') {
-						nodeName = nodeName.substr(1);
+				if(node_rslt) {
+					*node_rslt = this;
+				}
+				if(contents) {
+					switch(typeNode) {
+					case typeNode_std:
+						return(contents->std[nodeIndex].offset ? &contents->std[nodeIndex] : NULL);
+					case typeNode_custom:
+						return(contents->custom[nodeIndex].offset ? &contents->custom[nodeIndex] : NULL);
+					case typeNode_checkSip:
+						return(NULL);
 					}
-					cout << nodeName << " : " << _content << " : L " << content.length << endl;
+				} else {
+					return((ppContentItemX*)true);
 				}
-			} else {
-				for(int i = 0; i < 256; i++) {
-					if(nodes[i]) {
-						char i_str[2];
-						i_str[0] = i;
-						i_str[1] =0;
-						nodes[i]->debugData(nodeName + i_str);
-					}
-				}
-			}
-		}
-		ppNode *nodes[256];
-		bool leaf;
-		ppContent content;
-	};
-public:
-	ParsePacket(bool stdParse = false) {
-		doubleEndLine = NULL;
-		contentLength = -1;
-		parseDataPtr = NULL;
-		contents_count = 0;
-		sip = false;
-		root = NULL;
-		rootCheckSip = NULL;
-		timeSync_SIP_HEADERfilter = 0;
-		timeSync_custom_headers_cdr = 0;
-		timeSync_custom_headers_message = 0;
-	}
-	~ParsePacket() {
-		free();
-	}
-	void setStdParse();
-	void addNode(const char *nodeName, bool isContentLength = false) {
-		root->addNode(nodeName, isContentLength);
-	}
-	void addNodeCheckSip(const char *nodeName) {
-		rootCheckSip->addNode(nodeName);
-	}
-	ppContent *getContent(const char *nodeName, unsigned int *namelength = NULL, unsigned int namelength_limit = UINT_MAX) {
-		if(namelength) {
-			*namelength = 0;
-		}
-		return(root->getContent(nodeName, namelength, namelength_limit));
-	}
-	string getContentString(const char *nodeName) {
-		while(*nodeName == '\n') {
-			 ++nodeName;
-		}
-		ppContent *content = root->getContent(nodeName, NULL);
-		if(content && content->content && content->length > 0) {
-			return(string(content->content, content->length));
-		} else {
-			return("");
-		}
-	}
-	const char *getContentData(const char *nodeName, long *dataLength) {
-		while(*nodeName == '\n') {
-			 ++nodeName;
-		}
-		ppContent *content = root->getContent(nodeName, NULL);
-		if(content && content->content && content->length > 0) {
-			if(dataLength) {
-				*dataLength = content->length;
-			}
-			return(content->content);
-		} else {
-			if(dataLength) {
-				*dataLength = 0;
 			}
 			return(NULL);
 		}
-	}
-	bool isSipContent(const char *nodeName, unsigned int namelength_limit = UINT_MAX) {
-		unsigned int namelength = 0;
-		return(rootCheckSip->getContent(nodeName, &namelength, namelength_limit));
-	}
-	unsigned long parseData(char *data, unsigned long datalen, bool doClear = false);
-	void clear() {
-		for(unsigned int i = 0; i < contents_count; i++) {
-			contents[i]->content = NULL;
-			contents[i]->length = 0;
+		bool isSetNode(ppContentsX *contents) {
+			return((typeNode == typeNode_std && contents->std[this->nodeIndex].length) ||
+			       (typeNode == typeNode_custom && contents->custom[this->nodeIndex].length));
 		}
-		contents_count = 0;
-		doubleEndLine = NULL;
-		contentLength = -1;
-		parseDataPtr = NULL;
-		sip = false;
-	}
-	void free() {
-		if(root) {
-			delete root;
-			root = NULL;
+		ppContentItemX *getPointerToItem(ppContentsX *contents) {
+			return(typeNode == typeNode_std ? &contents->std[this->nodeIndex] :
+			       typeNode == typeNode_custom ? &contents->custom[this->nodeIndex] : NULL);
 		}
-		if(rootCheckSip) {
-			delete rootCheckSip;
-			rootCheckSip = NULL;
+		void debugData(ppContentsX *contents, ParsePacket *parsePacket);
+		volatile ppNode *nodes[256];
+		bool leaf;
+		eTypeNode typeNode;
+		int nodeIndex;
+		bool isContentLength;
+	};
+public:
+	ParsePacket();
+	~ParsePacket();
+	void setStdParse();
+	void addNode(const char *nodeName, eTypeNode typeNode, bool isContentLength = false);
+	void addNodeCheckSip(const char *nodeName);
+	ppNode *getNode(const char *data, u_int32_t datalength, u_int32_t *namelength_rslt) {
+		ppNode *node;
+		if(root->getContent(data, NULL, &node, namelength_rslt, 
+				    0, datalength)) {
+			return(node);
 		}
+		return(NULL);
 	}
-	void debugData() {
-		root->debugData("");
+	bool isSipContent(const char *data, u_int32_t datalength) {
+		if(rootCheckSip &&
+		   rootCheckSip->getContent(data, NULL, NULL, NULL,
+					    0, datalength)) {
+			return(true);
+		}
+		return(false);
 	}
-	const char *getParseData() {
-		return(parseDataPtr);
-	}
-	bool isSip() {
-		return(sip);
-	}
+	u_int32_t parseData(char *data, unsigned long datalen, ppContentsX *contents);
+	void free();
+	void debugData(ppContentsX *contents);
 private:
+	std::vector<string> nodesStd;
+	std::vector<string> nodesCheckSip;
+	std::vector<string> nodesCustom;
 	ppNode *root;
 	ppNode *rootCheckSip;
-	char *doubleEndLine;
-	long contentLength;
-	const char *parseDataPtr;
-	ppContent *contents[100];
-	unsigned int contents_count;
-	bool sip;
 	unsigned long timeSync_SIP_HEADERfilter;
 	unsigned long timeSync_custom_headers_cdr;
 	unsigned long timeSync_custom_headers_message;

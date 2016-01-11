@@ -117,7 +117,7 @@ private:
 					contentLength = atol(contentLengthPos + 16);
 				}
 				int sipDataLen = (endHeaderSepPos - data) + 4 + contentLength;
-				extern int check_sip20(char *data, unsigned long len, ParsePacket *parsePacket);
+				extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
 				if(sipDataLen == data_len) {
 					return(true);
 				} else if(sipDataLen < data_len) {
@@ -171,7 +171,7 @@ public:
 		packet_s packet;
 		bool packetDelete;
 		int forceSip;
-		ParsePacket *parse;
+		ParsePacket::ppContentsX *parseContents;
 		u_int32_t sipDataLen;
 		bool isSip;
 		string callid;
@@ -210,17 +210,13 @@ public:
 		}
 		void allocParse() {
 			for(unsigned i = 0; i < max_count; i++) {
-				batch[i]->parse = new FILE_LINE ParsePacket;
+				extern ParsePacket _parse_packet_global_process_packet;
+				batch[i]->parseContents = new FILE_LINE ParsePacket::ppContentsX(&_parse_packet_global_process_packet);
 			}
 		}
 		void deleteParse() {
 			for(unsigned i = 0; i < max_count; i++) {
-				delete batch[i]->parse;
-			}
-		}
-		void setStdParse() {
-			for(unsigned i = 0; i < max_count; i++) {
-				batch[i]->parse->setStdParse();
+				delete batch[i]->parseContents;
 			}
 		}
 		packet_parse_s **batch;
@@ -270,7 +266,7 @@ public:
 		extern TcpReassemblySip tcpReassemblySip;
 		extern char *sipportmatrix;
 		
-		extern int check_sip20(char *data, unsigned long len, ParsePacket *parsePacket);
+		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
 		
 		switch(typePreProcessThread) {
 		case ppt_detach:
@@ -323,8 +319,8 @@ public:
 			    sipportmatrix[packetS->source] || 
 			    sipportmatrix[packetS->dest]) &&
 			   check_sip20(packetS->data, packetS->datalen, NULL)) {
-				_parse_packet->sipDataLen = _parse_packet->parse->parseData(packetS->data, packetS->datalen, true);
-				_parse_packet->isSip = _parse_packet->parse->isSip();
+				_parse_packet->sipDataLen = _parse_packet->parseContents->parse(packetS->data, packetS->datalen, true);
+				_parse_packet->isSip = _parse_packet->parseContents->isSip();
 			} else {
 				_parse_packet->sipDataLen = 0;
 				_parse_packet->isSip = false;

@@ -266,7 +266,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	destroy_call_at_bye = 0;
 	custom_header1[0] = '\0';
 	match_header[0] = '\0';
-	if(num_threads_active > 0) {
+	if(is_enable_rtp_threads() && num_threads_active > 0) {
 		thread_num = get_index_rtp_read_thread_min_size();
 		if(thread_num < 0) {
 			thread_num = gthread_num % num_threads_active;
@@ -4626,15 +4626,15 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 			   findHeader[findHeader.length() - 1] != '=') {
 				findHeader.append(":");
 			}
-			parsePacket->addNode(findHeader.c_str());
+			parsePacket->addNode(findHeader.c_str(), ParsePacket::typeNode_custom);
 		}
 	}
 	unlock_custom_headers();
 }
 
-extern char * gettag_ext(const void *ptr, unsigned long len, ParsePacket *parsePacket, 
+extern char * gettag_ext(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents, 
 			 const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
-void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket *parsePacket) {
+void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket::ppContentsX *parseContents) {
 	lock_custom_headers();
 	unsigned long gettagLimitLen = 0;
 	map<int, map<int, sCustomHeaderData> >::iterator iter;
@@ -4647,7 +4647,7 @@ void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket *pars
 				findHeader.append(":");
 			}
 			unsigned long l;
-			char *s = gettag_ext(data, datalen, parsePacket,
+			char *s = gettag_ext(data, datalen, parseContents,
 					     findHeader.c_str(), &l, &gettagLimitLen);
 			if(l) {
 				char customHeaderContent[256];

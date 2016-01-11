@@ -210,7 +210,7 @@ public:
 	int count;
 	void load();
 	void dump();
-	int add_call_flags(class ParsePacket *parsePacket, unsigned int *flags, char *domain_src, char *domain_dst);
+	int add_call_flags(class ParsePacket::ppContentsX *parseContents, unsigned int *flags, char *domain_src, char *domain_dst);
 	void addNodes(ParsePacket *parsePacket);
 private:
 	static volatile unsigned long loadTime;
