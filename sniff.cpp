@@ -1632,6 +1632,22 @@ int get_index_rtp_read_thread_min_size() {
 	return(minSizeIndex);
 }
 
+int get_index_rtp_read_thread_min_calls() {
+	extern int num_threads_active;
+	size_t minCalls = 0;
+	int minCallsIndex = -1;
+	for(int i = 0; i < num_threads_active; i++) {
+		if(rtp_threads[i].threadId && !rtp_threads[i].remove_flag) {
+			u_int32_t calls = rtp_threads[i].calls;
+			if(minCallsIndex == -1 || minCalls > calls) {
+				minCallsIndex = i;
+				minCalls = calls;
+			}
+		}
+	}
+	return(minCallsIndex);
+}
+
 double get_rtp_sum_cpu_usage(double *max) {
 	extern int num_threads_max;
 	extern int num_threads_active;

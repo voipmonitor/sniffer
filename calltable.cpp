@@ -268,7 +268,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	custom_header1[0] = '\0';
 	match_header[0] = '\0';
 	if(is_enable_rtp_threads() && num_threads_active > 0) {
-		thread_num = get_index_rtp_read_thread_min_size();
+		thread_num = get_index_rtp_read_thread_min_calls();
 		if(thread_num < 0) {
 			thread_num = gthread_num % num_threads_active;
 		}
@@ -574,6 +574,11 @@ Call::~Call(){
 	//printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
 	//printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
 	
+	if(is_enable_rtp_threads() && num_threads_active > 0) {
+		if(rtp_threads[thread_num].calls > 0) {
+			--rtp_threads[thread_num].calls;
+		}
+	}
 }
 
 void
