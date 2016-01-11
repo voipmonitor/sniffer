@@ -2905,14 +2905,13 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 						memcpy(type, reason, pointerToCause - reason);
 						type[pointerToCause - reason] = 0;
 						//remove spaces from end of string type
-						for(int i = pointerToCause - reason; i > 0; i--) {
+						for(int i = pointerToCause - reason - 1; i > 0; i--) {
 							if(type[i] == ' ') {
 								type[i] = 0;
 							} else {
 								break;
 							}
 						}
-						//while(type[pointerToCause - reason - i] == ' ') type[pointerToCause - reason - i] = 0;
 						int cause = atoi(pointerToCause + 7);
 						char text[1024];
 						char *pointerToText = strcasestr(pointerToCause, ";text=\"");
