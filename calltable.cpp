@@ -575,7 +575,8 @@ Call::~Call(){
 	//printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
 	
 	if(is_enable_rtp_threads() && num_threads_active > 0) {
-		if(rtp_threads[thread_num].calls > 0) {
+		if(rtp_threads &&
+		   rtp_threads[thread_num].calls > 0) {
 			--rtp_threads[thread_num].calls;
 		}
 	}

@@ -727,7 +727,9 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		unsigned int now = time(NULL);
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = (*callMAPIT).second;
-			if(call->type == REGISTER or call->type == MESSAGE or call->destroy_call_at >= now or call->destroy_call_at_bye >= now) {
+			if(call->type == REGISTER or call->type == MESSAGE or 
+			   (call->destroy_call_at and call->destroy_call_at < now) or 
+			   (call->destroy_call_at_bye and call->destroy_call_at_bye < now)) {
 				// skip register or message or calls which are scheduled to be closed
 				continue;
 			}

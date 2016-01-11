@@ -3031,7 +3031,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Seen INVITE, CSeq: %s\n", call->invitecseq);
 				}
-			} else if(sip_method == MESSAGE) {
+			} else if(sip_method == MESSAGE && call->type == MESSAGE) {
 				call->destroy_call_at = packetS->header.ts.tv_sec + 60;
 				call->seeninviteok = false;
 
