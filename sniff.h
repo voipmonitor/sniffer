@@ -120,6 +120,7 @@ struct rtp_read_thread {
 		this->rtpp_queue = NULL;
 		this->rtpp_queue_quick = NULL;
 		this->rtpp_queue_quick_boost = NULL;
+		this->calls = 0;
 	}
 	pthread_t thread;	       // ID of worker storing CDR thread 
 	volatile int threadId;
@@ -129,6 +130,7 @@ struct rtp_read_thread {
 	pstat_data threadPstatData[2];
 	volatile bool remove_flag;
 	u_int32_t last_use_time_s;
+	volatile u_int32_t calls;
 };
 
 #define MAXLIVEFILTERS 10

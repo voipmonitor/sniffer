@@ -1572,6 +1572,7 @@ void *rtp_read_thread_func(void *arg) {
 	if(params->remove_flag) {
 		params->remove_flag = false;
 		params->last_use_time_s = 0;
+		params->calls = 0;
 		memset(params->threadPstatData, 0, sizeof(params->threadPstatData));
 	}
 	params->thread = 0;
@@ -1694,6 +1695,7 @@ string get_rtp_threads_cpu_usage(bool callPstat) {
 					if(rtp_threads[i].rtpp_queue_quick) {
 						outStr << 'r' << rtp_threads[i].rtpp_queue_quick->size();
 					}
+					outStr << 'c' << rtp_threads[i].calls;
 					++counter;
 				}
 			}

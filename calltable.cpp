@@ -140,6 +140,7 @@ extern int opt_custom_headers_last_value;
 extern bool _save_sip_history;
 extern int opt_saveudptl;
 extern bool exists_column_cdr_mosmin;
+extern rtp_read_thread *rtp_threads;
 
 volatile int calls_counter = 0;
 
@@ -271,6 +272,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 		if(thread_num < 0) {
 			thread_num = gthread_num % num_threads_active;
 		}
+		++rtp_threads[thread_num].calls;
 		gthread_num++;
 	} else {
 		thread_num = 0;
@@ -571,6 +573,7 @@ Call::~Call(){
 	//decreaseTartimemap(this->first_packet_time);
 	//printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
 	//printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
+	
 }
 
 void
