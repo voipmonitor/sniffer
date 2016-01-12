@@ -584,7 +584,10 @@ void save_packet(Call *call, packet_s *packetS, ParsePacket::ppContentsX *parseC
 	bool allocHeader = false;
 	const u_char *packet = packetS->packet;
 	pcap_pkthdr *header = &packetS->header;
-	u_int16_t old_header_ip_tot_len = packetS->header_ip->tot_len;
+	u_int16_t old_header_ip_tot_len = 0;
+	if(packetS->header_ip) {
+		old_header_ip_tot_len = packetS->header_ip->tot_len;
+	}
 	if(ENABLE_CONVERT_DLT_SLL_TO_EN10(packetS->dlt)) {
 		const u_char *packet_orig = packet;
 		pcap_pkthdr *header_orig = header;
@@ -718,7 +721,9 @@ void save_packet(Call *call, packet_s *packetS, ParsePacket::ppContentsX *parseC
 	if(allocHeader) {
 		delete header;
 	}
-	packetS->header_ip->tot_len = old_header_ip_tot_len;
+	if(packetS->header_ip) {
+		packetS->header_ip->tot_len = old_header_ip_tot_len;
+	}
 }
 
 inline void save_sip_packet(Call *call, packet_s *packetS, ParsePacket::ppContentsX *parseContents,
