@@ -4986,8 +4986,8 @@ bool PcapQueue_readFromFifo::socketWrite(u_char *data, size_t dataLen, bool disa
 	}
 	size_t dataLenWrited = 0;
 	while(dataLenWrited < dataLen && !TERMINATING) {
-		ssize_t _dataLenWrited = send(this->socketHandle, data + dataLenWrited, dataLen - dataLenWrited, 0);
-		if(_dataLenWrited == -1) {
+		size_t _dataLenWrited = dataLen - dataLenWrited;
+		if(!this->_socketWrite(this->socketHandle, data + dataLenWrited, &_dataLenWrited)) {
 			if(!disableAutoConnect) {
 				this->socketClose();
 				while(!this->socketConnect()) {
@@ -5002,6 +5002,35 @@ bool PcapQueue_readFromFifo::socketWrite(u_char *data, size_t dataLen, bool disa
 		} else {
 			dataLenWrited += _dataLenWrited;
 		}
+	}
+	return(true);
+}
+
+bool PcapQueue_readFromFifo::_socketWrite(int socket, u_char *data, size_t *dataLen, int timeout) {
+	if(opt_pcap_queues_mirror_nonblock_mode) {
+		fd_set wfds;
+		FD_ZERO(&wfds);
+		FD_SET(socket, &wfds);
+		struct timeval tv;
+		tv.tv_sec = timeout;
+		tv.tv_usec = 0;
+		int rsltSelect = select(socket + 1, (fd_set *) 0, &wfds, (fd_set *) 0, &tv);
+		if(rsltSelect < 0) {
+			return(false);
+		}
+		if(rsltSelect > 0 && FD_ISSET(socket, &wfds)) {
+			ssize_t writeLen = send(socket, data, *dataLen, 0);
+			if(writeLen <= 0) {
+				return(false);
+			}
+			*dataLen = writeLen;
+		}
+	} else {
+		ssize_t writeLen = send(socket, data, *dataLen, 0);
+		if(writeLen <= 0) {
+			return(false);
+		}
+		*dataLen = writeLen;
 	}
 	return(true);
 }

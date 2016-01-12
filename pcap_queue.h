@@ -707,6 +707,7 @@ protected:
 	bool socketAwaitConnection(int *socketClient, sockaddr_in *socketClientInfo);
 	bool socketClose();
 	bool socketWrite(u_char *data, size_t dataLen, bool disableAutoConnect = false);
+	bool _socketWrite(int socket, u_char *data, size_t *dataLen, int timeout = 1);
 	bool socketRead(u_char *data, size_t *dataLen, int idConnection);
 	bool _socketRead(int socket, u_char *data, size_t *dataLen, int timeout = 1);
 	bool isMirrorSender() {
