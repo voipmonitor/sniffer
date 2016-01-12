@@ -1909,11 +1909,15 @@ int main(int argc, char *argv[]) {
 
 	if(opt_untar_gui_params) {
 		chdir(opt_chdir);
-		return(untar_gui(opt_untar_gui_params));
+		int rslt = untar_gui(opt_untar_gui_params);
+		delete [] opt_untar_gui_params;
+		return(rslt);
 	}
 	if(opt_unlzo_gui_params) {
 		chdir(opt_chdir);
-		return(unlzo_gui(opt_unlzo_gui_params));
+		int rslt = unlzo_gui(opt_unlzo_gui_params);
+		delete [] opt_unlzo_gui_params;
+		return(rslt);
 	}
 	if(opt_waveform_gui_params) {
 		chdir(opt_chdir);
@@ -1926,8 +1930,10 @@ int main(int argc, char *argv[]) {
 			  inputRaw, &sampleRate, &msPerPixel, &channels, 
 			  outputWaveform[0], outputWaveform[1]) < 5) {
 			cerr << "waveform: bad arguments" << endl;
+			delete [] opt_waveform_gui_params;
 			return(1);
 		}
+		delete [] opt_waveform_gui_params;
 		return(!create_waveform_from_raw(inputRaw,
 						 sampleRate, msPerPixel, channels,
 						 outputWaveform));
@@ -1943,8 +1949,10 @@ int main(int argc, char *argv[]) {
 			  inputRaw, &sampleRate, &msPerPixel, &channels, 
 			  outputSpectrogramPng[0], outputSpectrogramPng[1]) < 5) {
 			cerr << "spectrogram: bad arguments" << endl;
+			delete [] opt_spectrogram_gui_params;
 			return(1);
 		}
+		delete [] opt_spectrogram_gui_params;
 		return(!create_spectrogram_from_raw(inputRaw,
 						    sampleRate, msPerPixel, 0, channels,
 						    outputSpectrogramPng));
@@ -4941,20 +4949,28 @@ void get_command_line_arguments() {
 				opt_saveaudio_stereo = 0;
 				break;
 			case 202:
-				opt_untar_gui_params = new FILE_LINE char[strlen(optarg) + 1];
-				strcpy(opt_untar_gui_params, optarg);
+				if(!opt_untar_gui_params) {
+					opt_untar_gui_params = new FILE_LINE char[strlen(optarg) + 1];
+					strcpy(opt_untar_gui_params, optarg);
+				}
 				break;
 			case 205:
-				opt_unlzo_gui_params = new FILE_LINE char[strlen(optarg) + 1];
-				strcpy(opt_unlzo_gui_params, optarg);
+				if(!opt_unlzo_gui_params) {
+					opt_unlzo_gui_params = new FILE_LINE char[strlen(optarg) + 1];
+					strcpy(opt_unlzo_gui_params, optarg);
+				}
 				break;
 			case 206:
-				opt_waveform_gui_params =  new FILE_LINE char[strlen(optarg) + 1];
-				strcpy(opt_waveform_gui_params, optarg);
+				if(!opt_waveform_gui_params) {
+					opt_waveform_gui_params =  new FILE_LINE char[strlen(optarg) + 1];
+					strcpy(opt_waveform_gui_params, optarg);
+				}
 				break;
 			case 207:
-				opt_spectrogram_gui_params =  new FILE_LINE char[strlen(optarg) + 1];
-				strcpy(opt_spectrogram_gui_params, optarg);
+				if(!opt_spectrogram_gui_params) {
+					opt_spectrogram_gui_params =  new FILE_LINE char[strlen(optarg) + 1];
+					strcpy(opt_spectrogram_gui_params, optarg);
+				}
 				break;
 			case 203:
 				useNewCONFIG = true;
