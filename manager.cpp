@@ -2082,7 +2082,7 @@ getwav:
 
 
 void *manager_client(void *dummy) {
-	struct hostent* host;
+	u_int32_t host_ipl;
 	struct sockaddr_in addr;
 	int res;
 	int client = 0;
@@ -2092,8 +2092,8 @@ void *manager_client(void *dummy) {
 	
 
 	while(1) {
-		host = gethostbyname_lock(opt_clientmanager);
-		if (!host) { //Report lookup failure  
+		host_ipl = gethostbyname_lock(opt_clientmanager);
+		if (!host_ipl) { //Report lookup failure  
 			syslog(LOG_ERR, "Cannot resolv: %s: host [%s] trying again...\n",  hstrerror(h_errno),  opt_clientmanager);  
 			sleep(1);
 			continue;  
@@ -2105,12 +2105,12 @@ connect:
 	memset(&addr, 0, sizeof(addr));    /* create & zero struct */
 	addr.sin_family = AF_INET;    /* select internet protocol */
 	addr.sin_port = htons(opt_clientmanagerport);         /* set the port # */
-	addr.sin_addr.s_addr = *(long*)host->h_addr_list[0]; /* set the addr */
-	syslog(LOG_NOTICE, "Connecting to manager server [%s]\n", inet_ntoa( *(struct in_addr *) host->h_addr_list[0]));
+	addr.sin_addr.s_addr = host_ipl; /* set the addr */
+	syslog(LOG_NOTICE, "Connecting to manager server [%s]\n", inet_ntostring(htonl(host_ipl)).c_str());
 	while(1) {
 		res = connect(client, (struct sockaddr *)&addr, sizeof(addr));         /* connect! */
 		if(res == -1) {
-			syslog(LOG_NOTICE, "Failed to connect to server [%s] error:[%s] trying again...\n", inet_ntoa( *(struct in_addr *) host->h_addr_list[0]), strerror(errno));
+			syslog(LOG_NOTICE, "Failed to connect to server [%s] error:[%s] trying again...\n", inet_ntostring(htonl(host_ipl)), strerror(errno));
 			sleep(1);
 			continue;
 		}

@@ -3497,7 +3497,7 @@ SocketSimpleBufferWrite::SocketSimpleBufferWrite(const char *name, ip_port ipPor
 	this->ipPort = ipPort;
 	this->udp = udp;
 	this->maxSize = maxSize;
-	socketHostEnt = NULL;
+	socketHostIPl = 0;
 	socketHandle = 0;
 	writeThreadHandle = 0;
 	_sync_data = 0;
@@ -3570,10 +3570,10 @@ void SocketSimpleBufferWrite::write() {
 }
 
 bool SocketSimpleBufferWrite::socketGetHost() {
-	socketHostEnt = NULL;
-	while(!socketHostEnt) {
-		socketHostEnt = gethostbyname_lock(ipPort.get_ip().c_str());
-		if(!socketHostEnt) {
+	socketHostIPl = 0;
+	while(!socketHostIPl) {
+		socketHostIPl = gethostbyname_lock(ipPort.get_ip().c_str());
+		if(!socketHostIPl) {
 			syslog(LOG_ERR, "socketwrite %s: cannot resolv: %s: host [%s] - trying again", name.c_str(), hstrerror(h_errno), ipPort.get_ip().c_str());  
 			sleep(1);
 		}
@@ -3582,7 +3582,7 @@ bool SocketSimpleBufferWrite::socketGetHost() {
 }
 
 bool SocketSimpleBufferWrite::socketConnect() {
-	if(!socketHostEnt) {
+	if(!socketHostIPl) {
 		socketGetHost();
 	}
 	if((socketHandle = socket(AF_INET, SOCK_STREAM, udp ? IPPROTO_UDP : IPPROTO_TCP)) == -1) {
@@ -3592,9 +3592,9 @@ bool SocketSimpleBufferWrite::socketConnect() {
 	sockaddr_in addr;
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(ipPort.get_port());
-	addr.sin_addr.s_addr = *(long*)socketHostEnt->h_addr_list[0];
+	addr.sin_addr.s_addr = socketHostIPl;
 	while(connect(socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1 && !is_terminating()) {
-		syslog(LOG_NOTICE, "socketwrite %s: failed to connect to server [%s] error:[%s] - trying again", name.c_str(), inet_ntoa(*(struct in_addr *)socketHostEnt->h_addr_list[0]), strerror(errno));
+		syslog(LOG_NOTICE, "socketwrite %s: failed to connect to server [%s] error:[%s] - trying again", name.c_str(), inet_ntostring(htonl(socketHostIPl)).c_str(), strerror(errno));
 		sleep(1);
 	}
 	return(true);

@@ -3538,7 +3538,7 @@ void test() {
 	} break;
 	 
 	case 1: {
-	 
+	  
 		test_parsepacket();
 		break;
 	 
@@ -7394,19 +7394,22 @@ void dns_lookup_common_hostnames() {
 		"cloud3.voipmonitor.org"
 	};
 	for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]) && !terminating; i++) {
-		hostent *conn_server_record = gethostbyname_lock(hostnames[i]);
-		if(conn_server_record == NULL) {
+		u_int32_t ipl = gethostbyname_lock(hostnames[i]);
+		if(!ipl) {
 			syslog(LOG_ERR, "host [%s] failed to resolve to IP address", hostnames[i]);
 			continue;
 		}
-		in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
-		hosts[hostnames[i]] = inet_ntoa(*conn_server_address);
+		hosts[hostnames[i]] = inet_ntostring(htonl(ipl));
 	}
 }
 
-hostent *gethostbyname_lock(const char *name) {
+u_int32_t gethostbyname_lock(const char *name) {
+	u_int32_t rslt_ipl = 0;
 	pthread_mutex_lock(&hostbyname_lock);
-	hostent *rslt = gethostbyname(name);
+	hostent *rslt_hostent = gethostbyname(name);
+	if(rslt_hostent) {
+		rslt_ipl = ((in_addr*)rslt_hostent->h_addr)->s_addr;
+	}
 	pthread_mutex_unlock(&hostbyname_lock);
-	return(rslt);
+	return(rslt_ipl);
 }

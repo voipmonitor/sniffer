@@ -1785,7 +1785,7 @@ private:
 	bool udp;
 	u_int64_t maxSize;
 	queue<SimpleBuffer*> data;
-	hostent* socketHostEnt;
+	u_int32_t socketHostIPl;
 	int socketHandle;
 	pthread_t writeThreadHandle;
 	volatile int _sync_data;

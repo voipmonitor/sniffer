@@ -4016,7 +4016,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->pcapDeadHandles_count = 0;
 	this->socketServerThreadHandle = 0;
 	this->cleanupBlockStoreTrash_counter = 0;
-	this->socketHostEnt = NULL;
+	this->socketHostIPl = 0;
 	this->socketHandle = 0;
 	this->_sync_packetServerConnections = 0;
 	this->lastCheckFreeSizeCachedir_timeMS = 0;
@@ -4830,10 +4830,10 @@ bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) 
 }
 
 bool PcapQueue_readFromFifo::socketGetHost() {
-	this->socketHostEnt = NULL;
-	while(!this->socketHostEnt) {
-		this->socketHostEnt = gethostbyname_lock(this->packetServerIpPort.get_ip().c_str());
-		if(!this->socketHostEnt) {
+	this->socketHostIPl = 0;
+	while(!this->socketHostIPl) {
+		this->socketHostIPl = gethostbyname_lock(this->packetServerIpPort.get_ip().c_str());
+		if(!this->socketHostIPl) {
 			syslog(LOG_ERR, "packetbuffer %s: cannot resolv: %s: host [%s] - trying again", this->nameQueue.c_str(), hstrerror(h_errno), this->packetServerIpPort.get_ip().c_str());  
 			sleep(1);
 		}
@@ -4849,7 +4849,7 @@ bool PcapQueue_readFromFifo::socketReadyForConnect() {
 }
 
 bool PcapQueue_readFromFifo::socketConnect() {
-	if(!this->socketHostEnt) {
+	if(!this->socketHostIPl) {
 		this->socketGetHost();
 	}
 	if((this->socketHandle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
@@ -4859,9 +4859,9 @@ bool PcapQueue_readFromFifo::socketConnect() {
 	sockaddr_in addr;
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(this->packetServerIpPort.get_port());
-	addr.sin_addr.s_addr = *(long*)this->socketHostEnt->h_addr_list[0];
+	addr.sin_addr.s_addr = this->socketHostIPl;
 	if(connect(this->socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		syslog(LOG_ERR, "packetbuffer %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), inet_ntoa(*(struct in_addr *)this->socketHostEnt->h_addr_list[0]), strerror(errno));
+		syslog(LOG_ERR, "packetbuffer %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), inet_ntostring(htonl(this->socketHostIPl)).c_str(), strerror(errno));
 		return(false);
 	}
 	int flag = 1;

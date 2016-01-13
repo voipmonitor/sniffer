@@ -673,15 +673,14 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			if(reg_match(this->conn_server.c_str(), "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
 				this->conn_server_ip = this->conn_server;
 			} else {
-				hostent *conn_server_record = gethostbyname_lock(this->conn_server.c_str());
-				if(conn_server_record == NULL) {
+				u_int32_t conn_server_ipl = gethostbyname_lock(this->conn_server.c_str());
+				if(!conn_server_ipl) {
 					this->setLastErrorString("mysql connect failed - " + this->conn_server + " is unavailable", true);
 					pthread_mutex_unlock(&mysqlconnect_lock);
 					this->connecting = false;
 					return(false);
 				}
-				in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
-				this->conn_server_ip = inet_ntoa(*conn_server_address);
+				this->conn_server_ip = inet_ntostring(htonl(conn_server_ipl));
 				syslog(LOG_NOTICE, "resolve mysql host %s to %s", this->conn_server.c_str(), this->conn_server_ip.c_str());
 			}
 		}

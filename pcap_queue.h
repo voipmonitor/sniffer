@@ -743,7 +743,7 @@ private:
 	pcap_store_queue pcapStoreQueue;
 	deque<pcap_block_store*> blockStoreTrash;
 	u_int cleanupBlockStoreTrash_counter;
-	hostent* socketHostEnt;
+	u_int32_t socketHostIPl;
 	int socketHandle;
 	map<unsigned int, sPacketServerConnection*> packetServerConnections;
 	volatile int _sync_packetServerConnections;
