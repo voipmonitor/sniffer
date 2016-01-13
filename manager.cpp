@@ -2110,7 +2110,7 @@ connect:
 	while(1) {
 		res = connect(client, (struct sockaddr *)&addr, sizeof(addr));         /* connect! */
 		if(res == -1) {
-			syslog(LOG_NOTICE, "Failed to connect to server [%s] error:[%s] trying again...\n", inet_ntostring(htonl(host_ipl)), strerror(errno));
+			syslog(LOG_NOTICE, "Failed to connect to server [%s] error:[%s] trying again...\n", inet_ntostring(htonl(host_ipl)).c_str(), strerror(errno));
 			sleep(1);
 			continue;
 		}
