@@ -4289,7 +4289,17 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 							while(offsetBuffer < bufferLen) {
 								if(blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer)) {
 									endBlock = true;
-									if(blockStore->check_offsets()) {
+									if(!blockStore->check_offsets()) {
+										delete blockStore;
+										syslog(LOG_ERR, "receive bad packetbuffer block (bad offsets) in conection %s - %i",
+										       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
+										       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+									} else if(!blockStore->size_compress && !blockStore->check_headers()) {
+										delete blockStore;
+										syslog(LOG_ERR, "receive bad packetbuffer block (bad headers) in conection %s - %i",
+										       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
+										       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+									} else {
 										while(!this->pcapStoreQueue.push(blockStore, false)) {
 											if(TERMINATING || forceStop) {
 												break;
@@ -4301,11 +4311,6 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 										sumPacketsSize[0] += blockStore->size;
 										sumPacketsSizeCompress[0] += blockStore->size_compress;
 										++sumBlocksCounterIn[0];
-									} else {
-										delete blockStore;
-										syslog(LOG_ERR, "receive bad packetbuffer block in conection %s - %i",
-										       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
-										       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 									}
 									blockStore = new FILE_LINE pcap_block_store;
 								} else {

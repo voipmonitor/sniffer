@@ -159,6 +159,15 @@ struct pcap_block_store {
 		}
 		return(this->offsets[this->offsets_size - 1] < this->size);
 	}
+	bool check_headers() {
+		for(size_t i = 0; i < this->count; i++) {
+			pcap_pkthdr_plus *header = (pcap_pkthdr_plus*)(this->block + this->offsets[i]);
+			if(header->header_fix_size.caplen > 65535 || header->offset > 1000) {
+				return(false);
+			}
+		}
+		return(true);
+	}
 	void lock_packet(int index) {
 		#if SYNC_PCAP_BLOCK_STORE
 		__sync_add_and_fetch(&this->_sync_packet_lock, 1);
