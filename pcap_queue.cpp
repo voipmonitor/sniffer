@@ -4265,10 +4265,10 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								blockStore->destroyRestoreBuffer();
 								if(DEBUG_VERBOSE) {
 									cout << "SYNCED" << endl;
-									syslog(LOG_ERR, "synchronize ok in conection %s - %i",
-									       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
-									       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 								}
+								syslog(LOG_INFO, "synchronize ok in connection %s - %i",
+								       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
+								       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 							} else {
 								if(offsetBufferSyncRead) {
 									u_char *buffer2 = new FILE_LINE u_char[bufferSize * 2];
@@ -4328,7 +4328,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								if(DEBUG_VERBOSE) {
 									cout << "SYNC!!!" << endl;
 								}
-								syslog(LOG_ERR, "lost synchronize in conection %s - %i",
+								syslog(LOG_INFO, "lost synchronize in connection %s - %i",
 								       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
 								       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 							}
