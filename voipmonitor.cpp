@@ -2651,9 +2651,7 @@ int main_init_read() {
 		sslData = new FILE_LINE SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
-		if(is_read_from_file_by_pb()) {
-			tcpReassemblySsl->setEnableWildLink();
-		}
+		tcpReassemblySsl->setEnableWildLink();
 	}
 	
 	if(sipSendSocket_ip_port) {
