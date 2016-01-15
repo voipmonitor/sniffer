@@ -1535,11 +1535,15 @@ void *rtp_read_thread_func(void *arg) {
 				return NULL;
 			} else if(params->remove_flag &&
 				  ((getTimeMS_rdtsc() / 1000) - params->last_use_time_s) > 10 * 60) {
-				lock_add_remove_rtp_threads();
-				if(params->remove_flag) {
-					break;
+				if(params->calls) {
+					params->remove_flag = false;
+				} else {
+					lock_add_remove_rtp_threads();
+					if(params->remove_flag) {
+						break;
+					}
+					unlock_add_remove_rtp_threads();
 				}
-				unlock_add_remove_rtp_threads();
 			}
 			// no packet to read, wait and try again
 			unsigned usleepTime = rtp_qring_usleep * 
@@ -1591,7 +1595,7 @@ void *rtp_read_thread_func(void *arg) {
 void add_rtp_read_thread() {
 	lock_add_remove_rtp_threads();
 	extern int num_threads_max;
-	extern int num_threads_active;
+	extern volatile int num_threads_active;
 	if(is_enable_rtp_threads() &&
 	   num_threads_active > 0 && num_threads_max > 0 &&
 	   num_threads_active < num_threads_max) {
@@ -1609,9 +1613,10 @@ void add_rtp_read_thread() {
 
 void set_remove_rtp_read_thread() {
 	lock_add_remove_rtp_threads();
-	extern int num_threads_active;
+	extern volatile int num_threads_active;
 	if(is_enable_rtp_threads() &&
-	   num_threads_active > 1) {
+	   num_threads_active > 1 &&
+	   !rtp_threads[num_threads_active - 1].calls) {
 		rtp_threads[num_threads_active - 1].remove_flag = true;
 		--num_threads_active;
 	}
@@ -1619,12 +1624,14 @@ void set_remove_rtp_read_thread() {
 }
 
 int get_index_rtp_read_thread_min_size() {
-	extern int num_threads_active;
+	lock_add_remove_rtp_threads();
+	extern volatile int num_threads_active;
 	size_t minSize = 0;
 	int minSizeIndex = -1;
 	for(int i = 0; i < num_threads_active; i++) {
 		if(rtp_threads[i].threadId && !rtp_threads[i].remove_flag) {
 			if(!rtp_threads[i].rtpp_queue_quick) {
+				unlock_add_remove_rtp_threads();
 				return(-1);
 			}
 			size_t size = rtp_threads[i].rtpp_queue_quick->size();
@@ -1634,11 +1641,13 @@ int get_index_rtp_read_thread_min_size() {
 			}
 		}
 	}
+	unlock_add_remove_rtp_threads();
 	return(minSizeIndex);
 }
 
-int get_index_rtp_read_thread_min_calls() {
-	extern int num_threads_active;
+int get_index_rtp_read_thread_min_calls(bool incCalls) {
+	lock_add_remove_rtp_threads();
+	extern volatile int num_threads_active;
 	size_t minCalls = 0;
 	int minCallsIndex = -1;
 	for(int i = 0; i < num_threads_active; i++) {
@@ -1650,12 +1659,16 @@ int get_index_rtp_read_thread_min_calls() {
 			}
 		}
 	}
+	if(minCallsIndex >= 0) {
+		++rtp_threads[minCallsIndex].calls;
+	}
+	unlock_add_remove_rtp_threads();
 	return(minCallsIndex);
 }
 
 double get_rtp_sum_cpu_usage(double *max) {
 	extern int num_threads_max;
-	extern int num_threads_active;
+	extern volatile int num_threads_active;
 	if(max) {
 		*max = 0;
 	}
@@ -1690,7 +1703,7 @@ double get_rtp_sum_cpu_usage(double *max) {
 
 string get_rtp_threads_cpu_usage(bool callPstat) {
 	extern int num_threads_max;
-	extern int num_threads_active;
+	extern volatile int num_threads_active;
 	if(is_enable_rtp_threads() &&
 	   num_threads_active > 0 && num_threads_max > 0) {
 		ostringstream outStr;

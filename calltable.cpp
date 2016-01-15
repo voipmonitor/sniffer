@@ -91,7 +91,7 @@ extern int rtptimeout;
 extern int sipwithoutrtptimeout;
 extern int absolute_timeout;
 extern unsigned int gthread_num;
-extern int num_threads_active;
+extern volatile int num_threads_active;
 extern int opt_printinsertid;
 extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
@@ -268,11 +268,15 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	custom_header1[0] = '\0';
 	match_header[0] = '\0';
 	if(is_enable_rtp_threads() && num_threads_active > 0) {
-		thread_num = get_index_rtp_read_thread_min_calls();
+		thread_num = get_index_rtp_read_thread_min_calls(true);
 		if(thread_num < 0) {
+			extern void lock_add_remove_rtp_threads();
+			extern void unlock_add_remove_rtp_threads();
+			lock_add_remove_rtp_threads();
 			thread_num = gthread_num % num_threads_active;
+			++rtp_threads[thread_num].calls;
+			unlock_add_remove_rtp_threads();
 		}
-		++rtp_threads[thread_num].calls;
 		gthread_num++;
 	} else {
 		thread_num = 0;

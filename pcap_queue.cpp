@@ -1616,7 +1616,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double tRTPcpuMax = 0;
 	double tRTPcpu = get_rtp_sum_cpu_usage(&tRTPcpuMax);
 	if(tRTPcpu >= 0) {
-		extern int num_threads_active;
+		extern volatile int num_threads_active;
 		outStrStat << "tRTP_CPU[" << setprecision(1) << tRTPcpu << "%/";
 		if(sverb.rtp_extend_stat) {
 			outStrStat << get_rtp_threads_cpu_usage(false) << "/";
