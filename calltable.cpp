@@ -3913,6 +3913,7 @@ void Calltable::processCallsInAudioQueue(bool lock) {
 void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 	((sAudioQueueThread*)audioQueueThread)->thread_id = get_unix_tid();
 	setpriority(PRIO_PROCESS, ((sAudioQueueThread*)audioQueueThread)->thread_id, 20);
+	u_long last_use_at = getTimeS();
 	while(!calltable->audioQueueTerminating) {
 		calltable->lock_calls_audioqueue();
 		Call *call = NULL;
@@ -3927,8 +3928,13 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 			calltable->lock_calls_deletequeue();
 			calltable->calls_deletequeue.push_back(call);
 			calltable->unlock_calls_deletequeue();
+			last_use_at = getTimeS();
 		} else {
-			break;
+			if((getTimeS() - last_use_at) > 5 * 60) {
+				break;
+			} else {
+				usleep(1000);
+			}
 		}
 	}
 	calltable->lock_calls_audioqueue();
