@@ -5009,6 +5009,8 @@ bool PcapQueue_readFromFifo::socketWrite(u_char *data, size_t dataLen, bool disa
 						}
 					}
 				}
+			} else {
+				return(false);
 			}
 		} else {
 			dataLenWrited += _dataLenWrited;
