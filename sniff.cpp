@@ -1959,6 +1959,10 @@ inline Call *new_invite_register(packet_s *packetS, ParsePacket::ppContentsX *pa
 	call->flags = flags;
 	call->lastsrcip = packetS->saddr;
 	
+	if(call->type == INVITE) {
+		call->setRtpThreadNum();
+	}
+	
 	char *s;
 	unsigned long l;
 	bool use_fbasename_header = false;

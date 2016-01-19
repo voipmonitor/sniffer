@@ -267,20 +267,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	destroy_call_at_bye = 0;
 	custom_header1[0] = '\0';
 	match_header[0] = '\0';
-	if(is_enable_rtp_threads() && num_threads_active > 0) {
-		thread_num = get_index_rtp_read_thread_min_calls(true);
-		if(thread_num < 0) {
-			extern void lock_add_remove_rtp_threads();
-			extern void unlock_add_remove_rtp_threads();
-			lock_add_remove_rtp_threads();
-			thread_num = gthread_num % num_threads_active;
-			++rtp_threads[thread_num].calls;
-			unlock_add_remove_rtp_threads();
-		}
-		gthread_num++;
-	} else {
-		thread_num = 0;
-	}
+	thread_num = 0;
 	recordstopped = 0;
 	dtmfflag = 0;
 	dtmfflag2 = 0;
@@ -3659,6 +3646,22 @@ Call::addTarPos(u_int64_t pos, int type) {
 	}
 }
 
+void 
+Call::setRtpThreadNum() {
+	if(is_enable_rtp_threads() && num_threads_active > 0) {
+		thread_num = get_index_rtp_read_thread_min_calls(true);
+		if(thread_num < 0) {
+			extern void lock_add_remove_rtp_threads();
+			extern void unlock_add_remove_rtp_threads();
+			lock_add_remove_rtp_threads();
+			thread_num = gthread_num % num_threads_active;
+			++rtp_threads[thread_num].calls;
+			unlock_add_remove_rtp_threads();
+		}
+		gthread_num++;
+	}
+}
+
 /* constructor */
 Calltable::Calltable() {
 	pthread_mutex_init(&qlock, NULL);
@@ -3899,7 +3902,7 @@ void Calltable::processCallsInAudioQueue(bool lock) {
 		lock_calls_audioqueue();
 	}
 	if(audio_queue.size() && 
-	   audio_queue.size() > audioQueueThreads.size() && 
+	   audio_queue.size() > audioQueueThreads.size() * 2 && 
 	   audioQueueThreads.size() < audioQueueThreadsMax) {
 		sAudioQueueThread *audioQueueThread = new FILE_LINE sAudioQueueThread();
 		audioQueueThreads.push_back(audioQueueThread);

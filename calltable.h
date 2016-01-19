@@ -688,6 +688,8 @@ public:
 			}
 		}
 	}
+	
+	void setRtpThreadNum();
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
