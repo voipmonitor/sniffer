@@ -2775,7 +2775,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add(b_ua_id, "b_ua_id", true);
 	
 	int cdrID = sqlDbSaveCall->insert(sql_cdr_table, cdr);
-
+	if (is_read_from_file_simple()) {
+		ostringstream outStr;
+		outStr << "Found new call. Added to db with cdr.ID:" << cdrID ;
+		cout << outStr.str() << endl;
+	}
 
 	if(cdrID > 0) {
 

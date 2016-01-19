@@ -1313,7 +1313,7 @@ void *storing_cdr( void *dummy ) {
 					regfailedcache->prunecheck(call->first_packet_time);
 					if(!opt_nocdr) {
 						if(call->type == INVITE or call->type == SKINNY_NEW) {
-							call->saveToDb(1);
+							call->saveToDb(!is_read_from_file_simple());
 						} else if(call->type == REGISTER){
 							call->saveRegisterToDb();
 						} else if(call->type == MESSAGE){
