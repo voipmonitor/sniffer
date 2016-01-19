@@ -174,7 +174,7 @@ int opt_pcap_queue_dequeu_window_length			= -1;
 int opt_pcap_queue_dequeu_method			= 2;
 int opt_pcap_dispatch					= 0;
 int opt_pcap_queue_suppress_t1_thread			= 0;
-bool opt_pcap_queues_mirror_nonblock_mode 			= false;
+bool opt_pcap_queues_mirror_nonblock_mode 		= true;
 
 size_t _opt_pcap_queue_block_offset_init_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE * 1.1;
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
