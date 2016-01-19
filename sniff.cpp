@@ -571,7 +571,7 @@ inline void save_live_packet(Call *call,
 }
 
 static int parse_packet__message(char *data, unsigned int datalen, ParsePacket::ppContentsX *parseContents, bool strictCheckLength,
-				 char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber, unsigned int *rsltContentLength,
+				 char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber, unsigned int *rsltContentLength,
 				 bool maskMessage = false);
 
 /*
@@ -641,7 +641,7 @@ void save_packet(Call *call, packet_s *packetS, ParsePacket::ppContentsX *parseC
 					memcpy((u_char*)packet, packet_orig, header->caplen);
 					allocPacket = true;
 					parse_packet__message((char*)(packet + packetS->dataoffset), packetS->datalen, parseContents, false,
-							      NULL, NULL, NULL, NULL,
+							      NULL, NULL, NULL, NULL, NULL,
 							      true);
 					/* obsolete
 					char *endHeaderSepPos = (char*)memmem(data, datalen, "\r\n\r\n", 4);
@@ -2367,7 +2367,7 @@ static inline int process_packet__parse_sip_method(char *data, unsigned int data
 static inline int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
 						  char *lastSIPresponse, bool *call_cancel_lsr487);
 static inline int parse_packet__message_content(char *message, unsigned int messageLength,
-						char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber,
+						char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber,
 						bool maskMessage = false);
 static inline Call *process_packet__merge(packet_s *packetS, ParsePacket::ppContentsX *parseContents, char *callidstr, int *merged, long unsigned int *gettagLimitLen, bool preprocess_queue = false);
 
@@ -3078,16 +3078,21 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 
 				// UPDATE TEXT
 				char *rsltMessage;
+				char *rsltMessageInfo;
 				string rsltDestNumber;
 				string rsltSrcNumber;
 				unsigned int rsltContentLength;
 				switch(parse_packet__message(packetS->data, packetS->datalen, parseContents, call->message != NULL,
-							     &rsltMessage, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
+							     &rsltMessage, &rsltMessageInfo, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
 				case 2:
 					if(call->message) {
 						delete [] call->message;
 					}
 					call->message = rsltMessage;
+					if(call->message_info) {
+						delete [] call->message_info;
+					}
+					call->message_info = rsltMessageInfo;
 					break;
 				case 1:
 					if(!call->message) {
@@ -3444,7 +3449,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 		t = *sl;
 		*sl = '\0';
 		// Content-Type found 
-		if(call->type == MESSAGE && call->message == NULL) {
+		if(call->type == MESSAGE && call->message == NULL && call->message_info == NULL) {
 			*sl = t;
 			
 			if(call->contenttype) delete [] call->contenttype;
@@ -3453,14 +3458,16 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 			call->contenttype[l] = '\0';
 			
 			char *rsltMessage;
+			char *rsltMessageInfo;
 			string rsltDestNumber;
 			string rsltSrcNumber;
 			unsigned int rsltContentLength;
 			packetS->data[packetS->datalen - 1] = a;
 			switch(parse_packet__message(packetS->data, packetS->datalen, parseContents, false,
-						     &rsltMessage, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
+						     &rsltMessage, &rsltMessageInfo, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
 			case 2:
 				call->message = rsltMessage;
+				call->message_info = rsltMessageInfo;
 				break;
 			case 1:
 				if(!call->message) {
@@ -4167,10 +4174,13 @@ inline int parse_packet__last_sip_response(char *data, unsigned int datalen, int
 }
 
 inline int parse_packet__message(char *data, unsigned int datalen, ParsePacket::ppContentsX *parseContents, bool strictCheckLength,
-			  char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber, unsigned int *rsltContentLength,
+			  char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber, unsigned int *rsltContentLength,
 			  bool maskMessage) {
 	if(rsltMessage) {
 		*rsltMessage = NULL;
+	}
+	if(rsltMessageInfo) {
+		*rsltMessageInfo = NULL;
 	}
 	if(rsltContentLength) {
 		*rsltContentLength = (unsigned int)-1;
@@ -4211,7 +4221,7 @@ inline int parse_packet__message(char *data, unsigned int datalen, ParsePacket::
 			}
 			data[datalen - 1] = endCharData;
 			if(parse_packet__message_content(contentBegin, contentEnd - contentBegin,
-							 rsltMessage, rsltDestNumber, rsltSrcNumber,
+							 rsltMessage, rsltMessageInfo, rsltDestNumber, rsltSrcNumber,
 							 maskMessage)) {
 				setMessage = 2;
 			} else {
@@ -4343,7 +4353,7 @@ struct sGsmMessage {
 		case gsm_mt_data_net_to_ms:
 			for(int pass = 0; pass < 3; pass++) {
 				if(messageLength > getLength()) {
-					int value = message[getLength()];
+					int value = (unsigned char)message[getLength()];
 					switch(pass) {
 					case 0: originatorAddressLength = value; break;
 					case 1: destinationAddressLength = value; break;
@@ -4390,11 +4400,17 @@ struct sGsmMessageData {
 		gsm_mt_data_type_deliver,
 		gsm_mt_data_type_submit
 	};
+	struct sConcatenatedInfo {
+		int parts;
+		int part;
+		bool ok;
+	};
 	sGsmMessageData() {
 		type = gsm_mt_data_type_na;
 		addressLength = -1;
 		codingIndication = -1;
 		userDataLength = -1;
+		userDataHeaderLength = -1;
 	}
 	unsigned int getLength() {
 		return((type == gsm_mt_data_type_deliver ? 1 : 2) + 
@@ -4435,11 +4451,15 @@ struct sGsmMessageData {
 		}
 		for(int pass = 0; pass < 3; pass++) {
 			if(dataLength > getLength()) {
-				int value = data[getLength()];
+				int value = (unsigned char)data[getLength()];
 				switch(pass) {
 				case 0: addressLength = value; break;
 				case 1: codingIndication = value; break;
-				case 2: userDataLength = value; break;
+				case 2: if((unsigned char)data[getLength() + 2] == 0) {
+						userDataHeaderLength = (unsigned char)data[getLength() + 1];
+					}
+					userDataLength = value; 
+					break;
 				}
 			} else {
 				break;
@@ -4456,8 +4476,8 @@ struct sGsmMessageData {
 		}
 		return(address);
 	}
-	string getUserData(char *data) {
-		if(userDataLength) {
+	string getUserDataMessage(char *data) {
+		if(userDataLength > 0) {
 			switch(codingIndication) {
 			case 0: 
 				return(getUserData_7bit(data));
@@ -4465,8 +4485,22 @@ struct sGsmMessageData {
 		}
 		return("");
 	}
+	sConcatenatedInfo getConcatenatedInfo(char *data) {
+		sConcatenatedInfo concInfo;
+		memset(&concInfo, 0, sizeof(concInfo));
+		if(userDataHeaderLength == 5) {
+			unsigned char *userDataSrc = (unsigned char*)data + getOffsetToUserData();
+			if(userDataSrc[1] == 0 && userDataSrc[2] == 3 &&
+			   userDataSrc[5] <= userDataSrc[4]) {
+				concInfo.parts = userDataSrc[4];
+				concInfo.part = userDataSrc[5];
+				concInfo.ok = true;
+			}
+		}
+		return(concInfo);
+	}
 	void maskUserData(char *data) {
-		if(userDataLength) {
+		if(userDataLength > 0) {
 			switch(codingIndication) {
 			case 0: 
 				return(maskUserData_7bit(data));
@@ -4480,7 +4514,9 @@ struct sGsmMessageData {
 		if(userDataDecode) {
 			string userDataDecodeString = string((char*)userDataDecode, userDataDecodeLength);
 			delete [] userDataDecode;
-			return(userDataDecodeString);
+			return(userDataHeaderLength >= 0 ?
+				userDataDecodeString.substr(1 + userDataHeaderLength + 1) : 
+				userDataDecodeString);
 		} else {
 			return("");
 		}
@@ -4494,7 +4530,11 @@ struct sGsmMessageData {
 		unsigned int userDataEncodeLength;
 		unsigned char *userDataEncode = conv7bit::encode((unsigned char*)maskData.c_str(), maskData.length(), userDataEncodeLength);
 		if(userDataEncode) {
-			memcpy(userDataSrc, userDataEncode, userDataEncodeLength);
+			if(userDataHeaderLength >= 0) {
+				memcpy(userDataSrc + 1 + userDataHeaderLength, userDataEncode + 1 + userDataHeaderLength, userDataEncodeLength - 1 - userDataHeaderLength);
+			} else {
+				memcpy(userDataSrc, userDataEncode, userDataEncodeLength);
+			}
 			delete [] userDataEncode;
 		}
 	}
@@ -4508,6 +4548,7 @@ struct sGsmMessageData {
 	int addressLength;
 	int codingIndication;
 	int userDataLength;
+	int userDataHeaderLength;
 };
 
 struct sGsmMessageAck {
@@ -4560,11 +4601,14 @@ struct sGsmMessageAck {
 };
 
 int parse_packet__message_content(char *message, unsigned int messageLength,
-				  char **rsltMessage, string *rsltDestNumber, string *rsltSrcNumber,
+				  char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber,
 				  bool maskMessage) {
 	int rslt = 0;
 	if(rsltMessage) {
 		*rsltMessage = NULL;
+	}
+	if(rsltMessageInfo) {
+		*rsltMessageInfo = NULL;
 	}
 	if(messageLength) {
 		sGsmMessage gsmMessage;
@@ -4583,12 +4627,23 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 						}
 					}
 					if(rsltMessage) {
-						string rslt_message = gsmMessageData.getUserData(userData);
+						string rslt_message = gsmMessageData.getUserDataMessage(userData);
 						if(rslt_message.length()) {
 							*rsltMessage = new FILE_LINE char[rslt_message.length() + 1];
 							memcpy(*rsltMessage, rslt_message.c_str(), rslt_message.length());
 							(*rsltMessage)[rslt_message.length()] = '\0';
 							rslt = 1;
+							if(rsltMessageInfo && gsmMessageData.userDataHeaderLength >= 0) {
+								sGsmMessageData::sConcatenatedInfo concInfo = gsmMessageData.getConcatenatedInfo(userData);
+								if(concInfo.ok) {
+									char rslt_message_info_buff[100];
+									snprintf(rslt_message_info_buff, 100, 
+										 "concatenated message: %i/%i",
+										 concInfo.part, concInfo.parts);
+									*rsltMessageInfo = new FILE_LINE char[strlen(rslt_message_info_buff) + 1];
+									strcpy(*rsltMessageInfo, rslt_message_info_buff);
+								}
+							}
 						}
 					}
 					if(maskMessage) {
@@ -4600,9 +4655,9 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 			case sGsmMessage::gsm_mt_ack_net_to_ms: {
 				sGsmMessageAck sGsmMessageAck;
 				if(sGsmMessageAck.load(userData, gsmMessage.userDataLength)) {
-					if(rsltMessage) {
-						char rslt_message_buff[100];
-						snprintf(rslt_message_buff, 100, 
+					if(rsltMessageInfo) {
+						char rslt_message_info_buff[100];
+						snprintf(rslt_message_info_buff, 100, 
 							 "ACK 20%02i-%02i-%02i %02i:%02i:%02i (timezone code %i)",
 							 sGsmMessageAck.year,
 							 sGsmMessageAck.month,
@@ -4611,20 +4666,20 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 							 sGsmMessageAck.minute,
 							 sGsmMessageAck.second,
 							 sGsmMessageAck.timezone);
-						*rsltMessage = new FILE_LINE char[strlen(rslt_message_buff) + 1];
-						strcpy(*rsltMessage, rslt_message_buff);
+						*rsltMessageInfo = new FILE_LINE char[strlen(rslt_message_info_buff) + 1];
+						strcpy(*rsltMessageInfo, rslt_message_info_buff);
 						rslt = 1;
 					}
 				}
 				}
 				break;
 			case sGsmMessage::gsm_mt_ack_ms_to_net: {
-				if(rsltMessage) {
-					char rslt_message_buff[100];
-					snprintf(rslt_message_buff, 100, 
+				if(rsltMessageInfo) {
+					char rslt_message_info_buff[100];
+					snprintf(rslt_message_info_buff, 100, 
 						 "ACK");
-					*rsltMessage = new FILE_LINE char[strlen(rslt_message_buff) + 1];
-					strcpy(*rsltMessage, rslt_message_buff);
+					*rsltMessageInfo = new FILE_LINE char[strlen(rslt_message_info_buff) + 1];
+					strcpy(*rsltMessageInfo, rslt_message_info_buff);
 					rslt = 1;
 				}
 				}

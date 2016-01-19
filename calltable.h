@@ -308,6 +308,7 @@ public:
 
 	char *contenttype;
 	char *message;
+	char *message_info;
 	int content_length;
 
 	int last_callercodec;		//!< Last caller codec 

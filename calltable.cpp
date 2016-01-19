@@ -281,6 +281,7 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	#endif
 	end_call = 0;
 	message = NULL;
+	message_info = NULL;
 	contenttype = NULL;
 	content_length = 0;
 	unrepliedinvite = 0;
@@ -557,6 +558,9 @@ Call::~Call(){
 
 	if(this->message) {
 		delete [] message;
+	}
+	if(this->message_info) {
+		delete [] message_info;
 	}
 	pthread_mutex_destroy(&buflock);
 	pthread_mutex_unlock(&listening_worker_run_lock);
@@ -3385,12 +3389,22 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		cdr.add(sqlEscapeString(geoposition), "GeoPosition");
 	}
 	cdr.add(sqlEscapeString(fbasename), "fbasename");
-	if(message) {
-		if(flags & FLAG_HIDEMESSAGE) {
-			cdr.add("SHA256: " + GetStringSHA256(trim_str(message) + trim_str(opt_hide_message_content_secret)), "message");
-		} else {
-			cdr.add(sqlEscapeString(message), "message");
+	if(message || message_info) {
+		string message_save;
+		if(message) {
+			if(flags & FLAG_HIDEMESSAGE) {
+				message_save = "SHA256: " + GetStringSHA256(trim_str(message) + trim_str(opt_hide_message_content_secret));
+			} else {
+				message_save = message;
+			}
 		}
+		if(message_info) {
+			if(message) {
+				message_save += '\n';
+			}
+			message_save += string("_INF:") + message_info;
+		}
+		cdr.add(sqlEscapeString(message_save), "message");
 	}
 	extern bool exists_column_message_content_length;
 	if(exists_column_message_content_length && content_length) {
