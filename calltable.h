@@ -394,7 +394,7 @@ public:
 	 * @param ct reference to calltable
 	 * 
 	*/
-	Call(char *call_id, unsigned long call_id_len, time_t time);
+	Call(int call_type, char *call_id, unsigned long call_id_len, time_t time);
 
 	/**
 	 * destructor
@@ -689,8 +689,6 @@ public:
 			}
 		}
 	}
-	
-	void setRtpThreadNum();
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -827,7 +825,7 @@ public:
 	 *
 	 * @return reference of the new Call class
 	*/
-	Call *add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port, pcap_t *handle, int dlt, int sensorId, bool preprocess_queue = false);
+	Call *add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port, pcap_t *handle, int dlt, int sensorId, bool preprocess_queue = false);
 
 	/**
 	 * @brief find Call by call_id

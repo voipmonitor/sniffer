@@ -182,12 +182,13 @@ extern bool exists_column_cdr_mos_xr;
 
 
 /* constructor */
-Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
+Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time) :
  tmprtp(-1),
  pcap(PcapDumper::na, this),
  pcapSip(PcapDumper::sip, this),
  pcapRtp(PcapDumper::rtp, this) {
 	//increaseTartimemap(time);
+	type = call_type;
 	has_second_merged_leg = false;
 	isfax = 0;
 	seenudptl = 0;
@@ -267,7 +268,20 @@ Call::Call(char *call_id, unsigned long call_id_len, time_t time) :
 	destroy_call_at_bye = 0;
 	custom_header1[0] = '\0';
 	match_header[0] = '\0';
-	thread_num = 0;
+	if(type == INVITE && is_enable_rtp_threads() && num_threads_active > 0) {
+		thread_num = get_index_rtp_read_thread_min_calls(true);
+		if(thread_num < 0) {
+			extern void lock_add_remove_rtp_threads();
+			extern void unlock_add_remove_rtp_threads();
+			lock_add_remove_rtp_threads();
+			thread_num = gthread_num % num_threads_active;
+			++rtp_threads[thread_num].calls;
+			unlock_add_remove_rtp_threads();
+		}
+		gthread_num++;
+	} else {
+		thread_num = 0;
+	}
 	recordstopped = 0;
 	dtmfflag = 0;
 	dtmfflag2 = 0;
@@ -569,7 +583,7 @@ Call::~Call(){
 	//printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
 	//printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
 	
-	if(is_enable_rtp_threads() && num_threads_active > 0) {
+	if(type == INVITE && is_enable_rtp_threads() && num_threads_active > 0) {
 		if(rtp_threads &&
 		   rtp_threads[thread_num].calls > 0) {
 			--rtp_threads[thread_num].calls;
@@ -3664,22 +3678,6 @@ Call::addTarPos(u_int64_t pos, int type) {
 	}
 }
 
-void 
-Call::setRtpThreadNum() {
-	if(is_enable_rtp_threads() && num_threads_active > 0) {
-		thread_num = get_index_rtp_read_thread_min_calls(true);
-		if(thread_num < 0) {
-			extern void lock_add_remove_rtp_threads();
-			extern void unlock_add_remove_rtp_threads();
-			lock_add_remove_rtp_threads();
-			thread_num = gthread_num % num_threads_active;
-			++rtp_threads[thread_num].calls;
-			unlock_add_remove_rtp_threads();
-		}
-		gthread_num++;
-	}
-}
-
 /* constructor */
 Calltable::Calltable() {
 	pthread_mutex_init(&qlock, NULL);
@@ -4014,10 +4012,10 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int
 }
 
 Call*
-Calltable::add(char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
+Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
 	       pcap_t *handle, int dlt, int sensorId,
 	       bool preprocess_queue) {
-	Call *newcall = new FILE_LINE Call(call_id, call_id_len, time);
+	Call *newcall = new FILE_LINE Call(call_type, call_id, call_id_len, time);
 	if(preprocess_queue) {
 		newcall->in_preprocess_queue_before_process_packet = 1;
 	}

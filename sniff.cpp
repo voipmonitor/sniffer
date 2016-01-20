@@ -1947,7 +1947,7 @@ inline Call *new_invite_register(packet_s *packetS, ParsePacket::ppContentsX *pa
 		glob_ssl_calls++;
 	}
 	// store this call only if it starts with invite
-	Call *call = calltable->add(callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header.ts.tv_sec, packetS->saddr, packetS->source, packetS->handle, packetS->dlt, packetS->sensor_id, preprocess_queue);
+	Call *call = calltable->add(sip_method, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header.ts.tv_sec, packetS->saddr, packetS->source, packetS->handle, packetS->dlt, packetS->sensor_id, preprocess_queue);
 	call->chantype = CHAN_SIP;
 	call->is_ssl = packetS->is_ssl;
 	call->set_first_packet_time(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec);
@@ -1955,13 +1955,8 @@ inline Call *new_invite_register(packet_s *packetS, ParsePacket::ppContentsX *pa
 	call->sipcalledip[0] = packetS->daddr;
 	call->sipcallerport = packetS->source;
 	call->sipcalledport = packetS->dest;
-	call->type = sip_method;
 	call->flags = flags;
 	call->lastsrcip = packetS->saddr;
-	
-	if(call->type == INVITE) {
-		call->setRtpThreadNum();
-	}
 	
 	char *s;
 	unsigned long l;
@@ -3852,14 +3847,13 @@ rtpcheck:
 
 			//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
-			call = calltable->add(s, strlen(s), packetS->header.ts.tv_sec, packetS->saddr, packetS->source, packetS->handle, packetS->dlt, packetS->sensor_id);
+			call = calltable->add(INVITE, s, strlen(s), packetS->header.ts.tv_sec, packetS->saddr, packetS->source, packetS->handle, packetS->dlt, packetS->sensor_id);
 			call->chantype = CHAN_SIP;
 			call->set_first_packet_time(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec);
 			call->sipcallerip[0] = packetS->saddr;
 			call->sipcalledip[0] = packetS->daddr;
 			call->sipcallerport = packetS->source;
 			call->sipcalledport = packetS->dest;
-			call->type = INVITE;
 			call->flags = flags;
 			strncpy(call->fbasename, s, MAX_FNAME - 1);
 			call->seeninvite = true;
@@ -4827,14 +4821,13 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 
 	//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
-	Call *call = calltable->add(s, strlen(s), header->ts.tv_sec, saddr, source, handle, dlt, sensor_id);
+	Call *call = calltable->add(INVITE, s, strlen(s), header->ts.tv_sec, saddr, source, handle, dlt, sensor_id);
 	call->chantype = CHAN_SIP;
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 	call->sipcallerip[0] = saddr;
 	call->sipcalledip[0] = daddr;
 	call->sipcallerport = source;
 	call->sipcalledport = dest;
-	call->type = INVITE;
 	call->flags = flags;
 	strncpy(call->fbasename, s, MAX_FNAME - 1);
 	call->seeninvite = true;
