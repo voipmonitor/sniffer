@@ -228,7 +228,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	
 	if(enableDefrag) {
 		//if UDP defrag is enabled process only UDP packets and only SIP packets
-		if(opt_udpfrag && (ppd->header_ip->protocol == IPPROTO_UDP || ppd->header_ip->protocol == 4 || ppd->header_ip->protocol == IPPROTO_GRE)) {
+		if(opt_udpfrag) {
 			int foffset = ntohs(ppd->header_ip->frag_off);
 			if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
 				if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > (*header)->caplen) {
