@@ -228,7 +228,7 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	
 	if(enableDefrag) {
 		//if UDP defrag is enabled process only UDP packets and only SIP packets
-		if(opt_udpfrag && (ppd->header_ip->protocol == IPPROTO_UDP || ppd->header_ip->protocol == 4)) {
+		if(opt_udpfrag && (ppd->header_ip->protocol == IPPROTO_UDP || ppd->header_ip->protocol == 4 || ppd->header_ip->protocol == IPPROTO_GRE)) {
 			int foffset = ntohs(ppd->header_ip->frag_off);
 			if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
 				if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > (*header)->caplen) {
@@ -248,7 +248,6 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 				// packet is fragmented
 				if(handle_defrag(ppd->header_ip, header, packet, 0, &ppd->ipfrag_data)) {
 					// packets are reassembled
-					//cout << "*** packets are reassembled in pcapProcess" << endl;
 					ppd->header_ip = (iphdr2*)(*packet + ppd->header_ip_offset);
 					*destroy = true;
 					if(sverb.defrag) {
@@ -266,49 +265,11 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 	bool nextPass;
 	do {
 		nextPass = false;
+		u_int first_header_ip_offset = ppd->header_ip_offset;
 		if(ppd->header_ip->protocol == IPPROTO_IPIP) {
 			// ip in ip protocol
 			ppd->header_ip = (iphdr2*)((char*)ppd->header_ip + sizeof(iphdr2));
-			
-			if(enableDefrag) {
-				//if UDP defrag is enabled process only UDP packets and only SIP packets
-				if(opt_udpfrag && ppd->header_ip->protocol == IPPROTO_UDP) {
-					int foffset = ntohs(ppd->header_ip->frag_off);
-					if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
-						// packet is fragmented
-						pcap_pkthdr* header_old = *header;
-						u_char* packet_old = *packet;
-						if(handle_defrag(ppd->header_ip, header, packet, 0, &ppd->ipfrag_data)) {
-							// packet was returned
-							iphdr2 *header_ip_1 = (iphdr2*)(*packet + ppd->header_ip_offset);
-
-							// turn off frag flag in the first IP header
-							header_ip_1->frag_off = 0;
-
-							// turn off frag flag in the second IP header
-							ppd->header_ip = (iphdr2*)((char*)header_ip_1 + sizeof(iphdr2));
-							ppd->header_ip->frag_off = 0;
-
-							// update lenght of the first ip header to the len of the second IP header since it can be changed due to reassemble
-							header_ip_1->tot_len = htons((ntohs(ppd->header_ip->tot_len)) + sizeof(iphdr2));
-
-							if(*destroy) {
-								delete header_old;
-								delete [] packet_old;
-							}
-							*destroy = true;
-							if(sverb.defrag) {
-								defrag_counter++;
-								cout << "*** DEFRAG 2 " << defrag_counter << endl;
-							}
-						} else {
-							//cout << "pcapProcess exit 003" << endl;
-							return(0);
-						}
-					}
-				}
-			}
-			
+			ppd->header_ip_offset += sizeof(iphdr2);
 		} else if(ppd->header_ip->protocol == IPPROTO_GRE) {
 			// gre protocol
 			iphdr2 *header_ip = convertHeaderIP_GRE(ppd->header_ip);
@@ -320,6 +281,44 @@ int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
 				if(opt_ipaccount == 0) {
 					//cout << "pcapProcess exit 004" << endl;
 					return(0);
+				}
+			}
+		}
+		if(enableDefrag) {
+			//if UDP defrag is enabled process only UDP packets and only SIP packets
+			if(opt_udpfrag && ppd->header_ip->protocol == IPPROTO_UDP) {
+				int foffset = ntohs(ppd->header_ip->frag_off);
+				if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
+					// packet is fragmented
+					pcap_pkthdr* header_old = *header;
+					u_char* packet_old = *packet;
+					if(handle_defrag(ppd->header_ip, header, packet, 0, &ppd->ipfrag_data)) {
+						// packets are reassembled
+						iphdr2 *first_header_ip = (iphdr2*)(*packet + first_header_ip_offset);
+
+						// turn off frag flag in the first IP header
+						first_header_ip->frag_off = 0;
+
+						// turn off frag flag in the second IP header
+						ppd->header_ip = (iphdr2*)(*packet + ppd->header_ip_offset);
+						ppd->header_ip->frag_off = 0;
+
+						// update lenght of the first ip header to the len of the second IP header since it can be changed due to reassemble
+						first_header_ip->tot_len = htons(ntohs(ppd->header_ip->tot_len) + (ppd->header_ip_offset - first_header_ip_offset));
+
+						if(*destroy) {
+							delete header_old;
+							delete [] packet_old;
+						}
+						*destroy = true;
+						if(sverb.defrag) {
+							defrag_counter++;
+							cout << "*** DEFRAG 2 " << defrag_counter << endl;
+						}
+					} else {
+						//cout << "pcapProcess exit 003" << endl;
+						return(0);
+					}
 				}
 			}
 		}
