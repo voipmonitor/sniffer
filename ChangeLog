@@ -1,3 +1,24 @@
+15.0.1 19.1.2016
+================
+- SIP processing is now multithreaded (it automatically creates new thread when needed)
+- RTP processing is now auto-threaded instead of fixed number of threads which lowers CPU load mainly on virtual servers with multiple cores and low traffic
+- SIP and RTP locking were optimized to use less CPU
+- redesign mirroring feature which is now more robust to network issues (nonblocking mode and auto reconnecting) 
+- add support for fragmented gsm sms [VS-340]
+- new option fbasenameheader allows to name file based on SIP custom header [VS-351]
+- enhance live sniffer for filtering "From" and "To" [VS-242]
+- properly parse urn in From/To headers [VG-788]
+- fix save rtcp without rtp (savertp=no, savertcp=yes) [VS-367]
+- fix .tar write race condition if more sniffers are saving to the same folder (which user should avoid) 
+- fix untar tar.gz with multiple gzip headers (used by GUI) 
+- force clesning spool directory when reindexfiles was send to the manager (it was waiting 5 minutes)
+- fix Q.850 header is not recognized when there is space char between Q.850 and ;cause=
+- do not paerse MESSAGE during SIP INVITE session [VS-355]
+- fix crash in function save_packet for skinny 
+- fix issue with gethostbyname which fixes weired issues in cloud mode
+- fix SIP SSL decoding for some cases [VS-375]
+
+
 14.4.2 9.12.2015
 ================
 - fix SIP tcp reassemble (100% cpu usage) - fixes >= 14.4
