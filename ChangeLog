@@ -1,3 +1,8 @@
+15.0.2 20.1.2016
+================
+- fix 15.0.1 distribution calls amongs RTP threads leading to buffer full
+
+
 15.0.1 19.1.2016
 ================
 - SIP processing is now multithreaded (it automatically creates new thread when needed)
