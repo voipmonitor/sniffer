@@ -1,3 +1,8 @@
+15.0.3 21.1.2016
+================
+- fix IP/UDP defragmentation also for GRE and other IP protocols (not only IPinIP)
+
+
 15.0.2 20.1.2016
 ================
 - fix 15.0.1 distribution calls amongs RTP threads leading to buffer full
