@@ -1,6 +1,6 @@
 #!/bin/bash
 #cloudToken=
-__VERSION=1.0b
+__VERSION=1.0g
 
 #__COLORS=1	#automagicaly set by checkTput function
 			#0 for disable colors output
@@ -143,27 +143,30 @@ function checkWget {
 	fi
 }
 
-
 function checkVoipmonitor {
-	local _result=$1
-	local _command="voipmonitor"
-	local _tp=$(which $_command 2> /dev/null)
-	local _retval=$(echo $?)
+    local _result=$1
+    local _command="voipmonitor"
+    which "$_command"
+    local _retval=$?
 
-	if [ "neni$_tp" == "neni" ]; then
-		eval $_result="'NotAvailable'"
-		return 1
-	else
-		getVoipmonitorVersion _version
-		eval $_result="'${_version}'"
-		return 0
-	fi
+    if [ "no$_retval" == "no0" ]; then
+        getVoipmonitorVersion _version
+        eval $_result="'${_version}'"
+        return 0
+    else
+        eval $_result="'00_NotAvailable'"
+        return 1
+    fi
 }
 
 function getVoipmonitorVersion {
-	local __result=$1
-	local __version=`voipmonitor|head -n1|cut -d ' ' -f3`
-	eval $__result="'${__version}'"
+    local __result=$1
+    local __version=$(voipmonitor|grep version|head -n1|cut -d ' ' -f3)
+
+    if [ "no$__version" == "no" ]; then
+        __version='00_NotAvailable'
+    fi
+    eval $__result="'${__version}'"
 }
 
 function getVoipmonitorDownloadableVersion {
@@ -191,6 +194,7 @@ function getVoipmonitorDownloadableVersion {
 			local _linkstr="NA"
 			local word
 			# _wgetline is 'Přesměrováno na: http://sourceforge.net/projects/voipmonitor/files/10.0/voipmonitor-amd64-10.0.20-static.tar.gz/download [následuji]'
+			# _wgetline is 'Platz: http://switch.dl.sourceforge.net/project/voipmonitor/10.1/voipmonitor-i686-10.1.23-static.tar.gz[folge]'
 			for word in $_wgetline; do 
 				local subword=${word::4}
 				case $subword in 
@@ -209,6 +213,9 @@ function getVoipmonitorDownloadableVersion {
 				echo "$(printn "Result is ")$(printz "Internal error: no link found, please contact voipmonitor support.")"
 				exit_command 2
 			fi
+
+			#remove [platz] from _linkstr
+			local _linkstr=`echo $_linkstr|sed 's/\[.*\]//'`
 
 			# getting _versionstr its part before '-static.tar.' in link
 			local controlstr=`echo $word|tr '-' ' '`
@@ -1061,7 +1068,7 @@ fi
 checkBitSize install64bit
 echo
 
-#check for version to download and if is never available. else If no new version or version not recognized
+#check for version to download and if is new available. else If no new version or version not recognized
 if getVoipmonitorDownloadableVersion newLink newVersion fileName $oldVersion $install64bit; then
 	echo
 	if ask2 "Would you like to install newest version ($(printp "$newVersion")$(printn ") of voipmonitor sniffer?") " "yes" "no" "yes"; then 
@@ -1070,7 +1077,7 @@ if getVoipmonitorDownloadableVersion newLink newVersion fileName $oldVersion $in
 	else
 		echo "$(printn "You selected not to install newest version. Ending.")"
 		echo
-		exit_command 1
+		trap_command
 	fi
 else
 	echo
@@ -1081,7 +1088,7 @@ else
 		echo
 		echo "$(printn "No new version of voipmonitor were made. Please, ")$(printp "try again")$(printn " later.")"
 		echo 
-		exit_command 1
+		trap_command
 	fi
 fi
 
@@ -1179,7 +1186,7 @@ if [ $storingResult -gt 0 ]; then
 		fi
 		if [ $graphResult -eq 1 ]; then
 #9bd days for .graph files [0 for disable]
-		askNumber graphdaysResult "  Maximum days for .grpah files ( 0 for disabled ) " 0 36500 0
+		askNumber graphdaysResult "  Maximum days for .graph files ( 0 for disabled ) " 0 36500 0
 		fi
 	else
 		cleaningResult=0
@@ -1189,8 +1196,8 @@ else
 	spooldirResult=/var/spool/voipmonitor
 fi
 
-#10. Absolute call timeout in seconds default [1440]
-askNumber timeoutResult "Absolute call timeout in seconds " 1 8640000 1440
+#10. Absolute call timeout in seconds default [14400]
+askNumber timeoutResult "Absolute call timeout in seconds " 1 8640000 14400
 
 echo
 #11. Would you like to install init start script? and kill running voipmotnitor? Also show where are configs located
@@ -1276,8 +1283,9 @@ verbose "cleaningResult: $cleaningResult"
 verbose "spooldirResult: $spooldirResult"
 replaceArgByWhere "spooldir" "spooldir = $spooldirResult" "$configFile"
 
-verbose "maxpoolsize             = pozoer v MB    spoolsizeResult: $spoolsizeResult"
-replaceArgByWhere "maxpoolsize" "maxpoolsize = $spoolsizeResult" "$configFile"
+verbose "maxpoolsize             =  GB    spoolsizeResult: $spoolsizeResult"
+spoolsizeResultMB=$(($spoolsizeResult * 1024))
+replaceArgByWhere "maxpoolsize" "maxpoolsize = $spoolsizeResultMB" "$configFile"
 
 verbose "maxpoolsipdays          =	               sipdaysResult: $sipdaysResult"
 replaceArgByWhere "maxpoolsipdays" "maxpoolsipdays = $sipdaysResult" "$configFile"
