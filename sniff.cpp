@@ -6072,6 +6072,23 @@ void PreProcessPacket::sipProcess_getLastSipResponse(packet_parse_s *parse_packe
 
 void PreProcessPacket::sipProcess_findCall(packet_parse_s *parse_packet) {
 	packet_s *_packet = &parse_packet->packet;
+	if(IS_SIP_RESXXX(parse_packet->sip_method)) {
+		unsigned long l;
+		char *cseq = gettag(_packet->data, parse_packet->sipDataLen, parse_packet->parseContents,
+				    "\nCSeq:", &l);
+		if(cseq && l > 0 && l <= 1023) {
+			char oldEndChar = cseq[l];
+			cseq[l] = 0;
+			bool cseqRegister = false;
+			if(strcasestr(cseq, "REGISTER")) {
+				cseqRegister = true;
+			}
+			cseq[l] = oldEndChar;
+			if(cseqRegister) {
+				return;
+			}
+		}
+	}
 	int call_type = 0;
 	parse_packet->call = calltable->find_by_call_id((char*)parse_packet->callid.c_str(), parse_packet->callid.length(), true, &call_type);
 	if(parse_packet->call) {
