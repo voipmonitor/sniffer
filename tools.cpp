@@ -2155,14 +2155,6 @@ ParsePacket::~ParsePacket() {
 }
 	
 void ParsePacket::setStdParse() {
-	if(root) {
-		delete root;
-		root = NULL;
-	}
-	if(rootCheckSip) {
-		delete rootCheckSip;
-		rootCheckSip = NULL;
-	}
 	if(!root) {
 		root = new FILE_LINE ppNode;
 	}
