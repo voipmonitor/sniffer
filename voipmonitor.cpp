@@ -5145,6 +5145,8 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "reassembly_sip_output")	sverb.reassembly_sip_output = 1;
 						else if(verbparams[i] == "log_manager_cmd")		sverb.log_manager_cmd = 1;
 						else if(verbparams[i] == "rtp_extend_stat")		sverb.rtp_extend_stat = 1;
+						else if(verbparams[i] == "disable_process_packet_in_packetbuffer")
+													sverb.disable_process_packet_in_packetbuffer = 1;
 					}
 				} }
 				break;

@@ -432,32 +432,40 @@ public:
 		delete stack;
 	}
 	bool add_hp(sHeaderPacket *headerPacket, int ia) {
+		bool rslt = false;
+		*(u_char*)(headerPacket->header) = 0;
+		*(u_char*)(headerPacket->packet) = 0;
 		if(hpp_add_size[ia] == PcapQueue_HeaderPacketStack_hp_max) {
 			if(stack->push(&hpp_add[ia], false, true)) {
 				hpp_add[ia].hp[0] = *headerPacket;
 				hpp_add_size[ia] = 1;
-				return(true);
+				rslt = true;
 			}
 		} else {
 			hpp_add[ia].hp[hpp_add_size[ia]] = *headerPacket;
 			++hpp_add_size[ia];
-			return(true);
+			rslt = true;
 		}
-		return(false);
+		return(rslt);
 	}
 	bool get_hp(sHeaderPacket *headerPacket) {
+		bool rslt = false;
 		if(hpp_get_size) {
 			*headerPacket = hpp_get.hp[PcapQueue_HeaderPacketStack_hp_max - hpp_get_size];
 			--hpp_get_size;
-			return(true);
+			rslt = true;
 		} else {
 			if(stack->pop(&hpp_get, false)) {
 				*headerPacket = hpp_get.hp[0];
 				hpp_get_size = PcapQueue_HeaderPacketStack_hp_max - 1;
-				return(true);
+				rslt = true;
 			}
 		}
-		return(false);
+		if(*(u_char*)(headerPacket->header) ||
+		   *(u_char*)(headerPacket->packet)) {
+			cout << "dupl in get_hp" << endl;
+		}
+		return(rslt);
 	}
 private:
 	sHeaderPacketPool hpp_add[PcapQueue_HeaderPacketStack_add_max];

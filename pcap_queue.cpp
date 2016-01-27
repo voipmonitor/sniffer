@@ -5176,6 +5176,10 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 					   pcap_block_store *block_store, int block_store_index,
 					   int dlt, int sensor_id) {
  
+	if(sverb.disable_process_packet_in_packetbuffer) {
+		return;
+	}
+ 
 	iphdr2 *header_ip;
 	tcphdr2 *header_tcp;
 	udphdr2 *header_udp;
