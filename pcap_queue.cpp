@@ -2581,38 +2581,33 @@ string PcapQueue_readFromInterface_base::getInterfaceName(bool simple) {
 
 PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char *interfaceName, eTypeInterfaceThread typeThread,
 								     PcapQueue_readFromInterfaceThread *readThread,
-								     PcapQueue_readFromInterfaceThread *prevThread,
-								     PcapQueue_readFromInterfaceThread *prevThread2)
+								     PcapQueue_readFromInterfaceThread *prevThread)
  : PcapQueue_readFromInterface_base(interfaceName) {
 	this->threadHandle = 0;
 	this->threadId = 0;
 	this->threadInitOk = 0;
 	this->threadInitFailed = false;
-	this->qringmax = opt_pcap_queue_iface_qring_size;
-	for(int i = 0; i < 2; i++) {
-		if(i == 0 || typeThread == defrag) {
-			this->qring[i] = new FILE_LINE hpi[this->qringmax];
-			memset(this->qring[i], 0, sizeof(hpi) * this->qringmax);
-		} else {
-			this->qring[i] = NULL;
-		}
-		this->readit[i] = 0;
-		this->writeit[i] = 0;
+	this->qringmax = opt_pcap_queue_iface_qring_size / 100;
+	this->qring = new FILE_LINE hpi_batch*[this->qringmax];
+	for(unsigned int i = 0; i < this->qringmax; i++) {
+		this->qring[i] = new hpi_batch(100);
 	}
+	this->readit = 0;
+	this->writeit = 0;
+	this->readIndex = 0;
+	this->readIndexPos = 0;
+	this->readIndexCount = 0;
+	this->writeIndex = 0;
+	this->writeIndexCount = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->threadTerminated = false;
 	this->_sync_qring = 0;
 	this->readThread = readThread;
 	this->defragThread = NULL;
-	this->md1Thread = NULL;
-	this->md2Thread = NULL;
+	this->mdThread = NULL;
 	this->dedupThread = NULL;
 	this->typeThread = typeThread;
-	this->prevThreads[0] = prevThread;
-	this->prevThreads[1] = prevThread2;
-	this->indexDefragQring = 0;
-	this->push_counter = 1;
-	this->pop_counter = 1;
+	this->prevThread = prevThread;
 	this->threadDoTerminate = false;
 	this->headerPacketStack = NULL;
 	if(typeThread == read) {
@@ -2628,17 +2623,11 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 		}
 		delete this->defragThread;
 	}
-	if(this->md1Thread) {
-		while(this->md1Thread->threadInitOk && !this->md1Thread->isTerminated()) {
+	if(this->mdThread) {
+		while(this->mdThread->threadInitOk && !this->mdThread->isTerminated()) {
 			usleep(100000);
 		}
-		delete this->md1Thread;
-	}
-	if(this->md2Thread) {
-		while(this->md2Thread->threadInitOk && !this->md2Thread->isTerminated()) {
-			usleep(100000);
-		}
-		delete this->md2Thread;
+		delete this->mdThread;
 	}
 	if(this->dedupThread) {
 		while(this->dedupThread->threadInitOk && !this->dedupThread->isTerminated()) {
@@ -2646,24 +2635,49 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 		}
 		delete this->dedupThread;
 	}
-	for(int i = 0; i < 2; i++) {
-		if(this->qring[i]) {
-			for(uint j = 0; j < this->qringmax; j++) {
-				if(this->qring[i][j].used) {
-					delete this->qring[i][j].header;
-					delete [] this->qring[i][j].packet;
-				}
-			}
-			delete [] this->qring[i];
-		}
+	for(unsigned int i = 0; i < this->qringmax; i++) {
+		delete this->qring[i];
 	}
+	delete [] this->qring;
 	if(this->headerPacketStack) {
 		delete this->headerPacketStack;
 	}
 }
 
 inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* packet, bool ok_for_header_packet_stack,
-						    u_int offset, uint16_t *md5, int index, uint32_t counter) {
+						    u_int offset, uint16_t *md5) {
+	unsigned int _writeIndex;
+	if(writeIndex) {
+		_writeIndex = writeIndex - 1;
+	} else {
+		_writeIndex = writeit % qringmax;
+		while(qring[_writeIndex]->used) {
+			usleep(100);
+		}
+		writeIndex = _writeIndex + 1;
+		writeIndexCount = 0;
+	}
+	qring[_writeIndex]->hpis[writeIndexCount].header = header;
+	qring[_writeIndex]->hpis[writeIndexCount].packet = packet;
+	qring[_writeIndex]->hpis[writeIndexCount].ok_for_header_packet_stack = ok_for_header_packet_stack;
+	qring[_writeIndex]->hpis[writeIndexCount].offset = offset;
+	if(md5) {
+		memcpy(qring[_writeIndex]->hpis[writeIndexCount].md5, md5, MD5_DIGEST_LENGTH);
+	} else {
+		qring[_writeIndex]->hpis[writeIndexCount].md5[0] = 0;
+	}
+	++writeIndexCount;
+	if(writeIndexCount == qring[_writeIndex]->max_count) {
+		qring[_writeIndex]->count = writeIndexCount;
+		qring[_writeIndex]->used = 1;
+		writeIndex = 0;
+		if((writeit + 1) == qringmax) {
+			writeit = 0;
+		} else {
+			writeit++;
+		}
+	}
+	/****
 	uint32_t writeIndex = this->writeit[index] % this->qringmax;
 	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
 	while(this->qring[index][writeIndex].used > 0) {
@@ -2692,9 +2706,46 @@ inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* 
 		this->writeit[index]++;
 	}
 	//__sync_lock_release(&this->_sync_qring);
+	****/
 }
 
-inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread::pop(int index, bool moveReadit) {
+inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread::pop() {
+	unsigned int _readIndex;
+	hpi rslt_hpi;
+	if(readIndex) {
+		_readIndex = readIndex - 1;
+	} else {
+		_readIndex = readit % qringmax;
+		if(qring[_readIndex]->used) {
+			readIndex = _readIndex + 1;
+			readIndexPos = 0;
+			readIndexCount = qring[_readIndex]->count;
+		} else {
+			rslt_hpi.header = NULL;
+			rslt_hpi.packet = NULL;
+			rslt_hpi.ok_for_header_packet_stack = false;
+			rslt_hpi.offset = 0;
+			rslt_hpi.md5[0] = 0;
+			return(rslt_hpi);
+		}
+	}
+	rslt_hpi.header = qring[_readIndex]->hpis[readIndexPos].header;
+	rslt_hpi.packet = qring[_readIndex]->hpis[readIndexPos].packet;
+	rslt_hpi.ok_for_header_packet_stack = qring[_readIndex]->hpis[readIndexPos].ok_for_header_packet_stack;
+	rslt_hpi.offset = qring[_readIndex]->hpis[readIndexPos].offset;
+	memcpy(rslt_hpi.md5, qring[_readIndex]->hpis[readIndexPos].md5, MD5_DIGEST_LENGTH);
+	++readIndexPos;
+	if(readIndexPos == readIndexCount) {
+		qring[_readIndex]->used = 0;
+		readIndex = 0;
+		if((readit + 1) == qringmax) {
+			readit = 0;
+		} else {
+			readit++;
+		}
+	}
+	return(rslt_hpi);
+	/****
 	uint32_t readIndex = this->readit[index] % this->qringmax;
 	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
 	hpi rslt_hpi;
@@ -2714,39 +2765,21 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 		memcpy(rslt_hpi.md5, this->qring[index][readIndex].md5, MD5_DIGEST_LENGTH);
 		rslt_hpi.counter = this->qring[index][readIndex].counter;
 		rslt_hpi.used = 0;
-		if(moveReadit) {
-			this->qring[index][readIndex].used = 0;
-			if((this->readit[index] + 1) == this->qringmax) {
-				this->readit[index] = 0;
-			} else {
-				this->readit[index]++;
-			}
+		this->qring[index][readIndex].used = 0;
+		if((this->readit[index] + 1) == this->qringmax) {
+			this->readit[index] = 0;
+		} else {
+			this->readit[index]++;
 		}
 	}
 	//__sync_lock_release(&this->_sync_qring);
 	return(rslt_hpi);
-}
-
-inline void PcapQueue_readFromInterfaceThread::moveReadit(int index) {
-	this->qring[index][this->readit[index] % this->qringmax].used = 0;
-	if((this->readit[index] + 1) == this->qringmax) {
-		this->readit[index] = 0;
-	} else {
-		this->readit[index]++;
-	}
+	****/
 }
 
 
-inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread::POP(bool moveReadit) {
-	return(this->dedupThread ? this->dedupThread->pop(0, moveReadit) : this->pop(0, moveReadit));
-}
-
-inline void PcapQueue_readFromInterfaceThread::moveREADIT() {
-	if(this->dedupThread) {
-		this->dedupThread->moveReadit(0);
-	} else {
-		this->moveReadit(0);
-	}
+inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread::POP() {
+	return(this->dedupThread ? this->dedupThread->pop() : this->pop());
 }
 
 
@@ -2810,8 +2843,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		outStr << "start thread t0i_" 
 		       << (this->typeThread == read ? "read" : 
 			   this->typeThread == defrag ? "defrag" :
-			   this->typeThread == md1 ? "md1" :
-			   this->typeThread == md2 ? "md2" :
+			   this->typeThread == md ? "md" :
 			   this->typeThread == dedup ? "dedup" : "---") 
 		       << " (" << this->getInterfaceName() << ") - pid: " << this->threadId << endl;
 		syslog(LOG_NOTICE, outStr.str().c_str());
@@ -2820,9 +2852,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		if(opt_pcap_queue_iface_dedup_separate_threads) {
 			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
 				this->defragThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), defrag, this, this);
-				this->md1Thread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this->defragThread);
-				this->md2Thread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->defragThread);
-				this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->md1Thread, this->md2Thread);
+				this->mdThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md, this, this->defragThread);
+				this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->mdThread);
 			} else {
 				this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this);
 			}
@@ -2840,13 +2871,9 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				this->defragThread->threadInitFailed = true;
 				this->defragThread->threadDoTerminate = true;
 			}
-			if(this->md1Thread) {
-				this->md1Thread->threadInitFailed = true;
-				this->md1Thread->threadDoTerminate = true;
-			}
-			if(this->md2Thread) {
-				this->md2Thread->threadInitFailed = true;
-				this->md2Thread->threadDoTerminate = true;
+			if(this->mdThread) {
+				this->mdThread->threadInitFailed = true;
+				this->mdThread->threadDoTerminate = true;
 			}
 			if(!opt_pcap_queue_receive_from_ip_port) {
 				vm_terminate_error(error.c_str());
@@ -2867,11 +2894,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		if(this->defragThread) {
 			this->defragThread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
 		}
-		if(this->md1Thread) {
-			this->md1Thread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
-		}
-		if(this->md2Thread) {
-			this->md2Thread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
+		if(this->mdThread) {
+			this->mdThread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
 		}
 	} else {
 		while(!is_terminating() && this->readThread->threadInitOk != 2) {
@@ -2905,8 +2929,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			}
 			if(libpcap_buffer) {
 				*libpcap_buffer = headerPacketRead.packet;
-				
 			}
+			//cout << hex << (unsigned long)headerPacketRead.packet << dec << endl;
 			res = this->pcap_next_ex_iface(this->pcapHandle, &header, &packet);
 			if(res == -1) {
 				break;
@@ -2999,7 +3023,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			}
 			break;
 		case defrag: {
-			hpi hpii = this->prevThreads[0]->pop();
+			hpi hpii = this->prevThread->pop();
 			if(!hpii.packet) {
 				usleep(100);
 				continue;
@@ -3046,19 +3070,12 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 						ok_for_header_packet_stack = false;
 					}
 				}
-				this->push(header, packet, ok_for_header_packet_stack, 0, NULL, this->indexDefragQring, this->push_counter);
-				++this->push_counter;
-				if(!this->push_counter) {
-					++this->push_counter;
-				}
-				this->indexDefragQring = this->indexDefragQring ? 0 : 1;
+				this->push(header, packet, ok_for_header_packet_stack, 0, NULL);
 			}
 			}
 			break;
-		case md1:
-		case md2: {
-			uint32_t counter = 0;
-			hpi hpii = this->prevThreads[0]->pop(this->typeThread == md1 ? 0 : 1);
+		case md: {
+			hpi hpii = this->prevThread->pop();
 			if(!hpii.packet) {
 				usleep(100);
 				continue;
@@ -3067,7 +3084,6 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			packet = _packet = hpii.packet;
 			offset = hpii.offset;
 			ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
-			counter = hpii.counter;
 			if(opt_dup_check) {
 				res = this->pcapProcess(&header, &packet, &destroy,
 							false, true, false, false);
@@ -3094,30 +3110,12 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					offset = this->ppd.header_ip_offset;
 				}
 			}
-			this->push(header, packet, ok_for_header_packet_stack, offset, this->ppd.md5, 0, counter);
+			this->push(header, packet, ok_for_header_packet_stack, offset, this->ppd.md5);
 			}
 			break;
 		case dedup: {
 			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
-				int threadIndex = -1;
-				uint32_t counter[2];
-				for(int i = 0; i < 2; i++) {
-					counter[i] = this->prevThreads[i]->getCounter();
-					if(counter[i] && this->pop_counter == counter[i]) {
-						threadIndex = i;
-						break;
-					}
-				}
-				if(threadIndex < 0) {
-					if(counter[0] && counter[1]) {
-						threadIndex = counter[0] < counter[1] ? 0 : 1;
-						this->pop_counter = counter[threadIndex];
-					} else {
-						usleep(100);
-						continue;
-					}
-				}
-				hpi hpii = this->prevThreads[threadIndex]->pop();
+				hpi hpii = this->prevThread->pop();
 				if(!hpii.packet) {
 					usleep(100);
 					continue;
@@ -3126,10 +3124,6 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				packet = _packet = hpii.packet;
 				offset = hpii.offset;
 				ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
-				++this->pop_counter;
-				if(!this->pop_counter) {
-					++this->pop_counter;
-				}
 				if(opt_dup_check) {
 					if(hpii.md5[0]) {
 						memcpy(this->ppd.md5, hpii.md5, MD5_DIGEST_LENGTH);
@@ -3163,7 +3157,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				}
 				this->push(header, packet, ok_for_header_packet_stack, offset, NULL);
 			} else {
-				hpi hpii = this->prevThreads[0]->pop();
+				hpi hpii = this->prevThread->pop();
 				if(!hpii.packet) {
 					usleep(100);
 					continue;
@@ -3233,11 +3227,11 @@ double PcapQueue_readFromInterfaceThread::getCpuUsagePerc(bool preparePstatData)
 	return(-1);
 }
 
-string PcapQueue_readFromInterfaceThread::getQringFillingPerc() {
+string PcapQueue_readFromInterfaceThread::getQringFillingPercStr() {
 	ostringstream outStr;
 	outStr << fixed;
 	for(int i = 0; i < 2; i++) {
-		double perc = getQringFillingPerc(i);
+		double perc = getQringFillingPerc();
 		if(perc >= 0) {
 			if(outStr.str().length()) {
 				outStr << ",";
@@ -3252,11 +3246,8 @@ void PcapQueue_readFromInterfaceThread::terminate() {
 	if(this->defragThread) {
 		this->defragThread->terminate();
 	}
-	if(this->md1Thread) {
-		this->md1Thread->terminate();
-	}
-	if(this->md2Thread) {
-		this->md2Thread->terminate();
+	if(this->mdThread) {
+		this->mdThread->terminate();
 	}
 	if(this->dedupThread) {
 		this->dedupThread->terminate();
@@ -3886,7 +3877,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			sum += ti_cpu;
 			outStrStat << "t0i_" << this->readThreads[i]->interfaceName << "_CPU[" << setprecision(1) << ti_cpu;
 			if(sverb.qring_stat) {
-				string qringFillingPerc = this->readThreads[i]->getQringFillingPerc();
+				string qringFillingPerc = this->readThreads[i]->getQringFillingPercStr();
 				if(qringFillingPerc.length()) {
 					outStrStat << "r" << qringFillingPerc;
 				}
@@ -3897,33 +3888,20 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->defragThread->getQringFillingPerc();
+						string qringFillingPerc = this->readThreads[i]->defragThread->getQringFillingPercStr();
 						if(qringFillingPerc.length()) {
 							outStrStat << "r" << qringFillingPerc;
 						}
 					}
 				}
 			}
-			if(this->readThreads[i]->md1Thread) {
-				double tid_cpu = this->readThreads[i]->md1Thread->getCpuUsagePerc(true);
+			if(this->readThreads[i]->mdThread) {
+				double tid_cpu = this->readThreads[i]->mdThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->md1Thread->getQringFillingPerc();
-						if(qringFillingPerc.length()) {
-							outStrStat << "r" << qringFillingPerc;
-						}
-					}
-				}
-			}
-			if(this->readThreads[i]->md2Thread) {
-				double tid_cpu = this->readThreads[i]->md2Thread->getCpuUsagePerc(true);
-				if(tid_cpu >= 0) {
-					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
-					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->md2Thread->getQringFillingPerc();
+						string qringFillingPerc = this->readThreads[i]->mdThread->getQringFillingPercStr();
 						if(qringFillingPerc.length()) {
 							outStrStat << "r" << qringFillingPerc;
 						}
@@ -3936,7 +3914,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->dedupThread->getQringFillingPerc();
+						string qringFillingPerc = this->readThreads[i]->dedupThread->getQringFillingPercStr();
 						if(qringFillingPerc.length()) {
 							outStrStat << "r" << qringFillingPerc;
 						}
@@ -5126,6 +5104,7 @@ void PcapQueue_readFromFifo::cleanupConnections(bool all) {
 void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char *packet,
 					   pcap_block_store *block_store, int block_store_index,
 					   int dlt, int sensor_id) {
+ 
 	iphdr2 *header_ip;
 	tcphdr2 *header_tcp;
 	udphdr2 *header_udp;

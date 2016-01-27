@@ -472,8 +472,7 @@ public:
 	enum eTypeInterfaceThread {
 		read,
 		defrag,
-		md1,
-		md2,
+		md,
 		dedup
 	};
 	struct hpi {
@@ -482,33 +481,46 @@ public:
 		bool ok_for_header_packet_stack;
 		u_int offset;
 		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
-		volatile uint32_t counter;
-		volatile signed char used;
+		
+	};
+	struct hpi_batch {
+		hpi_batch(uint32_t max_count) {
+			this->max_count = max_count;
+			this->hpis = new FILE_LINE hpi[max_count];
+			count = 0;
+			used = 0;
+		}
+		~hpi_batch() {
+			delete [] hpis;
+		}
+		uint32_t max_count;
+		hpi *hpis;
+		volatile uint32_t count;
+		volatile unsigned char used;
 	};
 	PcapQueue_readFromInterfaceThread(const char *interfaceName, eTypeInterfaceThread typeThread = read,
 					  PcapQueue_readFromInterfaceThread *readThread = NULL,
-					  PcapQueue_readFromInterfaceThread *prevThread = NULL,
-					  PcapQueue_readFromInterfaceThread *prevThread2 = NULL);
+					  PcapQueue_readFromInterfaceThread *prevThread = NULL);
 	~PcapQueue_readFromInterfaceThread();
 protected:
 	inline void push(pcap_pkthdr* header,u_char* packet, bool ok_for_header_packet_stack,
-			 u_int offset, uint16_t *md5, int index = 0, uint32_t counter = 0);
-	inline hpi pop(int index = 0, bool moveReadit = true);
-        inline void moveReadit(int index = 0);
-	inline hpi POP(bool moveReadit = true);
-	inline void moveREADIT();
-	u_int64_t getTime_usec(int index = 0) {
-		if(this->qring[index][this->readit[index] % this->qringmax].used <= 0) {
-			return(0);
+			 u_int offset, uint16_t *md5);
+	inline hpi pop();
+	inline hpi POP();
+	u_int64_t getTime_usec() {
+		if(!readIndex) {
+			unsigned int _readIndex = readit % qringmax;
+			if(qring[_readIndex]->used) {
+				readIndex = _readIndex + 1;
+				readIndexPos = 0;
+				readIndexCount = qring[_readIndex]->count;
+			}
 		}
-		return(this->qring[index][this->readit[index] % this->qringmax].header->ts.tv_sec * 1000000ull + 
-		       this->qring[index][this->readit[index] % this->qringmax].header->ts.tv_usec);
-	}
-	u_int32_t getCounter(int index = 0) {
-		if(this->qring[index][this->readit[index] % this->qringmax].used <= 0) {
-			return(0);
+		if(readIndex && readIndexCount && readIndexPos < readIndexCount) {
+			return(this->qring[readIndex - 1]->hpis[readIndexPos].header->ts.tv_sec * 1000000ull + 
+			       this->qring[readIndex - 1]->hpis[readIndexPos].header->ts.tv_usec);
 		}
-		return(this->qring[index][this->readit[index] % this->qringmax].counter);
+		return(0);
 	}
 	u_int64_t getTIME_usec() {
 		return(this->dedupThread ? this->dedupThread->getTime_usec() : this->getTime_usec());
@@ -520,40 +532,38 @@ private:
 	void *threadFunction(void *arg, unsigned int arg2);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData = false);
-	double getQringFillingPerc(int index) {
-		if(!qring[index]) {
-			return(-1);
-		}
-		unsigned int _readit = readit[index];
-		unsigned int _writeit = writeit[index];
+	double getQringFillingPerc() {
+		unsigned int _readit = readit;
+		unsigned int _writeit = writeit;
 		return(_writeit >= _readit ?
 			(double)(_writeit - _readit) / qringmax * 100 :
 			(double)(qringmax - _readit + _writeit) / qringmax * 100);
 	}
-	string getQringFillingPerc();
+	string getQringFillingPercStr();
 	void terminate();
 private:
 	pthread_t threadHandle;
 	int threadId;
 	int threadInitOk;
 	bool threadInitFailed;
-	hpi *qring[2];
+	hpi_batch **qring;
 	unsigned int qringmax;
-	volatile unsigned int readit[2];
-	volatile unsigned int writeit[2];
+	volatile unsigned int readit;
+	volatile unsigned int writeit;
+	unsigned int readIndex;
+	unsigned int readIndexPos;
+	unsigned int readIndexCount;
+	unsigned int writeIndex;
+	unsigned int writeIndexCount;
 	bool threadTerminated;
 	pstat_data threadPstatData[2];
 	volatile int _sync_qring;
 	eTypeInterfaceThread typeThread;
 	PcapQueue_readFromInterfaceThread *readThread;
 	PcapQueue_readFromInterfaceThread *defragThread;
-	PcapQueue_readFromInterfaceThread *md1Thread;
-	PcapQueue_readFromInterfaceThread *md2Thread;
+	PcapQueue_readFromInterfaceThread *mdThread;
 	PcapQueue_readFromInterfaceThread *dedupThread;
-	PcapQueue_readFromInterfaceThread *prevThreads[2];
-	int indexDefragQring;
-	uint32_t push_counter;
-	uint32_t pop_counter;
+	PcapQueue_readFromInterfaceThread *prevThread;
 	bool threadDoTerminate;
 	PcapQueue_HeaderPacketStack *headerPacketStack;
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
