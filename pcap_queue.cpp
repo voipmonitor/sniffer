@@ -2600,6 +2600,8 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->writeIndex = 0;
 	this->writeIndexCount = 0;
 	this->counter = 0;
+	this->counter_pop_usleep = 0;
+	this->force_push = false;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->threadTerminated = false;
 	this->_sync_qring = 0;
@@ -2675,7 +2677,9 @@ inline void PcapQueue_readFromInterfaceThread::push(pcap_pkthdr* header,u_char* 
 		qring[_writeIndex]->hpis[writeIndexCount].md5[0] = 0;
 	}
 	++writeIndexCount;
-	if(writeIndexCount == qring[_writeIndex]->max_count) {
+	if(writeIndexCount == qring[_writeIndex]->max_count ||
+	   (writeIndexCount && force_push)) {
+		force_push = false;
 		qring[_writeIndex]->count = writeIndexCount;
 		qring[_writeIndex]->used = 1;
 		writeIndex = 0;
@@ -3043,52 +3047,56 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			hpi hpii = this->prevThread->pop();
 			if(!hpii.packet) {
 				usleep(100);
+				++this->counter_pop_usleep;
+				if(!(this->counter_pop_usleep % 2000)) {
+					this->prevThread->forcePush();
+				}
 				continue;
-			} else {
-				header = _header = hpii.header;
-				packet = _packet = hpii.packet;
-				ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
-				if(opt_pcapdump_all) {
-					if(this->pcapDumpHandle &&
-					   this->pcapDumpLength > opt_pcapdump_all * 1000000ull) {
-						pcap_dump_close(this->pcapDumpHandle);
-						this->pcapDumpHandle = NULL;
-						this->pcapDumpLength = 0;
-					}
-					if(!this->pcapDumpHandle) {
-						char pname[1024];
-						sprintf(pname, "%s/voipmonitordump-%s-%s.pcap", 
-							opt_chdir,
-							this->interfaceName.c_str(), 
-							sqlDateTimeString(time(NULL)).c_str());
-						this->pcapDumpHandle = pcap_dump_open(global_pcap_handle, pname);
-					}
-					pcap_dump((u_char*)this->pcapDumpHandle, header, packet);
-					this->pcapDumpLength += header->caplen;
-				}
-				if(opt_udpfrag || opt_pcapdump_all) {
-					res = this->pcapProcess(&header, &packet, &destroy,
-								true, false, false, false);
-					if(res == -1) {
-						break;
-					} else if(res == 0) {
-						if(destroy) {
-							if(header != _header) delete header;
-							if(packet != _packet) delete [] packet;
-						}
-						sHeaderPacket headerPacket(_header, _packet);
-						if(!(ok_for_header_packet_stack && this->readThread->headerPacketStack &&
-						     this->readThread->headerPacketStack->add_hp(&headerPacket, 2))) {
-							delete _header;
-							delete [] _packet;
-						}
-						continue;
-					} else if(packet != _packet) {
-						ok_for_header_packet_stack = false;
-					}
-				}
-				this->push(header, packet, ok_for_header_packet_stack, 0, NULL);
 			}
+			this->counter_pop_usleep = 0;
+			header = _header = hpii.header;
+			packet = _packet = hpii.packet;
+			ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
+			if(opt_pcapdump_all) {
+				if(this->pcapDumpHandle &&
+				   this->pcapDumpLength > opt_pcapdump_all * 1000000ull) {
+					pcap_dump_close(this->pcapDumpHandle);
+					this->pcapDumpHandle = NULL;
+					this->pcapDumpLength = 0;
+				}
+				if(!this->pcapDumpHandle) {
+					char pname[1024];
+					sprintf(pname, "%s/voipmonitordump-%s-%s.pcap", 
+						opt_chdir,
+						this->interfaceName.c_str(), 
+						sqlDateTimeString(time(NULL)).c_str());
+					this->pcapDumpHandle = pcap_dump_open(global_pcap_handle, pname);
+				}
+				pcap_dump((u_char*)this->pcapDumpHandle, header, packet);
+				this->pcapDumpLength += header->caplen;
+			}
+			if(opt_udpfrag || opt_pcapdump_all) {
+				res = this->pcapProcess(&header, &packet, &destroy,
+							true, false, false, false);
+				if(res == -1) {
+					break;
+				} else if(res == 0) {
+					if(destroy) {
+						if(header != _header) delete header;
+						if(packet != _packet) delete [] packet;
+					}
+					sHeaderPacket headerPacket(_header, _packet);
+					if(!(ok_for_header_packet_stack && this->readThread->headerPacketStack &&
+					     this->readThread->headerPacketStack->add_hp(&headerPacket, 2))) {
+						delete _header;
+						delete [] _packet;
+					}
+					continue;
+				} else if(packet != _packet) {
+					ok_for_header_packet_stack = false;
+				}
+			}
+			this->push(header, packet, ok_for_header_packet_stack, 0, NULL);
 			}
 			break;
 		case md1:
@@ -3096,8 +3104,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			hpi hpii = this->prevThread->pop();
 			if(!hpii.packet) {
 				usleep(100);
+				++this->counter_pop_usleep;
+				if(!(this->counter_pop_usleep % 2000)) {
+					this->prevThread->forcePush();
+				}
 				continue;
 			}
+			this->counter_pop_usleep = 0;
 			header = _header = hpii.header;
 			packet = _packet = hpii.packet;
 			offset = hpii.offset;
@@ -3142,8 +3155,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				hpi hpii = this->prevThread->pop();
 				if(!hpii.packet) {
 					usleep(100);
+					++this->counter_pop_usleep;
+					if(!(this->counter_pop_usleep % 2000)) {
+						this->prevThread->forcePush();
+					}
 					continue;
 				}
+				this->counter_pop_usleep = 0;
 				header = _header = hpii.header;
 				packet = _packet = hpii.packet;
 				offset = hpii.offset;
@@ -3184,8 +3202,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				hpi hpii = this->prevThread->pop();
 				if(!hpii.packet) {
 					usleep(100);
+					++this->counter_pop_usleep;
+					if(!(this->counter_pop_usleep % 2000)) {
+						this->prevThread->forcePush();
+					}
 					continue;
 				}
+				this->counter_pop_usleep = 0;
 				header = _header = hpii.header;
 				packet = _packet = hpii.packet;
 				ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
@@ -3434,6 +3457,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				sizeof(blockStore[i]->ifname) - 1);
 		}
 		delete_packet_info dpi;
+		unsigned int counter_pop_usleep = 0;
 		while(!TERMINATING) {
 			bool fetchPacketOk = false;
 			int minThreadTimeIndex = -1;
@@ -3459,7 +3483,14 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				}
 				if(minThreadTimeIndex < 0) {
 					usleep(100);
+					++counter_pop_usleep;
+					if(!(counter_pop_usleep % 2000)) {
+						for(int i = 0; i < this->readThreadsCount; i++) {
+							this->readThreads[i]->forcePUSH();
+						}
+					}
 				} else {
+					counter_pop_usleep = 0;
 					PcapQueue_readFromInterfaceThread::hpi hpi = this->readThreads[minThreadTimeIndex]->POP();
 					if(!hpi.packet) {
 						usleep(100);

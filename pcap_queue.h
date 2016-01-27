@@ -528,6 +528,16 @@ protected:
 	bool isTerminated() {
 		return(this->threadTerminated);
 	}
+	void forcePush() {
+		this->force_push = true;
+	}
+	void forcePUSH() {
+		if(this->dedupThread) {
+			this->dedupThread->forcePush();
+		} else {
+			this->forcePush();
+		}
+	}
 private:
 	void *threadFunction(void *arg, unsigned int arg2);
 	void preparePstatData();
@@ -556,6 +566,8 @@ private:
 	unsigned int writeIndex;
 	unsigned int writeIndexCount;
 	unsigned int counter;
+	unsigned int counter_pop_usleep;
+	bool force_push;
 	bool threadTerminated;
 	pstat_data threadPstatData[2];
 	volatile int _sync_qring;
