@@ -1,3 +1,8 @@
+15.0.4 27.1.2016
+================
+- fix critical bug when reloading sniffer (via GUI or manager command) SIP parser stopped. Fixes all >= 15
+
+
 15.0.3 26.1.2016
 ================
 - fix IP/UDP defragmentation also for GRE and other IP protocols (not only IPinIP)
