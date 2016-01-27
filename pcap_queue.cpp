@@ -2599,12 +2599,14 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->readIndexCount = 0;
 	this->writeIndex = 0;
 	this->writeIndexCount = 0;
+	this->counter = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->threadTerminated = false;
 	this->_sync_qring = 0;
 	this->readThread = readThread;
 	this->defragThread = NULL;
-	this->mdThread = NULL;
+	this->md1Thread = NULL;
+	this->md2Thread = NULL;
 	this->dedupThread = NULL;
 	this->typeThread = typeThread;
 	this->prevThread = prevThread;
@@ -2623,11 +2625,17 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 		}
 		delete this->defragThread;
 	}
-	if(this->mdThread) {
-		while(this->mdThread->threadInitOk && !this->mdThread->isTerminated()) {
+	if(this->md1Thread) {
+		while(this->md1Thread->threadInitOk && !this->md1Thread->isTerminated()) {
 			usleep(100000);
 		}
-		delete this->mdThread;
+		delete this->md1Thread;
+	}
+	if(this->md2Thread) {
+		while(this->md2Thread->threadInitOk && !this->md2Thread->isTerminated()) {
+			usleep(100000);
+		}
+		delete this->md2Thread;
 	}
 	if(this->dedupThread) {
 		while(this->dedupThread->threadInitOk && !this->dedupThread->isTerminated()) {
@@ -2843,7 +2851,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		outStr << "start thread t0i_" 
 		       << (this->typeThread == read ? "read" : 
 			   this->typeThread == defrag ? "defrag" :
-			   this->typeThread == md ? "md" :
+			   this->typeThread == md1 ? "md1" :
+			   this->typeThread == md2 ? "md2" :
 			   this->typeThread == dedup ? "dedup" : "---") 
 		       << " (" << this->getInterfaceName() << ") - pid: " << this->threadId << endl;
 		syslog(LOG_NOTICE, outStr.str().c_str());
@@ -2852,8 +2861,9 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		if(opt_pcap_queue_iface_dedup_separate_threads) {
 			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
 				this->defragThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), defrag, this, this);
-				this->mdThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md, this, this->defragThread);
-				this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->mdThread);
+				this->md1Thread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this->defragThread);
+				this->md2Thread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->md1Thread);
+				this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->md2Thread);
 			} else {
 				this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this);
 			}
@@ -2871,9 +2881,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				this->defragThread->threadInitFailed = true;
 				this->defragThread->threadDoTerminate = true;
 			}
-			if(this->mdThread) {
-				this->mdThread->threadInitFailed = true;
-				this->mdThread->threadDoTerminate = true;
+			if(this->md1Thread) {
+				this->md1Thread->threadInitFailed = true;
+				this->md1Thread->threadDoTerminate = true;
+			}
+			if(this->md2Thread) {
+				this->md2Thread->threadInitFailed = true;
+				this->md2Thread->threadDoTerminate = true;
 			}
 			if(!opt_pcap_queue_receive_from_ip_port) {
 				vm_terminate_error(error.c_str());
@@ -2894,8 +2908,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		if(this->defragThread) {
 			this->defragThread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
 		}
-		if(this->mdThread) {
-			this->mdThread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
+		if(this->md1Thread) {
+			this->md1Thread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
+		}
+		if(this->md2Thread) {
+			this->md2Thread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
 		}
 	} else {
 		while(!is_terminating() && this->readThread->threadInitOk != 2) {
@@ -3074,7 +3091,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			}
 			}
 			break;
-		case md: {
+		case md1:
+		case md2: {
 			hpi hpii = this->prevThread->pop();
 			if(!hpii.packet) {
 				usleep(100);
@@ -3084,33 +3102,39 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			packet = _packet = hpii.packet;
 			offset = hpii.offset;
 			ok_for_header_packet_stack = hpii.ok_for_header_packet_stack;
-			if(opt_dup_check) {
-				res = this->pcapProcess(&header, &packet, &destroy,
-							false, true, false, false);
-				if(res == -1) {
-					break;
-				} else if(res == 0) {
-					if(destroy) {
-						if(header != _header) delete header;
-						if(packet != _packet) delete [] packet;
+			uint16_t *md5 = hpii.md5[0] ? hpii.md5 : NULL;
+			if((this->typeThread == md1 && !(this->counter % 2)) ||
+			   (this->typeThread == md2 && (opt_dup_check ? !md5 : !offset))) {
+				if(opt_dup_check) {
+					res = this->pcapProcess(&header, &packet, &destroy,
+								false, true, false, false);
+					if(res == -1) {
+						break;
+					} else if(res == 0) {
+						if(destroy) {
+							if(header != _header) delete header;
+							if(packet != _packet) delete [] packet;
+						}
+						sHeaderPacket headerPacket(_header, _packet);
+						if(!(ok_for_header_packet_stack && this->readThread->headerPacketStack &&
+						     this->readThread->headerPacketStack->add_hp(&headerPacket, 2))) {
+							delete _header;
+							delete [] _packet;
+						}
+						continue;
 					}
-					sHeaderPacket headerPacket(_header, _packet);
-					if(!(ok_for_header_packet_stack && this->readThread->headerPacketStack &&
-					     this->readThread->headerPacketStack->add_hp(&headerPacket, 2))) {
-						delete _header;
-						delete [] _packet;
-					}
-					continue;
-				}
-				offset = this->ppd.header_ip_offset;
-			} else {
-				if(!offset) {
-					this->pcapProcess(&header, &packet, &destroy,
-							  false, false, false, false);
 					offset = this->ppd.header_ip_offset;
+					md5 = this->ppd.md5;
+				} else {
+					if(!offset) {
+						this->pcapProcess(&header, &packet, &destroy,
+								  false, false, false, false);
+						offset = this->ppd.header_ip_offset;
+					}
 				}
 			}
-			this->push(header, packet, ok_for_header_packet_stack, offset, this->ppd.md5);
+			this->push(header, packet, ok_for_header_packet_stack, offset, md5);
+			++this->counter;
 			}
 			break;
 		case dedup: {
@@ -3246,8 +3270,11 @@ void PcapQueue_readFromInterfaceThread::terminate() {
 	if(this->defragThread) {
 		this->defragThread->terminate();
 	}
-	if(this->mdThread) {
-		this->mdThread->terminate();
+	if(this->md1Thread) {
+		this->md1Thread->terminate();
+	}
+	if(this->md2Thread) {
+		this->md2Thread->terminate();
 	}
 	if(this->dedupThread) {
 		this->dedupThread->terminate();
@@ -3895,13 +3922,26 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 					}
 				}
 			}
-			if(this->readThreads[i]->mdThread) {
-				double tid_cpu = this->readThreads[i]->mdThread->getCpuUsagePerc(true);
+			if(this->readThreads[i]->md1Thread) {
+				double tid_cpu = this->readThreads[i]->md1Thread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->mdThread->getQringFillingPercStr();
+						string qringFillingPerc = this->readThreads[i]->md1Thread->getQringFillingPercStr();
+						if(qringFillingPerc.length()) {
+							outStrStat << "r" << qringFillingPerc;
+						}
+					}
+				}
+			}
+			if(this->readThreads[i]->md2Thread) {
+				double tid_cpu = this->readThreads[i]->md2Thread->getCpuUsagePerc(true);
+				if(tid_cpu >= 0) {
+					sum += tid_cpu;
+					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					if(sverb.qring_stat) {
+						string qringFillingPerc = this->readThreads[i]->md2Thread->getQringFillingPercStr();
 						if(qringFillingPerc.length()) {
 							outStrStat << "r" << qringFillingPerc;
 						}

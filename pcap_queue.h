@@ -472,7 +472,8 @@ public:
 	enum eTypeInterfaceThread {
 		read,
 		defrag,
-		md,
+		md1,
+		md2,
 		dedup
 	};
 	struct hpi {
@@ -481,7 +482,6 @@ public:
 		bool ok_for_header_packet_stack;
 		u_int offset;
 		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
-		
 	};
 	struct hpi_batch {
 		hpi_batch(uint32_t max_count) {
@@ -555,13 +555,15 @@ private:
 	unsigned int readIndexCount;
 	unsigned int writeIndex;
 	unsigned int writeIndexCount;
+	unsigned int counter;
 	bool threadTerminated;
 	pstat_data threadPstatData[2];
 	volatile int _sync_qring;
 	eTypeInterfaceThread typeThread;
 	PcapQueue_readFromInterfaceThread *readThread;
 	PcapQueue_readFromInterfaceThread *defragThread;
-	PcapQueue_readFromInterfaceThread *mdThread;
+	PcapQueue_readFromInterfaceThread *md1Thread;
+	PcapQueue_readFromInterfaceThread *md2Thread;
 	PcapQueue_readFromInterfaceThread *dedupThread;
 	PcapQueue_readFromInterfaceThread *prevThread;
 	bool threadDoTerminate;
