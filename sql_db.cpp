@@ -4782,7 +4782,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 						"ADD COLUMN a_mos_xr_min_mult10 tinyint unsigned DEFAULT NULL, "
 						"ADD COLUMN b_mos_xr_min_mult10 tinyint unsigned DEFAULT NULL, "
 						"ADD COLUMN a_mos_xr_mult10 tinyint unsigned DEFAULT NULL, "
-						"ADD COLUMN b_mos_xr_mult10 tinyint unsigned DEFAULT NULL, ");
+						"ADD COLUMN b_mos_xr_mult10 tinyint unsigned DEFAULT NULL;");
 	}
 }
 
