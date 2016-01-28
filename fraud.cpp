@@ -573,7 +573,7 @@ bool FraudAlert::loadAlert() {
 	if(defTypeBy()) {
 		typeBy = dbRow["fraud_rcc_by"] == "source_ip" ? _typeBy_source_ip :
 			 dbRow["fraud_rcc_by"] == "source_number" ? _typeBy_source_number :
-				_typeBy_NA;
+				_typeBy_source_ip;
 	}
 	if(defTypeChangeLocation()) {
 		typeChangeLocation = dbRow["fraud_type_change_location"] == "country" ? _typeLocation_country :
