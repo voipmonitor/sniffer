@@ -6067,15 +6067,24 @@ void _createMysqlPartitionsCdr(int day, SqlDb *sqlDb) {
 void createMysqlPartitionsRtpStat() {
 	syslog(LOG_NOTICE, "create rtp_stat partitions - begin");
 	SqlDb *sqlDb = createSqlObject();
+	bool disableLogErrorOld = sqlDb->getDisableLogError();
+	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
 	if(cloud_host[0]) {
+		sqlDb->setDisableLogError(true);
 		sqlDb->setMaxQueryPass(1);
 		sqlDb->query(
 			string("call create_partition_v2('rtp_stat', 'day', 0, ") + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
 		sqlDb->query(
 			string("call create_partition_v2('rtp_stat', 'day', 1, ") + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		sqlDb->setMaxQueryPass(maxQueryPassOld);
+		sqlDb->setDisableLogError(disableLogErrorOld);
 	} else {
+		sqlDb->setDisableLogError(true);
+		sqlDb->setMaxQueryPass(2);
 		sqlDb->query(
 			string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', 'rtp_stat', 'day', 0, " + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		sqlDb->setMaxQueryPass(maxQueryPassOld);
+		sqlDb->setDisableLogError(disableLogErrorOld);
 		sqlDb->query(
 			string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', 'rtp_stat', 'day', 1, " + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
 	}
