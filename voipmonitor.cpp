@@ -2724,11 +2724,13 @@ int main_init_read() {
 		}
 		
 		uint64_t _counter = 0;
-		int _pcap_stat_period = sverb.pcap_stat_period ? sverb.pcap_stat_period : 10;
+		if(!sverb.pcap_stat_period) {
+			sverb.pcap_stat_period = 10;
+		}
 		while(!is_terminating()) {
-			if(_counter && (verbosityE > 0 || !(_counter % _pcap_stat_period))) {
+			if(_counter && (verbosityE > 0 || !(_counter % sverb.pcap_stat_period))) {
 				pthread_mutex_lock(&terminate_packetbuffer_lock);
-				pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : _pcap_stat_period);
+				pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : sverb.pcap_stat_period);
 				pthread_mutex_unlock(&terminate_packetbuffer_lock);
 				if(sverb.memory_stat_log) {
 					printMemoryStat();

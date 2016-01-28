@@ -185,12 +185,12 @@ int enable_bad_packet_order_warning = 0;
 
 static pcap_block_store_queue *blockStoreBypassQueue; 
 
-static unsigned long sumPacketsCounterIn[2];
-static unsigned long sumPacketsCounterOut[2];
-static unsigned long sumBlocksCounterIn[2];
-static unsigned long sumBlocksCounterOut[2];
-static unsigned long long sumPacketsSize[2];
-static unsigned long long sumPacketsSizeCompress[2];
+static unsigned long sumPacketsCounterIn[3];
+static unsigned long sumPacketsCounterOut[3];
+static unsigned long sumBlocksCounterIn[3];
+static unsigned long sumBlocksCounterOut[3];
+static unsigned long long sumPacketsSize[3];
+static unsigned long long sumPacketsSizeCompress[3];
 static unsigned long maxBypassBufferItems;
 static unsigned long maxBypassBufferSize;
 static unsigned long countBypassBufferSizeExceeded;
@@ -1046,6 +1046,19 @@ void PcapQueue::setInstancePcapFifo(PcapQueue_readFromFifo *pcapQueue) {
 
 void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
+	sumPacketsCounterIn[2] = sumPacketsCounterIn[0] - sumPacketsCounterIn[1];
+	sumPacketsCounterIn[1] = sumPacketsCounterIn[0];
+	sumPacketsCounterOut[2] = sumPacketsCounterOut[0] - sumPacketsCounterOut[1];
+	sumPacketsCounterOut[1] = sumPacketsCounterOut[0];
+	sumBlocksCounterIn[2] = sumBlocksCounterIn[0] - sumBlocksCounterIn[1];
+	sumBlocksCounterIn[1] = sumBlocksCounterIn[0];
+	sumBlocksCounterOut[2] = sumBlocksCounterOut[0] - sumBlocksCounterOut[1];
+	sumBlocksCounterOut[1] = sumBlocksCounterOut[0];
+	sumPacketsSize[2] = sumPacketsSize[0] - sumPacketsSize[1];
+	sumPacketsSize[1] = sumPacketsSize[0];
+	sumPacketsSizeCompress[2] = sumPacketsSizeCompress[0] - sumPacketsSizeCompress[1];
+	sumPacketsSizeCompress[1] = sumPacketsSizeCompress[0];
+
 	extern int opt_cpu_limit_warning_t0;
 	extern int opt_cpu_limit_new_thread;
 	extern int opt_cpu_limit_delete_thread;
@@ -1753,12 +1766,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 		}
 	}
-	sumPacketsCounterIn[1] = sumPacketsCounterIn[0];
-	sumPacketsCounterOut[1] = sumPacketsCounterOut[0];
-	sumBlocksCounterIn[1] = sumBlocksCounterIn[0];
-	sumBlocksCounterOut[1] = sumBlocksCounterOut[0];
-	sumPacketsSize[1] = sumPacketsSize[0];
-	sumPacketsSizeCompress[1] = sumPacketsSizeCompress[0];
 
 	if (opt_rrd) {
 		if (opt_rrd == 1) {
@@ -2048,20 +2055,20 @@ string PcapQueue::pcapStatString_packets(int statPeriod) {
 	if(sumPacketsCounterIn[1] || sumBlocksCounterIn[1]) {
 		if(sumPacketsCounterIn[0]) {
 			outStr << "              /s: " 
-			       << setw(9) << (sumPacketsCounterIn[0]-sumPacketsCounterIn[1])/statPeriod << " / " 
-			       << setw(9) << (sumPacketsCounterOut[0]-sumPacketsCounterOut[1])/statPeriod << "  ";
+			       << setw(9) << sumPacketsCounterIn[2]/statPeriod << " / " 
+			       << setw(9) << sumPacketsCounterOut[2]/statPeriod << "  ";
 		}
 		outStr << "               : " 
-		       << setw(7) << (sumBlocksCounterIn[0]-sumBlocksCounterIn[1])/statPeriod << " / " 
-		       << setw(7) << (sumBlocksCounterOut[0]-sumBlocksCounterOut[1])/statPeriod;
+		       << setw(7) << sumBlocksCounterIn[2]/statPeriod << " / " 
+		       << setw(7) << sumBlocksCounterOut[2]/statPeriod;
 		if(sumPacketsSize[0]) {
 			outStr << "                ";
 			if(sumPacketsSizeCompress[0]) {
 				outStr << "   " 
-				       << setw(12) << (sumPacketsSizeCompress[0]-sumPacketsSizeCompress[1])/statPeriod << " / " 
-				       << setw(12) << (sumPacketsSize[0]-sumPacketsSize[1])/statPeriod;
+				       << setw(12) << sumPacketsSizeCompress[2]/statPeriod << " / " 
+				       << setw(12) << sumPacketsSize[2]/statPeriod;
 			}
-			outStr << "   " << ((double)(sumPacketsSize[0]-sumPacketsSize[1]))/statPeriod/(1024*1024)*8 << "Mb/s";
+			outStr << "   " << (double)sumPacketsSize[2]/statPeriod/(1024*1024)*8 << "Mb/s";
 		}
 		outStr << endl;
 	}
@@ -2077,8 +2084,8 @@ double PcapQueue::pcapStat_get_compress() {
 }
 
 double PcapQueue::pcapStat_get_speed_mb_s(int statPeriod) {
-	if(sumPacketsSize[0]-sumPacketsSize[1]) {
-		return(((double)(sumPacketsSize[0]-sumPacketsSize[1]))/statPeriod/(1024*1024)*8);
+	if(sumPacketsSize[2]) {
+		return(((double)sumPacketsSize[2])/statPeriod/(1024*1024)*8);
 	} else {
 		return(-1);
 	}

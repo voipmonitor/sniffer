@@ -2071,6 +2071,11 @@ getwav:
 		char *test = new char[10];
 		delete [] test;
 		test[0] = 1;
+	} else if(strstr(buf, "set_pcap_stat_period") != NULL) {
+		int new_pcap_stat_period = atoi(buf + 21);
+		if(new_pcap_stat_period > 0 && new_pcap_stat_period < 600) {
+			sverb.pcap_stat_period = new_pcap_stat_period;
+		}
 	} else {
 		if ((size = sendvm(client, sshchannel, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
