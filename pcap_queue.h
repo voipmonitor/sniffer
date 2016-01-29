@@ -462,8 +462,8 @@ public:
 			}
 		}
 		if(rslt &&
-		   (*(u_char*)(headerPacket->header) ||
-		    *(u_char*)(headerPacket->packet))) {
+		   ((headerPacket->header && *(u_char*)(headerPacket->header)) ||
+		    (headerPacket->packet && *(u_char*)(headerPacket->packet)))) {
 			cout << "dupl in get_hp" << endl;
 		}
 		return(rslt);
