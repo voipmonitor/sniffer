@@ -1922,8 +1922,17 @@ bool create_spectrogram_from_raw(const char *rawInput,
 				 const char spectrogramOutput[][1024]);
 
 int vm_pthread_create(pthread_t *thread, pthread_attr_t *attr,
-		      void *(*start_routine) (void *), void *arg,
-		      const char *src_file, int src_file_line);
+		      void *(*start_routine) (void *), void *arg, 
+		      const char *src_file, int src_file_line,
+		      bool autodestroy = false);
+int vm_pthread_create_autodestroy(pthread_t *thread, pthread_attr_t *attr,
+				  void *(*start_routine) (void *), void *arg, 
+				  const char *src_file, int src_file_line) {
+	return(vm_pthread_create(thread, attr,
+				 start_routine, arg, 
+				 src_file, src_file_line,
+				 true));
+}
 
  
 #endif

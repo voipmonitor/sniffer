@@ -1441,6 +1441,8 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	}
 	pthread_mutex_init(&this->lock_mutex, NULL);
 	this->thread = (pthread_t)NULL;
+	this->threadRunningCounter = 0;
+	this->lastThreadRunningCounterCheck = 0;
 }
 
 MySqlStore_process::~MySqlStore_process() {
@@ -1470,9 +1472,21 @@ void MySqlStore_process::query(const char *query_str) {
 	if(sverb.store_process_query) {
 		cout << "store_process_query_" << this->id << ": " << query_str << endl;
 	}
-	if(!this->thread ||
-	   (!(queryCounter % 100) && pthread_kill(this->thread, SIGCONT))) {
-		vm_pthread_create(&this->thread, NULL, MySqlStore_process_storing, this, __FILE__, __LINE__);
+	bool needCreateThread = false;
+	if(!this->thread) {
+		needCreateThread = true;
+	} else if(!(queryCounter % 100)) {
+		if(this->threadRunningCounter == this->lastThreadRunningCounterCheck) {
+			syslog(LOG_NOTICE, "resurrection sql store process %i thread", this->id);
+			needCreateThread = true;
+		} else {
+			this->lastThreadRunningCounterCheck = this->threadRunningCounter;
+		}
+	}
+	if(needCreateThread) {
+		this->threadRunningCounter = 0;
+		this->lastThreadRunningCounterCheck = 0;
+		vm_pthread_create_autodestroy(&this->thread, NULL, MySqlStore_process_storing, this, __FILE__, __LINE__);
 	}
 	this->query_buff.push_back(query_str);
 	++queryCounter;
@@ -1532,6 +1546,8 @@ void MySqlStore_process::store() {
 			if(is_terminating() && this->sqlDb->getLastError() && this->enableTerminatingIfSqlError) {
 				break;
 			}
+			
+			++this->threadRunningCounter;
 		}
 		if(is_terminating() && 
 		   (this->enableTerminatingDirectly ||
@@ -1684,7 +1700,6 @@ void MySqlStore_process::waitForTerminate() {
 		while(!this->terminated) {
 			usleep(100000);
 		}
-		pthread_join(this->thread, NULL);
 		this->thread = (pthread_t)NULL;
 	}
 }

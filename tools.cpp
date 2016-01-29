@@ -4436,13 +4436,13 @@ bool create_spectrogram_from_raw(const char *rawInput,
 
 int vm_pthread_create(pthread_t *thread, pthread_attr_t *attr,
 		      void *(*start_routine) (void *), void *arg,
-		      const char *src_file, int src_file_line) {
+		      const char *src_file, int src_file_line, bool autodestroy) {
 	if(sverb.thread_create && src_file && src_file_line) {
 		syslog(LOG_NOTICE, "create thread from %s : %i", src_file, src_file_line);
 	}
 	bool create_attr = false;
 	pthread_attr_t _attr;
-	if(!attr) {
+	if(!attr && autodestroy) {
 		pthread_attr_init(&_attr);
 		pthread_attr_setdetachstate(&_attr, PTHREAD_CREATE_DETACHED);
 		create_attr = true;

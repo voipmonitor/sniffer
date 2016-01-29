@@ -2772,7 +2772,9 @@ void main_term_read() {
 	if(rtp_threads) {
 		for(int i = 0; i < num_threads_max; i++) {
 			if(i < num_threads_active) {
-				pthread_join((rtp_threads[i].thread), NULL);
+				while(rtp_threads[i].threadId) {
+					usleep(100000);
+				}
 			}
 			if(rtp_threads[i].rtpp_queue_quick) {
 				delete rtp_threads[i].rtpp_queue_quick;

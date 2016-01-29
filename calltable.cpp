@@ -3922,7 +3922,7 @@ void Calltable::processCallsInAudioQueue(bool lock) {
 	   audioQueueThreads.size() < audioQueueThreadsMax) {
 		sAudioQueueThread *audioQueueThread = new FILE_LINE sAudioQueueThread();
 		audioQueueThreads.push_back(audioQueueThread);
-		vm_pthread_create(&audioQueueThread->thread_handle, NULL, this->processAudioQueueThread, audioQueueThread, __FILE__, __LINE__);
+		vm_pthread_create_autodestroy(&audioQueueThread->thread_handle, NULL, this->processAudioQueueThread, audioQueueThread, __FILE__, __LINE__);
 	}
 	if(lock) {
 		unlock_calls_audioqueue();

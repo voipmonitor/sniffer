@@ -1604,7 +1604,7 @@ void add_rtp_read_thread() {
 				rtp_threads[num_threads_active].remove_flag = false;
 			}
 		} else {
-			vm_pthread_create(&(rtp_threads[num_threads_active].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[num_threads_active], __FILE__, __LINE__);
+			vm_pthread_create_autodestroy(&(rtp_threads[num_threads_active].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[num_threads_active], __FILE__, __LINE__);
 		}
 		++num_threads_active;
 	}

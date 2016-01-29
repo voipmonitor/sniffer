@@ -429,6 +429,8 @@ private:
 	bool enableTransaction;
 	bool enableFixDeadlock;
 	pthread_t thread;
+	volatile u_int64_t threadRunningCounter;
+	u_int64_t lastThreadRunningCounterCheck;
 	pthread_mutex_t lock_mutex;
 	SqlDb *sqlDb;
 	deque<string> query_buff;
