@@ -1,3 +1,8 @@
+15.0.6 29.1.2016
+================
+- fix memory leak when creating new threads (decoding audio / sql queues etc) (all versions) 
+
+
 15.0.5 29.1.2016
 ================
 - fix race condition leading to crash which can happen on huge traffic (~2Gbit) all >=15 versions 
