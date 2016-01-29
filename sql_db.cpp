@@ -1476,7 +1476,7 @@ void MySqlStore_process::query(const char *query_str) {
 	bool needCreateThread = false;
 	if(!this->thread) {
 		needCreateThread = true;
-	} else if(!(queryCounter % 100)) {
+	} else if(!(queryCounter % 10)) {
 		u_long act_time = getTimeS();
 		if(!this->lastThreadRunningTimeCheck) {
 			this->lastThreadRunningTimeCheck = act_time;
