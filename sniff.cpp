@@ -1532,6 +1532,7 @@ void *rtp_read_thread_func(void *arg) {
 		}
 		if(emptyQueue) {
 			if(is_terminating() || readend) {
+				params->threadId = 0;
 				return NULL;
 			} else if(params->remove_flag &&
 				  ((getTimeMS_rdtsc() / 1000) - params->last_use_time_s) > 10 * 60) {
