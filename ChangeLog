@@ -1,3 +1,8 @@
+15.0.5 29.1.2016
+================
+- fix race condition leading to crash which can happen on huge traffic (~2Gbit) all >=15 versions 
+
+
 15.0.4 27.1.2016
 ================
 - fix critical bug when reloading sniffer (via GUI or manager command) SIP parser stopped. Fixes all >= 15
