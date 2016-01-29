@@ -1443,6 +1443,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->thread = (pthread_t)NULL;
 	this->threadRunningCounter = 0;
 	this->lastThreadRunningCounterCheck = 0;
+	this->lastThreadRunningTimeCheck = 0;
 }
 
 MySqlStore_process::~MySqlStore_process() {
@@ -1476,11 +1477,17 @@ void MySqlStore_process::query(const char *query_str) {
 	if(!this->thread) {
 		needCreateThread = true;
 	} else if(!(queryCounter % 100)) {
-		if(this->threadRunningCounter == this->lastThreadRunningCounterCheck) {
-			syslog(LOG_NOTICE, "resurrection sql store process %i thread", this->id);
-			needCreateThread = true;
-		} else {
-			this->lastThreadRunningCounterCheck = this->threadRunningCounter;
+		u_long act_time = getTimeS();
+		if(!this->lastThreadRunningTimeCheck) {
+			this->lastThreadRunningTimeCheck = act_time;
+		} else if(act_time - this->lastThreadRunningTimeCheck > 60 && pthread_kill(this->thread, SIGCONT)) {
+			if(this->threadRunningCounter == this->lastThreadRunningCounterCheck) {
+				syslog(LOG_NOTICE, "resurrection sql store process %i thread", this->id);
+				needCreateThread = true;
+			} else {
+				this->lastThreadRunningCounterCheck = this->threadRunningCounter;
+			}
+			this->lastThreadRunningTimeCheck = act_time;
 		}
 	}
 	if(needCreateThread) {
@@ -1499,6 +1506,8 @@ void MySqlStore_process::store() {
 		int size = 0;
 		string queryqueue = "";
 		while(1) {
+			++this->threadRunningCounter;
+			
 			string beginProcedure = "\nBEGIN\n" + (opt_mysql_enable_transactions || this->enableTransaction ? beginTransaction : "");
 			string endProcedure = (opt_mysql_enable_transactions || this->enableTransaction ? endTransaction : "") + "\nEND";
 			this->lock();
@@ -1546,8 +1555,6 @@ void MySqlStore_process::store() {
 			if(is_terminating() && this->sqlDb->getLastError() && this->enableTerminatingIfSqlError) {
 				break;
 			}
-			
-			++this->threadRunningCounter;
 		}
 		if(is_terminating() && 
 		   (this->enableTerminatingDirectly ||

@@ -431,6 +431,7 @@ private:
 	pthread_t thread;
 	volatile u_int64_t threadRunningCounter;
 	u_int64_t lastThreadRunningCounterCheck;
+	u_long lastThreadRunningTimeCheck;
 	pthread_mutex_t lock_mutex;
 	SqlDb *sqlDb;
 	deque<string> query_buff;
