@@ -1123,7 +1123,7 @@ public:
 				*createPartitionsData = *this;
 				createPartitionsData->_runInThread = true;
 				pthread_t thread;
-				pthread_create(&thread, NULL, _createPartitions, createPartitionsData);
+				vm_pthread_create(&thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__);
 			} else {
 				this->_runInThread = false;
 				_createPartitions(this);
@@ -1182,7 +1182,7 @@ public:
 		if(isSet()) {
 			if(inThread) {
 				pthread_t thread;
-				pthread_create(&thread, NULL, _checkIdCdrChildTables, this);
+				vm_pthread_create(&thread, NULL, _checkIdCdrChildTables, this, __FILE__, __LINE__);
 			} else {
 				_checkIdCdrChildTables(this);
 			}
@@ -2190,7 +2190,7 @@ int main(int argc, char *argv[]) {
 		opt_generator_channels = 2;
 		pthread_t *genthreads = new FILE_LINE pthread_t[opt_generator_channels];		// ID of worker storing CDR thread 
 		for(int i = 0; i < opt_generator_channels; i++) {
-			pthread_create(&genthreads[i], NULL, gensiprtp, NULL);
+			vm_pthread_create(&genthreads[i], NULL, gensiprtp, NULL, __FILE__, __LINE__);
 		}
 		syslog(LOG_ERR, "Traffic generated");
 		sleep(10000);
@@ -2199,10 +2199,10 @@ int main(int argc, char *argv[]) {
 
 	// start manager thread 	
 	if(opt_manager_port > 0 && !is_read_from_file()) {
-		pthread_create(&manager_thread, NULL, manager_server, NULL);
+		vm_pthread_create(&manager_thread, NULL, manager_server, NULL, __FILE__, __LINE__);
 		// start reversed manager thread
 		if(opt_clientmanager[0] != '\0') {
-			pthread_create(&manager_client_thread, NULL, manager_client, NULL);
+			vm_pthread_create(&manager_client_thread, NULL, manager_client, NULL, __FILE__, __LINE__);
 		}
 	};
 
@@ -2280,7 +2280,7 @@ int main(int argc, char *argv[]) {
 				sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);
 				custom_headers_cdr = new CustomHeaders(CustomHeaders::cdr);
 				custom_headers_message = new CustomHeaders(CustomHeaders::message);
-				pthread_create(&database_backup_thread, NULL, database_backup, NULL);
+				vm_pthread_create(&database_backup_thread, NULL, database_backup, NULL, __FILE__, __LINE__);
 				pthread_join(database_backup_thread, NULL);
 			} else if(opt_load_query_from_files == 2) {
 				main_init_sqlstore();
@@ -2525,30 +2525,30 @@ int main_init_read() {
 	}
 	
 	if(opt_fork) {
-		pthread_create(&defered_service_fork_thread, NULL, defered_service_fork, NULL);
+		vm_pthread_create(&defered_service_fork_thread, NULL, defered_service_fork, NULL, __FILE__, __LINE__);
 	}
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
 	if(!is_sender()) {
-		pthread_create(&storing_cdr_thread, NULL, storing_cdr, NULL);
+		vm_pthread_create(&storing_cdr_thread, NULL, storing_cdr, NULL, __FILE__, __LINE__);
 		/*
-		pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL);
+		vm_pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL, __FILE__, __LINE__);
 		*/
 	}
 
 	if(opt_cachedir[0] != '\0') {
 		mv_r(opt_cachedir, opt_chdir);
-		pthread_create(&cachedir_thread, NULL, moving_cache, NULL);
+		vm_pthread_create(&cachedir_thread, NULL, moving_cache, NULL, __FILE__, __LINE__);
 	}
 
 	// start tar dumper
 	if(opt_pcap_dump_tar) {
-		pthread_create(&tarqueuethread, NULL, TarQueueThread, NULL);
+		vm_pthread_create(&tarqueuethread, NULL, TarQueueThread, NULL, __FILE__, __LINE__);
 	}
 
 #ifdef HAVE_LIBSSH
 	if(ssh_host[0] != '\0') {
-		pthread_create(&manager_ssh_thread, NULL, manager_ssh, NULL);
+		vm_pthread_create(&manager_ssh_thread, NULL, manager_ssh, NULL, __FILE__, __LINE__);
 	}
 #endif
 
@@ -2582,7 +2582,7 @@ int main_init_read() {
 			rtp_threads[i].last_use_time_s = 0;
 			rtp_threads[i].calls = 0;
 			if(i < num_threads_active) {
-				pthread_create(&(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i]);
+				vm_pthread_create(&(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i], __FILE__, __LINE__);
 			}
 		}
 	}
@@ -2720,7 +2720,7 @@ int main_init_read() {
 		pcapQueueStatInterface = pcapQueueQ;
 		
 		if(opt_scanpcapdir[0] != '\0') {
-			pthread_create(&scanpcapdir_thread, NULL, scanpcapdir, NULL);
+			vm_pthread_create(&scanpcapdir_thread, NULL, scanpcapdir, NULL, __FILE__, __LINE__);
 		}
 		
 		uint64_t _counter = 0;
@@ -5149,6 +5149,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "rtp_extend_stat")		sverb.rtp_extend_stat = 1;
 						else if(verbparams[i] == "disable_process_packet_in_packetbuffer")
 													sverb.disable_process_packet_in_packetbuffer = 1;
+						else if(verbparams[i] == "thread_create")		sverb.thread_create = 1;
 					}
 				} }
 				break;

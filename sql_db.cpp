@@ -1472,7 +1472,7 @@ void MySqlStore_process::query(const char *query_str) {
 	}
 	if(!this->thread ||
 	   (!(queryCounter % 100) && pthread_kill(this->thread, SIGCONT))) {
-		pthread_create(&this->thread, NULL, MySqlStore_process_storing, this);
+		vm_pthread_create(&this->thread, NULL, MySqlStore_process_storing, this, __FILE__, __LINE__);
 	}
 	this->query_buff.push_back(query_str);
 	++queryCounter;
@@ -1772,7 +1772,7 @@ void MySqlStore::queryToFilesTerminate() {
 
 void MySqlStore::queryToFiles_start() {
 	if(qfileConfig.enable) {
-		pthread_create(&this->qfilesCheckperiodThread, NULL, this->threadQFilesCheckPeriod, this);
+		vm_pthread_create(&this->qfilesCheckperiodThread, NULL, this->threadQFilesCheckPeriod, this, __FILE__, __LINE__);
 	}
 }
 
@@ -1963,7 +1963,7 @@ void MySqlStore::enableInotifyForLoadFromQFile(bool enableINotify) {
 #ifndef FREEBSD
 	loadFromQFileConfig.inotify = enableINotify;
 	if(loadFromQFileConfig.enable && loadFromQFileConfig.inotify) {
-		pthread_create(&this->qfilesINotifyThread, NULL, this->threadINotifyQFiles, this);
+		vm_pthread_create(&this->qfilesINotifyThread, NULL, this->threadINotifyQFiles, this, __FILE__, __LINE__);
 	}
 #endif
 }
@@ -1985,7 +1985,7 @@ void MySqlStore::addLoadFromQFile(int id, const char *name,
 	LoadFromQFilesThreadInfo *threadInfo = new FILE_LINE LoadFromQFilesThreadInfo;
 	threadInfo->store = this;
 	threadInfo->id = id;
-	pthread_create(&loadFromQFilesThreadData[id].thread, NULL, this->threadLoadFromQFiles, threadInfo);
+	vm_pthread_create(&loadFromQFilesThreadData[id].thread, NULL, this->threadLoadFromQFiles, threadInfo, __FILE__, __LINE__);
 }
 
 bool MySqlStore::fillQFiles(int id) {

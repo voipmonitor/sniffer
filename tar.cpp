@@ -1647,7 +1647,7 @@ TarQueue::TarQueue() {
 		arg->tq = this;
 		tarthreads[i].cpuPeak = 0;
 		tarthreads[i]._sync_lock = 0;
-		pthread_create(&tarthreads[i].thread, NULL, &TarQueue::tarthreadworker, arg);
+		vm_pthread_create(&tarthreads[i].thread, NULL, &TarQueue::tarthreadworker, arg, __FILE__, __LINE__);
 		memset(this->tarthreads[i].threadPstatData, 0, sizeof(this->tarthreads[i].threadPstatData));
 		this->tarthreads[i].counter = 0;
 	}

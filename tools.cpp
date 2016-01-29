@@ -1269,7 +1269,7 @@ void AsyncClose::startThreads(int countPcapThreads, int maxPcapThreads) {
 		startThreadData[i].threadIndex = i;
 		startThreadData[i].asyncClose = this;
 		activeThread[i] = 1;
-		pthread_create(&this->thread[i], NULL, AsyncClose_process, &startThreadData[i]);
+		vm_pthread_create(&this->thread[i], NULL, AsyncClose_process, &startThreadData[i], __FILE__, __LINE__);
 	}
 }
 
@@ -1282,7 +1282,7 @@ void AsyncClose::addThread() {
 		activeThread[countPcapThreads] = 1;
 		cpuPeak[countPcapThreads] = 0;
 		memset(this->threadPstatData[countPcapThreads], 0, sizeof(this->threadPstatData[countPcapThreads]));
-		pthread_create(&this->thread[countPcapThreads], NULL, AsyncClose_process, &startThreadData[countPcapThreads]);
+		vm_pthread_create(&this->thread[countPcapThreads], NULL, AsyncClose_process, &startThreadData[countPcapThreads], __FILE__, __LINE__);
 		++countPcapThreads;
 	}
 }
@@ -2431,7 +2431,7 @@ void *_SafeAsyncQueue_timerThread(void *arg) {
 
 SafeAsyncQueue_base::SafeAsyncQueue_base() {
 	if(!timer_thread) {
-		pthread_create(&timer_thread, NULL, _SafeAsyncQueue_timerThread, NULL);
+		vm_pthread_create(&timer_thread, NULL, _SafeAsyncQueue_timerThread, NULL, __FILE__, __LINE__);
 	}
 	lock_list_saq();
 	list_saq.push_back(this);
@@ -3509,7 +3509,7 @@ void *_SocketSimpleBufferWrite_writeFunction(void *arg) {
 	return(NULL);
 }
 void SocketSimpleBufferWrite::startWriteThread() {
-	pthread_create(&writeThreadHandle, NULL, _SocketSimpleBufferWrite_writeFunction, this);
+	vm_pthread_create(&writeThreadHandle, NULL, _SocketSimpleBufferWrite_writeFunction, this, __FILE__, __LINE__);
 }
 
 void SocketSimpleBufferWrite::stopWriteThread() {
@@ -4431,4 +4431,26 @@ bool create_spectrogram_from_raw(const char *rawInput,
 #else
 	return(false);
 #endif //HAVE_LIBFFT
+}
+
+
+int vm_pthread_create(pthread_t *thread, pthread_attr_t *attr,
+		      void *(*start_routine) (void *), void *arg,
+		      const char *src_file, int src_file_line) {
+	if(sverb.thread_create && src_file && src_file_line) {
+		syslog(LOG_NOTICE, "create thread from %s : %i", src_file, src_file_line);
+	}
+	bool create_attr = false;
+	pthread_attr_t _attr;
+	if(!attr) {
+		pthread_attr_init(&_attr);
+		pthread_attr_setdetachstate(&_attr, PTHREAD_CREATE_DETACHED);
+		create_attr = true;
+		attr = &_attr;
+	}
+	int rslt = pthread_create(thread, attr, start_routine, arg);
+	if(create_attr) {
+		pthread_attr_destroy(&_attr);
+	}
+	return(rslt);
 }

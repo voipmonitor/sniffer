@@ -1905,12 +1905,12 @@ bool PcapQueue::createThread() {
 }
 
 bool PcapQueue::createMainThread() {
-	pthread_create(&this->threadHandle, NULL, _PcapQueue_threadFunction, this);
+	vm_pthread_create(&this->threadHandle, NULL, _PcapQueue_threadFunction, this, __FILE__, __LINE__);
 	return(true);
 }
 
 bool PcapQueue::createWriteThread() {
-	pthread_create(&this->writeThreadHandle, NULL, _PcapQueue_writeThreadFunction, this);
+	vm_pthread_create(&this->writeThreadHandle, NULL, _PcapQueue_writeThreadFunction, this, __FILE__, __LINE__);
 	return(true);
 }
 
@@ -2624,7 +2624,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	if(typeThread == read) {
 		this->headerPacketStack = new FILE_LINE PcapQueue_HeaderPacketStack(this->qringmax);
 	}
-	pthread_create(&this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this);
+	vm_pthread_create(&this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this, __FILE__, __LINE__);
 }
 
 PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
@@ -4140,7 +4140,7 @@ bool PcapQueue_readFromFifo::createThread() {
 }
 
 bool PcapQueue_readFromFifo::createSocketServerThread() {
-	pthread_create(&this->socketServerThreadHandle, NULL, _PcapQueue_readFromFifo_socketServerThreadFunction, this);
+	vm_pthread_create(&this->socketServerThreadHandle, NULL, _PcapQueue_readFromFifo_socketServerThreadFunction, this, __FILE__, __LINE__);
 	return(true);
 }
 
@@ -5155,7 +5155,7 @@ void PcapQueue_readFromFifo::createConnection(int socketClient, sockaddr_in *soc
 	connection->active = true;
 	this->packetServerConnections[id] = connection;
 	this->unlock_packetServerConnections();
-	pthread_create(&connection->threadHandle, NULL, _PcapQueue_readFromFifo_connectionThreadFunction, connection);
+	vm_pthread_create(&connection->threadHandle, NULL, _PcapQueue_readFromFifo_connectionThreadFunction, connection, __FILE__, __LINE__);
 }
 
 void PcapQueue_readFromFifo::cleanupConnections(bool all) {

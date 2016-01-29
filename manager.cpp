@@ -1348,7 +1348,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 					circbuf_init(call->audiobuffer2, 20000);
 
 					pthread_t call_thread;
-					pthread_create(&call_thread, NULL, listening_worker, (void *)args);
+					vm_pthread_create(&call_thread, NULL, listening_worker, (void *)args, __FILE__, __LINE__);
 					calltable->unlock_calls_listMAP();
 					if ((size = sendvm(client, sshchannel, "success", 7, 0)) == -1){
 						cerr << "Error sending data to client" << endl;

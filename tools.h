@@ -1921,5 +1921,9 @@ bool create_spectrogram_from_raw(const char *rawInput,
 				 size_t sampleRate, size_t msPerPixel, size_t height, u_int8_t channels,
 				 const char spectrogramOutput[][1024]);
 
+int vm_pthread_create(pthread_t *thread, pthread_attr_t *attr,
+		      void *(*start_routine) (void *), void *arg,
+		      const char *src_file, int src_file_line);
 
+ 
 #endif

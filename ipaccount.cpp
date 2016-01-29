@@ -454,7 +454,7 @@ double Ipacc::getCpuUsagePerc(bool preparePstatData) {
 }
 
 void Ipacc::startThread() {
-	pthread_create(&this->out_thread_handle, NULL, _Ipacc_outThreadFunction, this);
+	vm_pthread_create(&this->out_thread_handle, NULL, _Ipacc_outThreadFunction, this, __FILE__, __LINE__);
 }
 
 void *Ipacc::outThreadFunction() {

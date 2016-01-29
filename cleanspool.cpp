@@ -1942,7 +1942,7 @@ void *clean_spooldir(void *dummy) {
 void runCleanSpoolThread() {
 	if(!cleanspool_thread) {
 		if(debugclean) syslog(LOG_ERR, "pthread_create(clean_spooldir)");
-		pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL);
+		vm_pthread_create(&cleanspool_thread, NULL, clean_spooldir, NULL, __FILE__, __LINE__);
 	}
 }
 

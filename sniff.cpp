@@ -1604,7 +1604,7 @@ void add_rtp_read_thread() {
 				rtp_threads[num_threads_active].remove_flag = false;
 			}
 		} else {
-			pthread_create(&(rtp_threads[num_threads_active].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[num_threads_active]);
+			vm_pthread_create(&(rtp_threads[num_threads_active].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[num_threads_active], __FILE__, __LINE__);
 		}
 		++num_threads_active;
 	}
@@ -5802,7 +5802,7 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	this->outThreadId = 0;
 	this->_sync_push = 0;
 	this->term_preProcess = false;
-	pthread_create(&this->out_thread_handle, NULL, _PreProcessPacket_outThreadFunction, this);
+	vm_pthread_create(&this->out_thread_handle, NULL, _PreProcessPacket_outThreadFunction, this, __FILE__, __LINE__);
 }
 
 PreProcessPacket::~PreProcessPacket() {
@@ -6172,7 +6172,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 			sem_sync_next_thread[i][j].__align = 0;
 		}
 	}
-	pthread_create(&this->out_thread_handle, NULL, _ProcessRtpPacket_outThreadFunction, this);
+	vm_pthread_create(&this->out_thread_handle, NULL, _ProcessRtpPacket_outThreadFunction, this, __FILE__, __LINE__);
 	this->process_rtp_packets_hash_next_threads = opt_process_rtp_packets_hash_next_thread;
 	if(type == hash && this->process_rtp_packets_hash_next_threads) {
 		for(int i = 0; i < this->process_rtp_packets_hash_next_threads; i++) {
@@ -6182,7 +6182,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 			arg_next_thread *arg = new arg_next_thread;
 			arg->processRtpPacket = this;
 			arg->next_thread_id = i + 1;
-			pthread_create(&this->next_thread_handle[i], NULL, _ProcessRtpPacket_nextThreadFunction, arg);
+			vm_pthread_create(&this->next_thread_handle[i], NULL, _ProcessRtpPacket_nextThreadFunction, arg, __FILE__, __LINE__);
 		}
 	}
 }
@@ -6481,7 +6481,7 @@ void ProcessRtpPacket::addRtpRhThread() {
 		arg_next_thread *arg = new arg_next_thread;
 		arg->processRtpPacket = this;
 		arg->next_thread_id = this->process_rtp_packets_hash_next_threads + 1;
-		pthread_create(&this->next_thread_handle[this->process_rtp_packets_hash_next_threads], NULL, _ProcessRtpPacket_nextThreadFunction, arg);
+		vm_pthread_create(&this->next_thread_handle[this->process_rtp_packets_hash_next_threads], NULL, _ProcessRtpPacket_nextThreadFunction, arg, __FILE__, __LINE__);
 		++this->process_rtp_packets_hash_next_threads;
 	}
 }

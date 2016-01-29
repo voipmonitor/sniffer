@@ -49,6 +49,7 @@ struct sVerbose {
 	int log_manager_cmd;
 	int rtp_extend_stat;
 	int disable_process_packet_in_packetbuffer;
+	int thread_create;
 };
 
 #endif

@@ -1998,13 +1998,13 @@ string TcpReassembly::getCpuUsagePerc() {
 
 void TcpReassembly::createCleanupThread() {
 	if(!this->cleanupThreadHandle) {
-		pthread_create(&this->cleanupThreadHandle, NULL, _TcpReassembly_cleanupThreadFunction, this);
+		vm_pthread_create(&this->cleanupThreadHandle, NULL, _TcpReassembly_cleanupThreadFunction, this, __FILE__, __LINE__);
 	}
 }
 
 void TcpReassembly::createPacketThread() {
 	if(!this->packetThreadHandle) {
-		pthread_create(&this->packetThreadHandle, NULL, _TcpReassembly_packetThreadFunction, this);
+		vm_pthread_create(&this->packetThreadHandle, NULL, _TcpReassembly_packetThreadFunction, this, __FILE__, __LINE__);
 	}
 }
 
