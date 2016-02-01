@@ -422,9 +422,6 @@ public:
 				hpp_add[ia].hp[i].free();
 			}
 		}
-		for(u_int i = 0; i < hpp_get_size; i++) {
-			hpp_get.hp[PcapQueue_HeaderPacketStack_hp_max - i - 1].free();
-		}
 		sHeaderPacket headerPacket;
 		while(get_hp(&headerPacket)) {
 			headerPacket.free();

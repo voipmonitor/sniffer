@@ -1123,7 +1123,7 @@ public:
 				*createPartitionsData = *this;
 				createPartitionsData->_runInThread = true;
 				pthread_t thread;
-				vm_pthread_create(&thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__);
+				vm_pthread_create_autodestroy(&thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__);
 			} else {
 				this->_runInThread = false;
 				_createPartitions(this);
@@ -1182,7 +1182,7 @@ public:
 		if(isSet()) {
 			if(inThread) {
 				pthread_t thread;
-				vm_pthread_create(&thread, NULL, _checkIdCdrChildTables, this, __FILE__, __LINE__);
+				vm_pthread_create_autodestroy(&thread, NULL, _checkIdCdrChildTables, this, __FILE__, __LINE__);
 			} else {
 				_checkIdCdrChildTables(this);
 			}
