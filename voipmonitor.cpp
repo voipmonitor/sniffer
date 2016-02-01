@@ -2725,10 +2725,12 @@ int main_init_read() {
 		
 		uint64_t _counter = 0;
 		if(!sverb.pcap_stat_period) {
-			sverb.pcap_stat_period = 10;
+			sverb.pcap_stat_period = verbosityE > 0 ? 1 : 10;
 		}
 		while(!is_terminating()) {
-			if(_counter && (verbosityE > 0 || !(_counter % sverb.pcap_stat_period))) {
+			long timeProcessStatMS = 0;
+			if(_counter) {
+				u_long startTimeMS = getTimeMS();
 				pthread_mutex_lock(&terminate_packetbuffer_lock);
 				pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : sverb.pcap_stat_period);
 				pthread_mutex_unlock(&terminate_packetbuffer_lock);
@@ -2741,8 +2743,14 @@ int main_init_read() {
 				if(tcpReassemblyWebrtc) {
 					tcpReassemblyWebrtc->setDoPrintContent();
 				}
+				u_long endTimeMS = getTimeMS();
+				if(endTimeMS > startTimeMS) {
+					timeProcessStatMS = endTimeMS - startTimeMS;
+				}
 			}
-			sleep(1);
+			for(long i = 0; i < ((sverb.pcap_stat_period * 100) - timeProcessStatMS / 10) && !is_terminating(); i++) {
+				usleep(10000);
+			}
 			++_counter;
 		}
 		
