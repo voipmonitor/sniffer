@@ -1637,8 +1637,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << tRTPcpuMax << "m/";
 		}
 		outStrStat << num_threads_active << "t] ";
-		if(tRTPcpu / num_threads_active > opt_cpu_limit_new_thread) {
-			add_rtp_read_thread();
+		if(tRTPcpu / num_threads_active > opt_cpu_limit_new_thread ||
+		   (heapPerc > 10 && tRTPcpuMax >= 98)) {
+			for(int i = 0; i < (calls_counter > 1000 || heapPerc > 10 ? 3 : 1); i++) {
+				add_rtp_read_thread();
+			}
 		} else if(num_threads_active > 1 &&
 			  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread) {
 			set_remove_rtp_read_thread();
@@ -3587,53 +3590,42 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				if(sipSendSocket) {
 					this->processBeforeAddToPacketBuffer(header, packet, offset);
 				}
-				if(!blockStore[blockStoreIndex]->full) {
+				bool okAddPacket = false;
+				while(!okAddPacket && !TERMINATING) {
+					if(blockStore[blockStoreIndex]->full) {
+						this->push_blockstore(&blockStore[blockStoreIndex]);
+						++sumBlocksCounterIn[0];
+						blockStore[blockStoreIndex] = this->new_blockstore(blockStoreIndex);
+					}
 					if(this->block_qring) {
 						dpi.header = header;
 						dpi.packet = packet;
 						dpi.ok_for_header_packet_stack = ok_for_header_packet_stack;
 						dpi.read_thread_index = minThreadTimeIndex;
-						blockStore[blockStoreIndex]->add(header, (u_char*)&dpi, offset, dlink, sizeof(dpi));
+						if(blockStore[blockStoreIndex]->add(header, (u_char*)&dpi, offset, dlink, sizeof(dpi))) {
+							okAddPacket = true;
+						}
 						destroy = false;
 					} else {
-						blockStore[blockStoreIndex]->add(header, packet, offset, dlink);
+						if(blockStore[blockStoreIndex]->add(header, packet, offset, dlink)) {
+							okAddPacket = true;
+						}
 					}
 				}
-			} else {
+			} else if(blockStoreCount > 1) {
 				for(int i = 0; i < blockStoreCount; i++) {
 					blockStore[i]->isFull_checkTimout();
 				}
 				checkFullAllBlockStores = true;
 			}
-			for(int i = 0; i < blockStoreCount; i++) {
-				if(blockStore[i]->full || 
-				   (i != blockStoreIndex && !checkFullAllBlockStores && !(blockStore[i]->count % 20) && blockStore[i]->isFull_checkTimout())) {
-					if(!opt_pcap_queue_compress && this->instancePcapFifo && opt_pcap_queue_suppress_t1_thread) {
-						this->instancePcapFifo->addBlockStoreToPcapStoreQueue(blockStore[i]);
-					} else if(this->block_qring) {
-						this->block_qring->push(&blockStore[i], true);
-					} else {
-						this->check_bypass_buffer();
-						blockStoreBypassQueue->push(blockStore[i]);
-					}
-					++sumBlocksCounterIn[0];
-					blockStore[i] = new FILE_LINE pcap_block_store;
-					strncpy(blockStore[i]->ifname, 
-						this->readThreadsCount ? 
-							this->readThreads[i]->getInterfaceName(true).c_str() :
-							this->getInterfaceName(true).c_str(), 
-						sizeof(blockStore[i]->ifname) - 1);
-					if(fetchPacketOk && i == blockStoreIndex) {
-						if(this->block_qring) {
-							dpi.header = header;
-							dpi.packet = packet;
-							dpi.ok_for_header_packet_stack = ok_for_header_packet_stack;
-							dpi.read_thread_index = minThreadTimeIndex;
-							blockStore[blockStoreIndex]->add(header, (u_char*)&dpi, offset, dlink, sizeof(dpi));
-							destroy = false;
-						} else {
-							blockStore[blockStoreIndex]->add(header, packet, offset, dlink);
-						}
+			if(blockStoreCount > 1) {
+				for(int i = 0; i < blockStoreCount; i++) {
+					if(i != blockStoreIndex &&
+					   (blockStore[i]->full || 
+					    (!checkFullAllBlockStores && !(blockStore[i]->count % 20) && blockStore[i]->isFull_checkTimout()))) {
+						this->push_blockstore(&blockStore[i]);
+						++sumBlocksCounterIn[0];
+						blockStore[i] = this->new_blockstore(i);
 					}
 				}
 			}
@@ -4057,6 +4049,27 @@ void PcapQueue_readFromInterface::delete_header_packet(pcap_pkthdr *header, u_ch
 		delete header;
 		delete [] packet;
 	}
+}
+
+void PcapQueue_readFromInterface::push_blockstore(pcap_block_store **block_store) {
+	if(!opt_pcap_queue_compress && this->instancePcapFifo && opt_pcap_queue_suppress_t1_thread) {
+		this->instancePcapFifo->addBlockStoreToPcapStoreQueue(*block_store);
+	} else if(this->block_qring) {
+		this->block_qring->push(block_store, true);
+	} else {
+		this->check_bypass_buffer();
+		blockStoreBypassQueue->push(*block_store);
+	}
+}
+
+pcap_block_store *PcapQueue_readFromInterface::new_blockstore(int index_read_thread) {
+	pcap_block_store *blockStore = new FILE_LINE pcap_block_store;
+	strncpy(blockStore->ifname, 
+		this->readThreadsCount ? 
+			this->readThreads[index_read_thread]->getInterfaceName(true).c_str() :
+			this->getInterfaceName(true).c_str(), 
+		sizeof(blockStore->ifname) - 1);
+	return(blockStore);
 }
 
 

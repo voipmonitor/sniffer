@@ -629,6 +629,8 @@ protected:
 private:
 	inline void check_bypass_buffer();
 	inline void delete_header_packet(pcap_pkthdr *header, u_char *packet, int read_thread_index, int packetStackIndex);
+	inline void push_blockstore(pcap_block_store **block_store);
+	inline pcap_block_store *new_blockstore(int index_read_thread);
 protected:
 	pcap_dumper_t *fifoWritePcapDumper;
 	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];
