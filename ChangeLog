@@ -1,3 +1,10 @@
+15.0.8 1.2.2016
+===============
+- optimize number of RTP threads on large traffic (creation was not fast enough when starting sniffer on huge traffic) 
+- optimize thread creation 
+- fix traffic indication in syslog for huge traffic (it showed more trafffic)
+
+
 15.0.7 29.1.2016
 ================
 - fix thread terminating crash in 15.0.6 
