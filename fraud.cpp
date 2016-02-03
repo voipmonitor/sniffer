@@ -734,7 +734,7 @@ void FraudAlert::evAlert(FraudAlertInfo *alertInfo) {
 	time_t now;
 	time(&now);
 	row.add(sqlDateTimeString(now), "at");
-	row.add(alertInfo->getJson(), "alert_info");
+	row.add(sqlEscapeString(alertInfo->getJson()), "alert_info");
 	sqlStore->query_lock(sqlDbFraud->insertQuery("fraud_alert_info", row).c_str(), STORE_PROC_ID_FRAUD_ALERT_INFO);
 	delete alertInfo;
 }
