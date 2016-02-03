@@ -1818,8 +1818,20 @@ char *base64_encode(const unsigned char *data, size_t input_length, size_t *outp
 
 inline struct tm localtime_r(const time_t *timep) {
 	struct tm rslt;
-	localtime_r(timep, &rslt);
+	::localtime_r(timep, &rslt);
 	return(rslt);
+}
+inline struct tm gmtime_r(const time_t *timep) {
+	struct tm rslt;
+	::gmtime_r(timep, &rslt);
+	return(rslt);
+}
+inline struct tm time_r(const time_t *timep) {
+	extern bool opt_sql_time_utc;
+	extern bool is_cloud;
+	return(opt_sql_time_utc || is_cloud ?
+		gmtime_r(timep) :
+		localtime_r(timep));
 }
 
 u_int32_t octal_decimal(u_int32_t n);

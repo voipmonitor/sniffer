@@ -621,7 +621,7 @@ Call::closeRawFiles() {
 string
 Call::dirname() {
 	char sdirname[18];
-	struct tm t = localtime_r((const time_t*)(&first_packet_time));
+	struct tm t = time_r((const time_t*)(&first_packet_time));
 	if(opt_newdir) {
 		snprintf(sdirname, 17, "%04d-%02d-%02d/%02d/%02d",  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
 	} else {
@@ -636,7 +636,7 @@ Call::dirname() {
 string
 Call::dirnamesqlfiles() {
 	char sdirname[12];
-	struct tm t = localtime_r((const time_t*)(&first_packet_time));
+	struct tm t = time_r((const time_t*)(&first_packet_time));
 	snprintf(sdirname, 11, "%04d%02d%02d%02d",  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
 	sdirname[11] = 0;
 	string s(sdirname);
@@ -4867,10 +4867,10 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb) 
 	char limitDay[20] = "";
 	if(opt_cdr_partition) {
 		time_t act_time = time(NULL);
-		struct tm actTime = localtime_r(&act_time);
+		struct tm actTime = time_r(&act_time);
 		strftime(partDayName, sizeof(partDayName), "p%y%m%d", &actTime);
 		time_t next_day_time = act_time + 24 * 60 * 60;
-		struct tm nextDayTime = localtime_r(&next_day_time);
+		struct tm nextDayTime = time_r(&next_day_time);
 		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", &nextDayTime);
 	}
 	string compress = "";

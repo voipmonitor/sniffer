@@ -696,7 +696,7 @@ bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
 bool FraudAlert::okDayHour(time_t at) {
 	if((hour_from >= 0 && hour_to >= 0) ||
 	   day_of_week_set) {
-		tm attm = localtime_r(&at);
+		tm attm = time_r(&at);
 		if(hour_from >= 0 && hour_to >= 0) {
 			if(hour_from <= hour_to) {
 				if(attm.tm_hour < hour_from || attm.tm_hour > hour_to) {

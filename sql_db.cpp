@@ -56,6 +56,7 @@ extern int opt_enable_fraud;
 extern bool _save_sip_history;
 extern bool exists_column_cdr_mosmin;
 extern bool exists_column_cdr_mos_xr;
+extern bool opt_sql_time_utc;
 
 extern char sql_driver[256];
 
@@ -90,6 +91,7 @@ bool exists_columns_cdr_reason = false;
 bool exists_columns_cdr_response_time = false;
 bool exists_column_message_response_time = false;
 SqlDb::eSupportPartitions supportPartitions = SqlDb::_supportPartitions_ok;
+bool is_cloud = false;
 
 
 string SqlDb_row::operator [] (const char *fieldName) {
@@ -2587,14 +2589,14 @@ SqlDb *createSqlObject() {
 }
 
 string sqlDateTimeString(time_t unixTime) {
-	struct tm localTime = localtime_r(&unixTime);
+	struct tm localTime = time_r(&unixTime);
 	char dateTimeBuffer[50];
 	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &localTime);
 	return string(dateTimeBuffer);
 }
 
 string sqlDateString(time_t unixTime) {
-	struct tm localTime = localtime_r(&unixTime);
+	struct tm localTime = time_r(&unixTime);
 	char dateBuffer[50];
 	strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &localTime);
 	return string(dateBuffer);
@@ -3078,10 +3080,10 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		if(opt_create_old_partitions > 0) {
 			act_time -= opt_create_old_partitions * 24 * 60 * 60;
 		}
-		struct tm actTime = localtime_r(&act_time);
+		struct tm actTime = time_r(&act_time);
 		strftime(partDayName, sizeof(partDayName), "p%y%m%d", &actTime);
 		time_t next_day_time = act_time + 24 * 60 * 60;
-		struct tm nextDayTime = localtime_r(&next_day_time);
+		struct tm nextDayTime = time_r(&next_day_time);
 		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", &nextDayTime);
 	}
 	
@@ -3736,6 +3738,9 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`name` varchar(256) NULL DEFAULT NULL,\
 			`host` varchar(255) NULL DEFAULT NULL,\
 			`port` int NULL DEFAULT NULL,\
+			`timezone_name` varchar(64) NULL DEFAULT NULL,\
+			`timezone_offset` int NULL DEFAULT NULL,\
+			`timezone_save_at` datetime NULL DEFAULT NULL,\
 		PRIMARY KEY (`id_sensor`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
@@ -4553,6 +4558,35 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 	syslog(LOG_DEBUG, "done");
 	
 	return(true);
+}
+
+void SqlDb_mysql::saveTimezoneInformation() {
+	if(opt_id_sensor <= 0) {
+		return;
+	}
+	this->query("show columns from sensors where Field='timezone_name'");
+	if(!this->fetchRow()) {
+		return;
+	}
+	this->query("show columns from sensors where Field='timezone_offset'");
+	if(!this->fetchRow()) {
+		return;
+	}
+	string timezone_name = "UTC";
+	long timezone_offset = 0;
+	if(!opt_sql_time_utc && !is_cloud) {
+		time_t t = time(NULL);
+		struct tm lt = localtime_r(&t);
+		timezone_name = lt.tm_zone;
+		timezone_offset = lt.tm_gmtoff;
+	}
+	SqlDb_row row;
+	row.add(timezone_name, "timezone_name");
+	row.add(timezone_offset, "timezone_offset");
+	row.add(sqlDateTimeString(time(NULL)), "timezone_save_at");
+	char whereCond[100];
+	snprintf(whereCond, sizeof(whereCond), "id_sensor = %i", opt_id_sensor);
+	this->update("sensors", row, whereCond);
 }
 
 void SqlDb_mysql::checkDbMode() {
@@ -6180,7 +6214,7 @@ void dropMysqlPartitionsCdr() {
 		if(opt_cleandatabase_cdr > 0) {
 			time_t act_time = time(NULL);
 			time_t prev_day_time = act_time - opt_cleandatabase_cdr * 24 * 60 * 60;
-			struct tm prevDayTime = localtime_r(&prev_day_time);
+			struct tm prevDayTime = time_r(&prev_day_time);
 			char limitPartName[20] = "";
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 			vector<string> partitions;
@@ -6225,7 +6259,7 @@ void dropMysqlPartitionsCdr() {
 		if(opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) {
 			time_t act_time = time(NULL);
 			time_t prev_day_time = act_time - opt_cleandatabase_http_enum * 24 * 60 * 60;
-			struct tm prevDayTime = localtime_r(&prev_day_time);
+			struct tm prevDayTime = time_r(&prev_day_time);
 			char limitPartName[20] = "";
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 			vector<string> partitions_http;
@@ -6258,7 +6292,7 @@ void dropMysqlPartitionsCdr() {
 		if(opt_enable_webrtc_table && opt_cleandatabase_webrtc > 0) {
 			time_t act_time = time(NULL);
 			time_t prev_day_time = act_time - opt_cleandatabase_webrtc * 24 * 60 * 60;
-			struct tm prevDayTime = localtime_r(&prev_day_time);
+			struct tm prevDayTime = time_r(&prev_day_time);
 			char limitPartName[20] = "";
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 			vector<string> partitions;
@@ -6280,7 +6314,7 @@ void dropMysqlPartitionsCdr() {
 		if(opt_cleandatabase_register_state > 0) {
 			time_t act_time = time(NULL);
 			time_t prev_day_time = act_time - opt_cleandatabase_register_state * 24 * 60 * 60;
-			struct tm prevDayTime = localtime_r(&prev_day_time);
+			struct tm prevDayTime = time_r(&prev_day_time);
 			char limitPartName[20] = "";
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 			vector<string> partitions;
@@ -6315,7 +6349,7 @@ void dropMysqlPartitionsCdr() {
 		if(opt_cleandatabase_register_failed > 0) {
 			time_t act_time = time(NULL);
 			time_t prev_day_time = act_time - opt_cleandatabase_register_failed * 24 * 60 * 60;
-			struct tm prevDayTime = localtime_r(&prev_day_time);
+			struct tm prevDayTime = time_r(&prev_day_time);
 			char limitPartName[20] = "";
 			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 			vector<string> partitions;
@@ -6363,7 +6397,7 @@ void dropMysqlPartitionsRtpStat() {
 		sqlDb->setDisableNextAttemptIfError();
 		time_t act_time = time(NULL);
 		time_t prev_day_time = act_time - opt_cleandatabase_rtp_stat * 24 * 60 * 60;
-		struct tm prevDayTime = localtime_r(&prev_day_time);
+		struct tm prevDayTime = time_r(&prev_day_time);
 		char limitPartName[20] = "";
 		strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 		vector<string> partitions;

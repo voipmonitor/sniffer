@@ -187,7 +187,13 @@ public:
 	bool getDisableLogError();
 	void setSilentConnect();
 	bool isCloud() {
-		return(!cloud_host.empty());
+		if(cloud_host.empty()) {
+			return(false);
+		} else {
+			extern bool is_cloud;
+			is_cloud = true;
+			return(true);
+		}
 	}
 	unsigned int lastmysqlresolve;
 	static void addDelayQuery(u_int32_t delay_ms);
@@ -268,6 +274,7 @@ public:
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
 	bool createSchema(SqlDb *sourceDb = NULL);
+	void saveTimezoneInformation();
 	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema(bool checkColumns = false);

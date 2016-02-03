@@ -18,6 +18,7 @@
 #include <pcap.h>
 #include <malloc.h>
 #include <math.h>
+#include <time.h>
 
 #ifdef HAVE_LIBSSH
 #include <libssh/libssh.h>
@@ -2017,6 +2018,25 @@ getwav:
 		outStrConvertchar << endl;
 		string strConvertchar = outStrConvertchar.str();
 		if ((size = sendvm(client, sshchannel, strConvertchar.c_str(), strConvertchar.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "sql_time_information") != NULL) {
+		string timezone_name = "UTC";
+		long timezone_offset = 0;
+		extern bool opt_sql_time_utc;
+		extern bool is_cloud;
+		if(!opt_sql_time_utc && !is_cloud) {
+			time_t t = time(NULL);
+			struct tm lt = localtime_r(&t);
+			timezone_name = lt.tm_zone;
+			timezone_offset = lt.tm_gmtoff;
+		}
+		snprintf(sendbuf, BUFSIZE, "%s,%li,%s", 
+			 timezone_name.c_str(),
+			 timezone_offset,
+			 sqlDateTimeString(time(NULL)).c_str());
+		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}

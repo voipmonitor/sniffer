@@ -441,6 +441,7 @@ vector<dstring> opt_custom_headers_message;
 CustomHeaders *custom_headers_cdr;
 CustomHeaders *custom_headers_message;
 int opt_custom_headers_last_value = 1;
+bool opt_sql_time_utc = false;
 
 char configfile[1024] = "";	// config file name
 
@@ -4103,6 +4104,7 @@ void cConfig::addConfigItems() {
 		subgroup("main");
 			addConfigItem((new cConfigItem_yesno("query_cache"))
 				->setDefaultValueStr("no"));
+			addConfigItem(new cConfigItem_yesno("sql_time_utc", &opt_sql_time_utc));
 			advanced();
 				addConfigItem(new cConfigItem_yesno("disable_dbupgradecheck", &opt_disable_dbupgradecheck));
 				addConfigItem(new cConfigItem_yesno("only_cdr_next", &opt_only_cdr_next));
@@ -4121,8 +4123,6 @@ void cConfig::addConfigItems() {
 				expert();
 					addConfigItem(new cConfigItem_integer("create_old_partitions", &opt_create_old_partitions));
 					addConfigItem(new cConfigItem_string("create_old_partitions_from", opt_create_old_partitions_from, sizeof(opt_create_old_partitions_from)));
-					
-					
 		subgroup("scale");
 				advanced();
 				addConfigItem(new cConfigItem_integer("mysqlstore_concat_limit", &opt_mysqlstore_concat_limit));
@@ -7171,6 +7171,9 @@ int eval_config(string inistr) {
 		opt_save_query_to_files = true;
 		opt_load_query_from_files = 1;
 		opt_load_query_from_files_inotify = true;
+	}
+	if((value = ini.GetValue("general", "sql_time_utc", NULL))) {
+		opt_sql_time_utc = yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "save_query_to_files", NULL))) {
