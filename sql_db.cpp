@@ -4557,21 +4557,12 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 
 	syslog(LOG_DEBUG, "done");
 	
+	this->saveTimezoneInformation();
+	
 	return(true);
 }
 
 void SqlDb_mysql::saveTimezoneInformation() {
-	if(opt_id_sensor <= 0) {
-		return;
-	}
-	this->query("show columns from sensors where Field='timezone_name'");
-	if(!this->fetchRow()) {
-		return;
-	}
-	this->query("show columns from sensors where Field='timezone_offset'");
-	if(!this->fetchRow()) {
-		return;
-	}
 	string timezone_name = "UTC";
 	long timezone_offset = 0;
 	if(!opt_sql_time_utc && !is_cloud) {
@@ -4580,13 +4571,49 @@ void SqlDb_mysql::saveTimezoneInformation() {
 		timezone_name = lt.tm_zone;
 		timezone_offset = lt.tm_gmtoff;
 	}
-	SqlDb_row row;
-	row.add(timezone_name, "timezone_name");
-	row.add(timezone_offset, "timezone_offset");
-	row.add(sqlDateTimeString(time(NULL)), "timezone_save_at");
-	char whereCond[100];
-	snprintf(whereCond, sizeof(whereCond), "id_sensor = %i", opt_id_sensor);
-	this->update("sensors", row, whereCond);
+	if(opt_id_sensor <= 0) {
+		this->query("show columns from system where Field='content'");
+		if(!this->fetchRow()) {
+			return;
+		}
+		this->query("show columns from system where Field='type'");
+		if(!this->fetchRow()) {
+			return;
+		}
+		char timezoneInfo[100];
+		snprintf(timezoneInfo, sizeof(timezoneInfo), "{\"name\":\"%s\",\"offset\":\"%li\",\"save_at\":\"%s\"}",
+			 timezone_name.c_str(),
+			 timezone_offset,
+			 sqlDateTimeString(time(NULL)).c_str());
+		this->query("select content from `system` where type='timezone_info_local_sensor'");
+		SqlDb_row row = this->fetchRow();
+		if(row) {
+			SqlDb_row rowU;
+			rowU.add(sqlEscapeString(timezoneInfo), "content");
+			this->update("system", rowU, "type='timezone_info_local_sensor'");
+		} else {
+			SqlDb_row rowI;
+			rowI.add(sqlEscapeString(timezoneInfo), "content");
+			rowI.add(sqlEscapeString("timezone_info_local_sensor"), "type");
+			this->insert("system", rowI);
+		}
+	} else {
+		this->query("show columns from sensors where Field='timezone_name'");
+		if(!this->fetchRow()) {
+			return;
+		}
+		this->query("show columns from sensors where Field='timezone_offset'");
+		if(!this->fetchRow()) {
+			return;
+		}
+		SqlDb_row row;
+		row.add(timezone_name, "timezone_name");
+		row.add(timezone_offset, "timezone_offset");
+		row.add(sqlDateTimeString(time(NULL)), "timezone_save_at");
+		char whereCond[100];
+		snprintf(whereCond, sizeof(whereCond), "id_sensor = %i", opt_id_sensor);
+		this->update("sensors", row, whereCond);
+	}
 }
 
 void SqlDb_mysql::checkDbMode() {
