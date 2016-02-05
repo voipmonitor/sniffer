@@ -696,7 +696,7 @@ bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
 bool FraudAlert::okDayHour(time_t at) {
 	if((hour_from >= 0 && hour_to >= 0) ||
 	   day_of_week_set) {
-		tm attm = time_r(&at);
+		tm attm = time_r(&at, fraudAlerts->getGuiTimezone());
 		if(hour_from >= 0 && hour_to >= 0) {
 			if(hour_from <= hour_to) {
 				if(attm.tm_hour < hour_from || attm.tm_hour > hour_to) {
@@ -1540,6 +1540,18 @@ FraudAlerts::~FraudAlerts() {
 void FraudAlerts::loadAlerts(bool lock) {
 	if(lock) lock_alerts();
 	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query("show columns from system where Field='content'");
+	if(sqlDb->fetchRow()) {
+		sqlDb->query("select content from system where type = 'gui_timezone'");
+		SqlDb_row row = sqlDb->fetchRow();
+		if(row) {
+			this->gui_timezone = row["content"];
+			size_t sepPos = this->gui_timezone.find('/');
+			if(sepPos != string::npos) {
+				this->gui_timezone = this->gui_timezone.substr(0, sepPos);
+			}
+		}
+	}
 	sqlDb->query("select id, alert_type, descr from alerts\
 		      where alert_type > 20 and\
 			    alert_type < 30 and\

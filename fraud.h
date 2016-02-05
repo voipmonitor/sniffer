@@ -980,6 +980,12 @@ public:
 	void evRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
 	void stopPopCallInfoThread(bool wait = false);
 	void refresh();
+	const char *getGuiTimezone() {
+		if(gui_timezone.empty()) {
+			return(NULL);
+		}
+		return(gui_timezone.c_str());
+	}
 private:
 	void initPopCallInfoThread();
 	void popCallInfoThread();
@@ -999,6 +1005,7 @@ private:
 	pthread_t threadPopCallInfo;
 	bool runPopCallInfoThread;
 	bool termPopCallInfoThread;
+	string gui_timezone;
 	volatile int _sync_alerts;
 friend void *_FraudAlerts_popCallInfoThread(void *arg);
 };

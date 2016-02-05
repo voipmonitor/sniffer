@@ -22,6 +22,7 @@
 #include <pcap.h>
 #include <netdb.h>
 #include <map>
+#include <time.h>
 
 #include "pstat.h"
 #include "tools_dynamic_buffer.h"
@@ -1816,9 +1817,38 @@ private:
 string base64_encode(const unsigned char *data, size_t input_length);
 char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length);
 
-inline struct tm localtime_r(const time_t *timep) {
+inline struct tm localtime_r(const time_t *timep, const char *timezone = NULL) {
+	static volatile int _sync;
+	extern void *fraudAlerts;
+	char oldTZ[1024] = "";
+	bool lockTZ = false;
+	if(fraudAlerts) {
+		while(__sync_lock_test_and_set(&_sync, 1));
+		if(timezone && timezone[0]) {
+			const char *_oldTZ = getenv("TZ");
+			if(_oldTZ) {
+				strncpy(oldTZ, _oldTZ, sizeof(oldTZ));
+			} else {
+				oldTZ[0] = 0;
+			}
+			setenv("TZ", timezone, 1);
+			tzset();
+		}
+		lockTZ = true;
+	}
 	struct tm rslt;
 	::localtime_r(timep, &rslt);
+	if(lockTZ) {
+		if(timezone && timezone[0]) {
+			if(oldTZ[0]) {
+				setenv("TZ", oldTZ, 1);
+			} else {
+				unsetenv("TZ");
+			}
+			tzset();
+		}
+		__sync_lock_release(&_sync);
+	}
 	return(rslt);
 }
 inline struct tm gmtime_r(const time_t *timep) {
@@ -1826,7 +1856,10 @@ inline struct tm gmtime_r(const time_t *timep) {
 	::gmtime_r(timep, &rslt);
 	return(rslt);
 }
-inline struct tm time_r(const time_t *timep) {
+inline struct tm time_r(const time_t *timep, const char *timezone = NULL) {
+	if(timezone && timezone[0]) {
+		return(localtime_r(timep, timezone));
+	}
 	extern bool opt_sql_time_utc;
 	extern bool is_cloud;
 	return(opt_sql_time_utc || is_cloud ?
