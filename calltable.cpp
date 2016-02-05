@@ -73,6 +73,8 @@ extern int opt_saveGRAPH;	// save GRAPH data to graph file?
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	// compress GRAPH data to graph file? 
 extern int opt_mos_g729;
 extern int opt_nocdr;
+extern int nocdr_for_last_responses[100];
+extern int nocdr_for_last_responses_count;
 extern int opt_only_cdr_next;
 extern char opt_cachedir[1024];
 extern char sql_cdr_table[256];
@@ -1950,6 +1952,21 @@ size_t write_data(char *ptr, size_t size, size_t nmemb, void *userdata) {
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
+ 
+	if(lastSIPresponseNum && nocdr_for_last_responses_count) {
+		for(int i = 0; i < nocdr_for_last_responses_count; i++) {
+			if(nocdr_for_last_responses[i]) {
+				int lengthCheckResponseCode = log10(nocdr_for_last_responses[i]) + 1;
+				int responseCodeTrim = lastSIPresponseNum;
+				while((int)(log10(responseCodeTrim) + 1) > lengthCheckResponseCode) {
+					responseCodeTrim /= 10;
+				}
+				if(responseCodeTrim == nocdr_for_last_responses[i]) {
+					 return(0);
+				}
+			}
+		}
+	}
  
 	extern bool exists_columns_cdr_reason;
 	extern bool exists_columns_cdr_response_time;

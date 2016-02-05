@@ -196,6 +196,9 @@ int opt_dbdtmf = 0;
 int opt_inbanddtmf = 0;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
+char opt_nocdr_for_last_responses[1024];
+int nocdr_for_last_responses[100];
+int nocdr_for_last_responses_count;
 int opt_only_cdr_next = 0;
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
 int opt_mos_g729 = 0;		// calculate MOS for G729 codec
@@ -747,6 +750,7 @@ static void get_command_line_arguments();
 static void set_context_config();
 static bool check_complete_parameters();
 static void dns_lookup_common_hostnames();
+static void parse_opt_nocdr_for_last_responses();
  
  
 void handle_error(const char *file, int lineno, const char *msg){
@@ -4104,7 +4108,8 @@ void cConfig::addConfigItems() {
 		subgroup("main");
 			addConfigItem((new cConfigItem_yesno("query_cache"))
 				->setDefaultValueStr("no"));
-			addConfigItem(new cConfigItem_yesno("sql_time_utc", &opt_sql_time_utc));
+			addConfigItem((new cConfigItem_yesno("utc", &opt_sql_time_utc))
+				->addAlias("sql_time_utc"));
 			advanced();
 				addConfigItem(new cConfigItem_yesno("disable_dbupgradecheck", &opt_disable_dbupgradecheck));
 				addConfigItem(new cConfigItem_yesno("only_cdr_next", &opt_only_cdr_next));
@@ -4383,6 +4388,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new cConfigItem_integer("absolute_timeout", &absolute_timeout));
 			addConfigItem(new cConfigItem_integer("onewaytimeout", &opt_onewaytimeout));
 			addConfigItem(new cConfigItem_yesno("nocdr", &opt_nocdr));
+			addConfigItem((new cConfigItem_string("cdr_ignore_response", opt_nocdr_for_last_responses, sizeof(opt_nocdr_for_last_responses)))
+				->addAlias("nocdr_for_last_responses"));
 			addConfigItem(new cConfigItem_yesno("skipdefault", &opt_skipdefault));
 			addConfigItem(new cConfigItem_yesno("cdronlyanswered", &opt_cdronlyanswered));
 			addConfigItem(new cConfigItem_yesno("cdr_check_exists_callid", &opt_cdr_check_exists_callid));
@@ -4850,6 +4857,9 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			opt_load_query_from_files = 1;
 			opt_load_query_from_files_inotify = true;
 		}
+	}
+	if(configItem->config_name == "cdr_ignore_response") {
+		parse_opt_nocdr_for_last_responses();
 	}
 }
 
@@ -6068,6 +6078,11 @@ int eval_config(string inistr) {
 			opt_nocdr = yesno(value);
 		}
 	}
+	if((value = ini.GetValue("general", "cdr_ignore_response", NULL)) ||
+	   (value = ini.GetValue("general", "nocdr_for_last_responses", NULL))) {
+		strncpy(opt_nocdr_for_last_responses, value, sizeof(opt_nocdr_for_last_responses));
+		parse_opt_nocdr_for_last_responses();
+	}
 	if((value = ini.GetValue("general", "disable_dbupgradecheck", NULL))) {
 		opt_disable_dbupgradecheck  = yesno(value);
 	}
@@ -7172,7 +7187,8 @@ int eval_config(string inistr) {
 		opt_load_query_from_files = 1;
 		opt_load_query_from_files_inotify = true;
 	}
-	if((value = ini.GetValue("general", "sql_time_utc", NULL))) {
+	if((value = ini.GetValue("general", "utc", NULL)) ||
+	   (value = ini.GetValue("general", "sql_time_utc", NULL))) {
 		opt_sql_time_utc = yesno(value);
 	}
 	
@@ -7428,4 +7444,12 @@ u_int32_t gethostbyname_lock(const char *name) {
 	}
 	pthread_mutex_unlock(&hostbyname_lock);
 	return(rslt_ipl);
+}
+
+void parse_opt_nocdr_for_last_responses() {
+	nocdr_for_last_responses_count = 0;
+	vector<string> responses = split(opt_nocdr_for_last_responses, split(",|;", "|"), true);
+	for(unsigned i = 0; i < min(responses.size(), sizeof(nocdr_for_last_responses) / sizeof(nocdr_for_last_responses[0])); i++) {
+		nocdr_for_last_responses[nocdr_for_last_responses_count++] = atoi(responses[i].c_str());
+	}
 }
