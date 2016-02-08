@@ -1877,13 +1877,13 @@ struct sLocalTimeHourCacheItems {
 				return;
 			}
 		}
-		static volatile int _sync;
 		if(gmt) {
 			::gmtime_r(&timestamp, time);
 			if(sverb.timezones) {
 				cout << " *** get gmt time / thread " << get_unix_tid() << endl;
 			}
 		} else {
+			static volatile int _sync;
 			while(__sync_lock_test_and_set(&_sync, 1));
 			char oldTZ[1024] = "";
 			if(timezone[0]) {
@@ -1963,7 +1963,10 @@ struct sLocalTimeHourCache {
 };
 
 inline struct tm time_r(const time_t *timestamp, const char *timezone = NULL) {
-	static __thread sLocalTimeHourCache timeCache;
+	static __thread sLocalTimeHourCache *timeCache = NULL;
+	if(!timeCache) {
+		timeCache = new FILE_LINE sLocalTimeHourCache();
+	}
 	struct tm time;
 	bool force_gmt = false;
 	bool force_local = false;
@@ -1975,11 +1978,11 @@ inline struct tm time_r(const time_t *timestamp, const char *timezone = NULL) {
 		}
 	}
 	if(timezone && timezone[0] && !force_gmt && !force_local) {
-		timeCache.getTime(*timestamp, &time, false, timezone);
+		timeCache->getTime(*timestamp, &time, false, timezone);
 	} else {
 		extern bool opt_sql_time_utc;
 		extern bool is_cloud;
-		timeCache.getTime(*timestamp, &time, (opt_sql_time_utc || is_cloud || force_gmt) && !force_local, NULL);
+		timeCache->getTime(*timestamp, &time, (opt_sql_time_utc || is_cloud || force_gmt) && !force_local, NULL);
 	}
 	return(time);
 }
