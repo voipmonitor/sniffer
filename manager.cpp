@@ -2028,7 +2028,8 @@ getwav:
 		extern bool is_cloud;
 		if(!opt_sql_time_utc && !is_cloud) {
 			time_t t = time(NULL);
-			struct tm lt = localtime_r(&t);
+			struct tm lt;
+			::localtime_r(&t, &lt);
 			timezone_name = lt.tm_zone;
 			timezone_offset = lt.tm_gmtoff;
 		}

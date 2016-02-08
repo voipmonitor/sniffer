@@ -50,6 +50,7 @@ struct sVerbose {
 	int rtp_extend_stat;
 	int disable_process_packet_in_packetbuffer;
 	int thread_create;
+	int timezones;
 };
 
 #endif

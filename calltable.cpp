@@ -74,6 +74,7 @@ extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	// compress GRAPH data to gr
 extern int opt_mos_g729;
 extern int opt_nocdr;
 extern int nocdr_for_last_responses[100];
+extern int nocdr_for_last_responses_length[100];
 extern int nocdr_for_last_responses_count;
 extern int opt_only_cdr_next;
 extern char opt_cachedir[1024];
@@ -1955,15 +1956,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
  
 	if(lastSIPresponseNum && nocdr_for_last_responses_count) {
 		for(int i = 0; i < nocdr_for_last_responses_count; i++) {
-			if(nocdr_for_last_responses[i]) {
-				int lengthCheckResponseCode = log10(nocdr_for_last_responses[i]) + 1;
-				int responseCodeTrim = lastSIPresponseNum;
-				while((int)(log10(responseCodeTrim) + 1) > lengthCheckResponseCode) {
-					responseCodeTrim /= 10;
-				}
-				if(responseCodeTrim == nocdr_for_last_responses[i]) {
-					 return(0);
-				}
+			int lastSIPresponseNum_left = lastSIPresponseNum;
+			int lastSIPresponseNum_length = log10(lastSIPresponseNum) + 1;
+			while(lastSIPresponseNum_length > nocdr_for_last_responses_length[i]) {
+				lastSIPresponseNum_left /= 10;
+				--lastSIPresponseNum_length;
+			}
+			if(lastSIPresponseNum_left == nocdr_for_last_responses[i]) {
+				return(0);
 			}
 		}
 	}

@@ -198,6 +198,7 @@ int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it.
 int opt_nocdr = 0;		// do not save cdr?
 char opt_nocdr_for_last_responses[1024];
 int nocdr_for_last_responses[100];
+int nocdr_for_last_responses_length[100];
 int nocdr_for_last_responses_count;
 int opt_only_cdr_next = 0;
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
@@ -3492,6 +3493,23 @@ private:
 	FILE *fileO;
 };
 
+void test_time_cache() {
+	cout << "-----------------" << endl;
+	time_t now;
+	time(&now);
+	for(int i = 0; i <= 4 * 60 * 6; i++) {
+		cout << "-- " << i << endl;
+		cout << "local " << time_r_str(&now, "local") << endl;
+		cout << "gmt   " << time_r_str(&now, "GMT") << endl;
+		cout << "EST   " << time_r_str(&now, "EST") << endl;
+		cout << "NY    " << time_r_str(&now, "America/New_York") << endl;
+		cout << "LA    " << time_r_str(&now, "America/Los_Angeles") << endl;
+		cout << "NF    " << time_r_str(&now, "Canada/Newfoundland") << endl;
+		now += 10;
+	}
+	cout << "-----------------" << endl;
+}
+
 void test() {
  
 	switch(opt_test) {
@@ -3554,7 +3572,8 @@ void test() {
 	 
 	case 1: {
 	  
-		test_parsepacket();
+		test_time_cache();
+		//test_parsepacket();
 		break;
 	 
 		//test_search_country_by_number();
@@ -5170,6 +5189,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "disable_process_packet_in_packetbuffer")
 													sverb.disable_process_packet_in_packetbuffer = 1;
 						else if(verbparams[i] == "thread_create")		sverb.thread_create = 1;
+						else if(verbparams[i] == "timezones")			sverb.timezones = 1;
 					}
 				} }
 				break;
@@ -7450,6 +7470,10 @@ void parse_opt_nocdr_for_last_responses() {
 	nocdr_for_last_responses_count = 0;
 	vector<string> responses = split(opt_nocdr_for_last_responses, split(",|;", "|"), true);
 	for(unsigned i = 0; i < min(responses.size(), sizeof(nocdr_for_last_responses) / sizeof(nocdr_for_last_responses[0])); i++) {
-		nocdr_for_last_responses[nocdr_for_last_responses_count++] = atoi(responses[i].c_str());
+		nocdr_for_last_responses[nocdr_for_last_responses_count] = atoi(responses[i].c_str());
+		if(nocdr_for_last_responses[nocdr_for_last_responses_count]) {
+			nocdr_for_last_responses_length[nocdr_for_last_responses_count] = log10(nocdr_for_last_responses[nocdr_for_last_responses_count]) + 1;
+			nocdr_for_last_responses_count++;
+		}
 	}
 }

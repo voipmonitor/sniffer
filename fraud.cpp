@@ -1546,10 +1546,6 @@ void FraudAlerts::loadAlerts(bool lock) {
 		SqlDb_row row = sqlDb->fetchRow();
 		if(row) {
 			this->gui_timezone = row["content"];
-			size_t sepPos = this->gui_timezone.find('/');
-			if(sepPos != string::npos) {
-				this->gui_timezone = this->gui_timezone.substr(0, sepPos);
-			}
 		}
 	}
 	sqlDb->query("select id, alert_type, descr from alerts\

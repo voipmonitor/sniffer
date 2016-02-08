@@ -1817,54 +1817,177 @@ private:
 string base64_encode(const unsigned char *data, size_t input_length);
 char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length);
 
-inline struct tm localtime_r(const time_t *timep, const char *timezone = NULL) {
-	static volatile int _sync;
-	extern void *fraudAlerts;
-	char oldTZ[1024] = "";
-	bool lockTZ = false;
-	if(fraudAlerts) {
-		while(__sync_lock_test_and_set(&_sync, 1));
+#define LOCALTIME_MINCACHE_LENGTH 6
+#define LOCALTIME_TIMEZONE_LENGTH 10
+struct sLocalTimeHourCacheItem {
+	sLocalTimeHourCacheItem() {
+		timestamp_ymdhm15 = 0;
+	}
+	void getTime(time_t timestamp, struct tm *time) {
+		u_int64_t min15sec = timestamp % (15 * 60);
+		time->tm_year = year;
+		time->tm_mon = month;
+		time->tm_mday = day;;
+		time->tm_wday = wday;
+		time->tm_yday = yday;
+		time->tm_hour = hour;
+		time->tm_min = min15 * 15 + min15sec / 60;
+		time->tm_sec = min15sec % 60;
+		time->tm_isdst = isdst;
+	}
+	void setTime(time_t timestamp, struct tm *time) {
+		timestamp_ymdhm15 = timestamp / (15 * 60);
+		year = time->tm_year;
+		month = time->tm_mon;
+		day = time->tm_mday;
+		wday = time->tm_wday;
+		yday = time->tm_yday;
+		hour = time->tm_hour;
+		min15 = time->tm_min / 15;
+		isdst = time->tm_isdst;
+	}
+	u_int64_t timestamp_ymdhm15;
+	u_int16_t year;
+	u_int16_t month;
+	u_int16_t day;
+	u_int16_t wday;
+	u_int16_t yday;
+	u_int16_t hour;
+	u_int16_t min15;
+	bool isdst;
+};
+struct sLocalTimeHourCacheItems {
+	sLocalTimeHourCacheItems(bool gmt = false, const char *timezone = NULL) {
+		this->setTimezone(gmt, timezone);
+		cache_insert_index = 0;
+	}
+	void setTimezone(bool gmt, const char *timezone) {
+		this->gmt = gmt;
 		if(timezone && timezone[0]) {
-			const char *_oldTZ = getenv("TZ");
-			if(_oldTZ) {
-				strncpy(oldTZ, _oldTZ, sizeof(oldTZ));
-			} else {
-				oldTZ[0] = 0;
-			}
-			setenv("TZ", timezone, 1);
-			tzset();
+			strncpy(this->timezone, timezone, sizeof(this->timezone));
+		} else {
+			this->timezone[0] = 0;
 		}
-		lockTZ = true;
 	}
-	struct tm rslt;
-	::localtime_r(timep, &rslt);
-	if(lockTZ) {
-		if(timezone && timezone[0]) {
-			if(oldTZ[0]) {
-				setenv("TZ", oldTZ, 1);
-			} else {
-				unsetenv("TZ");
+	void getTime(time_t timestamp, struct tm *time) {
+		u_int64_t timestamp_ymdhm15 = timestamp / (15 * 60);
+		for(int i = 0; i < LOCALTIME_MINCACHE_LENGTH; i++) {
+			if(timestamp_ymdhm15 == cacheItems[i].timestamp_ymdhm15) {
+				cacheItems[i].getTime(timestamp, time);
+				return;
 			}
-			tzset();
 		}
-		__sync_lock_release(&_sync);
+		static volatile int _sync;
+		if(gmt) {
+			::gmtime_r(&timestamp, time);
+			if(sverb.timezones) {
+				cout << " *** get gmt time / thread " << get_unix_tid() << endl;
+			}
+		} else {
+			while(__sync_lock_test_and_set(&_sync, 1));
+			char oldTZ[1024] = "";
+			if(timezone[0]) {
+				const char *_oldTZ = getenv("TZ");
+				if(_oldTZ) {
+					strncpy(oldTZ, _oldTZ, sizeof(oldTZ));
+				} else {
+					oldTZ[0] = 0;
+				}
+				setenv("TZ", timezone, 1);
+				tzset();
+			}
+			::localtime_r(&timestamp, time);
+			if(timezone[0]) {
+				if(oldTZ[0]) {
+					setenv("TZ", oldTZ, 1);
+				} else {
+					unsetenv("TZ");
+				}
+				tzset();
+			}
+			__sync_lock_release(&_sync);
+			if(sverb.timezones) {
+				cout << " *** get " << (timezone[0] ? (string("tz ") + timezone) : "local") << " time / thread " << get_unix_tid() << endl;
+			}
+		}
+		addToCache(timestamp, time);
 	}
-	return(rslt);
-}
-inline struct tm gmtime_r(const time_t *timep) {
-	struct tm rslt;
-	::gmtime_r(timep, &rslt);
-	return(rslt);
-}
-inline struct tm time_r(const time_t *timep, const char *timezone = NULL) {
-	if(timezone && timezone[0]) {
-		return(localtime_r(timep, timezone));
+	void addToCache(time_t timestamp, struct tm *time) {
+		cacheItems[cache_insert_index].setTime(timestamp, time);
+		++cache_insert_index;
+		if(cache_insert_index >= LOCALTIME_MINCACHE_LENGTH) {
+			cache_insert_index = 0;
+		}
 	}
-	extern bool opt_sql_time_utc;
-	extern bool is_cloud;
-	return(opt_sql_time_utc || is_cloud ?
-		gmtime_r(timep) :
-		localtime_r(timep));
+	sLocalTimeHourCacheItem cacheItems[LOCALTIME_MINCACHE_LENGTH];
+	u_int16_t cache_insert_index;
+	bool gmt;
+	char timezone[128];
+};
+struct sLocalTimeHourCache {
+	sLocalTimeHourCache() {
+		gmt.setTimezone(true, NULL);
+		local_timezones_count = 0;
+	}
+	void getTime(time_t timestamp, struct tm *time, bool gmt, const char *timezone) {
+		if(gmt) {
+			this->gmt.getTime(timestamp, time);
+		} else if(!timezone || !*timezone) {
+			this->local.getTime(timestamp, time);
+		} else {
+			int tz_index = -1;
+			for(unsigned i = 0; i < local_timezones_count; i++) {
+				if(!strncmp(timezone, timezones[i].timezone, sizeof(timezones[i].timezone))) {
+					tz_index = i;
+					break;
+				}
+			}
+			if(tz_index == -1) {
+				if(local_timezones_count < LOCALTIME_TIMEZONE_LENGTH - 1) {
+					tz_index = local_timezones_count;
+					timezones[tz_index].setTimezone(false, timezone);
+					++local_timezones_count;
+				} else {
+					syslog(LOG_ERR, "too much timezones - use localtime");
+					this->local.getTime(timestamp, time);
+					return;
+				}
+			}
+			this->timezones[tz_index].getTime(timestamp, time);
+		}
+	}
+	sLocalTimeHourCacheItems gmt;
+	sLocalTimeHourCacheItems local;
+	sLocalTimeHourCacheItems timezones[LOCALTIME_TIMEZONE_LENGTH];
+	u_int16_t local_timezones_count;
+};
+
+inline struct tm time_r(const time_t *timestamp, const char *timezone = NULL) {
+	static __thread sLocalTimeHourCache timeCache;
+	struct tm time;
+	bool force_gmt = false;
+	bool force_local = false;
+	if(timezone) {
+		if(timezone[0] == 'G' && timezone[1] == 'M') {
+			force_gmt = true;
+		} else if(timezone[0] == 'l' && timezone[1] == 'o') {
+			force_local = true;
+		}
+	}
+	if(timezone && timezone[0] && !force_gmt && !force_local) {
+		timeCache.getTime(*timestamp, &time, false, timezone);
+	} else {
+		extern bool opt_sql_time_utc;
+		extern bool is_cloud;
+		timeCache.getTime(*timestamp, &time, (opt_sql_time_utc || is_cloud || force_gmt) && !force_local, NULL);
+	}
+	return(time);
+}
+inline string time_r_str(const time_t *timestamp, const char *timezone = NULL) {
+	struct tm time = time_r(timestamp, timezone);
+	char dateTimeBuffer[50];
+	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &time);
+	return string(dateTimeBuffer);
 }
 
 u_int32_t octal_decimal(u_int32_t n);

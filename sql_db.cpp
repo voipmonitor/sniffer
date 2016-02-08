@@ -4567,7 +4567,8 @@ void SqlDb_mysql::saveTimezoneInformation() {
 	long timezone_offset = 0;
 	if(!opt_sql_time_utc && !is_cloud) {
 		time_t t = time(NULL);
-		struct tm lt = localtime_r(&t);
+		struct tm lt;
+		::localtime_r(&t, &lt);
 		timezone_name = lt.tm_zone;
 		timezone_offset = lt.tm_gmtoff;
 	}
