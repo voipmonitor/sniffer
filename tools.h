@@ -1880,7 +1880,8 @@ struct sLocalTimeHourCacheItems {
 		if(gmt) {
 			::gmtime_r(&timestamp, time);
 			if(sverb.timezones) {
-				cout << " *** get gmt time / thread " << get_unix_tid() << endl;
+				cout << " *** get gmt time " << timestamp 
+				     << " / thread " << get_unix_tid() << endl;
 			}
 		} else {
 			static volatile int _sync;
@@ -1907,7 +1908,8 @@ struct sLocalTimeHourCacheItems {
 			}
 			__sync_lock_release(&_sync);
 			if(sverb.timezones) {
-				cout << " *** get " << (timezone[0] ? (string("tz ") + timezone) : "local") << " time / thread " << get_unix_tid() << endl;
+				cout << " *** get " << (timezone[0] ? (string("tz ") + timezone) : "local") << " time " << timestamp 
+				     << " / thread " << get_unix_tid() << endl;
 			}
 		}
 		addToCache(timestamp, time);
