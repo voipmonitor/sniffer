@@ -297,6 +297,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	rtppacketsinqueue_m = 0;
 	#endif
 	end_call = 0;
+	push_call_to_calls_queue = 0;
 	message = NULL;
 	message_info = NULL;
 	contenttype = NULL;
@@ -4194,7 +4195,12 @@ Calltable::cleanup( time_t currtime ) {
 			call->closeRawFiles();
 			/* move call to queue for mysql processing */
 			lock_calls_queue();
-			calls_queue.push_back(call);
+			if(call->push_call_to_calls_queue) {
+				syslog(LOG_WARNING,"try to duplicity push call %s / %i to calls_queue", call->call_id.c_str(), call->type);
+			} else {
+				call->push_call_to_calls_queue = 1;
+				calls_queue.push_back(call);
+			}
 			unlock_calls_queue();
 			calls_listMAP.erase(callMAPIT++);
 			if(opt_enable_fraud && currtime) {
@@ -4261,7 +4267,12 @@ void Call::saveregister() {
 	closeRawFiles();
 	/* move call to queue for mysql processing */
 	((Calltable*)calltable)->lock_calls_queue();
-	((Calltable*)calltable)->calls_queue.push_back(this);
+	if(push_call_to_calls_queue) {
+		syslog(LOG_WARNING,"try to duplicity push call %s / %i to calls_queue", call_id.c_str(), type);
+	} else {
+		push_call_to_calls_queue = 1;
+		((Calltable*)calltable)->calls_queue.push_back(this);
+	}
 	((Calltable*)calltable)->unlock_calls_queue();
 }
 

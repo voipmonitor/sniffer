@@ -240,6 +240,7 @@ public:
 	volatile u_int32_t rtppacketsinqueue_m;
 	#endif
 	volatile int end_call;
+	volatile int push_call_to_calls_queue;
 	unsigned int unrepliedinvite;
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
