@@ -777,26 +777,8 @@ public:
 	void lock_calls_audioqueue() { pthread_mutex_lock(&qaudiolock); };
 	void lock_calls_deletequeue() { pthread_mutex_lock(&qdellock); };
 	void lock_files_queue() { pthread_mutex_lock(&flock); };
-	void lock_calls_listMAP() {
-		unsigned usleepCounter = 0;
-		while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP, 1)) {
-			usleep(10 *
-			       (usleepCounter > 10 ? 50 :
-				usleepCounter > 5 ? 10 :
-				usleepCounter > 2 ? 5 : 1));
-			++usleepCounter;
-		}
-	}
-	void lock_calls_mergeMAP() {
-		unsigned usleepCounter = 0;
-		while(__sync_lock_test_and_set(&this->_sync_lock_calls_mergeMAP, 1)) {
-			usleep(10 *
-			       (usleepCounter > 10 ? 50 :
-				usleepCounter > 5 ? 10 :
-				usleepCounter > 2 ? 5 : 1));
-			++usleepCounter;
-		}
-	}
+	void lock_calls_listMAP() { pthread_mutex_lock(&calls_listMAPlock); };
+	void lock_calls_mergeMAP() { pthread_mutex_lock(&calls_mergeMAPlock); };
 
 	/**
 	 * @brief unlock calls_queue structure 
@@ -806,16 +788,8 @@ public:
 	void unlock_calls_audioqueue() { pthread_mutex_unlock(&qaudiolock); };
 	void unlock_calls_deletequeue() { pthread_mutex_unlock(&qdellock); };
 	void unlock_files_queue() { pthread_mutex_unlock(&flock); };
-	void unlock_calls_listMAP() {
-		__sync_lock_release(&this->_sync_lock_calls_listMAP);
-	}
-	void unlock_calls_mergeMAP() {
-		__sync_lock_release(&this->_sync_lock_calls_mergeMAP);
-	}
-	/**
-	 * @brief lock files_queue structure 
-	 *
-	*/
+	void unlock_calls_listMAP() { pthread_mutex_unlock(&calls_listMAPlock); };
+	void unlock_calls_mergeMAP() { pthread_mutex_unlock(&calls_mergeMAPlock); };
 
 	/**
 	 * @brief add Call to Calltable
@@ -947,6 +921,8 @@ private:
 	pthread_mutex_t qaudiolock;	//!< mutex locking calls_audioqueue
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue
 	pthread_mutex_t flock;		//!< mutex locking calls_queue
+	pthread_mutex_t calls_listMAPlock;
+	pthread_mutex_t calls_mergeMAPlock;
 
 	void *calls_hash[MAXNODE];
 	volatile int _sync_lock_calls_hash;

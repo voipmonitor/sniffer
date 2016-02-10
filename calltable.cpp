@@ -3702,6 +3702,8 @@ Calltable::Calltable() {
 	pthread_mutex_init(&qaudiolock, NULL);
 	pthread_mutex_init(&qdellock, NULL);
 	pthread_mutex_init(&flock, NULL);
+	pthread_mutex_init(&calls_listMAPlock, NULL);
+	pthread_mutex_init(&calls_mergeMAPlock, NULL);
 
 	memset(calls_hash, 0x0, sizeof(calls_hash));
 	_sync_lock_calls_hash = 0;
@@ -3719,6 +3721,8 @@ Calltable::~Calltable() {
 	pthread_mutex_destroy(&qaudiolock);
 	pthread_mutex_destroy(&qdellock);
 	pthread_mutex_destroy(&flock);
+	pthread_mutex_destroy(&calls_listMAPlock);
+	pthread_mutex_destroy(&calls_mergeMAPlock);
 };
 
 /* add node to hash. collisions are linked list of nodes*/
