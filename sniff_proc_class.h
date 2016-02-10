@@ -301,15 +301,15 @@ public:
 		case ppt_detach:
 			break;
 		case ppt_sip:
+			_parse_packet->parseContents = this->parseContentsStack[this->parseContentsStackPosition++];
+			if(this->parseContentsStackPosition == this->parseContentsStackLength) {
+				this->parseContentsStackPosition = 0;
+			}
 			_parse_packet->_getSipMethod = false;
 			if((forceSip ||
 			    sipportmatrix[packetS->source] || 
 			    sipportmatrix[packetS->dest]) &&
 			   check_sip20(packetS->data, packetS->datalen, NULL)) {
-				_parse_packet->parseContents = this->parseContentsStack[this->parseContentsStackPosition++];
-				if(this->parseContentsStackPosition == this->parseContentsStackLength) {
-					this->parseContentsStackPosition = 0;
-				}
 				_parse_packet->sipDataLen = _parse_packet->parseContents->parse(packetS->data, packetS->datalen, true);
 				_parse_packet->isSip = _parse_packet->parseContents->isSip();
 			} else {
