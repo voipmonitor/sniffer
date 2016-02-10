@@ -4047,7 +4047,6 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t t
 	if(sensorId > -1) {
 		newcall->useSensorId = sensorId;
 	}
-	calls_counter++;
 	newcall->saddr = saddr;
 	newcall->sport = port;
 	
@@ -4057,6 +4056,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t t
 	string call_idS = string(call_id, call_id_len);
 	lock_calls_listMAP();
 	calls_listMAP[call_idS] = newcall;
+	calls_counter++;
 	unlock_calls_listMAP();
 	return newcall;
 }
