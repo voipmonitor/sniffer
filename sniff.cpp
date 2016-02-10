@@ -5793,12 +5793,20 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	for(unsigned int i = 0; i < this->qring_length; i++) {
 		this->qring[i] = new FILE_LINE batch_packet_parse_s(opt_preprocess_packets_qring_length / 10);
 		this->qring[i]->used = 0;
-		if(this->typePreProcessThread == ppt_sip) {
-			this->qring[i]->allocParse();
-		}
 	}
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
+	if(this->typePreProcessThread == ppt_sip) {
+		this->parseContentsStackLength = opt_preprocess_packets_qring_length * 2;
+		this->parseContentsStack = new FILE_LINE ParsePacket::ppContentsX*[this->parseContentsStackLength];
+		for(unsigned i = 0; i < this->parseContentsStackLength; i++) {
+			this->parseContentsStack[i] = new FILE_LINE ParsePacket::ppContentsX(&_parse_packet_global_process_packet);
+		}
+	} else {
+		this->parseContentsStack = NULL;
+		this->parseContentsStackLength = 0;
+	}
+	this->parseContentsStackPosition = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->outThreadId = 0;
 	this->_sync_push = 0;
@@ -5809,12 +5817,15 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 PreProcessPacket::~PreProcessPacket() {
 	terminate();
 	for(unsigned int i = 0; i < this->qring_length; i++) {
-		if(this->typePreProcessThread == ppt_sip) {
-			this->qring[i]->deleteParse();
-		}
 		delete this->qring[i];
 	}
 	delete [] this->qring;
+	if(this->parseContentsStack) {
+		for(unsigned i = 0; i < this->parseContentsStackLength; i++) {
+			delete this->parseContentsStack[i];
+		}
+		delete [] this->parseContentsStack;
+	}
 }
 
 void *PreProcessPacket::outThreadFunction() {
@@ -5847,7 +5858,8 @@ void *PreProcessPacket::outThreadFunction() {
 				case ppt_detach:
 					if(PreProcessPacket::isEnableSip()) {
 						preProcessPacket[1]->push_packet_2(_packet, NULL, 
-										   false, _parse_packet->forceSip);
+										   false, _parse_packet->forceSip, false,
+										   batch_index == _batch_parse_packet->count - 1);
 					} else {
 						do_process_packet = true;
 					}
@@ -5856,7 +5868,7 @@ void *PreProcessPacket::outThreadFunction() {
 					if(PreProcessPacket::isEnableExtend()) {
 						preProcessPacket[2]->push_packet_2(NULL, _parse_packet, 
 										   false, _parse_packet->forceSip, false,
-										   batch_index == _batch_parse_packet->count - 1, _batch_parse_packet);
+										   batch_index == _batch_parse_packet->count - 1);
 					} else {
 						do_process_packet = true;
 					}
@@ -5879,24 +5891,8 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 				}
 			}
-			switch(this->typePreProcessThread) {
-			case ppt_detach:
-				_batch_parse_packet->count = 0;
-				_batch_parse_packet->used = 0;
-				break;
-			case ppt_sip:
-				if(!PreProcessPacket::isEnableExtend()) {
-					_batch_parse_packet->count = 0;
-					_batch_parse_packet->used = 0;
-				}
-				break;
-			case ppt_extend:
-				_batch_parse_packet->batchInPrevQueue->count = 0;
-				_batch_parse_packet->batchInPrevQueue->used = 0;
-				_batch_parse_packet->count = 0;
-				_batch_parse_packet->used = 0;
-				break;
-			}
+			_batch_parse_packet->count = 0;
+			_batch_parse_packet->used = 0;
 			if((this->readit + 1) == this->qring_length) {
 				this->readit = 0;
 			} else {
@@ -5916,7 +5912,9 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					break;
 				case ppt_sip:
-					if(!PreProcessPacket::isEnableExtend()) {
+					if(PreProcessPacket::isEnableExtend()) {
+						preProcessPacket[2]->push_batch();
+					} else {
 						use_process_packet = true;
 					}
 					break;

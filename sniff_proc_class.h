@@ -200,7 +200,6 @@ public:
 				batch[i] = new packet_parse_s;
 			}
 			this->max_count = max_count;
-			this->batchInPrevQueue = NULL;
 		}
 		~batch_packet_parse_s() {
 			for(unsigned i = 0; i < max_count; i++) {
@@ -208,22 +207,10 @@ public:
 			}
 			delete [] batch;
 		}
-		void allocParse() {
-			for(unsigned i = 0; i < max_count; i++) {
-				extern ParsePacket _parse_packet_global_process_packet;
-				batch[i]->parseContents = new FILE_LINE ParsePacket::ppContentsX(&_parse_packet_global_process_packet);
-			}
-		}
-		void deleteParse() {
-			for(unsigned i = 0; i < max_count; i++) {
-				delete batch[i]->parseContents;
-			}
-		}
 		packet_parse_s **batch;
 		volatile unsigned count;
 		volatile int used;
 		unsigned max_count;
-		batch_packet_parse_s *batchInPrevQueue;
 	};
 public:
 	PreProcessPacket(eTypePreProcessThread typePreProcessThread);
@@ -259,7 +246,7 @@ public:
 	}
 	inline void push_packet_2(packet_s *packetS, packet_parse_s *packetParseS = NULL,
 				  bool packetDelete = false, int forceSip = 0, bool disableLock = false,
-				  bool pushBatch = false, batch_packet_parse_s *batchInPrevQueue = NULL) {
+				  bool pushBatch = false) {
 	 
 		extern int opt_enable_ssl;
 		extern unsigned long preprocess_packet__last_cleanup;
@@ -319,6 +306,10 @@ public:
 			    sipportmatrix[packetS->source] || 
 			    sipportmatrix[packetS->dest]) &&
 			   check_sip20(packetS->data, packetS->datalen, NULL)) {
+				_parse_packet->parseContents = this->parseContentsStack[this->parseContentsStackPosition++];
+				if(this->parseContentsStackPosition == this->parseContentsStackLength) {
+					this->parseContentsStackPosition = 0;
+				}
 				_parse_packet->sipDataLen = _parse_packet->parseContents->parse(packetS->data, packetS->datalen, true);
 				_parse_packet->isSip = _parse_packet->parseContents->isSip();
 			} else {
@@ -358,7 +349,6 @@ public:
 		++qring_push_index_count;
 		if(qring_push_index_count == _batch_parse_packet->max_count || 
 		   pushBatch) {
-			_batch_parse_packet->batchInPrevQueue = batchInPrevQueue;
 			_batch_parse_packet->count = qring_push_index_count;
 			_batch_parse_packet->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
@@ -380,7 +370,6 @@ public:
 		}
 		if(qring_push_index && qring_push_index_count) {
 			batch_packet_parse_s *_batch_parse_packet = this->qring[qring_push_index - 1];
-			_batch_parse_packet->batchInPrevQueue = NULL;
 			_batch_parse_packet->count = qring_push_index_count;
 			_batch_parse_packet->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
@@ -445,6 +434,9 @@ private:
 	unsigned qring_push_index_count;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
+	ParsePacket::ppContentsX **parseContentsStack;
+	unsigned int parseContentsStackLength;
+	unsigned int parseContentsStackPosition;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2];
 	int outThreadId;
