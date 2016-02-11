@@ -3580,12 +3580,12 @@ void test() {
 	 
 	case 1: {
 	 
-		GroupsIP gip;
+		/*GroupsIP gip;
 		gip.load();
 		GroupIP *gr = gip.getGroup("192.168.3.5");
 		if(gr) {
 			cout << gr->getDescr() << endl;
-		}
+		}*/
 	 
 		void **testP = new void*[1000000];
 		
