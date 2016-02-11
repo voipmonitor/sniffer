@@ -7,10 +7,12 @@
 #include "heap_safe.h"
 #include "tools.h"
 #include "common.h"
+#include "heap_chunk.h"
 
 extern sVerbose sverb;
 
 unsigned int HeapSafeCheck = 0;
+unsigned int HeapChunk = 0;
 volatile u_int64_t memoryStat[10000];
 volatile u_int64_t memoryStatOther[10000];
 u_int32_t memoryStatLength = 0;
@@ -26,11 +28,17 @@ u_int16_t threadStackSize[65536];
 
 
 inline void *_heapsafe_alloc(size_t sizeOfObject) {
-	return(malloc(sizeOfObject));
+	return(HeapChunk ?
+		ChunkMAlloc(sizeOfObject) :
+		malloc(sizeOfObject));
 }
  
 inline void _heapsafe_free(void *pointerToObject) {
-	free(pointerToObject);
+	if(HeapChunk) {
+		ChunkFree(pointerToObject);
+	} else {
+		free(pointerToObject);
+	}
 }
 
 inline void *_heapsafe_realloc(void *pointerToObject, size_t sizeOfObject) {

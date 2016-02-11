@@ -1777,6 +1777,7 @@ void main_init_sqlstore();
 
 int main(int argc, char *argv[]) {
 	extern unsigned int HeapSafeCheck;
+	extern unsigned int HeapChunk;
 	bool memoryStatInArg = false;
 	bool memoryStatExInArg = false;
 	for(int i = 0; i < argc; i++) {
@@ -1788,6 +1789,9 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	for(int i = 0; i < argc; i++) {
+		if(strstr(argv[i], "heapchunk")) {
+			HeapChunk = true;
+		}
 		if(strstr(argv[i], "heapreserve")) {
 			HeapSafeCheck = _HeapSafeSafeReserve;
 		} else if(strstr(argv[i], "heapsafe")) {
@@ -2810,7 +2814,7 @@ void main_term_read() {
 	// flush all queues
 
 	Call *call;
-	calltable->cleanup(0);
+	calltable->cleanup(0); sleep(5);
 
 	set_terminating();
 
@@ -3410,7 +3414,7 @@ void test_pexec() {
 	cout << "exit code:" << exitCode << endl;
 }
 
-bool save_packet(const char *binaryPacketFile, const char *rsltPcapFile, int length) {
+bool save_packet(const char *binaryPacketFile, const char *rsltPcapFile, int length, time_t sec, suseconds_t usec) {
 	FILE *file = fopen(binaryPacketFile, "rb");
 	u_char *packet = new u_char[length];
 	if(file) {
@@ -3425,6 +3429,8 @@ bool save_packet(const char *binaryPacketFile, const char *rsltPcapFile, int len
 	memset(&header, 0, sizeof(header));
 	header.caplen = length;
 	header.len = length;
+	header.ts.tv_sec = sec;
+	header.ts.tv_usec = usec;
 	PcapDumper *dumper = new FILE_LINE PcapDumper(PcapDumper::na, NULL);
 	dumper->setEnableAsyncWrite(false);
 	dumper->setTypeCompress(FileZipHandler::compress_na);
@@ -3510,6 +3516,8 @@ void test_time_cache() {
 	cout << "-----------------" << endl;
 }
 
+#include "heap_chunk.h"
+
 void test() {
  
 	switch(opt_test) {
@@ -3571,7 +3579,41 @@ void test() {
 	} break;
 	 
 	case 1: {
-	  
+	 
+		GroupsIP gip;
+		gip.load();
+		GroupIP *gr = gip.getGroup("192.168.3.5");
+		if(gr) {
+			cout << gr->getDescr() << endl;
+		}
+	 
+		void **testP = new void*[1000000];
+		
+		for(int pass = 0; pass < 2; pass++) {
+	 
+			u_int64_t startTime = getTimeNS();
+		 
+			for(int i = 0; i < 100000; i++) {
+				testP[i] = pass == 0 ?
+					    ChunkMAlloc(10000) :
+					    malloc(10000);
+			}
+			for(int i = 0; i < 100000; i++) {
+				if(pass == 0) {
+					ChunkFree(testP[i]);
+				} else {
+					free(testP[i]);
+				}
+			}
+			
+			u_int64_t endTime = getTimeNS();
+			cout << endTime - startTime << endl;
+			
+		}
+		cout << "**" << endl;
+	 
+		break;
+  
 		test_time_cache();
 		//test_parsepacket();
 		break;
@@ -3655,12 +3697,13 @@ void test() {
 		if(pointToSepOptTest) {
 			param = split(pointToSepOptTest + 1, ',');
 		}
-		if(param.size() < 3) {
+		if(param.size() < 5) {
 			cout << "missing parameters" << endl
-			     << "example: -X9/packet.bin,packet.pcap,214" << endl
-			     << "description: -X9/binary source,output pcap file,length" << endl;
+			     << "example: -X9/packet.bin,packet.pcap,214,4655546,54565" << endl
+			     << "description: -X9/binary source,output pcap file,length,sec,usec" << endl;
 		} else {
-			save_packet(param[0].c_str(), param[1].c_str(), atoi(param[2].c_str()));
+			save_packet(param[0].c_str(), param[1].c_str(), atoi(param[2].c_str()),
+				    atoi(param[3].c_str()), atoi(param[4].c_str()));
 		}
 	} break;
 	case 10:
