@@ -384,6 +384,7 @@ Call::hashRemove() {
 		if(opt_rtcp) {
 			ct->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port + 1, true);
 		}
+		this->evDestroyIpPortRtpStream(i);
 	}
 	
 	if(this->hash_counter) {
@@ -500,6 +501,26 @@ Call::_addtofilesqueue(string file, string column, string dirnamesqlfiles, long 
 	myfile.close();
 		
 	sqlStore->unlock(STORE_PROC_ID_CLEANSPOOL);
+}
+
+void 
+Call::evStartRtpStream(int index_ip_port, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time) {
+	/*cout << "start rtp stream : "
+	     << inet_ntostring(htonl(saddr)) << ":" << sport << " -> " 
+	     << inet_ntostring(htonl(daddr)) << ":" << dport << endl;*/
+	if(opt_enable_fraud) {
+		fraudBeginRtpStream(saddr, sport, daddr, dport, this, time);
+	}
+}
+
+void 
+Call::evEndRtpStream(int index_ip_port, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time) {
+	/*cout << "stop rtp stream : "
+	     << inet_ntostring(htonl(saddr)) << ":" << sport << " -> " 
+	     << inet_ntostring(htonl(daddr)) << ":" << dport << endl;*/
+	if(opt_enable_fraud) {
+		fraudEndRtpStream(saddr, sport, daddr, dport, this, time);
+	}
 }
 
 void
@@ -698,6 +719,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 	} else {
 		memset(this->ip_port[ipport_n].sessid, 0, MAXLEN_SDP_SESSID);
 	}
+	nullIpPortInfoRtpStream(ipport_n);
 	
 	memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
 	ipport_n++;
@@ -763,8 +785,12 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 					}
 				}
 				//cout << "change ip/port for sessid " << sessid << " ip:" << inet_ntostring(htonl(addr)) << "/" << inet_ntostring(htonl(this->ip_port[sessidIndex].addr)) << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
-				this->ip_port[sessidIndex].addr = addr;
-				this->ip_port[sessidIndex].port = port;
+				if(this->ip_port[sessidIndex].addr != addr ||
+				   this->ip_port[sessidIndex].port != port) {
+					evDestroyIpPortRtpStream(sessidIndex);
+					this->ip_port[sessidIndex].addr = addr;
+					this->ip_port[sessidIndex].port = port;
+				}
 				this->ip_port[sessidIndex].iscaller = iscaller;
 			}
 			this->refresh_data_ip_port(addr, port, iscaller, rtpmap, sdp_flags);
@@ -857,7 +883,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 
 /* analyze rtp packet */
 void
-Call::read_rtp(packet_s *packetS, int iscaller, char enable_save_packet, char *ifname) {
+Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_save_packet, char *ifname) {
  
 	extern int opt_vlan_siprtpsame;
 	if(opt_vlan_siprtpsame && this->vlan >= 0) {
@@ -965,6 +991,10 @@ Call::read_rtp(packet_s *packetS, int iscaller, char enable_save_packet, char *i
 					}
 					if(rtp[i]->codec == PAYLOAD_TELEVENT) {
 read:
+						if(rtp[i]->index_call_ip_port >= 0) {
+							evProcessRtpStream(rtp[i]->index_call_ip_port, rtp[i]->index_call_ip_port_by_dest,
+									   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header.ts.tv_sec);
+						}
 						rtp[i]->read((u_char*)packetS->data, packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id, ifname);
 						if(rtp[i]->iscaller) {
 							lastcallerrtp = rtp[i];
@@ -1038,17 +1068,22 @@ read:
 		snprintf(rtp[ssrc_n]->basefilename, 1023, "%s/%s/%s.i%d", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), !iscaller);
 		rtp[ssrc_n]->basefilename[1023] = 0;
 
+		rtp[ssrc_n]->index_call_ip_port = get_index_by_ip_port(find_by_dest ? packetS->daddr : packetS->saddr, find_by_dest ? packetS->dest : packetS->source);
+		if(rtp[ssrc_n]->index_call_ip_port >= 0) {
+			rtp[ssrc_n]->index_call_ip_port_by_dest = find_by_dest;
+			evProcessRtpStream(rtp[ssrc_n]->index_call_ip_port, rtp[ssrc_n]->index_call_ip_port_by_dest, 
+					   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header.ts.tv_sec);
+		}
 		if(RTPMAP_BY_CALLERD) {
 			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[isFillRtpMap(iscaller) ? iscaller : !iscaller], MAX_RTPMAP * sizeof(int));
 		} else {
-			int i = get_index_by_ip_port(packetS->saddr, packetS->source);
-			if(i >= 0 && isFillRtpMap(i)) {
-				memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
+			if(rtp[ssrc_n]->index_call_ip_port >= 0 && isFillRtpMap(rtp[ssrc_n]->index_call_ip_port)) {
+				memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[rtp[ssrc_n]->index_call_ip_port], MAX_RTPMAP * sizeof(int));
 			} else {
 				for(int j = 0; j < 2; j++) {
-					i = getFillRtpMapByCallerd(j ? !iscaller : iscaller);
-					if(i >= 0) {
-						memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[i], MAX_RTPMAP * sizeof(int));
+					int index_ip_port_first_for_callerd = getFillRtpMapByCallerd(j ? !iscaller : iscaller);
+					if(index_ip_port_first_for_callerd >= 0) {
+						memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[index_ip_port_first_for_callerd], MAX_RTPMAP * sizeof(int));
 						break;
 					}
 				}

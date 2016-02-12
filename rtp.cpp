@@ -314,6 +314,8 @@ RTP::RTP(int sensor_id)
 	dscp = 0;
 	
 	this->sensor_id = sensor_id;
+	this->index_call_ip_port = -1;
+	this->index_call_ip_port_by_dest = false;
 	
 	this->_last_ts.tv_sec = 0;
 	this->_last_ts.tv_usec = 0;

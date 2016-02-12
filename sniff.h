@@ -112,6 +112,7 @@ typedef struct {
 	Call *call;
 	packet_s packet;
 	char iscaller;
+	char find_by_dest;
 	char is_rtcp;
 	char save_packet;
 } rtp_packet_pcap_queue;

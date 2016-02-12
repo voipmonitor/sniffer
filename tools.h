@@ -99,6 +99,29 @@ struct d_u_int32_t
 	u_int32_t val[2];
 };
 
+template <class type_item>
+struct d_item
+{
+	d_item() {
+	}
+	d_item(type_item item1, type_item item2) {
+		items[0] = item1;
+		items[1] = item2;
+	}
+	d_item operator [] (int indexItem) {
+		return(items[indexItem]);
+	}
+	bool operator == (const d_item<type_item>& other) const { 
+		return(this->items[0] == other.items[0] &&
+		       this->items[1] == other.items[1]); 
+	}
+	bool operator < (const d_item<type_item>& other) const { 
+		return(this->items[0] < other.items[0] ||
+		       (this->items[0] == other.items[0] && this->items[1] < other.items[1])); 
+	}
+	u_int32_t items[2];
+};
+
 template <class type_atomic>
 class vm_atomic {
 public:
@@ -381,8 +404,57 @@ struct ip_port
 	operator int() {
 		return(ip.length() && port);
 	}
+	bool operator == (const ip_port& other) const { 
+		return(this->ip == other.ip &&
+		       this->port == other.port); 
+	}
+	bool operator < (const ip_port& other) const { 
+		return(this->ip < other.ip ||
+		       (this->ip == other.ip && this->port < other.port)); 
+	}
 	std::string ip;
 	int port;
+};
+
+struct ipn_port
+{
+	ipn_port() {
+		ip = 0;
+		port = 0;
+	}
+	ipn_port(u_int32_t ip, u_int16_t port) {
+		this->ip = ip;
+		this->port = port;
+	}
+	void set_ip(u_int32_t ip) {
+		this->ip = ip;
+	}
+	void set_port(u_int16_t port) {
+		this->port = port;
+	}
+	u_int32_t get_ip() {
+		return(ip);
+	}
+	u_int16_t get_port() {
+		return(port);
+	}
+	void clear() {
+		ip = 0;
+		port = 0;
+	}
+	operator int() {
+		return(ip && port);
+	}
+	bool operator == (const ipn_port& other) const { 
+		return(this->ip == other.ip &&
+		       this->port == other.port); 
+	}
+	bool operator < (const ipn_port& other) const { 
+		return(this->ip < other.ip ||
+		       (this->ip == other.ip && this->port < other.port)); 
+	}
+	u_int32_t ip;
+	u_int16_t port;
 };
 
 inline u_long getTimeS(pcap_pkthdr* header = NULL) {
@@ -1014,6 +1086,9 @@ public:
 	IP(uint ip, uint mask_length = 32) {
 		this->ip = ip;
 		this->mask_length = mask_length;
+		if(mask_length > 0 && mask_length < 32) {
+			this->ip = this->ip & (0xFFFFFFFF << (32 - mask_length));
+		}
 	}
 	IP(const char *ip) {
 		char *maskSeparator =(char*)strchr(ip, '/');
@@ -1023,17 +1098,18 @@ public:
 			in_addr ips;
 			inet_aton(ip, &ips);
 			this->ip = htonl(ips.s_addr);
+			if(mask_length > 0 && mask_length < 32) {
+				 this->ip = this->ip & (0xFFFFFFFF << (32 - mask_length));
+			}
 			*maskSeparator = '/';
 		} else {
 			in_addr ips;
 			inet_aton(ip, &ips);
 			this->ip = htonl(ips.s_addr);
 			mask_length = 32;
-			for(int i = 0; i < 32; i++) {
-				if(this->ip == this->ip >> i << i) {
+			for(int i = 8; i <= 24; i += 8) {
+				if(this->ip == (this->ip & (0xFFFFFFFF << i))) {
 					mask_length = 32 - i;
-				} else {
-					break;
 				}
 			}
 		}
@@ -1050,9 +1126,15 @@ public:
 		inet_aton(check_ip, &ips);
 		return(checkIP(htonl(ips.s_addr)));
 	}
+	bool isNet() {
+		return(mask_length > 0 && mask_length < 32);
+	}
+	bool operator < (const IP &ip) const {
+		return(this->ip < ip.ip);
+	}
 public:
-	uint ip;
-	uint mask_length;
+	u_int32_t ip;
+	u_int16_t mask_length;
 };
 
 class PhoneNumber {
@@ -1068,6 +1150,12 @@ public:
 		} else {
 			return(check_number == number);
 		}
+	}
+	bool isPrefix() {
+		return(prefix);
+	}
+	bool operator < (const PhoneNumber &phoneNumber) const {
+		return(this->number < phoneNumber.number);
 	}
 public:
 	std::string number;
@@ -1124,15 +1212,27 @@ public:
 	ListIP(bool autoLock = true) {
 		this->autoLock = autoLock;
 		_sync = 0;
+		_listIP_sorted = 0;
+		_listNet_sorted = 0;
 	}
 	void add(uint ip, uint mask_length = 32) {
 		if(autoLock) lock();
-		listIP.push_back(IP(ip, mask_length));
+		IP _ip(ip, mask_length);
+		if(!_ip.isNet()) {
+			listIP.push_back(_ip);
+		} else {
+			listNet.push_back(_ip);
+		}
 		if(autoLock) unlock();
 	}
 	void add(const char *ip) {
 		if(autoLock) lock();
-		listIP.push_back(IP(ip));
+		IP _ip(ip);
+		if(!_ip.isNet()) {
+			listIP.push_back(_ip);
+		} else {
+			listNet.push_back(_ip);
+		}
 		if(autoLock) unlock();
 	}
 	void addComb(string &ip, ListIP *negList = NULL);
@@ -1140,10 +1240,29 @@ public:
 	bool checkIP(uint check_ip) {
 		bool rslt =  false;
 		if(autoLock) lock();
-		for(size_t i = 0; i < listIP.size(); i++) {
-			if(listIP[i].checkIP(check_ip)) {
+		if(listIP.size()) {
+			if(!_listIP_sorted) {
+				std::sort(listIP.begin(), listIP.end());
+			}
+			std::vector<IP>::iterator it_ip = std::lower_bound(listIP.begin(), listIP.end(), IP(check_ip));
+			if(it_ip != listIP.end() && it_ip->checkIP(check_ip)) {
 				rslt = true;
-				break;
+			}
+		}
+		if(!rslt && listNet.size()) {
+			if(!_listNet_sorted) {
+				std::sort(listNet.begin(), listNet.end());
+			}
+			std::vector<IP>::iterator it_net = std::lower_bound(listNet.begin(), listNet.end(), IP(check_ip));
+			while(it_net != listNet.begin()) {
+				--it_net;
+				if(!(it_net->ip & check_ip)) {
+					break;
+				}
+				if(it_net->checkIP(check_ip)) {
+					rslt = true;
+					break;
+				}
 			}
 		}
 		if(autoLock) unlock();
@@ -1157,10 +1276,11 @@ public:
 	void clear() {
 		if(autoLock) lock();
 		listIP.clear();
+		listNet.clear();
 		if(autoLock) unlock();
 	}
-	size_t size() {
-		return(listIP.size());
+	size_t is_empty() {
+		return(!listIP.size() && !listNet.size());
 	}
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
@@ -1170,8 +1290,47 @@ public:
 	}
 private:
 	std::vector<IP> listIP;
+	std::vector<IP> listNet;
 	bool autoLock;
 	volatile int _sync;
+	volatile int _listIP_sorted;
+	volatile int _listNet_sorted;
+friend class GroupsIP;
+};
+
+class GroupIP {
+public:
+	GroupIP();
+	GroupIP(unsigned id, const char *descr, const char *ip);
+	unsigned getId() {
+		return(id);
+	}
+	const char *getDescr() {
+		return(descr.c_str());
+	}
+private:
+	unsigned id;
+	string descr;
+	ListIP white;
+	ListIP black;
+friend class GroupsIP;
+};
+
+class GroupsIP {
+public:
+	GroupsIP();
+	~GroupsIP();
+	void load();
+	GroupIP *getGroup(uint ip);
+	GroupIP *getGroup(const char *ip) {
+		in_addr ips;
+		inet_aton(ip, &ips);
+		return(getGroup(htonl(ips.s_addr)));
+	}
+private:
+	map<unsigned, GroupIP*> groups;
+	std::map<IP, unsigned> listIP;
+	std::map<IP, unsigned> listNet;
 };
 
 class ListPhoneNumber {
@@ -1179,10 +1338,16 @@ public:
 	ListPhoneNumber(bool autoLock = true) {
 		this->autoLock = autoLock;
 		_sync = 0;
+		_listPhoneNumber_sorted = 0;
+		_listPrefixes_sorted = 0;
 	}
 	void add(const char *number, bool prefix = true) {
 		if(autoLock) lock();
-		listPhoneNumber.push_back(PhoneNumber(number, prefix));
+		if(!prefix) {
+			listPhoneNumber.push_back(PhoneNumber(number, false));
+		} else {
+			listPrefixes.push_back(PhoneNumber(number, true));
+		}
 		if(autoLock) unlock();
 	}
 	void addComb(string &number, ListPhoneNumber *negList = NULL);
@@ -1190,10 +1355,27 @@ public:
 	bool checkNumber(const char *check_number) {
 		bool rslt =  false;
 		if(autoLock) lock();
-		for(size_t i = 0; i < listPhoneNumber.size(); i++) {
-			if(listPhoneNumber[i].checkNumber(check_number)) {
+		if(listPhoneNumber.size()) {
+			if(!_listPhoneNumber_sorted) {
+				std::sort(listPhoneNumber.begin(), listPhoneNumber.end());
+			}
+			std::vector<PhoneNumber>::iterator it_number = std::lower_bound(listPhoneNumber.begin(), listPhoneNumber.end(), PhoneNumber(check_number, false));
+			if(it_number != listPhoneNumber.end() && it_number->checkNumber(check_number)) {
 				rslt = true;
-				break;
+			}
+		}
+		if(!rslt && listPrefixes.size()) {
+			if(!_listPrefixes_sorted) {
+				std::sort (listPrefixes.begin(), listPrefixes.end());
+			}
+			std::vector<PhoneNumber>::iterator it_prefix = std::lower_bound(listPrefixes.begin(), listPrefixes.end(), PhoneNumber(check_number, false));
+			if(it_prefix != listPrefixes.end() && it_prefix->checkNumber(check_number)) {
+				rslt = true;
+			} else if(it_prefix != listPrefixes.begin()) {
+				--it_prefix;
+				if(it_prefix->checkNumber(check_number)) {
+					rslt = true;
+				}
 			}
 		}
 		if(autoLock) unlock();
@@ -1202,10 +1384,11 @@ public:
 	void clear() {
 		if(autoLock) lock();
 		listPhoneNumber.clear();
+		listPrefixes.clear();
 		if(autoLock) unlock();
 	}
-	size_t size() {
-		return(listPhoneNumber.size());
+	size_t is_empty() {
+		return(!listPhoneNumber.size() && !listPrefixes.size());
 	}
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
@@ -1215,8 +1398,11 @@ public:
 	}
 private:
 	std::vector<PhoneNumber> listPhoneNumber;
+	std::vector<PhoneNumber> listPrefixes;
 	bool autoLock;
 	volatile int _sync;
+	volatile int _listPhoneNumber_sorted;
+	volatile int _listPrefixes_sorted;
 };
 
 class ListUA {
@@ -1272,7 +1458,7 @@ public:
 	void addBlack(string &ip);
 	void addBlack(const char *ip);
 	bool checkIP(uint check_ip) {
-		return((!white.size() || white.checkIP(check_ip)) &&
+		return((white.is_empty() || white.checkIP(check_ip)) &&
 		       !black.checkIP(check_ip));
 	}
 	bool checkIP(const char *check_ip) {
@@ -1293,7 +1479,7 @@ public:
 	void addBlack(string &number);
 	void addBlack(const char *number);
 	bool checkNumber(const char *check_number) {
-		return((!white.size() || white.checkNumber(check_number)) &&
+		return((white.is_empty() || white.checkNumber(check_number)) &&
 		       !black.checkNumber(check_number));
 	}
 private:

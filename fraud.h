@@ -424,7 +424,24 @@ private:
 	u_int64_t last_cleanup_at;
 };
 
-struct sFraudCallInfo {
+struct sFraudNumberInfo {
+	sFraudNumberInfo() {
+		local_called_number = true;
+	}
+	string caller_number;
+	string called_number;
+	string country_code_caller_number;
+	string country2_code_caller_number;
+	string country_code_called_number;
+	string country2_code_called_number;
+	string continent_code_caller_number;
+	string continent2_code_caller_number;
+	string continent_code_called_number;
+	string continent2_code_called_number;
+	bool local_called_number;
+};
+
+struct sFraudCallInfo : public sFraudNumberInfo {
 	enum eTypeCallInfo {
 		typeCallInfo_beginCall,
 		typeCallInfo_connectCall,
@@ -441,35 +458,53 @@ struct sFraudCallInfo {
 		at_seen_bye = 0;
 		at_end = 0;
 		at_last = 0;
-		local_called_number = true;
 		local_called_ip = true;
 	}
 	eTypeCallInfo typeCallInfo;
 	int call_type;
 	string callid;
-	string caller_number;
-	string called_number;
 	u_int32_t caller_ip;
 	u_int32_t called_ip;
-	string country_code_caller_number;
-	string country2_code_caller_number;
-	string country_code_called_number;
-	string country2_code_called_number;
-	string continent_code_caller_number;
-	string continent2_code_caller_number;
-	string continent_code_called_number;
-	string continent2_code_called_number;
 	string country_code_caller_ip;
 	string country_code_called_ip;
 	string continent_code_caller_ip;
 	string continent_code_called_ip;
-	bool local_called_number;
 	bool local_called_ip;
 	u_int64_t at_begin;
 	u_int64_t at_connect;
 	u_int64_t at_seen_bye;
 	u_int64_t at_end;
 	u_int64_t at_last;
+};
+
+struct sFraudRtpStreamInfo : public sFraudNumberInfo {
+	enum eTypeRtpStreamInfo {
+		typeRtpStreamInfo_beginStream,
+		typeRtpStreamInfo_endStream
+	};
+	sFraudRtpStreamInfo() {
+		rtp_src_ip = 0;
+		rtp_src_ip_group = 0;
+		rtp_src_port = 0;
+		rtp_dst_ip = 0;
+		rtp_dst_ip_group = 0;
+		rtp_dst_port = 0;
+		local_called_number = true;
+		at = 0;
+	}
+	eTypeRtpStreamInfo typeRtpStreamInfo;
+	string callid;
+	u_int32_t rtp_src_ip;
+	u_int32_t rtp_src_ip_group;
+	u_int16_t rtp_src_port;
+	u_int32_t rtp_dst_ip;
+	u_int32_t rtp_dst_ip_group;
+	u_int16_t rtp_dst_port;
+	string country_code_rtp_src_ip;
+	string country_code_rtp_dst_ip;
+	string continent_code_rtp_src_ip;
+	string continent_code_rtp_dst_ip;
+	u_int64_t at;
 };
 
 struct sFraudEventInfo {
@@ -524,7 +559,9 @@ public:
 	enum eTypeBy {
 		_typeBy_NA,
 		_typeBy_source_ip,
-		_typeBy_source_number
+		_typeBy_source_number,
+		_typeBy_rtp_stream_ip,
+		_typeBy_rtp_stream_ip_group
 	};
 	enum eLocalInternational {
 		_li_local,
@@ -546,14 +583,22 @@ public:
 		return(dbId);
 	}
 	virtual void evCall(sFraudCallInfo *callInfo) {}
+	virtual void evRtpStream(sFraudRtpStreamInfo *rtpStreamInfo) {}
 	virtual void evEvent(sFraudEventInfo *eventInfo) {}
 	virtual bool okFilter(sFraudCallInfo *callInfo);
+	virtual bool okFilter(sFraudRtpStreamInfo *rtpStreamInfo);
 	virtual bool okFilter(sFraudEventInfo *eventInfo);
 	virtual bool okDayHour(sFraudCallInfo *callInfo) {
 		if(!callInfo->at_last) {
 			return(true);
 		}
 		return(this->okDayHour(callInfo->at_last / 1000000ull));
+	}
+	virtual bool okDayHour(sFraudRtpStreamInfo *rtpStreamInfo) {
+		if(!rtpStreamInfo->at) {
+			return(true);
+		}
+		return(this->okDayHour(rtpStreamInfo->at / 1000000ull));
 	}
 	virtual bool okDayHour(sFraudEventInfo *eventInfo) {
 		if(!eventInfo->at) {
@@ -630,6 +675,47 @@ private:
 friend class FraudAlert_rcc_base;
 };
 
+class FraudAlert_rcc_rtpStreamInfo {
+public: 
+	struct str_dipn_port {
+		str_dipn_port(string str, u_int32_t ip1, u_int16_t port1, u_int32_t ip2, u_int16_t port2) {
+			this->str = str;
+			this->dipn_port = d_item<ipn_port>(ipn_port(ip1, port1), ipn_port(ip2, port2));
+		}
+		bool operator == (const str_dipn_port& other) const { 
+			return(this->str == other.str &&
+			       this->dipn_port == other.dipn_port); 
+		}
+		bool operator < (const str_dipn_port& other) const { 
+			return(this->str < other.str ||
+			       (this->str == other.str && this->dipn_port < other.dipn_port)); 
+		}
+		string str;
+		d_item<ipn_port> dipn_port;
+	};
+public:
+	FraudAlert_rcc_rtpStreamInfo();
+	void addLocal(const char *callid, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, u_int64_t at) {
+		calls_local[str_dipn_port(callid, saddr, sport, daddr, dport)] = at;
+	}
+	void removeLocal(const char *callid, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport) {
+		calls_local.erase(str_dipn_port(callid, saddr, sport, daddr, dport));
+	}
+	void addInternational(const char *callid, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, u_int64_t at) {
+		calls_international[str_dipn_port(callid, saddr, sport, daddr, dport)] = at;
+	}
+	void removeInternational(const char *callid, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport) {
+		calls_international.erase(str_dipn_port(callid, saddr, sport, daddr, dport));
+	}
+private:
+	map<str_dipn_port, u_int64_t> calls_local;
+	map<str_dipn_port, u_int64_t> calls_international;
+	u_int64_t last_alert_info_local;
+	u_int64_t last_alert_info_international;
+	u_int64_t last_alert_info_li;
+friend class FraudAlert_rcc_base;
+};
+
 class FraudAlert_rcc_base {
 private:
 	struct sAlertInfo {
@@ -640,15 +726,46 @@ private:
 		size_t concurentCalls;
 		u_int64_t at;
 	};
+	struct sIdAlert {
+		sIdAlert(u_int32_t ip = 0) {
+			this->ip = ip;
+		}
+		sIdAlert(const char *number) {
+			this->number = number;
+			this->ip = 0;
+		}
+		sIdAlert(d_u_int32_t rtp_stream) {
+			this->rtp_stream = rtp_stream;
+			this->ip = 0;
+		}
+		bool operator == (const sIdAlert& other) const { 
+			return(this->ip ?
+				this->ip == other.ip :
+			       !this->number.empty() ?
+				this->number == other.number : 
+				this->rtp_stream == other.rtp_stream); 
+		}
+		bool operator < (const sIdAlert& other) const { 
+			return(this->ip ?
+				this->ip < other.ip :
+			       !this->number.empty() ?
+				this->number < other.number : 
+				this->rtp_stream < other.rtp_stream); 
+		}
+		u_int32_t ip;
+		string number;
+		d_u_int32_t rtp_stream;
+	};
 public:
 	FraudAlert_rcc_base(class FraudAlert_rcc *parent);
 	~FraudAlert_rcc_base();
 	void evCall_rcc(sFraudCallInfo *callInfo, class FraudAlert_rcc *alert, bool timeperiod);
+	void evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, class FraudAlert_rcc *alert, bool timeperiod);
 protected:
 	virtual bool checkTime(u_int64_t time) { return(true); }
 	virtual string getDescr() { return(""); }
 private:
-	bool checkOkAlert(u_int32_t ip, size_t concurentCalls, u_int64_t at,
+	bool checkOkAlert(sIdAlert idAlert, size_t concurentCalls, u_int64_t at,
 			  FraudAlert::eLocalInternational li,
 			  FraudAlert_rcc *alert);
 protected:
@@ -657,10 +774,11 @@ protected:
 	unsigned int concurentCallsLimitBoth_tp;
 	map<u_int32_t, FraudAlert_rcc_callInfo*> calls_by_ip;
 	map<string, FraudAlert_rcc_callInfo*> calls_by_number;
+	map<d_u_int32_t, FraudAlert_rcc_rtpStreamInfo*> calls_by_rtp_stream;
 private:
-	map<u_int32_t, sAlertInfo> alerts_local;
-	map<u_int32_t, sAlertInfo> alerts_international;
-	map<u_int32_t, sAlertInfo> alerts_booth;
+	map<sIdAlert, sAlertInfo> alerts_local;
+	map<sIdAlert, sAlertInfo> alerts_international;
+	map<sIdAlert, sAlertInfo> alerts_booth;
 	FraudAlert_rcc *parent;
 };
 
@@ -735,6 +853,7 @@ class FraudAlert_rcc : public FraudAlert, FraudAlert_rcc_base {
 public:
 	FraudAlert_rcc(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
+	void evRtpStream(sFraudRtpStreamInfo *rtpStreamInfo);
 protected:
 	void addFraudDef(SqlDb_row *row);
 	bool defFilterIp() { return(true); }
@@ -975,6 +1094,10 @@ public:
 	void connectCall(Call *call, u_int64_t at);
 	void seenByeCall(Call *call, u_int64_t at);
 	void endCall(Call *call, u_int64_t at);
+	void beginRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+			    Call *call, u_int64_t at);
+	void endRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+			  Call *call, u_int64_t at);
 	void evSipPacket(u_int32_t ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len);
 	void evRegister(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
 	void evRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
@@ -989,9 +1112,12 @@ public:
 private:
 	void initPopCallInfoThread();
 	void popCallInfoThread();
-	void getCallInfoFromCall(sFraudCallInfo *callInfo, Call *call, 
-				 sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at);
+	void completeCallInfo(sFraudCallInfo *callInfo, Call *call, 
+			      sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at);
+	void completeRtpStreamInfo(sFraudRtpStreamInfo *rtpStreamInfo, Call *call);
+	void completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, CheckInternational *checkInternational);
 	void completeCallInfo_country_code(sFraudCallInfo *callInfo, CheckInternational *checkInternational);
+	void completeRtpStreamInfo_country_code(sFraudRtpStreamInfo *rtpStreamInfo, CheckInternational *checkInternational);
 	void lock_alerts() {
 		while(__sync_lock_test_and_set(&this->_sync_alerts, 1));
 	}
@@ -1001,6 +1127,7 @@ private:
 private:
 	vector<FraudAlert*> alerts;
 	SafeAsyncQueue<sFraudCallInfo> callQueue;
+	SafeAsyncQueue<sFraudRtpStreamInfo> rtpStreamQueue;
 	SafeAsyncQueue<sFraudEventInfo> eventQueue;
 	pthread_t threadPopCallInfo;
 	bool runPopCallInfoThread;
@@ -1019,6 +1146,10 @@ void fraudBeginCall(Call *call, struct timeval tv);
 void fraudConnectCall(Call *call, struct timeval tv);
 void fraudSeenByeCall(Call *call, struct timeval tv);
 void fraudEndCall(Call *call, struct timeval tv);
+void fraudBeginRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+			 Call *call, time_t time);
+void fraudEndRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+		       Call *call, time_t time);
 void fraudSipPacket(u_int32_t ip, unsigned sip_method, timeval tv, const char *ua, int ua_len);
 void fraudRegister(u_int32_t ip, timeval tv, const char *ua, int ua_len);
 void fraudRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);

@@ -7,7 +7,10 @@
 #include "heap_safe.h"
 #include "tools.h"
 #include "common.h"
+
+#ifdef HEAP_CHUNK_ENABLE
 #include "heap_chunk.h"
+#endif
 
 extern sVerbose sverb;
 
@@ -28,15 +31,20 @@ u_int16_t threadStackSize[65536];
 
 
 inline void *_heapsafe_alloc(size_t sizeOfObject) {
-	return(HeapChunk ?
-		ChunkMAlloc(sizeOfObject) :
+	return(
+	#ifdef HEAP_CHUNK_ENABLE
+		HeapChunk ? ChunkMAlloc(sizeOfObject) :
+	#endif
 		malloc(sizeOfObject));
 }
  
 inline void _heapsafe_free(void *pointerToObject) {
+	#ifdef HEAP_CHUNK_ENABLE
 	if(HeapChunk) {
 		ChunkFree(pointerToObject);
-	} else {
+	} else
+	#endif
+	{
 		free(pointerToObject);
 	}
 }

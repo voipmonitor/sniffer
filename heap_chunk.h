@@ -1,6 +1,7 @@
 #ifndef HEAP_CHUNK_H
 #define HEAP_CHUNK_H
 
+#ifdef HEAP_CHUNK_ENABLE
 
 class cLocalHeap
  { protected:
@@ -79,6 +80,7 @@ class cChunkAllocHeap
     cChunkAllocHeapItem AllocHeapItems[MAX_CHUNK_ALLOC_ITEMS];
     int CountActiveAllocHeapItems;
  };
-
+ 
+#endif //HEAP_CHUNK_ENABLE
 
 #endif //HEAP_CHUNK_H

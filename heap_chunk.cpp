@@ -2,6 +2,8 @@
 #include <syslog.h>
 #include <algorithm> 
 
+#ifdef HEAP_CHUNK_ENABLE
+
 #include "heap_chunk.h"
 
 
@@ -360,3 +362,5 @@ bool cChunkAllocHeap::Check()
      return(false);
    return(true);
  }
+
+#endif //HEAP_CHUNK_ENABLE

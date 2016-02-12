@@ -1445,7 +1445,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 
 inline
 void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
-			     int iscaller, int is_rtcp, int enable_save_packet, int preSyncRtp) {
+			     int iscaller, bool find_by_dest, int is_rtcp, int enable_save_packet, int preSyncRtp) {
 	if(is_terminating()) {
 		return;
 	}
@@ -1477,6 +1477,7 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 		rtpp_pq.call = call;
 		rtpp_pq.packet = *packetS;
 		rtpp_pq.iscaller = iscaller;
+		rtpp_pq.find_by_dest = find_by_dest;
 		rtpp_pq.is_rtcp = is_rtcp;
 		rtpp_pq.save_packet = enable_save_packet;
 		if(params->rtpp_queue_quick) {
@@ -1493,6 +1494,7 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 		rtpp_pq->call = call;
 		rtpp_pq->packet = *packetS;
 		rtpp_pq->iscaller = iscaller;
+		rtpp_pq->find_by_dest = find_by_dest;
 		rtpp_pq->is_rtcp = is_rtcp;
 		rtpp_pq->save_packet = enable_save_packet;
 		params->rtpp_queue->unlock();
@@ -1563,7 +1565,7 @@ void *rtp_read_thread_func(void *arg) {
 		if(rtpp_pq.is_rtcp) {
 			rtpp_pq.call->read_rtcp(&rtpp_pq.packet, rtpp_pq.iscaller, rtpp_pq.save_packet);
 		}  else {
-			rtpp_pq.call->read_rtp(&rtpp_pq.packet, rtpp_pq.iscaller, rtpp_pq.save_packet, 
+			rtpp_pq.call->read_rtp(&rtpp_pq.packet, rtpp_pq.iscaller, rtpp_pq.find_by_dest, rtpp_pq.save_packet, 
 					       rtpp_pq.packet.block_store && rtpp_pq.packet.block_store->ifname[0] ? rtpp_pq.packet.block_store->ifname : NULL);
 		}
 		rtpp_pq.call->set_last_packet_time(rtpp_pq.packet.header.ts.tv_sec);
@@ -3730,7 +3732,7 @@ rtpcheck:
 			if(is_rtcp) {
 				if(rtp_threaded && can_thread) {
 					add_to_rtp_thread_queue(call, packetS, 
-								iscaller, is_rtcp, enable_save_rtcp(call), false);
+								iscaller, true, is_rtcp, enable_save_rtcp(call), false);
 				} else {
 					call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 				}
@@ -3740,9 +3742,9 @@ rtpcheck:
 			*was_rtp = 1;
 			if(rtp_threaded && can_thread) {
 				add_to_rtp_thread_queue(call, packetS, 
-							iscaller, is_rtcp, enable_save_rtp(call), false);
+							iscaller, true, is_rtcp, enable_save_rtp(call), false);
 			} else {
-				call->read_rtp(packetS, iscaller, enable_save_rtp(call),
+				call->read_rtp(packetS, iscaller, true, enable_save_rtp(call),
 					       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 				call->set_last_packet_time(packetS->header.ts.tv_sec);
 			}
@@ -3797,7 +3799,7 @@ rtpcheck:
 			if(is_rtcp) {
 				if(rtp_threaded && can_thread) {
 					add_to_rtp_thread_queue(call, packetS, 
-								!iscaller, is_rtcp, enable_save_rtcp(call), false);
+								!iscaller, false, is_rtcp, enable_save_rtcp(call), false);
 				} else {
 					call->read_rtcp(packetS, !iscaller, enable_save_rtcp(call));
 				}
@@ -3808,9 +3810,9 @@ rtpcheck:
 			*was_rtp = 1;
 			if(rtp_threaded && can_thread) {
 				add_to_rtp_thread_queue(call, packetS, 
-							!iscaller, is_rtcp, enable_save_rtp(call), false);
+							!iscaller, false, is_rtcp, enable_save_rtp(call), false);
 			} else {
-				call->read_rtp(packetS, !iscaller, enable_save_rtp(call), 
+				call->read_rtp(packetS, !iscaller, false, enable_save_rtp(call), 
 					       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 				call->set_last_packet_time(packetS->header.ts.tv_sec);
 			}
@@ -4755,7 +4757,7 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		if(is_rtcp) {
 			if(rtp_threaded && can_thread) {
 				add_to_rtp_thread_queue(call, packetS,
-							iscaller, is_rtcp, enable_save_rtcp(call), preSyncRtp);
+							iscaller, find_by_dest, is_rtcp, enable_save_rtcp(call), preSyncRtp);
 				call_info[call_info_index].use_sync = true;
 			} else {
 				call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
@@ -4769,10 +4771,10 @@ Call *process_packet__rtp(ProcessRtpPacket::rtp_call_info *call_info,size_t call
 		}
 		if(rtp_threaded && can_thread) {
 			add_to_rtp_thread_queue(call, packetS, 
-						iscaller, is_rtcp, enable_save_rtp(call), preSyncRtp);
+						iscaller, find_by_dest, is_rtcp, enable_save_rtp(call), preSyncRtp);
 			call_info[call_info_index].use_sync = true;
 		} else {
-			call->read_rtp(packetS, iscaller, enable_save_rtp(call), 
+			call->read_rtp(packetS, iscaller, find_by_dest, enable_save_rtp(call), 
 				       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 			call->set_last_packet_time(packetS->header.ts.tv_sec);
 		}
@@ -6115,7 +6117,9 @@ void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
 		parse_packet->call_created = new_invite_register(&parse_packet->packet, parse_packet->parseContents,
 								 parse_packet->sip_method, (char*)parse_packet->callid.c_str(), &parse_packet->detectUserAgent,
 								 true);
-		parse_packet->call_created->in_preprocess_queue_before_process_packet_at = parse_packet->packet.header.ts.tv_sec;
+		if(parse_packet->call_created) {
+			parse_packet->call_created->in_preprocess_queue_before_process_packet_at = parse_packet->packet.header.ts.tv_sec;
+		}
 		parse_packet->_createCall = true;
 	}
 }

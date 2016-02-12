@@ -55,7 +55,6 @@
 
 #define VERBOSE 		(verbosity > 0)
 #define DEBUG_VERBOSE 		(VERBOSE && false)
-#define DEBUG_SYNC 		(DEBUG_VERBOSE && false)
 #define DEBUG_SLEEP		(DEBUG_VERBOSE && true)
 #define DEBUG_ALL_PACKETS	(DEBUG_VERBOSE && false)
 #define EXTENDED_LOG		(DEBUG_VERBOSE || (VERBOSE && verbosityE > 1))
@@ -383,6 +382,13 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 			_size,
 			__FILE__, __LINE__);
 	this->restoreBufferSize += _size;
+	if(this->restoreBufferSize > opt_pcap_queue_block_max_size * 10) {
+		return(-2);
+	}
+	if(this->restoreBufferSize >= sizeof(pcap_block_store_header) &&
+	   strncmp(((pcap_block_store_header*)this->restoreBuffer)->title, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN)) {
+		return(-3);
+	}
 	int sizeRestoreBuffer = this->getSizeSaveBufferFromRestoreBuffer();
 	if(sizeRestoreBuffer < 0 ||
 	   this->restoreBufferSize < (size_t)sizeRestoreBuffer) {
@@ -4213,7 +4219,6 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		bool beginBlock = false;
 		bool endBlock = false;
 		bool syncBeginBlock = true;
-		int _countTestSync = 0;
 		bool forceStop = false;
 		while(!TERMINATING && !forceStop) {
 			if(arg2 == (unsigned int)-1) {
@@ -4353,59 +4358,72 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								continue;
 							}
 						}
-						if(DEBUG_SYNC && !(++_countTestSync % 1000)) {
-							cout << "SYNC!" << endl;
-							syncBeginBlock = true;
-						} else {
-							offsetBuffer = 0;
-							while(offsetBuffer < bufferLen) {
-								if(blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer)) {
-									endBlock = true;
-									if(!blockStore->check_offsets()) {
-										delete blockStore;
-										syslog(LOG_ERR, "receive bad packetbuffer block (bad offsets) in conection %s - %i",
-										       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
-										       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
-									} else if(!blockStore->size_compress && !blockStore->check_headers()) {
-										delete blockStore;
-										syslog(LOG_ERR, "receive bad packetbuffer block (bad headers) in conection %s - %i",
-										       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
-										       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
-									} else {
-										while(!this->pcapStoreQueue.push(blockStore, false)) {
-											if(TERMINATING || forceStop) {
-												break;
-											} else {
-												usleep(1000);
-											}
-										}
-										sumPacketsCounterIn[0] += blockStore->count;
-										sumPacketsSize[0] += blockStore->size;
-										sumPacketsSizeCompress[0] += blockStore->size_compress;
-										++sumBlocksCounterIn[0];
-									}
-									blockStore = new FILE_LINE pcap_block_store;
+						offsetBuffer = 0;
+						while(offsetBuffer < bufferLen) {
+							const char *error = NULL;
+							int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer); 
+							if(rsltAddRestoreChunk > 0) {
+								if(!blockStore->check_offsets()) {
+									error = "bad offsets";
+								} else if(!blockStore->size_compress && !blockStore->check_headers()) {
+									error = "bad headers";
 								} else {
-									offsetBuffer = bufferLen;
+									endBlock = true;
+									while(!this->pcapStoreQueue.push(blockStore, false)) {
+										if(TERMINATING || forceStop) {
+											break;
+										} else {
+											usleep(1000);
+										}
+									}
+									sumPacketsCounterIn[0] += blockStore->count;
+									sumPacketsSize[0] += blockStore->size;
+									sumPacketsSizeCompress[0] += blockStore->size_compress;
+									++sumBlocksCounterIn[0];
+									blockStore = new FILE_LINE pcap_block_store;
 								}
+							} else if(rsltAddRestoreChunk < 0) {
+								switch(rsltAddRestoreChunk) {
+								case -1:
+									error = "bad size / offset";
+									break;
+								case -2:
+									error = "too big";
+									break;
+								case -3:
+									error = "missing / bad block id";
+									break;
+								default:
+									error = "unknow error";
+									break;
+								}
+							} else {
+								offsetBuffer = bufferLen;
+							}
+							if(error) {
+								blockStore->destroyRestoreBuffer();
+								syncBeginBlock = true;
+								syslog(LOG_ERR, "receive bad packetbuffer block (%s) in conection %s - %i",
+								       error,
+								       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
+								       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 							}
 						}
 						if(!beginBlock && !endBlock && !syncBeginBlock) {
 							u_char *pointToBeginBlock = (u_char*)memmem(buffer, bufferLen, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
 							if(pointToBeginBlock && pointToBeginBlock != buffer) {
 								syncBeginBlock = true;
-								if(DEBUG_VERBOSE) {
-									cout << "SYNC!!!" << endl;
-								}
-								syslog(LOG_INFO, "lost synchronize in connection %s - %i",
-								       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
-								       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 							}
 						}
 						bufferLen = 0;
 						offsetBufferSyncRead = 0;
 						beginBlock = false;
 						endBlock = false;
+						if(syncBeginBlock) {
+							syslog(LOG_INFO, "lost synchronize in connection %s - %i",
+							       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
+							       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+						}
 					}
 				}
 			}

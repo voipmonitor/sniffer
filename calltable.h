@@ -123,6 +123,14 @@ struct hash_node {
 	u_int16_t port;
 };
 
+struct ip_port_call_info_rtp {
+	volatile u_int32_t saddr;
+	volatile u_int16_t sport;
+	volatile u_int32_t daddr;
+	volatile u_int16_t dport;
+	volatile time_t last_packet_time;
+};
+
 struct ip_port_call_info {
 	u_int32_t addr;
 	u_int16_t port;
@@ -130,6 +138,7 @@ struct ip_port_call_info {
 	char sessid[MAXLEN_SDP_SESSID];
 	u_int32_t sip_src_addr;
 	s_sdp_flags sdp_flags;
+	ip_port_call_info_rtp rtp[2];
 };
 
 struct raws_t {
@@ -441,7 +450,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtp(struct packet_s *packetS, int iscaller, char enable_save_packet, char *ifname = NULL);
+	void read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, char enable_save_packet, char *ifname = NULL);
 
 	/**
 	 * @brief read RTCP packet 
@@ -604,6 +613,48 @@ public:
 	 * @brief print debug information for the call to stdout
 	 *
 	*/
+
+	void evProcessRtpStream(int index_ip_port, bool by_dest, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time) {
+		if(index_ip_port < ipport_n) {
+			if(!ip_port[index_ip_port].rtp[by_dest].saddr) {
+				ip_port[index_ip_port].rtp[by_dest].saddr = saddr;
+				ip_port[index_ip_port].rtp[by_dest].sport = sport;
+				ip_port[index_ip_port].rtp[by_dest].daddr = daddr;
+				ip_port[index_ip_port].rtp[by_dest].dport = dport;
+				this->evStartRtpStream(index_ip_port, saddr, sport, daddr, dport, time);
+			}
+			ip_port[index_ip_port].rtp[by_dest].last_packet_time = time;
+		}
+	}
+	void evDestroyIpPortRtpStream(int index_ip_port) {
+		if(index_ip_port < ipport_n) {
+			for(int i = 0; i < 2; i++) {
+				if(ip_port[index_ip_port].rtp[i].saddr) {
+					this->evEndRtpStream(index_ip_port, 
+							     ip_port[index_ip_port].rtp[i].saddr,
+							     ip_port[index_ip_port].rtp[i].sport,
+							     ip_port[index_ip_port].rtp[i].daddr,
+							     ip_port[index_ip_port].rtp[i].dport,
+							     ip_port[index_ip_port].rtp[i].last_packet_time);
+				}
+			}
+			this->nullIpPortInfoRtpStream(index_ip_port);
+		}
+	}
+	void nullIpPortInfoRtpStream(int index_ip_port) {
+		if(index_ip_port < ipport_n) {
+			for(int i = 0; i < 2; i++) {
+				ip_port[index_ip_port].rtp[i].saddr = 0;
+				ip_port[index_ip_port].rtp[i].sport = 0;
+				ip_port[index_ip_port].rtp[i].daddr = 0;
+				ip_port[index_ip_port].rtp[i].dport = 0;
+				ip_port[index_ip_port].rtp[i].last_packet_time = 0;
+			}
+		}
+	}
+	void evStartRtpStream(int index_ip_port, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time);
+	void evEndRtpStream(int index_ip_port, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time);
+	
 	void addtocachequeue(string file);
 	static void _addtocachequeue(string file);
 

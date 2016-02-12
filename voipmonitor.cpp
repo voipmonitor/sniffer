@@ -2814,7 +2814,7 @@ void main_term_read() {
 	// flush all queues
 
 	Call *call;
-	calltable->cleanup(0); sleep(5);
+	calltable->cleanup(0);
 
 	set_terminating();
 
@@ -3516,7 +3516,43 @@ void test_time_cache() {
 	cout << "-----------------" << endl;
 }
 
+void test_ip_groups() {
+	/*
+	GroupsIP gip;
+	gip.load();
+	GroupIP *gr = gip.getGroup("192.168.3.5");
+	if(gr) {
+		cout << gr->getDescr() << endl;
+	}
+	*/
+}
+
+#ifdef HEAP_CHUNK_ENABLE
 #include "heap_chunk.h"
+void test_heapchunk() {
+	void **testP = new void*[1000000];
+	for(int pass = 0; pass < 2; pass++) {
+		u_int64_t startTime = getTimeNS();
+		unsigned allocSize = 1000;
+		for(int j = 0; j < 10; j++) {
+			for(int i = 0; i < 100000; i++) {
+				testP[i] = pass == 0 ?
+					    ChunkMAlloc(allocSize) :
+					    malloc(allocSize);
+			}
+			for(int i = 0; i < 100000 / 2; i++) {
+				if(pass == 0) {
+					ChunkFree(testP[i]);
+				} else {
+					free(testP[i]);
+				}
+			}
+		}
+		u_int64_t endTime = getTimeNS();
+		cout << endTime - startTime << endl;
+	}
+}
+#endif //HEAP_CHUNK_ENABLE
 
 void test() {
  
@@ -3580,40 +3616,6 @@ void test() {
 	 
 	case 1: {
 	 
-		/*GroupsIP gip;
-		gip.load();
-		GroupIP *gr = gip.getGroup("192.168.3.5");
-		if(gr) {
-			cout << gr->getDescr() << endl;
-		}*/
-	 
-		void **testP = new void*[1000000];
-		
-		for(int pass = 0; pass < 2; pass++) {
-	 
-			u_int64_t startTime = getTimeNS();
-		 
-			for(int i = 0; i < 100000; i++) {
-				testP[i] = pass == 0 ?
-					    ChunkMAlloc(10000) :
-					    malloc(10000);
-			}
-			for(int i = 0; i < 100000; i++) {
-				if(pass == 0) {
-					ChunkFree(testP[i]);
-				} else {
-					free(testP[i]);
-				}
-			}
-			
-			u_int64_t endTime = getTimeNS();
-			cout << endTime - startTime << endl;
-			
-		}
-		cout << "**" << endl;
-	 
-		break;
-  
 		test_time_cache();
 		//test_parsepacket();
 		break;

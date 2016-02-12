@@ -511,11 +511,14 @@ private:
 	int update_seq(u_int16_t seq);
 
 	int sensor_id;
+	int index_call_ip_port;
+	bool index_call_ip_port_by_dest;
 	
 	int _last_sensor_id;
 	char _last_ifname[10];
 	
 	u_long lastTimeSyslog;
+friend class Call;
 };
 
 

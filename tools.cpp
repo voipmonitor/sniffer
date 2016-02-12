@@ -1978,6 +1978,79 @@ void ListIP::addComb(const char *ip, ListIP *negList) {
 	}
 }
 
+GroupIP::GroupIP() {
+	this->id = 0;
+}
+
+GroupIP::GroupIP(unsigned id, const char *descr, const char *ip) {
+	this->id = id;
+	this->descr = descr;
+	this->white.addComb(ip, &this->black);
+}
+
+GroupsIP::GroupsIP() {
+}
+
+GroupsIP::~GroupsIP() {
+	for(map<unsigned, GroupIP*>::iterator it = groups.begin(); it != groups.end(); it++) {
+		delete it->second;
+	}
+}
+
+void GroupsIP::load() {
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query("select * from cb_ip_groups");
+	SqlDb_row row;
+	while(row = sqlDb->fetchRow()) {
+		unsigned id = atoi(row["id"].c_str());
+		GroupIP *group = new FILE_LINE GroupIP(id, row["descr"].c_str(), row["ip"].c_str());
+		groups[id] = group;
+	}
+	delete sqlDb;
+	for(map<unsigned, GroupIP*>::iterator it = groups.begin(); it != groups.end(); it++) {
+		std::vector<IP> *src_IP = &it->second->white.listIP;
+		std::vector<IP>::iterator it_src_IP = src_IP->begin();
+		while(it_src_IP != src_IP->end()) {
+			IP ip = *it_src_IP;
+			listIP[ip] = it->first;
+			++it_src_IP;
+		}
+		std::vector<IP> *src_Net = &it->second->white.listNet;
+		std::vector<IP>::iterator it_src_Net = src_Net->begin();
+		while(it_src_Net != src_Net->end()) {
+			IP net = *it_src_Net;
+			listNet[net] = it->first;
+			++it_src_Net;
+		}
+	}
+}
+
+GroupIP *GroupsIP::getGroup(uint ip) {
+	if(listIP.size()) {
+		std::map<IP, unsigned>::iterator it_ip = listIP.lower_bound(IP(ip));
+		if(it_ip != listIP.end()) {
+			IP *_ip = (IP*)&it_ip->first;
+			if(_ip->checkIP(ip)) {
+				return(groups[it_ip->second]);
+			}
+		}
+	}
+	if(listNet.size()) {
+		std::map<IP, unsigned>::iterator it_net = listNet.lower_bound(IP(ip));
+		while(it_net != listNet.begin()) {
+			--it_net;
+			IP *_net = (IP*)&it_net->first;
+			if(!(_net->ip & ip)) {
+				break;
+			}
+			if(_net->checkIP(ip)) {
+				return(groups[it_net->second]);
+			}
+		}
+	}
+	return(NULL);
+}
+
 void ListPhoneNumber::addComb(string &number, ListPhoneNumber *negList) {
 	addComb(number.c_str(), negList);
 }
