@@ -2981,11 +2981,16 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				ip_tot_len = ((iphdr2*)(packet + 14))->tot_len;
 			}
 			*/
-			memcpy(headerPacketRead.header, header, sizeof(pcap_pkthdr));
+			memcpy_heapsafe(headerPacketRead.header, headerPacketRead.header,
+					header, NULL,
+					sizeof(pcap_pkthdr));
 			if(!libpcap_buffer) {
-				memcpy(headerPacketRead.packet, packet, header->caplen);
+				memcpy_heapsafe(headerPacketRead.packet, headerPacketRead.packet,
+						packet, NULL,
+						header->caplen);
 			}
-			if(!libpcap_buffer_offset) {
+			extern int opt_use_oneshot_buffer;
+			if(!libpcap_buffer_offset && opt_use_oneshot_buffer) {
 				cout << "detect oneshot buffer" << endl;
 				libpcap_buffer = &(((_pcap_linux*)((struct _pcap*)this->pcapHandle)->priv)->oneshot_buffer);
 				libpcap_buffer_offset = (u_char*)libpcap_buffer - (u_char*)this->pcapHandle;

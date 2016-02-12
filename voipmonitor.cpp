@@ -531,6 +531,7 @@ bool opt_scanpcapdir_disable_inotify = false;
 uint32_t opt_scanpcapmethod = IN_CLOSE_WRITE; // Specifies how to watch for new files in opt_scanpcapdir
 #endif
 int opt_promisc = 1;	// put interface to promisc mode?
+int opt_use_oneshot_buffer = 1;
 char pcapcommand[4092] = "";
 char filtercommand[4092] = "";
 
@@ -4255,6 +4256,9 @@ void cConfig::addConfigItems() {
 			addConfigItem(snifferMode);
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem(new cConfigItem_string("interface", ifname, sizeof(ifname)));
+				addConfigItem(new cConfigItem_yesno("use_oneshot_buffer", &opt_use_oneshot_buffer));
+				advanced();
+			normal();
 			addConfigItem(new cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new cConfigItem_string("filter", user_filter, sizeof(user_filter)));
 			addConfigItem(new cConfigItem_ip_port("mirror_bind", &opt_pcap_queue_receive_from_ip_port));
@@ -6408,6 +6412,9 @@ int eval_config(string inistr) {
 		opt_scanpcapmethod = (value[0] == 'r') ? IN_MOVED_TO : IN_CLOSE_WRITE;
 	}
 #endif
+	if((value = ini.GetValue("general", "use_oneshot_buffer", NULL))) {
+		opt_use_oneshot_buffer = yesno(value);
+	}
 	if((value = ini.GetValue("general", "promisc", NULL))) {
 		opt_promisc = yesno(value);
 	}
