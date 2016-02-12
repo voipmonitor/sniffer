@@ -1124,13 +1124,15 @@ public:
 	}
 	void createPartitions(bool inThread = false) {
 		if(isSet()) {
+			bool successStartThread = false;
 			if(inThread) {
 				sCreatePartitions *createPartitionsData = new sCreatePartitions;
 				*createPartitionsData = *this;
 				createPartitionsData->_runInThread = true;
 				pthread_t thread;
-				vm_pthread_create_autodestroy(&thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__);
-			} else {
+				successStartThread = vm_pthread_create_autodestroy(&thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__) == 0;
+			}
+			if(!inThread || !successStartThread) {
 				this->_runInThread = false;
 				_createPartitions(this);
 			}
