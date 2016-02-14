@@ -1998,6 +1998,9 @@ GroupsIP::~GroupsIP() {
 }
 
 void GroupsIP::load() {
+	groups.clear();
+	listIP.clear();
+	listNet.clear();
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->query("select * from cb_ip_groups");
 	SqlDb_row row;

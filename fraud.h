@@ -837,6 +837,10 @@ public:
 			const char *timeperiod_name,
 			string number, const char *number_location_code,
 			unsigned int concurentCalls);
+	void set_rtp_stream(FraudAlert::eLocalInternational localInternational,
+			    const char *timeperiod_name,
+			    FraudAlert::eTypeBy type_by, d_u_int32_t rtp_stream,
+			    unsigned int concurentCalls);
 	string getJson();
 private:
 	FraudAlert::eLocalInternational localInternational;
@@ -846,6 +850,7 @@ private:
 	string ip_location_code;
 	string number;
 	string number_location_code;
+	d_u_int32_t rtp_stream;
 	unsigned int concurentCalls;
 };
 
@@ -1089,6 +1094,7 @@ public:
 	FraudAlerts();
 	~FraudAlerts();
 	void loadAlerts(bool lock = true);
+	void loadData(bool lock = true);
 	void clear(bool lock = true);
 	void beginCall(Call *call, u_int64_t at);
 	void connectCall(Call *call, u_int64_t at);
@@ -1109,6 +1115,9 @@ public:
 		}
 		return(gui_timezone.c_str());
 	}
+	string getGroupName(unsigned idGroup) {
+		return(groupsIP.getGroupName(idGroup));
+	}
 private:
 	void initPopCallInfoThread();
 	void popCallInfoThread();
@@ -1116,8 +1125,8 @@ private:
 			      sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at);
 	void completeRtpStreamInfo(sFraudRtpStreamInfo *rtpStreamInfo, Call *call);
 	void completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, CheckInternational *checkInternational);
-	void completeCallInfo_country_code(sFraudCallInfo *callInfo, CheckInternational *checkInternational);
-	void completeRtpStreamInfo_country_code(sFraudRtpStreamInfo *rtpStreamInfo, CheckInternational *checkInternational);
+	void completeCallInfoAfterPop(sFraudCallInfo *callInfo, CheckInternational *checkInternational);
+	void completeRtpStreamInfoAfterPop(sFraudRtpStreamInfo *rtpStreamInfo, CheckInternational *checkInternational);
 	void lock_alerts() {
 		while(__sync_lock_test_and_set(&this->_sync_alerts, 1));
 	}
@@ -1129,6 +1138,7 @@ private:
 	SafeAsyncQueue<sFraudCallInfo> callQueue;
 	SafeAsyncQueue<sFraudRtpStreamInfo> rtpStreamQueue;
 	SafeAsyncQueue<sFraudEventInfo> eventQueue;
+	GroupsIP groupsIP;
 	pthread_t threadPopCallInfo;
 	bool runPopCallInfoThread;
 	bool termPopCallInfoThread;

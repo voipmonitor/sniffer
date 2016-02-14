@@ -119,7 +119,7 @@ struct d_item
 		return(this->items[0] < other.items[0] ||
 		       (this->items[0] == other.items[0] && this->items[1] < other.items[1])); 
 	}
-	u_int32_t items[2];
+	type_item items[2];
 };
 
 template <class type_atomic>
@@ -1326,6 +1326,22 @@ public:
 		in_addr ips;
 		inet_aton(ip, &ips);
 		return(getGroup(htonl(ips.s_addr)));
+	}
+	unsigned getGroupId(uint ip) {
+		GroupIP *group = getGroup(ip);
+		return(group ? group->id : 0);
+	}
+	unsigned getGroupId(const char *ip) {
+		in_addr ips;
+		inet_aton(ip, &ips);
+		return(getGroupId(htonl(ips.s_addr)));
+	}
+	string getGroupName(uint id) {
+		map<unsigned, GroupIP*>::iterator it = groups.find(id);
+		if(it != groups.end()) {
+			return(it->second->getDescr());
+		}
+		return("");
 	}
 private:
 	map<unsigned, GroupIP*> groups;

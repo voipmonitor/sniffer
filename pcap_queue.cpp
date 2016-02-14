@@ -3552,13 +3552,21 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						}
 						++sumBlocksCounterIn[0];
 						blockStore[blockStoreIndex] = NULL;
-						int sleepTime = sverb.test_rtp_performance ? 120 :
-								opt_enable_ssl ? 10 :
-								sverb.chunk_buffer ? 20 : 5;
-						while(sleepTime && !is_terminating()) {
-							syslog(LOG_NOTICE, "time to terminating: %u", sleepTime);
+						int sleepTimeBeforeCleanup = sverb.test_rtp_performance ? 120 :
+									    opt_enable_ssl ? 10 :
+									    sverb.chunk_buffer ? 20 : 5;
+						int sleepTimeAfterCleanup = 2;
+						while((sleepTimeBeforeCleanup + sleepTimeAfterCleanup) && !is_terminating()) {
+							syslog(LOG_NOTICE, "time to terminating: %u", sleepTimeBeforeCleanup + sleepTimeAfterCleanup);
 							sleep(1);
-							--sleepTime;
+							if(sleepTimeBeforeCleanup) {
+								--sleepTimeBeforeCleanup;
+								if(!sleepTimeBeforeCleanup) {
+									calltable->cleanup(0);
+								}
+							} else if(sleepTimeAfterCleanup) {
+								--sleepTimeAfterCleanup;
+							}
 						}
 						vm_terminate();
 						break;
