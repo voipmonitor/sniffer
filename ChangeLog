@@ -1,3 +1,13 @@
+15.1 16.2.2016
+==============
+- new option 'utc = 1' will use utc time for cdr and pcap files which is useful for multiple sniffers acros different timezones [VG-817]
+- add support for rtp streams fraud [VG-829]
+- fix issue / crash in receiver - ignore bad data
+- fix crash if new_invite_register return NULL in preprocess sip extend mode 
+- fix - add sql escape for fraud alert_info
+- modify start create partitions - run with thread storing_cdr if create separate thread failed
+
+
 15.0.8 1.2.2016
 ===============
 - optimize number of RTP threads on large traffic (creation was not fast enough when starting sniffer on huge traffic) 
