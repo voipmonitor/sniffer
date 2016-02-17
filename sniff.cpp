@@ -2064,7 +2064,7 @@ inline Call *new_invite_register(packet_s *packetS, ParsePacket::ppContentsX *pa
 					parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
 							 header_sll, header_eth, header_ip_offset, protocol, &vlan);
 					call->regsrcmac = (convert_srcmac_ll(header_eth));
-					syslog(LOG_NOTICE,"srcmac from first register: [%llu]\n", call->regsrcmac);
+					//syslog(LOG_NOTICE,"srcmac from first register: [%llu]\n", call->regsrcmac);
 				}
 				//End parse ether header
 			}

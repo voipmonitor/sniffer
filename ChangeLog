@@ -1,3 +1,8 @@
+15.2 17.2.2016
+==============
+- added MAC address of the first SIP register to the register active table
+
+
 15.1 16.2.2016
 ==============
 - new option 'utc = 1' will use utc time for cdr and pcap files which is useful for multiple sniffers acros different timezones [VG-817]
