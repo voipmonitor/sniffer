@@ -185,10 +185,6 @@ public:
 	};
 	PcapQueue(eTypeQueue typeQueue, const char *nameQueue);
 	virtual ~PcapQueue();
-	void setFifoFileForRead(const char *fifoFileForRead);
-	void setFifoFileForWrite(const char *fifoFileForWrite);
-	void setFifoReadHandle(int fifoReadHandle);
-	void setFifoWriteHandle(int fifoWriteHandle);
 	void setEnableMainThread(bool enable = true);
 	void setEnableWriteThread(bool enable = true);
 	void setEnableAutoTerminate(bool enableAutoTerminate);
@@ -208,15 +204,13 @@ protected:
 	virtual bool createMainThread();
 	virtual bool createWriteThread();
 	inline int pcap_next_ex_queue(pcap_t* pcapHandle, pcap_pkthdr** header, u_char** packet);
-	inline int readPcapFromFifo(pcap_pkthdr_plus *header, u_char **packet, bool usePacketBuffer = false);
-	bool writePcapToFifo(pcap_pkthdr_plus *header, u_char *packet);
 	virtual bool init() { return(true); };
 	virtual bool initThread(void *arg, unsigned int arg2, string *error);
 	virtual bool initWriteThread(void *arg, unsigned int arg2);
 	virtual void *threadFunction(void *arg, unsigned int arg2) = 0;
 	virtual void *writeThreadFunction(void *arg, unsigned int arg2) { return(NULL); }
-	virtual bool openFifoForRead(void *arg, unsigned int arg2);
-	virtual bool openFifoForWrite(void *arg, unsigned int arg2);
+	virtual bool openFifoForRead(void *arg, unsigned int arg2) { return(true); }
+	virtual bool openFifoForWrite(void *arg, unsigned int arg2) { return(true); }
 	virtual pcap_t* _getPcapHandle(int dlt) { 
 		extern pcap_t *global_pcap_handle;
 		return(global_pcap_handle); 
@@ -256,13 +250,9 @@ protected:
 	std::string nameQueue;
 	pthread_t threadHandle;
 	pthread_t writeThreadHandle;
-	std::string fifoFileForRead;
-	std::string fifoFileForWrite;
 	bool enableMainThread;
 	bool enableWriteThread;
 	bool enableAutoTerminate;
-	int fifoReadHandle;
-	int fifoWriteHandle;
 	bool threadInitOk;
 	bool threadInitFailed;
 	bool writeThreadInitOk;
@@ -308,7 +298,7 @@ struct pcapProcessData {
 		if(this->prevmd5s) {
 			delete [] this->prevmd5s;
 		}
-		ipfrag_prune(0, 1, &ipfrag_data);
+		ipfrag_prune(0, 1, &ipfrag_data, -1);
 	}
 	sll_header *header_sll;
 	ether_header *header_eth;
@@ -338,8 +328,9 @@ public:
 protected:
 	virtual bool startCapture(string *error);
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet);
+	void restoreOneshotBuffer();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
-	inline int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy, 
+	inline int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, int pushToStack_queue_index,
 			       bool enableDefrag = true, bool enableCalcMD5 = true, bool enableDedup = true, bool enableDump = true);
 	virtual string pcapStatString_interface(int statPeriod);
 	virtual string pcapDropCountStat_interface();
@@ -347,6 +338,12 @@ protected:
 	virtual string getStatPacketDrop();
 	virtual void initStat_interface();
 	virtual string getInterfaceName(bool simple = false);
+	inline bool useOneshotBuffer() {
+		return(libpcap_buffer);
+	}
+	inline void setOneshotBuffer(u_char *packet) {
+		*libpcap_buffer = packet;
+	}
 protected:
 	string interfaceName;
 	bpf_u_int32 interfaceNet;
@@ -371,8 +368,12 @@ private:
 	u_int64_t lastPacketTimeUS;
 	u_long lastTimeLogErrPcapNextExNullPacket;
 	u_long lastTimeLogErrPcapNextExErrorReading;
+	u_int32_t libpcap_buffer_offset;
+	u_char **libpcap_buffer;
+	u_char *libpcap_buffer_old;
 };
 
+/*
 struct sHeaderPacket {
 	sHeaderPacket(pcap_pkthdr *header = NULL, u_char *packet = NULL) {
 		this->header = header;
@@ -472,6 +473,7 @@ private:
 	u_int hpp_get_size;
 	rqueue_quick<sHeaderPacketPool> *stack;
 };
+*/
 
 class PcapQueue_readFromInterfaceThread : protected PcapQueue_readFromInterface_base {
 public:
@@ -483,9 +485,8 @@ public:
 		dedup
 	};
 	struct hpi {
-		pcap_pkthdr* header;
-		u_char* packet;
-		bool ok_for_header_packet_stack;
+		cHeapItemsStack::sHeapItemT<pcap_pkthdr> header;
+		cHeapItemsStack::sHeapItem packet;
 		u_int offset;
 		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 	};
@@ -509,7 +510,7 @@ public:
 					  PcapQueue_readFromInterfaceThread *prevThread = NULL);
 	~PcapQueue_readFromInterfaceThread();
 protected:
-	inline void push(pcap_pkthdr* header,u_char* packet, bool ok_for_header_packet_stack,
+	inline void push(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header,cHeapItemsStack::sHeapItem *packet,
 			 u_int offset, uint16_t *md5);
 	inline hpi pop();
 	inline hpi POP();
@@ -523,8 +524,8 @@ protected:
 			}
 		}
 		if(readIndex && readIndexCount && readIndexPos < readIndexCount) {
-			return(this->qring[readIndex - 1]->hpis[readIndexPos].header->ts.tv_sec * 1000000ull + 
-			       this->qring[readIndex - 1]->hpis[readIndexPos].header->ts.tv_usec);
+			return(((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header)->ts.tv_sec * 1000000ull + 
+			       ((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header)->ts.tv_usec);
 		}
 		return(0);
 	}
@@ -585,7 +586,9 @@ private:
 	PcapQueue_readFromInterfaceThread *dedupThread;
 	PcapQueue_readFromInterfaceThread *prevThread;
 	bool threadDoTerminate;
-	PcapQueue_HeaderPacketStack *headerPacketStack;
+	cHeapItemsStack *headerStack;
+	cHeapItemsStack *packetStack;
+	//PcapQueue_HeaderPacketStack *headerPacketStack;
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;
 };
@@ -593,10 +596,12 @@ friend class PcapQueue_readFromInterface;
 class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFromInterface_base {
 private:
 	struct delete_packet_info {
-		pcap_pkthdr *header;
-		u_char *packet;
-		bool ok_for_header_packet_stack;
-		int read_thread_index;
+		~delete_packet_info() {
+			header.clean();
+			packet.clean();
+		}
+		cHeapItemsStack::sHeapItemT<pcap_pkthdr> header;
+		cHeapItemsStack::sHeapItem packet;
 	};
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);
@@ -628,11 +633,9 @@ protected:
 	string getInterfaceName(bool simple = false);
 private:
 	inline void check_bypass_buffer();
-	inline void delete_header_packet(pcap_pkthdr *header, u_char *packet, int read_thread_index, int packetStackIndex);
 	inline void push_blockstore(pcap_block_store **block_store);
 	inline pcap_block_store *new_blockstore(int index_read_thread);
 protected:
-	pcap_dumper_t *fifoWritePcapDumper;
 	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];
 	int readThreadsCount;
 	u_long lastTimeLogErrThread0BufferIsFull;

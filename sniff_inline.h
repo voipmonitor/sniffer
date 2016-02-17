@@ -18,7 +18,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 #if SNIFFER_INLINE_FUNCTIONS
 inline
 #endif
-int pcapProcess(pcap_pkthdr** header, u_char** packet, bool *destroy,
+int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, int pushToStack_queue_index,
 		bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump,
 		pcapProcessData *ppd, int pcapLinklayerHeaderType, pcap_dumper_t *pcapDumpHandle, const char *interfaceName);
 

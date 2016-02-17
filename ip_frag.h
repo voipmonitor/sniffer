@@ -3,15 +3,15 @@
 
 #include <net/ethernet.h>
 
+#include "tools.h"
+
 struct ip_frag_s {
 	char *data;
 	int datalen;
-	pcap_pkthdr header;
-	u_char *packet;
+	cHeapItemsStack::sHeapItemT<pcap_pkthdr> header;
+	cHeapItemsStack::sHeapItem packet;
+	unsigned int header_ip_offset;
 	time_t ts;
-	char *firstheader;
-	u_int32_t firstheaderlen;
-	u_int16_t id;
 	u_int32_t offset;
 	u_int32_t len;
 	u_int32_t totallen;
@@ -29,7 +29,9 @@ struct ipfrag_data_s {
 	map<unsigned int, ip_frag_queue_t*>::iterator ip_frag_streamITinner;
 };
 
-void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data = NULL);
-int handle_defrag(iphdr2 *header_ip, struct pcap_pkthdr **header, u_char **packet, int destroy, ipfrag_data_s *ipfrag_data = NULL);
+void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
+		  int pushToStack_queue_index);
+int handle_defrag(iphdr2 *header_ip, cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, ipfrag_data_s *ipfrag_data,
+		  int pushToStack_queue_index);
 
 #endif

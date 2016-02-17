@@ -2968,7 +2968,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					 siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
 					 SqlDb_row _resp;
 					 _resp.add(iterSiphistory->SIPresponse, "lastSIPresponse");
-					 siphist.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "request", _resp), "SIPresponse_id");
+					 siphist.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", _resp), "SIPresponse_id");
 				}
 				if(existsColumnCalldateInCdrSiphistory) {
 					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");

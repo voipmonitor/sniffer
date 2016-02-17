@@ -44,7 +44,6 @@
 #define GRAPH_EVENT 4294967290
 
 #define SNIFFER_INLINE_FUNCTIONS true
-#define TCPREPLAY_WORKARROUND false
 
 #define SYNC_PCAP_BLOCK_STORE true
 #define SYNC_CALL_RTP true
