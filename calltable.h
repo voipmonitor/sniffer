@@ -241,6 +241,7 @@ public:
 	bool regresponse;
 	timeval regrrdstart;		// time of first REGISTER
 	int regrrddiff;			// RRD diff time REGISTER<->OK in [ms]- RFC6076
+	uint64_t regsrcmac;		// mac if ether layer present in REGISTER
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
 	#if SYNC_CALL_RTP
 	volatile unsigned int rtppacketsinqueue;
