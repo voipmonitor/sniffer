@@ -103,12 +103,12 @@ volatile unsigned int glob_last_packet_time;
 
 Calltable *calltable;
 extern volatile int calls_counter;
-extern int opt_saveSIP;	  	// save SIP packets to pcap file?
-extern int opt_saveRTP;	 	// save RTP packets to pcap file?
+extern int opt_saveSIP;		// save SIP packets to pcap file?
+extern int opt_saveRTP;		// save RTP packets to pcap file?
 extern int opt_saveRTCP;	// save RTCP packets to pcap file?
-extern int opt_saveRAW;	 	
-extern int opt_saveWAV;	 	
-extern int opt_saveGRAPH;	 	
+extern int opt_saveRAW;
+extern int opt_saveWAV;
+extern int opt_saveGRAPH;
 extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffered’’
 extern int opt_rtcp;		  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
@@ -2049,12 +2049,24 @@ inline Call *new_invite_register(packet_s *packetS, ParsePacket::ppContentsX *pa
 			call->regcount++;
 			call->destroy_call_at = packetS->header.ts.tv_sec + opt_register_timeout;
 
-			// is it first register? set now
+			// is it first register? set time and src mac if available
 			if (call->regrrddiff == -1) {
-				//struct timeval nowt;
-				//gettimeofday(&nowt, NULL);
 				call->regrrdstart.tv_sec = packetS->header.ts.tv_sec;
 				call->regrrdstart.tv_usec = packetS->header.ts.tv_usec;
+
+				//Parse ether header for src mac else 0
+				{
+					sll_header *header_sll;
+					ether_header *header_eth;
+					u_int header_ip_offset;
+					int protocol;
+					int vlan;
+					parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
+							 header_sll, header_eth, header_ip_offset, protocol, &vlan);
+					call->regsrcmac = (convert_srcmac_ll(header_eth));
+					syslog(LOG_NOTICE,"srcmac from first register: [%llu]\n", call->regsrcmac);
+				}
+				//End parse ether header
 			}
 
 			// copy contact num <sip:num@domain>
@@ -2958,7 +2970,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 				 (call->new_invite_after_lsr487 && lastSIPresponseNum == 200) ||
 				 (call->cancel_lsr487 && lastSIPresponseNum/10 == 48)) &&
 				!call->seeninviteok &&
-			        !(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5)) &&
+				!(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5)) &&
 			   (lastSIPresponseNum != 200 || cseq_contain_invite) &&
 			   !(call->cancelcseq[0] && cseq && cseqlen < 32 && strncmp(cseq, call->cancelcseq, cseqlen) == 0)) {
 				strncpy(call->lastSIPresponse, lastSIPresponse, 128);

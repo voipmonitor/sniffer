@@ -3661,13 +3661,15 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			`ua_id` int unsigned DEFAULT NULL,\
 			`rrd_avg` mediumint unsigned DEFAULT NULL,\
 			`rrd_count` tinyint unsigned DEFAULT NULL,\
+			`src_mac` bigint unsigned DEFAULT NULL,\
 		PRIMARY KEY (`ID`),\
 		KEY `calldate` (`calldate`),\
 		KEY `sipcallerip` (`sipcallerip`),\
 		KEY `sipcalledip` (`sipcalledip`),\
 		KEY `from_num` (`from_num`),\
 		KEY `digestusername` (`digestusername`),\
-		KEY `rrd_avg` (`rrd_avg`)\
+		KEY `rrd_avg` (`rrd_avg`),\
+		KEY `src_mac` (`src_mac`)\
 	) ENGINE=MEMORY DEFAULT CHARSET=latin1 " + compress + ";");
 
 	this->query(string(
@@ -4066,6 +4068,14 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		ADD KEY `rrd_avg` (`rrd_avg`);" << endl;
 	outStrAlter << "drop trigger if exists cdr_bi;" << endl;
 
+	//15.1
+	outStrAlter << "ALTER TABLE register \
+		ADD `src_mac` bigint unsigned DEFAULT NULL;" <<endl;
+	outStrAlter << "ALTER TABLE register \
+		ADD KEY `src_mac` (`src_mac`);" << endl;
+	outStrAlter << "drop trigger if exists cdr_bi;" << endl;
+
+	//
 	outStrAlter << "end;" << endl;
 
 	/*
@@ -4526,7 +4536,8 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 						    ua_id = getIdOrInsertUA(cdr_ua), \
 						    `expires_at` = mexpires_at, \
 						    `rrd_avg` = _rrd_avg, \
-						    `rrd_count` = _rrd_count; \
+						    `rrd_count` = _rrd_count, \
+						    `src_mac` = regsrcmac; \
 				END IF; \
 			END",
 			"PROCESS_SIP_REGISTER", 
@@ -4548,6 +4559,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			  IN cdr_ua VARCHAR(255), \
 			  IN fname BIGINT, \
 			  IN id_sensor INT, \
+			  IN regsrcmac BIGINT, \
 			  IN regrrddiff MEDIUMINT)",true);  //rrd_avg will be computed inside CALL
 
 	//END SQL SCRIPTS
@@ -5816,13 +5828,15 @@ bool SqlDb_odbc::createSchema(SqlDb *sourceDb) {
 			state tinyint NULL,\
    			ua_id int NULL,\
                         rrd_avg mediumint NULL,\
-                        rrd_count tinyint NULL);\
+                        rrd_count tinyint NULL,\
+                        src_mac bigint NULL);\
 		CREATE INDEX calldate ON register (calldate);\
 		CREATE INDEX sipcallerip ON register (sipcallerip);\
 		CREATE INDEX sipcalledip ON register (sipcalledip);\
 		CREATE INDEX from_num ON register (from_num);\
 		CREATE INDEX digestusername ON register (digestusername);\
 		CREATE INDEX rrd_avg ON register (rrd_avg)\
+		CREATE INDEX src_mac ON register (src_mac)\
 	END");
 
 	this->query(
