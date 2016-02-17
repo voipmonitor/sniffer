@@ -4531,3 +4531,17 @@ int vm_pthread_create(pthread_t *thread, pthread_attr_t *attr,
 	}
 	return(rslt);
 }
+
+uint64_t convert_srcmac_ll(ether_header *header_eth) {
+	if (header_eth != NULL) {
+		uint64_t converted = 0;
+		converted += (unsigned char) header_eth->ether_shost[0];
+		for (int i = 1; i < 6; i++) {
+			converted <<= 8;
+			converted += (unsigned char) header_eth->ether_shost[i];
+		}
+		return (converted);
+	}
+	//No ether header = src mac 0
+	return (0);
+}
