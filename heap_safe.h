@@ -54,8 +54,11 @@
 	 stringInfo[1] == HEAPSAFE_END_MEMORY_CONTROL_BLOCK[1] && \
 	 stringInfo[2] == HEAPSAFE_END_MEMORY_CONTROL_BLOCK[2])
 
+#define MCB_PLUS   true
 #define MCB_STACK  HeapSafeCheck & _HeapSafeStack
-#define SIZEOF_MCB (MCB_STACK ? sizeof(sHeapSafeMemoryControlBlockEx) : sizeof(sHeapSafeMemoryControlBlock))
+#define SIZEOF_MCB (MCB_PLUS ? sizeof(sHeapSafeMemoryControlBlockPlus) : \
+		    MCB_STACK ? sizeof(sHeapSafeMemoryControlBlockEx) : \
+		    sizeof(sHeapSafeMemoryControlBlock))
  
 
 enum eHeapSafeErrors {
@@ -67,13 +70,20 @@ enum eHeapSafeErrors {
 	_HeapSafeErrorFillFF          =  32,
 	_HeapSafeErrorInHeap          =  64,
 	_HeapSafeSafeReserve          = 128,
-	_HeapSafeStack                = 256
+	_HeapSafePlus                 = 256,
+	_HeapSafeStack                = 512
 };
 
 struct sHeapSafeMemoryControlBlock {
 	char stringInfo[3];
 	u_int32_t length;
 	u_int32_t memory_type;
+};
+
+struct sHeapSafeMemoryControlBlockPlus : public sHeapSafeMemoryControlBlock {
+	void *block_addr;
+	char memory_type1[20];
+	u_int16_t memory_type2;
 };
 
 struct sHeapSafeMemoryControlBlockEx : public sHeapSafeMemoryControlBlock {
@@ -187,6 +197,9 @@ void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_
 
 
 #define FILE_LINE (__FILE__, __LINE__)
+
+
+void parse_heapsafeplus_coredump(const char *corefile, const char *outfile);
 
 
 #endif //HEAP_SAFE_H

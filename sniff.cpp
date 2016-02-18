@@ -3394,7 +3394,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 				tmp[l - 1] = '\0';
 				if(verbosity >= 2)
 					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr);
+				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr, 0);
 			}
 			s = gettag(packetS->data, packetS->datalen, parseContents,
 				   "Signal=", &l, &gettagLimitLen);
@@ -3403,7 +3403,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 				tmp[l] = '\0';
 				if(verbosity >= 2)
 					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr);
+				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr, 0);
 
 			}
 		}

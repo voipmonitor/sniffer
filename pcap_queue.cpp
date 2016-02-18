@@ -3420,6 +3420,9 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			} else if(res == 0) {
 				usleep(100);
 			} else {
+				if(pcap_next_ex_header->caplen > SNAPLEN) {
+					pcap_next_ex_header->caplen = SNAPLEN;
+				}
 				memcpy_heapsafe((u_char*)header, (u_char*)header,
 						pcap_next_ex_header, NULL,
 						sizeof(pcap_pkthdr));

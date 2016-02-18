@@ -1803,6 +1803,9 @@ int main(int argc, char *argv[]) {
 					_HeapSafeErrorFreed |
 					_HeapSafeErrorInAllocFce |
 					_HeapSafeErrorAllocReserve;
+			if(strstr(argv[i], "heapsafeplus")) {
+				HeapSafeCheck |= _HeapSafePlus;
+			}
 		} else if(strstr(argv[i], "HEAPSAFE")) {
 			HeapSafeCheck = _HeapSafeErrorNotEnoughMemory |
 					_HeapSafeErrorBeginEnd |
@@ -1810,6 +1813,9 @@ int main(int argc, char *argv[]) {
 					_HeapSafeErrorInAllocFce |
 					_HeapSafeErrorAllocReserve |
 					_HeapSafeErrorFillFF;
+			if(strstr(argv[i], "HEAPSAFEPLUS")) {
+				HeapSafeCheck |= _HeapSafePlus;
+			}
 		}
 		if((HeapSafeCheck & _HeapSafeErrorBeginEnd) && memoryStatInArg) {
 			if(memoryStatExInArg) {
@@ -3749,6 +3755,21 @@ void test() {
 		delete sqlDb;
 		}
 		return;
+	case 90:
+		{
+		vector<string> param;
+		char *pointToSepOptTest = strchr(opt_test_str, '/');
+		if(pointToSepOptTest) {
+			param = split(pointToSepOptTest + 1, ',');
+		}
+		if(param.size() < 1) {
+			cout << "missing parameters" << endl
+			     << "example: -X90/coredump,outfile" << endl;
+		} else {
+			parse_heapsafeplus_coredump(param[0].c_str(), param.size() > 1 ? param[1].c_str() : NULL);
+		}
+		}
+		break;
 	case 95:
 		chdir(opt_chdir);
 		check_filesindex();

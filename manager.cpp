@@ -2099,6 +2099,13 @@ getwav:
 		char *test = new char[10];
 		delete [] test;
 		test[0] = 1;
+	} else if(strstr(buf, "memcrash_test_4") != NULL) {
+		char *test[10];
+		for(int i = 0; i < 10; i++) {
+			test[i] = new FILE_LINE char[10];
+		}
+		memset(test[4] + 10, 0, 40);
+		*(char*)0 = 0;
 	} else if(strstr(buf, "set_pcap_stat_period") != NULL) {
 		int new_pcap_stat_period = atoi(buf + 21);
 		if(new_pcap_stat_period > 0 && new_pcap_stat_period < 600) {
