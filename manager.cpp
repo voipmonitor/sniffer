@@ -1496,7 +1496,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		char dateTimeKey[2048];
 		u_int32_t recordId = 0;
 		char tableType[100] = "";
-		char *tarPosI = new char[100000];
+		char *tarPosI = new char[1000000];
 		*tarPosI = 0;
 
 		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s" : "getfile_in_tar %s %s %s %u %s %s", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI);
@@ -1759,7 +1759,7 @@ getwav:
 	} else if(strstr(buf, "genhttppcap") != NULL) {
 		char timestamp_from[100]; 
 		char timestamp_to[100]; 
-		char ids[10000];
+		char *ids = new char [1000000];
 		sscanf(buf, "genhttppcap %19[T0-9--: ] %19[T0-9--: ] %s", timestamp_from, timestamp_to, ids);
 		/*
 		cout << timestamp_from << endl
@@ -1771,6 +1771,8 @@ getwav:
 		dumper.setUnlinkPcap();
 		dumper.dumpData(timestamp_from, timestamp_to, ids);
 		dumper.closePcapDumper();
+		
+		delete [] ids;
 		
 		if(!dumper.getPcapName().empty() &&
 		   file_exists(dumper.getPcapName()) > 0) {
