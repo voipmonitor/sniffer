@@ -3394,7 +3394,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 				tmp[l - 1] = '\0';
 				if(verbosity >= 2)
 					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr);
+				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr, 0);
 			}
 			s = gettag(packetS->data, packetS->datalen, parseContents,
 				   "Signal=", &l, &gettagLimitLen);
@@ -3403,7 +3403,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 				tmp[l] = '\0';
 				if(verbosity >= 2)
 					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr);
+				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr, 0);
 
 			}
 		}
@@ -5031,7 +5031,9 @@ defragment packets from queue and allocates memory for new header and packet whi
 in **header an **packet 
 
 */
-inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u_char **packet) {
+inline int ipfrag_dequeue(ip_frag_queue_t *queue, 
+			  cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet,
+			  int pushToStack_queue_index) {
 	//walk queue
 
 	if(!queue) return 1;
@@ -5039,31 +5041,37 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 
 
 	// prepare newpacket structure and header structure
-	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->firstheaderlen;
-	u_char *newpacket = new FILE_LINE u_char[totallen];
-	*packet = newpacket;
-	struct pcap_pkthdr *newheader = new FILE_LINE pcap_pkthdr; // copy header
-	memcpy(newheader, *header, sizeof(struct pcap_pkthdr));
+	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->header_ip_offset;
+	
+	header->create(sizeof(pcap_pkthdr), NULL);
+	packet->create(totallen, NULL);
+	
+	/*memcpy(newheader, *header, sizeof(struct pcap_pkthdr));
 	newheader->len = newheader->caplen = totallen;
-	*header = newheader;
+	*header = newheader;*/
+	
 	unsigned int additionallen = 0;
 	iphdr2 *iphdr = NULL;
 
 	//int lastoffset = queue->begin()->second->offset;
-	int i = 0;
+	unsigned i = 0;
 	unsigned int len = 0;
 	for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
 		ip_frag_s *node = it->second;
 		if(i == 0) {
 			// for first packet copy ethernet header and ip header
-			if(node->firstheaderlen) {
-				memcpy(newpacket, node->firstheader, node->firstheaderlen);
-				len += node->firstheaderlen;
+			if(node->header_ip_offset) {
+				memcpy_heapsafe((u_char*)*packet, (u_char*)*packet,
+						(u_char*)node->packet, (u_char*)node->packet,
+						node->header_ip_offset);
+				len += node->header_ip_offset;
 				// reset fragment flag to 0
-				((iphdr2 *)(node->packet))->frag_off = 0;
-				iphdr = (iphdr2*)(newpacket + len);
+				// ?? ((iphdr2 *)(node->packet))->frag_off = 0;
+				iphdr = (iphdr2*)((u_char*)*packet + len);
 			}
-			memcpy(newpacket + len, node->packet, node->len);
+			memcpy_heapsafe((u_char*)*packet + len, (u_char*)*packet,
+					(u_char*)node->packet + node->header_ip_offset, (u_char*)node->packet,
+					node->len);
 			len += node->len;
 		} else {
 			// for rest of a packets append only data 
@@ -5071,14 +5079,26 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 				syslog(LOG_ERR, "%s.%d: Error - bug in voipmonitor len[%d] > totallen[%d]", __FILE__, __LINE__, len, totallen);
 				abort();
 			}
-			memcpy(newpacket + len, node->packet + sizeof(iphdr2), node->len - sizeof(iphdr2));
+			memcpy_heapsafe((u_char*)*packet + len, (u_char*)*packet,
+					(u_char*)node->packet + node->header_ip_offset + sizeof(iphdr2), (u_char*)node->packet,
+					node->len - sizeof(iphdr2));
 			len += node->len - sizeof(iphdr2);
 			additionallen += node->len - sizeof(iphdr2);
 		}
+		if(i == queue->size() - 1) {
+			memcpy_heapsafe((u_char*)*header, (u_char*)*header, 
+					(u_char*)node->header, (u_char*)node->header,
+					sizeof(struct pcap_pkthdr));
+			((pcap_pkthdr*)*header)->len = totallen;
+			((pcap_pkthdr*)*header)->caplen = totallen;
+		}
 		//lastoffset = node->offset;
-		delete [] node->packet;
-		if(node->firstheader) {
-			delete [] node->firstheader;
+		if(pushToStack_queue_index >= 0) {
+			node->header.pushToStack(pushToStack_queue_index, true);
+			node->packet.pushToStack(pushToStack_queue_index, true);
+		} else {
+			node->header.destroy();
+			node->packet.destroy();
 		}
 		delete node;
 		i++;
@@ -5093,10 +5113,14 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue, struct pcap_pkthdr **header, u
 	return 1;
 }
 
+int ipfrag_add(ip_frag_queue_t *queue, 
+	       cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, 
+	       unsigned int header_ip_offset, unsigned int len,
+	       int pushToStack_queue_index) {
+ 
+	iphdr2 *header_ip = (iphdr2*)(((u_char*)*packet) + header_ip_offset);
 
-int ipfrag_add(ip_frag_queue_t *queue, struct pcap_pkthdr *header, const u_char *packet, unsigned int len, struct pcap_pkthdr **origheader, u_char **origpacket) {
-
-	unsigned int offset = ntohs(((iphdr2*)(packet))->frag_off);
+	unsigned int offset = ntohs(header_ip->frag_off);
 	unsigned int offset_d = (offset & IP_OFFSET) << 3;
 	u_int8_t is_last = 0;
 
@@ -5127,28 +5151,16 @@ int ipfrag_add(ip_frag_queue_t *queue, struct pcap_pkthdr *header, const u_char 
 			node->has_last = is_last;
 		}
 
-		node->ts = header->ts.tv_sec;
+		node->ts = ((pcap_pkthdr*)*header)->ts.tv_sec;
 		node->next = NULL; //TODO: remove, we are using c++ map
-		// copy header and set length
-		memcpy(&(node->header), header, sizeof(struct pcap_pkthdr));
-		node->header.len = len;
-		node->header.caplen = len;
+		
+		node->header = *header;
+		node->packet = *packet;
+		
+		node->header_ip_offset = header_ip_offset;
 		node->len = len;
-		// copy packet
-		node->packet = new FILE_LINE u_char[len];
-		memcpy(node->packet, packet, len);
 		node->offset = offset_d;
 
-		// if it is first packet, copy first header at the beginning (which is typically ethernet header)
-		if((offset & IP_OFFSET) == 0) {
-			node->firstheaderlen = (char*)packet - (char*)(*origpacket);
-			node->firstheader = new FILE_LINE char[node->firstheaderlen];
-			memcpy(node->firstheader, *origpacket, node->firstheaderlen);
-		} else {
-			node->firstheader = NULL;
-			node->firstheaderlen = 0;
-		}
-	
 		// add to queue (which will sort it automatically
 		(*queue)[offset_d] = node;
 	} else {
@@ -5176,7 +5188,7 @@ int ipfrag_add(ip_frag_queue_t *queue, struct pcap_pkthdr *header, const u_char 
 
 	if(ok) {
 		// all packets -> defragment 
-		ipfrag_dequeue(queue, origheader, origpacket);
+		ipfrag_dequeue(queue, header, packet, pushToStack_queue_index);
 		return 1;
 	} else {
 		return 0;
@@ -5193,42 +5205,39 @@ pinters to new allocated data which has to be freed later. If packet is only que
 returns 0 and header and packet remains same
 
 */
-int handle_defrag(iphdr2 *header_ip, struct pcap_pkthdr **header, u_char **packet, int destroy, ipfrag_data_s *ipfrag_data) {
+int handle_defrag(iphdr2 *header_ip, cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, ipfrag_data_s *ipfrag_data,
+		  int pushToStack_queue_index) {
 	if(!ipfrag_data) {
 		ipfrag_data = &::ipfrag_data;
 	}
  
-	struct pcap_pkthdr *tmpheader = *header;
-	u_char *tmppacket = *packet;
-
-
 	//copy header ip to tmp beacuse it can happen that during exectuion of this function the header_ip can be 
 	//overwriten in kernel ringbuffer if the ringbuffer is small and thus header_ip->saddr can have different value 
-	iphdr2 header_ip2;
-	memcpy(&header_ip2, header_ip, sizeof(iphdr2));
+	iphdr2 header_ip_orig;
+	memcpy(&header_ip_orig, header_ip, sizeof(iphdr2));
 
 	// get queue from ip_frag_stream based on source ip address and ip->id identificator (2-dimensional map array)
-	ip_frag_queue_t *queue = ipfrag_data->ip_frag_stream[header_ip2.saddr][header_ip2.id];
+	ip_frag_queue_t *queue = ipfrag_data->ip_frag_stream[header_ip_orig.saddr][header_ip_orig.id];
 	if(!queue) {
 		// queue does not exists yet - create it and assign to map 
 		queue = new FILE_LINE ip_frag_queue_t;
-		ipfrag_data->ip_frag_stream[header_ip2.saddr][header_ip2.id] = queue;
+		ipfrag_data->ip_frag_stream[header_ip_orig.saddr][header_ip_orig.id] = queue;
 	}
-	int res = ipfrag_add(queue, *header, (u_char*)header_ip, ntohs(header_ip2.tot_len), header, packet);
+	int res = ipfrag_add(queue,
+			     header, packet, 
+			     (u_char*)header_ip - (u_char*)*packet, ntohs(header_ip_orig.tot_len),
+			     pushToStack_queue_index);
 	if(res) {
 		// packet was created from all pieces - delete queue and remove it from map
-		ipfrag_data->ip_frag_stream[header_ip2.saddr].erase(header_ip2.id);
+		ipfrag_data->ip_frag_stream[header_ip_orig.saddr].erase(header_ip_orig.id);
 		delete queue;
 	};
-	if(destroy) {
-		// defrag was called with destroy=1 delete original packet and header which was replaced by new defragmented packet
-		delete tmpheader;
-		delete [] tmppacket;
-	}
+	
 	return res;
 }
 
-void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data) {
+void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
+		  int pushToStack_queue_index) {
 	if(!ipfrag_data) {
 		ipfrag_data = &::ipfrag_data;
 	}
@@ -5245,10 +5254,12 @@ void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data) {
 			if(all or ((tv_sec - queue->begin()->second->ts) > (30))) {
 				for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
 					ip_frag_s *node = it->second;
-					
-					delete [] node->packet;
-					if(node->firstheader) {
-						delete [] node->firstheader;
+					if(pushToStack_queue_index >= 0) {
+						node->header.pushToStack(pushToStack_queue_index, true);
+						node->packet.pushToStack(pushToStack_queue_index, true);
+					} else {
+						node->header.destroy();
+						node->packet.destroy();
 					}
 					delete node;
 				}
@@ -5262,11 +5273,6 @@ void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data) {
 }
 
 void readdump_libpcap(pcap_t *handle) {
-	struct pcap_pkthdr *headerpcap;	// The header that pcap gives us
-	pcap_pkthdr *header;	// The header that pcap gives us
-	const u_char *packetpcap = NULL;		// The actual packet 
-	u_char *packet = NULL;		// The actual packet 
-	bool destroy;
 	int was_rtp;
 	pcapProcessData ppd;
 	u_int64_t packet_counter = 0;
@@ -5286,15 +5292,16 @@ void readdump_libpcap(pcap_t *handle) {
 		tmppcap = pcap_dump_open(handle, pname);
 	}
 
+	cHeapItemsStack::sHeapItemT<pcap_pkthdr> header;
+	cHeapItemsStack::sHeapItem packet;
 	while (!is_terminating()) {
-		destroy = 0;
-		int res = pcap_next_ex(handle, &headerpcap, &packetpcap);
-		packet = (u_char *)packetpcap;
-		header = headerpcap;
+		pcap_pkthdr *pcap_next_ex_header;
+		const u_char *pcap_next_ex_packet;
+		int res = pcap_next_ex(handle, &pcap_next_ex_header, &pcap_next_ex_packet);
 		
-		if(!packet and res != -2) {
+		if(!pcap_next_ex_packet and res != -2) {
 			if(verbosity > 2) {
-				syslog(LOG_NOTICE,"NULL PACKET, pcap response is %d",res);
+				syslog(LOG_NOTICE, "NULL PACKET, pcap response is %d",res);
 			}
 			continue;
 		}
@@ -5302,7 +5309,7 @@ void readdump_libpcap(pcap_t *handle) {
 		if(res == -1) {
 			// error returned, sometimes it returs error 
 			if(verbosity > 2) {
-				syslog(LOG_NOTICE,"Error reading packets\n");
+				syslog(LOG_NOTICE, "Error reading packets\n");
 			}
 			continue;
 		} else if(res == -2) {
@@ -5314,20 +5321,25 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 		
+		header.create(sizeof(pcap_pkthdr), NULL);
+		packet.create(0xFFFF, NULL);
+		memcpy_heapsafe((u_char*)header, (u_char*)header,
+				pcap_next_ex_header, NULL,
+				sizeof(pcap_pkthdr));
+		memcpy_heapsafe((u_char*)packet, (u_char*)packet,
+				pcap_next_ex_packet, NULL,
+				pcap_next_ex_header->caplen);
+		
 		++packet_counter;
 
-		if(!pcapProcess(&header, &packet, &destroy,
+		if(!pcapProcess(&header, &packet, -1,
 				true, true, true, true,
 				&ppd, global_pcap_dlink, tmppcap, ifname)) {
-			if(destroy) { 
-				delete header; 
-				delete [] packet; 
-			}
 			continue;
 		}
 
 		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[htons(ppd.header_udp->source)] || sipportmatrix[htons(ppd.header_udp->dest)]))) {
-			mirrorip->send((char *)ppd.header_ip, (int)(header->caplen - ((unsigned long) ppd.header_ip - (unsigned long) packet)));
+			mirrorip->send((char *)ppd.header_ip, (int)(((pcap_pkthdr*)header)->caplen - ((unsigned long) ppd.header_ip - (unsigned long) packet)));
 		}
 		int voippacket = 0;
 		if(!opt_mirroronly) {
@@ -5339,14 +5351,9 @@ void readdump_libpcap(pcap_t *handle) {
 				       NULL, 0, global_pcap_dlink, opt_id_sensor);
 		}
 		if(opt_ipaccount) {
-			ipaccount(header->ts.tv_sec, (struct iphdr2 *) ((char*)packet + ppd.header_ip_offset), header->len - ppd.header_ip_offset, voippacket);
+			ipaccount(((pcap_pkthdr*)header)->ts.tv_sec, (struct iphdr2 *) ((char*)packet + ppd.header_ip_offset), ((pcap_pkthdr*)header)->len - ppd.header_ip_offset, voippacket);
 		}
 
-
-		if(destroy) { 
-			delete header; 
-			delete [] packet;
-		}
 	}
 
 	if(opt_pcapdump) {

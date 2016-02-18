@@ -288,7 +288,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	}
 	recordstopped = 0;
 	dtmfflag = 0;
-	dtmfflag2 = 0;
+	for(unsigned int i = 0; i < sizeof(dtmfflag2) / sizeof(dtmfflag2[0]); i++) {
+		dtmfflag2[i] = 0;
+	}
 	silencerecording = 0;
 	flags1 = 0;
 	#if SYNC_CALL_RTP
@@ -2969,7 +2971,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					 siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
 					 SqlDb_row _resp;
 					 _resp.add(iterSiphistory->SIPresponse, "lastSIPresponse");
-					 siphist.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "request", _resp), "SIPresponse_id");
+					 siphist.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", _resp), "SIPresponse_id");
 				}
 				if(existsColumnCalldateInCdrSiphistory) {
 					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -4326,7 +4328,7 @@ void Call::saveregister() {
 }
 
 void
-Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr) {
+Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr, int callFromType) {
 
 	if(opt_dbdtmf) {
 		dtmfq q;
@@ -4357,31 +4359,34 @@ Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int 
 		}       
 	}
 	if(opt_silencedmtfseq[0] != '\0') {
-		if(dtmfflag2 == 0) {
-			if(dtmf == opt_silencedmtfseq[dtmfflag2]) {
+		unsigned int dtmfflag2_index = callFromType ? 1 : 0;
+		if(dtmfflag2[dtmfflag2_index] == 0) {
+			if(dtmf == opt_silencedmtfseq[dtmfflag2[dtmfflag2_index]]) {
 				// received ftmf '*', set flag so if next dtmf will be '0' stop recording
-				dtmfflag2++;
-			}       
+				dtmfflag2[dtmfflag2_index]++;
+			}
 		} else {
-			if(dtmf == opt_silencedmtfseq[dtmfflag2]) {
+			if(dtmf == opt_silencedmtfseq[dtmfflag2[dtmfflag2_index]]) {
 				// we have complete *0 sequence
-				if(dtmfflag2 + 1 == strlen(opt_silencedmtfseq)) {
+				if(dtmfflag2[dtmfflag2_index] + 1 == strlen(opt_silencedmtfseq)) {
 					if(silencerecording == 0) {
 						if(verbosity >= 1)
-							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - pausing recording ", fbasename);
+							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - pausing recording - %s / %lf s", fbasename, 
+							       callFromType ? "RTP" : "SIP", dtmf_time - ts2double(this->first_packet_time, this->first_packet_usec));
 						silencerecording = 1;
 					} else {
 						if(verbosity >= 1)
-							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - unpausing recording ", fbasename);
+							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - unpausing recording - %s / %lf s", fbasename, 
+							       callFromType ? "RTP" : "SIP", dtmf_time - ts2double(this->first_packet_time, this->first_packet_usec));
 						silencerecording = 0;
 					}       
-					dtmfflag2 = 0;
+					dtmfflag2[dtmfflag2_index] = 0;
 				} else {
-					dtmfflag2++;
+					dtmfflag2[dtmfflag2_index]++;
 				}       
 			} else {
 				// reset flag 
-				dtmfflag2 = 0;
+				dtmfflag2[dtmfflag2_index] = 0;
 			}       
 		}       
 	}

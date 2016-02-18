@@ -949,6 +949,13 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			return -1;
 		}
 		return 0;
+	} else if(strstr(buf, "destroy_close_calls") != NULL) {
+		calltable->destroyCallsIfPcapsClosed();
+		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
 	} else if(strstr(buf, "getipaccount") != NULL) {
 		sscanf(buf, "getipaccount %u", &uid);
 		map<unsigned int, octects_live_t*>::iterator it = ipacc_live.find(uid);
@@ -1489,7 +1496,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		char dateTimeKey[2048];
 		u_int32_t recordId = 0;
 		char tableType[100] = "";
-		char *tarPosI = new char[100000];
+		char *tarPosI = new char[1000000];
 		*tarPosI = 0;
 
 		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s" : "getfile_in_tar %s %s %s %u %s %s", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI);
@@ -1752,7 +1759,7 @@ getwav:
 	} else if(strstr(buf, "genhttppcap") != NULL) {
 		char timestamp_from[100]; 
 		char timestamp_to[100]; 
-		char ids[10000];
+		char *ids = new char [1000000];
 		sscanf(buf, "genhttppcap %19[T0-9--: ] %19[T0-9--: ] %s", timestamp_from, timestamp_to, ids);
 		/*
 		cout << timestamp_from << endl
@@ -1764,6 +1771,8 @@ getwav:
 		dumper.setUnlinkPcap();
 		dumper.dumpData(timestamp_from, timestamp_to, ids);
 		dumper.closePcapDumper();
+		
+		delete [] ids;
 		
 		if(!dumper.getPcapName().empty() &&
 		   file_exists(dumper.getPcapName()) > 0) {
@@ -2092,6 +2101,13 @@ getwav:
 		char *test = new char[10];
 		delete [] test;
 		test[0] = 1;
+	} else if(strstr(buf, "memcrash_test_4") != NULL) {
+		char *test[10];
+		for(int i = 0; i < 10; i++) {
+			test[i] = new FILE_LINE char[10];
+		}
+		memset(test[4] + 10, 0, 40);
+		*(char*)0 = 0;
 	} else if(strstr(buf, "set_pcap_stat_period") != NULL) {
 		int new_pcap_stat_period = atoi(buf + 21);
 		if(new_pcap_stat_period > 0 && new_pcap_stat_period < 600) {

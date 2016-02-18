@@ -1803,6 +1803,9 @@ int main(int argc, char *argv[]) {
 					_HeapSafeErrorFreed |
 					_HeapSafeErrorInAllocFce |
 					_HeapSafeErrorAllocReserve;
+			if(strstr(argv[i], "heapsafeplus")) {
+				HeapSafeCheck |= _HeapSafePlus;
+			}
 		} else if(strstr(argv[i], "HEAPSAFE")) {
 			HeapSafeCheck = _HeapSafeErrorNotEnoughMemory |
 					_HeapSafeErrorBeginEnd |
@@ -1810,6 +1813,9 @@ int main(int argc, char *argv[]) {
 					_HeapSafeErrorInAllocFce |
 					_HeapSafeErrorAllocReserve |
 					_HeapSafeErrorFillFF;
+			if(strstr(argv[i], "HEAPSAFEPLUS")) {
+				HeapSafeCheck |= _HeapSafePlus;
+			}
 		}
 		if((HeapSafeCheck & _HeapSafeErrorBeginEnd) && memoryStatInArg) {
 			if(memoryStatExInArg) {
@@ -2918,7 +2924,7 @@ void main_term_read() {
 
 	extern TcpReassemblySip tcpReassemblySip;
 	tcpReassemblySip.clean();
-	ipfrag_prune(0, 1);
+	ipfrag_prune(0, 1, NULL, -1);
 
 	if(opt_pcap_dump_asyncwrite) {
 		extern AsyncClose *asyncClose;
@@ -3557,6 +3563,22 @@ void test_heapchunk() {
 }
 #endif //HEAP_CHUNK_ENABLE
 
+void test_heapstack() {
+	cHeapItemsStack *hs = new cHeapItemsStack(400, 200, 1, 1);
+	cHeapItemsStack::sHeapItem hi;
+	
+	for(int i = 0; i < 10000; i++) {
+		hs->pop(&hi, 0, 50000);
+		hs->push(&hi, 0, true);
+	}
+	
+	delete hs;
+	
+	cHeapItemsStack::sHeapItem hi2;
+	hi2.create(2000, NULL);
+ 
+}
+
 void test() {
  
 	switch(opt_test) {
@@ -3619,7 +3641,8 @@ void test() {
 	 
 	case 1: {
 	 
-		test_time_cache();
+		test_heapstack();
+		//test_time_cache();
 		//test_parsepacket();
 		break;
 	 
@@ -3732,6 +3755,21 @@ void test() {
 		delete sqlDb;
 		}
 		return;
+	case 90:
+		{
+		vector<string> param;
+		char *pointToSepOptTest = strchr(opt_test_str, '/');
+		if(pointToSepOptTest) {
+			param = split(pointToSepOptTest + 1, ',');
+		}
+		if(param.size() < 1) {
+			cout << "missing parameters" << endl
+			     << "example: -X90/coredump,outfile" << endl;
+		} else {
+			parse_heapsafeplus_coredump(param[0].c_str(), param.size() > 1 ? param[1].c_str() : NULL);
+		}
+		}
+		break;
 	case 95:
 		chdir(opt_chdir);
 		check_filesindex();
@@ -5241,6 +5279,7 @@ void get_command_line_arguments() {
 													sverb.disable_process_packet_in_packetbuffer = 1;
 						else if(verbparams[i] == "thread_create")		sverb.thread_create = 1;
 						else if(verbparams[i] == "timezones")			sverb.timezones = 1;
+						else if(verbparams[i] == "tcpreplay")			sverb.tcpreplay = 1;
 					}
 				} }
 				break;

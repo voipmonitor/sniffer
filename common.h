@@ -51,6 +51,7 @@ struct sVerbose {
 	int disable_process_packet_in_packetbuffer;
 	int thread_create;
 	int timezones;
+	int tcpreplay;
 };
 
 #endif
