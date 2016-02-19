@@ -94,6 +94,15 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 		HEAPSAFE_COPY_BEGIN_MEMORY_CONTROL_BLOCK(begin->stringInfo);
 		begin->length = sizeOfObject;
 		begin->memory_type = 0;
+		if(HeapSafeCheck & _HeapSafePlus) {
+			((sHeapSafeMemoryControlBlockPlus*)begin)->block_addr = (void*)((unsigned long)begin + sizeof(sHeapSafeMemoryControlBlockPlus));
+			if(memory_type1) {
+				strncpy(((sHeapSafeMemoryControlBlockPlus*)begin)->memory_type1, memory_type1, 20);
+			}
+			if(memory_type2) {
+				((sHeapSafeMemoryControlBlockPlus*)begin)->memory_type2 = memory_type2;
+			}
+		}
 		sHeapSafeMemoryControlBlock *end = (sHeapSafeMemoryControlBlock*)
 							((unsigned char*)pointerToObject + sizeOfObject + HEAPSAFE_ALLOC_RESERVE +
 							 SIZEOF_MCB);
@@ -562,4 +571,150 @@ std::string addThousandSeparators(u_int64_t num) {
 void printMemoryStat(bool all) {
 	malloc_trim(0);
 	std::cout << getMemoryStat(all);
+}
+
+struct sParseHeapsafeplusBlockInfo {
+	unsigned length[2];
+	string file;
+	unsigned line;
+};
+void parse_heapsafeplus_coredump(const char *corefile, const char *outfile) {
+ 
+	cout << endl;
+ 
+	map<unsigned long, sParseHeapsafeplusBlockInfo> map_ok_blocks;
+	map<unsigned long, sParseHeapsafeplusBlockInfo> map_bad_blocks;
+	map<unsigned long, unsigned long> map_size_ok_blocks;
+
+	unsigned buffer_length = 50000000;
+	unsigned use_buffer_length = 0;
+	u_char *buffer = new u_char[buffer_length];
+	
+	FILE *core = fopen(corefile, "r");
+	if(!core) {
+		cout << "core file " << corefile << " not found" << endl;
+		return;
+	}
+	FILE *out = NULL;
+	if(outfile) {
+		out = fopen(outfile, "w");
+	}
+	
+	unsigned long file_length = 0;
+	unsigned long begin_pos = 0;
+	size_t read_length = 0;
+	
+	unsigned long bmb_last_pos = 0;
+	unsigned long bmb_count = 0;
+	
+	bool indik_bad_block = false;
+ 
+	do {
+		if(use_buffer_length > buffer_length / 2) {
+			memcpy(buffer, buffer + buffer_length / 2, use_buffer_length - buffer_length / 2);
+			use_buffer_length -= buffer_length / 2;
+			begin_pos += buffer_length / 2;
+		}
+		read_length = fread(buffer + use_buffer_length, 1, buffer_length / 2, core);
+		use_buffer_length += read_length;
+		file_length += read_length;
+		
+		if(!read_length || use_buffer_length > buffer_length / 2) {
+		
+			size_t find_length = read_length ? min(use_buffer_length, buffer_length / 2 + 2) : use_buffer_length;
+			
+			u_char *posBMB = NULL;
+			do {
+				u_char *startFind = posBMB ? posBMB + 1 : buffer;
+				posBMB = (u_char*)memmem(startFind,
+							 find_length - (startFind - buffer), 
+							 "BMB", 3);
+				if(posBMB) {
+					unsigned long bmb_act_pos = (unsigned long)posBMB - (unsigned long)buffer + begin_pos;
+					sHeapSafeMemoryControlBlockPlus *mbBMB = (sHeapSafeMemoryControlBlockPlus*)posBMB;
+					if(mbBMB->memory_type == 0 &&
+					   mbBMB->memory_type1[0] &&
+					   mbBMB->block_addr &&
+					   mbBMB->length < buffer_length / 2) {
+						sParseHeapsafeplusBlockInfo block_info;
+						block_info.length[0] = mbBMB->length;
+						block_info.length[1] = mbBMB->length + sizeof(sHeapSafeMemoryControlBlockPlus) + 20 + sizeof(sHeapSafeMemoryControlBlock);
+						block_info.file = string(mbBMB->memory_type1).c_str();
+						block_info.line = mbBMB->memory_type2;
+						sHeapSafeMemoryControlBlock *mbEMB = (sHeapSafeMemoryControlBlock*)((long)posBMB + sizeof(sHeapSafeMemoryControlBlockPlus) + mbBMB->length + 20);
+						if(strncmp(mbEMB->stringInfo, "EMB", 3) ||
+						   mbBMB->memory_type != mbEMB->memory_type ||
+						   mbBMB->length != mbEMB->length) {
+							map_bad_blocks[(unsigned long)mbBMB->block_addr] = block_info;
+							if(out) {
+								fprintf(out, "BAD BLOCK - length: %u", mbBMB->length);
+								fwrite(posBMB, mbBMB->length + sizeof(sHeapSafeMemoryControlBlockPlus) + sizeof(sHeapSafeMemoryControlBlock) + 20, 1, out);
+								indik_bad_block = true;
+							}
+						} else {
+							map_ok_blocks[(unsigned long)mbBMB->block_addr] = block_info;
+							++map_size_ok_blocks[mbBMB->length];
+							if(indik_bad_block) {
+								cout << (bmb_act_pos - bmb_last_pos) << endl;
+								indik_bad_block= false;
+							}
+						}
+					}
+					
+					++bmb_count;
+					bmb_last_pos = bmb_act_pos;
+				}
+			 
+			} while(posBMB);
+		
+		}
+		
+		
+	} while(read_length);
+	
+	cout << "core length: " << file_length << endl;
+	cout << "bmb count: " << bmb_count << endl;
+	cout << "bad blocks: " << map_bad_blocks.size() << endl;
+	
+	cout << endl;
+	
+	if(map_bad_blocks.size()) {
+		map<unsigned long, sParseHeapsafeplusBlockInfo>::iterator it;
+		for(it = map_bad_blocks.begin(); it != map_bad_blocks.end(); it++) {
+			cout << "BAD BLOCK - "
+			     << hex << it->first << dec << ", " 
+			     << it->second.length[0] << "(" << it->second.length[1] << "), "
+			     << it->second.file << ":" << it->second.line;
+			map<unsigned long, sParseHeapsafeplusBlockInfo>::iterator it2 = map_ok_blocks.lower_bound(it->first);
+			if(it2 != map_ok_blocks.end()) {
+				cout << " / next ok block - "
+				     << hex << it2->first << dec << "+" << (it2->first - it->first) << ", "
+				     << it2->second.length[0] << "(" << it2->second.length[1] << "), "
+				     << it2->second.file << ":" << it2->second.line;
+			}
+			cout << endl;
+		}
+	}
+	
+	cout << endl;
+	
+	unsigned long count_lt_100 = 0;
+	unsigned long sum_lt_100 = 0;
+	
+	if(map_size_ok_blocks.size()) {
+		map<unsigned long, unsigned long>::iterator it = map_size_ok_blocks.end();
+		do {
+			--it;
+			cout << it->first << " : " << it->second << endl;
+			if(it->first < 100) {
+				count_lt_100 += it->second;
+				sum_lt_100 += it->first * it->second;
+			}
+		} while(it != map_size_ok_blocks.begin());
+	}
+	
+	cout << "count <100 blocks: " << count_lt_100 << endl;
+	cout << "sum <100 blocks: " << sum_lt_100 << endl;
+	cout << "avg <100 block: " << (sum_lt_100 / count_lt_100) << endl;
+ 
 }

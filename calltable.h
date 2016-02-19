@@ -232,7 +232,7 @@ public:
 	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
 	int recordstopped;		//!< flag holding if call was stopped to avoid double free
 	int dtmfflag;			//!< used for holding dtmf states 
-	unsigned int dtmfflag2;			//!< used for holding dtmf states 
+	unsigned int dtmfflag2[2];			//!< used for holding dtmf states 
 	int silencerecording;
 	int msgcount;
 	int regcount;
@@ -664,7 +664,7 @@ public:
 
 	float mos_lqo(char *deg, int samplerate);
 
-	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr);
+	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr, int callFromType);
 	
 	void handle_dscp(int sip_method, struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut = NULL, bool enableSetSipcallerdip = false);
 	

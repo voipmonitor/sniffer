@@ -8,7 +8,7 @@
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
-#define RTPSENSOR_VERSION "15.2.1"
+#define RTPSENSOR_VERSION "15.3"
 #define NAT
 
 #define FORMAT_WAV	1
@@ -44,7 +44,6 @@
 #define GRAPH_EVENT 4294967290
 
 #define SNIFFER_INLINE_FUNCTIONS true
-#define TCPREPLAY_WORKARROUND false
 
 #define SYNC_PCAP_BLOCK_STORE true
 #define SYNC_CALL_RTP true

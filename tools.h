@@ -29,6 +29,7 @@
 #include "tools_dynamic_buffer.h"
 #include "buffers_control.h"
 #include "heap_safe.h"
+#include "rqueue.h"
 #include "voipmonitor.h"
 
 #include "tools_inline.h"
@@ -2310,5 +2311,242 @@ int vm_pthread_create_autodestroy(pthread_t *thread, pthread_attr_t *attr,
 				 src_file, src_file_line,
 				 true));
 }
+
+
+#define HEAP_ITEM_DEAFULT_SIZE 0xFFFFFFFF
+
+class cHeapItemsStack {
+public:
+	struct sHeapItem {
+		sHeapItem(cHeapItemsStack *stack = NULL) {
+			item = NULL;
+			size = 0;
+			this->stack = stack;
+		}
+		sHeapItem(const sHeapItem &hi) {
+			item = hi.item;
+			size = hi.size;
+			stack = hi.stack;
+			((sHeapItem*)&hi)->clean();
+		}
+		sHeapItem & operator = (const sHeapItem &hi) {
+			this->clean();
+			item = hi.item;
+			size = hi.size;
+			stack = hi.stack;
+			((sHeapItem*)&hi)->clean();
+			return(*this);
+		}
+		void copyFrom(const sHeapItem &hi) {
+			this->clean();
+			item = hi.item;
+			size = hi.size;
+			stack = hi.stack;
+		}
+		~sHeapItem() {
+			if(item) {
+				//cout << "DESTROY sHeapItem::item" << endl;
+				delete [] item;
+			}
+		}
+		int pushToStack(u_int16_t push_queue_index, bool destroyIfFalse) {
+			if(stack) {
+				return(stack->push(this, push_queue_index, destroyIfFalse));
+			} else if(destroyIfFalse) {
+				destroy();
+				return(2);
+			}
+			return(0);
+		}
+		int popFromStack(u_int16_t pop_queue_index, u_int32_t createSizeIfFalse) {
+			if(stack) {
+				return(stack->pop(this, pop_queue_index, createSizeIfFalse));
+			} else {
+				if(!createSizeIfFalse ||
+				   createSizeIfFalse == HEAP_ITEM_DEAFULT_SIZE) {
+					return(-2);
+				} else {
+					this->create(createSizeIfFalse, NULL);
+					return(2);
+				}
+			}
+			return(0);
+		}
+		void create(u_int32_t size, cHeapItemsStack *stack) {
+			destroy();
+			item = new FILE_LINE u_char[size];
+			//cout << 'A' << flush;
+			this->size = size;
+			this->stack = stack;
+		}
+		void destroy() {
+			if(item) {
+				delete [] item;
+				item = NULL;
+			}
+			size = 0;
+		}
+		void clean() {
+			item = NULL;
+			size = 0;
+		}
+		void setStack(cHeapItemsStack *stack) {
+			this->stack = stack;
+		}
+		operator int() {
+			return(item && size ? size : 0);
+		}
+		operator u_char*() {
+			return(item && size ? item : NULL);
+		}
+		operator char*() {
+			return(item && size ? (char*)item : NULL);
+		}
+		u_int32_t getSize() {
+			return(item && size ? size : 0);
+		}
+	private:
+		u_char *item;
+		u_int32_t size;
+		cHeapItemsStack *stack;
+	friend class cHeapItemsStack;
+	};
+	template <class type>
+	struct sHeapItemT : public sHeapItem {
+		sHeapItemT(cHeapItemsStack *stack = NULL)
+		 : sHeapItem(stack) {
+		}
+		operator type*() {
+			return(item && size ? (type*)item : 0);
+		}
+	};
+private:
+	struct sHeapItemsPool {
+		sHeapItemsPool(u_int16_t pool_size_max) {
+			this->pool_size = 0;
+			this->pool_size_max = pool_size_max;
+			this->pool = new FILE_LINE sHeapItem[pool_size_max];
+		}
+		~sHeapItemsPool() {
+			delete [] this->pool;
+		}
+		void destroyAll() {
+			for(unsigned i = 0; i < pool_size; i++) {
+				pool[i].destroy();
+			}
+		}
+		u_int16_t pool_size;
+		u_int16_t pool_size_max;
+		sHeapItem *pool;
+	};
+public:
+	cHeapItemsStack(u_int32_t size_max, u_int16_t pool_size_max,
+			u_int16_t pop_queues_max, u_int16_t push_queues_max) {
+		this->size_max = size_max;
+		this->pool_size_max = pool_size_max;
+		this->pop_queues_max = pop_queues_max;
+		this->push_queues_max = push_queues_max;
+		this->pop_queues = new FILE_LINE sHeapItemsPool*[this->pop_queues_max];
+		for(unsigned i = 0; i < this->pop_queues_max; i++) {
+			this->pop_queues[i] = NULL;
+		}
+		this->push_queues = new FILE_LINE sHeapItemsPool*[this->push_queues_max];
+		for(unsigned i = 0; i < this->push_queues_max; i++) {
+			this->push_queues[i] = NULL;
+		}
+		this->stack = new FILE_LINE rqueue_quick<sHeapItemsPool*>(this->size_max / this->pool_size_max, 0, 0, NULL, false, __FILE__, __LINE__);
+		this->default_item_size = 0;
+	}
+	~cHeapItemsStack() {
+		for(unsigned i = 0; i < this->pop_queues_max; i++) {
+			if(this->pop_queues[i]) {
+				this->pop_queues[i]->destroyAll();
+				delete this->pop_queues[i];
+				this->pop_queues[i] = NULL;
+			}
+		}
+		delete [] this->pop_queues;
+		for(unsigned i = 0; i < this->push_queues_max; i++) {
+			if(this->push_queues[i]) {
+				this->push_queues[i]->destroyAll();
+				delete this->push_queues[i];
+				this->push_queues[i] = NULL;
+			}
+		}
+		delete [] this->push_queues;
+		sHeapItemsPool *pool;
+		while(stack->pop(&pool, false, true)) {
+			pool->destroyAll();
+			delete pool;
+		}
+		delete this->stack;
+	}
+	void setDefaultItemSize(u_int32_t default_item_size) {
+		this->default_item_size = default_item_size;
+	}
+	int push(sHeapItem *heapItem, u_int16_t push_queue_index, bool destroyIfFalse) {
+		if(!heapItem->item || !heapItem->size) {
+			return(-1);
+		}
+		if(this->push_queues[push_queue_index] &&
+		   this->push_queues[push_queue_index]->pool_size == this->push_queues[push_queue_index]->pool_size_max) {
+			if(stack->push(&this->push_queues[push_queue_index], false, true)) {
+				//cout << "push to stack" << endl;
+				this->push_queues[push_queue_index] = NULL;
+			} else {
+				if(destroyIfFalse) {
+					heapItem->destroy();
+					return(2);
+				}
+				return(0);
+			}
+		}
+		if(!this->push_queues[push_queue_index]) {
+			this->push_queues[push_queue_index] = new FILE_LINE sHeapItemsPool(this->pool_size_max);
+		}
+		if(this->push_queues[push_queue_index]->pool_size < this->push_queues[push_queue_index]->pool_size_max) {
+			this->push_queues[push_queue_index]->pool[this->push_queues[push_queue_index]->pool_size] = *heapItem;
+			++this->push_queues[push_queue_index]->pool_size;
+			heapItem->clean();
+		}
+		return(1);
+	}
+	int pop(sHeapItem *heapItem, u_int16_t pop_queue_index, u_int32_t createSizeIfFalse) {
+		if(!this->pop_queues[pop_queue_index]) {
+			if(stack->pop(&this->pop_queues[pop_queue_index], false, true)) {
+				//cout << "pop from stack" << endl;
+			} else {
+				if(createSizeIfFalse == HEAP_ITEM_DEAFULT_SIZE) {
+					createSizeIfFalse = default_item_size;
+				}
+				if(createSizeIfFalse > 0) {
+					heapItem->create(createSizeIfFalse, this);
+					return(2);
+				}
+				return(0);
+			}
+		}
+		if(this->pop_queues[pop_queue_index]->pool_size > 0) {
+			--this->pop_queues[pop_queue_index]->pool_size;
+			*heapItem = this->pop_queues[pop_queue_index]->pool[this->pop_queues[pop_queue_index]->pool_size];
+			this->pop_queues[pop_queue_index]->pool[this->pop_queues[pop_queue_index]->pool_size].clean();
+		}
+		if(this->pop_queues[pop_queue_index]->pool_size == 0) {
+			delete this->pop_queues[pop_queue_index];
+			this->pop_queues[pop_queue_index]= NULL;
+		}
+		return(1);
+	}
+public:
+	u_int32_t size_max;
+	u_int16_t pool_size_max;
+	u_int16_t pop_queues_max;
+	u_int16_t push_queues_max;
+	sHeapItemsPool **pop_queues;
+	sHeapItemsPool **push_queues;
+	rqueue_quick<sHeapItemsPool*> *stack;
+	u_int32_t default_item_size;
+};
+
 
 #endif
