@@ -2402,6 +2402,9 @@ public:
 		operator char*() {
 			return(item && size ? (char*)item : NULL);
 		}
+		u_int32_t getSize() {
+			return(item && size ? size : 0);
+		}
 	private:
 		u_char *item;
 		u_int32_t size;

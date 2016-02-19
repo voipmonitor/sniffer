@@ -2924,7 +2924,6 @@ void main_term_read() {
 
 	extern TcpReassemblySip tcpReassemblySip;
 	tcpReassemblySip.clean();
-	ipfrag_prune(0, 1, NULL, -1);
 
 	if(opt_pcap_dump_asyncwrite) {
 		extern AsyncClose *asyncClose;

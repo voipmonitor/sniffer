@@ -246,7 +246,6 @@ typedef struct pcaprec_hdr_s {
 } pcaprec_hdr_t;
 
 TcpReassemblySip tcpReassemblySip;
-ipfrag_data_s ipfrag_data;
 
 u_int64_t counter_calls;
 u_int64_t counter_calls_clean;
@@ -5207,9 +5206,6 @@ returns 0 and header and packet remains same
 */
 int handle_defrag(iphdr2 *header_ip, cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, ipfrag_data_s *ipfrag_data,
 		  int pushToStack_queue_index) {
-	if(!ipfrag_data) {
-		ipfrag_data = &::ipfrag_data;
-	}
  
 	//copy header ip to tmp beacuse it can happen that during exectuion of this function the header_ip can be 
 	//overwriten in kernel ringbuffer if the ringbuffer is small and thus header_ip->saddr can have different value 
@@ -5238,9 +5234,6 @@ int handle_defrag(iphdr2 *header_ip, cHeapItemsStack::sHeapItemT<pcap_pkthdr> *h
 
 void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
 		  int pushToStack_queue_index) {
-	if(!ipfrag_data) {
-		ipfrag_data = &::ipfrag_data;
-	}
  
 	ip_frag_queue_t *queue;
 	for (ipfrag_data->ip_frag_streamIT = ipfrag_data->ip_frag_stream.begin(); ipfrag_data->ip_frag_streamIT != ipfrag_data->ip_frag_stream.end(); ipfrag_data->ip_frag_streamIT++) {
@@ -5468,6 +5461,10 @@ void process_packet__push_batch() {
 	u_long timeS = getTimeS();
 	if(timeS - process_packet__last_cleanup > 10) {
 		process_packet__cleanup(NULL, timeS);
+	}
+	if(timeS - process_packet__last_destroy_calls >= 2) {
+		calltable->destroyCallsIfPcapsClosed();
+		process_packet__last_destroy_calls = timeS;
 	}
 	if(processRtpPacketHash) {
 		processRtpPacketHash->push_batch();
