@@ -2054,7 +2054,7 @@ inline Call *new_invite_register(packet_s *packetS, ParsePacket::ppContentsX *pa
 				call->regrrdstart.tv_usec = packetS->header.ts.tv_usec;
 
 				//Parse ether header for src mac else 0
-				{
+				if(packetS->dlt == DLT_EN10MB) {
 					sll_header *header_sll;
 					ether_header *header_eth;
 					u_int header_ip_offset;
