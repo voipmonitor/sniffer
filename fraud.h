@@ -613,6 +613,7 @@ protected:
 	virtual void addFraudDef(SqlDb_row *row) {}
 	virtual bool defFilterIp() { return(false); }
 	virtual bool defFilterIp2() { return(false); }
+	virtual bool defStreamFilterIp() { return(false); }
 	virtual bool defFilterNumber() { return(false); }
 	virtual bool defFilterNumber2() { return(false); }
 	virtual bool defFilterUA() { return(false); }
@@ -764,6 +765,7 @@ public:
 protected:
 	virtual bool checkTime(u_int64_t time) { return(true); }
 	virtual string getDescr() { return(""); }
+	FraudAlert::eTypeBy getTypeBy();
 private:
 	bool checkOkAlert(sIdAlert idAlert, size_t concurentCalls, u_int64_t at,
 			  FraudAlert::eLocalInternational li,
@@ -861,8 +863,12 @@ public:
 	void evRtpStream(sFraudRtpStreamInfo *rtpStreamInfo);
 protected:
 	void addFraudDef(SqlDb_row *row);
-	bool defFilterIp() { return(true); }
-	bool defFilterIp2() { return(true); }
+	bool defFilterIp() { return(getTypeBy() == FraudAlert::_typeBy_source_ip || 
+				    getTypeBy() == FraudAlert::_typeBy_source_number); }
+	bool defFilterIp2() { return(getTypeBy() == FraudAlert::_typeBy_source_ip || 
+				     getTypeBy() == FraudAlert::_typeBy_source_number); }
+	bool defStreamFilterIp() { return(getTypeBy() == FraudAlert::FraudAlert::_typeBy_rtp_stream_ip || 
+					  getTypeBy() == FraudAlert::_typeBy_rtp_stream_ip_group); }
 	bool defFilterNumber() { return(true); }
 	bool defFilterNumber2() { return(true); }
 	bool defFraudDef() { return(true); }
