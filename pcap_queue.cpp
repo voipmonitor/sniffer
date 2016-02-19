@@ -2119,7 +2119,7 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 	} else if (header_ip->protocol == IPPROTO_TCP) {
 		tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
 		data = (char *) header_tcp + (header_tcp->doff * 4);
-		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(tcphdr2), 
+		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - header_tcp->doff * 4, 
 				   header->caplen - ((u_char*)data - packet)); 
 		sport = header_tcp->source;
 		dport = header_tcp->dest;
@@ -5089,7 +5089,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		istcp = 1;
 		// prepare packet pointers 
 		data = (char *) header_tcp + (header_tcp->doff * 4);
-		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(tcphdr2), 
+		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - header_tcp->doff * 4, 
 				   header->caplen - ((u_char*)data - packet)); 
 		header_udp->source = header_tcp->source;
 		header_udp->dest = header_tcp->dest;
