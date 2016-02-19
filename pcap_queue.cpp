@@ -2748,6 +2748,21 @@ inline void PcapQueue_readFromInterfaceThread::push(cHeapItemsStack::sHeapItemT<
 	****/
 }
 
+inline void PcapQueue_readFromInterfaceThread::tryForcePush() {
+	if(writeIndexCount && force_push && writeIndex) {
+		unsigned int _writeIndex = writeIndex - 1;
+		force_push = false;
+		qring[_writeIndex]->count = writeIndexCount;
+		qring[_writeIndex]->used = 1;
+		writeIndex = 0;
+		if((writeit + 1) == qringmax) {
+			writeit = 0;
+		} else {
+			writeit++;
+		}
+	}
+}
+
 inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread::pop() {
 	unsigned int _readIndex;
 	hpi rslt_hpi;
@@ -2913,7 +2928,10 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				usleep(100);
 				++this->counter_pop_usleep;
 				if(!(this->counter_pop_usleep % 2000)) {
-					this->prevThread->forcePush();
+					this->prevThread->setForcePush();
+				}
+				if(this->force_push) {
+					this->tryForcePush();
 				}
 				continue;
 			}
@@ -2944,6 +2962,9 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			if(res == -1) {
 				break;
 			} else if(res == 0) {
+				if(this->force_push) {
+					this->tryForcePush();
+				}
 				continue;
 			}
 			/* check change packet content - disabled
@@ -3076,6 +3097,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				}
 				if(okPush) {
 					this->push(&header, &packet, offset, NULL);
+				} else {
+					this->tryForcePush();
 				}
 			} else {
 				bool okPush = true;
@@ -3305,6 +3328,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	}
 	delete_packet_info dpi;
 	unsigned int counter_pop_usleep = 0;
+	unsigned long counter = 0;
 	while(!TERMINATING) {
 		bool fetchPacketOk = false;
 		int minThreadTimeIndex = -1;
@@ -3325,20 +3349,9 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					}
 				}
 			}
-			if(minThreadTimeIndex < 0) {
-				usleep(100);
-				++counter_pop_usleep;
-				if(!(counter_pop_usleep % 2000)) {
-					for(int i = 0; i < this->readThreadsCount; i++) {
-						this->readThreads[i]->forcePUSH();
-					}
-				}
-			} else {
-				counter_pop_usleep = 0;
+			if(minThreadTimeIndex >= 0) {
 				PcapQueue_readFromInterfaceThread::hpi hpi = this->readThreads[minThreadTimeIndex]->POP();
-				if(!hpi.packet) {
-					usleep(100);
-				} else {
+				if(hpi.packet) {
 					header = hpi.header;
 					packet = hpi.packet;
 					if(hpi.offset != (u_int)-1) {
@@ -3352,6 +3365,17 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					dlink = this->readThreads[minThreadTimeIndex]->pcapLinklayerHeaderType;
 					blockStoreIndex = minThreadTimeIndex;
 					fetchPacketOk = true;
+				}
+			}
+			if(fetchPacketOk) {
+				counter_pop_usleep = 0;
+			} else {
+				usleep(100);
+				++counter_pop_usleep;
+				if(!(counter_pop_usleep % 2000)) {
+					for(int i = 0; i < this->readThreadsCount; i++) {
+						this->readThreads[i]->setForcePUSH();
+					}
 				}
 			}
 		} else if(opt_scanpcapdir[0] && this->pcapEnd) {
@@ -3457,7 +3481,6 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				}
 			}
 		}
-		bool checkFullAllBlockStores = false;
 		if(fetchPacketOk) {
 			++sumPacketsCounterIn[0];
 			extern SocketSimpleBufferWrite *sipSendSocket;
@@ -3487,17 +3510,12 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					}
 				}
 			}
-		} else if(blockStoreCount > 1) {
-			for(int i = 0; i < blockStoreCount; i++) {
-				blockStore[i]->isFull_checkTimout();
-			}
-			checkFullAllBlockStores = true;
 		}
-		if(blockStoreCount > 1) {
+		++counter;
+		if((!fetchPacketOk || blockStoreCount > 1) &&
+		   !(counter % 100)) {
 			for(int i = 0; i < blockStoreCount; i++) {
-				if(i != blockStoreIndex &&
-				   (blockStore[i]->full || 
-				    (!checkFullAllBlockStores && !(blockStore[i]->count % 20) && blockStore[i]->isFull_checkTimout()))) {
+				if(blockStore[i]->isFull_checkTimout()) {
 					this->push_blockstore(&blockStore[i]);
 					++sumBlocksCounterIn[0];
 					blockStore[i] = this->new_blockstore(i);

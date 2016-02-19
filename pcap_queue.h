@@ -512,6 +512,7 @@ public:
 protected:
 	inline void push(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header,cHeapItemsStack::sHeapItem *packet,
 			 u_int offset, uint16_t *md5);
+	inline void tryForcePush();
 	inline hpi pop();
 	inline hpi POP();
 	u_int64_t getTime_usec() {
@@ -535,14 +536,14 @@ protected:
 	bool isTerminated() {
 		return(this->threadTerminated);
 	}
-	void forcePush() {
+	void setForcePush() {
 		this->force_push = true;
 	}
-	void forcePUSH() {
+	void setForcePUSH() {
 		if(this->dedupThread) {
-			this->dedupThread->forcePush();
+			this->dedupThread->setForcePush();
 		} else {
-			this->forcePush();
+			this->setForcePush();
 		}
 	}
 private:

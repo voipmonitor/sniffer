@@ -676,6 +676,11 @@ bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
 	if(this->defFilterIp2() && !this->ipFilter2.checkIP(callInfo->called_ip)) {
 		return(false);
 	}
+	if(this->defStreamFilterIp() &&
+	   !((this->ipFilter.checkIP(callInfo->caller_ip) && this->ipFilter2.checkIP(callInfo->called_ip)) ||
+	     (this->ipFilter.checkIP(callInfo->called_ip) && this->ipFilter2.checkIP(callInfo->caller_ip)))) {
+		return(false);
+	}
 	if(this->defFilterNumber() && !this->phoneNumberFilter.checkNumber(callInfo->caller_number.c_str())) {
 		return(false);
 	}
@@ -690,6 +695,11 @@ bool FraudAlert::okFilter(sFraudRtpStreamInfo *rtpStreamInfo) {
 		return(false);
 	}
 	if(this->defFilterIp2() && !this->ipFilter2.checkIP(rtpStreamInfo->rtp_dst_ip)) {
+		return(false);
+	}
+	if(this->defStreamFilterIp() &&
+	   !((this->ipFilter.checkIP(rtpStreamInfo->rtp_src_ip) && this->ipFilter2.checkIP(rtpStreamInfo->rtp_dst_ip)) ||
+	     (this->ipFilter.checkIP(rtpStreamInfo->rtp_dst_ip) && this->ipFilter2.checkIP(rtpStreamInfo->rtp_src_ip)))) {
 		return(false);
 	}
 	if(this->defFilterNumber() && !this->phoneNumberFilter.checkNumber(rtpStreamInfo->caller_number.c_str())) {
@@ -1095,6 +1105,10 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 	}
 }
 
+FraudAlert::eTypeBy FraudAlert_rcc_base::getTypeBy() { 
+	return(parent->typeBy); 
+}
+
 bool FraudAlert_rcc_base::checkOkAlert(sIdAlert idAlert, size_t concurentCalls, u_int64_t at,
 				       FraudAlert::eLocalInternational li,
 				       FraudAlert_rcc *alert) {
@@ -1182,17 +1196,17 @@ string FraudAlertInfo_rcc::getJson() {
 		json.add("ip_country", countryCodes->getNameCountry(ip_location_code.c_str()));
 		json.add("ip_continent", countryCodes->getNameContinent(ip_location_code.c_str()));
 		break;
-	case FraudAlert::FraudAlert::_typeBy_source_number:
+	case FraudAlert::_typeBy_source_number:
 		json.add("number", number);
 		json.add("number_location_code", number_location_code);
 		json.add("number_country", countryCodes->getNameCountry(number_location_code.c_str()));
 		json.add("number_continent", countryCodes->getNameContinent(number_location_code.c_str()));
 		break;
-	case FraudAlert::FraudAlert::FraudAlert::_typeBy_rtp_stream_ip:
+	case FraudAlert::_typeBy_rtp_stream_ip:
 		json.add("rtp_stream_ip1", inet_ntostring(rtp_stream[0]));
 		json.add("rtp_stream_ip2", inet_ntostring(rtp_stream[1]));
 		break;
-	case FraudAlert::FraudAlert::FraudAlert::_typeBy_rtp_stream_ip_group:
+	case FraudAlert::_typeBy_rtp_stream_ip_group:
 		json.add("rtp_stream_ip_group1", rtp_stream[0]);
 		json.add("rtp_stream_ip_group2", rtp_stream[1]);
 		break;
