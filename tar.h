@@ -385,7 +385,8 @@ public:
 		void qunlock() {
 			__sync_lock_release(&this->_sync_lock);
 		}
-		inline void processData(data_t *data, bool isClosed, size_t lenForProceed, size_t lenForProceedSafe);
+		inline void processData(TarQueue *tarQueue, const char *tarName, 
+					data_t *data, bool isClosed, size_t lenForProceed, size_t lenForProceedSafe);
 	};
 
 	struct tarthreadworker_arg {

@@ -1426,7 +1426,7 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 				if(safeLimitLength + it->decompress_len >= limitLength) {
 					break;
 				}
-				if(!this->closed && counterIterator >= sizeChunkBuffer + 1) {
+				if(!this->closed && counterIterator >= sizeChunkBuffer - 1) {
 					break;
 				}
 				safeLimitLength += it->decompress_len;
