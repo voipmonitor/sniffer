@@ -1032,7 +1032,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 					u_int header_ip_offset = 0;
 					int protocol = 0;
 					if(parseEtherHeader(dlt, (u_char*)packet, header_sll, header_eth, header_ip_offset, protocol) &&
-					   header_ip_offset + sizeof(iphdr2) + (istcp ? sizeof(tcphdr2) : sizeof(udphdr2)) + datalen != header->caplen) {
+					   (header_ip_offset + sizeof(iphdr2) + (istcp ? ((tcphdr2*)(packet + header_ip_offset + sizeof(iphdr2)))->doff * 4 : sizeof(udphdr2)) + datalen) != header->caplen) {
 						pcap_pkthdr *_header;
 						u_char *_packet;
 						createSimpleUdpDataPacket(header_ip_offset,  &_header, &_packet,

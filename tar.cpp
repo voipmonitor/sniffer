@@ -1290,41 +1290,42 @@ void *TarQueue::tarthreadworker(void *arg) {
 						unsigned long long __prof_begin2 = rdtsc();
 						#endif
 						size_t lenForProceed = data.buffer->getChunkIterateLenForProceed();
-						size_t lenForProceedSafe = lenForProceed;
-						#if TAR_PROF
-						unsigned long long __prof_i1 = rdtsc();
-						#endif
-						if(!isClosed && lenForProceedSafe > TAR_CHUNK_KB * 1024) {
-							 lenForProceedSafe = data.buffer->getChunkIterateSafeLimitLength(lenForProceedSafe);
-						}
-						#if TAR_PROF
-						unsigned long long __prof_i2 = rdtsc();
-						#endif
-						if(isClosed ||
-						   lenForProceedSafe > TAR_CHUNK_KB * 1024) {
-							doProcessData = true;
-							doProcessDataTar = true;
+						if(isClosed || lenForProceed > TAR_CHUNK_KB * 1024) {
 							#if TAR_PROF
-							unsigned long long __prof_i21 = rdtsc();
+							unsigned long long __prof_i1 = rdtsc();
 							#endif
-							tarthread->processData(&data, isClosed, lenForProceed, lenForProceedSafe);
+							size_t lenForProceedSafe = isClosed ? 
+										    lenForProceed :
+										    data.buffer->getChunkIterateSafeLimitLength(lenForProceed);
 							#if TAR_PROF
-							unsigned long long __prof_i22 = rdtsc();
-							__prof_sum_5 += __prof_i22 - __prof_i21;
+							unsigned long long __prof_i2 = rdtsc();
 							#endif
-							if(isClosed && 
-							   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
-								//tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
-								//--length_list;
-								//--index_list;
-								data.buffer = NULL;
-								it->buffer = NULL;
-								++count_empty;
+							if(isClosed ||
+							   lenForProceedSafe > TAR_CHUNK_KB * 1024) {
+								doProcessData = true;
+								doProcessDataTar = true;
+								#if TAR_PROF
+								unsigned long long __prof_i21 = rdtsc();
+								#endif
+								tarthread->processData(this2, processTarName.c_str(), 
+										       &data, isClosed, lenForProceed, lenForProceedSafe);
+								#if TAR_PROF
+								unsigned long long __prof_i22 = rdtsc();
+								__prof_sum_5 += __prof_i22 - __prof_i21;
+								#endif
+								if(isClosed && !lenForProceed) {
+									//tarthread->queue[processTar].erase(tarthread->queue[processTar].begin() + index_list);
+									//--length_list;
+									//--index_list;
+									data.buffer = NULL;
+									it->buffer = NULL;
+									++count_empty;
+								}
+								#if TAR_PROF
+								unsigned long long __prof_i23 = rdtsc();
+								__prof_sum_6 += __prof_i23 - __prof_i22;
+								#endif
 							}
-							#if TAR_PROF
-							unsigned long long __prof_i23 = rdtsc();
-							__prof_sum_6 += __prof_i23 - __prof_i22;
-							#endif
 						}
 						#if TAR_PROF
 						unsigned long long __prof_end2 = rdtsc();
@@ -1415,7 +1416,8 @@ void *TarQueue::tarthreadworker(void *arg) {
 }
 
 inline void
-TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForProceed, size_t lenForProceedSafe) {
+TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
+				    data_t *data, bool isClosed, size_t lenForProceed, size_t lenForProceedSafe) {
  
 	#if TAR_PROF
 	unsigned long long __prof_begin = rdtsc();
@@ -1423,53 +1425,60 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 	unsigned long long __prof_i2 = __prof_begin;
 	#endif
  
-	Tar *tar = data->tar;
-	tar->tarlock();
-	tar->writing = 1;
-	if(lenForProceedSafe) {
-	 
-		data->buffer->addTarPosInCall(tar->tarLength);
-	 
-		//reset and set header
-		memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
-		tar->th_set_type(0); //s->st_mode, 0 is regular file
-		tar->th_set_user(0); //st_uid
-		tar->th_set_group(0); //st_gid
-		tar->th_set_mode(0444); //s->st_mode
-		tar->th_set_mtime(data->time);
-		tar->th_set_size(lenForProceedSafe);
-		tar->th_set_path((char*)data->filename.c_str(), !isClosed);
-		
-		#if TAR_PROF
-		__prof_i1 = rdtsc();
-		#endif
-	       
-		// write header
-		if (tar->th_write() == 0) {
-			// if it's a regular file, write the contents as well
+	Tar *tar = NULL;
+	pthread_mutex_lock(&tarQueue->tarslock);
+	if(tarQueue->tars.find(tarName) == tarQueue->tars.end()) {
+		syslog(LOG_ERR, "try to write close tar: %s",  tarName);
+	} else {
+		tar = data->tar;
+	}
+	pthread_mutex_unlock(&tarQueue->tarslock);
+	
+	if(tar) {
+		tar->tarlock();
+		if(lenForProceedSafe) {
+			tar->writing = 1;
+			data->buffer->addTarPosInCall(tar->tarLength);
 		 
-			#if TAR_PROF
-			__prof_i2 = rdtsc();
-			#endif
-		 
-			tar->tar_append_buffer(data->buffer, lenForProceedSafe);
+			//reset and set header
+			memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
+			tar->th_set_type(0); //s->st_mode, 0 is regular file
+			tar->th_set_user(0); //st_uid
+			tar->th_set_group(0); //st_gid
+			tar->th_set_mode(0444); //s->st_mode
+			tar->th_set_mtime(data->time);
+			tar->th_set_size(lenForProceedSafe);
+			tar->th_set_path((char*)data->filename.c_str(), !isClosed);
 			
-			if(sverb.chunk_buffer > 2) {
-				cout << " *** " << data->buffer->getName() << " " << lenForProceedSafe << endl;
+			#if TAR_PROF
+			__prof_i1 = rdtsc();
+			#endif
+		       
+			// write header
+			if (tar->th_write() == 0) {
+				// if it's a regular file, write the contents as well
+			 
+				#if TAR_PROF
+				__prof_i2 = rdtsc();
+				#endif
+			 
+				tar->tar_append_buffer(data->buffer, lenForProceedSafe);
+				
+				if(sverb.chunk_buffer > 2) {
+					cout << " *** " << data->buffer->getName() << " " << lenForProceedSafe << endl;
+				}
 			}
+			tar->writing = 0;
 		}
 	}
-	tar->writing = 0;
-	tar->tarunlock();
 	
 	#if TAR_PROF
 	unsigned long long __prof_i3 = rdtsc();
 	#endif
 	
-	if(isClosed && 
-	   (!lenForProceed || lenForProceed > lenForProceedSafe)) {
+	if(isClosed && !lenForProceed) {
 		decreaseTartimemap(data->buffer->getTime());
-		if(sverb.tar > 2) {
+		if(sverb.tar > 2 && tar) {
 			syslog(LOG_NOTICE, "tartimemap decrease1: %s %i %i %i %i", 
 			       data->buffer->getName().c_str(), 
 			       tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS,
@@ -1483,6 +1492,10 @@ TarQueue::tarthreads_t::processData(data_t *data, bool isClosed, size_t lenForPr
 		delete data->buffer;
 		//tar->incClosedPartCounter();
 		__sync_sub_and_fetch(&glob_tar_queued_files, 1);
+	}
+	
+	if(tar) {
+		tar->tarunlock();
 	}
 	
 	#if TAR_PROF
@@ -1514,7 +1527,8 @@ TarQueue::cleanTars(int terminate_pass) {
 		pthread_mutex_lock(&tartimemaplock);
 		unsigned int lpt = terminate_pass ? time(NULL) : glob_last_packet_time;
 		// find the tar in tartimemap 
-		if((tartimemap.find(tar->created_at) == tartimemap.end()) && 
+		if(!tar->_sync_lock &&
+		   (tartimemap.find(tar->created_at) == tartimemap.end()) && 
 		   (lpt > (tar->created_at + TAR_MODULO_SECONDS + 10) || // +10 seconds more in new period to be sure nothing is in buffers
 		    terminate_pass)) {
 			// there are no calls in this start time - clean it

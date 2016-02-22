@@ -84,6 +84,7 @@ struct sHeapSafeMemoryControlBlockPlus : public sHeapSafeMemoryControlBlock {
 	void *block_addr;
 	char memory_type1[20];
 	u_int16_t memory_type2;
+	u_int16_t check_sum;
 };
 
 struct sHeapSafeMemoryControlBlockEx : public sHeapSafeMemoryControlBlock {
