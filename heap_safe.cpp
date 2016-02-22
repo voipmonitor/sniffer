@@ -102,6 +102,13 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 			if(memory_type2) {
 				((sHeapSafeMemoryControlBlockPlus*)begin)->memory_type2 = memory_type2;
 			}
+			u_int16_t check_sum = 0;
+			u_char *start_check_sum = (u_char*)&((sHeapSafeMemoryControlBlockPlus*)begin)->block_addr;
+			u_char *end_check_sum = (u_char*)&((sHeapSafeMemoryControlBlockPlus*)begin)->check_sum;
+			for(u_char *ch = start_check_sum; ch < end_check_sum; ch++) {
+				check_sum += *ch;
+			}
+			((sHeapSafeMemoryControlBlockPlus*)begin)->check_sum = check_sum;
 		}
 		sHeapSafeMemoryControlBlock *end = (sHeapSafeMemoryControlBlock*)
 							((unsigned char*)pointerToObject + sizeOfObject + HEAPSAFE_ALLOC_RESERVE +
@@ -266,6 +273,8 @@ inline void heapsafe_free(void *pointerToObject) {
 			sHeapSafeMemoryControlBlock *end = (sHeapSafeMemoryControlBlock*)((unsigned char*)pointerToObject + beginMemoryBlock->length + HEAPSAFE_ALLOC_RESERVE);
 			if(!HEAPSAFE_CMP_END_MEMORY_CONTROL_BLOCK(end->stringInfo)) {
 				error = _HeapSafeErrorBeginEnd;
+			} else if(HeapSafeCheck & _HeapSafePlus) {
+				memset(pointerToObject, 0, beginMemoryBlock->length);
 			} else if(HeapSafeCheck & _HeapSafeErrorFillFF) {
 				memset(pointerToObject, 0xFF, beginMemoryBlock->length);
 			}
@@ -294,6 +303,19 @@ inline void heapsafe_free(void *pointerToObject) {
 			error = _HeapSafeErrorAllocReserve;
 		}
         }
+        if(!error &&
+	   HeapSafeCheck & _HeapSafePlus &&
+	   beginMemoryBlock) {
+		u_char *start_check_sum = (u_char*)&((sHeapSafeMemoryControlBlockPlus*)beginMemoryBlock)->block_addr;
+		u_char *end_check_sum = (u_char*)&((sHeapSafeMemoryControlBlockPlus*)beginMemoryBlock)->check_sum;
+		u_int16_t check_sum = 0;
+		for(u_char *ch = start_check_sum; ch < end_check_sum; ch++) {
+			check_sum += *ch;
+		}
+		if(((sHeapSafeMemoryControlBlockPlus*)beginMemoryBlock)->check_sum != check_sum) {
+			error = _HeapSafeErrorBeginEnd;
+		}
+	}
 	if(!error) {
 		try {
 			if(findBeginMemoryBlock && beginMemoryBlock) {
