@@ -534,13 +534,20 @@ bool FraudAlert::loadAlert() {
 		return(false);
 	}
 	descr = dbRow["descr"];
-	if(defFilterIp()) {
+	if(defTypeBy()) {
+		typeBy = dbRow["fraud_rcc_by"] == "source_ip" ? _typeBy_source_ip :
+			 dbRow["fraud_rcc_by"] == "source_number" ? _typeBy_source_number :
+			 dbRow["fraud_rcc_by"] == "rtp_stream_ip" ? _typeBy_rtp_stream_ip :
+			 dbRow["fraud_rcc_by"] == "rtp_stream_ip_group" ? _typeBy_rtp_stream_ip_group :
+				_typeBy_source_ip;
+	}
+	if(defFilterIp() || defStreamFilterIp()) {
 		ipFilter.addWhite(dbRow["fraud_whitelist_ip"].c_str());
 		ipFilter.addWhite(dbRow["fraud_whitelist_ip_g"].c_str());
 		ipFilter.addBlack(dbRow["fraud_blacklist_ip"].c_str());
 		ipFilter.addBlack(dbRow["fraud_blacklist_ip_g"].c_str());
 	}
-	if(defFilterIp2()) {
+	if(defFilterIp2() || defStreamFilterIp()) {
 		ipFilter2.addWhite(dbRow["fraud_whitelist_ip_2"].c_str());
 		ipFilter2.addWhite(dbRow["fraud_whitelist_ip_2_g"].c_str());
 		ipFilter2.addBlack(dbRow["fraud_blacklist_ip_2"].c_str());
@@ -569,13 +576,6 @@ bool FraudAlert::loadAlert() {
 		concurentCallsLimitLocal = atoi(dbRow["fraud_concurent_calls_limit_local"].c_str());
 		concurentCallsLimitInternational = atoi(dbRow["fraud_concurent_calls_limit_international"].c_str());
 		concurentCallsLimitBoth = atoi(dbRow["fraud_concurent_calls_limit"].c_str());
-	}
-	if(defTypeBy()) {
-		typeBy = dbRow["fraud_rcc_by"] == "source_ip" ? _typeBy_source_ip :
-			 dbRow["fraud_rcc_by"] == "source_number" ? _typeBy_source_number :
-			 dbRow["fraud_rcc_by"] == "rtp_stream_ip" ? _typeBy_rtp_stream_ip :
-			 dbRow["fraud_rcc_by"] == "rtp_stream_ip_group" ? _typeBy_rtp_stream_ip_group :
-				_typeBy_source_ip;
 	}
 	if(defTypeChangeLocation()) {
 		typeChangeLocation = dbRow["fraud_type_change_location"] == "country" ? _typeLocation_country :
