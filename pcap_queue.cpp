@@ -2982,13 +2982,25 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				ip_tot_len = ((iphdr2*)(packet + 14))->tot_len;
 			}
 			*/
-			memcpy_heapsafe((pcap_pkthdr*)header_packet_read, header_packet_read.getItem(),
-					pcap_next_ex_header, NULL,
-					sizeof(pcap_pkthdr));
-			if(!_useOneshotBuffer) {
-				memcpy_heapsafe((u_char*)header_packet_read, header_packet_read.getItem(),
-						pcap_next_ex_packet, NULL,
-						pcap_next_ex_header->caplen);
+			extern unsigned int HeapSafeCheck;
+			if(HeapSafeCheck) {
+				memcpy_heapsafe((pcap_pkthdr*)header_packet_read, header_packet_read.getItem(),
+						pcap_next_ex_header, NULL,
+						sizeof(pcap_pkthdr));
+				if(!_useOneshotBuffer) {
+					memcpy_heapsafe((u_char*)header_packet_read, header_packet_read.getItem(),
+							pcap_next_ex_packet, NULL,
+							pcap_next_ex_header->caplen);
+				}
+			} else {
+				memcpy((pcap_pkthdr*)header_packet_read,
+				       pcap_next_ex_header,
+				       sizeof(pcap_pkthdr));
+				if(!_useOneshotBuffer) {
+					memcpy((u_char*)header_packet_read,
+					       pcap_next_ex_packet,
+					       pcap_next_ex_header->caplen);
+				}
 			}
 			/* check change packet content - disabled
 			if(ip_tot_len && ip_tot_len != ((iphdr2*)(packet_pcap + 14))->tot_len) {
