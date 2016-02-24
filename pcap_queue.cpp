@@ -2637,6 +2637,8 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 		this->headerPacketStack = new FILE_LINE PcapQueue_HeaderPacketStack(this->qringmax);
 	}
 	*/
+	allocCounter[0] = allocCounter[1] = 0;
+	allocStackCounter[0] = allocStackCounter[1] = 0;
 	vm_pthread_create(&this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this, __FILE__, __LINE__);
 }
 
@@ -2946,11 +2948,19 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		case read: {
 			if(!header) {
 				header.setStack(this->headerStack);
-				header.popFromStack(0, HEAP_ITEM_DEAFULT_SIZE);
+				if(header.popFromStack(0, HEAP_ITEM_DEAFULT_SIZE) == 2) {
+					++allocCounter[0];
+				} else {
+					++allocStackCounter[0];
+				}
 			}
 			if(!packet) {
 				packet.setStack(this->packetStack);
-				packet.popFromStack(0, HEAP_ITEM_DEAFULT_SIZE);
+				if(packet.popFromStack(0, HEAP_ITEM_DEAFULT_SIZE) == 2) {
+					++allocCounter[0];
+				} else {
+					++allocStackCounter[0];
+				}
 			}
 			bool _useOneshotBuffer = useOneshotBuffer();
 			if(_useOneshotBuffer) {
@@ -3790,6 +3800,20 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				if(qringFillingPerc.length()) {
 					outStrStat << "r" << qringFillingPerc;
 				}
+			}
+			if(sverb.alloc_stat) {
+				if(this->readThreads[i]->allocCounter[1] || this->readThreads[i]->allocStackCounter[1]) {
+					unsigned long stack = this->readThreads[i]->allocStackCounter[0] - this->readThreads[i]->allocStackCounter[1];
+					unsigned long alloc = this->readThreads[i]->allocCounter[0] - this->readThreads[i]->allocCounter[1];
+					outStrStat << "a" << stack << ':' << alloc << ':';
+					if(alloc + stack) {
+						outStrStat << (stack * 100 / (alloc + stack));
+					} else {
+						outStrStat << '-';
+					}
+				}
+				this->readThreads[i]->allocCounter[1] = this->readThreads[i]->allocCounter[0];
+				this->readThreads[i]->allocStackCounter[1] = this->readThreads[i]->allocStackCounter[0];
 			}
 			if(this->readThreads[i]->defragThread) {
 				double tid_cpu = this->readThreads[i]->defragThread->getCpuUsagePerc(true);

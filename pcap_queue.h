@@ -590,6 +590,8 @@ private:
 	cHeapItemsStack *headerStack;
 	cHeapItemsStack *packetStack;
 	//PcapQueue_HeaderPacketStack *headerPacketStack;
+	unsigned long allocCounter[2];
+	unsigned long allocStackCounter[2];
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;
 };

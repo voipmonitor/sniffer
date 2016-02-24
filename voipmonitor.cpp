@@ -5262,6 +5262,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i].substr(0, 25) == "memory_stat_ignore_limit=")
 													sverb.memory_stat_ignore_limit = atoi(verbparams[i].c_str() + 25);
 						else if(verbparams[i] == "qring_stat")			sverb.qring_stat = 1;
+						else if(verbparams[i] == "alloc_stat")			sverb.alloc_stat = 1;
 						else if(verbparams[i] == "qfiles")			sverb.qfiles = 1;
 						else if(verbparams[i] == "query_error")			sverb.query_error = 1;
 						else if(verbparams[i] == "dump_sip")			sverb.dump_sip = 1;
