@@ -8,8 +8,7 @@
 struct ip_frag_s {
 	char *data;
 	int datalen;
-	cHeapItemsStack::sHeapItemT<pcap_pkthdr> header;
-	cHeapItemsStack::sHeapItem packet;
+	cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> header_packet;
 	unsigned int header_ip_offset;
 	time_t ts;
 	u_int32_t offset;
@@ -31,7 +30,7 @@ struct ipfrag_data_s {
 
 void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
 		  int pushToStack_queue_index);
-int handle_defrag(iphdr2 *header_ip, cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, ipfrag_data_s *ipfrag_data,
+int handle_defrag(iphdr2 *header_ip, cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> *header_packet, ipfrag_data_s *ipfrag_data,
 		  int pushToStack_queue_index);
 
 #endif

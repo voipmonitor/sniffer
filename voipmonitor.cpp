@@ -3567,14 +3567,14 @@ void test_heapstack() {
 	cHeapItemsStack::sHeapItem hi;
 	
 	for(int i = 0; i < 10000; i++) {
-		hs->pop(&hi, 0, 50000);
+		hs->pop(&hi, 0, 50000 + 50000);
 		hs->push(&hi, 0, true);
 	}
 	
 	delete hs;
 	
 	cHeapItemsStack::sHeapItem hi2;
-	hi2.create(2000, NULL);
+	hi2.create(2000 + 2000);
  
 }
 

@@ -167,11 +167,15 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 #if SNIFFER_INLINE_FUNCTIONS
 inline 
 #endif
-int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, int pushToStack_queue_index,
+int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> *header_packet, int pushToStack_queue_index,
 		bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump,
 		pcapProcessData *ppd, int pcapLinklayerHeaderType, pcap_dumper_t *pcapDumpHandle, const char *interfaceName) {
-	
-	if(!parseEtherHeader(pcapLinklayerHeaderType, *packet,
+	/*
+	if(memmem((u_char*)*header_packet, ((pcap_pkthdr*)*header_packet)->caplen, "BYE sip", 7)) {
+		cout << "pcapProcess " << endl;
+	}
+	*/
+	if(!parseEtherHeader(pcapLinklayerHeaderType, *header_packet,
 			     ppd->header_sll, ppd->header_eth, ppd->header_ip_offset, ppd->protocol)) {
 		syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName ? interfaceName : "---", pcapLinklayerHeaderType);
 		return(0);
@@ -195,16 +199,16 @@ int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStac
 		}
 	}
 	
-	ppd->header_ip = (iphdr2*)((u_char*)*packet + ppd->header_ip_offset);
+	ppd->header_ip = (iphdr2*)((u_char*)*header_packet + ppd->header_ip_offset);
 
 	extern BogusDumper *bogusDumper;
 	static u_long lastTimeLogErrBadIpHeader = 0;
 	if(ppd->header_ip->version != 4) {
 		if(interfaceName) {
 			if(bogusDumper) {
-				bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+				bogusDumper->dump(*header_packet, *header_packet, pcapLinklayerHeaderType, interfaceName);
 			}
-			u_long actTime = getTimeMS(*header);
+			u_long actTime = getTimeMS(*header_packet);
 			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
 				syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header version %i", interfaceName, ppd->header_ip->version);
 				lastTimeLogErrBadIpHeader = actTime;
@@ -212,14 +216,14 @@ int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStac
 		}
 		return(0);
 	}
-	if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > ((pcap_pkthdr*)*header)->len) {
+	if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > ((pcap_pkthdr*)*header_packet)->len) {
 		if(interfaceName) {
 			if(bogusDumper) {
-				bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+				bogusDumper->dump(*header_packet, *header_packet, pcapLinklayerHeaderType, interfaceName);
 			}
-			u_long actTime = getTimeMS(*header);
+			u_long actTime = getTimeMS(*header_packet);
 			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-				syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header length %i, len %i", interfaceName, htons(ppd->header_ip->tot_len), ((pcap_pkthdr*)*header)->len);
+				syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header length %i, len %i", interfaceName, htons(ppd->header_ip->tot_len), ((pcap_pkthdr*)*header_packet)->len);
 				lastTimeLogErrBadIpHeader = actTime;
 			}
 		}
@@ -231,14 +235,14 @@ int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStac
 		if(opt_udpfrag) {
 			int foffset = ntohs(ppd->header_ip->frag_off);
 			if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
-				if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > ((pcap_pkthdr*)*header)->caplen) {
+				if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > ((pcap_pkthdr*)*header_packet)->caplen) {
 					if(interfaceName) {
 						if(bogusDumper) {
-							bogusDumper->dump(*header, *packet, pcapLinklayerHeaderType, interfaceName);
+							bogusDumper->dump(*header_packet, *header_packet, pcapLinklayerHeaderType, interfaceName);
 						}
-						u_long actTime = getTimeMS(*header);
+						u_long actTime = getTimeMS(*header_packet);
 						if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-							syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: %s: bogus ip header length %i, caplen %i", interfaceName, htons(ppd->header_ip->tot_len), ((pcap_pkthdr*)*header)->caplen);
+							syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: %s: bogus ip header length %i, caplen %i", interfaceName, htons(ppd->header_ip->tot_len), ((pcap_pkthdr*)*header_packet)->caplen);
 							lastTimeLogErrBadIpHeader = actTime;
 						}
 					}
@@ -246,9 +250,9 @@ int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStac
 					return(0);
 				}
 				// packet is fragmented
-				if(handle_defrag(ppd->header_ip, header, packet, &ppd->ipfrag_data, pushToStack_queue_index)) {
+				if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index)) {
 					// packets are reassembled
-					ppd->header_ip = (iphdr2*)((u_char*)*packet + ppd->header_ip_offset);
+					ppd->header_ip = (iphdr2*)((u_char*)*header_packet + ppd->header_ip_offset);
 					if(sverb.defrag) {
 						defrag_counter++;
 						cout << "*** DEFRAG 1 " << defrag_counter << endl;
@@ -274,7 +278,7 @@ int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStac
 			iphdr2 *header_ip = convertHeaderIP_GRE(ppd->header_ip);
 			if(header_ip) {
 				ppd->header_ip = header_ip;
-				ppd->header_ip_offset = (u_char*)header_ip - (u_char*)*packet;
+				ppd->header_ip_offset = (u_char*)header_ip - (u_char*)*header_packet;
 				nextPass = true;
 			} else {
 				if(opt_ipaccount == 0) {
@@ -289,15 +293,15 @@ int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStac
 				int foffset = ntohs(ppd->header_ip->frag_off);
 				if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
 					// packet is fragmented
-					if(handle_defrag(ppd->header_ip, header, packet, &ppd->ipfrag_data, pushToStack_queue_index)) {
+					if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index)) {
 						// packets are reassembled
-						iphdr2 *first_header_ip = (iphdr2*)((u_char*)*packet + first_header_ip_offset);
+						iphdr2 *first_header_ip = (iphdr2*)((u_char*)*header_packet + first_header_ip_offset);
 
 						// turn off frag flag in the first IP header
 						first_header_ip->frag_off = 0;
 
 						// turn off frag flag in the second IP header
-						ppd->header_ip = (iphdr2*)((u_char*)*packet + ppd->header_ip_offset);
+						ppd->header_ip = (iphdr2*)((u_char*)*header_packet + ppd->header_ip_offset);
 						ppd->header_ip->frag_off = 0;
 
 						// update lenght of the first ip header to the len of the second IP header since it can be changed due to reassemble
@@ -318,9 +322,9 @@ int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStac
 	
 	if(enableDefrag) {
 		// if IP defrag is enabled, run each 10 seconds cleaning 
-		if(opt_udpfrag && (ppd->ipfrag_lastprune + 10) < ((pcap_pkthdr*)*header)->ts.tv_sec) {
-			ipfrag_prune(((pcap_pkthdr*)*header)->ts.tv_sec, 0, &ppd->ipfrag_data, pushToStack_queue_index);
-			ppd->ipfrag_lastprune = ((pcap_pkthdr*)*header)->ts.tv_sec;
+		if(opt_udpfrag && (ppd->ipfrag_lastprune + 10) < ((pcap_pkthdr*)*header_packet)->ts.tv_sec) {
+			ipfrag_prune(((pcap_pkthdr*)*header_packet)->ts.tv_sec, 0, &ppd->ipfrag_data, pushToStack_queue_index);
+			ppd->ipfrag_lastprune = ((pcap_pkthdr*)*header_packet)->ts.tv_sec;
 			//TODO it would be good to still pass fragmented packets even it does not contain the last semant, the ipgrad_prune just wipes all unfinished frags
 		}
 	}
@@ -332,15 +336,15 @@ int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStac
 		// prepare packet pointers 
 		ppd->header_udp = (udphdr2*) ((char*) ppd->header_ip + sizeof(*ppd->header_ip));
 		ppd->data = (char*) ppd->header_udp + sizeof(*ppd->header_udp);
-		ppd->datalen = (int)(((pcap_pkthdr*)*header)->caplen - (ppd->data - (char*)*packet)); 
-		ppd->traillen = (int)(((pcap_pkthdr*)*header)->caplen - ((char*)ppd->header_ip - (char*)*packet)) - ntohs(ppd->header_ip->tot_len);
+		ppd->datalen = (int)(((pcap_pkthdr*)*header_packet)->caplen - ((u_char*)ppd->data - (u_char*)*header_packet)); 
+		ppd->traillen = (int)(((pcap_pkthdr*)*header_packet)->caplen - ((u_char*)ppd->header_ip - (u_char*)*header_packet)) - ntohs(ppd->header_ip->tot_len);
 		ppd->istcp = 0;
 	} else if (ppd->header_ip->protocol == IPPROTO_TCP) {
 		ppd->istcp = 1;
 		// prepare packet pointers 
 		ppd->header_tcp = (tcphdr2*) ((char*) ppd->header_ip + sizeof(*ppd->header_ip));
 		ppd->data = (char*) ppd->header_tcp + (ppd->header_tcp->doff * 4);
-		ppd->datalen = (int)(((pcap_pkthdr*)*header)->caplen - (ppd->data - (char*)*packet)); 
+		ppd->datalen = (int)(((pcap_pkthdr*)*header_packet)->caplen - ((u_char*)ppd->data - (u_char*)*header_packet)); 
 		if (!(sipportmatrix[htons(ppd->header_tcp->source)] || sipportmatrix[htons(ppd->header_tcp->dest)]) &&
 		    !(opt_enable_http && (httpportmatrix[htons(ppd->header_tcp->source)] || httpportmatrix[htons(ppd->header_tcp->dest)]) &&
 		      (tcpReassemblyHttp->check_ip(htonl(ppd->header_ip->saddr)) || tcpReassemblyHttp->check_ip(htonl(ppd->header_ip->daddr)))) &&
@@ -407,7 +411,7 @@ int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStac
 	
 	if(enableDump) {
 		if(pcapDumpHandle) {
-			pcap_dump((u_char*)pcapDumpHandle, *header, *packet);
+			pcap_dump((u_char*)pcapDumpHandle, *header_packet, *header_packet);
 		}
 	}
 	

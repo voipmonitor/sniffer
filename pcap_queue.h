@@ -330,7 +330,7 @@ protected:
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet);
 	void restoreOneshotBuffer();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
-	inline int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, int pushToStack_queue_index,
+	inline int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> *header_packet, int pushToStack_queue_index,
 			       bool enableDefrag = true, bool enableCalcMD5 = true, bool enableDedup = true, bool enableDump = true);
 	virtual string pcapStatString_interface(int statPeriod);
 	virtual string pcapDropCountStat_interface();
@@ -485,8 +485,7 @@ public:
 		dedup
 	};
 	struct hpi {
-		cHeapItemsStack::sHeapItemT<pcap_pkthdr> header;
-		cHeapItemsStack::sHeapItem packet;
+		cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> header_packet;
 		u_int offset;
 		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 	};
@@ -510,7 +509,7 @@ public:
 					  PcapQueue_readFromInterfaceThread *prevThread = NULL);
 	~PcapQueue_readFromInterfaceThread();
 protected:
-	inline void push(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header,cHeapItemsStack::sHeapItem *packet,
+	inline void push(cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> *header_packet,
 			 u_int offset, uint16_t *md5);
 	inline void tryForcePush();
 	inline hpi pop();
@@ -525,8 +524,8 @@ protected:
 			}
 		}
 		if(readIndex && readIndexCount && readIndexPos < readIndexCount) {
-			return(((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header)->ts.tv_sec * 1000000ull + 
-			       ((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header)->ts.tv_usec);
+			return(((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header_packet)->ts.tv_sec * 1000000ull + 
+			       ((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header_packet)->ts.tv_usec);
 		}
 		return(0);
 	}
@@ -587,8 +586,7 @@ private:
 	PcapQueue_readFromInterfaceThread *dedupThread;
 	PcapQueue_readFromInterfaceThread *prevThread;
 	bool threadDoTerminate;
-	cHeapItemsStack *headerStack;
-	cHeapItemsStack *packetStack;
+	cHeapItemsStack *headerPacketStack;
 	//PcapQueue_HeaderPacketStack *headerPacketStack;
 	unsigned long allocCounter[2];
 	unsigned long allocStackCounter[2];
@@ -600,11 +598,10 @@ class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFr
 private:
 	struct delete_packet_info {
 		~delete_packet_info() {
-			header.clean();
-			packet.clean();
+			header_packet.clean();
 		}
-		cHeapItemsStack::sHeapItemT<pcap_pkthdr> header;
-		cHeapItemsStack::sHeapItem packet;
+		cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> header_packet;
+		cHeapItemsStack *stack;
 	};
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);
