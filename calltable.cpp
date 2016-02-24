@@ -2297,6 +2297,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	if(ssrc_n > 0) {
+	 
+		this->applyRtcpXrDataToRtp();
+	 
 		// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
 		int indexes[MAX_SSRC_PER_CALL];
 		// init indexex
@@ -3740,6 +3743,44 @@ Call::addTarPos(u_int64_t pos, int type) {
 			this->tarPosGraph.push_back(pos);
 		}
 		break;
+	}
+}
+
+void
+Call::applyRtcpXrDataToRtp() {
+	map<u_int32_t, sRtcpXrDataSsrc>::iterator iter_ssrc;
+	for(iter_ssrc = this->rtcpXrData.begin(); iter_ssrc != this->rtcpXrData.end(); iter_ssrc++) {
+		for(int i = 0; i < ssrc_n; i++) {
+			if(this->rtp[i]->ssrc == iter_ssrc->first) {
+				list<sRtcpXrDataItem>::iterator iter;
+				for(iter = iter_ssrc->second.begin(); iter != iter_ssrc->second.end(); iter++) {
+					if(iter->moslq >= 0 || iter->nlr >= 0) {
+						rtp[i]->rtcp_xr.counter++;
+						if(iter->moslq >= 0) {
+							if(iter->moslq < rtp[i]->rtcp_xr.minmos) {
+								rtp[i]->rtcp_xr.minmos = iter->moslq;
+							}
+							rtp[i]->rtcp_xr.avgmos = (rtp[i]->rtcp_xr.avgmos * (rtp[i]->rtcp_xr.counter - 1) + iter->moslq) / rtp[i]->rtcp_xr.counter;
+						} else {
+							if(rtp[i]->rtcp_xr.counter > 1) {
+								rtp[i]->rtcp_xr.avgmos *= rtp[i]->rtcp_xr.counter / (rtp[i]->rtcp_xr.counter - 1);
+							}
+						}
+						if(iter->nlr >= 0) {
+							if(iter->nlr > rtp[i]->rtcp_xr.maxfr) {
+								rtp[i]->rtcp_xr.maxfr = iter->nlr;
+							}
+							rtp[i]->rtcp_xr.avgfr = (rtp[i]->rtcp_xr.avgfr * (rtp[i]->rtcp_xr.counter - 1) + iter->nlr) / rtp[i]->rtcp_xr.counter;
+						} else {
+							if(rtp[i]->rtcp_xr.counter > 1) {
+								rtp[i]->rtcp_xr.avgfr *= rtp[i]->rtcp_xr.counter / (rtp[i]->rtcp_xr.counter - 1);
+							}
+						}
+					}
+				}
+				break;
+			}
+		}
 	}
 }
 

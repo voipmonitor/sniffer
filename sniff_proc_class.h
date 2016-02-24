@@ -411,6 +411,7 @@ private:
 	bool sipProcess_base(packet_parse_s *parse_packet);
 	bool sipProcess_extend(packet_parse_s *parse_packet);
 	inline bool sipProcess_getCallID(packet_parse_s *parse_packet);
+	inline bool sipProcess_getCallID_publish(packet_parse_s *parse_packet);
 	bool sipProcess_reassembly(packet_parse_s *parse_packet);
 	inline void sipProcess_getSipMethod(packet_parse_s *parse_packet);
 	inline void sipProcess_getLastSipResponse(packet_parse_s *parse_packet);

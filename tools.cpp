@@ -2287,6 +2287,11 @@ void ParsePacket::setStdParse() {
 	addNode("username=\"", typeNode_std);
 	addNode("realm=\"", typeNode_std);
 	
+	addNode("CallID:", typeNode_std);
+	addNode("LocalAddr:", typeNode_std);
+	addNode("QualityEst:", typeNode_std);
+	addNode("PacketLoss:", typeNode_std);
+	
 	extern char opt_fbasename_header[128];
 	if(opt_fbasename_header[0] != '\0') {
 		string findHeader = opt_fbasename_header;
