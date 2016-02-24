@@ -1,3 +1,10 @@
+15.3.1 22.2.2016
+================
+- fix use size of tcp header (Sensor shows UDP packets while it arrived as TCP in rare case) [VS-394]
+- fix crash when storing rtp/sip to tar in rare case (all versions)
+- fix load fraud ip src/dst condition by fraud type (fixes 15.3)
+
+
 15.3 19.2.2016
 ==============
 - count src or dst IP address for RTP concurrent calls filter 
