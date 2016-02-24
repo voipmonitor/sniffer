@@ -2947,8 +2947,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		switch(this->typeThread) {
 		case read: {
 			if(!header_packet_read) {
-				header_packet_read.setUseStack();
-				header_packet_read.popFromStack(this->headerPacketStack, 0, HEAP_ITEM_DEAFULT_SIZE);
+				this->headerPacketStack->pop(&header_packet_read, 0, HEAP_ITEM_DEAFULT_SIZE);
 				/*if(header_packet_read.popFromStack(this->headerPacketStack, 0, HEAP_ITEM_DEAFULT_SIZE) == 2) {
 					++allocCounter[0];
 				} else {
@@ -3420,8 +3419,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				headerPacketStackAlloc = true;
 			}
 			if(!header_packet_read) {
-				header_packet_read.setUseStack();
-				header_packet_read.popFromStack(headerPacketStack, 0, HEAP_ITEM_DEAFULT_SIZE);
+				headerPacketStack->pop(&header_packet_read, 0, HEAP_ITEM_DEAFULT_SIZE);
 			}
 			bool _useOneshotBuffer = useOneshotBuffer();
 			if(_useOneshotBuffer) {

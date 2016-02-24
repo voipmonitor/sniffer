@@ -2370,15 +2370,16 @@ public:
 				   createSizeIfFalse == HEAP_ITEM_DEAFULT_SIZE) {
 					return(-2);
 				} else {
-					this->create(createSizeIfFalse);
+					this->create(createSizeIfFalse, false);
 					return(2);
 				}
 			}
 			return(0);
 		}
-		void create(u_int32_t size) {
+		void create(u_int32_t size, bool use_stack) {
 			destroy();
 			item = new FILE_LINE u_char[size];
+			this->use_stack = use_stack;
 			//this->size = size;
 			//this->stack = stack;
 		}
@@ -2544,7 +2545,7 @@ public:
 					createSizeIfFalse = default_item_size;
 				}
 				if(createSizeIfFalse > 0) {
-					heapItem->create(createSizeIfFalse);
+					heapItem->create(createSizeIfFalse, true);
 					return(2);
 				}
 				return(0);

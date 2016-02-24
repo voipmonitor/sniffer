@@ -5115,7 +5115,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 	// prepare newpacket structure and header structure
 	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->header_ip_offset;
 	
-	header_packet->create(sizeof(pcap_pkthdr) + totallen);
+	header_packet->create(sizeof(pcap_pkthdr) + totallen, false);
 	
 	/*memcpy(newheader, *header, sizeof(struct pcap_pkthdr));
 	newheader->len = newheader->caplen = totallen;
@@ -5380,7 +5380,7 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 		
-		header_packet.create(sizeof(pcap_pkthdr) + 0xFFFF);
+		header_packet.create(sizeof(pcap_pkthdr) + 0xFFFF, false);
 		memcpy_heapsafe((pcap_pkthdr*)header_packet, header_packet.getItem(),
 				pcap_next_ex_header, NULL,
 				sizeof(pcap_pkthdr));

@@ -3574,7 +3574,7 @@ void test_heapstack() {
 	delete hs;
 	
 	cHeapItemsStack::sHeapItem hi2;
-	hi2.create(2000 + 2000);
+	hi2.create(2000 + 2000, false);
  
 }
 
