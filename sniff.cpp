@@ -6218,13 +6218,12 @@ void PreProcessPacket::sipProcess_findCall(packet_parse_s *parse_packet) {
 		}
 	}
 	int call_type = 0;
-	parse_packet->call = calltable->find_by_call_id((char*)parse_packet->callid.c_str(), parse_packet->callid.length(), true, &call_type);
+	parse_packet->call = calltable->find_by_call_id((char*)parse_packet->callid.c_str(), parse_packet->callid.length(), true, &call_type, parse_packet->packet.header.ts.tv_sec);
 	if(parse_packet->call) {
 		if(call_type == REGISTER) {
 			parse_packet->call = NULL;
 			return;
 		}
-		parse_packet->call->in_preprocess_queue_before_process_packet_at = parse_packet->packet.header.ts.tv_sec;
 		parse_packet->call->handle_dscp(parse_packet->sip_method, _packet->header_ip, _packet->saddr, _packet->daddr, NULL, !IS_SIP_RESXXX(parse_packet->sip_method));
 		if(pcap_drop_flag) {
 			parse_packet->call->pcap_drop = pcap_drop_flag;
@@ -6244,9 +6243,6 @@ void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
 		parse_packet->call_created = new_invite_register(&parse_packet->packet, parse_packet->parseContents,
 								 parse_packet->sip_method, (char*)parse_packet->callid.c_str(), &parse_packet->detectUserAgent,
 								 true);
-		if(parse_packet->call_created) {
-			parse_packet->call_created->in_preprocess_queue_before_process_packet_at = parse_packet->packet.header.ts.tv_sec;
-		}
 		parse_packet->_createCall = true;
 	}
 }

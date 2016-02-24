@@ -885,7 +885,7 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	Call *find_by_call_id(char *call_id, unsigned long call_id_len, bool preprocess_queue = false, int *call_type = NULL) {
+	Call *find_by_call_id(char *call_id, unsigned long call_id_len, bool preprocess_queue = false, int *call_type = NULL, time_t time = 0) {
 		Call *rslt_call = NULL;
 		string call_idS = string(call_id, call_id_len);
 		lock_calls_listMAP();
@@ -898,6 +898,7 @@ public:
 			}
 			if(preprocess_queue && rslt_call->type != REGISTER) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				rslt_call->in_preprocess_queue_before_process_packet_at = time;
 			}
 		}
 		unlock_calls_listMAP();

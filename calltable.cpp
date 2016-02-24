@@ -4128,6 +4128,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t t
 	Call *newcall = new FILE_LINE Call(call_type, call_id, call_id_len, time);
 	if(preprocess_queue) {
 		newcall->in_preprocess_queue_before_process_packet = 1;
+		newcall->in_preprocess_queue_before_process_packet_at = time;
 	}
 
 	if(handle) {
@@ -4215,7 +4216,7 @@ Calltable::cleanup( time_t currtime ) {
 				call->force_terminate = true;
 			}
 		} else if(call->in_preprocess_queue_before_process_packet <= 0 ||
-			  (call->in_preprocess_queue_before_process_packet_at && call->in_preprocess_queue_before_process_packet_at < currtime - 15)) {
+			  (call->in_preprocess_queue_before_process_packet_at && call->in_preprocess_queue_before_process_packet_at < currtime - 120)) {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
 			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
