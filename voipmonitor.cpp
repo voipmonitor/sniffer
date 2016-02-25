@@ -3563,7 +3563,7 @@ void test_heapchunk() {
 #endif //HEAP_CHUNK_ENABLE
 
 void test_heapstack() {
-	cHeapItemsStack *hs = new cHeapItemsStack(400, 200, 1, 1);
+	cHeapItemsStack *hs = new cHeapItemsStack(1000, 1, 1);
 	cHeapItemsStack::sHeapItem hi;
 	
 	for(int i = 0; i < 10000; i++) {

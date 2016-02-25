@@ -2625,7 +2625,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->threadDoTerminate = false;
 	this->headerPacketStack = NULL;
 	if(typeThread == read) {
-		this->headerPacketStack = new FILE_LINE cHeapItemsStack(opt_pcap_queue_iface_qring_size, 100, 10, 10);
+		this->headerPacketStack = new FILE_LINE cHeapItemsStack(opt_pcap_queue_iface_qring_size * 2, 10, 10);
 		this->headerPacketStack->setDefaultItemSize(sizeof(pcap_pkthdr) + SNAPLEN);
 	}
 	/*
@@ -2947,12 +2947,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		switch(this->typeThread) {
 		case read: {
 			if(!header_packet_read) {
-				this->headerPacketStack->pop(&header_packet_read, 0, HEAP_ITEM_DEAFULT_SIZE);
-				/*if(header_packet_read.popFromStack(this->headerPacketStack, 0, HEAP_ITEM_DEAFULT_SIZE) == 2) {
+				if(this->headerPacketStack->pop(&header_packet_read, 0, HEAP_ITEM_DEAFULT_SIZE) == 2) {
 					++allocCounter[0];
 				} else {
 					++allocStackCounter[0];
-				}*/
+				}
 			}
 			bool _useOneshotBuffer = useOneshotBuffer();
 			if(_useOneshotBuffer) {
@@ -2983,20 +2982,20 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			*/
 			extern unsigned int HeapSafeCheck;
 			if(HeapSafeCheck) {
-				memcpy_heapsafe((pcap_pkthdr*)header_packet_read, header_packet_read.getItem(),
+				memcpy_heapsafe((pcap_pkthdr*)header_packet_read, header_packet_read.getMemory(),
 						pcap_next_ex_header, NULL,
 						sizeof(pcap_pkthdr));
 				if(!_useOneshotBuffer) {
-					memcpy_heapsafe((u_char*)header_packet_read, header_packet_read.getItem(),
+					memcpy_heapsafe((u_char*)header_packet_read, header_packet_read.getMemory(),
 							pcap_next_ex_packet, NULL,
 							pcap_next_ex_header->caplen);
 				}
 			} else {
-				memcpy((pcap_pkthdr*)header_packet_read,
+				memcpy(header_packet_read.getItem(),
 				       pcap_next_ex_header,
 				       sizeof(pcap_pkthdr));
 				if(!_useOneshotBuffer) {
-					memcpy((u_char*)header_packet_read,
+					memcpy(header_packet_read.getItem() + sizeof(pcap_pkthdr),
 					       pcap_next_ex_packet,
 					       pcap_next_ex_header->caplen);
 				}
@@ -3414,7 +3413,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			usleep(10000);
 		} else {
 			if(!headerPacketStack) {
-				headerPacketStack = new FILE_LINE cHeapItemsStack(1000, 100, 10, 10);
+				headerPacketStack = new FILE_LINE cHeapItemsStack(1000, 10, 10);
 				headerPacketStack->setDefaultItemSize(sizeof(pcap_pkthdr) + SNAPLEN);
 				headerPacketStackAlloc = true;
 			}
@@ -3471,11 +3470,11 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				if(pcap_next_ex_header->caplen > SNAPLEN) {
 					pcap_next_ex_header->caplen = SNAPLEN;
 				}
-				memcpy_heapsafe((pcap_pkthdr*)header_packet_read, header_packet_read.getItem(),
+				memcpy_heapsafe((pcap_pkthdr*)header_packet_read, header_packet_read.getMemory(),
 						pcap_next_ex_header, NULL,
 						sizeof(pcap_pkthdr));
 				if(!_useOneshotBuffer) {
-					memcpy_heapsafe((u_char*)header_packet_read, header_packet_read.getItem(),
+					memcpy_heapsafe((u_char*)header_packet_read, header_packet_read.getMemory(),
 							pcap_next_ex_packet, NULL,
 							pcap_next_ex_header->caplen);
 				}

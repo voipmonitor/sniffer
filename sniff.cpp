@@ -5381,10 +5381,10 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 		
 		header_packet.create(sizeof(pcap_pkthdr) + 0xFFFF, false);
-		memcpy_heapsafe((pcap_pkthdr*)header_packet, header_packet.getItem(),
+		memcpy_heapsafe((pcap_pkthdr*)header_packet, header_packet.getMemory(),
 				pcap_next_ex_header, NULL,
 				sizeof(pcap_pkthdr));
-		memcpy_heapsafe((u_char*)header_packet, header_packet.getItem(),
+		memcpy_heapsafe((u_char*)header_packet, header_packet.getMemory(),
 				pcap_next_ex_packet, NULL,
 				pcap_next_ex_header->caplen);
 		
