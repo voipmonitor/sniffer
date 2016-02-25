@@ -2319,34 +2319,19 @@ class cHeapItemsStack {
 public:
 	struct sHeapItem {
 		sHeapItem() {
-			  //cHeapItemsStack *stack = NULL) {
 			item = NULL;
-			use_stack = false;
-			//size = 0;
-			//this->stack = stack;
 		}
 		sHeapItem(const sHeapItem &hi) {
 			item = hi.item;
-			use_stack = hi.use_stack;
-			//size = hi.size;
-			//stack = hi.stack;
-			//((sHeapItem*)&hi)->clean();
 			((sHeapItem*)&hi)->item = NULL;
 		}
 		sHeapItem & operator = (const sHeapItem &hi) {
 			item = hi.item;
-			use_stack = hi.use_stack;
-			//size = hi.size;
-			//stack = hi.stack;
-			//((sHeapItem*)&hi)->clean();
 			((sHeapItem*)&hi)->item = NULL;
 			return(*this);
 		}
 		void copyFrom(const sHeapItem &hi) {
 			item = hi.item;
-			use_stack = hi.use_stack;
-			//size = hi.size;
-			//stack = hi.stack;
 		}
 		~sHeapItem() {
 			if(item) {
@@ -2354,7 +2339,7 @@ public:
 			}
 		}
 		int pushToStack(cHeapItemsStack *stack, u_int16_t push_queue_index, bool destroyIfFalse) {
-			if(stack && use_stack) {
+			if(stack && isUseStack()) {
 				return(stack->push(this, push_queue_index, destroyIfFalse));
 			} else if(destroyIfFalse) {
 				destroy();
@@ -2378,71 +2363,40 @@ public:
 		}
 		void create(u_int32_t size, bool use_stack) {
 			destroy();
-			item = new FILE_LINE u_char[size];
-			this->use_stack = use_stack;
-			//this->size = size;
-			//this->stack = stack;
+			item = new FILE_LINE u_char[size + 1];
+			item[0] = use_stack;
 		}
 		void destroy() {
 			if(item) {
 				delete [] item;
 				item = NULL;
 			}
-			//size = 0;
 		}
 		void clean() {
 			item = NULL;
-			//size = 0;
-		}
-		/*
-		void setStack(cHeapItemsStack *stack) {
-			this->stack = stack;
-		}
-		*/
-		void setUseStack() {
-			this->use_stack = true;
 		}
 		operator int() {
-			//return(item && size ? size : 0);
 			return(item ? 1 : 0);
 		}
 		u_char* getItem() {
-			//return(item && size ? item : NULL);
-			return(item ? item : NULL);
+			return(item ? item + 1 : NULL);
 		}
-		/*operator u_char*() {
-			//return(item && size ? item : NULL);
-			return(item[0] ? item[0] : NULL);
-		}*/
-		/*operator char*() {
-			//return(item && size ? (char*)item : NULL);
-			return(item[0] ? (char*)item[0] : NULL);
-		}*/
-		/*
-		u_int32_t getSize() {
-			return(item && size ? size : 0);
+		bool isUseStack() {
+			return(item && item[0]);
 		}
-		*/
 	private:
 		u_char *item;
-		u_int8_t use_stack;
-		//u_int32_t size;
-		//cHeapItemsStack *stack;
 	friend class cHeapItemsStack;
 	};
 	template <class type1, class type2>
 	struct sHeapItemT : public sHeapItem {
-		sHeapItemT()
-			   //cHeapItemsStack *stack = NULL)
-		 : sHeapItem() {
+		sHeapItemT() : sHeapItem() {
 		}
 		operator type1*() {
-			//return(item && size ? (type*)item : 0);
-			return(item ? (type1*)item : 0);
+			return(item ? (type1*)(item + 1): 0);
 		}
 		operator type2*() {
-			//return(item && size ? (type*)item : 0);
-			return(item ? (type2*)(item + sizeof(type1)) : 0);
+			return(item ? (type2*)(item + sizeof(type1) + 1) : 0);
 		}
 	};
 private:
