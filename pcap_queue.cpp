@@ -2625,7 +2625,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->threadDoTerminate = false;
 	this->headerPacketStack = NULL;
 	if(typeThread == read) {
-		this->headerPacketStack = new FILE_LINE cHeapItemsStack(opt_pcap_queue_iface_qring_size * 2, 10, 10);
+		this->headerPacketStack = new FILE_LINE cHeapItemsStack(opt_pcap_queue_iface_qring_size * 2, 0, 10, 10);
 		this->headerPacketStack->setDefaultItemSize(sizeof(pcap_pkthdr) + SNAPLEN);
 	}
 	/*
@@ -3413,7 +3413,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			usleep(10000);
 		} else {
 			if(!headerPacketStack) {
-				headerPacketStack = new FILE_LINE cHeapItemsStack(1000, 10, 10);
+				headerPacketStack = new FILE_LINE cHeapItemsStack(1000, 0, 10, 10);
 				headerPacketStack->setDefaultItemSize(sizeof(pcap_pkthdr) + SNAPLEN);
 				headerPacketStackAlloc = true;
 			}

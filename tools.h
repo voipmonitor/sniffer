@@ -2312,9 +2312,13 @@ int vm_pthread_create_autodestroy(pthread_t *thread, pthread_attr_t *attr,
 				 true));
 }
 
-/*
-#define HEAP_ITEM_DEAFULT_SIZE 0xFFFFFFFF
 
+#define HEAP_ITEM_DEAFULT_SIZE 0xFFFFFFFF
+#define HEAP_ITEM_POOL_SIZE 1000
+#define HEAP_ITEM_STACK_TYPE_DYNAMIC 1
+#define HEAP_ITEM_STACK_TYPE_STATIC 0
+
+#if HEAP_ITEM_STACK_TYPE_DYNAMIC
 class cHeapItemsStack {
 public:
 	struct sHeapItem {
@@ -2378,6 +2382,9 @@ public:
 		operator int() {
 			return(item ? 1 : 0);
 		}
+		u_char* getMemory() {
+			return(item);
+		}
 		u_char* getItem() {
 			return(item ? item + 1 : NULL);
 		}
@@ -2422,7 +2429,7 @@ public:
 	cHeapItemsStack(u_int32_t size_max, u_int16_t pool_size_max,
 			u_int16_t pop_queues_max, u_int16_t push_queues_max) {
 		this->size_max = size_max;
-		this->pool_size_max = pool_size_max;
+		this->pool_size_max = pool_size_max ? pool_size_max : HEAP_ITEM_POOL_SIZE;
 		this->pop_queues_max = pop_queues_max;
 		this->push_queues_max = push_queues_max;
 		this->pop_queues = new FILE_LINE sHeapItemsPool*[this->pop_queues_max];
@@ -2526,11 +2533,9 @@ public:
 	rqueue_quick<sHeapItemsPool*> *stack;
 	u_int32_t default_item_size;
 };
-*/
+#endif
 
-#define HEAP_ITEM_DEAFULT_SIZE 0xFFFFFFFF
-#define HEAP_ITEM_POOL_SIZE 1000
-
+#if HEAP_ITEM_STACK_TYPE_STATIC
 class cHeapItemsStack {
 public:
 	struct sHeapItem {
@@ -2634,7 +2639,7 @@ private:
 		sHeapItem pool[HEAP_ITEM_POOL_SIZE];
 	};
 public:
-	cHeapItemsStack(u_int32_t size_max,
+	cHeapItemsStack(u_int32_t size_max, u_int16_t filler,
 			u_int16_t pop_queues_max, u_int16_t push_queues_max) {
 		this->size_max = size_max;
 		this->pop_queues_max = pop_queues_max;
@@ -2715,5 +2720,6 @@ public:
 	rqueue_quick<sHeapItemsPool> *stack;
 	u_int32_t default_item_size;
 };
+#endif
 
 #endif
