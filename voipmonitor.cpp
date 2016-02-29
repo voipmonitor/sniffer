@@ -3562,22 +3562,6 @@ void test_heapchunk() {
 }
 #endif //HEAP_CHUNK_ENABLE
 
-void test_heapstack() {
-	cHeapItemsStack *hs = new cHeapItemsStack(1000, 0, 1, 1);
-	cHeapItemsStack::sHeapItem hi;
-	
-	for(int i = 0; i < 10000; i++) {
-		hs->pop(&hi, 0, 50000 + 50000);
-		hs->push(&hi, 0, true);
-	}
-	
-	delete hs;
-	
-	cHeapItemsStack::sHeapItem hi2;
-	hi2.create(2000 + 2000, false);
- 
-}
-
 void test() {
  
 	switch(opt_test) {
@@ -3640,7 +3624,6 @@ void test() {
 	 
 	case 1: {
 	 
-		test_heapstack();
 		//test_time_cache();
 		//test_parsepacket();
 		break;

@@ -5104,8 +5104,8 @@ in **header an **packet
 
 */
 inline int ipfrag_dequeue(ip_frag_queue_t *queue, 
-			  cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> *header_packet,
-			  int pushToStack_queue_index) {
+			  sHeaderPacket **header_packet,
+			  cHeaderPacketStack *pushToStack, int pushToStack_queue_index) {
 	//walk queue
 
 	if(!queue) return 1;
@@ -5115,7 +5115,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 	// prepare newpacket structure and header structure
 	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->header_ip_offset;
 	
-	header_packet->create(sizeof(pcap_pkthdr) + totallen, false);
+	*header_packet = CREATE_HP(totallen);
 	
 	/*memcpy(newheader, *header, sizeof(struct pcap_pkthdr));
 	newheader->len = newheader->caplen = totallen;
@@ -5132,16 +5132,14 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 		if(i == 0) {
 			// for first packet copy ethernet header and ip header
 			if(node->header_ip_offset) {
-				memcpy_heapsafe((u_char*)*header_packet, (u_char*)*header_packet,
-						(u_char*)node->header_packet, (u_char*)node->header_packet,
+				memcpy_heapsafe(HPP(*header_packet), *header_packet,
+						HPP(node->header_packet), node->header_packet,
 						node->header_ip_offset);
 				len += node->header_ip_offset;
-				// reset fragment flag to 0
-				// ?? ((iphdr2 *)(node->packet))->frag_off = 0;
-				iphdr = (iphdr2*)((u_char*)*header_packet + len);
+				iphdr = (iphdr2*)(HPP(*header_packet) + len);
 			}
-			memcpy_heapsafe((u_char*)*header_packet + len, (u_char*)*header_packet,
-					(u_char*)node->header_packet + node->header_ip_offset, (u_char*)node->header_packet,
+			memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
+					HPP(node->header_packet) + node->header_ip_offset, node->header_packet,
 					node->len);
 			len += node->len;
 		} else {
@@ -5150,25 +5148,21 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 				syslog(LOG_ERR, "%s.%d: Error - bug in voipmonitor len[%d] > totallen[%d]", __FILE__, __LINE__, len, totallen);
 				abort();
 			}
-			memcpy_heapsafe((u_char*)*header_packet + len, (u_char*)*header_packet,
-					(u_char*)node->header_packet + node->header_ip_offset + sizeof(iphdr2), (u_char*)node->header_packet,
+			memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
+					HPP(node->header_packet) + node->header_ip_offset + sizeof(iphdr2), node->header_packet,
 					node->len - sizeof(iphdr2));
 			len += node->len - sizeof(iphdr2);
 			additionallen += node->len - sizeof(iphdr2);
 		}
 		if(i == queue->size() - 1) {
-			memcpy_heapsafe((u_char*)*header_packet, (u_char*)*header_packet, 
-					(u_char*)node->header_packet, (u_char*)node->header_packet,
+			memcpy_heapsafe(HPH(*header_packet), *header_packet, 
+					HPH(node->header_packet), node->header_packet,
 					sizeof(struct pcap_pkthdr));
-			((pcap_pkthdr*)*header_packet)->len = totallen;
-			((pcap_pkthdr*)*header_packet)->caplen = totallen;
+			HPH(*header_packet)->len = totallen;
+			HPH(*header_packet)->caplen = totallen;
 		}
 		//lastoffset = node->offset;
-		if(pushToStack_queue_index >= 0) {
-			node->header_packet.pushToStack(NULL, pushToStack_queue_index, true);
-		} else {
-			node->header_packet.destroy();
-		}
+		PUSH_HP(&node->header_packet, pushToStack, pushToStack_queue_index);
 		delete node;
 		i++;
 	}
@@ -5177,17 +5171,19 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 		iphdr->tot_len = htons((ntohs(iphdr->tot_len)) + additionallen);
 		// reset checksum
 		iphdr->check = 0;
+		// reset fragment flag to 0
+		iphdr->frag_off = 0;
 	}
 	
 	return 1;
 }
 
-int ipfrag_add(ip_frag_queue_t *queue, 
-	       cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> *header_packet, 
-	       unsigned int header_ip_offset, unsigned int len,
-	       int pushToStack_queue_index) {
+inline int ipfrag_add(ip_frag_queue_t *queue, 
+		      sHeaderPacket **header_packet, 
+		      unsigned int header_ip_offset, unsigned int len,
+		      cHeaderPacketStack *pushToStack, int pushToStack_queue_index) {
  
-	iphdr2 *header_ip = (iphdr2*)(((u_char*)*header_packet) + header_ip_offset);
+	iphdr2 *header_ip = (iphdr2*)((HPP(*header_packet)) + header_ip_offset);
 
 	unsigned int offset = ntohs(header_ip->frag_off);
 	unsigned int offset_d = (offset & IP_OFFSET) << 3;
@@ -5220,10 +5216,11 @@ int ipfrag_add(ip_frag_queue_t *queue,
 			node->has_last = is_last;
 		}
 
-		node->ts = ((pcap_pkthdr*)*header_packet)->ts.tv_sec;
+		node->ts = HPH(*header_packet)->ts.tv_sec;
 		node->next = NULL; //TODO: remove, we are using c++ map
 		
 		node->header_packet = *header_packet;
+		*header_packet = NULL;
 		
 		node->header_ip_offset = header_ip_offset;
 		node->len = len;
@@ -5256,7 +5253,7 @@ int ipfrag_add(ip_frag_queue_t *queue,
 
 	if(ok) {
 		// all packets -> defragment 
-		ipfrag_dequeue(queue, header_packet, pushToStack_queue_index);
+		ipfrag_dequeue(queue, header_packet, pushToStack, pushToStack_queue_index);
 		return 1;
 	} else {
 		return 0;
@@ -5273,8 +5270,8 @@ pinters to new allocated data which has to be freed later. If packet is only que
 returns 0 and header and packet remains same
 
 */
-int handle_defrag(iphdr2 *header_ip, cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> *header_packet, ipfrag_data_s *ipfrag_data,
-		  int pushToStack_queue_index) {
+int handle_defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, ipfrag_data_s *ipfrag_data,
+		  cHeaderPacketStack *pushToStack, int pushToStack_queue_index) {
  
 	//copy header ip to tmp beacuse it can happen that during exectuion of this function the header_ip can be 
 	//overwriten in kernel ringbuffer if the ringbuffer is small and thus header_ip->saddr can have different value 
@@ -5290,8 +5287,8 @@ int handle_defrag(iphdr2 *header_ip, cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_
 	}
 	int res = ipfrag_add(queue,
 			     header_packet, 
-			     (u_char*)header_ip - (u_char*)*header_packet, ntohs(header_ip_orig.tot_len),
-			     pushToStack_queue_index);
+			     (u_char*)header_ip - HPP(*header_packet), ntohs(header_ip_orig.tot_len),
+			     pushToStack, pushToStack_queue_index);
 	if(res) {
 		// packet was created from all pieces - delete queue and remove it from map
 		ipfrag_data->ip_frag_stream[header_ip_orig.saddr].erase(header_ip_orig.id);
@@ -5302,7 +5299,7 @@ int handle_defrag(iphdr2 *header_ip, cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_
 }
 
 void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
-		  int pushToStack_queue_index) {
+		  cHeaderPacketStack *pushToStack, int pushToStack_queue_index) {
  
 	ip_frag_queue_t *queue;
 	for (ipfrag_data->ip_frag_streamIT = ipfrag_data->ip_frag_stream.begin(); ipfrag_data->ip_frag_streamIT != ipfrag_data->ip_frag_stream.end(); ipfrag_data->ip_frag_streamIT++) {
@@ -5316,11 +5313,7 @@ void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
 			if(all or ((tv_sec - queue->begin()->second->ts) > (30))) {
 				for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
 					ip_frag_s *node = it->second;
-					if(pushToStack_queue_index >= 0) {
-						node->header_packet.pushToStack(NULL, pushToStack_queue_index, true);
-					} else {
-						node->header_packet.destroy();
-					}
+					PUSH_HP(&node->header_packet, pushToStack, pushToStack_queue_index);
 					delete node;
 				}
 				ipfrag_data->ip_frag_streamIT->second.erase(ipfrag_data->ip_frag_streamITinner++);
@@ -5352,7 +5345,7 @@ void readdump_libpcap(pcap_t *handle) {
 		tmppcap = pcap_dump_open(handle, pname);
 	}
 
-	cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> header_packet;
+	sHeaderPacket *header_packet = NULL;
 	while (!is_terminating()) {
 		pcap_pkthdr *pcap_next_ex_header;
 		const u_char *pcap_next_ex_packet;
@@ -5380,38 +5373,45 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 		
-		header_packet.create(sizeof(pcap_pkthdr) + 0xFFFF, false);
-		memcpy_heapsafe((pcap_pkthdr*)header_packet, header_packet.getMemory(),
+		if(header_packet) {
+			DESTROY_HP(&header_packet);
+		}
+		header_packet = CREATE_HP(0xFFFF);
+
+		memcpy_heapsafe(HPH(header_packet), header_packet,
 				pcap_next_ex_header, NULL,
 				sizeof(pcap_pkthdr));
-		memcpy_heapsafe((u_char*)header_packet, header_packet.getMemory(),
+		memcpy_heapsafe(HPP(header_packet), header_packet,
 				pcap_next_ex_packet, NULL,
 				pcap_next_ex_header->caplen);
 		
 		++packet_counter;
 
-		if(!pcapProcess(&header_packet, -1,
+		if(!pcapProcess(&header_packet, NULL, -1,
 				true, true, true, true,
 				&ppd, global_pcap_dlink, tmppcap, ifname)) {
 			continue;
 		}
 
 		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[htons(ppd.header_udp->source)] || sipportmatrix[htons(ppd.header_udp->dest)]))) {
-			mirrorip->send((char *)ppd.header_ip, (int)(((pcap_pkthdr*)header_packet)->caplen - ((u_char*)ppd.header_ip - (u_char*)header_packet)));
+			mirrorip->send((char *)ppd.header_ip, (int)(HPH(header_packet)->caplen - ((u_char*)ppd.header_ip - HPP(header_packet))));
 		}
 		int voippacket = 0;
 		if(!opt_mirroronly) {
 			process_packet(false, packet_counter,
 				       ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
-				       ppd.data, ppd.datalen, (u_char*)ppd.data - (u_char*)header_packet, 
-				       handle, header_packet, header_packet, NULL,
+				       ppd.data, ppd.datalen, (u_char*)ppd.data - HPP(header_packet), 
+				       handle, HPH(header_packet), HPP(header_packet), NULL,
 				       ppd.istcp, &was_rtp, ppd.header_ip, &voippacket, 0,
 				       NULL, 0, global_pcap_dlink, opt_id_sensor);
 		}
 		if(opt_ipaccount) {
-			ipaccount(((pcap_pkthdr*)header_packet)->ts.tv_sec, (struct iphdr2 *) ((u_char*)header_packet + ppd.header_ip_offset), ((pcap_pkthdr*)header_packet)->len - ppd.header_ip_offset, voippacket);
+			ipaccount(HPH(header_packet)->ts.tv_sec, (struct iphdr2 *) (HPP(header_packet) + ppd.header_ip_offset), HPH(header_packet)->len - ppd.header_ip_offset, voippacket);
 		}
 
+	}
+	if(header_packet) {
+		DESTROY_HP(&header_packet);
 	}
 
 	if(opt_pcapdump) {

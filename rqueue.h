@@ -467,6 +467,19 @@ public:
 		if(useLock) unlock();
 		return(true);
 	}
+	bool popq(typeItem *item) {
+		if(free[readit] == 1) {
+			return(false);
+		}
+		*item = buffer[readit];
+		free[readit] = 1;
+		if((readit + 1) == length) {
+			readit = 0;
+		} else {
+			readit++;
+		}
+		return(true);
+	}
 	bool get(typeItem *item) {
 		while(free[readit] == 1) {
 			return(false);

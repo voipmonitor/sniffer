@@ -18,6 +18,7 @@
 #include "sniff.h"
 #include "pstat.h"
 #include "ip_frag.h"
+#include "header_packet.h"
 
 #define READ_THREADS_MAX 20
 #define DLT_TYPES_MAX 10
@@ -298,7 +299,7 @@ struct pcapProcessData {
 		if(this->prevmd5s) {
 			delete [] this->prevmd5s;
 		}
-		ipfrag_prune(0, 1, &ipfrag_data, -1);
+		ipfrag_prune(0, 1, &ipfrag_data, NULL, -1);
 	}
 	sll_header *header_sll;
 	ether_header *header_eth;
@@ -330,7 +331,7 @@ protected:
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet);
 	void restoreOneshotBuffer();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
-	inline int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> *header_packet, int pushToStack_queue_index,
+	inline int pcapProcess(sHeaderPacket **header_packet, cHeaderPacketStack *pushToStack, int pushToStack_queue_index,
 			       bool enableDefrag = true, bool enableCalcMD5 = true, bool enableDedup = true, bool enableDump = true);
 	virtual string pcapStatString_interface(int statPeriod);
 	virtual string pcapDropCountStat_interface();
@@ -372,6 +373,7 @@ private:
 	u_char **libpcap_buffer;
 	u_char *libpcap_buffer_old;
 };
+
 
 /*
 struct sHeaderPacket {
@@ -485,7 +487,7 @@ public:
 		dedup
 	};
 	struct hpi {
-		cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> header_packet;
+		sHeaderPacket *header_packet;
 		u_int offset;
 		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 	};
@@ -493,10 +495,16 @@ public:
 		hpi_batch(uint32_t max_count) {
 			this->max_count = max_count;
 			this->hpis = new FILE_LINE hpi[max_count];
+			memset(this->hpis, 0, sizeof(hpi) * max_count);
 			count = 0;
 			used = 0;
 		}
 		~hpi_batch() {
+			for(unsigned i = 0; i < max_count; i++) {
+				if(hpis[i].header_packet) {
+					delete hpis[i].header_packet;
+				}
+			}
 			delete [] hpis;
 		}
 		uint32_t max_count;
@@ -509,7 +517,7 @@ public:
 					  PcapQueue_readFromInterfaceThread *prevThread = NULL);
 	~PcapQueue_readFromInterfaceThread();
 protected:
-	inline void push(cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> *header_packet,
+	inline void push(sHeaderPacket **header_packet,
 			 u_int offset, uint16_t *md5);
 	inline void tryForcePush();
 	inline hpi pop();
@@ -586,8 +594,7 @@ private:
 	PcapQueue_readFromInterfaceThread *dedupThread;
 	PcapQueue_readFromInterfaceThread *prevThread;
 	bool threadDoTerminate;
-	cHeapItemsStack *headerPacketStack;
-	//PcapQueue_HeaderPacketStack *headerPacketStack;
+	cHeaderPacketStack *headerPacketStack;
 	unsigned long allocCounter[2];
 	unsigned long allocStackCounter[2];
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
@@ -596,12 +603,9 @@ friend class PcapQueue_readFromInterface;
 
 class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFromInterface_base {
 private:
-	struct delete_packet_info {
-		~delete_packet_info() {
-			header_packet.clean();
-		}
-		cHeapItemsStack::sHeapItemT<pcap_pkthdr, u_char> header_packet;
-		cHeapItemsStack *stack;
+	struct sHeaderPacketStack {
+		sHeaderPacket *headerPacket;
+		cHeaderPacketStack *stack;
 	};
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);

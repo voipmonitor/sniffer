@@ -2315,7 +2315,7 @@ int vm_pthread_create_autodestroy(pthread_t *thread, pthread_attr_t *attr,
 
 #define HEAP_ITEM_DEAFULT_SIZE 0xFFFFFFFF
 #define HEAP_ITEM_POOL_SIZE 1000
-#define HEAP_ITEM_STACK_TYPE_DYNAMIC 1
+#define HEAP_ITEM_STACK_TYPE_DYNAMIC 0
 #define HEAP_ITEM_STACK_TYPE_STATIC 0
 
 #if HEAP_ITEM_STACK_TYPE_DYNAMIC
