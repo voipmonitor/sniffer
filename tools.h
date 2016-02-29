@@ -200,6 +200,8 @@ unsigned long long copy_file(const char *src, const char *dst, bool move = false
 inline unsigned long long move_file(const char *src, const char *dst) { return(copy_file(src, dst, true)); }
 bool get_url_file(const char *url, const char *toFile, string *error = NULL);
 uint64_t convert_srcmac_ll(ether_header *header_eth);
+void cloud_activecheck_success();
+//void cloud_activecheck_start();
 class SimpleBuffer {
 public:
 	SimpleBuffer(u_int32_t capacityReserve = 0) {

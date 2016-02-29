@@ -2072,6 +2072,8 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "cloud_activecheck") != NULL) {
+		cloud_activecheck_success();
 	} else if(buf[0] == 'b' and strstr(buf, "blocktar") != NULL) {
 		opt_blocktarwrite = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblocktar") != NULL) {

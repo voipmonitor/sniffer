@@ -75,7 +75,10 @@ extern int opt_pcap_dump_ziplevel_graph;
 extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
 extern char opt_chdir[1024];
-
+extern int opt_active_check;
+extern int opt_cloud_activecheck;
+extern int cloud_activecheck_timeout;
+extern timeval cloud_last_activecheck;
 
 static char b2a[256];
 static char base64[64];
@@ -4549,4 +4552,70 @@ uint64_t convert_srcmac_ll(ether_header *header_eth) {
 	}
 	//No ether header = src mac 0
 	return (0);
+}
+
+
+bool cloud_now_activecheck() {
+	struct timeval timenow;
+	gettimeofday(&timenow,NULL);
+	if (getDifTime(&cloud_last_activecheck) / 1000000 >= opt_cloud_activecheck) {	//in sec
+		return(true);
+	}
+	return(false);
+}
+
+void cloud_activecheck_start() {
+	gettimeofday(&cloud_last_activecheck,NULL);
+}
+
+void cloud_activecheck_stop() {
+	cloud_last_activecheck.tv_sec = 0;
+}
+bool cloud_now_timeout() {
+	if (cloud_last_activecheck.tv_sec == 0) return false;				//check not started yet, thus no timeout possible
+
+	struct timeval timenow;
+	gettimeofday(&timenow,NULL);
+	if (getDifTime(&cloud_last_activecheck) / 1000000 >= cloud_activecheck_timeout) {//in sec
+		return(true);
+	}
+	return(false);
+}
+
+
+void cloud_activecheck_success() {
+//	struct timeval timenow;
+//	gettimeofday(&timenow,NULL);
+//	printf("Check each %i sec.\n", opt_cloud_activecheck);
+//	printf("Last check at %li sec %li usec.\n", cloud_last_activecheck.tv_sec, cloud_last_activecheck.tv_usec);
+//	printf("Now is        %li sec %li usec.\n", timenow.tv_sec, timenow.tv_usec);
+//	printf("Difference %i in [ms]\n", getDifTime(&cloud_last_activecheck) / 1000);
+	cloud_activecheck_stop();
+}
+
+void cloud_activecheck_loop(){
+	do {
+		if (cloud_now_timeout()) {				//cloud activecheck started but no reply before timeout
+			if (!cloud_register()){
+				sleep(5);				//what to do if unable to register to cloud?
+				continue;
+			}
+
+			do {
+				if (cloud_activecheck_send()) break;
+				sleep(5);				//what to do if unable to send check request to cloud
+			} while (true);
+			cloud_activecheck_start();
+		}
+
+		if (cloud_now_activecheck()) {				//is time to start activecheck?
+			do {
+				if(cloud_activecheck_send()) break;
+				sleep (5);				//what to do if unable to send check request to cloud
+			} while (true);
+
+			cloud_activecheck_start();
+			continue;
+		}
+	} while (true);
 }
