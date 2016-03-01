@@ -101,7 +101,7 @@ int pcapstatresCount = 0;
 
 volatile unsigned int glob_last_packet_time;
 
-Calltable *calltable;
+Calltable *calltable = NULL;
 extern volatile int calls_counter;
 extern int opt_saveSIP;		// save SIP packets to pcap file?
 extern int opt_saveRTP;		// save RTP packets to pcap file?

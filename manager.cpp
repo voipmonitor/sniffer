@@ -855,6 +855,10 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		return 0;
 	} else if(strstr(buf, "d_lc_bye") != NULL) {
+		if(!calltable) {
+			outStr << "sniffer not initialized yet" << endl;
+			return 0;
+		}
 		ostringstream outStr;
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
