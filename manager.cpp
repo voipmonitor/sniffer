@@ -54,6 +54,7 @@
 #define BUFSIZE 4096		//block size?
 
 extern Calltable *calltable;
+extern int terminating;
 extern int opt_manager_port;
 extern char opt_manager_ip[32];
 extern int opt_manager_nonblock_mode;
@@ -820,6 +821,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		return 0;
 	} else if(strstr(buf, "d_lc_for_destroy") != NULL) {
 		ostringstream outStr;
+		if(!calltable && !terminating) {
+			outStr << "sniffer not initialized yet" << endl;
+			if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+			return 0;
+		}
 		if(calltable->calls_queue.size()) {
 			Call *call;
 			vector<Call*> vectCall;
@@ -855,11 +864,15 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		return 0;
 	} else if(strstr(buf, "d_lc_bye") != NULL) {
-		if(!calltable) {
+		ostringstream outStr;
+		if(!calltable && !terminating) {
 			outStr << "sniffer not initialized yet" << endl;
+			if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
 			return 0;
 		}
-		ostringstream outStr;
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
 		vector<Call*> vectCall;
@@ -895,6 +908,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		return 0;
 	} else if(strstr(buf, "d_lc_all") != NULL) {
 		ostringstream outStr;
+		if(!calltable && !terminating) {
+			outStr << "sniffer not initialized yet" << endl;
+			if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+			return 0;
+		}
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
 		vector<Call*> vectCall;
