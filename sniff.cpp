@@ -2053,7 +2053,7 @@ inline Call *new_invite_register(packet_s *packetS, ParsePacket::ppContentsX *pa
 				call->regrrdstart.tv_sec = packetS->header.ts.tv_sec;
 				call->regrrdstart.tv_usec = packetS->header.ts.tv_usec;
 
-				//Parse ether header for src mac else 0
+/*				//Parse ether header for src mac else 0
 				if(packetS->dlt == DLT_EN10MB) {
 					sll_header *header_sll;
 					ether_header *header_eth;
@@ -2066,7 +2066,7 @@ inline Call *new_invite_register(packet_s *packetS, ParsePacket::ppContentsX *pa
 					//syslog(LOG_NOTICE,"srcmac from first register: [%llu]\n", call->regsrcmac);
 				}
 				//End parse ether header
-			}
+*/			}
 
 			// copy contact num <sip:num@domain>
 			s = gettag(packetS->data, packetS->datalen, parseContents,

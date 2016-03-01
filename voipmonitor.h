@@ -66,6 +66,8 @@
 using namespace std;
 
 void reload_config(const char *jsonConfig = NULL);
+bool cloud_register();
+bool cloud_activecheck_send();
 void hot_restart();
 void hot_restart_with_json_config(const char *jsonConfig);
 void set_request_for_reload_capture_rules();

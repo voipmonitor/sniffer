@@ -4536,8 +4536,7 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 						    ua_id = getIdOrInsertUA(cdr_ua), \
 						    `expires_at` = mexpires_at, \
 						    `rrd_avg` = _rrd_avg, \
-						    `rrd_count` = _rrd_count, \
-						    `src_mac` = regsrcmac; \
+						    `rrd_count` = _rrd_count; \
 				END IF; \
 			END",
 			"PROCESS_SIP_REGISTER", 
@@ -4559,11 +4558,14 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 			  IN cdr_ua VARCHAR(255), \
 			  IN fname BIGINT, \
 			  IN id_sensor INT, \
-			  IN regsrcmac BIGINT, \
 			  IN regrrddiff MEDIUMINT)",true);  //rrd_avg will be computed inside CALL
 
-	//END SQL SCRIPTS
+/*line for srcmac were removed from `register` table, and from IN:
+						    `src_mac` = regsrcmac; \
+			  IN regsrcmac BIGINT, \
+*/
 
+	//END SQL SCRIPTS
 	//this->multi_on();
 	sql_disable_next_attempt_if_error = 0;
 

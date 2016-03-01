@@ -254,7 +254,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	regstate = 0;
 	regresponse = false;
 	regrrddiff = -1;
-	regsrcmac = 0;
+	//regsrcmac = 0;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
 	}
@@ -3123,7 +3123,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			char regexpires[32];
 			char idsensor[12];
 			char rrddiff[12];
-			char srcmac[24];
+			//char srcmac[24];
 			snprintf(ips, 31, "%u", htonl(sipcallerip[0]));
 			ips[31] = 0;
 			snprintf(ipd, 31, "%u", htonl(sipcalledip[0]));
@@ -3136,8 +3136,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			idsensor[11] = 0;
 			snprintf(rrddiff, 11, "%d", regrrddiff);
 			rrddiff[11] = 0;
-			snprintf(srcmac, 23, "%lu", regsrcmac);
-			srcmac[23] = 0;
+			//snprintf(srcmac, 23, "%lu", regsrcmac);
+			//srcmac[23] = 0;
+
 			//stored procedure is much faster and eliminates latency reducing uuuuuuuuuuuuu
 
 			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + ", " +
@@ -3157,8 +3158,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				regexpires + "', " +
 				sqlEscapeStringBorder(a_ua) + ", " +
 				fname + ", " +
-				idsensor + ", " +
-				srcmac ;
+				idsensor;
+				//srcmac ;
 			if (existsColumnRrdcountInRegister) {
 				query = query + ", " +
 				rrddiff +
@@ -3199,9 +3200,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
 				int rrd_avg = regrrddiff;
 				int rrd_count = 1;
-				char srcmac[24];
-				snprintf(srcmac, 23, "%lu", regsrcmac);
-				srcmac[23] = 0;
+				//char srcmac[24];
+				//snprintf(srcmac, 23, "%lu", regsrcmac);
+				//srcmac[23] = 0;
 
 				if(rsltRow) {
 					// REGISTER message is already in register table, delete old REGISTER and save the new one
@@ -3303,7 +3304,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(fname, "fname");
 					reg.add(useSensorId, "id_sensor");
 					reg.add(regstate, "state");
-					reg.add(srcmac, "src_mac");
+					//reg.add(srcmac, "src_mac");
 
 					if (existsColumnRrdcountInRegister) {
 						char rrdavg[12];
