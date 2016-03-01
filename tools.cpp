@@ -4540,7 +4540,7 @@ int vm_pthread_create(pthread_t *thread, pthread_attr_t *attr,
 	return(rslt);
 }
 
-uint64_t convert_srcmac_ll(ether_header *header_eth) {
+/*uint64_t convert_srcmac_ll(ether_header *header_eth) {
 	if (header_eth != NULL) {
 		uint64_t converted = 0;
 		converted += (unsigned char) header_eth->ether_shost[0];
@@ -4553,7 +4553,7 @@ uint64_t convert_srcmac_ll(ether_header *header_eth) {
 	//No ether header = src mac 0
 	return (0);
 }
-
+*/
 
 bool cloud_now_activecheck() {
 	struct timeval timenow;
