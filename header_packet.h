@@ -86,6 +86,13 @@ public:
 				return(2);
 			}
 		}
+		/*
+		if(*(u_char*)(&(*headerPacket)->header) ||
+		   *(*headerPacket)->packet) {
+			printf("bad headerPacket from allocation stack\n");
+			abort();
+		}
+		*/
 		return(1);
 	}
 public:

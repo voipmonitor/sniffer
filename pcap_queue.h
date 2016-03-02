@@ -481,6 +481,7 @@ class PcapQueue_readFromInterfaceThread : protected PcapQueue_readFromInterface_
 public:
 	enum eTypeInterfaceThread {
 		read,
+		detach,
 		defrag,
 		md1,
 		md2,
@@ -553,6 +554,12 @@ protected:
 			this->setForcePush();
 		}
 	}
+	inline void lock_detach_buffer(int index) {
+		while(__sync_lock_test_and_set(&this->_sync_detachBuffer[index], 1)) usleep(10);
+	}
+	inline void unlock_detach_buffer(int index) {
+		__sync_lock_release(&this->_sync_detachBuffer[index]);
+	}
 private:
 	void *threadFunction(void *arg, unsigned int arg2);
 	void preparePstatData();
@@ -580,6 +587,13 @@ private:
 	unsigned int readIndexCount;
 	unsigned int writeIndex;
 	unsigned int writeIndexCount;
+	volatile u_char *detachBuffer[2];
+	volatile u_char *activeDetachBuffer;
+	unsigned int detachBufferLength;
+	unsigned int detachBufferWritePos;
+	unsigned int detachBufferReadPos;
+	int detachBufferActiveIndex;
+	volatile int _sync_detachBuffer[2];
 	unsigned int counter;
 	unsigned int counter_pop_usleep;
 	bool force_push;
@@ -588,6 +602,7 @@ private:
 	volatile int _sync_qring;
 	eTypeInterfaceThread typeThread;
 	PcapQueue_readFromInterfaceThread *readThread;
+	PcapQueue_readFromInterfaceThread *detachThread;
 	PcapQueue_readFromInterfaceThread *defragThread;
 	PcapQueue_readFromInterfaceThread *md1Thread;
 	PcapQueue_readFromInterfaceThread *md2Thread;
