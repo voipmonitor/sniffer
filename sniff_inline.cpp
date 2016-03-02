@@ -167,7 +167,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 #if SNIFFER_INLINE_FUNCTIONS
 inline 
 #endif
-int pcapProcess(sHeaderPacket **header_packet, cHeaderPacketStack *pushToStack, int pushToStack_queue_index,
+int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump,
 		pcapProcessData *ppd, int pcapLinklayerHeaderType, pcap_dumper_t *pcapDumpHandle, const char *interfaceName) {
 
@@ -246,7 +246,7 @@ int pcapProcess(sHeaderPacket **header_packet, cHeaderPacketStack *pushToStack, 
 					return(0);
 				}
 				// packet is fragmented
-				if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack, pushToStack_queue_index)) {
+				if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index)) {
 					// packets are reassembled
 					ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 					if(sverb.defrag) {
@@ -291,7 +291,7 @@ int pcapProcess(sHeaderPacket **header_packet, cHeaderPacketStack *pushToStack, 
 				int foffset = ntohs(ppd->header_ip->frag_off);
 				if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
 					// packet is fragmented
-					if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack, pushToStack_queue_index)) {
+					if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index)) {
 						// packets are reassembled
 						iphdr2 *first_header_ip = (iphdr2*)(HPP(*header_packet) + first_header_ip_offset);
 
@@ -321,7 +321,7 @@ int pcapProcess(sHeaderPacket **header_packet, cHeaderPacketStack *pushToStack, 
 	if(enableDefrag) {
 		// if IP defrag is enabled, run each 10 seconds cleaning 
 		if(opt_udpfrag && (ppd->ipfrag_lastprune + 10) < HPH(*header_packet)->ts.tv_sec) {
-			ipfrag_prune(HPH(*header_packet)->ts.tv_sec, 0, &ppd->ipfrag_data, pushToStack, pushToStack_queue_index);
+			ipfrag_prune(HPH(*header_packet)->ts.tv_sec, 0, &ppd->ipfrag_data, pushToStack_queue_index);
 			ppd->ipfrag_lastprune = HPH(*header_packet)->ts.tv_sec;
 			//TODO it would be good to still pass fragmented packets even it does not contain the last semant, the ipgrad_prune just wipes all unfinished frags
 		}

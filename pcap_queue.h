@@ -299,7 +299,7 @@ struct pcapProcessData {
 		if(this->prevmd5s) {
 			delete [] this->prevmd5s;
 		}
-		ipfrag_prune(0, 1, &ipfrag_data, NULL, -1);
+		ipfrag_prune(0, 1, &ipfrag_data, -1);
 	}
 	sll_header *header_sll;
 	ether_header *header_eth;
@@ -331,7 +331,7 @@ protected:
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet);
 	void restoreOneshotBuffer();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
-	inline int pcapProcess(sHeaderPacket **header_packet, cHeaderPacketStack *pushToStack, int pushToStack_queue_index,
+	inline int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			       bool enableDefrag = true, bool enableCalcMD5 = true, bool enableDedup = true, bool enableDump = true);
 	virtual string pcapStatString_interface(int statPeriod);
 	virtual string pcapDropCountStat_interface();
@@ -573,8 +573,8 @@ private:
 	bool threadInitFailed;
 	hpi_batch **qring;
 	unsigned int qringmax;
-	volatile unsigned int readit;
-	volatile unsigned int writeit;
+	unsigned int readit;
+	unsigned int writeit;
 	unsigned int readIndex;
 	unsigned int readIndexPos;
 	unsigned int readIndexCount;
@@ -602,11 +602,6 @@ friend class PcapQueue_readFromInterface;
 };
 
 class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFromInterface_base {
-private:
-	struct sHeaderPacketStack {
-		sHeaderPacket *headerPacket;
-		cHeaderPacketStack *stack;
-	};
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);
 	virtual ~PcapQueue_readFromInterface();

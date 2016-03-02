@@ -29,8 +29,8 @@ struct ipfrag_data_s {
 };
 
 void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
-		  cHeaderPacketStack *pushToStack, int pushToStack_queue_index);
+		  int pushToStack_queue_index);
 int handle_defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, ipfrag_data_s *ipfrag_data,
-		  cHeaderPacketStack *pushToStack, int pushToStack_queue_index);
+		  int pushToStack_queue_index);
 
 #endif

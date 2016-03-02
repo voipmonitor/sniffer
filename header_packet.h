@@ -6,6 +6,8 @@
 
 
 struct sHeaderPacket {
+	void *stack;
+	u_int16_t packet_alloc_size;
 	pcap_pkthdr header;
 	u_char packet[1];
 };
@@ -21,7 +23,8 @@ private:
 		sHeaderPacket *pool[HEADER_PACKET_STACK_POOL_SIZE];
 	};
 public:
-	cHeaderPacketStack(u_int32_t size_max) {
+	cHeaderPacketStack(u_int32_t size_max, u_int16_t packet_alloc_size) {
+		this->packet_alloc_size = packet_alloc_size;
 		pop_queue_size = 0;
 		for(int i = 0; i < HEADER_PACKET_STACK_PUSH_QUEUE_MAX; i++) {
 			push_queues_size[i] = 0;
@@ -35,15 +38,22 @@ public:
 			}
 		}
 		sHeaderPacket *headerPacket;
-		while(pop(&headerPacket)) {
+		while(pop(&headerPacket) != 2) {
 			delete [] headerPacket;
 		}
+		delete [] headerPacket;
 		delete this->stack;
 	}
 	inline int push(sHeaderPacket *headerPacket, u_int16_t push_queue_index) {
 		if(!headerPacket) {
 			return(0);
 		}
+		if(!headerPacket->stack) {
+			delete [] headerPacket;
+			return(2);
+		}
+		*(u_char*)&headerPacket->header = 0;
+		*headerPacket->packet = 0;
 		if(this->push_queues_size[push_queue_index] == HEADER_PACKET_STACK_POOL_SIZE) {
 			if(stack->push(&this->push_queues[push_queue_index], false, true)) {
 				this->push_queues_size[push_queue_index] = 0;
@@ -70,12 +80,16 @@ public:
 				this->pop_queue_size = HEADER_PACKET_STACK_POOL_SIZE - 1;
 				//cout << "P" << flush;
 			} else {
-				return(0);
+				*headerPacket = (sHeaderPacket*)new FILE_LINE u_char[sizeof(sHeaderPacket) + packet_alloc_size];
+				(*headerPacket)->stack = this;
+				(*headerPacket)->packet_alloc_size = packet_alloc_size;
+				return(2);
 			}
 		}
 		return(1);
 	}
 public:
+	u_int16_t packet_alloc_size;
 	sHeaderPacketPool pop_queue;
 	uint16_t pop_queue_size;
 	sHeaderPacketPool push_queues[HEADER_PACKET_STACK_PUSH_QUEUE_MAX];
@@ -83,8 +97,10 @@ public:
 	rqueue_quick<sHeaderPacketPool> *stack;
 };
 
-inline sHeaderPacket *CREATE_HP(u_int32_t packet_alloc_size) {
+inline sHeaderPacket *CREATE_HP(u_int16_t packet_alloc_size) {
 	sHeaderPacket *header_packet = (sHeaderPacket*)new FILE_LINE u_char[sizeof(sHeaderPacket) + packet_alloc_size];
+	header_packet->stack = NULL;
+	header_packet->packet_alloc_size = packet_alloc_size;
 	return(header_packet);
 }
 
@@ -92,9 +108,9 @@ inline void DESTROY_HP(sHeaderPacket **header_packet) {
 	delete [] (u_char*)(*header_packet);
 	*header_packet = NULL;
 }
-inline void PUSH_HP(sHeaderPacket **header_packet, cHeaderPacketStack *stack, int16_t push_queue_index) {
-	if(push_queue_index >= 0 && stack) {
-		stack->push(*header_packet, push_queue_index);
+inline void PUSH_HP(sHeaderPacket **header_packet, int16_t push_queue_index) {
+	if(push_queue_index >= 0 && (*header_packet)->stack) {
+		((cHeaderPacketStack*)((*header_packet)->stack))->push(*header_packet, push_queue_index);
 		*header_packet = NULL;
 	} else {
 		DESTROY_HP(header_packet);

@@ -5105,7 +5105,7 @@ in **header an **packet
 */
 inline int ipfrag_dequeue(ip_frag_queue_t *queue, 
 			  sHeaderPacket **header_packet,
-			  cHeaderPacketStack *pushToStack, int pushToStack_queue_index) {
+			  int pushToStack_queue_index) {
 	//walk queue
 
 	if(!queue) return 1;
@@ -5162,7 +5162,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 			HPH(*header_packet)->caplen = totallen;
 		}
 		//lastoffset = node->offset;
-		PUSH_HP(&node->header_packet, pushToStack, pushToStack_queue_index);
+		PUSH_HP(&node->header_packet, pushToStack_queue_index);
 		delete node;
 		i++;
 	}
@@ -5181,7 +5181,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 inline int ipfrag_add(ip_frag_queue_t *queue, 
 		      sHeaderPacket **header_packet, 
 		      unsigned int header_ip_offset, unsigned int len,
-		      cHeaderPacketStack *pushToStack, int pushToStack_queue_index) {
+		      int pushToStack_queue_index) {
  
 	iphdr2 *header_ip = (iphdr2*)((HPP(*header_packet)) + header_ip_offset);
 
@@ -5253,7 +5253,7 @@ inline int ipfrag_add(ip_frag_queue_t *queue,
 
 	if(ok) {
 		// all packets -> defragment 
-		ipfrag_dequeue(queue, header_packet, pushToStack, pushToStack_queue_index);
+		ipfrag_dequeue(queue, header_packet, pushToStack_queue_index);
 		return 1;
 	} else {
 		return 0;
@@ -5271,7 +5271,7 @@ returns 0 and header and packet remains same
 
 */
 int handle_defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, ipfrag_data_s *ipfrag_data,
-		  cHeaderPacketStack *pushToStack, int pushToStack_queue_index) {
+		  int pushToStack_queue_index) {
  
 	//copy header ip to tmp beacuse it can happen that during exectuion of this function the header_ip can be 
 	//overwriten in kernel ringbuffer if the ringbuffer is small and thus header_ip->saddr can have different value 
@@ -5288,7 +5288,7 @@ int handle_defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, ipfrag_data_
 	int res = ipfrag_add(queue,
 			     header_packet, 
 			     (u_char*)header_ip - HPP(*header_packet), ntohs(header_ip_orig.tot_len),
-			     pushToStack, pushToStack_queue_index);
+			     pushToStack_queue_index);
 	if(res) {
 		// packet was created from all pieces - delete queue and remove it from map
 		ipfrag_data->ip_frag_stream[header_ip_orig.saddr].erase(header_ip_orig.id);
@@ -5299,7 +5299,7 @@ int handle_defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, ipfrag_data_
 }
 
 void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
-		  cHeaderPacketStack *pushToStack, int pushToStack_queue_index) {
+		  int pushToStack_queue_index) {
  
 	ip_frag_queue_t *queue;
 	for (ipfrag_data->ip_frag_streamIT = ipfrag_data->ip_frag_stream.begin(); ipfrag_data->ip_frag_streamIT != ipfrag_data->ip_frag_stream.end(); ipfrag_data->ip_frag_streamIT++) {
@@ -5313,7 +5313,7 @@ void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
 			if(all or ((tv_sec - queue->begin()->second->ts) > (30))) {
 				for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
 					ip_frag_s *node = it->second;
-					PUSH_HP(&node->header_packet, pushToStack, pushToStack_queue_index);
+					PUSH_HP(&node->header_packet, pushToStack_queue_index);
 					delete node;
 				}
 				ipfrag_data->ip_frag_streamIT->second.erase(ipfrag_data->ip_frag_streamITinner++);
@@ -5373,10 +5373,12 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 		
-		if(header_packet) {
+		if(header_packet && header_packet->packet_alloc_size != 0xFFFF) {
 			DESTROY_HP(&header_packet);
 		}
-		header_packet = CREATE_HP(0xFFFF);
+		if(!header_packet) {
+			header_packet = CREATE_HP(0xFFFF);
+		}
 
 		memcpy_heapsafe(HPH(header_packet), header_packet,
 				pcap_next_ex_header, NULL,
@@ -5387,7 +5389,7 @@ void readdump_libpcap(pcap_t *handle) {
 		
 		++packet_counter;
 
-		if(!pcapProcess(&header_packet, NULL, -1,
+		if(!pcapProcess(&header_packet, -1,
 				true, true, true, true,
 				&ppd, global_pcap_dlink, tmppcap, ifname)) {
 			continue;
