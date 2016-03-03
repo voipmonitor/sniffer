@@ -2976,8 +2976,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 	pcap_pkthdr *pcap_next_ex_header, *detach_buffer_header;
 	u_char *pcap_next_ex_packet, *detach_buffer_packet;
 	bool _useOneshotBuffer = false;
-	u_long startDetachBufferWrite_ms;
-	bool forcePushDetachBufferWrite;
+	u_long startDetachBufferWrite_ms = 0;
+	bool forcePushDetachBufferWrite = false;
 	
 	hpi hpii;
 	while(!(is_terminating() || this->threadDoTerminate)) {

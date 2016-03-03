@@ -2389,9 +2389,9 @@ pcap_pkthdr *_process_packet_header;
 char *_process_packet_data;
 int _process_packet_datalen;
 
-Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
-		     int *was_rtp, int *voippacket, int forceSip,
-		     bool mainProcess, int sipOffset) {
+inline Call *process_packet_inline(packet_s *packetS, void *_parsePacketPreproc,
+				   int *was_rtp, int *voippacket, int forceSip,
+				   bool mainProcess, int sipOffset) {
  
 	PreProcessPacket::packet_parse_s *parsePacketPreproc = (PreProcessPacket::packet_parse_s*)_parsePacketPreproc;
 	ParsePacket::ppContentsX *parseContents = parsePacketPreproc ? parsePacketPreproc->parseContents : NULL;
@@ -3958,6 +3958,14 @@ rtpcheck:
 			call, "---");
 		}
 	return NULL;
+}
+
+Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
+			    int *was_rtp, int *voippacket, int forceSip,
+			    bool mainProcess, int sipOffset) {
+	return(process_packet_inline(packetS, _parsePacketPreproc,
+				     was_rtp, voippacket, forceSip,
+				     mainProcess, sipOffset));
 }
 
 inline void process_packet__parse_custom_headers(Call *call, char *data, int datalen, ParsePacket::ppContentsX *parseContents) {
@@ -5968,9 +5976,9 @@ void *PreProcessPacket::outThreadFunction() {
 				if(do_process_packet) {
 					int was_rtp = 0;
 					int voippacket = 0;
-					process_packet(_packet, this->typePreProcessThread == ppt_detach ? NULL : _parse_packet,
-						       &was_rtp, &voippacket, _parse_packet->forceSip,
-						       true, 0);
+					process_packet_inline(_packet, this->typePreProcessThread == ppt_detach ? NULL : _parse_packet,
+							      &was_rtp, &voippacket, _parse_packet->forceSip,
+							      true, 0);
 					if(_packet->block_store) {
 						_packet->block_store->unlock_packet(_packet->block_store_index);
 					}
