@@ -479,8 +479,9 @@ char odbc_driver[256];
 
 char cloud_url_activecheck[1024] = "https://cloud.voipmonitor.org/reg/check_active.php";	//option in voipmonitor.conf cloud_url_activecheck
 int opt_cloud_activecheck_period = 60;				//0 = disable, how often to check if cloud tunnel is passable in [sec.]
-int cloud_activecheck_timeout = 2;				//2sec by default, how long to wait for response until restart of a cloud tunnel
+int cloud_activecheck_timeout = 5;				//2sec by default, how long to wait for response until restart of a cloud tunnel
 volatile bool cloud_activecheck_inprogress = false;		//is currently checking in progress?
+volatile bool cloud_activecheck_sshclose = false;		//is forced close/re-open of ssh forward thread?
 timeval cloud_last_activecheck;					//Time of a last check request sent
 
 char cloud_host[256] = "";
@@ -1414,31 +1415,38 @@ void *storing_cdr( void *dummy ) {
 
 void *activechecking_cloud( void *dummy ) {
 	cloud_activecheck_set();
+	bool initial_register = true;
+
 	if (verbosity) syslog(LOG_NOTICE, "started - activechecking cloud thread");
 
 	do {
-		if (cloud_now_activecheck()) {                          //is time to start activecheck?
+		if (cloud_now_activecheck()) {				//is time to start activecheck?
 			cloud_activecheck_start();
 			if (verbosity) syslog(LOG_NOTICE, "Cloud activecheck request send - starting activecheck");
 			do {
 				if(cloud_activecheck_send()) break;
 				syslog(LOG_WARNING, "Repeating send activecheck request");
-				sleep(2);                              //what to do if unable to send check request to a cloud [repeat undefinitely]
+				sleep(2);				//what to do if unable to send check request to a cloud [repeat undefinitely]
 			} while (terminating == 0);
 			cloud_activecheck_set();
 		}
 
-		if (cloud_now_timeout()) {                              //no reply in timeout? Register
+		if (cloud_now_timeout() || initial_register) {		//no reply in timeout? Register
 			if (!cloud_register()){
 				syslog(LOG_WARNING, "Repeating send cloud registration request");
-				sleep(2);                               //what to do if unable to register to a cloud?
+				sleep(2);				//what to do if unable to register to a cloud?
 				continue;
 			}
+			if (initial_register) {
+				initial_register=false;
+				continue;
+			}
+			cloud_activecheck_sshclose = true;		//we need ssh tunnel recreation - after obtaing new data from register.php
 			cloud_activecheck_start();
 			do {
 				if (cloud_activecheck_send()) break;
 				syslog(LOG_WARNING, "Repeating send activecheck request");
-				sleep(2);                               //what to do if unable to send check request to a cloud [repeat undefinitely]
+				sleep(2);				//what to do if unable to send check request to a cloud [repeat undefinitely]
 				continue;
 			} while (terminating == 0);
 			cloud_activecheck_set();
@@ -2079,6 +2087,7 @@ int main(int argc, char *argv[]) {
 		opt_rrd = 0;
 	}
 
+/*	//cloud REGISTER has been moved to cloud_activecheck thread
 	if(cloud_url[0] != '\0') {
 		//If error during initial cloud registration try it until success
 		do {
@@ -2088,6 +2097,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	checkRrdVersion();
+*/
 	
 /* resolve is disabled since 27.3.2015 
 	if(!opt_nocdr && isSqlDriver("mysql") && mysql_host[0]) {
@@ -2649,7 +2659,7 @@ int main_init_read() {
 	}
 
 #ifdef HAVE_LIBSSH
-	if(ssh_host[0] != '\0') {
+	if(cloud_url[0] != '\0') {
 		vm_pthread_create(&manager_ssh_thread, NULL, manager_ssh, NULL, __FILE__, __LINE__);
 	}
 #endif

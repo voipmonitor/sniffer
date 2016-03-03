@@ -84,6 +84,7 @@ extern ip_port opt_pcap_queue_send_to_ip_port;
 
 extern cConfig CONFIG;
 extern bool useNewCONFIG;
+extern volatile bool cloud_activecheck_sshclose;
 
 int opt_blocktarwrite = 0;
 int opt_blockasyncprocess = 0;
@@ -2317,6 +2318,7 @@ void perror_syslog(const char *msg) {
 void *manager_ssh_(void) {
 	ssh_session session;
 	int rc;
+	cloud_activecheck_sshclose = false;
 	// Open session and set options
 	list<ssh_channel> ssh_chans;
 	list<ssh_channel>::iterator it1;
@@ -2371,6 +2373,7 @@ void *manager_ssh_(void) {
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	while(1) {
+		if (cloud_activecheck_sshclose) goto ssh_disconnect;
 		ssh_channel channel;
 		//int port;
 		//channel = ssh_channel_accept_forward(session, 0, &port);
@@ -2418,6 +2421,10 @@ ssh_disconnect:
 
 #ifdef HAVE_LIBSSH
 void *manager_ssh(void *arg) {
+	while (ssh_host[0] == '\0') {	//wait until register.php POST done
+		sleep(1);
+	}
+
 	ssh_threads_set_callbacks(ssh_threads_get_pthread());
 	ssh_init();
 //	ssh_set_log_level(SSH_LOG_WARNING | SSH_LOG_PROTOCOL | SSH_LOG_PACKET | SSH_LOG_FUNCTIONS);
