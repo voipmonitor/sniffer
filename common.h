@@ -50,6 +50,7 @@ struct sVerbose {
 	int log_manager_cmd;
 	int rtp_extend_stat;
 	int disable_process_packet_in_packetbuffer;
+	int disable_save_packet;
 	int thread_create;
 	int timezones;
 	int tcpreplay;

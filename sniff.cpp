@@ -579,6 +579,9 @@ static int parse_packet__message(char *data, unsigned int datalen, ParsePacket::
 
 */
 void save_packet(Call *call, packet_s *packetS, ParsePacket::ppContentsX *parseContents, int type, int forceSip) {
+	if(sverb.disable_save_packet) {
+		return;
+	}
 	bool allocPacket = false;
 	bool allocHeader = false;
 	const u_char *packet = packetS->packet;

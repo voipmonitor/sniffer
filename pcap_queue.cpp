@@ -3615,6 +3615,9 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				if(res == -1) {
 					break;
 				} else if(res == 0) {
+					if(header_packet_read) {
+						header_packet_read->clearPcapProcessData();
+					}
 					fetchPacketOk = false;
 				}
 				if(fetchPacketOk) {
