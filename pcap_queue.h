@@ -313,7 +313,6 @@ struct pcapProcessData {
 	int datalen;
 	int traillen;
 	int istcp;
-	uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 	unsigned char *prevmd5s;
 	MD5_CTX ctx;
 	u_int ipfrag_lastprune;
@@ -489,8 +488,6 @@ public:
 	};
 	struct hpi {
 		sHeaderPacket *header_packet;
-		u_int offset;
-		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 	};
 	struct hpi_batch {
 		hpi_batch(uint32_t max_count) {
@@ -518,8 +515,7 @@ public:
 					  PcapQueue_readFromInterfaceThread *prevThread = NULL);
 	~PcapQueue_readFromInterfaceThread();
 protected:
-	inline void push(sHeaderPacket **header_packet,
-			 u_int offset, uint16_t *md5);
+	inline void push(sHeaderPacket **header_packet);
 	inline void tryForcePush();
 	inline hpi pop();
 	inline hpi POP();
@@ -806,6 +802,7 @@ friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 void PcapQueue_init();
 void PcapQueue_term();
 int getThreadingMode();
+void setThreadingMode(int threadingMode);
 
 
 #endif

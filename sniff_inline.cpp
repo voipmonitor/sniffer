@@ -170,59 +170,65 @@ inline
 int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		bool enableDefrag, bool enableCalcMD5, bool enableDedup, bool enableDump,
 		pcapProcessData *ppd, int pcapLinklayerHeaderType, pcap_dumper_t *pcapDumpHandle, const char *interfaceName) {
-
-	if(!parseEtherHeader(pcapLinklayerHeaderType, HPP(*header_packet),
-			     ppd->header_sll, ppd->header_eth, ppd->header_ip_offset, ppd->protocol)) {
-		syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName ? interfaceName : "---", pcapLinklayerHeaderType);
-		return(0);
-	}
+ 
+	extern BogusDumper *bogusDumper;
+	static u_long lastTimeLogErrBadIpHeader = 0;
 	
-	if(ppd->protocol != ETHERTYPE_IP) {
-		if(sverb.tcpreplay) {
-			if(ppd->protocol == 0) {
-				ppd->header_ip_offset += 2;
-				ppd->protocol = ETHERTYPE_IP;
+	if((*header_packet)->_detect_headers & 0x01) {
+		ppd->header_ip_offset = (*header_packet)->_header_ip_first_offset;
+		ppd->protocol = (*header_packet)->_eth_protocol;
+		ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+	} else if(parseEtherHeader(pcapLinklayerHeaderType, HPP(*header_packet),
+				   ppd->header_sll, ppd->header_eth, ppd->header_ip_offset, ppd->protocol)) {
+		(*header_packet)->_detect_headers |= 0x01;
+		(*header_packet)->_header_ip_first_offset = ppd->header_ip_offset;
+		(*header_packet)->_eth_protocol = ppd->protocol;
+		if(ppd->protocol != ETHERTYPE_IP) {
+			if(sverb.tcpreplay) {
+				if(ppd->protocol == 0) {
+					ppd->header_ip_offset += 2;
+					ppd->protocol = ETHERTYPE_IP;
+				} else {
+					return(0);
+				}
 			} else {
+				static int info_tcpreplay = 0;
+				if(ppd->protocol == 0 && !info_tcpreplay && interfaceName && !strcmp(interfaceName, "lo")) {
+					syslog(LOG_ERR, "BAD PROTOCOL (not ipv4) IN %s (dlt %d) - TRY VERBOSE OPTION tcpreplay", interfaceName, pcapLinklayerHeaderType);
+					info_tcpreplay = 1;
+				}
 				return(0);
 			}
-		} else {
-			static int info_tcpreplay = 0;
-			if(ppd->protocol == 0 && !info_tcpreplay && interfaceName && !strcmp(interfaceName, "lo")) {
-				syslog(LOG_ERR, "BAD PROTOCOL (not ipv4) IN %s (dlt %d) - TRY VERBOSE OPTION tcpreplay", interfaceName, pcapLinklayerHeaderType);
-				info_tcpreplay = 1;
+		}
+		ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+		if(ppd->header_ip->version != 4) {
+			if(interfaceName) {
+				if(bogusDumper) {
+					bogusDumper->dump(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName);
+				}
+				u_long actTime = getTimeMS(HPH(*header_packet));
+				if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
+					syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header version %i", interfaceName, ppd->header_ip->version);
+					lastTimeLogErrBadIpHeader = actTime;
+				}
 			}
 			return(0);
 		}
-	}
-	
-	ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
-
-	extern BogusDumper *bogusDumper;
-	static u_long lastTimeLogErrBadIpHeader = 0;
-	if(ppd->header_ip->version != 4) {
-		if(interfaceName) {
-			if(bogusDumper) {
-				bogusDumper->dump(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName);
+		if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > HPH(*header_packet)->len) {
+			if(interfaceName) {
+				if(bogusDumper) {
+					bogusDumper->dump(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName);
+				}
+				u_long actTime = getTimeMS(HPH(*header_packet));
+				if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
+					syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header length %i, len %i", interfaceName, htons(ppd->header_ip->tot_len), HPH(*header_packet)->len);
+					lastTimeLogErrBadIpHeader = actTime;
+				}
 			}
-			u_long actTime = getTimeMS(HPH(*header_packet));
-			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-				syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header version %i", interfaceName, ppd->header_ip->version);
-				lastTimeLogErrBadIpHeader = actTime;
-			}
+			return(0);
 		}
-		return(0);
-	}
-	if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > HPH(*header_packet)->len) {
-		if(interfaceName) {
-			if(bogusDumper) {
-				bogusDumper->dump(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName);
-			}
-			u_long actTime = getTimeMS(HPH(*header_packet));
-			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-				syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header length %i, len %i", interfaceName, htons(ppd->header_ip->tot_len), HPH(*header_packet)->len);
-				lastTimeLogErrBadIpHeader = actTime;
-			}
-		}
+	} else {
+		syslog(LOG_ERR, "BAD DATALINK %s: datalink number [%d] is not supported", interfaceName ? interfaceName : "---", pcapLinklayerHeaderType);
 		return(0);
 	}
 	
@@ -317,6 +323,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			}
 		}
 	} while(nextPass);
+	(*header_packet)->_header_ip_offset = ppd->header_ip_offset;
 	
 	if(enableDefrag) {
 		// if IP defrag is enabled, run each 10 seconds cleaning 
@@ -391,10 +398,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					// will be matched regardless on IP 
 					MD5_Update(&ppd->ctx, ppd->data, MAX(0, (unsigned long)ppd->datalen - ppd->traillen));
 				}
-				MD5_Final((unsigned char*)ppd->md5, &ppd->ctx);
+				MD5_Final((unsigned char*)(*header_packet)->_md5, &ppd->ctx);
 			}
-			if(enableDedup && ppd->md5[0]) {
-				if(memcmp(ppd->md5, ppd->prevmd5s + (*ppd->md5 * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
+			if(enableDedup && (*header_packet)->_md5[0]) {
+				if(memcmp((*header_packet)->_md5, ppd->prevmd5s + (*(*header_packet)->_md5 * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
 					//printf("dropping duplicate md5[%s]\n", md5);
 					duplicate_counter++;
 					if(sverb.dedup) {
@@ -402,7 +409,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					}
 					return(0);
 				}
-				memcpy(ppd->prevmd5s+(*ppd->md5 * MD5_DIGEST_LENGTH), ppd->md5, MD5_DIGEST_LENGTH);
+				memcpy(ppd->prevmd5s+(*(*header_packet)->_md5 * MD5_DIGEST_LENGTH), (*header_packet)->_md5, MD5_DIGEST_LENGTH);
 			}
 		}
 	}

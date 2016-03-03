@@ -3,11 +3,17 @@
 
 
 #include "rqueue.h"
+#include "md5.h"
 
 
 struct sHeaderPacket {
 	void *stack;
 	u_int16_t packet_alloc_size;
+	u_int8_t _detect_headers;
+	u_int16_t _header_ip_first_offset;
+	u_int16_t _header_ip_offset;
+	int _eth_protocol;
+	uint16_t _md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 	pcap_pkthdr header;
 	u_char packet[1];
 };
@@ -83,6 +89,8 @@ public:
 				*headerPacket = (sHeaderPacket*)new FILE_LINE u_char[sizeof(sHeaderPacket) + packet_alloc_size];
 				(*headerPacket)->stack = this;
 				(*headerPacket)->packet_alloc_size = packet_alloc_size;
+				(*headerPacket)->_detect_headers = false;
+				(*headerPacket)->_md5[0] = 0;
 				return(2);
 			}
 		}
@@ -93,6 +101,8 @@ public:
 			abort();
 		}
 		*/
+		(*headerPacket)->_detect_headers = false;
+		(*headerPacket)->_md5[0] = 0;
 		return(1);
 	}
 public:
@@ -108,6 +118,8 @@ inline sHeaderPacket *CREATE_HP(u_int16_t packet_alloc_size) {
 	sHeaderPacket *header_packet = (sHeaderPacket*)new FILE_LINE u_char[sizeof(sHeaderPacket) + packet_alloc_size];
 	header_packet->stack = NULL;
 	header_packet->packet_alloc_size = packet_alloc_size;
+	header_packet->_detect_headers = false;
+	header_packet->_md5[0] = 0;
 	return(header_packet);
 }
 

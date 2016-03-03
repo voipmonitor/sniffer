@@ -404,9 +404,6 @@ extern string opt_pcap_queue_disk_folder;
 extern ip_port opt_pcap_queue_send_to_ip_port;
 extern ip_port opt_pcap_queue_receive_from_ip_port;
 extern int opt_pcap_queue_receive_dlt;
-extern int opt_pcap_queue_iface_separate_threads;
-extern int opt_pcap_queue_iface_dedup_separate_threads;
-extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
 extern int opt_pcap_queue_iface_qring_size;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
@@ -4946,26 +4943,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		opt_pcap_queue_receive_from_ip_port.set_port(configItem->getValueInt());
 	}
 	if(configItem->config_name == "threading_mod") {
-		opt_pcap_queue_iface_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads_extend = 0;
-		switch(configItem->getValueInt()) {
-		case 1:
-			opt_pcap_queue_iface_separate_threads = 0;
-			break;
-		case 2:
-			opt_pcap_queue_iface_separate_threads = 1;
-			break;
-		case 3:
-			opt_pcap_queue_iface_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads = 1;
-			break;
-		case 4:
-			opt_pcap_queue_iface_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads_extend = 1;
-			break;
-		}
+		setThreadingMode(configItem->getValueInt());
 	}
 	if(configItem->config_name == "pcap_dump_zip") {
 		opt_pcap_dump_zip_sip = 
@@ -5549,9 +5527,7 @@ void set_context_config() {
 		if(is_receiver()) {
 			opt_pcap_queue_receive_from_ip_port.clear();
 		}
-		opt_pcap_queue_iface_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads_extend = 0;
+		setThreadingMode(1);
 	}
 	
 	if(opt_pcap_dump_tar) {
@@ -5591,8 +5567,8 @@ void set_context_config() {
 	}
 	
 	vector<string> ifnamev = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
-	if(!opt_pcap_queue_iface_separate_threads && ifnamev.size() > 1) {
-		opt_pcap_queue_iface_separate_threads = 1;
+	if(getThreadingMode() < 2 && ifnamev.size() > 1) {
+		setThreadingMode(2);
 	}
 	
 	if(opt_pcap_queue_dequeu_window_length < 0) {
@@ -6935,23 +6911,7 @@ int eval_config(string inistr) {
 		opt_convert_dlt_sll_to_en10 = yesno(value);
 	}
 	if((value = ini.GetValue("general", "threading_mod", NULL))) {
-		opt_pcap_queue_iface_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads_extend = 0;
-		switch(atoi(value)) {
-		case 2:
-			opt_pcap_queue_iface_separate_threads = 1;
-			break;
-		case 3:
-			opt_pcap_queue_iface_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads = 1;
-			break;
-		case 4:
-			opt_pcap_queue_iface_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads_extend = 1;
-			break;
-		}
+		setThreadingMode(atoi(value));
 	}
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_window_length", NULL))) {
 		opt_pcap_queue_dequeu_window_length = atoi(value);
