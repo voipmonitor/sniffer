@@ -477,10 +477,11 @@ char odbc_user[256];
 char odbc_password[256];
 char odbc_driver[256];
 
-char cloud_url_activecheck[1024] = "https://cloud.voipmonitor.org/reg/check_active.php";
-int opt_cloud_activecheck = 0;		//0 = disable, how often to check if cloud tunnel is passable in [sec.]
-int cloud_activecheck_timeout = 10;	//10sec by default, how long to wait for response, until restart of a cloud tunnel
-timeval cloud_last_activecheck;		//Time of a last check request sent
+char cloud_url_activecheck[1024] = "https://cloud.voipmonitor.org/reg/check_active.php";	//option in voipmonitor.conf cloud_url_activecheck
+int opt_cloud_activecheck_period = 60;				//0 = disable, how often to check if cloud tunnel is passable in [sec.]
+int cloud_activecheck_timeout = 2;				//2sec by default, how long to wait for response until restart of a cloud tunnel
+volatile bool cloud_activecheck_inprogress = false;		//is currently checking in progress?
+timeval cloud_last_activecheck;					//Time of a last check request sent
 
 char cloud_host[256] = "";
 
@@ -573,6 +574,7 @@ SIP_HEADERfilter *sipheaderfilter_reload = NULL;	// SIP_HEADER filter based on M
 volatile int sipheaderfilter_reload_do = 0;		// for reload in main thread
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
+pthread_t activechecking_cloud_thread; 
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
 //pthread_t destroy_calls_thread;
@@ -1407,6 +1409,43 @@ void *storing_cdr( void *dummy ) {
 		usleep(100000);
 	}
 	
+	return NULL;
+}
+
+void *activechecking_cloud( void *dummy ) {
+	cloud_activecheck_set();
+	if (verbosity) syslog(LOG_NOTICE, "started - activechecking cloud thread");
+
+	do {
+		if (cloud_now_activecheck()) {                          //is time to start activecheck?
+			cloud_activecheck_start();
+			if (verbosity) syslog(LOG_NOTICE, "Cloud activecheck request send - starting activecheck");
+			do {
+				if(cloud_activecheck_send()) break;
+				syslog(LOG_WARNING, "Repeating send activecheck request");
+				sleep(2);                              //what to do if unable to send check request to a cloud [repeat undefinitely]
+			} while (terminating == 0);
+			cloud_activecheck_set();
+		}
+
+		if (cloud_now_timeout()) {                              //no reply in timeout? Register
+			if (!cloud_register()){
+				syslog(LOG_WARNING, "Repeating send cloud registration request");
+				sleep(2);                               //what to do if unable to register to a cloud?
+				continue;
+			}
+			cloud_activecheck_start();
+			do {
+				if (cloud_activecheck_send()) break;
+				syslog(LOG_WARNING, "Repeating send activecheck request");
+				sleep(2);                               //what to do if unable to send check request to a cloud [repeat undefinitely]
+				continue;
+			} while (terminating == 0);
+			cloud_activecheck_set();
+		}
+		sleep(1);
+        } while (terminating == 0);
+	if(verbosity) syslog(LOG_NOTICE, "terminated - activechecking cloud thread");
 	return NULL;
 }
 
@@ -2429,7 +2468,7 @@ bool cloud_activecheck_send() {
 				string res_text = jsonData.getValue("res_text");
 				if(res_num != 0) {
 					syslog(LOG_ERR, "cloud tunnel check request error: %s", res_text.c_str());
-					exit(1);
+					return(false);
 				}
 				return true;
 			} else {
@@ -2592,6 +2631,11 @@ int main_init_read() {
 		/*
 		vm_pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL, __FILE__, __LINE__);
 		*/
+	}
+
+	// start thread activechecking ssh tunnel to cloud server only in cloud mode and only if enabled 
+	if((cloud_url[0] != '\0') and (opt_cloud_activecheck_period > 0)) {
+		vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
 	}
 
 	if(opt_cachedir[0] != '\0') {
@@ -4789,7 +4833,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new cConfigItem_string("cloud_host", cloud_host, sizeof(cloud_host)));
 			addConfigItem(new cConfigItem_string("cloud_url", cloud_url, sizeof(cloud_url)));
 			addConfigItem(new cConfigItem_string("cloud_token", cloud_token, sizeof(cloud_token)));
-			addConfigItem(new cConfigItem_integer("cloud_activecheck", &opt_cloud_activecheck));
+			addConfigItem(new cConfigItem_integer("cloud_activecheck_period", &opt_cloud_activecheck_period));
 			addConfigItem(new cConfigItem_string("cloud_url_activecheck", cloud_url_activecheck, sizeof(cloud_url_activecheck)));
 		subgroup("other");
 			addConfigItem(new cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
@@ -6558,8 +6602,8 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cloud_token", NULL))) {
 		strncpy(cloud_token, value, sizeof(cloud_token));
 	}
-	if((value = ini.GetValue("general", "cloud_activecheck", NULL))) {
-		opt_cloud_activecheck = atoi(value);
+	if((value = ini.GetValue("general", "cloud_activecheck_period", NULL))) {
+		opt_cloud_activecheck_period = atoi(value);
 	}
 	if((value = ini.GetValue("general", "database_backup_from_mysqlhost", NULL))) {
 		strncpy(opt_database_backup_from_mysql_host, value, sizeof(opt_database_backup_from_mysql_host));
