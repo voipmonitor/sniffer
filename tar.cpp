@@ -454,13 +454,15 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 					read_buffer = new_read_buffer;
 					read_size_for_decompress -= GZIP_HEADER_LENGTH;
 				}
-				for(size_t pos = 1; pos < read_size - GZIP_HEADER_CHECK_LENGTH; pos ++) {
-					if(GZIP_HEADER_CHECK(read_buffer, pos)) {
-						read_size = pos;
-						read_size_for_decompress = pos;
-						lseek(tar.fd, read_position + read_size, SEEK_SET);
-						findNextDecompressBlock = true;
-						break;
+				if(read_size > GZIP_HEADER_CHECK_LENGTH) {
+					for(size_t pos = 1; pos < read_size - GZIP_HEADER_CHECK_LENGTH; pos ++) {
+						if(GZIP_HEADER_CHECK(read_buffer, pos)) {
+							read_size = pos;
+							read_size_for_decompress = pos;
+							lseek(tar.fd, read_position + read_size, SEEK_SET);
+							findNextDecompressBlock = true;
+							break;
+						}
 					}
 				}
 			}

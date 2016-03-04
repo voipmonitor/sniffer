@@ -75,7 +75,11 @@ extern int opt_pcap_dump_ziplevel_graph;
 extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
 extern char opt_chdir[1024];
-
+extern int opt_active_check;
+extern int opt_cloud_activecheck_period;
+extern int cloud_activecheck_timeout;
+extern volatile bool cloud_activecheck_inprogress;
+extern timeval cloud_last_activecheck;
 
 static char b2a[256];
 static char base64[64];
@@ -2286,6 +2290,11 @@ void ParsePacket::setStdParse() {
 	addNode("expires=", typeNode_std);
 	addNode("username=\"", typeNode_std);
 	addNode("realm=\"", typeNode_std);
+	
+	addNode("CallID:", typeNode_std);
+	addNode("LocalAddr:", typeNode_std);
+	addNode("QualityEst:", typeNode_std);
+	addNode("PacketLoss:", typeNode_std);
 	
 	extern char opt_fbasename_header[128];
 	if(opt_fbasename_header[0] != '\0') {
@@ -4532,7 +4541,7 @@ int vm_pthread_create(pthread_t *thread, pthread_attr_t *attr,
 	return(rslt);
 }
 
-uint64_t convert_srcmac_ll(ether_header *header_eth) {
+/*uint64_t convert_srcmac_ll(ether_header *header_eth) {
 	if (header_eth != NULL) {
 		uint64_t converted = 0;
 		converted += (unsigned char) header_eth->ether_shost[0];
@@ -4544,4 +4553,42 @@ uint64_t convert_srcmac_ll(ether_header *header_eth) {
 	}
 	//No ether header = src mac 0
 	return (0);
+}
+*/
+
+bool cloud_now_activecheck() {
+	if (cloud_last_activecheck.tv_sec == 0) return (true);					// initial run -> check (getDifTime return small range)
+	struct timeval timenow;
+	gettimeofday(&timenow,NULL);
+	if (getDifTime(&cloud_last_activecheck) / 1000000 >= opt_cloud_activecheck_period) {	//in sec
+		return(true);
+	}
+	return(false);
+}
+
+void cloud_activecheck_set() {
+	gettimeofday(&cloud_last_activecheck, NULL);
+}
+
+void cloud_activecheck_start() {
+	cloud_activecheck_inprogress = true;
+}
+
+void cloud_activecheck_stop() {
+	cloud_activecheck_inprogress = false;
+}
+bool cloud_now_timeout() {
+	if (!cloud_activecheck_inprogress) return false;				//check not started yet, thus no timeout possible
+
+	struct timeval timenow;
+	gettimeofday(&timenow,NULL);
+	if (getDifTime(&cloud_last_activecheck) / 1000000 >= cloud_activecheck_timeout) {//in sec
+		return(true);
+	}
+	return(false);
+}
+
+void cloud_activecheck_success() {
+	if (verbosity) syslog(LOG_NOTICE, "Cloud activecheck Success - disabling active check");
+	cloud_activecheck_stop();
 }

@@ -254,7 +254,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	regstate = 0;
 	regresponse = false;
 	regrrddiff = -1;
-	regsrcmac = 0;
+	//regsrcmac = 0;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
 	}
@@ -2297,6 +2297,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	if(ssrc_n > 0) {
+	 
+		this->applyRtcpXrDataToRtp();
+	 
 		// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
 		int indexes[MAX_SSRC_PER_CALL];
 		// init indexex
@@ -3120,7 +3123,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			char regexpires[32];
 			char idsensor[12];
 			char rrddiff[12];
-			char srcmac[24];
+			//char srcmac[24];
 			snprintf(ips, 31, "%u", htonl(sipcallerip[0]));
 			ips[31] = 0;
 			snprintf(ipd, 31, "%u", htonl(sipcalledip[0]));
@@ -3133,8 +3136,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			idsensor[11] = 0;
 			snprintf(rrddiff, 11, "%d", regrrddiff);
 			rrddiff[11] = 0;
-			snprintf(srcmac, 23, "%lu", regsrcmac);
-			srcmac[23] = 0;
+			//snprintf(srcmac, 23, "%lu", regsrcmac);
+			//srcmac[23] = 0;
+
 			//stored procedure is much faster and eliminates latency reducing uuuuuuuuuuuuu
 
 			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + ", " +
@@ -3154,8 +3158,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				regexpires + "', " +
 				sqlEscapeStringBorder(a_ua) + ", " +
 				fname + ", " +
-				idsensor + ", " +
-				srcmac ;
+				idsensor;
+				//srcmac ;
 			if (existsColumnRrdcountInRegister) {
 				query = query + ", " +
 				rrddiff +
@@ -3196,9 +3200,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
 				int rrd_avg = regrrddiff;
 				int rrd_count = 1;
-				char srcmac[24];
-				snprintf(srcmac, 23, "%lu", regsrcmac);
-				srcmac[23] = 0;
+				//char srcmac[24];
+				//snprintf(srcmac, 23, "%lu", regsrcmac);
+				//srcmac[23] = 0;
 
 				if(rsltRow) {
 					// REGISTER message is already in register table, delete old REGISTER and save the new one
@@ -3300,7 +3304,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(fname, "fname");
 					reg.add(useSensorId, "id_sensor");
 					reg.add(regstate, "state");
-					reg.add(srcmac, "src_mac");
+					//reg.add(srcmac, "src_mac");
 
 					if (existsColumnRrdcountInRegister) {
 						char rrdavg[12];
@@ -3743,6 +3747,44 @@ Call::addTarPos(u_int64_t pos, int type) {
 	}
 }
 
+void
+Call::applyRtcpXrDataToRtp() {
+	map<u_int32_t, sRtcpXrDataSsrc>::iterator iter_ssrc;
+	for(iter_ssrc = this->rtcpXrData.begin(); iter_ssrc != this->rtcpXrData.end(); iter_ssrc++) {
+		for(int i = 0; i < ssrc_n; i++) {
+			if(this->rtp[i]->ssrc == iter_ssrc->first) {
+				list<sRtcpXrDataItem>::iterator iter;
+				for(iter = iter_ssrc->second.begin(); iter != iter_ssrc->second.end(); iter++) {
+					if(iter->moslq >= 0 || iter->nlr >= 0) {
+						rtp[i]->rtcp_xr.counter++;
+						if(iter->moslq >= 0) {
+							if(iter->moslq < rtp[i]->rtcp_xr.minmos) {
+								rtp[i]->rtcp_xr.minmos = iter->moslq;
+							}
+							rtp[i]->rtcp_xr.avgmos = (rtp[i]->rtcp_xr.avgmos * (rtp[i]->rtcp_xr.counter - 1) + iter->moslq) / rtp[i]->rtcp_xr.counter;
+						} else {
+							if(rtp[i]->rtcp_xr.counter > 1) {
+								rtp[i]->rtcp_xr.avgmos *= rtp[i]->rtcp_xr.counter / (rtp[i]->rtcp_xr.counter - 1);
+							}
+						}
+						if(iter->nlr >= 0) {
+							if(iter->nlr > rtp[i]->rtcp_xr.maxfr) {
+								rtp[i]->rtcp_xr.maxfr = iter->nlr;
+							}
+							rtp[i]->rtcp_xr.avgfr = (rtp[i]->rtcp_xr.avgfr * (rtp[i]->rtcp_xr.counter - 1) + iter->nlr) / rtp[i]->rtcp_xr.counter;
+						} else {
+							if(rtp[i]->rtcp_xr.counter > 1) {
+								rtp[i]->rtcp_xr.avgfr *= rtp[i]->rtcp_xr.counter / (rtp[i]->rtcp_xr.counter - 1);
+							}
+						}
+					}
+				}
+				break;
+			}
+		}
+	}
+}
+
 /* constructor */
 Calltable::Calltable() {
 	pthread_mutex_init(&qlock, NULL);
@@ -4087,6 +4129,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t t
 	Call *newcall = new FILE_LINE Call(call_type, call_id, call_id_len, time);
 	if(preprocess_queue) {
 		newcall->in_preprocess_queue_before_process_packet = 1;
+		newcall->in_preprocess_queue_before_process_packet_at = time;
 	}
 
 	if(handle) {
@@ -4174,7 +4217,7 @@ Calltable::cleanup( time_t currtime ) {
 				call->force_terminate = true;
 			}
 		} else if(call->in_preprocess_queue_before_process_packet <= 0 ||
-			  (call->in_preprocess_queue_before_process_packet_at && call->in_preprocess_queue_before_process_packet_at < currtime - 15)) {
+			  (call->in_preprocess_queue_before_process_packet_at && call->in_preprocess_queue_before_process_packet_at < currtime - 120)) {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
 			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {

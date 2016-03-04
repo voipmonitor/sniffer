@@ -184,6 +184,25 @@ public:
 		string SIPresponse;
 		int SIPresponseNum;
 	};
+	struct sRtcpXrDataItem {
+		timeval tv;
+		int16_t moslq;
+		int16_t nlr;
+	};
+	struct sRtcpXrDataSsrc : public list<sRtcpXrDataItem> {
+		void add(timeval tv, int16_t moslq, int16_t nlr) {
+			sRtcpXrDataItem dataItem;
+			dataItem.tv = tv;
+			dataItem.moslq = moslq;
+			dataItem.nlr = nlr;
+			this->push_back(dataItem);
+		}
+	};
+	struct sRtcpXrData : public map<u_int32_t, sRtcpXrDataSsrc> {
+		void add(u_int32_t ssrc, timeval tv, int16_t moslq, int16_t nlr) {
+			(*this)[ssrc].add(tv, moslq, nlr);
+		}
+	};
 public:
 	int type;			//!< type of call, INVITE or REGISTER
 	bool is_ssl;			//!< call was decrypted
@@ -395,6 +414,8 @@ public:
 	unsigned int lastcalledssrc;
 
 	vector<string> mergecalls;
+	
+	sRtcpXrData rtcpXrData;
 
 	/**
 	 * constructor
@@ -742,6 +763,8 @@ public:
 			}
 		}
 	}
+	
+	void applyRtcpXrDataToRtp();
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -862,7 +885,7 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	Call *find_by_call_id(char *call_id, unsigned long call_id_len, bool preprocess_queue = false, int *call_type = NULL) {
+	Call *find_by_call_id(char *call_id, unsigned long call_id_len, bool preprocess_queue = false, int *call_type = NULL, time_t time = 0) {
 		Call *rslt_call = NULL;
 		string call_idS = string(call_id, call_id_len);
 		lock_calls_listMAP();
@@ -875,6 +898,7 @@ public:
 			}
 			if(preprocess_queue && rslt_call->type != REGISTER) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				rslt_call->in_preprocess_queue_before_process_packet_at = time;
 			}
 		}
 		unlock_calls_listMAP();

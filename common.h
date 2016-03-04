@@ -36,6 +36,7 @@ struct sVerbose {
 	int memory_stat_log;
 	int memory_stat_ignore_limit;
 	int qring_stat;
+	int alloc_stat;
 	int qfiles;
 	int query_error;
 	int dump_sip;
@@ -49,6 +50,7 @@ struct sVerbose {
 	int log_manager_cmd;
 	int rtp_extend_stat;
 	int disable_process_packet_in_packetbuffer;
+	int disable_save_packet;
 	int thread_create;
 	int timezones;
 	int tcpreplay;

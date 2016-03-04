@@ -54,6 +54,7 @@
 #define BUFSIZE 4096		//block size?
 
 extern Calltable *calltable;
+extern int terminating;
 extern int opt_manager_port;
 extern char opt_manager_ip[32];
 extern int opt_manager_nonblock_mode;
@@ -83,6 +84,7 @@ extern ip_port opt_pcap_queue_send_to_ip_port;
 
 extern cConfig CONFIG;
 extern bool useNewCONFIG;
+extern volatile bool cloud_activecheck_sshclose;
 
 int opt_blocktarwrite = 0;
 int opt_blockasyncprocess = 0;
@@ -820,6 +822,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		return 0;
 	} else if(strstr(buf, "d_lc_for_destroy") != NULL) {
 		ostringstream outStr;
+		if(!calltable && !terminating) {
+			outStr << "sniffer not initialized yet" << endl;
+			if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+			return 0;
+		}
 		if(calltable->calls_queue.size()) {
 			Call *call;
 			vector<Call*> vectCall;
@@ -856,6 +866,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		return 0;
 	} else if(strstr(buf, "d_lc_bye") != NULL) {
 		ostringstream outStr;
+		if(!calltable && !terminating) {
+			outStr << "sniffer not initialized yet" << endl;
+			if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+			return 0;
+		}
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
 		vector<Call*> vectCall;
@@ -891,6 +909,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		return 0;
 	} else if(strstr(buf, "d_lc_all") != NULL) {
 		ostringstream outStr;
+		if(!calltable && !terminating) {
+			outStr << "sniffer not initialized yet" << endl;
+			if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+			return 0;
+		}
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
 		vector<Call*> vectCall;
@@ -2072,6 +2098,8 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "cloud_activecheck") != NULL) {
+		cloud_activecheck_success();
 	} else if(buf[0] == 'b' and strstr(buf, "blocktar") != NULL) {
 		opt_blocktarwrite = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblocktar") != NULL) {
@@ -2290,6 +2318,7 @@ void perror_syslog(const char *msg) {
 void *manager_ssh_(void) {
 	ssh_session session;
 	int rc;
+	cloud_activecheck_sshclose = false;
 	// Open session and set options
 	list<ssh_channel> ssh_chans;
 	list<ssh_channel>::iterator it1;
@@ -2344,6 +2373,7 @@ void *manager_ssh_(void) {
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	while(1) {
+		if (cloud_activecheck_sshclose) goto ssh_disconnect;
 		ssh_channel channel;
 		//int port;
 		//channel = ssh_channel_accept_forward(session, 0, &port);
@@ -2391,6 +2421,10 @@ ssh_disconnect:
 
 #ifdef HAVE_LIBSSH
 void *manager_ssh(void *arg) {
+	while (ssh_host[0] == '\0') {	//wait until register.php POST done
+		sleep(1);
+	}
+
 	ssh_threads_set_callbacks(ssh_threads_get_pthread());
 	ssh_init();
 //	ssh_set_log_level(SSH_LOG_WARNING | SSH_LOG_PROTOCOL | SSH_LOG_PACKET | SSH_LOG_FUNCTIONS);

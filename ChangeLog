@@ -1,3 +1,12 @@
+15.4 4.3.2016
+=============
+- fix IP reassemble broken in 15.3 versions [VS-398]
+- parse rtcp-xr from publish packets [VS-87]
+- fix crash in untar function [VS-400]
+- fix performance issue for t0eth thread which might lead to THREAD T0 buffer full message
+- new threading_mod = 5 offloads reading from t0eth first thread
+
+
 15.3.1 22.2.2016
 ================
 - fix use size of tcp header (Sensor shows UDP packets while it arrived as TCP in rare case) [VS-394]

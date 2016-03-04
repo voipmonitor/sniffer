@@ -101,7 +101,7 @@ int pcapstatresCount = 0;
 
 volatile unsigned int glob_last_packet_time;
 
-Calltable *calltable;
+Calltable *calltable = NULL;
 extern volatile int calls_counter;
 extern int opt_saveSIP;		// save SIP packets to pcap file?
 extern int opt_saveRTP;		// save RTP packets to pcap file?
@@ -579,6 +579,9 @@ static int parse_packet__message(char *data, unsigned int datalen, ParsePacket::
 
 */
 void save_packet(Call *call, packet_s *packetS, ParsePacket::ppContentsX *parseContents, int type, int forceSip) {
+	if(sverb.disable_save_packet) {
+		return;
+	}
 	bool allocPacket = false;
 	bool allocHeader = false;
 	const u_char *packet = packetS->packet;
@@ -2053,7 +2056,7 @@ inline Call *new_invite_register(packet_s *packetS, ParsePacket::ppContentsX *pa
 				call->regrrdstart.tv_sec = packetS->header.ts.tv_sec;
 				call->regrrdstart.tv_usec = packetS->header.ts.tv_usec;
 
-				//Parse ether header for src mac else 0
+/*				//Parse ether header for src mac else 0
 				if(packetS->dlt == DLT_EN10MB) {
 					sll_header *header_sll;
 					ether_header *header_eth;
@@ -2066,7 +2069,7 @@ inline Call *new_invite_register(packet_s *packetS, ParsePacket::ppContentsX *pa
 					//syslog(LOG_NOTICE,"srcmac from first register: [%llu]\n", call->regsrcmac);
 				}
 				//End parse ether header
-			}
+*/			}
 
 			// copy contact num <sip:num@domain>
 			s = gettag(packetS->data, packetS->datalen, parseContents,
@@ -2371,6 +2374,7 @@ void process_sdp(Call *call, packet_s *packetS,
 }
 
 static inline void process_packet__parse_custom_headers(Call *call, char *data, int datalen, ParsePacket::ppContentsX *parseContents);
+static inline void process_packet__parse_rtcpxr(Call *call, char *data, int datalen, ParsePacket::ppContentsX *parseContents, timeval tv);
 static inline void process_packet__cleanup(pcap_pkthdr *header, u_long timeS = 0);
 static inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
 static inline int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
@@ -2385,9 +2389,9 @@ pcap_pkthdr *_process_packet_header;
 char *_process_packet_data;
 int _process_packet_datalen;
 
-Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
-		     int *was_rtp, int *voippacket, int forceSip,
-		     bool mainProcess, int sipOffset) {
+inline Call *process_packet_inline(packet_s *packetS, void *_parsePacketPreproc,
+				   int *was_rtp, int *voippacket, int forceSip,
+				   bool mainProcess, int sipOffset) {
  
 	PreProcessPacket::packet_parse_s *parsePacketPreproc = (PreProcessPacket::packet_parse_s*)_parsePacketPreproc;
 	ParsePacket::ppContentsX *parseContents = parsePacketPreproc ? parsePacketPreproc->parseContents : NULL;
@@ -2428,7 +2432,11 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 	s_sdp_flags sdp_flags;
 	char *s;
 	unsigned long l;
-	char callidstr[1024],str2[1024];
+	char callidstr[1024], str2[1024];
+	char contenttypestr[1024] = "";
+	char *contenttype_data_ptr = NULL;
+	int contenttypelen = 0;
+	bool contenttype_is_rtcpxr = false;
 	int sip_method = 0;
 	bool sip_response = false;
 	char lastSIPresponse[128];
@@ -2611,14 +2619,42 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 			return(NULL);
 		}
 		
-		if(parsePacketPreproc && parsePacketPreproc->isSip && parsePacketPreproc->_getSipMethod) {
-			sip_method = parsePacketPreproc->sip_method;
-			sip_response = parsePacketPreproc->sip_response;
-		} else {
-			sip_method = process_packet__parse_sip_method(packetS->data, packetS->datalen, &sip_response);
-		}
-		
 		if(issip) {
+		 
+			if(parsePacketPreproc && parsePacketPreproc->isSip && parsePacketPreproc->_getSipMethod) {
+				sip_method = parsePacketPreproc->sip_method;
+				sip_response = parsePacketPreproc->sip_response;
+			} else {
+				sip_method = process_packet__parse_sip_method(packetS->data, packetS->datalen, &sip_response);
+			}
+		
+			s = gettag(packetS->data, packetS->datalen, parseContents,
+				   "\nContent-Type:", &l, &gettagLimitLen);
+			if(l <= 0 || l > 1023) {
+				//try compact header
+				s = gettag(packetS->data, packetS->datalen, parseContents,
+					   "\nc:", &l, &gettagLimitLen);
+			}
+			if(s && l > 0 && l <= 1023) {
+				strncpy(contenttypestr, s, l);
+				contenttypestr[l] = 0;
+				contenttype_data_ptr = s;
+				contenttypelen = l;
+				contenttype_is_rtcpxr = strcasestr(contenttypestr, "application/vq-rtcpxr") != NULL;
+			}
+			
+			if(!(parsePacketPreproc && parsePacketPreproc->isSip && parsePacketPreproc->_getCallID_reassembly) &&
+			   sip_method == PUBLISH && contenttype_is_rtcpxr) {
+				s = gettag(packetS->data, packetS->datalen, parseContents,
+					   "\nCallID:", &l, &gettagLimitLen);
+				if(s && l > 0 && l <= 1023) {
+					memcpy(callidstr, s, MIN(l, 1024));
+					callidstr[MIN(l, 1023)] = '\0';
+				} else {
+					return(NULL);
+				}
+			}
+
 			if(opt_enable_fraud && isFraudReady()) {
 				char *ua = NULL;
 				unsigned long ua_len = 0;
@@ -2781,8 +2817,9 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 				}
 				goto endsip;
 			}
+		}
 		// check if the SIP msg is part of earlier REGISTER
-		} else if(call->type == REGISTER) {
+		if(call->type == REGISTER) {
 			if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
 			call->lastSIPresponseNum = lastSIPresponseNum;
 			call->msgcount++;
@@ -3434,37 +3471,26 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 		
 		// we have packet, extend pending destroy requests
 		call->shift_destroy_call_at(&packetS->header, lastSIPresponseNum);
+		
+		if(sip_method == PUBLISH && contenttype_is_rtcpxr) {
+			process_packet__parse_rtcpxr(call, packetS->data, packetS->datalen, parseContents, packetS->header.ts);
+		}
 
 		// SDP examination
-		s = gettag(packetS->data, packetS->datalen, parseContents,
-			   "\nContent-Type:", &l, &gettagLimitLen);
-		if(l <= 0 || l > 1023) {
-			//try compact header
-			s = gettag(packetS->data, packetS->datalen, parseContents,
-				   "\nc:", &l, &gettagLimitLen);
-		}
 
 		char a;
 		a = packetS->data[packetS->datalen - 1];
 		packetS->data[packetS->datalen - 1] = 0;
-		char t;
-		char *sl;
 
-		if(!(s and l > 0)) {
+		if(!contenttypelen) {
 			goto notfound;
 		}
 
-		sl = &s[l];
-		t = *sl;
-		*sl = '\0';
 		// Content-Type found 
 		if(call->type == MESSAGE && call->message == NULL && call->message_info == NULL) {
-			*sl = t;
-			
 			if(call->contenttype) delete [] call->contenttype;
-			call->contenttype = new FILE_LINE char[l + 1];
-			memcpy(call->contenttype, s, l);
-			call->contenttype[l] = '\0';
+			call->contenttype = new FILE_LINE char[contenttypelen + 1];
+			strcpy(call->contenttype, contenttypestr);
 			
 			char *rsltMessage;
 			char *rsltMessageInfo;
@@ -3536,8 +3562,7 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 			}
 			*/
 			//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
-		} else if(strcasestr(s, "application/sdp")) {
-			*sl = t;
+		} else if(strcasestr(contenttypestr, "application/sdp")) {
 			// prepare User-Agent
 			char *ua = NULL;
 			unsigned long gettagLimitLen = 0, ua_len = 0;
@@ -3545,14 +3570,14 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 				    "\nUser-Agent:", &ua_len, &gettagLimitLen);
 			detectUserAgent = true;
 			process_sdp(call, packetS,
-				    sip_method, s, (unsigned int)packetS->datalen - (s - packetS->data), callidstr, ua, ua_len);
-		} else if(strcasestr(s, "multipart/mixed")) {
-			*sl = t;
+				    sip_method, contenttype_data_ptr, (unsigned int)packetS->datalen - (contenttype_data_ptr - packetS->data), callidstr, ua, ua_len);
+		} else if(strcasestr(contenttypestr, "multipart/mixed")) {
 			char *ua = NULL;
 			unsigned long gettagLimitLen = 0, ua_len = 0;
 			ua = gettag(packetS->data, packetS->datalen, parseContents,
 				    "\nUser-Agent:", &ua_len, &gettagLimitLen);
 			detectUserAgent = true;
+			s = contenttype_data_ptr;
 			while(1) {
 				//continue searching  for another content-type
 				char *s2;
@@ -3578,8 +3603,6 @@ Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
 					break;
 				}
 			}
-		} else {
-			*sl = t;
 		}
 
 notfound:
@@ -3937,6 +3960,14 @@ rtpcheck:
 	return NULL;
 }
 
+Call *process_packet(packet_s *packetS, void *_parsePacketPreproc,
+			    int *was_rtp, int *voippacket, int forceSip,
+			    bool mainProcess, int sipOffset) {
+	return(process_packet_inline(packetS, _parsePacketPreproc,
+				     was_rtp, voippacket, forceSip,
+				     mainProcess, sipOffset));
+}
+
 inline void process_packet__parse_custom_headers(Call *call, char *data, int datalen, ParsePacket::ppContentsX *parseContents) {
 	/* obsolete
 	extern vector<dstring> opt_custom_headers_cdr;
@@ -3967,6 +3998,59 @@ inline void process_packet__parse_custom_headers(Call *call, char *data, int dat
 	if(customHeaders) {
 		 customHeaders->parse(call, data, datalen, parseContents);
 	}
+}
+
+inline void process_packet__parse_rtcpxr(Call* call, char* data, int datalen, ParsePacket::ppContentsX* parseContents, timeval tv) {
+	string ssrc;
+	unsigned long localAddrLen;
+	char *localAddrPtr = gettag(data, datalen, parseContents,
+				    "\nLocalAddr:", &localAddrLen);
+	if(localAddrPtr && localAddrLen) {
+		char endChar = localAddrPtr[localAddrLen];
+		localAddrPtr[localAddrLen] = 0;
+		char *ssrcPtr = strcasestr(localAddrPtr, "SSRC=");
+		if(ssrcPtr) {
+			ssrcPtr += 5;
+			int ssrcLen = 0;
+			while(ssrcPtr[ssrcLen] && ssrcPtr[ssrcLen] != ' ' && ssrcPtr[ssrcLen] != '\r') {
+				++ssrcLen;
+			}
+			if(ssrcLen) {
+				ssrc = string(ssrcPtr, ssrcLen);
+			}
+		}
+		localAddrPtr[localAddrLen] = endChar;
+	}
+	if(ssrc.empty()) {
+		return;
+	}
+	int16_t moslq = -1;
+	unsigned long qualityEstLen;
+	char *qualityEstPtr = gettag(data, datalen, parseContents,
+				     "\nQualityEst:", &qualityEstLen);
+	if(qualityEstPtr && qualityEstLen) {
+		char endChar = qualityEstPtr[qualityEstLen];
+		qualityEstPtr[qualityEstLen] = 0;
+		char *moslqPtr = strcasestr(qualityEstPtr, "MOSLQ=");
+		if(moslqPtr) {
+			moslq = round(atof(moslqPtr + 6) * 10);
+		}
+		qualityEstPtr[qualityEstLen] = endChar;
+	}
+	int16_t nlr = -1;
+	unsigned long packetLossLen;
+	char *packetLossPtr = gettag(data, datalen, parseContents,
+				     "\nPacketLoss:", &packetLossLen);
+	if(packetLossPtr && packetLossLen) {
+		char endChar = packetLossPtr[packetLossLen];
+		packetLossPtr[packetLossLen] = 0;
+		char *nlrPtr = strcasestr(packetLossPtr, "NLR=");
+		if(nlrPtr) {
+			nlr= round(atof(nlrPtr + 4) * 255 / 100);
+		}
+		packetLossPtr[packetLossLen] = endChar;
+	}
+	call->rtcpXrData.add(atoll(ssrc.c_str()), tv, moslq, nlr);
 }
 
 inline void process_packet__cleanup(pcap_pkthdr *header, u_long timeS) {
@@ -5031,7 +5115,7 @@ in **header an **packet
 
 */
 inline int ipfrag_dequeue(ip_frag_queue_t *queue, 
-			  cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet,
+			  sHeaderPacket **header_packet,
 			  int pushToStack_queue_index) {
 	//walk queue
 
@@ -5042,8 +5126,7 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 	// prepare newpacket structure and header structure
 	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->header_ip_offset;
 	
-	header->create(sizeof(pcap_pkthdr), NULL);
-	packet->create(totallen, NULL);
+	*header_packet = CREATE_HP(totallen);
 	
 	/*memcpy(newheader, *header, sizeof(struct pcap_pkthdr));
 	newheader->len = newheader->caplen = totallen;
@@ -5060,16 +5143,14 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 		if(i == 0) {
 			// for first packet copy ethernet header and ip header
 			if(node->header_ip_offset) {
-				memcpy_heapsafe((u_char*)*packet, (u_char*)*packet,
-						(u_char*)node->packet, (u_char*)node->packet,
+				memcpy_heapsafe(HPP(*header_packet), *header_packet,
+						HPP(node->header_packet), node->header_packet,
 						node->header_ip_offset);
 				len += node->header_ip_offset;
-				// reset fragment flag to 0
-				// ?? ((iphdr2 *)(node->packet))->frag_off = 0;
-				iphdr = (iphdr2*)((u_char*)*packet + len);
+				iphdr = (iphdr2*)(HPP(*header_packet) + len);
 			}
-			memcpy_heapsafe((u_char*)*packet + len, (u_char*)*packet,
-					(u_char*)node->packet + node->header_ip_offset, (u_char*)node->packet,
+			memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
+					HPP(node->header_packet) + node->header_ip_offset, node->header_packet,
 					node->len);
 			len += node->len;
 		} else {
@@ -5078,27 +5159,21 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 				syslog(LOG_ERR, "%s.%d: Error - bug in voipmonitor len[%d] > totallen[%d]", __FILE__, __LINE__, len, totallen);
 				abort();
 			}
-			memcpy_heapsafe((u_char*)*packet + len, (u_char*)*packet,
-					(u_char*)node->packet + node->header_ip_offset + sizeof(iphdr2), (u_char*)node->packet,
+			memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
+					HPP(node->header_packet) + node->header_ip_offset + sizeof(iphdr2), node->header_packet,
 					node->len - sizeof(iphdr2));
 			len += node->len - sizeof(iphdr2);
 			additionallen += node->len - sizeof(iphdr2);
 		}
 		if(i == queue->size() - 1) {
-			memcpy_heapsafe((u_char*)*header, (u_char*)*header, 
-					(u_char*)node->header, (u_char*)node->header,
+			memcpy_heapsafe(HPH(*header_packet), *header_packet, 
+					HPH(node->header_packet), node->header_packet,
 					sizeof(struct pcap_pkthdr));
-			((pcap_pkthdr*)*header)->len = totallen;
-			((pcap_pkthdr*)*header)->caplen = totallen;
+			HPH(*header_packet)->len = totallen;
+			HPH(*header_packet)->caplen = totallen;
 		}
 		//lastoffset = node->offset;
-		if(pushToStack_queue_index >= 0) {
-			node->header.pushToStack(pushToStack_queue_index, true);
-			node->packet.pushToStack(pushToStack_queue_index, true);
-		} else {
-			node->header.destroy();
-			node->packet.destroy();
-		}
+		PUSH_HP(&node->header_packet, pushToStack_queue_index);
 		delete node;
 		i++;
 	}
@@ -5107,17 +5182,19 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 		iphdr->tot_len = htons((ntohs(iphdr->tot_len)) + additionallen);
 		// reset checksum
 		iphdr->check = 0;
+		// reset fragment flag to 0
+		iphdr->frag_off = 0;
 	}
 	
 	return 1;
 }
 
-int ipfrag_add(ip_frag_queue_t *queue, 
-	       cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, 
-	       unsigned int header_ip_offset, unsigned int len,
-	       int pushToStack_queue_index) {
+inline int ipfrag_add(ip_frag_queue_t *queue, 
+		      sHeaderPacket **header_packet, 
+		      unsigned int header_ip_offset, unsigned int len,
+		      int pushToStack_queue_index) {
  
-	iphdr2 *header_ip = (iphdr2*)(((u_char*)*packet) + header_ip_offset);
+	iphdr2 *header_ip = (iphdr2*)((HPP(*header_packet)) + header_ip_offset);
 
 	unsigned int offset = ntohs(header_ip->frag_off);
 	unsigned int offset_d = (offset & IP_OFFSET) << 3;
@@ -5150,11 +5227,11 @@ int ipfrag_add(ip_frag_queue_t *queue,
 			node->has_last = is_last;
 		}
 
-		node->ts = ((pcap_pkthdr*)*header)->ts.tv_sec;
+		node->ts = HPH(*header_packet)->ts.tv_sec;
 		node->next = NULL; //TODO: remove, we are using c++ map
 		
-		node->header = *header;
-		node->packet = *packet;
+		node->header_packet = *header_packet;
+		*header_packet = NULL;
 		
 		node->header_ip_offset = header_ip_offset;
 		node->len = len;
@@ -5187,7 +5264,7 @@ int ipfrag_add(ip_frag_queue_t *queue,
 
 	if(ok) {
 		// all packets -> defragment 
-		ipfrag_dequeue(queue, header, packet, pushToStack_queue_index);
+		ipfrag_dequeue(queue, header_packet, pushToStack_queue_index);
 		return 1;
 	} else {
 		return 0;
@@ -5204,7 +5281,7 @@ pinters to new allocated data which has to be freed later. If packet is only que
 returns 0 and header and packet remains same
 
 */
-int handle_defrag(iphdr2 *header_ip, cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, ipfrag_data_s *ipfrag_data,
+int handle_defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, ipfrag_data_s *ipfrag_data,
 		  int pushToStack_queue_index) {
  
 	//copy header ip to tmp beacuse it can happen that during exectuion of this function the header_ip can be 
@@ -5220,8 +5297,8 @@ int handle_defrag(iphdr2 *header_ip, cHeapItemsStack::sHeapItemT<pcap_pkthdr> *h
 		ipfrag_data->ip_frag_stream[header_ip_orig.saddr][header_ip_orig.id] = queue;
 	}
 	int res = ipfrag_add(queue,
-			     header, packet, 
-			     (u_char*)header_ip - (u_char*)*packet, ntohs(header_ip_orig.tot_len),
+			     header_packet, 
+			     (u_char*)header_ip - HPP(*header_packet), ntohs(header_ip_orig.tot_len),
 			     pushToStack_queue_index);
 	if(res) {
 		// packet was created from all pieces - delete queue and remove it from map
@@ -5247,13 +5324,7 @@ void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
 			if(all or ((tv_sec - queue->begin()->second->ts) > (30))) {
 				for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
 					ip_frag_s *node = it->second;
-					if(pushToStack_queue_index >= 0) {
-						node->header.pushToStack(pushToStack_queue_index, true);
-						node->packet.pushToStack(pushToStack_queue_index, true);
-					} else {
-						node->header.destroy();
-						node->packet.destroy();
-					}
+					PUSH_HP(&node->header_packet, pushToStack_queue_index);
 					delete node;
 				}
 				ipfrag_data->ip_frag_streamIT->second.erase(ipfrag_data->ip_frag_streamITinner++);
@@ -5285,8 +5356,7 @@ void readdump_libpcap(pcap_t *handle) {
 		tmppcap = pcap_dump_open(handle, pname);
 	}
 
-	cHeapItemsStack::sHeapItemT<pcap_pkthdr> header;
-	cHeapItemsStack::sHeapItem packet;
+	sHeaderPacket *header_packet = NULL;
 	while (!is_terminating()) {
 		pcap_pkthdr *pcap_next_ex_header;
 		const u_char *pcap_next_ex_packet;
@@ -5314,39 +5384,47 @@ void readdump_libpcap(pcap_t *handle) {
 			continue;
 		}
 		
-		header.create(sizeof(pcap_pkthdr), NULL);
-		packet.create(0xFFFF, NULL);
-		memcpy_heapsafe((u_char*)header, (u_char*)header,
+		if(header_packet && header_packet->packet_alloc_size != 0xFFFF) {
+			DESTROY_HP(&header_packet);
+		}
+		if(!header_packet) {
+			header_packet = CREATE_HP(0xFFFF);
+		}
+
+		memcpy_heapsafe(HPH(header_packet), header_packet,
 				pcap_next_ex_header, NULL,
 				sizeof(pcap_pkthdr));
-		memcpy_heapsafe((u_char*)packet, (u_char*)packet,
+		memcpy_heapsafe(HPP(header_packet), header_packet,
 				pcap_next_ex_packet, NULL,
 				pcap_next_ex_header->caplen);
 		
 		++packet_counter;
 
-		if(!pcapProcess(&header, &packet, -1,
+		if(!pcapProcess(&header_packet, -1,
 				true, true, true, true,
 				&ppd, global_pcap_dlink, tmppcap, ifname)) {
 			continue;
 		}
 
 		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[htons(ppd.header_udp->source)] || sipportmatrix[htons(ppd.header_udp->dest)]))) {
-			mirrorip->send((char *)ppd.header_ip, (int)(((pcap_pkthdr*)header)->caplen - ((unsigned long) ppd.header_ip - (unsigned long) packet)));
+			mirrorip->send((char *)ppd.header_ip, (int)(HPH(header_packet)->caplen - ((u_char*)ppd.header_ip - HPP(header_packet))));
 		}
 		int voippacket = 0;
 		if(!opt_mirroronly) {
 			process_packet(false, packet_counter,
 				       ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
-				       ppd.data, ppd.datalen, ppd.data - (char*)packet, 
-				       handle, header, packet, NULL,
+				       ppd.data, ppd.datalen, (u_char*)ppd.data - HPP(header_packet), 
+				       handle, HPH(header_packet), HPP(header_packet), NULL,
 				       ppd.istcp, &was_rtp, ppd.header_ip, &voippacket, 0,
 				       NULL, 0, global_pcap_dlink, opt_id_sensor);
 		}
 		if(opt_ipaccount) {
-			ipaccount(((pcap_pkthdr*)header)->ts.tv_sec, (struct iphdr2 *) ((char*)packet + ppd.header_ip_offset), ((pcap_pkthdr*)header)->len - ppd.header_ip_offset, voippacket);
+			ipaccount(HPH(header_packet)->ts.tv_sec, (struct iphdr2 *) (HPP(header_packet) + ppd.header_ip_offset), HPH(header_packet)->len - ppd.header_ip_offset, voippacket);
 		}
 
+	}
+	if(header_packet) {
+		DESTROY_HP(&header_packet);
 	}
 
 	if(opt_pcapdump) {
@@ -5898,9 +5976,9 @@ void *PreProcessPacket::outThreadFunction() {
 				if(do_process_packet) {
 					int was_rtp = 0;
 					int voippacket = 0;
-					process_packet(_packet, this->typePreProcessThread == ppt_detach ? NULL : _parse_packet,
-						       &was_rtp, &voippacket, _parse_packet->forceSip,
-						       true, 0);
+					process_packet_inline(_packet, this->typePreProcessThread == ppt_detach ? NULL : _parse_packet,
+							      &was_rtp, &voippacket, _parse_packet->forceSip,
+							      true, 0);
 					if(_packet->block_store) {
 						_packet->block_store->unlock_packet(_packet->block_store_index);
 					}
@@ -5995,6 +6073,9 @@ bool PreProcessPacket::sipProcess_base(packet_parse_s *parse_packet) {
 		return(false);
 	}
 	this->sipProcess_getSipMethod(parse_packet);
+	if(!this->sipProcess_getCallID_publish(parse_packet)) {
+		return(false);
+	}
 	this->sipProcess_getLastSipResponse(parse_packet);
 	return(true);
 }
@@ -6053,6 +6134,41 @@ bool PreProcessPacket::sipProcess_getCallID(packet_parse_s *parse_packet) {
 	return(false);
 }
 
+bool PreProcessPacket::sipProcess_getCallID_publish(packet_parse_s *parse_packet) {
+	if(parse_packet->sip_method == PUBLISH) {
+		packet_s *_packet = &parse_packet->packet;
+		char *s;
+		unsigned long l;
+		s = gettag(_packet->data, parse_packet->sipDataLen, parse_packet->parseContents,
+			   "\nContent-Type:", &l);
+		if(l <= 0 || l > 1023) {
+			//try compact header
+			s = gettag(_packet->data, parse_packet->sipDataLen, parse_packet->parseContents,
+				   "\nc:", &l);
+			if(l <= 0 || l > 1023) {
+				return(true);
+			}
+		}
+		char endChar = s[l];
+		s[l] = 0;
+		bool isRtcpXr = strcasestr(s, "application/vq-rtcpxr");
+		s[l] = endChar;
+		if(isRtcpXr) {
+			s = gettag(_packet->data, parse_packet->sipDataLen, parse_packet->parseContents,
+				   "\nCallID:", &l);
+			if(s && l > 0 && l <= 1023) {
+				char callidstr[1024];
+				memcpy(callidstr, s, MIN(l, 1024));
+				callidstr[MIN(l, 1023)] = '\0';
+				parse_packet->callid = callidstr;
+			} else {
+				return(false);
+			}
+		}
+	}
+	return(true);
+}
+
 bool PreProcessPacket::sipProcess_reassembly(packet_parse_s *parse_packet) {
 	packet_s *_packet = &parse_packet->packet;
 	if(_packet->istcp == 1 && _packet->datalen >= 2) {
@@ -6107,13 +6223,12 @@ void PreProcessPacket::sipProcess_findCall(packet_parse_s *parse_packet) {
 		}
 	}
 	int call_type = 0;
-	parse_packet->call = calltable->find_by_call_id((char*)parse_packet->callid.c_str(), parse_packet->callid.length(), true, &call_type);
+	parse_packet->call = calltable->find_by_call_id((char*)parse_packet->callid.c_str(), parse_packet->callid.length(), true, &call_type, parse_packet->packet.header.ts.tv_sec);
 	if(parse_packet->call) {
 		if(call_type == REGISTER) {
 			parse_packet->call = NULL;
 			return;
 		}
-		parse_packet->call->in_preprocess_queue_before_process_packet_at = parse_packet->packet.header.ts.tv_sec;
 		parse_packet->call->handle_dscp(parse_packet->sip_method, _packet->header_ip, _packet->saddr, _packet->daddr, NULL, !IS_SIP_RESXXX(parse_packet->sip_method));
 		if(pcap_drop_flag) {
 			parse_packet->call->pcap_drop = pcap_drop_flag;
@@ -6133,9 +6248,6 @@ void PreProcessPacket::sipProcess_createCall(packet_parse_s *parse_packet) {
 		parse_packet->call_created = new_invite_register(&parse_packet->packet, parse_packet->parseContents,
 								 parse_packet->sip_method, (char*)parse_packet->callid.c_str(), &parse_packet->detectUserAgent,
 								 true);
-		if(parse_packet->call_created) {
-			parse_packet->call_created->in_preprocess_queue_before_process_packet_at = parse_packet->packet.header.ts.tv_sec;
-		}
 		parse_packet->_createCall = true;
 	}
 }

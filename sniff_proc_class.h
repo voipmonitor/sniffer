@@ -411,6 +411,7 @@ private:
 	bool sipProcess_base(packet_parse_s *parse_packet);
 	bool sipProcess_extend(packet_parse_s *parse_packet);
 	inline bool sipProcess_getCallID(packet_parse_s *parse_packet);
+	inline bool sipProcess_getCallID_publish(packet_parse_s *parse_packet);
 	bool sipProcess_reassembly(packet_parse_s *parse_packet);
 	inline void sipProcess_getSipMethod(packet_parse_s *parse_packet);
 	inline void sipProcess_getLastSipResponse(packet_parse_s *parse_packet);
@@ -513,16 +514,16 @@ public:
 			}
 			qring_push_index = this->writeit + 1;
 			qring_push_index_count = 0;
+			active_push_batch_rtp_packet = this->qring[qring_push_index - 1];
 		}
-		batch_packet_rtp_s *_batch_rtp_packet = this->qring[qring_push_index - 1];
-		_batch_rtp_packet->batch[qring_push_index_count]->packet = *packetS;
-		_batch_rtp_packet->batch[qring_push_index_count]->hash_s = hash_s;
-		_batch_rtp_packet->batch[qring_push_index_count]->hash_d = hash_d;
-		_batch_rtp_packet->batch[qring_push_index_count]->call_info_length = -1;
+		active_push_batch_rtp_packet->batch[qring_push_index_count]->packet = *packetS;
+		active_push_batch_rtp_packet->batch[qring_push_index_count]->hash_s = hash_s;
+		active_push_batch_rtp_packet->batch[qring_push_index_count]->hash_d = hash_d;
+		active_push_batch_rtp_packet->batch[qring_push_index_count]->call_info_length = -1;
 		++qring_push_index_count;
-		if(qring_push_index_count == _batch_rtp_packet->max_count) {
-			_batch_rtp_packet->count = qring_push_index_count;
-			_batch_rtp_packet->used = 1;
+		if(qring_push_index_count == active_push_batch_rtp_packet->max_count) {
+			active_push_batch_rtp_packet->count = qring_push_index_count;
+			active_push_batch_rtp_packet->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
 			} else {
@@ -544,13 +545,13 @@ public:
 			}
 			qring_push_index = this->writeit + 1;
 			qring_push_index_count = 0;
+			active_push_batch_rtp_packet = this->qring[qring_push_index - 1];
 		}
-		batch_packet_rtp_s *_batch_rtp_packet = this->qring[qring_push_index - 1];
-		*_batch_rtp_packet->batch[qring_push_index_count] = *packet;
+		*active_push_batch_rtp_packet->batch[qring_push_index_count] = *packet;
 		++qring_push_index_count;
-		if(qring_push_index_count == _batch_rtp_packet->max_count) {
-			_batch_rtp_packet->count = qring_push_index_count;
-			_batch_rtp_packet->used = 1;
+		if(qring_push_index_count == active_push_batch_rtp_packet->max_count) {
+			active_push_batch_rtp_packet->count = qring_push_index_count;
+			active_push_batch_rtp_packet->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
 			} else {
@@ -620,6 +621,7 @@ private:
 	batch_packet_rtp_s **qring;
 	unsigned qring_push_index;
 	unsigned qring_push_index_count;
+	batch_packet_rtp_s *active_push_batch_rtp_packet;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;

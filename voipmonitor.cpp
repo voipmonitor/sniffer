@@ -404,9 +404,6 @@ extern string opt_pcap_queue_disk_folder;
 extern ip_port opt_pcap_queue_send_to_ip_port;
 extern ip_port opt_pcap_queue_receive_from_ip_port;
 extern int opt_pcap_queue_receive_dlt;
-extern int opt_pcap_queue_iface_separate_threads;
-extern int opt_pcap_queue_iface_dedup_separate_threads;
-extern int opt_pcap_queue_iface_dedup_separate_threads_extend;
 extern int opt_pcap_queue_iface_qring_size;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
@@ -479,6 +476,13 @@ char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
 char odbc_password[256];
 char odbc_driver[256];
+
+char cloud_url_activecheck[1024] = "https://cloud.voipmonitor.org/reg/check_active.php";	//option in voipmonitor.conf cloud_url_activecheck
+int opt_cloud_activecheck_period = 60;				//0 = disable, how often to check if cloud tunnel is passable in [sec.]
+int cloud_activecheck_timeout = 5;				//2sec by default, how long to wait for response until restart of a cloud tunnel
+volatile bool cloud_activecheck_inprogress = false;		//is currently checking in progress?
+volatile bool cloud_activecheck_sshclose = false;		//is forced close/re-open of ssh forward thread?
+timeval cloud_last_activecheck;					//Time of a last check request sent
 
 char cloud_host[256] = "";
 
@@ -571,6 +575,7 @@ SIP_HEADERfilter *sipheaderfilter_reload = NULL;	// SIP_HEADER filter based on M
 volatile int sipheaderfilter_reload_do = 0;		// for reload in main thread
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
+pthread_t activechecking_cloud_thread; 
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
 //pthread_t destroy_calls_thread;
@@ -1408,6 +1413,50 @@ void *storing_cdr( void *dummy ) {
 	return NULL;
 }
 
+void *activechecking_cloud( void *dummy ) {
+	cloud_activecheck_set();
+	bool initial_register = true;
+
+	if (verbosity) syslog(LOG_NOTICE, "started - activechecking cloud thread");
+
+	do {
+		if (cloud_now_activecheck()) {				//is time to start activecheck?
+			cloud_activecheck_start();
+			if (verbosity) syslog(LOG_NOTICE, "Cloud activecheck request send - starting activecheck");
+			do {
+				if(cloud_activecheck_send()) break;
+				syslog(LOG_WARNING, "Repeating send activecheck request");
+				sleep(2);				//what to do if unable to send check request to a cloud [repeat undefinitely]
+			} while (terminating == 0);
+			cloud_activecheck_set();
+		}
+
+		if (cloud_now_timeout() || initial_register) {		//no reply in timeout? Register
+			if (!cloud_register()){
+				syslog(LOG_WARNING, "Repeating send cloud registration request");
+				sleep(2);				//what to do if unable to register to a cloud?
+				continue;
+			}
+			if (initial_register) {
+				initial_register=false;
+				continue;
+			}
+			cloud_activecheck_sshclose = true;		//we need ssh tunnel recreation - after obtaing new data from register.php
+			cloud_activecheck_start();
+			do {
+				if (cloud_activecheck_send()) break;
+				syslog(LOG_WARNING, "Repeating send activecheck request");
+				sleep(2);				//what to do if unable to send check request to a cloud [repeat undefinitely]
+				continue;
+			} while (terminating == 0);
+			cloud_activecheck_set();
+		}
+		sleep(1);
+        } while (terminating == 0);
+	if(verbosity) syslog(LOG_NOTICE, "terminated - activechecking cloud thread");
+	return NULL;
+}
+
 void *scanpcapdir( void *dummy ) {
  
 #ifndef FREEBSD
@@ -2038,55 +2087,17 @@ int main(int argc, char *argv[]) {
 		opt_rrd = 0;
 	}
 
+/*	//cloud REGISTER has been moved to cloud_activecheck thread
 	if(cloud_url[0] != '\0') {
-		for(int pass = 0; pass < 5; pass++) {
-			vector<dstring> postData;
-			postData.push_back(dstring("securitytoken", cloud_token));
-			char id_sensor_str[10];
-			sprintf(id_sensor_str, "%i", opt_id_sensor);
-			postData.push_back(dstring("id_sensor", id_sensor_str));
-			SimpleBuffer responseBuffer;
-			string error;
-			syslog(LOG_NOTICE, "connecting to %s", cloud_url);
-			get_url_response(cloud_url, &responseBuffer, &postData, &error);
-			if(error.empty()) {
-				if(!responseBuffer.empty()) {
-					if(responseBuffer.isJsonObject()) {
-						JsonItem jsonData;
-						jsonData.parse((char*)responseBuffer);
-						int res_num = atoi(jsonData.getValue("res_num").c_str());
-						string res_text = jsonData.getValue("res_text");
-						if(res_num != 0) {
-							syslog(LOG_ERR, "cloud registration error: %s", res_text.c_str());
-							exit(1);
-						}
-						
-						//ssh 
-						strcpy(ssh_host, jsonData.getValue("ssh_host").c_str());
-						ssh_port = atol(jsonData.getValue("ssh_port").c_str());
-						strcpy(ssh_username, jsonData.getValue("ssh_user").c_str());
-						strcpy(ssh_password, jsonData.getValue("ssh_password").c_str());
-						strcpy(ssh_remote_listenhost, jsonData.getValue("ssh_rhost").c_str());
-						ssh_remote_listenport = atol(jsonData.getValue("ssh_rport").c_str());
-
-						//sqlurl
-						strcpy(cloud_host, jsonData.getValue("sqlurl").c_str());
-						break;
-					} else {
-						syslog(LOG_ERR, "cloud registration error: bad response - %s", (char*)responseBuffer);
-					}
-				} else {
-					syslog(LOG_ERR, "cloud registration error: response is empty");
-				}
-				sleep(5);
-			} else {
-				syslog(LOG_ERR, "cloud registration error: %s", error.c_str());
-			}
-			sleep(1);
-		}
+		//If error during initial cloud registration try it until success
+		do {
+			if (cloud_register()) break;
+			sleep(2);
+		} while (true);
 	}
 	
 	checkRrdVersion();
+*/
 	
 /* resolve is disabled since 27.3.2015 
 	if(!opt_nocdr && isSqlDriver("mysql") && mysql_host[0]) {
@@ -2406,6 +2417,83 @@ int main(int argc, char *argv[]) {
 	return(0);
 }
 
+bool cloud_register() {
+	vector<dstring> postData;
+	postData.push_back(dstring("securitytoken", cloud_token));
+	char id_sensor_str[10];
+	sprintf(id_sensor_str, "%i", opt_id_sensor);
+	postData.push_back(dstring("id_sensor", id_sensor_str));
+	SimpleBuffer responseBuffer;
+	string error;
+	syslog(LOG_NOTICE, "connecting to %s", cloud_url);
+	get_url_response(cloud_url, &responseBuffer, &postData, &error);
+	if(error.empty()) {
+		if(!responseBuffer.empty()) {
+			if(responseBuffer.isJsonObject()) {
+				JsonItem jsonData;
+				jsonData.parse((char*)responseBuffer);
+				int res_num = atoi(jsonData.getValue("res_num").c_str());
+				string res_text = jsonData.getValue("res_text");
+				if(res_num != 0) {
+				syslog(LOG_ERR, "cloud registration error: %s", res_text.c_str());
+				exit(1);
+				}
+
+				//ssh
+				strcpy(ssh_host, jsonData.getValue("ssh_host").c_str());
+				ssh_port = atol(jsonData.getValue("ssh_port").c_str());
+				strcpy(ssh_username, jsonData.getValue("ssh_user").c_str());                                                                                                                                                                                 strcpy(ssh_password, jsonData.getValue("ssh_password").c_str());                                                                                                                                                                             strcpy(ssh_remote_listenhost, jsonData.getValue("ssh_rhost").c_str());                                                                                                                                                                       ssh_remote_listenport = atol(jsonData.getValue("ssh_rport").c_str());
+
+				//sqlurl
+				strcpy(cloud_host, jsonData.getValue("sqlurl").c_str());
+				return true;
+			} else {
+				syslog(LOG_ERR, "cloud registration error: bad response - %s", (char*)responseBuffer);
+			}
+		} else {
+			syslog(LOG_ERR, "cloud registration error: response is empty");
+		}
+	} else {
+		syslog(LOG_ERR, "cloud registration error: %s", error.c_str());
+	}
+	return(false);
+}
+
+bool cloud_activecheck_send() {
+	vector<dstring> postData;
+	postData.push_back(dstring("ssh_rhost", ssh_remote_listenhost));
+	char str_port[10];
+	sprintf(str_port, "%i", ssh_remote_listenport);
+	postData.push_back(dstring("ssh_rport", str_port));
+	SimpleBuffer responseBuffer;
+	string error;
+	syslog(LOG_NOTICE, "connecting to %s", cloud_url_activecheck);
+	get_url_response(cloud_url_activecheck, &responseBuffer, &postData, &error);
+	if(error.empty()) {
+		if(!responseBuffer.empty()) {
+			if(responseBuffer.isJsonObject()) {
+				JsonItem jsonData;
+				jsonData.parse((char*)responseBuffer);
+				int res_num = atoi(jsonData.getValue("res_num").c_str());
+				string res_text = jsonData.getValue("res_text");
+				if(res_num != 0) {
+					syslog(LOG_ERR, "cloud tunnel check request error: %s", res_text.c_str());
+					return(false);
+				}
+				return true;
+			} else {
+				syslog(LOG_ERR, "cloud tunnel check: bad response - %s", (char*)responseBuffer);
+			}
+		} else {
+			syslog(LOG_ERR, "cloud tunnel check error: response is empty");
+		}
+	} else {
+		syslog(LOG_ERR, "cloud tunnel check error: %s", error.c_str());
+	}
+	return(false);
+}
+
+
 void set_global_vars() {
 	opt_save_sip_history = "bye";
 }
@@ -2555,6 +2643,11 @@ int main_init_read() {
 		*/
 	}
 
+	// start thread activechecking ssh tunnel to cloud server only in cloud mode and only if enabled 
+	if((cloud_url[0] != '\0') and (opt_cloud_activecheck_period > 0)) {
+		vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
+	}
+
 	if(opt_cachedir[0] != '\0') {
 		mv_r(opt_cachedir, opt_chdir);
 		vm_pthread_create(&cachedir_thread, NULL, moving_cache, NULL, __FILE__, __LINE__);
@@ -2566,7 +2659,7 @@ int main_init_read() {
 	}
 
 #ifdef HAVE_LIBSSH
-	if(ssh_host[0] != '\0') {
+	if(cloud_url[0] != '\0') {
 		vm_pthread_create(&manager_ssh_thread, NULL, manager_ssh, NULL, __FILE__, __LINE__);
 	}
 #endif
@@ -3562,22 +3655,6 @@ void test_heapchunk() {
 }
 #endif //HEAP_CHUNK_ENABLE
 
-void test_heapstack() {
-	cHeapItemsStack *hs = new cHeapItemsStack(400, 200, 1, 1);
-	cHeapItemsStack::sHeapItem hi;
-	
-	for(int i = 0; i < 10000; i++) {
-		hs->pop(&hi, 0, 50000);
-		hs->push(&hi, 0, true);
-	}
-	
-	delete hs;
-	
-	cHeapItemsStack::sHeapItem hi2;
-	hi2.create(2000, NULL);
- 
-}
-
 void test() {
  
 	switch(opt_test) {
@@ -3640,7 +3717,6 @@ void test() {
 	 
 	case 1: {
 	 
-		test_heapstack();
 		//test_time_cache();
 		//test_parsepacket();
 		break;
@@ -4767,6 +4843,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new cConfigItem_string("cloud_host", cloud_host, sizeof(cloud_host)));
 			addConfigItem(new cConfigItem_string("cloud_url", cloud_url, sizeof(cloud_url)));
 			addConfigItem(new cConfigItem_string("cloud_token", cloud_token, sizeof(cloud_token)));
+			addConfigItem(new cConfigItem_integer("cloud_activecheck_period", &opt_cloud_activecheck_period));
+			addConfigItem(new cConfigItem_string("cloud_url_activecheck", cloud_url_activecheck, sizeof(cloud_url_activecheck)));
 		subgroup("other");
 			addConfigItem(new cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 				advanced();
@@ -4919,26 +4997,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		opt_pcap_queue_receive_from_ip_port.set_port(configItem->getValueInt());
 	}
 	if(configItem->config_name == "threading_mod") {
-		opt_pcap_queue_iface_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads_extend = 0;
-		switch(configItem->getValueInt()) {
-		case 1:
-			opt_pcap_queue_iface_separate_threads = 0;
-			break;
-		case 2:
-			opt_pcap_queue_iface_separate_threads = 1;
-			break;
-		case 3:
-			opt_pcap_queue_iface_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads = 1;
-			break;
-		case 4:
-			opt_pcap_queue_iface_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads_extend = 1;
-			break;
-		}
+		setThreadingMode(configItem->getValueInt());
 	}
 	if(configItem->config_name == "pcap_dump_zip") {
 		opt_pcap_dump_zip_sip = 
@@ -5262,6 +5321,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i].substr(0, 25) == "memory_stat_ignore_limit=")
 													sverb.memory_stat_ignore_limit = atoi(verbparams[i].c_str() + 25);
 						else if(verbparams[i] == "qring_stat")			sverb.qring_stat = 1;
+						else if(verbparams[i] == "alloc_stat")			sverb.alloc_stat = 1;
 						else if(verbparams[i] == "qfiles")			sverb.qfiles = 1;
 						else if(verbparams[i] == "query_error")			sverb.query_error = 1;
 						else if(verbparams[i] == "dump_sip")			sverb.dump_sip = 1;
@@ -5276,6 +5336,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "rtp_extend_stat")		sverb.rtp_extend_stat = 1;
 						else if(verbparams[i] == "disable_process_packet_in_packetbuffer")
 													sverb.disable_process_packet_in_packetbuffer = 1;
+						else if(verbparams[i] == "disable_save_packet")		sverb.disable_save_packet = 1;
 						else if(verbparams[i] == "thread_create")		sverb.thread_create = 1;
 						else if(verbparams[i] == "timezones")			sverb.timezones = 1;
 						else if(verbparams[i] == "tcpreplay")			sverb.tcpreplay = 1;
@@ -5521,9 +5582,7 @@ void set_context_config() {
 		if(is_receiver()) {
 			opt_pcap_queue_receive_from_ip_port.clear();
 		}
-		opt_pcap_queue_iface_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads_extend = 0;
+		setThreadingMode(1);
 	}
 	
 	if(opt_pcap_dump_tar) {
@@ -5563,8 +5622,8 @@ void set_context_config() {
 	}
 	
 	vector<string> ifnamev = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
-	if(!opt_pcap_queue_iface_separate_threads && ifnamev.size() > 1) {
-		opt_pcap_queue_iface_separate_threads = 1;
+	if(getThreadingMode() < 2 && ifnamev.size() > 1) {
+		setThreadingMode(2);
 	}
 	
 	if(opt_pcap_queue_dequeu_window_length < 0) {
@@ -6548,8 +6607,14 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cloud_url", NULL))) {
 		strncpy(cloud_url, value, sizeof(cloud_url));
 	}
+	if((value = ini.GetValue("general", "cloud_url_activecheck", NULL))) {
+		strncpy(cloud_url_activecheck, value, sizeof(cloud_url_activecheck));
+	}
 	if((value = ini.GetValue("general", "cloud_token", NULL))) {
 		strncpy(cloud_token, value, sizeof(cloud_token));
+	}
+	if((value = ini.GetValue("general", "cloud_activecheck_period", NULL))) {
+		opt_cloud_activecheck_period = atoi(value);
 	}
 	if((value = ini.GetValue("general", "database_backup_from_mysqlhost", NULL))) {
 		strncpy(opt_database_backup_from_mysql_host, value, sizeof(opt_database_backup_from_mysql_host));
@@ -6901,23 +6966,7 @@ int eval_config(string inistr) {
 		opt_convert_dlt_sll_to_en10 = yesno(value);
 	}
 	if((value = ini.GetValue("general", "threading_mod", NULL))) {
-		opt_pcap_queue_iface_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads = 0;
-		opt_pcap_queue_iface_dedup_separate_threads_extend = 0;
-		switch(atoi(value)) {
-		case 2:
-			opt_pcap_queue_iface_separate_threads = 1;
-			break;
-		case 3:
-			opt_pcap_queue_iface_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads = 1;
-			break;
-		case 4:
-			opt_pcap_queue_iface_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads = 1;
-			opt_pcap_queue_iface_dedup_separate_threads_extend = 1;
-			break;
-		}
+		setThreadingMode(atoi(value));
 	}
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_window_length", NULL))) {
 		opt_pcap_queue_dequeu_window_length = atoi(value);

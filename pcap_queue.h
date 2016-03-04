@@ -18,6 +18,7 @@
 #include "sniff.h"
 #include "pstat.h"
 #include "ip_frag.h"
+#include "header_packet.h"
 
 #define READ_THREADS_MAX 20
 #define DLT_TYPES_MAX 10
@@ -312,7 +313,6 @@ struct pcapProcessData {
 	int datalen;
 	int traillen;
 	int istcp;
-	uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 	unsigned char *prevmd5s;
 	MD5_CTX ctx;
 	u_int ipfrag_lastprune;
@@ -330,7 +330,7 @@ protected:
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet);
 	void restoreOneshotBuffer();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
-	inline int pcapProcess(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header, cHeapItemsStack::sHeapItem *packet, int pushToStack_queue_index,
+	inline int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			       bool enableDefrag = true, bool enableCalcMD5 = true, bool enableDedup = true, bool enableDump = true);
 	virtual string pcapStatString_interface(int statPeriod);
 	virtual string pcapDropCountStat_interface();
@@ -372,6 +372,7 @@ private:
 	u_char **libpcap_buffer;
 	u_char *libpcap_buffer_old;
 };
+
 
 /*
 struct sHeaderPacket {
@@ -479,25 +480,29 @@ class PcapQueue_readFromInterfaceThread : protected PcapQueue_readFromInterface_
 public:
 	enum eTypeInterfaceThread {
 		read,
+		detach,
 		defrag,
 		md1,
 		md2,
 		dedup
 	};
 	struct hpi {
-		cHeapItemsStack::sHeapItemT<pcap_pkthdr> header;
-		cHeapItemsStack::sHeapItem packet;
-		u_int offset;
-		uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
+		sHeaderPacket *header_packet;
 	};
 	struct hpi_batch {
 		hpi_batch(uint32_t max_count) {
 			this->max_count = max_count;
 			this->hpis = new FILE_LINE hpi[max_count];
+			memset(this->hpis, 0, sizeof(hpi) * max_count);
 			count = 0;
 			used = 0;
 		}
 		~hpi_batch() {
+			for(unsigned i = 0; i < max_count; i++) {
+				if(hpis[i].header_packet) {
+					delete hpis[i].header_packet;
+				}
+			}
 			delete [] hpis;
 		}
 		uint32_t max_count;
@@ -510,8 +515,7 @@ public:
 					  PcapQueue_readFromInterfaceThread *prevThread = NULL);
 	~PcapQueue_readFromInterfaceThread();
 protected:
-	inline void push(cHeapItemsStack::sHeapItemT<pcap_pkthdr> *header,cHeapItemsStack::sHeapItem *packet,
-			 u_int offset, uint16_t *md5);
+	inline void push(sHeaderPacket **header_packet);
 	inline void tryForcePush();
 	inline hpi pop();
 	inline hpi POP();
@@ -525,8 +529,8 @@ protected:
 			}
 		}
 		if(readIndex && readIndexCount && readIndexPos < readIndexCount) {
-			return(((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header)->ts.tv_sec * 1000000ull + 
-			       ((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header)->ts.tv_usec);
+			return(((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header_packet)->ts.tv_sec * 1000000ull + 
+			       ((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header_packet)->ts.tv_usec);
 		}
 		return(0);
 	}
@@ -545,6 +549,12 @@ protected:
 		} else {
 			this->setForcePush();
 		}
+	}
+	inline void lock_detach_buffer(int index) {
+		while(__sync_lock_test_and_set(&this->_sync_detachBuffer[index], 1)) usleep(10);
+	}
+	inline void unlock_detach_buffer(int index) {
+		__sync_lock_release(&this->_sync_detachBuffer[index]);
 	}
 private:
 	void *threadFunction(void *arg, unsigned int arg2);
@@ -566,13 +576,20 @@ private:
 	bool threadInitFailed;
 	hpi_batch **qring;
 	unsigned int qringmax;
-	volatile unsigned int readit;
-	volatile unsigned int writeit;
+	unsigned int readit;
+	unsigned int writeit;
 	unsigned int readIndex;
 	unsigned int readIndexPos;
 	unsigned int readIndexCount;
 	unsigned int writeIndex;
 	unsigned int writeIndexCount;
+	volatile u_char *detachBuffer[2];
+	volatile u_char *activeDetachBuffer;
+	unsigned int detachBufferLength;
+	unsigned int detachBufferWritePos;
+	unsigned int detachBufferReadPos;
+	int detachBufferActiveIndex;
+	volatile int _sync_detachBuffer[2];
 	unsigned int counter;
 	unsigned int counter_pop_usleep;
 	bool force_push;
@@ -581,29 +598,21 @@ private:
 	volatile int _sync_qring;
 	eTypeInterfaceThread typeThread;
 	PcapQueue_readFromInterfaceThread *readThread;
+	PcapQueue_readFromInterfaceThread *detachThread;
 	PcapQueue_readFromInterfaceThread *defragThread;
 	PcapQueue_readFromInterfaceThread *md1Thread;
 	PcapQueue_readFromInterfaceThread *md2Thread;
 	PcapQueue_readFromInterfaceThread *dedupThread;
 	PcapQueue_readFromInterfaceThread *prevThread;
 	bool threadDoTerminate;
-	cHeapItemsStack *headerStack;
-	cHeapItemsStack *packetStack;
-	//PcapQueue_HeaderPacketStack *headerPacketStack;
+	cHeaderPacketStack *headerPacketStack;
+	unsigned long allocCounter[2];
+	unsigned long allocStackCounter[2];
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;
 };
 
 class PcapQueue_readFromInterface : public PcapQueue, protected PcapQueue_readFromInterface_base {
-private:
-	struct delete_packet_info {
-		~delete_packet_info() {
-			header.clean();
-			packet.clean();
-		}
-		cHeapItemsStack::sHeapItemT<pcap_pkthdr> header;
-		cHeapItemsStack::sHeapItem packet;
-	};
 public:
 	PcapQueue_readFromInterface(const char *nameQueue);
 	virtual ~PcapQueue_readFromInterface();
@@ -793,6 +802,7 @@ friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 void PcapQueue_init();
 void PcapQueue_term();
 int getThreadingMode();
+void setThreadingMode(int threadingMode);
 
 
 #endif
