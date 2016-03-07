@@ -1,3 +1,8 @@
+15.4.1 7.3.2016
+===============
+- fix >= 15.2 crash when IP defragmenting packets and threading mode is 1 (which is by default) 
+
+
 15.4 4.3.2016
 =============
 - fix IP reassemble broken in 15.3 versions [VS-398]
