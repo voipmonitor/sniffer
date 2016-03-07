@@ -202,7 +202,7 @@ int msleep(long msec)
 	return select(0,0,0,0,&tv);
 }
 
-int file_exists (string fileName)
+u_int64_t file_exists (string fileName)
 {
 	struct stat buf;
 	/* File found */
@@ -212,7 +212,7 @@ int file_exists (string fileName)
 	return 0;
 }
 
-int file_exists (char * fileName)
+u_int64_t file_exists (char * fileName)
 {
 	struct stat buf;
 	/* File found */
@@ -222,7 +222,7 @@ int file_exists (char * fileName)
 	return 0;
 }
 
-int file_exists (const char * fileName) {
+u_int64_t file_exists (const char * fileName) {
 	return(file_exists((char*)fileName));
 }
 

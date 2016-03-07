@@ -1560,7 +1560,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 	 
 		char filename[2048];
-		unsigned int size;
+		u_int64_t size;
 		string rslt;
 
 		sscanf(buf, "file_exists %s", filename);
@@ -1568,17 +1568,17 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		if(FileExists(filename, &error_code)) {
 			size = file_exists(filename);
 			char size_str[20];
-			sprintf(size_str, "%d", size);
+			sprintf(size_str, "%llu", size);
 			rslt = size_str;
 			if(size > 0 && strstr(filename, "tar")) {
 				for(int i = 1; i <= 5; i++) {
 					char nextfilename[2048];
 					strcpy(nextfilename, filename);
 					sprintf(nextfilename + strlen(nextfilename), ".%i", i);
-					unsigned int nextsize = file_exists(nextfilename);
+					u_int64_t nextsize = file_exists(nextfilename);
 					if(nextsize > 0) {
 						char nextsize_str[20];
-						sprintf(nextsize_str, "%d", nextsize);
+						sprintf(nextsize_str, "%llu", nextsize);
 						rslt.append(string(";") + nextfilename + ":" + nextsize_str);
 					} else {
 						break;
