@@ -204,7 +204,6 @@ void cloud_activecheck_success();
 void cloud_activecheck_start();
 void cloud_activecheck_stop();
 void cloud_activecheck_set();
-void cloud_activecheck_info();
 bool cloud_now_activecheck();
 bool cloud_now_timeout();
 //void cloud_activecheck_start();

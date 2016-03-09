@@ -4589,6 +4589,6 @@ bool cloud_now_timeout() {
 }
 
 void cloud_activecheck_success() {
-	if (verbosity) syslog(LOG_NOTICE, "Cloud activecheck Success - disabling active check");
+	if (verbosity) syslog(LOG_NOTICE, "Cloud activecheck Success - disabling activecheck for next %isec.",opt_cloud_activecheck_period);
 	cloud_activecheck_stop();
 }

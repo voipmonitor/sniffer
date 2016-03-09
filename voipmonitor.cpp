@@ -1420,7 +1420,7 @@ void *activechecking_cloud( void *dummy ) {
 	if (verbosity) syslog(LOG_NOTICE, "started - activechecking cloud thread");
 
 	do {
-		if (cloud_now_activecheck()) {				//is time to start activecheck?
+		if (opt_cloud_activecheck_period && cloud_now_activecheck()) {				//is time to start activecheck?
 			cloud_activecheck_start();
 			if (verbosity) syslog(LOG_NOTICE, "Cloud activecheck request send - starting activecheck");
 			do {
@@ -1439,6 +1439,10 @@ void *activechecking_cloud( void *dummy ) {
 			}
 			if (initial_register) {
 				initial_register=false;
+				if (!opt_cloud_activecheck_period) {
+					if(verbosity) syslog(LOG_NOTICE, "notice - activechecking is disabled by config");
+					break;	//If activecheks disabled, end a thread after successful registered.
+				}
 				continue;
 			}
 			cloud_activecheck_sshclose = true;		//we need ssh tunnel recreation - after obtaing new data from register.php
@@ -2087,17 +2091,14 @@ int main(int argc, char *argv[]) {
 		opt_rrd = 0;
 	}
 
-/*	//cloud REGISTER has been moved to cloud_activecheck thread
+	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
 	if(cloud_url[0] != '\0') {
-		//If error during initial cloud registration try it until success
-		do {
-			if (cloud_register()) break;
-			sleep(2);
-		} while (true);
+		vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
+		sleep(1);
 	}
-	
+
 	checkRrdVersion();
-*/
+
 	
 /* resolve is disabled since 27.3.2015 
 	if(!opt_nocdr && isSqlDriver("mysql") && mysql_host[0]) {
@@ -2641,11 +2642,6 @@ int main_init_read() {
 		/*
 		vm_pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL, __FILE__, __LINE__);
 		*/
-	}
-
-	// start thread activechecking ssh tunnel to cloud server only in cloud mode and only if enabled 
-	if((cloud_url[0] != '\0') and (opt_cloud_activecheck_period > 0)) {
-		vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
 	}
 
 	if(opt_cachedir[0] != '\0') {
