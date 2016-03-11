@@ -2012,6 +2012,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
+		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 
 	if((opt_cdronlyanswered and !connect_time) or 
@@ -2102,13 +2103,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
 		while (iter_undup != proxies_undup.end()) {
 			if(*iter_undup == sipcalledip[0]) { ++iter_undup; continue; };
-			sqlDbSaveCall->setEnableSqlStringInContent(true);
 			SqlDb_row cdrproxy;
 			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 			cdrproxy.add(htonl(*iter_undup), "dst");
 			query_str_cdrproxy += sqlDbSaveCall->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-			sqlDbSaveCall->setEnableSqlStringInContent(false);
 
 			++iter_undup;
 		}
@@ -2557,8 +2556,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
-		sqlDbSaveCall->setEnableSqlStringInContent(true);
-		
 		query_str += string("set @lSresp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ");\n";
 		cdr.add("_\\_'SQL'_\\_:@lSresp_id", "lastSIPresponse_id");
 		//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
@@ -2808,8 +2805,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		++counterSqlStore;
 		sqlStore->query_lock(query_str.c_str(), storeId);
 		
-		sqlDbSaveCall->setEnableSqlStringInContent(false);
-		
 		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
 	}
@@ -3039,6 +3034,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
+		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 
 	const char *register_table = "register";
@@ -3368,8 +3364,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			reg.add(sqlEscapeString(contact_domain), "contact_domain");
 			reg.add(sqlEscapeString(digest_username), "digestusername");
 
-			sqlDbSaveCall->setEnableSqlStringInContent(true);
-
 			//reg.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "ua_id");
 			reg.add("_\\_'SQL'_\\_:@ua_id", "ua_id");
 
@@ -3436,6 +3430,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
+		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 
 	SqlDb_row cdr,
@@ -3523,8 +3518,6 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
-		sqlDbSaveCall->setEnableSqlStringInContent(true);
-		
 		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 		if(a_ua) {
 			query_str += string("set @uaA_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
@@ -3596,8 +3589,6 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 				0);
 		++counterSqlStore;
 		sqlStore->query_lock(query_str.c_str(), storeId);
-		
-		sqlDbSaveCall->setEnableSqlStringInContent(false);
 		
 		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
