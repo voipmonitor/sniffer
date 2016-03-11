@@ -12,20 +12,7 @@
 class TcpReassemblySip {
 public:
 	struct tcp_stream_packet {
-		u_int64_t packet_number;
-		u_int32_t saddr;
-		u_int16_t source; 
-		u_int32_t daddr;
-		u_int16_t dest;
-		char *data;
-		int datalen;
-		int dataoffset;
-		pcap_pkthdr header;
-		u_char *packet;
-		iphdr2 *header_ip;
-		pcap_t *handle;
-		int dlt; 
-		int sensor_id;
+		packet_s_process *packetS;
 		time_t ts;
 		u_int32_t seq;
 		u_int32_t next_seq;
@@ -67,22 +54,11 @@ public:
 		}
 	};
 public:
-	void processPacket(
-		u_int64_t packet_number,
-		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
-		pcap_t *handle, pcap_pkthdr header, const u_char *packet, struct iphdr2 *header_ip,
-		int dlt, int sensor_id,
-		bool issip);
+	void processPacket(packet_s_process **packetS_ref, class PreProcessPacket *processPacket);
 	void clean(time_t ts = 0);
 private:
-	bool addPacket(
-		tcp_stream *stream,
-		u_int64_t packet_number,
-		unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
-		pcap_t *handle, pcap_pkthdr header, const u_char *packet, struct iphdr2 *header_ip,
-		int dlt, int sensor_id);
-	void complete(
-		tcp_stream *stream, tcp_stream_id id);
+	bool addPacket(tcp_stream *stream, packet_s_process **packetS_ref, PreProcessPacket *processPacket);
+	void complete(tcp_stream *stream, tcp_stream_id id, PreProcessPacket *processPacket);
 	tcp_stream_packet *getLastStreamPacket(tcp_stream *stream) {
 		if(!stream->packets) {
 			return(NULL);
@@ -103,8 +79,8 @@ private:
 			data_len = stream->complete_data->size();
 			data = stream->complete_data->data();
 		} else {
-			data_len = stream->packets->datalen;
-			data = (u_char*)stream->packets->data;
+			data_len = stream->packets->packetS->datalen;
+			data = (u_char*)stream->packets->packetS->data;
 		}
 		while(data_len > 0) {
 			u_char *endHeaderSepPos = (u_char*)memmem(data, data_len, "\r\n\r\n", 4);
@@ -136,7 +112,7 @@ private:
 		}
 		return(false);
 	}
-	void cleanStream(tcp_stream *stream, bool deletePackets);
+	void cleanStream(tcp_stream *stream, bool callFromClean = false);
 private:
 	map<tcp_stream_id, tcp_stream> tcp_streams;
 };
@@ -147,67 +123,50 @@ public:
 	enum eTypePreProcessThread {
 		ppt_detach,
 		ppt_sip,
-		ppt_extend
+		ppt_extend,
+		ppt_pp_call,
+		ppt_pp_register
 	};
-	struct packet_parse_s {
-		packet_parse_s() {
-			init();
-		}
-		void init() {
-			sip_method = -1;
-			sip_response = false;
-			lastSIPresponseNum = -1;
-			call_cancel_lsr487 = false;
-			call = NULL;
-			merged = 0;
-			call_created = NULL;
-			detectUserAgent = false;
-			_getCallID_reassembly = false;
-			_getSipMethod = false;
-			_getLastSipResponse = false;
-			_findCall = false;
-			_createCall = false;
-		}
-		packet_s packet;
-		bool packetDelete;
-		int forceSip;
-		ParsePacket::ppContentsX *parseContents;
-		u_int32_t sipDataLen;
-		bool isSip;
-		string callid;
-		int sip_method;
-		bool sip_response;
-		int lastSIPresponseNum;
-		string lastSIPresponse;
-		bool call_cancel_lsr487;
-		Call *call;
-		int merged;
-		Call *call_created;
-		bool detectUserAgent;
-		bool _getCallID_reassembly;
-		bool _getSipMethod;
-		bool _getLastSipResponse;
-		bool _findCall;
-		bool _createCall;
-		unsigned int hash[2];
-	};
-	struct batch_packet_parse_s {
-		batch_packet_parse_s(unsigned max_count) {
+	struct batch_packet_s {
+		batch_packet_s(unsigned max_count) {
 			count = 0;
 			used = 0;
-			batch = new packet_parse_s*[max_count];
+			batch = new packet_s*[max_count];
 			for(unsigned i = 0; i < max_count; i++) {
-				batch[i] = new packet_parse_s;
+				batch[i] = new packet_s;
 			}
 			this->max_count = max_count;
 		}
-		~batch_packet_parse_s() {
+		~batch_packet_s() {
 			for(unsigned i = 0; i < max_count; i++) {
 				delete batch[i];
 			}
 			delete [] batch;
 		}
-		packet_parse_s **batch;
+		packet_s **batch;
+		volatile unsigned count;
+		volatile int used;
+		unsigned max_count;
+	};
+	struct batch_packet_s_process {
+		batch_packet_s_process(unsigned max_count) {
+			count = 0;
+			used = 0;
+			batch = new FILE_LINE packet_s_process*[max_count];
+			memset(batch, 0, sizeof(packet_s_process*) * max_count);
+			this->max_count = max_count;
+		}
+		~batch_packet_s_process() {
+			for(unsigned i = 0; i < max_count; i++) {
+				if(batch[i]) {
+					batch[i]->blockstore_clear();
+					delete batch[i];
+					batch[i] = NULL;
+				}
+			}
+			delete [] batch;
+		}
+		packet_s_process **batch;
 		volatile unsigned count;
 		volatile int used;
 		unsigned max_count;
@@ -215,13 +174,13 @@ public:
 public:
 	PreProcessPacket(eTypePreProcessThread typePreProcessThread);
 	~PreProcessPacket();
-	inline void push_packet_1(bool is_ssl, u_int64_t packet_number,
-				  unsigned int saddr, int source, unsigned int daddr, int dest, 
-				  char *data, int datalen, int dataoffset,
-				  pcap_t *handle, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
-				  int istcp, struct iphdr2 *header_ip, int forceSip,
-				  pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
-				  bool disableLock = false) {
+	inline void push_packet(bool is_ssl, u_int64_t packet_number,
+				unsigned int saddr, int source, unsigned int daddr, int dest, 
+				char *data, int datalen, int dataoffset,
+				pcap_t *handle, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
+				int istcp, struct iphdr2 *header_ip,
+				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+				bool blockstore_lock = true) {
 		packet_s packetS;
 		packetS.packet_number = packet_number;
 		packetS.saddr = saddr;
@@ -241,40 +200,49 @@ public:
 		packetS.dlt = dlt; 
 		packetS.sensor_id = sensor_id;
 		packetS.is_ssl = is_ssl;
-		this->push_packet_2(&packetS, NULL, 
-				    packetDelete, forceSip, disableLock);
-	}
-	inline void push_packet_2(packet_s *packetS, packet_parse_s *packetParseS = NULL,
-				  bool packetDelete = false, int forceSip = 0, bool disableLock = false,
-				  bool pushBatch = false) {
-	 
-		extern int opt_enable_ssl;
-		extern unsigned long preprocess_packet__last_cleanup;
-		extern TcpReassemblySip tcpReassemblySip;
-		extern char *sipportmatrix;
-		
-		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
-		
-		switch(typePreProcessThread) {
-		case ppt_detach:
-			if(opt_enable_ssl && !disableLock) {
-				this->lock_push();
-			}
-			if(packetS->block_store) {
-				packetS->block_store->lock_packet(packetS->block_store_index);
-			}
-			break;
-		case ppt_sip:
-			if(packetS->header.ts.tv_sec - preprocess_packet__last_cleanup > 10) {
-				// clean tcp_streams_list
-				tcpReassemblySip.clean(packetS->header.ts.tv_sec);
-				preprocess_packet__last_cleanup = packetS->header.ts.tv_sec;
-			}
-			break;
-		case ppt_extend:
-			break;
+		if(blockstore_lock) {
+			packetS.blockstore_lock();
 		}
-	 
+		this->push_packet(&packetS);
+	}
+	inline void push_packet(packet_s *packetS) {
+		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
+			this->lock_push();
+		}
+		if(!qring_push_index) {
+			unsigned usleepCounter = 0;
+			while(this->qring_detach[this->writeit]->used != 0) {
+				usleep(20 *
+				       (usleepCounter > 10 ? 50 :
+					usleepCounter > 5 ? 10 :
+					usleepCounter > 2 ? 5 : 1));
+				++usleepCounter;
+			}
+			qring_push_index = this->writeit + 1;
+			qring_push_index_count = 0;
+			qring_detach_active_push_item = qring_detach[qring_push_index - 1];
+		}
+		*qring_detach_active_push_item->batch[qring_push_index_count] = *packetS;
+		++qring_push_index_count;
+		if(qring_push_index_count == qring_detach_active_push_item->max_count) {
+			qring_detach_active_push_item->count = qring_push_index_count;
+			qring_detach_active_push_item->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			qring_push_index = 0;
+			qring_push_index_count = 0;
+		}
+		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
+			this->unlock_push();
+		}
+	}
+	inline void push_packet(packet_s_process *packetS) {
+		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
+			this->lock_push();
+		}
 		if(!qring_push_index) {
 			unsigned usleepCounter = 0;
 			while(this->qring[this->writeit]->used != 0) {
@@ -286,71 +254,13 @@ public:
 			}
 			qring_push_index = this->writeit + 1;
 			qring_push_index_count = 0;
+			qring_active_push_item = qring[qring_push_index - 1];
 		}
-		batch_packet_parse_s *_batch_parse_packet = this->qring[qring_push_index - 1];
-		packet_parse_s *_parse_packet = _batch_parse_packet->batch[qring_push_index_count];
-		if(packetParseS) {
-			*_parse_packet  = *packetParseS;
-		} else {
-			_parse_packet->packet = *packetS;
-			_parse_packet->packetDelete = packetDelete; 
-			_parse_packet->forceSip = forceSip; 
-		}
-		
-		switch(typePreProcessThread) {
-		case ppt_detach:
-			break;
-		case ppt_sip:
-			_parse_packet->parseContents = this->parseContentsStack[this->parseContentsStackPosition++];
-			if(this->parseContentsStackPosition == this->parseContentsStackLength) {
-				this->parseContentsStackPosition = 0;
-			}
-			_parse_packet->_getSipMethod = false;
-			if((forceSip ||
-			    sipportmatrix[packetS->source] || 
-			    sipportmatrix[packetS->dest]) &&
-			   check_sip20(packetS->data, packetS->datalen, NULL)) {
-				_parse_packet->sipDataLen = _parse_packet->parseContents->parse(packetS->data, packetS->datalen, true);
-				_parse_packet->isSip = _parse_packet->parseContents->isSip();
-			} else {
-				_parse_packet->sipDataLen = 0;
-				_parse_packet->isSip = false;
-			}
-			if(_parse_packet->isSip) {
-				_parse_packet->init();
-				if(!this->sipProcess_base(_parse_packet)) {
-					if(packetS->block_store) {
-						packetS->block_store->unlock_packet(packetS->block_store_index);
-					}
-					return;
-				}
-				_parse_packet->hash[0] = 0;
-				_parse_packet->hash[1] = 0;
-			} else {
-				if(!this->sipProcess_reassembly(_parse_packet)) {
-					if(packetS->block_store) {
-						packetS->block_store->unlock_packet(packetS->block_store_index);
-					}
-					return;
-				}
-				if(packetS->datalen > 2/* && (htons(*(unsigned int*)data) & 0xC000) == 0x8000*/) { // disable condition - failure for udptl (fax)
-					_parse_packet->hash[0] = tuplehash(packetS->saddr, packetS->source);
-					_parse_packet->hash[1] = tuplehash(packetS->daddr, packetS->dest);
-				}
-			}
-			break;
-		case ppt_extend:
-			if(_parse_packet->isSip) {
-				this->sipProcess_extend(_parse_packet);
-			}
-			break;
-		}
-		
+		qring_active_push_item->batch[qring_push_index_count] = packetS;
 		++qring_push_index_count;
-		if(qring_push_index_count == _batch_parse_packet->max_count || 
-		   pushBatch) {
-			_batch_parse_packet->count = qring_push_index_count;
-			_batch_parse_packet->used = 1;
+		if(qring_push_index_count == qring_active_push_item->max_count) {
+			qring_active_push_item->count = qring_push_index_count;
+			qring_active_push_item->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
 			} else {
@@ -359,8 +269,7 @@ public:
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
-		if(typePreProcessThread == ppt_detach &&
-		   opt_enable_ssl && !disableLock) {
+		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
 			this->unlock_push();
 		}
 	}
@@ -369,9 +278,13 @@ public:
 			this->lock_push();
 		}
 		if(qring_push_index && qring_push_index_count) {
-			batch_packet_parse_s *_batch_parse_packet = this->qring[qring_push_index - 1];
-			_batch_parse_packet->count = qring_push_index_count;
-			_batch_parse_packet->used = 1;
+			if(typePreProcessThread == ppt_detach) {
+				qring_detach_active_push_item->count = qring_push_index_count;
+				qring_detach_active_push_item->used = 1;
+			} else {
+				qring_active_push_item->count = qring_push_index_count;
+				qring_active_push_item->used = 1;
+			}
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
 			} else {
@@ -407,16 +320,85 @@ public:
 			(double)(_writeit - _readit) / qring_length * 100 :
 			(double)(qring_length - _readit + _writeit) / qring_length * 100);
 	}
+	inline packet_s_process *packetS_sip_create() {
+		packet_s_process *packetS = new FILE_LINE packet_s_process;
+		return(packetS);
+	}
+	inline packet_s_process_0 *packetS_rtp_create() {
+		packet_s_process_0 *packetS = new FILE_LINE packet_s_process_0;
+		return(packetS);
+	}
+	inline packet_s_process *packetS_sip_pop_from_stack(u_int16_t queue_index) {
+		packet_s_process *packetS;
+		if(this->stackSip->pop((void**)&packetS, queue_index)) {
+			/*
+			if(*(u_char*)packetS) {
+				cout << "XXX1" << endl;
+				abort();
+			}
+			*/
+			packetS->init();
+		} else {
+			packetS = new FILE_LINE packet_s_process;
+		}
+		packetS->stack = this->stackSip;
+		return(packetS);
+	}
+	inline packet_s_process_0 *packetS_rtp_pop_from_stack(u_int16_t queue_index) {
+		packet_s_process_0 *packetS;
+		if(this->stackRtp->pop((void**)&packetS, queue_index)) {
+			/*
+			if(*(u_char*)packetS) {
+				cout << "XXX2" << endl;
+				abort();
+			}
+			*/
+			packetS->init();
+		} else {
+			packetS = new FILE_LINE packet_s_process_0;
+		}
+		packetS->stack = this->stackRtp;
+		return(packetS);
+	}
+	inline void packetS_destroy(packet_s_process **packetS) {
+		(*packetS)->blockstore_unlock();
+		delete *packetS;
+		*packetS = NULL;
+	}
+	inline void packetS_destroy(packet_s_process_0 **packetS) {
+		(*packetS)->blockstore_unlock();
+		delete *packetS;
+		*packetS = NULL;
+	}
+	inline void packetS_push_to_stack(packet_s_process **packetS, u_int16_t queue_index) {
+		(*packetS)->blockstore_unlock();
+		if(!(*packetS)->stack ||
+		   !(*packetS)->stack->push((void*)*packetS, queue_index)) {
+			delete *packetS;
+		}
+		*packetS = NULL;
+	}
+	inline void packetS_push_to_stack(packet_s_process_0 **packetS, u_int16_t queue_index) {
+		(*packetS)->blockstore_unlock();
+		if(!(*packetS)->stack ||
+		   !(*packetS)->stack->push((void*)*packetS, queue_index)) {
+			delete *packetS;
+		}
+		*packetS = NULL;
+	}
 private:
-	bool sipProcess_base(packet_parse_s *parse_packet);
-	bool sipProcess_extend(packet_parse_s *parse_packet);
-	inline bool sipProcess_getCallID(packet_parse_s *parse_packet);
-	inline bool sipProcess_getCallID_publish(packet_parse_s *parse_packet);
-	bool sipProcess_reassembly(packet_parse_s *parse_packet);
-	inline void sipProcess_getSipMethod(packet_parse_s *parse_packet);
-	inline void sipProcess_getLastSipResponse(packet_parse_s *parse_packet);
-	inline void sipProcess_findCall(packet_parse_s *parse_packet);
-	inline void sipProcess_createCall(packet_parse_s *parse_packet);
+	void sipProcess_SIP(packet_s_process **packetS_ref);
+	void sipProcess_EXTEND(packet_s_process **packetS_ref);
+	void sipProcess_reassembly(packet_s_process **packetS_ref);
+	void sipProcess_parseSipData(packet_s_process **packetS_ref);
+	void sipProcess_sip(packet_s_process **packetS_ref);
+	void sipProcess_rtp(packet_s_process **packetS_ref);
+	inline bool sipProcess_getCallID(packet_s_process **packetS_ref);
+	inline bool sipProcess_getCallID_publish(packet_s_process **packetS_ref);
+	inline void sipProcess_getSipMethod(packet_s_process **packetS_ref);
+	inline void sipProcess_getLastSipResponse(packet_s_process **packetS_ref);
+	inline void sipProcess_findCall(packet_s_process **packetS_ref);
+	inline void sipProcess_createCall(packet_s_process **packetS_ref);
 	void *outThreadFunction();
 	void lock_push() {
 		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
@@ -430,21 +412,64 @@ private:
 	eTypePreProcessThread typePreProcessThread;
 	unsigned int qring_batch_item_length;
 	unsigned int qring_length;
-	batch_packet_parse_s **qring;
+	batch_packet_s **qring_detach;
+	batch_packet_s *qring_detach_active_push_item;
+	batch_packet_s_process **qring;
+	batch_packet_s_process *qring_active_push_item;
 	unsigned qring_push_index;
 	unsigned qring_push_index_count;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
-	ParsePacket::ppContentsX **parseContentsStack;
-	unsigned int parseContentsStackLength;
-	unsigned int parseContentsStackPosition;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2];
 	int outThreadId;
 	volatile int _sync_push;
 	bool term_preProcess;
+	cHeapItemsPointerStack *stackSip;
+	cHeapItemsPointerStack *stackRtp;
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
+friend class TcpReassemblySip;
 };
+
+inline packet_s_process *PACKET_S_PROCESS_SIP_CREATE() {
+	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+	return(preProcessPacket[0]->packetS_sip_create());
+}
+
+inline packet_s_process_0 *PACKET_S_PROCESS_RTP_CREATE() {
+	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+	return(preProcessPacket[0]->packetS_rtp_create());
+}
+
+inline packet_s_process *PACKET_S_PROCESS_SIP_POP_FROM_STACK(u_int16_t queue_index) {
+	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+	return(preProcessPacket[0]->packetS_sip_pop_from_stack(queue_index));
+}
+
+inline packet_s_process_0 *PACKET_S_PROCESS_RTP_POP_FROM_STACK(u_int16_t queue_index) {
+	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+	return(preProcessPacket[0]->packetS_rtp_pop_from_stack(queue_index));
+}
+
+inline void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet) {
+	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+	preProcessPacket[0]->packetS_destroy(packet);
+}
+
+inline void PACKET_S_PROCESS_DESTROY(packet_s_process **packet) {
+	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+	preProcessPacket[0]->packetS_destroy(packet);
+}
+
+inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process_0 **packet, u_int16_t queue_index) {
+	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+	preProcessPacket[0]->packetS_push_to_stack(packet, queue_index);
+}
+
+inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process **packet, u_int16_t queue_index) {
+	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+	preProcessPacket[0]->packetS_push_to_stack(packet, queue_index);
+}
 
 
 class ProcessRtpPacket {
@@ -454,39 +479,25 @@ public:
 		distribute
 	};
 public:
-	struct rtp_call_info {
-		Call *call;
-		bool iscaller;
-		bool is_rtcp;
-		s_sdp_flags sdp_flags;
-		bool use_sync;
-	};
-	struct packet_rtp_s {
-		packet_s packet;
-		unsigned int hash_s;
-		unsigned int hash_d;
-		rtp_call_info call_info[20];
-		int call_info_length;
-		bool call_info_find_by_dest;
-		volatile int hash_find_flag;
-	};
-	struct batch_packet_rtp_s {
-		batch_packet_rtp_s(unsigned max_count) {
+	struct batch_packet_s_process {
+		batch_packet_s_process(unsigned max_count) {
 			count = 0;
 			used = 0;
-			batch = new packet_rtp_s*[max_count];
-			for(unsigned i = 0; i < max_count; i++) {
-				batch[i] = new packet_rtp_s;
-			}
+			batch = new FILE_LINE packet_s_process_0*[max_count];
+			memset(batch, 0, sizeof(packet_s_process_0*) * max_count);
 			this->max_count = max_count;
 		}
-		~batch_packet_rtp_s() {
+		~batch_packet_s_process() {
 			for(unsigned i = 0; i < max_count; i++) {
-				delete batch[i];
+				if(batch[i]) {
+					batch[i]->blockstore_clear();
+					delete batch[i];
+					batch[i]= NULL;
+				}
 			}
 			delete [] batch;
 		}
-		packet_rtp_s **batch;
+		packet_s_process_0 **batch;
 		volatile unsigned count;
 		volatile int used;
 		unsigned max_count;
@@ -498,11 +509,7 @@ public:
 public:
 	ProcessRtpPacket(eType type, int indexThread);
 	~ProcessRtpPacket();
-	inline void push_packet_rtp_1(packet_s *packetS,
-				      unsigned int hash_s, unsigned int hash_d) {
-		if(packetS->block_store) {
-			packetS->block_store->lock_packet(packetS->block_store_index);
-		}
+	inline void push_packet(packet_s_process_0 *packetS) {
 		if(!qring_push_index) {
 			unsigned usleepCounter = 0;
 			while(this->qring[this->writeit]->used != 0) {
@@ -514,44 +521,13 @@ public:
 			}
 			qring_push_index = this->writeit + 1;
 			qring_push_index_count = 0;
-			active_push_batch_rtp_packet = this->qring[qring_push_index - 1];
+			qring_active_push_item = this->qring[qring_push_index - 1];
 		}
-		active_push_batch_rtp_packet->batch[qring_push_index_count]->packet = *packetS;
-		active_push_batch_rtp_packet->batch[qring_push_index_count]->hash_s = hash_s;
-		active_push_batch_rtp_packet->batch[qring_push_index_count]->hash_d = hash_d;
-		active_push_batch_rtp_packet->batch[qring_push_index_count]->call_info_length = -1;
+		qring_active_push_item->batch[qring_push_index_count] = packetS;
 		++qring_push_index_count;
-		if(qring_push_index_count == active_push_batch_rtp_packet->max_count) {
-			active_push_batch_rtp_packet->count = qring_push_index_count;
-			active_push_batch_rtp_packet->used = 1;
-			if((this->writeit + 1) == this->qring_length) {
-				this->writeit = 0;
-			} else {
-				this->writeit++;
-			}
-			qring_push_index = 0;
-			qring_push_index_count = 0;
-		}
-	}
-	inline void push_packet_rtp_2(packet_rtp_s *packet) {
-		if(!qring_push_index) {
-			unsigned usleepCounter = 0;
-			while(this->qring[this->writeit]->used != 0) {
-				usleep(20 *
-				       (usleepCounter > 10 ? 50 :
-					usleepCounter > 5 ? 10 :
-					usleepCounter > 2 ? 5 : 1));
-				++usleepCounter;
-			}
-			qring_push_index = this->writeit + 1;
-			qring_push_index_count = 0;
-			active_push_batch_rtp_packet = this->qring[qring_push_index - 1];
-		}
-		*active_push_batch_rtp_packet->batch[qring_push_index_count] = *packet;
-		++qring_push_index_count;
-		if(qring_push_index_count == active_push_batch_rtp_packet->max_count) {
-			active_push_batch_rtp_packet->count = qring_push_index_count;
-			active_push_batch_rtp_packet->used = 1;
+		if(qring_push_index_count == qring_active_push_item->max_count) {
+			qring_active_push_item->count = qring_push_index_count;
+			qring_active_push_item->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
 			} else {
@@ -563,9 +539,8 @@ public:
 	}
 	inline void push_batch() {
 		if(qring_push_index && qring_push_index_count) {
-			batch_packet_rtp_s *_batch_rtp_packet = this->qring[qring_push_index - 1];
-			_batch_rtp_packet->count = qring_push_index_count;
-			_batch_rtp_packet->used = 1;
+			qring_active_push_item->count = qring_push_index_count;
+			qring_active_push_item->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
 			} else {
@@ -606,8 +581,8 @@ public:
 private:
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
-	void rtp_batch(batch_packet_rtp_s *_batch_packet);
-	void find_hash(packet_rtp_s *_packet, bool lock = true);
+	void rtp_batch(batch_packet_s_process *batch);
+	void find_hash(packet_s_process_0 *packetS, bool lock = true);
 public:
 	eType type;
 	int indexThread;
@@ -618,17 +593,17 @@ private:
 	volatile int process_rtp_packets_hash_next_threads_use_for_batch;
 	unsigned int qring_batch_item_length;
 	unsigned int qring_length;
-	batch_packet_rtp_s **qring;
+	batch_packet_s_process **qring;
+	batch_packet_s_process *qring_active_push_item;
 	unsigned qring_push_index;
 	unsigned qring_push_index_count;
-	batch_packet_rtp_s *active_push_batch_rtp_packet;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	pthread_t next_thread_handle[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 	pstat_data threadPstatData[1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
 	bool term_processRtp;
-	volatile batch_packet_rtp_s *hash_batch_thread_process[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
+	volatile batch_packet_s_process *hash_batch_thread_process[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 	sem_t sem_sync_next_thread[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);

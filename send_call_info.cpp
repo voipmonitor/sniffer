@@ -136,7 +136,7 @@ void SendCallInfo::load(bool lock) {
 		if(sendCallInfoDebug) {
 			syslog(LOG_NOTICE, "load send_call_info %s", row["name"].c_str());
 		}
-		SendCallInfoItem *sci = new SendCallInfoItem(atol(row["id"].c_str()));
+		SendCallInfoItem *sci = new FILE_LINE SendCallInfoItem(atol(row["id"].c_str()));
 		if(sci->load()) {
 			listSci.push_back(sci);
 		}
@@ -222,7 +222,7 @@ void initSendCallInfo() {
 		return;
 	}
 	sendCallInfo_lock();
-	sendCallInfo = new SendCallInfo();
+	sendCallInfo = new FILE_LINE SendCallInfo();
 	sendCallInfo->load();
 	sendCallInfo_unlock();
 	_sendCallInfo_ready = 1;

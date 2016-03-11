@@ -107,6 +107,7 @@ extern MirrorIP *mirrorip;
 extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
+extern volatile int registers_counter;
 extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
@@ -965,6 +966,8 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->initAllReadThreadsFinished = false;
 	this->counter_calls_old = 0;
 	this->counter_calls_clean_old = 0;
+	this->counter_registers_old = 0;
+	this->counter_registers_clean_old = 0;
 	this->counter_sip_packets_old[0] = 0;
 	this->counter_sip_packets_old[1] = 0;
 	this->counter_sip_register_packets_old = 0;
@@ -1140,7 +1143,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc_trash = buffersControl.getPercUsePBtrash();
 		outStr << fixed;
 		if(!this->isMirrorSender()) {
-			outStr << "calls[" << calltable->calls_listMAP.size() << "][" << calls_counter << "]";
+			outStr << "calls[" << calltable->calls_listMAP.size() << ",r:" << calltable->registers_listMAP.size() << "]"
+			       << "[" << calls_counter << ",r:" << registers_counter << "]";
 			calltable->lock_calls_audioqueue();
 			size_t audioQueueSize = calltable->audio_queue.size();
 			if(audioQueueSize) {
@@ -1162,6 +1166,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if (opt_rrd) rrdcallscounter = calltable->calls_listMAP.size();
 			extern u_int64_t counter_calls;
 			extern u_int64_t counter_calls_clean;
+			extern u_int64_t counter_registers;
+			extern u_int64_t counter_registers_clean;
 			extern u_int64_t counter_sip_packets[2];
 			extern u_int64_t counter_sip_register_packets;
 			extern u_int64_t counter_sip_message_packets;
@@ -1169,6 +1175,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			extern u_int64_t counter_all_packets;
 			if(this->counter_calls_old ||
 			   this->counter_calls_clean_old ||
+			   this->counter_registers_old ||
+			   this->counter_registers_clean_old ||
 			   this->counter_sip_packets_old[0] ||
 			   this->counter_sip_packets_old[1] ||
 			   this->counter_rtp_packets_old ||
@@ -1183,6 +1191,19 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStr << "/";
 				if(this->counter_calls_clean_old) {
 					outStr << '-' << (counter_calls_clean - this->counter_calls_clean_old) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+				outStr << " r:";
+				if(this->counter_registers_old) {
+					outStr << (counter_registers - this->counter_registers_old) / statPeriod;
+					//if (opt_rrd) 
+				} else {
+					outStr << "-";
+				}
+				outStr << "/";
+				if(this->counter_registers_clean_old) {
+					outStr << '-' << (counter_registers_clean - this->counter_registers_clean_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
@@ -1233,6 +1254,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			this->counter_calls_old = counter_calls;
 			this->counter_calls_clean_old = counter_calls_clean;
+			this->counter_registers_old = counter_registers;
+			this->counter_registers_clean_old = counter_registers_clean;
 			this->counter_sip_packets_old[0] = counter_sip_packets[0];
 			this->counter_sip_packets_old[1] = counter_sip_packets[1];
 			this->counter_sip_register_packets_old = counter_sip_register_packets;
@@ -1529,13 +1552,18 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << "pb:" << setprecision(1) << t2cpu;
 		double last_t2cpu_preprocess_packet_out_thread = -2;
+		int count_t2cpu = 1;
+		double sum_t2cpu = t2cpu;
 		for(int i = 0; i < MAX_PREPROCESS_PACKET_THREADS; i++) {
 			if(preProcessPacket[i]) {
 				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
 				if(t2cpu_preprocess_packet_out_thread >= 0) {
 					outStrStat << "/" 
 						   << (i == 0 ? "d:" :
-						      (i == 1 ? "s:" : "e:"))
+						       i == 1 ? "s:" : 
+						       i == 2 ? "e:" :
+						       i == 3 ? "c:" :
+								"r:")
 						   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 					if(sverb.qring_stat) {
 						double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
@@ -1543,6 +1571,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							outStrStat << "r" << qringFillingPerc;
 						}
 					}
+					++count_t2cpu;
+					sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 				}
 				last_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
 			}
@@ -1565,6 +1595,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 								outStrStat << "r" << qringFillingPerc;
 							}
 						}
+						++count_t2cpu;
+						sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
 					}
 					if(i > 0) {
 						++countRtpRhThreads;
@@ -1590,6 +1622,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread) {
 						needAddRtpRdThreads = true;
 					}
+					++count_t2cpu;
+					sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
 				}
 			}
 		}
@@ -1604,6 +1638,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if(countRtpRdThreads < MAX_PROCESS_RTP_PACKET_THREADS &&
 		   needAddRtpRdThreads) {
 			ProcessRtpPacket::addRtpRdThread();
+		}
+		if(count_t2cpu > 1) {
+			outStrStat << "/S:" << setprecision(1) << sum_t2cpu;
 		}
 		outStrStat << "%] ";
 	}
@@ -2600,7 +2637,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->qringmax = opt_pcap_queue_iface_qring_size / 100;
 	this->qring = new FILE_LINE hpi_batch*[this->qringmax];
 	for(unsigned int i = 0; i < this->qringmax; i++) {
-		this->qring[i] = new hpi_batch(100);
+		this->qring[i] = new FILE_LINE hpi_batch(100);
 	}
 	this->readit = 0;
 	this->writeit = 0;
@@ -3573,9 +3610,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					}
 					++sumBlocksCounterIn[0];
 					blockStore[blockStoreIndex] = NULL;
-					int sleepTimeBeforeCleanup = sverb.test_rtp_performance ? 120 :
-								    opt_enable_ssl ? 10 :
-								    sverb.chunk_buffer ? 20 : 5;
+					int sleepTimeBeforeCleanup = opt_enable_ssl ? 10 :
+								     sverb.chunk_buffer ? 20 : 5;
 					int sleepTimeAfterCleanup = 2;
 					while((sleepTimeBeforeCleanup + sleepTimeAfterCleanup) && !is_terminating()) {
 						syslog(LOG_NOTICE, "time to terminating: %u", sleepTimeBeforeCleanup + sleepTimeAfterCleanup);
@@ -3583,7 +3619,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						if(sleepTimeBeforeCleanup) {
 							--sleepTimeBeforeCleanup;
 							if(!sleepTimeBeforeCleanup) {
-								calltable->cleanup(0);
+								calltable->cleanup_calls(0);
+								calltable->cleanup_registers(0);
 							}
 						} else if(sleepTimeAfterCleanup) {
 							--sleepTimeAfterCleanup;
@@ -3668,7 +3705,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 		}
 		++counter;
 		if((!fetchPacketOk || blockStoreCount > 1) &&
-		   !(counter % 1000)) {
+		   (!this->readThreadsCount || !(counter % 1000))) {
 			for(int i = 0; i < blockStoreCount; i++) {
 				if(blockStore[i]->isFull_checkTimout()) {
 					this->push_blockstore(&blockStore[i]);
@@ -5325,48 +5362,26 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	}
 	if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc && !useTcpReassemblySsl && 
 	   opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
-		packet_s packetS;
-		packetS.packet_number = packet_counter_all;
-		packetS.saddr = header_ip->saddr;
-		packetS.source = htons(header_udp->source);
-		packetS.daddr = header_ip->daddr; 
-		packetS.dest = htons(header_udp->dest);
-		packetS.data = data; 
-		packetS.datalen = datalen; 
-		packetS.dataoffset = data - (char*)packet;
-		packetS.handle = this->getPcapHandle(dlt); 
-		packetS.header = *header; 
-		packetS.packet = packet; 
-		packetS.istcp = istcp; 
-		packetS.header_ip = header_ip; 
-		packetS.block_store = block_store; 
-		packetS.block_store_index =  block_store_index; 
-		packetS.dlt = dlt; 
-		packetS.sensor_id = sensor_id;
-		packetS.is_ssl = false;
 		if(PreProcessPacket::isEnableDetach()) {
-			preProcessPacket[0]->push_packet_2(&packetS);
+			preProcessPacket[0]->push_packet(false /*is_ssl*/, packet_counter_all,
+							 header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest),
+							 data, datalen, data - (char*)packet,
+							 this->getPcapHandle(dlt), header, packet, false /*packetDelete*/,
+							 istcp, header_ip,
+							 block_store, block_store_index, dlt, sensor_id,
+							 true /*blockstore_lock*/);
 			if(opt_ipaccount) {
-				//todo: detect if voippacket!
+				//TODO: detect if voippacket!
 				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
 			}
 		} else {
 			int voippacket = 0;
+			//TODO
+			/*
 			int was_rtp = 0;
-			if(sverb.test_rtp_performance) {
-				u_int64_t _counter = 0;
-				do {
-					++_counter;
-					process_packet(&packetS, NULL,
-						       &was_rtp, &voippacket);
-					if(!(_counter % 50)) {
-						usleep(1);
-					}
-				} while(packet_counter_all == (u_int64_t)sverb.test_rtp_performance);
-			} else {
-				process_packet(&packetS, NULL,
-					       &was_rtp, &voippacket);
-			}
+			process_packet(packetS, NULL,
+				       &was_rtp, &voippacket);
+			*/
 			// if packet was VoIP add it to ipaccount
 			if(opt_ipaccount) {
 				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, voippacket);

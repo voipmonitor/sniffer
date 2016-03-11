@@ -270,6 +270,7 @@ public:
 	#endif
 	volatile int end_call;
 	volatile int push_call_to_calls_queue;
+	volatile int push_register_to_registers_queue;
 	unsigned int unrepliedinvite;
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
@@ -497,11 +498,11 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
-	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
-	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation);
+	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
@@ -810,14 +811,18 @@ public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	deque<Call*> audio_queue; //!< this queue is used for asynchronous audio convert by the worker thread
 	deque<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
+	deque<Call*> registers_queue;
+	deque<Call*> registers_deletequeue;
 	queue<string> files_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
-	list<Call*> calls_list; //!< 
-	list<Call*>::iterator call;
+	//list<Call*> calls_list; //!< 
+	//list<Call*>::iterator call;
 	map<string, Call*> calls_listMAP; //!< 
 	map<string, Call*>::iterator callMAPIT; //!< 
 	map<string, Call*> calls_mergeMAP; //!< 
-	map<string, Call*>::iterator mergeMAPIT; //!< 
+	map<string, Call*>::iterator mergeMAPIT; //!<
+	map<string, Call*> registers_listMAP; //!< 
+	map<string, Call*>::iterator registerMAPIT; //!< 
 	map<string, Call*> skinny_ipTuples; //!< 
 	map<string, Call*>::iterator skinny_ipTuplesIT; //!< 
 	map<unsigned int, Call*> skinny_partyID; //!< 
@@ -848,23 +853,29 @@ public:
 	 * @brief lock calls_queue structure 
 	 *
 	*/
-	void lock_calls_queue() { pthread_mutex_lock(&qlock); };
-	void lock_calls_audioqueue() { pthread_mutex_lock(&qaudiolock); };
-	void lock_calls_deletequeue() { pthread_mutex_lock(&qdellock); };
-	void lock_files_queue() { pthread_mutex_lock(&flock); };
-	void lock_calls_listMAP() { pthread_mutex_lock(&calls_listMAPlock); };
-	void lock_calls_mergeMAP() { pthread_mutex_lock(&calls_mergeMAPlock); };
+	void lock_calls_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_queue, 1)) usleep(10); /*pthread_mutex_lock(&qlock);*/ };
+	void lock_calls_audioqueue() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_audioqueue, 1)) usleep(10); /*pthread_mutex_lock(&qaudiolock);*/ };
+	void lock_calls_deletequeue() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_deletequeue, 1)) usleep(10); /*pthread_mutex_lock(&qdellock);*/ };
+	void lock_registers_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_queue, 1)) usleep(10); };
+	void lock_registers_deletequeue() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_deletequeue, 1)) usleep(10); };
+	void lock_files_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_files_queue, 1)) usleep(10); /*pthread_mutex_lock(&flock);*/ };
+	void lock_calls_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP, 1)) usleep(10); /*pthread_mutex_lock(&calls_listMAPlock);*/ };
+	void lock_calls_mergeMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_mergeMAP, 1)) usleep(10); /*pthread_mutex_lock(&calls_mergeMAPlock);*/ };
+	void lock_registers_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_listMAP, 1)) usleep(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
 
 	/**
 	 * @brief unlock calls_queue structure 
 	 *
 	*/
-	void unlock_calls_queue() { pthread_mutex_unlock(&qlock); };
-	void unlock_calls_audioqueue() { pthread_mutex_unlock(&qaudiolock); };
-	void unlock_calls_deletequeue() { pthread_mutex_unlock(&qdellock); };
-	void unlock_files_queue() { pthread_mutex_unlock(&flock); };
-	void unlock_calls_listMAP() { pthread_mutex_unlock(&calls_listMAPlock); };
-	void unlock_calls_mergeMAP() { pthread_mutex_unlock(&calls_mergeMAPlock); };
+	void unlock_calls_queue() { __sync_lock_release(&this->_sync_lock_calls_queue); /*pthread_mutex_unlock(&qlock);*/ };
+	void unlock_calls_audioqueue() { __sync_lock_release(&this->_sync_lock_calls_audioqueue); /*pthread_mutex_unlock(&qaudiolock);*/ };
+	void unlock_calls_deletequeue() { __sync_lock_release(&this->_sync_lock_calls_deletequeue); /*pthread_mutex_unlock(&qdellock);*/ };
+	void unlock_registers_queue() { __sync_lock_release(&this->_sync_lock_registers_queue); };
+	void unlock_registers_deletequeue() { __sync_lock_release(&this->_sync_lock_registers_deletequeue); };
+	void unlock_files_queue() { __sync_lock_release(&this->_sync_lock_files_queue); /*pthread_mutex_unlock(&flock);*/ };
+	void unlock_calls_listMAP() { __sync_lock_release(&this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ };
+	void unlock_calls_mergeMAP() { __sync_lock_release(&this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ };
+	void unlock_registers_listMAP() { __sync_lock_release(&this->_sync_lock_registers_listMAP); /*pthread_mutex_unlock(&registers_listMAPlock);*/ };
 
 	/**
 	 * @brief add Call to Calltable
@@ -875,7 +886,7 @@ public:
 	 *
 	 * @return reference of the new Call class
 	*/
-	Call *add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port, pcap_t *handle, int dlt, int sensorId, bool preprocess_queue = false);
+	Call *add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port, pcap_t *handle, int dlt, int sensorId);
 
 	/**
 	 * @brief find Call by call_id
@@ -885,18 +896,15 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	Call *find_by_call_id(char *call_id, unsigned long call_id_len, bool preprocess_queue = false, int *call_type = NULL, time_t time = 0) {
+	Call *find_by_call_id(char *call_id, unsigned long call_id_len, time_t time) {
 		Call *rslt_call = NULL;
-		string call_idS = string(call_id, call_id_len);
+		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
 		lock_calls_listMAP();
 		callMAPIT = calls_listMAP.find(call_idS);
 		if(callMAPIT != calls_listMAP.end() &&
 		   !callMAPIT->second->end_call) {
 			rslt_call = callMAPIT->second;
-			if(call_type) {
-				*call_type = rslt_call->type;
-			}
-			if(preprocess_queue && rslt_call->type != REGISTER) {
+			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
 				rslt_call->in_preprocess_queue_before_process_packet_at = time;
 			}
@@ -904,23 +912,33 @@ public:
 		unlock_calls_listMAP();
 		return(rslt_call);
 	}
-	Call *find_by_mergecall_id(char *call_id, unsigned long call_id_len, bool preprocess_queue = false, int *call_type = NULL) {
+	Call *find_by_mergecall_id(char *call_id, unsigned long call_id_len, time_t time) {
 		Call *rslt_call = NULL;
-		string call_idS = string(call_id, call_id_len);
+		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
 		lock_calls_mergeMAP();
 		mergeMAPIT = calls_mergeMAP.find(call_idS);
 		if(mergeMAPIT != calls_mergeMAP.end() &&
 		   !mergeMAPIT->second->end_call) {
 			rslt_call = mergeMAPIT->second;
-			if(call_type) {
-				*call_type = rslt_call->type;
-			}
-			if(preprocess_queue && rslt_call->type != REGISTER) {
+			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				rslt_call->in_preprocess_queue_before_process_packet_at = time;
 			}
 		}
 		unlock_calls_mergeMAP();
 		return(rslt_call);
+	}
+	Call *find_by_register_id(char *register_id, unsigned long register_id_len) {
+		Call *rslt_register = NULL;
+		string register_idS = register_id_len ? string(register_id, register_id_len) : string(register_id);
+		lock_registers_listMAP();
+		registerMAPIT = registers_listMAP.find(register_idS);
+		if(registerMAPIT != registers_listMAP.end() &&
+		   !registerMAPIT->second->end_call) {
+			rslt_register = registerMAPIT->second;
+		}
+		unlock_registers_listMAP();
+		return(rslt_register);
 	}
 	Call *find_by_skinny_partyid(unsigned int partyid);
 	Call *find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr);
@@ -946,7 +964,8 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	int cleanup( time_t currtime );
+	int cleanup_calls( time_t currtime );
+	int cleanup_registers( time_t currtime );
 
 	/**
 	 * @brief add call to hash table
@@ -978,6 +997,7 @@ public:
 	}
 
 	void destroyCallsIfPcapsClosed();
+	void destroyRegistersIfPcapsClosed();
 	
 	void lock_calls_hash() {
 		unsigned usleepCounter = 0;
@@ -999,11 +1019,19 @@ private:
 	pthread_mutex_t flock;		//!< mutex locking calls_queue
 	pthread_mutex_t calls_listMAPlock;
 	pthread_mutex_t calls_mergeMAPlock;
+	pthread_mutex_t registers_listMAPlock;
 
 	void *calls_hash[MAXNODE];
 	volatile int _sync_lock_calls_hash;
 	volatile int _sync_lock_calls_listMAP;
 	volatile int _sync_lock_calls_mergeMAP;
+	volatile int _sync_lock_registers_listMAP;
+	volatile int _sync_lock_calls_queue;
+	volatile int _sync_lock_calls_audioqueue;
+	volatile int _sync_lock_calls_deletequeue;
+	volatile int _sync_lock_registers_queue;
+	volatile int _sync_lock_registers_deletequeue;
+	volatile int _sync_lock_files_queue;
 	
 	list<sAudioQueueThread*> audioQueueThreads;
 	unsigned int audioQueueThreadsMax;

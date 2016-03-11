@@ -195,6 +195,7 @@ void printMemoryStat(bool all = false);
 
 void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0);
 void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0);
+void delete_object(void *pointerToObject);
 
 
 #define FILE_LINE (__FILE__, __LINE__)

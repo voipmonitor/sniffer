@@ -422,8 +422,8 @@ void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_
 	}
 	return(newPointer);
 }
- 
-void operator delete(void *pointerToObject) {
+
+inline void _delete_object(void *pointerToObject) {
 	if(HeapSafeCheck)
 	 if(HeapSafeCheck & _HeapSafeSafeReserve)
 	  heapsafe_safe_free(pointerToObject);
@@ -433,14 +433,16 @@ void operator delete(void *pointerToObject) {
 	 _heapsafe_free(pointerToObject);
 }
  
+void delete_object(void *pointerToObject) {
+	_delete_object(pointerToObject);
+}
+
+void operator delete(void *pointerToObject) {
+	_delete_object(pointerToObject);
+}
+ 
 void operator delete[](void *pointerToObject) {
-	if(HeapSafeCheck)
-	 if(HeapSafeCheck & _HeapSafeSafeReserve)
-	  heapsafe_safe_free(pointerToObject);
-	 else
-	  heapsafe_free(pointerToObject);
-	else 
-	 _heapsafe_free(pointerToObject);
+	_delete_object(pointerToObject);
 }
 
 

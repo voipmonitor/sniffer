@@ -131,20 +131,24 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 									  ethHeader, (u_char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(),
 									  _ip_src, _ip_dst, _port_src, _port_dst,
 									  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
-						int was_rtp = 0;
-						int voippacket = 0;
+						//int was_rtp = 0;
+						//int voippacket = 0;
 						if(PreProcessPacket::isEnableDetach()) {
-							preProcessPacket[0]->push_packet_1(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
-											   (char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
-											   handle, udpHeader, udpPacket, true, 
-											   false, (iphdr2*)(udpPacket + ethHeaderLength), 1,
-											   NULL, 0, dlt, sensor_id);
+							// TODO forceSip, delete udpPacket
+							preProcessPacket[0]->push_packet(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
+											 (char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
+											 handle, udpHeader, udpPacket, true, 
+											 false, (iphdr2*)(udpPacket + ethHeaderLength),
+											 NULL, 0, dlt, sensor_id);
 						} else {
+							// TODO forceSip, ...
+							/*
 							process_packet(true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
 								       (char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
 								       handle, udpHeader, udpPacket, NULL,
 								       false, &was_rtp, (iphdr2*)(udpPacket + ethHeaderLength), &voippacket, 1,
 								       NULL, 0, dlt, sensor_id);
+							*/
 							delete [] udpPacket;
 						}
 						delete udpHeader;

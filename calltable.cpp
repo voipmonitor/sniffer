@@ -146,6 +146,7 @@ extern bool exists_column_cdr_mosmin;
 extern rtp_read_thread *rtp_threads;
 
 volatile int calls_counter = 0;
+volatile int registers_counter = 0;
 
 extern char mac[32];
 
@@ -203,8 +204,13 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	last_packet_time = time;
 	last_rtp_a_packet_time = 0;
 	last_rtp_b_packet_time = 0;
-	this->call_id = string(call_id, call_id_len);
-	this->call_id_len = call_id_len;
+	if(call_id_len) {
+		this->call_id = string(call_id, call_id_len);
+		this->call_id_len = call_id_len;
+	} else {
+		this->call_id = string(call_id);
+		this->call_id_len = this->call_id.length();
+	}
 	whohanged = -1;
 	seeninvite = false;
 	seeninviteok = false;
@@ -301,6 +307,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	#endif
 	end_call = 0;
 	push_call_to_calls_queue = 0;
+	push_register_to_registers_queue = 0;
 	message = NULL;
 	message_info = NULL;
 	contenttype = NULL;
@@ -371,8 +378,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	hash_counter = 0;
 	use_rtcp_mux = false;
 	rtp_from_multiple_sensors = false;
-	in_preprocess_queue_before_process_packet = 0;
-	in_preprocess_queue_before_process_packet_at = 0;
 	
 	is_ssl = false;
 }
@@ -674,7 +679,7 @@ Call::dirnamesqlfiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return(-1);
 	}
@@ -686,7 +691,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 	}
 
 	if(ipport_n > 0) {
-		if(this->refresh_data_ip_port(addr, port, iscaller, rtpmap, sdp_flags)) {
+		if(this->refresh_data_ip_port(addr, port, header, iscaller, rtpmap, sdp_flags)) {
 			return 1;
 		}
 	}
@@ -730,14 +735,13 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, c
 }
 
 bool 
-Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// reinit rtpmap
 			memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
 			// force mark bit for reinvite for both direction
-			extern pcap_pkthdr *_process_packet_header;
-			u_int64_t _forcemark_time = _process_packet_header->ts.tv_sec * 1000000ull + _process_packet_header->ts.tv_usec;
+			u_int64_t _forcemark_time = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
 			forcemark_lock();
 			for(int j = 0; j < 2; j++) {
 				forcemark_time[j].push(_forcemark_time);
@@ -767,7 +771,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, bool iscaller, i
 }
 
 void
-Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation) {
+Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation) {
 	if(this->end_call) {
 		return;
 	}
@@ -796,11 +800,11 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 				}
 				this->ip_port[sessidIndex].iscaller = iscaller;
 			}
-			this->refresh_data_ip_port(addr, port, iscaller, rtpmap, sdp_flags);
+			this->refresh_data_ip_port(addr, port, header, iscaller, rtpmap, sdp_flags);
 			return;
 		}
 	}
-	if(this->add_ip_port(sip_src_addr, addr, port, sessid, ua, ua_len, iscaller, rtpmap, sdp_flags) != -1) {
+	if(this->add_ip_port(sip_src_addr, addr, port, header, sessid, ua, ua_len, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, sdp_flags, allowrelation);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, sdp_flags, 0);
@@ -880,7 +884,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 	parse_rtcp((char*)packetS->data, packetS->datalen, this);
 	
 	if(enable_save_packet) {
-		save_packet(this, packetS, NULL, TYPE_RTP, false);
+		save_packet(this, packetS, TYPE_RTP);
 	}
 }
 
@@ -1125,11 +1129,11 @@ end:
 			   packetS->header.caplen > (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = packetS->header.caplen;
 				packetS->header.caplen = packetS->header.caplen - (packetS->datalen - RTP_FIXED_HEADERLEN);
-				save_packet(this, packetS, NULL, TYPE_RTP, false);
+				save_packet(this, packetS, TYPE_RTP);
 				packetS->header.caplen = tmp_u32;
 			}
 		} else if((this->flags & FLAG_SAVERTP) || this->isfax || record_dtmf) {
-			save_packet(this, packetS, NULL, TYPE_RTP, false);
+			save_packet(this, packetS, TYPE_RTP);
 		}
 	}
 }
@@ -2012,6 +2016,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
+		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 
 	if((opt_cdronlyanswered and !connect_time) or 
@@ -2102,13 +2107,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
 		while (iter_undup != proxies_undup.end()) {
 			if(*iter_undup == sipcalledip[0]) { ++iter_undup; continue; };
-			sqlDbSaveCall->setEnableSqlStringInContent(true);
 			SqlDb_row cdrproxy;
 			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 			cdrproxy.add(htonl(*iter_undup), "dst");
 			query_str_cdrproxy += sqlDbSaveCall->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-			sqlDbSaveCall->setEnableSqlStringInContent(false);
 
 			++iter_undup;
 		}
@@ -2557,8 +2560,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
-		sqlDbSaveCall->setEnableSqlStringInContent(true);
-		
 		query_str += string("set @lSresp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ");\n";
 		cdr.add("_\\_'SQL'_\\_:@lSresp_id", "lastSIPresponse_id");
 		//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
@@ -2808,8 +2809,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		++counterSqlStore;
 		sqlStore->query_lock(query_str.c_str(), storeId);
 		
-		sqlDbSaveCall->setEnableSqlStringInContent(false);
-		
 		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
 	}
@@ -3039,6 +3038,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
+		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 
 	const char *register_table = "register";
@@ -3368,8 +3368,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			reg.add(sqlEscapeString(contact_domain), "contact_domain");
 			reg.add(sqlEscapeString(digest_username), "digestusername");
 
-			sqlDbSaveCall->setEnableSqlStringInContent(true);
-
 			//reg.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "ua_id");
 			reg.add("_\\_'SQL'_\\_:@ua_id", "ua_id");
 
@@ -3436,6 +3434,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
+		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 
 	SqlDb_row cdr,
@@ -3523,8 +3522,6 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
-		sqlDbSaveCall->setEnableSqlStringInContent(true);
-		
 		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 		if(a_ua) {
 			query_str += string("set @uaA_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
@@ -3596,8 +3593,6 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 				0);
 		++counterSqlStore;
 		sqlStore->query_lock(query_str.c_str(), storeId);
-		
-		sqlDbSaveCall->setEnableSqlStringInContent(false);
 		
 		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
@@ -3791,13 +3786,21 @@ Calltable::Calltable() {
 	pthread_mutex_init(&qaudiolock, NULL);
 	pthread_mutex_init(&qdellock, NULL);
 	pthread_mutex_init(&flock, NULL);
-	pthread_mutex_init(&calls_listMAPlock, NULL);
-	pthread_mutex_init(&calls_mergeMAPlock, NULL);
+	//pthread_mutex_init(&calls_listMAPlock, NULL);
+	//pthread_mutex_init(&calls_mergeMAPlock, NULL);
+	//pthread_mutex_init(&registers_listMAPlock, NULL);
 
 	memset(calls_hash, 0x0, sizeof(calls_hash));
 	_sync_lock_calls_hash = 0;
 	_sync_lock_calls_listMAP = 0;
 	_sync_lock_calls_mergeMAP = 0;
+	_sync_lock_registers_listMAP = 0;
+	_sync_lock_calls_queue = 0;
+	_sync_lock_calls_audioqueue = 0;
+	_sync_lock_calls_deletequeue = 0;
+	_sync_lock_registers_queue = 0;
+	_sync_lock_registers_deletequeue = 0;
+	_sync_lock_files_queue = 0;
 	
 	extern int opt_audioqueue_threads_max;
 	audioQueueThreadsMax = min(max(2l, sysconf( _SC_NPROCESSORS_ONLN ) - 1), (long)opt_audioqueue_threads_max);
@@ -3810,8 +3813,9 @@ Calltable::~Calltable() {
 	pthread_mutex_destroy(&qaudiolock);
 	pthread_mutex_destroy(&qdellock);
 	pthread_mutex_destroy(&flock);
-	pthread_mutex_destroy(&calls_listMAPlock);
-	pthread_mutex_destroy(&calls_mergeMAPlock);
+	//pthread_mutex_destroy(&calls_listMAPlock);
+	//pthread_mutex_destroy(&calls_mergeMAPlock);
+	//pthread_mutex_destroy(&registers_listMAPlock);
 };
 
 /* add node to hash. collisions are linked list of nodes*/
@@ -4096,6 +4100,27 @@ Calltable::destroyCallsIfPcapsClosed() {
 	this->unlock_calls_deletequeue();
 }
 
+void
+Calltable::destroyRegistersIfPcapsClosed() {
+	this->lock_registers_deletequeue();
+	if(this->registers_deletequeue.size() > 0) {
+		size_t size = this->registers_deletequeue.size();
+		for(size_t i = 0; i < size;) {
+			Call *reg = this->registers_deletequeue[i];
+			if(reg->isPcapsClose()) {
+				reg->atFinish();
+				delete reg;
+				registers_counter--;
+				this->registers_deletequeue.erase(this->registers_deletequeue.begin() + i);
+				--size;
+			} else {
+				i++;
+			}
+		}
+	}
+	this->unlock_registers_deletequeue();
+}
+
 /* find call in hash */
 hash_node_call*
 Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash, bool lock) {
@@ -4124,13 +4149,10 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int
 
 Call*
 Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
-	       pcap_t *handle, int dlt, int sensorId,
-	       bool preprocess_queue) {
+	       pcap_t *handle, int dlt, int sensorId) {
 	Call *newcall = new FILE_LINE Call(call_type, call_id, call_id_len, time);
-	if(preprocess_queue) {
-		newcall->in_preprocess_queue_before_process_packet = 1;
-		newcall->in_preprocess_queue_before_process_packet_at = time;
-	}
+	newcall->in_preprocess_queue_before_process_packet = 1;
+	newcall->in_preprocess_queue_before_process_packet_at = time;
 
 	if(handle) {
 		newcall->useHandle = handle;
@@ -4147,11 +4169,18 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t t
 	//flags
 	set_global_flags(newcall->flags);
 
-	string call_idS = string(call_id, call_id_len);
-	lock_calls_listMAP();
-	calls_listMAP[call_idS] = newcall;
-	calls_counter++;
-	unlock_calls_listMAP();
+	string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
+	if(call_type == REGISTER) {
+		lock_registers_listMAP();
+		registers_listMAP[call_idS] = newcall;
+		registers_counter++;
+		unlock_registers_listMAP();
+	} else {
+		lock_calls_listMAP();
+		calls_listMAP[call_idS] = newcall;
+		calls_counter++;
+		unlock_calls_listMAP();
+	}
 	return newcall;
 }
 
@@ -4190,14 +4219,14 @@ Calltable::find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr) {
 */
 
 int
-Calltable::cleanup( time_t currtime ) {
+Calltable::cleanup_calls( time_t currtime ) {
 
 #if HAVE_LIBTCMALLOC    
 	MallocExtension::instance()->ReleaseFreeMemory();
 #endif
 
 	if(verbosity && verbosityE > 1) {
-		syslog(LOG_NOTICE, "call Calltable::cleanup");
+		syslog(LOG_NOTICE, "call Calltable::cleanup_calls");
 	}
 	Call* call;
 	lock_calls_listMAP();
@@ -4217,7 +4246,7 @@ Calltable::cleanup( time_t currtime ) {
 				call->force_terminate = true;
 			}
 		} else if(call->in_preprocess_queue_before_process_packet <= 0 ||
-			  (call->in_preprocess_queue_before_process_packet_at && call->in_preprocess_queue_before_process_packet_at < currtime - 120)) {
+			 (call->in_preprocess_queue_before_process_packet_at && call->in_preprocess_queue_before_process_packet_at < currtime - 120)) {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
 			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
@@ -4314,6 +4343,97 @@ Calltable::cleanup( time_t currtime ) {
 	if(currtime == 0 && is_terminating()) {
 		extern int terminated_call_cleanup;
 		terminated_call_cleanup = 1;
+		syslog(LOG_NOTICE, "terminated - cleanup calls");
+	}
+	
+	return 0;
+}
+
+int
+Calltable::cleanup_registers( time_t currtime ) {
+
+	if(verbosity && verbosityE > 1) {
+		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
+	}
+	Call* reg;
+	lock_registers_listMAP();
+	for (registerMAPIT = registers_listMAP.begin(); registerMAPIT != registers_listMAP.end();) {
+		reg = (*registerMAPIT).second;
+		if(verbosity > 2) {
+			reg->dump();
+		}
+		if(verbosity && verbosityE > 1) {
+			syslog(LOG_NOTICE, "Calltable::cleanup - try callid %s", reg->call_id.c_str());
+		}
+		// rtptimeout seconds of inactivity will save this call and remove from call table
+		bool closeReg = false;
+		if(currtime == 0 || reg->force_close) {
+			closeReg = true;
+			if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
+				reg->force_terminate = true;
+			}
+		} else {
+			if(reg->destroy_call_at != 0 && reg->destroy_call_at <= currtime) {
+				closeReg = true;
+			} else if(currtime - reg->first_packet_time > absolute_timeout) {
+				closeReg = true;
+				reg->absolute_timeout_exceeded = true;
+			} else if(currtime - reg->first_packet_time > 300 &&
+				  !reg->seenRES18X && !reg->seenRES2XX) {
+				closeReg = true;
+				reg->zombie_timeout_exceeded = true;
+			}
+			if(!closeReg &&
+			   (reg->oneway == 1 && (currtime - reg->get_last_packet_time() > opt_onewaytimeout))) {
+				closeReg = true;
+				reg->oneway_timeout_exceeded = true;
+			}
+		}
+		if(closeReg) {
+			if(verbosity && verbosityE > 1) {
+				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", reg->call_id.c_str());
+			}
+			// Close RTP dump file ASAP to save file handles
+			if(currtime == 0 && is_terminating()) {
+				reg->getPcap()->close();
+				reg->getPcapSip()->close();
+			}
+
+			if(currtime == 0) {
+				/* we are saving calls because of terminating SIGTERM and we dont know 
+				 * if the call ends successfully or not. So we dont want to confuse monitoring
+				 * applications which reports unterminated calls so mark this call as sighup */
+				reg->sighup = true;
+				if(verbosity > 2)
+					syslog(LOG_NOTICE, "Set call->sighup\n");
+			}
+			/* move call to queue for mysql processing */
+			lock_registers_queue();
+			if(reg->push_register_to_registers_queue) {
+				syslog(LOG_WARNING,"try to duplicity push call %s to registers_queue", reg->call_id.c_str());
+			} else {
+				reg->push_register_to_registers_queue = 1;
+				registers_queue.push_back(reg);
+			}
+			unlock_registers_queue();
+			registers_listMAP.erase(registerMAPIT++);
+			if(opt_enable_fraud && currtime) {
+				struct timeval tv_currtime;
+				tv_currtime.tv_sec = currtime;
+				tv_currtime.tv_usec = 0;
+				fraudEndCall(reg, tv_currtime);
+			}
+			extern u_int64_t counter_registers_clean;
+			++counter_registers_clean;
+		} else {
+			++registerMAPIT;
+		}
+	}
+	unlock_registers_listMAP();
+	
+	if(currtime == 0 && is_terminating()) {
+		extern int terminated_call_cleanup;
+		terminated_call_cleanup = 1;
 		syslog(LOG_NOTICE, "terminated - call cleanup");
 	}
 	
@@ -4321,53 +4441,31 @@ Calltable::cleanup( time_t currtime ) {
 }
 
 void Call::saveregister() {
-	((Calltable*)calltable)->lock_calls_listMAP();
-        map<string, Call*>::iterator callMAPIT = ((Calltable*)calltable)->calls_listMAP.find(call_id);
-	if(callMAPIT == ((Calltable*)calltable)->calls_listMAP.end()) {
-		syslog(LOG_ERR,"Fatal error REGISTER call_id[%s] not found in callMAPIT", call_id.c_str());
-		((Calltable*)calltable)->unlock_calls_listMAP();
+	((Calltable*)calltable)->lock_registers_listMAP();
+        map<string, Call*>::iterator registerMAPIT = ((Calltable*)calltable)->registers_listMAP.find(call_id);
+	if(registerMAPIT == ((Calltable*)calltable)->registers_listMAP.end()) {
+		syslog(LOG_ERR,"Fatal error REGISTER call_id[%s] not found in registerMAPIT", call_id.c_str());
+		((Calltable*)calltable)->unlock_registers_listMAP();
 		return;
 	} else {
-		((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
+		((Calltable*)calltable)->registers_listMAP.erase(registerMAPIT);
 	}
-	((Calltable*)calltable)->unlock_calls_listMAP();
-	extern u_int64_t counter_calls_clean;
-	++counter_calls_clean;
+	((Calltable*)calltable)->unlock_registers_listMAP();
+	extern u_int64_t counter_registers_clean;
+	++counter_registers_clean;
 	
 	removeFindTables();
 	this->pcap.close();
 	this->pcapSip.close();
-	/****
-	if (get_fsip_pcap() != NULL){
-		pcap_dump_flush(get_fsip_pcap());
-		pcap_dump_close(get_fsip_pcap());
-		addtofilesqueue(sip_pcapfilename, "regsize");
-		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(pcapfilename);
-		}
-		set_fsip_pcap(NULL);
-	}
-	if (get_f_pcap() != NULL){
-		pcap_dump_flush(get_f_pcap());
-		pcap_dump_close(get_f_pcap());
-		addtofilesqueue(sip_pcapfilename, "regsize");
-		if(opt_cachedir[0] != '\0') {
-			addtocachequeue(pcapfilename);
-		}
-		set_f_pcap(NULL);
-	}
-	****/
-	// we have to close all raw files as there can be data in buffers 
-	closeRawFiles();
 	/* move call to queue for mysql processing */
-	((Calltable*)calltable)->lock_calls_queue();
-	if(push_call_to_calls_queue) {
-		syslog(LOG_WARNING,"try to duplicity push call %s / %i to calls_queue", call_id.c_str(), type);
+	((Calltable*)calltable)->lock_registers_queue();
+	if(push_register_to_registers_queue) {
+		syslog(LOG_WARNING,"try to duplicity push call %s / %i to registers_queue", call_id.c_str(), type);
 	} else {
-		push_call_to_calls_queue = 1;
-		((Calltable*)calltable)->calls_queue.push_back(this);
+		push_register_to_registers_queue = 1;
+		((Calltable*)calltable)->registers_queue.push_back(this);
 	}
-	((Calltable*)calltable)->unlock_calls_queue();
+	((Calltable*)calltable)->unlock_registers_queue();
 }
 
 void

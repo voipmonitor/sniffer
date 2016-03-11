@@ -24,7 +24,6 @@ struct sVerbose {
 	int fraud;
 	int enable_bt_sighandler;
 	int tcp_debug_port;
-	int test_rtp_performance;
 	int tar;
 	int chunk_buffer;
 	unsigned long int ssrc;

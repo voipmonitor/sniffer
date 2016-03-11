@@ -27,7 +27,6 @@ struct sHeaderPacket {
 #define HEADER_PACKET_STACK_POOL_SIZE 100
 #define HEADER_PACKET_STACK_PUSH_QUEUE_MAX 10
 class cHeaderPacketStack {
-public:
 private:
 	struct sHeaderPacketPool {
 		sHeaderPacket *pool[HEADER_PACKET_STACK_POOL_SIZE];

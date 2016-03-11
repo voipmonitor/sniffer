@@ -48,6 +48,7 @@
 #include "http.h"
 #include "send_call_info.h"
 #include "config_param.h"
+#include "sniff_proc_class.h"
 
 //#define BUFSIZE 1024
 //define BUFSIZE 20480
@@ -59,6 +60,7 @@ extern int opt_manager_port;
 extern char opt_manager_ip[32];
 extern int opt_manager_nonblock_mode;
 extern volatile int calls_counter;
+extern volatile int registers_counter;
 extern char opt_clientmanager[1024];
 extern int opt_clientmanagerport;
 extern char mac[32];
@@ -674,6 +676,12 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "totalregisters") != NULL) {
+		snprintf(sendbuf, BUFSIZE, "%d", registers_counter);
+		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "disablecdr") != NULL) {
 		opt_nocdr = 1;
 		if ((size = sendvm(client, sshchannel, "disabled", 8, 0)) == -1){
@@ -969,7 +977,22 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		return 0;
 	} else if(strstr(buf, "cleanup_calls") != NULL) {
-		calltable->cleanup(0);
+		calltable->cleanup_calls(0);
+		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "cleanup_registers") != NULL) {
+		calltable->cleanup_registers(0);
+		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "cleanup_tcpreassembly") != NULL) {
+		extern TcpReassemblySip tcpReassemblySip;
+		tcpReassemblySip.clean();
 		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
@@ -1522,7 +1545,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		char dateTimeKey[2048];
 		u_int32_t recordId = 0;
 		char tableType[100] = "";
-		char *tarPosI = new char[1000000];
+		char *tarPosI = new FILE_LINE char[1000000];
 		*tarPosI = 0;
 
 		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s" : "getfile_in_tar %s %s %s %u %s %s", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI);
@@ -1785,7 +1808,7 @@ getwav:
 	} else if(strstr(buf, "genhttppcap") != NULL) {
 		char timestamp_from[100]; 
 		char timestamp_to[100]; 
-		char *ids = new char [1000000];
+		char *ids = new FILE_LINE char [1000000];
 		sscanf(buf, "genhttppcap %19[T0-9--: ] %19[T0-9--: ] %s", timestamp_from, timestamp_to, ids);
 		/*
 		cout << timestamp_from << endl
@@ -1960,6 +1983,7 @@ getwav:
 		return 0;
 	} else if(strstr(buf, "sniffer_stat") != NULL) {
 		extern vm_atomic<string> storingCdrLastWriteAt;
+		extern vm_atomic<string> storingRegisterLastWriteAt;
 		extern vm_atomic<string> pbStatString;
 		extern vm_atomic<u_long> pbCountPacketDrop;
 		extern bool opt_upgrade_by_git;
@@ -2119,14 +2143,14 @@ getwav:
 	} else if(strstr(buf, "malloc_trim") != NULL) {
 		malloc_trim(0);
 	} else if(strstr(buf, "memcrash_test_1") != NULL) {
-		char *test = new char[10];
+		char *test = new FILE_LINE char[10];
 		test[10] = 1;
 	} else if(strstr(buf, "memcrash_test_2") != NULL) {
-		char *test = new char[10];
+		char *test = new FILE_LINE char[10];
 		delete [] test;
 		delete [] test;
 	} else if(strstr(buf, "memcrash_test_3") != NULL) {
-		char *test = new char[10];
+		char *test = new FILE_LINE char[10];
 		delete [] test;
 		test[0] = 1;
 	} else if(strstr(buf, "memcrash_test_4") != NULL) {

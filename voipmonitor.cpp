@@ -165,6 +165,7 @@ int debugclean = 0;
 
 extern Calltable *calltable;
 extern volatile int calls_counter;
+extern volatile int registers_counter;
 unsigned int opt_openfile_max = 65535;
 int opt_disable_dbupgradecheck = 0; // When voipmonitor started this disable mysql db check/upgrade (if set to 1)
 int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’’ 
@@ -575,6 +576,7 @@ SIP_HEADERfilter *sipheaderfilter_reload = NULL;	// SIP_HEADER filter based on M
 volatile int sipheaderfilter_reload_do = 0;		// for reload in main thread
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
+pthread_t storing_registers_thread;	// ID of worker storing CDR thread 
 pthread_t activechecking_cloud_thread; 
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
@@ -588,6 +590,7 @@ pthread_t tarqueuethread;	// ID of worker manager thread
 int terminating;		// if set to 1, sniffer will terminate
 int terminating_moving_cache;	// if set to 1, worker thread will terminate
 int terminating_storing_cdr;	// if set to 1, worker thread will terminate
+int terminating_storing_registers;
 int terminated_call_cleanup;
 int terminated_async;
 int terminated_tar_flush_queue;
@@ -646,6 +649,7 @@ WebrtcData *webrtcData;
 SslData *sslData;
 
 vm_atomic<string> storingCdrLastWriteAt;
+vm_atomic<string> storingRegisterLastWriteAt;
 
 time_t startTime;
 
@@ -1289,7 +1293,7 @@ void *storing_cdr( void *dummy ) {
 		
 		if(verbosity > 0 && is_read_from_file_simple()) { 
 			ostringstream outStr;
-			outStr << "calls[" << calls_counter << "]";
+			outStr << "calls[" << calls_counter << ",r:" << registers_counter << "]";
 		}
 		
 		size_t calls_queue_size = 0;
@@ -1328,8 +1332,6 @@ void *storing_cdr( void *dummy ) {
 					if(!opt_nocdr) {
 						if(call->type == INVITE or call->type == SKINNY_NEW) {
 							call->saveToDb(!is_read_from_file_simple());
-						} else if(call->type == REGISTER){
-							call->saveRegisterToDb();
 						} else if(call->type == MESSAGE){
 							call->saveMessageToDb();
 						}
@@ -1408,6 +1410,78 @@ void *storing_cdr( void *dummy ) {
 			break;
 		}
 		usleep(100000);
+	}
+	
+	return NULL;
+}
+
+void *storing_registers( void *dummy ) {
+	Call *call;
+	while(1) {
+		
+		size_t registers_queue_size = 0;
+		
+		for(int pass  = 0; pass < 10; pass++) {
+		
+			calltable->lock_registers_queue();
+			registers_queue_size = calltable->registers_queue.size();
+			size_t registers_queue_position = 0;
+			
+			while(registers_queue_position < registers_queue_size) {
+
+				call = calltable->registers_queue[registers_queue_position];
+				
+				calltable->unlock_registers_queue();
+				
+				// Close SIP and SIP+RTP dump files ASAP to save file handles
+				call->getPcap()->close();
+				call->getPcapSip()->close();
+				
+				if(call->isReadyForWriteCdr()) {
+				
+					regfailedcache->prunecheck(call->first_packet_time);
+					if(!opt_nocdr) {
+						if(call->type == REGISTER){
+							call->saveRegisterToDb();
+						}
+					}
+
+					calltable->lock_registers_queue();
+					calltable->registers_queue.erase(calltable->registers_queue.begin() + registers_queue_position);
+					--registers_queue_size;
+					
+					calltable->lock_registers_deletequeue();
+					calltable->registers_deletequeue.push_back(call);
+					calltable->unlock_registers_deletequeue();
+				
+					storingRegisterLastWriteAt = getActDateTimeF();
+				} else {
+					calltable->lock_registers_queue();
+				}
+				
+				++registers_queue_position;
+				
+			}
+			
+			calltable->unlock_registers_queue();
+
+			if(terminating_storing_registers && (!registers_queue_size || terminating > 1)) {
+				break;
+			}
+		
+			usleep(100000);
+		}
+		
+		calltable->lock_registers_queue();
+		registers_queue_size = calltable->registers_queue.size();
+		if(terminating_storing_registers && (!registers_queue_size || terminating > 1)) {
+			calltable->unlock_registers_queue();
+			break;
+		}
+		calltable->unlock_registers_queue();
+	}
+	if(verbosity && !opt_nocdr) {
+		syslog(LOG_NOTICE, "terminated - storing register");
 	}
 	
 	return NULL;
@@ -1809,6 +1883,7 @@ void resetTerminating() {
 	clear_terminating();
 	terminating_moving_cache = 0;
 	terminating_storing_cdr = 0;
+	terminating_storing_registers = 0;
 	terminated_call_cleanup = 0;
 	terminated_async = 0;
 	terminated_tar_flush_queue = 0;
@@ -2638,6 +2713,7 @@ int main_init_read() {
 	// start thread processing queued cdr and sql queue - supressed if run as sender
 	if(!is_sender()) {
 		vm_pthread_create(&storing_cdr_thread, NULL, storing_cdr, NULL, __FILE__, __LINE__);
+		vm_pthread_create(&storing_registers_thread, NULL, storing_registers, NULL, __FILE__, __LINE__);
 		/*
 		vm_pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL, __FILE__, __LINE__);
 		*/
@@ -2704,7 +2780,9 @@ int main_init_read() {
 		for(int i = 0; i < min(max(opt_enable_preprocess_packet, opt_enable_ssl ? 1 : 0), MAX_PREPROCESS_PACKET_THREADS); i++) {
 			preProcessPacket[i] = new FILE_LINE PreProcessPacket(i == 0 ? PreProcessPacket::ppt_detach : 
 									     i == 1 ? PreProcessPacket::ppt_sip :
-										      PreProcessPacket::ppt_extend);
+									     i == 2 ? PreProcessPacket::ppt_extend :
+									     i == 3 ? PreProcessPacket::ppt_pp_call :
+										      PreProcessPacket::ppt_pp_register);
 		}
 	}
 	
@@ -2916,7 +2994,8 @@ void main_term_read() {
 	// flush all queues
 
 	Call *call;
-	calltable->cleanup(0);
+	calltable->cleanup_calls(0);
+	calltable->cleanup_registers(0);
 
 	set_terminating();
 
@@ -3043,6 +3122,10 @@ void main_term_read() {
 		terminating_storing_cdr = 1;
 		pthread_join(storing_cdr_thread, NULL);
 	}
+	if(storing_registers_thread) {
+		terminating_storing_registers = 1;
+		pthread_join(storing_registers_thread, NULL);
+	}
 	while(calltable->calls_queue.size() != 0) {
 			call = calltable->calls_queue.front();
 			calltable->calls_queue.pop_front();
@@ -3061,6 +3144,19 @@ void main_term_read() {
 			call->atFinish();
 			delete call;
 			calls_counter--;
+	}
+	while(calltable->registers_queue.size() != 0) {
+			call = calltable->registers_queue.front();
+			calltable->registers_queue.pop_front();
+			delete call;
+			registers_counter--;
+	}
+	while(calltable->registers_deletequeue.size() != 0) {
+			call = calltable->registers_deletequeue.front();
+			calltable->registers_deletequeue.pop_front();
+			call->atFinish();
+			delete call;
+			registers_counter--;
 	}
 	delete calltable;
 	calltable = NULL;
@@ -5302,9 +5398,6 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "chunk_buffer")		sverb.chunk_buffer = 1;
 						else if(verbparams[i].substr(0, 15) == "tcp_debug_port=")
 													sverb.tcp_debug_port = atoi(verbparams[i].c_str() + 15);
-						else if(verbparams[i].substr(0, 21) == "test_rtp_performance=")
-													sverb.test_rtp_performance = atoi(verbparams[i].c_str() + 21);
-
 						else if(verbparams[i].substr(0, 5) == "ssrc=")          sverb.ssrc = strtol(verbparams[i].c_str() + 5, NULL, 16);
 						else if(verbparams[i] == "jitter")			sverb.jitter = 1;
 						else if(verbparams[i] == "jitter_na")			opt_jitterbuffer_adapt = 0;
@@ -6931,8 +7024,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
-					       !strcmp(value, "extend") ? 3 :
-					       !strcmp(value, "sip") ? 2 : yesno(value);
+					       !strcmp(value, "extend") ? 5 :
+					       !strcmp(value, "sip") ? 3 : 
+					       yesno(value);
 	}
 	if((value = ini.GetValue("general", "enable_process_rtp_packet", NULL)) ||
 	   (value = ini.GetValue("general", "preprocess_rtp_threads", NULL))) {

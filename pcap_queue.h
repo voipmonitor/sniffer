@@ -275,6 +275,8 @@ private:
 	PcapQueue *instancePcapHandle;
 	u_int64_t counter_calls_old;
 	u_int64_t counter_calls_clean_old;
+	u_int64_t counter_registers_old;
+	u_int64_t counter_registers_clean_old;
 	u_int64_t counter_sip_packets_old[2];
 	u_int64_t counter_sip_register_packets_old;
 	u_int64_t counter_sip_message_packets_old;

@@ -280,7 +280,7 @@ public:
 		} else if(removeSize == bufferLength) {
 			destroy();
 		} else {
-			u_char *bufferNew = new u_char[bufferCapacity];
+			u_char *bufferNew = new FILE_LINE u_char[bufferCapacity];
 			bufferLength -= removeSize;
 			memcpy(bufferNew, buffer + removeSize, bufferLength);
 			delete [] buffer;
@@ -1558,8 +1558,9 @@ public:
 		u_int32_t length;
 	};
 	struct ppContentsX {
-		ppContentsX(ParsePacket *parser) {
-			this->parser = parser;
+		ppContentsX(ParsePacket *parser = NULL) {
+			extern ParsePacket _parse_packet_global_process_packet;
+			this->parser = parser ? parser : &_parse_packet_global_process_packet;
 			clean();
 		}
 		void clean() {
@@ -2322,9 +2323,10 @@ int vm_pthread_create_autodestroy(pthread_t *thread, pthread_attr_t *attr,
 
 
 #define HEAP_ITEM_DEAFULT_SIZE 0xFFFFFFFF
-#define HEAP_ITEM_POOL_SIZE 1000
+#define HEAP_ITEM_POOL_SIZE 100
 #define HEAP_ITEM_STACK_TYPE_DYNAMIC 0
 #define HEAP_ITEM_STACK_TYPE_STATIC 0
+#define HEAP_ITEM_STACK_TYPE_VOID 1
 
 #if HEAP_ITEM_STACK_TYPE_DYNAMIC
 class cHeapItemsStack {
@@ -2720,13 +2722,106 @@ public:
 	}
 public:
 	u_int32_t size_max;
-	u_int16_t pool_size_max;
 	u_int16_t pop_queues_max;
 	u_int16_t push_queues_max;
 	sHeapItemsPool *pop_queues;
 	sHeapItemsPool *push_queues;
 	rqueue_quick<sHeapItemsPool> *stack;
 	u_int32_t default_item_size;
+};
+#endif
+
+#if HEAP_ITEM_STACK_TYPE_VOID
+class cHeapItemsPointerStack {
+private:
+	struct sHeapItemsPool {
+		sHeapItemsPool() {
+			this->pool_size = 0;
+		}
+		~sHeapItemsPool() {
+		}
+		void destroyAll() {
+			for(unsigned i = 0; i < pool_size; i++) {
+				delete_object(pool[i]);
+			}
+		}
+		u_int16_t pool_size;
+		void *pool[HEAP_ITEM_POOL_SIZE];
+	};
+public:
+	cHeapItemsPointerStack(u_int32_t size_max,
+			       u_int16_t pop_queues_max = 10, u_int16_t push_queues_max = 10) {
+		this->size_max = size_max;
+		this->pop_queues_max = pop_queues_max;
+		this->push_queues_max = push_queues_max;
+		this->pop_queues = new FILE_LINE sHeapItemsPool[this->pop_queues_max];
+		this->push_queues = new FILE_LINE sHeapItemsPool[this->push_queues_max];
+		this->stack = new FILE_LINE rqueue_quick<sHeapItemsPool>(this->size_max / HEAP_ITEM_POOL_SIZE, 0, 0, NULL, false, __FILE__, __LINE__);
+	}
+	~cHeapItemsPointerStack() {
+		for(unsigned i = 0; i < this->pop_queues_max; i++) {
+			this->pop_queues[i].destroyAll();
+		}
+		delete [] this->pop_queues;
+		for(unsigned i = 0; i < this->push_queues_max; i++) {
+			this->push_queues[i].destroyAll();
+		}
+		delete [] this->push_queues;
+		sHeapItemsPool pool;
+		while(stack->pop(&pool, false, true)) {
+			pool.destroyAll();
+		}
+		delete this->stack;
+	}
+	inline bool push(void *item, u_int16_t push_queue_index) {
+		if(!item) {
+			return(false);
+		}
+		if(push_queue_index >= push_queues_max) {
+			syslog(LOG_ERR, "too big push_queue_index");
+			return(false);
+		}
+		if(this->push_queues[push_queue_index].pool_size == HEAP_ITEM_POOL_SIZE) {
+			if(stack->push(&this->push_queues[push_queue_index], false, push_queues_max > 1)) {
+				this->push_queues[push_queue_index].pool_size = 0;
+				//cout << "+" << flush;
+			} else {
+				return(false);
+			}
+		}
+		if(this->push_queues[push_queue_index].pool_size < HEAP_ITEM_POOL_SIZE) {
+			*(u_char*)item = 0;
+			this->push_queues[push_queue_index].pool[this->push_queues[push_queue_index].pool_size] = item;
+			++this->push_queues[push_queue_index].pool_size;
+		}
+		return(true);
+	}
+	inline int pop(void **item, u_int16_t pop_queue_index) {
+		if(pop_queue_index >= pop_queues_max) {
+			syslog(LOG_ERR, "too big pop_queue_index");
+			return(false);
+		}
+		if(this->pop_queues[pop_queue_index].pool_size > 0) {
+			--this->pop_queues[pop_queue_index].pool_size;
+			*item = this->pop_queues[pop_queue_index].pool[this->pop_queues[pop_queue_index].pool_size];
+		} else {
+			if(stack->pop(&this->pop_queues[pop_queue_index], false, pop_queues_max > 1)) {
+				this->pop_queues[pop_queue_index].pool_size = HEAP_ITEM_POOL_SIZE - 1;
+				*item = this->pop_queues[pop_queue_index].pool[this->pop_queues[pop_queue_index].pool_size];
+				//cout << "P" << flush;
+			} else {
+				return(false);
+			}
+		}
+		return(true);
+	}
+public:
+	u_int32_t size_max;
+	u_int16_t pop_queues_max;
+	u_int16_t push_queues_max;
+	sHeapItemsPool *pop_queues;
+	sHeapItemsPool *push_queues;
+	rqueue_quick<sHeapItemsPool> *stack;
 };
 #endif
 

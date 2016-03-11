@@ -64,7 +64,6 @@ string get_rtp_threads_cpu_usage(bool callPstat);
 
 void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle);
-void save_packet(Call *call, packet_s *packetS, ParsePacket::ppContentsX *parseContents, int type,  int forceSip);
 
 
 typedef std::map<in_addr_t, in_addr_t> nat_aliases_t; //!< 
@@ -106,7 +105,119 @@ struct packet_s {
 	int dlt; 
 	int sensor_id;
 	bool is_ssl;
+	bool _blockstore_lock;
+	bool _packet_alloc;
+	inline packet_s() {
+		_blockstore_lock = false;
+		_packet_alloc = false;
+	}
+	inline ~packet_s() {
+		if(_packet_alloc) {
+			delete [] packet;
+		}
+	}
+	inline void blockstore_lock() {
+		if(!_blockstore_lock && block_store) {
+			block_store->lock_packet(block_store_index);
+			_blockstore_lock = true;
+		}
+	}
+	inline void blockstore_relock() {
+		if(_blockstore_lock && block_store) {
+			block_store->lock_packet(block_store_index);
+		}
+	}
+	inline void blockstore_unlock() {
+		if(_blockstore_lock && block_store) {
+			block_store->unlock_packet(block_store_index);
+			_blockstore_lock = false;
+		}
+	}
+	inline void blockstore_clear() {
+		block_store = NULL; 
+		block_store_index = 0; 
+		_blockstore_lock = false;
+	}
 };
+
+struct packet_s_process_rtp_call_info {
+	Call *call;
+	bool iscaller;
+	bool is_rtcp;
+	s_sdp_flags sdp_flags;
+	bool use_sync;
+};
+
+struct packet_s_process_0 : public packet_s {
+	cHeapItemsPointerStack *stack;
+	int isSip;
+	unsigned int hash[2];
+	packet_s_process_rtp_call_info call_info[20];
+	int call_info_length;
+	bool call_info_find_by_dest;
+	volatile int hash_find_flag;
+	inline packet_s_process_0() {
+		init();
+	}
+	inline void init() {
+		stack = NULL;
+		isSip = -1;
+		hash[0] = 0;
+		hash[1] = 0;
+		call_info_length = -1;
+	}
+};
+
+struct packet_s_process : public packet_s_process_0 {
+	ParsePacket::ppContentsX parseContents;
+	u_int32_t sipDataOffset;
+	u_int32_t sipDataLen;
+	char callid[1024];
+	int sip_method;
+	bool is_register;
+	bool sip_response;
+	int lastSIPresponseNum;
+	char lastSIPresponse[128];
+	bool call_cancel_lsr487;
+	Call *call;
+	int merged;
+	Call *call_created;
+	bool detectUserAgent;
+	bool _getCallID;
+	bool _getSipMethod;
+	bool _getLastSipResponse;
+	bool _findCall;
+	bool _createCall;
+	inline packet_s_process() {
+		init();
+	}
+	inline void init() {
+		packet_s_process_0::init();
+		sipDataOffset = 0;
+		sipDataLen = 0;
+		callid[0] = 0;
+		sip_method = -1;
+		is_register = false;
+		sip_response = false;
+		lastSIPresponseNum = -1;
+		lastSIPresponse[0] = 0;
+		call_cancel_lsr487 = false;
+		call = NULL;
+		merged = 0;
+		call_created = NULL;
+		detectUserAgent = false;
+		_getCallID = false;
+		_getSipMethod = false;
+		_getLastSipResponse = false;
+		_findCall = false;
+		_createCall = false;
+	}
+};
+
+
+void save_packet(Call *call, packet_s *packetS, int type);
+void save_packet(Call *call, packet_s_process *packetS, int type);
+
 
 typedef struct {
 	Call *call;
@@ -220,40 +331,6 @@ struct gre_hdr {
 #endif
 };
 
-
-Call *process_packet(struct packet_s *packetS, void *parsePacketPreproc,
-		     int *was_rtp, int *voippacket, int forceSip = 0,
-		     bool mainProcess = true, int sipOffset = 0);
-inline Call *process_packet(bool is_ssl, u_int64_t packet_number,
-			    unsigned int saddr, int source, unsigned int daddr, int dest, 
-			    char *data, int datalen, int dataoffset,
-			    pcap_t *handle, pcap_pkthdr *header, const u_char *packet, void *parsePacketPreproc,
-			    int istcp, int *was_rtp, struct iphdr2 *header_ip, int *voippacket, int forceSip,
-			    pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, 
-			    bool mainProcess = true, int sipOffset = 0) {
-	packet_s packetS;
-	packetS.packet_number = packet_number;
-	packetS.saddr = saddr;
-	packetS.source = source;
-	packetS.daddr = daddr; 
-	packetS.dest = dest;
-	packetS.data = data; 
-	packetS.datalen = datalen; 
-	packetS.dataoffset = dataoffset;
-	packetS.handle = handle; 
-	packetS.header = *header; 
-	packetS.packet = packet; 
-	packetS.istcp = istcp; 
-	packetS.header_ip = header_ip; 
-	packetS.block_store = block_store; 
-	packetS.block_store_index =  block_store_index; 
-	packetS.dlt = dlt; 
-	packetS.sensor_id = sensor_id;
-	packetS.is_ssl = is_ssl;
-	return(process_packet(&packetS, parsePacketPreproc,
-			      was_rtp, voippacket, forceSip,
-			      mainProcess, sipOffset));
-}
 
 void process_packet__push_batch();
 
