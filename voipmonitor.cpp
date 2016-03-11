@@ -2782,7 +2782,11 @@ int main_init_read() {
 									     i == 1 ? PreProcessPacket::ppt_sip :
 									     i == 2 ? PreProcessPacket::ppt_extend :
 									     i == 3 ? PreProcessPacket::ppt_pp_call :
-										      PreProcessPacket::ppt_pp_register);
+									     i == 4 ? PreProcessPacket::ppt_pp_register :
+										      PreProcessPacket::ppt_pp_rtp);
+		}
+		if(opt_enable_preprocess_packet == MAX_PREPROCESS_PACKET_THREADS && !opt_enable_process_rtp_packet) {
+			opt_enable_process_rtp_packet = 1;
 		}
 	}
 	
@@ -7024,7 +7028,7 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
-					       !strcmp(value, "extend") ? 5 :
+					       !strcmp(value, "extend") ? MAX_PREPROCESS_PACKET_THREADS :
 					       !strcmp(value, "sip") ? 3 : 
 					       yesno(value);
 	}

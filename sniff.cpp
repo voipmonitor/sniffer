@@ -4752,7 +4752,7 @@ endsip:
 	
 }
 
-inline void process_packet_rtp_inline(packet_s_process *packetS) {
+inline int process_packet_rtp_inline(packet_s_process *packetS) {
  
 	Call *call = NULL;
 	int iscaller;
@@ -4762,13 +4762,12 @@ inline void process_packet_rtp_inline(packet_s_process *packetS) {
 	hash_node_call *calls, *node_call;
 
 	if(packetS->datalen <= 2) { // && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) { // disable condition - failure for udptl (fax)
-		PACKET_S_PROCESS_DESTROY(&packetS);
-		return;
+		return(0);
 	}
 	
 	if(processRtpPacketHash) {
 		processRtpPacketHash->push_packet(packetS);
-		return;
+		return(2);
 	} else {
 	if ((calls = calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, packetS->hash[1]))){
 		++counter_rtp_packets;
@@ -4797,8 +4796,7 @@ inline void process_packet_rtp_inline(packet_s_process *packetS) {
 			if(!is_rtcp && !sdp_flags.is_fax &&
 			   (packetS->datalen < RTP_FIXED_HEADERLEN ||
 			    packetS->header.caplen <= (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN))) {
-				PACKET_S_PROCESS_DESTROY(&packetS);
-				return;
+				return(0);
 			}
 
 			// we have packet, extend pending destroy requests
@@ -4817,8 +4815,7 @@ inline void process_packet_rtp_inline(packet_s_process *packetS) {
 				} else {
 					call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 				}
-				PACKET_S_PROCESS_DESTROY(&packetS);
-				return;
+				return(1);
 			}
 
 			if(rtp_threaded && can_thread) {
@@ -4863,8 +4860,7 @@ inline void process_packet_rtp_inline(packet_s_process *packetS) {
 			if(!is_rtcp && !sdp_flags.is_fax &&
 			   (packetS->datalen < RTP_FIXED_HEADERLEN ||
 			    packetS->header.caplen <= (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN))) {
-				PACKET_S_PROCESS_DESTROY(&packetS);
-				return;
+				return(0);
 			}
 
 			// we have packet, extend pending destroy requests
@@ -4883,8 +4879,7 @@ inline void process_packet_rtp_inline(packet_s_process *packetS) {
 				} else {
 					call->read_rtcp(packetS, !iscaller, enable_save_rtcp(call));
 				}
-				PACKET_S_PROCESS_DESTROY(&packetS);
-				return;
+				return(1);
 			}
 
 			// as we are searching by source address and find some call, revert iscaller 
@@ -4907,8 +4902,7 @@ inline void process_packet_rtp_inline(packet_s_process *packetS) {
 			if(flags & FLAG_SKIPCDR) {
 				if(verbosity > 1)
 					syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
-				PACKET_S_PROCESS_DESTROY(&packetS);
-				return;
+				return(0);
 			}
 		 
 			// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
@@ -4920,8 +4914,7 @@ inline void process_packet_rtp_inline(packet_s_process *packetS) {
 			rtp.read((unsigned char*)packetS->data, packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, 0, packetS->sensor_id);
 
 			if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
-				PACKET_S_PROCESS_DESTROY(&packetS);
-				return;
+				return(0);
 			}
 			snprintf(s, 256, "%u-%x", (unsigned int)time(NULL), rtp.getSSRC());
 
@@ -4985,12 +4978,11 @@ inline void process_packet_rtp_inline(packet_s_process *packetS) {
 			strcpy(st2, inet_ntoa(in));
 			syslog(LOG_ERR, "Skipping udp packet %s:%d->%s:%d\n", st1, packetS->source, st2, packetS->dest);
 		}
-		PACKET_S_PROCESS_DESTROY(&packetS);
-		return;
+		return(1);
 	}
 	}
 	
-	PACKET_S_PROCESS_DESTROY(&packetS);
+	return(1);
 }
 
 inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS) {
@@ -7013,6 +7005,11 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 1);
 						break;
+					case ppt_pp_rtp:
+						if(process_packet_rtp_inline(packetS) < 2) {
+							PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
+						}
+						break;
 					}
 				}
 				batch->count = 0;
@@ -7055,6 +7052,8 @@ void *PreProcessPacket::outThreadFunction() {
 					use_process_packet_call = true; 
 					break;
 				case ppt_pp_register:
+					break;
+				case ppt_pp_rtp:
 					break;
 				}
 				if(use_process_packet_call) {
@@ -7130,7 +7129,7 @@ void PreProcessPacket::sipProcess_EXTEND(packet_s_process **packetS_ref) {
 			preProcessPacket[packetS->is_register ? 4 : 3]->push_packet(packetS);
 		}
 	} else {
-		process_packet_rtp_inline(packetS);
+		preProcessPacket[5]->push_packet(packetS);
 	}
 }
 
@@ -7607,7 +7606,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 								  packetS->handle);
 				}
 			}
-			PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2 + indexThread);
+			PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3 + indexThread);
 		}
 	}
 }

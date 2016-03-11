@@ -125,7 +125,8 @@ public:
 		ppt_sip,
 		ppt_extend,
 		ppt_pp_call,
-		ppt_pp_register
+		ppt_pp_register,
+		ppt_pp_rtp
 	};
 	struct batch_packet_s {
 		batch_packet_s(unsigned max_count) {
@@ -385,6 +386,9 @@ public:
 			delete *packetS;
 		}
 		*packetS = NULL;
+	}
+	inline eTypePreProcessThread getTypePreProcessThread() {
+		return(typePreProcessThread);
 	}
 private:
 	void sipProcess_SIP(packet_s_process **packetS_ref);

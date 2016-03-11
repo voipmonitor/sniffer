@@ -1563,6 +1563,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						       i == 1 ? "s:" : 
 						       i == 2 ? "e:" :
 						       i == 3 ? "c:" :
+						       i == 4 ? "g:" :
 								"r:")
 						   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 					if(sverb.qring_stat) {
@@ -1574,10 +1575,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					++count_t2cpu;
 					sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 				}
-				last_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
+				if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
+				   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register) {
+					last_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
+				}
 			}
 		} 
-		rrdtCPU_t2 = last_t2cpu_preprocess_packet_out_thread > -2 ? last_t2cpu_preprocess_packet_out_thread : t2cpu;
+		rrdtCPU_t2 = sum_t2cpu;
 		int countRtpRhThreads = 0;
 		bool needAddRtpRhThreads = false;
 		int countRtpRdThreads = 0;
