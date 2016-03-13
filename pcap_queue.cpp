@@ -842,6 +842,9 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 			if(actTime - 1000 > this->lastTimeLogErrMemoryIsFull) {
 				syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
 				this->lastTimeLogErrMemoryIsFull = actTime;
+				if(sverb.abort_if_heap_full) {
+					abort();
+				}
 			}
 			if(deleteBlockStoreIfFail) {
 				delete blockStore;
@@ -1552,32 +1555,34 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << "pb:" << setprecision(1) << t2cpu;
 		double last_t2cpu_preprocess_packet_out_thread = -2;
+		double last_t2cpu_preprocess_packet_out_thread_rtp = -2;
 		int count_t2cpu = 1;
 		double sum_t2cpu = t2cpu;
+		last_t2cpu_preprocess_packet_out_thread = t2cpu;
+		last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu;
 		for(int i = 0; i < MAX_PREPROCESS_PACKET_THREADS; i++) {
-			if(preProcessPacket[i]) {
-				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
-				if(t2cpu_preprocess_packet_out_thread >= 0) {
-					outStrStat << "/" 
-						   << (i == 0 ? "d:" :
-						       i == 1 ? "s:" : 
-						       i == 2 ? "e:" :
-						       i == 3 ? "c:" :
-						       i == 4 ? "g:" :
-								"r:")
-						   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
-					if(sverb.qring_stat) {
-						double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
-						if(qringFillingPerc > 0) {
-							outStrStat << "r" << qringFillingPerc;
-						}
+			double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
+			if(t2cpu_preprocess_packet_out_thread >= 0) {
+				outStrStat << "/" 
+					   << (i == 0 ? "d:" :
+					       i == 1 ? "s:" : 
+					       i == 2 ? "e:" :
+					       i == 3 ? "c:" :
+					       i == 4 ? "g:" :
+							"r:")
+					   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+				if(sverb.qring_stat) {
+					double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
+					if(qringFillingPerc > 0) {
+						outStrStat << "r" << qringFillingPerc;
 					}
-					++count_t2cpu;
-					sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 				}
+				++count_t2cpu;
+				sum_t2cpu += t2cpu_preprocess_packet_out_thread;
+				last_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
 				if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
 				   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register) {
-					last_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
+					last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
 				}
 			}
 		} 
@@ -1631,9 +1636,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 			}
 		}
-		if(max(last_t2cpu_preprocess_packet_out_thread, t2cpu) > opt_cpu_limit_new_thread) {
-			ProcessRtpPacket::autoStartProcessRtpPacket();
+		if(last_t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread) {
 			PreProcessPacket::autoStartNextLevelPreProcessPacket();
+		}
+		if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
+			ProcessRtpPacket::autoStartProcessRtpPacket();
 		}
 		if(countRtpRhThreads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
 		   needAddRtpRhThreads) {
@@ -5366,30 +5373,16 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	}
 	if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc && !useTcpReassemblySsl && 
 	   opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
-		if(PreProcessPacket::isEnableDetach()) {
-			preProcessPacket[0]->push_packet(false /*is_ssl*/, packet_counter_all,
-							 header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest),
-							 data, datalen, data - (char*)packet,
-							 this->getPcapHandle(dlt), header, packet, false /*packetDelete*/,
-							 istcp, header_ip,
-							 block_store, block_store_index, dlt, sensor_id,
-							 true /*blockstore_lock*/);
-			if(opt_ipaccount) {
-				//TODO: detect if voippacket!
-				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
-			}
-		} else {
-			int voippacket = 0;
-			//TODO
-			/*
-			int was_rtp = 0;
-			process_packet(packetS, NULL,
-				       &was_rtp, &voippacket);
-			*/
-			// if packet was VoIP add it to ipaccount
-			if(opt_ipaccount) {
-				ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, voippacket);
-			}
+		preProcessPacket[0]->push_packet(false /*is_ssl*/, packet_counter_all,
+						 header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest),
+						 data, datalen, data - (char*)packet,
+						 this->getPcapHandle(dlt), header, packet, false /*packetDelete*/,
+						 istcp, header_ip,
+						 block_store, block_store_index, dlt, sensor_id,
+						 true /*blockstore_lock*/);
+		if(opt_ipaccount) {
+			//TODO: detect if voippacket!
+			ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
 		}
 	} else if(opt_ipaccount) {
 		ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
@@ -5397,11 +5390,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 }
 
 void PcapQueue_readFromFifo::pushBatchProcessPacket() {
-	if(PreProcessPacket::isEnableDetach()) {
-		preProcessPacket[0]->push_batch();
-	} else {
-		process_packet__push_batch();
-	}
+	preProcessPacket[0]->push_batch();
 }
 
 void PcapQueue_readFromFifo::checkFreeSizeCachedir() {

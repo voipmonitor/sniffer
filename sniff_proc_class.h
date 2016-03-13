@@ -54,6 +54,7 @@ public:
 		}
 	};
 public:
+	TcpReassemblySip();
 	void processPacket(packet_s_process **packetS_ref, class PreProcessPacket *processPacket);
 	void clean(time_t ts = 0);
 private:
@@ -115,6 +116,7 @@ private:
 	void cleanStream(tcp_stream *stream, bool callFromClean = false);
 private:
 	map<tcp_stream_id, tcp_stream> tcp_streams;
+	time_t last_cleanup;
 };
 
 
@@ -140,6 +142,8 @@ public:
 		}
 		~batch_packet_s() {
 			for(unsigned i = 0; i < max_count; i++) {
+				batch[i]->blockstore_clear();
+				batch[i]->packetdelete();
 				delete batch[i];
 			}
 			delete [] batch;
@@ -161,8 +165,8 @@ public:
 			for(unsigned i = 0; i < max_count; i++) {
 				if(batch[i]) {
 					batch[i]->blockstore_clear();
+					batch[i]->packetdelete();
 					delete batch[i];
-					batch[i] = NULL;
 				}
 			}
 			delete [] batch;
@@ -182,6 +186,9 @@ public:
 				int istcp, struct iphdr2 *header_ip,
 				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 				bool blockstore_lock = true) {
+		if(opt_enable_ssl) {
+			this->lock_push();
+		}
 		packet_s packetS;
 		packetS.packet_number = packet_number;
 		packetS.saddr = saddr;
@@ -194,6 +201,7 @@ public:
 		packetS.handle = handle; 
 		packetS.header = *header; 
 		packetS.packet = packet; 
+		packetS._packet_alloc = packetDelete; 
 		packetS.istcp = istcp; 
 		packetS.header_ip = header_ip; 
 		packetS.block_store = block_store; 
@@ -204,11 +212,15 @@ public:
 		if(blockstore_lock) {
 			packetS.blockstore_lock();
 		}
-		this->push_packet(&packetS);
+		this->push_packet_detach(&packetS);
+		if(opt_enable_ssl) {
+			this->unlock_push();
+		}
 	}
-	inline void push_packet(packet_s *packetS) {
-		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
-			this->lock_push();
+	inline void push_packet_detach(packet_s *packetS) {
+		if(!this->enableOutThread) {
+			this->process_DETACH(packetS);
+			return;
 		}
 		if(!qring_push_index) {
 			unsigned usleepCounter = 0;
@@ -236,13 +248,29 @@ public:
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
-		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
-			this->unlock_push();
-		}
 	}
 	inline void push_packet(packet_s_process *packetS) {
-		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
-			this->lock_push();
+		if(!this->enableOutThread) {
+			switch(this->typePreProcessThread) {
+			case ppt_detach:
+				break;
+			case ppt_sip:
+				this->process_SIP(packetS);
+				break;
+			case ppt_extend:
+				this->process_SIP_EXTEND(packetS);
+				break;
+			case ppt_pp_call:
+				this->process_CALL(packetS);
+				break;
+			case ppt_pp_register:
+				this->process_REGISTER(packetS);
+				break;
+			case ppt_pp_rtp:
+				this->process_RTP(packetS);
+				break;
+			}
+			return;
 		}
 		if(!qring_push_index) {
 			unsigned usleepCounter = 0;
@@ -270,11 +298,22 @@ public:
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
-		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
-			this->unlock_push();
-		}
 	}
 	inline void push_batch() {
+		if(!this->enableOutThread) {
+			switch(this->typePreProcessThread) {
+			case ppt_detach:
+			case ppt_sip:
+			case ppt_extend:
+				process_packet__push_batch();
+				break;
+			case ppt_pp_call:
+			case ppt_pp_register:
+			case ppt_pp_rtp:
+				break;
+			}
+			return;
+		}
 		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
 			this->lock_push();
 		}
@@ -301,18 +340,6 @@ public:
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
 	void terminate();
-	static bool isEnableDetach() {
-		extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
-		return(preProcessPacket[0] != NULL);
-	}
-	static bool isEnableSip() {
-		extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
-		return(preProcessPacket[1] != NULL);
-	}
-	static bool isEnableExtend() {
-		extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
-		return(preProcessPacket[2] != NULL);
-	}
 	static void autoStartNextLevelPreProcessPacket();
 	double getQringFillingPerc() {
 		unsigned int _readit = readit;
@@ -363,16 +390,19 @@ public:
 	}
 	inline void packetS_destroy(packet_s_process **packetS) {
 		(*packetS)->blockstore_unlock();
+		(*packetS)->packetdelete();
 		delete *packetS;
 		*packetS = NULL;
 	}
 	inline void packetS_destroy(packet_s_process_0 **packetS) {
 		(*packetS)->blockstore_unlock();
+		(*packetS)->packetdelete();
 		delete *packetS;
 		*packetS = NULL;
 	}
 	inline void packetS_push_to_stack(packet_s_process **packetS, u_int16_t queue_index) {
 		(*packetS)->blockstore_unlock();
+		(*packetS)->packetdelete();
 		if(!(*packetS)->stack ||
 		   !(*packetS)->stack->push((void*)*packetS, queue_index)) {
 			delete *packetS;
@@ -381,6 +411,7 @@ public:
 	}
 	inline void packetS_push_to_stack(packet_s_process_0 **packetS, u_int16_t queue_index) {
 		(*packetS)->blockstore_unlock();
+		(*packetS)->packetdelete();
 		if(!(*packetS)->stack ||
 		   !(*packetS)->stack->push((void*)*packetS, queue_index)) {
 			delete *packetS;
@@ -390,19 +421,29 @@ public:
 	inline eTypePreProcessThread getTypePreProcessThread() {
 		return(typePreProcessThread);
 	}
+	inline void setEnableOutThread(bool enableOutThread) {
+		this->enableOutThread = enableOutThread;
+	}
+	inline bool getEnableOutThread() {
+		return(enableOutThread);
+	}
 private:
-	void sipProcess_SIP(packet_s_process **packetS_ref);
-	void sipProcess_EXTEND(packet_s_process **packetS_ref);
-	void sipProcess_reassembly(packet_s_process **packetS_ref);
-	void sipProcess_parseSipData(packet_s_process **packetS_ref);
-	void sipProcess_sip(packet_s_process **packetS_ref);
-	void sipProcess_rtp(packet_s_process **packetS_ref);
-	inline bool sipProcess_getCallID(packet_s_process **packetS_ref);
-	inline bool sipProcess_getCallID_publish(packet_s_process **packetS_ref);
-	inline void sipProcess_getSipMethod(packet_s_process **packetS_ref);
-	inline void sipProcess_getLastSipResponse(packet_s_process **packetS_ref);
-	inline void sipProcess_findCall(packet_s_process **packetS_ref);
-	inline void sipProcess_createCall(packet_s_process **packetS_ref);
+	void process_DETACH(packet_s *packetS_detach);
+	void process_SIP(packet_s_process *packetS);
+	void process_SIP_EXTEND(packet_s_process *packetS);
+	void process_CALL(packet_s_process *packetS);
+	void process_REGISTER(packet_s_process *packetS);
+	void process_RTP(packet_s_process *packetS);
+	inline void process_reassembly(packet_s_process **packetS_ref);
+	inline void process_parseSipData(packet_s_process **packetS_ref);
+	inline void process_sip(packet_s_process **packetS_ref);
+	inline void process_rtp(packet_s_process **packetS_ref);
+	inline bool process_getCallID(packet_s_process **packetS_ref);
+	inline bool process_getCallID_publish(packet_s_process **packetS_ref);
+	inline void process_getSipMethod(packet_s_process **packetS_ref);
+	inline void process_getLastSipResponse(packet_s_process **packetS_ref);
+	inline void process_findCall(packet_s_process **packetS_ref);
+	inline void process_createCall(packet_s_process **packetS_ref);
 	void *outThreadFunction();
 	void lock_push() {
 		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
@@ -431,6 +472,7 @@ private:
 	bool term_preProcess;
 	cHeapItemsPointerStack *stackSip;
 	cHeapItemsPointerStack *stackRtp;
+	volatile bool enableOutThread;
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 friend class TcpReassemblySip;
 };
@@ -445,12 +487,12 @@ inline packet_s_process_0 *PACKET_S_PROCESS_RTP_CREATE() {
 	return(preProcessPacket[0]->packetS_rtp_create());
 }
 
-inline packet_s_process *PACKET_S_PROCESS_SIP_POP_FROM_STACK(u_int16_t queue_index) {
+inline packet_s_process *PACKET_S_PROCESS_SIP_POP_FROM_STACK(u_int16_t queue_index = 0) {
 	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
 	return(preProcessPacket[0]->packetS_sip_pop_from_stack(queue_index));
 }
 
-inline packet_s_process_0 *PACKET_S_PROCESS_RTP_POP_FROM_STACK(u_int16_t queue_index) {
+inline packet_s_process_0 *PACKET_S_PROCESS_RTP_POP_FROM_STACK(u_int16_t queue_index = 0) {
 	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
 	return(preProcessPacket[0]->packetS_rtp_pop_from_stack(queue_index));
 }

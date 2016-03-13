@@ -53,6 +53,7 @@ struct sVerbose {
 	int thread_create;
 	int timezones;
 	int tcpreplay;
+	int abort_if_heap_full;
 };
 
 #endif

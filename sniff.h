@@ -108,13 +108,11 @@ struct packet_s {
 	bool _blockstore_lock;
 	bool _packet_alloc;
 	inline packet_s() {
+		init();
+	}
+	inline void init() {
 		_blockstore_lock = false;
 		_packet_alloc = false;
-	}
-	inline ~packet_s() {
-		if(_packet_alloc) {
-			delete [] packet;
-		}
 	}
 	inline void blockstore_lock() {
 		if(!_blockstore_lock && block_store) {
@@ -138,6 +136,12 @@ struct packet_s {
 		block_store_index = 0; 
 		_blockstore_lock = false;
 	}
+	inline void packetdelete() {
+		if(_packet_alloc) {
+			delete [] packet;
+			_packet_alloc = NULL;
+		}
+	}
 };
 
 struct packet_s_process_rtp_call_info {
@@ -160,6 +164,7 @@ struct packet_s_process_0 : public packet_s {
 		init();
 	}
 	inline void init() {
+		packet_s::init();
 		stack = NULL;
 		isSip = -1;
 		hash[0] = 0;

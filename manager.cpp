@@ -1591,7 +1591,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		if(FileExists(filename, &error_code)) {
 			size = file_exists(filename);
 			char size_str[20];
-			sprintf(size_str, "%llu", size);
+			sprintf(size_str, "%lu", size);
 			rslt = size_str;
 			if(size > 0 && strstr(filename, "tar")) {
 				for(int i = 1; i <= 5; i++) {
@@ -1601,7 +1601,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 					u_int64_t nextsize = file_exists(nextfilename);
 					if(nextsize > 0) {
 						char nextsize_str[20];
-						sprintf(nextsize_str, "%llu", nextsize);
+						sprintf(nextsize_str, "%lu", nextsize);
 						rslt.append(string(";") + nextfilename + ":" + nextsize_str);
 					} else {
 						break;

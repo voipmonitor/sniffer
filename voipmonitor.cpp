@@ -2775,18 +2775,17 @@ int main_init_read() {
 		}
 	}
 	
-	if((opt_enable_preprocess_packet > 0 || opt_enable_ssl) &&
-	   !is_read_from_file_simple()) {
-		for(int i = 0; i < min(max(opt_enable_preprocess_packet, opt_enable_ssl ? 1 : 0), MAX_PREPROCESS_PACKET_THREADS); i++) {
-			preProcessPacket[i] = new FILE_LINE PreProcessPacket(i == 0 ? PreProcessPacket::ppt_detach : 
-									     i == 1 ? PreProcessPacket::ppt_sip :
-									     i == 2 ? PreProcessPacket::ppt_extend :
-									     i == 3 ? PreProcessPacket::ppt_pp_call :
-									     i == 4 ? PreProcessPacket::ppt_pp_register :
-										      PreProcessPacket::ppt_pp_rtp);
-		}
-		if(opt_enable_preprocess_packet == MAX_PREPROCESS_PACKET_THREADS && !opt_enable_process_rtp_packet) {
-			opt_enable_process_rtp_packet = 1;
+	for(int i = 0; i < MAX_PREPROCESS_PACKET_THREADS; i++) {
+		preProcessPacket[i] = new FILE_LINE PreProcessPacket(i == 0 ? PreProcessPacket::ppt_detach : 
+								     i == 1 ? PreProcessPacket::ppt_sip :
+								     i == 2 ? PreProcessPacket::ppt_extend :
+								     i == 3 ? PreProcessPacket::ppt_pp_call :
+								     i == 4 ? PreProcessPacket::ppt_pp_register :
+									      PreProcessPacket::ppt_pp_rtp);
+	}
+	if(!is_read_from_file_simple()) {
+		for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, MAX_PREPROCESS_PACKET_THREADS)); i++) {
+			preProcessPacket[i]->setEnableOutThread(true);
 		}
 	}
 	
@@ -5437,6 +5436,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "thread_create")		sverb.thread_create = 1;
 						else if(verbparams[i] == "timezones")			sverb.timezones = 1;
 						else if(verbparams[i] == "tcpreplay")			sverb.tcpreplay = 1;
+						else if(verbparams[i] == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;
 					}
 				} }
 				break;
