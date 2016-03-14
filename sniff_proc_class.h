@@ -449,12 +449,12 @@ private:
 	void process_SIP_EXTEND(packet_s_process *packetS);
 	void process_CALL(packet_s_process *packetS);
 	void process_REGISTER(packet_s_process *packetS);
-	void process_RTP(packet_s_process *packetS);
+	void process_RTP(packet_s_process_0 *packetS);
 	inline void process_reassembly(packet_s_process **packetS_ref);
 	inline void process_parseSipData(packet_s_process **packetS_ref);
 	inline void process_sip(packet_s_process **packetS_ref);
 	inline void process_skinny(packet_s_process **packetS_ref);
-	inline void process_rtp(packet_s_process **packetS_ref);
+	inline void process_rtp(packet_s_process_0 **packetS_ref);
 	inline bool process_getCallID(packet_s_process **packetS_ref);
 	inline bool process_getCallID_publish(packet_s_process **packetS_ref);
 	inline void process_getSipMethod(packet_s_process **packetS_ref);

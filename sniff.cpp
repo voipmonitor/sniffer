@@ -4752,7 +4752,7 @@ endsip:
 	
 }
 
-inline int process_packet_rtp_inline(packet_s_process *packetS) {
+inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
  
 	Call *call = NULL;
 	int iscaller;
@@ -7099,7 +7099,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 	if(!isSip) {
 		packetS->packet_s_process_0::init2();
 		packetS->isSip = false;
-		this->process_rtp(&packetS);
+		this->process_rtp((packet_s_process_0**)&packetS);
 	}
 }
 
@@ -7138,7 +7138,7 @@ void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 1);
 }
 
-void PreProcessPacket::process_RTP(packet_s_process *packetS) {
+void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
 	if(process_packet_rtp_inline(packetS) < 2) {
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
 	}
@@ -7199,7 +7199,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 		
 	} while(true);
 	if(!isSip) {
-		this->process_rtp(&packetS);
+		this->process_rtp((packet_s_process_0**)&packetS);
 	}
 	if(multipleSip) {
 		PACKET_S_PROCESS_DESTROY(&packetS);
@@ -7237,14 +7237,14 @@ void PreProcessPacket::process_skinny(packet_s_process **packetS_ref) {
 	preProcessPacket[2]->push_packet(packetS);
 }
 
-void PreProcessPacket::process_rtp(packet_s_process **packetS_ref) {
-	packet_s_process *packetS = *packetS_ref;
+void PreProcessPacket::process_rtp(packet_s_process_0 **packetS_ref) {
+	packet_s_process_0 *packetS = *packetS_ref;
 	if(packetS->datalen > 2) { // && (htons(*(unsigned int*)data) & 0xC000) == 0x8000 // disable condition - failure for udptl (fax)
 		packetS->hash[0] = tuplehash(packetS->saddr, packetS->source);
 		packetS->hash[1] = tuplehash(packetS->daddr, packetS->dest);
 	}
 	if(packetS) {
-		preProcessPacket[2]->push_packet(packetS);
+		preProcessPacket[2]->push_packet((packet_s_process*)packetS);
 	}
 }
 
