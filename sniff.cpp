@@ -7106,6 +7106,8 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 		if(packetS) {
 			preProcessPacket[packetS->is_register ? 4 : 3]->push_packet(packetS);
 		}
+	} else if(packetS->isSkinny) {
+		preProcessPacket[3]->push_packet(packetS);
 	} else {
 		preProcessPacket[5]->push_packet(packetS);
 	}
@@ -7114,6 +7116,9 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 	if(packetS->isSip && !packetS->is_register) {
 		process_packet_sip_call_inline(packetS);
+	} else if(packetS->isSkinny) {
+		handle_skinny(&packetS->header, packetS->packet, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, packetS->datalen, packetS->dataoffset,
+			      packetS->handle, packetS->dlt, packetS->sensor_id);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 0);
 }
@@ -7147,6 +7152,10 @@ void PreProcessPacket::process_reassembly(packet_s_process **packetS_ref) {
 
 void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
+	if(packetS->istcp && opt_skinny && (packetS->source == 2000 || packetS->dest == 2000)) {
+		this->process_skinny(&packetS);
+		return;
+	}
 	bool isSip = false;
 	bool multipleSip = false;
 	do {
@@ -7211,6 +7220,13 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 	if(packetS) {
 		preProcessPacket[2]->push_packet(packetS);
 	}
+}
+
+void PreProcessPacket::process_skinny(packet_s_process **packetS_ref) {
+	packet_s_process *packetS = *packetS_ref;
+	packetS->isSkinny = true;
+	++counter_sip_packets[1];
+	preProcessPacket[2]->push_packet(packetS);
 }
 
 void PreProcessPacket::process_rtp(packet_s_process **packetS_ref) {

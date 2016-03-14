@@ -5373,13 +5373,14 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	}
 	if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc && !useTcpReassemblySsl && 
 	   opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
-		preProcessPacket[0]->push_packet(false /*is_ssl*/, packet_counter_all,
-						 header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest),
-						 data, datalen, data - (char*)packet,
-						 this->getPcapHandle(dlt), header, packet, false /*packetDelete*/,
-						 istcp, header_ip,
-						 block_store, block_store_index, dlt, sensor_id,
-						 true /*blockstore_lock*/);
+		preProcessPacket[0]->push_packet(
+			false /*is_ssl*/, packet_counter_all,
+			header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest),
+			data, datalen, data - (char*)packet,
+			this->getPcapHandle(dlt), header, packet, false /*packetDelete*/,
+			istcp, header_ip,
+			block_store, block_store_index, dlt, sensor_id,
+			true /*blockstore_lock*/);
 		if(opt_ipaccount) {
 			//TODO: detect if voippacket!
 			ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);

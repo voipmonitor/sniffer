@@ -437,6 +437,7 @@ private:
 	inline void process_reassembly(packet_s_process **packetS_ref);
 	inline void process_parseSipData(packet_s_process **packetS_ref);
 	inline void process_sip(packet_s_process **packetS_ref);
+	inline void process_skinny(packet_s_process **packetS_ref);
 	inline void process_rtp(packet_s_process **packetS_ref);
 	inline bool process_getCallID(packet_s_process **packetS_ref);
 	inline bool process_getCallID_publish(packet_s_process **packetS_ref);
