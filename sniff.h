@@ -201,6 +201,9 @@ struct packet_s_process : public packet_s_process_0 {
 	}
 	inline void init() {
 		packet_s_process_0::init();
+		_init();
+	}
+	inline void _init() {
 		sipDataOffset = 0;
 		sipDataLen = 0;
 		callid_short[0] = 0;

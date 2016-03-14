@@ -1577,6 +1577,20 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						outStrStat << "r" << qringFillingPerc;
 					}
 				}
+				if(i == 0 && sverb.alloc_stat) {
+					if(preProcessPacket[i]->getAllocCounter(1) || preProcessPacket[i]->getAllocStackCounter(1)) {
+						unsigned long stack = preProcessPacket[i]->getAllocStackCounter(0) - preProcessPacket[i]->getAllocStackCounter(1);
+						unsigned long alloc = preProcessPacket[i]->getAllocCounter(0) - preProcessPacket[i]->getAllocCounter(1);
+						outStrStat << "a" << stack << ':' << alloc << ':';
+						if(alloc + stack) {
+							outStrStat << (stack * 100 / (alloc + stack));
+						} else {
+							outStrStat << '-';
+						}
+					}
+					preProcessPacket[i]->setAllocCounter(preProcessPacket[i]->getAllocCounter(0), 1);
+					preProcessPacket[i]->setAllocStackCounter(preProcessPacket[i]->getAllocStackCounter(0), 1);
+				}
 				++count_t2cpu;
 				sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 				last_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;

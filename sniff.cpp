@@ -6904,6 +6904,8 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 		this->stackRtp = NULL;
 	}
 	this->enableOutThread = false;
+	allocCounter[0] = allocCounter[1] = 0;
+	allocStackCounter[0] = allocStackCounter[1] = 0;
 	vm_pthread_create(&this->out_thread_handle, NULL, _PreProcessPacket_outThreadFunction, this, __FILE__, __LINE__);
 }
 
@@ -7088,6 +7090,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 	    sipportmatrix[packetS->dest]) &&
 	   check_sip20(packetS->data, packetS->datalen, NULL)) {
 		++counter_sip_packets[0];
+		packetS->_init();
 		this->process_reassembly(&packetS);
 	} else {
 		packetS->isSip = false;

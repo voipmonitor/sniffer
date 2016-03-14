@@ -365,9 +365,10 @@ public:
 				abort();
 			}
 			*/
-			packetS->init();
+			++allocStackCounter[0];
 		} else {
 			packetS = new FILE_LINE packet_s_process;
+			++allocCounter[0];
 		}
 		packetS->stack = this->stackSip;
 		return(packetS);
@@ -382,8 +383,10 @@ public:
 			}
 			*/
 			packetS->init();
+			++allocStackCounter[0];
 		} else {
 			packetS = new FILE_LINE packet_s_process_0;
+			++allocCounter[0];
 		}
 		packetS->stack = this->stackRtp;
 		return(packetS);
@@ -426,6 +429,18 @@ public:
 	}
 	inline bool getEnableOutThread() {
 		return(enableOutThread);
+	}
+	inline unsigned long getAllocCounter(int index) {
+		return(allocCounter[index]);
+	}
+	inline unsigned long getAllocStackCounter(int index) {
+		return(allocStackCounter[index]);
+	}
+	inline void setAllocCounter(unsigned long c, int index) {
+		allocCounter[index] = c;
+	}
+	inline void setAllocStackCounter(unsigned long c, int index) {
+		allocStackCounter[index] = c;
 	}
 private:
 	void process_DETACH(packet_s *packetS_detach);
@@ -474,6 +489,8 @@ private:
 	cHeapItemsPointerStack *stackSip;
 	cHeapItemsPointerStack *stackRtp;
 	volatile bool enableOutThread;
+	unsigned long allocCounter[2];
+	unsigned long allocStackCounter[2];
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 friend class TcpReassemblySip;
 };
