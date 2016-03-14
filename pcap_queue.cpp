@@ -3222,18 +3222,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			bool okPush = true;
 			if((this->typeThread == md1 && !(this->counter % 2)) ||
 			   (this->typeThread == md2 && (opt_dup_check ? !hpii.header_packet->_md5[0] : !hpii.header_packet->_detect_headers))) {
-				if(opt_dup_check) {
+				if(opt_dup_check || !hpii.header_packet->_detect_headers) {
 					res = this->pcapProcess(&hpii.header_packet, this->typeThread,
-								false, true, false, false);
+								false, opt_dup_check, false, false);
 					if(res == -1) {
 						break;
 					} else if(res == 0) {
 						okPush = false;
-					}
-				} else {
-					if(!hpii.header_packet->_detect_headers) {
-						this->pcapProcess(&hpii.header_packet, this->typeThread,
-								  false, false, false, false);
 					}
 				}
 			}
