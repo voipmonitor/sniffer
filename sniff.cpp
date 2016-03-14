@@ -4420,7 +4420,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
 		detectUserAgent = true;
 		process_sdp(call, packetS,
-			    packetS->sip_method, contenttype_data_ptr, packetS->callid, ua, ua_len);
+			    packetS->sip_method, contenttype_data_ptr, packetS->get_callid(), ua, ua_len);
 	} else if(strcasestr(contenttypestr, "multipart/mixed")) {
 		char *ua = NULL;
 		unsigned long ua_len = 0;
@@ -4435,7 +4435,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				//Content-Type found try if it is SDP 
 				if(l > 0 && strcasestr(s2, "application/sdp")){
 					process_sdp(call, packetS,
-						    packetS->sip_method, s2, packetS->callid, ua, ua_len);
+						    packetS->sip_method, s2, packetS->get_callid(), ua, ua_len);
 					break;	// stop searching
 				} else {
 					// it is not SDP continue searching for another content-type 
@@ -4569,10 +4569,10 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		}
 	}
 		
-	call = calltable->find_by_register_id(packetS->callid, 0);
+	call = calltable->find_by_register_id(packetS->get_callid(), 0);
 	if(!call) {
 		if(packetS->sip_method == REGISTER) {
-			call = new_invite_register(packetS, packetS->sip_method, packetS->callid, &detectUserAgent);
+			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), &detectUserAgent);
 		}
 		if(!call) {
 			goto endsip;
@@ -4597,7 +4597,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			// to much register attempts without OK or 401 responses
 			call->regstate = 4;
 			call->saveregister();
-			call = new_invite_register(packetS, packetS->sip_method, packetS->callid, &detectUserAgent);
+			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), &detectUserAgent);
 			if(call == NULL) {
 				goto endsip;
 			}
@@ -7270,8 +7270,7 @@ bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
 		}
 	}
 	if(l > 0 && l <= 1023) {
-		memcpy(packetS->callid, s, MIN(l, sizeof(packetS->callid)));
-		packetS->callid[MIN(l, sizeof(packetS->callid) - 1)] = '\0';
+		packetS->set_callid(s, l);
 		return(true);
 	}
 	return(false);
@@ -7297,8 +7296,7 @@ bool PreProcessPacket::process_getCallID_publish(packet_s_process **packetS_ref)
 		if(isRtcpXr) {
 			s = gettag_sip(packetS, "\nCallID:", &l);
 			if(s && l > 0 && l <= 1023) {
-				memcpy(packetS->callid, s, MIN(l, sizeof(packetS->callid)));
-				packetS->callid[MIN(l, sizeof(packetS->callid) - 1)] = '\0';
+				packetS->set_callid(s, l);
 			} else {
 				return(false);
 			}
@@ -7336,7 +7334,7 @@ void PreProcessPacket::process_getLastSipResponse(packet_s_process **packetS_ref
 
 void PreProcessPacket::process_findCall(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
-	packetS->call = calltable->find_by_call_id(packetS->callid, 0, packetS->header.ts.tv_sec);
+	packetS->call = calltable->find_by_call_id(packetS->get_callid(), 0, packetS->header.ts.tv_sec);
 	if(packetS->call) {
 		packetS->call->handle_dscp(packetS->sip_method, packetS->header_ip, packetS->saddr, packetS->daddr, NULL, !IS_SIP_RESXXX(packetS->sip_method));
 		if(pcap_drop_flag) {
@@ -7346,7 +7344,7 @@ void PreProcessPacket::process_findCall(packet_s_process **packetS_ref) {
 			packetS->call->cancel_lsr487 = true;
 		}
 	} else if(opt_callidmerge_header[0] != '\0') {
-		packetS->call = process_packet__merge(packetS, packetS->callid, &packetS->merged, true);
+		packetS->call = process_packet__merge(packetS, packetS->get_callid(), &packetS->merged, true);
 	}
 	packetS->_findCall = true;
 }
@@ -7355,7 +7353,7 @@ void PreProcessPacket::process_createCall(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	if(packetS->_findCall && !packetS->call &&
 	   (packetS->sip_method == INVITE || packetS->sip_method == MESSAGE)) {
-		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->callid, &packetS->detectUserAgent);
+		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), &packetS->detectUserAgent);
 		packetS->_createCall = true;
 	}
 }
