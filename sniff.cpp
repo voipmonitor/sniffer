@@ -607,7 +607,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 			} else {
 				memcpy(packet, packetS->packet, packetLen);
 			}
-			iphdr2 *header_ip = (iphdr2*)(packet + (packetS->packet - (u_char*)packetS->header_ip));
+			iphdr2 *header_ip = (iphdr2*)(packet + ((u_char*)packetS->header_ip - packetS->packet));
 			header_ip->tot_len = htons(ntohs(header_ip->tot_len) - diffLen);
 			header->caplen -= diffLen;
 			header->len -= diffLen;
