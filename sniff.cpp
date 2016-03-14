@@ -7085,14 +7085,19 @@ void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
 }
 
 void PreProcessPacket::process_SIP(packet_s_process *packetS) {
+	bool isSip = false;
 	if((packetS->is_ssl ||
 	    sipportmatrix[packetS->source] || 
-	    sipportmatrix[packetS->dest]) &&
-	   check_sip20(packetS->data, packetS->datalen, NULL)) {
-		++counter_sip_packets[0];
-		packetS->_init();
-		this->process_reassembly(&packetS);
-	} else {
+	    sipportmatrix[packetS->dest])) {
+		packetS->init2();
+		if(check_sip20(packetS->data, packetS->datalen, NULL)) {
+			isSip = true;
+			++counter_sip_packets[0];
+			this->process_reassembly(&packetS);
+		}
+	}
+	if(!isSip) {
+		packetS->packet_s_process_0::init2();
 		packetS->isSip = false;
 		this->process_rtp(&packetS);
 	}

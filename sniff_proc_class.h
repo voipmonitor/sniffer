@@ -365,6 +365,7 @@ public:
 				abort();
 			}
 			*/
+			packetS->init();
 			++allocStackCounter[0];
 		} else {
 			packetS = new FILE_LINE packet_s_process;

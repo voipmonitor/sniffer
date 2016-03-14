@@ -163,10 +163,13 @@ struct packet_s_process_0 : public packet_s {
 	volatile int hash_find_flag;
 	inline packet_s_process_0() {
 		init();
+		init2();
 	}
 	inline void init() {
 		packet_s::init();
 		stack = NULL;
+	}
+	inline void init2() {
 		isSip = -1;
 		isSkinny = false;
 		hash[0] = 0;
@@ -198,12 +201,13 @@ struct packet_s_process : public packet_s_process_0 {
 	bool _createCall;
 	inline packet_s_process() {
 		init();
+		init2();
 	}
 	inline void init() {
 		packet_s_process_0::init();
-		_init();
 	}
-	inline void _init() {
+	inline void init2() {
+		packet_s_process_0::init2();
 		sipDataOffset = 0;
 		sipDataLen = 0;
 		callid_short[0] = 0;
