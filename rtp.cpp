@@ -2407,6 +2407,7 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap, bool needLock) {
 
 		if(!sqlDbSaveCall) {
 			sqlDbSaveCall = createSqlObject();
+			sqlDbSaveCall->setEnableSqlStringInContent(true);
 		}
 
 		for(it = cmap->begin(); it != cmap->end(); it++) {
