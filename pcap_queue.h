@@ -486,7 +486,8 @@ public:
 		defrag,
 		md1,
 		md2,
-		dedup
+		dedup,
+		service
 	};
 	struct hpi {
 		sHeaderPacket *header_packet;
@@ -605,11 +606,13 @@ private:
 	PcapQueue_readFromInterfaceThread *md1Thread;
 	PcapQueue_readFromInterfaceThread *md2Thread;
 	PcapQueue_readFromInterfaceThread *dedupThread;
+	PcapQueue_readFromInterfaceThread *serviceThread;
 	PcapQueue_readFromInterfaceThread *prevThread;
 	bool threadDoTerminate;
 	cHeaderPacketStack *headerPacketStack;
 	unsigned long allocCounter[2];
 	unsigned long allocStackCounter[2];
+	bool prepareHeaderPacketPool; // experimental option
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;
 };

@@ -2704,6 +2704,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->md1Thread = NULL;
 	this->md2Thread = NULL;
 	this->dedupThread = NULL;
+	this->serviceThread = NULL;
 	this->typeThread = typeThread;
 	this->prevThread = prevThread;
 	this->threadDoTerminate = false;
@@ -2719,6 +2720,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	*/
 	allocCounter[0] = allocCounter[1] = 0;
 	allocStackCounter[0] = allocStackCounter[1] = 0;
+	prepareHeaderPacketPool = false; // experimental option
 	vm_pthread_create(&this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this, __FILE__, __LINE__);
 }
 
@@ -2752,6 +2754,12 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 			usleep(100000);
 		}
 		delete this->dedupThread;
+	}
+	if(this->serviceThread) {
+		while(this->serviceThread->threadInitOk && !this->serviceThread->isTerminated()) {
+			usleep(100000);
+		}
+		delete this->serviceThread;
 	}
 	for(unsigned int i = 0; i < this->qringmax; i++) {
 		delete this->qring[i];
@@ -2952,7 +2960,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			   this->typeThread == defrag ? "defrag" :
 			   this->typeThread == md1 ? "md1" :
 			   this->typeThread == md2 ? "md2" :
-			   this->typeThread == dedup ? "dedup" : "---") 
+			   this->typeThread == dedup ? "dedup" :
+			   this->typeThread == service ? "service" : "---")
 		       << " (" << this->getInterfaceName() << ") - pid: " << this->threadId << endl;
 		syslog(LOG_NOTICE, outStr.str().c_str());
 	}
@@ -2968,6 +2977,9 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				this->md1Thread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this->defragThread);
 				this->md2Thread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->md1Thread);
 				this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->md2Thread);
+				if(this->prepareHeaderPacketPool) {
+					this->serviceThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), service, this, this);
+				}
 			} else {
 				this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this);
 			}
@@ -2997,6 +3009,10 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				this->dedupThread->threadInitFailed = true;
 				this->dedupThread->threadDoTerminate = true;
 			}
+			if(this->serviceThread) {
+				this->serviceThread->threadInitFailed = true;
+				this->serviceThread->threadDoTerminate = true;
+			}
 			if(!opt_pcap_queue_receive_from_ip_port) {
 				vm_terminate_error(error.c_str());
 			}
@@ -3024,6 +3040,9 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		}
 		if(this->dedupThread) {
 			this->dedupThread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
+		}
+		if(this->serviceThread) {
+			this->serviceThread->pcapLinklayerHeaderType = this->pcapLinklayerHeaderType;
 		}
 	} else {
 		while(!is_terminating() && this->readThread->threadInitOk != 2) {
@@ -3114,14 +3133,22 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			} else {
 				if(!header_packet_read) {
 					if(sverb.alloc_stat) {
-						if(this->headerPacketStack->pop(&header_packet_read) == 2) {
+						if((this->prepareHeaderPacketPool ?
+						     this->headerPacketStack->pop_prepared(&header_packet_read) : 
+						     this->headerPacketStack->pop(&header_packet_read)) == 2) {
 							++allocCounter[0];
 						} else {
 							++allocStackCounter[0];
 						}
 					} else {
-						this->headerPacketStack->pop(&header_packet_read);
+						if(this->prepareHeaderPacketPool) {
+							this->headerPacketStack->pop_prepared(&header_packet_read);
+						} else {
+							this->headerPacketStack->pop(&header_packet_read);
+						}
 					}
+				} else {
+					header_packet_read->clearPcapProcessData();
 				}
 				if(_useOneshotBuffer) {
 					setOneshotBuffer(HPP(header_packet_read));
@@ -3334,6 +3361,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			}
 			}
 			break;
+		case service:
+			if(!this->readThread->headerPacketStack->pop_queue_prepare()) {
+				usleep(10);
+			}
+			break;
 		}
 	}
 	if(header_packet_read) {
@@ -3399,6 +3431,9 @@ void PcapQueue_readFromInterfaceThread::terminate() {
 	}
 	if(this->dedupThread) {
 		this->dedupThread->terminate();
+	}
+	if(this->serviceThread) {
+		this->serviceThread->terminate();
 	}
 	this->threadDoTerminate = true;
 }
@@ -4089,6 +4124,19 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						string qringFillingPerc = this->readThreads[i]->dedupThread->getQringFillingPercStr();
+						if(qringFillingPerc.length()) {
+							outStrStat << "r" << qringFillingPerc;
+						}
+					}
+				}
+			}
+			if(this->readThreads[i]->serviceThread) {
+				double tid_cpu = this->readThreads[i]->serviceThread->getCpuUsagePerc(true);
+				if(tid_cpu >= 0) {
+					sum += tid_cpu;
+					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					if(sverb.qring_stat) {
+						string qringFillingPerc = this->readThreads[i]->serviceThread->getQringFillingPercStr();
 						if(qringFillingPerc.length()) {
 							outStrStat << "r" << qringFillingPerc;
 						}

@@ -38,6 +38,8 @@ public:
 		for(int i = 0; i < HEADER_PACKET_STACK_PUSH_QUEUE_MAX; i++) {
 			push_queues_size[i] = 0;
 		}
+		pop_queue_pool_prepared = false;
+		_sync_prepare = 0;
 		this->stack = new FILE_LINE rqueue_quick<sHeaderPacketPool>(size_max / HEADER_PACKET_STACK_POOL_SIZE, 0, 0, NULL, false, __FILE__, __LINE__);
 	}
 	~cHeaderPacketStack() {
@@ -107,6 +109,49 @@ public:
 		(*headerPacket)->clearPcapProcessData();
 		return(1);
 	}
+	inline int pop_queue_prepare() {
+		if(!pop_queue_pool_prepared) {
+			int rslt = 0;
+			while(__sync_lock_test_and_set(&_sync_prepare, 1));
+			if(stack->popq(&this->pop_queue_pool_prepare)) {
+				for(int i = 0; i < HEADER_PACKET_STACK_POOL_SIZE; i++) {
+					memset(this->pop_queue_pool_prepare.pool[i], 0, 100);
+                                        this->pop_queue_pool_prepare.pool[i]->stack = this;
+                                        this->pop_queue_pool_prepare.pool[i]->packet_alloc_size = packet_alloc_size;
+                                        this->pop_queue_pool_prepare.pool[i]->clearPcapProcessData();
+				}
+				pop_queue_pool_prepared = true;
+				rslt = 1;
+			}
+			__sync_lock_release(&_sync_prepare);
+			return(rslt);
+		}
+		return(0);
+	}
+	inline int pop_prepared(sHeaderPacket **headerPacket) {
+		if(this->pop_queue_size > 0) {
+			*headerPacket = this->pop_queue.pool[HEADER_PACKET_STACK_POOL_SIZE - this->pop_queue_size];
+			--this->pop_queue_size;
+		} else {
+			while(__sync_lock_test_and_set(&_sync_prepare, 1));
+			if(pop_queue_pool_prepared) {
+				this->pop_queue = this->pop_queue_pool_prepare;
+				pop_queue_pool_prepared = false;
+				__sync_lock_release(&_sync_prepare);
+				*headerPacket = this->pop_queue.pool[0];
+				this->pop_queue_size = HEADER_PACKET_STACK_POOL_SIZE - 1;
+				//cout << "P" << flush;
+			} else {
+				__sync_lock_release(&_sync_prepare);
+				*headerPacket = (sHeaderPacket*)new FILE_LINE u_char[sizeof(sHeaderPacket) + packet_alloc_size];
+				(*headerPacket)->stack = this;
+				(*headerPacket)->packet_alloc_size = packet_alloc_size;
+				(*headerPacket)->clearPcapProcessData();
+				return(2);
+			}
+		}
+		return(1);
+	}
 public:
 	u_int16_t packet_alloc_size;
 	sHeaderPacketPool pop_queue;
@@ -114,6 +159,9 @@ public:
 	sHeaderPacketPool push_queues[HEADER_PACKET_STACK_PUSH_QUEUE_MAX];
 	u_int16_t push_queues_size[HEADER_PACKET_STACK_PUSH_QUEUE_MAX];
 	rqueue_quick<sHeaderPacketPool> *stack;
+	volatile bool pop_queue_pool_prepared;
+	sHeaderPacketPool pop_queue_pool_prepare;
+	volatile int _sync_prepare;
 };
 
 inline sHeaderPacket *CREATE_HP(u_int16_t packet_alloc_size) {
