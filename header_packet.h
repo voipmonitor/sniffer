@@ -57,7 +57,8 @@ public:
 		if(!headerPacket) {
 			return(0);
 		}
-		if(!headerPacket->stack) {
+		extern int opt_block_alloc_stack;
+		if(opt_block_alloc_stack || !headerPacket->stack) {
 			delete [] headerPacket;
 			return(2);
 		}

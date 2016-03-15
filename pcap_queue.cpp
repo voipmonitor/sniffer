@@ -1583,7 +1583,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						unsigned long alloc = preProcessPacket[i]->getAllocCounter(0) - preProcessPacket[i]->getAllocCounter(1);
 						outStrStat << "a" << stack << ':' << alloc << ':';
 						if(alloc + stack) {
-							outStrStat << (stack * 100 / (alloc + stack));
+							outStrStat << (stack * 100 / (alloc + stack)) << '%';
 						} else {
 							outStrStat << '-';
 						}
@@ -4006,7 +4006,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				if(this->readThreads[i]->allocCounter[1] || this->readThreads[i]->allocStackCounter[1]) {
 					unsigned long stack = this->readThreads[i]->allocStackCounter[0] - this->readThreads[i]->allocStackCounter[1];
 					unsigned long alloc = this->readThreads[i]->allocCounter[0] - this->readThreads[i]->allocCounter[1];
-					outStrStat << "a" << stack << ':' << alloc << ':';
+					outStrStat << "%%a" << stack << ':' << alloc << ':';
 					if(alloc + stack) {
 						outStrStat << (stack * 100 / (alloc + stack));
 					} else {
@@ -4026,6 +4026,20 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 						if(qringFillingPerc.length()) {
 							outStrStat << "r" << qringFillingPerc;
 						}
+					}
+					if(sverb.alloc_stat) {
+						if(this->readThreads[i]->detachThread->allocCounter[1] || this->readThreads[i]->detachThread->allocStackCounter[1]) {
+							unsigned long stack = this->readThreads[i]->detachThread->allocStackCounter[0] - this->readThreads[i]->detachThread->allocStackCounter[1];
+							unsigned long alloc = this->readThreads[i]->detachThread->allocCounter[0] - this->readThreads[i]->detachThread->allocCounter[1];
+							outStrStat << "%%a" << stack << ':' << alloc << ':';
+							if(alloc + stack) {
+								outStrStat << (stack * 100 / (alloc + stack));
+							} else {
+								outStrStat << '-';
+							}
+						}
+						this->readThreads[i]->detachThread->allocCounter[1] = this->readThreads[i]->detachThread->allocCounter[0];
+						this->readThreads[i]->detachThread->allocStackCounter[1] = this->readThreads[i]->detachThread->allocStackCounter[0];
 					}
 				}
 			}

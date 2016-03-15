@@ -92,6 +92,7 @@ int opt_blocktarwrite = 0;
 int opt_blockasyncprocess = 0;
 int opt_blockprocesspacket = 0;
 int opt_blockqfile = 0;
+int opt_block_alloc_stack = 0;
 
 using namespace std;
 
@@ -2140,6 +2141,10 @@ getwav:
 		opt_blockqfile = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblockqfile") != NULL) {
 		opt_blockqfile = 0;
+	} else if(buf[0] == 'b' and strstr(buf, "block_alloc_stack") != NULL) {
+		opt_block_alloc_stack = 1;
+	} else if(buf[0] == 'u' and strstr(buf, "unblock_alloc_stack") != NULL) {
+		opt_block_alloc_stack = 0;
 	} else if(strstr(buf, "malloc_trim") != NULL) {
 		malloc_trim(0);
 	} else if(strstr(buf, "memcrash_test_1") != NULL) {

@@ -407,7 +407,9 @@ public:
 	inline void packetS_push_to_stack(packet_s_process **packetS, u_int16_t queue_index) {
 		(*packetS)->blockstore_unlock();
 		(*packetS)->packetdelete();
-		if(!(*packetS)->stack ||
+		extern int opt_block_alloc_stack;
+		if(opt_block_alloc_stack ||
+		   !(*packetS)->stack ||
 		   !(*packetS)->stack->push((void*)*packetS, queue_index)) {
 			delete *packetS;
 		}
@@ -416,7 +418,9 @@ public:
 	inline void packetS_push_to_stack(packet_s_process_0 **packetS, u_int16_t queue_index) {
 		(*packetS)->blockstore_unlock();
 		(*packetS)->packetdelete();
-		if(!(*packetS)->stack ||
+		extern int opt_block_alloc_stack;
+		if(opt_block_alloc_stack ||
+		   !(*packetS)->stack ||
 		   !(*packetS)->stack->push((void*)*packetS, queue_index)) {
 			delete *packetS;
 		}
