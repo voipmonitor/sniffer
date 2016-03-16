@@ -1657,7 +1657,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		if(last_t2cpu_preprocess_packet_out_thread_check_next_level > opt_cpu_limit_new_thread) {
 			PreProcessPacket::autoStartNextLevelPreProcessPacket();
-		} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level > opt_cpu_limit_delete_thread) {
+		} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_thread) {
 			PreProcessPacket::autoStopLastLevelPreProcessPacket();
 		}
 		if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
