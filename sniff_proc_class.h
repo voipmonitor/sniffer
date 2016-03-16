@@ -120,11 +120,15 @@ private:
 };
 
 
+//#define PREPROCESS_DETACH2
+
 class PreProcessPacket {
 public:
 	enum eTypePreProcessThread {
 		ppt_detach,
+		#ifdef PREPROCESS_DETACH2
 		ppt_detach2,
+		#endif
 		ppt_sip,
 		ppt_extend,
 		ppt_pp_call,
@@ -288,7 +292,9 @@ public:
 			}
 			switch(this->typePreProcessThread) {
 			case ppt_detach:
+			#ifdef PREPROCESS_DETACH2
 			case ppt_detach2:
+			#endif
 				break;
 			case ppt_sip:
 				this->process_SIP(packetS);
@@ -337,7 +343,9 @@ public:
 			}
 			switch(this->typePreProcessThread) {
 			case ppt_detach:
+			#ifdef PREPROCESS_DETACH2
 			case ppt_detach2:
+			#endif
 			case ppt_sip:
 			case ppt_extend:
 				process_packet__push_batch();
@@ -473,8 +481,10 @@ public:
 		switch(typePreProcessThread) {
 		case ppt_detach:
 			return("detach");
+		#ifdef PREPROCESS_DETACH2
 		case ppt_detach2:
 			return("detach2");
+		#endif
 		case ppt_sip:
 			return("sip");
 		case ppt_extend:
@@ -494,8 +504,10 @@ public:
 		switch(typePreProcessThread) {
 		case ppt_detach:
 			return("d");
+		#ifdef PREPROCESS_DETACH2
 		case ppt_detach2:
 			return("2:");
+		#endif
 		case ppt_sip:
 			return("s");
 		case ppt_extend:

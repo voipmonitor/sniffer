@@ -6976,12 +6976,14 @@ void *PreProcessPacket::outThreadFunction() {
 					switch(this->typePreProcessThread) {
 					case ppt_detach:
 						break;
+					#ifdef PREPROCESS_DETACH2
 					case ppt_detach2:
 						preProcessPacket[ppt_sip]->push_packet(packetS);
 						if(batch_index == batch->count - 1) {
 							preProcessPacket[ppt_sip]->push_batch();
 						}
 						break;
+					#endif
 					case ppt_sip:
 						this->process_SIP(packetS);
 						if(batch_index == batch->count - 1) {
@@ -7025,12 +7027,18 @@ void *PreProcessPacket::outThreadFunction() {
 			}
 			if(usleepSumTimeForPushBatch > 500000ull) {
 				switch(this->typePreProcessThread) {
+				#ifdef PREPROCESS_DETACH2
 				case ppt_detach:
 					preProcessPacket[ppt_detach2]->push_batch();
 					break;
 				case ppt_detach2:
 					preProcessPacket[ppt_sip]->push_batch();
 					break;
+				#else
+				case ppt_detach:
+					preProcessPacket[ppt_sip]->push_batch();
+					break;
+				#endif
 				case ppt_sip:
 					preProcessPacket[ppt_extend]->push_batch();
 					break;
@@ -7103,7 +7111,11 @@ void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
 				     PACKET_S_PROCESS_SIP_POP_FROM_STACK() : 
 				     (packet_s_process*)PACKET_S_PROCESS_RTP_POP_FROM_STACK();
 	*(packet_s*)packetS = *packetS_detach;
+	#ifdef PREPROCESS_DETACH2
 	preProcessPacket[ppt_detach2]->push_packet(packetS);
+	#else
+	preProcessPacket[ppt_sip]->push_packet(packetS);
+	#endif
 }
 
 void PreProcessPacket::process_SIP(packet_s_process *packetS) {
