@@ -25,7 +25,7 @@ vector<string> decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr,
 #endif
 
 extern map<d_u_int32_t, string> ssl_ipport;
-extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 
 
 SslData::SslData() {
@@ -131,7 +131,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 									  ethHeader, (u_char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(),
 									  _ip_src, _ip_dst, _port_src, _port_dst,
 									  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
-						preProcessPacket[0]->push_packet(
+						preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 							true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
 							(char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
 							handle, udpHeader, udpPacket, true, 

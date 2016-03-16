@@ -637,7 +637,7 @@ char mac[32] = "";
 PcapQueue_readFromInterface *pcapQueueInterface;
 PcapQueue *pcapQueueStatInterface;
 
-PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 ProcessRtpPacket *processRtpPacketHash;
 ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 
@@ -695,6 +695,7 @@ char opt_syslog_string[256];
 int opt_cpu_limit_warning_t0 = 60;
 int opt_cpu_limit_new_thread = 50;
 int opt_cpu_limit_delete_thread = 5;
+int opt_cpu_limit_delete_t2sip_thread = 17;
 
 extern pthread_mutex_t tartimemaplock;
 
@@ -2775,16 +2776,11 @@ int main_init_read() {
 		}
 	}
 	
-	for(int i = 0; i < MAX_PREPROCESS_PACKET_THREADS; i++) {
-		preProcessPacket[i] = new FILE_LINE PreProcessPacket(i == 0 ? PreProcessPacket::ppt_detach : 
-								     i == 1 ? PreProcessPacket::ppt_sip :
-								     i == 2 ? PreProcessPacket::ppt_extend :
-								     i == 3 ? PreProcessPacket::ppt_pp_call :
-								     i == 4 ? PreProcessPacket::ppt_pp_register :
-									      PreProcessPacket::ppt_pp_rtp);
+	for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
+		preProcessPacket[i] = new FILE_LINE PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 	}
 	if(!is_read_from_file_simple()) {
-		for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, MAX_PREPROCESS_PACKET_THREADS)); i++) {
+		for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end)); i++) {
 			preProcessPacket[i]->startOutThread();
 		}
 	}
@@ -3042,7 +3038,7 @@ void main_term_read() {
 		}
 	}
 	
-	for(int i = 0; i < MAX_PREPROCESS_PACKET_THREADS; i++) {
+	for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
 		if(preProcessPacket[i]) {
 			preProcessPacket[i]->terminate();
 			delete preProcessPacket[i];
@@ -4776,6 +4772,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new cConfigItem_string("syslog_string", opt_syslog_string, sizeof(opt_syslog_string)));
 		addConfigItem(new cConfigItem_integer("cpu_limit_new_thread", &opt_cpu_limit_new_thread));
 		addConfigItem(new cConfigItem_integer("cpu_limit_delete_thread", &opt_cpu_limit_delete_thread));
+		addConfigItem(new cConfigItem_integer("cpu_limit_delete_t2sip_thread", &opt_cpu_limit_delete_t2sip_thread));
 	group("upgrade");
 		addConfigItem(new cConfigItem_yesno("upgrade_try_http_if_https_fail", &opt_upgrade_try_http_if_https_fail));
 		addConfigItem(new cConfigItem_string("curlproxy", opt_curlproxy, sizeof(opt_curlproxy)));
@@ -7030,7 +7027,7 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
-					       !strcmp(value, "extend") ? MAX_PREPROCESS_PACKET_THREADS :
+					       !strcmp(value, "extend") ? PreProcessPacket::ppt_end :
 					       !strcmp(value, "sip") ? 3 : 
 					       yesno(value);
 	}
@@ -7401,6 +7398,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cpu_limit_delete_thread", NULL))) {
 		opt_cpu_limit_delete_thread = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cpu_limit_delete_t2sip_thread", NULL))) {
+		opt_cpu_limit_delete_t2sip_thread = atoi(value);
 	}
 
 	if((value = ini.GetValue("general", "preprocess_packets_qring_length", NULL))) {

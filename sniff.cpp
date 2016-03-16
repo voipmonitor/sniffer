@@ -210,7 +210,7 @@ extern int opt_passertedidentity;
 extern char cloud_host[256];
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
-extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern CustomHeaders *custom_headers_cdr;
@@ -6407,7 +6407,7 @@ void readdump_libpcap(pcap_t *handle) {
 		}
 		int voippacket = 0;
 		if(!opt_mirroronly) {
-			preProcessPacket[0]->push_packet(
+			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 				false, packet_counter,
 				ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
 				ppd.data, ppd.datalen, (u_char*)ppd.data - HPP(header_packet), 
@@ -6840,7 +6840,7 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id id, PreProcess
 	if(processPacket) {
 		processPacket->process_parseSipData(&completePacketS);
 	} else {
-		preProcessPacket[2]->push_packet(completePacketS);
+		preProcessPacket[PreProcessPacket::ppt_extend]->push_packet(completePacketS);
 	}
 	cleanStream(stream);
 }
@@ -6976,18 +6976,24 @@ void *PreProcessPacket::outThreadFunction() {
 					switch(this->typePreProcessThread) {
 					case ppt_detach:
 						break;
+					case ppt_detach2:
+						preProcessPacket[ppt_sip]->push_packet(packetS);
+						if(batch_index == batch->count - 1) {
+							preProcessPacket[ppt_sip]->push_batch();
+						}
+						break;
 					case ppt_sip:
 						this->process_SIP(packetS);
 						if(batch_index == batch->count - 1) {
-							preProcessPacket[2]->push_batch();
+							preProcessPacket[ppt_extend]->push_batch();
 						}
 						break;
 					case ppt_extend:
 						this->process_SIP_EXTEND(packetS);
 						if(batch_index == batch->count - 1) {
-							preProcessPacket[3]->push_batch();
-							preProcessPacket[4]->push_batch();
-							preProcessPacket[5]->push_batch();
+							preProcessPacket[ppt_pp_call]->push_batch();
+							preProcessPacket[ppt_pp_register]->push_batch();
+							preProcessPacket[ppt_pp_rtp]->push_batch();
 						}
 						break;
 					case ppt_pp_call:
@@ -6998,6 +7004,8 @@ void *PreProcessPacket::outThreadFunction() {
 						break;
 					case ppt_pp_rtp:
 						this->process_RTP(packetS);
+						break;
+					case ppt_end:
 						break;
 					}
 				}
@@ -7018,21 +7026,25 @@ void *PreProcessPacket::outThreadFunction() {
 			if(usleepSumTimeForPushBatch > 500000ull) {
 				switch(this->typePreProcessThread) {
 				case ppt_detach:
-					preProcessPacket[1]->push_batch();
+					preProcessPacket[ppt_detach2]->push_batch();
+					break;
+				case ppt_detach2:
+					preProcessPacket[ppt_sip]->push_batch();
 					break;
 				case ppt_sip:
-					preProcessPacket[2]->push_batch();
+					preProcessPacket[ppt_extend]->push_batch();
 					break;
 				case ppt_extend:
-					preProcessPacket[3]->push_batch();
-					preProcessPacket[4]->push_batch();
-					preProcessPacket[5]->push_batch();
+					preProcessPacket[ppt_pp_call]->push_batch();
+					preProcessPacket[ppt_pp_register]->push_batch();
+					preProcessPacket[ppt_pp_rtp]->push_batch();
 					break;
 				case ppt_pp_call:
 					process_packet__push_batch();
 					break;
 				case ppt_pp_register:
 				case ppt_pp_rtp:
+				case ppt_end:
 					break;
 				}
 				usleepSumTimeForPushBatch = 0;
@@ -7079,6 +7091,9 @@ double PreProcessPacket::getCpuUsagePerc(bool preparePstatData) {
 
 void PreProcessPacket::terminate() {
 	this->term_preProcess = true;
+	while(this->outThreadState) {
+		usleep(10);
+	}
 }
 
 void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
@@ -7088,7 +7103,7 @@ void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
 				     PACKET_S_PROCESS_SIP_POP_FROM_STACK() : 
 				     (packet_s_process*)PACKET_S_PROCESS_RTP_POP_FROM_STACK();
 	*(packet_s*)packetS = *packetS_detach;
-	preProcessPacket[1]->push_packet(packetS);
+	preProcessPacket[ppt_detach2]->push_packet(packetS);
 }
 
 void PreProcessPacket::process_SIP(packet_s_process *packetS) {
@@ -7119,12 +7134,12 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 			this->process_createCall(&packetS);
 		}
 		if(packetS) {
-			preProcessPacket[packetS->is_register ? 4 : 3]->push_packet(packetS);
+			preProcessPacket[packetS->is_register ? ppt_pp_register : ppt_pp_call]->push_packet(packetS);
 		}
 	} else if(packetS->isSkinny) {
-		preProcessPacket[3]->push_packet(packetS);
+		preProcessPacket[ppt_pp_call]->push_packet(packetS);
 	} else {
-		preProcessPacket[5]->push_packet(packetS);
+		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
 	}
 }
 
@@ -7233,7 +7248,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 	this->process_getLastSipResponse(&packetS);
 	++counter_sip_packets[1];
 	if(packetS) {
-		preProcessPacket[2]->push_packet(packetS);
+		preProcessPacket[ppt_extend]->push_packet(packetS);
 	}
 }
 
@@ -7241,7 +7256,7 @@ void PreProcessPacket::process_skinny(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	packetS->isSkinny = true;
 	++counter_sip_packets[1];
-	preProcessPacket[2]->push_packet(packetS);
+	preProcessPacket[ppt_extend]->push_packet(packetS);
 }
 
 void PreProcessPacket::process_rtp(packet_s_process_0 **packetS_ref) {
@@ -7251,7 +7266,7 @@ void PreProcessPacket::process_rtp(packet_s_process_0 **packetS_ref) {
 		packetS->hash[1] = tuplehash(packetS->daddr, packetS->dest);
 	}
 	if(packetS) {
-		preProcessPacket[2]->push_packet((packet_s_process*)packetS);
+		preProcessPacket[ppt_extend]->push_packet((packet_s_process*)packetS);
 	}
 }
 
@@ -7375,18 +7390,18 @@ void PreProcessPacket::process_createCall(packet_s_process **packetS_ref) {
 
 void PreProcessPacket::autoStartNextLevelPreProcessPacket() {
 	int i = 0;
-	for(; i < MAX_PREPROCESS_PACKET_THREADS && preProcessPacket[i]->isActiveOutThread(); i++);
+	for(; i < PreProcessPacket::ppt_end && preProcessPacket[i]->isActiveOutThread(); i++);
 	if(!opt_sip_register && preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::PreProcessPacket::ppt_pp_register) {
 		++i;
 	}
-	if(i < MAX_PREPROCESS_PACKET_THREADS) {
+	if(i < PreProcessPacket::ppt_end) {
 		preProcessPacket[i]->startOutThread();
 	}
 }
 
 void PreProcessPacket::autoStopLastLevelPreProcessPacket() {
 	int i = 0;
-	for(i = MAX_PREPROCESS_PACKET_THREADS - 1; i > 0 && !preProcessPacket[i]->isActiveOutThread(); i--);
+	for(i = PreProcessPacket::ppt_end - 1; i > 0 && !preProcessPacket[i]->isActiveOutThread(); i--);
 	if(i > 0 && preProcessPacket[i]->isActiveOutThread()) {
 		preProcessPacket[i]->stopOutThread();
 	}

@@ -108,7 +108,7 @@ extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
 extern volatile int registers_counter;
-extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
+extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern TcpReassembly *tcpReassemblyHttp;
@@ -1050,6 +1050,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	extern int opt_cpu_limit_warning_t0;
 	extern int opt_cpu_limit_new_thread;
 	extern int opt_cpu_limit_delete_thread;
+	extern int opt_cpu_limit_delete_t2sip_thread;
 
 //For RRDs files update
 //rrd heap file 2db-heap.rrd
@@ -1561,16 +1562,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double sum_t2cpu = t2cpu;
 		last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu;
 		last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu;
-		for(int i = 0; i < MAX_PREPROCESS_PACKET_THREADS; i++) {
+		for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
 			double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
 			if(t2cpu_preprocess_packet_out_thread >= 0) {
 				outStrStat << "/" 
-					   << (i == 0 ? "d:" :
-					       i == 1 ? "s:" : 
-					       i == 2 ? "e:" :
-					       i == 3 ? "c:" :
-					       i == 4 ? "g:" :
-							"r:")
+					   << preProcessPacket[i]->getShortcatTypeThread()
 					   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 				if(sverb.qring_stat) {
 					double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
@@ -1657,7 +1653,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		if(last_t2cpu_preprocess_packet_out_thread_check_next_level > opt_cpu_limit_new_thread) {
 			PreProcessPacket::autoStartNextLevelPreProcessPacket();
-		} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_thread) {
+		} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_t2sip_thread) {
 			PreProcessPacket::autoStopLastLevelPreProcessPacket();
 		}
 		if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
@@ -5477,7 +5473,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 	}
 	if(!useTcpReassemblyHttp && !useTcpReassemblyWebrtc && !useTcpReassemblySsl && 
 	   opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
-		preProcessPacket[0]->push_packet(
+		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 			false /*is_ssl*/, packet_counter_all,
 			header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest),
 			data, datalen, data - (char*)packet,
@@ -5495,7 +5491,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 }
 
 void PcapQueue_readFromFifo::pushBatchProcessPacket() {
-	preProcessPacket[0]->push_batch();
+	preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
 }
 
 void PcapQueue_readFromFifo::checkFreeSizeCachedir() {

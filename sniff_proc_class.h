@@ -124,11 +124,13 @@ class PreProcessPacket {
 public:
 	enum eTypePreProcessThread {
 		ppt_detach,
+		ppt_detach2,
 		ppt_sip,
 		ppt_extend,
 		ppt_pp_call,
 		ppt_pp_register,
-		ppt_pp_rtp
+		ppt_pp_rtp,
+		ppt_end
 	};
 	struct batch_packet_s {
 		batch_packet_s(unsigned max_count) {
@@ -286,6 +288,7 @@ public:
 			}
 			switch(this->typePreProcessThread) {
 			case ppt_detach:
+			case ppt_detach2:
 				break;
 			case ppt_sip:
 				this->process_SIP(packetS);
@@ -301,6 +304,8 @@ public:
 				break;
 			case ppt_pp_rtp:
 				this->process_RTP(packetS);
+				break;
+			case ppt_end:
 				break;
 			}
 		}
@@ -332,6 +337,7 @@ public:
 			}
 			switch(this->typePreProcessThread) {
 			case ppt_detach:
+			case ppt_detach2:
 			case ppt_sip:
 			case ppt_extend:
 				process_packet__push_batch();
@@ -339,6 +345,7 @@ public:
 			case ppt_pp_call:
 			case ppt_pp_register:
 			case ppt_pp_rtp:
+			case ppt_end:
 				break;
 			}
 		}
@@ -466,6 +473,8 @@ public:
 		switch(typePreProcessThread) {
 		case ppt_detach:
 			return("detach");
+		case ppt_detach2:
+			return("detach2");
 		case ppt_sip:
 			return("sip");
 		case ppt_extend:
@@ -476,6 +485,29 @@ public:
 			return("register");
 		case ppt_pp_rtp:
 			return("rtp");
+		case ppt_end:
+			break;
+		}
+		return("");
+	}
+	string getShortcatTypeThread() {
+		switch(typePreProcessThread) {
+		case ppt_detach:
+			return("d");
+		case ppt_detach2:
+			return("2:");
+		case ppt_sip:
+			return("s");
+		case ppt_extend:
+			return("e");
+		case ppt_pp_call:
+			return("c");
+		case ppt_pp_register:
+			return("g");
+		case ppt_pp_rtp:
+			return("r");
+		case ppt_end:
+			break;
 		}
 		return("");
 	}
@@ -534,43 +566,43 @@ friend class TcpReassemblySip;
 };
 
 inline packet_s_process *PACKET_S_PROCESS_SIP_CREATE() {
-	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
-	return(preProcessPacket[0]->packetS_sip_create());
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_create());
 }
 
 inline packet_s_process_0 *PACKET_S_PROCESS_RTP_CREATE() {
-	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
-	return(preProcessPacket[0]->packetS_rtp_create());
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_create());
 }
 
 inline packet_s_process *PACKET_S_PROCESS_SIP_POP_FROM_STACK(u_int16_t queue_index = 0) {
-	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
-	return(preProcessPacket[0]->packetS_sip_pop_from_stack(queue_index));
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(queue_index));
 }
 
 inline packet_s_process_0 *PACKET_S_PROCESS_RTP_POP_FROM_STACK(u_int16_t queue_index = 0) {
-	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
-	return(preProcessPacket[0]->packetS_rtp_pop_from_stack(queue_index));
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(queue_index));
 }
 
 inline void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet) {
-	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
-	preProcessPacket[0]->packetS_destroy(packet);
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy(packet);
 }
 
 inline void PACKET_S_PROCESS_DESTROY(packet_s_process **packet) {
-	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
-	preProcessPacket[0]->packetS_destroy(packet);
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy(packet);
 }
 
 inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process_0 **packet, u_int16_t queue_index) {
-	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
-	preProcessPacket[0]->packetS_push_to_stack(packet, queue_index);
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
 }
 
 inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process **packet, u_int16_t queue_index) {
-	extern PreProcessPacket *preProcessPacket[MAX_PREPROCESS_PACKET_THREADS];
-	preProcessPacket[0]->packetS_push_to_stack(packet, queue_index);
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
 }
 
 
