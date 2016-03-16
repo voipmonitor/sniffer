@@ -169,6 +169,7 @@ int opt_pcap_queue_receive_dlt 				= DLT_EN10MB;
 int opt_pcap_queue_iface_separate_threads 		= 0;
 int opt_pcap_queue_iface_dedup_separate_threads 	= 0;
 int opt_pcap_queue_iface_dedup_separate_threads_extend	= 0;
+int opt_pcap_queue_iface_extend2_use_alloc_stack	= 1;
 int opt_pcap_queue_iface_qring_size 			= 5000;
 int opt_pcap_queue_dequeu_window_length			= -1;
 int opt_pcap_queue_dequeu_method			= 2;
@@ -2708,9 +2709,15 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->typeThread = typeThread;
 	this->prevThread = prevThread;
 	this->threadDoTerminate = false;
-	this->headerPacketStack = NULL;
+	this->headerPacketStackSnaplen = NULL;
+	this->headerPacketStackShort = NULL;
+	this->headerPacketStackShortPacketLen = 0;
 	if(typeThread == read) {
-		this->headerPacketStack = new FILE_LINE cHeaderPacketStack(opt_pcap_queue_iface_qring_size, SNAPLEN);
+		this->headerPacketStackSnaplen = new FILE_LINE cHeaderPacketStack(opt_pcap_queue_iface_qring_size, SNAPLEN);
+		if(opt_pcap_queue_iface_dedup_separate_threads_extend == 2) {
+			this->headerPacketStackShortPacketLen = 256;
+			this->headerPacketStackShort = new FILE_LINE cHeaderPacketStack(opt_pcap_queue_iface_qring_size, this->headerPacketStackShortPacketLen);
+		}
 	}
 	/*
 	this->headerPacketStack = NULL;
@@ -2765,8 +2772,11 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 		delete this->qring[i];
 	}
 	delete [] this->qring;
-	if(this->headerPacketStack) {
-		delete this->headerPacketStack;
+	if(this->headerPacketStackSnaplen) {
+		delete this->headerPacketStackSnaplen;
+	}
+	if(this->headerPacketStackShort) {
+		delete this->headerPacketStackShort;
 	}
 	if(this->detachBuffer[0] && this->typeThread == read) {
 		for(int i = 0; i < 2; i++) {
@@ -3134,17 +3144,17 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				if(!header_packet_read) {
 					if(sverb.alloc_stat) {
 						if((this->prepareHeaderPacketPool ?
-						     this->headerPacketStack->pop_prepared(&header_packet_read) : 
-						     this->headerPacketStack->pop(&header_packet_read)) == 2) {
+						     this->headerPacketStackSnaplen->pop_prepared(&header_packet_read) : 
+						     this->headerPacketStackSnaplen->pop(&header_packet_read)) == 2) {
 							++allocCounter[0];
 						} else {
 							++allocStackCounter[0];
 						}
 					} else {
 						if(this->prepareHeaderPacketPool) {
-							this->headerPacketStack->pop_prepared(&header_packet_read);
+							this->headerPacketStackSnaplen->pop_prepared(&header_packet_read);
 						} else {
-							this->headerPacketStack->pop(&header_packet_read);
+							this->headerPacketStackSnaplen->pop(&header_packet_read);
 						}
 					}
 				} else {
@@ -3215,19 +3225,35 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					this->detachBufferReadPos = 1;
 				}
 				//cout << "R" << this->detachBufferActiveIndex << "/" << this->detachBufferReadPos << endl;
-				if(!header_packet_read) {
-					if(sverb.alloc_stat) {
-						if(this->readThread->headerPacketStack->pop(&header_packet_read) == 2) {
-							++allocCounter[0];
-						} else {
-							++allocStackCounter[0];
-						}
-					} else {
-						this->readThread->headerPacketStack->pop(&header_packet_read);
-					}
-				}
 				detach_buffer_header = (pcap_pkthdr*)(this->activeDetachBuffer + this->detachBufferReadPos);
 				if(detach_buffer_header->caplen != 0xFFFFFFFF) {
+					if(header_packet_read && 
+					   header_packet_read->packet_alloc_size < detach_buffer_header->caplen) {
+						DESTROY_HP(&header_packet_read);
+					}
+					if(!header_packet_read) {
+						if(opt_pcap_queue_iface_extend2_use_alloc_stack) {
+							if(sverb.alloc_stat) {
+								if((detach_buffer_header->caplen > this->readThread->headerPacketStackShortPacketLen ? 
+								     this->readThread->headerPacketStackSnaplen->pop(&header_packet_read) : 
+								     this->readThread->headerPacketStackShort->pop(&header_packet_read)) == 2) {
+									++allocCounter[0];
+								} else {
+									++allocStackCounter[0];
+								}
+							} else {
+								if(detach_buffer_header->caplen > this->readThread->headerPacketStackShortPacketLen) {
+									this->readThread->headerPacketStackSnaplen->pop(&header_packet_read);
+								} else {
+									this->readThread->headerPacketStackShort->pop(&header_packet_read);
+								}
+							}
+						} else {
+							header_packet_read = CREATE_HP(detach_buffer_header->caplen);
+						}
+					} else {
+						header_packet_read->clearPcapProcessData();
+					}
 					detach_buffer_packet = (u_char*)this->activeDetachBuffer + this->detachBufferReadPos + sizeof(pcap_pkthdr);
 					memcpy(HPH(header_packet_read),
 					       detach_buffer_header,
@@ -3362,7 +3388,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			}
 			break;
 		case service:
-			if(!this->readThread->headerPacketStack->pop_queue_prepare()) {
+			if(!this->prepareHeaderPacketPool ||
+			   !this->readThread->headerPacketStackSnaplen->pop_queue_prepare()) {
 				usleep(10);
 			}
 			break;
@@ -5545,9 +5572,11 @@ void setThreadingMode(int threadingMode) {
 		break;
 	case 4:
 	case 5:
+	case 6:
 		opt_pcap_queue_iface_separate_threads = 1;
 		opt_pcap_queue_iface_dedup_separate_threads = 1;
-		opt_pcap_queue_iface_dedup_separate_threads_extend = threadingMode == 5 ? 2 : 1;
+		opt_pcap_queue_iface_dedup_separate_threads_extend = threadingMode == 5 || threadingMode == 6 ? 2 : 1;
+		opt_pcap_queue_iface_extend2_use_alloc_stack = threadingMode == 4 || threadingMode == 5;
 		break;
 	}
 }

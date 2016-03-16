@@ -493,7 +493,7 @@ private:
 	bool term_preProcess;
 	cHeapItemsPointerStack *stackSip;
 	cHeapItemsPointerStack *stackRtp;
-	volatile bool enableOutThread;
+	bool enableOutThread;
 	unsigned long allocCounter[2];
 	unsigned long allocStackCounter[2];
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);

@@ -609,7 +609,9 @@ private:
 	PcapQueue_readFromInterfaceThread *serviceThread;
 	PcapQueue_readFromInterfaceThread *prevThread;
 	bool threadDoTerminate;
-	cHeaderPacketStack *headerPacketStack;
+	cHeaderPacketStack *headerPacketStackSnaplen;
+	cHeaderPacketStack *headerPacketStackShort;
+	unsigned headerPacketStackShortPacketLen;
 	unsigned long allocCounter[2];
 	unsigned long allocStackCounter[2];
 	bool prepareHeaderPacketPool; // experimental option
