@@ -2048,7 +2048,18 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-		
+	} else if(strstr(buf, "t2sip_add_thread") != NULL) {
+		PreProcessPacket::autoStartNextLevelPreProcessPacket();
+		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "t2sip_remove_thread") != NULL) {
+		//
+		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "enable_bad_packet_order_warning") != NULL) {
 		enable_bad_packet_order_warning = 1;
 		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
