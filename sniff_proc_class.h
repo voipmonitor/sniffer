@@ -218,39 +218,72 @@ public:
 		}
 	}
 	inline void push_packet_detach(packet_s *packetS) {
-		if(!this->enableOutThread) {
+		if(this->outThreadState == 2) {
+			if(!qring_push_index) {
+				unsigned usleepCounter = 0;
+				while(this->qring_detach[this->writeit]->used != 0) {
+					usleep(20 *
+					       (usleepCounter > 10 ? 50 :
+						usleepCounter > 5 ? 10 :
+						usleepCounter > 2 ? 5 : 1));
+					++usleepCounter;
+				}
+				qring_push_index = this->writeit + 1;
+				qring_push_index_count = 0;
+				qring_detach_active_push_item = qring_detach[qring_push_index - 1];
+			}
+			*qring_detach_active_push_item->batch[qring_push_index_count] = *packetS;
+			++qring_push_index_count;
+			if(qring_push_index_count == qring_detach_active_push_item->max_count) {
+				qring_detach_active_push_item->count = qring_push_index_count;
+				qring_detach_active_push_item->used = 1;
+				if((this->writeit + 1) == this->qring_length) {
+					this->writeit = 0;
+				} else {
+					this->writeit++;
+				}
+				qring_push_index = 0;
+				qring_push_index_count = 0;
+			}
+		} else {
+			while(this->outThreadState) {
+				usleep(10);
+			}
 			this->process_DETACH(packetS);
-			return;
-		}
-		if(!qring_push_index) {
-			unsigned usleepCounter = 0;
-			while(this->qring_detach[this->writeit]->used != 0) {
-				usleep(20 *
-				       (usleepCounter > 10 ? 50 :
-					usleepCounter > 5 ? 10 :
-					usleepCounter > 2 ? 5 : 1));
-				++usleepCounter;
-			}
-			qring_push_index = this->writeit + 1;
-			qring_push_index_count = 0;
-			qring_detach_active_push_item = qring_detach[qring_push_index - 1];
-		}
-		*qring_detach_active_push_item->batch[qring_push_index_count] = *packetS;
-		++qring_push_index_count;
-		if(qring_push_index_count == qring_detach_active_push_item->max_count) {
-			qring_detach_active_push_item->count = qring_push_index_count;
-			qring_detach_active_push_item->used = 1;
-			if((this->writeit + 1) == this->qring_length) {
-				this->writeit = 0;
-			} else {
-				this->writeit++;
-			}
-			qring_push_index = 0;
-			qring_push_index_count = 0;
 		}
 	}
 	inline void push_packet(packet_s_process *packetS) {
-		if(!this->enableOutThread) {
+		if(this->outThreadState == 2) {
+			if(!qring_push_index) {
+				unsigned usleepCounter = 0;
+				while(this->qring[this->writeit]->used != 0) {
+					usleep(20 *
+					       (usleepCounter > 10 ? 50 :
+						usleepCounter > 5 ? 10 :
+						usleepCounter > 2 ? 5 : 1));
+					++usleepCounter;
+				}
+				qring_push_index = this->writeit + 1;
+				qring_push_index_count = 0;
+				qring_active_push_item = qring[qring_push_index - 1];
+			}
+			qring_active_push_item->batch[qring_push_index_count] = packetS;
+			++qring_push_index_count;
+			if(qring_push_index_count == qring_active_push_item->max_count) {
+				qring_active_push_item->count = qring_push_index_count;
+				qring_active_push_item->used = 1;
+				if((this->writeit + 1) == this->qring_length) {
+					this->writeit = 0;
+				} else {
+					this->writeit++;
+				}
+				qring_push_index = 0;
+				qring_push_index_count = 0;
+			}
+		} else {
+			while(this->outThreadState) {
+				usleep(10);
+			}
 			switch(this->typePreProcessThread) {
 			case ppt_detach:
 				break;
@@ -270,37 +303,33 @@ public:
 				this->process_RTP(packetS);
 				break;
 			}
-			return;
-		}
-		if(!qring_push_index) {
-			unsigned usleepCounter = 0;
-			while(this->qring[this->writeit]->used != 0) {
-				usleep(20 *
-				       (usleepCounter > 10 ? 50 :
-					usleepCounter > 5 ? 10 :
-					usleepCounter > 2 ? 5 : 1));
-				++usleepCounter;
-			}
-			qring_push_index = this->writeit + 1;
-			qring_push_index_count = 0;
-			qring_active_push_item = qring[qring_push_index - 1];
-		}
-		qring_active_push_item->batch[qring_push_index_count] = packetS;
-		++qring_push_index_count;
-		if(qring_push_index_count == qring_active_push_item->max_count) {
-			qring_active_push_item->count = qring_push_index_count;
-			qring_active_push_item->used = 1;
-			if((this->writeit + 1) == this->qring_length) {
-				this->writeit = 0;
-			} else {
-				this->writeit++;
-			}
-			qring_push_index = 0;
-			qring_push_index_count = 0;
 		}
 	}
 	inline void push_batch() {
-		if(!this->enableOutThread) {
+		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
+			this->lock_push();
+		}
+		if(this->outThreadState == 2) {
+			if(qring_push_index && qring_push_index_count) {
+				if(typePreProcessThread == ppt_detach) {
+					qring_detach_active_push_item->count = qring_push_index_count;
+					qring_detach_active_push_item->used = 1;
+				} else {
+					qring_active_push_item->count = qring_push_index_count;
+					qring_active_push_item->used = 1;
+				}
+				if((this->writeit + 1) == this->qring_length) {
+					this->writeit = 0;
+				} else {
+					this->writeit++;
+				}
+				qring_push_index = 0;
+				qring_push_index_count = 0;
+			}
+		} else {
+			while(this->outThreadState) {
+				usleep(10);
+			}
 			switch(this->typePreProcessThread) {
 			case ppt_detach:
 			case ppt_sip:
@@ -312,26 +341,6 @@ public:
 			case ppt_pp_rtp:
 				break;
 			}
-			return;
-		}
-		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
-			this->lock_push();
-		}
-		if(qring_push_index && qring_push_index_count) {
-			if(typePreProcessThread == ppt_detach) {
-				qring_detach_active_push_item->count = qring_push_index_count;
-				qring_detach_active_push_item->used = 1;
-			} else {
-				qring_active_push_item->count = qring_push_index_count;
-				qring_active_push_item->used = 1;
-			}
-			if((this->writeit + 1) == this->qring_length) {
-				this->writeit = 0;
-			} else {
-				this->writeit++;
-			}
-			qring_push_index = 0;
-			qring_push_index_count = 0;
 		}
 		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
 			this->unlock_push();
@@ -341,6 +350,7 @@ public:
 	double getCpuUsagePerc(bool preparePstatData);
 	void terminate();
 	static void autoStartNextLevelPreProcessPacket();
+	static void autoStopLastLevelPreProcessPacket();
 	double getQringFillingPerc() {
 		unsigned int _readit = readit;
 		unsigned int _writeit = writeit;
@@ -429,11 +439,16 @@ public:
 	inline eTypePreProcessThread getTypePreProcessThread() {
 		return(typePreProcessThread);
 	}
-	inline void setEnableOutThread(bool enableOutThread) {
-		this->enableOutThread = enableOutThread;
+	inline void startOutThread() {
+		runOutThread();
 	}
-	inline bool getEnableOutThread() {
-		return(enableOutThread);
+	inline void stopOutThread() {
+		if(isActiveOutThread()) {
+			outThreadState = 1;
+		}
+	}
+	inline bool isActiveOutThread() {
+		return(outThreadState == 2);
 	}
 	inline unsigned long getAllocCounter(int index) {
 		return(allocCounter[index]);
@@ -446,6 +461,23 @@ public:
 	}
 	inline void setAllocStackCounter(unsigned long c, int index) {
 		allocStackCounter[index] = c;
+	}
+	string getNameTypeThread() {
+		switch(typePreProcessThread) {
+		case ppt_detach:
+			return("detach");
+		case ppt_sip:
+			return("sip");
+		case ppt_extend:
+			return("extend");
+		case ppt_pp_call:
+			return("call");
+		case ppt_pp_register:
+			return("register");
+		case ppt_pp_rtp:
+			return("rtp");
+		}
+		return("");
 	}
 private:
 	void process_DETACH(packet_s *packetS_detach);
@@ -465,6 +497,7 @@ private:
 	inline void process_getLastSipResponse(packet_s_process **packetS_ref);
 	inline void process_findCall(packet_s_process **packetS_ref);
 	inline void process_createCall(packet_s_process **packetS_ref);
+	void runOutThread();
 	void *outThreadFunction();
 	void lock_push() {
 		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
@@ -493,7 +526,7 @@ private:
 	bool term_preProcess;
 	cHeapItemsPointerStack *stackSip;
 	cHeapItemsPointerStack *stackRtp;
-	bool enableOutThread;
+	volatile int outThreadState;
 	unsigned long allocCounter[2];
 	unsigned long allocStackCounter[2];
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);

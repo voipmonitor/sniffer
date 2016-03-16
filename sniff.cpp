@@ -6903,10 +6903,9 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 		this->stackSip = NULL;
 		this->stackRtp = NULL;
 	}
-	this->enableOutThread = false;
+	this->outThreadState = 0;
 	allocCounter[0] = allocCounter[1] = 0;
 	allocStackCounter[0] = allocStackCounter[1] = 0;
-	vm_pthread_create(&this->out_thread_handle, NULL, _PreProcessPacket_outThreadFunction, this, __FILE__, __LINE__);
 }
 
 PreProcessPacket::~PreProcessPacket() {
@@ -6931,8 +6930,16 @@ PreProcessPacket::~PreProcessPacket() {
 	}
 }
 
+void PreProcessPacket::runOutThread() {
+	if(!this->outThreadState) {
+		this->outThreadState = 2;
+		vm_pthread_create_autodestroy(&this->out_thread_handle, NULL, _PreProcessPacket_outThreadFunction, this, __FILE__, __LINE__);
+	}
+}
+
 void *PreProcessPacket::outThreadFunction() {
-	if(this->typePreProcessThread == ppt_extend) {
+	if(this->typePreProcessThread == ppt_detach ||
+	   this->typePreProcessThread == ppt_extend) {
 		 pthread_t thId = pthread_self();
 		 pthread_attr_t thAttr;
 		 int policy = 0;
@@ -6944,17 +6951,13 @@ void *PreProcessPacket::outThreadFunction() {
 		 pthread_attr_destroy(&thAttr);
 	}
 	this->outThreadId = get_unix_tid();
-	syslog(LOG_NOTICE, "start PreProcessPacket out thread %i", this->outThreadId);
+	syslog(LOG_NOTICE, "start PreProcessPacket out thread %s/%i", this->getNameTypeThread().c_str(), this->outThreadId);
 	packet_s_process *packetS;
 	batch_packet_s *batch_detach;
 	batch_packet_s_process *batch;
 	unsigned usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_preProcess) {
-		if(!this->enableOutThread) {
-			usleep(100000);
-			continue;
-		}
 		if(this->typePreProcessThread == ppt_detach ?
 		    (this->qring_detach[this->readit]->used == 1) :
 		    (this->qring[this->readit]->used == 1)) {
@@ -7009,6 +7012,9 @@ void *PreProcessPacket::outThreadFunction() {
 			usleepCounter = 0;
 			usleepSumTimeForPushBatch = 0;
 		} else {
+			if(this->outThreadState == 1) {
+				break;
+			}
 			if(usleepSumTimeForPushBatch > 500000ull) {
 				switch(this->typePreProcessThread) {
 				case ppt_detach:
@@ -7039,6 +7045,8 @@ void *PreProcessPacket::outThreadFunction() {
 			usleepSumTimeForPushBatch += usleepTime;
 		}
 	}
+	this->outThreadState = 0;
+	syslog(LOG_NOTICE, "stop PreProcessPacket out thread %s/%i", this->getNameTypeThread().c_str(), this->outThreadId);
 	return(NULL);
 }
 
@@ -7052,7 +7060,7 @@ void PreProcessPacket::preparePstatData() {
 }
 
 double PreProcessPacket::getCpuUsagePerc(bool preparePstatData) {
-	if(this->enableOutThread) {
+	if(this->isActiveOutThread()) {
 		if(preparePstatData) {
 			this->preparePstatData();
 		}
@@ -7071,7 +7079,6 @@ double PreProcessPacket::getCpuUsagePerc(bool preparePstatData) {
 
 void PreProcessPacket::terminate() {
 	this->term_preProcess = true;
-	pthread_join(this->out_thread_handle, NULL);
 }
 
 void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
@@ -7368,9 +7375,20 @@ void PreProcessPacket::process_createCall(packet_s_process **packetS_ref) {
 
 void PreProcessPacket::autoStartNextLevelPreProcessPacket() {
 	int i = 0;
-	for(; i < MAX_PREPROCESS_PACKET_THREADS && preProcessPacket[i]->getEnableOutThread(); i++);
+	for(; i < MAX_PREPROCESS_PACKET_THREADS && preProcessPacket[i]->isActiveOutThread(); i++);
+	if(!opt_sip_register && preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::PreProcessPacket::ppt_pp_register) {
+		++i;
+	}
 	if(i < MAX_PREPROCESS_PACKET_THREADS) {
-		preProcessPacket[i]->setEnableOutThread(true);
+		preProcessPacket[i]->startOutThread();
+	}
+}
+
+void PreProcessPacket::autoStopLastLevelPreProcessPacket() {
+	int i = 0;
+	for(i = MAX_PREPROCESS_PACKET_THREADS - 1; i > 0 && !preProcessPacket[i]->isActiveOutThread(); i--);
+	if(i > 0 && preProcessPacket[i]->isActiveOutThread()) {
+		preProcessPacket[i]->stopOutThread();
 	}
 }
 

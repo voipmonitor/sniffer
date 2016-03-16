@@ -2785,7 +2785,7 @@ int main_init_read() {
 	}
 	if(!is_read_from_file_simple()) {
 		for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, MAX_PREPROCESS_PACKET_THREADS)); i++) {
-			preProcessPacket[i]->setEnableOutThread(true);
+			preProcessPacket[i]->startOutThread();
 		}
 	}
 	
