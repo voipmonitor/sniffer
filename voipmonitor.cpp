@@ -1413,39 +1413,26 @@ void *storing_cdr( void *dummy ) {
 	return NULL;
 }
 
-void *activechecking_cloud( void *dummy ) {
-	cloud_activecheck_set();
-	bool initial_register = true;
+void cloud_initial_register( void ) {
+	if (verbosity) syslog(LOG_NOTICE, "activechecking cloud initial register");
+	do {
+		if (cloud_register()) break;
+		sleep(2);
+	} while (terminating == 0);
+}
 
-	if (verbosity) syslog(LOG_NOTICE, "started - activechecking cloud thread");
+void *activechecking_cloud( void *dummy ) {
+	if (verbosity) syslog(LOG_NOTICE, "start - activechecking cloud thread");
+	cloud_activecheck_set();
 
 	do {
-		if (opt_cloud_activecheck_period && cloud_now_activecheck()) {				//is time to start activecheck?
-			cloud_activecheck_start();
-			if (verbosity) syslog(LOG_NOTICE, "Cloud activecheck request send - starting activecheck");
-			do {
-				if(cloud_activecheck_send()) break;
-				syslog(LOG_WARNING, "Repeating send activecheck request");
-				sleep(2);				//what to do if unable to send check request to a cloud [repeat undefinitely]
-			} while (terminating == 0);
-			cloud_activecheck_set();
-		}
-
-		if (cloud_now_timeout() || initial_register) {		//no reply in timeout? Register
+		if (cloud_now_timeout()) {				//no reply in timeout? (re-register, recreate ssh)
 			if (!cloud_register()){
 				syslog(LOG_WARNING, "Repeating send cloud registration request");
 				sleep(2);				//what to do if unable to register to a cloud?
 				continue;
 			}
-			if (initial_register) {
-				initial_register=false;
-				if (!opt_cloud_activecheck_period) {
-					if(verbosity) syslog(LOG_NOTICE, "notice - activechecking is disabled by config");
-					break;	//If activecheks disabled, end a thread after successful registered.
-				}
-				continue;
-			}
-			cloud_activecheck_sshclose = true;		//we need ssh tunnel recreation - after obtaing new data from register.php
+			cloud_activecheck_sshclose = true;		//we need ssh tunnel recreation - after obtained new data from register
 			cloud_activecheck_start();
 			do {
 				if (cloud_activecheck_send()) break;
@@ -1455,9 +1442,20 @@ void *activechecking_cloud( void *dummy ) {
 			} while (terminating == 0);
 			cloud_activecheck_set();
 		}
+
+		if (cloud_now_activecheck()) {				//is time to start activecheck?
+			cloud_activecheck_start();
+			if (verbosity) syslog(LOG_DEBUG, "Sending cloud activecheck request");
+			do {
+				if(cloud_activecheck_send()) break;
+				syslog(LOG_WARNING, "Repeating activecheck request");
+				sleep(2);				//what to do if unable to send check request to a cloud [repeat undefinitely]
+			} while (terminating == 0);
+			cloud_activecheck_set();
+		}
 		sleep(1);
         } while (terminating == 0);
-	if(verbosity) syslog(LOG_NOTICE, "terminated - activechecking cloud thread");
+	if(verbosity) syslog(LOG_NOTICE, "terminated - cloud activecheck thread");
 	return NULL;
 }
 
@@ -2093,8 +2091,8 @@ int main(int argc, char *argv[]) {
 
 	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
 	if(cloud_url[0] != '\0') {
-		vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
-		sleep(1);
+		//vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
+		cloud_initial_register();
 	}
 
 	checkRrdVersion();
@@ -2642,6 +2640,15 @@ int main_init_read() {
 		/*
 		vm_pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL, __FILE__, __LINE__);
 		*/
+	}
+
+	// start activechecking cloud thread if in cloud mode and no zero activecheck_period
+	if(cloud_url[0] != '\0') {
+		if (!opt_cloud_activecheck_period) {
+			if(verbosity) syslog(LOG_NOTICE, "notice - activechecking is disabled by config");
+		} else {
+			vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
+		}
 	}
 
 	if(opt_cachedir[0] != '\0') {

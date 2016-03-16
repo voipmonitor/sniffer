@@ -4556,8 +4556,8 @@ int vm_pthread_create(pthread_t *thread, pthread_attr_t *attr,
 }
 */
 
+
 bool cloud_now_activecheck() {
-	if (cloud_last_activecheck.tv_sec == 0) return (true);					// initial run -> check (getDifTime return small range)
 	struct timeval timenow;
 	gettimeofday(&timenow,NULL);
 	if (getDifTime(&cloud_last_activecheck) / 1000000 >= opt_cloud_activecheck_period) {	//in sec
@@ -4589,6 +4589,6 @@ bool cloud_now_timeout() {
 }
 
 void cloud_activecheck_success() {
-	if (verbosity) syslog(LOG_NOTICE, "Cloud activecheck Success - disabling activecheck for next %isec.",opt_cloud_activecheck_period);
+	if (verbosity) syslog(LOG_DEBUG, "Cloud activecheck Success - disabling activecheck for next %isec.",opt_cloud_activecheck_period);
 	cloud_activecheck_stop();
 }
