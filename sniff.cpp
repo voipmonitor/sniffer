@@ -6906,6 +6906,8 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	this->outThreadState = 0;
 	allocCounter[0] = allocCounter[1] = 0;
 	allocStackCounter[0] = allocStackCounter[1] = 0;
+	getCpuUsagePerc_counter = 0;
+	getCpuUsagePerc_counter_at_start_out_thread = 0;
 }
 
 PreProcessPacket::~PreProcessPacket() {
@@ -6933,7 +6935,15 @@ PreProcessPacket::~PreProcessPacket() {
 void PreProcessPacket::runOutThread() {
 	if(!this->outThreadState) {
 		this->outThreadState = 2;
+		getCpuUsagePerc_counter_at_start_out_thread = getCpuUsagePerc_counter;
 		vm_pthread_create_autodestroy(&this->out_thread_handle, NULL, _PreProcessPacket_outThreadFunction, this, __FILE__, __LINE__);
+	}
+}
+
+void PreProcessPacket::endOutThread(bool force) {
+	if(isActiveOutThread() &&
+	   (force || getCpuUsagePerc_counter > getCpuUsagePerc_counter_at_start_out_thread + 10)) {
+		outThreadState = 1;
 	}
 }
 
@@ -7080,6 +7090,7 @@ void PreProcessPacket::preparePstatData() {
 }
 
 double PreProcessPacket::getCpuUsagePerc(bool preparePstatData) {
+	++getCpuUsagePerc_counter;
 	if(this->isActiveOutThread()) {
 		if(preparePstatData) {
 			this->preparePstatData();
@@ -7411,11 +7422,11 @@ void PreProcessPacket::autoStartNextLevelPreProcessPacket() {
 	}
 }
 
-void PreProcessPacket::autoStopLastLevelPreProcessPacket() {
+void PreProcessPacket::autoStopLastLevelPreProcessPacket(bool force) {
 	int i = 0;
 	for(i = PreProcessPacket::ppt_end - 1; i > 0 && !preProcessPacket[i]->isActiveOutThread(); i--);
 	if(i > 0 && preProcessPacket[i]->isActiveOutThread()) {
-		preProcessPacket[i]->stopOutThread();
+		preProcessPacket[i]->stopOutThread(force);
 	}
 }
 

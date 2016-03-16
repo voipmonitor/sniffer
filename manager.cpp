@@ -2055,7 +2055,7 @@ getwav:
 			return -1;
 		}
 	} else if(strstr(buf, "t2sip_remove_thread") != NULL) {
-		PreProcessPacket::autoStopLastLevelPreProcessPacket();
+		PreProcessPacket::autoStopLastLevelPreProcessPacket(true);
 		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

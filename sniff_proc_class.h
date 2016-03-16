@@ -365,7 +365,7 @@ public:
 	double getCpuUsagePerc(bool preparePstatData);
 	void terminate();
 	static void autoStartNextLevelPreProcessPacket();
-	static void autoStopLastLevelPreProcessPacket();
+	static void autoStopLastLevelPreProcessPacket(bool force = false);
 	double getQringFillingPerc() {
 		unsigned int _readit = readit;
 		unsigned int _writeit = writeit;
@@ -457,10 +457,8 @@ public:
 	inline void startOutThread() {
 		runOutThread();
 	}
-	inline void stopOutThread() {
-		if(isActiveOutThread()) {
-			outThreadState = 1;
-		}
+	inline void stopOutThread(bool force = false) {
+		endOutThread(force);
 	}
 	inline bool isActiveOutThread() {
 		return(outThreadState == 2);
@@ -542,6 +540,7 @@ private:
 	inline void process_findCall(packet_s_process **packetS_ref);
 	inline void process_createCall(packet_s_process **packetS_ref);
 	void runOutThread();
+	void endOutThread(bool force = false);
 	void *outThreadFunction();
 	void lock_push() {
 		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
@@ -573,6 +572,8 @@ private:
 	volatile int outThreadState;
 	unsigned long allocCounter[2];
 	unsigned long allocStackCounter[2];
+	u_int64_t getCpuUsagePerc_counter;
+	u_int64_t getCpuUsagePerc_counter_at_start_out_thread;
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 friend class TcpReassemblySip;
 };
