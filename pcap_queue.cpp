@@ -1532,7 +1532,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if (opt_rrd) rrdtCPU_t0 = t0cpu;
 		}
 		static int countOccurencesForWarning = 0;
-		if((sumMaxReadThreads > opt_cpu_limit_warning_t0 || t0cpu > opt_cpu_limit_warning_t0) && getThreadingMode() < 4) {
+		if((sumMaxReadThreads > opt_cpu_limit_warning_t0 || t0cpu > opt_cpu_limit_warning_t0) && getThreadingMode() < 5) {
 			++countOccurencesForWarning;
 		} else if(countOccurencesForWarning > 0) {
 			--countOccurencesForWarning;
@@ -5582,7 +5582,7 @@ void setThreadingMode(int threadingMode) {
 		opt_pcap_queue_iface_separate_threads = 1;
 		opt_pcap_queue_iface_dedup_separate_threads = 1;
 		opt_pcap_queue_iface_dedup_separate_threads_extend = threadingMode == 5 || threadingMode == 6 ? 2 : 1;
-		opt_pcap_queue_iface_extend2_use_alloc_stack = threadingMode == 4 || threadingMode == 5;
+		opt_pcap_queue_iface_extend2_use_alloc_stack = threadingMode == 4 || threadingMode == 6;
 		break;
 	}
 }
