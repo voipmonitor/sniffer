@@ -1834,7 +1834,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		glob_ssl_calls++;
 	}
 	// store this call only if it starts with invite
-	Call *call = calltable->add(sip_method, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, packetS->handle, packetS->dlt, packetS->sensor_id);
+	Call *call = calltable->add(sip_method, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id);
 	call->chantype = CHAN_SIP;
 	call->is_ssl = packetS->is_ssl;
 	call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
@@ -4978,7 +4978,7 @@ inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
 
 			//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
-			call = calltable->add(INVITE, s, strlen(s), packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, packetS->handle, packetS->dlt, packetS->sensor_id);
+			call = calltable->add(INVITE, s, strlen(s), packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id);
 			call->chantype = CHAN_SIP;
 			call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
 			call->sipcallerip[0] = packetS->saddr;
@@ -6391,7 +6391,7 @@ void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
 	}
 }
 
-void readdump_libpcap(pcap_t *handle) {
+void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 	pcapProcessData ppd;
 	u_int64_t packet_counter = 0;
 
@@ -6469,7 +6469,7 @@ void readdump_libpcap(pcap_t *handle) {
 				false, packet_counter,
 				ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
 				ppd.data, ppd.datalen, (u_char*)ppd.data - HPP(header_packet), 
-				handle, HPH(header_packet), HPP(header_packet), false,
+				handle_index, HPH(header_packet), HPP(header_packet), false,
 				ppd.istcp, ppd.header_ip,
 				NULL, 0, global_pcap_dlink, opt_id_sensor,
 				false);
@@ -7180,7 +7180,7 @@ void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
 				    packetS_detach->is_ssl ?
 				     PACKET_S_PROCESS_SIP_POP_FROM_STACK() : 
 				     (packet_s_process*)PACKET_S_PROCESS_RTP_POP_FROM_STACK();
-	memcpy(packetS, packetS_detach, sizeof(packet_s));
+	*(packet_s*)packetS = *(packet_s*)packetS_detach;
 	#ifdef PREPROCESS_DETACH2
 	preProcessPacket[ppt_detach2]->push_packet(packetS);
 	#else
@@ -7230,7 +7230,7 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		process_packet_sip_call_inline(packetS);
 	} else if(packetS->isSkinny) {
 		handle_skinny(packetS->header_pt, packetS->packet, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, packetS->datalen, packetS->dataoffset,
-			      packetS->handle, packetS->dlt, packetS->sensor_id);
+			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 0);
 }
@@ -7283,7 +7283,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 		if(packetS->isSip) {
 			isSip = true;
 			bool nextSip = false;
-			if((int)(packetS->sipDataOffset + packetS->sipDataLen) < packetS->datalen &&
+			if((packetS->sipDataOffset + packetS->sipDataLen) < packetS->datalen &&
 			   check_sip20(packetS->data + packetS->sipDataOffset + packetS->sipDataLen,
 				       packetS->datalen - packetS->sipDataOffset - packetS->sipDataLen,
 				       NULL)) {
@@ -7745,7 +7745,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 								  packetS->data, packetS->datalen, packetS->dataoffset,
 								  packetS->header_pt, packetS->packet, packetS->istcp, packetS->header_ip,
 								  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id,
-								  packetS->handle);
+								  get_pcap_handle(packetS->handle_index));
 				}
 			}
 			PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3 + indexThread);

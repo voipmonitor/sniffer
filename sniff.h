@@ -62,8 +62,10 @@ int get_index_rtp_read_thread_min_calls(bool incCalls);
 double get_rtp_sum_cpu_usage(double *max = NULL);
 string get_rtp_threads_cpu_usage(bool callPstat);
 
+#ifdef HAS_NIDS
 void readdump_libnids(pcap_t *handle);
-void readdump_libpcap(pcap_t *handle);
+#endif
+void readdump_libpcap(pcap_t *handle, u_int16_t handle_index);
 
 
 typedef std::map<in_addr_t, in_addr_t> nat_aliases_t; //!< 
@@ -93,11 +95,11 @@ struct packet_s {
 	u_int32_t saddr;
 	u_int32_t daddr; 
 	u_int32_t datalen; 
-	pcap_t *handle; 
 	pcap_pkthdr *header_pt; 
 	const u_char *packet; 
 	pcap_block_store *block_store; 
 	u_int32_t block_store_index; 
+	u_int16_t handle_index; 
 	u_int16_t dlt; 
 	u_int16_t sensor_id;
 	u_int16_t source; 

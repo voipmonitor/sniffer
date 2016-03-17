@@ -99,6 +99,7 @@ extern int opt_mysqlstore_max_threads_ipacc_base;
 extern int opt_mysqlstore_max_threads_ipacc_agreg2;
 
 extern pcap_t *global_pcap_handle;
+extern u_int16_t global_pcap_handle_index;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
 extern char *webrtcportmatrix;
@@ -205,6 +206,21 @@ extern unsigned int glob_ssl_calls;
 bool packetbuffer_memory_is_full = false;
 
 #include "sniff_inline.h"
+
+
+pcap_t *pcap_handles[65535];
+volatile u_int16_t pcap_handles_count;
+volatile int _sync_pcap_handles;
+
+u_int16_t register_pcap_handle(pcap_t *handle) {
+	u_int16_t rslt_index;
+	while(__sync_lock_test_and_set(&_sync_pcap_handles, 1));
+	if(!pcap_handles_count) ++pcap_handles_count;
+	rslt_index = pcap_handles_count;
+	pcap_handles[pcap_handles_count++] = handle;
+	__sync_lock_release(&_sync_pcap_handles);
+	return(rslt_index);
+}
 
 
 bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset, int dlink, int memcpy_packet_size) {
@@ -1946,6 +1962,12 @@ pcap_t* PcapQueue::getPcapHandle(int dlt) {
 		this->_getPcapHandle(dlt));
 }
 
+u_int16_t PcapQueue::getPcapHandleIndex(int dlt) {
+	return(this->instancePcapHandle ?
+		this->instancePcapHandle->_getPcapHandleIndex(dlt) :
+		this->_getPcapHandleIndex(dlt));
+}
+
 bool PcapQueue::createThread() {
 	if(this->enableMainThread) {
 		this->createMainThread();
@@ -2221,6 +2243,7 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	this->interfaceNet = 0;
 	this->interfaceMask = 0;
 	this->pcapHandle = NULL;
+	this->pcapHandleIndex = 0;
 	this->pcapEnd = false;
 	memset(&this->filterData, 0, sizeof(this->filterData));
 	this->filterDataUse = false;
@@ -2281,7 +2304,9 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 		sprintf(errorstr, "packetbuffer - %s: pcap_create failed: %s", this->getInterfaceName().c_str(), errbuf); 
 		goto failed;
 	}
+	this->pcapHandleIndex = register_pcap_handle(this->pcapHandle);
 	global_pcap_handle = this->pcapHandle;
+	global_pcap_handle_index = this->pcapHandleIndex;
 	int status;
 	if((status = pcap_set_snaplen(this->pcapHandle, this->pcap_snaplen)) != 0) {
 		sprintf(errorstr, "packetbuffer - %s: pcap_snaplen failed", this->getInterfaceName().c_str()); 
@@ -3898,8 +3923,10 @@ bool PcapQueue_readFromInterface::startCapture(string *error) {
 	char errbuf[PCAP_ERRBUF_SIZE];
 	if(opt_scanpcapdir[0]) {
 		this->pcapHandle = NULL;
+		this->pcapHandleIndex = 0;
 		this->pcapLinklayerHeaderType = 0;
 		global_pcap_handle = this->pcapHandle;
+		global_pcap_handle_index = this->pcapHandleIndex;
 		global_pcap_dlink = this->pcapLinklayerHeaderType;
 		return(true);
 	} else if(opt_pb_read_from_file[0]) {
@@ -3911,8 +3938,10 @@ bool PcapQueue_readFromInterface::startCapture(string *error) {
 			*error = errorstr;
 			return(false);
 		}
+		this->pcapHandleIndex = register_pcap_handle(this->pcapHandle);
 		this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
 		global_pcap_handle = this->pcapHandle;
+		global_pcap_handle_index = this->pcapHandleIndex;
 		global_pcap_dlink = this->pcapLinklayerHeaderType;
 		return(true);
 	}
@@ -3930,6 +3959,7 @@ bool PcapQueue_readFromInterface::openPcap(const char *filename) {
 		syslog(LOG_ERR, "pcap_open_offline %s failed: %s", filename, errbuf); 
 		return(false);
 	}
+	u_int16_t pcapHandleIndex = register_pcap_handle(pcapHandle);
 	int pcapLinklayerHeaderType = pcap_datalink(pcapHandle);
 	if(*user_filter != '\0') {
 		if(this->filterDataUse) {
@@ -3953,8 +3983,10 @@ bool PcapQueue_readFromInterface::openPcap(const char *filename) {
 	}
 	global_pcap_dlink = pcapLinklayerHeaderType;
 	global_pcap_handle = pcapHandle;
+	global_pcap_handle_index = pcapHandleIndex;
 	this->pcapLinklayerHeaderType = pcapLinklayerHeaderType;
 	this->pcapHandle = pcapHandle;
+	this->pcapHandleIndex = pcapHandleIndex;
 	this->pcapEnd = false;
 	return(true);
 }
@@ -4249,9 +4281,9 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
  : PcapQueue(readFromFifo, nameQueue),
    pcapStoreQueue(fileStoreFolder) {
 	this->packetServerDirection = directionNA;
-	this->fifoReadPcapHandle = NULL;
 	for(int i = 0; i < DLT_TYPES_MAX; i++) {
 		this->pcapDeadHandles[i] = NULL;
+		this->pcapDeadHandlesIndex[i] = 0;
 		this->pcapDeadHandles_dlt[i] = 0;
 	}
 	this->pcapDeadHandles_count = 0;
@@ -4273,10 +4305,6 @@ PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 	if(this->packetServerDirection == directionRead) {
 		this->cleanupConnections(true);
 		syslog(LOG_NOTICE, "packetbuffer terminating (%s): cleanupConnections", nameQueue.c_str());
-	}
-	if(this->fifoReadPcapHandle) {
-		pcap_close(this->fifoReadPcapHandle);
-		syslog(LOG_NOTICE, "packetbuffer terminating (%s): pcap_close fifoReadPcapHandle", nameQueue.c_str());
 	}
 	if(this->pcapDeadHandles_count) {
 		for(int i = 0; i < this->pcapDeadHandles_count; i++) {
@@ -4921,6 +4949,7 @@ bool PcapQueue_readFromFifo::openPcapDeadHandle(int dlt) {
 		syslog(LOG_ERR, "packetbuffer %s: pcap_create failed", this->nameQueue.c_str()); 
 		return(false);
 	} else {
+		this->pcapDeadHandlesIndex[this->pcapDeadHandles_count] = register_pcap_handle(this->pcapDeadHandles[this->pcapDeadHandles_count]);
 		this->pcapDeadHandles_dlt[this->pcapDeadHandles_count] = dlt ? dlt : opt_pcap_queue_receive_dlt;
 		++this->pcapDeadHandles_count;
 	}
@@ -4938,6 +4967,7 @@ bool PcapQueue_readFromFifo::openPcapDeadHandle(int dlt) {
 	*/
 	if(!dlt) {
 		global_pcap_handle = this->pcapDeadHandles[0];
+		global_pcap_handle_index = this->pcapDeadHandlesIndex[0];
 	}
 	return(true);
 }
@@ -5454,19 +5484,19 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		if(opt_enable_http && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
 			tcpReassemblyHttp->push(header, header_ip, packet,
 						block_store, block_store_index,
-						this->getPcapHandle(dlt), dlt, sensor_id);
+						this->getPcapHandleIndex(dlt), dlt, sensor_id);
 			useTcpReassemblyHttp = true;
 		} else if(opt_enable_webrtc && (webrtcportmatrix[htons(header_tcp->source)] || webrtcportmatrix[htons(header_tcp->dest)])) {
 			tcpReassemblyWebrtc->push(header, header_ip, packet,
 						  block_store, block_store_index,
-						  this->getPcapHandle(dlt), dlt, sensor_id);
+						  this->getPcapHandleIndex(dlt), dlt, sensor_id);
 			useTcpReassemblyWebrtc = true;
 		} else if(opt_enable_ssl && 
 			  (isSslIpPort(htonl(header_ip->saddr), htons(header_tcp->source)) ||
 			   isSslIpPort(htonl(header_ip->daddr), htons(header_tcp->dest)))) {
 			tcpReassemblySsl->push(header, header_ip, packet,
 					       block_store, block_store_index,
-					       this->getPcapHandle(dlt), dlt, sensor_id);
+					       this->getPcapHandleIndex(dlt), dlt, sensor_id);
 			useTcpReassemblySsl = true;
 		}
 	}
@@ -5480,7 +5510,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 			false /*is_ssl*/, packet_counter_all,
 			header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest),
 			data, datalen, data - (char*)packet,
-			this->getPcapHandle(dlt), header, packet, false /*packetDelete*/,
+			this->getPcapHandleIndex(dlt), header, packet, false /*packetDelete*/,
 			istcp, header_ip,
 			block_store, block_store_index, dlt, sensor_id,
 			true /*blockstore_lock*/);

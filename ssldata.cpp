@@ -39,7 +39,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			  u_int16_t port_src, u_int16_t port_dst,
 			  TcpReassemblyData *data,
 			  u_char *ethHeader, u_int32_t ethHeaderLength,
-			  pcap_t *handle, int dlt, int sensor_id,
+			  u_int16_t handle_index, int dlt, int sensor_id,
 			  TcpReassemblyLink *reassemblyLink,
 			  bool debugSave) {
 	++this->counterProcessData;
@@ -134,7 +134,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 						preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 							true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
 							(char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
-							handle, udpHeader, udpPacket, true, 
+							handle_index, udpHeader, udpPacket, true, 
 							false, (iphdr2*)(udpPacket + ethHeaderLength),
 							NULL, 0, dlt, sensor_id,
 							false);

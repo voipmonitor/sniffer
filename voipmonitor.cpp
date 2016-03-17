@@ -615,7 +615,9 @@ volatile unsigned int pcap_writeit = 0;
 int global_livesniffer = 0;
 
 pcap_t *global_pcap_handle = NULL;		// pcap handler 
+u_int16_t global_pcap_handle_index = 0;
 pcap_t *global_pcap_handle_dead_EN10MB = NULL;
+u_int16_t global_pcap_handle_dead_EN10MB_index = 0;
 
 rtp_read_thread *rtp_threads;
 
@@ -2619,6 +2621,7 @@ int main_init_read() {
 			fprintf(stderr, "Couldn't open pcap file '%s': %s\n", opt_read_from_file_fname, errbuf);
 			return(2);
 		}
+		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
 	}
 	
 	chdir(opt_chdir);
@@ -2958,7 +2961,7 @@ int main_init_read() {
 		
 		PcapQueue_term();
 	} else {
-		readdump_libpcap(global_pcap_handle);
+		readdump_libpcap(global_pcap_handle, global_pcap_handle_index);
 	}
 	
 	return(0);

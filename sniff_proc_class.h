@@ -188,7 +188,7 @@ public:
 	inline void push_packet(bool is_ssl, u_int64_t packet_number,
 				unsigned int saddr, int source, unsigned int daddr, int dest, 
 				char *data, int datalen, int dataoffset,
-				pcap_t *handle, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
+				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
 				int istcp, struct iphdr2 *header_ip,
 				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
 				bool blockstore_lock = true) {
@@ -205,7 +205,7 @@ public:
 		packetS.dest = dest;
 		packetS.datalen = datalen; 
 		packetS.dataoffset = dataoffset;
-		packetS.handle = handle; 
+		packetS.handle_index = handle_index; 
 		packetS.header_pt = header;
 		packetS.packet = packet; 
 		packetS._packet_alloc = packetDelete; 

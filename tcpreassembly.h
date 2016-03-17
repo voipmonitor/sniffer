@@ -195,7 +195,7 @@ public:
 				 u_int16_t port_src, u_int16_t port_dst,
 				 TcpReassemblyData *data,
 				 u_char *ethHeader, u_int32_t ethHeaderLength,
-				 pcap_t *handle, int dlt, int sensor_id,
+				 u_int16_t handle_index, int dlt, int sensor_id,
 				 class TcpReassemblyLink *reassemblyLink,
 				 bool debugSave) = 0;
 	virtual void printContentSummary() {}
@@ -501,7 +501,7 @@ public:
 			  u_int32_t ip_src = 0, u_int32_t ip_dst = 0, 
 			  u_int16_t port_src = 0, u_int16_t port_dst = 0,
 			  u_char *packet = NULL, iphdr2 *header_ip = NULL,
-			  pcap_t *handle = NULL, int dlt = 0, int sensor_id = 0) {
+			  u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0) {
 		this->reassembly = reassembly;
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
@@ -531,7 +531,7 @@ public:
 		if(packet && header_ip) {
 			this->createEthHeader(packet, header_ip);
 		}
-		this->handle = handle;
+		this->handle_index = handle_index;
 		this->dlt = dlt;
 		this->sensor_id = sensor_id;
 		for(int i = 0; i < 2; i++) {
@@ -711,7 +711,7 @@ private:
 	vector<TcpReassemblyStream*> ok_streams;
 	u_char *ethHeader;
 	u_int32_t ethHeaderLength;
-	pcap_t *handle;
+	u_int16_t handle_index;
 	int dlt; 
 	int sensor_id;
 	u_char *remainData[2];
@@ -733,7 +733,7 @@ public:
 		u_char *packet;
 		pcap_block_store *block_store; 
 		int block_store_index;
-		pcap_t *handle; 
+		u_int16_t handle_index; 
 		int dlt; 
 		int sensor_id;
 	};
@@ -742,7 +742,7 @@ public:
 	~TcpReassembly();
 	void push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		  pcap_block_store *block_store = NULL, int block_store_index = 0,
-		  pcap_t *handle = NULL, int dlt = 0, int sensor_id = 0);
+		  u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0);
 	void cleanup(bool all = false);
 	void cleanup_simple(bool all = false);
 	void setEnableHttpForceInit(bool enableHttpForceInit = true) {
@@ -854,7 +854,7 @@ public:
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
-		   pcap_t *handle, int dlt, int sensor_id);
+		   u_int16_t handle_index, int dlt, int sensor_id);
 	void createCleanupThread();
 	void createPacketThread();
 	void *cleanupThreadFunction(void *);
