@@ -138,7 +138,6 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 							false, (iphdr2*)(udpPacket + ethHeaderLength),
 							NULL, 0, dlt, sensor_id,
 							false);
-						delete udpHeader;
 					}
 					ssl_data_offset += header.length + header.getDataOffsetLength();
 				} else {

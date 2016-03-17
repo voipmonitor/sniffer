@@ -1245,7 +1245,7 @@ static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_c
 			       int istcp, iphdr2 *header_ip, char *data, unsigned int datalen, unsigned int dataoffset, int type, 
 			       int dlt, int sensor_id) {
 	packet_s packetS;
-	packetS.header = *header;
+	packetS.header_pt = header;
 	packetS.packet = packet;
 	packetS.saddr = saddr;
 	packetS.source = source;

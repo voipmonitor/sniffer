@@ -912,11 +912,11 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 	bool record_dtmf = 0;
 
 	if(first_rtp_time == 0) {
-		first_rtp_time = packetS->header.ts.tv_sec;
+		first_rtp_time = packetS->header_pt->ts.tv_sec;
 	}
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
-	tmprtp.fill((u_char*)packetS->data_(), packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest);
+	tmprtp.fill((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest);
 	int curpayload = tmprtp.getPayload();
 	
 	// chekc if packet is DTMF and saverfc2833 is enabled 
@@ -936,9 +936,9 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 	}
 
 	if(iscaller) {
-		last_rtp_a_packet_time = packetS->header.ts.tv_sec;
+		last_rtp_a_packet_time = packetS->header_pt->ts.tv_sec;
 	} else {
-		last_rtp_b_packet_time = packetS->header.ts.tv_sec;
+		last_rtp_b_packet_time = packetS->header_pt->ts.tv_sec;
 	}
 
 	for(int i = 0; i < ssrc_n; i++) {
@@ -1003,9 +1003,9 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 read:
 						if(rtp[i]->index_call_ip_port >= 0) {
 							evProcessRtpStream(rtp[i]->index_call_ip_port, rtp[i]->index_call_ip_port_by_dest,
-									   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header.ts.tv_sec);
+									   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header_pt->ts.tv_sec);
 						}
-						rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id, ifname);
+						rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id, ifname);
 						if(rtp[i]->iscaller) {
 							lastcallerrtp = rtp[i];
 						} else {
@@ -1029,12 +1029,12 @@ read:
 		if(iscaller) {
 			last_seq_audiobuffer1 = 0;
 			if(lastcallerrtp) {
-				lastcallerrtp->jt_tail(&packetS->header);
+				lastcallerrtp->jt_tail(packetS->header_pt);
 			}
 		} else { 
 			last_seq_audiobuffer2 = 0;
 			if(lastcalledrtp) {
-				lastcalledrtp->jt_tail(&packetS->header);
+				lastcalledrtp->jt_tail(packetS->header_pt);
 			}
 		}
 		while(__sync_lock_test_and_set(&rtplock, 1)) {
@@ -1082,7 +1082,7 @@ read:
 		if(rtp[ssrc_n]->index_call_ip_port >= 0) {
 			rtp[ssrc_n]->index_call_ip_port_by_dest = find_by_dest;
 			evProcessRtpStream(rtp[ssrc_n]->index_call_ip_port, rtp[ssrc_n]->index_call_ip_port_by_dest, 
-					   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header.ts.tv_sec);
+					   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header_pt->ts.tv_sec);
 		}
 		if(RTPMAP_BY_CALLERD) {
 			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[isFillRtpMap(iscaller) ? iscaller : !iscaller], MAX_RTPMAP * sizeof(int));
@@ -1100,7 +1100,7 @@ read:
 			}
 		}
 
-		rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id, ifname);
+		rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id, ifname);
 		if(sverb.check_is_caller_called) printf("new rtp[%p] ssrc[%x] seq[%u] saddr[%s] dport[%u] iscaller[%u]\n", rtp[ssrc_n], curSSRC, rtp[ssrc_n]->seq, inet_ntostring(htonl(packetS->saddr)).c_str(), packetS->dest, rtp[ssrc_n]->iscaller);
 		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
 		this->rtp[ssrc_n]->payload2 = curpayload;
@@ -1129,11 +1129,11 @@ end:
 	if(enable_save_packet) {
 		if((this->silencerecording || (this->flags & FLAG_SAVERTPHEADER)) && !this->isfax && !record_dtmf) {
 			if(packetS->datalen >= RTP_FIXED_HEADERLEN &&
-			   packetS->header.caplen > (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN)) {
-				unsigned int tmp_u32 = packetS->header.caplen;
-				packetS->header.caplen = packetS->header.caplen - (packetS->datalen - RTP_FIXED_HEADERLEN);
+			   packetS->header_pt->caplen > (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN)) {
+				unsigned int tmp_u32 = packetS->header_pt->caplen;
+				packetS->header_pt->caplen = packetS->header_pt->caplen - (packetS->datalen - RTP_FIXED_HEADERLEN);
 				save_packet(this, packetS, TYPE_RTP);
-				packetS->header.caplen = tmp_u32;
+				packetS->header_pt->caplen = tmp_u32;
 			}
 		} else if((this->flags & FLAG_SAVERTP) || this->isfax || record_dtmf) {
 			save_packet(this, packetS, TYPE_RTP);

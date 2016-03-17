@@ -92,14 +92,14 @@ struct packet_s {
 	#endif
 	u_int32_t saddr;
 	u_int32_t daddr; 
-	int datalen; 
+	u_int32_t datalen; 
 	pcap_t *handle; 
-	pcap_pkthdr header; 
+	pcap_pkthdr *header_pt; 
 	const u_char *packet; 
 	pcap_block_store *block_store; 
-	int block_store_index; 
-	int dlt; 
-	int sensor_id;
+	u_int32_t block_store_index; 
+	u_int16_t dlt; 
+	u_int16_t sensor_id;
 	u_int16_t source; 
 	u_int16_t dest;
 	u_int16_t dataoffset;
@@ -145,6 +145,7 @@ struct packet_s {
 	}
 	inline void packetdelete() {
 		if(_packet_alloc) {
+			delete header_pt;
 			delete [] packet;
 			_packet_alloc = NULL;
 		}

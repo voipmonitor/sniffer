@@ -206,7 +206,7 @@ public:
 		packetS.datalen = datalen; 
 		packetS.dataoffset = dataoffset;
 		packetS.handle = handle; 
-		packetS.header = *header; 
+		packetS.header_pt = header;
 		packetS.packet = packet; 
 		packetS._packet_alloc = packetDelete; 
 		packetS.istcp = istcp; 
