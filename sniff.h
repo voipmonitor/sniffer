@@ -154,6 +154,10 @@ struct packet_s {
 	}
 };
 
+struct packet_s_plus_pointer : public packet_s {
+	void *pointer;
+};
+
 struct packet_s_process_rtp_call_info {
 	Call *call;
 	bool iscaller;

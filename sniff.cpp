@@ -7033,7 +7033,7 @@ void *PreProcessPacket::outThreadFunction() {
 			if(this->typePreProcessThread == ppt_detach) {
 				batch_detach = this->qring_detach[this->readit];
 				for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
-					this->process_DETACH(batch_detach->batch[batch_index]);
+					this->process_DETACH_plus(batch_detach->batch[batch_index]);
 				}
 				batch_detach->count = 0;
 				batch_detach->used = 0;
@@ -7180,6 +7180,16 @@ void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
 				    packetS_detach->is_ssl ?
 				     PACKET_S_PROCESS_SIP_POP_FROM_STACK() : 
 				     (packet_s_process*)PACKET_S_PROCESS_RTP_POP_FROM_STACK();
+	*(packet_s*)packetS = *(packet_s*)packetS_detach;
+	#ifdef PREPROCESS_DETACH2
+	preProcessPacket[ppt_detach2]->push_packet(packetS);
+	#else
+	preProcessPacket[ppt_sip]->push_packet(packetS);
+	#endif
+}
+
+void PreProcessPacket::process_DETACH_plus(packet_s_plus_pointer *packetS_detach) {
+	packet_s_process *packetS = (packet_s_process*)packetS_detach->pointer;
 	*(packet_s*)packetS = *(packet_s*)packetS_detach;
 	#ifdef PREPROCESS_DETACH2
 	preProcessPacket[ppt_detach2]->push_packet(packetS);

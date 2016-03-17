@@ -140,9 +140,9 @@ public:
 		batch_packet_s(unsigned max_count) {
 			count = 0;
 			used = 0;
-			batch = new packet_s*[max_count];
+			batch = new packet_s_plus_pointer*[max_count];
 			for(unsigned i = 0; i < max_count; i++) {
-				batch[i] = new packet_s;
+				batch[i] = new packet_s_plus_pointer;
 			}
 			this->max_count = max_count;
 		}
@@ -154,7 +154,7 @@ public:
 			}
 			delete [] batch;
 		}
-		packet_s **batch;
+		packet_s_plus_pointer **batch;
 		volatile unsigned count;
 		volatile int used;
 		unsigned max_count;
@@ -239,7 +239,15 @@ public:
 				qring_push_index_count = 0;
 				qring_detach_active_push_item = qring_detach[qring_push_index - 1];
 			}
-			*qring_detach_active_push_item->batch[qring_push_index_count] = *packetS;
+			*(packet_s*)qring_detach_active_push_item->batch[qring_push_index_count] = *packetS;
+			extern char *sipportmatrix;
+			extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+			qring_detach_active_push_item->batch[qring_push_index_count]->pointer = 
+				sipportmatrix[packetS->source] || 
+				sipportmatrix[packetS->dest] ||
+				packetS->is_ssl ?
+					preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(0) : 
+					preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(0);
 			++qring_push_index_count;
 			if(qring_push_index_count == qring_detach_active_push_item->max_count) {
 				qring_detach_active_push_item->count = qring_push_index_count;
@@ -555,6 +563,7 @@ public:
 	}
 private:
 	void process_DETACH(packet_s *packetS_detach);
+	void process_DETACH_plus(packet_s_plus_pointer *packetS_detach);
 	void process_SIP(packet_s_process *packetS);
 	void process_SIP_EXTEND(packet_s_process *packetS);
 	void process_CALL(packet_s_process *packetS);
