@@ -246,8 +246,8 @@ public:
 				sipportmatrix[packetS->source] || 
 				sipportmatrix[packetS->dest] ||
 				packetS->is_ssl ?
-					preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(0) : 
-					preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(0);
+					preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack() : 
+					preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack();
 			++qring_push_index_count;
 			if(qring_push_index_count == qring_detach_active_push_item->max_count) {
 				qring_detach_active_push_item->count = qring_push_index_count;
@@ -421,9 +421,9 @@ public:
 		packet_s_process_0 *packetS = new FILE_LINE packet_s_process_0;
 		return(packetS);
 	}
-	inline packet_s_process *packetS_sip_pop_from_stack(u_int16_t queue_index) {
+	inline packet_s_process *packetS_sip_pop_from_stack() {
 		packet_s_process *packetS;
-		if(this->stackSip->pop((void**)&packetS, queue_index)) {
+		if(this->stackSip->popq((void**)&packetS)) {
 			/*
 			if(*(u_char*)packetS) {
 				cout << "XXX1" << endl;
@@ -439,9 +439,9 @@ public:
 		packetS->stack = this->stackSip;
 		return(packetS);
 	}
-	inline packet_s_process_0 *packetS_rtp_pop_from_stack(u_int16_t queue_index) {
+	inline packet_s_process_0 *packetS_rtp_pop_from_stack() {
 		packet_s_process_0 *packetS;
-		if(this->stackRtp->pop((void**)&packetS, queue_index)) {
+		if(this->stackRtp->popq((void**)&packetS)) {
 			/*
 			if(*(u_char*)packetS) {
 				cout << "XXX2" << endl;
@@ -629,14 +629,14 @@ inline packet_s_process_0 *PACKET_S_PROCESS_RTP_CREATE() {
 	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_create());
 }
 
-inline packet_s_process *PACKET_S_PROCESS_SIP_POP_FROM_STACK(u_int16_t queue_index = 0) {
+inline packet_s_process *PACKET_S_PROCESS_SIP_POP_FROM_STACK() {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
-	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(queue_index));
+	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack());
 }
 
-inline packet_s_process_0 *PACKET_S_PROCESS_RTP_POP_FROM_STACK(u_int16_t queue_index = 0) {
+inline packet_s_process_0 *PACKET_S_PROCESS_RTP_POP_FROM_STACK() {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
-	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(queue_index));
+	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack());
 }
 
 inline void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet) {

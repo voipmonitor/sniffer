@@ -2735,12 +2735,12 @@ public:
 class cHeapItemsPointerStack {
 private:
 	struct sHeapItemsPool {
-		sHeapItemsPool() {
+		inline sHeapItemsPool() {
 			this->pool_size = 0;
 		}
-		~sHeapItemsPool() {
+		inline ~sHeapItemsPool() {
 		}
-		void destroyAll() {
+		inline void destroyAll() {
 			for(unsigned i = 0; i < pool_size; i++) {
 				delete_object(pool[i]);
 			}
@@ -2808,6 +2808,21 @@ public:
 			if(stack->pop(&this->pop_queues[pop_queue_index], false, pop_queues_max > 1)) {
 				this->pop_queues[pop_queue_index].pool_size = HEAP_ITEM_POOL_SIZE - 1;
 				*item = this->pop_queues[pop_queue_index].pool[this->pop_queues[pop_queue_index].pool_size];
+				//cout << "P" << flush;
+			} else {
+				return(false);
+			}
+		}
+		return(true);
+	}
+	inline int popq(void **item) {
+		if(this->pop_queues->pool_size > 0) {
+			--this->pop_queues->pool_size;
+			*item = this->pop_queues->pool[this->pop_queues[0].pool_size];
+		} else {
+			if(stack->popq(&this->pop_queues[0])) {
+				this->pop_queues->pool_size = HEAP_ITEM_POOL_SIZE - 1;
+				*item = this->pop_queues->pool[this->pop_queues->pool_size];
 				//cout << "P" << flush;
 			} else {
 				return(false);
