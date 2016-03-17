@@ -3823,8 +3823,10 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		char *dump_data = new FILE_LINE char[packetS->sipDataLen + 1];
 		memcpy(dump_data, packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
 		dump_data[packetS->sipDataLen] = 0;
+		#if USE_PACKET_NUMBER
 		cout << packetS->packet_number << endl
-		     << dump_data << endl;
+		#endif
+		cout << dump_data << endl;
 		delete [] dump_data;
 	}
 
@@ -3899,7 +3901,14 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			}
 		}
 		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(packetS->packet_number, packetS->sip_method, lastSIPresponseNum, &packetS->header, 
+			logPacketSipMethodCall(
+				#if USE_PACKET_NUMBER
+				packetS->packet_number
+				#else
+				0
+				#endif
+				, 
+				packetS->sip_method, lastSIPresponseNum, &packetS->header, 
 				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 				call, "SIP packet does not belong to any call and it is not INVITE");
 		}
@@ -4165,7 +4174,13 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					// destroy call after 5 seonds from now 
 					call->destroy_call_at = packetS->header.ts.tv_sec + 5;
 					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packetS->packet_number, packetS->sip_method, lastSIPresponseNum, &packetS->header, 
+						logPacketSipMethodCall(
+							#if USE_PACKET_NUMBER
+							packetS->packet_number
+							#else
+							0
+							#endif
+							, packetS->sip_method, lastSIPresponseNum, &packetS->header, 
 							packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 							call);
 					}
@@ -4237,7 +4252,13 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					call->ipport_n = 0;
 				}
 				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packetS->packet_number, packetS->sip_method, lastSIPresponseNum, &packetS->header, 
+					logPacketSipMethodCall(
+						#if USE_PACKET_NUMBER
+						packetS->packet_number
+						#else
+						0
+						#endif
+						, packetS->sip_method, lastSIPresponseNum, &packetS->header, 
 						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 						call);
 				}
@@ -4449,7 +4470,13 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 
 notfound:
 	if(logPacketSipMethodCall_enable) {
-		logPacketSipMethodCall(packetS->packet_number, packetS->sip_method, lastSIPresponseNum, &packetS->header, 
+		logPacketSipMethodCall(
+			#if USE_PACKET_NUMBER
+			packetS->packet_number
+			#else
+			0
+			#endif
+			, packetS->sip_method, lastSIPresponseNum, &packetS->header, 
 			packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 			call);
 	}
@@ -4554,8 +4581,10 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		char *dump_data = new FILE_LINE char[packetS->sipDataLen + 1];
 		memcpy(dump_data, packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
 		dump_data[packetS->sipDataLen] = 0;
+		#if USE_PACKET_NUMBER
 		cout << packetS->packet_number << endl
-		     << dump_data << endl;
+		#endif
+		cout << dump_data << endl;
 		delete [] dump_data;
 	}
 
@@ -4601,7 +4630,13 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 				goto endsip;
 			}
 			if(logPacketSipMethodCall_enable) {
-				logPacketSipMethodCall(packetS->packet_number, packetS->sip_method, packetS->lastSIPresponseNum, &packetS->header, 
+				logPacketSipMethodCall(
+					#if USE_PACKET_NUMBER
+					packetS->packet_number
+					#else
+					0
+					#endif
+					, packetS->sip_method, packetS->lastSIPresponseNum, &packetS->header, 
 					packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 					call, "to much register attempts without OK or 401 responses");
 			}
@@ -4646,7 +4681,13 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		save_packet(call, packetS, TYPE_SIP);
 		call->saveregister();
 		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(packetS->packet_number, packetS->sip_method, packetS->lastSIPresponseNum, &packetS->header, 
+			logPacketSipMethodCall(
+				#if USE_PACKET_NUMBER
+				packetS->packet_number
+				#else
+				0
+				#endif
+				, packetS->sip_method, packetS->lastSIPresponseNum, &packetS->header, 
 				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 				call, "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)");
 		}
@@ -4663,7 +4704,13 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			save_packet(call, packetS,TYPE_SIP);
 			call->saveregister();
 			if(logPacketSipMethodCall_enable) {
-				logPacketSipMethodCall(packetS->packet_number, packetS->sip_method, packetS->lastSIPresponseNum, &packetS->header, 
+				logPacketSipMethodCall(
+					#if USE_PACKET_NUMBER
+					packetS->packet_number
+					#else
+					0
+					#endif
+					, packetS->sip_method, packetS->lastSIPresponseNum, &packetS->header, 
 					packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 					call, 
 					packetS->sip_method == RES401 ? "REGISTER 401 count > 1" :
@@ -4689,7 +4736,13 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		save_packet(call, packetS, TYPE_SIP);
 		call->saveregister();
 		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(packetS->packet_number, packetS->sip_method, packetS->lastSIPresponseNum, &packetS->header, 
+			logPacketSipMethodCall(
+				#if USE_PACKET_NUMBER
+				packetS->packet_number
+				#else
+				0
+				#endif
+				, packetS->sip_method, packetS->lastSIPresponseNum, &packetS->header, 
 				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 				call, "too many REGISTER messages within the same callid");
 		}
@@ -4709,7 +4762,13 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 	call->shift_destroy_call_at(&packetS->header, packetS->lastSIPresponseNum);
 		
 	if(logPacketSipMethodCall_enable) {
-		logPacketSipMethodCall(packetS->packet_number, packetS->sip_method, packetS->lastSIPresponseNum, &packetS->header, 
+		logPacketSipMethodCall(
+			#if USE_PACKET_NUMBER
+			packetS->packet_number
+			#else
+			0
+			#endif
+			, packetS->sip_method, packetS->lastSIPresponseNum, &packetS->header, 
 			packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 			call);
 	}
@@ -7193,7 +7252,13 @@ void PreProcessPacket::process_reassembly(packet_s_process **packetS_ref) {
 	if(packetS->istcp == 1 && packetS->datalen >= 2) {
 		tcpReassemblySip.processPacket(&packetS, this);
 		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(packetS->packet_number, 0, 0, &packetS->header, 
+			logPacketSipMethodCall(
+				#if USE_PACKET_NUMBER
+				packetS->packet_number
+				#else
+				0
+				#endif
+				, 0, 0, &packetS->header, 
 				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 				NULL, "it is TCP and callid found");
 		}
@@ -7305,7 +7370,13 @@ bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
 			if(packetS->istcp == 1 && packetS->header_ip) {
 				tcpReassemblySip.processPacket(&packetS, NULL);
 				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packetS->packet_number, 0, 0, &packetS->header, 
+					logPacketSipMethodCall(
+						#if USE_PACKET_NUMBER
+						packetS->packet_number
+						#else
+						0
+						#endif
+						, 0, 0, &packetS->header, 
 						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 						NULL, "it is TCP and callid not found");
 				}
@@ -7313,7 +7384,13 @@ bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
 			} else {
 				// it is not TCP and callid not found
 				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packetS->packet_number, 0, 0, &packetS->header, 
+					logPacketSipMethodCall(
+						#if USE_PACKET_NUMBER
+						packetS->packet_number
+						#else
+						0
+						#endif
+						, 0, 0, &packetS->header, 
 						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 						NULL, "it is not TCP and callid not found");
 				}

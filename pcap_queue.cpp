@@ -1651,10 +1651,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 			}
 		}
-		if(last_t2cpu_preprocess_packet_out_thread_check_next_level > opt_cpu_limit_new_thread) {
-			PreProcessPacket::autoStartNextLevelPreProcessPacket();
-		} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_t2sip_thread) {
-			PreProcessPacket::autoStopLastLevelPreProcessPacket();
+		extern int opt_enable_preprocess_packet;
+		if(opt_enable_preprocess_packet == -1) {
+			if(last_t2cpu_preprocess_packet_out_thread_check_next_level > opt_cpu_limit_new_thread) {
+				PreProcessPacket::autoStartNextLevelPreProcessPacket();
+			} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_t2sip_thread) {
+				PreProcessPacket::autoStopLastLevelPreProcessPacket();
+			}
 		}
 		if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
 			ProcessRtpPacket::autoStartProcessRtpPacket();

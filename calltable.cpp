@@ -4233,6 +4233,8 @@ Calltable::cleanup_calls( time_t currtime ) {
 	}
 	Call* call;
 	lock_calls_listMAP();
+	Call **closeCalls = new FILE_LINE Call*[calls_listMAP.size()];
+	unsigned int closeCalls_count = 0;
 	for (callMAPIT = calls_listMAP.begin(); callMAPIT != calls_listMAP.end();) {
 		call = (*callMAPIT).second;
 		if(verbosity > 2) {
@@ -4290,58 +4292,64 @@ Calltable::cleanup_calls( time_t currtime ) {
 			}
 		}
 		if(closeCall) {
-			if(verbosity && verbosityE > 1) {
-				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
-			}
-			#if SYNC_CALL_RTP
-			if(currtime == 0 && call->rtppacketsinqueue) {
-				syslog(LOG_WARNING, "force destroy call (rtppacketsinqueue > 0)");
-			}
-			#else
-			if(currtime == 0 && call->rtppacketsinqueue_p != call->rtppacketsinqueue_m) {
-				syslog(LOG_WARNING, "force destroy call (rtppacketsinqueue_p != rtppacketsinqueue_m)");
-			}
-			#endif
-			// Close RTP dump file ASAP to save file handles
-			if(currtime == 0 && is_terminating()) {
-				call->getPcap()->close();
-				call->getPcapSip()->close();
-			}
-			call->getPcapRtp()->close();
-
-			if(currtime == 0) {
-				/* we are saving calls because of terminating SIGTERM and we dont know 
-				 * if the call ends successfully or not. So we dont want to confuse monitoring
-				 * applications which reports unterminated calls so mark this call as sighup */
-				call->sighup = true;
-				if(verbosity > 2)
-					syslog(LOG_NOTICE, "Set call->sighup\n");
-			}
-			// we have to close all raw files as there can be data in buffers 
-			call->closeRawFiles();
-			/* move call to queue for mysql processing */
-			lock_calls_queue();
-			if(call->push_call_to_calls_queue) {
-				syslog(LOG_WARNING,"try to duplicity push call %s / %i to calls_queue", call->call_id.c_str(), call->type);
-			} else {
-				call->push_call_to_calls_queue = 1;
-				calls_queue.push_back(call);
-			}
-			unlock_calls_queue();
+			closeCalls[closeCalls_count++] = call;
 			calls_listMAP.erase(callMAPIT++);
-			if(opt_enable_fraud && currtime) {
-				struct timeval tv_currtime;
-				tv_currtime.tv_sec = currtime;
-				tv_currtime.tv_usec = 0;
-				fraudEndCall(call, tv_currtime);
-			}
-			extern u_int64_t counter_calls_clean;
-			++counter_calls_clean;
 		} else {
 			++callMAPIT;
 		}
 	}
 	unlock_calls_listMAP();
+	for(unsigned i = 0; i < closeCalls_count; i++) {
+		call = closeCalls[i];
+		if(verbosity && verbosityE > 1) {
+			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
+		}
+		#if SYNC_CALL_RTP
+		if(currtime == 0 && call->rtppacketsinqueue) {
+			syslog(LOG_WARNING, "force destroy call (rtppacketsinqueue > 0)");
+		}
+		#else
+		if(currtime == 0 && call->rtppacketsinqueue_p != call->rtppacketsinqueue_m) {
+			syslog(LOG_WARNING, "force destroy call (rtppacketsinqueue_p != rtppacketsinqueue_m)");
+		}
+		#endif
+		// Close RTP dump file ASAP to save file handles
+		if(currtime == 0 && is_terminating()) {
+			call->getPcap()->close();
+			call->getPcapSip()->close();
+		}
+		call->getPcapRtp()->close();
+
+		if(currtime == 0) {
+			/* we are saving calls because of terminating SIGTERM and we dont know 
+			 * if the call ends successfully or not. So we dont want to confuse monitoring
+			 * applications which reports unterminated calls so mark this call as sighup */
+			call->sighup = true;
+			if(verbosity > 2)
+				syslog(LOG_NOTICE, "Set call->sighup\n");
+		}
+		// we have to close all raw files as there can be data in buffers 
+		call->closeRawFiles();
+		/* move call to queue for mysql processing */
+		lock_calls_queue();
+		if(call->push_call_to_calls_queue) {
+			syslog(LOG_WARNING,"try to duplicity push call %s / %i to calls_queue", call->call_id.c_str(), call->type);
+		} else {
+			call->push_call_to_calls_queue = 1;
+			calls_queue.push_back(call);
+		}
+		unlock_calls_queue();
+		
+		if(opt_enable_fraud && currtime) {
+			struct timeval tv_currtime;
+			tv_currtime.tv_sec = currtime;
+			tv_currtime.tv_usec = 0;
+			fraudEndCall(call, tv_currtime);
+		}
+		extern u_int64_t counter_calls_clean;
+		++counter_calls_clean;
+	}
+	delete [] closeCalls;
 	
 	if(currtime == 0 && is_terminating()) {
 		extern int terminated_call_cleanup;

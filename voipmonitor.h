@@ -55,6 +55,8 @@
 
 #define TAR_MODULO_SECONDS 60
 
+#define USE_PACKET_NUMBER false
+
 
 /* choose what method wil be used to synchronize threads. NONBLOCK is the fastest. Do not enable both at once */
 // this is now defined in Makefile 

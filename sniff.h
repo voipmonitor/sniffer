@@ -87,26 +87,28 @@ struct udphdr2 {
 };
 
 struct packet_s {
+	#if USE_PACKET_NUMBER
 	u_int64_t packet_number;
-	unsigned int saddr;
-	int source; 
-	unsigned int daddr; 
-	int dest;
+	#endif
+	u_int32_t saddr;
+	u_int32_t daddr; 
 	char *data; 
 	int datalen; 
-	int dataoffset;
 	pcap_t *handle; 
 	pcap_pkthdr header; 
 	const u_char *packet; 
-	int istcp; 
 	struct iphdr2 *header_ip; 
 	pcap_block_store *block_store; 
 	int block_store_index; 
 	int dlt; 
 	int sensor_id;
-	bool is_ssl;
-	bool _blockstore_lock;
-	bool _packet_alloc;
+	u_int16_t source; 
+	u_int16_t dest;
+	u_int16_t dataoffset;
+	int istcp : 2; 
+	bool is_ssl : 1;
+	bool _blockstore_lock : 1;
+	bool _packet_alloc : 1;
 	inline packet_s() {
 		init();
 	}

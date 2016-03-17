@@ -196,7 +196,9 @@ public:
 			this->lock_push();
 		}
 		packet_s packetS;
+		#if USE_PACKET_NUMBER
 		packetS.packet_number = packet_number;
+		#endif
 		packetS.saddr = saddr;
 		packetS.source = source;
 		packetS.daddr = daddr; 
@@ -289,6 +291,37 @@ public:
 		} else {
 			while(this->outThreadState) {
 				usleep(10);
+			}
+			if(qring_push_index && qring_push_index_count) {
+				for(unsigned int i = 0; i < qring_push_index_count; i++) {
+					packet_s_process *_packetS = qring[qring_push_index - 1]->batch[i];
+					switch(this->typePreProcessThread) {
+					case ppt_detach:
+					#ifdef PREPROCESS_DETACH2
+					case ppt_detach2:
+					#endif
+						break;
+					case ppt_sip:
+						this->process_SIP(_packetS);
+						break;
+					case ppt_extend:
+						this->process_SIP_EXTEND(_packetS);
+						break;
+					case ppt_pp_call:
+						this->process_CALL(_packetS);
+						break;
+					case ppt_pp_register:
+						this->process_REGISTER(_packetS);
+						break;
+					case ppt_pp_rtp:
+						this->process_RTP(_packetS);
+						break;
+					case ppt_end:
+						break;
+					}
+				}
+				qring_push_index = 0;
+				qring_push_index_count = 0;
 			}
 			switch(this->typePreProcessThread) {
 			case ppt_detach:
