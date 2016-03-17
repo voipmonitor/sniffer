@@ -203,7 +203,6 @@ public:
 		packetS.source = source;
 		packetS.daddr = daddr; 
 		packetS.dest = dest;
-		packetS.data = data; 
 		packetS.datalen = datalen; 
 		packetS.dataoffset = dataoffset;
 		packetS.handle = handle; 
@@ -211,7 +210,7 @@ public:
 		packetS.packet = packet; 
 		packetS._packet_alloc = packetDelete; 
 		packetS.istcp = istcp; 
-		packetS.header_ip = header_ip; 
+		packetS.header_ip_offset = header_ip ? ((u_char*)header_ip - packet) : 0; 
 		packetS.block_store = block_store; 
 		packetS.block_store_index =  block_store_index; 
 		packetS.dlt = dlt; 

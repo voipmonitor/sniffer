@@ -92,12 +92,10 @@ struct packet_s {
 	#endif
 	u_int32_t saddr;
 	u_int32_t daddr; 
-	char *data; 
 	int datalen; 
 	pcap_t *handle; 
 	pcap_pkthdr header; 
 	const u_char *packet; 
-	struct iphdr2 *header_ip; 
 	pcap_block_store *block_store; 
 	int block_store_index; 
 	int dlt; 
@@ -105,10 +103,17 @@ struct packet_s {
 	u_int16_t source; 
 	u_int16_t dest;
 	u_int16_t dataoffset;
+	u_int16_t header_ip_offset;
 	int istcp : 2; 
 	bool is_ssl : 1;
 	bool _blockstore_lock : 1;
 	bool _packet_alloc : 1;
+	char *data_() {
+		return((char*)(packet + dataoffset));
+	}
+	iphdr2 *header_ip_() {
+		return((iphdr2*)(packet + header_ip_offset));
+	}
 	inline packet_s() {
 		init();
 	}
@@ -155,6 +160,8 @@ struct packet_s_process_rtp_call_info {
 };
 
 struct packet_s_process_0 : public packet_s {
+	char *data;
+	struct iphdr2 *header_ip; 
 	cHeapItemsPointerStack *stack;
 	int isSip;
 	bool isSkinny;
@@ -172,6 +179,8 @@ struct packet_s_process_0 : public packet_s {
 		stack = NULL;
 	}
 	inline void init2() {
+		data = (char*)(packet + dataoffset);
+		header_ip = (iphdr2*)(packet + header_ip_offset);
 		isSip = -1;
 		isSkinny = false;
 		hash[0] = 0;

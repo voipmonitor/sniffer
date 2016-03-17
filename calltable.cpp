@@ -884,7 +884,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 		}
 	}
 
-	parse_rtcp((char*)packetS->data, packetS->datalen, this);
+	parse_rtcp((char*)packetS->data_(), packetS->datalen, this);
 	
 	if(enable_save_packet) {
 		save_packet(this, packetS, TYPE_RTP);
@@ -916,7 +916,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 	}
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
-	tmprtp.fill((u_char*)packetS->data, packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest);
+	tmprtp.fill((u_char*)packetS->data_(), packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest);
 	int curpayload = tmprtp.getPayload();
 	
 	// chekc if packet is DTMF and saverfc2833 is enabled 
@@ -931,8 +931,8 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 		goto end;
 	}
 
-	if(opt_dscp && !packetS->header_ip) {
-		packetS->header_ip = (struct iphdr2 *)(packetS->data - sizeof(struct iphdr2) - sizeof(udphdr2));
+	if(opt_dscp && packetS->header_ip_offset) {
+		packetS->header_ip_offset = packetS->dataoffset - sizeof(struct iphdr2) - sizeof(udphdr2);
 	}
 
 	if(iscaller) {
@@ -959,9 +959,9 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), packetS->saddr, packetS->dest);
 				// found 
 				if(opt_dscp) {
-					rtp[i]->dscp = packetS->header_ip->tos >> 2;
+					rtp[i]->dscp = packetS->header_ip_()->tos >> 2;
 					if(sverb.dscp) {
-						cout << "rtpdscp " << (int)(packetS->header_ip->tos>>2) << endl;
+						cout << "rtpdscp " << (int)(packetS->header_ip_()->tos>>2) << endl;
 					}
 				}
 				
@@ -1005,7 +1005,7 @@ read:
 							evProcessRtpStream(rtp[i]->index_call_ip_port, rtp[i]->index_call_ip_port_by_dest,
 									   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header.ts.tv_sec);
 						}
-						rtp[i]->read((u_char*)packetS->data, packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id, ifname);
+						rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id, ifname);
 						if(rtp[i]->iscaller) {
 							lastcallerrtp = rtp[i];
 						} else {
@@ -1050,9 +1050,9 @@ read:
 		rtp_cur[iscaller] = rtp[ssrc_n]; 
 		
 		if(opt_dscp) {
-			rtp[ssrc_n]->dscp = packetS->header_ip->tos >> 2;
+			rtp[ssrc_n]->dscp = packetS->header_ip_()->tos >> 2;
 			if(sverb.dscp) {
-				cout << "rtpdscp " << (int)(packetS->header_ip->tos>>2) << endl;
+				cout << "rtpdscp " << (int)(packetS->header_ip_()->tos>>2) << endl;
 			}
 		}
 
@@ -1100,7 +1100,7 @@ read:
 			}
 		}
 
-		rtp[ssrc_n]->read((u_char*)packetS->data, packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id, ifname);
+		rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id, ifname);
 		if(sverb.check_is_caller_called) printf("new rtp[%p] ssrc[%x] seq[%u] saddr[%s] dport[%u] iscaller[%u]\n", rtp[ssrc_n], curSSRC, rtp[ssrc_n]->seq, inet_ntostring(htonl(packetS->saddr)).c_str(), packetS->dest, rtp[ssrc_n]->iscaller);
 		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
 		this->rtp[ssrc_n]->payload2 = curpayload;

@@ -5862,7 +5862,7 @@ Call *process_packet__rtp(packet_s_process_rtp_call_info *call_info,size_t call_
 		call = call_info[call_info_index].call;
 		iscaller = call_info[call_info_index].iscaller;
 		sdp_flags = call_info[call_info_index].sdp_flags;
-		is_rtcp = call_info[call_info_index].is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data[1] == 0xC8);
+		is_rtcp = call_info[call_info_index].is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data_()[1] == 0xC8);
 		
 		if(sverb.process_rtp) {
 			++process_rtp_counter;
@@ -7179,7 +7179,7 @@ void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
 				    packetS_detach->is_ssl ?
 				     PACKET_S_PROCESS_SIP_POP_FROM_STACK() : 
 				     (packet_s_process*)PACKET_S_PROCESS_RTP_POP_FROM_STACK();
-	*(packet_s*)packetS = *packetS_detach;
+	memcpy(packetS, packetS_detach, sizeof(packet_s));
 	#ifdef PREPROCESS_DETACH2
 	preProcessPacket[ppt_detach2]->push_packet(packetS);
 	#else
