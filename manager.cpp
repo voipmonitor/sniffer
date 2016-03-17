@@ -2060,6 +2060,18 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "rtpread_add_thread") != NULL) {
+		add_rtp_read_thread();
+		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "rtpread_remove_thread") != NULL) {
+		set_remove_rtp_read_thread();
+		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "enable_bad_packet_order_warning") != NULL) {
 		enable_bad_packet_order_warning = 1;
 		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){

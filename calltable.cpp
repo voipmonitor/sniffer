@@ -285,7 +285,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 			extern void unlock_add_remove_rtp_threads();
 			lock_add_remove_rtp_threads();
 			thread_num = gthread_num % num_threads_active;
-			++rtp_threads[thread_num].calls;
+			__sync_add_and_fetch(&rtp_threads[thread_num].calls, 1);
 			unlock_add_remove_rtp_threads();
 		}
 		gthread_num++;
@@ -617,10 +617,13 @@ Call::~Call(){
 	//printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
 	
 	if(type == INVITE && is_enable_rtp_threads() && num_threads_active > 0) {
-		if(rtp_threads &&
-		   rtp_threads[thread_num].calls > 0) {
-			--rtp_threads[thread_num].calls;
+		extern void lock_add_remove_rtp_threads();
+		extern void unlock_add_remove_rtp_threads();
+		lock_add_remove_rtp_threads();
+		if(rtp_threads[thread_num].calls > 0) {
+			__sync_sub_and_fetch(&rtp_threads[thread_num].calls, 1);
 		}
+		unlock_add_remove_rtp_threads();
 	}
 }
 

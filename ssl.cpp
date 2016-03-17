@@ -1798,6 +1798,8 @@ ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
 		if (ssl_restore_master_key(ssl_session, "Encrypted pre-master secret", TRUE, mk_map->pre_master, &encrypted_pre_master)) {
 			return TRUE;
 		}
+		
+		delete [] encrypted_pre_master.data;
 	}	  
 	return FALSE;
 }
