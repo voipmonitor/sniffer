@@ -738,7 +738,7 @@ protected:
 		return(__getPcapHandle(dlt, NULL));
 	}
 	u_int16_t _getPcapHandleIndex(int dlt) {
-		u_int16_t index;
+		u_int16_t index = 0;
 		__getPcapHandle(dlt, &index);
 		return(index);
 	}

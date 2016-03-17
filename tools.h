@@ -2756,6 +2756,8 @@ public:
 		this->push_queues_max = push_queues_max;
 		this->pop_queues = new FILE_LINE sHeapItemsPool[this->pop_queues_max];
 		this->push_queues = new FILE_LINE sHeapItemsPool[this->push_queues_max];
+		this->pop_qp = NULL;
+		this->pop_qp_size = 0;
 		this->stack = new FILE_LINE rqueue_quick<sHeapItemsPool>(this->size_max / HEAP_ITEM_POOL_SIZE, 0, 0, NULL, false, __FILE__, __LINE__);
 	}
 	~cHeapItemsPointerStack() {
@@ -2815,15 +2817,32 @@ public:
 		}
 		return(true);
 	}
-	inline int popq(void **item) {
+	inline u_int8_t popq(void **item) {
 		if(this->pop_queues->pool_size > 0) {
 			--this->pop_queues->pool_size;
-			*item = this->pop_queues->pool[this->pop_queues[0].pool_size];
+			*item = this->pop_queues->pool[this->pop_queues->pool_size];
 		} else {
 			if(stack->popq(&this->pop_queues[0])) {
 				this->pop_queues->pool_size = HEAP_ITEM_POOL_SIZE - 1;
 				*item = this->pop_queues->pool[this->pop_queues->pool_size];
-				//cout << "P" << flush;
+			} else {
+				return(false);
+			}
+		}
+		return(true);
+	}
+	inline u_int8_t popqp(void **item) {
+		if(pop_qp_size > 1) {
+			--pop_qp_size;
+			*item = pop_qp->pool[pop_qp_size];
+		} else if(pop_qp_size) {
+			pop_qp_size = 0;
+			*item = pop_qp->pool[0];
+			stack->moveReadit();
+		} else {
+			if(stack->popqp(&pop_qp)) {
+				pop_qp_size = HEAP_ITEM_POOL_SIZE - 1;
+				*item = pop_qp->pool[HEAP_ITEM_POOL_SIZE - 1];
 			} else {
 				return(false);
 			}
@@ -2836,6 +2855,8 @@ public:
 	u_int16_t push_queues_max;
 	sHeapItemsPool *pop_queues;
 	sHeapItemsPool *push_queues;
+	u_int16_t pop_qp_size;
+	sHeapItemsPool *pop_qp;
 	rqueue_quick<sHeapItemsPool> *stack;
 };
 #endif

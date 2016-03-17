@@ -411,7 +411,7 @@ public:
 	}
 	bool push(typeItem *item, bool waitForFree, bool useLock = false) {
 		if(useLock) lock();
-		while(free[writeit] == 0) {
+		while(free[writeit] != 1) {
 			if(waitForFree) {
 				if(term_rqueue && *term_rqueue) {
 					if(useLock) unlock();
@@ -441,7 +441,7 @@ public:
 	}
 	bool pop(typeItem *item, bool waitForFree, bool useLock = false) {
 		if(useLock) lock();
-		while(free[readit] == 1) {
+		while(free[readit] != 0) {
 			if(waitForFree) {
 				if(term_rqueue && *term_rqueue) {
 					if(useLock) unlock();
@@ -467,8 +467,8 @@ public:
 		if(useLock) unlock();
 		return(true);
 	}
-	bool popq(typeItem *item) {
-		if(free[readit] == 1) {
+	u_int8_t popq(typeItem *item) {
+		if(free[readit] != 0) {
 			return(false);
 		}
 		*item = buffer[readit];
@@ -480,8 +480,16 @@ public:
 		}
 		return(true);
 	}
+	u_int8_t popqp(typeItem **item) {
+		if(free[readit] != 0) {
+			return(false);
+		}
+		free[readit] = -1;
+		*item = &buffer[readit]; 
+		return(true);
+	}
 	bool get(typeItem *item) {
-		while(free[readit] == 1) {
+		while(free[readit] != 0) {
 			return(false);
 		}
 		if(binaryBuffer) {

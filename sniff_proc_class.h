@@ -424,37 +424,21 @@ public:
 	inline packet_s_process *packetS_sip_pop_from_stack() {
 		packet_s_process *packetS;
 		if(this->stackSip->popq((void**)&packetS)) {
-			/*
-			if(*(u_char*)packetS) {
-				cout << "XXX1" << endl;
-				abort();
-			}
-			*/
-			packetS->init();
 			++allocStackCounter[0];
 		} else {
 			packetS = new FILE_LINE packet_s_process;
 			++allocCounter[0];
 		}
-		packetS->stack = this->stackSip;
 		return(packetS);
 	}
 	inline packet_s_process_0 *packetS_rtp_pop_from_stack() {
 		packet_s_process_0 *packetS;
 		if(this->stackRtp->popq((void**)&packetS)) {
-			/*
-			if(*(u_char*)packetS) {
-				cout << "XXX2" << endl;
-				abort();
-			}
-			*/
-			packetS->init();
 			++allocStackCounter[0];
 		} else {
 			packetS = new FILE_LINE packet_s_process_0;
 			++allocCounter[0];
 		}
-		packetS->stack = this->stackRtp;
 		return(packetS);
 	}
 	inline void packetS_destroy(packet_s_process **packetS) {
