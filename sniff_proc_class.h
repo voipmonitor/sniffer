@@ -242,12 +242,16 @@ public:
 			*(packet_s*)qring_detach_active_push_item->batch[qring_push_index_count] = *packetS;
 			extern char *sipportmatrix;
 			extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
-			qring_detach_active_push_item->batch[qring_push_index_count]->pointer = 
-				sipportmatrix[packetS->source] || 
-				sipportmatrix[packetS->dest] ||
-				packetS->is_ssl ?
-					preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack() : 
-					preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack();
+			void **p = qring_detach_active_push_item->batch[qring_push_index_count]->pointer;
+			if(sipportmatrix[packetS->source] || 
+			   sipportmatrix[packetS->dest] ||
+			   packetS->is_ssl) {
+				p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack();
+				p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackSip;
+			} else {
+				p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack();
+				p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackRtp;
+			}
 			++qring_push_index_count;
 			if(qring_push_index_count == qring_detach_active_push_item->max_count) {
 				qring_detach_active_push_item->count = qring_push_index_count;

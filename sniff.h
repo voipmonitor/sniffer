@@ -106,7 +106,7 @@ struct packet_s {
 	u_int16_t dest;
 	u_int16_t dataoffset;
 	u_int16_t header_ip_offset;
-	int istcp : 2; 
+	unsigned int istcp : 2;
 	bool is_ssl : 1;
 	bool _blockstore_lock : 1;
 	bool _packet_alloc : 1;
@@ -155,7 +155,7 @@ struct packet_s {
 };
 
 struct packet_s_plus_pointer : public packet_s {
-	void *pointer;
+	void *pointer[2];
 };
 
 struct packet_s_process_rtp_call_info {

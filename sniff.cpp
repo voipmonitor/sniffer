@@ -7189,16 +7189,10 @@ void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
 }
 
 void PreProcessPacket::process_DETACH_plus(packet_s_plus_pointer *packetS_detach) {
-	packet_s_process *packetS = (packet_s_process*)packetS_detach->pointer;
-	if(sipportmatrix[packetS_detach->source] || 
-	   sipportmatrix[packetS_detach->dest] ||
-	   packetS_detach->is_ssl) {
-		packetS->init();
-		packetS->stack = preProcessPacket[PreProcessPacket::ppt_detach]->stackSip;
-	} else {
-		packetS->packet_s_process_0::init();
-		packetS->stack = preProcessPacket[PreProcessPacket::ppt_detach]->stackRtp;
-	}
+	packet_s_process *packetS = (packet_s_process*)packetS_detach->pointer[0];
+	//packetS->init();
+	*(u_int8_t*)(&packetS->header_ip_offset + 1) = 0;
+	packetS->stack = (cHeapItemsPointerStack*)packetS_detach->pointer[1];
 	*(packet_s*)packetS = *(packet_s*)packetS_detach;
 	#ifdef PREPROCESS_DETACH2
 	preProcessPacket[ppt_detach2]->push_packet(packetS);
