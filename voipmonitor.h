@@ -45,8 +45,7 @@
 
 #define SNIFFER_INLINE_FUNCTIONS true
 
-#define SYNC_PCAP_BLOCK_STORE true
-#define SYNC_CALL_RTP true
+#define DEBUG_SYNC_PCAP_BLOCK_STORE false
 
 #define TAR_PROF false
 

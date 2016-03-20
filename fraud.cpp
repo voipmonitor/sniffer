@@ -824,6 +824,10 @@ FraudAlert_rcc_base::~FraudAlert_rcc_base() {
 	for(callsIter_by_number = calls_by_number.begin(); callsIter_by_number != calls_by_number.end(); ++callsIter_by_number) {
 		delete callsIter_by_number->second;
 	}
+	map<d_u_int32_t, FraudAlert_rcc_rtpStreamInfo*>::iterator callsIter_by_rtp_stream;
+	for(callsIter_by_rtp_stream = calls_by_rtp_stream.begin(); callsIter_by_rtp_stream != calls_by_rtp_stream.end(); ++callsIter_by_rtp_stream) {
+		delete callsIter_by_rtp_stream->second;
+	}
 }
 
 void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *alert, bool timeperiod) {
@@ -845,7 +849,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 				if(callsIter_by_ip != calls_by_ip.end()) {
 					call = callsIter_by_ip->second;
 				} else {
-					call = new FraudAlert_rcc_callInfo;
+					call = new FILE_LINE FraudAlert_rcc_callInfo;
 					calls_by_ip[callInfo->caller_ip] = call;
 				}
 				break;
@@ -855,7 +859,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 				if(callsIter_by_number != calls_by_number.end()) {
 					call = callsIter_by_number->second;
 				} else {
-					call = new FraudAlert_rcc_callInfo;
+					call = new FILE_LINE FraudAlert_rcc_callInfo;
 					calls_by_number[callInfo->caller_number] = call;
 				}
 				break;
@@ -893,7 +897,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 					   callInfo->at_connect > call->last_alert_info_local + 1000000ull &&
 					   this->checkOkAlert(idAlert, _actCalls, callInfo->at_connect,
 							      _li, alert)) {
-						FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
+						FraudAlertInfo_rcc *alertInfo = new FILE_LINE FraudAlertInfo_rcc(alert);
 						if(parent->typeBy == FraudAlert::_typeBy_source_ip) {
 							alertInfo->set_ip(_li, this->getDescr().c_str(), 
 									  callInfo->caller_ip, callInfo->country_code_caller_ip.c_str(),
@@ -994,7 +998,7 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 				if(callsIter_by_rtp_stream != calls_by_rtp_stream.end()) {
 					call = callsIter_by_rtp_stream->second;
 				} else {
-					call = new FraudAlert_rcc_rtpStreamInfo;
+					call = new FILE_LINE FraudAlert_rcc_rtpStreamInfo;
 					calls_by_rtp_stream[rtp_stream_id] = call;
 				}
 				break;
@@ -1043,7 +1047,7 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 					   rtpStreamInfo->at > call->last_alert_info_local + 1000000ull &&
 					   this->checkOkAlert(idAlert, _actCalls, rtpStreamInfo->at,
 							      FraudAlert::_li_local, alert)) {
-						FraudAlertInfo_rcc *alertInfo = new FraudAlertInfo_rcc(alert);
+						FraudAlertInfo_rcc *alertInfo = new FILE_LINE FraudAlertInfo_rcc(alert);
 						alertInfo->set_rtp_stream(_li, this->getDescr().c_str(), 
 									  parent->typeBy, rtp_stream_id,
 									  _actCalls);
@@ -1322,7 +1326,7 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
 						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
 			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
-				FraudAlertInfo_chc *alertInfo = new FraudAlertInfo_chc(this);
+				FraudAlertInfo_chc *alertInfo = new FILE_LINE FraudAlertInfo_chc(this);
 				alertInfo->set(callInfo->caller_number.c_str(),
 					       _typeLocation_country,
 					       callInfo->caller_ip,
@@ -1332,7 +1336,7 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 				this->evAlert(alertInfo);
 			}
 			if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
-				FraudAlertInfo_chc *alertInfo = new FraudAlertInfo_chc(this);
+				FraudAlertInfo_chc *alertInfo = new FILE_LINE FraudAlertInfo_chc(this);
 				alertInfo->set(callInfo->caller_number.c_str(),
 					       _typeLocation_continent,
 					       callInfo->caller_ip,
@@ -1374,7 +1378,7 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
 						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
 			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
-				FraudAlertInfo_chc *alertInfo = new FraudAlertInfo_chc(this);
+				FraudAlertInfo_chc *alertInfo = new FILE_LINE FraudAlertInfo_chc(this);
 				alertInfo->set(callInfo->caller_number.c_str(),
 					       _typeLocation_country,
 					       callInfo->caller_ip,
@@ -1384,7 +1388,7 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 				this->evAlert(alertInfo);
 			}
 			if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
-				FraudAlertInfo_chc *alertInfo = new FraudAlertInfo_chc(this);
+				FraudAlertInfo_chc *alertInfo = new FILE_LINE FraudAlertInfo_chc(this);
 				alertInfo->set(callInfo->caller_number.c_str(),
 					       _typeLocation_continent,
 					       callInfo->caller_ip,
@@ -1447,7 +1451,7 @@ void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 		    countryCodes->isLocationIn(callInfo->continent_code_called_number.c_str(), &this->destLocation, true)) &&
 		   this->checkOkAlert(callInfo->caller_number.c_str(), callInfo->called_number.c_str(),
 				      callInfo->country_code_called_number.c_str(), callInfo->at_begin)) {
-			FraudAlertInfo_d *alertInfo = new FraudAlertInfo_d(this);
+			FraudAlertInfo_d *alertInfo = new FILE_LINE FraudAlertInfo_d(this);
 			alertInfo->set(callInfo->caller_number.c_str(),
 				       callInfo->called_number.c_str(),
 				       callInfo->country_code_called_number.c_str(),
@@ -1544,7 +1548,7 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 		for(iter = count.begin(); iter != count.end(); iter++) {
 			if(iter->second.count >= intervalLimit &&
 			   this->checkOkAlert(iter->first, iter->second.count, eventInfo->at)) {
-				FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
+				FraudAlertInfo_spc *alertInfo = new FILE_LINE FraudAlertInfo_spc(this);
 				alertInfo->set(iter->first,
 					       iter->second.count,
 					       iter->second.count_invite,
@@ -1603,7 +1607,7 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 		for(iter = count.begin(); iter != count.end(); iter++) {
 			if(iter->second >= intervalLimit &&
 			   this->checkOkAlert(iter->first, iter->second, eventInfo->at)) {
-				FraudAlertInfo_spc *alertInfo = new FraudAlertInfo_spc(this);
+				FraudAlertInfo_spc *alertInfo = new FILE_LINE FraudAlertInfo_spc(this);
 				alertInfo->set(iter->first,
 					       iter->second);
 				this->evAlert(alertInfo);
@@ -1695,7 +1699,7 @@ void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
 		for(iter = count.begin(); iter != count.end(); iter++) {
 			if(iter->second >= intervalLimit &&
 			   this->checkOkAlert(iter->first, iter->second, callInfo->at_last)) {
-				FraudAlertInfo_seq *alertInfo = new FraudAlertInfo_seq(this);
+				FraudAlertInfo_seq *alertInfo = new FILE_LINE FraudAlertInfo_seq(this);
 				alertInfo->set(iter->first.ip,
 					       iter->first.number.c_str(),
 					       iter->second,
@@ -1765,25 +1769,25 @@ void FraudAlerts::loadAlerts(bool lock) {
 		unsigned int dbId = atol(row["id"].c_str());
 		switch(atoi(row["alert_type"].c_str())) {
 		case FraudAlert::_rcc:
-			alert = new FraudAlert_rcc(dbId);
+			alert = new FILE_LINE FraudAlert_rcc(dbId);
 			break;
 		case FraudAlert::_chc:
-			alert = new FraudAlert_chc(dbId);
+			alert = new FILE_LINE FraudAlert_chc(dbId);
 			break;
 		case FraudAlert::_chcr:
-			alert = new FraudAlert_chcr(dbId);
+			alert = new FILE_LINE FraudAlert_chcr(dbId);
 			break;
 		case FraudAlert::_d:
-			alert = new FraudAlert_d(dbId);
+			alert = new FILE_LINE FraudAlert_d(dbId);
 			break;
 		case FraudAlert::_spc:
-			alert = new FraudAlert_spc(dbId);
+			alert = new FILE_LINE FraudAlert_spc(dbId);
 			break;
 		case FraudAlert::_rc:
-			alert = new FraudAlert_rc(dbId);
+			alert = new FILE_LINE FraudAlert_rc(dbId);
 			break;
 		case FraudAlert::_seq:
-			alert = new FraudAlert_seq(dbId);
+			alert = new FILE_LINE FraudAlert_seq(dbId);
 			break;
 		}
 		if(alert && alert->loadAlert()) {
@@ -2065,7 +2069,7 @@ void initFraud() {
 		return;
 	}
 	fraudAlerts_lock();
-	fraudAlerts = new FraudAlerts();
+	fraudAlerts = new FILE_LINE FraudAlerts();
 	fraudAlerts->loadData();
 	fraudAlerts->loadAlerts();
 	fraudAlerts_unlock();

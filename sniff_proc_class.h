@@ -55,7 +55,7 @@ public:
 	};
 public:
 	TcpReassemblySip();
-	void processPacket(packet_s_process **packetS_ref, class PreProcessPacket *processPacket);
+	void processPacket(packet_s_process **packetS_ref, bool isSip, class PreProcessPacket *processPacket);
 	void clean(time_t ts = 0);
 private:
 	bool addPacket(tcp_stream *stream, packet_s_process **packetS_ref, PreProcessPacket *processPacket);
@@ -241,11 +241,13 @@ public:
 			}
 			*(packet_s*)qring_detach_active_push_item->batch[qring_push_index_count] = *packetS;
 			extern char *sipportmatrix;
+			extern int opt_skinny;
 			extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 			void **p = qring_detach_active_push_item->batch[qring_push_index_count]->pointer;
-			if(sipportmatrix[packetS->source] || 
+			if(packetS->is_ssl ||
+			   sipportmatrix[packetS->source] || 
 			   sipportmatrix[packetS->dest] ||
-			   packetS->is_ssl) {
+			   (opt_skinny && packetS->istcp && (packetS->source == 2000 || packetS->dest == 2000))) {
 				p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack();
 				p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackSip;
 			} else {
@@ -557,7 +559,6 @@ private:
 	void process_CALL(packet_s_process *packetS);
 	void process_REGISTER(packet_s_process *packetS);
 	void process_RTP(packet_s_process_0 *packetS);
-	inline void process_reassembly(packet_s_process **packetS_ref);
 	inline void process_parseSipData(packet_s_process **packetS_ref);
 	inline void process_sip(packet_s_process **packetS_ref);
 	inline void process_skinny(packet_s_process **packetS_ref);

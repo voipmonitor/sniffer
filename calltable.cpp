@@ -299,12 +299,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	}
 	silencerecording = 0;
 	flags1 = 0;
-	#if SYNC_CALL_RTP
 	rtppacketsinqueue = 0;
-	#else
-	rtppacketsinqueue_p = 0;
-	rtppacketsinqueue_m = 0;
-	#endif
 	end_call = 0;
 	push_call_to_calls_queue = 0;
 	push_register_to_registers_queue = 0;
@@ -545,11 +540,9 @@ Call::_addtocachequeue(string file) {
 
 void
 Call::removeRTP() {
-	#if SYNC_CALL_RTP
 	while(this->rtppacketsinqueue > 0) {
 		usleep(100);
 	}
-	#endif
 	while(__sync_lock_test_and_set(&rtplock, 1)) {
 		usleep(100);
 	}
@@ -616,7 +609,7 @@ Call::~Call(){
 	//printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
 	//printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
 	
-	if(type == INVITE && is_enable_rtp_threads() && num_threads_active > 0) {
+	if(type == INVITE && is_enable_rtp_threads() && num_threads_active > 0 && rtp_threads) {
 		extern void lock_add_remove_rtp_threads();
 		extern void unlock_add_remove_rtp_threads();
 		lock_add_remove_rtp_threads();
@@ -4281,13 +4274,7 @@ Calltable::cleanup_calls( time_t currtime ) {
 		}
 		if(closeCall) {
 			call->removeFindTables(true);
-			if(!(
-			     #if SYNC_CALL_RTP
-			     call->rtppacketsinqueue == 0
-			     #else
-			     call->rtppacketsinqueue_p == call->rtppacketsinqueue_m
-			     #endif 
-			     )) {
+			if(call->rtppacketsinqueue != 0) {
 				closeCall = false;
 			}
 		}
@@ -4304,15 +4291,9 @@ Calltable::cleanup_calls( time_t currtime ) {
 		if(verbosity && verbosityE > 1) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 		}
-		#if SYNC_CALL_RTP
 		if(currtime == 0 && call->rtppacketsinqueue) {
 			syslog(LOG_WARNING, "force destroy call (rtppacketsinqueue > 0)");
 		}
-		#else
-		if(currtime == 0 && call->rtppacketsinqueue_p != call->rtppacketsinqueue_m) {
-			syslog(LOG_WARNING, "force destroy call (rtppacketsinqueue_p != rtppacketsinqueue_m)");
-		}
-		#endif
 		// Close RTP dump file ASAP to save file handles
 		if(currtime == 0 && is_terminating()) {
 			call->getPcap()->close();

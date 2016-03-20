@@ -54,8 +54,8 @@
 	 stringInfo[1] == HEAPSAFE_END_MEMORY_CONTROL_BLOCK[1] && \
 	 stringInfo[2] == HEAPSAFE_END_MEMORY_CONTROL_BLOCK[2])
 
-#define MCB_PLUS   true
-#define MCB_STACK  HeapSafeCheck & _HeapSafeStack
+#define MCB_PLUS   (HeapSafeCheck & _HeapSafePlus)
+#define MCB_STACK  (HeapSafeCheck & _HeapSafeStack)
 #define SIZEOF_MCB (MCB_PLUS ? sizeof(sHeapSafeMemoryControlBlockPlus) : \
 		    MCB_STACK ? sizeof(sHeapSafeMemoryControlBlockEx) : \
 		    sizeof(sHeapSafeMemoryControlBlock))

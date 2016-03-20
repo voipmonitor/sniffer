@@ -102,16 +102,18 @@ struct pcap_block_store {
 		this->idFileStore = 0;
 		this->filePosition = 0;
 		this->timestampMS = getTimeMS_rdtsc();
-		#if SYNC_PCAP_BLOCK_STORE
 		this->_sync_packet_lock = 0;
-		#else
-		this->_sync_packet_lock_p = 0;
-		this->_sync_packet_lock_m = 0;
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		this->_sync_packets_lock = new volatile int[100000];
+		memset((void*)this->_sync_packets_lock, 0, sizeof(int) * 100000);
 		#endif
 	}
 	~pcap_block_store() {
 		this->destroy();
 		this->destroyRestoreBuffer();
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		delete [] this->_sync_packets_lock;
+		#endif
 	}
 	inline bool add(pcap_pkthdr *header, u_char *packet, int offset, int dlink, int memcpy_packet_size = 0);
 	inline bool add(pcap_pkthdr_plus *header, u_char *packet);
@@ -169,39 +171,38 @@ struct pcap_block_store {
 		return(true);
 	}
 	void lock_packet(int index) {
-		#if SYNC_PCAP_BLOCK_STORE
 		__sync_add_and_fetch(&this->_sync_packet_lock, 1);
-		#else
-		++this->_sync_packet_lock_p;
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		__sync_add_and_fetch(&this->_sync_packets_lock[index], 1);
 		#endif
 	}
 	void unlock_packet(int index) {
-		#if SYNC_PCAP_BLOCK_STORE
 		__sync_sub_and_fetch(&this->_sync_packet_lock, 1);
-		#else
-		++this->_sync_packet_lock_m;
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		__sync_sub_and_fetch(&this->_sync_packets_lock[index], 1);
+		if(this->_sync_packets_lock[index] < 0) {
+			syslog(LOG_ERR, "error in sync (unlock) packetbuffer block %lx / %i / %i", (u_int64_t)this, index, this->_sync_packets_lock[index]);
+			abort();
+		}
 		#endif
 	}
 	bool enableDestroy() {
-		#if SYNC_PCAP_BLOCK_STORE
-		return(this->_sync_packet_lock == 0);
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		if(this->_sync_packet_lock == 0) {
+			for(unsigned i = 0; i < count; i++) {
+				if(this->_sync_packets_lock[i] != 0) {
+					syslog(LOG_ERR, "error in sync (unlock) packetbuffer block %lx / %i / %i", (u_int64_t)this, i, this->_sync_packets_lock[i]);
+					abort();
+				}
+			}
+			return(true);
+		} else {
+			return(false);
+		}
 		#else
-		return(this->_sync_packet_lock_p == this->_sync_packet_lock_m);
+		return(this->_sync_packet_lock == 0);
 		#endif
 	}
-	
-	void lock_sync_packet_lock() {
-		#if SYNC_PCAP_BLOCK_STORE
-		while(__sync_lock_test_and_set(&this->_sync_packet_lock, 1));
-		#endif
-	}
-	void unlock_sync_packet_lock() {
-		#if SYNC_PCAP_BLOCK_STORE
-		__sync_lock_release(&this->_sync_packet_lock);
-		#endif
-	}
-	
-	//
 	uint32_t *offsets;
 	u_char *block;
 	size_t size;
@@ -218,11 +219,9 @@ struct pcap_block_store {
 	u_int idFileStore;
 	u_long filePosition;
 	u_long timestampMS;
-	#if SYNC_PCAP_BLOCK_STORE
 	volatile int _sync_packet_lock;
-	#else
-	volatile u_int32_t _sync_packet_lock_p;
-	volatile u_int32_t _sync_packet_lock_m;
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
+	volatile int *_sync_packets_lock;
 	#endif
 };
 

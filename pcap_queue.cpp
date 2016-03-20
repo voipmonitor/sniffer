@@ -5514,10 +5514,6 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 			istcp, header_ip,
 			block_store, block_store_index, dlt, sensor_id,
 			true /*blockstore_lock*/);
-		if(opt_ipaccount) {
-			//TODO: detect if voippacket!
-			ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
-		}
 	} else if(opt_ipaccount) {
 		ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
 	}

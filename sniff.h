@@ -135,7 +135,7 @@ struct packet_s {
 		}
 	}
 	inline void blockstore_unlock() {
-		if(_blockstore_lock && block_store) {
+		if(_blockstore_lock && block_store && !is_terminating()) {
 			block_store->unlock_packet(block_store_index);
 			_blockstore_lock = false;
 		}
@@ -259,6 +259,16 @@ struct packet_s_process : public packet_s_process_0 {
 	}
 	inline char *get_callid() {
 		return(callid_long.size() ? (char*)callid_long.c_str() : callid_short);
+	}
+	inline void new_alloc_packet_header() {
+		pcap_pkthdr *header_pt_new = new FILE_LINE pcap_pkthdr;
+		u_char *packet_new = new u_char[header_pt->caplen];
+		*header_pt_new = *header_pt;
+		memcpy(packet_new, packet, header_pt->caplen);
+		header_pt = header_pt_new;
+		packet = packet_new;
+		data = (char*)(packet + dataoffset);
+		header_ip = (iphdr2*)(packet + header_ip_offset);
 	}
 };
 

@@ -262,12 +262,7 @@ public:
 	int regrrddiff;			// RRD diff time REGISTER<->OK in [ms]- RFC6076
 	uint64_t regsrcmac;		// mac if ether layer present in REGISTER
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
-	#if SYNC_CALL_RTP
 	volatile unsigned int rtppacketsinqueue;
-	#else
-	volatile u_int32_t rtppacketsinqueue_p;
-	volatile u_int32_t rtppacketsinqueue_m;
-	#endif
 	volatile int end_call;
 	volatile int push_call_to_calls_queue;
 	volatile int push_register_to_registers_queue;

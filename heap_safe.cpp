@@ -94,7 +94,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 		HEAPSAFE_COPY_BEGIN_MEMORY_CONTROL_BLOCK(begin->stringInfo);
 		begin->length = sizeOfObject;
 		begin->memory_type = 0;
-		if(HeapSafeCheck & _HeapSafePlus) {
+		if(MCB_PLUS) {
 			((sHeapSafeMemoryControlBlockPlus*)begin)->block_addr = (void*)((unsigned long)begin + sizeof(sHeapSafeMemoryControlBlockPlus));
 			if(memory_type1) {
 				strncpy(((sHeapSafeMemoryControlBlockPlus*)begin)->memory_type1, memory_type1, 20);
@@ -273,7 +273,7 @@ inline void heapsafe_free(void *pointerToObject) {
 			sHeapSafeMemoryControlBlock *end = (sHeapSafeMemoryControlBlock*)((unsigned char*)pointerToObject + beginMemoryBlock->length + HEAPSAFE_ALLOC_RESERVE);
 			if(!HEAPSAFE_CMP_END_MEMORY_CONTROL_BLOCK(end->stringInfo)) {
 				error = _HeapSafeErrorBeginEnd;
-			} else if(HeapSafeCheck & _HeapSafePlus) {
+			} else if(MCB_PLUS) {
 				memset(pointerToObject, 0, beginMemoryBlock->length);
 			} else if(HeapSafeCheck & _HeapSafeErrorFillFF) {
 				memset(pointerToObject, 0xFF, beginMemoryBlock->length);
@@ -304,7 +304,7 @@ inline void heapsafe_free(void *pointerToObject) {
 		}
         }
         if(!error &&
-	   HeapSafeCheck & _HeapSafePlus &&
+	   MCB_PLUS &&
 	   beginMemoryBlock) {
 		u_char *start_check_sum = (u_char*)&((sHeapSafeMemoryControlBlockPlus*)beginMemoryBlock)->block_addr;
 		u_char *end_check_sum = (u_char*)&((sHeapSafeMemoryControlBlockPlus*)beginMemoryBlock)->check_sum;
