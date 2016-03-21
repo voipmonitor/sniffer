@@ -372,8 +372,8 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 	// construct query and push it to mysqlquery queue
 	int id_sensor = packetS->sensor_id > 0 ? packetS->sensor_id : 0;
 	query << "INSERT INTO livepacket_" << uid << 
-		" SET sipcallerip = '" << packetS->saddr << 
-		"', sipcalledip = '" << packetS->daddr << 
+		" SET sipcallerip = '" << htonl(packetS->saddr) << 
+		"', sipcalledip = '" << htonl(packetS->daddr) << 
 		"', id_sensor = " << id_sensor << 
 		", sport = " << packetS->source << 
 		", dport = " << packetS->dest << 
