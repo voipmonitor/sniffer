@@ -262,7 +262,7 @@ struct packet_s_process : public packet_s_process_0 {
 	}
 	inline void new_alloc_packet_header() {
 		pcap_pkthdr *header_pt_new = new FILE_LINE pcap_pkthdr;
-		u_char *packet_new = new u_char[header_pt->caplen];
+		u_char *packet_new = new FILE_LINE u_char[header_pt->caplen];
 		*header_pt_new = *header_pt;
 		memcpy(packet_new, packet, header_pt->caplen);
 		header_pt = header_pt_new;

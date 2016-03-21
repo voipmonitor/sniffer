@@ -178,11 +178,13 @@ public:
 		readFromFifo
 	};
 	enum eTypeThread {
-		mainThread,
-		writeThread,
-		nextThread1,
-		nextThread2,
-		nextThread3
+		mainThread          = 0,
+		writeThread         = 1,
+		nextThread1         = 2,
+		nextThread2         = 3,
+		nextThread3         = 4,
+		socketServerThread  = 2,
+		destroyBlocksThread = 3
 	};
 	PcapQueue(eTypeQueue typeQueue, const char *nameQueue);
 	virtual ~PcapQueue();
@@ -424,7 +426,7 @@ public:
 			hpp_add_size[ia] = 0;
 		}
 		hpp_get_size = 0;
-		stack = new rqueue_quick<sHeaderPacketPool>(size, 0, 0, NULL, false, __FILE__, __LINE__);
+		stack = new FILE_LINE rqueue_quick<sHeaderPacketPool>(size, 0, 0, NULL, false, __FILE__, __LINE__);
 	}
 	~PcapQueue_HeaderPacketStack() {
 		for(int ia = 0; ia < PcapQueue_HeaderPacketStack_add_max; ia++) {
@@ -727,10 +729,12 @@ public:
 	inline void addBlockStoreToPcapStoreQueue(pcap_block_store *blockStore);
 protected:
 	bool createThread();
+	bool createDestroyBlocksThread();
 	bool createSocketServerThread();
 	bool initThread(void *arg, unsigned int arg2, string *error);
 	void *threadFunction(void *arg, unsigned int arg2);
 	void *writeThreadFunction(void *arg, unsigned int arg2);
+	void *destroyBlocksThreadFunction(void *arg, unsigned int arg2);
 	bool openFifoForRead(void *arg, unsigned int arg2);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool openPcapDeadHandle(int dlt);
@@ -814,6 +818,17 @@ private:
 	void unlock_packetServerConnections() {
 		__sync_lock_release(&this->_sync_packetServerConnections);
 	}
+	void blockStoreTrashPush(pcap_block_store *block) {
+		lock_blockStoreTrash();
+		this->blockStoreTrash.push_back(block);
+		unlock_blockStoreTrash();
+	}
+	void lock_blockStoreTrash() {
+		while(__sync_lock_test_and_set(&this->blockStoreTrash_sync, 1));
+	}
+	void unlock_blockStoreTrash() {
+		__sync_lock_release(&this->blockStoreTrash_sync);
+	}
 protected:
 	ip_port packetServerIpPort;
 	ePacketServerDirection packetServerDirection;
@@ -821,17 +836,20 @@ protected:
 	u_int16_t pcapDeadHandlesIndex[DLT_TYPES_MAX];
 	int pcapDeadHandles_dlt[DLT_TYPES_MAX];
 	int pcapDeadHandles_count;
+	pthread_t destroyBlocksThreadHandle;
 	pthread_t socketServerThreadHandle;
 private:
 	pcap_store_queue pcapStoreQueue;
 	deque<pcap_block_store*> blockStoreTrash;
 	u_int cleanupBlockStoreTrash_counter;
+	volatile int blockStoreTrash_sync;
 	u_int32_t socketHostIPl;
 	int socketHandle;
 	map<unsigned int, sPacketServerConnection*> packetServerConnections;
 	volatile int _sync_packetServerConnections;
 	u_long lastCheckFreeSizeCachedir_timeMS;
 	timeval _last_ts;
+friend void *_PcapQueue_readFromFifo_destroyBlocksThreadFunction(void *arg);
 friend void *_PcapQueue_readFromFifo_socketServerThreadFunction(void *arg);
 friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 };

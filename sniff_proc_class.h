@@ -140,9 +140,9 @@ public:
 		batch_packet_s(unsigned max_count) {
 			count = 0;
 			used = 0;
-			batch = new packet_s_plus_pointer*[max_count];
+			batch = new FILE_LINE packet_s_plus_pointer*[max_count];
 			for(unsigned i = 0; i < max_count; i++) {
-				batch[i] = new packet_s_plus_pointer;
+				batch[i] = new FILE_LINE packet_s_plus_pointer;
 			}
 			this->max_count = max_count;
 		}

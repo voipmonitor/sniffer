@@ -96,6 +96,7 @@ struct pcap_block_store {
 	pcap_block_store() {
 		this->offsets = NULL;
 		this->block = NULL;
+		this->is_voip = NULL;
 		this->destroy();
 		this->restoreBuffer = NULL;
 		this->destroyRestoreBuffer();
@@ -104,7 +105,7 @@ struct pcap_block_store {
 		this->timestampMS = getTimeMS_rdtsc();
 		this->_sync_packet_lock = 0;
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
-		this->_sync_packets_lock = new volatile int[100000];
+		this->_sync_packets_lock = new FILE_LINE volatile int[100000];
 		memset((void*)this->_sync_packets_lock, 0, sizeof(int) * 100000);
 		#endif
 	}
@@ -203,6 +204,11 @@ struct pcap_block_store {
 		return(this->_sync_packet_lock == 0);
 		#endif
 	}
+	void setVoipPacket(int index) {
+		if(is_voip && index < (int)count) {
+			is_voip[index] = 1;
+		}
+	}
 	uint32_t *offsets;
 	u_char *block;
 	size_t size;
@@ -223,6 +229,7 @@ struct pcap_block_store {
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	volatile int *_sync_packets_lock;
 	#endif
+	u_int8_t *is_voip;
 };
 
 

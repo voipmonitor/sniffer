@@ -5870,7 +5870,7 @@ Call *process_packet__rtp(packet_s_process_rtp_call_info *call_info,size_t call_
 		}
 
 		if(opt_ipaccount && packetS->block_store) {
-			//packetS->block_store->setVoipPacket(packetS->block_store_index);
+			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
 
 		// we have packet, extend pending destroy requests
@@ -7177,8 +7177,14 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 
 void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 	if(packetS->isSip && !packetS->is_register) {
+		if(opt_ipaccount && packetS->block_store) {
+			packetS->block_store->setVoipPacket(packetS->block_store_index);
+		}
 		process_packet_sip_call_inline(packetS);
 	} else if(packetS->isSkinny) {
+		if(opt_ipaccount && packetS->block_store) {
+			packetS->block_store->setVoipPacket(packetS->block_store_index);
+		}
 		handle_skinny(packetS->header_pt, packetS->packet, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, packetS->datalen, packetS->dataoffset,
 			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id);
 	}
@@ -7187,6 +7193,9 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 
 void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 	if(packetS->isSip && packetS->is_register) {
+		if(opt_ipaccount && packetS->block_store) {
+			packetS->block_store->setVoipPacket(packetS->block_store_index);
+		}
 		process_packet_sip_register_inline(packetS);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 1);

@@ -4153,7 +4153,7 @@ void cPng::pixel::setFromHsv(pixel_hsv p_hsv) {
 cPng::cPng(size_t width, size_t height) {
 	this->width = width;
 	this->height = height;
-	pixels = new pixel[width * height];
+	pixels = new FILE_LINE pixel[width * height];
 	pixel_size = 3;
 	depth = 8;
 }
@@ -4266,7 +4266,7 @@ bool create_waveform_from_raw(const char *rawInput,
 	
 	int16_t *raw[2] = { NULL, NULL };
 	for(u_int8_t ch = 0; ch < channels; ch++) {
-		raw[ch] = new int16_t[rawSamples];
+		raw[ch] = new FILE_LINE int16_t[rawSamples];
 	}
  
 	FILE *inputRawHandle = fopen(rawInput, "rb");
@@ -4294,7 +4294,7 @@ bool create_waveform_from_raw(const char *rawInput,
 	 
 		FILE *waveformOutputHandle = fopen(waveformOutput[ch], "wb");
 		if(waveformOutputHandle) {
-			u_int16_t *peaks = new u_int16_t[width + 10];
+			u_int16_t *peaks = new FILE_LINE u_int16_t[width + 10];
 			size_t peaks_count = 0;
 			u_int16_t peak = 0;
 			int16_t v;
@@ -4353,7 +4353,7 @@ bool create_spectrogram_from_raw(const char *rawInput,
 	
 	int16_t *raw[2] = { NULL, NULL };
 	for(u_int8_t ch = 0; ch < channels; ch++) {
-		raw[ch] = new int16_t[rawSamples];
+		raw[ch] = new FILE_LINE int16_t[rawSamples];
 	}
  
 	FILE *inputRawHandle = fopen(rawInput, "rb");
@@ -4447,7 +4447,7 @@ bool create_spectrogram_from_raw(const char *rawInput,
 		
 		size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
 		
-		double *multipliers = new double[fftSize];
+		double *multipliers = new FILE_LINE double[fftSize];
 		for(size_t i = 0; i < fftSize; i++) {
 			multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
 		}

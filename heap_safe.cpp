@@ -612,7 +612,7 @@ void parse_heapsafeplus_coredump(const char *corefile, const char *outfile) {
 
 	unsigned buffer_length = 50000000;
 	unsigned use_buffer_length = 0;
-	u_char *buffer = new u_char[buffer_length];
+	u_char *buffer = new FILE_LINE u_char[buffer_length];
 	
 	FILE *core = fopen(corefile, "r");
 	if(!core) {

@@ -137,6 +137,7 @@ vm_atomic<u_long> pbCountPacketDrop;
 void *_PcapQueue_threadFunction(void *arg);
 void *_PcapQueue_writeThreadFunction(void *arg);
 void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
+void *_PcapQueue_readFromFifo_destroyBlocksThreadFunction(void *arg);
 void *_PcapQueue_readFromFifo_socketServerThreadFunction(void *arg);
 void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 
@@ -294,6 +295,10 @@ void pcap_block_store::destroy() {
 	if(this->block) {
 		delete [] this->block;
 		this->block = NULL;
+	}
+	if(this->is_voip) {
+		delete [] this->is_voip;
+		this->is_voip = NULL;
 	}
 	this->size = 0;
 	this->size_compress = 0;
@@ -1572,6 +1577,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double t2cpu = this->getCpuUsagePerc(writeThread, true);
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << "pb:" << setprecision(1) << t2cpu;
+		if(opt_ipaccount) {
+			double ipacc_cpu = this->getCpuUsagePerc(destroyBlocksThread, true);
+			if(ipacc_cpu >= 0) {
+				outStrStat << "/ipacc:" << setprecision(1) << ipacc_cpu;
+			}
+		}
 		double last_t2cpu_preprocess_packet_out_thread_check_next_level = -2;
 		double last_t2cpu_preprocess_packet_out_thread_rtp = -2;
 		int count_t2cpu = 1;
@@ -4287,8 +4298,10 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 		this->pcapDeadHandles_dlt[i] = 0;
 	}
 	this->pcapDeadHandles_count = 0;
+	this->destroyBlocksThreadHandle = 0;
 	this->socketServerThreadHandle = 0;
 	this->cleanupBlockStoreTrash_counter = 0;
+	this->blockStoreTrash_sync = 0;
 	this->socketHostIPl = 0;
 	this->socketHandle = 0;
 	this->_sync_packetServerConnections = 0;
@@ -4321,6 +4334,9 @@ PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 		}
 		syslog(LOG_NOTICE, "packetbuffer terminating (%s): socketClose", nameQueue.c_str());
 	}
+	if(this->destroyBlocksThreadHandle) {
+		pthread_join(this->destroyBlocksThreadHandle, NULL);
+	}
 	this->cleanupBlockStoreTrash(true);
 	syslog(LOG_NOTICE, "packetbuffer terminating (%s): cleanupBlockStoreTrash", nameQueue.c_str());
 }
@@ -4349,6 +4365,15 @@ bool PcapQueue_readFromFifo::createThread() {
 	if(this->packetServerDirection == directionRead) {
 		this->createSocketServerThread();
 	}
+	if(this->packetServerDirection != directionWrite &&
+	   opt_ipaccount) {
+		this->createDestroyBlocksThread();
+	}
+	return(true);
+}
+
+bool PcapQueue_readFromFifo::createDestroyBlocksThread() {
+	vm_pthread_create(&this->destroyBlocksThreadHandle, NULL, _PcapQueue_readFromFifo_destroyBlocksThreadFunction, this, __FILE__, __LINE__);
 	return(true);
 }
 
@@ -4366,16 +4391,16 @@ bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2, string *er
 }
 
 void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
-	int pid = get_unix_tid();
+	int tid = get_unix_tid();
 	if(this->packetServerDirection == directionRead && arg2) {
 		if(arg2 == (unsigned int)-1) {
-			this->nextThreadsId[0] = get_unix_tid();
+			this->nextThreadsId[socketServerThread - nextThread1] = tid;
 		} else {
-			this->packetServerConnections[arg2]->threadId = pid;
+			this->packetServerConnections[arg2]->threadId = tid;
 			this->packetServerConnections[arg2]->active = true;
 		}
 	} else {
-		this->mainThreadId = get_unix_tid();
+		this->mainThreadId = tid;
 	}
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
@@ -4387,7 +4412,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				outStr << " " << this->packetServerConnections[arg2]->socketClientIP << ":" << this->packetServerConnections[arg2]->socketClientInfo.sin_port;
 			}
 		}
-		outStr << ") - pid: " << pid << endl;
+		outStr << ") - pid: " << tid << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
@@ -4624,7 +4649,6 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		}
 		delete [] buffer;
 		delete blockStore;
-		
 	} else {
 		if(opt_pcap_queue_compress || !opt_pcap_queue_suppress_t1_thread) {
 			pcap_block_store *blockStore;
@@ -4698,7 +4722,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		if(this->packetServerDirection == directionWrite) {
 			if(blockStore) {
 				this->socketWritePcapBlock(blockStore);
-				this->blockStoreTrash.push_back(blockStore);
+				this->blockStoreTrashPush(blockStore);
 				buffersControl.add__PcapQueue_readFromFifo__blockStoreTrash_size(blockStore->getUseSize());
 			}
 		} else {
@@ -4708,6 +4732,10 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 					blockStore = NULL;
 				} else {
 					buffersControl.add__PcapQueue_readFromFifo__blockStoreTrash_size(blockStore->getUseSize());
+					if(opt_ipaccount) {
+						blockStore->is_voip = new FILE_LINE u_int8_t[blockStore->count];
+						memset(blockStore->is_voip, 0, blockStore->count);
+					}
 				}
 			}
 			if(opt_pcap_queue_dequeu_window_length > 0 &&
@@ -4753,7 +4781,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								pti.blockStore->sensor_id);
 							++listBlockStore[pti.blockStore];
 							if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
-								this->blockStoreTrash.push_back(pti.blockStore);
+								this->blockStoreTrashPush(pti.blockStore);
 								listBlockStore.erase(pti.blockStore);
 							}
 							if(first->second->empty()) {
@@ -4825,7 +4853,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							actBlockInfo->blockStore->sensor_id);
 						++actBlockInfo->count_processed;
 						if(actBlockInfo->count_processed == actBlockInfo->blockStore->count) {
-							this->blockStoreTrash.push_back(actBlockInfo->blockStore);
+							this->blockStoreTrashPush(actBlockInfo->blockStore);
 							--blockInfoCount;
 							for(int i = minUtimeIndexBlockInfo; i < blockInfoCount; i++) {
 								memcpy(blockInfo + i, blockInfo + i + 1, sizeof(sBlockInfo));
@@ -4874,7 +4902,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								blockStore->dlink, 
 							blockStore->sensor_id);
 					}
-					this->blockStoreTrash.push_back(blockStore);
+					this->blockStoreTrashPush(blockStore);
 					usleepCounter = 0;
 				}
 			}
@@ -4886,14 +4914,17 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			usleep(1000);
 			++usleepCounter;
 		}
-		if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
-			this->cleanupBlockStoreTrash();
+		if(!(this->packetServerDirection != directionWrite &&
+		     opt_ipaccount)) {
+			if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
+				this->cleanupBlockStoreTrash();
+			}
 		}
 	}
 	if(opt_pcap_queue_dequeu_method == 1) {
 		map<pcap_block_store*, size_t>::iterator iter;
 		for(iter = listBlockStore.begin(); iter != listBlockStore.end(); iter++) {
-			this->blockStoreTrash.push_back(iter->first);
+			this->blockStoreTrashPush(iter->first);
 		}
 		while(listPacketTimeInfo.size()) {
 			delete listPacketTimeInfo.begin()->second;
@@ -4901,10 +4932,55 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		}
 	} else if(opt_pcap_queue_dequeu_method == 2) {
 		for(int i = 0; i < blockInfoCount; i++) {
-			this->blockStoreTrash.push_back(blockInfo[i].blockStore);
+			this->blockStoreTrashPush(blockInfo[i].blockStore);
 		}
 	}
 	this->writeThreadTerminated = true;
+	return(NULL);
+}
+
+void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void *arg, unsigned int arg2) {
+	int tid = get_unix_tid();
+	this->nextThreadsId[destroyBlocksThread - nextThread1] = tid;
+	if(VERBOSE || DEBUG_VERBOSE) {
+		ostringstream outStr;
+		outStr << "start thread t2 (" << this->nameQueue << " / destroy blocks" << ") - pid: " << tid << endl;
+		if(DEBUG_VERBOSE) {
+			cout << outStr.str();
+		} else {
+			syslog(LOG_NOTICE, outStr.str().c_str());
+		}
+	}
+	while(!TERMINATING) {
+		if(this->blockStoreTrash.size() < 3) {
+			usleep(1000);
+			continue;
+		}
+		pcap_block_store *block = NULL;
+		lock_blockStoreTrash();
+		block = this->blockStoreTrash.front();
+		if(block->enableDestroy()) {
+			this->blockStoreTrash.pop_front();
+		} else {
+			block = NULL;
+		} 
+		unlock_blockStoreTrash();
+		if(block) {
+			if(opt_ipaccount) {
+				for(size_t i = 0; i < block->count && !TERMINATING; i++) {
+					pcap_block_store::pcap_pkthdr_pcap headerPcap = (*block)[i];
+					ipaccount(headerPcap.header->header_std.ts.tv_sec,
+						  (iphdr2*)(headerPcap.packet + headerPcap.header->offset),
+						  headerPcap.header->header_std.len - headerPcap.header->offset,
+						  block->is_voip[i]);
+				}
+			}
+			delete block;
+		} else {
+			usleep(1000);
+			continue;
+		}
+	}
 	return(NULL);
 }
 
@@ -5430,9 +5506,6 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 			if(header_ip) {
 				nextPass = true;
 			} else {
-				if(opt_ipaccount) {
-					ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
-				}
 				return;
 			}
 		}
@@ -5457,10 +5530,6 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 		header_udp->dest = header_tcp->dest;
 	} else {
 		//packet is not UDP and is not TCP, we are not interested, go to the next packet
-		// - interested only for ipaccount
-		if(opt_ipaccount) {
-			ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
-		}
 		return;
 	}
 	
@@ -5514,8 +5583,6 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 			istcp, header_ip,
 			block_store, block_store_index, dlt, sensor_id,
 			true /*blockstore_lock*/);
-	} else if(opt_ipaccount) {
-		ipaccount(header->ts.tv_sec, (iphdr2*) ((char*)(packet) + header_plus->offset), header->len - header_plus->offset, false);
 	}
 }
 
@@ -5547,6 +5614,7 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 		this->cleanupBlockStoreTrash();
 		cout << "COUNT REST PACKETBUFFER BLOCKS: " << this->blockStoreTrash.size() << endl;
 	}
+	lock_blockStoreTrash();
 	for(int i = 0; i < ((int)this->blockStoreTrash.size() - (all ? 0 : 2)); i++) {
 		if(all || this->blockStoreTrash[i]->enableDestroy()) {
 			buffersControl.sub__PcapQueue_readFromFifo__blockStoreTrash_size(this->blockStoreTrash[i]->getUseSize());
@@ -5555,6 +5623,12 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 			--i;
 		}
 	}
+	unlock_blockStoreTrash();
+}
+
+void *_PcapQueue_readFromFifo_destroyBlocksThreadFunction(void *arg) {
+	PcapQueue_readFromFifo *pcapQueue = (PcapQueue_readFromFifo*)arg;
+	return(pcapQueue->destroyBlocksThreadFunction(pcapQueue, 0));
 }
 
 void *_PcapQueue_readFromFifo_socketServerThreadFunction(void *arg) {

@@ -317,7 +317,7 @@ inline void Ipacc::add_octets(time_t timestamp, unsigned int saddr, unsigned int
 	key = buf;
 
 	if(last_flush_interval_time != cur_interval_time &&
-	   (time(NULL) - cur_interval_time) > opt_ipacc_interval / 5) {
+	   (timestamp - cur_interval_time) > opt_ipacc_interval / 5) {
 		int saveIndexIpaccBuffer = indexIpaccBuffer == 0 ? 1 : 0;
 		if(!__sync_fetch_and_add(&sync_save_ipacc_buffer[saveIndexIpaccBuffer], 1)) {
 			last_flush_interval_time = cur_interval_time;

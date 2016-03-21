@@ -591,12 +591,12 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_
 	}
 	if(len) {
 		if(!this->readData.decompressStreamFromLzo) {
-			this->readData.decompressStreamFromLzo = new CompressStream(CompressStream::compress_auto, 0, 0);
+			this->readData.decompressStreamFromLzo = new FILE_LINE CompressStream(CompressStream::compress_auto, 0, 0);
 			this->readData.decompressStreamFromLzo->enableAutoPrefixFile();
 			this->readData.decompressStreamFromLzo->enableForceStream();
 		}
 		if(!this->readData.compressStreamToGzip) {
-			this->readData.compressStreamToGzip = new CompressStream(this->readData.send_parameters_zip ? CompressStream::gzip : CompressStream::compress_na, 0, 0);
+			this->readData.compressStreamToGzip = new FILE_LINE CompressStream(this->readData.send_parameters_zip ? CompressStream::gzip : CompressStream::compress_na, 0, 0);
 		}
 		if(this->readData.decompressStreamFromLzo->isError() ||
 		   this->readData.compressStreamToGzip->isError()) {
