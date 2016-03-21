@@ -290,6 +290,8 @@ RTP::RTP(int sensor_id)
 	//frame->src = "DUMMY";
 	last_seq = 0;
 	last_ts = 0;
+	last_pcap_header_ts = 0;
+	pcap_header_ts_bad_time = false;
 	packetization = 0;
 	last_packetization = 0;
 	packetization_iterator = 0;
@@ -911,6 +913,23 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 		return;
 	}
+	
+	u_int64_t pcap_header_ts = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+	if(this->last_pcap_header_ts && pcap_header_ts < this->last_pcap_header_ts) {
+		if(!this->pcap_header_ts_bad_time) {
+			extern bool opt_disable_rtp_warning;
+			if(!opt_disable_rtp_warning) {
+				u_long actTime = getTimeMS();
+				if(actTime - 1000 > lastTimeSyslog) {
+					syslog(LOG_NOTICE, "warning - packet (seq:%i, ssrc: %x) from sensor (%i) has bad pcap header time - call %s", getSeqNum(), getSSRC(), sensor_id, owner ? owner->fbasename : "unknown");
+					lastTimeSyslog = actTime;
+				}
+			}
+			this->pcap_header_ts_bad_time = true;
+		}
+		return;
+	}
+	this->last_pcap_header_ts = pcap_header_ts;
 
 	if(this->first_packet_time == 0 and this->first_packet_usec == 0) {
 		this->first_packet_time = header->ts.tv_sec;
