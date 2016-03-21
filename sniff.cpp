@@ -370,7 +370,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 	}
 
 	// construct query and push it to mysqlquery queue
-	int id_sensor = packetS->sensor_id > 0 ? packetS->sensor_id : 0;
+	int id_sensor = packetS->sensor_id_() > 0 ? packetS->sensor_id_() : 0;
 	query << "INSERT INTO livepacket_" << uid << 
 		" SET sipcallerip = '" << htonl(packetS->saddr) << 
 		"', sipcalledip = '" << htonl(packetS->daddr) << 
@@ -1827,7 +1827,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		glob_ssl_calls++;
 	}
 	// store this call only if it starts with invite
-	Call *call = calltable->add(sip_method, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id);
+	Call *call = calltable->add(sip_method, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 	call->chantype = CHAN_SIP;
 	call->is_ssl = packetS->is_ssl;
 	call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
@@ -4948,7 +4948,7 @@ inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
 			int rtpmap[MAX_RTPMAP];
 			memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 
-			rtp.read((unsigned char*)packetS->data, packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, 0, packetS->sensor_id);
+			rtp.read((unsigned char*)packetS->data, packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, 0, packetS->sensor_id_());
 
 			if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
 				return(0);
@@ -4957,7 +4957,7 @@ inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
 
 			//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
-			call = calltable->add(INVITE, s, strlen(s), packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id);
+			call = calltable->add(INVITE, s, strlen(s), packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 			call->chantype = CHAN_SIP;
 			call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
 			call->sipcallerip[0] = packetS->saddr;
@@ -7186,7 +7186,7 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
 		handle_skinny(packetS->header_pt, packetS->packet, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, packetS->datalen, packetS->dataoffset,
-			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id);
+			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 0);
 }
@@ -7674,7 +7674,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 					process_packet__rtp_nosip(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, 
 								  packetS->data, packetS->datalen, packetS->dataoffset,
 								  packetS->header_pt, packetS->packet, packetS->istcp, packetS->header_ip,
-								  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id,
+								  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id_(),
 								  get_pcap_handle(packetS->handle_index));
 				}
 			}

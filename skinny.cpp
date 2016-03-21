@@ -1256,7 +1256,7 @@ static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_c
 	packetS.datalen = datalen;
 	packetS.dataoffset = dataoffset;
 	packetS.dlt = dlt;
-	packetS.sensor_id = sensor_id;
+	packetS.sensor_id_u = (u_int16_t)sensor_id;
 	save_packet(call, &packetS, type);
 }
 

@@ -101,7 +101,7 @@ struct packet_s {
 	u_int32_t block_store_index; 
 	u_int16_t handle_index; 
 	u_int16_t dlt; 
-	u_int16_t sensor_id;
+	u_int16_t sensor_id_u;
 	u_int16_t source; 
 	u_int16_t dest;
 	u_int16_t dataoffset;
@@ -110,11 +110,14 @@ struct packet_s {
 	bool is_ssl : 1;
 	bool _blockstore_lock : 1;
 	bool _packet_alloc : 1;
-	char *data_() {
+	inline char *data_() {
 		return((char*)(packet + dataoffset));
 	}
-	iphdr2 *header_ip_() {
+	inline iphdr2 *header_ip_() {
 		return((iphdr2*)(packet + header_ip_offset));
+	}
+	inline int sensor_id_() {
+		return(sensor_id_u == 0xFFFF ? -1 : sensor_id_u);
 	}
 	inline packet_s() {
 		init();

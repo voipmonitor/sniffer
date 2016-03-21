@@ -214,7 +214,7 @@ public:
 		packetS.block_store = block_store; 
 		packetS.block_store_index =  block_store_index; 
 		packetS.dlt = dlt; 
-		packetS.sensor_id = sensor_id;
+		packetS.sensor_id_u = (u_int16_t)sensor_id;
 		packetS.is_ssl = is_ssl;
 		if(blockstore_lock) {
 			packetS.blockstore_lock();
