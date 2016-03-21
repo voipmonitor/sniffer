@@ -1,3 +1,18 @@
+15.4.5 16.3.2016
+================
+- fix cloud active connection check
+
+
+15.4.4 15.3.2016
+================
+- fix cloud mode mysql connection for rpi
+
+
+15.4.3 10.3.2016
+================
+- fix cloud mode
+
+
 15.4.2 7.3.2016
 ===============
 - fix (all versions) getting files from remote pcap files through TCP manager for files >2GB <4GB and its multiplies (32bit overflow) 
