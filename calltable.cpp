@@ -675,7 +675,7 @@ Call::dirnamesqlfiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return(-1);
 	}
@@ -706,11 +706,6 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, p
 	// add ip and port
 	if(ipport_n >= MAX_IP_PER_CALL){
 		return -1;
-	}
-	if(ua_len && ua_len < 1024) {
-		char *tmp = iscaller ? this->b_ua : this->a_ua;
-		memcpy(tmp, ua, MIN(ua_len, 1024));
-		tmp[MIN(ua_len, 1023)] = '\0';
 	}
 
 	this->ip_port[ipport_n].sip_src_addr = sip_src_addr;
@@ -767,7 +762,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 }
 
 void
-Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation) {
+Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation) {
 	if(this->end_call) {
 		return;
 	}
@@ -800,7 +795,7 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 			return;
 		}
 	}
-	if(this->add_ip_port(sip_src_addr, addr, port, header, sessid, ua, ua_len, iscaller, rtpmap, sdp_flags) != -1) {
+	if(this->add_ip_port(sip_src_addr, addr, port, header, sessid, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, sdp_flags, allowrelation);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, sdp_flags, 0);
@@ -4526,24 +4521,17 @@ Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int 
 }
 
 void
-Call::handle_dscp(int sip_method, struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut, bool enableSetSipcallerdip) {
-	bool iscaller = 0;
-	bool iscalled = 0;
-	this->check_is_caller_called(sip_method, saddr, daddr, &iscaller, &iscalled, enableSetSipcallerdip);
-	if(iscalled) {
-		this->caller_sipdscp = header_ip->tos >> 2;
-		if(sverb.dscp) {
-			cout << "caller_sipdscp " << (int)(header_ip->tos>>2) << endl;
-		}
-	} 
+Call::handle_dscp(struct iphdr2 *header_ip, bool iscaller) {
 	if(iscaller) {
 		this->called_sipdscp = header_ip->tos >> 2;
 		if(sverb.dscp) {
 			cout << "called_sipdscp " << (int)(header_ip->tos>>2) << endl;
 		}
-	}
-	if(iscalledOut) {
-		*iscalledOut = iscalled;
+	} else {
+		this->caller_sipdscp = header_ip->tos >> 2;
+		if(sverb.dscp) {
+			cout << "caller_sipdscp " << (int)(header_ip->tos>>2) << endl;
+		}
 	}
 }
 
@@ -4561,34 +4549,30 @@ Call::check_is_caller_called(int sip_method, unsigned int saddr, unsigned int da
 			*iscaller = 1;
 			debug_str_cmp = string(" / != MSG");
 		}
+	} else if(this->type == REGISTER) {
+		if(sip_method == REGISTER) {
+			_iscalled = 1;
+			debug_str_cmp = string(" / == REGISTER");
+		} else {
+			*iscaller = 1;
+			debug_str_cmp = string(" / != REGISTER");
+		}
 	} else {
 		int i;
-		char i_str[3];
-		/* reverse sipcaller(d)ip - experiment - disabled
-		if(enableSetSipcallerdip) {
-			for(i = 1; i < MAX_SIPCALLERDIP; i++) {
-				if(sverb.check_is_caller_called) {
-					sprintf(i_str, "%i", i);
-				}
-				if(this->sipcallerip[i] == daddr && this->sipcalledip[i] == saddr) {
+		for(i = 0; i < MAX_SIPCALLERDIP; i++) {
+			if(enableSetSipcallerdip && i > 0 && !this->sipcallerip[i] && saddr && daddr) {
+				if(sip_method == INVITE) {
 					this->sipcallerip[i] = saddr;
 					this->sipcalledip[i] = daddr;
 					if(sverb.check_is_caller_called) {
-						debug_str_set += string(" / reverse sipcallerdip[") + i_str + "]: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
+						debug_str_set += string(" / set sipcallerdip[") + intToString(i) + "]: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
 					}
-				}
-			}
-		}
-		*/
-		for(i = 0; i < MAX_SIPCALLERDIP; i++) {
-			if(sverb.check_is_caller_called) {
-				sprintf(i_str, "%i", i);
-			}
-			if(enableSetSipcallerdip && i > 0 && !this->sipcallerip[i] && saddr && daddr) {
-				this->sipcallerip[i] = saddr;
-				this->sipcalledip[i] = daddr;
-				if(sverb.check_is_caller_called) {
-					debug_str_set += string(" / set sipcallerdip[") + i_str + "]: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
+				} else if(sip_method == RES18X) {
+					this->sipcallerip[i] = daddr;
+					this->sipcalledip[i] = saddr;
+					if(sverb.check_is_caller_called) {
+						debug_str_set += string(" / set sipcallerdip[") + intToString(i) + "]: s " + inet_ntostring(htonl(daddr)) + ", d " + inet_ntostring(htonl(saddr));
+					}
 				}
 			}
 			if(this->sipcallerip[i]) {
@@ -4597,7 +4581,7 @@ Call::check_is_caller_called(int sip_method, unsigned int saddr, unsigned int da
 					// SDP will be stream from called
 					_iscalled = 1;
 					if(sverb.check_is_caller_called) {
-						debug_str_cmp += string(" / cmp this->sipcallerip[") + i_str + "] (" + inet_ntostring(htonl(this->sipcallerip[i])) + ") == " + 
+						debug_str_cmp += string(" / cmp this->sipcallerip[") + intToString(i) + "] (" + inet_ntostring(htonl(this->sipcallerip[i])) + ") == " + 
 								 "saddr (" + inet_ntostring(htonl(saddr)) + ")";
 					}
 					break;
@@ -4607,7 +4591,7 @@ Call::check_is_caller_called(int sip_method, unsigned int saddr, unsigned int da
 						// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
 						*iscaller = 1;
 						if(sverb.check_is_caller_called) {
-							debug_str_cmp += string(" / this->sipcallerip[") + i_str + "] (" + inet_ntostring(htonl(this->sipcallerip[i])) + ") == " + 
+							debug_str_cmp += string(" / this->sipcallerip[") + intToString(i) + "] (" + inet_ntostring(htonl(this->sipcallerip[i])) + ") == " + 
 									 "daddr (" + inet_ntostring(htonl(daddr)) + ")";
 						}
 						break;
@@ -4624,12 +4608,6 @@ Call::check_is_caller_called(int sip_method, unsigned int saddr, unsigned int da
 			}
 		}
 	}
-
-		//180/183 are always coming from called (or at least it should) 
-		if(sip_method == 180) {
-			*iscaller = 1;
-			_iscalled = 0;
-		}
 	if(iscalled) {
 		*iscalled = _iscalled;
 	}

@@ -1763,7 +1763,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		if((call = calltable->find_by_call_id(callid, strlen(callid), 0)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-			call->add_ip_port_hash(saddr, ipaddr, port, header, NULL, NULL, 0, call->sipcallerip[0] == saddr, rtpmap, s_sdp_flags(), 1);
+			call->add_ip_port_hash(saddr, ipaddr, port, header, NULL, call->sipcallerip[0] == saddr, rtpmap, s_sdp_flags(), 1);
 			save_packet(call, header, packet, saddr, source, daddr, dest, 1, NULL, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
 		}
@@ -1974,7 +1974,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		if((call = calltable->find_by_skinny_partyid(pid)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-			call->add_ip_port_hash(saddr, ipaddr, port, header, NULL, NULL, 0, call->sipcallerip[0] == saddr, rtpmap, s_sdp_flags(), 1);
+			call->add_ip_port_hash(saddr, ipaddr, port, header, NULL, call->sipcallerip[0] == saddr, rtpmap, s_sdp_flags(), 1);
 			save_packet(call, header, packet, saddr, source, daddr, dest, 1, NULL, data, datalen, dataoffset, TYPE_SKINNY, 
 				    dlt, sensor_id);
 		}

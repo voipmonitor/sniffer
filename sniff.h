@@ -214,7 +214,6 @@ struct packet_s_process : public packet_s_process_0 {
 	Call *call;
 	int merged;
 	Call *call_created;
-	bool detectUserAgent;
 	bool _getCallID;
 	bool _getSipMethod;
 	bool _getLastSipResponse;
@@ -242,7 +241,6 @@ struct packet_s_process : public packet_s_process_0 {
 		call = NULL;
 		merged = 0;
 		call_created = NULL;
-		detectUserAgent = false;
 		_getCallID = false;
 		_getSipMethod = false;
 		_getLastSipResponse = false;

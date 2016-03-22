@@ -493,11 +493,11 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
 	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
-	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *ua, unsigned long ua_len, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation);
+	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
@@ -683,7 +683,7 @@ public:
 
 	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr, int callFromType);
 	
-	void handle_dscp(int sip_method, struct iphdr2 *header_ip, unsigned int saddr, unsigned int daddr, int *iscalledOut = NULL, bool enableSetSipcallerdip = false);
+	void handle_dscp(struct iphdr2 *header_ip, bool iscaller);
 	
 	bool check_is_caller_called(int sip_method, unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled = NULL, bool enableSetSipcallerdip = false);
 

@@ -1672,7 +1672,7 @@ string get_rtp_threads_cpu_usage(bool callPstat) {
 	}
 }
 
-inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr, bool *detectUserAgent){
+inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr){
  
 	bool anonymous_useRemotePartyID = false;
 	bool anonymous_usePPreferredIdentity = false;
@@ -1935,15 +1935,12 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 
 			// copy contact num <sip:num@domain>
 			s = gettag_sip(packetS, "\nUser-Agent:", &l);
-			if(l && ((unsigned int)l < ((unsigned int)packetS->datalen - (s - packetS->data)))) {
+			if(s) {
 				memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
 				call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
 				if(sverb.set_ua) {
 					cout << "set a_ua " << call->a_ua << endl;
 				}
-			}
-			if(detectUserAgent) {
-				*detectUserAgent = true;
 			}
 
 			get_sip_peername(packetS, "\nContact:", "\nm:", call->contact_num, sizeof(call->contact_num));
@@ -2165,8 +2162,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	return call;
 }
 
-void process_sdp(Call *call, packet_s_process *packetS,
-		 int sip_method, char *from, char *callidstr, char *ua, unsigned int ua_len){
+void process_sdp(Call *call, packet_s_process *packetS, bool iscaller, char *from, char *callidstr) {
  
 	char *data = from;
 	unsigned int datalen = packetS->sipDataLen - (from - (packetS->data + packetS->sipDataOffset));
@@ -2204,18 +2200,14 @@ void process_sdp(Call *call, packet_s_process *packetS,
 			// store RTP stream
 			get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 
-			int iscalled;
-			call->handle_dscp(sip_method, packetS->header_ip, packetS->saddr, packetS->daddr, &iscalled, true);
-			//syslog(LOG_ERR, "ADDR: %u port %u iscalled[%d]\n", tmp_addr, tmp_port, iscalled);
-		
-			call->add_ip_port_hash(packetS->saddr, tmp_addr, tmp_port, packetS->header_pt, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
+			call->add_ip_port_hash(packetS->saddr, tmp_addr, tmp_port, packetS->header_pt, sessid, iscaller, rtpmap, sdp_flags, 0);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				call->add_ip_port_hash(packetS->saddr, alias, tmp_port, packetS->header_pt, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
+				call->add_ip_port_hash(packetS->saddr, alias, tmp_port, packetS->header_pt, sessid, iscaller, rtpmap, sdp_flags, 0);
 			}
 			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(packetS->saddr, packetS->saddr, tmp_port, packetS->header_pt, sessid, ua, ua_len, !iscalled, rtpmap, sdp_flags, 0);
+				call->add_ip_port_hash(packetS->saddr, packetS->saddr, tmp_port, packetS->header_pt, sessid, iscaller, rtpmap, sdp_flags, 0);
 			}
 		}
 	} else {
@@ -2240,1471 +2232,6 @@ static inline int parse_packet__message_content(char *message, unsigned int mess
 						bool maskMessage = false);
 static inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, int *merged, bool preprocess);
 
-/*
-inline Call *process_packet_inline(packet_s_process *packetS,
-				   int *was_rtp = NULL, int *voippacket = NULL, int forceSip = false,
-				   bool mainProcess = false, int sipOffset = 0) {
- 
-	PreProcessPacket::packet_parse_s *parsePacketPreproc = (PreProcessPacket::packet_parse_s*)_parsePacketPreproc;
-	ParsePacket::ppContentsX *parseContents = parsePacketPreproc ? parsePacketPreproc->parseContents : NULL;
-	
-	_process_packet_packet = (u_char*)packetS->packet;
-	_process_packet_header = &packetS->header;
-	_process_packet_data = packetS->data;
-	_process_packet_datalen = packetS->datalen;
-
-	glob_last_packet_time = packetS->header.ts.tv_sec;
-	Call *call = NULL;
-	int iscaller;
-	int is_rtcp = 0;
-	s_sdp_flags sdp_flags;
-	char *s;
-	unsigned long l;
-	char callidstr[1024], str2[1024];
-	char contenttypestr[1024] = "";
-	char *contenttype_data_ptr = NULL;
-	int contenttypelen = 0;
-	bool contenttype_is_rtcpxr = false;
-	int sip_method = 0;
-	bool sip_response = false;
-	char lastSIPresponse[128];
-	int lastSIPresponseNum = 0;
-	unsigned long gettagLimitLen = 0;
-	hash_node_call *calls, *node_call;
-	bool detectUserAgent = false;
-	bool call_cancel_lsr487 = false;
-
-	if (packetS->header.ts.tv_sec - process_packet__last_filter_reload > 1){
-		if(ipfilter_reload_do) {
-			IPfilter::lock_sync();
-			delete ipfilter;
-			ipfilter = ipfilter_reload;
-			ipfilter_reload = NULL;
-			ipfilter_reload_do = 0; 
-			IPfilter::unlock_sync();
-		}
-		if(telnumfilter_reload_do) {
-			TELNUMfilter::lock_sync();
-			delete telnumfilter;
-			telnumfilter = telnumfilter_reload;
-			telnumfilter_reload = NULL;
-			telnumfilter_reload_do = 0; 
-			TELNUMfilter::unlock_sync();
-		}
-		if(domainfilter_reload_do) {
-			DOMAINfilter::lock_sync();
-			delete domainfilter;
-			domainfilter = domainfilter_reload;
-			domainfilter_reload = NULL;
-			domainfilter_reload_do = 0; 
-			DOMAINfilter::unlock_sync();
-		}
-		if(sipheaderfilter_reload_do) {
-			SIP_HEADERfilter::lock_sync();
-			delete sipheaderfilter;
-			sipheaderfilter = sipheaderfilter_reload;
-			sipheaderfilter_reload = NULL;
-			sipheaderfilter_reload_do = 0;
-			SIP_HEADERfilter::unlock_sync();
-		}
-		process_packet__last_filter_reload = packetS->header.ts.tv_sec;
-	}
-
-	*was_rtp = 0;
-	int merged;
-	
-	if(mainProcess && packetS->istcp < 2) {
-		++counter_all_packets;
-	}
-
-	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
-	if (packetS->header.ts.tv_sec - process_packet__last_cleanup > 10){
-		process_packet__cleanup(&packetS->header);
-	}
-	
-	if(packetS->header.ts.tv_sec - process_packet__last_destroy_calls >= 2) {
-		calltable->destroyCallsIfPcapsClosed();
-		process_packet__last_destroy_calls = packetS->header.ts.tv_sec;
-	}
-
-	// check if the packet is SKINNY
-	if(packetS->istcp && opt_skinny && (packetS->source == 2000 || packetS->dest == 2000)) {
-		handle_skinny(&packetS->header, packetS->packet, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, packetS->datalen, packetS->dataoffset,
-			      packetS->handle, packetS->dlt, packetS->sensor_id);
-		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-				call, "packet is SKINNY");
-		}
-		return NULL;
-	}
-
-	// check if the packet is SIP ports or SKINNY ports
-	if(sipportmatrix[packetS->source] || sipportmatrix[packetS->dest] || forceSip) {
-	 
-		++counter_sip_packets[0];
-
-		Call *returnCall = NULL;
-		
-		unsigned long origDatalen = packetS->datalen;
-		if(!parseContents) {
-			parseContents = &_parse_contents_global_process_packet;
-		}
-		unsigned long sipDatalen = parsePacketPreproc && parsePacketPreproc->isSip ? 
-					    parsePacketPreproc->sipDataLen :
-					    parseContents->parse(packetS->data, packetS->datalen, true);
-		//parseContents->debugData();
-					    
-		if(sipDatalen > 0) {
-			packetS->datalen = sipDatalen;
-		}
-
-		*voippacket = 1;
-#if 0
-		// ugly and dirty hack to detect two SIP messages in one TCP packet.
-		tmp = strstr(data, "SIP/2.0 ");
-		if(tmp) {
-			tmp = strstr(tmp + 8, "SIP/2.0 ");
-			if(tmp) {
-				// second SIP message in one packet. Skip the first packet for now. TODO: process both packets
-				datalen -= tmp - data;
-				data = tmp;
-			}
-		}
-#endif
-
-		// note that Call-ID isn't the phone number of the caller. It uniquely represents 
-		// the whole call, or dialog, between the two user agents. All related SIP 
-		// messages use the same Call-ID. For example, when a user agent receives a 
-		// BYE message, it knows which call to hang up based on the Call-ID.
-		
-		int issip = parsePacketPreproc ? parsePacketPreproc->isSip : check_sip20(packetS->data, packetS->datalen, parseContents);
-		if(!packetS->istcp and !issip) { 
-			goto rtpcheck;
-		}
-
-		if(parsePacketPreproc && parsePacketPreproc->isSip && parsePacketPreproc->_getCallID_reassembly) {
-			strncpy(callidstr, parsePacketPreproc->callid.c_str(), sizeof(callidstr));
-		} else {
-			s = gettag(packetS->data, packetS->datalen, parseContents,
-				   "\nCall-ID:", &l, &gettagLimitLen);
-			if(!issip or (l <= 0 || l > 1023)) {
-				// try also compact header
-				s = gettag(packetS->data, packetS->datalen, parseContents,
-					   "\ni:", &l, &gettagLimitLen);
-				if(!issip or (l <= 0 || l > 1023)) {
-					// no Call-ID found in packet
-					if(packetS->istcp == 1 && packetS->header_ip) {
-						if(!PreProcessPacket::isEnableSip()) {
-							tcpReassemblySip.processPacket(
-								packetS->packet_number,
-								packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, origDatalen, packetS->dataoffset,
-								packetS->handle, packetS->header, packetS->packet, packetS->header_ip,
-								packetS->dlt, packetS->sensor_id,
-								issip);
-							if(logPacketSipMethodCall_enable) {
-								logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-									packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-									call, "it is TCP and callid not found");
-							}
-						}
-						return NULL;
-					} else {
-						// it is not TCP and callid not found
-						if(!PreProcessPacket::isEnableSip() && logPacketSipMethodCall_enable) {
-							logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-								packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-								call, "it is not TCP and callid not found");
-						}
-						return NULL;
-					}
-				}
-			}
-			memcpy(callidstr, s, MIN(l, 1024));
-			callidstr[MIN(l, 1023)] = '\0';
-
-			// Call-ID is present
-			if(packetS->istcp == 1 && packetS->datalen >= 2) {
-				if(!PreProcessPacket::isEnableSip()) {
-					tcpReassemblySip.processPacket(
-						packetS->packet_number,
-						packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, origDatalen, packetS->dataoffset,
-						packetS->handle, packetS->header, packetS->packet, packetS->header_ip,
-						packetS->dlt, packetS->sensor_id,
-						issip);
-					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-							packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-							call, "it is TCP and callid found");
-					}
-				}
-				return(NULL);
-			}
-		}
-		
-		if(sverb.reassembly_sip_output) {
-			return(NULL);
-		}
-		
-		if(issip) {
-		 
-			if(parsePacketPreproc && parsePacketPreproc->isSip && parsePacketPreproc->_getSipMethod) {
-				sip_method = parsePacketPreproc->sip_method;
-				sip_response = parsePacketPreproc->sip_response;
-			} else {
-				sip_method = process_packet__parse_sip_method(packetS->data, packetS->datalen, &sip_response);
-			}
-		
-			s = gettag(packetS->data, packetS->datalen, parseContents,
-				   "\nContent-Type:", &l, &gettagLimitLen);
-			if(l <= 0 || l > 1023) {
-				//try compact header
-				s = gettag(packetS->data, packetS->datalen, parseContents,
-					   "\nc:", &l, &gettagLimitLen);
-			}
-			if(s && l > 0 && l <= 1023) {
-				strncpy(contenttypestr, s, l);
-				contenttypestr[l] = 0;
-				contenttype_data_ptr = s;
-				contenttypelen = l;
-				contenttype_is_rtcpxr = strcasestr(contenttypestr, "application/vq-rtcpxr") != NULL;
-			}
-			
-			if(!(parsePacketPreproc && parsePacketPreproc->isSip && parsePacketPreproc->_getCallID_reassembly) &&
-			   sip_method == PUBLISH && contenttype_is_rtcpxr) {
-				s = gettag(packetS->data, packetS->datalen, parseContents,
-					   "\nCallID:", &l, &gettagLimitLen);
-				if(s && l > 0 && l <= 1023) {
-					memcpy(callidstr, s, MIN(l, 1024));
-					callidstr[MIN(l, 1023)] = '\0';
-				} else {
-					return(NULL);
-				}
-			}
-
-			if(opt_enable_fraud && isFraudReady()) {
-				char *ua = NULL;
-				unsigned long ua_len = 0;
-				ua = gettag(packetS->data, packetS->datalen, parseContents,
-					    "\nUser-Agent:", &ua_len);
-				fraudSipPacket(packetS->saddr, sip_method, packetS->header.ts, ua, ua_len);
-			}
-#if 0
-//this block was moved at the end so it will mirror only relevant SIP belonging to real calls 
-			if(sipSendSocket && !opt_sip_send_before_packetbuffer) {
-				u_int16_t header_length = datalen;
-				sipSendSocket->addData(&header_length, 2,
-						       data, datalen);
-			}
-#endif 
-			++counter_sip_packets[1];
-			
-			if(sverb.dump_sip) {
-				char *dump_data = new FILE_LINE char[packetS->datalen + 1];
-				memcpy(dump_data, packetS->data, packetS->datalen);
-				dump_data[packetS->datalen] = 0;
-				cout << counter_sip_packets[1] << endl
-				     << dump_data << endl;
-				delete [] dump_data;
-			}
-		}
-
-		switch(sip_method) {
-		case REGISTER:
-			counter_sip_register_packets++;
-			if(opt_enable_fraud && isFraudReady()) {
-				char *ua = NULL;
-				unsigned long ua_len = 0;
-				ua = gettag(packetS->data, packetS->datalen, parseContents,
-					    "\nUser-Agent:", &ua_len);
-				fraudRegister(packetS->saddr, packetS->header.ts, ua, ua_len);
-			}
-			break;
-		case MESSAGE:
-			counter_sip_message_packets++;
-			break;
-		case OPTIONS:
-			if(livesnifferfilterUseSipTypes.u_options) {
-				save_live_packet(NULL, packetS, parseContents, OPTIONS);
-			}
-			break;
-		case SUBSCRIBE:
-			if(livesnifferfilterUseSipTypes.u_subscribe) {
-				save_live_packet(NULL, packetS, parseContents, SUBSCRIBE);
-			}
-			break;
-		case NOTIFY:
-			if(livesnifferfilterUseSipTypes.u_notify) {
-				save_live_packet(NULL, packetS, parseContents, NOTIFY);
-			}
-			break;
-		}
-		
-		if(parsePacketPreproc && parsePacketPreproc->isSip && parsePacketPreproc->_getLastSipResponse) {
-			lastSIPresponseNum = parsePacketPreproc->lastSIPresponseNum;
-			strncpy(lastSIPresponse, parsePacketPreproc->lastSIPresponse.c_str(), sizeof(lastSIPresponse));
-			lastSIPresponse[sizeof(lastSIPresponse) - 1] = 0;
-			call_cancel_lsr487 = parsePacketPreproc->call_cancel_lsr487;
-		} else {
-			lastSIPresponseNum = parse_packet__last_sip_response(packetS->data, packetS->datalen, sip_method, sip_response,
-									     lastSIPresponse, &call_cancel_lsr487);
-		}
-
-		// find call
-		merged = 0;
-		if(parsePacketPreproc && parsePacketPreproc->isSip && PreProcessPacket::isEnableExtend() &&
-		   parsePacketPreproc->_findCall) {
-			call = parsePacketPreproc->call;
-			merged = parsePacketPreproc->merged;
-		} else {
-			call = calltable->find_by_call_id(callidstr, strlen(callidstr));
-			if(call) {
-				call->handle_dscp(sip_method, packetS->header_ip, packetS->saddr, packetS->daddr, NULL, !IS_SIP_RESXXX(sip_method));
-				if(pcap_drop_flag) {
-					call->pcap_drop = pcap_drop_flag;
-				}
-				if(call_cancel_lsr487) {
-					call->cancel_lsr487 = call_cancel_lsr487;
-				}
-			} else if(opt_callidmerge_header[0] != '\0') {
-				call = process_packet__merge(packetS, parseContents, callidstr, &merged, &gettagLimitLen);
-			}
-		}
-	
-		if(call && lastSIPresponseNum && IS_SIP_RESXXX(sip_method)) {
-			if(call->first_invite_time_usec) {
-				if(lastSIPresponseNum == 100) {
-					if(!call->first_response_100_time_usec) {
-						call->first_response_100_time_usec = packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec;
-					}
-				} else {
-					if(!call->first_response_xxx_time_usec) {
-						call->first_response_xxx_time_usec = packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec;
-					}
-				}
-			} else if(call->first_message_time_usec && lastSIPresponseNum == 200) {
-				if(!call->first_response_200_time_usec) {
-					call->first_response_200_time_usec = packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec;
-				}
-			}
-		}
-		
-		if (!call){
-			// packet does not belongs to any call yet
-			if (sip_method == INVITE || sip_method == MESSAGE || (opt_sip_register && sip_method == REGISTER)) {
-				if(parsePacketPreproc && parsePacketPreproc->isSip && PreProcessPacket::isEnableExtend() &&
-				   parsePacketPreproc->_createCall &&
-				   (sip_method == INVITE || sip_method == MESSAGE)) {
-					call = parsePacketPreproc->call_created;
-					detectUserAgent = parsePacketPreproc->detectUserAgent;
-				} else {
-					call = new_invite_register(packetS, parseContents,
-								   sip_method, callidstr, &detectUserAgent);
-					if(call == NULL) {
-						goto endsip;
-					}
-					extern int opt_vlan_siprtpsame;
-					if(sip_method == INVITE && opt_vlan_siprtpsame) {
-						sll_header *header_sll;
-						ether_header *header_eth;
-						u_int header_ip_offset;
-						int protocol;
-						int vlan;
-						parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
-								 header_sll, header_eth, header_ip_offset, protocol, &vlan);
-						call->vlan = vlan;
-					}
-				}
-				if(call == NULL) {
-					goto endsip;
-				} else if(sip_method == INVITE && !call->first_invite_time_usec) {
-					call->first_invite_time_usec = packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec;
-				} else if(sip_method == MESSAGE && !call->first_message_time_usec) {
-					call->first_message_time_usec = packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec;
-				}
-			} else {
-				// SIP packet does not belong to any call and it is not INVITE 
-				// TODO: check if we have enabled live sniffer for SUBSCRIBE or OPTIONS 
-				// if yes check for cseq OPTIONS or SUBSCRIBE 
-				s = gettag(packetS->data, packetS->datalen, parseContents,
-					   "\nCSeq:", &l, &gettagLimitLen);
-				if(l && l < 32) {
-					if(livesnifferfilterUseSipTypes.u_subscribe && memmem(s, l, "SUBSCRIBE", 9)) {
-						save_live_packet(NULL, packetS, parseContents, SUBSCRIBE);
-					} else if(livesnifferfilterUseSipTypes.u_options && memmem(s, l, "OPTIONS", 7)) {
-						save_live_packet(NULL, packetS, parseContents, OPTIONS);
-					} else if(livesnifferfilterUseSipTypes.u_notify && memmem(s, l, "NOTIFY", 6)) {
-						save_live_packet(NULL, packetS, parseContents, NOTIFY);
-					}
-				}
-				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-						call, "SIP packet does not belong to any call and it is not INVITE");
-				}
-				goto endsip;
-			}
-		}
-		// check if the SIP msg is part of earlier REGISTER
-		if(call->type == REGISTER) {
-			if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
-			call->lastSIPresponseNum = lastSIPresponseNum;
-			call->msgcount++;
-			bool goto_endsip = false;
-			if(sip_method == REGISTER) {
-				call->regcount++;
-				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER Call-ID[%s] regcount[%d]", call->call_id.c_str(), call->regcount);
-
-				// update Authorization
-				s = gettag(packetS->data, packetS->datalen, parseContents,
-					   "\nAuthorization:", &l, &gettagLimitLen);
-				if(l && ((unsigned int)l < ((unsigned int)packetS->datalen - (s - packetS->data)))) {
-					get_value_stringkeyval(s, packetS->datalen - (s - packetS->data), "username=\"", call->digest_username, sizeof(call->digest_username));
-					get_value_stringkeyval(s, packetS->datalen - (s - packetS->data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
-				}
-
-				if(call->regcount > 4) {
-					// to much register attempts without OK or 401 responses
-					call->regstate = 4;
-					call->saveregister();
-					call = new_invite_register(packetS, parseContents,
-								   sip_method, callidstr, &detectUserAgent);
-					if(call == NULL) {
-						goto endsip;
-					}
-					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-							packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-							call, "to much register attempts without OK or 401 responses");
-					}
-					returnCall = call;
-					goto endsip_save_packet;
-				}
-				s = gettag(packetS->data, packetS->datalen, parseContents,
-					   "\nCSeq:", &l, &gettagLimitLen);
-				if(l && l < 32) {
-					memcpy(call->invitecseq, s, l);
-					call->invitecseq[l] = '\0';
-				}
-
-
-			} else if(sip_method == RES2XX) {
-				call->seenRES2XX = true;
-				// update expires header from all REGISTER dialog messages (from 200 OK which can override the expire) but not if register_expires == 0
-				if(call->register_expires != 0) {
-					s = gettag(packetS->data, packetS->datalen, parseContents,
-						   "\nExpires:", &l, &gettagLimitLen);
-					if(l && ((unsigned int)l < ((unsigned int)packetS->datalen - (s - packetS->data)))) {
-						char c = s[l];
-						s[l] = '\0';
-						call->register_expires = atoi(s);
-						s[l] = c;
-					}
-					// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
-					get_expires_from_contact(packetS->data, packetS->datalen, parseContents, &call->register_expires);
-				}
-				if(opt_enable_fraud) {
-					fraudConnectCall(call, packetS->header.ts);
-				}
-				if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id.c_str());
-                                s = gettag(packetS->data, packetS->datalen, parseContents,
-					   "\nCSeq:", &l, &gettagLimitLen);
-                                if(l && strncmp(s, call->invitecseq, l) == 0) {
-					// registration OK 
-					call->regstate = 1;
-
-					// diff in ms
-					call->regrrddiff = 1000 * (packetS->header.ts.tv_sec - call->regrrdstart.tv_sec) + (packetS->header.ts.tv_usec - call->regrrdstart.tv_usec) / 1000;
-				} else {
-					// OK to unknown msg close the call
-					call->regstate = 3;
-				}
-				save_sip_packet(call, packetS, parseContents,
-						sipDatalen, TYPE_SIP, 
-						origDatalen, sipOffset,
-						forceSip);
-				call->saveregister();
-				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-						call, "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)");
-				}
-				goto_endsip = true;
-			} else if(sip_method == RES401 or sip_method == RES403 or sip_method == RES404) {
-				if(sip_method == RES401) {
-					call->reg401count++;
-					if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d]", call->call_id.c_str(), call->reg401count);
-				}
-				if((sip_method == RES401 && call->reg401count > 1) || 
-				   sip_method == RES403 || sip_method == RES404) {
-					// registration failed
-					call->regstate = 2;
-					save_sip_packet(call, packetS, parseContents,
-							sipDatalen, TYPE_SIP, 
-							origDatalen, sipOffset,
-							forceSip);
-					call->saveregister();
-					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-							packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-							call, 
-							sip_method == RES401 ? "REGISTER 401 count > 1" :
-							sip_method == RES403 ? "REGISTER 403" :
-							sip_method == RES404 ? "REGISTER 404" : "");
-					}
-					goto_endsip = true;
-				}
-			}
-			if(call->regstate && !call->regresponse) {
-				if(opt_enable_fraud) {
-					fraudRegisterResponse(call->sipcallerip[0], call->first_packet_time * 1000000ull + call->first_packet_usec,
-							      call->a_ua[0] ? call->a_ua : call->b_ua[0] ? call->b_ua : NULL, -1);
-				}
-				call->regresponse = true;
-			}
-			if(goto_endsip) {
-				goto endsip;
-			}
-			if(call->msgcount > 20) {
-				// too many REGISTER messages within the same callid
-				call->regstate = 4;
-				save_sip_packet(call, packetS, parseContents,
-						sipDatalen, TYPE_SIP, 
-						origDatalen, sipOffset,
-						forceSip);
-				call->saveregister();
-				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-						call, "too many REGISTER messages within the same callid");
-				}
-				goto endsip;
-			}
-		// packet is already part of call
-		// check if SIP packet belongs to the first leg 
-		} else if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
-			((call->saddr == packetS->saddr && call->sport == packetS->source) || 
-			(call->saddr == packetS->daddr && call->sport == packetS->dest))))
-
-			{
-
-			if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
-
-			char *cseq = NULL;
-			long unsigned int cseqlen = 0;
-			cseq = gettag(packetS->data, packetS->datalen, parseContents,
-				      "\nCSeq:", &cseqlen, &gettagLimitLen);
-			bool cseq_contain_invite = false;
-			if(cseq && cseqlen < 32) {
-				if(memmem(call->invitecseq, strlen(call->invitecseq), cseq, cseqlen)) {
-					cseq_contain_invite = true;
-					if(sip_method == (call->type == MESSAGE ? MESSAGE : INVITE)) {
-						call->unrepliedinvite++;
-					} else if(call->unrepliedinvite > 0){
-						call->unrepliedinvite--;
-					}
-					//syslog(LOG_NOTICE, "[%s] unrepliedinvite--\n", call->call_id);
-				}
-				if(!cseq_contain_invite &&
-				   memmem(cseq, cseqlen, (call->type == MESSAGE ? "MESSAGE" : "INVITE"), (call->type == MESSAGE ? 7 : 6))) {
-					cseq_contain_invite = true;
-				}
-			}
-
-			if(opt_norecord_header) {
-				s = gettag(packetS->data, packetS->datalen, parseContents,
-					   "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
-				if(l && l < 33) {
-					// do 
-					call->stoprecording();
-				}
-			}
-
-			// we have packet, extend pending destroy requests
-			call->shift_destroy_call_at(&packetS->header, lastSIPresponseNum);
-
-			call->set_last_packet_time(packetS->header.ts.tv_sec);
-			// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
-			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && 
-			   (call->type == MESSAGE ?
-				call->lastSIPresponseNum != 487 &&
-				lastSIPresponseNum > call->lastSIPresponseNum :
-				(call->lastSIPresponseNum != 487 || 
-				 (call->new_invite_after_lsr487 && lastSIPresponseNum == 200) ||
-				 (call->cancel_lsr487 && lastSIPresponseNum/10 == 48)) &&
-				!call->seeninviteok &&
-				!(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5)) &&
-			   (lastSIPresponseNum != 200 || cseq_contain_invite) &&
-			   !(call->cancelcseq[0] && cseq && cseqlen < 32 && strncmp(cseq, call->cancelcseq, cseqlen) == 0)) {
-				strncpy(call->lastSIPresponse, lastSIPresponse, 128);
-				call->lastSIPresponseNum = lastSIPresponseNum;
-			}
-			if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0') {
-				call->SIPresponse.push_back(Call::sSipResponse(lastSIPresponse, lastSIPresponseNum));
-			}
-			
-			extern bool exists_columns_cdr_reason;
-			if(exists_columns_cdr_reason) {
-				char *reason = gettag(packetS->data, packetS->datalen, parseContents,
-						      "reason:", &l);
-				if(l && (l + (reason - packetS->data)) < (unsigned)packetS->datalen) {
-					char oldEndChar = reason[l];
-					reason[l] = 0;
-					char *pointerToCause = strcasestr(reason, ";cause=");
-					if(pointerToCause && (pointerToCause - reason) < 10) {
-						char type[10];
-						memcpy(type, reason, pointerToCause - reason);
-						type[pointerToCause - reason] = 0;
-						//remove spaces from end of string type
-						for(int i = pointerToCause - reason - 1; i > 0; i--) {
-							if(type[i] == ' ') {
-								type[i] = 0;
-							} else {
-								break;
-							}
-						}
-						int cause = atoi(pointerToCause + 7);
-						char text[1024];
-						char *pointerToText = strcasestr(pointerToCause, ";text=\"");
-						if(pointerToText && (pointerToText - pointerToCause - 7) < 5) {
-							unsigned int lengthText = MIN(l - (pointerToText - reason + 7), sizeof(text) - 1);
-							memcpy(text, pointerToText + 7, lengthText);
-							text[lengthText] = 0;
-							if(lengthText > 0 && text[lengthText - 1] == '"') {
-								--lengthText;
-								text[lengthText] = 0;
-							}
-						} else {
-							sprintf(text, "%i (text missing)", cause);
-						}
-						if(!strcasecmp(type, "SIP")) {
-							call->reason_sip_cause = cause;
-							call->reason_sip_text = text;
-						} else if(!strcasecmp(type, "Q.850")) {
-							call->reason_q850_cause = cause;
-							call->reason_q850_text = text;
-						}
-					}
-					reason[l] = oldEndChar;
-				}
-			}
-
-			// check if it is BYE or OK(RES2XX)
-			if(sip_method == INVITE) {
-				// festr - 14.03.2015 - this prevents some type of call to process call in case of call merging
-				// if(!call->seenbye) {
-					call->seenbye = 0;
-					call->destroy_call_at = 0;
-					call->destroy_call_at_bye = 0;
-				if(call->lastSIPresponseNum == 487) {
-					call->new_invite_after_lsr487 = true;
-				}
-				//update called number for each invite due to overlap-dialling
-				if (opt_sipoverlap && packetS->saddr == call->sipcallerip[0]) {
-					int res = get_sip_peername(packetS->data, packetS->datalen, parseContents,
-								   "\nTo:", call->called, sizeof(call->called));
-					if(res) {
-						// try compact header
-						get_sip_peername(packetS->data, packetS->datalen, parseContents,
-								 "\nt:", call->called, sizeof(call->called));
-					}
-					if(opt_destination_number_mode == 2) {
-						char called[1024] = "";
-						if(!get_sip_peername(packetS->data, packetS->datalen, parseContents,
-								     "INVITE ", called, sizeof(called)) &&
-						   called[0] != '\0') {
-							strncpy(call->called, called, sizeof(call->called));
-						}
-					}
-				}
-
-				//check and save CSeq for later to compare with OK 
-				if(cseq && cseqlen < 32) {
-					memcpy(call->invitecseq, cseq, cseqlen);
-					call->invitecseq[cseqlen] = '\0';
-					if(verbosity > 2)
-						syslog(LOG_NOTICE, "Seen INVITE, CSeq: %s\n", call->invitecseq);
-				}
-			} else if(sip_method == MESSAGE && call->type == MESSAGE) {
-				call->destroy_call_at = packetS->header.ts.tv_sec + 60;
-				call->seeninviteok = false;
-
-				s = gettag(packetS->data, packetS->datalen, parseContents,
-					   "\nUser-Agent:", &l, &gettagLimitLen);
-				if(l && ((unsigned int)l < ((unsigned int)packetS->datalen - (s - packetS->data)))) {
-					memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
-					call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
-					if(sverb.set_ua) {
-						cout << "set a_ua " << call->a_ua << endl;
-					}
-				}
-				detectUserAgent = true;
-
-				//check and save CSeq for later to compare with OK 
-				if(cseq && cseqlen < 32) {
-					memcpy(call->invitecseq, cseq, cseqlen);
-					call->invitecseq[cseqlen] = '\0';
-					if(verbosity > 2)
-						syslog(LOG_NOTICE, "Seen MEESAGE, CSeq: %s\n", call->invitecseq);
-				}
-
-				// UPDATE TEXT
-				char *rsltMessage;
-				char *rsltMessageInfo;
-				string rsltDestNumber;
-				string rsltSrcNumber;
-				unsigned int rsltContentLength;
-				switch(parse_packet__message(packetS->data, packetS->datalen, parseContents, call->message != NULL,
-							     &rsltMessage, &rsltMessageInfo, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
-				case 2:
-					if(call->message) {
-						delete [] call->message;
-					}
-					call->message = rsltMessage;
-					if(call->message_info) {
-						delete [] call->message_info;
-					}
-					call->message_info = rsltMessageInfo;
-					break;
-				case 1:
-					if(!call->message) {
-						call->message = new FILE_LINE char[1];
-						call->message[0] = '\0';
-					}
-					break;
-				}
-				if(rsltDestNumber.length()) {
-					strncpy(call->called, rsltDestNumber.c_str(), sizeof(call->called));
-					call->updateDstnumFromMessage = true;
-				}
-				if(rsltSrcNumber.length()) {
-					strncpy(call->caller, rsltSrcNumber.c_str(), sizeof(call->caller));
-				}
-			} else if(sip_method == BYE) {
-				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
-					//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header 
-					call->destroy_call_at = packetS->header.ts.tv_sec + 60;
-					call->destroy_call_at_bye = packetS->header.ts.tv_sec + 20 * 60;
-				}
-				//check and save CSeq for later to compare with OK 
-				if(cseq && cseqlen < 32) {
-					memcpy(call->byecseq, cseq, cseqlen);
-					call->byecseq[cseqlen] = '\0';
-					call->seenbye = true;
-					if(call->listening_worker_run) {
-						*(call->listening_worker_run) = 0;
-					}
-					if(verbosity > 2)
-						syslog(LOG_NOTICE, "Seen bye\n");
-					if(opt_enable_fraud) {
-						fraudSeenByeCall(call, packetS->header.ts);
-					}
-				}
-				// save who hanged up 
-				if(call->sipcallerip[0] == packetS->saddr) {
-					call->whohanged = 0;
-				} else if(call->sipcalledip[0] == packetS->saddr) {
-					call->whohanged = 1;
-				}
-			} else if(sip_method == CANCEL) {
-				// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
-				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
-					//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
-					call->destroy_call_at = packetS->header.ts.tv_sec + 10;
-				}
-				
-				//check and save CSeq for later to compare with OK 
-				if(cseq && cseqlen < 32) {
-					memcpy(call->cancelcseq, cseq, cseqlen);
-					call->cancelcseq[cseqlen] = '\0';
-				}
-			} else if(sip_method == RES2XX) {
-				call->seenRES2XX = true;
-				// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
-				if(!(cseq && cseqlen < 32) || strncmp(cseq, call->byecseq, cseqlen)) {
-					call->seenRES2XX_no_BYE = true;
-					if(!call->progress_time) {
-						call->progress_time = packetS->header.ts.tv_sec;
-					}
-				}
-
-				// if it is OK check for BYE
-				if(cseq && cseqlen < 32) {
-					if(verbosity > 2) {
-						char a = cseq[cseqlen];
-						cseq[cseqlen] = '\0';
-						syslog(LOG_NOTICE, "Cseq: %s\n", cseq);
-						cseq[cseqlen] = a;
-					}
-					if(strncmp(cseq, call->byecseq, cseqlen) == 0) {
-						// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
-
-						call->seenbyeandok = true;
-
-	// Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
-	// first 200 OK will not save the second 200 OK. So rather wait for 5 seconds for some more messages instead of closing the call. 
-
-						// destroy call after 5 seonds from now 
-						call->destroy_call_at = packetS->header.ts.tv_sec + 5;
-						if(logPacketSipMethodCall_enable) {
-							logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-								packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-								call);
-						}
-						process_packet__parse_custom_headers(call, packetS->data, packetS->datalen, parseContents);
-						returnCall = call;
-						goto endsip_save_packet;
-					} else if(strncmp(cseq, call->invitecseq, cseqlen) == 0) {
-						call->seeninviteok = true;
-						if(!call->connect_time) {
-							call->connect_time = packetS->header.ts.tv_sec;
-							if(opt_enable_fraud) {
-								fraudConnectCall(call, packetS->header.ts);
-							}
-						}
-						if(opt_update_dstnum_onanswer &&
-						   !call->updateDstnumOnAnswer && !call->updateDstnumFromMessage &&
-						   call->called_invite_branch_map.size()) {
-							char branch[100];
-							if(!get_sip_branch(packetS->data, packetS->datalen, parseContents, 
-									   "via:", branch, sizeof(branch)) &&
-							   branch[0] != '\0') {
-								map<string, string>::iterator iter = call->called_invite_branch_map.find(branch);
-								if(iter != call->called_invite_branch_map.end()) {
-									strncpy(call->called, iter->second.c_str(), sizeof(call->called));
-									call->updateDstnumOnAnswer = true;
-								}
-							}
-						}
-						if(verbosity > 2)
-							syslog(LOG_NOTICE, "Call answered\n");
-					} else if(strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
-						process_packet__parse_custom_headers(call, packetS->data, packetS->datalen, parseContents);
-						returnCall = call;
-						goto endsip_save_packet;
-					}
-				}
-				if(!call->onCall_2XX) {
-					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-							     call->sipcallerip[0], call->sipcalledip[0]);
-					sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->header.ts);
-					call->onCall_2XX = true;
-				}
-
-			} else if(sip_method == RES18X) {
-				call->seenRES18X = true;
-				if(!call->progress_time) {
-					call->progress_time = packetS->header.ts.tv_sec;
-				}
-				if(!call->onCall_18X) {
-					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-							     call->sipcallerip[0], call->sipcalledip[0]);
-					sendCallInfoEvCall(call, sSciInfo::sci_18X, packetS->header.ts);
-					call->onCall_18X = true;
-				}
-				call->destroy_call_at = 0;
-				call->destroy_call_at_bye = 0;
-			}
-
-			// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
-//			if((call->saddr == saddr || call->saddr == daddr || merged) &&
-			if (IS_SIP_RES3XX(sip_method) || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX) {
-				if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501 && lastSIPresponseNum != 481 && lastSIPresponseNum != 491) {
-					// save packet 
-					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
-						call->destroy_call_at = packetS->header.ts.tv_sec + (sip_method == RES300 ? 300 : 5);
-					}
-
-					if(IS_SIP_RES3XX(sip_method)) {
-						// remove all RTP  
-						call->removeFindTables();
-						call->removeRTP();
-						call->ipport_n = 0;
-					}
-					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-							packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-							call);
-					}
-					process_packet__parse_custom_headers(call, packetS->data, packetS->datalen, parseContents);
-					returnCall = call;
-					goto endsip_save_packet;
-				} else if(lastSIPresponseNum == 481) {
-					//481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
-
-					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
-						call->destroy_call_at = packetS->header.ts.tv_sec + 180;
-					}
-				} else if(lastSIPresponseNum == 491) {
-					// do not set timeout for 491
-				} else if(!call->destroy_call_at) {
-					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
-						call->destroy_call_at = packetS->header.ts.tv_sec + 60;
-					}
-				}
-			}
-		}
-
-		if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
-
-		if(sip_method == INVITE || sip_method == MESSAGE) {
-		 
-			bool existInviteSdaddr = false;
-			bool reverseInviteSdaddr = false;
-			for(list<d_u_int32_t>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
-				if(packetS->saddr == (*iter)[0] && packetS->daddr == (*iter)[1]) {
-					existInviteSdaddr = true;
-				} else if(packetS->daddr == (*iter)[0] && packetS->saddr == (*iter)[1]) {
-					reverseInviteSdaddr = true;
-				}
-			}
-			if(!existInviteSdaddr) {
-				call->invite_sdaddr.push_back(d_u_int32_t(packetS->saddr, packetS->daddr));
-			}
-		 
-			if(opt_update_dstnum_onanswer) {
-				char branch[100];
-				if(!get_sip_branch(packetS->data, packetS->datalen, parseContents, 
-						   "via:", branch, sizeof(branch)) &&
-				   branch[0] != '\0') {
-					char called_invite[1024] = "";
-					if(!get_sip_peername(packetS->data, packetS->datalen, parseContents,
-							     sip_method == MESSAGE ? "MESSAGE " : "INVITE ", called_invite, sizeof(called_invite)) &&
-					   called_invite[0] != '\0') {
-						call->called_invite_branch_map[branch] = called_invite;
-					}
-				}
-			}
-			ipfilter->add_call_flags(&(call->flags), ntohl(packetS->saddr), ntohl(packetS->daddr));
-			if(opt_cdrproxy && !reverseInviteSdaddr) {
-				if(call->sipcalledip[0] != packetS->daddr and call->sipcallerip[0] != packetS->daddr and call->lastsipcallerip != packetS->saddr) {
-					if(packetS->daddr != 0) {
-						// daddr is already set, store previous daddr as sipproxy
-						call->proxies.push_back(call->sipcalledip[0]);
-					}
-					call->sipcalledip[0] = packetS->daddr;
-					call->sipcalledport = packetS->dest;
-					call->lastsipcallerip = packetS->saddr;
-				} else if(call->lastsipcallerip == packetS->saddr) {
-					// update sipcalledip to this new one
-					call->sipcalledip[0] = packetS->daddr;
-					call->sipcalledport = packetS->dest;
-					call->lastsipcallerip = packetS->saddr;
-				}
-			}
-		}
-
-		if(opt_norecord_header) {
-			s = gettag(packetS->data, packetS->datalen, parseContents,
-				   "\nX-VoipMonitor-norecord:", &l, &gettagLimitLen);
-			if(l && l < 33) {
-				// do 
-				call->stoprecording();
-			}
-		}
-
-		if(sip_method == INFO) {
-			s = gettag(packetS->data, packetS->datalen, parseContents,
-				   "\nSignal:", &l, &gettagLimitLen);
-			if(l && l < 33) {
-				char *tmp = s + 1;
-				tmp[l - 1] = '\0';
-				if(verbosity >= 2)
-					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr, 0);
-			}
-			s = gettag(packetS->data, packetS->datalen, parseContents,
-				   "Signal=", &l, &gettagLimitLen);
-			if(l && l < 33) {
-				char *tmp = s;
-				tmp[l] = '\0';
-				if(verbosity >= 2)
-					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-				call->handle_dtmf(*tmp, ts2double(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec), packetS->saddr, packetS->daddr, 0);
-
-			}
-		}
-		
-		// check if we have X-VoipMonitor-Custom1
-		s = gettag(packetS->data, packetS->datalen, parseContents,
-			   "\nX-VoipMonitor-Custom1:", &l, &gettagLimitLen);
-		if(l && l < 255) {
-			memcpy(call->custom_header1, s, l);
-			call->custom_header1[l] = '\0';
-			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen X-VoipMonitor-Custom1: %s\n", call->custom_header1);
-		}
-
-		// check for opt_match_header
-		if(opt_match_header[0] != '\0') {
-			s = gettag(packetS->data, packetS->datalen, parseContents,
-				   opt_match_header, &l, &gettagLimitLen);
-			if(l && l < 128) {
-				memcpy(call->match_header, s, l);
-				call->match_header[l] = '\0';
-				if(verbosity > 2)
-					syslog(LOG_NOTICE, "Seen header %s: %s\n", opt_match_header, call->match_header);
-			}
-		}
-	
-		// check if we have custom headers
-		process_packet__parse_custom_headers(call, packetS->data, packetS->datalen, parseContents);
-		
-		// we have packet, extend pending destroy requests
-		call->shift_destroy_call_at(&packetS->header, lastSIPresponseNum);
-		
-		if(sip_method == PUBLISH && contenttype_is_rtcpxr) {
-			process_packet__parse_rtcpxr(call, packetS->data, packetS->datalen, parseContents, packetS->header.ts);
-		}
-
-		// SDP examination
-
-		char a;
-		a = packetS->data[packetS->datalen - 1];
-		packetS->data[packetS->datalen - 1] = 0;
-
-		if(!contenttypelen) {
-			goto notfound;
-		}
-
-		// Content-Type found 
-		if(call->type == MESSAGE && call->message == NULL && call->message_info == NULL) {
-			if(call->contenttype) delete [] call->contenttype;
-			call->contenttype = new FILE_LINE char[contenttypelen + 1];
-			strcpy(call->contenttype, contenttypestr);
-			
-			char *rsltMessage;
-			char *rsltMessageInfo;
-			string rsltDestNumber;
-			string rsltSrcNumber;
-			unsigned int rsltContentLength;
-			packetS->data[packetS->datalen - 1] = a;
-			switch(parse_packet__message(packetS->data, packetS->datalen, parseContents, false,
-						     &rsltMessage, &rsltMessageInfo, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
-			case 2:
-				call->message = rsltMessage;
-				call->message_info = rsltMessageInfo;
-				break;
-			case 1:
-				if(!call->message) {
-					call->message = new FILE_LINE char[1];
-					call->message[0] = '\0';
-				}
-				break;
-			case -1:
-				goto notfound;
-			}
-			if(rsltDestNumber.length()) {
-				strncpy(call->called, rsltDestNumber.c_str(), sizeof(call->called));
-				call->updateDstnumFromMessage = true;
-			}
-			if(rsltSrcNumber.length()) {
-				strncpy(call->caller, rsltSrcNumber.c_str(), sizeof(call->caller));
-			}
-			if(rsltContentLength != (unsigned int)-1) {
-				call->content_length = rsltContentLength;
-			}
-			//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
-		} else if(strcasestr(contenttypestr, "application/sdp")) {
-			// prepare User-Agent
-			char *ua = NULL;
-			unsigned long gettagLimitLen = 0, ua_len = 0;
-			ua = gettag(packetS->data, packetS->datalen, parseContents,
-				    "\nUser-Agent:", &ua_len, &gettagLimitLen);
-			detectUserAgent = true;
-			process_sdp(call, packetS,
-				    sip_method, contenttype_data_ptr, (unsigned int)packetS->datalen - (contenttype_data_ptr - packetS->data), callidstr, ua, ua_len);
-		} else if(strcasestr(contenttypestr, "multipart/mixed")) {
-			char *ua = NULL;
-			unsigned long gettagLimitLen = 0, ua_len = 0;
-			ua = gettag(packetS->data, packetS->datalen, parseContents,
-				    "\nUser-Agent:", &ua_len, &gettagLimitLen);
-			detectUserAgent = true;
-			s = contenttype_data_ptr;
-			while(1) {
-				//continue searching  for another content-type
-				char *s2;
-				s2 = gettag(s, (unsigned int)packetS->datalen - (s - packetS->data), NULL,
-					    "\nContent-Type:", &l, NULL);
-				if(l <= 0 || l > 1023) {
-					//try compact header
-					s2 = gettag(s, (unsigned int)packetS->datalen - (s - packetS->data), NULL,
-						    "\nc:", &l, NULL);
-				}
-				if(s2 and l > 0) {
-					//Content-Type found try if it is SDP 
-					if(l > 0 && strcasestr(s2, "application/sdp")){
-						process_sdp(call, packetS,
-							    sip_method, s2, (unsigned int)packetS->datalen - (s2 - packetS->data), callidstr, ua, ua_len);
-						break;	// stop searching
-					} else {
-						// it is not SDP continue searching for another content-type 
-						s = s2;
-						continue;
-					}
-				} else {
-					break;
-				}
-			}
-		}
-
-notfound:
-		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-				call);
-		}
-		returnCall = call;
-		packetS->data[packetS->datalen - 1] = a;
-endsip_save_packet:
-		save_sip_packet(call, packetS, parseContents,
-				sipDatalen, TYPE_SIP, 
-				origDatalen, sipOffset,
-				forceSip);
-endsip:
-		if(_save_sip_history && call) {
-			bool save_request = IS_SIP_RESXXX(sip_method) ?
-					     lastSIPresponseNum && _save_sip_history_all_responses :
-					     sip_method && (_save_sip_history_all_requests || _save_sip_history_request_types[sip_method]);
-			bool save_response = lastSIPresponseNum && _save_sip_history_all_responses;
-			if(save_request || save_response) {
-				char _request[20] = "";
-				char *_lastSIPresponse = NULL;
-				int _lastSIPresponseNum = 0;
-				if(save_request) {
-					const char *sip_request_name = sip_request_int_to_name(sip_method, false);
-					if(sip_request_name) {
-						strncpy(_request, sip_request_name, sizeof(_request) - 1);
-						_request[sizeof(_request) - 1] = 0;
-					}
-				}
-				if(save_response) {
-					_lastSIPresponse = lastSIPresponse;
-					_lastSIPresponseNum = lastSIPresponseNum;
-				}
-				if(_request[0] || 
-				   (_lastSIPresponse && _lastSIPresponse[0]) || 
-				   _lastSIPresponseNum) {
-					call->SIPhistory.push_back(Call::sSipHistory(
-						packetS->header.ts.tv_sec * 1000000ull + packetS->header.ts.tv_usec,
-						_request,
-						_lastSIPresponse, _lastSIPresponseNum));
-				}
-			}
-		}
-		
-		if(call && call->type != REGISTER && sipSendSocket && !opt_sip_send_before_packetbuffer) {
-			// send packet to socket if enabled
-			u_int16_t header_length = packetS->datalen;
-			sipSendSocket->addData(&header_length, 2,
-					       packetS->data, packetS->datalen);
-		}
-
-		if(!detectUserAgent && sip_method && call) {
-			bool iscaller = 0;
-			if(call->check_is_caller_called(sip_method, packetS->saddr, packetS->daddr, &iscaller)) {
-				s = gettag(packetS->data, sipDatalen, parseContents,
-					   "\nUser-Agent:", &l, &gettagLimitLen);
-				if(l && ((unsigned int)l < ((unsigned int)sipDatalen - (s - packetS->data)))) {
-					//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(s).substr(0,l) << endl;
-					//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(data).substr(0,datalen) << endl;
-					if(iscaller) {
-						memcpy(call->b_ua, s, MIN(l, sizeof(call->b_ua)));
-						call->b_ua[MIN(l, sizeof(call->b_ua) - 1)] = '\0';
-						if(sverb.set_ua) {
-							cout << "set b_ua " << call->b_ua << endl;
-						}
-					} else {
-						memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
-						call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
-						if(sverb.set_ua) {
-							cout << "set a_ua " << call->a_ua << endl;
-						}
-					}
-				}
-			}
-		}
-		packetS->datalen = origDatalen;
-		if(packetS->istcp &&
-		   sipDatalen < (unsigned)packetS->datalen - 11 &&
-		   (unsigned)packetS->datalen + sipOffset < packetS->header.caplen) {
-			unsigned long skipSipOffset = 0;
-			if(check_sip20(packetS->data + sipDatalen, packetS->datalen - sipDatalen, NULL)) {
-				skipSipOffset = sipDatalen;
-			} else {
-				char *pointToDoubleEndLine = (char*)memmem(packetS->data + sipDatalen, packetS->datalen - sipDatalen, "\r\n\r\n", 4);
-				if(pointToDoubleEndLine) {
-					unsigned long offsetAfterDoubleEndLine = pointToDoubleEndLine - packetS->data + 4;
-					if(offsetAfterDoubleEndLine < (unsigned)packetS->datalen - 11 &&
-					   check_sip20(packetS->data + offsetAfterDoubleEndLine, packetS->datalen - offsetAfterDoubleEndLine, NULL)) {
-						skipSipOffset = offsetAfterDoubleEndLine;
-					}
-				}
-			}
-			if(skipSipOffset) {
-				packet_s packetS_mod = *packetS;
-				packetS_mod.data += skipSipOffset;
-				packetS_mod.datalen -= skipSipOffset;
-				process_packet(&packetS_mod, NULL,
-					       was_rtp, voippacket, forceSip,
-					       false, sipOffset + skipSipOffset);
-			}
-		}
-		return returnCall;
-	}
-
-rtpcheck:
-
-	if(packetS->datalen > 2) { // && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) { // disable condition - failure for udptl (fax)
-	if(processRtpPacketHash) {
-		processRtpPacketHash->push_packet_rtp_1(packetS,
-							parsePacketPreproc && parsePacketPreproc->hash[0] ? 
-							 parsePacketPreproc->hash[0] : 
-							 tuplehash(packetS->saddr, packetS->source),
-							parsePacketPreproc && parsePacketPreproc->hash[1] ? 
-							 parsePacketPreproc->hash[1] : 
-							 tuplehash(packetS->daddr, packetS->dest));
-	} else {
-	if ((calls = calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, parsePacketPreproc && parsePacketPreproc->hash[1] ? parsePacketPreproc->hash[1] : 0))){
-		++counter_rtp_packets;
-		// packet (RTP) by destination:port is already part of some stored call  
-		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-			call = node_call->call;
-			iscaller = node_call->iscaller;
-			sdp_flags = node_call->sdp_flags;
-			is_rtcp = node_call->is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data[1] == 0xC8);
-			
-			if(sverb.process_rtp) {
-				++process_rtp_counter;
-				cout << "RTP - process_packet -"
-				     << " src: " << inet_ntostring(htonl(packetS->saddr)) << " : " << packetS->source
-				     << " dst: " << inet_ntostring(htonl(packetS->daddr)) << " : " << packetS->dest
-				     << " iscaller: " << (iscaller ? "caller" : "called") 
-				     << " counter: " << process_rtp_counter
-				     << " #1"
-				     << endl;
-			}
-
-			if(pcap_drop_flag) {
-				call->pcap_drop = pcap_drop_flag;
-			}
-
-			if(!is_rtcp && !sdp_flags.is_fax &&
-			   (packetS->datalen < RTP_FIXED_HEADERLEN ||
-			    packetS->header.caplen <= (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN))) {
-				return(call);
-			}
-
-			*voippacket = 1;
-
-			// we have packet, extend pending destroy requests
-			call->shift_destroy_call_at(&packetS->header, lastSIPresponseNum);
-
-			int can_thread = !sverb.disable_threads_rtp;
-
-			if(sdp_flags.is_fax) {
-				call->seenudptl = 1;
-			}
-
-			if(is_rtcp) {
-				if(rtp_threaded && can_thread) {
-					add_to_rtp_thread_queue(call, packetS, 
-								iscaller, true, is_rtcp, enable_save_rtcp(call), false);
-				} else {
-					call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
-				}
-				return call;
-			}
-
-			*was_rtp = 1;
-			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, packetS, 
-							iscaller, true, is_rtcp, enable_save_rtp(call), false);
-			} else {
-				call->read_rtp(packetS, iscaller, true, enable_save_rtp(call),
-					       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
-				call->set_last_packet_time(packetS->header.ts.tv_sec);
-			}
-		}
-	} else if ((calls = calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, parsePacketPreproc && parsePacketPreproc->hash[0] ? parsePacketPreproc->hash[0] : 0))){
-		++counter_rtp_packets;
-		// packet (RTP[C]) by source:port is already part of some stored call 
-		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-			call = node_call->call;
-#if 0
-			if(call->chantype == CHAN_SKINNY) {
-				// if channel is skinny do not assign RTP packet based on source IP and source port. 
-				continue;
-			}
-#endif
-			iscaller = node_call->iscaller;
-			sdp_flags = node_call->sdp_flags;
-			is_rtcp = node_call->is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data[1] == 0xC8);
-
-			if(sverb.process_rtp) {
-				++process_rtp_counter;
-				cout << "RTP - process_packet -"
-				     << " src: " << inet_ntostring(htonl(packetS->saddr)) << " : " << packetS->source
-				     << " dst: " << inet_ntostring(htonl(packetS->daddr)) << " : " << packetS->dest
-				     << " iscaller: " << (iscaller ? "caller" : "called") 
-				     << " counter: " << process_rtp_counter
-				     << " #2"
-				     << endl;
-			}
-			
-			if(pcap_drop_flag) {
-				call->pcap_drop = pcap_drop_flag;
-			}
-
-			if(!is_rtcp && !sdp_flags.is_fax &&
-			   (packetS->datalen < RTP_FIXED_HEADERLEN ||
-			    packetS->header.caplen <= (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN))) {
-				return(call);
-			}
-
-			*voippacket = 1;
-
-			// we have packet, extend pending destroy requests
-			call->shift_destroy_call_at(&packetS->header, lastSIPresponseNum);
-
-			int can_thread = !sverb.disable_threads_rtp;
-
-			if(sdp_flags.is_fax) {
-				call->seenudptl = 1;
-			}
-
-			if(is_rtcp) {
-				if(rtp_threaded && can_thread) {
-					add_to_rtp_thread_queue(call, packetS, 
-								!iscaller, false, is_rtcp, enable_save_rtcp(call), false);
-				} else {
-					call->read_rtcp(packetS, !iscaller, enable_save_rtcp(call));
-				}
-				return call;
-			}
-
-			// as we are searching by source address and find some call, revert iscaller 
-			*was_rtp = 1;
-			if(rtp_threaded && can_thread) {
-				add_to_rtp_thread_queue(call, packetS, 
-							!iscaller, false, is_rtcp, enable_save_rtp(call), false);
-			} else {
-				call->read_rtp(packetS, !iscaller, false, enable_save_rtp(call), 
-					       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
-				call->set_last_packet_time(packetS->header.ts.tv_sec);
-			}
-		}
-
-	// packet does not belongs to established call, check if it is on SIP port
-	} else {
-		if(opt_rtpnosip) {
-			unsigned int flags = 0;
-			set_global_flags(flags);
-			ipfilter->add_call_flags(&flags, ntohl(packetS->saddr), ntohl(packetS->daddr));
-			if(flags & FLAG_SKIPCDR) {
-				if(verbosity > 1)
-					syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
-				return NULL;
-			}
-		 
-			// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
-			char s[256];
-			RTP rtp(-1);
-			int rtpmap[MAX_RTPMAP];
-			memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-
-			rtp.read((unsigned char*)packetS->data, packetS->datalen, &packetS->header, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, 0, packetS->sensor_id);
-
-			if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
-				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-						call, "decoding RTP without SIP signaling is enabled (rtp.getVersion() != 2 && rtp.getPayload() > 18)");
-				}
-				return NULL;
-			}
-			snprintf(s, 256, "%u-%x", (unsigned int)time(NULL), rtp.getSSRC());
-
-			//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
-
-			call = calltable->add(INVITE, s, strlen(s), packetS->header.ts.tv_sec, packetS->saddr, packetS->source, packetS->handle, packetS->dlt, packetS->sensor_id);
-			call->chantype = CHAN_SIP;
-			call->set_first_packet_time(packetS->header.ts.tv_sec, packetS->header.ts.tv_usec);
-			call->sipcallerip[0] = packetS->saddr;
-			call->sipcalledip[0] = packetS->daddr;
-			call->sipcallerport = packetS->source;
-			call->sipcalledport = packetS->dest;
-			call->flags = flags;
-			strncpy(call->fbasename, s, MAX_FNAME - 1);
-			call->seeninvite = true;
-			strcpy(call->callername, "RTP");
-			strcpy(call->caller, "RTP");
-			strcpy(call->called, "RTP");
-
-#ifdef DEBUG_INVITE
-			syslog(LOG_NOTICE, "New RTP call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s]\n", call->sipcallerip, call->sipcalledip, call->caller, call->called);
-#endif
-
-			// opening dump file
-			if(enable_save_any(call)) {
-				mkdir_r(call->dirname().c_str(), 0777);
-			}
-			if(enable_save_packet(call)) {
-				char pcapFilePath_spool_relative[1024];
-				snprintf(pcapFilePath_spool_relative , 1023, "%s/%s.pcap", call->dirname().c_str(), call->get_fbasename_safe());
-				pcapFilePath_spool_relative[1023] = 0;
-				static char str2[1024];
-				if(opt_cachedir[0] != '\0') {
-					snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
-					str2[1023] = 0;
-				} else {
-					strcpy(str2, pcapFilePath_spool_relative);
-				}
-				if(call->getPcap()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
-					call->pcapfilename = pcapFilePath_spool_relative;
-				}
-			}
-
-			if(verbosity > 3) {
-				syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
-			}
-
-			call->add_ip_port_hash(packetS->saddr, packetS->daddr, packetS->dest, NULL, s, l, 1, rtpmap, s_sdp_flags(), 0);
-			call->add_ip_port_hash(packetS->saddr, packetS->saddr, packetS->source, NULL, s, l, 0, rtpmap, s_sdp_flags(), 0);
-			
-		}
-		// we are not interested in this packet
-		if (verbosity >= 6){
-			char st1[16];
-			char st2[16];
-			struct in_addr in;
-
-			in.s_addr = packetS->saddr;
-			strcpy(st1, inet_ntoa(in));
-			in.s_addr = packetS->daddr;
-			strcpy(st2, inet_ntoa(in));
-			syslog(LOG_ERR, "Skipping udp packet %s:%d->%s:%d\n", st1, packetS->source, st2, packetS->dest);
-		}
-		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-				call, "we are not interested in this packet");
-		}
-		return NULL;
-	}
-	}
-	}
-
-	if(logPacketSipMethodCall_enable) {
-		logPacketSipMethodCall(packetS->packet_number, sip_method, lastSIPresponseNum, &packetS->header, 
-			packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-			call, "---");
-	}
-	
-	return NULL;
-}
-*/
-
 inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	
 	if(packetS->isSip) {
@@ -3725,7 +2252,11 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	bool contenttype_is_rtcpxr = false;
 	char lastSIPresponse[128];
 	int lastSIPresponseNum = 0;
-	bool detectUserAgent = false;
+	bool existInviteSdaddr = false;
+	bool reverseInviteSdaddr = false;
+	bool iscaller = false;
+	bool iscalled = false;
+	bool detectCallerd = false;
 
 	if (packetS->header_pt->ts.tv_sec - process_packet__last_filter_reload > 1){
 		if(ipfilter_reload_do) {
@@ -3862,7 +2393,6 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	if(!call) {
 		// packet does not belongs to any call yet
 		call = packetS->call_created;
-		detectUserAgent = packetS->detectUserAgent;
 	}
 	
 	if(!call) {
@@ -3900,6 +2430,26 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		call->first_message_time_usec = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
 	}
 	
+	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
+		for(list<d_u_int32_t>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
+			if(packetS->saddr == (*iter)[0] && packetS->daddr == (*iter)[1]) {
+				existInviteSdaddr = true;
+			} else if(packetS->daddr == (*iter)[0] && packetS->saddr == (*iter)[1]) {
+				reverseInviteSdaddr = true;
+			}
+		}
+		if(!existInviteSdaddr && !reverseInviteSdaddr) {
+			call->invite_sdaddr.push_back(d_u_int32_t(packetS->saddr, packetS->daddr));
+		}
+	}
+	
+	detectCallerd = call->check_is_caller_called(packetS->sip_method, packetS->saddr, packetS->daddr, &iscaller, &iscalled, 
+						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) || 
+						     packetS->sip_method == RES18X);
+	if(detectCallerd) {
+		call->handle_dscp(packetS->header_ip, iscaller);
+	}
+
 	if(opt_rtp_firstleg == 0 || 
 	   (opt_rtp_firstleg &&
 	    ((call->saddr == packetS->saddr && call->sport == packetS->source) || 
@@ -4035,16 +2585,6 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		} else if(packetS->sip_method == MESSAGE && call->type == MESSAGE) {
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;
 			call->seeninviteok = false;
-
-			s = gettag_sip(packetS, "\nUser-Agent:", &l);
-			if(s) {
-				memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
-				call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
-				if(sverb.set_ua) {
-					cout << "set a_ua " << call->a_ua << endl;
-				}
-			}
-			detectUserAgent = true;
 
 			//check and save CSeq for later to compare with OK 
 			if(cseq && cseqlen < 32) {
@@ -4262,20 +2802,6 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
 
 	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
-	 
-		bool existInviteSdaddr = false;
-		bool reverseInviteSdaddr = false;
-		for(list<d_u_int32_t>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
-			if(packetS->saddr == (*iter)[0] && packetS->daddr == (*iter)[1]) {
-				existInviteSdaddr = true;
-			} else if(packetS->daddr == (*iter)[0] && packetS->saddr == (*iter)[1]) {
-				reverseInviteSdaddr = true;
-			}
-		}
-		if(!existInviteSdaddr) {
-			call->invite_sdaddr.push_back(d_u_int32_t(packetS->saddr, packetS->daddr));
-		}
-	 
 		if(opt_update_dstnum_onanswer) {
 			char branch[100];
 			if(!get_sip_branch(packetS, "via:", branch, sizeof(branch)) &&
@@ -4413,18 +2939,8 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		}
 		//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
 	} else if(strcasestr(contenttypestr, "application/sdp")) {
-		// prepare User-Agent
-		char *ua = NULL;
-		unsigned long ua_len = 0;
-		ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
-		detectUserAgent = true;
-		process_sdp(call, packetS,
-			    packetS->sip_method, contenttype_data_ptr, packetS->get_callid(), ua, ua_len);
+		process_sdp(call, packetS, iscaller, contenttype_data_ptr, packetS->get_callid());
 	} else if(strcasestr(contenttypestr, "multipart/mixed")) {
-		char *ua = NULL;
-		unsigned long ua_len = 0;
-		ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
-		detectUserAgent = true;
 		s = contenttype_data_ptr;
 		while(1) {
 			//continue searching  for another content-type
@@ -4433,8 +2949,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			if(s2 and l > 0) {
 				//Content-Type found try if it is SDP 
 				if(l > 0 && strcasestr(s2, "application/sdp")){
-					process_sdp(call, packetS,
-						    packetS->sip_method, s2, packetS->get_callid(), ua, ua_len);
+					process_sdp(call, packetS, iscaller, s2, packetS->get_callid());
 					break;	// stop searching
 				} else {
 					// it is not SDP continue searching for another content-type 
@@ -4503,30 +3018,28 @@ endsip:
 				       packetS->data, packetS->datalen);
 	}
 
-	if(!detectUserAgent && packetS->sip_method && call) {
-		bool iscaller = 0;
-		if(call->check_is_caller_called(packetS->sip_method, packetS->saddr, packetS->daddr, &iscaller)) {
-			s = gettag_sip(packetS, "\nUser-Agent:", &l);
-			if(s) {
-				//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(s).substr(0,l) << endl;
-				//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(data).substr(0,datalen) << endl;
-				if(iscaller) {
-					memcpy(call->b_ua, s, MIN(l, sizeof(call->b_ua)));
-					call->b_ua[MIN(l, sizeof(call->b_ua) - 1)] = '\0';
-					if(sverb.set_ua) {
-						cout << "set b_ua " << call->b_ua << endl;
-					}
-				} else {
-					memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
-					call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
-					if(sverb.set_ua) {
-						cout << "set a_ua " << call->a_ua << endl;
-					}
+	if(call && detectCallerd &&
+	   (iscaller ||
+	    (iscalled && !call->a_ua[0]))) {
+		s = gettag_sip(packetS, "\nUser-Agent:", &l);
+		if(s) {
+			//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(s, l) << endl;
+			if(iscaller) {
+				memcpy(call->b_ua, s, MIN(l, sizeof(call->b_ua)));
+				call->b_ua[MIN(l, sizeof(call->b_ua) - 1)] = '\0';
+				if(sverb.set_ua) {
+					cout << "set b_ua " << call->b_ua << endl;
+				}
+			}
+			if(iscalled) {
+				memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
+				call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
+				if(sverb.set_ua) {
+					cout << "set a_ua " << call->a_ua << endl;
 				}
 			}
 		}
 	}
-
 }
 
 inline void process_packet_sip_register_inline(packet_s_process *packetS) {
@@ -4534,7 +3047,6 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 	Call *call = NULL;
 	char *s;
 	unsigned long l;
-	bool detectUserAgent = false;
 	bool goto_endsip = false;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
@@ -4579,7 +3091,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 	call = calltable->find_by_register_id(packetS->get_callid(), 0);
 	if(!call) {
 		if(packetS->sip_method == REGISTER) {
-			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), &detectUserAgent);
+			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 		}
 		if(!call) {
 			goto endsip;
@@ -4604,7 +3116,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			// to much register attempts without OK or 401 responses
 			call->regstate = 4;
 			call->saveregister();
-			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), &detectUserAgent);
+			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 			if(call == NULL) {
 				goto endsip;
 			}
@@ -4762,31 +3274,17 @@ endsip:
 		sipSendSocket->addData(&header_length, 2,
 				       packetS->data, packetS->datalen);
 	}
-
-	if(!detectUserAgent && packetS->sip_method && call) {
-		bool iscaller = 0;
-		if(call->check_is_caller_called(packetS->sip_method, packetS->saddr, packetS->daddr, &iscaller)) {
-			s = gettag_sip(packetS, "\nUser-Agent:", &l);
-			if(s) {
-				//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(s).substr(0,l) << endl;
-				//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(data).substr(0,datalen) << endl;
-				if(iscaller) {
-					memcpy(call->b_ua, s, MIN(l, sizeof(call->b_ua)));
-					call->b_ua[MIN(l, sizeof(call->b_ua) - 1)] = '\0';
-					if(sverb.set_ua) {
-						cout << "set b_ua " << call->b_ua << endl;
-					}
-				} else {
-					memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
-					call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
-					if(sverb.set_ua) {
-						cout << "set a_ua " << call->a_ua << endl;
-					}
-				}
+	
+	if(call && packetS->sip_method != REGISTER) {
+		s = gettag_sip(packetS, "\nUser-Agent:", &l);
+		if(s) {
+			memcpy(call->b_ua, s, MIN(l, sizeof(call->b_ua)));
+			call->b_ua[MIN(l, sizeof(call->b_ua) - 1)] = '\0';
+			if(sverb.set_ua) {
+				cout << "set b_ua " << call->b_ua << endl;
 			}
 		}
 	}
-	
 }
 
 inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
@@ -4999,8 +3497,8 @@ inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
 				syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
 			}
 
-			call->add_ip_port_hash(packetS->saddr, packetS->daddr, packetS->dest, packetS->header_pt, NULL, s, strlen(s), 1, rtpmap, s_sdp_flags(), 0);
-			call->add_ip_port_hash(packetS->saddr, packetS->saddr, packetS->source, packetS->header_pt, NULL, s, strlen(s), 0, rtpmap, s_sdp_flags(), 0);
+			call->add_ip_port_hash(packetS->saddr, packetS->daddr, packetS->dest, packetS->header_pt, NULL, 1, rtpmap, s_sdp_flags(), 0);
+			call->add_ip_port_hash(packetS->saddr, packetS->saddr, packetS->source, packetS->header_pt, NULL, 0, rtpmap, s_sdp_flags(), 0);
 			
 		}
 		// we are not interested in this packet
@@ -5324,7 +3822,7 @@ inline int parse_packet__message(packet_s_process *packetS, bool strictCheckLeng
 	int contentLength = 0;
 	unsigned long l;
 	char *s = gettag_sip(packetS, "\nContent-Length:", &l);
-	if(l && ((unsigned int)l < ((unsigned int)datalen - (s - data)))) {
+	if(s) {
 		char endCharContentLength = s[l];
 		s[l] = '\0';
 		contentLength = atoi(s);
@@ -5987,8 +4485,8 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 		}
 	}
 
-	call->add_ip_port_hash(saddr, daddr, dest, header, NULL, s, strlen(s), 1, rtpmap, s_sdp_flags(), 0);
-	call->add_ip_port_hash(saddr, saddr, source, header, NULL, s, strlen(s), 0, rtpmap, s_sdp_flags(), 0);
+	call->add_ip_port_hash(saddr, daddr, dest, header, NULL, 1, rtpmap, s_sdp_flags(), 0);
+	call->add_ip_port_hash(saddr, saddr, source, header, NULL, 0, rtpmap, s_sdp_flags(), 0);
 	
 	return(call);
 }
@@ -7341,13 +5839,9 @@ bool PreProcessPacket::process_getCallID_publish(packet_s_process **packetS_ref)
 	if(packetS->sip_method == PUBLISH) {
 		char *s;
 		unsigned long l;
-		s = gettag_sip(packetS, "\nContent-Type:", &l);
-		if(l <= 0 || l > 1023) {
-			//try compact header
-			s = gettag_sip(packetS, "\nc:", &l);
-			if(l <= 0 || l > 1023) {
-				return(true);
-			}
+		s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
+		if(!s || l > 1023) {
+			return(true);
 		}
 		char endChar = s[l];
 		s[l] = 0;
@@ -7355,7 +5849,7 @@ bool PreProcessPacket::process_getCallID_publish(packet_s_process **packetS_ref)
 		s[l] = endChar;
 		if(isRtcpXr) {
 			s = gettag_sip(packetS, "\nCallID:", &l);
-			if(s && l > 0 && l <= 1023) {
+			if(s && l <= 1023) {
 				packetS->set_callid(s, l);
 			} else {
 				return(false);
@@ -7373,7 +5867,7 @@ void PreProcessPacket::process_getSipMethod(packet_s_process **packetS_ref) {
 	} else if(IS_SIP_RESXXX(packetS->sip_method)) {
 		unsigned long l;
 		char *cseq = gettag_sip(packetS, "\nCSeq:", &l);
-		if(cseq && l > 0 && l <= 1023) {
+		if(cseq && l <= 1023) {
 			char oldEndChar = cseq[l];
 			cseq[l] = 0;
 			if(strcasestr(cseq, "REGISTER")) {
@@ -7396,7 +5890,6 @@ void PreProcessPacket::process_findCall(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	packetS->call = calltable->find_by_call_id(packetS->get_callid(), 0, packetS->header_pt->ts.tv_sec);
 	if(packetS->call) {
-		packetS->call->handle_dscp(packetS->sip_method, packetS->header_ip, packetS->saddr, packetS->daddr, NULL, !IS_SIP_RESXXX(packetS->sip_method));
 		if(pcap_drop_flag) {
 			packetS->call->pcap_drop = pcap_drop_flag;
 		}
@@ -7413,7 +5906,7 @@ void PreProcessPacket::process_createCall(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	if(packetS->_findCall && !packetS->call &&
 	   (packetS->sip_method == INVITE || packetS->sip_method == MESSAGE)) {
-		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), &packetS->detectUserAgent);
+		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 		packetS->_createCall = true;
 	}
 }
