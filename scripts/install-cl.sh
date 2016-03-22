@@ -1,6 +1,6 @@
 #!/bin/bash
 #cloudToken=
-__VERSION=1.0g
+__VERSION=1.0h
 
 #__COLORS=1	#automagicaly set by checkTput function
 			#0 for disable colors output
@@ -1140,9 +1140,9 @@ if ask2 "Would you like to save RTP signalization for every call?" "yes" "no"; t
 #6b. Storing RTP Full or Headers only
 	rtpResult=1
 	if ask2 "  Would you like to save full RTP packet or RTP header packet?" "full" "header" "full"; then
-		rtpheaderResult=1
-	else
 		rtpheaderResult=0
+	else
+		rtpheaderResult=1
 	fi
 else
 	rtpResult=0
@@ -1283,8 +1283,16 @@ verbose "cleaningResult: $cleaningResult"
 verbose "spooldirResult: $spooldirResult"
 replaceArgByWhere "spooldir" "spooldir = $spooldirResult" "$configFile"
 
+if [ $cleaningResult -eq 1 ]; then
+	spoolsizeResultMB=$(($spoolsizeResult * 1024))
+else
+	spoolsizeResultMB=0
+	sipdaysResult=0
+	rtpdaysResult=0
+	graphdaysResult=0
+fi
+
 verbose "maxpoolsize             =  GB    spoolsizeResult: $spoolsizeResult"
-spoolsizeResultMB=$(($spoolsizeResult * 1024))
 replaceArgByWhere "maxpoolsize" "maxpoolsize = $spoolsizeResultMB" "$configFile"
 
 verbose "maxpoolsipdays          =	               sipdaysResult: $sipdaysResult"
@@ -1293,7 +1301,7 @@ replaceArgByWhere "maxpoolsipdays" "maxpoolsipdays = $sipdaysResult" "$configFil
 verbose "maxpoolrtpdays	      = rtpdaysResult: $rtpdaysResult"
 replaceArgByWhere "maxpoolrtpdays" "maxpoolrtpdays = $rtpdaysResult" "$configFile"
 
-verbose "maxpoolgraphdays        = graphdaysResult: $cleaningResult"
+verbose "maxpoolgraphdays        = graphdaysResult: graphdaysResult"
 replaceArgByWhere "maxpoolgraphdays" "maxpoolgraphdays = $graphdaysResult" "$configFile"
 
 verbose "absolute_timeout = timeoutResult: $timeoutResult"
