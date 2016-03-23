@@ -218,6 +218,7 @@ struct pcap_block_store {
 	bool full;
 	uint16_t dlink;
 	int16_t sensor_id;
+	uint32_t sensor_ip;
 	char ifname[10];
 	u_char *restoreBuffer;
 	size_t restoreBufferSize;

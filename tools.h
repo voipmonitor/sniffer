@@ -2320,6 +2320,8 @@ int vm_pthread_create_autodestroy(pthread_t *thread, pthread_attr_t *attr,
 				 true));
 }
 
+string getSystemTimezone(int method = 0);
+
 
 #define HEAP_ITEM_DEAFULT_SIZE 0xFFFFFFFF
 #define HEAP_ITEM_POOL_SIZE 100

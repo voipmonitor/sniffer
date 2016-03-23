@@ -3819,6 +3819,11 @@ void test() {
 	 
 	case 1: {
 	 
+		cout << getSystemTimezone() << endl;
+		cout << getSystemTimezone(1) << endl;
+		cout << getSystemTimezone(2) << endl;
+		cout << getSystemTimezone(3) << endl;
+	 
 		//test_time_cache();
 		//test_parsepacket();
 		break;

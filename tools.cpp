@@ -4592,3 +4592,64 @@ void cloud_activecheck_success() {
 	if (verbosity) syslog(LOG_DEBUG, "Cloud activecheck Success - disabling activecheck for next %isec.",opt_cloud_activecheck_period);
 	cloud_activecheck_stop();
 }
+
+string getSystemTimezone(int method) {
+	string timezone;
+	for(int _method = 1; _method <= 3; _method++) {
+		if(method && method != _method) {
+			continue;
+		}
+		switch(_method) {
+		case 1: {
+			char link[1000];
+			ssize_t sizeLink = readlink("/etc/localtime", link, sizeof(link));
+			if(sizeLink > 0) {
+				link[sizeLink] = 0;
+				timezone = reg_replace(link, ".*zoneinfo/(.*)", "$1", __FILE__, __LINE__);
+			}
+			}
+			break;
+		case 2: {
+			FILE *timezone_file = fopen("/etc/timezone", "r");
+			if(timezone_file) {
+				char tz[1000];
+				if(fgets(tz, sizeof(tz), timezone_file)) {
+					if(tz[strlen(tz) - 1] == '\n') {
+						tz[strlen(tz) - 1] = 0;
+					}
+					if(tz[0]) {
+						timezone  = tz;
+					}
+				}
+				fclose(timezone_file);
+			}
+			}
+			break;
+		case 3: {
+			FILE *clock_file = fopen("/etc/sysconfig/clock", "r");
+			if(clock_file) {
+				char line[1000];
+				while(fgets(line, sizeof(line), clock_file)) {
+					if(line[strlen(line) - 1] == '\n') {
+						line[strlen(line) - 1] = 0;
+					}
+					if(!strncmp(line, "ZONE=", 5)) {
+						timezone = reg_replace(line, "ZONE=\"(.*)\"", "$1", __FILE__, __LINE__);
+						if(timezone.length()) {
+							break;
+						}
+					}
+				}
+				fclose(clock_file);
+			}
+			}
+			break;
+		}
+		if(timezone.length()) {
+			break;
+		}
+	}
+	timezone = trim(timezone);
+	find_and_replace(timezone, " ", "_");
+	return(timezone);
+}

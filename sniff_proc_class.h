@@ -190,7 +190,7 @@ public:
 				char *data, int datalen, int dataoffset,
 				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
 				int istcp, struct iphdr2 *header_ip,
-				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, u_int32_t sensor_ip,
 				bool blockstore_lock = true) {
 		if(opt_enable_ssl) {
 			this->lock_push();
@@ -215,6 +215,7 @@ public:
 		packetS.block_store_index =  block_store_index; 
 		packetS.dlt = dlt; 
 		packetS.sensor_id_u = (u_int16_t)sensor_id;
+		packetS.sensor_ip = sensor_ip;
 		packetS.is_ssl = is_ssl;
 		if(blockstore_lock) {
 			packetS.blockstore_lock();

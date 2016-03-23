@@ -2113,7 +2113,10 @@ getwav:
 			time_t t = time(NULL);
 			struct tm lt;
 			::localtime_r(&t, &lt);
-			timezone_name = lt.tm_zone;
+			timezone_name = getSystemTimezone();
+			if(timezone_name.empty()) {
+				timezone_name = lt.tm_zone;
+			}
 			timezone_offset = lt.tm_gmtoff;
 		}
 		snprintf(sendbuf, BUFSIZE, "%s,%li,%s", 

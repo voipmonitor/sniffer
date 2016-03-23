@@ -307,6 +307,7 @@ void pcap_block_store::destroy() {
 	this->full = false;
 	this->dlink = global_pcap_dlink;
 	this->sensor_id = opt_id_sensor;
+	this->sensor_ip = 0;
 	memset(this->ifname, 0, sizeof(this->ifname));
 }
 
@@ -4587,6 +4588,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								} else if(!blockStore->size_compress && !blockStore->check_headers()) {
 									error = "bad headers";
 								} else {
+									blockStore->sensor_ip = this->packetServerConnections[arg2]->socketClientIPN;
 									endBlock = true;
 									while(!this->pcapStoreQueue.push(blockStore, false)) {
 										if(TERMINATING || forceStop) {
@@ -4778,7 +4780,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								pti.header->dlink ? 
 									pti.header->dlink : 
 									pti.blockStore->dlink, 
-								pti.blockStore->sensor_id);
+								pti.blockStore->sensor_id,
+								pti.blockStore->sensor_ip);
 							++listBlockStore[pti.blockStore];
 							if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
 								this->blockStoreTrashPush(pti.blockStore);
@@ -4850,7 +4853,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->dlink ? 
 								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->dlink :
 								actBlockInfo->blockStore->dlink,
-							actBlockInfo->blockStore->sensor_id);
+							actBlockInfo->blockStore->sensor_id,
+							actBlockInfo->blockStore->sensor_ip);
 						++actBlockInfo->count_processed;
 						if(actBlockInfo->count_processed == actBlockInfo->blockStore->count) {
 							this->blockStoreTrashPush(actBlockInfo->blockStore);
@@ -4900,7 +4904,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							(*blockStore)[i].header->dlink ? 
 								(*blockStore)[i].header->dlink :
 								blockStore->dlink, 
-							blockStore->sensor_id);
+							blockStore->sensor_id,
+							blockStore->sensor_ip);
 					}
 					this->blockStoreTrashPush(blockStore);
 					usleepCounter = 0;
@@ -5399,6 +5404,7 @@ void PcapQueue_readFromFifo::createConnection(int socketClient, sockaddr_in *soc
 		}
 	}
 	sPacketServerConnection *connection = new FILE_LINE sPacketServerConnection(socketClient, *socketClientInfo, this, id);
+	connection->socketClientIPN = socketClientInfo->sin_addr.s_addr;
 	connection->socketClientIP = inet_ntoa(socketClientInfo->sin_addr);
 	connection->active = true;
 	this->packetServerConnections[id] = connection;
@@ -5429,7 +5435,7 @@ void PcapQueue_readFromFifo::cleanupConnections(bool all) {
 
 void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char *packet,
 					   pcap_block_store *block_store, int block_store_index,
-					   int dlt, int sensor_id) {
+					   int dlt, int sensor_id, u_int32_t sensor_ip) {
  
 	if(sverb.disable_process_packet_in_packetbuffer) {
 		return;
@@ -5581,7 +5587,7 @@ void PcapQueue_readFromFifo::processPacket(pcap_pkthdr_plus *header_plus, u_char
 			data, datalen, data - (char*)packet,
 			this->getPcapHandleIndex(dlt), header, packet, false /*packetDelete*/,
 			istcp, header_ip,
-			block_store, block_store_index, dlt, sensor_id,
+			block_store, block_store_index, dlt, sensor_id, sensor_ip,
 			true /*blockstore_lock*/);
 	}
 }

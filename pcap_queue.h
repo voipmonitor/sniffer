@@ -697,6 +697,7 @@ public:
 		int socketClient;
 		sockaddr_in socketClientInfo;
 		string socketClientIP;
+		u_int32_t socketClientIPN;
 		PcapQueue_readFromFifo *parent;
 		unsigned int id;
 		bool active;
@@ -808,7 +809,7 @@ private:
 	void cleanupConnections(bool all = false);
 	void processPacket(pcap_pkthdr_plus *header, u_char *packet,
 			   pcap_block_store *block_store, int block_store_index,
-			   int dlt, int sensor_id);
+			   int dlt, int sensor_id, u_int32_t sensor_ip);
 	void pushBatchProcessPacket();
 	void checkFreeSizeCachedir();
 	void cleanupBlockStoreTrash(bool all = false);

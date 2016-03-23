@@ -3442,11 +3442,11 @@ inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
 		 
 			// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
 			char s[256];
-			RTP rtp(-1);
+			RTP rtp(packetS->sensor_id_(), packetS->sensor_ip);
 			int rtpmap[MAX_RTPMAP];
 			memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 
-			rtp.read((unsigned char*)packetS->data, packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, 0, packetS->sensor_id_());
+			rtp.read((unsigned char*)packetS->data, packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, 0, packetS->sensor_id_(), packetS->sensor_ip);
 
 			if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
 				return(0);
@@ -4415,7 +4415,7 @@ Call *process_packet__rtp(packet_s_process_rtp_call_info *call_info,size_t call_
 Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int daddr, int dest, 
 				char *data, int datalen, int dataoffset,
 				pcap_pkthdr *header, const u_char *packet, int istcp, struct iphdr2 *header_ip,
-				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id,
+				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, u_int32_t sensor_ip,
 				pcap_t *handle) {
 	++counter_rtp_packets;
 	
@@ -4430,11 +4430,11 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	
 	// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
 	char s[256];
-	RTP rtp(-1);
+	RTP rtp(sensor_id, sensor_ip);
 	int rtpmap[MAX_RTPMAP];
 	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 
-	rtp.read((unsigned char*)data, datalen, header, saddr, daddr, source, dest, 0, sensor_id);
+	rtp.read((unsigned char*)data, datalen, header, saddr, daddr, source, dest, 0, sensor_id, sensor_ip);
 
 	if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
 		return NULL;
@@ -5684,7 +5684,7 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
 		handle_skinny(packetS->header_pt, packetS->packet, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, packetS->datalen, packetS->dataoffset,
-			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
+			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 0);
 }
@@ -6167,7 +6167,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 					process_packet__rtp_nosip(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, 
 								  packetS->data, packetS->datalen, packetS->dataoffset,
 								  packetS->header_pt, packetS->packet, packetS->istcp, packetS->header_ip,
-								  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id_(),
+								  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
 								  get_pcap_handle(packetS->handle_index));
 				}
 			}

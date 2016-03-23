@@ -194,7 +194,7 @@ int get_ticks_bycodec(int codec) {
 }
 
 /* constructor */
-RTP::RTP(int sensor_id) 
+RTP::RTP(int sensor_id, u_int32_t sensor_ip) 
  : graph(this) {
 	counter = 0;
 	DSP = NULL;
@@ -316,6 +316,7 @@ RTP::RTP(int sensor_id)
 	dscp = 0;
 	
 	this->sensor_id = sensor_id;
+	this->sensor_ip = sensor_ip;
 	this->index_call_ip_port = -1;
 	this->index_call_ip_port_by_dest = false;
 	
@@ -861,7 +862,8 @@ RTP::process_dtmf_rfc2833() {
 
 /* read rtp packet */
 void
-RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport, int seeninviteok, int sensor_id, char *ifname) {
+RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport, int seeninviteok, 
+	  int sensor_id, u_int32_t sensor_ip, char *ifname) {
 	this->data = data; 
 	this->len = len;
 	this->header_ts = header->ts;
@@ -897,13 +899,17 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	
 	Call *owner = (Call*)call_owner;
 
-	if(this->sensor_id >= 0 && this->sensor_id != sensor_id) {
+	if((this->sensor_id >= 0 && this->sensor_id != sensor_id) ||
+	   (this->sensor_ip > 0 && this->sensor_ip != sensor_ip)) {
 		if(!owner || !owner->rtp_from_multiple_sensors) {
 			extern bool opt_disable_rtp_warning;
 			if(!opt_disable_rtp_warning) {
 				u_long actTime = getTimeMS();
 				if(actTime - 1000 > lastTimeSyslog) {
-					syslog(LOG_NOTICE, "warning - packet from sensor (%i) in RTP created for sensor (%i) - call %s", sensor_id, this->sensor_id, owner->fbasename);
+					syslog(LOG_NOTICE, "warning - packet from sensor (%i/%s) in RTP created for sensor (%i/%s) - call %s", 
+					       sensor_id, sensor_ip ? inet_ntostring(htonl(sensor_ip)).c_str() : "-", 
+					       this->sensor_id, this->sensor_ip ? inet_ntostring(htonl(this->sensor_ip)).c_str() : "-",
+					       owner->fbasename);
 					lastTimeSyslog = actTime;
 				}
 			}

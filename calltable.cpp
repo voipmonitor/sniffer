@@ -187,7 +187,7 @@ extern bool exists_column_cdr_mos_xr;
 
 /* constructor */
 Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time) :
- tmprtp(-1),
+ tmprtp(-1, 0),
  pcap(PcapDumper::na, this),
  pcapSip(PcapDumper::sip, this),
  pcapRtp(PcapDumper::rtp, this) {
@@ -993,7 +993,8 @@ read:
 							evProcessRtpStream(rtp[i]->index_call_ip_port, rtp[i]->index_call_ip_port_by_dest,
 									   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header_pt->ts.tv_sec);
 						}
-						rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id_(), ifname);
+						rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
+							     packetS->sensor_id_(), packetS->sensor_ip, ifname);
 						if(rtp[i]->iscaller) {
 							lastcallerrtp = rtp[i];
 						} else {
@@ -1028,7 +1029,7 @@ read:
 		while(__sync_lock_test_and_set(&rtplock, 1)) {
 			usleep(100);
 		}
-		rtp[ssrc_n] = new FILE_LINE RTP(packetS->sensor_id_());
+		rtp[ssrc_n] = new FILE_LINE RTP(packetS->sensor_id_(), packetS->sensor_ip);
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
@@ -1088,7 +1089,8 @@ read:
 			}
 		}
 
-		rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, packetS->sensor_id_(), ifname);
+		rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
+				  packetS->sensor_id_(), packetS->sensor_ip, ifname);
 		if(sverb.check_is_caller_called) printf("new rtp[%p] ssrc[%x] seq[%u] saddr[%s] dport[%u] iscaller[%u]\n", rtp[ssrc_n], curSSRC, rtp[ssrc_n]->seq, inet_ntostring(htonl(packetS->saddr)).c_str(), packetS->dest, rtp[ssrc_n]->iscaller);
 		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
 		this->rtp[ssrc_n]->payload2 = curpayload;

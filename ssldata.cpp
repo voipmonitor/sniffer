@@ -39,7 +39,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			  u_int16_t port_src, u_int16_t port_dst,
 			  TcpReassemblyData *data,
 			  u_char *ethHeader, u_int32_t ethHeaderLength,
-			  u_int16_t handle_index, int dlt, int sensor_id,
+			  u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
 			  TcpReassemblyLink *reassemblyLink,
 			  bool debugSave) {
 	++this->counterProcessData;
@@ -136,7 +136,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 							(char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
 							handle_index, udpHeader, udpPacket, true, 
 							false, (iphdr2*)(udpPacket + ethHeaderLength),
-							NULL, 0, dlt, sensor_id,
+							NULL, 0, dlt, sensor_id, sensor_ip,
 							false);
 					}
 					ssl_data_offset += header.length + header.getDataOffsetLength();

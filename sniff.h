@@ -99,6 +99,7 @@ struct packet_s {
 	const u_char *packet; 
 	pcap_block_store *block_store; 
 	u_int32_t block_store_index; 
+	u_int32_t sensor_ip;
 	u_int16_t handle_index; 
 	u_int16_t dlt; 
 	u_int16_t sensor_id_u;
