@@ -1909,7 +1909,8 @@ void *_FraudAlerts_popCallInfoThread(void *arg) {
 	return(NULL);
 }
 void FraudAlerts::initPopCallInfoThread() {
-	vm_pthread_create(&this->threadPopCallInfo, NULL, _FraudAlerts_popCallInfoThread, this, __FILE__, __LINE__);
+	vm_pthread_create("fraud",
+			  &this->threadPopCallInfo, NULL, _FraudAlerts_popCallInfoThread, this, __FILE__, __LINE__);
 }
 
 void FraudAlerts::popCallInfoThread() {

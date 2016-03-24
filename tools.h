@@ -2307,14 +2307,17 @@ bool create_spectrogram_from_raw(const char *rawInput,
 				 size_t sampleRate, size_t msPerPixel, size_t height, u_int8_t channels,
 				 const char spectrogramOutput[][1024]);
 
-int vm_pthread_create(pthread_t *thread, pthread_attr_t *attr,
+int vm_pthread_create(const char *thread_description,
+		      pthread_t *thread, pthread_attr_t *attr,
 		      void *(*start_routine) (void *), void *arg, 
 		      const char *src_file, int src_file_line,
 		      bool autodestroy = false);
-int vm_pthread_create_autodestroy(pthread_t *thread, pthread_attr_t *attr,
+int vm_pthread_create_autodestroy(const char *thread_description,
+				  pthread_t *thread, pthread_attr_t *attr,
 				  void *(*start_routine) (void *), void *arg, 
 				  const char *src_file, int src_file_line) {
-	return(vm_pthread_create(thread, attr,
+	return(vm_pthread_create(thread_description,
+				 thread, attr,
 				 start_routine, arg, 
 				 src_file, src_file_line,
 				 true));
@@ -2861,5 +2864,38 @@ public:
 	rqueue_quick<sHeapItemsPool> *stack;
 };
 #endif
+
+class cThreadMonitor {
+private:
+	struct sThread {
+		int tid;
+		string description;
+		pstat_data pstat[2];
+	};
+	struct sDescrCpuPerc {
+		string description;
+		int tid;
+		double cpu_perc;
+		bool operator < (const sDescrCpuPerc& other) const { 
+			return(this->cpu_perc > other.cpu_perc); 
+		}
+	};
+public:
+	cThreadMonitor();
+	void registerThread(const char *description);
+	string output();
+private:
+	void preparePstatData(sThread *thread);
+	double getCpuUsagePerc(sThread *thread);
+	void tm_lock() {
+		while(__sync_lock_test_and_set(&this->_sync, 1));
+	}
+	void tm_unlock() {
+		__sync_lock_release(&this->_sync);
+	}
+private:
+	map<int, sThread> threads;
+	volatile int _sync;
+};
 
 #endif

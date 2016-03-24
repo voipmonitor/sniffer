@@ -1406,7 +1406,8 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 					circbuf_init(call->audiobuffer2, 20000);
 
 					pthread_t call_thread;
-					vm_pthread_create_autodestroy(&call_thread, NULL, listening_worker, (void *)args, __FILE__, __LINE__);
+					vm_pthread_create_autodestroy("manager - listening worker",
+								      &call_thread, NULL, listening_worker, (void *)args, __FILE__, __LINE__);
 					calltable->unlock_calls_listMAP();
 					if ((size = sendvm(client, sshchannel, "success", 7, 0)) == -1){
 						cerr << "Error sending data to client" << endl;
@@ -2012,6 +2013,14 @@ getwav:
 		outStrStat << endl;
 		string outStrStatStr = outStrStat.str();
 		if ((size = sendvm(client, sshchannel, outStrStatStr.c_str(), outStrStatStr.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "sniffer_threads") != NULL) {
+		extern cThreadMonitor threadMonitor;
+		string threads = threadMonitor.output();
+		if ((size = sendvm(client, sshchannel, threads.c_str(), threads.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}

@@ -1143,7 +1143,8 @@ public:
 				*createPartitionsData = *this;
 				createPartitionsData->_runInThread = true;
 				pthread_t thread;
-				successStartThread = vm_pthread_create_autodestroy(&thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__) == 0;
+				successStartThread = vm_pthread_create_autodestroy("create partitions",
+										   &thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__) == 0;
 			}
 			if(!inThread || !successStartThread) {
 				this->_runInThread = false;
@@ -1203,7 +1204,8 @@ public:
 		if(isSet()) {
 			if(inThread) {
 				pthread_t thread;
-				vm_pthread_create_autodestroy(&thread, NULL, _checkIdCdrChildTables, this, __FILE__, __LINE__);
+				vm_pthread_create_autodestroy("check child cdr id",
+							      &thread, NULL, _checkIdCdrChildTables, this, __FILE__, __LINE__);
 			} else {
 				_checkIdCdrChildTables(this);
 			}
@@ -2297,7 +2299,8 @@ int main(int argc, char *argv[]) {
 		opt_generator_channels = 2;
 		pthread_t *genthreads = new FILE_LINE pthread_t[opt_generator_channels];		// ID of worker storing CDR thread 
 		for(int i = 0; i < opt_generator_channels; i++) {
-			vm_pthread_create(&genthreads[i], NULL, gensiprtp, NULL, __FILE__, __LINE__);
+			vm_pthread_create("generator sip/rtp",
+					  &genthreads[i], NULL, gensiprtp, NULL, __FILE__, __LINE__);
 		}
 		syslog(LOG_ERR, "Traffic generated");
 		sleep(10000);
@@ -2306,10 +2309,12 @@ int main(int argc, char *argv[]) {
 
 	// start manager thread 	
 	if(opt_manager_port > 0 && !is_read_from_file()) {
-		vm_pthread_create(&manager_thread, NULL, manager_server, NULL, __FILE__, __LINE__);
+		vm_pthread_create("manager server",
+				  &manager_thread, NULL, manager_server, NULL, __FILE__, __LINE__);
 		// start reversed manager thread
 		if(opt_clientmanager[0] != '\0') {
-			vm_pthread_create(&manager_client_thread, NULL, manager_client, NULL, __FILE__, __LINE__);
+			vm_pthread_create("manager client",
+					  &manager_client_thread, NULL, manager_client, NULL, __FILE__, __LINE__);
 		}
 	};
 
@@ -2386,7 +2391,8 @@ int main(int argc, char *argv[]) {
 				sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);
 				custom_headers_cdr = new FILE_LINE CustomHeaders(CustomHeaders::cdr);
 				custom_headers_message = new FILE_LINE CustomHeaders(CustomHeaders::message);
-				vm_pthread_create(&database_backup_thread, NULL, database_backup, NULL, __FILE__, __LINE__);
+				vm_pthread_create("database backup",
+						  &database_backup_thread, NULL, database_backup, NULL, __FILE__, __LINE__);
 				pthread_join(database_backup_thread, NULL);
 			} else if(opt_load_query_from_files == 2) {
 				main_init_sqlstore();
@@ -2709,13 +2715,16 @@ int main_init_read() {
 	}
 	
 	if(opt_fork) {
-		vm_pthread_create(&defered_service_fork_thread, NULL, defered_service_fork, NULL, __FILE__, __LINE__);
+		vm_pthread_create("defered service",
+				  &defered_service_fork_thread, NULL, defered_service_fork, NULL, __FILE__, __LINE__);
 	}
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
 	if(!is_sender()) {
-		vm_pthread_create(&storing_cdr_thread, NULL, storing_cdr, NULL, __FILE__, __LINE__);
-		vm_pthread_create(&storing_registers_thread, NULL, storing_registers, NULL, __FILE__, __LINE__);
+		vm_pthread_create("storing cdr",
+				  &storing_cdr_thread, NULL, storing_cdr, NULL, __FILE__, __LINE__);
+		vm_pthread_create("storing register",
+				  &storing_registers_thread, NULL, storing_registers, NULL, __FILE__, __LINE__);
 		/*
 		vm_pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL, __FILE__, __LINE__);
 		*/
@@ -2726,23 +2735,27 @@ int main_init_read() {
 		if (!opt_cloud_activecheck_period) {
 			if(verbosity) syslog(LOG_NOTICE, "notice - activechecking is disabled by config");
 		} else {
-			vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
+			vm_pthread_create("checking cloud",
+					  &activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
 		}
 	}
 
 	if(opt_cachedir[0] != '\0') {
 		mv_r(opt_cachedir, opt_chdir);
-		vm_pthread_create(&cachedir_thread, NULL, moving_cache, NULL, __FILE__, __LINE__);
+		vm_pthread_create("moving cache",
+				  &cachedir_thread, NULL, moving_cache, NULL, __FILE__, __LINE__);
 	}
 
 	// start tar dumper
 	if(opt_pcap_dump_tar) {
-		vm_pthread_create(&tarqueuethread, NULL, TarQueueThread, NULL, __FILE__, __LINE__);
+		vm_pthread_create("tar queue",
+				  &tarqueuethread, NULL, TarQueueThread, NULL, __FILE__, __LINE__);
 	}
 
 #ifdef HAVE_LIBSSH
 	if(cloud_url[0] != '\0') {
-		vm_pthread_create(&manager_ssh_thread, NULL, manager_ssh, NULL, __FILE__, __LINE__);
+		vm_pthread_create("manager ssh",
+				  &manager_ssh_thread, NULL, manager_ssh, NULL, __FILE__, __LINE__);
 	}
 #endif
 
@@ -2776,7 +2789,8 @@ int main_init_read() {
 			rtp_threads[i].last_use_time_s = 0;
 			rtp_threads[i].calls = 0;
 			if(i < num_threads_active) {
-				vm_pthread_create(&(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i], __FILE__, __LINE__);
+				vm_pthread_create_autodestroy("rtp read",
+							      &(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i], __FILE__, __LINE__);
 			}
 		}
 	}
@@ -2916,7 +2930,8 @@ int main_init_read() {
 		pcapQueueStatInterface = pcapQueueQ;
 		
 		if(opt_scanpcapdir[0] != '\0') {
-			vm_pthread_create(&scanpcapdir_thread, NULL, scanpcapdir, NULL, __FILE__, __LINE__);
+			vm_pthread_create("scan pcap dir",
+					  &scanpcapdir_thread, NULL, scanpcapdir, NULL, __FILE__, __LINE__);
 		}
 		
 		uint64_t _counter = 0;

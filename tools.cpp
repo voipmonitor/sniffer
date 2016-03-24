@@ -88,6 +88,7 @@ extern TarQueue *tarQueue;
 using namespace std;
 
 AsyncClose *asyncClose;
+cThreadMonitor threadMonitor;
 
 //Sort files in given directory using mtime from oldest (files not already openned for write).
 queue<string> listFilesDir (char * dir) {
@@ -1273,7 +1274,8 @@ void AsyncClose::startThreads(int countPcapThreads, int maxPcapThreads) {
 		startThreadData[i].threadIndex = i;
 		startThreadData[i].asyncClose = this;
 		activeThread[i] = 1;
-		vm_pthread_create(&this->thread[i], NULL, AsyncClose_process, &startThreadData[i], __FILE__, __LINE__);
+		vm_pthread_create("async store",
+				  &this->thread[i], NULL, AsyncClose_process, &startThreadData[i], __FILE__, __LINE__);
 	}
 }
 
@@ -1286,7 +1288,8 @@ void AsyncClose::addThread() {
 		activeThread[countPcapThreads] = 1;
 		cpuPeak[countPcapThreads] = 0;
 		memset(this->threadPstatData[countPcapThreads], 0, sizeof(this->threadPstatData[countPcapThreads]));
-		vm_pthread_create(&this->thread[countPcapThreads], NULL, AsyncClose_process, &startThreadData[countPcapThreads], __FILE__, __LINE__);
+		vm_pthread_create("async store",
+				  &this->thread[countPcapThreads], NULL, AsyncClose_process, &startThreadData[countPcapThreads], __FILE__, __LINE__);
 		++countPcapThreads;
 	}
 }
@@ -2516,7 +2519,8 @@ void *_SafeAsyncQueue_timerThread(void *arg) {
 
 SafeAsyncQueue_base::SafeAsyncQueue_base() {
 	if(!timer_thread) {
-		vm_pthread_create(&timer_thread, NULL, _SafeAsyncQueue_timerThread, NULL, __FILE__, __LINE__);
+		vm_pthread_create("async queue",
+				  &timer_thread, NULL, _SafeAsyncQueue_timerThread, NULL, __FILE__, __LINE__);
 	}
 	lock_list_saq();
 	list_saq.push_back(this);
@@ -3594,7 +3598,8 @@ void *_SocketSimpleBufferWrite_writeFunction(void *arg) {
 	return(NULL);
 }
 void SocketSimpleBufferWrite::startWriteThread() {
-	vm_pthread_create(&writeThreadHandle, NULL, _SocketSimpleBufferWrite_writeFunction, this, __FILE__, __LINE__);
+	vm_pthread_create("socket write",
+			  &writeThreadHandle, NULL, _SocketSimpleBufferWrite_writeFunction, this, __FILE__, __LINE__);
 }
 
 void SocketSimpleBufferWrite::stopWriteThread() {
@@ -4519,7 +4524,19 @@ bool create_spectrogram_from_raw(const char *rawInput,
 }
 
 
-int vm_pthread_create(pthread_t *thread, pthread_attr_t *attr,
+struct vm_pthread_struct {
+	void *(*start_routine)(void *arg);
+	void *arg;
+	string description;
+};
+void *vm_pthread_create_start_routine(void *arg) {
+	vm_pthread_struct thread_data = *(vm_pthread_struct*)arg;
+	delete (vm_pthread_struct*)arg;
+	threadMonitor.registerThread(thread_data.description.c_str());
+	return(thread_data.start_routine(thread_data.arg));
+}
+int vm_pthread_create(const char *thread_description,
+		      pthread_t *thread, pthread_attr_t *attr,
 		      void *(*start_routine) (void *), void *arg,
 		      const char *src_file, int src_file_line, bool autodestroy) {
 	if(sverb.thread_create && src_file && src_file_line) {
@@ -4534,7 +4551,11 @@ int vm_pthread_create(pthread_t *thread, pthread_attr_t *attr,
 		create_attr = true;
 		attr = &_attr;
 	}
-	int rslt = pthread_create(thread, attr, start_routine, arg);
+	vm_pthread_struct *thread_data = new vm_pthread_struct;
+	thread_data->start_routine = start_routine;
+	thread_data->arg = arg;
+	thread_data->description = thread_description;
+	int rslt = pthread_create(thread, attr, vm_pthread_create_start_routine, thread_data);
 	if(create_attr) {
 		pthread_attr_destroy(&_attr);
 	}
@@ -4646,10 +4667,82 @@ string getSystemTimezone(int method) {
 			break;
 		}
 		if(timezone.length()) {
+			timezone = trim(timezone);
+			find_and_replace(timezone, " ", "_");
 			break;
 		}
 	}
-	timezone = trim(timezone);
-	find_and_replace(timezone, " ", "_");
 	return(timezone);
+}
+
+
+cThreadMonitor::cThreadMonitor() {
+	_sync = 0;
+}
+
+void cThreadMonitor::registerThread(const char *description) {
+	sThread thread;
+	thread.tid = get_unix_tid();
+	thread.description = description;
+	memset(thread.pstat, 0, sizeof(thread.pstat));
+	tm_lock();
+	threads[thread.tid] = thread;
+	tm_unlock();
+}
+
+string cThreadMonitor::output() {
+	list<sDescrCpuPerc> descrPerc;
+	double sum_cpu = 0;
+	tm_lock();
+	map<int, sThread>::iterator iter;
+	for(iter = threads.begin(); iter != threads.end(); iter++) {
+		double cpu_perc = this->getCpuUsagePerc(&iter->second);
+		if(cpu_perc > 0) {
+			sDescrCpuPerc dp;
+			dp.description = iter->second.description;
+			dp.tid = iter->second.tid;
+			dp.cpu_perc = cpu_perc;
+			descrPerc.push_back(dp);
+			sum_cpu += cpu_perc;
+		}
+	}
+	tm_unlock();
+	ostringstream outStr;
+	descrPerc.sort();
+	list<sDescrCpuPerc>::iterator iter_dp;
+	int counter = 0;
+	for(iter_dp = descrPerc.begin(); iter_dp != descrPerc.end(); iter_dp++) {
+		outStr << fixed
+		       << setw(50) << iter_dp->description
+		       << " (" << setw(5) << iter_dp->tid << ") : "
+		       << setprecision(1) << setw(5) << iter_dp->cpu_perc;
+		++counter;
+		if(!(counter % 2)) {
+			outStr << endl;
+		}
+	}
+	if(counter % 2) {
+		outStr << endl;
+	}
+	outStr << "SUM : " << setprecision(1) << setw(5) << sum_cpu << endl;
+	return(outStr.str());
+}
+
+void cThreadMonitor::preparePstatData(sThread *thread) {
+	if(thread->pstat[0].cpu_total_time) {
+		thread->pstat[1] = thread->pstat[0];
+	}
+	pstat_get_data(thread->tid, thread->pstat);
+}
+
+double cThreadMonitor::getCpuUsagePerc(sThread *thread) {
+	this->preparePstatData(thread);
+	double ucpu_usage, scpu_usage;
+	if(thread->pstat[0].cpu_total_time && thread->pstat[1].cpu_total_time) {
+		pstat_calc_cpu_usage_pct(
+			&thread->pstat[0], &thread->pstat[1],
+			&ucpu_usage, &scpu_usage);
+		return(ucpu_usage + scpu_usage);
+	}
+	return(-1);
 }

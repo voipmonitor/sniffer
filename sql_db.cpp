@@ -1495,7 +1495,8 @@ void MySqlStore_process::query(const char *query_str) {
 	if(needCreateThread) {
 		this->threadRunningCounter = 0;
 		this->lastThreadRunningCounterCheck = 0;
-		vm_pthread_create_autodestroy(&this->thread, NULL, MySqlStore_process_storing, this, __FILE__, __LINE__);
+		vm_pthread_create_autodestroy(("sql store " + intToString(id)).c_str(),
+					      &this->thread, NULL, MySqlStore_process_storing, this, __FILE__, __LINE__);
 	}
 	this->query_buff.push_back(query_str);
 	++queryCounter;
@@ -1796,7 +1797,8 @@ void MySqlStore::queryToFilesTerminate() {
 
 void MySqlStore::queryToFiles_start() {
 	if(qfileConfig.enable) {
-		vm_pthread_create(&this->qfilesCheckperiodThread, NULL, this->threadQFilesCheckPeriod, this, __FILE__, __LINE__);
+		vm_pthread_create("query cache - check",
+				  &this->qfilesCheckperiodThread, NULL, this->threadQFilesCheckPeriod, this, __FILE__, __LINE__);
 	}
 }
 
@@ -1987,7 +1989,8 @@ void MySqlStore::enableInotifyForLoadFromQFile(bool enableINotify) {
 #ifndef FREEBSD
 	loadFromQFileConfig.inotify = enableINotify;
 	if(loadFromQFileConfig.enable && loadFromQFileConfig.inotify) {
-		vm_pthread_create(&this->qfilesINotifyThread, NULL, this->threadINotifyQFiles, this, __FILE__, __LINE__);
+		vm_pthread_create("query cache - inotify",
+				  &this->qfilesINotifyThread, NULL, this->threadINotifyQFiles, this, __FILE__, __LINE__);
 	}
 #endif
 }
@@ -2009,7 +2012,8 @@ void MySqlStore::addLoadFromQFile(int id, const char *name,
 	LoadFromQFilesThreadInfo *threadInfo = new FILE_LINE LoadFromQFilesThreadInfo;
 	threadInfo->store = this;
 	threadInfo->id = id;
-	vm_pthread_create(&loadFromQFilesThreadData[id].thread, NULL, this->threadLoadFromQFiles, threadInfo, __FILE__, __LINE__);
+	vm_pthread_create("query cache - load",
+			  &loadFromQFilesThreadData[id].thread, NULL, this->threadLoadFromQFiles, threadInfo, __FILE__, __LINE__);
 }
 
 bool MySqlStore::fillQFiles(int id) {

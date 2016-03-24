@@ -580,6 +580,7 @@ private:
 	}
 	string getQringFillingPercStr();
 	void terminate();
+	const char *getTypeThreadName();
 private:
 	pthread_t threadHandle;
 	int threadId;

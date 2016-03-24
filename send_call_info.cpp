@@ -179,7 +179,8 @@ void *_SendCallInfo_popCallInfoThread(void *arg) {
 	return(NULL);
 }
 void SendCallInfo::initPopCallInfoThread() {
-	vm_pthread_create(&this->threadPopCallInfo, NULL, _SendCallInfo_popCallInfoThread, this, __FILE__, __LINE__);
+	vm_pthread_create("send call info",
+			  &this->threadPopCallInfo, NULL, _SendCallInfo_popCallInfoThread, this, __FILE__, __LINE__);
 }
 
 void SendCallInfo::popCallInfoThread() {

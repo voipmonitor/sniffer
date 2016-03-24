@@ -1991,12 +1991,14 @@ bool PcapQueue::createThread() {
 }
 
 bool PcapQueue::createMainThread() {
-	vm_pthread_create(&this->threadHandle, NULL, _PcapQueue_threadFunction, this, __FILE__, __LINE__);
+	vm_pthread_create(("pb - main " + nameQueue).c_str(),
+			  &this->threadHandle, NULL, _PcapQueue_threadFunction, this, __FILE__, __LINE__);
 	return(true);
 }
 
 bool PcapQueue::createWriteThread() {
-	vm_pthread_create(&this->writeThreadHandle, NULL, _PcapQueue_writeThreadFunction, this, __FILE__, __LINE__);
+	vm_pthread_create(("pb - write " + nameQueue).c_str(),
+			  &this->writeThreadHandle, NULL, _PcapQueue_writeThreadFunction, this, __FILE__, __LINE__);
 	return(true);
 }
 
@@ -2770,7 +2772,8 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	allocCounter[0] = allocCounter[1] = 0;
 	allocStackCounter[0] = allocStackCounter[1] = 0;
 	prepareHeaderPacketPool = false; // experimental option
-	vm_pthread_create(&this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this, __FILE__, __LINE__);
+	vm_pthread_create(("pb - read thread " + getInterfaceName() + " " + getTypeThreadName()).c_str(),
+			  &this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this, __FILE__, __LINE__);
 }
 
 PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
@@ -3007,13 +3010,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 	if(VERBOSE) {
 		ostringstream outStr;
 		outStr << "start thread t0i_" 
-		       << (this->typeThread == read ? "read" : 
-			   this->typeThread == detach ? "detach" : 
-			   this->typeThread == defrag ? "defrag" :
-			   this->typeThread == md1 ? "md1" :
-			   this->typeThread == md2 ? "md2" :
-			   this->typeThread == dedup ? "dedup" :
-			   this->typeThread == service ? "service" : "---")
+		       << getTypeThreadName()
 		       << " (" << this->getInterfaceName() << ") - pid: " << this->threadId << endl;
 		syslog(LOG_NOTICE, outStr.str().c_str());
 	}
@@ -3507,6 +3504,15 @@ void PcapQueue_readFromInterfaceThread::terminate() {
 	this->threadDoTerminate = true;
 }
 
+const char *PcapQueue_readFromInterfaceThread::getTypeThreadName() {
+	return(typeThread == read ? "read" : 
+	       typeThread == detach ? "detach" : 
+	       typeThread == defrag ? "defrag" :
+	       typeThread == md1 ? "md1" :
+	       typeThread == md2 ? "md2" :
+	       typeThread == dedup ? "dedup" :
+	       typeThread == service ? "service" : "---");
+}
 
 inline void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg) {
 	return(((PcapQueue_readFromInterfaceThread*)arg)->threadFunction(arg, 0));
@@ -4374,12 +4380,14 @@ bool PcapQueue_readFromFifo::createThread() {
 }
 
 bool PcapQueue_readFromFifo::createDestroyBlocksThread() {
-	vm_pthread_create(&this->destroyBlocksThreadHandle, NULL, _PcapQueue_readFromFifo_destroyBlocksThreadFunction, this, __FILE__, __LINE__);
+	vm_pthread_create("pb - destroy blocks",
+			  &this->destroyBlocksThreadHandle, NULL, _PcapQueue_readFromFifo_destroyBlocksThreadFunction, this, __FILE__, __LINE__);
 	return(true);
 }
 
 bool PcapQueue_readFromFifo::createSocketServerThread() {
-	vm_pthread_create(&this->socketServerThreadHandle, NULL, _PcapQueue_readFromFifo_socketServerThreadFunction, this, __FILE__, __LINE__);
+	vm_pthread_create("pb - server",
+			  &this->socketServerThreadHandle, NULL, _PcapQueue_readFromFifo_socketServerThreadFunction, this, __FILE__, __LINE__);
 	return(true);
 }
 
@@ -5409,7 +5417,8 @@ void PcapQueue_readFromFifo::createConnection(int socketClient, sockaddr_in *soc
 	connection->active = true;
 	this->packetServerConnections[id] = connection;
 	this->unlock_packetServerConnections();
-	vm_pthread_create(&connection->threadHandle, NULL, _PcapQueue_readFromFifo_connectionThreadFunction, connection, __FILE__, __LINE__);
+	vm_pthread_create(("pb - client " + connection->socketClientIP).c_str(), 
+			  &connection->threadHandle, NULL, _PcapQueue_readFromFifo_connectionThreadFunction, connection, __FILE__, __LINE__);
 }
 
 void PcapQueue_readFromFifo::cleanupConnections(bool all) {
