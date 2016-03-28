@@ -1,5 +1,5 @@
-15.5 28.3.2016
-==============
+15.5.1 28.3.2016
+================
 - enhance t2cpu threads performance (auto add/remove threads) 
 - ignore packets with smaller time than previous packet
 - ignore same RTP when receiving from multiple mirrorers with the same id_sensor
