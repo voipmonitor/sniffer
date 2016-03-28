@@ -1,3 +1,12 @@
+15.5 28.3.2016
+==============
+- enhance t2cpu threads performance (auto add/remove threads) 
+- ignore packets with smaller time than previous packet
+- ignore same RTP when receiving from multiple mirrorers with the same id_sensor
+- fix user agent problem when multiple INVITE [VG-860]
+- add thread monitor (watch -n 1 'echo "sniffer_threads" | nc 127.0.0.1 5029')
+
+
 15.4.5 16.3.2016
 ================
 - fix cloud active connection check
