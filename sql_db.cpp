@@ -3388,7 +3388,8 @@ bool SqlDb_mysql::createSchema(SqlDb *sourceDb) {
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
 			"PRIMARY KEY (`cdr_ID`),") +
-		"KEY `fbasename` (`fbasename`)" + 
+		"KEY `fbasename` (`fbasename`),\
+		 KEY `match_header` (`match_header`)" + 
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
@@ -4594,6 +4595,10 @@ void SqlDb_mysql::saveTimezoneInformation() {
 		timezone_offset = lt.tm_gmtoff;
 	}
 	if(opt_id_sensor <= 0) {
+		this->query("show tables like 'system'");
+		if(!this->fetchRow()) {
+			return;
+		}
 		this->query("show columns from system where Field='content'");
 		if(!this->fetchRow()) {
 			return;
@@ -4620,6 +4625,10 @@ void SqlDb_mysql::saveTimezoneInformation() {
 			this->insert("system", rowI);
 		}
 	} else {
+		this->query("show tables like 'sensors'");
+		if(!this->fetchRow()) {
+			return;
+		}
 		this->query("show columns from sensors where Field='timezone_name'");
 		if(!this->fetchRow()) {
 			return;

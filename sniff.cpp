@@ -100,6 +100,7 @@ extern struct pcap_stat pcapstat;
 int pcapstatresCount = 0;
 
 volatile unsigned int glob_last_packet_time;
+u_int64_t glob_packet_number;
 
 Calltable *calltable = NULL;
 extern volatile int calls_counter;
@@ -2336,6 +2337,8 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		dump_data[packetS->sipDataLen] = 0;
 		#if USE_PACKET_NUMBER
 		cout << packetS->packet_number << endl
+		#else
+		cout << (++glob_packet_number) << endl;
 		#endif
 		cout << dump_data << endl;
 		delete [] dump_data;
@@ -3075,6 +3078,8 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		dump_data[packetS->sipDataLen] = 0;
 		#if USE_PACKET_NUMBER
 		cout << packetS->packet_number << endl
+		#else
+		cout << (++glob_packet_number) << endl;
 		#endif
 		cout << dump_data << endl;
 		delete [] dump_data;
