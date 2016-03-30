@@ -2492,7 +2492,7 @@ void *manager_ssh(void *arg) {
 	ssh_threads_set_callbacks(ssh_threads_get_pthread());
 	ssh_init();
 //	ssh_set_log_level(SSH_LOG_WARNING | SSH_LOG_PROTOCOL | SSH_LOG_PACKET | SSH_LOG_FUNCTIONS);
-	while(!is_terminating_without_error()) {
+	while(!is_terminating()) {
 		syslog(LOG_NOTICE, "Starting reverse SSH connection service\n");
 		manager_ssh_();
 		syslog(LOG_NOTICE, "SSH service stopped.\n");

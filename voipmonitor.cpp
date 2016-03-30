@@ -2319,7 +2319,7 @@ int main(int argc, char *argv[]) {
 	};
 
 	//cout << "SQL DRIVER: " << sql_driver << endl;
-	if(!opt_nocdr && !is_sender() && cloud_url[0] == '\0') {
+	if(!opt_nocdr && !is_sender()/* && cloud_url[0] == '\0'*/) {
 		bool connectError = false;
 		SqlDb *sqlDb = createSqlObject();
 		bool rsltConnect = false;
