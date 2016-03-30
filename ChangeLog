@@ -1,3 +1,8 @@
+15.5.3 30.3.2016
+================
+- fix rare bad packet reorder when sniffing from multiple interfaces or in receiver mode and multiple mirrorers (all versions) 
+
+
 15.5.2 30.3.2016
 ================
 - fix 15.5.1 start on some installations
