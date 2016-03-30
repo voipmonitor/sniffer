@@ -4710,7 +4710,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 	map<u_int64_t, list<sPacketTimeInfo>* > listPacketTimeInfo;
 	// dequeu - method 2
 	int blockInfoCount = 0;
-	int blockInfoCountMax = 100;
+	int blockInfoCountMax = 500;
 	u_int64_t blockInfo_utime_first = 0;
 	u_int64_t blockInfo_utime_last = 0;
 	u_int64_t blockInfo_at_first = 0;
