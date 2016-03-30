@@ -3101,7 +3101,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			return(NULL);
 		}
 	}
-	sHeaderPacket *header_packet_read;
+	sHeaderPacket *header_packet_read = NULL;
 	int res;
 	pcap_pkthdr *pcap_next_ex_header, *detach_buffer_header;
 	u_char *pcap_next_ex_packet, *detach_buffer_packet;
