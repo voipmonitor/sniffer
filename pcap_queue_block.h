@@ -213,6 +213,7 @@ struct pcap_block_store {
 	u_char *block;
 	size_t size;
 	size_t size_compress;
+	size_t size_packets;
 	size_t count;
 	size_t offsets_size;
 	bool full;

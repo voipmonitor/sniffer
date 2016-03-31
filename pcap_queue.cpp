@@ -269,6 +269,7 @@ bool pcap_block_store::add(pcap_pkthdr *header, u_char *packet, int offset, int 
 			memcpy_packet_size ? memcpy_packet_size : header->caplen,
 			__FILE__, __LINE__);
 	this->size += header->caplen;
+	this->size_packets += header->caplen;
 	++this->count;
 	return(true);
 }
@@ -303,6 +304,7 @@ void pcap_block_store::destroy() {
 	}
 	this->size = 0;
 	this->size_compress = 0;
+	this->size_packets = 0;
 	this->count = 0;
 	this->offsets_size = 0;
 	this->full = false;
@@ -4388,7 +4390,7 @@ void PcapQueue_readFromFifo::setPacketServer(ip_port ipPort, ePacketServerDirect
 inline void PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(pcap_block_store *blockStore) {
 	while(!TERMINATING) {
 		if(this->pcapStoreQueue.push(blockStore, false)) {
-			sumPacketsSize[0] += blockStore->size;
+			sumPacketsSize[0] += blockStore->size_packets ? blockStore->size_packets : blockStore->size;
 			break;
 		} else {
 			usleep(100);
@@ -4635,7 +4637,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 										}
 									}
 									sumPacketsCounterIn[0] += blockStore->count;
-									sumPacketsSize[0] += blockStore->size;
+									sumPacketsSize[0] += blockStore->size_packets ? blockStore->size_packets : blockStore->size;
 									sumPacketsSizeCompress[0] += blockStore->size_compress;
 									++sumBlocksCounterIn[0];
 									blockStore = new FILE_LINE pcap_block_store;
@@ -4698,9 +4700,10 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 					continue;
 				}
 				size_t blockSize = blockStore->size;
+				size_t blockSizePackets = blockStore->size_packets;
 				if(blockStore->compress()) {
 					if(this->pcapStoreQueue.push(blockStore, false)) {
-						sumPacketsSize[0] += blockSize;
+						sumPacketsSize[0] += blockSizePackets ? blockSizePackets : blockSize;
 						blockStoreBypassQueue->pop(true, blockSize);
 					} else {
 						usleep(1000);
