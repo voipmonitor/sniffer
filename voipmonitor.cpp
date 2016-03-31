@@ -552,6 +552,7 @@ unsigned int gthread_num = 0;
 
 int opt_pcapdump = 0;
 int opt_pcapdump_all = 0;
+char opt_pcapdump_all_path[1024];
 
 int opt_callend = 1; //if true, cdr.called is saved
 char opt_chdir[1024];
@@ -4587,6 +4588,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE cConfigItem_yesno("dumpallpackets", &opt_pcapdump));
 					addConfigItem((new FILE_LINE cConfigItem_integer("dumpallallpackets", &opt_pcapdump_all))
 						->setYes(1000));
+					addConfigItem(new FILE_LINE cConfigItem_string("dumpallallpackets_path", opt_pcapdump_all_path, sizeof(opt_pcapdump_all_path)));
 					addConfigItem(new FILE_LINE cConfigItem_string("bogus_dumper_path", opt_bogus_dumper_path, sizeof(opt_bogus_dumper_path)));
 		subgroup("scaling");
 			addConfigItem(new FILE_LINE cConfigItem_integer("tar_maxthreads", &opt_pcap_dump_tar_threads));
@@ -6847,6 +6849,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "dumpallallpackets", NULL))) {
 		opt_pcapdump_all = atol(value) ? atol(value) : 
 				   yesno(value) ? 1000 : 0;
+	}
+	if((value = ini.GetValue("general", "dumpallallpackets_path", NULL))) {
+		strncpy(opt_pcapdump_all_path, value, sizeof(opt_pcapdump_all_path));
 	}
 	if((value = ini.GetValue("general", "jitterbuffer_f1", NULL))) {
 		switch(value[0]) {

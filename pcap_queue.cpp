@@ -80,6 +80,7 @@ extern int opt_skinny;
 extern int opt_ipaccount;
 extern int opt_pcapdump;
 extern int opt_pcapdump_all;
+extern char opt_pcapdump_all_path[1024];
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
 extern int opt_mirrorip;
@@ -1114,9 +1115,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		return;
 	}
 
-	if(this->instancePcapHandle &&
-	   !this->instancePcapHandle->initAllReadThreadsFinished) {
-		return;
+	if(this->instancePcapHandle) {
+		if(this->instancePcapHandle->initAllReadThreadsFinished) {
+			this->instancePcapHandle->prepareLogTraffic();
+		} else {
+			return;
+		}
 	}
 	ostringstream outStr;
 	pcap_drop_flag = 0;
@@ -1534,7 +1538,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	outStrStat << fixed;
 	if(this->instancePcapHandle) {
 		double sumMaxReadThreads;
-		outStrStat << this->instancePcapHandle->pcapStatString_cpuUsageReadThreads(&sumMaxReadThreads);
+		outStrStat << this->instancePcapHandle->pcapStatString_cpuUsageReadThreads(&sumMaxReadThreads, statPeriod);
 		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(mainThread, true);
 		double t0cpuWrite = this->instancePcapHandle->getCpuUsagePerc(writeThread, true);
 		double t0cpuNextThreads[PCAP_QUEUE_NEXT_THREADS_MAX];
@@ -2771,6 +2775,9 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	*/
 	allocCounter[0] = allocCounter[1] = 0;
 	allocStackCounter[0] = allocStackCounter[1] = 0;
+	for(int i = 0; i < 3; i++) {
+		sumPacketsSize[i] = 0;
+	}
 	prepareHeaderPacketPool = false; // experimental option
 	vm_pthread_create(("pb - read thread " + getInterfaceName() + " " + getTypeThreadName()).c_str(),
 			  &this->threadHandle, NULL, _PcapQueue_readFromInterfaceThread_threadFunction, this, __FILE__, __LINE__);
@@ -2837,7 +2844,7 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 
 inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packet) {
 	/*
-	if(memmem(HPP(*header_packet), ((pcap_pkthdr*)*header_packet)->caplen, "BYE sip", 7)) {
+	if(memmem(HPP(*header_packet), HPH(*header_packet)->caplen, "BYE sip", 7)) {
 		cout << "push " << typeThread << endl;
 	}
 	*/
@@ -2938,7 +2945,7 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 	rslt_hpi.header_packet = item->header_packet;
 	item->header_packet = NULL;
 	/*
-	if(memmem((u_char*)rslt_hpi.header_packet, ((pcap_pkthdr*)rslt_hpi.header_packet)->caplen, "BYE sip", 7)) {
+	if(memmem(HPP(rslt_hpi.header_packet), HPH(rslt_hpi.header_packet)->caplen, "BYE sip", 7)) {
 		cout << "pop " << typeThread << endl;
 	}
 	*/
@@ -3145,6 +3152,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					}
 					continue;
 				}
+				sumPacketsSize[0] += pcap_next_ex_header->caplen;
 				/*
 				if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "INVITE sip", 10)) {
 					cout << "1 INVITE" << endl;
@@ -3209,7 +3217,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				}
 				res = this->pcap_next_ex_iface(this->pcapHandle, &pcap_next_ex_header, &pcap_next_ex_packet);
 				/*
-				if(memmem((u_char*)header_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
+				if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
 					cout << "get " << typeThread << endl;
 				}
 				*/
@@ -3222,6 +3230,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					usleep(100);
 					continue;
 				}
+				sumPacketsSize[0] += pcap_next_ex_header->caplen;
 				memcpy(HPH(header_packet_read),
 				       pcap_next_ex_header,
 				       sizeof(pcap_pkthdr));
@@ -3334,13 +3343,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				if(!this->pcapDumpHandle) {
 					char pname[1024];
 					sprintf(pname, "%s/voipmonitordump-%s-%s.pcap", 
-						opt_chdir,
+						opt_pcapdump_all_path[0] ? opt_pcapdump_all_path : opt_chdir,
 						this->interfaceName.c_str(), 
 						sqlDateTimeString(time(NULL)).c_str());
 					this->pcapDumpHandle = pcap_dump_open(global_pcap_handle, pname);
 				}
 				pcap_dump((u_char*)this->pcapDumpHandle, HPH(hpii.header_packet), HPP(hpii.header_packet));
-				this->pcapDumpLength += ((pcap_pkthdr*)hpii.header_packet)->caplen;
+				this->pcapDumpLength += HPH(hpii.header_packet)->caplen;
 			}
 			bool okPush = true;;
 			if(opt_udpfrag || opt_pcapdump_all) {
@@ -3512,6 +3521,15 @@ const char *PcapQueue_readFromInterfaceThread::getTypeThreadName() {
 	       typeThread == md2 ? "md2" :
 	       typeThread == dedup ? "dedup" :
 	       typeThread == service ? "service" : "---");
+}
+
+void PcapQueue_readFromInterfaceThread::prepareLogTraffic() {
+	sumPacketsSize[2] = sumPacketsSize[0] - sumPacketsSize[1];
+	sumPacketsSize[1] = sumPacketsSize[0];
+}
+
+double PcapQueue_readFromInterfaceThread::getTraffic(int divide) {
+	return((double)sumPacketsSize[2]/divide/(1024*1024)*8);
 }
 
 inline void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg) {
@@ -4098,7 +4116,7 @@ void PcapQueue_readFromInterface::initStat_interface() {
 	}
 }
 
-string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *sumMax) {
+string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *sumMax, int divide) {
 	ostringstream outStrStat;
 	outStrStat << fixed;
 	if(sumMax) {
@@ -4112,7 +4130,9 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 		double ti_cpu = this->readThreads[i]->getCpuUsagePerc(true);
 		if(ti_cpu >= 0) {
 			sum += ti_cpu;
-			outStrStat << "t0i_" << this->readThreads[i]->interfaceName << "_CPU[" << setprecision(1) << ti_cpu;
+			outStrStat << "t0i_" << this->readThreads[i]->interfaceName << "_CPU[";
+			outStrStat << setprecision(1) << this->readThreads[i]->getTraffic(divide) << "Mb/s";
+			outStrStat << ';' << setprecision(1) << ti_cpu;
 			if(sverb.qring_stat) {
 				string qringFillingPerc = this->readThreads[i]->getQringFillingPercStr();
 				if(qringFillingPerc.length()) {
@@ -4241,6 +4261,15 @@ string PcapQueue_readFromInterface::getInterfaceName(bool simple) {
 		return(string("file ") + opt_pb_read_from_file);
 	} else {
 		return(this->PcapQueue_readFromInterface_base::getInterfaceName(simple));
+	}
+}
+
+void PcapQueue_readFromInterface::prepareLogTraffic() {
+	for(int i = 0; i < this->readThreadsCount; i++) {
+		if(this->readThreads[i]->threadInitFailed) {
+			continue;
+		}
+		this->readThreads[i]->prepareLogTraffic();
 	}
 }
 

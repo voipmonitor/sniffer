@@ -236,7 +236,7 @@ protected:
 	virtual string pcapDropCountStat_interface() { return(""); }
 	virtual ulong getCountPacketDrop() { return(0); }
 	virtual string getStatPacketDrop() { return(""); }
-	virtual string pcapStatString_cpuUsageReadThreads(double *sumMax = NULL) { if(sumMax) *sumMax = 0; return(""); };
+	virtual string pcapStatString_cpuUsageReadThreads(double *sumMax, int divide) { if(sumMax) *sumMax = 0; return(""); };
 	virtual void initStat_interface() {};
 	int getThreadPid(eTypeThread typeThread);
 	pstat_data *getThreadPstatData(eTypeThread typeThread);
@@ -253,6 +253,7 @@ protected:
 		return(false);
 	}
 	inline void processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packet, u_int offset);
+	virtual void prepareLogTraffic() {}
 protected:
 	eTypeQueue typeQueue;
 	std::string nameQueue;
@@ -540,8 +541,8 @@ protected:
 			}
 		}
 		if(readIndex && readIndexCount && readIndexPos < readIndexCount) {
-			return(((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header_packet)->ts.tv_sec * 1000000ull + 
-			       ((pcap_pkthdr*)this->qring[readIndex - 1]->hpis[readIndexPos].header_packet)->ts.tv_usec);
+			return(HPH(this->qring[readIndex - 1]->hpis[readIndexPos].header_packet)->ts.tv_sec * 1000000ull + 
+			       HPH(this->qring[readIndex - 1]->hpis[readIndexPos].header_packet)->ts.tv_usec);
 		}
 		return(0);
 	}
@@ -581,6 +582,8 @@ private:
 	string getQringFillingPercStr();
 	void terminate();
 	const char *getTypeThreadName();
+	void prepareLogTraffic();
+	double getTraffic(int divide);
 private:
 	pthread_t threadHandle;
 	int threadId;
@@ -623,6 +626,7 @@ private:
 	unsigned headerPacketStackShortPacketLen;
 	unsigned long allocCounter[2];
 	unsigned long allocStackCounter[2];
+	unsigned long long sumPacketsSize[3];
 	bool prepareHeaderPacketPool; // experimental option
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;
@@ -658,8 +662,9 @@ protected:
 	virtual ulong getCountPacketDrop();
 	virtual string getStatPacketDrop();
 	void initStat_interface();
-	string pcapStatString_cpuUsageReadThreads(double *sumMax = NULL);
+	string pcapStatString_cpuUsageReadThreads(double *sumMax, int divide);
 	string getInterfaceName(bool simple = false);
+	void prepareLogTraffic();
 private:
 	inline void check_bypass_buffer();
 	inline void push_blockstore(pcap_block_store **block_store);
