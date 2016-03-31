@@ -921,14 +921,17 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 	
 	u_int64_t pcap_header_ts = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
-	if(this->last_pcap_header_ts && pcap_header_ts < (this->last_pcap_header_ts - 20000)) {
+	if(this->last_pcap_header_ts && pcap_header_ts < (this->last_pcap_header_ts - 50000)) {
 		if(!this->pcap_header_ts_bad_time) {
-			extern bool opt_disable_rtp_warning;
-			if(!opt_disable_rtp_warning) {
-				u_long actTime = getTimeMS();
-				if(actTime - 1000 > lastTimeSyslog) {
-					syslog(LOG_NOTICE, "warning - packet (seq:%i, ssrc: %x) from sensor (%i) has bad pcap header time (-%luus) - call %s", getSeqNum(), getSSRC(), sensor_id, this->last_pcap_header_ts - pcap_header_ts, owner ? owner->fbasename : "unknown");
-					lastTimeSyslog = actTime;
+			if(pcap_header_ts < (this->last_pcap_header_ts - 200000)) {
+				extern bool opt_disable_rtp_warning;
+				if(!opt_disable_rtp_warning) {
+					u_long actTime = getTimeMS();
+					static u_long s_lastTimeSyslog;
+					if(actTime - 500 > s_lastTimeSyslog) {
+						syslog(LOG_NOTICE, "warning - packet (seq:%i, ssrc: %x) from sensor (%i) has bad pcap header time (-%luus) - call %s", getSeqNum(), getSSRC(), sensor_id, this->last_pcap_header_ts - pcap_header_ts, owner ? owner->fbasename : "unknown");
+						s_lastTimeSyslog = actTime;
+					}
 				}
 			}
 			this->pcap_header_ts_bad_time = true;
