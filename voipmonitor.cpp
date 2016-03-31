@@ -262,7 +262,8 @@ int opt_spooldir_by_sensorname = 0;
 char opt_clientmanager[1024] = "";
 int opt_clientmanagerport = 9999;
 int opt_callslimit = 0;
-char opt_silencedmtfseq[16] = "";
+char opt_silencedtmfseq[16] = "";
+int opt_pauserecordingdtmf_timeout = 4;
 int opt_vlan_siprtpsame = 0;
 char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
@@ -4767,7 +4768,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE cConfigItem_yesno("clippingdetect", &opt_clippingdetect));
 			addConfigItem(new FILE_LINE cConfigItem_yesno("norecord-header", &opt_norecord_header));
 			addConfigItem(new FILE_LINE cConfigItem_yesno("norecord-dtmf", &opt_norecord_dtmf));
-			addConfigItem(new FILE_LINE cConfigItem_string("pauserecordingdtmf", opt_silencedmtfseq, sizeof(opt_silencedmtfseq)));
+			addConfigItem(new FILE_LINE cConfigItem_string("pauserecordingdtmf", opt_silencedtmfseq, sizeof(opt_silencedtmfseq)));
+			addConfigItem(new FILE_LINE cConfigItem_integer("pauserecordingdtmf_timeout", &opt_pauserecordingdtmf_timeout));
 			addConfigItem(new FILE_LINE cConfigItem_yesno("vlan_siprtpsame", &opt_vlan_siprtpsame));
 				advanced();
 				addConfigItem(new FILE_LINE cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
@@ -5461,6 +5463,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "timezones")			sverb.timezones = 1;
 						else if(verbparams[i] == "tcpreplay")			sverb.tcpreplay = 1;
 						else if(verbparams[i] == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;
+						else if(verbparams[i] == "dtmf")			sverb.dtmf = 1;
 					}
 				} }
 				break;
@@ -6939,7 +6942,10 @@ int eval_config(string inistr) {
 		opt_callslimit = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pauserecordingdtmf", NULL))) {
-		strncpy(opt_silencedmtfseq, value, 15);
+		strncpy(opt_silencedtmfseq, value, 15);
+	}
+	if((value = ini.GetValue("general", "pauserecordingdtmf_timeout", NULL))) {
+		opt_pauserecordingdtmf_timeout = atoi(value);
 	}
 	if((value = ini.GetValue("general", "vlan_siprtpsame", NULL))) {
 		opt_vlan_siprtpsame = yesno(value);
