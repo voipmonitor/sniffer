@@ -1,3 +1,12 @@
+15.5.4 31.3.2016
+================
+- fix race / crash in rtp process (with simple mode without rtp preprocess threads)
+- fix >= 15.5.1 syslog flood in rare cases 
+- cloud fixes: reenable table & procedure operations for cloud (create, alter) and fix reverse connection 
+- add configuration parameter dumpallallpackets_path
+- add log traffic per interface
+
+
 15.5.3 30.3.2016
 ================
 - fix rare bad packet reorder when sniffing from multiple interfaces or in receiver mode and multiple mirrorers (all versions) 
