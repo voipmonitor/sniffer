@@ -54,6 +54,7 @@ struct sVerbose {
 	int timezones;
 	int tcpreplay;
 	int abort_if_heap_full;
+	int dtmf;
 };
 
 #endif

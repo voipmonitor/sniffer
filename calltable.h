@@ -251,7 +251,9 @@ public:
 	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
 	int recordstopped;		//!< flag holding if call was stopped to avoid double free
 	int dtmfflag;			//!< used for holding dtmf states 
-	unsigned int dtmfflag2[2];			//!< used for holding dtmf states 
+	unsigned int dtmfflag2[2];		//!< used for holding dtmf states 
+	double lastdtmf_time;		//!< used for holding time of last dtmf
+
 	int silencerecording;
 	int msgcount;
 	int regcount;

@@ -82,7 +82,7 @@ extern int opt_pcap_split;
 extern int opt_newdir;
 extern int opt_callslimit;
 extern int opt_skiprtpdata;
-extern char opt_silencedmtfseq[16];
+extern char opt_silencedtmfseq[16];
 extern int opt_skinny;
 extern unsigned int opt_skinny_ignore_rtpip;
 extern int opt_saverfc2833;

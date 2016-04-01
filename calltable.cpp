@@ -102,7 +102,8 @@ extern int opt_newdir;
 extern char opt_keycheck[1024];
 extern char opt_convert_char[256];
 extern int opt_norecord_dtmf;
-extern char opt_silencedmtfseq[16];
+extern char opt_silencedtmfseq[16];
+extern int opt_pauserecordingdtmf_timeout;
 extern bool opt_cdr_sipport;
 extern bool opt_cdr_rtpport;
 extern bool opt_cdr_rtpsrcport;
@@ -4489,24 +4490,41 @@ Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int 
 			}       
 		}       
 	}
-	if(opt_silencedmtfseq[0] != '\0') {
+	if(opt_silencedtmfseq[0] != '\0') {
 		unsigned int dtmfflag2_index = callFromType ? 1 : 0;
+
+		if (dtmfflag2[dtmfflag2_index] == 0) {
+			if (sverb.dtmf)
+				syslog(LOG_NOTICE, "[%s] initial DTMF detected %s ", fbasename, callFromType ? "RTP" : "SIP");
+		} else {
+			if (dtmf_time - this->lastdtmf_time > opt_pauserecordingdtmf_timeout) {	//timeout reset flag
+				dtmfflag2[dtmfflag2_index] = 0;
+				if (sverb.dtmf)
+					syslog(LOG_NOTICE, "[%s] DTMF detected %s / Diff from last DTMF: %lf s / possible timeout %i s. Too late, resetting dtmf flag",
+					    fbasename, callFromType ? "RTP" : "SIP", dtmf_time - this->lastdtmf_time, opt_pauserecordingdtmf_timeout);
+			} else {
+				if (sverb.dtmf)
+					syslog(LOG_NOTICE, "[%s] DTMF detected %s / Diff from last DTMF: %lf s.", fbasename, callFromType ? "RTP" : "SIP", dtmf_time - this->lastdtmf_time);
+			}
+		}
+		this->lastdtmf_time = dtmf_time;
+
 		if(dtmfflag2[dtmfflag2_index] == 0) {
-			if(dtmf == opt_silencedmtfseq[dtmfflag2[dtmfflag2_index]]) {
+			if(dtmf == opt_silencedtmfseq[dtmfflag2[dtmfflag2_index]]) {
 				// received ftmf '*', set flag so if next dtmf will be '0' stop recording
 				dtmfflag2[dtmfflag2_index]++;
 			}
 		} else {
-			if(dtmf == opt_silencedmtfseq[dtmfflag2[dtmfflag2_index]]) {
+			if(dtmf == opt_silencedtmfseq[dtmfflag2[dtmfflag2_index]]) {
 				// we have complete *0 sequence
-				if(dtmfflag2[dtmfflag2_index] + 1 == strlen(opt_silencedmtfseq)) {
+				if(dtmfflag2[dtmfflag2_index] + 1 == strlen(opt_silencedtmfseq)) {
 					if(silencerecording == 0) {
-						if(verbosity >= 1)
+						if(sverb.dtmf)
 							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - pausing recording - %s / %lf s", fbasename, 
 							       callFromType ? "RTP" : "SIP", dtmf_time - ts2double(this->first_packet_time, this->first_packet_usec));
 						silencerecording = 1;
 					} else {
-						if(verbosity >= 1)
+						if(sverb.dtmf)
 							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - unpausing recording - %s / %lf s", fbasename, 
 							       callFromType ? "RTP" : "SIP", dtmf_time - ts2double(this->first_packet_time, this->first_packet_usec));
 						silencerecording = 0;
