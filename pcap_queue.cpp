@@ -65,6 +65,8 @@
 
 #define SNAPLEN (opt_enable_http || opt_enable_webrtc || opt_enable_ssl ? 6000 : 3200)
 
+#define TRACE_INVITE_BYE 0
+
 
 using namespace std;
 
@@ -2845,11 +2847,13 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 }
 
 inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packet) {
-	/*
-	if(memmem(HPP(*header_packet), HPH(*header_packet)->caplen, "BYE sip", 7)) {
-		cout << "push " << typeThread << endl;
+	#if TRACE_INVITE_BYE
+	if(memmem(HPP(*header_packet), HPH(*header_packet)->caplen, "INVITE sip", 10)) {
+		cout << "push INVITE " << typeThread << endl;
+	} else if(memmem(HPP(*header_packet), HPH(*header_packet)->caplen, "BYE sip", 7)) {
+		cout << "push BYE " << typeThread << endl;
 	}
-	*/
+	#endif
 	unsigned int _writeIndex;
 	if(writeIndex) {
 		_writeIndex = writeIndex - 1;
@@ -2946,11 +2950,13 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 	hpi *item = &qring[_readIndex]->hpis[readIndexPos];
 	rslt_hpi.header_packet = item->header_packet;
 	item->header_packet = NULL;
-	/*
-	if(memmem(HPP(rslt_hpi.header_packet), HPH(rslt_hpi.header_packet)->caplen, "BYE sip", 7)) {
-		cout << "pop " << typeThread << endl;
+	#if TRACE_INVITE_BYE
+	if(memmem(HPP(rslt_hpi.header_packet), HPH(rslt_hpi.header_packet)->caplen, "INVITE sip", 10)) {
+		cout << "pop INVITE " << typeThread << endl;
+	} else if(memmem(HPP(rslt_hpi.header_packet), HPH(rslt_hpi.header_packet)->caplen, "BYE sip", 7)) {
+		cout << "pop BYE " << typeThread << endl;
 	}
-	*/
+	#endif
 	++readIndexPos;
 	if(readIndexPos == readIndexCount) {
 		qring[_readIndex]->used = 0;
@@ -3117,6 +3123,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 	bool _useOneshotBuffer = false;
 	u_long startDetachBufferWrite_ms = 0;
 	bool forcePushDetachBufferWrite = false;
+	unsigned int read_counter = 0;
 	
 	hpi hpii;
 	while(!(is_terminating() || this->threadDoTerminate)) {
@@ -3149,29 +3156,39 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					break;
 				} else if(res == 0) {
 					usleep(100);
-					if(getTimeMS_rdtsc() > startDetachBufferWrite_ms + 500) {
+					if(getTimeMS_rdtsc() > startDetachBufferWrite_ms + 500 &&
+					   this->detachBufferWritePos > 1) {
+						//cout << "FORCE DETACH 1 " << this->interfaceName << endl;
+						forcePushDetachBufferWrite = true;
+					} else {
+						continue;
+					}
+				} else {
+					sumPacketsSize[0] += pcap_next_ex_header->caplen;
+					#if TRACE_INVITE_BYE
+					if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "INVITE sip", 10)) {
+						cout << "get INVITE " << typeThread << endl;
+					} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
+						cout << "get BYE " << typeThread << endl;
+					}
+					#endif
+					memcpy((u_char*)this->activeDetachBuffer + this->detachBufferWritePos,
+					       pcap_next_ex_header,
+					       sizeof(pcap_pkthdr));
+					if(!_useOneshotBuffer) {
+						memcpy((u_char*)this->activeDetachBuffer + this->detachBufferWritePos + sizeof(pcap_pkthdr),
+						       pcap_next_ex_packet,
+						       pcap_next_ex_header->caplen);
+					}
+					//cout << "W" << this->detachBufferActiveIndex << "/" << this->detachBufferWritePos << endl;
+					this->detachBufferWritePos += sizeof(pcap_pkthdr) + pcap_next_ex_header->caplen;
+					++read_counter;
+					if((read_counter & 0x3F) == 0 &&
+					   getTimeMS_rdtsc() > startDetachBufferWrite_ms + 500) {
+						//cout << "FORCE DETACH 2 " << this->interfaceName << endl;
 						forcePushDetachBufferWrite = true;
 					}
-					continue;
 				}
-				sumPacketsSize[0] += pcap_next_ex_header->caplen;
-				/*
-				if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "INVITE sip", 10)) {
-					cout << "1 INVITE" << endl;
-				} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
-					cout << "1 BYE" << endl;
-				}
-				*/
-				memcpy((u_char*)this->activeDetachBuffer + this->detachBufferWritePos,
-				       pcap_next_ex_header,
-				       sizeof(pcap_pkthdr));
-				if(!_useOneshotBuffer) {
-					memcpy((u_char*)this->activeDetachBuffer + this->detachBufferWritePos + sizeof(pcap_pkthdr),
-					       pcap_next_ex_packet,
-					       pcap_next_ex_header->caplen);
-				}
-				//cout << "W" << this->detachBufferActiveIndex << "/" << this->detachBufferWritePos << endl;
-				this->detachBufferWritePos += sizeof(pcap_pkthdr) + pcap_next_ex_header->caplen;
 				if(this->detachBufferWritePos >= this->detachBufferLength ||
 				   (this->detachBufferWritePos > 1 && forcePushDetachBufferWrite)) {
 					if(forcePushDetachBufferWrite) {
@@ -3218,11 +3235,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					}
 				}
 				res = this->pcap_next_ex_iface(this->pcapHandle, &pcap_next_ex_header, &pcap_next_ex_packet);
-				/*
-				if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
-					cout << "get " << typeThread << endl;
+				#if TRACE_INVITE_BYE
+				if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "INVITE sip", 10)) {
+					cout << "get INVITE " << typeThread << endl;
+				} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
+					cout << "get BYE " << typeThread << endl;
 				}
-				*/
+				#endif
 				if(res == -1) {
 					break;
 				} else if(res == 0) {
@@ -3264,8 +3283,15 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		case detach:
 			if(this->detachBuffer[0]) {
 				if(!this->detachBufferReadPos) {
+					unsigned int counterUsleep = 0;
 					while(!this->detachBuffer[this->detachBufferActiveIndex][0] && !is_terminating()) {
-						usleep(10);
+						++counterUsleep;
+						if(!(counterUsleep % 100)) {
+							if(this->force_push) {
+								this->tryForcePush();
+							}
+						}
+						usleep(counterUsleep > 100 ? 100 : 10);
 					}
 					if(is_terminating()) {
 						break;
@@ -3311,13 +3337,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 					memcpy(HPP(header_packet_read),
 					       detach_buffer_packet,
 					       detach_buffer_header->caplen);
-					/*
+					#if TRACE_INVITE_BYE
 					if(memmem(HPP(header_packet_read), detach_buffer_header->caplen, "INVITE sip", 10)) {
-						cout << "2 INVITE" << endl;
+						cout << "detach INVITE " << typeThread << endl;
 					} else if(memmem(HPP(header_packet_read), detach_buffer_header->caplen, "BYE sip", 7)) {
-						cout << "2 BYE" << endl;
+						cout << "detach BYE " << typeThread << endl;
 					}
-					*/
+					#endif
 					this->push(&header_packet_read);
 					this->detachBufferReadPos += sizeof(pcap_pkthdr) + detach_buffer_header->caplen;
 				}
@@ -3828,6 +3854,13 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			}
 		}
 		if(fetchPacketOk) {
+			#if TRACE_INVITE_BYE
+			if(memmem(HPP(*header_packet_fetch), HPH(*header_packet_fetch)->caplen, "INVITE sip", 10)) {
+				cout << "add INVITE" << endl;
+			} else if(memmem(HPP(*header_packet_fetch), HPH(*header_packet_fetch)->caplen, "BYE sip", 7)) {
+				cout << "add BYE " << endl;
+			}
+			#endif
 			++sumPacketsCounterIn[0];
 			extern SocketSimpleBufferWrite *sipSendSocket;
 			if(sipSendSocket) {
