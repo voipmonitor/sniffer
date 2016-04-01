@@ -4063,8 +4063,12 @@ struct sGsmMessageData {
 				switch(pass) {
 				case 0: addressLength = value; break;
 				case 1: codingIndication = value; break;
-				case 2: if((unsigned char)data[getLength() + 2] == 0) {
-						userDataHeaderLength = (unsigned char)data[getLength() + 1];
+				case 2: if(getLength() + 2 < dataLength - 1 &&
+					   (unsigned char)data[getLength() + 2] == 0) {
+						int _userDataHeaderLength = (unsigned char)data[getLength() + 1];
+						if(_userDataHeaderLength < value) {
+							userDataHeaderLength = _userDataHeaderLength;
+						}
 					}
 					userDataLength = value; 
 					break;
@@ -4122,7 +4126,7 @@ struct sGsmMessageData {
 		if(userDataDecode) {
 			string userDataDecodeString = string((char*)userDataDecode, userDataDecodeLength);
 			delete [] userDataDecode;
-			return(userDataHeaderLength >= 0 ?
+			return(userDataHeaderLength >= 0 && userDataHeaderLength < (int)userDataDecodeString.length() ?
 				userDataDecodeString.substr(1 + userDataHeaderLength + 1) : 
 				userDataDecodeString);
 		} else {
@@ -4138,7 +4142,7 @@ struct sGsmMessageData {
 		unsigned int userDataEncodeLength;
 		unsigned char *userDataEncode = conv7bit::encode((unsigned char*)maskData.c_str(), maskData.length(), userDataEncodeLength);
 		if(userDataEncode) {
-			if(userDataHeaderLength >= 0) {
+			if(userDataHeaderLength >= 0 && userDataHeaderLength < (int)(userDataEncodeLength - 1)) {
 				memcpy(userDataSrc + 1 + userDataHeaderLength, userDataEncode + 1 + userDataHeaderLength, userDataEncodeLength - 1 - userDataHeaderLength);
 			} else {
 				memcpy(userDataSrc, userDataEncode, userDataEncodeLength);
