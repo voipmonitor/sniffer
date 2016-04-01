@@ -1,7 +1,11 @@
+15.5.6 1.4.2016
+===============
+- fix pause recording DTMF
+
+
 15.5.5 1.4.2016
 ===============
 - fix SIP gsm content-type payload crash 
-- fix pause recording DTMF 
 
 
 15.5.4 31.3.2016
