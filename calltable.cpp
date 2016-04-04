@@ -299,6 +299,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 		dtmfflag2[i] = 0;
 	}
 	silencerecording = 0;
+	recordingpausedby182 = 0;
 	flags1 = 0;
 	rtppacketsinqueue = 0;
 	end_call = 0;
@@ -4588,7 +4589,7 @@ Call::check_is_caller_called(int sip_method, unsigned int saddr, unsigned int da
 					if(sverb.check_is_caller_called) {
 						debug_str_set += string(" / set sipcallerdip[") + intToString(i) + "]: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
 					}
-				} else if(sip_method == RES18X) {
+				} else if((sip_method == RES18X) || (sip_method == RES182)) {
 					this->sipcallerip[i] = daddr;
 					this->sipcalledip[i] = saddr;
 					if(sverb.check_is_caller_called) {
@@ -5158,6 +5159,7 @@ struct sRequestNameCode {
 	{ "CANCEL", CANCEL, 0 },
 	{ "RES10X" , RES10X, 1 },
 	{ "RES18X", RES18X, 1 },
+	{ "RES182", RES182, 1 },
 	{ "RES2XX", RES2XX, 1 },
 	{ "RES300", RES300, 1 },
 	{ "RES3XX", RES3XX, 1 },

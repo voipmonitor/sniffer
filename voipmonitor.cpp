@@ -264,6 +264,7 @@ int opt_clientmanagerport = 9999;
 int opt_callslimit = 0;
 char opt_silencedtmfseq[16] = "";
 int opt_pauserecordingdtmf_timeout = 4;
+int opt_182queuedpauserecording = 0;
 int opt_vlan_siprtpsame = 0;
 char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
@@ -4772,6 +4773,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE cConfigItem_yesno("norecord-dtmf", &opt_norecord_dtmf));
 			addConfigItem(new FILE_LINE cConfigItem_string("pauserecordingdtmf", opt_silencedtmfseq, sizeof(opt_silencedtmfseq)));
 			addConfigItem(new FILE_LINE cConfigItem_integer("pauserecordingdtmf_timeout", &opt_pauserecordingdtmf_timeout));
+			addConfigItem(new FILE_LINE cConfigItem_yesno("182queuedpauserecording", &opt_182queuedpauserecording));
 			addConfigItem(new FILE_LINE cConfigItem_yesno("vlan_siprtpsame", &opt_vlan_siprtpsame));
 				advanced();
 				addConfigItem(new FILE_LINE cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
@@ -6951,6 +6953,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pauserecordingdtmf_timeout", NULL))) {
 		opt_pauserecordingdtmf_timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "182queuedpauserecording", NULL))) {
+		opt_182queuedpauserecording = yesno(value);
 	}
 	if((value = ini.GetValue("general", "vlan_siprtpsame", NULL))) {
 		opt_vlan_siprtpsame = yesno(value);

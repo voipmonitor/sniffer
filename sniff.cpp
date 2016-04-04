@@ -208,6 +208,7 @@ extern int opt_remotepartyid;
 extern int opt_remotepartypriority;
 extern int opt_ppreferredidentity;
 extern int opt_passertedidentity;
+extern int opt_182queuedpauserecording;
 extern char cloud_host[256];
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
@@ -2449,7 +2450,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	
 	detectCallerd = call->check_is_caller_called(packetS->sip_method, packetS->saddr, packetS->daddr, &iscaller, &iscalled, 
 						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) || 
-						     packetS->sip_method == RES18X);
+						     packetS->sip_method == RES18X || packetS->sip_method == RES182);
 	if(detectCallerd) {
 		call->handle_dscp(packetS->header_ip, iscaller);
 	}
@@ -2744,7 +2745,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				call->onCall_2XX = true;
 			}
 
-		} else if(packetS->sip_method == RES18X) {
+		} else if((packetS->sip_method == RES18X) || (packetS->sip_method == RES182)) {
 			call->seenRES18X = true;
 			if(!call->progress_time) {
 				call->progress_time = packetS->header_pt->ts.tv_sec;
@@ -2841,6 +2842,24 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		s = gettag_sip(packetS, "\nX-VoipMonitor-norecord:", &l);
 		if(s) {
 			call->stoprecording();
+		}
+	}
+
+	if((opt_182queuedpauserecording) && (packetS->sip_method == RES182)) {
+		if (logPacketSipMethodCall_enable) 
+			 syslog(LOG_NOTICE, "HHHHHHHHHHHHHHHHHHHH response opt_182 pausing, state %i,%i", call->recordingpausedby182,  call->silencerecording);
+		call->recordingpausedby182 = 1;
+		call->silencerecording = 1;
+	}
+
+	if((opt_182queuedpauserecording) && (packetS->sip_method == UPDATE)) {
+		if (logPacketSipMethodCall_enable) 
+			 syslog(LOG_NOTICE, "HHHHHHHHHHHHHHHHHHHH UPDATE");
+		if (call->recordingpausedby182) {
+			if (logPacketSipMethodCall_enable) 
+				 syslog(LOG_NOTICE, "HHHHHHHHHHHHHHHHHHHH UPDATE preparing unpausing recording, state %i,%i",call->recordingpausedby182,  call->silencerecording);
+			call->recordingpausedby182 = 2;
+			call->silencerecording = 0;
 		}
 	}
 
@@ -3676,10 +3695,19 @@ inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bo
 					if(verbosity > 2) 
 						 syslog(LOG_NOTICE,"SIP msg: 10X\n");
 					sip_method = RES10X;
-				} else if(data[9] == '8') {
-					if(verbosity > 2) 
-						 syslog(LOG_NOTICE,"SIP msg: 18X\n");
-					sip_method = RES18X;
+				} else {
+					// SIP/2.0 182 Queued, avaya-cm-data=00480BEE0C18002A
+					if(data[9] == '8') {
+						if( (datalen > 10) && (data[10] == '2') ) {
+							if(verbosity > 2) 
+								 syslog(LOG_NOTICE,"SIP msg: 182\n");
+							sip_method = RES182;
+						} else {
+							if(verbosity > 2) 
+								 syslog(LOG_NOTICE,"SIP msg: 18X\n");
+							sip_method = RES18X;
+						}
+					}
 				}
 			}
 			break;
