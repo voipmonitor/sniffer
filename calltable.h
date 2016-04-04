@@ -229,6 +229,7 @@ public:
 	char byecseq[32];		
 	char invitecseq[32];		
 	char cancelcseq[32];		
+	char updatecseq[32];		
 	char custom_header1[256];	//!< Custom SIP header
 	char match_header[128];	//!< Custom SIP header
 	bool seeninvite;		//!< true if we see SIP INVITE within the Call
