@@ -704,7 +704,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 						this->hMysql,
 						this->conn_server_ip.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
 						this->conn_port ? this->conn_port : opt_mysql_port,
-						NULL, CLIENT_MULTI_RESULTS);
+						NULL, CLIENT_MULTI_RESULTS | CLIENT_COMPRESS);
 			if(!this->hMysqlConn) {
 				break;
 			}
