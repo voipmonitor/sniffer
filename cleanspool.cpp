@@ -1116,7 +1116,7 @@ void convert_filesindex(const char *reason) {
 	syslog(LOG_NOTICE, "reindexing done");
 	closedir( dp );
 	// wait for flush sql store
-	while(sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL_SERVICE)) {
+	while(sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL_SERVICE) > 0) {
 		usleep(100000);
 	}
 	sleep(1);
