@@ -2190,18 +2190,31 @@ MySqlStore::QFileData MySqlStore::parseQFilename(const char *filename) {
 	return(qfileData);
 }
 
-string MySqlStore::getLoadFromQFilesStat() {
+string MySqlStore::getLoadFromQFilesStat(bool processes) {
 	ostringstream outStr;
 	outStr << fixed;
 	int counter = 0;
-	for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
-		int countQFiles = getCountQFiles(iter->second.id);
-		if(countQFiles > 0) {
-			if(counter) {
-				outStr << ", ";
+	if(!processes) {
+		for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
+			int countQFiles = getCountQFiles(iter->second.id);
+			if(countQFiles > 0) {
+				if(counter) {
+					outStr << ", ";
+				}
+				outStr << iter->second.name << ": " << countQFiles;
+				++counter;
 			}
-			outStr << iter->second.name << ": " << countQFiles;
-			++counter;
+		}
+	} else {
+		for(map<int, MySqlStore_process*>::iterator iter = this->processes.begin(); iter != this->processes.end(); iter++) {
+			size_t size = iter->second->getSize();
+			if(size > 0) {
+				if(counter) {
+					outStr << ",";
+				}
+				outStr << iter->first << ":" << size;
+				++counter;
+			}
 		}
 	}
 	return(outStr.str());

@@ -586,7 +586,7 @@ public:
 	bool loadFromQFile(const char *filename, int id);
 	void addFileFromINotify(const char *filename);
 	QFileData parseQFilename(const char *filename);
-	string getLoadFromQFilesStat();
+	string getLoadFromQFilesStat(bool processes = false);
 	//
 	void lock(int id);
 	void unlock(int id);

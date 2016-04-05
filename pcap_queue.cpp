@@ -1344,23 +1344,34 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			this->counter_all_packets_old = counter_all_packets;
 			extern bool opt_save_query_to_files;
 			if(loadFromQFiles) {
+				bool fill = false;
 				string stat = loadFromQFiles->getLoadFromQFilesStat();
+				string stat_proc = sverb.qfiles ? loadFromQFiles->getLoadFromQFilesStat(true) : "";
 				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery();
 				SqlDb::resetDelayQuery();
-				if(!stat.empty() || avgDelayQuery) {
+				if(!stat.empty() || avgDelayQuery || !stat_proc.empty()) {
 					outStr << "SQLf[";
 				}
 				if(!stat.empty()) {
 					outStr << stat;
+					fill = true;
 				}
 				if(avgDelayQuery) {
-					if(!stat.empty()) {
+					if(fill) {
 						outStr << " / ";
 					}
 					outStr << setprecision(3) << (double)avgDelayQuery / 1000 << "s";
+					fill = true;
 					if (opt_rrd) rrdSQLf_D = (signed int)avgDelayQuery;
 				}
-				if(!stat.empty() || avgDelayQuery) {
+				if(!stat_proc.empty()) {
+					if(fill) {
+						outStr << " / ";
+					}
+					outStr << stat_proc;
+					fill = true;
+				}
+				if(fill) {
 					outStr << "] ";
 				}
 			} else if(!opt_save_query_to_files) {
