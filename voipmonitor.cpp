@@ -720,6 +720,7 @@ bool opt_upgrade_by_git;
 bool opt_save_query_to_files;
 char opt_save_query_to_files_directory[1024];
 int opt_save_query_to_files_period;
+int opt_query_cache_speed;
 
 int opt_load_query_from_files;
 char opt_load_query_from_files_directory[1024];
@@ -4419,6 +4420,9 @@ void cConfig::addConfigItems() {
 		subgroup("main");
 			addConfigItem((new FILE_LINE cConfigItem_yesno("query_cache"))
 				->setDefaultValueStr("no"));
+			advanced();
+				addConfigItem(new FILE_LINE cConfigItem_yesno("query_cache_speed", &opt_query_cache_speed));
+				normal();
 			addConfigItem((new FILE_LINE cConfigItem_yesno("utc", &opt_sql_time_utc))
 				->addAlias("sql_time_utc"));
 			advanced();
@@ -7494,6 +7498,9 @@ int eval_config(string inistr) {
 		opt_save_query_to_files = true;
 		opt_load_query_from_files = 1;
 		opt_load_query_from_files_inotify = true;
+	}
+	if((value = ini.GetValue("general", "query_cache_speed", NULL))) {
+		opt_query_cache_speed = yesno(value);
 	}
 	if((value = ini.GetValue("general", "utc", NULL)) ||
 	   (value = ini.GetValue("general", "sql_time_utc", NULL))) {

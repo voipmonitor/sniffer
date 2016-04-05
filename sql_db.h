@@ -604,6 +604,7 @@ public:
 	int getSize(int id, bool lock = true);
 	int getSizeMult(int n, ...);
 	int getSizeVect(int id1, int id2, bool lock = true);
+	int getActiveIdsVect(int id1, int id2, bool lock = true);
 	string exportToFile(FILE *file, string filename, bool sqlFormat, bool cleanAfterExport);
 	void autoloadFromSqlVmExport();
 private:

@@ -2132,7 +2132,18 @@ bool MySqlStore::loadFromQFile(const char *filename, int id) {
 		}
 		string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
 		int queryThreadId = id;
-		queryThreadId = id + (counter % loadFromQFilesThreadData[id].storeThreads);
+		ssize_t queryThreadMinSize = -1;
+		for(int qtid = id; qtid < (id + loadFromQFilesThreadData[id].storeThreads); qtid++) {
+			int qtSize = this->getSize(qtid);
+			if(qtSize < 0) {
+				qtSize = 0;
+			}
+			if(queryThreadMinSize == -1 ||
+			   qtSize < queryThreadMinSize) {
+				queryThreadId = qtid;
+				queryThreadMinSize = qtSize;
+			}
+		}
 		if(!check(queryThreadId)) {
 			setEnableTerminatingIfEmpty(queryThreadId, true);
 			setEnableTerminatingIfSqlError(queryThreadId, true);
@@ -2422,6 +2433,17 @@ int MySqlStore::getSizeVect(int id1, int id2, bool lock) {
 	return(size);
 }
 
+int MySqlStore::getActiveIdsVect(int id1, int id2, bool lock) {
+	int activeIds  = 0;
+	for(int id = id1; id <= id2; id++) {
+		int _size = this->getSize(id);
+		if(_size > 0) {
+			++activeIds;
+		}
+	}
+	return(activeIds);
+}
+
 string MySqlStore::exportToFile(FILE *file, string fileName, bool sqlFormat, bool cleanAfterExport) {
 	bool openFile = false;
 	if(!file) {
@@ -2532,7 +2554,11 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 		if(minFile.empty()) {
 			usleep(250000);
 		} else {
-			while(me->getSizeVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) > 0 && !is_terminating()) {
+			extern int opt_query_cache_speed;
+			while((opt_query_cache_speed ? 
+			        (me->getActiveIdsVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) == me->loadFromQFilesThreadData[id].storeThreads) :
+			        (me->getSizeVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) > 0)) && 
+			      !is_terminating()) {
 				usleep(100000);
 			}
 			if(!is_terminating()) {
