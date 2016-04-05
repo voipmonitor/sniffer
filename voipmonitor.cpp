@@ -409,6 +409,7 @@ extern int opt_pcap_queue_receive_dlt;
 extern int opt_pcap_queue_iface_qring_size;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_method;
+extern int opt_pcap_queue_use_blocks;
 extern int opt_pcap_queue_suppress_t1_thread;
 extern bool opt_pcap_queues_mirror_nonblock_mode;
 extern int opt_pcap_dispatch;
@@ -3366,7 +3367,9 @@ void terminate_packetbuffer() {
 			}
 			sleep(2);
 		}
-		pcapQueueQ->terminate();
+		if(pcapQueueQ) {
+			pcapQueueQ->terminate();
+		}
 		sleep(1);
 		
 		if(tcpReassemblyHttp) {
@@ -3388,8 +3391,12 @@ void terminate_packetbuffer() {
 		
 		if(pcapQueueI) {
 			delete pcapQueueI;
+			pcapQueueI = NULL;
 		}
-		delete pcapQueueQ;
+		if(pcapQueueQ) {
+			delete pcapQueueQ;
+			pcapQueueQ = NULL;
+		}
 	}
 }
 
@@ -4568,6 +4575,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE cConfigItem_integer("pcap_queue_iface_qring_size", &opt_pcap_queue_iface_qring_size));
 					expert();
 					addConfigItem(new FILE_LINE cConfigItem_integer("pcap_queue_dequeu_method", &opt_pcap_queue_dequeu_method));
+					addConfigItem(new FILE_LINE cConfigItem_integer("pcap_queue_use_blocks", &opt_pcap_queue_use_blocks));
 					addConfigItem((new FILE_LINE cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
 						->setMultiple(1024));
 					addConfigItem(new FILE_LINE cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
@@ -7109,6 +7117,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_method", NULL))) {
 		opt_pcap_queue_dequeu_method = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_queue_use_blocks", NULL))) {
+		opt_pcap_queue_use_blocks = yesno(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dispatch", NULL))) {
 		opt_pcap_dispatch = yesno(value);

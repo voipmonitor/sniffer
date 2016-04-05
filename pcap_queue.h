@@ -528,9 +528,12 @@ public:
 	~PcapQueue_readFromInterfaceThread();
 protected:
 	inline void push(sHeaderPacket **header_packet);
+	inline void push_block(pcap_block_store *block);
 	inline void tryForcePush();
 	inline hpi pop();
 	inline hpi POP();
+	inline pcap_block_store *pop_block();
+	inline pcap_block_store *POP_BLOCK();
 	u_int64_t getTime_usec() {
 		if(!readIndex) {
 			unsigned int _readIndex = readit % qringmax;
@@ -548,6 +551,15 @@ protected:
 	}
 	u_int64_t getTIME_usec() {
 		return(this->dedupThread ? this->dedupThread->getTime_usec() : this->getTime_usec());
+	}
+	unsigned getSize() {
+		unsigned int _readit = readit;
+		unsigned int _writeit = writeit;
+		int size = _writeit >= _readit ? _writeit - _readit : _writeit + qringmax - _readit;
+		return(size > 0 ? size : 0);
+	}
+	unsigned getSIZE() {
+		return(this->dedupThread ? this->dedupThread->getSize() : this->getSize());
 	}
 	bool isTerminated() {
 		return(this->threadTerminated);
@@ -570,6 +582,8 @@ protected:
 	}
 private:
 	void *threadFunction(void *arg, unsigned int arg2);
+	void threadFunction_blocks();
+	void processBlock(pcap_block_store *block);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData = false);
 	double getQringFillingPerc() {
@@ -590,6 +604,8 @@ private:
 	int threadInitOk;
 	bool threadInitFailed;
 	hpi_batch **qring;
+	pcap_block_store **qring_blocks;
+	volatile int *qring_blocks_used;
 	unsigned int qringmax;
 	unsigned int readit;
 	unsigned int writeit;
@@ -646,6 +662,7 @@ protected:
 	bool init();
 	bool initThread(void *arg, unsigned int arg2, string *error);
 	void *threadFunction(void *arg, unsigned int arg2);
+	void threadFunction_blocks();
 	void *writeThreadFunction(void *arg, unsigned int arg2);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool startCapture(string *error);

@@ -28,10 +28,10 @@ struct pcap_pkthdr_fix_size {
 
 
 struct pcap_pkthdr_plus {
-	pcap_pkthdr_plus() {
+	inline pcap_pkthdr_plus() {
 		memset(this, 0, sizeof(pcap_pkthdr_plus));
 	}
-	pcap_pkthdr_plus(pcap_pkthdr header, int offset, u_int16_t dlink) {
+	inline pcap_pkthdr_plus(pcap_pkthdr header, int offset, u_int16_t dlink) {
 		memset(this, 0, sizeof(pcap_pkthdr_plus));
 		this->header_fix_size.ts_tv_sec = header.ts.tv_sec;
 		this->header_fix_size.ts_tv_usec = header.ts.tv_usec;
@@ -40,7 +40,7 @@ struct pcap_pkthdr_plus {
 		this->offset = offset;
 		this->dlink = dlink;
 	}
-	pcap_pkthdr *convertToStdHeader() {
+	inline pcap_pkthdr *convertToStdHeader() {
 		if(!this->std) {
 			pcap_pkthdr header;
 			header.ts.tv_sec = this->header_fix_size.ts_tv_sec;
@@ -118,7 +118,10 @@ struct pcap_block_store {
 	}
 	inline bool add(pcap_pkthdr *header, u_char *packet, int offset, int dlink, int memcpy_packet_size = 0);
 	inline bool add(pcap_pkthdr_plus *header, u_char *packet);
-	inline bool isFull_checkTimout();
+	inline void inc(pcap_pkthdr *header);
+	inline bool get_add_pointers(pcap_pkthdr_plus **header, u_char **packet, unsigned min_size_for_packet);
+	inline bool isFull_checkTimeout();
+	inline bool isTimeout();
 	pcap_pkthdr_pcap operator [] (size_t indexItem) {
 		pcap_pkthdr_pcap headerPcap;
 		if(indexItem < this->count) {
