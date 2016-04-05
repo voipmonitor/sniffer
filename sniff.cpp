@@ -2810,6 +2810,9 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
 
 	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
+		if(call->sipcallerip[0] == packetS->saddr) {
+			call->sipcalledip[0] = packetS->daddr;
+		}
 		if(opt_update_dstnum_onanswer) {
 			char branch[100];
 			if(!get_sip_branch(packetS, "via:", branch, sizeof(branch)) &&
