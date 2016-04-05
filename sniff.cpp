@@ -636,7 +636,9 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 			if(call->getPcapSip()->isOpen()){
 				call->set_last_packet_time(header->ts.tv_sec);
 				if(type == TYPE_SIP) {
-					call->getPcapSip()->dump(header, packet, packetS->dlt, false, (u_char*)packetS->data, packetS->datalen, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
+					call->getPcapSip()->dump(header, packet, packetS->dlt, false, 
+								 (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
+								 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
 				} else {
 					call->getPcapSip()->dump(header, packet, packetS->dlt);
 				}
@@ -669,7 +671,9 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 		if (call->getPcap()->isOpen()){
 			call->set_last_packet_time(header->ts.tv_sec);
 			if(type == TYPE_SIP) {
-				call->getPcap()->dump(header, packet, packetS->dlt, false, (u_char*)packetS->data, packetS->datalen, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
+				call->getPcap()->dump(header, packet, packetS->dlt, false, 
+						      (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
+						      packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
 			} else {
 				call->getPcap()->dump(header, packet, packetS->dlt);
 			}
