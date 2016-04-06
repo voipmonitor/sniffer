@@ -185,6 +185,7 @@ extern int opt_pcap_split;
 extern int opt_newdir;
 extern int opt_callslimit;
 extern int opt_skiprtpdata;
+extern char opt_silenceheader[128];
 extern char opt_silencedtmfseq[16];
 extern int opt_skinny;
 extern int opt_read_from_file;
@@ -2845,6 +2846,26 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		}
 	}
 
+	// pause or unpause recording based on header defined in config by option pauserecordingheader = X-voipmponitor-pause-recording*/
+	if(opt_silenceheader[0] != '\0') {
+		char *silenceheaderval = gettag_sip(packetS, opt_silenceheader, &l);
+		if(silenceheaderval) {
+			syslog(LOG_DEBUG, "opt_silenceheader found, its val: %s", silenceheaderval);
+			if(strncmp(silenceheaderval, "pause", l) == 0) {
+				call->silencerecording = 1;
+				if (logPacketSipMethodCall_enable)
+					 syslog(LOG_NOTICE, "opt_silenceheader PAUSED recording");
+			} else {
+				call->silencerecording = 0;
+				if (logPacketSipMethodCall_enable)
+					 syslog(LOG_NOTICE, "opt_silenceheader UNPAUSED recording");
+			}
+		} else {
+			syslog(LOG_DEBUG, "No opt_silenceheader in SIP packet");
+		}
+	}
+
+	// pause / unpause recording based on 182 queued / update & ok
 	if (opt_182queuedpauserecording) {
 		switch (packetS->sip_method) {
 		case RES182:
