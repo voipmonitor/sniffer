@@ -467,6 +467,7 @@ char mysql_user[256] = "root";
 char mysql_password[256] = "";
 int opt_mysql_port = 0; // 0 menas use standard port 
 char opt_mysql_timezone[256] = "";
+int opt_mysql_client_compress = 0;
 char opt_timezone[256] = "";
 int opt_skiprtpdata = 0;
 
@@ -4892,6 +4893,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE cConfigItem_yesno("spooldir_by_sensorname", &opt_spooldir_by_sensorname));
 		subgroup("sql");
 			addConfigItem(new FILE_LINE cConfigItem_string("mysqldb", mysql_database, sizeof(mysql_database)));
+				advanced();
+				addConfigItem(new FILE_LINE cConfigItem_yesno("mysql_client_compress", &opt_mysql_client_compress));
 					expert();
 					addConfigItem(new FILE_LINE cConfigItem_string("odbcdsn", odbc_dsn, sizeof(odbc_dsn)));
 					addConfigItem(new FILE_LINE cConfigItem_string("odbcuser", odbc_user, sizeof(odbc_user)));
@@ -6726,6 +6729,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysqlpassword", NULL))) {
 		strncpy(mysql_password, value, sizeof(mysql_password));
+	}
+	if((value = ini.GetValue("general", "mysql_client_compress", NULL))) {
+		opt_mysql_client_compress = yesno(value);
 	}
 	if((value = ini.GetValue("general", "odbcdsn", NULL))) {
 		strncpy(odbc_dsn, value, sizeof(odbc_dsn));

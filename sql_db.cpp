@@ -66,6 +66,7 @@ extern char mysql_user[256];
 extern char mysql_password[256];
 extern int opt_mysql_port;
 extern char opt_mysql_timezone[256];
+extern int opt_mysql_client_compress;
 extern int opt_skiprtpdata;
 
 extern char odbc_dsn[256];
@@ -704,7 +705,8 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 						this->hMysql,
 						this->conn_server_ip.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
 						this->conn_port ? this->conn_port : opt_mysql_port,
-						NULL, CLIENT_MULTI_RESULTS | CLIENT_COMPRESS);
+						NULL, 
+						CLIENT_MULTI_RESULTS | (opt_mysql_client_compress ? CLIENT_COMPRESS : 0));
 			if(!this->hMysqlConn) {
 				break;
 			}
