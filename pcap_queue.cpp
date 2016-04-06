@@ -5343,6 +5343,7 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void *arg, unsigned in
 						  block->is_voip[i]);
 				}
 			}
+			buffersControl.sub__PcapQueue_readFromFifo__blockStoreTrash_size(block->getUseSize());
 			delete block;
 		} else {
 			usleep(1000);
