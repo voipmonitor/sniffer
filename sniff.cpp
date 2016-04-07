@@ -185,6 +185,7 @@ extern int opt_pcap_split;
 extern int opt_newdir;
 extern int opt_callslimit;
 extern int opt_skiprtpdata;
+extern char opt_silenceheader[128];
 extern char opt_silencedtmfseq[16];
 extern int opt_skinny;
 extern int opt_read_from_file;
@@ -208,6 +209,7 @@ extern int opt_remotepartyid;
 extern int opt_remotepartypriority;
 extern int opt_ppreferredidentity;
 extern int opt_passertedidentity;
+extern int opt_182queuedpauserecording;
 extern char cloud_host[256];
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
@@ -2453,7 +2455,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	
 	detectCallerd = call->check_is_caller_called(packetS->sip_method, packetS->saddr, packetS->daddr, &iscaller, &iscalled, 
 						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) || 
-						     packetS->sip_method == RES18X);
+						     IS_SIP_RES18X(packetS->sip_method));
 	if(detectCallerd) {
 		call->handle_dscp(packetS->header_ip, iscaller);
 	}
@@ -2748,7 +2750,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				call->onCall_2XX = true;
 			}
 
-		} else if(packetS->sip_method == RES18X) {
+		} else if(IS_SIP_RES18X(packetS->sip_method)) {
 			call->seenRES18X = true;
 			if(!call->progress_time) {
 				call->progress_time = packetS->header_pt->ts.tv_sec;
@@ -2848,6 +2850,67 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		s = gettag_sip(packetS, "\nX-VoipMonitor-norecord:", &l);
 		if(s) {
 			call->stoprecording();
+		}
+	}
+
+	// pause or unpause recording based on header defined in config by option pauserecordingheader = X-voipmponitor-pause-recording*/
+	if(opt_silenceheader[0] != '\0') {
+		char *silenceheaderval = gettag_sip(packetS, opt_silenceheader, &l);
+		if(silenceheaderval) {
+			syslog(LOG_DEBUG, "opt_silenceheader found, its val: %s", silenceheaderval);
+			if(strncmp(silenceheaderval, "pause", l) == 0) {
+				call->silencerecording = 1;
+				if (logPacketSipMethodCall_enable)
+					 syslog(LOG_NOTICE, "opt_silenceheader PAUSED recording");
+			} else {
+				call->silencerecording = 0;
+				if (logPacketSipMethodCall_enable)
+					 syslog(LOG_NOTICE, "opt_silenceheader UNPAUSED recording");
+			}
+		} else {
+			syslog(LOG_DEBUG, "No opt_silenceheader in SIP packet");
+		}
+	}
+
+	// pause / unpause recording based on 182 queued / update & ok
+	if (opt_182queuedpauserecording) {
+		switch (packetS->sip_method) {
+		case RES182:
+			if (logPacketSipMethodCall_enable) 
+				 syslog(LOG_DEBUG, "opt_182queuedpauserecording SIP 182 queued, pausing recording.");
+			call->recordingpausedby182 = 1;
+			call->silencerecording = 1;
+			break;
+		case UPDATE:
+			if (call->recordingpausedby182) {
+				char *cseq = gettag_sip(packetS, "\nCSeq:", &l);
+				if(cseq && l < 32) {
+					if (logPacketSipMethodCall_enable) 
+						 syslog(LOG_DEBUG, "opt_182queuedpauserecording UPDATE preparing unpausing recording, waiting for OK with same CSeq");
+					memcpy(call->updatecseq, cseq, l);
+					call->recordingpausedby182 = 2;
+				} else {
+					if (logPacketSipMethodCall_enable) 
+						 syslog(LOG_WARNING, "opt_182queuedpauserecording WARNING Not recognized UPDATE's CSeq!");
+				}
+			} 
+			break;
+		case RES2XX:
+			if (call->recordingpausedby182 == 2) {
+				char *cseq = gettag_sip(packetS, "\nCSeq:", &l);
+				if(cseq && l < 32) {
+					if(cseq && strncmp(cseq, call->updatecseq, l) == 0) {
+						if (logPacketSipMethodCall_enable) 
+							 syslog(LOG_DEBUG, "opt_182queuedpauserecording OK on UPDATE unpausing recording");
+						call->recordingpausedby182 = 0;
+						call->silencerecording = 1;
+					}
+				} else {
+					if (logPacketSipMethodCall_enable) 
+						 syslog(LOG_WARNING, "opt_182queuedpauserecording WARNING Not recognized OK's CSeq (received)");
+				} 
+			}
+			break;
 		}
 	}
 
@@ -3683,10 +3746,19 @@ inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bo
 					if(verbosity > 2) 
 						 syslog(LOG_NOTICE,"SIP msg: 10X\n");
 					sip_method = RES10X;
-				} else if(data[9] == '8') {
-					if(verbosity > 2) 
-						 syslog(LOG_NOTICE,"SIP msg: 18X\n");
-					sip_method = RES18X;
+				} else {
+					// SIP/2.0 182 Queued, avaya-cm-data=00480BEE0C18002A
+					if(data[9] == '8') {
+						if( (datalen > 10) && (data[10] == '2') ) {
+							if(verbosity > 2) 
+								 syslog(LOG_NOTICE,"SIP msg: 182\n");
+							sip_method = RES182;
+						} else {
+							if(verbosity > 2) 
+								 syslog(LOG_NOTICE,"SIP msg: 18X\n");
+							sip_method = RES18X;
+						}
+					}
 				}
 			}
 			break;

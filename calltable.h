@@ -40,6 +40,7 @@
 #define CANCEL 3
 #define RES10X 100
 #define RES18X 180
+#define RES182 182
 #define RES2XX 200
 #define RES300 300
 #define RES3XX 399
@@ -62,9 +63,10 @@
 #define UPDATE 14
 #define SKINNY_NEW 100
 
+#define IS_SIP_RES18X(sip_method) (sip_method == RES18X || sip_method == RES182)
 #define IS_SIP_RES3XX(sip_method) (sip_method == RES300 || sip_method == RES3XX)
 #define IS_SIP_RES4XX(sip_method) (sip_method == RES401 || sip_method == RES403 || sip_method == RES404 || sip_method == RES4XX)
-#define IS_SIP_RESXXX(sip_method) (sip_method == RES10X || sip_method == RES18X || sip_method == RES2XX || IS_SIP_RES3XX(sip_method) || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX)
+#define IS_SIP_RESXXX(sip_method) (sip_method == RES10X || sip_method == RES18X || sip_method == RES182 || sip_method == RES2XX || IS_SIP_RES3XX(sip_method) || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX)
 
 #define FLAG_SAVERTP		(1 << 0)
 #define FLAG_SAVERTCP		(1 << 1)
@@ -228,6 +230,7 @@ public:
 	char byecseq[32];		
 	char invitecseq[32];		
 	char cancelcseq[32];		
+	char updatecseq[32];		
 	char custom_header1[256];	//!< Custom SIP header
 	char match_header[128];	//!< Custom SIP header
 	bool seeninvite;		//!< true if we see SIP INVITE within the Call
@@ -255,6 +258,7 @@ public:
 	double lastdtmf_time;		//!< used for holding time of last dtmf
 
 	int silencerecording;
+	int recordingpausedby182;
 	int msgcount;
 	int regcount;
 	int reg401count;
