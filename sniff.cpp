@@ -2868,7 +2868,8 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					 syslog(LOG_NOTICE, "opt_silenceheader UNPAUSED recording");
 			}
 		} else {
-			syslog(LOG_DEBUG, "No opt_silenceheader in SIP packet");
+			if (logPacketSipMethodCall_enable)
+				 syslog(LOG_DEBUG, "No opt_silenceheader in SIP packet");
 		}
 	}
 
