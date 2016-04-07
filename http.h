@@ -7,78 +7,111 @@
 
 struct HttpDataCache_id {
 	HttpDataCache_id(u_int32_t ip_src, u_int32_t ip_dst,
-			 u_int16_t port_src, u_int16_t port_dst,
-			 string *http, string *body,
-			 string *http_master = NULL, string *body_master = NULL) {
+			 u_int16_t port_src, u_int16_t port_dst) {
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
 		this->port_src = port_src; 
 		this->port_dst = port_dst;
-		if(http) {
-			this->http = *http;
-		}
-		if(body) {
-			this->body = *body;
-		}
-		if(http_master) {
-			this->http_master = *http_master;
-		}
-		if(body_master) {
-			this->body_master = *body_master;
-		}
 	}
 	u_int32_t ip_src;
 	u_int32_t ip_dst;
 	u_int16_t port_src;
 	u_int16_t port_dst;
-	string http;
-	string body;
-	string http_master;
-	string body_master;
 	bool operator < (const HttpDataCache_id& other) const {
 		return((this->ip_src < other.ip_src) ? 1 : (this->ip_src > other.ip_src) ? 0 :
 		       (this->ip_dst < other.ip_dst) ? 1 : (this->ip_dst > other.ip_dst) ? 0 :
 		       (this->port_src < other.port_src) ? 1 : (this->port_src > other.port_src) ? 0 :
-		       (this->port_dst < other.port_dst) ? 1 : (this->port_dst > other.port_dst) ? 0 :
-		       (this->http < other.http) ? 1 : (this->http > other.http) ? 0 :
-		       (this->body < other.body) ? 1 : (this->body > other.body) ? 0 :
-		       (this->http_master < other.http_master) ? 1 : (this->http_master > other.http_master) ? 0 :
-		       (this->body_master < other.body_master));
+		       this->port_dst < other.port_dst);
 	}
+};
+
+struct HttpDataCache_data {
+	HttpDataCache_data(const char *url, const char *url_md5,
+			   const char *http, const char *http_md5,
+			   const char *body, const char *body_md5,
+			   const char *callid, const char *sessionid, const char *external_transaction_id) {
+		if(url) this->url = url;
+		if(url_md5) this->url_md5 = url_md5; else if(url) this->url_md5 = GetStringMD5(url);
+		if(http) this->http = http;
+		if(http_md5) this->http_md5 = http_md5; else if(http) this->http_md5 = GetStringMD5(http);
+		if(body) this->body = body;
+		if(body_md5) this->body_md5 = body_md5; else if(body) this->body_md5 = GetStringMD5(body);
+		if(callid) this->callid = callid;
+		if(sessionid) this->sessionid = sessionid;
+		if(external_transaction_id) this->external_transaction_id = external_transaction_id;
+	}
+	string url;
+	string url_md5;
+	string http;
+	string http_md5;
+	string body;
+	string body_md5;
+	string callid;
+	string sessionid;
+	string external_transaction_id;
+};
+
+struct HttpDataCache_relation {
+	HttpDataCache_relation();
+	~HttpDataCache_relation();
+	void addResponse(u_int64_t timestamp,
+			 const char *http, const char *body);
+	bool checkExistsResponse(const char *http_md5, const char *body_md5);
+	HttpDataCache_data *request;
+	map<u_int64_t, HttpDataCache_data*> responses;
+	u_int64_t last_timestamp_response;
+};
+
+struct HttpDataCache_link {
+	~HttpDataCache_link();
+	void addRequest(u_int64_t timestamp,
+			const char *url, const char *http, const char *body,
+			const char *callid, const char *sessionid, const char *external_transaction_id);
+	void addResponse(u_int64_t timestamp,
+			 const char *http, const char *body,
+			 const char *url_master, const char *http_master, const char *body_master);
+	bool checkExistsRequest(const char *url_md5, const char *http_md5, const char *body_md5);
+	void writeToDb(const HttpDataCache_id *id, bool all, u_int64_t time);
+	void writeDataToDb(bool response, u_int64_t timestamp, const HttpDataCache_id *id, HttpDataCache_data *data);
+	void writeQueryInsertToDb();
+	string getRelationsMapId(const char *url_md5, const char *http_md5, const char *body_md5) {
+		return(string(url_md5) + '#' + string(http_md5) + '#' + string(body_md5));
+	}
+	string getRelationsMapId(string &url_md5, string &http_md5, string &body_md5) {
+		return(url_md5 + '#' + http_md5 + '#' + body_md5);
+	}
+	map<u_int64_t, HttpDataCache_relation*> relations;
+	map<string, HttpDataCache_relation*> relations_map;
+	string queryInsert;
+	string lastRequest_http_md5;
+	string lastRequest_body_md5;
+	static u_int32_t writeToDb_counter;
 };
 
 struct HttpDataCache {
-	HttpDataCache(uint32_t id = 0, u_int64_t timestamp = 0) {
-		this->id = id;
-		this->timestamp = timestamp;
-		this->timestamp_clock = getTimeMS()/1000;
+	HttpDataCache();
+	void addRequest(u_int64_t timestamp,
+			u_int32_t ip_src, u_int32_t ip_dst,
+			u_int16_t port_src, u_int16_t port_dst,
+			const char *url, const char *http, const char *body,
+			const char *callid, const char *sessionid, const char *external_transaction_id);
+	void addResponse(u_int64_t timestamp,
+			 u_int32_t ip_src, u_int32_t ip_dst,
+			 u_int16_t port_src, u_int16_t port_dst,
+			 const char *http, const char *body,
+			 const char *url_master, const char *http_master, const char *body_master);
+	void writeToDb(bool all = false, bool ifExpiration = false);
+	map<HttpDataCache_id, HttpDataCache_link> data;
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync, 1)) usleep(100);
 	}
-	uint32_t id;
-	u_int64_t timestamp;
-	u_int64_t timestamp_clock;
-};
-
-class HttpCache {
-public:
-	HttpCache();
-	HttpDataCache get(u_int32_t ip_src, u_int32_t ip_dst,
-			  u_int16_t port_src, u_int16_t port_dst,
-			  string *http, string *body,
-			  string *http_master = NULL, string *body_master = NULL);
-	void add(u_int32_t ip_src, u_int32_t ip_dst,
-		 u_int16_t port_src, u_int16_t port_dst,
-		 string *http, string *body,
-		 string *http_master, string *body_master,
-		 u_int32_t id, u_int64_t timestamp);
-	void cleanup(bool force = false);
-	void clear();
-	u_int32_t getSize() {
-		return(this->cache.size());
+	void unlock() {
+		__sync_lock_release(&this->_sync);
 	}
-private:
-	map<HttpDataCache_id, HttpDataCache> cache;
-	u_int64_t cleanupCounter;
-	u_int64_t lastAddTimestamp;
+	u_int64_t last_timestamp;
+	u_long init_at;
+	u_long last_write_at;
+	int _sync;
 };
 
 class HttpData : public TcpReassemblyProcessData {
@@ -92,6 +125,7 @@ public:
 			 u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
 			 TcpReassemblyLink *reassemblyLink,
 			 bool debugSave);
+	void writeToDb(bool all = false);
 	string getUri(string &request);
 	string getUriValue(string &uri, const char *valueName);
 	string getUriPathValue(string &uri, const char *valueName);
@@ -100,7 +134,7 @@ public:
 	void printContentSummary();
 private:
 	unsigned int counterProcessData;
-	HttpCache cache;
+	HttpDataCache cache;
 };
 
 class HttpPacketsDumper {

@@ -1541,7 +1541,8 @@ void MySqlStore_process::store() {
 				while(query_len && query[query_len - 1] == ' ') {
 					--query_len;
 				}
-				if(query_len && query[query_len - 1] != ';') {
+				if(!((query_len && query[query_len - 1] == ';') ||
+				     (query_len > 1 && query[query_len - 1] == '\n' && query[query_len - 2] == ';'))) {
 					queryqueue.append("; ");
 				}
 			}

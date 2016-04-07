@@ -21,7 +21,6 @@ HttpData::HttpData() {
 }
 
 HttpData::~HttpData() {
-	this->cache.clear();
 }
 
 void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
@@ -170,36 +169,17 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		callid = this->getJsonValue(body, "variable_sip_call_id");
 	}
 	if(externalTransactionId.length() || sessionid.length() || callid.length()) {
-		string queryInsert;
 		static int saveCounter;
 		if(debugSave) {
 			cout << "SAVE " << (++saveCounter) << " time: " << sqlDateTimeString(request_data->getTime().tv_sec) 
 			     << (response.length() ? " with response" : "")
 			     << endl;
 		}
-		HttpDataCache requestDataFromCache = this->cache.get(ip_src, ip_dst, port_src, port_dst,
-								     &http, &body);
-		if(!requestDataFromCache.timestamp) {
-			SqlDb_row rowRequest;
-			rowRequest.add(sqlDateTimeString(request_data->getTime().tv_sec), "timestamp");
-			rowRequest.add(request_data->getTime().tv_usec, "usec");
-			rowRequest.add(htonl(ip_src), "srcip");
-			rowRequest.add(htonl(ip_dst), "dstip");
-			rowRequest.add(port_src, "srcport"); 
-			rowRequest.add(port_dst, "dstport"); 
-			rowRequest.add(sqlEscapeString(uri), "url");
-			rowRequest.add((const char*)NULL, "type"); 
-			rowRequest.add(sqlEscapeString(http), "http");
-			rowRequest.add(sqlEscapeString(body).c_str(), "body");
-			rowRequest.add(sqlEscapeString(callid).c_str(), "callid");
-			rowRequest.add(sqlEscapeString(sessionid).c_str(), "sessid");
-			rowRequest.add(sqlEscapeString(externalTransactionId).c_str(), "external_transaction_id");
-			rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-			queryInsert = sqlDbSaveHttp->insertQuery("http_jj", rowRequest);
-			this->cache.add(ip_src, ip_dst, port_src, port_dst,
-					&http, &body, NULL, NULL,
-					1, request_data->getTime().tv_sec);
-		}
+		this->cache.addRequest(request_data->getTime().tv_sec * 1000000ull + request_data->getTime().tv_usec,
+				       htonl(ip_src), htonl(ip_dst),
+				       port_src, port_dst,
+				       uri.c_str(), http.c_str(), body.c_str(),
+				       callid.c_str(), sessionid.c_str(), externalTransactionId.c_str());
 		if(response.length()) {
 			size_t responseContentLength = atol(this->getTag(response, "Content-Length").c_str());
 			string responseHttp;
@@ -219,63 +199,19 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			if(!responseHttp.length()) {
 				responseHttp = response;
 			}
-			HttpDataCache responseDataFromCache = this->cache.get(ip_src, ip_dst, port_src, port_dst,
-									      &http, &body, &responseHttp, &responseBody);
-			if(!responseDataFromCache.timestamp) {
-				if(requestDataFromCache.timestamp) {
-					ostringstream queryFindMasterId;
-					queryFindMasterId << "set @http_jj_id = (select id from http_jj where"
-							  << " srcip = " << htonl(ip_src)
-							  << " and dstip = " << htonl(ip_dst)
-							  << " and srcport = " << port_src
-							  << " and dstport = " << port_dst
-							  << " and http = '" << sqlEscapeString(http) << "'"
-							  << " and body = '" << sqlEscapeString(body) << "'"
-							  << " and timestamp = '" << sqlDateTimeString(requestDataFromCache.timestamp) << "'" 
-							  << " limit 1);" << endl
-							  << "if @http_jj_id then" << endl;
-					queryInsert += queryFindMasterId.str();
-				} else {
-					queryInsert += ";\n";
-					queryInsert += "set @http_jj_id = last_insert_id();\n";
-				}
-				SqlDb_row rowRequest;
-				rowRequest.add("_\\_'SQL'_\\_:@http_jj_id", "master_id");
-				rowRequest.add(sqlDateTimeString(response_data->getTime().tv_sec), "timestamp");
-				rowRequest.add(response_data->getTime().tv_usec, "usec");
-				rowRequest.add(htonl(ip_dst), "srcip"); 
-				rowRequest.add(htonl(ip_src), "dstip"); 
-				rowRequest.add(port_dst, "srcport"); 
-				rowRequest.add(port_src, "dstport"); 
-				rowRequest.add("", "url");
-				rowRequest.add("http_ok", "type"); 
-				rowRequest.add(sqlEscapeString(responseHttp), "http");
-				rowRequest.add(sqlEscapeString(responseBody).c_str(), "body");
-				rowRequest.add("", "callid");
-				rowRequest.add("", "sessid");
-				rowRequest.add("", "external_transaction_id");
-				rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-				queryInsert += sqlDbSaveHttp->insertQuery("http_jj", rowRequest, true);
-				if(requestDataFromCache.timestamp) {
-					queryInsert += ";\n";
-					queryInsert += "end if";
-				}
-				this->cache.add(ip_src, ip_dst, port_src, port_dst,
-						&http, &body, &responseHttp, &responseBody,
-						1, response_data->getTime().tv_sec);
-			}
-		}
-		if(queryInsert.length()) {
-			int storeId = STORE_PROC_ID_HTTP_1 + 
-				      (opt_mysqlstore_max_threads_http > 1 &&
-				       sqlStore->getSize(STORE_PROC_ID_HTTP_1) > 1000 ? 
-					counterProcessData % opt_mysqlstore_max_threads_http : 
-					0);
-			sqlStore->query_lock(queryInsert.c_str(), storeId);
+			this->cache.addResponse(response_data->getTime().tv_sec * 1000000ull + response_data->getTime().tv_usec,
+						htonl(ip_dst), htonl(ip_src),
+						port_dst, port_src,
+						responseHttp.c_str(), responseBody.c_str(),
+						uri.c_str(), http.c_str(), body.c_str());
 		}
 	}
 	delete data;
-	this->cache.cleanup(false);
+	this->cache.writeToDb();
+}
+
+void HttpData::writeToDb(bool all) {
+	this->cache.writeToDb(all, true);
 }
 
 string HttpData::getUri(string &request) {
@@ -400,61 +336,241 @@ string HttpData::getJsonValue(string &data, const char *valueName) {
 }
 
 void HttpData::printContentSummary() {
+	/*
 	cout << "HTTP CACHE: " << this->cache.getSize() << endl;
 	this->cache.cleanup(true);
+	*/
 }
 
 
-HttpCache::HttpCache() {
-	this->cleanupCounter = 0;
-	this->lastAddTimestamp = 0;	
+HttpDataCache_relation::HttpDataCache_relation() {
+	last_timestamp_response = 0;
 }
 
-HttpDataCache HttpCache::get(u_int32_t ip_src, u_int32_t ip_dst,
-			     u_int16_t port_src, u_int16_t port_dst,
-			     string *http, string *body,
-			     string *http_master, string *body_master) {
-	HttpDataCache_id idc(ip_src, ip_dst, port_src, port_dst, http, body, http_master, body_master);
-	map<HttpDataCache_id, HttpDataCache>::iterator iter = this->cache.find(idc);
-	if(iter == this->cache.end()) {
-		return(HttpDataCache());
-	} else {
-		return(iter->second);
+HttpDataCache_relation::~HttpDataCache_relation() {
+	delete request;
+	while(responses.size()) {
+		map<u_int64_t, HttpDataCache_data*>::iterator iter = responses.begin();
+		delete iter->second;
+		responses.erase(iter);
 	}
 }
 
-void HttpCache::add(u_int32_t ip_src, u_int32_t ip_dst,
-		    u_int16_t port_src, u_int16_t port_dst,
-		    string *http, string *body,
-		    string *http_master, string *body_master,
-		    u_int32_t id, u_int64_t timestamp) {
-	HttpDataCache_id idc(ip_src, ip_dst, port_src, port_dst, http, body, http_master, body_master);
-	this->cache[idc] = HttpDataCache(id, timestamp);
-	this->lastAddTimestamp = timestamp;
+void HttpDataCache_relation::addResponse(u_int64_t timestamp, const char *http, const char *body) {
+	string http_md5 = http ? GetStringMD5(http) : "";
+	string body_md5 = body ? GetStringMD5(body) : "";
+	if(checkExistsResponse(http_md5.c_str(), body_md5.c_str())) {
+		return;
+	}
+	this->responses[timestamp] = new FILE_LINE HttpDataCache_data(
+						NULL, NULL,
+						http, http_md5.c_str(),
+						body, body_md5.c_str(),
+						NULL, NULL, NULL);
+	last_timestamp_response = timestamp;
 }
 
-void HttpCache::cleanup(bool force) {
-	++this->cleanupCounter;
-	if(force ||
-	   !(this->cleanupCounter % 100)) {
-		u_int64_t clock = getTimeMS()/1000;
-		map<HttpDataCache_id, HttpDataCache>::iterator iter;
-		for(iter = this->cache.begin(); iter != this->cache.end(); ) {
-			if(iter->second.timestamp < this->lastAddTimestamp - 120 ||
-			   iter->second.timestamp_clock < clock - 120) {
-				this->cache.erase(iter++);
+bool HttpDataCache_relation::checkExistsResponse(const char *http_md5, const char *body_md5) {
+	for(map<u_int64_t, HttpDataCache_data*>::iterator iter = responses.begin(); iter != responses.end(); iter++) {
+		if(iter->second->http_md5 == http_md5 && 
+		   iter->second->body_md5 == body_md5) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+HttpDataCache_link::~HttpDataCache_link() {
+	while(relations.size()) {
+		map<u_int64_t, HttpDataCache_relation*>::iterator iter = relations.begin();
+		delete iter->second;
+		relations.erase(iter);
+	}
+}
+
+void HttpDataCache_link::addRequest(u_int64_t timestamp,
+				    const char *url, const char *http, const char *body,
+				    const char *callid, const char *sessionid, const char *external_transaction_id) {
+	string url_md5 = url ? GetStringMD5(url) : "";
+	string http_md5 = http ? GetStringMD5(http) : "";
+	string body_md5 = body ? GetStringMD5(body) : "";
+	string relations_map_id = getRelationsMapId(url_md5.c_str(), http_md5.c_str(), body_md5.c_str());
+	if(relations_map.find(relations_map_id) != relations_map.end()) {
+		return;
+	}
+	HttpDataCache_relation *new_relation = new FILE_LINE HttpDataCache_relation();
+	new_relation->request = new FILE_LINE HttpDataCache_data(
+					url, url_md5.c_str(),
+					http, http_md5.c_str(),
+					body, body_md5.c_str(),
+					callid, sessionid, external_transaction_id);
+	relations[timestamp] = new_relation;
+	relations_map[relations_map_id] = new_relation;
+}
+
+void HttpDataCache_link::addResponse(u_int64_t timestamp,
+				     const char *http, const char *body,
+				     const char *url_master, const char *http_master, const char *body_master) {
+	string url_master_md5 = url_master ? GetStringMD5(url_master) : "";
+	string http_master_md5 = http_master ? GetStringMD5(http_master) : "";
+	string body_master_md5 = body_master ? GetStringMD5(body_master) : "";
+	string relations_map_id = getRelationsMapId(url_master_md5.c_str(), http_master_md5.c_str(), body_master_md5.c_str());
+	map<string, HttpDataCache_relation*>::iterator iter = relations_map.find(relations_map_id);
+	if(iter == relations_map.end()) {
+		return;
+	}
+	iter->second->addResponse(timestamp, http, body);
+}
+
+bool HttpDataCache_link::checkExistsRequest(const char *url_md5, const char *http_md5, const char *body_md5) {
+	map<string, HttpDataCache_relation*>::iterator iter = relations_map.find(getRelationsMapId(url_md5, http_md5, body_md5));
+	return(iter != relations_map.end());
+}
+
+void HttpDataCache_link::writeToDb(const HttpDataCache_id *id, bool all, u_int64_t time) {
+	u_long actTimeMS = getTimeMS_rdtsc();
+	for(map<u_int64_t, HttpDataCache_relation*>::iterator iter_rel = relations.begin(); iter_rel != relations.end(); ) {
+		if(all || 
+		   iter_rel->first < time - 10000000ull ||
+		   iter_rel->first < actTimeMS * 1000ull - 30000000ull) {
+			if(all || 
+			   iter_rel->second->last_timestamp_response < time - 10000000ull ||
+			   iter_rel->second->last_timestamp_response < actTimeMS * 1000ull - 30000000ull) {
+				queryInsert = "";
+				this->writeDataToDb(false, iter_rel->first, id, iter_rel->second->request);
+				for(map<u_int64_t, HttpDataCache_data*>::iterator iter_resp = iter_rel->second->responses.begin(); iter_resp != iter_rel->second->responses.end(); iter_resp++) {
+					this->writeDataToDb(true, iter_resp->first, id, iter_resp->second);
+				}
+				writeQueryInsertToDb();
+				this->relations_map.erase(getRelationsMapId(iter_rel->second->request->url_md5, iter_rel->second->request->http_md5, iter_rel->second->request->body_md5));
+				delete iter_rel->second;
+				this->relations.erase(iter_rel++);
 			} else {
-				++iter;
+				++iter_rel;
 			}
+		} else {
+			break;
 		}
 	}
 }
 
-void HttpCache::clear() {
-	this->cache.clear();
+void HttpDataCache_link::writeDataToDb(bool response, u_int64_t timestamp, const HttpDataCache_id *id, HttpDataCache_data *data) {
+	if(!response) {
+		SqlDb_row rowRequest;
+		rowRequest.add(sqlDateTimeString(timestamp / 1000000ull), "timestamp");
+		rowRequest.add((u_int32_t)(timestamp % 1000000ull), "usec");
+		rowRequest.add(id->ip_src, "srcip");
+		rowRequest.add(id->ip_dst, "dstip");
+		rowRequest.add(id->port_src, "srcport"); 
+		rowRequest.add(id->port_dst, "dstport"); 
+		rowRequest.add(sqlEscapeString(data->url), "url");
+		rowRequest.add((const char*)NULL, "type"); 
+		rowRequest.add(sqlEscapeString(data->http), "http");
+		rowRequest.add(sqlEscapeString(data->body).c_str(), "body");
+		rowRequest.add(sqlEscapeString(data->callid).c_str(), "callid");
+		rowRequest.add(sqlEscapeString(data->sessionid).c_str(), "sessid");
+		rowRequest.add(sqlEscapeString(data->external_transaction_id).c_str(), "external_transaction_id");
+		rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
+		queryInsert += sqlDbSaveHttp->insertQuery("http_jj", rowRequest) + ";\n";
+		queryInsert += "set @http_jj_request_id = last_insert_id();\n";
+		lastRequest_http_md5 = data->http_md5;
+		lastRequest_body_md5 = data->body_md5;
+	} else {
+		SqlDb_row rowResponse;
+		rowResponse.add("_\\_'SQL'_\\_:@http_jj_request_id", "master_id");
+		rowResponse.add(sqlDateTimeString(timestamp / 1000000ull), "timestamp");
+		rowResponse.add((u_int32_t)(timestamp % 1000000ull), "usec");
+		rowResponse.add(id->ip_dst, "srcip"); 
+		rowResponse.add(id->ip_src, "dstip"); 
+		rowResponse.add(id->port_dst, "srcport"); 
+		rowResponse.add(id->port_src, "dstport"); 
+		rowResponse.add("", "url");
+		rowResponse.add("http_ok", "type"); 
+		rowResponse.add(sqlEscapeString(data->http), "http");
+		rowResponse.add(sqlEscapeString(data->body).c_str(), "body");
+		rowResponse.add("", "callid");
+		rowResponse.add("", "sessid");
+		rowResponse.add("", "external_transaction_id");
+		rowResponse.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
+		queryInsert += sqlDbSaveHttp->insertQuery("http_jj", rowResponse, true) + ";\n";
+	}
 }
 
+void HttpDataCache_link::writeQueryInsertToDb() {
+	if(queryInsert.empty()) {
+		return;
+	}
+	int storeId = STORE_PROC_ID_HTTP_1 + 
+		      (opt_mysqlstore_max_threads_http > 1 &&
+		       sqlStore->getSize(STORE_PROC_ID_HTTP_1) > 1000 ? 
+			writeToDb_counter % opt_mysqlstore_max_threads_http : 
+			0);
+	sqlStore->query_lock(queryInsert.c_str(), storeId);
+	++writeToDb_counter;
+}
 
+u_int32_t HttpDataCache_link::writeToDb_counter = 0;
+
+HttpDataCache::HttpDataCache() {
+	last_timestamp = 0;
+	init_at = getTimeMS_rdtsc();
+	last_write_at = 0;
+	_sync = 0;
+}
+
+void HttpDataCache::addRequest(u_int64_t timestamp,
+			       u_int32_t ip_src, u_int32_t ip_dst,
+			       u_int16_t port_src, u_int16_t port_dst,
+			       const char *url, const char *http, const char *body,
+			       const char *callid, const char *sessionid, const char *external_transaction_id) {
+	lock();
+	HttpDataCache_id id(ip_src, ip_dst, port_src, port_dst);
+	data[id].addRequest(timestamp,
+			    url, http, body,
+			    callid, sessionid, external_transaction_id);
+	unlock();
+	last_timestamp = timestamp;
+}
+
+void HttpDataCache::addResponse(u_int64_t timestamp,
+				u_int32_t ip_src, u_int32_t ip_dst,
+				u_int16_t port_src, u_int16_t port_dst,
+				const char *http, const char *body,
+				const char *url_master, const char *http_master, const char *body_master) {
+	lock();
+	HttpDataCache_id id(ip_dst, ip_src, port_dst, port_src);
+	map<HttpDataCache_id, HttpDataCache_link>::iterator iter = data.find(id);
+	if(iter == data.end()) {
+		return;
+	}
+	iter->second.addResponse(timestamp,
+				 http, body,
+				 url_master, http_master, body_master);
+	unlock();
+	last_timestamp = timestamp;
+}
+
+void HttpDataCache::writeToDb(bool all, bool ifExpiration) {
+	if(!last_timestamp) {
+		return;
+	}
+	u_long actTimeMS = getTimeMS_rdtsc();
+	if(!all && ifExpiration &&
+	   (last_write_at ? last_write_at : init_at) < actTimeMS - 10000) {
+		return;
+	}
+	last_write_at = actTimeMS;
+	lock();
+	for(map<HttpDataCache_id, HttpDataCache_link>::iterator iter = data.begin(); iter != data.end(); ) {
+		iter->second.writeToDb(&iter->first, all, last_timestamp);
+		if(iter->second.relations.size()) {
+			++iter;
+		} else {
+			data.erase(iter++);
+		}
+	}
+	unlock();
+}
 
 
 HttpPacketsDumper::HttpPacketsDumper() {

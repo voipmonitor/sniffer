@@ -1886,6 +1886,7 @@ TcpReassembly::~TcpReassembly() {
 		} else {
 			this->cleanup_simple(true);
 		}
+		this->dataCallback->writeToDb(true);
 	}
 	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;
 	for(iter = this->links.begin(); iter != this->links.end();) {
@@ -2024,6 +2025,7 @@ void* TcpReassembly::cleanupThreadFunction(void*) {
 		}
 		if(!is_terminating() || this->ignoreTerminating) {
 			this->cleanup();
+			this->dataCallback->writeToDb();
 		}
 	}
 	return(NULL);
