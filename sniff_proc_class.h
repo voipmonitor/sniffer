@@ -92,6 +92,9 @@ private:
 				unsigned int contentLength = 0;
 				if(contentLengthPos) {
 					contentLength = atol(contentLengthPos + 16);
+					if(contentLength > data_len - (endHeaderSepPos - data)) {
+						contentLength = 0;
+					}
 				}
 				int sipDataLen = (endHeaderSepPos - data) + 4 + contentLength;
 				extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);

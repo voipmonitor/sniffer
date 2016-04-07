@@ -595,7 +595,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 					if(s) {
 						char *pointToModifyContLength = (char*)packet + (s - (packetS->data + packetS->sipDataOffset));
 						long int contentLength = atol(pointToModifyContLength);
-						if(contentLength > 0) {
+						if(contentLength > 0 && contentLength < packetS->sipDataLen) {
 							char contLengthStr[10];
 							sprintf(contLengthStr, "%li", contentLength - diffLen);
 							strncpy(pointToModifyContLength, contLengthStr, strlen(contLengthStr));
@@ -812,7 +812,7 @@ inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContents
 			char *contentLengthPos = strcasestr(tmp, contentLengthString);
 			if(contentLengthPos) {
 				int contentLength = atoi(contentLengthPos + strlen(contentLengthString));
-				if(contentLength >= 0) {
+				if(contentLength >= 0 && contentLength < len) {
 					const char *endHeaderSepString = "\r\n\r\n";
 					char *endHeaderSepPos = (char*)memmem(tmp, len, endHeaderSepString, strlen(endHeaderSepString));
 					if(endHeaderSepPos) {
@@ -3896,7 +3896,7 @@ inline int parse_packet__message(packet_s_process *packetS, bool strictCheckLeng
 		}
 		s[l] = endCharContentLength;
 	}
-	if(contentLength > 0) {
+	if(contentLength > 0 && contentLength < packetS->sipDataLen) {
 		char *contentEnd = strcasestr(contentBegin, "\n\nContent-Length:");
 		if(!contentEnd) {
 			contentEnd = strstr(contentBegin, "\r\n");
