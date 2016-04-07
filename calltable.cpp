@@ -4589,7 +4589,7 @@ Call::check_is_caller_called(int sip_method, unsigned int saddr, unsigned int da
 					if(sverb.check_is_caller_called) {
 						debug_str_set += string(" / set sipcallerdip[") + intToString(i) + "]: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
 					}
-				} else if((sip_method == RES18X) || (sip_method == RES182)) {
+				} else if(IS_SIP_RES18X(sip_method))  {
 					this->sipcallerip[i] = daddr;
 					this->sipcalledip[i] = saddr;
 					if(sverb.check_is_caller_called) {

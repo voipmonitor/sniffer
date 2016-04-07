@@ -2451,7 +2451,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	
 	detectCallerd = call->check_is_caller_called(packetS->sip_method, packetS->saddr, packetS->daddr, &iscaller, &iscalled, 
 						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) || 
-						     packetS->sip_method == RES18X || packetS->sip_method == RES182);
+						     IS_SIP_RES18X(packetS->sip_method));
 	if(detectCallerd) {
 		call->handle_dscp(packetS->header_ip, iscaller);
 	}
@@ -2746,7 +2746,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				call->onCall_2XX = true;
 			}
 
-		} else if((packetS->sip_method == RES18X) || (packetS->sip_method == RES182)) {
+		} else if(IS_SIP_RES18X(packetS->sip_method)) {
 			call->seenRES18X = true;
 			if(!call->progress_time) {
 				call->progress_time = packetS->header_pt->ts.tv_sec;
