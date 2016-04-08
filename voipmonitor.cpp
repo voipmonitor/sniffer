@@ -468,6 +468,15 @@ char mysql_database[256] = "voipmonitor";
 char mysql_user[256] = "root";
 char mysql_password[256] = "";
 int opt_mysql_port = 0; // 0 menas use standard port 
+
+char mysql_2_host[256] = "";
+char mysql_2_host_orig[256] = "";
+char mysql_2_database[256] = "voipmonitor";
+char mysql_2_user[256] = "root";
+char mysql_2_password[256] = "";
+int opt_mysql_2_port = 0; // 0 menas use standard port 
+bool opt_mysql_2_http = false;
+
 char opt_mysql_timezone[256] = "";
 int opt_mysql_client_compress = 0;
 char opt_timezone[256] = "";
@@ -638,6 +647,7 @@ pthread_t pcap_read_thread;
 nat_aliases_t nat_aliases;	// net_aliases[local_ip] = extern_ip
 
 MySqlStore *sqlStore = NULL;
+MySqlStore *sqlStore_2 = NULL;
 MySqlStore *loadFromQFiles = NULL;
 
 char mac[32] = "";
@@ -949,7 +959,7 @@ void *database_backup(void *dummy) {
 		return NULL;
 	}
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
-	sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
+	sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port);
 	bool callCreateSchema = false;
 	while(!is_terminating()) {
 		syslog(LOG_NOTICE, "-- START BACKUP PROCESS");
@@ -965,7 +975,7 @@ void *database_backup(void *dummy) {
 			if(sqlDbSrc_mysql->checkSourceTables()) {
 			 
 				if(!callCreateSchema) {
-					sqlDb->createSchema(sqlDbSrc_mysql);
+					sqlDb->createSchema();
 					sqlDb->checkSchema();
 					callCreateSchema = true;
 				}
@@ -2328,47 +2338,50 @@ int main(int argc, char *argv[]) {
 	//cout << "SQL DRIVER: " << sql_driver << endl;
 	if(!opt_nocdr && !is_sender()/* && cloud_url[0] == '\0'*/) {
 		bool connectError = false;
-		SqlDb *sqlDb = createSqlObject();
-		bool rsltConnect = false;
-		for(int pass = 0; pass < 2; pass++) {
-			if((rsltConnect = sqlDb->connect(true, true))) {
-				break;
-			}
-			sleep(1);
-		}
-		if(rsltConnect && sqlDb->connected()) {
-			if(isSqlDriver("mysql")) {
-				sql_noerror = 1;
-				sqlDb->query("repair table mysql.proc");
-				sql_noerror = 0;
-			}
-			sqlDb->checkDbMode();
-			//if(!opt_database_backup & !opt_disable_dbupgradecheck) {
-			if(!opt_database_backup) {
-				if (!opt_disable_dbupgradecheck) {
-					if(sqlDb->createSchema()) {
-						sqlDb->checkSchema();
-					} else {
-						connectError = true;
-					}
-				} else {
-					sqlDb->checkSchema(true);
+		string connectErrorString;
+		for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
+			SqlDb *sqlDb = createSqlObject(connectId);
+			bool rsltConnect = false;
+			for(int pass = 0; pass < 2; pass++) {
+				if((rsltConnect = sqlDb->connect(true, true))) {
+					break;
 				}
+				sleep(1);
 			}
-			sensorsMap.fillSensors();
-		} else {
-			connectError = true;
+			if(rsltConnect && sqlDb->connected()) {
+				if(isSqlDriver("mysql")) {
+					sql_noerror = 1;
+					sqlDb->query("repair table mysql.proc");
+					sql_noerror = 0;
+				}
+				sqlDb->checkDbMode();
+				if(!opt_database_backup) {
+					if (!opt_disable_dbupgradecheck) {
+						if(sqlDb->createSchema(connectId)) {
+							sqlDb->checkSchema(connectId);
+						} else {
+							connectError = true;
+							connectErrorString = sqlDb->getLastErrorString();
+						}
+					} else {
+						sqlDb->checkSchema(connectId, true);
+					}
+				}
+				sensorsMap.fillSensors();
+			} else {
+				connectError = true;
+				connectErrorString = sqlDb->getLastErrorString();
+			}
+			delete sqlDb;
 		}
 		if(connectError) {
-			string error = sqlDb->getLastErrorString();
 			if(useNewCONFIG && !is_read_from_file()) {
-				vm_terminate_error(error.c_str());
+				vm_terminate_error(connectErrorString.c_str());
 			} else {
-				syslog(LOG_ERR, (error + " - exit!").c_str());
+				syslog(LOG_ERR, (connectErrorString + " - exit!").c_str());
 				return 1;
 			}
 		}
-		delete sqlDb;
 	}
 	
 	if(!is_terminating()) {
@@ -2395,7 +2408,8 @@ int main(int argc, char *argv[]) {
 			main_term_read();
 		} else {
 			if(opt_database_backup) {
-				sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);
+				sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, 
+								    cloud_host, cloud_token);
 				custom_headers_cdr = new FILE_LINE CustomHeaders(CustomHeaders::cdr);
 				custom_headers_message = new FILE_LINE CustomHeaders(CustomHeaders::message);
 				vm_pthread_create("database backup",
@@ -2416,6 +2430,10 @@ int main(int argc, char *argv[]) {
 			if(sqlStore) {
 				delete sqlStore;
 				sqlStore = NULL;
+			}
+			if(sqlStore_2) {
+				delete sqlStore_2;
+				sqlStore_2 = NULL;
 			}
 			if(loadFromQFiles) {
 				delete loadFromQFiles;
@@ -2692,6 +2710,9 @@ int main_init_read() {
 
 	if(opt_save_query_to_files) {
 		sqlStore->queryToFiles_start();
+		if(sqlStore_2) {
+			sqlStore_2->queryToFiles_start();
+		}
 	}
 	if(opt_load_query_from_files) {
 		loadFromQFiles->loadFromQFiles_start();
@@ -3218,13 +3239,18 @@ void main_term_read() {
 		sqlDbCleanspool = NULL;
 	}
 	
-	sqlStore->setEnableTerminatingIfEmpty(0, true);
-	sqlStore->setEnableTerminatingIfSqlError(0, true);
-	
 	if(sqlStore) {
+		sqlStore->setEnableTerminatingIfEmpty(0, true);
+		sqlStore->setEnableTerminatingIfSqlError(0, true);
 		regfailedcache->prune(0);
 		delete sqlStore;
 		sqlStore = NULL;
+	}
+	if(sqlStore_2) {
+		sqlStore_2->setEnableTerminatingIfEmpty(0, true);
+		sqlStore_2->setEnableTerminatingIfSqlError(0, true);
+		delete sqlStore_2;
+		sqlStore_2 = NULL;
 	}
 	if(loadFromQFiles) {
 		delete loadFromQFiles;
@@ -3253,13 +3279,20 @@ void main_term_read() {
 void main_init_sqlstore() {
 	if(isSqlDriver("mysql")) {
 		if(opt_load_query_from_files != 2) {
-			sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, cloud_host, cloud_token);
+			sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
+							    cloud_host, cloud_token);
 			if(opt_save_query_to_files) {
 				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 			}
+			if(use_mysql_2()) {
+				sqlStore_2 = new FILE_LINE MySqlStore(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port);
+				if(opt_save_query_to_files) {
+					sqlStore_2->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
+				}
+			}
 		}
 		if(opt_load_query_from_files) {
-			loadFromQFiles = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database);
+			loadFromQFiles = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port);
 			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
 		}
 		if(opt_load_query_from_files != 2) {
@@ -3268,7 +3301,10 @@ void main_init_sqlstore() {
 				sqlStore->connect(STORE_PROC_ID_MESSAGE_1);
 			}
 			if(opt_mysqlstore_concat_limit) {
-				 sqlStore->setDefaultConcatLimit(opt_mysqlstore_concat_limit);
+				sqlStore->setDefaultConcatLimit(opt_mysqlstore_concat_limit);
+				if(sqlStore_2) {
+					sqlStore_2->setDefaultConcatLimit(opt_mysqlstore_concat_limit);
+				}
 			}
 			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
 				if(opt_mysqlstore_concat_limit_cdr) {
@@ -3309,15 +3345,16 @@ void main_init_sqlstore() {
 					sqlStore->setEnableTransaction(STORE_PROC_ID_REGISTER_1 + i);
 				}
 			}
+			MySqlStore *sqlStoreHttp = (MySqlStore*)sqlStore_http();
 			for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
 				if(opt_mysqlstore_concat_limit_http) {
-					sqlStore->setConcatLimit(STORE_PROC_ID_HTTP_1 + i, opt_mysqlstore_concat_limit_http);
+					sqlStoreHttp->setConcatLimit(STORE_PROC_ID_HTTP_1 + i, opt_mysqlstore_concat_limit_http);
 				}
 				if(i) {
-					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_HTTP_1 + i);
+					sqlStoreHttp->setEnableAutoDisconnect(STORE_PROC_ID_HTTP_1 + i);
 				}
 				if(opt_mysql_enable_transactions_http) {
-					sqlStore->setEnableTransaction(STORE_PROC_ID_HTTP_1 + i);
+					sqlStoreHttp->setEnableTransaction(STORE_PROC_ID_HTTP_1 + i);
 				}
 			}
 			for(int i = 0; i < opt_mysqlstore_max_threads_webrtc; i++) {
@@ -3344,6 +3381,9 @@ void main_init_sqlstore() {
 			}
 			if(!opt_nocdr && opt_autoload_from_sqlvmexport) {
 				sqlStore->autoloadFromSqlVmExport();
+				if(sqlStore_2) {
+					sqlStore_2->autoloadFromSqlVmExport();
+				}
 			}
 		}
 	}
@@ -3846,7 +3886,6 @@ void test() {
 	} break;
 	 
 	case 1: {
-	 
 		cout << getSystemTimezone() << endl;
 		cout << getSystemTimezone(1) << endl;
 		cout << getSystemTimezone(2) << endl;
@@ -4420,6 +4459,19 @@ void cConfig::addConfigItems() {
 				->setPassword()
 				->setReadOnly()
 				->setMinor());
+			advanced();
+				addConfigItem((new FILE_LINE cConfigItem_string("mysqlhost_2", mysql_2_host, sizeof(mysql_2_host)))
+					->setReadOnly());
+				addConfigItem((new FILE_LINE cConfigItem_integer("mysqlport_2",  &opt_mysql_2_port))
+					->setSubtype("port")
+					->setReadOnly());
+				addConfigItem((new FILE_LINE cConfigItem_string("mysqlusername_2", mysql_2_user, sizeof(mysql_2_user)))
+					->setReadOnly());
+				addConfigItem((new FILE_LINE cConfigItem_string("mysqlpassword_2", mysql_2_password, sizeof(mysql_2_password)))
+					->setPassword()
+					->setReadOnly()
+					->setMinor());
+				addConfigItem(new FILE_LINE cConfigItem_yesno("mysql_2_http",  &opt_mysql_2_http));
 		subgroup("main");
 			addConfigItem((new FILE_LINE cConfigItem_yesno("query_cache"))
 				->setDefaultValueStr("no"));
@@ -4898,6 +4950,7 @@ void cConfig::addConfigItems() {
 		subgroup("sql");
 			addConfigItem(new FILE_LINE cConfigItem_string("mysqldb", mysql_database, sizeof(mysql_database)));
 				advanced();
+				addConfigItem(new FILE_LINE cConfigItem_string("mysqldb_2", mysql_2_database, sizeof(mysql_2_database)));
 				addConfigItem(new FILE_LINE cConfigItem_yesno("mysql_client_compress", &opt_mysql_client_compress));
 					expert();
 					addConfigItem(new FILE_LINE cConfigItem_string("odbcdsn", odbc_dsn, sizeof(odbc_dsn)));
@@ -6714,6 +6767,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mysqlport", NULL))) {
 		opt_mysql_port = atoi(value);
 	}
+	if((value = ini.GetValue("general", "mysqlhost_2", NULL))) {
+		strncpy(mysql_2_host, value, sizeof(mysql_2_host));
+	}
+	if((value = ini.GetValue("general", "mysqlport_2", NULL))) {
+		opt_mysql_2_port = atoi(value);
+	}
 	if((value = ini.GetValue("general", "mysql_timezone", NULL))) {
 		strncpy(opt_mysql_timezone, value, sizeof(opt_mysql_timezone));
 	}
@@ -6733,6 +6792,18 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysqlpassword", NULL))) {
 		strncpy(mysql_password, value, sizeof(mysql_password));
+	}
+	if((value = ini.GetValue("general", "mysqldb_2", NULL))) {
+		strncpy(mysql_2_database, value, sizeof(mysql_2_database));
+	}
+	if((value = ini.GetValue("general", "mysqlusername_2", NULL))) {
+		strncpy(mysql_2_user, value, sizeof(mysql_2_user));
+	}
+	if((value = ini.GetValue("general", "mysqlpassword_2", NULL))) {
+		strncpy(mysql_2_password, value, sizeof(mysql_2_password));
+	}
+	if((value = ini.GetValue("general", "mysql_2_http", NULL))) {
+		opt_mysql_2_http = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mysql_client_compress", NULL))) {
 		opt_mysql_client_compress = yesno(value);
@@ -7775,6 +7846,27 @@ u_int32_t gethostbyname_lock(const char *name) {
 	}
 	pthread_mutex_unlock(&hostbyname_lock);
 	return(rslt_ipl);
+}
+
+bool _use_mysql_2() {
+	return(!opt_database_backup &&
+	       !cloud_host[0] &&
+	       mysql_2_host[0] && mysql_2_user[0] && mysql_2_database[0]);
+}
+
+bool use_mysql_2() {
+	return(use_mysql_2_http());
+}
+
+bool use_mysql_2_http() {
+	return(_use_mysql_2() && opt_enable_http_enum_tables && opt_mysql_2_http);
+}
+
+void* sqlStore_http() {
+	if(use_mysql_2_http()) {
+		return(sqlStore_2);
+	}
+	return(sqlStore);
 }
 
 void parse_opt_nocdr_for_last_responses() {

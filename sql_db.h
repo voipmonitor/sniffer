@@ -160,10 +160,10 @@ public:
 	}
 	virtual void cleanFields();
 	virtual void clean() = 0;
-	virtual bool createSchema(SqlDb *sourceDb = NULL) = 0;
+	virtual bool createSchema(int connectId = 0) = 0;
 	virtual void createTable(const char *tableName) = 0;
 	virtual void checkDbMode() = 0;
-	virtual void checkSchema(bool checkColumns = false) = 0;
+	virtual void checkSchema(int connectId = 0, bool checkColumns = false) = 0;
 	virtual string getTypeDb() = 0;
 	virtual string getSubtypeDb() = 0;
 	virtual int multi_on() {
@@ -273,11 +273,20 @@ public:
 	}
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
-	bool createSchema(SqlDb *sourceDb = NULL);
+	bool createSchema(int connectId = 0);
+	bool createSchema_tables_other(int connectId);
+	bool createSchema_table_http_jj(int connectId);
+	bool createSchema_table_webrtc(int connectId);
+	bool createSchema_alter_other(int connectId);
+	bool createSchema_alter_http_jj(int connectId);
+	bool createSchema_procedures_other(int connectId);
+	bool createSchema_procedure_partition(int connectId);
+	bool createSchema_init_cdr_partitions(int connectId);
+	string getPartDayName(string &limitDay_str);
 	void saveTimezoneInformation();
 	void createTable(const char *tableName);
 	void checkDbMode();
-	void checkSchema(bool checkColumns = false);
+	void checkSchema(int connectId = 0, bool checkColumns = false);
 	void checkColumns_cdr(bool log = false);
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_message(bool log = false);
@@ -372,10 +381,10 @@ public:
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void cleanFields();
 	void clean();
-	bool createSchema(SqlDb *sourceDb = NULL);
+	bool createSchema(int connectId = 0);
 	void createTable(const char *tableName);
 	void checkDbMode();
-	void checkSchema(bool checkColumns = false);
+	void checkSchema(int connectId = 0, bool checkColumns = false);
 	string getTypeDb() {
 		return("odbc");
 	}
@@ -397,7 +406,7 @@ private:
 
 class MySqlStore_process {
 public:
-	MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database,
+	MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database, u_int16_t port,
 			   const char *cloud_host, const char *cloud_token,
 			   int concatLimit);
 	~MySqlStore_process();
@@ -526,6 +535,7 @@ private:
 			id = 0;
 			storeThreads = 1;
 			storeConcatLimit = 0;
+			store = NULL;
 			thread = 0;
 			_sync = 0;
 		}
@@ -544,6 +554,7 @@ private:
 		string name;
 		int storeThreads;
 		int storeConcatLimit;
+		MySqlStore *store;
 		pthread_t thread;
 		map<u_long, string> qfiles;
 		volatile int _sync;
@@ -558,7 +569,7 @@ private:
 		u_long time;
 	};
 public:
-	MySqlStore(const char *host, const char *user, const char *password, const char *database, 
+	MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port,
 		   const char *cloud_host = NULL, const char *cloud_token = NULL);
 	~MySqlStore();
 	void queryToFiles(bool enable = true, const char *directory = NULL, int period = 0);
@@ -579,7 +590,8 @@ public:
 	void enableInotifyForLoadFromQFile(bool enableINotify = true);
 	void setInotifyReadyForLoadFromQFile(bool iNotifyReady = true);
 	void addLoadFromQFile(int id, const char *name, 
-			      int storeThreads = 0, int storeConcatLimit = 0);
+			      int storeThreads = 0, int storeConcatLimit = 0,
+			      MySqlStore *store = NULL);
 	bool fillQFiles(int id);
 	string getMinQFile(int id);
 	int getCountQFiles(int id);
@@ -598,7 +610,7 @@ public:
 	void setConcatLimit(int id, int concatLimit);
 	void setEnableTransaction(int id, bool enableTransaction = true);
 	void setEnableFixDeadlock(int id, bool enableFixDeadlock = true);
-	MySqlStore_process *find(int id);
+	MySqlStore_process *find(int id, MySqlStore *store = NULL);
 	MySqlStore_process *check(int id);
 	size_t getAllSize(bool lock = true);
 	int getSize(int id, bool lock = true);
@@ -629,6 +641,7 @@ private:
 	string user;
 	string password;
 	string database;
+	u_int16_t port;
 	string cloud_host;
 	string cloud_token;
 	int defaultConcatLimit;
@@ -645,7 +658,7 @@ private:
 	pthread_t qfilesINotifyThread;
 };
 
-SqlDb *createSqlObject();
+SqlDb *createSqlObject(int connectId = 0);
 string sqlDateTimeString(time_t unixTime);
 string sqlDateString(time_t unixTime);
 string sqlEscapeString(string inputStr, const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
@@ -661,13 +674,13 @@ void prepareQuery(string subtypeDb, string &query, bool base, int nextPassQuery)
 string prepareQueryForPrintf(const char *query);
 string prepareQueryForPrintf(string &query);
 
-void createMysqlPartitionsCdr(SqlDb *sqlDb = NULL);
-void _createMysqlPartitionsCdr(int day, SqlDb *sqlDb = NULL);
+void createMysqlPartitionsCdr();
+void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb);
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsIpacc();
 void createMysqlPartitionsBillingAgregation();
 void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsRtpStat();
-void checkMysqlIdCdrChildTables(SqlDb *sqlDb = NULL);
+void checkMysqlIdCdrChildTables();
 
 #endif

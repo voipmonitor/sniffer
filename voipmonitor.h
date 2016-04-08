@@ -176,6 +176,10 @@ bool is_sender();
 int check_set_rtp_threads(int num_rtp_threads);
 u_int32_t gethostbyname_lock(const char *name);
 
+bool use_mysql_2();
+bool use_mysql_2_http();
+void *sqlStore_http();
+
 enum eSnifferMode {
 	snifferMode_na,
 	snifferMode_read_from_interface,

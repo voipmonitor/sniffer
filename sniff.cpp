@@ -812,7 +812,7 @@ inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContents
 			char *contentLengthPos = strcasestr(tmp, contentLengthString);
 			if(contentLengthPos) {
 				int contentLength = atoi(contentLengthPos + strlen(contentLengthString));
-				if(contentLength >= 0 && contentLength < len) {
+				if(contentLength >= 0 && (unsigned)contentLength < len) {
 					const char *endHeaderSepString = "\r\n\r\n";
 					char *endHeaderSepPos = (char*)memmem(tmp, len, endHeaderSepString, strlen(endHeaderSepString));
 					if(endHeaderSepPos) {
@@ -3896,7 +3896,7 @@ inline int parse_packet__message(packet_s_process *packetS, bool strictCheckLeng
 		}
 		s[l] = endCharContentLength;
 	}
-	if(contentLength > 0 && contentLength < packetS->sipDataLen) {
+	if(contentLength > 0 && (unsigned)contentLength < packetS->sipDataLen) {
 		char *contentEnd = strcasestr(contentBegin, "\n\nContent-Length:");
 		if(!contentEnd) {
 			contentEnd = strstr(contentBegin, "\r\n");

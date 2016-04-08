@@ -11,6 +11,7 @@ using namespace std;
 
 extern int opt_id_sensor;
 extern MySqlStore *sqlStore;
+extern MySqlStore *sqlStore_2;
 extern int opt_mysqlstore_max_threads_http;
 
 SqlDb *sqlDbSaveHttp = NULL;
@@ -500,12 +501,14 @@ void HttpDataCache_link::writeQueryInsertToDb() {
 	if(queryInsert.empty()) {
 		return;
 	}
+	extern bool opt_save_query_to_files;
+	MySqlStore *sqlStore_http = use_mysql_2_http() && !opt_save_query_to_files ? sqlStore_2 : sqlStore;
 	int storeId = STORE_PROC_ID_HTTP_1 + 
 		      (opt_mysqlstore_max_threads_http > 1 &&
-		       sqlStore->getSize(STORE_PROC_ID_HTTP_1) > 1000 ? 
+		       sqlStore_http->getSize(STORE_PROC_ID_HTTP_1) > 1000 ? 
 			writeToDb_counter % opt_mysqlstore_max_threads_http : 
 			0);
-	sqlStore->query_lock(queryInsert.c_str(), storeId);
+	sqlStore_http->query_lock(queryInsert.c_str(), storeId);
 	++writeToDb_counter;
 }
 
@@ -605,7 +608,7 @@ void HttpPacketsDumper::setPcapDumper(PcapDumper *pcapDumper) {
 }
 
 void HttpPacketsDumper::dumpData(const char *timestamp_from, const char *timestamp_to, const char *ids) {
-	SqlDb *sqlDb = createSqlObject();
+	SqlDb *sqlDb = createSqlObject(use_mysql_2_http() ? 1 : 0);
 	SqlDb_row row;
 	sqlDb->query(string("") +
 		"select http_jj.*, \
