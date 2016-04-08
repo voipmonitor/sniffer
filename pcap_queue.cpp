@@ -4802,6 +4802,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		bool endBlock = false;
 		bool syncBeginBlock = true;
 		bool forceStop = false;
+		unsigned countErrors = 0;
+		u_long lastTimeErrorLogMS = 0;
 		while(!TERMINATING && !forceStop) {
 			if(arg2 == (unsigned int)-1) {
 				int socketClient;
@@ -4986,10 +4988,24 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 							if(error) {
 								blockStore->destroyRestoreBuffer();
 								syncBeginBlock = true;
-								syslog(LOG_ERR, "receive bad packetbuffer block (%s) in conection %s - %i",
-								       error,
-								       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
-								       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+								u_long actTimeMS = getTimeMS();
+								if(!lastTimeErrorLogMS ||
+								   actTimeMS > lastTimeErrorLogMS + 1000) {
+									syslog(LOG_ERR, "receive bad packetbuffer block (%s) in conection %s - %i",
+									       error,
+									       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
+									       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+									lastTimeErrorLogMS = actTimeMS;
+								}
+								++countErrors;
+								if(countErrors > 20) {
+									syslog(LOG_NOTICE, "enforce close connection (too errors) from %s:%i", this->packetServerConnections[arg2]->socketClientIP.c_str(), this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+									this->packetServerConnections[arg2]->active = false;
+									forceStop = true;
+									break;
+								}
+							} else {
+								countErrors = 0;
 							}
 						}
 						if(!beginBlock && !endBlock && !syncBeginBlock) {
