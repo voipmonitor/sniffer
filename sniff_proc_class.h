@@ -83,6 +83,14 @@ private:
 			data_len = stream->packets->packetS->datalen;
 			data = (u_char*)stream->packets->packetS->data;
 		}
+		return(this->checkSip(data, data_len));
+	}
+	void cleanStream(tcp_stream *stream, bool callFromClean = false);
+public:
+	static bool checkSip(u_char *data, int data_len) {
+		if(!data || data_len < 10) {
+			return(false);
+		}
 		while(data_len > 0) {
 			u_char *endHeaderSepPos = (u_char*)memmem(data, data_len, "\r\n\r\n", 4);
 			if(endHeaderSepPos) {
@@ -92,15 +100,12 @@ private:
 				unsigned int contentLength = 0;
 				if(contentLengthPos) {
 					contentLength = atol(contentLengthPos + 16);
-					if(contentLength > data_len - (endHeaderSepPos - data)) {
-						contentLength = 0;
-					}
 				}
 				int sipDataLen = (endHeaderSepPos - data) + 4 + contentLength;
 				extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
 				if(sipDataLen == data_len) {
 					return(true);
-				} else if(sipDataLen < data_len) {
+				} else if(sipDataLen > 0 && sipDataLen < data_len) {
 					if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen, NULL)) {
 						return(true);
 					} else {
@@ -116,7 +121,6 @@ private:
 		}
 		return(false);
 	}
-	void cleanStream(tcp_stream *stream, bool callFromClean = false);
 private:
 	map<tcp_stream_id, tcp_stream> tcp_streams;
 	time_t last_cleanup;
@@ -563,6 +567,7 @@ private:
 	void process_CALL(packet_s_process *packetS);
 	void process_REGISTER(packet_s_process *packetS);
 	void process_RTP(packet_s_process_0 *packetS);
+	void process_parseSipDataExt(packet_s_process **packetS_ref);
 	inline void process_parseSipData(packet_s_process **packetS_ref);
 	inline void process_sip(packet_s_process **packetS_ref);
 	inline void process_skinny(packet_s_process **packetS_ref);
@@ -610,6 +615,7 @@ private:
 	u_int64_t getCpuUsagePerc_counter_at_start_out_thread;
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 friend class TcpReassemblySip;
+friend class SipTcpData;
 };
 
 inline packet_s_process *PACKET_S_PROCESS_SIP_CREATE() {

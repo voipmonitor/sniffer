@@ -72,6 +72,7 @@
 #include "http.h"
 #include "webrtc.h"
 #include "ssldata.h"
+#include "sip_tcp_data.h"
 #include "ip_frag.h"
 #include "cleanspool.h"
 #include "regcache.h"
@@ -662,9 +663,11 @@ ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 TcpReassembly *tcpReassemblyHttp;
 TcpReassembly *tcpReassemblyWebrtc;
 TcpReassembly *tcpReassemblySsl;
+TcpReassembly *tcpReassemblySipExt;
 HttpData *httpData;
 WebrtcData *webrtcData;
 SslData *sslData;
+SipTcpData *sipTcpData;
 
 vm_atomic<string> storingCdrLastWriteAt;
 vm_atomic<string> storingRegisterLastWriteAt;
@@ -741,6 +744,7 @@ int opt_load_query_from_files_period;
 bool opt_load_query_from_files_inotify;
 
 bool opt_virtualudppacket = false;
+bool opt_sip_tcp_reassembly_ext = false;
 
 int opt_test = 0;
 
@@ -2891,6 +2895,16 @@ int main_init_read() {
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
 		tcpReassemblySsl->setEnableWildLink();
 	}
+	if(opt_sip_tcp_reassembly_ext) {
+		tcpReassemblySipExt = new FILE_LINE TcpReassembly(TcpReassembly::sip);
+		tcpReassemblySipExt->setEnableIgnorePairReqResp();
+		tcpReassemblySipExt->setEnableDestroyStreamsInComplete();
+		tcpReassemblySipExt->setEnableAllCompleteAfterZerodataAck();
+		sipTcpData = new FILE_LINE SipTcpData;
+		tcpReassemblySipExt->setDataCallback(sipTcpData);
+		tcpReassemblySipExt->setLinkTimeout(60);
+		tcpReassemblySipExt->setEnableWildLink();
+	}
 	
 	if(sipSendSocket_ip_port) {
 		sipSendSocket = new FILE_LINE SocketSimpleBufferWrite("send sip", sipSendSocket_ip_port, opt_sip_send_udp);
@@ -2915,19 +2929,18 @@ int main_init_read() {
 	if(is_enable_packetbuffer()) {
 		PcapQueue_init();
 		
-		if(is_read_from_file_by_pb() && opt_enable_http) {
-			if(opt_tcpreassembly_thread) {
+		if(is_read_from_file_by_pb() && opt_tcpreassembly_thread) {
+			if(tcpReassemblyHttp) {
 				tcpReassemblyHttp->setIgnoreTerminating(true);
 			}
-		}
-		if(is_read_from_file_by_pb() && opt_enable_webrtc) {
-			if(opt_tcpreassembly_thread) {
+			if(tcpReassemblyWebrtc) {
 				tcpReassemblyWebrtc->setIgnoreTerminating(true);
 			}
-		}
-		if(is_read_from_file_by_pb() && opt_enable_ssl) {
-			if(opt_tcpreassembly_thread) {
+			if(tcpReassemblySsl) {
 				tcpReassemblySsl->setIgnoreTerminating(true);
+			}
+			if(tcpReassemblySipExt) {
+				tcpReassemblySipExt->setIgnoreTerminating(true);
 			}
 		}
 	
@@ -3000,7 +3013,7 @@ int main_init_read() {
 		
 		terminate_packetbuffer();
 		
-		if(is_read_from_file_by_pb() && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl)) {
+		if(is_read_from_file_by_pb() && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl || opt_sip_tcp_reassembly_ext)) {
 			sleep(2);
 		}
 		
@@ -3071,6 +3084,14 @@ void main_term_read() {
 	if(sslData) {
 		delete sslData;
 		sslData = NULL;
+	}
+	if(tcpReassemblySipExt) {
+		delete tcpReassemblySipExt;
+		tcpReassemblySipExt = NULL;
+	}
+	if(sipTcpData) {
+		delete sipTcpData;
+		sipTcpData = NULL;
 	}
 	
 	if(processRtpPacketHash) {
@@ -3399,15 +3420,18 @@ void terminate_packetbuffer() {
 			pcapQueueI->terminate();
 		}
 		sleep(1);
-		if(is_read_from_file_by_pb() && (opt_enable_http || opt_enable_webrtc || opt_enable_ssl) && opt_tcpreassembly_thread) {
-			if(opt_enable_http) {
+		if(is_read_from_file_by_pb() && opt_tcpreassembly_thread) {
+			if(tcpReassemblyHttp) {
 				tcpReassemblyHttp->setIgnoreTerminating(false);
 			}
-			if(opt_enable_webrtc) {
+			if(tcpReassemblyWebrtc) {
 				tcpReassemblyWebrtc->setIgnoreTerminating(false);
 			}
-			if(opt_enable_ssl) {
+			if(tcpReassemblySsl) {
 				tcpReassemblySsl->setIgnoreTerminating(false);
+			}
+			if(tcpReassemblySipExt) {
+				tcpReassemblySipExt->setIgnoreTerminating(false);
 			}
 			sleep(2);
 		}
@@ -3431,6 +3455,22 @@ void terminate_packetbuffer() {
 		if(webrtcData) {
 			delete webrtcData;
 			webrtcData = NULL;
+		}
+		if(tcpReassemblySsl) {
+			delete tcpReassemblySsl;
+			tcpReassemblySsl = NULL;
+		}
+		if(sslData) {
+			delete sslData;
+			sslData = NULL;
+		}
+		if(tcpReassemblySipExt) {
+			delete tcpReassemblySipExt;
+			tcpReassemblySipExt = NULL;
+		}
+		if(sipTcpData) {
+			delete sipTcpData;
+			sipTcpData = NULL;
 		}
 		
 		if(pcapQueueI) {
@@ -5049,6 +5089,7 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new FILE_LINE cConfigItem_yesno("printinsertid", &opt_printinsertid));
 				addConfigItem(new FILE_LINE cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
+				addConfigItem(new FILE_LINE cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 					expert();
 					addConfigItem(new FILE_LINE cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
 						obsolete();
@@ -5483,6 +5524,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "http")			sverb.http = 1;
 						else if(verbparams[i] == "webrtc")			sverb.webrtc = 1;
 						else if(verbparams[i] == "ssl")				sverb.ssl = 1;
+						else if(verbparams[i] == "sip")				sverb.sip = 1;
 						else if(verbparams[i] == "ssldecode")			sverb.ssldecode = 1;
 						else if(verbparams[i] == "ssldecode_debug")		sverb.ssldecode_debug = 1;
 						else if(verbparams[i] == "sip_packets")			sverb.sip_packets = 1;
@@ -5758,6 +5800,7 @@ void set_context_config() {
 		opt_enable_http = 0;
 		opt_enable_webrtc = 0;
 		opt_enable_ssl = 0;
+		opt_sip_tcp_reassembly_ext = 0;
 		opt_pcap_dump_tar = 0;
 		if(opt_pcap_dump_zip_sip == FileZipHandler::compress_default ||
 		   opt_pcap_dump_zip_sip == FileZipHandler::lzo) {
@@ -7619,6 +7662,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "virtualudppacket", NULL))) {
 		opt_virtualudppacket = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext", NULL))) {
+		opt_sip_tcp_reassembly_ext = yesno(value);
 	}
 	
 	/*

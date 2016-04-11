@@ -196,6 +196,7 @@ public:
 				 TcpReassemblyData *data,
 				 u_char *ethHeader, u_int32_t ethHeaderLength,
 				 u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+				 void *uData,
 				 class TcpReassemblyLink *reassemblyLink,
 				 bool debugSave) = 0;
 	virtual void writeToDb(bool all = false) {}
@@ -502,7 +503,8 @@ public:
 			  u_int32_t ip_src = 0, u_int32_t ip_dst = 0, 
 			  u_int16_t port_src = 0, u_int16_t port_dst = 0,
 			  u_char *packet = NULL, iphdr2 *header_ip = NULL,
-			  u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, u_int32_t sensor_ip = 0) {
+			  u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, u_int32_t sensor_ip = 0,
+			  void *uData = NULL) {
 		this->reassembly = reassembly;
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
@@ -536,6 +538,7 @@ public:
 		this->dlt = dlt;
 		this->sensor_id = sensor_id;
 		this->sensor_ip = sensor_ip;
+		this->uData = uData;
 		for(int i = 0; i < 2; i++) {
 			this->remainData[i] = NULL;
 			this->remainDataLength[i] = 0;
@@ -717,6 +720,7 @@ private:
 	int dlt; 
 	int sensor_id;
 	u_int32_t sensor_ip;
+	void *uData;
 	u_char *remainData[2];
 	u_int32_t remainDataLength[2];
 friend class TcpReassembly;
@@ -728,7 +732,8 @@ public:
 	enum eType {
 		http,
 		webrtc,
-		ssl
+		ssl,
+		sip
 	};
 	struct sPacket {
 		pcap_pkthdr header; 
@@ -740,13 +745,15 @@ public:
 		int dlt; 
 		int sensor_id;
 		u_int32_t sensor_ip;
+		void *uData;
 	};
 public:
 	TcpReassembly(eType type);
 	~TcpReassembly();
 	void push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		  pcap_block_store *block_store = NULL, int block_store_index = 0,
-		  u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, u_int32_t sensor_ip = 0);
+		  u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, u_int32_t sensor_ip = 0,
+		  void *uData = NULL);
 	void cleanup(bool all = false);
 	void cleanup_simple(bool all = false);
 	void setEnableHttpForceInit(bool enableHttpForceInit = true) {
@@ -846,7 +853,8 @@ public:
 	string getTypeString(bool upper = false) {
 		string str = type == http ? "http" :
 			     type == webrtc ? "webrtc" : 
-			     type == ssl ? "ssl" : "";
+			     type == ssl ? "ssl" : 
+			     type == sip ? "sip" : "";
 		if(upper) {
 			std::transform(str.begin(), str.end(), str.begin(), ::toupper);
 		}
@@ -858,7 +866,8 @@ public:
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
-		   u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip);
+		   u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+		   void *uData);
 	void createCleanupThread();
 	void createPacketThread();
 	void *cleanupThreadFunction(void *);

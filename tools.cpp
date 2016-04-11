@@ -3278,6 +3278,48 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	(*header)->len = packet_length;
 }
 
+void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
+			       u_char *source_packet, u_char *data, unsigned int datalen,
+			       unsigned int saddr, unsigned int daddr, int source, int dest,
+			       u_int32_t ack_seq, u_int32_t time_sec, u_int32_t time_usec) {
+	unsigned tcp_options_length = 12;
+	unsigned tcp_doff = (sizeof(tcphdr2) + tcp_options_length) / 4 + ((sizeof(tcphdr2) + tcp_options_length) % 4 ? 1 : 0);
+	u_int32_t packet_length = ether_header_length + sizeof(iphdr2) + tcp_doff * 4 + datalen;
+	*packet = new FILE_LINE u_char[packet_length];
+	memcpy(*packet, source_packet, ether_header_length);
+	iphdr2 iphdr;
+	memset(&iphdr, 0, sizeof(iphdr2));
+	iphdr.version = 4;
+	iphdr.ihl = 5;
+	iphdr.protocol = IPPROTO_TCP;
+	iphdr.saddr = saddr;
+	iphdr.daddr = daddr;
+	iphdr.tot_len = htons(sizeof(iphdr2) + tcp_doff * 4 + datalen);
+	iphdr.ttl = 50;
+	memcpy(*packet + ether_header_length, &iphdr, sizeof(iphdr2));
+	tcphdr2 tcphdr;
+	memset(&tcphdr, 0, sizeof(tcphdr2));
+	tcphdr.source = htons(source);
+	tcphdr.dest = htons(dest);
+	tcphdr.ack_seq = ack_seq;
+	tcphdr.ack = 1;
+	tcphdr.doff = tcp_doff;
+	tcphdr.window = htons(0x8000);
+	memcpy(*packet + ether_header_length + sizeof(iphdr2), &tcphdr, sizeof(tcphdr2));
+	memset(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2), 0, tcp_options_length);
+	*(u_char*)(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2)) = 1;
+	*(u_char*)(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2) + 1) = 1;
+	*(u_char*)(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2) + 2) = 8;
+	*(u_char*)(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2) + 3) = 10;
+	memcpy(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2) + tcp_options_length, data, datalen);
+	*header = new FILE_LINE pcap_pkthdr;
+	memset(*header, 0, sizeof(pcap_pkthdr));
+	(*header)->ts.tv_sec = time_sec;
+	(*header)->ts.tv_usec = time_usec;
+	(*header)->caplen = packet_length;
+	(*header)->len = packet_length;
+}
+
 void base64_init(void)
 {
         int x;

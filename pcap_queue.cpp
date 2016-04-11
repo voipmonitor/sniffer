@@ -118,6 +118,7 @@ extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREA
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern TcpReassembly *tcpReassemblySsl;
+extern TcpReassembly *tcpReassemblySipExt;
 extern char opt_pb_read_from_file[256];
 extern int opt_pb_read_from_file_speed;
 extern int opt_pb_read_from_file_acttime;
@@ -1804,6 +1805,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		string cpuUsagePerc = tcpReassemblySsl->getCpuUsagePerc();
 		if(!cpuUsagePerc.empty()) {
 			outStrStat << "tsslCPU[" << cpuUsagePerc << "] ";
+		}
+	}
+	if(tcpReassemblySipExt) {
+		string cpuUsagePerc = tcpReassemblySipExt->getCpuUsagePerc();
+		if(!cpuUsagePerc.empty()) {
+			outStrStat << "tsip_tcpCPU[" << cpuUsagePerc << "] ";
 		}
 	}
 	extern AsyncClose *asyncClose;

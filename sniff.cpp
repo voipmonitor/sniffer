@@ -5549,7 +5549,17 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 				// call process_skinny before tcp reassembly - TODO !
 				this->process_skinny(&packetS);
 			} else {
-				tcpReassemblySip.processPacket(&packetS, isSip, this);
+				extern bool opt_sip_tcp_reassembly_ext;
+				extern TcpReassembly *tcpReassemblySipExt;
+				if(opt_sip_tcp_reassembly_ext && tcpReassemblySipExt) {
+					tcpReassemblySipExt->push(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet,
+								  packetS->block_store, packetS->block_store_index,
+								  packetS->handle_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
+								  this);
+					PACKET_S_PROCESS_DESTROY(&packetS);
+				} else {
+					tcpReassemblySip.processPacket(&packetS, isSip, this);
+				}
 			}
 		} else if(isSip) {
 			this->process_parseSipData(&packetS);
@@ -5612,6 +5622,10 @@ void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
 	if(process_packet_rtp_inline(packetS) < 2) {
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
 	}
+}
+
+void PreProcessPacket::process_parseSipDataExt(packet_s_process **packetS_ref) {
+	this->process_parseSipData(packetS_ref);
 }
 
 void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
