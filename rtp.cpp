@@ -2465,7 +2465,7 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap, bool needLock) {
 	if(needLock) unlock();
 
 	//TODO enableBatchIfPossible
-	if(!opt_nocdr && isSqlDriver("mysql")) {
+	if(!opt_nocdr && isSqlDriver("mysql") && !query_str.empty()) {
 		static unsigned int counterSqlStore = 0;
 		int storeId = STORE_PROC_ID_CDR_1 +
 			      (opt_mysqlstore_max_threads_cdr > 1 &&

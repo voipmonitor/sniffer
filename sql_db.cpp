@@ -1873,6 +1873,9 @@ void MySqlStore::connect(int id) {
 }
 
 void MySqlStore::query(const char *query_str, int id) {
+	if(!query_str || !*query_str) {
+		return;
+	}
 	if(qfileConfig.enable) {
 		query_to_file(query_str, id);
 	} else {
@@ -1882,6 +1885,9 @@ void MySqlStore::query(const char *query_str, int id) {
 }
 
 void MySqlStore::query_lock(const char *query_str, int id) {
+	if(!query_str || !*query_str) {
+		return;
+	}
 	if(qfileConfig.enable) {
 		query_to_file(query_str, id);
 	} else {

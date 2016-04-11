@@ -5545,7 +5545,12 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 			isSip = true;
 		}
 		if(packetS->istcp) {
-			tcpReassemblySip.processPacket(&packetS, isSip, this);
+			if(opt_skinny && (packetS->source == 2000 || packetS->dest == 2000)) {
+				// call process_skinny before tcp reassembly - TODO !
+				this->process_skinny(&packetS);
+			} else {
+				tcpReassemblySip.processPacket(&packetS, isSip, this);
+			}
 		} else if(isSip) {
 			this->process_parseSipData(&packetS);
 		} else {
@@ -5710,6 +5715,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 
 void PreProcessPacket::process_skinny(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
+	packetS->isSip = false;
 	packetS->isSkinny = true;
 	++counter_sip_packets[1];
 	preProcessPacket[ppt_extend]->push_packet(packetS);
