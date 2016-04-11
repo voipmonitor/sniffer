@@ -1,3 +1,17 @@
+15.6 11.4.2016
+==============
+- implement pause/unpause recording for "182 Queued avaya-cm-data" (new option 182queuedpauserecording) [VS-321]
+- fix save only right part of packet data if data contains multiple packets and option 'virtualudppacket' is set in configuration [VS-418]
+- do not put destination IP from INVITE to proxy column if the second INVITE is just next SIP proxy due to failure of first SIP proxy [VS-402]
+- fix spool cleaning if query cache is enabled in configuration 
+- new option mysql_client_compress (default no) enables compression between sniffer and mysql server
+- add new pause/unpause recording possibility with custom sip header - new option pauserecordingheader in voipmonitor.conf 
+- check content-length validity (in case some faulty device sends nonsense) 
+- implement storing http packets to another database 
+- fix 'receive bad packet buffer block' - force reconnect [VS-405]
+- fix >= 15.5 broken SKINNY protocol
+
+
 15.5.6 1.4.2016
 ===============
 - fix pause recording DTMF
