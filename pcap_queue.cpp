@@ -5357,6 +5357,13 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void *arg, unsigned in
 		} 
 		unlock_blockStoreTrash();
 		if(block) {
+			u_long actTimeMS = getTimeMS_rdtsc();
+			if(block->timestampMS + 2000 > actTimeMS ||
+			   block->getLastPacketHeaderTimeMS() + 2000 > actTimeMS) {
+				block = NULL;
+			}
+		}
+		if(block) {
 			if(opt_ipaccount) {
 				for(size_t i = 0; i < block->count && !TERMINATING; i++) {
 					pcap_block_store::pcap_pkthdr_pcap headerPcap = (*block)[i];

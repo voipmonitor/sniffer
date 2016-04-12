@@ -212,6 +212,10 @@ struct pcap_block_store {
 			is_voip[index] = 1;
 		}
 	}
+	u_long getLastPacketHeaderTimeMS() {
+		pcap_pkthdr_plus *pkthdr = (pcap_pkthdr_plus*)(this->block + this->offsets[this->count - 1]);
+		return(pkthdr->header_fix_size.ts_tv_sec * 1000ul + pkthdr->header_fix_size.ts_tv_usec / 1000);
+	}
 	uint32_t *offsets;
 	u_char *block;
 	size_t size;
