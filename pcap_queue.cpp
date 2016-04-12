@@ -5350,19 +5350,15 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void *arg, unsigned in
 		pcap_block_store *block = NULL;
 		lock_blockStoreTrash();
 		block = this->blockStoreTrash.front();
-		if(block->enableDestroy()) {
+		u_long actTimeMS = getTimeMS_rdtsc();
+                if(block->enableDestroy() &&
+                   block->timestampMS + 2000 < actTimeMS &&
+                   block->getLastPacketHeaderTimeMS() + 2000 < actTimeMS) {
 			this->blockStoreTrash.pop_front();
 		} else {
 			block = NULL;
 		} 
 		unlock_blockStoreTrash();
-		if(block) {
-			u_long actTimeMS = getTimeMS_rdtsc();
-			if(block->timestampMS + 2000 > actTimeMS ||
-			   block->getLastPacketHeaderTimeMS() + 2000 > actTimeMS) {
-				block = NULL;
-			}
-		}
 		if(block) {
 			if(opt_ipaccount) {
 				for(size_t i = 0; i < block->count && !TERMINATING; i++) {
