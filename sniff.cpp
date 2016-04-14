@@ -4811,7 +4811,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		if(header_packet && header_packet->packet_alloc_size != 0xFFFF) {
 			DESTROY_HP(&header_packet);
 		}
-		if(!header_packet) {
+		if(header_packet) {
+			header_packet->clearPcapProcessData();
+		} else {
 			header_packet = CREATE_HP(0xFFFF);
 		}
 
