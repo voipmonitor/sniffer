@@ -5992,7 +5992,6 @@ void PcapQueue_readFromFifo::cleanupConnections(bool all) {
 }
 
 int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state) {
-
 	extern int opt_blockprocesspacket;
 	if(sverb.disable_process_packet_in_packetbuffer ||
 	   opt_blockprocesspacket ||
@@ -6364,6 +6363,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 
 void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 	uint32_t headerTimeS = hp->header->get_tv_sec();
+	hp->header->header_ip_offset = ((pcap_pkthdr_plus2*)hp->header)->header_ip_first_offset;
 	iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
 	int foffset = ntohs(header_ip->frag_off);
 	if((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {

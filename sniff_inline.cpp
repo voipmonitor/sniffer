@@ -36,7 +36,6 @@ extern bool isSslIpPort(u_int32_t ip, u_int16_t port);
 
 
 extern int opt_udpfrag;
-extern int opt_ipaccount;
 extern int opt_skinny;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
@@ -313,67 +312,65 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		}
 	}
 	
-	if(!(ppf & ppf_defragInPQout)) {
-		bool nextPass;
-		do {
-			nextPass = false;
-			u_int first_header_ip_offset = ppd->header_ip_offset;
-			if(ppd->header_ip->protocol == IPPROTO_IPIP) {
-				// ip in ip protocol
-				ppd->header_ip = (iphdr2*)((char*)ppd->header_ip + sizeof(iphdr2));
-				ppd->header_ip_offset += sizeof(iphdr2);
-			} else if(ppd->header_ip->protocol == IPPROTO_GRE) {
-				// gre protocol
-				iphdr2 *header_ip = convertHeaderIP_GRE(ppd->header_ip);
-				if(header_ip) {
-					ppd->header_ip = header_ip;
-					ppd->header_ip_offset = (u_char*)header_ip - (header_packet ? HPP(*header_packet) : packet);
-					nextPass = true;
-				} else {
-					if(opt_ipaccount == 0 && (ppf & ppf_returnZeroInCheckData)) {
-						//cout << "pcapProcess exit 004" << endl;
-						if(pcap_header_plus2) {
-							pcap_header_plus2->ignore = true;
+	bool nextPass;
+	do {
+		nextPass = false;
+		u_int first_header_ip_offset = ppd->header_ip_offset;
+		if(ppd->header_ip->protocol == IPPROTO_IPIP) {
+			// ip in ip protocol
+			ppd->header_ip = (iphdr2*)((char*)ppd->header_ip + sizeof(iphdr2));
+			ppd->header_ip_offset += sizeof(iphdr2);
+		} else if(ppd->header_ip->protocol == IPPROTO_GRE) {
+			// gre protocol
+			iphdr2 *header_ip = convertHeaderIP_GRE(ppd->header_ip);
+			if(header_ip) {
+				ppd->header_ip = header_ip;
+				ppd->header_ip_offset = (u_char*)header_ip - (header_packet ? HPP(*header_packet) : packet);
+				nextPass = true;
+			} else {
+				if(ppf & ppf_returnZeroInCheckData) {
+					//cout << "pcapProcess exit 004" << endl;
+					if(pcap_header_plus2) {
+						pcap_header_plus2->ignore = true;
+					}
+					return(0);
+				}
+			}
+		} else {
+			break;
+		}
+		if(ppf & ppf_defrag) {
+			//if UDP defrag is enabled process only UDP packets and only SIP packets
+			if(opt_udpfrag && ppd->header_ip->protocol == IPPROTO_UDP) {
+				int foffset = ntohs(ppd->header_ip->frag_off);
+				if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
+					// packet is fragmented
+					if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index)) {
+						// packets are reassembled
+						iphdr2 *first_header_ip = (iphdr2*)(HPP(*header_packet) + first_header_ip_offset);
+
+						// turn off frag flag in the first IP header
+						first_header_ip->frag_off = 0;
+
+						// turn off frag flag in the second IP header
+						ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+						ppd->header_ip->frag_off = 0;
+
+						// update lenght of the first ip header to the len of the second IP header since it can be changed due to reassemble
+						first_header_ip->tot_len = htons(ntohs(ppd->header_ip->tot_len) + (ppd->header_ip_offset - first_header_ip_offset));
+
+						if(sverb.defrag) {
+							defrag_counter++;
+							cout << "*** DEFRAG 2 " << defrag_counter << endl;
 						}
+					} else {
+						//cout << "pcapProcess exit 003" << endl;
 						return(0);
 					}
 				}
-			} else {
-				break;
 			}
-			if(ppf & ppf_defrag) {
-				//if UDP defrag is enabled process only UDP packets and only SIP packets
-				if(opt_udpfrag && ppd->header_ip->protocol == IPPROTO_UDP) {
-					int foffset = ntohs(ppd->header_ip->frag_off);
-					if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
-						// packet is fragmented
-						if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index)) {
-							// packets are reassembled
-							iphdr2 *first_header_ip = (iphdr2*)(HPP(*header_packet) + first_header_ip_offset);
-
-							// turn off frag flag in the first IP header
-							first_header_ip->frag_off = 0;
-
-							// turn off frag flag in the second IP header
-							ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
-							ppd->header_ip->frag_off = 0;
-
-							// update lenght of the first ip header to the len of the second IP header since it can be changed due to reassemble
-							first_header_ip->tot_len = htons(ntohs(ppd->header_ip->tot_len) + (ppd->header_ip_offset - first_header_ip_offset));
-
-							if(sverb.defrag) {
-								defrag_counter++;
-								cout << "*** DEFRAG 2 " << defrag_counter << endl;
-							}
-						} else {
-							//cout << "pcapProcess exit 003" << endl;
-							return(0);
-						}
-					}
-				}
-			}
-		} while(nextPass);
-	}
+		}
+	} while(nextPass);
 	
 	if(header_packet) {
 		(*header_packet)->header_ip_offset = ppd->header_ip_offset;
@@ -422,7 +419,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			       isSslIpPort(htonl(ppd->header_ip->daddr), htons(ppd->header_tcp->dest)))) &&
 			    !(opt_skinny && (htons(ppd->header_tcp->source) == 2000 || htons(ppd->header_tcp->dest) == 2000))) {
 				// not interested in TCP packet other than SIP port
-				if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
+				if(!DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
 					//cout << "pcapProcess exit 005" << endl;
 					if(pcap_header_plus2) {
 						pcap_header_plus2->ignore = true;
@@ -436,7 +433,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		} else {
 			//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
 			ppd->datalen = 0;
-			if(opt_ipaccount == 0 && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
+			if(!DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
 				//cout << "pcapProcess exit 006 / protocol: " << (int)ppd->header_ip->protocol << endl;
 				if(pcap_header_plus2) {
 					pcap_header_plus2->ignore = true;
