@@ -24,15 +24,15 @@ public:
 		tcp_stream() {
 			packets = NULL;
 			complete_data = NULL;
-			last_ts = 0;
 			last_seq = 0;
 			last_ack_seq = 0;
+			last_time_us = 0;
 		}
 		tcp_stream_packet* packets;
 		SimpleBuffer* complete_data;
-		time_t last_ts;
 		u_int32_t last_seq;
 		u_int32_t last_ack_seq;
+		u_int64_t last_time_us;
 	};
 	struct tcp_stream_id {
 		tcp_stream_id(u_int32_t saddr = 0, u_int16_t source = 0, 

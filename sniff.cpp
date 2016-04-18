@@ -5032,6 +5032,7 @@ void TcpReassemblySip::processPacket(packet_s_process **packetS_ref, bool isSip,
 			}
 			rev_it->second.last_seq = 0;
 			rev_it->second.last_ack_seq = 0;
+			rev_it->second.last_time_us = 0;
 		}
 	}
 	tcp_stream_id id(packetS->saddr, packetS->source, packetS->daddr, packetS->dest);
@@ -5108,7 +5109,7 @@ void TcpReassemblySip::processPacket(packet_s_process **packetS_ref, bool isSip,
 void TcpReassemblySip::clean(time_t ts) {
 	map<tcp_stream_id, tcp_stream>::iterator it;
 	for(it = tcp_streams.begin(); it != tcp_streams.end();) {
-		if(!ts || (ts - it->second.last_ts) > (10 * 60)) {
+		if(!ts || (ts - it->second.last_time_us / 1000000ull) > (10 * 60)) {
 			cleanStream(&it->second, true);
 			tcp_streams.erase(it++);
 		} else {
@@ -5142,9 +5143,10 @@ bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_
 		}
 	} else {
 		if(seq == stream->last_seq && 
-		   ack_seq == stream->last_ack_seq) {
+		   ack_seq == stream->last_ack_seq &&
+		   (packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec) != stream->last_time_us) {
 			if(sverb.reassembly_sip) {
-				cout << " - skip previous completed seq & ack" << endl;
+				cout << " - skip previous completed seq & ack (if different time)" << endl;
 			}
 			return(false);
 		}
@@ -5180,7 +5182,7 @@ bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_
 	}
 	stream->last_seq = seq;
 	stream->last_ack_seq = ack_seq;
-	stream->last_ts = packetS->header_pt->ts.tv_sec;
+	stream->last_time_us = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
 	
 	return(true);
 }
