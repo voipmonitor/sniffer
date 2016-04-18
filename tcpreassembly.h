@@ -739,9 +739,10 @@ public:
 		pcap_pkthdr *header; 
 		iphdr2 *header_ip; 
 		u_char *packet;
+		bool alloc_packet;
 		pcap_block_store *block_store; 
 		int block_store_index;
-		void *header_packet_pqout;
+		bool block_store_locked;
 		u_int16_t handle_index; 
 		int dlt; 
 		int sensor_id;
@@ -751,8 +752,8 @@ public:
 public:
 	TcpReassembly(eType type);
 	~TcpReassembly();
-	void push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
-		      pcap_block_store *block_store, int block_store_index, void *header_packet_pqout,
+	void push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet, bool alloc_packet,
+		      pcap_block_store *block_store, int block_store_index, bool block_store_locked,
 		      u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, u_int32_t sensor_ip = 0,
 		      void *uData = NULL);
 	void cleanup(bool all = false);
