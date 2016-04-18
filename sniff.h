@@ -133,9 +133,14 @@ struct packet_s {
 			_blockstore_lock = true;
 		}
 	}
-	inline void blockstore_relock() {
+	inline void blockstore_setlock() {
+		if(block_store) {
+			_blockstore_lock = true;
+		}
+	}
+	inline void blockstore_relock(int check_limit_lock = 0) {
 		if(_blockstore_lock && block_store) {
-			block_store->lock_packet(block_store_index);
+			block_store->lock_packet(block_store_index, check_limit_lock);
 		}
 	}
 	inline void blockstore_unlock() {

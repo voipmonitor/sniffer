@@ -1407,7 +1407,7 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 	rtp_read_thread *params = &(rtp_threads[call->thread_num]);
 
 	if(packetS->block_store) {
-		packetS->block_store->lock_packet(packetS->block_store_index);
+		packetS->block_store->lock_packet(packetS->block_store_index, 1);
 	}
 	if(params->rtpp_queue_quick ||
 	   params->rtpp_queue_quick_boost) {
@@ -4533,74 +4533,133 @@ void readdump_libnids(pcap_t *handle) {
 #endif
 */
 
+inline void ipfrag_delete_node(ip_frag_s *node, int pushToStack_queue_index) {
+	if(node->header_packet) {
+		PUSH_HP(&node->header_packet, pushToStack_queue_index);
+	}
+	if(node->header_packet_pqout) {
+		((sHeaderPacketPQout*)node->header_packet_pqout)->destroy_or_unlock_blockstore();
+		delete ((sHeaderPacketPQout*)node->header_packet_pqout);
+	}
+	delete node;
+}
+
 /*
 
 defragment packets from queue and allocates memory for new header and packet which is returned 
 in **header an **packet 
 
 */
-inline int ipfrag_dequeue(ip_frag_queue_t *queue, 
-			  sHeaderPacket **header_packet,
-			  int pushToStack_queue_index) {
+inline int _ipfrag_dequeue(ip_frag_queue_t *queue, 
+			   sHeaderPacket **header_packet, sHeaderPacketPQout *header_packet_pqout,
+			   int pushToStack_queue_index) {
 	//walk queue
 
 	if(!queue) return 1;
 	if(!queue->size()) return 1;
 
-
 	// prepare newpacket structure and header structure
 	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->header_ip_offset;
 	
-	*header_packet = CREATE_HP(totallen);
-	
-	/*memcpy(newheader, *header, sizeof(struct pcap_pkthdr));
-	newheader->len = newheader->caplen = totallen;
-	*header = newheader;*/
-	
 	unsigned int additionallen = 0;
 	iphdr2 *iphdr = NULL;
-
-	//int lastoffset = queue->begin()->second->offset;
 	unsigned i = 0;
 	unsigned int len = 0;
-	for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
-		ip_frag_s *node = it->second;
-		if(i == 0) {
-			// for first packet copy ethernet header and ip header
-			if(node->header_ip_offset) {
-				memcpy_heapsafe(HPP(*header_packet), *header_packet,
-						HPP(node->header_packet), node->header_packet,
-						node->header_ip_offset);
-				len += node->header_ip_offset;
-				iphdr = (iphdr2*)(HPP(*header_packet) + len);
+	
+	if(header_packet) {
+		*header_packet = CREATE_HP(totallen);
+		for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
+			ip_frag_s *node = it->second;
+			if(i == 0) {
+				// for first packet copy ethernet header and ip header
+				if(node->header_ip_offset) {
+					memcpy_heapsafe(HPP(*header_packet), *header_packet,
+							HPP(node->header_packet), node->header_packet,
+							node->header_ip_offset);
+					len += node->header_ip_offset;
+					iphdr = (iphdr2*)(HPP(*header_packet) + len);
+				}
+				memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
+						HPP(node->header_packet) + node->header_ip_offset, node->header_packet,
+						node->len);
+				len += node->len;
+			} else {
+				// for rest of a packets append only data 
+				if(len > totallen) {
+					syslog(LOG_ERR, "%s.%d: Error - bug in voipmonitor len[%d] > totallen[%d]", __FILE__, __LINE__, len, totallen);
+					abort();
+				}
+				memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
+						HPP(node->header_packet) + node->header_ip_offset + sizeof(iphdr2), node->header_packet,
+						node->len - sizeof(iphdr2));
+				len += node->len - sizeof(iphdr2);
+				additionallen += node->len - sizeof(iphdr2);
 			}
-			memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
-					HPP(node->header_packet) + node->header_ip_offset, node->header_packet,
-					node->len);
-			len += node->len;
-		} else {
-			// for rest of a packets append only data 
-			if(len > totallen) {
-				syslog(LOG_ERR, "%s.%d: Error - bug in voipmonitor len[%d] > totallen[%d]", __FILE__, __LINE__, len, totallen);
-				abort();
+			if(i == queue->size() - 1) {
+				memcpy_heapsafe(HPH(*header_packet), *header_packet, 
+						HPH(node->header_packet), node->header_packet,
+						sizeof(struct pcap_pkthdr));
+				HPH(*header_packet)->len = totallen;
+				HPH(*header_packet)->caplen = totallen;
 			}
-			memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
-					HPP(node->header_packet) + node->header_ip_offset + sizeof(iphdr2), node->header_packet,
-					node->len - sizeof(iphdr2));
-			len += node->len - sizeof(iphdr2);
-			additionallen += node->len - sizeof(iphdr2);
+			ipfrag_delete_node(node, pushToStack_queue_index);
+			i++;
 		}
-		if(i == queue->size() - 1) {
-			memcpy_heapsafe(HPH(*header_packet), *header_packet, 
-					HPH(node->header_packet), node->header_packet,
-					sizeof(struct pcap_pkthdr));
-			HPH(*header_packet)->len = totallen;
-			HPH(*header_packet)->caplen = totallen;
+	} else {
+		header_packet_pqout->header = new FILE_LINE pcap_pkthdr_plus;
+		header_packet_pqout->packet = new FILE_LINE u_char[totallen];
+		header_packet_pqout->block_store = NULL;
+		header_packet_pqout->block_store_index = 0;
+		header_packet_pqout->block_store_locked = false;
+		for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
+			ip_frag_s *node = it->second;
+			if(i == 0) {
+				// for first packet copy ethernet header and ip header
+				if(node->header_ip_offset) {
+					memcpy_heapsafe(header_packet_pqout->packet, header_packet_pqout->packet,
+							((sHeaderPacketPQout*)node->header_packet_pqout)->packet, 
+							((sHeaderPacketPQout*)node->header_packet_pqout)->block_store ?
+							 ((sHeaderPacketPQout*)node->header_packet_pqout)->block_store->block :
+							 ((sHeaderPacketPQout*)node->header_packet_pqout)->packet,
+							node->header_ip_offset);
+					len += node->header_ip_offset;
+					iphdr = (iphdr2*)(header_packet_pqout->packet + len);
+				}
+				memcpy_heapsafe(header_packet_pqout->packet + len, header_packet_pqout->packet,
+						((sHeaderPacketPQout*)node->header_packet_pqout)->packet + node->header_ip_offset, 
+						((sHeaderPacketPQout*)node->header_packet_pqout)->block_store ?
+						 ((sHeaderPacketPQout*)node->header_packet_pqout)->block_store->block :
+						 ((sHeaderPacketPQout*)node->header_packet_pqout)->packet,
+						node->len);
+				len += node->len;
+			} else {
+				// for rest of a packets append only data 
+				if(len > totallen) {
+					syslog(LOG_ERR, "%s.%d: Error - bug in voipmonitor len[%d] > totallen[%d]", __FILE__, __LINE__, len, totallen);
+					abort();
+				}
+				memcpy_heapsafe(header_packet_pqout->packet + len, header_packet_pqout->packet,
+						((sHeaderPacketPQout*)node->header_packet_pqout)->packet + node->header_ip_offset + sizeof(iphdr2), 
+						((sHeaderPacketPQout*)node->header_packet_pqout)->block_store ?
+						 ((sHeaderPacketPQout*)node->header_packet_pqout)->block_store->block :
+						 ((sHeaderPacketPQout*)node->header_packet_pqout)->packet,
+						node->len - sizeof(iphdr2));
+				len += node->len - sizeof(iphdr2);
+				additionallen += node->len - sizeof(iphdr2);
+			}
+			if(i == queue->size() - 1) {
+				memcpy_heapsafe(header_packet_pqout->header, header_packet_pqout->header,
+						((sHeaderPacketPQout*)node->header_packet_pqout)->header,
+						((sHeaderPacketPQout*)node->header_packet_pqout)->block_store ?
+						 ((sHeaderPacketPQout*)node->header_packet_pqout)->block_store->block :
+						 (u_char*)((sHeaderPacketPQout*)node->header_packet_pqout)->header,
+						sizeof(pcap_pkthdr_plus));
+				header_packet_pqout->header->set_len(totallen);
+				header_packet_pqout->header->set_caplen(totallen);
+			}
+			ipfrag_delete_node(node, 0);
+			i++;
 		}
-		//lastoffset = node->offset;
-		PUSH_HP(&node->header_packet, pushToStack_queue_index);
-		delete node;
-		i++;
 	}
 	if(iphdr) {
 		//increase IP header length 
@@ -4614,12 +4673,29 @@ inline int ipfrag_dequeue(ip_frag_queue_t *queue,
 	return 1;
 }
 
-inline int ipfrag_add(ip_frag_queue_t *queue, 
-		      sHeaderPacket **header_packet, 
-		      unsigned int header_ip_offset, unsigned int len,
-		      int pushToStack_queue_index) {
+inline int ipfrag_dequeue(ip_frag_queue_t *queue,
+			  sHeaderPacket **header_packet,
+			  int pushToStack_queue_index) {
+	return(_ipfrag_dequeue(queue,
+			       header_packet, NULL,
+			       pushToStack_queue_index));
+}
+
+inline int ipfrag_dequeue(ip_frag_queue_t *queue,
+			  sHeaderPacketPQout *header_packet_pqout) {
+	return(_ipfrag_dequeue(queue,
+			       NULL, header_packet_pqout,
+			       -1));
+}
+
+inline int _ipfrag_add(ip_frag_queue_t *queue, 
+		       sHeaderPacket **header_packet, sHeaderPacketPQout *header_packet_pqout,
+		       unsigned int header_ip_offset, unsigned int len,
+		       int pushToStack_queue_index) {
  
-	iphdr2 *header_ip = (iphdr2*)((HPP(*header_packet)) + header_ip_offset);
+	iphdr2 *header_ip = header_packet ?
+			     (iphdr2*)((HPP(*header_packet)) + header_ip_offset) :
+			     (iphdr2*)(header_packet_pqout->packet + header_ip_offset);
 
 	unsigned int offset = ntohs(header_ip->frag_off);
 	unsigned int offset_d = (offset & IP_OFFSET) << 3;
@@ -4652,11 +4728,18 @@ inline int ipfrag_add(ip_frag_queue_t *queue,
 			node->has_last = is_last;
 		}
 
-		node->ts = HPH(*header_packet)->ts.tv_sec;
-		node->next = NULL; //TODO: remove, we are using c++ map
-		
-		node->header_packet = *header_packet;
-		*header_packet = NULL;
+		if(header_packet) {
+			node->ts = HPH(*header_packet)->ts.tv_sec;
+			node->header_packet = *header_packet;
+			node->header_packet_pqout = NULL;
+			*header_packet = NULL;
+		} else {
+			node->ts = header_packet_pqout->header->get_tv_sec();
+			node->header_packet_pqout = new FILE_LINE sHeaderPacketPQout;
+			node->header_packet = NULL;
+			*(sHeaderPacketPQout*)node->header_packet_pqout = *header_packet_pqout;
+			((sHeaderPacketPQout*)node->header_packet_pqout)->alloc_and_copy_blockstore();
+		}
 		
 		node->header_ip_offset = header_ip_offset;
 		node->len = len;
@@ -4689,11 +4772,30 @@ inline int ipfrag_add(ip_frag_queue_t *queue,
 
 	if(ok) {
 		// all packets -> defragment 
-		ipfrag_dequeue(queue, header_packet, pushToStack_queue_index);
+		_ipfrag_dequeue(queue, header_packet, header_packet_pqout, pushToStack_queue_index);
 		return 1;
 	} else {
 		return 0;
 	}
+}
+
+inline int ipfrag_add(ip_frag_queue_t *queue, 
+		      sHeaderPacket **header_packet, 
+		      unsigned int header_ip_offset, unsigned int len,
+		      int pushToStack_queue_index) {
+	return(_ipfrag_add(queue, 
+			   header_packet, NULL,
+			   header_ip_offset, len,
+			   pushToStack_queue_index));
+}
+
+inline int ipfrag_add(ip_frag_queue_t *queue, 
+		      sHeaderPacketPQout *header_packet_pqout, 
+		      unsigned int header_ip_offset, unsigned int len) {
+	return(_ipfrag_add(queue, 
+			   NULL, header_packet_pqout,
+			   header_ip_offset, len,
+			   -1));
 }
 
 /* 
@@ -4706,8 +4808,10 @@ pinters to new allocated data which has to be freed later. If packet is only que
 returns 0 and header and packet remains same
 
 */
-int handle_defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, ipfrag_data_s *ipfrag_data,
-		  int pushToStack_queue_index) {
+inline int _handle_defrag(iphdr2 *header_ip, 
+			  sHeaderPacket **header_packet, sHeaderPacketPQout *header_packet_pqout, 
+			  ipfrag_data_s *ipfrag_data,
+			  int pushToStack_queue_index) {
  
 	//copy header ip to tmp beacuse it can happen that during exectuion of this function the header_ip can be 
 	//overwriten in kernel ringbuffer if the ringbuffer is small and thus header_ip->saddr can have different value 
@@ -4721,10 +4825,14 @@ int handle_defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, ipfrag_data_
 		queue = new FILE_LINE ip_frag_queue_t;
 		ipfrag_data->ip_frag_stream[header_ip_orig.saddr][header_ip_orig.id] = queue;
 	}
-	int res = ipfrag_add(queue,
-			     header_packet, 
-			     (u_char*)header_ip - HPP(*header_packet), ntohs(header_ip_orig.tot_len),
-			     pushToStack_queue_index);
+	int res = header_packet ?
+		   ipfrag_add(queue,
+			      header_packet, 
+			      (u_char*)header_ip - HPP(*header_packet), ntohs(header_ip_orig.tot_len),
+			      pushToStack_queue_index) :
+		   ipfrag_add(queue,
+			      header_packet_pqout, 
+			      (u_char*)header_ip - header_packet_pqout->packet, ntohs(header_ip_orig.tot_len));
 	if(res) {
 		// packet was created from all pieces - delete queue and remove it from map
 		ipfrag_data->ip_frag_stream[header_ip_orig.saddr].erase(header_ip_orig.id);
@@ -4734,9 +4842,23 @@ int handle_defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, ipfrag_data_
 	return res;
 }
 
-void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
+int handle_defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, ipfrag_data_s *ipfrag_data,
 		  int pushToStack_queue_index) {
+	return(_handle_defrag(header_ip, header_packet, NULL, ipfrag_data,
+			      pushToStack_queue_index));
+}
+
+int handle_defrag(iphdr2 *header_ip, void *header_packet_pqout, ipfrag_data_s *ipfrag_data) {
+	return(_handle_defrag(header_ip, NULL, (sHeaderPacketPQout*)header_packet_pqout, ipfrag_data,
+			      -1));
+}
+
+void ipfrag_prune(unsigned int tv_sec, bool all, ipfrag_data_s *ipfrag_data,
+		  int pushToStack_queue_index, int prune_limit) {
  
+	if(prune_limit < 0) {
+		prune_limit = 30;
+	}
 	ip_frag_queue_t *queue;
 	for (ipfrag_data->ip_frag_streamIT = ipfrag_data->ip_frag_stream.begin(); ipfrag_data->ip_frag_streamIT != ipfrag_data->ip_frag_stream.end(); ipfrag_data->ip_frag_streamIT++) {
 		for (ipfrag_data->ip_frag_streamITinner = (*ipfrag_data->ip_frag_streamIT).second.begin(); ipfrag_data->ip_frag_streamITinner != (*ipfrag_data->ip_frag_streamIT).second.end();) {
@@ -4746,11 +4868,10 @@ void ipfrag_prune(unsigned int tv_sec, int all, ipfrag_data_s *ipfrag_data,
 				delete queue;
 				continue;
 			}
-			if(all or ((tv_sec - queue->begin()->second->ts) > (30))) {
+			if(all or ((tv_sec - queue->begin()->second->ts) > prune_limit)) {
 				for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
 					ip_frag_s *node = it->second;
-					PUSH_HP(&node->header_packet, pushToStack_queue_index);
-					delete node;
+					ipfrag_delete_node(node, pushToStack_queue_index);
 				}
 				ipfrag_data->ip_frag_streamIT->second.erase(ipfrag_data->ip_frag_streamITinner++);
 				delete queue;
@@ -4811,7 +4932,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		if(header_packet && header_packet->packet_alloc_size != 0xFFFF) {
 			DESTROY_HP(&header_packet);
 		}
-		if(!header_packet) {
+		if(header_packet) {
+			header_packet->clearPcapProcessData();
+		} else {
 			header_packet = CREATE_HP(0xFFFF);
 		}
 
@@ -4825,7 +4948,8 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		++packet_counter;
 
 		if(!pcapProcess(&header_packet, -1,
-				true, true, true, true,
+				NULL, 0,
+				ppf_all,
 				&ppd, global_pcap_dlink, tmppcap, ifname)) {
 			continue;
 		}
@@ -5030,6 +5154,7 @@ void TcpReassemblySip::processPacket(packet_s_process **packetS_ref, bool isSip,
 			}
 			rev_it->second.last_seq = 0;
 			rev_it->second.last_ack_seq = 0;
+			rev_it->second.last_time_us = 0;
 		}
 	}
 	tcp_stream_id id(packetS->saddr, packetS->source, packetS->daddr, packetS->dest);
@@ -5106,7 +5231,7 @@ void TcpReassemblySip::processPacket(packet_s_process **packetS_ref, bool isSip,
 void TcpReassemblySip::clean(time_t ts) {
 	map<tcp_stream_id, tcp_stream>::iterator it;
 	for(it = tcp_streams.begin(); it != tcp_streams.end();) {
-		if(!ts || (ts - it->second.last_ts) > (10 * 60)) {
+		if(!ts || (ts - it->second.last_time_us / 1000000ull) > (10 * 60)) {
 			cleanStream(&it->second, true);
 			tcp_streams.erase(it++);
 		} else {
@@ -5140,9 +5265,10 @@ bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_
 		}
 	} else {
 		if(seq == stream->last_seq && 
-		   ack_seq == stream->last_ack_seq) {
+		   ack_seq == stream->last_ack_seq &&
+		   (packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec) != stream->last_time_us) {
 			if(sverb.reassembly_sip) {
-				cout << " - skip previous completed seq & ack" << endl;
+				cout << " - skip previous completed seq & ack (if different time)" << endl;
 			}
 			return(false);
 		}
@@ -5178,7 +5304,7 @@ bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_
 	}
 	stream->last_seq = seq;
 	stream->last_ack_seq = ack_seq;
-	stream->last_ts = packetS->header_pt->ts.tv_sec;
+	stream->last_time_us = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
 	
 	return(true);
 }
@@ -5265,14 +5391,14 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	if(typePreProcessThread == ppt_detach) {
 		this->qring_detach = new FILE_LINE batch_packet_s*[this->qring_length];
 		for(unsigned int i = 0; i < this->qring_length; i++) {
-			this->qring_detach[i] = new FILE_LINE batch_packet_s(opt_preprocess_packets_qring_length / 10);
+			this->qring_detach[i] = new FILE_LINE batch_packet_s(this->qring_batch_item_length);
 			this->qring_detach[i]->used = 0;
 		}
 		this->qring = NULL;
 	} else {
 		this->qring = new FILE_LINE batch_packet_s_process*[this->qring_length];
 		for(unsigned int i = 0; i < this->qring_length; i++) {
-			this->qring[i] = new FILE_LINE batch_packet_s_process(opt_preprocess_packets_qring_length / 10);
+			this->qring[i] = new FILE_LINE batch_packet_s_process(this->qring_batch_item_length);
 			this->qring[i]->used = 0;
 		}
 		this->qring_detach = NULL;
@@ -5363,6 +5489,7 @@ void *PreProcessPacket::outThreadFunction() {
 				batch_detach = this->qring_detach[this->readit];
 				for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
 					this->process_DETACH_plus(batch_detach->batch[batch_index]);
+					batch_detach->batch[batch_index]->_packet_alloc = false;
 				}
 				batch_detach->count = 0;
 				batch_detach->used = 0;
@@ -5549,10 +5676,10 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 				extern bool opt_sip_tcp_reassembly_ext;
 				extern TcpReassembly *tcpReassemblySipExt;
 				if(opt_sip_tcp_reassembly_ext && tcpReassemblySipExt) {
-					tcpReassemblySipExt->push(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet,
-								  packetS->block_store, packetS->block_store_index,
-								  packetS->handle_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
-								  this);
+					tcpReassemblySipExt->push_tcp(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet,
+								      packetS->block_store, packetS->block_store_index, NULL,
+								      packetS->handle_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
+								      this);
 					PACKET_S_PROCESS_DESTROY(&packetS);
 				} else {
 					tcpReassemblySip.processPacket(&packetS, isSip, this);
@@ -5668,7 +5795,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 			if(multipleSip) {
 				packet_s_process *partPacketS = PACKET_S_PROCESS_SIP_CREATE();
 				*partPacketS = *packetS;
-				partPacketS->blockstore_relock();
+				partPacketS->blockstore_relock(2);
 				if(partPacketS->_packet_alloc) {
 					partPacketS->new_alloc_packet_header();
 				}

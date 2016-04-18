@@ -24,15 +24,15 @@ public:
 		tcp_stream() {
 			packets = NULL;
 			complete_data = NULL;
-			last_ts = 0;
 			last_seq = 0;
 			last_ack_seq = 0;
+			last_time_us = 0;
 		}
 		tcp_stream_packet* packets;
 		SimpleBuffer* complete_data;
-		time_t last_ts;
 		u_int32_t last_seq;
 		u_int32_t last_ack_seq;
+		u_int64_t last_time_us;
 	};
 	struct tcp_stream_id {
 		tcp_stream_id(u_int32_t saddr = 0, u_int16_t source = 0, 
@@ -198,7 +198,7 @@ public:
 				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
 				int istcp, struct iphdr2 *header_ip,
 				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, u_int32_t sensor_ip,
-				bool blockstore_lock = true) {
+				int blockstore_lock = 1) {
 		if(opt_enable_ssl) {
 			this->lock_push();
 		}
@@ -224,8 +224,10 @@ public:
 		packetS.sensor_id_u = (u_int16_t)sensor_id;
 		packetS.sensor_ip = sensor_ip;
 		packetS.is_ssl = is_ssl;
-		if(blockstore_lock) {
+		if(blockstore_lock == 1) {
 			packetS.blockstore_lock();
+		} else if(blockstore_lock == 2) {
+			packetS.blockstore_setlock();
 		}
 		this->push_packet_detach(&packetS);
 		if(opt_enable_ssl) {

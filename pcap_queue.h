@@ -171,6 +171,50 @@ private:
 friend class PcapQueue_readFromFifo;
 };
 
+enum eHeaderPacketPQoutState {
+	_hppq_out_state_NA = 0,
+	_hppq_out_state_defrag = 1,
+	_hppq_out_state_dedup = 2
+};
+
+struct sHeaderPacketPQout {
+	pcap_pkthdr_plus *header;
+	u_char *packet;
+	pcap_block_store *block_store;
+	int block_store_index;
+	int dlt; 
+	int sensor_id; 
+	u_int32_t sensor_ip;
+	bool block_store_locked;
+	void destroy_or_unlock_blockstore() {
+		if(block_store) {
+			if(block_store_locked) {
+				block_store->unlock_packet(block_store_index);
+				block_store_locked = false;
+			}
+		} else {
+			delete header;
+			delete [] packet;
+		}
+	}
+	void alloc_and_copy_blockstore() {
+		if(block_store) {
+			pcap_pkthdr_plus *alloc_header = new FILE_LINE pcap_pkthdr_plus;
+			u_char *alloc_packet = new FILE_LINE u_char[header->get_caplen()];
+			memcpy(alloc_header, header, sizeof(pcap_pkthdr_plus));
+			memcpy(alloc_packet, packet, header->get_caplen());
+			header = alloc_header;
+			packet = alloc_packet;
+			if(block_store_locked) {
+				block_store->unlock_packet(block_store_index);
+				block_store_locked = false;
+			}
+			block_store = NULL;
+			block_store_index = 0;
+		}
+	}
+};
+
 class PcapQueue {
 public:
 	enum eTypeQueue {
@@ -309,7 +353,7 @@ struct pcapProcessData {
 		if(this->prevmd5s) {
 			delete [] this->prevmd5s;
 		}
-		ipfrag_prune(0, 1, &ipfrag_data, -1);
+		ipfrag_prune(0, true, &ipfrag_data, -1, 0);
 	}
 	sll_header *header_sll;
 	ether_header *header_eth;
@@ -341,7 +385,8 @@ protected:
 	void restoreOneshotBuffer();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
 	inline int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
-			       bool enableDefrag = true, bool enableCalcMD5 = true, bool enableDedup = true, bool enableDump = true);
+			       pcap_block_store *block_store, int block_store_index,
+			       int ppf);
 	virtual string pcapStatString_interface(int statPeriod);
 	virtual string pcapDropCountStat_interface();
 	virtual ulong getCountPacketDrop();
@@ -354,6 +399,7 @@ protected:
 	inline void setOneshotBuffer(u_char *packet) {
 		*libpcap_buffer = packet;
 	}
+	void terminatingAtEndOfReadPcap();
 protected:
 	string interfaceName;
 	bpf_u_int32 interfaceNet;
@@ -382,6 +428,7 @@ private:
 	u_int32_t libpcap_buffer_offset;
 	u_char **libpcap_buffer;
 	u_char *libpcap_buffer_old;
+	u_int64_t packets_counter;
 };
 
 
@@ -492,6 +539,7 @@ public:
 	enum eTypeInterfaceThread {
 		read,
 		detach,
+		pcap_process,
 		defrag,
 		md1,
 		md2,
@@ -630,6 +678,7 @@ private:
 	eTypeInterfaceThread typeThread;
 	PcapQueue_readFromInterfaceThread *readThread;
 	PcapQueue_readFromInterfaceThread *detachThread;
+	PcapQueue_readFromInterfaceThread *pcapProcessThread;
 	PcapQueue_readFromInterfaceThread *defragThread;
 	PcapQueue_readFromInterfaceThread *md1Thread;
 	PcapQueue_readFromInterfaceThread *md2Thread;
@@ -830,9 +879,7 @@ protected:
 private:
 	void createConnection(int socketClient, sockaddr_in *socketClientInfo);
 	void cleanupConnections(bool all = false);
-	void processPacket(pcap_pkthdr_plus *header, u_char *packet,
-			   pcap_block_store *block_store, int block_store_index,
-			   int dlt, int sensor_id, u_int32_t sensor_ip);
+	inline int processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state);
 	void pushBatchProcessPacket();
 	void checkFreeSizeCachedir();
 	void cleanupBlockStoreTrash(bool all = false);
@@ -876,6 +923,74 @@ private:
 friend void *_PcapQueue_readFromFifo_destroyBlocksThreadFunction(void *arg);
 friend void *_PcapQueue_readFromFifo_socketServerThreadFunction(void *arg);
 friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
+friend class PcapQueue_outputThread;
+};
+
+class PcapQueue_outputThread {
+public:
+	enum eTypeOutputThread {
+		defrag,
+		dedup
+	};
+	struct sBatchHP {
+		sBatchHP(unsigned max_count) {
+			count = 0;
+			used = 0;
+			batch = new FILE_LINE sHeaderPacketPQout[max_count];
+			this->max_count = max_count;
+		}
+		~sBatchHP() {
+			delete [] batch;
+		}
+		sHeaderPacketPQout *batch;
+		volatile unsigned count;
+		volatile int used;
+		unsigned max_count;
+	};
+	PcapQueue_outputThread(eTypeOutputThread typeOutputThread, PcapQueue_readFromFifo *pcapQueue);
+	~PcapQueue_outputThread();
+	void start();
+	inline void push(sHeaderPacketPQout *hp);
+	void push_batch();
+	void *outThreadFunction();
+	inline void processDefrag(sHeaderPacketPQout *hp);
+	string getNameOutputThread() {
+		switch(typeOutputThread) {
+		case defrag:
+			return("defrag");
+		case dedup:
+			return("dedup");
+		}
+		return("");
+	}
+private:
+	void lock_push() {
+		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
+			usleep(10);
+		}
+	}
+	void unlock_push() {
+		__sync_lock_release(&this->_sync_push);
+	}
+private:
+	eTypeOutputThread typeOutputThread;
+	PcapQueue_readFromFifo *pcapQueue;
+	unsigned int qring_batch_item_length;
+	unsigned int qring_length;
+	sBatchHP **qring;
+	unsigned qring_push_index;
+	unsigned qring_push_index_count;
+	sBatchHP *qring_active_push_item;
+	volatile unsigned int readit;
+	volatile unsigned int writeit;
+	pthread_t out_thread_handle;
+	pstat_data threadPstatData[2];
+	int outThreadId;
+	ipfrag_data_s ipfrag_data;
+	unsigned ipfrag_lastprune;
+	unsigned defrag_counter;
+	volatile int _sync_push;
+friend inline void *_PcapQueue_outputThread_outThreadFunction(void *arg);
 };
 
 

@@ -10,8 +10,9 @@
 
 #include "tools.h"
 #include "voipmonitor.h"
+#include "md5.h"
 
-#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_03"
+#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_04"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
 
 
@@ -20,25 +21,22 @@ extern int opt_enable_webrtc;
 extern int opt_enable_ssl;
 
 struct pcap_pkthdr_fix_size {
-	uint64_t ts_tv_sec;
-	uint64_t ts_tv_usec;
-	uint64_t caplen;
-	uint64_t len;
+	uint32_t ts_tv_sec;
+	uint32_t ts_tv_usec;
+	uint32_t caplen;
+	uint32_t len;
 };
-
 
 struct pcap_pkthdr_plus {
 	inline pcap_pkthdr_plus() {
 		memset(this, 0, sizeof(pcap_pkthdr_plus));
 	}
-	inline pcap_pkthdr_plus(pcap_pkthdr header, int offset, u_int16_t dlink) {
-		memset(this, 0, sizeof(pcap_pkthdr_plus));
-		this->header_fix_size.ts_tv_sec = header.ts.tv_sec;
-		this->header_fix_size.ts_tv_usec = header.ts.tv_usec;
-		this->header_fix_size.caplen = header.caplen;
-		this->header_fix_size.len = header.len;
-		this->offset = offset;
-		this->dlink = dlink;
+	inline void convertFromStdHeader(pcap_pkthdr *header) {
+		this->std = 0;
+		this->header_fix_size.ts_tv_sec = header->ts.tv_sec;
+		this->header_fix_size.ts_tv_usec = header->ts.tv_usec;
+		this->header_fix_size.caplen = header->caplen;
+		this->header_fix_size.len = header->len;
 	}
 	inline pcap_pkthdr *convertToStdHeader() {
 		if(!this->std) {
@@ -52,16 +50,73 @@ struct pcap_pkthdr_plus {
 		}
 		return(&this->header_std);
 	}
+	inline pcap_pkthdr getStdHeader() {
+		pcap_pkthdr header;
+		header.ts.tv_sec = this->header_fix_size.ts_tv_sec;
+		header.ts.tv_usec = this->header_fix_size.ts_tv_usec;
+		header.caplen = this->header_fix_size.caplen;
+		header.len = this->header_fix_size.len;
+		return(header);
+	}
+	inline uint32_t get_caplen() {
+		return(std ? this->header_std.caplen : this->header_fix_size.caplen);
+	}
+	inline uint32_t get_len() {
+		return(std ? this->header_std.len : this->header_fix_size.len);
+	}
+	inline void set_caplen(uint32_t caplen) {
+		if(std) {
+			this->header_std.caplen = caplen;
+		} else { 
+			this->header_fix_size.caplen = caplen;
+		}
+	}
+	inline void set_len(uint32_t len) {
+		if(std) {
+			this->header_std.len = len;
+		} else {
+			this->header_fix_size.len = len;
+		}
+	}
+	inline uint32_t get_tv_sec() {
+		return(std ? this->header_std.ts.tv_sec : this->header_fix_size.ts_tv_sec);
+	}
+	inline uint32_t get_tv_usec() {
+		return(std ? this->header_std.ts.tv_usec : this->header_fix_size.ts_tv_usec);
+	}
+	inline u_long get_time_ms() {
+		return(get_tv_sec() * 1000ul + get_tv_usec() / 1000);
+	}
 	union {
 		pcap_pkthdr_fix_size header_fix_size;
 		pcap_pkthdr header_std;
 	};
-	int32_t offset;
+	u_int16_t header_ip_offset;
 	int8_t std;
 	u_int16_t dlink;
 };
 
+struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {
+	inline pcap_pkthdr_plus2() {
+		clear();
+	}
+	inline void clear() {
+		detect_headers = 0;
+		md5[0] = 0;
+		ignore = false;
+	}
+	u_int8_t detect_headers;
+	u_int16_t header_ip_first_offset;
+	u_int16_t eth_protocol;
+	uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
+	u_int8_t ignore;
+};
+
 struct pcap_block_store {
+	enum header_mode {
+		plus,
+		plus2
+	};
 	enum compress_method {
 		compress_method_default,
 		snappy,
@@ -93,7 +148,8 @@ struct pcap_block_store {
 		int16_t sensor_id;
 		char ifname[10];
 	};
-	pcap_block_store() {
+	pcap_block_store(header_mode hm = plus) {
+		this->hm = hm;
 		this->offsets = NULL;
 		this->block = NULL;
 		this->is_voip = NULL;
@@ -116,19 +172,27 @@ struct pcap_block_store {
 		delete [] this->_sync_packets_lock;
 		#endif
 	}
-	inline bool add(pcap_pkthdr *header, u_char *packet, int offset, int dlink, int memcpy_packet_size = 0);
-	inline bool add(pcap_pkthdr_plus *header, u_char *packet);
-	inline void inc(pcap_pkthdr *header);
-	inline bool get_add_pointers(pcap_pkthdr_plus **header, u_char **packet, unsigned min_size_for_packet);
+	inline bool add_hp(pcap_pkthdr_plus *header, u_char *packet, int memcpy_packet_size = 0);
+	inline void inc_h(pcap_pkthdr_plus2 *header);
+	inline bool get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **packet, unsigned min_size_for_packet);
 	inline bool isFull_checkTimeout();
 	inline bool isTimeout();
-	pcap_pkthdr_pcap operator [] (size_t indexItem) {
+	inline pcap_pkthdr_pcap operator [] (size_t indexItem) {
 		pcap_pkthdr_pcap headerPcap;
 		if(indexItem < this->count) {
 			headerPcap.header = (pcap_pkthdr_plus*)(this->block + this->offsets[indexItem]);
-			headerPcap.packet = (u_char*)headerPcap.header + sizeof(pcap_pkthdr_plus);
+			headerPcap.packet = (u_char*)headerPcap.header + (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus));
 		}
 		return(headerPcap);
+	}
+	inline pcap_pkthdr_plus* get_header(size_t indexItem) {
+		return((pcap_pkthdr_plus*)(this->block + this->offsets[indexItem]));
+	}
+	inline u_char* get_packet(size_t indexItem) {
+		return((u_char*)(this->block + this->offsets[indexItem] + (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus))));
+	}
+	inline bool is_ignore(size_t indexItem) {
+		return(((pcap_pkthdr_plus2*)(this->block + this->offsets[indexItem]))->ignore);
 	}
 	void destroy();
 	void destroyRestoreBuffer();
@@ -168,26 +232,30 @@ struct pcap_block_store {
 	bool check_headers() {
 		for(size_t i = 0; i < this->count; i++) {
 			pcap_pkthdr_plus *header = (pcap_pkthdr_plus*)(this->block + this->offsets[i]);
-			if(header->header_fix_size.caplen > 65535 || header->offset > 1000) {
+			if(header->header_fix_size.caplen > 65535 || header->header_ip_offset > 1000) {
 				return(false);
 			}
 		}
 		return(true);
 	}
-	void lock_packet(int index) {
+	void lock_packet(int index, int check_limit = 0) {
 		__sync_add_and_fetch(&this->_sync_packet_lock, 1);
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		if(this->_sync_packets_lock[index] > check_limit) {
+			syslog(LOG_ERR, "error in sync (lock) packetbuffer block %lx / %i / %i", (u_int64_t)this, index, this->_sync_packets_lock[index]);
+			abort();
+		}
 		__sync_add_and_fetch(&this->_sync_packets_lock[index], 1);
 		#endif
 	}
 	void unlock_packet(int index) {
 		__sync_sub_and_fetch(&this->_sync_packet_lock, 1);
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
-		__sync_sub_and_fetch(&this->_sync_packets_lock[index], 1);
-		if(this->_sync_packets_lock[index] < 0) {
+		if(this->_sync_packets_lock[index] <= 0) {
 			syslog(LOG_ERR, "error in sync (unlock) packetbuffer block %lx / %i / %i", (u_int64_t)this, index, this->_sync_packets_lock[index]);
 			abort();
 		}
+		__sync_sub_and_fetch(&this->_sync_packets_lock[index], 1);
 		#endif
 	}
 	bool enableDestroy() {
@@ -195,7 +263,7 @@ struct pcap_block_store {
 		if(this->_sync_packet_lock == 0) {
 			for(unsigned i = 0; i < count; i++) {
 				if(this->_sync_packets_lock[i] != 0) {
-					syslog(LOG_ERR, "error in sync (unlock) packetbuffer block %lx / %i / %i", (u_int64_t)this, i, this->_sync_packets_lock[i]);
+					syslog(LOG_ERR, "error in sync (enableDestroy) packetbuffer block %lx / %i / %i", (u_int64_t)this, i, this->_sync_packets_lock[i]);
 					abort();
 				}
 			}
@@ -216,6 +284,7 @@ struct pcap_block_store {
 		pcap_pkthdr_plus *pkthdr = (pcap_pkthdr_plus*)(this->block + this->offsets[this->count - 1]);
 		return(pkthdr->header_fix_size.ts_tv_sec * 1000ul + pkthdr->header_fix_size.ts_tv_usec / 1000);
 	}
+	header_mode hm;
 	uint32_t *offsets;
 	u_char *block;
 	size_t size;

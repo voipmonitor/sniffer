@@ -9,16 +9,16 @@
 struct sHeaderPacket {
 	void *stack;
 	u_int16_t packet_alloc_size;
-	u_int8_t _detect_headers;
-	u_int16_t _header_ip_first_offset;
-	u_int16_t _header_ip_offset;
-	int _eth_protocol;
-	uint16_t _md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
+	u_int8_t detect_headers;
+	u_int16_t header_ip_first_offset;
+	u_int16_t header_ip_offset;
+	int eth_protocol;
+	uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 	pcap_pkthdr header;
 	u_char packet[1];
 	inline void clearPcapProcessData() {
-		_detect_headers = 0;
-		_md5[0] = 0;
+		detect_headers = 0;
+		md5[0] = 0;
 	}
 };
 #define HPH(hp) (&((hp)->header))

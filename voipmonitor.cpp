@@ -275,8 +275,9 @@ unsigned int opt_skinny_ignore_rtpip = 0;
 int opt_read_from_file = 0;
 char opt_read_from_file_fname[1024] = "";
 char opt_pb_read_from_file[256] = "";
-int opt_pb_read_from_file_speed = 0;
+double opt_pb_read_from_file_speed = 0;
 int opt_pb_read_from_file_acttime = 0;
+unsigned int opt_pb_read_from_file_max_packets = 0;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
 int opt_enable_http_enum_tables = 0;
@@ -1924,6 +1925,7 @@ void test();
 PcapQueue_readFromFifo *pcapQueueR;
 PcapQueue_readFromInterface *pcapQueueI;
 PcapQueue_readFromFifo *pcapQueueQ;
+PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 
 void set_global_vars();
 int main_init_read();
@@ -2963,6 +2965,11 @@ int main_init_read() {
 			pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
 		}
 		
+		if(opt_pcap_queue_use_blocks && opt_udpfrag) {
+			pcapQueueQ_outThread_defrag = new PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
+			pcapQueueQ_outThread_defrag->start();
+		}
+		
 		pcapQueueQ->start();
 		if(pcapQueueI) {
 			pcapQueueI->start();
@@ -3476,6 +3483,10 @@ void terminate_packetbuffer() {
 		if(pcapQueueI) {
 			delete pcapQueueI;
 			pcapQueueI = NULL;
+		}
+		if(pcapQueueQ_outThread_defrag) {
+			delete pcapQueueQ_outThread_defrag;
+			pcapQueueQ_outThread_defrag = NULL;
 		}
 		if(pcapQueueQ) {
 			delete pcapQueueQ;
@@ -5332,6 +5343,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"spectrogram-gui", 1, 0, 207},
 	    {"new-config", 0, 0, 203},
 	    {"print-config-struct", 0, 0, 204},
+	    {"max-packets", 1, 0, 301},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -5574,6 +5586,8 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "rtp_extend_stat")		sverb.rtp_extend_stat = 1;
 						else if(verbparams[i] == "disable_process_packet_in_packetbuffer")
 													sverb.disable_process_packet_in_packetbuffer = 1;
+						else if(verbparams[i] == "disable_push_to_t2_in_packetbuffer")
+													sverb.disable_push_to_t2_in_packetbuffer = 1;
 						else if(verbparams[i] == "disable_save_packet")		sverb.disable_save_packet = 1;
 						else if(verbparams[i] == "thread_create")		sverb.thread_create = 1;
 						else if(verbparams[i] == "timezones")			sverb.timezones = 1;
@@ -5594,7 +5608,7 @@ void get_command_line_arguments() {
 					   !strncmp(optarg, "pbsa", 4)) &&
 					  strchr(optarg, ':')) {
 					bool acttime = !strncmp(optarg, "pbsa", 4);
-					opt_pb_read_from_file_speed = atoi(optarg + (acttime ? 4 : 3));
+					opt_pb_read_from_file_speed = atof(optarg + (acttime ? 4 : 3));
 					strcpy(opt_pb_read_from_file, strchr(optarg, ':') + 1);
 					opt_pb_read_from_file_acttime = acttime;
 					opt_scanpcapdir[0] = '\0';
@@ -5606,6 +5620,9 @@ void get_command_line_arguments() {
 					opt_enable_preprocess_packet = 0;
 					opt_enable_process_rtp_packet = 0;
 				}
+				break;
+			case 301:
+				opt_pb_read_from_file_max_packets = atol(optarg);
 				break;
 			case 'c':
 				opt_nocdr = 1;
@@ -5823,7 +5840,9 @@ void set_context_config() {
 		if(is_receiver()) {
 			opt_pcap_queue_receive_from_ip_port.clear();
 		}
-		setThreadingMode(1);
+		if(is_read_from_file_simple()) {
+			setThreadingMode(1);
+		}
 	}
 	
 	if(opt_pcap_dump_tar) {

@@ -11,6 +11,7 @@
 #include "sip_tcp_data.h"
 #include "sql_db.h"
 #include "tools.h"
+#include "pcap_queue.h"
 
 using namespace std;
 
@@ -2059,11 +2060,18 @@ void* TcpReassembly::packetThreadFunction(void*) {
 	sPacket packet;
 	while(!is_terminating() || this->ignoreTerminating) {
 		if(packetQueue.pop(&packet)) {
-			this->_push(&packet.header, packet.header_ip, packet.packet,
+			this->_push(packet.header, packet.header_ip, packet.packet,
 				    packet.block_store, packet.block_store_index,
 				    packet.handle_index, packet.dlt, packet.sensor_id, packet.sensor_ip,
 				    packet.uData);
-			packet.block_store->unlock_packet(packet.block_store_index);
+			if(packet.block_store &&
+			   !(packet.header_packet_pqout &&
+			     ((sHeaderPacketPQout*)packet.header_packet_pqout)->block_store_locked)) {
+				packet.block_store->unlock_packet(packet.block_store_index);
+			}
+			if(packet.header_packet_pqout) {
+				((sHeaderPacketPQout*)packet.header_packet_pqout)->destroy_or_unlock_blockstore();
+			}
 		} else {
 			usleep(1000);
 		}
@@ -2084,10 +2092,10 @@ void TcpReassembly::addLog(const char *logString) {
 	fflush(this->log);
 }
 
-void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
-			 pcap_block_store *block_store, int block_store_index,
-			 u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
-			 void *uData) {
+void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
+			     pcap_block_store *block_store, int block_store_index, void *header_packet_pqout,
+			     u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+			     void *uData) {
 	if((debug_limit_counter && debug_counter > debug_limit_counter) ||
 	   !(type == ssl || 
 	     type == sip ||
@@ -2095,13 +2103,18 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		return;
 	}
 	if(this->enablePacketThread) {
-		block_store->lock_packet(block_store_index);
+		if(block_store &&
+		   !(header_packet_pqout &&
+		     ((sHeaderPacketPQout*)header_packet_pqout)->block_store_locked)) {
+			block_store->lock_packet(block_store_index, 2);
+		}
 		sPacket _packet;
-		_packet.header = *header;
+		_packet.header = header;
 		_packet.header_ip = header_ip;
 		_packet.packet = packet;
 		_packet.block_store = block_store;
 		_packet.block_store_index = block_store_index;
+		_packet.header_packet_pqout = header_packet_pqout;
 		_packet.handle_index = handle_index;
 		_packet.dlt = dlt;
 		_packet.sensor_id = sensor_id;
@@ -2113,6 +2126,9 @@ void TcpReassembly::push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 			    block_store, block_store_index,
 			    handle_index, dlt, sensor_id, sensor_ip,
 			    uData);
+		if(header_packet_pqout) {
+			((sHeaderPacketPQout*)header_packet_pqout)->destroy_or_unlock_blockstore();
+		}
 	}
 }
  
