@@ -3227,7 +3227,9 @@ inline pcap_block_store *PcapQueue_readFromInterfaceThread::pop_block() {
 }
 
 inline pcap_block_store *PcapQueue_readFromInterfaceThread::POP_BLOCK() {
-	return(this->dedupThread ? this->dedupThread->pop_block() : this->pop_block());
+	return(this->dedupThread ? this->dedupThread->pop_block() : 
+	       this->pcapProcessThread ? this->pcapProcessThread->pop_block() :
+	       this->pop_block());
 }
 
 
