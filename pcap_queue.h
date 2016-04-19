@@ -966,15 +966,6 @@ public:
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
 private:
-	void lock_push() {
-		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
-			usleep(10);
-		}
-	}
-	void unlock_push() {
-		__sync_lock_release(&this->_sync_push);
-	}
-private:
 	eTypeOutputThread typeOutputThread;
 	PcapQueue_readFromFifo *pcapQueue;
 	unsigned int qring_batch_item_length;
@@ -991,7 +982,6 @@ private:
 	ipfrag_data_s ipfrag_data;
 	unsigned ipfrag_lastprune;
 	unsigned defrag_counter;
-	volatile int _sync_push;
 friend inline void *_PcapQueue_outputThread_outThreadFunction(void *arg);
 };
 

@@ -6179,7 +6179,11 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 }
 
 void PcapQueue_readFromFifo::pushBatchProcessPacket() {
-	preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
+	if(pcapQueueQ_outThread_defrag) {
+		pcapQueueQ_outThread_defrag->push_batch();
+	} else {
+		preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
+	}
 }
 
 void PcapQueue_readFromFifo::checkFreeSizeCachedir() {
@@ -6257,7 +6261,6 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->outThreadId = 0;
 	this->defrag_counter = 0;
 	this->ipfrag_lastprune = 0;
-	this->_sync_push = 0;
 }
 
 PcapQueue_outputThread::~PcapQueue_outputThread() {
@@ -6284,7 +6287,6 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 	return;
 	*/
 	
-	lock_push();
 	if(!qring_push_index) {
 		unsigned usleepCounter = 0;
 		while(this->qring[this->writeit]->used != 0) {
@@ -6311,11 +6313,9 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		qring_push_index = 0;
 		qring_push_index_count = 0;
 	}
-	unlock_push();
 }
 
 void PcapQueue_outputThread::push_batch() {
-	lock_push();
 	if(qring_push_index && qring_push_index_count) {
 		qring_active_push_item->count = qring_push_index_count;
 		qring_active_push_item->used = 1;
@@ -6327,7 +6327,6 @@ void PcapQueue_outputThread::push_batch() {
 		qring_push_index = 0;
 		qring_push_index_count = 0;
 	}
-	unlock_push();
 }
 
 void *PcapQueue_outputThread::outThreadFunction() {
@@ -6355,6 +6354,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			} else {
 				this->readit++;
 			}
+			usleepCounter = 0;
 		} else {
 			unsigned usleepTime = opt_preprocess_packets_qring_usleep * 
 					      (usleepCounter > 1000 ? 20 :
@@ -6362,7 +6362,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			usleep(usleepTime);
 			++usleepCounter;
 			if(!(usleepCounter % 100)) {
-				push_batch();
+				preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
 			}
 		}
 	}
