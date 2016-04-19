@@ -181,6 +181,7 @@ int opt_pcap_queue_iface_qring_size 			= 5000;
 int opt_pcap_queue_dequeu_window_length			= -1;
 int opt_pcap_queue_dequeu_method			= 2;
 int opt_pcap_queue_use_blocks				= 0;
+int opt_pcap_queue_use_blocks_read_check		= 1;
 int opt_pcap_dispatch					= 0;
 int opt_pcap_queue_suppress_t1_thread			= 0;
 bool opt_pcap_queues_mirror_nonblock_mode 		= true;
@@ -3751,12 +3752,18 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 
 void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 	int res;
-	pcap_pkthdr *pcap_next_ex_header;
-	u_char *pcap_next_ex_packet;
-	pcap_pkthdr_plus2 *pcap_header_plus2;
-	u_char *pcap_packet;
+	pcap_pkthdr *pcap_next_ex_header = NULL;
+	u_char *pcap_next_ex_packet = NULL;
+	pcap_pkthdr_plus2 *pcap_header_plus2 = NULL;
+	u_char *pcap_packet = NULL;
 	bool _useOneshotBuffer = false;
-	pcap_block_store *block = NULL;;
+	pcap_block_store *block = NULL;
+	
+	sll_header *header_sll;
+	ether_header *header_eth;
+	u_int header_ip_offset;
+	int protocol;
+	
 	while(!(is_terminating() || this->threadDoTerminate)) {
 		switch(this->typeThread) {
 		case read: {
@@ -3789,6 +3796,14 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				usleep(100);
 				continue;
 			}
+			if(opt_pcap_queue_use_blocks_read_check &&
+			   (!parseEtherHeader(pcapLinklayerHeaderType, pcap_next_ex_packet,
+					      header_sll, header_eth, header_ip_offset, protocol) ||
+			    protocol != ETHERTYPE_IP ||
+			    ((iphdr2*)(pcap_next_ex_packet + header_ip_offset))->version != 4 ||
+			    htons(((iphdr2*)(pcap_next_ex_packet + header_ip_offset))->tot_len) + header_ip_offset > pcap_next_ex_header->len)) {
+				continue;
+			}
 			#if TRACE_INVITE_BYE
 			if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "INVITE sip", 10)) {
 				cout << "get INVITE " << typeThread << endl;
@@ -3797,10 +3812,15 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			}
 			#endif
 			sumPacketsSize[0] += pcap_next_ex_header->caplen;
+			pcap_header_plus2->clear();
+			if(opt_pcap_queue_use_blocks_read_check) {
+				pcap_header_plus2->detect_headers = 0x01;
+				pcap_header_plus2->header_ip_first_offset = header_ip_offset;
+				pcap_header_plus2->eth_protocol = protocol;
+			}
 			pcap_header_plus2->convertFromStdHeader(pcap_next_ex_header);
 			pcap_header_plus2->header_ip_offset = 0;
 			pcap_header_plus2->dlink = pcapLinklayerHeaderType;
-			pcap_header_plus2->clear();
 			if(!_useOneshotBuffer) {
 				memcpy(pcap_packet, pcap_next_ex_packet, pcap_next_ex_header->caplen);
 			}
@@ -3860,7 +3880,7 @@ void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 			}
 			break;
 		case md2:
-			if(!((pcap_pkthdr_plus2*)block->get_header(i))->detect_headers) {
+			if(!((pcap_pkthdr_plus2*)block->get_header(i))->md5[0]) {
 				this->pcapProcess(NULL, 0,
 						  block, i,
 						  (opt_dup_check ? ppf_calcMD5 : ppf_na) |
