@@ -207,6 +207,7 @@ static double heapPerc = 0;
 
 extern MySqlStore *sqlStore;
 extern MySqlStore *loadFromQFiles;
+extern PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 
 extern unsigned int glob_ssl_calls;
 
@@ -1692,6 +1693,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double t2cpu = this->getCpuUsagePerc(writeThread, true);
 	if(t2cpu >= 0) {
 		outStrStat << "t2CPU[" << "pb:" << setprecision(1) << t2cpu;
+		if(pcapQueueQ_outThread_defrag) {
+			double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(true);
+			if(defrag_cpu >= 0) {
+				outStrStat << "/defrag:" << setprecision(1) << defrag_cpu;
+			}
+		}
 		if(opt_ipaccount) {
 			double ipacc_cpu = this->getCpuUsagePerc(destroyBlocksThread, true);
 			if(ipacc_cpu >= 0) {
@@ -6008,7 +6015,6 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	*/
 	
 	if(opt_udpfrag && hp_state == _hppq_out_state_NA) {
-		extern PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 		if(pcapQueueQ_outThread_defrag) {
 			pcapQueueQ_outThread_defrag->push(hp);
 			return(-1);
@@ -6453,6 +6459,31 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 		}
 		ipfrag_lastprune = headerTimeS;
 	}
+}
+
+void PcapQueue_outputThread::preparePstatData() {
+	if(this->outThreadId) {
+		if(this->threadPstatData[0].cpu_total_time) {
+			this->threadPstatData[1] = this->threadPstatData[0];
+		}
+		pstat_get_data(this->outThreadId, this->threadPstatData);
+	}
+}
+
+double PcapQueue_outputThread::getCpuUsagePerc(bool preparePstatData) {
+	if(preparePstatData) {
+		this->preparePstatData();
+	}
+	if(this->outThreadId) {
+		double ucpu_usage, scpu_usage;
+		if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+			pstat_calc_cpu_usage_pct(
+				&this->threadPstatData[0], &this->threadPstatData[1],
+				&ucpu_usage, &scpu_usage);
+			return(ucpu_usage + scpu_usage);
+		}
+	}
+	return(-1);
 }
 
 

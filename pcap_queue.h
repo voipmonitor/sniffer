@@ -963,6 +963,8 @@ public:
 		}
 		return("");
 	}
+	void preparePstatData();
+	double getCpuUsagePerc(bool preparePstatData);
 private:
 	void lock_push() {
 		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
