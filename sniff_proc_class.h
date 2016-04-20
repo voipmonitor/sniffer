@@ -470,8 +470,13 @@ public:
 		*packetS = NULL;
 	}
 	inline void packetS_push_to_stack(packet_s_process **packetS, u_int16_t queue_index) {
-		(*packetS)->blockstore_unlock();
-		(*packetS)->packetdelete();
+		if((*packetS)->_blockstore_lock) {
+			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
+		}
+		if((*packetS)->_packet_alloc) {
+			delete (*packetS)->header_pt;
+			delete [] (*packetS)->packet;
+		}
 		extern int opt_block_alloc_stack;
 		if(opt_block_alloc_stack ||
 		   !(*packetS)->stack ||
