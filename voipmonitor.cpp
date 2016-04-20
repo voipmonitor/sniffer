@@ -5280,6 +5280,15 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	if(configItem->config_name == "cdr_ignore_response") {
 		parse_opt_nocdr_for_last_responses();
 	}
+	if(configItem->config_name == "cdr_ua_reg_remove") {
+		for(unsigned i = 0; i < opt_cdr_ua_reg_remove.size(); i++) {
+			if(!check_regexp(opt_cdr_ua_reg_remove[i].c_str())) {
+				syslog(LOG_WARNING, "invalid regexp %s for cdr_ua_reg_remove", opt_cdr_ua_reg_remove[i].c_str());
+				opt_cdr_ua_reg_remove.erase(opt_cdr_ua_reg_remove.begin() + i);
+				--i;
+			}
+		}
+	}
 }
 
 void parse_command_line_arguments(int argc, char *argv[]) {
@@ -6578,7 +6587,11 @@ int eval_config(string inistr) {
 	if (ini.GetAllValues("general", "cdr_ua_reg_remove", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
-			opt_cdr_ua_reg_remove.push_back(i->pItem);
+			if(!check_regexp(i->pItem)) {
+				syslog(LOG_WARNING, "invalid regexp %s for cdr_ua_reg_remove", i->pItem);
+			} else {
+				opt_cdr_ua_reg_remove.push_back(i->pItem);
+			}
 		}
 	}
 	for(int i = 0; i < 2; i++) {

@@ -1895,6 +1895,15 @@ std::vector<std::string> split(const char *s, std::vector<std::string> delim, bo
 }
 
 
+bool check_regexp(const char *pattern) {
+	regex_t re;
+	if(regcomp(&re, pattern, REG_EXTENDED | REG_ICASE) != 0) {
+		return(false);
+	}
+	regfree(&re);
+	return(true);
+}
+
 int reg_match(const char *string, const char *pattern, const char *file, int line) {
 	int status;
 	regex_t re;
