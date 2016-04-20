@@ -2839,8 +2839,7 @@ int main_init_read() {
 		}
 	}
 	
-	//autostart if t2cpu > 50%
-	/*
+	//autostart for fork mode if t2cpu > 50%
 	if(!opt_fork &&
 	   opt_enable_process_rtp_packet && opt_pcap_split &&
 	   !is_read_from_file_simple()) {
@@ -2850,8 +2849,6 @@ int main_init_read() {
 			processRtpPacketDistribute[i] = new FILE_LINE ProcessRtpPacket(ProcessRtpPacket::distribute, i);
 		}
 	}
-	*/
-	
 
 	if(opt_enable_http) {
 		bool setHttpPorts = false;
