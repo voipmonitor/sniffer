@@ -311,6 +311,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	last_end_timestamp = 0;
 	lastdtmf = 0;
 	forcemark = 0;
+	forcemark2 = 0;
 	ignore = 0;
 	lastcng = 0;
 	dscp = 0;
@@ -426,7 +427,7 @@ RTP::save_mos_graph(bool delimiter) {
 	);
 
 
-	uint32_t lost = stats.lost - last_stat_lost;
+	uint32_t lost = stats.lost2 - last_stat_lost;
 	uint32_t received = stats.received - last_stat_received;
 
 	last_stat_lost = lost;
@@ -1218,7 +1219,6 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 	}
 */
-
 	if(owner->forcemark[iscaller]) {
 		// on reinvite (which indicates forcemark[iscaller] completely reset rtp jitterbuffer simulator and 
 		// there are cases where on reinvite rtp stream stops and there is gap in rtp sequence and timestamp but 
@@ -1255,6 +1255,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			     << " ssrc: " << hex << this->ssrc << dec << " "
 			     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
 			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+			     << " seq: " << seq
 			     << endl;
 		}
 		resetgraph = true;
@@ -1853,6 +1854,11 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 	}
 	resetgraph = false;
+
+	if(owner->forcemark[iscaller] or owner->forcemark[!iscaller]) {
+		forcemark2 = 1; // set this flag and keep it until next update_stats call
+	}
+
 }
 
 /* fill internal structures by the input RTP packet */
@@ -1915,8 +1921,11 @@ RTP::update_stats() {
 			struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
 			memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
 */
+			forcemark2 = 0;
+
 			return;
 		} else {
+			forcemark2 = 0;
 			return;
 		}
 	} else {
@@ -1936,6 +1945,7 @@ RTP::update_stats() {
 		// it is not EVENT frame and it is first voice packet - ignore stats for first voice packet
 		last_voice_frame_ts = header_ts;
 		last_voice_frame_timestamp = getTimestamp();
+		forcemark2 = 0;
 		return;
 	}
 
@@ -1994,66 +2004,75 @@ RTP::update_stats() {
 	s->lastTimeStamp = getTimestamp();
 	s->lastTimeStampJ = getTimestamp();
 
-		
-	if((lost > stats.last_lost) > 0) {
-		if(sverb.packet_lost) {
-			cout << "RTP - packet_lost -" 
-			     << " ssrc: " << hex << this->ssrc << dec << " "
-			     << " src: " << inet_ntostring(htonl(saddr))
-			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
-			     << " seq: " << getSeqNum() << " "
-			     << " lost - last_lost: " << (lost - stats.last_lost) << " " 
-			     << " lost: " << lost << " "
-			     << " last_lost: " << stats.last_lost << endl;
-		}
-		stats.lost += lost - stats.last_lost;
-		if((lost - stats.last_lost) < 10)
-			stats.slost[lost - stats.last_lost]++;
-		else 
-			stats.slost[10]++;
-
-		if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
-			nintervals += lost - stats.last_lost;
-			while(nintervals > 20) {
-				if(this->graph.isOpenOrEnableAutoOpen()) {
-					this->graph.write((char*)&graph_delimiter, 4);
-				}
-				nintervals -= 20;
-			}
-		}
+	if(forcemark2) {
+		// do not store loss / delay in case this is first packet after reinvite 
+		stats.lost2 += lost - stats.last_lost;
+		stats.last_lost = lost;
 	} else {
-		if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
-			if(this->graph.isOpenOrEnableAutoOpen()) {
-				if(nintervals > 20) {
-					/* after 20 packets, send new line */
-					this->graph.write((char*)&graph_delimiter, 4);
+		if((lost > stats.last_lost) > 0) {
+			if(sverb.packet_lost) {
+				cout << this << " RTP - packet_lost -" 
+				     << " ssrc: " << hex << this->ssrc << dec << " "
+				     << " src: " << inet_ntostring(htonl(saddr))
+				     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+				     << " forcemark: " << forcemark2 << " "
+				     << " seq: " << getSeqNum() << " "
+				     << " lost - last_lost: " << (lost - stats.last_lost) << " " 
+				     << " lost: " << lost << " "
+				     << " last_lost: " << stats.last_lost << endl;
+			}
+			stats.lost2 += lost - stats.last_lost;
+			stats.lost += lost - stats.last_lost;
+			if((lost - stats.last_lost) < 10)
+				stats.slost[lost - stats.last_lost]++;
+			else 
+				stats.slost[10]++;
+
+			if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
+				nintervals += lost - stats.last_lost;
+				while(nintervals > 20) {
+					if(this->graph.isOpenOrEnableAutoOpen()) {
+						this->graph.write((char*)&graph_delimiter, 4);
+					}
 					nintervals -= 20;
 				}
-				float tmp = s->fdelay;
-				if(tmp == graph_delimiter) tmp = graph_delimiter - 1;
-				this->graph.write((char*)&tmp, 4);
-				nintervals++;
+			}
+		} else {
+			if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
+				if(this->graph.isOpenOrEnableAutoOpen()) {
+					if(nintervals > 20) {
+						/* after 20 packets, send new line */
+						this->graph.write((char*)&graph_delimiter, 4);
+						nintervals -= 20;
+					}
+					float tmp = s->fdelay;
+					if(tmp == graph_delimiter) tmp = graph_delimiter - 1;
+					this->graph.write((char*)&tmp, 4);
+					nintervals++;
+				}
 			}
 		}
-	}
-	stats.last_lost = lost;
+		stats.last_lost = lost;
 
-	/* delay statistics */
-	if(adelay >= 50 && adelay < 70) {
-		stats.d50++;
-	} else if (adelay >= 70 && adelay < 90) {
-		stats.d70++;
-	} else if (adelay >= 90 && adelay < 120) {
-		stats.d90++;
-	} else if (adelay >= 120 && adelay < 150) {
-		stats.d120++;
-	} else if (adelay >= 150 && adelay < 200) {
-		stats.d150++;
-	} else if (adelay >= 200 && adelay < 300) {
-		stats.d200++;
-	} else if (adelay >= 300) {
-		stats.d300++;
+		/* delay statistics */
+		if(adelay >= 50 && adelay < 70) {
+			stats.d50++;
+		} else if (adelay >= 70 && adelay < 90) {
+			stats.d70++;
+		} else if (adelay >= 90 && adelay < 120) {
+			stats.d90++;
+		} else if (adelay >= 120 && adelay < 150) {
+			stats.d120++;
+		} else if (adelay >= 150 && adelay < 200) {
+			stats.d150++;
+		} else if (adelay >= 200 && adelay < 300) {
+			stats.d200++;
+		} else if (adelay >= 300) {
+			stats.d300++;
+		}
 	}
+
+	forcemark2 = 0;
 }
 
 void

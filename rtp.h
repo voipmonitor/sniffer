@@ -202,7 +202,8 @@ public:
 	unsigned int first_packet_usec;
 	unsigned int last_end_timestamp;
 	char lastdtmf;
-	int forcemark;
+	bool forcemark;
+	bool forcemark2;
 	char ignore;
 	uint8_t dscp;
 	bool skip;
@@ -260,7 +261,8 @@ public:
 		u_int32_t	slost[11];	//!< lost counts
 		
 		u_int32_t	received;	//!< overall received packets
-		u_int32_t	lost;		//!< overall lost packets
+		u_int32_t	lost;		//!< overall lost packets (real)
+		u_int32_t	lost2;		//!< overall lost packets
 		int		last_lost;	//!< last overall lost packepts
 		long double 	avgjitter;
 		long double 	maxjitter;
