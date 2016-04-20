@@ -2786,6 +2786,7 @@ public:
 		delete this->stack;
 	}
 	inline bool push(void *item, u_int16_t push_queue_index) {
+		/* disable - speed optimize
 		if(!item) {
 			return(false);
 		}
@@ -2793,33 +2794,37 @@ public:
 			syslog(LOG_ERR, "too big push_queue_index");
 			return(false);
 		}
-		if(this->push_queues[push_queue_index].pool_size == HEAP_ITEM_POOL_SIZE) {
+		*/
+		sHeapItemsPool *pool = &this->push_queues[push_queue_index];
+		if(pool->pool_size < HEAP_ITEM_POOL_SIZE) {
+			pool->pool[pool->pool_size] = item;
+			++pool->pool_size;
+		} else {
 			if(stack->push(&this->push_queues[push_queue_index], false, push_queues_max > 1)) {
-				this->push_queues[push_queue_index].pool_size = 0;
+				pool->pool[0] = item;
+				pool->pool_size = 1;
 				//cout << "+" << flush;
 			} else {
 				return(false);
 			}
 		}
-		if(this->push_queues[push_queue_index].pool_size < HEAP_ITEM_POOL_SIZE) {
-			*(u_char*)item = 0;
-			this->push_queues[push_queue_index].pool[this->push_queues[push_queue_index].pool_size] = item;
-			++this->push_queues[push_queue_index].pool_size;
-		}
 		return(true);
 	}
 	inline int pop(void **item, u_int16_t pop_queue_index) {
+		/* disable - speed optimize
 		if(pop_queue_index >= pop_queues_max) {
 			syslog(LOG_ERR, "too big pop_queue_index");
 			return(false);
 		}
-		if(this->pop_queues[pop_queue_index].pool_size > 0) {
-			--this->pop_queues[pop_queue_index].pool_size;
-			*item = this->pop_queues[pop_queue_index].pool[this->pop_queues[pop_queue_index].pool_size];
+		*/
+		sHeapItemsPool *pool = &this->pop_queues[pop_queue_index];
+		if(pool->pool_size > 0) {
+			--pool->pool_size;
+			*item = pool->pool[pool->pool_size];
 		} else {
 			if(stack->pop(&this->pop_queues[pop_queue_index], false, pop_queues_max > 1)) {
-				this->pop_queues[pop_queue_index].pool_size = HEAP_ITEM_POOL_SIZE - 1;
-				*item = this->pop_queues[pop_queue_index].pool[this->pop_queues[pop_queue_index].pool_size];
+				pool->pool_size = HEAP_ITEM_POOL_SIZE - 1;
+				*item = pool->pool[pool->pool_size];
 				//cout << "P" << flush;
 			} else {
 				return(false);
