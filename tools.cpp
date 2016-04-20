@@ -1916,6 +1916,42 @@ int reg_match(const char *string, const char *pattern, const char *file, int lin
 	return(status == 0);
 }
 
+int reg_match(const char *str, const char *pattern, vector<string> *matches, bool ignoreCase, const char *file, int line) {
+	matches->clear();
+	int status;
+	regex_t re;
+	if(regcomp(&re, pattern, REG_EXTENDED | (ignoreCase ? REG_ICASE: 0)) != 0) {
+		static u_long lastTimeSyslog = 0;
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			if(file) {
+				syslog(LOG_ERR, "regcomp %s error in reg_replace - call from %s : %i", pattern, file, line);
+			} else {
+				syslog(LOG_ERR, "regcomp %s error in reg_match", pattern);
+			}
+			lastTimeSyslog = actTime;
+		}
+		return(-1);
+	}
+	int match_max = 20;
+	regmatch_t match[match_max];
+	memset(match, 0, sizeof(match));
+	status = regexec(&re, str, match_max, match, 0);
+	regfree(&re);
+	if(status == 0) {
+		int match_count = 0;
+		for(int i = 0; i < match_max; i ++) {
+			if(match[i].rm_so == -1 && match[i].rm_eo == -1) {
+				break;
+			}
+			matches->push_back(string(str).substr(match[i].rm_so, match[i].rm_eo - match[i].rm_so));
+			++match_count;
+		}
+		return(match_count);
+	}
+	return(0);
+}
+
 string reg_replace(const char *str, const char *pattern, const char *replace, const char *file, int line) {
 	int status;
 	regex_t re;

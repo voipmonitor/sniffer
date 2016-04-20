@@ -357,6 +357,7 @@ std::vector<std::string> split(const std::string &s, char delim);
 std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false);
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false);
 int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);
+int reg_match(const char *str, const char *pattern, vector<string> *matches, bool ignoreCase, const char *file = NULL, int line = 0);
 string reg_replace(const char *string, const char *pattern, const char *replace, const char *file = NULL, int line = 0);
 string inet_ntostring(u_int32_t ip);
 void base64_init(void);

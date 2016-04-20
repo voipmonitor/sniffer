@@ -311,6 +311,7 @@ int opt_mysql_enable_transactions_register = 0;
 int opt_mysql_enable_transactions_http = 0;
 int opt_mysql_enable_transactions_webrtc = 0;
 int opt_cdr_ua_enable = 1;
+vector<string> opt_cdr_ua_reg_remove;
 unsigned long long cachedirtransfered = 0;
 unsigned int opt_maxpcapsize_mb = 0;
 int opt_mosmin_f2 = 1;
@@ -4846,6 +4847,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE cConfigItem_yesno("remotepartypriority", &opt_remotepartypriority));
 				addConfigItem(new FILE_LINE cConfigItem_integer("destination_number_mode", &opt_destination_number_mode));
 				addConfigItem(new FILE_LINE cConfigItem_yesno("cdr_ua_enable", &opt_cdr_ua_enable));
+				addConfigItem(new FILE_LINE cConfigItem_string("cdr_ua_reg_remove", &opt_cdr_ua_reg_remove));
 				addConfigItem(new FILE_LINE cConfigItem_yesno("sipoverlap", &opt_sipoverlap));
 				addConfigItem(new FILE_LINE cConfigItem_yesno("update_dstnum_onanswer", &opt_update_dstnum_onanswer));
 				addConfigItem(new FILE_LINE cConfigItem_integer("sdp_multiplication", &opt_sdp_multiplication));
@@ -6572,6 +6574,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cdr_ua_enable", NULL))) {
 		opt_cdr_ua_enable = yesno(value);
+	}
+	if (ini.GetAllValues("general", "cdr_ua_reg_remove", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			opt_cdr_ua_reg_remove.push_back(i->pItem);
+		}
 	}
 	for(int i = 0; i < 2; i++) {
 		if(i == 0 ?

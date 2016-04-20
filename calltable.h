@@ -767,6 +767,9 @@ public:
 	}
 	
 	void applyRtcpXrDataToRtp();
+	
+	void adjustUA();
+	void adjustUA(char *ua);
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];

@@ -117,6 +117,7 @@ extern struct pcap_stat pcapstat;
 extern int opt_filesclean;
 extern int opt_allow_zerossrc;
 extern int opt_cdr_ua_enable;
+extern vector<string> opt_cdr_ua_reg_remove;
 extern unsigned int graph_delimiter;
 extern int opt_mosmin_f2;
 extern char opt_mos_lqo_bin[1024];
@@ -2020,6 +2021,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		return 1;
 	}
 	
+	adjustUA();
+	
 	if(opt_only_cdr_next) {
 		static u_int32_t last_id_cdr_next = 0;
 		if(!last_id_cdr_next) {
@@ -2336,8 +2339,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 
-		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
-		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
+		if(a_ua[0]) {
+			cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
+		}
+		if(b_ua[0]) {
+			cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
+		}
 
 		if(opt_silencedetect) {
 			if(caller_silence > 0 or caller_noise > 0) {
@@ -2571,12 +2578,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		if(opt_cdr_ua_enable) {
-			if(a_ua) {
+			if(a_ua[0]) {
 				query_str += string("set @uaA_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
 				cdr.add("_\\_'SQL'_\\_:@uaA_id", "a_ua_id");
 				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
 			}
-			if(b_ua) {
+			if(b_ua[0]) {
 				query_str += string("set @uaB_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ");\n";
 				cdr.add("_\\_'SQL'_\\_:@uaB_id", "b_ua_id");
 				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
@@ -2824,10 +2831,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			reason_q850_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_reason_table, "id", "reason", cdr_reason_q850, "type");
 		}
 	}
-	if(cdr_ua_a) {
+	if(a_ua[0] && cdr_ua_a) {
 		a_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
 	}
-	if(cdr_ua_b) {
+	if(b_ua[0] && cdr_ua_b) {
 		b_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
 	}
 
@@ -3035,13 +3042,17 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		sqlDbSaveCall = createSqlObject();
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
+	
+	adjustUA();
 
 	const char *register_table = "register";
 	
 	string query;
 
 	SqlDb_row cdr_ua;
-	cdr_ua.add(sqlEscapeString(a_ua), "ua");
+	if(a_ua[0]) {
+		cdr_ua.add(sqlEscapeString(a_ua), "ua");
+	}
 
 	unsigned int now = time(NULL);
 
@@ -3431,6 +3442,8 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		sqlDbSaveCall = createSqlObject();
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
+	
+	adjustUA();
 
 	SqlDb_row cdr,
 			msg_next_ch[CDR_NEXT_MAX],
@@ -3518,12 +3531,12 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		string query_str;
 		
 		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
-		if(a_ua) {
+		if(a_ua[0]) {
 			query_str += string("set @uaA_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
 			cdr.add("_\\_'SQL'_\\_:@uaA_id", "a_ua_id");
 			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
 		}
-		if(b_ua) {
+		if(b_ua[0]) {
 			query_str += string("set @uaB_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ");\n";
 			cdr.add("_\\_'SQL'_\\_:@uaB_id", "b_ua_id");
 			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
@@ -3599,11 +3612,15 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			b_ua_id = 0;
 
 	lastSIPresponse_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
-	cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
-	a_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
-	cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
-	b_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
-	if(contenttype) {
+	if(a_ua[0]) {
+		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
+		a_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
+	}
+	if(b_ua[0]) {
+		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
+		b_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
+	}
+	if(contenttype && contenttype[0]) {
 		m_contenttype.add(sqlEscapeString(contenttype), "contenttype");
 		unsigned int id_contenttype = sqlDbSaveCall->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype);
 		cdr.add(id_contenttype, "id_contenttype");
@@ -3770,6 +3787,53 @@ Call::applyRtcpXrDataToRtp() {
 					}
 				}
 				break;
+			}
+		}
+	}
+}
+
+void Call::adjustUA() {
+	if(opt_cdr_ua_reg_remove.size()) {
+		if(a_ua[0]) {
+			adjustUA(a_ua);
+		}
+		if(b_ua[0]) {
+			adjustUA(b_ua);
+		}
+	}
+}
+
+void Call::adjustUA(char *ua) {
+	if(opt_cdr_ua_reg_remove.size()) {
+		bool adjust = false;
+		for(unsigned i = 0; i < opt_cdr_ua_reg_remove.size(); i++) {
+			vector<string> matches;
+			if(reg_match(ua, opt_cdr_ua_reg_remove[i].c_str(), &matches, true, __FILE__, __LINE__)) {
+				for(unsigned j = 0; j < matches.size(); j++) {
+					char *str_pos = strstr(ua, matches[j].c_str());
+					if(str_pos) {
+						char ua_temp[1024];
+						strncpy(ua_temp, str_pos + matches[j].size(), sizeof(ua_temp));
+						strcpy(str_pos, ua_temp);
+						adjust = true;
+					}
+				}
+			}
+		}
+		if(adjust) {
+			int length = strlen(ua);
+			while(ua[length - 1] == ' ') {
+				ua[length - 1] = 0;
+				--length;
+			}
+			int start = 0;
+			while(ua[start] == ' ') {
+				++start;
+			}
+			if(start) {
+				char ua_temp[1024];
+				strncpy(ua_temp, ua + start, sizeof(ua_temp));
+				strcpy(ua, ua_temp);
 			}
 		}
 	}
