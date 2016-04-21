@@ -710,36 +710,36 @@ int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseCo
 	int ok;
 	//List of SIP request methods
 	//RFC 3261
-	if(strncasecmp(data, "SIP/2.0", 7)) {
+	if(!strncasecmp(data, "SIP/2.0", 7)) {
 		ok = 1;
-	} else if(strncasecmp(data, "INVITE", 6)) {
+	} else if(!strncasecmp(data, "INVITE", 6)) {
 		ok = 1;
-	} else if(strncasecmp(data, "ACK", 3)) {
+	} else if(!strncasecmp(data, "ACK", 3)) {
 		ok = 1;
-	} else if(strncasecmp(data, "BYE", 3)) {
+	} else if(!strncasecmp(data, "BYE", 3)) {
 		ok = 1;
-	} else if(strncasecmp(data, "CANCEL", 6)) {
+	} else if(!strncasecmp(data, "CANCEL", 6)) {
 		ok = 1;
-	} else if(strncasecmp(data, "OPTIONS", 7)) {
+	} else if(!strncasecmp(data, "OPTIONS", 7)) {
 		ok = 1;
-	} else if(strncasecmp(data, "REGISTER", 8)) {
+	} else if(!strncasecmp(data, "REGISTER", 8)) {
 		ok = 1;
 	//RFC 3262
-	} else if(strncasecmp(data, "PRACK", 5)) {
+	} else if(!strncasecmp(data, "PRACK", 5)) {
 		ok = 1;
-	} else if(strncasecmp(data, "SUBSCRIBE", 9)) {
+	} else if(!strncasecmp(data, "SUBSCRIBE", 9)) {
 		ok = 1;
-	} else if(strncasecmp(data, "NOTIFY", 6)) {
+	} else if(!strncasecmp(data, "NOTIFY", 6)) {
 		ok = 1;
-	} else if(strncasecmp(data, "PUBLISH", 7)) {
+	} else if(!strncasecmp(data, "PUBLISH", 7)) {
 		ok = 1;
-	} else if(strncasecmp(data, "INFO", 4)) {
+	} else if(!strncasecmp(data, "INFO", 4)) {
 		ok = 1;
-	} else if(strncasecmp(data, "REFER", 5)) {
+	} else if(!strncasecmp(data, "REFER", 5)) {
 		ok = 1;
-	} else if(strncasecmp(data, "MESSAGE", 7)) {
+	} else if(!strncasecmp(data, "MESSAGE", 7)) {
 		ok = 1;
-	} else if(strncasecmp(data, "UPDATE", 6)) {
+	} else if(!strncasecmp(data, "UPDATE", 6)) {
 		ok = 1;
 	} else {
 		ok = 0;
