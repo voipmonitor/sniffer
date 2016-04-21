@@ -2400,8 +2400,7 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	this->pcap_timeout = 1000;
 	this->pcap_buffer_size = opt_ringbuffer * 1024 * 1024;
 	//
-	this->_last_ps_drop = 0;
-	this->_last_ps_ifdrop = 0;
+	memset(&this->last_ps, 0, sizeof(this->last_ps));
 	this->countPacketDrop = 0;
 	this->lastPacketTimeUS = 0;
 	this->lastTimeLogErrPcapNextExNullPacket = 0;
@@ -2788,18 +2787,34 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod
 		pcap_stat ps;
 		int pcapstatres = pcap_stats(this->pcapHandle, &ps);
 		if(pcapstatres == 0) {
-			if(ps.ps_drop > this->_last_ps_drop/* || ps.ps_ifdrop > this->_last_ps_ifdrop*/) {
-				outStr << "DROPPED PACKETS - " << this->getInterfaceName() << ": "
-				       << "libpcap or interface dropped some packets!"
-				       << " rx:" << ps.ps_recv
-				       << " pcapdrop:" << ps.ps_drop - this->_last_ps_drop
-				       << " ifdrop:"<< ps.ps_ifdrop - this->_last_ps_drop << endl
-				       << "     increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)" << endl;
-				this->_last_ps_drop = ps.ps_drop;
-				this->_last_ps_ifdrop = ps.ps_ifdrop;
-				++this->countPacketDrop;
-				pcap_drop_flag = 1;
+			if(ps.ps_recv >= this->last_ps.ps_recv) {
+				bool pcapdrop = false;
+				bool ifdrop = false;
+				if(ps.ps_drop > this->last_ps.ps_drop) {
+					pcapdrop = true;
+					++this->countPacketDrop;
+					pcap_drop_flag = 1;
+				}
+				if(ps.ps_ifdrop > this->last_ps.ps_ifdrop &&
+				   (ps.ps_ifdrop - this->last_ps.ps_ifdrop) > (ps.ps_recv - this->last_ps.ps_recv) * 0.2) {
+					ifdrop = true;
+				}
+				if(pcapdrop || ifdrop) {
+					outStr << "DROPPED PACKETS - " << this->getInterfaceName() << ": "
+					       << "libpcap or interface dropped some packets!"
+					       << " rx:" << ps.ps_recv;
+					if(pcapdrop) {
+						outStr << " pcapdrop:" << ps.ps_drop - this->last_ps.ps_drop;
+					}
+					if(ifdrop) {
+						outStr << " ifdrop:" << ps.ps_ifdrop - this->last_ps.ps_ifdrop;
+					}
+					outStr << endl
+					       << "     increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)" 
+					       << endl;
+				}
 			}
+			this->last_ps = ps;
 		}
 	}
 	return(outStr.str());
@@ -2836,9 +2851,8 @@ void PcapQueue_readFromInterface_base::initStat_interface() {
 	if(this->pcapHandle) {
 		pcap_stat ps;
 		int pcapstatres = pcap_stats(this->pcapHandle, &ps);
-		if (pcapstatres == 0 && (ps.ps_drop || ps.ps_ifdrop)) {
-			this->_last_ps_drop = ps.ps_drop;
-			this->_last_ps_ifdrop = ps.ps_ifdrop;
+		if(pcapstatres == 0) {
+			this->last_ps = ps;
 		}
 		this->countPacketDrop = 0;
 	}

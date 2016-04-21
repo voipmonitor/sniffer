@@ -419,8 +419,7 @@ private:
 	int pcap_promisc;
 	int pcap_timeout;
 	int pcap_buffer_size;
-	u_int _last_ps_drop;
-	u_int _last_ps_ifdrop;
+	pcap_stat last_ps;
 	u_long countPacketDrop;
 	u_int64_t lastPacketTimeUS;
 	u_long lastTimeLogErrPcapNextExNullPacket;
