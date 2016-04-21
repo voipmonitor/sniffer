@@ -94,13 +94,20 @@ public:
 		while(data_len > 0) {
 			u_char *endHeaderSepPos = (u_char*)memmem(data, data_len, "\r\n\r\n", 4);
 			if(endHeaderSepPos) {
-				*endHeaderSepPos = 0;
-				char *contentLengthPos = strcasestr((char*)data, "Content-Length: ");
-				*endHeaderSepPos = '\r';
 				unsigned int contentLength = 0;
-				if(contentLengthPos) {
-					contentLength = atol(contentLengthPos + 16);
+				*endHeaderSepPos = 0;
+				for(int pass = 0; pass < 2; ++pass) {
+					char *contentLengthPos = strcasestr((char*)data, pass ? "\r\nl:" : "\r\nContent-Length:");
+					if(contentLengthPos) {
+						contentLengthPos += pass ? 4 : 17;
+						while(*contentLengthPos == ' ') {
+							++contentLengthPos;
+						}
+						contentLength = atol(contentLengthPos);
+						break;
+					}
 				}
+				*endHeaderSepPos = '\r';
 				int sipDataLen = (endHeaderSepPos - data) + 4 + contentLength;
 				extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
 				if(sipDataLen == data_len) {
