@@ -109,6 +109,8 @@ struct packet_s {
 	u_int16_t header_ip_offset;
 	unsigned int istcp : 2;
 	bool is_ssl : 1;
+	bool is_skinny : 1;
+	bool is_need_sip_process : 1;
 	bool _blockstore_lock : 1;
 	bool _packet_alloc : 1;
 	inline char *data_() {

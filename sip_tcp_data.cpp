@@ -86,6 +86,11 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			packetS->sensor_id_u = (u_int16_t)sensor_id;
 			packetS->sensor_ip = sensor_ip;
 			packetS->is_ssl = false;
+			extern int opt_skinny;
+			extern char *sipportmatrix;
+			packetS->is_skinny = opt_skinny && (_port_src == 2000 || _port_dst == 2000);
+			packetS->is_need_sip_process = sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
+						       packetS->is_skinny;
 			packetS->init2();
 			((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS);
 		} else {

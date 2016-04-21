@@ -5631,10 +5631,7 @@ void PreProcessPacket::terminate() {
 }
 
 void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
-	packet_s_process *packetS = packetS_detach->is_ssl ||
-				    sipportmatrix[packetS_detach->source] || 
-				    sipportmatrix[packetS_detach->dest] ||
-				    (opt_skinny && packetS_detach->istcp && (packetS_detach->source == 2000 || packetS_detach->dest == 2000)) ?
+	packet_s_process *packetS = packetS_detach->is_need_sip_process ?
 				     PACKET_S_PROCESS_SIP_POP_FROM_STACK() : 
 				     (packet_s_process*)PACKET_S_PROCESS_RTP_POP_FROM_STACK();
 	*(packet_s*)packetS = *(packet_s*)packetS_detach;
@@ -5660,16 +5657,13 @@ void PreProcessPacket::process_DETACH_plus(packet_s_plus_pointer *packetS_detach
 
 void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 	bool isSip = false;
-	if(packetS->is_ssl ||
-	   sipportmatrix[packetS->source] || 
-	   sipportmatrix[packetS->dest] ||
-	   (opt_skinny && packetS->istcp && (packetS->source == 2000 || packetS->dest == 2000))) {
+	if(packetS->is_need_sip_process) {
 		packetS->init2();
 		if(check_sip20(packetS->data, packetS->datalen, NULL)) {
 			isSip = true;
 		}
 		if(packetS->istcp) {
-			if(opt_skinny && (packetS->source == 2000 || packetS->dest == 2000)) {
+			if(packetS->is_skinny) {
 				// call process_skinny before tcp reassembly - TODO !
 				this->process_skinny(&packetS);
 			} else {
@@ -5756,7 +5750,7 @@ void PreProcessPacket::process_parseSipDataExt(packet_s_process **packetS_ref) {
 
 void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
-	if(opt_skinny && packetS->istcp && (packetS->source == 2000 || packetS->dest == 2000)) {
+	if(packetS->is_skinny) {
 		this->process_skinny(&packetS);
 		return;
 	}

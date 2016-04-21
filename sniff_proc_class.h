@@ -224,6 +224,12 @@ public:
 		packetS.sensor_id_u = (u_int16_t)sensor_id;
 		packetS.sensor_ip = sensor_ip;
 		packetS.is_ssl = is_ssl;
+		extern int opt_skinny;
+		extern char *sipportmatrix;
+		packetS.is_skinny = opt_skinny && istcp && (source == 2000 || dest == 2000);
+		packetS.is_need_sip_process = is_ssl ||
+					      sipportmatrix[source] || sipportmatrix[dest] ||
+					      packetS.is_skinny;
 		if(blockstore_lock == 1) {
 			packetS.blockstore_lock();
 		} else if(blockstore_lock == 2) {
@@ -250,14 +256,9 @@ public:
 				qring_detach_active_push_item = qring_detach[qring_push_index - 1];
 			}
 			*(packet_s*)qring_detach_active_push_item->batch[qring_push_index_count] = *packetS;
-			extern char *sipportmatrix;
-			extern int opt_skinny;
 			extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 			void **p = qring_detach_active_push_item->batch[qring_push_index_count]->pointer;
-			if(packetS->is_ssl ||
-			   sipportmatrix[packetS->source] || 
-			   sipportmatrix[packetS->dest] ||
-			   (opt_skinny && packetS->istcp && (packetS->source == 2000 || packetS->dest == 2000))) {
+			if(packetS->is_need_sip_process) {
 				p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack();
 				p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackSip;
 			} else {
