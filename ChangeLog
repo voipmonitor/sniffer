@@ -1,3 +1,8 @@
+15.7.2 21.4.2016
+================
+- fix function TcpReassemblySip::checkSip - detect content-length short tag (l:)
+
+
 15.7.1 21.4.2016
 ================
 - fix g.723 audio out of sync in case call starts with SID frames (all versions) 
