@@ -333,6 +333,8 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	last_markbit = 0;
 
 	skip = false;
+
+	defer_codec_change = false;
 }
 
 
@@ -1262,118 +1264,126 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	// codec changed 
-	if(curpayload != prev_payload and codec != PAYLOAD_TELEVENT and (prev_codec != PAYLOAD_TELEVENT or !codecchanged) and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19) {
-		codecchanged = true;
-		switch(codec) {
-		case PAYLOAD_SILK12:
-		case PAYLOAD_OPUS12:
-		case PAYLOAD_XOPUS12:
-		case PAYLOAD_G722112:
-			samplerate = 12000;
-			break;
-		case PAYLOAD_ISAC16:
-		case PAYLOAD_SILK16:
-		case PAYLOAD_OPUS16:
-		case PAYLOAD_XOPUS16:
-		case PAYLOAD_G722116:
-			samplerate = 16000;
-			break;
-		case PAYLOAD_SILK24:
-		case PAYLOAD_OPUS24:
-		case PAYLOAD_XOPUS24:
-		case PAYLOAD_G722124:
-			samplerate = 24000;
-			break;
-		case PAYLOAD_ISAC32:
-		case PAYLOAD_G722132:
-			samplerate = 32000;
-			break;
-		case PAYLOAD_OPUS48:
-		case PAYLOAD_XOPUS48:
-		case PAYLOAD_G722148:
-			samplerate = 48000;
-			break;
-		default: 
-			samplerate = 8000;
+	if(defer_codec_change or (curpayload != prev_payload and codec != PAYLOAD_TELEVENT and (prev_codec != PAYLOAD_TELEVENT or !codecchanged) and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19)) {
+		if(defer_codec_change) {
+			defer_codec_change = false;
 		}
-
-		if(iscaller) {
-			owner->last_callercodec = codec;
+		if(curpayload == PAYLOAD_G723 and *(data + sizeof(RTPFixedHeader)) & 2) {
+			// codec changed but it is still SID frames (silence) we have to defer this until first valid speech frame otherwise call will be out of sync
+			defer_codec_change = true;
 		} else {
-			owner->last_calledcodec = codec;
-		}
+			codecchanged = true;
+			switch(codec) {
+			case PAYLOAD_SILK12:
+			case PAYLOAD_OPUS12:
+			case PAYLOAD_XOPUS12:
+			case PAYLOAD_G722112:
+				samplerate = 12000;
+				break;
+			case PAYLOAD_ISAC16:
+			case PAYLOAD_SILK16:
+			case PAYLOAD_OPUS16:
+			case PAYLOAD_XOPUS16:
+			case PAYLOAD_G722116:
+				samplerate = 16000;
+				break;
+			case PAYLOAD_SILK24:
+			case PAYLOAD_OPUS24:
+			case PAYLOAD_XOPUS24:
+			case PAYLOAD_G722124:
+				samplerate = 24000;
+				break;
+			case PAYLOAD_ISAC32:
+			case PAYLOAD_G722132:
+				samplerate = 32000;
+				break;
+			case PAYLOAD_OPUS48:
+			case PAYLOAD_XOPUS48:
+			case PAYLOAD_G722148:
+				samplerate = 48000;
+				break;
+			default: 
+				samplerate = 8000;
+			}
 
-		if(opt_saveRAW || opt_savewav_force || (owner && (owner->flags & FLAG_SAVEAUDIO)) ||
-			(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
-		) {
-//			if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u]\n", owner->flags);
-			/* open file for raw codec */
-			unsigned long unique = getTimestamp();
-			char tmp[1024];
-			sprintf(tmp, "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
-			if(gfileRAW) {
-				//there is already opened gfileRAW
-                                jitterbuffer_fixed_flush(channel_record);
-				fclose(gfileRAW);
+			if(iscaller) {
+				owner->last_callercodec = codec;
 			} else {
-				/* look for the last RTP stream belonging to this direction and let jitterbuffer put silence 
-				 * which fills potentionally gap between this and previouse RTP so it will stay in sync with
-				 * the other direction of call 
-				 */
-				RTP *prevrtp = (RTP*)(owner->rtp_prev[iscaller]);
-				if(prevrtp && prevrtp != this) {
-					prevrtp->ignore = 1; 
-					prevrtp->data = data; 
-					prevrtp->len = len;
-					prevrtp->header_ts = header_ts;
-					prevrtp->codec = prevrtp->prev_codec;
-					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
-						// MOS LQO is calculated only if the call is connected 
-						if(owner->connect_time) {
+				owner->last_calledcodec = codec;
+			}
+
+			if(opt_saveRAW || opt_savewav_force || (owner && (owner->flags & FLAG_SAVEAUDIO)) ||
+				(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
+			) {
+	//			if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u]\n", owner->flags);
+				/* open file for raw codec */
+				unsigned long unique = getTimestamp();
+				char tmp[1024];
+				sprintf(tmp, "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
+				if(gfileRAW) {
+					//there is already opened gfileRAW
+					jitterbuffer_fixed_flush(channel_record);
+					fclose(gfileRAW);
+				} else {
+					/* look for the last RTP stream belonging to this direction and let jitterbuffer put silence 
+					 * which fills potentionally gap between this and previouse RTP so it will stay in sync with
+					 * the other direction of call 
+					 */
+					RTP *prevrtp = (RTP*)(owner->rtp_prev[iscaller]);
+					if(prevrtp && prevrtp != this) {
+						prevrtp->ignore = 1; 
+						prevrtp->data = data; 
+						prevrtp->len = len;
+						prevrtp->header_ts = header_ts;
+						prevrtp->codec = prevrtp->prev_codec;
+						if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
+							// MOS LQO is calculated only if the call is connected 
+							if(owner->connect_time) {
+								prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
+							}
+						} else {
 							prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
 						}
-					} else {
-						prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
 					}
 				}
-			}
-			for(int passOpen = 0; passOpen < 2; passOpen++) {
-				if(passOpen == 1) {
-					char *pointToLastDirSeparator = strrchr(tmp, '/');
-					if(pointToLastDirSeparator) {
-						*pointToLastDirSeparator = 0;
-						mkdir_r(tmp, 0777);
-						*pointToLastDirSeparator = '/';
-					} else {
+				for(int passOpen = 0; passOpen < 2; passOpen++) {
+					if(passOpen == 1) {
+						char *pointToLastDirSeparator = strrchr(tmp, '/');
+						if(pointToLastDirSeparator) {
+							*pointToLastDirSeparator = 0;
+							mkdir_r(tmp, 0777);
+							*pointToLastDirSeparator = '/';
+						} else {
+							break;
+						}
+					}
+					gfileRAW = fopen(tmp, "w");
+					if(gfileRAW) {
 						break;
 					}
 				}
-				gfileRAW = fopen(tmp, "w");
-				if(gfileRAW) {
-					break;
+				if(!gfileRAW_buffer) {
+					gfileRAW_buffer = new FILE_LINE char[32768];
+					if(gfileRAW_buffer == NULL) {
+						syslog(LOG_ERR, "Cannot allocate memory for gfileRAW_buffer - low memory this is FATAL");
+						exit(2);
+					}
 				}
-			}
-			if(!gfileRAW_buffer) {
-				gfileRAW_buffer = new FILE_LINE char[32768];
-				if(gfileRAW_buffer == NULL) {
-					syslog(LOG_ERR, "Cannot allocate memory for gfileRAW_buffer - low memory this is FATAL");
-					exit(2);
+				if(!gfileRAW) {
+					syslog(LOG_ERR, "Cannot open file %s for writing: %s\n", tmp, strerror (errno));
+				} else if(gfileRAW_buffer) {
+					setvbuf(gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
 				}
-			}
-			if(!gfileRAW) {
-				syslog(LOG_ERR, "Cannot open file %s for writing: %s\n", tmp, strerror (errno));
-			} else if(gfileRAW_buffer) {
-				setvbuf(gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
-			}
 
-			/* write file info to "playlist" */
-			sprintf(tmp, "%s.rawInfo", basefilename);
-			FILE *gfileRAWInfo = fopen(tmp, "a");
-			if(gfileRAWInfo) {
-				fprintf(gfileRAWInfo, "%d:%lu:%d:%ld:%ld\n", ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
-				fclose(gfileRAWInfo);
-			} else {
-				syslog(LOG_ERR, "Cannot open file %s.rawInfo for writing\n", basefilename);
+				/* write file info to "playlist" */
+				sprintf(tmp, "%s.rawInfo", basefilename);
+				FILE *gfileRAWInfo = fopen(tmp, "a");
+				if(gfileRAWInfo) {
+					fprintf(gfileRAWInfo, "%d:%lu:%d:%ld:%ld\n", ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
+					fclose(gfileRAWInfo);
+				} else {
+					syslog(LOG_ERR, "Cannot open file %s.rawInfo for writing\n", basefilename);
+				}
 			}
 		}
 	}

@@ -228,6 +228,7 @@ public:
 	bool codecchanged;
 	uint32_t counter;
 	bool had_audio;
+	bool defer_codec_change;
 
 	/* RTCP data */
 	struct rtcp_t {

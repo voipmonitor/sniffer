@@ -1,3 +1,8 @@
+15.7.1 21.4.2016
+================
+- fix g.723 audio out of sync in case call starts with SID frames (all versions) 
+
+
 15.7 21.4.2016
 ==============
 - ignore packet loss and jitter after REINVITE (removes false positive loss/PDV in case of HOLD / re-INVITE for some cases) 
