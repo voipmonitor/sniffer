@@ -1,3 +1,12 @@
+15.7 21.4.2016
+==============
+- ignore packet loss and jitter after REINVITE (removes false positive loss/PDV in case of HOLD / re-INVITE for some cases) 
+- added experimental feature sip_tcp_reassembly_ext = yes which uses another SIP TCP reassemble code
+- fixed loading pcap file via command line (-r) 
+- fix issue in tcp reassembly - if reading pcap contain packets from split multisip tcp
+- new option cdr_ua_reg_remove allows to trim user-agent sip header (strip unique strings to prevent mysql cdr_ua growing (more details in voipmonitor.conf) [VS-425]
+
+
 15.6 11.4.2016
 ==============
 - implement pause/unpause recording for "182 Queued avaya-cm-data" (new option 182queuedpauserecording) [VS-321]
