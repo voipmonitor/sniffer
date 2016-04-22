@@ -3328,13 +3328,16 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		bool existPartition = false;
 		vector<string> cdrMainTables = this->getSourceTables(tt_main | tt_child, tt2_cdr);
 		for(size_t i = 0; i < cdrMainTables.size(); i++) {
-			this->query(string("EXPLAIN PARTITIONS SELECT * from ") + cdrMainTables[i] + " limit 1");
-			SqlDb_row row;
-			if((row = this->fetchRow())) {
-				okExplainPartition = true;
-				if(row["partitions"] != "") {
-					existPartition = true;
-					break;
+			this->query("show tables like '" + cdrMainTables[i] + "'");
+			if(this->fetchRow()) {
+				this->query(string("EXPLAIN PARTITIONS SELECT * from ") + cdrMainTables[i] + " limit 1");
+				SqlDb_row row;
+				if((row = this->fetchRow())) {
+					okExplainPartition = true;
+					if(row["partitions"] != "") {
+						existPartition = true;
+						break;
+					}
 				}
 			}
 		}
@@ -3345,10 +3348,23 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	}
 
 	checkColumns_cdr(true);
+	
+	string cdrIdType = "bigint";
+	if(!opt_cdr_partition) {
+		this->query("show columns from cdr like 'id'");
+		SqlDb_row cdr_struct_row = this->fetchRow();
+		if(cdr_struct_row) {
+			string idType = cdr_struct_row["type"];
+			std::transform(idType.begin(), idType.end(), idType.begin(), ::toupper);
+			if(idType.find("BIG") == string::npos) {
+				cdrIdType = "int";
+			}
+		}
+	}
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_next` (\
-			`cdr_ID` bigint unsigned NOT NULL,") +
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
@@ -3382,7 +3398,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_proxy` (\
-			`cdr_ID` bigint unsigned NOT NULL,\
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,\
 			`calldate` datetime NOT NULL,\
 			`src` int unsigned DEFAULT NULL,\
 			`dst` varchar(255) DEFAULT NULL,\
@@ -3404,7 +3420,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_rtp` (\
-			`cdr_ID` bigint unsigned NOT NULL,") +
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
@@ -3436,7 +3452,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
-			`cdr_ID` bigint unsigned NOT NULL,") +
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
@@ -3462,7 +3478,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_sipresp` (\
-			`cdr_ID` bigint unsigned NOT NULL,") +
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
@@ -3487,7 +3503,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	if(_save_sip_history) {
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `cdr_siphistory` (\
-				`cdr_ID` bigint unsigned NOT NULL,") +
+				`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 				(opt_cdr_partition ?
 					"`calldate` datetime NOT NULL," :
 					"") + 
@@ -3514,7 +3530,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_tar_part` (\
-			`cdr_ID` bigint unsigned NOT NULL,") +
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
