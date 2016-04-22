@@ -1586,7 +1586,11 @@ public:
 			while(*nodeName == '\n') {
 				++nodeName;
 			}
-			ppNode *node = parser->getNode(nodeName, 0, NULL);
+			unsigned nodeLength = 0;
+			while(nodeName[nodeLength]) {
+				++nodeLength;
+			}
+			ppNode *node = parser->getNode(nodeName, nodeLength, NULL);
 			if(node) {
 				ppContentItemX *contentItem = node->getPointerToItem(this);
 				if(contentItem->length) {
@@ -1638,7 +1642,7 @@ public:
 				}
 				if(nodes[nodeChar]) {
 					++namelength;
-					if(namelength_limit && namelength > namelength_limit) {
+					if(namelength > namelength_limit) {
 						return(NULL);
 					}
 					ppNode *node = (ppNode*)nodes[nodeChar];

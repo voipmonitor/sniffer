@@ -412,8 +412,8 @@ public:
 	}
 	void push(TcpReassemblyStream_packet packet);
 	int ok(bool crazySequence = false, bool enableSimpleCmpMaxNextSeq = false, u_int32_t maxNextSeq = 0,
-	       bool enableCheckCompleteContent = false, TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
-	       u_int32_t forceFirstSeq = 0, bool ignorePsh = false);
+	       int enableValidateDataViaCheckData = -1, int needValidateDataViaCheckData = -1, TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
+	       u_int32_t forceFirstSeq = 0, int ignorePsh = -1);
 	bool ok2_ec(u_int32_t nextAck, bool enableDebug = false);
 	u_char *complete(u_int32_t *datalen, timeval *time, bool check = false,
 			 size_t startIndex = 0, size_t *endIndex = NULL, bool breakIfPsh = false);
@@ -574,16 +574,14 @@ public:
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 		  pcap_block_store *block_store, int block_store_index);
-	int okQueue(int final = 0, bool enableDebug = false, 
-		    bool checkCompleteContent = false, bool ignorePsh = false) {
+	int okQueue(int final = 0, bool enableDebug = false) {
 		if(this->state == STATE_CRAZY) {
 			return(this->okQueue_crazy(final, enableDebug));
 		} else {
-			return(this->okQueue_normal(final, enableDebug, checkCompleteContent, ignorePsh));
+			return(this->okQueue_normal(final, enableDebug));
 		}
 	}
-	int okQueue_normal(int final = 0, bool enableDebug = false, 
-			   bool checkCompleteContent = false, bool ignorePsh = false);
+	int okQueue_normal(int final = 0, bool enableDebug = false);
 	int okQueue_crazy(int final = 0, bool enableDebug = false);
 	void complete(bool final = false, bool eraseCompletedStreams = false) {
 		if(this->state == STATE_CRAZY) {
@@ -776,6 +774,15 @@ public:
 	void setEnableAllCompleteAfterZerodataAck(bool enableAllCompleteAfterZerodataAck = true) {
 		this->enableAllCompleteAfterZerodataAck = enableAllCompleteAfterZerodataAck;
 	}
+	void setEnableValidateDataViaCheckData(bool enableValidateDataViaCheckData = true) {
+		this->enableValidateDataViaCheckData = enableValidateDataViaCheckData;
+	}
+	void setNeedValidateDataViaCheckData(bool needValidateDataViaCheckData = true) {
+		this->needValidateDataViaCheckData = needValidateDataViaCheckData;
+	}
+	void setIgnorePshInCheckOkData(bool ignorePshInCheckOkData = true) {
+		this->ignorePshInCheckOkData = ignorePshInCheckOkData;
+	}
 	void setEnableCleanupThread(bool enableCleanupThread = true) {
 		this->enableCleanupThread = enableCleanupThread;
 		this->createCleanupThread();
@@ -890,6 +897,9 @@ private:
 	bool enableIgnorePairReqResp;
 	bool enableDestroyStreamsInComplete;
 	bool enableAllCompleteAfterZerodataAck;
+	bool enableValidateDataViaCheckData;
+	bool needValidateDataViaCheckData;
+	bool ignorePshInCheckOkData;
 	bool enableCleanupThread;
 	bool enablePacketThread;
 	TcpReassemblyProcessData *dataCallback;
@@ -912,6 +922,7 @@ private:
 	u_int32_t linkTimeout;
 	SafeAsyncQueue<sPacket> packetQueue;
 friend class TcpReassemblyLink;
+friend class TcpReassemblyStream;
 friend void *_TcpReassembly_cleanupThreadFunction(void* arg);
 friend void *_TcpReassembly_packetThreadFunction(void* arg);
 };

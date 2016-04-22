@@ -4958,12 +4958,17 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 			mirrorip->send((char *)ppd.header_ip, (int)(HPH(header_packet)->caplen - ((u_char*)ppd.header_ip - HPP(header_packet))));
 		}
 		if(!opt_mirroronly) {
+			pcap_pkthdr *header = new FILE_LINE pcap_pkthdr;
+			*header = *HPH(header_packet);
+			u_char *packet = new FILE_LINE u_char[header->caplen];
+			memcpy(packet, HPP(header_packet), header->caplen);
+			unsigned dataoffset = (u_char*)ppd.data - HPP(header_packet);
 			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 				false, packet_counter,
 				ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
-				ppd.data, ppd.datalen, (u_char*)ppd.data - HPP(header_packet), 
-				handle_index, HPH(header_packet), HPP(header_packet), false,
-				ppd.istcp, ppd.header_ip,
+				(char*)(packet + dataoffset), ppd.datalen, dataoffset, 
+				handle_index, header, packet, true,
+				ppd.istcp, (iphdr2*)(packet + ppd.header_ip_offset),
 				NULL, 0, global_pcap_dlink, opt_id_sensor,
 				false);
 		}
@@ -5313,8 +5318,14 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id id, PreProcess
 	if(!stream->packets) {
 		return;
 	}
-	packet_s_process *completePacketS = stream->packets->packetS;
-	if(stream->complete_data != NULL) {
+	packet_s_process *completePacketS;
+	if(stream->complete_data == NULL) {
+		completePacketS = stream->packets->packetS;
+		stream->packets->packetS = NULL;
+	} else {
+		completePacketS = PACKET_S_PROCESS_SIP_CREATE();
+		*completePacketS = *stream->packets->packetS;
+		completePacketS->blockstore_clear();
 		int new_data_len = stream->complete_data->size();
 		u_char *new_data = stream->complete_data->data();
 		long newLen = new_data_len + completePacketS->dataoffset;
@@ -5336,7 +5347,6 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id id, PreProcess
 		completePacketS->_packet_alloc = true;
 	}
 	completePacketS->istcp = 2;
-	stream->packets->packetS = NULL;
 	if(sverb.reassembly_sip || sverb.reassembly_sip_output) {
 		if(sverb.reassembly_sip) {
 			cout << " * COMPLETE ";

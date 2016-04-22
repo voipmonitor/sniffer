@@ -2861,6 +2861,7 @@ int main_init_read() {
 			tcpReassemblyHttp = new FILE_LINE TcpReassembly(TcpReassembly::http);
 			tcpReassemblyHttp->setEnableHttpForceInit();
 			tcpReassemblyHttp->setEnableCrazySequence();
+			tcpReassemblyHttp->setEnableValidateDataViaCheckData();
 			tcpReassemblyHttp->setEnableCleanupThread();
 			tcpReassemblyHttp->setEnablePacketThread();
 			httpData = new FILE_LINE HttpData;
@@ -2880,6 +2881,7 @@ int main_init_read() {
 			tcpReassemblyWebrtc->setEnableWildLink();
 			tcpReassemblyWebrtc->setEnableDestroyStreamsInComplete();
 			tcpReassemblyWebrtc->setEnableAllCompleteAfterZerodataAck();
+			tcpReassemblyWebrtc->setIgnorePshInCheckOkData();
 			tcpReassemblyWebrtc->setEnablePacketThread();
 			webrtcData = new FILE_LINE WebrtcData;
 			tcpReassemblyWebrtc->setDataCallback(webrtcData);
@@ -2890,6 +2892,7 @@ int main_init_read() {
 		tcpReassemblySsl->setEnableIgnorePairReqResp();
 		tcpReassemblySsl->setEnableDestroyStreamsInComplete();
 		tcpReassemblySsl->setEnableAllCompleteAfterZerodataAck();
+		tcpReassemblySsl->setIgnorePshInCheckOkData();
 		sslData = new FILE_LINE SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
@@ -2899,10 +2902,11 @@ int main_init_read() {
 		tcpReassemblySipExt = new FILE_LINE TcpReassembly(TcpReassembly::sip);
 		tcpReassemblySipExt->setEnableIgnorePairReqResp();
 		tcpReassemblySipExt->setEnableDestroyStreamsInComplete();
-		tcpReassemblySipExt->setEnableAllCompleteAfterZerodataAck();
+		tcpReassemblySipExt->setNeedValidateDataViaCheckData();
+		tcpReassemblySipExt->setIgnorePshInCheckOkData();
 		sipTcpData = new FILE_LINE SipTcpData;
 		tcpReassemblySipExt->setDataCallback(sipTcpData);
-		tcpReassemblySipExt->setLinkTimeout(60);
+		tcpReassemblySipExt->setLinkTimeout(10);
 		tcpReassemblySipExt->setEnableWildLink();
 	}
 	

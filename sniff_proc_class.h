@@ -88,13 +88,15 @@ private:
 	void cleanStream(tcp_stream *stream, bool callFromClean = false);
 public:
 	static bool checkSip(u_char *data, int data_len) {
-		if(!data || data_len < 10) {
+		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
+		if(!data || data_len < 10 ||
+		   !check_sip20((char*)data, data_len, NULL)) {
 			return(false);
 		}
 		while(data_len > 0) {
+			unsigned int contentLength = 0;
 			u_char *endHeaderSepPos = (u_char*)memmem(data, data_len, "\r\n\r\n", 4);
 			if(endHeaderSepPos) {
-				unsigned int contentLength = 0;
 				*endHeaderSepPos = 0;
 				for(int pass = 0; pass < 2; ++pass) {
 					char *contentLengthPos = strcasestr((char*)data, pass ? "\r\nl:" : "\r\nContent-Length:");
@@ -108,19 +110,18 @@ public:
 					}
 				}
 				*endHeaderSepPos = '\r';
-				int sipDataLen = (endHeaderSepPos - data) + 4 + contentLength;
-				extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
-				if(sipDataLen == data_len) {
+			} else {
+				break;
+			}
+			int sipDataLen = (endHeaderSepPos - data) + 4 + contentLength;
+			if(sipDataLen == data_len) {
+				return(true);
+			} else if(sipDataLen > 0 && sipDataLen < data_len) {
+				if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen, NULL)) {
 					return(true);
-				} else if(sipDataLen > 0 && sipDataLen < data_len) {
-					if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen, NULL)) {
-						return(true);
-					} else {
-						data += sipDataLen;
-						data_len -= sipDataLen;
-					}
 				} else {
-					break;
+					data += sipDataLen;
+					data_len -= sipDataLen;
 				}
 			} else {
 				break;
