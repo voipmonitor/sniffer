@@ -1,3 +1,8 @@
+15.7.3 21.4.2016
+================
+- fix >= 15.7 sip tcp reassemble
+
+
 15.7.2 21.4.2016
 ================
 - fix function TcpReassemblySip::checkSip - detect content-length short tag (l:)
