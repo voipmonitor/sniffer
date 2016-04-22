@@ -2382,7 +2382,6 @@ void perror_syslog(const char *msg) {
 void *manager_ssh_(void) {
 	ssh_session session;
 	int rc;
-	cloud_activecheck_sshclose = false;
 	// Open session and set options
 	list<ssh_channel> ssh_chans;
 	list<ssh_channel>::iterator it1;
@@ -2433,6 +2432,8 @@ void *manager_ssh_(void) {
 
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
+
+	cloud_activecheck_sshclose = false; //alow active checking operations from now
 	/* set the thread detach state */
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 

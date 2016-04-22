@@ -1535,9 +1535,15 @@ void *activechecking_cloud( void *dummy ) {
 				continue;
 			}
 			cloud_activecheck_sshclose = true;		//we need ssh tunnel recreation - after obtained new data from register
+									//now we need for flag get back to false - we know then that we are ready for activechecks
+			do {
+				if (terminating) break;
+				sleep(2);
+			} while (cloud_activecheck_sshclose);
+
 			cloud_activecheck_start();
 			do {
-				if (cloud_activecheck_send()) break;
+				if (cloud_activecheck_send()||terminating) break;
 				syslog(LOG_WARNING, "Repeating send activecheck request");
 				sleep(2);				//what to do if unable to send check request to a cloud [repeat undefinitely]
 				continue;
@@ -1549,7 +1555,7 @@ void *activechecking_cloud( void *dummy ) {
 			cloud_activecheck_start();
 			if (verbosity) syslog(LOG_DEBUG, "Sending cloud activecheck request");
 			do {
-				if(cloud_activecheck_send()) break;
+				if(cloud_activecheck_send()||terminating) break;
 				syslog(LOG_WARNING, "Repeating activecheck request");
 				sleep(2);				//what to do if unable to send check request to a cloud [repeat undefinitely]
 			} while (terminating == 0);
