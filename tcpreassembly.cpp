@@ -2185,8 +2185,11 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 		return;
 	}
 	
-	datalen = htons(header_ip->tot_len) - sizeof(*header_ip) - (header_tcp_pointer->doff << 2);
 	datacaplen = header->caplen - ((u_char*)data - packet);
+	datalen = datacaplen;
+	if(header->len > header->caplen) {
+		datalen += (header->len - header->caplen);
+	}
 	header_tcp = *header_tcp_pointer;
 	header_tcp.source = htons(header_tcp.source);
 	header_tcp.dest = htons(header_tcp.dest);
