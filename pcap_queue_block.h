@@ -25,6 +25,7 @@ struct pcap_pkthdr_fix_size {
 	uint32_t ts_tv_usec;
 	uint32_t caplen;
 	uint32_t len;
+	uint32_t _filler;
 };
 
 struct pcap_pkthdr_plus {
