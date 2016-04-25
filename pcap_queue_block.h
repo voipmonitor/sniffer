@@ -92,7 +92,7 @@ struct pcap_pkthdr_plus {
 		pcap_pkthdr_fix_size header_fix_size;
 		pcap_pkthdr header_std;
 	};
-	u_int16_t header_ip_offset;
+	u_int32_t header_ip_offset;
 	int8_t std;
 	u_int16_t dlink;
 };
