@@ -25,7 +25,8 @@ struct pcap_pkthdr_fix_size {
 	uint32_t ts_tv_usec;
 	uint32_t caplen;
 	uint32_t len;
-	uint32_t _filler;
+	uint32_t _filler1; // sizeof(pcap_pkthdr_fix_size) need eq sizeof(pcap_pkthdr) - for compatibility 32 / 64 bits
+	uint32_t _filler2;
 };
 
 struct pcap_pkthdr_plus {
@@ -92,8 +93,8 @@ struct pcap_pkthdr_plus {
 		pcap_pkthdr_fix_size header_fix_size;
 		pcap_pkthdr header_std;
 	};
-	u_int32_t header_ip_offset;
-	int8_t std;
+	u_int16_t header_ip_offset;
+	int16_t std;
 	u_int16_t dlink;
 };
 
