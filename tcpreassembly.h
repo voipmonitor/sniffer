@@ -777,6 +777,9 @@ public:
 	void setEnableValidateDataViaCheckData(bool enableValidateDataViaCheckData = true) {
 		this->enableValidateDataViaCheckData = enableValidateDataViaCheckData;
 	}
+	void setEnableStrictValidateDataViaCheckData(bool enableStrictValidateDataViaCheckData = true) {
+		this->enableStrictValidateDataViaCheckData = enableStrictValidateDataViaCheckData;
+	}
 	void setNeedValidateDataViaCheckData(bool needValidateDataViaCheckData = true) {
 		this->needValidateDataViaCheckData = needValidateDataViaCheckData;
 	}
@@ -898,6 +901,7 @@ private:
 	bool enableDestroyStreamsInComplete;
 	bool enableAllCompleteAfterZerodataAck;
 	bool enableValidateDataViaCheckData;
+	bool enableStrictValidateDataViaCheckData;
 	bool needValidateDataViaCheckData;
 	bool ignorePshInCheckOkData;
 	bool enableCleanupThread;

@@ -2908,6 +2908,7 @@ int main_init_read() {
 		tcpReassemblySipExt = new FILE_LINE TcpReassembly(TcpReassembly::sip);
 		tcpReassemblySipExt->setEnableIgnorePairReqResp();
 		tcpReassemblySipExt->setEnableDestroyStreamsInComplete();
+		tcpReassemblySipExt->setEnableStrictValidateDataViaCheckData();
 		tcpReassemblySipExt->setNeedValidateDataViaCheckData();
 		tcpReassemblySipExt->setIgnorePshInCheckOkData();
 		sipTcpData = new FILE_LINE SipTcpData;

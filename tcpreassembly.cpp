@@ -71,7 +71,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 			    int enableValidateDataViaCheckData, int needValidateDataViaCheckData, TcpReassemblyStream *prevHttpStream, bool enableDebug,
 			    u_int32_t forceFirstSeq, int ignorePsh) {
 	if(enableValidateDataViaCheckData == -1) {
-		enableValidateDataViaCheckData = link->reassembly->enableValidateDataViaCheckData;
+		enableValidateDataViaCheckData = link->reassembly->enableValidateDataViaCheckData || link->reassembly->enableStrictValidateDataViaCheckData;
 	}
 	if(needValidateDataViaCheckData == -1) {
 		needValidateDataViaCheckData = link->reassembly->needValidateDataViaCheckData;
@@ -189,7 +189,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 						}
 						break;
 					case TcpReassembly::sip:
-						if(checkOkSipData(this->complete_data.getData(), this->complete_data.getDatalen())) {
+						if(checkOkSipData(this->complete_data.getData(), this->complete_data.getDatalen(), link->reassembly->enableStrictValidateDataViaCheckData)) {
 							this->detect_ok_max_next_seq = next_seq;
 							return(1);
 						} else {
@@ -241,7 +241,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 									}
 									break;
 								case TcpReassembly::sip:
-									if(!checkOkSipData(this->complete_data.getData(), this->complete_data.getDatalen())) {
+									if(!checkOkSipData(this->complete_data.getData(), this->complete_data.getDatalen(), false)) {
 										return(0);
 									}
 									break;
@@ -389,7 +389,7 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool ch
 			break;
 		case TcpReassembly::sip:
 			if(breakIfPsh && packet.header_tcp.psh &&
-			   checkOkSipData(data, *datalen)) {
+			   checkOkSipData(data, *datalen, false)) {
 				_break = true;
 			}
 			break;
@@ -1250,7 +1250,7 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
 	}
 	bool finOrRst = this->fin_to_dest || this->fin_to_source || this->rst;
 	int countIter = 0;
-	for(size_t i = 0; i < (finOrRst || final == 2 ? size : size - 1); i++) {
+	for(size_t i = 0; i < (finOrRst || final == 2 || reassembly->enableStrictValidateDataViaCheckData ? size : size - 1); i++) {
 		++countIter;
 		if(enableDebug) {
 			cout << "|";
@@ -1896,6 +1896,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enableDestroyStreamsInComplete = false;
 	this->enableAllCompleteAfterZerodataAck = false;
 	this->enableValidateDataViaCheckData = false;
+	this->enableStrictValidateDataViaCheckData = false;
 	this->needValidateDataViaCheckData = false;
 	this->ignorePshInCheckOkData = false;
 	this->enableCleanupThread = false;

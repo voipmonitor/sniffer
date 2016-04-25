@@ -27,7 +27,7 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			     bool debugSave) {
 	++this->counterProcessData;
 	if(debugSave) {
-		cout << "### SslData::processData " << this->counterProcessData << endl;
+		cout << "### SipData::processData " << this->counterProcessData << endl;
 	}
 	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
 		TcpReassemblyDataItem *dataItem = &data->data[i_data];
@@ -110,6 +110,6 @@ void SipTcpData::printContentSummary() {
 }
 
 
-bool checkOkSipData(u_char *data, u_int32_t datalen) {
-	return(TcpReassemblySip::checkSip(data, datalen));
+bool checkOkSipData(u_char *data, u_int32_t datalen, bool strict) {
+	return(TcpReassemblySip::checkSip(data, datalen, strict));
 }

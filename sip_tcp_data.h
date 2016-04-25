@@ -21,7 +21,7 @@ private:
 };
 
 
-bool checkOkSipData(u_char *data, u_int32_t datalen);
+bool checkOkSipData(u_char *data, u_int32_t datalen, bool strict);
 
 
 #endif

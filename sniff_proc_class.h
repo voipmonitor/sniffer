@@ -83,11 +83,11 @@ private:
 			data_len = stream->packets->packetS->datalen;
 			data = (u_char*)stream->packets->packetS->data;
 		}
-		return(this->checkSip(data, data_len));
+		return(this->checkSip(data, data_len, false));
 	}
 	void cleanStream(tcp_stream *stream, bool callFromClean = false);
 public:
-	static bool checkSip(u_char *data, int data_len) {
+	static bool checkSip(u_char *data, int data_len, bool strict) {
 		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
 		if(!data || data_len < 10 ||
 		   !check_sip20((char*)data, data_len, NULL)) {
@@ -118,7 +118,7 @@ public:
 				return(true);
 			} else if(sipDataLen > 0 && sipDataLen < data_len) {
 				if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen, NULL)) {
-					return(true);
+					return(strict ? false : true);
 				} else {
 					data += sipDataLen;
 					data_len -= sipDataLen;
