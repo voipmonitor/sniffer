@@ -532,7 +532,7 @@ public:
 		this->ethHeader = NULL;
 		this->ethHeaderLength = 0;
 		if(packet && header_ip) {
-			this->createEthHeader(packet, header_ip);
+			this->createEthHeader(packet, dlt);
 		}
 		this->handle_index = handle_index;
 		this->dlt = dlt;
@@ -681,7 +681,7 @@ private:
 	void setLastSeq(TcpReassemblyStream::eDirection direction, 
 			u_int32_t lastSeq);
 	void switchDirection();
-	void createEthHeader(u_char *packet, iphdr2 *header_ip);
+	void createEthHeader(u_char *packet, int dlt);
 private:
 	TcpReassembly *reassembly;
 	u_int32_t ip_src;

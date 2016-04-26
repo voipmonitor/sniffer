@@ -57,7 +57,6 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
 		u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
 		u_int16_t _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
-		ethHeaderLength = sizeof(ether_header);
 		createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
 					  ethHeader, dataItem->getData(), dataItem->getDatalen(),
 					  _ip_src, _ip_dst, _port_src, _port_dst,
