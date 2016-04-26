@@ -2536,7 +2536,15 @@ u_int32_t ParsePacket::parseData(char *data, unsigned long datalen, ppContentsX 
 					contentItem->length = i - contentItem->offset;
 					contentItem->trim(data);
 					if(node->isContentLength && contentItem->length) {
-						contents->contentLength = atoi(data + contentItem->offset);
+						if(contentItem->offset + contentItem->length == datalen) {
+							char tempLength[10];
+							int maxLengthLength = MIN(sizeof(tempLength) - 1, contentItem->length);
+							strncpy(tempLength, data + contentItem->offset, maxLengthLength);
+							tempLength[maxLengthLength] = 0;
+							contents->contentLength = atoi(tempLength);
+						} else {
+							contents->contentLength = atoi(data + contentItem->offset);
+						}
 					}
 					if(endLine) {
 						--i;
