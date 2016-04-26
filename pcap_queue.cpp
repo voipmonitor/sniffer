@@ -2870,6 +2870,7 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 	int sleepTimeAfterCleanup = 2;
 	while((sleepTimeBeforeCleanup + sleepTimeAfterCleanup) && !is_terminating()) {
 		syslog(LOG_NOTICE, "time to terminating: %u", sleepTimeBeforeCleanup + sleepTimeAfterCleanup);
+		this->tryForcePush();
 		sleep(1);
 		if(sleepTimeBeforeCleanup) {
 			--sleepTimeBeforeCleanup;
@@ -3881,9 +3882,9 @@ void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 			continue;
 		}
 		#if TRACE_INVITE_BYE
-		if(memmem(packet, header->header_fix_size.caplen, "INVITE sip", 10)) {
+		if(memmem(block->get_packet(i), block->get_header(i)->header_fix_size.caplen, "INVITE sip", 10)) {
 			cout << "process INVITE " << typeThread << endl;
-		} else if(memmem(packet, header->header_fix_size.caplen, "BYE sip", 7)) {
+		} else if(memmem(block->get_packet(i), block->get_header(i)->header_fix_size.caplen, "BYE sip", 7)) {
 			cout << "process BYE " << typeThread << endl;
 		}
 		#endif

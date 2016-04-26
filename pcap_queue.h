@@ -400,6 +400,7 @@ protected:
 		*libpcap_buffer = packet;
 	}
 	void terminatingAtEndOfReadPcap();
+	virtual inline void tryForcePush() {}
 protected:
 	string interfaceName;
 	bpf_u_int32 interfaceNet;
