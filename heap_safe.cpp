@@ -376,6 +376,9 @@ inline void * heapsafe_realloc(void *pointerToObject, size_t sizeOfObject, const
 
 
 void * operator new(size_t sizeOfObject) { 
+	if(sizeOfObject > 1000000000ull) {
+		syslog(LOG_WARNING, "too big allocated block - %lu", sizeOfObject);
+	}
 	void *newPointer = HeapSafeCheck ?
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
 			      heapsafe_safe_alloc(sizeOfObject) :
@@ -388,6 +391,9 @@ void * operator new(size_t sizeOfObject) {
 }
  
 void * operator new[](size_t sizeOfObject) {
+	if(sizeOfObject > 1000000000ull) {
+		syslog(LOG_WARNING, "too big allocated block - %lu", sizeOfObject);
+	}
 	void *newPointer = HeapSafeCheck ? 
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
 			      heapsafe_safe_alloc(sizeOfObject) :
@@ -400,6 +406,9 @@ void * operator new[](size_t sizeOfObject) {
 }
 
 void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2) { 
+	if(sizeOfObject > 1000000000ull) {
+		syslog(LOG_WARNING, "too big allocated block - %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+	}
 	void *newPointer = HeapSafeCheck ?
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
 			      heapsafe_safe_alloc(sizeOfObject) :
@@ -412,6 +421,9 @@ void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_ty
 }
  
 void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_type2) {
+	if(sizeOfObject > 1000000000ull) {
+		syslog(LOG_WARNING, "too big allocated block - %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+	}
 	void *newPointer = HeapSafeCheck ? 
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
 			      heapsafe_safe_alloc(sizeOfObject) :
