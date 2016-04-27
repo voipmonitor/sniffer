@@ -274,6 +274,7 @@ int opt_skinny = 0;
 unsigned int opt_skinny_ignore_rtpip = 0;
 int opt_read_from_file = 0;
 char opt_read_from_file_fname[1024] = "";
+bool opt_read_from_file_no_sip_reassembly = false;
 char opt_pb_read_from_file[256] = "";
 double opt_pb_read_from_file_speed = 0;
 int opt_pb_read_from_file_acttime = 0;
@@ -5617,8 +5618,12 @@ void get_command_line_arguments() {
 				} }
 				break;
 			case 'r':
-				if(!strncmp(optarg, "pb:", 3) ||
-				   !strncmp(optarg, "pba:", 4)) {
+				if(!strncmp(optarg, "s:", 2)) {
+					opt_read_from_file = true;
+					strcpy(opt_read_from_file_fname, optarg + 2);
+					opt_read_from_file_no_sip_reassembly = true;
+				} else if(!strncmp(optarg, "pb:", 3) ||
+					  !strncmp(optarg, "pba:", 4)) {
 					bool acttime = !strncmp(optarg, "pba:", 4);
 					strcpy(opt_pb_read_from_file, optarg + (acttime ? 4 : 3));
 					opt_pb_read_from_file_acttime = acttime;

@@ -227,25 +227,31 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 								this->detect_ok_max_next_seq = next_seq;
 							}
 							if(needValidateDataViaCheckData) {
+								bool okData = true;
 								switch(link->reassembly->getType()) {
 								case TcpReassembly::http:
 									break;
 								case TcpReassembly::webrtc:
 									if(!checkOkWebrtcHttpData(this->complete_data.getData(), this->complete_data.getDatalen()) &&
 									   !checkOkWebrtcData(this->complete_data.getData(), this->complete_data.getDatalen())) {
-										return(0);
+										okData = false;
 									}
 									break;
 								case TcpReassembly::ssl:
 									if(!checkOkSslData(this->complete_data.getData(), this->complete_data.getDatalen())) {
-										return(0);
+										okData = false;
 									}
 									break;
 								case TcpReassembly::sip:
 									if(!checkOkSipData(this->complete_data.getData(), this->complete_data.getDatalen(), false)) {
-										return(0);
+										okData = false;
 									}
 									break;
+								}
+								if(!okData) {
+									this->is_ok = false;
+									this->clearCompleteData();
+									return(0);
 								}
 							}
 							return(1);

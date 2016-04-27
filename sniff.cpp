@@ -5676,6 +5676,12 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 			if(packetS->is_skinny) {
 				// call process_skinny before tcp reassembly - TODO !
 				this->process_skinny(&packetS);
+			} else if(no_sip_reassembly()) {
+				if(isSip) {
+					this->process_parseSipData(&packetS);
+				} else {
+					PACKET_S_PROCESS_DESTROY(&packetS);
+				}
 			} else {
 				extern bool opt_sip_tcp_reassembly_ext;
 				extern TcpReassembly *tcpReassemblySipExt;

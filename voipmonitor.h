@@ -168,6 +168,10 @@ bool is_terminating_without_error();
 bool is_read_from_file();
 bool is_read_from_file_simple();
 bool is_read_from_file_by_pb();
+inline bool no_sip_reassembly() { 
+	extern bool opt_read_from_file_no_sip_reassembly;
+	return(opt_read_from_file_no_sip_reassembly);
+}
 bool is_enable_packetbuffer();
 bool is_enable_rtp_threads();
 bool is_enable_cleanspool();
