@@ -557,6 +557,15 @@ static int parse_packet__message(packet_s_process *packetS, bool strictCheckLeng
 
 */
 void save_packet(Call *call, packet_s_process *packetS, int type) {
+	if(packetS->header_pt->caplen > 1000000) {
+		static u_long lastTimeSyslog = 0;
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			syslog(LOG_ERR, "too big packet caplen (%u) in call %s - skip save packet", packetS->header_pt->caplen, call->call_id.c_str());
+			lastTimeSyslog = actTime;
+		}
+		return;
+	}
 	if(sverb.disable_save_packet) {
 		return;
 	}
@@ -1393,10 +1402,15 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 	}
 	
 	if(call->type < INVITE || call->type > SKINNY_NEW) {
-		syslog(LOG_ERR, "incorrect call type in add_to_rtp_thread_queue: %i, saddr %s daddr %s sport %u dport %u",
-		       call->type,
-		       inet_ntostring(packetS->saddr).c_str(), inet_ntostring(packetS->daddr).c_str(),
-		       packetS->source, packetS->dest);
+		static u_long lastTimeSyslog = 0;
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			syslog(LOG_ERR, "incorrect call type in add_to_rtp_thread_queue: %i, saddr %s daddr %s sport %u dport %u",
+			       call->type,
+			       inet_ntostring(packetS->saddr).c_str(), inet_ntostring(packetS->daddr).c_str(),
+			       packetS->source, packetS->dest);
+			lastTimeSyslog = actTime;
+		}
 		return;
 	}
 	
