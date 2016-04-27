@@ -1265,7 +1265,7 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
 		int rslt = this->queueStreams[i]->ok(false, 
 						     i == size - 1 && (finOrRst || final == 2), 
 						     i == size - 1 ? 0 : this->queueStreams[i]->max_next_seq,
-						     -1, final == 2 ? 0 : -1, NULL, enableDebug,
+						     -1, -1, NULL, enableDebug,
 						     this->forceOk && i == 0 ? this->queueStreams[0]->min_seq : 0);
 		if(rslt <= 0) {
 			if(i == 0 && this->forceOk) {
