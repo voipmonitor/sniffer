@@ -2911,6 +2911,7 @@ int main_init_read() {
 		tcpReassemblySipExt->setEnableDestroyStreamsInComplete();
 		tcpReassemblySipExt->setEnableStrictValidateDataViaCheckData();
 		tcpReassemblySipExt->setNeedValidateDataViaCheckData();
+		tcpReassemblySipExt->setSimpleByAck();
 		tcpReassemblySipExt->setIgnorePshInCheckOkData();
 		sipTcpData = new FILE_LINE SipTcpData;
 		tcpReassemblySipExt->setDataCallback(sipTcpData);

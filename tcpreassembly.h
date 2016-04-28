@@ -461,6 +461,7 @@ private:
 	TcpReassemblyLink *link;
 	int counterTryOk;
 friend class TcpReassemblyLink;
+friend class TcpReassembly;
 };
 
 class TcpReassemblyLink {
@@ -574,23 +575,13 @@ public:
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 		  pcap_block_store *block_store, int block_store_index);
-	int okQueue(int final = 0, bool enableDebug = false) {
-		if(this->state == STATE_CRAZY) {
-			return(this->okQueue_crazy(final, enableDebug));
-		} else {
-			return(this->okQueue_normal(final, enableDebug));
-		}
-	}
+	int okQueue(int final = 0, u_int32_t ack = 0, bool enableDebug = false);
 	int okQueue_normal(int final = 0, bool enableDebug = false);
+	int okQueue_simple_by_ack(u_int32_t ack, bool enableDebug = false);
 	int okQueue_crazy(int final = 0, bool enableDebug = false);
-	void complete(bool final = false, bool eraseCompletedStreams = false) {
-		if(this->state == STATE_CRAZY) {
-			this->complete_crazy(final, eraseCompletedStreams);
-		} else {
-			this->complete_normal(final);
-		}
-	}
+	void complete(bool final = false, bool eraseCompletedStreams = false);
 	void complete_normal(bool final = false);
+	void complete_simple_by_ack();
 	void complete_crazy(bool final = false, bool eraseCompletedStreams = false);
 	streamIterator createIterator();
 	TcpReassemblyStream *findStreamBySeq(u_int32_t seq) {
@@ -607,7 +598,8 @@ public:
 						u_int32_t not_ack = 0, TcpReassemblyStream::eDirection direction = TcpReassemblyStream::DIRECTION_NA) {
 		map<uint32_t, TcpReassemblyStream*>::iterator iter;
 		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {
-			if(iter->second->min_seq == seq &&
+			if(iter->second &&
+			   iter->second->min_seq == seq &&
 			   (!not_ack || iter->second->ack != not_ack) &&
 			   (direction == TcpReassemblyStream::DIRECTION_NA || iter->second->direction == direction)) {
 				return(iter->second);
@@ -623,6 +615,16 @@ public:
 					return(iter->second);
 				}
 			} while(iter != this->queue_nul_by_ack.begin());
+		}
+		return(NULL);
+	}
+	TcpReassemblyStream *findStreamByMaxNextSeq(u_int32_t seq) {
+		map<uint32_t, TcpReassemblyStream*>::iterator iter;
+		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {
+			if(iter->second &&
+			   iter->second->max_next_seq == seq) {
+				return(iter->second);
+			}
 		}
 		return(NULL);
 	}
@@ -783,6 +785,9 @@ public:
 	void setNeedValidateDataViaCheckData(bool needValidateDataViaCheckData = true) {
 		this->needValidateDataViaCheckData = needValidateDataViaCheckData;
 	}
+	void setSimpleByAck(bool simpleByAck = true) {
+		this->simpleByAck = simpleByAck;
+	}
 	void setIgnorePshInCheckOkData(bool ignorePshInCheckOkData = true) {
 		this->ignorePshInCheckOkData = ignorePshInCheckOkData;
 	}
@@ -875,6 +880,7 @@ public:
 	void setLinkTimeout(u_int32_t linkTimeout) {
 		this->linkTimeout = linkTimeout;
 	}
+	bool checkOkData(u_char * data, unsigned datalen, bool strict);
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
@@ -903,6 +909,7 @@ private:
 	bool enableValidateDataViaCheckData;
 	bool enableStrictValidateDataViaCheckData;
 	bool needValidateDataViaCheckData;
+	bool simpleByAck;
 	bool ignorePshInCheckOkData;
 	bool enableCleanupThread;
 	bool enablePacketThread;
