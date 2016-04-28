@@ -2671,14 +2671,14 @@ void TcpReassembly::cleanup_simple(bool all) {
 		map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iterLink;
 		for(iterLink = this->links.begin(); iterLink != this->links.end(); ) {
 			TcpReassemblyLink *link = iterLink->second;
-			if(all || act_time > link->last_packet_at_from_header + linkTimeout) {
+			if(all || act_time > link->last_packet_at_from_header + linkTimeout * 1000) {
 				delete link;
 				this->links.erase(iterLink++);
 			} else {
 				deque<TcpReassemblyStream*>::iterator iterStream;
 				for(iterStream = link->queueStreams.begin(); iterStream != link->queueStreams.end();) {
 					TcpReassemblyStream *stream = *iterStream;
-					if(act_time > stream->last_packet_at_from_header + linkTimeout) {
+					if(act_time > stream->last_packet_at_from_header + linkTimeout * 1000) {
 						iterStream = link->queueStreams.erase(iterStream);
 						link->queue_by_ack.erase(stream->ack);
 						delete stream;

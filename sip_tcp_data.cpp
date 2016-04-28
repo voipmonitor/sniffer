@@ -13,9 +13,14 @@ extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 
 SipTcpData::SipTcpData() {
 	this->counterProcessData = 0;
+	this->last_cache_time_cleanup = 0;
 }
 
 SipTcpData::~SipTcpData() {
+	map<Cache_id, Cache_data*>::iterator iter;
+	for(iter = cache.begin(); iter != cache.end(); iter++) {
+		delete iter->second;
+	}
 }
 
 void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
@@ -29,10 +34,31 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	if(debugSave) {
 		cout << "### SipData::processData " << this->counterProcessData << endl;
 	}
+	u_int64_t cache_time = 0;
 	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
 		TcpReassemblyDataItem *dataItem = &data->data[i_data];
 		if(!dataItem->getData()) {
 			continue;
+		}
+		cache_time = dataItem->getTime().tv_sec * 1000 + dataItem->getTime().tv_usec / 1000;
+		string md5_data = GetDataMD5(dataItem->getData(), dataItem->getDatalen());
+		Cache_id cache_id(ip_src, ip_dst, port_src, port_dst);
+		map<Cache_id, Cache_data*>::iterator cache_iterator = cache.find(cache_id);
+		if(cache_iterator != cache.end()) {
+			Cache_data *cache_data = cache_iterator->second;
+			map<string, u_int64_t>::iterator cache_data_iterator = cache_data->data.find(md5_data);
+			if(cache_data_iterator != cache_data->data.end()) {
+				if(cache_data_iterator->second + 100 > (u_int64_t)cache_time) {
+					cache_data_iterator->second = cache_time;
+					continue;
+				}
+			} else {
+				cache_data->data[md5_data] = cache_time;
+			}
+		} else {
+			Cache_data *cache_data = new Cache_data;
+			cache_data->data[md5_data] = cache_time;
+			cache[cache_id] = cache_data;
 		}
 		if(debugSave) {
 			cout << "###"
@@ -103,6 +129,35 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		}
 	}
 	delete data;
+	cleanupCache(cache_time);
+}
+
+void SipTcpData::cleanupCache(u_int64_t cache_time) {
+	if(!last_cache_time_cleanup) {
+		last_cache_time_cleanup = cache_time;
+		return;
+	}
+	if(cache_time > last_cache_time_cleanup + 10000) {
+		map<Cache_id, Cache_data*>::iterator cache_iterator;
+		for(cache_iterator = cache.begin(); cache_iterator != cache.end(); ) {
+			Cache_data *cache_data = cache_iterator->second;
+			map<string, u_int64_t>::iterator cache_data_iterator;
+			for(cache_data_iterator = cache_data->data.begin(); cache_data_iterator != cache_data->data.end(); ) {
+				if(cache_data_iterator->second < cache_time - 5000) {
+					cache_data->data.erase(cache_data_iterator++);
+				} else {
+					cache_data_iterator++;
+				}
+			}
+			if(cache_data->data.size() == 0) {
+				delete cache_data;
+				cache.erase(cache_iterator++);
+			} else {
+				cache_iterator++;
+			}
+		}
+		last_cache_time_cleanup = cache_time;
+	}
 }
  
 void SipTcpData::printContentSummary() {
