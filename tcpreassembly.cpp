@@ -1637,7 +1637,7 @@ void TcpReassemblyLink::complete_simple_by_ack() {
 		return;
 	}
 	SimpleBuffer data;
-	for(unsigned i = 0; i < this->ok_streams.size(); i--) {
+	for(unsigned i = 0; i < this->ok_streams.size(); i++) {
 		data.add(this->ok_streams[i]->complete_data.getData(), this->ok_streams[i]->complete_data.getDatalen());
 	}
 	TcpReassemblyData *reassemblyData = new FILE_LINE TcpReassemblyData;
