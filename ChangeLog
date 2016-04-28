@@ -1,3 +1,9 @@
+15.7.4 28.4.2016
+================
+- fix cloud reconnect
+- fix mirroring when mirroring from 32bit - 64bit sniffers 
+
+
 15.7.3 21.4.2016
 ================
 - fix >= 15.7 sip tcp reassemble
