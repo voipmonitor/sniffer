@@ -1929,7 +1929,6 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 
 		if(sip_method == REGISTER) {	
 			// destroy all REGISTER from memory within 30 seconds 
-			call->regcount++;
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + opt_register_timeout;
 
 			// is it first register? set time and src mac if available
@@ -3254,6 +3253,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id.c_str());
 		s = gettag_sip(packetS, "\nCSeq:", &l);
 		if(s && strncmp(s, call->invitecseq, l) == 0) {
+			call->reg200count++;
 			// registration OK 
 			call->regstate = 1;
 
@@ -3264,7 +3264,12 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			call->regstate = 3;
 		}
 		save_packet(call, packetS, TYPE_SIP);
-		call->saveregister();
+		if(call->regstate == 1 &&
+		   call->reg200count < call->regcount) {
+			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 5;
+		} else {
+			call->saveregister();
+		}
 		if(logPacketSipMethodCall_enable) {
 			logPacketSipMethodCall(
 				#if USE_PACKET_NUMBER

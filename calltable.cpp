@@ -259,6 +259,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;
+	reg200count = 0;
 	regstate = 0;
 	regresponse = false;
 	regrrddiff = -1;

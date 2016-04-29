@@ -262,6 +262,7 @@ public:
 	int msgcount;
 	int regcount;
 	int reg401count;
+	int reg200count;
 	int regstate;
 	bool regresponse;
 	timeval regrrdstart;		// time of first REGISTER
