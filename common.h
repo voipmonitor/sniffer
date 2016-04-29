@@ -40,6 +40,8 @@ struct sVerbose {
 	int qfiles;
 	int query_error;
 	int dump_sip;
+	int dump_sip_line;
+	int dump_sip_without_counter;
 	int manager;
 	int scanpcapdir;
 	int debug_rtcp;
@@ -57,6 +59,9 @@ struct sVerbose {
 	int tcpreplay;
 	int abort_if_heap_full;
 	int dtmf;
+	int _debug1;
+	int _debug2;
+	int _debug3;
 };
 
 #endif

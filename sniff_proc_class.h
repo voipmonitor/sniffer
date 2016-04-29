@@ -3,6 +3,7 @@
 
 
 #include <unistd.h>
+#include <list>
 #include "sniff.h"
 #include "calltable.h"
 
@@ -87,8 +88,9 @@ private:
 	}
 	void cleanStream(tcp_stream *stream, bool callFromClean = false);
 public:
-	static bool checkSip(u_char *data, int data_len, bool strict) {
+	static bool checkSip(u_char *data, int data_len, bool strict, list<d_u_int32_t> *offsets = NULL) {
 		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
+		u_int32_t offset = 0;
 		if(!data || data_len < 10 ||
 		   !check_sip20((char*)data, data_len, NULL)) {
 			return(false);
@@ -114,6 +116,9 @@ public:
 				break;
 			}
 			int sipDataLen = (endHeaderSepPos - data) + 4 + contentLength;
+			if(offsets) {
+				offsets->push_back(d_u_int32_t(offset, sipDataLen));
+			}
 			if(sipDataLen == data_len) {
 				return(true);
 			} else if(sipDataLen > 0 && sipDataLen < data_len) {
@@ -122,6 +127,7 @@ public:
 				} else {
 					data += sipDataLen;
 					data_len -= sipDataLen;
+					offset += sipDataLen;
 				}
 			} else {
 				break;

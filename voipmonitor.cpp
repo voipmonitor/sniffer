@@ -5596,6 +5596,8 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "qfiles")			sverb.qfiles = 1;
 						else if(verbparams[i] == "query_error")			sverb.query_error = 1;
 						else if(verbparams[i] == "dump_sip")			sverb.dump_sip = 1;
+						else if(verbparams[i] == "dump_sip_line")		{ sverb.dump_sip = 1; sverb.dump_sip_line = 1; }
+						else if(verbparams[i] == "dump_sip_without_counter")	{ sverb.dump_sip = 1; sverb.dump_sip_without_counter = 1; }
 						else if(verbparams[i] == "manager")			sverb.manager = 1;
 						else if(verbparams[i] == "scanpcapdir")			sverb.scanpcapdir = 1;
 						else if(verbparams[i] == "debug_rtcp")			sverb.debug_rtcp = 1;
@@ -5615,6 +5617,10 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "tcpreplay")			sverb.tcpreplay = 1;
 						else if(verbparams[i] == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;
 						else if(verbparams[i] == "dtmf")			sverb.dtmf = 1;
+						//
+						else if(verbparams[i] == "debug1")			sverb._debug1 = 1;
+						else if(verbparams[i] == "debug2")			sverb._debug2 = 1;
+						else if(verbparams[i] == "debug2")			sverb._debug3 = 1;
 					}
 				} }
 				break;

@@ -826,10 +826,12 @@ bool TcpReassemblyLink::push_normal(
 			if(ENABLE_DEBUG(reassembly->getType(), _debug_packet)) {
 				cout << " -- DATA" << endl;
 			}
-			this->setLastSeq(direction == TcpReassemblyStream::DIRECTION_TO_DEST ?
-						TcpReassemblyStream::DIRECTION_TO_DEST :
-						TcpReassemblyStream::DIRECTION_TO_SOURCE, 
-					 header_tcp.seq);
+			if(!reassembly->simpleByAck) {
+				this->setLastSeq(direction == TcpReassemblyStream::DIRECTION_TO_DEST ?
+							TcpReassemblyStream::DIRECTION_TO_DEST :
+							TcpReassemblyStream::DIRECTION_TO_SOURCE, 
+						 header_tcp.seq);
+			}
 		} else {
 			TcpReassemblyStream *prevStreamByLastAck = NULL;
 			if(this->queue_by_ack.find(this->last_ack) != this->queue_by_ack.end()) {
@@ -1043,19 +1045,21 @@ void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 		stream = new FILE_LINE TcpReassemblyStream(this);
 		stream->direction = direction;
 		stream->ack = packet.header_tcp.ack_seq;
-		if(prevStreamByLastAck && direction == prevStreamByLastAck->direction) {
-			prevStreamByLastAck->last_seq = packet.header_tcp.seq;
-			stream->first_seq = prevStreamByLastAck->last_seq;
-		} else {
-			stream->first_seq = prevStreamByLastAck ? 
-						prevStreamByLastAck->ack : 
-						(direction == TcpReassemblyStream::DIRECTION_TO_DEST ?
-							this->first_seq_to_dest :
-							this->first_seq_to_source);
-			this->setLastSeq(direction == TcpReassemblyStream::DIRECTION_TO_DEST ?
-						TcpReassemblyStream::DIRECTION_TO_SOURCE :
-						TcpReassemblyStream::DIRECTION_TO_DEST,
-					 packet.header_tcp.ack_seq);
+		if(!reassembly->simpleByAck) {
+			if(prevStreamByLastAck && direction == prevStreamByLastAck->direction) {
+				prevStreamByLastAck->last_seq = packet.header_tcp.seq;
+				stream->first_seq = prevStreamByLastAck->last_seq;
+			} else {
+				stream->first_seq = prevStreamByLastAck ? 
+							prevStreamByLastAck->ack : 
+							(direction == TcpReassemblyStream::DIRECTION_TO_DEST ?
+								this->first_seq_to_dest :
+								this->first_seq_to_source);
+				this->setLastSeq(direction == TcpReassemblyStream::DIRECTION_TO_DEST ?
+							TcpReassemblyStream::DIRECTION_TO_SOURCE :
+							TcpReassemblyStream::DIRECTION_TO_DEST,
+						 packet.header_tcp.ack_seq);
+			}
 		}
 		this->queue_by_ack[stream->ack] = stream;
 		this->queueStreams.push_back(stream);

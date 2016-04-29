@@ -37,95 +37,99 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	u_int64_t cache_time = 0;
 	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
 		TcpReassemblyDataItem *dataItem = &data->data[i_data];
-		if(!dataItem->getData()) {
+		list<d_u_int32_t> sip_offsets;
+		if(!dataItem->getData() ||
+		   !TcpReassemblySip::checkSip(dataItem->getData(), dataItem->getDatalen(), true, &sip_offsets)) {
 			continue;
 		}
-		cache_time = dataItem->getTime().tv_sec * 1000 + dataItem->getTime().tv_usec / 1000;
-		string md5_data = GetDataMD5(dataItem->getData(), dataItem->getDatalen());
-		Cache_id cache_id(ip_src, ip_dst, port_src, port_dst);
-		map<Cache_id, Cache_data*>::iterator cache_iterator = cache.find(cache_id);
-		if(cache_iterator != cache.end()) {
-			Cache_data *cache_data = cache_iterator->second;
-			map<string, u_int64_t>::iterator cache_data_iterator = cache_data->data.find(md5_data);
-			if(cache_data_iterator != cache_data->data.end()) {
-				if(cache_data_iterator->second + 100 > (u_int64_t)cache_time) {
-					cache_data_iterator->second = cache_time;
-					continue;
+		for(list<d_u_int32_t>::iterator iter_sip_offset = sip_offsets.begin(); iter_sip_offset != sip_offsets.end(); iter_sip_offset++) {
+			cache_time = dataItem->getTime().tv_sec * 1000 + dataItem->getTime().tv_usec / 1000;
+			string md5_data = GetDataMD5(dataItem->getData() + (*iter_sip_offset)[0], (*iter_sip_offset)[1]);
+			Cache_id cache_id(ip_src, ip_dst, port_src, port_dst);
+			map<Cache_id, Cache_data*>::iterator cache_iterator = cache.find(cache_id);
+			if(cache_iterator != cache.end()) {
+				Cache_data *cache_data = cache_iterator->second;
+				map<string, u_int64_t>::iterator cache_data_iterator = cache_data->data.find(md5_data);
+				if(cache_data_iterator != cache_data->data.end()) {
+					if(cache_data_iterator->second + 100 > (u_int64_t)cache_time) {
+						cache_data_iterator->second = cache_time;
+						continue;
+					}
+				} else {
+					cache_data->data[md5_data] = cache_time;
 				}
 			} else {
+				Cache_data *cache_data = new Cache_data;
 				cache_data->data[md5_data] = cache_time;
+				cache[cache_id] = cache_data;
 			}
-		} else {
-			Cache_data *cache_data = new Cache_data;
-			cache_data->data[md5_data] = cache_time;
-			cache[cache_id] = cache_data;
-		}
-		if(debugSave) {
-			cout << "###"
-			     << fixed
-			     << setw(15) << inet_ntostring(htonl(ip_src))
-			     << " / "
-			     << setw(5) << port_src
-			     << (dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? " --> " : " <-- ")
-			     << setw(15) << inet_ntostring(htonl(ip_dst))
-			     << " / "
-			     << setw(5) << port_dst
-			     << "  len: " << setw(4) << dataItem->getDatalen();
-			u_int32_t ack = dataItem->getAck();
-			if(ack) {
-				cout << "  ack: " << setw(5) << ack;
+			if(debugSave) {
+				cout << "###"
+				     << fixed
+				     << setw(15) << inet_ntostring(htonl(ip_src))
+				     << " / "
+				     << setw(5) << port_src
+				     << (dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? " --> " : " <-- ")
+				     << setw(15) << inet_ntostring(htonl(ip_dst))
+				     << " / "
+				     << setw(5) << port_dst
+				     << "  len: " << setw(4) << (*iter_sip_offset)[1];
+				u_int32_t ack = dataItem->getAck();
+				if(ack) {
+					cout << "  ack: " << setw(5) << ack;
+				}
+				cout << endl;
 			}
-			cout << endl;
-		}
-		pcap_pkthdr *tcpHeader;
-		u_char *tcpPacket;
-		u_int32_t _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
-		u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
-		u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
-		u_int16_t _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
-		createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
-					  ethHeader, dataItem->getData(), dataItem->getDatalen(),
-					  _ip_src, _ip_dst, _port_src, _port_dst,
-					  dataItem->getAck(), dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
-		unsigned dataOffset = ethHeaderLength + sizeof(iphdr2) + ((tcphdr2*)(tcpPacket + ethHeaderLength + sizeof(iphdr2)))->doff * 4;
-		if(uData) {
-			packet_s_process *packetS = PACKET_S_PROCESS_SIP_CREATE();
-			#if USE_PACKET_NUMBER
-			packetS->packet_number = 0;
-			#endif
-			packetS->saddr = _ip_src;
-			packetS->source = _port_src;
-			packetS->daddr = _ip_dst; 
-			packetS->dest = _port_dst;
-			packetS->datalen = dataItem->getDatalen(); 
-			packetS->dataoffset = dataOffset;
-			packetS->handle_index = handle_index; 
-			packetS->header_pt = tcpHeader;
-			packetS->packet = tcpPacket; 
-			packetS->_packet_alloc = true; 
-			packetS->istcp = 2;
-			packetS->header_ip_offset = ethHeaderLength; 
-			packetS->block_store = NULL; 
-			packetS->block_store_index =  0; 
-			packetS->dlt = dlt; 
-			packetS->sensor_id_u = (u_int16_t)sensor_id;
-			packetS->sensor_ip = sensor_ip;
-			packetS->is_ssl = false;
-			extern int opt_skinny;
-			extern char *sipportmatrix;
-			packetS->is_skinny = opt_skinny && (_port_src == 2000 || _port_dst == 2000);
-			packetS->is_need_sip_process = sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
-						       packetS->is_skinny;
-			packetS->init2();
-			((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS);
-		} else {
-			preProcessPacket[PreProcessPacket::ppt_extend]->push_packet(
-					true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
-					(char*)(tcpPacket + dataOffset), dataItem->getDatalen(), dataOffset,
-					handle_index, tcpHeader, tcpPacket, true, 
-					2, (iphdr2*)(tcpPacket + ethHeaderLength),
-					NULL, 0, dlt, sensor_id, sensor_ip,
-					false);
+			pcap_pkthdr *tcpHeader;
+			u_char *tcpPacket;
+			u_int32_t _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
+			u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
+			u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
+			u_int16_t _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
+			createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
+						  ethHeader, dataItem->getData() + (*iter_sip_offset)[0], (*iter_sip_offset)[1],
+						  _ip_src, _ip_dst, _port_src, _port_dst,
+						  dataItem->getAck(), dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
+			unsigned dataOffset = ethHeaderLength + sizeof(iphdr2) + ((tcphdr2*)(tcpPacket + ethHeaderLength + sizeof(iphdr2)))->doff * 4;
+			if(uData) {
+				packet_s_process *packetS = PACKET_S_PROCESS_SIP_CREATE();
+				#if USE_PACKET_NUMBER
+				packetS->packet_number = 0;
+				#endif
+				packetS->saddr = _ip_src;
+				packetS->source = _port_src;
+				packetS->daddr = _ip_dst; 
+				packetS->dest = _port_dst;
+				packetS->datalen = (*iter_sip_offset)[1]; 
+				packetS->dataoffset = dataOffset;
+				packetS->handle_index = handle_index; 
+				packetS->header_pt = tcpHeader;
+				packetS->packet = tcpPacket; 
+				packetS->_packet_alloc = true; 
+				packetS->istcp = 2;
+				packetS->header_ip_offset = ethHeaderLength; 
+				packetS->block_store = NULL; 
+				packetS->block_store_index =  0; 
+				packetS->dlt = dlt; 
+				packetS->sensor_id_u = (u_int16_t)sensor_id;
+				packetS->sensor_ip = sensor_ip;
+				packetS->is_ssl = false;
+				extern int opt_skinny;
+				extern char *sipportmatrix;
+				packetS->is_skinny = opt_skinny && (_port_src == 2000 || _port_dst == 2000);
+				packetS->is_need_sip_process = sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
+							       packetS->is_skinny;
+				packetS->init2();
+				((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS);
+			} else {
+				preProcessPacket[PreProcessPacket::ppt_extend]->push_packet(
+						true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
+						(char*)(tcpPacket + dataOffset), (*iter_sip_offset)[1], dataOffset,
+						handle_index, tcpHeader, tcpPacket, true, 
+						2, (iphdr2*)(tcpPacket + ethHeaderLength),
+						NULL, 0, dlt, sensor_id, sensor_ip,
+						false);
+			}
 		}
 	}
 	delete data;

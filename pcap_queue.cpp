@@ -2866,7 +2866,12 @@ string PcapQueue_readFromInterface_base::getInterfaceName(bool simple) {
 }
 
 void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
-	int sleepTimeBeforeCleanup = 10;
+	while(buffersControl.getPercUsePB() > 0.1) {
+		syslog(LOG_NOTICE, "wait for processing packetbuffer (%.1lf%%)", buffersControl.getPercUsePB());
+		sleep(1);
+	}
+	int sleepTimeBeforeCleanup = opt_enable_ssl ? 10 :
+				     sverb.chunk_buffer ? 20 : 5;
 	int sleepTimeAfterCleanup = 2;
 	while((sleepTimeBeforeCleanup + sleepTimeAfterCleanup) && !is_terminating()) {
 		syslog(LOG_NOTICE, "time to terminating: %u", sleepTimeBeforeCleanup + sleepTimeAfterCleanup);
@@ -4242,23 +4247,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					}
 					++sumBlocksCounterIn[0];
 					blockStore[blockStoreIndex] = NULL;
-					int sleepTimeBeforeCleanup = opt_enable_ssl ? 10 :
-								     sverb.chunk_buffer ? 20 : 5;
-					int sleepTimeAfterCleanup = 2;
-					while((sleepTimeBeforeCleanup + sleepTimeAfterCleanup) && !is_terminating()) {
-						syslog(LOG_NOTICE, "time to terminating: %u", sleepTimeBeforeCleanup + sleepTimeAfterCleanup);
-						sleep(1);
-						if(sleepTimeBeforeCleanup) {
-							--sleepTimeBeforeCleanup;
-							if(!sleepTimeBeforeCleanup) {
-								calltable->cleanup_calls(0);
-								calltable->cleanup_registers(0);
-							}
-						} else if(sleepTimeAfterCleanup) {
-							--sleepTimeAfterCleanup;
-						}
-					}
-					vm_terminate();
+					terminatingAtEndOfReadPcap();
 					break;
 				}
 			} else if(res == 0) {

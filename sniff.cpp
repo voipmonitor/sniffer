@@ -2349,16 +2349,19 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	}
 #endif 
 	if(sverb.dump_sip) {
-		char *dump_data = new FILE_LINE char[packetS->sipDataLen + 1];
-		memcpy(dump_data, packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
-		dump_data[packetS->sipDataLen] = 0;
-		#if USE_PACKET_NUMBER
-		cout << packetS->packet_number << endl
-		#else
-		cout << (++glob_packet_number) << endl;
-		#endif
+		string dump_data(packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
+		if(sverb.dump_sip_line) {
+			find_and_replace(dump_data, "\r", "\\r");
+			find_and_replace(dump_data, "\n", "\\n");
+		}
+		if(!sverb.dump_sip_without_counter) {
+			#if USE_PACKET_NUMBER
+			cout << packetS->packet_number << endl
+			#else
+			cout << (++glob_packet_number) << endl;
+			#endif
+		}
 		cout << dump_data << endl;
-		delete [] dump_data;
 	}
 
 	switch(packetS->sip_method) {
@@ -3155,16 +3158,19 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 	}
 			
 	if(sverb.dump_sip) {
-		char *dump_data = new FILE_LINE char[packetS->sipDataLen + 1];
-		memcpy(dump_data, packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
-		dump_data[packetS->sipDataLen] = 0;
-		#if USE_PACKET_NUMBER
-		cout << packetS->packet_number << endl
-		#else
-		cout << (++glob_packet_number) << endl;
-		#endif
+		string dump_data(packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
+		if(sverb.dump_sip_line) {
+			find_and_replace(dump_data, "\r", "\\r");
+			find_and_replace(dump_data, "\n", "\\n");
+		}
+		if(!sverb.dump_sip_without_counter) {
+			#if USE_PACKET_NUMBER
+			cout << packetS->packet_number << endl
+			#else
+			cout << (++glob_packet_number) << endl;
+			#endif
+		}
 		cout << dump_data << endl;
-		delete [] dump_data;
 	}
 
 	if(packetS->sip_method == REGISTER) {
