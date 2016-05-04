@@ -1097,7 +1097,7 @@ public:
 		return(loadTime);
 	}
 	string getQueryForSaveUseInfo(Call *call);
-	void createTablesIfNotExists(SqlDb *sqlDb);
+	void createTablesIfNotExists(SqlDb *sqlDb = NULL);
 	void createTableIfNotExists(const char *tableName, SqlDb *sqlDb = NULL);
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
 private:

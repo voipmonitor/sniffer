@@ -470,6 +470,7 @@ private:
 			}
 			fileZipHandler = NULL;
 			createAt = filename ? getTimeMS() : 0;
+			flushAt = 0;
 			_sync = 0;
 		}
 		bool open(const char *filename = NULL, u_long createAt = 0) {
@@ -517,6 +518,7 @@ private:
 		string filename;
 		FileZipHandler *fileZipHandler;
 		u_long createAt;
+		u_long flushAt;
 		volatile int _sync;
 	};
 	struct QFileConfig {

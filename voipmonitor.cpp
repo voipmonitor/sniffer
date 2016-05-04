@@ -2692,7 +2692,9 @@ int main_init_read() {
 
 	if(!opt_nocdr) {
 		custom_headers_cdr = new FILE_LINE CustomHeaders(CustomHeaders::cdr);
+		custom_headers_cdr->createTablesIfNotExists();
 		custom_headers_message = new FILE_LINE CustomHeaders(CustomHeaders::message);
+		custom_headers_message->createTablesIfNotExists();
 	}
 
 	ipfilter = new FILE_LINE IPfilter;

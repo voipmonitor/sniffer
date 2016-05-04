@@ -1943,6 +1943,11 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 		sprintf(buffIdLength, "%i/%u:", id, query_length);
 		qfile->fileZipHandler->write(buffIdLength, strlen(buffIdLength));
 		qfile->fileZipHandler->write((char*)query.c_str(), query.length());
+		u_long actTimeMS = getTimeMS();
+		if(max(qfile->flushAt, qfile->createAt) < actTimeMS - 1000) {
+			qfile->fileZipHandler->flushBuffer(true);
+			qfile->flushAt = actTimeMS;
+		}
 	}
 	qfile->unlock();
 }
@@ -2178,6 +2183,9 @@ bool MySqlStore::loadFromQFile(const char *filename, int id) {
 			query_lock(query.c_str(), queryThreadId);
 			++counter;
 		}
+	}
+	if(!fileZipHandler->is_ok_decompress()) {
+		syslog(LOG_ERR, "decompress error in qfile %s", filename);
 	}
 	fileZipHandler->close();
 	delete fileZipHandler;
