@@ -1933,14 +1933,16 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 			syslog(LOG_ERR, "failed create file %s in function MySqlStore::getQFile", qfilename.c_str());
 		}
 	}
-	if(qfile->file) {
+	if(qfile->fileZipHandler) {
 		string query = query_str;
 		query = find_and_replace(query_str, "__ENDL__", "__endl__");
 		query = find_and_replace(query_str, "\n", "__ENDL__");
 		unsigned int query_length = query.length();
 		query.append("\n");
-		fprintf(qfile->file, "%i/%u:", id, query_length);
-		fputs(query.c_str(), qfile->file);
+		char buffIdLength[100];
+		sprintf(buffIdLength, "%i/%u:", id, query_length);
+		qfile->fileZipHandler->write(buffIdLength, strlen(buffIdLength));
+		qfile->fileZipHandler->write((char*)query.c_str(), query.length());
 	}
 	qfile->unlock();
 }
@@ -1982,7 +1984,7 @@ void MySqlStore::closeAllQFiles() {
 	lock_qfiles();
 	for(map<int, QFile*>::iterator iter = qfiles.begin(); iter != qfiles.end(); iter++) {
 		iter->second->lock();
-		if(iter->second->file) {
+		if(iter->second->fileZipHandler) {
 			if(sverb.qfiles) {
 				cout << "*** CLOSE QFILE FROM FUNCTION MySqlStore::closeAllQFiles " << iter->second->filename
 				     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
@@ -2124,63 +2126,61 @@ bool MySqlStore::loadFromQFile(const char *filename, int id) {
 		cout << "*** START PROCESS FILE " << filename
 		     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 	}
-	FILE *file = fopen(filename, "rt");
-	if(!file) {
-		syslog(LOG_ERR, "failed open file %s in function MySqlStore::loadFromQFile", filename);
-		return(false);
-	}
+	FileZipHandler *fileZipHandler = new FILE_LINE FileZipHandler(8 * 1024, 0, isGunzip(filename) ? FileZipHandler::gzip : FileZipHandler::compress_na);
+	fileZipHandler->open(filename);
 	unsigned int counter = 0;
-	unsigned int maxLengthQuery = 1000000;
-	char *buffQuery = new FILE_LINE char[maxLengthQuery];
-	while(fgets(buffQuery, maxLengthQuery, file)) {
-		unsigned int readLength = strlen(buffQuery);
-		if(buffQuery[readLength - 1] == '\n') {
-			buffQuery[readLength - 1] = 0;
-		}
-		int idQueryProcess;
-		unsigned int queryLength;
-		char *posSeparator = strchr(buffQuery, ':');
-		if(!posSeparator ||
-		   sscanf(buffQuery, "%i/%u:", &idQueryProcess, &queryLength) != 2 ||
-		   !idQueryProcess ||
-		   !queryLength) {
-			syslog(LOG_ERR, "bad string in qfile %s: %s", filename, buffQuery);
-			continue;
-		}
-		if(queryLength != strlen(posSeparator + 1)) {
-			syslog(LOG_ERR, "bad query length in qfile %s: %s", filename, buffQuery);
-			continue;
-		}
-		string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
-		int queryThreadId = id;
-		ssize_t queryThreadMinSize = -1;
-		for(int qtid = id; qtid < (id + loadFromQFilesThreadData[id].storeThreads); qtid++) {
-			int qtSize = this->getSize(qtid);
-			if(qtSize < 0) {
-				qtSize = 0;
+	while(!fileZipHandler->is_eof() && fileZipHandler->is_ok_decompress() && fileZipHandler->read(8 * 1024)) {
+		string lineQuery;
+		while(fileZipHandler->getLineFromReadBuffer(&lineQuery)) {
+			char *buffLineQuery = (char*)lineQuery.c_str();
+			unsigned int buffLineQueryLength = lineQuery.length();
+			if(buffLineQuery[buffLineQueryLength - 1] == '\n') {
+				buffLineQuery[buffLineQueryLength - 1] = 0;
 			}
-			if(queryThreadMinSize == -1 ||
-			   qtSize < queryThreadMinSize) {
-				queryThreadId = qtid;
-				queryThreadMinSize = qtSize;
+			int idQueryProcess;
+			unsigned int queryLength;
+			char *posSeparator = strchr(buffLineQuery, ':');
+			if(!posSeparator ||
+			   sscanf(buffLineQuery, "%i/%u:", &idQueryProcess, &queryLength) != 2 ||
+			   !idQueryProcess ||
+			   !queryLength) {
+				syslog(LOG_ERR, "bad string in qfile %s: %s", filename, buffLineQuery);
 			}
-		}
-		if(!check(queryThreadId)) {
-			find(queryThreadId, loadFromQFilesThreadData[id].store);
-			setEnableTerminatingIfEmpty(queryThreadId, true);
-			setEnableTerminatingIfSqlError(queryThreadId, true);
-			if(loadFromQFilesThreadData[id].storeConcatLimit) {
-				setConcatLimit(queryThreadId, loadFromQFilesThreadData[id].storeConcatLimit);
+			if(queryLength != strlen(posSeparator + 1)) {
+				syslog(LOG_ERR, "bad query length in qfile %s: %s", filename, buffLineQuery);
+				continue;
 			}
+			string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
+			int queryThreadId = id;
+			ssize_t queryThreadMinSize = -1;
+			for(int qtid = id; qtid < (id + loadFromQFilesThreadData[id].storeThreads); qtid++) {
+				int qtSize = this->getSize(qtid);
+				if(qtSize < 0) {
+					qtSize = 0;
+				}
+				if(queryThreadMinSize == -1 ||
+				   qtSize < queryThreadMinSize) {
+					queryThreadId = qtid;
+					queryThreadMinSize = qtSize;
+				}
+			}
+			if(!check(queryThreadId)) {
+				find(queryThreadId, loadFromQFilesThreadData[id].store);
+				setEnableTerminatingIfEmpty(queryThreadId, true);
+				setEnableTerminatingIfSqlError(queryThreadId, true);
+				if(loadFromQFilesThreadData[id].storeConcatLimit) {
+					setConcatLimit(queryThreadId, loadFromQFilesThreadData[id].storeConcatLimit);
+				}
+			}
+			/*if(sverb.qfiles) {
+				cout << " ** send query id: " << id << " to thread: " << queryThreadId << " / " << getSize(queryThreadId) << endl;
+			}*/
+			query_lock(query.c_str(), queryThreadId);
+			++counter;
 		}
-		/*if(sverb.qfiles) {
-			cout << " ** send query id: " << id << " to thread: " << queryThreadId << " / " << getSize(queryThreadId) << endl;
-		}*/
-		query_lock(query.c_str(), queryThreadId);
-		++counter;
 	}
-	delete [] buffQuery;
-	fclose(file);
+	fileZipHandler->close();
+	delete fileZipHandler;
 	/*
 	if(sverb.qfiles) {
 		extern char opt_chdir[1024];

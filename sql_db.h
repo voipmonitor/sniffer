@@ -468,7 +468,7 @@ private:
 			if(filename) {
 				this->filename = filename;
 			}
-			file = NULL;
+			fileZipHandler = NULL;
 			createAt = filename ? getTimeMS() : 0;
 			_sync = 0;
 		}
@@ -480,17 +480,21 @@ private:
 			if(!this->filename.length()) {
 				return(false);
 			}
-			file = fopen(this->filename.c_str(), "wxt");
-			if(file) {
-				flock(fileno(file), LOCK_EX);
+			fileZipHandler =  new FILE_LINE FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
+			fileZipHandler->open(this->filename.c_str());
+			if(fileZipHandler->_open_write()) {
+				return(true);
+			} else {
+				delete fileZipHandler;
+				fileZipHandler = NULL;
+				return(false);
 			}
-			return(file != NULL);
 		}
 		void close() {
-			if(file) {
-				flock(fileno(file), LOCK_UN);
-				fclose(file);
-				file = NULL;
+			if(fileZipHandler) {
+				fileZipHandler->close();
+				delete fileZipHandler;
+				fileZipHandler = NULL;
 			}
 			filename = "";
 			createAt = 0;
@@ -511,7 +515,7 @@ private:
 			__sync_lock_release(&_sync);
 		}
 		string filename;
-		FILE *file;
+		FileZipHandler *fileZipHandler;
 		u_long createAt;
 		volatile int _sync;
 	};

@@ -530,6 +530,11 @@ inline unsigned long long getTimeNS() {
 
 class FileZipHandler : public CompressStream_baseEv {
 public:
+	enum eMode {
+		mode_na,
+		mode_read,
+		mode_write
+	};
 	enum eTypeFile {
 		na,
 		pcap_sip,
@@ -543,6 +548,10 @@ public:
 		snappy,
 		lzo
 	};
+	struct sReadBufferItem {
+		u_char *buff;
+		u_int32_t length;
+	};
 public:
 	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, eTypeCompress typeCompress = compress_na,
 		       bool dumpHandler = false, class Call *call = NULL,
@@ -551,6 +560,7 @@ public:
 	bool open(const char *fileName, int permission = 0666);
 	void close();
 	bool write(char *data, int length, bool isHeader = false) {
+		mode = mode_write;
 		if(!isHeader && length) {
 			existsData = true;
 		}
@@ -558,6 +568,9 @@ public:
 			this->writeToBuffer(data, length) :
 			this->writeToFile(data, length));
 	}
+	bool read(unsigned length);
+	bool is_ok_decompress();
+	bool is_eof();
 	bool flushBuffer(bool force = false);
 	void flushTarBuffer();
 	bool writeToBuffer(char *data, int length);
@@ -571,11 +584,11 @@ public:
 		}
 	}
 	bool __writeToFile(char *data, int length);
-	//bool initZip();
-	//bool initLz4();
 	void initCompress();
+	void initDecompress();
 	void initTarbuffer(bool useFileZipHandlerCompress = false);
-	bool _open();
+	bool _open_write();
+	bool _open_read();
 	void setError(const char *error = NULL);
 	bool okHandle() {
 		return(this->tar ? true : fh > 0);
@@ -583,10 +596,14 @@ public:
 	static eTypeCompress convTypeCompress(const char *typeCompress);
 	static const char *convTypeCompress(eTypeCompress typeCompress);
 	static string getConfigMenuString();
+	bool getLineFromReadBuffer(string *line);
 private:
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
+	virtual bool decompress_ev(char *data, u_int32_t len);
 	void setTypeCompressDefault();
+	void addReadBuffer(char *data, u_int32_t len);
 public:
+	eMode mode;
 	string fileName;
 	int permission;
 	int fh;
@@ -609,6 +626,9 @@ public:
 	static u_int64_t scounter;
 	u_int32_t userData;
 	eTypeFile typeFile;
+	deque<sReadBufferItem> readBuffer;
+	uint32_t readBufferBeginPos;
+	bool eof;
 };
 
 class PcapDumper {

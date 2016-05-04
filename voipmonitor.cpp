@@ -3887,6 +3887,29 @@ void test_heapchunk() {
 }
 #endif //HEAP_CHUNK_ENABLE
 
+void test_filezip_handler() {
+	FileZipHandler *fzh = new FILE_LINE FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
+	fzh->open("/home/jumbox/Plocha/test.gz");
+	for(int i = 0; i < 1000; i++) {
+		char buff[1000];
+		sprintf(buff, "abcd %80s %i\n", "x", i + 1);
+		fzh->write(buff, strlen(buff));
+	}
+	fzh->write((char*)"eof", 3);
+	fzh->close();
+	delete fzh;
+	fzh = new FILE_LINE FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
+	fzh->open("/home/jumbox/Plocha/test.gz");
+	while(!fzh->is_eof() && fzh->is_ok_decompress() && fzh->read(2)) {
+		string line;
+		while(fzh->getLineFromReadBuffer(&line)) {
+			cout << line;
+		}
+	}
+	cout << "|" << endl;
+	delete fzh;
+}
+
 void test() {
  
 	switch(opt_test) {
@@ -3948,6 +3971,10 @@ void test() {
 	} break;
 	 
 	case 1: {
+	 
+		test_filezip_handler();
+		break;
+	 
 		cout << getSystemTimezone() << endl;
 		cout << getSystemTimezone(1) << endl;
 		cout << getSystemTimezone(2) << endl;

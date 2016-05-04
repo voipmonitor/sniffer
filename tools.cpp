@@ -2802,6 +2802,7 @@ void JsonExport::addJson(const char *name, const char *content) {
 FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeCompress typeCompress,
 			       bool dumpHandler, Call *call,
 			       eTypeFile typeFile) {
+	this->mode = mode_na;
 	if(bufferLength <= 0) {
 		enableAsyncWrite = 0;
 		typeCompress = compress_na;
@@ -2834,6 +2835,8 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	if(typeCompress == compress_default) {
 		this->setTypeCompressDefault();
 	}
+	this->readBufferBeginPos = 0;
+	this->eof = false;
 }
 
 FileZipHandler::~FileZipHandler() {
@@ -2853,6 +2856,9 @@ FileZipHandler::~FileZipHandler() {
 			syslog(LOG_NOTICE, "tartimemap decrease2: %s %i %i", 
 			       this->fileName.c_str(), this->time, this->time - this->time % TAR_MODULO_SECONDS);
 		}
+	}
+	for(unsigned i = 0; i < this->readBuffer.size(); i++) {
+		delete [] this->readBuffer[i].buff;
 	}
 }
 
@@ -2902,16 +2908,56 @@ bool FileZipHandler::open(const char *fileName, int permission) {
 }
 
 void FileZipHandler::close() {
-	if(this->tar) {
-		this->flushBuffer(true);
-		this->flushTarBuffer();
-	} else  {
-		this->flushBuffer(true);
+	if(this->mode == mode_read) {
 		if(this->okHandle()) {
 			::close(this->fh);
 			this->fh = 0;
 		}
+	} else {
+		if(this->tar) {
+			this->flushBuffer(true);
+			this->flushTarBuffer();
+		} else  {
+			this->flushBuffer(true);
+			if(this->okHandle()) {
+				::close(this->fh);
+				this->fh = 0;
+			}
+		}
 	}
+}
+
+bool FileZipHandler::read(unsigned length) {
+	this->mode = mode_read;
+	if(!this->okHandle()) {
+		if(!this->error.empty() || !this->_open_read()) {
+			return(false);
+		}
+	}
+	if(this->eof) {
+		return(true);
+	}
+	u_char *buffer = new FILE_LINE u_char[length];
+	ssize_t read_length = ::read(this->fh, buffer, length);
+	if(read_length > 0) {
+		if(!this->compressStream) {
+			this->initDecompress();
+		}
+		this->compressStream->decompress((char*)buffer, read_length, 0, false, this);
+	} else if(read_length == 0) {
+		this->compressStream->decompress(NULL, 0, 0, true, this);
+		this->eof = true;
+	}
+	delete buffer;
+	return(read_length >= 0 && this->compressStream->isOk());
+}
+
+bool FileZipHandler::is_ok_decompress() {
+	return(!this->compressStream || this-compressStream->isOk());
+}
+
+bool FileZipHandler::is_eof() {
+	return(this->eof);
 }
 
 bool FileZipHandler::flushBuffer(bool force) {
@@ -3008,7 +3054,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 
 bool FileZipHandler::__writeToFile(char *data, int length) {
 	if(!this->okHandle()) {
-		if(!this->error.empty() || !this->_open()) {
+		if(!this->error.empty() || !this->_open_write()) {
 			return(false);
 		}
 	}
@@ -3037,6 +3083,14 @@ void FileZipHandler::initCompress() {
 					  typeFile == graph_rtp ? opt_pcap_dump_ziplevel_graph : Z_DEFAULT_COMPRESSION);
 	this->compressStream->enableAutoPrefixFile();
 	this->compressStream->enableForceStream();
+}
+
+void FileZipHandler::initDecompress() {
+	this->compressStream =  new FILE_LINE CompressStream(this->typeCompress == gzip ? CompressStream::gzip :
+							     this->typeCompress == snappy ? CompressStream::snappy :
+							     this->typeCompress == lzo ? CompressStream::lzo : CompressStream::compress_na,
+							     8 * 1024,
+							     0);
 }
 
 void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
@@ -3085,7 +3139,7 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 	tarQueue->add(this->fileName, this->time, this->tarBuffer);
 }
 
-bool FileZipHandler::_open() {
+bool FileZipHandler::_open_write() {
 	if(this->tar) {
 		return(true);
 	}
@@ -3114,6 +3168,16 @@ bool FileZipHandler::_open() {
 	}
 }
 
+bool FileZipHandler::_open_read() {
+	this->fh = ::open(fileName.c_str(), O_RDONLY);
+	if(this->okHandle()) {
+		return(true);
+	} else {
+		this->setError();
+		syslog(LOG_NOTICE, "error open handle to file %s - %s", fileName.c_str(), error.c_str());
+		return(false);
+	}
+}
 
 void FileZipHandler::setError(const char *error) {
 	if(error) {
@@ -3195,6 +3259,73 @@ bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t decompress
 		return(false);
 	}
 	return(true);
+}
+
+bool FileZipHandler::decompress_ev(char *data, u_int32_t len) {
+	if(len) {
+		this->addReadBuffer(data, len);
+	}
+	return(true);
+}
+
+void FileZipHandler::addReadBuffer(char *data, u_int32_t len) {
+	sReadBufferItem readBufferItem;
+	readBufferItem.buff = new FILE_LINE u_char[len];
+	readBufferItem.length = len;
+	memcpy(readBufferItem.buff, data, len);
+	this->readBuffer.push_back(readBufferItem);
+}
+
+bool FileZipHandler::getLineFromReadBuffer(string *line) {
+	u_char *endLinePos = NULL;
+	unsigned endLinePosIndex = 0;
+	for(unsigned i = 0; i < this->readBuffer.size(); i++) {
+		u_char *findEndLinePos = (u_char*)memmem(this->readBuffer[i].buff + (i == 0 ? this->readBufferBeginPos : 0),
+							 this->readBuffer[i].length - (i == 0 ? this->readBufferBeginPos : 0),
+							 "\n", 1);
+		if(findEndLinePos) {
+			endLinePos = findEndLinePos;
+			endLinePosIndex = i;
+			break;
+		}
+	}
+	if(!endLinePos && this->eof && this->readBuffer.size()) {
+		endLinePos = (u_char*)-1;
+		endLinePosIndex = this->readBuffer.size() - 1;
+	}
+	if(endLinePos) {
+		SimpleBuffer tempBuffer;
+		for(unsigned i = 0; i <= endLinePosIndex; i++) {
+			u_char *buff = this->readBuffer[i].buff;
+			u_int32_t length = this->readBuffer[i].length;
+			if(i == endLinePosIndex && endLinePos != (u_char*)-1) {
+				length = endLinePos - buff + 1;
+			}
+			if(i == 0 && this->readBufferBeginPos) {
+				buff += this->readBufferBeginPos;
+				length -= this->readBufferBeginPos;
+			}
+			tempBuffer.add(buff, length);
+		}
+		if(endLinePosIndex) {
+			for(unsigned i = 0; i < endLinePosIndex; i++) {
+				delete [] this->readBuffer[0].buff;
+				this->readBuffer.pop_front();
+			}
+		}
+		if(endLinePos != (u_char*)-1) {
+			this->readBufferBeginPos = endLinePos - this->readBuffer[0].buff + 1;
+		} else {
+			this->readBufferBeginPos = 0;
+			delete [] this->readBuffer[0].buff;
+			this->readBuffer.pop_front();
+		}
+		if(tempBuffer.size()) {
+			*line = string((char*)tempBuffer.data(), tempBuffer.size());
+			return(true);
+		}
+	}
+	return(false);
 }
 
 u_int64_t FileZipHandler::scounter = 0;
