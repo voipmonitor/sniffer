@@ -888,6 +888,12 @@ void
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_save_packet, char *ifname) {
  
 	extern int opt_vlan_siprtpsame;
+	if(packetS->datalen == 12) {
+		//Ignoring RTP packets without data
+		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen);
+		return;
+	}
+
 	if(opt_vlan_siprtpsame && this->vlan >= 0) {
 		sll_header *header_sll;
 		ether_header *header_eth;
