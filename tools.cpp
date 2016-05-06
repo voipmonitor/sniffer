@@ -2918,8 +2918,8 @@ void FileZipHandler::close() {
 			this->flushBuffer(true);
 			this->flushTarBuffer();
 		} else  {
-			this->flushBuffer(true);
 			if(this->okHandle()) {
+				this->flushBuffer(true);
 				::close(this->fh);
 				this->fh = 0;
 			}
@@ -2945,11 +2945,13 @@ bool FileZipHandler::read(unsigned length) {
 		}
 		this->compressStream->decompress((char*)buffer, read_length, 0, false, this);
 	} else if(read_length == 0) {
-		this->compressStream->decompress(NULL, 0, 0, true, this);
+		if(this->compressStream) {
+			this->compressStream->decompress(NULL, 0, 0, true, this);
+		}
 		this->eof = true;
 	}
 	delete buffer;
-	return(read_length >= 0 && this->compressStream->isOk());
+	return(read_length >= 0 && (!this->compressStream || this->compressStream->isOk()));
 }
 
 bool FileZipHandler::is_ok_decompress() {
@@ -2962,6 +2964,10 @@ bool FileZipHandler::is_eof() {
 
 bool FileZipHandler::flushBuffer(bool force) {
 	if(!this->buffer || !this->useBufferLength) {
+		if(force && this->existsData && !this->tar && this->okHandle() &&
+		   this->compressStream && this->compressStream->getTypeCompress() != CompressStream::compress_na) {
+			this->compressStream->compress(NULL, 0, true, this);
+		}
 		return(true);
 	}
 	bool rsltWrite = this->writeToFile(this->buffer, this->useBufferLength, force);

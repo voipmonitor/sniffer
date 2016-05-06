@@ -1935,8 +1935,8 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 	}
 	if(qfile->fileZipHandler) {
 		string query = query_str;
-		query = find_and_replace(query_str, "__ENDL__", "__endl__");
-		query = find_and_replace(query_str, "\n", "__ENDL__");
+		find_and_replace(query, "__ENDL__", "__endl__");
+		find_and_replace(query, "\n", "__ENDL__");
 		unsigned int query_length = query.length();
 		query.append("\n");
 		char buffIdLength[100];
@@ -1945,7 +1945,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 		qfile->fileZipHandler->write((char*)query.c_str(), query.length());
 		u_long actTimeMS = getTimeMS();
 		if(max(qfile->flushAt, qfile->createAt) < actTimeMS - 1000) {
-			qfile->fileZipHandler->flushBuffer(true);
+			qfile->fileZipHandler->flushBuffer();
 			qfile->flushAt = actTimeMS;
 		}
 	}
@@ -2126,14 +2126,16 @@ int MySqlStore::getCountQFiles(int id) {
 	return(counter);
 }
 
-bool MySqlStore::loadFromQFile(const char *filename, int id) {
+bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
+	bool ok = true;
 	if(sverb.qfiles) {
-		cout << "*** START PROCESS FILE " << filename
+		cout << "*** START " << (onlyCheck ? "CHECK" : "PROCESS") << " FILE " << filename
 		     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 	}
 	FileZipHandler *fileZipHandler = new FILE_LINE FileZipHandler(8 * 1024, 0, isGunzip(filename) ? FileZipHandler::gzip : FileZipHandler::compress_na);
 	fileZipHandler->open(filename);
 	unsigned int counter = 0;
+	bool copyBadFileToTemp = false;
 	while(!fileZipHandler->is_eof() && fileZipHandler->is_ok_decompress() && fileZipHandler->read(8 * 1024)) {
 		string lineQuery;
 		while(fileZipHandler->getLineFromReadBuffer(&lineQuery)) {
@@ -2153,34 +2155,42 @@ bool MySqlStore::loadFromQFile(const char *filename, int id) {
 			}
 			if(queryLength != strlen(posSeparator + 1)) {
 				syslog(LOG_ERR, "bad query length in qfile %s: %s", filename, buffLineQuery);
+				if(sverb.qfiles && !copyBadFileToTemp) {
+					char *baseFileName = (char*)strrchr(filename, '/');
+					copy_file(filename, (string("/tmp") + baseFileName).c_str());
+					copyBadFileToTemp = true;
+				}
+				ok = false;
 				continue;
 			}
-			string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
-			int queryThreadId = id;
-			ssize_t queryThreadMinSize = -1;
-			for(int qtid = id; qtid < (id + loadFromQFilesThreadData[id].storeThreads); qtid++) {
-				int qtSize = this->getSize(qtid);
-				if(qtSize < 0) {
-					qtSize = 0;
+			if(!onlyCheck) {
+				string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
+				int queryThreadId = id;
+				ssize_t queryThreadMinSize = -1;
+				for(int qtid = id; qtid < (id + loadFromQFilesThreadData[id].storeThreads); qtid++) {
+					int qtSize = this->getSize(qtid);
+					if(qtSize < 0) {
+						qtSize = 0;
+					}
+					if(queryThreadMinSize == -1 ||
+					   qtSize < queryThreadMinSize) {
+						queryThreadId = qtid;
+						queryThreadMinSize = qtSize;
+					}
 				}
-				if(queryThreadMinSize == -1 ||
-				   qtSize < queryThreadMinSize) {
-					queryThreadId = qtid;
-					queryThreadMinSize = qtSize;
+				if(!check(queryThreadId)) {
+					find(queryThreadId, loadFromQFilesThreadData[id].store);
+					setEnableTerminatingIfEmpty(queryThreadId, true);
+					setEnableTerminatingIfSqlError(queryThreadId, true);
+					if(loadFromQFilesThreadData[id].storeConcatLimit) {
+						setConcatLimit(queryThreadId, loadFromQFilesThreadData[id].storeConcatLimit);
+					}
 				}
+				/*if(sverb.qfiles) {
+					cout << " ** send query id: " << id << " to thread: " << queryThreadId << " / " << getSize(queryThreadId) << endl;
+				}*/
+				query_lock(query.c_str(), queryThreadId);
 			}
-			if(!check(queryThreadId)) {
-				find(queryThreadId, loadFromQFilesThreadData[id].store);
-				setEnableTerminatingIfEmpty(queryThreadId, true);
-				setEnableTerminatingIfSqlError(queryThreadId, true);
-				if(loadFromQFilesThreadData[id].storeConcatLimit) {
-					setConcatLimit(queryThreadId, loadFromQFilesThreadData[id].storeConcatLimit);
-				}
-			}
-			/*if(sverb.qfiles) {
-				cout << " ** send query id: " << id << " to thread: " << queryThreadId << " / " << getSize(queryThreadId) << endl;
-			}*/
-			query_lock(query.c_str(), queryThreadId);
 			++counter;
 		}
 	}
@@ -2195,12 +2205,14 @@ bool MySqlStore::loadFromQFile(const char *filename, int id) {
 		system((string("cp ") + filename + " " + opt_chdir + "/_qfiles").c_str());
 	}
 	*/
-	unlink(filename);
+	if(!onlyCheck) {
+		unlink(filename);
+	}
 	if(sverb.qfiles) {
-		cout << "*** END PROCESS FILE " << filename
+		cout << "*** END " << (onlyCheck ? "CHECK" : "PROCESS") << " FILE " << filename
 		     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 	}
-	return(true);
+	return(ok);
 }
 
 void MySqlStore::addFileFromINotify(const char *filename) {
@@ -2918,6 +2930,7 @@ bool SqlDb_mysql::createSchema(int connectId) {
 	unsigned sniffer_version_num = 0;
 	unsigned sniffer_version_num_save = 0;
 	bool okSaveVersion = false;
+	bool existsTableSystem = false;
 	if(connectId == 0) {
 		vector<string> sniffer_version_split = split(string(RTPSENSOR_VERSION), '.');
 		if(sniffer_version_split.size()) {
@@ -2927,6 +2940,7 @@ bool SqlDb_mysql::createSchema(int connectId) {
 		}
 		this->query("show tables like 'system'");
 		if(this->fetchRow()) {
+			existsTableSystem = true;
 			this->query("select content from system where type = 'sniffer_db_version'");
 			SqlDb_row rslt = this->fetchRow();
 			if(rslt) {
@@ -2954,7 +2968,8 @@ bool SqlDb_mysql::createSchema(int connectId) {
 	
 	if(connectId == 0 && result) {
 		this->saveTimezoneInformation();
-		if(sniffer_version_num > sniffer_version_num_save) {
+		if(sniffer_version_num > sniffer_version_num_save &&
+		   existsTableSystem) {
 			SqlDb_row row;
 			row.add(sniffer_version_num, "content");
 			if(sniffer_version_num_save) {

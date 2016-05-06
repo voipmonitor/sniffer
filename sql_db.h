@@ -601,7 +601,7 @@ public:
 	bool fillQFiles(int id);
 	string getMinQFile(int id);
 	int getCountQFiles(int id);
-	bool loadFromQFile(const char *filename, int id);
+	bool loadFromQFile(const char *filename, int id, bool onlyCheck = false);
 	void addFileFromINotify(const char *filename);
 	QFileData parseQFilename(const char *filename);
 	string getLoadFromQFilesStat(bool processes = false);
