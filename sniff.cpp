@@ -2275,6 +2275,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	bool iscaller = false;
 	bool iscalled = false;
 	bool detectCallerd = false;
+	const char *logPacketSipMethodCallDescr = NULL;
 
 	if (packetS->header_pt->ts.tv_sec - process_packet__last_filter_reload > 1){
 		if(ipfilter_reload_do) {
@@ -2433,16 +2434,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			}
 		}
 		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(
-				#if USE_PACKET_NUMBER
-				packetS->packet_number
-				#else
-				0
-				#endif
-				, 
-				packetS->sip_method, lastSIPresponseNum, packetS->header_pt, 
-				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-				call, "SIP packet does not belong to any call and it is not INVITE");
+			logPacketSipMethodCallDescr = "SIP packet does not belong to any call and it is not INVITE";
 		}
 		goto endsip;
 	}
@@ -2715,17 +2707,6 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 
 					// destroy call after 5 seonds from now 
 					call->destroy_call_at = packetS->header_pt->ts.tv_sec + 5;
-					if(logPacketSipMethodCall_enable) {
-						logPacketSipMethodCall(
-							#if USE_PACKET_NUMBER
-							packetS->packet_number
-							#else
-							0
-							#endif
-							, packetS->sip_method, lastSIPresponseNum, packetS->header_pt, 
-							packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-							call);
-					}
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
 				} else if(strncmp(cseq, call->invitecseq, cseqlen) == 0) {
@@ -2792,17 +2773,6 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					call->removeFindTables();
 					call->removeRTP();
 					call->ipport_n = 0;
-				}
-				if(logPacketSipMethodCall_enable) {
-					logPacketSipMethodCall(
-						#if USE_PACKET_NUMBER
-						packetS->packet_number
-						#else
-						0
-						#endif
-						, packetS->sip_method, lastSIPresponseNum, packetS->header_pt, 
-						packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-						call);
 				}
 				process_packet__parse_custom_headers(call, packetS);
 				goto endsip_save_packet;
@@ -3051,17 +3021,6 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	}
 
 notfound:
-	if(logPacketSipMethodCall_enable) {
-		logPacketSipMethodCall(
-			#if USE_PACKET_NUMBER
-			packetS->packet_number
-			#else
-			0
-			#endif
-			, packetS->sip_method, lastSIPresponseNum, packetS->header_pt, 
-			packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-			call);
-	}
 	packetS->data[packetS->datalen - 1] = a;
 
 endsip_save_packet:
@@ -3128,6 +3087,18 @@ endsip:
 			}
 		}
 	}
+	
+	if(logPacketSipMethodCall_enable) {
+		logPacketSipMethodCall(
+			#if USE_PACKET_NUMBER
+			packetS->packet_number
+			#else
+			0
+			#endif
+			, packetS->sip_method, lastSIPresponseNum, packetS->header_pt, 
+			packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
+			call, logPacketSipMethodCallDescr);
+	}
 }
 
 inline void process_packet_sip_register_inline(packet_s_process *packetS) {
@@ -3136,6 +3107,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 	char *s;
 	unsigned long l;
 	bool goto_endsip = false;
+	const char *logPacketSipMethodCallDescr = NULL;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
 	if (packetS->header_pt->ts.tv_sec - process_packet__last_cleanup_registers > 10){
@@ -3214,15 +3186,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 				goto endsip;
 			}
 			if(logPacketSipMethodCall_enable) {
-				logPacketSipMethodCall(
-					#if USE_PACKET_NUMBER
-					packetS->packet_number
-					#else
-					0
-					#endif
-					, packetS->sip_method, packetS->lastSIPresponseNum, packetS->header_pt, 
-					packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-					call, "to much register attempts without OK or 401 responses");
+				logPacketSipMethodCallDescr = "to much register attempts without OK or 401 responses";
 			}
 			goto endsip_save_packet;
 		}
@@ -3271,15 +3235,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			call->saveregister();
 		}
 		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(
-				#if USE_PACKET_NUMBER
-				packetS->packet_number
-				#else
-				0
-				#endif
-				, packetS->sip_method, packetS->lastSIPresponseNum, packetS->header_pt, 
-				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-				call, "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)");
+			logPacketSipMethodCallDescr = "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)";
 		}
 		goto_endsip = true;
 	} else if(packetS->sip_method == RES401 or packetS->sip_method == RES403 or packetS->sip_method == RES404) {
@@ -3294,18 +3250,10 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			save_packet(call, packetS,TYPE_SIP);
 			call->saveregister();
 			if(logPacketSipMethodCall_enable) {
-				logPacketSipMethodCall(
-					#if USE_PACKET_NUMBER
-					packetS->packet_number
-					#else
-					0
-					#endif
-					, packetS->sip_method, packetS->lastSIPresponseNum, packetS->header_pt, 
-					packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-					call, 
+				logPacketSipMethodCallDescr =
 					packetS->sip_method == RES401 ? "REGISTER 401 count > 1" :
 					packetS->sip_method == RES403 ? "REGISTER 403" :
-					packetS->sip_method == RES404 ? "REGISTER 404" : "");
+					packetS->sip_method == RES404 ? "REGISTER 404" : NULL;
 			}
 			goto_endsip = true;
 		}
@@ -3326,15 +3274,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		save_packet(call, packetS, TYPE_SIP);
 		call->saveregister();
 		if(logPacketSipMethodCall_enable) {
-			logPacketSipMethodCall(
-				#if USE_PACKET_NUMBER
-				packetS->packet_number
-				#else
-				0
-				#endif
-				, packetS->sip_method, packetS->lastSIPresponseNum, packetS->header_pt, 
-				packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-				call, "too many REGISTER messages within the same callid");
+			logPacketSipMethodCallDescr = "too many REGISTER messages within the same callid";
 		}
 		goto endsip;
 	}
@@ -3350,18 +3290,6 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 
 	// we have packet, extend pending destroy requests
 	call->shift_destroy_call_at(packetS->header_pt, packetS->lastSIPresponseNum);
-		
-	if(logPacketSipMethodCall_enable) {
-		logPacketSipMethodCall(
-			#if USE_PACKET_NUMBER
-			packetS->packet_number
-			#else
-			0
-			#endif
-			, packetS->sip_method, packetS->lastSIPresponseNum, packetS->header_pt, 
-			packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
-			call);
-	}
 
 endsip_save_packet:
 	save_packet(call, packetS, TYPE_SIP);
@@ -3383,6 +3311,18 @@ endsip:
 				cout << "set b_ua " << call->b_ua << endl;
 			}
 		}
+	}
+	
+	if(logPacketSipMethodCall_enable) {
+		logPacketSipMethodCall(
+			#if USE_PACKET_NUMBER
+			packetS->packet_number
+			#else
+			0
+			#endif
+			, packetS->sip_method, packetS->lastSIPresponseNum, packetS->header_pt, 
+			packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
+			call, logPacketSipMethodCallDescr);
 	}
 }
 
@@ -5082,7 +5022,10 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 	// lastSIPresponseNum
 	outStr << "last response num: "
 	       << setw(3)
-	       << lastSIPresponseNum << "  ";
+	       << lastSIPresponseNum 
+	       << "/"
+	       << setw(3)
+	       << (call ? call->lastSIPresponseNum : 0) << "  ";
 	// fbasename
 	outStr << endl << "    "
 	       << "fbasename: "
