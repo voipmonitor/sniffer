@@ -191,6 +191,7 @@ public:
 	int len;		//!< lenght of UDP payload
 	unsigned char* payload_data;    //!< pointer to RTP payload
 	int payload_len;	//!< lenght of RTP payload
+	u_int16_t prev_payload_len;	//!< lenght of RTP payload
 	int ssrc_index;		//!< index 
 	int iscaller;		//!< flag which indicates if RTP stream is part of caller or callee
 	void *call_owner;	//!< which Call owns us
