@@ -335,6 +335,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	skip = false;
 
 	defer_codec_change = false;
+	prev_payload_len = 0;
 }
 
 
@@ -981,7 +982,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}	       
 
 
-	int payload_len = get_payload_len();
+	payload_len = get_payload_len();
 	if(payload_len < 0) {
 		if(owner) {
 			if(!owner->error_negative_payload_length) {
@@ -1658,7 +1659,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 		}
 	} else {
-		if(last_ts != 0 and seq == (last_seq + 1) and codec != PAYLOAD_TELEVENT and !getMarker()) {
+		if(last_ts != 0 and seq == (last_seq + 1) and codec != PAYLOAD_TELEVENT and !getMarker() and prev_payload_len > 8) {
 			// packetization can change over time
 			int curpacketization = 0;
 
@@ -1754,6 +1755,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 	}
 
+	prev_payload_len = payload_len;
 	prev_payload = curpayload;
 	prev_codec = codec;
 	prev_sid = sid;

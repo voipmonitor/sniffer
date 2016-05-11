@@ -2198,8 +2198,12 @@ int main(int argc, char *argv[]) {
 	if(cloud_url[0] != '\0') {
 		//vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
 		cloud_initial_register();
-	}
 
+		//Override query_cache option in /etc/voipmonitor.conf  settings while in cloud mode always on:
+                opt_save_query_to_files = true;
+                opt_load_query_from_files = 1;
+                opt_load_query_from_files_inotify = true;
+	}
 	checkRrdVersion();
 
 	

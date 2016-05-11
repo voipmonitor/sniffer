@@ -40,7 +40,13 @@ make install
 
 Post Build
 ==========
-edit configuration file /etc/voipmonitor.conf and set at least (mysqlhost, mysqlport, mysqlusername, mysqlpassword)  options and auto-cleaning options (cleandatabase,maxpoolsize)
+#copy default config from /usr/src/voipmonitor-git/config/voipmonitor.conf to /etc/voipmonitor.conf
+cp /usr/src/voipmonitor-git/config/voipmonitor.conf /etc/voipmonitor.conf
+#copy init script from /usr/src/voipmonitor-git/config/init.d/voipmonitor to /etc/init.d/voipmonitor
+cp /usr/src/voipmonitor-git/config/init.d/voipmonitor /etc/init.d/voipmonitor
+#in case you are using systemd for startup services follow instructions for systemd init file at begining of this how to: https://www.voipmonitor.org/doc/Centos_7
+
+#edit configuration file /etc/voipmonitor.conf and set at least (mysqlhost, mysqlport, mysqlusername, mysqlpassword)  options and auto-cleaning options (cleandatabase,maxpoolsize)
 
 
 Web interface
