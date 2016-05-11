@@ -178,6 +178,7 @@ extern int opt_id_sensor;
 extern int opt_destination_number_mode;
 extern int opt_update_dstnum_onanswer;
 extern MySqlStore *sqlStore;
+extern sExistsColumns existsColumns;
 int global_pcap_dlink;
 extern int opt_udpfrag;
 extern int global_livesniffer;
@@ -2522,8 +2523,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			call->SIPresponse.push_back(Call::sSipResponse(lastSIPresponse, lastSIPresponseNum));
 		}
 		
-		extern bool exists_columns_cdr_reason;
-		if(exists_columns_cdr_reason) {
+		if(existsColumns.cdr_reason) {
 			char *reason = gettag_sip(packetS, "reason:", &l);
 			if(reason) {
 				char oldEndChar = reason[l];

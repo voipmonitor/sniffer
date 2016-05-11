@@ -110,6 +110,8 @@ public:
 	virtual bool update(string table, SqlDb_row row, const char *whereCond);
 	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2 = NULL);
 	virtual int getInsertId() = 0;
+	virtual bool existsTable(const char *table) = 0;
+	virtual bool existsColumn(const char *table, const char *column) = 0;
 	virtual int getIndexField(string fieldName);
 	virtual string getNameField(int indexField);
 	virtual string escape(const char *inputString, int length = 0) = 0;
@@ -199,7 +201,8 @@ public:
 	static void addDelayQuery(u_int32_t delay_ms);
 	static u_int32_t getAvgDelayQuery();
 	static void resetDelayQuery();
-	void logNeedAlter(string table, string reason, string alter);
+	void logNeedAlter(string table, string reason, string alter,
+			  bool log, map<string, u_int64_t> *tableSize);
 protected:
 	string conn_server;
 	string conn_server_ip;
@@ -267,6 +270,8 @@ public:
 	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	SqlDb_row fetchRow(bool assoc = false);
 	int getInsertId();
+	bool existsTable(const char *table);
+	bool existsColumn(const char *table, const char *column);
 	string escape(const char *inputString, int length = 0);
 	string getFieldBorder() {
 		return("`");
@@ -376,6 +381,8 @@ public:
 	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	SqlDb_row fetchRow(bool assoc = false);
 	int getInsertId();
+	bool existsTable(const char *table);
+	bool existsColumn(const char *table, const char *column);
 	int getIndexField(string fieldName);
 	string escape(const char *inputString, int length = 0);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
@@ -688,5 +695,30 @@ void createMysqlPartitionsBillingAgregation();
 void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsRtpStat();
 void checkMysqlIdCdrChildTables();
+
+struct sExistsColumns {
+	bool cdr_response_time;
+	bool cdr_reason;
+	bool cdr_sipport;
+	bool cdr_last_rtp_from_end;
+	bool cdr_silencedetect;
+	bool cdr_clippingdetect;
+	bool cdr_rtp_ptime;
+	bool cdr_mos_min;
+	bool cdr_mos_xr;
+	bool cdr_dscp;
+	bool cdr_mos_lqo;
+	bool cdr_next_calldate;
+	bool cdr_rtp_calldate;
+	bool cdr_rtp_sport;
+	bool cdr_rtp_dport;
+	bool cdr_dtmf_calldate;
+	bool cdr_sipresp_calldate;
+	bool cdr_siphistory_calldate;
+	bool cdr_tar_part_calldate;
+	bool message_content_length;
+	bool message_response_time;
+	bool register_rrd_count;
+};
 
 #endif

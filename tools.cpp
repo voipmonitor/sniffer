@@ -2327,8 +2327,8 @@ void ParsePacket::setStdParse() {
 	if(opt_update_dstnum_onanswer) {
 		addNode("via:", typeNode_std);
 	}
-	extern bool exists_columns_cdr_reason;
-	if(exists_columns_cdr_reason) {
+	extern sExistsColumns existsColumns;
+	if(existsColumns.cdr_reason) {
 		addNode("reason:", typeNode_std);
 	}
 	addNode("m=audio ", typeNode_std);

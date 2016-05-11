@@ -104,9 +104,6 @@ extern char opt_convert_char[256];
 extern int opt_norecord_dtmf;
 extern char opt_silencedtmfseq[16];
 extern int opt_pauserecordingdtmf_timeout;
-extern bool opt_cdr_sipport;
-extern bool opt_cdr_rtpport;
-extern bool opt_cdr_rtpsrcport;
 extern char get_customers_pn_query[1024];
 extern int opt_saverfc2833;
 extern int opt_dbdtmf;
@@ -128,7 +125,6 @@ extern regcache *regfailedcache;
 extern MySqlStore *sqlStore;
 extern int global_pcap_dlink;
 extern pcap_t *global_pcap_handle;
-extern int opt_last_rtp_from_end;
 extern int opt_mysqlstore_max_threads_cdr;
 extern int opt_mysqlstore_max_threads_message;
 extern int opt_mysqlstore_max_threads_register;
@@ -144,7 +140,6 @@ extern CustomHeaders *custom_headers_message;
 extern int opt_custom_headers_last_value;
 extern bool _save_sip_history;
 extern int opt_saveudptl;
-extern bool exists_column_cdr_mosmin;
 extern rtp_read_thread *rtp_threads;
 
 volatile int calls_counter = 0;
@@ -168,13 +163,7 @@ extern int opt_hide_message_content;
 extern char opt_hide_message_content_secret[1024];
 
 SqlDb *sqlDbSaveCall = NULL;
-bool existsColumnCalldateInCdrNext = true;
-bool existsColumnCalldateInCdrRtp = true;
-bool existsColumnCalldateInCdrDtmf = true;
-bool existsColumnCalldateInCdrSipresp = true;
-bool existsColumnCalldateInCdrSiphistory = true;
-bool existsColumnCalldateInCdrTarPart = true;
-bool existsColumnRrdcountInRegister = true;
+extern sExistsColumns existsColumns;
 
 extern int opt_pcap_dump_tar_sip_use_pos;
 extern int opt_pcap_dump_tar_rtp_use_pos;
@@ -182,9 +171,6 @@ extern int opt_pcap_dump_tar_graph_use_pos;
 
 extern unsigned int glob_ssl_calls;
 extern bool opt_cdr_partition;
-
-extern int opt_ptime;
-extern bool exists_column_cdr_mos_xr;
 
 
 /* constructor */
@@ -2014,9 +2000,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
  
-	extern bool exists_columns_cdr_reason;
-	extern bool exists_columns_cdr_response_time;
-
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
@@ -2161,7 +2144,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	*/
 	
 	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
-	if(exists_columns_cdr_reason) {
+	if(existsColumns.cdr_reason) {
 		if(reason_sip_text.length()) {
 			cdr_reason_sip.add(1, "type");
 			cdr_reason_sip.add(sqlEscapeString(reason_sip_text.c_str()), "reason");
@@ -2179,7 +2162,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	cdr.add(htonl(sipcallerip[0]), "sipcallerip");
 	cdr.add(htonl(sipcalledip[0]), "sipcalledip");
-	if(opt_cdr_sipport) {
+	if(existsColumns.cdr_sipport) {
 		cdr.add(sipcallerport, "sipcallerport");
 		cdr.add(sipcalledport, "sipcalledport");
 	}
@@ -2193,7 +2176,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(connect_time) {
 		cdr.add(duration() - (connect_time - first_packet_time), "connect_duration");
 	}
-	if(opt_last_rtp_from_end) {
+	if(existsColumns.cdr_last_rtp_from_end) {
 		if(last_rtp_a_packet_time) {
 			cdr.add(last_packet_time - last_rtp_a_packet_time, "a_last_rtp_from_end");
 		}
@@ -2212,7 +2195,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	cdr.add(sighup ? 1 : 0, "sighup");
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
-	if(exists_columns_cdr_reason) {
+	if(existsColumns.cdr_reason) {
 		if(reason_sip_cause) {
 			cdr.add(reason_sip_cause, "reason_sip_cause");
 		}
@@ -2220,7 +2203,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(reason_q850_cause, "reason_q850_cause");
 		}
 	}
-	if(exists_columns_cdr_response_time && this->first_invite_time_usec) {
+	if(existsColumns.cdr_response_time && this->first_invite_time_usec) {
 		if(this->first_response_100_time_usec) {
 			cdr.add(MIN(65535, round((this->first_response_100_time_usec - this->first_invite_time_usec) / 1000.0)), "response_time_100");
 		}
@@ -2266,7 +2249,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_next.add(sqlEscapeString(iCustHeadersIter->second), iCustHeadersIter->first);
 	}
 	*/
-	if(existsColumnCalldateInCdrNext) {
+	if(existsColumns.cdr_next_calldate) {
 		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	}
 	
@@ -2295,11 +2278,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 
-	if(a_mos_lqo != -1) {
+	if(a_mos_lqo != -1 && existsColumns.cdr_mos_lqo) {
 		int mos = a_mos_lqo * 10;
 		cdr.add(mos, "a_mos_lqo_mult10");
 	}
-	if(b_mos_lqo != -1) {
+	if(b_mos_lqo != -1 && existsColumns.cdr_mos_lqo) {
 		int mos = b_mos_lqo * 10;
 		cdr.add(mos, "b_mos_lqo_mult10");
 	}
@@ -2353,7 +2336,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
 		}
 
-		if(opt_silencedetect) {
+		if(opt_silencedetect && existsColumns.cdr_silencedetect) {
 			if(caller_silence > 0 or caller_noise > 0) {
 				cdr.add(caller_silence * 100 / (caller_silence + caller_noise), "caller_silence");
 			}
@@ -2363,7 +2346,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(caller_lastsilence / 1000, "caller_silence_end");
 			cdr.add(called_lastsilence / 1000, "called_silence_end");
 		}
-		if(opt_clippingdetect) {
+		if(opt_clippingdetect && existsColumns.cdr_clippingdetect) {
 			if(caller_clipping_8k) {
 				cdr.add(MIN(USHRT_MAX, round(caller_clipping_8k / 3)), "caller_clipping_div3");
 			}
@@ -2454,11 +2437,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(mos_f1_mult10) {
 				mos_min_mult10[i] = mos_f1_mult10;
 			}
-			if(exists_column_cdr_mosmin and rtpab[i]->mosf1_min != -1) {
+			if(existsColumns.cdr_mos_min and rtpab[i]->mosf1_min != -1) {
 				cdr.add(rtpab[i]->mosf1_min, c+"_mos_f1_min_mult10");
 			}
 
-			if(exists_column_cdr_mos_xr and rtpab[i]->rtcp_xr.counter > 0) {
+			if(existsColumns.cdr_mos_xr and rtpab[i]->rtcp_xr.counter > 0) {
 				cdr.add(rtpab[i]->rtcp_xr.minmos, c+"_mos_xr_min_mult10");
 				cdr.add(rtpab[i]->rtcp_xr.avgmos, c+"_mos_xr_mult10");
 			}
@@ -2471,7 +2454,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_f2_mult10;
 			}
-			if(exists_column_cdr_mosmin and rtpab[i]->mosf2_min != -1) {
+			if(existsColumns.cdr_mos_min and rtpab[i]->mosf2_min != -1) {
 				cdr.add(rtpab[i]->mosf2_min, c+"_mos_f2_min_mult10");
 			}
 
@@ -2483,7 +2466,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
 			}
-			if(exists_column_cdr_mosmin and rtpab[i]->mosAD_min != -1) {
+			if(existsColumns.cdr_mos_min and rtpab[i]->mosAD_min != -1) {
 				cdr.add(rtpab[i]->mosAD_min, c+"_mos_adapt_min_mult10");
 			}
 
@@ -2504,7 +2487,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
 				cdr.add(rtcp_avgjitter_mult10[i], cneg+"_rtcp_avgjitter_mult10");
 			}
-			if(opt_ptime) {
+			if(existsColumns.cdr_rtp_ptime) {
 				cdr.add(rtpab[i]->avg_ptime, c+"_rtp_ptime");
 			}
 
@@ -2562,7 +2545,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	}
 
-	if(opt_dscp) {
+	if(opt_dscp && existsColumns.cdr_dscp) {
 		cdr.add((dscp_a << 24) + (dscp_b << 16) + (dscp_c << 8) + dscp_d, "dscp");
 	}
 	
@@ -2572,7 +2555,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		query_str += string("set @lSresp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ");\n";
 		cdr.add("_\\_'SQL'_\\_:@lSresp_id", "lastSIPresponse_id");
 		//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
-		if(exists_columns_cdr_reason) {
+		if(existsColumns.cdr_reason) {
 			if(reason_sip_text.length()) {
 				query_str += string("set @r_sip_tid = ") + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ");\n";
 				cdr.add("_\\_'SQL'_\\_:@r_sip_tid", "reason_sip_text_id");
@@ -2700,10 +2683,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->first_codec, "payload");
 				rtps.add(htonl(rtp[i]->saddr), "saddr");
 				rtps.add(htonl(rtp[i]->daddr), "daddr");
-				if(opt_cdr_rtpsrcport ) {
+				if(existsColumns.cdr_rtp_sport) {
 					rtps.add(rtp[i]->sport, "sport");
 				}
-				if(opt_cdr_rtpport) {
+				if(existsColumns.cdr_rtp_dport) {
 					rtps.add(rtp[i]->dport, "dport");
 				}
 				rtps.add(rtp[i]->ssrc, "ssrc");
@@ -2711,7 +2694,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");
-				if(existsColumnCalldateInCdrRtp) {
+				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				query_str += sqlDbSaveCall->insertQuery("cdr_rtp", rtps) + ";\n";
@@ -2732,7 +2715,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				dtmf.add(q.daddr, "daddr");
 				dtmf.add(tmp, "dtmf");
 				dtmf.add(q.ts, "firsttime");
-				if(existsColumnCalldateInCdrDtmf) {
+				if(existsColumns.cdr_dtmf_calldate) {
 					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				query_str += sqlDbSaveCall->insertQuery("cdr_dtmf", dtmf) + ";\n";
@@ -2746,7 +2729,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				sipresp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 				sipresp.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
 				sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
-				if(existsColumnCalldateInCdrSipresp) {
+				if(existsColumns.cdr_sipresp_calldate) {
 					sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				query_str += sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp) + ";\n";
@@ -2765,7 +2748,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					 siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
 					 siphist.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiphistory->SIPresponse.c_str()) + ")", "SIPresponse_id");
 				}
-				if(existsColumnCalldateInCdrSiphistory) {
+				if(existsColumns.cdr_siphistory_calldate) {
 					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				query_str += sqlDbSaveCall->insertQuery("cdr_siphistory", siphist) + ";\n";
@@ -2787,7 +2770,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					tar_part.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 					tar_part.add(i, "type");
 					tar_part.add(*it, "pos");
-					if(existsColumnCalldateInCdrDtmf) {
+					if(existsColumns.cdr_dtmf_calldate) {
 						tar_part.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 					}
 					query_str += sqlDbSaveCall->insertQuery("cdr_tar_part", tar_part) + ";\n";
@@ -2830,7 +2813,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	called_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_called);
 	*/
 	lastSIPresponse_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
-	if(exists_columns_cdr_reason) {
+	if(existsColumns.cdr_reason) {
 		if(reason_sip_text.length()) {
 			reason_sip_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_reason_table, "id", "reason", cdr_reason_sip, "type");
 		}
@@ -2916,10 +2899,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->first_codec, "payload");
 				rtps.add(htonl(rtp[i]->saddr), "saddr");
 				rtps.add(htonl(rtp[i]->daddr), "daddr");
-				if(opt_cdr_rtpsrcport) {
+				if(existsColumns.cdr_rtp_sport) {
 					rtps.add(rtp[i]->sport, "sport");
 				}
-				if(opt_cdr_rtpport) {
+				if(existsColumns.cdr_rtp_dport) {
 					rtps.add(rtp[i]->dport, "dport");
 				}
 				rtps.add(rtp[i]->ssrc, "ssrc");
@@ -2927,7 +2910,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");
-				if(existsColumnCalldateInCdrRtp) {
+				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				sqlDbSaveCall->insert("cdr_rtp", rtps);
@@ -2948,7 +2931,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				dtmf.add(q.daddr, "daddr");
 				dtmf.add(tmp, "dtmf");
 				dtmf.add(q.ts, "firsttime");
-				if(existsColumnCalldateInCdrDtmf) {
+				if(existsColumns.cdr_dtmf_calldate) {
 					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				sqlDbSaveCall->insert("cdr_dtmf", dtmf);
@@ -2962,7 +2945,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			_resp.add(iterSiprespUnique->SIPresponse, "lastSIPresponse");
 			sipresp.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", _resp), "SIPresponse_id");
 			sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
-			if(existsColumnCalldateInCdrSipresp) {
+			if(existsColumns.cdr_sipresp_calldate) {
 				sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 			}
 			sqlDbSaveCall->insert("cdr_sipresp", sipresp);
@@ -2984,7 +2967,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					 _resp.add(iterSiphistory->SIPresponse, "lastSIPresponse");
 					 siphist.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", _resp), "SIPresponse_id");
 				}
-				if(existsColumnCalldateInCdrSiphistory) {
+				if(existsColumns.cdr_siphistory_calldate) {
 					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				sqlDbSaveCall->insert("cdr_siphistory", siphist);
@@ -3173,7 +3156,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				fname + ", " +
 				idsensor;
 				//srcmac ;
-			if (existsColumnRrdcountInRegister) {
+			if (existsColumns.register_rrd_count) {
 				query = query + ", " +
 				rrddiff +
 				")";
@@ -3182,7 +3165,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			}
 			sqlStore->query_lock(query.c_str(), storeId);
 		} else {
-			if (existsColumnRrdcountInRegister) {
+			if (existsColumns.register_rrd_count) {
 				query = string(
 					"SELECT ID, state, rrd_avg, rrd_count, ") +
 					       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
@@ -3223,7 +3206,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					time_t expires_at = atoi(rsltRow["expires_at"].c_str());
 
 					// compute rrdavgtime [RFC-6076] from regrrddiff - REGISTER->OK and increase count if less than 10.
-					if (existsColumnRrdcountInRegister) {
+					if (existsColumns.register_rrd_count) {
 						rrd_count = atoi(rsltRow["rrd_count"].c_str());
 						if (rrd_count < 10) rrd_count ++;
 						rrd_avg = (atoi(rsltRow["rrd_avg"].c_str()) * (rrd_count - 1) + regrrddiff) / rrd_count;
@@ -3319,7 +3302,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(regstate, "state");
 					//reg.add(srcmac, "src_mac");
 
-					if (existsColumnRrdcountInRegister) {
+					if (existsColumns.register_rrd_count) {
 						char rrdavg[12];
 						char rrdcount[4];
 						snprintf(rrdavg, 11, "%d", rrd_avg);
@@ -3443,8 +3426,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 int
 Call::saveMessageToDb(bool enableBatchIfPossible) {
  
-	extern bool exists_column_message_response_time;
-
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
@@ -3503,14 +3484,13 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		}
 		cdr.add(sqlEscapeString(message_save), "message");
 	}
-	extern bool exists_column_message_content_length;
-	if(exists_column_message_content_length && content_length) {
+	if(existsColumns.message_content_length && content_length) {
 		cdr.add(content_length, "content_length");
 	}
 
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
 	
-	if(exists_column_message_response_time && this->first_message_time_usec) {
+	if(existsColumns.message_response_time && this->first_message_time_usec) {
 		if(this->first_response_200_time_usec) {
 			cdr.add(MIN(65535, round((this->first_response_200_time_usec - this->first_message_time_usec) / 1000.0)), "response_time");
 		}
