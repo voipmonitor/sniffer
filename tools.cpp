@@ -2918,10 +2918,12 @@ void FileZipHandler::close() {
 			this->flushBuffer(true);
 			this->flushTarBuffer();
 		} else  {
-			if(this->okHandle()) {
+			if(this->okHandle() || this->useBufferLength) {
 				this->flushBuffer(true);
-				::close(this->fh);
-				this->fh = 0;
+				if(this->okHandle()) {
+					::close(this->fh);
+					this->fh = 0;
+				}
 			}
 		}
 	}
