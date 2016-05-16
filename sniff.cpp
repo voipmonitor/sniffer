@@ -347,7 +347,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 	if(header) {
 		memcpy(ptr, packet, MIN(10000, header->caplen));
 	} else {
-		memcpy(ptr, &packetS->packet, packetS->dataoffset); // packet pcaph header
+		memcpy(ptr, packetS->packet, packetS->dataoffset); // packet pcaph header
 		ptr += packetS->dataoffset;
 		memcpy(ptr, packetS->data + packetS->sipDataOffset, MIN(10000, packetS->sipDataLen));
 	}
@@ -2421,17 +2421,19 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	}
 	
 	if(!call) {
-		s = gettag_sip(packetS, "\nCSeq:", &l);
-		if(s && l < 32) {
-			if(livesnifferfilterUseSipTypes.u_subscribe && memmem(s, l, "SUBSCRIBE", 9)) {
-				save_live_packet(NULL, packetS, SUBSCRIBE,
-						 NULL, NULL);
-			} else if(livesnifferfilterUseSipTypes.u_options && memmem(s, l, "OPTIONS", 7)) {
-				save_live_packet(NULL, packetS, OPTIONS,
-						 NULL, NULL);
-			} else if(livesnifferfilterUseSipTypes.u_notify && memmem(s, l, "NOTIFY", 6)) {
-				save_live_packet(NULL, packetS, NOTIFY,
-						 NULL, NULL);
+		if(IS_SIP_RESXXX(packetS->sip_method)) {
+			s = gettag_sip(packetS, "\nCSeq:", &l);
+			if(s && l < 32) {
+				if(livesnifferfilterUseSipTypes.u_subscribe && memmem(s, l, "SUBSCRIBE", 9)) {
+					save_live_packet(NULL, packetS, SUBSCRIBE,
+							 NULL, NULL);
+				} else if(livesnifferfilterUseSipTypes.u_options && memmem(s, l, "OPTIONS", 7)) {
+					save_live_packet(NULL, packetS, OPTIONS,
+							 NULL, NULL);
+				} else if(livesnifferfilterUseSipTypes.u_notify && memmem(s, l, "NOTIFY", 6)) {
+					save_live_packet(NULL, packetS, NOTIFY,
+							 NULL, NULL);
+				}
 			}
 		}
 		if(logPacketSipMethodCall_enable) {
