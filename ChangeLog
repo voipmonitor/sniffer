@@ -1,3 +1,15 @@
+15.7.5 17.5.2016
+================
+- do not check/upgrade database schema for every restart - only if version differs (speedups sniffer start)
+- fix SIP REGISTER pcap save in case it contains multiple REGISTER requests [VS-428]
+- ignore RTP packets without payload [VS-397]
+- compress SQL quaery cache by default 
+- fix opus/silk/g722/g729 out of sync audio
+- fix live sniffer for OPTIONS/SUBSCRIBE etc [VS-438]
+- fix problem with createSchema_init_cdr_partitions
+- fix packetbuffer_file_totalmaxsize option (it could be more than set value) 
+
+
 15.7.4 28.4.2016
 ================
 - fix cloud reconnect
