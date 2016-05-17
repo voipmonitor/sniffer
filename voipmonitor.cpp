@@ -2337,7 +2337,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	// start manager thread 	
-	if(opt_manager_port > 0 && !is_read_from_file()) {
+	if(opt_manager_port > 0 && !is_read_from_file_simple()) {
 		vm_pthread_create("manager server",
 				  &manager_thread, NULL, manager_server, NULL, __FILE__, __LINE__);
 		// start reversed manager thread
