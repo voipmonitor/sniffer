@@ -91,6 +91,7 @@ extern volatile bool cloud_activecheck_sshclose;
 int opt_blocktarwrite = 0;
 int opt_blockasyncprocess = 0;
 int opt_blockprocesspacket = 0;
+int opt_sleepprocesspacket = 0;
 int opt_blockqfile = 0;
 int opt_block_alloc_stack = 0;
 
@@ -2172,6 +2173,10 @@ getwav:
 		opt_blockprocesspacket = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblockprocesspacket") != NULL) {
 		opt_blockprocesspacket = 0;
+	} else if(buf[0] == 's' and strstr(buf, "sleepprocesspacket") != NULL) {
+		opt_sleepprocesspacket = 1;
+	} else if(buf[0] == 'u' and strstr(buf, "unsleepprocesspacket") != NULL) {
+		opt_sleepprocesspacket = 0;
 	} else if(buf[0] == 'b' and strstr(buf, "blockqfile") != NULL) {
 		opt_blockqfile = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblockqfile") != NULL) {

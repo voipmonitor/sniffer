@@ -14,6 +14,7 @@
 #include <sys/syscall.h>
 #include <vector>
 #include <malloc.h>
+#include <dirent.h>
 
 #include <snappy-c.h>
 #ifdef HAVE_LIBLZ4
@@ -1018,6 +1019,23 @@ bool pcap_store_queue::pop(pcap_block_store **blockStore) {
 		}
 	}
 	return(true);
+}
+
+void pcap_store_queue::init() {
+	if(opt_pcap_queue_store_queue_max_disk_size &&
+	   this->fileStoreFolder.length()) {
+		DIR* dp = opendir(this->fileStoreFolder.c_str());
+		if(!dp) {
+			return;
+		}
+		dirent* de;
+		while((de = readdir(dp)) != NULL) {
+			if(string(de->d_name).substr(0, 11) == "pcap_store_") { 
+				unlink((this->fileStoreFolder + '/' + de->d_name).c_str());
+			}
+		}
+		closedir(dp);
+	}
 }
 
 pcap_file_store *pcap_store_queue::findFileStoreById(u_int id) {
@@ -3076,6 +3094,9 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 	} else {
 		_writeIndex = writeit % qringmax;
 		while(qring[_writeIndex]->used) {
+			if(is_terminating()) {
+				return;
+			}
 			usleep(100);
 		}
 		writeIndex = _writeIndex + 1;
@@ -3132,6 +3153,9 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *block) {
 	unsigned int _writeIndex = writeit % qringmax;
 	while(qring_blocks_used[_writeIndex]) {
+		if(is_terminating()) {
+			return;
+		}
 		usleep(100);
 	}
 	qring_blocks[_writeIndex] = block;
@@ -4953,6 +4977,7 @@ bool PcapQueue_readFromFifo::initThread(void *arg, unsigned int arg2, string *er
 	   !this->openPcapDeadHandle(0)) {
 		return(false);
 	}
+	this->pcapStoreQueue.init();
 	return(PcapQueue::initThread(arg, arg2, error));
 }
 
@@ -6028,6 +6053,14 @@ void PcapQueue_readFromFifo::cleanupConnections(bool all) {
 }
 
 int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state) {
+ 
+	/*
+	extern int opt_sleepprocesspacket;
+	if(opt_sleepprocesspacket) {
+		usleep(100000);
+	}
+	*/
+ 
 	extern int opt_blockprocesspacket;
 	if(sverb.disable_process_packet_in_packetbuffer ||
 	   opt_blockprocesspacket ||

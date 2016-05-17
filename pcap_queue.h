@@ -134,6 +134,7 @@ public:
 	size_t getQueueSize() {
 		return(this->queueStore.size());
 	}
+	void init();
 private:
 	pcap_file_store *findFileStoreById(u_int id);
 	void cleanupFileStore();
