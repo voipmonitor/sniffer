@@ -3006,7 +3006,7 @@ bool SqlDb_mysql::createSchema(int connectId) {
 		      (okSaveVersion || createSchema_alter_http_jj(connectId)) &&
 		      createSchema_procedure_partition(connectId) &&
 		      createSchema_procedures_other(connectId) &&
-		      (connectId != 0 || !existsCdrTable || 
+		      (connectId != 0 || existsCdrTable ||
 		       createSchema_init_cdr_partitions(connectId));
 
 	sql_disable_next_attempt_if_error = 0;
@@ -5677,7 +5677,7 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 		sqlDb->setDisableLogError(disableLogErrorOld);
 	} else {
-		if(day == 0) {
+		if(day <= 0) {
 			sqlDb->setDisableLogError(true);
 			sqlDb->setMaxQueryPass(2);
 		}
@@ -5692,7 +5692,7 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
 					     (opt_cdr_partition_oldver ? "true" : "false") + ");");
 			}
 		}
-		if(day == 0) {
+		if(day <= 0) {
 			sqlDb->setMaxQueryPass(maxQueryPassOld);
 			sqlDb->setDisableLogError(disableLogErrorOld);
 		}
