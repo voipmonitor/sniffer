@@ -1265,7 +1265,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	}
 
 	// codec changed 
-	if(defer_codec_change or (curpayload != prev_payload and codec != PAYLOAD_TELEVENT and (prev_codec != PAYLOAD_TELEVENT or !codecchanged) and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19)) {
+	if(defer_codec_change or (curpayload != prev_payload and codec != PAYLOAD_TELEVENT and (prev_codec != PAYLOAD_TELEVENT or !codecchanged) and curpayload != 13 and prev_payload != 13 and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19)) {
+		printf("changed %u curpayload=%u prev_payload=%u\n", defer_codec_change, curpayload, prev_payload);
 		if(defer_codec_change) {
 			defer_codec_change = false;
 		}
