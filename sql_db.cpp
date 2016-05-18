@@ -5774,6 +5774,8 @@ void createMysqlPartitionsBillingAgregation() {
 	syslog(LOG_NOTICE, "create billing agregation partitions - end");
 }
 
+static void _dropMysqlPartitions(const char *table, int cleanParam, bool checkAllPartitions, SqlDb *sqlDb);
+
 void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_cdr;
 	extern int opt_cleandatabase_http_enum;
@@ -5791,48 +5793,28 @@ void dropMysqlPartitionsCdr() {
 		sqlDb->setDisableLogError();
 		sqlDb->setDisableNextAttemptIfError();
 		if(opt_cleandatabase_cdr > 0) {
-			time_t act_time = time(NULL);
-			time_t prev_day_time = act_time - opt_cleandatabase_cdr * 24 * 60 * 60;
-			struct tm prevDayTime = time_r(&prev_day_time);
-			char limitPartName[20] = "";
-			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
-			vector<string> partitions;
-			if(counterDropPartitions == 0) {
-				if(cloud_host[0]) {
-					sqlDb->query("explain partitions select * from cdr");
-					SqlDb_row row = sqlDb->fetchRow();
-					if(row) {
-						vector<string> exists_partitions = split(row["partitions"], ',');
-						for(size_t i = 0; i < exists_partitions.size(); i++) {
-							if(exists_partitions[i] <= limitPartName) {
-								partitions.push_back(exists_partitions[i]);
-							}
-						}
-					}
-				} else {
-					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-						     mysql_database+ "' and table_name='cdr' and partition_name<='" + limitPartName+ "' order by partition_name");
-					SqlDb_row row;
-					while((row = sqlDb->fetchRow())) {
-						partitions.push_back(row["partition_name"]);
-					}
-				}
-			} else {
-				partitions.push_back(limitPartName);
+			_dropMysqlPartitions("cdr", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+			_dropMysqlPartitions("cdr_next", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+			_dropMysqlPartitions("cdr_rtp", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+			_dropMysqlPartitions("cdr_dtmf", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+			_dropMysqlPartitions("cdr_sipresp", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+			if(_save_sip_history) {
+				_dropMysqlPartitions("cdr_siphistory", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 			}
-			for(size_t i = 0; i < partitions.size(); i++) {
-				syslog(LOG_NOTICE, "DROP CDR PARTITION %s", partitions[i].c_str());
-				sqlDb->query("ALTER TABLE cdr DROP PARTITION " + partitions[i]);
-				sqlDb->query("ALTER TABLE cdr_next DROP PARTITION " + partitions[i]);
-				sqlDb->query("ALTER TABLE cdr_rtp DROP PARTITION " + partitions[i]);
-				sqlDb->query("ALTER TABLE cdr_dtmf DROP PARTITION " + partitions[i]);
-				sqlDb->query("ALTER TABLE cdr_sipresp DROP PARTITION " + partitions[i]);
-				if(_save_sip_history) {
-					sqlDb->query("ALTER TABLE cdr_siphistory DROP PARTITION " + partitions[i]);
+			_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+			_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+			_dropMysqlPartitions("message", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+			if(custom_headers_cdr) {
+				list<string> nextTables = custom_headers_cdr->getAllNextTables();
+				for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
+					_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 				}
-				sqlDb->query("ALTER TABLE cdr_tar_part DROP PARTITION " + partitions[i]);
-				sqlDb->query("ALTER TABLE cdr_proxy DROP PARTITION " + partitions[i]);
-				sqlDb->query("ALTER TABLE message DROP PARTITION " + partitions[i]);
+			}
+			if(custom_headers_message) {
+				list<string> nextTables = custom_headers_message->getAllNextTables();
+				for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
+					_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+				}
 			}
 		}
 		if(opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) {
@@ -5842,140 +5824,22 @@ void dropMysqlPartitionsCdr() {
 			} else {
 				sqlDbHttp = sqlDb;
 			}
-			time_t act_time = time(NULL);
-			time_t prev_day_time = act_time - opt_cleandatabase_http_enum * 24 * 60 * 60;
-			struct tm prevDayTime = time_r(&prev_day_time);
-			char limitPartName[20] = "";
-			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
-			vector<string> partitions_http;
+			_dropMysqlPartitions("http_jj", opt_cleandatabase_http_enum, counterDropPartitions == 0, sqlDbHttp);
 			/* obsolete
-			vector<string> partitions_enum;
-			*/
-			if(counterDropPartitions == 0) {
-				sqlDbHttp->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-						 mysql_database+ "' and table_name='http_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
-				SqlDb_row row;
-				while((row = sqlDbHttp->fetchRow())) {
-					partitions_http.push_back(row["partition_name"]);
-				}
-				/* obsolete
-				sqlDbHttp->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-						 mysql_database+ "' and table_name='enum_jj' and partition_name<='" + limitPartName+ "' order by partition_name");
-				while((row = sqlDbHttp->fetchRow())) {
-					partitions_enum.push_back(row["partition_name"]);
-				}
-				*/
-			} else {
-				partitions_http.push_back(limitPartName);
-				/* obsolete
-				partitions_enum.push_back(limitPartName);
-				*/
-			}
-			for(size_t i = 0; i < partitions_http.size(); i++) {
-				syslog(LOG_NOTICE, "DROP HTTP_JJ PARTITION %s", partitions_http[i].c_str());
-				sqlDbHttp->query("ALTER TABLE http_jj DROP PARTITION " + partitions_http[i]);
-			}
-			/* obsolete
-			for(size_t i = 0; i < partitions_enum.size(); i++) {
-				syslog(LOG_NOTICE, "DROP ENUM_JJ PARTITION %s", partitions_enum[i].c_str());
-				sqlDbHttp->query("ALTER TABLE enum_jj DROP PARTITION " + partitions_enum[i]);
-			}
+			_dropMysqlPartitions("enum_jj", opt_cleandatabase_http_enum, counterDropPartitions == 0, sqlDbHttp);
 			*/
 			if(use_mysql_2_http()) {
 				delete sqlDbHttp;
 			}
 		}
 		if(opt_enable_webrtc_table && opt_cleandatabase_webrtc > 0) {
-			time_t act_time = time(NULL);
-			time_t prev_day_time = act_time - opt_cleandatabase_webrtc * 24 * 60 * 60;
-			struct tm prevDayTime = time_r(&prev_day_time);
-			char limitPartName[20] = "";
-			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
-			vector<string> partitions;
-			if(counterDropPartitions == 0) {
-				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-					     mysql_database+ "' and table_name='webrtc' and partition_name<='" + limitPartName+ "' order by partition_name");
-				SqlDb_row row;
-				while((row = sqlDb->fetchRow())) {
-					partitions.push_back(row["partition_name"]);
-				}
-			} else {
-				partitions.push_back(limitPartName);
-			}
-			for(size_t i = 0; i < partitions.size(); i++) {
-				syslog(LOG_NOTICE, "DROP WEBRTC PARTITION %s", partitions[i].c_str());
-				sqlDb->query("ALTER TABLE webrtc DROP PARTITION " + partitions[i]);
-			}
+			_dropMysqlPartitions("webrtc", opt_cleandatabase_webrtc, counterDropPartitions == 0, sqlDb);
 		}
 		if(opt_cleandatabase_register_state > 0) {
-			time_t act_time = time(NULL);
-			time_t prev_day_time = act_time - opt_cleandatabase_register_state * 24 * 60 * 60;
-			struct tm prevDayTime = time_r(&prev_day_time);
-			char limitPartName[20] = "";
-			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
-			vector<string> partitions;
-			if(counterDropPartitions == 0) {
-				if(cloud_host[0]) {
-					sqlDb->query("explain partitions select * from register_state");
-					SqlDb_row row = sqlDb->fetchRow();
-					if(row) {
-						vector<string> exists_partitions = split(row["partitions"], ',');
-						for(size_t i = 0; i < exists_partitions.size(); i++) {
-							if(exists_partitions[i] <= limitPartName) {
-								partitions.push_back(exists_partitions[i]);
-							}
-						}
-					}
-				} else {
-					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-						     mysql_database+ "' and table_name='register_state' and partition_name<='" + limitPartName+ "' order by partition_name");
-					SqlDb_row row;
-					while((row = sqlDb->fetchRow())) {
-						partitions.push_back(row["partition_name"]);
-					}
-				}
-			} else {
-				partitions.push_back(limitPartName);
-			}
-			for(size_t i = 0; i < partitions.size(); i++) {
-				syslog(LOG_NOTICE, "DROP REGISTER_STATE PARTITION %s", partitions[i].c_str());
-				sqlDb->query("ALTER TABLE register_state DROP PARTITION " + partitions[i]);
-			}
+			_dropMysqlPartitions("register_state", opt_cleandatabase_register_state, counterDropPartitions == 0, sqlDb);
 		}
 		if(opt_cleandatabase_register_failed > 0) {
-			time_t act_time = time(NULL);
-			time_t prev_day_time = act_time - opt_cleandatabase_register_failed * 24 * 60 * 60;
-			struct tm prevDayTime = time_r(&prev_day_time);
-			char limitPartName[20] = "";
-			strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
-			vector<string> partitions;
-			if(counterDropPartitions == 0) {
-				if(cloud_host[0]) {
-					sqlDb->query("explain partitions select * from register_failed");
-					SqlDb_row row = sqlDb->fetchRow();
-					if(row) {
-						vector<string> exists_partitions = split(row["partitions"], ',');
-						for(size_t i = 0; i < exists_partitions.size(); i++) {
-							if(exists_partitions[i] <= limitPartName) {
-								partitions.push_back(exists_partitions[i]);
-							}
-						}
-					}
-				} else {
-					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-						     mysql_database+ "' and table_name='register_failed' and partition_name<='" + limitPartName+ "' order by partition_name");
-					SqlDb_row row;
-					while((row = sqlDb->fetchRow())) {
-						partitions.push_back(row["partition_name"]);
-					}
-				}
-			} else {
-				partitions.push_back(limitPartName);
-			}
-			for(size_t i = 0; i < partitions.size(); i++) {
-				syslog(LOG_NOTICE, "DROP REGISTER_FAILED PARTITION %s", partitions[i].c_str());
-				sqlDb->query("ALTER TABLE register_failed DROP PARTITION " + partitions[i]);
-			}
+			_dropMysqlPartitions("register_failed", opt_cleandatabase_register_failed, counterDropPartitions == 0, sqlDb);
 		}
 		++counterDropPartitions;
 		delete sqlDb;
@@ -5991,15 +5855,29 @@ void dropMysqlPartitionsRtpStat() {
 		SqlDb *sqlDb = createSqlObject();
 		sqlDb->setDisableLogError();
 		sqlDb->setDisableNextAttemptIfError();
+		_dropMysqlPartitions("rtp_stat", opt_cleandatabase_rtp_stat, counterDropPartitions == 0, sqlDb);
+		++counterDropPartitions;
+		delete sqlDb;
+		syslog(LOG_NOTICE, "drop old partitions - end");
+	}
+}
+
+void _dropMysqlPartitions(const char *table, int cleanParam, bool checkAllPartitions, SqlDb *sqlDb) {
+	if(cleanParam > 0) {
+		if(!sqlDb) {
+			sqlDb = createSqlObject();
+			sqlDb->setDisableLogError();
+			sqlDb->setDisableNextAttemptIfError();
+		}
 		time_t act_time = time(NULL);
-		time_t prev_day_time = act_time - opt_cleandatabase_rtp_stat * 24 * 60 * 60;
+		time_t prev_day_time = act_time - cleanParam * 24 * 60 * 60;
 		struct tm prevDayTime = time_r(&prev_day_time);
 		char limitPartName[20] = "";
 		strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
 		vector<string> partitions;
-		if(counterDropPartitions == 0) {
+		if(checkAllPartitions) {
 			if(cloud_host[0]) {
-				sqlDb->query("explain partitions select * from rtp_stat");
+				sqlDb->query(string("explain partitions select * from ") + table);
 				SqlDb_row row = sqlDb->fetchRow();
 				if(row) {
 					vector<string> exists_partitions = split(row["partitions"], ',');
@@ -6011,7 +5889,7 @@ void dropMysqlPartitionsRtpStat() {
 				}
 			} else {
 				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-					     mysql_database+ "' and table_name='rtp_stat' and partition_name<='" + limitPartName+ "' order by partition_name");
+					     mysql_database+ "' and table_name='" + table + "' and partition_name<='" + limitPartName+ "' order by partition_name");
 				SqlDb_row row;
 				while((row = sqlDb->fetchRow())) {
 					partitions.push_back(row["partition_name"]);
@@ -6021,12 +5899,9 @@ void dropMysqlPartitionsRtpStat() {
 			partitions.push_back(limitPartName);
 		}
 		for(size_t i = 0; i < partitions.size(); i++) {
-			syslog(LOG_NOTICE, "DROP RTP_STAT PARTITION %s", partitions[i].c_str());
-			sqlDb->query("ALTER TABLE rtp_stat DROP PARTITION " + partitions[i]);
+			syslog(LOG_NOTICE, "DROP PARTITION %s : %s", table, partitions[i].c_str());
+			sqlDb->query(string("ALTER TABLE ") + table + " DROP PARTITION " + partitions[i]);
 		}
-		++counterDropPartitions;
-		delete sqlDb;
-		syslog(LOG_NOTICE, "drop old partitions - end");
 	}
 }
 
