@@ -5239,7 +5239,8 @@ bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_
 			}
 		}
 	} else {
-		if(seq == stream->last_seq && 
+		if((seq || header_tcp->check) && // check if not save by createSimpleTcpDataPacket
+		   seq == stream->last_seq && 
 		   ack_seq == stream->last_ack_seq &&
 		   (packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec) != stream->last_time_us) {
 			if(sverb.reassembly_sip) {
