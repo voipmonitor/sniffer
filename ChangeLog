@@ -1,3 +1,8 @@
+15.7.7 23.5.2016
+================
+- Fix SKINNY RTP loss false alert if call is on hold
+
+
 15.7.6 17.5.2016
 ================
 - check number of partitions in all tables (for cleaning) instead only cdr table (which fixes syslog error: Table has no partition for value XXX) 
