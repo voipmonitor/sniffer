@@ -5848,10 +5848,6 @@ void set_context_config() {
 		if(opt_pcap_queue_receive_from_ip_port) {
 			opt_id_sensor_cleanspool = -1;
 		}
-		
-		if(!strcmp(ifname, "lo")) {
-			opt_pcap_queue_dequeu_method = 0;
-		}
 	}
 	
 	if(!opt_pcap_split) {
