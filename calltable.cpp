@@ -2669,7 +2669,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 			// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
-			if(rtp[i] and rtp[i]->s->received) {
+			if(rtp[i] and (rtp[i]->s->received || !existsColumns.cdr_rtp_index)) {
 				double stime = this->first_packet_time + this->first_packet_usec / 1000000.0;
 				double rtime = rtp[i]->first_packet_time + rtp[i]->first_packet_usec / 1000000.0;
 				double diff = rtime - stime;
@@ -2694,6 +2694,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");
+				if(existsColumns.cdr_rtp_index) {
+					rtps.add(i + 1, "index");
+				}
 				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}

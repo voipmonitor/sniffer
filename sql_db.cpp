@@ -636,7 +636,7 @@ void SqlDb::resetDelayQuery() {
 }
 
 void SqlDb::logNeedAlter(string table, string reason, string alter,
-			 bool log, map<string, u_int64_t> *tableSize) {
+			 bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag) {
 	bool okAlter = false;
 	if(tableSize) {
 		map<string, u_int64_t>::iterator iter = tableSize->find(table);
@@ -653,6 +653,9 @@ void SqlDb::logNeedAlter(string table, string reason, string alter,
 			int sql_disable_next_attempt_if_error_old = sql_disable_next_attempt_if_error;
 			sql_disable_next_attempt_if_error = 1;
 			okAlter = this->query(alter);
+			if(okAlter && *existsColumnFlag) {
+				*existsColumnFlag = true;
+			}
 			sql_disable_next_attempt_if_error = sql_disable_next_attempt_if_error_old;
 		}
 	}
@@ -3535,6 +3538,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`firsttime` float DEFAULT NULL,\
 			`payload` smallint unsigned DEFAULT NULL,\
 			`maxjitter_mult10` smallint unsigned DEFAULT NULL,\
+			`index` tinyint unsigned DEFAULT NULL,\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -4972,7 +4976,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ALTER TABLE cdr "
 				   "ADD COLUMN `sipcallerport` smallint unsigned DEFAULT NULL AFTER `sipcallerip`, "
 				   "ADD COLUMN `sipcalledport` smallint unsigned DEFAULT NULL AFTER `sipcalledip`;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_sipport);
 	}
 	existsColumns.cdr_last_rtp_from_end = this->existsColumn("cdr", "a_last_rtp_from_end");
 	if(opt_last_rtp_from_end && !existsColumns.cdr_last_rtp_from_end) {
@@ -4981,7 +4985,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ALTER TABLE cdr "
 				   "ADD COLUMN a_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL, "
 				   "ADD COLUMN b_last_rtp_from_end SMALLINT UNSIGNED DEFAULT NULL;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_last_rtp_from_end);
 	}
 	existsColumns.cdr_silencedetect = this->existsColumn("cdr", "caller_silence");
 	extern int opt_silencedetect;
@@ -4993,7 +4997,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ADD COLUMN called_silence tinyint unsigned default NULL, "
 				   "ADD COLUMN caller_silence_end smallint default NULL, "
 				   "ADD COLUMN called_silence_end smallint default NULL;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_silencedetect);
 	}
 	existsColumns.cdr_clippingdetect = this->existsColumn("cdr", "caller_clipping_div3");
 	extern int opt_clippingdetect;
@@ -5003,7 +5007,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ALTER TABLE cdr "
 				   "ADD COLUMN caller_clipping_div3 smallint unsigned default NULL, "
 				   "ADD COLUMN called_clipping_div3 smallint unsigned default NULL;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_clippingdetect);
 	}
 	existsColumns.cdr_rtp_ptime = this->existsColumn("cdr", "a_rtp_ptime");
 	if(!existsColumns.cdr_rtp_ptime) {
@@ -5012,7 +5016,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ALTER TABLE cdr "
 				   "ADD COLUMN a_rtp_ptime tinyint unsigned default NULL, "
 				   "ADD COLUMN b_rtp_ptime tinyint unsigned default NULL;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_rtp_ptime);
 	}
 	existsColumns.cdr_dscp = this->existsColumn("cdr", "dscp");
 	if(opt_dscp && !existsColumns.cdr_dscp) {
@@ -5020,7 +5024,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "dscp",
 				   "ALTER TABLE cdr "
 				   "ADD COLUMN dscp int unsigned DEFAULT NULL;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_dscp);
 	}
 	existsColumns.cdr_mos_lqo = this->existsColumn("cdr", "a_mos_lqo_mult10");
 	if(opt_mos_lqo && !existsColumns.cdr_mos_lqo) {
@@ -5029,7 +5033,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ALTER TABLE cdr "
 				   "ADD COLUMN `a_mos_lqo_mult10` tinyint unsigned DEFAULT NULL, "
 				   "ADD COLUMN `b_mos_lqo_mult10` tinyint unsigned DEFAULT NULL;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_mos_lqo);
 	}
 
 	if(!this->existsColumn("cdr", "price_operator_mult100") &&
@@ -5047,7 +5051,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 					"ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
 					"ADD COLUMN price_customer_mult1000000 BIGINT UNSIGNED, "
 					"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;"),
-				   log, &tableSize);
+				   log, &tableSize, NULL);
 	}
 	
 	const char *cdrReasonColumns[] = {
@@ -5072,7 +5076,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ADD COLUMN reason_q850_text_id mediumint unsigned DEFAULT NULL, "
 				   "ADD KEY reason_sip_text_id (reason_sip_text_id), "
 				   "ADD KEY reason_q850_text_id (reason_q850_text_id);",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_reason);
 	} else {
 		existsColumns.cdr_reason = true;
 	}
@@ -5093,7 +5097,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ALTER TABLE cdr "
 				   "ADD COLUMN response_time_100 smallint unsigned DEFAULT NULL, "
 				   "ADD COLUMN response_time_xxx smallint unsigned DEFAULT NULL;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_response_time);
 	} else {
 		existsColumns.cdr_response_time = true;
 	}
@@ -5110,7 +5114,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 					"ADD COLUMN b_mos_f1_min_mult10 tinyint unsigned DEFAULT NULL, "
 					"ADD COLUMN b_mos_f2_min_mult10 tinyint unsigned DEFAULT NULL, "
 					"ADD COLUMN b_mos_adapt_min_mult10 tinyint unsigned DEFAULT NULL;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_mos_min);
 	}
 	//14.3
 	existsColumns.cdr_mos_xr = this->existsColumn("cdr", "a_mos_xr_min_mult10");
@@ -5122,7 +5126,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 					"ADD COLUMN b_mos_xr_min_mult10 tinyint unsigned DEFAULT NULL, "
 					"ADD COLUMN a_mos_xr_mult10 tinyint unsigned DEFAULT NULL, "
 					"ADD COLUMN b_mos_xr_mult10 tinyint unsigned DEFAULT NULL;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_mos_xr);
 	}
 }
 
@@ -5134,7 +5138,7 @@ void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 				   "rtp destination port",
 				   "ALTER TABLE cdr_rtp "
 					"ADD COLUMN `dport` smallint unsigned DEFAULT NULL AFTER `daddr`;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_rtp_dport);
 	}
 	existsColumns.cdr_rtp_sport = this->existsColumn("cdr_rtp", "sport");
 	if(opt_cdr_rtpsrcport && !existsColumns.cdr_rtp_sport) {
@@ -5142,7 +5146,15 @@ void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 				   "rtp source port",
 				   "ALTER TABLE cdr_rtp "
 					"ADD COLUMN `sport` smallint unsigned DEFAULT NULL AFTER `saddr`;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.cdr_rtp_sport);
+	}
+	existsColumns.cdr_rtp_index = this->existsColumn("cdr_rtp", "index");
+	if(!existsColumns.cdr_rtp_index) {
+		this->logNeedAlter("cdr_rtp",
+				   "rtp index of stream",
+				   "ALTER TABLE cdr_rtp "
+					"ADD COLUMN `index` tinyint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.cdr_rtp_index);
 	}
 }
 
@@ -5155,7 +5167,7 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 				   "SIP response time",
 				   "ALTER TABLE message "
 				   "ADD COLUMN response_time smallint unsigned DEFAULT NULL;",
-				   log, &tableSize);
+				   log, &tableSize, &existsColumns.message_response_time);
 	}
 }
 

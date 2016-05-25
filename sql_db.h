@@ -202,7 +202,7 @@ public:
 	static u_int32_t getAvgDelayQuery();
 	static void resetDelayQuery();
 	void logNeedAlter(string table, string reason, string alter,
-			  bool log, map<string, u_int64_t> *tableSize);
+			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
 protected:
 	string conn_server;
 	string conn_server_ip;
@@ -712,6 +712,7 @@ struct sExistsColumns {
 	bool cdr_rtp_calldate;
 	bool cdr_rtp_sport;
 	bool cdr_rtp_dport;
+	bool cdr_rtp_index;
 	bool cdr_dtmf_calldate;
 	bool cdr_sipresp_calldate;
 	bool cdr_siphistory_calldate;

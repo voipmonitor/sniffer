@@ -2884,8 +2884,8 @@ string PcapQueue_readFromInterface_base::getInterfaceName(bool simple) {
 }
 
 void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
-	while(buffersControl.getPercUsePB() > 0.1) {
-		syslog(LOG_NOTICE, "wait for processing packetbuffer (%.1lf%%)", buffersControl.getPercUsePB());
+	while(buffersControl.getPercUsePBwithouttrash() > 0.1) {
+		syslog(LOG_NOTICE, "wait for processing packetbuffer (%.1lf%%)", buffersControl.getPercUsePBwithouttrash());
 		sleep(1);
 	}
 	int sleepTimeBeforeCleanup = opt_enable_ssl ? 10 :
