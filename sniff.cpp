@@ -2734,18 +2734,17 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					}
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Call answered\n");
+					if(!call->onCall_2XX) {
+						ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
+								     call->sipcallerip[0], call->sipcalledip[0]);
+						sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->header_pt->ts);
+						call->onCall_2XX = true;
+					}
 				} else if(strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
 				}
 			}
-			if(!call->onCall_2XX) {
-				ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-						     call->sipcallerip[0], call->sipcalledip[0]);
-				sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->header_pt->ts);
-				call->onCall_2XX = true;
-			}
-
 		} else if(IS_SIP_RES18X(packetS->sip_method)) {
 			call->seenRES18X = true;
 			if(!call->progress_time) {
