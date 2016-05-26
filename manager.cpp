@@ -165,8 +165,8 @@ private:
 void *listening_worker(void *arguments) {
 	struct listening_worker_arg *args = (struct listening_worker_arg*)arguments;
 
-        unsigned char read1[1024];
-        unsigned char read2[1024];
+        unsigned char *read1;
+        unsigned char *read2;
         struct timeval tv;
 
 	getUpdDifTime(&tv);
@@ -205,6 +205,12 @@ void *listening_worker(void *arguments) {
 	tS2.tv_nsec = 0;
 
 	long int udiff;
+	
+	unsigned int period_usec = 100;
+	unsigned int period_samples = 8000 * period_usec / 1000; 
+	
+	read1 = new FILE_LINE unsigned char[period_samples];
+	read2 = new FILE_LINE unsigned char[period_samples];
 
         while(listening_worker_run) {
 
@@ -215,7 +221,7 @@ void *listening_worker(void *arguments) {
 		}
 
 		tvwait.tv_sec = 0;
-		tvwait.tv_usec = 1000*20 - udiff; //20 ms
+		tvwait.tv_usec = 1000 * period_usec - udiff;
 //		long int usec = tvwait.tv_usec;
 		select(0, NULL, NULL, NULL, &tvwait);
 
@@ -223,11 +229,15 @@ void *listening_worker(void *arguments) {
 		char *s16char;
 
 		//usleep(tvwait.tv_usec);
+		
+		cout << "***" << circbuf_size(args->call->audiobuffer1) << " / " << circbuf_size(args->call->audiobuffer2) << " / " << udiff << endl;
+		
 		pthread_mutex_lock(&args->call->buflock);
-		len1 = circbuf_read(args->call->audiobuffer1, (char*)read1, 160);
-		len2 = circbuf_read(args->call->audiobuffer2, (char*)read2, 160);
+		len1 = circbuf_read(args->call->audiobuffer1, (char*)read1, period_samples);
+		len2 = circbuf_read(args->call->audiobuffer2, (char*)read2, period_samples);
+		pthread_mutex_unlock(&args->call->buflock);
 //		printf("codec_caller[%d] codec_called[%d] len1[%d] len2[%d] outbc[%d] outbchar[%d] wait[%u]\n", args->call->codec_caller, args->call->codec_called, len1, len2, (int)args->call->spybuffer.size(), (int)args->call->spybufferchar.size(), usec);
-		if(len1 == 160 and len2 == 160) {
+		if(len1 == period_samples and len2 == period_samples) {
 			for(int i = 0; i < len1; i++) {
 				switch(args->call->codec_caller) {
 				case 0:
@@ -255,7 +265,7 @@ void *listening_worker(void *arguments) {
 				args->call->spybufferchar.push(s16char[1]);
 //				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r1);
 			}
-		} else if(len2 == 160) {
+		} else if(len2 == period_samples) {
 			for(int i = 0; i < len2; i++) {
 				switch(args->call->codec_caller) {
 				case 0:
@@ -273,7 +283,7 @@ void *listening_worker(void *arguments) {
 				args->call->spybufferchar.push(s16char[1]);
 //				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r2);
 			}
-		} else if(len1 == 160) {
+		} else if(len1 == period_samples) {
 			for(int i = 0; i < len1; i++) {
 				switch(args->call->codec_caller) {
 				case 0:
@@ -292,10 +302,10 @@ void *listening_worker(void *arguments) {
 //				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r1);
 			}
 		} else {
-			// write 20ms silence 
+			// write silence period
 			int16_t s = 0;
 			//unsigned char sa = 255;
-			for(int i = 0; i < 160; i++) {
+			for(int i = 0; i < period_samples; i++) {
 				if(sverb.call_listening) {
 					fwrite(&s, 1, 2, out);
 				}
@@ -305,9 +315,11 @@ void *listening_worker(void *arguments) {
 //				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&s);
 			}
 		}
-		pthread_mutex_unlock(&args->call->buflock);
 		clock_gettime(CLOCK_REALTIME, &tS2);
         }
+        
+	delete [] read1;
+	delete [] read2;
 
 	// reset pointer to NULL as we are leaving the stack here
 	args->call->listening_worker_run = NULL;
@@ -1403,8 +1415,8 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 					args->call = call;
 					call->audiobuffer1 = new FILE_LINE pvt_circbuf;
 					call->audiobuffer2 = new FILE_LINE pvt_circbuf;
-					circbuf_init(call->audiobuffer1, 20000);
-					circbuf_init(call->audiobuffer2, 20000);
+					circbuf_init(call->audiobuffer1, 100000);
+					circbuf_init(call->audiobuffer2, 100000);
 
 					pthread_t call_thread;
 					vm_pthread_create_autodestroy("manager - listening worker",
