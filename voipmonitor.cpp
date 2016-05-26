@@ -393,6 +393,7 @@ bool _save_sip_history_request_types[1000];
 bool _save_sip_history_all_requests;
 bool _save_sip_history_all_responses;
 bool opt_cdr_sipresp = false;
+bool opt_rtpmap_by_callerd = false;
 bool opt_disable_rtp_warning = false;
 
 char opt_php_path[1024];
@@ -4933,6 +4934,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE cConfigItem_yesno("182queuedpauserecording", &opt_182queuedpauserecording));
 			addConfigItem(new FILE_LINE cConfigItem_yesno("vlan_siprtpsame", &opt_vlan_siprtpsame));
 				advanced();
+				addConfigItem(new FILE_LINE cConfigItem_yesno("rtpmap_by_callerd", &opt_rtpmap_by_callerd));
 				addConfigItem(new FILE_LINE cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
 		subgroup("NAT");
 			addConfigItem(new FILE_LINE cConfigItem_nat_aliases("natalias", &nat_aliases));
@@ -7180,6 +7182,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "vlan_siprtpsame", NULL))) {
 		opt_vlan_siprtpsame = yesno(value);
+	}
+	if((value = ini.GetValue("general", "rtpmap_by_callerd", NULL))) {
+		opt_rtpmap_by_callerd = yesno(value);
 	}
 	if((value = ini.GetValue("general", "disable_rtp_warning", NULL))) {
 		opt_disable_rtp_warning = yesno(value);

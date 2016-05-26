@@ -141,6 +141,7 @@ extern int opt_custom_headers_last_value;
 extern bool _save_sip_history;
 extern int opt_saveudptl;
 extern rtp_read_thread *rtp_threads;
+extern bool opt_rtpmap_by_callerd;
 
 volatile int calls_counter = 0;
 volatile int registers_counter = 0;
@@ -710,7 +711,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, p
 	}
 	nullIpPortInfoRtpStream(ipport_n);
 	
-	memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
+	memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
 	ipport_n++;
 	return 0;
 }
@@ -720,7 +721,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// reinit rtpmap
-			memcpy(this->rtpmap[RTPMAP_BY_CALLERD ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
+			memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
 			// force mark bit for reinvite for both direction
 			u_int64_t _forcemark_time = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
 			forcemark_lock();
@@ -1069,7 +1070,7 @@ read:
 			evProcessRtpStream(rtp[ssrc_n]->index_call_ip_port, rtp[ssrc_n]->index_call_ip_port_by_dest, 
 					   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header_pt->ts.tv_sec);
 		}
-		if(RTPMAP_BY_CALLERD) {
+		if(opt_rtpmap_by_callerd) {
 			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[isFillRtpMap(iscaller) ? iscaller : !iscaller], MAX_RTPMAP * sizeof(int));
 		} else {
 			if(rtp[ssrc_n]->index_call_ip_port >= 0 && isFillRtpMap(rtp[ssrc_n]->index_call_ip_port)) {
