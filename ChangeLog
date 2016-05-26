@@ -1,3 +1,11 @@
+15.7.8 26.5.2016
+================
+- fix packet order in case interface option contains lo (loopback) VS-435
+- store cdr_rtp.index if column exists which solves problem with invalid .graph in GUI if there are multiple RTP streams (rare cases) [VG-917]
+- solve problem with processing multiple RTP streams in one call (when decoding audio - rare cases) [VS-442]
+- fix live audio listening stability 
+
+
 15.7.7 23.5.2016
 ================
 - Fix SKINNY RTP loss false alert if call is on hold
