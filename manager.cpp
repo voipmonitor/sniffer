@@ -230,8 +230,6 @@ void *listening_worker(void *arguments) {
 
 		//usleep(tvwait.tv_usec);
 		
-		cout << "***" << circbuf_size(args->call->audiobuffer1) << " / " << circbuf_size(args->call->audiobuffer2) << " / " << udiff << endl;
-		
 		pthread_mutex_lock(&args->call->buflock);
 		len1 = circbuf_read(args->call->audiobuffer1, (char*)read1, period_samples);
 		len2 = circbuf_read(args->call->audiobuffer2, (char*)read2, period_samples);
