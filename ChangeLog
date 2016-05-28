@@ -1,3 +1,8 @@
+16.0 27.5.2016
+==============
+- fix jitter calcultion (rounding problem - all sniffer versions). Now jitter calculation is on par with wireshark and RTCP reports. voipmonitor jitter value was less than it should be. It also fixes PDV calculations (it was also less than it should). MOS scoring was not affected since it uses different algorythms. It also fixes wrong graph charts for high jittered calls. More information http://www.voipmonitor.org/doc/Jitter-bug (thanks Ole Ernst for fixing this) 
+
+
 15.7.8 26.5.2016
 ================
 - fix packet order in case interface option contains lo (loopback) VS-435

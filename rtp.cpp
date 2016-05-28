@@ -775,10 +775,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	u_int32_t sequencems = (frame->seqno - last_seq) * packetization;
 
 	/* difference (in ms) between timestamps in packet header and rtp timestamps. this should 
-	 * be ideally equel to zero. Negative values mean that packet arrives earlier and positive 
+	 * be ideally equal to zero. Negative values mean that packet arrives earlier and positive 
 	 * values indicates that packet was late 
 	 */
-	long double transit = (timeval_subtract(&tsdiff, header_ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0) - (double)(getTimestamp() - s->lastTimeStampJ)/(double)samplerate/1000;
+	long double transit = (timeval_subtract(&tsdiff, header_ts, s->lastTimeRecJ) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0) - ((double)getTimestamp() - s->lastTimeStampJ)/(double)samplerate/1000;
 	
 	/* and now if there is bigger (lets say one second) timestamp difference (calculated from packet headers) 
 	 * between two last packets and transit time is equel or smaller than sequencems (with 200ms toleration), 
@@ -1907,7 +1907,7 @@ RTP::update_stats() {
 	 * frame1.time - frame0.time */
 	tsdiff2 = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
 
-	long double transit = tsdiff2 - (double)(getTimestamp() - last_voice_frame_timestamp)/((double)samplerate/1000.0);
+	long double transit = tsdiff2 - ((double)getTimestamp() - last_voice_frame_timestamp)/((double)samplerate/1000.0);
 
 //	if(verbosity > 1) printf("transit rtp[%p] ssrc[%x] seq[%u] transit[%f]\n", this, getSSRC(), seq, (float)transit);
 
