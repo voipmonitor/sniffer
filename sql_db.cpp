@@ -1879,36 +1879,40 @@ void MySqlStore::loadFromQFiles_start() {
 			this->enableInotifyForLoadFromQFile();
 		}
 		extern int opt_mysqlstore_concat_limit_cdr;
-		extern int opt_mysqlstore_concat_limit_message;
-		extern int opt_mysqlstore_concat_limit_register;
-		extern int opt_mysqlstore_concat_limit_http;
-		extern int opt_mysqlstore_concat_limit_webrtc;
-		extern int opt_mysqlstore_concat_limit_ipacc;
-		extern int opt_mysqlstore_max_threads_cdr;
-		extern int opt_mysqlstore_max_threads_message;
-		extern int opt_mysqlstore_max_threads_register;
-		extern int opt_mysqlstore_max_threads_http;
-		extern int opt_mysqlstore_max_threads_webrtc;
-		extern int opt_mysqlstore_max_threads_ipacc_base;
-		extern int opt_mysqlstore_max_threads_ipacc_agreg2;
-		extern MySqlStore *sqlStore_2;
-		this->addLoadFromQFile(10, "cdr", opt_mysqlstore_max_threads_cdr, opt_mysqlstore_concat_limit_cdr);
-		this->addLoadFromQFile(20, "message", opt_mysqlstore_max_threads_message, opt_mysqlstore_concat_limit_message);
-		this->addLoadFromQFile(40, "cleanspool");
-		this->addLoadFromQFile(50, "register", opt_mysqlstore_max_threads_register, opt_mysqlstore_concat_limit_register);
-		this->addLoadFromQFile(60, "save_packet_sql");
-		this->addLoadFromQFile(70, "http", opt_mysqlstore_max_threads_http, opt_mysqlstore_concat_limit_http, 
-				       use_mysql_2_http() ? sqlStore_2 : NULL);
-		this->addLoadFromQFile(80, "webrtc", opt_mysqlstore_max_threads_webrtc, opt_mysqlstore_concat_limit_webrtc);
-		this->addLoadFromQFile(91, "cache_numbers");
-		this->addLoadFromQFile(92, "fraud_alert_info");
+		if(cloud_host.empty()) {
+			extern int opt_mysqlstore_concat_limit_message;
+			extern int opt_mysqlstore_concat_limit_register;
+			extern int opt_mysqlstore_concat_limit_http;
+			extern int opt_mysqlstore_concat_limit_webrtc;
+			extern int opt_mysqlstore_concat_limit_ipacc;
+			extern int opt_mysqlstore_max_threads_cdr;
+			extern int opt_mysqlstore_max_threads_message;
+			extern int opt_mysqlstore_max_threads_register;
+			extern int opt_mysqlstore_max_threads_http;
+			extern int opt_mysqlstore_max_threads_webrtc;
+			extern int opt_mysqlstore_max_threads_ipacc_base;
+			extern int opt_mysqlstore_max_threads_ipacc_agreg2;
+			extern MySqlStore *sqlStore_2;
+			this->addLoadFromQFile(10, "cdr", opt_mysqlstore_max_threads_cdr, opt_mysqlstore_concat_limit_cdr);
+			this->addLoadFromQFile(20, "message", opt_mysqlstore_max_threads_message, opt_mysqlstore_concat_limit_message);
+			this->addLoadFromQFile(40, "cleanspool");
+			this->addLoadFromQFile(50, "register", opt_mysqlstore_max_threads_register, opt_mysqlstore_concat_limit_register);
+			this->addLoadFromQFile(60, "save_packet_sql");
+			this->addLoadFromQFile(70, "http", opt_mysqlstore_max_threads_http, opt_mysqlstore_concat_limit_http, 
+					       use_mysql_2_http() ? sqlStore_2 : NULL);
+			this->addLoadFromQFile(80, "webrtc", opt_mysqlstore_max_threads_webrtc, opt_mysqlstore_concat_limit_webrtc);
+			this->addLoadFromQFile(91, "cache_numbers");
+			this->addLoadFromQFile(92, "fraud_alert_info");
+			if(opt_ipaccount) {
+				this->addLoadFromQFile(100, "ipacc", opt_mysqlstore_max_threads_ipacc_base, opt_mysqlstore_concat_limit_ipacc);
+				this->addLoadFromQFile(110, "ipacc_agreg", opt_mysqlstore_max_threads_ipacc_agreg2, opt_mysqlstore_concat_limit_ipacc);
+				this->addLoadFromQFile(120, "ipacc_agreg2", opt_mysqlstore_max_threads_ipacc_agreg2, opt_mysqlstore_concat_limit_ipacc);
+			}
+		} else {
+			this->addLoadFromQFile(1, "cloud", 1, opt_mysqlstore_concat_limit_cdr);
+		}
 		if(opt_load_query_from_files_inotify) {
 			this->setInotifyReadyForLoadFromQFile();
-		}
-		if(opt_ipaccount) {
-			this->addLoadFromQFile(100, "ipacc", opt_mysqlstore_max_threads_ipacc_base, opt_mysqlstore_concat_limit_ipacc);
-			this->addLoadFromQFile(110, "ipacc_agreg", opt_mysqlstore_max_threads_ipacc_agreg2, opt_mysqlstore_concat_limit_ipacc);
-			this->addLoadFromQFile(120, "ipacc_agreg2", opt_mysqlstore_max_threads_ipacc_agreg2, opt_mysqlstore_concat_limit_ipacc);
 		}
 	}
 }
@@ -1951,7 +1955,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 	if(qfileConfig.terminate) {
 		return;
 	}
-	int idc = convIdForQFile(id);
+	int idc = cloud_host.empty() ? convIdForQFile(id) : 1;
 	QFile *qfile;
 	lock_qfiles();
 	if(qfiles.find(idc) == qfiles.end()) {
