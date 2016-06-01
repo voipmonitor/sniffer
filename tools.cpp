@@ -1076,15 +1076,17 @@ void PcapDumper::close(bool updateFilesQueue) {
 			this->handle = NULL;
 			this->state = state_close;
 		} else {
-			if(this->call) {
-				asyncClose->add(this->handle, updateFilesQueue,
-						this->call, this,
-						this->fileNameSpoolRelative.c_str(), 
-						type == rtp ? "rtpsize" : 
-						this->call->type == REGISTER ? "regsize" : "sipsize",
-						0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
-			} else {
-				asyncClose->add(this->handle);
+			if(asyncClose) {
+				if(this->call) {
+					asyncClose->add(this->handle, updateFilesQueue,
+							this->call, this,
+							this->fileNameSpoolRelative.c_str(), 
+							type == rtp ? "rtpsize" : 
+							this->call->type == REGISTER ? "regsize" : "sipsize",
+							0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
+				} else {
+					asyncClose->add(this->handle);
+				}
 			}
 			this->handle = NULL;
 			this->state = state_do_close;

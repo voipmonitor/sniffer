@@ -180,6 +180,7 @@ int opt_pcap_queue_iface_dedup_separate_threads_extend	= 0;
 int opt_pcap_queue_iface_extend2_use_alloc_stack	= 1;
 int opt_pcap_queue_iface_qring_size 			= 5000;
 int opt_pcap_queue_dequeu_window_length			= -1;
+int opt_pcap_queue_dequeu_need_blocks			= 0;
 int opt_pcap_queue_dequeu_method			= 2;
 int opt_pcap_queue_use_blocks				= 0;
 int opt_pcap_queue_use_blocks_read_check		= 1;
@@ -5348,7 +5349,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 					}
 				}
 			}
-			if(opt_pcap_queue_dequeu_window_length > 0 &&
+			if((opt_pcap_queue_dequeu_window_length > 0 ||
+			    opt_pcap_queue_dequeu_need_blocks > 0) &&
 			   (opt_pcap_queue_dequeu_method == 1 || opt_pcap_queue_dequeu_method == 2) &&
 			   (!opt_pb_read_from_file[0])) {
 				if(opt_pcap_queue_dequeu_method == 1) {
@@ -5373,39 +5375,43 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							}
 						}
 					}
-					map<u_int64_t, list<sPacketTimeInfo>* >::iterator first = listPacketTimeInfo.begin();
-					map<u_int64_t, list<sPacketTimeInfo>* >::iterator last = listPacketTimeInfo.end();
-					--last;
-					while(listPacketTimeInfo.size() && !TERMINATING) {
-						if(last->first - first->first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 && 
-						   at - first->second->begin()->at > (unsigned)opt_pcap_queue_dequeu_window_length * 1000) {
-							sPacketTimeInfo pti = *(first->second->begin());
-							first->second->pop_front();
-							++sumPacketsCounterOut[0];
-							hp_out.header = pti.header;
-							hp_out.packet = pti.packet;
-							hp_out.block_store = pti.blockStore;
-							hp_out.block_store_index = pti.blockStoreIndex;
-							hp_out.dlt = pti.header->dlink ? 
-									pti.header->dlink : 
-									pti.blockStore->dlink;
-							hp_out.sensor_id = pti.blockStore->sensor_id;
-							hp_out.sensor_ip = pti.blockStore->sensor_ip;
-							hp_out.block_store_locked = false;
-							this->processPacket(&hp_out, _hppq_out_state_NA);
-							++listBlockStore[pti.blockStore];
-							if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
-								this->blockStoreTrashPush(pti.blockStore);
-								listBlockStore.erase(pti.blockStore);
+					if(listPacketTimeInfo.size()) {
+						map<u_int64_t, list<sPacketTimeInfo>* >::iterator first = listPacketTimeInfo.begin();
+						map<u_int64_t, list<sPacketTimeInfo>* >::iterator last = listPacketTimeInfo.end();
+						--last;
+						while(listPacketTimeInfo.size() && !TERMINATING) {
+							if(opt_pcap_queue_dequeu_need_blocks ?
+							    (signed)listPacketTimeInfo.size() >= opt_pcap_queue_dequeu_need_blocks :
+							    (last->first - first->first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 && 
+							     at - first->second->begin()->at > (unsigned)opt_pcap_queue_dequeu_window_length * 1000)) {
+								sPacketTimeInfo pti = *(first->second->begin());
+								first->second->pop_front();
+								++sumPacketsCounterOut[0];
+								hp_out.header = pti.header;
+								hp_out.packet = pti.packet;
+								hp_out.block_store = pti.blockStore;
+								hp_out.block_store_index = pti.blockStoreIndex;
+								hp_out.dlt = pti.header->dlink ? 
+										pti.header->dlink : 
+										pti.blockStore->dlink;
+								hp_out.sensor_id = pti.blockStore->sensor_id;
+								hp_out.sensor_ip = pti.blockStore->sensor_ip;
+								hp_out.block_store_locked = false;
+								this->processPacket(&hp_out, _hppq_out_state_NA);
+								++listBlockStore[pti.blockStore];
+								if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
+									this->blockStoreTrashPush(pti.blockStore);
+									listBlockStore.erase(pti.blockStore);
+								}
+								if(first->second->empty()) {
+									delete first->second;
+									listPacketTimeInfo.erase(first);
+									first = listPacketTimeInfo.begin();
+								}
+								usleepCounter = 0;
+							} else {
+								break;
 							}
-							if(first->second->empty()) {
-								delete first->second;
-								listPacketTimeInfo.erase(first);
-								first = listPacketTimeInfo.begin();
-							}
-							usleepCounter = 0;
-						} else {
-							break;
 						}
 					}
 				} else {
@@ -5437,11 +5443,13 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						++blockInfoCount;
 					}
 					while(blockInfoCount &&
-					      ((blockInfo_utime_last - blockInfo_utime_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 &&
-						blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000) ||
-					       at - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 * 4 ||
-					       buffersControl.getPercUsePBtrash() > 50 ||
-					       blockInfoCount == blockInfoCountMax) &&
+					      (opt_pcap_queue_dequeu_need_blocks ?
+						blockInfoCount >= opt_pcap_queue_dequeu_need_blocks :
+						((blockInfo_utime_last - blockInfo_utime_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 &&
+						  blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000) ||
+						  at - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 * 4 ||
+						  buffersControl.getPercUsePBtrash() > 50 ||
+						  blockInfoCount == blockInfoCountMax)) &&
 					      !TERMINATING) {
 						u_int64_t minUtime = 0;
 						int minUtimeIndexBlockInfo = -1;
@@ -6350,6 +6358,9 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 	if(!qring_push_index) {
 		unsigned usleepCounter = 0;
 		while(this->qring[this->writeit]->used != 0) {
+			if(is_terminating()) {
+				return;
+			}
 			usleep(20 *
 			       (usleepCounter > 10 ? 50 :
 				usleepCounter > 5 ? 10 :

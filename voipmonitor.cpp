@@ -415,6 +415,7 @@ extern ip_port opt_pcap_queue_receive_from_ip_port;
 extern int opt_pcap_queue_receive_dlt;
 extern int opt_pcap_queue_iface_qring_size;
 extern int opt_pcap_queue_dequeu_window_length;
+extern int opt_pcap_queue_dequeu_need_blocks;
 extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_queue_use_blocks;
 extern int opt_pcap_queue_suppress_t1_thread;
@@ -4722,6 +4723,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE cConfigItem_yesno("savertp-threaded", &opt_rtpsave_threaded));
 				addConfigItem(new FILE_LINE cConfigItem_yesno("packetbuffer_compress", &opt_pcap_queue_compress));
 				addConfigItem(new FILE_LINE cConfigItem_integer("pcap_queue_dequeu_window_length", &opt_pcap_queue_dequeu_window_length));
+				addConfigItem(new FILE_LINE cConfigItem_integer("pcap_queue_dequeu_need_blocks", &opt_pcap_queue_dequeu_need_blocks));
 				addConfigItem(new FILE_LINE cConfigItem_integer("pcap_queue_iface_qring_size", &opt_pcap_queue_iface_qring_size));
 					expert();
 					addConfigItem(new FILE_LINE cConfigItem_integer("pcap_queue_dequeu_method", &opt_pcap_queue_dequeu_method));
@@ -7335,6 +7337,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_window_length", NULL))) {
 		opt_pcap_queue_dequeu_window_length = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_queue_dequeu_need_blocks", NULL))) {
+		opt_pcap_queue_dequeu_need_blocks = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pcap_queue_iface_qring_size", NULL))) {
 		opt_pcap_queue_iface_qring_size = atoi(value);
