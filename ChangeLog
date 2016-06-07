@@ -1,3 +1,8 @@
+16.0.2 7.5.2016
+================
+- fix mos_f1|f2|adapt_min_mult10 which could have random value sometimes (all versions)
+
+
 16.0.1 27.5.2016
 ================
 - fix query_cache in cloud mode
