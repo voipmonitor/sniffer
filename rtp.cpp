@@ -220,9 +220,9 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	last_interval_mosf1 = 45;
 	last_interval_mosf2 = 45;
 	last_interval_mosAD = 45;
-	mosf1_min -= 1;
-	mosf2_min -= 1;
-	mosAD_min -= 1;
+	mosf1_min = 45;
+	mosf2_min = 45;
+	mosAD_min = 45;
 	mosf1_avg = 0;
 	mosf2_avg = 0;
 	mosAD_avg = 0;
