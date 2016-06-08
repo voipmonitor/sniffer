@@ -1517,9 +1517,9 @@ void *rtp_read_thread_func(void *arg) {
 			rslt_read_rtp = rtpp_pq.call->read_rtp(&rtpp_pq.packet, rtpp_pq.iscaller, rtpp_pq.find_by_dest, rtpp_pq.save_packet, 
 							       rtpp_pq.packet.block_store && rtpp_pq.packet.block_store->ifname[0] ? rtpp_pq.packet.block_store->ifname : NULL);
 		}
-		if(rslt_read_rtp) {
+		rtpp_pq.call->shift_destroy_call_at(rtpp_pq.packet.header_pt);
+		if(rslt_read_rtp && !rtpp_pq.is_rtcp) {
 			rtpp_pq.call->set_last_packet_time(rtpp_pq.packet.header_pt->ts.tv_sec);
-			rtpp_pq.call->shift_destroy_call_at(rtpp_pq.packet.header_pt);
 		}
 		if(rtpp_pq.packet.block_store) {
 			rtpp_pq.packet.block_store->unlock_packet(rtpp_pq.packet.block_store_index);
@@ -3397,9 +3397,9 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 							       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 			}
 		}
-		if(rslt_read_rtp) {
+		call->shift_destroy_call_at(packetS->header_pt);
+		if(rslt_read_rtp && !is_rtcp) {
 			call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
-			call->shift_destroy_call_at(packetS->header_pt);
 		}
 		++count_use;
 	}

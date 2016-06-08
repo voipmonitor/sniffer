@@ -896,7 +896,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 	}
 
 	bool record_dtmf = 0;
-	bool call_rtp_read = false;
+	bool rtp_read_rslt = false;
 
 	if(first_rtp_time == 0) {
 		first_rtp_time = packetS->header_pt->ts.tv_sec;
@@ -992,9 +992,10 @@ read:
 							evProcessRtpStream(rtp[i]->index_call_ip_port, rtp[i]->index_call_ip_port_by_dest,
 									   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header_pt->ts.tv_sec);
 						}
-						rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
-							     packetS->sensor_id_(), packetS->sensor_ip, ifname);
-						call_rtp_read = true;
+						if(rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
+								packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
+							rtp_read_rslt = true;
+						}
 						if(rtp[i]->iscaller) {
 							lastcallerrtp = rtp[i];
 						} else {
@@ -1129,7 +1130,7 @@ end:
 			save_packet(this, packetS, TYPE_RTP);
 		}
 	}
-	return(call_rtp_read);
+	return(rtp_read_rslt);
 }
 
 void Call::stoprecording() {

@@ -865,7 +865,7 @@ RTP::process_dtmf_rfc2833() {
 }
 
 /* read rtp packet */
-void
+bool
 RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport, int seeninviteok, 
 	  int sensor_id, u_int32_t sensor_ip, char *ifname) {
 	this->data = data; 
@@ -885,7 +885,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	if(last_mos_time == 0) { 
 		last_mos_time = header->ts.tv_sec;
 	}
-	if(sverb.ssrc and getSSRC() != sverb.ssrc) return;
+	if(sverb.ssrc and getSSRC() != sverb.ssrc) return(false);
 	
 	if(sverb.read_rtp) {
 		extern u_int64_t read_rtp_counter;
@@ -921,7 +921,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				owner->rtp_from_multiple_sensors = true;
 			}
 		}
-		return;
+		return(false);
 	}
 	
 	u_int64_t pcap_header_ts = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
@@ -940,7 +940,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 			this->pcap_header_ts_bad_time = true;
 		}
-		return;
+		return(false);
 	}
 	this->last_pcap_header_ts = pcap_header_ts;
 
@@ -951,7 +951,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	if(owner and owner->destroy_call_at_bye >= header->ts.tv_sec && !opt_pb_read_from_file[0] && !is_read_from_file()){
 		// do not process RTP if call is hangedup to prevent false negative statistics
-		return;
+		return(false);
 	}
 
        if(owner) {
@@ -996,18 +996,18 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				lastTimeSyslog = actTime;
 			}
 		}
-		return;
+		return(false);
 	}
 
 	if(getVersion() != 2) {
-		return;
+		return(false);
 	}
 
 	seq = getSeqNum();
 
 	if(seq == last_seq and last_markbit == getMarker()) {
 		// ignore duplicated RTP packets unless the second packet has mark bit set but the previous not
-		return;
+		return(false);
 	}
 
 	last_markbit = getMarker();
@@ -1026,7 +1026,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				       sensor_id, this->_last_sensor_id);
 				lastTimeSyslog = actTime;
 			}
-			return;
+			return(false);
 		}
 		this->_last_sensor_id = sensor_id;
 		if(ifname) {
@@ -1058,7 +1058,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 		if(codec == -1) {
 			// codec cannot be determinad - ignore it
-			return;
+			return(false);
 		}
 	}
 
@@ -1177,7 +1177,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		prev_codec = codec;
 		lastframetype = AST_FRAME_VOICE;
 		lastcng = 1;
-		return;
+		return(true);
 	}
 	if(curpayload == PAYLOAD_G729 and (payload_len <= (packetization == 10 or packetization == 0 ? 9 : 12) or payload_len == 22)) {
 		last_seq = seq;
@@ -1186,7 +1186,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 		lastframetype = AST_FRAME_VOICE;
 		lastcng = 1;
-		return;
+		return(true);
 	}
 	if(codec == PAYLOAD_TELEVENT) {
 		process_dtmf_rfc2833();
@@ -1198,12 +1198,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		prev_codec = codec;
 		lastframetype = AST_FRAME_DTMF;
 		lastcng = 0;
-		return;
+		return(true);
 	}
 
 	if(!owner) { 
 		lastcng = 0;
-		return;
+		return(false);
 	}
 
 /* this breaks 4 RTP streams (7b3fa6fb57a719f036fddfbf351234fe pcap sample) and it is not needed anymore (31955aa570d1f71624cea503052de62c)
@@ -1771,7 +1771,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		short int *sdata = new FILE_LINE short int[payload_len];
 		if(!sdata) {
 			syslog(LOG_ERR, "sdata malloc failed [%u]\n", (unsigned int)(payload_len * 2));
-			return;
+			return(false);
 		}
 		if(codec == 0) {
 			for(int i = 0; i < payload_len; i++) {
@@ -1871,6 +1871,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		forcemark2 = 1; // set this flag and keep it until next update_stats call
 	}
 
+	return(true);
 }
 
 /* fill internal structures by the input RTP packet */
