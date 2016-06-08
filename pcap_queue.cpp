@@ -1669,7 +1669,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	outStrStat << fixed;
 	if(this->instancePcapHandle) {
 		double sumMaxReadThreads;
-		outStrStat << this->instancePcapHandle->pcapStatString_cpuUsageReadThreads(&sumMaxReadThreads, statPeriod);
+		int countThreadsSumMaxReadThreads;
+		outStrStat << this->instancePcapHandle->pcapStatString_cpuUsageReadThreads(&sumMaxReadThreads, &countThreadsSumMaxReadThreads, statPeriod);
 		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(mainThread, true);
 		double t0cpuWrite = this->instancePcapHandle->getCpuUsagePerc(writeThread, true);
 		double t0cpuNextThreads[PCAP_QUEUE_NEXT_THREADS_MAX];
@@ -1690,7 +1691,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if (opt_rrd) rrdtCPU_t0 = t0cpu;
 		}
 		static int countOccurencesForWarning = 0;
-		if((sumMaxReadThreads > opt_cpu_limit_warning_t0 || t0cpu > opt_cpu_limit_warning_t0) && getThreadingMode() < 5) {
+		if((sumMaxReadThreads / countThreadsSumMaxReadThreads > opt_cpu_limit_warning_t0 || t0cpu > opt_cpu_limit_warning_t0) && 
+		   getThreadingMode() < 5 &&
+		   !(opt_pcap_queue_use_blocks && getThreadingMode() > 1)) {
 			++countOccurencesForWarning;
 		} else if(countOccurencesForWarning > 0) {
 			--countOccurencesForWarning;
@@ -4656,17 +4659,21 @@ void PcapQueue_readFromInterface::initStat_interface() {
 	}
 }
 
-string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *sumMax, int divide) {
+string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide) {
 	ostringstream outStrStat;
 	outStrStat << fixed;
 	if(sumMax) {
 		*sumMax  = 0;
+	}
+	if(countThreadsSumMax) {
+		*countThreadsSumMax = 0;
 	}
 	for(int i = 0; i < this->readThreadsCount; i++) {
 		if(this->readThreads[i]->threadInitFailed) {
 			continue;
 		}
 		double sum = 0;
+		double countThreads = 1;
 		double ti_cpu = this->readThreads[i]->getCpuUsagePerc(true);
 		if(ti_cpu >= 0) {
 			sum += ti_cpu;
@@ -4694,6 +4701,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				this->readThreads[i]->allocStackCounter[1] = this->readThreads[i]->allocStackCounter[0];
 			}
 			if(this->readThreads[i]->detachThread) {
+				++countThreads;
 				double tid_cpu = this->readThreads[i]->detachThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
@@ -4721,6 +4729,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				}
 			}
 			if(this->readThreads[i]->pcapProcessThread) {
+				++countThreads;
 				double tid_cpu = this->readThreads[i]->pcapProcessThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
@@ -4734,6 +4743,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				}
 			}
 			if(this->readThreads[i]->defragThread) {
+				++countThreads;
 				double tid_cpu = this->readThreads[i]->defragThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
@@ -4747,6 +4757,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				}
 			}
 			if(this->readThreads[i]->md1Thread) {
+				++countThreads;
 				double tid_cpu = this->readThreads[i]->md1Thread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
@@ -4760,6 +4771,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				}
 			}
 			if(this->readThreads[i]->md2Thread) {
+				++countThreads;
 				double tid_cpu = this->readThreads[i]->md2Thread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
@@ -4773,6 +4785,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				}
 			}
 			if(this->readThreads[i]->dedupThread) {
+				++countThreads;
 				double tid_cpu = this->readThreads[i]->dedupThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
@@ -4786,6 +4799,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				}
 			}
 			if(this->readThreads[i]->serviceThread) {
+				++countThreads;
 				double tid_cpu = this->readThreads[i]->serviceThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
@@ -4801,6 +4815,9 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			outStrStat << "%] ";
 			if(sumMax && sum > *sumMax) {
 				*sumMax = sum;
+				if(countThreadsSumMax) {
+					*countThreadsSumMax = countThreads;
+				}
 			}
 		}
 	}

@@ -281,7 +281,11 @@ protected:
 	virtual string pcapDropCountStat_interface() { return(""); }
 	virtual ulong getCountPacketDrop() { return(0); }
 	virtual string getStatPacketDrop() { return(""); }
-	virtual string pcapStatString_cpuUsageReadThreads(double *sumMax, int divide) { if(sumMax) *sumMax = 0; return(""); };
+	virtual string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide) { 
+		if(sumMax) *sumMax = 0;
+		if(countThreadsSumMax) *countThreadsSumMax = 0;
+		return(""); 
+	};
 	virtual void initStat_interface() {};
 	int getThreadPid(eTypeThread typeThread);
 	pstat_data *getThreadPstatData(eTypeThread typeThread);
@@ -729,7 +733,7 @@ protected:
 	virtual ulong getCountPacketDrop();
 	virtual string getStatPacketDrop();
 	void initStat_interface();
-	string pcapStatString_cpuUsageReadThreads(double *sumMax, int divide);
+	string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide);
 	string getInterfaceName(bool simple = false);
 	void prepareLogTraffic();
 private:
