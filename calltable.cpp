@@ -846,7 +846,7 @@ Call::get_index_by_sessid(char *sessid, in_addr_t sip_src_addr){
 }
 
 /* analyze rtcp packet */
-void
+bool
 Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 
 	extern int opt_vlan_siprtpsame;
@@ -859,7 +859,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 		parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
 				 header_sll, header_eth, header_ip_offset, protocol, &vlan);
 		if(vlan != this->vlan) {
-			return;
+			return(false);
 		}
 	}
 
@@ -868,17 +868,18 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 	if(enable_save_packet) {
 		save_packet(this, packetS, TYPE_RTP);
 	}
+	return(true);
 }
 
 /* analyze rtp packet */
-void
+bool
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_save_packet, char *ifname) {
  
 	extern int opt_vlan_siprtpsame;
 	if(packetS->datalen == 12) {
 		//Ignoring RTP packets without data
 		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen);
-		return;
+		return(false);
 	}
 
 	if(opt_vlan_siprtpsame && this->vlan >= 0) {
@@ -890,11 +891,12 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 		parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
 				 header_sll, header_eth, header_ip_offset, protocol, &vlan);
 		if(vlan != this->vlan) {
-			return;
+			return(false);
 		}
 	}
 
 	bool record_dtmf = 0;
+	bool call_rtp_read = false;
 
 	if(first_rtp_time == 0) {
 		first_rtp_time = packetS->header_pt->ts.tv_sec;
@@ -992,6 +994,7 @@ read:
 						}
 						rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
 							     packetS->sensor_id_(), packetS->sensor_ip, ifname);
+						call_rtp_read = true;
 						if(rtp[i]->iscaller) {
 							lastcallerrtp = rtp[i];
 						} else {
@@ -1126,6 +1129,7 @@ end:
 			save_packet(this, packetS, TYPE_RTP);
 		}
 	}
+	return(call_rtp_read);
 }
 
 void Call::stoprecording() {

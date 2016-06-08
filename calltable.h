@@ -474,7 +474,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, char enable_save_packet, char *ifname = NULL);
+	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, char enable_save_packet, char *ifname = NULL);
 
 	/**
 	 * @brief read RTCP packet 
@@ -487,7 +487,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	void read_rtcp(struct packet_s *packetS, int iscaller, char enable_save_packet);
+	bool read_rtcp(struct packet_s *packetS, int iscaller, char enable_save_packet);
 
 	/**
 	 * @brief adds RTP stream to the this Call 

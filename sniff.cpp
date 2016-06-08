@@ -646,7 +646,6 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 		case TYPE_SKINNY:
 		case TYPE_SIP:
 			if(call->getPcapSip()->isOpen()){
-				call->set_last_packet_time(header->ts.tv_sec);
 				if(type == TYPE_SIP) {
 					call->getPcapSip()->dump(header, packet, packetS->dlt, false, 
 								 (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
@@ -659,7 +658,6 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 		case TYPE_RTP:
 		case TYPE_RTCP:
 			if(call->getPcapRtp()->isOpen()){
-				call->set_last_packet_time(header->ts.tv_sec);
 				call->getPcapRtp()->dump(header, packet, packetS->dlt);
 			} else if(enable_save_rtp(call)) {
 				char pcapFilePath_spool_relative[1024];
@@ -673,7 +671,6 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 				}
 				if(call->getPcapRtp()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
 					if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
-					call->set_last_packet_time(header->ts.tv_sec);
 					call->getPcapRtp()->dump(header, packet, packetS->dlt);
 				}
 			}
@@ -681,7 +678,6 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 		}
 	} else {
 		if (call->getPcap()->isOpen()){
-			call->set_last_packet_time(header->ts.tv_sec);
 			if(type == TYPE_SIP) {
 				call->getPcap()->dump(header, packet, packetS->dlt, false, 
 						      (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
@@ -1514,13 +1510,17 @@ void *rtp_read_thread_func(void *arg) {
 		
 		params->last_use_time_s = getTimeMS_rdtsc() / 1000;
 
+		bool rslt_read_rtp = false;
 		if(rtpp_pq.is_rtcp) {
-			rtpp_pq.call->read_rtcp(&rtpp_pq.packet, rtpp_pq.iscaller, rtpp_pq.save_packet);
+			rslt_read_rtp = rtpp_pq.call->read_rtcp(&rtpp_pq.packet, rtpp_pq.iscaller, rtpp_pq.save_packet);
 		}  else {
-			rtpp_pq.call->read_rtp(&rtpp_pq.packet, rtpp_pq.iscaller, rtpp_pq.find_by_dest, rtpp_pq.save_packet, 
-					       rtpp_pq.packet.block_store && rtpp_pq.packet.block_store->ifname[0] ? rtpp_pq.packet.block_store->ifname : NULL);
+			rslt_read_rtp = rtpp_pq.call->read_rtp(&rtpp_pq.packet, rtpp_pq.iscaller, rtpp_pq.find_by_dest, rtpp_pq.save_packet, 
+							       rtpp_pq.packet.block_store && rtpp_pq.packet.block_store->ifname[0] ? rtpp_pq.packet.block_store->ifname : NULL);
 		}
-		rtpp_pq.call->set_last_packet_time(rtpp_pq.packet.header_pt->ts.tv_sec);
+		if(rslt_read_rtp) {
+			rtpp_pq.call->set_last_packet_time(rtpp_pq.packet.header_pt->ts.tv_sec);
+			rtpp_pq.call->shift_destroy_call_at(rtpp_pq.packet.header_pt);
+		}
 		if(rtpp_pq.packet.block_store) {
 			rtpp_pq.packet.block_store->unlock_packet(rtpp_pq.packet.block_store_index);
 		}
@@ -3163,6 +3163,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			goto endsip;
 		}
 	}
+	call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
 	
 	if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
 	call->lastSIPresponseNum = packetS->lastSIPresponseNum;
@@ -3371,22 +3372,20 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
 
-		// we have packet, extend pending destroy requests
-		call->shift_destroy_call_at(packetS->header_pt);
-
 		int can_thread = !sverb.disable_threads_rtp;
 
 		if(sdp_flags.is_fax) {
 			call->seenudptl = 1;
 		}
 		
+		bool rslt_read_rtp = false;
 		if(is_rtcp) {
 			if(rtp_threaded && can_thread) {
 				add_to_rtp_thread_queue(call, packetS,
 							iscaller, find_by_dest, is_rtcp, enable_save_rtcp(call), preSyncRtp);
 				call_info[call_info_index].use_sync = true;
 			} else {
-				call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
+				rslt_read_rtp = call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 			}
 		} else {
 			if(rtp_threaded && can_thread) {
@@ -3394,10 +3393,13 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 							iscaller, find_by_dest, is_rtcp, enable_save_rtp(call), preSyncRtp);
 				call_info[call_info_index].use_sync = true;
 			} else {
-				call->read_rtp(packetS, iscaller, find_by_dest, enable_save_rtp(call), 
-					       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
-				call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
+				rslt_read_rtp = call->read_rtp(packetS, iscaller, find_by_dest, enable_save_rtp(call), 
+							       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 			}
+		}
+		if(rslt_read_rtp) {
+			call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
+			call->shift_destroy_call_at(packetS->header_pt);
 		}
 		++count_use;
 	}
