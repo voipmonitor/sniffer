@@ -410,7 +410,7 @@ void CacheNumber_location::saveNumber(const char *number, u_int32_t number_ip, s
 		row.add(ipRec->old_country_code, "old_country_code");
 		row.add(ipRec->old_continent_code, "old_continent_code");
 		row.add(ipRec->old_at, "old_at");
-		sqlStore->query_lock(sqlDb->insertQuery("cache_number_location", row).c_str(), STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
+		sqlStore->query_lock(sqlDb->insertQuery("cache_number_location", row, false, false, true).c_str(), STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
 	}
 }
 
