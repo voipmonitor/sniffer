@@ -1,0 +1,10 @@
+[Unit]
+Description=VoIPmonitor sniffer
+
+[Service]
+Type=forking
+PIDFile=/var/run/voipmonitor.pid
+ExecStart=/usr/bin/voipmonitor --config-file /etc/voipmonitor.conf -v 1
+
+[Install]
+WantedBy=multi-user.target
