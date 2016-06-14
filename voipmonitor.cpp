@@ -764,6 +764,7 @@ map<int, string> command_line_data;
 cConfig CONFIG;
 bool useNewCONFIG = 0;
 bool printConfigStruct = false;
+bool updateSchema = false;
 
 SensorsMap sensorsMap;
 
@@ -2399,6 +2400,10 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	
+	if(updateSchema) {
+		return 0;
+	}
+
 	if(!is_terminating()) {
 	
 		if(opt_test) {
@@ -5399,6 +5404,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"unlzo-gui", 1, 0, 205},
 	    {"waveform-gui", 1, 0, 206},
 	    {"spectrogram-gui", 1, 0, 207},
+	    {"update-schema", 0, 0, 208},
 	    {"new-config", 0, 0, 203},
 	    {"print-config-struct", 0, 0, 204},
 	    {"max-packets", 1, 0, 301},
@@ -5467,6 +5473,9 @@ void get_command_line_arguments() {
 					opt_spectrogram_gui_params =  new FILE_LINE char[strlen(optarg) + 1];
 					strcpy(opt_spectrogram_gui_params, optarg);
 				}
+				break;
+			case 208:
+				updateSchema = true;
 				break;
 			case 203:
 				useNewCONFIG = true;
