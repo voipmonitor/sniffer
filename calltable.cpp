@@ -50,6 +50,7 @@
 #include "tar.h"
 #include "filter_mysql.h"
 #include "sniff_inline.h"
+#include "register.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -3791,15 +3792,15 @@ Call::applyRtcpXrDataToRtp() {
 void Call::adjustUA() {
 	if(opt_cdr_ua_reg_remove.size()) {
 		if(a_ua[0]) {
-			adjustUA(a_ua);
+			::adjustUA(a_ua);
 		}
 		if(b_ua[0]) {
-			adjustUA(b_ua);
+			::adjustUA(b_ua);
 		}
 	}
 }
 
-void Call::adjustUA(char *ua) {
+void adjustUA(char *ua) {
 	if(opt_cdr_ua_reg_remove.size()) {
 		bool adjust = false;
 		for(unsigned i = 0; i < opt_cdr_ua_reg_remove.size(); i++) {
@@ -4465,14 +4466,19 @@ Calltable::cleanup_registers( time_t currtime ) {
 					syslog(LOG_NOTICE, "Set call->sighup\n");
 			}
 			/* move call to queue for mysql processing */
-			lock_registers_queue();
 			if(reg->push_register_to_registers_queue) {
 				syslog(LOG_WARNING,"try to duplicity push call %s to registers_queue", reg->call_id.c_str());
 			} else {
 				reg->push_register_to_registers_queue = 1;
-				registers_queue.push_back(reg);
+				#if NEW_REGISTERS
+					extern Registers registers;
+					registers.add(reg);
+				#else
+					lock_registers_queue();
+					registers_queue.push_back(reg);
+					unlock_registers_queue();
+				#endif
 			}
-			unlock_registers_queue();
 			registers_listMAP.erase(registerMAPIT++);
 			if(opt_enable_fraud && currtime) {
 				struct timeval tv_currtime;
@@ -4515,14 +4521,19 @@ void Call::saveregister() {
 	this->pcap.close();
 	this->pcapSip.close();
 	/* move call to queue for mysql processing */
-	((Calltable*)calltable)->lock_registers_queue();
 	if(push_register_to_registers_queue) {
 		syslog(LOG_WARNING,"try to duplicity push call %s / %i to registers_queue", call_id.c_str(), type);
 	} else {
 		push_register_to_registers_queue = 1;
-		((Calltable*)calltable)->registers_queue.push_back(this);
+		#if NEW_REGISTERS
+			extern Registers registers;
+			registers.add(this);
+		#else
+			((Calltable*)calltable)->lock_registers_queue();
+			((Calltable*)calltable)->registers_queue.push_back(this);
+			((Calltable*)calltable)->unlock_registers_queue();
+		#endif
 	}
-	((Calltable*)calltable)->unlock_registers_queue();
 }
 
 void

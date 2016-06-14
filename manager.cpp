@@ -49,6 +49,7 @@
 #include "send_call_info.h"
 #include "config_param.h"
 #include "sniff_proc_class.h"
+#include "register.h"
 
 //#define BUFSIZE 1024
 //define BUFSIZE 20480
@@ -105,6 +106,7 @@ static void updateLivesnifferfilters();
 static bool cmpCallBy_destroy_call_at(Call* a, Call* b);
 static bool cmpCallBy_first_packet_time(Call* a, Call* b);
 static int sendFile(const char *fileName, int client, ssh_channel sshchannel, bool zip);
+static int sendString(string *str, int client, ssh_channel sshchannel, bool zip);
 
 livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 
@@ -177,7 +179,7 @@ void *listening_worker(void *arguments) {
 
 	short int r1;
 	short int r2;
-	int len1,len2;
+	unsigned int len1,len2;
 
 	// if call is hanged hup it will set listening_worker_run in its destructor to 0
 	int listening_worker_run = 1;
@@ -236,7 +238,7 @@ void *listening_worker(void *arguments) {
 		pthread_mutex_unlock(&args->call->buflock);
 //		printf("codec_caller[%d] codec_called[%d] len1[%d] len2[%d] outbc[%d] outbchar[%d] wait[%u]\n", args->call->codec_caller, args->call->codec_called, len1, len2, (int)args->call->spybuffer.size(), (int)args->call->spybufferchar.size(), usec);
 		if(len1 == period_samples and len2 == period_samples) {
-			for(int i = 0; i < len1; i++) {
+			for(unsigned int i = 0; i < len1; i++) {
 				switch(args->call->codec_caller) {
 				case 0:
 					r1 = ULAW(read1[i]);
@@ -264,7 +266,7 @@ void *listening_worker(void *arguments) {
 //				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r1);
 			}
 		} else if(len2 == period_samples) {
-			for(int i = 0; i < len2; i++) {
+			for(unsigned int i = 0; i < len2; i++) {
 				switch(args->call->codec_caller) {
 				case 0:
 					r2 = ULAW(read2[i]);
@@ -282,7 +284,7 @@ void *listening_worker(void *arguments) {
 //				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r2);
 			}
 		} else if(len1 == period_samples) {
-			for(int i = 0; i < len1; i++) {
+			for(unsigned int i = 0; i < len1; i++) {
 				switch(args->call->codec_caller) {
 				case 0:
 					r1 = ULAW(read1[i]);
@@ -303,7 +305,7 @@ void *listening_worker(void *arguments) {
 			// write silence period
 			int16_t s = 0;
 			//unsigned char sa = 255;
-			for(int i = 0; i < period_samples; i++) {
+			for(unsigned int i = 0; i < period_samples; i++) {
 				if(sverb.call_listening) {
 					fwrite(&s, 1, 2, out);
 				}
@@ -840,6 +842,32 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		}
 		return 0;
+	} else if(strstr(buf, "listregisters") != NULL) {
+		string rslt_data;
+		unsigned limit = 0;
+		char sortBy[21] = "";
+		char direction[11] = "asc";
+		char zip[11] = "";
+		char filter[10001] = "";
+		char *pointer;
+		if((pointer = strchr(buf, '\n')) != NULL) {
+			*pointer = 0;
+		}
+		sscanf(buf + strlen("listregisters") + 1, "%u %20s %10s %10s %10000[^\n]", &limit, sortBy, direction, zip, filter);
+		#if NEW_REGISTERS
+		eRegisterField sortById = convRegisterFieldToFieldId(sortBy);
+		extern Registers registers;
+		eRegisterState states[] = {
+			rs_OK,
+			rs_UnknownMessageOK,
+			rs_na
+		};
+		rslt_data = registers.getDataTableJson(states, limit, sortById ? sortById : rf_calldate, !strcmp(direction, "desc"), filter);
+		#endif
+		if(sendString(&rslt_data, client, sshchannel, !strcmp(zip, "zip") || !strcmp(zip, "yes")) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "d_lc_for_destroy") != NULL) {
 		ostringstream outStr;
 		if(!calltable && !terminating) {
@@ -3167,6 +3195,40 @@ int sendFile(const char *fileName, int client, ssh_channel sshchannel, bool zip)
 		delete compressStream;
 	}
 	close(fd);
+	
+	return(0);
+}
+
+int sendString(string *str, int client, ssh_channel sshchannel, bool zip) {
+	if(str->empty()) {
+		return(0);
+	}
+	CompressStream *compressStream = NULL;
+	if(zip &&
+	   ((*str)[0] != 0x1f || (str->length() > 1 && (*str)[1] != 0x8b))) {
+		compressStream = new FILE_LINE CompressStream(CompressStream::gzip, 1024, 0);
+		compressStream->setSendParameters(client, sshchannel);
+	}
+	unsigned chunkLength = 4096;
+	unsigned processedLength = 0;
+	while(processedLength < str->length()) {
+		unsigned processLength = MIN(chunkLength, str->length() - processedLength);
+		if(compressStream) {
+			compressStream->compress((char*)str->c_str() + processedLength, processLength, false, compressStream);
+			if(compressStream->isError()) {
+				return -1;
+			}
+		} else {
+			if(sendvm(client, sshchannel, (char*)str->c_str() + processedLength, processLength, 0) == -1){
+				return -1;
+			}
+		}
+		processedLength += processLength;
+	}
+	if(compressStream) {
+		compressStream->compress(NULL, 0, true, compressStream);
+		delete compressStream;
+	}
 	
 	return(0);
 }

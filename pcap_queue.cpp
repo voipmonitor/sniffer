@@ -2894,7 +2894,7 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 	}
 	int sleepTimeBeforeCleanup = opt_enable_ssl ? 10 :
 				     sverb.chunk_buffer ? 20 : 5;
-	int sleepTimeAfterCleanup = 2;
+	int sleepTimeAfterCleanup = 4;
 	while((sleepTimeBeforeCleanup + sleepTimeAfterCleanup) && !is_terminating()) {
 		syslog(LOG_NOTICE, "time to terminating: %u", sleepTimeBeforeCleanup + sleepTimeAfterCleanup);
 		this->tryForcePush();

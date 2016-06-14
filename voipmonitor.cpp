@@ -84,6 +84,7 @@
 #include "codec_ulaw.h"
 #include "send_call_info.h"
 #include "config_param.h"
+#include "register.h"
 
 #ifndef FREEBSD
 #define BACKTRACE 1
@@ -3082,6 +3083,10 @@ void main_term_read() {
 	set_terminating();
 
 	regfailedcache->prune(0);
+	#if NEW_REGISTERS
+		extern Registers registers;
+		registers.clean_all();
+	#endif
 	
 	if(tcpReassemblyHttp) {
 		delete tcpReassemblyHttp;
