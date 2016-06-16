@@ -2142,6 +2142,23 @@ void ListUA::addComb(const char *ua, ListUA *negList) {
 	}
 }
 
+void ListCheckString::addComb(string &checkString, ListCheckString *negList) {
+	addComb(checkString.c_str(), negList);
+}
+
+void ListCheckString::addComb(const char *checkString, ListCheckString *negList) {
+	vector<string>checkString_elems = split(checkString, split(",|;|\t|\r|\n", "|"), true);
+	for(size_t i = 0; i < checkString_elems.size(); i++) {
+		if(checkString_elems[i][0] == '!') {
+			if(negList) {
+				negList->add(checkString_elems[i].substr(1).c_str());
+			}
+		} else {
+			add(checkString_elems[i].c_str());
+		}
+	}
+}
+
 ListIP_wb::ListIP_wb(bool autoLock)
  : white(autoLock),
    black(autoLock) {
@@ -2203,6 +2220,27 @@ void ListUA_wb::addBlack(string &ua) {
 
 void ListUA_wb::addBlack(const char *ua) {
 	black.addComb(ua, &white);
+}
+
+ListCheckString_wb::ListCheckString_wb(bool autoLock)
+ : white(autoLock),
+   black(autoLock) {
+}
+
+void ListCheckString_wb::addWhite(string &checkString) {
+	white.addComb(checkString, &black);
+}
+
+void ListCheckString_wb::addWhite(const char *checkString) {
+	white.addComb(checkString, &black);
+}
+
+void ListCheckString_wb::addBlack(string &checkString) {
+	black.addComb(checkString, &white);
+}
+
+void ListCheckString_wb::addBlack(const char *checkString) {
+	black.addComb(checkString, &white);
 }
 
 

@@ -1244,6 +1244,50 @@ public:
 	bool boundRight;
 };
 
+class CheckString {
+public:
+	CheckString(const char *checkString) {
+		this->checkString = checkString;
+		if(this->checkString.length() && this->checkString[0] == '%') {
+			this->checkString = this->checkString.substr(1);
+			this->boundLeft = false;
+		} else {
+			this->boundLeft = true;
+		}
+		if(this->checkString.length() && this->checkString[this->checkString.length() - 1] == '%') {
+			this->checkString = this->checkString.substr(0, this->checkString.length() - 1);
+			this->boundRight = false;
+		} else {
+			this->boundRight = true;
+		}
+		this->checkString_length = this->checkString.length();
+	}
+	bool check(const char *checkString) {
+		if(!this->checkString_length) {
+			return(false);
+		}
+		if(this->boundLeft && this->boundRight) {
+			return(!strcasecmp(checkString, this->checkString.c_str()));
+		} else if(this->boundLeft) {
+			return(!strncasecmp(checkString, this->checkString.c_str(), this->checkString_length));
+		} else if(this->boundRight) {
+			uint length = strlen(checkString);
+			if(length >= this->checkString_length) {
+				return(!strcasecmp(checkString + length - this->checkString_length, this->checkString.c_str()));
+			} else {
+				return(false);
+			}
+		} else {
+			return(strcasestr(checkString, this->checkString.c_str()));
+		}
+	}
+public:
+	std::string checkString;
+	uint checkString_length;
+	bool boundLeft;
+	bool boundRight;
+};
+
 class ListIP {
 public:
 	ListIP(bool autoLock = true) {
@@ -1503,6 +1547,51 @@ private:
 	volatile int _sync;
 };
 
+class ListCheckString {
+public:
+	ListCheckString(bool autoLock = true) {
+		this->autoLock = autoLock;
+		_sync = 0;
+	}
+	void add(const char *checkString) {
+		if(autoLock) lock();
+		listCheckString.push_back(CheckString(checkString));
+		if(autoLock) unlock();
+	}
+	void addComb(string &checkString, ListCheckString *negList = NULL);
+	void addComb(const char *checkString, ListCheckString *negList = NULL);
+	bool check(const char *checkString) {
+		bool rslt =  false;
+		if(autoLock) lock();
+		for(size_t i = 0; i < listCheckString.size(); i++) {
+			if(listCheckString[i].check(checkString)) {
+				rslt = true;
+				break;
+			}
+		}
+		if(autoLock) unlock();
+		return(rslt);
+	}
+	void clear() {
+		if(autoLock) lock();
+		listCheckString.clear();
+		if(autoLock) unlock();
+	}
+	size_t size() {
+		return(listCheckString.size());
+	}
+	void lock() {
+		while(__sync_lock_test_and_set(&this->_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&this->_sync);
+	}
+private:
+	std::vector<CheckString> listCheckString;
+	bool autoLock;
+	volatile int _sync;
+};
+
 class ListIP_wb {
 public:
 	ListIP_wb(bool autoLock = true);
@@ -1554,6 +1643,22 @@ public:
 private:
 	ListUA white;
 	ListUA black;
+};
+
+class ListCheckString_wb {
+public:
+	ListCheckString_wb(bool autoLock = true);
+	void addWhite(string &checkString);
+	void addWhite(const char *checkString);
+	void addBlack(string &checkString);
+	void addBlack(const char *checkString);
+	bool check(const char *checkString) {
+		return((!white.size() || white.check(checkString)) &&
+		       !black.check(checkString));
+	}
+private:
+	ListCheckString white;
+	ListCheckString black;
 };
 
 #define ParsePacket_std_max 100
