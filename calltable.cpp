@@ -4473,6 +4473,9 @@ Calltable::cleanup_registers( time_t currtime ) {
 				#if NEW_REGISTERS
 					extern Registers registers;
 					registers.add(reg);
+					lock_registers_deletequeue();
+					registers_deletequeue.push_back(reg);
+					unlock_registers_deletequeue();
 				#else
 					lock_registers_queue();
 					registers_queue.push_back(reg);
@@ -4528,6 +4531,9 @@ void Call::saveregister() {
 		#if NEW_REGISTERS
 			extern Registers registers;
 			registers.add(this);
+			((Calltable*)calltable)->lock_registers_deletequeue();
+			((Calltable*)calltable)->registers_deletequeue.push_back(this);
+			((Calltable*)calltable)->unlock_registers_deletequeue();
 		#else
 			((Calltable*)calltable)->lock_registers_queue();
 			((Calltable*)calltable)->registers_queue.push_back(this);
