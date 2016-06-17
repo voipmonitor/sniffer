@@ -528,6 +528,7 @@ volatile int Register::_sync_id = 0;
 Registers::Registers() {
 	_sync_registers = 0;
 	_sync_registers_erase = 0;
+	register_failed_id = 0;
 	_sync_register_failed_id = 0;
 	last_cleanup_time = 0;
 }
@@ -635,23 +636,16 @@ void Registers::clean_all() {
 
 u_int64_t Registers::getNewRegisterFailedId(int sensorId) {
 	lock_register_failed_id();
-	map<int, u_int64_t>::iterator iter = register_failed_id.find(sensorId);
-	if(iter == register_failed_id.end()) {
+	if(!register_failed_id) {
 		SqlDb *db = createSqlObject();
-		db->query(string("select max(id) as id from register_failed where ") +
-				 (sensorId >= 0 ? 
-				   "id_sensor = " + intToString(sensorId) : 
-				   "(id_sensor = 0 or id_sensor is null)"));
+		db->query("select max(id) as id from register_failed");
 		SqlDb_row row = db->fetchRow();
 		if(row) {
-			register_failed_id[sensorId] = atoll(row["id"].c_str());
-		} else {
-			register_failed_id[sensorId] = 0;
+			register_failed_id = atoll(row["id"].c_str());
 		}
 		delete db;
 	}
-	register_failed_id[sensorId] = ((register_failed_id[sensorId] / 100000 + 1) * 100000) + (sensorId >= 0 ? sensorId : 99999);
-	u_int64_t id = register_failed_id[sensorId];
+	u_int64_t id = register_failed_id = ((register_failed_id / 100000 + 1) * 100000) + (sensorId >= 0 ? sensorId : 99999);
 	unlock_register_failed_id();
 	return(id);
 }

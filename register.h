@@ -172,7 +172,7 @@ public:
 	map<RegisterId, Register*> registers;
 	volatile int _sync_registers;
 	volatile int _sync_registers_erase;
-	map<int, u_int64_t> register_failed_id;
+	volatile u_int64_t register_failed_id;
 	volatile int _sync_register_failed_id;
 	u_int32_t last_cleanup_time;
 };
