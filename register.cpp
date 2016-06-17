@@ -392,11 +392,11 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		sqlDbSaveRegister = createSqlObject();
 		sqlDbSaveRegister->setEnableSqlStringInContent(true);
 	}
-	string ua = REG_CONV_STR(state->ua);
-	adjustUA((char*)ua.c_str());
+	string adj_ua = REG_CONV_STR(state->ua ? state->ua : ua);
+	adjustUA((char*)adj_ua.c_str());
 	SqlDb_row cdr_ua;
-	if(ua[0]) {
-		cdr_ua.add(sqlEscapeString(ua), "ua");
+	if(adj_ua[0]) {
+		cdr_ua.add(sqlEscapeString(adj_ua), "ua");
 	}
 	SqlDb_row reg;
 	reg.add(sqlEscapeString(sqlDateTimeString(state->state_from).c_str()), "created_at");
@@ -425,7 +425,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	string register_table = state->state == rs_Failed ? "register_failed" : "register_state";
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
-		if(ua[0]) {
+		if(adj_ua[0]) {
 			query_str += string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(ua) + ");\n";
 			reg.add("_\\_'SQL'_\\_:@ua_id", "ua_id");
 		}
