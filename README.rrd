@@ -67,7 +67,7 @@
 
 	Arguments:
 		graphType is one of the following:
-			PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU mem_usage
+			PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage loadavg
 
 		linuxTS_from linuxTS_to
 			both arguments are at-style time format
