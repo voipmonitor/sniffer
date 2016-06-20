@@ -864,222 +864,308 @@ void rrd_vm_create_graph_PSA_command (char *filename, char *fromatstyle, char *t
 	buffer[length]='\0';
 }
 
-int vm_rrd_create_rrddrop(const char *filename) {
+void rrd_vm_create_graph_LA_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
-    cmdCreate << "create " << filename << " ";
-    cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:exceeded:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:packets:GAUGE:20:0:1000000 ";
-    cmdCreate << "RRA:MIN:0.5:1:760 ";
-    cmdCreate << "RRA:MAX:0.5:1:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
-    cmdCreate << "RRA:MIN:0.5:24:760 ";
-    cmdCreate << "RRA:MAX:0.5:24:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
-    cmdCreate << "RRA:MIN:0.5:168:760 ";
-    cmdCreate << "RRA:MAX:0.5:168:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
-    cmdCreate << "RRA:MIN:0.5:8760:760 ";
-    cmdCreate << "RRA:MAX:0.5:8760:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:8760:760";
+	if (dstfile == NULL)
+		cmdCreate << "rrdtool graph - ";                                                //graph to stdout instead of file
+	else
+		cmdCreate << "rrdtool graph \"" << dstfile << "\" ";
+	cmdCreate << "-w " << resx << " -h " << resy << " -a PNG ";
+	cmdCreate << "--start \"" << fromatstyle << "\" --end \"" << toatstyle << "\" ";
+	cmdCreate << "--font DEFAULT:0:Courier ";
+	cmdCreate << "--title \"Load averages\" ";
+	cmdCreate << "--watermark \"`date`\" ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
+	cmdCreate << "--vertical-label \"Load\" ";
+	cmdCreate << "--lower-limit 0 ";
+	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
+	cmdCreate << "--units-exponent 0 ";
+	if (vm_rrd_version >= 10400) { cmdCreate << "--full-size-mode "; }
+	if (slope) cmdCreate << "--slope-mode ";
+	if (icon) cmdCreate << "--only-graph ";
+	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
+	cmdCreate << "DEF:t0=" << filename << ":LA-m1:MAX ";
+	cmdCreate << "DEF:t1=" << filename << ":LA-m5:MAX ";
+	cmdCreate << "DEF:t2=" << filename << ":LA-m15:MAX ";
+	if (vm_rrd_version < 10403) {
+		cmdCreate << "LINE1:t0#0000FF:\"1 minute avg\\t\" ";
+		cmdCreate << "GPRINT:t0:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:MIN:\"Min\\: %5.2lf\\l\" ";
+		cmdCreate << "LINE1:t1#00FF00:\"5 minutes avg\\t\" ";
+		cmdCreate << "GPRINT:t1:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:MIN:\"Min\\: %5.2lf\\l\" ";
+		cmdCreate << "LINE1:t2#FF0000:\"15 minutes avg\\t\" ";
+		cmdCreate << "GPRINT:t2:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:MIN:\"Min\\: %5.2lf\\l\" ";
+	} else {
+		cmdCreate << "LINE1:t0#0000FF:\"1 minute avg\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:t0:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t0:MIN:\"Min\\: %5.2lf\\r\" ";
+		cmdCreate << "LINE1:t1#00FF00:\"5 minutes avg\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:t1:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t1:MIN:\"Min\\: %5.2lf\\r\" ";
+		cmdCreate << "LINE1:t2#FF0000:\"15 minutes avg\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:t2:LAST:\"Cur\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:t2:MIN:\"Min\\: %5.2lf\\r\" ";
+	}
+	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
+	buffer[length]='\0';
+}
+
+int vm_rrd_create_rrddrop(const char *filename) {
+	std::ostringstream cmdCreate;
+
+	cmdCreate << "create " << filename << " ";
+	cmdCreate << "--start N --step 10 ";
+	cmdCreate << "DS:exceeded:GAUGE:20:0:1000000 ";
+	cmdCreate << "DS:packets:GAUGE:20:0:1000000 ";
+	cmdCreate << "RRA:MIN:0.5:1:760 ";
+	cmdCreate << "RRA:MAX:0.5:1:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
+	cmdCreate << "RRA:MIN:0.5:24:760 ";
+	cmdCreate << "RRA:MAX:0.5:24:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
+	cmdCreate << "RRA:MIN:0.5:168:760 ";
+	cmdCreate << "RRA:MAX:0.5:168:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
+	cmdCreate << "RRA:MIN:0.5:8760:760 ";
+	cmdCreate << "RRA:MAX:0.5:8760:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:8760:760";
 
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
 
 int vm_rrd_create_rrdheap(const char *filename) {
-    std::ostringstream cmdCreate;
+	std::ostringstream cmdCreate;
 
-    cmdCreate << "create " << filename << " ";
-    cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:buffer:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:ratio:GAUGE:20:0:10000000 ";
-    cmdCreate << "RRA:MIN:0.5:1:760 ";
-    cmdCreate << "RRA:MAX:0.5:1:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
-    cmdCreate << "RRA:MIN:0.5:24:760 ";
-    cmdCreate << "RRA:MAX:0.5:24:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
-    cmdCreate << "RRA:MIN:0.5:168:760 ";
-    cmdCreate << "RRA:MAX:0.5:168:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
-    cmdCreate << "RRA:MIN:0.5:8760:760 ";
-    cmdCreate << "RRA:MAX:0.5:8760:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:8760:760";
+	cmdCreate << "create " << filename << " ";
+	cmdCreate << "--start N --step 10 ";
+	cmdCreate << "DS:buffer:GAUGE:20:0:1000000 ";
+	cmdCreate << "DS:ratio:GAUGE:20:0:10000000 ";
+	cmdCreate << "RRA:MIN:0.5:1:760 ";
+	cmdCreate << "RRA:MAX:0.5:1:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
+	cmdCreate << "RRA:MIN:0.5:24:760 ";
+	cmdCreate << "RRA:MAX:0.5:24:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
+	cmdCreate << "RRA:MIN:0.5:168:760 ";
+	cmdCreate << "RRA:MAX:0.5:168:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
+	cmdCreate << "RRA:MIN:0.5:8760:760 ";
+	cmdCreate << "RRA:MAX:0.5:8760:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:8760:760";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
 
 int vm_rrd_create_rrdPS(const char *filename) {
-    std::ostringstream cmdCreate;
+	std::ostringstream cmdCreate;
 
-    cmdCreate << "create " << filename << " ";
-    cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:PS-C:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:PS-S0:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:PS-S1:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:PS-SR:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:PS-SM:GAUGE:20:0:1000000 ";
-    cmdCreate << "DS:PS-R:GAUGE:20:0:10000000 ";
-    cmdCreate << "DS:PS-A:GAUGE:20:0:10000000 ";
-    cmdCreate << "RRA:MIN:0.5:1:740 ";
-    cmdCreate << "RRA:MAX:0.5:1:740 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:740 ";
-    cmdCreate << "RRA:MIN:0.5:24:740 ";
-    cmdCreate << "RRA:MAX:0.5:24:740 ";
-    cmdCreate << "RRA:AVERAGE:0.5:24:740 ";
-    cmdCreate << "RRA:MIN:0.5:168:740 ";
-    cmdCreate << "RRA:MAX:0.5:168:740 ";
-    cmdCreate << "RRA:AVERAGE:0.5:168:740 ";
-    cmdCreate << "RRA:MIN:0.5:8760:740 ";
-    cmdCreate << "RRA:MAX:0.5:8760:740 ";
-    cmdCreate << "RRA:AVERAGE:0.5:8760:740";
+	cmdCreate << "create " << filename << " ";
+	cmdCreate << "--start N --step 10 ";
+	cmdCreate << "DS:PS-C:GAUGE:20:0:1000000 ";
+	cmdCreate << "DS:PS-S0:GAUGE:20:0:1000000 ";
+	cmdCreate << "DS:PS-S1:GAUGE:20:0:1000000 ";
+	cmdCreate << "DS:PS-SR:GAUGE:20:0:1000000 ";
+	cmdCreate << "DS:PS-SM:GAUGE:20:0:1000000 ";
+	cmdCreate << "DS:PS-R:GAUGE:20:0:10000000 ";
+	cmdCreate << "DS:PS-A:GAUGE:20:0:10000000 ";
+	cmdCreate << "RRA:MIN:0.5:1:740 ";
+	cmdCreate << "RRA:MAX:0.5:1:740 ";
+	cmdCreate << "RRA:AVERAGE:0.5:1:740 ";
+	cmdCreate << "RRA:MIN:0.5:24:740 ";
+	cmdCreate << "RRA:MAX:0.5:24:740 ";
+	cmdCreate << "RRA:AVERAGE:0.5:24:740 ";
+	cmdCreate << "RRA:MIN:0.5:168:740 ";
+	cmdCreate << "RRA:MAX:0.5:168:740 ";
+	cmdCreate << "RRA:AVERAGE:0.5:168:740 ";
+	cmdCreate << "RRA:MIN:0.5:8760:740 ";
+	cmdCreate << "RRA:MAX:0.5:8760:740 ";
+	cmdCreate << "RRA:AVERAGE:0.5:8760:740";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
 
 int vm_rrd_create_rrdSQL(const char *filename) {
-    std::ostringstream cmdCreate;
+	std::ostringstream cmdCreate;
 
-    cmdCreate << "create " << filename << " ";
-    cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:SQLf-D:GAUGE:20:0:100000 ";
-    cmdCreate << "DS:SQLq-C:GAUGE:20:0:100000 ";
-    cmdCreate << "DS:SQLq-M:GAUGE:20:0:100000 ";
-    cmdCreate << "DS:SQLq-R:GAUGE:20:0:100000 ";
-    cmdCreate << "DS:SQLq-Cl:GAUGE:20:0:100000 ";
-    cmdCreate << "DS:SQLq-H:GAUGE:20:0:100000 ";
-    cmdCreate << "RRA:MIN:0.5:1:740 ";
-    cmdCreate << "RRA:MAX:0.5:1:740 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:740 ";
-    cmdCreate << "RRA:MIN:0.5:24:740 ";
-    cmdCreate << "RRA:MAX:0.5:24:740 ";
-    cmdCreate << "RRA:AVERAGE:0.5:24:740 ";
-    cmdCreate << "RRA:MIN:0.5:168:740 ";
-    cmdCreate << "RRA:MAX:0.5:168:740 ";
-    cmdCreate << "RRA:AVERAGE:0.5:168:740 ";
-    cmdCreate << "RRA:MIN:0.5:8760:740 ";
-    cmdCreate << "RRA:MAX:0.5:8760:740 ";
-    cmdCreate << "RRA:AVERAGE:0.5:8760:740";
+	cmdCreate << "create " << filename << " ";
+	cmdCreate << "--start N --step 10 ";
+	cmdCreate << "DS:SQLf-D:GAUGE:20:0:100000 ";
+	cmdCreate << "DS:SQLq-C:GAUGE:20:0:100000 ";
+	cmdCreate << "DS:SQLq-M:GAUGE:20:0:100000 ";
+	cmdCreate << "DS:SQLq-R:GAUGE:20:0:100000 ";
+	cmdCreate << "DS:SQLq-Cl:GAUGE:20:0:100000 ";
+	cmdCreate << "DS:SQLq-H:GAUGE:20:0:100000 ";
+	cmdCreate << "RRA:MIN:0.5:1:740 ";
+	cmdCreate << "RRA:MAX:0.5:1:740 ";
+	cmdCreate << "RRA:AVERAGE:0.5:1:740 ";
+	cmdCreate << "RRA:MIN:0.5:24:740 ";
+	cmdCreate << "RRA:MAX:0.5:24:740 ";
+	cmdCreate << "RRA:AVERAGE:0.5:24:740 ";
+	cmdCreate << "RRA:MIN:0.5:168:740 ";
+	cmdCreate << "RRA:MAX:0.5:168:740 ";
+	cmdCreate << "RRA:AVERAGE:0.5:168:740 ";
+	cmdCreate << "RRA:MIN:0.5:8760:740 ";
+	cmdCreate << "RRA:MAX:0.5:8760:740 ";
+	cmdCreate << "RRA:AVERAGE:0.5:8760:740";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
 
 int vm_rrd_create_rrdtCPU(const char *filename) {
-    std::ostringstream cmdCreate;
+	std::ostringstream cmdCreate;
 
-    cmdCreate << "create " << filename << " ";
-    cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:tCPU-t0:GAUGE:20:0:120 ";
-    cmdCreate << "DS:tCPU-t1:GAUGE:20:0:120 ";
-    cmdCreate << "DS:tCPU-t2:GAUGE:20:0:120 ";
-    cmdCreate << "RRA:MIN:0.5:1:760 ";
-    cmdCreate << "RRA:MAX:0.5:1:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
-    cmdCreate << "RRA:MIN:0.5:24:760 ";
-    cmdCreate << "RRA:MAX:0.5:24:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
-    cmdCreate << "RRA:MIN:0.5:168:760 ";
-    cmdCreate << "RRA:MAX:0.5:168:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
-    cmdCreate << "RRA:MIN:0.5:8760:760 ";
-    cmdCreate << "RRA:MAX:0.5:8760:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:8760:760";
+	cmdCreate << "create " << filename << " ";
+	cmdCreate << "--start N --step 10 ";
+	cmdCreate << "DS:tCPU-t0:GAUGE:20:0:120 ";
+	cmdCreate << "DS:tCPU-t1:GAUGE:20:0:120 ";
+	cmdCreate << "DS:tCPU-t2:GAUGE:20:0:120 ";
+	cmdCreate << "RRA:MIN:0.5:1:760 ";
+	cmdCreate << "RRA:MAX:0.5:1:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
+	cmdCreate << "RRA:MIN:0.5:24:760 ";
+	cmdCreate << "RRA:MAX:0.5:24:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
+	cmdCreate << "RRA:MIN:0.5:168:760 ";
+	cmdCreate << "RRA:MAX:0.5:168:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
+	cmdCreate << "RRA:MIN:0.5:8760:760 ";
+	cmdCreate << "RRA:MAX:0.5:8760:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:8760:760";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
 
 int vm_rrd_create_rrdtacCPU(const char *filename) {
-    std::ostringstream cmdCreate;
+	std::ostringstream cmdCreate;
 
-    cmdCreate << "create " << filename << " ";
-    cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:zipCPU:GAUGE:20:0:10000 ";
-    cmdCreate << "DS:tarCPU:GAUGE:20:0:10000 ";
-    cmdCreate << "RRA:MIN:0.5:1:760 ";
-    cmdCreate << "RRA:MAX:0.5:1:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
-    cmdCreate << "RRA:MIN:0.5:24:760 ";
-    cmdCreate << "RRA:MAX:0.5:24:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
-    cmdCreate << "RRA:MIN:0.5:168:760 ";
-    cmdCreate << "RRA:MAX:0.5:168:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
-    cmdCreate << "RRA:MIN:0.5:8760:760 ";
-    cmdCreate << "RRA:MAX:0.5:8760:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:8760:760";
+	cmdCreate << "create " << filename << " ";
+	cmdCreate << "--start N --step 10 ";
+	cmdCreate << "DS:zipCPU:GAUGE:20:0:10000 ";
+	cmdCreate << "DS:tarCPU:GAUGE:20:0:10000 ";
+	cmdCreate << "RRA:MIN:0.5:1:760 ";
+	cmdCreate << "RRA:MAX:0.5:1:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
+	cmdCreate << "RRA:MIN:0.5:24:760 ";
+	cmdCreate << "RRA:MAX:0.5:24:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
+	cmdCreate << "RRA:MIN:0.5:168:760 ";
+	cmdCreate << "RRA:MAX:0.5:168:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
+	cmdCreate << "RRA:MIN:0.5:8760:760 ";
+	cmdCreate << "RRA:MAX:0.5:8760:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:8760:760";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
 
 int vm_rrd_create_rrdmemusage(const char *filename) {
-    std::ostringstream cmdCreate;
+	std::ostringstream cmdCreate;
 
-    cmdCreate << "create " << filename << " ";
-    cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:RSS:GAUGE:20:0:1000000 ";
-    cmdCreate << "RRA:MIN:0.5:1:760 ";
-    cmdCreate << "RRA:MAX:0.5:1:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
-    cmdCreate << "RRA:MIN:0.5:24:760 ";
-    cmdCreate << "RRA:MAX:0.5:24:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
-    cmdCreate << "RRA:MIN:0.5:168:760 ";
-    cmdCreate << "RRA:MAX:0.5:168:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
-    cmdCreate << "RRA:MIN:0.5:8760:760 ";
-    cmdCreate << "RRA:MAX:0.5:8760:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:8760:760";
+	cmdCreate << "create " << filename << " ";
+	cmdCreate << "--start N --step 10 ";
+	cmdCreate << "DS:RSS:GAUGE:20:0:1000000 ";
+	cmdCreate << "RRA:MIN:0.5:1:760 ";
+	cmdCreate << "RRA:MAX:0.5:1:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
+	cmdCreate << "RRA:MIN:0.5:24:760 ";
+	cmdCreate << "RRA:MAX:0.5:24:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
+	cmdCreate << "RRA:MIN:0.5:168:760 ";
+	cmdCreate << "RRA:MAX:0.5:168:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
+	cmdCreate << "RRA:MIN:0.5:8760:760 ";
+	cmdCreate << "RRA:MAX:0.5:8760:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:8760:760";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
 
 int vm_rrd_create_rrdspeedmbs(const char *filename) {
-    std::ostringstream cmdCreate;
+	std::ostringstream cmdCreate;
 
-    cmdCreate << "create " << filename << " ";
-    cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:mbs:GAUGE:20:0:100000 ";
-    cmdCreate << "RRA:MIN:0.5:1:760 ";
-    cmdCreate << "RRA:MAX:0.5:1:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
-    cmdCreate << "RRA:MIN:0.5:24:760 ";
-    cmdCreate << "RRA:MAX:0.5:24:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
-    cmdCreate << "RRA:MIN:0.5:168:760 ";
-    cmdCreate << "RRA:MAX:0.5:168:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
-    cmdCreate << "RRA:MIN:0.5:8760:760 ";
-    cmdCreate << "RRA:MAX:0.5:8760:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:8760:760";
+	cmdCreate << "create " << filename << " ";
+	cmdCreate << "--start N --step 10 ";
+	cmdCreate << "DS:mbs:GAUGE:20:0:100000 ";
+	cmdCreate << "RRA:MIN:0.5:1:760 ";
+	cmdCreate << "RRA:MAX:0.5:1:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
+	cmdCreate << "RRA:MIN:0.5:24:760 ";
+	cmdCreate << "RRA:MAX:0.5:24:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
+	cmdCreate << "RRA:MIN:0.5:168:760 ";
+	cmdCreate << "RRA:MAX:0.5:168:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
+	cmdCreate << "RRA:MIN:0.5:8760:760 ";
+	cmdCreate << "RRA:MAX:0.5:8760:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:8760:760";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
 
 int vm_rrd_create_rrdcallscounter(const char *filename) {
-    std::ostringstream cmdCreate;
+	std::ostringstream cmdCreate;
 
-    cmdCreate << "create " << filename << " ";
-    cmdCreate << "--start N --step 10 ";
-    cmdCreate << "DS:calls:GAUGE:20:0:200000 ";
-    cmdCreate << "RRA:MIN:0.5:1:760 ";
-    cmdCreate << "RRA:MAX:0.5:1:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
-    cmdCreate << "RRA:MIN:0.5:24:760 ";
-    cmdCreate << "RRA:MAX:0.5:24:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
-    cmdCreate << "RRA:MIN:0.5:168:760 ";
-    cmdCreate << "RRA:MAX:0.5:168:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
-    cmdCreate << "RRA:MIN:0.5:8760:760 ";
-    cmdCreate << "RRA:MAX:0.5:8760:760 ";
-    cmdCreate << "RRA:AVERAGE:0.5:8760:760";
+	cmdCreate << "create " << filename << " ";
+	cmdCreate << "--start N --step 10 ";
+	cmdCreate << "DS:calls:GAUGE:20:0:200000 ";
+	cmdCreate << "RRA:MIN:0.5:1:760 ";
+	cmdCreate << "RRA:MAX:0.5:1:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
+	cmdCreate << "RRA:MIN:0.5:24:760 ";
+	cmdCreate << "RRA:MAX:0.5:24:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
+	cmdCreate << "RRA:MIN:0.5:168:760 ";
+	cmdCreate << "RRA:MAX:0.5:168:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
+	cmdCreate << "RRA:MIN:0.5:8760:760 ";
+	cmdCreate << "RRA:MAX:0.5:8760:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:8760:760";
 	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
 	return (res);
 }
 
+int vm_rrd_create_rrdloadaverages(const char *filename) {
+	std::ostringstream cmdCreate;
 
+	cmdCreate << "create " << filename << " ";
+	cmdCreate << "--start N --step 10 ";
+	cmdCreate << "DS:LA-m1:GAUGE:20:0:256 ";
+	cmdCreate << "DS:LA-m5:GAUGE:20:0:256 ";
+	cmdCreate << "DS:LA-m15:GAUGE:20:0:256 ";
+	cmdCreate << "RRA:MIN:0.5:1:760 ";
+	cmdCreate << "RRA:MAX:0.5:1:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
+	cmdCreate << "RRA:MIN:0.5:24:760 ";
+	cmdCreate << "RRA:MAX:0.5:24:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:24:760 ";
+	cmdCreate << "RRA:MIN:0.5:168:760 ";
+	cmdCreate << "RRA:MAX:0.5:168:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:168:760 ";
+	cmdCreate << "RRA:MIN:0.5:8760:760 ";
+	cmdCreate << "RRA:MAX:0.5:8760:760 ";
+	cmdCreate << "RRA:AVERAGE:0.5:8760:760";
+	int res = vm_rrd_create(filename, cmdCreate.str().c_str());
+	return (res);
+}
 
 int vm_rrd_create(const char *filename, const char *cmdline)
 {

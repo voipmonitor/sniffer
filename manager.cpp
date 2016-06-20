@@ -545,7 +545,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 
 			//limits check discarding graph's legend and axis/grid
 			if ((resx < 400) or (resy < 200)) icon = 1;
-			//Possible graph types: #PS,PSC,PSS,PSSM,PSSR,PSR,PSA,SQLq,SQLf,tCPU,drop,speed,heap,calls,tacCPU,RSSVSSZ
+			//Possible graph types: #PS,PSC,PSS,PSSM,PSSR,PSR,PSA,SQLq,SQLf,tCPU,drop,speed,heap,calls,tacCPU,loadadvg
 
 
 			char sendcommand[2048];			//buffer for send command string;
@@ -597,11 +597,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			} else if (!strncmp(manager_args[1], "memusage", 7)) {
 				sprintf(filename, "%s/rrd/db-memusage.rrd", opt_chdir);
 				rrd_vm_create_graph_memusage_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+			} else if (!strncmp(manager_args[1], "loadavg", 7)) {
+				sprintf(filename, "%s/rrd/db-LA.rrd", opt_chdir);
+				rrd_vm_create_graph_LA_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else {
 				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage\n", manager_args[1]);	
 				if (verbosity > 0) {
 					syslog(LOG_NOTICE, "creategraph Error: Unrecognized graph type %s", manager_args[1]);
-					syslog(LOG_NOTICE, "    Graph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage");
+					syslog(LOG_NOTICE, "    Graph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage loadavg");
 				}
 				res = -1;
 			}
