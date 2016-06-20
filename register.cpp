@@ -426,7 +426,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		if(adj_ua[0]) {
-			query_str += string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(ua) + ");\n";
+			query_str += string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ");\n";
 			reg.add("_\\_'SQL'_\\_:@ua_id", "ua_id");
 		}
 		query_str += sqlDbSaveRegister->insertQuery(register_table, reg) + ";\n";
