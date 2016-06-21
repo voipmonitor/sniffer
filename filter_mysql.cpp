@@ -287,7 +287,7 @@ TELNUMfilter::load() {
 	while((row = sqlDb->fetchRow())) {
 		count++;
 		db_row* filterRow = new(db_row);
-		strncpy(filterRow->prefix, row["prefix"].c_str(), MAX_PREFIX);
+		strncpy(filterRow->prefix, trim_str(row["prefix"]).c_str(), MAX_PREFIX);
 		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
@@ -402,7 +402,7 @@ DOMAINfilter::load() {
 	while((row = sqlDb->fetchRow())) {
 		count++;
 		db_row* filterRow = new FILE_LINE db_row;
-		filterRow->domain = row["domain"];
+		filterRow->domain = trim_str(row["domain"]);
 		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
@@ -474,8 +474,8 @@ SIP_HEADERfilter::load() {
 	while((row = sqlDb->fetchRow())) {
 		count++;
 		db_row* filterRow = new FILE_LINE db_row;
-		filterRow->header = row["header"];
-		filterRow->content = row["content"];
+		filterRow->header = trim_str(row["header"]);
+		filterRow->content = trim_str(row["content"]);
 		filterRow->prefix = row["content_type"] == "prefix";
 		filterRow->regexp = row["content_type"] == "regexp";
 		this->loadBaseDataRow(&row, filterRow);
