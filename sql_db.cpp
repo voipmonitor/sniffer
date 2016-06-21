@@ -3355,6 +3355,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`called_silence_end` smallint unsigned DEFAULT NULL,\
 			`response_time_100` smallint unsigned DEFAULT NULL,\
 			`response_time_xxx` smallint unsigned DEFAULT NULL,\
+			`flags` bigint unsigned DEFAULT NULL,\
 			`id_sensor` smallint unsigned DEFAULT NULL,") + 
 			(get_customers_pn_query[0] ?
 				"`caller_customer_id` int DEFAULT NULL,\
@@ -5038,6 +5039,14 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ADD COLUMN `a_mos_lqo_mult10` tinyint unsigned DEFAULT NULL, "
 				   "ADD COLUMN `b_mos_lqo_mult10` tinyint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.cdr_mos_lqo);
+	}
+	existsColumns.cdr_flags = this->existsColumn("cdr", "flags");
+	if(!existsColumns.cdr_flags) {
+		this->logNeedAlter("cdr",
+				   "flags",
+				   "ALTER TABLE cdr "
+				   "ADD COLUMN `flags` bigint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.cdr_flags);
 	}
 
 	if(!this->existsColumn("cdr", "price_operator_mult100") &&

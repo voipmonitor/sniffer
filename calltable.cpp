@@ -993,10 +993,17 @@ read:
 							evProcessRtpStream(rtp[i]->index_call_ip_port, rtp[i]->index_call_ip_port_by_dest,
 									   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header_pt->ts.tv_sec);
 						}
+						if(find_by_dest ?
+						    rtp[i]->prev_sport && rtp[i]->prev_sport != packetS->source :
+						    rtp[i]->prev_dport && rtp[i]->prev_dport != packetS->dest) {
+							rtp[i]->change_src_port = true;
+						}
 						if(rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
 								packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
 							rtp_read_rslt = true;
 						}
+						rtp[i]->prev_sport = packetS->source;
+						rtp[i]->prev_dport = packetS->dest;
 						if(rtp[i]->iscaller) {
 							lastcallerrtp = rtp[i];
 						} else {
@@ -1091,8 +1098,12 @@ read:
 			}
 		}
 
-		rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
-				  packetS->sensor_id_(), packetS->sensor_ip, ifname);
+		if(rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
+				     packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
+			rtp_read_rslt = true;
+		}
+		rtp[ssrc_n]->prev_sport = packetS->source;
+		rtp[ssrc_n]->prev_dport = packetS->dest;
 		if(sverb.check_is_caller_called) printf("new rtp[%p] ssrc[%x] seq[%u] saddr[%s] dport[%u] iscaller[%u]\n", rtp[ssrc_n], curSSRC, rtp[ssrc_n]->seq, inet_ntostring(htonl(packetS->saddr)).c_str(), packetS->dest, rtp[ssrc_n]->iscaller);
 		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
 		this->rtp[ssrc_n]->payload2 = curpayload;
@@ -2084,6 +2095,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			reason_q850_id = 0,
 			a_ua_id = 0,
 			b_ua_id = 0;
+	u_int64_t cdr_flags = 0;
 
 	string query_str_cdrproxy;
 
@@ -2550,10 +2562,19 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				"lost");
 		}
 
+		for(int i = 0; i < ssrc_n; i++) {
+			if(rtp[i]->change_src_port) {
+				cdr_flags |= rtp[i]->iscaller ? CDR_CHANGE_SRC_PORT_CALLER : CDR_CHANGE_SRC_PORT_CALLED;
+			}
+		}
 	}
 
 	if(opt_dscp && existsColumns.cdr_dscp) {
 		cdr.add((dscp_a << 24) + (dscp_b << 16) + (dscp_c << 8) + dscp_d, "dscp");
+	}
+	
+	if(cdr_flags && existsColumns.cdr_flags) {
+		cdr.add(cdr_flags, "flags");
 	}
 	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {

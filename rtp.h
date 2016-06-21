@@ -158,6 +158,9 @@ public:
 	u_int32_t daddr;	//!< last source IP adress 
 	u_int16_t sport;
 	u_int16_t dport;
+	u_int16_t prev_sport;
+	u_int16_t prev_dport;
+	bool change_src_port;
 	u_int16_t avg_ptime;
 	u_int32_t avg_ptime_count;
 	RtpGraphSaver graph;

@@ -89,6 +89,10 @@
 
 #define CDR_NEXT_MAX 10
 
+#define CDR_CHANGE_SRC_PORT_CALLER	(1 << 0)
+#define CDR_CHANGE_SRC_PORT_CALLED	(1 << 1)
+
+
 typedef struct {
 	double ts;
 	char dtmf;

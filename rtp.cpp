@@ -213,6 +213,9 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	daddr = 0;
 	sport = 0;
 	dport = 0;
+	prev_sport = 0;
+	prev_dport = 0;
+	change_src_port = false;
 	ssrc = 0;
 	ssrc2 = 0;
 	gfilename[0] = '\0';
