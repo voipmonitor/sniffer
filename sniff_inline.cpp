@@ -85,6 +85,15 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 		}
 	} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
 		header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
+	} else if(grehdr->version == 0 and grehdr->protocol == 0x8847) {
+		// 0x88BE - GRE & MPLS - + 4 bytes (GRE) + N * 4 bytes (MPLS)
+		u_int header_ip_offset = sizeof(iphdr2) + 4;
+		u_int8_t mpls_bottomOfLabelStackFlag;
+		do {
+			mpls_bottomOfLabelStackFlag = *((u_int8_t*)header_ip + header_ip_offset + 2) & 1;
+			header_ip_offset += 4;
+		} while(mpls_bottomOfLabelStackFlag == 0);
+		header_ip = (struct iphdr2 *) ((char*)header_ip + header_ip_offset);
 	} else {
 		return(NULL);
 	}
