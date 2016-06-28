@@ -10,6 +10,8 @@
 
 #include "tools.h"
 #include "sql_db.h"
+#include "register.h"
+#include "filter_register.h"
 
 
 #define fraud_alert_rcc 21
@@ -19,6 +21,10 @@
 #define fraud_alert_spc 25
 #define fraud_alert_rc 26
 #define fraud_alert_seq 27
+#define fraud_alert_reg_ua 43
+#define fraud_alert_reg_short 44
+#define fraud_alert_reg_expire 46
+
 
 extern timeval t;
 class TimePeriod {
@@ -526,6 +532,55 @@ struct sFraudEventInfo {
 	string ua;
 };
 
+struct sFraudRegisterInfo_id {
+	u_int32_t sipcallerip;
+	u_int32_t sipcalledip;
+	string to_num;
+	string to_domain;
+	string contact_num;
+	string contact_domain;
+	string digest_username;
+	bool operator == (const sFraudRegisterInfo_id& other) const {
+		return(this->sipcallerip == other.sipcallerip &&
+		       this->sipcalledip == other.sipcalledip &&
+		       this->to_num == other.to_num &&
+		       this->to_domain == other.to_domain &&
+		       this->contact_num == other.contact_num &&
+		       this->contact_domain == other.contact_domain &&
+		       this->digest_username == other.digest_username);
+	}
+	bool operator < (const sFraudRegisterInfo_id& other) const { 
+		int rslt_cmp_to_num;
+		int rslt_cmp_to_domain;
+		int rslt_cmp_contact_num;
+		int rslt_cmp_contact_domain;
+		int rslt_cmp_digest_username;
+		return((this->sipcallerip < other.sipcallerip) ? 1 : (this->sipcallerip > other.sipcallerip) ? 0 :
+		       (this->sipcalledip < other.sipcalledip) ? 1 : (this->sipcalledip > other.sipcalledip) ? 0 :
+		       ((rslt_cmp_to_num = strcasecmp(this->to_num.c_str(), other.to_num.c_str())) < 0) ? 1 : (rslt_cmp_to_num > 0) ? 0 :
+		       ((rslt_cmp_to_domain = strcasecmp(this->to_domain.c_str(), other.to_domain.c_str())) < 0) ? 1 : (rslt_cmp_to_domain > 0) ? 0 :
+		       ((rslt_cmp_contact_num = strcasecmp(this->contact_num.c_str(), other.contact_num.c_str())) < 0) ? 1 : (rslt_cmp_contact_num > 0) ? 0 :
+		       ((rslt_cmp_contact_domain = strcasecmp(this->contact_domain.c_str(), other.contact_domain.c_str())) < 0) ? 1 : (rslt_cmp_contact_domain > 0) ? 0 :
+		       ((rslt_cmp_digest_username = strcasecmp(this->digest_username.c_str(), other.digest_username.c_str())) < 0));
+	}
+};
+
+struct sFraudRegisterInfo_data {
+	string from_num;
+	string from_name;
+	string from_domain;
+	string digest_realm;
+	string ua;
+	eRegisterState state;
+	u_int64_t at;
+	u_int32_t time_from_prev_state;
+};
+
+struct sFraudRegisterInfo : public sFraudRegisterInfo_id, public sFraudRegisterInfo_data {
+	eRegisterState prev_state;
+	u_int64_t prev_state_at;
+};
+
 class FraudAlertInfo {
 public:
 	FraudAlertInfo(class FraudAlert *alert);
@@ -543,13 +598,16 @@ protected:
 class FraudAlert {
 public:
 	enum eFraudAlertType {
-		_rcc =	fraud_alert_rcc,
-		_chc =	fraud_alert_chc,
-		_chcr =	fraud_alert_chcr,
-		_d =	fraud_alert_d,
-		_spc =	fraud_alert_spc,
-		_rc =	fraud_alert_rc,
-		_seq =	fraud_alert_seq
+		_rcc =		fraud_alert_rcc,
+		_chc =		fraud_alert_chc,
+		_chcr =		fraud_alert_chcr,
+		_d =		fraud_alert_d,
+		_spc =		fraud_alert_spc,
+		_rc =		fraud_alert_rc,
+		_seq =		fraud_alert_seq,
+		_reg_ua =	fraud_alert_reg_ua,
+		_reg_short =	fraud_alert_reg_short,
+		_reg_expire =	fraud_alert_reg_expire
 	};
 	enum eTypeLocation {
 		_typeLocation_NA,
@@ -570,6 +628,7 @@ public:
 	};
 	FraudAlert(eFraudAlertType type, unsigned int dbId);
 	virtual ~FraudAlert();
+	bool isReg();
 	bool loadAlert();
 	void loadFraudDef();
 	eFraudAlertType getType() {
@@ -585,9 +644,11 @@ public:
 	virtual void evCall(sFraudCallInfo *callInfo) {}
 	virtual void evRtpStream(sFraudRtpStreamInfo *rtpStreamInfo) {}
 	virtual void evEvent(sFraudEventInfo *eventInfo) {}
+	virtual void evRegister(sFraudRegisterInfo *registerInfo) {}
 	virtual bool okFilter(sFraudCallInfo *callInfo);
 	virtual bool okFilter(sFraudRtpStreamInfo *rtpStreamInfo);
 	virtual bool okFilter(sFraudEventInfo *eventInfo);
+	virtual bool okFilter(sFraudRegisterInfo *registerInfo);
 	virtual bool okDayHour(sFraudCallInfo *callInfo) {
 		if(!callInfo->at_last) {
 			return(true);
@@ -609,7 +670,7 @@ public:
 	virtual bool okDayHour(time_t at);
 	virtual void evAlert(FraudAlertInfo *alertInfo);
 protected:
-	virtual void loadAlertVirt(SqlDb_row *row) {}
+	virtual void loadAlertVirt() {}
 	virtual void addFraudDef(SqlDb_row *row) {}
 	virtual bool defFilterIp() { return(false); }
 	virtual bool defFilterIp2() { return(false); }
@@ -656,6 +717,45 @@ protected:
 friend class FraudAlerts;
 friend class FraudAlert_rcc_base;
 friend class FraudAlert_rcc_timePeriods;
+};
+
+class FraudAlertReg_filter {
+public:
+	FraudAlertReg_filter(class FraudAlertReg *parent);
+	~FraudAlertReg_filter();
+	void setFilter(const char *description, const char *filter_str);
+protected:
+	void evRegister(sFraudRegisterInfo *registerInfo);
+	bool okFilter(sFraudRegisterInfo *registerInfo);
+protected:
+	string description;
+	string filter_str;
+	cRegisterFilter *filter;
+	u_int64_t ev_counter;
+	map<sFraudRegisterInfo_id, sFraudRegisterInfo_data> ev_map;
+	u_int64_t start_interval;
+	FraudAlertReg *parent;
+friend class FraudAlertReg;
+};
+
+class FraudAlertReg : public FraudAlert {
+public:
+	FraudAlertReg(eFraudAlertType type, unsigned int dbId);
+	~FraudAlertReg();
+protected:
+	void evRegister(sFraudRegisterInfo *registerInfo);
+	bool checkUA(const char *ua);
+	bool checkRegisterTimeSecLe(sFraudRegisterInfo *registerInfo);
+private:
+	void loadAlertVirt();
+	void loadFilters();
+protected:
+	map<u_int32_t, FraudAlertReg_filter*> filters;
+	u_int32_t intervalLength;
+	u_int32_t intervalLimit;
+	vector<cRegExp*> ua_regex;
+	u_int32_t registerTimeSecLe;
+friend class FraudAlertReg_filter;
 };
 
 class FraudAlert_rcc_callInfo {
@@ -1030,7 +1130,7 @@ protected:
 	bool defInterval() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:
-	void loadAlertVirt(SqlDb_row *row);
+	void loadAlertVirt();
 	bool checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at);
 private:
 	bool withResponse;
@@ -1094,6 +1194,40 @@ private:
 	map<sIpNumber, sAlertInfo> alerts;
 };
 
+class FraudAlertInfo_reg : public FraudAlertInfo {
+public:
+	FraudAlertInfo_reg(FraudAlert *alert);
+	void set(const char *filter_descr,
+		 unsigned int count,
+		 map<sFraudRegisterInfo_id, sFraudRegisterInfo_data> *reg_map);
+	string getJson();
+private:
+	string filter_descr;
+	unsigned int count;
+	map<sFraudRegisterInfo_id, sFraudRegisterInfo_data> *reg_map;
+};
+
+class FraudAlert_reg_ua : public FraudAlertReg {
+public:
+	FraudAlert_reg_ua(unsigned int dbId);
+protected:
+	bool okFilter(sFraudRegisterInfo *registerInfo);
+};
+
+class FraudAlert_reg_short : public FraudAlertReg {
+public:
+	FraudAlert_reg_short(unsigned int dbId);
+protected:
+	bool okFilter(sFraudRegisterInfo *registerInfo);
+};
+
+class FraudAlert_reg_expire : public FraudAlertReg {
+public:
+	FraudAlert_reg_expire(unsigned int dbId);
+protected:
+	bool okFilter(sFraudRegisterInfo *registerInfo);
+};
+
 
 class FraudAlerts {
 public:
@@ -1113,6 +1247,7 @@ public:
 	void evSipPacket(u_int32_t ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len);
 	void evRegister(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
 	void evRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
+	void evRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 	void stopPopCallInfoThread(bool wait = false);
 	void refresh();
 	const char *getGuiTimezone() {
@@ -1133,6 +1268,7 @@ private:
 	void completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, CheckInternational *checkInternational);
 	void completeCallInfoAfterPop(sFraudCallInfo *callInfo, CheckInternational *checkInternational);
 	void completeRtpStreamInfoAfterPop(sFraudRtpStreamInfo *rtpStreamInfo, CheckInternational *checkInternational);
+	void completeRegisterInfo(sFraudRegisterInfo *registerInfo, Call *call);
 	void lock_alerts() {
 		while(__sync_lock_test_and_set(&this->_sync_alerts, 1));
 	}
@@ -1144,6 +1280,7 @@ private:
 	SafeAsyncQueue<sFraudCallInfo> callQueue;
 	SafeAsyncQueue<sFraudRtpStreamInfo> rtpStreamQueue;
 	SafeAsyncQueue<sFraudEventInfo> eventQueue;
+	SafeAsyncQueue<sFraudRegisterInfo> registerQueue;
 	GroupsIP groupsIP;
 	pthread_t threadPopCallInfo;
 	bool runPopCallInfoThread;
@@ -1151,6 +1288,50 @@ private:
 	string gui_timezone;
 	volatile int _sync_alerts;
 friend void *_FraudAlerts_popCallInfoThread(void *arg);
+};
+
+
+class cRegisterFilterFraud : public cRegisterFilter {
+public:
+	cRegisterFilterFraud(char *filter) 
+	 : cRegisterFilter(filter) {
+	}
+	u_int64_t getField_int(void *rec, unsigned registerFieldIndex) {
+		switch(registerFieldIndex) {
+		case rf_sipcallerip:
+			return(((sFraudRegisterInfo*)rec)->sipcallerip);
+		case rf_sipcalledip:
+			return(((sFraudRegisterInfo*)rec)->sipcalledip);
+		}
+		return(0);
+	}
+	const char *getField_string(void *rec, unsigned registerFieldIndex) {
+		switch(registerFieldIndex) {
+		case rf_to_num:
+			return(((sFraudRegisterInfo*)rec)->to_num.c_str());
+		case rf_to_domain:
+			return(((sFraudRegisterInfo*)rec)->to_domain.c_str());
+		case rf_contact_num:
+			return(((sFraudRegisterInfo*)rec)->contact_num.c_str());
+		case rf_contact_domain:
+			return(((sFraudRegisterInfo*)rec)->contact_domain.c_str());
+		case rf_digestusername:
+			return(((sFraudRegisterInfo*)rec)->digest_username.c_str());
+		case rf_from_num:
+			return(((sFraudRegisterInfo*)rec)->from_num.c_str());
+		case rf_from_name:
+			return(((sFraudRegisterInfo*)rec)->from_name.c_str());
+		case rf_from_domain:
+			return(((sFraudRegisterInfo*)rec)->from_domain.c_str());
+		case rf_digestrealm:
+			return(((sFraudRegisterInfo*)rec)->digest_realm.c_str());
+		case rf_ua:
+			return(((sFraudRegisterInfo*)rec)->ua.c_str());
+		}
+		return("");
+	}
+public:
+	list<cRegisterFilterItems> fItems;
 };
 
 
@@ -1169,6 +1350,7 @@ void fraudEndRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint
 void fraudSipPacket(u_int32_t ip, unsigned sip_method, timeval tv, const char *ua, int ua_len);
 void fraudRegister(u_int32_t ip, timeval tv, const char *ua, int ua_len);
 void fraudRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
+void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 bool isExistsFraudAlerts();
 
 inline bool isFraudReady() {

@@ -1973,7 +1973,7 @@ string reg_replace(const char *str, const char *pattern, const char *replace, co
 			if(file) {
 				syslog(LOG_ERR, "regcomp %s error in reg_replace - call from %s : %i", pattern, file, line);
 			} else {
-				syslog(LOG_ERR, "regcomp %s error in reg_match", pattern);
+				syslog(LOG_ERR, "regcomp %s error in reg_replace", pattern);
 			}
 			lastTimeSyslog = actTime;
 		}
@@ -2006,6 +2006,79 @@ string reg_replace(const char *str, const char *pattern, const char *replace, co
 		return(rslt);
 	}
 	return("");
+}
+
+cRegExp::cRegExp(const char *pattern, eFlags flags,
+		 const char *file, int line) {
+	this->pattern = pattern ? pattern : "";
+	this->flags = flags;
+	regex_create();
+	if(regex_error) {
+		static u_long lastTimeSyslog = 0;
+		u_long actTime = getTimeMS();
+		if(actTime - 1000 > lastTimeSyslog) {
+			if(file) {
+				syslog(LOG_ERR, "regcomp %s error in cRegExp - call from %s : %i", pattern, file, line);
+			} else {
+				syslog(LOG_ERR, "regcomp %s error in cRegExp", pattern);
+			}
+			lastTimeSyslog = actTime;
+		}
+	}
+}
+
+cRegExp::~cRegExp() {
+	regex_delete();
+}
+
+bool cRegExp::regex_create() {
+	if(regcomp(&regex, pattern.c_str(), REG_EXTENDED | ((flags & _regexp_icase) ? REG_ICASE : 0) | ((flags & _regexp_sub) ? 0 : REG_NOSUB)) == 0) {
+		regex_init = true;
+		regex_error = false;
+	} else {
+		regex_error = true;
+		regex_init = false;
+	}
+	return(regex_init);
+}
+
+void cRegExp::regex_delete() {
+	if(regex_init) {
+		regfree(&regex);
+		regex_init = false;
+	}
+	regex_error = false;
+}
+
+int cRegExp::match(const char *subject, vector<string> *matches) {
+	if(matches) {
+		matches->clear();
+	}
+	if(regex_init) {
+		int match_max = 20;
+		regmatch_t match[match_max];
+		memset(match, 0, sizeof(match));
+		if(regexec(&regex, subject, match_max, match, 0) == 0) {
+			if(flags & _regexp_matches) {
+				int match_count = 0;
+				for(int i = 0; i < match_max; i ++) {
+					if(match[i].rm_so == -1 && match[i].rm_eo == -1) {
+						break;
+					}
+					if(matches) {
+						matches->push_back(string(subject).substr(match[i].rm_so, match[i].rm_eo - match[i].rm_so));
+					}
+					++match_count;
+				}
+				return(match_count);
+			} else  {
+				return(1);
+			}
+		} else {
+			return(0);
+		}
+	}
+	return(-1);
 }
 
 string inet_ntostring(u_int32_t ip) {
@@ -2781,6 +2854,10 @@ string JsonItem::getPathItemName(string path) {
 }
 
 
+JsonExport::JsonExport() {
+	typeItem = _object;
+}
+
 JsonExport::~JsonExport() {
 	while(items.size()) {
 		delete (*items.begin());
@@ -2788,17 +2865,28 @@ JsonExport::~JsonExport() {
 	}
 }
 
-string JsonExport::getJson() {
+string JsonExport::getJson(JsonExport *parent) {
 	ostringstream outStr;
-	outStr << '{';
-	vector<JsonExportItem*>::iterator iter;
+	if(!name.empty()) {
+		outStr << '\"' << name << "\":";
+	}
+	if(typeItem == _object) {
+		outStr << '{';
+	} else if(typeItem == _array) {
+		outStr << '[';
+	}
+	vector<JsonExport*>::iterator iter;
 	for(iter = items.begin(); iter != items.end(); iter++) {
 		if(iter != items.begin()) {
 			outStr << ',';
 		}
-		outStr << (*iter)->getStringItem();
+		outStr << (*iter)->getJson(this);
 	}
-	outStr << '}';
+	if(typeItem == _object) {
+		outStr << '}';
+	} else if(typeItem == _array) {
+		outStr << ']';
+	}
 	return(outStr.str());
 }
 
@@ -2807,7 +2895,7 @@ void JsonExport::add(const char *name, string content) {
 }
 
 void JsonExport::add(const char *name, const char *content) {
-	JsonExportItem_template<string> *item = new FILE_LINE JsonExportItem_template<string>;
+	JsonExport_template<string> *item = new FILE_LINE JsonExport_template<string>;
 	item->setTypeItem(_string);
 	item->setName(name);
 	item->setContent(string(content));
@@ -2815,11 +2903,27 @@ void JsonExport::add(const char *name, const char *content) {
 }
 
 void JsonExport::add(const char *name, u_int64_t content) {
-	JsonExportItem_template<u_int64_t> *item = new FILE_LINE JsonExportItem_template<u_int64_t>;
+	JsonExport_template<u_int64_t> *item = new FILE_LINE JsonExport_template<u_int64_t>;
 	item->setTypeItem(_number);
 	item->setName(name);
 	item->setContent(content);
 	items.push_back(item);
+}
+
+JsonExport *JsonExport::addArray(const char *name) {
+	JsonExport *item = new FILE_LINE JsonExport;
+	item->setTypeItem(_array);
+	item->setName(name);
+	items.push_back(item);
+	return(item);
+}
+
+JsonExport *JsonExport::addObject(const char *name) {
+	JsonExport *item = new FILE_LINE JsonExport;
+	item->setTypeItem(_object);
+	item->setName(name);
+	items.push_back(item);
+	return(item);
 }
 
 void JsonExport::addJson(const char *name, const string &content) {
@@ -2827,11 +2931,27 @@ void JsonExport::addJson(const char *name, const string &content) {
 }
 
 void JsonExport::addJson(const char *name, const char *content) {
-	JsonExportItem_template<string> *item = new FILE_LINE JsonExportItem_template<string>;
+	JsonExport_template<string> *item = new FILE_LINE JsonExport_template<string>;
 	item->setTypeItem(_json);
 	item->setName(name);
 	item->setContent(string(content));
 	items.push_back(item);
+}
+
+template <class type_item>
+string JsonExport_template<type_item>::getJson(JsonExport *parent) {
+	ostringstream outStr;
+	if(parent->getTypeItem() == _array || !name.empty()) {
+		outStr << '\"' << name << "\":";
+	}
+	if(typeItem == _string) {
+		outStr << '\"';
+	}
+	outStr << content;
+	if(typeItem == _string) {
+		outStr << '\"';
+	}
+	return(outStr.str());
 }
 
 //------------------------------------------------------------------------------

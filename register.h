@@ -7,6 +7,8 @@
 #include <string.h>
 
 #include "calltable.h"
+#include "record_array.h"
+#include "filter_register.h"
 
 
 #define NEW_REGISTER_MAX_STATES 3
@@ -71,6 +73,7 @@ public:
 	u_int32_t state_to;
 	u_int32_t counter;
 	eRegisterState state;
+	char *contact_domain;
 	char *from_num;
 	char *from_name;
 	char *from_domain;
@@ -104,7 +107,7 @@ public:
 	inline RegisterState *states_prev_last() {
 		return(countStates > 1 ? states[1] : NULL);
 	}
-	inline bool getDataRow(struct RegisterRecord *rec);
+	inline bool getDataRow(RecordArray *rec);
 	void lock_states() {
 		while(__sync_lock_test_and_set(&_sync_states, 1));
 	}
@@ -175,116 +178,6 @@ public:
 	volatile u_int64_t register_failed_id;
 	volatile int _sync_register_failed_id;
 	u_int32_t last_cleanup_time;
-};
-
-
-class cRegisterFilterItem_base {
-public:
-	cRegisterFilterItem_base(eRegisterField registerField) {
-		this->registerField = registerField;
-	}
-	virtual ~cRegisterFilterItem_base() {
-	}
-	virtual bool check(struct RegisterRecord *rec) = 0;
-	void setCodebook(const char *table, const char *column);
-	string getCodebookValue(u_int32_t id);
-public:
-	eRegisterField registerField;
-	string codebook_table;
-	string codebook_column;
-};
-
-class cRegisterFilterItem_calldate : public cRegisterFilterItem_base {
-public:
-	cRegisterFilterItem_calldate(eRegisterField registerField,
-				     u_int32_t calldate, bool from = true)
-	 : cRegisterFilterItem_base(registerField) {
-		this->calldate = calldate;
-		this->from = from;
-	}
-	bool check(struct RegisterRecord *rec);
-private:
-	u_int32_t calldate;
-	bool from;
-};
-
-class cRegisterFilterItem_IP : public cRegisterFilterItem_base {
-public:
-	cRegisterFilterItem_IP(eRegisterField registerField)
-	 : cRegisterFilterItem_base(registerField) {
-	}
-	void addWhite(const char *ip) {
-		ipData.addWhite(ip);
-	}
-	bool check(struct RegisterRecord *rec);
-private:
-	ListIP_wb ipData;
-};
-
-class cRegisterFilterItem_CheckString : public cRegisterFilterItem_base {
-public:
-	cRegisterFilterItem_CheckString(eRegisterField registerField)
-	 : cRegisterFilterItem_base(registerField) {
-	}
-	void addWhite(const char *checkString) {
-		checkStringData.addWhite(checkString);
-	}
-	void addWhite(const char *table, const char *column, const char * id) {
-		addWhite(table, column, atol(id));
-	}
-	void addWhite(const char *table, const char *column, u_int32_t id) {
-		setCodebook(table, column);
-		checkStringData.addWhite(getCodebookValue(id).c_str());
-	}
-	bool check(struct RegisterRecord *rec);
-private:
-	ListCheckString_wb checkStringData;
-};
-
-class cRegisterFilterItem_numInterval : public cRegisterFilterItem_base {
-public:
-	cRegisterFilterItem_numInterval(eRegisterField registerField,
-					double num, bool from = true)
-	 : cRegisterFilterItem_base(registerField) {
-		this->num = num;
-		this->from = from;
-	}
-	bool check(struct RegisterRecord *rec);
-private:
-	double num;
-	bool from;
-};
-
-class cRegisterFilterItem_numList : public cRegisterFilterItem_base {
-public:
-	cRegisterFilterItem_numList(eRegisterField registerField)
-	 : cRegisterFilterItem_base(registerField) {
-	}
-	void addNum(u_int64_t num) {
-		nums.push_back(num);
-	}
-	bool check(struct RegisterRecord *rec);
-private:
-	list<u_int64_t> nums;
-};
-
-class cRegisterFilterItems {
-public:
-	void addFilter(cRegisterFilterItem_base *filter);
-	bool check(struct RegisterRecord *rec);
-	void free();
-public:
-	list<cRegisterFilterItem_base*> fItems;
-};
-
-class cRegisterFilter {
-public:
-	cRegisterFilter(char *filter);
-	~cRegisterFilter();
-	void addFilter(cRegisterFilterItem_base *filter1, cRegisterFilterItem_base *filter2 = NULL, cRegisterFilterItem_base *filter3 = NULL);
-	bool check(struct RegisterRecord *rec);
-public:
-	list<cRegisterFilterItems> fItems;
 };
 
 

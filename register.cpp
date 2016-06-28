@@ -1,6 +1,8 @@
 #include "voipmonitor.h"
 #include "register.h"
 #include "sql_db.h"
+#include "record_array.h"
+#include "fraud.h"
 
 
 #define NEW_REGISTER_CLEAN_PERIOD 30
@@ -13,6 +15,7 @@ extern char sql_cdr_ua_table[256];
 extern int opt_mysqlstore_max_threads_register;
 extern MySqlStore *sqlStore;
 extern int opt_nocdr;
+extern int opt_enable_fraud;
 
 #if NEW_REGISTERS
 Registers registers;
@@ -24,71 +27,6 @@ Registers registers;
 #define REG_EQ_STR(str1, str2)		((!(str1) || !*(str1)) && (!(str2) || !*(str2)) ? true : (!(str1) || !*(str1)) || (!(str2) || !*(str2)) ? false : !strcasecmp(str1, str2))
 #define REG_CMP_STR(str1, str2)		((!(str1) || !*(str1)) && (!(str2) || !*(str2)) ? 0 : (!(str1) || !*(str1)) ? -1 : (!(str2) || !*(str2)) ? 1 : strcasecmp(str1, str2))
 #define REG_CONV_STR(str)		((str) ? string(str) : string())
-
-
-struct RegisterField {
-	enum eTypeField {
-		tf_na,
-		tf_int,
-		tf_time,
-		tf_string
-	};
-	RegisterField() {
-		tf = tf_na;
-		i = 0;
-		s = NULL;
-	}
-	void free() {
-		if(s) {
-			delete [] s;
-			s = NULL;
-		}
-	}
-	void set(u_int64_t i, eTypeField tf = tf_int) {
-		this->tf = tf;
-		this->i = i;
-	}
-	void set(const char *s) {
-		tf = tf_string;
-		if(s && *s) {
-			this->s = new FILE_LINE char[strlen(s) + 1];
-			strcpy(this->s, s);
-		} else {
-			this->s = NULL;
-		}
-		this->i = 0;
-	}
-	string getJson();
-	bool operator == (const RegisterField& other) const {
-		return(i == other.i &&
-		       REG_EQ_STR(s, other.s));
-	}
-	bool operator < (const RegisterField& other) const {
-		return(i < other.i ? 1 : i > other.i ? 0 :
-		       REG_CMP_STR(s, other.s) < 0);
-	}
-	bool operator > (const RegisterField& other) const {  
-		return(!(*this < other || *this == other));
-	}
-	eTypeField tf;
-	u_int64_t i;
-	char *s;
-};
-
-struct RegisterRecord {
-	void free();
-	string getJson();
-	bool operator == (const RegisterRecord& other) const {  
-		return(fields[sortBy] == other.fields[sortBy] &&
-		       fields[rf_id] == other.fields[rf_id]);
-	}
-	bool operator < (const RegisterRecord& other) const {  
-		return(fields[sortBy] < other.fields[sortBy] ? 1 : fields[sortBy] > other.fields[sortBy] ? 0 :
-		       fields[rf_id] < other.fields[rf_id]);
-	}
-	RegisterField fields[rf__max];
-	eRegisterField sortBy;
-};
 
 
 struct RegisterFields {
@@ -120,41 +58,6 @@ struct RegisterFields {
 SqlDb *sqlDbSaveRegister = NULL;
 
 
-string RegisterField::getJson() {
-	switch(tf) {
-	case tf_int:
-		return(intToString(i));
-	case tf_time:
-		return('"' + sqlDateTimeString(i) + '"');
-	case tf_string:
-		if(s) {
-			return('"' + json_encode(s) + '"');
-		}
-	case tf_na:
-		return("null");
-	}
-	return("null");
-}
-
-void RegisterRecord::free() {
-	for(unsigned i = 0; i < (sizeof(fields) / sizeof(fields[0])); i++) {
-		fields[i].free();
-	}
-}
-
-string RegisterRecord::getJson() {
-	string json = "[";
-	for(unsigned i = 0; i < (sizeof(fields) / sizeof(fields[0])); i++) {
-		if(i) {
-			json += ",";
-		}
-		json += fields[i].getJson();
-	}
-	json += "]";
-	return(json);
-}
-
-
 RegisterId::RegisterId(Register *reg) {
 	this->reg = reg;
 }
@@ -165,7 +68,7 @@ bool RegisterId:: operator == (const RegisterId& other) const {
 	       REG_EQ_STR(this->reg->to_num, other.reg->to_num) &&
 	       REG_EQ_STR(this->reg->to_domain, other.reg->to_domain) &&
 	       REG_EQ_STR(this->reg->contact_num, other.reg->contact_num) &&
-	       REG_EQ_STR(this->reg->contact_domain, other.reg->contact_domain) &&
+	       //REG_EQ_STR(this->reg->contact_domain, other.reg->contact_domain) &&
 	       REG_EQ_STR(this->reg->digest_username, other.reg->digest_username));
 }
 
@@ -173,14 +76,14 @@ bool RegisterId:: operator < (const RegisterId& other) const {
 	int rslt_cmp_to_num;
 	int rslt_cmp_to_domain;
 	int rslt_cmp_contact_num;
-	int rslt_cmp_contact_domain;
+	//int rslt_cmp_contact_domain;
 	int rslt_cmp_digest_username;
 	return((this->reg->sipcallerip < other.reg->sipcallerip) ? 1 : (this->reg->sipcallerip > other.reg->sipcallerip) ? 0 :
 	       (this->reg->sipcalledip < other.reg->sipcalledip) ? 1 : (this->reg->sipcalledip > other.reg->sipcalledip) ? 0 :
 	       ((rslt_cmp_to_num = REG_CMP_STR(this->reg->to_num, other.reg->to_num)) < 0) ? 1 : (rslt_cmp_to_num > 0) ? 0 :
 	       ((rslt_cmp_to_domain = REG_CMP_STR(this->reg->to_domain, other.reg->to_domain)) < 0) ? 1 : (rslt_cmp_to_domain > 0) ? 0 :
 	       ((rslt_cmp_contact_num = REG_CMP_STR(this->reg->contact_num, other.reg->contact_num)) < 0) ? 1 : (rslt_cmp_contact_num > 0) ? 0 :
-	       ((rslt_cmp_contact_domain = REG_CMP_STR(this->reg->contact_domain, other.reg->contact_domain)) < 0) ? 1 : (rslt_cmp_contact_domain > 0) ? 0 :
+	       //((rslt_cmp_contact_domain = REG_CMP_STR(this->reg->contact_domain, other.reg->contact_domain)) < 0) ? 1 : (rslt_cmp_contact_domain > 0) ? 0 :
 	       ((rslt_cmp_digest_username = REG_CMP_STR(this->reg->digest_username, other.reg->digest_username)) < 0));
 }
 
@@ -191,6 +94,9 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		state_from = state_to = call->calltime();
 		counter = 1;
 		state = convRegisterState(call);
+		contact_domain = REG_EQ_STR(call->contact_domain, reg->contact_domain) ?
+				  NULL :
+				  REG_NEW_STR(call->contact_domain);
 		from_num = REG_EQ_STR(call->caller, reg->from_num) ?
 			    NULL :
 			    REG_NEW_STR(call->caller);
@@ -212,6 +118,8 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 	} else {
 		state_from = state_to = 0;
 		counter = 0;
+		state = rs_na;
+		contact_domain = NULL;
 		from_num = NULL;
 		from_name = NULL;
 		from_domain = NULL;
@@ -224,6 +132,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 }
 
 RegisterState::~RegisterState() {
+	REG_FREE_STR(contact_domain);
 	REG_FREE_STR(from_num);
 	REG_FREE_STR(from_name);
 	REG_FREE_STR(from_domain);
@@ -234,16 +143,18 @@ RegisterState::~RegisterState() {
 void RegisterState::copyFrom(const RegisterState *src) {
 	*this = *src;
 	char *tmp_str;
-	from_num = REG_NEW_STR(from_num);
-	from_name = REG_NEW_STR(from_name);
-	from_domain = REG_NEW_STR(from_domain);
-	digest_realm = REG_NEW_STR(digest_realm);
-	ua = REG_NEW_STR(ua);
+	contact_domain = REG_NEW_STR(src->contact_domain);
+	from_num = REG_NEW_STR(src->from_num);
+	from_name = REG_NEW_STR(src->from_name);
+	from_domain = REG_NEW_STR(src->from_domain);
+	digest_realm = REG_NEW_STR(src->digest_realm);
+	ua = REG_NEW_STR(src->ua);
 }
 
 bool RegisterState::isEq(Call *call, Register *reg) {
 	/*
 	if(state == convRegisterState(call)) cout << "ok state" << endl;
+	if(REG_EQ_STR(contact_domain ? contact_domain : reg->contact_domain, call->contact_domain)) cout << "ok contact_domain" << endl;
 	if(REG_EQ_STR(from_num ? from_num : reg->from_num, call->caller)) cout << "ok from_num" << endl;
 	if(REG_EQ_STR(from_name ? from_name : reg->from_name, call->callername)) cout << "ok from_name" << endl;
 	if(REG_EQ_STR(from_domain ? from_domain : reg->from_domain, call->caller_domain)) cout << "ok from_domain" << endl;
@@ -251,6 +162,7 @@ bool RegisterState::isEq(Call *call, Register *reg) {
 	if(REG_EQ_STR(ua ? ua : reg->ua, call->a_ua)) cout << "ok ua" << endl;
 	*/
 	return(state == convRegisterState(call) &&
+	       REG_EQ_STR(contact_domain ? contact_domain : reg->contact_domain, call->contact_domain) &&
 	       REG_EQ_STR(from_num ? from_num : reg->from_num, call->caller) &&
 	       REG_EQ_STR(from_name ? from_name : reg->from_name, call->callername) &&
 	       REG_EQ_STR(from_domain ? from_domain : reg->from_domain, call->caller_domain) &&
@@ -324,6 +236,10 @@ void Register::addState(Call *call) {
 		if(prevState && prevState->state == rs_Failed) {
 			saveFailedToDb(state, true);
 		}
+	}
+	if(opt_enable_fraud && isFraudReady()) {
+		RegisterState *prev_state = states_prev_last();
+		fraudRegister(call, state->state, prev_state ? prev_state->state : rs_na, prev_state ? prev_state->state_to : 0);
 	}
 	unlock_states();
 }
@@ -486,7 +402,7 @@ eRegisterState Register::getState() {
 	return(rslt_state);
 }
 
-bool Register::getDataRow(RegisterRecord *rec) {
+bool Register::getDataRow(RecordArray *rec) {
 	lock_states();
 	RegisterState *state = states_last();
 	if(!state) {
@@ -505,13 +421,13 @@ bool Register::getDataRow(RegisterRecord *rec) {
 		rec->fields[rf_id_sensor].set(state->id_sensor);
 	}
 	rec->fields[rf_fname].set(state->fname);
-	rec->fields[rf_calldate].set(state->state_from, RegisterField::tf_time);
+	rec->fields[rf_calldate].set(state->state_from, RecordArrayField::tf_time);
 	rec->fields[rf_from_num].set(state->from_num ? state->from_num : from_num);
 	rec->fields[rf_from_name].set(state->from_name ? state->from_name : from_name);
 	rec->fields[rf_from_domain].set(state->from_domain ? state->from_domain : from_domain);
 	rec->fields[rf_digestrealm].set(state->digest_realm ? state->digest_realm : digest_realm);
 	rec->fields[rf_expires].set(state->expires);
-	rec->fields[rf_expires_at].set(state->state_from + state->expires, RegisterField::tf_time);
+	rec->fields[rf_expires_at].set(state->state_from + state->expires, RecordArrayField::tf_time);
 	rec->fields[rf_state].set(state->state);
 	rec->fields[rf_ua].set(state->ua ? state->ua : ua);
 	if(rrd_count) {
@@ -682,11 +598,12 @@ string Registers::getDataTableJson(eRegisterState *states, u_int32_t limit, eReg
 	
 	unlock_registers();
 	
-	list<RegisterRecord> records;
+	list<RecordArray> records;
 	for(unsigned i = 0; i < list_registers_count; i++) {
-		RegisterRecord rec;
+		RecordArray rec(rf__max);
 		if(list_registers[i]->getDataRow(&rec)) {
 			rec.sortBy = sortBy;
+			rec.sortBy2 = rf_id;
 			records.push_back(rec);
 		}
 	}
@@ -704,28 +621,25 @@ string Registers::getDataTableJson(eRegisterState *states, u_int32_t limit, eReg
 	}
 	header += "]";
 	table = "[" + header;
-	if(records.size()) {
-		cRegisterFilter *regFilter = NULL;
-		if(filter && *filter) {
-			//cout << "FILTER: " << filter << endl;
-			regFilter = new cRegisterFilter(filter);
-			for(list<RegisterRecord>::iterator iter_rec = records.begin(); iter_rec != records.end(); ) {
-				if(!regFilter->check(&(*iter_rec))) {
-					iter_rec->free();
-					records.erase(iter_rec++);
-				} else {
-					iter_rec++;
-				}
+	if(records.size() && filter && *filter) {
+		//cout << "FILTER: " << filter << endl;
+		cRegisterFilter *regFilter = new cRegisterFilter(filter);
+		for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); ) {
+			if(!regFilter->check(&(*iter_rec))) {
+				iter_rec->free();
+				records.erase(iter_rec++);
+			} else {
+				iter_rec++;
 			}
-			delete regFilter;
 		}
+		delete regFilter;
 	}
 	if(records.size()) {
 		table += string(", [{\"total\": ") + intToString(records.size()) + "}]";
 		if(sortBy) {
 			records.sort();
 		}
-		list<RegisterRecord>::iterator iter_rec = desc ? records.end() : records.begin();
+		list<RecordArray>::iterator iter_rec = desc ? records.end() : records.begin();
 		if(desc) {
 			iter_rec--;
 		}
@@ -752,296 +666,6 @@ string Registers::getDataTableJson(eRegisterState *states, u_int32_t limit, eReg
 	}
 	table += "]";
 	return(table);
-}
-
-
-void cRegisterFilterItem_base::setCodebook(const char *table, const char *column) {
-	codebook_table = table;
-	codebook_column = column;
-}
-
-string cRegisterFilterItem_base::getCodebookValue(u_int32_t id) {
-	/*
-	if(opt_nocdr) {
-		return("");
-	}
-	*/
-	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("select " + codebook_column + " as value from " + codebook_table + " where id = " + intToString(id));
-	SqlDb_row row = sqlDb->fetchRow();
-	string rslt;
-	if(row) {
-		rslt = row["value"];
-	}
-	delete sqlDb;
-	return(rslt);
-}
-
-bool cRegisterFilterItem_calldate::check(RegisterRecord *rec) {
-	if((from && rec->fields[registerField].i < calldate) ||
-	   (!from && rec->fields[registerField].i >= calldate)) {
-		return(false);
-	}
-	return(true);
-}
-
-bool cRegisterFilterItem_CheckString::check(RegisterRecord *rec) {
-	if(!rec->fields[registerField].s ||
-	   !checkStringData.check(rec->fields[registerField].s)) {
-		return(false);
-	}
-	return(true);
-}
-
-bool cRegisterFilterItem_IP::check(RegisterRecord *rec) {
-	if(!ipData.checkIP(rec->fields[registerField].i)) {
-		return(false);
-	}
-	return(true);
-}
-
-bool cRegisterFilterItem_numInterval::check(RegisterRecord *rec) {
-	if((from && rec->fields[registerField].i < num) ||
-	   (!from && rec->fields[registerField].i >= num)) {
-		return(false);
-	}
-	return(true);
-}
-
-bool cRegisterFilterItem_numList::check(RegisterRecord *rec) {
-	if(nums.size()) {
-		for(list<u_int64_t>::iterator iter = nums.begin(); iter != nums.begin(); iter++) {
-			if(*iter == rec->fields[registerField].i) {
-				return(true);
-			}
-		}
-		return(false);
-	}
-	return(true);
-}
-
-void cRegisterFilterItems::addFilter(cRegisterFilterItem_base *filter) {
-	fItems.push_back(filter);
-}
-
-bool cRegisterFilterItems::check(struct RegisterRecord *rec) {
-	list<cRegisterFilterItem_base*>::iterator iter;
-	for(iter = fItems.begin(); iter !=fItems.end(); iter++) {
-		if((*iter)->check(rec)) {
-			return(true);
-		}
-	}
-	return(false);
-}
-
-void cRegisterFilterItems::free() {
-	list<cRegisterFilterItem_base*>::iterator iter;
-	for(iter = fItems.begin(); iter !=fItems.end(); iter++) {
-		delete *iter;
-	}
-}
-
-cRegisterFilter::cRegisterFilter(char *filter) {
-	JsonItem jsonData;
-	jsonData.parse(filter);
-	map<string, string> filterData;
-	for(unsigned int i = 0; i < jsonData.getLocalCount(); i++) {
-		JsonItem *item = jsonData.getLocalItem(i);
-		string filterTypeName = item->getLocalName();
-		string filterValue = item->getLocalValue();
-		if(filterValue.empty()) {
-			continue;
-		}
-		filterData[filterTypeName] = filterValue;
-	}
-	if(!filterData["calldate_from"].empty()) {
-		cRegisterFilterItem_calldate *filter = new cRegisterFilterItem_calldate(rf_calldate, atol(filterData["calldate_from"].c_str()), true);
-		addFilter(filter);
-	}
-	if(!filterData["calldate_to"].empty()) {
-		cRegisterFilterItem_calldate *filter = new cRegisterFilterItem_calldate(rf_calldate, atol(filterData["calldate_to"].c_str()), false);
-		addFilter(filter);
-	}
-	if(!filterData["sipcallerip"].empty() &&
-	   filterData["sipcallerdip_type"] == "0") {
-		cRegisterFilterItem_IP *filter1 =  new cRegisterFilterItem_IP(rf_sipcallerip);
-		filter1->addWhite(filterData["sipcallerip"].c_str());
-		cRegisterFilterItem_IP *filter2 = new cRegisterFilterItem_IP(rf_sipcalledip);
-		filter2->addWhite(filterData["sipcallerip"].c_str());
-		addFilter(filter1, filter2);
-	} else {
-		if(!filterData["sipcallerip"].empty()) {
-			cRegisterFilterItem_IP *filter = new cRegisterFilterItem_IP(rf_sipcallerip);
-			filter->addWhite(filterData["sipcallerip"].c_str());
-			addFilter(filter);
-		}
-		if(!filterData["sipcalledip"].empty()) {
-			cRegisterFilterItem_IP *filter = new cRegisterFilterItem_IP(rf_sipcalledip);
-			filter->addWhite(filterData["sipcalledip"].c_str());
-			addFilter(filter);
-		}
-	}
-	if(!filterData["from_num"].empty() &&
-	   filterData["numFTC_type"] == "0") {
-		cRegisterFilterItem_CheckString *filter1 = new cRegisterFilterItem_CheckString(rf_from_num);
-		filter1->addWhite(filterData["from_num"].c_str());
-		cRegisterFilterItem_CheckString *filter2 = new cRegisterFilterItem_CheckString(rf_to_num);
-		filter2->addWhite(filterData["from_num"].c_str());
-		cRegisterFilterItem_CheckString *filter3 = new cRegisterFilterItem_CheckString(rf_contact_num);
-		filter3->addWhite(filterData["from_num"].c_str());
-		addFilter(filter1, filter2, filter3);
-	} else {
-		if(!filterData["from_num"].empty()) {
-			cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_from_num);
-			filter->addWhite(filterData["from_num"].c_str());
-			addFilter(filter);
-		}
-		if(!filterData["to_num"].empty()) {
-			cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_to_num);
-			filter->addWhite(filterData["to_num"].c_str());
-			addFilter(filter);
-		}
-		if(!filterData["contact_num"].empty()) {
-			cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_contact_num);
-			filter->addWhite(filterData["contact_num"].c_str());
-			addFilter(filter);
-		}
-	}
-	if(!filterData["from_name"].empty()) {
-		cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_from_name);
-		filter->addWhite(filterData["from_name"].c_str());
-		addFilter(filter);
-	}
-	if(!filterData["from_domain"].empty() &&
-	   filterData["domainFTC_type"] == "0") {
-		cRegisterFilterItem_CheckString *filter1 = new cRegisterFilterItem_CheckString(rf_from_domain);
-		filter1->addWhite(filterData["from_domain"].c_str());
-		cRegisterFilterItem_CheckString *filter2 = new cRegisterFilterItem_CheckString(rf_to_domain);
-		filter2->addWhite(filterData["from_domain"].c_str());
-		cRegisterFilterItem_CheckString *filter3 = new cRegisterFilterItem_CheckString(rf_contact_domain);
-		filter3->addWhite(filterData["from_domain"].c_str());
-		addFilter(filter1, filter2, filter3);
-	} else {
-		if(!filterData["from_domain"].empty()) {
-			cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_from_domain);
-			filter->addWhite(filterData["from_domain"].c_str());
-			addFilter(filter);
-		}
-		if(!filterData["to_domain"].empty()) {
-			cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_to_domain);
-			filter->addWhite(filterData["to_domain"].c_str());
-			addFilter(filter);
-		}
-		if(!filterData["contact_domain"].empty()) {
-			cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_contact_domain);
-			filter->addWhite(filterData["contact_domain"].c_str());
-			addFilter(filter);
-		}
-	}
-	if(!filterData["from_domain_group_id"].empty() &&
-	   filterData["domainFTC_group_id_type"] == "0") {
-		cRegisterFilterItem_CheckString *filter1 = new cRegisterFilterItem_CheckString(rf_from_domain);
-		filter1->addWhite("cb_domain_groups", "domain", filterData["from_domain_group_id"].c_str());
-		cRegisterFilterItem_CheckString *filter2 = new cRegisterFilterItem_CheckString(rf_to_domain);
-		filter2->addWhite("cb_domain_groups", "domain", filterData["from_domain_group_id"].c_str());
-		cRegisterFilterItem_CheckString *filter3 = new cRegisterFilterItem_CheckString(rf_contact_domain);
-		filter3->addWhite("cb_domain_groups", "domain", filterData["from_domain_group_id"].c_str());
-		addFilter(filter1, filter2, filter3);
-	} else {
-		if(!filterData["from_domain_group_id"].empty()) {
-			cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_from_domain);
-			filter->addWhite("cb_domain_groups", "domain", filterData["from_domain_group_id"].c_str());
-			addFilter(filter);
-		}
-		if(!filterData["to_domain_group_id"].empty()) {
-			cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_to_domain);
-			filter->addWhite("cb_domain_groups", "domain", filterData["to_domain_group_id"].c_str());
-			addFilter(filter);
-		}
-		if(!filterData["contact_domain_group_id"].empty()) {
-			cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_contact_domain);
-			filter->addWhite("cb_domain_groups", "domain", filterData["contact_domain_group_id"].c_str());
-			addFilter(filter);
-		}
-	}
-	if(!filterData["digestusername"].empty()) {
-		cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_digestusername);
-		filter->addWhite(filterData["digestusername"].c_str());
-		addFilter(filter);
-	}
-	if(!filterData["digest_realm"].empty()) {
-		cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_digestrealm);
-		filter->addWhite(filterData["digest_realm"].c_str());
-		addFilter(filter);
-	}
-	if(!filterData["rrd_avg_ge"].empty()) {
-		cRegisterFilterItem_numInterval *filter = new cRegisterFilterItem_numInterval(rf_rrd_avg, atol(filterData["rrd_avg_ge"].c_str()), true);
-		addFilter(filter);
-	}
-	if(!filterData["rrd_avg_lt"].empty()) {
-		cRegisterFilterItem_numInterval *filter = new cRegisterFilterItem_numInterval(rf_rrd_avg, atol(filterData["rrd_avg_lt"].c_str()), false);
-		addFilter(filter);
-	}
-	if(!filterData["expires_ge"].empty()) {
-		cRegisterFilterItem_numInterval *filter = new cRegisterFilterItem_numInterval(rf_expires, atol(filterData["expires_ge"].c_str()), true);
-		addFilter(filter);
-	}
-	if(!filterData["expires_lt"].empty()) {
-		cRegisterFilterItem_numInterval *filter = new cRegisterFilterItem_numInterval(rf_expires, atol(filterData["expires_lt"].c_str()), false);
-		addFilter(filter);
-	}
-	if(!filterData["expires_at_from"].empty()) {
-		cRegisterFilterItem_calldate *filter = new cRegisterFilterItem_calldate(rf_expires_at, atol(filterData["expires_at_from"].c_str()), true);
-		addFilter(filter);
-	}
-	if(!filterData["expires_at_to"].empty()) {
-		cRegisterFilterItem_calldate *filter = new cRegisterFilterItem_calldate(rf_expires_at, atol(filterData["expires_at_to"].c_str()), false);
-		addFilter(filter);
-	}
-	if(!filterData["ua"].empty()) {
-		cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_ua);
-		filter->addWhite(filterData["ua"].c_str());
-		addFilter(filter);
-	}
-	if(!filterData["ua_group_id"].empty()) {
-		cRegisterFilterItem_CheckString *filter = new cRegisterFilterItem_CheckString(rf_ua);
-		filter->addWhite("cb_ua_groups", "ua", filterData["ua_group_id"].c_str());
-		addFilter(filter);
-	}
-	if(!filterData["sensor_id"].empty()) {
-		cRegisterFilterItem_numList *filter = new cRegisterFilterItem_numList(rf_id_sensor);
-		filter->addNum(atol(filterData["sensor_id"].c_str()));
-		addFilter(filter);
-	}
-}
-
-cRegisterFilter::~cRegisterFilter() {
-	list<cRegisterFilterItems>::iterator iter;
-	for(iter = fItems.begin(); iter !=fItems.end(); iter++) {
-		iter->free();
-	}
-}
-
-void cRegisterFilter::addFilter(cRegisterFilterItem_base *filter1, cRegisterFilterItem_base *filter2, cRegisterFilterItem_base *filter3) {
-	cRegisterFilterItems fSubItems;
-	fSubItems.addFilter(filter1);
-	if(filter2) {
-		fSubItems.addFilter(filter2);
-	}
-	if(filter3) {
-		fSubItems.addFilter(filter3);
-	}
-	fItems.push_back(fSubItems);
-}
-
-bool cRegisterFilter::check(struct RegisterRecord *rec) {
-	list<cRegisterFilterItems>::iterator iter;
-	for(iter = fItems.begin(); iter !=fItems.end(); iter++) {
-		if(!iter->check(rec)) {
-			return(false);
-		}
-	}
-	return(true);
 }
 
 

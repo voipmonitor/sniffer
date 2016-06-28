@@ -484,10 +484,14 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 FraudAlert::~FraudAlert() {
 }
 
+bool FraudAlert::isReg() {
+	return(type == _reg_ua ||
+	       type == _reg_short ||
+	       type == _reg_expire);
+}
+
 bool FraudAlert::loadAlert() {
 	SqlDb *sqlDb = createSqlObject();
-	char dbIdStr[10];
-	sprintf(dbIdStr, "%u", dbId);
 	sqlDb->query(string(
 		"select alerts.*,\
 		 (select group_concat(number) \
@@ -527,7 +531,7 @@ bool FraudAlert::loadAlert() {
 		  join cb_ua_groups g on (g.id=ag.ua_group_id)\
 		  where ag.type = 'ua_whitelist' and ag.alerts_id = alerts.id) as fraud_whitelist_ua_g\
 		 from alerts\
-		 where id = ") + dbIdStr);
+		 where id = ") + intToString(dbId));
 	dbRow = sqlDb->fetchRow();
 	if(!dbRow) {
 		delete sqlDb;
@@ -634,18 +638,17 @@ bool FraudAlert::loadAlert() {
 			}
 		}
 	}
+	loadAlertVirt();
 	delete sqlDb;
 	return(true);
 }
 
 void FraudAlert::loadFraudDef() {
 	SqlDb *sqlDb = createSqlObject();
-	char dbIdStr[10];
-	sprintf(dbIdStr, "%u", dbId);
 	sqlDb->query(string(
 		"select *\
 		 from alerts_fraud\
-		 where alerts_id = ") + dbIdStr);
+		 where alerts_id = ") + intToString(dbId));
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
 		if(fraudDebug) {
@@ -665,6 +668,9 @@ string FraudAlert::getTypeString() {
 	case _spc: return("spc");
 	case _rc: return("rc");
 	case _seq: return("seq");
+	case _reg_ua: return("reg_ua");
+	case _reg_short: return("reg_short");
+	case _reg_expire: return("reg_expire");
 	}
 	return("");
 }
@@ -721,6 +727,10 @@ bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
 	return(true);
 }
 
+bool FraudAlert::okFilter(sFraudRegisterInfo *registerInfo) {
+	return(true);
+}
+
 bool FraudAlert::okDayHour(time_t at) {
 	if((hour_from >= 0 && hour_to >= 0) ||
 	   day_of_week_set) {
@@ -767,6 +777,138 @@ void FraudAlert::evAlert(FraudAlertInfo *alertInfo) {
 	delete alertInfo;
 }
 
+FraudAlertReg_filter::FraudAlertReg_filter(FraudAlertReg *parent) {
+	filter = NULL;
+	ev_counter = 0;
+	start_interval = 0;
+	this->parent = parent;
+}
+
+FraudAlertReg_filter::~FraudAlertReg_filter() {
+	if(filter) {
+		delete filter;
+	}
+}
+
+void FraudAlertReg_filter::evRegister(sFraudRegisterInfo *registerInfo) {
+	if(!okFilter(registerInfo)) {
+		return;
+	}
+	++ev_counter;
+	ev_map[*(sFraudRegisterInfo_id*)registerInfo] = *(sFraudRegisterInfo_data*)registerInfo;
+	ev_map[*(sFraudRegisterInfo_id*)registerInfo].time_from_prev_state =
+		registerInfo->at > registerInfo->prev_state_at ? (registerInfo->at - registerInfo->prev_state_at) / 1000000ull : 0;
+	if(!start_interval) {
+		start_interval = registerInfo->at;
+	}
+	if(parent->intervalLength ?
+	    registerInfo->at - start_interval > parent->intervalLength * 1000000ull :
+    	    ev_counter >= parent->intervalLimit) {
+		if(ev_counter >= parent->intervalLimit) {
+			FraudAlertInfo_reg *alertInfo = new FILE_LINE FraudAlertInfo_reg(parent);
+			alertInfo->set(description.c_str(), ev_counter, &ev_map);
+			parent->evAlert(alertInfo);
+		}
+		ev_counter = 0;
+		ev_map.clear();
+		start_interval = registerInfo->at;
+	}
+}
+
+bool FraudAlertReg_filter::okFilter(sFraudRegisterInfo *registerInfo) {
+	if(!parent->okFilter(registerInfo)) {
+		return(false);
+	}
+	if(filter && !filter->check(registerInfo)) {
+		return(false);
+	}
+	return(true);
+}
+
+void FraudAlertReg_filter::setFilter(const char *description, const char *filter_str) {
+	this->description = description;
+	this->filter_str = filter_str;
+	if(!this->filter_str.empty()) {
+		filter = new cRegisterFilterFraud((char*)this->filter_str.c_str());
+	}
+}
+
+FraudAlertReg::FraudAlertReg(FraudAlert::eFraudAlertType type, unsigned int dbId) 
+ : FraudAlert(type, dbId) {
+}
+
+FraudAlertReg::~FraudAlertReg() {
+	map<u_int32_t, FraudAlertReg_filter*>::iterator iter;
+	for(iter = filters.begin(); iter != filters.end(); iter++) {
+		delete iter->second;
+	}
+	for(unsigned i = 0; i < ua_regex.size(); i++) {
+		delete ua_regex[i];
+	}
+}
+
+void FraudAlertReg::evRegister(sFraudRegisterInfo *registerInfo) {
+	map<u_int32_t, FraudAlertReg_filter*>::iterator iter;
+	for(iter = filters.begin(); iter != filters.end(); iter++) {
+		iter->second->evRegister(registerInfo);
+	}
+}
+
+bool FraudAlertReg::checkUA(const char *ua) {
+	if(!ua_regex.size()) {
+		return(true);
+	}
+	if(ua && *ua) {
+		for(unsigned i = 0; i < ua_regex.size(); i++) {
+			if(ua_regex[i]->match(ua) > 0) {
+				return(true);
+			}
+		}
+	}
+	return(false);
+}
+
+bool FraudAlertReg::checkRegisterTimeSecLe(sFraudRegisterInfo *registerInfo) {
+	return((registerInfo->state != rs_OK && registerInfo->state != rs_UnknownMessageOK) &&
+	       (registerInfo->prev_state == rs_OK || registerInfo->prev_state == rs_UnknownMessageOK) &&
+	       registerInfo->at > registerInfo->prev_state_at &&
+	       registerInfo->at - registerInfo->prev_state_at <= registerTimeSecLe * 1000000ull);
+}
+
+void FraudAlertReg::loadAlertVirt() {
+	intervalLength = atol(dbRow["reg_interval_length"].c_str());
+	intervalLimit = atol(dbRow["reg_interval_limit"].c_str());
+	vector<string> ua_split = split(dbRow["reg_ua"].c_str(), split(",|;", "|"), true);
+	for(unsigned i = 0; i < ua_split.size(); i ++) {
+		cRegExp *regExp = new cRegExp(ua_split[i].c_str());
+		if(regExp->isOK()) {
+			ua_regex.push_back(regExp);
+		} else {
+			delete regExp;
+		}
+	}
+	registerTimeSecLe = atol(dbRow["reg_register_time_sec_le"].c_str());
+	loadFilters();
+}
+
+void FraudAlertReg::loadFilters() {
+	FraudAlertReg_filter *filter = new FraudAlertReg_filter(this);
+	filter->setFilter("main", dbRow["config_filter_register"].c_str());
+	filters[0] = filter;
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query(string(
+		"select *\
+		 from alerts_reg_filters\
+		 where alerts_id = ") + intToString(dbId));
+	SqlDb_row dbRowFilters;
+	while(dbRowFilters = sqlDb->fetchRow()) {
+		filter = new FraudAlertReg_filter(this);
+		filter->setFilter(dbRowFilters["descr"].c_str(), dbRowFilters["config_filter_register"].c_str());
+		filters[atoi(dbRowFilters["id"].c_str())] = filter;
+	}
+	delete sqlDb;
+}
+
 FraudAlert_rcc_callInfo::FraudAlert_rcc_callInfo() {
 	this->last_alert_info_local = 0;
 	this->last_alert_info_international = 0;
@@ -797,13 +939,11 @@ FraudAlert_rcc_timePeriods::FraudAlert_rcc_timePeriods(const char *descr,
 
 void FraudAlert_rcc_timePeriods::loadTimePeriods() {
 	SqlDb *sqlDb = createSqlObject();
-	char dbIdStr[10];
-	sprintf(dbIdStr, "%u", dbId);
 	sqlDb->query(string(
 		"select *\
 		 from alerts_fraud_timeperiod\
 		 join cb_timeperiod on (cb_timeperiod.id = alerts_fraud_timeperiod.timeperiod_id)\
-		 where alerts_fraud_id = ") + dbIdStr);
+		 where alerts_fraud_id = ") + intToString(dbId));
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
 		timePeriods.push_back(TimePeriod(&row));
@@ -1622,8 +1762,8 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 	}
 }
 
-void FraudAlert_rc::loadAlertVirt(SqlDb_row *row) {
-	withResponse = atoi((*row)["fraud_register_only_with_response"].c_str());
+void FraudAlert_rc::loadAlertVirt() {
+	withResponse = atoi(dbRow["fraud_register_only_with_response"].c_str());
 }
 
 bool FraudAlert_rc::checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at) {
@@ -1736,6 +1876,68 @@ bool FraudAlert_seq::checkOkAlert(sIpNumber ipNumber, u_int64_t count, u_int64_t
 	return(true);
 }
 
+FraudAlertInfo_reg::FraudAlertInfo_reg(FraudAlert *alert) 
+ : FraudAlertInfo(alert) {
+}
+
+void FraudAlertInfo_reg::set(const char *filter_descr,
+			     unsigned int count, map<sFraudRegisterInfo_id, sFraudRegisterInfo_data> *reg_map) {
+	this->filter_descr = filter_descr;
+	this->count = count;
+	this->reg_map = reg_map;
+}
+
+string FraudAlertInfo_reg::getJson() {
+	JsonExport json;
+	this->setAlertJsonBase(&json);
+	json.add("filter_descr", filter_descr);
+	json.add("count", count);
+	JsonExport *incidents = json.addArray("incidents");
+	map<sFraudRegisterInfo_id, sFraudRegisterInfo_data>::iterator iter;
+	for(iter = reg_map->begin(); iter != reg_map->end(); iter++) {
+		JsonExport *incident = incidents->addObject("");
+		incident->add("sipcallerip", inet_ntostring(iter->first.sipcallerip));
+		incident->add("sipcalledip", inet_ntostring(iter->first.sipcalledip));
+		incident->add("to_num", iter->first.to_num);
+		incident->add("to_domain", iter->first.to_domain);
+		incident->add("contact_num", iter->first.contact_num);
+		incident->add("contact_domain", iter->first.contact_domain);
+		incident->add("digest_username", iter->first.digest_username);
+		incident->add("from_num", iter->second.from_num);
+		incident->add("from_name", iter->second.from_name);
+		incident->add("from_domain", iter->second.from_domain);
+		incident->add("digest_realm", iter->second.digest_realm);
+		incident->add("ua", iter->second.ua);
+		incident->add("state", iter->second.state);
+		incident->add("time_from_prev_state", iter->second.time_from_prev_state);
+	}
+	return(json.getJson());
+}
+
+FraudAlert_reg_ua::FraudAlert_reg_ua(unsigned int dbId)
+ : FraudAlertReg(_reg_ua, dbId) {
+}
+
+bool FraudAlert_reg_ua::okFilter(sFraudRegisterInfo *registerInfo) {
+	return(checkUA(registerInfo->ua.c_str()));
+}
+
+FraudAlert_reg_short::FraudAlert_reg_short(unsigned int dbId)
+ : FraudAlertReg(_reg_short, dbId) {
+}
+
+bool FraudAlert_reg_short::okFilter(sFraudRegisterInfo *registerInfo) {
+	return(checkRegisterTimeSecLe(registerInfo));
+}
+
+FraudAlert_reg_expire::FraudAlert_reg_expire(unsigned int dbId)
+ : FraudAlertReg(_reg_expire, dbId) {
+}
+
+bool FraudAlert_reg_expire::okFilter(sFraudRegisterInfo *registerInfo) {
+	return(registerInfo->state != rs_OK && registerInfo->state != rs_UnknownMessageOK);
+}
+
 
 FraudAlerts::FraudAlerts() {
 	threadPopCallInfo = 0;
@@ -1761,8 +1963,8 @@ void FraudAlerts::loadAlerts(bool lock) {
 		}
 	}
 	sqlDb->query("select id, alert_type, descr from alerts\
-		      where alert_type > 20 and\
-			    alert_type < 30 and\
+		      where ((alert_type > 20 and alert_type < 30) or\
+			     alert_type in (43, 44, 46)) and\
 			    (disable is null or not disable)");
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
@@ -1792,6 +1994,15 @@ void FraudAlerts::loadAlerts(bool lock) {
 			break;
 		case FraudAlert::_seq:
 			alert = new FILE_LINE FraudAlert_seq(dbId);
+			break;
+		case FraudAlert::_reg_ua:
+			alert = new FILE_LINE FraudAlert_reg_ua(dbId);
+			break;
+		case FraudAlert::_reg_short:
+			alert = new FILE_LINE FraudAlert_reg_short(dbId);
+			break;
+		case FraudAlert::_reg_expire:
+			alert = new FILE_LINE FraudAlert_reg_expire(dbId);
 			break;
 		}
 		if(alert && alert->loadAlert()) {
@@ -1901,6 +2112,15 @@ void FraudAlerts::evRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua,
 	eventQueue.push(eventInfo);
 }
 
+void FraudAlerts::evRegister(Call *call, eRegisterState state, eRegisterState prev_state, time_t prev_state_at) {
+	sFraudRegisterInfo registerInfo;
+	this->completeRegisterInfo(&registerInfo, call);
+	registerInfo.state = state;
+	registerInfo.prev_state = prev_state;
+	registerInfo.prev_state_at = prev_state_at * 1000000ull;
+	registerQueue.push(registerInfo);
+}
+
 void FraudAlerts::stopPopCallInfoThread(bool wait) {
 	termPopCallInfoThread = true;
 	while(wait && runPopCallInfoThread) {
@@ -1922,6 +2142,7 @@ void FraudAlerts::popCallInfoThread() {
 	sFraudCallInfo callInfo;
 	sFraudRtpStreamInfo rtpStreamInfo;
 	sFraudEventInfo eventInfo;
+	sFraudRegisterInfo registerInfo;
 	while(!is_terminating() && !termPopCallInfoThread) {
 		bool okPop = false;
 		if(callQueue.pop(&callInfo)) {
@@ -1949,6 +2170,15 @@ void FraudAlerts::popCallInfoThread() {
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
 				(*iter)->evEvent(&eventInfo);
+			}
+			unlock_alerts();
+			okPop = true;
+		}
+		if(registerQueue.pop(&registerInfo)) {
+			lock_alerts();
+			vector<FraudAlert*>::iterator iter;
+			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
+				(*iter)->evRegister(&registerInfo);
 			}
 			unlock_alerts();
 			okPop = true;
@@ -2032,6 +2262,22 @@ void FraudAlerts::completeRtpStreamInfoAfterPop(sFraudRtpStreamInfo *rtpStreamIn
 	rtpStreamInfo->rtp_src_ip_group = this->groupsIP.getGroupId(rtpStreamInfo->rtp_src_ip);
 	rtpStreamInfo->rtp_dst_ip_group = this->groupsIP.getGroupId(rtpStreamInfo->rtp_dst_ip);
 	this->completeNumberInfo_country_code(rtpStreamInfo, checkInternational);
+}
+
+void FraudAlerts::completeRegisterInfo(sFraudRegisterInfo *registerInfo, Call *call) {
+	registerInfo->sipcallerip = call->sipcallerip[0];
+	registerInfo->sipcalledip = call->sipcalledip[0];
+	registerInfo->to_num = call->called;
+	registerInfo->to_domain = call->called_domain;
+	registerInfo->contact_num = call->contact_num;
+	registerInfo->contact_domain = call->contact_domain;
+	registerInfo->digest_username = call->digest_username;
+	registerInfo->from_num = call->caller;
+	registerInfo->from_name = call->callername;
+	registerInfo->from_domain = call->caller_domain;
+	registerInfo->digest_realm = call->digest_realm;
+	registerInfo->ua = call->a_ua;
+	registerInfo->at = call->calltime() * 1000000ull;
 }
 
 void FraudAlerts::refresh() {
@@ -2242,6 +2488,14 @@ void fraudRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_le
 	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->evRegisterResponse(ip, at, ua, ua_len);
+		fraudAlerts_unlock();
+	}
+}
+
+void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state, time_t prev_state_at) {
+	if(isFraudReady()) {
+		fraudAlerts_lock();
+		fraudAlerts->evRegister(call, state, prev_state, prev_state_at);
 		fraudAlerts_unlock();
 	}
 }

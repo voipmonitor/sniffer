@@ -24,6 +24,7 @@
 #include <net/ethernet.h>
 #include <map>
 #include <time.h>
+#include <regex.h>
 
 #include "pstat.h"
 #include "tools_dynamic_buffer.h"
@@ -356,10 +357,44 @@ std::vector<std::string> &split(const std::string &s, char delim, std::vector<st
 std::vector<std::string> split(const std::string &s, char delim);
 std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false);
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false);
+
 bool check_regexp(const char *pattern);
 int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);
 int reg_match(const char *str, const char *pattern, vector<string> *matches, bool ignoreCase, const char *file = NULL, int line = 0);
 string reg_replace(const char *string, const char *pattern, const char *replace, const char *file = NULL, int line = 0);
+
+class cRegExp {
+public:
+	enum eFlags {
+		_regexp_icase = 1,
+		_regexp_sub = 2,
+		_regexp_matches = 2
+	};
+public:
+	cRegExp(const char *pattern, eFlags flags = _regexp_icase,
+		const char *file = NULL, int line = 0);
+	~cRegExp();
+	bool regex_create();
+	void regex_delete();
+	int match(const char *subject, vector<string> *matches = NULL);
+	string replace(const char *subject, const char *replace);
+	bool isOK() {
+		return(regex_init);
+	}
+	bool isError() {
+		return(regex_error);
+	}
+	const char *getPattern() {
+		return(pattern.c_str());
+	}
+private:
+	string pattern;
+	eFlags flags;
+	regex_t regex;
+	bool regex_init;
+	bool regex_error;
+};
+
 string inet_ntostring(u_int32_t ip);
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
@@ -2030,58 +2065,49 @@ private:
 class JsonExport {
 public:
 	enum eTypeItem {
+		_object,
+		_array,
 		_number,
 		_string,
 		_json
 	};
-	class JsonExportItem {
-	public:
-		virtual ~JsonExportItem() {}
-		void setTypeItem(eTypeItem typeItem) {
-			this->typeItem = typeItem;
-		}
-		void setName(const char *name) {
-			this->name = name;
-		}
-		virtual string getStringItem() {
-			return("");
-		}
-	protected:
-		eTypeItem typeItem;
-		string name;
-	};
-	template <class type_item>
-	class JsonExportItem_template : public JsonExportItem {
-	public:
-		void setContent(type_item content) {
-			this->content = content;
-		}
-		string getStringItem() {
-			ostringstream outStr;
-			outStr << '\"' << name << "\":";
-			if(typeItem == _string) {
-				outStr << '\"';
-			}
-			outStr << content;
-			if(typeItem == _string) {
-				outStr << '\"';
-			}
-			return(outStr.str());
-		}
-	private:
-		type_item content;
-	};
 public:
-	~JsonExport();
-	string getJson();
+	JsonExport();
+	virtual ~JsonExport();
+	void setTypeItem(eTypeItem typeItem) {
+		this->typeItem = typeItem;
+	}
+	eTypeItem getTypeItem() {
+		return(typeItem);
+	}
+	void setName(const char *name) {
+		this->name = name;
+	}
 	void add(const char *name, string content);
 	void add(const char *name, const char *content);
 	void add(const char *name, u_int64_t content);
+	JsonExport *addArray(const char *name);
+	JsonExport *addObject(const char *name);
 	void addJson(const char *name, const string &content);
 	void addJson(const char *name, const char *content);
-private:
-	vector<JsonExportItem*> items;
+	virtual string getJson(JsonExport *parent = NULL);
+protected:
+	eTypeItem typeItem;
+	string name;
+	vector<JsonExport*> items;
 };
+
+template <class type_item>
+class JsonExport_template : public JsonExport {
+public:
+	void setContent(type_item content) {
+		this->content = content;
+	}
+	string getJson(JsonExport *parent = NULL);
+private:
+	type_item content;
+};
+
 
 class AutoDeleteAtExit {
 public:
