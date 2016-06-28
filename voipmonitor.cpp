@@ -395,7 +395,7 @@ bool _save_sip_history_all_requests;
 bool _save_sip_history_all_responses;
 bool opt_cdr_sipresp = false;
 bool opt_rtpmap_by_callerd = false;
-bool opt_rtpmap_combination = false;
+bool opt_rtpmap_combination = true;
 bool opt_disable_rtp_warning = false;
 
 char opt_php_path[1024];
