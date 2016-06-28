@@ -1381,8 +1381,10 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 						break;
 				}
 			}
-			rtpmap[i++] = mtype + 1000*codec;
-			//printf("PAYLOAD: rtpmap[%d]:%d codec:%d, mimeSubtype [%d] [%s]\n", i, rtpmap[i], codec, mtype, mimeSubtype);
+			if(mtype || codec) {
+				rtpmap[i++] = mtype + 1000 * codec;
+				//printf("PAYLOAD: rtpmap[%d]:%d codec:%d, mimeSubtype [%d] [%s]\n", i, rtpmap[i], codec, mtype, mimeSubtype);
+			}
 		}
 		// return '\r' into sdp_text
 		*z = '\r';

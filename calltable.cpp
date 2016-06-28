@@ -143,6 +143,7 @@ extern bool _save_sip_history;
 extern int opt_saveudptl;
 extern rtp_read_thread *rtp_threads;
 extern bool opt_rtpmap_by_callerd;
+extern bool opt_rtpmap_combination;
 
 volatile int calls_counter = 0;
 volatile int registers_counter = 0;
@@ -722,7 +723,37 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// reinit rtpmap
-			memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
+			if(opt_rtpmap_combination) {
+				int *rtpmap_src = rtpmap;
+				int *rtpmap_dst = this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i];
+				for(int i_src = 0; i_src < MAX_RTPMAP - 1; i_src++) {
+					if(rtpmap_src[i_src]) {
+						int indexEqCodec = -1;
+						int indexZero = -1;
+						for(int i_dst = 0; i_dst < MAX_RTPMAP - 2; i_dst++) {
+							if(!rtpmap_dst[i_dst]) {
+								if(indexZero == -1) {
+									indexZero = i_dst;
+									break;
+								}
+							} else if(rtpmap_dst[i_dst] / 1000 == rtpmap_src[i_src] / 1000) {
+								if(indexEqCodec == -1) {
+									indexEqCodec = i_dst;
+									break;
+								}
+							}
+						}
+						if(indexEqCodec >= 0) {
+							rtpmap_dst[indexEqCodec] = rtpmap_src[i_src];
+						} else if(indexZero >= 0) {
+							rtpmap_dst[indexZero] = rtpmap_src[i_src];
+							rtpmap_dst[indexZero + 1] = 0;
+						}
+					}
+				}
+			} else {
+				memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
+			}
 			// force mark bit for reinvite for both direction
 			u_int64_t _forcemark_time = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
 			forcemark_lock();
