@@ -1,5 +1,14 @@
-16.0.2 7.5.2016
-================
+16.1 27.6.2016
+==============
+- fix call lenght for some cases (optimize use of set_last_packet_time and destroy_call_at) [VS-448]
+- add option --update-schema which forces db update (normally this is done automatically when upgrading between sniffers
+- Added loadavg type of graph into RRD charts [VG-366]
+- trim strings (white characters from start/end) when loading capture rules from database [VG-937]
+- add support for capturing SIP with MPLS header [VS-456]
+
+
+16.0.2 7.6.2016
+===============
 - fix mos_f1|f2|adapt_min_mult10 which could have random value sometimes (all versions)
 
 
