@@ -65,6 +65,42 @@ struct RecordArrayField {
 	char *s;
 };
 
+struct RecordArrayField2 : public RecordArrayField {
+	RecordArrayField2(RecordArrayField *other) : RecordArrayField() {
+		if(other) {
+			this->tf = other->tf;
+			this->i = other->i;
+			if(other->s && *other->s) {
+				this->s = new FILE_LINE char[strlen(other->s) + 1];
+				strcpy(this->s, other->s);
+			}
+		}
+	}
+	RecordArrayField2(const RecordArrayField2 &other) {
+		this->tf = other.tf;
+		this->i = other.i;
+		if(other.s && *other.s) {
+			this->s = new FILE_LINE char[strlen(other.s) + 1];
+			strcpy(this->s, other.s);
+		} else {
+			this->s = NULL;
+		}
+	}
+	~RecordArrayField2() {
+		free();
+	}
+	RecordArrayField2& operator = (const RecordArrayField2& other) {
+		free();
+		this->tf = other.tf;
+		this->i = other.i;
+		if(other.s && *other.s) {
+			this->s = new FILE_LINE char[strlen(other.s) + 1];
+			strcpy(this->s, other.s);
+		}
+		return(*this);
+	}
+};
+
 struct RecordArray {
 	RecordArray(unsigned max_fields);
 	void free();

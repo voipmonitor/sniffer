@@ -101,6 +101,7 @@ public:
 	inline void saveStateToDb(RegisterState *state, bool enableBatchIfPossible = true);
 	inline void saveFailedToDb(RegisterState *state, bool force = false, bool enableBatchIfPossible = true);
 	inline eRegisterState getState();
+	inline u_int32_t getStateFrom();
 	inline RegisterState *states_last() {
 		return(countStates ? states[0] : NULL);
 	}
@@ -152,7 +153,7 @@ public:
 	void cleanup(u_int32_t act_time);
 	void clean_all();
 	inline u_int64_t getNewRegisterFailedId(int sensorId);
-	string getDataTableJson(eRegisterState *states, u_int32_t limit, eRegisterField sortBy, bool desc = false, char *filter = NULL);
+	string getDataTableJson(char *params, bool *zip = NULL);
 	void lock_registers() {
 		while(__sync_lock_test_and_set(&_sync_registers, 1));
 	}

@@ -154,7 +154,7 @@ void RegisterState::copyFrom(const RegisterState *src) {
 bool RegisterState::isEq(Call *call, Register *reg) {
 	/*
 	if(state == convRegisterState(call)) cout << "ok state" << endl;
-	if(REG_EQ_STR(contact_domain ? contact_domain : reg->contact_domain, call->contact_domain)) cout << "ok contact_domain" << endl;
+	//if(REG_EQ_STR(contact_domain ? contact_domain : reg->contact_domain, call->contact_domain)) cout << "ok contact_domain" << endl;
 	if(REG_EQ_STR(from_num ? from_num : reg->from_num, call->caller)) cout << "ok from_num" << endl;
 	if(REG_EQ_STR(from_name ? from_name : reg->from_name, call->callername)) cout << "ok from_name" << endl;
 	if(REG_EQ_STR(from_domain ? from_domain : reg->from_domain, call->caller_domain)) cout << "ok from_domain" << endl;
@@ -162,7 +162,7 @@ bool RegisterState::isEq(Call *call, Register *reg) {
 	if(REG_EQ_STR(ua ? ua : reg->ua, call->a_ua)) cout << "ok ua" << endl;
 	*/
 	return(state == convRegisterState(call) &&
-	       REG_EQ_STR(contact_domain ? contact_domain : reg->contact_domain, call->contact_domain) &&
+	       //REG_EQ_STR(contact_domain ? contact_domain : reg->contact_domain, call->contact_domain) &&
 	       REG_EQ_STR(from_num ? from_num : reg->from_num, call->caller) &&
 	       REG_EQ_STR(from_name ? from_name : reg->from_name, call->callername) &&
 	       REG_EQ_STR(from_domain ? from_domain : reg->from_domain, call->caller_domain) &&
@@ -402,6 +402,14 @@ eRegisterState Register::getState() {
 	return(rslt_state);
 }
 
+u_int32_t Register::getStateFrom() {
+	lock_states();
+	RegisterState *state = states_last();
+	u_int32_t state_from = state->state_from ? state->state_from : 0;
+	unlock_states();
+	return(state_from);
+}
+
 bool Register::getDataRow(RecordArray *rec) {
 	lock_states();
 	RegisterState *state = states_last();
@@ -460,7 +468,7 @@ void Registers::add(Call *call) {
 	for(int q = 1; q <= 3; q++) {
 	sprintf(call->digest_username, "%s-%i", digest_username_orig.c_str(), q);
 	*/
- 
+	
 	if(!convRegisterState(call)) {
 		return;
 	}
@@ -566,7 +574,48 @@ u_int64_t Registers::getNewRegisterFailedId(int sensorId) {
 	return(id);
 }
 
-string Registers::getDataTableJson(eRegisterState *states, u_int32_t limit, eRegisterField sortBy, bool desc, char *filter) {
+string Registers::getDataTableJson(char *params, bool *zip) {
+ 
+	JsonItem jsonParams;
+	jsonParams.parse(params);
+	
+	eRegisterState states[10];
+	memset(states, 0, sizeof(states));
+	unsigned states_count = 0;
+	string states_str = jsonParams.getValue("states");
+	if(!states_str.empty()) {
+		vector<string> states_str_vect = split(states_str, ',');
+		for(unsigned i = 0; i < states_str_vect.size(); i++) {
+			if(states_str_vect[i] == "OK") {			states[states_count++] = rs_OK;
+			} else if(states_str_vect[i] == "Failed") {		states[states_count++] = rs_Failed;
+			} else if(states_str_vect[i] == "UnknownMessageOK") {	states[states_count++] = rs_UnknownMessageOK;
+			} else if(states_str_vect[i] == "ManyRegMessages") {	states[states_count++] = rs_ManyRegMessages;
+			} else if(states_str_vect[i] == "Expired") {		states[states_count++] = rs_Expired;
+			} else if(states_str_vect[i] == "Unregister") {		states[states_count++] = rs_Unregister;
+			}
+		}
+	}
+	
+	u_int32_t limit = atol(jsonParams.getValue("limit").c_str());
+	string sortBy = jsonParams.getValue("sort_field");
+	eRegisterField sortById = convRegisterFieldToFieldId(sortBy.c_str());
+	string sortDir = jsonParams.getValue("sort_dir");
+	std::transform(sortDir.begin(), sortDir.end(), sortDir.begin(), ::tolower);
+	bool sortDesc = sortDir.substr(0, 4) == "desc";
+	
+	u_int32_t stateFromLe = atol(jsonParams.getValue("state_from_le").c_str());
+	string duplicityOnlyBy = jsonParams.getValue("duplicity_only_by");
+	eRegisterField duplicityOnlyById = convRegisterFieldToFieldId(duplicityOnlyBy.c_str());
+	string duplicityOnlyCheck = jsonParams.getValue("duplicity_only_check");
+	eRegisterField duplicityOnlyCheckId = convRegisterFieldToFieldId(duplicityOnlyCheck.c_str());
+	u_int32_t rrdGe = atol(jsonParams.getValue("rrd_ge").c_str());
+	
+	if(zip) {
+		string zipParam = jsonParams.getValue("zip");
+		std::transform(zipParam.begin(), zipParam.end(), zipParam.begin(), ::tolower);
+		*zip = zipParam == "yes" || zipParam == "yes";
+	}
+ 
 	lock_registers_erase();
 	lock_registers();
 	
@@ -577,21 +626,32 @@ string Registers::getDataTableJson(eRegisterState *states, u_int32_t limit, eReg
 	//cout << "**** 001 " << getTimeMS() << endl;
 	
 	for(map<RegisterId, Register*>::iterator iter_reg = registers.begin(); iter_reg != registers.end(); iter_reg++) {
-		bool okState = false;
-		if(states) {
+		if(states_count) {
+			bool okState = false;
 			eRegisterState state = iter_reg->second->getState();
-			for(unsigned i = 0; states[i]; i++) {
+			for(unsigned i = 0; i < states_count; i++) {
 				if(states[i] == state) {
 					okState = true;
 					break;
 				}
 			}
-		} else {
-			okState = true;
+			if(!okState) {
+				continue;
+			}
 		}
-		if(okState) {
-			list_registers[list_registers_count++] = iter_reg->second;
+		if(stateFromLe) {
+			u_int32_t stateFrom = iter_reg->second->getStateFrom();
+			if(!stateFrom || stateFrom > stateFromLe) {
+				continue;
+			}
 		}
+		if(rrdGe) {
+			if(!iter_reg->second->rrd_count ||
+			   iter_reg->second->rrd_sum / iter_reg->second->rrd_count < rrdGe) {
+				continue;
+			}
+		}
+		list_registers[list_registers_count++] = iter_reg->second;
 	}
 	
 	//cout << "**** 002 " << getTimeMS() << endl;
@@ -602,7 +662,7 @@ string Registers::getDataTableJson(eRegisterState *states, u_int32_t limit, eReg
 	for(unsigned i = 0; i < list_registers_count; i++) {
 		RecordArray rec(rf__max);
 		if(list_registers[i]->getDataRow(&rec)) {
-			rec.sortBy = sortBy;
+			rec.sortBy = sortById;
 			rec.sortBy2 = rf_id;
 			records.push_back(rec);
 		}
@@ -621,32 +681,70 @@ string Registers::getDataTableJson(eRegisterState *states, u_int32_t limit, eReg
 	}
 	header += "]";
 	table = "[" + header;
-	if(records.size() && filter && *filter) {
-		//cout << "FILTER: " << filter << endl;
-		cRegisterFilter *regFilter = new cRegisterFilter(filter);
-		for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); ) {
-			if(!regFilter->check(&(*iter_rec))) {
-				iter_rec->free();
-				records.erase(iter_rec++);
+	if(records.size()) {
+		string filter = jsonParams.getValue("filter");
+		if(!filter.empty()) {
+			//cout << "FILTER: " << filter << endl;
+			cRegisterFilter *regFilter = new cRegisterFilter(filter.c_str());
+			for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); ) {
+				if(!regFilter->check(&(*iter_rec))) {
+					iter_rec->free();
+					records.erase(iter_rec++);
+				} else {
+					iter_rec++;
+				}
+			}
+			delete regFilter;
+		}
+	}
+	if(records.size() && duplicityOnlyById && duplicityOnlyCheckId) {
+		map<RecordArrayField2, list<RecordArrayField2> > dupl_map;
+		map<RecordArrayField2, list<RecordArrayField2> >::iterator dupl_map_iter;
+		for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); iter_rec++) {
+			RecordArrayField2 duplBy(&iter_rec->fields[duplicityOnlyById]);
+			RecordArrayField2 duplCheck(&iter_rec->fields[duplicityOnlyCheckId]);
+			dupl_map_iter = dupl_map.find(duplBy);
+			if(dupl_map_iter == dupl_map.end()) {
+				dupl_map[duplBy].push_back(duplCheck);
 			} else {
-				iter_rec++;
+				list<RecordArrayField2> *l = &dupl_map_iter->second;
+				bool exists = false;
+				for(list<RecordArrayField2>::iterator iter = l->begin(); iter != l->begin(); iter++) {
+					if(*iter == duplCheck) {
+						exists = true;
+						break;
+					}
+				}
+				if(!exists) {
+					l->push_back(duplCheck);
+				}
 			}
 		}
-		delete regFilter;
+		for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); ) {
+			RecordArrayField2 duplBy(&iter_rec->fields[duplicityOnlyById]);
+			dupl_map_iter = dupl_map.find(duplBy);
+			if(dupl_map_iter != dupl_map.end() &&
+			   dupl_map_iter->second.size() > 1) {
+				iter_rec++;
+			} else {
+				iter_rec->free();
+				records.erase(iter_rec++);
+			}
+		}
 	}
 	if(records.size()) {
 		table += string(", [{\"total\": ") + intToString(records.size()) + "}]";
-		if(sortBy) {
+		if(sortById) {
 			records.sort();
 		}
-		list<RecordArray>::iterator iter_rec = desc ? records.end() : records.begin();
-		if(desc) {
+		list<RecordArray>::iterator iter_rec = sortDesc ? records.end() : records.begin();
+		if(sortDesc) {
 			iter_rec--;
 		}
 		u_int32_t counter = 0;
 		while(counter < records.size() && iter_rec != records.end()) {
 			table += "," + iter_rec->getJson();
-			if(desc) {
+			if(sortDesc) {
 				if(iter_rec != records.begin()) {
 					iter_rec--;
 				} else {

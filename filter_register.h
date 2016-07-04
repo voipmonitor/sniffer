@@ -152,7 +152,7 @@ public:
 
 class cRegisterFilter {
 public:
-	cRegisterFilter(char *filter);
+	cRegisterFilter(const char *filter);
 	virtual ~cRegisterFilter();
 	void addFilter(cRegisterFilterItem_base *filter1, cRegisterFilterItem_base *filter2 = NULL, cRegisterFilterItem_base *filter3 = NULL);
 	bool check(void *rec) {

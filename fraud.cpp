@@ -1896,19 +1896,22 @@ string FraudAlertInfo_reg::getJson() {
 	map<sFraudRegisterInfo_id, sFraudRegisterInfo_data>::iterator iter;
 	for(iter = reg_map->begin(); iter != reg_map->end(); iter++) {
 		JsonExport *incident = incidents->addObject("");
-		incident->add("sipcallerip", inet_ntostring(iter->first.sipcallerip));
-		incident->add("sipcalledip", inet_ntostring(iter->first.sipcalledip));
+		incident->add("sipcallerip", inet_ntostring(htonl(iter->first.sipcallerip)));
+		incident->add("sipcalledip", inet_ntostring(htonl(iter->first.sipcalledip)));
 		incident->add("to_num", iter->first.to_num);
 		incident->add("to_domain", iter->first.to_domain);
 		incident->add("contact_num", iter->first.contact_num);
 		incident->add("contact_domain", iter->first.contact_domain);
-		incident->add("digest_username", iter->first.digest_username);
+		incident->add("digestusername", iter->first.digest_username);
 		incident->add("from_num", iter->second.from_num);
 		incident->add("from_name", iter->second.from_name);
 		incident->add("from_domain", iter->second.from_domain);
-		incident->add("digest_realm", iter->second.digest_realm);
+		incident->add("digestrealm", iter->second.digest_realm);
 		incident->add("ua", iter->second.ua);
 		incident->add("state", iter->second.state);
+		incident->add("prev_state", iter->second.prev_state);
+		incident->add("at", sqlDateTimeString(iter->second.at / 1000000ull));
+		incident->add("prev_state_at", sqlDateTimeString(iter->second.prev_state_at / 1000000ull));
 		incident->add("time_from_prev_state", iter->second.time_from_prev_state);
 	}
 	return(json.getJson());

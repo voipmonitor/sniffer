@@ -847,27 +847,16 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		return 0;
 	} else if(strstr(buf, "listregisters") != NULL) {
 		string rslt_data;
-		unsigned limit = 0;
-		char sortBy[21] = "";
-		char direction[11] = "asc";
-		char zip[11] = "";
-		char filter[10001] = "";
 		char *pointer;
 		if((pointer = strchr(buf, '\n')) != NULL) {
 			*pointer = 0;
 		}
-		sscanf(buf + strlen("listregisters") + 1, "%u %20s %10s %10s %10000[^\n]", &limit, sortBy, direction, zip, filter);
+		bool zip = false;
 		#if NEW_REGISTERS
-		eRegisterField sortById = convRegisterFieldToFieldId(sortBy);
 		extern Registers registers;
-		eRegisterState states[] = {
-			rs_OK,
-			rs_UnknownMessageOK,
-			rs_na
-		};
-		rslt_data = registers.getDataTableJson(states, limit, sortById ? sortById : rf_calldate, !strcmp(direction, "desc"), filter);
+		rslt_data = registers.getDataTableJson(buf + strlen("listregisters") + 1, &zip);
 		#endif
-		if(sendString(&rslt_data, client, sshchannel, !strcmp(zip, "zip") || !strcmp(zip, "yes")) == -1){
+		if(sendString(&rslt_data, client, sshchannel, zip) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}

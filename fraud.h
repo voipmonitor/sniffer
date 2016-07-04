@@ -572,13 +572,13 @@ struct sFraudRegisterInfo_data {
 	string digest_realm;
 	string ua;
 	eRegisterState state;
+	eRegisterState prev_state;
 	u_int64_t at;
+	u_int64_t prev_state_at;
 	u_int32_t time_from_prev_state;
 };
 
 struct sFraudRegisterInfo : public sFraudRegisterInfo_id, public sFraudRegisterInfo_data {
-	eRegisterState prev_state;
-	u_int64_t prev_state_at;
 };
 
 class FraudAlertInfo {

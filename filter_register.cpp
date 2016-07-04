@@ -36,7 +36,7 @@ void cRegisterFilterItems::free() {
 	}
 }
 
-cRegisterFilter::cRegisterFilter(char *filter) {
+cRegisterFilter::cRegisterFilter(const char *filter) {
 	JsonItem jsonData;
 	jsonData.parse(filter);
 	map<string, string> filterData;
