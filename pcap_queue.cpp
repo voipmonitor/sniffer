@@ -520,6 +520,9 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 		return(-3);
 	}
 	int sizeRestoreBuffer = this->getSizeSaveBufferFromRestoreBuffer();
+	if(this->restoreBufferSize - _size > (size_t)sizeRestoreBuffer) {
+		return(-4);
+	}
 	if(sizeRestoreBuffer < 0 ||
 	   this->restoreBufferSize < (size_t)sizeRestoreBuffer) {
 		return(0);
@@ -5068,8 +5071,6 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		size_t offsetBufferSyncRead;
 		size_t offsetBuffer;
 		size_t readLen;
-		bool beginBlock = false;
-		bool endBlock = false;
 		bool syncBeginBlock = true;
 		bool forceStop = false;
 		unsigned countErrors = 0;
@@ -5189,7 +5190,6 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									buffer = buffer2;
 								}
 								syncBeginBlock = false;
-								beginBlock = true;
 								blockStore->destroyRestoreBuffer();
 								if(DEBUG_VERBOSE) {
 									cout << "SYNCED" << endl;
@@ -5223,7 +5223,6 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									error = "bad headers";
 								} else {
 									blockStore->sensor_ip = this->packetServerConnections[arg2]->socketClientIPN;
-									endBlock = true;
 									while(!this->pcapStoreQueue.push(blockStore, false)) {
 										if(TERMINATING || forceStop) {
 											break;
@@ -5247,6 +5246,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									break;
 								case -3:
 									error = "missing / bad block id";
+									break;
+								case -4:
+									error = "oversize";
 									break;
 								default:
 									error = "unknow error";
@@ -5278,21 +5280,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								countErrors = 0;
 							}
 						}
-						if(!beginBlock && !endBlock && !syncBeginBlock) {
-							u_char *pointToBeginBlock = (u_char*)memmem(buffer, bufferLen, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
-							if(pointToBeginBlock && pointToBeginBlock != buffer) {
-								syncBeginBlock = true;
-							}
-						}
 						bufferLen = 0;
 						offsetBufferSyncRead = 0;
-						beginBlock = false;
-						endBlock = false;
-						if(syncBeginBlock) {
-							syslog(LOG_INFO, "lost synchronize in connection %s - %i",
-							       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
-							       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
-						}
 					}
 				}
 			}
