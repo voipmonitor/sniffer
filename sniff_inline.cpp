@@ -478,7 +478,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				if(opt_dup_check_ipheader || (ppf & ppf_defragInPQout)) {
 					// check duplicates based on full ip header and data 
 					if(ppf & ppf_defragInPQout) {
-						MD5_Update(&ppd->ctx, ppd->header_ip, ntohs(ppd->header_ip->tot_len));
+						u_int32_t caplen = header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen();
+						MD5_Update(&ppd->ctx, ppd->header_ip, MIN(caplen - ppd->header_ip_offset, ntohs(ppd->header_ip->tot_len)));
 					} else {
 						MD5_Update(&ppd->ctx, ppd->header_ip, MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ntohs(ppd->header_ip->tot_len)));
 					}

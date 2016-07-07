@@ -12,7 +12,7 @@
 #include "voipmonitor.h"
 #include "md5.h"
 
-#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_05"
+#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_06"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
 
 
@@ -135,6 +135,7 @@ struct pcap_block_store {
 	struct pcap_block_store_header {
 		pcap_block_store_header() {
 			strncpy(this->title, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
+			this->hm = plus;
 			this->size = 0;
 			this->size_compress = 0;
 			this->count = 0;
@@ -149,6 +150,7 @@ struct pcap_block_store {
 		uint16_t dlink;
 		int16_t sensor_id;
 		char ifname[10];
+		header_mode hm;
 	};
 	pcap_block_store(header_mode hm = plus) {
 		this->hm = hm;

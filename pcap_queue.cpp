@@ -439,6 +439,7 @@ u_char* pcap_block_store::getSaveBuffer() {
 	size_t sizeSaveBuffer = this->getSizeSaveBuffer();
 	u_char *saveBuffer = new FILE_LINE u_char[sizeSaveBuffer];
 	pcap_block_store_header header;
+	header.hm = this->hm;
 	header.size = this->size;
 	header.size_compress = this->size_compress;
 	header.count = this->count;
@@ -462,6 +463,7 @@ u_char* pcap_block_store::getSaveBuffer() {
 
 void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	pcap_block_store_header *header = (pcap_block_store_header*)saveBuffer;
+	this->hm = header->hm;
 	this->size = header->size;
 	this->size_compress = header->size_compress;
 	this->count = header->count;
@@ -1719,222 +1721,228 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	double t2cpu = this->getCpuUsagePerc(writeThread, true);
 	if(t2cpu >= 0) {
-		outStrStat << "t2CPU[" << "pb:" << setprecision(1) << t2cpu;
-		if(pcapQueueQ_outThread_defrag) {
-			double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(true);
-			if(defrag_cpu >= 0) {
-				outStrStat << "/defrag:" << setprecision(1) << defrag_cpu;
-			}
-		}
-		if(opt_ipaccount) {
-			double ipacc_cpu = this->getCpuUsagePerc(destroyBlocksThread, true);
-			if(ipacc_cpu >= 0) {
-				outStrStat << "/ipacc:" << setprecision(1) << ipacc_cpu;
-			}
-		}
-		double last_t2cpu_preprocess_packet_out_thread_check_next_level = -2;
-		double last_t2cpu_preprocess_packet_out_thread_rtp = -2;
-		int count_t2cpu = 1;
-		double sum_t2cpu = t2cpu;
-		last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu;
-		last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu;
-		for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
-			double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
-			if(t2cpu_preprocess_packet_out_thread >= 0) {
-				outStrStat << "/" 
-					   << preProcessPacket[i]->getShortcatTypeThread()
-					   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
-				if(sverb.qring_stat) {
-					double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
-					if(qringFillingPerc > 0) {
-						outStrStat << "r" << qringFillingPerc;
-					}
+		if(isMirrorSender()) {
+			outStrStat << "t2CPU[" << t2cpu;
+		} else {
+			outStrStat << "t2CPU[" << "pb:" << setprecision(1) << t2cpu;
+			if(pcapQueueQ_outThread_defrag) {
+				double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(true);
+				if(defrag_cpu >= 0) {
+					outStrStat << "/defrag:" << setprecision(1) << defrag_cpu;
 				}
-				if(i == 0 && sverb.alloc_stat) {
-					if(preProcessPacket[i]->getAllocCounter(1) || preProcessPacket[i]->getAllocStackCounter(1)) {
-						unsigned long stack = preProcessPacket[i]->getAllocStackCounter(0) - preProcessPacket[i]->getAllocStackCounter(1);
-						unsigned long alloc = preProcessPacket[i]->getAllocCounter(0) - preProcessPacket[i]->getAllocCounter(1);
-						outStrStat << "a" << stack << ':' << alloc << ':';
-						if(alloc + stack) {
-							outStrStat << (stack * 100 / (alloc + stack)) << '%';
-						} else {
-							outStrStat << '-';
+			}
+			if(opt_ipaccount) {
+				double ipacc_cpu = this->getCpuUsagePerc(destroyBlocksThread, true);
+				if(ipacc_cpu >= 0) {
+					outStrStat << "/ipacc:" << setprecision(1) << ipacc_cpu;
+				}
+			}
+			double last_t2cpu_preprocess_packet_out_thread_check_next_level = -2;
+			double last_t2cpu_preprocess_packet_out_thread_rtp = -2;
+			int count_t2cpu = 1;
+			double sum_t2cpu = t2cpu;
+			last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu;
+			last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu;
+			for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
+				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
+				if(t2cpu_preprocess_packet_out_thread >= 0) {
+					outStrStat << "/" 
+						   << preProcessPacket[i]->getShortcatTypeThread()
+						   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+					if(sverb.qring_stat) {
+						double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
+						if(qringFillingPerc > 0) {
+							outStrStat << "r" << qringFillingPerc;
 						}
 					}
-					preProcessPacket[i]->setAllocCounter(preProcessPacket[i]->getAllocCounter(0), 1);
-					preProcessPacket[i]->setAllocStackCounter(preProcessPacket[i]->getAllocStackCounter(0), 1);
-				}
-				++count_t2cpu;
-				sum_t2cpu += t2cpu_preprocess_packet_out_thread;
-				if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
-				   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
-				   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_rtp) {
-					last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
-				}
-				if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
-				   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register) {
-					last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
-				}
-			}
-		} 
-		rrdtCPU_t2 = sum_t2cpu;
-		int countRtpRhThreads = 0;
-		bool needAddRtpRhThreads = false;
-		int countRtpRdThreads = 0;
-		bool needAddRtpRdThreads = false;
-		if(processRtpPacketHash) {
-			for(int i = 0; i < 1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
-				if(i == 0 || processRtpPacketHash->existsNextThread(i - 1)) {
-					double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(true, i);
-					if(t2cpu_process_rtp_packet_out_thread >= 0) {
-						outStrStat << "/" << (i == 0 ? "rm:" : "rh:")
-							   << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
-						if(i == 0 && sverb.qring_stat) {
-							double qringFillingPerc = processRtpPacketHash->getQringFillingPerc();
-							if(qringFillingPerc > 0) {
-								outStrStat << "r" << qringFillingPerc;
+					if(i == 0 && sverb.alloc_stat) {
+						if(preProcessPacket[i]->getAllocCounter(1) || preProcessPacket[i]->getAllocStackCounter(1)) {
+							unsigned long stack = preProcessPacket[i]->getAllocStackCounter(0) - preProcessPacket[i]->getAllocStackCounter(1);
+							unsigned long alloc = preProcessPacket[i]->getAllocCounter(0) - preProcessPacket[i]->getAllocCounter(1);
+							outStrStat << "a" << stack << ':' << alloc << ':';
+							if(alloc + stack) {
+								outStrStat << (stack * 100 / (alloc + stack)) << '%';
+							} else {
+								outStrStat << '-';
 							}
+						}
+						preProcessPacket[i]->setAllocCounter(preProcessPacket[i]->getAllocCounter(0), 1);
+						preProcessPacket[i]->setAllocStackCounter(preProcessPacket[i]->getAllocStackCounter(0), 1);
+					}
+					++count_t2cpu;
+					sum_t2cpu += t2cpu_preprocess_packet_out_thread;
+					if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
+					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
+					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_rtp) {
+						last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
+					}
+					if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
+					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register) {
+						last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
+					}
+				}
+			} 
+			rrdtCPU_t2 = sum_t2cpu;
+			int countRtpRhThreads = 0;
+			bool needAddRtpRhThreads = false;
+			int countRtpRdThreads = 0;
+			bool needAddRtpRdThreads = false;
+			if(processRtpPacketHash) {
+				for(int i = 0; i < 1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
+					if(i == 0 || processRtpPacketHash->existsNextThread(i - 1)) {
+						double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(true, i);
+						if(t2cpu_process_rtp_packet_out_thread >= 0) {
+							outStrStat << "/" << (i == 0 ? "rm:" : "rh:")
+								   << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+							if(i == 0 && sverb.qring_stat) {
+								double qringFillingPerc = processRtpPacketHash->getQringFillingPerc();
+								if(qringFillingPerc > 0) {
+									outStrStat << "r" << qringFillingPerc;
+								}
+							}
+							++count_t2cpu;
+							sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
+						}
+						if(i > 0) {
+							++countRtpRhThreads;
+							if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread) {
+								needAddRtpRhThreads = true;
+							}
+						}
+					}
+				}
+				for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
+					if(processRtpPacketDistribute[i]) {
+						double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(true);
+						if(t2cpu_process_rtp_packet_out_thread >= 0) {
+							outStrStat << "/" << "rd:" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+							if(sverb.qring_stat) {
+								double qringFillingPerc = processRtpPacketDistribute[i]->getQringFillingPerc();
+								if(qringFillingPerc > 0) {
+									outStrStat << "r" << qringFillingPerc;
+								}
+							}
+						}
+						++countRtpRdThreads;
+						if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread) {
+							needAddRtpRdThreads = true;
 						}
 						++count_t2cpu;
 						sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
 					}
-					if(i > 0) {
-						++countRtpRhThreads;
-						if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread) {
-							needAddRtpRhThreads = true;
-						}
-					}
 				}
 			}
-			for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
-				if(processRtpPacketDistribute[i]) {
-					double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(true);
-					if(t2cpu_process_rtp_packet_out_thread >= 0) {
-						outStrStat << "/" << "rd:" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
-						if(sverb.qring_stat) {
-							double qringFillingPerc = processRtpPacketDistribute[i]->getQringFillingPerc();
-							if(qringFillingPerc > 0) {
-								outStrStat << "r" << qringFillingPerc;
-							}
-						}
-					}
-					++countRtpRdThreads;
-					if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread) {
-						needAddRtpRdThreads = true;
-					}
-					++count_t2cpu;
-					sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
+			extern int opt_enable_preprocess_packet;
+			if(opt_enable_preprocess_packet == -1) {
+				if(last_t2cpu_preprocess_packet_out_thread_check_next_level > opt_cpu_limit_new_thread) {
+					PreProcessPacket::autoStartNextLevelPreProcessPacket();
+				} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_t2sip_thread) {
+					PreProcessPacket::autoStopLastLevelPreProcessPacket();
 				}
 			}
-		}
-		extern int opt_enable_preprocess_packet;
-		if(opt_enable_preprocess_packet == -1) {
-			if(last_t2cpu_preprocess_packet_out_thread_check_next_level > opt_cpu_limit_new_thread) {
-				PreProcessPacket::autoStartNextLevelPreProcessPacket();
-			} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_t2sip_thread) {
-				PreProcessPacket::autoStopLastLevelPreProcessPacket();
+			if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
+				ProcessRtpPacket::autoStartProcessRtpPacket();
 			}
-		}
-		if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
-			ProcessRtpPacket::autoStartProcessRtpPacket();
-		}
-		if(countRtpRhThreads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
-		   needAddRtpRhThreads) {
-			processRtpPacketHash->addRtpRhThread();
-		}
-		if(countRtpRdThreads < MAX_PROCESS_RTP_PACKET_THREADS &&
-		   needAddRtpRdThreads) {
-			ProcessRtpPacket::addRtpRdThread();
-		}
-		if(count_t2cpu > 1) {
-			outStrStat << "/S:" << setprecision(1) << sum_t2cpu;
+			if(countRtpRhThreads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
+			   needAddRtpRhThreads) {
+				processRtpPacketHash->addRtpRhThread();
+			}
+			if(countRtpRdThreads < MAX_PROCESS_RTP_PACKET_THREADS &&
+			   needAddRtpRdThreads) {
+				ProcessRtpPacket::addRtpRdThread();
+			}
+			if(count_t2cpu > 1) {
+				outStrStat << "/S:" << setprecision(1) << sum_t2cpu;
+			}
 		}
 		outStrStat << "%] ";
 	}
-	double tRTPcpuMax = 0;
-	double tRTPcpu = get_rtp_sum_cpu_usage(&tRTPcpuMax);
-	if(tRTPcpu >= 0) {
-		extern volatile int num_threads_active;
-		outStrStat << "tRTP_CPU[" << setprecision(1) << tRTPcpu << "%/";
-		if(sverb.rtp_extend_stat) {
-			outStrStat << get_rtp_threads_cpu_usage(false) << "/";
-		} else {
-			outStrStat << tRTPcpuMax << "m/";
-		}
-		outStrStat << num_threads_active << "t] ";
-		if(tRTPcpu / num_threads_active > opt_cpu_limit_new_thread ||
-		   (heapPerc > 10 && tRTPcpuMax >= 98)) {
-			for(int i = 0; i < (calls_counter > 1000 || heapPerc > 10 ? 3 : 1); i++) {
-				add_rtp_read_thread();
+	if(!isMirrorSender()) {
+		double tRTPcpuMax = 0;
+		double tRTPcpu = get_rtp_sum_cpu_usage(&tRTPcpuMax);
+		if(tRTPcpu >= 0) {
+			extern volatile int num_threads_active;
+			outStrStat << "tRTP_CPU[" << setprecision(1) << tRTPcpu << "%/";
+			if(sverb.rtp_extend_stat) {
+				outStrStat << get_rtp_threads_cpu_usage(false) << "/";
+			} else {
+				outStrStat << tRTPcpuMax << "m/";
 			}
-		} else if(num_threads_active > 1 &&
-			  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread) {
-			set_remove_rtp_read_thread();
-		}
-	}
-	if(tcpReassemblyHttp) {
-		string cpuUsagePerc = tcpReassemblyHttp->getCpuUsagePerc();
-		if(!cpuUsagePerc.empty()) {
-			outStrStat << "thttpCPU[" << cpuUsagePerc << "] ";
-		}
-	}
-	if(tcpReassemblyWebrtc) {
-		string cpuUsagePerc = tcpReassemblyWebrtc->getCpuUsagePerc();
-		if(!cpuUsagePerc.empty()) {
-			outStrStat << "twebrtcCPU[" << cpuUsagePerc << "] ";
-		}
-	}
-	if(tcpReassemblySsl) {
-		string cpuUsagePerc = tcpReassemblySsl->getCpuUsagePerc();
-		if(!cpuUsagePerc.empty()) {
-			outStrStat << "tsslCPU[" << cpuUsagePerc << "] ";
-		}
-	}
-	if(tcpReassemblySipExt) {
-		string cpuUsagePerc = tcpReassemblySipExt->getCpuUsagePerc();
-		if(!cpuUsagePerc.empty()) {
-			outStrStat << "tsip_tcpCPU[" << cpuUsagePerc << "] ";
-		}
-	}
-	extern AsyncClose *asyncClose;
-	if(asyncClose) {
-		vector<double> v_tac_cpu;
-		double last_tac_cpu = 0;
-		bool exists_set_tac_cpu = false;
-		for(int i = 0; i < asyncClose->getCountThreads(); i++) {
-			double tac_cpu = asyncClose->getCpuUsagePerc(i, true);
-			last_tac_cpu = tac_cpu;
-			if(tac_cpu >= 0) {
-				v_tac_cpu.push_back(tac_cpu);
-				exists_set_tac_cpu = true;
-			}
-		}
-		if(exists_set_tac_cpu) {
-			outStrStat << "tacCPU[";
-			for(size_t i = 0; i < v_tac_cpu.size(); i++) {
-				if(i) {
-					outStrStat << '|';
+			outStrStat << num_threads_active << "t] ";
+			if(tRTPcpu / num_threads_active > opt_cpu_limit_new_thread ||
+			   (heapPerc > 10 && tRTPcpuMax >= 98)) {
+				for(int i = 0; i < (calls_counter > 1000 || heapPerc > 10 ? 3 : 1); i++) {
+					add_rtp_read_thread();
 				}
-				outStrStat << setprecision(1) << v_tac_cpu[i];
-				if (opt_rrd) {
-					rrdtacCPU_zip += v_tac_cpu[i];
+			} else if(num_threads_active > 1 &&
+				  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread) {
+				set_remove_rtp_read_thread();
+			}
+		}
+		if(tcpReassemblyHttp) {
+			string cpuUsagePerc = tcpReassemblyHttp->getCpuUsagePerc();
+			if(!cpuUsagePerc.empty()) {
+				outStrStat << "thttpCPU[" << cpuUsagePerc << "] ";
+			}
+		}
+		if(tcpReassemblyWebrtc) {
+			string cpuUsagePerc = tcpReassemblyWebrtc->getCpuUsagePerc();
+			if(!cpuUsagePerc.empty()) {
+				outStrStat << "twebrtcCPU[" << cpuUsagePerc << "] ";
+			}
+		}
+		if(tcpReassemblySsl) {
+			string cpuUsagePerc = tcpReassemblySsl->getCpuUsagePerc();
+			if(!cpuUsagePerc.empty()) {
+				outStrStat << "tsslCPU[" << cpuUsagePerc << "] ";
+			}
+		}
+		if(tcpReassemblySipExt) {
+			string cpuUsagePerc = tcpReassemblySipExt->getCpuUsagePerc();
+			if(!cpuUsagePerc.empty()) {
+				outStrStat << "tsip_tcpCPU[" << cpuUsagePerc << "] ";
+			}
+		}
+		extern AsyncClose *asyncClose;
+		if(asyncClose) {
+			vector<double> v_tac_cpu;
+			double last_tac_cpu = 0;
+			bool exists_set_tac_cpu = false;
+			for(int i = 0; i < asyncClose->getCountThreads(); i++) {
+				double tac_cpu = asyncClose->getCpuUsagePerc(i, true);
+				last_tac_cpu = tac_cpu;
+				if(tac_cpu >= 0) {
+					v_tac_cpu.push_back(tac_cpu);
+					exists_set_tac_cpu = true;
 				}
 			}
-			outStrStat << "%] ";
+			if(exists_set_tac_cpu) {
+				outStrStat << "tacCPU[";
+				for(size_t i = 0; i < v_tac_cpu.size(); i++) {
+					if(i) {
+						outStrStat << '|';
+					}
+					outStrStat << setprecision(1) << v_tac_cpu[i];
+					if (opt_rrd) {
+						rrdtacCPU_zip += v_tac_cpu[i];
+					}
+				}
+				outStrStat << "%] ";
+			}
+			if(last_tac_cpu > opt_cpu_limit_new_thread) {
+				asyncClose->addThread();
+			}
+			if(last_tac_cpu < opt_cpu_limit_delete_thread) {
+				asyncClose->removeThread();
+			}
 		}
-		if(last_tac_cpu > opt_cpu_limit_new_thread) {
-			asyncClose->addThread();
-		}
-		if(last_tac_cpu < opt_cpu_limit_delete_thread) {
-			asyncClose->removeThread();
-		}
-	}
-	if(opt_ipaccount) {
-		string ipaccCpu = getIpaccCpuUsagePerc();
-		if(!ipaccCpu.empty()) {
-			outStrStat << "tipaccCPU["
-				   << ipaccCpu
-				   << "] ";
+		if(opt_ipaccount) {
+			string ipaccCpu = getIpaccCpuUsagePerc();
+			if(!ipaccCpu.empty()) {
+				outStrStat << "tipaccCPU["
+					   << ipaccCpu
+					   << "] ";
+			}
 		}
 	}
 	outStrStat << "RSS/VSZ[";
