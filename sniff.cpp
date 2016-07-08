@@ -659,7 +659,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 		case TYPE_RTCP:
 			if(call->getPcapRtp()->isOpen()){
 				call->getPcapRtp()->dump(header, packet, packetS->dlt);
-			} else if(enable_save_rtp(call)) {
+			} else if(type == TYPE_RTP ? enable_save_rtp(call) : enable_save_rtcp(call)) {
 				char pcapFilePath_spool_relative[1024];
 				snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
 				pcapFilePath_spool_relative[1023] = 0;

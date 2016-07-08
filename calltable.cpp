@@ -898,7 +898,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 	parse_rtcp((char*)packetS->data_(), packetS->datalen, this);
 	
 	if(enable_save_packet) {
-		save_packet(this, packetS, TYPE_RTP);
+		save_packet(this, packetS, TYPE_RTCP);
 	}
 	return(true);
 }
