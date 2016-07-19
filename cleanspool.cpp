@@ -949,20 +949,20 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 			WHERE spool_index = " + getSpoolIndex_string() + " and \
 			      id_sensor = " + getIdSensor_string());
 		SqlDb_row row = sqlDb->fetchRow();
-		uint64_t sipsize = strtoull(row["sipsize"].c_str(), NULL, 0);
-		uint64_t rtpsize = strtoull(row["rtpsize"].c_str(), NULL, 0);
-		uint64_t graphsize = strtoull(row["graphsize"].c_str(), NULL, 0);
-		uint64_t audiosize = strtoull(row["audiosize"].c_str(), NULL, 0);
-		double total = ((sip ? sipsize : 0) + 
-				(rtp ? rtpsize : 0) + 
-				(graph ? graphsize : 0) + 
-				(audio ? audiosize : 0)) / (double)(1024 * 1024);
+		uint64_t sipsize_total = strtoull(row["sipsize"].c_str(), NULL, 0);
+		uint64_t rtpsize_total = strtoull(row["rtpsize"].c_str(), NULL, 0);
+		uint64_t graphsize_total = strtoull(row["graphsize"].c_str(), NULL, 0);
+		uint64_t audiosize_total = strtoull(row["audiosize"].c_str(), NULL, 0);
+		double total = ((sip ? sipsize_total : 0) + 
+				(rtp ? rtpsize_total : 0) + 
+				(graph ? graphsize_total : 0) + 
+				(audio ? audiosize_total : 0)) / (double)(1024 * 1024);
 		if(sverb.cleanspool) {
 			cout << "total[" << total << "] = " 
-			     << (sip ? intToString(sipsize) : "na") << " + " 
-			     << (rtp ? intToString(rtpsize) : "na") << " + " 
-			     << (graph ? intToString(graphsize) : "na") << " + " 
-			     << (audio ? intToString(audiosize) : "na")
+			     << (sip ? intToString(sipsize_total) : "na") << " + " 
+			     << (rtp ? intToString(rtpsize_total) : "na") << " + " 
+			     << (graph ? intToString(graphsize_total) : "na") << " + " 
+			     << (audio ? intToString(audiosize_total) : "na")
 			     << " maxpoolsize[" << maxpoolsize;
 			if(maxpoolsize_set) {
 				cout << " / reduk: " << maxpoolsize_set;
@@ -986,7 +986,7 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 			sizeCond = " and " + sizeCond;
 		}
 		sqlDb->query(
-		       "SELECT datehour \
+		       "SELECT * \
 			FROM files \
 			WHERE spool_index = " + getSpoolIndex_string() + " and \
 			      id_sensor = " + getIdSensor_string() + " \
@@ -1004,6 +1004,10 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 				      id_sensor = " + getIdSensor_string());
 			continue;
 		}
+		uint64_t sipsize = strtoull(row["sipsize"].c_str(), NULL, 0);
+		uint64_t rtpsize = strtoull(row["rtpsize"].c_str(), NULL, 0);
+		uint64_t graphsize = strtoull(row["graphsize"].c_str(), NULL, 0);
+		uint64_t audiosize = strtoull(row["audiosize"].c_str(), NULL, 0);
 		if(sip) {
 			unlinkfileslist("filesindex/sipsize/" + row["datehour"], "clean_maxpoolsize");
 			if(DISABLE_CLEANSPOOL) {

@@ -3163,19 +3163,35 @@ void main_term_read() {
 		delete processRtpPacketHash;
 		processRtpPacketHash = NULL;
 	}
-	for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
-		if(processRtpPacketDistribute[i]) {
-			processRtpPacketDistribute[i]->terminate();
-			delete processRtpPacketDistribute[i];
-			processRtpPacketDistribute[i] = NULL;
+	for(int termPass = 0; termPass < 2; termPass++) {
+		for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
+			if(processRtpPacketDistribute[i]) {
+				if(termPass == 0) {
+					processRtpPacketDistribute[i]->terminate();
+				} else {
+					delete processRtpPacketDistribute[i];
+					processRtpPacketDistribute[i] = NULL;
+				}
+			}
+		}
+		if(termPass == 0) {
+			usleep(100000);
 		}
 	}
 	
-	for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
-		if(preProcessPacket[i]) {
-			preProcessPacket[i]->terminate();
-			delete preProcessPacket[i];
-			preProcessPacket[i] = NULL;
+	for(int termPass = 0; termPass < 2; termPass++) {
+		for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
+			if(preProcessPacket[i]) {
+				if(termPass == 0) {
+					preProcessPacket[i]->terminate();
+				} else {
+					delete preProcessPacket[i];
+					preProcessPacket[i] = NULL;
+				}
+			}
+		}
+		if(termPass == 0) {
+			usleep(100000);
 		}
 	}
 	
