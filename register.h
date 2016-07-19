@@ -73,6 +73,7 @@ public:
 	u_int32_t state_to;
 	u_int32_t counter;
 	eRegisterState state;
+	char *contact_num;
 	char *contact_domain;
 	char *from_num;
 	char *from_name;
@@ -92,6 +93,7 @@ class Register {
 public:
 	inline Register(Call *call);
 	inline ~Register();
+	inline void update(Call *call);
 	inline void addState(Call *call);
 	inline void shiftStates();
 	inline void expire(bool need_lock_states = true);

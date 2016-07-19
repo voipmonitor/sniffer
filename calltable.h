@@ -24,6 +24,7 @@
 #include "jitterbuffer/asterisk/circbuf.h"
 #include "rtp.h"
 #include "tools.h"
+#include "sql_db.h"
 #include "voipmonitor.h"
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
@@ -83,6 +84,7 @@
 #define FLAG_RUNAMOSLQO		(1 << 11)
 #define FLAG_RUNBMOSLQO		(1 << 12)
 #define FLAG_HIDEMESSAGE	(1 << 13)
+#define FLAG_USE_SPOOL_2	(1 << 14)
 
 #define CHAN_SIP	1
 #define CHAN_SKINNY	2
@@ -687,7 +689,7 @@ public:
 	static void _addtocachequeue(string file);
 
 	void addtofilesqueue(string file, string column, long long writeBytes);
-	static void _addtofilesqueue(string file, string column, string dirnamesqlfiles, long long writeBytes);
+	static void _addtofilesqueue(string file, string column, string dirnamesqlfiles, long long writeBytes, int spoolIndex, const char *spoolDir);
 
 	float mos_lqo(char *deg, int samplerate);
 
@@ -773,6 +775,18 @@ public:
 	void applyRtcpXrDataToRtp();
 	
 	void adjustUA();
+	
+	int getSpoolIndex() {
+		sExistsColumns existsColumns;
+		return((flags & FLAG_USE_SPOOL_2) && isSetSpoolDir2() &&
+			((type == INVITE && existsColumns.cdr_next_spool_index) ||
+			 (type == MESSAGE && existsColumns.message_spool_index)) ?
+			1 : 
+			0);
+	}
+	const char *getSpoolDir() {
+		return(::getSpoolDir(getSpoolIndex()));
+	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];

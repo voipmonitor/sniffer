@@ -8,7 +8,7 @@
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
-#define RTPSENSOR_VERSION "16.1.1"
+#define RTPSENSOR_VERSION "16.1"
 #define NAT
 
 #define FORMAT_WAV	1
@@ -23,7 +23,7 @@
 #define STORE_PROC_ID_CDR_1 11
 #define STORE_PROC_ID_MESSAGE_1 21
 #define STORE_PROC_ID_CLEANSPOOL 41
-#define STORE_PROC_ID_CLEANSPOOL_SERVICE 42
+#define STORE_PROC_ID_CLEANSPOOL_SERVICE 43
 #define STORE_PROC_ID_REGISTER_1 51
 #define STORE_PROC_ID_SAVE_PACKET_SQL 61
 #define STORE_PROC_ID_HTTP_1 71
@@ -190,6 +190,29 @@ enum eSnifferMode {
 	snifferMode_read_from_files,
 	snifferMode_sender
 };
+
+inline bool isSetSpoolDir2() {
+	extern char opt_spooldir_2[1024];
+	return(opt_spooldir_2[0]);
+}
+inline const char *getSpoolDir(int spoolIndex) {
+	extern char opt_chdir[1024];
+	extern char opt_spooldir_2[1024];
+	return(spoolIndex == 1 && opt_spooldir_2[0] ? opt_spooldir_2 : opt_chdir);
+}
+inline const char *skipSpoolDir(int spoolIndex, const char *spoolDirFile) {
+	const char *spoolDir = getSpoolDir(spoolIndex);
+	unsigned spoolDirLength = strlen(spoolDir);
+	if(spoolDir[0] != spoolDirFile[0] ||
+	   strncmp(spoolDirFile, spoolDir, spoolDirLength)) {
+		return(spoolDirFile);
+	}
+	spoolDirFile += spoolDirLength;
+	while(*spoolDirFile == '/') {
+		++spoolDirFile;
+	}
+	return(spoolDirFile);
+}
 
 #define snifferMode_read_from_interface_str string("1")
 #define snifferMode_read_from_files_str string("2")

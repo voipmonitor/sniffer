@@ -160,8 +160,6 @@ extern void ssl_clean();
 
 using namespace std;
 
-int debugclean = 0;
-
 
 /* global variables */
 
@@ -216,6 +214,7 @@ int opt_jitterbuffer_f2 = 1;		// turns off/on jitterbuffer simulator to compute 
 int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_adapt
 int opt_ringbuffer = 10;	// ring buffer in MB 
 int opt_sip_register = 0;	// if == 1 save REGISTER messages
+int opt_sip_register_new = 0;
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 int opt_manager_port = 5029;	// manager api TCP port
 char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
@@ -280,6 +279,7 @@ char opt_pb_read_from_file[256] = "";
 double opt_pb_read_from_file_speed = 0;
 int opt_pb_read_from_file_acttime = 0;
 unsigned int opt_pb_read_from_file_max_packets = 0;
+bool opt_continue_after_read = false;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
 int opt_enable_http_enum_tables = 0;
@@ -346,6 +346,16 @@ unsigned int opt_maxpoolgraphsize = 0;
 unsigned int opt_maxpoolgraphdays = 0;
 unsigned int opt_maxpoolaudiosize = 0;
 unsigned int opt_maxpoolaudiodays = 0;
+unsigned int opt_maxpoolsize_2 = 0;
+unsigned int opt_maxpooldays_2 = 0;
+unsigned int opt_maxpoolsipsize_2 = 0;
+unsigned int opt_maxpoolsipdays_2 = 0;
+unsigned int opt_maxpoolrtpsize_2 = 0;
+unsigned int opt_maxpoolrtpdays_2 = 0;
+unsigned int opt_maxpoolgraphsize_2 = 0;
+unsigned int opt_maxpoolgraphdays_2 = 0;
+unsigned int opt_maxpoolaudiosize_2 = 0;
+unsigned int opt_maxpoolaudiodays_2 = 0;
 int opt_maxpool_clean_obsolete = 0;
 int opt_autocleanspoolminpercent = 1;
 int opt_autocleanmingb = 5;
@@ -578,6 +588,7 @@ char opt_pcapdump_all_path[1024];
 
 int opt_callend = 1; //if true, cdr.called is saved
 char opt_chdir[1024];
+char opt_spooldir_2[1024];
 char opt_cachedir[1024];
 
 int opt_upgrade_try_http_if_https_fail = 0;
@@ -609,15 +620,15 @@ pthread_t manager_client_thread;	// ID of worker manager thread
 pthread_t manager_ssh_thread;	
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
 pthread_t database_backup_thread;	// ID of worker backup thread 
-pthread_t tarqueuethread;	// ID of worker manager thread 
+pthread_t tarqueuethread[2];	// ID of worker manager thread 
 int terminating;		// if set to 1, sniffer will terminate
 int terminating_moving_cache;	// if set to 1, worker thread will terminate
 int terminating_storing_cdr;	// if set to 1, worker thread will terminate
 int terminating_storing_registers;
 int terminated_call_cleanup;
 int terminated_async;
-int terminated_tar_flush_queue;
-int terminated_tar;
+int terminated_tar_flush_queue[2];
+int terminated_tar[2];
 int hot_restarting;
 string hot_restarting_json_config;
 vm_atomic<string> terminating_error;
@@ -725,9 +736,9 @@ int opt_cpu_limit_new_thread = 50;
 int opt_cpu_limit_delete_thread = 5;
 int opt_cpu_limit_delete_t2sip_thread = 17;
 
-extern pthread_mutex_t tartimemaplock;
+CleanSpool *cleanSpool[2] = { NULL, NULL };
 
-TarQueue *tarQueue = NULL;
+TarQueue *tarQueue[2] = { NULL, NULL };
 
 pthread_mutex_t terminate_packetbuffer_lock;
 
@@ -1922,8 +1933,10 @@ void resetTerminating() {
 	terminating_storing_registers = 0;
 	terminated_call_cleanup = 0;
 	terminated_async = 0;
-	terminated_tar_flush_queue = 0;
-	terminated_tar = 0;
+	for(int i = 0; i < 2; i++) {
+		terminated_tar_flush_queue[i] = 0;
+		terminated_tar[i] = 0;
+	}
 }
 
 
@@ -2029,7 +2042,6 @@ int main(int argc, char *argv[]) {
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&vm_rrd_lock, NULL);
 	pthread_mutex_init(&hostbyname_lock, NULL);
-	pthread_mutex_init(&tartimemaplock, NULL);
 	pthread_mutex_init(&terminate_packetbuffer_lock, NULL);
 
 	set_mac();
@@ -2676,11 +2688,15 @@ int main_init_read() {
 	
 	chdir(opt_chdir);
 
-	mkdir_r("filesindex/sipsize", 0777);
-	mkdir_r("filesindex/rtpsize", 0777);
-	mkdir_r("filesindex/graphsize", 0777);
-	mkdir_r("filesindex/audiosize", 0777);
-	mkdir_r("filesindex/regsize", 0777);
+	for(int i = 0; i < 2; i++) {
+		string spoolDir = getSpoolDir(i);
+		if(!spoolDir.empty()) {
+			mkdir_r(string(spoolDir) + "/filesindex/sipsize", 0777);
+			mkdir_r(string(spoolDir) + "/filesindex/rtpsize", 0777);
+			mkdir_r(string(spoolDir) + "/filesindex/graphsize", 0777);
+			mkdir_r(string(spoolDir) + "/filesindex/audiosize", 0777);
+		}
+	}
 
 	// set maximum open files 
 	struct rlimit rlp;
@@ -2740,9 +2756,25 @@ int main_init_read() {
 	if(opt_load_query_from_files) {
 		loadFromQFiles->loadFromQFiles_start();
 	}
+	
+	if(is_enable_cleanspool()) {
+		for(int i = 0; i < 2; i++) {
+			if(CleanSpool::isSetCleanspoolParameters(i) &&
+			   (i == 0 || opt_spooldir_2[0])) {
+				cleanSpool[i] = new FILE_LINE CleanSpool(i);
+			}
+		}
+		if(cleanSpool[0] && !is_read_from_file()) {
+			cleanSpool[0]->run();
+		}
+	}
 
 	if(opt_pcap_dump_tar) {
-		tarQueue = new FILE_LINE TarQueue;
+		for(int i = 0; i < 2; i++) {
+			if(i == 0 || opt_spooldir_2[0]) {
+				tarQueue[i] = new FILE_LINE TarQueue(i);
+			}
+		}
 	}
 	
 	if(opt_enable_fraud) {
@@ -2758,11 +2790,6 @@ int main_init_read() {
 		extern AsyncClose *asyncClose;
 		asyncClose = new FILE_LINE AsyncClose;
 		asyncClose->startThreads(opt_pcap_dump_writethreads, opt_pcap_dump_writethreads_max);
-	}
-	
-	if(is_enable_cleanspool() &&
-	   isSetCleanspoolParameters()) {
-		runCleanSpoolThread();
 	}
 	
 	if(opt_fork) {
@@ -2799,8 +2826,12 @@ int main_init_read() {
 
 	// start tar dumper
 	if(opt_pcap_dump_tar) {
-		vm_pthread_create("tar queue",
-				  &tarqueuethread, NULL, TarQueueThread, NULL, __FILE__, __LINE__);
+		for(int i = 0; i < 2; i++) {
+			if(tarQueue[i]) {
+				vm_pthread_create("tar queue",
+						  &tarqueuethread[i], NULL, TarQueueThread, tarQueue[i], __FILE__, __LINE__);
+			}
+		}
 	}
 
 #ifdef HAVE_LIBSSH
@@ -2938,11 +2969,13 @@ int main_init_read() {
 	}
 	
 	if(opt_pcap_dump_tar && opt_fork) {
-		string maxSpoolDate = getMaxSpoolDate();
-		if(maxSpoolDate.length()) {
-			syslog(LOG_NOTICE, "run reindex date %s", maxSpoolDate.c_str());
-			reindex_date(maxSpoolDate);
-			syslog(LOG_NOTICE, "reindex date %s completed", maxSpoolDate.c_str());
+		for(int i = 0; i < 2; i++) {
+			string maxSpoolDate = cleanSpool[i]->getMaxSpoolDate();
+			if(maxSpoolDate.length()) {
+				syslog(LOG_NOTICE, "run reindex date %s", maxSpoolDate.c_str());
+				CleanSpool::run_reindex_date(maxSpoolDate, i);
+				syslog(LOG_NOTICE, "reindex date %s completed", maxSpoolDate.c_str());
+			}
 		}
 	}
 	
@@ -3089,10 +3122,10 @@ void main_term_read() {
 	set_terminating();
 
 	regfailedcache->prune(0);
-	#if NEW_REGISTERS
+	if(opt_sip_register_new) {
 		extern Registers registers;
 		registers.clean_all();
-	#endif
+	}
 	
 	if(tcpReassemblyHttp) {
 		delete tcpReassemblyHttp;
@@ -3191,7 +3224,6 @@ void main_term_read() {
 		mirrorip = NULL;
 	}
 
-	pthread_mutex_destroy(&tartimemaplock);
 	pthread_mutex_unlock(&terminate_packetbuffer_lock);
 	pthread_mutex_destroy(&terminate_packetbuffer_lock);
 
@@ -3211,9 +3243,13 @@ void main_term_read() {
 		if(sverb.chunk_buffer > 1) { 
 			cout << "start destroy tar queue" << endl << flush;
 		}
-		pthread_join(tarqueuethread, NULL);
-		delete tarQueue;
-		tarQueue = NULL;
+		for(int i = 0; i < 2; i++) {
+			if(tarQueue[i]) {
+				pthread_join(tarqueuethread[i], NULL);
+				delete tarQueue[i];
+				tarQueue[i] = NULL;
+			}
+		}
 		if(sverb.chunk_buffer > 1) { 
 			cout << "end destroy tar queue" << endl << flush;
 		}
@@ -3262,8 +3298,6 @@ void main_term_read() {
 	delete calltable;
 	calltable = NULL;
 	
-	termCleanSpoolThread();
-
 	pthread_mutex_destroy(&mysqlconnect_lock);
 	extern SqlDb *sqlDbSaveCall;
 	if(sqlDbSaveCall) {
@@ -3284,11 +3318,6 @@ void main_term_read() {
 	if(sqlDbEscape) {
 		delete sqlDbEscape;
 		sqlDbEscape = NULL;
-	}
-	extern SqlDb_mysql *sqlDbCleanspool;
-	if(sqlDbCleanspool) {
-		delete sqlDbCleanspool;
-		sqlDbCleanspool = NULL;
 	}
 	
 	if(sqlStore) {
@@ -3316,6 +3345,13 @@ void main_term_read() {
 	if(custom_headers_message) {
 		delete custom_headers_message;
 		custom_headers_message = NULL;
+	}
+	
+	for(int i = 0; i < 2; i++) {
+		if(cleanSpool[i]) {
+			delete cleanSpool[i];
+			cleanSpool[i] = NULL;
+		}
 	}
 	
 	termIpacc();
@@ -3986,6 +4022,24 @@ void test() {
 	 
 	case 1: {
 	 
+		sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
+						    cloud_host, cloud_token);
+		for(int i = 0; i < 2; i++) {
+			if(CleanSpool::isSetCleanspoolParameters(i) &&
+			   (i == 0 || opt_spooldir_2[0])) {
+				cleanSpool[i] = new FILE_LINE CleanSpool(i);
+			}
+		}
+		//CleanSpool::run_reindex_all("test");
+		CleanSpool::run_cleanProcess();
+		set_terminating();
+		sqlStore->setEnableTerminatingIfEmpty(0, true);
+		sqlStore->setEnableTerminatingIfSqlError(0, true);
+		delete sqlStore;
+		sqlStore = NULL;
+		
+		break;
+	 
 		test_filezip_handler();
 		break;
 	 
@@ -4124,7 +4178,7 @@ void test() {
 		break;
 	case 95:
 		chdir(opt_chdir);
-		check_filesindex();
+		CleanSpool::run_check_filesindex();
 		set_terminating();
 		break;
 	case 96:
@@ -4164,10 +4218,13 @@ void test() {
 		}
 		return;
 	case 99:
-		{
-		char *pointToSepOptTest = strchr(opt_test_str, '/');
-		check_spooldir_filesindex(NULL, pointToSepOptTest ? pointToSepOptTest + 1 : NULL);
+		for(int i = 0; i < 2; i++) {
+			if(CleanSpool::isSetCleanspoolParameters(i) &&
+			   (i == 0 || opt_spooldir_2[0])) {
+				cleanSpool[i] = new FILE_LINE CleanSpool(i);
+			}
 		}
+		CleanSpool::run_check_spooldir_filesindex();
 		return;
 		
 	case 11: 
@@ -4751,6 +4808,7 @@ void cConfig::addConfigItems() {
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		subgroup("main");
 			addConfigItem(new FILE_LINE cConfigItem_string("spooldir", opt_chdir, sizeof(opt_chdir)));
+			addConfigItem(new FILE_LINE cConfigItem_string("spooldir_2", opt_spooldir_2, sizeof(opt_spooldir_2)));
 			addConfigItem(new FILE_LINE cConfigItem_yesno("tar", &opt_pcap_dump_tar));
 				advanced();
 				addConfigItem(new FILE_LINE cConfigItem_string("convertchar", opt_convert_char, sizeof(opt_convert_char)));
@@ -4825,16 +4883,18 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE cConfigItem_integer("cleanspool_interval", &opt_cleanspool_interval));
 		normal();
 		addConfigItem(new FILE_LINE cConfigItem_hour_interval("cleanspool_enable_fromto", &opt_cleanspool_enable_run_hour_from, &opt_cleanspool_enable_run_hour_to));
-		addConfigItem(new FILE_LINE cConfigItem_integer("maxpoolsize", &opt_maxpoolsize));
-		addConfigItem(new FILE_LINE cConfigItem_integer("maxpooldays", &opt_maxpooldays));
-		addConfigItem(new FILE_LINE cConfigItem_integer("maxpoolsipsize", &opt_maxpoolsipsize));
-		addConfigItem(new FILE_LINE cConfigItem_integer("maxpoolsipdays", &opt_maxpoolsipdays));
-		addConfigItem(new FILE_LINE cConfigItem_integer("maxpoolrtpsize", &opt_maxpoolrtpsize));
-		addConfigItem(new FILE_LINE cConfigItem_integer("maxpoolrtpdays", &opt_maxpoolrtpdays));
-		addConfigItem(new FILE_LINE cConfigItem_integer("maxpoolgraphsize", &opt_maxpoolgraphsize));
-		addConfigItem(new FILE_LINE cConfigItem_integer("maxpoolgraphdays", &opt_maxpoolgraphdays));
-		addConfigItem(new FILE_LINE cConfigItem_integer("maxpoolaudiosize", &opt_maxpoolaudiosize));
-		addConfigItem(new FILE_LINE cConfigItem_integer("maxpoolaudiodays", &opt_maxpoolaudiodays));
+		for(int i = 0; i < 2; i++) {
+			addConfigItem(new FILE_LINE cConfigItem_integer(("maxpoolsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolsize : &opt_maxpoolsize_2));
+			addConfigItem(new FILE_LINE cConfigItem_integer(("maxpooldays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpooldays : &opt_maxpooldays_2));
+			addConfigItem(new FILE_LINE cConfigItem_integer(("maxpoolsipsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolsipsize : &opt_maxpoolsipsize_2));
+			addConfigItem(new FILE_LINE cConfigItem_integer(("maxpoolsipdays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolsipdays : &opt_maxpoolsipdays_2));
+			addConfigItem(new FILE_LINE cConfigItem_integer(("maxpoolrtpsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolrtpsize : &opt_maxpoolrtpsize_2));
+			addConfigItem(new FILE_LINE cConfigItem_integer(("maxpoolrtpdays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolrtpdays : &opt_maxpoolrtpdays_2));
+			addConfigItem(new FILE_LINE cConfigItem_integer(("maxpoolgraphsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolgraphsize : &opt_maxpoolgraphsize_2));
+			addConfigItem(new FILE_LINE cConfigItem_integer(("maxpoolgraphdays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolgraphdays : &opt_maxpoolgraphdays_2));
+			addConfigItem(new FILE_LINE cConfigItem_integer(("maxpoolaudiosize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolaudiosize : &opt_maxpoolaudiosize_2));
+			addConfigItem(new FILE_LINE cConfigItem_integer(("maxpoolaudiodays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolaudiodays : &opt_maxpoolaudiodays_2));
+		}
 			advanced();
 			addConfigItem(new FILE_LINE cConfigItem_yesno("maxpool_clean_obsolete", &opt_maxpool_clean_obsolete));
 			addConfigItem(new FILE_LINE cConfigItem_integer("autocleanspoolminpercent", &opt_autocleanspoolminpercent));
@@ -4908,6 +4968,7 @@ void cConfig::addConfigItems() {
 					->addStringItems("invite|bye|cancel|register|message|info|subscribe|options|notify|ack|prack|publish|refer|update|REQUESTS|RESPONSES|ALL"));
 		subgroup("REGISTER");
 			addConfigItem(new FILE_LINE cConfigItem_yesno("sip-register", &opt_sip_register));
+			addConfigItem(new FILE_LINE cConfigItem_yesno("sip-register-new", &opt_sip_register_new));
 			addConfigItem(new FILE_LINE cConfigItem_integer("sip-register-timeout", &opt_register_timeout));
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
@@ -5213,6 +5274,9 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	if(configItem->config_name == "spooldir") {
 		mkdir_r(opt_chdir, 0777);
 	}
+	if(configItem->config_name == "spooldir_2") {
+		mkdir_r(opt_spooldir_2, 0777);
+	}
 	if(configItem->config_name == "timezone") {
 		if(opt_timezone[0]) {
 			setenv("TZ", opt_timezone, 1);
@@ -5410,6 +5474,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"new-config", 0, 0, 203},
 	    {"print-config-struct", 0, 0, 204},
 	    {"max-packets", 1, 0, 301},
+	    {"continue-after-read", 0, 0, 302},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -5665,6 +5730,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "tcpreplay")			sverb.tcpreplay = 1;
 						else if(verbparams[i] == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;
 						else if(verbparams[i] == "dtmf")			sverb.dtmf = 1;
+						else if(verbparams[i] == "cleanspool")			sverb.cleanspool = 1;
 						//
 						else if(verbparams[i] == "debug1")			sverb._debug1 = 1;
 						else if(verbparams[i] == "debug2")			sverb._debug2 = 1;
@@ -5702,6 +5768,9 @@ void get_command_line_arguments() {
 				break;
 			case 301:
 				opt_pb_read_from_file_max_packets = atol(optarg);
+				break;
+			case 302:
+				opt_continue_after_read = true;
 				break;
 			case 'c':
 				opt_nocdr = 1;
@@ -6457,35 +6526,38 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cleanspool_size", NULL))) {
 		opt_cleanspool_sizeMB = atoi(value);
 	}
-	if((value = ini.GetValue("general", "maxpoolsize", NULL))) {
-		opt_maxpoolsize = atoi(value);
-	}
-	if((value = ini.GetValue("general", "maxpooldays", NULL))) {
-		opt_maxpooldays = atoi(value);
-	}
-	if((value = ini.GetValue("general", "maxpoolsipsize", NULL))) {
-		opt_maxpoolsipsize = atoi(value);
-	}
-	if((value = ini.GetValue("general", "maxpoolsipdays", NULL))) {
-		opt_maxpoolsipdays = atoi(value);
-	}
-	if((value = ini.GetValue("general", "maxpoolrtpsize", NULL))) {
-		opt_maxpoolrtpsize = atoi(value);
-	}
-	if((value = ini.GetValue("general", "maxpoolrtpdays", NULL))) {
-		opt_maxpoolrtpdays = atoi(value);
-	}
-	if((value = ini.GetValue("general", "maxpoolgraphsize", NULL))) {
-		opt_maxpoolgraphsize = atoi(value);
-	}
-	if((value = ini.GetValue("general", "maxpoolgraphdays", NULL))) {
-		opt_maxpoolgraphdays = atoi(value);
-	}
-	if((value = ini.GetValue("general", "maxpoolaudiosize", NULL))) {
-		opt_maxpoolaudiosize = atoi(value);
-	}
-	if((value = ini.GetValue("general", "maxpoolaudiodays", NULL))) {
-		opt_maxpoolaudiodays = atoi(value);
+	
+	for(int i = 0; i < 2; i++) {
+		if((value = ini.GetValue("general", ("maxpoolsize" + string(i == 0 ? "" : "_2")).c_str(), NULL))) {
+			(i == 0 ? opt_maxpoolsize : opt_maxpoolsize_2) = atoi(value);
+		}
+		if((value = ini.GetValue("general", ("maxpooldays" + string(i == 0 ? "" : "_2")).c_str(), NULL))) {
+			(i == 0 ? opt_maxpooldays : opt_maxpooldays_2) = atoi(value);
+		}
+		if((value = ini.GetValue("general", ("maxpoolsipsize" + string(i == 0 ? "" : "_2")).c_str(), NULL))) {
+			(i == 0 ? opt_maxpoolsipsize : opt_maxpoolsipsize_2) = atoi(value);
+		}
+		if((value = ini.GetValue("general", ("maxpoolsipdays" + string(i == 0 ? "" : "_2")).c_str(), NULL))) {
+			(i == 0 ? opt_maxpoolsipdays : opt_maxpoolsipdays_2) = atoi(value);
+		}
+		if((value = ini.GetValue("general", ("maxpoolrtpsize" + string(i == 0 ? "" : "_2")).c_str(), NULL))) {
+			(i == 0 ? opt_maxpoolrtpsize : opt_maxpoolrtpsize_2) = atoi(value);
+		}
+		if((value = ini.GetValue("general", ("maxpoolrtpdays" + string(i == 0 ? "" : "_2")).c_str(), NULL))) {
+			(i == 0 ? opt_maxpoolrtpdays : opt_maxpoolrtpdays_2) = atoi(value);
+		}
+		if((value = ini.GetValue("general", ("maxpoolgraphsize" + string(i == 0 ? "" : "_2")).c_str(), NULL))) {
+			(i == 0 ? opt_maxpoolgraphsize : opt_maxpoolgraphsize_2) = atoi(value);
+		}
+		if((value = ini.GetValue("general", ("maxpoolgraphdays" + string(i == 0 ? "" : "_2")).c_str(), NULL))) {
+			(i == 0 ? opt_maxpoolgraphdays : opt_maxpoolgraphdays_2) = atoi(value);
+		}
+		if((value = ini.GetValue("general", ("maxpoolaudiosize" + string(i == 0 ? "" : "_2")).c_str(), NULL))) {
+			(i == 0 ? opt_maxpoolaudiosize : opt_maxpoolaudiosize_2) = atoi(value);
+		}
+		if((value = ini.GetValue("general", ("maxpoolaudiodays" + string(i == 0 ? "" : "_2")).c_str(), NULL))) {
+			(i == 0 ? opt_maxpoolaudiodays : opt_maxpoolaudiodays_2) = atoi(value);
+		}
 	}
 	if((value = ini.GetValue("general", "maxpool_clean_obsolete", NULL))) {
 		opt_maxpool_clean_obsolete = yesno(value);
@@ -6558,6 +6630,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register", NULL))) {
 		opt_sip_register = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-new", NULL))) {
+		if(yesno(value)) {
+			opt_sip_register = 1;
+		}
+		opt_sip_register_new = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-timeout", NULL))) {
 		opt_register_timeout = atoi(value);
@@ -6831,6 +6909,10 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "spooldir", NULL))) {
 		strncpy(opt_chdir, value, sizeof(opt_chdir));
 		mkdir_r(opt_chdir, 0777);
+	}
+	if((value = ini.GetValue("general", "spooldir_2", NULL))) {
+		strncpy(opt_spooldir_2, value, sizeof(opt_spooldir_2));
+		mkdir_r(opt_spooldir_2, 0777);
 	}
 	if((value = ini.GetValue("general", "spooldiroldschema", NULL))) {
 		opt_newdir = !yesno(value);
@@ -7959,7 +8041,7 @@ bool is_enable_rtp_threads() {
 bool is_enable_cleanspool() {
 	return(!opt_nocdr &&
 	       isSqlDriver("mysql") &&
-	       !is_read_from_file() &&
+	       !is_read_from_file_simple() &&
 	       !is_sender());
 }
 

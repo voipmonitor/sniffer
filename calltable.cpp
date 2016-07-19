@@ -64,6 +64,7 @@ using namespace std;
 extern int verbosity;
 extern int verbosityE;
 extern int opt_sip_register;
+extern int opt_sip_register_new;
 extern int opt_saveRTP;
 extern int opt_onlyRTPheader;
 extern int opt_saveSIP;
@@ -429,15 +430,17 @@ Call::removeFindTables(bool set_end_call) {
 
 void
 Call::addtofilesqueue(string file, string column, long long writeBytes) {
-	_addtofilesqueue(file, column, dirnamesqlfiles(), writeBytes);
+	_addtofilesqueue(file, column, dirnamesqlfiles(), writeBytes, getSpoolIndex(), getSpoolDir());
 }
 
 void 
-Call::_addtofilesqueue(string file, string column, string dirnamesqlfiles, long long writeBytes) {
+Call::_addtofilesqueue(string file, string column, string dirnamesqlfiles, long long writeBytes, int spoolIndex, const char *spoolDir) {
 
 	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or
-	   !isSetCleanspoolParameters() or
-	   !check_datehour(dirnamesqlfiles.c_str())) return;
+	   !CleanSpool::isSetCleanspool(spoolIndex) or
+	   !CleanSpool::check_datehour(dirnamesqlfiles.c_str())) {
+		return;
+	}
 
 	bool fileExists = file_exists((char*)file.c_str());
 	bool fileCacheExists = false;
@@ -476,27 +479,10 @@ Call::_addtofilesqueue(string file, string column, string dirnamesqlfiles, long 
 		size = 1;
 	}
 
-	ostringstream query;
-
-	int id_sensor = opt_id_sensor_cleanspool == -1 ? 0 : opt_id_sensor_cleanspool;
-	
-	query << "INSERT INTO files SET files.datehour = " << dirnamesqlfiles << ", id_sensor = " << id_sensor << ", "
-		<< column << " = " << size << " ON DUPLICATE KEY UPDATE " << column << " = " << column << " + " << size;
-
-	sqlStore->lock(STORE_PROC_ID_CLEANSPOOL);
-	sqlStore->query(query.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
-
-
-	ostringstream fname;
-	fname << "filesindex/" << column << "/" << dirnamesqlfiles;
-	ofstream myfile(fname.str().c_str(), ios::app | ios::out);
-	if(!myfile.is_open()) {
-		syslog(LOG_ERR,"error write to [%s]", fname.str().c_str());
+	extern CleanSpool *cleanSpool[2];
+	if(cleanSpool[spoolIndex]) {
+		cleanSpool[spoolIndex]->addFile(dirnamesqlfiles.c_str(), column.c_str(), file.c_str(), size);
 	}
-	myfile << file << ":" << size << "\n";
-	myfile.close();
-		
-	sqlStore->unlock(STORE_PROC_ID_CLEANSPOOL);
 }
 
 void 
@@ -642,14 +628,14 @@ Call::closeRawFiles() {
 /* returns name of the directory in format YYYY-MM-DD */
 string
 Call::dirname() {
-	char sdirname[18];
+	char sdirname[1024];
 	struct tm t = time_r((const time_t*)(&first_packet_time));
 	if(opt_newdir) {
-		snprintf(sdirname, 17, "%04d-%02d-%02d/%02d/%02d",  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
+		snprintf(sdirname, 1024, "%s/%04d-%02d-%02d/%02d/%02d", getSpoolDir(), t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
 	} else {
-		snprintf(sdirname, 17, "%04d-%02d-%02d",  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+		snprintf(sdirname, 1024, "%s/%04d-%02d-%02d", getSpoolDir(), t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
 	}
-	sdirname[17] = 0;
+	sdirname[1023] = 0;
 	string s(sdirname);
 	return s;
 }
@@ -657,10 +643,10 @@ Call::dirname() {
 /* returns name of the directory in format YYYY-MM-DD */
 string
 Call::dirnamesqlfiles() {
-	char sdirname[12];
+	char sdirname[11];
 	struct tm t = time_r((const time_t*)(&first_packet_time));
-	snprintf(sdirname, 11, "%04d%02d%02d%02d",  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
-	sdirname[11] = 0;
+	snprintf(sdirname, 11, "%04d%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
+	sdirname[10] = 0;
 	string s(sdirname);
 	return s;
 }
@@ -2608,6 +2594,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(cdr_flags, "flags");
 	}
 	
+	if(getSpoolIndex() && existsColumns.cdr_next_spool_index) {
+		cdr_next.add(getSpoolIndex(), "spool_index");
+	}
+	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
@@ -3558,6 +3548,10 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		}
 	}
 
+	if(getSpoolIndex() && existsColumns.message_spool_index) {
+		cdr.add(getSpoolIndex(), "spool_index");
+	}
+
 /*
 	if(strlen(match_header)) {
 		cdr_next.add(sqlEscapeString(match_header), "match_header");
@@ -3735,14 +3729,13 @@ Call::dump(){
 void Call::atFinish() {
 	extern char pcapcommand[4092];
 	if(pcapcommand[0]) {
-		extern char opt_chdir[1024];
 		string source(pcapcommand);
 		string find1 = "%pcap%";
 		string find2 = "%basename%";
 		string find3 = "%dirname%";
 		string replace;
 		replace.append("\"");
-		replace.append(opt_chdir);
+		replace.append(getSpoolDir());
 		replace.append("/");
 		replace.append(this->dirname());
 		replace.append("/");
@@ -4522,17 +4515,19 @@ Calltable::cleanup_registers( time_t currtime ) {
 				syslog(LOG_WARNING,"try to duplicity push call %s to registers_queue", reg->call_id.c_str());
 			} else {
 				reg->push_register_to_registers_queue = 1;
-				#if NEW_REGISTERS
+				if(opt_sip_register_new) {
 					extern Registers registers;
 					registers.add(reg);
+					reg->getPcap()->close();
+					reg->getPcapSip()->close();
 					lock_registers_deletequeue();
 					registers_deletequeue.push_back(reg);
 					unlock_registers_deletequeue();
-				#else
+				} else {
 					lock_registers_queue();
 					registers_queue.push_back(reg);
 					unlock_registers_queue();
-				#endif
+				}
 			}
 			registers_listMAP.erase(registerMAPIT++);
 			if(opt_enable_fraud && currtime) {

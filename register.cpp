@@ -17,16 +17,15 @@ extern MySqlStore *sqlStore;
 extern int opt_nocdr;
 extern int opt_enable_fraud;
 
-#if NEW_REGISTERS
 Registers registers;
-#endif
 
 
-#define REG_NEW_STR(src)		((src) && *(src) ? (tmp_str = new FILE_LINE char[strlen(src) + 1], strcpy(tmp_str, src), tmp_str) : NULL)
-#define REG_FREE_STR(str)		((str) ? (delete [] (str), str = NULL, true) : false)
+#define EQ_REG				((char*)-1)
+#define REG_NEW_STR(src)		((src) == EQ_REG ? EQ_REG : (src) && *(src) ? (tmp_str = new FILE_LINE char[strlen(src) + 1], strcpy(tmp_str, src), tmp_str) : NULL)
+#define REG_FREE_STR(str)		((str) && (str) != EQ_REG ? (delete [] (str), str = NULL, true) : (str = NULL, false))
 #define REG_EQ_STR(str1, str2)		((!(str1) || !*(str1)) && (!(str2) || !*(str2)) ? true : (!(str1) || !*(str1)) || (!(str2) || !*(str2)) ? false : !strcasecmp(str1, str2))
 #define REG_CMP_STR(str1, str2)		((!(str1) || !*(str1)) && (!(str2) || !*(str2)) ? 0 : (!(str1) || !*(str1)) ? -1 : (!(str2) || !*(str2)) ? 1 : strcasecmp(str1, str2))
-#define REG_CONV_STR(str)		((str) ? string(str) : string())
+#define REG_CONV_STR(str)		((str) && (str) != EQ_REG ? string(str) : string())
 
 
 struct RegisterFields {
@@ -67,7 +66,7 @@ bool RegisterId:: operator == (const RegisterId& other) const {
 	       this->reg->sipcalledip == other.reg->sipcalledip &&
 	       REG_EQ_STR(this->reg->to_num, other.reg->to_num) &&
 	       REG_EQ_STR(this->reg->to_domain, other.reg->to_domain) &&
-	       REG_EQ_STR(this->reg->contact_num, other.reg->contact_num) &&
+	       //REG_EQ_STR(this->reg->contact_num, other.reg->contact_num) &&
 	       //REG_EQ_STR(this->reg->contact_domain, other.reg->contact_domain) &&
 	       REG_EQ_STR(this->reg->digest_username, other.reg->digest_username));
 }
@@ -75,14 +74,14 @@ bool RegisterId:: operator == (const RegisterId& other) const {
 bool RegisterId:: operator < (const RegisterId& other) const { 
 	int rslt_cmp_to_num;
 	int rslt_cmp_to_domain;
-	int rslt_cmp_contact_num;
+	//int rslt_cmp_contact_num;
 	//int rslt_cmp_contact_domain;
 	int rslt_cmp_digest_username;
 	return((this->reg->sipcallerip < other.reg->sipcallerip) ? 1 : (this->reg->sipcallerip > other.reg->sipcallerip) ? 0 :
 	       (this->reg->sipcalledip < other.reg->sipcalledip) ? 1 : (this->reg->sipcalledip > other.reg->sipcalledip) ? 0 :
 	       ((rslt_cmp_to_num = REG_CMP_STR(this->reg->to_num, other.reg->to_num)) < 0) ? 1 : (rslt_cmp_to_num > 0) ? 0 :
 	       ((rslt_cmp_to_domain = REG_CMP_STR(this->reg->to_domain, other.reg->to_domain)) < 0) ? 1 : (rslt_cmp_to_domain > 0) ? 0 :
-	       ((rslt_cmp_contact_num = REG_CMP_STR(this->reg->contact_num, other.reg->contact_num)) < 0) ? 1 : (rslt_cmp_contact_num > 0) ? 0 :
+	       //((rslt_cmp_contact_num = REG_CMP_STR(this->reg->contact_num, other.reg->contact_num)) < 0) ? 1 : (rslt_cmp_contact_num > 0) ? 0 :
 	       //((rslt_cmp_contact_domain = REG_CMP_STR(this->reg->contact_domain, other.reg->contact_domain)) < 0) ? 1 : (rslt_cmp_contact_domain > 0) ? 0 :
 	       ((rslt_cmp_digest_username = REG_CMP_STR(this->reg->digest_username, other.reg->digest_username)) < 0));
 }
@@ -94,23 +93,26 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		state_from = state_to = call->calltime();
 		counter = 1;
 		state = convRegisterState(call);
-		contact_domain = REG_EQ_STR(call->contact_domain, reg->contact_domain) ?
-				  NULL :
+		contact_num = call->contact_num && reg->contact_num && REG_EQ_STR(call->contact_num, reg->contact_num) ?
+			       EQ_REG :
+			       REG_NEW_STR(call->contact_num);
+		contact_domain = call->contact_domain && reg->contact_domain && REG_EQ_STR(call->contact_domain, reg->contact_domain) ?
+				  EQ_REG :
 				  REG_NEW_STR(call->contact_domain);
-		from_num = REG_EQ_STR(call->caller, reg->from_num) ?
-			    NULL :
+		from_num = call->caller && reg->from_num && REG_EQ_STR(call->caller, reg->from_num) ?
+			    EQ_REG :
 			    REG_NEW_STR(call->caller);
-		from_name = REG_EQ_STR(call->callername, reg->from_name) ?
-			     NULL :
+		from_name = call->callername && reg->from_name && REG_EQ_STR(call->callername, reg->from_name) ?
+			     EQ_REG :
 			     REG_NEW_STR(call->callername);
-		from_domain = REG_EQ_STR(call->caller_domain, reg->from_domain) ?
-			       NULL :
+		from_domain = call->caller_domain && reg->from_domain && REG_EQ_STR(call->caller_domain, reg->from_domain) ?
+			       EQ_REG :
 			       REG_NEW_STR(call->caller_domain);
-		digest_realm = REG_EQ_STR(call->digest_realm, reg->digest_realm) ?
-				NULL :
+		digest_realm = call->digest_realm && reg->digest_realm && REG_EQ_STR(call->digest_realm, reg->digest_realm) ?
+				EQ_REG :
 				REG_NEW_STR(call->digest_realm);
-		ua = REG_EQ_STR(call->a_ua, reg->ua) ?
-		      NULL :
+		ua = call->a_ua && reg->ua && REG_EQ_STR(call->a_ua, reg->ua) ?
+		      EQ_REG :
 		      REG_NEW_STR(call->a_ua);
 		fname = call->fname2;
 		expires = call->register_expires;
@@ -119,6 +121,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		state_from = state_to = 0;
 		counter = 0;
 		state = rs_na;
+		contact_num = NULL;
 		contact_domain = NULL;
 		from_num = NULL;
 		from_name = NULL;
@@ -132,6 +135,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 }
 
 RegisterState::~RegisterState() {
+	REG_FREE_STR(contact_num);
 	REG_FREE_STR(contact_domain);
 	REG_FREE_STR(from_num);
 	REG_FREE_STR(from_name);
@@ -143,6 +147,7 @@ RegisterState::~RegisterState() {
 void RegisterState::copyFrom(const RegisterState *src) {
 	*this = *src;
 	char *tmp_str;
+	contact_num = REG_NEW_STR(src->contact_num);
 	contact_domain = REG_NEW_STR(src->contact_domain);
 	from_num = REG_NEW_STR(src->from_num);
 	from_name = REG_NEW_STR(src->from_name);
@@ -154,20 +159,22 @@ void RegisterState::copyFrom(const RegisterState *src) {
 bool RegisterState::isEq(Call *call, Register *reg) {
 	/*
 	if(state == convRegisterState(call)) cout << "ok state" << endl;
-	//if(REG_EQ_STR(contact_domain ? contact_domain : reg->contact_domain, call->contact_domain)) cout << "ok contact_domain" << endl;
-	if(REG_EQ_STR(from_num ? from_num : reg->from_num, call->caller)) cout << "ok from_num" << endl;
-	if(REG_EQ_STR(from_name ? from_name : reg->from_name, call->callername)) cout << "ok from_name" << endl;
-	if(REG_EQ_STR(from_domain ? from_domain : reg->from_domain, call->caller_domain)) cout << "ok from_domain" << endl;
-	if(REG_EQ_STR(digest_realm ? digest_realm : reg->digest_realm, call->digest_realm)) cout << "ok digest_realm" << endl;
-	if(REG_EQ_STR(ua ? ua : reg->ua, call->a_ua)) cout << "ok ua" << endl;
+	//if(REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, call->contact_num)) cout << "ok contact_num" << endl;
+	//if(REG_EQ_STR(contact_domain == EQ_REG ? reg->contact_domain : contact_domain, call->contact_domain)) cout << "ok contact_domain" << endl;
+	if(REG_EQ_STR(from_num == EQ_REG ? reg->from_num : from_num, call->caller)) cout << "ok from_num" << endl;
+	if(REG_EQ_STR(from_name == EQ_REG ? reg->from_name : from_name, call->callername)) cout << "ok from_name" << endl;
+	if(REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, call->caller_domain)) cout << "ok from_domain" << endl;
+	if(REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, call->digest_realm)) cout << "ok digest_realm" << endl;
+	if(REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua)) cout << "ok ua" << endl;
 	*/
 	return(state == convRegisterState(call) &&
-	       //REG_EQ_STR(contact_domain ? contact_domain : reg->contact_domain, call->contact_domain) &&
-	       REG_EQ_STR(from_num ? from_num : reg->from_num, call->caller) &&
-	       REG_EQ_STR(from_name ? from_name : reg->from_name, call->callername) &&
-	       REG_EQ_STR(from_domain ? from_domain : reg->from_domain, call->caller_domain) &&
-	       REG_EQ_STR(digest_realm ? digest_realm : reg->digest_realm, call->digest_realm) &&
-	       REG_EQ_STR(ua ? ua : reg->ua, call->a_ua) &&
+	       //REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, call->contact_num) &&
+	       //REG_EQ_STR(contact_domain == EQ_REG ? reg->contact_domain : contact_domain, call->contact_domain) &&
+	       REG_EQ_STR(from_num == EQ_REG ? reg->from_num : from_num, call->caller) &&
+	       REG_EQ_STR(from_name == EQ_REG ? reg->from_name : from_name, call->callername) &&
+	       REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, call->caller_domain) &&
+	       REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, call->digest_realm) &&
+	       REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua) &&
 	       fname == call->fname2 &&
 	       id_sensor == call->useSensorId);
 }
@@ -213,9 +220,19 @@ Register::~Register() {
 	clean_all();
 }
 
+void Register::update(Call *call) {
+	char *tmp_str;
+	if(!contact_num && call->contact_num[0]) {
+		contact_num = REG_NEW_STR(call->contact_num);
+	}
+	if(!contact_domain && call->contact_domain[0]) {
+		contact_domain = REG_NEW_STR(call->contact_domain);
+	}
+}
+
 void Register::addState(Call *call) {
 	lock_states();
-	if(eqLastState(call) && convRegisterState(call) == rs_Failed) {
+	if(convRegisterState(call) == rs_Failed && eqLastState(call)) {
 		updateLastState(call);
 	} else {
 		shiftStates();
@@ -318,18 +335,16 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	reg.add(sqlEscapeString(sqlDateTimeString(state->state_from).c_str()), "created_at");
 	reg.add(htonl(sipcallerip), "sipcallerip");
 	reg.add(htonl(sipcalledip), "sipcalledip");
-	reg.add(sqlEscapeString(REG_CONV_STR(state->from_num ? state->from_num : from_num)), "from_num");
+	reg.add(sqlEscapeString(REG_CONV_STR(state->from_num == EQ_REG ? from_num : state->from_num)), "from_num");
 	reg.add(sqlEscapeString(REG_CONV_STR(to_num)), "to_num");
-	reg.add(sqlEscapeString(REG_CONV_STR(contact_num)), "contact_num");
-	reg.add(sqlEscapeString(REG_CONV_STR(contact_domain)), "contact_domain");
+	reg.add(sqlEscapeString(REG_CONV_STR(state->contact_num == EQ_REG ? contact_num : state->contact_num)), "contact_num");
+	reg.add(sqlEscapeString(REG_CONV_STR(state->contact_domain == EQ_REG ? contact_domain : state->contact_domain)), "contact_domain");
 	reg.add(sqlEscapeString(REG_CONV_STR(to_domain)), "to_domain");
 	reg.add(sqlEscapeString(REG_CONV_STR(digest_username)), "digestusername");
 	reg.add(state->fname, "fname");
 	if(state->state == rs_Failed) {
 		reg.add(state->counter, "counter");
-		#if NEW_REGISTERS
 		state->db_id = registers.getNewRegisterFailedId(state->id_sensor);
-		#endif
 		reg.add(state->db_id, "ID");
 	} else {
 		reg.add(state->expires, "expires");
@@ -418,8 +433,8 @@ bool Register::getDataRow(RecordArray *rec) {
 		return(false);
 	}
 	rec->fields[rf_id].set(id);
-	rec->fields[rf_sipcallerip].set(sipcallerip);
-	rec->fields[rf_sipcalledip].set(sipcalledip);
+	rec->fields[rf_sipcallerip].set(htonl(sipcallerip));
+	rec->fields[rf_sipcalledip].set(htonl(sipcalledip));
 	rec->fields[rf_to_num].set(to_num);
 	rec->fields[rf_to_domain].set(to_domain);
 	rec->fields[rf_contact_num].set(contact_num);
@@ -430,14 +445,14 @@ bool Register::getDataRow(RecordArray *rec) {
 	}
 	rec->fields[rf_fname].set(state->fname);
 	rec->fields[rf_calldate].set(state->state_from, RecordArrayField::tf_time);
-	rec->fields[rf_from_num].set(state->from_num ? state->from_num : from_num);
-	rec->fields[rf_from_name].set(state->from_name ? state->from_name : from_name);
-	rec->fields[rf_from_domain].set(state->from_domain ? state->from_domain : from_domain);
-	rec->fields[rf_digestrealm].set(state->digest_realm ? state->digest_realm : digest_realm);
+	rec->fields[rf_from_num].set(state->from_num == EQ_REG ? from_num : state->from_num);
+	rec->fields[rf_from_name].set(state->from_name == EQ_REG ? from_name : state->from_name);
+	rec->fields[rf_from_domain].set(state->from_domain == EQ_REG ? from_domain : state->from_domain);
+	rec->fields[rf_digestrealm].set(state->digest_realm == EQ_REG ? digest_realm : state->digest_realm);
 	rec->fields[rf_expires].set(state->expires);
 	rec->fields[rf_expires_at].set(state->state_from + state->expires, RecordArrayField::tf_time);
 	rec->fields[rf_state].set(state->state);
-	rec->fields[rf_ua].set(state->ua ? state->ua : ua);
+	rec->fields[rf_ua].set(state->ua == EQ_REG ? ua : state->ua);
 	if(rrd_count) {
 		rec->fields[rf_rrd_avg].set(rrd_sum / rrd_count);
 	}
@@ -481,6 +496,7 @@ void Registers::add(Call *call) {
 		registers[rid] = reg;
 		unlock_registers();
 	} else {
+		iter->second->update(call);
 		unlock_registers();
 		iter->second->addState(call);
 		delete reg;

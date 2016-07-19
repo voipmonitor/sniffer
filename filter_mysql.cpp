@@ -31,6 +31,7 @@ void filter_base::loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow
 	baseRow->script = sqlRow->isNull("script") ? -1 : atoi((*sqlRow)["script"].c_str());
 	baseRow->mos_lqo = sqlRow->isNull("mos_lqo") ? -1 : atoi((*sqlRow)["mos_lqo"].c_str());
 	baseRow->hide_message = sqlRow->isNull("hide_message") ? -1 : atoi((*sqlRow)["hide_message"].c_str());
+	baseRow->spool_2 = sqlRow->isNull("spool_2") ? 0 : atoi((*sqlRow)["spool_2"].c_str());
 }
 
 unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
@@ -68,8 +69,10 @@ unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 	else if(baseRow->mos_lqo == 3)		flags |= FLAG_ABMOSLQO;
 	else if(baseRow->mos_lqo == 0)		flags |= FLAG_NOMOSLQO;
 	
-	if(baseRow->hide_message == 1)		flags |= FLAG_HIDEMSG;
+	if(baseRow->hide_message)		flags |= FLAG_HIDEMSG;
 	else if(baseRow->hide_message == 0)	flags |= FLAG_SHOWMSG;
+	
+	if(baseRow->spool_2)			flags |= FLAG_SPOOL_2;
 	
 	return(flags);
 }
@@ -109,6 +112,8 @@ void filter_base::setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned 
 	
 	if(filterFlags & FLAG_HIDEMSG)					*callFlags |= FLAG_HIDEMESSAGE;
 	if(filterFlags & FLAG_SHOWMSG)					*callFlags &= ~FLAG_HIDEMESSAGE;
+	
+	if(filterFlags & FLAG_SPOOL_2)					*callFlags |= FLAG_USE_SPOOL_2;
 }
 
 /* IPfilter class */

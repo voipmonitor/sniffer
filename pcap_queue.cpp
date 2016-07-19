@@ -124,6 +124,7 @@ extern char opt_pb_read_from_file[256];
 extern double opt_pb_read_from_file_speed;
 extern int opt_pb_read_from_file_acttime;
 extern unsigned int opt_pb_read_from_file_max_packets;
+extern bool opt_continue_after_read;
 extern char opt_scanpcapdir[2048];
 extern int global_pcap_dlink;
 extern char opt_cachedir[1024];
@@ -463,7 +464,7 @@ u_char* pcap_block_store::getSaveBuffer() {
 
 void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	pcap_block_store_header *header = (pcap_block_store_header*)saveBuffer;
-	this->hm = header->hm;
+	this->hm = (header_mode)header->hm;
 	this->size = header->size;
 	this->size_compress = header->size_compress;
 	this->count = header->count;
@@ -1594,17 +1595,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 
 		double useAsyncWriteBuffer = buffersControl.getPercUseAsync();
-		extern bool suspendCleanspool;
-		extern volatile int clean_spooldir_run_processing;
 		if(useAsyncWriteBuffer > 50) {
-			if(!suspendCleanspool && isSetCleanspoolParameters()) {
+			if(CleanSpool::suspend()) {
 				syslog(LOG_NOTICE, "large workload disk operation - cleanspool suspended");
-				suspendCleanspool = true;
 			}
 		} else if(useAsyncWriteBuffer < 10) {
-			if(suspendCleanspool && !clean_spooldir_run_processing) {
+			if(CleanSpool::resume()) {
 				syslog(LOG_NOTICE, "cleanspool resumed");
-				suspendCleanspool = false;
 			}
 		}
 		outStr << setprecision(0) << useAsyncWriteBuffer << "] ";
@@ -1653,25 +1650,29 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if(tarBufferSize) {
 			outStr << "tarB[" << setprecision(0) << tarBufferSize / 1024 / 1024 << "MB] ";
 		}
-		extern TarQueue *tarQueue;
-		bool okPercTarCpu = false;
-		for(int i = 0; i < tarQueue->maxthreads; i++) {
-			double tar_cpu = tarQueue->getCpuUsagePerc(i, true);
-			if(tar_cpu > 0) {
-				if(okPercTarCpu) {
-					outStr << '|';
-				} else {
-					outStr << "tarCPU[";
-					okPercTarCpu = true;
+		extern TarQueue *tarQueue[2];
+		for(int i = 0; i < 2; i++) {
+			if(tarQueue[i]) {
+				bool okPercTarCpu = false;
+				for(int j = 0; j < tarQueue[i]->maxthreads; j++) {
+					double tar_cpu = tarQueue[i]->getCpuUsagePerc(j, true);
+					if(tar_cpu > 0) {
+						if(okPercTarCpu) {
+							outStr << '|';
+						} else {
+							outStr << (i ? "tarCPU-spool2[" : "tarCPU[");
+							okPercTarCpu = true;
+						}
+						outStr << setprecision(1) << tar_cpu;
+						if (opt_rrd) {
+							rrdtacCPU_tar += tar_cpu;
+						}
+					}
 				}
-				outStr << setprecision(1) << tar_cpu;
-				if (opt_rrd) {
-					rrdtacCPU_tar += tar_cpu;
+				if(okPercTarCpu) {
+					outStr << "%] ";
 				}
 			}
-		}
-		if(okPercTarCpu) {
-			outStr << "%] ";
 		}
 	}
 	ostringstream outStrStat;
@@ -3580,7 +3581,23 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				#endif
 				if(res == -1) {
 					if(opt_pb_read_from_file[0]) {
-						terminatingAtEndOfReadPcap();
+						if(opt_continue_after_read) {
+							unsigned sleepCounter = 0;
+							while(!is_terminating()) {
+								this->tryForcePush();
+								if(sleepCounter > 10) {
+									calltable->cleanup_calls(0);
+									calltable->cleanup_registers(0);
+								} else if(sleepCounter > 20) {
+									calltable->destroyCallsIfPcapsClosed();
+									calltable->destroyRegistersIfPcapsClosed();
+								}
+								sleep(1);
+								++sleepCounter;
+							}
+						} else {
+							terminatingAtEndOfReadPcap();
+						}
 					}
 					break;
 				} else if(res == 0) {
@@ -3984,7 +4001,7 @@ void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 }
 
 void PcapQueue_readFromInterfaceThread::preparePstatData() {
-	if(this->threadId) {
+	if(this->threadId && !this->threadDoTerminate) {
 		if(this->threadPstatData[0].cpu_total_time) {
 			this->threadPstatData[1] = this->threadPstatData[0];
 		}
@@ -3996,7 +4013,7 @@ double PcapQueue_readFromInterfaceThread::getCpuUsagePerc(bool preparePstatData)
 	if(preparePstatData) {
 		this->preparePstatData();
 	}
-	if(this->threadId) {
+	if(this->threadId && !this->threadDoTerminate) {
 		double ucpu_usage, scpu_usage;
 		if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(

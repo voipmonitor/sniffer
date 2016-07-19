@@ -293,8 +293,10 @@ public:
 	void checkDbMode();
 	void checkSchema(int connectId = 0, bool checkColumns = false);
 	void checkColumns_cdr(bool log = false);
+	void checkColumns_cdr_next(bool log = false);
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_message(bool log = false);
+	void checkColumns_other(bool log = false);
 	bool isExtPrecissionBilling();
 	bool checkSourceTables();
 	void copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc);
@@ -592,7 +594,9 @@ public:
 	void loadFromQFiles_start();
 	void connect(int id);
 	void query(const char *query_str, int id);
+	void query(string query_str, int id);
 	void query_lock(const char *query_str, int id);
+	void query_lock(string query_str, int id);
 	// qfiles
 	void query_to_file(const char *query_str, int id);
 	string getQFilename(int idc, u_long actTime);
@@ -710,6 +714,7 @@ struct sExistsColumns {
 	bool cdr_mos_lqo;
 	bool cdr_flags;
 	bool cdr_next_calldate;
+	bool cdr_next_spool_index;
 	bool cdr_rtp_calldate;
 	bool cdr_rtp_sport;
 	bool cdr_rtp_dport;
@@ -720,6 +725,7 @@ struct sExistsColumns {
 	bool cdr_tar_part_calldate;
 	bool message_content_length;
 	bool message_response_time;
+	bool message_spool_index;
 	bool register_rrd_count;
 };
 

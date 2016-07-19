@@ -195,6 +195,8 @@ u_int64_t file_exists (const char * fileName);
 void set_mac();
 int mkdir_r(std::string, mode_t);
 int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
+int rmdir_r(std::string dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
+int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir = false, bool withoutRemoveRoot = false);
 unsigned long long cp_r(const char *src, const char *dst, bool move = false);
 inline unsigned long long mv_r(const char *src, const char *dst) { return(cp_r(src, dst, true)); }  
 unsigned long long copy_file(const char *src, const char *dst, bool move = false);
@@ -403,6 +405,7 @@ string find_and_replace(const char *source, const char *find, const char *replac
 bool isLocalIP(u_int32_t ip);
 char *strlwr(char *string, u_int32_t maxLength = 0);
 string intToString(int i);
+string intToString(long long i);
 string intToString(u_int32_t i);
 string intToString(u_int64_t i);
 
@@ -643,7 +646,7 @@ public:
 	string fileName;
 	int permission;
 	int fh;
-	bool tar;
+	int tar;
 	CompressStream *compressStream;
 	string error;
 	int bufferLength;
@@ -799,6 +802,8 @@ public:
 	protected:
 		Call *call;
 		string call_dirnamesqlfiles;
+		int call_spoolindex;
+		string call_spooldir;
 		PcapDumper *pcapDumper;
 		string file;
 		string column;

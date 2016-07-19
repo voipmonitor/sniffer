@@ -24,6 +24,7 @@
 #include "sql_db.h"
 #include "fraud.h"
 #include "calltable.h"
+#include "cleanspool.h"
 
 #define QFILE_PREFIX "qoq"
 
@@ -653,7 +654,7 @@ void SqlDb::logNeedAlter(string table, string reason, string alter,
 			int sql_disable_next_attempt_if_error_old = sql_disable_next_attempt_if_error;
 			sql_disable_next_attempt_if_error = 1;
 			okAlter = this->query(alter);
-			if(okAlter && *existsColumnFlag) {
+			if(okAlter && existsColumnFlag) {
 				*existsColumnFlag = true;
 			}
 			sql_disable_next_attempt_if_error = sql_disable_next_attempt_if_error_old;
@@ -1937,6 +1938,10 @@ void MySqlStore::query(const char *query_str, int id) {
 	}
 }
 
+void MySqlStore::query(string query_str, int id) {
+	query(query_str.c_str(), id);
+}
+
 void MySqlStore::query_lock(const char *query_str, int id) {
 	if(!query_str || !*query_str) {
 		return;
@@ -1949,6 +1954,10 @@ void MySqlStore::query_lock(const char *query_str, int id) {
 		process->query(query_str);
 		process->unlock();
 	}
+}
+
+void MySqlStore::query_lock(string query_str, int id) {
+	query_lock(query_str.c_str(), id);
 }
 
 void MySqlStore::query_to_file(const char *query_str, int id) {
@@ -3482,7 +3491,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"`custom_header1` varchar(255) DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
 			`match_header` VARCHAR(128) DEFAULT NULL,\
-			`GeoPosition` varchar(255) DEFAULT NULL," +
+			`GeoPosition` varchar(255) DEFAULT NULL, \
+			`spool_index` tinyint unsigned DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
 			"PRIMARY KEY (`cdr_ID`),") +
@@ -3506,6 +3516,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			ADD COLUMN `") + opt_custom_headers_cdr[iCustHeaders][1] + "` VARCHAR(255);");
 	}
 	sql_noerror = 0;
+	
+	checkColumns_cdr_next(true);
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_proxy` (\
@@ -3560,7 +3572,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 
-	this->checkColumns_cdr_rtp(true);
+	checkColumns_cdr_rtp(true);
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
@@ -3723,7 +3735,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`fbasename` varchar(255) DEFAULT NULL,\
 			`message` MEDIUMTEXT CHARACTER SET utf8,\
 			`content_length` MEDIUMINT DEFAULT NULL,\
-			`response_time` SMALLINT UNSIGNED DEFAULT NULL,") +
+			`response_time` SMALLINT UNSIGNED DEFAULT NULL,\
+			`spool_index` tinyint unsigned DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
 			"PRIMARY KEY (`ID`),") + 
@@ -3767,7 +3780,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	}
 	sql_noerror = 0;
 	
-	this->checkColumns_message(true);
+	checkColumns_message(true);
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
@@ -3924,13 +3937,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `files` (\
 			`datehour` int NOT NULL,\
+			`spool_index` int unsigned NOT NULL,\
 			`id_sensor` int unsigned NOT NULL,\
 			`sipsize` bigint unsigned DEFAULT 0,\
 			`rtpsize` bigint unsigned DEFAULT 0,\
 			`graphsize` bigint unsigned DEFAULT 0,\
 			`audiosize` bigint unsigned DEFAULT 0,\
 			`regsize` bigint unsigned DEFAULT 0,\
-		PRIMARY KEY (`datehour`, `id_sensor`)\
+		PRIMARY KEY (`datehour`, `spool_index`, `id_sensor`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	
 	if(opt_enable_fraud) {
@@ -3950,6 +3964,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	this->createTable("fraud_alert_info");
 	}
+	
+	checkColumns_other(true);
 
 	return(true);
 }
@@ -4965,8 +4981,10 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 	
 	if(checkColumns) {
 		this->checkColumns_cdr();
+		this->checkColumns_cdr_next();
 		this->checkColumns_cdr_rtp();
 		this->checkColumns_message();
+		this->checkColumns_other();
 	}
 	
 	sql_disable_next_attempt_if_error = 0;
@@ -5143,6 +5161,18 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	}
 }
 
+void SqlDb_mysql::checkColumns_cdr_next(bool log) {
+	map<string, u_int64_t> tableSize;
+	existsColumns.cdr_next_spool_index= this->existsColumn("cdr_next", "spool_index");
+	if(!existsColumns.cdr_next_spool_index && CleanSpool::isSetCleanspoolParameters(1)) {
+		this->logNeedAlter("cdr_next",
+				   "cdr spool index",
+				   "ALTER TABLE cdr_next "
+				   "ADD COLUMN `spool_index` tinyint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.cdr_next_spool_index);
+	}
+}
+
 void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 	map<string, u_int64_t> tableSize;
 	existsColumns.cdr_rtp_dport = this->existsColumn("cdr_rtp", "dport");
@@ -5181,6 +5211,24 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 				   "ALTER TABLE message "
 				   "ADD COLUMN response_time smallint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.message_response_time);
+	}
+	existsColumns.message_spool_index= this->existsColumn("message", "spool_index");
+	if(!existsColumns.message_spool_index && CleanSpool::isSetCleanspoolParameters(1)) {
+		this->logNeedAlter("message",
+				   "message spool index",
+				   "ALTER TABLE message "
+				   "ADD COLUMN `spool_index` tinyint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.message_spool_index);
+	}
+}
+
+void SqlDb_mysql::checkColumns_other(bool log) {
+	if(!this->existsColumn("files", "spool_index")) {
+		this->query(
+			"ALTER TABLE `voipmonitor`.`files`\
+			 ADD COLUMN `spool_index` INT NOT NULL AFTER `id_sensor`,\
+			 DROP PRIMARY KEY,\
+			 ADD PRIMARY KEY (`datehour`, `id_sensor`, `spool_index`)");
 	}
 }
 

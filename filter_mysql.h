@@ -34,6 +34,7 @@
 #define FLAG_NOMOSLQO   (1 << 22)
 #define FLAG_HIDEMSG	(1 << 23)
 #define FLAG_SHOWMSG	(1 << 24)
+#define FLAG_SPOOL_2	(1 << 25)
 
 #define MAX_PREFIX 64
 
@@ -50,6 +51,7 @@ struct filter_db_row_base {
 		mos_lqo = 0;
 		script = 0;
 		hide_message = 0;
+		spool_2 = 0;
 	}
 	int direction;
 	int rtp;
@@ -62,6 +64,7 @@ struct filter_db_row_base {
 	int mos_lqo;
 	int script;
 	int hide_message;
+	int spool_2;
 };
 
 class filter_base {

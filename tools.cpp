@@ -84,7 +84,7 @@ extern timeval cloud_last_activecheck;
 static char b2a[256];
 static char base64[64];
 
-extern TarQueue *tarQueue;
+extern TarQueue *tarQueue[2];
 using namespace std;
 
 AsyncClose *asyncClose;
@@ -368,6 +368,16 @@ int rmdir_r(const char *dir, bool enableSubdir, bool withoutRemoveRoot) {
 	} else {
 		return(rmdir(dir));
 	}
+}
+
+int rmdir_r(std::string dir, bool enableSubdir, bool withoutRemoveRoot) {
+	return(rmdir_r(dir.c_str(), enableSubdir, withoutRemoveRoot));
+}
+
+int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir, bool withoutRemoveRoot) {
+	return(if_r ?
+		rmdir_r(dir, enableSubdir, withoutRemoveRoot) :
+		rmdir(dir.c_str()));
 }
 
 unsigned long long cp_r(const char *src, const char *dst, bool move) {
@@ -1209,6 +1219,10 @@ AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, PcapDumper *pcapDumper, c
 	this->call = call;
 	if(call) {
 		this->call_dirnamesqlfiles = call->dirnamesqlfiles();
+		this->call_spoolindex =  call->getSpoolIndex();
+		this->call_spooldir =  call->getSpoolDir();
+	} else {
+		this->call_spoolindex = 0;
 	}
 	this->pcapDumper = pcapDumper;
 	if(file) {
@@ -1225,7 +1239,7 @@ void AsyncClose::AsyncCloseItem::addtofilesqueue() {
 	if(!call) {
 		return;
 	}
-	Call::_addtofilesqueue(this->file, this->column, call_dirnamesqlfiles, this->writeBytes);
+	Call::_addtofilesqueue(this->file, this->column, call_dirnamesqlfiles, this->writeBytes, call_spoolindex, call_spooldir.c_str());
 	extern char opt_cachedir[1024];
 	if(opt_cachedir[0] != '\0') {
 		Call::_addtocachequeue(this->file);
@@ -2969,7 +2983,9 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	}
 	this->permission = 0;
 	this->fh = 0;
-	this->tar = opt_pcap_dump_tar && call && typeFile != FileZipHandler::na;
+	this->tar = opt_pcap_dump_tar && call && typeFile != FileZipHandler::na ? 
+		     ((call->flags & FLAG_USE_SPOOL_2) ? 2 : 1) :
+		     0;
 	this->compressStream = NULL;
 	this->bufferLength = this->tar ?
 			      (bufferLength ? bufferLength : DEFAULT_BUFFER_LENGTH) :
@@ -3011,7 +3027,7 @@ FileZipHandler::~FileZipHandler() {
 		delete this->compressStream;
 	}
 	if(this->tar && !this->tarBufferCreated) {
-		decreaseTartimemap(this->time);
+		tarQueue[this->tar - 1]->decreaseTartimemap(this->time);
 		if(sverb.tar > 2) {
 			syslog(LOG_NOTICE, "tartimemap decrease2: %s %i %i", 
 			       this->fileName.c_str(), this->time, this->time - this->time % TAR_MODULO_SECONDS);
@@ -3028,7 +3044,7 @@ bool FileZipHandler::open(const char *fileName, int permission) {
 			syslog(LOG_NOTICE, "FileZipHandler open: %s %i %i %s", 
 			       fileName, this->time, this->time - this->time % TAR_MODULO_SECONDS, sqlDateTimeString(this->time).c_str());
 		}
-		increaseTartimemap(time);
+		tarQueue[this->tar - 1]->increaseTartimemap(time);
 		if(sverb.tar > 2) {
 			syslog(LOG_NOTICE, "tartimemap increase: %s %i %i", 
 			       fileName, this->time, this->time - this->time % TAR_MODULO_SECONDS);
@@ -3304,7 +3320,7 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 		}
 	}
 	this->tarBuffer->setName(this->fileName.c_str());
-	tarQueue->add(this->fileName, this->time, this->tarBuffer);
+	tarQueue[this->tar - 1]->add(this->fileName, this->time, this->tarBuffer);
 }
 
 bool FileZipHandler::_open_write() {
@@ -3776,6 +3792,12 @@ char *strlwr(char *string, u_int32_t maxLength) {
 }
 
 string intToString(int i) {
+	ostringstream outStr;
+	outStr << i;
+	return(outStr.str());
+}
+
+string intToString(long long i) {
 	ostringstream outStr;
 	outStr << i;
 	return(outStr.str());

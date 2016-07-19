@@ -50,10 +50,7 @@
 
 using namespace std;
 
-map<unsigned int, int> tartimemap;
-pthread_mutex_t tartimemaplock;
 
-extern char opt_chdir[1024];     
 volatile unsigned int glob_tar_queued_files;
 
 extern int opt_pcap_dump_tar_compress_sip; //0 off, 1 gzip, 2 lzma
@@ -72,15 +69,9 @@ extern MySqlStore *sqlStore;
 extern int opt_blocktarwrite;
 
 extern int terminated_async;
-extern int terminated_tar_flush_queue;
-extern int terminated_tar;
-extern TarQueue *tarQueue;
+extern int terminated_tar_flush_queue[2];
+extern int terminated_tar[2];
 extern volatile unsigned int glob_last_packet_time;
-
-map<void*, unsigned int> okTarPointers;
-volatile int _sync_okTarPointers;
-inline void lock_okTarPointers() { while(__sync_lock_test_and_set(&_sync_okTarPointers, 1)); }
-inline void unlock_okTarPointers() { __sync_lock_release(&_sync_okTarPointers); }
 
 
 /* magic, version, and checksum */
@@ -900,7 +891,7 @@ void Tar::addtofilesqueue() {
 		column = "rtpsize";
 	}
 
-	if(!opt_filesclean or opt_nocdr or !isSqlDriver("mysql") or !isSetCleanspoolParameters()) return;
+	if(!opt_filesclean or opt_nocdr or !isSqlDriver("mysql") or !CleanSpool::isSetCleanspoolParameters(spoolIndex)) return;
 
 	long long size = 0;
 	size = GetFileSizeDU(pathname.c_str());
@@ -919,34 +910,13 @@ void Tar::addtofilesqueue() {
 		size = 1;
 	}
 
-	ostringstream query;
-
-	extern int opt_id_sensor_cleanspool;
-	int id_sensor = opt_id_sensor_cleanspool == -1 ? 0 : opt_id_sensor_cleanspool;
-
-
-/* returns name of the directory in format YYYY-MM-DD */
-        char sdirname[12];
-        snprintf(sdirname, 11, "%04d%02d%02d%02d",  year, mon, day, hour);
-        sdirname[11] = 0;
-        string dirnamesqlfiles(sdirname);
-
-	query << "INSERT INTO files SET files.datehour = " << dirnamesqlfiles << ", id_sensor = " << id_sensor << ", "
-		<< column << " = " << size << " ON DUPLICATE KEY UPDATE " << column << " = " << column << " + " << size;
-
-	sqlStore->lock(STORE_PROC_ID_CLEANSPOOL);
-	sqlStore->query(query.str().c_str(), STORE_PROC_ID_CLEANSPOOL);
-
-	ostringstream fname;
-	fname << "filesindex/" << column << "/" << dirnamesqlfiles;
-	ofstream myfile(fname.str().c_str(), ios::app | ios::out);
-	if(!myfile.is_open()) {
-		syslog(LOG_ERR,"error write to [%s]", fname.str().c_str());
+	extern CleanSpool *cleanSpool[2];
+	if(cleanSpool[spoolIndex]) {
+		char sdirname[12];
+		snprintf(sdirname, 11, "%04d%02d%02d%02d",  year, mon, day, hour);
+		sdirname[11] = 0;
+		cleanSpool[spoolIndex]->addFile(sdirname, column.c_str(), pathname.c_str(), size);
 	}
-	myfile << pathname << ":" << size << "\n";
-	myfile.close();    
-
-	sqlStore->unlock(STORE_PROC_ID_CLEANSPOOL);
 }
 
 Tar::~Tar() {
@@ -982,12 +952,19 @@ TarQueue::add(string filename, unsigned int time, ChunkBuffer *buffer){
 	char sensorName[1024];
 	extern int opt_spooldir_by_sensor;
 	extern int opt_spooldir_by_sensorname;
+	const char *pointToFilenameAfterBaseSpooldir = filename.c_str();
+	if(!strncmp(pointToFilenameAfterBaseSpooldir, getSpoolDir(), getSpoolDirLength())) {
+		pointToFilenameAfterBaseSpooldir += getSpoolDirLength();
+	}
+	while(*pointToFilenameAfterBaseSpooldir == '/') {
+		++pointToFilenameAfterBaseSpooldir;
+	}
 	if((!opt_spooldir_by_sensor && !opt_spooldir_by_sensorname) ||
-	   sscanf(filename.c_str(), "%[^/]/%u-%u-%u/%u/%u/%[^/]/%s", sensorName, &year, &mon, &day, &hour, &minute, type, fbasename) != 8) {
-		sscanf(filename.c_str(), "%u-%u-%u/%u/%u/%[^/]/%s", &year, &mon, &day, &hour, &minute, type, fbasename);
+	   sscanf(pointToFilenameAfterBaseSpooldir, "%[^/]/%u-%u-%u/%u/%u/%[^/]/%s", sensorName, &year, &mon, &day, &hour, &minute, type, fbasename) != 8) {
+		sscanf(pointToFilenameAfterBaseSpooldir, "%u-%u-%u/%u/%u/%[^/]/%s", &year, &mon, &day, &hour, &minute, type, fbasename);
 		sensorName[0] = 0;
 	}
-//      printf("%s: %u-%u-%u/%u/%u/%s/%s\n", filename.c_str(), year, mon, day, hour, minute, type, fbasename);
+	//printf("%s: %u-%u-%u/%u/%u/%s/%s\n", filename.c_str(), year, mon, day, hour, minute, type, fbasename);
 	data.filename = fbasename;
 	data.sensorName = sensorName;
 	data.year = year;
@@ -1025,48 +1002,10 @@ qtype2strC(int qtype) {
 }
 
 
-void decreaseTartimemap(unsigned int time){
-	// decrease tartimemap
-	pthread_mutex_lock(&tartimemaplock);
-	map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
-	if(tartimemap_it != tartimemap.end()) {
-		tartimemap_it->second--;
-		if(sverb.tar > 2) {
-			syslog(LOG_NOTICE, "tartimemap decrease to: %i %i %i", 
-			       time, time - time % TAR_MODULO_SECONDS, tartimemap_it->second);
-		}
-		if(tartimemap_it->second == 0){
-			tartimemap.erase(tartimemap_it);
-		}
-	}
-	pthread_mutex_unlock(&tartimemaplock);
-}
-
-
-void increaseTartimemap(unsigned int time){
-	pthread_mutex_lock(&tartimemaplock);
-	map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
-	if(tartimemap_it != tartimemap.end()) {
-		tartimemap_it->second++;
-		if(sverb.tar > 2) {
-			syslog(LOG_NOTICE, "tartimemap increase to: %i %i %i", 
-			       time, time - time % TAR_MODULO_SECONDS, tartimemap_it->second);
-		}
-	} else {
-		tartimemap[time - time % TAR_MODULO_SECONDS] = 1;
-		if(sverb.tar > 2) {
-			syslog(LOG_NOTICE, "tartimemap increase set: %i %i %i", 
-			       time, time - time % TAR_MODULO_SECONDS, 1);
-		}
-	}
-	pthread_mutex_unlock(&tartimemaplock);
-}
-
-
 int			    
 TarQueue::write(int qtype, unsigned int time, data_t data) {
 	stringstream tar_dir, tar_name;
-	tar_dir << opt_chdir << "/";
+	tar_dir << getSpoolDir() << "/";
 	if(!data.sensorName.empty()) {
 		tar_dir << data.sensorName << "/";
 	}
@@ -1132,6 +1071,7 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
 		tar->tar.qtype = qtype;
 		tar->created_at = time;
+		tar->spoolIndex = spoolIndex;
 		tar->sensorName = data.sensorName;
 		tar->year = data.year;
 		tar->mon = data.mon;
@@ -1187,7 +1127,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 	tarthread->threadId = get_unix_tid();
 
 	while(1) {
-		int terminate_pass = terminated_tar_flush_queue;
+		int terminate_pass = terminated_tar_flush_queue[this2->spoolIndex];
 		while(1) {
 			bool doProcessData = false;
 			if(tarthread->queue_data.empty()) { 
@@ -1479,7 +1419,7 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
 	#endif
 	
 	if(isClosed && !lenForProceed) {
-		decreaseTartimemap(data->buffer->getTime());
+		tarQueue->decreaseTartimemap(data->buffer->getTime());
 		if(sverb.tar > 2 && tar) {
 			syslog(LOG_NOTICE, "tartimemap decrease1: %s %i %i %i %i", 
 			       data->buffer->getName().c_str(), 
@@ -1640,9 +1580,13 @@ TarQueue::~TarQueue() {
 		delete(it->second);
 	}
 
+	pthread_mutex_destroy(&tartimemaplock);
 }      
 
-TarQueue::TarQueue() {
+TarQueue::TarQueue(int spoolIndex) {
+ 
+	this->spoolIndex = spoolIndex;
+	spoolDirLength = -1;
 
 	terminate = false;
 	maxthreads = opt_pcap_dump_tar_threads;
@@ -1669,6 +1613,9 @@ TarQueue::TarQueue() {
 		this->tarthreads[i].counter = 0;
 	}
 
+	_sync_okTarPointers = 0;
+	pthread_mutex_init(&tartimemaplock, NULL);
+	
 	// create tarthreads
 	
 };	      
@@ -1753,13 +1700,50 @@ list<string> TarQueue::listOpenTars() {
 	return(listTars);
 }
 
-void *TarQueueThread(void *dummy) {
+void TarQueue::decreaseTartimemap(unsigned int time){
+	// decrease tartimemap
+	pthread_mutex_lock(&tartimemaplock);
+	map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
+	if(tartimemap_it != tartimemap.end()) {
+		tartimemap_it->second--;
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "tartimemap decrease to: %i %i %i", 
+			       time, time - time % TAR_MODULO_SECONDS, tartimemap_it->second);
+		}
+		if(tartimemap_it->second == 0){
+			tartimemap.erase(tartimemap_it);
+		}
+	}
+	pthread_mutex_unlock(&tartimemaplock);
+}
+
+void TarQueue::increaseTartimemap(unsigned int time){
+	pthread_mutex_lock(&tartimemaplock);
+	map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
+	if(tartimemap_it != tartimemap.end()) {
+		tartimemap_it->second++;
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "tartimemap increase to: %i %i %i", 
+			       time, time - time % TAR_MODULO_SECONDS, tartimemap_it->second);
+		}
+	} else {
+		tartimemap[time - time % TAR_MODULO_SECONDS] = 1;
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "tartimemap increase set: %i %i %i", 
+			       time, time - time % TAR_MODULO_SECONDS, 1);
+		}
+	}
+	pthread_mutex_unlock(&tartimemaplock);
+}
+
+void *TarQueueThread(void *_tarQueue) {
 	// run each second flushQueue
+	TarQueue *tarQueue = (TarQueue*)_tarQueue;
 	while(1) {
-		if(terminated_tar_flush_queue) {
+		if(terminated_tar_flush_queue[tarQueue->getSpoolIndex()]) {
 			if(tarQueue->allThreadsEnds()) {
 				tarQueue->cleanTars(true);
-				terminated_tar = 1;
+				terminated_tar[tarQueue->getSpoolIndex()] = 1;
 				syslog(LOG_NOTICE, "terminated - tar");
 				break;
 			}
@@ -1767,7 +1751,7 @@ void *TarQueueThread(void *dummy) {
 			int do_terminated_tar_flush_queue = terminated_async;
 			tarQueue->flushQueue();
 			if(do_terminated_tar_flush_queue) {
-				 terminated_tar_flush_queue = 1;
+				 terminated_tar_flush_queue[tarQueue->getSpoolIndex()] = 1;
 				 syslog(LOG_NOTICE, "terminated - tar - flush queue");
 			}
 		}
@@ -1895,8 +1879,13 @@ int unlzo_gui(const char *args) {
 }
 
 bool flushTar(const char *tarName) {
-	if(!tarQueue) {
-		return(false);
+	extern TarQueue *tarQueue[2];
+	bool useFlush = false;
+	for(int i = 0; i < 2; i++) {
+		if(tarQueue[i] &&
+		   tarQueue[i]->flushTar(tarName)) {
+			useFlush = true;
+		}
 	}
-	return(tarQueue->flushTar(tarName));
+	return(useFlush);
 }

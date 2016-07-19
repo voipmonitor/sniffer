@@ -664,11 +664,11 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			return -1;
 		}
 		if(strstr(buf, "reindexfiles_datehour")) {
-			reindex_date_hour(date, hour);
+			CleanSpool::run_reindex_date_hour(date, hour);
 		} else if(strstr(buf, "reindexfiles_date")) {
-			reindex_date(date);
+			CleanSpool::run_reindex_date(date);
 		} else {
-			do_convert_filesindex("call from manager");
+			CleanSpool::run_reindex_all("call from manager");
 		}
 		snprintf(sendbuf, BUFSIZE, "done\r\n");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
@@ -681,7 +681,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-		check_filesindex();
+		CleanSpool::run_check_filesindex();
 		snprintf(sendbuf, BUFSIZE, "done\r\n");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
@@ -852,10 +852,8 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			*pointer = 0;
 		}
 		bool zip = false;
-		#if NEW_REGISTERS
 		extern Registers registers;
 		rslt_data = registers.getDataTableJson(buf + strlen("listregisters") + 1, &zip);
-		#endif
 		if(sendString(&rslt_data, client, sshchannel, zip) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
@@ -1579,12 +1577,13 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		u_int32_t recordId = 0;
 		char tableType[100] = "";
 		char *tarPosI = new FILE_LINE char[1000000];
+		unsigned spool_index = 0;
 		*tarPosI = 0;
 
-		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s" : "getfile_in_tar %s %s %s %u %s %s", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI);
+		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s %u" : "getfile_in_tar %s %s %s %u %s %s %u", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI, &spool_index);
 		
 		Tar tar;
-		if(!tar.tar_open(tar_filename, O_RDONLY)) {
+		if(!tar.tar_open(string(getSpoolDir(spool_index)) + '/' + tar_filename, O_RDONLY)) {
 			string filename_conv = filename;
 			prepare_string_to_filename((char*)filename_conv.c_str());
 			tar.tar_read_send_parameters(client, sshchannel, zip);
@@ -1606,9 +1605,10 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		bool zip = strstr(buf, "getfile_zip");
 		
 		char filename[2048];
-		sscanf(buf, zip ? "getfile_zip %s" : "getfile %s", filename);
+		unsigned spool_index = 0;
+		sscanf(buf, zip ? "getfile_zip %s %u" : "getfile %s %u", filename, &spool_index);
 
-		return(sendFile(filename, client, sshchannel, zip));
+		return(sendFile((string(getSpoolDir(spool_index)) + '/' + filename).c_str(), client, sshchannel, zip));
 	} else if(strstr(buf, "file_exists") != NULL) {
 		if(opt_pcap_queue_send_to_ip_port) {
 			sendvm(client, sshchannel, "mirror", 6, 0);
@@ -1616,26 +1616,22 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 	 
 		char filename[2048];
+		unsigned spool_index = 0;
 		u_int64_t size;
 		string rslt;
 
-		sscanf(buf, "file_exists %s", filename);
+		sscanf(buf, "file_exists %s %u", filename, &spool_index);
 		int error_code;
-		if(FileExists(filename, &error_code)) {
-			size = file_exists(filename);
-			char size_str[20];
-			sprintf(size_str, "%lu", size);
-			rslt = size_str;
+		if(FileExists((char*)(string(getSpoolDir(spool_index)) + '/' + filename).c_str(), &error_code)) {
+			size = file_exists(string(getSpoolDir(spool_index)) + '/' + filename);
+			rslt = intToString(size);
 			if(size > 0 && strstr(filename, "tar")) {
 				for(int i = 1; i <= 5; i++) {
-					char nextfilename[2048];
-					strcpy(nextfilename, filename);
-					sprintf(nextfilename + strlen(nextfilename), ".%i", i);
-					u_int64_t nextsize = file_exists(nextfilename);
+					string nextfilename = filename;
+					nextfilename += "." + intToString(i);
+					u_int64_t nextsize = file_exists(string(getSpoolDir(spool_index)) + '/' + nextfilename);
 					if(nextsize > 0) {
-						char nextsize_str[20];
-						sprintf(nextsize_str, "%lu", nextsize);
-						rslt.append(string(";") + nextfilename + ":" + nextsize_str);
+						rslt += ";" + nextfilename + ":" + intToString(nextsize);
 					} else {
 						break;
 					}

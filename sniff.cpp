@@ -3247,13 +3247,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			call->reg401count++;
 			if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d]", call->call_id.c_str(), call->reg401count);
 		}
-		if((packetS->sip_method == RES401 && call->reg401count > 
-									#if NEW_REGISTERS
-										0
-									#else
-										1
-									#endif
-									) || 
+		if((packetS->sip_method == RES401 && call->reg401count > 1) || 
 		   packetS->sip_method == RES403 || packetS->sip_method == RES404) {
 			// registration failed
 			call->regstate = 2;

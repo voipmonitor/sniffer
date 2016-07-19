@@ -95,6 +95,7 @@ public:
 	}
 	TAR;
 	TAR tar;
+	int spoolIndex;
 	string sensorName;
 	int year, mon, day, hour, minute;
 	volatile int writing;
@@ -173,6 +174,12 @@ public:
 	}
 	bool isReadEnd() {
 		return(readData.end);
+	}
+	const char *getSpoolDir() {
+		return(::getSpoolDir(spoolIndex));
+	}
+	const char *skipSpoolDir(const char *pathName) {
+		return(::skipSpoolDir(spoolIndex, pathName));
 	}
 
 	void tarlock() {
@@ -286,7 +293,7 @@ public:
         int maxthreads;
 
 
-	TarQueue();
+	TarQueue(int spoolIndex);
 	~TarQueue();
 	void lock() {pthread_mutex_lock(&mutexlock);};
 	void unlock() {pthread_mutex_unlock(&mutexlock);};
@@ -411,20 +418,38 @@ public:
 	bool flushTar(const char *tarName);
 	u_int64_t sumSizeOpenTars();
 	list<string> listOpenTars();
-
+	void lock_okTarPointers() { while(__sync_lock_test_and_set(&_sync_okTarPointers, 1)); }
+	void unlock_okTarPointers() { __sync_lock_release(&_sync_okTarPointers); }
+	void decreaseTartimemap(unsigned int time);
+	void increaseTartimemap(unsigned int time);
+	int getSpoolIndex() {
+		return(spoolIndex);
+	}
+	const char *getSpoolDir() {
+		return(::getSpoolDir(spoolIndex));
+	}
+	int getSpoolDirLength() {
+		if(spoolDirLength == -1) {
+			spoolDirLength = strlen(getSpoolDir());
+		}
+		return(spoolDirLength);
+	}
 private:
+	int spoolIndex;
+	int spoolDirLength;
 	map<unsigned int, vector<data_t> > queue_data[4]; //queue for all, sip, rtp, graph
 	unsigned long tarThreadCounter[4];
 	pthread_mutex_t mutexlock;
 	pthread_mutex_t flushlock;
 	pthread_mutex_t tarslock;
 	map<string, Tar*> tars; //queue for all, sip, rtp, graph
+	map<void*, unsigned int> okTarPointers;
+	volatile int _sync_okTarPointers;
+	map<unsigned int, int> tartimemap;
+	pthread_mutex_t tartimemaplock;
 };
 
 void *TarQueueThread(void *dummy);
-
-void decreaseTartimemap(unsigned int time);
-void increaseTartimemap(unsigned int time);
 
 int untar_gui(const char *args);
 int unlzo_gui(const char *args);

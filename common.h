@@ -59,6 +59,7 @@ struct sVerbose {
 	int tcpreplay;
 	int abort_if_heap_full;
 	int dtmf;
+	int cleanspool;
 	int _debug1;
 	int _debug2;
 	int _debug3;
