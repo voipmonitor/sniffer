@@ -4575,17 +4575,17 @@ void Call::saveregister() {
 		syslog(LOG_WARNING,"try to duplicity push call %s / %i to registers_queue", call_id.c_str(), type);
 	} else {
 		push_register_to_registers_queue = 1;
-		#if NEW_REGISTERS
+		if(opt_sip_register_new) {
 			extern Registers registers;
 			registers.add(this);
 			((Calltable*)calltable)->lock_registers_deletequeue();
 			((Calltable*)calltable)->registers_deletequeue.push_back(this);
 			((Calltable*)calltable)->unlock_registers_deletequeue();
-		#else
+		} else {
 			((Calltable*)calltable)->lock_registers_queue();
 			((Calltable*)calltable)->registers_queue.push_back(this);
 			((Calltable*)calltable)->unlock_registers_queue();
-		#endif
+		}
 	}
 }
 
