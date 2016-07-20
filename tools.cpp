@@ -2984,7 +2984,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->permission = 0;
 	this->fh = 0;
 	this->tar = opt_pcap_dump_tar && call && typeFile != FileZipHandler::na ? 
-		     ((call->flags & FLAG_USE_SPOOL_2) ? 2 : 1) :
+		     (call->getSpoolIndex() + 1) :
 		     0;
 	this->compressStream = NULL;
 	this->bufferLength = this->tar ?

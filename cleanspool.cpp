@@ -392,7 +392,8 @@ void CleanSpool::cleanThread() {
 	while(!is_terminating()) {
 		cleanThreadProcess();
 		for(int i = 0; i < 2; i++) {
-			if(cleanSpool[i]->spoolIndex != this->spoolIndex &&
+			if(cleanSpool[i] &&
+			   cleanSpool[i]->spoolIndex != this->spoolIndex &&
 			   !cleanSpool[i]->clean_thread) {
 				cleanSpool[i]->cleanThreadProcess();
 			}
