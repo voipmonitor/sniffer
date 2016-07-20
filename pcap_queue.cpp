@@ -123,6 +123,7 @@ extern TcpReassembly *tcpReassemblySipExt;
 extern char opt_pb_read_from_file[256];
 extern double opt_pb_read_from_file_speed;
 extern int opt_pb_read_from_file_acttime;
+extern int opt_pb_read_from_file_acttime_diff_days;
 extern unsigned int opt_pb_read_from_file_max_packets;
 extern bool opt_continue_after_read;
 extern char opt_scanpcapdir[2048];
@@ -2669,7 +2670,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			static u_int64_t diffTime;
 			u_int64_t packetTime = (*header)->ts.tv_sec * 1000000ull + (*header)->ts.tv_usec;
 			if(!diffTime) {
-				diffTime = getTimeUS() - packetTime;
+				diffTime = getTimeUS() - packetTime - opt_pb_read_from_file_acttime_diff_days * 24 * 3600 *1000000ull;
 			}
 			packetTime += diffTime;
 			(*header)->ts.tv_sec = packetTime / 1000000ull;

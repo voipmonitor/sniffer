@@ -1101,7 +1101,7 @@ void CleanSpool::clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio) {
 			FROM files \
 			WHERE spool_index = " + getSpoolIndex_string() + " and \
 			      id_sensor = " + getIdSensor_string() + " and \
-			      datehour < DATE_FORMAT(DATE_SUB(NOW(), INTERVAL " + intToString(maxpooldays) + " DAY), '%Y%m%d%k') \
+			      datehour < DATE_FORMAT(DATE_SUB(NOW(), INTERVAL " + intToString(maxpooldays) + " DAY), '%Y%m%d%H') \
 			      " + sizeCond + " \
 			      ORDER BY datehour");
 		SqlDb_row row = sqlDb->fetchRow();
