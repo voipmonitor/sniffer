@@ -4039,24 +4039,6 @@ void test() {
 	 
 	case 1: {
 	 
-		sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-						    cloud_host, cloud_token);
-		for(int i = 0; i < 2; i++) {
-			if(CleanSpool::isSetCleanspoolParameters(i) &&
-			   (i == 0 || opt_spooldir_2[0])) {
-				cleanSpool[i] = new FILE_LINE CleanSpool(i);
-			}
-		}
-		//CleanSpool::run_reindex_all("test");
-		CleanSpool::run_cleanProcess();
-		set_terminating();
-		sqlStore->setEnableTerminatingIfEmpty(0, true);
-		sqlStore->setEnableTerminatingIfSqlError(0, true);
-		delete sqlStore;
-		sqlStore = NULL;
-		
-		break;
-	 
 		test_filezip_handler();
 		break;
 	 
@@ -4083,6 +4065,7 @@ void test() {
 		cout << "---------" << endl;
 	} break;
 	case 2: {
+	 
 		for(int i = 0; i < 10; i++) {
 			sleep(1);
 			cout << "." << flush;
@@ -4258,6 +4241,33 @@ void test() {
 		config.setFromJson(jsonStr.c_str(), true);
 		cout << "***" << endl;
 		config.putToMysql();
+		}
+		break;
+		
+	case 304:
+	case 305:
+		{
+		sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
+						    cloud_host, cloud_token);
+		for(int i = 0; i < 2; i++) {
+			if(CleanSpool::isSetCleanspoolParameters(i) &&
+			   (i == 0 || opt_spooldir_2[0])) {
+				cleanSpool[i] = new FILE_LINE CleanSpool(i);
+			}
+		}
+		switch(opt_test) {
+		case 304:
+			CleanSpool::run_reindex_all("");
+			break;
+		case 305:
+			CleanSpool::run_cleanProcess();
+			break;
+		}
+		set_terminating();
+		sqlStore->setEnableTerminatingIfEmpty(0, true);
+		sqlStore->setEnableTerminatingIfSqlError(0, true);
+		delete sqlStore;
+		sqlStore = NULL;
 		}
 		break;
 	}
@@ -5493,6 +5503,8 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"max-packets", 1, 0, 301},
 	    {"continue-after-read", 0, 0, 302},
 	    {"diff-days", 1, 0, 303},
+	    {"reindex-all", 0, 0, 304},
+	    {"run-cleanspool", 0, 0, 305},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -5792,6 +5804,10 @@ void get_command_line_arguments() {
 				break;
 			case 303:
 				opt_pb_read_from_file_acttime_diff_days = atoi(optarg);
+				break;
+			case 304:
+			case 305:
+				opt_test = c;
 				break;
 			case 'c':
 				opt_nocdr = 1;
