@@ -3586,12 +3586,18 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 							unsigned sleepCounter = 0;
 							while(!is_terminating()) {
 								this->tryForcePush();
-								if(sleepCounter > 10) {
+								if(sleepCounter > 10 && sleepCounter <= 15) {
 									calltable->cleanup_calls(0);
 									calltable->cleanup_registers(0);
-								} else if(sleepCounter > 20) {
+								}
+								if(sleepCounter > 15) {
 									calltable->destroyCallsIfPcapsClosed();
 									calltable->destroyRegistersIfPcapsClosed();
+								}
+								if(sleepCounter > 20) {
+									if(flushAllTars()) {
+										 syslog(LOG_NOTICE, "tars flushed");
+									}
 								}
 								sleep(1);
 								++sleepCounter;

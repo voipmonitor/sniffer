@@ -416,6 +416,7 @@ public:
 	double getCpuUsagePerc(int threadIndex, bool preparePstatData);
 	bool allThreadsEnds();
 	bool flushTar(const char *tarName);
+	unsigned flushAllTars();
 	u_int64_t sumSizeOpenTars();
 	list<string> listOpenTars();
 	void lock_okTarPointers() { while(__sync_lock_test_and_set(&_sync_okTarPointers, 1)); }
@@ -454,5 +455,6 @@ void *TarQueueThread(void *dummy);
 int untar_gui(const char *args);
 int unlzo_gui(const char *args);
 bool flushTar(const char *tarName);
+unsigned flushAllTars();
 
 #endif

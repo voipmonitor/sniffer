@@ -1676,6 +1676,21 @@ bool TarQueue::flushTar(const char *tarName) {
 	return(rslt);
 }
 
+unsigned TarQueue::flushAllTars() {
+	unsigned countFlush = 0;
+	map<string, Tar*>::iterator tars_it;
+	pthread_mutex_lock(&tarslock);
+	for(tars_it = tars.begin(); tars_it != tars.end(); tars_it++) {
+		Tar *tar = tars_it->second;
+		if(tar->flush()) {
+			tar->lastFlushTime = getTimeS();
+			++countFlush;
+		}
+	}
+	pthread_mutex_unlock(&tarslock);
+	return(countFlush);
+}
+
 u_int64_t TarQueue::sumSizeOpenTars() {
 	u_int64_t sumSize = 0;
 	map<string, Tar*>::iterator tars_it;
@@ -1888,4 +1903,15 @@ bool flushTar(const char *tarName) {
 		}
 	}
 	return(useFlush);
+}
+
+unsigned flushAllTars() {
+	extern TarQueue *tarQueue[2];
+	unsigned countFlush = 0;
+	for(int i = 0; i < 2; i++) {
+		if(tarQueue[i]) {
+			countFlush += tarQueue[i]->flushAllTars();
+		}
+	}
+	return(countFlush);
 }
