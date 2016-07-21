@@ -1900,8 +1900,8 @@ string FraudAlertInfo_reg::getJson() {
 		incident->add("sipcalledip", inet_ntostring(htonl(iter->first.sipcalledip)));
 		incident->add("to_num", iter->first.to_num);
 		incident->add("to_domain", iter->first.to_domain);
-		incident->add("contact_num", iter->first.contact_num);
-		incident->add("contact_domain", iter->first.contact_domain);
+		incident->add("contact_num", iter->second.contact_num);
+		incident->add("contact_domain", iter->second.contact_domain);
 		incident->add("digestusername", iter->first.digest_username);
 		incident->add("from_num", iter->second.from_num);
 		incident->add("from_name", iter->second.from_name);

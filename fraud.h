@@ -537,30 +537,22 @@ struct sFraudRegisterInfo_id {
 	u_int32_t sipcalledip;
 	string to_num;
 	string to_domain;
-	string contact_num;
-	string contact_domain;
 	string digest_username;
 	bool operator == (const sFraudRegisterInfo_id& other) const {
 		return(this->sipcallerip == other.sipcallerip &&
 		       this->sipcalledip == other.sipcalledip &&
 		       this->to_num == other.to_num &&
 		       this->to_domain == other.to_domain &&
-		       this->contact_num == other.contact_num &&
-		       this->contact_domain == other.contact_domain &&
 		       this->digest_username == other.digest_username);
 	}
 	bool operator < (const sFraudRegisterInfo_id& other) const { 
 		int rslt_cmp_to_num;
 		int rslt_cmp_to_domain;
-		int rslt_cmp_contact_num;
-		int rslt_cmp_contact_domain;
 		int rslt_cmp_digest_username;
 		return((this->sipcallerip < other.sipcallerip) ? 1 : (this->sipcallerip > other.sipcallerip) ? 0 :
 		       (this->sipcalledip < other.sipcalledip) ? 1 : (this->sipcalledip > other.sipcalledip) ? 0 :
 		       ((rslt_cmp_to_num = strcasecmp(this->to_num.c_str(), other.to_num.c_str())) < 0) ? 1 : (rslt_cmp_to_num > 0) ? 0 :
 		       ((rslt_cmp_to_domain = strcasecmp(this->to_domain.c_str(), other.to_domain.c_str())) < 0) ? 1 : (rslt_cmp_to_domain > 0) ? 0 :
-		       ((rslt_cmp_contact_num = strcasecmp(this->contact_num.c_str(), other.contact_num.c_str())) < 0) ? 1 : (rslt_cmp_contact_num > 0) ? 0 :
-		       ((rslt_cmp_contact_domain = strcasecmp(this->contact_domain.c_str(), other.contact_domain.c_str())) < 0) ? 1 : (rslt_cmp_contact_domain > 0) ? 0 :
 		       ((rslt_cmp_digest_username = strcasecmp(this->digest_username.c_str(), other.digest_username.c_str())) < 0));
 	}
 };
@@ -569,6 +561,8 @@ struct sFraudRegisterInfo_data {
 	string from_num;
 	string from_name;
 	string from_domain;
+	string contact_num;
+	string contact_domain;
 	string digest_realm;
 	string ua;
 	eRegisterState state;
