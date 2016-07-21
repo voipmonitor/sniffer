@@ -1424,7 +1424,7 @@ Call::convertRawToWav() {
 					B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k, B->stats.received);
 				B->skip = true;
 			}
-			if(A == B or A->skip or B->skip) continue; // do not compare with ourself or already removed RTP
+			if(A == B or A->skip or B->skip or A->stats.received < 50 or B->stats.received < 50) continue; // do not compare with ourself or already removed RTP or with RTP with <20 packets
 			if(A->ssrc == B->ssrc) {
 				if(A->daddr == B->daddr and A->saddr == B->saddr and A->sport == B->sport and A->dport == B->dport){
 					// A and B have the same SSRC but both is identical ips and ports
@@ -1482,7 +1482,7 @@ Call::convertRawToWav() {
 				} else {
 					//A.daddr is not in SDP so we can remove that stream 
 					A->skip = 1;
-					if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 3\n", 
+					if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 33\n", 
 						A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
 				}
 			}
@@ -1680,12 +1680,13 @@ Call::convertRawToWav() {
 						  last_size > 10000) {
 						// ignore this raw file it is duplicate 
 						if(!sverb.noaudiounlink) unlink(raw);
-						//syslog(LOG_NOTICE, "ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+						syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 					} else {
-						if(!rtp[rawl.ssrc_index]->skip) {
-							raws.push_back(rawl);
-						} else {
+						if(rtp[rawl.ssrc_index]->skip) {
+							syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 							if(!sverb.noaudiounlink) unlink(raw);
+						} else {
+							raws.push_back(rawl);
 						}
 					}
 				} else {
@@ -1693,6 +1694,7 @@ Call::convertRawToWav() {
 						raws.push_back(rawl);
 					} else {
 						if(!sverb.noaudiounlink) unlink(raw);
+							syslog(LOG_NOTICE, "C ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 					}
 				}
 				lasttv.tv_sec = tv0.tv_sec;
