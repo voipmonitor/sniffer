@@ -285,8 +285,10 @@ volatile int usersniffer_sync;
 
 unsigned long process_packet__last_filter_reload = 0;
 unsigned long process_packet__last_cleanup_calls = 0;
+long process_packet__last_cleanup_calls_diff = 0;
 unsigned long process_packet__last_destroy_calls = 0;
 unsigned long process_packet__last_cleanup_registers = 0;
+long process_packet__last_cleanup_registers_diff = 0;
 unsigned long process_packet__last_destroy_registers = 0;
 
 
@@ -2319,10 +2321,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	int merged;
 	
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
-	if (packetS->header_pt->ts.tv_sec - process_packet__last_cleanup_calls > 10){
-		process_packet__cleanup_calls(packetS->header_pt);
-		process_packet__last_cleanup_calls = packetS->header_pt->ts.tv_sec;
-	}
+	process_packet__cleanup_calls(packetS->header_pt);
 	if(packetS->header_pt->ts.tv_sec - process_packet__last_destroy_calls >= 2) {
 		calltable->destroyCallsIfPcapsClosed();
 		process_packet__last_destroy_calls = packetS->header_pt->ts.tv_sec;
@@ -3113,10 +3112,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 	const char *logPacketSipMethodCallDescr = NULL;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
-	if (packetS->header_pt->ts.tv_sec - process_packet__last_cleanup_registers > 10){
-		process_packet__cleanup_registers(packetS->header_pt);
-		process_packet__last_cleanup_registers = packetS->header_pt->ts.tv_sec;
-	}
+	process_packet__cleanup_registers(packetS->header_pt);
 	if(packetS->header_pt->ts.tv_sec - process_packet__last_destroy_registers >= 2) {
 		calltable->destroyRegistersIfPcapsClosed();
 		process_packet__last_destroy_registers = packetS->header_pt->ts.tv_sec;
@@ -3601,6 +3597,20 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 }
 
 inline void process_packet__cleanup_calls(pcap_pkthdr* header, u_long timeS) {
+	u_long actTimeS = getTimeS();
+	if(timeS) {
+		process_packet__last_cleanup_calls_diff = timeS - actTimeS;
+	} else {
+		if(header) {
+			timeS = header->ts.tv_sec;
+			process_packet__last_cleanup_calls_diff = timeS - actTimeS;
+		} else {
+			timeS = actTimeS + process_packet__last_cleanup_calls_diff;
+		}
+	}
+	if(timeS - process_packet__last_cleanup_calls < 10) {
+		return;
+	}
 	if(verbosity > 0 && is_read_from_file_simple()) {
 		if(opt_dup_check) {
 			syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] skipped dupe pkts [%u]\n", 
@@ -3609,9 +3619,6 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, u_long timeS) {
 			syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d]\n", 
 				(int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size());
 		}
-	}
-	if(!timeS && header) {
-		timeS = header->ts.tv_sec;
 	}
 	calltable->cleanup_calls(timeS);
 	process_packet__last_cleanup_calls = timeS;
@@ -3629,8 +3636,19 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, u_long timeS) {
 }
 
 inline void process_packet__cleanup_registers(pcap_pkthdr* header, u_long timeS) {
-	if(!timeS && header) {
-		timeS = header->ts.tv_sec;
+	u_long actTimeS = getTimeS();
+	if(timeS) {
+		process_packet__last_cleanup_registers_diff = timeS - actTimeS;
+	} else {
+		if(header) {
+			timeS = header->ts.tv_sec;
+			process_packet__last_cleanup_registers_diff = timeS - actTimeS;
+		} else {
+			timeS = actTimeS + process_packet__last_cleanup_registers_diff;
+		}
+	}
+	if(timeS - process_packet__last_cleanup_registers < 10) {
+		return;
 	}
 	calltable->cleanup_registers(timeS);
 	process_packet__last_cleanup_registers = timeS;
@@ -5059,15 +5077,9 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 
 
 void process_packet__push_batch() {
+	process_packet__cleanup_calls(NULL);
+	process_packet__cleanup_registers(NULL);
 	u_long timeS = getTimeS();
-	if(timeS - process_packet__last_cleanup_calls > 10) {
-		process_packet__cleanup_calls(NULL, timeS);
-		process_packet__last_cleanup_calls = timeS;
-	}
-	if(timeS - process_packet__last_cleanup_registers > 10) {
-		process_packet__cleanup_registers(NULL, timeS);
-		process_packet__last_cleanup_registers = timeS;
-	}
 	if(timeS - process_packet__last_destroy_calls >= 2) {
 		calltable->destroyCallsIfPcapsClosed();
 		process_packet__last_destroy_calls = timeS;

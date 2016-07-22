@@ -4353,11 +4353,6 @@ Calltable::cleanup_calls( time_t currtime ) {
 			}
 		} else if(call->in_preprocess_queue_before_process_packet <= 0 ||
 			 (call->in_preprocess_queue_before_process_packet_at && call->in_preprocess_queue_before_process_packet_at < currtime - 120)) {
-		 
-			if(call->in_preprocess_queue_before_process_packet) {
-				cout << "******" << endl;
-			}
-		 
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
 			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
