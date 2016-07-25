@@ -150,7 +150,7 @@ struct pcap_block_store {
 		uint16_t dlink;
 		int16_t sensor_id;
 		char ifname[10];
-		int8_t hm;
+		int32_t hm;
 	};
 	pcap_block_store(header_mode hm = plus) {
 		this->hm = hm;
