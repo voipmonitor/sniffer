@@ -195,6 +195,9 @@ inline bool isSetSpoolDir2() {
 	extern char opt_spooldir_2[1024];
 	return(opt_spooldir_2[0]);
 }
+inline bool isSetSpoolDir(int spoolIndex) {
+	return(spoolIndex == 0 || isSetSpoolDir2());
+}
 inline const char *getSpoolDir(int spoolIndex) {
 	extern char opt_chdir[1024];
 	extern char opt_spooldir_2[1024];

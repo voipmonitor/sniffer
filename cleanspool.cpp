@@ -173,8 +173,8 @@ string CleanSpool::getMaxSpoolDate() {
 
 void CleanSpool::run_cleanProcess(int spoolIndex) {
 	for(int i = 0; i < 2; i++) {
-		if((spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex) &&
-		   cleanSpool[i]) {
+		if(cleanSpool[i] &&
+		   (spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex)) {
 			cleanSpool[i]->cleanThreadProcess();
 		}
 	}
@@ -182,8 +182,8 @@ void CleanSpool::run_cleanProcess(int spoolIndex) {
 
 void CleanSpool::run_reindex_all(const char *reason, int spoolIndex) {
 	for(int i = 0; i < 2; i++) {
-		if((spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex) &&
-		   cleanSpool[i]) {
+		if(cleanSpool[i] &&
+		   (spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex)) {
 			cleanSpool[i]->reindex_all(reason);
 		}
 	}
@@ -191,8 +191,8 @@ void CleanSpool::run_reindex_all(const char *reason, int spoolIndex) {
 
 void CleanSpool::run_reindex_date(string date, int spoolIndex) {
 	for(int i = 0; i < 2; i++) {
-		if((spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex) &&
-		   cleanSpool[i]) {
+		if(cleanSpool[i] &&
+		   (spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex)) {
 			cleanSpool[i]->reindex_date(date);
 		}
 	}
@@ -200,8 +200,8 @@ void CleanSpool::run_reindex_date(string date, int spoolIndex) {
 
 void CleanSpool::run_reindex_date_hour(string date, int hour, int spoolIndex) {
 	for(int i = 0; i < 2; i++) {
-		if((spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex) &&
-		   cleanSpool[i]) {
+		if(cleanSpool[i] &&
+		   (spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex)) {
 			cleanSpool[i]->reindex_date_hour(date, hour);
 		}
 	}
@@ -210,8 +210,9 @@ void CleanSpool::run_reindex_date_hour(string date, int hour, int spoolIndex) {
 bool CleanSpool::suspend(int spoolIndex) {
 	bool changeState = false;
 	for(int i = 0; i < 2; i++) {
-		if((spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex) &&
-		   cleanSpool[i] && !cleanSpool[i]->suspended) {
+		if(cleanSpool[i] &&
+		   (spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex) &&
+		   !cleanSpool[i]->suspended) {
 			cleanSpool[i]->suspended = true;
 			changeState = true;
 		}
@@ -222,8 +223,9 @@ bool CleanSpool::suspend(int spoolIndex) {
 bool CleanSpool::resume(int spoolIndex) {
 	bool changeState = false;
 	for(int i = 0; i < 2; i++) {
-		if((spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex) &&
-		   cleanSpool[i] && cleanSpool[i]->suspended) {
+		if(cleanSpool[i] &&
+		   (spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex) &&
+		   cleanSpool[i]->suspended) {
 			cleanSpool[i]->suspended = false;
 			changeState = true;
 		}
@@ -233,8 +235,8 @@ bool CleanSpool::resume(int spoolIndex) {
 
 void CleanSpool::run_check_filesindex(int spoolIndex) {
 	for(int i = 0; i < 2; i++) {
-		if((spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex) &&
-		   cleanSpool[i]) {
+		if(cleanSpool[i] &&
+		   (spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex)) {
 			cleanSpool[i]->check_filesindex();
 		}
 	}
@@ -242,8 +244,8 @@ void CleanSpool::run_check_filesindex(int spoolIndex) {
 
 void CleanSpool::run_check_spooldir_filesindex(const char *dirfilter, int spoolIndex) {
 	for(int i = 0; i < 2; i++) {
-		if((spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex) &&
-		   cleanSpool[i]) {
+		if(cleanSpool[i] &&
+		   (spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex)) {
 			cleanSpool[i]->check_spooldir_filesindex(dirfilter);
 		}
 	}

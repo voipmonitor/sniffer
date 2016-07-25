@@ -2690,12 +2690,14 @@ int main_init_read() {
 	chdir(opt_chdir);
 
 	for(int i = 0; i < 2; i++) {
-		string spoolDir = getSpoolDir(i);
-		if(!spoolDir.empty()) {
-			mkdir_r(string(spoolDir) + "/filesindex/sipsize", 0777);
-			mkdir_r(string(spoolDir) + "/filesindex/rtpsize", 0777);
-			mkdir_r(string(spoolDir) + "/filesindex/graphsize", 0777);
-			mkdir_r(string(spoolDir) + "/filesindex/audiosize", 0777);
+		if(isSetSpoolDir(i)) {
+			string spoolDir = getSpoolDir(i);
+			if(!spoolDir.empty()) {
+				mkdir_r(string(spoolDir) + "/filesindex/sipsize", 0777);
+				mkdir_r(string(spoolDir) + "/filesindex/rtpsize", 0777);
+				mkdir_r(string(spoolDir) + "/filesindex/graphsize", 0777);
+				mkdir_r(string(spoolDir) + "/filesindex/audiosize", 0777);
+			}
 		}
 	}
 
@@ -2760,8 +2762,8 @@ int main_init_read() {
 	
 	if(is_enable_cleanspool()) {
 		for(int i = 0; i < 2; i++) {
-			if(CleanSpool::isSetCleanspoolParameters(i) &&
-			   (i == 0 || opt_spooldir_2[0])) {
+			if(isSetSpoolDir(i) &&
+			   CleanSpool::isSetCleanspoolParameters(i)) {
 				cleanSpool[i] = new FILE_LINE CleanSpool(i);
 			}
 		}
@@ -2772,7 +2774,7 @@ int main_init_read() {
 
 	if(opt_pcap_dump_tar) {
 		for(int i = 0; i < 2; i++) {
-			if(i == 0 || opt_spooldir_2[0]) {
+			if(isSetSpoolDir(i)) {
 				tarQueue[i] = new FILE_LINE TarQueue(i);
 			}
 		}
@@ -2971,11 +2973,13 @@ int main_init_read() {
 	
 	if(opt_pcap_dump_tar && opt_fork) {
 		for(int i = 0; i < 2; i++) {
-			string maxSpoolDate = cleanSpool[i]->getMaxSpoolDate();
-			if(maxSpoolDate.length()) {
-				syslog(LOG_NOTICE, "run reindex date %s", maxSpoolDate.c_str());
-				CleanSpool::run_reindex_date(maxSpoolDate, i);
-				syslog(LOG_NOTICE, "reindex date %s completed", maxSpoolDate.c_str());
+			if(isSetSpoolDir(i)) {
+				string maxSpoolDate = cleanSpool[i]->getMaxSpoolDate();
+				if(maxSpoolDate.length()) {
+					syslog(LOG_NOTICE, "run reindex date %s", maxSpoolDate.c_str());
+					CleanSpool::run_reindex_date(maxSpoolDate, i);
+					syslog(LOG_NOTICE, "reindex date %s completed", maxSpoolDate.c_str());
+				}
 			}
 		}
 	}
@@ -4219,8 +4223,8 @@ void test() {
 		return;
 	case 99:
 		for(int i = 0; i < 2; i++) {
-			if(CleanSpool::isSetCleanspoolParameters(i) &&
-			   (i == 0 || opt_spooldir_2[0])) {
+			if(isSetSpoolDir(i) &&
+			   CleanSpool::isSetCleanspoolParameters(i)) {
 				cleanSpool[i] = new FILE_LINE CleanSpool(i);
 			}
 		}
@@ -4250,8 +4254,8 @@ void test() {
 		sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
 						    cloud_host, cloud_token);
 		for(int i = 0; i < 2; i++) {
-			if(CleanSpool::isSetCleanspoolParameters(i) &&
-			   (i == 0 || opt_spooldir_2[0])) {
+			if(isSetSpoolDir(i) &&
+			   CleanSpool::isSetCleanspoolParameters(i)) {
 				cleanSpool[i] = new FILE_LINE CleanSpool(i);
 			}
 		}
