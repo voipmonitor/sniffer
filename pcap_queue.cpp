@@ -5298,8 +5298,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									syslog(LOG_NOTICE, "enforce close connection (too errors) from %s:%i", this->packetServerConnections[arg2]->socketClientIP.c_str(), this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 									this->packetServerConnections[arg2]->active = false;
 									forceStop = true;
-									break;
 								}
+								break;
 							} else {
 								countErrors = 0;
 							}
@@ -5310,6 +5310,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				}
 			}
 		}
+		cleanupConnections();
 		delete [] buffer;
 		delete blockStore;
 	} else {
