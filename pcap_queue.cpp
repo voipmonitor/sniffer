@@ -1652,7 +1652,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			lastcachedirtransfered = cachedirtransfered;
 		}
 	}
-	if(opt_pcap_dump_tar) {
+	if(!this->isMirrorSender() && opt_pcap_dump_tar) {
 		outStr << "tarQ[" << glob_tar_queued_files << "] ";
 		u_int64_t tarBufferSize = ChunkBuffer::getChunkBuffersSumsize();
 		if(tarBufferSize) {
