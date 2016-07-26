@@ -35,6 +35,7 @@
 #include "ssldata.h"
 #include "tar.h"
 #include "voipmonitor.h"
+#include "crc.h"
 
 
 #define TEST_DEBUG_PARAMS 0
@@ -437,7 +438,7 @@ void pcap_block_store::freeBlock() {
 	}
 }
 
-u_char* pcap_block_store::getSaveBuffer() {
+u_char* pcap_block_store::getSaveBuffer(uint32_t block_counter) {
 	size_t sizeSaveBuffer = this->getSizeSaveBuffer();
 	u_char *saveBuffer = new FILE_LINE u_char[sizeSaveBuffer];
 	pcap_block_store_header header;
@@ -447,6 +448,7 @@ u_char* pcap_block_store::getSaveBuffer() {
 	header.count = this->count;
 	header.dlink = this->dlink;
 	header.sensor_id = this->sensor_id;
+	header.counter = block_counter;
 	strcpy(header.ifname, this->ifname);
 	memcpy_heapsafe(saveBuffer, saveBuffer,
 			&header, NULL,
@@ -460,6 +462,7 @@ u_char* pcap_block_store::getSaveBuffer() {
 			this->block, this->block,
 			this->getUseSize(),
 			__FILE__, __LINE__);
+	((pcap_block_store_header*)saveBuffer)->crc = crc32buf(saveBuffer + sizeof(pcap_block_store_header), sizeSaveBuffer - sizeof(pcap_block_store_header));
 	return(saveBuffer);
 }
 
@@ -472,6 +475,7 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	this->dlink = header->dlink;
 	this->sensor_id = header->sensor_id;
 	strncpy(this->ifname, header->ifname, sizeof(header->ifname));
+	this->block_counter = header->counter;
 	if(this->offsets) {
 		delete [] this->offsets;
 	}
@@ -531,6 +535,9 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	}
 	if(offset) {
 		*offset = size - (this->restoreBufferSize - sizeRestoreBuffer);
+	}
+	if(((pcap_block_store_header*)this->restoreBuffer)->crc != crc32buf(this->restoreBuffer + sizeof(pcap_block_store_header), sizeRestoreBuffer - sizeof(pcap_block_store_header))) {
+		return(-5);
 	}
 	if(autoRestore) {
 		this->restoreFromSaveBuffer(this->restoreBuffer);
@@ -4965,6 +4972,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->lastCheckFreeSizeCachedir_timeMS = 0;
 	this->_last_ts.tv_sec = 0;
 	this->_last_ts.tv_usec = 0;
+	this->block_counter = 0;
 	this->setEnableMainThread(opt_pcap_queue_compress || is_receiver() ||
 				  (opt_pcap_queue_disk_folder.length() && opt_pcap_queue_store_queue_max_disk_size) ||
 				  !opt_pcap_queue_suppress_t1_thread);
@@ -5246,19 +5254,34 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								} else if(!blockStore->size_compress && !blockStore->check_headers()) {
 									error = "bad headers";
 								} else {
-									blockStore->sensor_ip = this->packetServerConnections[arg2]->socketClientIPN;
-									while(!this->pcapStoreQueue.push(blockStore, false)) {
-										if(TERMINATING || forceStop) {
-											break;
+									if(send(this->packetServerConnections[arg2]->socketClient, "block_ok", 8, 0) != 8) {
+										error = "send ok to sender failed";
+									} else {
+										if(this->packetServerConnections[arg2]->block_counter == blockStore->block_counter) {
+											blockStore->destroyRestoreBuffer();
 										} else {
-											usleep(1000);
+											if(this->packetServerConnections[arg2]->block_counter &&
+											   this->packetServerConnections[arg2]->block_counter + 1 != blockStore->block_counter) {
+												syslog(LOG_ERR, "loss packetbuffer block in conection %s - %i",
+												       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
+												       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+											}
+											this->packetServerConnections[arg2]->block_counter = blockStore->block_counter;
+											blockStore->sensor_ip = this->packetServerConnections[arg2]->socketClientIPN;
+											while(!this->pcapStoreQueue.push(blockStore, false)) {
+												if(TERMINATING || forceStop) {
+													break;
+												} else {
+													usleep(1000);
+												}
+											}
+											sumPacketsCounterIn[0] += blockStore->count;
+											sumPacketsSize[0] += blockStore->size_packets ? blockStore->size_packets : blockStore->size;
+											sumPacketsSizeCompress[0] += blockStore->size_compress;
+											++sumBlocksCounterIn[0];
+											blockStore = new FILE_LINE pcap_block_store;
 										}
 									}
-									sumPacketsCounterIn[0] += blockStore->count;
-									sumPacketsSize[0] += blockStore->size_packets ? blockStore->size_packets : blockStore->size;
-									sumPacketsSizeCompress[0] += blockStore->size_compress;
-									++sumBlocksCounterIn[0];
-									blockStore = new FILE_LINE pcap_block_store;
 								}
 							} else if(rsltAddRestoreChunk < 0) {
 								switch(rsltAddRestoreChunk) {
@@ -5274,6 +5297,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								case -4:
 									error = "oversize";
 									break;
+								case -5:
+									error = "bad crc";
+									break;
 								default:
 									error = "unknow error";
 									break;
@@ -5282,6 +5308,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								offsetBuffer = bufferLen;
 							}
 							if(error) {
+								send(this->packetServerConnections[arg2]->socketClient, error, strlen(error), 0);
 								blockStore->destroyRestoreBuffer();
 								syncBeginBlock = true;
 								u_long actTimeMS = getTimeMS();
@@ -5310,7 +5337,6 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				}
 			}
 		}
-		cleanupConnections();
 		delete [] buffer;
 		delete blockStore;
 	} else {
@@ -5338,6 +5364,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		}
 	}
 	this->threadTerminated = true;
+	if(this->packetServerDirection == directionRead && arg2) {
+		cleanupConnections();
+	}
 	return(NULL);
 }
 
@@ -5823,10 +5852,28 @@ string PcapQueue_readFromFifo::getCpuUsage(bool writeThread, bool preparePstatDa
 }
 
 bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) {
-	size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
-	u_char *saveBuffer = blockStore->getSaveBuffer();
-	bool rslt = this->socketWrite(saveBuffer, sizeSaveBuffer);
-	delete [] saveBuffer;
+	++block_counter;
+	bool rslt;
+	while(!TERMINATING) {
+		size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
+		u_char *saveBuffer = blockStore->getSaveBuffer(block_counter);
+		rslt = this->socketWrite(saveBuffer, sizeSaveBuffer);
+		delete [] saveBuffer;
+		if(rslt) {
+			char recv_data[100] = "";
+			size_t recv_data_len = sizeof(recv_data);
+			bool rsltRead = this->_socketRead(this->socketHandle, (u_char*)recv_data, &recv_data_len, 4);
+			if(rsltRead && recv_data_len > 0) {
+				if(!memcmp(recv_data, "block_ok", 8)) {
+					break;
+				} else {
+					syslog(LOG_ERR, "response from receiver: %s - try send block again", string(recv_data, recv_data_len).c_str());
+				}
+			} else {
+				syslog(LOG_ERR, "unknown response from receiver - try send block again");
+			}
+		}
+	}
 	return(rslt);
 }
 

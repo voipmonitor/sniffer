@@ -12,7 +12,7 @@
 #include "voipmonitor.h"
 #include "md5.h"
 
-#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_06"
+#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_07"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
 
 
@@ -142,6 +142,8 @@ struct pcap_block_store {
 			this->dlink = 0;
 			this->sensor_id = 0;
 			memset(this->ifname, 0, sizeof(this->ifname));
+			this->crc = 0;
+			this->counter = 0;
 		}
 		char title[PCAP_BLOCK_STORE_HEADER_STRING_LEN];
 		uint32_t size;
@@ -150,7 +152,9 @@ struct pcap_block_store {
 		uint16_t dlink;
 		int16_t sensor_id;
 		char ifname[10];
-		int32_t hm;
+		int8_t hm;
+		uint32_t crc;
+		uint32_t counter;
 	};
 	pcap_block_store(header_mode hm = plus) {
 		this->hm = hm;
@@ -216,7 +220,7 @@ struct pcap_block_store {
 	size_t getUseSize() {
 		return(this->size_compress ? this->size_compress : this->size);
 	}
-	u_char *getSaveBuffer();
+	u_char *getSaveBuffer(uint32_t block_counter = 0);
 	void restoreFromSaveBuffer(u_char *saveBuffer);
 	int addRestoreChunk(u_char *buffer, size_t size, size_t *offset = NULL, bool autoRestore = true);
 	inline bool compress();
@@ -301,6 +305,7 @@ struct pcap_block_store {
 	int16_t sensor_id;
 	uint32_t sensor_ip;
 	char ifname[10];
+	u_int32_t block_counter;
 	u_char *restoreBuffer;
 	size_t restoreBufferSize;
 	size_t restoreBufferAllocSize;

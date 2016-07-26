@@ -765,6 +765,7 @@ public:
 			this->threadHandle = 0;
 			this->threadId = 0;
 			memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+			this->block_counter = 0;
 		}
 		~sPacketServerConnection() {
 			if(this->socketClient) {
@@ -781,6 +782,7 @@ public:
 		pthread_t threadHandle;
 		int threadId;
 		pstat_data threadPstatData[2];
+		u_int32_t block_counter;
 	};
 	struct sPacketTimeInfo {
 		pcap_block_store *blockStore;
@@ -925,6 +927,7 @@ private:
 	volatile int _sync_packetServerConnections;
 	u_long lastCheckFreeSizeCachedir_timeMS;
 	timeval _last_ts;
+	u_int32_t block_counter;
 friend void *_PcapQueue_readFromFifo_destroyBlocksThreadFunction(void *arg);
 friend void *_PcapQueue_readFromFifo_socketServerThreadFunction(void *arg);
 friend void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
