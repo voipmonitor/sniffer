@@ -2973,7 +2973,7 @@ int main_init_read() {
 	
 	if(opt_pcap_dump_tar && opt_fork) {
 		for(int i = 0; i < 2; i++) {
-			if(isSetSpoolDir(i)) {
+			if(isSetSpoolDir(i) && cleanSpool[i]) {
 				string maxSpoolDate = cleanSpool[i]->getMaxSpoolDate();
 				if(maxSpoolDate.length()) {
 					syslog(LOG_NOTICE, "run reindex date %s", maxSpoolDate.c_str());
