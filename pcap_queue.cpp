@@ -525,6 +525,10 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	   strncmp(((pcap_block_store_header*)this->restoreBuffer)->title, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN)) {
 		return(-3);
 	}
+	if(this->restoreBufferSize >= sizeof(pcap_block_store_header) &&
+	   ((pcap_block_store_header*)this->restoreBuffer)->version != PCAP_BLOCK_STORE_HEADER_VERSION) {
+		return(-6);
+	}
 	int sizeRestoreBuffer = this->getSizeSaveBufferFromRestoreBuffer();
 	if(this->restoreBufferSize - _size > (size_t)sizeRestoreBuffer) {
 		return(-4);
@@ -5300,6 +5304,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								case -5:
 									error = "bad crc";
 									break;
+								case -6:
+									error = "bad version - sender and receiver must be the same version";
+									break;
 								default:
 									error = "unknow error";
 									break;
@@ -5868,9 +5875,11 @@ bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) 
 					break;
 				} else {
 					syslog(LOG_ERR, "response from receiver: %s - try send block again", string(recv_data, recv_data_len).c_str());
+					sleep(1);
 				}
 			} else {
 				syslog(LOG_ERR, "unknown response from receiver - try send block again");
+				sleep(1);
 			}
 		}
 	}

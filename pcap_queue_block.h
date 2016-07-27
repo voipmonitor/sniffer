@@ -12,8 +12,9 @@
 #include "voipmonitor.h"
 #include "md5.h"
 
-#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_st_07"
+#define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_store"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
+#define PCAP_BLOCK_STORE_HEADER_VERSION		1
 
 
 extern int opt_enable_http;
@@ -135,6 +136,7 @@ struct pcap_block_store {
 	struct pcap_block_store_header {
 		pcap_block_store_header() {
 			strncpy(this->title, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
+			this->version = PCAP_BLOCK_STORE_HEADER_VERSION;
 			this->hm = plus;
 			this->size = 0;
 			this->size_compress = 0;
@@ -146,6 +148,7 @@ struct pcap_block_store {
 			this->counter = 0;
 		}
 		char title[PCAP_BLOCK_STORE_HEADER_STRING_LEN];
+		uint8_t version;
 		uint32_t size;
 		uint32_t size_compress;
 		uint32_t count;
