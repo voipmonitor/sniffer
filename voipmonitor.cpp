@@ -5997,6 +5997,7 @@ void set_context_config() {
 	}
 	
 	if(opt_read_from_file) {
+		opt_cachedir[0] = 0;
 		opt_enable_preprocess_packet = 0;
 		opt_enable_process_rtp_packet = 0;
 		opt_enable_http = 0;
