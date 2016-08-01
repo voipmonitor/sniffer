@@ -1,3 +1,14 @@
+17.0 1.8.2016
+=============
+- redesign SIP REGISTER alerts - it now uses memory storage instead of sending every SIP registration to the database [VG-43] [VS-467]
+- make mirroring packets more robust - added crc and block count confirmations (do not loose data in case sniffers gets disconnected or other faulty state)
+- new in-memory SIP REGISTER alert rules
+- new secondary spool which can be enabled per single capture rules (in GUI -> capture rules -> secondary storage) - this allows to store recordings for longer period than default [VG-57]
+- added new command line options: --reindex-all, --run-cleanspool
+- when converting to audio do not remove streams which looks like duplicate but it is not
+- fix pcapscandir option in case some call are divided to more files [VS-473]
+
+
 16.1.2 8.7.2016
 ===============
 - fix potential crash in pcap_queue_use_blocks mode (rare configuration option) 
