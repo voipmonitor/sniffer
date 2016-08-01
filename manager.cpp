@@ -845,6 +845,13 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		}
 		return 0;
+	} else if(strstr(buf, "is_register_new") != NULL) {
+		extern int opt_sip_register;
+		if ((size = sendvm(client, sshchannel, opt_sip_register == 1 ? "ok" : "no", 2, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
 	} else if(strstr(buf, "listregisters") != NULL) {
 		string rslt_data;
 		char *pointer;

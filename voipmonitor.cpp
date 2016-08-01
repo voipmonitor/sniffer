@@ -213,8 +213,7 @@ int opt_jitterbuffer_f1 = 1;		// turns off/on jitterbuffer simulator to compute 
 int opt_jitterbuffer_f2 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f2
 int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_adapt
 int opt_ringbuffer = 10;	// ring buffer in MB 
-int opt_sip_register = 0;	// if == 1 save REGISTER messages
-int opt_sip_register_new = 0;
+int opt_sip_register = 0;	// if == 1 save REGISTER messages, if == 2, use old registers
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 int opt_manager_port = 5029;	// manager api TCP port
 char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
@@ -3127,7 +3126,7 @@ void main_term_read() {
 	set_terminating();
 
 	regfailedcache->prune(0);
-	if(opt_sip_register_new) {
+	if(opt_sip_register == 1) {
 		extern Registers registers;
 		registers.clean_all();
 	}
@@ -4998,8 +4997,8 @@ void cConfig::addConfigItems() {
 				addConfigItem((new FILE_LINE cConfigItem_string("save_sip_history", &opt_save_sip_history))
 					->addStringItems("invite|bye|cancel|register|message|info|subscribe|options|notify|ack|prack|publish|refer|update|REQUESTS|RESPONSES|ALL"));
 		subgroup("REGISTER");
-			addConfigItem(new FILE_LINE cConfigItem_yesno("sip-register", &opt_sip_register));
-			addConfigItem(new FILE_LINE cConfigItem_yesno("sip-register-new", &opt_sip_register_new));
+			addConfigItem((new FILE_LINE cConfigItem_yesno("sip-register", &opt_sip_register))
+				->addValues("old:2|o:2"));
 			addConfigItem(new FILE_LINE cConfigItem_integer("sip-register-timeout", &opt_register_timeout));
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
@@ -6671,13 +6670,7 @@ int eval_config(string inistr) {
 		opt_allow_zerossrc = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register", NULL))) {
-		opt_sip_register = yesno(value);
-	}
-	if((value = ini.GetValue("general", "sip-register-new", NULL))) {
-		if(yesno(value)) {
-			opt_sip_register = 1;
-		}
-		opt_sip_register_new = yesno(value);
+		opt_sip_register = !strcmp(value, "old") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-timeout", NULL))) {
 		opt_register_timeout = atoi(value);

@@ -64,7 +64,6 @@ using namespace std;
 extern int verbosity;
 extern int verbosityE;
 extern int opt_sip_register;
-extern int opt_sip_register_new;
 extern int opt_saveRTP;
 extern int opt_onlyRTPheader;
 extern int opt_saveSIP;
@@ -4512,7 +4511,7 @@ Calltable::cleanup_registers( time_t currtime ) {
 				syslog(LOG_WARNING,"try to duplicity push call %s to registers_queue", reg->call_id.c_str());
 			} else {
 				reg->push_register_to_registers_queue = 1;
-				if(opt_sip_register_new) {
+				if(opt_sip_register == 1) {
 					extern Registers registers;
 					registers.add(reg);
 					reg->getPcap()->close();
@@ -4572,7 +4571,7 @@ void Call::saveregister() {
 		syslog(LOG_WARNING,"try to duplicity push call %s / %i to registers_queue", call_id.c_str(), type);
 	} else {
 		push_register_to_registers_queue = 1;
-		if(opt_sip_register_new) {
+		if(opt_sip_register == 1) {
 			extern Registers registers;
 			registers.add(this);
 			((Calltable*)calltable)->lock_registers_deletequeue();
