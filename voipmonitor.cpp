@@ -6022,7 +6022,8 @@ void set_context_config() {
 	}
 	
 	vector<string> ifnamev = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
-	if(getThreadingMode() < 2 && ifnamev.size() > 1) {
+	if(getThreadingMode() < 2 && 
+	   (ifnamev.size() > 1 || opt_pcap_queue_use_blocks)) {
 		setThreadingMode(2);
 	}
 	
