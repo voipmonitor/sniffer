@@ -39,7 +39,6 @@
 #include <arpa/inet.h>
 
 #define AST_API_MODULE		/* ensure that inlinable API functions will be built in lock.h if required */
-#include "asterisk/circbuf.h"
 #include "asterisk/lock.h"
 #include "asterisk/io.h"
 #include "asterisk/logger.h"
@@ -1064,6 +1063,10 @@ int _ast_asprintf(char **ret, const char *file, int lineno, const char *func, co
 	return res;
 }
 
+/*
+
+obsolete / unused
+
 void circbuf_init(pvt_circbuf *pvt, size_t capacity) {
         pvt->beg_index_ = 0;
         pvt->end_index_ = 0;
@@ -1135,7 +1138,7 @@ size_t circbuf_write(pvt_circbuf *pvt, const char *data, size_t bytes) {
 
 size_t circbuf_size(pvt_circbuf *pvt) { return pvt->size_; }
 size_t circbuf_capacity(pvt_circbuf *pvt) { return pvt->capacity_; }
-
+*/
 
 void ast_free_ptr(void *p) {
 	_ast_free(p);

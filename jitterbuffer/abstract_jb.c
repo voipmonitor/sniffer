@@ -101,6 +101,9 @@ struct ast_jb_impl
 	jb_empty_and_reset_impl empty_and_reset;
 };
 
+extern void fifobuff_add(void *fifo_buff, const char *data, unsigned int datalen);
+//extern void test_raw(const char *descr, const char *data, unsigned int datalen);
+
 /* Implementation functions */
 /* fixed */
 static void * jb_create_fixed(struct ast_jb_conf *general_config, long resynch_threshold, struct ast_channel *chan);
@@ -385,7 +388,8 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 			if(chan->rawstream)
 				fwrite(f->data, 1, f->datalen, chan->rawstream);
 			if(chan->audiobuf)
-				circbuf_write(chan->audiobuf,f->data, f->datalen);
+				fifobuff_add(chan->audiobuf, f->data, f->datalen);
+			//test_raw("flush", f->data, f->datalen);
 			//save last frame
 			if(!chan->lastbuf) {
 				chan->lastbufsize = f->datalen > 1600 ? f->datalen : 1600;
@@ -415,21 +419,24 @@ void save_empty_frame(struct ast_channel *chan) {
 					if(chan->rawstream)
 						fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
 					if(chan->audiobuf)
-						circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(short int));
+						fifobuff_add(chan->audiobuf,(const char*)(&zero), sizeof(short int));
+					//test_raw("empty frame", (const char*)(&zero), sizeof(short int));
 				}
 			} else if(chan->codec == PAYLOAD_G729) {
 				for(i = 1; (i * 10) <= chan->packetization; i++) {
 					if(chan->rawstream)
 						fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
 					if(chan->audiobuf)
-						circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(short int));
+						fifobuff_add(chan->audiobuf,(const char*)(&zero), sizeof(short int));
+					//test_raw("empty frame", (const char*)(&zero), sizeof(short int));
 				}
 			} else {
 				for(i = 1; (i * 20) <= chan->packetization ; i++) {
 					if(chan->rawstream)
 						fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
 					if(chan->audiobuf)
-						circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(short int));
+						fifobuff_add(chan->audiobuf,(const char*)(&zero), sizeof(short int));
+					//test_raw("empty frame", (const char*)(&zero), sizeof(short int));
 				}
 			}
 		} else {
@@ -438,7 +445,8 @@ void save_empty_frame(struct ast_channel *chan) {
 				if(chan->rawstream)
 					fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
 				if(chan->audiobuf)
-					circbuf_write(chan->audiobuf,chan->lastbuf, chan->lastbuflen);
+					fifobuff_add(chan->audiobuf,chan->lastbuf, chan->lastbuflen);
+				//test_raw("empty frame", chan->lastbuf, chan->lastbuflen);
 				chan->lastbuflen = 0;
 			} else {
 				// write empty frame
@@ -449,14 +457,16 @@ void save_empty_frame(struct ast_channel *chan) {
 						if(chan->rawstream)
 							fwrite(&zero, 1, 1, chan->rawstream);
 						if(chan->audiobuf)
-							circbuf_write(chan->audiobuf,(const char*)(&zero), sizeof(char));
+							fifobuff_add(chan->audiobuf,(const char*)(&zero), sizeof(char));
+						//test_raw("empty frame", (const char*)(&zero), sizeof(char));
 					}
 				} else {
 					for(i = 0; i < chan->last_datalen / 2; i++) {
 						if(chan->rawstream)
 							fwrite(&zero3, 2, 1, chan->rawstream);
 						if(chan->audiobuf)
-							circbuf_write(chan->audiobuf,(const char*)(&zero2), sizeof(char));
+							fifobuff_add(chan->audiobuf,(const char*)(&zero2), sizeof(char));
+						//test_raw("empty frame", (const char*)(&zero2), sizeof(char));
 					}
 				}
 			}
@@ -522,8 +532,9 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 				if(chan->rawstream)
 					fwrite(f->data, 1, f->datalen, chan->rawstream);
 				if(chan->audiobuf) {
-					circbuf_write(chan->audiobuf, f->data, f->datalen);
+					fifobuff_add(chan->audiobuf, f->data, f->datalen);
 				}
+				//test_raw("get", f->data, f->datalen);
 				//save last frame
 				if(!chan->lastbuf) {
 					chan->lastbufsize = f->datalen > 1600 ? f->datalen : 1600;

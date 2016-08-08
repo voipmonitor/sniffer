@@ -21,11 +21,11 @@
 
 #include <string>
 
-#include "jitterbuffer/asterisk/circbuf.h"
 #include "rtp.h"
 #include "tools.h"
 #include "sql_db.h"
 #include "voipmonitor.h"
+#include "tools_fifo_buffer.h"
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
 #define MAX_SSRC_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
@@ -241,7 +241,9 @@ public:
 	bool seeninvite;		//!< true if we see SIP INVITE within the Call
 	bool seeninviteok;			//!< true if we see SIP INVITE within the Call
 	bool seenbye;			//!< true if we see SIP BYE within the Call
+	u_int64_t seenbye_time_usec;
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANEL within the Call
+	u_int64_t seenbyeandok_time_usec;
 	bool seenRES2XX;
 	bool seenRES2XX_no_BYE;
 	bool seenRES18X;
@@ -300,8 +302,6 @@ public:
 	time_t destroy_call_at;	
 	time_t destroy_call_at_bye;	
 	unsigned int first_packet_usec;
-	std::queue <short int> spybuffer;
-	std::queue <char> spybufferchar;
 	std::queue <dtmfq> dtmf_history;
 	
 	u_int64_t first_invite_time_usec;
@@ -355,11 +355,12 @@ public:
 	int codec_caller;
 	int codec_called;
 
-	pthread_mutex_t buflock;		//!< mutex locking calls_queue
-	pvt_circbuf *audiobuffer1;
+	FifoBuffer *audiobuffer1;
 	int last_seq_audiobuffer1;
-	pvt_circbuf *audiobuffer2;
+	u_int32_t last_ssrc_audiobuffer1;
+	FifoBuffer *audiobuffer2;
 	int last_seq_audiobuffer2;
+	u_int32_t last_ssrc_audiobuffer2;
 
 	unsigned int skinny_partyid;
 
@@ -776,6 +777,10 @@ public:
 	
 	void adjustUA();
 	
+	void createListeningBuffers();
+	void destroyListeningBuffers();
+	void disableListeningBuffers();
+	
 	int getSpoolIndex() {
 		extern sExistsColumns existsColumns;
 		return((flags & FLAG_USE_SPOOL_2) && isSetSpoolDir2() &&
@@ -963,6 +968,18 @@ public:
 		}
 		unlock_registers_listMAP();
 		return(rslt_register);
+	}
+	Call *find_by_reference(long long callreference, bool lock) {
+		Call *rslt_call = NULL;
+		if(lock) lock_calls_listMAP();
+		for(map<string, Call*>::iterator iter = calls_listMAP.begin(); iter != calls_listMAP.end(); iter++) {
+			if((long long)(iter->second) == callreference) {
+				rslt_call = iter->second;
+				break;
+			}
+		}
+		if(lock) unlock_calls_listMAP();
+		return(rslt_call);
 	}
 	Call *find_by_skinny_partyid(unsigned int partyid);
 	Call *find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr);

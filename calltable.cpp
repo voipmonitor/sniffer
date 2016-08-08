@@ -51,6 +51,7 @@
 #include "filter_mysql.h"
 #include "sniff_inline.h"
 #include "register.h"
+#include "manager.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -206,7 +207,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	seeninvite = false;
 	seeninviteok = false;
 	seenbye = false;
+	seenbye_time_usec = 0;
 	seenbyeandok = false;
+	seenbyeandok_time_usec = 0;
 	seenRES2XX = false;
 	seenRES2XX_no_BYE = false;
 	seenRES18X = false;
@@ -259,8 +262,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	rtplock = 0;
 	audiobuffer1 = NULL;
 	last_seq_audiobuffer1 = 0;
+	last_ssrc_audiobuffer1 = 0;
 	audiobuffer2 = NULL;
 	last_seq_audiobuffer2 = 0;
+	last_ssrc_audiobuffer2 = 0;
 	listening_worker_run = NULL;
 	tmprtp.call_owner = this;
 	flags = 0;
@@ -310,7 +315,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	sipcalledport = 0;
 	fname2 = 0;
 	skinny_partyid = 0;
-	pthread_mutex_init(&buflock, NULL);
 	pthread_mutex_init(&listening_worker_run_lock, NULL);
 	caller_sipdscp = 0;
 	called_sipdscp = 0;
@@ -569,20 +573,16 @@ Call::~Call(){
 	if(listening_worker_run) {
 		*listening_worker_run = 0;
 	}
-	pthread_mutex_lock(&listening_worker_run_lock);
-
-	if(audiobuffer1) delete audiobuffer1;
-	if(audiobuffer2) delete audiobuffer2;
-
+	destroyListeningBuffers();
+	listening_remove_worker(this);
+	pthread_mutex_destroy(&listening_worker_run_lock);
+	
 	if(this->message) {
 		delete [] message;
 	}
 	if(this->message_info) {
 		delete [] message_info;
 	}
-	pthread_mutex_destroy(&buflock);
-	pthread_mutex_unlock(&listening_worker_run_lock);
-	pthread_mutex_destroy(&listening_worker_run_lock);
 	//decreaseTartimemap(this->first_packet_time);
 	//printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
 	//printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
@@ -3846,6 +3846,55 @@ void Call::adjustUA() {
 	}
 }
 
+void Call::createListeningBuffers() {
+	pthread_mutex_lock(&listening_worker_run_lock);
+	if(audiobuffer1) {
+		audiobuffer1->enable();
+	} else {
+		audiobuffer1 = new FILE_LINE FifoBuffer((string("audiobuffer1 for call ") + call_id).c_str());
+		audiobuffer1->setMinItemBufferLength(1000);
+		audiobuffer1->setMaxSize(1000000);
+		if(sverb.call_listening) {
+			audiobuffer1->setDebugOut("/tmp/audiobuffer1");
+		}
+	}
+	if(audiobuffer2) {
+		audiobuffer2->enable();
+	} else {
+		audiobuffer2 = new FILE_LINE FifoBuffer((string("audiobuffer2 for call ") + call_id).c_str());
+		audiobuffer2->setMinItemBufferLength(1000);
+		audiobuffer2->setMaxSize(1000000);
+		if(sverb.call_listening) {
+			audiobuffer2->setDebugOut("/tmp/audiobuffer2");
+		}
+	}
+	pthread_mutex_unlock(&listening_worker_run_lock);
+}
+
+void Call::destroyListeningBuffers() {
+	pthread_mutex_lock(&listening_worker_run_lock);
+	if(audiobuffer1) {
+		delete audiobuffer1;
+		audiobuffer1 = NULL;
+	}
+	if(audiobuffer2) { 
+		delete audiobuffer2;
+		audiobuffer2 = NULL;
+	}
+	pthread_mutex_unlock(&listening_worker_run_lock);
+}
+
+void Call::disableListeningBuffers() {
+	pthread_mutex_lock(&listening_worker_run_lock);
+	if(audiobuffer1) {
+		audiobuffer1->clean_and_disable();
+	}
+	if(audiobuffer2) { 
+		audiobuffer2->clean_and_disable();
+	}
+	pthread_mutex_unlock(&listening_worker_run_lock);
+}
+
 void adjustUA(char *ua) {
 	if(opt_cdr_ua_reg_remove.size()) {
 		bool adjust = false;
@@ -4386,6 +4435,9 @@ Calltable::cleanup_calls( time_t currtime ) {
 			}
 		}
 		if(closeCall) {
+			if(call->listening_worker_run) {
+				*call->listening_worker_run = 0;
+			}
 			closeCalls[closeCalls_count++] = call;
 			calls_listMAP.erase(callMAPIT++);
 		} else {

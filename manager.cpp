@@ -157,6 +157,235 @@ private:
 	volatile int _sync;
 } getfile_in_tar_completed;
 
+class c_listening_clients {
+public:
+	struct s_client {
+		s_client(const char *id, Call *call) {
+			this->id = id;
+			this->call = call;
+			last_activity_time = getTimeS();
+			spybuffer_start_pos = 0;
+			spybuffer_last_send_pos = 0;
+		}
+		string id;
+		Call *call;
+		u_int32_t last_activity_time;
+		u_int64_t spybuffer_start_pos;
+		u_int64_t spybuffer_last_send_pos;
+	};
+public:
+	c_listening_clients() {
+		_sync = 0;
+		_sync_map = 0;
+	}
+	~c_listening_clients() {
+		lock_map();
+		while(clients.size()) {
+			map<string, s_client*>::iterator iter = clients.begin();
+			delete iter->second;
+			clients.erase(iter++);
+		}
+		unlock_map();
+	}
+	s_client *add(const char *id, Call *call) {
+		s_client *client = new FILE_LINE s_client(id, call);
+		string cid = string(id) + '/' + intToString((long long)call);
+		lock_map();
+		clients[cid] = client;
+		unlock_map();
+		return(client);
+	}
+	s_client *get(const char *id, Call *call) {
+		string cid = string(id) + '/' + intToString((long long)call);
+		lock_map();
+		map<string, s_client*>::iterator iter = clients.find(cid);
+		if(iter != clients.end()) {
+			unlock_map();
+			return(iter->second);
+		} else {
+			unlock_map();
+			return(NULL);
+		}
+	}
+	void remove(const char *id, Call *call) {
+		string cid = string(id) + '/' + intToString((long long)call);
+		lock_map();
+		map<string, s_client*>::iterator iter = clients.find(cid);
+		if(iter != clients.end()) {
+			delete iter->second;
+			clients.erase(iter);
+		}
+		unlock_map();
+	}
+	void remove(s_client *client) {
+		remove(client->id.c_str(), client->call);
+	}
+	void cleanup() {
+		lock_map();
+		u_int64_t actTime = getTimeS();
+		for(map<string, s_client*>::iterator iter = clients.begin(); iter != clients.end(); ) {
+			if(iter->second->last_activity_time < actTime - 10) {
+				delete iter->second;
+				clients.erase(iter++);
+			} else {
+				iter++;
+			}
+		}
+		unlock_map();
+	}
+	bool exists(Call *call) {
+		bool exists = false;
+		for(map<string, s_client*>::iterator iter = clients.begin(); iter != clients.end(); iter++) {
+			if(iter->second->call == call) {
+				exists = true;
+				break;
+			}
+		}
+		return(exists);
+	}
+	u_int64_t get_min_use_spybuffer_pos(Call *call) {
+		u_int64_t min_pos = (u_int64_t)-1;
+		lock_map();
+		for(map<string, s_client*>::iterator iter = clients.begin(); iter != clients.end(); iter++) {
+			if(iter->second->call == call &&
+			   max(iter->second->spybuffer_start_pos, iter->second->spybuffer_last_send_pos) < min_pos) {
+				min_pos = max(iter->second->spybuffer_start_pos, iter->second->spybuffer_last_send_pos);
+			}
+		}
+		unlock_map();
+		return(min_pos == (u_int64_t)-1 ? 0 : min_pos);
+	}
+	void lock() {
+		while(__sync_lock_test_and_set(&_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&_sync);
+	}
+	void lock_map() {
+		while(__sync_lock_test_and_set(&_sync_map, 1));
+	}
+	void unlock_map() {
+		__sync_lock_release(&_sync_map);
+	}
+private:
+	map<string, s_client*> clients;
+	volatile int _sync;
+	volatile int _sync_map;
+} listening_clients;
+
+class c_listening_workers {
+public:
+	struct s_worker {
+		s_worker(Call *call) {
+			this->call = call;
+			spybuffer = new FILE_LINE FifoBuffer((string("spybuffer for call ") + call->call_id).c_str());
+			spybuffer->setMinItemBufferLength(1000);
+			spybuffer->setMaxSize(10000000);
+			thread = 0;
+			running = false;
+			stop = false;
+		}
+		~s_worker() {
+			if(spybuffer) {
+				delete spybuffer;
+			}
+		}
+		Call *call;
+		FifoBuffer *spybuffer;
+		pthread_t thread;
+		volatile bool running;
+		volatile bool stop;
+	};
+	c_listening_workers() {
+		_sync = 0;
+		_sync_map = 0;
+	}
+	~c_listening_workers() {
+		lock_map();
+		while(workers.size()) {
+			map<Call*, s_worker*>::iterator iter = workers.begin();
+			delete iter->second;
+			workers.erase(iter++);
+		}
+		unlock_map();
+	}
+	s_worker *add(Call *call) {
+		s_worker *worker = new FILE_LINE s_worker(call);
+		lock_map();
+		workers[call] = worker;
+		unlock_map();
+		return(worker);
+	}
+	s_worker *get(Call *call) {
+		lock_map();
+		map<Call*, s_worker*>::iterator iter = workers.find(call);
+		if(iter != workers.end()) {
+			unlock_map();
+			return(iter->second);
+		} else {
+			unlock_map();
+			return(NULL);
+		}
+	}
+	void remove(Call *call) {
+		lock_map();
+		map<Call*, s_worker*>::iterator iter = workers.find(call);
+		if(iter != workers.end()) {
+			iter->second->call->disableListeningBuffers();
+			delete iter->second;
+			workers.erase(iter);
+		}
+		unlock_map();
+	}
+	void remove(s_worker *worker) {
+		remove(worker->call);
+	}
+	void run(s_worker *worker) {
+		worker->call->createListeningBuffers();
+		worker->running = true;
+		worker->stop = false;
+		vm_pthread_create_autodestroy("manager - listening worker",
+					      &worker->thread, NULL, worker_thread_function, (void*)worker, __FILE__, __LINE__);
+	}
+	void stop(s_worker *worker) {
+		worker->stop = true;
+	}
+	static void *worker_thread_function(void *arguments);
+	void cleanup() {
+		for(map<Call*, s_worker*>::iterator iter = workers.begin(); iter != workers.end(); ) {
+			if(!listening_clients.exists(iter->second->call)) {
+				stop(iter->second);
+				while(iter->second->running) {
+					usleep(100);
+				}
+			}
+			if(!iter->second->running) {
+				iter->second->call->disableListeningBuffers();
+				delete iter->second;
+				workers.erase(iter++);
+			} else {
+				iter++;
+			}
+		}
+	}
+	void lock() {
+		while(__sync_lock_test_and_set(&_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&_sync);
+	}
+	void lock_map() {
+		while(__sync_lock_test_and_set(&_sync_map, 1));
+	}
+	void unlock_map() {
+		__sync_lock_release(&_sync_map);
+	}
+private:
+	map<Call*, s_worker*> workers;
+	volatile int _sync;
+	volatile int _sync_map;
+} listening_workers;
+
 /* 
  * this function runs as thread. It reads RTP audio data from call
  * and write it to output buffer 
@@ -164,182 +393,202 @@ private:
  * input parameter is structure where call 
  *
 */
-void *listening_worker(void *arguments) {
-	struct listening_worker_arg *args = (struct listening_worker_arg*)arguments;
+void* c_listening_workers::worker_thread_function(void *arguments) {
+ 
+	c_listening_workers::s_worker *worker = (c_listening_workers::s_worker*)arguments;
+	Call *call = worker->call;
+	worker->running = true;
 
-        unsigned char *read1;
-        unsigned char *read2;
-        struct timeval tv;
-
-	getUpdDifTime(&tv);
 	alaw_init();
 	ulaw_init();
 
-        struct timeval tvwait;
-
-	short int r1;
-	short int r2;
-	unsigned int len1,len2;
-
 	// if call is hanged hup it will set listening_worker_run in its destructor to 0
 	int listening_worker_run = 1;
-	args->call->listening_worker_run = &listening_worker_run;
-	pthread_mutex_lock(&args->call->listening_worker_run_lock);
+	call->listening_worker_run = &listening_worker_run;
+	pthread_mutex_lock(&call->listening_worker_run_lock);
 
 	FILE *out = NULL;
 	if(sverb.call_listening) {
 		out = fopen("/tmp/test.raw", "w");
 	}
 
-//	vorbis_desc ogg;
-//	ogg_header(out, &ogg);
-//	fclose(out);
-//	pthread_mutex_lock(&args->call->buflock);
-//	ogg_header_live(&args->call->spybufferchar, &ogg);
-//	pthread_mutex_unlock(&args->call->buflock);
+	/*
+	vorbis_desc ogg;
+	ogg_header(out, &ogg);
+	fclose(out);
+	pthread_mutex_lock(&args->call->buflock);
+	(&args->call->spybufferchar, &ogg);
+	pthread_mutex_unlock(&args->call->buflock);
+	*/
 
-	timespec tS;
-	timespec tS2;
+	unsigned long long begin_time_us = 0;
+	unsigned long long end_time_us = 0;
+	unsigned long long prev_process_time_us = 0;
+        struct timeval tvwait;
 
-	tS.tv_sec = 0;
-	tS.tv_nsec = 0;
-	tS2.tv_sec = 0;
-	tS2.tv_nsec = 0;
-
-	long int udiff;
 	
-	unsigned int period_usec = 100;
-	unsigned int period_samples = 8000 * period_usec / 1000; 
+	unsigned int period_msec = 50;
+	unsigned int period_samples = 8000 * period_msec / 1000;
+	u_char *spybufferchunk = new FILE_LINE u_char[period_samples * 2];
+	u_int32_t len1, len2;
+	short int r1, r2;
+	char *s16char;
 	
-	read1 = new FILE_LINE unsigned char[period_samples];
-	read2 = new FILE_LINE unsigned char[period_samples];
+        while(listening_worker_run && !worker->stop) {
 
-        while(listening_worker_run) {
-
-		if(tS.tv_nsec > tS2.tv_nsec) {
-			udiff = (1000 * 1000 * 1000 - (tS.tv_nsec - tS2.tv_nsec)) / 1000;
-		} else {
-			udiff = (tS2.tv_nsec - tS.tv_nsec) / 1000;
+		/*
+		while(max(call->audiobuffer1->size_get(), call->audiobuffer2->size_get()) < period_msec * 2) {
+			usleep(period_msec * 1000);
 		}
+		*/
+	 
+		prev_process_time_us = end_time_us - begin_time_us;
 
 		tvwait.tv_sec = 0;
-		tvwait.tv_usec = 1000 * period_usec - udiff;
-//		long int usec = tvwait.tv_usec;
+		tvwait.tv_usec = 1000 * period_msec - prev_process_time_us;
 		select(0, NULL, NULL, NULL, &tvwait);
 
-		clock_gettime(CLOCK_REALTIME, &tS);
-		char *s16char;
-
-		//usleep(tvwait.tv_usec);
+		begin_time_us = getTimeUS();
 		
-		pthread_mutex_lock(&args->call->buflock);
-		len1 = circbuf_read(args->call->audiobuffer1, (char*)read1, period_samples);
-		len2 = circbuf_read(args->call->audiobuffer2, (char*)read2, period_samples);
-		pthread_mutex_unlock(&args->call->buflock);
-//		printf("codec_caller[%d] codec_called[%d] len1[%d] len2[%d] outbc[%d] outbchar[%d] wait[%u]\n", args->call->codec_caller, args->call->codec_called, len1, len2, (int)args->call->spybuffer.size(), (int)args->call->spybufferchar.size(), usec);
-		if(len1 == period_samples and len2 == period_samples) {
-			for(unsigned int i = 0; i < len1; i++) {
-				switch(args->call->codec_caller) {
-				case 0:
-					r1 = ULAW(read1[i]);
-					break;
-				case 8:
-					r1 = ALAW(read1[i]);
-					break;
-				}
-					
-				switch(args->call->codec_caller) {
-				case 0:
-					r2 = ULAW(read2[i]);
-					break;
-				case 8:
-					r2 = ALAW(read2[i]);
-					break;
-				}
-				s16char = (char *)&r1;
-				slinear_saturated_add((short int*)&r1, (short int*)&r2);
-				if(sverb.call_listening) {
-					fwrite(&r1, 1, 2, out);
-				}
-				args->call->spybufferchar.push(s16char[0]);
-				args->call->spybufferchar.push(s16char[1]);
-//				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r1);
-			}
-		} else if(len2 == period_samples) {
-			for(unsigned int i = 0; i < len2; i++) {
-				switch(args->call->codec_caller) {
-				case 0:
-					r2 = ULAW(read2[i]);
-					break;
-				case 8:
-					r2 = ALAW(read2[i]);
-					break;
-				}
-				if(sverb.call_listening) {
-					fwrite(&r2, 1, 2, out);
-				}
-				s16char = (char *)&r2;
-				args->call->spybufferchar.push(s16char[0]);
-				args->call->spybufferchar.push(s16char[1]);
-//				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r2);
-			}
-		} else if(len1 == period_samples) {
-			for(unsigned int i = 0; i < len1; i++) {
-				switch(args->call->codec_caller) {
-				case 0:
-					r1 = ULAW(read1[i]);
-					break;
-				case 8:
-					r1 = ALAW(read1[i]);
-					break;
-				}
-				if(sverb.call_listening) {
-					fwrite(&r1, 1, 2, out);
-				}
-				s16char = (char *)&r1;
-				args->call->spybufferchar.push(s16char[0]);
-				args->call->spybufferchar.push(s16char[1]);
-//				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&r1);
-			}
-		} else {
-			// write silence period
-			int16_t s = 0;
-			//unsigned char sa = 255;
-			for(unsigned int i = 0; i < period_samples; i++) {
-				if(sverb.call_listening) {
-					fwrite(&s, 1, 2, out);
-				}
-				s16char = (char *)&s;
-				args->call->spybufferchar.push(s16char[0]);
-				args->call->spybufferchar.push(s16char[1]);
-//				ogg_write_live(&ogg, &args->call->spybufferchar, (short int*)&s);
-			}
-		}
-		clock_gettime(CLOCK_REALTIME, &tS2);
-        }
-        
-	delete [] read1;
-	delete [] read2;
+		len1 = call->audiobuffer1->size_get();
+		len2 = call->audiobuffer2->size_get();
 
-	// reset pointer to NULL as we are leaving the stack here
-	args->call->listening_worker_run = NULL;
-	pthread_mutex_unlock(&args->call->listening_worker_run_lock);
+		/*
+		printf("codec_caller[%d] codec_called[%d] len1[%d] len2[%d]\n", 
+		       worker->call->codec_caller, 
+		       worker->call->codec_called,
+		       len1, len2);
+		*/
+		
+		if(len1 >= period_samples || len2 >= period_samples) {
+			if(len1 >= period_samples && len2 >= period_samples) {
+				len1 = period_samples;
+				len2 = period_samples;
+				unsigned char *read1 = call->audiobuffer1->pop(&len1);
+				unsigned char *read2 = call->audiobuffer2->pop(&len2);
+				for(unsigned int i = 0; i < len1; i++) {
+					switch(call->codec_caller) {
+					case 0:
+						r1 = ULAW(read1[i]);
+						break;
+					case 8:
+						r1 = ALAW(read1[i]);
+						break;
+					}
+					switch(call->codec_caller) {
+					case 0:
+						r2 = ULAW(read2[i]);
+						break;
+					case 8:
+						r2 = ALAW(read2[i]);
+						break;
+					}
+					s16char = (char *)&r1;
+					slinear_saturated_add((short int*)&r1, (short int*)&r2);
+					if(sverb.call_listening) {
+						fwrite(&r1, 1, 2, out);
+					}
+					spybufferchunk[i * 2] = s16char[0];
+					spybufferchunk[i * 2 + 1] = s16char[1];
+				}
+				delete [] read1;
+				delete [] read2;
+			} else if(len2 >= period_samples) {
+				len2 = period_samples;
+				unsigned char *read2 = call->audiobuffer2->pop(&len2);
+				for(unsigned int i = 0; i < len2; i++) {
+					switch(call->codec_caller) {
+					case 0:
+						r2 = ULAW(read2[i]);
+						break;
+					case 8:
+						r2 = ALAW(read2[i]);
+						break;
+					}
+					if(sverb.call_listening) {
+						fwrite(&r2, 1, 2, out);
+					}
+					s16char = (char *)&r2;
+					spybufferchunk[i * 2] = s16char[0];
+					spybufferchunk[i * 2 + 1] = s16char[1];
+				}
+				delete [] read2;
+			} else if(len1 >= period_samples) {
+				len1 = period_samples;
+				unsigned char *read1 = call->audiobuffer1->pop(&len1);
+				for(unsigned int i = 0; i < len1; i++) {
+					switch(call->codec_caller) {
+					case 0:
+						r1 = ULAW(read1[i]);
+						break;
+					case 8:
+						r1 = ALAW(read1[i]);
+						break;
+					}
+					if(sverb.call_listening) {
+						fwrite(&r1, 1, 2, out);
+					}
+					s16char = (char *)&r1;
+					spybufferchunk[i * 2] = s16char[0];
+					spybufferchunk[i * 2 + 1] = s16char[1];
+				}
+				delete [] read1;
+			}
+			worker->spybuffer->lock_master();
+			worker->spybuffer->push(spybufferchunk, period_samples * 2);
+			worker->spybuffer->unlock_master();
+		}
+		
+		end_time_us = getTimeUS();
+        }
 
 	if(sverb.call_listening) {
 		fclose(out);
 	}
 	
+	/*
 	//clean ogg
-/*
         ogg_stream_clear(&ogg.os);
         vorbis_block_clear(&ogg.vb);
         vorbis_dsp_clear(&ogg.vd);
         vorbis_comment_clear(&ogg.vc);
         vorbis_info_clear(&ogg.vi);
-*/
+        */
 
-	delete args;
+	delete [] spybufferchunk;
+
+	// reset pointer to NULL as we are leaving the stack here
+	call->listening_worker_run = NULL;
+	pthread_mutex_unlock(&call->listening_worker_run_lock);
+	
+	worker->running = false;
+	
 	return 0;
+}
+
+void listening_master_lock() {
+	calltable->lock_calls_listMAP();
+	listening_workers.lock();
+	listening_clients.lock();
+}
+
+void listening_master_unlock() {
+	listening_clients.unlock();
+	listening_workers.unlock();
+	calltable->unlock_calls_listMAP();
+}
+
+void listening_cleanup() {
+	listening_master_lock();
+	listening_clients.cleanup();
+	listening_workers.cleanup();
+	listening_master_unlock();
+}
+
+void listening_remove_worker(Call *call) {
+	listening_master_lock();
+	listening_workers.remove(call);
+	listening_master_unlock();
 }
 
 #ifdef HAVE_LIBSSH
@@ -1402,97 +1651,142 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "listen_stop") != NULL) {
+		if(!calltable) {
+			return(-1);
+		}
+		long long callreference = 0;
+		char listen_id[20] = "";
+		string error;
+		sscanf(buf, "listen_stop %llu %s", &callreference, listen_id);
+		if(!callreference) {
+			listen_id[0] = 0;
+			sscanf(buf, "listen_stop %llx %s", &callreference, listen_id);
+		}
+		listening_master_lock();
+		c_listening_clients::s_client *l_client = listening_clients.get(listen_id, (Call*)callreference);
+		if(l_client) {
+			listening_clients.remove(l_client);
+		}
+		c_listening_workers::s_worker *l_worker = listening_workers.get((Call*)callreference);
+		if(l_worker && !listening_clients.exists(l_worker->call)) {
+			listening_workers.stop(l_worker);
+			while(l_worker->running) {
+				usleep(100);
+			}
+			listening_workers.remove(l_worker);
+		}
+		listening_master_unlock();
+		return(0);
 	} else if(strstr(buf, "listen") != NULL) {
-		long long callreference;
-
-		intptr_t tmp1,tmp2;
-
-		sscanf(buf, "listen %llu", &callreference);
-		if(!callreference) {
-			sscanf(buf, "listen %llxu", &callreference);
+		if(!calltable) {
+			return(-1);
 		}
-
-		tmp1 = callreference;
-	
-		map<string, Call*>::iterator callMAPIT;
-		Call *call;
-		calltable->lock_calls_listMAP();
-		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
-			call = (*callMAPIT).second;
-			tmp2 = (intptr_t)call;
-
-			//printf("call[%p] == [%li] [%d] [%li] [%li]\n", call, callreference, (long int)call == (long int)callreference, (long int)call, (long int)callreference);
-				
-			//if((long long)call == (long long)callreference) {
-			if(tmp1 == tmp2) {
-				if(call->listening_worker_run) {
-					// the thread is already running. 
-					if ((size = sendvm(client, sshchannel, "call already listening", 22, 0)) == -1){
-						cerr << "Error sending data to client" << endl;
-						return -1;
-					}
-					calltable->unlock_calls_listMAP();
-					return 0;
-				} else {
-					struct listening_worker_arg *args = new FILE_LINE listening_worker_arg;
-					args->call = call;
-					call->audiobuffer1 = new FILE_LINE pvt_circbuf;
-					call->audiobuffer2 = new FILE_LINE pvt_circbuf;
-					circbuf_init(call->audiobuffer1, 100000);
-					circbuf_init(call->audiobuffer2, 100000);
-
-					pthread_t call_thread;
-					vm_pthread_create_autodestroy("manager - listening worker",
-								      &call_thread, NULL, listening_worker, (void *)args, __FILE__, __LINE__);
-					calltable->unlock_calls_listMAP();
-					if ((size = sendvm(client, sshchannel, "success", 7, 0)) == -1){
-						cerr << "Error sending data to client" << endl;
-						return -1;
-					}
-					return 0;
-				}
+		long long callreference = 0;
+		char listen_id[20] = "";
+		string error;
+		int rslt = 0;
+		sscanf(buf, "listen %llu %s", &callreference, listen_id);
+		if(!callreference) {
+			listen_id[0] = 0;
+			sscanf(buf, "listen %llx %s", &callreference, listen_id);
+		}
+		listening_master_lock();
+		Call *call = calltable->find_by_reference(callreference, false);
+		if(call) {
+			bool newWorker = false;
+			string rslt = "success";
+			c_listening_workers::s_worker *l_worker = listening_workers.get(call);
+			if(l_worker) {
+				rslt = "call already listening";
+			} else {
+				l_worker = listening_workers.add(call);
+				listening_workers.run(l_worker);
+				newWorker = true;
+			}
+			c_listening_clients::s_client *l_client = listening_clients.add(listen_id, call);
+			if(!newWorker) {
+				l_client->spybuffer_start_pos = l_worker->spybuffer->size_all_with_freed_pos();
+			}
+			if((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1) {
+				cerr << "Error sending data to client" << endl;
+				rslt = -1;
+			}
+		} else {
+			error = "call not found";
+		}
+		listening_master_unlock();
+		if(!error.empty()) {
+			if((size = sendvm(client, sshchannel, error.c_str(), error.length(), 0)) == -1) {
+				cerr << "Error sending data to client" << endl;
+				rslt = -1;
 			}
 		}
-		calltable->unlock_calls_listMAP();
-		if ((size = sendvm(client, sshchannel, "call not found", 14, 0)) == -1){
-			cerr << "Error sending data to client" << endl;
-			return -1;
-		}
-		return 0;
+		return(rslt);
 	} else if(strstr(buf, "readaudio") != NULL) {
-		long long callreference;
-
-		sscanf(buf, "readaudio %llu", &callreference);
-		if(!callreference) {
-			sscanf(buf, "readaudio %llxu", &callreference);
+		if(!calltable) {
+			return(-1);
 		}
-	
-		map<string, Call*>::iterator callMAPIT;
-		Call *call;
-		int i;
-		calltable->lock_calls_listMAP();
-		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
-			call = (*callMAPIT).second;
-			if((long int)call == (long int)callreference) {
-				pthread_mutex_lock(&call->buflock);
-				size_t bsize = call->spybufferchar.size();
-				char *buff = new FILE_LINE char[bsize];
-				for(i = 0; i < (int)bsize; i++) {
-					buff[i] = call->spybufferchar.front();
-					call->spybufferchar.pop();
+		long long callreference = 0;
+		char listen_id[20] = "";
+		string error;
+		string information;
+		int rslt = 0;
+		sscanf(buf, "readaudio %llu %s", &callreference, listen_id);
+		if(!callreference) {
+			listen_id[0] = 0;
+			sscanf(buf, "readaudio %llx %s", &callreference, listen_id);
+		}
+		listening_master_lock();
+		Call *call = calltable->find_by_reference(callreference, false);
+		if(call) {
+			c_listening_workers::s_worker *l_worker = listening_workers.get(call);
+			if(l_worker) {
+				c_listening_clients::s_client *l_client = listening_clients.get(listen_id, call);
+				if(l_client) {
+					u_int32_t bsize = 0;
+					u_int32_t from_pos = max(l_client->spybuffer_start_pos, l_client->spybuffer_last_send_pos);
+					//cout << "pos: " << from_pos << " / " << l_worker->spybuffer->size_all_with_freed_pos() << endl;
+					l_worker->spybuffer->lock_master();
+					u_char *buff = l_worker->spybuffer->get_from_pos(&bsize, from_pos);
+					if(buff) {
+						//cout << "bsize: " << bsize << endl;
+						l_client->spybuffer_last_send_pos = from_pos + bsize;
+						u_int64_t min_use_spybuffer_sample = listening_clients.get_min_use_spybuffer_pos(l_client->call);
+						if(min_use_spybuffer_sample) {
+							l_worker->spybuffer->free_pos(min_use_spybuffer_sample);
+						}
+						l_worker->spybuffer->unlock_master();
+						if((size = sendvm(client, sshchannel, (char*)buff, bsize, 0)) == -1) {
+							cerr << "Error sending data to client" << endl;
+							rslt = -1;
+						}
+						delete [] buff;
+					} else {
+						l_worker->spybuffer->unlock_master();
+						information = "wait for data";
+					}
+					l_client->last_activity_time = getTimeS();
+				} else {
+					error = "client of worker not found";
 				}
-				pthread_mutex_unlock(&call->buflock);
-				if ((size = sendvm(client, sshchannel, buff, bsize, 0)) == -1){
-					delete [] buff;
-					calltable->unlock_calls_listMAP();
-					cerr << "Error sending data to client" << endl;
-					return -1;
-				}
-				delete [] buff;
+			} else {
+				error = "worker not found";
+			}
+		} else {
+			error = "call not found";
+		}
+		listening_master_unlock();
+		if(!error.empty() || !information.empty()) {
+			string data = !error.empty() ?
+					"error: " + error :
+					"information: " + information;
+			if((size = sendvm(client, sshchannel, data.c_str(), data.length(), 0)) == -1) {
+				cerr << "Error sending data to client" << endl;
+				rslt = -1;
 			}
 		}
-		calltable->unlock_calls_listMAP();
-		return 0;
+		return(rslt);
 	} else if(strstr(buf, "reload") != NULL) {
 		set_request_for_reload_capture_rules();
 		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){

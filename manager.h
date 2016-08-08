@@ -96,4 +96,9 @@ private:
 	volatile int _sync_client_threads;
 };
 
+void listening_master_lock();
+void listening_master_unlock();
+void listening_cleanup();
+void listening_remove_worker(class Call *call);
+
 #endif

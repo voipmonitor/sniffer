@@ -344,7 +344,7 @@ enum ast_channel_state {
 struct ast_channel {
 
 	FILE *rawstream;
-	pvt_circbuf *audiobuf;
+	void *audiobuf;
 	unsigned int last_seqno;
 	unsigned int last_ms;
 	int jb_reseted;

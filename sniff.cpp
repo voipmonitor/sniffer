@@ -2575,6 +2575,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			// festr - 14.03.2015 - this prevents some type of call to process call in case of call merging
 			// if(!call->seenbye) {
 				call->seenbye = 0;
+				call->seenbye_time_usec = 0;
 				call->destroy_call_at = 0;
 				call->destroy_call_at_bye = 0;
 			if(call->lastSIPresponseNum == 487) {
@@ -2655,9 +2656,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				memcpy(call->byecseq, cseq, cseqlen);
 				call->byecseq[cseqlen] = '\0';
 				call->seenbye = true;
-				if(call->listening_worker_run) {
-					*(call->listening_worker_run) = 0;
-				}
+				call->seenbye_time_usec = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
 				if(verbosity > 2)
 					syslog(LOG_NOTICE, "Seen bye\n");
 				if(opt_enable_fraud && isFraudReady()) {
@@ -2704,6 +2703,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
 
 					call->seenbyeandok = true;
+					call->seenbyeandok_time_usec = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
 
 // Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
 // first 200 OK will not save the second 200 OK. So rather wait for 5 seconds for some more messages instead of closing the call. 
@@ -3621,6 +3621,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, u_long timeS) {
 		}
 	}
 	calltable->cleanup_calls(timeS);
+	listening_cleanup();
 	process_packet__last_cleanup_calls = timeS;
 
 	/* You may encounter that voipmonitor process does not have a reduced memory usage although you freed the calls. 

@@ -713,17 +713,21 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			owner->codec_caller = codec;
 			if(owner->audiobuffer1 &&
 			   (!owner->last_seq_audiobuffer1 ||
-			    owner->last_seq_audiobuffer1 < frame->seqno)) {
+			    owner->last_seq_audiobuffer1 < frame->seqno ||
+			    owner->last_ssrc_audiobuffer1 != this->ssrc)) {
 				channel->audiobuf = owner->audiobuffer1;
 				owner->last_seq_audiobuffer1 = frame->seqno;
+				owner->last_ssrc_audiobuffer1 = this->ssrc;
 			}
 		} else {
 			owner->codec_called = codec;
 			if(owner->audiobuffer2 &&
 			   (!owner->last_seq_audiobuffer2 ||
-			    owner->last_seq_audiobuffer2 < frame->seqno)) {
+			    owner->last_seq_audiobuffer2 < frame->seqno ||
+			    owner->last_ssrc_audiobuffer2 != this->ssrc)) {
 				channel->audiobuf = owner->audiobuffer2;
 				owner->last_seq_audiobuffer2 = frame->seqno;
+				owner->last_ssrc_audiobuffer2 = this->ssrc;
 			}
 		}
 		if(payload_len > 0) {
@@ -952,7 +956,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		this->first_packet_usec = header->ts.tv_usec;
 	}
 
-	if(owner and owner->destroy_call_at_bye >= header->ts.tv_sec && !opt_pb_read_from_file[0] && !is_read_from_file()){
+	if(owner && owner->seenbye && owner->seenbye_time_usec &&
+	   (header->ts.tv_sec * 1000000ull + header->ts.tv_usec) >= owner->seenbye_time_usec && 
+	   !opt_pb_read_from_file[0] && !is_read_from_file()){
 		// do not process RTP if call is hangedup to prevent false negative statistics
 		return(false);
 	}

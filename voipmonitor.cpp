@@ -85,6 +85,7 @@
 #include "send_call_info.h"
 #include "config_param.h"
 #include "register.h"
+#include "tools_fifo_buffer.h"
 
 #ifndef FREEBSD
 #define BACKTRACE 1
@@ -4041,6 +4042,35 @@ void test() {
 	} break;
 	 
 	case 1: {
+	 
+		FifoBuffer fb;
+		fb.setMinItemBufferLength(100);
+		fb.setMaxItemBufferLength(1000);
+		
+		char *x = new char[1000000];
+		for(int i = 0; i < 10000; i++) {
+			fb.add((u_char*)x, 1500);
+		}
+		delete [] x;
+		
+		cout << "***: " << fb.size_get() << endl;
+		
+		u_int32_t sum_get_size = 0;
+		while(true) {
+			u_int32_t get_length = 600;
+			u_char *get = fb.get(&get_length);
+			if(get) {
+				sum_get_size += get_length;
+				delete [] get;
+			} else {
+				break;
+			}
+		}
+		cout << "***: " << sum_get_size << endl;
+		
+		fb.free();
+		
+		break;
 	 
 		test_filezip_handler();
 		break;
@@ -8156,4 +8186,11 @@ void parse_opt_nocdr_for_last_responses() {
 			nocdr_for_last_responses_count++;
 		}
 	}
+}
+
+extern "C" {
+void fifobuff_add(void *fifo_buff, const char *data, unsigned int datalen) {
+	((FifoBuffer*)fifo_buff)->add((u_char*)data, datalen);
+	//cout << "fifo * " << ((FifoBuffer*)fifo_buff)->size_get() << " / time [ms] : " << getTimeMS() << endl;
+}
 }
