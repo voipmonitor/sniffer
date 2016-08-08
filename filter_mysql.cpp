@@ -11,6 +11,9 @@
 
 using namespace std;
 
+extern int opt_nocdr;
+
+
 bool is_number(const std::string& s) {
 	for (unsigned int i = 0; i < s.length(); i++) {
 		if (!std::isdigit(s[i]))
@@ -116,6 +119,8 @@ void filter_base::setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned 
 	if(filterFlags & FLAG_SPOOL_2)					*callFlags |= FLAG_USE_SPOOL_2;
 }
 
+volatile int filter_base::_sync_reload = 0;
+
 /* IPfilter class */
 
 // constructor
@@ -134,8 +139,10 @@ IPfilter::~IPfilter() {
 	}
 };
 
-void
-IPfilter::load() {
+void IPfilter::load() {
+	if(opt_nocdr || is_sender()) {
+		return;
+	}
 	vector<db_row> vectDbRow;
 	SqlDb *sqlDb = createSqlObject();
 	SqlDb_row row;
@@ -165,8 +172,7 @@ IPfilter::load() {
 	}
 };
 
-int
-IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int daddr) {
+int IPfilter::_add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int daddr) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -206,14 +212,72 @@ IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int d
 	return found;
 }
 
-void
-IPfilter::dump() {
+void IPfilter::dump() {
 	t_node *node;
 	for(node = first_node; node != NULL; node = node->next) {
 		printf("ip[%u] mask[%d] flags[%u]\n", node->ip, node->mask, node->flags);
 	}
 }
 
+int IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int daddr) {
+	int rslt = 0;
+	if(reload_do) {
+		applyReload();
+	}
+	lock();
+	if(filter_active) {
+		rslt = filter_active->_add_call_flags(flags, saddr, daddr);
+	}
+	unlock();
+	return(rslt);
+}
+
+void IPfilter::loadActive() {
+	lock();
+	filter_active = new FILE_LINE IPfilter();
+	filter_active->load();
+	unlock();
+}
+
+void IPfilter::freeActive() {
+	lock();
+	if(filter_active) {
+		delete filter_active;
+		filter_active = NULL;
+	}
+	unlock();
+}
+
+void IPfilter::prepareReload() {
+	reload_do = false;
+	lock_reload();
+	if(filter_reload) {
+		delete filter_reload;
+	}
+	filter_reload = new FILE_LINE IPfilter;
+	filter_reload->load();
+	reload_do = 1;
+	syslog(LOG_NOTICE, "IPfilter::prepareReload");
+	unlock_reload();
+}
+
+void IPfilter::applyReload() {
+	if(reload_do) {
+		lock_reload();
+		lock();
+		delete filter_active;
+		filter_active = filter_reload;
+		unlock();
+		filter_reload = NULL;
+		reload_do = false;
+		syslog(LOG_NOTICE, "IPfilter::applyReload");
+		unlock_reload();
+	}
+}
+
+IPfilter *IPfilter::filter_active = NULL;
+IPfilter *IPfilter::filter_reload = NULL;
+volatile bool IPfilter::reload_do = 0;
 volatile int IPfilter::_sync = 0;
 
 /* TELNUMfilter class */
@@ -262,8 +326,7 @@ TELNUMfilter::~TELNUMfilter() {
         }
 };
 
-void
-TELNUMfilter::add_payload(t_payload *payload) {
+void TELNUMfilter::add_payload(t_payload *payload) {
 	t_node_tel *tmp = first_node;
 
 	for(unsigned int i = 0; i < strlen(payload->prefix); i++) {
@@ -283,8 +346,10 @@ TELNUMfilter::add_payload(t_payload *payload) {
 };
 
 
-void
-TELNUMfilter::load() {
+void TELNUMfilter::load() {
+	if(opt_nocdr || is_sender()) {
+		return;
+	}
 	vector<db_row> vectDbRow;
 	SqlDb *sqlDb = createSqlObject();
 	SqlDb_row row;
@@ -308,8 +373,7 @@ TELNUMfilter::load() {
 	}
 };
 
-int
-TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst) {
+int TELNUMfilter::_add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst) {
 
 	int lastdirection = 0;
 	
@@ -363,8 +427,7 @@ TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum
 	return 0;
 }
 
-void
-TELNUMfilter::dump(t_node_tel *node) {
+void TELNUMfilter::dump(t_node_tel *node) {
 	if(!node) {
 		node = first_node;
 	}
@@ -378,6 +441,65 @@ TELNUMfilter::dump(t_node_tel *node) {
 	}
 }
 
+int TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst) {
+	int rslt = 0;
+	if(reload_do) {
+		applyReload();
+	}
+	lock();
+	if(filter_active) {
+		rslt = filter_active->_add_call_flags(flags, telnum_src, telnum_dst);
+	}
+	unlock();
+	return(rslt);
+}
+
+void TELNUMfilter::loadActive() {
+	lock();
+	filter_active = new FILE_LINE TELNUMfilter();
+	filter_active->load();
+	unlock();
+}
+
+void TELNUMfilter::freeActive() {
+	lock();
+	if(filter_active) {
+		delete filter_active;
+		filter_active = NULL;
+	}
+	unlock();
+}
+
+void TELNUMfilter::prepareReload() {
+	reload_do = false;
+	lock_reload();
+	if(filter_reload) {
+		delete filter_reload;
+	}
+	filter_reload = new FILE_LINE TELNUMfilter;
+	filter_reload->load();
+	reload_do = 1;
+	syslog(LOG_NOTICE, "TELNUMfilter::prepareReload");
+	unlock_reload();
+}
+
+void TELNUMfilter::applyReload() {
+	if(reload_do) {
+		lock_reload();
+		lock();
+		delete filter_active;
+		filter_active = filter_reload;
+		unlock();
+		filter_reload = NULL;
+		reload_do = false; 
+		syslog(LOG_NOTICE, "TELNUMfilter::applyReload");
+		unlock_reload();
+	}
+}
+
+TELNUMfilter *TELNUMfilter::filter_active = NULL;
+TELNUMfilter *TELNUMfilter::filter_reload = NULL;
+volatile bool TELNUMfilter::reload_do = 0;
 volatile int TELNUMfilter::_sync = 0;
 
 /* DOMAINfilter class */
@@ -398,8 +520,10 @@ DOMAINfilter::~DOMAINfilter() {
 	}
 };
 
-void
-DOMAINfilter::load() {
+void DOMAINfilter::load() {
+	if(opt_nocdr || is_sender()) {
+		return;
+	}
 	vector<db_row> vectDbRow;
 	SqlDb *sqlDb = createSqlObject();
 	SqlDb_row row;
@@ -428,7 +552,7 @@ DOMAINfilter::load() {
 };
 
 int
-DOMAINfilter::add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst) {
+DOMAINfilter::_add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -448,14 +572,72 @@ DOMAINfilter::add_call_flags(unsigned int *flags, char *domain_src, char *domain
 	return 0;
 }
 
-void
-DOMAINfilter::dump() {
+void DOMAINfilter::dump() {
 	t_node *node;
 	for(node = first_node; node != NULL; node = node->next) {
 		printf("domain[%s] flags[%u]\n", node->domain.c_str(), node->flags);
 	}
 }
 
+int DOMAINfilter::add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst) {
+	int rslt = 0;
+	if(reload_do) {
+		applyReload();
+	}
+	lock();
+	if(filter_active) {
+		rslt = filter_active->_add_call_flags(flags, domain_src, domain_dst);
+	}
+	unlock();
+	return(rslt);
+}
+
+void DOMAINfilter::loadActive() {
+	lock();
+	filter_active = new FILE_LINE DOMAINfilter();
+	filter_active->load();
+	unlock();
+}
+
+void DOMAINfilter::freeActive() {
+	lock();
+	if(filter_active) {
+		delete filter_active;
+		filter_active = NULL;
+	}
+	unlock();
+}
+
+void DOMAINfilter::prepareReload() {
+	reload_do = false;
+	lock_reload();
+	if(filter_reload) {
+		delete filter_reload;
+	}
+	filter_reload = new FILE_LINE DOMAINfilter;
+	filter_reload->load();
+	reload_do = 1;
+	syslog(LOG_NOTICE, "DOMAINfilter::prepareReload");
+	unlock_reload();
+}
+
+void DOMAINfilter::applyReload() {
+	if(reload_do) {
+		lock_reload();
+		lock();
+		delete filter_active;
+		filter_active = filter_reload;
+		unlock();
+		filter_reload = NULL;
+		reload_do = false; 
+		syslog(LOG_NOTICE, "DOMAINfilter::applyReload");
+		unlock_reload();
+	}
+}
+
+DOMAINfilter *DOMAINfilter::filter_active = NULL;
+DOMAINfilter *DOMAINfilter::filter_reload = NULL;
+volatile bool DOMAINfilter::reload_do = 0;
 volatile int DOMAINfilter::_sync = 0;
 
 /* SIP_HEADERfilter class */
@@ -470,8 +652,10 @@ SIP_HEADERfilter::SIP_HEADERfilter() {
 SIP_HEADERfilter::~SIP_HEADERfilter() {
 }
 
-void
-SIP_HEADERfilter::load() {
+void SIP_HEADERfilter::load() {
+	if(opt_nocdr || is_sender()) {
+		return;
+	}
 	vector<db_row> vectDbRow;
 	SqlDb *sqlDb = createSqlObject();
 	SqlDb_row row;
@@ -507,8 +691,7 @@ SIP_HEADERfilter::load() {
 	}
 }
 
-int
-SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, unsigned int *flags, char *domain_src, char *domain_dst) {
+int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, unsigned int *flags) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -560,15 +743,7 @@ SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, unsign
 	return 0;
 }
 
-void 
-SIP_HEADERfilter::addNodes(ParsePacket *parsePacket) {
-	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
-		parsePacket->addNode((it_header->first + ":").c_str(), ParsePacket::typeNode_custom);
-	}
-}
-
-void
-SIP_HEADERfilter::dump() {
+void SIP_HEADERfilter::dump() {
 	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
 		header_data *data = &it_header->second;
 		for(map<std::string, item_data>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
@@ -580,5 +755,81 @@ SIP_HEADERfilter::dump() {
 	}
 }
 
+void SIP_HEADERfilter::_addNodes(ParsePacket *parsePacket) {
+	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
+		parsePacket->addNode((it_header->first + ":").c_str(), ParsePacket::typeNode_custom);
+	}
+}
+
+int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, unsigned int *flags) {
+	int rslt = 0;
+	if(reload_do) {
+		applyReload();
+	}
+	lock();
+	if(filter_active) {
+		rslt = filter_active->_add_call_flags(parseContents, flags);
+	}
+	unlock();
+	return(rslt);
+}
+
+void SIP_HEADERfilter::addNodes(ParsePacket *parsePacket) {
+	if(reload_do) {
+		applyReload();
+	}
+	lock();
+	if(filter_active) {
+		filter_active->_addNodes(parsePacket);
+	}
+	unlock();
+}
+
+void SIP_HEADERfilter::loadActive() {
+	lock();
+	filter_active = new FILE_LINE SIP_HEADERfilter();
+	filter_active->load();
+	unlock();
+}
+
+void SIP_HEADERfilter::freeActive() {
+	lock();
+	if(filter_active) {
+		delete filter_active;
+		filter_active = NULL;
+	}
+	unlock();
+}
+
+void SIP_HEADERfilter::prepareReload() {
+	reload_do = false;
+	lock_reload();
+	if(filter_reload) {
+		delete filter_reload;
+	}
+	filter_reload = new FILE_LINE SIP_HEADERfilter;
+	filter_reload->load();
+	reload_do = 1;
+	syslog(LOG_NOTICE, "SIP_HEADERfilter::prepareReload");
+	unlock_reload();
+}
+
+void SIP_HEADERfilter::applyReload() {
+	if(reload_do) {
+		lock_reload();
+		lock();
+		delete filter_active;
+		filter_active = filter_reload;
+		unlock();
+		filter_reload = NULL;
+		reload_do = false; 
+		syslog(LOG_NOTICE, "SIP_HEADERfilter::applyReload");
+		unlock_reload();
+	}
+}
+
+SIP_HEADERfilter *SIP_HEADERfilter::filter_active = NULL;
+SIP_HEADERfilter *SIP_HEADERfilter::filter_reload = NULL;
+volatile bool SIP_HEADERfilter::reload_do = 0;
 volatile unsigned long SIP_HEADERfilter::loadTime = 0;
 volatile int SIP_HEADERfilter::_sync = 0;

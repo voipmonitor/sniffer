@@ -145,18 +145,6 @@ extern int opt_mirroronly;
 extern char opt_scanpcapdir[2048];
 extern int opt_ipaccount;
 extern int opt_cdrproxy;
-extern IPfilter *ipfilter;
-extern IPfilter *ipfilter_reload;
-extern volatile int ipfilter_reload_do;
-extern TELNUMfilter *telnumfilter;
-extern TELNUMfilter *telnumfilter_reload;
-extern volatile int telnumfilter_reload_do;
-extern DOMAINfilter *domainfilter;
-extern DOMAINfilter *domainfilter_reload;
-extern volatile int domainfilter_reload_do;
-extern SIP_HEADERfilter *sipheaderfilter;
-extern SIP_HEADERfilter *sipheaderfilter_reload;
-extern volatile int sipheaderfilter_reload_do;
 extern int rtp_threaded;
 extern int opt_rtpnosip;
 extern char opt_cachedir[1024];
@@ -283,7 +271,6 @@ volatile int usersniffer_sync;
 #include "sniff_inline.h"
 
 
-unsigned long process_packet__last_filter_reload = 0;
 unsigned long process_packet__last_cleanup_calls = 0;
 long process_packet__last_cleanup_calls_diff = 0;
 unsigned long process_packet__last_destroy_calls = 0;
@@ -1834,10 +1821,10 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	//flags
 	unsigned int flags = 0;
 	set_global_flags(flags);
-	ipfilter->add_call_flags(&flags, ntohl(packetS->saddr), ntohl(packetS->daddr));
-	telnumfilter->add_call_flags(&flags, tcaller, tcalled);
-	domainfilter->add_call_flags(&flags, tcaller_domain, tcalled_domain);
-	sipheaderfilter->add_call_flags(&packetS->parseContents, &flags, tcaller_domain, tcalled_domain);
+	IPfilter::add_call_flags(&flags, ntohl(packetS->saddr), ntohl(packetS->daddr));
+	TELNUMfilter::add_call_flags(&flags, tcaller, tcalled);
+	DOMAINfilter::add_call_flags(&flags, tcaller_domain, tcalled_domain);
+	SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags);
 
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
@@ -2281,43 +2268,6 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	bool iscalled = false;
 	bool detectCallerd = false;
 	const char *logPacketSipMethodCallDescr = NULL;
-
-	if (packetS->header_pt->ts.tv_sec - process_packet__last_filter_reload > 1){
-		if(ipfilter_reload_do) {
-			IPfilter::lock_sync();
-			delete ipfilter;
-			ipfilter = ipfilter_reload;
-			ipfilter_reload = NULL;
-			ipfilter_reload_do = 0; 
-			IPfilter::unlock_sync();
-		}
-		if(telnumfilter_reload_do) {
-			TELNUMfilter::lock_sync();
-			delete telnumfilter;
-			telnumfilter = telnumfilter_reload;
-			telnumfilter_reload = NULL;
-			telnumfilter_reload_do = 0; 
-			TELNUMfilter::unlock_sync();
-		}
-		if(domainfilter_reload_do) {
-			DOMAINfilter::lock_sync();
-			delete domainfilter;
-			domainfilter = domainfilter_reload;
-			domainfilter_reload = NULL;
-			domainfilter_reload_do = 0; 
-			DOMAINfilter::unlock_sync();
-		}
-		if(sipheaderfilter_reload_do) {
-			SIP_HEADERfilter::lock_sync();
-			delete sipheaderfilter;
-			sipheaderfilter = sipheaderfilter_reload;
-			sipheaderfilter_reload = NULL;
-			sipheaderfilter_reload_do = 0;
-			SIP_HEADERfilter::unlock_sync();
-		}
-		process_packet__last_filter_reload = packetS->header_pt->ts.tv_sec;
-	}
-
 	int merged;
 	
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
@@ -2812,7 +2762,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				}
 			}
 		}
-		ipfilter->add_call_flags(&(call->flags), ntohl(packetS->saddr), ntohl(packetS->daddr));
+		IPfilter::add_call_flags(&(call->flags), ntohl(packetS->saddr), ntohl(packetS->daddr));
 		if(opt_cdrproxy && !reverseInviteSdaddr) {
 			if(call->sipcalledip[0] != packetS->daddr and call->sipcallerip[0] != packetS->daddr and call->lastsipcallerip != packetS->saddr) {
 				if(packetS->daddr != 0) {
@@ -3420,7 +3370,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	
 	unsigned int flags = 0;
 	set_global_flags(flags);
-	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
+	IPfilter::add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");

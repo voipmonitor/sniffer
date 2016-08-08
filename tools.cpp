@@ -2550,13 +2550,8 @@ void ParsePacket::setStdParse() {
 	addNodeCheckSip("MESSAGE");
 	addNodeCheckSip("UPDATE");
 	
-	extern SIP_HEADERfilter *sipheaderfilter;
-	if(sipheaderfilter) {
-		SIP_HEADERfilter::lock_sync();
-		sipheaderfilter->addNodes(this);
-		SIP_HEADERfilter::unlock_sync();
-		this->timeSync_SIP_HEADERfilter = sipheaderfilter->getLoadTime();
-	}
+	SIP_HEADERfilter::addNodes(this);
+	this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
 }
 
 void ParsePacket::addNode(const char *nodeName, eTypeNode typeNode, bool isContentLength) {

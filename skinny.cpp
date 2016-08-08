@@ -86,7 +86,6 @@ extern char opt_silencedtmfseq[16];
 extern int opt_skinny;
 extern unsigned int opt_skinny_ignore_rtpip;
 extern int opt_saverfc2833;
-extern IPfilter *ipfilter;
 
 /* Skinny debugging only available if asterisk configured with --enable-dev-mode */
 #define AST_DEVMODE 1
@@ -1271,7 +1270,7 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 
 	unsigned int flags = 0;
 	set_global_flags(flags);
-	ipfilter->add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
+	IPfilter::add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");

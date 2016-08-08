@@ -72,6 +72,14 @@ protected:
 	void loadBaseDataRow(class SqlDb_row *sqlRow, filter_db_row_base *baseRow);
 	unsigned int getFlagsFromBaseData(filter_db_row_base *baseRow);
 	void setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned int filterFlags);
+	static void lock_reload() {
+		while(__sync_lock_test_and_set(&_sync_reload, 1));
+	}
+	static void unlock_reload() {
+		__sync_lock_release(&_sync_reload);
+	}
+private:
+	static volatile int _sync_reload;
 };
 
 class IPfilter : public filter_base {
@@ -95,21 +103,26 @@ private:
 public: 
         IPfilter();
         ~IPfilter();
-
-	int count;
         void load();
+	int _add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int daddr);
         void dump();
-	int add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int daddr);
-
-private:
-	static volatile int _sync;
-public:
-	static void lock_sync() {
+	static int add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int daddr);
+	static void loadActive();
+	static void freeActive();
+	static void prepareReload();
+	static void applyReload();
+	static void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
 	}
-	static void unlock_sync() {
+	static void unlock() {
 		__sync_lock_release(&_sync);
 	}
+private:
+	int count;
+	static IPfilter *filter_active;
+	static IPfilter *filter_reload;
+	static volatile bool reload_do;
+	static volatile int _sync;
 };
 
 class TELNUMfilter : public filter_base {
@@ -135,21 +148,27 @@ private:
 public: 
         TELNUMfilter();
         ~TELNUMfilter();
-
-	int count;
         void load();
-        void dump(t_node_tel *node = NULL);
 	void add_payload(t_payload *payload);
-	int add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst);
-private:
-	static volatile int _sync;
-public:
-	static void lock_sync() {
+	int _add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst);
+        void dump(t_node_tel *node = NULL);
+	static int add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst);
+	static void loadActive();
+	static void freeActive();
+	static void prepareReload();
+	static void applyReload();
+	static void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
 	}
-	static void unlock_sync() {
+	static void unlock() {
 		__sync_lock_release(&_sync);
 	}
+private:
+	int count;
+	static TELNUMfilter *filter_active;
+	static TELNUMfilter *filter_reload;
+	static volatile bool reload_do;
+	static volatile int _sync;
 };
 
 class DOMAINfilter : public filter_base {
@@ -169,20 +188,26 @@ private:
 public: 
 	DOMAINfilter();
 	~DOMAINfilter();
-
-	int count;
 	void load();
+	int _add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst);
 	void dump();
-	int add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst);
-private:
-	static volatile int _sync;
-public:
-	static void lock_sync() {
+	static int add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst);
+	static void loadActive();
+	static void freeActive();
+	static void prepareReload();
+	static void applyReload();
+	static void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
 	}
-	static void unlock_sync() {
+	static void unlock() {
 		__sync_lock_release(&_sync);
 	}
+private:
+	int count;
+	static DOMAINfilter *filter_active;
+	static DOMAINfilter *filter_reload;
+	static volatile bool reload_do;
+	static volatile int _sync;
 };
 
 class SIP_HEADERfilter : public filter_base {
@@ -209,25 +234,32 @@ private:
 public: 
 	SIP_HEADERfilter();
 	~SIP_HEADERfilter();
-
-	int count;
 	void load();
+	int _add_call_flags(class ParsePacket::ppContentsX *parseContents, unsigned int *flags);
 	void dump();
-	int add_call_flags(class ParsePacket::ppContentsX *parseContents, unsigned int *flags, char *domain_src, char *domain_dst);
-	void addNodes(ParsePacket *parsePacket);
-private:
-	static volatile unsigned long loadTime;
-	static volatile int _sync;
-public:
+	void _addNodes(ParsePacket *parsePacket);
+	static int add_call_flags(class ParsePacket::ppContentsX *parseContents, unsigned int *flags);
+	static void addNodes(ParsePacket *parsePacket);
+	static void loadActive();
+	static void freeActive();
+	static void prepareReload();
+	static void applyReload();
 	static unsigned long getLoadTime() {
 		return(loadTime);
 	}
-	static void lock_sync() {
+	static void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
 	}
-	static void unlock_sync() {
+	static void unlock() {
 		__sync_lock_release(&_sync);
 	}
+private:
+	int count;
+	static SIP_HEADERfilter *filter_active;
+	static SIP_HEADERfilter *filter_reload;
+	static volatile bool reload_do;
+	static volatile unsigned long loadTime;
+	static volatile int _sync;
 };
 
 inline void set_global_flags(unsigned int &flags) {
