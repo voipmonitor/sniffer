@@ -3750,7 +3750,7 @@ void Call::atFinish() {
 		system(source.c_str());
 	};
 	extern char filtercommand[4092];
-	if(filtercommand[0]/* && this->flags & FLAG_RUNSCRIPT*/) {
+	if(filtercommand[0] && this->flags & FLAG_RUNSCRIPT) {
 		string source(filtercommand);
 		string tmp = this->fbasename;
 		find_and_replace(source, string("%callid%"), escapeshellR(tmp));
