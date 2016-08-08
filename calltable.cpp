@@ -3728,6 +3728,9 @@ Call::dump(){
 }
 
 void Call::atFinish() {
+	if(this->type != INVITE && type != MESSAGE) {
+		return;
+	}
 	extern char pcapcommand[4092];
 	if(pcapcommand[0]) {
 		string source(pcapcommand);
