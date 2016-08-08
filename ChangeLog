@@ -1,3 +1,10 @@
+17.0.1 8.8.2016
+===============
+- refactor call live listenting [VG-977]
+- fix filtercommand disable in capture rules and do not run it on REGISTER (only INVITE and MESSAGE) [VG-983]
+- fix capture rules sniffer reload which was applied only from second call [VG-982]
+
+
 17.0 1.8.2016
 =============
 - redesign SIP REGISTER alerts - it now uses memory storage instead of sending every SIP registration to the database [VG-43] [VS-467]
