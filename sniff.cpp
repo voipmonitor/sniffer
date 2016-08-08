@@ -211,6 +211,7 @@ extern bool _save_sip_history;
 extern bool _save_sip_history_request_types[1000];
 extern bool _save_sip_history_all_requests;
 extern bool _save_sip_history_all_responses;
+extern int opt_rtpfromsdp_onlysip;
 unsigned int glob_ssl_calls = 0;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
@@ -2200,10 +2201,10 @@ void process_sdp(Call *call, packet_s_process *packetS, bool iscaller, char *fro
 			}
 		}
 		// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg
-		if(opt_rtp_firstleg == 0 || (opt_rtp_firstleg &&
-			((call->saddr == packetS->saddr && call->sport == packetS->source) || 
-			(call->saddr == packetS->daddr && call->sport == packetS->dest))))
-			{
+		if(opt_rtp_firstleg == 0 || 
+		   (opt_rtp_firstleg &&
+		    ((call->saddr == packetS->saddr && call->sport == packetS->source) || 
+		     (call->saddr == packetS->daddr && call->sport == packetS->dest)))) {
 
 			//printf("sdp [%u] port[%u]\n", tmp_addr, tmp_port);
 
@@ -3462,14 +3463,19 @@ inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
 		if(calls) {
 			hash_node_call *node_call;
 			for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-				call_info[call_info_length].call = node_call->call;
-				call_info[call_info_length].iscaller = node_call->iscaller;
-				call_info[call_info_length].is_rtcp = node_call->is_rtcp;
-				call_info[call_info_length].sdp_flags = node_call->sdp_flags;
-				call_info[call_info_length].use_sync = false;
-				++call_info_length;
-				if(call_info_length == (sizeof(call_info) / sizeof(call_info[0]))) {
-					break;
+				if(!opt_rtpfromsdp_onlysip ||
+				   (call_info_find_by_dest ?
+				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
+				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr))) {
+					call_info[call_info_length].call = node_call->call;
+					call_info[call_info_length].iscaller = node_call->iscaller;
+					call_info[call_info_length].is_rtcp = node_call->is_rtcp;
+					call_info[call_info_length].sdp_flags = node_call->sdp_flags;
+					call_info[call_info_length].use_sync = false;
+					++call_info_length;
+					if(call_info_length == (sizeof(call_info) / sizeof(call_info[0]))) {
+						break;
+					}
 				}
 			}
 		}
@@ -6191,15 +6197,20 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	if(calls) {
 		hash_node_call *node_call;
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-			packetS->call_info[packetS->call_info_length].call = node_call->call;
-			packetS->call_info[packetS->call_info_length].iscaller = node_call->iscaller;
-			packetS->call_info[packetS->call_info_length].is_rtcp = node_call->is_rtcp;
-			packetS->call_info[packetS->call_info_length].sdp_flags = node_call->sdp_flags;
-			packetS->call_info[packetS->call_info_length].use_sync = false;
-			__sync_add_and_fetch(&node_call->call->rtppacketsinqueue, 1);
-			++packetS->call_info_length;
-			if(packetS->call_info_length == (sizeof(packetS->call_info) / sizeof(packetS->call_info[0]))) {
-				break;
+			if(!opt_rtpfromsdp_onlysip ||
+			   (packetS->call_info_find_by_dest ?
+			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
+			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr))) {
+				packetS->call_info[packetS->call_info_length].call = node_call->call;
+				packetS->call_info[packetS->call_info_length].iscaller = node_call->iscaller;
+				packetS->call_info[packetS->call_info_length].is_rtcp = node_call->is_rtcp;
+				packetS->call_info[packetS->call_info_length].sdp_flags = node_call->sdp_flags;
+				packetS->call_info[packetS->call_info_length].use_sync = false;
+				__sync_add_and_fetch(&node_call->call->rtppacketsinqueue, 1);
+				++packetS->call_info_length;
+				if(packetS->call_info_length == (sizeof(packetS->call_info) / sizeof(packetS->call_info[0]))) {
+					break;
+				}
 			}
 		}
 	}

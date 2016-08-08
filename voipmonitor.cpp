@@ -268,6 +268,7 @@ char opt_silenceheader[128] = "";
 int opt_pauserecordingdtmf_timeout = 4;
 int opt_182queuedpauserecording = 0;
 int opt_vlan_siprtpsame = 0;
+int opt_rtpfromsdp_onlysip = 0;
 char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
@@ -4992,6 +4993,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE cConfigItem_integer("pauserecordingdtmf_timeout", &opt_pauserecordingdtmf_timeout));
 			addConfigItem(new FILE_LINE cConfigItem_yesno("182queuedpauserecording", &opt_182queuedpauserecording));
 			addConfigItem(new FILE_LINE cConfigItem_yesno("vlan_siprtpsame", &opt_vlan_siprtpsame));
+			addConfigItem(new FILE_LINE cConfigItem_yesno("rtpfromsdp_onlysip", &opt_rtpfromsdp_onlysip));
 				advanced();
 				addConfigItem(new FILE_LINE cConfigItem_yesno("rtpmap_by_callerd", &opt_rtpmap_by_callerd));
 				addConfigItem(new FILE_LINE cConfigItem_yesno("rtpmap_combination", &opt_rtpmap_combination));
@@ -7273,6 +7275,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "vlan_siprtpsame", NULL))) {
 		opt_vlan_siprtpsame = yesno(value);
+	}
+	if((value = ini.GetValue("general", "rtpfromsdp_onlysip", NULL))) {
+		opt_rtpfromsdp_onlysip = yesno(value);
 	}
 	if((value = ini.GetValue("general", "rtpmap_by_callerd", NULL))) {
 		opt_rtpmap_by_callerd = yesno(value);

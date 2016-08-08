@@ -792,6 +792,16 @@ public:
 	const char *getSpoolDir() {
 		return(::getSpoolDir(getSpoolIndex()));
 	}
+	
+	bool checkKnownIP_inSipCallerdIP(u_int32_t ip) {
+		for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
+			if(ip == sipcallerip[i] ||
+			   ip == sipcalledip[i]) {
+				return(true);
+			}
+		}
+		return(false);
+	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
