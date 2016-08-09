@@ -942,7 +942,7 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 	}
-	while(true) {
+	while(!is_terminating() && !DISABLE_CLEANSPOOL) {
 		sqlDb->query(
 		       "SELECT SUM(sipsize) AS sipsize, \
 			       SUM(rtpsize) AS rtpsize, \
@@ -1090,7 +1090,7 @@ void CleanSpool::clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio) {
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 	}
-	while(true) {
+	while(!is_terminating() && !DISABLE_CLEANSPOOL) {
 		string sizeCond;
 		if(!(sip && rtp && graph && audio)) {
 			sizeCond = sip ? "sipsize > 0" :
@@ -1206,7 +1206,7 @@ void CleanSpool::clean_obsolete_dirs() {
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 	}
-	while (true) {
+	while(!is_terminating() && !DISABLE_CLEANSPOOL) {
 		dirent *de = readdir(dp);
 		if(de == NULL) break;
 		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
@@ -1388,7 +1388,7 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 							continue;
 						}
 						dirent* de2;
-						while (true) {
+						while(true) {
 							de2 = readdir( dp );
 							if(de2 == NULL) break;
 							if(de2->d_type == 4 or string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
