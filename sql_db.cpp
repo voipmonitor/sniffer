@@ -5225,7 +5225,7 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 void SqlDb_mysql::checkColumns_other(bool log) {
 	if(!this->existsColumn("files", "spool_index")) {
 		this->query(
-			"ALTER TABLE `voipmonitor`.`files`\
+			"ALTER TABLE `files`\
 			 ADD COLUMN `spool_index` INT NOT NULL AFTER `id_sensor`,\
 			 DROP PRIMARY KEY,\
 			 ADD PRIMARY KEY (`datehour`, `id_sensor`, `spool_index`)");
