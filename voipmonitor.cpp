@@ -576,6 +576,7 @@ char filtercommand[4092] = "";
 
 int rtp_threaded = 0;
 int num_threads_set = 0;
+int num_threads_start = 0;
 int num_threads_max = 0;
 volatile int num_threads_active = 0;
 unsigned int rtpthreadbuffer = 20;	// default 20MB
@@ -2594,12 +2595,11 @@ int main_init_read() {
 	if(opt_rtpsave_threaded) {
 		if(num_threads_set > 0) {
 			num_threads_max = num_threads_set;
-			num_threads_active = 1;
 		} else {
 			num_threads_max = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
 			if(num_threads_max <= 0) num_threads_max = 1;
-			num_threads_active = 1;
 		}
+		num_threads_active = min(num_threads_max, max(num_threads_start, 1));
 	} else {
 		num_threads_max = 0;
 		num_threads_active = 0;
@@ -4772,6 +4772,7 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem((new FILE_LINE cConfigItem_integer("rtpthreads", &num_threads_set))
 					->setIfZeroOrNegative(max(sysconf(_SC_NPROCESSORS_ONLN) - 1, 1l)));
+				addConfigItem(new FILE_LINE cConfigItem_integer("rtpthreads_start", &num_threads_start));
 					expert();
 					addConfigItem(new FILE_LINE cConfigItem_yesno("savertp-threaded", &opt_rtpsave_threaded));
 				addConfigItem(new FILE_LINE cConfigItem_yesno("packetbuffer_compress", &opt_pcap_queue_compress));
@@ -6604,6 +6605,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "rtpthreads", NULL))) {
 		num_threads_set = check_set_rtp_threads(atoi(value));
+	}
+	if((value = ini.GetValue("general", "rtpthreads_start", NULL))) {
+		num_threads_start = atoi(value);
 	}
 	if((value = ini.GetValue("general", "rtptimeout", NULL))) {
 		rtptimeout = atoi(value);
