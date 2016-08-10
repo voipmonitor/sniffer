@@ -3881,11 +3881,13 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 		switch(this->typeThread) {
 		case read: {
 			while(!block ||
-			      !block->get_add_hp_pointers(&pcap_header_plus2, &pcap_packet, pcap_snaplen)) {
+			      !block->get_add_hp_pointers(&pcap_header_plus2, &pcap_packet, pcap_snaplen) ||
+			      (block->count && force_push)) {
 				if(block) {
 					this->push_block(block);
 				}
 				block = new FILE_LINE pcap_block_store(pcap_block_store::plus2);
+				force_push = false;
 				//cout << 'X' << flush;
 			}
 			if(_useOneshotBuffer) {
@@ -3946,11 +3948,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			if(!block) {
 				usleep(100);
 				++this->counter_pop_usleep;
-				if(!(this->counter_pop_usleep % 2000)) {
-					//this->prevThread->setForcePush_block();
-				}
-				if(this->force_push) {
-					//this->tryForcePush_block();
+				if(!(this->counter_pop_usleep % 20000)) {
+					this->prevThread->setForcePush();
 				}
 				continue;
 			}
