@@ -46,24 +46,30 @@ public:
 		return(blockStore);
 	}
 	size_t getUseItems() {
-		return(this->countOfBlocks);
+		return(this->queueBlock->size());
 	}	
-	uint64_t getUseSize() {
-		return(this->sizeOfBlocks);
+	size_t getUseSize() {
+		ssize_t sizeOfBlocks = this->sizeOfBlocks;
+		return(max(sizeOfBlocks, (ssize_t)0));
 	}
 private:
 	void add_sizeOfBlocks(size_t size) {
-		__sync_fetch_and_add(&this->sizeOfBlocks, size);
-		__sync_fetch_and_add(&this->countOfBlocks, 1);
+		while(__sync_lock_test_and_set(&this->sizeOfBlocks_sync, 1));
+		this->sizeOfBlocks += size;
+		__sync_lock_release(&this->sizeOfBlocks_sync);
 	}
 	void sub_sizeOfBlocks(size_t size) {
-		__sync_fetch_and_sub(&this->sizeOfBlocks, size);
-		__sync_fetch_and_sub(&this->countOfBlocks, 1);
+		while(__sync_lock_test_and_set(&this->sizeOfBlocks_sync, 1));
+		this->sizeOfBlocks -= size;
+		if(this->sizeOfBlocks < 0) {
+			this->sizeOfBlocks = 0;
+		}
+		__sync_lock_release(&this->sizeOfBlocks_sync);
 	}
 private:
 	rqueue_quick<pcap_block_store*> *queueBlock;
-	volatile size_t countOfBlocks;
-	volatile size_t sizeOfBlocks;
+	volatile ssize_t sizeOfBlocks;
+	volatile int sizeOfBlocks_sync;
 };
 
 class pcap_file_store {

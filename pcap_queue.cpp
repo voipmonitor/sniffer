@@ -698,8 +698,8 @@ pcap_block_store_queue::pcap_block_store_queue() {
 				100, 100,
 				&terminating, true,
 				__FILE__, __LINE__);
-	this->countOfBlocks = 0;
 	this->sizeOfBlocks = 0;
+	this->sizeOfBlocks_sync = 0;
 }
 
 pcap_block_store_queue::~pcap_block_store_queue() {
