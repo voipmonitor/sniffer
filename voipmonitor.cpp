@@ -571,6 +571,7 @@ uint32_t opt_scanpcapmethod = IN_CLOSE_WRITE; // Specifies how to watch for new 
 #endif
 int opt_promisc = 1;	// put interface to promisc mode?
 int opt_use_oneshot_buffer = 1;
+int opt_snaplen = 0;
 char pcapcommand[4092] = "";
 char filtercommand[4092] = "";
 
@@ -4704,8 +4705,9 @@ void cConfig::addConfigItems() {
 			addConfigItem(snifferMode);
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem(new FILE_LINE cConfigItem_string("interface", ifname, sizeof(ifname)));
-				addConfigItem(new FILE_LINE cConfigItem_yesno("use_oneshot_buffer", &opt_use_oneshot_buffer));
 				advanced();
+				addConfigItem(new FILE_LINE cConfigItem_yesno("use_oneshot_buffer", &opt_use_oneshot_buffer));
+				addConfigItem(new FILE_LINE cConfigItem_integer("snaplen", &opt_snaplen));
 			normal();
 			addConfigItem(new FILE_LINE cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE cConfigItem_string("filter", user_filter, sizeof(user_filter)));
@@ -6935,6 +6937,9 @@ int eval_config(string inistr) {
 #endif
 	if((value = ini.GetValue("general", "use_oneshot_buffer", NULL))) {
 		opt_use_oneshot_buffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "snaplen", NULL))) {
+		opt_snaplen = atoi(value);
 	}
 	if((value = ini.GetValue("general", "promisc", NULL))) {
 		opt_promisc = yesno(value);

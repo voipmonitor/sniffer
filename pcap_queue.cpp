@@ -65,7 +65,8 @@
 #define MAX_TCPSTREAMS 1024
 #define FILE_BUFFER_SIZE 1000000
 
-#define SNAPLEN (opt_enable_http || opt_enable_webrtc || opt_enable_ssl ? 6000 : 3200)
+#define SNAPLEN (opt_snaplen > 0 ? (unsigned)opt_snaplen : \
+		(opt_enable_http || opt_enable_webrtc || opt_enable_ssl ? 6000 : 3200))
 
 #define TRACE_INVITE_BYE 0
 
@@ -77,6 +78,7 @@ void daemonizeOutput(string error);
 
 extern int verbosity;
 extern int verbosityE;
+extern int opt_snaplen;
 extern int opt_rrd;
 extern char opt_chdir[1024];
 extern int opt_udpfrag;
