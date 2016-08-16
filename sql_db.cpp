@@ -2214,6 +2214,8 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 			   !idQueryProcess ||
 			   !queryLength) {
 				syslog(LOG_ERR, "bad string in qfile %s: %s", filename, buffLineQuery);
+				ok = false;
+				continue;
 			}
 			if(queryLength != strlen(posSeparator + 1)) {
 				syslog(LOG_ERR, "bad query length in qfile %s: %s", filename, buffLineQuery);
