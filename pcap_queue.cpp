@@ -3197,6 +3197,12 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 }
 
 inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *block) {
+	while(!buffersControl.check__pcap_store_queue__push()) {
+		if(is_terminating()) {
+			return;
+		}
+		usleep(1000);
+	}
 	unsigned int _writeIndex = writeit % qringmax;
 	while(qring_blocks_used[_writeIndex]) {
 		if(is_terminating()) {
@@ -4503,6 +4509,7 @@ void PcapQueue_readFromInterface::threadFunction_blocks() {
 			if(!opt_pcap_queue_compress && this->instancePcapFifo && opt_pcap_queue_suppress_t1_thread) {
 				this->instancePcapFifo->addBlockStoreToPcapStoreQueue(blockStore);
 			} else {
+				this->check_bypass_buffer();
 				blockStoreBypassQueue->push(blockStore);
 			}
 		} else {
@@ -4908,20 +4915,20 @@ void PcapQueue_readFromInterface::prepareLogTraffic() {
 
 void PcapQueue_readFromInterface::check_bypass_buffer() {
 	size_t blockStoreBypassQueueSize = 0;
-	bool _syslog = true;
+	bool countBypassBufferSizeExceeded_inc = false;
 	while(!TERMINATING && (blockStoreBypassQueueSize = blockStoreBypassQueue->getUseSize()) > opt_pcap_queue_bypass_max_size) {
 		if(opt_scanpcapdir[0]) {
 			usleep(100);
 		} else {
-			if(_syslog) {
-				u_long actTime = getTimeMS();
-				if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
-					syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
-					this->lastTimeLogErrThread0BufferIsFull = actTime;
-					cout << "bypass buffer size " << blockStoreBypassQueue->getUseItems() << " (" << blockStoreBypassQueue->getUseSize() << ")" << endl;
-				}
-				_syslog = false;
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
+				syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
+				this->lastTimeLogErrThread0BufferIsFull = actTime;
+				cout << "bypass buffer size " << blockStoreBypassQueue->getUseItems() << " (" << blockStoreBypassQueue->getUseSize() << ")" << endl;
+			}
+			if(!countBypassBufferSizeExceeded_inc) {
 				++countBypassBufferSizeExceeded;
+				countBypassBufferSizeExceeded_inc = true;
 			}
 			usleep(100);
 			maxBypassBufferSize = 0;
@@ -4939,6 +4946,10 @@ void PcapQueue_readFromInterface::push_blockstore(pcap_block_store **block_store
 	if(!opt_pcap_queue_compress && this->instancePcapFifo && opt_pcap_queue_suppress_t1_thread) {
 		this->instancePcapFifo->addBlockStoreToPcapStoreQueue(*block_store);
 	} else if(this->block_qring) {
+		while(!TERMINATING &&
+		      !buffersControl.check__pcap_store_queue__push()) {
+			usleep(1000);
+		}
 		this->block_qring->push(block_store, true);
 	} else {
 		this->check_bypass_buffer();
