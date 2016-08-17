@@ -560,7 +560,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 	if(sverb.disable_save_packet) {
 		return;
 	}
-	if(call->type == MESSAGE && opt_hide_message_content) {
+	if(call->type == MESSAGE && (call->flags & FLAG_HIDEMESSAGE)) {
 		parse_packet__message(packetS, false,
 				      NULL, NULL, NULL, NULL, NULL,
 				      true);

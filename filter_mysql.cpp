@@ -72,7 +72,7 @@ unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 	else if(baseRow->mos_lqo == 3)		flags |= FLAG_ABMOSLQO;
 	else if(baseRow->mos_lqo == 0)		flags |= FLAG_NOMOSLQO;
 	
-	if(baseRow->hide_message)		flags |= FLAG_HIDEMSG;
+	if(baseRow->hide_message == 1)		flags |= FLAG_HIDEMSG;
 	else if(baseRow->hide_message == 0)	flags |= FLAG_SHOWMSG;
 	
 	if(baseRow->spool_2)			flags |= FLAG_SPOOL_2;
