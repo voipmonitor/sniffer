@@ -692,7 +692,21 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 	*/
 }
 
+static volatile bool enable_parse_command = false;
+
+void manager_parse_command_enable() {
+	enable_parse_command = true;
+}
+
+void manager_parse_command_disable() {
+	enable_parse_command = false;
+}
+
 int parse_command(char *buf, int size, int client, int eof, ManagerClientThread **managerClientThread = NULL, ssh_channel sshchannel = NULL) {
+	if(!enable_parse_command) {
+		return(0);
+	}
+ 
 	char buf_output[1024];
  
 	char *pointerToEndSeparator = strstr(buf, "\r\n");

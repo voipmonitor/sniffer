@@ -101,4 +101,8 @@ void listening_master_unlock();
 void listening_cleanup();
 void listening_remove_worker(class Call *call);
 
+void manager_parse_command_enable();
+void manager_parse_command_disable();
+
+
 #endif

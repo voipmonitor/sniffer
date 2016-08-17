@@ -966,6 +966,7 @@ void *database_backup(void *dummy) {
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 	sqlStore = new FILE_LINE MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port);
 	bool callCreateSchema = false;
+	manager_parse_command_enable();
 	while(!is_terminating()) {
 		syslog(LOG_NOTICE, "-- START BACKUP PROCESS");
 		
@@ -1028,6 +1029,7 @@ void *database_backup(void *dummy) {
 			sleep(1);
 		}
 	}
+	manager_parse_command_disable();
 	sqlStore->setEnableTerminatingIfSqlError(0, true);
 	while(is_terminating() < 2 && sqlStore->getAllSize()) {
 		syslog(LOG_NOTICE, "flush sqlStore");
@@ -2403,6 +2405,7 @@ int main(int argc, char *argv[]) {
 				main_init_sqlstore();
 				loadFromQFiles->loadFromQFiles_start();
 				unsigned int counter = 0;
+				manager_parse_command_enable();
 				while(!is_terminating()) {
 					sleep(1);
 					if(!(++counter % 10) && verbosity) {
@@ -2410,6 +2413,7 @@ int main(int argc, char *argv[]) {
 						syslog(LOG_NOTICE, "SQLf: [%s]", stat.c_str());
 					}
 				}
+				manager_parse_command_disable();
 			}
 			if(sqlStore) {
 				delete sqlStore;
@@ -2444,12 +2448,14 @@ int main(int argc, char *argv[]) {
 		}
 		if(!_terminating_error.empty()) {
 			clear_terminating();
+			manager_parse_command_enable();
 			while(!is_terminating()) {
 				syslog(LOG_NOTICE, "%s - wait for terminating or hot restarting", _terminating_error.c_str());
 				for(int i = 0; i < 10 && !is_terminating(); i++) {
 					sleep(1);
 				}
 			}
+			manager_parse_command_disable();
 			if(!hot_restarting) {
 				_break = true;
 			}
@@ -2982,6 +2988,7 @@ int main_init_read() {
 		if(!sverb.pcap_stat_period) {
 			sverb.pcap_stat_period = verbosityE > 0 ? 1 : 10;
 		}
+		manager_parse_command_enable();
 		while(!is_terminating()) {
 			long timeProcessStatMS = 0;
 			if(_counter) {
@@ -3008,6 +3015,7 @@ int main_init_read() {
 			}
 			++_counter;
 		}
+		manager_parse_command_disable();
 		
 		if(opt_scanpcapdir[0] != '\0') {
 			//pthread_join(scanpcapdir_thread, NULL); // failed - stop at: scanpcapdir::'len = read(fd, buff, 4096);'
