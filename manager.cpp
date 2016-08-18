@@ -2783,6 +2783,7 @@ void *manager_read_thread(void * arg) {
 		}
 	}
 	ManagerClientThread *managerClientThread = NULL;
+	/*
 	string command_type;
 	size_t pos_separator = buf_long.find(' ');
 	if(pos_separator == string::npos) {
@@ -2790,12 +2791,14 @@ void *manager_read_thread(void * arg) {
 	} else {
 		command_type = buf_long.substr(0, pos_separator);
 	}
-	//if(addCommandType(command_type)) {
+	if(addCommandType(command_type)) {
 		parse_command((char*)buf_long.c_str(), size, client, 0, &managerClientThread);
-	//	subCommandType(command_type);
-	//} else {
-	//	syslog(LOG_NOTICE, "suppress run command %s", command_type.c_str());
-	//}
+		subCommandType(command_type);
+	} else {
+		syslog(LOG_NOTICE, "suppress run command %s", command_type.c_str());
+	}
+	*/
+	parse_command((char*)buf_long.c_str(), size, client, 0, &managerClientThread);
 	if(managerClientThread) {
 		if(managerClientThread->parseCommand()) {
 			ClientThreads.add(managerClientThread);
