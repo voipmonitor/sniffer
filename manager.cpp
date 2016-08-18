@@ -1802,7 +1802,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		return(rslt);
 	} else if(strstr(buf, "reload") != NULL) {
-		set_request_for_reload_capture_rules();
+		reload_capture_rules();
 		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

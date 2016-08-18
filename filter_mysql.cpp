@@ -119,8 +119,6 @@ void filter_base::setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned 
 	if(filterFlags & FLAG_SPOOL_2)					*callFlags |= FLAG_USE_SPOOL_2;
 }
 
-volatile int filter_base::_sync_reload = 0;
-
 /* IPfilter class */
 
 // constructor
@@ -279,6 +277,7 @@ IPfilter *IPfilter::filter_active = NULL;
 IPfilter *IPfilter::filter_reload = NULL;
 volatile bool IPfilter::reload_do = 0;
 volatile int IPfilter::_sync = 0;
+volatile int IPfilter::_sync_reload = 0;
 
 /* TELNUMfilter class */
 
@@ -501,6 +500,7 @@ TELNUMfilter *TELNUMfilter::filter_active = NULL;
 TELNUMfilter *TELNUMfilter::filter_reload = NULL;
 volatile bool TELNUMfilter::reload_do = 0;
 volatile int TELNUMfilter::_sync = 0;
+volatile int TELNUMfilter::_sync_reload = 0;
 
 /* DOMAINfilter class */
 
@@ -639,6 +639,7 @@ DOMAINfilter *DOMAINfilter::filter_active = NULL;
 DOMAINfilter *DOMAINfilter::filter_reload = NULL;
 volatile bool DOMAINfilter::reload_do = 0;
 volatile int DOMAINfilter::_sync = 0;
+volatile int DOMAINfilter::_sync_reload = 0;
 
 /* SIP_HEADERfilter class */
 
@@ -833,3 +834,4 @@ SIP_HEADERfilter *SIP_HEADERfilter::filter_reload = NULL;
 volatile bool SIP_HEADERfilter::reload_do = 0;
 volatile unsigned long SIP_HEADERfilter::loadTime = 0;
 volatile int SIP_HEADERfilter::_sync = 0;
+volatile int SIP_HEADERfilter::_sync_reload = 0;

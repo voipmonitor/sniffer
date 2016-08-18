@@ -72,14 +72,6 @@ protected:
 	void loadBaseDataRow(class SqlDb_row *sqlRow, filter_db_row_base *baseRow);
 	unsigned int getFlagsFromBaseData(filter_db_row_base *baseRow);
 	void setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned int filterFlags);
-	static void lock_reload() {
-		while(__sync_lock_test_and_set(&_sync_reload, 1));
-	}
-	static void unlock_reload() {
-		__sync_lock_release(&_sync_reload);
-	}
-private:
-	static volatile int _sync_reload;
 };
 
 class IPfilter : public filter_base {
@@ -117,12 +109,19 @@ public:
 	static void unlock() {
 		__sync_lock_release(&_sync);
 	}
+	static void lock_reload() {
+		while(__sync_lock_test_and_set(&_sync_reload, 1));
+	}
+	static void unlock_reload() {
+		__sync_lock_release(&_sync_reload);
+	}
 private:
 	int count;
 	static IPfilter *filter_active;
 	static IPfilter *filter_reload;
 	static volatile bool reload_do;
 	static volatile int _sync;
+	static volatile int _sync_reload;
 };
 
 class TELNUMfilter : public filter_base {
@@ -163,12 +162,19 @@ public:
 	static void unlock() {
 		__sync_lock_release(&_sync);
 	}
+	static void lock_reload() {
+		while(__sync_lock_test_and_set(&_sync_reload, 1));
+	}
+	static void unlock_reload() {
+		__sync_lock_release(&_sync_reload);
+	}
 private:
 	int count;
 	static TELNUMfilter *filter_active;
 	static TELNUMfilter *filter_reload;
 	static volatile bool reload_do;
 	static volatile int _sync;
+	static volatile int _sync_reload;
 };
 
 class DOMAINfilter : public filter_base {
@@ -202,12 +208,19 @@ public:
 	static void unlock() {
 		__sync_lock_release(&_sync);
 	}
+	static void lock_reload() {
+		while(__sync_lock_test_and_set(&_sync_reload, 1));
+	}
+	static void unlock_reload() {
+		__sync_lock_release(&_sync_reload);
+	}
 private:
 	int count;
 	static DOMAINfilter *filter_active;
 	static DOMAINfilter *filter_reload;
 	static volatile bool reload_do;
 	static volatile int _sync;
+	static volatile int _sync_reload;
 };
 
 class SIP_HEADERfilter : public filter_base {
@@ -253,6 +266,12 @@ public:
 	static void unlock() {
 		__sync_lock_release(&_sync);
 	}
+	static void lock_reload() {
+		while(__sync_lock_test_and_set(&_sync_reload, 1));
+	}
+	static void unlock_reload() {
+		__sync_lock_release(&_sync_reload);
+	}
 private:
 	int count;
 	static SIP_HEADERfilter *filter_active;
@@ -260,6 +279,7 @@ private:
 	static volatile bool reload_do;
 	static volatile unsigned long loadTime;
 	static volatile int _sync;
+	static volatile int _sync_reload;
 };
 
 inline void set_global_flags(unsigned int &flags) {

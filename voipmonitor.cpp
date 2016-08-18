@@ -239,7 +239,6 @@ int opt_update_dstnum_onanswer = 0;
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
 int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
 int opt_domainport = 0;
-int request_iptelnum_reload = 0;
 int opt_mirrorip = 0;
 int opt_mirrorall = 0;
 int opt_mirroronly = 0;
@@ -1318,8 +1317,6 @@ void *storing_cdr( void *dummy ) {
 		}
 		firstIter = false;
 		
-		if(request_iptelnum_reload == 1) { reload_capture_rules(); request_iptelnum_reload = 0;}
-		
 		if(verbosity > 0 && is_read_from_file_simple()) { 
 			ostringstream outStr;
 			outStr << "calls[" << calls_counter << ",r:" << registers_counter << "]";
@@ -1753,7 +1750,7 @@ void reload_config(const char *jsonConfig) {
 	}
 	get_command_line_arguments();
 	set_context_config();
-	request_iptelnum_reload = 1;
+	reload_capture_rules();
 }
 
 void hot_restart() {
@@ -1765,10 +1762,6 @@ void hot_restart_with_json_config(const char *jsonConfig) {
 	hot_restarting = 1;
 	hot_restarting_json_config = jsonConfig;
 	set_terminating();
-}
-
-void set_request_for_reload_capture_rules() {
-	request_iptelnum_reload = 1;
 }
 
 void reload_capture_rules() {
