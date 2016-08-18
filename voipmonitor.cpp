@@ -647,6 +647,7 @@ int manager_socket_server = 0;
 pthread_mutex_t mysqlconnect_lock;
 pthread_mutex_t vm_rrd_lock;
 pthread_mutex_t hostbyname_lock;
+pthread_mutex_t commmand_type_counter_sync;
 
 pthread_t pcap_read_thread;
 
@@ -1989,6 +1990,7 @@ int main(int argc, char *argv[]) {
 	pthread_mutex_init(&vm_rrd_lock, NULL);
 	pthread_mutex_init(&hostbyname_lock, NULL);
 	pthread_mutex_init(&terminate_packetbuffer_lock, NULL);
+	pthread_mutex_init(&commmand_type_counter_sync, NULL);
 
 	set_mac();
 

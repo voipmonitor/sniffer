@@ -2657,11 +2657,13 @@ struct vi {
 	volatile int i;
 };
 static map<string, vi*> commmand_type_counter;
-static volatile int commmand_type_counter_sync;
+//static volatile int commmand_type_counter_sync;
+extern pthread_mutex_t commmand_type_counter_sync;
 
-static bool addCommandType(string &command_type) {
+static bool addCommandType(string command_type) {
 	bool rslt = false;
-	while(__sync_lock_test_and_set(&commmand_type_counter_sync, 1));
+	pthread_mutex_lock(&commmand_type_counter_sync);
+	//while(__sync_lock_test_and_set(&commmand_type_counter_sync, 1));
 	map<string, vi*>::iterator iter = commmand_type_counter.find(command_type);
 	if(iter == commmand_type_counter.end()) {
 		vi *_i = new vi;
@@ -2674,16 +2676,19 @@ static bool addCommandType(string &command_type) {
 			rslt = true;
 		}
 	}
-	__sync_lock_release(&commmand_type_counter_sync);
+	pthread_mutex_unlock(&commmand_type_counter_sync);
+	//__sync_lock_release(&commmand_type_counter_sync);
 	return(rslt);
 }
 
-static void subCommandType(string &command_type) {
-	while(__sync_lock_test_and_set(&commmand_type_counter_sync, 1));
+static void subCommandType(string command_type) {
+	pthread_mutex_lock(&commmand_type_counter_sync);
+	//while(__sync_lock_test_and_set(&commmand_type_counter_sync, 1));
 	if(commmand_type_counter[command_type]->i > 0) {
 		__sync_sub_and_fetch(&commmand_type_counter[command_type]->i, 1);
 	}
-	__sync_lock_release(&commmand_type_counter_sync);
+	pthread_mutex_unlock(&commmand_type_counter_sync);
+	//__sync_lock_release(&commmand_type_counter_sync);
 }
 
 void *manager_read_thread(void * arg) {
