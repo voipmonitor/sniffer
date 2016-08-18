@@ -695,8 +695,10 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	pthread_mutex_lock(&mysqlconnect_lock);
 	this->hMysql = mysql_init(NULL);
 	if(this->hMysql) {
+		/* suppressed - not safe
 		my_bool reconnect = 1;
 		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
+		*/
 		struct timeval s;
 		gettimeofday (&s, 0);	
 		if(this->conn_server_ip.empty() and ((lastmysqlresolve + 300) < s.tv_sec)) {
@@ -954,12 +956,15 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		this->hMysqlRes = NULL;
 	}
 	if(this->connected()) {
+		/* suppressed - not safe
 		if(mysql_ping(this->hMysql)) {
 			if(verbosity > 1) {
 				syslog(LOG_INFO, "mysql_ping failed -> force reconnect");
 			}
 			this->reconnect();
-		} else if(this->mysqlThreadId &&
+		} else 
+		*/
+		if(this->mysqlThreadId &&
 			  this->mysqlThreadId != mysql_thread_id(this->hMysql)) {
 			if(verbosity > 1) {
 				syslog(LOG_INFO, "diff thread_id -> force reconnect");
