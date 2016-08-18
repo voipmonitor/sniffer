@@ -2653,17 +2653,52 @@ connect:
 	return 0;
 }
 
-struct vi {
+struct svi {
+	volatile char command_type[100];
 	volatile int i;
 };
-static map<string, vi*> commmand_type_counter;
-//static volatile int commmand_type_counter_sync;
+volatile svi vi[500];
 extern pthread_mutex_t commmand_type_counter_sync;
+
+bool _strncmp_v(volatile char a[], const char *b, unsigned length) {
+	for(unsigned i = 0; i < length; i++) {
+		if(a[i] != b[i]) {
+			return(true);
+		}
+		if(!a[i] || !b[i]) {
+			break;
+		}
+	}
+	return(false);
+}
+
+bool _strncpy_v(volatile char dst[], const char *src, unsigned length) {
+	for(unsigned i = 0; i < length; i++) {
+		dst[i] = src[i];
+		if(!src[i]) {
+			break;
+		}
+	}
+}
 
 static bool addCommandType(string command_type) {
 	bool rslt = false;
 	pthread_mutex_lock(&commmand_type_counter_sync);
-	//while(__sync_lock_test_and_set(&commmand_type_counter_sync, 1));
+	for(unsigned i = 0; i < sizeof(vi) / sizeof(svi); i++) {
+		if(!_strncmp_v(vi[i].command_type, command_type.c_str(), sizeof(vi[i].command_type))) {
+			if(vi[i].i < 20) {
+				++vi[i].i;
+				rslt = true;
+			}
+			break;
+		} else if(!vi[i].command_type[0]) {
+			_strncpy_v(vi[i].command_type, command_type.c_str(), sizeof(vi[i].command_type));
+			vi[i].i = 1;
+			rslt = true;
+			break;
+		}
+	}
+	/*
 	map<string, vi*>::iterator iter = commmand_type_counter.find(command_type);
 	if(iter == commmand_type_counter.end()) {
 		vi *_i = new vi;
@@ -2676,19 +2711,27 @@ static bool addCommandType(string command_type) {
 			rslt = true;
 		}
 	}
+	*/
 	pthread_mutex_unlock(&commmand_type_counter_sync);
-	//__sync_lock_release(&commmand_type_counter_sync);
 	return(rslt);
 }
 
 static void subCommandType(string command_type) {
 	pthread_mutex_lock(&commmand_type_counter_sync);
-	//while(__sync_lock_test_and_set(&commmand_type_counter_sync, 1));
+	for(unsigned i = 0; i < sizeof(vi) / sizeof(svi); i++) {
+		if(!_strncmp_v(vi[i].command_type, command_type.c_str(), sizeof(vi[i].command_type))) {
+			if(vi[i].i > 0) {
+				--vi[i].i;
+			}
+			break;
+		}
+	}
+	/*
 	if(commmand_type_counter[command_type]->i > 0) {
 		__sync_sub_and_fetch(&commmand_type_counter[command_type]->i, 1);
 	}
+	*/
 	pthread_mutex_unlock(&commmand_type_counter_sync);
-	//__sync_lock_release(&commmand_type_counter_sync);
 }
 
 void *manager_read_thread(void * arg) {
@@ -2901,6 +2944,7 @@ void *manager_ssh(void *arg) {
 
 
 void *manager_server(void *dummy) {
+ 
 	sockaddr_in sockName;
 	sockaddr_in clientInfo;
 	socklen_t addrlen;
