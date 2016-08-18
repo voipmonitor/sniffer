@@ -964,9 +964,9 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 				syslog(LOG_NOTICE, "unfetched records from query %s", this->prevQuery.c_str());
 			}
 			mysql_free_result(this->hMysqlRes);
-			this->hMysqlRes = NULL;
 		}
 	}
+	this->hMysqlRes = NULL;
 	if(this->connected()) {
 		/* suppressed - not safe
 		if(mysql_ping(this->hMysql)) {
@@ -976,8 +976,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 			this->reconnect();
 		} else 
 		*/
-		if(this->mysqlThreadId &&
-			  this->mysqlThreadId != mysql_thread_id(this->hMysql)) {
+		if(this->mysqlThreadId && this->mysqlThreadId != mysql_thread_id(this->hMysql)) {
 			if(verbosity > 1) {
 				syslog(LOG_INFO, "diff thread_id -> force reconnect");
 			}

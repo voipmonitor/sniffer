@@ -2740,6 +2740,8 @@ void *manager_read_thread(void * arg) {
 	if(addCommandType(command_type)) {
 		parse_command((char*)buf_long.c_str(), size, client, 0, &managerClientThread);
 		subCommandType(command_type);
+	} else {
+		syslog(LOG_NOTICE, "suppress run command %s", command_type.c_str());
 	}
 	if(managerClientThread) {
 		if(managerClientThread->parseCommand()) {
