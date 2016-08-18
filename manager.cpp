@@ -2653,19 +2653,24 @@ connect:
 	return 0;
 }
 
-static map<string, unsigned> commmand_type_counter;
+struct vi {
+	volatile int i;
+};
+static map<string, vi*> commmand_type_counter;
 static volatile int commmand_type_counter_sync;
 
 static bool addCommandType(string &command_type) {
 	bool rslt = false;
 	while(__sync_lock_test_and_set(&commmand_type_counter_sync, 1));
-	map<string, unsigned>::iterator iter = commmand_type_counter.find(command_type);
+	map<string, vi*>::iterator iter = commmand_type_counter.find(command_type);
 	if(iter == commmand_type_counter.end()) {
-		commmand_type_counter[command_type] = 1;
+		vi *_i = new vi;
+		_i->i = 1;
+		commmand_type_counter[command_type] = _i;
 		rslt = true;
 	} else {
-		if(commmand_type_counter[command_type] < 20) {
-			++commmand_type_counter[command_type];
+		if(commmand_type_counter[command_type]->i < 20) {
+			__sync_add_and_fetch(&commmand_type_counter[command_type]->i, 1);
 			rslt = true;
 		}
 	}
@@ -2675,8 +2680,8 @@ static bool addCommandType(string &command_type) {
 
 static void subCommandType(string &command_type) {
 	while(__sync_lock_test_and_set(&commmand_type_counter_sync, 1));
-	if(commmand_type_counter[command_type] > 0) {
-		--commmand_type_counter[command_type];
+	if(commmand_type_counter[command_type]->i > 0) {
+		__sync_sub_and_fetch(&commmand_type_counter[command_type]->i, 1);
 	}
 	__sync_lock_release(&commmand_type_counter_sync);
 }
