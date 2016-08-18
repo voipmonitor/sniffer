@@ -2653,6 +2653,34 @@ connect:
 	return 0;
 }
 
+static map<string, unsigned> commmand_type_counter;
+static volatile int commmand_type_counter_sync;
+
+static bool addCommandType(string &command_type) {
+	bool rslt = false;
+	while(__sync_lock_test_and_set(&commmand_type_counter_sync, 1));
+	map<string, unsigned>::iterator iter = commmand_type_counter.find(command_type);
+	if(iter == commmand_type_counter.end()) {
+		commmand_type_counter[command_type] = 1;
+		rslt = true;
+	} else {
+		if(commmand_type_counter[command_type] < 20) {
+			++commmand_type_counter[command_type];
+			rslt = true;
+		}
+	}
+	__sync_lock_release(&commmand_type_counter_sync);
+	return(rslt);
+}
+
+static void subCommandType(string &command_type) {
+	while(__sync_lock_test_and_set(&commmand_type_counter_sync, 1));
+	if(commmand_type_counter[command_type] > 0) {
+		--commmand_type_counter[command_type];
+	}
+	__sync_lock_release(&commmand_type_counter_sync);
+}
+
 void *manager_read_thread(void * arg) {
 
 	char buf[BUFSIZE];
@@ -2702,7 +2730,17 @@ void *manager_read_thread(void * arg) {
 		}
 	}
 	ManagerClientThread *managerClientThread = NULL;
-	parse_command((char*)buf_long.c_str(), size, client, 0, &managerClientThread);
+	string command_type;
+	size_t pos_separator = buf_long.find(' ');
+	if(pos_separator == string::npos) {
+		command_type = buf_long;
+	} else {
+		command_type = buf_long.substr(0, pos_separator);
+	}
+	if(addCommandType(command_type)) {
+		parse_command((char*)buf_long.c_str(), size, client, 0, &managerClientThread);
+		subCommandType(command_type);
+	}
 	if(managerClientThread) {
 		if(managerClientThread->parseCommand()) {
 			ClientThreads.add(managerClientThread);
