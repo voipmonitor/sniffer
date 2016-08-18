@@ -950,10 +950,22 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		return(this->queryByCurl(preparedQuery));
 	}
 	u_int32_t startTimeMS = getTimeMS();
-	if(this->hMysqlRes) {
-		while(mysql_fetch_row(this->hMysqlRes));
-		mysql_free_result(this->hMysqlRes);
-		this->hMysqlRes = NULL;
+	if(this->hMysqlConn) {
+		if(!this->hMysqlRes) {
+			this->hMysqlRes = mysql_use_result(this->hMysqlConn);
+		}
+		if(this->hMysqlRes) {
+			unsigned counter = 0;
+			unsigned limitFetch = 10000;
+			while(counter < limitFetch && mysql_fetch_row(this->hMysqlRes)) {
+				++counter;
+			}
+			if(counter == limitFetch) {
+				syslog(LOG_NOTICE, "unfetched records from query %s", this->prevQuery.c_str());
+			}
+			mysql_free_result(this->hMysqlRes);
+			this->hMysqlRes = NULL;
+		}
 	}
 	if(this->connected()) {
 		/* suppressed - not safe
@@ -1066,6 +1078,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		}
 	}
 	SqlDb::addDelayQuery(getTimeMS() - startTimeMS);
+	this->prevQuery = query;
 	return(rslt);
 }
 
@@ -3992,7 +4005,7 @@ bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 	bool okTableHttpJj = false;
 	this->query("show tables like 'http_jj'");
 	if(this->fetchRow()) {
-		if(this->query("select * from http_jj")) {
+		if(this->query("select * from http_jj limit 1")) {
 			okTableHttpJj = true;
 		} else {
 			if(this->getLastError() == ER_NO_DB_ERROR ||
@@ -4094,7 +4107,7 @@ bool SqlDb_mysql::createSchema_table_webrtc(int connectId) {
 	bool okTableWebrtc = false;
 	this->query("show tables like 'webrtc'");
 	if(this->fetchRow()) {
-		if(this->query("select * from webrtc")) {
+		if(this->query("select * from webrtc limit 1")) {
 			okTableWebrtc = true;
 		} else {
 			if(this->getLastError() == ER_NO_DB_ERROR ||

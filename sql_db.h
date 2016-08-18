@@ -228,6 +228,7 @@ protected:
 	size_t cloud_data_rows;
 	size_t cloud_data_index;
 	unsigned long maxAllowedPacket;
+	string prevQuery;
 private:
 	unsigned int lastError;
 	string lastErrorString;
