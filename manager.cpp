@@ -1128,6 +1128,20 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "cleanupregisters") != NULL) {
+		string rslt_data;
+		char *pointer;
+		if((pointer = strchr(buf, '\n')) != NULL) {
+			*pointer = 0;
+		}
+		bool zip = false;
+		extern Registers registers;
+		registers.cleanupByJson(buf + strlen("cleanupregisters") + 1);
+		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
 	} else if(strstr(buf, "d_lc_for_destroy") != NULL) {
 		ostringstream outStr;
 		if(!calltable && !terminating) {

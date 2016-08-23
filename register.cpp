@@ -8,7 +8,7 @@
 #define NEW_REGISTER_CLEAN_PERIOD 30
 #define NEW_REGISTER_UPDATE_FAILED_PERIOD 20
 #define NEW_REGISTER_ERASE_FAILED_TIMEOUT 60
-#define NEW_REGISTER_ERASE_TIMEOUT 6*3600
+#define NEW_REGISTER_ERASE_TIMEOUT 2*3600
 
 
 extern char sql_cdr_ua_table[256];
@@ -554,6 +554,7 @@ void Registers::cleanup(u_int32_t act_time) {
 			reg->unlock_states();
 			if(eraseRegister || eraseRegisterFailed) {
 				lock_registers_erase();
+				delete iter->second;
 				registers.erase(iter++);
 				unlock_registers_erase();
 			} else {
@@ -780,6 +781,56 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	}
 	table += "]";
 	return(table);
+}
+
+void Registers::cleanupByJson(char *params) {
+
+	JsonItem jsonParams;
+	jsonParams.parse(params);
+
+	eRegisterState states[10];
+	memset(states, 0, sizeof(states));
+	unsigned states_count = 0;
+	string states_str = jsonParams.getValue("states");
+	if(!states_str.empty()) {
+		vector<string> states_str_vect = split(states_str, ',');
+		for(unsigned i = 0; i < states_str_vect.size(); i++) {
+			if(states_str_vect[i] == "OK") {			states[states_count++] = rs_OK;
+			} else if(states_str_vect[i] == "Failed") {		states[states_count++] = rs_Failed;
+			} else if(states_str_vect[i] == "UnknownMessageOK") {	states[states_count++] = rs_UnknownMessageOK;
+			} else if(states_str_vect[i] == "ManyRegMessages") {	states[states_count++] = rs_ManyRegMessages;
+			} else if(states_str_vect[i] == "Expired") {		states[states_count++] = rs_Expired;
+			} else if(states_str_vect[i] == "Unregister") {		states[states_count++] = rs_Unregister;
+			}
+		}
+	}
+	
+	lock_registers_erase();
+	lock_registers();
+	
+	for(map<RegisterId, Register*>::iterator iter_reg = registers.begin(); iter_reg != registers.end(); ) {
+		bool okState = false;
+		if(states_count) {
+			eRegisterState state = iter_reg->second->getState();
+			for(unsigned i = 0; i < states_count; i++) {
+				if(states[i] == state) {
+					okState = true;
+					break;
+				}
+			}
+		} else {
+			okState = true;
+		}
+		if(okState) {
+			delete iter_reg->second;
+			registers.erase(iter_reg++);
+		} else {
+			iter_reg++;
+		}
+	}
+	
+	unlock_registers();
+	unlock_registers_erase();
 }
 
 
