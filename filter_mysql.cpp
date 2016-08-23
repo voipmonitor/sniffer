@@ -147,7 +147,7 @@ void IPfilter::load() {
 	sqlDb->query("SELECT * FROM filter_ip");
 	while((row = sqlDb->fetchRow())) {
 		count++;
-		db_row* filterRow = new FILE_LINE db_row;
+		db_row* filterRow = new FILE_LINE(5001) db_row;
 		filterRow->ip = (unsigned int)strtoul(row["ip"].c_str(), NULL, 0);
 		filterRow->mask = atoi(row["mask"].c_str());
 		this->loadBaseDataRow(&row, filterRow);
@@ -232,7 +232,7 @@ int IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned i
 
 void IPfilter::loadActive() {
 	lock();
-	filter_active = new FILE_LINE IPfilter();
+	filter_active = new FILE_LINE(5002) IPfilter();
 	filter_active->load();
 	unlock();
 }
@@ -252,7 +252,7 @@ void IPfilter::prepareReload() {
 	if(filter_reload) {
 		delete filter_reload;
 	}
-	filter_reload = new FILE_LINE IPfilter;
+	filter_reload = new FILE_LINE(5003) IPfilter;
 	filter_reload->load();
 	reload_do = 1;
 	syslog(LOG_NOTICE, "IPfilter::prepareReload");
@@ -455,7 +455,7 @@ int TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *te
 
 void TELNUMfilter::loadActive() {
 	lock();
-	filter_active = new FILE_LINE TELNUMfilter();
+	filter_active = new FILE_LINE(5004) TELNUMfilter();
 	filter_active->load();
 	unlock();
 }
@@ -475,7 +475,7 @@ void TELNUMfilter::prepareReload() {
 	if(filter_reload) {
 		delete filter_reload;
 	}
-	filter_reload = new FILE_LINE TELNUMfilter;
+	filter_reload = new FILE_LINE(5005) TELNUMfilter;
 	filter_reload->load();
 	reload_do = 1;
 	syslog(LOG_NOTICE, "TELNUMfilter::prepareReload");
@@ -530,7 +530,7 @@ void DOMAINfilter::load() {
 	sqlDb->query("SELECT * FROM filter_domain");
 	while((row = sqlDb->fetchRow())) {
 		count++;
-		db_row* filterRow = new FILE_LINE db_row;
+		db_row* filterRow = new FILE_LINE(5006) db_row;
 		filterRow->domain = trim_str(row["domain"]);
 		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
@@ -594,7 +594,7 @@ int DOMAINfilter::add_call_flags(unsigned int *flags, char *domain_src, char *do
 
 void DOMAINfilter::loadActive() {
 	lock();
-	filter_active = new FILE_LINE DOMAINfilter();
+	filter_active = new FILE_LINE(5007) DOMAINfilter();
 	filter_active->load();
 	unlock();
 }
@@ -614,7 +614,7 @@ void DOMAINfilter::prepareReload() {
 	if(filter_reload) {
 		delete filter_reload;
 	}
-	filter_reload = new FILE_LINE DOMAINfilter;
+	filter_reload = new FILE_LINE(5008) DOMAINfilter;
 	filter_reload->load();
 	reload_do = 1;
 	syslog(LOG_NOTICE, "DOMAINfilter::prepareReload");
@@ -663,7 +663,7 @@ void SIP_HEADERfilter::load() {
 	sqlDb->query("SELECT * FROM filter_sip_header");
 	while((row = sqlDb->fetchRow())) {
 		count++;
-		db_row* filterRow = new FILE_LINE db_row;
+		db_row* filterRow = new FILE_LINE(5009) db_row;
 		filterRow->header = trim_str(row["header"]);
 		filterRow->content = trim_str(row["content"]);
 		filterRow->prefix = row["content_type"] == "prefix";
@@ -788,7 +788,7 @@ void SIP_HEADERfilter::addNodes(ParsePacket *parsePacket) {
 
 void SIP_HEADERfilter::loadActive() {
 	lock();
-	filter_active = new FILE_LINE SIP_HEADERfilter();
+	filter_active = new FILE_LINE(5010) SIP_HEADERfilter();
 	filter_active->load();
 	unlock();
 }
@@ -808,7 +808,7 @@ void SIP_HEADERfilter::prepareReload() {
 	if(filter_reload) {
 		delete filter_reload;
 	}
-	filter_reload = new FILE_LINE SIP_HEADERfilter;
+	filter_reload = new FILE_LINE(5011) SIP_HEADERfilter;
 	filter_reload->load();
 	reload_do = 1;
 	syslog(LOG_NOTICE, "SIP_HEADERfilter::prepareReload");

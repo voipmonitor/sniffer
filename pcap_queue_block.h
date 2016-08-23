@@ -172,7 +172,7 @@ struct pcap_block_store {
 		this->timestampMS = getTimeMS_rdtsc();
 		this->_sync_packet_lock = 0;
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
-		this->_sync_packets_lock = new FILE_LINE volatile int[100000];
+		this->_sync_packets_lock = new FILE_LINE(18001) volatile int[100000];
 		memset((void*)this->_sync_packets_lock, 0, sizeof(int) * 100000);
 		#endif
 	}

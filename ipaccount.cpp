@@ -109,7 +109,7 @@ Ipacc::Ipacc() {
 	qringmax = 10000;
 	readit = 0;
 	writeit = 0;
-	qring = new FILE_LINE packet[qringmax];
+	qring = new FILE_LINE(13001) packet[qringmax];
 	for(unsigned int i = 0; i < qringmax; i++) {
 		qring[i].used = 0;
 	}
@@ -259,7 +259,7 @@ void Ipacc::save(int indexIpaccBuffer, unsigned int interval_time_limit) {
 				if(opt_ipacc_sniffer_agregate) {
 					agregIter = agreg.find(ipacc_data->interval_time);
 					if(agregIter == agreg.end()) {
-						agreg[ipacc_data->interval_time] = new FILE_LINE IpaccAgreg;
+						agreg[ipacc_data->interval_time] = new FILE_LINE(13002) IpaccAgreg;
 						agregIter = agreg.find(ipacc_data->interval_time);
 					}
 					agregIter->second->add(
@@ -329,7 +329,7 @@ inline void Ipacc::add_octets(time_t timestamp, unsigned int saddr, unsigned int
 	iter = ipacc_buffer[indexIpaccBuffer].find(key);
 	if(iter == ipacc_buffer[indexIpaccBuffer].end()) {
 		// not found;
-		octects_data = new FILE_LINE octects_t;
+		octects_data = new FILE_LINE(13003) octects_t;
 		octects_data->octects += packetlen;
 		octects_data->numpackets++;
 		octects_data->interval_time = cur_interval_time;
@@ -351,7 +351,7 @@ void Ipacc::init() {
 	sqlDbSave = createSqlObject();
 
 	if(get_customer_by_ip_sql_driver[0] && get_customer_by_ip_odbc_dsn[0]) {
-		custIpCache = new FILE_LINE CustIpCache();
+		custIpCache = new FILE_LINE(13004) CustIpCache();
 		custIpCache->setConnectParams(
 			get_customer_by_ip_sql_driver, 
 			get_customer_by_ip_odbc_dsn, 
@@ -379,13 +379,13 @@ void Ipacc::init() {
 		}
 	}
 	if(isSqlDriver("mysql")) {
-		nextIpCache = new FILE_LINE NextIpCache();
+		nextIpCache = new FILE_LINE(13005) NextIpCache();
 		nextIpCache->connect();
 		nextIpCache->fetch();
 		nextIpCache->setMaxQueryPass(2);
 	}
 	if(get_customer_by_pn_sql_driver[0] && get_customer_by_pn_odbc_dsn[0]) {
-		custPnCache = new FILE_LINE CustPhoneNumberCache();
+		custPnCache = new FILE_LINE(13006) CustPhoneNumberCache();
 		custPnCache->setConnectParams(
 			get_customer_by_pn_sql_driver, 
 			get_customer_by_pn_odbc_dsn, 
@@ -576,7 +576,7 @@ void IpaccAgreg::add(unsigned int src, unsigned int dst,
 	if(src_id_customer || src_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
 		iter1 = this->map1.find(srcA);
 		if(iter1 == this->map1.end()) {
-			AgregData *agregData = new FILE_LINE AgregData;
+			AgregData *agregData = new FILE_LINE(13007) AgregData;
 			agregData->id_customer = src_id_customer;
 			agregData->addOut(traffic, packets, voip);
 			this->map1[srcA] = agregData;
@@ -587,7 +587,7 @@ void IpaccAgreg::add(unsigned int src, unsigned int dst,
 	if(dst_id_customer || dst_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
 		iter1 = this->map1.find(dstA);
 		if(iter1 == this->map1.end()) {
-			AgregData *agregData = new FILE_LINE AgregData;
+			AgregData *agregData = new FILE_LINE(13008) AgregData;
 			agregData->id_customer = dst_id_customer;
 			agregData->addIn(traffic, packets, voip);
 			this->map1[dstA] = agregData;
@@ -600,7 +600,7 @@ void IpaccAgreg::add(unsigned int src, unsigned int dst,
 	if(src_id_customer || src_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
 		iter2 = this->map2.find(srcDstA);
 		if(iter2 == this->map2.end()) {
-			AgregData *agregData = new FILE_LINE AgregData;
+			AgregData *agregData = new FILE_LINE(13009) AgregData;
 			agregData->id_customer = src_id_customer;
 			agregData->id_customer2 = dst_id_customer;
 			agregData->addOut(traffic, packets, voip);
@@ -612,7 +612,7 @@ void IpaccAgreg::add(unsigned int src, unsigned int dst,
 	if(dst_id_customer || dst_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
 		iter2 = this->map2.find(dstSrcA);
 		if(iter2 == this->map2.end()) {
-			AgregData *agregData = new FILE_LINE AgregData;
+			AgregData *agregData = new FILE_LINE(13010) AgregData;
 			agregData->id_customer = dst_id_customer;
 			agregData->id_customer2 = src_id_customer;
 			agregData->addIn(traffic, packets, voip);
@@ -883,14 +883,14 @@ int CustIpCache::connect() {
 		return(0);
 	}
 	if(!this->sqlDb) {
-		SqlDb_odbc *sqlDb_odbc = new FILE_LINE SqlDb_odbc();
+		SqlDb_odbc *sqlDb_odbc = new FILE_LINE(13011) SqlDb_odbc();
 		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
 		sqlDb_odbc->setSubtypeDb(this->odbcDriver);
 		this->sqlDb = sqlDb_odbc;
 		this->sqlDb->setConnectParameters(this->odbcDsn, this->odbcUser, this->odbcPassword);
 	}
 	if(!this->sqlDbRadius && this->radiusHost.length()) {
-		SqlDb_mysql *sqlDb_mysql = new FILE_LINE SqlDb_mysql();
+		SqlDb_mysql *sqlDb_mysql = new FILE_LINE(13012) SqlDb_mysql();
 		this->sqlDbRadius = sqlDb_mysql;
 		this->sqlDbRadius->setConnectParameters(this->radiusHost, this->radiusUser, this->radiusPassword, this->radiusDb);
 		if(this->radiusDisableSecureAuth) {
@@ -1081,7 +1081,7 @@ NextIpCache::~NextIpCache() {
 
 int NextIpCache::connect() {
 	if(isSqlDriver("mysql")) {
-		this->sqlDb = new FILE_LINE SqlDb_mysql();
+		this->sqlDb = new FILE_LINE(13013) SqlDb_mysql();
 		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
 		return(this->sqlDb->connect());
 	}
@@ -1179,7 +1179,7 @@ int CustPhoneNumberCache::connect() {
 		return(0);
 	}
 	if(!this->sqlDb) {
-		SqlDb_odbc *sqlDb_odbc = new FILE_LINE SqlDb_odbc();
+		SqlDb_odbc *sqlDb_odbc = new FILE_LINE(13014) SqlDb_odbc();
 		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
 		sqlDb_odbc->setSubtypeDb(this->odbcDriver);
 		this->sqlDb = sqlDb_odbc;
@@ -1318,7 +1318,7 @@ string getIpaccCpuUsagePerc() {
 }
 
 void initIpacc() {
-	IPACC = new FILE_LINE Ipacc[1];
+	IPACC = new FILE_LINE(13015) Ipacc[1];
 }
 
 void termIpacc() {

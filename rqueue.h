@@ -27,7 +27,7 @@ public:
 		this->clearBuff = clearBuff;
 		this->clearAtPop = clearAtPop;
 		if(this->length) {
-			this->buffer = new FILE_LINE typeItem[this->length];
+			this->buffer = new FILE_LINE(22001) typeItem[this->length];
 			if(this->binaryBuffer && this->clearBuff) {
 				memset(this->buffer, 0, this->length * sizeof(typeItem));
 			}
@@ -206,7 +206,7 @@ template <class typeItem>
 void rqueue<typeItem>::incBuffer() {
 	size_t newLength = this->length + this->inc_length;
 	syslog(LOG_NOTICE, "increase size of rqueue %s from %lu to %lu", name.c_str(), this->length, newLength);
-	typeItem *newBuffer = new FILE_LINE typeItem[newLength];
+	typeItem *newBuffer = new FILE_LINE(22002) typeItem[newLength];
 	if(this->binaryBuffer) {
 		if(this->clearBuff) {
 			memset(newBuffer, 0, newLength * sizeof(typeItem));
@@ -396,8 +396,8 @@ public:
 		this->popUsleep = popUsleep;
 		this->term_rqueue = term_rqueue;
 		this->binaryBuffer = binaryBuffer;
-		buffer = new FILE_LINE typeItem[this->length + 1];
-		free = new FILE_LINE v_int[this->length + 1];
+		buffer = new FILE_LINE(22003) typeItem[this->length + 1];
+		free = new FILE_LINE(22004) v_int[this->length + 1];
 		for(size_t i = 0; i < this->length; i++) {
 			free[i] = 1;
 		}

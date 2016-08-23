@@ -231,7 +231,7 @@ private:
 		}
 		void init(size_t bufferBaseSize) {
 			this->bufferBaseSize = bufferBaseSize;
-			buffer = new FILE_LINE char[bufferBaseSize + T_BLOCKSIZE];
+			buffer = new FILE_LINE(36001) char[bufferBaseSize + T_BLOCKSIZE];
 		}
 		void term() {
 			delete [] buffer;
