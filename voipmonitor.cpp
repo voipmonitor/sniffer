@@ -434,6 +434,7 @@ extern int opt_pcap_queue_use_blocks;
 extern int opt_pcap_queue_suppress_t1_thread;
 extern bool opt_pcap_queues_mirror_nonblock_mode;
 extern bool opt_pcap_queues_mirror_require_confirmation;
+extern bool opt_pcap_queues_mirror_use_checksum;
 extern int opt_pcap_dispatch;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
@@ -4750,6 +4751,7 @@ void cConfig::addConfigItems() {
 			setDisableIfBegin("sniffer_mode=" + snifferMode_read_from_files_str);
 			addConfigItem(new FILE_LINE(43146) cConfigItem_yesno("mirror_nonblock_mode", &opt_pcap_queues_mirror_nonblock_mode));
 			addConfigItem(new FILE_LINE(43147) cConfigItem_yesno("mirror_require_confirmation", &opt_pcap_queues_mirror_require_confirmation));
+			addConfigItem(new FILE_LINE(43450) cConfigItem_yesno("mirror_use_checksum", &opt_pcap_queues_mirror_use_checksum));
 			setDisableIfEnd();
 		subgroup("scaling");
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
@@ -7418,6 +7420,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mirror_require_confirmation", NULL))) {
 		opt_pcap_queues_mirror_require_confirmation = yesno(value);
 	}
+	if((value = ini.GetValue("general", "mirror_use_checksum", NULL))) {
+		opt_pcap_queues_mirror_use_checksum = yesno(value);
+	}
 	
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
@@ -8172,61 +8177,86 @@ void setAllocNumb() {
 	} while(de);
 	closedir(dp);
 	std::sort(files.begin(), files.end());
-	int fileNumber = 1;
-	for(unsigned i = 0; i < files.size(); i++) {
+	unsigned fileNumber = 1;
+	for(unsigned file_i = 0; file_i < files.size(); file_i++) {
 		bool exists = false;
 		bool mod = false;
-		int lineNumber = 0;
-		int allocNumber = 1;
-		string modFileName = files[i] + "_new";
-		FILE *file_in = fopen(files[i].c_str(), "r");
-		FILE *file_out = fopen(modFileName.c_str(), "w");
-		if(file_in && file_out) {
+		FILE *file_in = fopen(files[file_i].c_str(), "r");
+		if(file_in) {
 			char line[1000000];
-			char line_orig[1000000];
+			vector<string> lines;
 			while(fgets(line, sizeof(line), file_in)) {
-				++lineNumber;
-				strcpy(line_orig, line);
-				if(reg_match(line, "FILE_LINE\\([0-9]+\\)")) {
-					exists = true;
-					string repl;
-					do {
-						repl = reg_replace(line, "(FILE_LINE\\([0-9]+\\))", "$1");
-						if(!repl.empty()) {
-							char *pos = strstr(line, repl.c_str());
-							if(!pos) {
-								break;
-							}
-							char line_mod[1000000];
-							strncpy(line_mod, line, pos - line);
-							line_mod[pos - line] = 0;
-							unsigned fileAllocNumber = fileNumber * 1000 + allocNumber;
-							strcat(line_mod, ("FILE_X_LINE(" + intToString(fileAllocNumber) + ")").c_str());
-							strcat(line_mod, line + (pos - line) + repl.size());
-							strcpy(line, line_mod);
-							sFileLine fileLine;
-							strcpy(fileLine.file, files[i].c_str());
-							fileLine.line = lineNumber;
-							fileLine.alloc_number = fileAllocNumber;
-							fileLines.push_back(fileLine);
-							++allocNumber;
-						}
-					} while(!repl.empty());
-					strcpy(line, find_and_replace(line, "FILE_X_LINE" , "FILE_LINE").c_str());
-				}
-				if(strcmp(line, line_orig)) {
-					mod = true;
-				}
-				fputs(line, file_out);
+				lines.push_back(line);
 			}
 			fclose(file_in);
-			fclose(file_out);
+			bool fileNumberOk = true;
+			unsigned allocNumberMax = 0;
+			for(int pass = 0; pass < 2; pass++) {
+				for(unsigned line_i = 0; line_i < lines.size(); line_i++) {
+					if(!fileNumberOk) {
+						allocNumberMax = 0;
+					}
+					strcpy(line, lines[line_i].c_str());
+					if(reg_match(line, "FILE_LINE\\([0-9]+\\)")) {
+						exists = true;
+						string repl;
+						do {
+							repl = reg_replace(line, "(FILE_LINE\\([0-9]+\\))", "$1");
+							if(!repl.empty()) {
+								char *pos = strstr(line, repl.c_str());
+								unsigned fileAllocNumberOld = atol(pos + 10);
+								if(pass == 0) {
+									if(fileAllocNumberOld) {
+										if(fileAllocNumberOld / 1000 != fileNumber) {
+											fileNumberOk = false;
+											break;
+										}
+										allocNumberMax = max(allocNumberMax, fileAllocNumberOld % 1000);
+									}
+									*pos = '_';
+								} else {
+									unsigned fileAllocNumberNew;
+									sFileLine fileLine;
+									strcpy(fileLine.file, files[file_i].c_str());
+									fileLine.line = line_i + 1;
+									if(!fileNumberOk || !fileAllocNumberOld) {
+										fileAllocNumberNew = fileNumber * 1000 + (++allocNumberMax);
+									} else {
+										fileAllocNumberNew = fileAllocNumberOld;
+									}
+									char line_mod[1000000];
+									strncpy(line_mod, line, pos - line);
+									line_mod[pos - line] = 0;
+									strcat(line_mod, ("FILE_X_LINE(" + intToString(fileAllocNumberNew) + ")").c_str());
+									strcat(line_mod, line + (pos - line) + repl.size());
+									strcpy(line, line_mod);
+									fileLine.alloc_number = fileAllocNumberNew;
+									fileLines.push_back(fileLine);
+								}
+							}
+						} while(!repl.empty());
+						if(pass == 1) {
+							string line_new = find_and_replace(line, "FILE_X_LINE" , "FILE_LINE").c_str();
+							if(line_new != lines[line_i]) {
+								lines[line_i] = line_new;
+								mod = true;
+							}
+						}
+					}
+				}
+			}
 			if(mod) {
-				cout << files[i] << endl;
-				unlink(files[i].c_str());
-				rename(modFileName.c_str(), files[i].c_str());
-			} else {
-				unlink(modFileName.c_str());
+				string modFileName = files[file_i] + "_new";
+				FILE *file_out = fopen(modFileName.c_str(), "w");
+				if(file_out) {
+					for(unsigned line_i = 0; line_i < lines.size(); line_i++) {
+						fputs(lines[line_i].c_str(), file_out);
+					}
+					fclose(file_out);
+					cout << "MOD: " << files[file_i] << endl;
+					unlink(files[file_i].c_str());
+					rename(modFileName.c_str(), files[file_i].c_str());
+				}
 			}
 		}
 		if(exists) {

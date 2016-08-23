@@ -145,7 +145,7 @@ struct pcap_block_store {
 			this->dlink = 0;
 			this->sensor_id = 0;
 			memset(this->ifname, 0, sizeof(this->ifname));
-			this->crc = 0;
+			this->checksum = 0;
 			this->counter = 0;
 			this->require_confirmation = opt_pcap_queues_mirror_require_confirmation;
 		}
@@ -158,7 +158,7 @@ struct pcap_block_store {
 		int16_t sensor_id;
 		char ifname[10];
 		int8_t hm;
-		uint32_t crc;
+		uint32_t checksum;
 		uint32_t counter;
 		uint8_t require_confirmation;
 	};

@@ -35,7 +35,6 @@
 #include "ssldata.h"
 #include "tar.h"
 #include "voipmonitor.h"
-#include "crc.h"
 
 
 #define TEST_DEBUG_PARAMS 0
@@ -193,6 +192,7 @@ int opt_pcap_dispatch					= 0;
 int opt_pcap_queue_suppress_t1_thread			= 0;
 bool opt_pcap_queues_mirror_nonblock_mode 		= true;
 bool opt_pcap_queues_mirror_require_confirmation	= true;
+bool opt_pcap_queues_mirror_use_checksum		= true;
 
 size_t _opt_pcap_queue_block_offset_init_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE * 1.1;
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
@@ -465,7 +465,9 @@ u_char* pcap_block_store::getSaveBuffer(uint32_t block_counter) {
 			this->block, this->block,
 			this->getUseSize(),
 			__FILE__, __LINE__);
-	((pcap_block_store_header*)saveBuffer)->crc = crc32buf(saveBuffer + sizeof(pcap_block_store_header), sizeSaveBuffer - sizeof(pcap_block_store_header));
+	((pcap_block_store_header*)saveBuffer)->checksum = opt_pcap_queues_mirror_use_checksum ?
+							    max(checksum32buf(saveBuffer + sizeof(pcap_block_store_header), sizeSaveBuffer - sizeof(pcap_block_store_header)), (u_int32_t)1) :
+							    0;
 	return(saveBuffer);
 }
 
@@ -544,7 +546,8 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	if(offset) {
 		*offset = size - (this->restoreBufferSize - sizeRestoreBuffer);
 	}
-	if(((pcap_block_store_header*)this->restoreBuffer)->crc != crc32buf(this->restoreBuffer + sizeof(pcap_block_store_header), sizeRestoreBuffer - sizeof(pcap_block_store_header))) {
+	if(((pcap_block_store_header*)this->restoreBuffer)->checksum &&
+	   ((pcap_block_store_header*)this->restoreBuffer)->checksum != max(checksum32buf(this->restoreBuffer + sizeof(pcap_block_store_header), sizeRestoreBuffer - sizeof(pcap_block_store_header)), (u_int32_t)1)) {
 		return(-5);
 	}
 	if(autoRestore) {
@@ -5321,7 +5324,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									error = "oversize";
 									break;
 								case -5:
-									error = "bad crc";
+									error = "bad checksum";
 									break;
 								case -6:
 									error = "bad version - sender and receiver must be the same version";

@@ -342,6 +342,10 @@ string GetDataMD5(u_char *data, u_int32_t datalen,
 		  u_char *data2, u_int32_t data2len,
 		  u_char *data3 = NULL, u_int32_t data3len = 0);
 string GetStringSHA256(std::string str);
+u_int32_t checksum32buf(char *buf, size_t len);
+u_int32_t checksum32buf(u_char *buf, size_t len) {
+	return(checksum32buf((char*)buf, len));
+}
 bool DirExists(char *strFilename);
 bool FileExists(char *strFilename, int *error_code = NULL);
 void ntoa(char *res, unsigned int addr);

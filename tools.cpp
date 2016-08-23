@@ -862,6 +862,14 @@ string GetStringSHA256(std::string str) {
 	return(outputBuffer);
 }
 
+u_int32_t checksum32buf(char *buf, size_t len) {
+	register u_int16_t cheksum32 = 0;
+	for(size_t i = 0; i < len; i++, buf++) {
+		cheksum32 += *buf;
+	}
+	return(cheksum32);
+}
+
 void ntoa(char *res, unsigned int addr) {
 	struct in_addr in;                                
 	in.s_addr = addr;
