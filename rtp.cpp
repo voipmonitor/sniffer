@@ -641,7 +641,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	int mylen = MIN((unsigned int)len, ntohs(header_ip->tot_len) - header_ip->ihl * 4 - sizeof(udphdr2));
 
 
-	if(savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723)) {
+	if(savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723 or codec == PAYLOAD_AMR)) {
 		/* get RTP payload header and datalen */
 		payload_data = data + sizeof(RTPFixedHeader);
 		payload_len = mylen - sizeof(RTPFixedHeader);
@@ -697,6 +697,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		}
 
 		if(codec == PAYLOAD_G729 and (payload_len <= (packetization == 10 ? 9 : 12))) {
+			frame->frametype = AST_FRAME_DTMF;
+			frame->marker = 1;
+		}
+		if(codec == PAYLOAD_AMR and payload_len <= 7) {
 			frame->frametype = AST_FRAME_DTMF;
 			frame->marker = 1;
 		}
@@ -897,7 +901,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	if(sverb.read_rtp) {
 		extern u_int64_t read_rtp_counter;
 		++read_rtp_counter;
-		cout << "RTP - read -"
+		cout << "RTP - read [" << this << "]-" 
 		     << " ssrc: " << hex << this->ssrc << dec << " "
 		     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
 		     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
@@ -1877,6 +1881,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	resetgraph = false;
 
 	if(owner->forcemark[iscaller] or owner->forcemark[!iscaller]) {
+		owner->forcemark[!iscaller] = 0;
 		forcemark2 = 1; // set this flag and keep it until next update_stats call
 	}
 
@@ -1979,7 +1984,9 @@ RTP::update_stats() {
 
 
 	// store mark bit in graph file
-	if(getMarker() and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+	if((getMarker() or (codec == PAYLOAD_AMR and (payload_len <= 7))) 
+	    and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+
 		uint32_t diff = (uint32_t)tsdiff2;
 		this->graph.write((char*)&graph_mark, 4);
 		this->graph.write((char*)&diff, 4);
@@ -2202,6 +2209,7 @@ RTP::update_seq(u_int16_t seq) {
 void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr, int lastinterval) {
 	int lost = 0;
 	int bursts = 0;
+	unsigned int received2 = 0 and lastinterval ? received - chan->last_received : received;
 	for(int i = 0; i < 128; i++) {
 		if(lastinterval) {
 			lost += i * (chan->loss[i] - chan->last_interval_loss[i]);
@@ -2221,9 +2229,10 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 	}
 
 	if(verbosity > 4 or sverb.jitter) printf("\n");
+	
 	if(received > 0 && bursts > 0) {
-		*burstr = (double)((double)lost / (double)bursts) / (double)(1.0 / ( 1.0 - (double)lost / (double)received ));
-		if(sverb.jitter) printf("mos: *burstr[%f] = (lost[%u] / bursts[%u]) / (1 / ( 1 - lost[%u] / received[%u]\n", *burstr, lost, bursts, lost, received);
+		*burstr = (double)((double)lost / (double)bursts) / (double)(1.0 / ( 1.0 - (double)lost / (double)received2 ));
+		if(sverb.jitter) printf("mos: *burstr[%f] = (lost[%u] / bursts[%u]) / (1 / ( 1 - lost[%u] / received[%u]\n", *burstr, lost, bursts, lost, received2);
 		if(*burstr < 0) {
 			*burstr = - *burstr;
 		} else if(*burstr < 1) {
@@ -2234,11 +2243,12 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 	}
 	//printf("total loss: %d\n", lost);
 	if(received > 0) {
-		*lossr = (double)((double)lost / (double)received);
+		*lossr = (double)((double)lost / (double)received2);
 	} else {
 		*lossr = 0;
 	}
-	if(sverb.jitter) printf("burstr: %f lossr: %f lost[%d]/received[%d]\n", *burstr, *lossr, lost, received);
+	chan->last_received = received;
+	if(sverb.jitter) printf("burstr: %f lossr: %f lost[%d]/received[%d]\n", *burstr, *lossr, lost, received2);
 }
 
 /* for debug purpose */
