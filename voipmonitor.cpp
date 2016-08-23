@@ -433,6 +433,7 @@ extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_queue_use_blocks;
 extern int opt_pcap_queue_suppress_t1_thread;
 extern bool opt_pcap_queues_mirror_nonblock_mode;
+extern bool opt_pcap_queues_mirror_require_confirmation;
 extern int opt_pcap_dispatch;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
@@ -4748,483 +4749,484 @@ void cConfig::addConfigItems() {
 				->setMinor());
 			setDisableIfBegin("sniffer_mode=" + snifferMode_read_from_files_str);
 			addConfigItem(new FILE_LINE(43146) cConfigItem_yesno("mirror_nonblock_mode", &opt_pcap_queues_mirror_nonblock_mode));
+			addConfigItem(new FILE_LINE(43147) cConfigItem_yesno("mirror_require_confirmation", &opt_pcap_queues_mirror_require_confirmation));
 			setDisableIfEnd();
 		subgroup("scaling");
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
-			addConfigItem((new FILE_LINE(43147) cConfigItem_yesno("threading_mod"))
+			addConfigItem((new FILE_LINE(43148) cConfigItem_yesno("threading_mod"))
 				->disableNo()
 				->addValues("1:1|2:2|3:3|4:4")
 				->setDefaultValueStr("4"));
 				advanced();
-				addConfigItem((new FILE_LINE(43148) cConfigItem_integer("preprocess_rtp_threads", &opt_enable_process_rtp_packet))
+				addConfigItem((new FILE_LINE(43149) cConfigItem_integer("preprocess_rtp_threads", &opt_enable_process_rtp_packet))
 					->setMaximum(MAX_PROCESS_RTP_PACKET_THREADS)
 					->addValues("yes:1|y:1|no:0|n:0")
 					->addAlias("enable_process_rtp_packet"));
 					expert();
-					addConfigItem((new FILE_LINE(43149) cConfigItem_integer("process_rtp_packets_hash_next_thread", &opt_process_rtp_packets_hash_next_thread))
+					addConfigItem((new FILE_LINE(43150) cConfigItem_integer("process_rtp_packets_hash_next_thread", &opt_process_rtp_packets_hash_next_thread))
 						->setMaximum(MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
-					addConfigItem((new FILE_LINE(43150) cConfigItem_yesno("process_rtp_packets_hash_next_thread_sem_sync", &opt_process_rtp_packets_hash_next_thread_sem_sync))
+					addConfigItem((new FILE_LINE(43151) cConfigItem_yesno("process_rtp_packets_hash_next_thread_sem_sync", &opt_process_rtp_packets_hash_next_thread_sem_sync))
 						->addValues("2:2"));
-					addConfigItem(new FILE_LINE(43151) cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
-					addConfigItem(new FILE_LINE(43152) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
+					addConfigItem(new FILE_LINE(43152) cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
+					addConfigItem(new FILE_LINE(43153) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
 						obsolete();
-						addConfigItem((new FILE_LINE(43153) cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
+						addConfigItem((new FILE_LINE(43154) cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
 							->addValues("sip:2|extend:3|auto:-1"));
-						addConfigItem(new FILE_LINE(43154) cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
-						addConfigItem(new FILE_LINE(43155) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
+						addConfigItem(new FILE_LINE(43155) cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
+						addConfigItem(new FILE_LINE(43156) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
 						minorEnd();
 			setDisableIfEnd();
 	group("manager");
-		addConfigItem(new FILE_LINE(43156) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)));
-		addConfigItem(new FILE_LINE(43157) cConfigItem_integer("managerport", &opt_manager_port));
+		addConfigItem(new FILE_LINE(43157) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)));
+		addConfigItem(new FILE_LINE(43158) cConfigItem_integer("managerport", &opt_manager_port));
 	group("buffers and memory usage");
 		subgroup("main");
-			addConfigItem((new FILE_LINE(43158) cConfigItem_integer("max_buffer_mem"))
+			addConfigItem((new FILE_LINE(43159) cConfigItem_integer("max_buffer_mem"))
 				->setNaDefaultValueStr());
-			addConfigItem((new FILE_LINE(43159) cConfigItem_integer("ringbuffer", &opt_ringbuffer))
+			addConfigItem((new FILE_LINE(43160) cConfigItem_integer("ringbuffer", &opt_ringbuffer))
 				->setMaximum(2000));
 		subgroup("scaling");
 				advanced();
-				addConfigItem((new FILE_LINE(43160) cConfigItem_integer("rtpthreads", &num_threads_set))
+				addConfigItem((new FILE_LINE(43161) cConfigItem_integer("rtpthreads", &num_threads_set))
 					->setIfZeroOrNegative(max(sysconf(_SC_NPROCESSORS_ONLN) - 1, 1l)));
-				addConfigItem(new FILE_LINE(43161) cConfigItem_integer("rtpthreads_start", &num_threads_start));
+				addConfigItem(new FILE_LINE(43162) cConfigItem_integer("rtpthreads_start", &num_threads_start));
 					expert();
-					addConfigItem(new FILE_LINE(43162) cConfigItem_yesno("savertp-threaded", &opt_rtpsave_threaded));
-				addConfigItem(new FILE_LINE(43163) cConfigItem_yesno("packetbuffer_compress", &opt_pcap_queue_compress));
-				addConfigItem(new FILE_LINE(43164) cConfigItem_integer("pcap_queue_dequeu_window_length", &opt_pcap_queue_dequeu_window_length));
-				addConfigItem(new FILE_LINE(43165) cConfigItem_integer("pcap_queue_dequeu_need_blocks", &opt_pcap_queue_dequeu_need_blocks));
-				addConfigItem(new FILE_LINE(43166) cConfigItem_integer("pcap_queue_iface_qring_size", &opt_pcap_queue_iface_qring_size));
+					addConfigItem(new FILE_LINE(43163) cConfigItem_yesno("savertp-threaded", &opt_rtpsave_threaded));
+				addConfigItem(new FILE_LINE(43164) cConfigItem_yesno("packetbuffer_compress", &opt_pcap_queue_compress));
+				addConfigItem(new FILE_LINE(43165) cConfigItem_integer("pcap_queue_dequeu_window_length", &opt_pcap_queue_dequeu_window_length));
+				addConfigItem(new FILE_LINE(43166) cConfigItem_integer("pcap_queue_dequeu_need_blocks", &opt_pcap_queue_dequeu_need_blocks));
+				addConfigItem(new FILE_LINE(43167) cConfigItem_integer("pcap_queue_iface_qring_size", &opt_pcap_queue_iface_qring_size));
 					expert();
-					addConfigItem(new FILE_LINE(43167) cConfigItem_integer("pcap_queue_dequeu_method", &opt_pcap_queue_dequeu_method));
-					addConfigItem(new FILE_LINE(43168) cConfigItem_integer("pcap_queue_use_blocks", &opt_pcap_queue_use_blocks));
-					addConfigItem((new FILE_LINE(43169) cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
+					addConfigItem(new FILE_LINE(43168) cConfigItem_integer("pcap_queue_dequeu_method", &opt_pcap_queue_dequeu_method));
+					addConfigItem(new FILE_LINE(43169) cConfigItem_integer("pcap_queue_use_blocks", &opt_pcap_queue_use_blocks));
+					addConfigItem((new FILE_LINE(43170) cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
 						->setMultiple(1024));
-					addConfigItem(new FILE_LINE(43170) cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
+					addConfigItem(new FILE_LINE(43171) cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
 		subgroup("file cache");
 					expert();
-					addConfigItem((new FILE_LINE(43171) cConfigItem_integer("packetbuffer_file_totalmaxsize", &opt_pcap_queue_store_queue_max_disk_size))
+					addConfigItem((new FILE_LINE(43172) cConfigItem_integer("packetbuffer_file_totalmaxsize", &opt_pcap_queue_store_queue_max_disk_size))
 						->setMultiple(1024 * 1024));
-					addConfigItem(new FILE_LINE(43172) cConfigItem_string("packetbuffer_file_path", &opt_pcap_queue_disk_folder));
+					addConfigItem(new FILE_LINE(43173) cConfigItem_string("packetbuffer_file_path", &opt_pcap_queue_disk_folder));
 	group("data storing");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		subgroup("main");
-			addConfigItem(new FILE_LINE(43173) cConfigItem_string("spooldir", opt_chdir, sizeof(opt_chdir)));
-			addConfigItem(new FILE_LINE(43174) cConfigItem_string("spooldir_2", opt_spooldir_2, sizeof(opt_spooldir_2)));
-			addConfigItem(new FILE_LINE(43175) cConfigItem_yesno("tar", &opt_pcap_dump_tar));
+			addConfigItem(new FILE_LINE(43174) cConfigItem_string("spooldir", opt_chdir, sizeof(opt_chdir)));
+			addConfigItem(new FILE_LINE(43175) cConfigItem_string("spooldir_2", opt_spooldir_2, sizeof(opt_spooldir_2)));
+			addConfigItem(new FILE_LINE(43176) cConfigItem_yesno("tar", &opt_pcap_dump_tar));
 				advanced();
-				addConfigItem(new FILE_LINE(43176) cConfigItem_string("convertchar", opt_convert_char, sizeof(opt_convert_char)));
-				addConfigItem(new FILE_LINE(43177) cConfigItem_string("cachedir", opt_cachedir, sizeof(opt_cachedir)));
+				addConfigItem(new FILE_LINE(43177) cConfigItem_string("convertchar", opt_convert_char, sizeof(opt_convert_char)));
+				addConfigItem(new FILE_LINE(43178) cConfigItem_string("cachedir", opt_cachedir, sizeof(opt_cachedir)));
 					expert();
-					addConfigItem(new FILE_LINE(43178) cConfigItem_yesno("convert_dlt_sll2en10", &opt_convert_dlt_sll_to_en10));
-					addConfigItem(new FILE_LINE(43179) cConfigItem_yesno("dumpallpackets", &opt_pcapdump));
-					addConfigItem((new FILE_LINE(43180) cConfigItem_integer("dumpallallpackets", &opt_pcapdump_all))
+					addConfigItem(new FILE_LINE(43179) cConfigItem_yesno("convert_dlt_sll2en10", &opt_convert_dlt_sll_to_en10));
+					addConfigItem(new FILE_LINE(43180) cConfigItem_yesno("dumpallpackets", &opt_pcapdump));
+					addConfigItem((new FILE_LINE(43181) cConfigItem_integer("dumpallallpackets", &opt_pcapdump_all))
 						->setYes(1000));
-					addConfigItem(new FILE_LINE(43181) cConfigItem_string("dumpallallpackets_path", opt_pcapdump_all_path, sizeof(opt_pcapdump_all_path)));
-					addConfigItem(new FILE_LINE(43182) cConfigItem_string("bogus_dumper_path", opt_bogus_dumper_path, sizeof(opt_bogus_dumper_path)));
+					addConfigItem(new FILE_LINE(43182) cConfigItem_string("dumpallallpackets_path", opt_pcapdump_all_path, sizeof(opt_pcapdump_all_path)));
+					addConfigItem(new FILE_LINE(43183) cConfigItem_string("bogus_dumper_path", opt_bogus_dumper_path, sizeof(opt_bogus_dumper_path)));
 		subgroup("scaling");
-			addConfigItem(new FILE_LINE(43183) cConfigItem_integer("tar_maxthreads", &opt_pcap_dump_tar_threads));
+			addConfigItem(new FILE_LINE(43184) cConfigItem_integer("tar_maxthreads", &opt_pcap_dump_tar_threads));
 				advanced();
-				addConfigItem(new FILE_LINE(43184) cConfigItem_integer("maxpcapsize", &opt_maxpcapsize_mb));
+				addConfigItem(new FILE_LINE(43185) cConfigItem_integer("maxpcapsize", &opt_maxpcapsize_mb));
 					expert();
-					addConfigItem(new FILE_LINE(43185) cConfigItem_integer("pcap_dump_bufflength", &opt_pcap_dump_bufflength));
-					addConfigItem(new FILE_LINE(43186) cConfigItem_integer("pcap_dump_writethreads", &opt_pcap_dump_writethreads));
-					addConfigItem(new FILE_LINE(43187) cConfigItem_yesno("pcap_dump_asyncwrite", &opt_pcap_dump_asyncwrite));
-					addConfigItem(new FILE_LINE(43188) cConfigItem_yesno("defer_create_spooldir", &opt_defer_create_spooldir));
+					addConfigItem(new FILE_LINE(43186) cConfigItem_integer("pcap_dump_bufflength", &opt_pcap_dump_bufflength));
+					addConfigItem(new FILE_LINE(43187) cConfigItem_integer("pcap_dump_writethreads", &opt_pcap_dump_writethreads));
+					addConfigItem(new FILE_LINE(43188) cConfigItem_yesno("pcap_dump_asyncwrite", &opt_pcap_dump_asyncwrite));
+					addConfigItem(new FILE_LINE(43189) cConfigItem_yesno("defer_create_spooldir", &opt_defer_create_spooldir));
 		subgroup("SIP");
-			addConfigItem(new FILE_LINE(43189) cConfigItem_yesno("savesip", &opt_saveSIP));
+			addConfigItem(new FILE_LINE(43190) cConfigItem_yesno("savesip", &opt_saveSIP));
 					expert();
-					addConfigItem(new FILE_LINE(43190) cConfigItem_type_compress("pcap_dump_zip_sip", &opt_pcap_dump_zip_sip));
-					addConfigItem(new FILE_LINE(43191) cConfigItem_integer("pcap_dump_ziplevel_sip", &opt_pcap_dump_ziplevel_sip));
-					addConfigItem((new FILE_LINE(43192) cConfigItem_yesno("tar_compress_sip", &opt_pcap_dump_tar_compress_sip))
+					addConfigItem(new FILE_LINE(43191) cConfigItem_type_compress("pcap_dump_zip_sip", &opt_pcap_dump_zip_sip));
+					addConfigItem(new FILE_LINE(43192) cConfigItem_integer("pcap_dump_ziplevel_sip", &opt_pcap_dump_ziplevel_sip));
+					addConfigItem((new FILE_LINE(43193) cConfigItem_yesno("tar_compress_sip", &opt_pcap_dump_tar_compress_sip))
 						->addValues("zip:1|z:1|gzip:1|g:1|lz4:2|l:2|no:0|n:0|0:0"));
-					addConfigItem(new FILE_LINE(43193) cConfigItem_integer("tar_sip_level", &opt_pcap_dump_tar_sip_level));
-					addConfigItem(new FILE_LINE(43194) cConfigItem_type_compress("tar_internalcompress_sip", &opt_pcap_dump_tar_internalcompress_sip));
-					addConfigItem(new FILE_LINE(43195) cConfigItem_integer("tar_internal_sip_level", &opt_pcap_dump_tar_internal_gzip_sip_level));
+					addConfigItem(new FILE_LINE(43194) cConfigItem_integer("tar_sip_level", &opt_pcap_dump_tar_sip_level));
+					addConfigItem(new FILE_LINE(43195) cConfigItem_type_compress("tar_internalcompress_sip", &opt_pcap_dump_tar_internalcompress_sip));
+					addConfigItem(new FILE_LINE(43196) cConfigItem_integer("tar_internal_sip_level", &opt_pcap_dump_tar_internal_gzip_sip_level));
 		subgroup("RTP/RTCP/UDPTL");
-			addConfigItem((new FILE_LINE(43196) cConfigItem_yesno("savertp"))
+			addConfigItem((new FILE_LINE(43197) cConfigItem_yesno("savertp"))
 				->addValues("header:-1|h:-1")
 				->setDefaultValueStr("no"));
-			addConfigItem(new FILE_LINE(43197) cConfigItem_yesno("savertcp", &opt_saveRTCP));
-			addConfigItem(new FILE_LINE(43198) cConfigItem_yesno("saveudptl", &opt_saveudptl));
+			addConfigItem(new FILE_LINE(43198) cConfigItem_yesno("savertcp", &opt_saveRTCP));
+			addConfigItem(new FILE_LINE(43199) cConfigItem_yesno("saveudptl", &opt_saveudptl));
 					expert();
-					addConfigItem(new FILE_LINE(43199) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
-					addConfigItem(new FILE_LINE(43200) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_ziplevel_rtp));
-					addConfigItem((new FILE_LINE(43201) cConfigItem_yesno("tar_compress_rtp", &opt_pcap_dump_tar_compress_rtp))
+					addConfigItem(new FILE_LINE(43200) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
+					addConfigItem(new FILE_LINE(43201) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_ziplevel_rtp));
+					addConfigItem((new FILE_LINE(43202) cConfigItem_yesno("tar_compress_rtp", &opt_pcap_dump_tar_compress_rtp))
 						->addValues("zip:1|z:1|gzip:1|g:1|lz4:2|l:2|no:0|n:0|0:0"));
-					addConfigItem(new FILE_LINE(43202) cConfigItem_integer("tar_rtp_level", &opt_pcap_dump_tar_rtp_level));
-					addConfigItem(new FILE_LINE(43203) cConfigItem_type_compress("tar_internalcompress_rtp", &opt_pcap_dump_tar_internalcompress_rtp));
-					addConfigItem(new FILE_LINE(43204) cConfigItem_integer("tar_internal_rtp_level", &opt_pcap_dump_tar_internal_gzip_rtp_level));
+					addConfigItem(new FILE_LINE(43203) cConfigItem_integer("tar_rtp_level", &opt_pcap_dump_tar_rtp_level));
+					addConfigItem(new FILE_LINE(43204) cConfigItem_type_compress("tar_internalcompress_rtp", &opt_pcap_dump_tar_internalcompress_rtp));
+					addConfigItem(new FILE_LINE(43205) cConfigItem_integer("tar_internal_rtp_level", &opt_pcap_dump_tar_internal_gzip_rtp_level));
 		subgroup("GRAPH");
-			addConfigItem((new FILE_LINE(43205) cConfigItem_yesno("savegraph"))
+			addConfigItem((new FILE_LINE(43206) cConfigItem_yesno("savegraph"))
 				->addValues("plain:1|p:1|gzip:2|g:2")
 				->setDefaultValueStr("no"));
 					expert();
-					addConfigItem(new FILE_LINE(43206) cConfigItem_type_compress("pcap_dump_zip_graph", &opt_gzipGRAPH));
-					addConfigItem(new FILE_LINE(43207) cConfigItem_integer("pcap_dump_ziplevel_graph", &opt_pcap_dump_ziplevel_graph));
-					addConfigItem((new FILE_LINE(43208) cConfigItem_yesno("tar_compress_graph", &opt_pcap_dump_tar_compress_graph))
+					addConfigItem(new FILE_LINE(43207) cConfigItem_type_compress("pcap_dump_zip_graph", &opt_gzipGRAPH));
+					addConfigItem(new FILE_LINE(43208) cConfigItem_integer("pcap_dump_ziplevel_graph", &opt_pcap_dump_ziplevel_graph));
+					addConfigItem((new FILE_LINE(43209) cConfigItem_yesno("tar_compress_graph", &opt_pcap_dump_tar_compress_graph))
 						->addValues("zip:1|z:1|gzip:1|g:1|lz4:2|l:2|no:0|n:0|0:0"));
-					addConfigItem(new FILE_LINE(43209) cConfigItem_integer("tar_graph_level", &opt_pcap_dump_tar_graph_level));
-					addConfigItem(new FILE_LINE(43210) cConfigItem_type_compress("tar_internalcompress_graph", &opt_pcap_dump_tar_internalcompress_graph));
-					addConfigItem(new FILE_LINE(43211) cConfigItem_integer("tar_internal_graph_level", &opt_pcap_dump_tar_internal_gzip_graph_level));
+					addConfigItem(new FILE_LINE(43210) cConfigItem_integer("tar_graph_level", &opt_pcap_dump_tar_graph_level));
+					addConfigItem(new FILE_LINE(43211) cConfigItem_type_compress("tar_internalcompress_graph", &opt_pcap_dump_tar_internalcompress_graph));
+					addConfigItem(new FILE_LINE(43212) cConfigItem_integer("tar_internal_graph_level", &opt_pcap_dump_tar_internal_gzip_graph_level));
 		subgroup("AUDIO");
-			addConfigItem((new FILE_LINE(43212) cConfigItem_yesno("saveaudio"))
+			addConfigItem((new FILE_LINE(43213) cConfigItem_yesno("saveaudio"))
 				->addValues("wav:1|w:1|ogg:2|o:2")
 				->setDefaultValueStr("no"));
 				advanced();
-				addConfigItem(new FILE_LINE(43213) cConfigItem_yesno("saveaudio_stereo", &opt_saveaudio_stereo));
-				addConfigItem(new FILE_LINE(43214) cConfigItem_yesno("saveaudio_reversestereo", &opt_saveaudio_reversestereo));
-				addConfigItem(new FILE_LINE(43215) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
-				addConfigItem(new FILE_LINE(43216) cConfigItem_integer("audioqueue_threads_max", &opt_audioqueue_threads_max));
+				addConfigItem(new FILE_LINE(43214) cConfigItem_yesno("saveaudio_stereo", &opt_saveaudio_stereo));
+				addConfigItem(new FILE_LINE(43215) cConfigItem_yesno("saveaudio_reversestereo", &opt_saveaudio_reversestereo));
+				addConfigItem(new FILE_LINE(43216) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
+				addConfigItem(new FILE_LINE(43217) cConfigItem_integer("audioqueue_threads_max", &opt_audioqueue_threads_max));
 					expert();
-					addConfigItem(new FILE_LINE(43217) cConfigItem_yesno("plcdisable", &opt_disableplc));
+					addConfigItem(new FILE_LINE(43218) cConfigItem_yesno("plcdisable", &opt_disableplc));
 		setDisableIfEnd();
 	group("data spool directory cleaning");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 			advanced();
-			addConfigItem(new FILE_LINE(43218) cConfigItem_integer("cleanspool_interval", &opt_cleanspool_interval));
+			addConfigItem(new FILE_LINE(43219) cConfigItem_integer("cleanspool_interval", &opt_cleanspool_interval));
 		normal();
-		addConfigItem(new FILE_LINE(43219) cConfigItem_hour_interval("cleanspool_enable_fromto", &opt_cleanspool_enable_run_hour_from, &opt_cleanspool_enable_run_hour_to));
+		addConfigItem(new FILE_LINE(43220) cConfigItem_hour_interval("cleanspool_enable_fromto", &opt_cleanspool_enable_run_hour_from, &opt_cleanspool_enable_run_hour_to));
 		for(int i = 0; i < 2; i++) {
-			addConfigItem(new FILE_LINE(43220) cConfigItem_integer(("maxpoolsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolsize : &opt_maxpoolsize_2));
-			addConfigItem(new FILE_LINE(43221) cConfigItem_integer(("maxpooldays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpooldays : &opt_maxpooldays_2));
-			addConfigItem(new FILE_LINE(43222) cConfigItem_integer(("maxpoolsipsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolsipsize : &opt_maxpoolsipsize_2));
-			addConfigItem(new FILE_LINE(43223) cConfigItem_integer(("maxpoolsipdays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolsipdays : &opt_maxpoolsipdays_2));
-			addConfigItem(new FILE_LINE(43224) cConfigItem_integer(("maxpoolrtpsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolrtpsize : &opt_maxpoolrtpsize_2));
-			addConfigItem(new FILE_LINE(43225) cConfigItem_integer(("maxpoolrtpdays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolrtpdays : &opt_maxpoolrtpdays_2));
-			addConfigItem(new FILE_LINE(43226) cConfigItem_integer(("maxpoolgraphsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolgraphsize : &opt_maxpoolgraphsize_2));
-			addConfigItem(new FILE_LINE(43227) cConfigItem_integer(("maxpoolgraphdays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolgraphdays : &opt_maxpoolgraphdays_2));
-			addConfigItem(new FILE_LINE(43228) cConfigItem_integer(("maxpoolaudiosize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolaudiosize : &opt_maxpoolaudiosize_2));
-			addConfigItem(new FILE_LINE(43229) cConfigItem_integer(("maxpoolaudiodays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolaudiodays : &opt_maxpoolaudiodays_2));
+			addConfigItem(new FILE_LINE(43221) cConfigItem_integer(("maxpoolsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolsize : &opt_maxpoolsize_2));
+			addConfigItem(new FILE_LINE(43222) cConfigItem_integer(("maxpooldays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpooldays : &opt_maxpooldays_2));
+			addConfigItem(new FILE_LINE(43223) cConfigItem_integer(("maxpoolsipsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolsipsize : &opt_maxpoolsipsize_2));
+			addConfigItem(new FILE_LINE(43224) cConfigItem_integer(("maxpoolsipdays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolsipdays : &opt_maxpoolsipdays_2));
+			addConfigItem(new FILE_LINE(43225) cConfigItem_integer(("maxpoolrtpsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolrtpsize : &opt_maxpoolrtpsize_2));
+			addConfigItem(new FILE_LINE(43226) cConfigItem_integer(("maxpoolrtpdays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolrtpdays : &opt_maxpoolrtpdays_2));
+			addConfigItem(new FILE_LINE(43227) cConfigItem_integer(("maxpoolgraphsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolgraphsize : &opt_maxpoolgraphsize_2));
+			addConfigItem(new FILE_LINE(43228) cConfigItem_integer(("maxpoolgraphdays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolgraphdays : &opt_maxpoolgraphdays_2));
+			addConfigItem(new FILE_LINE(43229) cConfigItem_integer(("maxpoolaudiosize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolaudiosize : &opt_maxpoolaudiosize_2));
+			addConfigItem(new FILE_LINE(43230) cConfigItem_integer(("maxpoolaudiodays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolaudiodays : &opt_maxpoolaudiodays_2));
 		}
 			advanced();
-			addConfigItem(new FILE_LINE(43230) cConfigItem_yesno("maxpool_clean_obsolete", &opt_maxpool_clean_obsolete));
-			addConfigItem(new FILE_LINE(43231) cConfigItem_integer("autocleanspoolminpercent", &opt_autocleanspoolminpercent));
-			addConfigItem((new FILE_LINE(43232) cConfigItem_integer("autocleanmingb", &opt_autocleanmingb))
+			addConfigItem(new FILE_LINE(43231) cConfigItem_yesno("maxpool_clean_obsolete", &opt_maxpool_clean_obsolete));
+			addConfigItem(new FILE_LINE(43232) cConfigItem_integer("autocleanspoolminpercent", &opt_autocleanspoolminpercent));
+			addConfigItem((new FILE_LINE(43233) cConfigItem_integer("autocleanmingb", &opt_autocleanmingb))
 				->addAlias("autocleanspoolmingb"));
 		setDisableIfEnd();
 	group("IP protocol");
-		addConfigItem(new FILE_LINE(43233) cConfigItem_yesno("deduplicate", &opt_dup_check));
-		addConfigItem(new FILE_LINE(43234) cConfigItem_yesno("deduplicate_ipheader", &opt_dup_check_ipheader));
-		addConfigItem(new FILE_LINE(43235) cConfigItem_yesno("udpfrag", &opt_udpfrag));
-		addConfigItem(new FILE_LINE(43236) cConfigItem_yesno("dscp", &opt_dscp));
+		addConfigItem(new FILE_LINE(43234) cConfigItem_yesno("deduplicate", &opt_dup_check));
+		addConfigItem(new FILE_LINE(43235) cConfigItem_yesno("deduplicate_ipheader", &opt_dup_check_ipheader));
+		addConfigItem(new FILE_LINE(43236) cConfigItem_yesno("udpfrag", &opt_udpfrag));
+		addConfigItem(new FILE_LINE(43237) cConfigItem_yesno("dscp", &opt_dscp));
 				expert();
-				addConfigItem(new FILE_LINE(43237) cConfigItem_string("tcpreassembly_log", opt_tcpreassembly_log, sizeof(opt_tcpreassembly_log)));
+				addConfigItem(new FILE_LINE(43238) cConfigItem_string("tcpreassembly_log", opt_tcpreassembly_log, sizeof(opt_tcpreassembly_log)));
 	group("SSL");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
-		addConfigItem((new FILE_LINE(43238) cConfigItem_yesno("ssl", &opt_enable_ssl))
+		addConfigItem((new FILE_LINE(43239) cConfigItem_yesno("ssl", &opt_enable_ssl))
 			->addValue("only", 2));
-		addConfigItem(new FILE_LINE(43239) cConfigItem_ip_port_str_map("ssl_ipport", &ssl_ipport));
-		addConfigItem(new FILE_LINE(43240) cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
+		addConfigItem(new FILE_LINE(43240) cConfigItem_ip_port_str_map("ssl_ipport", &ssl_ipport));
+		addConfigItem(new FILE_LINE(43241) cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
-		addConfigItem(new FILE_LINE(43241) cConfigItem_yesno("skinny", &opt_skinny));
-		addConfigItem((new FILE_LINE(43242) cConfigItem_integer("skinny_ignore_rtpip", &opt_skinny_ignore_rtpip))
+		addConfigItem(new FILE_LINE(43242) cConfigItem_yesno("skinny", &opt_skinny));
+		addConfigItem((new FILE_LINE(43243) cConfigItem_integer("skinny_ignore_rtpip", &opt_skinny_ignore_rtpip))
 			->setIp());
 		setDisableIfEnd();
 	group("CDR");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 			advanced();
-			addConfigItem(new FILE_LINE(43243) cConfigItem_integer("absolute_timeout", &absolute_timeout));
-			addConfigItem(new FILE_LINE(43244) cConfigItem_integer("onewaytimeout", &opt_onewaytimeout));
-			addConfigItem(new FILE_LINE(43245) cConfigItem_yesno("nocdr", &opt_nocdr));
-			addConfigItem((new FILE_LINE(43246) cConfigItem_string("cdr_ignore_response", opt_nocdr_for_last_responses, sizeof(opt_nocdr_for_last_responses)))
+			addConfigItem(new FILE_LINE(43244) cConfigItem_integer("absolute_timeout", &absolute_timeout));
+			addConfigItem(new FILE_LINE(43245) cConfigItem_integer("onewaytimeout", &opt_onewaytimeout));
+			addConfigItem(new FILE_LINE(43246) cConfigItem_yesno("nocdr", &opt_nocdr));
+			addConfigItem((new FILE_LINE(43247) cConfigItem_string("cdr_ignore_response", opt_nocdr_for_last_responses, sizeof(opt_nocdr_for_last_responses)))
 				->addAlias("nocdr_for_last_responses"));
-			addConfigItem(new FILE_LINE(43247) cConfigItem_yesno("skipdefault", &opt_skipdefault));
-			addConfigItem(new FILE_LINE(43248) cConfigItem_yesno("cdronlyanswered", &opt_cdronlyanswered));
-			addConfigItem(new FILE_LINE(43249) cConfigItem_yesno("cdr_check_exists_callid", &opt_cdr_check_exists_callid));
-			addConfigItem(new FILE_LINE(43250) cConfigItem_yesno("cdronlyrtp", &opt_cdronlyrtp));
-			addConfigItem(new FILE_LINE(43251) cConfigItem_integer("callslimit", &opt_callslimit));
-			addConfigItem(new FILE_LINE(43252) cConfigItem_yesno("cdrproxy", &opt_cdrproxy));
+			addConfigItem(new FILE_LINE(43248) cConfigItem_yesno("skipdefault", &opt_skipdefault));
+			addConfigItem(new FILE_LINE(43249) cConfigItem_yesno("cdronlyanswered", &opt_cdronlyanswered));
+			addConfigItem(new FILE_LINE(43250) cConfigItem_yesno("cdr_check_exists_callid", &opt_cdr_check_exists_callid));
+			addConfigItem(new FILE_LINE(43251) cConfigItem_yesno("cdronlyrtp", &opt_cdronlyrtp));
+			addConfigItem(new FILE_LINE(43252) cConfigItem_integer("callslimit", &opt_callslimit));
+			addConfigItem(new FILE_LINE(43253) cConfigItem_yesno("cdrproxy", &opt_cdrproxy));
 		setDisableIfEnd();
 	group("SIP protocol / headers");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		subgroup("main");
-			addConfigItem(new FILE_LINE(43253) cConfigItem_ports("sipport", sipportmatrix));
-			addConfigItem(new FILE_LINE(43254) cConfigItem_yesno("cdr_sipport", &opt_cdr_sipport));
-			addConfigItem(new FILE_LINE(43255) cConfigItem_integer("domainport", &opt_domainport));
-			addConfigItem((new FILE_LINE(43256) cConfigItem_string("fbasenameheader", opt_fbasename_header, sizeof(opt_fbasename_header)))
+			addConfigItem(new FILE_LINE(43254) cConfigItem_ports("sipport", sipportmatrix));
+			addConfigItem(new FILE_LINE(43255) cConfigItem_yesno("cdr_sipport", &opt_cdr_sipport));
+			addConfigItem(new FILE_LINE(43256) cConfigItem_integer("domainport", &opt_domainport));
+			addConfigItem((new FILE_LINE(43257) cConfigItem_string("fbasenameheader", opt_fbasename_header, sizeof(opt_fbasename_header)))
 				->setPrefix("\n")
 				->addAlias("fbasename_header"));
-			addConfigItem((new FILE_LINE(43257) cConfigItem_string("matchheader", opt_match_header, sizeof(opt_match_header)))
+			addConfigItem((new FILE_LINE(43258) cConfigItem_string("matchheader", opt_match_header, sizeof(opt_match_header)))
 				->setPrefix("\n")
 				->addAlias("match_header"));
-			addConfigItem((new FILE_LINE(43258) cConfigItem_string("callidmerge_header", opt_callidmerge_header, sizeof(opt_callidmerge_header)))
+			addConfigItem((new FILE_LINE(43259) cConfigItem_string("callidmerge_header", opt_callidmerge_header, sizeof(opt_callidmerge_header)))
 				->setPrefix("\n"));
-			addConfigItem(new FILE_LINE(43259) cConfigItem_string("callidmerge_secret", opt_callidmerge_secret, sizeof(opt_callidmerge_secret)));
+			addConfigItem(new FILE_LINE(43260) cConfigItem_string("callidmerge_secret", opt_callidmerge_secret, sizeof(opt_callidmerge_secret)));
 				advanced();
-				addConfigItem(new FILE_LINE(43260) cConfigItem_yesno("custom_headers_last_value", &opt_custom_headers_last_value));
-				addConfigItem(new FILE_LINE(43261) cConfigItem_yesno("remotepartyid", &opt_remotepartyid));
-				addConfigItem(new FILE_LINE(43262) cConfigItem_yesno("passertedidentity", &opt_passertedidentity));
-				addConfigItem(new FILE_LINE(43263) cConfigItem_yesno("ppreferredidentity", &opt_ppreferredidentity));
-				addConfigItem(new FILE_LINE(43264) cConfigItem_yesno("remotepartypriority", &opt_remotepartypriority));
-				addConfigItem(new FILE_LINE(43265) cConfigItem_integer("destination_number_mode", &opt_destination_number_mode));
-				addConfigItem(new FILE_LINE(43266) cConfigItem_yesno("cdr_ua_enable", &opt_cdr_ua_enable));
-				addConfigItem(new FILE_LINE(43267) cConfigItem_string("cdr_ua_reg_remove", &opt_cdr_ua_reg_remove));
-				addConfigItem(new FILE_LINE(43268) cConfigItem_yesno("sipoverlap", &opt_sipoverlap));
-				addConfigItem(new FILE_LINE(43269) cConfigItem_yesno("update_dstnum_onanswer", &opt_update_dstnum_onanswer));
-				addConfigItem(new FILE_LINE(43270) cConfigItem_integer("sdp_multiplication", &opt_sdp_multiplication));
-				addConfigItem(new FILE_LINE(43271) cConfigItem_yesno("save_sip_responses", &opt_cdr_sipresp));
-				addConfigItem((new FILE_LINE(43272) cConfigItem_string("save_sip_history", &opt_save_sip_history))
+				addConfigItem(new FILE_LINE(43261) cConfigItem_yesno("custom_headers_last_value", &opt_custom_headers_last_value));
+				addConfigItem(new FILE_LINE(43262) cConfigItem_yesno("remotepartyid", &opt_remotepartyid));
+				addConfigItem(new FILE_LINE(43263) cConfigItem_yesno("passertedidentity", &opt_passertedidentity));
+				addConfigItem(new FILE_LINE(43264) cConfigItem_yesno("ppreferredidentity", &opt_ppreferredidentity));
+				addConfigItem(new FILE_LINE(43265) cConfigItem_yesno("remotepartypriority", &opt_remotepartypriority));
+				addConfigItem(new FILE_LINE(43266) cConfigItem_integer("destination_number_mode", &opt_destination_number_mode));
+				addConfigItem(new FILE_LINE(43267) cConfigItem_yesno("cdr_ua_enable", &opt_cdr_ua_enable));
+				addConfigItem(new FILE_LINE(43268) cConfigItem_string("cdr_ua_reg_remove", &opt_cdr_ua_reg_remove));
+				addConfigItem(new FILE_LINE(43269) cConfigItem_yesno("sipoverlap", &opt_sipoverlap));
+				addConfigItem(new FILE_LINE(43270) cConfigItem_yesno("update_dstnum_onanswer", &opt_update_dstnum_onanswer));
+				addConfigItem(new FILE_LINE(43271) cConfigItem_integer("sdp_multiplication", &opt_sdp_multiplication));
+				addConfigItem(new FILE_LINE(43272) cConfigItem_yesno("save_sip_responses", &opt_cdr_sipresp));
+				addConfigItem((new FILE_LINE(43273) cConfigItem_string("save_sip_history", &opt_save_sip_history))
 					->addStringItems("invite|bye|cancel|register|message|info|subscribe|options|notify|ack|prack|publish|refer|update|REQUESTS|RESPONSES|ALL"));
 		subgroup("REGISTER");
-			addConfigItem((new FILE_LINE(43273) cConfigItem_yesno("sip-register", &opt_sip_register))
+			addConfigItem((new FILE_LINE(43274) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2"));
-			addConfigItem(new FILE_LINE(43274) cConfigItem_integer("sip-register-timeout", &opt_register_timeout));
+			addConfigItem(new FILE_LINE(43275) cConfigItem_integer("sip-register-timeout", &opt_register_timeout));
 		subgroup("MESSAGE");
-			addConfigItem(new FILE_LINE(43275) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
-			addConfigItem(new FILE_LINE(43276) cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));
+			addConfigItem(new FILE_LINE(43276) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
+			addConfigItem(new FILE_LINE(43277) cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));
 		subgroup("SIP send");
 				advanced();
-				addConfigItem(new FILE_LINE(43277) cConfigItem_ip_port("sip_send", &sipSendSocket_ip_port));
-				addConfigItem((new FILE_LINE(43278) cConfigItem_string("sip_send_ip"))
+				addConfigItem(new FILE_LINE(43278) cConfigItem_ip_port("sip_send", &sipSendSocket_ip_port));
+				addConfigItem((new FILE_LINE(43279) cConfigItem_string("sip_send_ip"))
 					->setNaDefaultValueStr()
 					->setMinor());
-				addConfigItem((new FILE_LINE(43279) cConfigItem_integer("sip_send_port"))
+				addConfigItem((new FILE_LINE(43280) cConfigItem_integer("sip_send_port"))
 					->setNaDefaultValueStr()
 					->setMinor());
-				addConfigItem(new FILE_LINE(43280) cConfigItem_yesno("sip_send_udp", &opt_sip_send_udp));
-				addConfigItem(new FILE_LINE(43281) cConfigItem_yesno("sip_send_before_packetbuffer", &opt_sip_send_before_packetbuffer));
+				addConfigItem(new FILE_LINE(43281) cConfigItem_yesno("sip_send_udp", &opt_sip_send_udp));
+				addConfigItem(new FILE_LINE(43282) cConfigItem_yesno("sip_send_before_packetbuffer", &opt_sip_send_before_packetbuffer));
 		setDisableIfEnd();
 	group("RTP / DTMF / FAX options");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		subgroup("main");
-			addConfigItem(new FILE_LINE(43282) cConfigItem_integer("rtptimeout", &rtptimeout));
-			addConfigItem(new FILE_LINE(43283) cConfigItem_yesno("cdr_rtpport", &opt_cdr_rtpport));
-			addConfigItem(new FILE_LINE(43284) cConfigItem_yesno("cdr_rtpsrcport ", &opt_cdr_rtpsrcport ));
-			addConfigItem(new FILE_LINE(43285) cConfigItem_integer("sipwithoutrtptimeout", &sipwithoutrtptimeout));
-			addConfigItem(new FILE_LINE(43286) cConfigItem_yesno("allow-zerossrc", &opt_allow_zerossrc));
-			addConfigItem(new FILE_LINE(43287) cConfigItem_yesno("rtp-check-timestamp", &opt_rtp_check_timestamp));
-			addConfigItem(new FILE_LINE(43288) cConfigItem_yesno("rtp-firstleg", &opt_rtp_firstleg));
-			addConfigItem(new FILE_LINE(43289) cConfigItem_yesno("saverfc2833", &opt_saverfc2833));
-			addConfigItem(new FILE_LINE(43290) cConfigItem_yesno("dtmf2db", &opt_dbdtmf));
-			addConfigItem(new FILE_LINE(43291) cConfigItem_yesno("inbanddtmf", &opt_inbanddtmf));
-			addConfigItem(new FILE_LINE(43292) cConfigItem_integer("silencethreshold", &opt_silencethreshold));
-			addConfigItem(new FILE_LINE(43293) cConfigItem_yesno("silencedetect", &opt_silencedetect));
-			addConfigItem(new FILE_LINE(43294) cConfigItem_yesno("clippingdetect", &opt_clippingdetect));
-			addConfigItem(new FILE_LINE(43295) cConfigItem_yesno("norecord-header", &opt_norecord_header));
-			addConfigItem(new FILE_LINE(43296) cConfigItem_yesno("norecord-dtmf", &opt_norecord_dtmf));
-			addConfigItem(new FILE_LINE(43297) cConfigItem_string("pauserecordingdtmf", opt_silencedtmfseq, sizeof(opt_silencedtmfseq)));
-			addConfigItem(new FILE_LINE(43298) cConfigItem_string("pauserecordingheader", opt_silenceheader, sizeof(opt_silenceheader)));
-			addConfigItem(new FILE_LINE(43299) cConfigItem_integer("pauserecordingdtmf_timeout", &opt_pauserecordingdtmf_timeout));
-			addConfigItem(new FILE_LINE(43300) cConfigItem_yesno("182queuedpauserecording", &opt_182queuedpauserecording));
-			addConfigItem(new FILE_LINE(43301) cConfigItem_yesno("vlan_siprtpsame", &opt_vlan_siprtpsame));
-			addConfigItem(new FILE_LINE(43302) cConfigItem_yesno("rtpfromsdp_onlysip", &opt_rtpfromsdp_onlysip));
+			addConfigItem(new FILE_LINE(43283) cConfigItem_integer("rtptimeout", &rtptimeout));
+			addConfigItem(new FILE_LINE(43284) cConfigItem_yesno("cdr_rtpport", &opt_cdr_rtpport));
+			addConfigItem(new FILE_LINE(43285) cConfigItem_yesno("cdr_rtpsrcport ", &opt_cdr_rtpsrcport ));
+			addConfigItem(new FILE_LINE(43286) cConfigItem_integer("sipwithoutrtptimeout", &sipwithoutrtptimeout));
+			addConfigItem(new FILE_LINE(43287) cConfigItem_yesno("allow-zerossrc", &opt_allow_zerossrc));
+			addConfigItem(new FILE_LINE(43288) cConfigItem_yesno("rtp-check-timestamp", &opt_rtp_check_timestamp));
+			addConfigItem(new FILE_LINE(43289) cConfigItem_yesno("rtp-firstleg", &opt_rtp_firstleg));
+			addConfigItem(new FILE_LINE(43290) cConfigItem_yesno("saverfc2833", &opt_saverfc2833));
+			addConfigItem(new FILE_LINE(43291) cConfigItem_yesno("dtmf2db", &opt_dbdtmf));
+			addConfigItem(new FILE_LINE(43292) cConfigItem_yesno("inbanddtmf", &opt_inbanddtmf));
+			addConfigItem(new FILE_LINE(43293) cConfigItem_integer("silencethreshold", &opt_silencethreshold));
+			addConfigItem(new FILE_LINE(43294) cConfigItem_yesno("silencedetect", &opt_silencedetect));
+			addConfigItem(new FILE_LINE(43295) cConfigItem_yesno("clippingdetect", &opt_clippingdetect));
+			addConfigItem(new FILE_LINE(43296) cConfigItem_yesno("norecord-header", &opt_norecord_header));
+			addConfigItem(new FILE_LINE(43297) cConfigItem_yesno("norecord-dtmf", &opt_norecord_dtmf));
+			addConfigItem(new FILE_LINE(43298) cConfigItem_string("pauserecordingdtmf", opt_silencedtmfseq, sizeof(opt_silencedtmfseq)));
+			addConfigItem(new FILE_LINE(43299) cConfigItem_string("pauserecordingheader", opt_silenceheader, sizeof(opt_silenceheader)));
+			addConfigItem(new FILE_LINE(43300) cConfigItem_integer("pauserecordingdtmf_timeout", &opt_pauserecordingdtmf_timeout));
+			addConfigItem(new FILE_LINE(43301) cConfigItem_yesno("182queuedpauserecording", &opt_182queuedpauserecording));
+			addConfigItem(new FILE_LINE(43302) cConfigItem_yesno("vlan_siprtpsame", &opt_vlan_siprtpsame));
+			addConfigItem(new FILE_LINE(43303) cConfigItem_yesno("rtpfromsdp_onlysip", &opt_rtpfromsdp_onlysip));
 				advanced();
-				addConfigItem(new FILE_LINE(43303) cConfigItem_yesno("rtpmap_by_callerd", &opt_rtpmap_by_callerd));
-				addConfigItem(new FILE_LINE(43304) cConfigItem_yesno("rtpmap_combination", &opt_rtpmap_combination));
-				addConfigItem(new FILE_LINE(43305) cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
+				addConfigItem(new FILE_LINE(43304) cConfigItem_yesno("rtpmap_by_callerd", &opt_rtpmap_by_callerd));
+				addConfigItem(new FILE_LINE(43305) cConfigItem_yesno("rtpmap_combination", &opt_rtpmap_combination));
+				addConfigItem(new FILE_LINE(43306) cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
 		subgroup("NAT");
-			addConfigItem(new FILE_LINE(43306) cConfigItem_nat_aliases("natalias", &nat_aliases));
-			addConfigItem(new FILE_LINE(43307) cConfigItem_yesno("sdp_reverse_ipport", &opt_sdp_reverse_ipport));
+			addConfigItem(new FILE_LINE(43307) cConfigItem_nat_aliases("natalias", &nat_aliases));
+			addConfigItem(new FILE_LINE(43308) cConfigItem_yesno("sdp_reverse_ipport", &opt_sdp_reverse_ipport));
 		subgroup("MOS");
-			addConfigItem(new FILE_LINE(43308) cConfigItem_yesno("mos_g729", &opt_mos_g729));
-			addConfigItem(new FILE_LINE(43309) cConfigItem_yesno("mos_lqo", &opt_mos_lqo));
-			addConfigItem(new FILE_LINE(43310) cConfigItem_string("mos_lqo_bin", opt_mos_lqo_bin, sizeof(opt_mos_lqo_bin)));
-			addConfigItem(new FILE_LINE(43311) cConfigItem_string("mos_lqo_ref", opt_mos_lqo_ref, sizeof(opt_mos_lqo_ref)));
-			addConfigItem(new FILE_LINE(43312) cConfigItem_string("mos_lqo_ref16", opt_mos_lqo_ref16, sizeof(opt_mos_lqo_ref16)));
+			addConfigItem(new FILE_LINE(43309) cConfigItem_yesno("mos_g729", &opt_mos_g729));
+			addConfigItem(new FILE_LINE(43310) cConfigItem_yesno("mos_lqo", &opt_mos_lqo));
+			addConfigItem(new FILE_LINE(43311) cConfigItem_string("mos_lqo_bin", opt_mos_lqo_bin, sizeof(opt_mos_lqo_bin)));
+			addConfigItem(new FILE_LINE(43312) cConfigItem_string("mos_lqo_ref", opt_mos_lqo_ref, sizeof(opt_mos_lqo_ref)));
+			addConfigItem(new FILE_LINE(43313) cConfigItem_string("mos_lqo_ref16", opt_mos_lqo_ref16, sizeof(opt_mos_lqo_ref16)));
 		subgroup("FAX");
-			addConfigItem(new FILE_LINE(43313) cConfigItem_yesno("faxdetect", &opt_faxt30detect));
+			addConfigItem(new FILE_LINE(43314) cConfigItem_yesno("faxdetect", &opt_faxt30detect));
 		subgroup("jitterbufer");
-			addConfigItem(new FILE_LINE(43314) cConfigItem_yesno("jitterbuffer_f1", &opt_jitterbuffer_f1));
-			addConfigItem(new FILE_LINE(43315) cConfigItem_yesno("jitterbuffer_f2", &opt_jitterbuffer_f2));
-			addConfigItem(new FILE_LINE(43316) cConfigItem_yesno("jitterbuffer_adapt", &opt_jitterbuffer_adapt));
-			addConfigItem(new FILE_LINE(43317) cConfigItem_yesno("enable_jitterbuffer_asserts", &opt_enable_jitterbuffer_asserts));
+			addConfigItem(new FILE_LINE(43315) cConfigItem_yesno("jitterbuffer_f1", &opt_jitterbuffer_f1));
+			addConfigItem(new FILE_LINE(43316) cConfigItem_yesno("jitterbuffer_f2", &opt_jitterbuffer_f2));
+			addConfigItem(new FILE_LINE(43317) cConfigItem_yesno("jitterbuffer_adapt", &opt_jitterbuffer_adapt));
+			addConfigItem(new FILE_LINE(43318) cConfigItem_yesno("enable_jitterbuffer_asserts", &opt_enable_jitterbuffer_asserts));
 		setDisableIfEnd();
 	group("system");
-		addConfigItem(new FILE_LINE(43318) cConfigItem_string("pcapcommand", pcapcommand, sizeof(pcapcommand)));
-		addConfigItem(new FILE_LINE(43319) cConfigItem_string("filtercommand", filtercommand, sizeof(filtercommand)));
-		addConfigItem(new FILE_LINE(43320) cConfigItem_integer("openfile_max", &opt_openfile_max));
-		addConfigItem(new FILE_LINE(43321) cConfigItem_yesno("rrd", &opt_rrd));
-		addConfigItem(new FILE_LINE(43322) cConfigItem_string("php_path", opt_php_path, sizeof(opt_php_path)));
-		addConfigItem(new FILE_LINE(43323) cConfigItem_string("syslog_string", opt_syslog_string, sizeof(opt_syslog_string)));
-		addConfigItem(new FILE_LINE(43324) cConfigItem_integer("cpu_limit_new_thread", &opt_cpu_limit_new_thread));
-		addConfigItem(new FILE_LINE(43325) cConfigItem_integer("cpu_limit_delete_thread", &opt_cpu_limit_delete_thread));
-		addConfigItem(new FILE_LINE(43326) cConfigItem_integer("cpu_limit_delete_t2sip_thread", &opt_cpu_limit_delete_t2sip_thread));
+		addConfigItem(new FILE_LINE(43319) cConfigItem_string("pcapcommand", pcapcommand, sizeof(pcapcommand)));
+		addConfigItem(new FILE_LINE(43320) cConfigItem_string("filtercommand", filtercommand, sizeof(filtercommand)));
+		addConfigItem(new FILE_LINE(43321) cConfigItem_integer("openfile_max", &opt_openfile_max));
+		addConfigItem(new FILE_LINE(43322) cConfigItem_yesno("rrd", &opt_rrd));
+		addConfigItem(new FILE_LINE(43323) cConfigItem_string("php_path", opt_php_path, sizeof(opt_php_path)));
+		addConfigItem(new FILE_LINE(43324) cConfigItem_string("syslog_string", opt_syslog_string, sizeof(opt_syslog_string)));
+		addConfigItem(new FILE_LINE(43325) cConfigItem_integer("cpu_limit_new_thread", &opt_cpu_limit_new_thread));
+		addConfigItem(new FILE_LINE(43326) cConfigItem_integer("cpu_limit_delete_thread", &opt_cpu_limit_delete_thread));
+		addConfigItem(new FILE_LINE(43327) cConfigItem_integer("cpu_limit_delete_t2sip_thread", &opt_cpu_limit_delete_t2sip_thread));
 	group("upgrade");
-		addConfigItem(new FILE_LINE(43327) cConfigItem_yesno("upgrade_try_http_if_https_fail", &opt_upgrade_try_http_if_https_fail));
-		addConfigItem(new FILE_LINE(43328) cConfigItem_string("curlproxy", opt_curlproxy, sizeof(opt_curlproxy)));
-		addConfigItem(new FILE_LINE(43329) cConfigItem_yesno("upgrade_by_git", &opt_upgrade_by_git));
-		addConfigItem(new FILE_LINE(43330) cConfigItem_string("git_folder", opt_git_folder, sizeof(opt_git_folder)));
+		addConfigItem(new FILE_LINE(43328) cConfigItem_yesno("upgrade_try_http_if_https_fail", &opt_upgrade_try_http_if_https_fail));
+		addConfigItem(new FILE_LINE(43329) cConfigItem_string("curlproxy", opt_curlproxy, sizeof(opt_curlproxy)));
+		addConfigItem(new FILE_LINE(43330) cConfigItem_yesno("upgrade_by_git", &opt_upgrade_by_git));
+		addConfigItem(new FILE_LINE(43331) cConfigItem_string("git_folder", opt_git_folder, sizeof(opt_git_folder)));
 	group("locale");
-		addConfigItem(new FILE_LINE(43331) cConfigItem_string("local_country_code", opt_local_country_code, sizeof(opt_local_country_code)));
-		addConfigItem(new FILE_LINE(43332) cConfigItem_string("timezone", opt_timezone, sizeof(opt_timezone)));
+		addConfigItem(new FILE_LINE(43332) cConfigItem_string("local_country_code", opt_local_country_code, sizeof(opt_local_country_code)));
+		addConfigItem(new FILE_LINE(43333) cConfigItem_string("timezone", opt_timezone, sizeof(opt_timezone)));
 	group("ipaccount");
 			advanced();
-			addConfigItem(new FILE_LINE(43333) cConfigItem_yesno("ipaccount", &opt_ipaccount));
-			addConfigItem(new FILE_LINE(43334) cConfigItem_ports("ipaccountport", ipaccountportmatrix));
-			addConfigItem(new FILE_LINE(43335) cConfigItem_integer("ipaccount_interval", &opt_ipacc_interval));
-			addConfigItem(new FILE_LINE(43336) cConfigItem_integer("ipaccount_only_agregation", &opt_ipacc_only_agregation));
+			addConfigItem(new FILE_LINE(43334) cConfigItem_yesno("ipaccount", &opt_ipaccount));
+			addConfigItem(new FILE_LINE(43335) cConfigItem_ports("ipaccountport", ipaccountportmatrix));
+			addConfigItem(new FILE_LINE(43336) cConfigItem_integer("ipaccount_interval", &opt_ipacc_interval));
+			addConfigItem(new FILE_LINE(43337) cConfigItem_integer("ipaccount_only_agregation", &opt_ipacc_only_agregation));
 				expert();
-				addConfigItem(new FILE_LINE(43337) cConfigItem_yesno("ipaccount_sniffer_agregate", &opt_ipacc_sniffer_agregate));
-				addConfigItem(new FILE_LINE(43338) cConfigItem_yesno("ipaccount_agregate_only_customers_on_main_side", &opt_ipacc_agregate_only_customers_on_main_side));
-				addConfigItem(new FILE_LINE(43339) cConfigItem_yesno("ipaccount_agregate_only_customers_on_any_side", &opt_ipacc_agregate_only_customers_on_any_side));
+				addConfigItem(new FILE_LINE(43338) cConfigItem_yesno("ipaccount_sniffer_agregate", &opt_ipacc_sniffer_agregate));
+				addConfigItem(new FILE_LINE(43339) cConfigItem_yesno("ipaccount_agregate_only_customers_on_main_side", &opt_ipacc_agregate_only_customers_on_main_side));
+				addConfigItem(new FILE_LINE(43340) cConfigItem_yesno("ipaccount_agregate_only_customers_on_any_side", &opt_ipacc_agregate_only_customers_on_any_side));
 
 	minorGroupIfNotSetBegin();
 	group("http");
 			advanced();
-			addConfigItem((new FILE_LINE(43340) cConfigItem_yesno("http", &opt_enable_http))
+			addConfigItem((new FILE_LINE(43341) cConfigItem_yesno("http", &opt_enable_http))
 				->addValue("only", 2)
 				->addAlias("tcpreassembly"));
-			addConfigItem(new FILE_LINE(43341) cConfigItem_ports("httpport", httpportmatrix));
-			addConfigItem(new FILE_LINE(43342) cConfigItem_hosts("httpip", &httpip, &httpnet));
+			addConfigItem(new FILE_LINE(43342) cConfigItem_ports("httpport", httpportmatrix));
+			addConfigItem(new FILE_LINE(43343) cConfigItem_hosts("httpip", &httpip, &httpnet));
 				expert();
-				addConfigItem((new FILE_LINE(43343) cConfigItem_yesno("enable_http_enum_tables", &opt_enable_http_enum_tables))
+				addConfigItem((new FILE_LINE(43344) cConfigItem_yesno("enable_http_enum_tables", &opt_enable_http_enum_tables))
 					->addAlias("enable_lua_tables"));
 	group("webrtc");
 			advanced();
-			addConfigItem((new FILE_LINE(43344) cConfigItem_yesno("webrtc", &opt_enable_webrtc))
+			addConfigItem((new FILE_LINE(43345) cConfigItem_yesno("webrtc", &opt_enable_webrtc))
 				->addValue("only", 2));
-			addConfigItem(new FILE_LINE(43345) cConfigItem_ports("webrtcport", webrtcportmatrix));
-			addConfigItem(new FILE_LINE(43346) cConfigItem_hosts("webrtcip", &webrtcip, &webrtcnet));
+			addConfigItem(new FILE_LINE(43346) cConfigItem_ports("webrtcport", webrtcportmatrix));
+			addConfigItem(new FILE_LINE(43347) cConfigItem_hosts("webrtcip", &webrtcip, &webrtcnet));
 				expert();
-				addConfigItem(new FILE_LINE(43347) cConfigItem_yesno("enable_webrtc_table", &opt_enable_webrtc_table));
+				addConfigItem(new FILE_LINE(43348) cConfigItem_yesno("enable_webrtc_table", &opt_enable_webrtc_table));
 	group("ipaccount extended");
 				expert();
-				addConfigItem(new FILE_LINE(43348) cConfigItem_string("get_customer_by_ip_sql_driver", get_customer_by_ip_sql_driver, sizeof(get_customer_by_ip_sql_driver)));
-				addConfigItem(new FILE_LINE(43349) cConfigItem_string("get_customer_by_ip_odbc_dsn", get_customer_by_ip_odbc_dsn, sizeof(get_customer_by_ip_odbc_dsn)));
-				addConfigItem(new FILE_LINE(43350) cConfigItem_string("get_customer_by_ip_odbc_user", get_customer_by_ip_odbc_user, sizeof(get_customer_by_ip_odbc_user)));
-				addConfigItem(new FILE_LINE(43351) cConfigItem_string("get_customer_by_ip_odbc_password", get_customer_by_ip_odbc_password, sizeof(get_customer_by_ip_odbc_password)));
-				addConfigItem(new FILE_LINE(43352) cConfigItem_string("get_customer_by_ip_odbc_driver", get_customer_by_ip_odbc_driver, sizeof(get_customer_by_ip_odbc_driver)));
-				addConfigItem(new FILE_LINE(43353) cConfigItem_string("get_customer_by_ip_query", get_customer_by_ip_query, sizeof(get_customer_by_ip_query)));
-				addConfigItem(new FILE_LINE(43354) cConfigItem_string("get_customers_ip_query", get_customers_ip_query, sizeof(get_customers_ip_query)));
-				addConfigItem(new FILE_LINE(43355) cConfigItem_string("get_customers_radius_name_query", get_customers_radius_name_query, sizeof(get_customers_radius_name_query)));
-				addConfigItem(new FILE_LINE(43356) cConfigItem_string("get_customer_by_pn_sql_driver", get_customer_by_pn_sql_driver, sizeof(get_customer_by_pn_sql_driver)));
-				addConfigItem(new FILE_LINE(43357) cConfigItem_string("get_customer_by_pn_odbc_dsn", get_customer_by_pn_odbc_dsn, sizeof(get_customer_by_pn_odbc_dsn)));
-				addConfigItem(new FILE_LINE(43358) cConfigItem_string("get_customer_by_pn_odbc_user", get_customer_by_pn_odbc_user, sizeof(get_customer_by_pn_odbc_user)));
-				addConfigItem(new FILE_LINE(43359) cConfigItem_string("get_customer_by_pn_odbc_password", get_customer_by_pn_odbc_password, sizeof(get_customer_by_pn_odbc_password)));
-				addConfigItem(new FILE_LINE(43360) cConfigItem_string("get_customer_by_pn_odbc_driver", get_customer_by_pn_odbc_driver, sizeof(get_customer_by_pn_odbc_driver)));
-				addConfigItem(new FILE_LINE(43361) cConfigItem_string("get_customers_pn_query", get_customers_pn_query, sizeof(get_customers_pn_query)));
-				addConfigItem(new FILE_LINE(43362) cConfigItem_string("national_prefix", &opt_national_prefix));
-				addConfigItem(new FILE_LINE(43363) cConfigItem_string("get_radius_ip_driver", get_radius_ip_driver, sizeof(get_radius_ip_driver)));
-				addConfigItem(new FILE_LINE(43364) cConfigItem_string("get_radius_ip_host", get_radius_ip_host, sizeof(get_radius_ip_host)));
-				addConfigItem(new FILE_LINE(43365) cConfigItem_string("get_radius_ip_db", get_radius_ip_db, sizeof(get_radius_ip_db)));
-				addConfigItem(new FILE_LINE(43366) cConfigItem_string("get_radius_ip_user", get_radius_ip_user, sizeof(get_radius_ip_user)));
-				addConfigItem(new FILE_LINE(43367) cConfigItem_string("get_radius_ip_password", get_radius_ip_password, sizeof(get_radius_ip_password)));
-				addConfigItem(new FILE_LINE(43368) cConfigItem_yesno("get_radius_ip_disable_secure_auth", &get_radius_ip_disable_secure_auth));
-				addConfigItem(new FILE_LINE(43369) cConfigItem_string("get_radius_ip_query", get_radius_ip_query, sizeof(get_radius_ip_query)));
-				addConfigItem(new FILE_LINE(43370) cConfigItem_string("get_radius_ip_query_where", get_radius_ip_query_where, sizeof(get_radius_ip_query_where)));
-				addConfigItem(new FILE_LINE(43371) cConfigItem_integer("get_customer_by_ip_flush_period", &get_customer_by_ip_flush_period));
+				addConfigItem(new FILE_LINE(43349) cConfigItem_string("get_customer_by_ip_sql_driver", get_customer_by_ip_sql_driver, sizeof(get_customer_by_ip_sql_driver)));
+				addConfigItem(new FILE_LINE(43350) cConfigItem_string("get_customer_by_ip_odbc_dsn", get_customer_by_ip_odbc_dsn, sizeof(get_customer_by_ip_odbc_dsn)));
+				addConfigItem(new FILE_LINE(43351) cConfigItem_string("get_customer_by_ip_odbc_user", get_customer_by_ip_odbc_user, sizeof(get_customer_by_ip_odbc_user)));
+				addConfigItem(new FILE_LINE(43352) cConfigItem_string("get_customer_by_ip_odbc_password", get_customer_by_ip_odbc_password, sizeof(get_customer_by_ip_odbc_password)));
+				addConfigItem(new FILE_LINE(43353) cConfigItem_string("get_customer_by_ip_odbc_driver", get_customer_by_ip_odbc_driver, sizeof(get_customer_by_ip_odbc_driver)));
+				addConfigItem(new FILE_LINE(43354) cConfigItem_string("get_customer_by_ip_query", get_customer_by_ip_query, sizeof(get_customer_by_ip_query)));
+				addConfigItem(new FILE_LINE(43355) cConfigItem_string("get_customers_ip_query", get_customers_ip_query, sizeof(get_customers_ip_query)));
+				addConfigItem(new FILE_LINE(43356) cConfigItem_string("get_customers_radius_name_query", get_customers_radius_name_query, sizeof(get_customers_radius_name_query)));
+				addConfigItem(new FILE_LINE(43357) cConfigItem_string("get_customer_by_pn_sql_driver", get_customer_by_pn_sql_driver, sizeof(get_customer_by_pn_sql_driver)));
+				addConfigItem(new FILE_LINE(43358) cConfigItem_string("get_customer_by_pn_odbc_dsn", get_customer_by_pn_odbc_dsn, sizeof(get_customer_by_pn_odbc_dsn)));
+				addConfigItem(new FILE_LINE(43359) cConfigItem_string("get_customer_by_pn_odbc_user", get_customer_by_pn_odbc_user, sizeof(get_customer_by_pn_odbc_user)));
+				addConfigItem(new FILE_LINE(43360) cConfigItem_string("get_customer_by_pn_odbc_password", get_customer_by_pn_odbc_password, sizeof(get_customer_by_pn_odbc_password)));
+				addConfigItem(new FILE_LINE(43361) cConfigItem_string("get_customer_by_pn_odbc_driver", get_customer_by_pn_odbc_driver, sizeof(get_customer_by_pn_odbc_driver)));
+				addConfigItem(new FILE_LINE(43362) cConfigItem_string("get_customers_pn_query", get_customers_pn_query, sizeof(get_customers_pn_query)));
+				addConfigItem(new FILE_LINE(43363) cConfigItem_string("national_prefix", &opt_national_prefix));
+				addConfigItem(new FILE_LINE(43364) cConfigItem_string("get_radius_ip_driver", get_radius_ip_driver, sizeof(get_radius_ip_driver)));
+				addConfigItem(new FILE_LINE(43365) cConfigItem_string("get_radius_ip_host", get_radius_ip_host, sizeof(get_radius_ip_host)));
+				addConfigItem(new FILE_LINE(43366) cConfigItem_string("get_radius_ip_db", get_radius_ip_db, sizeof(get_radius_ip_db)));
+				addConfigItem(new FILE_LINE(43367) cConfigItem_string("get_radius_ip_user", get_radius_ip_user, sizeof(get_radius_ip_user)));
+				addConfigItem(new FILE_LINE(43368) cConfigItem_string("get_radius_ip_password", get_radius_ip_password, sizeof(get_radius_ip_password)));
+				addConfigItem(new FILE_LINE(43369) cConfigItem_yesno("get_radius_ip_disable_secure_auth", &get_radius_ip_disable_secure_auth));
+				addConfigItem(new FILE_LINE(43370) cConfigItem_string("get_radius_ip_query", get_radius_ip_query, sizeof(get_radius_ip_query)));
+				addConfigItem(new FILE_LINE(43371) cConfigItem_string("get_radius_ip_query_where", get_radius_ip_query_where, sizeof(get_radius_ip_query_where)));
+				addConfigItem(new FILE_LINE(43372) cConfigItem_integer("get_customer_by_ip_flush_period", &get_customer_by_ip_flush_period));
 	minorGroupIfNotSetEnd();
 
 	minorBegin();
 	group("other");
 		subgroup("sensor id");
-			addConfigItem((new FILE_LINE(43372) cConfigItem_integer("id_sensor", &opt_id_sensor))
+			addConfigItem((new FILE_LINE(43373) cConfigItem_integer("id_sensor", &opt_id_sensor))
 				->setReadOnly());
-			addConfigItem(new FILE_LINE(43373) cConfigItem_string("name_sensor", opt_name_sensor, sizeof(opt_name_sensor)));
+			addConfigItem(new FILE_LINE(43374) cConfigItem_string("name_sensor", opt_name_sensor, sizeof(opt_name_sensor)));
 				advanced();
-				addConfigItem(new FILE_LINE(43374) cConfigItem_yesno("spooldir_by_sensor", &opt_spooldir_by_sensor));
+				addConfigItem(new FILE_LINE(43375) cConfigItem_yesno("spooldir_by_sensor", &opt_spooldir_by_sensor));
 					expert();
-					addConfigItem(new FILE_LINE(43375) cConfigItem_yesno("spooldir_by_sensorname", &opt_spooldir_by_sensorname));
+					addConfigItem(new FILE_LINE(43376) cConfigItem_yesno("spooldir_by_sensorname", &opt_spooldir_by_sensorname));
 		subgroup("sql");
-			addConfigItem(new FILE_LINE(43376) cConfigItem_string("mysqldb", mysql_database, sizeof(mysql_database)));
+			addConfigItem(new FILE_LINE(43377) cConfigItem_string("mysqldb", mysql_database, sizeof(mysql_database)));
 				advanced();
-				addConfigItem(new FILE_LINE(43377) cConfigItem_string("mysqldb_2", mysql_2_database, sizeof(mysql_2_database)));
-				addConfigItem(new FILE_LINE(43378) cConfigItem_yesno("mysql_client_compress", &opt_mysql_client_compress));
+				addConfigItem(new FILE_LINE(43378) cConfigItem_string("mysqldb_2", mysql_2_database, sizeof(mysql_2_database)));
+				addConfigItem(new FILE_LINE(43379) cConfigItem_yesno("mysql_client_compress", &opt_mysql_client_compress));
 					expert();
-					addConfigItem(new FILE_LINE(43379) cConfigItem_string("odbcdsn", odbc_dsn, sizeof(odbc_dsn)));
-					addConfigItem(new FILE_LINE(43380) cConfigItem_string("odbcuser", odbc_user, sizeof(odbc_user)));
-					addConfigItem(new FILE_LINE(43381) cConfigItem_string("odbcpass", odbc_password, sizeof(odbc_password)));
-					addConfigItem(new FILE_LINE(43382) cConfigItem_string("odbcdriver", odbc_driver, sizeof(odbc_driver)));
-					addConfigItem(new FILE_LINE(43383) cConfigItem_yesno("cdr_partition", &opt_cdr_partition));
-					addConfigItem(new FILE_LINE(43384) cConfigItem_yesno("save_query_to_files", &opt_save_query_to_files));
-					addConfigItem(new FILE_LINE(43385) cConfigItem_string("save_query_to_files_directory", opt_save_query_to_files_directory, sizeof(opt_save_query_to_files_directory)));
-					addConfigItem(new FILE_LINE(43386) cConfigItem_integer("save_query_to_files_period", &opt_save_query_to_files_period));
-					addConfigItem((new FILE_LINE(43387) cConfigItem_yesno("load_query_from_files", &opt_load_query_from_files))
+					addConfigItem(new FILE_LINE(43380) cConfigItem_string("odbcdsn", odbc_dsn, sizeof(odbc_dsn)));
+					addConfigItem(new FILE_LINE(43381) cConfigItem_string("odbcuser", odbc_user, sizeof(odbc_user)));
+					addConfigItem(new FILE_LINE(43382) cConfigItem_string("odbcpass", odbc_password, sizeof(odbc_password)));
+					addConfigItem(new FILE_LINE(43383) cConfigItem_string("odbcdriver", odbc_driver, sizeof(odbc_driver)));
+					addConfigItem(new FILE_LINE(43384) cConfigItem_yesno("cdr_partition", &opt_cdr_partition));
+					addConfigItem(new FILE_LINE(43385) cConfigItem_yesno("save_query_to_files", &opt_save_query_to_files));
+					addConfigItem(new FILE_LINE(43386) cConfigItem_string("save_query_to_files_directory", opt_save_query_to_files_directory, sizeof(opt_save_query_to_files_directory)));
+					addConfigItem(new FILE_LINE(43387) cConfigItem_integer("save_query_to_files_period", &opt_save_query_to_files_period));
+					addConfigItem((new FILE_LINE(43388) cConfigItem_yesno("load_query_from_files", &opt_load_query_from_files))
 						->addValue("only", 2));
-					addConfigItem(new FILE_LINE(43388) cConfigItem_string("load_query_from_files_directory", opt_load_query_from_files_directory, sizeof(opt_load_query_from_files_directory)));
-					addConfigItem(new FILE_LINE(43389) cConfigItem_integer("load_query_from_files_period", &opt_load_query_from_files_period));
-					addConfigItem(new FILE_LINE(43390) cConfigItem_yesno("load_query_from_files_inotify", &opt_load_query_from_files_inotify));
-					addConfigItem(new FILE_LINE(43391) cConfigItem_yesno("mysqlloadconfig", &opt_mysqlloadconfig));
+					addConfigItem(new FILE_LINE(43389) cConfigItem_string("load_query_from_files_directory", opt_load_query_from_files_directory, sizeof(opt_load_query_from_files_directory)));
+					addConfigItem(new FILE_LINE(43390) cConfigItem_integer("load_query_from_files_period", &opt_load_query_from_files_period));
+					addConfigItem(new FILE_LINE(43391) cConfigItem_yesno("load_query_from_files_inotify", &opt_load_query_from_files_inotify));
+					addConfigItem(new FILE_LINE(43392) cConfigItem_yesno("mysqlloadconfig", &opt_mysqlloadconfig));
 						obsolete();
-						addConfigItem((new FILE_LINE(43392) cConfigItem_custom_headers("custom_headers_cdr", &opt_custom_headers_cdr))
+						addConfigItem((new FILE_LINE(43393) cConfigItem_custom_headers("custom_headers_cdr", &opt_custom_headers_cdr))
 							->addAlias("custom_headers"));
-						addConfigItem(new FILE_LINE(43393) cConfigItem_custom_headers("custom_headers_message", &opt_custom_headers_message));
-						addConfigItem(new FILE_LINE(43394) cConfigItem_string("sqlcdrtable", sql_cdr_table, sizeof(sql_cdr_table)));
-						addConfigItem(new FILE_LINE(43395) cConfigItem_string("sqlcdrtable_last30d", sql_cdr_table_last30d, sizeof(sql_cdr_table_last30d)));
-						addConfigItem(new FILE_LINE(43396) cConfigItem_string("sqlcdrtable_last7d", sql_cdr_table_last7d, sizeof(sql_cdr_table_last1d)));
-						addConfigItem(new FILE_LINE(43397) cConfigItem_string("sqlcdrtable_last1d", sql_cdr_table_last7d, sizeof(sql_cdr_table_last1d)));
-						addConfigItem((new FILE_LINE(43398) cConfigItem_string("sqlcdrnexttable", sql_cdr_next_table, sizeof(sql_cdr_next_table)))
+						addConfigItem(new FILE_LINE(43394) cConfigItem_custom_headers("custom_headers_message", &opt_custom_headers_message));
+						addConfigItem(new FILE_LINE(43395) cConfigItem_string("sqlcdrtable", sql_cdr_table, sizeof(sql_cdr_table)));
+						addConfigItem(new FILE_LINE(43396) cConfigItem_string("sqlcdrtable_last30d", sql_cdr_table_last30d, sizeof(sql_cdr_table_last30d)));
+						addConfigItem(new FILE_LINE(43397) cConfigItem_string("sqlcdrtable_last7d", sql_cdr_table_last7d, sizeof(sql_cdr_table_last1d)));
+						addConfigItem(new FILE_LINE(43398) cConfigItem_string("sqlcdrtable_last1d", sql_cdr_table_last7d, sizeof(sql_cdr_table_last1d)));
+						addConfigItem((new FILE_LINE(43399) cConfigItem_string("sqlcdrnexttable", sql_cdr_next_table, sizeof(sql_cdr_next_table)))
 							->addAlias("sqlcdr_next_table"));
-						addConfigItem((new FILE_LINE(43399) cConfigItem_string("sqlcdruatable", sql_cdr_ua_table, sizeof(sql_cdr_ua_table)))
+						addConfigItem((new FILE_LINE(43400) cConfigItem_string("sqlcdruatable", sql_cdr_ua_table, sizeof(sql_cdr_ua_table)))
 							->addAlias("sqlcdr_ua_table"));
-						addConfigItem((new FILE_LINE(43400) cConfigItem_string("sqlcdrsipresptable", sql_cdr_sip_response_table, sizeof(sql_cdr_sip_response_table)))
+						addConfigItem((new FILE_LINE(43401) cConfigItem_string("sqlcdrsipresptable", sql_cdr_sip_response_table, sizeof(sql_cdr_sip_response_table)))
 							->addAlias("sqlcdr_sipresp_table"));
 		subgroup("interface - read packets");
 					expert();
-					addConfigItem(new FILE_LINE(43401) cConfigItem_integer("rtp_qring_length", &rtp_qring_length));
-					addConfigItem(new FILE_LINE(43402) cConfigItem_integer("rtp_qring_usleep", &rtp_qring_usleep));
-					addConfigItem((new FILE_LINE(43403) cConfigItem_yesno("rtp_qring_quick", &rtp_qring_quick))
+					addConfigItem(new FILE_LINE(43402) cConfigItem_integer("rtp_qring_length", &rtp_qring_length));
+					addConfigItem(new FILE_LINE(43403) cConfigItem_integer("rtp_qring_usleep", &rtp_qring_usleep));
+					addConfigItem((new FILE_LINE(43404) cConfigItem_yesno("rtp_qring_quick", &rtp_qring_quick))
 						->addValue("boost", 2));
 		subgroup("mirroring");
 					expert();
-					addConfigItem(new FILE_LINE(43404) cConfigItem_yesno("mirrorip", &opt_mirrorip));
-					addConfigItem(new FILE_LINE(43405) cConfigItem_yesno("mirrorall", &opt_mirrorall));
-					addConfigItem(new FILE_LINE(43406) cConfigItem_yesno("mirroronly", &opt_mirroronly));
-					addConfigItem(new FILE_LINE(43407) cConfigItem_string("mirroripsrc", opt_mirrorip_src, sizeof(opt_mirrorip_src)));
-					addConfigItem(new FILE_LINE(43408) cConfigItem_string("mirroripdst", opt_mirrorip_dst, sizeof(opt_mirrorip_dst)));
+					addConfigItem(new FILE_LINE(43405) cConfigItem_yesno("mirrorip", &opt_mirrorip));
+					addConfigItem(new FILE_LINE(43406) cConfigItem_yesno("mirrorall", &opt_mirrorall));
+					addConfigItem(new FILE_LINE(43407) cConfigItem_yesno("mirroronly", &opt_mirroronly));
+					addConfigItem(new FILE_LINE(43408) cConfigItem_string("mirroripsrc", opt_mirrorip_src, sizeof(opt_mirrorip_src)));
+					addConfigItem(new FILE_LINE(43409) cConfigItem_string("mirroripdst", opt_mirrorip_dst, sizeof(opt_mirrorip_dst)));
 		subgroup("scanpcapdir");
 				advanced();
 				char scanpcapmethod_values[100];
 				sprintf(scanpcapmethod_values, "close:%i|moved:%i|r:%i", IN_CLOSE_WRITE, IN_MOVED_TO, IN_MOVED_TO);
-				addConfigItem((new FILE_LINE(43409) cConfigItem_yesno("scanpcapmethod"))
+				addConfigItem((new FILE_LINE(43410) cConfigItem_yesno("scanpcapmethod"))
 					->disableYes()
 					->disableNo()
 					->addValues(scanpcapmethod_values));
-				addConfigItem(new FILE_LINE(43410) cConfigItem_yesno("scanpcapdir_disable_inotify", &opt_scanpcapdir_disable_inotify));
+				addConfigItem(new FILE_LINE(43411) cConfigItem_yesno("scanpcapdir_disable_inotify", &opt_scanpcapdir_disable_inotify));
 		subgroup("manager");
 				advanced();
-				addConfigItem(new FILE_LINE(43411) cConfigItem_string("managerclient", opt_clientmanager, sizeof(opt_clientmanager)));
-				addConfigItem(new FILE_LINE(43412) cConfigItem_integer("managerclientport", &opt_clientmanagerport));
-				addConfigItem(new FILE_LINE(43413) cConfigItem_yesno("manager_nonblock_mode", &opt_manager_nonblock_mode));
+				addConfigItem(new FILE_LINE(43412) cConfigItem_string("managerclient", opt_clientmanager, sizeof(opt_clientmanager)));
+				addConfigItem(new FILE_LINE(43413) cConfigItem_integer("managerclientport", &opt_clientmanagerport));
+				addConfigItem(new FILE_LINE(43414) cConfigItem_yesno("manager_nonblock_mode", &opt_manager_nonblock_mode));
 					expert();
-					addConfigItem(new FILE_LINE(43414) cConfigItem_string("manager_sshhost", ssh_host, sizeof(ssh_host)));
-					addConfigItem(new FILE_LINE(43415) cConfigItem_integer("manager_sshport", &ssh_port));
-					addConfigItem(new FILE_LINE(43416) cConfigItem_string("manager_sshusername", ssh_username, sizeof(ssh_username)));
-					addConfigItem(new FILE_LINE(43417) cConfigItem_string("manager_sshpassword", ssh_password, sizeof(ssh_password)));
-					addConfigItem(new FILE_LINE(43418) cConfigItem_string("manager_sshremoteip", ssh_remote_listenhost, sizeof(ssh_remote_listenhost)));
-					addConfigItem(new FILE_LINE(43419) cConfigItem_integer("manager_sshremoteport", &ssh_remote_listenport));
+					addConfigItem(new FILE_LINE(43415) cConfigItem_string("manager_sshhost", ssh_host, sizeof(ssh_host)));
+					addConfigItem(new FILE_LINE(43416) cConfigItem_integer("manager_sshport", &ssh_port));
+					addConfigItem(new FILE_LINE(43417) cConfigItem_string("manager_sshusername", ssh_username, sizeof(ssh_username)));
+					addConfigItem(new FILE_LINE(43418) cConfigItem_string("manager_sshpassword", ssh_password, sizeof(ssh_password)));
+					addConfigItem(new FILE_LINE(43419) cConfigItem_string("manager_sshremoteip", ssh_remote_listenhost, sizeof(ssh_remote_listenhost)));
+					addConfigItem(new FILE_LINE(43420) cConfigItem_integer("manager_sshremoteport", &ssh_remote_listenport));
 		subgroup("spool - cleaning");
 						 obsolete();
-						 addConfigItem(new FILE_LINE(43420) cConfigItem_integer("cleanspool_size", &opt_cleanspool_sizeMB));
+						 addConfigItem(new FILE_LINE(43421) cConfigItem_integer("cleanspool_size", &opt_cleanspool_sizeMB));
 		subgroup("packetbuffer & memory");
 					expert();
-					addConfigItem((new FILE_LINE(43421) cConfigItem_integer("packetbuffer_total_maxheap", &opt_pcap_queue_store_queue_max_memory_size))
+					addConfigItem((new FILE_LINE(43422) cConfigItem_integer("packetbuffer_total_maxheap", &opt_pcap_queue_store_queue_max_memory_size))
 						->setMultiple(1024 * 1024));
-					addConfigItem((new FILE_LINE(43422) cConfigItem_yesno("packetbuffer_compress_method"))
+					addConfigItem((new FILE_LINE(43423) cConfigItem_yesno("packetbuffer_compress_method"))
 						->addValues("snappy:1|s:1|lz4:2|l:2")
 						->setDefaultValueStr("no"));
 						obsolete();
-						addConfigItem(new FILE_LINE(43423) cConfigItem_yesno("pcap_dispatch", &opt_pcap_dispatch));
+						addConfigItem(new FILE_LINE(43424) cConfigItem_yesno("pcap_dispatch", &opt_pcap_dispatch));
 		subgroup("storing packets into pcap files, graph, audio");
 					expert();
-					addConfigItem(new FILE_LINE(43424) cConfigItem_type_compress("pcap_dump_zip", (FileZipHandler::eTypeCompress*)NULL));
-					addConfigItem(new FILE_LINE(43425) cConfigItem_type_compress("pcap_dump_zip_all", (FileZipHandler::eTypeCompress*)NULL));
-					addConfigItem(new FILE_LINE(43426) cConfigItem_integer("pcap_dump_ziplevel"));
-					addConfigItem(new FILE_LINE(43427) cConfigItem_integer("pcap_dump_writethreads_max", &opt_pcap_dump_writethreads_max));
-					addConfigItem(new FILE_LINE(43428) cConfigItem_yesno("pcapsplit", &opt_pcap_split));
-					addConfigItem((new FILE_LINE(43429) cConfigItem_yesno("spooldiroldschema", &opt_newdir))
+					addConfigItem(new FILE_LINE(43425) cConfigItem_type_compress("pcap_dump_zip", (FileZipHandler::eTypeCompress*)NULL));
+					addConfigItem(new FILE_LINE(43426) cConfigItem_type_compress("pcap_dump_zip_all", (FileZipHandler::eTypeCompress*)NULL));
+					addConfigItem(new FILE_LINE(43427) cConfigItem_integer("pcap_dump_ziplevel"));
+					addConfigItem(new FILE_LINE(43428) cConfigItem_integer("pcap_dump_writethreads_max", &opt_pcap_dump_writethreads_max));
+					addConfigItem(new FILE_LINE(43429) cConfigItem_yesno("pcapsplit", &opt_pcap_split));
+					addConfigItem((new FILE_LINE(43430) cConfigItem_yesno("spooldiroldschema", &opt_newdir))
 						->setNeg());
-					addConfigItem((new FILE_LINE(43430) cConfigItem_integer("pcap_dump_asyncwrite_maxsize", &opt_pcap_dump_asyncwrite_maxsize))
+					addConfigItem((new FILE_LINE(43431) cConfigItem_integer("pcap_dump_asyncwrite_maxsize", &opt_pcap_dump_asyncwrite_maxsize))
 						->addAlias("pcap_dump_asyncbuffer"));
 		subgroup("cloud");
-			addConfigItem(new FILE_LINE(43431) cConfigItem_string("cloud_host", cloud_host, sizeof(cloud_host)));
-			addConfigItem(new FILE_LINE(43432) cConfigItem_string("cloud_url", cloud_url, sizeof(cloud_url)));
-			addConfigItem(new FILE_LINE(43433) cConfigItem_string("cloud_token", cloud_token, sizeof(cloud_token)));
-			addConfigItem(new FILE_LINE(43434) cConfigItem_integer("cloud_activecheck_period", &opt_cloud_activecheck_period));
-			addConfigItem(new FILE_LINE(43435) cConfigItem_string("cloud_url_activecheck", cloud_url_activecheck, sizeof(cloud_url_activecheck)));
+			addConfigItem(new FILE_LINE(43432) cConfigItem_string("cloud_host", cloud_host, sizeof(cloud_host)));
+			addConfigItem(new FILE_LINE(43433) cConfigItem_string("cloud_url", cloud_url, sizeof(cloud_url)));
+			addConfigItem(new FILE_LINE(43434) cConfigItem_string("cloud_token", cloud_token, sizeof(cloud_token)));
+			addConfigItem(new FILE_LINE(43435) cConfigItem_integer("cloud_activecheck_period", &opt_cloud_activecheck_period));
+			addConfigItem(new FILE_LINE(43436) cConfigItem_string("cloud_url_activecheck", cloud_url_activecheck, sizeof(cloud_url_activecheck)));
 		subgroup("other");
-			addConfigItem(new FILE_LINE(43436) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
+			addConfigItem(new FILE_LINE(43437) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 				advanced();
-				addConfigItem(new FILE_LINE(43437) cConfigItem_yesno("printinsertid", &opt_printinsertid));
-				addConfigItem(new FILE_LINE(43438) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
-				addConfigItem(new FILE_LINE(43439) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
+				addConfigItem(new FILE_LINE(43438) cConfigItem_yesno("printinsertid", &opt_printinsertid));
+				addConfigItem(new FILE_LINE(43439) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
+				addConfigItem(new FILE_LINE(43440) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 					expert();
-					addConfigItem(new FILE_LINE(43440) cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
+					addConfigItem(new FILE_LINE(43441) cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
 						obsolete();
-						addConfigItem(new FILE_LINE(43441) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
+						addConfigItem(new FILE_LINE(43442) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 	minorEnd();
 	
 	setDefaultValues();
@@ -5508,7 +5510,7 @@ void get_command_line_arguments() {
 		int c = iter->first;
 		char *optarg = NULL;
 		if(iter->second.length()) {
-			optarg = new FILE_LINE(43442) char[iter->second.length() + 10];
+			optarg = new FILE_LINE(43443) char[iter->second.length() + 10];
 			strcpy(optarg, iter->second.c_str());
 		}
 		switch (c) {
@@ -5525,25 +5527,25 @@ void get_command_line_arguments() {
 				break;
 			case 202:
 				if(!opt_untar_gui_params) {
-					opt_untar_gui_params = new FILE_LINE(43443) char[strlen(optarg) + 1];
+					opt_untar_gui_params = new FILE_LINE(43444) char[strlen(optarg) + 1];
 					strcpy(opt_untar_gui_params, optarg);
 				}
 				break;
 			case 205:
 				if(!opt_unlzo_gui_params) {
-					opt_unlzo_gui_params = new FILE_LINE(43444) char[strlen(optarg) + 1];
+					opt_unlzo_gui_params = new FILE_LINE(43445) char[strlen(optarg) + 1];
 					strcpy(opt_unlzo_gui_params, optarg);
 				}
 				break;
 			case 206:
 				if(!opt_waveform_gui_params) {
-					opt_waveform_gui_params =  new FILE_LINE(43445) char[strlen(optarg) + 1];
+					opt_waveform_gui_params =  new FILE_LINE(43446) char[strlen(optarg) + 1];
 					strcpy(opt_waveform_gui_params, optarg);
 				}
 				break;
 			case 207:
 				if(!opt_spectrogram_gui_params) {
-					opt_spectrogram_gui_params =  new FILE_LINE(43446) char[strlen(optarg) + 1];
+					opt_spectrogram_gui_params =  new FILE_LINE(43447) char[strlen(optarg) + 1];
 					strcpy(opt_spectrogram_gui_params, optarg);
 				}
 				break;
@@ -6446,7 +6448,7 @@ int eval_config(string inistr) {
 		// reset default port 
 		for (; i != values.end(); ++i) {
 			if(!ipaccountportmatrix) {
-				ipaccountportmatrix = new FILE_LINE(43447) char[65537];
+				ipaccountportmatrix = new FILE_LINE(43448) char[65537];
 				memset(ipaccountportmatrix, 0, 65537);
 			}
 			ipaccountportmatrix[atoi(i->pItem)] = 1;
@@ -7413,6 +7415,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mirror_nonblock_mode", NULL))) {
 		opt_pcap_queues_mirror_nonblock_mode = yesno(value);
 	}
+	if((value = ini.GetValue("general", "mirror_require_confirmation", NULL))) {
+		opt_pcap_queues_mirror_require_confirmation = yesno(value);
+	}
 	
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
@@ -7982,7 +7987,7 @@ int load_config(char *fname) {
 					fclose(fp);
 					return 0;
 				}
-				char * pData = new FILE_LINE(43448) char[lSize + 10];	//adding "[general]\n" on top
+				char * pData = new FILE_LINE(43449) char[lSize + 10];	//adding "[general]\n" on top
 				if (!pData) {
 					fclose(fp);
 					printf("ERROR\n");

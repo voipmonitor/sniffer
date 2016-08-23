@@ -14,7 +14,7 @@
 
 #define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_store"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
-#define PCAP_BLOCK_STORE_HEADER_VERSION		1
+#define PCAP_BLOCK_STORE_HEADER_VERSION		2
 
 
 extern int opt_enable_http;
@@ -135,6 +135,7 @@ struct pcap_block_store {
 	};
 	struct pcap_block_store_header {
 		pcap_block_store_header() {
+			extern bool opt_pcap_queues_mirror_require_confirmation;
 			strncpy(this->title, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
 			this->version = PCAP_BLOCK_STORE_HEADER_VERSION;
 			this->hm = plus;
@@ -146,6 +147,7 @@ struct pcap_block_store {
 			memset(this->ifname, 0, sizeof(this->ifname));
 			this->crc = 0;
 			this->counter = 0;
+			this->require_confirmation = opt_pcap_queues_mirror_require_confirmation;
 		}
 		char title[PCAP_BLOCK_STORE_HEADER_STRING_LEN];
 		uint8_t version;
@@ -158,6 +160,7 @@ struct pcap_block_store {
 		int8_t hm;
 		uint32_t crc;
 		uint32_t counter;
+		uint8_t require_confirmation;
 	};
 	pcap_block_store(header_mode hm = plus) {
 		this->hm = hm;
@@ -309,6 +312,7 @@ struct pcap_block_store {
 	uint32_t sensor_ip;
 	char ifname[10];
 	u_int32_t block_counter;
+	bool require_confirmation;
 	u_char *restoreBuffer;
 	size_t restoreBufferSize;
 	size_t restoreBufferAllocSize;

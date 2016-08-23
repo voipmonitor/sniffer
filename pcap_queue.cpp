@@ -192,6 +192,7 @@ int opt_pcap_queue_use_blocks_read_check		= 1;
 int opt_pcap_dispatch					= 0;
 int opt_pcap_queue_suppress_t1_thread			= 0;
 bool opt_pcap_queues_mirror_nonblock_mode 		= true;
+bool opt_pcap_queues_mirror_require_confirmation	= true;
 
 size_t _opt_pcap_queue_block_offset_init_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE * 1.1;
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
@@ -478,6 +479,7 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	this->sensor_id = header->sensor_id;
 	strncpy(this->ifname, header->ifname, sizeof(header->ifname));
 	this->block_counter = header->counter;
+	this->require_confirmation = header->require_confirmation;
 	if(this->offsets) {
 		delete [] this->offsets;
 	}
@@ -5142,6 +5144,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				bool detectSensorTime = false;
 				bufferLen = 0;
 				offsetBufferSyncRead = 0;
+				int require_confirmation = -1;
 				while(!TERMINATING && !forceStop) {
 					readLen = bufferSize;
 					if(!this->socketRead(buffer + offsetBufferSyncRead, &readLen, arg2)) {
@@ -5270,7 +5273,11 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								} else if(!blockStore->size_compress && !blockStore->check_headers()) {
 									error = "bad headers";
 								} else {
-									if(send(this->packetServerConnections[arg2]->socketClient, "block_ok", 8, 0) != 8) {
+									if(require_confirmation < 0) {
+										require_confirmation = blockStore->require_confirmation;
+									}
+									if(require_confirmation > 0 &&
+									   send(this->packetServerConnections[arg2]->socketClient, "block_ok", 8, 0) != 8) {
 										error = "send ok to sender failed";
 									} else {
 										if(this->packetServerConnections[arg2]->block_counter == blockStore->block_counter) {
@@ -5327,7 +5334,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								offsetBuffer = bufferLen;
 							}
 							if(error) {
-								send(this->packetServerConnections[arg2]->socketClient, error, strlen(error), 0);
+								if(require_confirmation > 0) {
+									send(this->packetServerConnections[arg2]->socketClient, error, strlen(error), 0);
+								}
 								blockStore->destroyRestoreBuffer();
 								syncBeginBlock = true;
 								u_long actTimeMS = getTimeMS();
@@ -5879,19 +5888,23 @@ bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) 
 		rslt = this->socketWrite(saveBuffer, sizeSaveBuffer);
 		delete [] saveBuffer;
 		if(rslt) {
-			char recv_data[100] = "";
-			size_t recv_data_len = sizeof(recv_data);
-			bool rsltRead = this->_socketRead(this->socketHandle, (u_char*)recv_data, &recv_data_len, 4);
-			if(rsltRead && recv_data_len > 0) {
-				if(!memcmp(recv_data, "block_ok", 8)) {
-					break;
+			if(opt_pcap_queues_mirror_require_confirmation) {
+				char recv_data[100] = "";
+				size_t recv_data_len = sizeof(recv_data);
+				bool rsltRead = this->_socketRead(this->socketHandle, (u_char*)recv_data, &recv_data_len, 4);
+				if(rsltRead && recv_data_len > 0) {
+					if(!memcmp(recv_data, "block_ok", 8)) {
+						break;
+					} else {
+						syslog(LOG_ERR, "response from receiver: %s - try send block again", string(recv_data, recv_data_len).c_str());
+						sleep(1);
+					}
 				} else {
-					syslog(LOG_ERR, "response from receiver: %s - try send block again", string(recv_data, recv_data_len).c_str());
+					syslog(LOG_ERR, "unknown response from receiver - try send block again");
 					sleep(1);
 				}
 			} else {
-				syslog(LOG_ERR, "unknown response from receiver - try send block again");
-				sleep(1);
+				break;
 			}
 		}
 	}
