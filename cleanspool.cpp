@@ -704,7 +704,7 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 	string spool_fileindex = getSpoolDir_string() + "/filesindex/" + filesIndexDirName + '/' + ymdh;
 	ofstream *spool_fileindex_stream = NULL;
 	if(!readOnly) {
-		spool_fileindex_stream = new FILE_LINE ofstream(spool_fileindex.c_str(), ios::trunc | ios::out);
+		spool_fileindex_stream = new FILE_LINE(2001) ofstream(spool_fileindex.c_str(), ios::trunc | ios::out);
 	}
 	extern TarQueue *tarQueue[2];
 	list<string> listOpenTars;
@@ -2691,10 +2691,10 @@ long long reindex_date_hour(string date, int h, bool readOnly, map<string, long 
 	ofstream *graphfile = NULL;
 	ofstream *audiofile = NULL;
 	if(!readOnly) {
-		sipfile = new FILE_LINE ofstream((string("filesindex/sipsize/") + ymdh).c_str(), ios::trunc | ios::out);
-		rtpfile = new FILE_LINE ofstream((string("filesindex/rtpsize/") + ymdh).c_str(), ios::trunc | ios::out);
-		graphfile = new FILE_LINE ofstream((string("filesindex/graphsize/") + ymdh).c_str(), ios::trunc | ios::out);
-		audiofile = new FILE_LINE ofstream((string("filesindex/audiosize/") + ymdh).c_str(), ios::trunc | ios::out);
+		sipfile = new FILE_LINE(2002) ofstream((string("filesindex/sipsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		rtpfile = new FILE_LINE(2003) ofstream((string("filesindex/rtpsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		graphfile = new FILE_LINE(2004) ofstream((string("filesindex/graphsize/") + ymdh).c_str(), ios::trunc | ios::out);
+		audiofile = new FILE_LINE(2005) ofstream((string("filesindex/audiosize/") + ymdh).c_str(), ios::trunc | ios::out);
 	}
 
 	long long sipsize = 0;

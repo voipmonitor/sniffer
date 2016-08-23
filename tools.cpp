@@ -656,7 +656,7 @@ CircularBuffer::CircularBuffer(size_t capacity)
 	, size_(0)
 	, capacity_(capacity)
 {
-	data_ = new FILE_LINE char[capacity];
+	data_ = new FILE_LINE(39001) char[capacity];
 }
 
 CircularBuffer::~CircularBuffer()
@@ -812,7 +812,7 @@ string GetFileMD5(std::string filename) {
 	}
 	MD5_CTX ctx;
 	MD5_Init(&ctx);
-	char *fileBuffer = new FILE_LINE char[fileSize];
+	char *fileBuffer = new FILE_LINE(39002) char[fileSize];
 	fread(fileBuffer, 1, fileSize, fileHandle);
 	fclose(fileHandle);
 	MD5_Update(&ctx, fileBuffer, fileSize);
@@ -1144,7 +1144,7 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 		}
 	}
 	*/
-	this->handle = new FILE_LINE FileZipHandler(opt_pcap_dump_bufflength, this->_asyncwrite, opt_gzipGRAPH,
+	this->handle = new FILE_LINE(39003) FileZipHandler(opt_pcap_dump_bufflength, this->_asyncwrite, opt_gzipGRAPH,
 						    false, rtp && rtp->call_owner ? (Call*)rtp->call_owner : 0,
 						    FileZipHandler::graph_rtp);
 	if(!this->handle->open(fileName)) {
@@ -1561,7 +1561,7 @@ bool RestartUpgrade::runUpgrade() {
 		FILE *fileHandle = fopen(outputStdoutErr, "r");
 		if(fileHandle) {
 			size_t sizeOfOutputWgetBuffer = 10000;
-			char *outputStdoutErrBuffer = new FILE_LINE char[sizeOfOutputWgetBuffer];
+			char *outputStdoutErrBuffer = new FILE_LINE(39004) char[sizeOfOutputWgetBuffer];
 			size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
 			if(readSize > 0) {
 				outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer - 1)] = 0;
@@ -2147,7 +2147,7 @@ void GroupsIP::load() {
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
 		unsigned id = atoi(row["id"].c_str());
-		GroupIP *group = new FILE_LINE GroupIP(id, row["descr"].c_str(), row["ip"].c_str());
+		GroupIP *group = new FILE_LINE(39005) GroupIP(id, row["descr"].c_str(), row["ip"].c_str());
 		groups[id] = group;
 	}
 	delete sqlDb;
@@ -2360,7 +2360,7 @@ void ParsePacket::ppNode::addNode(const char *nodeName, eTypeNode typeNode, int 
 		}
 		ppNode *node = (ppNode*)nodes[nodeChar];
 		if(!node) {
-			node = new FILE_LINE ppNode;
+			node = new FILE_LINE(39006) ppNode;
 		}
 		node->addNode(nodeName + 1, typeNode, nodeIndex, isContentLength);
 		if(!nodes[nodeChar]) {
@@ -2411,10 +2411,10 @@ ParsePacket::~ParsePacket() {
 	
 void ParsePacket::setStdParse() {
 	if(!root) {
-		root = new FILE_LINE ppNode;
+		root = new FILE_LINE(39007) ppNode;
 	}
 	if(!rootCheckSip) {
-		rootCheckSip = new FILE_LINE ppNode;
+		rootCheckSip = new FILE_LINE(39008) ppNode;
 	}
 	addNode("content-length:", typeNode_std, true);
 	addNode("l:", typeNode_std, true);
@@ -2567,7 +2567,7 @@ void ParsePacket::addNode(const char *nodeName, eTypeNode typeNode, bool isConte
 		if(listNodes->size() < (typeNode == typeNode_std ? ParsePacket_std_max : ParsePacket_custom_max)) {
 			listNodes->push_back(nodeNameUpper);
 			if(!root) {
-				root = new FILE_LINE ppNode;
+				root = new FILE_LINE(39009) ppNode;
 			}
 			root->addNode(nodeName, typeNode, listNodes->size() - 1, isContentLength);
 		} else {
@@ -2580,7 +2580,7 @@ void ParsePacket::addNodeCheckSip(const char *nodeName) {
 	if(std::find(nodesCheckSip.begin(), nodesCheckSip.end(), nodeName) == nodesCheckSip.end()) {
 		nodesCheckSip.push_back(nodeName);
 		if(!rootCheckSip) {
-			rootCheckSip = new FILE_LINE ppNode;
+			rootCheckSip = new FILE_LINE(39010) ppNode;
 		}
 		rootCheckSip->addNode(nodeName, typeNode_checkSip, nodesCheckSip.size() - 1, false);
 	}
@@ -2904,7 +2904,7 @@ void JsonExport::add(const char *name, string content) {
 }
 
 void JsonExport::add(const char *name, const char *content) {
-	JsonExport_template<string> *item = new FILE_LINE JsonExport_template<string>;
+	JsonExport_template<string> *item = new FILE_LINE(39011) JsonExport_template<string>;
 	item->setTypeItem(_string);
 	item->setName(name);
 	item->setContent(string(content));
@@ -2912,7 +2912,7 @@ void JsonExport::add(const char *name, const char *content) {
 }
 
 void JsonExport::add(const char *name, u_int64_t content) {
-	JsonExport_template<u_int64_t> *item = new FILE_LINE JsonExport_template<u_int64_t>;
+	JsonExport_template<u_int64_t> *item = new FILE_LINE(39012) JsonExport_template<u_int64_t>;
 	item->setTypeItem(_number);
 	item->setName(name);
 	item->setContent(content);
@@ -2920,7 +2920,7 @@ void JsonExport::add(const char *name, u_int64_t content) {
 }
 
 JsonExport *JsonExport::addArray(const char *name) {
-	JsonExport *item = new FILE_LINE JsonExport;
+	JsonExport *item = new FILE_LINE(39013) JsonExport;
 	item->setTypeItem(_array);
 	item->setName(name);
 	items.push_back(item);
@@ -2928,7 +2928,7 @@ JsonExport *JsonExport::addArray(const char *name) {
 }
 
 JsonExport *JsonExport::addObject(const char *name) {
-	JsonExport *item = new FILE_LINE JsonExport;
+	JsonExport *item = new FILE_LINE(39014) JsonExport;
 	item->setTypeItem(_object);
 	item->setName(name);
 	items.push_back(item);
@@ -2940,7 +2940,7 @@ void JsonExport::addJson(const char *name, const string &content) {
 }
 
 void JsonExport::addJson(const char *name, const char *content) {
-	JsonExport_template<string> *item = new FILE_LINE JsonExport_template<string>;
+	JsonExport_template<string> *item = new FILE_LINE(39015) JsonExport_template<string>;
 	item->setTypeItem(_json);
 	item->setName(name);
 	item->setContent(string(content));
@@ -2986,7 +2986,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 			      (bufferLength ? bufferLength : DEFAULT_BUFFER_LENGTH) :
 			      bufferLength;
 	if(bufferLength) {
-		this->buffer = new FILE_LINE char[bufferLength];
+		this->buffer = new FILE_LINE(39016) char[bufferLength];
 	} else {
 		this->buffer = NULL;
 	}
@@ -3110,7 +3110,7 @@ bool FileZipHandler::read(unsigned length) {
 	if(this->eof) {
 		return(true);
 	}
-	u_char *buffer = new FILE_LINE u_char[length];
+	u_char *buffer = new FILE_LINE(39017) u_char[length];
 	ssize_t read_length = ::read(this->fh, buffer, length);
 	if(read_length > 0) {
 		if(!this->compressStream) {
@@ -3250,7 +3250,7 @@ bool FileZipHandler::__writeToFile(char *data, int length) {
 }
 
 void FileZipHandler::initCompress() {
-	this->compressStream =  new FILE_LINE CompressStream(this->typeCompress == gzip ? CompressStream::gzip :
+	this->compressStream =  new FILE_LINE(39018) CompressStream(this->typeCompress == gzip ? CompressStream::gzip :
 							     this->typeCompress == snappy ? CompressStream::snappy :
 							     this->typeCompress == lzo ? CompressStream::lzo : CompressStream::compress_na,
 							     this->typeCompress == snappy || this->typeCompress == lzo ?
@@ -3265,7 +3265,7 @@ void FileZipHandler::initCompress() {
 }
 
 void FileZipHandler::initDecompress() {
-	this->compressStream =  new FILE_LINE CompressStream(this->typeCompress == gzip ? CompressStream::gzip :
+	this->compressStream =  new FILE_LINE(39019) CompressStream(this->typeCompress == gzip ? CompressStream::gzip :
 							     this->typeCompress == snappy ? CompressStream::snappy :
 							     this->typeCompress == lzo ? CompressStream::lzo : CompressStream::compress_na,
 							     8 * 1024,
@@ -3274,7 +3274,7 @@ void FileZipHandler::initDecompress() {
 
 void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 	this->tarBufferCreated = true;
-	this->tarBuffer = new FILE_LINE ChunkBuffer(this->time, 
+	this->tarBuffer = new FILE_LINE(39020) ChunkBuffer(this->time, 
 						    typeFile == pcap_sip ? 8 * 1024 : 
 						    typeFile == pcap_rtp ? 32 * 1024 : 
 						    typeFile == graph_rtp ? 16 * 1024 : 8 * 1024,
@@ -3449,7 +3449,7 @@ bool FileZipHandler::decompress_ev(char *data, u_int32_t len) {
 
 void FileZipHandler::addReadBuffer(char *data, u_int32_t len) {
 	sReadBufferItem readBufferItem;
-	readBufferItem.buff = new FILE_LINE u_char[len];
+	readBufferItem.buff = new FILE_LINE(39021) u_char[len];
 	readBufferItem.length = len;
 	memcpy(readBufferItem.buff, data, len);
 	this->readBuffer.push_back(readBufferItem);
@@ -3516,7 +3516,7 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, stri
 				int _bufflength, int _asyncwrite, FileZipHandler::eTypeCompress _typeCompress,
 				Call *call, PcapDumper::eTypePcapDump type) {
 	if(opt_pcap_dump_bufflength) {
-		FileZipHandler *handler = new FILE_LINE FileZipHandler(_bufflength < 0 ? opt_pcap_dump_bufflength : _bufflength, 
+		FileZipHandler *handler = new FILE_LINE(39022) FileZipHandler(_bufflength < 0 ? opt_pcap_dump_bufflength : _bufflength, 
 								       _asyncwrite < 0 ? opt_pcap_dump_asyncwrite : _asyncwrite, 
 								       _typeCompress == FileZipHandler::compress_default ? 
 									(type == PcapDumper::sip ? opt_pcap_dump_zip_sip :
@@ -3614,7 +3614,7 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 			       unsigned int saddr, unsigned int daddr, int source, int dest,
 			       u_int32_t time_sec, u_int32_t time_usec) {
 	u_int32_t packet_length = ether_header_length + sizeof(iphdr2) + sizeof(udphdr2) + datalen;
-	*packet = new FILE_LINE u_char[packet_length];
+	*packet = new FILE_LINE(39023) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
 	iphdr2 iphdr;
 	memset(&iphdr, 0, sizeof(iphdr2));
@@ -3633,7 +3633,7 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	udphdr.len = htons(sizeof(udphdr2) + datalen);
 	memcpy(*packet + ether_header_length + sizeof(iphdr2), &udphdr, sizeof(udphdr2));
 	memcpy(*packet + ether_header_length + sizeof(iphdr2) + sizeof(udphdr2), data, datalen);
-	*header = new FILE_LINE pcap_pkthdr;
+	*header = new FILE_LINE(39024) pcap_pkthdr;
 	memset(*header, 0, sizeof(pcap_pkthdr));
 	(*header)->ts.tv_sec = time_sec;
 	(*header)->ts.tv_usec = time_usec;
@@ -3648,7 +3648,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	unsigned tcp_options_length = 12;
 	unsigned tcp_doff = (sizeof(tcphdr2) + tcp_options_length) / 4 + ((sizeof(tcphdr2) + tcp_options_length) % 4 ? 1 : 0);
 	u_int32_t packet_length = ether_header_length + sizeof(iphdr2) + tcp_doff * 4 + datalen;
-	*packet = new FILE_LINE u_char[packet_length];
+	*packet = new FILE_LINE(39025) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
 	iphdr2 iphdr;
 	memset(&iphdr, 0, sizeof(iphdr2));
@@ -3675,7 +3675,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	*(u_char*)(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2) + 2) = 8;
 	*(u_char*)(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2) + 3) = 10;
 	memcpy(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2) + tcp_options_length, data, datalen);
-	*header = new FILE_LINE pcap_pkthdr;
+	*header = new FILE_LINE(39026) pcap_pkthdr;
 	memset(*header, 0, sizeof(pcap_pkthdr));
 	(*header)->ts.tv_sec = time_sec;
 	(*header)->ts.tv_usec = time_usec;
@@ -4047,7 +4047,7 @@ void SocketSimpleBufferWrite::addData(void *data1, u_int32_t dataLength1,
 			lastTimeSyslogFullData = actTime;
 		}
 	}
-	SimpleBuffer *simpleBuffer = new FILE_LINE SimpleBuffer(dataLength2);
+	SimpleBuffer *simpleBuffer = new FILE_LINE(39027) SimpleBuffer(dataLength2);
 	simpleBuffer->add(data1, dataLength1);
 	simpleBuffer->add(data2, dataLength2);
 	lock_data();
@@ -4170,7 +4170,7 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 	if(iter != dumpers.end()) {
 		dumper = dumpers[interfaceName];
 	} else {
-		dumper = new FILE_LINE PcapDumper(PcapDumper::na, NULL);
+		dumper = new FILE_LINE(39028) PcapDumper(PcapDumper::na, NULL);
 		dumper->setEnableAsyncWrite(false);
 		dumper->setTypeCompress(FileZipHandler::compress_na);
 		string dumpFileName = path + "/bogus_" + 
@@ -4217,7 +4217,7 @@ char *base64_encode(const unsigned char *data, size_t input_length, size_t *outp
 				 '4', '5', '6', '7', '8', '9', '+', '/'};
 	int mod_table[] = {0, 2, 1};
 	*output_length = 4 * ((input_length + 2) / 3);
-	char *encoded_data = new FILE_LINE char[*output_length + 1];
+	char *encoded_data = new FILE_LINE(39029) char[*output_length + 1];
 	if(encoded_data == NULL) return NULL;
 	for(size_t i = 0, j = 0; i < input_length;) {
 	    uint32_t octet_a = i < input_length ? (unsigned char)data[i++] : 0;
@@ -4506,7 +4506,7 @@ unsigned char *conv7bit::encode(unsigned char *data, unsigned int length, unsign
 		return(NULL);
 	}
 	rsltLength = conv7bit::encode_length(length);
-	unsigned char *rsltData = new FILE_LINE unsigned char[rsltLength + 1];
+	unsigned char *rsltData = new FILE_LINE(39030) unsigned char[rsltLength + 1];
 	memset(rsltData, 0, rsltLength + 1);
 	for(unsigned int i = 0; i < length; i++) {
 		int mainByteIndex = (i + 1) * 7 / 8;
@@ -4529,7 +4529,7 @@ unsigned char *conv7bit::decode(unsigned char *data, unsigned int length, unsign
 		return(NULL);
 	}
 	rsltLength = conv7bit::decode_length(length);
-	unsigned char *rsltData = new FILE_LINE unsigned char[rsltLength + 1];
+	unsigned char *rsltData = new FILE_LINE(39031) unsigned char[rsltLength + 1];
 	memset(rsltData, 0, rsltLength + 1);
 	for(unsigned int i = 0; i < rsltLength; i++) {
 		int mainByteIndex = (i + 1) * 7 / 8;
@@ -4583,7 +4583,7 @@ void cPng::pixel::setFromHsv(pixel_hsv p_hsv) {
 cPng::cPng(size_t width, size_t height) {
 	this->width = width;
 	this->height = height;
-	pixels = new FILE_LINE pixel[width * height];
+	pixels = new FILE_LINE(39032) pixel[width * height];
 	pixel_size = 3;
 	depth = 8;
 }
@@ -4696,7 +4696,7 @@ bool create_waveform_from_raw(const char *rawInput,
 	
 	int16_t *raw[2] = { NULL, NULL };
 	for(u_int8_t ch = 0; ch < channels; ch++) {
-		raw[ch] = new FILE_LINE int16_t[rawSamples];
+		raw[ch] = new FILE_LINE(39033) int16_t[rawSamples];
 	}
  
 	FILE *inputRawHandle = fopen(rawInput, "rb");
@@ -4724,7 +4724,7 @@ bool create_waveform_from_raw(const char *rawInput,
 	 
 		FILE *waveformOutputHandle = fopen(waveformOutput[ch], "wb");
 		if(waveformOutputHandle) {
-			u_int16_t *peaks = new FILE_LINE u_int16_t[width + 10];
+			u_int16_t *peaks = new FILE_LINE(39034) u_int16_t[width + 10];
 			size_t peaks_count = 0;
 			u_int16_t peak = 0;
 			int16_t v;
@@ -4783,7 +4783,7 @@ bool create_spectrogram_from_raw(const char *rawInput,
 	
 	int16_t *raw[2] = { NULL, NULL };
 	for(u_int8_t ch = 0; ch < channels; ch++) {
-		raw[ch] = new FILE_LINE int16_t[rawSamples];
+		raw[ch] = new FILE_LINE(39035) int16_t[rawSamples];
 	}
  
 	FILE *inputRawHandle = fopen(rawInput, "rb");
@@ -4877,7 +4877,7 @@ bool create_spectrogram_from_raw(const char *rawInput,
 		
 		size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
 		
-		double *multipliers = new FILE_LINE double[fftSize];
+		double *multipliers = new FILE_LINE(39036) double[fftSize];
 		for(size_t i = 0; i < fftSize; i++) {
 			multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
 		}

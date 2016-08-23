@@ -206,8 +206,8 @@ struct sHeaderPacketPQout {
 	}
 	void alloc_and_copy_blockstore() {
 		if(block_store) {
-			pcap_pkthdr_plus *alloc_header = new FILE_LINE pcap_pkthdr_plus;
-			u_char *alloc_packet = new FILE_LINE u_char[header->get_caplen()];
+			pcap_pkthdr_plus *alloc_header = new FILE_LINE(17001) pcap_pkthdr_plus;
+			u_char *alloc_packet = new FILE_LINE(17002) u_char[header->get_caplen()];
 			memcpy(alloc_header, header, sizeof(pcap_pkthdr_plus));
 			memcpy(alloc_packet, packet, header->get_caplen());
 			header = alloc_header;
@@ -356,7 +356,7 @@ struct pcapProcessData {
 		memset(this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
 		extern int opt_dup_check;
 		if(opt_dup_check) {
-			this->prevmd5s = new FILE_LINE unsigned char[65536 * MD5_DIGEST_LENGTH]; // 1M
+			this->prevmd5s = new FILE_LINE(17003) unsigned char[65536 * MD5_DIGEST_LENGTH]; // 1M
 			memset(this->prevmd5s, 0, 65536 * MD5_DIGEST_LENGTH * sizeof(unsigned char));
 		}
 	}
@@ -450,8 +450,8 @@ struct sHeaderPacket {
 		this->packet = packet;
 	}
 	inline void alloc(size_t snaplen) {
-		header = new FILE_LINE pcap_pkthdr;
-		packet = new FILE_LINE u_char[snaplen];
+		header = new FILE_LINE(17004) pcap_pkthdr;
+		packet = new FILE_LINE(17005) u_char[snaplen];
 	}
 	inline void free() {
 		if(header) {
@@ -485,7 +485,7 @@ public:
 			hpp_add_size[ia] = 0;
 		}
 		hpp_get_size = 0;
-		stack = new FILE_LINE rqueue_quick<sHeaderPacketPool>(size, 0, 0, NULL, false, __FILE__, __LINE__);
+		stack = new FILE_LINE(17006) rqueue_quick<sHeaderPacketPool>(size, 0, 0, NULL, false, __FILE__, __LINE__);
 	}
 	~PcapQueue_HeaderPacketStack() {
 		for(int ia = 0; ia < PcapQueue_HeaderPacketStack_add_max; ia++) {
@@ -563,7 +563,7 @@ public:
 	struct hpi_batch {
 		hpi_batch(uint32_t max_count) {
 			this->max_count = max_count;
-			this->hpis = new FILE_LINE hpi[max_count];
+			this->hpis = new FILE_LINE(17007) hpi[max_count];
 			memset(this->hpis, 0, sizeof(hpi) * max_count);
 			count = 0;
 			used = 0;
@@ -950,7 +950,7 @@ public:
 		sBatchHP(unsigned max_count) {
 			count = 0;
 			used = 0;
-			batch = new FILE_LINE sHeaderPacketPQout[max_count];
+			batch = new FILE_LINE(17008) sHeaderPacketPQout[max_count];
 			this->max_count = max_count;
 		}
 		~sBatchHP() {

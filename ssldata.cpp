@@ -74,7 +74,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			bool alloc_ssl_data = false;
 			if(reassemblyLink->getRemainData(dataItem->getDirection())) {
 				ssl_datalen = reassemblyLink->getRemainDataLength(dataItem->getDirection()) + dataItem->getDatalen();
-				ssl_data = new FILE_LINE u_char[ssl_datalen];
+				ssl_data = new FILE_LINE(34001) u_char[ssl_datalen];
 				memcpy(ssl_data, reassemblyLink->getRemainData(dataItem->getDirection()), reassemblyLink->getRemainDataLength(dataItem->getDirection()));
 				memcpy(ssl_data + reassemblyLink->getRemainDataLength(dataItem->getDirection()), dataItem->getData(), dataItem->getDatalen());
 				alloc_ssl_data = true;

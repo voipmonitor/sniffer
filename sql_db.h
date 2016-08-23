@@ -491,7 +491,7 @@ private:
 			if(!this->filename.length()) {
 				return(false);
 			}
-			fileZipHandler =  new FILE_LINE FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
+			fileZipHandler =  new FILE_LINE(31001) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
 			fileZipHandler->open(this->filename.c_str());
 			if(fileZipHandler->_open_write()) {
 				return(true);

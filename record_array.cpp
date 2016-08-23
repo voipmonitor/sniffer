@@ -21,7 +21,7 @@ string RecordArrayField::getJson() {
 
 RecordArray::RecordArray(unsigned max_fields) {
 	this->max_fields = max_fields;
-	fields = new FILE_LINE RecordArrayField[max_fields];
+	fields = new FILE_LINE(19001) RecordArrayField[max_fields];
 	sortBy = sortBy2 = 0;
 }
 

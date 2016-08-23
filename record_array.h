@@ -41,7 +41,7 @@ struct RecordArrayField {
 	void set(const char *s) {
 		tf = tf_string;
 		if(s && *s) {
-			this->s = new FILE_LINE char[strlen(s) + 1];
+			this->s = new FILE_LINE(20001) char[strlen(s) + 1];
 			strcpy(this->s, s);
 		} else {
 			this->s = NULL;
@@ -71,7 +71,7 @@ struct RecordArrayField2 : public RecordArrayField {
 			this->tf = other->tf;
 			this->i = other->i;
 			if(other->s && *other->s) {
-				this->s = new FILE_LINE char[strlen(other->s) + 1];
+				this->s = new FILE_LINE(20002) char[strlen(other->s) + 1];
 				strcpy(this->s, other->s);
 			}
 		}
@@ -80,7 +80,7 @@ struct RecordArrayField2 : public RecordArrayField {
 		this->tf = other.tf;
 		this->i = other.i;
 		if(other.s && *other.s) {
-			this->s = new FILE_LINE char[strlen(other.s) + 1];
+			this->s = new FILE_LINE(20003) char[strlen(other.s) + 1];
 			strcpy(this->s, other.s);
 		} else {
 			this->s = NULL;
@@ -94,7 +94,7 @@ struct RecordArrayField2 : public RecordArrayField {
 		this->tf = other.tf;
 		this->i = other.i;
 		if(other.s && *other.s) {
-			this->s = new FILE_LINE char[strlen(other.s) + 1];
+			this->s = new FILE_LINE(20004) char[strlen(other.s) + 1];
 			strcpy(this->s, other.s);
 		}
 		return(*this);
