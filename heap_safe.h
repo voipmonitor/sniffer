@@ -203,6 +203,7 @@ void memoryStatInit();
 void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0, int alloc_number = 0);
 void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0, int alloc_number = 0);
 void delete_object(void *pointerToObject);
+void *realloc_object(void *pointerToObject, size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number);
 
 
 #define FILE_LINE(alloc_number) (__FILE__, __LINE__, alloc_number)

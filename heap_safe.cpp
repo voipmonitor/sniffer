@@ -516,6 +516,21 @@ void operator delete[](void *pointerToObject) {
 }
 
 
+void *realloc_object(void *pointerToObject, size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number) {
+	void *newPointer = HeapSafeCheck ?
+			    (HeapSafeCheck & _HeapSafeSafeReserve ?
+			      heapsafe_safe_realloc(pointerToObject, sizeOfObject) :
+			      heapsafe_realloc(pointerToObject, sizeOfObject, memory_type1, memory_type2)) :
+			   MemoryStatQuick ?
+			    realloc_memory_stat_quick(pointerToObject, sizeOfObject, alloc_number) :
+			    _heapsafe_realloc(pointerToObject, sizeOfObject);
+	if(!newPointer) {
+		syslog(LOG_ERR, "reallocation failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+	}
+	return(newPointer);
+}
+
+
 extern "C" {
 void * c_heapsafe_alloc(size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number) { 
 	void *newPointer = HeapSafeCheck ?
