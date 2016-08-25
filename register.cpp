@@ -325,7 +325,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		sqlDbSaveRegister = createSqlObject();
 		sqlDbSaveRegister->setEnableSqlStringInContent(true);
 	}
-	string adj_ua = REG_CONV_STR(state->ua ? state->ua : ua);
+	string adj_ua = REG_CONV_STR(state->ua == EQ_REG ? ua : state->ua);
 	adjustUA((char*)adj_ua.c_str());
 	SqlDb_row cdr_ua;
 	if(adj_ua[0]) {
