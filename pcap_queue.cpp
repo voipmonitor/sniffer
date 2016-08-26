@@ -1980,6 +1980,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	outStrStat << "]MB ";
 	outStrStat << "LA[" << getLoadAvgStr() << "] ";
+	outStrStat << "v" << RTPSENSOR_VERSION << " ";
 	if (opt_rrd) {
 		getLoadAvg(&rrdLA_1, &rrdLA_5, &rrdLA_15);
 	}
