@@ -2621,8 +2621,8 @@ int main_init_read() {
 		// if reading file
 		rtp_threaded = 0;
 		opt_mirrorip = 0; // disable mirroring packets when reading pcap files from file
-//			opt_cachedir[0] = '\0'; //disabling cache if reading from file 
-		//opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
+		opt_cachedir[0] = '\0'; //disabling cache if reading from file 
+		opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
 		opt_maxpoolsize = 0;
 		opt_maxpooldays = 0;
 		opt_maxpoolsipsize = 0;
@@ -5771,7 +5771,7 @@ void get_command_line_arguments() {
 					strcpy(opt_read_from_file_fname, optarg);
 					opt_read_from_file = 1;
 					opt_scanpcapdir[0] = '\0';
-					//opt_cachedir[0] = '\0';
+					opt_cachedir[0] = '\0';
 					opt_enable_preprocess_packet = 0;
 					opt_enable_process_rtp_packet = 0;
 				}
@@ -6086,6 +6086,11 @@ void set_context_config() {
 			}
 		}
 	}
+	
+	if(opt_cachedir[0] && opt_spooldir_2[0]) {
+		syslog(LOG_ERR, "option spooldir_2 is not suported with option cachedir !!!");
+	}
+	
 }
 
 bool check_complete_parameters() {

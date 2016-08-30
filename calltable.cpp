@@ -630,9 +630,15 @@ Call::dirname() {
 	char sdirname[1024];
 	struct tm t = time_r((const time_t*)(&first_packet_time));
 	if(opt_newdir) {
-		snprintf(sdirname, 1024, "%s/%04d-%02d-%02d/%02d/%02d", getSpoolDir(), t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
+		snprintf(sdirname, 1024, "%s%s%04d-%02d-%02d/%02d/%02d", 
+			 opt_cachedir[0] ? "" : getSpoolDir(), 
+			 opt_cachedir[0] ? "" : "/", 
+			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
 	} else {
-		snprintf(sdirname, 1024, "%s/%04d-%02d-%02d", getSpoolDir(), t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+		snprintf(sdirname, 1024, "%s%s%04d-%02d-%02d", 
+			 opt_cachedir[0] ? "" : getSpoolDir(),
+			 opt_cachedir[0] ? "" : "/",
+			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
 	}
 	sdirname[1023] = 0;
 	string s(sdirname);
