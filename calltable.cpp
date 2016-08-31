@@ -1617,6 +1617,9 @@ Call::convertRawToWav() {
 			case PAYLOAD_G722132:
 				samplerate = 32000;
 				break;
+			case PAYLOAD_AMRWB:
+				samplerate = 16000;
+				break;
 		}
 		for(int i = 0; i < (abs(msdiff) / 20) * samplerate / 50; i++) {
 			fwrite(&zero, 1, 2, wav);
