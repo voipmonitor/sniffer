@@ -1,3 +1,13 @@
+17.2 31.8.2016
+==============
+- do not remove RTP streams when converting to audio which cannot be duplicates based on its timeframe (when phone puts on hold and SSRC does not change for example)
+- add amr-wb support (fixes MOS score for amr-wb)
+- fix cachedir option [VS-486] 
+- add sniffer version to end of syslog lines
+- fix filtering in register active by sniffer id [VG-999]
+- fix UA store in register_state and register_failed 
+
+
 17.1 24.8.2016
 ==============
 - fix MOS scoring for all codecs which was gradually increasing to 4.5. Longer calls have always better MOS score. MOS intervals were always higher with time increase. 
