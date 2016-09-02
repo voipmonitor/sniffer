@@ -948,19 +948,30 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		return(this->queryByCurl(preparedQuery));
 	}
 	u_int32_t startTimeMS = getTimeMS();
-	if(this->hMysqlRes) {
-		while(mysql_fetch_row(this->hMysqlRes));
-		mysql_free_result(this->hMysqlRes);
-		this->hMysqlRes = NULL;
+	if(this->hMysqlConn) {
+		if(!this->hMysqlRes) {
+			this->hMysqlRes = mysql_use_result(this->hMysqlConn);
+		}
+		if(this->hMysqlRes) {
+			unsigned counter = 0;
+			unsigned limitFetch = 10000;
+			while(counter < limitFetch && mysql_fetch_row(this->hMysqlRes)) {
+				++counter;
+			}
+			if(counter == limitFetch) {
+				syslog(LOG_NOTICE, "unfetched records from query %s", this->prevQuery.c_str());
+			}
+			mysql_free_result(this->hMysqlRes);
+		}
 	}
+	this->hMysqlRes = NULL;
 	if(this->connected()) {
 		if(mysql_ping(this->hMysql)) {
 			if(verbosity > 1) {
 				syslog(LOG_INFO, "mysql_ping failed -> force reconnect");
 			}
 			this->reconnect();
-		} else if(this->mysqlThreadId &&
-			  this->mysqlThreadId != mysql_thread_id(this->hMysql)) {
+		} else if(this->mysqlThreadId && this->mysqlThreadId != mysql_thread_id(this->hMysql)) {
 			if(verbosity > 1) {
 				syslog(LOG_INFO, "diff thread_id -> force reconnect");
 			}
@@ -1061,6 +1072,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		}
 	}
 	SqlDb::addDelayQuery(getTimeMS() - startTimeMS);
+	this->prevQuery = query;
 	return(rslt);
 }
 
@@ -1157,7 +1169,7 @@ SqlDb_odbc_bindBufferItem::SqlDb_odbc_bindBufferItem(SQLUSMALLINT colNumber, str
 	this->fieldName = fieldName;
 	this->dataType = dataType;
 	this->columnSize = columnSize;
-	this->buffer = new FILE_LINE char[this->columnSize + 100]; // 100 - reserve for convert binary to text
+	this->buffer = new FILE_LINE(30001) char[this->columnSize + 100]; // 100 - reserve for convert binary to text
 	memset(this->buffer, 0, this->columnSize + 100);
 	if(hStatement) {
 		this->bindCol(hStatement);
@@ -1184,7 +1196,7 @@ char* SqlDb_odbc_bindBufferItem::getBuffer() {
 
 
 void SqlDb_odbc_bindBuffer::addItem(SQLUSMALLINT colNumber, string fieldName, SQLSMALLINT dataType, SQLULEN columnSize, SQLHSTMT hStatement) {
-	this->push_back(new FILE_LINE SqlDb_odbc_bindBufferItem(colNumber, fieldName, dataType, columnSize, hStatement));
+	this->push_back(new FILE_LINE(30002) SqlDb_odbc_bindBufferItem(colNumber, fieldName, dataType, columnSize, hStatement));
 }
 
 void SqlDb_odbc_bindBuffer::bindCols(SQLHSTMT hStatement) {
@@ -1495,7 +1507,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->enableFixDeadlock = false;
 	this->lastQueryTime = 0;
 	this->queryCounter = 0;
-	this->sqlDb = new FILE_LINE SqlDb_mysql();
+	this->sqlDb = new FILE_LINE(30003) SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database, port);
 	if(cloud_host && *cloud_host) {
 		this->sqlDb->setCloudParameters(cloud_host, cloud_token);
@@ -1968,7 +1980,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 	QFile *qfile;
 	lock_qfiles();
 	if(qfiles.find(idc) == qfiles.end()) {
-		qfile = new FILE_LINE QFile;
+		qfile = new FILE_LINE(30004) QFile;
 		qfiles[idc] = qfile;
 	} else {
 		qfile = qfiles[idc];
@@ -2099,7 +2111,7 @@ void MySqlStore::addLoadFromQFile(int id, const char *name,
 	threadData.storeConcatLimit = storeConcatLimit;
 	threadData.store = store;
 	loadFromQFilesThreadData[id] = threadData;
-	LoadFromQFilesThreadInfo *threadInfo = new FILE_LINE LoadFromQFilesThreadInfo;
+	LoadFromQFilesThreadInfo *threadInfo = new FILE_LINE(30005) LoadFromQFilesThreadInfo;
 	threadInfo->store = this;
 	threadInfo->id = id;
 	vm_pthread_create("query cache - load",
@@ -2194,7 +2206,7 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 		cout << "*** START " << (onlyCheck ? "CHECK" : "PROCESS") << " FILE " << filename
 		     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 	}
-	FileZipHandler *fileZipHandler = new FILE_LINE FileZipHandler(8 * 1024, 0, isGunzip(filename) ? FileZipHandler::gzip : FileZipHandler::compress_na);
+	FileZipHandler *fileZipHandler = new FILE_LINE(30006) FileZipHandler(8 * 1024, 0, isGunzip(filename) ? FileZipHandler::gzip : FileZipHandler::compress_na);
 	fileZipHandler->open(filename);
 	unsigned int counter = 0;
 	bool copyBadFileToTemp = false;
@@ -2214,6 +2226,8 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 			   !idQueryProcess ||
 			   !queryLength) {
 				syslog(LOG_ERR, "bad string in qfile %s: %s", filename, buffLineQuery);
+				ok = false;
+				continue;
 			}
 			if(queryLength != strlen(posSeparator + 1)) {
 				syslog(LOG_ERR, "bad query length in qfile %s: %s", filename, buffLineQuery);
@@ -2445,7 +2459,7 @@ MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
 		this->unlock_processes();
 		return(process);
 	}
-	process = new FILE_LINE MySqlStore_process(id, 
+	process = new FILE_LINE(30007) MySqlStore_process(id, 
 						   store ? store->host.c_str() : this->host.c_str(), 
 						   store ? store->user.c_str() : this->user.c_str(), 
 						   store ? store->password.c_str() : this->password.c_str(), 
@@ -2600,7 +2614,7 @@ void MySqlStore::autoloadFromSqlVmExport() {
 			}
 			unsigned int counter = 0;
 			unsigned int maxLengthQuery = 1000000;
-			char *buffQuery = new FILE_LINE char[maxLengthQuery];
+			char *buffQuery = new FILE_LINE(30008) char[maxLengthQuery];
 			while(fgets(buffQuery, maxLengthQuery, file)) {
 				int idProcess = atoi(buffQuery);
 				if(!idProcess) {
@@ -2700,7 +2714,7 @@ void *MySqlStore::threadINotifyQFiles(void *arg) {
 		return(NULL);
 	}
 	unsigned watchBuffMaxLen = 1024 * 20;
-	char *watchBuff =  new FILE_LINE char[watchBuffMaxLen];
+	char *watchBuff =  new FILE_LINE(30009) char[watchBuffMaxLen];
 	while(!is_terminating()) {
 		ssize_t watchBuffLen = read(inotifyDescriptor, watchBuff, watchBuffMaxLen);
 		if(watchBuffLen == watchBuffMaxLen) {
@@ -2730,7 +2744,7 @@ SqlDb *createSqlObject(int connectId) {
 				return(NULL);
 			}
 		}
-		sqlDb = new FILE_LINE SqlDb_mysql();
+		sqlDb = new FILE_LINE(30010) SqlDb_mysql();
 		if(connectId == 1) {
 			sqlDb->setConnectParameters(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port);
 		} else {
@@ -2740,7 +2754,7 @@ SqlDb *createSqlObject(int connectId) {
 			}
 		}
 	} else if(isSqlDriver("odbc")) {
-		SqlDb_odbc *sqlDb_odbc = new FILE_LINE SqlDb_odbc();
+		SqlDb_odbc *sqlDb_odbc = new FILE_LINE(30011) SqlDb_odbc();
 		sqlDb_odbc->setOdbcVersion(SQL_OV_ODBC3);
 		sqlDb_odbc->setSubtypeDb(odbc_driver);
 		sqlDb = sqlDb_odbc;
@@ -2777,7 +2791,7 @@ string sqlEscapeString(const char *inputStr, int length, const char *typeDb, Sql
 	if(isTypeDb("mysql", sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb) && !cloud_host[0]) {
 		bool okEscape = false;
 		int sizeBuffer = length * 2 + 10;
-		char *buffer = new FILE_LINE char[sizeBuffer];
+		char *buffer = new FILE_LINE(30012) char[sizeBuffer];
 		if(sqlDbMysql && sqlDbMysql->getH_Mysql()) {
 			if(mysql_real_escape_string(sqlDbMysql->getH_Mysql(), buffer, inputStr, length) >= 0) {
 				okEscape = true;
@@ -3207,7 +3221,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		extern char opt_database_backup_from_mysql_user[256];
 		extern char opt_database_backup_from_mysql_password[256];
 		extern unsigned int opt_database_backup_from_mysql_port;
-		SqlDb_mysql *sqlDbSrc = new FILE_LINE SqlDb_mysql();
+		SqlDb_mysql *sqlDbSrc = new FILE_LINE(30013) SqlDb_mysql();
 		sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
 					       opt_database_backup_from_mysql_user,
 					       opt_database_backup_from_mysql_password,
@@ -3985,7 +3999,7 @@ bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 	bool okTableHttpJj = false;
 	this->query("show tables like 'http_jj'");
 	if(this->fetchRow()) {
-		if(this->query("select * from http_jj")) {
+		if(this->query("select * from http_jj limit 1")) {
 			okTableHttpJj = true;
 		} else {
 			if(this->getLastError() == ER_NO_DB_ERROR ||
@@ -4087,7 +4101,7 @@ bool SqlDb_mysql::createSchema_table_webrtc(int connectId) {
 	bool okTableWebrtc = false;
 	this->query("show tables like 'webrtc'");
 	if(this->fetchRow()) {
-		if(this->query("select * from webrtc")) {
+		if(this->query("select * from webrtc limit 1")) {
 			okTableWebrtc = true;
 		} else {
 			if(this->getLastError() == ER_NO_DB_ERROR ||

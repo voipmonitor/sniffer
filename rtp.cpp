@@ -188,6 +188,9 @@ int get_ticks_bycodec(int codec) {
 	case PAYLOAD_G722148:
 		return 48;
 		break;
+	case PAYLOAD_AMRWB:
+		return 16;
+		break;
 	default:
 		return 8;
 	}
@@ -202,7 +205,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	first = true;
 	first_packet_time = 0;
 	first_packet_usec = 0;
-	s = new FILE_LINE source;
+	s = new FILE_LINE(25001) source;
 	memset(s, 0, sizeof(source));
 	memset(&stats, 0, sizeof(stats));
 	memset(&rtcp, 0, sizeof(rtcp));
@@ -238,7 +241,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	codecchanged = false;
 	had_audio = false;
 
-	channel_fix1 = new FILE_LINE ast_channel;
+	channel_fix1 = new FILE_LINE(25002) ast_channel;
 	memset(channel_fix1, 0, sizeof(ast_channel));
 	channel_fix1->jitter_impl = 0; // fixed
 	channel_fix1->jitter_max = 50; 
@@ -248,7 +251,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	channel_fix1->resync = 1;
 	channel_fix1->audiobuf = NULL;
 
-	channel_fix2  = new FILE_LINE ast_channel;
+	channel_fix2  = new FILE_LINE(25003) ast_channel;
 	memset(channel_fix2, 0, sizeof(ast_channel));
 	channel_fix2->jitter_impl = 0; // fixed
 	channel_fix2->jitter_max = 200; 
@@ -258,7 +261,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	channel_fix2->resync = 1;
 	channel_fix2->audiobuf = NULL;
 
-	channel_adapt = new FILE_LINE ast_channel;
+	channel_adapt = new FILE_LINE(25004) ast_channel;
 	memset(channel_adapt, 0, sizeof(ast_channel));
 	channel_adapt->jitter_impl = 1; // adaptive
 	channel_adapt->jitter_max = 500; 
@@ -268,7 +271,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	channel_adapt->resync = 1;
 	channel_adapt->audiobuf = NULL;
 
-	channel_record = new FILE_LINE ast_channel;
+	channel_record = new FILE_LINE(25005) ast_channel;
 	memset(channel_record, 0, sizeof(ast_channel));
 	channel_record->jitter_impl = 0; // fixed
 	channel_record->jitter_max = 60; 
@@ -286,7 +289,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	last_voice_frame_timestamp = 0;
 
 	//channel->name = "SIP/fixed";
-	frame = new FILE_LINE ast_frame;
+	frame = new FILE_LINE(25006) ast_frame;
 	memset(frame, 0, sizeof(ast_frame));
 	frame->frametype = AST_FRAME_VOICE;
 	lastframetype = AST_FRAME_VOICE;
@@ -591,6 +594,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		case PAYLOAD_XOPUS16:
 		case PAYLOAD_OPUS16:
 		case PAYLOAD_G722116:
+		case PAYLOAD_AMRWB:
 			frame->ts = getTimestamp() / 16;
 			//frame->len = packetization / 2;
 			break;
@@ -641,7 +645,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	int mylen = MIN((unsigned int)len, ntohs(header_ip->tot_len) - header_ip->ihl * 4 - sizeof(udphdr2));
 
 
-	if(savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723)) {
+	if(savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723 or codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB)) {
 		/* get RTP payload header and datalen */
 		payload_data = data + sizeof(RTPFixedHeader);
 		payload_len = mylen - sizeof(RTPFixedHeader);
@@ -697,6 +701,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		}
 
 		if(codec == PAYLOAD_G729 and (payload_len <= (packetization == 10 ? 9 : 12))) {
+			frame->frametype = AST_FRAME_DTMF;
+			frame->marker = 1;
+		}
+		if((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB) and payload_len <= 7) {
 			frame->frametype = AST_FRAME_DTMF;
 			frame->marker = 1;
 		}
@@ -897,7 +905,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	if(sverb.read_rtp) {
 		extern u_int64_t read_rtp_counter;
 		++read_rtp_counter;
-		cout << "RTP - read -"
+		cout << "RTP - read [" << this << "]-" 
 		     << " ssrc: " << hex << this->ssrc << dec << " "
 		     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
 		     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
@@ -1295,6 +1303,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			case PAYLOAD_OPUS16:
 			case PAYLOAD_XOPUS16:
 			case PAYLOAD_G722116:
+			case PAYLOAD_AMRWB:
 				samplerate = 16000;
 				break;
 			case PAYLOAD_SILK24:
@@ -1373,7 +1382,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					}
 				}
 				if(!gfileRAW_buffer) {
-					gfileRAW_buffer = new FILE_LINE char[32768];
+					gfileRAW_buffer = new FILE_LINE(25007) char[32768];
 					if(gfileRAW_buffer == NULL) {
 						syslog(LOG_ERR, "Cannot allocate memory for gfileRAW_buffer - low memory this is FATAL");
 						exit(2);
@@ -1422,7 +1431,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			   typical sitation is for 60ms packetization and 30ms SID packetization */
 			payload_data = data + sizeof(RTPFixedHeader);
 			sid = (unsigned char)payload_data[0] & 2;
-		} else if(curpayload == PAYLOAD_AMR) {
+		} else if(curpayload == PAYLOAD_AMR or curpayload == PAYLOAD_AMRWB) {
 			if(payload_len == 7) {
 				sid = 1;
 			}
@@ -1708,7 +1717,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				}
 			} else if(curpayload == PAYLOAD_GSM) {
 				curpacketization = payload_len / 33 * 20;
-			} else if(codec == PAYLOAD_AMR) {
+			} else if(codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB) {
 				if(payload_len > 7) {
 					//printf("curpac[%u]\n", curpacketization);
 					curpacketization = (getTimestamp() - last_ts) / 8;
@@ -1777,7 +1786,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(!DSP) DSP = dsp_new();
 		char event_digit;
 		int event_len;
-		short int *sdata = new FILE_LINE short int[payload_len];
+		short int *sdata = new FILE_LINE(25008) short int[payload_len];
 		if(!sdata) {
 			syslog(LOG_ERR, "sdata malloc failed [%u]\n", (unsigned int)(payload_len * 2));
 			return(false);
@@ -1877,6 +1886,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	resetgraph = false;
 
 	if(owner->forcemark[iscaller] or owner->forcemark[!iscaller]) {
+		owner->forcemark[!iscaller] = 0;
 		forcemark2 = 1; // set this flag and keep it until next update_stats call
 	}
 
@@ -1979,7 +1989,9 @@ RTP::update_stats() {
 
 
 	// store mark bit in graph file
-	if(getMarker() and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+	if((getMarker() or ((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB) and (payload_len <= 7))) 
+	    and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+
 		uint32_t diff = (uint32_t)tsdiff2;
 		this->graph.write((char*)&graph_mark, 4);
 		this->graph.write((char*)&diff, 4);
@@ -2202,6 +2214,7 @@ RTP::update_seq(u_int16_t seq) {
 void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr, int lastinterval) {
 	int lost = 0;
 	int bursts = 0;
+	unsigned int received2 = 0 and lastinterval ? received - chan->last_received : received;
 	for(int i = 0; i < 128; i++) {
 		if(lastinterval) {
 			lost += i * (chan->loss[i] - chan->last_interval_loss[i]);
@@ -2221,9 +2234,10 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 	}
 
 	if(verbosity > 4 or sverb.jitter) printf("\n");
+	
 	if(received > 0 && bursts > 0) {
-		*burstr = (double)((double)lost / (double)bursts) / (double)(1.0 / ( 1.0 - (double)lost / (double)received ));
-		if(sverb.jitter) printf("mos: *burstr[%f] = (lost[%u] / bursts[%u]) / (1 / ( 1 - lost[%u] / received[%u]\n", *burstr, lost, bursts, lost, received);
+		*burstr = (double)((double)lost / (double)bursts) / (double)(1.0 / ( 1.0 - (double)lost / (double)received2 ));
+		if(sverb.jitter) printf("mos: *burstr[%f] = (lost[%u] / bursts[%u]) / (1 / ( 1 - lost[%u] / received[%u]\n", *burstr, lost, bursts, lost, received2);
 		if(*burstr < 0) {
 			*burstr = - *burstr;
 		} else if(*burstr < 1) {
@@ -2234,11 +2248,12 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 	}
 	//printf("total loss: %d\n", lost);
 	if(received > 0) {
-		*lossr = (double)((double)lost / (double)received);
+		*lossr = (double)((double)lost / (double)received2);
 	} else {
 		*lossr = 0;
 	}
-	if(sverb.jitter) printf("burstr: %f lossr: %f lost[%d]/received[%d]\n", *burstr, *lossr, lost, received);
+	chan->last_received = received;
+	if(sverb.jitter) printf("burstr: %f lossr: %f lost[%d]/received[%d]\n", *burstr, *lossr, lost, received2);
 }
 
 /* for debug purpose */

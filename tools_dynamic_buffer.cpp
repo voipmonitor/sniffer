@@ -81,7 +81,7 @@ void CompressStream::initCompress() {
 	case zip:
 	case gzip:
 		if(!this->zipStream) {
-			this->zipStream =  new FILE_LINE z_stream;
+			this->zipStream =  new FILE_LINE(41001) z_stream;
 			this->zipStream->zalloc = Z_NULL;
 			this->zipStream->zfree = Z_NULL;
 			this->zipStream->opaque = Z_NULL;
@@ -99,7 +99,7 @@ void CompressStream::initCompress() {
 	case lzma:
 #ifdef HAVE_LIBLZMA
 		if(!this->lzmaStream) {
-			this->lzmaStream = new FILE_LINE lzma_stream;
+			this->lzmaStream = new FILE_LINE(41002) lzma_stream;
 			memset_heapsafe(this->lzmaStream, 0, sizeof(lzma_stream));
 			int ret = lzma_easy_encoder(this->lzmaStream, this->lzmaLevel, LZMA_CHECK_CRC64);
 			if(ret == LZMA_OK) {
@@ -120,7 +120,7 @@ void CompressStream::initCompress() {
 		break;
 	case lzo:
 		if(!this->lzoWrkmem) {
-			this->lzoWrkmem = new FILE_LINE u_char[lzo_1_11_compress ? LZO1X_1_11_MEM_COMPRESS : LZO1X_1_MEM_COMPRESS];
+			this->lzoWrkmem = new FILE_LINE(41003) u_char[lzo_1_11_compress ? LZO1X_1_11_MEM_COMPRESS : LZO1X_1_MEM_COMPRESS];
 			createCompressBuffer();
 		}
 		break;
@@ -149,7 +149,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 	case zip:
 	case gzip:
 		if(!this->zipStreamDecompress) {
-			this->zipStreamDecompress =  new FILE_LINE z_stream;
+			this->zipStreamDecompress =  new FILE_LINE(41004) z_stream;
 			this->zipStreamDecompress->zalloc = Z_NULL;
 			this->zipStreamDecompress->zfree = Z_NULL;
 			this->zipStreamDecompress->opaque = Z_NULL;
@@ -168,7 +168,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 	case lzma:
 #ifdef HAVE_LIBLZMA 
 		if(!this->lzmaStreamDecompress) {
-			this->lzmaStreamDecompress = new FILE_LINE lzma_stream;
+			this->lzmaStreamDecompress = new FILE_LINE(41005) lzma_stream;
 			memset_heapsafe(this->lzmaStreamDecompress, 0, sizeof(lzma_stream));
 			int ret = lzma_stream_decoder(this->lzmaStreamDecompress, UINT64_MAX, LZMA_CONCATENATED);
 			if(ret == LZMA_OK) {
@@ -183,16 +183,16 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 #endif
 	case snappy:
 		if(!this->snappyDecompressData && this->forceStream) {
-			this->snappyDecompressData = new FILE_LINE SimpleBuffer();
+			this->snappyDecompressData = new FILE_LINE(41006) SimpleBuffer();
 		}
 		createDecompressBuffer(dataLen);
 		break;
 	case lzo:
 		if(!this->lzoWrkmemDecompress) {
-			this->lzoWrkmemDecompress = new FILE_LINE u_char[LZO1X_1_MEM_COMPRESS];
+			this->lzoWrkmemDecompress = new FILE_LINE(41007) u_char[LZO1X_1_MEM_COMPRESS];
 		}
 		if(!this->lzoDecompressData && this->forceStream) {
-			this->lzoDecompressData = new FILE_LINE SimpleBuffer();
+			this->lzoDecompressData = new FILE_LINE(41008) SimpleBuffer();
 		}
 		createDecompressBuffer(dataLen);
 		break;
@@ -758,7 +758,7 @@ void CompressStream::createCompressBuffer() {
 		if(!this->compressBufferLength) {
 			this->compressBufferLength = 8 * 1024;
 		}
-		this->compressBuffer = new FILE_LINE char[this->compressBufferLength];
+		this->compressBuffer = new FILE_LINE(41009) char[this->compressBufferLength];
 		break;
 	case snappy:
 	case lzo:
@@ -786,7 +786,7 @@ void CompressStream::createCompressBuffer() {
 		default:
 			break;
 		}
-		this->compressBuffer = new FILE_LINE char[this->compressBufferBoundLength];
+		this->compressBuffer = new FILE_LINE(41010) char[this->compressBufferBoundLength];
 		break;
 	case compress_auto:
 		break;
@@ -811,7 +811,7 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 		if(!this->decompressBufferLength) {
 			this->decompressBufferLength = 8 * 1024;
 		}
-		this->decompressBuffer = new FILE_LINE char[this->decompressBufferLength];
+		this->decompressBuffer = new FILE_LINE(41011) char[this->decompressBufferLength];
 		break;	
 	case snappy:
 	case lzo:
@@ -821,7 +821,7 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 			this->decompressBufferLength = max(this->maxDataLength, bufferLen);
 		}
 		if(this->decompressBufferLength) {
-			this->decompressBuffer = new FILE_LINE char[this->decompressBufferLength];
+			this->decompressBuffer = new FILE_LINE(41012) char[this->decompressBufferLength];
 		}
 		break;
 	case compress_auto:
@@ -956,7 +956,7 @@ ChunkBuffer::~ChunkBuffer() {
 
 void ChunkBuffer::setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength) {
 	if(typeCompress > CompressStream::compress_na) {
-		this->compressStream = new FILE_LINE CompressStream(typeCompress, compressBufferLength, maxDataLength);
+		this->compressStream = new FILE_LINE(41013) CompressStream(typeCompress, compressBufferLength, maxDataLength);
 	}
 }
 
@@ -974,7 +974,7 @@ void ChunkBuffer::setName(const char *name) {
 	if(!name || !*name) {
 		return;
 	}
-	this->name = new FILE_LINE char[strlen(name) + 1];
+	this->name = new FILE_LINE(41014) char[strlen(name) + 1];
 	strcpy(this->name, name);
 }
 
@@ -1030,7 +1030,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 	switch(addMethod) {
 	case add_simple: {
 		sChunk chunk;
-		chunk.chunk = new FILE_LINE char[datalen];
+		chunk.chunk = new FILE_LINE(41015) char[datalen];
 		memcpy_heapsafe(chunk.chunk, data, datalen,
 				__FILE__, __LINE__);
 		chunk.len = datalen;
@@ -1065,7 +1065,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 				if(!this->lastChunk ||
 				   this->lastChunk->len == this->chunk_fix_len) {
 					sChunk chunk;
-					chunk.chunk = new FILE_LINE char[this->chunk_fix_len];
+					chunk.chunk = new FILE_LINE(41016) char[this->chunk_fix_len];
 					chunk.len = 0;
 					chunk.decompress_len = (u_int32_t)-1;
 					this->chunkBuffer.push_back(chunk);
@@ -1092,7 +1092,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		do {
 			if(!(this->len % this->chunk_fix_len)) {
 				sChunk chunk;
-				chunk.chunk = new FILE_LINE char[this->chunk_fix_len];
+				chunk.chunk = new FILE_LINE(41017) char[this->chunk_fix_len];
 				this->chunkBuffer.push_back(chunk);
 				++this->chunkBuffer_countItems;
 				this->lastChunk = &(*(--this->chunkBuffer.end()));
@@ -1219,7 +1219,7 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 						} else {
 							this->chunkIterateCompleteBufferInfo.buffer = 
 								this->chunkIterateCompleteBufferInfo.counter % 2 ?
-								 new FILE_LINE char[this->chunkIterateCompleteBufferInfo.bufferLen] :
+								 new FILE_LINE(41018) char[this->chunkIterateCompleteBufferInfo.bufferLen] :
 								 (char*)&(this->chunkIterateCompleteBufferInfo.chunkLenBuff);
 							u_int32_t copied = it->len - this->chunkIterateCompleteBufferInfo.chunkPos;
 							if(sverb.chunk_buffer > 1) { 

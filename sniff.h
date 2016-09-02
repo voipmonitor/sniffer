@@ -270,8 +270,8 @@ struct packet_s_process : public packet_s_process_0 {
 		return(callid_long.size() ? (char*)callid_long.c_str() : callid_short);
 	}
 	inline void new_alloc_packet_header() {
-		pcap_pkthdr *header_pt_new = new FILE_LINE pcap_pkthdr;
-		u_char *packet_new = new FILE_LINE u_char[header_pt->caplen];
+		pcap_pkthdr *header_pt_new = new FILE_LINE(28001) pcap_pkthdr;
+		u_char *packet_new = new FILE_LINE(28002) u_char[header_pt->caplen];
 		*header_pt_new = *header_pt;
 		memcpy(packet_new, packet, header_pt->caplen);
 		header_pt = header_pt_new;

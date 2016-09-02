@@ -156,6 +156,7 @@ public:
 	void clean_all();
 	inline u_int64_t getNewRegisterFailedId(int sensorId);
 	string getDataTableJson(char *params, bool *zip = NULL);
+	void cleanupByJson(char *params);
 	void lock_registers() {
 		while(__sync_lock_test_and_set(&_sync_registers, 1));
 	}

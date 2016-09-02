@@ -630,9 +630,15 @@ Call::dirname() {
 	char sdirname[1024];
 	struct tm t = time_r((const time_t*)(&first_packet_time));
 	if(opt_newdir) {
-		snprintf(sdirname, 1024, "%s/%04d-%02d-%02d/%02d/%02d", getSpoolDir(), t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
+		snprintf(sdirname, 1024, "%s%s%04d-%02d-%02d/%02d/%02d", 
+			 opt_cachedir[0] ? "" : getSpoolDir(), 
+			 opt_cachedir[0] ? "" : "/", 
+			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
 	} else {
-		snprintf(sdirname, 1024, "%s/%04d-%02d-%02d", getSpoolDir(), t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+		snprintf(sdirname, 1024, "%s%s%04d-%02d-%02d", 
+			 opt_cachedir[0] ? "" : getSpoolDir(),
+			 opt_cachedir[0] ? "" : "/",
+			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
 	}
 	sdirname[1023] = 0;
 	string s(sdirname);
@@ -1054,7 +1060,7 @@ read:
 		while(__sync_lock_test_and_set(&rtplock, 1)) {
 			usleep(100);
 		}
-		rtp[ssrc_n] = new FILE_LINE RTP(packetS->sensor_id_(), packetS->sensor_ip);
+		rtp[ssrc_n] = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
@@ -1252,7 +1258,7 @@ int convertALAW2WAV(const char *fname1, char *fname3, int maxsamplerate) {
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
  
-	bitstream_buf1 = new FILE_LINE unsigned char[file_size1];
+	bitstream_buf1 = new FILE_LINE(1002) unsigned char[file_size1];
 	if(!bitstream_buf1) {
 		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%ld]", file_size1);
 		fclose(f_in1);
@@ -1314,7 +1320,7 @@ int convertULAW2WAV(const char *fname1, char *fname3, int maxsamplerate) {
 	file_size1 = ftell(f_in1);
 	fseek(f_in1, 0, SEEK_SET);
  
-	bitstream_buf1 = new FILE_LINE unsigned char[file_size1];
+	bitstream_buf1 = new FILE_LINE(1003) unsigned char[file_size1];
 	if(!bitstream_buf1) {
 		fclose(f_in1);
 		fclose(f_out);
@@ -1368,7 +1374,7 @@ Call::mos_lqo(char *deg, int samplerate) {
 	}
 	float mos, mos_lqo;
 
-	char *tmp = new FILE_LINE char[out.length() + 1];
+	char *tmp = new FILE_LINE(1004) char[out.length() + 1];
 	char *a = NULL;
 
 	strcpy(tmp, out.c_str());
@@ -1423,7 +1429,20 @@ Call::convertRawToWav() {
 					B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k, B->stats.received);
 				B->skip = true;
 			}
+
 			if(A == B or A->skip or B->skip or A->stats.received < 50 or B->stats.received < 50) continue; // do not compare with ourself or already removed RTP or with RTP with <20 packets
+
+			// check if A or B time overlaps - if not we cannot treat it as duplicate stream 
+			u_int64_t Astart = A->first_packet_time * 1000000ull + A->first_packet_usec;
+			u_int64_t Astop = A->last_pcap_header_ts;
+			u_int64_t Bstart = B->first_packet_time * 1000000ull + B->first_packet_usec;
+			u_int64_t Bstop = B->last_pcap_header_ts;
+			if(((Bstart > Astart) and (Bstart > Astop)) or ((Astart > Bstart) and (Astart > Bstop))) {
+				if(0) syslog(LOG_ERR, "Not removing SSRC[%x][%p] and SSRC[%x][%p] %lu %lu\n", A->ssrc, A, B->ssrc, B, Astart, Bstop);
+				continue;
+				
+			}
+
 			if(A->ssrc == B->ssrc) {
 				if(A->daddr == B->daddr and A->saddr == B->saddr and A->sport == B->sport and A->dport == B->dport){
 					// A and B have the same SSRC but both is identical ips and ports
@@ -1447,13 +1466,13 @@ Call::convertRawToWav() {
 						}
 						if(test) {
 							B->skip = true;
-							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 0\n", 
-								B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k);
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x][%p] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 0\n", 
+								B->ssrc, B, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k);
 						} else {
 							// test is not true which means that if we remove B there will be no other stream with the B.daddr so we can remove A
 							A->skip = true;
-							if(verbosity > 1) syslog(LOG_ERR, "Removing stream [%p] with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
-								A, A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x][%p] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
+								A->ssrc, A, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
 						}
 					} else {
 						// B.daddr is not in SDP but A.dst is in SDP - but lets check if removing B will not remove all caller/called streams 
@@ -1611,6 +1630,9 @@ Call::convertRawToWav() {
 			case PAYLOAD_G722132:
 				samplerate = 32000;
 				break;
+			case PAYLOAD_AMRWB:
+				samplerate = 16000;
+				break;
 		}
 		for(int i = 0; i < (abs(msdiff) / 20) * samplerate / 50; i++) {
 			fwrite(&zero, 1, 2, wav);
@@ -1679,10 +1701,10 @@ Call::convertRawToWav() {
 						  last_size > 10000) {
 						// ignore this raw file it is duplicate 
 						if(!sverb.noaudiounlink) unlink(raw);
-						syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+						if(verbosity > 1) syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 					} else {
 						if(rtp[rawl.ssrc_index]->skip) {
-							syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+							if(verbosity > 1) syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 							if(!sverb.noaudiounlink) unlink(raw);
 						} else {
 							raws.push_back(rawl);
@@ -1693,7 +1715,7 @@ Call::convertRawToWav() {
 						raws.push_back(rawl);
 					} else {
 						if(!sverb.noaudiounlink) unlink(raw);
-							syslog(LOG_NOTICE, "C ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+						if(verbosity > 1) syslog(LOG_NOTICE, "C ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 					}
 				}
 				lasttv.tv_sec = tv0.tv_sec;
@@ -3854,7 +3876,7 @@ void Call::createListeningBuffers() {
 	if(audiobuffer1) {
 		audiobuffer1->enable();
 	} else {
-		audiobuffer1 = new FILE_LINE FifoBuffer((string("audiobuffer1 for call ") + call_id).c_str());
+		audiobuffer1 = new FILE_LINE(1005) FifoBuffer((string("audiobuffer1 for call ") + call_id).c_str());
 		audiobuffer1->setMinItemBufferLength(1000);
 		audiobuffer1->setMaxSize(1000000);
 		if(sverb.call_listening) {
@@ -3864,7 +3886,7 @@ void Call::createListeningBuffers() {
 	if(audiobuffer2) {
 		audiobuffer2->enable();
 	} else {
-		audiobuffer2 = new FILE_LINE FifoBuffer((string("audiobuffer2 for call ") + call_id).c_str());
+		audiobuffer2 = new FILE_LINE(1006) FifoBuffer((string("audiobuffer2 for call ") + call_id).c_str());
 		audiobuffer2->setMinItemBufferLength(1000);
 		audiobuffer2->setMaxSize(1000000);
 		if(sverb.call_listening) {
@@ -4044,7 +4066,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			}
 			if(!found) {
 				// the same ip/port is shared with some other call which is not yet in node - add it
-				hash_node_call *node_call_new = new FILE_LINE hash_node_call;
+				hash_node_call *node_call_new = new FILE_LINE(1007) hash_node_call;
 				node_call_new->next = node->calls;
 				node_call_new->call = call;
 				node_call_new->iscaller = iscaller;
@@ -4063,14 +4085,14 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 
 	// addr / port combination not found - add it to hash at first position
 
-	node_call = new FILE_LINE hash_node_call;
+	node_call = new FILE_LINE(1008) hash_node_call;
 	node_call->next = NULL;
 	node_call->call = call;
 	node_call->iscaller = iscaller;
 	node_call->is_rtcp = is_rtcp;
 	node_call->sdp_flags = sdp_flags;
 
-	node = new FILE_LINE hash_node;
+	node = new FILE_LINE(1009) hash_node;
 	memset(node, 0x0, sizeof(hash_node));
 	node->addr = addr;
 	node->port = port;
@@ -4189,7 +4211,7 @@ void Calltable::processCallsInAudioQueue(bool lock) {
 	if(audio_queue.size() && 
 	   audio_queue.size() > audioQueueThreads.size() * 2 && 
 	   audioQueueThreads.size() < audioQueueThreadsMax) {
-		sAudioQueueThread *audioQueueThread = new FILE_LINE sAudioQueueThread();
+		sAudioQueueThread *audioQueueThread = new FILE_LINE(1010) sAudioQueueThread();
 		audioQueueThreads.push_back(audioQueueThread);
 		vm_pthread_create_autodestroy("audio convert",
 					      &audioQueueThread->thread_handle, NULL, this->processAudioQueueThread, audioQueueThread, __FILE__, __LINE__);
@@ -4305,7 +4327,7 @@ Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int
 Call*
 Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
 	       pcap_t *handle, int dlt, int sensorId) {
-	Call *newcall = new FILE_LINE Call(call_type, call_id, call_id_len, time);
+	Call *newcall = new FILE_LINE(1011) Call(call_type, call_id, call_id_len, time);
 	newcall->in_preprocess_queue_before_process_packet = 1;
 	newcall->in_preprocess_queue_before_process_packet_at = time;
 
@@ -4385,7 +4407,7 @@ Calltable::cleanup_calls( time_t currtime ) {
 	}
 	Call* call;
 	lock_calls_listMAP();
-	Call **closeCalls = new FILE_LINE Call*[calls_listMAP.size()];
+	Call **closeCalls = new FILE_LINE(1012) Call*[calls_listMAP.size()];
 	unsigned int closeCalls_count = 0;
 	for (callMAPIT = calls_listMAP.begin(); callMAPIT != calls_listMAP.end();) {
 		call = (*callMAPIT).second;

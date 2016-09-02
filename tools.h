@@ -230,7 +230,7 @@ public:
 		this->bufferCapacity = other.bufferCapacity;
 		this->capacityReserve = other.capacityReserve;
 		if(this->bufferLength) {
-			this->buffer = new FILE_LINE u_char[this->bufferCapacity];
+			this->buffer = new FILE_LINE(40001) u_char[this->bufferCapacity];
 			memcpy(this->buffer, other.buffer, this->bufferLength);
 		} else { 
 			this->buffer = NULL;
@@ -244,10 +244,10 @@ public:
 			return;
 		}
 		if(!buffer) {
-			buffer = new FILE_LINE u_char[dataLength + capacityReserve + 1];
+			buffer = new FILE_LINE(40002) u_char[dataLength + capacityReserve + 1];
 			bufferCapacity = dataLength + capacityReserve + 1;
 		} else if(bufferLength + dataLength + 1 > capacityReserve) {
-			u_char *bufferNew = new FILE_LINE u_char[bufferLength + dataLength + capacityReserve + 1];
+			u_char *bufferNew = new FILE_LINE(40003) u_char[bufferLength + dataLength + capacityReserve + 1];
 			memcpy(bufferNew, buffer, bufferLength);
 			delete [] buffer;
 			buffer = bufferNew;
@@ -282,7 +282,7 @@ public:
 		} else if(removeSize == bufferLength) {
 			destroy();
 		} else {
-			u_char *bufferNew = new FILE_LINE u_char[bufferCapacity];
+			u_char *bufferNew = new FILE_LINE(40004) u_char[bufferCapacity];
 			bufferLength -= removeSize;
 			memcpy(bufferNew, buffer + removeSize, bufferLength);
 			delete [] buffer;
@@ -296,7 +296,7 @@ public:
 		this->bufferCapacity = other.bufferCapacity;
 		this->capacityReserve = other.capacityReserve;
 		if(this->bufferLength) {
-			this->buffer = new FILE_LINE u_char[this->bufferCapacity];
+			this->buffer = new FILE_LINE(40005) u_char[this->bufferCapacity];
 			memcpy(this->buffer, other.buffer, this->bufferLength);
 		} else { 
 			this->buffer = NULL;
@@ -308,7 +308,7 @@ public:
 			return((char*)"");
 		} else {
 			if(bufferCapacity <= bufferLength) {
-				u_char *newBuffer = new FILE_LINE u_char[bufferLength + 1];
+				u_char *newBuffer = new FILE_LINE(40006) u_char[bufferLength + 1];
 				memcpy(newBuffer, buffer, bufferLength);
 				delete [] buffer;
 				buffer = newBuffer;
@@ -342,6 +342,10 @@ string GetDataMD5(u_char *data, u_int32_t datalen,
 		  u_char *data2, u_int32_t data2len,
 		  u_char *data3 = NULL, u_int32_t data3len = 0);
 string GetStringSHA256(std::string str);
+u_int32_t checksum32buf(char *buf, size_t len);
+u_int32_t checksum32buf(u_char *buf, size_t len) {
+	return(checksum32buf((char*)buf, len));
+}
 bool DirExists(char *strFilename);
 bool FileExists(char *strFilename, int *error_code = NULL);
 void ntoa(char *res, unsigned int addr);
@@ -851,7 +855,7 @@ public:
 		AsyncWriteItem_pcap(pcap_dumper_t *handle,
 				    char *data, int length) {
 			this->handle = handle;
-			this->data = new FILE_LINE char[length];
+			this->data = new FILE_LINE(40007) char[length];
 			memcpy(this->data, data, length);
 			this->dataLength = length;
 		}
@@ -907,7 +911,7 @@ public:
 		AsyncWriteItem_fileZipHandler(FileZipHandler *handle,
 					      char *data, int length) {
 			this->handle = handle;
-			this->data = new FILE_LINE char[length];
+			this->data = new FILE_LINE(40008) char[length];
 			memcpy(this->data, data, length);
 			this->dataLength = length;
 		}
@@ -963,7 +967,7 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add(new FILE_LINE AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, file, column, writeBytes),
+			if(add(new FILE_LINE(40009) AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, file, column, writeBytes),
 			       opt_pcap_dump_bufflength ?
 				((FileZipHandler*)handle)->userData - 1 :
 				0,
@@ -996,7 +1000,7 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add(new FILE_LINE AsyncWriteItem_pcap(handle, data, length),
+			if(add(new FILE_LINE(40010) AsyncWriteItem_pcap(handle, data, length),
 			       opt_pcap_dump_bufflength ?
 				((FileZipHandler*)handle)->userData - 1 :
 				0,
@@ -1028,7 +1032,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new FILE_LINE AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, file, column, writeBytes),
+			if(add(new FILE_LINE(40011) AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, file, column, writeBytes),
 			       handle->userData - 1,
 			       useThreadOper)) {
 				break;
@@ -1056,7 +1060,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new FILE_LINE AsyncWriteItem_fileZipHandler(handle, data, length),
+			if(add(new FILE_LINE(40012) AsyncWriteItem_fileZipHandler(handle, data, length),
 			       handle->userData - 1,
 			       useThreadOper)) {
 				break;
@@ -1988,7 +1992,7 @@ template<class type_queue_item>
 void SafeAsyncQueue<type_queue_item>::push(type_queue_item &item) {
 	lock_push_queue();
 	if(!push_queue) {
-		push_queue = new FILE_LINE deque<type_queue_item>;
+		push_queue = new FILE_LINE(40013) deque<type_queue_item>;
 	}
 	push_queue->push_back(item);
 	unlock_push_queue();
@@ -2347,7 +2351,7 @@ struct sLocalTimeHourCache {
 inline struct tm time_r(const time_t *timestamp, const char *timezone = NULL) {
 	static __thread sLocalTimeHourCache *timeCache = NULL;
 	if(!timeCache) {
-		timeCache = new FILE_LINE sLocalTimeHourCache();
+		timeCache = new FILE_LINE(40014) sLocalTimeHourCache();
 	}
 	struct tm time;
 	bool force_gmt = false;
@@ -2548,7 +2552,7 @@ public:
 		}
 		void create(u_int32_t size, bool use_stack) {
 			destroy();
-			item = new FILE_LINE u_char[size + 1];
+			item = new FILE_LINE(40015) u_char[size + 1];
 			item[0] = use_stack;
 		}
 		void destroy() {
@@ -2592,7 +2596,7 @@ private:
 		sHeapItemsPool(u_int16_t pool_size_max) {
 			this->pool_size = 0;
 			this->pool_size_max = pool_size_max;
-			this->pool = new FILE_LINE sHeapItem[pool_size_max];
+			this->pool = new FILE_LINE(40016) sHeapItem[pool_size_max];
 		}
 		~sHeapItemsPool() {
 			delete [] this->pool;
@@ -2613,15 +2617,15 @@ public:
 		this->pool_size_max = pool_size_max ? pool_size_max : HEAP_ITEM_POOL_SIZE;
 		this->pop_queues_max = pop_queues_max;
 		this->push_queues_max = push_queues_max;
-		this->pop_queues = new FILE_LINE sHeapItemsPool*[this->pop_queues_max];
+		this->pop_queues = new FILE_LINE(40017) sHeapItemsPool*[this->pop_queues_max];
 		for(unsigned i = 0; i < this->pop_queues_max; i++) {
 			this->pop_queues[i] = NULL;
 		}
-		this->push_queues = new FILE_LINE sHeapItemsPool*[this->push_queues_max];
+		this->push_queues = new FILE_LINE(40018) sHeapItemsPool*[this->push_queues_max];
 		for(unsigned i = 0; i < this->push_queues_max; i++) {
 			this->push_queues[i] = NULL;
 		}
-		this->stack = new FILE_LINE rqueue_quick<sHeapItemsPool*>(this->size_max / this->pool_size_max, 0, 0, NULL, false, __FILE__, __LINE__);
+		this->stack = new FILE_LINE(40019) rqueue_quick<sHeapItemsPool*>(this->size_max / this->pool_size_max, 0, 0, NULL, false, __FILE__, __LINE__);
 		this->default_item_size = 0;
 	}
 	~cHeapItemsStack() {
@@ -2669,7 +2673,7 @@ public:
 			}
 		}
 		if(!this->push_queues[push_queue_index]) {
-			this->push_queues[push_queue_index] = new FILE_LINE sHeapItemsPool(this->pool_size_max);
+			this->push_queues[push_queue_index] = new FILE_LINE(40020) sHeapItemsPool(this->pool_size_max);
 		}
 		if(this->push_queues[push_queue_index]->pool_size < this->push_queues[push_queue_index]->pool_size_max) {
 			this->push_queues[push_queue_index]->pool[this->push_queues[push_queue_index]->pool_size] = *heapItem;
@@ -2765,7 +2769,7 @@ public:
 		}
 		void create(u_int32_t size, bool use_stack) {
 			destroy();
-			item = new FILE_LINE u_char[size + 1];
+			item = new FILE_LINE(40021) u_char[size + 1];
 			item[0] = use_stack;
 		}
 		void destroy() {
@@ -2825,9 +2829,9 @@ public:
 		this->size_max = size_max;
 		this->pop_queues_max = pop_queues_max;
 		this->push_queues_max = push_queues_max;
-		this->pop_queues = new FILE_LINE sHeapItemsPool[this->pop_queues_max];
-		this->push_queues = new FILE_LINE sHeapItemsPool[this->push_queues_max];
-		this->stack = new FILE_LINE rqueue_quick<sHeapItemsPool>(this->size_max / HEAP_ITEM_POOL_SIZE, 0, 0, NULL, false, __FILE__, __LINE__);
+		this->pop_queues = new FILE_LINE(40022) sHeapItemsPool[this->pop_queues_max];
+		this->push_queues = new FILE_LINE(40023) sHeapItemsPool[this->push_queues_max];
+		this->stack = new FILE_LINE(40024) rqueue_quick<sHeapItemsPool>(this->size_max / HEAP_ITEM_POOL_SIZE, 0, 0, NULL, false, __FILE__, __LINE__);
 		this->default_item_size = 0;
 	}
 	~cHeapItemsStack() {
@@ -2925,11 +2929,11 @@ public:
 		this->size_max = size_max;
 		this->pop_queues_max = pop_queues_max;
 		this->push_queues_max = push_queues_max;
-		this->pop_queues = new FILE_LINE sHeapItemsPool[this->pop_queues_max];
-		this->push_queues = new FILE_LINE sHeapItemsPool[this->push_queues_max];
+		this->pop_queues = new FILE_LINE(40025) sHeapItemsPool[this->pop_queues_max];
+		this->push_queues = new FILE_LINE(40026) sHeapItemsPool[this->push_queues_max];
 		this->pop_qp = NULL;
 		this->pop_qp_size = 0;
-		this->stack = new FILE_LINE rqueue_quick<sHeapItemsPool>(this->size_max / HEAP_ITEM_POOL_SIZE, 0, 0, NULL, false, __FILE__, __LINE__);
+		this->stack = new FILE_LINE(40027) rqueue_quick<sHeapItemsPool>(this->size_max / HEAP_ITEM_POOL_SIZE, 0, 0, NULL, false, __FILE__, __LINE__);
 	}
 	~cHeapItemsPointerStack() {
 		for(unsigned i = 0; i < this->pop_queues_max; i++) {

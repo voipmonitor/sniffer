@@ -22,6 +22,7 @@
 #define PAYLOAD_OPUS24 315
 #define PAYLOAD_OPUS48 316
 #define PAYLOAD_AMR 320
+#define PAYLOAD_AMRWB 321
 #define PAYLOAD_G7221 331
 #define PAYLOAD_G72218 331
 #define PAYLOAD_G722112 332
@@ -76,6 +77,8 @@ inline const char *codec2text(int codec) {
 		return "OPUS";
 	case PAYLOAD_AMR:
 		return "amr";
+	case PAYLOAD_AMRWB:
+		return "amr-wb";
 	case PAYLOAD_G72218:
 	case PAYLOAD_G722112:
 	case PAYLOAD_G722116:

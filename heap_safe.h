@@ -91,6 +91,11 @@ struct sHeapSafeMemoryControlBlockEx : public sHeapSafeMemoryControlBlock {
 	u_int32_t memory_type_other;
 };
 
+struct sMemoryStatQuickBlock {
+	u_int32_t alloc_number;
+	u_int32_t size;
+};
+
 
 void HeapSafeAllocError(int error);
 void HeapSafeMemcpyError(const char *errorString, const char *file = NULL, unsigned int line = 0);
@@ -190,15 +195,25 @@ inline void *memset_heapsafe(void *ptr, int value, size_t length,
 
 
 std::string getMemoryStat(bool all = false);
+std::string getMemoryStatQuick(bool all = false);
 std::string addThousandSeparators(u_int64_t num);
 void printMemoryStat(bool all = false);
+void memoryStatInit();
 
-void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0);
-void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0);
+void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0, int alloc_number = 0);
+void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0, int alloc_number = 0);
 void delete_object(void *pointerToObject);
+void *realloc_object(void *pointerToObject, size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number);
 
 
-#define FILE_LINE (__FILE__, __LINE__)
+#define FILE_LINE(alloc_number) (__FILE__, __LINE__, alloc_number)
+
+
+struct sFileLine {
+	char file[1000];
+	unsigned line;
+	unsigned alloc_number;
+};
 
 
 void parse_heapsafeplus_coredump(const char *corefile, const char *outfile);

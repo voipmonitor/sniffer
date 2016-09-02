@@ -120,7 +120,7 @@ public:
 	}
 	bool check(void *rec) {
 		if(nums.size()) {
-			for(list<u_int64_t>::iterator iter = nums.begin(); iter != nums.begin(); iter++) {
+			for(list<u_int64_t>::iterator iter = nums.begin(); iter != nums.end(); iter++) {
 				if(*iter == getField_int(rec)) {
 					return(true);
 				}

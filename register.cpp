@@ -8,7 +8,7 @@
 #define NEW_REGISTER_CLEAN_PERIOD 30
 #define NEW_REGISTER_UPDATE_FAILED_PERIOD 20
 #define NEW_REGISTER_ERASE_FAILED_TIMEOUT 60
-#define NEW_REGISTER_ERASE_TIMEOUT 6*3600
+#define NEW_REGISTER_ERASE_TIMEOUT 2*3600
 
 
 extern char sql_cdr_ua_table[256];
@@ -21,7 +21,7 @@ Registers registers;
 
 
 #define EQ_REG				((char*)-1)
-#define REG_NEW_STR(src)		((src) == EQ_REG ? EQ_REG : (src) && *(src) ? (tmp_str = new FILE_LINE char[strlen(src) + 1], strcpy(tmp_str, src), tmp_str) : NULL)
+#define REG_NEW_STR(src)		((src) == EQ_REG ? EQ_REG : (src) && *(src) ? (tmp_str = new FILE_LINE(21001) char[strlen(src) + 1], strcpy(tmp_str, src), tmp_str) : NULL)
 #define REG_FREE_STR(str)		((str) && (str) != EQ_REG ? (delete [] (str), str = NULL, true) : (str = NULL, false))
 #define REG_EQ_STR(str1, str2)		((!(str1) || !*(str1)) && (!(str2) || !*(str2)) ? true : (!(str1) || !*(str1)) || (!(str2) || !*(str2)) ? false : !strcasecmp(str1, str2))
 #define REG_CMP_STR(str1, str2)		((!(str1) || !*(str1)) && (!(str2) || !*(str2)) ? 0 : (!(str1) || !*(str1)) ? -1 : (!(str2) || !*(str2)) ? 1 : strcasecmp(str1, str2))
@@ -236,7 +236,7 @@ void Register::addState(Call *call) {
 		updateLastState(call);
 	} else {
 		shiftStates();
-		states[0] = new FILE_LINE RegisterState(call, this);
+		states[0] = new FILE_LINE(21002) RegisterState(call, this);
 		++countStates;
 	}
 	RegisterState *state = states_last();
@@ -278,7 +278,7 @@ void Register::expire(bool need_lock_states) {
 	RegisterState *lastState = states_last();
 	if(lastState && (lastState->state == rs_OK || lastState->state == rs_UnknownMessageOK)) {
 		shiftStates();
-		RegisterState *newState = new FILE_LINE RegisterState(NULL, NULL);
+		RegisterState *newState = new FILE_LINE(21003) RegisterState(NULL, NULL);
 		newState->copyFrom(lastState);
 		newState->state = rs_Expired;
 		newState->expires = 0;
@@ -325,7 +325,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		sqlDbSaveRegister = createSqlObject();
 		sqlDbSaveRegister->setEnableSqlStringInContent(true);
 	}
-	string adj_ua = REG_CONV_STR(state->ua ? state->ua : ua);
+	string adj_ua = REG_CONV_STR(state->ua == EQ_REG ? ua : state->ua);
 	adjustUA((char*)adj_ua.c_str());
 	SqlDb_row cdr_ua;
 	if(adj_ua[0]) {
@@ -487,7 +487,7 @@ void Registers::add(Call *call) {
 	if(!convRegisterState(call)) {
 		return;
 	}
-	Register *reg = new FILE_LINE Register(call);
+	Register *reg = new FILE_LINE(21004) Register(call);
 	RegisterId rid(reg);
 	lock_registers();
 	map<RegisterId, Register*>::iterator iter = registers.find(rid);
@@ -554,6 +554,7 @@ void Registers::cleanup(u_int32_t act_time) {
 			reg->unlock_states();
 			if(eraseRegister || eraseRegisterFailed) {
 				lock_registers_erase();
+				delete iter->second;
 				registers.erase(iter++);
 				unlock_registers_erase();
 			} else {
@@ -637,7 +638,7 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	
 	u_int32_t list_registers_size = registers.size();
 	u_int32_t list_registers_count = 0;
-	Register **list_registers = new FILE_LINE Register*[list_registers_size];
+	Register **list_registers = new FILE_LINE(21005) Register*[list_registers_size];
 	
 	//cout << "**** 001 " << getTimeMS() << endl;
 	
@@ -780,6 +781,56 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	}
 	table += "]";
 	return(table);
+}
+
+void Registers::cleanupByJson(char *params) {
+
+	JsonItem jsonParams;
+	jsonParams.parse(params);
+
+	eRegisterState states[10];
+	memset(states, 0, sizeof(states));
+	unsigned states_count = 0;
+	string states_str = jsonParams.getValue("states");
+	if(!states_str.empty()) {
+		vector<string> states_str_vect = split(states_str, ',');
+		for(unsigned i = 0; i < states_str_vect.size(); i++) {
+			if(states_str_vect[i] == "OK") {			states[states_count++] = rs_OK;
+			} else if(states_str_vect[i] == "Failed") {		states[states_count++] = rs_Failed;
+			} else if(states_str_vect[i] == "UnknownMessageOK") {	states[states_count++] = rs_UnknownMessageOK;
+			} else if(states_str_vect[i] == "ManyRegMessages") {	states[states_count++] = rs_ManyRegMessages;
+			} else if(states_str_vect[i] == "Expired") {		states[states_count++] = rs_Expired;
+			} else if(states_str_vect[i] == "Unregister") {		states[states_count++] = rs_Unregister;
+			}
+		}
+	}
+	
+	lock_registers_erase();
+	lock_registers();
+	
+	for(map<RegisterId, Register*>::iterator iter_reg = registers.begin(); iter_reg != registers.end(); ) {
+		bool okState = false;
+		if(states_count) {
+			eRegisterState state = iter_reg->second->getState();
+			for(unsigned i = 0; i < states_count; i++) {
+				if(states[i] == state) {
+					okState = true;
+					break;
+				}
+			}
+		} else {
+			okState = true;
+		}
+		if(okState) {
+			delete iter_reg->second;
+			registers.erase(iter_reg++);
+		} else {
+			iter_reg++;
+		}
+	}
+	
+	unlock_registers();
+	unlock_registers_erase();
 }
 
 

@@ -228,6 +228,7 @@ protected:
 	size_t cloud_data_rows;
 	size_t cloud_data_index;
 	unsigned long maxAllowedPacket;
+	string prevQuery;
 private:
 	unsigned int lastError;
 	string lastErrorString;
@@ -490,7 +491,7 @@ private:
 			if(!this->filename.length()) {
 				return(false);
 			}
-			fileZipHandler =  new FILE_LINE FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
+			fileZipHandler =  new FILE_LINE(31001) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
 			fileZipHandler->open(this->filename.c_str());
 			if(fileZipHandler->_open_write()) {
 				return(true);

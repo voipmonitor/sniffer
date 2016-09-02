@@ -365,6 +365,8 @@ struct ast_channel {
 	int resync; 	/*!< if jitterbuffer resync is allowed */
 
 	struct ast_jb jb;				/*!< The jitterbuffer state  */
+
+	unsigned int last_received;
 };
 
 /*! \brief ast_channel_tech Properties */

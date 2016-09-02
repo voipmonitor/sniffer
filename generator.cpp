@@ -7,7 +7,7 @@
 
 void 
 *gensiprtp(void *params) {
-	Generator *gen = new FILE_LINE Generator("1.1.1.1", "2.2.2.2");
+	Generator *gen = new FILE_LINE(9001) Generator("1.1.1.1", "2.2.2.2");
 	//send test data 
 	struct udphdr2 udph;
 	udph.dest = 5060;

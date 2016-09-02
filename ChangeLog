@@ -1,3 +1,32 @@
+17.2 31.8.2016
+==============
+- do not remove RTP streams when converting to audio which cannot be duplicates based on its timeframe (when phone puts on hold and SSRC does not change for example)
+- add amr-wb support (fixes MOS score for amr-wb)
+- fix cachedir option [VS-486] 
+- add sniffer version to end of syslog lines
+- fix filtering in register active by sniffer id [VG-999]
+- fix UA store in register_state and register_failed 
+
+
+17.1 24.8.2016
+==============
+- fix MOS scoring for all codecs which was gradually increasing to 4.5. Longer calls have always better MOS score. MOS intervals were always higher with time increase. 
+- fix MOS score for AMR which was always 4.5 
+- fix memory leak in case sip-register was enabled(>= 17.0) (add cleanupregisters manager command for testing purpose) 
+- add mark line in .graph for AMR VAD frames
+- new option rtpthreads_start (only for testing purpose) 
+- fix crash when voipmonitor is stopped during spool cleaning [VS-481]
+- new option rtpfromsdp_onlysip (default no) which if enabled it takes RTP for audio decode only with the same IP addresses as SIP packets (in other words it will ignore all RTP streams with another IPs than SIP packets) [VS-469]
+- fix pcap_queue_use_blocks option which if enable threading mod >= 2 must be enabled [VS-480]
+- fix sql query for alter table files (remove db name)
+- fix memory limit when buffer reaches limit (it could be still possible to eat all memory if sniffer cannot keep up with traffic) 
+- add new option snaplen [VS-477]
+- fix crash in query_cache mode at start if cache file / line not contain separator ':'
+- fix conditions for hide message option in capture rule
+- signifficantly speedup sniffer mirroring
+- new options mirror_require_confirmation and mirror_use_checksum
+
+
 17.0.1 8.8.2016
 ===============
 - refactor call live listenting [VG-977]

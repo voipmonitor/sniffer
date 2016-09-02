@@ -35,7 +35,6 @@
 #include "ssldata.h"
 #include "tar.h"
 #include "voipmonitor.h"
-#include "crc.h"
 
 
 #define TEST_DEBUG_PARAMS 0
@@ -192,6 +191,8 @@ int opt_pcap_queue_use_blocks_read_check		= 1;
 int opt_pcap_dispatch					= 0;
 int opt_pcap_queue_suppress_t1_thread			= 0;
 bool opt_pcap_queues_mirror_nonblock_mode 		= true;
+bool opt_pcap_queues_mirror_require_confirmation	= true;
+bool opt_pcap_queues_mirror_use_checksum		= true;
 
 size_t _opt_pcap_queue_block_offset_init_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE * 1.1;
 size_t _opt_pcap_queue_block_offset_inc_size		= opt_pcap_queue_block_max_size / AVG_PACKET_SIZE / 4;
@@ -250,7 +251,7 @@ u_int16_t register_pcap_handle(pcap_t *handle) {
 	}
 	if(!this->block) {
 		while(true) {
-			this->block = new FILE_LINE u_char[opt_pcap_queue_block_max_size];
+			this->block = new FILE_LINE(16001) u_char[opt_pcap_queue_block_max_size];
 			if(this->block) {
 				break;
 			}
@@ -260,13 +261,13 @@ u_int16_t register_pcap_handle(pcap_t *handle) {
 	}
 	if(!this->offsets_size) {
 		this->offsets_size = _opt_pcap_queue_block_offset_init_size;
-		this->offsets = new FILE_LINE uint32_t[this->offsets_size];
+		this->offsets = new FILE_LINE(16002) uint32_t[this->offsets_size];
 	}
 	if(this->count == this->offsets_size) {
 		uint32_t *offsets_old = this->offsets;
 		size_t offsets_size_old = this->offsets_size;
 		this->offsets_size += _opt_pcap_queue_block_offset_inc_size;
-		this->offsets = new FILE_LINE uint32_t[this->offsets_size];
+		this->offsets = new FILE_LINE(16003) uint32_t[this->offsets_size];
 		memcpy_heapsafe(this->offsets, offsets_old, sizeof(uint32_t) * offsets_size_old,
 				__FILE__, __LINE__);
 		delete [] offsets_old;
@@ -299,7 +300,7 @@ bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memc
 	}
 	if(!this->block) {
 		while(true) {
-			this->block = new FILE_LINE u_char[opt_pcap_queue_block_max_size];
+			this->block = new FILE_LINE(16004) u_char[opt_pcap_queue_block_max_size];
 			if(this->block) {
 				break;
 			}
@@ -309,13 +310,13 @@ bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memc
 	}
 	if(!this->offsets_size) {
 		this->offsets_size = _opt_pcap_queue_block_offset_init_size;
-		this->offsets = new FILE_LINE uint32_t[this->offsets_size];
+		this->offsets = new FILE_LINE(16005) uint32_t[this->offsets_size];
 	}
 	if(this->count == this->offsets_size) {
 		uint32_t *offsets_old = this->offsets;
 		size_t offsets_size_old = this->offsets_size;
 		this->offsets_size += _opt_pcap_queue_block_offset_inc_size;
-		this->offsets = new FILE_LINE uint32_t[this->offsets_size];
+		this->offsets = new FILE_LINE(16006) uint32_t[this->offsets_size];
 		memcpy_heapsafe(this->offsets, offsets_old, sizeof(uint32_t) * offsets_size_old,
 				__FILE__, __LINE__);
 		delete [] offsets_old;
@@ -345,7 +346,7 @@ void pcap_block_store::inc_h(pcap_pkthdr_plus2 *header) {
 		uint32_t *offsets_old = this->offsets;
 		size_t offsets_size_old = this->offsets_size;
 		this->offsets_size += _opt_pcap_queue_block_offset_inc_size;
-		this->offsets = new FILE_LINE uint32_t[this->offsets_size];
+		this->offsets = new FILE_LINE(16007) uint32_t[this->offsets_size];
 		memcpy_heapsafe(this->offsets, offsets_old, sizeof(uint32_t) * offsets_size_old,
 				__FILE__, __LINE__);
 		delete [] offsets_old;
@@ -359,7 +360,7 @@ void pcap_block_store::inc_h(pcap_pkthdr_plus2 *header) {
 bool pcap_block_store::get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **packet, unsigned min_size_for_packet) {
 	if(!this->block) {
 		while(true) {
-			this->block = new FILE_LINE u_char[opt_pcap_queue_block_max_size];
+			this->block = new FILE_LINE(16008) u_char[opt_pcap_queue_block_max_size];
 			if(this->block) {
 				break;
 			}
@@ -369,7 +370,7 @@ bool pcap_block_store::get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **
 	}
 	if(!this->offsets_size) {
 		this->offsets_size = _opt_pcap_queue_block_offset_init_size;
-		this->offsets = new FILE_LINE uint32_t[this->offsets_size];
+		this->offsets = new FILE_LINE(16009) uint32_t[this->offsets_size];
 	}
 	if(this->size + sizeof(pcap_pkthdr_plus2) + min_size_for_packet > opt_pcap_queue_block_max_size) {
 		this->full = true;
@@ -442,7 +443,7 @@ void pcap_block_store::freeBlock() {
 
 u_char* pcap_block_store::getSaveBuffer(uint32_t block_counter) {
 	size_t sizeSaveBuffer = this->getSizeSaveBuffer();
-	u_char *saveBuffer = new FILE_LINE u_char[sizeSaveBuffer];
+	u_char *saveBuffer = new FILE_LINE(16010) u_char[sizeSaveBuffer];
 	pcap_block_store_header header;
 	header.hm = this->hm;
 	header.size = this->size;
@@ -464,7 +465,9 @@ u_char* pcap_block_store::getSaveBuffer(uint32_t block_counter) {
 			this->block, this->block,
 			this->getUseSize(),
 			__FILE__, __LINE__);
-	((pcap_block_store_header*)saveBuffer)->crc = crc32buf(saveBuffer + sizeof(pcap_block_store_header), sizeSaveBuffer - sizeof(pcap_block_store_header));
+	((pcap_block_store_header*)saveBuffer)->checksum = opt_pcap_queues_mirror_use_checksum ?
+							    max(checksum32buf(saveBuffer + sizeof(pcap_block_store_header), sizeSaveBuffer - sizeof(pcap_block_store_header)), (u_int32_t)1) :
+							    0;
 	return(saveBuffer);
 }
 
@@ -478,6 +481,7 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	this->sensor_id = header->sensor_id;
 	strncpy(this->ifname, header->ifname, sizeof(header->ifname));
 	this->block_counter = header->counter;
+	this->require_confirmation = header->require_confirmation;
 	if(this->offsets) {
 		delete [] this->offsets;
 	}
@@ -485,13 +489,13 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 		delete [] this->block;
 	}
 	this->offsets_size = this->count;
-	this->offsets = new FILE_LINE uint32_t[this->offsets_size];
+	this->offsets = new FILE_LINE(16011) uint32_t[this->offsets_size];
 	memcpy_heapsafe(this->offsets, this->offsets,
 			saveBuffer + sizeof(pcap_block_store_header), saveBuffer,
 			sizeof(uint32_t) * this->count,
 			__FILE__, __LINE__);
 	size_t sizeBlock = this->getUseSize();
-	this->block = new FILE_LINE u_char[sizeBlock];
+	this->block = new FILE_LINE(16012) u_char[sizeBlock];
 	memcpy_heapsafe(this->block, this->block,
 			saveBuffer + sizeof(pcap_block_store_header) + this->count * sizeof(uint32_t), saveBuffer,
 			sizeBlock,
@@ -507,7 +511,7 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	}
 	if(this->restoreBufferAllocSize < this->restoreBufferSize + _size) {
 		this->restoreBufferAllocSize = this->restoreBufferSize + _size + _opt_pcap_queue_block_restore_buffer_inc_size;
-		u_char *restoreBufferNew = new FILE_LINE u_char[this->restoreBufferAllocSize];
+		u_char *restoreBufferNew = new FILE_LINE(16013) u_char[this->restoreBufferAllocSize];
 		if(this->restoreBuffer) {
 			memcpy_heapsafe(restoreBufferNew, this->restoreBuffer, this->restoreBufferSize,
 					__FILE__, __LINE__);
@@ -542,7 +546,8 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	if(offset) {
 		*offset = size - (this->restoreBufferSize - sizeRestoreBuffer);
 	}
-	if(((pcap_block_store_header*)this->restoreBuffer)->crc != crc32buf(this->restoreBuffer + sizeof(pcap_block_store_header), sizeRestoreBuffer - sizeof(pcap_block_store_header))) {
+	if(((pcap_block_store_header*)this->restoreBuffer)->checksum &&
+	   ((pcap_block_store_header*)this->restoreBuffer)->checksum != max(checksum32buf(this->restoreBuffer + sizeof(pcap_block_store_header), sizeRestoreBuffer - sizeof(pcap_block_store_header)), (u_int32_t)1)) {
 		return(-5);
 	}
 	if(autoRestore) {
@@ -571,7 +576,7 @@ bool pcap_block_store::compress() {
 
 bool pcap_block_store::compress_snappy() {
 	size_t snappyBuffSize = snappy_max_compressed_length(this->size);
-	u_char *snappyBuff = new FILE_LINE u_char[snappyBuffSize];
+	u_char *snappyBuff = new FILE_LINE(16014) u_char[snappyBuffSize];
 	if(!snappyBuff) {
 		syslog(LOG_ERR, "packetbuffer: snappy_compress: snappy buffer allocation failed - PACKETBUFFER BLOCK DROPPED!");
 		return(false);
@@ -580,10 +585,7 @@ bool pcap_block_store::compress_snappy() {
 	switch(snappyRslt) {
 		case SNAPPY_OK:
 			delete [] this->block;
-			this->block = new FILE_LINE u_char[snappyBuffSize];
-			memcpy_heapsafe(this->block, snappyBuff, snappyBuffSize,
-					__FILE__, __LINE__);
-			delete [] snappyBuff;
+			this->block = (u_char*)realloc_object(snappyBuff, snappyBuffSize, __FILE__, __LINE__, 16015);
 			this->size_compress = snappyBuffSize;
 			sumPacketsSizeCompress[0] += this->size_compress;
 			return(true);
@@ -604,7 +606,7 @@ bool pcap_block_store::compress_snappy() {
 bool pcap_block_store::compress_lz4() {
 	#ifdef HAVE_LIBLZ4
 	size_t lz4BuffSize = LZ4_compressBound(this->size);
-	u_char *lz4Buff = new FILE_LINE u_char[lz4BuffSize];
+	u_char *lz4Buff = new FILE_LINE(16016) u_char[lz4BuffSize];
 	if(!lz4Buff) {
 		syslog(LOG_ERR, "packetbuffer: lz4_compress: lz4 buffer allocation failed - PACKETBUFFER BLOCK DROPPED!");
 		return(false);
@@ -612,7 +614,7 @@ bool pcap_block_store::compress_lz4() {
 	int lz4_size = LZ4_compress((char*)this->block, (char*)lz4Buff, this->size);
 	if(lz4_size > 0) {
 		delete [] this->block;
-		this->block = new FILE_LINE u_char[lz4_size];
+		this->block = new FILE_LINE(16017) u_char[lz4_size];
 		memcpy_heapsafe(this->block, lz4Buff, lz4_size,
 				__FILE__, __LINE__);
 		delete [] lz4Buff;
@@ -648,7 +650,7 @@ bool pcap_block_store::uncompress_snappy() {
 		return(true);
 	}
 	size_t snappyBuffSize = this->size;
-	u_char *snappyBuff = new FILE_LINE u_char[snappyBuffSize];
+	u_char *snappyBuff = new FILE_LINE(16018) u_char[snappyBuffSize];
 	snappy_status snappyRslt = snappy_uncompress((char*)this->block, this->size_compress, (char*)snappyBuff, &snappyBuffSize);
 	switch(snappyRslt) {
 		case SNAPPY_OK:
@@ -678,7 +680,7 @@ bool pcap_block_store::uncompress_lz4() {
 		return(true);
 	}
 	size_t lz4BuffSize = this->size;
-	u_char *lz4Buff = new FILE_LINE u_char[lz4BuffSize];
+	u_char *lz4Buff = new FILE_LINE(16019) u_char[lz4BuffSize];
 	if(LZ4_decompress_fast((char*)this->block, (char*)lz4Buff, this->size) >= 0) {
 		delete [] this->block;
 		this->block = lz4Buff;
@@ -695,7 +697,7 @@ bool pcap_block_store::uncompress_lz4() {
 
 pcap_block_store_queue::pcap_block_store_queue() {
 	extern int terminating;
-	this->queueBlock = new FILE_LINE rqueue_quick<pcap_block_store*>(
+	this->queueBlock = new FILE_LINE(16020) rqueue_quick<pcap_block_store*>(
 				100000,
 				100, 100,
 				&terminating, true,
@@ -785,7 +787,7 @@ bool pcap_file_store::pop(pcap_block_store *blockStore) {
 	fseek(this->fileHandlePop, blockStore->filePosition, SEEK_SET);
 	blockStore->destroyRestoreBuffer();
 	size_t readBuffSize = 1000;
-	u_char *readBuff = new FILE_LINE u_char[readBuffSize];
+	u_char *readBuff = new FILE_LINE(16021) u_char[readBuffSize];
 	size_t readed;
 	while((readed = fread(readBuff, 1, readBuffSize, this->fileHandlePop)) > 0) {
 		if(blockStore->addRestoreChunk(readBuff, readed) > 0) {
@@ -823,7 +825,7 @@ bool pcap_file_store::open(eTypeHandle typeHandle) {
 					syslog(LOG_ERR, "packetbuffer: %s", outStr.str().c_str());
 				}
 			}
-			this->fileBufferPush = new FILE_LINE u_char[FILE_BUFFER_SIZE];
+			this->fileBufferPush = new FILE_LINE(16022) u_char[FILE_BUFFER_SIZE];
 			setbuffer(this->fileHandlePush, (char*)this->fileBufferPush, FILE_BUFFER_SIZE);
 		} else {
 			syslog(LOG_ERR, "packetbuffer: open %s for write failed", filePathName.c_str());
@@ -844,7 +846,7 @@ bool pcap_file_store::open(eTypeHandle typeHandle) {
 					syslog(LOG_ERR, "packetbuffer: %s", outStr.str().c_str());
 				}
 			}
-			this->fileBufferPop = new FILE_LINE u_char[FILE_BUFFER_SIZE];
+			this->fileBufferPop = new FILE_LINE(16023) u_char[FILE_BUFFER_SIZE];
 			setbuffer(this->fileHandlePop, (char*)this->fileBufferPop, FILE_BUFFER_SIZE);
 		} else {
 			syslog(LOG_ERR, "packetbuffer: open %s for read failed", filePathName.c_str());
@@ -968,7 +970,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 			if(!this->lastFileStoreId) {
 				++this->lastFileStoreId;
 			}
-			fileStore = new FILE_LINE pcap_file_store(this->lastFileStoreId, this->fileStoreFolder.c_str());
+			fileStore = new FILE_LINE(16024) pcap_file_store(this->lastFileStoreId, this->fileStoreFolder.c_str());
 			this->fileStore.push_back(fileStore);
 		} else {
 			fileStore = this->fileStore[this->fileStore.size() - 1];
@@ -1978,6 +1980,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	outStrStat << "]MB ";
 	outStrStat << "LA[" << getLoadAvgStr() << "] ";
+	outStrStat << "v" << RTPSENSOR_VERSION << " ";
 	if (opt_rrd) {
 		getLoadAvg(&rrdLA_1, &rrdLA_5, &rrdLA_15);
 	}
@@ -2582,7 +2585,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 			opt_mirrorip = 0;
 		} else {
 			syslog(LOG_NOTICE, "packetbuffer - %s: starting mirroring [%s]->[%s]", opt_mirrorip_src, opt_mirrorip_dst, this->getInterfaceName().c_str());
-			mirrorip = new FILE_LINE MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
+			mirrorip = new FILE_LINE(16025) MirrorIP(opt_mirrorip_src, opt_mirrorip_dst);
 		}
 	}
 	if(*user_filter != '\0') {
@@ -2965,16 +2968,16 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->threadInitFailed = false;
 	if(!opt_pcap_queue_use_blocks) {
 		this->qringmax = opt_pcap_queue_iface_qring_size / 100;
-		this->qring = new FILE_LINE hpi_batch*[this->qringmax];
+		this->qring = new FILE_LINE(16026) hpi_batch*[this->qringmax];
 		for(unsigned int i = 0; i < this->qringmax; i++) {
-			this->qring[i] = new FILE_LINE hpi_batch(100);
+			this->qring[i] = new FILE_LINE(16027) hpi_batch(100);
 		}
 		this->qring_blocks = NULL;
 		this->qring_blocks_used = NULL;
 	} else {
 		this->qringmax = opt_pcap_queue_iface_qring_size;
-		this->qring_blocks = new FILE_LINE pcap_block_store*[this->qringmax];
-		this->qring_blocks_used = new FILE_LINE volatile int[this->qringmax];
+		this->qring_blocks = new FILE_LINE(16028) pcap_block_store*[this->qringmax];
+		this->qring_blocks_used = new FILE_LINE(16029) volatile int[this->qringmax];
 		for(unsigned int i = 0; i < this->qringmax; i++) {
 			this->qring_blocks[i] = NULL;
 			this->qring_blocks_used[i] = 0;
@@ -3003,7 +3006,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 		this->detachBufferLength = 500000;
 		for(int i = 0; i < 2; i++) {
 			if(typeThread == read) {
-				this->detachBuffer[i] = new FILE_LINE u_char[this->detachBufferLength + sizeof(pcap_pkthdr) * 2 + SNAPLEN];
+				this->detachBuffer[i] = new FILE_LINE(16030) u_char[this->detachBufferLength + sizeof(pcap_pkthdr) * 2 + SNAPLEN];
 				memset((u_char*)this->detachBuffer[i], 0, this->detachBufferLength + sizeof(pcap_pkthdr) * 2 + SNAPLEN);
 			} else {
 				this->detachBuffer[i] = readThread->detachBuffer[i];
@@ -3031,16 +3034,16 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->headerPacketStackShort = NULL;
 	this->headerPacketStackShortPacketLen = 0;
 	if(typeThread == read) {
-		this->headerPacketStackSnaplen = new FILE_LINE cHeaderPacketStack(opt_pcap_queue_iface_qring_size, SNAPLEN);
+		this->headerPacketStackSnaplen = new FILE_LINE(16031) cHeaderPacketStack(opt_pcap_queue_iface_qring_size, SNAPLEN);
 		if(opt_pcap_queue_iface_dedup_separate_threads_extend == 2) {
 			this->headerPacketStackShortPacketLen = 256;
-			this->headerPacketStackShort = new FILE_LINE cHeaderPacketStack(opt_pcap_queue_iface_qring_size, this->headerPacketStackShortPacketLen);
+			this->headerPacketStackShort = new FILE_LINE(16032) cHeaderPacketStack(opt_pcap_queue_iface_qring_size, this->headerPacketStackShortPacketLen);
 		}
 	}
 	/*
 	this->headerPacketStack = NULL;
 	if(typeThread == read) {
-		this->headerPacketStack = new FILE_LINE PcapQueue_HeaderPacketStack(this->qringmax);
+		this->headerPacketStack = new FILE_LINE(16033) PcapQueue_HeaderPacketStack(this->qringmax);
 	}
 	*/
 	allocCounter[0] = allocCounter[1] = 0;
@@ -3197,6 +3200,12 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 }
 
 inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *block) {
+	while(!buffersControl.check__pcap_store_queue__push()) {
+		if(is_terminating()) {
+			return;
+		}
+		usleep(1000);
+	}
 	unsigned int _writeIndex = writeit % qringmax;
 	while(qring_blocks_used[_writeIndex]) {
 		if(is_terminating()) {
@@ -3356,28 +3365,28 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 			if(opt_pcap_queue_iface_dedup_separate_threads) {
 				if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
 					if(opt_pcap_queue_iface_dedup_separate_threads_extend == 2) {
-						this->detachThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), detach, this, this);
-						this->defragThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), defrag, this, this->detachThread);
+						this->detachThread = new FILE_LINE(16034) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), detach, this, this);
+						this->defragThread = new FILE_LINE(16035) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), defrag, this, this->detachThread);
 					} else {
-						this->defragThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), defrag, this, this);
+						this->defragThread = new FILE_LINE(16036) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), defrag, this, this);
 					}
-					this->md1Thread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this->defragThread);
-					this->md2Thread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->md1Thread);
-					this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->md2Thread);
+					this->md1Thread = new FILE_LINE(16037) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this->defragThread);
+					this->md2Thread = new FILE_LINE(16038) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->md1Thread);
+					this->dedupThread = new FILE_LINE(16039) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->md2Thread);
 					if(this->prepareHeaderPacketPool) {
-						this->serviceThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), service, this, this);
+						this->serviceThread = new FILE_LINE(16040) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), service, this, this);
 					}
 				} else {
-					this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this);
+					this->dedupThread = new FILE_LINE(16041) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this);
 				}
 			}
 		} else {
 			if(opt_dup_check) {
-				this->md1Thread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this);
-				this->md2Thread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->md1Thread);
-				this->dedupThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->md2Thread);
+				this->md1Thread = new FILE_LINE(16042) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this);
+				this->md2Thread = new FILE_LINE(16043) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->md1Thread);
+				this->dedupThread = new FILE_LINE(16044) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->md2Thread);
 			} else {
-				this->pcapProcessThread = new FILE_LINE PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), pcap_process, this, this);
+				this->pcapProcessThread = new FILE_LINE(16045) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), pcap_process, this, this);
 			}
 		}
 		string error;
@@ -3888,7 +3897,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				if(block) {
 					this->push_block(block);
 				}
-				block = new FILE_LINE pcap_block_store(pcap_block_store::plus2);
+				block = new FILE_LINE(16046) pcap_block_store(pcap_block_store::plus2);
 				force_push = false;
 				//cout << 'X' << flush;
 			}
@@ -4119,7 +4128,7 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
 	   !opt_pcap_queue_use_blocks) {
 		this->setEnableWriteThread();
 		extern int terminating;
-		this->block_qring = new FILE_LINE rqueue_quick<pcap_block_store*>(
+		this->block_qring = new FILE_LINE(16047) rqueue_quick<pcap_block_store*>(
 			100,
 			100, 100,
 			&terminating, true,
@@ -4165,7 +4174,7 @@ bool PcapQueue_readFromInterface::init() {
 	vector<string> interfaces = split(this->interfaceName.c_str(), split(",|;| |\t|\r|\n", "|"), true);
 	for(size_t i = 0; i < interfaces.size(); i++) {
 		if(this->readThreadsCount < READ_THREADS_MAX - 1) {
-			this->readThreads[this->readThreadsCount] = new FILE_LINE PcapQueue_readFromInterfaceThread(interfaces[i].c_str());
+			this->readThreads[this->readThreadsCount] = new FILE_LINE(16048) PcapQueue_readFromInterfaceThread(interfaces[i].c_str());
 			++this->readThreadsCount;
 		}
 	}
@@ -4246,7 +4255,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	int blockStoreCount = this->readThreadsCount ? this->readThreadsCount : 1;
 	pcap_block_store *blockStore[blockStoreCount];
 	for(int i = 0; i < blockStoreCount; i++) {
-		blockStore[i] = new FILE_LINE pcap_block_store;
+		blockStore[i] = new FILE_LINE(16049) pcap_block_store;
 		strncpy(blockStore[i]->ifname, 
 			this->readThreadsCount ? 
 				this->readThreads[i]->getInterfaceName(true).c_str() :
@@ -4307,7 +4316,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			usleep(10000);
 		} else {
 			if(!headerPacketStack) {
-				headerPacketStack = new FILE_LINE cHeaderPacketStack(opt_pcap_queue_iface_qring_size, SNAPLEN);
+				headerPacketStack = new FILE_LINE(16050) cHeaderPacketStack(opt_pcap_queue_iface_qring_size, SNAPLEN);
 				headerPacketStackAlloc = true;
 			}
 			if(!header_packet_read) {
@@ -4503,6 +4512,7 @@ void PcapQueue_readFromInterface::threadFunction_blocks() {
 			if(!opt_pcap_queue_compress && this->instancePcapFifo && opt_pcap_queue_suppress_t1_thread) {
 				this->instancePcapFifo->addBlockStoreToPcapStoreQueue(blockStore);
 			} else {
+				this->check_bypass_buffer();
 				blockStoreBypassQueue->push(blockStore);
 			}
 		} else {
@@ -4908,20 +4918,20 @@ void PcapQueue_readFromInterface::prepareLogTraffic() {
 
 void PcapQueue_readFromInterface::check_bypass_buffer() {
 	size_t blockStoreBypassQueueSize = 0;
-	bool _syslog = true;
+	bool countBypassBufferSizeExceeded_inc = false;
 	while(!TERMINATING && (blockStoreBypassQueueSize = blockStoreBypassQueue->getUseSize()) > opt_pcap_queue_bypass_max_size) {
 		if(opt_scanpcapdir[0]) {
 			usleep(100);
 		} else {
-			if(_syslog) {
-				u_long actTime = getTimeMS();
-				if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
-					syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
-					this->lastTimeLogErrThread0BufferIsFull = actTime;
-					cout << "bypass buffer size " << blockStoreBypassQueue->getUseItems() << " (" << blockStoreBypassQueue->getUseSize() << ")" << endl;
-				}
-				_syslog = false;
+			u_long actTime = getTimeMS();
+			if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
+				syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
+				this->lastTimeLogErrThread0BufferIsFull = actTime;
+				cout << "bypass buffer size " << blockStoreBypassQueue->getUseItems() << " (" << blockStoreBypassQueue->getUseSize() << ")" << endl;
+			}
+			if(!countBypassBufferSizeExceeded_inc) {
 				++countBypassBufferSizeExceeded;
+				countBypassBufferSizeExceeded_inc = true;
 			}
 			usleep(100);
 			maxBypassBufferSize = 0;
@@ -4939,6 +4949,10 @@ void PcapQueue_readFromInterface::push_blockstore(pcap_block_store **block_store
 	if(!opt_pcap_queue_compress && this->instancePcapFifo && opt_pcap_queue_suppress_t1_thread) {
 		this->instancePcapFifo->addBlockStoreToPcapStoreQueue(*block_store);
 	} else if(this->block_qring) {
+		while(!TERMINATING &&
+		      !buffersControl.check__pcap_store_queue__push()) {
+			usleep(1000);
+		}
 		this->block_qring->push(block_store, true);
 	} else {
 		this->check_bypass_buffer();
@@ -4947,7 +4961,7 @@ void PcapQueue_readFromInterface::push_blockstore(pcap_block_store **block_store
 }
 
 pcap_block_store *PcapQueue_readFromInterface::new_blockstore(int index_read_thread) {
-	pcap_block_store *blockStore = new FILE_LINE pcap_block_store;
+	pcap_block_store *blockStore = new FILE_LINE(16051) pcap_block_store;
 	strncpy(blockStore->ifname, 
 		this->readThreadsCount ? 
 			this->readThreads[index_read_thread]->getInterfaceName(true).c_str() :
@@ -5101,9 +5115,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		return(NULL);
 	}
 	if(this->packetServerDirection == directionRead && arg2) {
-		pcap_block_store *blockStore = new FILE_LINE pcap_block_store;
+		pcap_block_store *blockStore = new FILE_LINE(16052) pcap_block_store;
 		size_t bufferSize = 1000;
-		u_char *buffer = new FILE_LINE u_char[bufferSize * 2];
+		u_char *buffer = new FILE_LINE(16053) u_char[bufferSize * 2];
 		size_t bufferLen;
 		size_t offsetBufferSyncRead;
 		size_t offsetBuffer;
@@ -5131,6 +5145,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				bool detectSensorTime = false;
 				bufferLen = 0;
 				offsetBufferSyncRead = 0;
+				int require_confirmation = -1;
 				while(!TERMINATING && !forceStop) {
 					readLen = bufferSize;
 					if(!this->socketRead(buffer + offsetBufferSyncRead, &readLen, arg2)) {
@@ -5217,7 +5232,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 							u_char *pointToBeginBlock = (u_char*)memmem(buffer, bufferLen, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
 							if(pointToBeginBlock) {
 								if(pointToBeginBlock > buffer) {
-									u_char *buffer2 = new FILE_LINE u_char[bufferSize * 2];
+									u_char *buffer2 = new FILE_LINE(16054) u_char[bufferSize * 2];
 									memcpy_heapsafe(buffer2, buffer2,
 											pointToBeginBlock, buffer,
 											bufferLen - (pointToBeginBlock - buffer),
@@ -5236,7 +5251,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 							} else {
 								if(offsetBufferSyncRead) {
-									u_char *buffer2 = new FILE_LINE u_char[bufferSize * 2];
+									u_char *buffer2 = new FILE_LINE(16055) u_char[bufferSize * 2];
 									memcpy_heapsafe(buffer2, buffer2,
 											buffer + offsetBufferSyncRead, buffer,
 											readLen,
@@ -5259,7 +5274,11 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								} else if(!blockStore->size_compress && !blockStore->check_headers()) {
 									error = "bad headers";
 								} else {
-									if(send(this->packetServerConnections[arg2]->socketClient, "block_ok", 8, 0) != 8) {
+									if(require_confirmation < 0) {
+										require_confirmation = blockStore->require_confirmation;
+									}
+									if(require_confirmation > 0 &&
+									   send(this->packetServerConnections[arg2]->socketClient, "block_ok", 8, 0) != 8) {
 										error = "send ok to sender failed";
 									} else {
 										if(this->packetServerConnections[arg2]->block_counter == blockStore->block_counter) {
@@ -5284,7 +5303,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 											sumPacketsSize[0] += blockStore->size_packets ? blockStore->size_packets : blockStore->size;
 											sumPacketsSizeCompress[0] += blockStore->size_compress;
 											++sumBlocksCounterIn[0];
-											blockStore = new FILE_LINE pcap_block_store;
+											blockStore = new FILE_LINE(16056) pcap_block_store;
 										}
 									}
 								}
@@ -5303,7 +5322,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									error = "oversize";
 									break;
 								case -5:
-									error = "bad crc";
+									error = "bad checksum";
 									break;
 								case -6:
 									error = "bad version - sender and receiver must be the same version";
@@ -5316,7 +5335,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								offsetBuffer = bufferLen;
 							}
 							if(error) {
-								send(this->packetServerConnections[arg2]->socketClient, error, strlen(error), 0);
+								if(require_confirmation > 0) {
+									send(this->packetServerConnections[arg2]->socketClient, error, strlen(error), 0);
+								}
 								blockStore->destroyRestoreBuffer();
 								syncBeginBlock = true;
 								u_long actTimeMS = getTimeMS();
@@ -5436,7 +5457,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 				} else {
 					buffersControl.add__PcapQueue_readFromFifo__blockStoreTrash_size(blockStore->getUseSize());
 					if(opt_ipaccount) {
-						blockStore->is_voip = new FILE_LINE u_int8_t[blockStore->count];
+						blockStore->is_voip = new FILE_LINE(16057) u_int8_t[blockStore->count];
 						memset(blockStore->is_voip, 0, blockStore->count);
 					}
 				}
@@ -5461,7 +5482,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							if(iter != listPacketTimeInfo.end()) {
 								iter->second->push_back(pti);
 							} else {
-								list<sPacketTimeInfo> *newList = new FILE_LINE list<sPacketTimeInfo>;
+								list<sPacketTimeInfo> *newList = new FILE_LINE(16058) list<sPacketTimeInfo>;
 								newList->push_back(pti);
 								listPacketTimeInfo[pti.utime] = newList;
 							}
@@ -5861,26 +5882,30 @@ string PcapQueue_readFromFifo::getCpuUsage(bool writeThread, bool preparePstatDa
 
 bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) {
 	++block_counter;
-	bool rslt;
+	bool rslt = false;
 	while(!TERMINATING) {
 		size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
 		u_char *saveBuffer = blockStore->getSaveBuffer(block_counter);
 		rslt = this->socketWrite(saveBuffer, sizeSaveBuffer);
 		delete [] saveBuffer;
 		if(rslt) {
-			char recv_data[100] = "";
-			size_t recv_data_len = sizeof(recv_data);
-			bool rsltRead = this->_socketRead(this->socketHandle, (u_char*)recv_data, &recv_data_len, 4);
-			if(rsltRead && recv_data_len > 0) {
-				if(!memcmp(recv_data, "block_ok", 8)) {
-					break;
+			if(opt_pcap_queues_mirror_require_confirmation) {
+				char recv_data[100] = "";
+				size_t recv_data_len = sizeof(recv_data);
+				bool rsltRead = this->_socketRead(this->socketHandle, (u_char*)recv_data, &recv_data_len, 4);
+				if(rsltRead && recv_data_len > 0) {
+					if(!memcmp(recv_data, "block_ok", 8)) {
+						break;
+					} else {
+						syslog(LOG_ERR, "response from receiver: %s - try send block again", string(recv_data, recv_data_len).c_str());
+						sleep(1);
+					}
 				} else {
-					syslog(LOG_ERR, "response from receiver: %s - try send block again", string(recv_data, recv_data_len).c_str());
+					syslog(LOG_ERR, "unknown response from receiver - try send block again");
 					sleep(1);
 				}
 			} else {
-				syslog(LOG_ERR, "unknown response from receiver - try send block again");
-				sleep(1);
+				break;
 			}
 		}
 	}
@@ -6141,7 +6166,7 @@ void PcapQueue_readFromFifo::createConnection(int socketClient, sockaddr_in *soc
 			id = iter->first + 1; 
 		}
 	}
-	sPacketServerConnection *connection = new FILE_LINE sPacketServerConnection(socketClient, *socketClientInfo, this, id);
+	sPacketServerConnection *connection = new FILE_LINE(16059) sPacketServerConnection(socketClient, *socketClientInfo, this, id);
 	connection->socketClientIPN = socketClientInfo->sin_addr.s_addr;
 	connection->socketClientIP = inet_ntoa(socketClientInfo->sin_addr);
 	connection->active = true;
@@ -6430,9 +6455,9 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->qring_length = opt_preprocess_packets_qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
-	this->qring = new FILE_LINE sBatchHP*[this->qring_length];
+	this->qring = new FILE_LINE(16060) sBatchHP*[this->qring_length];
 	for(unsigned int i = 0; i < this->qring_length; i++) {
-		this->qring[i] = new FILE_LINE sBatchHP(this->qring_batch_item_length);
+		this->qring[i] = new FILE_LINE(16061) sBatchHP(this->qring_batch_item_length);
 		this->qring[i]->used = 0;
 	}
 	this->qring_push_index = 0;
@@ -6673,7 +6698,7 @@ double PcapQueue_outputThread::getCpuUsagePerc(bool preparePstatData) {
 
 
 void PcapQueue_init() {
-	blockStoreBypassQueue = new FILE_LINE pcap_block_store_queue;
+	blockStoreBypassQueue = new FILE_LINE(16062) pcap_block_store_queue;
 }
 
 void PcapQueue_term() {

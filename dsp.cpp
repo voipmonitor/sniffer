@@ -1563,11 +1563,13 @@ unsigned int dsp_get_sample_rate(const struct dsp *dsp)
 	return dsp->sample_rate;
 }
 
-void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0);
+#define FILE_LINE(alloc_number) (__FILE__, __LINE__, alloc_number)
+void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0, int alloc_number = 0);
+
 static struct dsp *__dsp_new(unsigned int sample_rate)
 {
 	extern int opt_silencethreshold;
-	dsp *dsp_new = new (__FILE__, __LINE__) dsp;
+	dsp *dsp_new = new FILE_LINE(4001) dsp;
 	memset(dsp_new, 0, sizeof(dsp));
 
 	if (dsp_new) {
