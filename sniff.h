@@ -330,6 +330,7 @@ typedef struct livesnifferfilter_s {
                 bool all_tohstr;
                 bool all_bothhstr;
                 bool all_hstr;
+                bool all_vlan;
 		bool all_siptypes;
 		bool all_all;
 	};
@@ -342,6 +343,7 @@ typedef struct livesnifferfilter_s {
         char lv_fromhstr[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
         char lv_tohstr[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
         char lv_bothhstr[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+        char lv_vlan[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 	unsigned char lv_siptypes[MAXLIVEFILTERS];
         int uid;
         time_t created_at;
