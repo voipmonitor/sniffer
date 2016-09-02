@@ -455,9 +455,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 			parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
 			header_sll, header_eth, header_ip_offset, protocol, &vlan);
 			sprintf(vlanstr, "%d",vlan);
-			syslog (LOG_NOTICE,"PAKET obsahuje VLAN: %d '%s'",vlan, vlanstr);
-			
-//			vlanstr = itoa(vlan);
+			//syslog (LOG_NOTICE,"PAKET obsahuje VLAN: %d '%s'",vlan, vlanstr);
 		}
 	}
         //If call is established get caller/called num from packet - else gather it from packet and save to caller called
