@@ -976,10 +976,12 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 				}
 				
 				// check if codec did not changed but ignore payload 13 and 19 which is CNG and 101 which is DTMF
+				printf("Assrc %x %u\n", curSSRC, tmprtp.getSeqNum());
 				int oldcodec = rtp[i]->codec;
 				if(curpayload == 13 or curpayload == 19 or rtp[i]->codec == PAYLOAD_TELEVENT or rtp[i]->payload2 == curpayload) {
 					goto read;
 				} else {
+					printf("Bssrc %x %u\n", curSSRC, tmprtp.getSeqNum());
 					// check if the stream started with DTMF
 					if(rtp[i]->payload2 >= 96 && rtp[i]->payload2 <= 127) {
 						for(int j = 0; j < MAX_RTPMAP; j++) {
@@ -993,6 +995,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 						}
 					}
 
+					printf("Cssrc %x %u\n", curSSRC, tmprtp.getSeqNum());
 					//codec changed, check if it is not DTMF 
 					if(curpayload >= 96 && curpayload <= 127) {
 						bool found = false;
@@ -1006,11 +1009,13 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 							// dynamic type codec changed but was not negotiated - do not create new RTP stream
 							goto end;
 						}
+						printf("Dssrc %x %u\n", curSSRC, tmprtp.getSeqNum());
 					} else {
 						rtp[i]->codec = curpayload;
 					}
 					if(rtp[i]->codec == PAYLOAD_TELEVENT) {
 read:
+						printf("Essrc %x %u\n", curSSRC, tmprtp.getSeqNum());
 						if(rtp[i]->index_call_ip_port >= 0) {
 							evProcessRtpStream(rtp[i]->index_call_ip_port, rtp[i]->index_call_ip_port_by_dest,
 									   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header_pt->ts.tv_sec);
@@ -1033,16 +1038,19 @@ read:
 						}
 						goto end;
 					} else if(oldcodec != rtp[i]->codec){
+						printf("Fssrc %x %u\n", curSSRC, tmprtp.getSeqNum());
 						//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
-						//if(verbosity > 1) printf("mchange [%d] [%d]\n", rtp[i]->codec, curpayload);
+						if(1 or verbosity > 1) printf("mchange [%d] [%d]?\n", rtp[i]->codec, oldcodec);
 						rtp[i]->ssrc2 = 0;
 					} else {
+						printf("Gssrc %x %u\n", curSSRC, tmprtp.getSeqNum());
 						//if(verbosity > 1) printf("wtf lastseq[%u] seq[%u] saddr[%u] dport[%u] oldcodec[%u] rtp[i]->codec[%u] rtp[i]->payload2[%u] curpayload[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), packetS->saddr, packetS->dest, oldcodec, rtp[i]->codec, rtp[i]->payload2, curpayload);
 					}
 				}
 			}
 		}
 	}
+	printf("Xssrc %x %u\n", curSSRC, tmprtp.getSeqNum());
 	// adding new RTP source
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
 		// if previouse RTP streams are present it should be filled by silence to keep it in sync
@@ -1438,7 +1446,7 @@ Call::convertRawToWav() {
 			u_int64_t Bstart = B->first_packet_time * 1000000ull + B->first_packet_usec;
 			u_int64_t Bstop = B->last_pcap_header_ts;
 			if(((Bstart > Astart) and (Bstart > Astop)) or ((Astart > Bstart) and (Astart > Bstop))) {
-				if(0) syslog(LOG_ERR, "Not removing SSRC[%x][%p] and SSRC[%x][%p] %lu %lu\n", A->ssrc, A, B->ssrc, B, Astart, Bstop);
+				if(1) syslog(LOG_ERR, "Not removing SSRC[%x][%p] and SSRC[%x][%p] %lu %lu\n", A->ssrc, A, B->ssrc, B, Astart, Bstop);
 				continue;
 				
 			}
