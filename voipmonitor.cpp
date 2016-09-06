@@ -6292,6 +6292,12 @@ bool check_complete_parameters() {
                         "      In case the system is droping packets (which is logged to syslog)\n"
                         "      increase this value.  Default is 20 MB\n"
                         "\n"
+                        " --reindex-all\n"
+                        "      reindexes spool storage and quits\n"
+                        "\n"
+                        " --run-cleanspool\n"
+                        "      cleans spooldir and quits\n"
+                        "\n"
                         "One of <-i interface> or <-r pcap-file> must be specified, otherwise you may\n"
                         "set interface in configuration file.\n\n"
                         , RTPSENSOR_VERSION);
