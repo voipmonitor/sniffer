@@ -1659,6 +1659,25 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 				i++;
 			}
 			updateLivesnifferfilters();
+		} else if(strstr(search, "vlan")) {
+			int i = 0;
+			//reset filters
+			for(i = 0; i < MAXLIVEFILTERS; i++) {
+				filter->lv_vlan[i][0] = '\0';
+			}
+			stringstream  data(value);
+			string val;
+			i = 0;
+			// read all argumens livefilter set bothhstr 123 345 244
+			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				global_livesniffer = 1;
+				stringstream tmp;
+				tmp << val;
+				tmp >> filter->lv_vlan[i];
+				//cout << filter->lv_bothhstr[i] << "\n";
+				i++;
+			}
+			updateLivesnifferfilters();
 		} else if(strstr(search, "siptypes")) {
 			//cout << "siptypes: " << value << "\n";
 			for(size_t i = 0; i < strlen(value) && i < MAXLIVEFILTERS; i++) {
@@ -3050,6 +3069,7 @@ void livesnifferfilter_s::updateState() {
 	new_state.all_fromhstr = true;
 	new_state.all_tohstr = true;
 	new_state.all_bothhstr = true;
+	new_state.all_vlan = true;
 	new_state.all_siptypes = true;
 	for(int i = 0; i < MAXLIVEFILTERS; i++) {
 		if(this->lv_saddr[i]) {
@@ -3079,6 +3099,9 @@ void livesnifferfilter_s::updateState() {
 		if(this->lv_bothhstr[i][0]) {
 			new_state.all_bothhstr = false;
 		}
+		if(this->lv_vlan[i][0]) {
+			new_state.all_vlan = false;
+		}
 		if(this->lv_siptypes[i]) {
 			new_state.all_siptypes = false;
 		}
@@ -3086,7 +3109,7 @@ void livesnifferfilter_s::updateState() {
 	new_state.all_addr = new_state.all_saddr && new_state.all_daddr && new_state.all_bothaddr;
 	new_state.all_num = new_state.all_srcnum && new_state.all_dstnum && new_state.all_bothnum;
 	new_state.all_hstr = new_state.all_fromhstr && new_state.all_tohstr && new_state.all_bothhstr;
-	new_state.all_all = new_state.all_addr && new_state.all_num && new_state.all_hstr && new_state.all_siptypes;
+	new_state.all_all = new_state.all_addr && new_state.all_num && new_state.all_hstr && new_state.all_vlan && new_state.all_siptypes;
 	this->state = new_state;
 }
 

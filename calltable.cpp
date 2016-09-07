@@ -1034,7 +1034,7 @@ read:
 						goto end;
 					} else if(oldcodec != rtp[i]->codec){
 						//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
-						//if(verbosity > 1) printf("mchange [%d] [%d]\n", rtp[i]->codec, curpayload);
+						if(1 or verbosity > 1) printf("mchange [%d] [%d]?\n", rtp[i]->codec, oldcodec);
 						rtp[i]->ssrc2 = 0;
 					} else {
 						//if(verbosity > 1) printf("wtf lastseq[%u] seq[%u] saddr[%u] dport[%u] oldcodec[%u] rtp[i]->codec[%u] rtp[i]->payload2[%u] curpayload[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), packetS->saddr, packetS->dest, oldcodec, rtp[i]->codec, rtp[i]->payload2, curpayload);
@@ -1429,7 +1429,20 @@ Call::convertRawToWav() {
 					B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k, B->stats.received);
 				B->skip = true;
 			}
+
 			if(A == B or A->skip or B->skip or A->stats.received < 50 or B->stats.received < 50) continue; // do not compare with ourself or already removed RTP or with RTP with <20 packets
+
+			// check if A or B time overlaps - if not we cannot treat it as duplicate stream 
+			u_int64_t Astart = A->first_packet_time * 1000000ull + A->first_packet_usec;
+			u_int64_t Astop = A->last_pcap_header_ts;
+			u_int64_t Bstart = B->first_packet_time * 1000000ull + B->first_packet_usec;
+			u_int64_t Bstop = B->last_pcap_header_ts;
+			if(((Bstart > Astart) and (Bstart > Astop)) or ((Astart > Bstart) and (Astart > Bstop))) {
+				if(1) syslog(LOG_ERR, "Not removing SSRC[%x][%p] and SSRC[%x][%p] %lu %lu\n", A->ssrc, A, B->ssrc, B, Astart, Bstop);
+				continue;
+				
+			}
+
 			if(A->ssrc == B->ssrc) {
 				if(A->daddr == B->daddr and A->saddr == B->saddr and A->sport == B->sport and A->dport == B->dport){
 					// A and B have the same SSRC but both is identical ips and ports
@@ -1453,13 +1466,13 @@ Call::convertRawToWav() {
 						}
 						if(test) {
 							B->skip = true;
-							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 0\n", 
-								B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k);
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x][%p] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 0\n", 
+								B->ssrc, B, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k);
 						} else {
 							// test is not true which means that if we remove B there will be no other stream with the B.daddr so we can remove A
 							A->skip = true;
-							if(verbosity > 1) syslog(LOG_ERR, "Removing stream [%p] with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
-								A, A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x][%p] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
+								A->ssrc, A, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
 						}
 					} else {
 						// B.daddr is not in SDP but A.dst is in SDP - but lets check if removing B will not remove all caller/called streams 
@@ -1617,6 +1630,9 @@ Call::convertRawToWav() {
 			case PAYLOAD_G722132:
 				samplerate = 32000;
 				break;
+			case PAYLOAD_AMRWB:
+				samplerate = 16000;
+				break;
 		}
 		for(int i = 0; i < (abs(msdiff) / 20) * samplerate / 50; i++) {
 			fwrite(&zero, 1, 2, wav);
@@ -1685,10 +1701,10 @@ Call::convertRawToWav() {
 						  last_size > 10000) {
 						// ignore this raw file it is duplicate 
 						if(!sverb.noaudiounlink) unlink(raw);
-						syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+						if(verbosity > 1) syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 					} else {
 						if(rtp[rawl.ssrc_index]->skip) {
-							syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+							if(verbosity > 1) syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 							if(!sverb.noaudiounlink) unlink(raw);
 						} else {
 							raws.push_back(rawl);
@@ -1699,7 +1715,7 @@ Call::convertRawToWav() {
 						raws.push_back(rawl);
 					} else {
 						if(!sverb.noaudiounlink) unlink(raw);
-							syslog(LOG_NOTICE, "C ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+						if(verbosity > 1) syslog(LOG_NOTICE, "C ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 					}
 				}
 				lasttv.tv_sec = tv0.tv_sec;

@@ -411,33 +411,53 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 	
 	char caller[1024] = "", called[1024] = "";
 	char fromhstr[1024] = "", tohstr[1024] = "";
+	char vlanstr[1024] = ""; int vlan;
         //Check if we use from/to header for filtering, if yes gather info from packet to fromhstr tohstr
         {
-                bool needfromhstr = false;
-                bool needtohstr = false;
-                for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
-                        if(!usersnifferIT->second->state.all_all && !usersnifferIT->second->state.all_hstr) {
-                                for(int i = 0; i < MAXLIVEFILTERS; i++) {
-                                        if(!usersnifferIT->second->state.all_fromhstr && usersnifferIT->second->lv_fromhstr[i][0]) {
-                                                needfromhstr = true;
-                                        }
-                                        if(!usersnifferIT->second->state.all_tohstr && usersnifferIT->second->lv_tohstr[i][0]) {
-                                                needtohstr = true;
-                                        }
-                                        if(!usersnifferIT->second->state.all_bothhstr && usersnifferIT->second->lv_bothhstr[i][0]) {
-                                                needfromhstr = true;
-                                                needtohstr = true;
-                                        }
-                                }
-                        }
-                }
-                if(needfromhstr) {
-                        get_sip_headerstr(packetS, "\nFrom:", "\nf:", fromhstr, sizeof(fromhstr));
-                }
-                if(needtohstr) {
-                        get_sip_headerstr(packetS, "\nTo:", "\nt:", tohstr, sizeof(tohstr));
-                }
-        }
+		bool needfromhstr = false;
+		bool needtohstr = false;
+		bool needvlan=false;
+		for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
+			if(!usersnifferIT->second->state.all_all && !usersnifferIT->second->state.all_hstr) {
+				for(int i = 0; i < MAXLIVEFILTERS; i++) {
+					if(!usersnifferIT->second->state.all_fromhstr && usersnifferIT->second->lv_fromhstr[i][0]) {
+						needfromhstr = true;
+					}
+					if(!usersnifferIT->second->state.all_tohstr && usersnifferIT->second->lv_tohstr[i][0]) {
+						needtohstr = true;
+					}
+					if(!usersnifferIT->second->state.all_bothhstr && usersnifferIT->second->lv_bothhstr[i][0]) {
+						needfromhstr = true;
+						needtohstr = true;
+					}
+				}
+			}
+			if(!usersnifferIT->second->state.all_all && !usersnifferIT->second->state.all_vlan) {
+				for(int i = 0; i < MAXLIVEFILTERS; i++) {
+					if(!usersnifferIT->second->state.all_vlan && usersnifferIT->second->lv_vlan[i][0]) {
+						needvlan = true;
+					}
+				}
+			}
+		}
+		if(needfromhstr) {
+			get_sip_headerstr(packetS, "\nFrom:", "\nf:", fromhstr, sizeof(fromhstr));
+		}
+		if(needtohstr) {
+			get_sip_headerstr(packetS, "\nTo:", "\nt:", tohstr, sizeof(tohstr));
+		}
+		if(needvlan) {
+			sll_header *header_sll;
+			ether_header *header_eth;
+			u_int header_ip_offset;
+			int protocol;
+
+			parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
+			header_sll, header_eth, header_ip_offset, protocol, &vlan);
+			sprintf(vlanstr, "%d",vlan);
+			//syslog (LOG_NOTICE,"PAKET obsahuje VLAN: %d '%s'",vlan, vlanstr);
+		}
+	}
         //If call is established get caller/called num from packet - else gather it from packet and save to caller called
 	if(call) {
 		strncpy(caller, call->caller, sizeof(caller));
@@ -503,20 +523,28 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 					}
 				}
 			}
-                        bool okHeader = filter->state.all_hstr;
-                        if(!okHeader) {
-                                for(int i = 0; i < MAXLIVEFILTERS && !okHeader; i++) {
-                                        if((filter->state.all_fromhstr || (filter->lv_fromhstr[i][0] &&
-                                                memmem(fromhstr, strlen(fromhstr), filter->lv_fromhstr[i], strlen(filter->lv_fromhstr[i])))) &&
-                                           (filter->state.all_tohstr || (filter->lv_tohstr[i][0] &&
-                                                memmem(tohstr, strlen(tohstr), filter->lv_tohstr[i], strlen(filter->lv_tohstr[i])))) &&
-                                           (filter->state.all_bothhstr || (filter->lv_bothhstr[i][0] &&
-                                                (memmem(fromhstr, strlen(fromhstr), filter->lv_bothhstr[i], strlen(filter->lv_bothhstr[i])) ||
-                                                 memmem(tohstr, strlen(tohstr), filter->lv_bothhstr[i], strlen(filter->lv_bothhstr[i])))))) {
-                                                okHeader = true;
-                                        }
-                                }
-                        }
+			bool okHeader = filter->state.all_hstr;
+			if(!okHeader) {
+				for(int i = 0; i < MAXLIVEFILTERS && !okHeader; i++) {
+					if((filter->state.all_fromhstr || (filter->lv_fromhstr[i][0] &&
+						memmem(fromhstr, strlen(fromhstr), filter->lv_fromhstr[i], strlen(filter->lv_fromhstr[i])))) &&
+					   (filter->state.all_tohstr || (filter->lv_tohstr[i][0] &&
+						memmem(tohstr, strlen(tohstr), filter->lv_tohstr[i], strlen(filter->lv_tohstr[i])))) &&
+					   (filter->state.all_bothhstr || (filter->lv_bothhstr[i][0] &&
+						(memmem(fromhstr, strlen(fromhstr), filter->lv_bothhstr[i], strlen(filter->lv_bothhstr[i])) ||
+						 memmem(tohstr, strlen(tohstr), filter->lv_bothhstr[i], strlen(filter->lv_bothhstr[i])))))) {
+						okHeader = true;
+					}
+				}
+			}
+			bool okVlan = filter->state.all_vlan;
+			if(!okVlan) {
+				for(int i = 0; i < MAXLIVEFILTERS && !okVlan; i++) {
+					if(filter->state.all_vlan || (filter->lv_vlan[i][0] && memmem(vlanstr, strlen(vlanstr), filter->lv_vlan[i], strlen(filter->lv_vlan[i])))) {
+						okVlan = true;
+					}
+				}
+			}
 			bool okSipType = filter->state.all_siptypes;
 			if(!okSipType) {
 				for(int i = 0; i < MAXLIVEFILTERS && !okSipType; i++) {
@@ -525,7 +553,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 					}
 				}
 			}
-			if(okAddr && okNum && okSipType && okHeader) {
+			if(okAddr && okNum && okSipType && okHeader &&okVlan) {
 				save = true;
 			}
 		}
@@ -1258,6 +1286,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_XOPUS;
        else if(strcasecmp(mimeSubtype,"AMR") == 0)
 	       return PAYLOAD_AMR;
+       else if(strcasecmp(mimeSubtype,"AMR-WB") == 0)
+	       return PAYLOAD_AMRWB;
        else if(strcasecmp(mimeSubtype,"telephone-event") == 0)
 	       return PAYLOAD_TELEVENT;
        else
