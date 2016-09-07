@@ -1368,6 +1368,7 @@ public:
 		if(listIP.size()) {
 			if(!_listIP_sorted) {
 				std::sort(listIP.begin(), listIP.end());
+				_listIP_sorted = true;
 			}
 			std::vector<IP>::iterator it_ip = std::lower_bound(listIP.begin(), listIP.end(), IP(check_ip));
 			if(it_ip != listIP.end() && it_ip->checkIP(check_ip)) {
@@ -1377,16 +1378,21 @@ public:
 		if(!rslt && listNet.size()) {
 			if(!_listNet_sorted) {
 				std::sort(listNet.begin(), listNet.end());
+				_listNet_sorted = true;
 			}
 			std::vector<IP>::iterator it_net = std::lower_bound(listNet.begin(), listNet.end(), IP(check_ip));
-			while(it_net != listNet.begin()) {
-				--it_net;
-				if(!(it_net->ip & check_ip)) {
-					break;
-				}
-				if(it_net->checkIP(check_ip)) {
-					rslt = true;
-					break;
+			if(it_net != listNet.end() && it_net->checkIP(check_ip)) {
+				rslt = true;
+			} else {
+				while(it_net != listNet.begin()) {
+					--it_net;
+					if(!(it_net->ip & check_ip)) {
+						break;
+					}
+					if(it_net->checkIP(check_ip)) {
+						rslt = true;
+						break;
+					}
 				}
 			}
 		}
@@ -1499,6 +1505,7 @@ public:
 		if(listPhoneNumber.size()) {
 			if(!_listPhoneNumber_sorted) {
 				std::sort(listPhoneNumber.begin(), listPhoneNumber.end());
+				_listPhoneNumber_sorted = true;
 			}
 			std::vector<PhoneNumber>::iterator it_number = std::lower_bound(listPhoneNumber.begin(), listPhoneNumber.end(), PhoneNumber(check_number, false));
 			if(it_number != listPhoneNumber.end() && it_number->checkNumber(check_number)) {
@@ -1508,6 +1515,7 @@ public:
 		if(!rslt && listPrefixes.size()) {
 			if(!_listPrefixes_sorted) {
 				std::sort (listPrefixes.begin(), listPrefixes.end());
+				_listPrefixes_sorted = true;
 			}
 			std::vector<PhoneNumber>::iterator it_prefix = std::lower_bound(listPrefixes.begin(), listPrefixes.end(), PhoneNumber(check_number, false));
 			if(it_prefix != listPrefixes.end() && it_prefix->checkNumber(check_number)) {
