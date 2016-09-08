@@ -3496,7 +3496,12 @@ inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
 				if(!opt_rtpfromsdp_onlysip ||
 				   (call_info_find_by_dest ?
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
-				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr))) {
+				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
+				   (call_info_find_by_dest ?
+				     calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, packetS->hash[0], false) &&
+				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr) :
+				     calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, packetS->hash[1], false) &&
+				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) {
 					call_info[call_info_length].call = node_call->call;
 					call_info[call_info_length].iscaller = node_call->iscaller;
 					call_info[call_info_length].is_rtcp = node_call->is_rtcp;
@@ -6230,7 +6235,12 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			if(!opt_rtpfromsdp_onlysip ||
 			   (packetS->call_info_find_by_dest ?
 			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
-			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr))) {
+			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
+			   (packetS->call_info_find_by_dest ?
+			     calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, packetS->hash[0], false) &&
+			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr) :
+			     calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, packetS->hash[1], false) &&
+			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) {
 				packetS->call_info[packetS->call_info_length].call = node_call->call;
 				packetS->call_info[packetS->call_info_length].iscaller = node_call->iscaller;
 				packetS->call_info[packetS->call_info_length].is_rtcp = node_call->is_rtcp;
