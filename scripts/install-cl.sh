@@ -1,6 +1,6 @@
 #!/bin/bash
 #cloudToken=
-__VERSION=1.0h
+__VERSION=1.0j
 
 #__COLORS=1	#automagicaly set by checkTput function
 			#0 for disable colors output
@@ -283,9 +283,9 @@ function downloadFromLink {
 
 	#echo "wget $newLink -O $fileName"
 	if [ $__VERBOSE -eq 1 ]; then
-		cmd "wget -O" "$_filename" "$_linkname"
+		cmd "wget -O" "$_filename" "$_linkname" "--no-check-certificate"
 	else
-		cmd "wget -q -O" "$_filename" "$_linkname"
+		cmd "wget --no-check-certificate -q -O" "$_filename" "$_linkname"
 	fi
 
 
@@ -1156,9 +1156,18 @@ else
 	graphResult=0
 fi
 
-#8a. Would you like to compress pcap files? dafault value yes
+#8a. You set to storing RTP would you like to compress it using LZO?
+if [ $rtpResult -eq 1 ]; then
+	if ask2 "Would you like to compress RTP using LZO? (LZO is very fast, but for decompression you will need voipmonitor)" "yes" "no" "yes"; then
+		rtpLZO="lzo"
+	else
+		rtpLZO="no"
+	fi
+fi
+
+#8b. Would you like to compress pcap files? dafault value yes
 if ask2 "Would you like to compress pcap files?" "yes" "no" "yes"; then
-#8b. Ask for compression level 
+#8c. Ask for compression level 
 	askNumber ratioResult "  Choose ziplevel (1 is the fastest, 9 is the slowest)" 1 9 6
 	zipResult=1
 else
@@ -1173,7 +1182,7 @@ if [ $storingResult -gt 0 ]; then
 	askDir spooldirResult "Where you want to store spool pcap files " "/var/spool/voipmonitor"
 #9b. Autocleaning of spool directory, no default value
 	if ask2 "Would you like to enable autocleaning of the spool directory" "yes" "no"; then
-		cleaningResult=1
+		cleaningResult="1"
 #9ba spool size
 		askNumber spoolsizeResult "  Maximum size of spool directory (GB)" 1 100000 100
 		if [ $sipResult -eq 1 ]; then
@@ -1189,7 +1198,7 @@ if [ $storingResult -gt 0 ]; then
 		askNumber graphdaysResult "  Maximum days for .graph files ( 0 for disabled ) " 0 36500 0
 		fi
 	else
-		cleaningResult=0
+		cleaningResult="0"
 	fi
 	echo
 else
@@ -1230,7 +1239,7 @@ verbose
 verbose "installVoipmonitor = $installVoipmonitor"
 verbose "installFilename = $fileName"
 
-verbose "cloudToken = $cloudToken"
+verbose "cloudToken = $vmToken"
 
 verbose "interface = ifacesResult: $ifacesResult"
 replaceArgByWhere "interface" "interface = $(echo "$(trim "$ifacesResult")"|tr ' ' ',')" "$configFile"
@@ -1241,10 +1250,11 @@ replaceSipPorts "$portsResult" "$configFile"
 verbose "ringbuffer = ringbufferResult: $ringbufferResult"
 replaceArgByWhere "ringbuffer" "ringbuffer = $ringbufferResult" "$configFile"
 
-verbose "packetbuffer_total_maxheap = hodnota, packetbuffer_file_path = cesta/packetbuffer, packetbuffer_enable = yes, heapbufferResult: $heapbufferResult"
+#verbose "packetbuffer_total_maxheap = hodnota, packetbuffer_file_path = cesta/packetbuffer, packetbuffer_enable = yes, heapbufferResult: $heapbufferResult"
+verbose "max_buffer_mem, packetbuffer_file_path = filepath/packetbuffer, packetbuffer_enable = yes, heapbufferResult: $heapbufferResult"
 replaceArgByWhere "packetbuffer_enable" "packetbuffer_enable = yes" "$configFile"
 replaceArgByWhere "packetbuffer_file_path" "packetbuffer_file_path = /var/spool/voipmonitor/packetbuffer" "$configFile"
-replaceArgByWhere "packetbuffer_total_maxheap" "packetbuffer_total_maxheap = $heapbufferResult" "$configFile"
+replaceArgByWhere "max_buffer_mem" "max_buffer_mem = $heapbufferResult" "$configFile"
 
 verbose "storingResult: $storingResult"
 
@@ -1270,6 +1280,12 @@ else
 	replaceArgByWhere "savegraph" "savegraph = no" "$configFile"
 fi
 
+
+if [ $rtpResult -eq 1 ]; then
+	verbose "pcap_dump_zip_rtp = $rtpLZO"
+	replaceArgByWhere "pcap_dump_zip_rtp" "pcap_dump_zip_rtp = $rtpLZO" "$configFile"
+fi
+
 verbose "pcap_dump_zip = yes zipResult: $zipResult"
 verbose "pcap_dump_ziplevel = , ratioResult: $ratioResult"
 if [ $zipResult -eq 1 ]; then
@@ -1283,7 +1299,7 @@ verbose "cleaningResult: $cleaningResult"
 verbose "spooldirResult: $spooldirResult"
 replaceArgByWhere "spooldir" "spooldir = $spooldirResult" "$configFile"
 
-if [ $cleaningResult -eq 1 ]; then
+if [ "yes$cleaningResult" == "yes1" ]; then
 	spoolsizeResultMB=$(($spoolsizeResult * 1024))
 else
 	spoolsizeResultMB=0
@@ -1308,7 +1324,7 @@ verbose "absolute_timeout = timeoutResult: $timeoutResult"
 replaceArgByWhere "absolute_timeout" "absolute_timeout = $timeoutResult" "$configFile"
 
 replaceArgByWhere "cloud_url" "cloud_url = https://cloud.voipmonitor.org/reg/register.php" "$configFile"
-replaceArgByWhere "cloud_token" "cloud_token = $cloudToken" "$configFile"
+replaceArgByWhere "cloud_token" "cloud_token = $vmToken" "$configFile"
 
 
 verbose "initResult: $initResult"
