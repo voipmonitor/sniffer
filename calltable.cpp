@@ -1034,7 +1034,7 @@ read:
 						goto end;
 					} else if(oldcodec != rtp[i]->codec){
 						//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
-						if(1 or verbosity > 1) printf("mchange [%d] [%d]?\n", rtp[i]->codec, oldcodec);
+						if(verbosity > 1) printf("mchange [%d] [%d]?\n", rtp[i]->codec, oldcodec);
 						rtp[i]->ssrc2 = 0;
 					} else {
 						//if(verbosity > 1) printf("wtf lastseq[%u] seq[%u] saddr[%u] dport[%u] oldcodec[%u] rtp[i]->codec[%u] rtp[i]->payload2[%u] curpayload[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), packetS->saddr, packetS->dest, oldcodec, rtp[i]->codec, rtp[i]->payload2, curpayload);
@@ -1641,6 +1641,8 @@ Call::convertRawToWav() {
 		/* end synchronisation */
 	}
 
+	int maxsamplerate = 0;
+
 	/* process all files in playlist for each direction */
 	int samplerate = 8000;
 	for(int i = 0; i <= 1; i++) {
@@ -1657,7 +1659,6 @@ Call::convertRawToWav() {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
 			return 1;
 		}
-		int maxsamplerate = 0;
 		// get max sample rate 
 		list<raws_t> raws;
 		struct timeval lasttv;
@@ -1676,6 +1677,7 @@ Call::convertRawToWav() {
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
 			snprintf(raw, 1023, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
 			samplerate = 1000 * get_ticks_bycodec(codec);
+			if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
 			if(maxsamplerate < samplerate) {
 				maxsamplerate = samplerate;
 			}
@@ -1996,15 +1998,15 @@ Call::convertRawToWav() {
 		// merge caller and called 
 		if(!(flags & FLAG_FORMATAUDIO_OGG)) {
 			if(!opt_saveaudio_reversestereo) {
-				wav_mix(wav0, wav1, out, samplerate, 0, opt_saveaudio_stereo);
+				wav_mix(wav0, wav1, out, maxsamplerate, 0, opt_saveaudio_stereo);
 			} else {
-				wav_mix(wav1, wav0, out, samplerate, 0, opt_saveaudio_stereo);
+				wav_mix(wav1, wav0, out, maxsamplerate, 0, opt_saveaudio_stereo);
 			}
 		} else {
 			if(!opt_saveaudio_reversestereo) {
-				ogg_mix(wav0, wav1, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
+				ogg_mix(wav0, wav1, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
 			} else {
-				ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
+				ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
 			}
 		}
 		if(!sverb.noaudiounlink) unlink(wav0);
@@ -2012,17 +2014,17 @@ Call::convertRawToWav() {
 	} else if(adir == 1) {
 		// there is only caller sound
 		if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-			wav_mix(wav0, NULL, out, samplerate, 0, opt_saveaudio_stereo);
+			wav_mix(wav0, NULL, out, maxsamplerate, 0, opt_saveaudio_stereo);
 		} else {
-			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 0);
+			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
 		}
 		if(!sverb.noaudiounlink) unlink(wav0);
 	} else if(bdir == 1) {
 		// there is only called sound
 		if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-			wav_mix(wav1, NULL, out, samplerate, 1, opt_saveaudio_stereo);
+			wav_mix(wav1, NULL, out, maxsamplerate, 1, opt_saveaudio_stereo);
 		} else {
-			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, samplerate, opt_saveaudio_oggquality, 1);
+			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 1);
 		}
 		if(!sverb.noaudiounlink) unlink(wav1);
 	}
