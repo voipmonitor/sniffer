@@ -6625,6 +6625,7 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 			} else {
 				//cout << "defrag exit 003" << endl;
 				hp->destroy_or_unlock_blockstore();
+				return;
 			}
 		} else {
 			break;
