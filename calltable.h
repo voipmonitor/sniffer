@@ -163,6 +163,16 @@ struct raws_t {
 */
 class Call {
 public:
+	struct sSipcalleRD_IP {
+		sSipcalleRD_IP() {
+			for(unsigned i = 0; i < MAX_SIPCALLERDIP; i++) {
+				sipcallerip[0] = 0;
+				sipcalledip[0] = 0;
+			}
+		}
+		u_int32_t sipcallerip[MAX_SIPCALLERDIP];
+		u_int32_t sipcalledip[MAX_SIPCALLERDIP];
+	};
 	struct sSipResponse {
 		sSipResponse(const char *SIPresponse = NULL, int SIPresponseNum = 0) {
 			if(SIPresponse) {
@@ -321,7 +331,8 @@ public:
 
 	u_int32_t sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
 	u_int32_t sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
-	u_int32_t lastsipcallerip;		
+	map<string, sSipcalleRD_IP> map_sipcallerdip;
+	u_int32_t lastsipcallerip;
 	
 	list<d_u_int32_t> invite_sdaddr;
 
@@ -698,7 +709,7 @@ public:
 	
 	void handle_dscp(struct iphdr2 *header_ip, bool iscaller);
 	
-	bool check_is_caller_called(int sip_method, unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled = NULL, bool enableSetSipcallerdip = false);
+	bool check_is_caller_called(const char *call_id, int sip_method, unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled = NULL, bool enableSetSipcallerdip = false);
 
 	void dump();
 

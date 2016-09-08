@@ -1134,7 +1134,6 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		if((pointer = strchr(buf, '\n')) != NULL) {
 			*pointer = 0;
 		}
-		bool zip = false;
 		extern Registers registers;
 		registers.cleanupByJson(buf + strlen("cleanupregisters") + 1);
 		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
