@@ -1034,7 +1034,7 @@ read:
 						goto end;
 					} else if(oldcodec != rtp[i]->codec){
 						//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
-						if(1 or verbosity > 1) printf("mchange [%d] [%d]?\n", rtp[i]->codec, oldcodec);
+						if(verbosity > 1) printf("mchange [%d] [%d]?\n", rtp[i]->codec, oldcodec);
 						rtp[i]->ssrc2 = 0;
 					} else {
 						//if(verbosity > 1) printf("wtf lastseq[%u] seq[%u] saddr[%u] dport[%u] oldcodec[%u] rtp[i]->codec[%u] rtp[i]->payload2[%u] curpayload[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), packetS->saddr, packetS->dest, oldcodec, rtp[i]->codec, rtp[i]->payload2, curpayload);
