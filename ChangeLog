@@ -1,3 +1,9 @@
+17.3.3 9.9.2016
+===============
+- fix crash in defrag if pcap_queue_use_blocks is enabled
+- fix RTP stream recognizing if callidmerge_header is enabled [VG-1004]
+
+
 17.3.2 8.9.2016
 ===============
 - fix alert ip condition if the IP ends with 0 [VG-1008]
