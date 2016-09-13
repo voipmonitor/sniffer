@@ -145,6 +145,7 @@ extern int opt_saveudptl;
 extern rtp_read_thread *rtp_threads;
 extern bool opt_rtpmap_by_callerd;
 extern bool opt_rtpmap_combination;
+extern int opt_register_timeout_disable_save_failed;
 
 volatile int calls_counter = 0;
 volatile int registers_counter = 0;
@@ -4592,7 +4593,14 @@ Calltable::cleanup_registers( time_t currtime ) {
 				reg->push_register_to_registers_queue = 1;
 				if(opt_sip_register == 1) {
 					extern Registers registers;
-					registers.add(reg);
+					if(reg->msgcount <= 1 || 
+					   reg->lastSIPresponseNum == 401 || reg->lastSIPresponseNum == 403 || reg->lastSIPresponseNum == 404) {
+						reg->regstate = 2;
+					}
+					if(reg->regstate != 2 ||
+					   !opt_register_timeout_disable_save_failed) {
+						registers.add(reg);
+					}
 					reg->getPcap()->close();
 					reg->getPcapSip()->close();
 					lock_registers_deletequeue();
