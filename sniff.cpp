@@ -2595,6 +2595,10 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					syslog(LOG_NOTICE, "Seen MEESAGE, CSeq: %s\n", call->invitecseq);
 			}
 
+			if(call->contenttype) delete [] call->contenttype;
+			call->contenttype = new FILE_LINE(27004) char[contenttypelen + 1];
+			strcpy(call->contenttype, contenttypestr);
+			
 			// UPDATE TEXT
 			char *rsltMessage;
 			char *rsltMessageInfo;
@@ -2626,6 +2630,9 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			}
 			if(rsltSrcNumber.length()) {
 				strncpy(call->caller, rsltSrcNumber.c_str(), sizeof(call->caller));
+			}
+			if(rsltContentLength != (unsigned int)-1) {
+				call->content_length = rsltContentLength;
 			}
 		} else if(packetS->sip_method == BYE) {
 			if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
@@ -3872,7 +3879,7 @@ inline int parse_packet__message(packet_s_process *packetS, bool strictCheckLeng
 		s[l] = '\0';
 		contentLength = atoi(s);
 		if(rsltContentLength) {
-			*rsltContentLength = 0;
+			*rsltContentLength = contentLength;
 		}
 		s[l] = endCharContentLength;
 	}
