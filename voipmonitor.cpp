@@ -283,6 +283,7 @@ unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
+int opt_messageproxy = 1;
 int opt_enable_http_enum_tables = 0;
 int opt_enable_webrtc_table = 0;
 int opt_generator = 0;
@@ -4942,6 +4943,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(43251) cConfigItem_yesno("cdronlyrtp", &opt_cdronlyrtp));
 			addConfigItem(new FILE_LINE(43252) cConfigItem_integer("callslimit", &opt_callslimit));
 			addConfigItem(new FILE_LINE(43253) cConfigItem_yesno("cdrproxy", &opt_cdrproxy));
+			addConfigItem(new FILE_LINE(43452) cConfigItem_yesno("messageproxy", &opt_messageproxy));
 		setDisableIfEnd();
 	group("SIP protocol / headers");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -6683,6 +6685,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cdrproxy", NULL))) {
 		opt_cdrproxy = yesno(value);
+	}
+	if((value = ini.GetValue("general", "messageproxy", NULL))) {
+		opt_messageproxy = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mos_g729", NULL))) {
 		opt_mos_g729 = yesno(value);

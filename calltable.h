@@ -13,6 +13,7 @@
 #include <queue>
 #include <map>
 #include <list>
+#include <set>
 
 #include <arpa/inet.h>
 #include <time.h>
@@ -787,6 +788,8 @@ public:
 	void applyRtcpXrDataToRtp();
 	
 	void adjustUA();
+	
+	void proxies_undup(set<unsigned int> *proxies_undup);
 	
 	void createListeningBuffers();
 	void destroyListeningBuffers();

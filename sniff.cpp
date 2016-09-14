@@ -145,6 +145,7 @@ extern int opt_mirroronly;
 extern char opt_scanpcapdir[2048];
 extern int opt_ipaccount;
 extern int opt_cdrproxy;
+extern int opt_messageproxy;
 extern int rtp_threaded;
 extern int opt_rtpnosip;
 extern char opt_cachedir[1024];
@@ -2794,7 +2795,9 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			}
 		}
 		IPfilter::add_call_flags(&(call->flags), ntohl(packetS->saddr), ntohl(packetS->daddr));
-		if(opt_cdrproxy && !reverseInviteSdaddr) {
+		if(((packetS->sip_method == INVITE && opt_cdrproxy) ||
+		    (packetS->sip_method == MESSAGE && opt_messageproxy)) && 
+		   !reverseInviteSdaddr) {
 			if(call->sipcalledip[0] != packetS->daddr and call->sipcallerip[0] != packetS->daddr and call->lastsipcallerip != packetS->saddr) {
 				if(packetS->daddr != 0) {
 					// daddr is already set, store previous daddr as sipproxy

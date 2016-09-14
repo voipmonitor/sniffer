@@ -111,6 +111,7 @@ extern int opt_saverfc2833;
 extern int opt_dbdtmf;
 extern int opt_dscp;
 extern int opt_cdrproxy;
+extern int opt_messageproxy;
 extern int opt_pcap_dump_tar;
 extern struct pcap_stat pcapstat;
 extern int opt_filesclean;
@@ -2118,8 +2119,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr_reason_sip,
 			cdr_reason_q850,
 			cdr_ua_a,
-			cdr_ua_b,	
-			cdr_proxy;
+			cdr_ua_b;
 	char _cdr_next_ch_name[CDR_NEXT_MAX][100];
 	char *cdr_next_ch_name[CDR_NEXT_MAX];
 	for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
@@ -2141,28 +2141,17 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	u_int64_t cdr_flags = 0;
 
 	string query_str_cdrproxy;
-
 	if(opt_cdrproxy) {
-
-		// remove duplicates
-		list<unsigned int>::iterator iter = proxies.begin();
 		set<unsigned int> proxies_undup;
-		while (iter != proxies.end()) {
-			if (proxies_undup.find(*iter) == proxies_undup.end()) {
-				proxies_undup.insert(*iter);
-			}
-			++iter;
-		}
-
+		this->proxies_undup(&proxies_undup);
 		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
-		while (iter_undup != proxies_undup.end()) {
+		while(iter_undup != proxies_undup.end()) {
 			if(*iter_undup == sipcalledip[0]) { ++iter_undup; continue; };
 			SqlDb_row cdrproxy;
 			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 			cdrproxy.add(htonl(*iter_undup), "dst");
 			query_str_cdrproxy += sqlDbSaveCall->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-
 			++iter_undup;
 		}
 	}
@@ -2930,27 +2919,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(cdrID > 0) {
 
 		if(opt_cdrproxy) {
-			// remove duplicates
-			list<unsigned int>::iterator iter = proxies.begin();
-			set<unsigned int> elements;
-			while (iter != proxies.end()) {
-				if (elements.find(*iter) != elements.end()) {
-					iter = proxies.erase(iter);
-				} else {
-					elements.insert(*iter);
-					++iter;
-				}
-			}
-
-			iter = proxies.begin();
-			while (iter != proxies.end()) {
-				if(*iter == sipcalledip[0]) { ++iter; continue; };
+			set<unsigned int> proxies_undup;
+			this->proxies_undup(&proxies_undup);
+			set<unsigned int>::iterator iter_undup = proxies_undup.begin();
+			while(iter_undup != proxies_undup.end()) {
 				SqlDb_row cdrproxy;
 				cdrproxy.add(cdrID, "cdr_ID");
 				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-				cdrproxy.add(htonl(*iter), "dst");
+				cdrproxy.add(htonl(*iter_undup), "dst");
 				sqlDbSaveCall->insert("cdr_proxy", cdrproxy);
-				++iter;
+				++iter_undup;
 			}
 		}
 
@@ -3524,6 +3502,23 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		msg_next_ch_name[i] = _msg_next_ch_name[i];
 	}
 
+	string query_str_messageproxy;
+
+	if(opt_messageproxy) {
+		set<unsigned int> proxies_undup;
+		this->proxies_undup(&proxies_undup);
+		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
+		while (iter_undup != proxies_undup.end()) {
+			if(*iter_undup == sipcalledip[0]) { ++iter_undup; continue; };
+			SqlDb_row messageproxy;
+			messageproxy.add("_\\_'SQL'_\\_:@msg_id", "message_ID");
+			messageproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			messageproxy.add(htonl(*iter_undup), "dst");
+			query_str_messageproxy += sqlDbSaveCall->insertQuery("message_proxy", messageproxy) + ";\n";
+			++iter_undup;
+		}
+	}
+	
 	if(useSensorId > -1) {
 		cdr.add(useSensorId, "id_sensor");
 	}
@@ -3629,31 +3624,29 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			query_str += "__NEXT_PASS_QUERY_END__";
 		}
 		
-		query_str += sqlDbSaveCall->insertQuery("message", cdr);
+		query_str += sqlDbSaveCall->insertQuery("message", cdr) + ";\n";
 
+		query_str += "if row_count() > 0 then\n";
+		query_str += "set @msg_id = last_insert_id();\n";
+		
 		bool existsNextCh = false;
 		for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
 			if(msg_next_ch_name[i][0]) {
+				msg_next_ch[i].add("_\\_'SQL'_\\_:@msg_id", "message_ID");
+				query_str += sqlDbSaveCall->insertQuery(msg_next_ch_name[i], msg_next_ch[i]) + ";\n";
 				existsNextCh = true;
 			}
 		}
-		if(existsNextCh) {
-			query_str += string(";\n") + "if row_count() > 0 then\n";
-			query_str += "set @msg_id = last_insert_id();\n";
-			for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
-				if(msg_next_ch_name[i][0]) {
-					msg_next_ch[i].add("_\\_'SQL'_\\_:@msg_id", "message_ID");
-					query_str += sqlDbSaveCall->insertQuery(msg_next_ch_name[i], msg_next_ch[i]) + ";\n";
-				}
+		if(existsNextCh && custom_headers_message) {
+			string queryForSaveUseInfo = custom_headers_message->getQueryForSaveUseInfo(this);
+			if(!queryForSaveUseInfo.empty()) {
+				query_str += queryForSaveUseInfo + ";\n";
 			}
-			if(custom_headers_message) {
-				string queryForSaveUseInfo = custom_headers_message->getQueryForSaveUseInfo(this);
-				if(!queryForSaveUseInfo.empty()) {
-					query_str += queryForSaveUseInfo + ";\n";
-				}
-			}
-			query_str += "end if";
 		}
+		
+		query_str += query_str_messageproxy;
+		
+		query_str += "end if";
 		
 		if(opt_message_check_duplicity_callid_in_next_pass_insert) {
 			// check if exists call-id - end if
@@ -3699,16 +3692,34 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	cdr.add(a_ua_id, "a_ua_id", true);
 	cdr.add(b_ua_id, "b_ua_id", true);
 
-	int cdrID = sqlDbSaveCall->insert("message", cdr);
-
-	for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
-		if(msg_next_ch_name[i][0]) {
-			msg_next_ch[i].add(cdrID, "message_ID");
-			sqlDbSaveCall->insert(msg_next_ch_name[i], msg_next_ch[i]);
+	int msgID = sqlDbSaveCall->insert("message", cdr);
+	
+	if(msgID > 0) {
+	
+		if(opt_messageproxy) {
+			set<unsigned int> proxies_undup;
+			this->proxies_undup(&proxies_undup);
+			set<unsigned int>::iterator iter_undup = proxies_undup.begin();
+			while(iter_undup != proxies_undup.end()) {
+				SqlDb_row messageproxy;
+				messageproxy.add(msgID, "message_ID");
+				messageproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				messageproxy.add(htonl(*iter_undup), "dst");
+				sqlDbSaveCall->insert("message_proxy", messageproxy);
+				++iter_undup;
+			}
 		}
+		
+		for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+			if(msg_next_ch_name[i][0]) {
+				msg_next_ch[i].add(msgID, "message_ID");
+				sqlDbSaveCall->insert(msg_next_ch_name[i], msg_next_ch[i]);
+			}
+		}
+	
 	}
 
-	return(cdrID <= 0);
+	return(msgID <= 0);
 
 }
 
@@ -3871,6 +3882,16 @@ void Call::adjustUA() {
 		if(b_ua[0]) {
 			::adjustUA(b_ua);
 		}
+	}
+}
+
+void Call::proxies_undup(set<unsigned int> *proxies_undup) {
+	list<unsigned int>::iterator iter = proxies.begin();
+	while (iter != proxies.end()) {
+		if (proxies_undup->find(*iter) == proxies_undup->end()) {
+			proxies_undup->insert(*iter);
+		}
+		++iter;
 	}
 }
 
