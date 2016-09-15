@@ -640,6 +640,7 @@ private:
 	unsigned long allocStackCounter[2];
 	u_int64_t getCpuUsagePerc_counter;
 	u_int64_t getCpuUsagePerc_counter_at_start_out_thread;
+	static u_long autoStartNextLevelPreProcessPacket_last_time_s;
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 friend class TcpReassemblySip;
 friend class SipTcpData;

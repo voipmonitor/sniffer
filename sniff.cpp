@@ -5967,16 +5967,24 @@ void PreProcessPacket::autoStartNextLevelPreProcessPacket() {
 	}
 	if(i < PreProcessPacket::ppt_end) {
 		preProcessPacket[i]->startOutThread();
+		autoStartNextLevelPreProcessPacket_last_time_s = getTimeS();
 	}
 }
 
 void PreProcessPacket::autoStopLastLevelPreProcessPacket(bool force) {
+	if(autoStartNextLevelPreProcessPacket_last_time_s &&
+	   getTimeS() < autoStartNextLevelPreProcessPacket_last_time_s + 30 * 60) {
+		cout << "suppress stop t2 thread" << endl;
+		return;
+	}
 	int i = 0;
 	for(i = PreProcessPacket::ppt_end - 1; i > 0 && !preProcessPacket[i]->isActiveOutThread(); i--);
 	if(i > 0 && preProcessPacket[i]->isActiveOutThread()) {
 		preProcessPacket[i]->stopOutThread(force);
 	}
 }
+
+u_long PreProcessPacket::autoStartNextLevelPreProcessPacket_last_time_s = 0;
 
 inline void *_ProcessRtpPacket_outThreadFunction(void *arg) {
 	return(((ProcessRtpPacket*)arg)->outThreadFunction());
