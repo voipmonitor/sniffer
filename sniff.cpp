@@ -3155,7 +3155,9 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 	call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
 	
 	if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
-	call->lastSIPresponseNum = packetS->lastSIPresponseNum;
+	if(packetS->lastSIPresponseNum) {
+		call->lastSIPresponseNum = packetS->lastSIPresponseNum;
+	}
 	call->msgcount++;
 	if(packetS->sip_method == REGISTER) {
 		call->regcount++;
