@@ -269,7 +269,9 @@ Tar::tar_open(string pathname, int oflags, int mode, int options)
 				continue;
 			} else {
 				rename(pathname.c_str(), newpathname.str().c_str());
-				if(sverb.tar) syslog(LOG_NOTICE, "tar: renaming %s -> %s", pathname.c_str(), newpathname.str().c_str());
+				if(sverb.tar) {
+					syslog(LOG_NOTICE, "tar: renaming %s -> %s", pathname.c_str(), newpathname.str().c_str());
+				}
 				break;
 			}
 		}
@@ -869,7 +871,9 @@ void Tar::tar_close() {
 			delete [] this->zipBuffer;
 		}
 		addtofilesqueue();
-		if(sverb.tar) syslog(LOG_NOTICE, "tar %s destroyd (destructor)\n", pathname.c_str());
+		if(sverb.tar) { 
+			syslog(LOG_NOTICE, "tar %s destroyd (destructor)\n", pathname.c_str());
+		}
 	}
 	close(tar.fd);
 }
@@ -913,7 +917,7 @@ void Tar::addtofilesqueue() {
 	extern CleanSpool *cleanSpool[2];
 	if(cleanSpool[spoolIndex]) {
 		char sdirname[12];
-		snprintf(sdirname, 11, "%04d%02d%02d%02d",  year, mon, day, hour);
+		snprintf(sdirname, 11, "%04d%02d%02d%02d",  time.year, time.mon, time.day, time.hour);
 		sdirname[11] = 0;
 		cleanSpool[spoolIndex]->addFile(sdirname, column.c_str(), pathname.c_str(), size);
 	}
@@ -941,47 +945,22 @@ bool Tar::ReadData::compress_ev(char *data, u_int32_t len, u_int32_t decompress_
 }
 
 void			   
-TarQueue::add(string filename, unsigned int time, ChunkBuffer *buffer){
+TarQueue::add(data_tar *tar_data, ChunkBuffer *buffer, unsigned int time){
 	__sync_add_and_fetch(&glob_tar_queued_files, 1);
 	data_t data;
+	data.setDataTar(tar_data);
 	data.buffer = buffer;
+	data.time = time;
 	lock();
-	unsigned int year, mon, day, hour, minute;
-	char type[12];
-	char fbasename[2*1024];
-	char sensorName[1024];
-	extern int opt_spooldir_by_sensor;
-	extern int opt_spooldir_by_sensorname;
-	const char *pointToFilenameAfterBaseSpooldir = filename.c_str();
-	if(!strncmp(pointToFilenameAfterBaseSpooldir, getSpoolDir(), getSpoolDirLength())) {
-		pointToFilenameAfterBaseSpooldir += getSpoolDirLength();
-	}
-	while(*pointToFilenameAfterBaseSpooldir == '/') {
-		++pointToFilenameAfterBaseSpooldir;
-	}
-	if((!opt_spooldir_by_sensor && !opt_spooldir_by_sensorname) ||
-	   sscanf(pointToFilenameAfterBaseSpooldir, "%[^/]/%u-%u-%u/%u/%u/%[^/]/%s", sensorName, &year, &mon, &day, &hour, &minute, type, fbasename) != 8) {
-		sscanf(pointToFilenameAfterBaseSpooldir, "%u-%u-%u/%u/%u/%[^/]/%s", &year, &mon, &day, &hour, &minute, type, fbasename);
-		sensorName[0] = 0;
-	}
-	//printf("%s: %u-%u-%u/%u/%u/%s/%s\n", filename.c_str(), year, mon, day, hour, minute, type, fbasename);
-	data.filename = fbasename;
-	data.sensorName = sensorName;
-	data.year = year;
-	data.mon = mon;
-	data.day = day;
-	data.hour = hour;
-	data.minute = minute;
-	if(type[0] == 'S' ||
-	   (type[0] == 'R' && type[1] == 'E')) {
-		queue_data[1][time - time % TAR_MODULO_SECONDS].push_back(data);
-	} else if(type[0] == 'R') {
-		queue_data[2][time - time % TAR_MODULO_SECONDS].push_back(data);
-	} else if(type[0] == 'G') {
-		queue_data[3][time - time % TAR_MODULO_SECONDS].push_back(data);
+	if(data.type[0] == 'S' ||
+	   (data.type[0] == 'R' && data.type[1] == 'E')) {
+		queue_data[1][data].push_back(data);
+	} else if(data.type[0] == 'R') {
+		queue_data[2][data].push_back(data);
+	} else if(data.type[0] == 'G') {
+		queue_data[3][data].push_back(data);
 	}      
-//	if(sverb.tar) syslog(LOG_NOTICE, "adding tar %s len:%u\n", filename.c_str(), buffer->len);
-
+	//if(sverb.tar) syslog(LOG_NOTICE, "adding tar %s len:%u\n", filename.c_str(), buffer->len);
 	unlock();
 }      
 
@@ -1003,7 +982,7 @@ qtype2strC(int qtype) {
 
 
 int			    
-TarQueue::write(int qtype, unsigned int time, data_t data) {
+TarQueue::write(int qtype, data_t data) {
 	stringstream tar_dir, tar_name;
 	tar_dir << getSpoolDir() << "/";
 	if(!data.sensorName.empty()) {
@@ -1064,32 +1043,19 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 		lock_okTarPointers();
 		okTarPointers[tar] = glob_last_packet_time;
 		unlock_okTarPointers();
-		if(sverb.tar) syslog(LOG_NOTICE, "new tar %s\n", tar_name.str().c_str());
-		if(sverb.tar) syslog(LOG_NOTICE, "add tar pointer %lx\n", (long)tar);
+		if(sverb.tar) {
+			syslog(LOG_NOTICE, "new tar %s\n", tar_name.str().c_str());
+			syslog(LOG_NOTICE, "add tar pointer %lx\n", (long)tar);
+		}
 		tars[tar_name.str()] = tar;
 		pthread_mutex_unlock(&tarslock);
 		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
 		tar->tar.qtype = qtype;
-		tar->created_at = time;
+		tar->time = data;
+		tar->created_at = data.time;
 		tar->spoolIndex = spoolIndex;
 		tar->sensorName = data.sensorName;
-		tar->year = data.year;
-		tar->mon = data.mon;
-		tar->day = data.day;
-		tar->hour = data.hour;
-		tar->minute = data.minute;
 		
-		if(sverb.tar > 2) {
-			char dateTimeString[20];
-			sprintf(dateTimeString, "%4i-%02i-%02i %02i:%02i:00",
-				data.year, data.mon, data.day, data.hour, data.minute);
-			if(dateTimeString != sqlDateTimeString(tar->created_at)) {
-				syslog(LOG_ERR, "BAD TAR set created_at: %s %lx %s %s %i %i",
-				       tar->pathname.c_str(), (long)tar, dateTimeString, sqlDateTimeString(tar->created_at).c_str(),
-				       time, data.buffer->getTime()); 
-			}
-		}
-
 		tar->thread_id = tarThreadCounter[qtype] % maxthreads;
 		++tarThreadCounter[qtype];
 		
@@ -1102,7 +1068,6 @@ TarQueue::write(int qtype, unsigned int time, data_t data) {
 	}
      
 	data.tar = tar;
-	data.time = time;
 	tarthreads[tar->thread_id].qlock();
 //	printf("push id:%u\n", tar->thread_id);
 	tarthreads[tar->thread_id].queue_data[tar_name.str()].push_back(data);
@@ -1377,6 +1342,13 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
 	pthread_mutex_unlock(&tarQueue->tarslock);
 	
 	if(tar) {
+	 
+		if(tar->time != data->buffer->getTarTime()) {
+			syslog(LOG_ERR, "BAD TAR (processData) time: %s vs chunkbuffer time: %s in tar: %s",
+			       tar->time.getTimeString().c_str(), data->buffer->getTarTime().getTimeString().c_str(),
+			       tar->pathname.c_str());
+		}
+	 
 		tar->tarlock();
 		if(lenForProceedSafe) {
 			tar->writing = 1;
@@ -1419,17 +1391,12 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
 	#endif
 	
 	if(isClosed && !lenForProceed) {
-		tarQueue->decreaseTartimemap(data->buffer->getTime());
+		tarQueue->decreaseTartimemap(data);
 		if(sverb.tar > 2 && tar) {
-			syslog(LOG_NOTICE, "tartimemap decrease1: %s %i %i %i %i", 
+			syslog(LOG_NOTICE, "tartimemap decrease1: %s %s %s", 
+			       tar->pathname.c_str(),
 			       data->buffer->getName().c_str(), 
-			       tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS,
-			       data->buffer->getTime(), data->buffer->getTime() - data->buffer->getTime() % TAR_MODULO_SECONDS);
-			if(tar->created_at != (unsigned)(data->buffer->getTime() - data->buffer->getTime() % TAR_MODULO_SECONDS)) {
-				syslog(LOG_ERR, "BAD TAR created_at - tar: %s %lx %i %i chunkbuffer: %s %lx %i %i",
-				       tar->pathname.c_str(), (long)tar, tar->created_at, tar->created_at - tar->created_at % TAR_MODULO_SECONDS,
-				       data->buffer->getName().c_str(), (long)data->buffer, data->buffer->getTime(), data->buffer->getTime() - data->buffer->getTime() % TAR_MODULO_SECONDS);
-			}
+			       tar->time.getTimeString().c_str());
 		}
 		delete data->buffer;
 		//tar->incClosedPartCounter();
@@ -1458,8 +1425,7 @@ TarQueue::cleanTars(int terminate_pass) {
 		// clean only each >10 seconds 
 		return;
 	}
-//	if(sverb.tar) syslog(LOG_NOTICE, "cleanTars()");
-
+	//if(sverb.tar) syslog(LOG_NOTICE, "cleanTars()");
 	last_flushTars = glob_last_packet_time;
 	map<string, Tar*>::iterator tars_it;
 	pthread_mutex_lock(&tarslock);
@@ -1470,18 +1436,22 @@ TarQueue::cleanTars(int terminate_pass) {
 		unsigned int lpt = terminate_pass ? time(NULL) : glob_last_packet_time;
 		// find the tar in tartimemap 
 		if(!tar->_sync_lock &&
-		   (tartimemap.find(tar->created_at) == tartimemap.end()) && 
-		   (lpt > (tar->created_at + TAR_MODULO_SECONDS + 10) || // +10 seconds more in new period to be sure nothing is in buffers
+		   (tartimemap.find(tar->time) == tartimemap.end()) && 
+		   (lpt > (tar->created_at + 60 + 10) || // +10 seconds more in new period to be sure nothing is in buffers
 		    terminate_pass)) {
 			// there are no calls in this start time - clean it
 			pthread_mutex_unlock(&tartimemaplock);
 			if(tars_it->second->writing) {
 				syslog(LOG_NOTICE, "fatal error! trying to close tar %s in the middle of writing data", tars_it->second->pathname.c_str());
 			}
-			if(sverb.tar) syslog(LOG_NOTICE, "destroying tar %s / %lx - (no calls in mem)\n", tars_it->second->pathname.c_str(), (long)tar);
+			if(sverb.tar) {
+				syslog(LOG_NOTICE, "destroying tar %s / %lx - (no calls in mem)\n", tars_it->second->pathname.c_str(), (long)tar);
+			}
 			lock_okTarPointers();
 			if(okTarPointers.find(tars_it->second) != okTarPointers.end()) {
-				if(sverb.tar) syslog(LOG_NOTICE, "delete tar pointer %lx\n", (long)tars_it->second);
+				if(sverb.tar) {
+					syslog(LOG_NOTICE, "delete tar pointer %lx\n", (long)tars_it->second);
+				}
 				okTarPointers.erase(tars_it->second);
 			}
 			if(sverb.tar <= 1) {
@@ -1506,15 +1476,14 @@ TarQueue::flushQueue() {
 	int winner_qtype = 0;
 	
 	vector<data_t> winner;
-	unsigned int winnertime = 0;
+	data_tar_time winnertime;
 	size_t maxlen = 0;
-	map<unsigned int, vector<data_t> >::iterator it;
+	map<data_tar_time, vector<data_t> >::iterator it;
 	// walk all maps
 
 	while(1) {
 		lock();
 		maxlen = 0;
-		winnertime = 0;
 		for(int i = 0; i < 4; i++) {
 			//walk map
 			for(it = queue_data[i].begin(); it != queue_data[i].end(); it++) {
@@ -1538,9 +1507,7 @@ TarQueue::flushQueue() {
 			unlock();
 			vector<data_t>::iterator itv;
 			for(itv = winner.begin(); itv != winner.end(); itv++) {
-				unsigned int time = itv->buffer->getTime();
-				time -= time % TAR_MODULO_SECONDS;
-				this->write(winner_qtype, time, *itv);
+				this->write(winner_qtype, *itv);
 			}
 			cleanTars();
 			continue;
@@ -1586,7 +1553,6 @@ TarQueue::~TarQueue() {
 TarQueue::TarQueue(int spoolIndex) {
  
 	this->spoolIndex = spoolIndex;
-	spoolDirLength = -1;
 
 	terminate = false;
 	maxthreads = opt_pcap_dump_tar_threads;
@@ -1715,15 +1681,15 @@ list<string> TarQueue::listOpenTars() {
 	return(listTars);
 }
 
-void TarQueue::decreaseTartimemap(unsigned int time){
+void TarQueue::decreaseTartimemap(data_tar_time *time){
 	// decrease tartimemap
 	pthread_mutex_lock(&tartimemaplock);
-	map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
+	map<data_tar_time, int>::iterator tartimemap_it = tartimemap.find(*time);
 	if(tartimemap_it != tartimemap.end()) {
 		tartimemap_it->second--;
 		if(sverb.tar > 2) {
-			syslog(LOG_NOTICE, "tartimemap decrease to: %i %i %i", 
-			       time, time - time % TAR_MODULO_SECONDS, tartimemap_it->second);
+			syslog(LOG_NOTICE, "tartimemap decrease to: %s %i", 
+			       time->getTimeString().c_str(), tartimemap_it->second);
 		}
 		if(tartimemap_it->second == 0){
 			tartimemap.erase(tartimemap_it);
@@ -1732,20 +1698,20 @@ void TarQueue::decreaseTartimemap(unsigned int time){
 	pthread_mutex_unlock(&tartimemaplock);
 }
 
-void TarQueue::increaseTartimemap(unsigned int time){
+void TarQueue::increaseTartimemap(data_tar_time *time){
 	pthread_mutex_lock(&tartimemaplock);
-	map<unsigned int, int>::iterator tartimemap_it = tartimemap.find(time - time % TAR_MODULO_SECONDS);
+	map<data_tar_time, int>::iterator tartimemap_it = tartimemap.find(*time);
 	if(tartimemap_it != tartimemap.end()) {
 		tartimemap_it->second++;
 		if(sverb.tar > 2) {
-			syslog(LOG_NOTICE, "tartimemap increase to: %i %i %i", 
-			       time, time - time % TAR_MODULO_SECONDS, tartimemap_it->second);
+			syslog(LOG_NOTICE, "tartimemap increase to: %s %i", 
+			       time->getTimeString().c_str(), tartimemap_it->second);
 		}
 	} else {
-		tartimemap[time - time % TAR_MODULO_SECONDS] = 1;
+		tartimemap[*time] = 1;
 		if(sverb.tar > 2) {
-			syslog(LOG_NOTICE, "tartimemap increase set: %i %i %i", 
-			       time, time - time % TAR_MODULO_SECONDS, 1);
+			syslog(LOG_NOTICE, "tartimemap increase set: %s %i", 
+			       time->getTimeString().c_str(), 1);
 		}
 	}
 	pthread_mutex_unlock(&tartimemaplock);

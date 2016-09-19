@@ -32,6 +32,7 @@
 #include "heap_safe.h"
 #include "rqueue.h"
 #include "voipmonitor.h"
+#include "tar_data.h"
 
 #include "tools_inline.h"
 
@@ -651,6 +652,7 @@ public:
 	int permission;
 	int fh;
 	int tar;
+	data_tar tar_data;
 	CompressStream *compressStream;
 	string error;
 	int bufferLength;

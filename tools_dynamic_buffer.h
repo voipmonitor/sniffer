@@ -19,6 +19,8 @@
 #endif //HAVE_LIBLZO
 #include <snappy-c.h>
 
+#include "tar_data.h"
+
 
 using namespace std;
 
@@ -202,12 +204,16 @@ public:
 		u_int32_t chunkIndex;
 	};
 public:
-	ChunkBuffer(int time, u_int32_t chunk_fix_len = 0, class Call *call = NULL, int typeCotent = 0);
+	ChunkBuffer(int time, data_tar_time tar_time,
+		    u_int32_t chunk_fix_len = 0, class Call *call = NULL, int typeCotent = 0);
 	virtual ~ChunkBuffer();
 	void setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	void setZipLevel(int zipLevel);
 	int getTime() {
 		return(time);
+	}
+	data_tar_time getTarTime() {
+		return(tar_time);
 	}
 	void setName(const char *name);
 	string getName() {
@@ -270,6 +276,7 @@ public:
 	}
 private:
 	int time;
+	data_tar_time tar_time;
 	Call *call;
 	int typeContent;
 	list<sChunk> chunkBuffer;

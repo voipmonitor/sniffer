@@ -13,6 +13,7 @@
 
 #include "tools.h"
 #include "tools_dynamic_buffer.h"
+#include "tar_data.h"
 
 #define T_BLOCKSIZE		512
 #define T_NAMELEN	       100
@@ -97,9 +98,9 @@ public:
 	TAR tar;
 	int spoolIndex;
 	string sensorName;
-	int year, mon, day, hour, minute;
 	volatile int writing;
 
+	data_tar_time time;
 	unsigned int created_at;
 	int thread_id;
 	
@@ -298,13 +299,13 @@ public:
 	void lock() {pthread_mutex_lock(&mutexlock);};
 	void unlock() {pthread_mutex_unlock(&mutexlock);};
 	       
-	struct data_t {
+	struct data_t : public data_tar {
 		ChunkBuffer *buffer;
-		string filename;
-		string sensorName;
-		int year, mon, day, hour, minute;
 		Tar *tar;
 		time_t time;
+		inline void setDataTar(data_tar *data) {
+			*(data_tar*)this = *data;
+		}
 	};
 	
 	struct tarthreads_tq : public std::list<data_t> {
@@ -405,9 +406,9 @@ public:
 
 	tarthreads_t tarthreads[TARQMAXTHREADS];
 	
-	void add(string filename, unsigned int time, ChunkBuffer *buffer);
+	void add(data_tar *tar_data, ChunkBuffer *buffer, unsigned int time);
 	void flushQueue();
-	int write(int, unsigned int, data_t);
+	int write(int, data_t);
 	int queuelen();
 	unsigned int last_flushTars;
 	void cleanTars(int term_pass = false);
@@ -421,24 +422,17 @@ public:
 	list<string> listOpenTars();
 	void lock_okTarPointers() { while(__sync_lock_test_and_set(&_sync_okTarPointers, 1)); }
 	void unlock_okTarPointers() { __sync_lock_release(&_sync_okTarPointers); }
-	void decreaseTartimemap(unsigned int time);
-	void increaseTartimemap(unsigned int time);
+	void decreaseTartimemap(data_tar_time *time);
+	void increaseTartimemap(data_tar_time *time);
 	int getSpoolIndex() {
 		return(spoolIndex);
 	}
 	const char *getSpoolDir() {
 		return(::getSpoolDir(spoolIndex));
 	}
-	int getSpoolDirLength() {
-		if(spoolDirLength == -1) {
-			spoolDirLength = strlen(getSpoolDir());
-		}
-		return(spoolDirLength);
-	}
 private:
 	int spoolIndex;
-	int spoolDirLength;
-	map<unsigned int, vector<data_t> > queue_data[4]; //queue for all, sip, rtp, graph
+	map<data_tar_time, vector<data_t> > queue_data[4]; //queue for all, sip, rtp, graph
 	unsigned long tarThreadCounter[4];
 	pthread_mutex_t mutexlock;
 	pthread_mutex_t flushlock;
@@ -446,7 +440,7 @@ private:
 	map<string, Tar*> tars; //queue for all, sip, rtp, graph
 	map<void*, unsigned int> okTarPointers;
 	volatile int _sync_okTarPointers;
-	map<unsigned int, int> tartimemap;
+	map<data_tar_time, int> tartimemap;
 	pthread_mutex_t tartimemaplock;
 };
 

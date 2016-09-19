@@ -903,8 +903,10 @@ string CompressStream::getConfigMenuString() {
 	return(outStr.str());
 }
 
-ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len, Call *call, int typeContent) {
+ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
+			 u_int32_t chunk_fix_len, Call *call, int typeContent) {
 	this->time = time;
+	this->tar_time = tar_time;
 	this->call = call;
 	this->typeContent = typeContent;
 	this->chunkBuffer_countItems = 0;
@@ -933,9 +935,9 @@ ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len, Call *call, int type
 
 ChunkBuffer::~ChunkBuffer() {
 	if(sverb.tar > 2) {
-		syslog(LOG_NOTICE, "chunkbufer destroy: %s %lx %i %i", 
+		syslog(LOG_NOTICE, "chunkbufer destroy: %s %lx %s", 
 		       this->getName().c_str(), (long)this,
-		       this->time, this->time % TAR_MODULO_SECONDS);
+		       this->tar_time.getTimeString().c_str());
 	}
 	for(list<sChunk>::iterator it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
 		it->deleteChunk(this);
@@ -1121,9 +1123,9 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 
 void ChunkBuffer::close() {
 	if(sverb.tar > 2) {
-		syslog(LOG_NOTICE, "chunkbufer close: %s %lx %i %i", 
+		syslog(LOG_NOTICE, "chunkbufer close: %s %lx %s", 
 		       this->getName().c_str(), (long)this,
-		       this->time, this->time % TAR_MODULO_SECONDS);
+		       this->tar_time.getTimeString().c_str());
 	}
 	this->closed = true;
 }

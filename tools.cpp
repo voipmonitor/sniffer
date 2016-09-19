@@ -865,7 +865,11 @@ string GetStringSHA256(std::string str) {
 u_int32_t checksum32buf(char *buf, size_t len) {
 	register u_int16_t cheksum32 = 0;
 	for(size_t i = 0; i < len; i++, buf++) {
+		#if __BYTE_ORDER == __LITTLE_ENDIAN
 		cheksum32 += *buf;
+		#else
+		cheksum32 += htons(*buf);
+		#endif
 	}
 	return(cheksum32);
 }
@@ -2989,6 +2993,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->tar = opt_pcap_dump_tar && call && typeFile != FileZipHandler::na ? 
 		     (call->getSpoolIndex() + 1) :
 		     0;
+	this->tar_data.clear();
 	this->compressStream = NULL;
 	this->bufferLength = this->tar ?
 			      (bufferLength ? bufferLength : DEFAULT_BUFFER_LENGTH) :
@@ -3030,10 +3035,12 @@ FileZipHandler::~FileZipHandler() {
 		delete this->compressStream;
 	}
 	if(this->tar && !this->tarBufferCreated) {
-		tarQueue[this->tar - 1]->decreaseTartimemap(this->time);
-		if(sverb.tar > 2) {
-			syslog(LOG_NOTICE, "tartimemap decrease2: %s %i %i", 
-			       this->fileName.c_str(), this->time, this->time - this->time % TAR_MODULO_SECONDS);
+		if(this->tar_data.year) {
+			tarQueue[this->tar - 1]->decreaseTartimemap(&this->tar_data);
+			if(sverb.tar > 2) {
+				syslog(LOG_NOTICE, "tartimemap decrease2: %s %s",
+				       this->fileName.c_str(), this->tar_data.getTimeString().c_str());
+			}
 		}
 	}
 	for(unsigned i = 0; i < this->readBuffer.size(); i++) {
@@ -3042,33 +3049,8 @@ FileZipHandler::~FileZipHandler() {
 }
 
 bool FileZipHandler::open(const char *fileName, int permission) {
-	if(this->tar) {
-		if(sverb.tar > 2) {
-			syslog(LOG_NOTICE, "FileZipHandler open: %s %i %i %s", 
-			       fileName, this->time, this->time - this->time % TAR_MODULO_SECONDS, sqlDateTimeString(this->time).c_str());
-		}
-		tarQueue[this->tar - 1]->increaseTartimemap(time);
-		if(sverb.tar > 2) {
-			syslog(LOG_NOTICE, "tartimemap increase: %s %i %i", 
-			       fileName, this->time, this->time - this->time % TAR_MODULO_SECONDS);
-			
-			unsigned int year, mon, day, hour, minute;
-			char type[12];
-			char fbasename[2*1024];
-			sscanf(fileName, "%u-%u-%u/%u/%u/%[^/]/%s", &year, &mon, &day, &hour, &minute, type, fbasename);
-			
-			char dateTimeString[20];
-			sprintf(dateTimeString, "%4i-%02i-%02i %02i:%02i:00",
-				year, mon, day, hour, minute);
-			if(dateTimeString != sqlDateTimeString(this->time - this->time % TAR_MODULO_SECONDS)) {
-				syslog(LOG_ERR, "BAD FileZipHandler time: %s %s %s %s",
-				       fileName,
-				       dateTimeString, sqlDateTimeString(this->time).c_str(), sqlDateTimeString(this->time - this->time % TAR_MODULO_SECONDS).c_str()); 
-			}
-			
-		}
-	}
 	this->fileName = fileName;
+	this->permission = permission;
 	extern int opt_spooldir_by_sensor;
 	extern int opt_spooldir_by_sensorname;
 	if((opt_spooldir_by_sensor || opt_spooldir_by_sensorname) && 
@@ -3082,7 +3064,18 @@ bool FileZipHandler::open(const char *fileName, int permission) {
 			this->fileName = sensorIdStr + this->fileName;
 		}
 	}
-	this->permission = permission;
+	if(this->tar) {
+		if(this->call) {
+			this->tar_data.parseFileName(this->fileName.c_str(), this->call->getSpoolDir());
+			tarQueue[this->tar - 1]->increaseTartimemap(&this->tar_data);
+		}
+		if(sverb.tar > 2) {
+			syslog(LOG_NOTICE, "FileZipHandler open: %s %s", 
+			       fileName, this->tar_data.getTimeString().c_str());
+			syslog(LOG_NOTICE, "tartimemap increase: %s %s", 
+			       fileName, this->tar_data.getTimeString().c_str());
+		}
+	}
 	return(true);
 }
 
@@ -3282,15 +3275,15 @@ void FileZipHandler::initDecompress() {
 
 void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 	this->tarBufferCreated = true;
-	this->tarBuffer = new FILE_LINE(39020) ChunkBuffer(this->time, 
-						    typeFile == pcap_sip ? 8 * 1024 : 
-						    typeFile == pcap_rtp ? 32 * 1024 : 
-						    typeFile == graph_rtp ? 16 * 1024 : 8 * 1024,
-						    call, typeFile);
+	this->tarBuffer = new FILE_LINE(39020) ChunkBuffer(this->time, this->tar_data,
+							   typeFile == pcap_sip ? 8 * 1024 : 
+							   typeFile == pcap_rtp ? 32 * 1024 : 
+							   typeFile == graph_rtp ? 16 * 1024 : 8 * 1024,
+							   call, typeFile);
 	if(sverb.tar > 2) {
-		syslog(LOG_NOTICE, "chunkbufer create: %s %lx %i %i", 
+		syslog(LOG_NOTICE, "chunkbufer create: %s %lx %s",
 		       this->fileName.c_str(), (long)this->tarBuffer,
-		       this->time, this->time % TAR_MODULO_SECONDS);
+		       this->tar_data.getTimeString().c_str());
 	}
 	if(!useFileZipHandlerCompress) {
 		extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip;
@@ -3323,7 +3316,7 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 		}
 	}
 	this->tarBuffer->setName(this->fileName.c_str());
-	tarQueue[this->tar - 1]->add(this->fileName, this->time, this->tarBuffer);
+	tarQueue[this->tar - 1]->add(&this->tar_data, this->tarBuffer, this->time);
 }
 
 bool FileZipHandler::_open_write() {
