@@ -515,6 +515,14 @@ void operator delete[](void *pointerToObject) {
 	_delete_object(pointerToObject);
 }
 
+void operator delete(void *pointerToObject, size_t) {
+	_delete_object(pointerToObject);
+}
+ 
+void operator delete[](void *pointerToObject, size_t) {
+	_delete_object(pointerToObject);
+}
+
 
 void *realloc_object(void *pointerToObject, size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number) {
 	void *newPointer = HeapSafeCheck ?
