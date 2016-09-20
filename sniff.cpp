@@ -158,9 +158,13 @@ extern int process_rtp_packets_distribute_threads_use;
 extern int opt_process_rtp_packets_hash_next_thread;
 extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
 extern unsigned int opt_preprocess_packets_qring_length;
+extern unsigned int opt_preprocess_packets_qring_item_length;
 extern unsigned int opt_preprocess_packets_qring_usleep;
+extern bool opt_preprocess_packets_qring_force_push;
 extern unsigned int opt_process_rtp_packets_qring_length;
+extern unsigned int opt_process_rtp_packets_qring_item_length;
 extern unsigned int opt_process_rtp_packets_qring_usleep;
+extern bool process_rtp_packets_qring_force_push;
 extern unsigned int rtp_qring_usleep;
 extern int opt_pcapdump;
 extern int opt_id_sensor;
@@ -5384,8 +5388,12 @@ inline void *_PreProcessPacket_outThreadFunction(void *arg) {
 
 PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	this->typePreProcessThread = typePreProcessThread;
-	this->qring_batch_item_length = min(opt_preprocess_packets_qring_length / 10, 1000u);
-	this->qring_length = opt_preprocess_packets_qring_length / this->qring_batch_item_length;
+	this->qring_batch_item_length = opt_preprocess_packets_qring_item_length ?
+					 opt_preprocess_packets_qring_item_length :
+					 min(opt_preprocess_packets_qring_length / 10, 1000u);
+	this->qring_length = opt_preprocess_packets_qring_item_length ?
+			      opt_preprocess_packets_qring_length :
+			      opt_preprocess_packets_qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
 	if(typePreProcessThread == ppt_detach) {
@@ -5410,8 +5418,14 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	this->_sync_push = 0;
 	this->term_preProcess = false;
 	if(typePreProcessThread == ppt_detach) {
-		this->stackSip = new FILE_LINE(27025) cHeapItemsPointerStack(opt_preprocess_packets_qring_length, 1, 10);
-		this->stackRtp = new FILE_LINE(27026) cHeapItemsPointerStack(opt_preprocess_packets_qring_length, 1, 10);
+		this->stackSip = new FILE_LINE(27025) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
+									      opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
+									      opt_preprocess_packets_qring_length, 
+									     1, 10);
+		this->stackRtp = new FILE_LINE(27026) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
+									      opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
+									      opt_preprocess_packets_qring_length, 
+									     1, 10);
 	} else {
 		this->stackSip = NULL;
 		this->stackRtp = NULL;
@@ -5504,23 +5518,26 @@ void *PreProcessPacket::outThreadFunction() {
 					#ifdef PREPROCESS_DETACH2
 					case ppt_detach2:
 						preProcessPacket[ppt_sip]->push_packet(packetS);
-						if(batch_index == batch->count - 1) {
+						if(opt_preprocess_packets_qring_force_push &&
+						   batch_index == batch->count - 1) {
 							preProcessPacket[ppt_sip]->push_batch();
 						}
 						break;
 					#endif
 					case ppt_sip:
 						this->process_SIP(packetS);
-						if(batch_index == batch->count - 1) {
+						if(opt_preprocess_packets_qring_force_push &&
+						   batch_index == batch->count - 1) {
 							preProcessPacket[ppt_extend]->push_batch();
+							preProcessPacket[ppt_pp_rtp]->push_batch();
 						}
 						break;
 					case ppt_extend:
 						this->process_SIP_EXTEND(packetS);
-						if(batch_index == batch->count - 1) {
+						if(opt_preprocess_packets_qring_force_push &&
+						   batch_index == batch->count - 1) {
 							preProcessPacket[ppt_pp_call]->push_batch();
 							preProcessPacket[ppt_pp_register]->push_batch();
-							preProcessPacket[ppt_pp_rtp]->push_batch();
 						}
 						break;
 					case ppt_pp_call:
@@ -5566,11 +5583,11 @@ void *PreProcessPacket::outThreadFunction() {
 				#endif
 				case ppt_sip:
 					preProcessPacket[ppt_extend]->push_batch();
+					preProcessPacket[ppt_pp_rtp]->push_batch();
 					break;
 				case ppt_extend:
 					preProcessPacket[ppt_pp_call]->push_batch();
 					preProcessPacket[ppt_pp_register]->push_batch();
-					preProcessPacket[ppt_pp_rtp]->push_batch();
 					break;
 				case ppt_pp_call:
 					process_packet__push_batch();
@@ -5656,7 +5673,9 @@ void PreProcessPacket::process_DETACH_plus(packet_s_plus_pointer *packetS_detach
 }
 
 void PreProcessPacket::process_SIP(packet_s_process *packetS) {
+	++counter_all_packets;
 	bool isSip = false;
+	bool rtp = false;
 	if(packetS->is_need_sip_process) {
 		packetS->init2();
 		if(check_sip20(packetS->data, packetS->datalen, NULL)) {
@@ -5690,18 +5709,17 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 		} else if(isSip) {
 			this->process_parseSipData(&packetS);
 		} else {
-			packetS->isSip = false;
-			this->process_rtp((packet_s_process_0**)&packetS);
+			rtp = true;
 		}
 	} else {
-		packetS->packet_s_process_0::init2();
-		packetS->isSip = false;
-		this->process_rtp((packet_s_process_0**)&packetS);
+		rtp = true;
+	}
+	if(rtp) {
+		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
 	}
 }
 
 void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
-	++counter_all_packets;
 	glob_last_packet_time = packetS->header_pt->ts.tv_sec;
 	if(packetS->isSip) {
 		if(!packetS->is_register) {
@@ -5713,8 +5731,6 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 		}
 	} else if(packetS->isSkinny) {
 		preProcessPacket[ppt_pp_call]->push_packet(packetS);
-	} else {
-		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
 	}
 }
 
@@ -5747,6 +5763,10 @@ void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
 	if(process_packet_rtp_inline(packetS) < 2) {
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
+	} else {
+		packetS->packet_s_process_0::init2();
+		packetS->hash[0] = tuplehash(packetS->saddr, packetS->source);
+		packetS->hash[1] = tuplehash(packetS->daddr, packetS->dest);
 	}
 }
 
@@ -5824,8 +5844,8 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 		if(multipleSip) {
 			PACKET_S_PROCESS_DESTROY(&packetS);
 		}
-	} else {
-		this->process_rtp((packet_s_process_0**)&packetS);
+	} else if(packetS) {
+		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
 	}
 }
 
@@ -5859,17 +5879,6 @@ void PreProcessPacket::process_skinny(packet_s_process **packetS_ref) {
 	packetS->isSkinny = true;
 	++counter_sip_packets[1];
 	preProcessPacket[ppt_extend]->push_packet(packetS);
-}
-
-void PreProcessPacket::process_rtp(packet_s_process_0 **packetS_ref) {
-	packet_s_process_0 *packetS = *packetS_ref;
-	if(packetS->datalen > 2) { // && (htons(*(unsigned int*)data) & 0xC000) == 0x8000 // disable condition - failure for udptl (fax)
-		packetS->hash[0] = tuplehash(packetS->saddr, packetS->source);
-		packetS->hash[1] = tuplehash(packetS->daddr, packetS->dest);
-	}
-	if(packetS) {
-		preProcessPacket[ppt_extend]->push_packet((packet_s_process*)packetS);
-	}
 }
 
 bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
@@ -6004,8 +6013,12 @@ inline void *_ProcessRtpPacket_nextThreadFunction(void *arg) {
 ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	this->type = type;
 	this->indexThread = indexThread;
-	this->qring_batch_item_length = min(opt_process_rtp_packets_qring_length / 5, 1000u);
-	this->qring_length = opt_process_rtp_packets_qring_length / this->qring_batch_item_length;
+	this->qring_batch_item_length = opt_process_rtp_packets_qring_item_length ?
+					 opt_process_rtp_packets_qring_item_length :
+					 min(opt_process_rtp_packets_qring_length / 5, 1000u);
+	this->qring_length = opt_process_rtp_packets_qring_item_length ?
+			      opt_process_rtp_packets_qring_length :
+			      opt_process_rtp_packets_qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
 	this->qring = new FILE_LINE(27027) batch_packet_s_process*[this->qring_length];

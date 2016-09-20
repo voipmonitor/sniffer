@@ -6449,10 +6449,15 @@ inline void *_PcapQueue_outputThread_outThreadFunction(void *arg) {
 
 PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThread, PcapQueue_readFromFifo *pcapQueue) {
 	extern unsigned int opt_preprocess_packets_qring_length;
+	extern unsigned int opt_preprocess_packets_qring_item_length;
 	this->typeOutputThread = typeOutputThread;
 	this->pcapQueue = pcapQueue;
-	this->qring_batch_item_length = min(opt_preprocess_packets_qring_length / 10, 1000u);
-	this->qring_length = opt_preprocess_packets_qring_length / this->qring_batch_item_length;
+	this->qring_batch_item_length = opt_preprocess_packets_qring_item_length ?
+					 opt_preprocess_packets_qring_item_length :
+					 min(opt_preprocess_packets_qring_length / 10, 1000u);
+	this->qring_length = opt_preprocess_packets_qring_item_length ?
+			      opt_preprocess_packets_qring_length :
+			      opt_preprocess_packets_qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
 	this->qring = new FILE_LINE(16060) sBatchHP*[this->qring_length];

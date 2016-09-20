@@ -296,9 +296,13 @@ int process_rtp_packets_distribute_threads_use = 0;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
 unsigned int opt_preprocess_packets_qring_length = 2000;
+unsigned int opt_preprocess_packets_qring_item_length = 0;
 unsigned int opt_preprocess_packets_qring_usleep = 10;
+bool opt_preprocess_packets_qring_force_push = true;
 unsigned int opt_process_rtp_packets_qring_length = 2000;
+unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
+bool opt_process_rtp_packets_qring_force_push = true;
 int opt_enable_http = 0;
 int opt_enable_webrtc = 0;
 int opt_enable_ssl = 0;
@@ -4767,19 +4771,21 @@ void cConfig::addConfigItems() {
 					->addValues("yes:1|y:1|no:0|n:0")
 					->addAlias("enable_process_rtp_packet"));
 					expert();
+					addConfigItem((new FILE_LINE(43154) cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
+						->addValues("sip:2|extend:3|auto:-1"));
+					addConfigItem(new FILE_LINE(43155) cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("preprocess_packets_qring_item_length", &opt_preprocess_packets_qring_item_length));
+					addConfigItem(new FILE_LINE(43156) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("preprocess_packets_qring_force_push", &opt_preprocess_packets_qring_force_push));
 					addConfigItem((new FILE_LINE(43150) cConfigItem_integer("process_rtp_packets_hash_next_thread", &opt_process_rtp_packets_hash_next_thread))
 						->setMaximum(MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
 					addConfigItem((new FILE_LINE(43151) cConfigItem_yesno("process_rtp_packets_hash_next_thread_sem_sync", &opt_process_rtp_packets_hash_next_thread_sem_sync))
 						->addValues("2:2"));
 					addConfigItem(new FILE_LINE(43152) cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("process_rtp_packets_qring_item_length", &opt_process_rtp_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(43153) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
-						obsolete();
-						addConfigItem((new FILE_LINE(43154) cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
-							->addValues("sip:2|extend:3|auto:-1"));
-						addConfigItem(new FILE_LINE(43155) cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
-						addConfigItem(new FILE_LINE(43156) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
-						minorEnd();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("process_rtp_packets_qring_force_push", &opt_process_rtp_packets_qring_force_push));
 			setDisableIfEnd();
 	group("manager");
 		addConfigItem(new FILE_LINE(43157) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)));
@@ -7832,14 +7838,26 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "preprocess_packets_qring_length", NULL))) {
 		opt_preprocess_packets_qring_length = atol(value);
 	}
+	if((value = ini.GetValue("general", "preprocess_packets_qring_item_length", NULL))) {
+		opt_preprocess_packets_qring_item_length = atol(value);
+	}
 	if((value = ini.GetValue("general", "preprocess_packets_qring_usleep", NULL))) {
 		opt_preprocess_packets_qring_usleep = atol(value);
+	}
+	if((value = ini.GetValue("general", "preprocess_packets_qring_force_push", NULL))) {
+		opt_preprocess_packets_qring_force_push = yesno(value);
 	}
 	if((value = ini.GetValue("general", "process_rtp_packets_qring_length", NULL))) {
 		opt_process_rtp_packets_qring_length = atol(value);
 	}
+	if((value = ini.GetValue("general", "process_rtp_packets_qring_item_length", NULL))) {
+		opt_process_rtp_packets_qring_item_length = atol(value);
+	}
 	if((value = ini.GetValue("general", "process_rtp_packets_qring_usleep", NULL))) {
 		opt_process_rtp_packets_qring_usleep = atol(value);
+	}
+	if((value = ini.GetValue("general", "process_rtp_packets_qring_force_push", NULL))) {
+		opt_process_rtp_packets_qring_force_push = yesno(value);
 	}
 
 	if((value = ini.GetValue("general", "rtp_qring_length", NULL))) {
