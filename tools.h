@@ -2961,15 +2961,9 @@ public:
 		delete this->stack;
 	}
 	inline bool push(void *item, u_int16_t push_queue_index) {
-		/* disable - speed optimize
-		if(!item) {
-			return(false);
-		}
 		if(push_queue_index >= push_queues_max) {
-			syslog(LOG_ERR, "too big push_queue_index");
 			return(false);
 		}
-		*/
 		sHeapItemsPool *pool = &this->push_queues[push_queue_index];
 		if(pool->pool_size < HEAP_ITEM_POOL_SIZE) {
 			pool->pool[pool->pool_size] = item;
