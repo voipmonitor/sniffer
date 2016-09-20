@@ -3496,6 +3496,7 @@ inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
 		processRtpPacketHash->push_packet(packetS);
 		return(2);
 	} else {
+		packetS->init2_rtp();
 		packet_s_process_rtp_call_info call_info[20];
 		int call_info_length = 0;
 		bool call_info_find_by_dest = false;
@@ -5761,7 +5762,6 @@ void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
-	packetS->init2_rtp();
 	if(process_packet_rtp_inline(packetS) < 2) {
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
 	}
@@ -6138,6 +6138,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 			    batch_index < batch_index_end; 
 			    batch_index += batch_index_skip) {
 				packet_s_process_0 *packetS = this->hash_batch_thread_process[next_thread_index_plus - 1]->batch[batch_index];
+				packetS->init2_rtp();
 				this->find_hash(packetS, false);
 			}
 			this->hash_batch_thread_process[next_thread_index_plus - 1] = 0;
@@ -6195,6 +6196,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 				    batch_index < batch->count / (_process_rtp_packets_hash_next_threads_use_for_batch + 1); 
 				    batch_index++) {
 					packet_s_process_0 *packetS = batch->batch[batch_index];
+					packetS->init2_rtp();
 					this->find_hash(packetS, false);
 				}
 				for(int i = 0; i < _process_rtp_packets_hash_next_threads_use_for_batch; i++) {
@@ -6210,6 +6212,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 		} else {
 			for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
 				packet_s_process_0 *packetS = batch->batch[batch_index];
+				packetS->init2_rtp();
 				this->find_hash(packetS, false);
 			}
 		}
@@ -6226,9 +6229,6 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 		for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
 			packet_s_process_0 *packetS = batch->batch[batch_index];
 			batch->batch[batch_index] = NULL;
-			if(packetS->call_info_length < 0) {
-				this->find_hash(packetS);
-			}
 			if(packetS->call_info_length) {
 				process_packet__rtp_call_info(packetS->call_info, packetS->call_info_length, packetS, 
 							      packetS->call_info_find_by_dest, indexThread + 1);
