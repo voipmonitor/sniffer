@@ -291,6 +291,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type);
 typedef struct {
 	Call *call;
 	packet_s packet;
+	packet_s *packet_pt;
 	char iscaller;
 	char find_by_dest;
 	char is_rtcp;
@@ -304,8 +305,9 @@ struct rtp_read_thread {
 		this->rtpp_queue_quick_boost = NULL;
 		this->calls = 0;
 	}
-	pthread_t thread;	       // ID of worker storing CDR thread 
+	pthread_t thread;
 	volatile int threadId;
+	int threadNum;
 	rqueue<rtp_packet_pcap_queue> *rtpp_queue;
 	rqueue_quick<rtp_packet_pcap_queue> *rtpp_queue_quick;
 	rqueue_quick_boost<rtp_packet_pcap_queue> *rtpp_queue_quick_boost;

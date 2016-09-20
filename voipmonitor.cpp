@@ -2822,6 +2822,7 @@ int main_init_read() {
 				rtp_threads[i].rtpp_queue->setName(rtpp_queue_name);
 			}
 			rtp_threads[i].threadId = 0;
+			rtp_threads[i].threadNum = i + 1;
 			memset(rtp_threads[i].threadPstatData, 0, sizeof(rtp_threads[i].threadPstatData));
 			rtp_threads[i].remove_flag = 0;
 			rtp_threads[i].last_use_time_s = 0;
