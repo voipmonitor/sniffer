@@ -763,7 +763,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 				}
 				this->ip_port[i].sdp_flags = sdp_flags;
 				calltable->lock_calls_hash();
-				hash_node_call *calls = calltable->hashfind_by_ip_port(addr, port, 0, false);
+				hash_node_call *calls = calltable->hashfind_by_ip_port(addr, port, false);
 				if(calls) {
 					for(hash_node_call *node_call = calls; node_call != NULL; node_call = node_call->next) {
 						node_call->sdp_flags = sdp_flags;
@@ -4320,32 +4320,6 @@ Calltable::destroyRegistersIfPcapsClosed() {
 		}
 	}
 	this->unlock_registers_deletequeue();
-}
-
-/* find call in hash */
-hash_node_call*
-Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash, bool lock) {
-	hash_node *node = NULL;
-	u_int32_t h;
-
-	h = hash ? hash : tuplehash(addr, port);
-	if(lock) {
-		lock_calls_hash();
-	}
-	hash_node_call *rslt = NULL;
-	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
-		if ((node->addr == addr) && (node->port == port)) {
-			rslt = node->calls;
-//			*iscaller = node->iscaller;
-//			*is_rtcp = node->is_rtcp;
-//			*is_fax = node->is_fax;
-//			return node->call;
-		}
-	}
-	if(lock) {
-		unlock_calls_hash();
-	}
-	return rslt;
 }
 
 Call*

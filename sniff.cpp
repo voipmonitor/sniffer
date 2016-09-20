@@ -3501,10 +3501,10 @@ inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
 		bool call_info_find_by_dest = false;
 		hash_node_call *calls = NULL;
 		calltable->lock_calls_hash();
-		if((calls = calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, packetS->hash[1], false))) {
+		if((calls = calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, false))) {
 			call_info_find_by_dest = true;
 		} else {
-			calls = calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, packetS->hash[0], false);
+			calls = calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, false);
 		}
 		if(calls) {
 			hash_node_call *node_call;
@@ -3514,9 +3514,9 @@ inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
 				   (call_info_find_by_dest ?
-				     calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, packetS->hash[0], false) &&
+				     calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, false) &&
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr) :
-				     calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, packetS->hash[1], false) &&
+				     calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, false) &&
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) {
 					call_info[call_info_length].call = node_call->call;
 					call_info[call_info_length].iscaller = node_call->iscaller;
@@ -5761,12 +5761,9 @@ void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
+	packetS->init2_rtp();
 	if(process_packet_rtp_inline(packetS) < 2) {
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
-	} else {
-		packetS->packet_s_process_0::init2();
-		packetS->hash[0] = tuplehash(packetS->saddr, packetS->source);
-		packetS->hash[1] = tuplehash(packetS->daddr, packetS->dest);
 	}
 }
 
@@ -6256,10 +6253,10 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	if(lock) {
 		calltable->lock_calls_hash();
 	}
-	if((calls = calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, packetS->hash[1], false))) {
+	if((calls = calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, false))) {
 		packetS->call_info_find_by_dest = true;
 	} else {
-		calls = calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, packetS->hash[0], false);
+		calls = calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, false);
 	}
 	packetS->call_info_length = 0;
 	if(calls) {
@@ -6270,9 +6267,9 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
 			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
 			   (packetS->call_info_find_by_dest ?
-			     calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, packetS->hash[0], false) &&
+			     calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, false) &&
 			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr) :
-			     calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, packetS->hash[1], false) &&
+			     calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, false) &&
 			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) {
 				packetS->call_info[packetS->call_info_length].call = node_call->call;
 				packetS->call_info[packetS->call_info_length].iscaller = node_call->iscaller;

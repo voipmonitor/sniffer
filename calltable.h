@@ -846,6 +846,19 @@ typedef struct {
 
 void adjustUA(char *ua);
 
+inline unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
+	unsigned int key;
+
+	key = (unsigned int)(addr * port);
+	key += ~(key << 15);
+	key ^=  (key >> 10);
+	key +=  (key << 3);
+	key ^=  (key >> 6);
+	key += ~(key << 11);
+	key ^=  (key >> 16);
+	return key % MAXNODE;
+}
+
 
 /**
   * This class implements operations on Call list
@@ -1043,7 +1056,23 @@ public:
 	 * @brief find call
 	 *
 	*/
-	hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash = 0, bool lock = true);
+	inline hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, bool lock = true) {
+		hash_node *node = NULL;
+		u_int32_t h = tuplehash(addr, port);
+		if(lock) {
+			lock_calls_hash();
+		}
+		hash_node_call *rslt = NULL;
+		for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
+			if ((node->addr == addr) && (node->port == port)) {
+				rslt = node->calls;
+			}
+		}
+		if(lock) {
+			unlock_calls_hash();
+		}
+		return rslt;
+	}
 
 	/**
 	 * @brief remove call from hash
@@ -1102,20 +1131,6 @@ private:
 	unsigned int audioQueueThreadsMax;
 	int audioQueueTerminating;
 };
-
-
-inline unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
-	unsigned int key;
-
-	key = (unsigned int)(addr * port);
-	key += ~(key << 15);
-	key ^=  (key >> 10);
-	key +=  (key << 3);
-	key ^=  (key >> 6);
-	key += ~(key << 11);
-	key ^=  (key >> 16);
-	return key % MAXNODE;
-}
 
 
 class CustomHeaders {

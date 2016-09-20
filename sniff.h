@@ -183,7 +183,6 @@ struct packet_s_process_0 : public packet_s {
 	cHeapItemsPointerStack *stack;
 	int isSip;
 	bool isSkinny;
-	unsigned int hash[2];
 	packet_s_process_rtp_call_info call_info[20];
 	int call_info_length;
 	bool call_info_find_by_dest;
@@ -201,8 +200,11 @@ struct packet_s_process_0 : public packet_s {
 		header_ip = (iphdr2*)(packet + header_ip_offset);
 		isSip = -1;
 		isSkinny = false;
-		hash[0] = 0;
-		hash[1] = 0;
+		call_info_length = -1;
+	}
+	inline void init2_rtp() {
+		data = (char*)(packet + dataoffset);
+		header_ip = (iphdr2*)(packet + header_ip_offset);
 		call_info_length = -1;
 	}
 };
