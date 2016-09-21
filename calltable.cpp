@@ -288,8 +288,11 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 			unlock_add_remove_rtp_threads();
 		}
 		gthread_num++;
+		extern int process_rtp_packets_distribute_threads_use;
+		thread_num_rd = thread_num % process_rtp_packets_distribute_threads_use;
 	} else {
 		thread_num = 0;
+		thread_num_rd = 0;
 	}
 	recordstopped = 0;
 	dtmfflag = 0;

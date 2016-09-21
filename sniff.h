@@ -290,7 +290,6 @@ void save_packet(Call *call, packet_s_process *packetS, int type);
 
 typedef struct {
 	Call *call;
-	packet_s packet;
 	packet_s *packet_pt;
 	char iscaller;
 	char find_by_dest;
@@ -298,19 +297,41 @@ typedef struct {
 	char save_packet;
 } rtp_packet_pcap_queue;
 
-struct rtp_read_thread {
+class rtp_read_thread {
+public:
+	struct batch_packet_rtp {
+		batch_packet_rtp(unsigned max_count) {
+			count = 0;
+			used = 0;
+			batch = new FILE_LINE(0) rtp_packet_pcap_queue*[max_count];
+			memset(batch, 0, sizeof(rtp_packet_pcap_queue*) * max_count);
+			this->max_count = max_count;
+		}
+		~batch_packet_rtp() {
+			for(unsigned i = 0; i < max_count; i++) {
+				if(batch[i]) {
+					// unlock item
+					delete batch[i];
+					batch[i]= NULL;
+				}
+			}
+			delete [] batch;
+		}
+		rtp_packet_pcap_queue **batch;
+		volatile unsigned count;
+		volatile int used;
+		unsigned max_count;
+	};
+public:
 	rtp_read_thread()  {
 		this->rtpp_queue = NULL;
-		this->rtpp_queue_quick = NULL;
-		this->rtpp_queue_quick_boost = NULL;
 		this->calls = 0;
 	}
+public:
 	pthread_t thread;
 	volatile int threadId;
 	int threadNum;
-	rqueue<rtp_packet_pcap_queue> *rtpp_queue;
-	rqueue_quick<rtp_packet_pcap_queue> *rtpp_queue_quick;
-	rqueue_quick_boost<rtp_packet_pcap_queue> *rtpp_queue_quick_boost;
+	rqueue_quick<rtp_packet_pcap_queue> *rtpp_queue;
 	pstat_data threadPstatData[2];
 	volatile bool remove_flag;
 	u_int32_t last_use_time_s;

@@ -590,7 +590,6 @@ volatile int num_threads_active = 0;
 unsigned int rtpthreadbuffer = 20;	// default 20MB
 unsigned int rtp_qring_length = 0;
 unsigned int rtp_qring_usleep = 100;
-int rtp_qring_quick = 1;
 unsigned int gthread_num = 0;
 
 int opt_pcapdump = 0;
@@ -2804,23 +2803,11 @@ int main_init_read() {
 			size_t _rtp_qring_length = rtp_qring_length ? 
 							rtp_qring_length :
 							rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
-			if(rtp_qring_quick == 2) {
-				rtp_threads[i].rtpp_queue_quick_boost = new FILE_LINE(43021) rqueue_quick_boost<rtp_packet_pcap_queue>(
-										100, rtp_qring_usleep,
-										&terminating,
-										__FILE__, __LINE__);
-			} else if(rtp_qring_quick) {
-				rtp_threads[i].rtpp_queue_quick = new FILE_LINE(43022) rqueue_quick<rtp_packet_pcap_queue>(
-									_rtp_qring_length,
-									100, rtp_qring_usleep,
-									&terminating, true,
-									__FILE__, __LINE__);
-			} else {
-				rtp_threads[i].rtpp_queue = new FILE_LINE(43023) rqueue<rtp_packet_pcap_queue>(_rtp_qring_length / 2, _rtp_qring_length / 5, _rtp_qring_length * 1.5);
-				char rtpp_queue_name[20];
-				sprintf(rtpp_queue_name, "rtp thread %i", i + 1);
-				rtp_threads[i].rtpp_queue->setName(rtpp_queue_name);
-			}
+			rtp_threads[i].rtpp_queue = new FILE_LINE(43022) rqueue_quick<rtp_packet_pcap_queue>(
+							_rtp_qring_length,
+							100, rtp_qring_usleep,
+							&terminating, true,
+							__FILE__, __LINE__);
 			rtp_threads[i].threadId = 0;
 			rtp_threads[i].threadNum = i + 1;
 			memset(rtp_threads[i].threadPstatData, 0, sizeof(rtp_threads[i].threadPstatData));
@@ -3057,11 +3044,7 @@ void main_term_read() {
 					usleep(100000);
 				}
 			}
-			if(rtp_threads[i].rtpp_queue_quick) {
-				delete rtp_threads[i].rtpp_queue_quick;
-			} else {
-				delete rtp_threads[i].rtpp_queue;
-			}
+			delete rtp_threads[i].rtpp_queue;
 		}
 		delete [] rtp_threads;
 		rtp_threads = NULL;
@@ -5171,8 +5154,6 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(43402) cConfigItem_integer("rtp_qring_length", &rtp_qring_length));
 					addConfigItem(new FILE_LINE(43403) cConfigItem_integer("rtp_qring_usleep", &rtp_qring_usleep));
-					addConfigItem((new FILE_LINE(43404) cConfigItem_yesno("rtp_qring_quick", &rtp_qring_quick))
-						->addValue("boost", 2));
 		subgroup("mirroring");
 					expert();
 					addConfigItem(new FILE_LINE(43405) cConfigItem_yesno("mirrorip", &opt_mirrorip));
@@ -5977,10 +5958,6 @@ void set_context_config() {
 	}
 	if(opt_enable_webrtc) {
 		opt_enable_webrtc_table = true;
-	}
-	
-	if(rtp_qring_quick == 0 && opt_enable_process_rtp_packet > 1) {
-		rtp_qring_quick = 1;
 	}
 	
 	if(opt_read_from_file) {
@@ -7866,9 +7843,6 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "rtp_qring_usleep", NULL))) {
 		rtp_qring_usleep = atol(value);
-	}
-	if((value = ini.GetValue("general", "rtp_qring_quick", NULL))) {
-		rtp_qring_quick = strcmp(value, "boost") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "udpfrag", NULL))) {
 		opt_udpfrag = yesno(value);

@@ -1448,44 +1448,20 @@ void add_to_rtp_thread_queue(Call *call, packet_s *packetS,
 	if(packetS->block_store) {
 		packetS->block_store->lock_packet(packetS->block_store_index, 1);
 	}
-	if(params->rtpp_queue_quick ||
-	   params->rtpp_queue_quick_boost) {
-		rtp_packet_pcap_queue rtpp_pq;
-		rtpp_pq.call = call;
-		if(usePointerToPacketS) {
-			rtpp_pq.packet_pt = packetS;
-		} else {
-			rtpp_pq.packet = *packetS;
-			rtpp_pq.packet_pt = NULL;
-		}
-		rtpp_pq.iscaller = iscaller;
-		rtpp_pq.find_by_dest = find_by_dest;
-		rtpp_pq.is_rtcp = is_rtcp;
-		rtpp_pq.save_packet = enable_save_packet;
-		if(params->rtpp_queue_quick) {
-			params->rtpp_queue_quick->push(&rtpp_pq, true, process_rtp_packets_distribute_threads_use > 1);
-		} else {
-			params->rtpp_queue_quick_boost->push(&rtpp_pq, true, process_rtp_packets_distribute_threads_use > 1);
-		}
+	
+	rtp_packet_pcap_queue rtpp_pq;
+	rtpp_pq.call = call;
+	if(usePointerToPacketS) {
+		rtpp_pq.packet_pt = packetS;
 	} else {
-		params->rtpp_queue->lock();
-		rtp_packet_pcap_queue *rtpp_pq;
-		while((rtpp_pq = params->rtpp_queue->push_get_pointer()) == NULL) {
-			usleep(10);
-		}
-		rtpp_pq->call = call;
-		if(usePointerToPacketS) {
-			rtpp_pq->packet_pt = packetS;
-		} else {
-			rtpp_pq->packet = *packetS;
-			rtpp_pq->packet_pt = NULL;
-		}
-		rtpp_pq->iscaller = iscaller;
-		rtpp_pq->find_by_dest = find_by_dest;
-		rtpp_pq->is_rtcp = is_rtcp;
-		rtpp_pq->save_packet = enable_save_packet;
-		params->rtpp_queue->unlock();
+		rtpp_pq.packet_pt = PACKET_S_PROCESS_RTP_CREATE();
+		*rtpp_pq.packet_pt = *packetS;
 	}
+	rtpp_pq.iscaller = iscaller;
+	rtpp_pq.find_by_dest = find_by_dest;
+	rtpp_pq.is_rtcp = is_rtcp;
+	rtpp_pq.save_packet = enable_save_packet;
+	params->rtpp_queue->push(&rtpp_pq, true, process_rtp_packets_distribute_threads_use > 1);
 }
 
 
@@ -1505,22 +1481,7 @@ void *rtp_read_thread_func(void *arg) {
 	params->last_use_time_s = getTimeMS_rdtsc() / 1000;
 	unsigned usleepCounter = 0;
 	while(1) {
-
-		bool emptyQueue = false;
-		if(params->rtpp_queue_quick) {
-			if(!params->rtpp_queue_quick->pop(&rtpp_pq, false)) {
-				emptyQueue = true;
-			}
-		} else if(params->rtpp_queue_quick_boost) {
-			if(!params->rtpp_queue_quick_boost->pop(&rtpp_pq, false)) {
-				emptyQueue = true;
-			}
-		} else {
-			if(!params->rtpp_queue->pop(&rtpp_pq, true)) {
-				emptyQueue = true;
-			}
-		}
-		if(emptyQueue) {
+		if(!params->rtpp_queue->pop(&rtpp_pq, false)) {
 			if(is_terminating() || readend) {
 				params->threadId = 0;
 				return NULL;
@@ -1548,20 +1509,19 @@ void *rtp_read_thread_func(void *arg) {
 		
 		params->last_use_time_s = getTimeMS_rdtsc() / 1000;
 
-		packet_s *packet = rtpp_pq.packet_pt ? rtpp_pq.packet_pt : &rtpp_pq.packet;
 		bool rslt_read_rtp = false;
 		if(rtpp_pq.is_rtcp) {
-			rslt_read_rtp = rtpp_pq.call->read_rtcp(packet, rtpp_pq.iscaller, rtpp_pq.save_packet);
+			rslt_read_rtp = rtpp_pq.call->read_rtcp(rtpp_pq.packet_pt, rtpp_pq.iscaller, rtpp_pq.save_packet);
 		}  else {
-			rslt_read_rtp = rtpp_pq.call->read_rtp(packet, rtpp_pq.iscaller, rtpp_pq.find_by_dest, rtpp_pq.save_packet, 
-							       packet->block_store && packet->block_store->ifname[0] ? packet->block_store->ifname : NULL);
+			rslt_read_rtp = rtpp_pq.call->read_rtp(rtpp_pq.packet_pt, rtpp_pq.iscaller, rtpp_pq.find_by_dest, rtpp_pq.save_packet, 
+							       rtpp_pq.packet_pt->block_store && rtpp_pq.packet_pt->block_store->ifname[0] ? rtpp_pq.packet_pt->block_store->ifname : NULL);
 		}
-		rtpp_pq.call->shift_destroy_call_at(packet->header_pt);
+		rtpp_pq.call->shift_destroy_call_at(rtpp_pq.packet_pt->header_pt);
 		if(rslt_read_rtp && !rtpp_pq.is_rtcp) {
-			rtpp_pq.call->set_last_packet_time(packet->header_pt->ts.tv_sec);
+			rtpp_pq.call->set_last_packet_time(rtpp_pq.packet_pt->header_pt->ts.tv_sec);
 		}
-		if(packet->block_store) {
-			packet->block_store->unlock_packet(packet->block_store_index);
+		if(rtpp_pq.packet_pt->block_store) {
+			rtpp_pq.packet_pt->block_store->unlock_packet(rtpp_pq.packet_pt->block_store_index);
 		}
 
 		__sync_sub_and_fetch(&rtpp_pq.call->rtppacketsinqueue, 1);
@@ -1626,11 +1586,11 @@ int get_index_rtp_read_thread_min_size() {
 	int minSizeIndex = -1;
 	for(int i = 0; i < num_threads_active; i++) {
 		if(rtp_threads[i].threadId > 0 && !rtp_threads[i].remove_flag) {
-			if(!rtp_threads[i].rtpp_queue_quick) {
+			if(!rtp_threads[i].rtpp_queue) {
 				unlock_add_remove_rtp_threads();
 				return(-1);
 			}
-			size_t size = rtp_threads[i].rtpp_queue_quick->size();
+			size_t size = rtp_threads[i].rtpp_queue->size();
 			if(minSizeIndex == -1 || minSize > size) {
 				minSizeIndex = i;
 				minSize = size;
@@ -1722,8 +1682,8 @@ string get_rtp_threads_cpu_usage(bool callPstat) {
 						outStr << ';';
 					}
 					outStr << setprecision(1) << (ucpu_usage + scpu_usage) << '%';
-					if(rtp_threads[i].rtpp_queue_quick) {
-						outStr << 'r' << rtp_threads[i].rtpp_queue_quick->size();
+					if(rtp_threads[i].rtpp_queue) {
+						outStr << 'r' << rtp_threads[i].rtpp_queue->size();
 					}
 					outStr << 'c' << rtp_threads[i].calls;
 					++counter;
@@ -6237,9 +6197,17 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 		for(;batch_index_distribute < batch->count; batch_index_distribute++) {
 			packet_s_process_0 *packetS = batch->batch[batch_index_distribute];
 			batch->batch[batch_index_distribute] = NULL;
+			/*
 			ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
 							       processRtpPacketDistribute[min(packetS->source, packetS->dest) / 2 % _process_rtp_packets_distribute_threads_use] :
 							       processRtpPacketDistribute[0];
+			*/
+			ProcessRtpPacket *_processRtpPacket;
+			if(packetS->call_info_length && packetS->call_info[0].call) {
+				_processRtpPacket = processRtpPacketDistribute[packetS->call_info[0].call->thread_num_rd];
+			} else {
+				_processRtpPacket = processRtpPacketDistribute[0];
+			}
 			_processRtpPacket->push_packet(packetS);
 		}
 	} else {
