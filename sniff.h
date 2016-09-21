@@ -28,6 +28,8 @@
 #define IP_MF           0x2000          /* Flag: "More Fragments"       */
 #define IP_OFFSET       0x1FFF          /* "Fragment Offset" part       */
 
+#define MAX_LENGTH_CALL_INFO 2
+
 struct iphdr2 {
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 	unsigned int ihl:4;
@@ -183,7 +185,7 @@ struct packet_s_process_0 : public packet_s {
 	cHeapItemsPointerStack *stack;
 	int isSip;
 	bool isSkinny;
-	packet_s_process_rtp_call_info call_info[20];
+	packet_s_process_rtp_call_info call_info[MAX_LENGTH_CALL_INFO];
 	int call_info_length;
 	bool call_info_find_by_dest;
 	volatile int hash_find_flag;
@@ -290,7 +292,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type);
 
 typedef struct {
 	Call *call;
-	packet_s *packet_pt;
+	packet_s_process_0 *packet;
 	char iscaller;
 	char find_by_dest;
 	char is_rtcp;
