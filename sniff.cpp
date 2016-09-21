@@ -3485,14 +3485,14 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	return(call);
 }
 
-inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
+inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 	if(packetS->datalen <= 2) { // && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) { // disable condition - failure for udptl (fax)
-		return(0);
+		return(false);
 	}
 	
 	if(processRtpPacketHash) {
 		processRtpPacketHash->push_packet(packetS);
-		return(2);
+		return(true);
 	} else {
 		packetS->init2_rtp();
 		packet_s_process_rtp_call_info call_info[20];
@@ -3531,18 +3531,21 @@ inline int process_packet_rtp_inline(packet_s_process_0 *packetS) {
 		}
 		calltable->unlock_calls_hash();
 		if(call_info_length) {
-			return(process_packet__rtp_call_info(call_info, call_info_length, packetS, call_info_find_by_dest) ? 1 : 0);
+			int count_use = process_packet__rtp_call_info(call_info, call_info_length, packetS, call_info_find_by_dest);
+			if(count_use &&
+			   (rtp_threaded && !sverb.disable_threads_rtp)) {
+				return(true);
+			}
 		} else if(opt_rtpnosip) {
 			process_packet__rtp_nosip(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, 
 						  packetS->data, packetS->datalen, packetS->dataoffset,
 						  packetS->header_pt, packetS->packet, packetS->istcp, packetS->header_ip,
 						  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
 						  get_pcap_handle(packetS->handle_index));
-			return(1);
 		} 
 	}
 	
-	return(0);
+	return(false);
 }
 
 inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS) {
@@ -5760,7 +5763,7 @@ void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
-	if(process_packet_rtp_inline(packetS) < 2) {
+	if(!process_packet_rtp_inline(packetS)) {
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
 	}
 }
