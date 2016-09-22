@@ -326,17 +326,15 @@ public:
 	}
 	void init(int threadNum, size_t qring_length);
 	void init_qring(size_t qring_length);
+	void init_thread_buffer();
 	void term();
 	void term_qring();
+	void term_thread_buffer();
 	size_t qring_size();
-	inline void push(rtp_packet_pcap_queue *packet) {
-		static __thread rtp_packet_pcap_queue *batch_thread = NULL;
-		static __thread unsigned batch_thread_count = 0;
-		if(!batch_thread) {
-			batch_thread = new FILE_LINE(0) rtp_packet_pcap_queue[this->qring_batch_item_length];
-		}
-		if(batch_thread_count < this->qring_batch_item_length) {
-			batch_thread[batch_thread_count++] = *packet;
+	inline void push(rtp_packet_pcap_queue *packet, int threadIndex = 0) {
+		batch_packet_rtp *thread_buffer = this->thread_buffer[threadIndex];
+		if(thread_buffer->count < thread_buffer->max_count) {
+			thread_buffer->batch[thread_buffer->count++] = *packet;
 		} else {
 			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
 			batch_packet_rtp *active_batch = this->qring[this->writeit];
@@ -348,8 +346,8 @@ public:
 					usleepCounter > 2 ? 5 : 1));
 				++usleepCounter;
 			}
-			memcpy(active_batch->batch, batch_thread, sizeof(rtp_packet_pcap_queue) * batch_thread_count);
-			active_batch->count = batch_thread_count;
+			memcpy(active_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
+			active_batch->count = thread_buffer->count;
 			active_batch->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
@@ -357,8 +355,8 @@ public:
 				this->writeit++;
 			}
 			__sync_lock_release(&this->push_lock_sync, 1);
-			batch_thread[0] = *packet;
-			batch_thread_count = 1;
+			thread_buffer->batch[0] = *packet;
+			thread_buffer->count = 1;
 		}
 		/*
 		while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
@@ -398,6 +396,8 @@ public:
 	unsigned int qring_batch_item_length;
 	unsigned int qring_length;
 	batch_packet_rtp **qring;
+	unsigned int thread_buffer_length;
+	batch_packet_rtp **thread_buffer;
 	batch_packet_rtp *qring_active_push_item;
 	volatile unsigned qring_push_index;
 	volatile unsigned qring_push_index_count;

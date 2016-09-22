@@ -1421,7 +1421,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 inline
 void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 			     int iscaller, bool find_by_dest, int is_rtcp, int enable_save_packet, 
-			     int preSyncRtp = 0) {
+			     int preSyncRtp = 0, int threadIndex = 0) {
 	if(is_terminating()) {
 		return;
 	}
@@ -1456,7 +1456,7 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 	rtpp_pq.save_packet = enable_save_packet;
 	
 	rtp_read_thread *read_thread = &(rtp_threads[call->thread_num]);
-	read_thread->push(&rtpp_pq);
+	read_thread->push(&rtpp_pq, threadIndex);
 }
 
 
@@ -3347,7 +3347,7 @@ endsip:
 }
 
 inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_info,size_t call_info_length, packet_s_process_0 *packetS,
-					 bool find_by_dest, int preSyncRtp = false, bool usePointerToPacketS = false) {
+					 bool find_by_dest, int preSyncRtp = false, int threadIndex = 0) {
 	++counter_rtp_packets;
 	Call *call;
 	bool iscaller;
@@ -3446,11 +3446,11 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			if(is_rtcp) {
 				add_to_rtp_thread_queue(call, packetS,
 							iscaller, find_by_dest, is_rtcp, enable_save_rtcp(call), 
-							preSyncRtp);
+							preSyncRtp, threadIndex);
 			} else {
 				add_to_rtp_thread_queue(call, packetS, 
 							iscaller, find_by_dest, is_rtcp, enable_save_rtp(call), 
-							preSyncRtp);
+							preSyncRtp, threadIndex);
 			}
 		}
 	}
@@ -6291,7 +6291,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 			batch->batch[batch_index] = NULL;
 			if(packetS->call_info_length) {
 				int count_use = process_packet__rtp_call_info(packetS->call_info, packetS->call_info_length, packetS, 
-									      packetS->call_info_find_by_dest, indexThread + 1, true);
+									      packetS->call_info_find_by_dest, true, indexThread + 1);
 				if(!count_use ||
 				   !(rtp_threaded && !sverb.disable_threads_rtp)) {
 					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3 + indexThread);
@@ -6445,10 +6445,11 @@ void rtp_read_thread::init(int threadNum, size_t qring_length) {
 	this->calls = 0;
 	this->push_lock_sync = 0;
 	this->init_qring(qring_length);
+	this->init_thread_buffer();
 }
 
 void rtp_read_thread::init_qring(size_t qring_length) {
-	this->qring_batch_item_length = 100;
+	this->qring_batch_item_length = 10;
 	this->qring_length = qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
@@ -6461,8 +6462,17 @@ void rtp_read_thread::init_qring(size_t qring_length) {
 	this->qring_push_index_count = 0;
 }
 
+void rtp_read_thread::init_thread_buffer() {
+	thread_buffer_length = 10;
+	this->thread_buffer = new FILE_LINE(0) batch_packet_rtp*[thread_buffer_length];
+	for(unsigned int i = 0; i < thread_buffer_length; i++) {
+		this->thread_buffer[i] = new FILE_LINE(0) batch_packet_rtp(this->qring_batch_item_length);
+	}
+}
+
 void rtp_read_thread::term() {
 	this->term_qring();
+	this->term_thread_buffer();
 }
 
 void rtp_read_thread::term_qring() {
@@ -6470,6 +6480,13 @@ void rtp_read_thread::term_qring() {
 		delete this->qring[i];
 	}
 	delete [] this->qring;
+}
+
+void rtp_read_thread::term_thread_buffer() {
+	for(unsigned int i = 0; i < thread_buffer_length; i++) {
+		delete this->thread_buffer[i];
+	}
+	delete [] this->thread_buffer;
 }
 
 size_t rtp_read_thread::qring_size() {
