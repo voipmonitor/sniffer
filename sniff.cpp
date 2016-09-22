@@ -166,6 +166,7 @@ extern unsigned int opt_process_rtp_packets_qring_item_length;
 extern unsigned int opt_process_rtp_packets_qring_usleep;
 extern bool process_rtp_packets_qring_force_push;
 extern unsigned int rtp_qring_usleep;
+extern unsigned int rtp_qring_batch_length;
 extern int opt_pcapdump;
 extern int opt_id_sensor;
 extern int opt_destination_number_mode;
@@ -6449,13 +6450,13 @@ void rtp_read_thread::init(int threadNum, size_t qring_length) {
 }
 
 void rtp_read_thread::init_qring(size_t qring_length) {
-	this->qring_batch_item_length = 10;
+	this->qring_batch_item_length = rtp_qring_batch_length;
 	this->qring_length = qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
-	this->qring = new FILE_LINE(0) batch_packet_rtp*[this->qring_length];
+	this->qring = new FILE_LINE(27034) batch_packet_rtp*[this->qring_length];
 	for(unsigned int i = 0; i < this->qring_length; i++) {
-		this->qring[i] = new FILE_LINE(0) batch_packet_rtp(this->qring_batch_item_length);
+		this->qring[i] = new FILE_LINE(27035) batch_packet_rtp(this->qring_batch_item_length);
 		this->qring[i]->used = 0;
 	}
 	this->qring_push_index = 0;
@@ -6464,9 +6465,9 @@ void rtp_read_thread::init_qring(size_t qring_length) {
 
 void rtp_read_thread::init_thread_buffer() {
 	thread_buffer_length = 10;
-	this->thread_buffer = new FILE_LINE(0) batch_packet_rtp_thread_buffer*[thread_buffer_length];
+	this->thread_buffer = new FILE_LINE(27036) batch_packet_rtp*[thread_buffer_length];
 	for(unsigned int i = 0; i < thread_buffer_length; i++) {
-		this->thread_buffer[i] = new FILE_LINE(0) batch_packet_rtp_thread_buffer(this->qring_batch_item_length);
+		this->thread_buffer[i] = new FILE_LINE(27037) batch_packet_rtp(this->qring_batch_item_length);
 	}
 }
 

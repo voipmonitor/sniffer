@@ -590,6 +590,7 @@ volatile int num_threads_active = 0;
 unsigned int rtpthreadbuffer = 20;	// default 20MB
 unsigned int rtp_qring_length = 0;
 unsigned int rtp_qring_usleep = 100;
+unsigned int rtp_qring_batch_length = 10;
 unsigned int gthread_num = 0;
 
 int opt_pcapdump = 0;
@@ -5144,6 +5145,7 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(43402) cConfigItem_integer("rtp_qring_length", &rtp_qring_length));
 					addConfigItem(new FILE_LINE(43403) cConfigItem_integer("rtp_qring_usleep", &rtp_qring_usleep));
+					addConfigItem(new FILE_LINE(43457) cConfigItem_integer("rtp_qring_batch_length", &rtp_qring_batch_length));
 		subgroup("mirroring");
 					expert();
 					addConfigItem(new FILE_LINE(43405) cConfigItem_yesno("mirrorip", &opt_mirrorip));
@@ -7833,6 +7835,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "rtp_qring_usleep", NULL))) {
 		rtp_qring_usleep = atol(value);
+	}
+	if((value = ini.GetValue("general", "rtp_qring_batch_length", NULL))) {
+		rtp_qring_batch_length = atol(value);
 	}
 	if((value = ini.GetValue("general", "udpfrag", NULL))) {
 		opt_udpfrag = yesno(value);
