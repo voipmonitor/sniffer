@@ -6465,9 +6465,9 @@ void rtp_read_thread::init_qring(size_t qring_length) {
 
 void rtp_read_thread::init_thread_buffer() {
 	thread_buffer_length = 10;
-	this->thread_buffer = new FILE_LINE(27036) batch_packet_rtp*[thread_buffer_length];
+	this->thread_buffer = new FILE_LINE(27036) batch_packet_rtp_thread_buffer*[thread_buffer_length];
 	for(unsigned int i = 0; i < thread_buffer_length; i++) {
-		this->thread_buffer[i] = new FILE_LINE(27037) batch_packet_rtp(this->qring_batch_item_length);
+		this->thread_buffer[i] = new FILE_LINE(27037) batch_packet_rtp_thread_buffer(this->qring_batch_item_length);
 	}
 }
 

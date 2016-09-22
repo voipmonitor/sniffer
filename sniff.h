@@ -320,6 +320,23 @@ public:
 		volatile int used;
 		unsigned max_count;
 	};
+	struct batch_packet_rtp_thread_buffer {
+		batch_packet_rtp_thread_buffer(unsigned max_count) {
+			count = 0;
+			batch = new FILE_LINE(28003) rtp_packet_pcap_queue[max_count];
+			memset(batch, 0, sizeof(rtp_packet_pcap_queue) * max_count);
+			this->max_count = max_count;
+		}
+		~batch_packet_rtp_thread_buffer() {
+			for(unsigned i = 0; i < max_count; i++) {
+				// unlock item
+			}
+			delete [] batch;
+		}
+		rtp_packet_pcap_queue *batch;
+		unsigned count;
+		unsigned max_count;
+	};
 public:
 	rtp_read_thread()  {
 		this->calls = 0;
@@ -333,7 +350,7 @@ public:
 	size_t qring_size();
 	inline void push(rtp_packet_pcap_queue *packet, int threadIndex = 0) {
 		if(threadIndex) {
-			batch_packet_rtp *thread_buffer = this->thread_buffer[threadIndex - 1];
+			batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex - 1];
 			if(thread_buffer->count < thread_buffer->max_count) {
 				thread_buffer->batch[thread_buffer->count++] = *packet;
 			} else {
@@ -398,7 +415,7 @@ public:
 	unsigned int qring_length;
 	batch_packet_rtp **qring;
 	unsigned int thread_buffer_length;
-	batch_packet_rtp **thread_buffer;
+	batch_packet_rtp_thread_buffer **thread_buffer;
 	batch_packet_rtp *qring_active_push_item;
 	volatile unsigned qring_push_index;
 	volatile unsigned qring_push_index_count;
