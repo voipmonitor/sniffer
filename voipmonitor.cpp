@@ -2803,17 +2803,7 @@ int main_init_read() {
 			size_t _rtp_qring_length = rtp_qring_length ? 
 							rtp_qring_length :
 							rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
-			rtp_threads[i].rtpp_queue = new FILE_LINE(43022) rqueue_quick<rtp_packet_pcap_queue>(
-							_rtp_qring_length,
-							100, rtp_qring_usleep,
-							&terminating, true,
-							__FILE__, __LINE__);
-			rtp_threads[i].threadId = 0;
-			rtp_threads[i].threadNum = i + 1;
-			memset(rtp_threads[i].threadPstatData, 0, sizeof(rtp_threads[i].threadPstatData));
-			rtp_threads[i].remove_flag = 0;
-			rtp_threads[i].last_use_time_s = 0;
-			rtp_threads[i].calls = 0;
+			rtp_threads[i].init(i + 1, _rtp_qring_length);
 			if(i < num_threads_active) {
 				vm_pthread_create_autodestroy("rtp read",
 							      &(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i], __FILE__, __LINE__);
@@ -3044,7 +3034,7 @@ void main_term_read() {
 					usleep(100000);
 				}
 			}
-			delete rtp_threads[i].rtpp_queue;
+			rtp_threads[i].term();
 		}
 		delete [] rtp_threads;
 		rtp_threads = NULL;

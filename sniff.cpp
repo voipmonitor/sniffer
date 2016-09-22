@@ -1443,8 +1443,6 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 		__sync_add_and_fetch(&call->rtppacketsinqueue, 1);
 	}
 	
-	rtp_read_thread *params = &(rtp_threads[call->thread_num]);
-
 	if(packetS->block_store) {
 		packetS->block_store->lock_packet(packetS->block_store_index, 1);
 	}
@@ -1456,7 +1454,9 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 	rtpp_pq.find_by_dest = find_by_dest;
 	rtpp_pq.is_rtcp = is_rtcp;
 	rtpp_pq.save_packet = enable_save_packet;
-	params->rtpp_queue->push(&rtpp_pq, true, process_rtp_packets_distribute_threads_use > 1);
+	
+	rtp_read_thread *read_thread = &(rtp_threads[call->thread_num]);
+	read_thread->push(&rtpp_pq);
 }
 
 
@@ -1470,12 +1470,68 @@ void unlock_add_remove_rtp_threads() {
 }
 
 void *rtp_read_thread_func(void *arg) {
-	rtp_packet_pcap_queue rtpp_pq;
-	rtp_read_thread *params = (rtp_read_thread*)arg;
-	params->threadId = get_unix_tid();
-	params->last_use_time_s = getTimeMS_rdtsc() / 1000;
+	rtp_read_thread *read_thread = (rtp_read_thread*)arg;
+	read_thread->threadId = get_unix_tid();
+	read_thread->last_use_time_s = getTimeMS_rdtsc() / 1000;
 	unsigned usleepCounter = 0;
 	while(1) {
+		if(read_thread->qring[read_thread->readit]->used == 1) {
+			rtp_read_thread::batch_packet_rtp *batch = read_thread->qring[read_thread->readit];
+			for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
+				read_thread->last_use_time_s = getTimeMS_rdtsc() / 1000;
+				rtp_packet_pcap_queue *rtpp_pq = &batch->batch[batch_index];
+				bool rslt_read_rtp = false;
+				if(rtpp_pq->is_rtcp) {
+					rslt_read_rtp = rtpp_pq->call->read_rtcp(rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->save_packet);
+				}  else {
+					rslt_read_rtp = rtpp_pq->call->read_rtp(rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->find_by_dest, rtpp_pq->save_packet, 
+										rtpp_pq->packet->block_store && rtpp_pq->packet->block_store->ifname[0] ? rtpp_pq->packet->block_store->ifname : NULL);
+				}
+				rtpp_pq->call->shift_destroy_call_at(rtpp_pq->packet->header_pt);
+				if(rslt_read_rtp && !rtpp_pq->is_rtcp) {
+					rtpp_pq->call->set_last_packet_time(rtpp_pq->packet->header_pt->ts.tv_sec);
+				}
+				if(rtpp_pq->packet->block_store) {
+					rtpp_pq->packet->block_store->unlock_packet(rtpp_pq->packet->block_store_index);
+				}
+				__sync_sub_and_fetch(&rtpp_pq->call->rtppacketsinqueue, 1);
+				if(rtpp_pq->packet) {
+					//PACKET_S_PROCESS_DESTROY(&rtpp_pq->packet);
+					PACKET_S_PROCESS_PUSH_TO_STACK(&rtpp_pq->packet, 10 + read_thread->threadNum);
+				}
+			}
+			batch->count = 0;
+			batch->used = 0;
+			if((read_thread->readit + 1) == read_thread->qring_length) {
+				read_thread->readit = 0;
+			} else {
+				read_thread->readit++;
+			}
+			usleepCounter = 0;
+		} else {
+			if(is_terminating() || readend) {
+				read_thread->threadId = 0;
+				return NULL;
+			} else if(read_thread->remove_flag &&
+				  ((getTimeMS_rdtsc() / 1000) > (read_thread->last_use_time_s + 60))) {
+				lock_add_remove_rtp_threads();
+				if(read_thread->remove_flag && !read_thread->calls) {
+					break;
+				} else {
+					read_thread->remove_flag = false;
+				}
+				unlock_add_remove_rtp_threads();
+			}
+			// no packet to read, wait and try again
+			unsigned usleepTime = rtp_qring_usleep * 
+					      (usleepCounter > 1000 ? 20 :
+					       usleepCounter > 100 ? 10 :
+					       usleepCounter > 10 ? 5 : 1);
+			usleep(usleepTime);
+			++usleepCounter;
+		}
+		
+		/* obsolete
 		if(!params->rtpp_queue->pop(&rtpp_pq, false)) {
 			if(is_terminating() || readend) {
 				params->threadId = 0;
@@ -1502,7 +1558,7 @@ void *rtp_read_thread_func(void *arg) {
 			usleepCounter = 0;
 		}
 		
-		params->last_use_time_s = getTimeMS_rdtsc() / 1000;
+		read_thread->last_use_time_s = getTimeMS_rdtsc() / 1000;
 
 		bool rslt_read_rtp = false;
 		if(rtpp_pq.is_rtcp) {
@@ -1525,17 +1581,18 @@ void *rtp_read_thread_func(void *arg) {
 			//PACKET_S_PROCESS_DESTROY(&rtpp_pq.packet);
 			PACKET_S_PROCESS_PUSH_TO_STACK(&rtpp_pq.packet, 10 + params->threadNum);
 		}
+		*/
 
 	}
 	
-	if(params->remove_flag) {
-		params->remove_flag = false;
-		params->last_use_time_s = 0;
-		params->calls = 0;
-		memset(params->threadPstatData, 0, sizeof(params->threadPstatData));
+	if(read_thread->remove_flag) {
+		read_thread->remove_flag = false;
+		read_thread->last_use_time_s = 0;
+		read_thread->calls = 0;
+		memset(read_thread->threadPstatData, 0, sizeof(read_thread->threadPstatData));
 	}
-	params->thread = 0;
-	params->threadId = 0;
+	read_thread->thread = 0;
+	read_thread->threadId = 0;
 	
 	unlock_add_remove_rtp_threads();
 	
@@ -1581,11 +1638,7 @@ int get_index_rtp_read_thread_min_size() {
 	int minSizeIndex = -1;
 	for(int i = 0; i < num_threads_active; i++) {
 		if(rtp_threads[i].threadId > 0 && !rtp_threads[i].remove_flag) {
-			if(!rtp_threads[i].rtpp_queue) {
-				unlock_add_remove_rtp_threads();
-				return(-1);
-			}
-			size_t size = rtp_threads[i].rtpp_queue->size();
+			size_t size = rtp_threads[i].qring_size();
 			if(minSizeIndex == -1 || minSize > size) {
 				minSizeIndex = i;
 				minSize = size;
@@ -1677,9 +1730,7 @@ string get_rtp_threads_cpu_usage(bool callPstat) {
 						outStr << ';';
 					}
 					outStr << setprecision(1) << (ucpu_usage + scpu_usage) << '%';
-					if(rtp_threads[i].rtpp_queue) {
-						outStr << 'r' << rtp_threads[i].rtpp_queue->size();
-					}
+					outStr << 'r' << rtp_threads[i].qring_size();
 					outStr << 'c' << rtp_threads[i].calls;
 					++counter;
 				}
@@ -6383,4 +6434,44 @@ void ProcessRtpPacket::addRtpRdThread() {
 		processRtpPacketDistribute[process_rtp_packets_distribute_threads_use] = _processRtpPacketDistribute;
 		++process_rtp_packets_distribute_threads_use;
 	}
+}
+
+void rtp_read_thread::init(int threadNum, size_t qring_length) {
+	this->threadId = 0;
+	this->threadNum = threadNum;
+	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	this->remove_flag = 0;
+	this->last_use_time_s = 0;
+	this->calls = 0;
+	this->push_lock_sync = 0;
+	this->init_qring(qring_length);
+}
+
+void rtp_read_thread::init_qring(size_t qring_length) {
+	this->qring_batch_item_length = 20;
+	this->qring_length = qring_length / this->qring_batch_item_length;
+	this->readit = 0;
+	this->writeit = 0;
+	this->qring = new FILE_LINE(0) batch_packet_rtp*[this->qring_length];
+	for(unsigned int i = 0; i < this->qring_length; i++) {
+		this->qring[i] = new FILE_LINE(0) batch_packet_rtp(this->qring_batch_item_length);
+		this->qring[i]->used = 0;
+	}
+	this->qring_push_index = 0;
+	this->qring_push_index_count = 0;
+}
+
+void rtp_read_thread::term() {
+	this->term_qring();
+}
+
+void rtp_read_thread::term_qring() {
+	for(unsigned int i = 0; i < this->qring_length; i++) {
+		delete this->qring[i];
+	}
+	delete [] this->qring;
+}
+
+size_t rtp_read_thread::qring_size() {
+	return(writeit >= readit ? writeit - readit : writeit + this->qring_length - readit);
 }

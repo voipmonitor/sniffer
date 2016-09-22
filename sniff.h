@@ -305,39 +305,77 @@ public:
 		batch_packet_rtp(unsigned max_count) {
 			count = 0;
 			used = 0;
-			batch = new FILE_LINE(0) rtp_packet_pcap_queue*[max_count];
-			memset(batch, 0, sizeof(rtp_packet_pcap_queue*) * max_count);
+			batch = new FILE_LINE(0) rtp_packet_pcap_queue[max_count];
+			memset(batch, 0, sizeof(rtp_packet_pcap_queue) * max_count);
 			this->max_count = max_count;
 		}
 		~batch_packet_rtp() {
 			for(unsigned i = 0; i < max_count; i++) {
-				if(batch[i]) {
-					// unlock item
-					delete batch[i];
-					batch[i]= NULL;
-				}
+				// unlock item
 			}
 			delete [] batch;
 		}
-		rtp_packet_pcap_queue **batch;
+		rtp_packet_pcap_queue *batch;
 		volatile unsigned count;
 		volatile int used;
 		unsigned max_count;
 	};
 public:
 	rtp_read_thread()  {
-		this->rtpp_queue = NULL;
 		this->calls = 0;
+	}
+	void init(int threadNum, size_t qring_length);
+	void init_qring(size_t qring_length);
+	void term();
+	void term_qring();
+	size_t qring_size();
+	inline void push(rtp_packet_pcap_queue *packet) {
+		while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+		if(!qring_push_index) {
+			unsigned usleepCounter = 0;
+			while(this->qring[this->writeit]->used != 0) {
+				usleep(20 *
+				       (usleepCounter > 10 ? 50 :
+					usleepCounter > 5 ? 10 :
+					usleepCounter > 2 ? 5 : 1));
+				++usleepCounter;
+			}
+			qring_push_index = this->writeit + 1;
+			qring_push_index_count = 0;
+			qring_active_push_item = this->qring[qring_push_index - 1];
+		}
+		qring_active_push_item->batch[qring_push_index_count] = *packet;
+		++qring_push_index_count;
+		if(qring_push_index_count == qring_active_push_item->max_count) {
+			qring_active_push_item->count = qring_push_index_count;
+			qring_active_push_item->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			qring_push_index = 0;
+			qring_push_index_count = 0;
+		}
+		__sync_lock_release(&this->push_lock_sync, 1);
 	}
 public:
 	pthread_t thread;
 	volatile int threadId;
 	int threadNum;
-	rqueue_quick<rtp_packet_pcap_queue> *rtpp_queue;
+	unsigned int qring_batch_item_length;
+	unsigned int qring_length;
+	batch_packet_rtp **qring;
+	batch_packet_rtp *qring_active_push_item;
+	volatile unsigned qring_push_index;
+	volatile unsigned qring_push_index_count;
+	volatile unsigned int readit;
+	volatile unsigned int writeit;
 	pstat_data threadPstatData[2];
 	volatile bool remove_flag;
 	u_int32_t last_use_time_s;
 	volatile u_int32_t calls;
+	volatile int push_lock_sync;
 };
 
 #define MAXLIVEFILTERS 10
