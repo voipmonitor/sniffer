@@ -6448,7 +6448,7 @@ void rtp_read_thread::init(int threadNum, size_t qring_length) {
 }
 
 void rtp_read_thread::init_qring(size_t qring_length) {
-	this->qring_batch_item_length = 20;
+	this->qring_batch_item_length = 100;
 	this->qring_length = qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;

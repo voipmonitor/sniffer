@@ -330,6 +330,37 @@ public:
 	void term_qring();
 	size_t qring_size();
 	inline void push(rtp_packet_pcap_queue *packet) {
+		static __thread rtp_packet_pcap_queue *batch_thread = NULL;
+		static __thread unsigned batch_thread_count = 0;
+		if(!batch_thread) {
+			batch_thread = new FILE_LINE(0) rtp_packet_pcap_queue[this->qring_batch_item_length];
+		}
+		if(batch_thread_count < this->qring_batch_item_length) {
+			batch_thread[batch_thread_count++] = *packet;
+		} else {
+			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+			batch_packet_rtp *active_batch = this->qring[this->writeit];
+			unsigned usleepCounter = 0;
+			while(active_batch->used != 0) {
+				usleep(20 *
+				       (usleepCounter > 10 ? 50 :
+					usleepCounter > 5 ? 10 :
+					usleepCounter > 2 ? 5 : 1));
+				++usleepCounter;
+			}
+			memcpy(active_batch->batch, batch_thread, sizeof(rtp_packet_pcap_queue) * batch_thread_count);
+			active_batch->count = batch_thread_count;
+			active_batch->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			__sync_lock_release(&this->push_lock_sync, 1);
+			batch_thread[0] = *packet;
+			batch_thread_count = 1;
+		}
+		/*
 		while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
 		if(!qring_push_index) {
 			unsigned usleepCounter = 0;
@@ -358,6 +389,7 @@ public:
 			qring_push_index_count = 0;
 		}
 		__sync_lock_release(&this->push_lock_sync, 1);
+		*/
 	}
 public:
 	pthread_t thread;
