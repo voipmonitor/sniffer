@@ -4456,7 +4456,7 @@ Calltable::cleanup_calls( time_t currtime ) {
 		}
 		if(closeCall) {
 			call->removeFindTables(true);
-			if(call->rtppacketsinqueue != 0) {
+			if(currtime && call->rtppacketsinqueue != 0) {
 				closeCall = false;
 			}
 		}

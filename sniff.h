@@ -409,23 +409,6 @@ public:
 	}
 	inline void push_batch() {
 		while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
-		for(unsigned int i = 0; i < thread_buffer_length; i++) {
-			batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[i];
-			if(thread_buffer->count) {
-				batch_packet_rtp *active_batch = this->qring[this->writeit];
-				if(!active_batch->used) {
-					memcpy(active_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
-					active_batch->count = thread_buffer->count;
-					active_batch->used = 1;
-					if((this->writeit + 1) == this->qring_length) {
-						this->writeit = 0;
-					} else {
-						this->writeit++;
-					}
-					thread_buffer->count = 0;
-				}
-			}
-		}
 		if(qring_push_index_count) {
 			qring_active_push_item->count = qring_push_index_count;
 			qring_active_push_item->used = 1;

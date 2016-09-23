@@ -598,6 +598,7 @@ int opt_pcapdump_all = 0;
 char opt_pcapdump_all_path[1024];
 
 int opt_callend = 1; //if true, cdr.called is saved
+int opt_t2_boost = 0;
 char opt_chdir[1024];
 char opt_spooldir_2[1024];
 char opt_cachedir[1024];
@@ -4634,6 +4635,7 @@ void cConfig::addConfigItems() {
 				expert();
 					addConfigItem(new FILE_LINE(43090) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(43091) cConfigItem_yesno("sqlcallend", &opt_callend));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(43092) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			advanced();
@@ -7233,6 +7235,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
 		opt_callend = yesno(value);
+	}
+	if((value = ini.GetValue("general", "t2_boost", NULL))) {
+		opt_t2_boost = yesno(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
