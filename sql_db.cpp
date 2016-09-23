@@ -2313,6 +2313,8 @@ void MySqlStore::addFileFromINotify(const char *filename) {
 
 MySqlStore::QFileData MySqlStore::parseQFilename(const char *filename) {
 	QFileData qfileData;
+	qfileData.id = 0;
+	qfileData.time = 0;
 	if(!strncmp(filename, QFILE_PREFIX, strlen(QFILE_PREFIX))) {
 		int id;
 		u_long time;
