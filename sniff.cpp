@@ -6161,10 +6161,12 @@ void *ProcessRtpPacket::outThreadFunction() {
 					}
 					break;
 				case distribute:
+					/* suppress - race / crash !
 					extern volatile int num_threads_active;
 					for(int i = 0; i < num_threads_active; i++) {
 						rtp_threads[i].push_batch();
 					}
+					*/
 					break;
 				}
 				usleepSumTimeForPushBatch = 0;
