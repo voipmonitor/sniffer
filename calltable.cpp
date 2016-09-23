@@ -4476,9 +4476,6 @@ Calltable::cleanup_calls( time_t currtime ) {
 		if(verbosity && verbosityE > 1) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 		}
-		if(currtime == 0 && call->rtppacketsinqueue) {
-			syslog(LOG_WARNING, "force destroy call (rtppacketsinqueue > 0)");
-		}
 		// Close RTP dump file ASAP to save file handles
 		if(currtime == 0 && is_terminating()) {
 			call->getPcap()->close();

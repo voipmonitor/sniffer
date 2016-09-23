@@ -6118,7 +6118,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 			usleepCounter = 0;
 			usleepSumTimeForPushBatch = 0;
 		} else {
-			if(usleepSumTimeForPushBatch > 500000ull) {
+			if(usleepSumTimeForPushBatch > 500000ull && !is_terminating()) {
 				switch(this->type) {
 				case hash:
 					for(int i = 0; i < process_rtp_packets_distribute_threads_use; i++) {
