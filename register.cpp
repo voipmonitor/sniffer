@@ -361,7 +361,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 			query_str += string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ");\n";
 			reg.add("_\\_'SQL'_\\_:@ua_id", "ua_id");
 		}
-		query_str += sqlDbSaveRegister->insertQuery(register_table, reg) + ";\n";
+		query_str += sqlDbSaveRegister->insertQuery(register_table, reg, false, false, state->state == rs_Failed) + ";\n";
 		static unsigned int counterSqlStore = 0;
 		int storeId = STORE_PROC_ID_REGISTER_1 + 
 			      (opt_mysqlstore_max_threads_register > 1 &&
