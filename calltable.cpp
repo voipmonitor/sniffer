@@ -278,7 +278,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	custom_header1[0] = '\0';
 	match_header[0] = '\0';
 	if(type == INVITE && is_enable_rtp_threads() && num_threads_active > 0) {
-		thread_num = get_index_rtp_read_thread_min_calls(true);
+		thread_num = get_index_rtp_read_thread_min_calls();
 		if(thread_num < 0) {
 			extern void lock_add_remove_rtp_threads();
 			extern void unlock_add_remove_rtp_threads();

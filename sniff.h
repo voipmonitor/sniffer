@@ -60,7 +60,7 @@ void *rtp_read_thread_func(void *arg);
 void add_rtp_read_thread();
 void set_remove_rtp_read_thread();
 int get_index_rtp_read_thread_min_size();
-int get_index_rtp_read_thread_min_calls(bool incCalls);
+int get_index_rtp_read_thread_min_calls();
 double get_rtp_sum_cpu_usage(double *max = NULL);
 string get_rtp_threads_cpu_usage(bool callPstat);
 
@@ -406,6 +406,38 @@ public:
 			}
 			__sync_lock_release(&this->push_lock_sync, 1);
 		}
+	}
+	inline void push_batch() {
+		while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+		for(unsigned int i = 0; i < thread_buffer_length; i++) {
+			batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[i];
+			if(thread_buffer->count) {
+				batch_packet_rtp *active_batch = this->qring[this->writeit];
+				if(!active_batch->used) {
+					memcpy(active_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
+					active_batch->count = thread_buffer->count;
+					active_batch->used = 1;
+					if((this->writeit + 1) == this->qring_length) {
+						this->writeit = 0;
+					} else {
+						this->writeit++;
+					}
+					thread_buffer->count = 0;
+				}
+			}
+		}
+		if(qring_push_index_count) {
+			qring_active_push_item->count = qring_push_index_count;
+			qring_active_push_item->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			qring_push_index = 0;
+			qring_push_index_count = 0;
+		}
+		__sync_lock_release(&this->push_lock_sync, 1);
 	}
 public:
 	pthread_t thread;

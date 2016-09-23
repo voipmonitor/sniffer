@@ -1650,7 +1650,7 @@ int get_index_rtp_read_thread_min_size() {
 	return(minSizeIndex);
 }
 
-int get_index_rtp_read_thread_min_calls(bool incCalls) {
+int get_index_rtp_read_thread_min_calls() {
 	lock_add_remove_rtp_threads();
 	extern volatile int num_threads_active;
 	size_t minCalls = 0;
@@ -3359,6 +3359,11 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 	packet_s_process_rtp_call_info call_info_temp[MAX_LENGTH_CALL_INFO];
 	size_t call_info_temp_length = 0;
 	for(call_info_index = 0; call_info_index < call_info_length; call_info_index++) {
+		if(threadIndex &&
+		   call_info[call_info_index].call->thread_num_rd != (threadIndex - 1)) {
+			continue;
+		}
+	 
 		call = call_info[call_info_index].call;
 		iscaller = call_info[call_info_index].iscaller;
 		sdp_flags = call_info[call_info_index].sdp_flags;
@@ -3421,6 +3426,10 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 	}
 	if(preSyncRtp) {
 		for(call_info_index = 0; call_info_index < call_info_length; call_info_index++) {
+			if(threadIndex &&
+			   call_info[call_info_index].call->thread_num_rd != (threadIndex - 1)) {
+				continue;
+			}
 			if(!call_info[call_info_index].use_sync) {
 				__sync_sub_and_fetch(&call_info[call_info_index].call->rtppacketsinqueue, 1);
 			}
@@ -6145,10 +6154,18 @@ void *ProcessRtpPacket::outThreadFunction() {
 			usleepSumTimeForPushBatch = 0;
 		} else {
 			if(usleepSumTimeForPushBatch > 500000ull) {
-				if(this->type == hash) {
+				switch(this->type) {
+				case hash:
 					for(int i = 0; i < process_rtp_packets_distribute_threads_use; i++) {
 						processRtpPacketDistribute[i]->push_batch();
 					}
+					break;
+				case distribute:
+					extern volatile int num_threads_active;
+					for(int i = 0; i < num_threads_active; i++) {
+						rtp_threads[i].push_batch();
+					}
+					break;
 				}
 				usleepSumTimeForPushBatch = 0;
 			}
@@ -6273,18 +6290,40 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 		for(;batch_index_distribute < batch->count; batch_index_distribute++) {
 			packet_s_process_0 *packetS = batch->batch[batch_index_distribute];
 			batch->batch[batch_index_distribute] = NULL;
-			/*
-			ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
-							       processRtpPacketDistribute[min(packetS->source, packetS->dest) / 2 % _process_rtp_packets_distribute_threads_use] :
-							       processRtpPacketDistribute[0];
-			*/
-			ProcessRtpPacket *_processRtpPacket;
 			if(packetS->call_info_length && packetS->call_info[0].call) {
-				_processRtpPacket = processRtpPacketDistribute[packetS->call_info[0].call->thread_num_rd];
+				int threads_rd[MAX_PROCESS_RTP_PACKET_THREADS];
+				threads_rd[0] = packetS->call_info[0].call->thread_num_rd;
+				int threads_rd_count = 1;
+				if(packetS->call_info_length > 1) {
+					for(int i = 1; i < packetS->call_info_length; i++) {
+						int thread_rd = packetS->call_info[i].call->thread_num_rd;
+						if(thread_rd != threads_rd[0]) {
+							bool exists = false;
+							for(int j = 1; j < threads_rd_count; j++) {
+								if(threads_rd[j] == thread_rd) {
+									exists = true;
+									break;
+								}
+							}
+							if(!exists) {
+								threads_rd[threads_rd_count++] = thread_rd;
+							}
+						}
+					}
+				}
+				for(int i = 0; i < threads_rd_count; i++) {
+					if(i == 0) {
+						processRtpPacketDistribute[threads_rd[i]]->push_packet(packetS);
+					} else {
+						packet_s_process_0 *packetS_temp = PACKET_S_PROCESS_RTP_CREATE();
+						*packetS_temp = *packetS;
+						packetS_temp->blockstore_relock();
+						processRtpPacketDistribute[threads_rd[i]]->push_packet(packetS_temp);
+					}
+				}
 			} else {
-				_processRtpPacket = processRtpPacketDistribute[0];
+				processRtpPacketDistribute[0]->push_packet(packetS);
 			}
-			_processRtpPacket->push_packet(packetS);
 		}
 	} else {
 		for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
