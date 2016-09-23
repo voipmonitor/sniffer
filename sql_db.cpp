@@ -1993,7 +1993,10 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 			cout << "*** CLOSE QFILE " << qfile->filename 
 			     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 		}
+		lock_qfiles();
+		qfiles.erase(idc);
 		qfile->close();
+		unlock_qfiles();
 	}
 	if(qfile->isEmpty()) {
 		u_long actTime = getTimeMS();
@@ -2006,6 +2009,9 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 		} else {
 			syslog(LOG_ERR, "failed create file %s in function MySqlStore::getQFile", qfilename.c_str());
 		}
+		lock_qfiles();
+		qfiles[idc] = qfile;
+		unlock_qfiles();
 	}
 	if(qfile->fileZipHandler) {
 		string query = query_str;
@@ -2143,11 +2149,11 @@ string MySqlStore::getMinQFile(int id) {
 	if(loadFromQFileConfig.inotify) {
 		string qfilename;
 		loadFromQFilesThreadData[id].lock();
-		map<u_long, string>::iterator iter = loadFromQFilesThreadData[id].qfiles.begin();
-		if(iter != loadFromQFilesThreadData[id].qfiles.end() &&
+		map<u_long, string>::iterator iter = loadFromQFilesThreadData[id].qfiles_load.begin();
+		if(iter != loadFromQFilesThreadData[id].qfiles_load.end() &&
 		   (getTimeMS() - iter->first) > (unsigned)loadFromQFileConfig.period * 2 * 1000) {
 			qfilename = iter->second;
-			loadFromQFilesThreadData[id].qfiles.erase(iter);
+			loadFromQFilesThreadData[id].qfiles_load.erase(iter);
 		}
 		loadFromQFilesThreadData[id].unlock();
 		if(!qfilename.empty()) {
@@ -2641,7 +2647,8 @@ void *MySqlStore::threadQFilesCheckPeriod(void *arg) {
 	MySqlStore *me = (MySqlStore*)arg;
 	while(!is_terminating()) {
 		me->lock_qfiles();
-		for(map<int, QFile*>::iterator iter = me->qfiles.begin(); iter != me->qfiles.end(); iter++) {
+		for(map<int, QFile*>::iterator iter = me->qfiles.begin(); iter != me->qfiles.end(); ) {
+			bool close = false;
 			iter->second->lock();
 			if(!iter->second->isEmpty() &&
 			   iter->second->isExceedPeriod(me->qfileConfig.period)) {
@@ -2650,8 +2657,14 @@ void *MySqlStore::threadQFilesCheckPeriod(void *arg) {
 					     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 				}
 				iter->second->close();
+				close = true;
 			}
 			iter->second->unlock();
+			if(close) {
+				me->qfiles.erase(iter++);
+			} else {
+				iter++;
+			}
 		}
 		me->unlock_qfiles();
 		usleep(250000);

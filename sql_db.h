@@ -502,13 +502,13 @@ private:
 			}
 		}
 		void close() {
+			filename = "";
+			createAt = 0;
 			if(fileZipHandler) {
 				fileZipHandler->close();
 				delete fileZipHandler;
 				fileZipHandler = NULL;
 			}
-			filename = "";
-			createAt = 0;
 		}
 		bool isEmpty() {
 			return(filename.empty());
@@ -557,7 +557,7 @@ private:
 		}
 		void addFile(u_long time, const char *file) {
 			lock();
-			qfiles[time] = file;
+			qfiles_load[time] = file;
 			unlock();
 		}
 		void lock() {
@@ -572,7 +572,7 @@ private:
 		int storeConcatLimit;
 		MySqlStore *store;
 		pthread_t thread;
-		map<u_long, string> qfiles;
+		map<u_long, string> qfiles_load;
 		volatile int _sync;
 	};
 	struct LoadFromQFilesThreadInfo {
