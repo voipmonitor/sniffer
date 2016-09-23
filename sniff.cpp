@@ -6425,13 +6425,17 @@ double ProcessRtpPacket::getCpuUsagePerc(bool preparePstatData, int nextThreadIn
 
 void ProcessRtpPacket::terminate() {
 	this->term_processRtp = true;
-	pthread_join(this->out_thread_handle, NULL);
+	if(this->out_thread_handle) {
+		pthread_join(this->out_thread_handle, NULL);
+		this->out_thread_handle = 0;
+	}
 	for(int i = 0; i < this->process_rtp_packets_hash_next_threads; i++) {
 		if(this->next_thread_handle[i]) {
 			if(this->sem_sync_next_thread[i][0].__align) {
 				sem_post(&this->sem_sync_next_thread[i][0]);
 			}
 			pthread_join(this->next_thread_handle[i], NULL);
+			this->next_thread_handle[i] = 0;
 			for(int j = 0; j < 2; j++) {
 				if(sem_sync_next_thread[i][j].__align) {
 					sem_destroy(&sem_sync_next_thread[i][j]);
