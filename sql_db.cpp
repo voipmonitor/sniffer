@@ -1987,18 +1987,15 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 	}
 	unlock_qfiles();
 	qfile->lock();
-	if(!qfile->isEmpty() &&
+	if(qfile->isOpen() &&
 	   qfile->isExceedPeriod(qfileConfig.period)) {
 		if(sverb.qfiles) {
 			cout << "*** CLOSE QFILE " << qfile->filename 
 			     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 		}
-		lock_qfiles();
-		qfiles.erase(idc);
 		qfile->close();
-		unlock_qfiles();
 	}
-	if(qfile->isEmpty()) {
+	if(!qfile->isOpen()) {
 		u_long actTime = getTimeMS();
 		string qfilename = getQFilename(idc, actTime);
 		if(qfile->open(qfilename.c_str(), actTime)) {
@@ -2009,9 +2006,6 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 		} else {
 			syslog(LOG_ERR, "failed create file %s in function MySqlStore::getQFile", qfilename.c_str());
 		}
-		lock_qfiles();
-		qfiles[idc] = qfile;
-		unlock_qfiles();
 	}
 	if(qfile->fileZipHandler) {
 		string query = query_str;
@@ -2649,24 +2643,17 @@ void *MySqlStore::threadQFilesCheckPeriod(void *arg) {
 	MySqlStore *me = (MySqlStore*)arg;
 	while(!is_terminating()) {
 		me->lock_qfiles();
-		for(map<int, QFile*>::iterator iter = me->qfiles.begin(); iter != me->qfiles.end(); ) {
-			bool close = false;
+		for(map<int, QFile*>::iterator iter = me->qfiles.begin(); iter != me->qfiles.end(); iter++) {
 			iter->second->lock();
-			if(!iter->second->isEmpty() &&
+			if(iter->second->isOpen() &&
 			   iter->second->isExceedPeriod(me->qfileConfig.period)) {
 				if(sverb.qfiles) {
 					cout << "*** CLOSE FROM THREAD QFilesCheckPeriod " << iter->second->filename
 					     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 				}
 				iter->second->close();
-				close = true;
 			}
 			iter->second->unlock();
-			if(close) {
-				me->qfiles.erase(iter++);
-			} else {
-				iter++;
-			}
 		}
 		me->unlock_qfiles();
 		usleep(250000);

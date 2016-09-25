@@ -1318,6 +1318,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc = buffersControl.getPercUsePBwithouttrash();
 		heapPerc = memoryBufferPerc;
 		double memoryBufferPerc_trash = buffersControl.getPercUsePBtrash();
+		if(sverb.abort_if_heap_full &&
+		   (memoryBufferPerc + memoryBufferPerc_trash) > 98) {
+			syslog(LOG_ERR, "HEAP FULL - ABORT!");
+			abort();
+		}
 		outStr << fixed;
 		if(!this->isMirrorSender()) {
 			outStr << "calls[" << calltable->calls_listMAP.size() << ",r:" << calltable->registers_listMAP.size() << "]"
