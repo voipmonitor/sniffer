@@ -28,7 +28,7 @@
 #define IP_MF           0x2000          /* Flag: "More Fragments"       */
 #define IP_OFFSET       0x1FFF          /* "Fragment Offset" part       */
 
-#define MAX_LENGTH_CALL_INFO 2
+#define MAX_LENGTH_CALL_INFO 20
 
 struct iphdr2 {
 #if __BYTE_ORDER == __LITTLE_ENDIAN

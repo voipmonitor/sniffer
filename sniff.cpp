@@ -1446,7 +1446,7 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 	}
 	
 	if(packetS->block_store) {
-		packetS->block_store->lock_packet(packetS->block_store_index, 1);
+		packetS->block_store->lock_packet(packetS->block_store_index, 10);
 	}
 	
 	rtp_packet_pcap_queue rtpp_pq;
@@ -3390,7 +3390,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			for(unsigned i = 1; i < call_info_temp_length; i++) {
 				packetS_temp[i] = PACKET_S_PROCESS_RTP_CREATE();
 				*packetS_temp[i] = *packetS;
-				packetS_temp[i]->blockstore_relock();
+				packetS_temp[i]->blockstore_relock(10);
 				packetS_temp[i]->stack = NULL;
 			}
 		}
@@ -3504,7 +3504,7 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 		return(true);
 	} else {
 		packetS->init2_rtp();
-		packet_s_process_rtp_call_info call_info[20];
+		packet_s_process_rtp_call_info call_info[MAX_LENGTH_CALL_INFO];
 		int call_info_length = 0;
 		bool call_info_find_by_dest = false;
 		hash_node_call *calls = NULL;
@@ -3532,7 +3532,7 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 					call_info[call_info_length].sdp_flags = node_call->sdp_flags;
 					call_info[call_info_length].use_sync = false;
 					++call_info_length;
-					if(call_info_length == (sizeof(call_info) / sizeof(call_info[0]))) {
+					if(call_info_length == MAX_LENGTH_CALL_INFO) {
 						break;
 					}
 				}
