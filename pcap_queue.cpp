@@ -6430,7 +6430,8 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 	}
 	lock_blockStoreTrash();
 	for(int i = 0; i < ((int)this->blockStoreTrash.size() - (all ? 0 : 2)); i++) {
-		if(all || this->blockStoreTrash[i]->enableDestroy()) {
+		if(all || this->blockStoreTrash[i]->enableDestroy() ||
+		   (this->blockStoreTrash[this->blockStoreTrash.size() - 1]->timestampMS - this->blockStoreTrash[0]->timestampMS) > 600000) {
 			buffersControl.sub__PcapQueue_readFromFifo__blockStoreTrash_size(this->blockStoreTrash[i]->getUseSize());
 			delete this->blockStoreTrash[i];
 			this->blockStoreTrash.erase(this->blockStoreTrash.begin() + i);
