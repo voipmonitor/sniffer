@@ -1609,7 +1609,15 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 		}
 		outStr << "heap[" << setprecision(0) << memoryBufferPerc << "|"
-				  << setprecision(0) << memoryBufferPerc_trash << "|";
+				  << setprecision(0) << memoryBufferPerc_trash;
+		unsigned long trashMinTime;
+		unsigned long trashMaxTime;
+		buffersControl.PcapQueue_readFromFifo__blockStoreTrash_time_get(&trashMinTime, &trashMaxTime);
+		buffersControl.PcapQueue_readFromFifo__blockStoreTrash_time_clear();
+		if(trashMinTime || trashMaxTime) {
+			outStr << "(" << trashMinTime << "-" << trashMaxTime << "ms)";
+		}
+		outStr << "|";
 		if(opt_rrd) {
 			rrdheap_buffer = memoryBufferPerc;
 			rrdheap_ratio = buffersControl.getPercUseAsync();
@@ -6428,6 +6436,9 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 			this->blockStoreTrash.erase(this->blockStoreTrash.begin() + i);
 			--i;
 		}
+	}
+	if(this->blockStoreTrash.size()) {
+		buffersControl.PcapQueue_readFromFifo__blockStoreTrash_time_set(this->blockStoreTrash[this->blockStoreTrash.size() - 1]->timestampMS - this->blockStoreTrash[0]->timestampMS);
 	}
 	unlock_blockStoreTrash();
 }
