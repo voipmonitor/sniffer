@@ -759,6 +759,8 @@ int opt_load_query_from_files_period;
 bool opt_load_query_from_files_inotify;
 
 bool opt_virtualudppacket = false;
+int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
+int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = false;
 
 int opt_test = 0;
@@ -4635,7 +4637,7 @@ void cConfig::addConfigItems() {
 				expert();
 					addConfigItem(new FILE_LINE(43090) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(43091) cConfigItem_yesno("sqlcallend", &opt_callend));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost", &opt_t2_boost));
+					addConfigItem(new FILE_LINE(43458) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(43092) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			advanced();
@@ -5210,6 +5212,8 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new FILE_LINE(43438) cConfigItem_yesno("printinsertid", &opt_printinsertid));
 				addConfigItem(new FILE_LINE(43439) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
+				addConfigItem(new FILE_LINE(43459) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
+				addConfigItem(new FILE_LINE(43460) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(43440) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 					expert();
 					addConfigItem(new FILE_LINE(43441) cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
@@ -5725,6 +5729,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "timezones")			sverb.timezones = 1;
 						else if(verbparams[i] == "tcpreplay")			sverb.tcpreplay = 1;
 						else if(verbparams[i] == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;
+						else if(verbparams[i] == "heap_use_time")		sverb.heap_use_time = 1;
 						else if(verbparams[i] == "dtmf")			sverb.dtmf = 1;
 						else if(verbparams[i] == "cleanspool")			sverb.cleanspool = 1;
 						//
@@ -7900,6 +7905,12 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "virtualudppacket", NULL))) {
 		opt_virtualudppacket = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_stream_timeout", NULL))) {
+		opt_sip_tcp_reassembly_stream_timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_clean_period", NULL))) {
+		opt_sip_tcp_reassembly_clean_period = atoi(value);
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext", NULL))) {
 		opt_sip_tcp_reassembly_ext = yesno(value);

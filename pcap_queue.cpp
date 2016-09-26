@@ -1610,12 +1610,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		outStr << "heap[" << setprecision(0) << memoryBufferPerc << "|"
 				  << setprecision(0) << memoryBufferPerc_trash;
-		unsigned long trashMinTime;
-		unsigned long trashMaxTime;
-		buffersControl.PcapQueue_readFromFifo__blockStoreTrash_time_get(&trashMinTime, &trashMaxTime);
-		buffersControl.PcapQueue_readFromFifo__blockStoreTrash_time_clear();
-		if(trashMinTime || trashMaxTime) {
-			outStr << "(" << trashMinTime << "-" << trashMaxTime << "ms)";
+		if(sverb.heap_use_time) {
+			unsigned long trashMinTime;
+			unsigned long trashMaxTime;
+			buffersControl.PcapQueue_readFromFifo__blockStoreTrash_time_get(&trashMinTime, &trashMaxTime);
+			buffersControl.PcapQueue_readFromFifo__blockStoreTrash_time_clear();
+			if(trashMinTime || trashMaxTime) {
+				outStr << "(" << trashMinTime << "-" << trashMaxTime << "ms)";
+			}
 		}
 		outStr << "|";
 		if(opt_rrd) {

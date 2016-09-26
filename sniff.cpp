@@ -5119,7 +5119,8 @@ TcpReassemblySip::TcpReassemblySip() {
 
 void TcpReassemblySip::processPacket(packet_s_process **packetS_ref, bool isSip, PreProcessPacket *processPacket) {
 	packet_s_process *packetS = *packetS_ref;
-	if(packetS->header_pt->ts.tv_sec - last_cleanup > 10) {
+	extern int opt_sip_tcp_reassembly_clean_period;
+	if(packetS->header_pt->ts.tv_sec - last_cleanup > opt_sip_tcp_reassembly_clean_period) {
 		this->clean(packetS->header_pt->ts.tv_sec);
 		last_cleanup = packetS->header_pt->ts.tv_sec;
 	}
@@ -5238,9 +5239,10 @@ void TcpReassemblySip::processPacket(packet_s_process **packetS_ref, bool isSip,
 }
 
 void TcpReassemblySip::clean(time_t ts) {
+	extern int opt_sip_tcp_reassembly_stream_timeout;
 	map<tcp_stream_id, tcp_stream>::iterator it;
 	for(it = tcp_streams.begin(); it != tcp_streams.end();) {
-		if(!ts || (ts - it->second.last_time_us / 1000000ull) > (10 * 60)) {
+		if(!ts || (ts - it->second.last_time_us / 1000000ull) > (unsigned)opt_sip_tcp_reassembly_stream_timeout) {
 			cleanStream(&it->second, true);
 			tcp_streams.erase(it++);
 		} else {
@@ -5841,7 +5843,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 			if(multipleSip) {
 				packet_s_process *partPacketS = PACKET_S_PROCESS_SIP_CREATE();
 				*partPacketS = *packetS;
-				partPacketS->blockstore_relock(2);
+				partPacketS->blockstore_relock(10);
 				if(partPacketS->_packet_alloc) {
 					partPacketS->new_alloc_packet_header();
 				}
