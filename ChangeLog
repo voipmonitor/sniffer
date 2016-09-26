@@ -1,3 +1,8 @@
+17.3.4 26.9.2016
+================
+- fix cleaning spool directory - when restarted actual date was counted twice to used space
+
+
 17.3.3 9.9.2016
 ===============
 - fix crash in defrag if pcap_queue_use_blocks is enabled
