@@ -190,6 +190,7 @@ int opt_pcap_queue_use_blocks				= 0;
 int opt_pcap_queue_use_blocks_read_check		= 1;
 int opt_pcap_dispatch					= 0;
 int opt_pcap_queue_suppress_t1_thread			= 0;
+int opt_pcap_queue_block_timeout			= 0;
 bool opt_pcap_queues_mirror_nonblock_mode 		= true;
 bool opt_pcap_queues_mirror_require_confirmation	= true;
 bool opt_pcap_queues_mirror_use_checksum		= true;
@@ -6432,8 +6433,15 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 	}
 	lock_blockStoreTrash();
 	for(int i = 0; i < ((int)this->blockStoreTrash.size() - (all ? 0 : 2)); i++) {
-		if(all || this->blockStoreTrash[i]->enableDestroy() ||
-		   (this->blockStoreTrash[this->blockStoreTrash.size() - 1]->timestampMS - this->blockStoreTrash[0]->timestampMS) > 600000) {
+		bool del = false;
+		if(all || this->blockStoreTrash[i]->enableDestroy()) {
+			del = true;
+		} else if(opt_pcap_queue_block_timeout &&
+			  (this->blockStoreTrash[this->blockStoreTrash.size() - 1]->timestampMS - this->blockStoreTrash[i]->timestampMS) > (unsigned)opt_pcap_queue_block_timeout * 1000) {
+			syslog(LOG_NOTICE, "force destroy packetbuffer blok - use packets: %i", this->blockStoreTrash[i]->_sync_packet_lock);
+			del = true;
+		}
+		if(del) {
 			buffersControl.sub__PcapQueue_readFromFifo__blockStoreTrash_size(this->blockStoreTrash[i]->getUseSize());
 			delete this->blockStoreTrash[i];
 			this->blockStoreTrash.erase(this->blockStoreTrash.begin() + i);

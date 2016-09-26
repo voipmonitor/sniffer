@@ -438,6 +438,7 @@ extern int opt_pcap_queue_dequeu_need_blocks;
 extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_queue_use_blocks;
 extern int opt_pcap_queue_suppress_t1_thread;
+extern int opt_pcap_queue_block_timeout;
 extern bool opt_pcap_queues_mirror_nonblock_mode;
 extern bool opt_pcap_queues_mirror_require_confirmation;
 extern bool opt_pcap_queues_mirror_use_checksum;
@@ -4792,6 +4793,7 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(43170) cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
 						->setMultiple(1024));
 					addConfigItem(new FILE_LINE(43171) cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("packetbuffer_block_timeout", &opt_pcap_queue_block_timeout));
 		subgroup("file cache");
 					expert();
 					addConfigItem((new FILE_LINE(43172) cConfigItem_integer("packetbuffer_file_totalmaxsize", &opt_pcap_queue_store_queue_max_disk_size))
@@ -7345,6 +7347,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "packetbuffer_block_maxtime", NULL))) {
 		opt_pcap_queue_block_max_time_ms = atoi(value);
+	}
+	if((value = ini.GetValue("general", "packetbuffer_block_timeout", NULL))) {
+		opt_pcap_queue_block_timeout = atoi(value);
 	}
 	//
 	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {
