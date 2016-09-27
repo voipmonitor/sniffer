@@ -657,10 +657,10 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 				    graphsize = " + intToString(graphsize) + ", \
 				    audiosize = " + intToString(audiosize) + " \
 				ON DUPLICATE KEY UPDATE \
-				    sipsize = sipsize + " + intToString(sipsize) + ", \
-				    rtpsize = rtpsize + " + intToString(rtpsize) + ", \
-				    graphsize = graphsize + " + intToString(graphsize) + ", \
-				    audiosize = audiosize + " + intToString(audiosize),
+				    sipsize = " + intToString(sipsize) + ", \
+				    rtpsize = " + intToString(rtpsize) + ", \
+				    graphsize = " + intToString(graphsize) + ", \
+				    audiosize = " + intToString(audiosize),
 				STORE_PROC_ID_CLEANSPOOL_SERVICE + spoolIndex);
 		} else {
 			sqlStore->query_lock(

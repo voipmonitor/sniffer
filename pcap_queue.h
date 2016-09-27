@@ -347,6 +347,7 @@ private:
 	u_int64_t counter_all_packets_old;
 	u_long lastTimeLogErrPcapNextExNullPacket;
 	u_long lastTimeLogErrPcapNextExErrorReading;
+	u_long pcapStatCounter;
 friend void *_PcapQueue_threadFunction(void *arg);
 friend void *_PcapQueue_writeThreadFunction(void *arg);
 };

@@ -292,7 +292,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type);
 
 typedef struct {
 	Call *call;
-	packet_s_process_0 *packet;
+	packet_s packet;
 	char iscaller;
 	char find_by_dest;
 	char is_rtcp;
@@ -311,7 +311,7 @@ public:
 		}
 		~batch_packet_rtp() {
 			for(unsigned i = 0; i < max_count; i++) {
-				// unlock item
+				// TODO - unlock item
 			}
 			delete [] batch;
 		}
@@ -320,92 +320,50 @@ public:
 		volatile int used;
 		unsigned max_count;
 	};
-	struct batch_packet_rtp_thread_buffer {
-		batch_packet_rtp_thread_buffer(unsigned max_count) {
-			count = 0;
-			batch = new FILE_LINE(28003) rtp_packet_pcap_queue[max_count];
-			memset(batch, 0, sizeof(rtp_packet_pcap_queue) * max_count);
-			this->max_count = max_count;
-		}
-		~batch_packet_rtp_thread_buffer() {
-			for(unsigned i = 0; i < max_count; i++) {
-				// unlock item
-			}
-			delete [] batch;
-		}
-		rtp_packet_pcap_queue *batch;
-		unsigned count;
-		unsigned max_count;
-	};
 public:
 	rtp_read_thread()  {
 		this->calls = 0;
 	}
 	void init(int threadNum, size_t qring_length);
 	void init_qring(size_t qring_length);
-	void init_thread_buffer();
 	void term();
 	void term_qring();
-	void term_thread_buffer();
 	size_t qring_size();
-	inline void push(rtp_packet_pcap_queue *packet, int threadIndex = 0) {
-		if(threadIndex) {
-			batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex - 1];
-			if(thread_buffer->count < thread_buffer->max_count) {
-				thread_buffer->batch[thread_buffer->count++] = *packet;
-			} else {
-				while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
-				batch_packet_rtp *active_batch = this->qring[this->writeit];
-				unsigned usleepCounter = 0;
-				while(active_batch->used != 0) {
-					usleep(20 *
-					       (usleepCounter > 10 ? 50 :
-						usleepCounter > 5 ? 10 :
-						usleepCounter > 2 ? 5 : 1));
-					++usleepCounter;
-				}
-				memcpy(active_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
-				active_batch->count = thread_buffer->count;
-				active_batch->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
-				__sync_lock_release(&this->push_lock_sync, 1);
-				thread_buffer->batch[0] = *packet;
-				thread_buffer->count = 1;
+	inline void push(Call *call, packet_s *packet, int iscaller, bool find_by_dest, int is_rtcp, int enable_save_packet) {
+		while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+		if(!qring_push_index) {
+			unsigned usleepCounter = 0;
+			while(this->qring[this->writeit]->used != 0) {
+				usleep(20 *
+				       (usleepCounter > 10 ? 50 :
+					usleepCounter > 5 ? 10 :
+					usleepCounter > 2 ? 5 : 1));
+				++usleepCounter;
 			}
-		} else {
-			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
-			if(!qring_push_index) {
-				unsigned usleepCounter = 0;
-				while(this->qring[this->writeit]->used != 0) {
-					usleep(20 *
-					       (usleepCounter > 10 ? 50 :
-						usleepCounter > 5 ? 10 :
-						usleepCounter > 2 ? 5 : 1));
-					++usleepCounter;
-				}
-				qring_push_index = this->writeit + 1;
-				qring_push_index_count = 0;
-				qring_active_push_item = this->qring[qring_push_index - 1];
-			}
-			qring_active_push_item->batch[qring_push_index_count] = *packet;
-			++qring_push_index_count;
-			if(qring_push_index_count == qring_active_push_item->max_count) {
-				qring_active_push_item->count = qring_push_index_count;
-				qring_active_push_item->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
-				qring_push_index = 0;
-				qring_push_index_count = 0;
-			}
-			__sync_lock_release(&this->push_lock_sync, 1);
+			qring_push_index = this->writeit + 1;
+			qring_push_index_count = 0;
+			qring_active_push_item = this->qring[qring_push_index - 1];
 		}
+		rtp_packet_pcap_queue *rtpp_pq = &qring_active_push_item->batch[qring_push_index_count];
+		rtpp_pq->call = call;
+		rtpp_pq->packet = *packet;
+		rtpp_pq->iscaller = iscaller;
+		rtpp_pq->find_by_dest = find_by_dest;
+		rtpp_pq->is_rtcp = is_rtcp;
+		rtpp_pq->save_packet = enable_save_packet;
+		++qring_push_index_count;
+		if(qring_push_index_count == qring_active_push_item->max_count) {
+			qring_active_push_item->count = qring_push_index_count;
+			qring_active_push_item->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			qring_push_index = 0;
+			qring_push_index_count = 0;
+		}
+		__sync_lock_release(&this->push_lock_sync, 1);
 	}
 	inline void push_batch() {
 		while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
@@ -429,8 +387,6 @@ public:
 	unsigned int qring_batch_item_length;
 	unsigned int qring_length;
 	batch_packet_rtp **qring;
-	unsigned int thread_buffer_length;
-	batch_packet_rtp_thread_buffer **thread_buffer;
 	batch_packet_rtp *qring_active_push_item;
 	volatile unsigned qring_push_index;
 	volatile unsigned qring_push_index_count;

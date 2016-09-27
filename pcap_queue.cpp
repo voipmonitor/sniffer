@@ -1146,6 +1146,7 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->counter_all_packets_old = 0;
 	this->lastTimeLogErrPcapNextExNullPacket = 0;
 	this->lastTimeLogErrPcapNextExErrorReading = 0;
+	this->pcapStatCounter = 0;
 }
 
 PcapQueue::~PcapQueue() {
@@ -1199,6 +1200,8 @@ void PcapQueue::setInstancePcapFifo(PcapQueue_readFromFifo *pcapQueue) {
 }
 
 void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
+ 
+	++pcapStatCounter;
 
 	sumPacketsCounterIn[2] = sumPacketsCounterIn[0] - sumPacketsCounterIn[1];
 	sumPacketsCounterIn[1] = sumPacketsCounterIn[0];
@@ -1911,7 +1914,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					add_rtp_read_thread();
 				}
 			} else if(num_threads_active > 1 &&
-				  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread) {
+				  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread &&
+				  pcapStatCounter > 100) {
 				set_remove_rtp_read_thread();
 			}
 		}
@@ -2874,6 +2878,7 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod
 		int pcapstatres = pcap_stats(this->pcapHandle, &ps);
 		if(pcapstatres == 0) {
 			if(ps.ps_recv >= this->last_ps.ps_recv) {
+				extern int opt_pcap_ifdrop_limit;
 				bool pcapdrop = false;
 				bool ifdrop = false;
 				if(ps.ps_drop > this->last_ps.ps_drop) {
@@ -2882,18 +2887,20 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod
 					pcap_drop_flag = 1;
 				}
 				if(ps.ps_ifdrop > this->last_ps.ps_ifdrop &&
-				   (ps.ps_ifdrop - this->last_ps.ps_ifdrop) > (ps.ps_recv - this->last_ps.ps_recv) * 0.2) {
+				   (ps.ps_ifdrop - this->last_ps.ps_ifdrop) > (ps.ps_recv - this->last_ps.ps_recv) * opt_pcap_ifdrop_limit / 100) {
 					ifdrop = true;
 				}
 				if(pcapdrop || ifdrop) {
 					outStr << "DROPPED PACKETS - " << this->getInterfaceName() << ": "
 					       << "libpcap or interface dropped some packets!"
-					       << " rx:" << ps.ps_recv;
+					       << " rx:" << (ps.ps_recv - this->last_ps.ps_recv);
 					if(pcapdrop) {
-						outStr << " pcapdrop:" << ps.ps_drop - this->last_ps.ps_drop;
+						outStr << " pcapdrop:" << (ps.ps_drop - this->last_ps.ps_drop) << " " 
+						       << setprecision(1) << ((double)(ps.ps_drop - this->last_ps.ps_drop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%";
 					}
 					if(ifdrop) {
-						outStr << " ifdrop:" << ps.ps_ifdrop - this->last_ps.ps_ifdrop;
+						outStr << " ifdrop:" << (ps.ps_ifdrop - this->last_ps.ps_ifdrop) << " " 
+						       << setprecision(1) << ((double)(ps.ps_ifdrop - this->last_ps.ps_ifdrop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%";
 					}
 					outStr << endl
 					       << "     increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)" 

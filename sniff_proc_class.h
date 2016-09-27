@@ -796,7 +796,6 @@ private:
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
 	void rtp_batch(batch_packet_s_process *batch);
-	inline void rtp_packet_distr(packet_s_process_0 *packetS);
 	void find_hash(packet_s_process_0 *packetS, bool lock = true);
 public:
 	eType type;

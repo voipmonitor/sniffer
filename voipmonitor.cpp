@@ -403,6 +403,7 @@ int opt_pcap_dump_tar_internal_gzip_sip_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_defer_create_spooldir = 1;
+int opt_pcap_ifdrop_limit = 20;
 
 int opt_sdp_multiplication = 3;
 string opt_save_sip_history;
@@ -4824,6 +4825,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(43187) cConfigItem_integer("pcap_dump_writethreads", &opt_pcap_dump_writethreads));
 					addConfigItem(new FILE_LINE(43188) cConfigItem_yesno("pcap_dump_asyncwrite", &opt_pcap_dump_asyncwrite));
 					addConfigItem(new FILE_LINE(43189) cConfigItem_yesno("defer_create_spooldir", &opt_defer_create_spooldir));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_ifdrop_limit", &opt_pcap_ifdrop_limit));
 		subgroup("SIP");
 			addConfigItem(new FILE_LINE(43190) cConfigItem_yesno("savesip", &opt_saveSIP));
 					expert();
@@ -7740,6 +7742,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "defer_create_spooldir", NULL))) {
 		opt_defer_create_spooldir = yesno(value);
+	}
+	if((value = ini.GetValue("general", "pcap_ifdrop_limit", NULL))) {
+		opt_pcap_ifdrop_limit = atoi(value);
 	}
 	if((value = ini.GetValue("general", "sip_send_ip", NULL)) &&
 	   (value2 = ini.GetValue("general", "sip_send_port", NULL))) {
