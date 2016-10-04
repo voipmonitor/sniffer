@@ -382,6 +382,7 @@ public:
 	pthread_mutex_t listening_worker_run_lock;
 
 	int thread_num;
+	int thread_num_rd;
 
 	char oneway;
 	char absolute_timeout_exceeded;

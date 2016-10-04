@@ -2827,7 +2827,7 @@ int main_init_read() {
 	}
 	
 	//autostart for fork mode if t2cpu > 50%
-	if(!opt_fork &&
+	if((!opt_fork || opt_t2_boost) &&
 	   opt_enable_process_rtp_packet && opt_pcap_split &&
 	   !is_read_from_file_simple()) {
 		process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
@@ -4639,7 +4639,8 @@ void cConfig::addConfigItems() {
 				expert();
 					addConfigItem(new FILE_LINE(43090) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(43091) cConfigItem_yesno("sqlcallend", &opt_callend));
-					addConfigItem(new FILE_LINE(43458) cConfigItem_yesno("t2_boost", &opt_t2_boost));
+					addConfigItem((new FILE_LINE(43458) cConfigItem_yesno("t2_boost", &opt_t2_boost))
+						->addValues("ext:2"));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(43092) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			advanced();
@@ -5729,6 +5730,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "disable_push_to_t2_in_packetbuffer")
 													sverb.disable_push_to_t2_in_packetbuffer = 1;
 						else if(verbparams[i] == "disable_save_packet")		sverb.disable_save_packet = 1;
+						else if(verbparams[i] == "disable_read_rtp")		sverb.disable_read_rtp = 1;
 						else if(verbparams[i] == "thread_create")		sverb.thread_create = 1;
 						else if(verbparams[i] == "timezones")			sverb.timezones = 1;
 						else if(verbparams[i] == "tcpreplay")			sverb.tcpreplay = 1;
@@ -5987,6 +5989,7 @@ void set_context_config() {
 		opt_pcap_dump_asyncwrite = 0;
 		opt_save_query_to_files = false;
 		opt_load_query_from_files = 0;
+		opt_t2_boost = 0;
 	}
 	
 	if(is_read_from_file()) {
@@ -6082,6 +6085,12 @@ void set_context_config() {
 		syslog(LOG_ERR, "option spooldir_2 is not suported with option cachedir !!!");
 	}
 	
+	if(opt_pcap_split && opt_t2_boost) {
+		opt_t2_boost = false;
+	}
+	if(opt_t2_boost && !opt_enable_process_rtp_packet) {
+		opt_enable_process_rtp_packet = 1;
+	}
 }
 
 bool check_complete_parameters() {
@@ -7246,7 +7255,7 @@ int eval_config(string inistr) {
 		opt_callend = yesno(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost", NULL))) {
-		opt_t2_boost = yesno(value);
+		opt_t2_boost = !strcmp(value, "ext") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);

@@ -2230,7 +2230,7 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 	if(this->enablePacketThread) {
 		if(!alloc_packet &&
 		   block_store && !block_store_locked) {
-			block_store->lock_packet(block_store_index, 2);
+			block_store->lock_packet(block_store_index, 2 /*pb lock flag*/);
 			block_store_locked = true;
 		}
 		sPacket _packet;

@@ -175,8 +175,10 @@ struct pcap_block_store {
 		this->timestampMS = getTimeMS_rdtsc();
 		this->_sync_packet_lock = 0;
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
-		this->_sync_packets_lock = new FILE_LINE(18001) volatile int[100000];
-		memset((void*)this->_sync_packets_lock, 0, sizeof(int) * 100000);
+		this->_sync_packets_lock = new FILE_LINE(18001) volatile int8_t[100000];
+		memset((void*)this->_sync_packets_lock, 0, sizeof(int8_t) * 100000);
+		this->_sync_packets_flag = new FILE_LINE(0) volatile int8_t[100000 * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+		memset((void*)this->_sync_packets_flag, 0, sizeof(int8_t) * 100000 * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
 		#endif
 	}
 	~pcap_block_store() {
@@ -184,6 +186,7 @@ struct pcap_block_store {
 		this->destroyRestoreBuffer();
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		delete [] this->_sync_packets_lock;
+		delete [] this->_sync_packets_flag;
 		#endif
 	}
 	inline bool add_hp(pcap_pkthdr_plus *header, u_char *packet, int memcpy_packet_size = 0);
@@ -252,14 +255,14 @@ struct pcap_block_store {
 		}
 		return(true);
 	}
-	void lock_packet(int index, int check_limit = 0) {
+	void lock_packet(int index, int flag) {
 		__sync_add_and_fetch(&this->_sync_packet_lock, 1);
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
-		if(this->_sync_packets_lock[index] > check_limit) {
-			syslog(LOG_ERR, "error in sync (lock) packetbuffer block %lx / %i / %i", (u_int64_t)this, index, this->_sync_packets_lock[index]);
-			abort();
-		}
 		__sync_add_and_fetch(&this->_sync_packets_lock[index], 1);
+		if(flag && this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] < DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH - 1) {
+			this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] + 1] = flag;
+			++this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+		}
 		#endif
 	}
 	void unlock_packet(int index) {
@@ -267,9 +270,19 @@ struct pcap_block_store {
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		if(this->_sync_packets_lock[index] <= 0) {
 			syslog(LOG_ERR, "error in sync (unlock) packetbuffer block %lx / %i / %i", (u_int64_t)this, index, this->_sync_packets_lock[index]);
+			#if DEBUG_SYNC_PCAP_BLOCK_STORE_ABORT_IF_ERROR
 			abort();
+			#endif
 		}
 		__sync_sub_and_fetch(&this->_sync_packets_lock[index], 1);
+		#endif
+	}
+	void add_flag(int index, int flag) {
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		if(flag && this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] < DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH - 1) {
+			this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] + 1] = flag;
+			++this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+		}
 		#endif
 	}
 	bool enableDestroy() {
@@ -278,7 +291,9 @@ struct pcap_block_store {
 			for(unsigned i = 0; i < count; i++) {
 				if(this->_sync_packets_lock[i] != 0) {
 					syslog(LOG_ERR, "error in sync (enableDestroy) packetbuffer block %lx / %i / %i", (u_int64_t)this, i, this->_sync_packets_lock[i]);
+					#if DEBUG_SYNC_PCAP_BLOCK_STORE_ABORT_IF_ERROR
 					abort();
+					#endif
 				}
 			}
 			return(true);
@@ -321,7 +336,8 @@ struct pcap_block_store {
 	u_long timestampMS;
 	volatile int _sync_packet_lock;
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
-	volatile int *_sync_packets_lock;
+	volatile int8_t *_sync_packets_lock;
+	volatile int8_t *_sync_packets_flag;
 	#endif
 	u_int8_t *is_voip;
 };

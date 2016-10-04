@@ -2001,6 +2001,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	outStrStat << "]MB ";
 	outStrStat << "LA[" << getLoadAvgStr() << "] ";
 	outStrStat << "v" << RTPSENSOR_VERSION << " ";
+	//outStrStat << pcapStatCounter << " ";
 	if (opt_rrd) {
 		getLoadAvg(&rrdLA_1, &rrdLA_5, &rrdLA_15);
 	}
@@ -6440,7 +6441,7 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 		cout << "COUNT REST PACKETBUFFER BLOCKS: " << this->blockStoreTrash.size() << endl;
 	}
 	lock_blockStoreTrash();
-	for(int i = 0; i < ((int)this->blockStoreTrash.size() - (all ? 0 : 2)); i++) {
+	for(int i = 0; i < ((int)this->blockStoreTrash.size() - (all ? 0 : 5)); i++) {
 		bool del = false;
 		if(all || this->blockStoreTrash[i]->enableDestroy()) {
 			del = true;
@@ -6523,7 +6524,7 @@ void PcapQueue_outputThread::start() {
 
 void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 	if(hp && hp->block_store && !hp->block_store_locked) {
-		hp->block_store->lock_packet(hp->block_store_index);
+		hp->block_store->lock_packet(hp->block_store_index, 1 /*pb lock flag*/);
 		hp->block_store_locked = true;
 	}
 

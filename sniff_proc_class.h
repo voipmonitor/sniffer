@@ -245,7 +245,7 @@ public:
 					      sipportmatrix[source] || sipportmatrix[dest] ||
 					      packetS.is_skinny;
 		if(blockstore_lock == 1) {
-			packetS.blockstore_lock();
+			packetS.blockstore_lock(3 /*pb lock flag*/);
 		} else if(blockstore_lock == 2) {
 			packetS.blockstore_setlock();
 		}
@@ -796,6 +796,7 @@ private:
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
 	void rtp_batch(batch_packet_s_process *batch);
+	inline void rtp_packet_distr(packet_s_process_0 *packetS, int _process_rtp_packets_distribute_threads_use);
 	void find_hash(packet_s_process_0 *packetS, bool lock = true);
 public:
 	eType type;

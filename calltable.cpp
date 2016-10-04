@@ -288,8 +288,11 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 			unlock_add_remove_rtp_threads();
 		}
 		gthread_num++;
+		extern int process_rtp_packets_distribute_threads_use;
+		thread_num_rd = process_rtp_packets_distribute_threads_use ? gthread_num % process_rtp_packets_distribute_threads_use : 0;
 	} else {
 		thread_num = 0;
+		thread_num_rd = 0;
 	}
 	recordstopped = 0;
 	dtmfflag = 0;
@@ -4021,6 +4024,7 @@ Calltable::~Calltable() {
 /* add node to hash. collisions are linked list of nodes*/
 void
 Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, int allowrelation) {
+	//cout << "hashAdd: " << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << endl;
 	if(call->end_call) {
 		return;
 	}
@@ -4131,6 +4135,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 void
 Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp) {
  
+	//cout << "hashRemove: " << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << endl;
 	hash_node *node = NULL, *prev = NULL;
 	hash_node_call *node_call = NULL, *prev_call = NULL;
 	int h;
