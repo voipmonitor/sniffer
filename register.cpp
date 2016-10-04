@@ -322,6 +322,9 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	if(opt_nocdr) {
 		return;
 	}
+	if(state->state == rs_ManyRegMessages) {
+		return;
+	}
 	if(!sqlDbSaveRegister) {
 		sqlDbSaveRegister = createSqlObject();
 		sqlDbSaveRegister->setEnableSqlStringInContent(true);

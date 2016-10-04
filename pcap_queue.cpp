@@ -5970,6 +5970,7 @@ bool PcapQueue_readFromFifo::socketConnect() {
 	addr.sin_addr.s_addr = this->socketHostIPl;
 	if(connect(this->socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		syslog(LOG_ERR, "packetbuffer %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), inet_ntostring(htonl(this->socketHostIPl)).c_str(), strerror(errno));
+		this->socketClose();
 		return(false);
 	}
 	int flag = 1;
