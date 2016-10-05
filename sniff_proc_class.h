@@ -419,7 +419,8 @@ public:
 			#endif
 			case ppt_sip:
 			case ppt_extend:
-				process_packet__push_batch();
+				_process_packet__cleanup_calls();
+				_process_packet__cleanup_registers();
 				break;
 			case ppt_pp_call:
 			case ppt_pp_register:

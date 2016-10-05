@@ -5137,20 +5137,21 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 }
 
 
-void process_packet__push_batch() {
+void _process_packet__cleanup_calls() {
 	process_packet__cleanup_calls(NULL);
-	process_packet__cleanup_registers(NULL);
 	u_long timeS = getTimeS();
 	if(timeS - process_packet__last_destroy_calls >= 2) {
 		calltable->destroyCallsIfPcapsClosed();
 		process_packet__last_destroy_calls = timeS;
 	}
+}
+
+void _process_packet__cleanup_registers() {
+	process_packet__cleanup_registers(NULL);
+	u_long timeS = getTimeS();
 	if(timeS - process_packet__last_destroy_registers >= 2) {
 		calltable->destroyRegistersIfPcapsClosed();
 		process_packet__last_destroy_registers = timeS;
-	}
-	if(processRtpPacketHash) {
-		processRtpPacketHash->push_batch();
 	}
 }
 
@@ -5655,10 +5656,16 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					break;
 				case ppt_pp_call:
-					process_packet__push_batch();
+					_process_packet__cleanup_calls();
 					break;
 				case ppt_pp_register:
+					_process_packet__cleanup_registers();
+					break;
 				case ppt_pp_rtp:
+					if(processRtpPacketHash) {
+						processRtpPacketHash->push_batch();
+					}
+					break;
 				case ppt_end:
 					break;
 				}

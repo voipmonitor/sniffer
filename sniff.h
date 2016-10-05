@@ -620,7 +620,8 @@ struct gre_hdr {
 };
 
 
-void process_packet__push_batch();
+void _process_packet__cleanup_calls();
+void _process_packet__cleanup_registers();
 
 
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)
