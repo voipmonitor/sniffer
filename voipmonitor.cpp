@@ -3605,26 +3605,24 @@ void test_safeasyncqueue() {
 }
 
 void test_parsepacket() {
+	char *str = (char*)"INVITE sip:800123456@sip.odorik.cz SIP/2.0\r\nVia: SIP/2.0/UDP 192.168.1.12:5061;rport;branch=z9hG4bK354557323\r\nFrom: <sip:706912@sip.odorik.cz>;tag=1645803335\r\nTo: <sip:800123456@sip.odorik.cz>\r\nCall-ID: 1781060762\r\nCSeq: 20 INVITE\r\nContact: <sip:jumbox@93.91.52.46>\r\nContent-Type: application/sdp\r\nAllow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE, SUBSCRIBE, INFO\r\nMax-Forwards: 70\r\nUser-Agent: Linphone/3.6.1 (eXosip2/3.6.0)\r\nSubject: Phone call\r\nContent-Length: 453\r\n\r\nv=0\r\no=706912 1477 2440 IN IP4 93.91.52.46\r\ns=Talk\r\nc=IN IP4 93.91.52.46\r\nt=0 0\r\nm=audio 7078 RTP/AVP 125 112 111 110 96 3 0 8 101\r\na=rtpmap:125 opus/48000\r\na=fmtp:125 useinbandfec=1; usedtx=1\r\na=rtpmap:112 speex/32000\r\na=fmtp:112 vbr=on\r\na=rtpmap:111 speex/16000\r\na=fmtp:111 vbr=on\r\na=rtpmap:110 speex/8000\r\na=fmtp:110 vbr=on\r\na=rtpmap:96 GSM/11025\r\na=rtpmap:101 telephone-event/8000\r\na=fmtp:101 0-11\r\nm=video 9078 RTP/AVP 103\r\na=rtpmap:103 VP8/90000\r\n\177\026\221V";
 	ParsePacket pp;
 	pp.setStdParse();
- 
-	char *str = (char*)"INVITE sip:800123456@sip.odorik.cz SIP/2.0\r\nVia: SIP/2.0/UDP 192.168.1.12:5061;rport;branch=z9hG4bK354557323\r\nFrom: <sip:706912@sip.odorik.cz>;tag=1645803335\r\nTo: <sip:800123456@sip.odorik.cz>\r\nCall-ID: 1781060762\r\nCSeq: 20 INVITE\r\nContact: <sip:jumbox@93.91.52.46>\r\nContent-Type: application/sdp\r\nAllow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE, SUBSCRIBE, INFO\r\nMax-Forwards: 70\r\nUser-Agent: Linphone/3.6.1 (eXosip2/3.6.0)\r\nSubject: Phone call\r\nContent-Length: 453\r\n\r\nv=0\r\no=706912 1477 2440 IN IP4 93.91.52.46\r\ns=Talk\r\nc=IN IP4 93.91.52.46\r\nt=0 0\r\nm=audio 7078 RTP/AVP 125 112 111 110 96 3 0 8 101\r\na=rtpmap:125 opus/48000\r\na=fmtp:125 useinbandfec=1; usedtx=1\r\na=rtpmap:112 speex/32000\r\na=fmtp:112 vbr=on\r\na=rtpmap:111 speex/16000\r\na=fmtp:111 vbr=on\r\na=rtpmap:110 speex/8000\r\na=fmtp:110 vbr=on\r\na=rtpmap:96 GSM/11025\r\na=rtpmap:101 telephone-event/8000\r\na=fmtp:101 0-11\r\nm=video 9078 RTP/AVP 103\r\na=rtpmap:103 VP8/90000\r\n\177\026\221V";
-	
-	ParsePacket::ppContentsX contents(&pp);
+	ParsePacket::ppContentsX contents;
 	pp.parseData(str, strlen(str), &contents);
-	
 	pp.debugData(&contents);
 }
 	
 void test_parsepacket2() {
-	ParsePacket pp;
+ 
+        ParsePacket pp;
 	pp.addNode("test1", ParsePacket::typeNode_std);
 	pp.addNode("test2", ParsePacket::typeNode_std);
 	pp.addNode("test3", ParsePacket::typeNode_std);
 	
 	char *str = (char*)"test1abc\ntEst2def\ntest3ghi";
 	
-	ParsePacket::ppContentsX contents(&pp);
+	ParsePacket::ppContentsX contents;
 	pp.parseData(str, strlen(str), &contents);
 	
 	cout << "test1: " << contents.getContentString("test1") << endl;
