@@ -2659,114 +2659,125 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				memcpy(call->cancelcseq, cseq, cseqlen);
 				call->cancelcseq[cseqlen] = '\0';
 			}
-		} else if(packetS->sip_method == RES2XX) {
-			call->seenRES2XX = true;
-			// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
-			if(!(cseq && cseqlen < 32) || strncmp(cseq, call->byecseq, cseqlen)) {
-				call->seenRES2XX_no_BYE = true;
+		} else if(IS_SIP_RESXXX(packetS->sip_method)) {
+			int cseq_method = 0;
+			if(cseq && cseqlen < 32) {
+				unsigned cseq_pos = 0;
+				while(cseq_pos < cseqlen && (isdigit(cseq[cseq_pos]) || cseq[cseq_pos] == ' ')) {
+					++cseq_pos;
+				}
+				if(cseq_pos < cseqlen) {
+					cseq_method = process_packet__parse_sip_method(cseq + cseq_pos, cseqlen - cseq_pos, NULL);
+				}
+			}
+			if(packetS->sip_method == RES2XX) {
+				call->seenRES2XX = true;
+				// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
+				if(cseq_method != BYE ||
+				   !call->byecseq[0] || strncmp(cseq, call->byecseq, cseqlen)) {
+					call->seenRES2XX_no_BYE = true;
+					if(!call->progress_time) {
+						call->progress_time = packetS->header_pt->ts.tv_sec;
+					}
+				}
+
+				// if it is OK check for BYE
+				if(cseq_method) {
+					if(verbosity > 2) {
+						char a = cseq[cseqlen];
+						cseq[cseqlen] = '\0';
+						syslog(LOG_NOTICE, "Cseq: %s\n", cseq);
+						cseq[cseqlen] = a;
+					}
+					if(cseq_method == BYE &&
+					   call->byecseq[0] && strncmp(cseq, call->byecseq, cseqlen) == 0) {
+						// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
+
+						call->seenbyeandok = true;
+						call->seenbyeandok_time_usec = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
+
+	// Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
+	// first 200 OK will not save the second 200 OK. So rather wait for 5 seconds for some more messages instead of closing the call. 
+
+						// destroy call after 5 seonds from now 
+						call->destroy_call_at = packetS->header_pt->ts.tv_sec + 5;
+						process_packet__parse_custom_headers(call, packetS);
+						goto endsip_save_packet;
+					} else if((cseq_method == INVITE || cseq_method == MESSAGE) &&
+						  strncmp(cseq, call->invitecseq, cseqlen) == 0) {
+						call->seeninviteok = true;
+						if(!call->connect_time) {
+							call->connect_time = packetS->header_pt->ts.tv_sec;
+							if(opt_enable_fraud && isFraudReady()) {
+								fraudConnectCall(call, packetS->header_pt->ts);
+							}
+						}
+						if(opt_update_dstnum_onanswer &&
+						   !call->updateDstnumOnAnswer && !call->updateDstnumFromMessage &&
+						   call->called_invite_branch_map.size()) {
+							char branch[100];
+							if(!get_sip_branch(packetS, "via:", branch, sizeof(branch)) &&
+							   branch[0] != '\0') {
+								map<string, string>::iterator iter = call->called_invite_branch_map.find(branch);
+								if(iter != call->called_invite_branch_map.end()) {
+									strncpy(call->called, iter->second.c_str(), sizeof(call->called));
+									call->updateDstnumOnAnswer = true;
+								}
+							}
+						}
+						if(verbosity > 2)
+							syslog(LOG_NOTICE, "Call answered\n");
+						if(!call->onCall_2XX) {
+							ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
+									     call->sipcallerip[0], call->sipcalledip[0]);
+							sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->header_pt->ts);
+							call->onCall_2XX = true;
+						}
+					} else if(cseq_method == CANCEL &&
+						  call->cancelcseq[0] && strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
+						process_packet__parse_custom_headers(call, packetS);
+						goto endsip_save_packet;
+					}
+				}
+			} else if(IS_SIP_RES18X(packetS->sip_method)) {
+				call->seenRES18X = true;
 				if(!call->progress_time) {
 					call->progress_time = packetS->header_pt->ts.tv_sec;
 				}
-			}
-
-			// if it is OK check for BYE
-			if(cseq && cseqlen < 32) {
-				if(verbosity > 2) {
-					char a = cseq[cseqlen];
-					cseq[cseqlen] = '\0';
-					syslog(LOG_NOTICE, "Cseq: %s\n", cseq);
-					cseq[cseqlen] = a;
+				if(!call->onCall_18X) {
+					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
+							     call->sipcallerip[0], call->sipcalledip[0]);
+					sendCallInfoEvCall(call, sSciInfo::sci_18X, packetS->header_pt->ts);
+					call->onCall_18X = true;
 				}
-				if(strncmp(cseq, call->byecseq, cseqlen) == 0) {
-					// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
-
-					call->seenbyeandok = true;
-					call->seenbyeandok_time_usec = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
-
-// Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
-// first 200 OK will not save the second 200 OK. So rather wait for 5 seconds for some more messages instead of closing the call. 
-
-					// destroy call after 5 seonds from now 
-					call->destroy_call_at = packetS->header_pt->ts.tv_sec + 5;
+				call->destroy_call_at = 0;
+				call->destroy_call_at_bye = 0;
+			} else if((cseq_method == INVITE || cseq_method == MESSAGE) &&
+				  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
+				if(lastSIPresponseNum == 481) {
+					// 481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
+					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
+						call->destroy_call_at = packetS->header_pt->ts.tv_sec + 180;
+					}
+				} else if(lastSIPresponseNum == 491) {
+					// do not set timeout for 491
+				} else if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
+					// save packet 
+					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
+						call->destroy_call_at = packetS->header_pt->ts.tv_sec + (packetS->sip_method == RES300 ? 300 : 5);
+					}
+					if(IS_SIP_RES3XX(packetS->sip_method)) {
+						// remove all RTP  
+						call->removeFindTables();
+						call->removeRTP();
+						call->ipport_n = 0;
+					}
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
-				} else if(strncmp(cseq, call->invitecseq, cseqlen) == 0) {
-					call->seeninviteok = true;
-					if(!call->connect_time) {
-						call->connect_time = packetS->header_pt->ts.tv_sec;
-						if(opt_enable_fraud && isFraudReady()) {
-							fraudConnectCall(call, packetS->header_pt->ts);
-						}
+				} else if(!call->destroy_call_at) {
+					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
+						call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;
 					}
-					if(opt_update_dstnum_onanswer &&
-					   !call->updateDstnumOnAnswer && !call->updateDstnumFromMessage &&
-					   call->called_invite_branch_map.size()) {
-						char branch[100];
-						if(!get_sip_branch(packetS, "via:", branch, sizeof(branch)) &&
-						   branch[0] != '\0') {
-							map<string, string>::iterator iter = call->called_invite_branch_map.find(branch);
-							if(iter != call->called_invite_branch_map.end()) {
-								strncpy(call->called, iter->second.c_str(), sizeof(call->called));
-								call->updateDstnumOnAnswer = true;
-							}
-						}
-					}
-					if(verbosity > 2)
-						syslog(LOG_NOTICE, "Call answered\n");
-					if(!call->onCall_2XX) {
-						ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-								     call->sipcallerip[0], call->sipcalledip[0]);
-						sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->header_pt->ts);
-						call->onCall_2XX = true;
-					}
-				} else if(strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
-					process_packet__parse_custom_headers(call, packetS);
-					goto endsip_save_packet;
-				}
-			}
-		} else if(IS_SIP_RES18X(packetS->sip_method)) {
-			call->seenRES18X = true;
-			if(!call->progress_time) {
-				call->progress_time = packetS->header_pt->ts.tv_sec;
-			}
-			if(!call->onCall_18X) {
-				ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-						     call->sipcallerip[0], call->sipcalledip[0]);
-				sendCallInfoEvCall(call, sSciInfo::sci_18X, packetS->header_pt->ts);
-				call->onCall_18X = true;
-			}
-			call->destroy_call_at = 0;
-			call->destroy_call_at_bye = 0;
-		}
-
-		// if the call ends with some of SIP [456]XX response code, we can shorten timeout when the call will be closed 
-//			if((call->saddr == saddr || call->saddr == daddr || merged) &&
-		if (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX) {
-			if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501 && lastSIPresponseNum != 481 && lastSIPresponseNum != 491) {
-				// save packet 
-				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
-					call->destroy_call_at = packetS->header_pt->ts.tv_sec + (packetS->sip_method == RES300 ? 300 : 5);
-				}
-
-				if(IS_SIP_RES3XX(packetS->sip_method)) {
-					// remove all RTP  
-					call->removeFindTables();
-					call->removeRTP();
-					call->ipport_n = 0;
-				}
-				process_packet__parse_custom_headers(call, packetS);
-				goto endsip_save_packet;
-			} else if(lastSIPresponseNum == 481) {
-				//481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
-
-				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
-					call->destroy_call_at = packetS->header_pt->ts.tv_sec + 180;
-				}
-			} else if(lastSIPresponseNum == 491) {
-				// do not set timeout for 491
-			} else if(!call->destroy_call_at) {
-				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
-					call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;
 				}
 			}
 		}
@@ -2865,7 +2876,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			if (call->recordingpausedby182 == 2) {
 				char *cseq = gettag_sip(packetS, "\nCSeq:", &l);
 				if(cseq && l < 32) {
-					if(cseq && strncmp(cseq, call->updatecseq, l) == 0) {
+					if(cseq && call->updatecseq[0] && strncmp(cseq, call->updatecseq, l) == 0) {
 						if (logPacketSipMethodCall_enable) 
 							 syslog(LOG_DEBUG, "opt_182queuedpauserecording OK on UPDATE unpausing recording");
 						call->recordingpausedby182 = 0;
@@ -3702,7 +3713,9 @@ inline void process_packet__cleanup_registers(pcap_pkthdr* header, u_long timeS)
 
 inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response) {
 	int sip_method = 0;
-	*sip_response =  false;
+	if(sip_response) {
+		*sip_response =  false;
+	}
 	// parse SIP method 
 	if ((datalen > 5) && data[0] == 'I' && !(memmem(data, 6, "INVITE", 6) == 0)) {
 		if(verbosity > 2) 
@@ -3761,7 +3774,9 @@ inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bo
 			 syslog(LOG_NOTICE,"SIP msg: UPDATE\n");
 		sip_method = UPDATE;
 	} else if( (datalen > 8) && data[0] == 'S' && data[1] == 'I' && !(memmem(data, 8, "SIP/2.0 ", 8) == 0)){
-		*sip_response = true;
+		if(sip_response) {
+			*sip_response = true;
+		}
 		switch(data[8]) {
 		case '2':
 			if(verbosity > 2) 

@@ -233,8 +233,7 @@ struct packet_s_process : public packet_s_process_0 {
 	ParsePacket::ppContentsX parseContents;
 	u_int32_t sipDataOffset;
 	u_int32_t sipDataLen;
-	char callid_short[128];
-	string callid_long;
+	char callid[CALLID_MAX_LENGTH + 1];
 	int sip_method;
 	bool is_register;
 	bool sip_response;
@@ -260,8 +259,7 @@ struct packet_s_process : public packet_s_process_0 {
 		packet_s_process_0::init2();
 		sipDataOffset = 0;
 		sipDataLen = 0;
-		callid_short[0] = 0;
-		callid_long.resize(0);
+		callid[0] = 0;
 		sip_method = -1;
 		is_register = false;
 		sip_response = false;
@@ -277,19 +275,18 @@ struct packet_s_process : public packet_s_process_0 {
 		_findCall = false;
 		_createCall = false;
 	}
-	void set_callid(char *callid, unsigned callid_length = 0) {
+	void set_callid(char *callid_input, unsigned callid_length = 0) {
 		if(!callid_length) {
-			callid_length = strlen(callid);
+			callid_length = strlen(callid_input);
 		}
-		if(callid_length < sizeof(callid_short)) {
-			strncpy(callid_short, callid, callid_length);
-			callid_short[callid_length] = 0;
-		} else {
-			callid_long = string(callid, callid_length);
+		if(callid_length > sizeof(callid) - 1) {
+			callid_length = sizeof(callid) - 1;
 		}
+		strncpy(callid, callid_input, callid_length);
+		callid[callid_length] = 0;
 	}
 	inline char *get_callid() {
-		return(callid_long.size() ? (char*)callid_long.c_str() : callid_short);
+		return(callid);
 	}
 	inline void new_alloc_packet_header() {
 		pcap_pkthdr *header_pt_new = new FILE_LINE(28001) pcap_pkthdr;

@@ -11,6 +11,8 @@
 #define RTPSENSOR_VERSION "17.3.4"
 #define NAT
 
+#define CALLID_MAX_LENGTH 127
+
 #define FORMAT_WAV	1
 #define FORMAT_OGG	2
 #define REGISTER_CLEAN_PERIOD 60	// clean register table for expired items every 60 seconds
