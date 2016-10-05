@@ -227,6 +227,16 @@ struct packet_s_process_0 : public packet_s {
 		header_ip = (iphdr2*)(packet + header_ip_offset);
 		call_info_length = -1;
 	}
+	inline void new_alloc_packet_header() {
+		pcap_pkthdr *header_pt_new = new FILE_LINE(28001) pcap_pkthdr;
+		u_char *packet_new = new FILE_LINE(28002) u_char[header_pt->caplen];
+		*header_pt_new = *header_pt;
+		memcpy(packet_new, packet, header_pt->caplen);
+		header_pt = header_pt_new;
+		packet = packet_new;
+		data = (char*)(packet + dataoffset);
+		header_ip = (iphdr2*)(packet + header_ip_offset);
+	}
 };
 
 struct packet_s_process : public packet_s_process_0 {
@@ -287,16 +297,6 @@ struct packet_s_process : public packet_s_process_0 {
 	}
 	inline char *get_callid() {
 		return(callid);
-	}
-	inline void new_alloc_packet_header() {
-		pcap_pkthdr *header_pt_new = new FILE_LINE(28001) pcap_pkthdr;
-		u_char *packet_new = new FILE_LINE(28002) u_char[header_pt->caplen];
-		*header_pt_new = *header_pt;
-		memcpy(packet_new, packet, header_pt->caplen);
-		header_pt = header_pt_new;
-		packet = packet_new;
-		data = (char*)(packet + dataoffset);
-		header_ip = (iphdr2*)(packet + header_ip_offset);
 	}
 };
 

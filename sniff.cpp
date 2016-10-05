@@ -3419,8 +3419,11 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			for(unsigned i = 1; i < call_info_temp_length; i++) {
 				packetS_temp[i] = PACKET_S_PROCESS_RTP_CREATE();
 				*packetS_temp[i] = *packetS;
-				packetS_temp[i]->blockstore_relock(53 /*pb lock flag*/);
 				packetS_temp[i]->stack = NULL;
+				packetS_temp[i]->blockstore_relock(53 /*pb lock flag*/);
+				if(packetS_temp[i]->_packet_alloc) {
+					packetS_temp[i]->new_alloc_packet_header();
+				}
 			}
 		}
 		for(unsigned i = 0; i < call_info_temp_length; i++) {
@@ -5895,6 +5898,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 			if(multipleSip) {
 				packet_s_process *partPacketS = PACKET_S_PROCESS_SIP_CREATE();
 				*partPacketS = *packetS;
+				partPacketS->stack = NULL;
 				partPacketS->blockstore_relock(14 /*pb lock flag*/);
 				if(partPacketS->_packet_alloc) {
 					partPacketS->new_alloc_packet_header();
@@ -6366,7 +6370,11 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 		for(int i = 1; i < threads_rd_count; i++) {
 			packetS_temp[i] = PACKET_S_PROCESS_RTP_CREATE();
 			*packetS_temp[i] = *packetS;
+			packetS_temp[i]->stack = NULL;
 			packetS_temp[i]->blockstore_relock(42 /*pb lock flag*/);
+			if(packetS_temp[i]->_packet_alloc) {
+				packetS_temp[i]->new_alloc_packet_header();
+			}
 		}
 		for(int i = 0; i < threads_rd_count; i++) {
 			if(i == 0) {
