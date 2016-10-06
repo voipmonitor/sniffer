@@ -6083,8 +6083,8 @@ void set_context_config() {
 		syslog(LOG_ERR, "option spooldir_2 is not suported with option cachedir !!!");
 	}
 	
-	if(opt_pcap_split && opt_t2_boost) {
-		opt_t2_boost = false;
+	if(!opt_pcap_split && opt_t2_boost) {
+		opt_t2_boost = 0;
 	}
 	if(opt_t2_boost && !opt_enable_process_rtp_packet) {
 		opt_enable_process_rtp_packet = 1;
