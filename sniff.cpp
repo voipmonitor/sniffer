@@ -2230,14 +2230,17 @@ void process_sdp(Call *call, packet_s_process *packetS, bool iscaller, char *fro
 			// store RTP stream
 			get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
 
-			call->add_ip_port_hash(packetS->saddr, tmp_addr, tmp_port, packetS->header_pt, sessid, iscaller, rtpmap, sdp_flags, 0);
+			char to[1024];
+			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to));
+			
+			call->add_ip_port_hash(packetS->saddr, tmp_addr, tmp_port, packetS->header_pt, sessid, to, iscaller, rtpmap, sdp_flags, 0);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				call->add_ip_port_hash(packetS->saddr, alias, tmp_port, packetS->header_pt, sessid, iscaller, rtpmap, sdp_flags, 0);
+				call->add_ip_port_hash(packetS->saddr, alias, tmp_port, packetS->header_pt, sessid, to, iscaller, rtpmap, sdp_flags, 0);
 			}
 			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(packetS->saddr, packetS->saddr, tmp_port, packetS->header_pt, sessid, iscaller, rtpmap, sdp_flags, 0);
+				call->add_ip_port_hash(packetS->saddr, packetS->saddr, tmp_port, packetS->header_pt, sessid, to, iscaller, rtpmap, sdp_flags, 0);
 			}
 		}
 	} else {
@@ -3524,8 +3527,8 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 		}
 	}
 
-	call->add_ip_port_hash(saddr, daddr, dest, header, NULL, 1, rtpmap, s_sdp_flags(), 0);
-	call->add_ip_port_hash(saddr, saddr, source, header, NULL, 0, rtpmap, s_sdp_flags(), 0);
+	call->add_ip_port_hash(saddr, daddr, dest, header, NULL, NULL, 1, rtpmap, s_sdp_flags(), 0);
+	call->add_ip_port_hash(saddr, saddr, source, header, NULL, NULL, 0, rtpmap, s_sdp_flags(), 0);
 	
 	return(call);
 }

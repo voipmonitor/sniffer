@@ -665,7 +665,7 @@ Call::dirnamesqlfiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return(-1);
 	}
@@ -704,9 +704,14 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, p
 	this->ip_port[ipport_n].iscaller = iscaller;
 	this->ip_port[ipport_n].sdp_flags = sdp_flags;
 	if(sessid) {
-		memcpy(this->ip_port[ipport_n].sessid, sessid, MAXLEN_SDP_SESSID);
+		strncpy(this->ip_port[ipport_n].sessid, sessid, MAXLEN_SDP_SESSID);
 	} else {
-		memset(this->ip_port[ipport_n].sessid, 0, MAXLEN_SDP_SESSID);
+		this->ip_port[ipport_n].sessid[0] = 0;
+	}
+	if(to) {
+		strncpy(this->ip_port[ipport_n].to, to, MAXLEN_SDP_TO);
+	} else {
+		this->ip_port[ipport_n].to[0] = 0;
 	}
 	nullIpPortInfoRtpStream(ipport_n);
 	
@@ -782,13 +787,13 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 }
 
 void
-Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation) {
+Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation) {
 	if(this->end_call) {
 		return;
 	}
 
 	if(sessid) {
-		int sessidIndex = get_index_by_sessid(sessid, sip_src_addr);
+		int sessidIndex = get_index_by_sessid_to(sessid, to, sip_src_addr);
 		if(sessidIndex >= 0) {
 			if(this->ip_port[sessidIndex].sip_src_addr == sip_src_addr &&
 			   (this->ip_port[sessidIndex].addr != addr ||
@@ -815,7 +820,7 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 			return;
 		}
 	}
-	if(this->add_ip_port(sip_src_addr, addr, port, header, sessid, iscaller, rtpmap, sdp_flags) != -1) {
+	if(this->add_ip_port(sip_src_addr, addr, port, header, sessid, to, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, sdp_flags, allowrelation);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, sdp_flags, 0);
@@ -849,22 +854,11 @@ Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
 	return -1;
 }
 
-Call*
-Call::find_by_sessid(char *sessid){
-	for(int i = 0; i < ipport_n; i++) {
-		if(!memcmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID)) {
-			// we have found it
-			return this;
-		}
-	}
-	// not found
-	return NULL;
-}
-
 int
-Call::get_index_by_sessid(char *sessid, in_addr_t sip_src_addr){
+Call::get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr){
 	for(int i = 0; i < ipport_n; i++) {
-		if(!memcmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID) &&
+		if(!strncmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID) &&
+		   !strncmp(this->ip_port[i].to, to, MAXLEN_SDP_TO) &&
 		   (!sip_src_addr || sip_src_addr == this->ip_port[i].sip_src_addr)) {
 			// we have found it
 			return i;
