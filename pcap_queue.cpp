@@ -369,6 +369,11 @@ bool pcap_block_store::get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **
 			sleep(1);
 		}
 	}
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
+	if(this->count >= DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH) {
+		return(false);
+	}
+	#endif
 	if(!this->offsets_size) {
 		this->offsets_size = _opt_pcap_queue_block_offset_init_size;
 		this->offsets = new FILE_LINE(16009) uint32_t[this->offsets_size];
