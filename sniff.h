@@ -230,6 +230,7 @@ struct packet_s_process_0 : public packet_s {
 		isSip = -1;
 		isSkinny = false;
 		call_info_length = -1;
+		init_reuse();
 	}
 	inline void init2_rtp() {
 		data = (char*)(packet + dataoffset);

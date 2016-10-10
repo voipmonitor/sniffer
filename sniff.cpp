@@ -5818,6 +5818,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	glob_last_packet_time = packetS->header_pt->ts.tv_sec;
 	if(packetS->isSip) {
+		packetS->blockstore_addflag(101 /*pb lock flag*/);
 		if(!packetS->is_register) {
 			this->process_findCall(&packetS);
 			this->process_createCall(&packetS);
@@ -5826,8 +5827,10 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 			preProcessPacket[packetS->is_register ? ppt_pp_register : ppt_pp_call]->push_packet(packetS);
 		}
 	} else if(packetS->isSkinny) {
+		packetS->blockstore_addflag(102 /*pb lock flag*/);
 		preProcessPacket[ppt_pp_call]->push_packet(packetS);
 	} else if(!opt_t2_boost) {
+		packetS->blockstore_addflag(103 /*pb lock flag*/);
 		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
 	}
 }
