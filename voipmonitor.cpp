@@ -4638,7 +4638,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(43090) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(43091) cConfigItem_yesno("sqlcallend", &opt_callend));
 					addConfigItem((new FILE_LINE(43458) cConfigItem_yesno("t2_boost", &opt_t2_boost))
-						->addValues("ext:2"));
+						->addValues("ext:2|ext2:3"));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(43092) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			advanced();
@@ -5736,6 +5736,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "heap_use_time")		sverb.heap_use_time = 1;
 						else if(verbparams[i] == "dtmf")			sverb.dtmf = 1;
 						else if(verbparams[i] == "cleanspool")			sverb.cleanspool = 1;
+						else if(verbparams[i] == "t2_destroy_all")		sverb.t2_destroy_all = 1;
 						//
 						else if(verbparams[i] == "debug1")			sverb._debug1 = 1;
 						else if(verbparams[i] == "debug2")			sverb._debug2 = 1;
@@ -7253,7 +7254,8 @@ int eval_config(string inistr) {
 		opt_callend = yesno(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost", NULL))) {
-		opt_t2_boost = !strcmp(value, "ext") ? 2 : yesno(value);
+		opt_t2_boost = !strcmp(value, "ext2") ? 3 : 
+			       !strcmp(value, "ext") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);

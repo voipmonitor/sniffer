@@ -201,6 +201,9 @@ struct packet_s_process_0 : public packet_s {
 	char *data;
 	struct iphdr2 *header_ip; 
 	cHeapItemsPointerStack *stack;
+	u_int8_t use_reuse_counter;
+	volatile u_int8_t reuse_counter;
+	volatile u_int8_t reuse_counter_sync;
 	int isSip;
 	bool isSkinny;
 	packet_s_process_rtp_call_info call_info[MAX_LENGTH_CALL_INFO];
@@ -214,6 +217,12 @@ struct packet_s_process_0 : public packet_s {
 	inline void init() {
 		packet_s::init();
 		stack = NULL;
+		use_reuse_counter = 0;
+	}
+	inline void init_reuse() {
+		use_reuse_counter = 0;
+		reuse_counter = 0;
+		reuse_counter_sync = 0;
 	}
 	inline void init2() {
 		data = (char*)(packet + dataoffset);
@@ -226,6 +235,7 @@ struct packet_s_process_0 : public packet_s {
 		data = (char*)(packet + dataoffset);
 		header_ip = (iphdr2*)(packet + header_ip_offset);
 		call_info_length = -1;
+		init_reuse();
 	}
 	inline void new_alloc_packet_header() {
 		pcap_pkthdr *header_pt_new = new FILE_LINE(28001) pcap_pkthdr;
@@ -236,6 +246,30 @@ struct packet_s_process_0 : public packet_s {
 		packet = packet_new;
 		data = (char*)(packet + dataoffset);
 		header_ip = (iphdr2*)(packet + header_ip_offset);
+	}
+	inline void set_use_reuse_counter() {
+		use_reuse_counter = 1;
+	}
+	inline bool is_use_reuse_counter() {
+		return(use_reuse_counter);
+	}
+	inline void reuse_counter_inc(u_int8_t inc = 1) {
+		reuse_counter += inc;
+	}
+	inline void reuse_counter_dec() {
+		--reuse_counter;
+	}
+	inline void reuse_counter_inc_sync(u_int8_t inc = 1) {
+		__sync_add_and_fetch(&reuse_counter, inc);
+	}
+	inline void reuse_counter_dec_sync() {
+		__sync_sub_and_fetch(&reuse_counter, 1);
+	}
+	inline void reuse_counter_lock() {
+		while(__sync_lock_test_and_set(&reuse_counter_sync, 1));
+	}
+	inline void reuse_counter_unlock() {
+		__sync_lock_release(&reuse_counter_sync);
 	}
 };
 
@@ -393,7 +427,7 @@ public:
 		*/
 		
 		extern int opt_t2_boost;
-		if(threadIndex && opt_t2_boost == 2) {
+		if(threadIndex && opt_t2_boost >= 2) {
 		 
 			/* check tid - debug
 			unsigned tid = get_unix_tid();

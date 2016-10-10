@@ -62,6 +62,7 @@ struct sVerbose {
 	int heap_use_time;
 	int dtmf;
 	int cleanspool;
+	int t2_destroy_all;
 	int _debug1;
 	int _debug2;
 	int _debug3;

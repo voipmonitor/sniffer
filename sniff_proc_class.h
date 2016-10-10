@@ -473,19 +473,46 @@ public:
 		}
 		return(packetS);
 	}
+	inline bool check_enable_destroy(packet_s_process_0 *packetS) {
+		if(packetS->is_use_reuse_counter()) {
+			bool enable = false;
+			packetS->reuse_counter_lock();
+			packetS->reuse_counter_dec();
+			enable = packetS->reuse_counter == 0;
+			packetS->reuse_counter_unlock();
+			return(enable);
+		}
+		return(true);
+	}
+	inline bool check_enable_push_to_stack(packet_s_process_0 *packetS) {
+		return(check_enable_destroy(packetS));
+	}
 	inline void packetS_destroy(packet_s_process **packetS) {
+		if(!check_enable_destroy(*packetS)) {
+			return;
+		}
 		(*packetS)->blockstore_unlock();
 		(*packetS)->packetdelete();
 		delete *packetS;
 		*packetS = NULL;
 	}
 	inline void packetS_destroy(packet_s_process_0 **packetS) {
+		if(!check_enable_destroy(*packetS)) {
+			return;
+		}
 		(*packetS)->blockstore_unlock();
 		(*packetS)->packetdelete();
 		delete *packetS;
 		*packetS = NULL;
 	}
 	inline void packetS_push_to_stack(packet_s_process **packetS, u_int16_t queue_index) {
+		if(sverb.t2_destroy_all) {
+			this->packetS_destroy(packetS);
+			return;
+		}
+		if(!check_enable_push_to_stack(*packetS)) {
+			return;
+		}
 		if((*packetS)->_blockstore_lock) {
 			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
 		}
@@ -502,6 +529,13 @@ public:
 		*packetS = NULL;
 	}
 	inline void packetS_push_to_stack(packet_s_process_0 **packetS, u_int16_t queue_index) {
+		if(sverb.t2_destroy_all) {
+			this->packetS_destroy(packetS);
+			return;
+		}
+		if(!check_enable_push_to_stack(*packetS)) {
+			return;
+		}
 		if((*packetS)->_blockstore_lock) {
 			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
 		}
