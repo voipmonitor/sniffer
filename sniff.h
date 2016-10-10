@@ -266,6 +266,11 @@ struct packet_s_process_0 : public packet_s {
 	inline void reuse_counter_dec_sync() {
 		__sync_sub_and_fetch(&reuse_counter, 1);
 	}
+	inline void reuse_counter_dec_lock() {
+		reuse_counter_lock();
+		--reuse_counter;
+		reuse_counter_unlock();
+	}
 	inline void reuse_counter_lock() {
 		while(__sync_lock_test_and_set(&reuse_counter_sync, 1));
 	}

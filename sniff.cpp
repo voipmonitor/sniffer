@@ -3414,7 +3414,8 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 				__sync_sub_and_fetch(&call_info[call_info_index].call->rtppacketsinqueue, 1);
 			}
 			if(opt_t2_boost == 3) {
-				packetS->reuse_counter_dec_sync();
+				packetS->blockstore_addflag(58 /*pb lock flag*/);
+				packetS->reuse_counter_dec_lock();
 			}
 		}
 	}
