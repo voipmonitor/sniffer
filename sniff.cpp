@@ -3404,14 +3404,17 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 		call->shift_destroy_call_at(packetS->header_pt);
 		++count_use;
 	}
-	if(preSyncRtp) {
-		for(call_info_index = 0; call_info_index < call_info_length; call_info_index++) {
-			if(threadIndex &&
-			   call_info[call_info_index].call->thread_num_rd != (threadIndex - 1)) {
-				continue;
-			}
-			if(!call_info[call_info_index].use_sync) {
+	for(call_info_index = 0; call_info_index < call_info_length; call_info_index++) {
+		if(threadIndex &&
+		   call_info[call_info_index].call->thread_num_rd != (threadIndex - 1)) {
+			continue;
+		}
+		if(!call_info[call_info_index].use_sync) {
+			if(preSyncRtp) {
 				__sync_sub_and_fetch(&call_info[call_info_index].call->rtppacketsinqueue, 1);
+			}
+			if(opt_t2_boost == 3) {
+				packetS->reuse_counter_dec_sync();
 			}
 		}
 	}
