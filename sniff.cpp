@@ -3534,16 +3534,18 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 }
 
 inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
+	packetS->blockstore_addflag(21 /*pb lock flag*/);
 	if(packetS->datalen <= 2) { // && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) { // disable condition - failure for udptl (fax)
+		packetS->blockstore_addflag(22 /*pb lock flag*/);
 		return(false);
 	}
 	
 	if(processRtpPacketHash) {
-		packetS->blockstore_addflag(21 /*pb lock flag*/);
+		packetS->blockstore_addflag(23 /*pb lock flag*/);
 		processRtpPacketHash->push_packet(packetS);
 		return(true);
 	} else {
-		packetS->blockstore_addflag(22 /*pb lock flag*/);
+		packetS->blockstore_addflag(24 /*pb lock flag*/);
 		packetS->init2_rtp();
 		packet_s_process_rtp_call_info call_info[MAX_LENGTH_CALL_INFO];
 		int call_info_length = 0;
@@ -3552,10 +3554,10 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 		calltable->lock_calls_hash();
 		if((calls = calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, false))) {
 			call_info_find_by_dest = true;
-			packetS->blockstore_addflag(23 /*pb lock flag*/);
+			packetS->blockstore_addflag(25 /*pb lock flag*/);
 		} else {
 			calls = calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, false);
-			packetS->blockstore_addflag(24 /*pb lock flag*/);
+			packetS->blockstore_addflag(26 /*pb lock flag*/);
 		}
 		if(calls) {
 			hash_node_call *node_call;
@@ -3569,7 +3571,7 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr) :
 				     calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, false) &&
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) {
-					packetS->blockstore_addflag(25 /*pb lock flag*/);
+					packetS->blockstore_addflag(27 /*pb lock flag*/);
 					call_info[call_info_length].call = node_call->call;
 					call_info[call_info_length].iscaller = node_call->iscaller;
 					call_info[call_info_length].is_rtcp = node_call->is_rtcp;
@@ -5758,9 +5760,11 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 	if(packetS->is_need_sip_process) {
 		packetS->init2();
 		if(check_sip20(packetS->data, packetS->datalen, NULL)) {
+			packetS->blockstore_addflag(12 /*pb lock flag*/);
 			isSip = true;
 		}
 		if(packetS->istcp) {
+			packetS->blockstore_addflag(13 /*pb lock flag*/);
 			if(packetS->is_skinny) {
 				// call process_skinny before tcp reassembly - TODO !
 				this->process_skinny(&packetS);
@@ -5786,16 +5790,18 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 				}
 			}
 		} else if(isSip) {
-			packetS->blockstore_addflag(12 /*pb lock flag*/);
+			packetS->blockstore_addflag(14 /*pb lock flag*/);
 			this->process_parseSipData(&packetS);
 		} else {
+			packetS->blockstore_addflag(15 /*pb lock flag*/);
 			rtp = true;
 		}
 	} else {
+		packetS->blockstore_addflag(16 /*pb lock flag*/);
 		rtp = true;
 	}
 	if(rtp) {
-		packetS->blockstore_addflag(13 /*pb lock flag*/);
+		packetS->blockstore_addflag(17 /*pb lock flag*/);
 		if(opt_t2_boost) {
 			preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
 		} else {
@@ -5902,7 +5908,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 				packet_s_process *partPacketS = PACKET_S_PROCESS_SIP_CREATE();
 				*partPacketS = *packetS;
 				partPacketS->stack = NULL;
-				partPacketS->blockstore_relock(14 /*pb lock flag*/);
+				partPacketS->blockstore_relock(18 /*pb lock flag*/);
 				if(partPacketS->_packet_alloc) {
 					partPacketS->new_alloc_packet_header();
 				}
