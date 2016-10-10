@@ -3536,6 +3536,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 	packetS->blockstore_addflag(21 /*pb lock flag*/);
 	if(packetS->datalen <= 2) { // && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) { // disable condition - failure for udptl (fax)
+		packetS->init2_rtp();
 		packetS->blockstore_addflag(22 /*pb lock flag*/);
 		return(false);
 	}
