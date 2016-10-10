@@ -254,22 +254,11 @@ struct packet_s_process_0 : public packet_s {
 	inline bool is_use_reuse_counter() {
 		return(use_reuse_counter);
 	}
-	inline void reuse_counter_inc(u_int8_t inc = 1) {
-		reuse_counter += inc;
-	}
-	inline void reuse_counter_dec() {
-		--reuse_counter;
-	}
 	inline void reuse_counter_inc_sync(u_int8_t inc = 1) {
 		__sync_add_and_fetch(&reuse_counter, inc);
 	}
-	inline void reuse_counter_dec_sync() {
-		__sync_sub_and_fetch(&reuse_counter, 1);
-	}
-	inline void reuse_counter_dec_lock() {
-		reuse_counter_lock();
+	inline void reuse_counter_dec() {
 		--reuse_counter;
-		reuse_counter_unlock();
 	}
 	inline void reuse_counter_lock() {
 		while(__sync_lock_test_and_set(&reuse_counter_sync, 1));

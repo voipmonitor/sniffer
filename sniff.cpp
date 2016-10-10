@@ -3399,6 +3399,10 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			if(rslt_read_rtp && !is_rtcp) {
 				call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
 			}
+			if(opt_t2_boost == 3) {
+				packetS->blockstore_addflag(59 /*pb lock flag*/);
+				PACKET_S_PROCESS_DESTROY(&packetS);
+			}
 		}
 		
 		call->shift_destroy_call_at(packetS->header_pt);
@@ -3415,7 +3419,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			}
 			if(opt_t2_boost == 3) {
 				packetS->blockstore_addflag(58 /*pb lock flag*/);
-				packetS->reuse_counter_dec_lock();
+				PACKET_S_PROCESS_DESTROY(&packetS);
 			}
 		}
 	}
@@ -3592,8 +3596,9 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 		calltable->unlock_calls_hash();
 		if(call_info_length) {
 			int count_use = process_packet__rtp_call_info(call_info, call_info_length, packetS, call_info_find_by_dest);
-			if(opt_t2_boost >= 2 && count_use &&
-			   (rtp_threaded && !sverb.disable_threads_rtp)) {
+			if(opt_t2_boost == 3 ||
+			   (opt_t2_boost == 2 && count_use &&
+			    rtp_threaded && !sverb.disable_threads_rtp)) {
 				return(true);
 			}
 		} else if(opt_rtpnosip) {
@@ -6342,8 +6347,9 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 				int count_use = process_packet__rtp_call_info(packetS->call_info, packetS->call_info_length, packetS, 
 									      packetS->call_info_find_by_dest, true,
 									      opt_t2_boost >= 2 ? indexThread + 1 : 0);
-				if(!(opt_t2_boost >= 2 && count_use &&
-				     (rtp_threaded && !sverb.disable_threads_rtp))) {
+				if(!(opt_t2_boost == 3 ||
+				    (opt_t2_boost == 2 && count_use &&
+				     rtp_threaded && !sverb.disable_threads_rtp))) {
 					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3 + indexThread);
 				}
 			} else {
