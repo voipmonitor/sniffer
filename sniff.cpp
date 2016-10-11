@@ -6213,10 +6213,14 @@ void *ProcessRtpPacket::outThreadFunction() {
 					}
 					break;
 				case distribute:
-					if(!opt_t2_boost) {
-						extern volatile int num_threads_active;
+					extern volatile int num_threads_active;
+					if(opt_t2_boost < 2) {
 						for(int i = 0; i < num_threads_active; i++) {
 							rtp_threads[i].push_batch();
+						}
+					} else {
+						for(int i = 0; i < num_threads_active; i++) {
+							rtp_threads[i].push_thread_buffer(indexThread);
 						}
 					}
 					break;

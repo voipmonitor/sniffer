@@ -537,6 +537,31 @@ public:
 		}
 		__sync_lock_release(&this->push_lock_sync);
 	}
+	inline void push_thread_buffer(int threadIndex) {
+		batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex];
+		if(thread_buffer->count) {
+			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+			batch_packet_rtp *current_batch = this->qring[this->writeit];
+			unsigned usleepCounter = 0;
+			while(current_batch->used != 0) {
+				usleep(20 *
+				       (usleepCounter > 10 ? 50 :
+					usleepCounter > 5 ? 10 :
+					usleepCounter > 2 ? 5 : 1));
+				++usleepCounter;
+			}
+			memcpy(current_batch->batch.pt, thread_buffer->batch.pt, sizeof(rtp_packet_pt_pcap_queue) * thread_buffer->count);
+			current_batch->count = thread_buffer->count;
+			current_batch->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			thread_buffer->count = 0;
+			__sync_lock_release(&this->push_lock_sync);
+		}
+	}
 public:
 	pthread_t thread;
 	volatile int threadId;
