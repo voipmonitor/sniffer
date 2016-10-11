@@ -3419,7 +3419,11 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			}
 			if(opt_t2_boost == 3) {
 				packetS->blockstore_addflag(58 /*pb lock flag*/);
-				PACKET_S_PROCESS_DESTROY(&packetS);
+				if(threadIndex) {
+					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3 + threadIndex - 1);
+				} else {
+					PACKET_S_PROCESS_DESTROY(&packetS);
+				}
 			}
 		}
 	}
@@ -5031,9 +5035,12 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 			memcpy(packet, HPP(header_packet), header->caplen);
 			unsigned dataoffset = (u_char*)ppd.data - HPP(header_packet);
 			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-				false, packet_counter,
+				false, 
+				#if USE_PACKET_NUMBER
+				packet_counter,
+				#endif
 				ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
-				(char*)(packet + dataoffset), ppd.datalen, dataoffset, 
+				ppd.datalen, dataoffset, 
 				handle_index, header, packet, true,
 				ppd.istcp, (iphdr2*)(packet + ppd.header_ip_offset),
 				NULL, 0, global_pcap_dlink, opt_id_sensor,

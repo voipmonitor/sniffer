@@ -206,9 +206,12 @@ public:
 public:
 	PreProcessPacket(eTypePreProcessThread typePreProcessThread);
 	~PreProcessPacket();
-	inline void push_packet(bool is_ssl, u_int64_t packet_number,
+	inline void push_packet(bool is_ssl, 
+				#if USE_PACKET_NUMBER
+				u_int64_t packet_number,
+				#endif
 				unsigned int saddr, int source, unsigned int daddr, int dest, 
-				char *data, int datalen, int dataoffset,
+				int datalen, int dataoffset,
 				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
 				int istcp, struct iphdr2 *header_ip,
 				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, u_int32_t sensor_ip,
@@ -244,12 +247,18 @@ public:
 		packetS.is_need_sip_process = is_ssl ||
 					      sipportmatrix[source] || sipportmatrix[dest] ||
 					      packetS.is_skinny;
-		if(blockstore_lock == 1) {
-			packetS.blockstore_lock(3 /*pb lock flag*/);
-		} else if(blockstore_lock == 2) {
-			packetS.blockstore_setlock();
+		extern int opt_t2_boost;
+		if(opt_t2_boost != 3 ||
+		   packetS.is_need_sip_process ||
+		   datalen > 2 ||
+		   blockstore_lock != 1) {
+			if(blockstore_lock == 1) {
+				packetS.blockstore_lock(3 /*pb lock flag*/);
+			} else if(blockstore_lock == 2) {
+				packetS.blockstore_setlock();
+			}
+			this->push_packet_detach(&packetS);
 		}
-		this->push_packet_detach(&packetS);
 		if(opt_enable_ssl) {
 			this->unlock_push();
 		}

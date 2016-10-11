@@ -6399,9 +6399,12 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			return(1);
 		} else {
 			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-				false /*is_ssl*/, packet_counter_all,
+				false /*is_ssl*/, 
+				#if USE_PACKET_NUMBER
+				packet_counter_all,
+				#endif
 				header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest),
-				data, datalen, data - (char*)hp->packet,
+				datalen, data - (char*)hp->packet,
 				this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
 				istcp, header_ip,
 				hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip,
