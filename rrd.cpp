@@ -211,26 +211,47 @@ void rrd_vm_create_graph_calls_command(char *filename, char *fromatstyle, char *
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
-	cmdCreate << "DEF:callsmin=" << filename << ":calls:MIN ";
-	cmdCreate << "DEF:callsavg=" << filename << ":calls:AVERAGE ";
-	cmdCreate << "DEF:callsmax=" << filename << ":calls:MAX ";
+	cmdCreate << "DEF:callsmin=" << filename << ":inv:MIN ";
+	cmdCreate << "DEF:callsavg=" << filename << ":inv:AVERAGE ";
+	cmdCreate << "DEF:callsmax=" << filename << ":inv:MAX ";
+	cmdCreate << "DEF:regsmin=" << filename << ":reg:MIN ";
+	cmdCreate << "DEF:regsavg=" << filename << ":reg:AVERAGE ";
+	cmdCreate << "DEF:regsmax=" << filename << ":reg:MAX ";
+
 	if (vm_rrd_version < 10403) {
-		cmdCreate << "AREA:callsmax#00FF00:\"calls max\\l\" ";
-		cmdCreate << "LINE1:callsavg#0000FF:\"Calls avg\\l\" ";
-		cmdCreate << "LINE1:callsmin#FF0000:\"Calls min\\t\" ";
+		cmdCreate << "AREA:callsmax#00FF00:\"INVs max\\l\" ";
+		cmdCreate << "LINE1:callsavg#0000FF:\"INVs avg\\l\" ";
+		cmdCreate << "LINE1:callsmin#FF0000:\"INVs min\\t\" ";
 		cmdCreate << "GPRINT:callsmax:LAST:\"Cur\\: %5.0lf\" ";
 		cmdCreate << "GPRINT:callsmax:AVERAGE:\"Avg\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:callsmax:MAX:\"Max\\: %5.0lf\" ";
 		cmdCreate << "GPRINT:callsmax:MIN:\"Min\\: %5.0lf\\l\" ";
+
+		cmdCreate << "AREA:regsmax#99FF00:\"REGs max\\l\" ";
+		cmdCreate << "LINE1:regsavg#9999FF:\"REGs avg\\l\" ";
+		cmdCreate << "LINE1:regsmin#FF9900:\"REGs min\\t\" ";
+		cmdCreate << "GPRINT:regsmax:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:regsmax:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:regsmax:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:regsmax:MIN:\"Min\\: %5.0lf\\l\" ";
 	} else {
-		cmdCreate << "AREA:callsmax#00FF00:\"calls max\\l\" ";
-		cmdCreate << "LINE1:callsavg#0000FF:\"Calls avg\\l\" ";
-		cmdCreate << "LINE1:callsmin#FF0000:\"Calls min\\l\" ";
+		cmdCreate << "AREA:callsmax#00FF00:\"INVs max\\l\" ";
+		cmdCreate << "LINE1:callsavg#0000FF:\"INVs avg\\l\" ";
+		cmdCreate << "LINE1:callsmin#FF0000:\"INVs min\\l\" ";
 		cmdCreate << "COMMENT:\"\\u\" ";
 		cmdCreate << "GPRINT:callsmax:LAST:\"Cur\\: %5.0lf\" ";
 		cmdCreate << "GPRINT:callsmax:AVERAGE:\"Avg\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:callsmax:MAX:\"Max\\: %5.0lf\" ";
 		cmdCreate << "GPRINT:callsmax:MIN:\"Min\\: %5.0lf\\r\" ";
+
+		cmdCreate << "AREA:regsmax#99FF00:\"REGs max\\l\" ";
+		cmdCreate << "LINE1:regsavg#9999FF:\"REGs avg\\l\" ";
+		cmdCreate << "LINE1:regsmin#FF9900:\"REGs min\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:regsmax:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:regsmax:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:regsmax:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:regsmax:MIN:\"Min\\: %5.0lf\\r\" ";
 	}
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
@@ -1126,7 +1147,8 @@ int vm_rrd_create_rrdcallscounter(const char *filename) {
 
 	cmdCreate << "create " << filename << " ";
 	cmdCreate << "--start N --step 10 ";
-	cmdCreate << "DS:calls:GAUGE:20:0:200000 ";
+	cmdCreate << "DS:inv:GAUGE:20:0:200000 ";
+	cmdCreate << "DS:reg:GAUGE:20:0:200000 ";
 	cmdCreate << "RRA:MIN:0.5:1:760 ";
 	cmdCreate << "RRA:MAX:0.5:1:760 ";
 	cmdCreate << "RRA:AVERAGE:0.5:1:760 ";
