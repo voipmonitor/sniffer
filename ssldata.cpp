@@ -132,8 +132,12 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 									  _ip_src, _ip_dst, _port_src, _port_dst,
 									  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
 						preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-							true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
-							(char*)(udpPacket + ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2)), rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
+							true, 
+							#if USE_PACKET_NUMBER
+							0,
+							#endif
+							_ip_src, _port_src, _ip_dst, _port_dst, 
+							rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
 							handle_index, udpHeader, udpPacket, true, 
 							false, (iphdr2*)(udpPacket + ethHeaderLength),
 							NULL, 0, dlt, sensor_id, sensor_ip,

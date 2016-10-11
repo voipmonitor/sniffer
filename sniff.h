@@ -230,6 +230,7 @@ struct packet_s_process_0 : public packet_s {
 		isSip = -1;
 		isSkinny = false;
 		call_info_length = -1;
+		init_reuse();
 	}
 	inline void init2_rtp() {
 		data = (char*)(packet + dataoffset);
@@ -253,17 +254,11 @@ struct packet_s_process_0 : public packet_s {
 	inline bool is_use_reuse_counter() {
 		return(use_reuse_counter);
 	}
-	inline void reuse_counter_inc(u_int8_t inc = 1) {
-		reuse_counter += inc;
-	}
-	inline void reuse_counter_dec() {
-		--reuse_counter;
-	}
 	inline void reuse_counter_inc_sync(u_int8_t inc = 1) {
 		__sync_add_and_fetch(&reuse_counter, inc);
 	}
-	inline void reuse_counter_dec_sync() {
-		__sync_sub_and_fetch(&reuse_counter, 1);
+	inline void reuse_counter_dec() {
+		--reuse_counter;
 	}
 	inline void reuse_counter_lock() {
 		while(__sync_lock_test_and_set(&reuse_counter_sync, 1));
@@ -541,6 +536,31 @@ public:
 			qring_push_index_count = 0;
 		}
 		__sync_lock_release(&this->push_lock_sync);
+	}
+	inline void push_thread_buffer(int threadIndex) {
+		batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex];
+		if(thread_buffer->count) {
+			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+			batch_packet_rtp *current_batch = this->qring[this->writeit];
+			unsigned usleepCounter = 0;
+			while(current_batch->used != 0) {
+				usleep(20 *
+				       (usleepCounter > 10 ? 50 :
+					usleepCounter > 5 ? 10 :
+					usleepCounter > 2 ? 5 : 1));
+				++usleepCounter;
+			}
+			memcpy(current_batch->batch.pt, thread_buffer->batch.pt, sizeof(rtp_packet_pt_pcap_queue) * thread_buffer->count);
+			current_batch->count = thread_buffer->count;
+			current_batch->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			thread_buffer->count = 0;
+			__sync_lock_release(&this->push_lock_sync);
+		}
 	}
 public:
 	pthread_t thread;

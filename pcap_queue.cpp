@@ -1259,8 +1259,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double rrdmem_rss = 0;
 //rrd net bw to voipmonitor file 2db-speedmbs.rrd
 	double rrdspeedmbs = 0.0;
-//rrd calls counter file 2db-callscounter.rrd
-	int rrdcallscounter = 0;
+//rrd calls counter file 3db-callscounter.rrd
+	int rrdcalls_inv_counter = 0;
+	int rrdcalls_reg_counter = 0;
 //rrd Load Average consumption file db-la.rrd
 	double rrdLA_1 = 0.0;
 	double rrdLA_5 = 0.0;
@@ -1354,7 +1355,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(opt_ipaccount) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
 			}
-			if (opt_rrd) rrdcallscounter = calltable->calls_listMAP.size();
+			if (opt_rrd) {
+				rrdcalls_inv_counter = calltable->calls_listMAP.size();
+				rrdcalls_reg_counter = calltable->registers_listMAP.size();
+			}
 			extern u_int64_t counter_calls;
 			extern u_int64_t counter_calls_clean;
 			extern u_int64_t counter_registers;
@@ -2081,7 +2085,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			vm_rrd_create_rrdmemusage(filename);
 			sprintf(filename, "%s/rrd/2db-speedmbs.rrd", opt_chdir);
 			vm_rrd_create_rrdspeedmbs(filename);
-			sprintf(filename, "%s/rrd/2db-callscounter.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/3db-callscounter.rrd", opt_chdir);
 			vm_rrd_create_rrdcallscounter(filename);
 			sprintf(filename, "%s/rrd/db-LA.rrd", opt_chdir);
 			vm_rrd_create_rrdloadaverages(filename);
@@ -2161,8 +2165,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
 		//update rrdcallscounter;
 		cmdUpdate.str(std::string());
-		cmdUpdate << "N:" << rrdcallscounter;
-		sprintf(filename, "%s/rrd/2db-callscounter.rrd", opt_chdir);
+		cmdUpdate << "N:" << rrdcalls_inv_counter;
+		cmdUpdate << ":" << rrdcalls_reg_counter;
+		sprintf(filename, "%s/rrd/3db-callscounter.rrd", opt_chdir);
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdLA;
@@ -6399,9 +6404,12 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			return(1);
 		} else {
 			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-				false /*is_ssl*/, packet_counter_all,
+				false /*is_ssl*/, 
+				#if USE_PACKET_NUMBER
+				packet_counter_all,
+				#endif
 				header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest),
-				data, datalen, data - (char*)hp->packet,
+				datalen, data - (char*)hp->packet,
 				this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
 				istcp, header_ip,
 				hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip,
