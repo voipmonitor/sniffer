@@ -547,7 +547,7 @@ public:
 		if(!tdd[threadIndex].tid) {
 			tdd[threadIndex].tid = tid;
 		} else if(tdd[threadIndex].tid != tid) {
-			syslog(LOG_NOTICE, "RACE in rtp_read_thread::push_thread_buffer - %u / %u", tdd[threadIndex-1].tid, tid);
+			syslog(LOG_NOTICE, "RACE in rtp_read_thread::push_thread_buffer - %u / %u", tdd[threadIndex].tid, tid);
 		}
 		#endif
 			
