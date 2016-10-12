@@ -852,7 +852,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 				sprintf(filename, "%s/rrd/2db-heap.rrd", opt_chdir);
 				rrd_vm_create_graph_heap_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "calls", 6)) {
-				sprintf(filename, "%s/rrd/2db-callscounter.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/3db-callscounter.rrd", opt_chdir);
 				rrd_vm_create_graph_calls_command(filename, fromat, toat, color, resx ,resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tacCPU", 7)) {
 				sprintf(filename, "%s/rrd/2db-tacCPU.rrd", opt_chdir);
