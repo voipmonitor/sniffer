@@ -6207,6 +6207,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	}
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
+	this->qring_active_push_item = NULL;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
 	this->outThreadId = 0;
 	this->term_processRtp = false;
@@ -6682,10 +6683,10 @@ void rtp_read_thread::init_thread_buffer() {
 	for(unsigned int i = 0; i < thread_buffer_length; i++) {
 		this->thread_buffer[i] = new FILE_LINE(0) batch_packet_rtp_thread_buffer(this->qring_batch_item_length);
 	}
-	/* debug
+	#if DEBUG_QUEUE_RTP_THREAD
 	tdd = new FILE_LINE(0) thread_debug_data[thread_buffer_length];
 	memset(tdd, 0, thread_buffer_length * sizeof(thread_debug_data));
-	*/
+	#endif
 }
 
 void rtp_read_thread::term() {
@@ -6705,6 +6706,9 @@ void rtp_read_thread::term_thread_buffer() {
 		delete this->thread_buffer[i];
 	}
 	delete [] this->thread_buffer;
+	#if DEBUG_QUEUE_RTP_THREAD
+	delete tdd;
+	#endif
 }
 
 size_t rtp_read_thread::qring_size() {

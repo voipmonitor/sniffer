@@ -353,17 +353,16 @@ typedef struct {
 
 class rtp_read_thread {
 public:
-	/* debug
+	#if DEBUG_QUEUE_RTP_THREAD
 	struct thread_debug_data {
-		packet_s_process_0 packets[1000];
+		//packet_s_process_0 packets[1000];
 		unsigned counter;
 		unsigned process_counter;
 		unsigned tid;
 	};
-	*/
+	#endif
 	struct batch_packet_rtp_base {
 		batch_packet_rtp_base(unsigned max_count) {
-			count = 0;
 			extern int opt_t2_boost;
 			if(opt_t2_boost < 2) {
 				batch.c = new FILE_LINE(28003) rtp_packet_pcap_queue[max_count];
@@ -389,18 +388,21 @@ public:
 			rtp_packet_pcap_queue *c;
 			rtp_packet_pt_pcap_queue *pt;
 		} batch;
-		unsigned count;
 		unsigned max_count;
 	};
 	struct batch_packet_rtp : public batch_packet_rtp_base {
 		batch_packet_rtp(unsigned max_count) : batch_packet_rtp_base(max_count) {
+			count = 0;
 			used = 0;
 		}
+		volatile unsigned count;
 		volatile int used;
 	};
 	struct batch_packet_rtp_thread_buffer : public batch_packet_rtp_base {
 		batch_packet_rtp_thread_buffer(unsigned max_count) : batch_packet_rtp_base(max_count) {
+			count = 0;
 		}
+		unsigned count;
 	};
 public:
 	rtp_read_thread()  {
@@ -424,14 +426,14 @@ public:
 		extern int opt_t2_boost;
 		if(threadIndex && opt_t2_boost >= 2) {
 		 
-			/* check tid - debug
+			#if DEBUG_QUEUE_RTP_THREAD
 			unsigned tid = get_unix_tid();
 			if(!tdd[threadIndex-1].tid) {
 				tdd[threadIndex-1].tid = tid;
 			} else if(tdd[threadIndex-1].tid != tid) {
-				cout << "DIFF TID" << endl;
+				syslog(LOG_NOTICE, "RACE in rtp_read_thread::push - %u / %u", tdd[threadIndex-1].tid, tid);
 			}
-			*/
+			#endif
 		 
 			packet->blockstore_addflag(61 /*pb lock flag*/);
 			packet->blockstore_addflag(threadNum /*pb lock flag*/);
@@ -538,6 +540,17 @@ public:
 		__sync_lock_release(&this->push_lock_sync);
 	}
 	inline void push_thread_buffer(int threadIndex) {
+	 
+		#if DEBUG_QUEUE_RTP_THREAD
+		syslog(LOG_NOTICE, "push_thread_buffer - %i", threadIndex);
+		unsigned tid = get_unix_tid();
+		if(!tdd[threadIndex].tid) {
+			tdd[threadIndex].tid = tid;
+		} else if(tdd[threadIndex].tid != tid) {
+			syslog(LOG_NOTICE, "RACE in rtp_read_thread::push_thread_buffer - %u / %u", tdd[threadIndex-1].tid, tid);
+		}
+		#endif
+			
 		batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex];
 		if(thread_buffer->count) {
 			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
@@ -571,9 +584,9 @@ public:
 	batch_packet_rtp **qring;
 	unsigned int thread_buffer_length;
 	batch_packet_rtp_thread_buffer **thread_buffer;
-	/* debug
+	#if DEBUG_QUEUE_RTP_THREAD
 	thread_debug_data *tdd;
-	*/
+	#endif
 	batch_packet_rtp *qring_active_push_item;
 	volatile unsigned qring_push_index;
 	volatile unsigned qring_push_index_count;
