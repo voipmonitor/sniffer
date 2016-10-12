@@ -5689,6 +5689,11 @@ void *PreProcessPacket::outThreadFunction() {
 				case ppt_pp_rtp:
 					if(processRtpPacketHash) {
 						processRtpPacketHash->push_batch();
+					} else if(opt_t2_boost < 2) {
+						extern volatile int num_threads_active;
+						for(int i = 0; i < num_threads_active; i++) {
+							rtp_threads[i].push_batch();
+						}
 					}
 					break;
 				case ppt_end:
@@ -5707,6 +5712,69 @@ void *PreProcessPacket::outThreadFunction() {
 	this->outThreadState = 0;
 	syslog(LOG_NOTICE, "stop PreProcessPacket out thread %s/%i", this->getNameTypeThread().c_str(), this->outThreadId);
 	return(NULL);
+}
+
+void PreProcessPacket::push_batch_nothread() {
+	switch(this->typePreProcessThread) {
+	#ifdef PREPROCESS_DETACH2
+	case ppt_detach:
+		if(!preProcessPacket[ppt_detach2]->outThreadState) {
+			preProcessPacket[ppt_detach2]->push_batch();
+		}
+		break;
+	case ppt_detach2:
+		if(!preProcessPacket[ppt_sip]->outThreadState) {
+			preProcessPacket[ppt_sip]->push_batch();
+		}
+		break;
+	#else
+	case ppt_detach:
+		if(!preProcessPacket[ppt_sip]->outThreadState) {
+			preProcessPacket[ppt_sip]->push_batch();
+		}
+		break;
+	#endif
+	case ppt_sip:
+		if(!preProcessPacket[ppt_extend]->outThreadState) {
+			preProcessPacket[ppt_extend]->push_batch();
+		}
+		if(opt_t2_boost) {
+			if(!preProcessPacket[ppt_pp_rtp]->outThreadState) {
+				preProcessPacket[ppt_pp_rtp]->push_batch();
+			}
+		}
+		break;
+	case ppt_extend:
+		if(!preProcessPacket[ppt_pp_call]->outThreadState) {
+			preProcessPacket[ppt_pp_call]->push_batch();
+		}
+		if(!preProcessPacket[ppt_pp_register]->outThreadState) {
+			preProcessPacket[ppt_pp_register]->push_batch();
+		}
+		if(!opt_t2_boost) {
+			if(!preProcessPacket[ppt_pp_rtp]->outThreadState) {
+				preProcessPacket[ppt_pp_rtp]->push_batch();
+			}
+		}
+		break;
+	case ppt_pp_call:
+		_process_packet__cleanup_calls();
+		break;
+	case ppt_pp_register:
+		_process_packet__cleanup_registers();
+		break;
+	case ppt_pp_rtp:
+		if(processRtpPacketHash) {
+			processRtpPacketHash->push_batch();
+		} else if(opt_t2_boost < 2) {
+			extern volatile int num_threads_active;
+			for(int i = 0; i < num_threads_active; i++) {
+				rtp_threads[i].push_batch();
+			}
+		}
+	case ppt_end:
+		break;
+	}
 }
 
 void PreProcessPacket::preparePstatData() {
