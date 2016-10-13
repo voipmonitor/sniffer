@@ -2379,13 +2379,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 
-		if(a_ua[0]) {
-			cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
-		}
-		if(b_ua[0]) {
-			cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
-		}
-
 		if(opt_silencedetect && existsColumns.cdr_silencedetect) {
 			if(caller_silence > 0 or caller_noise > 0) {
 				cdr.add(caller_silence * 100 / (caller_silence + caller_noise), "caller_silence");
@@ -2887,10 +2880,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			reason_q850_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_reason_table, "id", "reason", cdr_reason_q850, "type");
 		}
 	}
-	if(a_ua[0] && cdr_ua_a) {
+	if(a_ua[0]) {
+		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
 		a_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
 	}
-	if(b_ua[0] && cdr_ua_b) {
+	if(b_ua[0]) {
+		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
 		b_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
 	}
 
