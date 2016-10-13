@@ -464,7 +464,7 @@ public:
 				}
 				memcpy(current_batch->batch.pt, thread_buffer->batch.pt, sizeof(rtp_packet_pt_pcap_queue) * thread_buffer->count);
 				current_batch->count = thread_buffer->count;
-				current_batch->used = 1;
+				__sync_add_and_fetch(&current_batch->used, 1);
 				if((this->writeit + 1) == this->qring_length) {
 					this->writeit = 0;
 				} else {
