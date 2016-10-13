@@ -421,27 +421,13 @@ public:
 			while(this->outThreadState) {
 				usleep(10);
 			}
-			switch(this->typePreProcessThread) {
-			case ppt_detach:
-			#ifdef PREPROCESS_DETACH2
-			case ppt_detach2:
-			#endif
-			case ppt_sip:
-			case ppt_extend:
-				_process_packet__cleanup_calls();
-				_process_packet__cleanup_registers();
-				break;
-			case ppt_pp_call:
-			case ppt_pp_register:
-			case ppt_pp_rtp:
-			case ppt_end:
-				break;
-			}
+			push_batch_nothread();
 		}
 		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
 			this->unlock_push();
 		}
 	}
+	void push_batch_nothread();
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
 	void terminate();

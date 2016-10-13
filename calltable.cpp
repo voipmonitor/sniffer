@@ -167,6 +167,7 @@ extern char opt_callidmerge_header[128];
 extern int opt_sdp_multiplication;
 extern int opt_hide_message_content;
 extern char opt_hide_message_content_secret[1024];
+extern vector<string> opt_message_body_url_reg;
 
 SqlDb *sqlDbSaveCall = NULL;
 extern sExistsColumns existsColumns;
@@ -3540,18 +3541,25 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	cdr.add(sqlEscapeString(fbasename), "fbasename");
 	if(message || message_info) {
 		string message_save;
+		bool message_is_url = false;
 		if(message) {
-			if(flags & FLAG_HIDEMESSAGE) {
+			for(unsigned i = 0; i < opt_message_body_url_reg.size(); i++) {
+				if(reg_match(message, opt_message_body_url_reg[i].c_str(), __FILE__, __LINE__)) {
+					message_is_url = true;
+					break;
+				}
+			}
+			if((flags & FLAG_HIDEMESSAGE) && !message_is_url) {
 				message_save = "SHA256: " + GetStringSHA256(trim_str(message) + trim_str(opt_hide_message_content_secret));
 			} else {
 				message_save = message;
 			}
 		}
-		if(message_info) {
+		if(message_is_url || message_info) {
 			if(message) {
 				message_save += '\n';
 			}
-			message_save += string("_INF:") + message_info;
+			message_save += string("_INF:") + (message_is_url ? "URL" : message_info);
 		}
 		cdr.add(sqlEscapeString(message_save), "message");
 	}

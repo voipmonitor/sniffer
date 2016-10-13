@@ -725,6 +725,7 @@ int opt_sip_send_before_packetbuffer = 0;
 int opt_enable_jitterbuffer_asserts = 0;
 int opt_hide_message_content = 0;
 char opt_hide_message_content_secret[1024] = "";
+vector<string> opt_message_body_url_reg;
 
 char opt_bogus_dumper_path[1204];
 BogusDumper *bogusDumper;
@@ -2831,10 +2832,10 @@ int main_init_read() {
 	   opt_enable_process_rtp_packet && opt_pcap_split &&
 	   !is_read_from_file_simple()) {
 		process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
-		processRtpPacketHash = new FILE_LINE(43025) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 			processRtpPacketDistribute[i] = new FILE_LINE(43026) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
 		}
+		processRtpPacketHash = new FILE_LINE(43025) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 	}
 
 	if(opt_enable_http) {
@@ -3032,20 +3033,6 @@ int main_init_read() {
 void main_term_read() {
 	readend = 1;
 
-	// wait for RTP threads
-	if(rtp_threads) {
-		for(int i = 0; i < num_threads_max; i++) {
-			if(i < num_threads_active) {
-				while(rtp_threads[i].threadId) {
-					usleep(100000);
-				}
-			}
-			rtp_threads[i].term();
-		}
-		delete [] rtp_threads;
-		rtp_threads = NULL;
-	}
-
 	if(is_read_from_file_simple() && global_pcap_handle) {
 		pcap_close(global_pcap_handle);
 	}
@@ -3135,6 +3122,20 @@ void main_term_read() {
 		}
 	}
 	
+	// wait for RTP threads
+	if(rtp_threads) {
+		for(int i = 0; i < num_threads_max; i++) {
+			if(i < num_threads_active) {
+				while(rtp_threads[i].threadId) {
+					usleep(100000);
+				}
+			}
+			rtp_threads[i].term();
+		}
+		delete [] rtp_threads;
+		rtp_threads = NULL;
+	}
+
 	if(sipSendSocket) {
 		delete sipSendSocket;
 		sipSendSocket = NULL;
@@ -4971,6 +4972,7 @@ void cConfig::addConfigItems() {
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE(43276) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
 			addConfigItem(new FILE_LINE(43277) cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("message_body_url_reg", &opt_message_body_url_reg));
 		subgroup("SIP send");
 				advanced();
 				addConfigItem(new FILE_LINE(43278) cConfigItem_ip_port("sip_send", &sipSendSocket_ip_port));
@@ -5403,6 +5405,15 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			if(!check_regexp(opt_cdr_ua_reg_remove[i].c_str())) {
 				syslog(LOG_WARNING, "invalid regexp %s for cdr_ua_reg_remove", opt_cdr_ua_reg_remove[i].c_str());
 				opt_cdr_ua_reg_remove.erase(opt_cdr_ua_reg_remove.begin() + i);
+				--i;
+			}
+		}
+	}
+	if(configItem->config_name == "message_body_url_reg") {
+		for(unsigned i = 0; i < opt_message_body_url_reg.size(); i++) {
+			if(!check_regexp(opt_message_body_url_reg[i].c_str())) {
+				syslog(LOG_WARNING, "invalid regexp %s for message_body_url_reg", opt_message_body_url_reg[i].c_str());
+				opt_message_body_url_reg.erase(opt_message_body_url_reg.begin() + i);
 				--i;
 			}
 		}
@@ -7814,6 +7825,16 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "hide_message_content_secret", NULL))) {
 		strncpy(opt_hide_message_content_secret, value, sizeof(opt_hide_message_content_secret));
+	}
+	if (ini.GetAllValues("general", "message_body_url_reg", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			if(!check_regexp(i->pItem)) {
+				syslog(LOG_WARNING, "invalid regexp %s for message_body_url_reg", i->pItem);
+			} else {
+				opt_message_body_url_reg.push_back(i->pItem);
+			}
+		}
 	}
 
 	if((value = ini.GetValue("general", "bogus_dumper_path", NULL))) {
