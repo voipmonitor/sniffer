@@ -431,7 +431,7 @@ public:
 			if(!tdd[threadIndex-1].tid) {
 				tdd[threadIndex-1].tid = tid;
 			} else if(tdd[threadIndex-1].tid != tid) {
-				syslog(LOG_NOTICE, "RACE in rtp_read_thread::push - %u / %u", tdd[threadIndex-1].tid, tid);
+				syslog(LOG_NOTICE, "RACE in rtp_read_thread(%i)::push - %u / %u", threadNum, tdd[threadIndex-1].tid, tid);
 			}
 			#endif
 		 
@@ -542,17 +542,21 @@ public:
 	inline void push_thread_buffer(int threadIndex) {
 	 
 		#if DEBUG_QUEUE_RTP_THREAD
-		syslog(LOG_NOTICE, "push_thread_buffer - %i", threadIndex);
 		unsigned tid = get_unix_tid();
 		if(!tdd[threadIndex].tid) {
 			tdd[threadIndex].tid = tid;
 		} else if(tdd[threadIndex].tid != tid) {
-			syslog(LOG_NOTICE, "RACE in rtp_read_thread::push_thread_buffer - %u / %u", tdd[threadIndex].tid, tid);
+			syslog(LOG_NOTICE, "RACE in rtp_read_thread(%i)::push_thread_buffer - %u / %u", threadNum, tdd[threadIndex].tid, tid);
 		}
 		#endif
 			
 		batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex];
 		if(thread_buffer->count) {
+		 
+			#if DEBUG_QUEUE_RTP_THREAD
+			syslog(LOG_NOTICE, "push_thread_buffer in rtp_read_thread(%i) - %i", threadNum, threadIndex);
+			#endif
+		 
 			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
 			batch_packet_rtp *current_batch = this->qring[this->writeit];
 			unsigned usleepCounter = 0;

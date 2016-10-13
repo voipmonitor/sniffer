@@ -2927,7 +2927,11 @@ private:
 		}
 		inline void destroyAll() {
 			for(unsigned i = 0; i < pool_size; i++) {
-				delete_object(pool[i]);
+				#if HEAPSAFE
+					delete_object(pool[i]);
+				#else
+					free(pool[i]);
+				#endif
 			}
 		}
 		u_int16_t pool_size;

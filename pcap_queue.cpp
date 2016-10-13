@@ -591,7 +591,11 @@ bool pcap_block_store::compress_snappy() {
 	switch(snappyRslt) {
 		case SNAPPY_OK:
 			delete [] this->block;
-			this->block = (u_char*)realloc_object(snappyBuff, snappyBuffSize, __FILE__, __LINE__, 16015);
+			#if HEAPSAFE
+				this->block = (u_char*)realloc_object(snappyBuff, snappyBuffSize, __FILE__, __LINE__, 16015);
+			#else
+				this->block = (u_char*)realloc(snappyBuff, snappyBuffSize);
+			#endif
 			this->size_compress = snappyBuffSize;
 			sumPacketsSizeCompress[0] += this->size_compress;
 			return(true);

@@ -387,10 +387,10 @@ public:
 			if(lock) qunlock();
 			return(maxTarName.empty() ? NULL : tarQueue->tars[maxTarName]);
 		}
-		void qlock() {
+		inline void qlock() {
 			while(__sync_lock_test_and_set(&this->_sync_lock, 1));
 		}
-		void qunlock() {
+		inline void qunlock() {
 			__sync_lock_release(&this->_sync_lock);
 		}
 		inline void processData(TarQueue *tarQueue, const char *tarName, 

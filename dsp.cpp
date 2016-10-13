@@ -65,6 +65,7 @@
 #include "jitterbuffer/asterisk/frame.h"
 
 #include "dsp.h"
+#include "voipmonitor_define.h"
 
 #define ARRAY_LEN(a) (size_t) (sizeof(a) / sizeof(0[a]))
 
@@ -1563,8 +1564,12 @@ unsigned int dsp_get_sample_rate(const struct dsp *dsp)
 	return dsp->sample_rate;
 }
 
-#define FILE_LINE(alloc_number) (__FILE__, __LINE__, alloc_number)
-void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0, int alloc_number = 0);
+#if HEAPSAFE
+	#define FILE_LINE(alloc_number) (__FILE__, __LINE__, alloc_number)
+	void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2 = 0, int alloc_number = 0);
+#else
+	#define FILE_LINE(alloc_number)
+#endif
 
 static struct dsp *__dsp_new(unsigned int sample_rate)
 {

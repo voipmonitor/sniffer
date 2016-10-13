@@ -421,6 +421,7 @@ inline void * realloc_memory_stat_quick(void *pointerToObject, size_t sizeOfObje
 }
 
 
+#if HEAPSAFE
 void * operator new(size_t sizeOfObject) { 
 	if(sizeOfObject > 1000000000ull) {
 		syslog(LOG_WARNING, "too big allocated block - %lu", sizeOfObject);
@@ -522,6 +523,7 @@ void operator delete(void *pointerToObject, size_t) {
 void operator delete[](void *pointerToObject, size_t) {
 	_delete_object(pointerToObject);
 }
+#endif
 
 
 void *realloc_object(void *pointerToObject, size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number) {
