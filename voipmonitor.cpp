@@ -3521,7 +3521,7 @@ void test_search_country_by_number() {
 	CountryPrefixes *cp = new FILE_LINE(43043) CountryPrefixes();
 	cp->load();
 	vector<string> countries;
-	cout << cp->getCountry("00039123456789", &countries, ci) << endl;
+	cout << cp->getCountry("00039123456789", &countries, NULL, ci) << endl;
 	for(size_t i = 0; i < countries.size(); i++) {
 		cout << countries[i] << endl;
 	}
