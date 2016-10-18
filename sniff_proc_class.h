@@ -849,6 +849,7 @@ private:
 	pstat_data threadPstatData[1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
 	bool term_processRtp;
 	volatile batch_packet_s_process *hash_batch_thread_process[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
+	volatile int *hash_find_flag;
 	sem_t sem_sync_next_thread[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);

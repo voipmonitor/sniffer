@@ -209,7 +209,6 @@ struct packet_s_process_0 : public packet_s {
 	packet_s_process_rtp_call_info call_info[MAX_LENGTH_CALL_INFO];
 	int call_info_length;
 	bool call_info_find_by_dest;
-	volatile int hash_find_flag;
 	inline packet_s_process_0() {
 		init();
 		init2();

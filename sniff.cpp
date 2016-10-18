@@ -1489,7 +1489,7 @@ void *rtp_read_thread_func(void *arg) {
 					}
 					rtpp_pq->packet->blockstore_addflag(71 /*pb lock flag*/);
 					//PACKET_S_PROCESS_DESTROY(&rtpp_pq->packet);
-					PACKET_S_PROCESS_PUSH_TO_STACK(&rtpp_pq->packet, 10 + read_thread->threadNum);
+					PACKET_S_PROCESS_PUSH_TO_STACK(&rtpp_pq->packet, 30 + read_thread->threadNum);
 					__sync_sub_and_fetch(&rtpp_pq->call->rtppacketsinqueue, 1);
 				 
 				} else {
@@ -3423,7 +3423,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			if(opt_t2_boost == 3) {
 				packetS->blockstore_addflag(58 /*pb lock flag*/);
 				if(threadIndex) {
-					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3 + threadIndex - 1);
+					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 20 + threadIndex - 1);
 				} else {
 					PACKET_S_PROCESS_DESTROY(&packetS);
 				}
@@ -6208,6 +6208,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 		this->qring[i] = new FILE_LINE(27028) batch_packet_s_process(this->qring_batch_item_length);
 		this->qring[i]->used = 0;
 	}
+	this->hash_find_flag = new FILE_LINE(0) volatile int[this->qring_batch_item_length];
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	this->qring_active_push_item = NULL;
@@ -6245,6 +6246,7 @@ ProcessRtpPacket::~ProcessRtpPacket() {
 		delete this->qring[i];
 	}
 	delete [] this->qring;
+	delete [] this->hash_find_flag;
 }
 
 void *ProcessRtpPacket::outThreadFunction() {
@@ -6340,6 +6342,12 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 				packet_s_process_0 *packetS = this->hash_batch_thread_process[next_thread_index_plus - 1]->batch[batch_index];
 				packetS->init2_rtp();
 				this->find_hash(packetS, false);
+				if(packetS->call_info_length > 0) {
+					this->hash_find_flag[batch_index] = 1;
+				} else {
+					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 10 + next_thread_index_plus - 1);
+					this->hash_find_flag[batch_index] = -1;
+				}
 			}
 			this->hash_batch_thread_process[next_thread_index_plus - 1] = 0;
 			usleepCounter = 0;
@@ -6362,10 +6370,8 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 		int _process_rtp_packets_hash_next_threads_use_for_batch = this->process_rtp_packets_hash_next_threads_use_for_batch;
 		int _process_rtp_packets_distribute_threads_use = process_rtp_packets_distribute_threads_use;
 		unsigned batch_index_distribute = 0;
-		if(find_hash_only_in_next_threads) {
-			for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
-				batch->batch[batch_index]->hash_find_flag = 0;
-			}
+		for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
+			this->hash_find_flag[batch_index] = 0;
 		}
 		calltable->lock_calls_hash();
 		if(this->next_thread_handle[0]) {
@@ -6379,10 +6385,12 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 				while(this->hash_batch_thread_process[0] || this->hash_batch_thread_process[1] ||
 				      (_process_rtp_packets_hash_next_threads_use_for_batch > 2 && this->isNextThreadsGt2Processing(_process_rtp_packets_hash_next_threads_use_for_batch))) {
 					if(batch_index_distribute < batch->count &&
-					   batch->batch[batch_index_distribute]->hash_find_flag) {
+					   this->hash_find_flag[batch_index_distribute] != 0) {
 						packet_s_process_0 *packetS = batch->batch[batch_index_distribute];
 						batch->batch[batch_index_distribute] = NULL;
-						this->rtp_packet_distr(packetS, _process_rtp_packets_distribute_threads_use);
+						if(this->hash_find_flag[batch_index_distribute] == 1) {
+							this->rtp_packet_distr(packetS, _process_rtp_packets_distribute_threads_use);
+						}
 						++batch_index_distribute;
 					} else {
 						usleep(20);
@@ -6395,6 +6403,12 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 					packet_s_process_0 *packetS = batch->batch[batch_index];
 					packetS->init2_rtp();
 					this->find_hash(packetS, false);
+					if(packetS->call_info_length > 0) {
+						this->hash_find_flag[batch_index] = 1;
+					} else {
+						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
+						this->hash_find_flag[batch_index] = -1;
+					}
 				}
 				for(int i = 0; i < _process_rtp_packets_hash_next_threads_use_for_batch; i++) {
 					if(sem_sync_next_thread[i][1].__align) {
@@ -6411,13 +6425,21 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 				packet_s_process_0 *packetS = batch->batch[batch_index];
 				packetS->init2_rtp();
 				this->find_hash(packetS, false);
+				if(packetS->call_info_length > 0) {
+					this->hash_find_flag[batch_index] = 1;
+				} else {
+					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
+					this->hash_find_flag[batch_index] = -1;
+				}
 			}
 		}
 		calltable->unlock_calls_hash();
 		for(;batch_index_distribute < batch->count; batch_index_distribute++) {
 			packet_s_process_0 *packetS = batch->batch[batch_index_distribute];
 			batch->batch[batch_index_distribute] = NULL;
-			this->rtp_packet_distr(packetS, _process_rtp_packets_distribute_threads_use);
+			if(this->hash_find_flag[batch_index_distribute] == 1) {
+				this->rtp_packet_distr(packetS, _process_rtp_packets_distribute_threads_use);
+			}
 		}
 	} else {
 		for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
@@ -6433,7 +6455,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 				if(!(opt_t2_boost == 3 ||
 				    (opt_t2_boost == 2 && count_use &&
 				     rtp_threaded && !sverb.disable_threads_rtp))) {
-					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3 + indexThread);
+					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 20 + indexThread);
 				}
 			} else {
 				if(opt_rtpnosip) {
@@ -6443,7 +6465,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 								  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
 								  get_pcap_handle(packetS->handle_index));
 				}
-				PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3 + indexThread);
+				PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 20 + indexThread);
 			}
 		}
 	}
@@ -6451,7 +6473,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 
 inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int _process_rtp_packets_distribute_threads_use) {
 	packetS->blockstore_addflag(41 /*pb lock flag*/);
-	if(packetS->call_info_length && packetS->call_info[0].call && opt_t2_boost >= 2) {
+	if(opt_t2_boost >= 2) {
 		if(packetS->call_info_length == 1) {
 			packetS->blockstore_addflag(42 /*pb lock flag*/);
 			processRtpPacketDistribute[packetS->call_info[0].call->thread_num_rd]->push_packet(packetS);
@@ -6564,9 +6586,6 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	}
 	if(lock) {
 		calltable->unlock_calls_hash();
-	}
-	if(find_hash_only_in_next_threads) {
-		packetS->hash_find_flag = 1;
 	}
 }
 
