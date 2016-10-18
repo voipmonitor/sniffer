@@ -218,7 +218,7 @@ extern bool _save_sip_history_request_types[1000];
 extern bool _save_sip_history_all_requests;
 extern bool _save_sip_history_all_responses;
 extern int opt_rtpfromsdp_onlysip;
-extern int opt_t2_boost;
+extern bool opt_t2_boost;
 unsigned int glob_ssl_calls = 0;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
@@ -1442,7 +1442,7 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 	if(!preSyncRtp) {
 		__sync_add_and_fetch(&call->rtppacketsinqueue, 1);
 	}
-	if(opt_t2_boost < 2) {
+	if(!opt_t2_boost) {
 		packetS->blockstore_forcelock(60 /*pb lock flag*/);
 	}
 	rtp_read_thread *read_thread = &(rtp_threads[call->thread_num]);
@@ -1473,7 +1473,7 @@ void *rtp_read_thread_func(void *arg) {
 			for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 				read_thread->last_use_time_s = getTimeMS_rdtsc() / 1000;
 				bool rslt_read_rtp = false;
-				if(opt_t2_boost >= 2) {
+				if(opt_t2_boost) {
 					rtp_packet_pt_pcap_queue *rtpp_pq = &batch->batch.pt[batch_index];
 					if(!sverb.disable_read_rtp) {
 						if(rtpp_pq->is_rtcp) {
@@ -3402,7 +3402,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			if(rslt_read_rtp && !is_rtcp) {
 				call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
 			}
-			if(opt_t2_boost == 3) {
+			if(opt_t2_boost) {
 				packetS->blockstore_addflag(59 /*pb lock flag*/);
 				PACKET_S_PROCESS_DESTROY(&packetS);
 			}
@@ -3420,7 +3420,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			if(preSyncRtp) {
 				__sync_sub_and_fetch(&call_info[call_info_index].call->rtppacketsinqueue, 1);
 			}
-			if(opt_t2_boost == 3) {
+			if(opt_t2_boost) {
 				packetS->blockstore_addflag(58 /*pb lock flag*/);
 				if(threadIndex) {
 					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 20 + threadIndex - 1);
@@ -3432,26 +3432,10 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 	}
 	if(rtp_threaded && !sverb.disable_threads_rtp &&
 	   call_info_temp_length) {
-		packet_s_process_0 *packetS_temp[MAX_LENGTH_CALL_INFO];
-		if(call_info_temp_length > 1 && opt_t2_boost == 2) {
-			for(unsigned i = 1; i < call_info_temp_length; i++) {
-				packetS_temp[i] = PACKET_S_PROCESS_RTP_CREATE();
-				*packetS_temp[i] = *packetS;
-				packetS_temp[i]->stack = NULL;
-				packetS_temp[i]->blockstore_relock(53 /*pb lock flag*/);
-				if(packetS_temp[i]->_packet_alloc) {
-					packetS_temp[i]->new_alloc_packet_header();
-				}
-			}
-		}
 		for(unsigned i = 0; i < call_info_temp_length; i++) {
 			call = call_info_temp[i].call;
 			iscaller = call_info_temp[i].iscaller;
 			is_rtcp = call_info_temp[i].is_rtcp;
-			if(i && opt_t2_boost == 2) {
-				packetS = packetS_temp[i];
-				packetS->blockstore_addflag(54 /*pb lock flag*/);
-			}
 			packetS->blockstore_addflag(55 /*pb lock flag*/);
 			if(is_rtcp) {
 				packetS->blockstore_addflag(56 /*pb lock flag*/);
@@ -3602,10 +3586,8 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 		}
 		calltable->unlock_calls_hash();
 		if(call_info_length) {
-			int count_use = process_packet__rtp_call_info(call_info, call_info_length, packetS, call_info_find_by_dest);
-			if(opt_t2_boost == 3 ||
-			   (opt_t2_boost == 2 && count_use &&
-			    rtp_threaded && !sverb.disable_threads_rtp)) {
+			process_packet__rtp_call_info(call_info, call_info_length, packetS, call_info_find_by_dest);
+			if(opt_t2_boost) {
 				return(true);
 			}
 		} else if(opt_rtpnosip) {
@@ -5692,7 +5674,7 @@ void *PreProcessPacket::outThreadFunction() {
 				case ppt_pp_rtp:
 					if(processRtpPacketHash) {
 						processRtpPacketHash->push_batch();
-					} else if(opt_t2_boost < 2) {
+					} else if(!opt_t2_boost) {
 						extern volatile int num_threads_active;
 						for(int i = 0; i < num_threads_active; i++) {
 							rtp_threads[i].push_batch();
@@ -5769,7 +5751,7 @@ void PreProcessPacket::push_batch_nothread() {
 	case ppt_pp_rtp:
 		if(processRtpPacketHash) {
 			processRtpPacketHash->push_batch();
-		} else if(opt_t2_boost < 2) {
+		} else if(!opt_t2_boost) {
 			extern volatile int num_threads_active;
 			for(int i = 0; i < num_threads_active; i++) {
 				rtp_threads[i].push_batch();
@@ -6288,7 +6270,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 					break;
 				case distribute:
 					extern volatile int num_threads_active;
-					if(opt_t2_boost < 2) {
+					if(!opt_t2_boost) {
 						for(int i = 0; i < num_threads_active; i++) {
 							rtp_threads[i].push_batch();
 						}
@@ -6449,12 +6431,10 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 				this->find_hash(packetS);
 			}
 			if(packetS->call_info_length) {
-				int count_use = process_packet__rtp_call_info(packetS->call_info, packetS->call_info_length, packetS, 
-									      packetS->call_info_find_by_dest, true,
-									      opt_t2_boost >= 2 ? indexThread + 1 : 0);
-				if(!(opt_t2_boost == 3 ||
-				    (opt_t2_boost == 2 && count_use &&
-				     rtp_threaded && !sverb.disable_threads_rtp))) {
+				process_packet__rtp_call_info(packetS->call_info, packetS->call_info_length, packetS, 
+							      packetS->call_info_find_by_dest, true,
+							      opt_t2_boost ? indexThread + 1 : 0);
+				if(!opt_t2_boost) {
 					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 20 + indexThread);
 				}
 			} else {
@@ -6473,7 +6453,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch) {
 
 inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int _process_rtp_packets_distribute_threads_use) {
 	packetS->blockstore_addflag(41 /*pb lock flag*/);
-	if(opt_t2_boost >= 2) {
+	if(opt_t2_boost) {
 		if(packetS->call_info_length == 1) {
 			packetS->blockstore_addflag(42 /*pb lock flag*/);
 			processRtpPacketDistribute[packetS->call_info[0].call->thread_num_rd]->push_packet(packetS);
@@ -6498,40 +6478,11 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 					}
 				}
 			}
-			if(opt_t2_boost == 2) {
-				packet_s_process_0 *packetS_temp[MAX_PROCESS_RTP_PACKET_THREADS];
-				for(int i = 1; i < threads_rd_count; i++) {
-					packetS_temp[i] = PACKET_S_PROCESS_RTP_CREATE();
-					*packetS_temp[i] = *packetS;
-					packetS_temp[i]->stack = NULL;
-					packetS_temp[i]->blockstore_relock(43 /*pb lock flag*/);
-					if(packetS_temp[i]->_packet_alloc) {
-						packetS_temp[i]->new_alloc_packet_header();
-					}
-				}
-				for(int i = 0; i < threads_rd_count; i++) {
-					if(i == 0) {
-						packetS->blockstore_addflag(44 /*pb lock flag*/);
-						processRtpPacketDistribute[threads_rd[i]]->push_packet(packetS);
-					} else {
-						packetS->blockstore_addflag(45 /*pb lock flag*/);
-						processRtpPacketDistribute[threads_rd[i]]->push_packet(packetS_temp[i]);
-					}
-				}
-			} else {
-				/*
-				static int _cout_flag = 0;
-				if(!_cout_flag) {
-					cout << "**** " << __FILE__ << " : " << __LINE__ << endl;
-					_cout_flag = 1;
-				}
-				*/
-				packetS->set_use_reuse_counter();
-				packetS->reuse_counter_inc_sync(packetS->call_info_length);
-				for(int i = 0; i < threads_rd_count; i++) {
-					packetS->blockstore_addflag(46 /*pb lock flag*/);
-					processRtpPacketDistribute[threads_rd[i]]->push_packet(packetS);
-				}
+			packetS->set_use_reuse_counter();
+			packetS->reuse_counter_inc_sync(packetS->call_info_length);
+			for(int i = 0; i < threads_rd_count; i++) {
+				packetS->blockstore_addflag(46 /*pb lock flag*/);
+				processRtpPacketDistribute[threads_rd[i]]->push_packet(packetS);
 			}
 		}
 	} else {

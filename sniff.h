@@ -362,8 +362,8 @@ public:
 	#endif
 	struct batch_packet_rtp_base {
 		batch_packet_rtp_base(unsigned max_count) {
-			extern int opt_t2_boost;
-			if(opt_t2_boost < 2) {
+			extern bool opt_t2_boost;
+			if(!opt_t2_boost) {
 				batch.c = new FILE_LINE(28003) rtp_packet_pcap_queue[max_count];
 				memset(batch.c, 0, sizeof(rtp_packet_pcap_queue) * max_count);
 			} else {
@@ -376,8 +376,8 @@ public:
 			for(unsigned i = 0; i < max_count; i++) {
 				// unlock item
 			}
-			extern int opt_t2_boost;
-			if(opt_t2_boost < 2) {
+			extern bool opt_t2_boost;
+			if(!opt_t2_boost) {
 				delete [] batch.c;
 			} else {
 				delete [] batch.pt;
@@ -422,8 +422,8 @@ public:
 		return;
 		*/
 		
-		extern int opt_t2_boost;
-		if(threadIndex && opt_t2_boost >= 2) {
+		extern bool opt_t2_boost;
+		if(threadIndex && opt_t2_boost) {
 		 
 			#if DEBUG_QUEUE_RTP_THREAD
 			unsigned tid = get_unix_tid();

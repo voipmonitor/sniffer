@@ -247,8 +247,8 @@ public:
 		packetS.is_need_sip_process = is_ssl ||
 					      sipportmatrix[source] || sipportmatrix[dest] ||
 					      packetS.is_skinny;
-		extern int opt_t2_boost;
-		if(opt_t2_boost != 3 ||
+		extern bool opt_t2_boost;
+		if(!opt_t2_boost ||
 		   packetS.is_need_sip_process ||
 		   datalen > 2 ||
 		   blockstore_lock != 1) {

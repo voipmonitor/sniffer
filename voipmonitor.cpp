@@ -600,7 +600,7 @@ int opt_pcapdump_all = 0;
 char opt_pcapdump_all_path[1024];
 
 int opt_callend = 1; //if true, cdr.called is saved
-int opt_t2_boost = 0;
+bool opt_t2_boost = false;
 char opt_chdir[1024];
 char opt_spooldir_2[1024];
 char opt_cachedir[1024];
@@ -4638,8 +4638,7 @@ void cConfig::addConfigItems() {
 				expert();
 					addConfigItem(new FILE_LINE(43090) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(43091) cConfigItem_yesno("sqlcallend", &opt_callend));
-					addConfigItem((new FILE_LINE(43458) cConfigItem_yesno("t2_boost", &opt_t2_boost))
-						->addValues("ext:2|ext2:3"));
+					addConfigItem(new FILE_LINE(43458) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(43092) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			advanced();
@@ -5999,7 +5998,7 @@ void set_context_config() {
 		opt_pcap_dump_asyncwrite = 0;
 		opt_save_query_to_files = false;
 		opt_load_query_from_files = 0;
-		opt_t2_boost = 0;
+		opt_t2_boost = false;
 	}
 	
 	if(is_read_from_file()) {
@@ -6096,7 +6095,7 @@ void set_context_config() {
 	}
 	
 	if(!opt_pcap_split && opt_t2_boost) {
-		opt_t2_boost = 0;
+		opt_t2_boost = false;
 	}
 	if(opt_t2_boost && !opt_enable_process_rtp_packet) {
 		opt_enable_process_rtp_packet = 1;
@@ -7265,8 +7264,7 @@ int eval_config(string inistr) {
 		opt_callend = yesno(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost", NULL))) {
-		opt_t2_boost = !strcmp(value, "ext2") ? 3 : 
-			       !strcmp(value, "ext") ? 2 : yesno(value);
+		opt_t2_boost = yesno(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
