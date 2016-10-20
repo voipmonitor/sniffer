@@ -4149,14 +4149,14 @@ struct sGsmMessageData {
 	sGsmMessageData() {
 		type = gsm_mt_data_type_na;
 		addressLength = -1;
-		codingIndication = -1;
+		dcs = -1;
 		userDataLength = -1;
 		userDataHeaderLength = -1;
 	}
 	unsigned int getLength() {
 		return((type == gsm_mt_data_type_deliver ? 1 : 2) + 
 		       (addressLength >= 0 ? 2 + getAddressLength() + 1 : 0) + 
-		       (codingIndication >= 0 ? (type == gsm_mt_data_type_deliver ? 8 : 1) : 0) + 
+		       (dcs >= 0 ? (type == gsm_mt_data_type_deliver ? 8 : 1) : 0) + 
 		       (userDataLength >= 0 ? 1 + getUserDataEncodeLength() : 0));
 	}
 	unsigned int getOffsetToAddress() {
@@ -4173,8 +4173,7 @@ struct sGsmMessageData {
 		return(addressLength / 2 + addressLength % 2);
 	}
 	unsigned int getUserDataEncodeLength() {
-		switch(codingIndication) {
-		case 0: 
+		if(dcs == 0 || (dcs & 0xC0) == 0xC0) {
 			return(conv7bit::encode_length(userDataLength));
 		}
 		return(-1);
@@ -4195,7 +4194,7 @@ struct sGsmMessageData {
 				int value = (unsigned char)data[getLength()];
 				switch(pass) {
 				case 0: addressLength = value; break;
-				case 1: codingIndication = value; break;
+				case 1: dcs = value; break;
 				case 2: if(getLength() + 2 < dataLength - 1 &&
 					   (unsigned char)data[getLength() + 2] == 0) {
 						int _userDataHeaderLength = (unsigned char)data[getLength() + 1];
@@ -4223,8 +4222,7 @@ struct sGsmMessageData {
 	}
 	string getUserDataMessage(char *data) {
 		if(userDataLength > 0) {
-			switch(codingIndication) {
-			case 0: 
+			if(dcs == 0 || (dcs & 0xC0) == 0xC0) {
 				return(getUserData_7bit(data));
 			}
 		}
@@ -4246,8 +4244,7 @@ struct sGsmMessageData {
 	}
 	void maskUserData(char *data) {
 		if(userDataLength > 0) {
-			switch(codingIndication) {
-			case 0: 
+			if(dcs == 0 || (dcs & 0xC0) == 0xC0) {
 				return(maskUserData_7bit(data));
 			}
 		}
@@ -4291,7 +4288,7 @@ struct sGsmMessageData {
 	}
 	eGsmMessageDataType type;
 	int addressLength;
-	int codingIndication;
+	int dcs;
 	int userDataLength;
 	int userDataHeaderLength;
 };
