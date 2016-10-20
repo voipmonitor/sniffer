@@ -4214,9 +4214,18 @@ struct sGsmMessageData {
 	string getAddress(char *data) {
 		string address;
 		char *addressData = data + getOffsetToAddress();
-		for(int i = 0; i < addressLength; i++) {
-			int addressNumber = (i % 2 ? (addressData[i / 2] >> 4) : addressData[i / 2]) & 0xF;
-			address += '0' + addressNumber;
+		if((addressData[-1] & 0x50) == 0x50) {
+			unsigned int addressDecodeLength;
+			unsigned char *addressDecode = conv7bit::decode((unsigned char*)addressData, conv7bit::encode_length(addressLength), addressDecodeLength);
+			if(addressDecode) {
+				address = string((char*)addressDecode, addressDecodeLength);
+				delete [] addressDecode;
+			}
+		} else {
+			for(int i = 0; i < addressLength; i++) {
+				int addressNumber = (i % 2 ? (addressData[i / 2] >> 4) : addressData[i / 2]) & 0xF;
+				address += '0' + addressNumber;
+			}
 		}
 		return(address);
 	}
@@ -4375,16 +4384,25 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 							memcpy(*rsltMessage, rslt_message.c_str(), rslt_message.length());
 							(*rsltMessage)[rslt_message.length()] = '\0';
 							rslt = 1;
-							if(rsltMessageInfo && gsmMessageData.userDataHeaderLength >= 0) {
+						}
+						if(rsltMessageInfo) {
+							string rslt_message_info;
+							if(gsmMessageData.userDataHeaderLength >= 0) {
 								sGsmMessageData::sConcatenatedInfo concInfo = gsmMessageData.getConcatenatedInfo(userData);
 								if(concInfo.ok) {
-									char rslt_message_info_buff[100];
-									snprintf(rslt_message_info_buff, 100, 
-										 "concatenated message: %i/%i",
-										 concInfo.part, concInfo.parts);
-									*rsltMessageInfo = new FILE_LINE(27007) char[strlen(rslt_message_info_buff) + 1];
-									strcpy(*rsltMessageInfo, rslt_message_info_buff);
+									rslt_message_info += "concatenated message: " + 
+											     intToString(concInfo.part) + "/" + intToString(concInfo.parts);
 								}
+							}
+							if(gsmMessageData.dcs & 0xC0) {
+								if(rslt_message_info.length()) {
+									rslt_message_info += "|";
+								}
+								rslt_message_info += string("dcs: voicemail ") + (gsmMessageData.dcs & 0x8 ? "active" : "inactive");
+							}
+							if(rslt_message_info.length()) {
+								*rsltMessageInfo = new FILE_LINE(27007) char[rslt_message_info.length() + 1];
+								strcpy(*rsltMessageInfo, rslt_message_info.c_str());
 							}
 						}
 					}
