@@ -488,7 +488,21 @@ public:
 			thread_buffer->count++;
 		} else {
 			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+		 
+			#if DEBUG_QUEUE_RTP_THREAD
+			unsigned tid = get_unix_tid();
+			if(!tdd[0].tid) {
+				tdd[0].tid = tid;
+			} else if(tdd[0].tid != tid) {
+				syslog(LOG_NOTICE, "RACE in rtp_read_thread(%i)::push - %u / %u", threadNum, tdd[0].tid, tid);
+			}
+			#endif
+		 
+			packet->blockstore_addflag(61 /*pb lock flag*/);
+			packet->blockstore_addflag(threadNum /*pb lock flag*/);
+			
 			if(!qring_push_index) {
+				packet->blockstore_addflag(62 /*pb lock flag*/);
 				unsigned usleepCounter = 0;
 				while(this->qring[this->writeit]->used != 0) {
 					usleep(20 *
@@ -509,7 +523,9 @@ public:
 			rtpp_pq->is_rtcp = is_rtcp;
 			rtpp_pq->save_packet = enable_save_packet;
 			++qring_push_index_count;
+			packet->blockstore_addflag(63 /*pb lock flag*/);
 			if(qring_push_index_count == qring_active_push_item->max_count) {
+				packet->blockstore_addflag(64 /*pb lock flag*/);
 				qring_active_push_item->count = qring_push_index_count;
 				qring_active_push_item->used = 1;
 				if((this->writeit + 1) == this->qring_length) {
@@ -525,6 +541,16 @@ public:
 	}
 	inline void push_batch() {
 		while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+	 
+		#if DEBUG_QUEUE_RTP_THREAD
+		unsigned tid = get_unix_tid();
+		if(!tdd[0].tid) {
+			tdd[0].tid = tid;
+		} else if(tdd[0].tid != tid) {
+			syslog(LOG_NOTICE, "RACE in rtp_read_thread(%i)::push_batch - %u / %u", threadNum, tdd[0].tid, tid);
+		}
+		#endif
+			
 		if(qring_push_index_count) {
 			qring_active_push_item->count = qring_push_index_count;
 			qring_active_push_item->used = 1;
