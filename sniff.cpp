@@ -6286,7 +6286,6 @@ void *ProcessRtpPacket::outThreadFunction() {
 					break;
 				case distribute:
 					extern int num_threads_max;
-					extern volatile int num_threads_active;
 					if(!opt_t2_boost) {
 						for(int i = 0; i < num_threads_max; i++) {
 							if(rtp_threads[i].threadId) {
