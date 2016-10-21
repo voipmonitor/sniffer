@@ -1589,7 +1589,8 @@ void set_remove_rtp_read_thread() {
 	if(is_enable_rtp_threads() &&
 	   num_threads_active > 1 &&
 	   (num_threads_active == num_threads_max ||
-	    !rtp_threads[num_threads_active].remove_flag)) {
+	    (!rtp_threads[num_threads_active].remove_flag &&
+	     !rtp_threads[num_threads_active].threadId))) {
 		rtp_threads[num_threads_active - 1].remove_flag = true;
 		--num_threads_active;
 	}
@@ -6284,14 +6285,19 @@ void *ProcessRtpPacket::outThreadFunction() {
 					}
 					break;
 				case distribute:
+					extern int num_threads_max;
 					extern volatile int num_threads_active;
 					if(!opt_t2_boost) {
-						for(int i = 0; i < num_threads_active; i++) {
-							rtp_threads[i].push_batch();
+						for(int i = 0; i < num_threads_max; i++) {
+							if(rtp_threads[i].threadId) {
+								rtp_threads[i].push_batch();
+							}
 						}
 					} else {
-						for(int i = 0; i < num_threads_active; i++) {
-							rtp_threads[i].push_thread_buffer(indexThread);
+						for(int i = 0; i < num_threads_max; i++) {
+							if(rtp_threads[i].threadId) {
+								rtp_threads[i].push_thread_buffer(indexThread);
+							}
 						}
 					}
 					break;
