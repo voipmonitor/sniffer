@@ -33,7 +33,7 @@ clean: GCCARCH = core2
 #Makefile.deps: GCCARCH = core2
 
 
-version = $(shell grep RTPSENSOR_VERSION voipmonitor.h | cut -d" " -f 3 | tr -d "\"")
+version = $(shell grep RTPSENSOR_VERSION voipmonitor_define.h | cut -d" " -f 3 | tr -d "\"")
 
 objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 jitterbuffer/*.c | sed 's/\.c/.o/' | tr "\n" " ") 
 
