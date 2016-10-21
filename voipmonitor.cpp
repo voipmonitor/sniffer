@@ -5878,6 +5878,7 @@ void set_context_config() {
  
 	if(opt_scanpcapdir[0]) {
 		sniffer_mode = snifferMode_read_from_files;
+		opt_use_oneshot_buffer = 0;
 	} else if(opt_pcap_queue_send_to_ip_port) {
 		sniffer_mode = snifferMode_sender;
 	} else {
