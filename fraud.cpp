@@ -592,6 +592,15 @@ bool FraudAlert::loadAlert() {
 	if(defDestLocation()) {
 		destLocation = split(dbRow["fraud_dest_location"].c_str(), ",", true);
 	}
+	if(defDestPrefixes()) {
+		destPrefixes = split(dbRow["fraud_dest_prefixes"].c_str(), ",", true);
+		for(unsigned i = 0; i < destPrefixes.size(); i++) {
+			size_t posCountryCodeSeparator = destPrefixes[i].find('/');
+			if(posCountryCodeSeparator != string::npos) {
+				destPrefixes[i].resize(posCountryCodeSeparator);
+			}
+		}
+	}
 	if(defInterval()) {
 		intervalLength = atol(dbRow["fraud_interval_length"].c_str());
 		intervalLimit = atol(dbRow["fraud_interval_limit"].c_str());
@@ -692,6 +701,21 @@ bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
 	}
 	if(this->defFilterNumber2() && !this->phoneNumberFilter2.checkNumber(callInfo->called_number.c_str())) {
 		return(false);
+	}
+	if(this->defDestPrefixes() && this->destPrefixes.size()) {
+		if(!callInfo->country_prefix_called.length()) {
+			return(false);
+		}
+		bool ok = false;
+		for(unsigned i = 0; i < this->destPrefixes.size(); i++) {
+			if(this->destPrefixes[i] == callInfo->country_prefix_called) {
+				ok = true;
+				break;
+			}
+		}
+		if(!ok) {
+			return(false);
+		}
 	}
 	return(true);
 }
@@ -2232,8 +2256,9 @@ void FraudAlerts::completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, 
 		string *rslt_continent_code = i == 0 ? &numberInfo->continent_code_caller_number : &numberInfo->continent_code_called_number;
 		string *rslt_country2_code = i == 0 ? &numberInfo->country2_code_caller_number : &numberInfo->country2_code_called_number;
 		string *rslt_continent2_code = i == 0 ? &numberInfo->continent2_code_caller_number : &numberInfo->continent2_code_called_number;
+		string *rslt_country_prefix = i == 0 ? &numberInfo->country_prefix_caller : &numberInfo->country_prefix_called;
 		vector<string> countries;
-		if(countryPrefixes->getCountry(number->c_str(), &countries, checkInternational) != "" &&
+		if(countryPrefixes->getCountry(number->c_str(), &countries, rslt_country_prefix, checkInternational) != "" &&
 		   countries.size()) {
 			*rslt_country_code = countries[0];
 			*rslt_continent_code = countryCodes->getContinent(countries[0].c_str());

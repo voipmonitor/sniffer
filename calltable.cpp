@@ -111,6 +111,7 @@ extern int opt_saverfc2833;
 extern int opt_dbdtmf;
 extern int opt_dscp;
 extern int opt_cdrproxy;
+extern int opt_messageproxy;
 extern int opt_pcap_dump_tar;
 extern struct pcap_stat pcapstat;
 extern int opt_filesclean;
@@ -145,6 +146,7 @@ extern int opt_saveudptl;
 extern rtp_read_thread *rtp_threads;
 extern bool opt_rtpmap_by_callerd;
 extern bool opt_rtpmap_combination;
+extern int opt_register_timeout_disable_save_failed;
 
 volatile int calls_counter = 0;
 volatile int registers_counter = 0;
@@ -165,6 +167,7 @@ extern char opt_callidmerge_header[128];
 extern int opt_sdp_multiplication;
 extern int opt_hide_message_content;
 extern char opt_hide_message_content_secret[1024];
+extern vector<string> opt_message_body_url_reg;
 
 SqlDb *sqlDbSaveCall = NULL;
 extern sExistsColumns existsColumns;
@@ -226,6 +229,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	byecseq[0] = '\0';
 	invitecseq[0] = '\0';
 	cancelcseq[0] = '\0';
+	updatecseq[0] = '\0';
 	sighup = false;
 	progress_time = 0;
 	first_rtp_time = 0;
@@ -276,7 +280,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	custom_header1[0] = '\0';
 	match_header[0] = '\0';
 	if(type == INVITE && is_enable_rtp_threads() && num_threads_active > 0) {
-		thread_num = get_index_rtp_read_thread_min_calls(true);
+		thread_num = get_index_rtp_read_thread_min_calls();
 		if(thread_num < 0) {
 			extern void lock_add_remove_rtp_threads();
 			extern void unlock_add_remove_rtp_threads();
@@ -286,8 +290,11 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 			unlock_add_remove_rtp_threads();
 		}
 		gthread_num++;
+		extern int process_rtp_packets_distribute_threads_use;
+		thread_num_rd = process_rtp_packets_distribute_threads_use ? gthread_num % process_rtp_packets_distribute_threads_use : 0;
 	} else {
 		thread_num = 0;
+		thread_num_rd = 0;
 	}
 	recordstopped = 0;
 	dtmfflag = 0;
@@ -659,7 +666,7 @@ Call::dirnamesqlfiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return(-1);
 	}
@@ -698,9 +705,14 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, p
 	this->ip_port[ipport_n].iscaller = iscaller;
 	this->ip_port[ipport_n].sdp_flags = sdp_flags;
 	if(sessid) {
-		memcpy(this->ip_port[ipport_n].sessid, sessid, MAXLEN_SDP_SESSID);
+		strncpy(this->ip_port[ipport_n].sessid, sessid, MAXLEN_SDP_SESSID);
 	} else {
-		memset(this->ip_port[ipport_n].sessid, 0, MAXLEN_SDP_SESSID);
+		this->ip_port[ipport_n].sessid[0] = 0;
+	}
+	if(to) {
+		strncpy(this->ip_port[ipport_n].to, to, MAXLEN_SDP_TO);
+	} else {
+		this->ip_port[ipport_n].to[0] = 0;
 	}
 	nullIpPortInfoRtpStream(ipport_n);
 	
@@ -761,7 +773,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 				}
 				this->ip_port[i].sdp_flags = sdp_flags;
 				calltable->lock_calls_hash();
-				hash_node_call *calls = calltable->hashfind_by_ip_port(addr, port, 0, false);
+				hash_node_call *calls = calltable->hashfind_by_ip_port(addr, port, false);
 				if(calls) {
 					for(hash_node_call *node_call = calls; node_call != NULL; node_call = node_call->next) {
 						node_call->sdp_flags = sdp_flags;
@@ -776,13 +788,13 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 }
 
 void
-Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation) {
+Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation) {
 	if(this->end_call) {
 		return;
 	}
 
 	if(sessid) {
-		int sessidIndex = get_index_by_sessid(sessid, sip_src_addr);
+		int sessidIndex = get_index_by_sessid_to(sessid, to, sip_src_addr);
 		if(sessidIndex >= 0) {
 			if(this->ip_port[sessidIndex].sip_src_addr == sip_src_addr &&
 			   (this->ip_port[sessidIndex].addr != addr ||
@@ -809,7 +821,7 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 			return;
 		}
 	}
-	if(this->add_ip_port(sip_src_addr, addr, port, header, sessid, iscaller, rtpmap, sdp_flags) != -1) {
+	if(this->add_ip_port(sip_src_addr, addr, port, header, sessid, to, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, this, iscaller, 0, sdp_flags, allowrelation);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, this, iscaller, 1, sdp_flags, 0);
@@ -843,22 +855,11 @@ Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
 	return -1;
 }
 
-Call*
-Call::find_by_sessid(char *sessid){
-	for(int i = 0; i < ipport_n; i++) {
-		if(!memcmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID)) {
-			// we have found it
-			return this;
-		}
-	}
-	// not found
-	return NULL;
-}
-
 int
-Call::get_index_by_sessid(char *sessid, in_addr_t sip_src_addr){
+Call::get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr){
 	for(int i = 0; i < ipport_n; i++) {
-		if(!memcmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID) &&
+		if(!strncmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID) &&
+		   !strncmp(this->ip_port[i].to, to, MAXLEN_SDP_TO) &&
 		   (!sip_src_addr || sip_src_addr == this->ip_port[i].sip_src_addr)) {
 			// we have found it
 			return i;
@@ -2117,8 +2118,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr_reason_sip,
 			cdr_reason_q850,
 			cdr_ua_a,
-			cdr_ua_b,	
-			cdr_proxy;
+			cdr_ua_b;
 	char _cdr_next_ch_name[CDR_NEXT_MAX][100];
 	char *cdr_next_ch_name[CDR_NEXT_MAX];
 	for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
@@ -2140,28 +2140,17 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	u_int64_t cdr_flags = 0;
 
 	string query_str_cdrproxy;
-
 	if(opt_cdrproxy) {
-
-		// remove duplicates
-		list<unsigned int>::iterator iter = proxies.begin();
 		set<unsigned int> proxies_undup;
-		while (iter != proxies.end()) {
-			if (proxies_undup.find(*iter) == proxies_undup.end()) {
-				proxies_undup.insert(*iter);
-			}
-			++iter;
-		}
-
+		this->proxies_undup(&proxies_undup);
 		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
-		while (iter_undup != proxies_undup.end()) {
+		while(iter_undup != proxies_undup.end()) {
 			if(*iter_undup == sipcalledip[0]) { ++iter_undup; continue; };
 			SqlDb_row cdrproxy;
 			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 			cdrproxy.add(htonl(*iter_undup), "dst");
 			query_str_cdrproxy += sqlDbSaveCall->insertQuery("cdr_proxy", cdrproxy) + ";\n";
-
 			++iter_undup;
 		}
 	}
@@ -2388,13 +2377,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(!rtp[indexes[k]]->iscaller && (!rtpab[1] || rtp[indexes[k]]->stats.received > rtpab[1]->stats.received)) {
 				rtpab[1] = rtp[indexes[k]];
 			}
-		}
-
-		if(a_ua[0]) {
-			cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
-		}
-		if(b_ua[0]) {
-			cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
 		}
 
 		if(opt_silencedetect && existsColumns.cdr_silencedetect) {
@@ -2898,10 +2880,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			reason_q850_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_reason_table, "id", "reason", cdr_reason_q850, "type");
 		}
 	}
-	if(a_ua[0] && cdr_ua_a) {
+	if(a_ua[0]) {
+		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
 		a_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
 	}
-	if(b_ua[0] && cdr_ua_b) {
+	if(b_ua[0]) {
+		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
 		b_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
 	}
 
@@ -2929,27 +2913,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(cdrID > 0) {
 
 		if(opt_cdrproxy) {
-			// remove duplicates
-			list<unsigned int>::iterator iter = proxies.begin();
-			set<unsigned int> elements;
-			while (iter != proxies.end()) {
-				if (elements.find(*iter) != elements.end()) {
-					iter = proxies.erase(iter);
-				} else {
-					elements.insert(*iter);
-					++iter;
-				}
-			}
-
-			iter = proxies.begin();
-			while (iter != proxies.end()) {
-				if(*iter == sipcalledip[0]) { ++iter; continue; };
+			set<unsigned int> proxies_undup;
+			this->proxies_undup(&proxies_undup);
+			set<unsigned int>::iterator iter_undup = proxies_undup.begin();
+			while(iter_undup != proxies_undup.end()) {
 				SqlDb_row cdrproxy;
 				cdrproxy.add(cdrID, "cdr_ID");
 				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-				cdrproxy.add(htonl(*iter), "dst");
+				cdrproxy.add(htonl(*iter_undup), "dst");
 				sqlDbSaveCall->insert("cdr_proxy", cdrproxy);
-				++iter;
+				++iter_undup;
 			}
 		}
 
@@ -3523,6 +3496,23 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		msg_next_ch_name[i] = _msg_next_ch_name[i];
 	}
 
+	string query_str_messageproxy;
+
+	if(opt_messageproxy) {
+		set<unsigned int> proxies_undup;
+		this->proxies_undup(&proxies_undup);
+		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
+		while (iter_undup != proxies_undup.end()) {
+			if(*iter_undup == sipcalledip[0]) { ++iter_undup; continue; };
+			SqlDb_row messageproxy;
+			messageproxy.add("_\\_'SQL'_\\_:@msg_id", "message_ID");
+			messageproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			messageproxy.add(htonl(*iter_undup), "dst");
+			query_str_messageproxy += sqlDbSaveCall->insertQuery("message_proxy", messageproxy) + ";\n";
+			++iter_undup;
+		}
+	}
+	
 	if(useSensorId > -1) {
 		cdr.add(useSensorId, "id_sensor");
 	}
@@ -3546,18 +3536,25 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	cdr.add(sqlEscapeString(fbasename), "fbasename");
 	if(message || message_info) {
 		string message_save;
+		bool message_is_url = false;
 		if(message) {
-			if(flags & FLAG_HIDEMESSAGE) {
+			for(unsigned i = 0; i < opt_message_body_url_reg.size(); i++) {
+				if(reg_match(message, opt_message_body_url_reg[i].c_str(), __FILE__, __LINE__)) {
+					message_is_url = true;
+					break;
+				}
+			}
+			if((flags & FLAG_HIDEMESSAGE) && !message_is_url) {
 				message_save = "SHA256: " + GetStringSHA256(trim_str(message) + trim_str(opt_hide_message_content_secret));
 			} else {
 				message_save = message;
 			}
 		}
-		if(message_info) {
+		if(message_is_url || message_info) {
 			if(message) {
 				message_save += '\n';
 			}
-			message_save += string("_INF:") + message_info;
+			message_save += string("_INF:") + (message_is_url ? "URL" : message_info);
 		}
 		cdr.add(sqlEscapeString(message_save), "message");
 	}
@@ -3628,31 +3625,29 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			query_str += "__NEXT_PASS_QUERY_END__";
 		}
 		
-		query_str += sqlDbSaveCall->insertQuery("message", cdr);
+		query_str += sqlDbSaveCall->insertQuery("message", cdr) + ";\n";
 
+		query_str += "if row_count() > 0 then\n";
+		query_str += "set @msg_id = last_insert_id();\n";
+		
 		bool existsNextCh = false;
 		for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
 			if(msg_next_ch_name[i][0]) {
+				msg_next_ch[i].add("_\\_'SQL'_\\_:@msg_id", "message_ID");
+				query_str += sqlDbSaveCall->insertQuery(msg_next_ch_name[i], msg_next_ch[i]) + ";\n";
 				existsNextCh = true;
 			}
 		}
-		if(existsNextCh) {
-			query_str += string(";\n") + "if row_count() > 0 then\n";
-			query_str += "set @msg_id = last_insert_id();\n";
-			for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
-				if(msg_next_ch_name[i][0]) {
-					msg_next_ch[i].add("_\\_'SQL'_\\_:@msg_id", "message_ID");
-					query_str += sqlDbSaveCall->insertQuery(msg_next_ch_name[i], msg_next_ch[i]) + ";\n";
-				}
+		if(existsNextCh && custom_headers_message) {
+			string queryForSaveUseInfo = custom_headers_message->getQueryForSaveUseInfo(this);
+			if(!queryForSaveUseInfo.empty()) {
+				query_str += queryForSaveUseInfo + ";\n";
 			}
-			if(custom_headers_message) {
-				string queryForSaveUseInfo = custom_headers_message->getQueryForSaveUseInfo(this);
-				if(!queryForSaveUseInfo.empty()) {
-					query_str += queryForSaveUseInfo + ";\n";
-				}
-			}
-			query_str += "end if";
 		}
+		
+		query_str += query_str_messageproxy;
+		
+		query_str += "end if";
 		
 		if(opt_message_check_duplicity_callid_in_next_pass_insert) {
 			// check if exists call-id - end if
@@ -3698,16 +3693,34 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	cdr.add(a_ua_id, "a_ua_id", true);
 	cdr.add(b_ua_id, "b_ua_id", true);
 
-	int cdrID = sqlDbSaveCall->insert("message", cdr);
-
-	for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
-		if(msg_next_ch_name[i][0]) {
-			msg_next_ch[i].add(cdrID, "message_ID");
-			sqlDbSaveCall->insert(msg_next_ch_name[i], msg_next_ch[i]);
+	int msgID = sqlDbSaveCall->insert("message", cdr);
+	
+	if(msgID > 0) {
+	
+		if(opt_messageproxy) {
+			set<unsigned int> proxies_undup;
+			this->proxies_undup(&proxies_undup);
+			set<unsigned int>::iterator iter_undup = proxies_undup.begin();
+			while(iter_undup != proxies_undup.end()) {
+				SqlDb_row messageproxy;
+				messageproxy.add(msgID, "message_ID");
+				messageproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				messageproxy.add(htonl(*iter_undup), "dst");
+				sqlDbSaveCall->insert("message_proxy", messageproxy);
+				++iter_undup;
+			}
 		}
+		
+		for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+			if(msg_next_ch_name[i][0]) {
+				msg_next_ch[i].add(msgID, "message_ID");
+				sqlDbSaveCall->insert(msg_next_ch_name[i], msg_next_ch[i]);
+			}
+		}
+	
 	}
 
-	return(cdrID <= 0);
+	return(msgID <= 0);
 
 }
 
@@ -3873,6 +3886,16 @@ void Call::adjustUA() {
 	}
 }
 
+void Call::proxies_undup(set<unsigned int> *proxies_undup) {
+	list<unsigned int>::iterator iter = proxies.begin();
+	while (iter != proxies.end()) {
+		if (proxies_undup->find(*iter) == proxies_undup->end()) {
+			proxies_undup->insert(*iter);
+		}
+		++iter;
+	}
+}
+
 void Call::createListeningBuffers() {
 	pthread_mutex_lock(&listening_worker_run_lock);
 	if(audiobuffer1) {
@@ -3999,6 +4022,7 @@ Calltable::~Calltable() {
 /* add node to hash. collisions are linked list of nodes*/
 void
 Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, int allowrelation) {
+	//cout << "hashAdd: " << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << endl;
 	if(call->end_call) {
 		return;
 	}
@@ -4109,6 +4133,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 void
 Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp) {
  
+	//cout << "hashRemove: " << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << endl;
 	hash_node *node = NULL, *prev = NULL;
 	hash_node_call *node_call = NULL, *prev_call = NULL;
 	int h;
@@ -4300,32 +4325,6 @@ Calltable::destroyRegistersIfPcapsClosed() {
 	this->unlock_registers_deletequeue();
 }
 
-/* find call in hash */
-hash_node_call*
-Calltable::hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash, bool lock) {
-	hash_node *node = NULL;
-	u_int32_t h;
-
-	h = hash ? hash : tuplehash(addr, port);
-	if(lock) {
-		lock_calls_hash();
-	}
-	hash_node_call *rslt = NULL;
-	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
-		if ((node->addr == addr) && (node->port == port)) {
-			rslt = node->calls;
-//			*iscaller = node->iscaller;
-//			*is_rtcp = node->is_rtcp;
-//			*is_fax = node->is_fax;
-//			return node->call;
-		}
-	}
-	if(lock) {
-		unlock_calls_hash();
-	}
-	return rslt;
-}
-
 Call*
 Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
 	       pcap_t *handle, int dlt, int sensorId) {
@@ -4457,7 +4456,7 @@ Calltable::cleanup_calls( time_t currtime ) {
 		}
 		if(closeCall) {
 			call->removeFindTables(true);
-			if(call->rtppacketsinqueue != 0) {
+			if(currtime && call->rtppacketsinqueue != 0) {
 				closeCall = false;
 			}
 		}
@@ -4476,9 +4475,6 @@ Calltable::cleanup_calls( time_t currtime ) {
 		call = closeCalls[i];
 		if(verbosity && verbosityE > 1) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
-		}
-		if(currtime == 0 && call->rtppacketsinqueue) {
-			syslog(LOG_WARNING, "force destroy call (rtppacketsinqueue > 0)");
 		}
 		// Close RTP dump file ASAP to save file handles
 		if(currtime == 0 && is_terminating()) {
@@ -4592,7 +4588,14 @@ Calltable::cleanup_registers( time_t currtime ) {
 				reg->push_register_to_registers_queue = 1;
 				if(opt_sip_register == 1) {
 					extern Registers registers;
-					registers.add(reg);
+					if(reg->msgcount <= 1 || 
+					   reg->lastSIPresponseNum == 401 || reg->lastSIPresponseNum == 403 || reg->lastSIPresponseNum == 404) {
+						reg->regstate = 2;
+					}
+					if(reg->regstate != 2 ||
+					   !opt_register_timeout_disable_save_failed) {
+						registers.add(reg);
+					}
 					reg->getPcap()->close();
 					reg->getPcapSip()->close();
 					lock_registers_deletequeue();

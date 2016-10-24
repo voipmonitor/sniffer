@@ -190,6 +190,7 @@ int opt_pcap_queue_use_blocks				= 0;
 int opt_pcap_queue_use_blocks_read_check		= 1;
 int opt_pcap_dispatch					= 0;
 int opt_pcap_queue_suppress_t1_thread			= 0;
+int opt_pcap_queue_block_timeout			= 0;
 bool opt_pcap_queues_mirror_nonblock_mode 		= true;
 bool opt_pcap_queues_mirror_require_confirmation	= true;
 bool opt_pcap_queues_mirror_use_checksum		= true;
@@ -368,6 +369,11 @@ bool pcap_block_store::get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **
 			sleep(1);
 		}
 	}
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
+	if(this->count >= DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH) {
+		return(false);
+	}
+	#endif
 	if(!this->offsets_size) {
 		this->offsets_size = _opt_pcap_queue_block_offset_init_size;
 		this->offsets = new FILE_LINE(16009) uint32_t[this->offsets_size];
@@ -585,7 +591,11 @@ bool pcap_block_store::compress_snappy() {
 	switch(snappyRslt) {
 		case SNAPPY_OK:
 			delete [] this->block;
-			this->block = (u_char*)realloc_object(snappyBuff, snappyBuffSize, __FILE__, __LINE__, 16015);
+			#if HEAPSAFE
+				this->block = (u_char*)realloc_object(snappyBuff, snappyBuffSize, __FILE__, __LINE__, 16015);
+			#else
+				this->block = (u_char*)realloc(snappyBuff, snappyBuffSize);
+			#endif
 			this->size_compress = snappyBuffSize;
 			sumPacketsSizeCompress[0] += this->size_compress;
 			return(true);
@@ -1145,6 +1155,7 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->counter_all_packets_old = 0;
 	this->lastTimeLogErrPcapNextExNullPacket = 0;
 	this->lastTimeLogErrPcapNextExErrorReading = 0;
+	this->pcapStatCounter = 0;
 }
 
 PcapQueue::~PcapQueue() {
@@ -1198,6 +1209,8 @@ void PcapQueue::setInstancePcapFifo(PcapQueue_readFromFifo *pcapQueue) {
 }
 
 void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
+ 
+	++pcapStatCounter;
 
 	sumPacketsCounterIn[2] = sumPacketsCounterIn[0] - sumPacketsCounterIn[1];
 	sumPacketsCounterIn[1] = sumPacketsCounterIn[0];
@@ -1250,8 +1263,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	double rrdmem_rss = 0;
 //rrd net bw to voipmonitor file 2db-speedmbs.rrd
 	double rrdspeedmbs = 0.0;
-//rrd calls counter file 2db-callscounter.rrd
-	int rrdcallscounter = 0;
+//rrd calls counter file 3db-callscounter.rrd
+	int rrdcalls_inv_counter = 0;
+	int rrdcalls_reg_counter = 0;
 //rrd Load Average consumption file db-la.rrd
 	double rrdLA_1 = 0.0;
 	double rrdLA_5 = 0.0;
@@ -1318,6 +1332,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc = buffersControl.getPercUsePBwithouttrash();
 		heapPerc = memoryBufferPerc;
 		double memoryBufferPerc_trash = buffersControl.getPercUsePBtrash();
+		if(sverb.abort_if_heap_full &&
+		   (memoryBufferPerc + memoryBufferPerc_trash) > 98) {
+			syslog(LOG_ERR, "HEAP FULL - ABORT!");
+			abort();
+		}
 		outStr << fixed;
 		if(!this->isMirrorSender()) {
 			outStr << "calls[" << calltable->calls_listMAP.size() << ",r:" << calltable->registers_listMAP.size() << "]"
@@ -1340,7 +1359,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(opt_ipaccount) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
 			}
-			if (opt_rrd) rrdcallscounter = calltable->calls_listMAP.size();
+			if (opt_rrd) {
+				rrdcalls_inv_counter = calltable->calls_listMAP.size();
+				rrdcalls_reg_counter = calltable->registers_listMAP.size();
+			}
 			extern u_int64_t counter_calls;
 			extern u_int64_t counter_calls_clean;
 			extern u_int64_t counter_registers;
@@ -1604,7 +1626,17 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 		}
 		outStr << "heap[" << setprecision(0) << memoryBufferPerc << "|"
-				  << setprecision(0) << memoryBufferPerc_trash << "|";
+				  << setprecision(0) << memoryBufferPerc_trash;
+		if(sverb.heap_use_time) {
+			unsigned long trashMinTime;
+			unsigned long trashMaxTime;
+			buffersControl.PcapQueue_readFromFifo__blockStoreTrash_time_get(&trashMinTime, &trashMaxTime);
+			buffersControl.PcapQueue_readFromFifo__blockStoreTrash_time_clear();
+			if(trashMinTime || trashMaxTime) {
+				outStr << "(" << trashMinTime << "-" << trashMaxTime << "ms)";
+			}
+		}
+		outStr << "|";
 		if(opt_rrd) {
 			rrdheap_buffer = memoryBufferPerc;
 			rrdheap_ratio = buffersControl.getPercUseAsync();
@@ -1895,7 +1927,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					add_rtp_read_thread();
 				}
 			} else if(num_threads_active > 1 &&
-				  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread) {
+				  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread &&
+				  pcapStatCounter > 100) {
 				set_remove_rtp_read_thread();
 			}
 		}
@@ -1981,6 +2014,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	outStrStat << "]MB ";
 	outStrStat << "LA[" << getLoadAvgStr() << "] ";
 	outStrStat << "v" << RTPSENSOR_VERSION << " ";
+	//outStrStat << pcapStatCounter << " ";
 	if (opt_rrd) {
 		getLoadAvg(&rrdLA_1, &rrdLA_5, &rrdLA_15);
 	}
@@ -2055,7 +2089,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			vm_rrd_create_rrdmemusage(filename);
 			sprintf(filename, "%s/rrd/2db-speedmbs.rrd", opt_chdir);
 			vm_rrd_create_rrdspeedmbs(filename);
-			sprintf(filename, "%s/rrd/2db-callscounter.rrd", opt_chdir);
+			sprintf(filename, "%s/rrd/3db-callscounter.rrd", opt_chdir);
 			vm_rrd_create_rrdcallscounter(filename);
 			sprintf(filename, "%s/rrd/db-LA.rrd", opt_chdir);
 			vm_rrd_create_rrdloadaverages(filename);
@@ -2135,8 +2169,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
 		//update rrdcallscounter;
 		cmdUpdate.str(std::string());
-		cmdUpdate << "N:" << rrdcallscounter;
-		sprintf(filename, "%s/rrd/2db-callscounter.rrd", opt_chdir);
+		cmdUpdate << "N:" << rrdcalls_inv_counter;
+		cmdUpdate << ":" << rrdcalls_reg_counter;
+		sprintf(filename, "%s/rrd/3db-callscounter.rrd", opt_chdir);
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdLA;
@@ -2858,6 +2893,7 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod
 		int pcapstatres = pcap_stats(this->pcapHandle, &ps);
 		if(pcapstatres == 0) {
 			if(ps.ps_recv >= this->last_ps.ps_recv) {
+				extern int opt_pcap_ifdrop_limit;
 				bool pcapdrop = false;
 				bool ifdrop = false;
 				if(ps.ps_drop > this->last_ps.ps_drop) {
@@ -2866,18 +2902,21 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod
 					pcap_drop_flag = 1;
 				}
 				if(ps.ps_ifdrop > this->last_ps.ps_ifdrop &&
-				   (ps.ps_ifdrop - this->last_ps.ps_ifdrop) > (ps.ps_recv - this->last_ps.ps_recv) * 0.2) {
+				   (ps.ps_ifdrop - this->last_ps.ps_ifdrop) > (ps.ps_recv - this->last_ps.ps_recv) * opt_pcap_ifdrop_limit / 100) {
 					ifdrop = true;
 				}
 				if(pcapdrop || ifdrop) {
-					outStr << "DROPPED PACKETS - " << this->getInterfaceName() << ": "
+					outStr << fixed
+					       << "DROPPED PACKETS - " << this->getInterfaceName() << ": "
 					       << "libpcap or interface dropped some packets!"
-					       << " rx:" << ps.ps_recv;
+					       << " rx:" << (ps.ps_recv - this->last_ps.ps_recv);
 					if(pcapdrop) {
-						outStr << " pcapdrop:" << ps.ps_drop - this->last_ps.ps_drop;
+						outStr << " pcapdrop:" << (ps.ps_drop - this->last_ps.ps_drop) << " " 
+						       << setprecision(1) << ((double)(ps.ps_drop - this->last_ps.ps_drop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%%";
 					}
 					if(ifdrop) {
-						outStr << " ifdrop:" << ps.ps_ifdrop - this->last_ps.ps_ifdrop;
+						outStr << " ifdrop:" << (ps.ps_ifdrop - this->last_ps.ps_ifdrop) << " " 
+						       << setprecision(1) << ((double)(ps.ps_ifdrop - this->last_ps.ps_ifdrop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%%";
 					}
 					outStr << endl
 					       << "     increase --ring-buffer (kernel >= 2.6.31 and libpcap >= 1.0.0)" 
@@ -5945,6 +5984,7 @@ bool PcapQueue_readFromFifo::socketConnect() {
 	addr.sin_addr.s_addr = this->socketHostIPl;
 	if(connect(this->socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		syslog(LOG_ERR, "packetbuffer %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), inet_ntostring(htonl(this->socketHostIPl)).c_str(), strerror(errno));
+		this->socketClose();
 		return(false);
 	}
 	int flag = 1;
@@ -6368,9 +6408,12 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			return(1);
 		} else {
 			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-				false /*is_ssl*/, packet_counter_all,
+				false /*is_ssl*/, 
+				#if USE_PACKET_NUMBER
+				packet_counter_all,
+				#endif
 				header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest),
-				data, datalen, data - (char*)hp->packet,
+				datalen, data - (char*)hp->packet,
 				this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
 				istcp, header_ip,
 				hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip,
@@ -6416,13 +6459,24 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 		cout << "COUNT REST PACKETBUFFER BLOCKS: " << this->blockStoreTrash.size() << endl;
 	}
 	lock_blockStoreTrash();
-	for(int i = 0; i < ((int)this->blockStoreTrash.size() - (all ? 0 : 2)); i++) {
+	for(int i = 0; i < ((int)this->blockStoreTrash.size() - (all ? 0 : 5)); i++) {
+		bool del = false;
 		if(all || this->blockStoreTrash[i]->enableDestroy()) {
+			del = true;
+		} else if(opt_pcap_queue_block_timeout &&
+			  (this->blockStoreTrash[this->blockStoreTrash.size() - 1]->timestampMS - this->blockStoreTrash[i]->timestampMS) > (unsigned)opt_pcap_queue_block_timeout * 1000) {
+			syslog(LOG_NOTICE, "force destroy packetbuffer blok - use packets: %i", this->blockStoreTrash[i]->_sync_packet_lock);
+			del = true;
+		}
+		if(del) {
 			buffersControl.sub__PcapQueue_readFromFifo__blockStoreTrash_size(this->blockStoreTrash[i]->getUseSize());
 			delete this->blockStoreTrash[i];
 			this->blockStoreTrash.erase(this->blockStoreTrash.begin() + i);
 			--i;
 		}
+	}
+	if(this->blockStoreTrash.size()) {
+		buffersControl.PcapQueue_readFromFifo__blockStoreTrash_time_set(this->blockStoreTrash[this->blockStoreTrash.size() - 1]->timestampMS - this->blockStoreTrash[0]->timestampMS);
 	}
 	unlock_blockStoreTrash();
 }
@@ -6449,10 +6503,15 @@ inline void *_PcapQueue_outputThread_outThreadFunction(void *arg) {
 
 PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThread, PcapQueue_readFromFifo *pcapQueue) {
 	extern unsigned int opt_preprocess_packets_qring_length;
+	extern unsigned int opt_preprocess_packets_qring_item_length;
 	this->typeOutputThread = typeOutputThread;
 	this->pcapQueue = pcapQueue;
-	this->qring_batch_item_length = min(opt_preprocess_packets_qring_length / 10, 1000u);
-	this->qring_length = opt_preprocess_packets_qring_length / this->qring_batch_item_length;
+	this->qring_batch_item_length = opt_preprocess_packets_qring_item_length ?
+					 opt_preprocess_packets_qring_item_length :
+					 min(opt_preprocess_packets_qring_length / 10, 1000u);
+	this->qring_length = opt_preprocess_packets_qring_item_length ?
+			      opt_preprocess_packets_qring_length :
+			      opt_preprocess_packets_qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
 	this->qring = new FILE_LINE(16060) sBatchHP*[this->qring_length];
@@ -6483,7 +6542,7 @@ void PcapQueue_outputThread::start() {
 
 void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 	if(hp && hp->block_store && !hp->block_store_locked) {
-		hp->block_store->lock_packet(hp->block_store_index);
+		hp->block_store->lock_packet(hp->block_store_index, 1 /*pb lock flag*/);
 		hp->block_store_locked = true;
 	}
 

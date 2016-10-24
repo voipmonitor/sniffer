@@ -206,9 +206,12 @@ public:
 public:
 	PreProcessPacket(eTypePreProcessThread typePreProcessThread);
 	~PreProcessPacket();
-	inline void push_packet(bool is_ssl, u_int64_t packet_number,
+	inline void push_packet(bool is_ssl, 
+				#if USE_PACKET_NUMBER
+				u_int64_t packet_number,
+				#endif
 				unsigned int saddr, int source, unsigned int daddr, int dest, 
-				char *data, int datalen, int dataoffset,
+				int datalen, int dataoffset,
 				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
 				int istcp, struct iphdr2 *header_ip,
 				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, u_int32_t sensor_ip,
@@ -244,12 +247,18 @@ public:
 		packetS.is_need_sip_process = is_ssl ||
 					      sipportmatrix[source] || sipportmatrix[dest] ||
 					      packetS.is_skinny;
-		if(blockstore_lock == 1) {
-			packetS.blockstore_lock();
-		} else if(blockstore_lock == 2) {
-			packetS.blockstore_setlock();
+		extern bool opt_t2_boost;
+		if(!opt_t2_boost ||
+		   packetS.is_need_sip_process ||
+		   datalen > 2 ||
+		   blockstore_lock != 1) {
+			if(blockstore_lock == 1) {
+				packetS.blockstore_lock(3 /*pb lock flag*/);
+			} else if(blockstore_lock == 2) {
+				packetS.blockstore_setlock();
+			}
+			this->push_packet_detach(&packetS);
 		}
-		this->push_packet_detach(&packetS);
 		if(opt_enable_ssl) {
 			this->unlock_push();
 		}
@@ -412,26 +421,13 @@ public:
 			while(this->outThreadState) {
 				usleep(10);
 			}
-			switch(this->typePreProcessThread) {
-			case ppt_detach:
-			#ifdef PREPROCESS_DETACH2
-			case ppt_detach2:
-			#endif
-			case ppt_sip:
-			case ppt_extend:
-				process_packet__push_batch();
-				break;
-			case ppt_pp_call:
-			case ppt_pp_register:
-			case ppt_pp_rtp:
-			case ppt_end:
-				break;
-			}
+			push_batch_nothread();
 		}
 		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
 			this->unlock_push();
 		}
 	}
+	void push_batch_nothread();
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData);
 	void terminate();
@@ -472,19 +468,46 @@ public:
 		}
 		return(packetS);
 	}
+	inline bool check_enable_destroy(packet_s_process_0 *packetS) {
+		if(packetS->is_use_reuse_counter()) {
+			bool enable = false;
+			packetS->reuse_counter_lock();
+			packetS->reuse_counter_dec();
+			enable = packetS->reuse_counter == 0;
+			packetS->reuse_counter_unlock();
+			return(enable);
+		}
+		return(true);
+	}
+	inline bool check_enable_push_to_stack(packet_s_process_0 *packetS) {
+		return(check_enable_destroy(packetS));
+	}
 	inline void packetS_destroy(packet_s_process **packetS) {
+		if(!check_enable_destroy(*packetS)) {
+			return;
+		}
 		(*packetS)->blockstore_unlock();
 		(*packetS)->packetdelete();
 		delete *packetS;
 		*packetS = NULL;
 	}
 	inline void packetS_destroy(packet_s_process_0 **packetS) {
+		if(!check_enable_destroy(*packetS)) {
+			return;
+		}
 		(*packetS)->blockstore_unlock();
 		(*packetS)->packetdelete();
 		delete *packetS;
 		*packetS = NULL;
 	}
 	inline void packetS_push_to_stack(packet_s_process **packetS, u_int16_t queue_index) {
+		if(sverb.t2_destroy_all) {
+			this->packetS_destroy(packetS);
+			return;
+		}
+		if(!check_enable_push_to_stack(*packetS)) {
+			return;
+		}
 		if((*packetS)->_blockstore_lock) {
 			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
 		}
@@ -501,6 +524,13 @@ public:
 		*packetS = NULL;
 	}
 	inline void packetS_push_to_stack(packet_s_process_0 **packetS, u_int16_t queue_index) {
+		if(sverb.t2_destroy_all) {
+			this->packetS_destroy(packetS);
+			return;
+		}
+		if(!check_enable_push_to_stack(*packetS)) {
+			return;
+		}
 		if((*packetS)->_blockstore_lock) {
 			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
 		}
@@ -598,7 +628,6 @@ private:
 	inline void process_parseSipData(packet_s_process **packetS_ref);
 	inline void process_sip(packet_s_process **packetS_ref);
 	inline void process_skinny(packet_s_process **packetS_ref);
-	inline void process_rtp(packet_s_process_0 **packetS_ref);
 	inline bool process_getCallID(packet_s_process **packetS_ref);
 	inline bool process_getCallID_publish(packet_s_process **packetS_ref);
 	inline void process_getSipMethod(packet_s_process **packetS_ref);
@@ -640,6 +669,7 @@ private:
 	unsigned long allocStackCounter[2];
 	u_int64_t getCpuUsagePerc_counter;
 	u_int64_t getCpuUsagePerc_counter_at_start_out_thread;
+	static u_long autoStartNextLevelPreProcessPacket_last_time_s;
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 friend class TcpReassemblySip;
 friend class SipTcpData;
@@ -796,6 +826,7 @@ private:
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
 	void rtp_batch(batch_packet_s_process *batch);
+	inline void rtp_packet_distr(packet_s_process_0 *packetS, int _process_rtp_packets_distribute_threads_use);
 	void find_hash(packet_s_process_0 *packetS, bool lock = true);
 public:
 	eType type;
@@ -818,6 +849,7 @@ private:
 	pstat_data threadPstatData[1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
 	bool term_processRtp;
 	volatile batch_packet_s_process *hash_batch_thread_process[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
+	volatile int *hash_find_flag;
 	sem_t sem_sync_next_thread[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);

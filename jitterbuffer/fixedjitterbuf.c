@@ -184,11 +184,14 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 	//if(debug) fprintf(stdout, "resync_jb: offset %ld, threshold %d force:%d\n", offset, jb->conf.resync_threshold, jb->force_resynch);
 
 
+#if 0
 	if ( !jb->force_resynch && (offset < jb->conf.resync_threshold && offset > -jb->conf.resync_threshold)) {
-		if(debug) fprintf(stdout, "resynch_jb - dropping offset [%lu] < jb->conf.resync_threshold [%lu] && offset [%lu] > -jb->conf.resync_threshol [%lu] | ts[%lu] jb->tail->ts[%lu] jb->tail->ms[%lu]\n", offset, jb->conf.resync_threshold, offset, -jb->conf.resync_threshold, ts, jb->tail->ts, jb->tail->ms);
+		if(debug) fprintf(stdout, "resynch_jb - dropping offset [%ld] < jb->conf.resync_threshold [%ld] && offset [%lu] > -jb->conf.resync_threshol [%ld] | ts[%lu] jb->tail->ts[%lu] jb->tail->ms[%lu]\n", 
+			offset, jb->conf.resync_threshold, offset, -jb->conf.resync_threshold, ts, jb->tail->ts, jb->tail->ms);
 		jb->force_resynch = 0;
 		return FIXED_JB_DROP;
 	}
+#endif
 	
 	/* Reset the force resynch flag */
 	jb->force_resynch = 0;
@@ -202,9 +205,11 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 		frame->ts += offset;
 		frame = frame->next;
 	}
+
+	jb_fixed_flush_deliver(jb->chan);
 	
 	/* now jb_put() should add the frame at a last position */
-	return fixed_jb_put(jb, data, ms, ts, now);
+	return fixed_jb_put_first(jb, data, ms, ts, now);
 }
 
 

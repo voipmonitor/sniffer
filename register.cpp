@@ -7,6 +7,7 @@
 
 #define NEW_REGISTER_CLEAN_PERIOD 30
 #define NEW_REGISTER_UPDATE_FAILED_PERIOD 20
+#define NEW_REGISTER_NEW_RECORD_FAILED 120
 #define NEW_REGISTER_ERASE_FAILED_TIMEOUT 60
 #define NEW_REGISTER_ERASE_TIMEOUT 2*3600
 
@@ -321,6 +322,9 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	if(opt_nocdr) {
 		return;
 	}
+	if(state->state == rs_ManyRegMessages) {
+		return;
+	}
 	if(!sqlDbSaveRegister) {
 		sqlDbSaveRegister = createSqlObject();
 		sqlDbSaveRegister->setEnableSqlStringInContent(true);
@@ -360,7 +364,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 			query_str += string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ");\n";
 			reg.add("_\\_'SQL'_\\_:@ua_id", "ua_id");
 		}
-		query_str += sqlDbSaveRegister->insertQuery(register_table, reg) + ";\n";
+		query_str += sqlDbSaveRegister->insertQuery(register_table, reg, false, false, state->state == rs_Failed) + ";\n";
 		static unsigned int counterSqlStore = 0;
 		int storeId = STORE_PROC_ID_REGISTER_1 + 
 			      (opt_mysqlstore_max_threads_register > 1 &&
@@ -376,33 +380,38 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 }
 
 void Register::saveFailedToDb(RegisterState *state, bool force, bool enableBatchIfPossible) {
+	if(opt_nocdr) {
+		return;
+	}
 	if(state->counter == 1) {
 		saveStateToDb(state);
-	} else if((force || (state->state_to - state->save_at) > NEW_REGISTER_UPDATE_FAILED_PERIOD) &&
-		  state->counter > state->save_at_counter) {
-		if(opt_nocdr) {
-			return;
-		}
-		if(!sqlDbSaveRegister) {
-			sqlDbSaveRegister = createSqlObject();
-			sqlDbSaveRegister->setEnableSqlStringInContent(true);
-		}
-		SqlDb_row row;
-		row.add(state->counter, "counter");
-		if(enableBatchIfPossible && isSqlDriver("mysql")) {
-			string query_str = sqlDbSaveRegister->updateQuery("register_failed", row, 
-									  ("ID = " + intToString(state->db_id)).c_str());
-			static unsigned int counterSqlStore = 0;
-			int storeId = STORE_PROC_ID_REGISTER_1 + 
-				      (opt_mysqlstore_max_threads_register > 1 &&
-				       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
-					counterSqlStore % opt_mysqlstore_max_threads_register : 
-					0);
-			++counterSqlStore;
-			sqlStore->query_lock(query_str.c_str(), storeId);
-		} else {
-			sqlDbSaveRegister->update("register_failed", row, 
-						  ("ID = " + intToString(state->db_id)).c_str());
+	} else if(state->counter > state->save_at_counter) {
+		if(!force && (state->state_to - state->state_from) > NEW_REGISTER_NEW_RECORD_FAILED) {
+			state->state_from = state->state_to;
+			state->counter -= state->save_at_counter;
+			saveStateToDb(state);
+		} else if(force || (state->state_to - state->save_at) > NEW_REGISTER_UPDATE_FAILED_PERIOD) {
+			if(!sqlDbSaveRegister) {
+				sqlDbSaveRegister = createSqlObject();
+				sqlDbSaveRegister->setEnableSqlStringInContent(true);
+			}
+			SqlDb_row row;
+			row.add(state->counter, "counter");
+			if(enableBatchIfPossible && isSqlDriver("mysql")) {
+				string query_str = sqlDbSaveRegister->updateQuery("register_failed", row, 
+										  ("ID = " + intToString(state->db_id)).c_str());
+				static unsigned int counterSqlStore = 0;
+				int storeId = STORE_PROC_ID_REGISTER_1 + 
+					      (opt_mysqlstore_max_threads_register > 1 &&
+					       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
+						counterSqlStore % opt_mysqlstore_max_threads_register : 
+						0);
+				++counterSqlStore;
+				sqlStore->query_lock(query_str.c_str(), storeId);
+			} else {
+				sqlDbSaveRegister->update("register_failed", row, 
+							  ("ID = " + intToString(state->db_id)).c_str());
+			}
 		}
 	}
 	state->save_at = state->state_to;

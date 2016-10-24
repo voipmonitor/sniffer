@@ -28,6 +28,8 @@
 #define IP_MF           0x2000          /* Flag: "More Fragments"       */
 #define IP_OFFSET       0x1FFF          /* "Fragment Offset" part       */
 
+#define MAX_LENGTH_CALL_INFO 20
+
 struct iphdr2 {
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 	unsigned int ihl:4;
@@ -58,7 +60,7 @@ void *rtp_read_thread_func(void *arg);
 void add_rtp_read_thread();
 void set_remove_rtp_read_thread();
 int get_index_rtp_read_thread_min_size();
-int get_index_rtp_read_thread_min_calls(bool incCalls);
+int get_index_rtp_read_thread_min_calls();
 double get_rtp_sum_cpu_usage(double *max = NULL);
 string get_rtp_threads_cpu_usage(bool callPstat);
 
@@ -129,9 +131,15 @@ struct packet_s {
 		_blockstore_lock = false;
 		_packet_alloc = false;
 	}
-	inline void blockstore_lock() {
+	inline void blockstore_lock(int lock_flag) {
 		if(!_blockstore_lock && block_store) {
-			block_store->lock_packet(block_store_index);
+			block_store->lock_packet(block_store_index, lock_flag);
+			_blockstore_lock = true;
+		}
+	}
+	inline void blockstore_forcelock(int lock_flag) {
+		if(block_store) {
+			block_store->lock_packet(block_store_index, lock_flag);
 			_blockstore_lock = true;
 		}
 	}
@@ -140,9 +148,9 @@ struct packet_s {
 			_blockstore_lock = true;
 		}
 	}
-	inline void blockstore_relock(int check_limit_lock = 0) {
+	inline void blockstore_relock(int lock_flag) {
 		if(_blockstore_lock && block_store) {
-			block_store->lock_packet(block_store_index, check_limit_lock);
+			block_store->lock_packet(block_store_index, lock_flag);
 		}
 	}
 	inline void blockstore_unlock() {
@@ -151,10 +159,22 @@ struct packet_s {
 			_blockstore_lock = false;
 		}
 	}
+	inline void blockstore_forceunlock() {
+		if(block_store && !is_terminating()) {
+			block_store->unlock_packet(block_store_index);
+		}
+	}
 	inline void blockstore_clear() {
 		block_store = NULL; 
 		block_store_index = 0; 
 		_blockstore_lock = false;
+	}
+	inline void blockstore_addflag(int flag) {
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		if(_blockstore_lock && block_store) {
+			block_store->add_flag(block_store_index, flag);
+		}
+		#endif
 	}
 	inline void packetdelete() {
 		if(_packet_alloc) {
@@ -181,13 +201,14 @@ struct packet_s_process_0 : public packet_s {
 	char *data;
 	struct iphdr2 *header_ip; 
 	cHeapItemsPointerStack *stack;
+	u_int8_t use_reuse_counter;
+	volatile u_int8_t reuse_counter;
+	volatile u_int8_t reuse_counter_sync;
 	int isSip;
 	bool isSkinny;
-	unsigned int hash[2];
-	packet_s_process_rtp_call_info call_info[20];
+	packet_s_process_rtp_call_info call_info[MAX_LENGTH_CALL_INFO];
 	int call_info_length;
 	bool call_info_find_by_dest;
-	volatile int hash_find_flag;
 	inline packet_s_process_0() {
 		init();
 		init2();
@@ -195,15 +216,54 @@ struct packet_s_process_0 : public packet_s {
 	inline void init() {
 		packet_s::init();
 		stack = NULL;
+		use_reuse_counter = 0;
+	}
+	inline void init_reuse() {
+		use_reuse_counter = 0;
+		reuse_counter = 0;
+		reuse_counter_sync = 0;
 	}
 	inline void init2() {
 		data = (char*)(packet + dataoffset);
 		header_ip = (iphdr2*)(packet + header_ip_offset);
 		isSip = -1;
 		isSkinny = false;
-		hash[0] = 0;
-		hash[1] = 0;
 		call_info_length = -1;
+		init_reuse();
+	}
+	inline void init2_rtp() {
+		data = (char*)(packet + dataoffset);
+		header_ip = (iphdr2*)(packet + header_ip_offset);
+		call_info_length = -1;
+		init_reuse();
+	}
+	inline void new_alloc_packet_header() {
+		pcap_pkthdr *header_pt_new = new FILE_LINE(28001) pcap_pkthdr;
+		u_char *packet_new = new FILE_LINE(28002) u_char[header_pt->caplen];
+		*header_pt_new = *header_pt;
+		memcpy(packet_new, packet, header_pt->caplen);
+		header_pt = header_pt_new;
+		packet = packet_new;
+		data = (char*)(packet + dataoffset);
+		header_ip = (iphdr2*)(packet + header_ip_offset);
+	}
+	inline void set_use_reuse_counter() {
+		use_reuse_counter = 1;
+	}
+	inline bool is_use_reuse_counter() {
+		return(use_reuse_counter);
+	}
+	inline void reuse_counter_inc_sync(u_int8_t inc = 1) {
+		__sync_add_and_fetch(&reuse_counter, inc);
+	}
+	inline void reuse_counter_dec() {
+		--reuse_counter;
+	}
+	inline void reuse_counter_lock() {
+		while(__sync_lock_test_and_set(&reuse_counter_sync, 1));
+	}
+	inline void reuse_counter_unlock() {
+		__sync_lock_release(&reuse_counter_sync);
 	}
 };
 
@@ -211,8 +271,7 @@ struct packet_s_process : public packet_s_process_0 {
 	ParsePacket::ppContentsX parseContents;
 	u_int32_t sipDataOffset;
 	u_int32_t sipDataLen;
-	char callid_short[128];
-	string callid_long;
+	char callid[CALLID_MAX_LENGTH + 1];
 	int sip_method;
 	bool is_register;
 	bool sip_response;
@@ -238,8 +297,7 @@ struct packet_s_process : public packet_s_process_0 {
 		packet_s_process_0::init2();
 		sipDataOffset = 0;
 		sipDataLen = 0;
-		callid_short[0] = 0;
-		callid_long.resize(0);
+		callid[0] = 0;
 		sip_method = -1;
 		is_register = false;
 		sip_response = false;
@@ -255,29 +313,18 @@ struct packet_s_process : public packet_s_process_0 {
 		_findCall = false;
 		_createCall = false;
 	}
-	void set_callid(char *callid, unsigned callid_length = 0) {
+	void set_callid(char *callid_input, unsigned callid_length = 0) {
 		if(!callid_length) {
-			callid_length = strlen(callid);
+			callid_length = strlen(callid_input);
 		}
-		if(callid_length < sizeof(callid_short)) {
-			strncpy(callid_short, callid, callid_length);
-			callid_short[callid_length] = 0;
-		} else {
-			callid_long = string(callid, callid_length);
+		if(callid_length > sizeof(callid) - 1) {
+			callid_length = sizeof(callid) - 1;
 		}
+		strncpy(callid, callid_input, callid_length);
+		callid[callid_length] = 0;
 	}
 	inline char *get_callid() {
-		return(callid_long.size() ? (char*)callid_long.c_str() : callid_short);
-	}
-	inline void new_alloc_packet_header() {
-		pcap_pkthdr *header_pt_new = new FILE_LINE(28001) pcap_pkthdr;
-		u_char *packet_new = new FILE_LINE(28002) u_char[header_pt->caplen];
-		*header_pt_new = *header_pt;
-		memcpy(packet_new, packet, header_pt->caplen);
-		header_pt = header_pt_new;
-		packet = packet_new;
-		data = (char*)(packet + dataoffset);
-		header_ip = (iphdr2*)(packet + header_ip_offset);
+		return(callid);
 	}
 };
 
@@ -294,23 +341,291 @@ typedef struct {
 	char is_rtcp;
 	char save_packet;
 } rtp_packet_pcap_queue;
+typedef struct {
+	Call *call;
+	packet_s_process_0 *packet;
+	char iscaller;
+	char find_by_dest;
+	char is_rtcp;
+	char save_packet;
+} rtp_packet_pt_pcap_queue;
 
-struct rtp_read_thread {
+class rtp_read_thread {
+public:
+	#if DEBUG_QUEUE_RTP_THREAD
+	struct thread_debug_data {
+		//packet_s_process_0 packets[1000];
+		unsigned counter;
+		unsigned process_counter;
+		unsigned tid;
+	};
+	#endif
+	struct batch_packet_rtp_base {
+		batch_packet_rtp_base(unsigned max_count) {
+			extern bool opt_t2_boost;
+			if(!opt_t2_boost) {
+				batch.c = new FILE_LINE(28003) rtp_packet_pcap_queue[max_count];
+				memset(batch.c, 0, sizeof(rtp_packet_pcap_queue) * max_count);
+			} else {
+				batch.pt = new FILE_LINE(0) rtp_packet_pt_pcap_queue[max_count];
+				memset(batch.pt, 0, sizeof(rtp_packet_pt_pcap_queue) * max_count);
+			}
+			this->max_count = max_count;
+		}
+		virtual ~batch_packet_rtp_base() {
+			for(unsigned i = 0; i < max_count; i++) {
+				// unlock item
+			}
+			extern bool opt_t2_boost;
+			if(!opt_t2_boost) {
+				delete [] batch.c;
+			} else {
+				delete [] batch.pt;
+			}
+		}
+		union batch_u {
+			rtp_packet_pcap_queue *c;
+			rtp_packet_pt_pcap_queue *pt;
+		} batch;
+		unsigned max_count;
+	};
+	struct batch_packet_rtp : public batch_packet_rtp_base {
+		batch_packet_rtp(unsigned max_count) : batch_packet_rtp_base(max_count) {
+			count = 0;
+			used = 0;
+		}
+		volatile unsigned count;
+		volatile int used;
+	};
+	struct batch_packet_rtp_thread_buffer : public batch_packet_rtp_base {
+		batch_packet_rtp_thread_buffer(unsigned max_count) : batch_packet_rtp_base(max_count) {
+			count = 0;
+		}
+		unsigned count;
+	};
+public:
 	rtp_read_thread()  {
-		this->rtpp_queue = NULL;
-		this->rtpp_queue_quick = NULL;
-		this->rtpp_queue_quick_boost = NULL;
 		this->calls = 0;
 	}
-	pthread_t thread;	       // ID of worker storing CDR thread 
+	void init(int threadNum, size_t qring_length);
+	void init_qring(size_t qring_length);
+	void init_thread_buffer();
+	void term();
+	void term_qring();
+	void term_thread_buffer();
+	size_t qring_size();
+	inline void push(Call *call, packet_s_process_0 *packet, int iscaller, bool find_by_dest, int is_rtcp, int enable_save_packet, int threadIndex = 0) {
+		
+		/* destroy and quit - debug
+		void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet);
+		PACKET_S_PROCESS_DESTROY(&packet);
+		return;
+		*/
+		
+		extern bool opt_t2_boost;
+		if(threadIndex && opt_t2_boost) {
+		 
+			#if DEBUG_QUEUE_RTP_THREAD
+			unsigned tid = get_unix_tid();
+			if(!tdd[threadIndex-1].tid) {
+				tdd[threadIndex-1].tid = tid;
+			} else if(tdd[threadIndex-1].tid != tid) {
+				syslog(LOG_NOTICE, "RACE in rtp_read_thread(%i)::push - %u / %u", threadNum, tdd[threadIndex-1].tid, tid);
+			}
+			#endif
+		 
+			packet->blockstore_addflag(61 /*pb lock flag*/);
+			packet->blockstore_addflag(threadNum /*pb lock flag*/);
+			packet->blockstore_addflag(threadIndex /*pb lock flag*/);
+			
+			batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex - 1];
+			if(thread_buffer->count == thread_buffer->max_count) {
+				while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+				packet->blockstore_addflag(62 /*pb lock flag*/);
+
+				/* destroy threadbuffer array - debug
+				for(unsigned i = 0; i < thread_buffer->count; i++) {
+					thread_buffer->batch.pt[i].packet->blockstore_addflag(64); // pb lock flag
+					void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet);
+					PACKET_S_PROCESS_DESTROY(&thread_buffer->batch.pt[i].packet);
+				}
+				goto end_thread_buffer_copy;
+				*/
+				
+				batch_packet_rtp *current_batch = this->qring[this->writeit];
+				unsigned usleepCounter = 0;
+				while(current_batch->used != 0) {
+					usleep(20 *
+					       (usleepCounter > 10 ? 50 :
+						usleepCounter > 5 ? 10 :
+						usleepCounter > 2 ? 5 : 1));
+					++usleepCounter;
+				}
+				memcpy(current_batch->batch.pt, thread_buffer->batch.pt, sizeof(rtp_packet_pt_pcap_queue) * thread_buffer->count);
+				current_batch->count = thread_buffer->count;
+				__sync_add_and_fetch(&current_batch->used, 1);
+				if((this->writeit + 1) == this->qring_length) {
+					this->writeit = 0;
+				} else {
+					this->writeit++;
+				}
+				
+				/* destroy threadbuffer array - debug
+				end_thread_buffer_copy:
+				*/
+				
+				thread_buffer->count = 0;
+				__sync_lock_release(&this->push_lock_sync);
+			}
+			rtp_packet_pt_pcap_queue *rtpp_pq = &thread_buffer->batch.pt[thread_buffer->count];
+			rtpp_pq->call = call;
+			rtpp_pq->packet = packet;
+			rtpp_pq->iscaller = iscaller;
+			rtpp_pq->find_by_dest = find_by_dest;
+			rtpp_pq->is_rtcp = is_rtcp;
+			rtpp_pq->save_packet = enable_save_packet;
+			packet->blockstore_addflag(63 /*pb lock flag*/);
+			thread_buffer->count++;
+		} else {
+			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+		 
+			#if DEBUG_QUEUE_RTP_THREAD
+			unsigned tid = get_unix_tid();
+			if(!tdd[0].tid) {
+				tdd[0].tid = tid;
+			} else if(tdd[0].tid != tid) {
+				syslog(LOG_NOTICE, "RACE in rtp_read_thread(%i)::push - %u / %u", threadNum, tdd[0].tid, tid);
+			}
+			#endif
+		 
+			packet->blockstore_addflag(61 /*pb lock flag*/);
+			packet->blockstore_addflag(threadNum /*pb lock flag*/);
+			
+			if(!qring_push_index) {
+				packet->blockstore_addflag(62 /*pb lock flag*/);
+				unsigned usleepCounter = 0;
+				while(this->qring[this->writeit]->used != 0) {
+					usleep(20 *
+					       (usleepCounter > 10 ? 50 :
+						usleepCounter > 5 ? 10 :
+						usleepCounter > 2 ? 5 : 1));
+					++usleepCounter;
+				}
+				qring_push_index = this->writeit + 1;
+				qring_push_index_count = 0;
+				qring_active_push_item = this->qring[qring_push_index - 1];
+			}
+			rtp_packet_pcap_queue *rtpp_pq = &qring_active_push_item->batch.c[qring_push_index_count];
+			rtpp_pq->call = call;
+			rtpp_pq->packet = *packet;
+			rtpp_pq->iscaller = iscaller;
+			rtpp_pq->find_by_dest = find_by_dest;
+			rtpp_pq->is_rtcp = is_rtcp;
+			rtpp_pq->save_packet = enable_save_packet;
+			++qring_push_index_count;
+			packet->blockstore_addflag(63 /*pb lock flag*/);
+			if(qring_push_index_count == qring_active_push_item->max_count) {
+				packet->blockstore_addflag(64 /*pb lock flag*/);
+				qring_active_push_item->count = qring_push_index_count;
+				qring_active_push_item->used = 1;
+				if((this->writeit + 1) == this->qring_length) {
+					this->writeit = 0;
+				} else {
+					this->writeit++;
+				}
+				qring_push_index = 0;
+				qring_push_index_count = 0;
+			}
+			__sync_lock_release(&this->push_lock_sync);
+		}
+	}
+	inline void push_batch() {
+		while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+	 
+		#if DEBUG_QUEUE_RTP_THREAD
+		unsigned tid = get_unix_tid();
+		if(!tdd[0].tid) {
+			tdd[0].tid = tid;
+		} else if(tdd[0].tid != tid) {
+			syslog(LOG_NOTICE, "RACE in rtp_read_thread(%i)::push_batch - %u / %u", threadNum, tdd[0].tid, tid);
+		}
+		#endif
+			
+		if(qring_push_index_count) {
+			qring_active_push_item->count = qring_push_index_count;
+			qring_active_push_item->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			qring_push_index = 0;
+			qring_push_index_count = 0;
+		}
+		__sync_lock_release(&this->push_lock_sync);
+	}
+	inline void push_thread_buffer(int threadIndex) {
+	 
+		#if DEBUG_QUEUE_RTP_THREAD
+		unsigned tid = get_unix_tid();
+		if(!tdd[threadIndex].tid) {
+			tdd[threadIndex].tid = tid;
+		} else if(tdd[threadIndex].tid != tid) {
+			syslog(LOG_NOTICE, "RACE in rtp_read_thread(%i)::push_thread_buffer - %u / %u", threadNum, tdd[threadIndex].tid, tid);
+		}
+		#endif
+			
+		batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex];
+		if(thread_buffer->count) {
+		 
+			#if DEBUG_QUEUE_RTP_THREAD
+			syslog(LOG_NOTICE, "push_thread_buffer in rtp_read_thread(%i) - %i", threadNum, threadIndex);
+			#endif
+		 
+			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+			batch_packet_rtp *current_batch = this->qring[this->writeit];
+			unsigned usleepCounter = 0;
+			while(current_batch->used != 0) {
+				usleep(20 *
+				       (usleepCounter > 10 ? 50 :
+					usleepCounter > 5 ? 10 :
+					usleepCounter > 2 ? 5 : 1));
+				++usleepCounter;
+			}
+			memcpy(current_batch->batch.pt, thread_buffer->batch.pt, sizeof(rtp_packet_pt_pcap_queue) * thread_buffer->count);
+			current_batch->count = thread_buffer->count;
+			current_batch->used = 1;
+			if((this->writeit + 1) == this->qring_length) {
+				this->writeit = 0;
+			} else {
+				this->writeit++;
+			}
+			thread_buffer->count = 0;
+			__sync_lock_release(&this->push_lock_sync);
+		}
+	}
+public:
+	pthread_t thread;
 	volatile int threadId;
-	rqueue<rtp_packet_pcap_queue> *rtpp_queue;
-	rqueue_quick<rtp_packet_pcap_queue> *rtpp_queue_quick;
-	rqueue_quick_boost<rtp_packet_pcap_queue> *rtpp_queue_quick_boost;
+	int threadNum;
+	unsigned int qring_batch_item_length;
+	unsigned int qring_length;
+	batch_packet_rtp **qring;
+	unsigned int thread_buffer_length;
+	batch_packet_rtp_thread_buffer **thread_buffer;
+	#if DEBUG_QUEUE_RTP_THREAD
+	thread_debug_data *tdd;
+	#endif
+	batch_packet_rtp *qring_active_push_item;
+	volatile unsigned qring_push_index;
+	volatile unsigned qring_push_index_count;
+	volatile unsigned int readit;
+	volatile unsigned int writeit;
 	pstat_data threadPstatData[2];
 	volatile bool remove_flag;
 	u_int32_t last_use_time_s;
 	volatile u_int32_t calls;
+	volatile int push_lock_sync;
 };
 
 #define MAXLIVEFILTERS 10
@@ -401,7 +716,8 @@ struct gre_hdr {
 };
 
 
-void process_packet__push_batch();
+void _process_packet__cleanup_calls();
+void _process_packet__cleanup_registers();
 
 
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)

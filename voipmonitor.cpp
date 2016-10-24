@@ -283,6 +283,7 @@ unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
+int opt_messageproxy = 1;
 int opt_enable_http_enum_tables = 0;
 int opt_enable_webrtc_table = 0;
 int opt_generator = 0;
@@ -295,9 +296,13 @@ int process_rtp_packets_distribute_threads_use = 0;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
 unsigned int opt_preprocess_packets_qring_length = 2000;
+unsigned int opt_preprocess_packets_qring_item_length = 0;
 unsigned int opt_preprocess_packets_qring_usleep = 10;
+bool opt_preprocess_packets_qring_force_push = true;
 unsigned int opt_process_rtp_packets_qring_length = 2000;
+unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
+bool opt_process_rtp_packets_qring_force_push = true;
 int opt_enable_http = 0;
 int opt_enable_webrtc = 0;
 int opt_enable_ssl = 0;
@@ -337,6 +342,7 @@ float opt_saveaudio_oggquality = 0.4;
 int opt_audioqueue_threads_max = 10;
 int opt_saveaudio_stereo = 1;
 int opt_register_timeout = 5;
+int opt_register_timeout_disable_save_failed = 0;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
 unsigned int opt_maxpoolsipsize = 0;
@@ -397,6 +403,7 @@ int opt_pcap_dump_tar_internal_gzip_sip_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_defer_create_spooldir = 1;
+int opt_pcap_ifdrop_limit = 20;
 
 int opt_sdp_multiplication = 3;
 string opt_save_sip_history;
@@ -432,6 +439,7 @@ extern int opt_pcap_queue_dequeu_need_blocks;
 extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_queue_use_blocks;
 extern int opt_pcap_queue_suppress_t1_thread;
+extern int opt_pcap_queue_block_timeout;
 extern bool opt_pcap_queues_mirror_nonblock_mode;
 extern bool opt_pcap_queues_mirror_require_confirmation;
 extern bool opt_pcap_queues_mirror_use_checksum;
@@ -584,7 +592,7 @@ volatile int num_threads_active = 0;
 unsigned int rtpthreadbuffer = 20;	// default 20MB
 unsigned int rtp_qring_length = 0;
 unsigned int rtp_qring_usleep = 100;
-int rtp_qring_quick = 1;
+unsigned int rtp_qring_batch_length = 10;
 unsigned int gthread_num = 0;
 
 int opt_pcapdump = 0;
@@ -592,6 +600,7 @@ int opt_pcapdump_all = 0;
 char opt_pcapdump_all_path[1024];
 
 int opt_callend = 1; //if true, cdr.called is saved
+bool opt_t2_boost = false;
 char opt_chdir[1024];
 char opt_spooldir_2[1024];
 char opt_cachedir[1024];
@@ -716,6 +725,7 @@ int opt_sip_send_before_packetbuffer = 0;
 int opt_enable_jitterbuffer_asserts = 0;
 int opt_hide_message_content = 0;
 char opt_hide_message_content_secret[1024] = "";
+vector<string> opt_message_body_url_reg;
 
 char opt_bogus_dumper_path[1204];
 BogusDumper *bogusDumper;
@@ -752,6 +762,8 @@ int opt_load_query_from_files_period;
 bool opt_load_query_from_files_inotify;
 
 bool opt_virtualudppacket = false;
+int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
+int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = false;
 
 int opt_test = 0;
@@ -2798,28 +2810,7 @@ int main_init_read() {
 			size_t _rtp_qring_length = rtp_qring_length ? 
 							rtp_qring_length :
 							rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
-			if(rtp_qring_quick == 2) {
-				rtp_threads[i].rtpp_queue_quick_boost = new FILE_LINE(43021) rqueue_quick_boost<rtp_packet_pcap_queue>(
-										100, rtp_qring_usleep,
-										&terminating,
-										__FILE__, __LINE__);
-			} else if(rtp_qring_quick) {
-				rtp_threads[i].rtpp_queue_quick = new FILE_LINE(43022) rqueue_quick<rtp_packet_pcap_queue>(
-									_rtp_qring_length,
-									100, rtp_qring_usleep,
-									&terminating, true,
-									__FILE__, __LINE__);
-			} else {
-				rtp_threads[i].rtpp_queue = new FILE_LINE(43023) rqueue<rtp_packet_pcap_queue>(_rtp_qring_length / 2, _rtp_qring_length / 5, _rtp_qring_length * 1.5);
-				char rtpp_queue_name[20];
-				sprintf(rtpp_queue_name, "rtp thread %i", i + 1);
-				rtp_threads[i].rtpp_queue->setName(rtpp_queue_name);
-			}
-			rtp_threads[i].threadId = 0;
-			memset(rtp_threads[i].threadPstatData, 0, sizeof(rtp_threads[i].threadPstatData));
-			rtp_threads[i].remove_flag = 0;
-			rtp_threads[i].last_use_time_s = 0;
-			rtp_threads[i].calls = 0;
+			rtp_threads[i].init(i + 1, _rtp_qring_length);
 			if(i < num_threads_active) {
 				vm_pthread_create_autodestroy("rtp read",
 							      &(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i], __FILE__, __LINE__);
@@ -2837,14 +2828,14 @@ int main_init_read() {
 	}
 	
 	//autostart for fork mode if t2cpu > 50%
-	if(!opt_fork &&
+	if((!opt_fork || opt_t2_boost) &&
 	   opt_enable_process_rtp_packet && opt_pcap_split &&
 	   !is_read_from_file_simple()) {
 		process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
-		processRtpPacketHash = new FILE_LINE(43025) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 			processRtpPacketDistribute[i] = new FILE_LINE(43026) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
 		}
+		processRtpPacketHash = new FILE_LINE(43025) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 	}
 
 	if(opt_enable_http) {
@@ -3042,24 +3033,6 @@ int main_init_read() {
 void main_term_read() {
 	readend = 1;
 
-	// wait for RTP threads
-	if(rtp_threads) {
-		for(int i = 0; i < num_threads_max; i++) {
-			if(i < num_threads_active) {
-				while(rtp_threads[i].threadId) {
-					usleep(100000);
-				}
-			}
-			if(rtp_threads[i].rtpp_queue_quick) {
-				delete rtp_threads[i].rtpp_queue_quick;
-			} else {
-				delete rtp_threads[i].rtpp_queue;
-			}
-		}
-		delete [] rtp_threads;
-		rtp_threads = NULL;
-	}
-
 	if(is_read_from_file_simple() && global_pcap_handle) {
 		pcap_close(global_pcap_handle);
 	}
@@ -3149,6 +3122,20 @@ void main_term_read() {
 		}
 	}
 	
+	// wait for RTP threads
+	if(rtp_threads) {
+		for(int i = 0; i < num_threads_max; i++) {
+			if(i < num_threads_active) {
+				while(rtp_threads[i].threadId) {
+					usleep(100000);
+				}
+			}
+			rtp_threads[i].term();
+		}
+		delete [] rtp_threads;
+		rtp_threads = NULL;
+	}
+
 	if(sipSendSocket) {
 		delete sipSendSocket;
 		sipSendSocket = NULL;
@@ -3534,7 +3521,7 @@ void test_search_country_by_number() {
 	CountryPrefixes *cp = new FILE_LINE(43043) CountryPrefixes();
 	cp->load();
 	vector<string> countries;
-	cout << cp->getCountry("00039123456789", &countries, ci) << endl;
+	cout << cp->getCountry("00039123456789", &countries, NULL, ci) << endl;
 	for(size_t i = 0; i < countries.size(); i++) {
 		cout << countries[i] << endl;
 	}
@@ -3619,26 +3606,24 @@ void test_safeasyncqueue() {
 }
 
 void test_parsepacket() {
+	char *str = (char*)"INVITE sip:800123456@sip.odorik.cz SIP/2.0\r\nVia: SIP/2.0/UDP 192.168.1.12:5061;rport;branch=z9hG4bK354557323\r\nFrom: <sip:706912@sip.odorik.cz>;tag=1645803335\r\nTo: <sip:800123456@sip.odorik.cz>\r\nCall-ID: 1781060762\r\nCSeq: 20 INVITE\r\nContact: <sip:jumbox@93.91.52.46>\r\nContent-Type: application/sdp\r\nAllow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE, SUBSCRIBE, INFO\r\nMax-Forwards: 70\r\nUser-Agent: Linphone/3.6.1 (eXosip2/3.6.0)\r\nSubject: Phone call\r\nContent-Length: 453\r\n\r\nv=0\r\no=706912 1477 2440 IN IP4 93.91.52.46\r\ns=Talk\r\nc=IN IP4 93.91.52.46\r\nt=0 0\r\nm=audio 7078 RTP/AVP 125 112 111 110 96 3 0 8 101\r\na=rtpmap:125 opus/48000\r\na=fmtp:125 useinbandfec=1; usedtx=1\r\na=rtpmap:112 speex/32000\r\na=fmtp:112 vbr=on\r\na=rtpmap:111 speex/16000\r\na=fmtp:111 vbr=on\r\na=rtpmap:110 speex/8000\r\na=fmtp:110 vbr=on\r\na=rtpmap:96 GSM/11025\r\na=rtpmap:101 telephone-event/8000\r\na=fmtp:101 0-11\r\nm=video 9078 RTP/AVP 103\r\na=rtpmap:103 VP8/90000\r\n\177\026\221V";
 	ParsePacket pp;
 	pp.setStdParse();
- 
-	char *str = (char*)"INVITE sip:800123456@sip.odorik.cz SIP/2.0\r\nVia: SIP/2.0/UDP 192.168.1.12:5061;rport;branch=z9hG4bK354557323\r\nFrom: <sip:706912@sip.odorik.cz>;tag=1645803335\r\nTo: <sip:800123456@sip.odorik.cz>\r\nCall-ID: 1781060762\r\nCSeq: 20 INVITE\r\nContact: <sip:jumbox@93.91.52.46>\r\nContent-Type: application/sdp\r\nAllow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE, SUBSCRIBE, INFO\r\nMax-Forwards: 70\r\nUser-Agent: Linphone/3.6.1 (eXosip2/3.6.0)\r\nSubject: Phone call\r\nContent-Length: 453\r\n\r\nv=0\r\no=706912 1477 2440 IN IP4 93.91.52.46\r\ns=Talk\r\nc=IN IP4 93.91.52.46\r\nt=0 0\r\nm=audio 7078 RTP/AVP 125 112 111 110 96 3 0 8 101\r\na=rtpmap:125 opus/48000\r\na=fmtp:125 useinbandfec=1; usedtx=1\r\na=rtpmap:112 speex/32000\r\na=fmtp:112 vbr=on\r\na=rtpmap:111 speex/16000\r\na=fmtp:111 vbr=on\r\na=rtpmap:110 speex/8000\r\na=fmtp:110 vbr=on\r\na=rtpmap:96 GSM/11025\r\na=rtpmap:101 telephone-event/8000\r\na=fmtp:101 0-11\r\nm=video 9078 RTP/AVP 103\r\na=rtpmap:103 VP8/90000\r\n\177\026\221V";
-	
-	ParsePacket::ppContentsX contents(&pp);
+	ParsePacket::ppContentsX contents;
 	pp.parseData(str, strlen(str), &contents);
-	
 	pp.debugData(&contents);
 }
 	
 void test_parsepacket2() {
-	ParsePacket pp;
+ 
+        ParsePacket pp;
 	pp.addNode("test1", ParsePacket::typeNode_std);
 	pp.addNode("test2", ParsePacket::typeNode_std);
 	pp.addNode("test3", ParsePacket::typeNode_std);
 	
 	char *str = (char*)"test1abc\ntEst2def\ntest3ghi";
 	
-	ParsePacket::ppContentsX contents(&pp);
+	ParsePacket::ppContentsX contents;
 	pp.parseData(str, strlen(str), &contents);
 	
 	cout << "test1: " << contents.getContentString("test1") << endl;
@@ -4653,6 +4638,7 @@ void cConfig::addConfigItems() {
 				expert();
 					addConfigItem(new FILE_LINE(43090) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(43091) cConfigItem_yesno("sqlcallend", &opt_callend));
+					addConfigItem(new FILE_LINE(43458) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(43092) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			advanced();
@@ -4765,19 +4751,21 @@ void cConfig::addConfigItems() {
 					->addValues("yes:1|y:1|no:0|n:0")
 					->addAlias("enable_process_rtp_packet"));
 					expert();
+					addConfigItem((new FILE_LINE(43154) cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
+						->addValues("sip:2|extend:3|auto:-1"));
+					addConfigItem(new FILE_LINE(43155) cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
+					addConfigItem(new FILE_LINE(43453) cConfigItem_integer("preprocess_packets_qring_item_length", &opt_preprocess_packets_qring_item_length));
+					addConfigItem(new FILE_LINE(43156) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
+					addConfigItem(new FILE_LINE(43454) cConfigItem_yesno("preprocess_packets_qring_force_push", &opt_preprocess_packets_qring_force_push));
 					addConfigItem((new FILE_LINE(43150) cConfigItem_integer("process_rtp_packets_hash_next_thread", &opt_process_rtp_packets_hash_next_thread))
 						->setMaximum(MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
 					addConfigItem((new FILE_LINE(43151) cConfigItem_yesno("process_rtp_packets_hash_next_thread_sem_sync", &opt_process_rtp_packets_hash_next_thread_sem_sync))
 						->addValues("2:2"));
 					addConfigItem(new FILE_LINE(43152) cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
+					addConfigItem(new FILE_LINE(43455) cConfigItem_integer("process_rtp_packets_qring_item_length", &opt_process_rtp_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(43153) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
-						obsolete();
-						addConfigItem((new FILE_LINE(43154) cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
-							->addValues("sip:2|extend:3|auto:-1"));
-						addConfigItem(new FILE_LINE(43155) cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
-						addConfigItem(new FILE_LINE(43156) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
-						minorEnd();
+					addConfigItem(new FILE_LINE(43456) cConfigItem_yesno("process_rtp_packets_qring_force_push", &opt_process_rtp_packets_qring_force_push));
 			setDisableIfEnd();
 	group("manager");
 		addConfigItem(new FILE_LINE(43157) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)));
@@ -4805,6 +4793,7 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(43170) cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
 						->setMultiple(1024));
 					addConfigItem(new FILE_LINE(43171) cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("packetbuffer_block_timeout", &opt_pcap_queue_block_timeout));
 		subgroup("file cache");
 					expert();
 					addConfigItem((new FILE_LINE(43172) cConfigItem_integer("packetbuffer_file_totalmaxsize", &opt_pcap_queue_store_queue_max_disk_size))
@@ -4835,6 +4824,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(43187) cConfigItem_integer("pcap_dump_writethreads", &opt_pcap_dump_writethreads));
 					addConfigItem(new FILE_LINE(43188) cConfigItem_yesno("pcap_dump_asyncwrite", &opt_pcap_dump_asyncwrite));
 					addConfigItem(new FILE_LINE(43189) cConfigItem_yesno("defer_create_spooldir", &opt_defer_create_spooldir));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_ifdrop_limit", &opt_pcap_ifdrop_limit));
 		subgroup("SIP");
 			addConfigItem(new FILE_LINE(43190) cConfigItem_yesno("savesip", &opt_saveSIP));
 					expert();
@@ -4941,6 +4931,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(43251) cConfigItem_yesno("cdronlyrtp", &opt_cdronlyrtp));
 			addConfigItem(new FILE_LINE(43252) cConfigItem_integer("callslimit", &opt_callslimit));
 			addConfigItem(new FILE_LINE(43253) cConfigItem_yesno("cdrproxy", &opt_cdrproxy));
+			addConfigItem(new FILE_LINE(43452) cConfigItem_yesno("messageproxy", &opt_messageproxy));
 		setDisableIfEnd();
 	group("SIP protocol / headers");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -4976,9 +4967,11 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(43274) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2"));
 			addConfigItem(new FILE_LINE(43275) cConfigItem_integer("sip-register-timeout", &opt_register_timeout));
+			addConfigItem(new FILE_LINE(43451) cConfigItem_yesno("sip-register-timeout-disable_save_failed", &opt_register_timeout_disable_save_failed));
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE(43276) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
 			addConfigItem(new FILE_LINE(43277) cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("message_body_url_reg", &opt_message_body_url_reg));
 		subgroup("SIP send");
 				advanced();
 				addConfigItem(new FILE_LINE(43278) cConfigItem_ip_port("sip_send", &sipSendSocket_ip_port));
@@ -5160,8 +5153,7 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(43402) cConfigItem_integer("rtp_qring_length", &rtp_qring_length));
 					addConfigItem(new FILE_LINE(43403) cConfigItem_integer("rtp_qring_usleep", &rtp_qring_usleep));
-					addConfigItem((new FILE_LINE(43404) cConfigItem_yesno("rtp_qring_quick", &rtp_qring_quick))
-						->addValue("boost", 2));
+					addConfigItem(new FILE_LINE(43457) cConfigItem_integer("rtp_qring_batch_length", &rtp_qring_batch_length));
 		subgroup("mirroring");
 					expert();
 					addConfigItem(new FILE_LINE(43405) cConfigItem_yesno("mirrorip", &opt_mirrorip));
@@ -5224,6 +5216,8 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new FILE_LINE(43438) cConfigItem_yesno("printinsertid", &opt_printinsertid));
 				addConfigItem(new FILE_LINE(43439) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
+				addConfigItem(new FILE_LINE(43459) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
+				addConfigItem(new FILE_LINE(43460) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(43440) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 					expert();
 					addConfigItem(new FILE_LINE(43441) cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
@@ -5410,6 +5404,15 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			if(!check_regexp(opt_cdr_ua_reg_remove[i].c_str())) {
 				syslog(LOG_WARNING, "invalid regexp %s for cdr_ua_reg_remove", opt_cdr_ua_reg_remove[i].c_str());
 				opt_cdr_ua_reg_remove.erase(opt_cdr_ua_reg_remove.begin() + i);
+				--i;
+			}
+		}
+	}
+	if(configItem->config_name == "message_body_url_reg") {
+		for(unsigned i = 0; i < opt_message_body_url_reg.size(); i++) {
+			if(!check_regexp(opt_message_body_url_reg[i].c_str())) {
+				syslog(LOG_WARNING, "invalid regexp %s for message_body_url_reg", opt_message_body_url_reg[i].c_str());
+				opt_message_body_url_reg.erase(opt_message_body_url_reg.begin() + i);
 				--i;
 			}
 		}
@@ -5735,12 +5738,15 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "disable_push_to_t2_in_packetbuffer")
 													sverb.disable_push_to_t2_in_packetbuffer = 1;
 						else if(verbparams[i] == "disable_save_packet")		sverb.disable_save_packet = 1;
+						else if(verbparams[i] == "disable_read_rtp")		sverb.disable_read_rtp = 1;
 						else if(verbparams[i] == "thread_create")		sverb.thread_create = 1;
 						else if(verbparams[i] == "timezones")			sverb.timezones = 1;
 						else if(verbparams[i] == "tcpreplay")			sverb.tcpreplay = 1;
 						else if(verbparams[i] == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;
+						else if(verbparams[i] == "heap_use_time")		sverb.heap_use_time = 1;
 						else if(verbparams[i] == "dtmf")			sverb.dtmf = 1;
 						else if(verbparams[i] == "cleanspool")			sverb.cleanspool = 1;
+						else if(verbparams[i] == "t2_destroy_all")		sverb.t2_destroy_all = 1;
 						//
 						else if(verbparams[i] == "debug1")			sverb._debug1 = 1;
 						else if(verbparams[i] == "debug2")			sverb._debug2 = 1;
@@ -5872,6 +5878,7 @@ void set_context_config() {
  
 	if(opt_scanpcapdir[0]) {
 		sniffer_mode = snifferMode_read_from_files;
+		opt_use_oneshot_buffer = 0;
 	} else if(opt_pcap_queue_send_to_ip_port) {
 		sniffer_mode = snifferMode_sender;
 	} else {
@@ -5968,10 +5975,6 @@ void set_context_config() {
 		opt_enable_webrtc_table = true;
 	}
 	
-	if(rtp_qring_quick == 0 && opt_enable_process_rtp_packet > 1) {
-		rtp_qring_quick = 1;
-	}
-	
 	if(opt_read_from_file) {
 		opt_cachedir[0] = 0;
 		opt_enable_preprocess_packet = 0;
@@ -5996,6 +5999,7 @@ void set_context_config() {
 		opt_pcap_dump_asyncwrite = 0;
 		opt_save_query_to_files = false;
 		opt_load_query_from_files = 0;
+		opt_t2_boost = false;
 	}
 	
 	if(is_read_from_file()) {
@@ -6091,6 +6095,12 @@ void set_context_config() {
 		syslog(LOG_ERR, "option spooldir_2 is not suported with option cachedir !!!");
 	}
 	
+	if(!opt_pcap_split && opt_t2_boost) {
+		opt_t2_boost = false;
+	}
+	if(opt_t2_boost && !opt_enable_process_rtp_packet) {
+		opt_enable_process_rtp_packet = 1;
+	}
 }
 
 bool check_complete_parameters() {
@@ -6667,6 +6677,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sip-register-timeout", NULL))) {
 		opt_register_timeout = atoi(value);
 	}
+	if((value = ini.GetValue("general", "sip-register-timeout-disable_save_failed", NULL))) {
+		opt_register_timeout_disable_save_failed = yesno(value);
+	}
 	if((value = ini.GetValue("general", "deduplicate", NULL))) {
 		opt_dup_check = yesno(value);
 	}
@@ -6678,6 +6691,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cdrproxy", NULL))) {
 		opt_cdrproxy = yesno(value);
+	}
+	if((value = ini.GetValue("general", "messageproxy", NULL))) {
+		opt_messageproxy = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mos_g729", NULL))) {
 		opt_mos_g729 = yesno(value);
@@ -7248,6 +7264,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
 		opt_callend = yesno(value);
 	}
+	if((value = ini.GetValue("general", "t2_boost", NULL))) {
+		opt_t2_boost = yesno(value);
+	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
 	}
@@ -7349,6 +7368,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "packetbuffer_block_maxtime", NULL))) {
 		opt_pcap_queue_block_max_time_ms = atoi(value);
+	}
+	if((value = ini.GetValue("general", "packetbuffer_block_timeout", NULL))) {
+		opt_pcap_queue_block_timeout = atoi(value);
 	}
 	//
 	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {
@@ -7740,6 +7762,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "defer_create_spooldir", NULL))) {
 		opt_defer_create_spooldir = yesno(value);
 	}
+	if((value = ini.GetValue("general", "pcap_ifdrop_limit", NULL))) {
+		opt_pcap_ifdrop_limit = atoi(value);
+	}
 	if((value = ini.GetValue("general", "sip_send_ip", NULL)) &&
 	   (value2 = ini.GetValue("general", "sip_send_port", NULL))) {
 		sipSendSocket_ip_port.set_ip(value);
@@ -7800,6 +7825,16 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "hide_message_content_secret", NULL))) {
 		strncpy(opt_hide_message_content_secret, value, sizeof(opt_hide_message_content_secret));
 	}
+	if (ini.GetAllValues("general", "message_body_url_reg", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			if(!check_regexp(i->pItem)) {
+				syslog(LOG_WARNING, "invalid regexp %s for message_body_url_reg", i->pItem);
+			} else {
+				opt_message_body_url_reg.push_back(i->pItem);
+			}
+		}
+	}
 
 	if((value = ini.GetValue("general", "bogus_dumper_path", NULL))) {
 		strncpy(opt_bogus_dumper_path, value, sizeof(opt_bogus_dumper_path));
@@ -7822,14 +7857,26 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "preprocess_packets_qring_length", NULL))) {
 		opt_preprocess_packets_qring_length = atol(value);
 	}
+	if((value = ini.GetValue("general", "preprocess_packets_qring_item_length", NULL))) {
+		opt_preprocess_packets_qring_item_length = atol(value);
+	}
 	if((value = ini.GetValue("general", "preprocess_packets_qring_usleep", NULL))) {
 		opt_preprocess_packets_qring_usleep = atol(value);
+	}
+	if((value = ini.GetValue("general", "preprocess_packets_qring_force_push", NULL))) {
+		opt_preprocess_packets_qring_force_push = yesno(value);
 	}
 	if((value = ini.GetValue("general", "process_rtp_packets_qring_length", NULL))) {
 		opt_process_rtp_packets_qring_length = atol(value);
 	}
+	if((value = ini.GetValue("general", "process_rtp_packets_qring_item_length", NULL))) {
+		opt_process_rtp_packets_qring_item_length = atol(value);
+	}
 	if((value = ini.GetValue("general", "process_rtp_packets_qring_usleep", NULL))) {
 		opt_process_rtp_packets_qring_usleep = atol(value);
+	}
+	if((value = ini.GetValue("general", "process_rtp_packets_qring_force_push", NULL))) {
+		opt_process_rtp_packets_qring_force_push = yesno(value);
 	}
 
 	if((value = ini.GetValue("general", "rtp_qring_length", NULL))) {
@@ -7838,8 +7885,8 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "rtp_qring_usleep", NULL))) {
 		rtp_qring_usleep = atol(value);
 	}
-	if((value = ini.GetValue("general", "rtp_qring_quick", NULL))) {
-		rtp_qring_quick = strcmp(value, "boost") ? yesno(value) : 2;
+	if((value = ini.GetValue("general", "rtp_qring_batch_length", NULL))) {
+		rtp_qring_batch_length = atol(value);
 	}
 	if((value = ini.GetValue("general", "udpfrag", NULL))) {
 		opt_udpfrag = yesno(value);
@@ -7897,6 +7944,12 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "virtualudppacket", NULL))) {
 		opt_virtualudppacket = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_stream_timeout", NULL))) {
+		opt_sip_tcp_reassembly_stream_timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_clean_period", NULL))) {
+		opt_sip_tcp_reassembly_clean_period = atoi(value);
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext", NULL))) {
 		opt_sip_tcp_reassembly_ext = yesno(value);

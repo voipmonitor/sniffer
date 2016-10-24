@@ -32,6 +32,7 @@
 #include "heap_safe.h"
 #include "rqueue.h"
 #include "voipmonitor.h"
+#include "tar_data.h"
 
 #include "tools_inline.h"
 
@@ -651,6 +652,7 @@ public:
 	int permission;
 	int fh;
 	int tar;
+	data_tar tar_data;
 	CompressStream *compressStream;
 	string error;
 	int bufferLength;
@@ -1741,9 +1743,7 @@ public:
 		u_int32_t length;
 	};
 	struct ppContentsX {
-		ppContentsX(ParsePacket *parser = NULL) {
-			extern ParsePacket _parse_packet_global_process_packet;
-			this->parser = parser ? parser : &_parse_packet_global_process_packet;
+		ppContentsX() {
 			clean();
 		}
 		void clean() {
@@ -1755,12 +1755,14 @@ public:
 			sip = false;
 		}
 		u_int32_t parse(char *data, unsigned long datalen, bool clean) {
+			extern ParsePacket _parse_packet_global_process_packet;
 			if(clean) {
 				this->clean();
 			}
-			return(this->parser->parseData(data, datalen, this));
+			return(_parse_packet_global_process_packet.parseData(data, datalen, this));
 		}
 		const char *getContentData(const char *nodeName, u_int32_t *dataLength) {
+			extern ParsePacket _parse_packet_global_process_packet;
 			while(*nodeName == '\n') {
 				++nodeName;
 			}
@@ -1768,7 +1770,7 @@ public:
 			while(nodeName[nodeLength]) {
 				++nodeLength;
 			}
-			ppNode *node = parser->getNode(nodeName, nodeLength, NULL);
+			ppNode *node = _parse_packet_global_process_packet.getNode(nodeName, nodeLength, NULL);
 			if(node) {
 				ppContentItemX *contentItem = node->getPointerToItem(this);
 				if(contentItem->length) {
@@ -1794,7 +1796,8 @@ public:
 			return(sip);
 		}
 		void debugData() {
-			parser->debugData(this);
+			extern ParsePacket _parse_packet_global_process_packet;
+			_parse_packet_global_process_packet.debugData(this);
 		}
 		ppContentItemX std[ParsePacket_std_max];
 		ppContentItemX custom[ParsePacket_custom_max];
@@ -1802,7 +1805,6 @@ public:
 		int32_t contentLength;
 		const char *parseDataPtr;
 		bool sip;
-		ParsePacket *parser;
 	};
 	struct ppNode {
 		ppNode();
@@ -2925,7 +2927,11 @@ private:
 		}
 		inline void destroyAll() {
 			for(unsigned i = 0; i < pool_size; i++) {
-				delete_object(pool[i]);
+				#if HEAPSAFE
+					delete_object(pool[i]);
+				#else
+					free(pool[i]);
+				#endif
 			}
 		}
 		u_int16_t pool_size;
@@ -2959,15 +2965,9 @@ public:
 		delete this->stack;
 	}
 	inline bool push(void *item, u_int16_t push_queue_index) {
-		/* disable - speed optimize
-		if(!item) {
-			return(false);
-		}
 		if(push_queue_index >= push_queues_max) {
-			syslog(LOG_ERR, "too big push_queue_index");
 			return(false);
 		}
-		*/
 		sHeapItemsPool *pool = &this->push_queues[push_queue_index];
 		if(pool->pool_size < HEAP_ITEM_POOL_SIZE) {
 			pool->pool[pool->pool_size] = item;

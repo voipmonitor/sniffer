@@ -1,6 +1,24 @@
-17.3.4 26.9.2016
-================
+17.4 24.10.2016
+===============
+- flush fixed jitterbuffer when resyncing to avoid false low mos score which happens when sender sends RTP in bursts 
+- speed optimization in t2 treads (new option t2_boost = yes) - removes bottleneck >= 15000 concurrent calls (around 2Millions RTP packets / sec) 
+- fix early call termination when 3,4,5XX response is received in the middle of a call (response to OPTION) [VS-502]
+- fix RTP detection when calling to multiple phones at once [VS-498]
+- fix memory leak when RTP threads are lowering / rising 
+- fix store record to register_failed after timeout in register without response (new configuration option sip-register-timeout-disable_save_failed to not to save failed registration on timeout) [VS-382]
+- fix lastSIPresponseNum in register [VS-382]
+- create record in failed register every 120 seconds for the same register failed alert so the register alert can be triggered again [VG-1002]
+- add SIP MESSAGE proxy table [VG-826]
+- fix content_type and content_length in message table 
+- fix checksum32buf for big endian (fixes mirroring on rpi) [VS-488]
+- fix file handler leak in cloud mode
+- add support for URL preview in SIP MESSAGE with url [VG-835]
+- fix cdr_ua store when reading pcap with -r [VS-505]
+- add support for destination prefixes condition in realtime concurrent calls alert [VG-836]
+- fix decode gsm message with (DCS & 0xC0) == 0xC0 [VG-870]
+- add indications voicemail active / inactive to SIP MESSAGE [VS-870]
 - fix cleaning spool directory - when restarted actual date was counted twice to used space
+
 
 
 17.3.3 9.9.2016

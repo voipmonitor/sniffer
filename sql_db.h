@@ -474,26 +474,20 @@ class MySqlStore {
 private:
 	class QFile {
 	public:
-		QFile(const char *filename = NULL) {
-			if(filename) {
-				this->filename = filename;
-			}
+		QFile() {
 			fileZipHandler = NULL;
-			createAt = filename ? getTimeMS() : 0;
+			createAt = 0;
 			flushAt = 0;
+			is_open = false;
 			_sync = 0;
 		}
-		bool open(const char *filename = NULL, u_long createAt = 0) {
-			if(filename) {
-				this->filename = filename;
-				this->createAt = createAt ? createAt : getTimeMS();
-			}
-			if(!this->filename.length()) {
-				return(false);
-			}
+		bool open(const char *filename, u_long createAt) {
+			this->filename = filename;
+			this->createAt = createAt;
 			fileZipHandler =  new FILE_LINE(31001) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
 			fileZipHandler->open(this->filename.c_str());
 			if(fileZipHandler->_open_write()) {
+				is_open = true;
 				return(true);
 			} else {
 				delete fileZipHandler;
@@ -502,16 +496,17 @@ private:
 			}
 		}
 		void close() {
+			filename = "";
+			createAt = 0;
+			is_open = false;
 			if(fileZipHandler) {
 				fileZipHandler->close();
 				delete fileZipHandler;
 				fileZipHandler = NULL;
 			}
-			filename = "";
-			createAt = 0;
 		}
-		bool isEmpty() {
-			return(filename.empty());
+		bool isOpen() {
+			return(is_open);
 		}
 		bool isExceedPeriod(int period, u_long time = 0) {
 			if(!time) {
@@ -529,6 +524,7 @@ private:
 		FileZipHandler *fileZipHandler;
 		u_long createAt;
 		u_long flushAt;
+		volatile bool is_open;
 		volatile int _sync;
 	};
 	struct QFileConfig {
@@ -557,7 +553,7 @@ private:
 		}
 		void addFile(u_long time, const char *file) {
 			lock();
-			qfiles[time] = file;
+			qfiles_load[time] = file;
 			unlock();
 		}
 		void lock() {
@@ -572,7 +568,7 @@ private:
 		int storeConcatLimit;
 		MySqlStore *store;
 		pthread_t thread;
-		map<u_long, string> qfiles;
+		map<u_long, string> qfiles_load;
 		volatile int _sync;
 	};
 	struct LoadFromQFilesThreadInfo {

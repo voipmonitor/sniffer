@@ -123,8 +123,12 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS);
 			} else {
 				preProcessPacket[PreProcessPacket::ppt_extend]->push_packet(
-						true, 0, _ip_src, _port_src, _ip_dst, _port_dst, 
-						(char*)(tcpPacket + dataOffset), (*iter_sip_offset)[1], dataOffset,
+						true, 
+						#if USE_PACKET_NUMBER
+						0, 
+						#endif
+						_ip_src, _port_src, _ip_dst, _port_dst, 
+						(*iter_sip_offset)[1], dataOffset,
 						handle_index, tcpHeader, tcpPacket, true, 
 						2, (iphdr2*)(tcpPacket + ethHeaderLength),
 						NULL, 0, dlt, sensor_id, sensor_ip,

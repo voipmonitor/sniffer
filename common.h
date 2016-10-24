@@ -54,12 +54,15 @@ struct sVerbose {
 	int disable_process_packet_in_packetbuffer;
 	int disable_push_to_t2_in_packetbuffer;
 	int disable_save_packet;
+	int disable_read_rtp;
 	int thread_create;
 	int timezones;
 	int tcpreplay;
 	int abort_if_heap_full;
+	int heap_use_time;
 	int dtmf;
 	int cleanspool;
+	int t2_destroy_all;
 	int _debug1;
 	int _debug2;
 	int _debug3;

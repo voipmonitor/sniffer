@@ -13,6 +13,7 @@
 #include <queue>
 #include <map>
 #include <list>
+#include <set>
 
 #include <arpa/inet.h>
 #include <time.h>
@@ -33,6 +34,7 @@
 #define MAX_RTPMAP 40          //!< max rtpmap records
 #define MAXNODE 150000
 #define MAXLEN_SDP_SESSID 16
+#define MAXLEN_SDP_TO 128
 #define MAX_SIPCALLERDIP 4
 
 #define INVITE 1
@@ -143,6 +145,7 @@ struct ip_port_call_info {
 	u_int16_t port;
 	bool iscaller;
 	char sessid[MAXLEN_SDP_SESSID];
+	char to[MAXLEN_SDP_TO];
 	u_int32_t sip_src_addr;
 	s_sdp_flags sdp_flags;
 	ip_port_call_info_rtp rtp[2];
@@ -381,6 +384,7 @@ public:
 	pthread_mutex_t listening_worker_run_lock;
 
 	int thread_num;
+	int thread_num_rd;
 
 	char oneway;
 	char absolute_timeout_exceeded;
@@ -468,9 +472,7 @@ public:
 
 	int get_index_by_ip_port(in_addr_t addr, unsigned short port);
 	
-	Call* find_by_sessid(char *sessid);
-	
-	int get_index_by_sessid(char *sessid, in_addr_t sip_src_addr = 0);
+	int get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr = 0);
 
 	/**
 	 * @brief close all rtp[].gfileRAW
@@ -517,11 +519,11 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
 	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
-	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation);
+	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
@@ -788,6 +790,8 @@ public:
 	
 	void adjustUA();
 	
+	void proxies_undup(set<unsigned int> *proxies_undup);
+	
 	void createListeningBuffers();
 	void destroyListeningBuffers();
 	void disableListeningBuffers();
@@ -842,6 +846,19 @@ typedef struct {
 
 
 void adjustUA(char *ua);
+
+inline unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
+	unsigned int key;
+
+	key = (unsigned int)(addr * port);
+	key += ~(key << 15);
+	key ^=  (key >> 10);
+	key +=  (key << 3);
+	key ^=  (key >> 6);
+	key += ~(key << 11);
+	key ^=  (key >> 16);
+	return key % MAXNODE;
+}
 
 
 /**
@@ -1040,7 +1057,23 @@ public:
 	 * @brief find call
 	 *
 	*/
-	hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, unsigned int hash = 0, bool lock = true);
+	inline hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, bool lock = true) {
+		hash_node *node = NULL;
+		u_int32_t h = tuplehash(addr, port);
+		if(lock) {
+			lock_calls_hash();
+		}
+		hash_node_call *rslt = NULL;
+		for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
+			if ((node->addr == addr) && (node->port == port)) {
+				rslt = node->calls;
+			}
+		}
+		if(lock) {
+			unlock_calls_hash();
+		}
+		return rslt;
+	}
 
 	/**
 	 * @brief remove call from hash
@@ -1099,20 +1132,6 @@ private:
 	unsigned int audioQueueThreadsMax;
 	int audioQueueTerminating;
 };
-
-
-inline unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
-	unsigned int key;
-
-	key = (unsigned int)(addr * port);
-	key += ~(key << 15);
-	key ^=  (key >> 10);
-	key +=  (key << 3);
-	key ^=  (key >> 6);
-	key += ~(key << 11);
-	key ^=  (key >> 16);
-	return key % MAXNODE;
-}
 
 
 class CustomHeaders {

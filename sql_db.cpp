@@ -1987,7 +1987,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 	}
 	unlock_qfiles();
 	qfile->lock();
-	if(!qfile->isEmpty() &&
+	if(qfile->isOpen() &&
 	   qfile->isExceedPeriod(qfileConfig.period)) {
 		if(sverb.qfiles) {
 			cout << "*** CLOSE QFILE " << qfile->filename 
@@ -1995,7 +1995,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 		}
 		qfile->close();
 	}
-	if(qfile->isEmpty()) {
+	if(!qfile->isOpen()) {
 		u_long actTime = getTimeMS();
 		string qfilename = getQFilename(idc, actTime);
 		if(qfile->open(qfilename.c_str(), actTime)) {
@@ -2143,11 +2143,11 @@ string MySqlStore::getMinQFile(int id) {
 	if(loadFromQFileConfig.inotify) {
 		string qfilename;
 		loadFromQFilesThreadData[id].lock();
-		map<u_long, string>::iterator iter = loadFromQFilesThreadData[id].qfiles.begin();
-		if(iter != loadFromQFilesThreadData[id].qfiles.end() &&
+		map<u_long, string>::iterator iter = loadFromQFilesThreadData[id].qfiles_load.begin();
+		if(iter != loadFromQFilesThreadData[id].qfiles_load.end() &&
 		   (getTimeMS() - iter->first) > (unsigned)loadFromQFileConfig.period * 2 * 1000) {
 			qfilename = iter->second;
-			loadFromQFilesThreadData[id].qfiles.erase(iter);
+			loadFromQFilesThreadData[id].qfiles_load.erase(iter);
 		}
 		loadFromQFilesThreadData[id].unlock();
 		if(!qfilename.empty()) {
@@ -2307,6 +2307,8 @@ void MySqlStore::addFileFromINotify(const char *filename) {
 
 MySqlStore::QFileData MySqlStore::parseQFilename(const char *filename) {
 	QFileData qfileData;
+	qfileData.id = 0;
+	qfileData.time = 0;
 	if(!strncmp(filename, QFILE_PREFIX, strlen(QFILE_PREFIX))) {
 		int id;
 		u_long time;
@@ -2643,7 +2645,7 @@ void *MySqlStore::threadQFilesCheckPeriod(void *arg) {
 		me->lock_qfiles();
 		for(map<int, QFile*>::iterator iter = me->qfiles.begin(); iter != me->qfiles.end(); iter++) {
 			iter->second->lock();
-			if(!iter->second->isEmpty() &&
+			if(iter->second->isOpen() &&
 			   iter->second->isExceedPeriod(me->qfileConfig.period)) {
 				if(sverb.qfiles) {
 					cout << "*** CLOSE FROM THREAD QFilesCheckPeriod " << iter->second->filename
@@ -3795,6 +3797,41 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	sql_noerror = 0;
 	
 	checkColumns_message(true);
+
+	string messageIdType = "bigint";
+	if(!opt_cdr_partition) {
+		this->query("show columns from message like 'id'");
+		SqlDb_row message_struct_row = this->fetchRow();
+		if(message_struct_row) {
+			string idType = message_struct_row["type"];
+			std::transform(idType.begin(), idType.end(), idType.begin(), ::toupper);
+			if(idType.find("BIG") == string::npos) {
+				messageIdType = "int";
+			}
+		}
+	}
+	
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `message_proxy` (\
+			`message_ID` " + messageIdType + " unsigned NOT NULL,\
+			`calldate` datetime NOT NULL,\
+			`src` int unsigned DEFAULT NULL,\
+			`dst` varchar(255) DEFAULT NULL,\
+		KEY `message_ID` (`message_ID`),\
+		KEY `calldate` (`calldate`),\
+		KEY `src` (`src`),\
+		KEY `dst` (`dst`)") + 
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `message_proxy_ibfk_1` FOREIGN KEY (`message_ID`) REFERENCES `message` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress  + 
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+	""));
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
@@ -5700,6 +5737,11 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 				}
 			}
 		}
+		if(typeTables2 == tt2_na || typeTables2 & tt2_message_static) {
+			if(typeTables & tt_child) {
+				tables.push_back("message_proxy");
+			}
+		}
 		if(typeTables2 == tt2_na || typeTables2 & tt2_register) {
 			if(typeTables & tt_main) {
 				tables.push_back("register_failed");
@@ -5891,6 +5933,7 @@ void dropMysqlPartitionsCdr() {
 			_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 			_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 			_dropMysqlPartitions("message", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+			_dropMysqlPartitions("message_proxy", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 			if(custom_headers_cdr) {
 				list<string> nextTables = custom_headers_cdr->getAllNextTables();
 				for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {

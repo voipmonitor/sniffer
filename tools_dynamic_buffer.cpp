@@ -35,9 +35,11 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->lz4Stream = NULL;
 	this->lz4StreamDecode = NULL;
 	#endif //HAVE_LIBLZ4
+	#ifdef HAVE_LIBLZO
 	this->lzoWrkmem = NULL;
 	this->lzoWrkmemDecompress = NULL;
 	this->lzoDecompressData = NULL;
+	#endif //HAVE_LIBLZO
 	this->snappyDecompressData = NULL;
 	this->zipLevel = Z_DEFAULT_COMPRESSION;
 	this->lzmaLevel = 6;
@@ -119,10 +121,12 @@ void CompressStream::initCompress() {
 		}
 		break;
 	case lzo:
+		#ifdef HAVE_LIBLZO
 		if(!this->lzoWrkmem) {
 			this->lzoWrkmem = new FILE_LINE(41003) u_char[lzo_1_11_compress ? LZO1X_1_11_MEM_COMPRESS : LZO1X_1_MEM_COMPRESS];
 			createCompressBuffer();
 		}
+		#endif //HAVE_LIBLZO
 		break;
 	case lz4:
 		if(!this->compressBuffer) {
@@ -188,6 +192,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 		createDecompressBuffer(dataLen);
 		break;
 	case lzo:
+		#ifdef HAVE_LIBLZO
 		if(!this->lzoWrkmemDecompress) {
 			this->lzoWrkmemDecompress = new FILE_LINE(41007) u_char[LZO1X_1_MEM_COMPRESS];
 		}
@@ -195,6 +200,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 			this->lzoDecompressData = new FILE_LINE(41008) SimpleBuffer();
 		}
 		createDecompressBuffer(dataLen);
+		#endif //HAVE_LIBLZO
 		break;
 	case lz4:
 		createDecompressBuffer(dataLen);
@@ -225,10 +231,12 @@ void CompressStream::termCompress() {
 		this->lzmaStream = NULL;
 	}
 	#endif //ifdef HAVE_LIBLZMA
+	#ifdef HAVE_LIBLZO
 	if(this->lzoWrkmem) {
 		delete [] this->lzoWrkmem;
 		this->lzoWrkmem = NULL;
 	}
+	#endif //HAVE_LIBLZO
 	#ifdef HAVE_LIBLZ4
 	if(this->lz4Stream) {
 		LZ4_freeStream(this->lz4Stream);
@@ -258,6 +266,7 @@ void CompressStream::termDecompress() {
 		delete this->snappyDecompressData;
 		this->snappyDecompressData = NULL;
 	}
+	#ifdef HAVE_LIBLZO
 	if(this->lzoDecompressData) {
 		delete this->lzoDecompressData;
 		this->lzoDecompressData = NULL;
@@ -266,6 +275,7 @@ void CompressStream::termDecompress() {
 		delete [] this->lzoWrkmemDecompress;
 		this->lzoWrkmemDecompress = NULL;
 	}
+	#endif //HAVE_LIBLZO
 	#ifdef HAVE_LIBLZ4
 	if(this->lz4StreamDecode) {
 		LZ4_freeStreamDecode(this->lz4StreamDecode);
@@ -395,6 +405,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		}
 		break;
 	case lzo: {
+		#ifdef HAVE_LIBLZO
 		if(!this->compressBuffer) {
 			this->initCompress();
 		}
@@ -440,6 +451,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 			}
 			chunk_offset += chunk_len;
 		}
+		#endif //HAVE_LIBLZO
 		}
 		break;
 	case lz4: {
@@ -646,6 +658,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		}
 		break;
 	case lzo: {
+		#ifdef HAVE_LIBLZO
 		if(this->forceStream) {
 			this->initDecompress(0);
 			if(len >= 3 && !memcmp(data, "LZO", 3) && !this->lzoDecompressData->size()) {
@@ -696,6 +709,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		if(use_len) {
 			*use_len = len;
 		}
+		#endif //HAVE_LIBLZO
 		}
 		break;
 	case lz4:
@@ -903,8 +917,10 @@ string CompressStream::getConfigMenuString() {
 	return(outStr.str());
 }
 
-ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len, Call *call, int typeContent) {
+ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
+			 u_int32_t chunk_fix_len, Call *call, int typeContent) {
 	this->time = time;
+	this->tar_time = tar_time;
 	this->call = call;
 	this->typeContent = typeContent;
 	this->chunkBuffer_countItems = 0;
@@ -933,9 +949,9 @@ ChunkBuffer::ChunkBuffer(int time, u_int32_t chunk_fix_len, Call *call, int type
 
 ChunkBuffer::~ChunkBuffer() {
 	if(sverb.tar > 2) {
-		syslog(LOG_NOTICE, "chunkbufer destroy: %s %lx %i %i", 
+		syslog(LOG_NOTICE, "chunkbufer destroy: %s %lx %s", 
 		       this->getName().c_str(), (long)this,
-		       this->time, this->time % TAR_MODULO_SECONDS);
+		       this->tar_time.getTimeString().c_str());
 	}
 	for(list<sChunk>::iterator it = chunkBuffer.begin(); it != chunkBuffer.end(); it++) {
 		it->deleteChunk(this);
@@ -1121,9 +1137,9 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 
 void ChunkBuffer::close() {
 	if(sverb.tar > 2) {
-		syslog(LOG_NOTICE, "chunkbufer close: %s %lx %i %i", 
+		syslog(LOG_NOTICE, "chunkbufer close: %s %lx %s", 
 		       this->getName().c_str(), (long)this,
-		       this->time, this->time % TAR_MODULO_SECONDS);
+		       this->tar_time.getTimeString().c_str());
 	}
 	this->closed = true;
 }

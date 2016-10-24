@@ -238,10 +238,13 @@ public:
 public:
 	CountryPrefixes();
 	void load();
-	string getCountry(const char *number, vector<string> *countries,
+	string getCountry(const char *number, vector<string> *countries, string *country_prefix,
 			  CheckInternational *checkInternational) {
 		if(countries) {
 			countries->clear();
+		}
+		if(country_prefix) {
+			*country_prefix = "";
 		}
 		bool isInternational;
 		string normalizeNumber = checkInternational->normalize(number, &isInternational);
@@ -283,6 +286,9 @@ public:
 		if(!strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
 			string rslt = findRecIt->country_code;
 			string rsltNumber = findRecIt->number;
+			if(country_prefix) {
+				*country_prefix = findRecIt->number;
+			}
 			if(countries) {
 				countries->push_back(rslt);
 				while(findRecIt != data.begin()) {
@@ -304,7 +310,7 @@ public:
 			return(true);
 		}
 		vector<string> countries;
-		getCountry(number, &countries, checkInternational);
+		getCountry(number, &countries, NULL, checkInternational);
 		for(size_t i = 0; i < countries.size(); i++) {
 			if(checkInternational->countryCodeIsLocal(countries[i].c_str())) {
 				return(true); 
@@ -444,6 +450,8 @@ struct sFraudNumberInfo {
 	string continent2_code_caller_number;
 	string continent_code_called_number;
 	string continent2_code_called_number;
+	string country_prefix_caller;
+	string country_prefix_called;
 	bool local_called_number;
 };
 
@@ -678,6 +686,7 @@ protected:
 	virtual bool defTypeChangeLocation() { return(false); }
 	virtual bool defChangeLocationOk() { return(false); }
 	virtual bool defDestLocation() { return(false); }
+	virtual bool defDestPrefixes() { return(false); }
 	virtual bool defInterval() { return(false); }
 	virtual bool defOnlyConnected() { return(false); }
 	virtual bool defSuppressRepeatingAlerts() { return(false); }
@@ -698,6 +707,7 @@ protected:
 	eTypeLocation typeChangeLocation;
 	vector<string> changeLocationOk;
 	vector<string> destLocation;
+	vector<string> destPrefixes;
 	u_int32_t intervalLength;
 	u_int32_t intervalLimit;
 	CheckInternational checkInternational;
@@ -967,6 +977,7 @@ protected:
 	bool defFilterNumber2() { return(true); }
 	bool defFraudDef() { return(true); }
 	bool defConcuretCallsLimit() { return(true); }
+	bool defDestPrefixes() { return(true); }
 	bool defTypeBy() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:

@@ -9,6 +9,8 @@ public:
 		pcap_store_queue__sizeOfBlocksInMemory = 0;
 		PcapQueue_readFromFifo__blockStoreTrash_size = 0;
 		AsyncClose__sizeOfDataInMemory = 0;
+		PcapQueue_readFromFifo__blockStoreTrash_minTime = -1;
+		PcapQueue_readFromFifo__blockStoreTrash_maxTime = -1;
 	}
 	void setMaxBufferMem(u_int64_t max_buffer_mem, bool orig = false) {
 		this->max_buffer_mem = max_buffer_mem;
@@ -91,12 +93,33 @@ public:
 	double getPercUseAsync() {
 		return((double)AsyncClose__sizeOfDataInMemory / (max_buffer_mem * 0.9) * 100);
 	}
+	//
+	void PcapQueue_readFromFifo__blockStoreTrash_time_set(unsigned long time) {
+		if(PcapQueue_readFromFifo__blockStoreTrash_minTime == (unsigned long)-1 ||
+		   time < PcapQueue_readFromFifo__blockStoreTrash_minTime) {
+			PcapQueue_readFromFifo__blockStoreTrash_minTime = time;
+		}
+		if(PcapQueue_readFromFifo__blockStoreTrash_maxTime == (unsigned long)-1 ||
+		   time > PcapQueue_readFromFifo__blockStoreTrash_maxTime) {
+			PcapQueue_readFromFifo__blockStoreTrash_maxTime = time;
+		}
+	}
+	void PcapQueue_readFromFifo__blockStoreTrash_time_get(unsigned long *min, unsigned long *max) {
+		*min = PcapQueue_readFromFifo__blockStoreTrash_minTime == (unsigned long)-1 ? 0 : PcapQueue_readFromFifo__blockStoreTrash_minTime;
+		*max = PcapQueue_readFromFifo__blockStoreTrash_maxTime == (unsigned long)-1 ? 0 : PcapQueue_readFromFifo__blockStoreTrash_maxTime;
+	}
+	void PcapQueue_readFromFifo__blockStoreTrash_time_clear() {
+		PcapQueue_readFromFifo__blockStoreTrash_minTime = -1;
+		PcapQueue_readFromFifo__blockStoreTrash_maxTime = -1;
+	}
 private:
 	u_int64_t max_buffer_mem;
 	u_int64_t max_buffer_mem_orig;
 	volatile u_int64_t pcap_store_queue__sizeOfBlocksInMemory;
 	volatile u_int64_t PcapQueue_readFromFifo__blockStoreTrash_size;
 	volatile u_int64_t AsyncClose__sizeOfDataInMemory;
+	unsigned long PcapQueue_readFromFifo__blockStoreTrash_minTime;
+	unsigned long PcapQueue_readFromFifo__blockStoreTrash_maxTime;
 };
 
 #endif
