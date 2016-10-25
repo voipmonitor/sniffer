@@ -1884,11 +1884,25 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 	} else if(strstr(buf, "custom_headers_refresh") != NULL) {
 		extern CustomHeaders *custom_headers_cdr;
 		extern CustomHeaders *custom_headers_message;
+		extern NoHashMessageRules *no_hash_message_rules;
 		if(custom_headers_cdr) {
 			custom_headers_cdr->refresh();
 		}
 		if(custom_headers_message) {
 			custom_headers_message->refresh();
+		}
+		if(no_hash_message_rules) {
+			no_hash_message_rules->refresh();
+		}
+		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "no_hash_message_rules_refresh") != NULL) {
+		extern NoHashMessageRules *no_hash_message_rules;
+		if(no_hash_message_rules) {
+			no_hash_message_rules->refresh();
 		}
 		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;

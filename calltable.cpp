@@ -3544,7 +3544,10 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 					break;
 				}
 			}
-			if((flags & FLAG_HIDEMESSAGE) && !message_is_url) {
+			extern NoHashMessageRules *no_hash_message_rules;
+			if((flags & FLAG_HIDEMESSAGE) && !message_is_url && 
+			   (!no_hash_message_rules ||
+			    !no_hash_message_rules->checkNoHash(this))) {
 				message_save = "SHA256: " + GetStringSHA256(trim_str(message) + trim_str(opt_hide_message_content_secret));
 			} else {
 				message_save = message;
@@ -4456,7 +4459,7 @@ Calltable::cleanup_calls( time_t currtime ) {
 		}
 		if(closeCall) {
 			call->removeFindTables(true);
-			if(currtime && call->rtppacketsinqueue != 0) {
+			if(call->rtppacketsinqueue != 0) {
 				closeCall = false;
 			}
 		}
@@ -5005,6 +5008,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 			SqlDb_row row;
 			while((row = sqlDb->fetchRow())) {
 				sCustomHeaderDataPlus ch_data;
+				ch_data.db_id = atoi(row["id"].c_str());
 				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
 				ch_data.header = row["header_field"];
 				ch_data.leftBorder = row["left_border"];
@@ -5056,6 +5060,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 		   !row || row.getIndexField("state") < 0 || row["state"] != "delete") {
 			sCustomHeaderData ch_data;
 			ch_data.header = (*iter)[0];
+			ch_data.db_id = 0;
 			bool exists =  false;
 			for(unsigned i = 0; i < custom_headers[0].size(); i++) {
 				if(!strcasecmp(custom_headers[0][i].header.c_str(), ch_data.header.c_str())) {
@@ -5368,6 +5373,193 @@ void CustomHeaders::createColumnsForFixedHeaders(SqlDb *sqlDb) {
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
+}
+
+bool CustomHeaders::getPosForDbId(unsigned db_id, d_u_int32_t *pos) {
+	lock_custom_headers();
+	bool find = false;
+	map<int, map<int, sCustomHeaderData> >::iterator iter;
+	for(iter = custom_headers.begin(); iter != custom_headers.end() && !find; iter++) {
+		map<int, sCustomHeaderData>::iterator iter2;
+		for(iter2 = iter->second.begin(); iter2 != iter->second.end() && !find; iter2++) {
+			if(iter2->second.db_id == db_id) {
+				pos->val[0] = iter->first;
+				pos->val[1] = iter2->first;
+				find = true;
+			}
+		}
+	}
+	unlock_custom_headers();
+	if(!find) {
+		pos->val[0] = 0;
+		pos->val[1] = 0;
+	}
+	return(find);
+}
+
+
+NoHashMessageRule::NoHashMessageRule() {
+	customHeader_db_id = 0;
+	customHeader_ok = false;
+}
+
+NoHashMessageRule::~NoHashMessageRule() {
+	clean_list_regexp();
+}
+
+bool NoHashMessageRule::checkNoHash(Call *call) {
+	if(!this->customHeader_ok &&
+	   !this->content_regexp.size()) {
+		return(false);
+	}
+	bool noHashByHeader = false;
+	if(this->customHeader_ok) {
+		string header = call->custom_headers[this->customHeader_pos[0]][this->customHeader_pos[1]][1];
+		if(header.length()) {
+			if(this->header_regexp.size()) {
+				list<cRegExp*>::iterator iter_header_regexp;
+				for(iter_header_regexp = this->header_regexp.begin(); iter_header_regexp != this->header_regexp.end(); iter_header_regexp++) {
+					if((*iter_header_regexp)->match(header.c_str())) {
+						noHashByHeader = true;
+						break;
+					}
+				}
+			} else {
+				noHashByHeader = true;
+			}
+		}
+	}
+	bool noHashByContent = false;
+	if(call->message) {
+		list<cRegExp*>::iterator iter_content_regexp;
+		for(iter_content_regexp = this->content_regexp.begin(); iter_content_regexp != this->content_regexp.end(); iter_content_regexp++) {
+			if((*iter_content_regexp)->match(call->message)) {
+				noHashByContent = true;
+				break;
+			}
+		}
+	}
+	return((!this->customHeader_ok || noHashByHeader) &&
+	       (!this->content_regexp.size() || noHashByContent));
+}
+
+void NoHashMessageRule::load(const char *name, 
+			     unsigned customHeader_db_id, const char *customHeader_name, 
+			     const char *header_regexp, const char *content_regexp) {
+	this->name = name;
+	if(customHeader_db_id) {
+		this->customHeader_db_id = customHeader_db_id;
+		this->customHeader_name = customHeader_name;
+		extern CustomHeaders *custom_headers_message;
+		this->customHeader_ok = custom_headers_message->getPosForDbId(this->customHeader_db_id, &this->customHeader_pos);
+		
+	} else {
+		this->customHeader_db_id = 0;
+		this->customHeader_pos.val[0] = 0;
+		this->customHeader_pos.val[1] = 0;
+		this->customHeader_ok = false;
+	}
+	clean_list_regexp();
+	if(header_regexp && *header_regexp) {
+		vector<string> header_regexp_a = split(header_regexp, "\n", true);
+		for(unsigned i = 0; i < header_regexp_a.size(); i++) {
+			cRegExp *regExp = new FILE_LINE(0) cRegExp(header_regexp_a[i].c_str());
+			this->header_regexp.push_back(regExp);
+		}
+	}
+	if(content_regexp && *content_regexp) {
+		vector<string> content_regexp_a = split(content_regexp, "\n", true);
+		for(unsigned i = 0; i < content_regexp_a.size(); i++) {
+			cRegExp *regExp = new FILE_LINE(0) cRegExp(content_regexp_a[i].c_str());
+			this->content_regexp.push_back(regExp);
+		}
+	}
+}
+
+void NoHashMessageRule::clean_list_regexp() {
+	while(header_regexp.size()) {
+		list<cRegExp*>::iterator iter = header_regexp.begin();
+		delete *iter;
+		header_regexp.erase(iter);
+	}
+	while(content_regexp.size()) {
+		list<cRegExp*>::iterator iter = content_regexp.begin();
+		delete *iter;
+		content_regexp.erase(iter);
+	}
+}
+
+NoHashMessageRules::NoHashMessageRules() {
+	loadTime = 0;
+	_sync_no_hash = 0;
+	load();
+}
+
+NoHashMessageRules::~NoHashMessageRules() {
+	clear();
+}
+
+bool NoHashMessageRules::checkNoHash(Call *call) {
+	bool noHash = false;
+	lock_no_hash();
+	list<NoHashMessageRule*>::iterator rules_iter;
+	for(rules_iter = rules.begin(); rules_iter != rules.end(); ++rules_iter) {
+		if((*rules_iter)->checkNoHash(call)) {
+			noHash = true;
+			break;
+		}
+	}
+	unlock_no_hash();
+	return(noHash);
+}
+
+void NoHashMessageRules::load(class SqlDb *sqlDb, bool lock) {
+	if(lock) lock_no_hash();
+	clear(false);
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	sqlDb->query("show tables like 'message_no_hash_rules'");
+	if(sqlDb->fetchRow()) {
+		sqlDb->query("SELECT nhr.*, \
+				     ch.name as msg_custom_headers_name \
+			      FROM message_no_hash_rules nhr \
+			      JOIN message_custom_headers ch on (ch.id = nhr.msg_custom_headers_id)");
+		SqlDb_row row;
+		while((row = sqlDb->fetchRow())) {
+			NoHashMessageRule *rule = new FILE_LINE(0) NoHashMessageRule;
+			rule->load(row["name"].c_str(), 
+				   atoi(row["msg_custom_headers_id"].c_str()),
+				   row["msg_custom_headers_name"].c_str(),
+				   row["header_regexp"].c_str(), 
+				   row["content_regexp"].c_str());
+			rules.push_back(rule);
+		}
+	}
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+	loadTime = getTimeMS();
+	if(lock) unlock_no_hash();
+}
+
+void NoHashMessageRules::clear(bool lock) {
+	if(lock) lock_no_hash();
+	while(rules.size()) {
+		list<NoHashMessageRule*>::iterator iter = rules.begin();
+		delete *iter;
+		rules.erase(iter);
+	}
+	if(lock) unlock_no_hash();
+}
+
+void NoHashMessageRules::refresh(SqlDb *sqlDb) {
+	lock_no_hash();
+	clear(false);
+	load(sqlDb, false);
+	unlock_no_hash();
 }
 
 

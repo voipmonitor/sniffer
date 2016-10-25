@@ -1142,6 +1142,7 @@ public:
 	};
 	struct sCustomHeaderData {
 		string header;
+		unsigned db_id;
 		string leftBorder;
 		string rightBorder;
 		string regularExpression;
@@ -1176,6 +1177,7 @@ public:
 	void createTablesIfNotExists(SqlDb *sqlDb = NULL);
 	void createTableIfNotExists(const char *tableName, SqlDb *sqlDb = NULL);
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
+	bool getPosForDbId(unsigned db_id, d_u_int32_t *pos);
 private:
 	void lock_custom_headers() {
 		while(__sync_lock_test_and_set(&this->_sync_custom_headers, 1));
@@ -1193,6 +1195,47 @@ private:
 	unsigned loadTime;
 	unsigned lastTimeSaveUseInfo;
 	volatile int _sync_custom_headers;
+};
+
+
+class NoHashMessageRule {
+public:
+	NoHashMessageRule();
+	~NoHashMessageRule();
+	bool checkNoHash(Call *call);
+	void load(const char *name, 
+		  unsigned customHeader_db_id, const char *customHeader, 
+		  const char *header_regexp, const char *content_regexp);
+	void clean_list_regexp();
+private:
+	string name;
+	unsigned customHeader_db_id;
+	string customHeader_name;
+	d_u_int32_t customHeader_pos;
+	bool customHeader_ok;
+	list<cRegExp*> header_regexp;
+	list<cRegExp*> content_regexp;
+};
+
+class NoHashMessageRules {
+public:
+	NoHashMessageRules();
+	~NoHashMessageRules();
+	bool checkNoHash(Call *call);
+	void load(class SqlDb *sqlDb = NULL, bool lock = true);
+	void clear(bool lock = true);
+	void refresh(SqlDb *sqlDb = NULL);
+private:
+	void lock_no_hash() {
+		while(__sync_lock_test_and_set(&this->_sync_no_hash, 1));
+	}
+	void unlock_no_hash() {
+		__sync_lock_release(&this->_sync_no_hash);
+	}
+private:
+	list<NoHashMessageRule*> rules;
+	unsigned int loadTime;
+	volatile int _sync_no_hash;
 };
 
 

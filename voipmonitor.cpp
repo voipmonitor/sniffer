@@ -475,6 +475,7 @@ vector<dstring> opt_custom_headers_cdr;
 vector<dstring> opt_custom_headers_message;
 CustomHeaders *custom_headers_cdr;
 CustomHeaders *custom_headers_message;
+NoHashMessageRules *no_hash_message_rules;
 int opt_custom_headers_last_value = 1;
 bool opt_sql_time_utc = false;
 
@@ -772,6 +773,7 @@ char *opt_untar_gui_params = NULL;
 char *opt_unlzo_gui_params = NULL;
 char *opt_waveform_gui_params = NULL;
 char *opt_spectrogram_gui_params = NULL;
+char *opt_check_regexp_gui_params = NULL;
 char opt_test_str[1024];
 
 map<int, string> command_line_data;
@@ -1913,6 +1915,14 @@ int main_init_read();
 void main_term_read();
 void main_init_sqlstore();
 
+bool is_set_gui_params() {
+	return(opt_untar_gui_params ||
+	       opt_unlzo_gui_params || 
+	       opt_waveform_gui_params ||
+	       opt_spectrogram_gui_params ||
+	       opt_check_regexp_gui_params);
+}
+
 int main(int argc, char *argv[]) {
 	extern unsigned int HeapSafeCheck;
 	extern unsigned int MemoryStatQuick;
@@ -2041,9 +2051,7 @@ int main(int argc, char *argv[]) {
 			load_config((char*)"/etc/voipmonitor/conf.d/");
 		}
 	}
-	if(!opt_nocdr && 
-	   !opt_untar_gui_params && !opt_unlzo_gui_params && !opt_waveform_gui_params && !opt_spectrogram_gui_params &&
-	   !printConfigStruct &&
+	if(!opt_nocdr && !is_set_gui_params() && !printConfigStruct &&
 	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
 			CONFIG.setFromMysql(true);
@@ -2056,9 +2064,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	
-	if(!is_read_from_file_simple() && 
-	   !opt_untar_gui_params && !opt_unlzo_gui_params && !opt_waveform_gui_params && !opt_spectrogram_gui_params &&
-	   command_line_data.size()) {
+	if(!is_read_from_file_simple() && !is_set_gui_params() && command_line_data.size()) {
 		printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
 		syslog(LOG_NOTICE, "start voipmonitor version %s", RTPSENSOR_VERSION);
 		
@@ -2116,6 +2122,11 @@ int main(int argc, char *argv[]) {
 		return(!create_spectrogram_from_raw(inputRaw,
 						    sampleRate, msPerPixel, 0, channels,
 						    outputSpectrogramPng));
+	}
+	if(opt_check_regexp_gui_params) {
+		bool okRegExp = check_regexp(opt_check_regexp_gui_params);
+		cout << (okRegExp ? "ok" : "failed") << endl;
+		return(okRegExp ? 0 : 1);
 	}
 	
 	if(printConfigStruct) {
@@ -2450,6 +2461,10 @@ int main(int argc, char *argv[]) {
 				delete custom_headers_message;
 				custom_headers_message = NULL;
 			}
+			if(no_hash_message_rules) {
+				delete no_hash_message_rules;
+				no_hash_message_rules = NULL;
+			}
 		}
 	
 	}
@@ -2691,6 +2706,7 @@ int main_init_read() {
 		custom_headers_cdr->createTablesIfNotExists();
 		custom_headers_message = new FILE_LINE(43015) CustomHeaders(CustomHeaders::message);
 		custom_headers_message->createTablesIfNotExists();
+		no_hash_message_rules = new FILE_LINE(0) NoHashMessageRules;
 	}
 
 	IPfilter::loadActive();
@@ -3290,6 +3306,10 @@ void main_term_read() {
 	if(custom_headers_message) {
 		delete custom_headers_message;
 		custom_headers_message = NULL;
+	}
+	if(no_hash_message_rules) {
+		delete no_hash_message_rules;
+		no_hash_message_rules = NULL;
 	}
 	
 	for(int i = 0; i < 2; i++) {
@@ -5483,6 +5503,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"update-schema", 0, 0, 208},
 	    {"new-config", 0, 0, 203},
 	    {"print-config-struct", 0, 0, 204},
+	    {"check-regexp", 1, 0, 209},
 	    {"max-packets", 1, 0, 301},
 	    {"continue-after-read", 0, 0, 302},
 	    {"diff-days", 1, 0, 303},
@@ -5556,6 +5577,12 @@ void get_command_line_arguments() {
 				break;
 			case 208:
 				updateSchema = true;
+				break;
+			case 209:
+				if(!opt_check_regexp_gui_params) {
+					opt_check_regexp_gui_params = new FILE_LINE(0) char[strlen(optarg) + 1];
+					strcpy(opt_check_regexp_gui_params, optarg);
+				}
 				break;
 			case 203:
 				useNewCONFIG = true;
@@ -5893,9 +5920,7 @@ void set_context_config() {
 		opt_pcap_queue_compress = 0;
 	}
 	
-	if(!is_read_from_file_simple() && 
-	   !opt_untar_gui_params && !opt_unlzo_gui_params && !opt_waveform_gui_params && !opt_spectrogram_gui_params &&
-	   command_line_data.size()) {
+	if(!is_read_from_file_simple() && !is_set_gui_params() && command_line_data.size()) {
 		// restore orig values
 		buffersControl.restoreMaxBufferMemFromOrig();
 		static u_int64_t opt_pcap_queue_store_queue_max_memory_size_orig = 0;
@@ -6105,7 +6130,7 @@ void set_context_config() {
 
 bool check_complete_parameters() {
 	if (!is_read_from_file() && ifname[0] == '\0' && opt_scanpcapdir[0] == '\0' && 
-	    !opt_untar_gui_params && !opt_unlzo_gui_params && !opt_waveform_gui_params && !opt_spectrogram_gui_params &&
+	    !is_set_gui_params() && 
 	    !printConfigStruct && !is_receiver() &&
 	    !opt_test){
                         /* Ruler to assist with keeping help description to max. 80 chars wide:
