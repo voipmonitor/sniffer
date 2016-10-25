@@ -2819,39 +2819,41 @@ int main_init_read() {
 	}
 #endif
 
-	// start reading threads
-	if(is_enable_rtp_threads()) {
-		rtp_threads = new FILE_LINE(43020) rtp_read_thread[num_threads_max];
-		for(int i = 0; i < num_threads_max; i++) {
-			size_t _rtp_qring_length = rtp_qring_length ? 
-							rtp_qring_length :
-							rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
-			rtp_threads[i].init(i + 1, _rtp_qring_length);
-			if(i < num_threads_active) {
-				vm_pthread_create_autodestroy("rtp read",
-							      &(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i], __FILE__, __LINE__);
+	if(!is_sender()) {
+		// start reading threads
+		if(is_enable_rtp_threads()) {
+			rtp_threads = new FILE_LINE(43020) rtp_read_thread[num_threads_max];
+			for(int i = 0; i < num_threads_max; i++) {
+				size_t _rtp_qring_length = rtp_qring_length ? 
+								rtp_qring_length :
+								rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
+				rtp_threads[i].init(i + 1, _rtp_qring_length);
+				if(i < num_threads_active) {
+					vm_pthread_create_autodestroy("rtp read",
+								      &(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i], __FILE__, __LINE__);
+				}
 			}
 		}
-	}
-	
-	for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
-		preProcessPacket[i] = new FILE_LINE(43024) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
-	}
-	if(!is_read_from_file_simple()) {
-		for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end)); i++) {
-			preProcessPacket[i]->startOutThread();
+		
+		for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
+			preProcessPacket[i] = new FILE_LINE(43024) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 		}
-	}
-	
-	//autostart for fork mode if t2cpu > 50%
-	if((!opt_fork || opt_t2_boost) &&
-	   opt_enable_process_rtp_packet && opt_pcap_split &&
-	   !is_read_from_file_simple()) {
-		process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
-		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
-			processRtpPacketDistribute[i] = new FILE_LINE(43026) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
+		if(!is_read_from_file_simple()) {
+			for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end)); i++) {
+				preProcessPacket[i]->startOutThread();
+			}
 		}
-		processRtpPacketHash = new FILE_LINE(43025) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
+		
+		//autostart for fork mode if t2cpu > 50%
+		if((!opt_fork || opt_t2_boost) &&
+		   opt_enable_process_rtp_packet && opt_pcap_split &&
+		   !is_read_from_file_simple()) {
+			process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
+			for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
+				processRtpPacketDistribute[i] = new FILE_LINE(43026) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
+			}
+			processRtpPacketHash = new FILE_LINE(43025) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
+		}
 	}
 
 	if(opt_enable_http) {

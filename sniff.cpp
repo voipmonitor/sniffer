@@ -5697,10 +5697,12 @@ void *PreProcessPacket::outThreadFunction() {
 					if(processRtpPacketHash) {
 						processRtpPacketHash->push_batch();
 					} else if(!opt_t2_boost) {
-						extern int num_threads_max;
-						for(int i = 0; i < num_threads_max; i++) {
-							if(rtp_threads[i].threadId) {
-								rtp_threads[i].push_batch();
+						if(rtp_threads) {
+							extern int num_threads_max;
+							for(int i = 0; i < num_threads_max; i++) {
+								if(rtp_threads[i].threadId) {
+									rtp_threads[i].push_batch();
+								}
 							}
 						}
 					}
@@ -5776,10 +5778,12 @@ void PreProcessPacket::push_batch_nothread() {
 		if(processRtpPacketHash) {
 			processRtpPacketHash->push_batch();
 		} else if(!opt_t2_boost) {
-			extern int num_threads_max;
-			for(int i = 0; i < num_threads_max; i++) {
-				if(rtp_threads[i].threadId) {
-					rtp_threads[i].push_batch();
+			if(rtp_threads) {
+				extern int num_threads_max;
+				for(int i = 0; i < num_threads_max; i++) {
+					if(rtp_threads[i].threadId) {
+						rtp_threads[i].push_batch();
+					}
 				}
 			}
 		}
@@ -6295,17 +6299,19 @@ void *ProcessRtpPacket::outThreadFunction() {
 					}
 					break;
 				case distribute:
-					extern int num_threads_max;
-					if(!opt_t2_boost) {
-						for(int i = 0; i < num_threads_max; i++) {
-							if(rtp_threads[i].threadId) {
-								rtp_threads[i].push_batch();
+					if(rtp_threads) {
+						extern int num_threads_max;
+						if(!opt_t2_boost) {
+							for(int i = 0; i < num_threads_max; i++) {
+								if(rtp_threads[i].threadId) {
+									rtp_threads[i].push_batch();
+								}
 							}
-						}
-					} else {
-						for(int i = 0; i < num_threads_max; i++) {
-							if(rtp_threads[i].threadId) {
-								rtp_threads[i].push_thread_buffer(indexThread);
+						} else {
+							for(int i = 0; i < num_threads_max; i++) {
+								if(rtp_threads[i].threadId) {
+									rtp_threads[i].push_thread_buffer(indexThread);
+								}
 							}
 						}
 					}

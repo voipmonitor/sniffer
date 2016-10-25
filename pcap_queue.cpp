@@ -5687,7 +5687,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			}
 		}
 		if(!blockStore) {
-			if(usleepCounter && !(usleepCounter % 500)) {
+			if(usleepCounter && !(usleepCounter % 500) &&
+			   this->packetServerDirection != directionWrite) {
 				this->pushBatchProcessPacket();
 			}
 			usleep(1000);
@@ -6429,7 +6430,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 void PcapQueue_readFromFifo::pushBatchProcessPacket() {
 	if(pcapQueueQ_outThread_defrag) {
 		pcapQueueQ_outThread_defrag->push_batch();
-	} else {
+	} else if(preProcessPacket[PreProcessPacket::ppt_detach]) {
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
 	}
 }
