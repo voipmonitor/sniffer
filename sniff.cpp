@@ -1527,10 +1527,12 @@ void *rtp_read_thread_func(void *arg) {
 				lock_add_remove_rtp_threads();
 				if(read_thread->remove_flag && !read_thread->calls) {
 					break;
-				} else {
-					read_thread->remove_flag = false;
 				}
 				unlock_add_remove_rtp_threads();
+				if(!opt_t2_boost && read_thread->remove_flag &&
+				   !(usleepCounter % 1000)) {
+					read_thread->push_batch();
+				}
 			}
 			// no packet to read, wait and try again
 			unsigned usleepTime = rtp_qring_usleep * 
@@ -1552,6 +1554,10 @@ void *rtp_read_thread_func(void *arg) {
 	read_thread->threadId = 0;
 	
 	unlock_add_remove_rtp_threads();
+	
+	if(verbosity) {
+		syslog(LOG_NOTICE, "end rtp thread %i", read_thread->threadNum);
+	}
 	
 	return NULL;
 }
@@ -5691,9 +5697,11 @@ void *PreProcessPacket::outThreadFunction() {
 					if(processRtpPacketHash) {
 						processRtpPacketHash->push_batch();
 					} else if(!opt_t2_boost) {
-						extern volatile int num_threads_active;
-						for(int i = 0; i < num_threads_active; i++) {
-							rtp_threads[i].push_batch();
+						extern int num_threads_max;
+						for(int i = 0; i < num_threads_max; i++) {
+							if(rtp_threads[i].threadId) {
+								rtp_threads[i].push_batch();
+							}
 						}
 					}
 					break;
@@ -5768,9 +5776,11 @@ void PreProcessPacket::push_batch_nothread() {
 		if(processRtpPacketHash) {
 			processRtpPacketHash->push_batch();
 		} else if(!opt_t2_boost) {
-			extern volatile int num_threads_active;
-			for(int i = 0; i < num_threads_active; i++) {
-				rtp_threads[i].push_batch();
+			extern int num_threads_max;
+			for(int i = 0; i < num_threads_max; i++) {
+				if(rtp_threads[i].threadId) {
+					rtp_threads[i].push_batch();
+				}
 			}
 		}
 	case ppt_end:

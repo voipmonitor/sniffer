@@ -1928,7 +1928,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 			} else if(num_threads_active > 1 &&
 				  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread &&
-				  pcapStatCounter > 100) {
+				  pcapStatCounter > (opt_fork ? 100 : 10)) {
 				set_remove_rtp_read_thread();
 			}
 		}
