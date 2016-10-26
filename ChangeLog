@@ -1,7 +1,14 @@
+17.4.1 26.10.2016
+≠================
+- Fix mirror sender mode crash 
+- apply no MESSAGE hash VG-838
+ 
+
 17.4 24.10.2016
 ===============
 - flush fixed jitterbuffer when resyncing to avoid false low mos score which happens when sender sends RTP in bursts 
 - speed optimization in t2 treads (new option t2_boost = yes) - removes bottleneck >= 15000 concurrent calls (around 2Millions RTP packets / sec) 
+
 - fix early call termination when 3,4,5XX response is received in the middle of a call (response to OPTION) [VS-502]
 - fix RTP detection when calling to multiple phones at once [VS-498]
 - fix memory leak when RTP threads are lowering / rising 
