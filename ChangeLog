@@ -1,6 +1,11 @@
+17.4.2 26.10.2016
+=================
+- fix deadlock >= 17.4
+
+
 17.4.1 26.10.2016
-≠================
-- Fix mirror sender mode crash 
+=================
+- fix mirror sender mode crash 
 - apply no MESSAGE hash VG-838
  
 
