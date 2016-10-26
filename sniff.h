@@ -462,7 +462,9 @@ public:
 					++usleepCounter;
 				}
 				memcpy(current_batch->batch.pt, thread_buffer->batch.pt, sizeof(rtp_packet_pt_pcap_queue) * thread_buffer->count);
+				while(__sync_lock_test_and_set(&this->count_lock_sync, 1));
 				current_batch->count = thread_buffer->count;
+				__sync_lock_release(&this->count_lock_sync);
 				__sync_add_and_fetch(&current_batch->used, 1);
 				if((this->writeit + 1) == this->qring_length) {
 					this->writeit = 0;
@@ -526,7 +528,9 @@ public:
 			packet->blockstore_addflag(63 /*pb lock flag*/);
 			if(qring_push_index_count == qring_active_push_item->max_count) {
 				packet->blockstore_addflag(64 /*pb lock flag*/);
+				while(__sync_lock_test_and_set(&this->count_lock_sync, 1));
 				qring_active_push_item->count = qring_push_index_count;
+				__sync_lock_release(&this->count_lock_sync);
 				qring_active_push_item->used = 1;
 				if((this->writeit + 1) == this->qring_length) {
 					this->writeit = 0;
@@ -552,7 +556,9 @@ public:
 		#endif
 			
 		if(qring_push_index_count) {
+			while(__sync_lock_test_and_set(&this->count_lock_sync, 1));
 			qring_active_push_item->count = qring_push_index_count;
+			__sync_lock_release(&this->count_lock_sync);
 			qring_active_push_item->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
@@ -593,7 +599,9 @@ public:
 				++usleepCounter;
 			}
 			memcpy(current_batch->batch.pt, thread_buffer->batch.pt, sizeof(rtp_packet_pt_pcap_queue) * thread_buffer->count);
+			while(__sync_lock_test_and_set(&this->count_lock_sync, 1));
 			current_batch->count = thread_buffer->count;
+			__sync_lock_release(&this->count_lock_sync);
 			current_batch->used = 1;
 			if((this->writeit + 1) == this->qring_length) {
 				this->writeit = 0;
@@ -626,6 +634,7 @@ public:
 	u_int32_t last_use_time_s;
 	volatile u_int32_t calls;
 	volatile int push_lock_sync;
+	volatile int count_lock_sync;
 };
 
 #define MAXLIVEFILTERS 10

@@ -1467,9 +1467,9 @@ void *rtp_read_thread_func(void *arg) {
 	while(1) {
 		if(read_thread->qring[read_thread->readit]->used == 1) {
 			rtp_read_thread::batch_packet_rtp *batch = read_thread->qring[read_thread->readit];
-			while(__sync_lock_test_and_set(&read_thread->push_lock_sync, 1));
+			while(__sync_lock_test_and_set(&read_thread->count_lock_sync, 1));
 			unsigned count = batch->count;
-			__sync_lock_release(&read_thread->push_lock_sync);
+			__sync_lock_release(&read_thread->count_lock_sync);
 			for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 				read_thread->last_use_time_s = getTimeMS_rdtsc() / 1000;
 				bool rslt_read_rtp = false;
@@ -6668,6 +6668,7 @@ void rtp_read_thread::init(int threadNum, size_t qring_length) {
 	this->last_use_time_s = 0;
 	this->calls = 0;
 	this->push_lock_sync = 0;
+	this->count_lock_sync = 0;
 	this->init_qring(qring_length);
 	this->init_thread_buffer();
 }
