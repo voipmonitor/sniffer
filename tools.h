@@ -3082,4 +3082,8 @@ private:
 	volatile int _sync;
 };
 
+
+void read_pcap(const char *pcapFileName);
+
+
 #endif

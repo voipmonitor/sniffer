@@ -774,6 +774,7 @@ char *opt_unlzo_gui_params = NULL;
 char *opt_waveform_gui_params = NULL;
 char *opt_spectrogram_gui_params = NULL;
 char *opt_check_regexp_gui_params = NULL;
+char *opt_read_pcap_gui_params = NULL;
 char opt_test_str[1024];
 
 map<int, string> command_line_data;
@@ -1920,7 +1921,8 @@ bool is_set_gui_params() {
 	       opt_unlzo_gui_params || 
 	       opt_waveform_gui_params ||
 	       opt_spectrogram_gui_params ||
-	       opt_check_regexp_gui_params);
+	       opt_check_regexp_gui_params ||
+	       opt_read_pcap_gui_params);
 }
 
 int main(int argc, char *argv[]) {
@@ -2127,6 +2129,10 @@ int main(int argc, char *argv[]) {
 		bool okRegExp = check_regexp(opt_check_regexp_gui_params);
 		cout << (okRegExp ? "ok" : "failed") << endl;
 		return(okRegExp ? 0 : 1);
+	}
+	if(opt_read_pcap_gui_params) {
+		read_pcap(opt_read_pcap_gui_params);
+		return(0);
 	}
 	
 	if(printConfigStruct) {
@@ -5506,6 +5512,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"new-config", 0, 0, 203},
 	    {"print-config-struct", 0, 0, 204},
 	    {"check-regexp", 1, 0, 209},
+	    {"read-pcap", 1, 0, 210},
 	    {"max-packets", 1, 0, 301},
 	    {"continue-after-read", 0, 0, 302},
 	    {"diff-days", 1, 0, 303},
@@ -5584,6 +5591,12 @@ void get_command_line_arguments() {
 				if(!opt_check_regexp_gui_params) {
 					opt_check_regexp_gui_params = new FILE_LINE(0) char[strlen(optarg) + 1];
 					strcpy(opt_check_regexp_gui_params, optarg);
+				}
+				break;
+			case 210:
+				if(!opt_read_pcap_gui_params) {
+					opt_read_pcap_gui_params = new FILE_LINE(0) char[strlen(optarg) + 1];
+					strcpy(opt_read_pcap_gui_params, optarg);
 				}
 				break;
 			case 203:

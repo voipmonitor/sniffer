@@ -3552,22 +3552,22 @@ pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, stri
 	}
 }
 
+struct pcap_timeval {
+    bpf_int32 tv_sec;		/* seconds */
+    bpf_int32 tv_usec;		/* microseconds */
+};
+struct pcap_sf_pkthdr {
+    pcap_timeval ts;		/* time stamp */
+    bpf_u_int32 caplen;		/* length of portion present */
+    bpf_u_int32 len;		/* length this packet (off wire) */
+};
+
 void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp, bool allPackets) {
 	if(opt_pcap_dump_bufflength) {
 		FileZipHandler *handler = (FileZipHandler*)user;
 		if(allPackets ||
 		   (h->caplen > 0 && h->caplen <= h->len)) {
-			struct pcap_timeval {
-			    bpf_int32 tv_sec;		/* seconds */
-			    bpf_int32 tv_usec;		/* microseconds */
-			};
-			struct pcap_sf_pkthdr {
-			    struct pcap_timeval ts;	/* time stamp */
-			    bpf_u_int32 caplen;		/* length of portion present */
-			    bpf_u_int32 len;		/* length this packet (off wire) */
-			};
-			
-			struct pcap_sf_pkthdr sf_hdr;
+			pcap_sf_pkthdr sf_hdr;
 			sf_hdr.ts.tv_sec  = h->ts.tv_sec;
 			sf_hdr.ts.tv_usec = h->ts.tv_usec;
 			sf_hdr.caplen     = h->caplen;
@@ -5171,4 +5171,95 @@ double cThreadMonitor::getCpuUsagePerc(sThread *thread) {
 		return(ucpu_usage + scpu_usage);
 	}
 	return(-1);
+}
+
+
+bool is_ok_pcap_header(pcap_sf_pkthdr *header, pcap_sf_pkthdr *prev_header) {
+	return(header->ts.tv_sec >= prev_header->ts.tv_sec && 
+	       header->ts.tv_sec < prev_header->ts.tv_sec + 60 * 60 && 
+	       header->caplen > 0 && header->caplen <= 65535 &&
+	       header->len > 0 && header->len <= 65535);
+}
+
+void print_pcap_header(pcap_sf_pkthdr *header, const char *head, unsigned counter, unsigned filePos) {
+	cout << head << ": "
+	     << counter << ";"
+	     << " time: " << fixed << setprecision(6) << header->ts.tv_sec + (double)header->ts.tv_usec / 1000000 << ";"
+	     << " length: " << header->caplen << " / " << header->len << ";"
+	     << " filepos: " << filePos << ";"
+	     << endl;
+}
+
+void read_pcap(const char *pcapFileName) {
+	FILE *pcapFile = fopen(pcapFileName, "r");
+	if(!pcapFile) {
+		return;
+	}
+	unsigned long filePos = 0;
+	pcap_file_header hdr;
+	unsigned c = fread(&hdr, 1, sizeof(hdr), pcapFile);
+	if(!c) {
+		fclose(pcapFile);
+		return;
+	}
+	filePos += sizeof(hdr);
+	cout << "HEADER:"
+	     << " magic: " << hdr.magic << ";"
+	     << " version: " << hdr.version_major << " / " << hdr.version_minor  << ";"
+	     << " snaplen: " << hdr.snaplen  << ";"
+	     << " linktype: " << hdr.linktype << ";"
+	     << endl;
+	unsigned packetBufferLengthMax = 1000000;
+	unsigned packetBufferLength = 0;
+	char *packetBuffer = new FILE_LINE(0) char[packetBufferLengthMax];
+	char *packetBufferPos = packetBuffer;
+	unsigned int packetCounter = 0;
+	while(true) {
+		if(packetBufferLength < packetBufferLengthMax / 2) {
+			char *packetBufferCopy = new FILE_LINE(0) char[packetBufferLengthMax];
+			memcpy(packetBufferCopy, packetBufferPos, packetBufferLength);
+			delete [] packetBuffer;
+			packetBuffer = packetBufferCopy;
+			packetBufferPos = packetBuffer;
+			c = fread(packetBuffer + packetBufferLength, 1, packetBufferLengthMax - packetBufferLength, pcapFile);
+			packetBufferLength += c;
+		}
+		if(packetBufferLength < sizeof(pcap_sf_pkthdr)) {
+			break;
+		}
+		pcap_sf_pkthdr *phdr = (pcap_sf_pkthdr*)packetBufferPos;
+		++packetCounter;
+		print_pcap_header(phdr, "PACKET", packetCounter, filePos);
+		unsigned ph_length = sizeof(pcap_sf_pkthdr) + phdr->caplen;
+		if(packetBufferLength > ph_length) {
+			pcap_sf_pkthdr *phdr_next = (pcap_sf_pkthdr*)(packetBufferPos + ph_length);
+			if(!is_ok_pcap_header(phdr_next, phdr)) {
+				bool find_xphdr = false;
+				for(unsigned i = 1; i < packetBufferLength; i++) {
+					pcap_sf_pkthdr *xphdr = (pcap_sf_pkthdr*)(packetBufferPos + i);
+					if(is_ok_pcap_header(xphdr, phdr)) {
+						print_pcap_header(xphdr, "find packet", i, filePos + i);
+						cout << "correct caplen to: " 
+						     << i - sizeof(pcap_sf_pkthdr) 
+						     << " diff: " << ((int)ph_length - (int)i)
+						     << endl;
+						ph_length = i;
+						find_xphdr = true;
+						break;
+					}
+				}
+				if(!find_xphdr) {
+					cout << "bad next packet" << endl;
+					print_pcap_header(phdr_next, "bad_packet", packetCounter + 1, filePos + ph_length);
+				}
+			}
+			packetBufferPos += ph_length;
+			packetBufferLength -= ph_length;
+			filePos += ph_length;
+		} else {
+			break;
+		}
+	}
+	fclose(pcapFile);
+	delete [] packetBuffer;
 }
