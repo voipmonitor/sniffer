@@ -6128,6 +6128,10 @@ void set_context_config() {
 	if(opt_t2_boost && !opt_enable_process_rtp_packet) {
 		opt_enable_process_rtp_packet = 1;
 	}
+	if(opt_t2_boost) {
+		opt_enable_preprocess_packet = 3;
+		opt_pcap_queue_use_blocks = 1;
+	}
 }
 
 bool check_complete_parameters() {

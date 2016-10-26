@@ -1529,7 +1529,7 @@ bool RestartUpgrade::runUpgrade() {
 			syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
 		}
 		if(get_url_file(_url.c_str(), binaryGzFilepathName.c_str(), &error)) {
-			syslog(LOG_NOTICE, "download file '%s' finished", _url.c_str());
+			syslog(LOG_NOTICE, "download file '%s' finished (size: %lli)", _url.c_str(), GetFileSize(binaryGzFilepathName));
 			this->errorString = "";
 			break;
 		} else {
@@ -1567,7 +1567,7 @@ bool RestartUpgrade::runUpgrade() {
 	}
 	int unzipRslt = system(unzipCommand.c_str());
 	if(verbosity > 0) {
-		syslog(LOG_NOTICE, "unzip rslt: %i", unzipRslt);
+		syslog(LOG_NOTICE, "unzip rslt: %i (size: %lli)", unzipRslt, GetFileSize(binaryFilepathName));
 	}
 	if(unzipRslt != 0) {
 		FILE *fileHandle = fopen(outputStdoutErr, "r");
