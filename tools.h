@@ -2210,6 +2210,7 @@ private:
 
 string base64_encode(const unsigned char *data, size_t input_length);
 char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length);
+void _base64_encode(const unsigned char *data, size_t input_length, char *encoded_data, size_t output_length = 0);
 
 #define LOCALTIME_MINCACHE_LENGTH 6
 #define LOCALTIME_TIMEZONE_LENGTH 10

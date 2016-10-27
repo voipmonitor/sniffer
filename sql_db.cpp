@@ -2818,65 +2818,113 @@ string sqlEscapeString(const char *inputStr, int length, const char *typeDb, Sql
 	return _sqlEscapeString(inputStr, length, sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb);
 }
 
+struct escChar {
+	char ch;
+	char escCh;
+};
+static escChar escCharsMysql[] = {
+	{ '\'', '\'' },
+	{ '"' , '"' },
+	{ '\\', '\\' },
+	{ '\n', '\n' },		// new line feed
+	{ '\r', '\r' },		// cariage return
+	// remove after create function test_escape
+	//{ '\t', '\t' }, 	// tab
+	//{ '\v', '\v' }, 	// vertical tab
+	//{ '\b', '\b' }, 	// backspace
+	//{ '\f', '\f' }, 	// form feed
+	//{ '\a', '\a' }, 	// alert (bell)
+	//{ '\e', 0 }, 		// escape
+	// add after create function test_escape
+	{    0, '0' },
+	{   26, 'Z' }
+};
+static unsigned char escTableMysql[256][2];
+static escChar escCharsOdbc[] = { 
+	{ '\'', 2 },
+	{ '\v', 0 }, 		// vertical tab
+	{ '\b', 0 }, 		// backspace
+	{ '\f', 0 }, 		// form feed
+	{ '\a', 0 }, 		// alert (bell)
+	{ '\e', 0 }, 		// escape
+};
+static unsigned char escTableOdbc[256][2];
+
+void fillEscTables() {
+	for(unsigned i = 0; i < sizeof(escCharsMysql) / sizeof(escCharsMysql[0]); i++) {
+		escTableMysql[(unsigned char)escCharsMysql[i].ch][0] = 1;
+		escTableMysql[(unsigned char)escCharsMysql[i].ch][1] = (unsigned char)escCharsMysql[i].escCh;
+	}
+	for(unsigned i = 0; i < sizeof(escCharsOdbc) / sizeof(escCharsOdbc[0]); i++) {
+		escTableOdbc[(unsigned char)escCharsOdbc[i].ch][0] = 1;
+		escTableOdbc[(unsigned char)escCharsOdbc[i].ch][1] = (unsigned char)escCharsOdbc[i].escCh;
+	}
+}
+
 string _sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
-	string rsltString;
-	struct escChar {
-		char ch;
-		const char* escStr;
-	} 
-	escCharsMysql[] = 
-				{
-					{ '\'', "\\'" },
-					{ '"' , "\\\"" },
-					{ '\\', "\\\\" },
-					{ '\n', "\\n" }, 	// new line feed
-					{ '\r', "\\r" }, 	// cariage return
-					// remove after create function test_escape
-					//{ '\t', "\\t" }, 	// tab
-					//{ '\v', "\\v" }, 	// vertical tab
-					//{ '\b', "\\b" }, 	// backspace
-					//{ '\f', "\\f" }, 	// form feed
-					//{ '\a', "\\a" }, 	// alert (bell)
-					//{ '\e', "" }, 		// escape
-					// add after create function test_escape
-					{    0, "\\0" },
-					{   26, "\\Z" }
-				},
-	escCharsOdbc[] = 
-				{ 
-					{ '\'', "\'\'" },
-					{ '\v', "" }, 		// vertical tab
-					{ '\b', "" }, 		// backspace
-					{ '\f', "" }, 		// form feed
-					{ '\a', "" }, 		// alert (bell)
-					{ '\e', "" }, 		// escape
-				};
-	escChar *escChars = NULL;
-	int countEscChars = 0;
-	if(isTypeDb("mysql", typeDb)) {
-		escChars = escCharsMysql;
-		countEscChars = sizeof(escCharsMysql)/sizeof(escChar);
+	bool mysql = false;
+	unsigned char (*escTable)[2];
+	if(!typeDb || isTypeDb("mysql", typeDb)) {
+		mysql = true;
+		escTable = escTableMysql;
 	} else if(isTypeDb("odbc", typeDb)) {
-		escChars = escCharsOdbc;
-		countEscChars = sizeof(escCharsOdbc)/sizeof(escChar);
+		escTable = escTableOdbc;
 	}
 	if(!length) {
 		length = strlen(inputStr);
 	}
-	for(int posInputString = 0; posInputString<length; posInputString++) {
-		bool isEscChar = false;
-		for(int i = 0; i<countEscChars; i++) {
-			if(escChars[i].ch == inputStr[posInputString]) {
-				rsltString += escChars[i].escStr;
-				isEscChar = true;
-				break;
+	string rsltString;
+	for(int posInputString = 0; posInputString < length; posInputString++) {
+		if(escTable[(unsigned char)inputStr[posInputString]][0]) {
+			if(mysql) {
+				if(escTable[(unsigned char)inputStr[posInputString]][1]) {
+					rsltString += '\\';
+					rsltString += (char)escTable[(unsigned char)inputStr[posInputString]][1];
+				}
+			} else {
+				if(escTable[(unsigned char)inputStr[posInputString]][1] == 2) {
+					rsltString += inputStr[posInputString];
+					rsltString += inputStr[posInputString];
+				}
 			}
-		}
-		if(!isEscChar) {
+		} else {
 			rsltString += inputStr[posInputString];
 		}
 	}
 	return(rsltString);
+}
+
+void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const char *typeDb) {
+	bool mysql = false;
+	unsigned char (*escTable)[2];
+	if(!typeDb || isTypeDb("mysql", typeDb)) {
+		mysql = true;
+		escTable = escTableMysql;
+	} else if(isTypeDb("odbc", typeDb)) {
+		escTable = escTableOdbc;
+	}
+	if(!length) {
+		length = strlen(inputStr);
+	}
+	unsigned posOutputString = 0;
+	for(int posInputString = 0; posInputString < length; posInputString++) {
+		if(escTable[(unsigned char)inputStr[posInputString]][0]) {
+			if(mysql) {
+				if(escTable[(unsigned char)inputStr[posInputString]][1]) {
+					outputStr[posOutputString++] = '\\';
+					outputStr[posOutputString++] = (char)escTable[(unsigned char)inputStr[posInputString]][1];
+				}
+			} else {
+				if(escTable[(unsigned char)inputStr[posInputString]][1] == 2) {
+					outputStr[posOutputString++] = inputStr[posInputString];
+					outputStr[posOutputString++] = inputStr[posInputString];
+				}
+			}
+		} else {
+			outputStr[posOutputString++] = inputStr[posInputString];
+		}
+	}
+	outputStr[posOutputString] = 0;
 }
 
 string sqlEscapeStringBorder(string inputStr, char borderChar, const char *typeDb, SqlDb_mysql *sqlDbMysql) {

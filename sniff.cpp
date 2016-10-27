@@ -371,26 +371,41 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 	}
 
 	// construct query and push it to mysqlquery queue
-	int id_sensor = packetS->sensor_id_() > 0 ? packetS->sensor_id_() : 0;
-	query << "INSERT INTO livepacket_" << uid << 
-		" SET sipcallerip = '" << htonl(packetS->saddr) << 
-		"', sipcalledip = '" << htonl(packetS->daddr) << 
-		"', id_sensor = " << id_sensor << 
-		", sport = " << packetS->source << 
-		", dport = " << packetS->dest << 
-		", istcp = " << packetS->istcp << 
-		", created_at = " << sqlEscapeStringBorder(sqlDateTimeString(packetS->header_pt->ts.tv_sec).c_str()) << 
-		", microseconds = " << packetS->header_pt->ts.tv_usec << 
-		", callid = " << sqlEscapeStringBorder(call ? call->call_id : callidstr) << 
-		", description = " << sqlEscapeStringBorder(description) << 
-		", data = ";
+	char query_buff[20000];
+	sprintf(query_buff,
+		"INSERT INTO livepacket_%i"
+		" SET sipcallerip = %u"
+		", sipcalledip = %u"
+		", id_sensor = %i"
+		", sport = %i" 
+		", dport = %i" 
+		", istcp = %i"
+		", created_at = %s"
+		", microseconds = %li"
+		", callid = %s"
+		", description = %s"
+		", data = ",
+		uid,
+		htonl(packetS->saddr),
+		htonl(packetS->daddr),
+		packetS->sensor_id_() > 0 ? packetS->sensor_id_() : 0,
+		packetS->source,
+		packetS->dest,
+		packetS->istcp,
+		sqlEscapeStringBorder(sqlDateTimeString(packetS->header_pt->ts.tv_sec).c_str()).c_str(),
+		packetS->header_pt->ts.tv_usec,
+		sqlEscapeStringBorder(call ? call->call_id : callidstr).c_str(),
+		sqlEscapeStringBorder(description).c_str());
 	if(cloud_host[0]) {
-		query << "concat('#', from_base64('" << base64_encode((unsigned char*)mpacket, savePacketLenWithHeaders) << "'), '#')";
+		strcat(query_buff, "concat('#', from_base64('");
+		_base64_encode((unsigned char*)mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff));
+		strcat(query_buff, "'), '#')");
 	} else {
-		query << "'#" << _sqlEscapeString(mpacket, savePacketLenWithHeaders, "mysql") << "#'";
+		strcat(query_buff, "'#");
+		_sqlEscapeString(mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff), NULL);
+		strcat(query_buff, "#'");
 	}
-	sqlStore->query_lock(query.str().c_str(), STORE_PROC_ID_SAVE_PACKET_SQL);
-	return;
+	sqlStore->query_lock(query_buff, STORE_PROC_ID_SAVE_PACKET_SQL);
 }
 
 
@@ -592,9 +607,6 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 		}
 		return;
 	}
-	if(sverb.disable_save_packet) {
-		return;
-	}
 	if(call->type == MESSAGE && (call->flags & FLAG_HIDEMESSAGE)) {
 		parse_packet__message(packetS, false,
 				      NULL, NULL, NULL, NULL, NULL,
@@ -666,49 +678,51 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 				 header, packet);
 	}
 
-	if(opt_newdir and opt_pcap_split) {
-		switch(type) {
-		case TYPE_SKINNY:
-		case TYPE_SIP:
-			if(call->getPcapSip()->isOpen()){
-				if(type == TYPE_SIP) {
-					call->getPcapSip()->dump(header, packet, packetS->dlt, false, 
-								 (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
-								 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
-				} else {
-					call->getPcapSip()->dump(header, packet, packetS->dlt);
+	if(!sverb.disable_save_packet) {
+		if(opt_newdir and opt_pcap_split) {
+			switch(type) {
+			case TYPE_SKINNY:
+			case TYPE_SIP:
+				if(call->getPcapSip()->isOpen()){
+					if(type == TYPE_SIP) {
+						call->getPcapSip()->dump(header, packet, packetS->dlt, false, 
+									 (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
+									 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
+					} else {
+						call->getPcapSip()->dump(header, packet, packetS->dlt);
+					}
 				}
-			}
-			break;
-		case TYPE_RTP:
-		case TYPE_RTCP:
-			if(call->getPcapRtp()->isOpen()){
-				call->getPcapRtp()->dump(header, packet, packetS->dlt);
-			} else if(type == TYPE_RTP ? enable_save_rtp(call) : enable_save_rtcp(call)) {
-				char pcapFilePath_spool_relative[1024];
-				snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
-				pcapFilePath_spool_relative[1023] = 0;
-				char str2[1024];
-				if(opt_cachedir[0] != '\0') {
-					snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
-				} else {
-					strcpy(str2, pcapFilePath_spool_relative);
-				}
-				if(call->getPcapRtp()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
-					if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+				break;
+			case TYPE_RTP:
+			case TYPE_RTCP:
+				if(call->getPcapRtp()->isOpen()){
 					call->getPcapRtp()->dump(header, packet, packetS->dlt);
+				} else if(type == TYPE_RTP ? enable_save_rtp(call) : enable_save_rtcp(call)) {
+					char pcapFilePath_spool_relative[1024];
+					snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+					pcapFilePath_spool_relative[1023] = 0;
+					char str2[1024];
+					if(opt_cachedir[0] != '\0') {
+						snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
+					} else {
+						strcpy(str2, pcapFilePath_spool_relative);
+					}
+					if(call->getPcapRtp()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
+						if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+						call->getPcapRtp()->dump(header, packet, packetS->dlt);
+					}
 				}
+				break;
 			}
-			break;
-		}
-	} else {
-		if (call->getPcap()->isOpen()){
-			if(type == TYPE_SIP) {
-				call->getPcap()->dump(header, packet, packetS->dlt, false, 
-						      (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
-						      packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
-			} else {
-				call->getPcap()->dump(header, packet, packetS->dlt);
+		} else {
+			if (call->getPcap()->isOpen()){
+				if(type == TYPE_SIP) {
+					call->getPcap()->dump(header, packet, packetS->dlt, false, 
+							      (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
+							      packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
+				} else {
+					call->getPcap()->dump(header, packet, packetS->dlt);
+				}
 			}
 		}
 	}

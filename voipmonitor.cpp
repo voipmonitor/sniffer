@@ -1978,6 +1978,7 @@ int main(int argc, char *argv[]) {
 		memoryStatInit();
 	}
 	
+	fillEscTables();
 	set_global_vars();
 
 	if(file_exists("/etc/localtime")) {
@@ -3994,6 +3995,12 @@ void test() {
 	} break;
 	 
 	case 1: {
+	 
+		cout << _sqlEscapeString("abc'\"\\\n\rdef", 0, NULL) << endl;
+		char buff[100];
+		_sqlEscapeString("abc'\"\\\n\rdef", 0, buff, NULL);
+		cout << buff << endl;
+		break;
 	 
 		FifoBuffer fb;
 		fb.setMinItemBufferLength(100);
