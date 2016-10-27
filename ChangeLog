@@ -31,6 +31,9 @@
 - add indications voicemail active / inactive to SIP MESSAGE [VS-870]
 - fix cleaning spool directory - when restarted actual date was counted twice to used space
 
+17.3.4 26.9.2016
+================
+- fix cleaning spool directory - when restarted actual date was counted twice to used space
 
 
 17.3.3 9.9.2016
