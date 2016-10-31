@@ -1,6 +1,6 @@
 #!/bin/bash
 #cloudToken=
-__VERSION=1.0j
+__VERSION=1.0k
 
 #__COLORS=1	#automagicaly set by checkTput function
 			#0 for disable colors output
@@ -440,7 +440,7 @@ function installFromFile {
 	local lastkill
 
 	while true; do
-		local vmpid=`pgrep voipmonitor|head -n1`
+		local vmpid=`pgrep -x voipmonitor|head -n1`
 		if [ "a$vmpid" != "a" ]; then
 			if [ "a$lastkill" == a$vmpid ]; then 
 				if [ $round -gt 30 ]; then
