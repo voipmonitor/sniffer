@@ -282,6 +282,11 @@ public:
 	int msgcount;
 	int regcount;
 	int reg401count;
+	int reg401count_distinct;
+	u_int32_t reg401count_sipcallerip[MAX_SIPCALLERDIP];
+	int reg403count;
+	int reg403count_distinct;
+	u_int32_t reg403count_sipcallerip[MAX_SIPCALLERDIP];
 	int reg200count;
 	int regstate;
 	bool regresponse;

@@ -255,6 +255,15 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;
+	reg401count_distinct = 0;
+	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
+		reg401count_sipcallerip[i] = 0;
+	}
+	reg403count = 0;
+	reg403count_distinct = 0;
+	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
+		reg403count_sipcallerip[i] = 0;
+	}
 	reg200count = 0;
 	regstate = 0;
 	regresponse = false;
