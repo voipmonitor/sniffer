@@ -1,4 +1,10 @@
+17.4.3 31.10.2016
+=================
+- fix rare race condition when storing RTP packets (which can result in invalid packet size in pcap - failing to download pcap) (all versions) 
+
+
 17.4.2 26.10.2016
+=================
 =================
 - fix deadlock >= 17.4
 
@@ -7,7 +13,7 @@
 =================
 - fix mirror sender mode crash 
 - apply no MESSAGE hash VG-838
- 
+
 
 17.4 24.10.2016
 ===============
