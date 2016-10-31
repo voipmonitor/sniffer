@@ -2948,7 +2948,7 @@ public:
 		this->push_queues = new FILE_LINE(40026) sHeapItemsPool[this->push_queues_max];
 		this->pop_qp = NULL;
 		this->pop_qp_size = 0;
-		this->stack = new FILE_LINE(40027) rqueue_quick<sHeapItemsPool>(this->size_max / HEAP_ITEM_POOL_SIZE, 0, 0, NULL, false, __FILE__, __LINE__);
+		this->stack = new FILE_LINE(40027) rqueue_quick<sHeapItemsPool>(this->size_max / HEAP_ITEM_POOL_SIZE, 0, 0, NULL, false);
 	}
 	~cHeapItemsPointerStack() {
 		for(unsigned i = 0; i < this->pop_queues_max; i++) {
@@ -3014,24 +3014,6 @@ public:
 			if(stack->popq(&this->pop_queues[0])) {
 				this->pop_queues->pool_size = HEAP_ITEM_POOL_SIZE - 1;
 				*item = this->pop_queues->pool[this->pop_queues->pool_size];
-			} else {
-				return(false);
-			}
-		}
-		return(true);
-	}
-	inline u_int8_t popqp(void **item) {
-		if(pop_qp_size > 1) {
-			--pop_qp_size;
-			*item = pop_qp->pool[pop_qp_size];
-		} else if(pop_qp_size) {
-			pop_qp_size = 0;
-			*item = pop_qp->pool[0];
-			stack->moveReadit();
-		} else {
-			if(stack->popqp(&pop_qp)) {
-				pop_qp_size = HEAP_ITEM_POOL_SIZE - 1;
-				*item = pop_qp->pool[HEAP_ITEM_POOL_SIZE - 1];
 			} else {
 				return(false);
 			}

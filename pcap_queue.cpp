@@ -710,8 +710,7 @@ pcap_block_store_queue::pcap_block_store_queue() {
 	this->queueBlock = new FILE_LINE(16020) rqueue_quick<pcap_block_store*>(
 				100000,
 				100, 100,
-				&terminating, true,
-				__FILE__, __LINE__);
+				&terminating, true);
 	this->sizeOfBlocks = 0;
 	this->sizeOfBlocks_sync = 0;
 }
@@ -1928,7 +1927,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 			} else if(num_threads_active > 1 &&
 				  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread &&
-				  pcapStatCounter > (opt_fork ? 100 : 10)) {
+				  pcapStatCounter > (opt_fork ? 100 : 10) &&
+				  !sverb.disable_read_rtp) {
 				set_remove_rtp_read_thread();
 			}
 		}
@@ -4170,8 +4170,7 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
 		this->block_qring = new FILE_LINE(16047) rqueue_quick<pcap_block_store*>(
 			100,
 			100, 100,
-			&terminating, true,
-			__FILE__, __LINE__);
+			&terminating, true);
 	}
 }
 

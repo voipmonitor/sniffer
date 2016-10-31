@@ -201,7 +201,7 @@ struct packet_s_process_0 : public packet_s {
 	char *data;
 	struct iphdr2 *header_ip; 
 	cHeapItemsPointerStack *stack;
-	u_int8_t use_reuse_counter;
+	volatile u_int8_t use_reuse_counter;
 	volatile u_int8_t reuse_counter;
 	volatile u_int8_t reuse_counter_sync;
 	int isSip;
@@ -462,15 +462,21 @@ public:
 					++usleepCounter;
 				}
 				memcpy(current_batch->batch.pt, thread_buffer->batch.pt, sizeof(rtp_packet_pt_pcap_queue) * thread_buffer->count);
-				while(__sync_lock_test_and_set(&this->count_lock_sync, 1));
-				current_batch->count = thread_buffer->count;
-				__sync_lock_release(&this->count_lock_sync);
-				__sync_add_and_fetch(&current_batch->used, 1);
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
+				#if RQUEUE_SAFE
+					__SYNC_SET_TO_LOCK(current_batch->count, thread_buffer->count, this->count_lock_sync);
+					__SYNC_SET(current_batch->used);
+					__SYNC_INCR(this->writeit, this->qring_length);
+				#else
+					__SYNC_LOCK(this->count_lock_sync);
+					current_batch->count = thread_buffer->count;
+					__SYNC_UNLOCK(this->count_lock_sync);
+					__sync_add_and_fetch(&current_batch->used, 1);
+					if((this->writeit + 1) == this->qring_length) {
+						this->writeit = 0;
+					} else {
+						this->writeit++;
+					}
+				#endif
 				
 				/* destroy threadbuffer array - debug
 				end_thread_buffer_copy:
@@ -528,15 +534,21 @@ public:
 			packet->blockstore_addflag(63 /*pb lock flag*/);
 			if(qring_push_index_count == qring_active_push_item->max_count) {
 				packet->blockstore_addflag(64 /*pb lock flag*/);
-				while(__sync_lock_test_and_set(&this->count_lock_sync, 1));
-				qring_active_push_item->count = qring_push_index_count;
-				__sync_lock_release(&this->count_lock_sync);
-				qring_active_push_item->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
+				#if RQUEUE_SAFE
+					__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->count_lock_sync);
+					__SYNC_SET(qring_active_push_item->used);
+					__SYNC_INCR(this->writeit, this->qring_length);
+				#else
+					__SYNC_LOCK(this->count_lock_sync);
+					qring_active_push_item->count = qring_push_index_count;
+					__SYNC_UNLOCK(this->count_lock_sync);
+					qring_active_push_item->used = 1;
+					if((this->writeit + 1) == this->qring_length) {
+						this->writeit = 0;
+					} else {
+						this->writeit++;
+					}
+				#endif
 				qring_push_index = 0;
 				qring_push_index_count = 0;
 			}
@@ -556,15 +568,21 @@ public:
 		#endif
 			
 		if(qring_push_index_count) {
-			while(__sync_lock_test_and_set(&this->count_lock_sync, 1));
-			qring_active_push_item->count = qring_push_index_count;
-			__sync_lock_release(&this->count_lock_sync);
-			qring_active_push_item->used = 1;
-			if((this->writeit + 1) == this->qring_length) {
-				this->writeit = 0;
-			} else {
-				this->writeit++;
-			}
+			#if RQUEUE_SAFE
+				__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->count_lock_sync);
+				__SYNC_SET(qring_active_push_item->used);
+				__SYNC_INCR(this->writeit, this->qring_length);
+			#else
+				__SYNC_LOCK(this->count_lock_sync);
+				qring_active_push_item->count = qring_push_index_count;
+				__SYNC_UNLOCK(this->count_lock_sync);
+				qring_active_push_item->used = 1;
+				if((this->writeit + 1) == this->qring_length) {
+					this->writeit = 0;
+				} else {
+					this->writeit++;
+				}
+			#endif
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
@@ -599,15 +617,21 @@ public:
 				++usleepCounter;
 			}
 			memcpy(current_batch->batch.pt, thread_buffer->batch.pt, sizeof(rtp_packet_pt_pcap_queue) * thread_buffer->count);
-			while(__sync_lock_test_and_set(&this->count_lock_sync, 1));
-			current_batch->count = thread_buffer->count;
-			__sync_lock_release(&this->count_lock_sync);
-			current_batch->used = 1;
-			if((this->writeit + 1) == this->qring_length) {
-				this->writeit = 0;
-			} else {
-				this->writeit++;
-			}
+			#if RQUEUE_SAFE
+				__SYNC_SET_TO_LOCK(current_batch->count, thread_buffer->count, this->count_lock_sync);
+				__SYNC_SET(current_batch->used);
+				__SYNC_INCR(this->writeit, this->qring_length);
+			#else
+				__SYNC_LOCK(this->count_lock_sync);
+				current_batch->count = thread_buffer->count;
+				__SYNC_UNLOCK(this->count_lock_sync);
+				current_batch->used = 1;
+				if((this->writeit + 1) == this->qring_length) {
+					this->writeit = 0;
+				} else {
+					this->writeit++;
+				}
+			#endif
 			thread_buffer->count = 0;
 			__sync_lock_release(&this->push_lock_sync);
 		}

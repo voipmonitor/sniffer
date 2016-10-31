@@ -50,6 +50,8 @@
 
 #define HEAPSAFE false
 
+#define RQUEUE_SAFE true
+
 #define TAR_PROF false
 
 #define MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS 4

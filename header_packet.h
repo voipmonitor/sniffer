@@ -40,7 +40,7 @@ public:
 		}
 		pop_queue_pool_prepared = false;
 		_sync_prepare = 0;
-		this->stack = new FILE_LINE(10001) rqueue_quick<sHeaderPacketPool>(size_max / HEADER_PACKET_STACK_POOL_SIZE, 0, 0, NULL, false, __FILE__, __LINE__);
+		this->stack = new FILE_LINE(10001) rqueue_quick<sHeaderPacketPool>(size_max / HEADER_PACKET_STACK_POOL_SIZE, 0, 0, NULL, false);
 	}
 	~cHeaderPacketStack() {
 		for(int ipush = 0; ipush < HEADER_PACKET_STACK_PUSH_QUEUE_MAX; ipush++) {

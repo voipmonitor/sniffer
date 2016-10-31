@@ -290,13 +290,19 @@ public:
 			}
 			++qring_push_index_count;
 			if(qring_push_index_count == qring_detach_active_push_item->max_count) {
-				qring_detach_active_push_item->count = qring_push_index_count;
-				qring_detach_active_push_item->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
+				#if RQUEUE_SAFE
+					__SYNC_SET_TO_LOCK(qring_detach_active_push_item->count, qring_push_index_count, this->_sync_count);
+					__SYNC_SET(qring_detach_active_push_item->used);
+					__SYNC_INCR(this->writeit, this->qring_length);
+				#else
+					qring_detach_active_push_item->count = qring_push_index_count;
+					qring_detach_active_push_item->used = 1;
+					if((this->writeit + 1) == this->qring_length) {
+						this->writeit = 0;
+					} else {
+						this->writeit++;
+					}
+				#endif
 				qring_push_index = 0;
 				qring_push_index_count = 0;
 			}
@@ -325,13 +331,19 @@ public:
 			qring_active_push_item->batch[qring_push_index_count] = packetS;
 			++qring_push_index_count;
 			if(qring_push_index_count == qring_active_push_item->max_count) {
-				qring_active_push_item->count = qring_push_index_count;
-				qring_active_push_item->used = 1;
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
+			        #if RQUEUE_SAFE
+					__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
+					__SYNC_SET(qring_active_push_item->used);
+					__SYNC_INCR(this->writeit, this->qring_length);
+				#else
+					qring_active_push_item->count = qring_push_index_count;
+					qring_active_push_item->used = 1;
+					if((this->writeit + 1) == this->qring_length) {
+						this->writeit = 0;
+					} else {
+						this->writeit++;
+					}
+				#endif
 				qring_push_index = 0;
 				qring_push_index_count = 0;
 			}
@@ -402,18 +414,29 @@ public:
 		}
 		if(this->outThreadState == 2) {
 			if(qring_push_index && qring_push_index_count) {
-				if(typePreProcessThread == ppt_detach) {
-					qring_detach_active_push_item->count = qring_push_index_count;
-					qring_detach_active_push_item->used = 1;
-				} else {
-					qring_active_push_item->count = qring_push_index_count;
-					qring_active_push_item->used = 1;
-				}
-				if((this->writeit + 1) == this->qring_length) {
-					this->writeit = 0;
-				} else {
-					this->writeit++;
-				}
+				#if RQUEUE_SAFE
+					if(typePreProcessThread == ppt_detach) {
+						__SYNC_SET_TO_LOCK(qring_detach_active_push_item->count, qring_push_index_count, this->_sync_count);
+						__SYNC_SET(qring_detach_active_push_item->used);
+					} else {
+						__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
+						__SYNC_SET(qring_active_push_item->used);
+					}
+					__SYNC_INCR(this->writeit, this->qring_length);
+				#else
+					if(typePreProcessThread == ppt_detach) {
+						qring_detach_active_push_item->count = qring_push_index_count;
+						qring_detach_active_push_item->used = 1;
+					} else {
+						qring_active_push_item->count = qring_push_index_count;
+						qring_active_push_item->used = 1;
+					}
+					if((this->writeit + 1) == this->qring_length) {
+						this->writeit = 0;
+					} else {
+						this->writeit++;
+					}
+				#endif
 				qring_push_index = 0;
 				qring_push_index_count = 0;
 			}
@@ -661,6 +684,7 @@ private:
 	pstat_data threadPstatData[2];
 	int outThreadId;
 	volatile int _sync_push;
+	volatile int _sync_count;
 	bool term_preProcess;
 	cHeapItemsPointerStack *stackSip;
 	cHeapItemsPointerStack *stackRtp;
@@ -750,6 +774,20 @@ public:
 		ProcessRtpPacket *processRtpPacket;
 		int next_thread_id;
 	};
+	struct s_hash_thread_data {
+		volatile batch_packet_s_process *batch;
+		volatile unsigned start;
+		volatile unsigned end;
+		volatile unsigned skip;
+		volatile int processing;
+		void null() {
+			batch = NULL;
+			start = 0;
+			end = 0;
+			skip = 0;
+			processing = 0;
+		}
+	};
 public:
 	ProcessRtpPacket(eType type, int indexThread);
 	~ProcessRtpPacket();
@@ -770,26 +808,38 @@ public:
 		qring_active_push_item->batch[qring_push_index_count] = packetS;
 		++qring_push_index_count;
 		if(qring_push_index_count == qring_active_push_item->max_count) {
-			qring_active_push_item->count = qring_push_index_count;
-			qring_active_push_item->used = 1;
-			if((this->writeit + 1) == this->qring_length) {
-				this->writeit = 0;
-			} else {
-				this->writeit++;
-			}
+			#if RQUEUE_SAFE
+				__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
+				__SYNC_SET(qring_active_push_item->used);
+				__SYNC_INCR(this->writeit, this->qring_length);
+			#else
+				qring_active_push_item->count = qring_push_index_count;
+				qring_active_push_item->used = 1;
+				if((this->writeit + 1) == this->qring_length) {
+					this->writeit = 0;
+				} else {
+					this->writeit++;
+				}
+			#endif
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
 	}
 	inline void push_batch() {
 		if(qring_push_index && qring_push_index_count) {
-			qring_active_push_item->count = qring_push_index_count;
-			qring_active_push_item->used = 1;
-			if((this->writeit + 1) == this->qring_length) {
-				this->writeit = 0;
-			} else {
-				this->writeit++;
-			}
+			#if RQUEUE_SAFE
+				__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
+				__SYNC_SET(qring_active_push_item->used);
+				__SYNC_INCR(this->writeit, this->qring_length);
+			#else
+				qring_active_push_item->count = qring_push_index_count;
+				qring_active_push_item->used = 1;
+				if((this->writeit + 1) == this->qring_length) {
+					this->writeit = 0;
+				} else {
+					this->writeit++;
+				}
+			#endif
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
@@ -808,15 +858,12 @@ public:
 			(double)(qring_length - _readit + _writeit) / qring_length * 100);
 	}
 	bool isNextThreadsGt2Processing(int process_rtp_packets_hash_next_threads) {
-		//#pragma GCC diagnostic push
-		//#pragma -Warray-bounds
 		for(int i = 2; i < process_rtp_packets_hash_next_threads; i++) {
-			if(this->hash_batch_thread_process[i]) {
+			if(this->hash_thread_data[i].processing) {
 				return(true);
 			}
 		}
 		return(false);
-		//#pragma GCC diagnostic pop
 	}
 	bool existsNextThread(int next_thread_index) {
 		return(next_thread_index < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
@@ -825,7 +872,7 @@ public:
 private:
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
-	void rtp_batch(batch_packet_s_process *batch);
+	void rtp_batch(batch_packet_s_process *batch, unsigned count);
 	inline void rtp_packet_distr(packet_s_process_0 *packetS, int _process_rtp_packets_distribute_threads_use);
 	void find_hash(packet_s_process_0 *packetS, bool lock = true);
 public:
@@ -835,7 +882,6 @@ public:
 	int nextThreadId[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 private:
 	int process_rtp_packets_hash_next_threads;
-	volatile int process_rtp_packets_hash_next_threads_use_for_batch;
 	unsigned int qring_batch_item_length;
 	unsigned int qring_length;
 	batch_packet_s_process **qring;
@@ -848,9 +894,10 @@ private:
 	pthread_t next_thread_handle[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 	pstat_data threadPstatData[1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
 	bool term_processRtp;
-	volatile batch_packet_s_process *hash_batch_thread_process[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
+	s_hash_thread_data hash_thread_data[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 	volatile int *hash_find_flag;
 	sem_t sem_sync_next_thread[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
+	volatile int _sync_count;
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);
 };
