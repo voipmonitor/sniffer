@@ -945,20 +945,21 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 	}
 	
 	unsigned int curSSRC = tmprtp.getSSRC();
-
-	if((!opt_allow_zerossrc and curSSRC == 0) || tmprtp.getVersion() != 2) {
-		// invalid ssrc
+	bool okRTP = (curSSRC != 0 || opt_allow_zerossrc) && tmprtp.getVersion() == 2;
+	if(okRTP || this->seenudptl) {
+		if(iscaller) {
+			last_rtp_a_packet_time = packetS->header_pt->ts.tv_sec;
+		} else {
+			last_rtp_b_packet_time = packetS->header_pt->ts.tv_sec;
+		}
+	}
+	if(!okRTP) {
+		// invalid ssrc or version
 		goto end;
 	}
 
 	if(opt_dscp && packetS->header_ip_offset) {
 		packetS->header_ip_offset = packetS->dataoffset - sizeof(struct iphdr2) - sizeof(udphdr2);
-	}
-
-	if(iscaller) {
-		last_rtp_a_packet_time = packetS->header_pt->ts.tv_sec;
-	} else {
-		last_rtp_b_packet_time = packetS->header_pt->ts.tv_sec;
 	}
 
 	for(int i = 0; i < ssrc_n; i++) {
