@@ -3573,7 +3573,7 @@ void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp, bo
 			sf_hdr.caplen     = h->caplen;
 			sf_hdr.len        = h->len;
 			handler->write((char*)&sf_hdr, sizeof(sf_hdr));
-			handler->write((char*)sp, h->caplen);
+			handler->write((char*)sp, sf_hdr.caplen);
 		} else {
 			syslog(LOG_NOTICE, "__pcap_dump: incorrect caplen/len (%u/%u) in %s", h->caplen, h->len, handler->fileName.c_str());
 			incorrectCaplenDetected = true;
