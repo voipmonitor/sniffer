@@ -4787,7 +4787,7 @@ void cConfig::addConfigItems() {
 					->addAlias("enable_process_rtp_packet"));
 					expert();
 					addConfigItem((new FILE_LINE(43154) cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
-						->addValues("sip:2|extend:3|auto:-1"));
+						->addValues(("sip:2|extend:"+intToString(PreProcessPacket::ppt_end)+"|auto:-1").c_str()));
 					addConfigItem(new FILE_LINE(43155) cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
 					addConfigItem(new FILE_LINE(43453) cConfigItem_integer("preprocess_packets_qring_item_length", &opt_preprocess_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(43156) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
@@ -6149,7 +6149,7 @@ void set_context_config() {
 		opt_enable_process_rtp_packet = 1;
 	}
 	if(opt_t2_boost) {
-		opt_enable_preprocess_packet = 3;
+		opt_enable_preprocess_packet = PreProcessPacket::ppt_end;
 		opt_pcap_queue_use_blocks = 1;
 	}
 }
