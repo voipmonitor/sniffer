@@ -6593,20 +6593,18 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 			int threads_rd[MAX_PROCESS_RTP_PACKET_THREADS];
 			threads_rd[0] = packetS->call_info[0].call->thread_num_rd;
 			int threads_rd_count = 1;
-			if(packetS->call_info_length > 1) {
-				for(int i = 1; i < packetS->call_info_length; i++) {
-					int thread_rd = packetS->call_info[i].call->thread_num_rd;
-					if(thread_rd != threads_rd[0]) {
-						bool exists = false;
-						for(int j = 1; j < threads_rd_count; j++) {
-							if(threads_rd[j] == thread_rd) {
-								exists = true;
-								break;
-							}
+			for(int i = 1; i < packetS->call_info_length; i++) {
+				int thread_rd = packetS->call_info[i].call->thread_num_rd;
+				if(thread_rd != threads_rd[0]) {
+					bool exists = false;
+					for(int j = 1; j < threads_rd_count; j++) {
+						if(threads_rd[j] == thread_rd) {
+							exists = true;
+							break;
 						}
-						if(!exists) {
-							threads_rd[threads_rd_count++] = thread_rd;
-						}
+					}
+					if(!exists) {
+						threads_rd[threads_rd_count++] = thread_rd;
 					}
 				}
 			}
