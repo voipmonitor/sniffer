@@ -2909,8 +2909,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	*/
 	
 	cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
-	cdr.add(reason_sip_id, "reason_sip_text_id", true);
-	cdr.add(reason_q850_id, "reason_q850_text_id", true);
+	if(existsColumns.cdr_reason) {
+		cdr.add(reason_sip_id, "reason_sip_text_id", true);
+		cdr.add(reason_q850_id, "reason_q850_text_id", true);
+	}
 	cdr.add(a_ua_id, "a_ua_id", true);
 	cdr.add(b_ua_id, "b_ua_id", true);
 	
