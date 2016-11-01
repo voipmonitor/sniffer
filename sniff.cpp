@@ -2799,7 +2799,9 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
 						call->destroy_call_at = packetS->header_pt->ts.tv_sec + (packetS->sip_method == RES300 ? 300 : 5);
 					}
-					if(IS_SIP_RES3XX(packetS->sip_method)) {
+					if(lastSIPresponseNum == 488 || lastSIPresponseNum == 606) {
+						call->not_acceptable = true;
+					} else if(IS_SIP_RES3XX(packetS->sip_method)) {
 						// remove all RTP  
 						call->removeFindTables();
 						call->removeRTP();

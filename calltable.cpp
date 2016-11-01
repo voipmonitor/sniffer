@@ -191,6 +191,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	has_second_merged_leg = false;
 	isfax = 0;
 	seenudptl = 0;
+	not_acceptable = false;
 	last_callercodec = -1;
 	ipport_n = 0;
 	ssrc_n = 0;
@@ -946,7 +947,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_s
 	
 	unsigned int curSSRC = tmprtp.getSSRC();
 	bool okRTP = (curSSRC != 0 || opt_allow_zerossrc) && tmprtp.getVersion() == 2;
-	if(okRTP || this->seenudptl) {
+	if(okRTP || this->seenudptl || this->isfax) {
 		if(iscaller) {
 			last_rtp_a_packet_time = packetS->header_pt->ts.tv_sec;
 		} else {
@@ -2545,10 +2546,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 		}
-		if(seenudptl) {
+		if(seenudptl && !not_acceptable) {
 			// T.38
 			cdr.add(1000, "payload");
-		} else if(isfax == 2) {
+		} else if(isfax == 2 && !not_acceptable) {
 			// T.30
 			cdr.add(1001, "payload");
 		} else if(payload[0] >= 0 || payload[1] >= 0) {

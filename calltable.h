@@ -333,6 +333,7 @@ public:
 
 	int isfax;
 	char seenudptl;
+	bool not_acceptable;
 
 	void *rtp_cur[2];		//!< last RTP structure in direction 0 and 1 (iscaller = 1)
 	void *rtp_prev[2];		//!< previouse RTP structure in direction 0 and 1 (iscaller = 1)
