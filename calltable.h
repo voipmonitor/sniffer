@@ -444,6 +444,8 @@ public:
 	unsigned int lastcalledssrc;
 
 	vector<string> mergecalls;
+
+	bool rtp_zeropackets_stored;
 	
 	sRtcpXrData rtcpXrData;
 
