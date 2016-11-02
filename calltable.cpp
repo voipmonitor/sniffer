@@ -389,6 +389,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	rtp_from_multiple_sensors = false;
 	
 	is_ssl = false;
+
+	rtp_zeropackets_stored = 0;
 }
 
 void
@@ -2941,7 +2943,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 			// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
-			if(rtp[i] and rtp[i]->s->received) {
+			if(rtp[i] and (rtp[i]->s->received or (rtp[i]->s->received == 0 and rtp_zeropackets_stored == false))) {
+				if(rtp[i]->s->received == 0 and rtp_zeropackets_stored == false) rtp_zeropackets_stored = true;
 				double fpart = this->first_packet_usec;
 				while(fpart > 1) fpart /= 10;
 				double stime = this->first_packet_time + fpart;
