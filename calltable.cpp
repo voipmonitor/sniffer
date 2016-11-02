@@ -540,6 +540,15 @@ Call::_addtocachequeue(string file) {
 void
 Call::removeRTP() {
 	while(this->rtppacketsinqueue > 0) {
+		extern bool opt_t2_boost;
+		if(!opt_t2_boost && rtp_threads) {
+			extern int num_threads_max;
+			for(int i = 0; i < num_threads_max; i++) {
+				if(rtp_threads[i].threadId) {
+					rtp_threads[i].push_batch();
+				}
+			}
+		}
 		usleep(100);
 	}
 	while(__sync_lock_test_and_set(&rtplock, 1)) {
