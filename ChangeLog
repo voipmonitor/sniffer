@@ -1,3 +1,13 @@
+17.5 2.11.2016
+==============
+- fix deadlock >= 17.4
+- fix REGISTER failed for response codes 401 and 403 when passing through SIP proxies [VG-1047]
+- do not mark call as T.38 if negotiation failes (response 488 / 606) [VS-403]
+- fix loading pcap for old database schema [VS-516]
+- fix start all t2 threads in t2_boost mode
+- store at least one RTP stream to cdr_rtp table with cdr_rtp.received <= 2 packets 
+
+
 17.4.3 31.10.2016
 =================
 - fix rare race condition when storing RTP packets (which can result in invalid packet size in pcap - failing to download pcap) (all versions) 
