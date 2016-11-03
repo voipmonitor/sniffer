@@ -632,7 +632,6 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 		packet = new FILE_LINE(27002) u_char[header->caplen];
 		allocPacket = true;
 		if(packetLen != packetS->header_pt->caplen) {
-			unsigned int diffLen = packetS->header_pt->caplen - packetLen;
 			if(type == TYPE_SIP && packetS->isSip) {
 				memcpy(packet, packetS->packet, packetS->dataoffset);
 				memcpy(packet + packetS->dataoffset, packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
@@ -640,16 +639,20 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 					unsigned long l;
 					char *s = gettag_sip(packetS, "\nContent-Length:", &l);
 					if(s) {
-						char *pointToModifyContLength = (char*)packet + (s - (packetS->data + packetS->sipDataOffset));
-						long int contentLength = atol(pointToModifyContLength);
-						if(contentLength > 0 && contentLength < packetS->sipDataLen) {
-							char contLengthStr[10];
-							sprintf(contLengthStr, "%li", contentLength - diffLen);
-							strncpy(pointToModifyContLength, contLengthStr, strlen(contLengthStr));
-							char *pointToEndModifyContLength = pointToModifyContLength + strlen(contLengthStr);
-							while(*pointToEndModifyContLength != '\r') {
-								*pointToEndModifyContLength = ' ';
-								++pointToEndModifyContLength;
+						char *pointToModifyContLength = (char*)packet + packetS->dataoffset + (s - (packetS->data + packetS->sipDataOffset));
+						char *pointToBeginContLength = (char*)memmem(packet + packetS->dataoffset, packetS->sipDataLen, "\r\n\r\n", 4);
+						if(pointToBeginContLength) {
+							int contentLengthOrig = atoi(pointToModifyContLength);
+							int contentLengthNew = packetLen - (pointToBeginContLength - (char*)packet) - 4;
+							if(contentLengthNew > 0 && contentLengthOrig != contentLengthNew) {
+								char contLengthStr[10];
+								sprintf(contLengthStr, "%i", contentLengthNew);
+								strncpy(pointToModifyContLength, contLengthStr, strlen(contLengthStr));
+								char *pointToEndModifyContLength = pointToModifyContLength + strlen(contLengthStr);
+								while(*pointToEndModifyContLength != '\r') {
+									*pointToEndModifyContLength = ' ';
+									++pointToEndModifyContLength;
+								}
 							}
 						}
 					}
@@ -658,7 +661,11 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 				memcpy(packet, packetS->packet, packetLen);
 			}
 			iphdr2 *header_ip = (iphdr2*)(packet + ((u_char*)packetS->header_ip - packetS->packet));
-			header_ip->tot_len = htons(ntohs(header_ip->tot_len) - diffLen);
+			unsigned header_ip_tot_len = packetLen - ((char*)packetS->header_ip - (char*)packetS->packet);
+			if(header_ip_tot_len != htons(header_ip->tot_len)) {
+				header_ip->tot_len = htons(header_ip_tot_len);
+			}
+			unsigned int diffLen = packetS->header_pt->caplen - packetLen;
 			header->caplen -= diffLen;
 			header->len -= diffLen;
 		}
