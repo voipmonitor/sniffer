@@ -4093,7 +4093,7 @@ bool SocketSimpleBufferWrite::socketConnect() {
 	if(!socketHostIPl) {
 		socketGetHost();
 	}
-	if((socketHandle = socket(AF_INET, SOCK_STREAM, udp ? IPPROTO_UDP : IPPROTO_TCP)) == -1) {
+	if((socketHandle = socket(AF_INET, udp ? SOCK_DGRAM : SOCK_STREAM, udp ? IPPROTO_UDP : IPPROTO_TCP)) == -1) {
 		syslog(LOG_NOTICE, "socketwrite %s: cannot create socket", name.c_str());
 		return(false);
 	}
