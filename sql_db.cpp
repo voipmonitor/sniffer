@@ -698,8 +698,8 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 		my_bool reconnect = 1;
 		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
 		struct timeval s;
-		gettimeofday (&s, 0);	
-		if(this->conn_server_ip.empty() and ((lastmysqlresolve + 300) < s.tv_sec)) {
+		gettimeofday(&s, 0);
+		if(this->conn_server_ip.empty() || ((lastmysqlresolve + 120) < s.tv_sec)) {
 			lastmysqlresolve = s.tv_sec;
 			if(reg_match(this->conn_server.c_str(), "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
 				this->conn_server_ip = this->conn_server;
