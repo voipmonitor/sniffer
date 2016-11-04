@@ -1,3 +1,11 @@
+17.5.1 4.11.2016
+================
+- store at least one RTP stream with <= 2 packets (it worked only for reading offline pcaps)
+- fix mysqlhost DNS resolution if mysql was disconnected and DNS changed [VS-515]
+- fix wrong frame check sequence error in saved pcap packets (for TCP) - GUI sip history ignored such packets (all versions) [VS-498]
+- fix udp connection for sip_send [VS-520]
+
+
 17.5 2.11.2016
 ==============
 - fix deadlock >= 17.4
