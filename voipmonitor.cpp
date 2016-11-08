@@ -6095,6 +6095,10 @@ void set_context_config() {
 		opt_defer_create_spooldir = false;
 	}
 	
+	if(is_sender()) {
+		opt_pcap_queue_use_blocks = false;
+	}
+	
 	vector<string> ifnamev = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
 	if(getThreadingMode() < 2 && 
 	   (ifnamev.size() > 1 || opt_pcap_queue_use_blocks)) {
@@ -6150,7 +6154,9 @@ void set_context_config() {
 	}
 	if(opt_t2_boost) {
 		opt_enable_preprocess_packet = PreProcessPacket::ppt_end;
-		opt_pcap_queue_use_blocks = 1;
+		if(!is_sender()) {
+			opt_pcap_queue_use_blocks = 1;
+		}
 	}
 }
 
