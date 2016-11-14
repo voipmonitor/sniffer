@@ -6157,6 +6157,20 @@ void set_context_config() {
 		if(!is_sender()) {
 			opt_pcap_queue_use_blocks = 1;
 		}
+		if(opt_process_rtp_packets_hash_next_thread < 2) {
+			opt_process_rtp_packets_hash_next_thread = 2;
+		}
+		opt_process_rtp_packets_hash_next_thread_sem_sync = 1;
+		if(opt_preprocess_packets_qring_length <= 2000 &&
+		   opt_preprocess_packets_qring_item_length == 0) {
+			opt_preprocess_packets_qring_length = 3;
+			opt_preprocess_packets_qring_item_length = 5000;
+		}
+		if(opt_process_rtp_packets_qring_length <= 2000 &&
+		   opt_process_rtp_packets_qring_item_length == 0) {
+			opt_process_rtp_packets_qring_length = 4;
+			opt_process_rtp_packets_qring_item_length = 5000;
+		}
 	}
 }
 
