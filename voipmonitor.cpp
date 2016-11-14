@@ -3546,7 +3546,7 @@ struct XX {
 
 void test_search_country_by_number() {
 	CheckInternational *ci = new FILE_LINE(43042) CheckInternational();
-	ci->setInternationalMinLength(9);
+	ci->setInternationalMinLength(9, false);
 	CountryPrefixes *cp = new FILE_LINE(43043) CountryPrefixes();
 	cp->load();
 	vector<string> countries;

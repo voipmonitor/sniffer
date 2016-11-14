@@ -136,7 +136,7 @@ public:
 	CheckInternational();
 	void setInternationalPrefixes(const char *prefixes);
 	void setSkipPrefixes(const char *prefixes);
-	void setInternationalMinLength(int internationalMinLength);
+	void setInternationalMinLength(int internationalMinLength, bool internationalMinLengthPrefixesStrict);
 	void load(SqlDb_row *dbRow);
 	bool isInternational(const char *number, const char **prefix = NULL) {
 		if(prefix) {
@@ -158,7 +158,10 @@ public:
 		} while(existsSkipPrefix);
 		for(size_t i = 0; i < internationalPrefixes.size(); i++) {
 			if(numberLength > (int)internationalPrefixes[i].size() &&
-			   !strncmp(number, internationalPrefixes[i].c_str(), internationalPrefixes[i].size())) {
+			   !strncmp(number, internationalPrefixes[i].c_str(), internationalPrefixes[i].size()) && 
+			   (!internationalMinLengthPrefixesStrict ||
+			    !internationalMinLength ||
+			    numberLength >= (int)(internationalMinLength + internationalPrefixes[i].size()))) {
 				if(prefix) {
 					*prefix = internationalPrefixes[i].c_str();
 				}
@@ -169,7 +172,8 @@ public:
 			--numberLength;
 			++number;
 		}
-		if(internationalMinLength &&
+		if(!internationalMinLengthPrefixesStrict &&
+		   internationalMinLength &&
 		   numberLength >= internationalMinLength) {
 			return(true);
 		}
@@ -210,6 +214,7 @@ public:
 private:
 	vector<string> internationalPrefixes;
 	int internationalMinLength;
+	bool internationalMinLengthPrefixesStrict;
 	string countryCodeForLocalNumbers;
 	vector<string> skipPrefixes;
 };

@@ -134,6 +134,7 @@ bool CountryCodes::isLocationIn(const char *location, vector<string> *in, bool c
 CheckInternational::CheckInternational() {
 	internationalPrefixes = split("+, 00", ",", true);
 	internationalMinLength = 0;
+	internationalMinLengthPrefixesStrict = false;
 }
 
 void CheckInternational::setInternationalPrefixes(const char *prefixes) {
@@ -144,8 +145,9 @@ void CheckInternational::setSkipPrefixes(const char *prefixes) {
 	this->skipPrefixes = split(prefixes, ",", true);
 }
 
-void CheckInternational::setInternationalMinLength(int internationalMinLength) {
+void CheckInternational::setInternationalMinLength(int internationalMinLength, bool internationalMinLengthPrefixesStrict) {
 	this->internationalMinLength = internationalMinLength;
+	this->internationalMinLengthPrefixesStrict = internationalMinLengthPrefixesStrict;
 }
 
 void CheckInternational::load(SqlDb_row *dbRow) {
