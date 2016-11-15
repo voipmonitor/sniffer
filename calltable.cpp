@@ -322,6 +322,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	message_info = NULL;
 	contenttype = NULL;
 	content_length = 0;
+	dcs = 0;
+	voicemail = voicemail_na;
 	unrepliedinvite = 0;
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
 		 sipcallerip[i] = 0;
@@ -5034,6 +5036,9 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 			SqlDb_row row;
 			while((row = sqlDb->fetchRow())) {
 				sCustomHeaderDataPlus ch_data;
+				string specialType = row["special_type"];
+				ch_data.specialType = specialType == "gsm_dcs" ? gsm_dcs :
+						      specialType == "gsm_voicemail" ? gsm_voicemail : st_na;
 				ch_data.db_id = atoi(row["id"].c_str());
 				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
 				ch_data.header = row["header_field"];
@@ -5147,46 +5152,73 @@ void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket::ppCo
 	for(iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		map<int, sCustomHeaderData>::iterator iter2;
 		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			string findHeader = iter2->second.header;
-			if(findHeader[findHeader.length() - 1] != ':' &&
-			   findHeader[findHeader.length() - 1] != '=') {
-				findHeader.append(":");
-			}
-			unsigned long l;
-			char *s = gettag_ext(data, datalen, parseContents,
-					     findHeader.c_str(), &l, &gettagLimitLen);
-			if(l) {
-				char customHeaderContent[256];
-				memcpy(customHeaderContent, s, min(l, 255lu));
-				customHeaderContent[min(l, 255lu)] = '\0';
-				char *customHeaderBegin = customHeaderContent;
-				if(!iter2->second.leftBorder.empty()) {
-					customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
-					if(customHeaderBegin) {
-						customHeaderBegin += iter2->second.leftBorder.length();
-					} else {
-						continue;
+			if(iter2->second.specialType) {
+				string content;
+				switch(iter2->second.specialType) {
+				case gsm_dcs:
+					if(call->dcs) {
+						content = intToString(call->dcs);
 					}
-				}
-				if(!iter2->second.rightBorder.empty()) {
-					char *customHeaderEnd = strcasestr(customHeaderBegin, iter2->second.rightBorder.c_str());
-					if(customHeaderEnd) {
-						*customHeaderEnd = 0;
-					} else {
-						continue;
+					break;
+				case gsm_voicemail:
+					switch(call->voicemail) {
+					case Call::voicemail_active:
+						content = "active";
+						break;
+					case Call::voicemail_inactive:
+						content = "inactive";
+						break;
+					case Call::voicemail_na:
+						break;
 					}
+					break;
+				case st_na:
+					break;
 				}
-				if(!iter2->second.regularExpression.empty()) {
-					string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
-					if(customHeader.empty()) {
-						continue;
+				dstring ds_content(iter2->second.header, content);
+				this->setCustomHeaderContent(call, iter->first, iter2->first, &ds_content);
+			} else {
+				string findHeader = iter2->second.header;
+				if(findHeader[findHeader.length() - 1] != ':' &&
+				   findHeader[findHeader.length() - 1] != '=') {
+					findHeader.append(":");
+				}
+				unsigned long l;
+				char *s = gettag_ext(data, datalen, parseContents,
+						     findHeader.c_str(), &l, &gettagLimitLen);
+				if(l) {
+					char customHeaderContent[256];
+					memcpy(customHeaderContent, s, min(l, 255lu));
+					customHeaderContent[min(l, 255lu)] = '\0';
+					char *customHeaderBegin = customHeaderContent;
+					if(!iter2->second.leftBorder.empty()) {
+						customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
+						if(customHeaderBegin) {
+							customHeaderBegin += iter2->second.leftBorder.length();
+						} else {
+							continue;
+						}
+					}
+					if(!iter2->second.rightBorder.empty()) {
+						char *customHeaderEnd = strcasestr(customHeaderBegin, iter2->second.rightBorder.c_str());
+						if(customHeaderEnd) {
+							*customHeaderEnd = 0;
+						} else {
+							continue;
+						}
+					}
+					if(!iter2->second.regularExpression.empty()) {
+						string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
+						if(customHeader.empty()) {
+							continue;
+						} else {
+							dstring content(iter2->second.header, customHeader);
+							this->setCustomHeaderContent(call, iter->first, iter2->first, &content);
+						}
 					} else {
-						dstring content(iter2->second.header, customHeader);
+						dstring content(iter2->second.header, customHeaderBegin);
 						this->setCustomHeaderContent(call, iter->first, iter2->first, &content);
 					}
-				} else {
-					dstring content(iter2->second.header, customHeaderBegin);
-					this->setCustomHeaderContent(call, iter->first, iter2->first, &content);
 				}
 			}
 		}

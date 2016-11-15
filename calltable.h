@@ -223,6 +223,11 @@ public:
 			(*this)[ssrc].add(tv, moslq, nlr);
 		}
 	};
+	enum eVoicemail {
+		voicemail_na,
+		voicemail_active,
+		voicemail_inactive
+	};
 public:
 	int type;			//!< type of call, INVITE or REGISTER
 	bool is_ssl;			//!< call was decrypted
@@ -368,6 +373,9 @@ public:
 	char *message;
 	char *message_info;
 	int content_length;
+	
+	unsigned int dcs;
+	eVoicemail voicemail;
 
 	int last_callercodec;		//!< Last caller codec 
 	int last_calledcodec;		//!< Last called codec 
@@ -1148,7 +1156,13 @@ public:
 		cdr,
 		message
 	};
+	enum eSpecialType {
+		st_na,
+		gsm_dcs,
+		gsm_voicemail
+	};
 	struct sCustomHeaderData {
+		eSpecialType specialType;
 		string header;
 		unsigned db_id;
 		string leftBorder;

@@ -590,6 +590,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 
 static int parse_packet__message(packet_s_process *packetS, bool strictCheckLength,
 				 char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber, unsigned int *rsltContentLength,
+				 unsigned int *rsltDcs, Call::eVoicemail *rsltVoicemail,
 				 bool maskMessage = false);
 
 /*
@@ -610,6 +611,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 	if(call->type == MESSAGE && (call->flags & FLAG_HIDEMESSAGE)) {
 		parse_packet__message(packetS, false,
 				      NULL, NULL, NULL, NULL, NULL,
+				      NULL, NULL,
 				      true);
 	}
 	pcap_pkthdr *header = packetS->header_pt;
@@ -2299,6 +2301,7 @@ static inline int parse_packet__last_sip_response(packet_s_process *packetS, int
 						  char *lastSIPresponse, bool *call_cancel_lsr487);
 static inline int parse_packet__message_content(char *message, unsigned int messageLength,
 						char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber,
+						unsigned int *rsltDcs, Call::eVoicemail *rsltVoicemail,
 						bool maskMessage = false);
 static inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, int *merged, bool preprocess);
 
@@ -2634,8 +2637,11 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			string rsltDestNumber;
 			string rsltSrcNumber;
 			unsigned int rsltContentLength;
+			unsigned int rsltDcs;
+			Call::eVoicemail rsltVoicemail;
 			switch(parse_packet__message(packetS, call->message != NULL,
-						     &rsltMessage, &rsltMessageInfo, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
+						     &rsltMessage, &rsltMessageInfo, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength,
+						     &rsltDcs, &rsltVoicemail)) {
 			case 2:
 				if(call->message) {
 					delete [] call->message;
@@ -2645,6 +2651,8 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					delete [] call->message_info;
 				}
 				call->message_info = rsltMessageInfo;
+				call->dcs = rsltDcs;
+				call->voicemail = rsltVoicemail;
 				break;
 			case 1:
 				if(!call->message) {
@@ -3004,12 +3012,17 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		string rsltDestNumber;
 		string rsltSrcNumber;
 		unsigned int rsltContentLength;
+		unsigned int rsltDcs;
+		Call::eVoicemail rsltVoicemail;
 		packetS->data[packetS->datalen - 1] = a;
 		switch(parse_packet__message(packetS, false,
-					     &rsltMessage, &rsltMessageInfo, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength)) {
+					     &rsltMessage, &rsltMessageInfo, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength,
+					     &rsltDcs, &rsltVoicemail)) {
 		case 2:
 			call->message = rsltMessage;
 			call->message_info = rsltMessageInfo;
+			call->dcs = rsltDcs;
+			call->voicemail = rsltVoicemail;
 			break;
 		case 1:
 			if(!call->message) {
@@ -3995,6 +4008,7 @@ inline int parse_packet__last_sip_response(packet_s_process *packetS, int sip_me
 
 inline int parse_packet__message(packet_s_process *packetS, bool strictCheckLength,
 				 char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber, unsigned int *rsltContentLength,
+				 unsigned int *rsltDcs, Call::eVoicemail *rsltVoicemail,
 				 bool maskMessage) {
 	if(rsltMessage) {
 		*rsltMessage = NULL;
@@ -4043,6 +4057,7 @@ inline int parse_packet__message(packet_s_process *packetS, bool strictCheckLeng
 			data[datalen - 1] = endCharData;
 			if(parse_packet__message_content(contentBegin, contentEnd - contentBegin,
 							 rsltMessage, rsltMessageInfo, rsltDestNumber, rsltSrcNumber,
+							 rsltDcs, rsltVoicemail,
 							 maskMessage)) {
 				setMessage = 2;
 			} else {
@@ -4432,6 +4447,7 @@ struct sGsmMessageAck {
 
 int parse_packet__message_content(char *message, unsigned int messageLength,
 				  char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber,
+				  unsigned int *rsltDcs, Call::eVoicemail *rsltVoicemail,
 				  bool maskMessage) {
 	int rslt = 0;
 	if(rsltMessage) {
@@ -4439,6 +4455,12 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 	}
 	if(rsltMessageInfo) {
 		*rsltMessageInfo = NULL;
+	}
+	if(rsltDcs) {
+		*rsltDcs = 0;
+	}
+	if(rsltVoicemail) {
+		*rsltVoicemail = Call::voicemail_na;
 	}
 	if(messageLength) {
 		sGsmMessage gsmMessage;
@@ -4482,6 +4504,14 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 							if(rslt_message_info.length()) {
 								*rsltMessageInfo = new FILE_LINE(27007) char[rslt_message_info.length() + 1];
 								strcpy(*rsltMessageInfo, rslt_message_info.c_str());
+							}
+							if(rsltDcs) {
+								*rsltDcs = gsmMessageData.dcs;
+							}
+							if(rsltVoicemail) {
+								*rsltVoicemail = gsmMessageData.dcs & 0xC0 ?
+										  (gsmMessageData.dcs & 0x8 ? Call::voicemail_active : Call::voicemail_inactive) :
+										  Call::voicemail_na;
 							}
 						}
 					}
