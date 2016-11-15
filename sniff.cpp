@@ -766,13 +766,13 @@ int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseCo
 	//RFC 3261
 	if(!strncasecmp(data, "SIP/2.0", 7)) {
 		ok = 1;
-	} else if(!strncasecmp(data, "INVITE", 6)) {
+	} else if(!strncasecmp(data, "INVITE ", 7)) {
 		ok = 1;
-	} else if(!strncasecmp(data, "ACK", 3)) {
+	} else if(!strncasecmp(data, "ACK ", 4)) {
 		ok = 1;
-	} else if(!strncasecmp(data, "BYE", 3)) {
+	} else if(!strncasecmp(data, "BYE ", 4)) {
 		ok = 1;
-	} else if(!strncasecmp(data, "CANCEL", 6)) {
+	} else if(!strncasecmp(data, "CANCEL ", 7)) {
 		ok = 1;
 	} else if(!strncasecmp(data, "OPTIONS", 7)) {
 		ok = 1;
