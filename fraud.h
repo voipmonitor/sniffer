@@ -172,7 +172,8 @@ public:
 			--numberLength;
 			++number;
 		}
-		if(!internationalMinLengthPrefixesStrict &&
+		if((!internationalMinLengthPrefixesStrict ||
+		    !internationalPrefixes.size()) &&
 		   internationalMinLength &&
 		   numberLength >= internationalMinLength) {
 			return(true);
