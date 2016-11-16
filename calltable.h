@@ -176,6 +176,16 @@ public:
 		u_int32_t sipcallerip[MAX_SIPCALLERDIP];
 		u_int32_t sipcalledip[MAX_SIPCALLERDIP];
 	};
+	struct sInviteSD_Addr {
+		sInviteSD_Addr() {
+			confirmed = false;
+		}
+		u_int32_t saddr;
+		u_int32_t daddr;
+		u_int16_t sport;
+		u_int16_t dport;
+		bool confirmed;
+	};
 	struct sSipResponse {
 		sSipResponse(const char *SIPresponse = NULL, int SIPresponseNum = 0) {
 			if(SIPresponse) {
@@ -348,7 +358,7 @@ public:
 	map<string, sSipcalleRD_IP> map_sipcallerdip;
 	u_int32_t lastsipcallerip;
 	
-	list<d_u_int32_t> invite_sdaddr;
+	list<sInviteSD_Addr> invite_sdaddr;
 
 	u_int16_t sipcallerport;
 	u_int16_t sipcalledport;
@@ -833,6 +843,8 @@ public:
 		}
 		return(false);
 	}
+	
+	u_int32_t getSipcalledipConfirmed(u_int16_t *dport);
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];

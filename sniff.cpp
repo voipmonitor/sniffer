@@ -2463,15 +2463,20 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	}
 	
 	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
-		for(list<d_u_int32_t>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
-			if(packetS->saddr == (*iter)[0] && packetS->daddr == (*iter)[1]) {
+		for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
+			if(packetS->saddr == iter->saddr && packetS->daddr == iter->daddr) {
 				existInviteSdaddr = true;
-			} else if(packetS->daddr == (*iter)[0] && packetS->saddr == (*iter)[1]) {
+			} else if(packetS->daddr == iter->saddr && packetS->saddr == iter->daddr) {
 				reverseInviteSdaddr = true;
 			}
 		}
 		if(!existInviteSdaddr && !reverseInviteSdaddr) {
-			call->invite_sdaddr.push_back(d_u_int32_t(packetS->saddr, packetS->daddr));
+			Call::sInviteSD_Addr invite_sd;
+			invite_sd.saddr = packetS->saddr;
+			invite_sd.daddr = packetS->daddr;
+			invite_sd.sport = packetS->source;
+			invite_sd.dport = packetS->dest;
+			call->invite_sdaddr.push_back(invite_sd);
 		}
 	}
 	
@@ -2753,6 +2758,11 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 						goto endsip_save_packet;
 					} else if((cseq_method == INVITE || cseq_method == MESSAGE) &&
 						  strncmp(cseq, call->invitecseq, cseqlen) == 0) {
+						for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
+							if(packetS->daddr == iter->saddr && packetS->saddr == iter->daddr) {
+								iter->confirmed = true;
+							}
+						}
 						call->seeninviteok = true;
 						if(!call->connect_time) {
 							call->connect_time = packetS->header_pt->ts.tv_sec;
@@ -2852,19 +2862,21 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			}
 		}
 		IPfilter::add_call_flags(&(call->flags), ntohl(packetS->saddr), ntohl(packetS->daddr));
-		if(((packetS->sip_method == INVITE && opt_cdrproxy) ||
-		    (packetS->sip_method == MESSAGE && opt_messageproxy)) && 
-		   !reverseInviteSdaddr) {
-			if(call->sipcalledip[0] != packetS->daddr and call->sipcallerip[0] != packetS->daddr and call->lastsipcallerip != packetS->saddr) {
-				if(packetS->daddr != 0) {
+		if(!reverseInviteSdaddr) {
+			bool updateDest = false;
+			if(call->sipcalledip[0] != packetS->daddr && call->sipcallerip[0] != packetS->daddr && 
+			   call->lastsipcallerip != packetS->saddr) {
+				if(((packetS->sip_method == INVITE && opt_cdrproxy) ||
+				    (packetS->sip_method == MESSAGE && opt_messageproxy)) &&
+				   packetS->daddr != 0) {
 					// daddr is already set, store previous daddr as sipproxy
 					call->proxies.push_back(call->sipcalledip[0]);
 				}
-				call->sipcalledip[0] = packetS->daddr;
-				call->sipcalledport = packetS->dest;
-				call->lastsipcallerip = packetS->saddr;
+				updateDest = true;
 			} else if(call->lastsipcallerip == packetS->saddr) {
-				// update sipcalledip to this new one
+				updateDest = true;
+			}
+			if(updateDest) {
 				call->sipcalledip[0] = packetS->daddr;
 				call->sipcalledport = packetS->dest;
 				call->lastsipcallerip = packetS->saddr;

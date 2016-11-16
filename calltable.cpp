@@ -2234,11 +2234,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		     dscp_c = 0,
 		     dscp_d = 0;
 	
+	u_int32_t sipcalledip_confirmed;
+	u_int16_t sipcalledport_confirmed;
+	sipcalledip_confirmed = getSipcalledipConfirmed(&sipcalledport_confirmed);
+	
 	cdr.add(htonl(sipcallerip[0]), "sipcallerip");
-	cdr.add(htonl(sipcalledip[0]), "sipcalledip");
+	cdr.add(htonl(sipcalledip_confirmed ? sipcalledip_confirmed : sipcalledip[0]), "sipcalledip");
 	if(existsColumns.cdr_sipport) {
 		cdr.add(sipcallerport, "sipcallerport");
-		cdr.add(sipcalledport, "sipcalledport");
+		cdr.add(sipcalledport_confirmed ? sipcalledport_confirmed : sipcalledport, "sipcalledport");
 	}
 	cdr.add(duration(), "duration");
 	if(progress_time) {
@@ -3974,6 +3978,32 @@ void Call::disableListeningBuffers() {
 		audiobuffer2->clean_and_disable();
 	}
 	pthread_mutex_unlock(&listening_worker_run_lock);
+}
+
+u_int32_t Call::getSipcalledipConfirmed(u_int16_t *dport) {
+	if(dport) {
+		*dport = 0;
+	}
+	u_int32_t saddr = 0, 
+		  daddr = 0, 
+		  lastsaddr = 0;
+	for(list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+		if(iter->confirmed) {
+			if((daddr != iter->daddr && saddr != iter->daddr && 
+			    lastsaddr != iter->saddr) ||
+			   lastsaddr == iter->saddr) {
+				if(!saddr) {
+					saddr = iter->saddr;
+				}
+				daddr = iter->daddr;
+				if(dport) {
+					*dport = iter->dport;
+				}
+				lastsaddr = iter->saddr;
+			}
+		}
+	}
+	return(daddr);
 }
 
 void adjustUA(char *ua) {
