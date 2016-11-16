@@ -1225,7 +1225,11 @@ public:
 	PhoneNumber(const char *number, bool prefix = true) {
 		this->number = number;
 		this->prefix = prefix;
-		this->lengthPrefix = prefix ? strlen(number) : 0;
+		while(this->number.size() && this->number[this->number.size() - 1] == '%') {
+			this->number.resize(this->number.size() - 1);
+			this->prefix = true;
+		}
+		this->lengthPrefix = this->prefix ? this->number.size() : 0;
 	}
 	bool checkNumber(const char *check_number) {
 		if(prefix) {
