@@ -1262,11 +1262,35 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 		TcpReassemblyStream *stream = this->queue_by_ack[ack];
 		if(stream) {
 			bool okData = false;
-			if(stream->ok(false, true, stream->max_next_seq,
-				      0, 0, NULL, enableDebug,
-				      stream->min_seq)) {
+			for(int pass = 0; pass < 2 && !okData; pass++) {
+				// pass:
+				//  - 0 - get prev streams first
+				//  - 1 - check ack stream; if !checkOkData, then use prev streams
+				//  - 2 - suppress use prev streams and end loop
+				if(!stream->ok(false, true, stream->max_next_seq,
+					      0, 0, NULL, enableDebug,
+					      stream->min_seq)) {
+					break;
+				}
 				vector<TcpReassemblyStream*> streams;
 				streams.push_back(stream);
+				if(pass == 0) {
+					TcpReassemblyStream *prevStream;
+					while((prevStream = findStreamByMaxNextSeq(streams[streams.size() - 1]->min_seq)) != NULL) {
+						if(prevStream->ok(false, true, prevStream->max_next_seq,
+								  0, 0, NULL, enableDebug,
+								  prevStream->min_seq)) {
+							streams.push_back(prevStream);
+						} else {
+							prevStream->clearCompleteData();
+							prevStream->is_ok = false;
+							break;
+						}
+					}
+					if(streams.size() == 1) {
+						pass = 2;
+					}
+				}
 				while(true) {
 					if(streams.size() == 1) {
 						if(reassembly->checkOkData(stream->complete_data.getData(), stream->complete_data.getDatalen(), true)) {
@@ -1283,15 +1307,19 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 							break;
 						}
 					}
-					TcpReassemblyStream *prevStream = findStreamByMaxNextSeq(streams[streams.size() - 1]->min_seq);
-					if(prevStream) {
-						if(prevStream->ok(false, true, prevStream->max_next_seq,
-								  0, 0, NULL, enableDebug,
-								  prevStream->min_seq)) {
-							streams.push_back(prevStream);
+					if(pass == 1) {
+						TcpReassemblyStream *prevStream = findStreamByMaxNextSeq(streams[streams.size() - 1]->min_seq);
+						if(prevStream) {
+							if(prevStream->ok(false, true, prevStream->max_next_seq,
+									  0, 0, NULL, enableDebug,
+									  prevStream->min_seq)) {
+								streams.push_back(prevStream);
+							} else {
+								prevStream->clearCompleteData();
+								prevStream->is_ok = false;
+								break;
+							}
 						} else {
-							prevStream->clearCompleteData();
-							prevStream->is_ok = false;
 							break;
 						}
 					} else {
