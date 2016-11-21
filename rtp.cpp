@@ -1446,7 +1446,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			// sequence numbers are ok, we can calculate packetization
 			if(curpayload == PAYLOAD_G729) {
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
-				if(payload_len == 30) {
+				if(payload_len == 60) {
+					packetization = 60;
+				} else if(payload_len == 50) {
+					packetization = 50;
+				} else if(payload_len == 40) {
+					packetization = 40;
+				} else if(payload_len == 30) {
 					packetization = 30;
 				} else if(payload_len == 20) {
 					packetization = 20;
@@ -1530,7 +1536,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			if(packetization < 10) {
 				if(curpayload == PAYLOAD_G729) {
 					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
-					if(payload_len == 30) {
+					if(payload_len == 60) {
+						packetization = channel_record->packetization = 60;
+					} else if(payload_len == 50) {
+						packetization = channel_record->packetization = 50;
+					} else if(payload_len == 40) {
+						packetization = channel_record->packetization = 40;
+					} else if(payload_len == 30) {
 						packetization = channel_record->packetization = 30;
 					} else if(payload_len == 20) {
 						packetization = channel_record->packetization = 20;
@@ -1570,7 +1582,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			// sequence numbers are ok, we can calculate packetization
 			if(curpayload == PAYLOAD_G729) {
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
-				if(payload_len == 30) {
+				if(payload_len == 60) {
+					packetization = 60;
+				} else if(payload_len == 50) {
+					packetization = 50;
+				} else if(payload_len == 40) {
+					packetization = 40;
+				} else if(payload_len == 30) {
 					packetization = 30;
 				} else if(payload_len == 20) {
 					packetization = 20;
@@ -1640,7 +1658,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			){
 				if(curpayload == PAYLOAD_G729) {
 					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
-					if(payload_len == 30) {
+					if(payload_len == 60) {
+						packetization = channel_record->packetization = 60;
+					} else if(payload_len == 50) {
+						packetization = channel_record->packetization = 50;
+					} else if(payload_len == 40) {
+						packetization = channel_record->packetization = 40;
+					} else if(payload_len == 30) {
 						packetization = channel_record->packetization = 30;
 					} else if(payload_len == 20) {
 						packetization = channel_record->packetization = 20;
@@ -1683,7 +1707,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 			if(curpayload == PAYLOAD_G729) {
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
-				if(payload_len == 30) {
+				if(payload_len == 60) {
+					curpacketization = 60;	
+				} else if(payload_len == 50) {
+					curpacketization = 50;	
+				} else if(payload_len == 40) {
+					curpacketization = 40;	
+				} else if(payload_len == 30) {
 					curpacketization = 30;	
 				} else if(payload_len == 20) {
 					curpacketization = 20;	
