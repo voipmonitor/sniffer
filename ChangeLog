@@ -1,3 +1,15 @@
+17.6 21.11.2016
+===============
+- fix G.729 MOS score when ptime is 60ms in rare case 
+- disable pcap_queue_use_blocks when mirroring packets [VS-480]
+- apply new parameter international_number_min_length_prefixes_strict to international rules [VG-1066]
+- tweak more parameters when t2 boos is enabled 
+- add 'special types' to message custom headers gsm dcs and gsm voicemail [VG-870]
+- ignore % suffix for realtime concurrent calls alerts 
+- fix destination number when calling to multiple destinations at once (store that one which send 200 OK) [VS-441]
+- fix TCP reassembler for extended mode 
+
+
 17.5.1 4.11.2016
 ================
 - store at least one RTP stream with <= 2 packets (it worked only for reading offline pcaps)
