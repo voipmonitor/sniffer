@@ -1795,6 +1795,10 @@ string MySqlStore_process::getInsertFuncName() {
 	return(insert_funcname);
 }
 
+string MySqlStore::QFileConfig::getDirectory() {
+	return(this->directory.empty() ? getQueryCacheDir() : this->directory);
+}
+
 MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port,
 		       const char *cloud_host, const char *cloud_token) {
 	this->host = host;
@@ -2031,9 +2035,7 @@ string MySqlStore::getQFilename(int idc, u_long actTime) {
 	string dateTime = sqlDateTimeString(actTime / 1000).c_str();
 	find_and_replace(dateTime, " ", "T");
 	sprintf(fileName, "%s-%i-%lu-%s", QFILE_PREFIX, idc, actTime, dateTime.c_str());
-	extern char opt_chdir[1024];
-	return((qfileConfig.directory.empty() ? string(opt_chdir) : qfileConfig.directory) + 
-	       "/" + fileName);
+	return(qfileConfig.getDirectory() + "/" + fileName);
 }
 
 int MySqlStore::convIdForQFile(int id) {
@@ -2119,8 +2121,7 @@ void MySqlStore::addLoadFromQFile(int id, const char *name,
 }
 
 bool MySqlStore::fillQFiles(int id) {
-	extern char opt_chdir[1024];
-	DIR* dp = opendir(loadFromQFileConfig.directory.empty() ? opt_chdir : loadFromQFileConfig.directory.c_str());
+	DIR* dp = opendir(loadFromQFileConfig.getDirectory().c_str());
 	if(!dp) {
 		return(false);
 	}
@@ -2139,7 +2140,6 @@ bool MySqlStore::fillQFiles(int id) {
 }
 
 string MySqlStore::getMinQFile(int id) {
-	extern char opt_chdir[1024];
 	if(loadFromQFileConfig.inotify) {
 		string qfilename;
 		loadFromQFilesThreadData[id].lock();
@@ -2151,11 +2151,10 @@ string MySqlStore::getMinQFile(int id) {
 		}
 		loadFromQFilesThreadData[id].unlock();
 		if(!qfilename.empty()) {
-			return((loadFromQFileConfig.directory.empty() ? string(opt_chdir) : loadFromQFileConfig.directory) +
-			       "/" + qfilename);
+			return(loadFromQFileConfig.getDirectory() + "/" + qfilename);
 		}
 	} else {
-		DIR* dp = opendir(loadFromQFileConfig.directory.empty() ? opt_chdir : loadFromQFileConfig.directory.c_str());
+		DIR* dp = opendir(loadFromQFileConfig.getDirectory().c_str());
 		if(!dp) {
 			return("");
 		}
@@ -2175,16 +2174,14 @@ string MySqlStore::getMinQFile(int id) {
 		closedir(dp);
 		if(minTime &&
 		   (getTimeMS() - minTime) > (unsigned)loadFromQFileConfig.period * 2 * 1000) {
-			return((loadFromQFileConfig.directory.empty() ? string(opt_chdir) : loadFromQFileConfig.directory) +
-			       "/" + minTimeFileName);
+			return(loadFromQFileConfig.getDirectory() + "/" + minTimeFileName);
 		}
 	}
 	return("");
 }
 
 int MySqlStore::getCountQFiles(int id) {
-	extern char opt_chdir[1024];
-	DIR* dp = opendir(loadFromQFileConfig.directory.empty() ? opt_chdir : loadFromQFileConfig.directory.c_str());
+	DIR* dp = opendir(loadFromQFileConfig.getDirectory().c_str());
 	if(!dp) {
 		return(-1);
 	}
@@ -2207,7 +2204,7 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 		     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 	}
 	FileZipHandler *fileZipHandler = new FILE_LINE(30006) FileZipHandler(8 * 1024, 0, isGunzip(filename) ? FileZipHandler::gzip : FileZipHandler::compress_na);
-	fileZipHandler->open(filename);
+	fileZipHandler->open(tsf_na, filename);
 	unsigned int counter = 0;
 	bool copyBadFileToTemp = false;
 	while(!fileZipHandler->is_eof() && fileZipHandler->is_ok_decompress() && fileZipHandler->read(8 * 1024)) {
@@ -2275,12 +2272,6 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 	}
 	fileZipHandler->close();
 	delete fileZipHandler;
-	/*
-	if(sverb.qfiles) {
-		extern char opt_chdir[1024];
-		system((string("cp ") + filename + " " + opt_chdir + "/_qfiles").c_str());
-	}
-	*/
 	if(!onlyCheck) {
 		unlink(filename);
 	}
@@ -2573,7 +2564,8 @@ string MySqlStore::exportToFile(FILE *file, string fileName, bool sqlFormat, boo
 	bool openFile = false;
 	if(!file) {
 		if(fileName == "auto") {
-			fileName = (sqlFormat ? "export_voipmonitor_sql-" : "export_voipmonitor_queries-") + sqlDateTimeString(time(NULL));
+			fileName = getSqlVmExportDirectory() + "/" +
+				   (sqlFormat ? "export_voipmonitor_sql-" : "export_voipmonitor_queries-") + sqlDateTimeString(time(NULL));
 		}
 		file = fopen(fileName.c_str(), "wt");
 		openFile = true;
@@ -2596,8 +2588,7 @@ string MySqlStore::exportToFile(FILE *file, string fileName, bool sqlFormat, boo
 }
 
 void MySqlStore::autoloadFromSqlVmExport() {
-	extern char opt_chdir[1024];
-	DIR* dirstream = opendir(opt_chdir);
+	DIR* dirstream = opendir(getSqlVmExportDirectory().c_str());
 	if(!dirstream) {
 		return;
 	}
@@ -2609,7 +2600,7 @@ void MySqlStore::autoloadFromSqlVmExport() {
 		}
 		if(time(NULL) - stringToTime(direntry->d_name + strlen(prefixSqlVmExport)) < 3600) {
 			syslog(LOG_NOTICE, "recovery queries from %s", direntry->d_name);
-			FILE *file = fopen((opt_chdir + string("/") + direntry->d_name).c_str(), "rt");
+			FILE *file = fopen((getSqlVmExportDirectory() + "/" + direntry->d_name).c_str(), "rt");
 			if(!file) {
 				syslog(LOG_NOTICE, "failed open file %s", direntry->d_name);
 				continue;
@@ -2632,11 +2623,15 @@ void MySqlStore::autoloadFromSqlVmExport() {
 			}
 			delete [] buffQuery;
 			fclose(file);
-			unlink((opt_chdir + string("/") + direntry->d_name).c_str());
+			unlink((getSqlVmExportDirectory() + "/" + direntry->d_name).c_str());
 			syslog(LOG_NOTICE, "success recovery %u queries", counter);
 		}
 	}
 	closedir(dirstream);
+}
+
+string MySqlStore::getSqlVmExportDirectory() {
+	return(getSqlVmExportDir());
 }
 
 void *MySqlStore::threadQFilesCheckPeriod(void *arg) {
@@ -2706,8 +2701,7 @@ void *MySqlStore::threadINotifyQFiles(void *arg) {
 		me->loadFromQFileConfig.inotify = false;
 		return(NULL);
 	}
-	extern char opt_chdir[1024];
-	const char *directory = me->loadFromQFileConfig.directory.empty() ? opt_chdir : me->loadFromQFileConfig.directory.c_str();
+	const char *directory = me->loadFromQFileConfig.getDirectory().c_str();
 	int watchDescriptor = inotify_add_watch(inotifyDescriptor, directory, IN_CLOSE_WRITE);
 	if(watchDescriptor < 0) {
 		syslog(LOG_ERR, "inotify watch %s failed", directory);

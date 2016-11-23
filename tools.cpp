@@ -74,7 +74,6 @@ extern int opt_pcap_dump_ziplevel_rtp;
 extern int opt_pcap_dump_ziplevel_graph;
 extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
-extern char opt_chdir[1024];
 extern int opt_active_check;
 extern int opt_cloud_activecheck_period;
 extern int cloud_activecheck_timeout;
@@ -731,27 +730,30 @@ long long GetFileSize(std::string filename)
 	return rc == 0 ? stat_buf.st_size : -1;
 }
 
-long long GetFileSizeDU(std::string filename)
+long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index)
 {
-	return(GetDU(GetFileSize(filename)));
+	return(GetDU(GetFileSize(filename), typeSpoolFile, spool_index));
 }
 
-long long GetDU(long long fileSize) {
-	static int block_size = -1;
-	if(block_size == -1) {
-		extern char opt_chdir[1024];
+long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index) {
+	static int block_size[MAX_COUNT_TYPE_SPOOL_FILE][MAX_COUNT_SPOOL_INDEX];
+	if(!block_size[typeSpoolFile][spool_index]) {
+		extern char opt_spooldir_main[1024];
 		struct stat fi;
-		if(!stat(opt_chdir, &fi)) {
-			block_size = fi.st_blksize;
+		if(!stat(opt_spooldir_main, &fi)) {
+			block_size[typeSpoolFile][spool_index] = fi.st_blksize;
 		} else {
-			block_size = 0;
+			block_size[typeSpoolFile][spool_index] = -1;
 		}
 	}
-	if(fileSize >= 0 && block_size) {
-		if(fileSize == 0) {
-			fileSize = block_size;
-		} else {
-			fileSize = (fileSize / block_size * block_size) + (fileSize % block_size ? block_size : 0);
+	if(fileSize >= 0) {
+		if(block_size[typeSpoolFile][spool_index] > 0) {
+			int bs = block_size[typeSpoolFile][spool_index];
+			if(fileSize == 0) {
+				fileSize = bs;
+			} else {
+				fileSize = (fileSize / bs * bs) + (fileSize % bs ? bs : 0);
+			}
 		}
 		fileSize += 100; // inode / directory item size
 	}
@@ -953,6 +955,7 @@ unsigned long getUptime() {
 
 
 PcapDumper::PcapDumper(eTypePcapDump type, class Call *call) {
+	this->typeSpoolFile = tsf_na;
 	this->type = type;
 	this->call = call;
 	this->capsize = 0;
@@ -975,7 +978,7 @@ PcapDumper::~PcapDumper() {
 	}
 }
 
-bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt) {
+bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt) {
 	if(this->type == rtp && this->openAttempts >= 10) {
 		return(false);
 	}
@@ -999,7 +1002,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 	this->size = 0;
 	string errorString;
 	this->dlt = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt;
-	this->handle = __pcap_dump_open(_handle, fileName, this->dlt, &errorString,
+	this->handle = __pcap_dump_open(_handle, typeSpoolFile, fileName, this->dlt, &errorString,
 					_bufflength, _asyncwrite, _typeCompress,
 					call, this->type);
 	++this->openAttempts;
@@ -1012,6 +1015,7 @@ bool PcapDumper::open(const char *fileName, const char *fileNameSpoolRelative, p
 		}
 		this->openError = true;
 	}
+	this->typeSpoolFile = typeSpoolFile,
 	this->fileName = fileName;
 	if(fileNameSpoolRelative) {
 		this->fileNameSpoolRelative = fileNameSpoolRelative;
@@ -1102,7 +1106,7 @@ void PcapDumper::close(bool updateFilesQueue) {
 				if(this->call) {
 					asyncClose->add(this->handle, updateFilesQueue,
 							this->call, this,
-							this->fileNameSpoolRelative.c_str(), 
+							this->typeSpoolFile, this->fileNameSpoolRelative.c_str(), 
 							type == rtp ? "rtpsize" : 
 							this->call->type == REGISTER ? "regsize" : "sipsize",
 							0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
@@ -1131,6 +1135,7 @@ void PcapDumper::remove() {
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;
 
 RtpGraphSaver::RtpGraphSaver(RTP *rtp) {
+	this->typeSpoolFile = tsf_na;
 	this->rtp = rtp;
 	this->handle = NULL;
 	this->existsContent = false;
@@ -1144,7 +1149,7 @@ RtpGraphSaver::~RtpGraphSaver() {
 	}
 }
 
-bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative) {
+bool RtpGraphSaver::open(eTypeSpoolFile typeSpoolFile, const char *fileName, const char *fileNameSpoolRelative) {
 	if(this->handle) {
 		this->close();
 		syslog(LOG_NOTICE, "graphsaver: reopen %s -> %s", this->fileName.c_str(), fileName);
@@ -1157,20 +1162,22 @@ bool RtpGraphSaver::open(const char *fileName, const char *fileNameSpoolRelative
 	}
 	*/
 	this->handle = new FILE_LINE(39003) FileZipHandler(opt_pcap_dump_bufflength, this->_asyncwrite, opt_gzipGRAPH,
-						    false, rtp && rtp->call_owner ? (Call*)rtp->call_owner : 0,
-						    FileZipHandler::graph_rtp);
-	if(!this->handle->open(fileName)) {
+							   false, rtp && rtp->call_owner ? (Call*)rtp->call_owner : 0,
+							   FileZipHandler::graph_rtp);
+	if(!this->handle->open(typeSpoolFile, fileName)) {
 		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, this->handle->error.c_str());
 		delete this->handle;
 		this->handle = NULL;
 	}
+	this->typeSpoolFile = typeSpoolFile;
 	this->fileName = fileName;
 	this->fileNameSpoolRelative = fileNameSpoolRelative;
 	return(this->isOpen());
 
 }
 
-void RtpGraphSaver::auto_open(const char *fileName, const char *fileNameSpoolRelative) {
+void RtpGraphSaver::auto_open(eTypeSpoolFile typeSpoolFile, const char *fileName, const char *fileNameSpoolRelative) {
+	this->typeSpoolFile = typeSpoolFile;
 	this->fileName = fileName;
 	this->fileNameSpoolRelative = fileNameSpoolRelative;
 	this->enableAutoOpen = true;
@@ -1179,7 +1186,7 @@ void RtpGraphSaver::auto_open(const char *fileName, const char *fileNameSpoolRel
 void RtpGraphSaver::write(char *buffer, int length) {
 	if(!this->isOpen()) {
 		if(this->enableAutoOpen) {
-			bool rsltOpen = this->open(this->fileName.c_str(), this->fileNameSpoolRelative.c_str());
+			bool rsltOpen = this->open(this->typeSpoolFile, this->fileName.c_str(), this->fileNameSpoolRelative.c_str());
 			this->enableAutoOpen = false;
 			if(rsltOpen) {
 				extern unsigned int graph_version;
@@ -1209,7 +1216,7 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 			if(call) {
 				asyncClose->add(this->handle, updateFilesQueue,
 						call,
-						this->fileNameSpoolRelative.c_str(), 
+						this->typeSpoolFile, this->fileNameSpoolRelative.c_str(), 
 						"graphsize", 
 						this->handle->size);
 			} else {
@@ -1227,16 +1234,19 @@ void RtpGraphSaver::clearAutoOpen() {
 	this->enableAutoOpen = false;
 }
 
-AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, PcapDumper *pcapDumper, const char *file, const char *column, long long writeBytes) {
+AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, PcapDumper *pcapDumper, 
+					   eTypeSpoolFile typeSpoolFile, const char *file, 
+					   const char *column, long long writeBytes) {
 	this->call = call;
 	if(call) {
 		this->call_dirnamesqlfiles = call->dirnamesqlfiles();
 		this->call_spoolindex =  call->getSpoolIndex();
-		this->call_spooldir =  call->getSpoolDir();
+		this->call_spooldir =  call->getSpoolDir(typeSpoolFile);
 	} else {
 		this->call_spoolindex = 0;
 	}
 	this->pcapDumper = pcapDumper;
+	this->typeSpoolFile = typeSpoolFile;
 	if(file) {
 		this->file = file;
 	}
@@ -1251,7 +1261,7 @@ void AsyncClose::AsyncCloseItem::addtofilesqueue() {
 	if(!call) {
 		return;
 	}
-	Call::_addtofilesqueue(this->file, this->column, call_dirnamesqlfiles, this->writeBytes, call_spoolindex, call_spooldir.c_str());
+	Call::_addtofilesqueue(this->typeSpoolFile, this->file, this->column, call_dirnamesqlfiles, this->writeBytes, call_spoolindex);
 	extern char opt_cachedir[1024];
 	if(opt_cachedir[0] != '\0') {
 		Call::_addtocachequeue(this->file);
@@ -2984,6 +2994,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 			       bool dumpHandler, Call *call,
 			       eTypeFile typeFile) {
 	this->mode = mode_na;
+	this->typeSpoolFile = tsf_na;
 	if(bufferLength <= 0) {
 		enableAsyncWrite = 0;
 		typeCompress = compress_na;
@@ -3048,7 +3059,8 @@ FileZipHandler::~FileZipHandler() {
 	}
 }
 
-bool FileZipHandler::open(const char *fileName, int permission) {
+bool FileZipHandler::open(eTypeSpoolFile typeSpoolFile, const char *fileName, int permission) {
+	this->typeSpoolFile = typeSpoolFile;
 	this->fileName = fileName;
 	this->permission = permission;
 	extern int opt_spooldir_by_sensor;
@@ -3066,7 +3078,7 @@ bool FileZipHandler::open(const char *fileName, int permission) {
 	}
 	if(this->tar) {
 		if(this->call) {
-			this->tar_data.parseFileName(this->fileName.c_str(), this->call->getSpoolDir());
+			this->tar_data.parseFileName(this->fileName.c_str(), this->call->getSpoolDir(this->typeSpoolFile));
 			tarQueue[this->tar - 1]->increaseTartimemap(&this->tar_data);
 		}
 		if(sverb.tar > 2) {
@@ -3513,22 +3525,22 @@ u_int64_t FileZipHandler::scounter = 0;
 #define TCPDUMP_MAGIC		0xa1b2c3d4
 #define NSEC_TCPDUMP_MAGIC	0xa1b23c4d
 
-pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString,
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, eTypeSpoolFile typeSpoolFile, const char *fname, int linktype, string *errorString,
 				int _bufflength, int _asyncwrite, FileZipHandler::eTypeCompress _typeCompress,
 				Call *call, PcapDumper::eTypePcapDump type) {
 	if(opt_pcap_dump_bufflength) {
 		FileZipHandler *handler = new FILE_LINE(39022) FileZipHandler(_bufflength < 0 ? opt_pcap_dump_bufflength : _bufflength, 
-								       _asyncwrite < 0 ? opt_pcap_dump_asyncwrite : _asyncwrite, 
-								       _typeCompress == FileZipHandler::compress_default ? 
-									(type == PcapDumper::sip ? opt_pcap_dump_zip_sip :
-									 type == PcapDumper::rtp ? opt_pcap_dump_zip_rtp :
-												   opt_pcap_dump_zip_sip) :
-									_typeCompress, 
-								       true, call,
-								       type == PcapDumper::sip ? FileZipHandler::pcap_sip :
-								       type == PcapDumper::rtp ? FileZipHandler::pcap_rtp :
-												 FileZipHandler::na);
-		if(handler->open(fname)) {
+									      _asyncwrite < 0 ? opt_pcap_dump_asyncwrite : _asyncwrite, 
+									      _typeCompress == FileZipHandler::compress_default ? 
+									       (type == PcapDumper::sip ? opt_pcap_dump_zip_sip :
+										type == PcapDumper::rtp ? opt_pcap_dump_zip_rtp :
+													  opt_pcap_dump_zip_sip) :
+									       _typeCompress, 
+									      true, call,
+									      type == PcapDumper::sip ? FileZipHandler::pcap_sip :
+									      type == PcapDumper::rtp ? FileZipHandler::pcap_rtp :
+													FileZipHandler::na);
+		if(handler->open(typeSpoolFile, fname)) {
 			struct pcap_file_header hdr;
 			hdr.magic = TCPDUMP_MAGIC;
 			hdr.version_major = PCAP_VERSION_MAJOR;
@@ -4177,7 +4189,7 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 		string dumpFileName = path + "/bogus_" + 
 				      find_and_replace(find_and_replace(interfaceName, " ", "").c_str(), "/", "|") + 
 				      "_" + time + ".pcap";
-		if(dumper->open(dumpFileName.c_str(), dlt)) {
+		if(dumper->open(tsf_na, dumpFileName.c_str(), dlt)) {
 			dumpers[interfaceName] = dumper;
 		} else {
 			delete dumper;

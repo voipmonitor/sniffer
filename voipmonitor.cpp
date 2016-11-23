@@ -602,8 +602,14 @@ char opt_pcapdump_all_path[1024];
 
 int opt_callend = 1; //if true, cdr.called is saved
 bool opt_t2_boost = false;
-char opt_chdir[1024];
-char opt_spooldir_2[1024];
+char opt_spooldir_main[1024];
+char opt_spooldir_rtp[1024];
+char opt_spooldir_graph[1024];
+char opt_spooldir_audio[1024];
+char opt_spooldir_2_main[1024];
+char opt_spooldir_2_rtp[1024];
+char opt_spooldir_2_graph[1024];
+char opt_spooldir_2_audio[1024];
 char opt_cachedir[1024];
 
 int opt_upgrade_try_http_if_https_fail = 0;
@@ -801,6 +807,7 @@ SensorsMap sensorsMap;
 static void parse_command_line_arguments(int argc, char *argv[]);
 static void get_command_line_arguments();
 static void set_context_config();
+static void create_spool_dirs();
 static bool check_complete_parameters();
 static void dns_lookup_common_hostnames();
 static void parse_opt_nocdr_for_last_responses();
@@ -1090,7 +1097,7 @@ void *moving_cache( void *dummy ) {
 			src.append(file);
 
 			string dst;
-			dst.append(opt_chdir);
+			dst.append(opt_spooldir_main);
 			dst.append("/");
 			dst.append(file);
 
@@ -1135,8 +1142,8 @@ void *moving_cache( void *dummy ) {
 									char hour_str[10];
 									sprintf(hour_str, "%02i", hour);
 									if(file_exists((char*)(string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str())) {
-										mkdir_r((string(opt_chdir) + "/" + de->d_name + "/" + hour_str).c_str(), 0777);
-										mv_r((string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str(), (string(opt_chdir) + "/" + de->d_name + "/" + hour_str).c_str());
+										mkdir_r((string(opt_spooldir_main) + "/" + de->d_name + "/" + hour_str).c_str(), 0777);
+										mv_r((string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str(), (string(opt_spooldir_main) + "/" + de->d_name + "/" + hour_str).c_str());
 										rmdir((string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str());
 										moveHourDir = true;
 									}
@@ -1768,6 +1775,7 @@ void reload_config(const char *jsonConfig) {
 	}
 	get_command_line_arguments();
 	set_context_config();
+	create_spool_dirs();
 	reload_capture_rules();
 }
 
@@ -2008,7 +2016,7 @@ int main(int argc, char *argv[]) {
 	ifname[0] = '\0';
 	opt_mirrorip_src[0] = '\0';
 	opt_mirrorip_dst[0] = '\0';
-	strcpy(opt_chdir, "/var/spool/voipmonitor");
+	strcpy(opt_spooldir_main, "/var/spool/voipmonitor");
 	strcpy(opt_cachedir, "");
 	sipportmatrix = new FILE_LINE(43006) char[65537];
 	memset(sipportmatrix, 0, 65537);
@@ -2062,6 +2070,7 @@ int main(int argc, char *argv[]) {
 	}
 	get_command_line_arguments();
 	set_context_config();
+	create_spool_dirs();
 
 	if(!check_complete_parameters()) {
 		return 1;
@@ -2077,19 +2086,19 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(opt_untar_gui_params) {
-		chdir(opt_chdir);
+		vmChdir();
 		int rslt = untar_gui(opt_untar_gui_params);
 		delete [] opt_untar_gui_params;
 		return(rslt);
 	}
 	if(opt_unlzo_gui_params) {
-		chdir(opt_chdir);
+		vmChdir();
 		int rslt = unlzo_gui(opt_unlzo_gui_params);
 		delete [] opt_unlzo_gui_params;
 		return(rslt);
 	}
 	if(opt_waveform_gui_params) {
-		chdir(opt_chdir);
+		vmChdir();
 		char inputRaw[1024];
 		char outputWaveform[2][1024];
 		unsigned sampleRate;
@@ -2108,7 +2117,7 @@ int main(int argc, char *argv[]) {
 						 outputWaveform));
 	}
 	if(opt_spectrogram_gui_params) {
-		chdir(opt_chdir);
+		vmChdir();
 		char inputRaw[1024];
 		char outputSpectrogramPng[2][1024];
 		unsigned sampleRate;
@@ -2679,11 +2688,11 @@ int main_init_read() {
 		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
 	}
 	
-	chdir(opt_chdir);
+	vmChdir();
 
 	for(int i = 0; i < 2; i++) {
 		if(isSetSpoolDir(i)) {
-			string spoolDir = getSpoolDir(i);
+			string spoolDir = getSpoolDir(tsf_main, i);
 			if(!spoolDir.empty()) {
 				mkdir_r(string(spoolDir) + "/filesindex/sipsize", 0777);
 				mkdir_r(string(spoolDir) + "/filesindex/rtpsize", 0777);
@@ -2804,7 +2813,7 @@ int main_init_read() {
 	}
 
 	if(opt_cachedir[0] != '\0') {
-		mv_r(opt_cachedir, opt_chdir);
+		mv_r(opt_cachedir, opt_spooldir_main);
 		vm_pthread_create("moving cache",
 				  &cachedir_thread, NULL, moving_cache, NULL, __FILE__, __LINE__);
 	}
@@ -3790,7 +3799,7 @@ bool save_packet(const char *binaryPacketFile, const char *rsltPcapFile, int len
 	dumper->setEnableAsyncWrite(false);
 	dumper->setTypeCompress(FileZipHandler::compress_na);
 	bool rslt;
-	if(dumper->open(rsltPcapFile, 1)) {
+	if(dumper->open(tsf_na, rsltPcapFile, 1)) {
 		dumper->dump(&header, packet, 1, true);
 		rslt = true;
 	} else {
@@ -3911,7 +3920,7 @@ void test_heapchunk() {
 
 void test_filezip_handler() {
 	FileZipHandler *fzh = new FILE_LINE(43053) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
-	fzh->open("/home/jumbox/Plocha/test.gz");
+	fzh->open(tsf_na, "/home/jumbox/Plocha/test.gz");
 	for(int i = 0; i < 1000; i++) {
 		char buff[1000];
 		sprintf(buff, "abcd %80s %i\n", "x", i + 1);
@@ -3921,7 +3930,7 @@ void test_filezip_handler() {
 	fzh->close();
 	delete fzh;
 	fzh = new FILE_LINE(43054) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
-	fzh->open("/home/jumbox/Plocha/test.gz");
+	fzh->open(tsf_na, "/home/jumbox/Plocha/test.gz");
 	while(!fzh->is_eof() && fzh->is_ok_decompress() && fzh->read(2)) {
 		string line;
 		while(fzh->getLineFromReadBuffer(&line)) {
@@ -4172,7 +4181,7 @@ void test() {
 		}
 		break;
 	case 95:
-		chdir(opt_chdir);
+		vmChdir();
 		CleanSpool::run_check_filesindex();
 		set_terminating();
 		break;
@@ -4837,8 +4846,14 @@ void cConfig::addConfigItems() {
 	group("data storing");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		subgroup("main");
-			addConfigItem(new FILE_LINE(43174) cConfigItem_string("spooldir", opt_chdir, sizeof(opt_chdir)));
-			addConfigItem(new FILE_LINE(43175) cConfigItem_string("spooldir_2", opt_spooldir_2, sizeof(opt_spooldir_2)));
+			addConfigItem(new FILE_LINE(43174) cConfigItem_string("spooldir", opt_spooldir_main, sizeof(opt_spooldir_main)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_rtp", opt_spooldir_rtp, sizeof(opt_spooldir_rtp)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_graph", opt_spooldir_graph, sizeof(opt_spooldir_graph)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_audio", opt_spooldir_audio, sizeof(opt_spooldir_audio)));
+			addConfigItem(new FILE_LINE(43175) cConfigItem_string("spooldir_2", opt_spooldir_2_main, sizeof(opt_spooldir_2_main)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_2_rtp", opt_spooldir_2_rtp, sizeof(opt_spooldir_2_rtp)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_2_graph", opt_spooldir_2_graph, sizeof(opt_spooldir_2_graph)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_2_audio", opt_spooldir_2_audio, sizeof(opt_spooldir_2_audio)));
 			addConfigItem(new FILE_LINE(43176) cConfigItem_yesno("tar", &opt_pcap_dump_tar));
 				advanced();
 				addConfigItem(new FILE_LINE(43177) cConfigItem_string("convertchar", opt_convert_char, sizeof(opt_convert_char)));
@@ -5306,12 +5321,6 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	}
 	if(configItem->config_name == "cachedir") {
 		mkdir_r(opt_cachedir, 0777);
-	}
-	if(configItem->config_name == "spooldir") {
-		mkdir_r(opt_chdir, 0777);
-	}
-	if(configItem->config_name == "spooldir_2") {
-		mkdir_r(opt_spooldir_2, 0777);
 	}
 	if(configItem->config_name == "timezone") {
 		if(opt_timezone[0]) {
@@ -5851,8 +5860,8 @@ void get_command_line_arguments() {
 				strncpy(opt_cachedir, optarg, sizeof(opt_cachedir));
 				break;
 			case 'd':
-				strncpy(opt_chdir, optarg, sizeof(opt_chdir));
-				mkdir_r(opt_chdir, 0777);
+				strncpy(opt_spooldir_main, optarg, sizeof(opt_spooldir_main));
+				mkdir_r(opt_spooldir_main, 0777);
 				break;
 			case 'k':
 				opt_fork = 0;
@@ -6060,7 +6069,10 @@ void set_context_config() {
 	}
 	
 	if(opt_pcap_dump_tar) {
-		opt_cachedir[0] = '\0';
+		if(opt_cachedir[0]) {
+			opt_cachedir[0] = '\0';
+			syslog(LOG_ERR, "option cachedir is not suported with option 'tar = yes'");
+		}
 		if(opt_pcap_dump_tar_compress_sip) {
 			opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
 		}
@@ -6070,6 +6082,11 @@ void set_context_config() {
 		if(opt_pcap_dump_tar_compress_graph) {
 			opt_gzipGRAPH = FileZipHandler::compress_na;
 		}
+	}
+	
+	if(opt_spooldir_2_main[0] && opt_cachedir[0]) {
+		opt_cachedir[0] = '\0';
+		syslog(LOG_ERR, "option cachedir is not suported with option spooldir_2");
 	}
 	
 	if(!opt_newdir && opt_pcap_dump_tar) {
@@ -6142,10 +6159,6 @@ void set_context_config() {
 		}
 	}
 	
-	if(opt_cachedir[0] && opt_spooldir_2[0]) {
-		syslog(LOG_ERR, "option spooldir_2 is not suported with option cachedir !!!");
-	}
-	
 	if(!opt_pcap_split && opt_t2_boost) {
 		opt_t2_boost = false;
 	}
@@ -6173,6 +6186,34 @@ void set_context_config() {
 		}
 	}
 }
+
+void create_spool_dirs() {
+	if(opt_spooldir_main[0]) {
+		mkdir_r(opt_spooldir_main, 0777);
+	}
+	if(opt_spooldir_rtp[0]) {
+		mkdir_r(opt_spooldir_rtp, 0777);
+	}
+	if(opt_spooldir_graph[0]) {
+		mkdir_r(opt_spooldir_graph, 0777);
+	}
+	if(opt_spooldir_audio[0]) {
+		mkdir_r(opt_spooldir_audio, 0777);
+	}
+	if(opt_spooldir_2_main[0]) {
+		mkdir_r(opt_spooldir_2_main, 0777);
+	}
+	if(opt_spooldir_2_rtp[0]) {
+		mkdir_r(opt_spooldir_2_rtp, 0777);
+	}
+	if(opt_spooldir_2_graph[0]) {
+		mkdir_r(opt_spooldir_2_graph, 0777);
+	}
+	if(opt_spooldir_2_audio[0]) {
+		mkdir_r(opt_spooldir_2_audio, 0777);
+	}
+}
+
 
 bool check_complete_parameters() {
 	if (!is_read_from_file() && ifname[0] == '\0' && opt_scanpcapdir[0] == '\0' && 
@@ -7021,12 +7062,28 @@ int eval_config(string inistr) {
 		mkdir_r(opt_cachedir, 0777);
 	}
 	if((value = ini.GetValue("general", "spooldir", NULL))) {
-		strncpy(opt_chdir, value, sizeof(opt_chdir));
-		mkdir_r(opt_chdir, 0777);
+		strncpy(opt_spooldir_main, value, sizeof(opt_spooldir_main));
+	}
+	if((value = ini.GetValue("general", "spooldir_rtp", NULL))) {
+		strncpy(opt_spooldir_rtp, value, sizeof(opt_spooldir_rtp));
+	}
+	if((value = ini.GetValue("general", "spooldir_graph", NULL))) {
+		strncpy(opt_spooldir_graph, value, sizeof(opt_spooldir_graph));
+	}
+	if((value = ini.GetValue("general", "spooldir_audio", NULL))) {
+		strncpy(opt_spooldir_audio, value, sizeof(opt_spooldir_audio));
 	}
 	if((value = ini.GetValue("general", "spooldir_2", NULL))) {
-		strncpy(opt_spooldir_2, value, sizeof(opt_spooldir_2));
-		mkdir_r(opt_spooldir_2, 0777);
+		strncpy(opt_spooldir_2_main, value, sizeof(opt_spooldir_2_main));
+	}
+	if((value = ini.GetValue("general", "spooldir_2_rtp", NULL))) {
+		strncpy(opt_spooldir_2_rtp, value, sizeof(opt_spooldir_2_rtp));
+	}
+	if((value = ini.GetValue("general", "spooldir_2_graph", NULL))) {
+		strncpy(opt_spooldir_2_graph, value, sizeof(opt_spooldir_2_graph));
+	}
+	if((value = ini.GetValue("general", "spooldir_2_audio", NULL))) {
+		strncpy(opt_spooldir_2_audio, value, sizeof(opt_spooldir_2_audio));
 	}
 	if((value = ini.GetValue("general", "spooldiroldschema", NULL))) {
 		opt_newdir = !yesno(value);
@@ -8046,6 +8103,7 @@ int eval_config(string inistr) {
 	*/
 	
 	set_context_config();
+	create_spool_dirs();
 
 	return 0;
 }
@@ -8405,6 +8463,28 @@ void setAllocNumb() {
 				fprintf(file_out, "{ \"%s\", %u, %u },\n", fileLines[i].file, fileLines[i].line, fileLines[i].alloc_number);
 			}
 			fclose(file_out);
+		}
+	}
+}
+
+eTypeSpoolFile getTypeSpoolFile(const char *filePathName) {
+	for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_skinny; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
+		const char *dir = getSpoolTypeDir(typeSpoolFile);
+		if(dir) {
+			if(strstr(filePathName, ("/" + string(dir) + "/").c_str())) {
+				return(typeSpoolFile);
+			}
+		}
+	}
+	return(tsf_na);
+}
+
+eTypeSpoolFile findTypeSpoolFile(unsigned int spool_index, const char *filePathName) {
+	for(int i = 0; i < 2; i++) {
+		eTypeSpoolFile type_spool_file_check = i == 0 ? getTypeSpoolFile(filePathName) : tsf_main;
+		if(file_exists(string(getSpoolDir(type_spool_file_check, spool_index)) + '/' + filePathName) ||
+		   type_spool_file_check <= tsf_sip) {
+			return(type_spool_file_check);
 		}
 	}
 }

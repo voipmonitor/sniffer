@@ -82,6 +82,7 @@ public:
 	typedef ssize_t (*readfunc_t)(int, void *, size_t);
 	typedef ssize_t (*writefunc_t)(int, const void *, size_t);
 
+	eTypeSpoolFile typeSpoolFile;
 	string pathname;
 	int open_flags;
 
@@ -106,6 +107,7 @@ public:
 	
 
 	Tar() {    
+		this->typeSpoolFile = tsf_na;
 		this->zipStream = NULL;
 #ifdef HAVE_LIBLZMA
 		this->lzmaStream = NULL;
@@ -176,11 +178,8 @@ public:
 	bool isReadEnd() {
 		return(readData.end);
 	}
-	const char *getSpoolDir() {
-		return(::getSpoolDir(spoolIndex));
-	}
-	const char *skipSpoolDir(const char *pathName) {
-		return(::skipSpoolDir(spoolIndex, pathName));
+	const char *getSpoolDir(eTypeSpoolFile typeSpoolFile) {
+		return(::getSpoolDir(typeSpoolFile, spoolIndex));
 	}
 
 	void tarlock() {
@@ -427,8 +426,8 @@ public:
 	int getSpoolIndex() {
 		return(spoolIndex);
 	}
-	const char *getSpoolDir() {
-		return(::getSpoolDir(spoolIndex));
+	const char *getSpoolDir(eTypeSpoolFile typeSpoolFile) {
+		return(::getSpoolDir(typeSpoolFile, spoolIndex));
 	}
 private:
 	int spoolIndex;

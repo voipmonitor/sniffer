@@ -8,6 +8,12 @@
 
 class CleanSpool {
 public:
+	struct CleanSpoolDirs {
+		string main;
+		string rtp;
+		string graph;
+		string audio;
+	};
 	struct CleanSpoolOptMax {
 		unsigned int maxpoolsize;
 		unsigned int maxpooldays;
@@ -32,7 +38,7 @@ public:
 public:
 	CleanSpool(int spoolIndex);
 	~CleanSpool();
-	void addFile(const char *datehour, const char *column, const char *file, long long int size);
+	void addFile(const char *datehour, const char *column, eTypeSpoolFile typeSpoolFile, const char *file, long long int size);
 	void run();
 	void do_convert_filesindex(const char *reason);
 	void check_filesindex();
@@ -62,7 +68,7 @@ private:
 	long long reindex_date(string date);
 	long long reindex_date_hour(string date, int h, bool readOnly = false, map<string, long long> *typeSize = NULL, bool quickCheck = false);
 	long long reindex_date_hour_type(string date, int h, string type, bool readOnly, bool quickCheck, map<unsigned, bool> *fillMinutes);
-	void unlinkfileslist(string fname, string callFrom);
+	void unlinkfileslist(eTypeSpoolFile typeSpoolFile, string fname, string callFrom);
 	void unlink_dirs(string datehour, int sip, int rtp, int graph, int audio, string callFrom);
 	void clean_spooldir_run();
 	void clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio);
@@ -101,11 +107,15 @@ private:
 	void check_spooldir_filesindex(const char *dirfilter);
 	unsigned int get_reduk_maxpoolsize(unsigned int maxpoolsize);
 	bool fileIsOpenTar(list<string> &listOpenTars, string &file);
-	const char *getSpoolDir() {
-		return(::getSpoolDir(spoolIndex));
+	void readSpoolDateDirs(list<string> *dirs);
+	void getSpoolDirs(list<string> *spool_dirs);
+	string findExistsSpoolDirFile(eTypeSpoolFile typeSpoolFile, string pathFile, 
+				      eTypeSpoolFile *rsltTypeSpoolFile = NULL);
+	const char *getSpoolDir(eTypeSpoolFile typeSpoolFile) {
+		return(::getSpoolDir(typeSpoolFile, spoolIndex));
 	}
-	string getSpoolDir_string() {
-		return(::getSpoolDir(spoolIndex));
+	string getSpoolDir_string(eTypeSpoolFile typeSpoolFile) {
+		return(::getSpoolDir(typeSpoolFile, spoolIndex));
 	}
 	string getSpoolIndex_string() {
 		return(intToString(spoolIndex));
@@ -116,6 +126,7 @@ private:
 	}
 private:
 	int spoolIndex;
+	CleanSpoolDirs opt_dirs;
 	CleanSpoolOptMax opt_max;
 	CleanSpoolOptOther opt_other;
 	SqlDb *sqlDb;

@@ -276,7 +276,8 @@ public:
 	bool seenRES2XX_no_BYE;
 	bool seenRES18X;
 	bool sighup;			//!< true if call is saving during sighup
-	string dirname();		//!< name of the directory to store files for the Call
+	string dirname(eTypeSpoolFile typeSpoolFile, const char *baseDir = NULL);
+					//!< name of the directory to store files for the Call
 	string dirnamesqlfiles();
 	char a_ua[1024];		//!< caller user agent 
 	char b_ua[1024];		//!< callee user agent 
@@ -728,8 +729,8 @@ public:
 	void addtocachequeue(string file);
 	static void _addtocachequeue(string file);
 
-	void addtofilesqueue(string file, string column, long long writeBytes);
-	static void _addtofilesqueue(string file, string column, string dirnamesqlfiles, long long writeBytes, int spoolIndex, const char *spoolDir);
+	void addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string column, long long writeBytes);
+	static void _addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string column, string dirnamesqlfiles, long long writeBytes, int spoolIndex);
 
 	float mos_lqo(char *deg, int samplerate);
 
@@ -830,9 +831,10 @@ public:
 			1 : 
 			0);
 	}
-	const char *getSpoolDir() {
-		return(::getSpoolDir(getSpoolIndex()));
+	const char *getSpoolDir(eTypeSpoolFile typeSpoolFile) {
+		return(::getSpoolDir(typeSpoolFile, getSpoolIndex()));
 	}
+	void createSpoolDirs();
 	
 	bool checkKnownIP_inSipCallerdIP(u_int32_t ip) {
 		for(int i = 0; i < MAX_SIPCALLERDIP; i++) {

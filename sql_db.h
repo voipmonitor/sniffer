@@ -485,7 +485,7 @@ private:
 			this->filename = filename;
 			this->createAt = createAt;
 			fileZipHandler =  new FILE_LINE(31001) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
-			fileZipHandler->open(this->filename.c_str());
+			fileZipHandler->open(tsf_na, this->filename.c_str());
 			if(fileZipHandler->_open_write()) {
 				is_open = true;
 				return(true);
@@ -535,6 +535,7 @@ private:
 			inotify = false;
 			inotify_ready = false;
 		}
+		string getDirectory();
 		bool enable;
 		bool terminate;
 		string directory;
@@ -633,6 +634,7 @@ public:
 	int getActiveIdsVect(int id1, int id2, bool lock = true);
 	string exportToFile(FILE *file, string filename, bool sqlFormat, bool cleanAfterExport);
 	void autoloadFromSqlVmExport();
+	string getSqlVmExportDirectory();
 private:
 	static void *threadQFilesCheckPeriod(void *arg);
 	static void *threadLoadFromQFiles(void *arg);

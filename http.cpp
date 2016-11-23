@@ -727,7 +727,7 @@ string HttpPacketsDumper::getPcapName() {
 void HttpPacketsDumper::openPcapDumper() {
 	if(!this->pcapDumper && !this->pcapName.empty()) {
 		this->pcapDumper = new FILE_LINE(12005) PcapDumper();
-		this->pcapDumper->open(this->pcapName.c_str(), DLT_EN10MB);
+		this->pcapDumper->open(tsf_na, this->pcapName.c_str(), DLT_EN10MB);
 		this->selfOpenPcapDumper = true;
 	}
 }

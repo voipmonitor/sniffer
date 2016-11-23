@@ -898,7 +898,7 @@ void Tar::addtofilesqueue() {
 	if(!opt_filesclean or opt_nocdr or !isSqlDriver("mysql") or !CleanSpool::isSetCleanspoolParameters(spoolIndex)) return;
 
 	long long size = 0;
-	size = GetFileSizeDU(pathname.c_str());
+	size = GetFileSizeDU(pathname.c_str(), typeSpoolFile, spoolIndex);
 
 	if(size == (long long)-1) {
 		//error or file does not exists
@@ -919,7 +919,7 @@ void Tar::addtofilesqueue() {
 		char sdirname[12];
 		snprintf(sdirname, 11, "%04d%02d%02d%02d",  time.year, time.mon, time.day, time.hour);
 		sdirname[11] = 0;
-		cleanSpool[spoolIndex]->addFile(sdirname, column.c_str(), pathname.c_str(), size);
+		cleanSpool[spoolIndex]->addFile(sdirname, column.c_str(), this->typeSpoolFile, pathname.c_str(), size);
 	}
 }
 
@@ -980,11 +980,20 @@ qtype2strC(int qtype) {
 	else return "ALL";
 }
 
+eTypeSpoolFile
+qtype2typeSpoolFile(int qtype) {
+	if(qtype == 1) return tsf_sip;
+	else if(qtype == 2) return tsf_rtp;
+	else if(qtype == 3) return tsf_graph;
+	else return tsf_all;
+}
+
 
 int			    
 TarQueue::write(int qtype, data_t data) {
 	stringstream tar_dir, tar_name;
-	tar_dir << getSpoolDir() << "/";
+	eTypeSpoolFile typeSpoolFile = qtype2typeSpoolFile(qtype);
+	tar_dir << getSpoolDir(typeSpoolFile) << "/";
 	if(!data.sensorName.empty()) {
 		tar_dir << data.sensorName << "/";
 	}
@@ -1040,6 +1049,7 @@ TarQueue::write(int qtype, data_t data) {
 	Tar *tar = tars[tar_name.str()];
 	if(!tar) {
 		tar = new FILE_LINE(35010) Tar;
+		tar->typeSpoolFile = typeSpoolFile;
 		lock_okTarPointers();
 		okTarPointers[tar] = glob_last_packet_time;
 		unlock_okTarPointers();
@@ -1663,7 +1673,7 @@ u_int64_t TarQueue::sumSizeOpenTars() {
 	pthread_mutex_lock(&tarslock);
 	for(tars_it = tars.begin(); tars_it != tars.end(); tars_it++) {
 		Tar *tar = tars_it->second;
-		sumSize += GetFileSizeDU(tar->pathname.c_str());
+		sumSize += GetFileSizeDU(tar->pathname.c_str(), tar->typeSpoolFile, tar->spoolIndex);
 	}
 	pthread_mutex_unlock(&tarslock);
 	return(sumSize);

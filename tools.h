@@ -332,8 +332,8 @@ private:
 bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL);
 double ts2double(unsigned int sec, unsigned int usec);
 long long GetFileSize(std::string filename);
-long long GetFileSizeDU(std::string filename);
-long long GetDU(long long fileSize);
+long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index);
+long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index);
 long long GetFreeDiskSpace(const char* absoluteFilePath, bool percent_mult_100 = false);
 long long GetTotalDiskSpace(const char* absoluteFilePath);
 string GetStringMD5(std::string str);
@@ -601,7 +601,7 @@ public:
 		       bool dumpHandler = false, class Call *call = NULL,
 		       eTypeFile typeFile = na);
 	virtual ~FileZipHandler();
-	bool open(const char *fileName, int permission = 0666);
+	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, int permission = 0666);
 	void close();
 	bool write(char *data, int length, bool isHeader = false) {
 		mode = mode_write;
@@ -648,6 +648,7 @@ private:
 	void addReadBuffer(char *data, u_int32_t len);
 public:
 	eMode mode;
+	eTypeSpoolFile typeSpoolFile;
 	string fileName;
 	int permission;
 	int fh;
@@ -701,9 +702,9 @@ public:
 	void setTypeCompress(FileZipHandler::eTypeCompress typeCompress) {
 		_typeCompress = typeCompress;
 	}
-	bool open(const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt);
-	bool open(const char *fileName, int dlt) {
-		return(this->open(fileName, NULL, NULL, dlt));
+	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt);
+	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, int dlt) {
+		return(this->open(typeSpoolFile, fileName, NULL, NULL, dlt));
 	}
 	void dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets = false, 
 		  u_char *data = NULL, unsigned int datalen = 0,
@@ -725,6 +726,7 @@ public:
 		this->state = state_close;
 	}
 private:
+	eTypeSpoolFile typeSpoolFile;
 	string fileName;
 	string fileNameSpoolRelative;
 	eTypePcapDump type;
@@ -743,7 +745,7 @@ private:
 	FileZipHandler::eTypeCompress _typeCompress;
 };
 
-pcap_dumper_t *__pcap_dump_open(pcap_t *p, const char *fname, int linktype, string *errorString = NULL,
+pcap_dumper_t *__pcap_dump_open(pcap_t *p, eTypeSpoolFile typeSpoolFile, const char *fname, int linktype, string *errorString = NULL,
 				int _bufflength = -1 , int _asyncwrite = -1, FileZipHandler::eTypeCompress _typeCompress = FileZipHandler::compress_na,
 				Call *call = NULL, PcapDumper::eTypePcapDump type = PcapDumper::na);
 void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp, bool allPackets = false);
@@ -763,8 +765,8 @@ class RtpGraphSaver {
 public:
 	RtpGraphSaver(class RTP *rtp);
 	~RtpGraphSaver();
-	bool open(const char *fileName, const char *fileNameSpoolRelative);
-	void auto_open(const char *fileName, const char *fileNameSpoolRelative);
+	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, const char *fileNameSpoolRelative);
+	void auto_open(eTypeSpoolFile typeSpoolFile, const char *fileName, const char *fileNameSpoolRelative);
 	void write(char *buffer, int length);
 	void close(bool updateFilesQueue = true);
 	void clearAutoOpen();
@@ -781,6 +783,7 @@ public:
 		return(this->existsContent);
 	}
 private:
+	eTypeSpoolFile typeSpoolFile;
 	string fileName;
 	string fileNameSpoolRelative;
 	class RTP *rtp;
@@ -796,7 +799,8 @@ class AsyncClose {
 public:
 	class AsyncCloseItem {
 	public:
-		AsyncCloseItem(Call *call = NULL, PcapDumper *pcapDumper = NULL, const char *file = NULL,
+		AsyncCloseItem(Call *call = NULL, PcapDumper *pcapDumper = NULL, 
+			       eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 			       const char *column = NULL, long long writeBytes = 0);
 		virtual ~AsyncCloseItem() {}
 		virtual void process() = 0;
@@ -811,6 +815,7 @@ public:
 		int call_spoolindex;
 		string call_spooldir;
 		PcapDumper *pcapDumper;
+		eTypeSpoolFile typeSpoolFile;
 		string file;
 		string column;
 		long long writeBytes;
@@ -820,9 +825,12 @@ public:
 	class AsyncCloseItem_pcap : public AsyncCloseItem {
 	public:
 		AsyncCloseItem_pcap(pcap_dumper_t *handle, bool updateFilesQueue = false,
-				    Call *call = NULL, PcapDumper *pcapDumper = NULL, const char *file = NULL,
+				    Call *call = NULL, PcapDumper *pcapDumper = NULL, 
+				    eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 				    const char *column = NULL, long long writeBytes = 0)
-		 : AsyncCloseItem(call, pcapDumper, file, column, writeBytes) {
+		 : AsyncCloseItem(call, pcapDumper, 
+				  typeSpoolFile, file, 
+				  column, writeBytes) {
 			this->handle = handle;
 			this->updateFilesQueue = updateFilesQueue;
 			extern int opt_pcap_dump_bufflength;
@@ -880,9 +888,12 @@ public:
 	class AsyncCloseItem_fileZipHandler  : public AsyncCloseItem{
 	public:
 		AsyncCloseItem_fileZipHandler(FileZipHandler *handle, bool updateFilesQueue = false,
-					      Call *call = NULL, const char *file = NULL,
+					      Call *call = NULL, 
+					      eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 					      const char *column = NULL, long long writeBytes = 0)
-		 : AsyncCloseItem(call, NULL, file, column, writeBytes) {
+		 : AsyncCloseItem(call, NULL, 
+				  typeSpoolFile, file, 
+				  column, writeBytes) {
 			this->handle = handle;
 			this->updateFilesQueue = updateFilesQueue;
 			this->dataLength = handle->useBufferLength;
@@ -944,7 +955,8 @@ public:
 	void addThread();
 	void removeThread();
 	void add(pcap_dumper_t *handle, bool updateFilesQueue = false,
-		 Call *call = NULL, PcapDumper *pcapDumper = NULL, const char *file = NULL,
+		 Call *call = NULL, PcapDumper *pcapDumper = NULL, 
+		 eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
 		extern int opt_pcap_dump_bufflength;
 		for(int pass = 0; pass < 2; pass++) {
@@ -969,7 +981,9 @@ public:
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
 				}
 			}
-			if(add(new FILE_LINE(40009) AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, file, column, writeBytes),
+			if(add(new FILE_LINE(40009) AsyncCloseItem_pcap(handle, updateFilesQueue, call, pcapDumper, 
+									typeSpoolFile, file, 
+									column, writeBytes),
 			       opt_pcap_dump_bufflength ?
 				((FileZipHandler*)handle)->userData - 1 :
 				0,
@@ -1012,7 +1026,8 @@ public:
 		}
 	}
 	void add(FileZipHandler *handle, bool updateFilesQueue = false,
-		 Call *call = NULL, const char *file = NULL,
+		 Call *call = NULL, 
+		 eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 		 const char *column = NULL, long long writeBytes = 0) {
 		for(int pass = 0; pass < 2; pass++) {
 			if(pass) {
@@ -1034,7 +1049,9 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new FILE_LINE(40011) AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, file, column, writeBytes),
+			if(add(new FILE_LINE(40011) AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, 
+										  typeSpoolFile, file, 
+										  column, writeBytes),
 			       handle->userData - 1,
 			       useThreadOper)) {
 				break;

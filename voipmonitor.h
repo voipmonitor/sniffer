@@ -145,20 +145,57 @@ enum eSnifferMode {
 	snifferMode_sender
 };
 
+enum eTypeSpoolFile {
+	tsf_na,
+	tsf_main = 1,
+	tsf_sip = 1,
+	tsf_rtp,
+	tsf_graph,
+	tsf_audio,
+	tsf_all,
+	tsf_reg,
+	tsf_skinny
+};
+
+#define MAX_TYPE_SPOOL_FILE (int)tsf_skinny
+#define MAX_SPOOL_INDEX 1
+#define MAX_COUNT_TYPE_SPOOL_FILE (MAX_TYPE_SPOOL_FILE + 1)
+#define MAX_COUNT_SPOOL_INDEX (MAX_SPOOL_INDEX + 1)
+
 inline bool isSetSpoolDir2() {
-	extern char opt_spooldir_2[1024];
-	return(opt_spooldir_2[0]);
+	extern char opt_spooldir_2_main[1024];
+	return(opt_spooldir_2_main[0]);
 }
 inline bool isSetSpoolDir(int spoolIndex) {
 	return(spoolIndex == 0 || isSetSpoolDir2());
 }
-inline const char *getSpoolDir(int spoolIndex) {
-	extern char opt_chdir[1024];
-	extern char opt_spooldir_2[1024];
-	return(spoolIndex == 1 && opt_spooldir_2[0] ? opt_spooldir_2 : opt_chdir);
+inline const char *getSpoolDir(eTypeSpoolFile typeSpoolFile, const char *main, const char *rtp, const char *graph, const char *audio) {
+	if(typeSpoolFile == tsf_rtp && rtp && rtp[0]) {
+		return(rtp);
+	} else if(typeSpoolFile == tsf_graph && graph && graph[0]) {
+		return(graph);
+	} else if(typeSpoolFile == tsf_audio && audio && audio[0]) {
+		return(audio);
+	}
+	return(main);
 }
-inline const char *skipSpoolDir(int spoolIndex, const char *spoolDirFile) {
-	const char *spoolDir = getSpoolDir(spoolIndex);
+inline const char *getSpoolDir(eTypeSpoolFile typeSpoolFile, int spoolIndex) {
+	extern char opt_spooldir_main[1024];
+	extern char opt_spooldir_rtp[1024];
+	extern char opt_spooldir_graph[1024];
+	extern char opt_spooldir_audio[1024];
+	extern char opt_spooldir_2_main[1024];
+	extern char opt_spooldir_2_rtp[1024];
+	extern char opt_spooldir_2_graph[1024];
+	extern char opt_spooldir_2_audio[1024];
+	if(spoolIndex == 1 && opt_spooldir_2_main[0]) {
+		return(getSpoolDir(typeSpoolFile, opt_spooldir_2_main, opt_spooldir_2_rtp, opt_spooldir_2_graph, opt_spooldir_2_audio));
+	} else {
+		return(getSpoolDir(typeSpoolFile, opt_spooldir_main, opt_spooldir_rtp, opt_spooldir_graph, opt_spooldir_audio));
+	}
+}
+inline const char *skipSpoolDir(eTypeSpoolFile typeSpoolFile, int spoolIndex, const char *spoolDirFile) {
+	const char *spoolDir = getSpoolDir(typeSpoolFile, spoolIndex);
 	unsigned spoolDirLength = strlen(spoolDir);
 	if(spoolDir[0] != spoolDirFile[0] ||
 	   strncmp(spoolDirFile, spoolDir, spoolDirLength)) {
@@ -170,6 +207,48 @@ inline const char *skipSpoolDir(int spoolIndex, const char *spoolDirFile) {
 	}
 	return(spoolDirFile);
 }
+
+inline const char *getRrdDir() {
+	extern char opt_spooldir_main[1024];
+	return(opt_spooldir_main);
+}
+inline const char *getPcapdumpDir() {
+	extern char opt_spooldir_main[1024];
+	return(opt_spooldir_main);
+}
+inline const char *getQueryCacheDir() {
+	extern char opt_spooldir_main[1024];
+	return(opt_spooldir_main);
+}
+inline const char *getSqlVmExportDir() {
+	extern char opt_spooldir_main[1024];
+	return(opt_spooldir_main);
+}
+
+void vmChdir() {
+	extern char opt_spooldir_main[1024];
+	chdir(opt_spooldir_main);
+}
+
+const char *getSpoolTypeDir(eTypeSpoolFile typeSpoolFile) {
+	return(typeSpoolFile == tsf_sip ? "SIP" :
+	       typeSpoolFile == tsf_rtp ? "RTP" :
+	       typeSpoolFile == tsf_graph ? "GRAPH" :
+	       typeSpoolFile == tsf_audio ? "AUDIO" : 
+	       typeSpoolFile == tsf_all ? "ALL" : 
+	       typeSpoolFile == tsf_reg ? "REG" : 
+	       typeSpoolFile == tsf_skinny ? "SKINNY" : 
+	       NULL);
+}
+const char *getSpoolTypeFilesIndex(eTypeSpoolFile typeSpoolFile) {
+	return(typeSpoolFile == tsf_sip ? "sip" :
+	       typeSpoolFile == tsf_rtp ? "rtp" :
+	       typeSpoolFile == tsf_graph ? "graph" :
+	       typeSpoolFile == tsf_audio ? "audio" : 
+	       NULL);
+}
+eTypeSpoolFile getTypeSpoolFile(const char *filePathName);
+eTypeSpoolFile findTypeSpoolFile(unsigned int spool_index, const char *filePathName);
 
 #define snifferMode_read_from_interface_str string("1")
 #define snifferMode_read_from_files_str string("2")

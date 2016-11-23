@@ -708,7 +708,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 					call->getPcapRtp()->dump(header, packet, packetS->dlt);
 				} else if(type == TYPE_RTP ? enable_save_rtp(call) : enable_save_rtcp(call)) {
 					char pcapFilePath_spool_relative[1024];
-					snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+					snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname(tsf_rtp).c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
 					pcapFilePath_spool_relative[1023] = 0;
 					char str2[1024];
 					if(opt_cachedir[0] != '\0') {
@@ -716,7 +716,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 					} else {
 						strcpy(str2, pcapFilePath_spool_relative);
 					}
-					if(call->getPcapRtp()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
+					if(call->getPcapRtp()->open(tsf_rtp, str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
 						if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 						call->getPcapRtp()->dump(header, packet, packetS->dlt);
 					}
@@ -2067,52 +2067,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	   (call->type != REGISTER && enable_save_sip_rtp_audio(call))) {
 		extern int opt_defer_create_spooldir;
 		if(!opt_defer_create_spooldir) {
-			static string lastdir;
-			if(lastdir != call->dirname()) {
-				string tmp, dir;
-				if(opt_cachedir[0] != '\0') {
-		//			sprintf(str2, "%s/%s", opt_cachedir, call->dirname().c_str());
-					string dir;
-					dir = opt_cachedir;
-					dir += "/" + call->dirname();
-					if(opt_newdir) {
-						tmp = dir + "/ALL";
-						mkdir_r(tmp, 0777);
-						tmp = dir + "/REG";
-						mkdir_r(tmp, 0777);
-						tmp = dir + "/SIP";
-						mkdir_r(tmp, 0777);
-						tmp = dir + "/RTP";
-						mkdir_r(tmp, 0777);
-						tmp = dir + "/GRAPH";
-						mkdir_r(tmp, 0777);
-						tmp = dir + "/AUDIO";
-						mkdir_r(tmp, 0777);
-					} else {
-						mkdir_r(dir, 0777);
-					}
-				}
-				dir = call->dirname();
-				if(opt_newdir) {
-					tmp = dir + "/ALL";
-					mkdir_r(tmp, 0777);
-					tmp = dir + "/SIP";
-					mkdir_r(tmp, 0777);
-					tmp = dir + "/REG";
-					mkdir_r(tmp, 0777);
-					tmp = dir + "/RTP";
-					mkdir_r(tmp, 0777);
-					tmp = dir + "/GRAPH";
-					mkdir_r(tmp, 0777);
-					tmp = dir + "/AUDIO";
-					mkdir_r(tmp, 0777);
-					mkdir_r(call->dirname(), 0777);
-				} else {
-					mkdir_r(dir, 0777);
-				}
-				
-				lastdir = call->dirname();
-			}
+			call->createSpoolDirs();
 		}
 	}
 
@@ -2126,7 +2081,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		sprintf(filenamestr, "%u%u", (unsigned int)packetS->header_pt->ts.tv_sec, (unsigned int)packetS->header_pt->ts.tv_usec);
 		if(opt_newdir and opt_pcap_split) {
 			char pcapFilePath_spool_relative[1024];
-			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "REG" : "", filenamestr);
+			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname(tsf_reg).c_str(), opt_newdir ? "REG" : "", filenamestr);
 			pcapFilePath_spool_relative[1023] = 0;
 			if(opt_cachedir[0] != '\0') {
 				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
@@ -2142,7 +2097,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 			}
 			call->fname2 = num + packetS->header_pt->ts.tv_usec;
 			call->pcapfilename = call->sip_pcapfilename = pcapFilePath_spool_relative;
-			if(call->getPcapSip()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
+			if(call->getPcapSip()->open(tsf_reg, str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 				}
@@ -2158,7 +2113,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		if(opt_newdir and opt_pcap_split) {
 			//SIP
 			char pcapFilePath_spool_relative[1024];
-			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "SIP" : "", call->get_fbasename_safe());
+			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname(tsf_sip).c_str(), opt_newdir ? "SIP" : "", call->get_fbasename_safe());
 			pcapFilePath_spool_relative[1023] = 0;
 			if(opt_cachedir[0] != '\0') {
 				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
@@ -2168,14 +2123,14 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 			}
 			call->pcapfilename = call->sip_pcapfilename = pcapFilePath_spool_relative;
 			if(enable_save_sip(call) &&
-			   call->getPcapSip()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
+			   call->getPcapSip()->open(tsf_sip, str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 				}
 			}
 			//RTP
 			char pcapRtpFilePath_spool_relative[1024];
-			snprintf(pcapRtpFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
+			snprintf(pcapRtpFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname(tsf_rtp).c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
 			pcapRtpFilePath_spool_relative[1023] = 0;
 			if(opt_cachedir[0] != '\0') {
 				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapRtpFilePath_spool_relative);
@@ -2201,7 +2156,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 */
 		} else {
 			char pcapFilePath_spool_relative[1024];
-			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname().c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
+			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname(tsf_all).c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
 			pcapFilePath_spool_relative[1023] = 0;
 			if(opt_cachedir[0] != '\0') {
 				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
@@ -2210,7 +2165,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				strcpy(str2, pcapFilePath_spool_relative);
 			}
 			call->pcapfilename = pcapFilePath_spool_relative;
-			if(call->getPcap()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
+			if(call->getPcap()->open(tsf_sip, str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
 				if(verbosity > 3) {
 					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
 				}
@@ -3608,11 +3563,11 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 
 	// opening dump file
 	if(enable_save_any(call)) {
-		mkdir_r(call->dirname().c_str(), 0777);
+		mkdir_r(call->dirname(tsf_rtp).c_str(), 0777);
 	}
 	if(enable_save_packet(call)) {
 		char pcapFilePath_spool_relative[1024];
-		snprintf(pcapFilePath_spool_relative , 1023, "%s/%s.pcap", call->dirname().c_str(), call->get_fbasename_safe());
+		snprintf(pcapFilePath_spool_relative , 1023, "%s/%s.pcap", call->dirname(tsf_rtp).c_str(), call->get_fbasename_safe());
 		pcapFilePath_spool_relative[1023] = 0;
 		static char str2[1024];
 		if(opt_cachedir[0] != '\0') {
@@ -3621,7 +3576,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 		} else {
 			strcpy(str2, pcapFilePath_spool_relative);
 		}
-		if(call->getPcap()->open(str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
+		if(call->getPcap()->open(tsf_rtp, str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
 			call->pcapfilename = pcapFilePath_spool_relative;
 		}
 		
@@ -5278,7 +5233,7 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 	if(opt_read_from_file) {
 		cout << outStr.str() << endl;
 	} else {
-		syslog(LOG_NOTICE, outStr.str().c_str());
+		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 }
 

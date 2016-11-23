@@ -453,12 +453,12 @@ Call::removeFindTables(bool set_end_call) {
 }
 
 void
-Call::addtofilesqueue(string file, string column, long long writeBytes) {
-	_addtofilesqueue(file, column, dirnamesqlfiles(), writeBytes, getSpoolIndex(), getSpoolDir());
+Call::addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string column, long long writeBytes) {
+	_addtofilesqueue(typeSpoolFile, file, column, dirnamesqlfiles(), writeBytes, getSpoolIndex());
 }
 
 void 
-Call::_addtofilesqueue(string file, string column, string dirnamesqlfiles, long long writeBytes, int spoolIndex, const char *spoolDir) {
+Call::_addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string column, string dirnamesqlfiles, long long writeBytes, int spoolIndex) {
 
 	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or
 	   !CleanSpool::isSetCleanspool(spoolIndex) or
@@ -477,13 +477,13 @@ Call::_addtofilesqueue(string file, string column, string dirnamesqlfiles, long 
 
 	long long size = 0;
 	if(fileExists) {
-		size = GetFileSizeDU(file);
+		size = GetFileSizeDU(file, typeSpoolFile, spoolIndex);
 	}
 	if(!size && fileCacheExists) {
-		size = GetFileSizeDU(fileCache);
+		size = GetFileSizeDU(fileCache, typeSpoolFile, spoolIndex);
 	}
 	if(writeBytes) {
-		writeBytes = GetDU(writeBytes);
+		writeBytes = GetDU(writeBytes, typeSpoolFile, spoolIndex);
 		if(writeBytes > size) {
 			size = writeBytes;
 		}
@@ -505,7 +505,7 @@ Call::_addtofilesqueue(string file, string column, string dirnamesqlfiles, long 
 
 	extern CleanSpool *cleanSpool[2];
 	if(cleanSpool[spoolIndex]) {
-		cleanSpool[spoolIndex]->addFile(dirnamesqlfiles.c_str(), column.c_str(), file.c_str(), size);
+		cleanSpool[spoolIndex]->addFile(dirnamesqlfiles.c_str(), column.c_str(), typeSpoolFile, file.c_str(), size);
 	}
 }
 
@@ -656,18 +656,26 @@ Call::closeRawFiles() {
 
 /* returns name of the directory in format YYYY-MM-DD */
 string
-Call::dirname() {
+Call::dirname(eTypeSpoolFile typeSpoolFile, const char *baseDirParam) {
 	char sdirname[1024];
+	string baseDir;
+	if(baseDirParam) {
+		baseDir = baseDirParam;
+	} else if(!opt_cachedir[0]) {
+		baseDir = getSpoolDir(typeSpoolFile);
+	}
+	unsigned baseDirLength = baseDir.length();
+	if(baseDirLength && baseDir[baseDirLength - 1] != '/') {
+		baseDir += '/';
+	}
 	struct tm t = time_r((const time_t*)(&first_packet_time));
 	if(opt_newdir) {
-		snprintf(sdirname, 1024, "%s%s%04d-%02d-%02d/%02d/%02d", 
-			 opt_cachedir[0] ? "" : getSpoolDir(), 
-			 opt_cachedir[0] ? "" : "/", 
+		snprintf(sdirname, 1024, "%s%04d-%02d-%02d/%02d/%02d", 
+			 baseDir.c_str(),
 			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
 	} else {
-		snprintf(sdirname, 1024, "%s%s%04d-%02d-%02d", 
-			 opt_cachedir[0] ? "" : getSpoolDir(),
-			 opt_cachedir[0] ? "" : "/",
+		snprintf(sdirname, 1024, "%s%04d-%02d-%02d", 
+			 baseDir.c_str(),
 			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
 	}
 	sdirname[1023] = 0;
@@ -1103,7 +1111,7 @@ read:
 
 		char graphFilePath_spool_relative[1024];
 		char graphFilePath[1024];
-		snprintf(graphFilePath_spool_relative, 1023, "%s/%s/%s.%d.graph%s", dirname().c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, 
+		snprintf(graphFilePath_spool_relative, 1023, "%s/%s/%s.%d.graph%s", dirname(tsf_graph).c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, 
 			 opt_gzipGRAPH == FileZipHandler::gzip ? ".gz" : "");
 		graphFilePath_spool_relative[1023] = 0;
 		if(opt_cachedir[0] != '\0') {
@@ -1114,13 +1122,13 @@ read:
 		}
 		strcpy(rtp[ssrc_n]->gfilename, graphFilePath);
 		if(flags & FLAG_SAVEGRAPH) {
-			rtp[ssrc_n]->graph.auto_open(graphFilePath, graphFilePath_spool_relative);
+			rtp[ssrc_n]->graph.auto_open(tsf_graph, graphFilePath, graphFilePath_spool_relative);
 		}
 		if(rtp[ssrc_n]->gfileRAW) {
 			fclose(rtp[ssrc_n]->gfileRAW);
 			rtp[ssrc_n]->gfileRAW = NULL;
 		}
-		snprintf(rtp[ssrc_n]->basefilename, 1023, "%s/%s/%s.i%d", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), !iscaller);
+		snprintf(rtp[ssrc_n]->basefilename, 1023, "%s/%s/%s.i%d", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), !iscaller);
 		rtp[ssrc_n]->basefilename[1023] = 0;
 
 		rtp[ssrc_n]->index_call_ip_port = get_index_by_ip_port(find_by_dest ? packetS->daddr : packetS->saddr, find_by_dest ? packetS->dest : packetS->source);
@@ -1240,11 +1248,11 @@ void Call::stoprecording() {
 
 		this->recordstopped = 1;
 		if(verbosity >= 1) {
-			syslog(LOG_ERR,"Call %s/%s.pcap was stopped due to dtmf or norecord sip header. ", this->dirname().c_str(), this->get_fbasename_safe());
+			syslog(LOG_ERR,"Call %s/%s.pcap was stopped due to dtmf or norecord sip header. ", this->dirname(tsf_main).c_str(), this->get_fbasename_safe());
 		}
 	} else {
 		if(verbosity >= 1) {
-			syslog(LOG_ERR,"Call %s/%s.pcap was stopped before. Ignoring now. ", this->dirname().c_str(), this->get_fbasename_safe());
+			syslog(LOG_ERR,"Call %s/%s.pcap was stopped before. Ignoring now. ", this->dirname(tsf_main).c_str(), this->get_fbasename_safe());
 		}
 	}
 }
@@ -1415,7 +1423,7 @@ Call::mos_lqo(char *deg, int samplerate) {
 		}
 	}
 
-	delete tmp;
+	delete [] tmp;
 	
 //	cout << out << "\n";
 	return -1;
@@ -1533,14 +1541,14 @@ Call::convertRawToWav() {
 	}
 
 	if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-		snprintf(out, 1023, "%s/%s/%s.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
+		snprintf(out, 1023, "%s/%s/%s.wav", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 	} else {
-		snprintf(out, 1023, "%s/%s/%s.ogg", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
+		snprintf(out, 1023, "%s/%s/%s.ogg", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 	}
 	out[1023] = 0;
 
 	/* caller direction */
-	snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
+	snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
 	rawInfo[1023] = 0;
 	pl = fopen(rawInfo, "r");
 	if(pl) {
@@ -1548,7 +1556,7 @@ Call::convertRawToWav() {
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
 			if(ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip) continue;
 			adir = 1;
-			snprintf(wav0, 1023, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
+			snprintf(wav0, 1023, "%s/%s/%s.i%d.wav", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
 			wav0[1023] = 0;
 			break;
 		}
@@ -1556,7 +1564,7 @@ Call::convertRawToWav() {
 	}
 
 	/* called direction */
-	snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
+	snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
 	rawInfo[1023] = 0;
 	pl = fopen(rawInfo, "r");
 	if(pl) {
@@ -1564,7 +1572,7 @@ Call::convertRawToWav() {
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
 			if(ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip) continue;
 			bdir = 1;
-			snprintf(wav1, 1023, "%s/%s/%s.i%d.wav", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
+			snprintf(wav1, 1023, "%s/%s/%s.i%d.wav", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
 			wav1[1023] = 0;
 			break;
 		}
@@ -1572,7 +1580,7 @@ Call::convertRawToWav() {
 	}
 
 	if(adir == 0 && bdir == 0) {
-		syslog(LOG_ERR, "PCAP file %s/%s/%s.pcap cannot be decoded to WAV probably missing RTP\n", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
+		syslog(LOG_ERR, "PCAP file %s/%s/%s.pcap cannot be decoded to WAV probably missing RTP\n", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
 		return 1;
 	}
 
@@ -1677,7 +1685,7 @@ Call::convertRawToWav() {
 		wav = i == 0 ? wav0 : wav1;
 
 		/* open playlist */
-		snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i);
+		snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i);
 		rawInfo[1023] = 0;
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
@@ -1700,7 +1708,7 @@ Call::convertRawToWav() {
 			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			snprintf(raw, 1023, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname().c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			snprintf(raw, 1023, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
 			samplerate = 1000 * get_ticks_bycodec(codec);
 			if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
 			if(maxsamplerate < samplerate) {
@@ -2055,7 +2063,7 @@ Call::convertRawToWav() {
 	}
 	string tmp;
 	tmp.append(out);
-	addtofilesqueue(tmp, "audiosize", 0);
+	addtofilesqueue(tsf_audio, tmp, "audiosize", 0);
  
 	return 0;
 }
@@ -2508,7 +2516,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(mos_f1_mult10) {
 				mos_min_mult10[i] = mos_f1_mult10;
 			}
-			if(existsColumns.cdr_mos_min and rtpab[i]->mosf1_min != -1) {
+			if(existsColumns.cdr_mos_min and rtpab[i]->mosf1_min != (uint8_t)-1) {
 				cdr.add(rtpab[i]->mosf1_min, c+"_mos_f1_min_mult10");
 			}
 
@@ -2525,7 +2533,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(mos_f2_mult10 && (mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_f2_mult10;
 			}
-			if(existsColumns.cdr_mos_min and rtpab[i]->mosf2_min != -1) {
+			if(existsColumns.cdr_mos_min and rtpab[i]->mosf2_min != (uint8_t)-1) {
 				cdr.add(rtpab[i]->mosf2_min, c+"_mos_f2_min_mult10");
 			}
 
@@ -2537,7 +2545,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(mos_adapt_mult10 && (mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i])) {
 				mos_min_mult10[i] = mos_adapt_mult10;
 			}
-			if(existsColumns.cdr_mos_min and rtpab[i]->mosAD_min != -1) {
+			if(existsColumns.cdr_mos_min and rtpab[i]->mosAD_min != (uint8_t)-1) {
 				cdr.add(rtpab[i]->mosAD_min, c+"_mos_adapt_min_mult10");
 			}
 
@@ -3811,16 +3819,16 @@ void Call::atFinish() {
 		string find3 = "%dirname%";
 		string replace;
 		replace.append("\"");
-		replace.append(getSpoolDir());
+		replace.append(getSpoolDir(tsf_main));
 		replace.append("/");
-		replace.append(this->dirname());
+		replace.append(this->dirname(tsf_main));
 		replace.append("/");
 		replace.append(this->fbasename);
 		replace.append(".pcap");
 		replace.append("\"");
 		find_and_replace(source, find1, replace);
 		find_and_replace(source, find2, this->fbasename);
-		find_and_replace(source, find3, this->dirname());
+		find_and_replace(source, find3, this->dirname(tsf_main));
 		if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
 		system(source.c_str());
 	};
@@ -3829,7 +3837,7 @@ void Call::atFinish() {
 		string source(filtercommand);
 		string tmp = this->fbasename;
 		find_and_replace(source, string("%callid%"), escapeshellR(tmp));
-		tmp = this->dirname();
+		tmp = this->dirname(tsf_main);
 		find_and_replace(source, string("%dirname%"), escapeshellR(tmp));
 		tmp = sqlDateTimeString(this->calltime());
 		find_and_replace(source, string("%calldate%"), escapeshellR(tmp));
@@ -3978,6 +3986,30 @@ void Call::disableListeningBuffers() {
 		audiobuffer2->clean_and_disable();
 	}
 	pthread_mutex_unlock(&listening_worker_run_lock);
+}
+
+void Call::createSpoolDirs() {
+	static string lastdir;
+	if(lastdir != this->dirname(tsf_main)) {
+		if(opt_newdir) {
+			for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_skinny; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
+				if(opt_cachedir[0] != '\0') {
+					mkdir_r(this->dirname(typeSpoolFile, opt_cachedir) + '/' + getSpoolTypeDir(typeSpoolFile), 0777);
+					mkdir_r(this->dirname(typeSpoolFile, this->getSpoolDir(typeSpoolFile)) + '/' + getSpoolTypeDir(typeSpoolFile), 0777);
+				} else {
+					mkdir_r(this->dirname(typeSpoolFile) + '/' + getSpoolTypeDir(typeSpoolFile), 0777);
+				}
+			}
+		} else {
+			if(opt_cachedir[0] != '\0') {
+				mkdir_r(this->dirname(tsf_main, opt_cachedir), 0777);
+				mkdir_r(this->dirname(tsf_main, this->getSpoolDir(tsf_main)), 0777);
+			} else {
+				mkdir_r(this->dirname(tsf_main), 0777);
+			}
+		}
+		lastdir = this->dirname(tsf_main);
+	}
 }
 
 u_int32_t Call::getSipcalledipConfirmed(u_int16_t *dport) {

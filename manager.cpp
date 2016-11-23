@@ -66,7 +66,6 @@ extern char opt_clientmanager[1024];
 extern int opt_clientmanagerport;
 extern char mac[32];
 extern int verbosity;
-extern char opt_chdir[1024];
 extern char opt_php_path[1024];
 extern int manager_socket_server;
 extern int opt_nocdr;
@@ -813,55 +812,55 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 
 			char sendcommand[2048];			//buffer for send command string;
 			if (!strncmp(manager_args[1], "PSA",4 )) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSA_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PSR", 4)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSR_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PSSR", 5)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSSR_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PSSM", 5)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSSM_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PSS", 4)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PSC", 4)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSC_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PS", 3)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLq", 5)) {
-				sprintf(filename, "%s/rrd/2db-SQL.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-SQL.rrd", getRrdDir());
 				rrd_vm_create_graph_SQLq_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLf", 5)) {
-				sprintf(filename, "%s/rrd/2db-SQL.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-SQL.rrd", getRrdDir());
 				rrd_vm_create_graph_SQLf_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tCPU", 5)) {
-				sprintf(filename, "%s/rrd/2db-tCPU.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-tCPU.rrd", getRrdDir());
 				rrd_vm_create_graph_tCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "drop", 5)) {
-				sprintf(filename, "%s/rrd/2db-drop.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-drop.rrd", getRrdDir());
 				rrd_vm_create_graph_drop_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "speed", 5)) {
-				sprintf(filename, "%s/rrd/2db-speedmbs.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-speedmbs.rrd", getRrdDir());
 				rrd_vm_create_graph_speed_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "heap", 5)) {
-				sprintf(filename, "%s/rrd/2db-heap.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-heap.rrd", getRrdDir());
 				rrd_vm_create_graph_heap_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "calls", 6)) {
-				sprintf(filename, "%s/rrd/3db-callscounter.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/3db-callscounter.rrd", getRrdDir());
 				rrd_vm_create_graph_calls_command(filename, fromat, toat, color, resx ,resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tacCPU", 7)) {
-				sprintf(filename, "%s/rrd/2db-tacCPU.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/2db-tacCPU.rrd", getRrdDir());
 				rrd_vm_create_graph_tacCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "memusage", 7)) {
-				sprintf(filename, "%s/rrd/db-memusage.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/db-memusage.rrd", getRrdDir());
 				rrd_vm_create_graph_memusage_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "loadavg", 7)) {
-				sprintf(filename, "%s/rrd/db-LA.rrd", opt_chdir);
+				sprintf(filename, "%s/rrd/db-LA.rrd", getRrdDir());
 				rrd_vm_create_graph_LA_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else {
 				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage\n", manager_args[1]);	
@@ -1939,12 +1938,16 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		char tableType[100] = "";
 		char *tarPosI = new FILE_LINE(14011) char[1000000];
 		unsigned spool_index = 0;
+		int type_spool_file = (int)tsf_na;
 		*tarPosI = 0;
 
-		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s %u" : "getfile_in_tar %s %s %s %u %s %s %u", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI, &spool_index);
+		sscanf(buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s %u %i" : "getfile_in_tar %s %s %s %u %s %s %u %i", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI, &spool_index, &type_spool_file);
+		if(type_spool_file == tsf_na) {
+			type_spool_file = findTypeSpoolFile(spool_index, tar_filename);
+		}
 		
 		Tar tar;
-		if(!tar.tar_open(string(getSpoolDir(spool_index)) + '/' + tar_filename, O_RDONLY)) {
+		if(!tar.tar_open(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + tar_filename, O_RDONLY)) {
 			string filename_conv = filename;
 			prepare_string_to_filename((char*)filename_conv.c_str());
 			tar.tar_read_send_parameters(client, sshchannel, zip);
@@ -1967,9 +1970,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		
 		char filename[2048];
 		unsigned spool_index = 0;
-		sscanf(buf, zip ? "getfile_zip %s %u" : "getfile %s %u", filename, &spool_index);
+		int type_spool_file = (int)tsf_na;
+		
+		sscanf(buf, zip ? "getfile_zip %s %u %i" : "getfile %s %u %i", filename, &spool_index, &type_spool_file);
+		if(type_spool_file == tsf_na) {
+			type_spool_file = findTypeSpoolFile(spool_index, filename);
+		}
 
-		return(sendFile((string(getSpoolDir(spool_index)) + '/' + filename).c_str(), client, sshchannel, zip));
+		return(sendFile((string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename).c_str(), client, sshchannel, zip));
 	} else if(strstr(buf, "file_exists") != NULL) {
 		if(opt_pcap_queue_send_to_ip_port) {
 			sendvm(client, sshchannel, "mirror", 6, 0);
@@ -1978,19 +1986,24 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 	 
 		char filename[2048];
 		unsigned spool_index = 0;
+		int type_spool_file = (int)tsf_na;
 		u_int64_t size;
 		string rslt;
 
-		sscanf(buf, "file_exists %s %u", filename, &spool_index);
+		sscanf(buf, "file_exists %s %u %i", filename, &spool_index, &type_spool_file);
+		if(type_spool_file == tsf_na) {
+			type_spool_file = findTypeSpoolFile(spool_index, filename);
+		}
+		
 		int error_code;
-		if(FileExists((char*)(string(getSpoolDir(spool_index)) + '/' + filename).c_str(), &error_code)) {
-			size = file_exists(string(getSpoolDir(spool_index)) + '/' + filename);
+		if(FileExists((char*)(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename).c_str(), &error_code)) {
+			size = file_exists(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename);
 			rslt = intToString(size);
 			if(size > 0 && strstr(filename, "tar")) {
 				for(int i = 1; i <= 5; i++) {
 					string nextfilename = filename;
 					nextfilename += "." + intToString(i);
-					u_int64_t nextsize = file_exists(string(getSpoolDir(spool_index)) + '/' + nextfilename);
+					u_int64_t nextsize = file_exists(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + nextfilename);
 					if(nextsize > 0) {
 						rslt += ";" + nextfilename + ":" + intToString(nextsize);
 					} else {
@@ -2050,7 +2063,7 @@ getwav2:
 			sendvm(client, sshchannel, "0", 1, 0);
 			return -1;
 		}
-		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y -d %s 2>/dev/null >/dev/null", filename, opt_chdir);
+		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y -d %s 2>/dev/null >/dev/null", filename, getSpoolDir(tsf_main, 0));
 		system(cmd);
 		secondrun = 1;
 		goto getwav2;

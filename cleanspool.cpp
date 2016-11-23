@@ -51,7 +51,7 @@ CleanSpool::~CleanSpool() {
 	termCleanThread();
 }
 
-void CleanSpool::addFile(const char *ymdh, const char *column, const char *file, long long int size) {
+void CleanSpool::addFile(const char *ymdh, const char *column, eTypeSpoolFile typeSpoolFile, const char *file, long long int size) {
 	sqlStore->lock(STORE_PROC_ID_CLEANSPOOL + spoolIndex);
 	sqlStore->query( 
 	       "INSERT INTO files \
@@ -62,10 +62,10 @@ void CleanSpool::addFile(const char *ymdh, const char *column, const char *file,
 		ON DUPLICATE KEY UPDATE \
 		    " + column + " = " + column + " + " + intToString(size),
 		STORE_PROC_ID_CLEANSPOOL + spoolIndex);
-	string fname = getSpoolDir_string() + "/filesindex/" + column + '/' + ymdh;
+	string fname = getSpoolDir_string(tsf_main) + "/filesindex/" + column + '/' + ymdh;
 	ofstream fname_stream(fname.c_str(), ios::app | ios::out);
 	if(fname_stream.is_open()) {
-		fname_stream << skipSpoolDir(spoolIndex, file) << ":" << size << "\n";
+		fname_stream << skipSpoolDir(typeSpoolFile, spoolIndex, file) << ":" << size << "\n";
 		fname_stream.close();
 	} else {
 		syslog(LOG_ERR, "error write to %s", fname.c_str());
@@ -83,23 +83,18 @@ void CleanSpool::do_convert_filesindex(const char *reason) {
 }
 
 void CleanSpool::check_filesindex() {
-	DIR* dp = opendir(getSpoolDir());
-	if(!dp) {
+	list<string> date_dirs;
+	this->readSpoolDateDirs(&date_dirs);
+	if(!date_dirs.size()) {
 		return;
 	}
 	SqlDb *sqlDb = createSqlObject();
 	syslog(LOG_NOTICE, "cleanspool[%i]: check_filesindex start", spoolIndex);
-	while(!is_terminating()) {
-		dirent* de = readdir(dp);
-		if(de == NULL) break;
-		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
-			check_index_date(de->d_name, sqlDb);
-		}
+	for(list<string>::iterator iter_date_dir = date_dirs.begin(); iter_date_dir != date_dirs.end(); iter_date_dir++) {
+		check_index_date(*iter_date_dir, sqlDb);
 	}
 	syslog(LOG_NOTICE, "cleanspool[%i]: check_filesindex done", spoolIndex);
 	delete sqlDb;
-	closedir(dp);
 }
 
 void CleanSpool::check_index_date(string date, SqlDb *sqlDb) {
@@ -129,10 +124,10 @@ void CleanSpool::check_index_date(string date, SqlDb *sqlDb) {
 				needReindex = true;
 			}
 			if(!needReindex &&
-			   ((typeSize["sip"] && !file_exists(getSpoolDir_string() + "/filesindex/sipsize/" + ymdh)) ||
-			    (typeSize["rtp"] && !file_exists(getSpoolDir_string() + "/filesindex/rtpsize/" + ymdh)) ||
-			    (typeSize["graph"] && !file_exists(getSpoolDir_string() + "/filesindex/graphsize/" + ymdh)) ||
-			    (typeSize["audio"] && !file_exists(getSpoolDir_string() + "/filesindex/audiosize/" + ymdh)))) {
+			   ((typeSize["sip"] && !file_exists(getSpoolDir_string(tsf_main) + "/filesindex/sipsize/" + ymdh)) ||
+			    (typeSize["rtp"] && !file_exists(getSpoolDir_string(tsf_main) + "/filesindex/rtpsize/" + ymdh)) ||
+			    (typeSize["graph"] && !file_exists(getSpoolDir_string(tsf_main) + "/filesindex/graphsize/" + ymdh)) ||
+			    (typeSize["audio"] && !file_exists(getSpoolDir_string(tsf_main) + "/filesindex/audiosize/" + ymdh)))) {
 				needReindex = true;
 			}
 			if(needReindex) {
@@ -143,25 +138,20 @@ void CleanSpool::check_index_date(string date, SqlDb *sqlDb) {
 }
 
 string CleanSpool::getMaxSpoolDate() {
-	DIR* dp = opendir(getSpoolDir());
-	if(!dp) {
+	list<string> date_dirs;
+	this->readSpoolDateDirs(&date_dirs);
+	if(!date_dirs.size()) {
 		return("");
 	}
 	u_int32_t maxDate = 0;
-	dirent* de;
-	while((de = readdir(dp)) != NULL) {
-		if(de == NULL) break;
-		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
-			u_int32_t date = atol(de->d_name) * 10000 +
-					 atol(de->d_name + 5) * 100 +
-					 atol(de->d_name + 8);
-			if(date > maxDate) {
-				maxDate = date;
-			}
+	for(list<string>::iterator iter_date_dir = date_dirs.begin(); iter_date_dir != date_dirs.end(); iter_date_dir++) {
+		u_int32_t date = atol((*iter_date_dir).c_str()) * 10000 +
+				 atol((*iter_date_dir).c_str() + 5) * 100 +
+				 atol((*iter_date_dir).c_str() + 8);
+		if(date > maxDate) {
+			maxDate = date;
 		}
 	}
-	closedir(dp);
 	if(maxDate) {
 		char maxDate_str[20];
 		sprintf(maxDate_str, "%4i-%02i-%02i", maxDate / 10000, maxDate % 10000 / 100, maxDate % 100);
@@ -319,6 +309,14 @@ bool CleanSpool::check_datehour(const char *datehour) {
 }
 
 void CleanSpool::loadOpt() {
+	extern char opt_spooldir_main[1024];
+	extern char opt_spooldir_rtp[1024];
+	extern char opt_spooldir_graph[1024];
+	extern char opt_spooldir_audio[1024];
+	extern char opt_spooldir_2_main[1024];
+	extern char opt_spooldir_2_rtp[1024];
+	extern char opt_spooldir_2_graph[1024];
+	extern char opt_spooldir_2_audio[1024];
 	extern unsigned int opt_maxpoolsize;
 	extern unsigned int opt_maxpooldays;
 	extern unsigned int opt_maxpoolsipsize;
@@ -346,6 +344,10 @@ void CleanSpool::loadOpt() {
 	extern int opt_autocleanmingb;
 	extern int opt_cleanspool_enable_run_hour_from;
 	extern int opt_cleanspool_enable_run_hour_to;
+	opt_dirs.main = spoolIndex == 0 ? opt_spooldir_main : opt_spooldir_2_main;
+	opt_dirs.rtp = spoolIndex == 0 ? opt_spooldir_rtp : opt_spooldir_2_rtp;
+	opt_dirs.graph = spoolIndex == 0 ? opt_spooldir_graph : opt_spooldir_2_graph;
+	opt_dirs.audio = spoolIndex == 0 ? opt_spooldir_audio : opt_spooldir_2_audio;
 	opt_max.maxpoolsize = spoolIndex == 0 ? opt_maxpoolsize : opt_maxpoolsize_2;
 	opt_max.maxpooldays = spoolIndex == 0 ? opt_maxpooldays : opt_maxpooldays_2;
 	opt_max.maxpoolsipsize = spoolIndex == 0 ? opt_maxpoolsipsize : opt_maxpoolsipsize_2;
@@ -439,18 +441,21 @@ void CleanSpool::cleanThreadProcess() {
 	}
 	bool criticalLowSpace = false;
 	long int maxpoolsize = 0;
-	if(opt_other.autocleanspoolminpercent || opt_other.autocleanmingb) {
-		double totalSpaceGB = (double)GetTotalDiskSpace(getSpoolDir()) / (1024 * 1024 * 1024);
-		double freeSpacePercent = (double)GetFreeDiskSpace(getSpoolDir(), true) / 100;
-		double freeSpaceGB = (double)GetFreeDiskSpace(getSpoolDir()) / (1024 * 1024 * 1024);
+	if((opt_other.autocleanspoolminpercent || opt_other.autocleanmingb) &&
+	   (!opt_dirs.rtp.length() || opt_dirs.rtp == opt_dirs.main) && 
+	   (!opt_dirs.graph.length() || opt_dirs.graph == opt_dirs.main) && 
+	   (!opt_dirs.audio.length() || opt_dirs.audio == opt_dirs.main)) {
+		double totalSpaceGB = (double)GetTotalDiskSpace(getSpoolDir(tsf_main)) / (1024 * 1024 * 1024);
+		double freeSpacePercent = (double)GetFreeDiskSpace(getSpoolDir(tsf_main), true) / 100;
+		double freeSpaceGB = (double)GetFreeDiskSpace(getSpoolDir(tsf_main)) / (1024 * 1024 * 1024);
 		int _minPercentForAutoReindex = 1;
 		int _minGbForAutoReindex = 5;
 		if(freeSpacePercent < _minPercentForAutoReindex && 
 		   freeSpaceGB < _minGbForAutoReindex) {
 			syslog(LOG_NOTICE, "cleanspool[%i]: low spool disk space - executing convert_filesindex", spoolIndex);
 			reindex_all("call from clean_spooldir - low spool disk space");
-			freeSpacePercent = (double)GetFreeDiskSpace(getSpoolDir(), true) / 100;
-			freeSpaceGB = (double)GetFreeDiskSpace(getSpoolDir()) / (1024 * 1024 * 1024);
+			freeSpacePercent = (double)GetFreeDiskSpace(getSpoolDir(tsf_main), true) / 100;
+			freeSpaceGB = (double)GetFreeDiskSpace(getSpoolDir(tsf_main)) / (1024 * 1024 * 1024);
 			criticalLowSpace = true;
 		}
 		if(freeSpacePercent < opt_other.autocleanspoolminpercent ||
@@ -551,7 +556,7 @@ bool CleanSpool::check_exists_act_files_in_filesindex() {
 			char datehour[20];
 			strcpy(datehour, date);
 			sprintf(datehour + strlen(datehour), "%02i", j);
-			if(FileExists((char*)(getSpoolDir_string() + "/filesindex/sipsize/" + datehour).c_str())) {
+			if(FileExists((char*)(getSpoolDir_string(tsf_main) + "/filesindex/sipsize/" + datehour).c_str())) {
 				ok = true;
 				break;
 			}
@@ -570,9 +575,9 @@ void CleanSpool::reindex_all(const char *reason) {
 		return;
 	}
 	lastCall_reindex_all = actTime;
- 
-	DIR* dp = opendir(getSpoolDir());
-	if(!dp) {
+	list<string> date_dirs;
+	this->readSpoolDateDirs(&date_dirs);
+	if(!date_dirs.size()) {
 		return;
 	}
 	syslog(LOG_NOTICE, "cleanspool[%i]: reindex_all start%s%s", spoolIndex, reason ? " - " : "", reason ? reason : "");
@@ -581,21 +586,15 @@ void CleanSpool::reindex_all(const char *reason) {
 		WHERE spool_index = " + getSpoolIndex_string() + " and \
 		      id_sensor = " + getIdSensor_string(),
 		STORE_PROC_ID_CLEANSPOOL_SERVICE + spoolIndex);
-	rmdir_r(getSpoolDir_string() + "/filesindex", true, true);
-	mkdir_r(getSpoolDir_string() + "/filesindex/sipsize", 0777);
-	mkdir_r(getSpoolDir_string() + "/filesindex/rtpsize", 0777);
-	mkdir_r(getSpoolDir_string() + "/filesindex/graphsize", 0777);
-	mkdir_r(getSpoolDir_string() + "/filesindex/audiosize", 0777);
-	while(!is_terminating()) {
-		dirent *de = readdir(dp);
-		if(de == NULL) break;
-		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
-			reindex_date(de->d_name);
-		}
+	rmdir_r(getSpoolDir_string(tsf_main) + "/filesindex", true, true);
+	mkdir_r(getSpoolDir_string(tsf_main) + "/filesindex/sipsize", 0777);
+	mkdir_r(getSpoolDir_string(tsf_main) + "/filesindex/rtpsize", 0777);
+	mkdir_r(getSpoolDir_string(tsf_main) + "/filesindex/graphsize", 0777);
+	mkdir_r(getSpoolDir_string(tsf_main) + "/filesindex/audiosize", 0777);
+	for(list<string>::iterator iter_date_dir = date_dirs.begin(); iter_date_dir != date_dirs.end(); iter_date_dir++) {
+		reindex_date(*iter_date_dir);
 	}
 	syslog(LOG_NOTICE, "cleanspool[%i]: reindex_all done", spoolIndex);
-	closedir(dp);
 	// wait for flush sql store
 	while(sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL_SERVICE + spoolIndex) > 0) {
 		usleep(100000);
@@ -630,19 +629,21 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 	long long audiosize = reindex_date_hour_type(date, h, "audio", readOnly, quickCheck, &fillMinutes);
 	if((sipsize + rtpsize + graphsize + audiosize) && !readOnly) {
 		string dh = date + '/' + hour;
-		syslog(LOG_NOTICE, "cleanspool[%i]: reindex_date_hour - %s/%s", spoolIndex, getSpoolDir(), dh.c_str());
+		syslog(LOG_NOTICE, "cleanspool[%i]: reindex_date_hour - %s/%s", spoolIndex, getSpoolDir(tsf_main), dh.c_str());
 	}
 	if(!readOnly) {
-		for(unsigned m = 0; m < 60; m++) {
-			char min[3];
-			snprintf(min, 3, "%02d", m);
-			string dhm = date + '/' + hour + '/' + min;
-			if(!fillMinutes[m]) {
-				rmdir_r(dhm);
-			} else {
-				// remove obsolete directories
-				rmdir_r(dhm + "/ALL");
-				rmdir_r(dhm + "/REG");
+		for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_audio; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
+			for(unsigned m = 0; m < 60; m++) {
+				char min[3];
+				snprintf(min, 3, "%02d", m);
+				string dhm = getSpoolDir_string(typeSpoolFile) + '/' + date + '/' + hour + '/' + min;
+				if(!fillMinutes[m]) {
+					rmdir_r(dhm);
+				} else {
+					// remove obsolete directories
+					rmdir_r(dhm + "/ALL");
+					rmdir_r(dhm + "/REG");
+				}
 			}
 		}
 		string ymdh = string(date.substr(0,4)) + date.substr(5,2) + date.substr(8,2) + hour;
@@ -669,7 +670,9 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 				      spool_index = " + getSpoolIndex_string() + " and \
 				      id_sensor = " + getIdSensor_string(),
 				STORE_PROC_ID_CLEANSPOOL_SERVICE + spoolIndex);
-			rmdir_r(getSpoolDir_string() + '/' + date + '/' + hour);
+			for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_audio; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
+				rmdir_r(getSpoolDir_string(typeSpoolFile) + '/' + date + '/' + hour);
+			}
 		}
 	}
 	if(typeSize) {
@@ -685,23 +688,28 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 	long long sumsize = 0;
 	string filesIndexDirName;
 	string spoolDirTypeName;
+	eTypeSpoolFile typeSpoolFile;
 	if(type == "sip") {
 		filesIndexDirName = "sipsize";
 		spoolDirTypeName = "SIP";
+		typeSpoolFile = tsf_sip;
 	} else if(type == "rtp") {
 		filesIndexDirName = "rtpsize";
 		spoolDirTypeName = "RTP";
+		typeSpoolFile = tsf_rtp;
 	} else if(type == "graph") {
 		filesIndexDirName = "graphsize";
 		spoolDirTypeName = "GRAPH";
+		typeSpoolFile = tsf_graph;
 	} else if(type == "audio") {
 		filesIndexDirName = "audiosize";
 		spoolDirTypeName = "AUDIO";
+		typeSpoolFile = tsf_audio;
 	}
 	char hour[3];
 	snprintf(hour, 3, "%02d", h);
 	string ymdh = string(date.substr(0,4)) + date.substr(5,2) + date.substr(8,2) + hour;
-	string spool_fileindex = getSpoolDir_string() + "/filesindex/" + filesIndexDirName + '/' + ymdh;
+	string spool_fileindex = getSpoolDir_string(tsf_main) + "/filesindex/" + filesIndexDirName + '/' + ymdh;
 	ofstream *spool_fileindex_stream = NULL;
 	if(!readOnly) {
 		spool_fileindex_stream = new FILE_LINE(2001) ofstream(spool_fileindex.c_str(), ios::trunc | ios::out);
@@ -715,8 +723,8 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 		char min[3];
 		snprintf(min, 3, "%02d", m);
 		string dhmt = date + '/' + hour + '/' + min + '/' + spoolDirTypeName;
-		string spool_dhmt = getSpoolDir_string() + '/' + dhmt;
-		if(file_exists(spool_dhmt.c_str())) {
+		string spool_dhmt = this->findExistsSpoolDirFile(typeSpoolFile, dhmt);
+		if(file_exists(spool_dhmt)) {
 			bool existsFile = false;
 			DIR* dp = opendir(spool_dhmt.c_str());
 			if(dp) {
@@ -733,7 +741,7 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 					string spool_dhmt_file = spool_dhmt + '/' + de->d_name;
 					if(!tarQueue[spoolIndex] ||
 					   !fileIsOpenTar(listOpenTars, spool_dhmt_file)) {
-						long long size = GetFileSizeDU(spool_dhmt_file);
+						long long size = GetFileSizeDU(spool_dhmt_file, typeSpoolFile, spoolIndex);
 						if(size == 0) size = 1;
 						sumsize += size;
 						if(!readOnly) {
@@ -749,7 +757,7 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 					break;
 				}
 			} else if(!readOnly) {
-				rmdir_r(spool_dhmt.c_str());
+				rmdir_r(spool_dhmt);
 			}
 		}
 	}
@@ -763,13 +771,13 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 	return(sumsize);
 }
 
-void CleanSpool::unlinkfileslist(string fname, string callFrom) {
+void CleanSpool::unlinkfileslist(eTypeSpoolFile typeSpoolFile, string fname, string callFrom) {
 	if(DISABLE_CLEANSPOOL) {
 		return;
 	}
 	syslog(LOG_NOTICE, "cleanspool[%i]: call unlinkfileslist(%s) from %s", spoolIndex, fname.c_str(), callFrom.c_str());
 	char buf[4092];
-	FILE *fd = fopen((getSpoolDir_string() + '/' + fname).c_str(), "r");
+	FILE *fd = fopen((getSpoolDir_string(tsf_main) + '/' + fname).c_str(), "r");
 	if(fd) {
 		while(fgets(buf, 4092, fd) != NULL) {
 			char *pos;
@@ -791,14 +799,14 @@ void CleanSpool::unlinkfileslist(string fname, string callFrom) {
 					*posSizeSeparator = '\0';
 				}
 			}
-			unlink((getSpoolDir_string() + '/' + buf).c_str());
+			unlink(this->findExistsSpoolDirFile(typeSpoolFile, buf).c_str());
 			if(DISABLE_CLEANSPOOL) {
 				fclose(fd);
 				return;
 			}
 		}
 		fclose(fd);
-		unlink((getSpoolDir_string() + '/' + fname).c_str());
+		unlink((getSpoolDir_string(tsf_main) + '/' + fname).c_str());
 	}
 }
 
@@ -816,38 +824,46 @@ void CleanSpool::unlink_dirs(string datehour, int sip, int rtp, int graph, int a
 	       callFrom.c_str());
 	string d = datehour.substr(0,4) + "-" + datehour.substr(4,2) + "-" + datehour.substr(6,2);
 	string dh =  d + '/' + datehour.substr(8,2);
+	list<string> spool_dirs;
+	this->getSpoolDirs(&spool_dirs);
 	for(unsigned m = 0; m < 60 && !DISABLE_CLEANSPOOL; m++) {
 		char min[3];
 		snprintf(min, 3, "%02d", m);
 		string dhm = dh + '/' + min;
 		if(sip) {
-			rmdir_if_r(getSpoolDir_string() + '/' + dhm + "/SIP",
+			rmdir_if_r(this->findExistsSpoolDirFile(tsf_sip,'/' + dhm + "/SIP"),
 				   sip == 2);
 		}
 		if(rtp) {
-			rmdir_if_r(getSpoolDir_string() + '/' + dhm + "/RTP",
+			rmdir_if_r(this->findExistsSpoolDirFile(tsf_rtp, '/' + dhm + "/RTP"),
 				   rtp == 2);
 		}
 		if(graph) {
-			rmdir_if_r(getSpoolDir_string() + '/' + dhm + "/GRAPH",
+			rmdir_if_r(this->findExistsSpoolDirFile(tsf_graph, '/' + dhm + "/GRAPH"),
 				   graph == 2);
 		}
 		if(audio) {
-			rmdir_if_r(getSpoolDir_string() + '/' + dhm + "/AUDIO",
+			rmdir_if_r(this->findExistsSpoolDirFile(tsf_audio, '/' + dhm + "/AUDIO"),
 				   audio == 2);
 		}
 		// remove minute
-		if(rmdir((getSpoolDir_string() + '/' + dhm).c_str()) == 0) {
-			syslog(LOG_NOTICE, "cleanspool[%i]: unlink_dirs: remove %s/%s", spoolIndex, getSpoolDir(), dhm.c_str());
+		for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
+			if(rmdir((*iter_sd + '/' + dhm).c_str()) == 0) {
+				syslog(LOG_NOTICE, "cleanspool[%i]: unlink_dirs: remove %s/%s", spoolIndex, (*iter_sd).c_str(), dhm.c_str());
+			}
 		}
 	}
 	// remove hour
-	if(rmdir((getSpoolDir_string() + '/' + dh).c_str()) == 0) {
-		syslog(LOG_NOTICE, "cleanspool[%i]: unlink_dirs: remove %s/%s", spoolIndex, getSpoolDir(), dh.c_str());
+	for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
+		if(rmdir((*iter_sd + '/' + dh).c_str()) == 0) {
+			syslog(LOG_NOTICE, "cleanspool[%i]: unlink_dirs: remove %s/%s", spoolIndex, (*iter_sd).c_str(), dh.c_str());
+		}
 	}
 	// remove day
-	if(rmdir((getSpoolDir_string() + '/' + d).c_str()) == 0) {
-		syslog(LOG_NOTICE, "cleanspool[%i]: unlink_dirs: remove %s/%s", spoolIndex, getSpoolDir(), d.c_str());
+	for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
+		if(rmdir((*iter_sd + '/' + d).c_str()) == 0) {
+			syslog(LOG_NOTICE, "cleanspool[%i]: unlink_dirs: remove %s/%s", spoolIndex, (*iter_sd).c_str(), d.c_str());
+		}
 	}
 }
 
@@ -1012,25 +1028,25 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 		uint64_t graphsize = strtoull(row["graphsize"].c_str(), NULL, 0);
 		uint64_t audiosize = strtoull(row["audiosize"].c_str(), NULL, 0);
 		if(sip) {
-			unlinkfileslist("filesindex/sipsize/" + row["datehour"], "clean_maxpoolsize");
+			unlinkfileslist(tsf_sip, "filesindex/sipsize/" + row["datehour"], "clean_maxpoolsize");
 			if(DISABLE_CLEANSPOOL) {
 				break;
 			}
 		}
 		if(rtp) {
-			unlinkfileslist("filesindex/rtpsize/" + row["datehour"], "clean_maxpoolsize");
+			unlinkfileslist(tsf_rtp, "filesindex/rtpsize/" + row["datehour"], "clean_maxpoolsize");
 			if(DISABLE_CLEANSPOOL) {
 				break;
 			}
 		}
 		if(graph) {
-			unlinkfileslist("filesindex/graphsize/" + row["datehour"], "clean_maxpoolsize");
+			unlinkfileslist(tsf_graph, "filesindex/graphsize/" + row["datehour"], "clean_maxpoolsize");
 			if(DISABLE_CLEANSPOOL) {
 				break;
 			}
 		}
 		if(audio) {
-			unlinkfileslist("filesindex/audiosize/" + row["datehour"], "clean_maxpoolsize");
+			unlinkfileslist(tsf_audio, "filesindex/audiosize/" + row["datehour"], "clean_maxpoolsize");
 			if(DISABLE_CLEANSPOOL) {
 				break;
 			}
@@ -1116,25 +1132,25 @@ void CleanSpool::clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio) {
 		uint64_t graphsize = strtoull(row["graphsize"].c_str(), NULL, 0);
 		uint64_t audiosize = strtoull(row["audiosize"].c_str(), NULL, 0);
 		if(sip) {
-			unlinkfileslist("filesindex/sipsize/" + row["datehour"], "clean_maxpooldays");
+			unlinkfileslist(tsf_sip, "filesindex/sipsize/" + row["datehour"], "clean_maxpooldays");
 			if(DISABLE_CLEANSPOOL) {
 				break;
 			}
 		}
 		if(rtp) {
-			unlinkfileslist("filesindex/rtpsize/" + row["datehour"], "clean_maxpooldays");
+			unlinkfileslist(tsf_rtp, "filesindex/rtpsize/" + row["datehour"], "clean_maxpooldays");
 			if(DISABLE_CLEANSPOOL) {
 				break;
 			}
 		}
 		if(graph) {
-			unlinkfileslist("filesindex/graphsize/" + row["datehour"], "clean_maxpooldays");
+			unlinkfileslist(tsf_graph, "filesindex/graphsize/" + row["datehour"], "clean_maxpooldays");
 			if(DISABLE_CLEANSPOOL) {
 				break;
 			}
 		}
 		if(audio) {
-			unlinkfileslist("filesindex/audiosize/" + row["datehour"], "clean_maxpooldays");
+			unlinkfileslist(tsf_audio, "filesindex/audiosize/" + row["datehour"], "clean_maxpooldays");
 			if(DISABLE_CLEANSPOOL) {
 				break;
 			}
@@ -1174,164 +1190,161 @@ void CleanSpool::clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio) {
 }
 
 void CleanSpool::clean_obsolete_dirs() {
-	const char *typeFilesIndex[] = {
-		"sip",
-		"rtp",
-		"graph",
-		"audio"
-	};
-	unsigned int maxDays[] = {
-		opt_max.maxpoolsipdays,
-		opt_max.maxpoolrtpdays,
-		opt_max.maxpoolgraphdays,
-		opt_max.maxpoolaudiodays
-	};
-	for(unsigned int i = 0; i < sizeof(maxDays) / sizeof(maxDays[0]); i++) {
-		if(!maxDays[i]) {
-			maxDays[i] = opt_max.maxpooldays ? opt_max.maxpooldays : 14;
-		}
-	}
-	const char *typeFilesFolder[] = {
-		"SIP",
-		"RTP",
-		"GRAPH",
-		"AUDIO",
-		"ALL",
-		"REG"
-	};
-	DIR* dp = opendir(getSpoolDir());
-	if(!dp) {
+	unsigned int maxDays[10];
+	unsigned int defaultMaxPolDays = opt_max.maxpooldays ? opt_max.maxpooldays : 14;
+	maxDays[(int)tsf_sip] = opt_max.maxpoolsipdays ? opt_max.maxpoolsipdays : defaultMaxPolDays;
+	maxDays[(int)tsf_rtp] = opt_max.maxpoolrtpdays ? opt_max.maxpoolrtpdays : defaultMaxPolDays;
+	maxDays[(int)tsf_graph] = opt_max.maxpoolgraphdays ? opt_max.maxpoolgraphdays : defaultMaxPolDays;
+	maxDays[(int)tsf_audio] = opt_max.maxpoolaudiodays ? opt_max.maxpoolaudiodays : defaultMaxPolDays;
+	
+	list<string> spool_dirs;
+	this->getSpoolDirs(&spool_dirs);
+	list<string> date_dirs;
+	this->readSpoolDateDirs(&date_dirs);
+	if(!date_dirs.size()) {
 		return;
 	}
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 	}
-	while(!is_terminating() && !DISABLE_CLEANSPOOL) {
-		dirent *de = readdir(dp);
-		if(de == NULL) break;
-		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-		if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
-			int numberOfDayToNow = getNumberOfDayToNow(de->d_name);
-			if(numberOfDayToNow > 0) {
-				string daydir = getSpoolDir_string() + '/' + de->d_name;
-				bool removeHourDir = false;
-				for(int h = 0; h < 24; h++) {
-					char hour[3];
-					snprintf(hour, 3, "%02d", h);
-					string hourdir = daydir + '/' + hour;
-					if(file_exists((char*)hourdir.c_str())) {
-						sqlDb->query(
-						       "SELECT * \
-							FROM files \
-							where spool_index = " + getSpoolIndex_string() + " and \
-							      id_sensor = " + getIdSensor_string() + " and \
-							      datehour = '" + find_and_replace(de->d_name, "-", "") + hour + "'");
-						SqlDb_row row = sqlDb->fetchRow();
-						bool removeMinDir = false;
-						for(int m = 0; m < 60; m++) {
-							char min[3];
-							snprintf(min, 3, "%02d", m);
-							string mindir = hourdir + '/' + min;
-							if(file_exists((char*)mindir.c_str())) {
-								bool removeMinTypeDir = false;
-								bool keepMainMinTypeFolder = false;
-								for(uint i = 0; i < sizeof(typeFilesIndex) / sizeof(typeFilesIndex[0]); i++) {
-									string mintypedir = mindir + '/' + typeFilesFolder[i];
-									if(file_exists((char*)mintypedir.c_str())) {
-										if(row ?
-										    !atoi(row[string(typeFilesIndex[i]) + "size"].c_str()) :
-										    (unsigned int)numberOfDayToNow > maxDays[i]) {
-											rmdir_r(mintypedir.c_str());
-											syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, mintypedir.c_str());
-											removeMinTypeDir = true;
+	for(list<string>::iterator iter_date_dir = date_dirs.begin(); iter_date_dir != date_dirs.end() && !is_terminating() && !DISABLE_CLEANSPOOL; iter_date_dir++) {
+		string dateDir = *iter_date_dir;
+		int numberOfDayToNow = getNumberOfDayToNow(dateDir.c_str());
+		if(numberOfDayToNow > 0) {
+			string day_sub_dir = '/' + dateDir;
+			bool removeHourDir = false;
+			for(int h = 0; h < 24; h++) {
+				char hour[3];
+				snprintf(hour, 3, "%02d", h);
+				string hour_sub_dir = day_sub_dir + '/' + hour;
+				bool existsHourDir = false;
+				for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
+					if(file_exists(*iter_sd + hour_sub_dir)) {
+						existsHourDir = true;
+					}
+				}
+				if(existsHourDir) {
+					sqlDb->query(
+					       "SELECT * \
+						FROM files \
+						where spool_index = " + getSpoolIndex_string() + " and \
+						      id_sensor = " + getIdSensor_string() + " and \
+						      datehour = '" + find_and_replace(dateDir.c_str(), "-", "") + hour + "'");
+					SqlDb_row row = sqlDb->fetchRow();
+					bool removeMinDir = false;
+					for(int m = 0; m < 60; m++) {
+						char min[3];
+						snprintf(min, 3, "%02d", m);
+						string min_sub_dir = hour_sub_dir + '/' + min;
+						bool existsMinDir = false;
+						for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
+							if(file_exists(*iter_sd + hour_sub_dir)) {
+								existsMinDir = true;
+							}
+						}
+						if(existsMinDir) {
+							bool removeMinTypeDir = false;
+							bool keepMainMinTypeFolder = false;
+							for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_audio; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
+								string mintype_sub_dir = min_sub_dir + '/' + getSpoolTypeDir(typeSpoolFile);
+								string mintype_dir = getSpoolDir_string(typeSpoolFile) + '/' + mintype_sub_dir;
+								if(file_exists(mintype_dir)) {
+									if(row ?
+									    !atoi(row[string(getSpoolTypeFilesIndex(typeSpoolFile)) + "size"].c_str()) :
+									    (unsigned int)numberOfDayToNow > maxDays[(int)typeSpoolFile]) {
+										rmdir_r(mintype_dir);
+										syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, mintype_dir.c_str());
+										removeMinTypeDir = true;
+									} else {
+										keepMainMinTypeFolder = true;
+									}
+								}
+							}
+							if(!keepMainMinTypeFolder) {
+								for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_audio; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
+									string mintype_sub_dir = min_sub_dir + '/' + getSpoolTypeDir(typeSpoolFile);
+									string mintype_dir = getSpoolDir_string(typeSpoolFile) + '/' + mintype_sub_dir;
+									if(file_exists(mintype_dir)) {
+										rmdir_r(mintype_dir);
+										syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, mintype_dir.c_str());
+										removeMinTypeDir = true;
+									}
+								}
+							}
+							if(removeMinTypeDir) {
+								removeMinDir = true;
+								for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
+									string remove_dir = *iter_sd + '/' + min_sub_dir;
+									if(file_exists(remove_dir)) {
+										if(rmdir(remove_dir.c_str()) == 0) {
+											syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, remove_dir.c_str());
 										} else {
-											keepMainMinTypeFolder = true;
+											removeMinDir = false;
 										}
 									}
-								}
-								if(!keepMainMinTypeFolder) {
-									for(uint i = sizeof(typeFilesIndex) / sizeof(typeFilesIndex[0]); i < sizeof(typeFilesFolder) / sizeof(typeFilesFolder[0]); i++) {
-										string mintypedir = mindir + '/' + typeFilesFolder[i];
-										if(file_exists((char*)mintypedir.c_str())) {
-											rmdir_r(mintypedir.c_str());
-											syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, mintypedir.c_str());
-											removeMinTypeDir = true;
-										}
-									}
-								}
-								if(removeMinTypeDir) {
-									if(rmdir(mindir.c_str()) == 0) {
-										syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, mindir.c_str());
-									}
-									removeMinDir = true;
 								}
 							}
 						}
-						if(removeMinDir) {
-							if(rmdir(hourdir.c_str()) == 0) {
-								syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, hourdir.c_str());
+					}
+					if(removeMinDir) {
+						removeHourDir = true;
+						for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
+							string remove_dir = *iter_sd + '/' + hour_sub_dir;
+							if(file_exists(remove_dir)) {
+								if(rmdir(remove_dir.c_str()) == 0) {
+									syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, remove_dir.c_str());
+								} else {
+									removeHourDir = false;
+								}
 							}
-							removeHourDir = true;
 						}
 					}
 				}
-				if(removeHourDir) {
-					if(rmdir(daydir.c_str()) == 0) {
-						syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, daydir.c_str());
+			}
+			if(removeHourDir) {
+				for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
+					string remove_dir = *iter_sd + '/' + day_sub_dir;
+					if(file_exists(remove_dir)) {
+						if(rmdir(remove_dir.c_str()) == 0) {
+							syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, remove_dir.c_str());
+						}
 					}
 				}
 			}
 		}
 	}
-	closedir(dp);
 }
 
 void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
-	const char *typeFilesIndex[] = {
-		"sip",
-		"rtp",
-		"graph",
-		"audio"
-	};
-	const char *typeFilesFolder[] = {
-		"SIP",
-		"RTP",
-		"GRAPH",
-		"AUDIO",
-		"ALL",
-		"REG",
-		""
-	};
-	DIR* dp = opendir(getSpoolDir());
-	if(!dp) {
+	list<string> spool_dirs;
+	this->getSpoolDirs(&spool_dirs);
+	list<string> date_dirs;
+	this->readSpoolDateDirs(&date_dirs);
+	if(!date_dirs.size()) {
 		return;
 	}
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 	}
-	while(true) {
-		dirent *de = readdir(dp);
-		if(de == NULL) break;
-		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-		
-		if(de->d_name[0] == '2' && strlen(de->d_name) == 10 &&
-		   (!dirfilter || strstr(de->d_name, dirfilter))) {
-			//cycle through 24 hours
-			syslog(LOG_NOTICE, "cleanspool[%i]: check files in %s", spoolIndex, de->d_name);
+	for(list<string>::iterator iter_date_dir = date_dirs.begin(); iter_date_dir != date_dirs.end() && !is_terminating() && !DISABLE_CLEANSPOOL; iter_date_dir++) {
+	//for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
+		string dateDir = *iter_date_dir;
+		if((!dirfilter || strstr(dateDir.c_str(), dirfilter))) {
+			syslog(LOG_NOTICE, "cleanspool[%i]: check files in %s", spoolIndex, dateDir.c_str());
 			for(int h = 0; h < 24; h++) {
 				long long sumSizeMissingFilesInIndex[2] = {0, 0};
 				char hour[8];
 				sprintf(hour, "%02d", h);
 				syslog(LOG_NOTICE, "cleanspool[%i]: - hour %s", spoolIndex, hour);
-				string ymd = de->d_name;
+				string ymd = dateDir;
 				string ymdh = string(ymd.substr(0,4)) + ymd.substr(5,2) + ymd.substr(8,2) + hour;
-				long long sumSize[2][sizeof(typeFilesIndex) / sizeof(typeFilesIndex[0])];
-				for(uint i = 0; i < sizeof(typeFilesFolder) / sizeof(typeFilesFolder[0]); i++) {
+				long long sumSize[2][10];
+				for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_all; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
 					vector<string> filesInIndex;
-				        if(i < sizeof(typeFilesIndex) / sizeof(typeFilesIndex[0])) {
-						sumSize[0][i] = 0;
-						sumSize[1][i] = 0;
-						FILE *fd = fopen((getSpoolDir_string() + "/filesindex/" + typeFilesIndex[i] + "size/" + ymdh).c_str(), "r");
+					sumSize[0][(int)typeSpoolFile] = 0;
+					sumSize[1][(int)typeSpoolFile] = 0;
+					if(getSpoolTypeFilesIndex(typeSpoolFile)) {
+						FILE *fd = fopen((getSpoolDir_string(tsf_main) + "/filesindex/" + getSpoolTypeFilesIndex(typeSpoolFile) + "size/" + ymdh).c_str(), "r");
 						if(fd) {
 							char buf[4092];
 							while(fgets(buf, 4092, fd) != NULL) {
@@ -1356,19 +1369,21 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 										posSizeSeparator = NULL;
 									}
 								}
-								filesInIndex.push_back(buf);
+								string file = buf;
+								filesInIndex.push_back(file);
 								long long unsigned size = posSizeSeparator ? atoll(posSizeSeparator + 1) : 0;
-								long long unsigned fileSize = GetFileSizeDU((getSpoolDir_string() + '/' + buf).c_str());
+								eTypeSpoolFile rsltTypeSpoolFile;
+								long long unsigned fileSize = GetFileSizeDU(this->findExistsSpoolDirFile(typeSpoolFile, file, &rsltTypeSpoolFile), rsltTypeSpoolFile, spoolIndex);
 								if(fileSize == 0) {
 									fileSize = 1;
 								}
-								sumSize[0][i] += size;
-								sumSize[1][i] += fileSize;
+								sumSize[0][(int)typeSpoolFile] += size;
+								sumSize[1][(int)typeSpoolFile] += fileSize;
 								if(fileSize == (long long unsigned)-1) {
-									syslog(LOG_NOTICE, "cleanspool[%i]: ERROR - missing file from index %s", spoolIndex, buf);
+									syslog(LOG_NOTICE, "cleanspool[%i]: ERROR - missing file from index %s", spoolIndex, file.c_str());
 								} else {
 									if(size != fileSize) {
-										syslog(LOG_NOTICE, "cleanspool[%i]: ERROR - diff file size [%s - %llu i / %llu r]", spoolIndex, buf, size, fileSize);
+										syslog(LOG_NOTICE, "cleanspool[%i]: ERROR - diff file size [%s - %llu i / %llu r]", spoolIndex, file.c_str(), size, fileSize);
 									}
 								}
 							}
@@ -1382,40 +1397,36 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 					for(int m = 0; m < 60; m++) {
 						char min[8];
 						sprintf(min, "%02d", m);
-						string timetypedir = string(de->d_name) + '/' + hour + '/' + min + '/' + typeFilesFolder[i];
-						DIR* dp = opendir((getSpoolDir_string() + '/' + timetypedir).c_str());
+						string timetypedir = dateDir + '/' + hour + '/' + min + '/' + getSpoolTypeDir(typeSpoolFile);
+						DIR* dp = opendir(this->findExistsSpoolDirFile(typeSpoolFile, timetypedir).c_str());
 						if(!dp) {
 							continue;
 						}
 						dirent* de2;
-						while(true) {
-							de2 = readdir( dp );
-							if(de2 == NULL) break;
-							if(de2->d_type == 4 or string(de2->d_name) == ".." or string(de2->d_name) == ".") continue;
-							filesInFolder.push_back(timetypedir + '/' + de2->d_name);
+						while((de2 = readdir(dp)) != NULL) {
+							if(de2->d_type != 4 && string(de2->d_name) != ".." && string(de2->d_name) != ".") {
+								filesInFolder.push_back(timetypedir + '/' + de2->d_name);
+							}
 						}
 						closedir(dp);
 					}
 					for(uint j = 0; j < filesInFolder.size(); j++) {
 						if(!std::binary_search(filesInIndex.begin(), filesInIndex.end(), filesInFolder[j])) {
-							long long size = GetFileSize((getSpoolDir_string() + '/' + filesInFolder[j]).c_str());
-							long long sizeDU = GetFileSizeDU((getSpoolDir_string() + '/' + filesInFolder[j]).c_str());
+							long long size = GetFileSize(getSpoolDir_string(typeSpoolFile) + '/' + filesInFolder[j]);
+							long long sizeDU = GetFileSizeDU(getSpoolDir_string(typeSpoolFile) + '/' + filesInFolder[j], typeSpoolFile, spoolIndex);
 							sumSizeMissingFilesInIndex[0] += size;
 							sumSizeMissingFilesInIndex[1] += sizeDU;
 							syslog(LOG_NOTICE, "cleanspool[%i]: ERROR - %s %s - %llu / %llu",
 							       spoolIndex,
-							       i < sizeof(typeFilesIndex) / sizeof(typeFilesIndex[0]) ?
-								"missing file in index" :
-								"unknown file", 
+							       "missing file in index", 
 							       filesInFolder[j].c_str(),
 							       size,
 							       sizeDU);
 						}
 					}
 				}
-				
-				if(sumSize[0][0] || sumSize[0][1] || sumSize[0][2] || sumSize[0][3] ||
-				   sumSize[1][0] || sumSize[1][1] || sumSize[1][2] || sumSize[1][3]) {
+				if(sumSize[0][(int)tsf_sip] || sumSize[0][(int)tsf_rtp] || sumSize[0][(int)tsf_graph] || sumSize[0][(int)tsf_audio] ||
+				   sumSize[1][(int)tsf_sip] || sumSize[1][(int)tsf_rtp] || sumSize[1][(int)tsf_graph] || sumSize[1][(int)tsf_audio]) {
 					sqlDb->query(
 					       "SELECT SUM(sipsize) AS sipsize,\
 						       SUM(rtpsize) AS rtpsize,\
@@ -1423,46 +1434,46 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 						       SUM(audiosize) AS audiosize,\
 						       count(*) as cnt\
 						FROM files\
-						WHERE datehour like '" + string(de->d_name).substr(0, 4) + 
-									 string(de->d_name).substr(5, 2) + 
-									 string(de->d_name).substr(8, 2) + hour + "%' and \
+						WHERE datehour like '" + dateDir.substr(0, 4) + 
+									 dateDir.substr(5, 2) + 
+									 dateDir.substr(8, 2) + hour + "%' and \
 						      spool_index = " + getSpoolIndex_string() + " and \
 						      id_sensor = " + getIdSensor_string());
 					SqlDb_row rowSum = sqlDb->fetchRow();
 					if(rowSum && atol(rowSum["cnt"].c_str()) > 0) {
-						if(atoll(rowSum["sipsize"].c_str()) == sumSize[0][0] &&
-						   atoll(rowSum["rtpsize"].c_str()) == sumSize[0][1] &&
-						   atoll(rowSum["graphsize"].c_str()) == sumSize[0][2] &&
-						   atoll(rowSum["audiosize"].c_str()) == sumSize[0][3] &&
-						   atoll(rowSum["sipsize"].c_str()) == sumSize[1][0] &&
-						   atoll(rowSum["rtpsize"].c_str()) == sumSize[1][1] &&
-						   atoll(rowSum["graphsize"].c_str()) == sumSize[1][2] &&
-						   atoll(rowSum["audiosize"].c_str()) == sumSize[1][3]) {
+						if(atoll(rowSum["sipsize"].c_str()) == sumSize[0][(int)tsf_sip] &&
+						   atoll(rowSum["rtpsize"].c_str()) == sumSize[0][(int)tsf_rtp] &&
+						   atoll(rowSum["graphsize"].c_str()) == sumSize[0][(int)tsf_graph] &&
+						   atoll(rowSum["audiosize"].c_str()) == sumSize[0][(int)tsf_audio] &&
+						   atoll(rowSum["sipsize"].c_str()) == sumSize[1][(int)tsf_sip] &&
+						   atoll(rowSum["rtpsize"].c_str()) == sumSize[1][(int)tsf_rtp] &&
+						   atoll(rowSum["graphsize"].c_str()) == sumSize[1][(int)tsf_graph] &&
+						   atoll(rowSum["audiosize"].c_str()) == sumSize[1][(int)tsf_audio]) {
 							syslog(LOG_NOTICE, "cleanspool[%i]: # OK sum in files by index", spoolIndex);
 						} else {
-							if(atoll(rowSum["sipsize"].c_str()) != sumSize[0][0]) {
-								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum sipsize in files [ %llu ii / %llu f ]", spoolIndex, sumSize[0][0], atoll(rowSum["sipsize"].c_str()));
+							if(atoll(rowSum["sipsize"].c_str()) != sumSize[0][(int)tsf_sip]) {
+								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum sipsize in files [ %llu ii / %llu f ]", spoolIndex, sumSize[0][(int)tsf_sip], atoll(rowSum["sipsize"].c_str()));
 							}
-							if(atoll(rowSum["sipsize"].c_str()) != sumSize[1][0]) {
-								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum sipsize in files [ %llu ri / %llu f ]", spoolIndex, sumSize[1][0], atoll(rowSum["sipsize"].c_str()));
+							if(atoll(rowSum["sipsize"].c_str()) != sumSize[1][(int)tsf_sip]) {
+								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum sipsize in files [ %llu ri / %llu f ]", spoolIndex, sumSize[1][(int)tsf_sip], atoll(rowSum["sipsize"].c_str()));
 							}
-							if(atoll(rowSum["rtpsize"].c_str()) != sumSize[0][1]) {
-								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum rtpsize in files [ %llu ii / %llu f ]", spoolIndex, sumSize[0][1], atoll(rowSum["rtpsize"].c_str()));
+							if(atoll(rowSum["rtpsize"].c_str()) != sumSize[0][(int)tsf_rtp]) {
+								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum rtpsize in files [ %llu ii / %llu f ]", spoolIndex, sumSize[0][(int)tsf_rtp], atoll(rowSum["rtpsize"].c_str()));
 							}
-							if(atoll(rowSum["rtpsize"].c_str()) != sumSize[1][1]) {
-								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum rtpsize in files [ %llu ri / %llu f ]", spoolIndex, sumSize[1][1], atoll(rowSum["rtpsize"].c_str()));
+							if(atoll(rowSum["rtpsize"].c_str()) != sumSize[1][(int)tsf_rtp]) {
+								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum rtpsize in files [ %llu ri / %llu f ]", spoolIndex, sumSize[1][(int)tsf_rtp], atoll(rowSum["rtpsize"].c_str()));
 							}
-							if(atoll(rowSum["graphsize"].c_str()) != sumSize[0][2]) {
-								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum graphsize in files [ %llu ii / %llu f ]", spoolIndex, sumSize[0][2], atoll(rowSum["graphsize"].c_str()));
+							if(atoll(rowSum["graphsize"].c_str()) != sumSize[0][(int)tsf_graph]) {
+								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum graphsize in files [ %llu ii / %llu f ]", spoolIndex, sumSize[0][(int)tsf_graph], atoll(rowSum["graphsize"].c_str()));
 							}
-							if(atoll(rowSum["graphsize"].c_str()) != sumSize[1][2]) {
-								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum graphsize in files [ %llu ri / %llu f ]", spoolIndex, sumSize[1][2], atoll(rowSum["graphsize"].c_str()));
+							if(atoll(rowSum["graphsize"].c_str()) != sumSize[1][(int)tsf_graph]) {
+								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum graphsize in files [ %llu ri / %llu f ]", spoolIndex, sumSize[1][(int)tsf_graph], atoll(rowSum["graphsize"].c_str()));
 							}
-							if(atoll(rowSum["audiosize"].c_str()) != sumSize[0][3]) {
-								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum audiosize in files [ %llu ii / %llu f ]", spoolIndex, sumSize[0][3], atoll(rowSum["audiosize"].c_str()));
+							if(atoll(rowSum["audiosize"].c_str()) != sumSize[0][(int)tsf_audio]) {
+								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum audiosize in files [ %llu ii / %llu f ]", spoolIndex, sumSize[0][(int)tsf_audio], atoll(rowSum["audiosize"].c_str()));
 							}
-							if(atoll(rowSum["audiosize"].c_str()) != sumSize[1][3]) {
-								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum audiosize in files [ %llu ri / %llu f ]", spoolIndex, sumSize[1][3], atoll(rowSum["audiosize"].c_str()));
+							if(atoll(rowSum["audiosize"].c_str()) != sumSize[1][(int)tsf_audio]) {
+								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum audiosize in files [ %llu ri / %llu f ]", spoolIndex, sumSize[1][(int)tsf_audio], atoll(rowSum["audiosize"].c_str()));
 							}
 						}
 					} else {
@@ -1476,7 +1487,6 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 			}
 		}
 	}
-	closedir(dp);
 }
 
 unsigned int CleanSpool::get_reduk_maxpoolsize(unsigned int maxpoolsize) {
@@ -1502,4 +1512,66 @@ bool CleanSpool::fileIsOpenTar(list<string> &listOpenTars, string &file) {
 		}
 	}
 	return(false);
+}
+
+void CleanSpool::readSpoolDateDirs(list<string> *dirs) {
+	dirs->clear();
+	list<string> spool_dirs;
+	this->getSpoolDirs(&spool_dirs);
+	for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
+		DIR* dp = opendir((*iter_sd).c_str());
+		if(dp) {
+			dirent* de;
+			while((de = readdir(dp)) != NULL) {
+				if(de->d_name[0] == '2' && strlen(de->d_name) == 10) {
+					bool exists = false;
+					for(list<string>::iterator iter_dir = (*dirs).begin(); iter_dir != (*dirs).end(); iter_dir++) {
+						if(de->d_name == *iter_dir) {
+							exists = true;
+							break;
+						}
+					}
+					if(!exists) {
+						dirs->push_back(de->d_name);
+					}
+				}
+			}
+			closedir(dp);
+		}
+	}
+}
+
+void CleanSpool::getSpoolDirs(list<string> *spool_dirs) {
+	spool_dirs->clear();
+	for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_audio; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
+		string spoolDir = getSpoolDir(typeSpoolFile);
+		bool exists = false;
+		for(list<string>::iterator iter_sd = spool_dirs->begin(); iter_sd != spool_dirs->end(); iter_sd++) {
+			if(spoolDir == *iter_sd) {
+				exists = true;
+				break;
+			}
+		}
+		if(!exists) {
+			spool_dirs->push_back(spoolDir);
+		}
+	}
+}
+
+string CleanSpool::findExistsSpoolDirFile(eTypeSpoolFile typeSpoolFile, string pathFile, eTypeSpoolFile *rsltTypeSpoolFile) {
+	if(rsltTypeSpoolFile) {
+		*rsltTypeSpoolFile = typeSpoolFile;
+	}
+	string spool_dir;
+	for(int i = 0; i < 2; i++) {
+		eTypeSpoolFile checkTypeSpoolFile = i == 0 ? typeSpoolFile : tsf_main;
+		if(i == 1 && rsltTypeSpoolFile) {
+			*rsltTypeSpoolFile = checkTypeSpoolFile;
+		}
+		spool_dir = getSpoolDir_string(checkTypeSpoolFile) + '/' + pathFile;
+		if(i == 0 && file_exists(spool_dir)) {
+			break;
+		}
+	}
+	return(spool_dir);
 }
