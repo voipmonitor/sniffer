@@ -45,6 +45,7 @@ public:
 	void check_index_date(string date, SqlDb *sqlDb);
 	string getMaxSpoolDate();
 	static void run_cleanProcess(int spoolIndex = -1);
+	static void run_clean_obsolete(int spoolIndex = -1);
 	static void run_reindex_all(const char *reason, int spoolIndex = -1);
 	static void run_reindex_date(string date, int spoolIndex = -1);
 	static void run_reindex_date_hour(string date, int hour, int spoolIndex = -1);

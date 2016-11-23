@@ -4250,6 +4250,7 @@ void test() {
 		
 	case 304:
 	case 305:
+	case 306:
 		{
 		sqlStore = new FILE_LINE(43061) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
 						    cloud_host, cloud_token);
@@ -4265,6 +4266,9 @@ void test() {
 			break;
 		case 305:
 			CleanSpool::run_cleanProcess();
+			break;
+		case 306:
+			CleanSpool::run_clean_obsolete();
 			break;
 		}
 		set_terminating();
@@ -5534,6 +5538,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"diff-days", 1, 0, 303},
 	    {"reindex-all", 0, 0, 304},
 	    {"run-cleanspool", 0, 0, 305},
+	    {"clean-obsolete", 0, 0, 306},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -5851,6 +5856,7 @@ void get_command_line_arguments() {
 				break;
 			case 304:
 			case 305:
+			case 306:
 				opt_test = c;
 				break;
 			case 'c':
@@ -8480,11 +8486,13 @@ eTypeSpoolFile getTypeSpoolFile(const char *filePathName) {
 }
 
 eTypeSpoolFile findTypeSpoolFile(unsigned int spool_index, const char *filePathName) {
+	eTypeSpoolFile type_spool_file_check;
 	for(int i = 0; i < 2; i++) {
-		eTypeSpoolFile type_spool_file_check = i == 0 ? getTypeSpoolFile(filePathName) : tsf_main;
+		type_spool_file_check = i == 0 ? getTypeSpoolFile(filePathName) : tsf_main;
 		if(file_exists(string(getSpoolDir(type_spool_file_check, spool_index)) + '/' + filePathName) ||
 		   type_spool_file_check <= tsf_sip) {
-			return(type_spool_file_check);
+			break;
 		}
 	}
+	return(type_spool_file_check);
 }

@@ -170,6 +170,15 @@ void CleanSpool::run_cleanProcess(int spoolIndex) {
 	}
 }
 
+void CleanSpool::run_clean_obsolete(int spoolIndex) {
+	for(int i = 0; i < 2; i++) {
+		if(cleanSpool[i] &&
+		   (spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex)) {
+			cleanSpool[i]->clean_obsolete_dirs();
+		}
+	}
+}
+
 void CleanSpool::run_reindex_all(const char *reason, int spoolIndex) {
 	for(int i = 0; i < 2; i++) {
 		if(cleanSpool[i] &&
@@ -1238,7 +1247,7 @@ void CleanSpool::clean_obsolete_dirs() {
 						string min_sub_dir = hour_sub_dir + '/' + min;
 						bool existsMinDir = false;
 						for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
-							if(file_exists(*iter_sd + hour_sub_dir)) {
+							if(file_exists(*iter_sd + min_sub_dir)) {
 								existsMinDir = true;
 							}
 						}
@@ -1261,7 +1270,7 @@ void CleanSpool::clean_obsolete_dirs() {
 								}
 							}
 							if(!keepMainMinTypeFolder) {
-								for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_audio; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
+								for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_skinny; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
 									string mintype_sub_dir = min_sub_dir + '/' + getSpoolTypeDir(typeSpoolFile);
 									string mintype_dir = getSpoolDir_string(typeSpoolFile) + '/' + mintype_sub_dir;
 									if(file_exists(mintype_dir)) {
