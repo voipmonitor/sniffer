@@ -22,6 +22,10 @@ bool is_number(const std::string& s) {
 	return true;
 }
 
+bool isStringNull(string &str) {
+	return(str == "" || str == "\\N");
+}
+
 void filter_base::loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow) {
 	baseRow->direction = sqlRow->isNull("direction") ? 0 : atoi((*sqlRow)["direction"].c_str());
 	baseRow->rtp = sqlRow->isNull("rtp") ? -1 : atoi((*sqlRow)["rtp"].c_str());
@@ -35,6 +39,21 @@ void filter_base::loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow
 	baseRow->mos_lqo = sqlRow->isNull("mos_lqo") ? -1 : atoi((*sqlRow)["mos_lqo"].c_str());
 	baseRow->hide_message = sqlRow->isNull("hide_message") ? -1 : atoi((*sqlRow)["hide_message"].c_str());
 	baseRow->spool_2 = sqlRow->isNull("spool_2") ? 0 : atoi((*sqlRow)["spool_2"].c_str());
+}
+
+void filter_base::loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow) {
+	baseRow->direction = isStringNull((*row)["direction"]) ? 0 : atoi((*row)["direction"].c_str());
+	baseRow->rtp = isStringNull((*row)["rtp"]) ? -1 : atoi((*row)["rtp"].c_str());
+	baseRow->rtcp = isStringNull((*row)["rtcp"]) ? -1 : atoi((*row)["rtcp"].c_str());
+	baseRow->sip = isStringNull((*row)["sip"]) ? -1 : atoi((*row)["sip"].c_str());
+	baseRow->reg = isStringNull((*row)["register"]) ? -1 : atoi((*row)["register"].c_str());
+	baseRow->graph = isStringNull((*row)["graph"]) ? -1 : atoi((*row)["graph"].c_str());
+	baseRow->wav = isStringNull((*row)["wav"]) ? -1 : atoi((*row)["wav"].c_str());
+	baseRow->skip = isStringNull((*row)["skip"]) ? -1 : atoi((*row)["skip"].c_str());
+	baseRow->script = isStringNull((*row)["script"]) ? -1 : atoi((*row)["script"].c_str());
+	baseRow->mos_lqo = isStringNull((*row)["mos_lqo"]) ? -1 : atoi((*row)["mos_lqo"].c_str());
+	baseRow->hide_message = isStringNull((*row)["hide_message"]) ? -1 : atoi((*row)["hide_message"].c_str());
+	baseRow->spool_2 = isStringNull((*row)["spool_2"]) ? 0 : atoi((*row)["spool_2"].c_str());
 }
 
 unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
@@ -346,6 +365,7 @@ void TELNUMfilter::add_payload(t_payload *payload) {
 
 
 void TELNUMfilter::load() {
+	this->loadFile();
 	if(opt_nocdr || is_sender()) {
 		return;
 	}
@@ -367,10 +387,38 @@ void TELNUMfilter::load() {
 		np->direction = vectDbRow[i].direction;
 		np->flags = this->getFlagsFromBaseData(&vectDbRow[i]);;
 		strncpy(np->prefix, vectDbRow[i].prefix, MAX_PREFIX);
-
 		add_payload(np);
 	}
 };
+
+void TELNUMfilter::loadFile() {
+	extern char opt_capture_rules_telnum_file[1024];
+	if(is_sender() || !opt_capture_rules_telnum_file[0]) {
+		return;
+	}
+	cCsv csv;
+	csv.setFirstRowContainFieldNames();
+	csv.load(opt_capture_rules_telnum_file);
+	unsigned rowsCount = csv.getRowsCount();
+	vector<db_row> vectDbRow;
+	for(unsigned i = 1; i <= rowsCount; i++) {
+		map<string, string> row;
+		csv.getRow(i, &row);
+		
+		db_row* filterRow = new(db_row);
+		strncpy(filterRow->prefix, trim_str(row["prefix"]).c_str(), MAX_PREFIX);
+		this->loadBaseDataRow(&row, filterRow);
+		vectDbRow.push_back(*filterRow);
+		delete filterRow;
+	}
+	for (size_t i = 0; i < vectDbRow.size(); ++i) {
+		t_payload *np = new(t_payload);
+		np->direction = vectDbRow[i].direction;
+		np->flags = this->getFlagsFromBaseData(&vectDbRow[i]);;
+		strncpy(np->prefix, vectDbRow[i].prefix, MAX_PREFIX);
+		add_payload(np);
+	}
+}
 
 int TELNUMfilter::_add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst) {
 

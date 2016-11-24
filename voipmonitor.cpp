@@ -459,6 +459,8 @@ unsigned int graph_silence = GRAPH_SILENCE;
 unsigned int graph_event = GRAPH_EVENT;
 int opt_mos_lqo = 0;
 
+char opt_capture_rules_telnum_file[1024];
+
 bool opt_cdr_partition = 1;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
@@ -4005,6 +4007,27 @@ void test() {
 	 
 	case 1: {
 	 
+		cCsv *csv = new cCsv();
+		csv->setFirstRowContainFieldNames();
+		csv->load("/home/jumbox/Plocha/table.csv");
+		cout << "---" << endl;
+		csv->dump();
+		cout << "---" << endl;
+		cout << csv->getRowsCount() << endl;
+		cout << "---" << endl;
+		map<string, string> row;
+		csv->getRow(1, &row);
+		for(map<string, string>::iterator iter = row.begin(); iter != row.end(); iter++) {
+			cout << iter->first << " : " << iter->second << endl;
+		}
+		cout << "---" << endl;
+		csv->getRow(csv->getRowsCount(), &row);
+		for(map<string, string>::iterator iter = row.begin(); iter != row.end(); iter++) {
+			cout << iter->first << " : " << iter->second << endl;
+		}
+		cout << "---" << endl;
+		break;
+	 
 		cout << _sqlEscapeString("abc'\"\\\n\rdef", 0, NULL) << endl;
 		char buff[100];
 		_sqlEscapeString("abc'\"\\\n\rdef", 0, buff, NULL);
@@ -4787,6 +4810,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(43147) cConfigItem_yesno("mirror_require_confirmation", &opt_pcap_queues_mirror_require_confirmation));
 			addConfigItem(new FILE_LINE(43450) cConfigItem_yesno("mirror_use_checksum", &opt_pcap_queues_mirror_use_checksum));
 			setDisableIfEnd();
+				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("capture_rules_telnum_file", opt_capture_rules_telnum_file, sizeof(opt_capture_rules_telnum_file)));
 		subgroup("scaling");
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem((new FILE_LINE(43148) cConfigItem_yesno("threading_mod"))
@@ -7589,6 +7614,10 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mirror_use_checksum", NULL))) {
 		opt_pcap_queues_mirror_use_checksum = yesno(value);
+	}
+	
+	if((value = ini.GetValue("general", "capture_rules_telnum_file", NULL))) {
+		strncpy(opt_capture_rules_telnum_file, value, sizeof(opt_capture_rules_telnum_file));
 	}
 	
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {

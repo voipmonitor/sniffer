@@ -3086,6 +3086,36 @@ private:
 	volatile int _sync;
 };
 
+class cCsv {
+public:
+	enum eExplodeRowResult {
+		elr_ok,
+		elr_incomplete,
+		elr_fail
+	};
+	struct sRow: public vector<string> {
+		void dump();
+	};
+	struct sTable : public vector<sRow> {
+		void dump();
+	};
+public:
+	cCsv();
+	void setFirstRowContainFieldNames(bool firstRowContainFieldNames = true);
+	void setFieldSeparator(char fieldSeparator);
+	int load(const char *fileName, sTable *table = NULL);
+	eExplodeRowResult explodeRow(const char *line, sRow *row);
+	void normalizeCellWithQuotationBorder(string *cell);
+	unsigned getRowsCount();
+	void getRow(unsigned numRow, list<string> *row);
+	void getRow(unsigned numRow, map<string, string> *row);
+	void dump();
+private:
+	bool firstRowContainFieldNames;
+	char fieldSeparator;
+	sTable table;
+};
+
 
 void read_pcap(const char *pcapFileName);
 

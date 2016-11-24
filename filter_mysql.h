@@ -70,6 +70,7 @@ struct filter_db_row_base {
 class filter_base {
 protected:
 	void loadBaseDataRow(class SqlDb_row *sqlRow, filter_db_row_base *baseRow);
+	void loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow);
 	unsigned int getFlagsFromBaseData(filter_db_row_base *baseRow);
 	void setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned int filterFlags);
 };
@@ -148,6 +149,7 @@ public:
         TELNUMfilter();
         ~TELNUMfilter();
         void load();
+	void loadFile();
 	void add_payload(t_payload *payload);
 	int _add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst);
         void dump(t_node_tel *node = NULL);

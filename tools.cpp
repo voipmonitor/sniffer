@@ -5193,6 +5193,166 @@ double cThreadMonitor::getCpuUsagePerc(sThread *thread) {
 }
 
 
+void cCsv::sRow::dump() {
+	for(unsigned i = 0; i < this->size(); i++) {
+		cout << (*this)[i];
+		cout << " | ";
+	}
+}
+
+void cCsv::sTable::dump() {
+	for(unsigned i = 0; i < this->size(); i++) {
+		cout << (i + 1) << " : ";
+		(*this)[i].dump();
+		cout << endl;
+	}
+}
+
+cCsv::cCsv() {
+	fieldSeparator = ',';
+	firstRowContainFieldNames = false;
+}
+
+void cCsv::setFirstRowContainFieldNames(bool firstRowContainFieldNames) {
+	this->firstRowContainFieldNames = firstRowContainFieldNames;
+}
+
+void cCsv::setFieldSeparator(char fieldSeparator) {
+	this->fieldSeparator = fieldSeparator;
+}
+
+int cCsv::load(const char *fileName, sTable *table) {
+	if(!table) {
+		table = &this->table;
+	}
+	table->clear();
+	FILE *file = fopen(fileName, "r");
+	if(!file) {
+		return(-1);
+	}
+	unsigned inputRowBuffLength = 100000;
+	char *inputRowBuff = new FILE_LINE(0) char[inputRowBuffLength + 1];
+	inputRowBuff[inputRowBuffLength] = 0;
+	string inputRow;
+	unsigned counterLines = 0;
+	while(fgets(inputRowBuff, inputRowBuffLength, file)) {
+		if(!counterLines) {
+			if(strlen(inputRowBuff) > 4 && !strncmp(inputRowBuff, "sep=", 4) &&
+			   (inputRowBuff[4] == ',' || inputRowBuff[4] == ';')) {
+				fieldSeparator = inputRowBuff[4];
+				++counterLines;
+				continue;
+			}
+		}
+		inputRow += inputRowBuff;
+		sRow row;
+		eExplodeRowResult elr = this->explodeRow(inputRow.c_str(), &row);
+		switch(elr) {
+		case elr_ok:
+			table->push_back(row);
+			inputRow.resize(0);
+		case elr_incomplete:
+			break;
+		case elr_fail:
+			inputRow.resize(0);
+			break;
+		}
+		++counterLines;
+	}
+	delete [] inputRowBuff;
+	fclose(file);
+	return(table->size());
+}
+
+cCsv::eExplodeRowResult cCsv::explodeRow(const char *line, sRow *row) {
+	bool incomplete = false;
+	row->clear();
+	unsigned lengthLine = strlen(line);
+	while(lengthLine &&
+	      (line[lengthLine - 1] == '\r' || line[lengthLine - 1] == '\n')) {
+		--lengthLine;
+	}
+	unsigned pos = 0;
+	while(pos < lengthLine) {
+		string cell;
+		string separator = string(1, fieldSeparator);
+		if(line[pos] == '"') {
+			separator = string(1, '"') + string(1, fieldSeparator);
+			++pos;
+		}
+		const char *posSep_ptr = strstr(line + pos, separator.c_str());
+		if(posSep_ptr) {
+			unsigned posSep = posSep_ptr - line;
+			cell = string(line + pos, posSep - pos);
+			if(separator[0] == '"') {
+				this->normalizeCellWithQuotationBorder(&cell);
+			}
+			row->push_back(cell);
+			pos = posSep + separator.length();
+		} else {
+			cell = string(line + pos, lengthLine - pos);
+			if(separator[0] == '"') {
+				if(cell[cell.length() - 1] == '"') {
+					cell.resize(cell.length() - 1);
+				} else {
+					incomplete = true;
+				}
+				this->normalizeCellWithQuotationBorder(&cell);
+			}
+			row->push_back(cell);
+			break;
+		}
+	}
+	return(row->size() ?
+		(incomplete ? elr_incomplete : elr_ok) :
+		elr_fail);
+}
+
+void cCsv::normalizeCellWithQuotationBorder(string *cell) {
+	find_and_replace(*cell, "“", "\"");
+	find_and_replace(*cell, "\"\"", "\"");
+	if(cell->length() >= 3 &&
+	   cell->substr(0, 2) == "=\"" &&
+	   (*cell)[cell->length() - 1] == '"') {
+		*cell = cell->substr(2, cell->length() - 3);
+	}
+}
+
+unsigned cCsv::getRowsCount() {
+	return(firstRowContainFieldNames ?
+		(table.size() > 1 ? table.size() - 1 : 0) :
+		table.size());
+}
+
+void cCsv::getRow(unsigned numRow, list<string> *row) {
+	row->clear();
+	if(numRow > getRowsCount()) {
+		return;
+	}
+	sRow *selectedRow = &table[numRow - 1];
+	for(unsigned i = 0; i < selectedRow->size(); i++) {
+		row->push_back((*selectedRow)[i]);
+	}
+}
+
+void cCsv::getRow(unsigned numRow, map<string, string> *row) {
+	row->clear();
+	if(numRow > getRowsCount() ||
+	   !firstRowContainFieldNames) {
+		return;
+	}
+	sRow *headerRow = &table[0];
+	sRow *selectedRow = &table[numRow];
+	for(unsigned i = 0; i < headerRow->size(); i++) {
+		(*row)[(*headerRow)[i]] = i < selectedRow->size() ? (*selectedRow)[i] : "";
+	}
+}
+
+void cCsv::dump() {
+	table.dump();
+}
+
+
 bool is_ok_pcap_header(pcap_sf_pkthdr *header, pcap_sf_pkthdr *prev_header) {
 	return(header->ts.tv_sec >= prev_header->ts.tv_sec && 
 	       header->ts.tv_sec < prev_header->ts.tv_sec + 60 * 60 && 
