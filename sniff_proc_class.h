@@ -97,7 +97,7 @@ public:
 		}
 		while(data_len > 0) {
 			unsigned int contentLength = 0;
-			u_char *endHeaderSepPos = (u_char*)memmem(data, data_len, "\r\n\r\n", 4);
+			u_char *endHeaderSepPos = (u_char*)memmem(data, min(data_len, 5000), "\r\n\r\n", 4);
 			if(endHeaderSepPos) {
 				*endHeaderSepPos = 0;
 				for(int pass = 0; pass < 2; ++pass) {

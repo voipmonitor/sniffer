@@ -5968,7 +5968,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 					tcpReassemblySipExt->push_tcp(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet, packetS->_packet_alloc,
 								      packetS->block_store, packetS->block_store_index, packetS->_blockstore_lock,
 								      packetS->handle_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
-								      this);
+								      this, isSip);
 					packetS->_packet_alloc = false;
 					packetS->_blockstore_lock = false;
 					PACKET_S_PROCESS_DESTROY(&packetS);

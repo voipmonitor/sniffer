@@ -56,6 +56,10 @@ void TcpReassemblyStream_packet_var::push(TcpReassemblyStream_packet packet) {
 }
 
 void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
+	if(link->reassembly->enableSmartCompleteData) {
+		this->clearCompleteData();
+		this->is_ok = false;
+	}
 	map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter;
 	iter = this->queuePacketVars.find(packet.header_tcp.seq);
 	if(debug_seq && packet.header_tcp.seq == debug_seq) {
@@ -440,6 +444,10 @@ bool TcpReassemblyStream::saveCompleteData(bool check, TcpReassemblyStream *prev
 		}
 	}
 	return(false);
+}
+
+bool TcpReassemblyStream::isSetCompleteData() {
+	return(this->complete_data.getData() != NULL);
 }
 
 void TcpReassemblyStream::clearCompleteData() {
@@ -1262,6 +1270,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 		TcpReassemblyStream *stream = this->queue_by_ack[ack];
 		if(stream) {
 			bool okData = false;
+			unsigned streamsSizePass0 = 0;
 			for(int pass = 0; pass < 2 && !okData; pass++) {
 				// pass:
 				//  - 0 - get prev streams first
@@ -1277,7 +1286,9 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 				if(pass == 0) {
 					TcpReassemblyStream *prevStream;
 					while((prevStream = findStreamByMaxNextSeq(streams[streams.size() - 1]->min_seq)) != NULL) {
-						if(prevStream->ok(false, true, prevStream->max_next_seq,
+						if((reassembly->enableSmartCompleteData &&
+						    prevStream->isSetCompleteData() && prevStream->is_ok) ||
+						   prevStream->ok(false, true, prevStream->max_next_seq,
 								  0, 0, NULL, enableDebug,
 								  prevStream->min_seq)) {
 							streams.push_back(prevStream);
@@ -1287,7 +1298,8 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 							break;
 						}
 					}
-					if(streams.size() == 1) {
+					streamsSizePass0 = streams.size();
+					if(streamsSizePass0 == 1) {
 						pass = 2;
 					}
 				}
@@ -1308,9 +1320,14 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 						}
 					}
 					if(pass == 1) {
+						if(streams.size() == streamsSizePass0 - 1) {
+							break;
+						}
 						TcpReassemblyStream *prevStream = findStreamByMaxNextSeq(streams[streams.size() - 1]->min_seq);
 						if(prevStream) {
-							if(prevStream->ok(false, true, prevStream->max_next_seq,
+							if((reassembly->enableSmartCompleteData &&
+							    prevStream->isSetCompleteData() && prevStream->is_ok) ||
+							   prevStream->ok(false, true, prevStream->max_next_seq,
 									  0, 0, NULL, enableDebug,
 									  prevStream->min_seq)) {
 								streams.push_back(prevStream);
@@ -1330,7 +1347,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 					for(unsigned i = streams.size(); i > 0; i--) {
 						this->ok_streams.push_back(streams[i - 1]);
 					}
-				} else {
+				} else if(!reassembly->enableSmartCompleteData) {
 					for(unsigned i = 0; i < streams.size();i++) {
 						streams[i]->clearCompleteData();
 						streams[i]->is_ok = false;
@@ -2007,10 +2024,15 @@ u_int32_t TcpReassemblyLink::getRemainDataLength(TcpReassemblyDataItem::eDirecti
 	return(index >= 0 && remainData[index] ? remainDataLength[index] : 0);
 }
 
+list<d_u_int32_t> *TcpReassemblyLink::getSipOffsets() {
+	return(&reassembly->sip_offsets);
+}
+
 
 TcpReassembly::TcpReassembly(eType type) {
 	this->type = type;
 	this->_sync_links = 0;
+	this->_sync_push = 0;
 	this->enableHttpForceInit = false;
 	this->enableCrazySequence = false;
 	this->enableWildLink = false;
@@ -2025,6 +2047,8 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enableCleanupThread = false;
 	this->enablePacketThread = false;
 	this->dataCallback = NULL;
+	this->enablePushLock = false;
+	this->enableSmartCompleteData = false;
 	this->act_time_from_header = 0;
 	this->last_time = 0;
 	this->last_cleanup_call_time_from_header = 0;
@@ -2217,7 +2241,7 @@ void* TcpReassembly::packetThreadFunction(void*) {
 			this->_push(packet.header, packet.header_ip, packet.packet,
 				    packet.block_store, packet.block_store_index,
 				    packet.handle_index, packet.dlt, packet.sensor_id, packet.sensor_ip,
-				    packet.uData);
+				    packet.uData, packet.isSip);
 			if(packet.alloc_packet) {
 				delete packet.header;
 				delete [] packet.packet;
@@ -2248,7 +2272,7 @@ void TcpReassembly::addLog(const char *logString) {
 void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet, bool alloc_packet,
 			     pcap_block_store *block_store, int block_store_index, bool block_store_locked,
 			     u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
-			     void *uData) {
+			     void *uData, bool isSip) {
 	if((debug_limit_counter && debug_counter > debug_limit_counter) ||
 	   !(type == ssl || 
 	     type == sip ||
@@ -2274,12 +2298,17 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 		_packet.sensor_id = sensor_id;
 		_packet.sensor_ip = sensor_ip;
 		_packet.uData = uData;
+		_packet.isSip = isSip;
 		this->packetQueue.push(_packet);
 	} else {
+		if(this->enablePushLock) {
+		}
 		this->_push(header, header_ip, packet,
 			    block_store, block_store_index,
 			    handle_index, dlt, sensor_id, sensor_ip,
-			    uData);
+			    uData, isSip);
+		if(this->enablePushLock) {
+		}
 		if(alloc_packet) {
 			delete header;
 			delete [] packet;
@@ -2306,7 +2335,8 @@ bool TcpReassembly::checkOkData(u_char * data, unsigned datalen, bool strict) {
 		}
 		break;
 	case sip:
-		if(checkOkSipData(data, datalen, strict)) {
+		this->sip_offsets.clear();
+		if(checkOkSipData(data, datalen, strict, &this->sip_offsets)) {
 			return(true);
 		}
 		break;
@@ -2317,7 +2347,7 @@ bool TcpReassembly::checkOkData(u_char * data, unsigned datalen, bool strict) {
 void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 			  pcap_block_store *block_store, int block_store_index,
 			  u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
-			  void *uData) {
+			  void *uData, bool isSip) {
 
 	tcphdr2 *header_tcp_pointer;
 	tcphdr2 header_tcp;
@@ -2428,8 +2458,8 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 				this->links[id] = link;
 			}
 		} else if(!this->enableCrazySequence && this->enableWildLink) {
-			if(type != ssl || 
-			   this->check_port(header_tcp.dest, htonl(header_ip->daddr))) {
+			if(!(type == sip && !isSip) &&
+			   !(type == ssl && !this->check_port(header_tcp.dest, htonl(header_ip->daddr)))) {
 				if(ENABLE_DEBUG(type, _debug_packet)) {
 					cout << fixed
 					     << " ** NEW LINK "

@@ -38,11 +38,10 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
 		TcpReassemblyDataItem *dataItem = &data->data[i_data];
 		list<d_u_int32_t> sip_offsets;
-		if(!dataItem->getData() ||
-		   !TcpReassemblySip::checkSip(dataItem->getData(), dataItem->getDatalen(), true, &sip_offsets)) {
+		if(!dataItem->getData()) {
 			continue;
 		}
-		for(list<d_u_int32_t>::iterator iter_sip_offset = sip_offsets.begin(); iter_sip_offset != sip_offsets.end(); iter_sip_offset++) {
+		for(list<d_u_int32_t>::iterator iter_sip_offset = reassemblyLink->getSipOffsets()->begin(); iter_sip_offset != reassemblyLink->getSipOffsets()->end(); iter_sip_offset++) {
 			cache_time = dataItem->getTime().tv_sec * 1000 + dataItem->getTime().tv_usec / 1000;
 			string md5_data = GetDataMD5(dataItem->getData() + (*iter_sip_offset)[0], (*iter_sip_offset)[1]);
 			Cache_id cache_id(ip_src, ip_dst, port_src, port_dst);
@@ -172,6 +171,6 @@ void SipTcpData::printContentSummary() {
 }
 
 
-bool checkOkSipData(u_char *data, u_int32_t datalen, bool strict) {
-	return(TcpReassemblySip::checkSip(data, datalen, strict));
+bool checkOkSipData(u_char *data, u_int32_t datalen, bool strict, list<d_u_int32_t> *offsets) {
+	return(TcpReassemblySip::checkSip(data, datalen, strict, offsets));
 }

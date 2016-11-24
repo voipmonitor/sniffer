@@ -47,7 +47,7 @@ private:
 };
 
 
-bool checkOkSipData(u_char *data, u_int32_t datalen, bool strict);
+bool checkOkSipData(u_char *data, u_int32_t datalen, bool strict, list<d_u_int32_t> *offsets = NULL);
 
 
 #endif

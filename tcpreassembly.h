@@ -418,6 +418,7 @@ public:
 	u_char *complete(u_int32_t *datalen, timeval *time, bool check = false,
 			 size_t startIndex = 0, size_t *endIndex = NULL, bool breakIfPsh = false);
 	bool saveCompleteData(bool check = false, TcpReassemblyStream *prevHttpStream = NULL);
+	bool isSetCompleteData();
 	void clearCompleteData();
 	void printContent(int level  = 0);
 	bool checkOkPost(TcpReassemblyStream *nextStream = NULL);
@@ -671,6 +672,7 @@ public:
 	void clearRemainData(TcpReassemblyDataItem::eDirection direction);
 	u_char *getRemainData(TcpReassemblyDataItem::eDirection direction);
 	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction);
+	list<d_u_int32_t> *getSipOffsets();
 private:
 	void lock_queue() {
 		while(__sync_lock_test_and_set(&this->_sync_queue, 1)) usleep(100);
@@ -748,6 +750,7 @@ public:
 		int sensor_id;
 		u_int32_t sensor_ip;
 		void *uData;
+		bool isSip;
 	};
 public:
 	TcpReassembly(eType type);
@@ -755,7 +758,7 @@ public:
 	void push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet, bool alloc_packet,
 		      pcap_block_store *block_store, int block_store_index, bool block_store_locked,
 		      u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, u_int32_t sensor_ip = 0,
-		      void *uData = NULL);
+		      void *uData = NULL, bool isSip = false);
 	void cleanup(bool all = false);
 	void cleanup_simple(bool all = false);
 	void setEnableHttpForceInit(bool enableHttpForceInit = true) {
@@ -801,6 +804,12 @@ public:
 	}
 	void setDataCallback(TcpReassemblyProcessData *dataCallback) {
 		this->dataCallback = dataCallback;
+	}
+	void setEnablePushLock(bool enablePushLock = true) {
+		this->enablePushLock = enablePushLock;
+	}
+	void setEnableSmartCompleteData(bool enableSmartCompleteData = true) {
+		this->enableSmartCompleteData = enableSmartCompleteData;
 	}
 	/*
 	bool enableStop();
@@ -885,7 +894,7 @@ private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
 		   u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
-		   void *uData);
+		   void *uData, bool isSip);
 	void createCleanupThread();
 	void createPacketThread();
 	void *cleanupThreadFunction(void *);
@@ -896,10 +905,17 @@ private:
 	void unlock_links() {
 		__sync_lock_release(&this->_sync_links);
 	}
+	void lock_push() {
+		while(__sync_lock_test_and_set(&this->_sync_push, 1)) usleep(100);
+	}
+	void unlock_push() {
+		__sync_lock_release(&this->_sync_push);
+	}
 private:
 	eType type;
 	map<TcpReassemblyLink_id, TcpReassemblyLink*> links;
 	volatile int _sync_links;
+	volatile int _sync_push;
 	bool enableHttpForceInit;
 	bool enableCrazySequence;
 	bool enableWildLink;
@@ -914,6 +930,8 @@ private:
 	bool enableCleanupThread;
 	bool enablePacketThread;
 	TcpReassemblyProcessData *dataCallback;
+	bool enablePushLock;
+	bool enableSmartCompleteData;
 	u_int64_t act_time_from_header;
 	u_int64_t last_time;
 	u_int64_t last_cleanup_call_time_from_header;
@@ -932,6 +950,7 @@ private:
 	u_long _cleanupCounter;
 	u_int32_t linkTimeout;
 	SafeAsyncQueue<sPacket> packetQueue;
+	list<d_u_int32_t> sip_offsets;
 friend class TcpReassemblyLink;
 friend class TcpReassemblyStream;
 friend void *_TcpReassembly_cleanupThreadFunction(void* arg);
