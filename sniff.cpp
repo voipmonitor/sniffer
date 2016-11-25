@@ -197,6 +197,7 @@ extern regcache *regfailedcache;
 extern ManagerClientThreads ClientThreads;
 extern int opt_register_timeout;
 extern int opt_register_ignore_res_401;
+extern int opt_register_ignore_res_401_nonce_has_changed;
 extern int opt_nocdr;
 extern int opt_enable_fraud;
 extern int pcap_drop_flag;
@@ -3254,10 +3255,28 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			logPacketSipMethodCallDescr = "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)";
 		}
 		goto_endsip = true;
-	} else if((packetS->sip_method == RES401 && !opt_register_ignore_res_401) or 
-		  packetS->sip_method == RES403 or packetS->sip_method == RES404) {
+	} else if(packetS->sip_method == RES401 or packetS->sip_method == RES403 or packetS->sip_method == RES404) {
+		bool okres401 = false;
 		switch(packetS->sip_method) {
 		case RES401:
+			if(opt_register_ignore_res_401) {
+				break;
+			} else if(opt_register_ignore_res_401_nonce_has_changed) {
+				okres401 = true;
+				char *pointToEndLine = (char*)memmem(packetS->data + packetS->sipDataOffset, packetS->sipDataLen, "\r\n", 2);
+				if(pointToEndLine) {
+					*pointToEndLine = 0;
+					if(strcasestr(packetS->data + packetS->sipDataOffset, "nonce has changed")) {
+						okres401 = false;
+					}
+					*pointToEndLine = '\r';
+				}
+			} else {
+				okres401 = true;
+			}
+			if(!okres401) {
+				break;
+			}
 			++call->reg401count;
 			if(!call->reg401count_distinct) {
 				call->reg401count_sipcallerip[0] = packetS->saddr;
@@ -3302,7 +3321,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 						 call->call_id.c_str(), call->reg403count, call->reg403count_distinct);
 			break;
 		}
-		if((packetS->sip_method == RES401 && call->reg401count > call->reg401count_distinct) || 
+		if((packetS->sip_method == RES401 && okres401 && call->reg401count > call->reg401count_distinct) || 
 		   (packetS->sip_method == RES403 && call->reg403count > call->reg403count_distinct) || 
 		   packetS->sip_method == RES404) {
 			// registration failed

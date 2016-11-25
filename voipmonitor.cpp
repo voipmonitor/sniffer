@@ -344,6 +344,7 @@ int opt_saveaudio_stereo = 1;
 int opt_register_timeout = 5;
 int opt_register_timeout_disable_save_failed = 0;
 int opt_register_ignore_res_401 = 0;
+int opt_register_ignore_res_401_nonce_has_changed = 0;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
 unsigned int opt_maxpoolsipsize = 0;
@@ -5053,6 +5054,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(43451) cConfigItem_yesno("sip-register-timeout-disable_save_failed", &opt_register_timeout_disable_save_failed));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-ignore-res401", &opt_register_ignore_res_401));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-ignore-res401-nonce-has-changed", &opt_register_ignore_res_401_nonce_has_changed));
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE(43276) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
 			addConfigItem(new FILE_LINE(43277) cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));
@@ -6831,6 +6833,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-ignore-res401", NULL))) {
 		opt_register_ignore_res_401 = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-ignore-res401-nonce-has-changed", NULL))) {
+		opt_register_ignore_res_401_nonce_has_changed = yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate", NULL))) {
 		opt_dup_check = yesno(value);
