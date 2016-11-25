@@ -196,6 +196,7 @@ extern int opt_fork;
 extern regcache *regfailedcache;
 extern ManagerClientThreads ClientThreads;
 extern int opt_register_timeout;
+extern int opt_register_ignore_res_401;
 extern int opt_nocdr;
 extern int opt_enable_fraud;
 extern int pcap_drop_flag;
@@ -3253,7 +3254,8 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			logPacketSipMethodCallDescr = "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)";
 		}
 		goto_endsip = true;
-	} else if(packetS->sip_method == RES401 or packetS->sip_method == RES403 or packetS->sip_method == RES404) {
+	} else if((packetS->sip_method == RES401 && !opt_register_ignore_res_401) or 
+		  packetS->sip_method == RES403 or packetS->sip_method == RES404) {
 		switch(packetS->sip_method) {
 		case RES401:
 			++call->reg401count;
