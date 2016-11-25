@@ -2089,6 +2089,12 @@ int main(int argc, char *argv[]) {
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
 	}
 
+	if(HeapSafeCheck) {
+		#if not HEAPSAFE
+		syslog(LOG_ERR, "%s", "HEAPSAFE UNSUPPORTED!");
+		#endif
+	}
+	
 	if(opt_untar_gui_params) {
 		vmChdir();
 		int rslt = untar_gui(opt_untar_gui_params);
