@@ -1471,7 +1471,7 @@ Call::convertRawToWav() {
 			u_int64_t Bstart = B->first_packet_time * 1000000ull + B->first_packet_usec;
 			u_int64_t Bstop = B->last_pcap_header_ts;
 			if(((Bstart > Astart) and (Bstart > Astop)) or ((Astart > Bstart) and (Astart > Bstop))) {
-				if(1) syslog(LOG_ERR, "Not removing SSRC[%x][%p] and SSRC[%x][%p] %lu %lu\n", A->ssrc, A, B->ssrc, B, Astart, Bstop);
+				if(verbosity > 1) syslog(LOG_ERR, "Not removing SSRC[%x][%p] and SSRC[%x][%p] %lu %lu\n", A->ssrc, A, B->ssrc, B, Astart, Bstop);
 				continue;
 				
 			}
