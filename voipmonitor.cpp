@@ -2936,6 +2936,7 @@ int main_init_read() {
 		tcpReassemblySipExt->setEnableWildLink();
 		tcpReassemblySipExt->setEnablePushLock();
 		tcpReassemblySipExt->setEnableSmartCompleteData();
+		tcpReassemblySipExt->setEnableExtStat();
 	}
 	
 	if(sipSendSocket_ip_port) {

@@ -2049,6 +2049,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->dataCallback = NULL;
 	this->enablePushLock = false;
 	this->enableSmartCompleteData = false;
+	this->enableExtStat = false;
 	this->act_time_from_header = 0;
 	this->last_time = 0;
 	this->last_cleanup_call_time_from_header = 0;
@@ -2189,6 +2190,38 @@ string TcpReassembly::getCpuUsagePerc() {
 			outStr << '|';
 		}
 		outStr << links.size() << 'l';
+		if(this->enableExtStat) {
+			if(this->enablePushLock) {
+				this->lock_push();
+			}
+			unsigned sumStreams = 0;
+			unsigned maxStreams = 0;
+			unsigned sumPackets = 0;
+			unsigned maxPackets = 0;
+			map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter_link;
+			for(iter_link = this->links.begin(); iter_link != this->links.end(); iter_link++) {
+				TcpReassemblyLink *link = iter_link->second;
+				unsigned streamsCount = link->queue_by_ack.size();
+				sumStreams += streamsCount;
+				if(streamsCount > maxStreams) {
+					maxStreams = streamsCount;
+				}
+				map<uint32_t, TcpReassemblyStream*>::iterator iter_stream;
+				for(iter_stream = link->queue_by_ack.begin(); iter_stream != link->queue_by_ack.end(); iter_stream++) {
+					TcpReassemblyStream *stream = iter_stream->second;
+					unsigned packetsCount = stream->queuePacketVars.size();
+					sumPackets += packetsCount;
+					if(packetsCount > maxPackets) {
+						maxPackets = packetsCount;
+					}
+				}
+			}
+			outStr << '|' << sumStreams << '/' << maxStreams << 's'
+			       << '|' << sumPackets << '/' << maxPackets << 'p';
+			if(this->enablePushLock) {
+				this->unlock_push();
+			}
+		}
 	}
 	return(outStr.str());
 }
@@ -2302,12 +2335,14 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 		this->packetQueue.push(_packet);
 	} else {
 		if(this->enablePushLock) {
+			this->lock_push();
 		}
 		this->_push(header, header_ip, packet,
 			    block_store, block_store_index,
 			    handle_index, dlt, sensor_id, sensor_ip,
 			    uData, isSip);
 		if(this->enablePushLock) {
+			this->unlock_push();
 		}
 		if(alloc_packet) {
 			delete header;

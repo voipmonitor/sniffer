@@ -811,6 +811,9 @@ public:
 	void setEnableSmartCompleteData(bool enableSmartCompleteData = true) {
 		this->enableSmartCompleteData = enableSmartCompleteData;
 	}
+	void setEnableExtStat(bool enableExtStat = true) {
+		this->enableExtStat = enableExtStat;
+	}
 	/*
 	bool enableStop();
 	*/
@@ -932,6 +935,7 @@ private:
 	TcpReassemblyProcessData *dataCallback;
 	bool enablePushLock;
 	bool enableSmartCompleteData;
+	bool enableExtStat;
 	u_int64_t act_time_from_header;
 	u_int64_t last_time;
 	u_int64_t last_cleanup_call_time_from_header;
