@@ -688,6 +688,7 @@ private:
 			u_int32_t lastSeq);
 	void switchDirection();
 	void createEthHeader(u_char *packet, int dlt);
+	void extCleanup(int id, bool all);
 private:
 	TcpReassembly *reassembly;
 	u_int32_t ip_src;

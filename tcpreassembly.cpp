@@ -909,11 +909,17 @@ bool TcpReassemblyLink::push_normal(
 				cout << " " << this->port_src << " / " << this->port_dst;
 				cout << endl;
 			}
+			extern cBuffersControl buffersControl;
 			if(countDataStream > 0) {
 				this->complete(final || runCompleteAfterZerodataAck, true);
 				if(final) {
 					this->state = STATE_CLOSED;
 				}
+			} else if(reassembly->extCleanupStreamsLimitStreams &&
+				  reassembly->extCleanupStreamsLimitHeap &&
+				  this->queueStreams.size() > reassembly->extCleanupStreamsLimitStreams &&
+				  buffersControl.getPercUsePBwithouttrash() > reassembly->extCleanupStreamsLimitHeap) {
+				this->extCleanup(2, true);
 			}
 		}
 	}
@@ -1988,6 +1994,55 @@ void TcpReassemblyLink::createEthHeader(u_char *packet, int dlt) {
 	}
 }
 
+void TcpReassemblyLink::extCleanup(int id, bool all) {
+	syslog(LOG_INFO, "TCPREASSEMBLY EXT CLEANUP %i: link %s:%u -> %s:%u size: %lu",
+	       id,
+	       inet_ntostring(this->ip_src).c_str(), this->port_src,
+	       inet_ntostring(this->ip_dst).c_str(), this->port_dst,
+	       this->queueStreams.size());
+	if(reassembly->log) {
+		ostringstream outStr;
+		outStr << fixed 
+		       << "EXT CLEANUP " << id << ": " 
+		       << sqlDateTimeString(time(NULL)) << " "
+		       << inet_ntostring(this->ip_src) << ":" << this->port_src
+		       << " -> "
+		       << inet_ntostring(this->ip_dst) << ":" << this->port_dst
+		       << " size: "
+		       << this->queueStreams.size();
+		reassembly->addLog(outStr.str().c_str());
+		deque<TcpReassemblyStream*>::iterator iterStream;
+		for(iterStream = this->queueStreams.begin(); iterStream != this->queueStreams.end(); iterStream++) {
+			TcpReassemblyStream *stream = *iterStream;
+			reassembly->addLog("ack: " + intToString(stream->ack));
+			map<uint32_t, TcpReassemblyStream_packet_var>::iterator iterPacketVar;
+			for(iterPacketVar = stream->queuePacketVars.begin(); iterPacketVar != stream->queuePacketVars.end(); iterPacketVar++) {
+				reassembly->addLog("seq: " + intToString(iterPacketVar->first));
+				TcpReassemblyStream_packet_var *packetVar = &iterPacketVar->second;
+				map<uint32_t, TcpReassemblyStream_packet>::iterator iterPacket;
+				for(iterPacket = packetVar->queuePackets.begin(); iterPacket != packetVar->queuePackets.end(); iterPacket++) {
+					ostringstream outStr;
+					outStr << fixed
+					       << "next seq: " 
+					       << intToString(iterPacket->first)
+					       << " time: " 
+					       << sqlDateTimeString(iterPacket->second.time.tv_sec) << "." << setw(6) << iterPacket->second.time.tv_usec;
+					reassembly->addLog(outStr.str());
+					reassembly->addLog(string((char*)iterPacket->second.data, iterPacket->second.datalen));
+				}
+			}
+		}
+	}
+	deque<TcpReassemblyStream*>::iterator iterStream;
+	while(this->queueStreams.size() > (all ? 0 : reassembly->extCleanupStreamsLimitStreams)) {
+		iterStream = this->queueStreams.begin();
+		TcpReassemblyStream *stream = *iterStream;
+		this->queueStreams.erase(iterStream);
+		this->queue_by_ack.erase(stream->ack);
+		delete stream;
+	}
+}
+
 void TcpReassemblyLink::setRemainData(u_char *data, u_int32_t datalen, TcpReassemblyDataItem::eDirection direction) {
 	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
 		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
@@ -2552,7 +2607,8 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 			}
 		}
 	}
-	if(link) {
+	if(link &&
+	   !(type == sip && !isSip && !link->queueStreams.size())) {
 		if(this->enableCleanupThread) {
 			if(!queue_locked) {
 				link->lock_queue();
@@ -2789,51 +2845,7 @@ void TcpReassembly::cleanup_simple(bool all) {
 				   this->extCleanupStreamsLimitHeap &&
 				   link->queueStreams.size() > this->extCleanupStreamsLimitStreams &&
 				   buffersControl.getPercUsePBwithouttrash() > this->extCleanupStreamsLimitHeap) {
-					syslog(LOG_INFO, "TCPREASSEMBLY EXT CLEANUP: link %s:%u -> %s:%u size: %lu",
-					       inet_ntostring(link->ip_src).c_str(), link->port_src,
-					       inet_ntostring(link->ip_dst).c_str(), link->port_dst,
-					       link->queueStreams.size());
-					if(this->log) {
-						ostringstream outStr;
-						outStr << fixed 
-						       << "EXT CLEANUP: " 
-						       << sqlDateTimeString(time(NULL)) << " "
-						       << inet_ntostring(link->ip_src) << ":" << link->port_src
-						       << " -> "
-						       << inet_ntostring(link->ip_dst) << ":" << link->port_dst
-						       << " size: "
-						       << link->queueStreams.size();
-						this->addLog(outStr.str().c_str());
-						deque<TcpReassemblyStream*>::iterator iterStream;
-						for(iterStream = link->queueStreams.begin(); iterStream != link->queueStreams.end(); iterStream++) {
-							TcpReassemblyStream *stream = *iterStream;
-							this->addLog("ack: " + intToString(stream->ack));
-							map<uint32_t, TcpReassemblyStream_packet_var>::iterator iterPacketVar;
-							for(iterPacketVar = stream->queuePacketVars.begin(); iterPacketVar != stream->queuePacketVars.end(); iterPacketVar++) {
-								this->addLog("seq: " + intToString(iterPacketVar->first));
-								TcpReassemblyStream_packet_var *packetVar = &iterPacketVar->second;
-								map<uint32_t, TcpReassemblyStream_packet>::iterator iterPacket;
-								for(iterPacket = packetVar->queuePackets.begin(); iterPacket != packetVar->queuePackets.end(); iterPacket++) {
-									ostringstream outStr;
-									outStr << fixed
-									       << "next seq: " 
-									       << intToString(iterPacket->first)
-									       << " time: " 
-									       << sqlDateTimeString(iterPacket->second.time.tv_sec) << "." << setw(6) << iterPacket->second.time.tv_usec;
-									this->addLog(outStr.str());
-									this->addLog(string((char*)iterPacket->second.data, iterPacket->second.datalen));
-								}
-							}
-						}
-					}
-					deque<TcpReassemblyStream*>::iterator iterStream;
-					while(link->queueStreams.size() > this->extCleanupStreamsLimitStreams) {
-						iterStream = link->queueStreams.begin();
-						TcpReassemblyStream *stream = *iterStream;
-						link->queueStreams.erase(iterStream);
-						link->queue_by_ack.erase(stream->ack);
-						delete stream;
-					}
+					link->extCleanup(1, true);
 				} else {
 					deque<TcpReassemblyStream*>::iterator iterStream;
 					for(iterStream = link->queueStreams.begin(); iterStream != link->queueStreams.end();) {
