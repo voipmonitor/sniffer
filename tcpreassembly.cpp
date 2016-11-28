@@ -19,7 +19,10 @@ using namespace std;
 #define USE_PACKET_DATALEN true
 #define PACKET_DATALEN(datalen, datacaplen) (USE_PACKET_DATALEN ? datalen : datacaplen)
 
-extern char opt_tcpreassembly_log[1024];
+extern char opt_tcpreassembly_http_log[1024];
+extern char opt_tcpreassembly_webrtc_log[1024];
+extern char opt_tcpreassembly_ssl_log[1024];
+extern char opt_tcpreassembly_sip_log[1024];
 extern char opt_pb_read_from_file[256];
 extern int verbosity;
 
@@ -2050,6 +2053,8 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enablePushLock = false;
 	this->enableSmartCompleteData = false;
 	this->enableExtStat = false;
+	this->extCleanupStreamsLimitStreams = 0;
+	this->extCleanupStreamsLimitHeap = 0;
 	this->act_time_from_header = 0;
 	this->last_time = 0;
 	this->last_cleanup_call_time_from_header = 0;
@@ -2066,8 +2071,15 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->lastTimeLogErrExceededMaximumAttempts = 0;
 	this->_cleanupCounter = 0;
 	this->linkTimeout = 2 * 60;
-	if(opt_tcpreassembly_log[0]) {
-		this->log = fopen(opt_tcpreassembly_log, "at");
+	char *log = NULL;
+	switch(type) {
+	case http: log = opt_tcpreassembly_http_log; break;
+	case webrtc: log = opt_tcpreassembly_webrtc_log; break;
+	case ssl: log = opt_tcpreassembly_ssl_log; break;
+	case sip: log = opt_tcpreassembly_sip_log; break;
+	}
+	if(log && *log) {
+		this->log = fopen(log, "at");
 		if(this->log) {
 			this->addLog((string(" -- start ") + sqlDateTimeString(getTimeMS()/1000)).c_str());
 		}
@@ -2772,15 +2784,67 @@ void TcpReassembly::cleanup_simple(bool all) {
 				delete link;
 				this->links.erase(iterLink++);
 			} else {
-				deque<TcpReassemblyStream*>::iterator iterStream;
-				for(iterStream = link->queueStreams.begin(); iterStream != link->queueStreams.end();) {
-					TcpReassemblyStream *stream = *iterStream;
-					if(act_time > stream->last_packet_at_from_header + linkTimeout * 1000) {
-						iterStream = link->queueStreams.erase(iterStream);
+				extern cBuffersControl buffersControl;
+				if(this->extCleanupStreamsLimitStreams &&
+				   this->extCleanupStreamsLimitHeap &&
+				   link->queueStreams.size() > this->extCleanupStreamsLimitStreams &&
+				   buffersControl.getPercUsePBwithouttrash() > this->extCleanupStreamsLimitHeap) {
+					syslog(LOG_INFO, "TCPREASSEMBLY EXT CLEANUP: link %s:%u -> %s:%u size: %lu",
+					       inet_ntostring(link->ip_src).c_str(), link->port_src,
+					       inet_ntostring(link->ip_dst).c_str(), link->port_dst,
+					       link->queueStreams.size());
+					if(this->log) {
+						ostringstream outStr;
+						outStr << fixed 
+						       << "EXT CLEANUP: " 
+						       << sqlDateTimeString(time(NULL)) << " "
+						       << inet_ntostring(link->ip_src) << ":" << link->port_src
+						       << " -> "
+						       << inet_ntostring(link->ip_dst) << ":" << link->port_dst
+						       << " size: "
+						       << link->queueStreams.size();
+						this->addLog(outStr.str().c_str());
+						deque<TcpReassemblyStream*>::iterator iterStream;
+						for(iterStream = link->queueStreams.begin(); iterStream != link->queueStreams.end(); iterStream++) {
+							TcpReassemblyStream *stream = *iterStream;
+							this->addLog("ack: " + intToString(stream->ack));
+							map<uint32_t, TcpReassemblyStream_packet_var>::iterator iterPacketVar;
+							for(iterPacketVar = stream->queuePacketVars.begin(); iterPacketVar != stream->queuePacketVars.end(); iterPacketVar++) {
+								this->addLog("seq: " + intToString(iterPacketVar->first));
+								TcpReassemblyStream_packet_var *packetVar = &iterPacketVar->second;
+								map<uint32_t, TcpReassemblyStream_packet>::iterator iterPacket;
+								for(iterPacket = packetVar->queuePackets.begin(); iterPacket != packetVar->queuePackets.end(); iterPacket++) {
+									ostringstream outStr;
+									outStr << fixed
+									       << "next seq: " 
+									       << intToString(iterPacket->first)
+									       << " time: " 
+									       << sqlDateTimeString(iterPacket->second.time.tv_sec) << "." << setw(6) << iterPacket->second.time.tv_usec;
+									this->addLog(outStr.str());
+									this->addLog(string((char*)iterPacket->second.data, iterPacket->second.datalen));
+								}
+							}
+						}
+					}
+					deque<TcpReassemblyStream*>::iterator iterStream;
+					while(link->queueStreams.size() > this->extCleanupStreamsLimitStreams) {
+						iterStream = link->queueStreams.begin();
+						TcpReassemblyStream *stream = *iterStream;
+						link->queueStreams.erase(iterStream);
 						link->queue_by_ack.erase(stream->ack);
 						delete stream;
-					} else {
-						++iterStream;
+					}
+				} else {
+					deque<TcpReassemblyStream*>::iterator iterStream;
+					for(iterStream = link->queueStreams.begin(); iterStream != link->queueStreams.end();) {
+						TcpReassemblyStream *stream = *iterStream;
+						if(act_time > stream->last_packet_at_from_header + linkTimeout * 1000) {
+							iterStream = link->queueStreams.erase(iterStream);
+							link->queue_by_ack.erase(stream->ack);
+							delete stream;
+						} else {
+							++iterStream;
+						}
 					}
 				}
 				iterLink++;

@@ -308,7 +308,10 @@ int opt_enable_webrtc = 0;
 int opt_enable_ssl = 0;
 unsigned int opt_ssl_link_timeout = 5 * 60;
 int opt_tcpreassembly_thread = 1;
-char opt_tcpreassembly_log[1024];
+char opt_tcpreassembly_http_log[1024];
+char opt_tcpreassembly_webrtc_log[1024];
+char opt_tcpreassembly_ssl_log[1024];
+char opt_tcpreassembly_sip_log[1024];
 int opt_allow_zerossrc = 0;
 int opt_convert_dlt_sll_to_en10 = 0;
 int opt_mysqlcompress = 1;
@@ -2945,6 +2948,7 @@ int main_init_read() {
 		tcpReassemblySipExt->setEnablePushLock();
 		tcpReassemblySipExt->setEnableSmartCompleteData();
 		tcpReassemblySipExt->setEnableExtStat();
+		tcpReassemblySipExt->setEnableExtCleanupStreams(25, 10);
 	}
 	
 	if(sipSendSocket_ip_port) {
@@ -4993,7 +4997,10 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(43236) cConfigItem_yesno("udpfrag", &opt_udpfrag));
 		addConfigItem(new FILE_LINE(43237) cConfigItem_yesno("dscp", &opt_dscp));
 				expert();
-				addConfigItem(new FILE_LINE(43238) cConfigItem_string("tcpreassembly_log", opt_tcpreassembly_log, sizeof(opt_tcpreassembly_log)));
+				addConfigItem(new FILE_LINE(43238) cConfigItem_string("tcpreassembly_http_log", opt_tcpreassembly_http_log, sizeof(opt_tcpreassembly_http_log)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("tcpreassembly_webrtc_log", opt_tcpreassembly_webrtc_log, sizeof(opt_tcpreassembly_webrtc_log)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("tcpreassembly_ssl_log", opt_tcpreassembly_ssl_log, sizeof(opt_tcpreassembly_ssl_log)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("tcpreassembly_sip_log", opt_tcpreassembly_sip_log, sizeof(opt_tcpreassembly_sip_log)));
 	group("SSL");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem((new FILE_LINE(43239) cConfigItem_yesno("ssl", &opt_enable_ssl))
@@ -7670,8 +7677,17 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl_link_timeout", NULL))) {
 		opt_ssl_link_timeout = atol(value);
 	}
-	if((value = ini.GetValue("general", "tcpreassembly_log", NULL))) {
-		strncpy(opt_tcpreassembly_log, value, sizeof(opt_tcpreassembly_log));
+	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
+		strncpy(opt_tcpreassembly_http_log, value, sizeof(opt_tcpreassembly_http_log));
+	}
+	if((value = ini.GetValue("general", "tcpreassembly_webrtc_log", NULL))) {
+		strncpy(opt_tcpreassembly_webrtc_log, value, sizeof(opt_tcpreassembly_webrtc_log));
+	}
+	if((value = ini.GetValue("general", "tcpreassembly_ssl_log", NULL))) {
+		strncpy(opt_tcpreassembly_ssl_log, value, sizeof(opt_tcpreassembly_ssl_log));
+	}
+	if((value = ini.GetValue("general", "tcpreassembly_sip_log", NULL))) {
+		strncpy(opt_tcpreassembly_sip_log, value, sizeof(opt_tcpreassembly_sip_log));
 	}
 	
 	if((value = ini.GetValue("general", "convert_dlt_sll2en10", NULL))) {

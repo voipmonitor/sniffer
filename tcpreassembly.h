@@ -325,6 +325,7 @@ private:
 friend class TcpReassemblyStream_packet_var;
 friend class TcpReassemblyStream;
 friend class TcpReassemblyLink;
+friend class TcpReassembly;
 };
 
 class TcpReassemblyStream_packet_var {
@@ -361,6 +362,7 @@ private:
 	map<uint32_t, TcpReassemblyStream_packet> queuePackets;
 friend class TcpReassemblyStream;
 friend class TcpReassemblyLink;
+friend class TcpReassembly;
 };
 
 class TcpReassemblyStream {
@@ -814,6 +816,10 @@ public:
 	void setEnableExtStat(bool enableExtStat = true) {
 		this->enableExtStat = enableExtStat;
 	}
+	void setEnableExtCleanupStreams(unsigned int extCleanupStreamsLimitStreams, unsigned int extCleanupStreamsLimitHeap) {
+		this->extCleanupStreamsLimitStreams = extCleanupStreamsLimitStreams;
+		this->extCleanupStreamsLimitHeap = extCleanupStreamsLimitHeap;
+	}
 	/*
 	bool enableStop();
 	*/
@@ -823,6 +829,9 @@ public:
 		this->doPrintContent = true;
 	}
 	void setIgnoreTerminating(bool ignoreTerminating);
+	void addLog(string logString) {
+		addLog(logString.c_str());
+	}
 	void addLog(const char *logString);
 	bool isActiveLog() {
 		return(this->log != NULL);
@@ -936,6 +945,8 @@ private:
 	bool enablePushLock;
 	bool enableSmartCompleteData;
 	bool enableExtStat;
+	unsigned int extCleanupStreamsLimitStreams;
+	unsigned int extCleanupStreamsLimitHeap;
 	u_int64_t act_time_from_header;
 	u_int64_t last_time;
 	u_int64_t last_cleanup_call_time_from_header;
