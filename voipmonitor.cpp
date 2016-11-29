@@ -8372,14 +8372,32 @@ void dns_lookup_common_hostnames() {
 }
 
 u_int32_t gethostbyname_lock(const char *name) {
-	u_int32_t rslt_ipl = 0;
+	struct s_rslt_time {
+		u_int32_t ipl;
+		time_t at;
+	};
+	static map<string, s_rslt_time> rslts;
 	pthread_mutex_lock(&hostbyname_lock);
-	hostent *rslt_hostent = gethostbyname(name);
-	if(rslt_hostent) {
-		rslt_ipl = ((in_addr*)rslt_hostent->h_addr)->s_addr;
+	u_int32_t ipl = 0;
+	time_t now = time(NULL);
+	map<string, s_rslt_time>::iterator iter_find = rslts.find(name);
+	if(iter_find != rslts.end() &&
+	   iter_find->second.at + 120 > now) {
+		ipl = iter_find->second.ipl;
+	}
+	if(!ipl) {
+		hostent *rslt_hostent = gethostbyname(name);
+		if(rslt_hostent) {
+			ipl = ((in_addr*)rslt_hostent->h_addr)->s_addr;
+			if(ipl) {
+				rslts[name].ipl = ipl;
+				rslts[name].at = now;
+				syslog(LOG_NOTICE, "resolve host %s to %s", name, inet_ntostring(htonl(ipl)).c_str());
+			}
+		}
 	}
 	pthread_mutex_unlock(&hostbyname_lock);
-	return(rslt_ipl);
+	return(ipl);
 }
 
 bool _use_mysql_2() {

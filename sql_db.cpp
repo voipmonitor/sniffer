@@ -313,7 +313,6 @@ SqlDb::SqlDb() {
 	this->cloud_data_index = 0;
 	this->maxAllowedPacket = 1024*1024;
 	this->lastError = 0;
-	this->lastmysqlresolve = 0;
 }
 
 SqlDb::~SqlDb() {
@@ -695,26 +694,21 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	pthread_mutex_lock(&mysqlconnect_lock);
 	this->hMysql = mysql_init(NULL);
 	if(this->hMysql) {
+		string conn_server_ip;
+		if(reg_match(this->conn_server.c_str(), "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
+			conn_server_ip = this->conn_server;
+		} else {
+			u_int32_t conn_server_ipl = gethostbyname_lock(this->conn_server.c_str());
+			if(!conn_server_ipl) {
+				this->setLastErrorString("mysql connect failed - " + this->conn_server + " is unavailable", true);
+				pthread_mutex_unlock(&mysqlconnect_lock);
+				this->connecting = false;
+				return(false);
+			}
+			conn_server_ip = inet_ntostring(htonl(conn_server_ipl));
+		}
 		my_bool reconnect = 1;
 		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
-		struct timeval s;
-		gettimeofday(&s, 0);
-		if(this->conn_server_ip.empty() || ((lastmysqlresolve + 120) < s.tv_sec)) {
-			lastmysqlresolve = s.tv_sec;
-			if(reg_match(this->conn_server.c_str(), "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
-				this->conn_server_ip = this->conn_server;
-			} else {
-				u_int32_t conn_server_ipl = gethostbyname_lock(this->conn_server.c_str());
-				if(!conn_server_ipl) {
-					this->setLastErrorString("mysql connect failed - " + this->conn_server + " is unavailable", true);
-					pthread_mutex_unlock(&mysqlconnect_lock);
-					this->connecting = false;
-					return(false);
-				}
-				this->conn_server_ip = inet_ntostring(htonl(conn_server_ipl));
-				syslog(LOG_NOTICE, "resolve mysql host %s to %s", this->conn_server.c_str(), this->conn_server_ip.c_str());
-			}
-		}
 		for(int connectPass = 0; connectPass < 2; connectPass++) {
 			if(connectPass) {
 				if(this->hMysqlRes) {
@@ -731,7 +725,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 			this->hMysqlConn = mysql_real_connect(
 						this->hMysql,
-						this->conn_server_ip.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
+						conn_server_ip.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
 						this->conn_port ? this->conn_port : opt_mysql_port,
 						NULL, 
 						CLIENT_MULTI_RESULTS | (opt_mysql_client_compress ? CLIENT_COMPRESS : 0));

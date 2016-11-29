@@ -197,7 +197,6 @@ public:
 			return(true);
 		}
 	}
-	unsigned int lastmysqlresolve;
 	static void addDelayQuery(u_int32_t delay_ms);
 	static u_int32_t getAvgDelayQuery();
 	static void resetDelayQuery();
@@ -205,7 +204,6 @@ public:
 			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
 protected:
 	string conn_server;
-	string conn_server_ip;
 	string conn_user;
 	string conn_password;
 	string conn_database;
