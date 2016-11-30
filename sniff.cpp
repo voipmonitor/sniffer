@@ -1883,10 +1883,10 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	//flags
 	unsigned int flags = 0;
 	set_global_flags(flags);
-	IPfilter::add_call_flags(&flags, ntohl(packetS->saddr), ntohl(packetS->daddr));
-	TELNUMfilter::add_call_flags(&flags, tcaller, tcalled);
-	DOMAINfilter::add_call_flags(&flags, tcaller_domain, tcalled_domain);
-	SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags);
+	IPfilter::add_call_flags(&flags, ntohl(packetS->saddr), ntohl(packetS->daddr), true);
+	TELNUMfilter::add_call_flags(&flags, tcaller, tcalled, true);
+	DOMAINfilter::add_call_flags(&flags, tcaller_domain, tcalled_domain, true);
+	SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags, true);
 
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
@@ -2411,6 +2411,17 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			logPacketSipMethodCallDescr = "SIP packet does not belong to any call and it is not INVITE";
 		}
 		goto endsip;
+	}
+	
+	if(!packetS->_createCall && (call->flags & (FLAG_SAVERTP | FLAG_SAVEAUDIO))) {
+		unsigned int flags = call->flags;
+		SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags);
+		if((call->flags & FLAG_SAVERTP) && !(flags & FLAG_SAVERTP)) {
+			call->flags &= ~FLAG_SAVERTP;
+		}
+		if((call->flags & FLAG_SAVEAUDIO) && !(flags & FLAG_SAVEAUDIO)) {
+			call->flags &= ~FLAG_SAVEAUDIO;
+		}
 	}
 	 
 	if(packetS->sip_method == INVITE && !call->first_invite_time_usec) {

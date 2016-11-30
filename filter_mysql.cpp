@@ -99,7 +99,7 @@ unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 	return(flags);
 }
 
-void filter_base::setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned int filterFlags) {
+void filter_base::setCallFlagsFromFilterFlags(volatile unsigned int *callFlags, unsigned int filterFlags) {
 	if(filterFlags & FLAG_RTP_ALL)					{*callFlags |= FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
 	if(filterFlags & FLAG_RTP_HEAD)					{*callFlags |= FLAG_SAVERTPHEADER; *callFlags &= ~FLAG_SAVERTP;}
 	if(filterFlags & FLAG_NORTP) 					{*callFlags &= ~FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
@@ -189,7 +189,7 @@ void IPfilter::load() {
 	}
 };
 
-int IPfilter::_add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int daddr) {
+int IPfilter::_add_call_flags(volatile unsigned int *flags, unsigned int saddr, unsigned int daddr) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -236,9 +236,9 @@ void IPfilter::dump() {
 	}
 }
 
-int IPfilter::add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int daddr) {
+int IPfilter::add_call_flags(volatile unsigned int *flags, unsigned int saddr, unsigned int daddr, bool enableReload) {
 	int rslt = 0;
-	if(reload_do) {
+	if(enableReload && reload_do) {
 		applyReload();
 	}
 	lock();
@@ -420,7 +420,7 @@ void TELNUMfilter::loadFile() {
 	}
 }
 
-int TELNUMfilter::_add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst) {
+int TELNUMfilter::_add_call_flags(volatile unsigned int *flags, char *telnum_src, char *telnum_dst) {
 
 	int lastdirection = 0;
 	
@@ -488,9 +488,9 @@ void TELNUMfilter::dump(t_node_tel *node) {
 	}
 }
 
-int TELNUMfilter::add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst) {
+int TELNUMfilter::add_call_flags(volatile unsigned int *flags, char *telnum_src, char *telnum_dst, bool enableReload) {
 	int rslt = 0;
-	if(reload_do) {
+	if(enableReload && reload_do) {
 		applyReload();
 	}
 	lock();
@@ -600,7 +600,7 @@ void DOMAINfilter::load() {
 };
 
 int
-DOMAINfilter::_add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst) {
+DOMAINfilter::_add_call_flags(volatile unsigned int *flags, char *domain_src, char *domain_dst) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -627,9 +627,9 @@ void DOMAINfilter::dump() {
 	}
 }
 
-int DOMAINfilter::add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst) {
+int DOMAINfilter::add_call_flags(volatile unsigned int *flags, char *domain_src, char *domain_dst, bool enableReload) {
 	int rslt = 0;
-	if(reload_do) {
+	if(enableReload && reload_do) {
 		applyReload();
 	}
 	lock();
@@ -740,7 +740,7 @@ void SIP_HEADERfilter::load() {
 	}
 }
 
-int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, unsigned int *flags) {
+int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -810,9 +810,9 @@ void SIP_HEADERfilter::_addNodes(ParsePacket *parsePacket) {
 	}
 }
 
-int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, unsigned int *flags) {
+int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags, bool enableReload) {
 	int rslt = 0;
-	if(reload_do) {
+	if(enableReload && reload_do) {
 		applyReload();
 	}
 	lock();

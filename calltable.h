@@ -403,7 +403,7 @@ public:
 
 	unsigned int skinny_partyid;
 
-	unsigned int flags;		//!< structure holding FLAGS*
+	volatile unsigned int flags;		//!< structure holding FLAGS*
 
 	int *listening_worker_run;
 	pthread_mutex_t listening_worker_run_lock;

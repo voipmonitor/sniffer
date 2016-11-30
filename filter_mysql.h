@@ -72,7 +72,7 @@ protected:
 	void loadBaseDataRow(class SqlDb_row *sqlRow, filter_db_row_base *baseRow);
 	void loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow);
 	unsigned int getFlagsFromBaseData(filter_db_row_base *baseRow);
-	void setCallFlagsFromFilterFlags(unsigned int *callFlags, unsigned int filterFlags);
+	void setCallFlagsFromFilterFlags(volatile unsigned int *callFlags, unsigned int filterFlags);
 };
 
 class IPfilter : public filter_base {
@@ -97,9 +97,9 @@ public:
         IPfilter();
         ~IPfilter();
         void load();
-	int _add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int daddr);
+	int _add_call_flags(volatile unsigned int *flags, unsigned int saddr, unsigned int daddr);
         void dump();
-	static int add_call_flags(unsigned int *flags, unsigned int saddr, unsigned int daddr);
+	static int add_call_flags(volatile unsigned int *flags, unsigned int saddr, unsigned int daddr, bool enableReload = false);
 	static void loadActive();
 	static void freeActive();
 	static void prepareReload();
@@ -151,9 +151,9 @@ public:
         void load();
 	void loadFile();
 	void add_payload(t_payload *payload);
-	int _add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst);
+	int _add_call_flags(volatile unsigned int *flags, char *telnum_src, char *telnum_dst);
         void dump(t_node_tel *node = NULL);
-	static int add_call_flags(unsigned int *flags, char *telnum_src, char *telnum_dst);
+	static int add_call_flags(volatile unsigned int *flags, char *telnum_src, char *telnum_dst, bool enableReload = false);
 	static void loadActive();
 	static void freeActive();
 	static void prepareReload();
@@ -197,9 +197,9 @@ public:
 	DOMAINfilter();
 	~DOMAINfilter();
 	void load();
-	int _add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst);
+	int _add_call_flags(volatile unsigned int *flags, char *domain_src, char *domain_dst);
 	void dump();
-	static int add_call_flags(unsigned int *flags, char *domain_src, char *domain_dst);
+	static int add_call_flags(volatile unsigned int *flags, char *domain_src, char *domain_dst, bool enableReload = false);
 	static void loadActive();
 	static void freeActive();
 	static void prepareReload();
@@ -250,10 +250,10 @@ public:
 	SIP_HEADERfilter();
 	~SIP_HEADERfilter();
 	void load();
-	int _add_call_flags(class ParsePacket::ppContentsX *parseContents, unsigned int *flags);
+	int _add_call_flags(class ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags);
 	void dump();
 	void _addNodes(ParsePacket *parsePacket);
-	static int add_call_flags(class ParsePacket::ppContentsX *parseContents, unsigned int *flags);
+	static int add_call_flags(class ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags, bool enableReload = false);
 	static void addNodes(ParsePacket *parsePacket);
 	static void loadActive();
 	static void freeActive();
@@ -284,7 +284,7 @@ private:
 	static volatile int _sync_reload;
 };
 
-inline void set_global_flags(unsigned int &flags) {
+inline void set_global_flags(volatile unsigned int &flags) {
 	extern int opt_saveSIP;
 	extern int opt_saveRTP;
 	extern int opt_onlyRTPheader;
