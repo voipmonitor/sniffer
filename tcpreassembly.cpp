@@ -1997,17 +1997,17 @@ void TcpReassemblyLink::createEthHeader(u_char *packet, int dlt) {
 void TcpReassemblyLink::extCleanup(int id, bool all) {
 	syslog(LOG_INFO, "TCPREASSEMBLY EXT CLEANUP %i: link %s:%u -> %s:%u size: %lu",
 	       id,
-	       inet_ntostring(this->ip_src).c_str(), this->port_src,
-	       inet_ntostring(this->ip_dst).c_str(), this->port_dst,
+	       inet_ntostring(htonl(this->ip_src)).c_str(), this->port_src,
+	       inet_ntostring(htonl(this->ip_dst)).c_str(), this->port_dst,
 	       this->queueStreams.size());
 	if(reassembly->log) {
 		ostringstream outStr;
 		outStr << fixed 
 		       << "EXT CLEANUP " << id << ": " 
 		       << sqlDateTimeString(time(NULL)) << " "
-		       << inet_ntostring(this->ip_src) << ":" << this->port_src
+		       << inet_ntostring(htonl(this->ip_src)) << ":" << this->port_src
 		       << " -> "
-		       << inet_ntostring(this->ip_dst) << ":" << this->port_dst
+		       << inet_ntostring(htonl(this->ip_dst)) << ":" << this->port_dst
 		       << " size: "
 		       << this->queueStreams.size();
 		reassembly->addLog(outStr.str().c_str());
