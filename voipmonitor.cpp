@@ -8371,16 +8371,16 @@ void dns_lookup_common_hostnames() {
 	}
 }
 
+struct s_gethostbyname_lock_rslt_time {
+	u_int32_t ipl;
+	time_t at;
+};
 u_int32_t gethostbyname_lock(const char *name) {
-	struct s_rslt_time {
-		u_int32_t ipl;
-		time_t at;
-	};
-	static map<string, s_rslt_time> rslts;
+	static map<string, s_gethostbyname_lock_rslt_time> rslts;
 	pthread_mutex_lock(&hostbyname_lock);
 	u_int32_t ipl = 0;
 	time_t now = time(NULL);
-	map<string, s_rslt_time>::iterator iter_find = rslts.find(name);
+	map<string, s_gethostbyname_lock_rslt_time>::iterator iter_find = rslts.find(name);
 	if(iter_find != rslts.end() &&
 	   iter_find->second.at + 120 > now) {
 		ipl = iter_find->second.ipl;

@@ -2851,7 +2851,7 @@ void fillEscTables() {
 
 string _sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
 	bool mysql = false;
-	unsigned char (*escTable)[2];
+	unsigned char (*escTable)[2] = NULL;
 	if(!typeDb || isTypeDb("mysql", typeDb)) {
 		mysql = true;
 		escTable = escTableMysql;
@@ -2860,6 +2860,9 @@ string _sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
 	}
 	if(!length) {
 		length = strlen(inputStr);
+	}
+	if(!escTable) {
+		return(string(inputStr, length));
 	}
 	string rsltString;
 	for(int posInputString = 0; posInputString < length; posInputString++) {
@@ -2884,7 +2887,7 @@ string _sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
 
 void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const char *typeDb) {
 	bool mysql = false;
-	unsigned char (*escTable)[2];
+	unsigned char (*escTable)[2] = NULL;
 	if(!typeDb || isTypeDb("mysql", typeDb)) {
 		mysql = true;
 		escTable = escTableMysql;
@@ -2893,6 +2896,11 @@ void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const c
 	}
 	if(!length) {
 		length = strlen(inputStr);
+	}
+	if(!escTable) {
+		strncpy(outputStr, inputStr, length);
+		outputStr[length] = 0;
+		return;
 	}
 	unsigned posOutputString = 0;
 	for(int posInputString = 0; posInputString < length; posInputString++) {

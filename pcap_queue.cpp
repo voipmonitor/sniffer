@@ -6339,6 +6339,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	} while(nextPass);
 
 	header_udp = &header_udp_tmp;
+	header_tcp = NULL;
 	if (header_ip->protocol == IPPROTO_UDP) {
 		// prepare packet pointers 
 		header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));

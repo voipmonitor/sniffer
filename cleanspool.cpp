@@ -697,7 +697,7 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 	long long sumsize = 0;
 	string filesIndexDirName;
 	string spoolDirTypeName;
-	eTypeSpoolFile typeSpoolFile;
+	eTypeSpoolFile typeSpoolFile = tsf_main;
 	if(type == "sip") {
 		filesIndexDirName = "sipsize";
 		spoolDirTypeName = "SIP";
