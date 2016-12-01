@@ -233,6 +233,7 @@ public:
 	uint32_t counter;
 	bool had_audio;
 	bool defer_codec_change;
+	bool stream_in_multiple_calls;
 
 	/* RTCP data */
 	struct rtcp_t {

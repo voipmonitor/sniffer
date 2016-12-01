@@ -521,7 +521,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 * 
 	*/
-	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, char enable_save_packet, char *ifname = NULL);
+	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char enable_save_packet, char *ifname = NULL);
 
 	/**
 	 * @brief read RTCP packet 

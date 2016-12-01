@@ -341,6 +341,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	skip = false;
 
 	defer_codec_change = false;
+	stream_in_multiple_calls = false;
 	prev_payload_len = 0;
 }
 

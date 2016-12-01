@@ -1447,7 +1447,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 
 inline
 void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
-			     int iscaller, bool find_by_dest, int is_rtcp, int enable_save_packet, 
+			     int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, int enable_save_packet, 
 			     int preSyncRtp = 0, int threadIndex = 0) {
 	if(is_terminating()) {
 		return;
@@ -1471,7 +1471,7 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 		packetS->blockstore_forcelock(60 /*pb lock flag*/);
 	}
 	rtp_read_thread *read_thread = &(rtp_threads[call->thread_num]);
-	read_thread->push(call, packetS, iscaller, find_by_dest, is_rtcp, enable_save_packet, threadIndex);
+	read_thread->push(call, packetS, iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, enable_save_packet, threadIndex);
 }
 
 
@@ -1504,7 +1504,7 @@ void *rtp_read_thread_func(void *arg) {
 						if(rtpp_pq->is_rtcp) {
 							rslt_read_rtp = rtpp_pq->call->read_rtcp(rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->save_packet);
 						}  else {
-							rslt_read_rtp = rtpp_pq->call->read_rtp(rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->find_by_dest, rtpp_pq->save_packet, 
+							rslt_read_rtp = rtpp_pq->call->read_rtp(rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->find_by_dest, rtpp_pq->stream_in_multiple_calls, rtpp_pq->save_packet,
 												rtpp_pq->packet->block_store && rtpp_pq->packet->block_store->ifname[0] ? rtpp_pq->packet->block_store->ifname : NULL);
 						}
 					}
@@ -1523,7 +1523,7 @@ void *rtp_read_thread_func(void *arg) {
 						if(rtpp_pq->is_rtcp) {
 							rslt_read_rtp = rtpp_pq->call->read_rtcp(&rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->save_packet);
 						}  else {
-							rslt_read_rtp = rtpp_pq->call->read_rtp(&rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->find_by_dest, rtpp_pq->save_packet, 
+							rslt_read_rtp = rtpp_pq->call->read_rtp(&rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->find_by_dest, rtpp_pq->stream_in_multiple_calls, rtpp_pq->save_packet,
 												rtpp_pq->packet.block_store && rtpp_pq->packet.block_store->ifname[0] ? rtpp_pq->packet.block_store->ifname : NULL);
 						}
 					}
@@ -3423,6 +3423,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 	Call *call;
 	bool iscaller;
 	bool is_rtcp;
+	bool stream_in_multiple_calls;
 	s_sdp_flags sdp_flags;
 	size_t call_info_index;
 	int count_use = 0;
@@ -3440,6 +3441,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 		iscaller = call_info[call_info_index].iscaller;
 		sdp_flags = call_info[call_info_index].sdp_flags;
 		is_rtcp = call_info[call_info_index].is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data_()[1] == 0xC8);
+		stream_in_multiple_calls = call_info[call_info_index].multiple_calls;
 		
 		if(sverb.process_rtp) {
 			++process_rtp_counter;
@@ -3478,6 +3480,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			call_info_temp[call_info_temp_length].call = call;
 			call_info_temp[call_info_temp_length].iscaller = iscaller;
 			call_info_temp[call_info_temp_length].is_rtcp = is_rtcp;
+			call_info_temp[call_info_temp_length].multiple_calls = stream_in_multiple_calls;
 			call_info[call_info_index].use_sync = true;
 			++call_info_temp_length;
 		} else {
@@ -3486,7 +3489,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 				if(is_rtcp) {
 					rslt_read_rtp = call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 				} else {
-					rslt_read_rtp = call->read_rtp(packetS, iscaller, find_by_dest, enable_save_rtp(call), 
+					rslt_read_rtp = call->read_rtp(packetS, iscaller, find_by_dest, stream_in_multiple_calls, enable_save_rtp(call), 
 								       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 				}
 			}
@@ -3527,16 +3530,17 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			call = call_info_temp[i].call;
 			iscaller = call_info_temp[i].iscaller;
 			is_rtcp = call_info_temp[i].is_rtcp;
+			stream_in_multiple_calls = call_info_temp[i].multiple_calls;
 			packetS->blockstore_addflag(55 /*pb lock flag*/);
 			if(is_rtcp) {
 				packetS->blockstore_addflag(56 /*pb lock flag*/);
 				add_to_rtp_thread_queue(call, packetS,
-							iscaller, find_by_dest, is_rtcp, enable_save_rtcp(call), 
+							iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, enable_save_rtcp(call), 
 							preSyncRtp, threadIndex);
 			} else {
 				packetS->blockstore_addflag(57 /*pb lock flag*/);
 				add_to_rtp_thread_queue(call, packetS, 
-							iscaller, find_by_dest, is_rtcp, enable_save_rtp(call), 
+							iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, enable_save_rtp(call), 
 							preSyncRtp, threadIndex);
 			}
 		}
@@ -3668,10 +3672,16 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 					call_info[call_info_length].is_rtcp = node_call->is_rtcp;
 					call_info[call_info_length].sdp_flags = node_call->sdp_flags;
 					call_info[call_info_length].use_sync = false;
+					call_info[call_info_length].multiple_calls = false;
 					++call_info_length;
 					if(call_info_length == MAX_LENGTH_CALL_INFO) {
 						break;
 					}
+				}
+			}
+			if(call_info_length > 1) {
+				for(int i = 0; i < call_info_length; i++) {
+					call_info[i].multiple_calls = true;
 				}
 			}
 		}
@@ -6693,11 +6703,17 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 				packetS->call_info[packetS->call_info_length].is_rtcp = node_call->is_rtcp;
 				packetS->call_info[packetS->call_info_length].sdp_flags = node_call->sdp_flags;
 				packetS->call_info[packetS->call_info_length].use_sync = false;
+				packetS->call_info[packetS->call_info_length].multiple_calls = false;
 				__sync_add_and_fetch(&node_call->call->rtppacketsinqueue, 1);
 				++packetS->call_info_length;
 				if(packetS->call_info_length == (sizeof(packetS->call_info) / sizeof(packetS->call_info[0]))) {
 					break;
 				}
+			}
+		}
+		if(packetS->call_info_length > 1) {
+			for(int i = 0; i < packetS->call_info_length; i++) {
+				packetS->call_info[i].multiple_calls = true;
 			}
 		}
 	}

@@ -928,7 +928,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 
 /* analyze rtp packet */
 bool
-Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, char enable_save_packet, char *ifname) {
+Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char enable_save_packet, char *ifname) {
  
 	extern int opt_vlan_siprtpsame;
 	if(packetS->datalen == 12) {
@@ -1056,6 +1056,9 @@ read:
 						if(rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
 								packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
 							rtp_read_rslt = true;
+							if(stream_in_multiple_calls) {
+								rtp[i]->stream_in_multiple_calls = true;
+							}
 						}
 						rtp[i]->prev_sport = packetS->source;
 						rtp[i]->prev_dport = packetS->dest;
@@ -1156,6 +1159,9 @@ read:
 		if(rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
 				     packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
 			rtp_read_rslt = true;
+			if(stream_in_multiple_calls) {
+				rtp[ssrc_n]->stream_in_multiple_calls = true;
+			}
 		}
 		rtp[ssrc_n]->prev_sport = packetS->source;
 		rtp[ssrc_n]->prev_dport = packetS->dest;
@@ -2790,6 +2796,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(existsColumns.cdr_rtp_index) {
 					rtps.add(i + 1, "index");
 				}
+				if(existsColumns.cdr_rtp_flags) {
+					u_int64_t flags = 0;
+					if(rtp[i]->stream_in_multiple_calls) {
+						flags |= 1;
+					}
+					if(flags) {
+						rtps.add(flags, "flags");
+					}
+				}
 				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
@@ -3000,6 +3015,18 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp[i]->stats.lost, "loss");
 				rtps.add((unsigned int)(rtp[i]->stats.maxjitter * 10), "maxjitter_mult10");
 				rtps.add(diff, "firsttime");
+				if(existsColumns.cdr_rtp_index) {
+					rtps.add(i + 1, "index");
+				}
+				if(existsColumns.cdr_rtp_flags) {
+					u_int64_t flags = 0;
+					if(rtp[i]->stream_in_multiple_calls) {
+						flags |= 1;
+					}
+					if(flags) {
+						rtps.add(flags, "flags");
+					}
+				}
 				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}

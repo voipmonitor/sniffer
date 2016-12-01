@@ -3616,6 +3616,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`payload` smallint unsigned DEFAULT NULL,\
 			`maxjitter_mult10` smallint unsigned DEFAULT NULL,\
 			`index` tinyint unsigned DEFAULT NULL,\
+			`flags` bigint unsigned DEFAULT NULL,\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -5293,6 +5294,14 @@ void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 				   "ALTER TABLE cdr_rtp "
 					"ADD COLUMN `index` tinyint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.cdr_rtp_index);
+	}
+	existsColumns.cdr_rtp_flags = this->existsColumn("cdr_rtp", "flags");
+	if(!existsColumns.cdr_rtp_flags) {
+		this->logNeedAlter("cdr_rtp",
+				   "flags",
+				   "ALTER TABLE cdr_rtp "
+					"ADD COLUMN `flags` bigint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.cdr_rtp_flags);
 	}
 }
 

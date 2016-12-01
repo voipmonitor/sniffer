@@ -195,6 +195,7 @@ struct packet_s_process_rtp_call_info {
 	bool is_rtcp;
 	s_sdp_flags sdp_flags;
 	bool use_sync;
+	bool multiple_calls;
 };
 
 struct packet_s_process_0 : public packet_s {
@@ -339,6 +340,7 @@ typedef struct {
 	char iscaller;
 	char find_by_dest;
 	char is_rtcp;
+	char stream_in_multiple_calls;
 	char save_packet;
 } rtp_packet_pcap_queue;
 typedef struct {
@@ -347,6 +349,7 @@ typedef struct {
 	char iscaller;
 	char find_by_dest;
 	char is_rtcp;
+	char stream_in_multiple_calls;
 	char save_packet;
 } rtp_packet_pt_pcap_queue;
 
@@ -414,7 +417,7 @@ public:
 	void term_qring();
 	void term_thread_buffer();
 	size_t qring_size();
-	inline void push(Call *call, packet_s_process_0 *packet, int iscaller, bool find_by_dest, int is_rtcp, int enable_save_packet, int threadIndex = 0) {
+	inline void push(Call *call, packet_s_process_0 *packet, int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, int enable_save_packet, int threadIndex = 0) {
 		
 		/* destroy and quit - debug
 		void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet);
@@ -491,6 +494,7 @@ public:
 			rtpp_pq->iscaller = iscaller;
 			rtpp_pq->find_by_dest = find_by_dest;
 			rtpp_pq->is_rtcp = is_rtcp;
+			rtpp_pq->stream_in_multiple_calls = stream_in_multiple_calls;
 			rtpp_pq->save_packet = enable_save_packet;
 			packet->blockstore_addflag(63 /*pb lock flag*/);
 			thread_buffer->count++;
@@ -529,6 +533,7 @@ public:
 			rtpp_pq->iscaller = iscaller;
 			rtpp_pq->find_by_dest = find_by_dest;
 			rtpp_pq->is_rtcp = is_rtcp;
+			rtpp_pq->stream_in_multiple_calls = stream_in_multiple_calls;
 			rtpp_pq->save_packet = enable_save_packet;
 			++qring_push_index_count;
 			packet->blockstore_addflag(63 /*pb lock flag*/);
