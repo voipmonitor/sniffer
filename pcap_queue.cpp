@@ -6274,15 +6274,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	}
 	*/
  
-	iphdr2 *header_ip;
-	tcphdr2 *header_tcp;
-	udphdr2 *header_udp;
-	udphdr2 header_udp_tmp;
-	char *data = NULL;
-	int datalen = 0;
-	int istcp = 0;
 	static u_int64_t packet_counter_all;
-	
 	++packet_counter_all;
 	
 	pcap_pkthdr *header = hp->header->convertToStdHeader();
@@ -6319,7 +6311,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		this->_last_ts = header->ts;
 	}
 	
-	header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+	iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
 
 	bool nextPass;
 	do {
@@ -6338,24 +6330,27 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		}
 	} while(nextPass);
 
-	header_udp = &header_udp_tmp;
-	header_tcp = NULL;
+	char *data = NULL;
+	int datalen = 0;
+	int istcp = 0;
+	u_int16_t sport = 0;
+	u_int16_t dport = 0;
 	if (header_ip->protocol == IPPROTO_UDP) {
-		// prepare packet pointers 
-		header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
+		udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
 		data = (char *) header_udp + sizeof(*header_udp);
 		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2), 
 				   header->caplen - ((u_char*)data - hp->packet));
 		istcp = 0;
+		sport = header_udp->source;
+		dport = header_udp->dest;
 	} else if (header_ip->protocol == IPPROTO_TCP) {
-		header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
-		istcp = 1;
-		// prepare packet pointers 
+		tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
 		data = (char *) header_tcp + (header_tcp->doff * 4);
 		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - header_tcp->doff * 4, 
 				   header->caplen - ((u_char*)data - hp->packet)); 
-		header_udp->source = header_tcp->source;
-		header_udp->dest = header_tcp->dest;
+		istcp = 1;
+		sport = header_tcp->source;
+		dport = header_tcp->dest;
 	} else {
 		//packet is not UDP and is not TCP, we are not interested, go to the next packet
 		return(0);
@@ -6377,24 +6372,24 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		return(0);
 	}
 
-	if(opt_mirrorip && (sipportmatrix[htons(header_udp->source)] || sipportmatrix[htons(header_udp->dest)])) {
+	if(opt_mirrorip && (sipportmatrix[htons(sport)] || sipportmatrix[htons(dport)])) {
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - hp->packet)));
 	}
 
 	if(header_ip->protocol == IPPROTO_TCP) {
-		if(opt_enable_http && (httpportmatrix[htons(header_tcp->source)] || httpportmatrix[htons(header_tcp->dest)])) {
+		if(opt_enable_http && (httpportmatrix[htons(sport)] || httpportmatrix[htons(dport)])) {
 			tcpReassemblyHttp->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						    hp->block_store, hp->block_store_index, hp->block_store_locked,
 						    this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);
 			return(1);
-		} else if(opt_enable_webrtc && (webrtcportmatrix[htons(header_tcp->source)] || webrtcportmatrix[htons(header_tcp->dest)])) {
+		} else if(opt_enable_webrtc && (webrtcportmatrix[htons(sport)] || webrtcportmatrix[htons(dport)])) {
 			tcpReassemblyWebrtc->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						      hp->block_store, hp->block_store_index, hp->block_store_locked,
 						      this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);
 			return(1);
 		} else if(opt_enable_ssl && 
-			  (isSslIpPort(htonl(header_ip->saddr), htons(header_tcp->source)) ||
-			   isSslIpPort(htonl(header_ip->daddr), htons(header_tcp->dest)))) {
+			  (isSslIpPort(htonl(header_ip->saddr), htons(sport)) ||
+			   isSslIpPort(htonl(header_ip->daddr), htons(dport)))) {
 			tcpReassemblySsl->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						   hp->block_store, hp->block_store_index, hp->block_store_locked,
 						   this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);
@@ -6412,7 +6407,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 				#if USE_PACKET_NUMBER
 				packet_counter_all,
 				#endif
-				header_ip->saddr, htons(header_udp->source), header_ip->daddr, htons(header_udp->dest),
+				header_ip->saddr, htons(sport), header_ip->daddr, htons(dport),
 				datalen, data - (char*)hp->packet,
 				this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
 				istcp, header_ip,
