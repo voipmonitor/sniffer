@@ -1537,6 +1537,11 @@ void *storing_registers( void *dummy ) {
 			break;
 		}
 		calltable->unlock_registers_queue();
+		
+		if(opt_sip_register == 1) {
+			extern Registers registers;
+			registers.cleanup(time(NULL));
+		}
 	}
 	if(verbosity && !opt_nocdr) {
 		syslog(LOG_NOTICE, "terminated - storing register");

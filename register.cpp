@@ -528,12 +528,12 @@ void Registers::add(Call *call) {
 	*/
 }
 
-void Registers::cleanup(u_int32_t act_time) {
+void Registers::cleanup(u_int32_t act_time, bool force) {
 	if(!last_cleanup_time) {
 		last_cleanup_time = act_time;
 		return;
 	}
-	if(act_time > last_cleanup_time + NEW_REGISTER_CLEAN_PERIOD) {
+	if(act_time > last_cleanup_time + NEW_REGISTER_CLEAN_PERIOD || force) {
 		lock_registers();
 		map<RegisterId, Register*>::iterator iter;
 		for(iter = registers.begin(); iter != registers.end(); ) {

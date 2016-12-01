@@ -2971,28 +2971,50 @@ string PcapQueue_readFromInterface_base::getInterfaceName(bool simple) {
 }
 
 void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
-	while(buffersControl.getPercUsePBwithouttrash() > 0.1) {
-		syslog(LOG_NOTICE, "wait for processing packetbuffer (%.1lf%%)", buffersControl.getPercUsePBwithouttrash());
-		sleep(1);
-	}
-	int sleepTimeBeforeCleanup = opt_enable_ssl ? 10 :
-				     sverb.chunk_buffer ? 20 : 5;
-	int sleepTimeAfterCleanup = 4;
-	while((sleepTimeBeforeCleanup + sleepTimeAfterCleanup) && !is_terminating()) {
-		syslog(LOG_NOTICE, "time to terminating: %u", sleepTimeBeforeCleanup + sleepTimeAfterCleanup);
-		this->tryForcePush();
-		sleep(1);
-		if(sleepTimeBeforeCleanup) {
-			--sleepTimeBeforeCleanup;
-			if(!sleepTimeBeforeCleanup) {
+	if(opt_continue_after_read) {
+		unsigned sleepCounter = 0;
+		while(!is_terminating()) {
+			this->tryForcePush();
+			if(sleepCounter > 10 && sleepCounter <= 15) {
 				calltable->cleanup_calls(0);
 				calltable->cleanup_registers(0);
 			}
-		} else if(sleepTimeAfterCleanup) {
-			--sleepTimeAfterCleanup;
+			if(sleepCounter > 15) {
+				calltable->destroyCallsIfPcapsClosed();
+				calltable->destroyRegistersIfPcapsClosed();
+			}
+			if(sleepCounter > 20) {
+				if(flushAllTars()) {
+					 syslog(LOG_NOTICE, "tars flushed");
+				}
+			}
+			sleep(1);
+			++sleepCounter;
 		}
+	} else {
+		while(buffersControl.getPercUsePBwithouttrash() > 0.1) {
+			syslog(LOG_NOTICE, "wait for processing packetbuffer (%.1lf%%)", buffersControl.getPercUsePBwithouttrash());
+			sleep(1);
+		}
+		int sleepTimeBeforeCleanup = opt_enable_ssl ? 10 :
+					     sverb.chunk_buffer ? 20 : 5;
+		int sleepTimeAfterCleanup = 4;
+		while((sleepTimeBeforeCleanup + sleepTimeAfterCleanup) && !is_terminating()) {
+			syslog(LOG_NOTICE, "time to terminating: %u", sleepTimeBeforeCleanup + sleepTimeAfterCleanup);
+			this->tryForcePush();
+			sleep(1);
+			if(sleepTimeBeforeCleanup) {
+				--sleepTimeBeforeCleanup;
+				if(!sleepTimeBeforeCleanup) {
+					calltable->cleanup_calls(0);
+					calltable->cleanup_registers(0);
+				}
+			} else if(sleepTimeAfterCleanup) {
+				--sleepTimeAfterCleanup;
+			}
+		}
+		vm_terminate();
 	}
-	vm_terminate();
 }
 
 
@@ -3642,29 +3664,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 				#endif
 				if(res == -1) {
 					if(opt_pb_read_from_file[0]) {
-						if(opt_continue_after_read) {
-							unsigned sleepCounter = 0;
-							while(!is_terminating()) {
-								this->tryForcePush();
-								if(sleepCounter > 10 && sleepCounter <= 15) {
-									calltable->cleanup_calls(0);
-									calltable->cleanup_registers(0);
-								}
-								if(sleepCounter > 15) {
-									calltable->destroyCallsIfPcapsClosed();
-									calltable->destroyRegistersIfPcapsClosed();
-								}
-								if(sleepCounter > 20) {
-									if(flushAllTars()) {
-										 syslog(LOG_NOTICE, "tars flushed");
-									}
-								}
-								sleep(1);
-								++sleepCounter;
-							}
-						} else {
-							terminatingAtEndOfReadPcap();
-						}
+						terminatingAtEndOfReadPcap();
 					}
 					break;
 				} else if(res == 0) {

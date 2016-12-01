@@ -152,7 +152,7 @@ public:
 	Registers();
 	~Registers();
 	void add(Call *call);
-	void cleanup(u_int32_t act_time);
+	void cleanup(u_int32_t act_time, bool force = false);
 	void clean_all();
 	inline u_int64_t getNewRegisterFailedId(int sensorId);
 	string getDataTableJson(char *params, bool *zip = NULL);

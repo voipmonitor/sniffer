@@ -1302,6 +1302,17 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			return -1;
 		}
 		return 0;
+	} else if(strstr(buf, "expire_registers") != NULL) {
+		extern int opt_sip_register;
+		if(opt_sip_register == 1) {
+			extern Registers registers;
+			registers.cleanup(time(NULL), true);
+		}
+		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return(0);
 	} else if(strstr(buf, "cleanup_tcpreassembly") != NULL) {
 		extern TcpReassemblySip tcpReassemblySip;
 		tcpReassemblySip.clean();
