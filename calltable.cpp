@@ -4545,7 +4545,8 @@ Calltable::cleanup_calls( time_t currtime ) {
 			if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
 				call->force_terminate = true;
 			}
-		} else if(call->in_preprocess_queue_before_process_packet <= 0 ||
+		} else if(call->type == SKINNY_NEW ||
+			  call->in_preprocess_queue_before_process_packet <= 0 ||
 			  (!is_read_from_file() &&
 			   (call->in_preprocess_queue_before_process_packet_at && call->in_preprocess_queue_before_process_packet_at < currtime - 300))) {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
