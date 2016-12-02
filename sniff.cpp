@@ -2264,15 +2264,6 @@ static inline Call *process_packet__merge(packet_s_process *packetS, char *calli
 
 inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	
-	if(packetS->isSip) {
-		if(packetS->_findCall && packetS->call) {
-			__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
-		}
-		if(packetS->_createCall && packetS->call_created) {
-			__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
-		}
-	}
-	
 	Call *call = NULL;
 	char *s;
 	unsigned long l;
@@ -2290,13 +2281,6 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	const char *logPacketSipMethodCallDescr = NULL;
 	int merged;
 	
-	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
-	process_packet__cleanup_calls(packetS->header_pt);
-	if(packetS->header_pt->ts.tv_sec - process_packet__last_destroy_calls >= 2) {
-		calltable->destroyCallsIfPcapsClosed();
-		process_packet__last_destroy_calls = packetS->header_pt->ts.tv_sec;
-	}
-
 	s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
 	if(s && l <= 1023) {
 		strncpy(contenttypestr, s, l);
@@ -5280,6 +5264,14 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 }
 
 
+void _process_packet__cleanup_calls(pcap_pkthdr *header) {
+	process_packet__cleanup_calls(header);
+	if(header->ts.tv_sec - process_packet__last_destroy_calls >= 2) {
+		calltable->destroyCallsIfPcapsClosed();
+		process_packet__last_destroy_calls = header->ts.tv_sec;
+	}
+}
+
 void _process_packet__cleanup_calls() {
 	process_packet__cleanup_calls(NULL);
 	u_long timeS = getTimeS();
@@ -6065,11 +6057,19 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
+		if(packetS->_findCall && packetS->call) {
+			__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
+		}
+		if(packetS->_createCall && packetS->call_created) {
+			__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
+		}
+		_process_packet__cleanup_calls(packetS->header_pt);
 		process_packet_sip_call_inline(packetS);
 	} else if(packetS->isSkinny) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
+		_process_packet__cleanup_calls(packetS->header_pt);
 		handle_skinny(packetS->header_pt, packetS->packet, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, packetS->datalen, packetS->dataoffset,
 			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip);
 	}
