@@ -45,10 +45,10 @@ CleanSpool::CleanSpool(int spoolIndex) {
 }
 
 CleanSpool::~CleanSpool() {
+	termCleanThread();
 	if(sqlDb) {
 		delete sqlDb;
 	}
-	termCleanThread();
 }
 
 void CleanSpool::addFile(const char *ymdh, const char *column, eTypeSpoolFile typeSpoolFile, const char *file, long long int size) {
