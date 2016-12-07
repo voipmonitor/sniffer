@@ -1683,6 +1683,7 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	}
 	close(socket1);
 	close(socket2);
+	set_readend();
 	terminate_packetbuffer();
 	sleep(2);
 

@@ -2126,6 +2126,10 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->lastTimeLogErrExceededMaximumAttempts = 0;
 	this->_cleanupCounter = 0;
 	this->linkTimeout = 2 * 60;
+	this->initCleanupThreadOk = false;
+	this->initPacketThreadOk = false;
+	this->terminatingCleanupThread = false;
+	this->terminatingPacketThread = false;
 	char *log = NULL;
 	switch(type) {
 	case http: log = opt_tcpreassembly_http_log; break;
@@ -2144,6 +2148,14 @@ TcpReassembly::TcpReassembly(eType type) {
 }
 
 TcpReassembly::~TcpReassembly() {
+	if(this->initCleanupThreadOk) {
+		this->terminatingCleanupThread = true;
+		pthread_join(this->cleanupThreadHandle, NULL);
+	}
+	if(this->initPacketThreadOk) {
+		this->terminatingPacketThread = true;
+		pthread_join(this->packetThreadHandle, NULL);
+	}
 	if(!this->enableCleanupThread || opt_pb_read_from_file[0]) {
 		if(this->enableCleanupThread) {
 			this->cleanup(true);
@@ -2308,6 +2320,7 @@ void TcpReassembly::createPacketThread() {
 }
 
 void* TcpReassembly::cleanupThreadFunction(void*) {
+	this->initCleanupThreadOk = true;
 	if(verbosity) {
 		ostringstream outStr;
 		this->cleanupThreadId = get_unix_tid();
@@ -2315,19 +2328,21 @@ void* TcpReassembly::cleanupThreadFunction(void*) {
 		       << " - pid: " << this->cleanupThreadId << endl;
 		syslog(LOG_NOTICE, outStr.str().c_str());
 	}
-	while(!is_terminating() || this->ignoreTerminating) {
-		for(int i = 0; i < 10 && (!is_terminating() || this->ignoreTerminating); i++) {
-			sleep(1);
-		}
-		if(!is_terminating() || this->ignoreTerminating) {
+	unsigned counter = 0;
+	while((!is_terminating() || this->ignoreTerminating) &&
+	      !this->terminatingCleanupThread) {
+		++counter;
+		if(!(counter % 100)) {
 			this->cleanup();
 			this->dataCallback->writeToDb();
 		}
+		usleep(100000);
 	}
 	return(NULL);
 }
 
 void* TcpReassembly::packetThreadFunction(void*) {
+	this->initPacketThreadOk = true;
 	if(verbosity) {
 		ostringstream outStr;
 		this->packetThreadId = get_unix_tid();
@@ -2336,7 +2351,8 @@ void* TcpReassembly::packetThreadFunction(void*) {
 		syslog(LOG_NOTICE, outStr.str().c_str());
 	}
 	sPacket packet;
-	while(!is_terminating() || this->ignoreTerminating) {
+	while((!is_terminating() || this->ignoreTerminating) &&
+	      !this->terminatingPacketThread) {
 		if(packetQueue.pop(&packet)) {
 			this->_push(packet.header, packet.header_ip, packet.packet,
 				    packet.block_store, packet.block_store_index,

@@ -56,7 +56,6 @@ extern rtp_read_thread *rtp_threads;
 extern int opt_norecord_dtmf;
 extern int opt_onlyRTPheader;
 extern int opt_sipoverlap;
-extern int readend;
 extern int opt_dup_check;
 extern char opt_match_header[128];
 extern int opt_domainport;

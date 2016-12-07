@@ -2978,7 +2978,7 @@ int main_init_read() {
 		}
 	}
 	
-	readend = 0;
+	clear_readend();
 
 	if(is_enable_packetbuffer()) {
 		PcapQueue_init();
@@ -3086,36 +3086,14 @@ int main_init_read() {
 	return(0);
 }
 
-void main_term_read() {
-	readend = 1;
-
-	if(is_read_from_file_simple() && global_pcap_handle) {
-		pcap_close(global_pcap_handle);
-	}
-	if(global_pcap_handle_dead_EN10MB) {
-		pcap_close(global_pcap_handle_dead_EN10MB);
-	}
-	
-	// flush all queues
-
-	Call *call;
-	calltable->cleanup_calls(0);
-	calltable->cleanup_registers(0);
-
-	set_terminating();
-
-	regfailedcache->prune(0);
-	if(opt_sip_register == 1) {
-		extern Registers registers;
-		registers.clean_all();
-	}
-	
+void terminate_processpacket() {
 	if(tcpReassemblyHttp) {
 		delete tcpReassemblyHttp;
 		tcpReassemblyHttp = NULL;
 	}
 	if(httpData) {
 		delete httpData;
+		httpData = NULL;
 	}
 	if(tcpReassemblyWebrtc) {
 		delete tcpReassemblyWebrtc;
@@ -3123,6 +3101,7 @@ void main_term_read() {
 	}
 	if(webrtcData) {
 		delete webrtcData;
+		webrtcData = NULL;
 	}
 	if(tcpReassemblySsl) {
 		delete tcpReassemblySsl;
@@ -3191,7 +3170,34 @@ void main_term_read() {
 		delete [] rtp_threads;
 		rtp_threads = NULL;
 	}
+}
 
+void main_term_read() {
+	set_readend();
+
+	if(is_read_from_file_simple() && global_pcap_handle) {
+		pcap_close(global_pcap_handle);
+	}
+	if(global_pcap_handle_dead_EN10MB) {
+		pcap_close(global_pcap_handle_dead_EN10MB);
+	}
+	
+	// flush all queues
+
+	Call *call;
+	calltable->cleanup_calls(0);
+	calltable->cleanup_registers(0);
+
+	set_terminating();
+
+	regfailedcache->prune(0);
+	if(opt_sip_register == 1) {
+		extern Registers registers;
+		registers.clean_all();
+	}
+	
+	terminate_processpacket();
+	
 	if(sipSendSocket) {
 		delete sipSendSocket;
 		sipSendSocket = NULL;
@@ -3511,40 +3517,12 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ) {
 			pcapQueueQ->terminate();
 		}
+		if(pcapQueueQ_outThread_defrag) {
+			pcapQueueQ_outThread_defrag->terminate();
+		}
 		sleep(1);
 		
-		if(tcpReassemblyHttp) {
-			delete tcpReassemblyHttp;
-			tcpReassemblyHttp = NULL;
-		}
-		if(httpData) {
-			delete httpData;
-			httpData = NULL;
-		}
-		if(tcpReassemblyWebrtc) {
-			delete tcpReassemblyWebrtc;
-			tcpReassemblyWebrtc = NULL;
-		}
-		if(webrtcData) {
-			delete webrtcData;
-			webrtcData = NULL;
-		}
-		if(tcpReassemblySsl) {
-			delete tcpReassemblySsl;
-			tcpReassemblySsl = NULL;
-		}
-		if(sslData) {
-			delete sslData;
-			sslData = NULL;
-		}
-		if(tcpReassemblySipExt) {
-			delete tcpReassemblySipExt;
-			tcpReassemblySipExt = NULL;
-		}
-		if(sipTcpData) {
-			delete sipTcpData;
-			sipTcpData = NULL;
-		}
+		terminate_processpacket();
 		
 		if(pcapQueueI) {
 			delete pcapQueueI;

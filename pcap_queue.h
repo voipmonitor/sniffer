@@ -965,6 +965,10 @@ public:
 	PcapQueue_outputThread(eTypeOutputThread typeOutputThread, PcapQueue_readFromFifo *pcapQueue);
 	~PcapQueue_outputThread();
 	void start();
+	void stop();
+	void terminate() {
+		this->stop();
+	}
 	inline void push(sHeaderPacketPQout *hp);
 	void push_batch();
 	void *outThreadFunction();
@@ -997,6 +1001,8 @@ private:
 	ipfrag_data_s ipfrag_data;
 	unsigned ipfrag_lastprune;
 	unsigned defrag_counter;
+	volatile bool initThreadOk;
+	volatile bool terminatingThread;
 friend inline void *_PcapQueue_outputThread_outThreadFunction(void *arg);
 };
 

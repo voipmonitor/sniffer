@@ -131,7 +131,6 @@ extern rtp_read_thread *rtp_threads;
 extern int opt_norecord_dtmf;
 extern int opt_onlyRTPheader;
 extern int opt_sipoverlap;
-extern int readend;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
 extern char opt_fbasename_header[128];
@@ -1489,13 +1488,13 @@ void *rtp_read_thread_func(void *arg) {
 	read_thread->threadId = get_unix_tid();
 	read_thread->last_use_time_s = getTimeMS_rdtsc() / 1000;
 	unsigned usleepCounter = 0;
-	while(1) {
+	while(!is_terminating() && !is_readend()) {
 		if(read_thread->qring[read_thread->readit]->used == 1) {
 			rtp_read_thread::batch_packet_rtp *batch = read_thread->qring[read_thread->readit];
 			__SYNC_LOCK(read_thread->count_lock_sync);
 			unsigned count = batch->count;
 			__SYNC_UNLOCK(read_thread->count_lock_sync);
-			for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+			for(unsigned batch_index = 0; batch_index < count && !is_readend(); batch_index++) {
 				read_thread->last_use_time_s = getTimeMS_rdtsc() / 1000;
 				bool rslt_read_rtp = false;
 				if(opt_t2_boost) {
@@ -1550,10 +1549,7 @@ void *rtp_read_thread_func(void *arg) {
 			#endif
 			usleepCounter = 0;
 		} else {
-			if(is_terminating() || readend) {
-				read_thread->threadId = 0;
-				return NULL;
-			} else if(read_thread->remove_flag &&
+			if(read_thread->remove_flag &&
 				  ((getTimeMS_rdtsc() / 1000) > (read_thread->last_use_time_s + 60))) {
 				lock_add_remove_rtp_threads();
 				if(read_thread->remove_flag && !read_thread->calls) {

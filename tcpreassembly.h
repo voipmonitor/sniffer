@@ -967,6 +967,10 @@ private:
 	u_int32_t linkTimeout;
 	SafeAsyncQueue<sPacket> packetQueue;
 	list<d_u_int32_t> sip_offsets;
+	volatile bool initCleanupThreadOk;
+	volatile bool initPacketThreadOk;
+	volatile bool terminatingCleanupThread;
+	volatile bool terminatingPacketThread;
 friend class TcpReassemblyLink;
 friend class TcpReassemblyStream;
 friend void *_TcpReassembly_cleanupThreadFunction(void* arg);

@@ -6521,9 +6521,12 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->outThreadId = 0;
 	this->defrag_counter = 0;
 	this->ipfrag_lastprune = 0;
+	this->initThreadOk = false;
+	this->terminatingThread = false;
 }
 
 PcapQueue_outputThread::~PcapQueue_outputThread() {
+	stop();
 	for(unsigned int i = 0; i < this->qring_length; i++) {
 		delete this->qring[i];
 	}
@@ -6532,8 +6535,17 @@ PcapQueue_outputThread::~PcapQueue_outputThread() {
 }
 
 void PcapQueue_outputThread::start() {
-	vm_pthread_create_autodestroy(("t2 out thread " + getNameOutputThread()).c_str(),
-				      &this->out_thread_handle, NULL, _PcapQueue_outputThread_outThreadFunction, this, __FILE__, __LINE__);
+	vm_pthread_create(("t2 out thread " + getNameOutputThread()).c_str(),
+			  &this->out_thread_handle, NULL, _PcapQueue_outputThread_outThreadFunction, this, __FILE__, __LINE__);
+}
+
+void PcapQueue_outputThread::stop() {
+	if(this->initThreadOk) {
+		this->terminatingThread = true;
+		pthread_join(this->out_thread_handle, NULL);
+		this->initThreadOk = false;
+		this->terminatingThread = false;
+	}
 }
 
 void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
@@ -6593,12 +6605,13 @@ void PcapQueue_outputThread::push_batch() {
 }
 
 void *PcapQueue_outputThread::outThreadFunction() {
+	this->initThreadOk = true;
 	extern unsigned int opt_preprocess_packets_qring_usleep;
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start thread t2_%s/%i", this->getNameOutputThread().c_str(), this->outThreadId);
 	sBatchHP *batch;
 	unsigned usleepCounter = 0;
-	while(!is_terminating()) {
+	while(!is_terminating() && !this->terminatingThread) {
 		if(this->qring[this->readit]->used == 1) {
 			batch = this->qring[this->readit];
 			for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {

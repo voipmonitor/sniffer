@@ -119,6 +119,19 @@ inline int is_terminating() {
 }
 bool is_terminating_without_error();
 
+inline void set_readend() {
+	extern int readend;
+	readend = 1;
+}
+inline void clear_readend() {
+	extern int readend;
+	readend = 0;
+}
+inline bool is_readend() {
+	extern int readend;
+	return(readend);
+}
+
 bool is_read_from_file();
 bool is_read_from_file_simple();
 bool is_read_from_file_by_pb();
