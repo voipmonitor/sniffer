@@ -1519,14 +1519,6 @@ bool RestartUpgrade::runUpgrade() {
 		return(false);
 	}
 	unlink(this->upgradeTempFileName.c_str());
-	char outputStdoutErr[L_tmpnam+1];
-	if(!tmpnam(outputStdoutErr)) {
-		this->errorString = "failed create temp name for output curl and gunzip";
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-		}
-		return(false);
-	}
 	string binaryFilepathName = this->upgradeTempFileName + "/voipmonitor";
 	string binaryGzFilepathName = this->upgradeTempFileName + "/voipmonitor.gz";
 	extern int opt_upgrade_try_http_if_https_fail;
@@ -1570,28 +1562,16 @@ bool RestartUpgrade::runUpgrade() {
 		}
 		return(false);
 	}
-	string unzipCommand = "gunzip " + binaryGzFilepathName +
-			      " >" + outputStdoutErr + " 2>&1";
 	if(verbosity > 0) {
-		syslog(LOG_NOTICE, "try unzip command: '%s'", unzipCommand.c_str());
+		syslog(LOG_NOTICE, "try unzip");
 	}
-	int unzipRslt = system(unzipCommand.c_str());
-	if(verbosity > 0) {
-		syslog(LOG_NOTICE, "unzip rslt: %i (size: %lli)", unzipRslt, GetFileSize(binaryFilepathName));
-	}
-	if(unzipRslt != 0) {
-		FILE *fileHandle = fopen(outputStdoutErr, "r");
-		if(fileHandle) {
-			size_t sizeOfOutputWgetBuffer = 10000;
-			char *outputStdoutErrBuffer = new FILE_LINE(39004) char[sizeOfOutputWgetBuffer];
-			size_t readSize = fread(outputStdoutErrBuffer, 1, sizeOfOutputWgetBuffer, fileHandle);
-			if(readSize > 0) {
-				outputStdoutErrBuffer[min(readSize, sizeOfOutputWgetBuffer - 1)] = 0;
-				this->errorString = "failed run gunzip: " + string(outputStdoutErrBuffer);
-			}
-			fclose(fileHandle);
+	string unzip_rslt = _gunzip_s(binaryGzFilepathName.c_str(), binaryFilepathName.c_str());
+	if(unzip_rslt.empty()) {
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "unzip finished");
 		}
-		unlink(outputStdoutErr);
+	} else {
+		this->errorString = unzip_rslt;
 		if(verbosity > 1) {
 			FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
 			char buff[10000];
@@ -1611,21 +1591,11 @@ bool RestartUpgrade::runUpgrade() {
 			}
 			return(false);
 		}
-	} else {
-		unlink(outputStdoutErr);
-		if(verbosity > 0) {
-			syslog(LOG_NOTICE, "unzip finished");
-		}
 	}
 	if(!this->_arm || md5_arm.length()) {
 		string md5 = GetFileMD5(binaryFilepathName);
 		if((this->_arm ? md5_arm : this->_64bit ? md5_64 : md5_32) != md5) {
 			this->errorString = "failed download - bad md5: " + md5 + " <> " + (this->_arm ? md5_arm : this->_64bit ? md5_64 : md5_32);
-			if(unzipRslt) {
-				char unzipRsltInfo[200];
-				sprintf(unzipRsltInfo, "\nunzip rslt: %i", unzipRslt);
-				this->errorString += unzipRsltInfo;
-			}
 			rmdir_r(this->upgradeTempFileName.c_str());
 			if(verbosity > 0) {
 				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
