@@ -1579,18 +1579,13 @@ bool RestartUpgrade::runUpgrade() {
 				cout << buff << endl;
 			}
 		}
-		if(!this->errorString.empty()) {
-			char sizeInfo[200];
-			sprintf(sizeInfo, "size of file %s: %lli", binaryGzFilepathName.c_str(), binaryGzFilepathNameSize);
-			this->errorString += string("\n") + sizeInfo;
-			if(verbosity < 2) {
-				rmdir_r(this->upgradeTempFileName.c_str());
-			}
-			if(verbosity > 0) {
-				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-			}
-			return(false);
+		if(verbosity < 2) {
+			rmdir_r(this->upgradeTempFileName.c_str());
 		}
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+		}
+		return(false);
 	}
 	if(!this->_arm || md5_arm.length()) {
 		string md5 = GetFileMD5(binaryFilepathName);
@@ -3853,12 +3848,20 @@ string _gunzip_s(const char *zipFilename, const char *unzipFilename) {
 			char buf[4092];
 			strerror_r(errno, buf, 4092);
 			fclose(zip);
-			return(buf);
+			if(buf[0]) {
+				error = buf;
+			} else {
+				error = string("open output file ") + unzipFilename + " failed";
+			}
 		}
 	} else {
 		char buf[4092];
 		strerror_r(errno, buf, 4092);
-		return(buf);
+		if(buf[0]) {
+			error = buf;
+		} else {
+			error = string("open inut file ") + zipFilename + " failed";
+		}
 	}
 	return(error.empty() ? "" : ("unzip failed: " + error));
 }
