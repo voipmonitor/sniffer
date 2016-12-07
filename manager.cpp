@@ -2361,7 +2361,7 @@ getwav:
 		bool ok = false;
 		RestartUpgrade restart(upgrade, version.c_str(), url.c_str(), md5_32.c_str(), md5_64.c_str(), md5_arm.c_str());
 		if(!rsltForSend.length()) {
-			if(restart.createRestartScript()) {
+			if(restart.createRestartScript() && restart.createSafeRunScript()) {
 				if((!upgrade || restart.runUpgrade()) &&
 				   restart.checkReadyRestart() &&
 				   restart.isOk()) {

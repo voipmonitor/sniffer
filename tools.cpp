@@ -1649,6 +1649,37 @@ bool RestartUpgrade::createRestartScript() {
 	return(false);
 }
 
+bool RestartUpgrade::createSafeRunScript() {
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "create safe run script");
+	}
+	if(!this->safeRunTempScriptFileName.length() && !this->getSafeRunTempScriptFileName()) {
+		this->errorString = "failed create temp name for safe run script";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "create safe run script failed - %s", this->errorString.c_str());
+		}
+		return(false);
+	}
+	FILE *fileHandle = fopen(this->safeRunTempScriptFileName.c_str(), "wt");
+	if(fileHandle) {
+		fputs("#!/bin/bash\n", fileHandle);
+		fputs("sleep 60\n", fileHandle);
+		fputs("/etc/init.d/voipmonitor start\n", fileHandle);
+		fprintf(fileHandle, "rm %s\n", this->safeRunTempScriptFileName.c_str());
+		fclose(fileHandle);
+		if(chmod(this->safeRunTempScriptFileName.c_str(), 0755)) {
+			this->errorString = "failed chmod 0755 for safe run script";
+		}
+		return(true);
+	} else {
+		this->errorString = "failed create safe run script";
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "create safe run script failed - %s", this->errorString.c_str());
+		}
+	}
+	return(false);
+}
+
 bool RestartUpgrade::checkReadyRestart() {
 	if(!FileExists((char*)this->restartTempScriptFileName.c_str())) {
 		this->errorString = "failed check restart script - script missing";
@@ -1657,6 +1688,19 @@ bool RestartUpgrade::checkReadyRestart() {
 	if(!this->restartTempScriptFileName.length()) {
 		this->errorString = "failed check restart script - zero size of restart script";
 		unlink(this->restartTempScriptFileName.c_str());
+		return(false);
+	}
+	return(true);
+}
+
+bool RestartUpgrade::checkReadySafeRun() {
+	if(!FileExists((char*)this->safeRunTempScriptFileName.c_str())) {
+		this->errorString = "failed check safe run script - script missing";
+		return(false);
+	}
+	if(!this->safeRunTempScriptFileName.length()) {
+		this->errorString = "failed check safe run script - zero size of safe run script";
+		unlink(this->safeRunTempScriptFileName.c_str());
 		return(false);
 	}
 	return(true);
@@ -1672,6 +1716,16 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 		}
 		return(false);
 	}
+	close(socket1);
+	close(socket2);
+	if(!this->safeRunTempScriptFileName.empty() && this->checkReadySafeRun()) {
+		if(!fork()) {
+			syslog(LOG_NOTICE, "run safe run script");
+			close_all_fd();
+			execl(this->safeRunTempScriptFileName.c_str(), "Command-line", 0, NULL);
+			return(true);
+		}
+	}
 	extern int opt_nocdr;
 	extern bool opt_autoload_from_sqlvmexport;
 	if(!opt_nocdr) {
@@ -1681,22 +1735,13 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 		}
 		sqlStore->queryToFilesTerminate();
 	}
-	close(socket1);
-	close(socket2);
 	set_readend();
 	terminate_packetbuffer();
 	sleep(2);
 
 	// set to all descriptors flag CLOEXEC so exec* will close it and will not inherit it so the next voipmonitor instance will be not blocking it
-	long maxfd = sysconf(_SC_OPEN_MAX);
-	int flags;
-	for(int fd = 3; fd < maxfd; fd++) {
-		if((flags = fcntl(fd, F_GETFD)) != -1) {
-			fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
-		}
-		close(fd);
-	}
-
+	close_all_fd();
+	
 	int rsltExec = execl(this->restartTempScriptFileName.c_str(), "Command-line", 0, NULL);
 	if(rsltExec) {
 		this->errorString = "failed execution restart script";
@@ -1793,6 +1838,15 @@ bool RestartUpgrade::getRestartTempScriptFileName() {
 	char restartTempScriptFileName[L_tmpnam+1];
 	if(tmpnam(restartTempScriptFileName)) {
 		this->restartTempScriptFileName = restartTempScriptFileName;
+		return(true);
+	}
+	return(false);
+}
+
+bool RestartUpgrade::getSafeRunTempScriptFileName() {
+	char safeRunTempScriptFileName[L_tmpnam+1];
+	if(tmpnam(safeRunTempScriptFileName)) {
+		this->safeRunTempScriptFileName = safeRunTempScriptFileName;
 		return(true);
 	}
 	return(false);
@@ -5415,4 +5469,15 @@ void read_pcap(const char *pcapFileName) {
 	}
 	fclose(pcapFile);
 	delete [] packetBuffer;
+}
+
+void close_all_fd() {
+	long maxfd = sysconf(_SC_OPEN_MAX);
+	int flags;
+	for(int fd = 3; fd < maxfd; fd++) {
+		if((flags = fcntl(fd, F_GETFD)) != -1) {
+			fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+		}
+		close(fd);
+	}
 }

@@ -1156,7 +1156,9 @@ public:
 		       const char *md5_32 = NULL, const char *md5_64 = NULL, const char *md5_arm = NULL);
 	bool runUpgrade();
 	bool createRestartScript();
+	bool createSafeRunScript();
 	bool checkReadyRestart();
+	bool checkReadySafeRun();
 	bool runRestart(int socket1, int socket2);
 	bool runGitUpgrade(const char *cmd);
 	bool isOk();
@@ -1165,6 +1167,7 @@ public:
 private:
 	bool getUpgradeTempFileName();
 	bool getRestartTempScriptFileName();
+	bool getSafeRunTempScriptFileName();
 private:
 	bool upgrade;
 	string version;
@@ -1174,6 +1177,7 @@ private:
 	string md5_arm;
 	string upgradeTempFileName;
 	string restartTempScriptFileName;
+	string safeRunTempScriptFileName;
 	string errorString;
 	bool _64bit;
 	bool _arm;
@@ -3118,6 +3122,8 @@ private:
 
 
 void read_pcap(const char *pcapFileName);
+
+void close_all_fd();
 
 
 #endif
