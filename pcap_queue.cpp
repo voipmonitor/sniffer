@@ -3523,6 +3523,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int 
 		if(is_terminating()) {
 			return(NULL);
 		}
+		this->threadInitOk = 1;
 	}
 	
 	if(opt_pcap_queue_use_blocks) {

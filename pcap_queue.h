@@ -661,7 +661,7 @@ private:
 private:
 	pthread_t threadHandle;
 	int threadId;
-	int threadInitOk;
+	volatile int threadInitOk;
 	bool threadInitFailed;
 	hpi_batch **qring;
 	pcap_block_store **qring_blocks;
@@ -684,7 +684,7 @@ private:
 	unsigned int counter;
 	unsigned int counter_pop_usleep;
 	bool force_push;
-	bool threadTerminated;
+	volatile bool threadTerminated;
 	pstat_data threadPstatData[2];
 	volatile int _sync_qring;
 	eTypeInterfaceThread typeThread;
