@@ -5767,6 +5767,7 @@ void get_command_line_arguments() {
 						if(verbparams[i] == "process_rtp")			sverb.process_rtp = 1;
 						else if(verbparams[i] == "graph")			sverb.graph = 1;
 						else if(verbparams[i] == "read_rtp")			sverb.read_rtp = 1;
+						else if(verbparams[i] == "hash_rtp")			sverb.hash_rtp = 1;
 						else if(verbparams[i] == "rtp_set_base_seq")		sverb.rtp_set_base_seq = 1;
 						else if(verbparams[i] == "check_is_caller_called")	sverb.check_is_caller_called = 1;
 						else if(verbparams[i] == "disable_threads_rtp")		sverb.disable_threads_rtp = 1;

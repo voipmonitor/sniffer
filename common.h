@@ -5,6 +5,7 @@ struct sVerbose {
 	int graph;
 	int process_rtp;
 	int read_rtp;
+	int hash_rtp;
 	int rtp_set_base_seq;
 	int check_is_caller_called;
 	int disable_threads_rtp;

@@ -4142,11 +4142,18 @@ Calltable::~Calltable() {
 /* add node to hash. collisions are linked list of nodes*/
 void
 Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, int allowrelation) {
-	//cout << "hashAdd: " << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << endl;
+ 
 	if(call->end_call) {
 		return;
 	}
 
+	if(sverb.hash_rtp) {
+		cout << "hashAdd: " 
+		     << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << " " 
+		     << (is_rtcp ? "rtcp" : "") << " "
+		     << endl;
+	}
+ 
 	u_int32_t h;
 	hash_node *node = NULL;
 	hash_node_call *node_call = NULL;
@@ -4166,6 +4173,11 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 			node_call = (hash_node_call *)node->calls;
 			while(node_call != NULL) {
 				if(node_call->call->destroy_call_at != 0) {
+					if(sverb.hash_rtp) {
+						cout << "remove call with destroy_call_at: " 
+						     << node_call->call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << " " 
+						     << endl;
+					}
 					// remove this call
 					if(prev) {
 						prev->next = node_call->next;
@@ -4253,7 +4265,14 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller
 void
 Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp) {
  
-	//cout << "hashRemove: " << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << endl;
+	if(sverb.hash_rtp) {
+		cout << "hashRemove: " 
+		     << call->call_id << " " 
+		     << inet_ntostring(htonl(addr)) << ":" << port << " "
+		     << (rtcp ? "rtcp" : "") << " "
+		     << endl;
+	}
+	
 	hash_node *node = NULL, *prev = NULL;
 	hash_node_call *node_call = NULL, *prev_call = NULL;
 	int h;
