@@ -4344,6 +4344,12 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 	outStrAlter << "ALTER TABLE register \
 		ADD KEY `src_mac` (`src_mac`);" << endl;
 	outStrAlter << "drop trigger if exists cdr_bi;" << endl;
+	
+	//16.2
+	if(opt_enable_fraud) {
+	outStrAlter << "ALTER TABLE fraud_alert_info\
+			ADD `id_sensor` smallint unsigned;" <<endl;
+	}
 
 	//
 	outStrAlter << "end;" << endl;
@@ -5038,6 +5044,7 @@ void SqlDb_mysql::createTable(const char *tableName) {
 					`alert_id` INT NOT NULL,\
 					`at` DATETIME NOT NULL,\
 					`alert_info` TEXT NOT NULL,\
+					`id_sensor` smallint unsigned,\
 					PRIMARY KEY (`ID`),\
 					CONSTRAINT `fraud_alert_info_ibfk_1` FOREIGN KEY (`alert_id`) REFERENCES `alerts` (`id`) ON UPDATE CASCADE ON DELETE CASCADE\
 			) ENGINE=InnoDB DEFAULT CHARSET=latin1;");

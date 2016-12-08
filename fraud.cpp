@@ -5,6 +5,7 @@
 #include "calltable.h"
 
 
+extern int opt_id_sensor;
 extern int opt_enable_fraud;
 extern int opt_nocdr;
 extern MySqlStore *sqlStore;
@@ -799,6 +800,7 @@ void FraudAlert::evAlert(FraudAlertInfo *alertInfo) {
 	time(&now);
 	row.add(sqlDateTimeString(now), "at");
 	row.add(sqlEscapeString(alertInfo->getJson()), "alert_info");
+	row.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
 	sqlStore->query_lock(sqlDbFraud->insertQuery("fraud_alert_info", row).c_str(), STORE_PROC_ID_FRAUD_ALERT_INFO);
 	delete alertInfo;
 }
@@ -1991,12 +1993,13 @@ void FraudAlerts::loadAlerts(bool lock) {
 			this->gui_timezone = row["content"];
 		}
 	}
-	sqlDb->query("select id, alert_type, descr from alerts\
-		      where ((alert_type > 20 and alert_type < 30) or\
-			     alert_type in (43, 44, 46)) and\
-			    (disable is null or not disable)");
+	sqlDb->query("select id, alert_type, descr, select_sensors from alerts\
+		      where " + whereCondFraudAlerts());
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
+		if(!selectSensorsContainSensorId(row["select_sensors"])) {
+			continue;
+		}
 		if(fraudDebug) {
 			syslog(LOG_NOTICE, "load fraud alert %s", row["descr"].c_str());
 		}
@@ -2530,6 +2533,12 @@ void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state, 
 	}
 }
 
+string whereCondFraudAlerts() {
+	return("((alert_type > 20 and alert_type < 30) or\
+		 alert_type in (43, 44, 46)) and\
+		(disable is null or not disable)");
+}
+
 bool isExistsFraudAlerts() {
 	if(opt_nocdr) {
 		return(false);
@@ -2539,12 +2548,30 @@ bool isExistsFraudAlerts() {
 	sqlDb->query("show tables like 'alerts'");
 	if(sqlDb->fetchRow()) {
 		sqlDb->createTable("fraud_alert_info");
-		sqlDb->query("select id, alert_type, descr from alerts\
-			      where alert_type > 20 and\
-				    (disable is null or not disable)\
-				    limit 1");
-		rslt = sqlDb->fetchRow();
+		sqlDb->query("select id, alert_type, descr, select_sensors from alerts\
+			      where " + whereCondFraudAlerts());
+		SqlDb_row row;
+		while((row = sqlDb->fetchRow())) {
+			if(selectSensorsContainSensorId(row["select_sensors"])) {
+				rslt = true;
+				break;
+			}
+		}
 	}
 	delete sqlDb;
 	return(rslt);
+}
+
+bool selectSensorsContainSensorId(string select_sensors) {
+	if(select_sensors.empty() || select_sensors == "-1") {
+		return(true);
+	}
+	vector<string> sensors = split(select_sensors, ',');
+	for(unsigned i = 0; i < sensors.size(); i++) {
+		extern SensorsMap sensorsMap;
+		if(atoi(sensors[i].c_str()) == sensorsMap.getSensorTableId(opt_id_sensor > 0 ? opt_id_sensor : -2)) {
+			return(true);
+		}
+	}
+	return(false);
 }

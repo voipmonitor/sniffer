@@ -2427,7 +2427,8 @@ int yesno(const char *arg);
 
 class SensorsMap {
 public:
-	struct sSensorName {
+	struct sSensorData {
+		int table_id;
 		string name;
 		string name_file;
 	};
@@ -2435,6 +2436,7 @@ public:
 	SensorsMap();
 	void fillSensors(class SqlDb *sqlDb = NULL);
 	void setSensorName(int sensorId, const char *sensorName);
+	int getSensorTableId(int sensorId);
 	string getSensorName(int sensorId, bool file = false);
 	string getSensorNameFile(int sensorId) {
 		return(getSensorName(sensorId, true));
@@ -2447,7 +2449,7 @@ private:
 		__sync_lock_release(&this->_sync);
 	}
 private:
-	map<int, sSensorName> sensors;
+	map<int, sSensorData> sensors;
 	volatile int _sync;
 };
 

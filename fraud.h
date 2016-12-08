@@ -1362,7 +1362,9 @@ void fraudSipPacket(u_int32_t ip, unsigned sip_method, timeval tv, const char *u
 void fraudRegister(u_int32_t ip, timeval tv, const char *ua, int ua_len);
 void fraudRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
 void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
+string whereCondFraudAlerts();
 bool isExistsFraudAlerts();
+bool selectSensorsContainSensorId(string select_sensors);
 
 inline bool isFraudReady() {
 	extern FraudAlerts *fraudAlerts;

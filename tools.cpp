@@ -4483,17 +4483,18 @@ void SensorsMap::fillSensors(SqlDb *sqlDb) {
 	}
 	sqlDb->query("show tables like 'sensors'");
 	if(sqlDb->fetchRow()) {
-		sqlDb->query("select id_sensor, name from sensors");
+		sqlDb->query("select id_sensor, id, name from sensors");
 		SqlDb_row row;
 		lock();
 		sensors.clear();
-		while(row = sqlDb->fetchRow()) {
+		while((row = sqlDb->fetchRow())) {
 			int idSensor = atoi(row["id_sensor"].c_str());
-			sSensorName name;
-			name.name = row["name"];
-			name.name_file = row["name"];
-			prepare_string_to_filename((char*)name.name_file.c_str(), name.name_file.length());
-			sensors[idSensor] = name;
+			sSensorData data;
+			data.table_id = atoi(row["id"].c_str());
+			data.name = row["name"];
+			data.name_file = row["name"];
+			prepare_string_to_filename((char*)data.name_file.c_str(), data.name_file.length());
+			sensors[idSensor] = data;
 		}
 		unlock();
 	}
@@ -4504,12 +4505,26 @@ void SensorsMap::fillSensors(SqlDb *sqlDb) {
 
 void SensorsMap::setSensorName(int sensorId, const char *sensorName) {
 	lock();
-	sSensorName name;
-	name.name = sensorName;
-	name.name_file = sensorName;
-	prepare_string_to_filename((char*)name.name_file.c_str(), name.name_file.length());
-	sensors[sensorId] = name;
+	sSensorData data;
+	data.table_id = 0;
+	data.name = sensorName;
+	data.name_file = sensorName;
+	prepare_string_to_filename((char*)data.name_file.c_str(), data.name_file.length());
+	sensors[sensorId] = data;
 	unlock();
+}
+
+int SensorsMap::getSensorTableId(int sensorId) {
+	if(sensorId <= 0) {
+		return(sensorId);
+	}
+	int sensorTableId = 0;
+	lock();
+	if(sensors.find(sensorId) != sensors.end()) {
+		sensorTableId = sensors[sensorId].table_id;
+	}
+	unlock();
+	return(sensorTableId);
 }
 
 string SensorsMap::getSensorName(int sensorId, bool file) {
