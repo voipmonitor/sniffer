@@ -1,3 +1,16 @@
+17.7 7.12.2016
+==============
+- allow store SIP / RTP / GRAPH and AUDIO to different folders (new options spooldir_rtp spooldir_graph spooldir_audio) [VS-440]
+- new option capture_rules_telnum_file = capturerules.csv loads capture rules from csv file - this file will be loaded first before mysql capture rules. First line has to contain columns name [VS-525]
+- speedup extended TCP reassembler 
+- add option sip-register-ignore-res401 (default no) and sip-register-ignore-res401-nonce-has-changed which will ignore failed SIP registrations which ends with 401 response code or 401 with specific nonce-has-changed reason [VG-1047]
+- in capture rules by sip header flags save rtp and save audio are now recognized also in all SIP messages [VS-537]
+- detect and mark calls which shares the same RTP stream so it can be searched in database (cdr_rtp column flag&1 [VG-920]
+- fix SKINNY not storing CDR 
+- fix crash in cleanspool at terminating (fixes upgrade) 
+- use gunzip library when upgrading sniffer instead of calling gunzip from shell (fixes upgrade errors) 
+
+
 17.6 21.11.2016
 ===============
 - fix G.729 MOS score when ptime is 60ms in rare case 
