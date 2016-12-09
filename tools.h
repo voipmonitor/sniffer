@@ -2454,6 +2454,7 @@ private:
 };
 
 void prepare_string_to_filename(char *str, unsigned int str_length = 0);
+void prepare_string_to_filename(string *str);
 
 class conv7bit {
 public:

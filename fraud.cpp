@@ -3,6 +3,8 @@
 
 #include "fraud.h"
 #include "calltable.h"
+#include "sniff.h"
+#include "pcap_queue_block.h"
 
 
 extern int opt_id_sensor;
@@ -482,6 +484,7 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 		day_of_week[i] = false;
 	}
 	day_of_week_set = false;
+	storePcaps = false;
 }
 
 FraudAlert::~FraudAlert() {
@@ -543,6 +546,7 @@ bool FraudAlert::loadAlert() {
 	descr = dbRow["descr"];
 	if(defTypeBy()) {
 		typeBy = dbRow["fraud_rcc_by"] == "source_ip" ? _typeBy_source_ip :
+			 dbRow["fraud_rcc_by"] == "destination_ip" ? _typeBy_destination_ip :
 			 dbRow["fraud_rcc_by"] == "source_number" ? _typeBy_source_number :
 			 dbRow["fraud_rcc_by"] == "rtp_stream_ip" ? _typeBy_rtp_stream_ip :
 			 dbRow["fraud_rcc_by"] == "rtp_stream_ip_group" ? _typeBy_rtp_stream_ip_group :
@@ -649,6 +653,10 @@ bool FraudAlert::loadAlert() {
 				day_of_week_set = true;
 			}
 		}
+	}
+	if(defStorePcaps()) {
+		storePcaps = atoi(dbRow["fraud_store_pcaps"].c_str());
+		storePcapsToPaths = dbRow["fraud_store_pcaps_to_path"];
 	}
 	loadAlertVirt();
 	delete sqlDb;
@@ -1759,34 +1767,82 @@ FraudAlert_rc::FraudAlert_rc(unsigned int dbId)
 	start_interval = 0;
 }
 
+FraudAlert_rc::~FraudAlert_rc() {
+	while(this->dumpers.size()) {
+		map<u_int32_t, PcapDumper*>::iterator iter_dumper = this->dumpers.begin();
+		if(iter_dumper->second && iter_dumper->second != (PcapDumper*)1) {
+			delete iter_dumper->second;
+		}
+		this->dumpers.erase(iter_dumper);
+	}
+}
+
 void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
+	u_int32_t ip = typeBy == _typeBy_source_ip ? eventInfo->src_ip : eventInfo->dst_ip;
 	if((withResponse ?
 	     eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_registerResponse :
 	     eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_register) &&
 	   this->okFilter(eventInfo) &&
 	   this->okDayHour(eventInfo)) {
-		map<u_int32_t, u_int64_t>::iterator iter = count.find(eventInfo->src_ip);
+		map<u_int32_t, u_int64_t>::iterator iter = count.find(ip);
 		if(iter == count.end()) {
-			count[eventInfo->src_ip] = 1;
+			count[ip] = 1;
 		} else {
-			++count[eventInfo->src_ip];
+			++count[ip];
 		}
 	}
+	bool enable_store_pcap = this->storePcaps;
+	bool enable_dump = eventInfo->block_store != NULL;
 	if(!start_interval) {
 		start_interval = eventInfo->at;
 	} else if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
 		map<u_int32_t, u_int64_t>::iterator iter;
 		for(iter = count.begin(); iter != count.end(); iter++) {
-			if(iter->second >= intervalLimit &&
-			   this->checkOkAlert(iter->first, iter->second, eventInfo->at)) {
-				FraudAlertInfo_spc *alertInfo = new FILE_LINE(8015) FraudAlertInfo_spc(this);
-				alertInfo->set(iter->first,
-					       iter->second);
-				this->evAlert(alertInfo);
+			if(iter->second >= intervalLimit) {
+				if(this->checkOkAlert(iter->first, iter->second, eventInfo->at)) {
+					FraudAlertInfo_spc *alertInfo = new FILE_LINE(8015) FraudAlertInfo_spc(this);
+					alertInfo->set(iter->first,
+						       iter->second);
+					this->evAlert(alertInfo);
+				}
+				if(enable_store_pcap) {
+					map<u_int32_t, PcapDumper*>::iterator iter_dumper = this->dumpers.find(iter->first);
+					if(iter_dumper == this->dumpers.end()) {
+						this->dumpers[iter->first] = (PcapDumper*)1;
+					}
+				}
+			} else if(enable_store_pcap) {
+				map<u_int32_t, PcapDumper*>::iterator iter_dumper = this->dumpers.find(iter->first);
+				if(iter_dumper != this->dumpers.end()) {
+					if(iter_dumper->second && iter_dumper->second != (PcapDumper*)1) {
+						delete iter_dumper->second;
+					}
+					this->dumpers.erase(iter_dumper);
+				}
 			}
 		}
 		count.clear();
 		start_interval = eventInfo->at;
+	}
+	if(enable_store_pcap && enable_dump) {
+		map<u_int32_t, PcapDumper*>::iterator iter_dumper = this->dumpers.find(ip);
+		if(iter_dumper != this->dumpers.end()) {
+			if(iter_dumper->second == (PcapDumper*)1) {
+				PcapDumper *dumper = new FILE_LINE(0) PcapDumper(PcapDumper::na, NULL);
+				dumper->setEnableAsyncWrite(false);
+				dumper->setTypeCompress(FileZipHandler::gzip);
+				if(dumper->open(tsf_na, getDumpName(ip, eventInfo->at).c_str(), eventInfo->dlt)) {
+					iter_dumper->second = dumper;
+				} else {
+					iter_dumper->second = NULL;
+				}
+			}
+			if(iter_dumper->second) {
+				iter_dumper->second->dump(&(*eventInfo->block_store)[eventInfo->block_store_index].header->header_std,
+							  (*eventInfo->block_store)[eventInfo->block_store_index].packet,
+							  eventInfo->dlt);
+			}
+		}
 	}
 }
 
@@ -1811,6 +1867,14 @@ bool FraudAlert_rc::checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at) {
 		}
 	}
 	return(true);
+}
+
+string FraudAlert_rc::getDumpName(u_int32_t ip, u_int64_t at) {
+	string path = storePcapsToPaths.empty() ? getStorePcaps() : storePcapsToPaths;
+	string name = this->descr + '_' + inet_ntostring(ip) + '_' + sqlDateTimeString(at / 1000000ull) + ".pcap";
+	prepare_string_to_filename(&name);
+	string path_name = path + '/' + name;
+	return(path_name);
 }
 
 FraudAlertInfo_seq::FraudAlertInfo_seq(FraudAlert *alert) 
@@ -2122,21 +2186,30 @@ void FraudAlerts::evSipPacket(u_int32_t ip, unsigned sip_method, u_int64_t at, c
 	eventQueue.push(eventInfo);
 }
 
-void FraudAlerts::evRegister(u_int32_t ip, u_int64_t at, const char *ua, int ua_len) {
+void FraudAlerts::evRegister(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len,
+			     pcap_block_store *block_store, u_int32_t block_store_index, u_int16_t dlt) {
+	if(block_store) {
+		block_store->lock_packet(block_store_index, 0);
+	}
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_register;
-	eventInfo.src_ip = htonl(ip);
+	eventInfo.src_ip = htonl(src_ip);
+	eventInfo.src_ip = htonl(dst_ip);
 	eventInfo.at = at;
+	eventInfo.block_store = block_store;
+	eventInfo.block_store_index = block_store_index;
+	eventInfo.dlt = dlt;
 	if(ua && ua_len) {
 		eventInfo.ua = ua_len == -1 ? ua : string(ua, ua_len);
 	}
 	eventQueue.push(eventInfo);
 }
 
-void FraudAlerts::evRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len) {
+void FraudAlerts::evRegisterResponse(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len) {
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_registerResponse;
-	eventInfo.src_ip = htonl(ip);
+	eventInfo.src_ip = htonl(src_ip);
+	eventInfo.dst_ip = htonl(dst_ip);
 	eventInfo.at = at;
 	if(ua && ua_len) {
 		eventInfo.ua = ua_len == -1 ? ua : string(ua, ua_len);
@@ -2204,6 +2277,9 @@ void FraudAlerts::popCallInfoThread() {
 				(*iter)->evEvent(&eventInfo);
 			}
 			unlock_alerts();
+			if(eventInfo.block_store) {
+				eventInfo.block_store->unlock_packet(eventInfo.block_store_index);
+			}
 			okPop = true;
 		}
 		if(registerQueue.pop(&registerInfo)) {
@@ -2509,18 +2585,20 @@ void fraudSipPacket(u_int32_t ip, unsigned sip_method, timeval tv, const char *u
 	}
 }
 
-void fraudRegister(u_int32_t ip, timeval tv, const char *ua, int ua_len) {
+void fraudRegister(u_int32_t src_ip, u_int32_t dst_ip, timeval tv, const char *ua, int ua_len,
+		   packet_s *packetS) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->evRegister(ip, tv.tv_sec * 1000000ull + tv.tv_usec, ua, ua_len);
+		fraudAlerts->evRegister(src_ip, dst_ip, tv.tv_sec * 1000000ull + tv.tv_usec, ua, ua_len,
+					packetS ? packetS->block_store : NULL, packetS ? packetS->block_store_index : 0, packetS ? packetS->dlt : 0);
 		fraudAlerts_unlock();
 	}
 }
 
-void fraudRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len) {
+void fraudRegisterResponse(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->evRegisterResponse(ip, at, ua, ua_len);
+		fraudAlerts->evRegisterResponse(src_ip, dst_ip, at, ua, ua_len);
 		fraudAlerts_unlock();
 	}
 }

@@ -237,6 +237,10 @@ inline const char *getSqlVmExportDir() {
 	extern char opt_spooldir_main[1024];
 	return(opt_spooldir_main);
 }
+inline const char *getStorePcaps() {
+	extern char opt_spooldir_main[1024];
+	return(opt_spooldir_main);
+}
 
 void vmChdir() {
 	extern char opt_spooldir_main[1024];

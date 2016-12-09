@@ -536,14 +536,22 @@ struct sFraudEventInfo {
 	sFraudEventInfo() {
 		typeEventInfo = (eTypeEventInfo)0;
 		src_ip = 0;
+		dst_ip = 0;
 		sip_method = 0;
 		at = 0;
+		block_store = NULL;
+		block_store_index = 0; 
+		dlt = 0;
 	}
 	eTypeEventInfo typeEventInfo;
 	u_int32_t src_ip;
+	u_int32_t dst_ip;
 	unsigned sip_method;
 	u_int64_t at;
 	string ua;
+	struct pcap_block_store *block_store;
+	u_int32_t block_store_index; 
+	u_int16_t dlt;
 };
 
 struct sFraudRegisterInfo_id {
@@ -625,6 +633,7 @@ public:
 	enum eTypeBy {
 		_typeBy_NA,
 		_typeBy_source_ip,
+		_typeBy_destination_ip,
 		_typeBy_source_number,
 		_typeBy_rtp_stream_ip,
 		_typeBy_rtp_stream_ip_group
@@ -696,6 +705,7 @@ protected:
 	virtual bool defInterval() { return(false); }
 	virtual bool defOnlyConnected() { return(false); }
 	virtual bool defSuppressRepeatingAlerts() { return(false); }
+	virtual bool defStorePcaps() { return(false); }
 protected:
 	eFraudAlertType type;
 	unsigned int dbId;
@@ -724,6 +734,8 @@ protected:
 	int hour_to;
 	bool day_of_week[7];
 	bool day_of_week_set;
+	bool storePcaps;
+	string storePcapsToPaths;
 friend class FraudAlerts;
 friend class FraudAlert_rcc_base;
 friend class FraudAlert_rcc_timePeriods;
@@ -1134,18 +1146,23 @@ private:
 	};
 public:
 	FraudAlert_rc(unsigned int dbId);
+	~FraudAlert_rc();
 	void evEvent(sFraudEventInfo *eventInfo);
 protected:
 	bool defFilterIp() { return(true); }
 	bool defFilterUA() { return(true); }
 	bool defInterval() { return(true); }
+	bool defTypeBy() { return(true); }
+	bool defStorePcaps() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:
 	void loadAlertVirt();
 	bool checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at);
+	string getDumpName(u_int32_t ip, u_int64_t at);
 private:
 	bool withResponse;
 	map<u_int32_t, u_int64_t> count;
+	map<u_int32_t, PcapDumper*> dumpers;
 	u_int64_t start_interval;
 	map<u_int32_t, sAlertInfo> alerts;
 };
@@ -1256,8 +1273,9 @@ public:
 	void endRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
 			  Call *call, u_int64_t at);
 	void evSipPacket(u_int32_t ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len);
-	void evRegister(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
-	void evRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
+	void evRegister(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len,
+			pcap_block_store *block_store, u_int32_t block_store_index, u_int16_t dlt);
+	void evRegisterResponse(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len);
 	void evRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 	void stopPopCallInfoThread(bool wait = false);
 	void refresh();
@@ -1359,8 +1377,9 @@ void fraudBeginRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, ui
 void fraudEndRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
 		       Call *call, time_t time);
 void fraudSipPacket(u_int32_t ip, unsigned sip_method, timeval tv, const char *ua, int ua_len);
-void fraudRegister(u_int32_t ip, timeval tv, const char *ua, int ua_len);
-void fraudRegisterResponse(u_int32_t ip, u_int64_t at, const char *ua, int ua_len);
+void fraudRegister(u_int32_t src_ip, u_int32_t dst_ip, timeval tv, const char *ua, int ua_len,
+		   struct packet_s *packetS);
+void fraudRegisterResponse(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len);
 void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 string whereCondFraudAlerts();
 bool isExistsFraudAlerts();

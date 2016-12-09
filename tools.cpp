@@ -4563,6 +4563,17 @@ void prepare_string_to_filename(char *str, unsigned int str_length) {
 	}
 }
 
+void prepare_string_to_filename(string *str) {
+	if(str->empty()) {
+		return;
+	}
+	char *str_temp = new FILE_LINE(0) char[str->length() + 1];
+	strcpy(str_temp, str->c_str());
+	prepare_string_to_filename(str_temp);
+	*str = str_temp;
+	delete [] str_temp;
+}
+
 unsigned char *conv7bit::encode(unsigned char *data, unsigned int length, unsigned int &rsltLength) {
 	if(!length) {
 		rsltLength = 0;

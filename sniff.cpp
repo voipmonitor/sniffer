@@ -3154,7 +3154,8 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			char *ua = NULL;
 			unsigned long ua_len = 0;
 			ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
-			fraudRegister(packetS->saddr, packetS->header_pt->ts, ua, ua_len);
+			fraudRegister(packetS->saddr, packetS->daddr, packetS->header_pt->ts, ua, ua_len,
+				      packetS);
 		}
 	}
 		
@@ -3330,7 +3331,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 	}
 	if(call->regstate && !call->regresponse) {
 		if(opt_enable_fraud && isFraudReady()) {
-			fraudRegisterResponse(call->sipcallerip[0], call->first_packet_time * 1000000ull + call->first_packet_usec,
+			fraudRegisterResponse(call->sipcallerip[0], call->sipcalledip[0], call->first_packet_time * 1000000ull + call->first_packet_usec,
 					      call->a_ua[0] ? call->a_ua : call->b_ua[0] ? call->b_ua : NULL, -1);
 		}
 		call->regresponse = true;
