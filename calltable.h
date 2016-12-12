@@ -1080,7 +1080,7 @@ public:
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(in_addr_t addr, unsigned short port, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, int allowrelation);
+	void hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, int allowrelation);
 
 
 	/**
