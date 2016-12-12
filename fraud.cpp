@@ -25,6 +25,8 @@ CacheNumber_location *cacheNumber_location = NULL;
 
 SqlDb *sqlDbFraud = NULL;
 
+static bool opt_enable_fraud_store_pcaps;
+
 
 static void fraudAlerts_lock() {
 	while(__sync_lock_test_and_set(&_fraudAlerts_lock, 1));
@@ -2188,7 +2190,7 @@ void FraudAlerts::evSipPacket(u_int32_t ip, unsigned sip_method, u_int64_t at, c
 
 void FraudAlerts::evRegister(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len,
 			     pcap_block_store *block_store, u_int32_t block_store_index, u_int16_t dlt) {
-	if(block_store) {
+	if(opt_enable_fraud_store_pcaps && block_store) {
 		block_store->lock_packet(block_store_index, 0);
 	}
 	sFraudEventInfo eventInfo;
@@ -2277,7 +2279,7 @@ void FraudAlerts::popCallInfoThread() {
 				(*iter)->evEvent(&eventInfo);
 			}
 			unlock_alerts();
-			if(eventInfo.block_store) {
+			if(opt_enable_fraud_store_pcaps && eventInfo.block_store) {
 				eventInfo.block_store->unlock_packet(eventInfo.block_store_index);
 			}
 			okPop = true;
@@ -2406,7 +2408,7 @@ void initFraud() {
 		opt_enable_fraud = false;
 		return;
 	}
-	if(!isExistsFraudAlerts() ||
+	if(!isExistsFraudAlerts(&opt_enable_fraud_store_pcaps) ||
 	   !checkFraudTables()) {
 		return;
 	}
@@ -2511,7 +2513,7 @@ bool checkFraudTables() {
 
 void refreshFraud() {
 	if(opt_enable_fraud) {
-		if(isExistsFraudAlerts()) {
+		if(isExistsFraudAlerts(&opt_enable_fraud_store_pcaps)) {
 			if(!fraudAlerts) {
 				initFraud();
 			} else {
@@ -2617,7 +2619,10 @@ string whereCondFraudAlerts() {
 		(disable is null or not disable)");
 }
 
-bool isExistsFraudAlerts() {
+bool isExistsFraudAlerts(bool *storePcaps) {
+	if(storePcaps) {
+		*storePcaps = false;
+	}
 	if(opt_nocdr) {
 		return(false);
 	}
@@ -2626,13 +2631,19 @@ bool isExistsFraudAlerts() {
 	sqlDb->query("show tables like 'alerts'");
 	if(sqlDb->fetchRow()) {
 		sqlDb->createTable("fraud_alert_info");
-		sqlDb->query("select id, alert_type, descr, select_sensors from alerts\
+		sqlDb->query("select id, alert_type, descr, select_sensors, fraud_store_pcaps from alerts\
 			      where " + whereCondFraudAlerts());
 		SqlDb_row row;
 		while((row = sqlDb->fetchRow())) {
 			if(selectSensorsContainSensorId(row["select_sensors"])) {
 				rslt = true;
-				break;
+				if(storePcaps) {
+					if(atoi(row["fraud_store_pcaps"].c_str())) {
+						*storePcaps = true;
+					}
+				} else {
+					break;
+				}
 			}
 		}
 	}
