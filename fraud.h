@@ -1010,13 +1010,15 @@ public:
 		 u_int32_t ip,
 		 const char *location_code,
 		 u_int32_t ip_old,
-		 const char *location_code_old);
+		 const char *location_code_old,
+		 u_int32_t ip_dst);
 	string getJson();
 private:
 	string number;
 	FraudAlert::eTypeLocation typeLocation;
 	u_int32_t ip;
 	u_int32_t ip_old;
+	u_int32_t ip_dst;
 	string location_code;
 	string location_code_old;
 };
@@ -1037,6 +1039,8 @@ public:
 	FraudAlert_chcr(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
 protected:
+	bool defFilterIp() { return(true); }
+	bool defFilterIp2() { return(true); }
 	bool defFilterNumber() { return(true); }
 	bool defTypeChangeLocation() { return(true); }
 	bool defChangeLocationOk() { return(true); }

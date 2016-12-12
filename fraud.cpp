@@ -758,6 +758,9 @@ bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
 	if(this->defFilterIp() && !this->ipFilter.checkIP(eventInfo->src_ip)) {
 		return(false);
 	}
+	if(this->defFilterIp2() && !this->ipFilter2.checkIP(eventInfo->dst_ip)) {
+		return(false);
+	}
 	if(this->defFilterUA() && !this->uaFilter.checkUA(eventInfo->ua.c_str())) {
 		return(false);
 	}
@@ -1449,13 +1452,15 @@ void FraudAlertInfo_chc::set(const char *number,
 			     u_int32_t ip,
 			     const char *location_code,
 			     u_int32_t ip_old,
-			     const char *location_code_old) {
+			     const char *location_code_old,
+			     u_int32_t ip_dst) {
 	this->number = number;
 	this->typeLocation = typeLocation;
 	this->ip = ip;
 	this->location_code = location_code;
 	this->ip_old = ip_old;
 	this->location_code_old = location_code_old;
+	this->ip_dst = ip_dst;
 }
 
 string FraudAlertInfo_chc::getJson() {
@@ -1478,6 +1483,9 @@ string FraudAlertInfo_chc::getJson() {
 		 typeLocation == FraudAlert::_typeLocation_country ?
 		  countryCodes->getNameCountry(location_code_old.c_str()) :
 		  countryCodes->getNameContinent(location_code_old.c_str()));
+	if(ip_dst) {
+		json.add("ip_dst", inet_ntostring(ip_dst));
+	}
 	return(json.getJson());
 }
 
@@ -1514,7 +1522,8 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 					       callInfo->caller_ip,
 					       callInfo->country_code_caller_ip.c_str(),
 					       oldIp,
-					       oldCountry.c_str());
+					       oldCountry.c_str(),
+					       0);
 				this->evAlert(alertInfo);
 			}
 			if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
@@ -1524,7 +1533,8 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 					       callInfo->caller_ip,
 					       callInfo->continent_code_caller_ip.c_str(),
 					       oldIp,
-					       oldContinent.c_str());
+					       oldContinent.c_str(),
+					       0);
 				this->evAlert(alertInfo);
 			}
 		}
@@ -1566,7 +1576,8 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 					       callInfo->caller_ip,
 					       callInfo->country_code_caller_ip.c_str(),
 					       oldIp,
-					       oldCountry.c_str());
+					       oldCountry.c_str(),
+					       callInfo->called_ip);
 				this->evAlert(alertInfo);
 			}
 			if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
@@ -1576,7 +1587,8 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 					       callInfo->caller_ip,
 					       callInfo->continent_code_caller_ip.c_str(),
 					       oldIp,
-					       oldContinent.c_str());
+					       oldContinent.c_str(),
+					       callInfo->called_ip);
 				this->evAlert(alertInfo);
 			}
 		} 
