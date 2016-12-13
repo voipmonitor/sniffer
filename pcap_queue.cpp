@@ -172,6 +172,7 @@ static bool __config_ENABLE_TOGETHER_READ_WRITE_FILE	= false;
 int opt_pcap_queue_compress				= -1;
 pcap_block_store::compress_method opt_pcap_queue_compress_method 
 							= pcap_block_store::snappy;
+int opt_pcap_queue_compress_ratio = 100;
 string opt_pcap_queue_disk_folder;
 ip_port opt_pcap_queue_send_to_ip_port;
 ip_port opt_pcap_queue_receive_from_ip_port;
@@ -566,6 +567,20 @@ bool pcap_block_store::compress() {
 	if(!opt_pcap_queue_compress ||
 	   this->size_compress) {
 		return(true);
+	}
+	if(opt_pcap_queue_compress_ratio > 0 && opt_pcap_queue_compress_ratio < 100) {
+		static __thread unsigned __counter;
+		switch(opt_pcap_queue_compress_ratio / 10) {
+		case 0: if((__counter++) % 6) return(true); break;
+		case 1: if((__counter++) % 5) return(true); break;
+		case 2: if((__counter++) % 4) return(true); break;
+		case 3: if((__counter++) % 3) return(true); break;
+		case 5: if((__counter++) % 2) return(true); break;
+		case 6: if(!((__counter++) % 3)) return(true); break;
+		case 7: if(!((__counter++) % 4)) return(true); break;
+		case 8: if(!((__counter++) % 5)) return(true); break;
+		case 9: if(!((__counter++) % 6)) return(true); break;
+		}
 	}
 	switch(opt_pcap_queue_compress_method) {
 	case lz4:

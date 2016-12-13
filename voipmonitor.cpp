@@ -434,6 +434,7 @@ extern uint64_t opt_pcap_queue_store_queue_max_disk_size;
 extern uint64_t opt_pcap_queue_bypass_max_size;
 extern int opt_pcap_queue_compress;
 extern pcap_block_store::compress_method opt_pcap_queue_compress_method;
+extern int opt_pcap_queue_compress_ratio;
 extern string opt_pcap_queue_disk_folder;
 extern ip_port opt_pcap_queue_send_to_ip_port;
 extern ip_port opt_pcap_queue_receive_from_ip_port;
@@ -5275,6 +5276,7 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(43423) cConfigItem_yesno("packetbuffer_compress_method"))
 						->addValues("snappy:1|s:1|lz4:2|l:2")
 						->setDefaultValueStr("no"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("packetbuffer_compress_ratio", &opt_pcap_queue_compress_ratio));
 						obsolete();
 						addConfigItem(new FILE_LINE(43424) cConfigItem_yesno("pcap_dispatch", &opt_pcap_dispatch));
 		subgroup("storing packets into pcap files, graph, audio");
@@ -7579,6 +7581,9 @@ int eval_config(string inistr) {
 		} else if(!strcmp(_opt_pcap_queue_compress_method, "lz4")) {
 			opt_pcap_queue_compress_method = pcap_block_store::lz4;
 		}
+	}
+	if((value = ini.GetValue("general", "packetbuffer_compress_ratio", NULL))) {
+		opt_pcap_queue_compress_ratio = atoi(value);
 	}
 	if((value = ini.GetValue("general", "mirror_destination_ip", NULL)) &&
 	   (value2 = ini.GetValue("general", "mirror_destination_port", NULL))) {
