@@ -30,21 +30,37 @@ bool SendCallInfoItem::load() {
 	sprintf(dbIdStr, "%u", dbId);
 	sqlDb->query(string(
 		"select send_call_info.*,\
-		 (select group_concat(number_group_id) from send_call_info_groups\
+		 (select group_concat(number) \
+		  from send_call_info_groups scig\
+		  join cb_number_groups g on (g.id=scig.number_group_id)\
 		  where send_call_info_id = send_call_info.id and type = 'number_caller_whitelist') as whitelist_number_caller_group,\
-		 (select group_concat(number_group_id) from send_call_info_groups\
+		 (select group_concat(number) \
+		  from send_call_info_groups scig\
+		  join cb_number_groups g on (g.id=scig.number_group_id)\
 		  where send_call_info_id = send_call_info.id and type = 'number_caller_blacklist') as blacklist_number_caller_group,\
-		 (select group_concat(number_group_id) from send_call_info_groups\
+		 (select group_concat(number) \
+		  from send_call_info_groups scig\
+		  join cb_number_groups g on (g.id=scig.number_group_id)\
 		  where send_call_info_id = send_call_info.id and type = 'number_called_whitelist') as whitelist_number_called_group,\
-		 (select group_concat(number_group_id) from send_call_info_groups\
+		 (select group_concat(number) \
+		  from send_call_info_groups scig\
+		  join cb_number_groups g on (g.id=scig.number_group_id)\
 		  where send_call_info_id = send_call_info.id and type = 'number_called_blacklist') as blacklist_number_called_group,\
-		 (select group_concat(ip_group_id) from send_call_info_groups\
+		 (select group_concat(ip)\
+		  from send_call_info_groups scig\
+		  join cb_ip_groups g on (g.id=scig.ip_group_id)\
 		  where send_call_info_id = send_call_info.id and type = 'ip_caller_whitelist') as whitelist_ip_caller_group,\
-		 (select group_concat(ip_group_id) from send_call_info_groups\
+		 (select group_concat(ip)\
+		  from send_call_info_groups scig\
+		  join cb_ip_groups g on (g.id=scig.ip_group_id)\
 		  where send_call_info_id = send_call_info.id and type = 'ip_caller_blacklist') as blacklist_ip_caller_group,\
-		 (select group_concat(ip_group_id) from send_call_info_groups\
+		 (select group_concat(ip)\
+		  from send_call_info_groups scig\
+		  join cb_ip_groups g on (g.id=scig.ip_group_id)\
 		  where send_call_info_id = send_call_info.id and type = 'ip_called_whitelist') as whitelist_ip_called_group,\
-		 (select group_concat(ip_group_id) from send_call_info_groups\
+		 (select group_concat(ip)\
+		  from send_call_info_groups scig\
+		  join cb_ip_groups g on (g.id=scig.ip_group_id)\
 		  where send_call_info_id = send_call_info.id and type = 'ip_called_blacklist') as blacklist_ip_called_group\
 		 from send_call_info\
 		 where id = ") + dbIdStr);
@@ -61,19 +77,19 @@ bool SendCallInfoItem::load() {
 	phoneNumberCallerFilter.addWhite(dbRow["whitelist_number_caller"].c_str());
 	phoneNumberCallerFilter.addWhite(dbRow["whitelist_number_caller_group"].c_str());
 	phoneNumberCallerFilter.addBlack(dbRow["blacklist_number_caller"].c_str());
-	phoneNumberCallerFilter.addWhite(dbRow["blacklist_number_caller_group"].c_str());
+	phoneNumberCallerFilter.addBlack(dbRow["blacklist_number_caller_group"].c_str());
 	phoneNumberCalledFilter.addWhite(dbRow["whitelist_number_called"].c_str());
 	phoneNumberCalledFilter.addWhite(dbRow["whitelist_number_called_group"].c_str());
 	phoneNumberCalledFilter.addBlack(dbRow["blacklist_number_called"].c_str());
-	phoneNumberCalledFilter.addWhite(dbRow["blacklist_number_called_group"].c_str());
+	phoneNumberCalledFilter.addBlack(dbRow["blacklist_number_called_group"].c_str());
 	ipCallerFilter.addWhite(dbRow["whitelist_ip_caller"].c_str());
 	ipCallerFilter.addWhite(dbRow["whitelist_ip_caller_group"].c_str());
 	ipCallerFilter.addBlack(dbRow["blacklist_ip_caller"].c_str());
-	ipCallerFilter.addWhite(dbRow["blacklist_ip_caller_group"].c_str());
+	ipCallerFilter.addBlack(dbRow["blacklist_ip_caller_group"].c_str());
 	ipCalledFilter.addWhite(dbRow["whitelist_ip_called"].c_str());
 	ipCalledFilter.addWhite(dbRow["whitelist_ip_called_group"].c_str());
 	ipCalledFilter.addBlack(dbRow["blacklist_ip_called"].c_str());
-	ipCalledFilter.addWhite(dbRow["blacklist_ip_called_group"].c_str());
+	ipCalledFilter.addBlack(dbRow["blacklist_ip_called_group"].c_str());
 	delete sqlDb;
 	return(true);
 }
