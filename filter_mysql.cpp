@@ -404,7 +404,7 @@ void TELNUMfilter::loadFile() {
 	for(unsigned i = 1; i <= rowsCount; i++) {
 		map<string, string> row;
 		csv.getRow(i, &row);
-		
+		count++;
 		db_row* filterRow = new(db_row);
 		strncpy(filterRow->prefix, trim_str(row["prefix"]).c_str(), MAX_PREFIX);
 		this->loadBaseDataRow(&row, filterRow);

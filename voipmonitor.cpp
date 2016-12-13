@@ -782,6 +782,7 @@ int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = false;
 
 int opt_test = 0;
+bool opt_check_db = false;
 
 char *opt_untar_gui_params = NULL;
 char *opt_unlzo_gui_params = NULL;
@@ -5570,6 +5571,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"reindex-all", 0, 0, 304},
 	    {"run-cleanspool", 0, 0, 305},
 	    {"clean-obsolete", 0, 0, 306},
+	    {"check-db", 0, 0, 307},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -5890,6 +5892,9 @@ void get_command_line_arguments() {
 			case 305:
 			case 306:
 				opt_test = c;
+				break;
+			case 307:
+				opt_check_db = true;
 				break;
 			case 'c':
 				opt_nocdr = 1;

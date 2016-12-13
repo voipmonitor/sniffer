@@ -3075,11 +3075,12 @@ bool SqlDb_mysql::createSchema(int connectId) {
 		}
 	}
 
+	extern bool opt_check_db;
 	bool result = createSchema_tables_other(connectId) &&
 		      createSchema_table_http_jj(connectId) &
 		      createSchema_table_webrtc(connectId) &&
-		      (okSaveVersion || createSchema_alter_other(connectId)) &&
-		      (okSaveVersion || createSchema_alter_http_jj(connectId)) &&
+		      ((!opt_check_db && okSaveVersion) || createSchema_alter_other(connectId)) &&
+		      ((!opt_check_db && okSaveVersion) || createSchema_alter_http_jj(connectId)) &&
 		      createSchema_procedure_partition(connectId) &&
 		      createSchema_procedures_other(connectId) &&
 		      (connectId != 0 || existsCdrTable ||
