@@ -1,3 +1,11 @@
+17.8 13.12.2016
+===============
+- support filtering sensors in fraud [VG-960]
+- enhance sip register flood - add select group by src / dst ip, pcap dump [VG-964]
+- do not remove RTP IP:port from call which shares the same IP:port [VS-541]
+- fraud "alert change register country" - add filter by ip, add destination ip in report [VG-975]
+
+
 17.7 7.12.2016
 ==============
 - allow store SIP / RTP / GRAPH and AUDIO to different folders (new options spooldir_rtp spooldir_graph spooldir_audio) [VS-440]
