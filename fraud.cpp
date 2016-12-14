@@ -2073,7 +2073,12 @@ void FraudAlerts::loadAlerts(bool lock) {
 			this->gui_timezone = row["content"];
 		}
 	}
-	sqlDb->query("select id, alert_type, descr, select_sensors from alerts\
+	sqlDb->query("show columns from alerts where Field='select_sensors'");
+	bool existsColumnSelectSensors = sqlDb->fetchRow();
+	sqlDb->query(string("select id, alert_type, descr") + 
+		     (existsColumnSelectSensors ? ", select_sensors" : "") + 
+		     "\
+		      from alerts\
 		      where " + whereCondFraudAlerts());
 	SqlDb_row row;
 	while(row = sqlDb->fetchRow()) {
@@ -2645,7 +2650,15 @@ bool isExistsFraudAlerts(bool *storePcaps) {
 	sqlDb->query("show tables like 'alerts'");
 	if(sqlDb->fetchRow()) {
 		sqlDb->createTable("fraud_alert_info");
-		sqlDb->query("select id, alert_type, descr, select_sensors, fraud_store_pcaps from alerts\
+		sqlDb->query("show columns from alerts where Field='select_sensors'");
+		bool existsColumnSelectSensors = sqlDb->fetchRow();
+		sqlDb->query("show columns from alerts where Field='fraud_store_pcaps'");
+		bool existsColumnFraudStorePcaps = sqlDb->fetchRow();
+		sqlDb->query(string("select id, alert_type, descr") +
+			     (existsColumnSelectSensors ? ", select_sensors" : "") + 
+			     (existsColumnFraudStorePcaps ? ", fraud_store_pcaps" : "") + 
+			     "\
+			      from alerts\
 			      where " + whereCondFraudAlerts());
 		SqlDb_row row;
 		while((row = sqlDb->fetchRow())) {
