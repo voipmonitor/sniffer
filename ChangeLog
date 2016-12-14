@@ -1,3 +1,12 @@
+17.9 14.12.2016
+===============
+- fix loading fraud alerts >= 17.8 when some DB columns are missing (if GUI was not yet upgraded)
+- new parameter packetbuffer_compress_ratio (0-100) if CPU is bottleneck when mirroring packets 
+- fix use capture rules from csv if not exist capture rules in db, add parameter --check-db which forces db upgrade 
+- fix load filter-groups in send_call_info [VG-1100]
+- clear default international prefixes when loading international rules for alerts (fixes strict prefix in GUI) [VG-1101]
+
+
 17.8 13.12.2016
 ===============
 - support filtering sensors in fraud [VG-960]
