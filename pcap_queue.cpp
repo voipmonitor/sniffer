@@ -6227,8 +6227,8 @@ void PcapQueue_readFromFifo::createConnection(int socketClient, sockaddr_in *soc
 	connection->active = true;
 	this->packetServerConnections[id] = connection;
 	this->unlock_packetServerConnections();
-	vm_pthread_create(("pb - client " + connection->socketClientIP).c_str(), 
-			  &connection->threadHandle, NULL, _PcapQueue_readFromFifo_connectionThreadFunction, connection, __FILE__, __LINE__);
+	vm_pthread_create_autodestroy(("pb - client " + connection->socketClientIP).c_str(), 
+				      &connection->threadHandle, NULL, _PcapQueue_readFromFifo_connectionThreadFunction, connection, __FILE__, __LINE__);
 }
 
 void PcapQueue_readFromFifo::cleanupConnections(bool all) {
