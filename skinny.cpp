@@ -1298,11 +1298,6 @@ Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr 
 	calltable->skinny_ipTuples[tmp.str()] = call;
 
 	if(enable_save_sip_rtp_audio(call)) {
-		extern int opt_defer_create_spooldir;
-		if(!opt_defer_create_spooldir) {
-			call->createSpoolDirs();
-		}
-
                 // open one pcap for all packets or open SKINNY and RTP separatly
                 if(enable_pcap_split) {
                         //SKINNY

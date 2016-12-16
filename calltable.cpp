@@ -459,13 +459,24 @@ Call::addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, long long write
 
 void 
 Call::_addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string dirnamesqlfiles, long long writeBytes, int spoolIndex) {
-
+ 
 	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or
 	   !CleanSpool::isSetCleanspool(spoolIndex) or
 	   !CleanSpool::check_datehour(dirnamesqlfiles.c_str())) {
 		return;
 	}
 
+	string dst_file_cachedir;
+	if(opt_cachedir[0] != '\0') {
+		int cachedir_length = strlen(opt_cachedir);
+		if(!strncmp(file.c_str(), opt_cachedir, cachedir_length)) {
+			while(file[cachedir_length] == '/') {
+				++cachedir_length;
+			}
+			dst_file_cachedir = string(::getSpoolDir(typeSpoolFile, spoolIndex)) + '/' + file.substr(cachedir_length);
+		}
+	}
+	
 	bool fileExists = file_exists((char*)file.c_str());
 	bool fileCacheExists = false;
 	string fileCache;
@@ -505,7 +516,7 @@ Call::_addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string dirname
 
 	extern CleanSpool *cleanSpool[2];
 	if(cleanSpool[spoolIndex]) {
-		cleanSpool[spoolIndex]->addFile(dirnamesqlfiles.c_str(), typeSpoolFile, file.c_str(), size);
+		cleanSpool[spoolIndex]->addFile(dirnamesqlfiles.c_str(), typeSpoolFile, dst_file_cachedir.empty() ? file.c_str() : dst_file_cachedir.c_str(), size);
 	}
 }
 
@@ -536,6 +547,13 @@ Call::addtocachequeue(string file) {
 
 void 
 Call::_addtocachequeue(string file) {
+	int cachedir_length = strlen(opt_cachedir);
+	if(!strncmp(file.c_str(), opt_cachedir, cachedir_length)) {
+		while(file[cachedir_length] == '/') {
+			++cachedir_length;
+		}
+		file = file.substr(cachedir_length);
+	}
 	calltable->lock_files_queue();
 	calltable->files_queue.push(file);
 	calltable->unlock_files_queue();
@@ -718,36 +736,6 @@ Call::get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileExtension) 
 	return(pathname + (pathname.length() && pathname[pathname.length() - 1] != '/' ? "/" : "") +
 	       filename);
 }
-
-/* obsolete
-string
-Call::dirname(eTypeSpoolFile typeSpoolFile, const char *baseDirParam) {
-	char sdirname[1024];
-	string baseDir;
-	if(baseDirParam) {
-		baseDir = baseDirParam;
-	} else if(!opt_cachedir[0]) {
-		baseDir = getSpoolDir(typeSpoolFile);
-	}
-	unsigned baseDirLength = baseDir.length();
-	if(baseDirLength && baseDir[baseDirLength - 1] != '/') {
-		baseDir += '/';
-	}
-	struct tm t = time_r((const time_t*)(&first_packet_time));
-	if(opt_newdir) {
-		snprintf(sdirname, 1024, "%s%04d-%02d-%02d/%02d/%02d", 
-			 baseDir.c_str(),
-			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
-	} else {
-		snprintf(sdirname, 1024, "%s%04d-%02d-%02d", 
-			 baseDir.c_str(),
-			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
-	}
-	sdirname[1023] = 0;
-	string s(sdirname);
-	return s;
-}
-*/
 
 /* returns name of the directory in format YYYY-MM-DD */
 string
@@ -2097,7 +2085,9 @@ Call::convertRawToWav() {
 	string tmp;
 	tmp.append(out);
 	addtofilesqueue(tsf_audio, tmp, 0);
- 
+	if(opt_cachedir[0] != '\0') {
+		Call::_addtocachequeue(tmp);
+	}
 	return 0;
 }
 
@@ -4016,30 +4006,6 @@ void Call::disableListeningBuffers() {
 		audiobuffer2->clean_and_disable();
 	}
 	pthread_mutex_unlock(&listening_worker_run_lock);
-}
-
-void Call::createSpoolDirs() {
-	static string lastdir;
-	if(lastdir != this->get_pathname(tsf_main)) {
-		if(opt_newdir) {
-			for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
-				if(opt_cachedir[0] != '\0') {
-					mkdir_r(this->get_pathname(typeSpoolFile, opt_cachedir), 0777);
-					mkdir_r(this->get_pathname(typeSpoolFile), 0777);
-				} else {
-					mkdir_r(this->get_pathname(typeSpoolFile), 0777);
-				}
-			}
-		} else {
-			if(opt_cachedir[0] != '\0') {
-				mkdir_r(this->get_pathname(tsf_main, opt_cachedir), 0777);
-				mkdir_r(this->get_pathname(tsf_main), 0777);
-			} else {
-				mkdir_r(this->get_pathname(tsf_main), 0777);
-			}
-		}
-		lastdir = this->get_pathname(tsf_main);
-	}
 }
 
 u_int32_t Call::getSipcalledipConfirmed(u_int16_t *dport) {

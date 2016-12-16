@@ -200,8 +200,8 @@ int rmdir_r(std::string dir, bool enableSubdir = false, bool withoutRemoveRoot =
 int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir = false, bool withoutRemoveRoot = false);
 unsigned long long cp_r(const char *src, const char *dst, bool move = false);
 inline unsigned long long mv_r(const char *src, const char *dst) { return(cp_r(src, dst, true)); }  
-unsigned long long copy_file(const char *src, const char *dst, bool move = false);
-inline unsigned long long move_file(const char *src, const char *dst) { return(copy_file(src, dst, true)); }
+unsigned long long copy_file(const char *src, const char *dst, bool move = false, bool auto_create_dst_dir = false);
+inline unsigned long long move_file(const char *src, const char *dst, bool auto_create_dst_dir = false) { return(copy_file(src, dst, true, auto_create_dst_dir)); }
 bool get_url_file(const char *url, const char *toFile, string *error = NULL);
 //uint64_t convert_srcmac_ll(ether_header *header_eth);
 void cloud_activecheck_success();

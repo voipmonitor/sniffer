@@ -2053,14 +2053,6 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	}
 
 	// opening dump file
-	if((call->type == REGISTER && enable_save_register(call)) || 
-	   (call->type != REGISTER && enable_save_sip_rtp_audio(call))) {
-		extern int opt_defer_create_spooldir;
-		if(!opt_defer_create_spooldir) {
-			call->createSpoolDirs();
-		}
-	}
-
 	if(call->type == REGISTER && enable_save_register(call)) {
 		call->fname_register = packetS->header_pt->ts.tv_sec *1000000ull + packetS->header_pt->ts.tv_usec;
 		string pathfilename = call->get_pathfilename(tsf_reg);

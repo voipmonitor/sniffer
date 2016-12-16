@@ -393,7 +393,7 @@ unsigned long long cp_r(const char *src, const char *dst, bool move) {
 	return(bytestransfered);
 }
 
-unsigned long long copy_file(const char *src, const char *dst, bool move) {
+unsigned long long copy_file(const char *src, const char *dst, bool move, bool auto_create_dst_dir) {
 	int read_fd = 0;
 	int write_fd = 0;
 	struct stat stat_buf;
@@ -423,7 +423,22 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 	posix_fadvise(read_fd, 0, 0, POSIX_FADV_DONTNEED);
 
 	/* Open the output file for writing, with the same permissions as the source file. */
-	write_fd = open (dst, O_WRONLY | O_CREAT, stat_buf.st_mode);
+	for(int passOpen = 0; passOpen < 2; passOpen++) {
+		if(passOpen == 1) {
+			char *pointToLastDirSeparator = strrchr((char*)dst, '/');
+			if(pointToLastDirSeparator) {
+				*pointToLastDirSeparator = 0;
+				mkdir_r(dst, 0777);
+				*pointToLastDirSeparator = '/';
+			} else {
+				break;
+			}
+		}
+		write_fd = open (dst, O_WRONLY | O_CREAT, stat_buf.st_mode);
+		if(write_fd > 0 || !auto_create_dst_dir) {
+			break;
+		}
+	}
 	if(write_fd == -1) {
 		char buf[4092];
 		strerror_r(errno, buf, 4092);

@@ -833,7 +833,6 @@ public:
 	const char *getSpoolDir(eTypeSpoolFile typeSpoolFile) {
 		return(::getSpoolDir(typeSpoolFile, getSpoolIndex()));
 	}
-	void createSpoolDirs();
 	
 	bool checkKnownIP_inSipCallerdIP(u_int32_t ip) {
 		for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
