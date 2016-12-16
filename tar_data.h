@@ -38,37 +38,9 @@ struct data_tar_time {
 
 struct data_tar : public data_tar_time {
 	std::string sensorName;
-	std::string type;
+	int typeSpoolFile;
 	std::string filename;
-	inline void parseFileName(const char *filename, const char *spoolDir) {
-		char sensorName[1024];
-		unsigned int year, mon, day, hour, minute;
-		char type[12];
-		char fbasename[2*1024];
-		extern int opt_spooldir_by_sensor;
-		extern int opt_spooldir_by_sensorname;
-		const char *pointToFilenameAfterBaseSpooldir = filename;
-		unsigned spoolDirLength = strlen(spoolDir);
-		if(!strncmp(pointToFilenameAfterBaseSpooldir, spoolDir, spoolDirLength)) {
-			pointToFilenameAfterBaseSpooldir += spoolDirLength;
-		}
-		while(*pointToFilenameAfterBaseSpooldir == '/') {
-			++pointToFilenameAfterBaseSpooldir;
-		}
-		if((!opt_spooldir_by_sensor && !opt_spooldir_by_sensorname) ||
-		   sscanf(pointToFilenameAfterBaseSpooldir, "%[^/]/%u-%u-%u/%u/%u/%[^/]/%s", sensorName, &year, &mon, &day, &hour, &minute, type, fbasename) != 8) {
-			sscanf(pointToFilenameAfterBaseSpooldir, "%u-%u-%u/%u/%u/%[^/]/%s", &year, &mon, &day, &hour, &minute, type, fbasename);
-			sensorName[0] = 0;
-		}
-		this->sensorName = sensorName;
-		this->year = year;
-		this->mon = mon;
-		this->day = day;
-		this->hour = hour;
-		this->minute = minute;
-		this->type = type;
-		this->filename = fbasename;
-	}
+	void set(int typeSpoolFile, class Call *call, const char *fileName);
 };
 
 

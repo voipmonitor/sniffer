@@ -4041,6 +4041,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`graphsize` bigint unsigned DEFAULT 0,\
 			`audiosize` bigint unsigned DEFAULT 0,\
 			`regsize` bigint unsigned DEFAULT 0,\
+			`skinnysize` bigint unsigned DEFAULT 0,\
 		PRIMARY KEY (`datehour`, `spool_index`, `id_sensor`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	
@@ -4346,11 +4347,15 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 		ADD KEY `src_mac` (`src_mac`);" << endl;
 	outStrAlter << "drop trigger if exists cdr_bi;" << endl;
 	
-	//16.2
+	//17
 	if(opt_enable_fraud) {
 	outStrAlter << "ALTER TABLE fraud_alert_info\
-			ADD `id_sensor` smallint unsigned;" <<endl;
+			ADD `id_sensor` smallint unsigned;" << endl;
 	}
+	
+	//17.9
+	outStrAlter << "ALTER TABLE `files`\
+			ADD COLUMN `skinnysize` bigint unsigned DEFAULT 0;" << endl;
 
 	//
 	outStrAlter << "end;" << endl;

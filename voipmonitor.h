@@ -141,7 +141,7 @@ inline bool no_sip_reassembly() {
 }
 bool is_enable_packetbuffer();
 bool is_enable_rtp_threads();
-bool is_enable_cleanspool();
+bool is_enable_cleanspool(bool log = false);
 bool is_receiver();
 bool is_sender();
 int check_set_rtp_threads(int num_rtp_threads);
@@ -162,15 +162,15 @@ enum eTypeSpoolFile {
 	tsf_na,
 	tsf_main = 1,
 	tsf_sip = 1,
+	tsf_reg,
+	tsf_skinny,
 	tsf_rtp,
 	tsf_graph,
 	tsf_audio,
-	tsf_all,
-	tsf_reg,
-	tsf_skinny
+	tsf_all
 };
 
-#define MAX_TYPE_SPOOL_FILE (int)tsf_skinny
+#define MAX_TYPE_SPOOL_FILE (int)tsf_all
 #define MAX_SPOOL_INDEX 1
 #define MAX_COUNT_TYPE_SPOOL_FILE (MAX_TYPE_SPOOL_FILE + 1)
 #define MAX_COUNT_SPOOL_INDEX (MAX_SPOOL_INDEX + 1)
@@ -247,21 +247,58 @@ void vmChdir() {
 	chdir(opt_spooldir_main);
 }
 
+#define enable_pcap_split (opt_newdir && opt_pcap_split)
+
 const char *getSpoolTypeDir(eTypeSpoolFile typeSpoolFile) {
-	return(typeSpoolFile == tsf_sip ? "SIP" :
-	       typeSpoolFile == tsf_rtp ? "RTP" :
+	extern int opt_newdir;
+	extern int opt_pcap_split;
+	return(typeSpoolFile == tsf_sip ? (enable_pcap_split ? "SIP" : "ALL") :
+	       typeSpoolFile == tsf_reg ? "REG" :
+	       typeSpoolFile == tsf_skinny ? (enable_pcap_split ? "SKINNY" : "ALL") :
+	       typeSpoolFile == tsf_rtp ? (enable_pcap_split ? "RTP" : "ALL") :
 	       typeSpoolFile == tsf_graph ? "GRAPH" :
 	       typeSpoolFile == tsf_audio ? "AUDIO" : 
-	       typeSpoolFile == tsf_all ? "ALL" : 
-	       typeSpoolFile == tsf_reg ? "REG" : 
-	       typeSpoolFile == tsf_skinny ? "SKINNY" : 
 	       NULL);
 }
-const char *getSpoolTypeFilesIndex(eTypeSpoolFile typeSpoolFile) {
-	return(typeSpoolFile == tsf_sip ? "sip" :
-	       typeSpoolFile == tsf_rtp ? "rtp" :
+
+const char *getSpoolTypeFilesIndex(eTypeSpoolFile typeSpoolFile, bool addFileConv) {
+	extern int opt_pcap_dump_tar;
+	extern int opt_newdir;
+	extern int opt_pcap_split;
+	return(addFileConv && opt_pcap_dump_tar ?
+		typeSpoolFile == tsf_sip ? "sip" :
+		typeSpoolFile == tsf_reg ? "sip" : 
+		typeSpoolFile == tsf_skinny ? "sip" : 
+		typeSpoolFile == tsf_rtp ? "rtp" :
+		typeSpoolFile == tsf_graph ? "graph" :
+		typeSpoolFile == tsf_audio ? "audio" : 
+		NULL :
+	       addFileConv && !enable_pcap_split ?
+		typeSpoolFile == tsf_sip ? "sip" :
+		typeSpoolFile == tsf_reg ? "reg" : 
+		typeSpoolFile == tsf_skinny ? "sip" : 
+		typeSpoolFile == tsf_rtp ? "sip" :
+		typeSpoolFile == tsf_graph ? "graph" :
+		typeSpoolFile == tsf_audio ? "audio" : 
+		NULL :
+		//
+		typeSpoolFile == tsf_sip ? "sip" :
+		typeSpoolFile == tsf_reg ? "reg" : 
+		typeSpoolFile == tsf_skinny ? "skinny" : 
+		typeSpoolFile == tsf_rtp ? "rtp" :
+		typeSpoolFile == tsf_graph ? "graph" :
+		typeSpoolFile == tsf_audio ? "audio" :
+		typeSpoolFile == tsf_all ? "all" :
+		NULL);
+}
+
+const char *getFileTypeExtension(eTypeSpoolFile typeSpoolFile) {
+	return(typeSpoolFile == tsf_sip ? "pcap" :
+	       typeSpoolFile == tsf_reg ? "pcap" : 
+	       typeSpoolFile == tsf_skinny ? "pcap" : 
+	       typeSpoolFile == tsf_rtp ? "pcap" :
 	       typeSpoolFile == tsf_graph ? "graph" :
-	       typeSpoolFile == tsf_audio ? "audio" : 
+	       typeSpoolFile == tsf_audio ? "wav" : 
 	       NULL);
 }
 eTypeSpoolFile getTypeSpoolFile(const char *filePathName);

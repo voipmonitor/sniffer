@@ -689,7 +689,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 	}
 
 	if(!sverb.disable_save_packet) {
-		if(opt_newdir and opt_pcap_split) {
+		if(enable_pcap_split) {
 			switch(type) {
 			case TYPE_SKINNY:
 			case TYPE_SIP:
@@ -708,18 +708,12 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 				if(call->getPcapRtp()->isOpen()){
 					call->getPcapRtp()->dump(header, packet, packetS->dlt);
 				} else if(type == TYPE_RTP ? enable_save_rtp(call) : enable_save_rtcp(call)) {
-					char pcapFilePath_spool_relative[1024];
-					snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname(tsf_rtp).c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
-					pcapFilePath_spool_relative[1023] = 0;
-					char str2[1024];
-					if(opt_cachedir[0] != '\0') {
-						snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
-					} else {
-						strcpy(str2, pcapFilePath_spool_relative);
-					}
-					if(call->getPcapRtp()->open(tsf_rtp, str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
-						if(verbosity > 3) syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+					string pathfilename = call->get_pathfilename(tsf_rtp);
+					if(call->getPcapRtp()->open(tsf_rtp, pathfilename.c_str(), call->useHandle, call->useDlt)) {
 						call->getPcapRtp()->dump(header, packet, packetS->dlt);
+						if(verbosity > 3) { 
+							syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
+						}
 					}
 				}
 				break;
@@ -1890,8 +1884,6 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		return NULL;
 	}
 
-
-	static char str2[1024];
 	if(packetS->is_ssl) {
 		glob_ssl_calls++;
 	}
@@ -2070,102 +2062,21 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	}
 
 	if(call->type == REGISTER && enable_save_register(call)) {
-		/****
-		call->set_f_pcap(NULL);
-		call->set_fsip_pcap(NULL);
-		call->set_frtp_pcap(NULL);
-		****/
-		char filenamestr[32];
-		sprintf(filenamestr, "%u%u", (unsigned int)packetS->header_pt->ts.tv_sec, (unsigned int)packetS->header_pt->ts.tv_usec);
-		if(opt_newdir and opt_pcap_split) {
-			char pcapFilePath_spool_relative[1024];
-			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname(tsf_reg).c_str(), opt_newdir ? "REG" : "", filenamestr);
-			pcapFilePath_spool_relative[1023] = 0;
-			if(opt_cachedir[0] != '\0') {
-				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
-				str2[1023] = 0;
-			} else {
-				strcpy(str2, pcapFilePath_spool_relative);
-			}
-			unsigned long long num = packetS->header_pt->ts.tv_sec;
-			unsigned long long num2 = packetS->header_pt->ts.tv_usec;
-			while(num2 > 0) {
-				num2 /= 10;
-				num *= 10;
-			}
-			call->fname2 = num + packetS->header_pt->ts.tv_usec;
-			call->pcapfilename = call->sip_pcapfilename = pcapFilePath_spool_relative;
-			if(call->getPcapSip()->open(tsf_reg, str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
-				if(verbosity > 3) {
-					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
-				}
+		call->fname_register = packetS->header_pt->ts.tv_sec *1000000ull + packetS->header_pt->ts.tv_usec;
+		string pathfilename = call->get_pathfilename(tsf_reg);
+		PcapDumper *dumper = enable_pcap_split ? call->getPcapSip() : call->getPcap();
+		if(dumper->open(tsf_reg, pathfilename.c_str(), call->useHandle, call->useDlt)) {
+			if(verbosity > 3) {
+				syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
 			}
 		}
 	} else if(call->type != REGISTER && enable_save_sip_rtp(call)) {
-		// open one pcap for all packets or open SIP and RTP separatly
-		/****
-		call->set_f_pcap(NULL);
-		call->set_fsip_pcap(NULL);
-		call->set_frtp_pcap(NULL);
-		****/
-		if(opt_newdir and opt_pcap_split) {
-			//SIP
-			char pcapFilePath_spool_relative[1024];
-			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname(tsf_sip).c_str(), opt_newdir ? "SIP" : "", call->get_fbasename_safe());
-			pcapFilePath_spool_relative[1023] = 0;
-			if(opt_cachedir[0] != '\0') {
-				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
-				str2[1023] = 0;
-			} else {
-				strcpy(str2, pcapFilePath_spool_relative);
-			}
-			call->pcapfilename = call->sip_pcapfilename = pcapFilePath_spool_relative;
-			if(enable_save_sip(call) &&
-			   call->getPcapSip()->open(tsf_sip, str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
+		if(enable_pcap_split ? enable_save_sip(call) : enable_save_sip_rtp(call)) {
+			string pathfilename = call->get_pathfilename(tsf_sip);
+			PcapDumper *dumper = enable_pcap_split ? call->getPcapSip() : call->getPcap();
+			if(dumper->open(tsf_sip, pathfilename.c_str(), call->useHandle, call->useDlt)) {
 				if(verbosity > 3) {
-					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
-				}
-			}
-			//RTP
-			char pcapRtpFilePath_spool_relative[1024];
-			snprintf(pcapRtpFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname(tsf_rtp).c_str(), opt_newdir ? "RTP" : "", call->get_fbasename_safe());
-			pcapRtpFilePath_spool_relative[1023] = 0;
-			if(opt_cachedir[0] != '\0') {
-				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapRtpFilePath_spool_relative);
-				str2[1023] = 0;
-			} else {
-				strcpy(str2, pcapRtpFilePath_spool_relative);
-			}
-			call->rtp_pcapfilename = pcapRtpFilePath_spool_relative;
-/* this is moved to save_packet
-			if(!file_exists(str2)) {
-				call->set_frtp_pcap(pcap_dump_open(HANDLE_FOR_PCAP_SAVE, str2));
-				if(call->get_frtp_pcap() == NULL) {
-					syslog(LOG_NOTICE,"pcap [%s] cannot be opened: %s\n", str2, pcap_geterr(HANDLE_FOR_PCAP_SAVE));
-				}
-				if(verbosity > 3) {
-					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
-				}
-			} else {
-				if(verbosity > 0) {
-					syslog(LOG_NOTICE,"pcap_filename: [%s] already exists, do not overwriting\n", str2);
-				}
-			}
-*/
-		} else {
-			char pcapFilePath_spool_relative[1024];
-			snprintf(pcapFilePath_spool_relative , 1023, "%s/%s/%s.pcap", call->dirname(tsf_all).c_str(), opt_newdir ? "ALL" : "", call->get_fbasename_safe());
-			pcapFilePath_spool_relative[1023] = 0;
-			if(opt_cachedir[0] != '\0') {
-				snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
-				str2[1023] = 0;
-			} else {
-				strcpy(str2, pcapFilePath_spool_relative);
-			}
-			call->pcapfilename = pcapFilePath_spool_relative;
-			if(call->getPcap()->open(tsf_sip, str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
-				if(verbosity > 3) {
-					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", str2);
+					syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
 				}
 			}
 		}
@@ -3318,7 +3229,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		   packetS->sip_method == RES404) {
 			// registration failed
 			call->regstate = 2;
-			save_packet(call, packetS,TYPE_SIP);
+			save_packet(call, packetS, TYPE_SIP);
 			call->saveregister();
 			if(logPacketSipMethodCall_enable) {
 				logPacketSipMethodCallDescr =
@@ -3580,25 +3491,14 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 
 	// opening dump file
 	if(enable_save_any(call)) {
-		mkdir_r(call->dirname(tsf_rtp).c_str(), 0777);
+		mkdir_r(call->get_pathname(tsf_rtp).c_str(), 0777);
 	}
 	if(enable_save_packet(call)) {
-		char pcapFilePath_spool_relative[1024];
-		snprintf(pcapFilePath_spool_relative , 1023, "%s/%s.pcap", call->dirname(tsf_rtp).c_str(), call->get_fbasename_safe());
-		pcapFilePath_spool_relative[1023] = 0;
-		static char str2[1024];
-		if(opt_cachedir[0] != '\0') {
-			snprintf(str2, 1023, "%s/%s", opt_cachedir, pcapFilePath_spool_relative);
-			str2[1023] = 0;
-		} else {
-			strcpy(str2, pcapFilePath_spool_relative);
-		}
-		if(call->getPcap()->open(tsf_rtp, str2, pcapFilePath_spool_relative, call->useHandle, call->useDlt)) {
-			call->pcapfilename = pcapFilePath_spool_relative;
-		}
-		
-		if(verbosity > 3) {
-			syslog(LOG_NOTICE,"pcap_filename: [%s]\n",str2);
+		string pathfilename = call->get_pathfilename(tsf_rtp);
+		if(call->getPcap()->open(tsf_rtp, pathfilename.c_str(), call->useHandle, call->useDlt)) {
+			if(verbosity > 3) {
+				syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
+			}
 		}
 	}
 
@@ -4919,7 +4819,7 @@ inline int _ipfrag_add(ip_frag_queue_t *queue,
 		(*queue)[offset_d] = node;
 	} else {
 		// node with that offset already exists - discard
-		return 0;
+		return -1;
 	}
 
 	// now check if packets in queue are complete - if yes - defragment - if not, do nithing
@@ -6766,7 +6666,7 @@ void ProcessRtpPacket::terminate() {
 
 void ProcessRtpPacket::autoStartProcessRtpPacket() {
 	if(!processRtpPacketHash &&
-	   opt_enable_process_rtp_packet && opt_pcap_split &&
+	   opt_enable_process_rtp_packet && enable_pcap_split &&
 	   !is_read_from_file_simple()) {
 		process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
 		ProcessRtpPacket *_processRtpPacketHash = new FILE_LINE(27030) ProcessRtpPacket(ProcessRtpPacket::hash, 0);

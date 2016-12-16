@@ -901,50 +901,58 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		return res;
 
 	} else if(strstr(buf, "reindexfiles") != NULL) {
-		char date[21];
-		int hour;
-		bool badParams = false;
-		if(strstr(buf, "reindexfiles_datehour")) {
-			if(sscanf(buf + strlen("reindexfiles_datehour") + 1, "%20s %i", date, &hour) != 2) {
-				badParams = true;
+		if(is_enable_cleanspool()) {
+			char date[21];
+			int hour;
+			bool badParams = false;
+			if(strstr(buf, "reindexfiles_datehour")) {
+				if(sscanf(buf + strlen("reindexfiles_datehour") + 1, "%20s %i", date, &hour) != 2) {
+					badParams = true;
+				}
+			} else if(strstr(buf, "reindexfiles_date")) {
+				if(sscanf(buf + strlen("reindexfiles_date") + 1, "%20s", date) != 1) {
+					badParams = true;
+				}
 			}
-		} else if(strstr(buf, "reindexfiles_date")) {
-			if(sscanf(buf + strlen("reindexfiles_date") + 1, "%20s", date) != 1) {
-				badParams = true;
+			if(badParams) {
+				snprintf(sendbuf, BUFSIZE, "bad parameters");
+				if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+					cerr << "Error sending data to client" << endl;
+				}
+				return -1;
 			}
-		}
-		if(badParams) {
-			snprintf(sendbuf, BUFSIZE, "bad parameters");
+			snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
 			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 				cerr << "Error sending data to client" << endl;
+				return -1;
 			}
-			return -1;
-		}
-		snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
-		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
-			cerr << "Error sending data to client" << endl;
-			return -1;
-		}
-		if(strstr(buf, "reindexfiles_datehour")) {
-			CleanSpool::run_reindex_date_hour(date, hour);
-		} else if(strstr(buf, "reindexfiles_date")) {
-			CleanSpool::run_reindex_date(date);
+			if(strstr(buf, "reindexfiles_datehour")) {
+				CleanSpool::run_reindex_date_hour(date, hour);
+			} else if(strstr(buf, "reindexfiles_date")) {
+				CleanSpool::run_reindex_date(date);
+			} else {
+				CleanSpool::run_reindex_all("call from manager");
+			}
+			snprintf(sendbuf, BUFSIZE, "done\r\n");
 		} else {
-			CleanSpool::run_reindex_all("call from manager");
+			strcpy(sendbuf, "cleanspool is disable\r\n");
 		}
-		snprintf(sendbuf, BUFSIZE, "done\r\n");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "check_filesindex") != NULL) {
-		snprintf(sendbuf, BUFSIZE, "starting checking indexing please wait...");
-		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
-			cerr << "Error sending data to client" << endl;
-			return -1;
+		if(is_enable_cleanspool()) {
+			snprintf(sendbuf, BUFSIZE, "starting checking indexing please wait...");
+			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+			CleanSpool::run_check_filesindex();
+			snprintf(sendbuf, BUFSIZE, "done\r\n");
+		} else {
+			strcpy(sendbuf, "cleanspool is disable\r\n");
 		}
-		CleanSpool::run_check_filesindex();
-		snprintf(sendbuf, BUFSIZE, "done\r\n");
 		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

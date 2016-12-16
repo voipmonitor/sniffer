@@ -332,7 +332,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	lastsipcallerip = 0;
 	sipcallerport = 0;
 	sipcalledport = 0;
-	fname2 = 0;
+	fname_register = 0;
 	skinny_partyid = 0;
 	pthread_mutex_init(&listening_worker_run_lock, NULL);
 	caller_sipdscp = 0;
@@ -453,12 +453,12 @@ Call::removeFindTables(bool set_end_call) {
 }
 
 void
-Call::addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string column, long long writeBytes) {
-	_addtofilesqueue(typeSpoolFile, file, column, dirnamesqlfiles(), writeBytes, getSpoolIndex());
+Call::addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, long long writeBytes) {
+	_addtofilesqueue(typeSpoolFile, file, dirnamesqlfiles(), writeBytes, getSpoolIndex());
 }
 
 void 
-Call::_addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string column, string dirnamesqlfiles, long long writeBytes, int spoolIndex) {
+Call::_addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string dirnamesqlfiles, long long writeBytes, int spoolIndex) {
 
 	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or
 	   !CleanSpool::isSetCleanspool(spoolIndex) or
@@ -505,7 +505,7 @@ Call::_addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string column,
 
 	extern CleanSpool *cleanSpool[2];
 	if(cleanSpool[spoolIndex]) {
-		cleanSpool[spoolIndex]->addFile(dirnamesqlfiles.c_str(), column.c_str(), typeSpoolFile, file.c_str(), size);
+		cleanSpool[spoolIndex]->addFile(dirnamesqlfiles.c_str(), typeSpoolFile, file.c_str(), size);
 	}
 }
 
@@ -654,7 +654,72 @@ Call::closeRawFiles() {
 	}
 }
 
-/* returns name of the directory in format YYYY-MM-DD */
+string
+Call::get_sensordir() {
+	string sensorDir;
+	extern int opt_spooldir_by_sensor;
+	extern int opt_spooldir_by_sensorname;
+	if((opt_spooldir_by_sensor && useSensorId > 0) || 
+	   opt_spooldir_by_sensorname) {
+		if(opt_spooldir_by_sensorname) {
+			extern SensorsMap sensorsMap;
+			sensorDir = sensorsMap.getSensorNameFile(useSensorId);
+		} else if(opt_spooldir_by_sensor) {
+			char sensorDir_buff[10];
+			snprintf(sensorDir_buff, sizeof(sensorDir_buff), "%i", useSensorId);
+			sensorDir = sensorDir_buff;
+		}
+	}
+	return(sensorDir);
+}
+
+string
+Call::get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpoolDir) {
+	string spoolDir;
+	string sensorDir;
+	string timeDir;
+	string typeDir;
+	spoolDir = substSpoolDir ?
+		    substSpoolDir :
+		    (opt_cachedir[0] ? opt_cachedir : getSpoolDir(typeSpoolFile));
+	sensorDir = get_sensordir();
+	struct tm t = time_r((const time_t*)(&first_packet_time));
+	char timeDir_buffer[100];
+	if(opt_newdir) {
+		snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
+			 "%04d-%02d-%02d/%02d/%02d", 
+			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
+	} else {
+		snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
+			 "%04d-%02d-%02d", 
+			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+	}
+	timeDir = timeDir_buffer;
+	typeDir = opt_newdir ? getSpoolTypeDir(typeSpoolFile) : "";
+	return(spoolDir + (spoolDir.length() ? "/" : "") +
+	       sensorDir + (sensorDir.length() ? "/" : "") +
+	       timeDir + (timeDir.length() ? "/" : "") +
+	       typeDir + (typeDir.length() ? "/" : ""));
+}
+
+string 
+Call::get_filename(eTypeSpoolFile typeSpoolFile, const char *fileExtension) {
+	string extension = fileExtension ? fileExtension : getFileTypeExtension(typeSpoolFile);
+	return((type == REGISTER ?
+		 intToString(fname_register) :
+		 get_fbasename_safe()) + 
+	       (extension.length() ? "." : "") + extension);
+}
+
+string
+Call::get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileExtension) {
+	string pathname = get_pathname(typeSpoolFile);
+	string filename = get_filename(typeSpoolFile, fileExtension);
+	return(pathname + (pathname.length() && pathname[pathname.length() - 1] != '/' ? "/" : "") +
+	       filename);
+}
+
+/* obsolete
 string
 Call::dirname(eTypeSpoolFile typeSpoolFile, const char *baseDirParam) {
 	char sdirname[1024];
@@ -682,6 +747,7 @@ Call::dirname(eTypeSpoolFile typeSpoolFile, const char *baseDirParam) {
 	string s(sdirname);
 	return s;
 }
+*/
 
 /* returns name of the directory in format YYYY-MM-DD */
 string
@@ -1112,26 +1178,22 @@ read:
 			}
 		}
 
-		char graphFilePath_spool_relative[1024];
-		char graphFilePath[1024];
-		snprintf(graphFilePath_spool_relative, 1023, "%s/%s/%s.%d.graph%s", dirname(tsf_graph).c_str(), opt_newdir ? "GRAPH" : "", get_fbasename_safe(), ssrc_n, 
-			 opt_gzipGRAPH == FileZipHandler::gzip ? ".gz" : "");
-		graphFilePath_spool_relative[1023] = 0;
-		if(opt_cachedir[0] != '\0') {
-			snprintf(graphFilePath, 1023, "%s/%s", opt_cachedir, graphFilePath_spool_relative);
-			graphFilePath[1023] = 0;
-		} else {
-			strcpy(graphFilePath, graphFilePath_spool_relative);
-		}
-		strcpy(rtp[ssrc_n]->gfilename, graphFilePath);
+		char graph_extension[100];
+		snprintf(graph_extension, sizeof(graph_extension), "%d.graph%s", ssrc_n, opt_gzipGRAPH == FileZipHandler::gzip ? ".gz" : "");
+		string graph_pathfilename = get_pathfilename(tsf_graph, graph_extension);
+		strcpy(rtp[ssrc_n]->gfilename, graph_pathfilename.c_str());
 		if(flags & FLAG_SAVEGRAPH) {
-			rtp[ssrc_n]->graph.auto_open(tsf_graph, graphFilePath, graphFilePath_spool_relative);
+			rtp[ssrc_n]->graph.auto_open(tsf_graph, graph_pathfilename.c_str());
 		}
 		if(rtp[ssrc_n]->gfileRAW) {
 			fclose(rtp[ssrc_n]->gfileRAW);
 			rtp[ssrc_n]->gfileRAW = NULL;
 		}
-		snprintf(rtp[ssrc_n]->basefilename, 1023, "%s/%s/%s.i%d", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), !iscaller);
+		
+		char ird_extension[100];
+		snprintf(ird_extension, sizeof(ird_extension), "i%d", !iscaller);
+		string ird_pathfilename = get_pathfilename(tsf_audio, ird_extension);
+		strncpy(rtp[ssrc_n]->basefilename, ird_pathfilename.c_str(), 1023);
 		rtp[ssrc_n]->basefilename[1023] = 0;
 
 		rtp[ssrc_n]->index_call_ip_port = get_index_by_ip_port(find_by_dest ? packetS->daddr : packetS->saddr, find_by_dest ? packetS->dest : packetS->source);
@@ -1213,52 +1275,14 @@ void Call::stoprecording() {
 		this->pcap.remove();
 		this->pcapSip.remove();
 		this->pcapRtp.remove();
-		/****
-		if(this->get_fsip_pcap() != NULL) {
-			pcap_dump_flush(this->get_fsip_pcap());
-			pcap_dump_close(this->get_fsip_pcap());
-			this->set_fsip_pcap(NULL);
-			if(opt_cachedir[0] != '\0') {
-				snprintf(str2, 2047, "%s/%s.pcap", opt_cachedir, sip_pcapfilename.c_str());
-			} else {
-				snprintf(str2, 2047, "%s.pcap", sip_pcapfilename.c_str());
-			}
-			str2[2047] = 0;
-			unlink(str2);	
-		}
-		if(this->get_frtp_pcap() != NULL) {
-			pcap_dump_flush(this->get_frtp_pcap());
-			pcap_dump_close(this->get_frtp_pcap());
-			this->set_frtp_pcap(NULL);
-			if(opt_cachedir[0] != '\0') {
-				snprintf(str2, 2047, "%s/%s.pcap", opt_cachedir, rtp_pcapfilename.c_str());
-			} else {
-				snprintf(str2, 2047, "%s.pcap", rtp_pcapfilename.c_str());
-			}
-			str2[2047] = 0;
-			unlink(str2);	
-		}
-		if(this->get_f_pcap() != NULL) {
-			pcap_dump_flush(this->get_f_pcap());
-			pcap_dump_close(this->get_f_pcap());
-			this->set_f_pcap(NULL);
-			if(opt_cachedir[0] != '\0') {
-				snprintf(str2, 2047, "%s/%s.pcap", opt_cachedir, pcapfilename.c_str());
-			} else {
-				snprintf(str2, 2047, "%s.pcap", pcapfilename.c_str());
-			}
-			str2[2047] = 0;
-			unlink(str2);	
-		}
-		****/
 
 		this->recordstopped = 1;
 		if(verbosity >= 1) {
-			syslog(LOG_ERR,"Call %s/%s.pcap was stopped due to dtmf or norecord sip header. ", this->dirname(tsf_main).c_str(), this->get_fbasename_safe());
+			syslog(LOG_ERR,"Call %s was stopped due to dtmf or norecord sip header. ", this->get_pathfilename(tsf_main).c_str());
 		}
 	} else {
 		if(verbosity >= 1) {
-			syslog(LOG_ERR,"Call %s/%s.pcap was stopped before. Ignoring now. ", this->dirname(tsf_main).c_str(), this->get_fbasename_safe());
+			syslog(LOG_ERR,"Call %s was stopped before. Ignoring now. ", this->get_pathfilename(tsf_main).c_str());
 		}
 	}
 }
@@ -1547,46 +1571,46 @@ Call::convertRawToWav() {
 	}
 
 	if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-		snprintf(out, 1023, "%s/%s/%s.wav", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
+		strncpy(out, get_pathfilename(tsf_audio, "wav").c_str(), sizeof(out));
 	} else {
-		snprintf(out, 1023, "%s/%s/%s.ogg", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
+		strncpy(out, get_pathfilename(tsf_audio, "ogg").c_str(), sizeof(out));
 	}
-	out[1023] = 0;
+	out[sizeof(out) - 1] = 0;
 
 	/* caller direction */
-	snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
-	rawInfo[1023] = 0;
+	strncpy(rawInfo, get_pathfilename(tsf_audio, "i0.rawInfo").c_str(), sizeof(rawInfo));
+	rawInfo[sizeof(rawInfo) - 1] = 0;
 	pl = fopen(rawInfo, "r");
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
 			if(ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip) continue;
 			adir = 1;
-			snprintf(wav0, 1023, "%s/%s/%s.i%d.wav", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 0);
-			wav0[1023] = 0;
+			strncpy(wav0, get_pathfilename(tsf_audio, "i0.wav").c_str(), sizeof(wav0));
+			wav0[sizeof(wav0) - 1] = 0;
 			break;
 		}
 		fclose(pl);
 	}
 
 	/* called direction */
-	snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
-	rawInfo[1023] = 0;
+	strncpy(rawInfo, get_pathfilename(tsf_audio, "i1.rawInfo").c_str(), sizeof(rawInfo));
+	rawInfo[sizeof(rawInfo) - 1] = 0;
 	pl = fopen(rawInfo, "r");
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
 			if(ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip) continue;
 			bdir = 1;
-			snprintf(wav1, 1023, "%s/%s/%s.i%d.wav", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), 1);
-			wav1[1023] = 0;
+			strncpy(wav1, get_pathfilename(tsf_audio, "i1.wav").c_str(), sizeof(wav1));
+			wav1[sizeof(wav1) - 1] = 0;
 			break;
 		}
 		fclose(pl);
 	}
 
 	if(adir == 0 && bdir == 0) {
-		syslog(LOG_ERR, "PCAP file %s/%s/%s.pcap cannot be decoded to WAV probably missing RTP\n", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe());
+		syslog(LOG_ERR, "PCAP file %s cannot be decoded to WAV probably missing RTP\n", get_pathfilename(tsf_sip).c_str());
 		return 1;
 	}
 
@@ -1691,8 +1715,10 @@ Call::convertRawToWav() {
 		wav = i == 0 ? wav0 : wav1;
 
 		/* open playlist */
-		snprintf(rawInfo, 1023, "%s/%s/%s.i%d.rawInfo", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i);
-		rawInfo[1023] = 0;
+		char rawinfo_extension[100];
+		snprintf(rawinfo_extension, sizeof(rawinfo_extension), "i%d.rawInfo", i);
+		strncpy(rawInfo, get_pathfilename(tsf_audio, rawinfo_extension).c_str(), sizeof(rawInfo));
+		rawInfo[sizeof(rawInfo) - 1] = 0;
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
@@ -1711,10 +1737,11 @@ Call::convertRawToWav() {
 			if any of such stream has same SSRC as previous stream and it starts at the same time with 500ms tolerance that stream is eliminated (it is probably duplicate stream)
 		*/
 		while(fgets(line, 256, pl)) {
-			char raw[1024];
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			snprintf(raw, 1023, "%s/%s/%s.i%d.%d.%lu.%d.%ld.%ld.raw", dirname(tsf_audio).c_str(), opt_newdir ? "AUDIO" : "", get_fbasename_safe(), i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			char raw_extension[1024];
+			snprintf(raw_extension, sizeof(raw_extension), "i%d.%d.%lu.%d.%ld.%ld.raw", i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			string raw_pathfilename = this->get_pathfilename(tsf_audio, raw_extension);
 			samplerate = 1000 * get_ticks_bycodec(codec);
 			if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
 			if(maxsamplerate < samplerate) {
@@ -1724,10 +1751,10 @@ Call::convertRawToWav() {
 			   last_ssrc_index >= (unsigned)ssrc_n) {
 				syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] or last_ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x]", 
 				       ssrc_index, last_ssrc_index, 
-				       ssrc_n, fbasename, raw, 
+				       ssrc_n, fbasename, raw_pathfilename.c_str(), 
 				       ssrc_index >= ssrc_n ? 0 : rtp[ssrc_index]->ssrc,
 				       last_ssrc_index >= (unsigned)ssrc_n ? 0 : rtp[last_ssrc_index]->ssrc);
-				if(!sverb.noaudiounlink) unlink(raw);
+				if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
 			} else {
 				struct raws_t rawl;
 				rawl.ssrc_index = ssrc_index;
@@ -1735,18 +1762,18 @@ Call::convertRawToWav() {
 				rawl.tv.tv_sec = tv0.tv_sec;
 				rawl.tv.tv_usec = tv0.tv_usec;
 				rawl.codec = codec;
-				rawl.filename = raw;
+				rawl.filename = raw_pathfilename.c_str();
 				if(iter > 0) {
 					if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
 						  abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
 						  last_size > 10000) {
 						// ignore this raw file it is duplicate 
-						if(!sverb.noaudiounlink) unlink(raw);
-						if(verbosity > 1) syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+						if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+						if(verbosity > 1) syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw_pathfilename.c_str(), rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 					} else {
 						if(rtp[rawl.ssrc_index]->skip) {
-							if(verbosity > 1) syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
-							if(!sverb.noaudiounlink) unlink(raw);
+							if(verbosity > 1) syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw_pathfilename.c_str(), rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+							if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
 						} else {
 							raws.push_back(rawl);
 						}
@@ -1755,15 +1782,15 @@ Call::convertRawToWav() {
 					if(!rtp[rawl.ssrc_index]->skip) {
 						raws.push_back(rawl);
 					} else {
-						if(!sverb.noaudiounlink) unlink(raw);
-						if(verbosity > 1) syslog(LOG_NOTICE, "C ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw, rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+						if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+						if(verbosity > 1) syslog(LOG_NOTICE, "C ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw_pathfilename.c_str(), rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 					}
 				}
 				lasttv.tv_sec = tv0.tv_sec;
 				lasttv.tv_usec = tv0.tv_usec;
 				last_ssrc_index = ssrc_index;
 				iter++;
-				last_size = GetFileSize(raw);
+				last_size = GetFileSize(raw_pathfilename.c_str());
 			}
 		}
 		fclose(pl);
@@ -2069,7 +2096,7 @@ Call::convertRawToWav() {
 	}
 	string tmp;
 	tmp.append(out);
-	addtofilesqueue(tsf_audio, tmp, "audiosize", 0);
+	addtofilesqueue(tsf_audio, tmp, 0);
  
 	return 0;
 }
@@ -3222,10 +3249,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		last_register_clean = now;
 	}
 
-	char fname[32];
-	snprintf(fname, 31, "%llu", fname2);
-	fname[31] = 0;
-
 	switch(regstate) {
 	case 1:
 	case 3:
@@ -3270,7 +3293,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				sqlEscapeStringBorder(sqlDateTimeString(calltime() + register_expires).c_str()) + ",'" + //mexpires_at
 				regexpires + "', " +
 				sqlEscapeStringBorder(a_ua) + ", " +
-				fname + ", " +
+				sqlEscapeStringBorder(intToString(fname_register)) + ", " +
 				idsensor;
 				//srcmac ;
 			if (existsColumns.register_rrd_count) {
@@ -3348,7 +3371,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(sqlEscapeString(digest_username), "digestusername");
 						reg.add(register_expires, "expires");
 						reg.add(5, "state");
-						reg.add(fname, "fname");
+						reg.add(intToString(fname_register), "fname");
 						reg.add(useSensorId, "id_sensor");
 						reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 						sqlDbSaveCall->insert("register_state", reg);
@@ -3369,7 +3392,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(register_expires, "expires");
 						reg.add(regstate, "state");
 						reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
-						reg.add(fname, "fname");
+						reg.add(intToString(fname_register), "fname");
 						reg.add(useSensorId, "id_sensor");
 						sqlDbSaveCall->insert("register_state", reg);
 					}
@@ -3388,7 +3411,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(register_expires, "expires");
 					reg.add(regstate, "state");
 					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
-					reg.add(fname, "fname");
+					reg.add(intToString(fname_register), "fname");
 					reg.add(useSensorId, "id_sensor");
 					sqlDbSaveCall->insert("register_state", reg);
 				}
@@ -3414,7 +3437,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
 					reg.add(register_expires, "expires");
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
-					reg.add(fname, "fname");
+					reg.add(intToString(fname_register), "fname");
 					reg.add(useSensorId, "id_sensor");
 					reg.add(regstate, "state");
 					//reg.add(srcmac, "src_mac");
@@ -3461,11 +3484,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + 
 				" AND created_at >= SUBTIME('" + calldate_str + "', '01:00:00') LIMIT 1";
 
-			char fname[32];
-			snprintf(fname, 31, "%llu", fname2);
-			fname[31] = 0;
 			string q2 = string(
-				"UPDATE register_failed SET created_at = '" + calldate_str + "', fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + " + cnt.str()) +
+				"UPDATE register_failed SET created_at = '" + calldate_str + "', fname = " + sqlEscapeStringBorder(intToString(fname_register)) + ", counter = counter + " + cnt.str()) +
 				", to_num = " + sqlEscapeStringBorder(called) + ", from_num = " + sqlEscapeStringBorder(called) + ", digestusername = " + sqlEscapeStringBorder(digest_username) +
 				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + 
 				" AND created_at >= SUBTIME('" + calldate_str + "', '01:00:00')";
@@ -3484,7 +3504,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			//reg.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "ua_id");
 			reg.add("_\\_'SQL'_\\_:@ua_id", "ua_id");
 
-			reg.add(fname, "fname");
+			reg.add(intToString(fname_register), "fname");
 			if(useSensorId > -1) {
 				reg.add(useSensorId, "id_sensor");
 			}
@@ -3503,13 +3523,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME('" + calldate_str+ "', '01:00:00')";
 			if(sqlDbSaveCall->query(query)) {
 				SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
-				char fname[32];
-				snprintf(fname, 31, "%llu", fname2);
-				fname[31] = 0;
 				if(rsltRow) {
 					// there is already failed register, update counter and do not insert
 					string query = string(
-						"UPDATE register_failed SET created_at = '" + calldate_str+ "', fname = " + sqlEscapeStringBorder(fname) + ", counter = counter + 1 ") +
+						"UPDATE register_failed SET created_at = '" + calldate_str+ "', fname = " + sqlEscapeStringBorder(intToString(fname_register)) + ", counter = counter + 1 ") +
 						"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
 							" AND created_at >= SUBTIME('" + calldate_str+ "', '01:00:00');";
 					sqlDbSaveCall->query(query);
@@ -3526,7 +3543,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(digest_username), "digestusername");
 					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
-					reg.add(fname, "fname");
+					reg.add(intToString(fname_register), "fname");
 					if(useSensorId > -1) {
 						reg.add(useSensorId, "id_sensor");
 					}
@@ -3844,34 +3861,20 @@ void Call::atFinish() {
 		string find1 = "%pcap%";
 		string find2 = "%basename%";
 		string find3 = "%dirname%";
-		string replace;
-		replace.append("\"");
-		replace.append(getSpoolDir(tsf_main));
-		replace.append("/");
-		replace.append(this->dirname(tsf_main));
-		replace.append("/");
-		replace.append(this->fbasename);
-		replace.append(".pcap");
-		replace.append("\"");
-		find_and_replace(source, find1, replace);
-		find_and_replace(source, find2, this->fbasename);
-		find_and_replace(source, find3, this->dirname(tsf_main));
+		find_and_replace(source, find1, escapeShellArgument(this->get_pathfilename(tsf_sip)));
+		find_and_replace(source, find2, escapeShellArgument(this->fbasename));
+		find_and_replace(source, find3, escapeShellArgument(this->get_pathname(tsf_sip)));
 		if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
 		system(source.c_str());
 	};
 	extern char filtercommand[4092];
 	if(filtercommand[0] && this->flags & FLAG_RUNSCRIPT) {
 		string source(filtercommand);
-		string tmp = this->fbasename;
-		find_and_replace(source, string("%callid%"), escapeshellR(tmp));
-		tmp = this->dirname(tsf_main);
-		find_and_replace(source, string("%dirname%"), escapeshellR(tmp));
-		tmp = sqlDateTimeString(this->calltime());
-		find_and_replace(source, string("%calldate%"), escapeshellR(tmp));
-		tmp = this->caller;
-		find_and_replace(source, string("%caller%"), escapeshellR(tmp));
-		tmp = this->called;
-		find_and_replace(source, string("%called%"), escapeshellR(tmp));
+		find_and_replace(source, string("%callid%"), escapeShellArgument(this->fbasename));
+		find_and_replace(source, string("%dirname%"), escapeShellArgument(this->get_pathname(tsf_sip)));
+		find_and_replace(source, string("%calldate%"), escapeShellArgument(sqlDateTimeString(this->calltime())));
+		find_and_replace(source, string("%caller%"), escapeShellArgument(this->caller));
+		find_and_replace(source, string("%called%"), escapeShellArgument(this->called));
 		if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
 		system(source.c_str());
 	}
@@ -4017,25 +4020,25 @@ void Call::disableListeningBuffers() {
 
 void Call::createSpoolDirs() {
 	static string lastdir;
-	if(lastdir != this->dirname(tsf_main)) {
+	if(lastdir != this->get_pathname(tsf_main)) {
 		if(opt_newdir) {
-			for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_skinny; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
+			for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
 				if(opt_cachedir[0] != '\0') {
-					mkdir_r(this->dirname(typeSpoolFile, opt_cachedir) + '/' + getSpoolTypeDir(typeSpoolFile), 0777);
-					mkdir_r(this->dirname(typeSpoolFile, this->getSpoolDir(typeSpoolFile)) + '/' + getSpoolTypeDir(typeSpoolFile), 0777);
+					mkdir_r(this->get_pathname(typeSpoolFile, opt_cachedir), 0777);
+					mkdir_r(this->get_pathname(typeSpoolFile), 0777);
 				} else {
-					mkdir_r(this->dirname(typeSpoolFile) + '/' + getSpoolTypeDir(typeSpoolFile), 0777);
+					mkdir_r(this->get_pathname(typeSpoolFile), 0777);
 				}
 			}
 		} else {
 			if(opt_cachedir[0] != '\0') {
-				mkdir_r(this->dirname(tsf_main, opt_cachedir), 0777);
-				mkdir_r(this->dirname(tsf_main, this->getSpoolDir(tsf_main)), 0777);
+				mkdir_r(this->get_pathname(tsf_main, opt_cachedir), 0777);
+				mkdir_r(this->get_pathname(tsf_main), 0777);
 			} else {
-				mkdir_r(this->dirname(tsf_main), 0777);
+				mkdir_r(this->get_pathname(tsf_main), 0777);
 			}
 		}
-		lastdir = this->dirname(tsf_main);
+		lastdir = this->get_pathname(tsf_main);
 	}
 }
 

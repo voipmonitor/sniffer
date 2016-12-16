@@ -248,7 +248,7 @@ public:
 	string call_id;	//!< call-id from SIP session
 	char fbasename[MAX_FNAME];	//!< basename of file 
 	char fbasename_safe[MAX_FNAME];	//!< basename of file 
-	unsigned long long fname2;	//!< basename of file 
+	unsigned long long fname_register;
 	char callername[256];		//!< callerid name from SIP header
 	char caller[256];		//!< From: xxx 
 	char caller_domain[256];	//!< From: xxx 
@@ -276,7 +276,10 @@ public:
 	bool seenRES2XX_no_BYE;
 	bool seenRES18X;
 	bool sighup;			//!< true if call is saving during sighup
-	string dirname(eTypeSpoolFile typeSpoolFile, const char *baseDir = NULL);
+	string get_sensordir();
+	string get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpoolDir = NULL);
+	string get_filename(eTypeSpoolFile typeSpoolFile, const char *fileExtension = NULL);
+	string get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileExtension = NULL);
 					//!< name of the directory to store files for the Call
 	string dirnamesqlfiles();
 	char a_ua[1024];		//!< caller user agent 
@@ -375,10 +378,6 @@ public:
 	string reason_sip_text;
 	int reason_q850_cause;
 	string reason_q850_text;
-
-	string sip_pcapfilename;
-	string rtp_pcapfilename;
-	string pcapfilename;
 
 	char *contenttype;
 	char *message;
@@ -729,8 +728,8 @@ public:
 	void addtocachequeue(string file);
 	static void _addtocachequeue(string file);
 
-	void addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string column, long long writeBytes);
-	static void _addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string column, string dirnamesqlfiles, long long writeBytes, int spoolIndex);
+	void addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, long long writeBytes);
+	static void _addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string dirnamesqlfiles, long long writeBytes, int spoolIndex);
 
 	float mos_lqo(char *deg, int samplerate);
 

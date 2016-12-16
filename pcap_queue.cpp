@@ -3181,10 +3181,10 @@ PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 		delete [] this->qring;
 	}
 	if(this->qring_blocks) {
-		delete this->qring_blocks;
+		delete [] this->qring_blocks;
 	}
 	if(this->qring_blocks_used) {
-		delete this->qring_blocks_used;
+		delete [] this->qring_blocks_used;
 	}
 	if(this->headerPacketStackSnaplen) {
 		delete this->headerPacketStackSnaplen;
@@ -6678,7 +6678,8 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 			return;
 		}
 		// packet is fragmented
-		if(handle_defrag(header_ip, (void*)hp, &this->ipfrag_data)) {
+		int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
+		if(rsltDefrag > 0) {
 			// packets are reassembled
 			header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
 			if(sverb.defrag) {
@@ -6686,6 +6687,9 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 				cout << "*** DEFRAG 1 " << defrag_counter << endl;
 			}
 		} else {
+			if(rsltDefrag < 0) {
+				hp->destroy_or_unlock_blockstore();
+			}
 			//cout << "defrag exit 002" << endl;
 			return;
 		}
@@ -6717,7 +6721,8 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 			int foffset = ntohs(header_ip->frag_off);
 			if((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
 				// packet is fragmented
-				if(handle_defrag(header_ip, (void*)hp, &this->ipfrag_data)) {
+				int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
+				if(rsltDefrag > 0) {
 					// packets are reassembled
 					iphdr2 *first_header_ip = (iphdr2*)(hp->packet + first_header_ip_offset);
 
@@ -6736,6 +6741,9 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 						cout << "*** DEFRAG 2 " << defrag_counter << endl;
 					}
 				} else {
+					if(rsltDefrag < 0) {
+						hp->destroy_or_unlock_blockstore();
+					}
 					//cout << "defrag exit 004" << endl;
 					return;
 				}

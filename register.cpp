@@ -115,7 +115,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		ua = call->a_ua && reg->ua && REG_EQ_STR(call->a_ua, reg->ua) ?
 		      EQ_REG :
 		      REG_NEW_STR(call->a_ua);
-		fname = call->fname2;
+		fname = call->fname_register;
 		expires = call->register_expires;
 		id_sensor = call->useSensorId;
 	} else {
@@ -176,7 +176,7 @@ bool RegisterState::isEq(Call *call, Register *reg) {
 	       REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, call->caller_domain) &&
 	       REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, call->digest_realm) &&
 	       REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua) &&
-	       fname == call->fname2 &&
+	       fname == call->fname_register &&
 	       id_sensor == call->useSensorId);
 }
 

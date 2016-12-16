@@ -294,6 +294,7 @@ inline void set_global_flags(volatile unsigned int &flags) {
 	extern int opt_saveGRAPH;
 	extern int opt_skipdefault;
 	extern int opt_hide_message_content;
+	extern bool opt_sip_register_save_all;
 	
 	if(opt_saveSIP) {
 		flags |= FLAG_SAVESIP;
@@ -318,5 +319,8 @@ inline void set_global_flags(volatile unsigned int &flags) {
 	}
 	if(opt_hide_message_content) {
 		flags |= FLAG_HIDEMESSAGE;
+	}
+	if(opt_sip_register_save_all) {
+		flags |= FLAG_SAVEREGISTER;
 	}
 }

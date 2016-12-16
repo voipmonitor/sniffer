@@ -74,6 +74,20 @@ extern int terminated_tar[2];
 extern volatile unsigned int glob_last_packet_time;
 
 
+void data_tar::set(int typeSpoolFile, Call *call, const char *fileName) {
+	this->sensorName = call->get_sensordir();
+	struct tm t = time_r((const time_t*)(&call->first_packet_time));
+	this->year = t.tm_year + 1900;
+	this->mon = t.tm_mon + 1;
+	this->day = t.tm_mday;
+	this->hour = t.tm_hour;
+	this->minute = t.tm_min;
+	this->typeSpoolFile = typeSpoolFile;
+	const char *file = strrchr(fileName, '/');
+	this->filename = file + 1;
+}
+
+
 /* magic, version, and checksum */
 void
 Tar::th_finish()
@@ -880,21 +894,6 @@ void Tar::tar_close() {
 
 void Tar::addtofilesqueue() {
 
-	string column;
-	switch(tar.qtype) {
-	case 1:
-		column = "sipsize";
-		break;
-	case 2:
-		column = "rtpsize";
-		break;
-	case 3:
-		column = "graphsize";
-		break;
-	default:
-		column = "rtpsize";
-	}
-
 	if(!opt_filesclean or opt_nocdr or !isSqlDriver("mysql") or !CleanSpool::isSetCleanspoolParameters(spoolIndex)) return;
 
 	long long size = 0;
@@ -919,7 +918,7 @@ void Tar::addtofilesqueue() {
 		char sdirname[12];
 		snprintf(sdirname, 11, "%04d%02d%02d%02d",  time.year, time.mon, time.day, time.hour);
 		sdirname[11] = 0;
-		cleanSpool[spoolIndex]->addFile(sdirname, column.c_str(), this->typeSpoolFile, pathname.c_str(), size);
+		cleanSpool[spoolIndex]->addFile(sdirname, this->typeSpoolFile, pathname.c_str(), size);
 	}
 }
 
@@ -952,14 +951,19 @@ TarQueue::add(data_tar *tar_data, ChunkBuffer *buffer, unsigned int time){
 	data.buffer = buffer;
 	data.time = time;
 	lock();
-	if(data.type[0] == 'S' ||
-	   (data.type[0] == 'R' && data.type[1] == 'E')) {
+	switch(data.typeSpoolFile) {
+	case tsf_sip:
+	case tsf_reg:
+	case tsf_skinny:
 		queue_data[1][data].push_back(data);
-	} else if(data.type[0] == 'R') {
+		break;
+	case tsf_rtp:
 		queue_data[2][data].push_back(data);
-	} else if(data.type[0] == 'G') {
+		break;
+	case tsf_graph:
 		queue_data[3][data].push_back(data);
-	}      
+		break;
+	}
 	//if(sverb.tar) syslog(LOG_NOTICE, "adding tar %s len:%u\n", filename.c_str(), buffer->len);
 	unlock();
 }      

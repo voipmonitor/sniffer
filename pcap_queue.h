@@ -220,6 +220,13 @@ struct sHeaderPacketPQout {
 			block_store_index = 0;
 		}
 	}
+	inline void blockstore_addflag(int flag) {
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		if(block_store) {
+			block_store->add_flag(block_store_index, flag);
+		}
+		#endif
+	}
 };
 
 class PcapQueue {

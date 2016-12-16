@@ -38,7 +38,7 @@ public:
 public:
 	CleanSpool(int spoolIndex);
 	~CleanSpool();
-	void addFile(const char *datehour, const char *column, eTypeSpoolFile typeSpoolFile, const char *file, long long int size);
+	void addFile(const char *datehour, eTypeSpoolFile typeSpoolFile, const char *file, long long int size);
 	void run();
 	void do_convert_filesindex(const char *reason);
 	void check_filesindex();
@@ -70,7 +70,7 @@ private:
 	long long reindex_date_hour(string date, int h, bool readOnly = false, map<string, long long> *typeSize = NULL, bool quickCheck = false);
 	long long reindex_date_hour_type(string date, int h, string type, bool readOnly, bool quickCheck, map<unsigned, bool> *fillMinutes);
 	void unlinkfileslist(eTypeSpoolFile typeSpoolFile, string fname, string callFrom);
-	void unlink_dirs(string datehour, int sip, int rtp, int graph, int audio, string callFrom);
+	void unlink_dirs(string datehour, int sip, int reg, int skinny, int rtp, int graph, int audio, string callFrom);
 	void clean_spooldir_run();
 	void clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio);
 	void clean_maxpoolsize_all() {

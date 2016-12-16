@@ -306,7 +306,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					return(0);
 				}
 				// packet is fragmented
-				if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index)) {
+				if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
 					// packets are reassembled
 					ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 					if(sverb.defrag) {
@@ -354,7 +354,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				int foffset = ntohs(ppd->header_ip->frag_off);
 				if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
 					// packet is fragmented
-					if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index)) {
+					if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
 						// packets are reassembled
 						iphdr2 *first_header_ip = (iphdr2*)(HPP(*header_packet) + first_header_ip_offset);
 

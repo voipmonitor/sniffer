@@ -300,22 +300,6 @@ set_mac() {
 #endif
 }
 
-/*
-int mkdir_r(const char* file_path, mode_t mode) {
-	if(!file_path) return 0;
-
-	char buf[1024];
-	strncpy(buf, file_path, 1023);
-	char *p = buf;
-	for (p = buf; p; p = strchr(p + 1, '/')) {
-		*p = '\0';
-		mkdir(file_path, mode);
-		*p = '/';
-	}
-	return 0;
-}
-*/
-
 int
 mkdir_r(std::string s, mode_t mode)
 {
@@ -882,13 +866,19 @@ void ntoa(char *res, unsigned int addr) {
 	strcpy(res, inet_ntoa(in));
 }
 
-string escapeshellR(string &buf) {
-        for(unsigned int i = 0; i < buf.length(); i++) {
-                if(!(buf[i] == '/' || buf[i] == '#' || buf[i] == '+' || buf[i] == ' ' || buf[i] == ':' || buf[i] == '-' || buf[i] == '.' || buf[i] == '@' || isalnum(buf[i])) ) {   
-                        buf[i] = '_';
-                }
+string escapeShellArgument(string str) {
+	string rslt = "'";
+        for(unsigned i = 0; i < str.length(); i++) {
+		switch(str[i]) {
+		case '\'':
+			rslt += "\\'";
+			break;
+		default:
+			rslt += str[i];
+		}
         }
-	return buf;
+        rslt += "'";
+	return(rslt);
 }
 
 time_t stringToTime(const char *timeStr) {
@@ -978,7 +968,7 @@ PcapDumper::~PcapDumper() {
 	}
 }
 
-bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, const char *fileNameSpoolRelative, pcap_t *useHandle, int useDlt) {
+bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t *useHandle, int useDlt) {
 	if(this->type == rtp && this->openAttempts >= 10) {
 		return(false);
 	}
@@ -1017,9 +1007,6 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, const 
 	}
 	this->typeSpoolFile = typeSpoolFile,
 	this->fileName = fileName;
-	if(fileNameSpoolRelative) {
-		this->fileNameSpoolRelative = fileNameSpoolRelative;
-	}
 	if(this->handle != NULL) {
 		this->state = state_open;
 		return(true);
@@ -1106,10 +1093,7 @@ void PcapDumper::close(bool updateFilesQueue) {
 				if(this->call) {
 					asyncClose->add(this->handle, updateFilesQueue,
 							this->call, this,
-							this->typeSpoolFile, this->fileNameSpoolRelative.c_str(), 
-							type == rtp ? "rtpsize" : 
-							this->call->type == REGISTER ? "regsize" : "sipsize",
-							0/*this->capsize + PCAP_DUMPER_HEADER_SIZE ignore size counter - header->capsize can contain -1*/);
+							this->typeSpoolFile, this->fileName.c_str());
 				} else {
 					asyncClose->add(this->handle);
 				}
@@ -1149,7 +1133,7 @@ RtpGraphSaver::~RtpGraphSaver() {
 	}
 }
 
-bool RtpGraphSaver::open(eTypeSpoolFile typeSpoolFile, const char *fileName, const char *fileNameSpoolRelative) {
+bool RtpGraphSaver::open(eTypeSpoolFile typeSpoolFile, const char *fileName) {
 	if(this->handle) {
 		this->close();
 		syslog(LOG_NOTICE, "graphsaver: reopen %s -> %s", this->fileName.c_str(), fileName);
@@ -1171,22 +1155,20 @@ bool RtpGraphSaver::open(eTypeSpoolFile typeSpoolFile, const char *fileName, con
 	}
 	this->typeSpoolFile = typeSpoolFile;
 	this->fileName = fileName;
-	this->fileNameSpoolRelative = fileNameSpoolRelative;
 	return(this->isOpen());
 
 }
 
-void RtpGraphSaver::auto_open(eTypeSpoolFile typeSpoolFile, const char *fileName, const char *fileNameSpoolRelative) {
+void RtpGraphSaver::auto_open(eTypeSpoolFile typeSpoolFile, const char *fileName) {
 	this->typeSpoolFile = typeSpoolFile;
 	this->fileName = fileName;
-	this->fileNameSpoolRelative = fileNameSpoolRelative;
 	this->enableAutoOpen = true;
 }
 
 void RtpGraphSaver::write(char *buffer, int length) {
 	if(!this->isOpen()) {
 		if(this->enableAutoOpen) {
-			bool rsltOpen = this->open(this->typeSpoolFile, this->fileName.c_str(), this->fileNameSpoolRelative.c_str());
+			bool rsltOpen = this->open(this->typeSpoolFile, this->fileName.c_str());
 			this->enableAutoOpen = false;
 			if(rsltOpen) {
 				extern unsigned int graph_version;
@@ -1216,15 +1198,14 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 			if(call) {
 				asyncClose->add(this->handle, updateFilesQueue,
 						call,
-						this->typeSpoolFile, this->fileNameSpoolRelative.c_str(), 
-						"graphsize", 
+						this->typeSpoolFile, this->fileName.c_str(),
 						this->handle->size);
 			} else {
 				asyncClose->add(this->handle);
 			}
 			this->handle = NULL;
 			if(updateFilesQueue && !call) {
-				syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileNameSpoolRelative.c_str());
+				syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileName.c_str());
 			}
 		}
 	}
@@ -1236,7 +1217,7 @@ void RtpGraphSaver::clearAutoOpen() {
 
 AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, PcapDumper *pcapDumper, 
 					   eTypeSpoolFile typeSpoolFile, const char *file, 
-					   const char *column, long long writeBytes) {
+					   long long writeBytes) {
 	this->call = call;
 	if(call) {
 		this->call_dirnamesqlfiles = call->dirnamesqlfiles();
@@ -1250,9 +1231,6 @@ AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, PcapDumper *pcapDumper,
 	if(file) {
 		this->file = file;
 	}
-	if(column) {
-		this->column = column;
-	}
 	this->writeBytes = writeBytes;
 	this->dataLength = 0;
 }
@@ -1261,7 +1239,7 @@ void AsyncClose::AsyncCloseItem::addtofilesqueue() {
 	if(!call) {
 		return;
 	}
-	Call::_addtofilesqueue(this->typeSpoolFile, this->file, this->column, call_dirnamesqlfiles, this->writeBytes, call_spoolindex);
+	Call::_addtofilesqueue(this->typeSpoolFile, this->file, call_dirnamesqlfiles, this->writeBytes, call_spoolindex);
 	extern char opt_cachedir[1024];
 	if(opt_cachedir[0] != '\0') {
 		Call::_addtocachequeue(this->file);
@@ -3083,22 +3061,9 @@ bool FileZipHandler::open(eTypeSpoolFile typeSpoolFile, const char *fileName, in
 	this->typeSpoolFile = typeSpoolFile;
 	this->fileName = fileName;
 	this->permission = permission;
-	extern int opt_spooldir_by_sensor;
-	extern int opt_spooldir_by_sensorname;
-	if((opt_spooldir_by_sensor || opt_spooldir_by_sensorname) && 
-	   this->call && (this->call->useSensorId > 0 || opt_spooldir_by_sensorname)) {
-		if(opt_spooldir_by_sensorname) {
-			extern SensorsMap sensorsMap;
-			this->fileName = sensorsMap.getSensorNameFile(this->call->useSensorId) + "/" + this->fileName;
-		} else if(opt_spooldir_by_sensor) {
-			char sensorIdStr[10];
-			sprintf(sensorIdStr, "%i/", this->call->useSensorId);
-			this->fileName = sensorIdStr + this->fileName;
-		}
-	}
 	if(this->tar) {
 		if(this->call) {
-			this->tar_data.parseFileName(this->fileName.c_str(), this->call->getSpoolDir(this->typeSpoolFile));
+			this->tar_data.set(typeSpoolFile, this->call, this->fileName.c_str());
 			tarQueue[this->tar - 1]->increaseTartimemap(&this->tar_data);
 		}
 		if(sverb.tar > 2) {
@@ -3826,6 +3791,12 @@ string intToString(int i) {
 }
 
 string intToString(long long i) {
+	ostringstream outStr;
+	outStr << i;
+	return(outStr.str());
+}
+
+string intToString(unsigned long long i) {
 	ostringstream outStr;
 	outStr << i;
 	return(outStr.str());

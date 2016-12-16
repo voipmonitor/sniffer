@@ -348,6 +348,7 @@ int opt_register_timeout = 5;
 int opt_register_timeout_disable_save_failed = 0;
 int opt_register_ignore_res_401 = 0;
 int opt_register_ignore_res_401_nonce_has_changed = 0;
+bool opt_sip_register_save_all = false;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
 unsigned int opt_maxpoolsipsize = 0;
@@ -2710,18 +2711,6 @@ int main_init_read() {
 	
 	vmChdir();
 
-	for(int i = 0; i < 2; i++) {
-		if(isSetSpoolDir(i)) {
-			string spoolDir = getSpoolDir(tsf_main, i);
-			if(!spoolDir.empty()) {
-				mkdir_r(string(spoolDir) + "/filesindex/sipsize", 0777);
-				mkdir_r(string(spoolDir) + "/filesindex/rtpsize", 0777);
-				mkdir_r(string(spoolDir) + "/filesindex/graphsize", 0777);
-				mkdir_r(string(spoolDir) + "/filesindex/audiosize", 0777);
-			}
-		}
-	}
-
 	// set maximum open files 
 	struct rlimit rlp;
         rlp.rlim_cur = opt_openfile_max;
@@ -2771,7 +2760,7 @@ int main_init_read() {
 		loadFromQFiles->loadFromQFiles_start();
 	}
 	
-	if(is_enable_cleanspool()) {
+	if(is_enable_cleanspool(true)) {
 		for(int i = 0; i < 2; i++) {
 			if(isSetSpoolDir(i) &&
 			   CleanSpool::isSetCleanspoolParameters(i)) {
@@ -2882,7 +2871,7 @@ int main_init_read() {
 		
 		//autostart for fork mode if t2cpu > 50%
 		if((!opt_fork || opt_t2_boost) &&
-		   opt_enable_process_rtp_packet && opt_pcap_split &&
+		   opt_enable_process_rtp_packet && enable_pcap_split &&
 		   !is_read_from_file_simple()) {
 			process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
 			for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
@@ -5053,6 +5042,8 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-ignore-res401", &opt_register_ignore_res_401));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-ignore-res401-nonce-has-changed", &opt_register_ignore_res_401_nonce_has_changed));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE(43276) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
 			addConfigItem(new FILE_LINE(43277) cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));
@@ -5891,7 +5882,9 @@ void get_command_line_arguments() {
 			case 304:
 			case 305:
 			case 306:
-				opt_test = c;
+				if(is_enable_cleanspool(true)) {
+					opt_test = c;
+				}
 				break;
 			case 307:
 				opt_check_db = true;
@@ -6063,7 +6056,7 @@ void set_context_config() {
 		}
 	}
 	
-	if(!opt_pcap_split) {
+	if(!enable_pcap_split) {
 		opt_rtpsave_threaded = 0;
 	}
 	
@@ -6132,7 +6125,7 @@ void set_context_config() {
 		syslog(LOG_ERR, "option cachedir is not suported with option spooldir_2");
 	}
 	
-	if(!opt_newdir && opt_pcap_dump_tar) {
+	if((!opt_newdir || !opt_pcap_split) && opt_pcap_dump_tar) {
 		opt_pcap_dump_tar = 0;
 	}
 	
@@ -6202,7 +6195,7 @@ void set_context_config() {
 		}
 	}
 	
-	if(!opt_pcap_split && opt_t2_boost) {
+	if(!enable_pcap_split && opt_t2_boost) {
 		opt_t2_boost = false;
 	}
 	if(opt_t2_boost && !opt_enable_process_rtp_packet) {
@@ -6840,6 +6833,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-ignore-res401-nonce-has-changed", NULL))) {
 		opt_register_ignore_res_401_nonce_has_changed = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-save-all", NULL))) {
+		opt_sip_register_save_all = yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate", NULL))) {
 		opt_dup_check = yesno(value);
@@ -8324,11 +8320,18 @@ bool is_enable_rtp_threads() {
 	       !is_sender());
 }
 
-bool is_enable_cleanspool() {
-	return(!opt_nocdr &&
-	       isSqlDriver("mysql") &&
-	       !is_read_from_file_simple() &&
-	       !is_sender());
+bool is_enable_cleanspool(bool log) {
+	if(!opt_nocdr &&
+	   isSqlDriver("mysql") &&
+	   !is_read_from_file_simple() &&
+	   !is_sender()) {
+		if(opt_newdir) {
+			return(true);
+		} else if(log) {
+			syslog(LOG_ERR, "%s", "cleanspol need new dir schema!!!");
+		}
+	}
+	return(false);
 }
 
 bool is_receiver() {
