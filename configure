@@ -4226,7 +4226,7 @@ $as_echo "$ac_cv_lib_tcmalloc_minimal_tc_malloc" >&6; }
 if test "x$ac_cv_lib_tcmalloc_minimal_tc_malloc" = xyes; then :
   HAVE_LIBTCMALLOC=1
 else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libtcmalloc-minimal4 or compile from source https://code.google.com/p/gperftools/" >&5
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev or compile from source https://code.google.com/p/gperftools/" >&5
 $as_echo "$as_me: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libtcmalloc-minimal4 or compile from source https://code.google.com/p/gperftools/" >&6;}
 fi
 
