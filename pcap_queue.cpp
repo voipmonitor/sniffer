@@ -5766,9 +5766,9 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void *arg, unsigned in
 			if(opt_ipaccount) {
 				for(size_t i = 0; i < block->count && !TERMINATING; i++) {
 					pcap_block_store::pcap_pkthdr_pcap headerPcap = (*block)[i];
-					ipaccount(headerPcap.header->header_std.ts.tv_sec,
+					ipaccount(headerPcap.header->std ? headerPcap.header->header_std.ts.tv_sec : headerPcap.header->header_fix_size.ts_tv_sec,
 						  (iphdr2*)(headerPcap.packet + headerPcap.header->header_ip_offset),
-						  headerPcap.header->header_std.len - headerPcap.header->header_ip_offset,
+						  (headerPcap.header->std ? headerPcap.header->header_std.len : headerPcap.header->header_fix_size.len) - headerPcap.header->header_ip_offset,
 						  block->is_voip[i]);
 				}
 			}
@@ -6410,31 +6410,29 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 						   hp->block_store, hp->block_store_index, hp->block_store_locked,
 						   this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);
 			return(1);
+		} else if(opt_ipaccount &&
+			  !(sipportmatrix[htons(sport)] || sipportmatrix[htons(dport)])) {
+			return(0);
 		}
 	}
 
-	if(opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) {
-		if(sverb.disable_push_to_t2_in_packetbuffer) {
-			hp->destroy_or_unlock_blockstore();
-			return(1);
-		} else {
-			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-				false /*is_ssl*/, 
-				#if USE_PACKET_NUMBER
-				packet_counter_all,
-				#endif
-				header_ip->saddr, htons(sport), header_ip->daddr, htons(dport),
-				datalen, data - (char*)hp->packet,
-				this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
-				istcp, header_ip,
-				hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip,
-				hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);
-		}
-	} else {
-		hp->destroy_or_unlock_blockstore();
+	if((opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) &&
+	   !sverb.disable_push_to_t2_in_packetbuffer) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+			false /*is_ssl*/, 
+			#if USE_PACKET_NUMBER
+			packet_counter_all,
+			#endif
+			header_ip->saddr, htons(sport), header_ip->daddr, htons(dport),
+			datalen, data - (char*)hp->packet,
+			this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
+			istcp, header_ip,
+			hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip,
+			hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);
+		return(1);
 	}
 	
-	return(1);
+	return(0);
 }
 
 void PcapQueue_readFromFifo::pushBatchProcessPacket() {

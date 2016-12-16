@@ -36,6 +36,7 @@ extern bool isSslIpPort(u_int32_t ip, u_int16_t port);
 
 
 extern int opt_udpfrag;
+extern int opt_ipaccount;
 extern int opt_skinny;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
@@ -428,7 +429,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			       isSslIpPort(htonl(ppd->header_ip->daddr), htons(ppd->header_tcp->dest)))) &&
 			    !(opt_skinny && (htons(ppd->header_tcp->source) == 2000 || htons(ppd->header_tcp->dest) == 2000))) {
 				// not interested in TCP packet other than SIP port
-				if(!DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
+				if(!opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
 					//cout << "pcapProcess exit 005" << endl;
 					if(pcap_header_plus2) {
 						pcap_header_plus2->ignore = true;
@@ -442,7 +443,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		} else {
 			//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
 			ppd->datalen = 0;
-			if(!DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
+			if(!opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
 				//cout << "pcapProcess exit 006 / protocol: " << (int)ppd->header_ip->protocol << endl;
 				if(pcap_header_plus2) {
 					pcap_header_plus2->ignore = true;
@@ -467,22 +468,19 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		// check for duplicate packets (md5 is expensive operation - enable only if you really need it
 		if(opt_dup_check && 
 		   ppd->prevmd5s != NULL && 
-		   (opt_dup_check_ipheader || (ppf & ppf_defragInPQout) ||
-		    (ppd->datalen > 0 && ppd->traillen < ppd->datalen)) &&
+		   ((ppf & ppf_defragInPQout) ||
+		    (ppd->datalen > 0 && (opt_dup_check_ipheader || ppd->traillen < ppd->datalen))) &&
 		   !(ppd->istcp && opt_enable_http && (httpportmatrix[htons(ppd->header_tcp->source)] || httpportmatrix[htons(ppd->header_tcp->dest)])) &&
 		   !(ppd->istcp && opt_enable_webrtc && (webrtcportmatrix[htons(ppd->header_tcp->source)] || webrtcportmatrix[htons(ppd->header_tcp->dest)])) &&
 		   !(ppd->istcp && opt_enable_ssl && (isSslIpPort(htonl(ppd->header_ip->saddr), htons(ppd->header_tcp->source)) || isSslIpPort(htonl(ppd->header_ip->daddr), htons(ppd->header_tcp->dest))))) {
 			uint16_t *_md5 = header_packet ? (*header_packet)->md5 : pcap_header_plus2->md5;
 			if(ppf & ppf_calcMD5) {
 				MD5_Init(&ppd->ctx);
-				if(opt_dup_check_ipheader || (ppf & ppf_defragInPQout)) {
-					// check duplicates based on full ip header and data 
-					if(ppf & ppf_defragInPQout) {
-						u_int32_t caplen = header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen();
-						MD5_Update(&ppd->ctx, ppd->header_ip, MIN(caplen - ppd->header_ip_offset, ntohs(ppd->header_ip->tot_len)));
-					} else {
-						MD5_Update(&ppd->ctx, ppd->header_ip, MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ntohs(ppd->header_ip->tot_len)));
-					}
+				if(ppf & ppf_defragInPQout) {
+					u_int32_t caplen = header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen();
+					MD5_Update(&ppd->ctx, ppd->header_ip, MIN(caplen - ppd->header_ip_offset, ntohs(ppd->header_ip->tot_len)));
+				} else if(opt_dup_check_ipheader) {
+					MD5_Update(&ppd->ctx, ppd->header_ip, MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ntohs(ppd->header_ip->tot_len)));
 				} else {
 					// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
 					// will be matched regardless on IP 
