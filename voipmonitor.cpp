@@ -8544,11 +8544,11 @@ void setAllocNumb() {
 }
 
 eTypeSpoolFile getTypeSpoolFile(const char *filePathName) {
-	for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile <= tsf_skinny; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
-		const char *dir = getSpoolTypeDir(typeSpoolFile);
+	for(int typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; ++typeSpoolFile) {
+		const char *dir = getSpoolTypeDir((eTypeSpoolFile)typeSpoolFile);
 		if(dir) {
 			if(strstr(filePathName, ("/" + string(dir) + "/").c_str())) {
-				return(typeSpoolFile);
+				return((eTypeSpoolFile)typeSpoolFile);
 			}
 		}
 	}
