@@ -634,7 +634,7 @@ public:
 	
 	int connect_duration() { return(connect_time ? duration() - (connect_time - first_packet_time) : 0); };
 	
-	int duration_active() { extern volatile unsigned int glob_last_packet_time; return glob_last_packet_time - first_packet_time; };
+	int duration_active() { return(getGlobalPacketTimeS() - first_packet_time); };
 	
 	int connect_duration_active() { return(connect_time ? duration_active() - (connect_time - first_packet_time) : 0); };
 	

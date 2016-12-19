@@ -573,6 +573,13 @@ inline unsigned long long getTimeNS() {
     return(time.tv_sec * 1000000000ull + time.tv_nsec);
 }
 
+inline u_long getGlobalPacketTimeS() {
+	extern volatile unsigned int glob_last_packet_time;
+	return(is_read_from_file() ?
+		getTimeMS_rdtsc() / 1000 :
+		glob_last_packet_time);
+}
+
 class FileZipHandler : public CompressStream_baseEv {
 public:
 	enum eMode {

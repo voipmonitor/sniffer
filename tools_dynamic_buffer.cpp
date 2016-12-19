@@ -1131,8 +1131,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		break;
 	}
 	this->unlock_chunkBuffer();
-	extern volatile unsigned int glob_last_packet_time;
-	this->last_add_time = glob_last_packet_time;
+	this->last_add_time = getGlobalPacketTimeS();
 }
 
 void ChunkBuffer::close() {

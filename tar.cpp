@@ -71,7 +71,6 @@ extern int opt_blocktarwrite;
 extern int terminated_async;
 extern int terminated_tar_flush_queue[2];
 extern int terminated_tar[2];
-extern volatile unsigned int glob_last_packet_time;
 
 
 void data_tar::set(int typeSpoolFile, Call *call, const char *fileName) {
@@ -856,7 +855,7 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 		::write(tar.fd, (char *)(buf), len);
 	}
 	
-	this->lastWriteTime = glob_last_packet_time;
+	this->lastWriteTime = getGlobalPacketTimeS();
 	this->tarLength += len;
 	
 	return(len);
@@ -1055,7 +1054,7 @@ TarQueue::write(int qtype, data_t data) {
 		tar = new FILE_LINE(35010) Tar;
 		tar->typeSpoolFile = typeSpoolFile;
 		lock_okTarPointers();
-		okTarPointers[tar] = glob_last_packet_time;
+		okTarPointers[tar] = getGlobalPacketTimeS();
 		unlock_okTarPointers();
 		if(sverb.tar) {
 			syslog(LOG_NOTICE, "new tar %s\n", tar_name.str().c_str());
@@ -1202,11 +1201,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 						data.buffer->copyLastAddTimeToTar();
 						unsigned int bufferLastTarTime = data.buffer->getLastTarTime();
 						if(!isClosed &&
-						   bufferLastTarTime && bufferLastTarTime > glob_last_packet_time - 3 && 
+						   bufferLastTarTime && bufferLastTarTime > getGlobalPacketTimeS() - 3 && 
 						   !data.buffer->isFull()) {
 							continue;
 						}
-						data.buffer->setLastTarTime(glob_last_packet_time);
+						data.buffer->setLastTarTime(getGlobalPacketTimeS());
 						#if TAR_PROF
 						unsigned long long __prof_begin2 = rdtsc();
 						#endif
@@ -1287,15 +1286,15 @@ void *TarQueue::tarthreadworker(void *arg) {
 							tarthread->qunlock();
 						}
 						if(!lastAddTime || 
-						    lastAddTime < glob_last_packet_time - 30) {
+						    lastAddTime < getGlobalPacketTimeS() - 30) {
 							pthread_mutex_lock(&this2->tarslock);
 							if(this2->tars.find(processTarName) != this2->tars.end()) {
 								Tar *processTar = this2->tars[processTarName];
 								if(processTar->lastWriteTime &&
-								   processTar->lastWriteTime < glob_last_packet_time - 30 &&
+								   processTar->lastWriteTime < getGlobalPacketTimeS() - 30 &&
 								   processTar->lastFlushTime < processTar->lastWriteTime - 30) {
 									processTar->flush();
-									processTar->lastFlushTime = glob_last_packet_time;
+									processTar->lastFlushTime = getGlobalPacketTimeS();
 								}
 							}
 							pthread_mutex_unlock(&this2->tarslock);
@@ -1435,19 +1434,19 @@ void
 TarQueue::cleanTars(int terminate_pass) {
 	// check if tar can be removed from map (check if there are still calls in memory) 
 	if(!terminate_pass &&
-	   (last_flushTars + 10) > glob_last_packet_time) {
+	   (last_flushTars + 10) > getGlobalPacketTimeS()) {
 		// clean only each >10 seconds 
 		return;
 	}
 	//if(sverb.tar) syslog(LOG_NOTICE, "cleanTars()");
-	last_flushTars = glob_last_packet_time;
+	last_flushTars = getGlobalPacketTimeS();
 	map<string, Tar*>::iterator tars_it;
 	pthread_mutex_lock(&tarslock);
 	for(tars_it = tars.begin(); tars_it != tars.end();) {
 		// walk through all tars
 		Tar *tar = tars_it->second;
 		pthread_mutex_lock(&tartimemaplock);
-		unsigned int lpt = terminate_pass ? time(NULL) : glob_last_packet_time;
+		unsigned int lpt = terminate_pass ? time(NULL) : getGlobalPacketTimeS();
 		// find the tar in tartimemap 
 		if(!tar->_sync_lock &&
 		   (tartimemap.find(tar->time) == tartimemap.end()) && 
@@ -1647,7 +1646,7 @@ bool TarQueue::flushTar(const char *tarName) {
 		Tar *tar = tars_it->second;
 		if(tar->pathname.find(tarNameStr) != string::npos) {
 			if(tar->flush()) {
-				tar->lastFlushTime = glob_last_packet_time;
+				tar->lastFlushTime = getGlobalPacketTimeS();
 				rslt = true;
 			}
 		}
