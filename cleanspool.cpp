@@ -669,11 +669,11 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 		syslog(LOG_NOTICE, "cleanspool[%i]: reindex_date_hour - %s/%s", spoolIndex, getSpoolDir(tsf_main), dh.c_str());
 	}
 	if(!readOnly) {
-		for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
+		for(int typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; ++typeSpoolFile) {
 			for(unsigned m = 0; m < 60; m++) {
 				char min[3];
 				snprintf(min, 3, "%02d", m);
-				string dhm = getSpoolDir_string(typeSpoolFile) + '/' + date + '/' + hour + '/' + min;
+				string dhm = getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + date + '/' + hour + '/' + min;
 				if(!fillMinutes[m]) {
 					rmdir_r(dhm);
 				}
@@ -707,8 +707,8 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 				      spool_index = " + getSpoolIndex_string() + " and \
 				      id_sensor = " + getIdSensor_string(),
 				STORE_PROC_ID_CLEANSPOOL_SERVICE + spoolIndex);
-			for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
-				rmdir_r(getSpoolDir_string(typeSpoolFile) + '/' + date + '/' + hour);
+			for(int typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; ++typeSpoolFile) {
+				rmdir_r(getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + date + '/' + hour);
 			}
 		}
 	}
@@ -1331,12 +1331,12 @@ void CleanSpool::clean_obsolete_dirs() {
 						if(existsMinDir) {
 							bool removeMinTypeDir = false;
 							bool keepMainMinTypeFolder = false;
-							for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
-								string mintype_sub_dir = min_sub_dir + '/' + getSpoolTypeDir(typeSpoolFile);
-								string mintype_dir = getSpoolDir_string(typeSpoolFile) + '/' + mintype_sub_dir;
+							for(int typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; ++typeSpoolFile) {
+								string mintype_sub_dir = min_sub_dir + '/' + getSpoolTypeDir((eTypeSpoolFile)typeSpoolFile);
+								string mintype_dir = getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + mintype_sub_dir;
 								if(file_exists(mintype_dir)) {
 									if(row ?
-									    !atoi(row[string(getSpoolTypeFilesIndex(typeSpoolFile, false)) + "size"].c_str()) :
+									    !atoi(row[string(getSpoolTypeFilesIndex((eTypeSpoolFile)typeSpoolFile, false)) + "size"].c_str()) :
 									    (unsigned int)numberOfDayToNow > maxDays[(int)typeSpoolFile]) {
 										rmdir_r(mintype_dir);
 										syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, mintype_dir.c_str());
@@ -1347,9 +1347,9 @@ void CleanSpool::clean_obsolete_dirs() {
 								}
 							}
 							if(!keepMainMinTypeFolder) {
-								for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
-									string mintype_sub_dir = min_sub_dir + '/' + getSpoolTypeDir(typeSpoolFile);
-									string mintype_dir = getSpoolDir_string(typeSpoolFile) + '/' + mintype_sub_dir;
+								for(int typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; ++typeSpoolFile) {
+									string mintype_sub_dir = min_sub_dir + '/' + getSpoolTypeDir((eTypeSpoolFile)typeSpoolFile);
+									string mintype_dir = getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + mintype_sub_dir;
 									if(file_exists(mintype_dir)) {
 										rmdir_r(mintype_dir);
 										syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, mintype_dir.c_str());
@@ -1424,12 +1424,12 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 				string ymd = dateDir;
 				string ymdh = string(ymd.substr(0,4)) + ymd.substr(5,2) + ymd.substr(8,2) + hour;
 				long long sumSize[2][10];
-				for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
+				for(int typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; ++typeSpoolFile) {
 					vector<string> filesInIndex;
 					sumSize[0][(int)typeSpoolFile] = 0;
 					sumSize[1][(int)typeSpoolFile] = 0;
-					if(getSpoolTypeFilesIndex(typeSpoolFile, false)) {
-						FILE *fd = fopen((getSpoolDir_string(tsf_main) + "/filesindex/" + getSpoolTypeFilesIndex(typeSpoolFile, false) + "size/" + ymdh).c_str(), "r");
+					if(getSpoolTypeFilesIndex((eTypeSpoolFile)typeSpoolFile, false)) {
+						FILE *fd = fopen((getSpoolDir_string(tsf_main) + "/filesindex/" + getSpoolTypeFilesIndex((eTypeSpoolFile)typeSpoolFile, false) + "size/" + ymdh).c_str(), "r");
 						if(fd) {
 							char buf[4092];
 							while(fgets(buf, 4092, fd) != NULL) {
@@ -1458,7 +1458,7 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 								filesInIndex.push_back(file);
 								long long unsigned size = posSizeSeparator ? atoll(posSizeSeparator + 1) : 0;
 								eTypeSpoolFile rsltTypeSpoolFile;
-								long long unsigned fileSize = GetFileSizeDU(this->findExistsSpoolDirFile(typeSpoolFile, file, &rsltTypeSpoolFile), rsltTypeSpoolFile, spoolIndex);
+								long long unsigned fileSize = GetFileSizeDU(this->findExistsSpoolDirFile((eTypeSpoolFile)typeSpoolFile, file, &rsltTypeSpoolFile), rsltTypeSpoolFile, spoolIndex);
 								if(fileSize == 0) {
 									fileSize = 1;
 								}
@@ -1482,8 +1482,8 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 					for(int m = 0; m < 60; m++) {
 						char min[8];
 						sprintf(min, "%02d", m);
-						string timetypedir = dateDir + '/' + hour + '/' + min + '/' + getSpoolTypeDir(typeSpoolFile);
-						DIR* dp = opendir(this->findExistsSpoolDirFile(typeSpoolFile, timetypedir).c_str());
+						string timetypedir = dateDir + '/' + hour + '/' + min + '/' + getSpoolTypeDir((eTypeSpoolFile)typeSpoolFile);
+						DIR* dp = opendir(this->findExistsSpoolDirFile((eTypeSpoolFile)typeSpoolFile, timetypedir).c_str());
 						if(!dp) {
 							continue;
 						}
@@ -1497,8 +1497,8 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 					}
 					for(uint j = 0; j < filesInFolder.size(); j++) {
 						if(!std::binary_search(filesInIndex.begin(), filesInIndex.end(), filesInFolder[j])) {
-							long long size = GetFileSize(getSpoolDir_string(typeSpoolFile) + '/' + filesInFolder[j]);
-							long long sizeDU = GetFileSizeDU(getSpoolDir_string(typeSpoolFile) + '/' + filesInFolder[j], typeSpoolFile, spoolIndex);
+							long long size = GetFileSize(getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + filesInFolder[j]);
+							long long sizeDU = GetFileSizeDU(getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + filesInFolder[j], (eTypeSpoolFile)typeSpoolFile, spoolIndex);
 							sumSizeMissingFilesInIndex[0] += size;
 							sumSizeMissingFilesInIndex[1] += sizeDU;
 							syslog(LOG_NOTICE, "cleanspool[%i]: ERROR - %s %s - %llu / %llu",
@@ -1642,8 +1642,8 @@ void CleanSpool::readSpoolDateDirs(list<string> *dirs) {
 
 void CleanSpool::getSpoolDirs(list<string> *spool_dirs) {
 	spool_dirs->clear();
-	for(eTypeSpoolFile typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; typeSpoolFile = (eTypeSpoolFile)((int)typeSpoolFile + 1)) {
-		string spoolDir = getSpoolDir(typeSpoolFile);
+	for(int typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; ++typeSpoolFile) {
+		string spoolDir = getSpoolDir((eTypeSpoolFile)typeSpoolFile);
 		bool exists = false;
 		for(list<string>::iterator iter_sd = spool_dirs->begin(); iter_sd != spool_dirs->end(); iter_sd++) {
 			if(spoolDir == *iter_sd) {
