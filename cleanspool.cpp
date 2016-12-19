@@ -758,13 +758,9 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 	char hour[3];
 	snprintf(hour, 3, "%02d", h);
 	string spool_fileindex_path = getSpoolDir_string(tsf_main) + "/filesindex/" + filesIndexDirName;
-	mkdir_r(spool_fileindex_path, 0777);
 	string ymdh = string(date.substr(0,4)) + date.substr(5,2) + date.substr(8,2) + hour;
 	string spool_fileindex = spool_fileindex_path + '/' + ymdh;
-	ofstream *spool_fileindex_stream = NULL;
-	if(!readOnly) {
-		spool_fileindex_stream = new FILE_LINE(2001) ofstream(spool_fileindex.c_str(), ios::trunc | ios::out);
-	}
+	ofstream spool_fileindex_stream;
 	extern TarQueue *tarQueue[2];
 	list<string> listOpenTars;
 	if(tarQueue[spoolIndex]) {
@@ -802,7 +798,11 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 						if(size == 0) size = 1;
 						sumsize += size;
 						if(!readOnly) {
-							(*spool_fileindex_stream) << dhmt_file << ":" << size << "\n";
+							if(!spool_fileindex_stream.is_open()) {
+								mkdir_r(spool_fileindex_path, 0777);
+								spool_fileindex_stream.open(spool_fileindex.c_str(), ios::trunc | ios::out);
+							}
+							spool_fileindex_stream << dhmt_file << ":" << size << "\n";
 						}
 					}
 				}
@@ -819,8 +819,7 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 		}
 	}
 	if(!readOnly) {
-		spool_fileindex_stream->close();
-		delete spool_fileindex_stream;
+		spool_fileindex_stream.close();
 		if(!sumsize) {
 			unlink(spool_fileindex.c_str());
 		}
@@ -1041,7 +1040,7 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 		SqlDb_row row = sqlDb->fetchRow();
 		uint64_t sipsize_total = strtoull(row["sipsize"].c_str(), NULL, 0) + 
 					 strtoull(row["regsize"].c_str(), NULL, 0) + 
-					 strtoull(row["totalsize"].c_str(), NULL, 0);
+					 strtoull(row["skinnysize"].c_str(), NULL, 0);
 		uint64_t rtpsize_total = strtoull(row["rtpsize"].c_str(), NULL, 0);
 		uint64_t graphsize_total = strtoull(row["graphsize"].c_str(), NULL, 0);
 		uint64_t audiosize_total = strtoull(row["audiosize"].c_str(), NULL, 0);
