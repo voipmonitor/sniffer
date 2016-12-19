@@ -3811,12 +3811,6 @@ string intToString(long long i) {
 	return(outStr.str());
 }
 
-string intToString(unsigned long long i) {
-	ostringstream outStr;
-	outStr << i;
-	return(outStr.str());
-}
-
 string intToString(u_int32_t i) {
 	ostringstream outStr;
 	outStr << i;

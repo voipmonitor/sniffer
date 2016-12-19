@@ -411,7 +411,6 @@ bool isLocalIP(u_int32_t ip);
 char *strlwr(char *string, u_int32_t maxLength = 0);
 string intToString(int i);
 string intToString(long long i);
-string intToString(unsigned long long i);
 string intToString(u_int32_t i);
 string intToString(u_int64_t i);
 

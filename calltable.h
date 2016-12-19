@@ -248,7 +248,7 @@ public:
 	string call_id;	//!< call-id from SIP session
 	char fbasename[MAX_FNAME];	//!< basename of file 
 	char fbasename_safe[MAX_FNAME];	//!< basename of file 
-	unsigned long long fname_register;
+	u_int64_t fname_register;
 	char callername[256];		//!< callerid name from SIP header
 	char caller[256];		//!< From: xxx 
 	char caller_domain[256];	//!< From: xxx 
