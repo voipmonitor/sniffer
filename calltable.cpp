@@ -147,6 +147,7 @@ extern rtp_read_thread *rtp_threads;
 extern bool opt_rtpmap_by_callerd;
 extern bool opt_rtpmap_combination;
 extern int opt_register_timeout_disable_save_failed;
+extern int opt_rtpfromsdp_onlysip;
 
 volatile int calls_counter = 0;
 volatile int registers_counter = 0;
@@ -1154,6 +1155,11 @@ read:
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
+		rtp[ssrc_n]->find_by_dest = find_by_dest;
+		rtp[ssrc_n]->ok_other_ip_side_by_sip = opt_rtpfromsdp_onlysip ||
+						       this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr : packetS->daddr) ||
+						       (calltable->hashfind_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr, find_by_dest ? packetS->source : packetS->dest) &&
+						        this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr : packetS->saddr));
 		if(rtp_cur[iscaller]) {
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}
@@ -2419,22 +2425,44 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		// find first caller and first called
 		RTP *rtpab[2] = {NULL, NULL};
-		for(int k = 0; k < ssrc_n; k++) {
-			if(sverb.process_rtp || sverb.read_rtp) {
-				cout << "RTP - final stream: " 
-				     << hex << rtp[indexes[k]]->ssrc << dec << " : "
-				     << inet_ntostring(htonl(rtp[indexes[k]]->saddr)) << " -> "
-				     << inet_ntostring(htonl(rtp[indexes[k]]->daddr)) << " / "
-				     << (rtp[indexes[k]]->iscaller ? "caller" : "called") 
-				     << " packets received: " << rtp[indexes[k]]->s->received << " "
-				     << " ssrc index: " << rtp[indexes[k]]->ssrc_index << " "
-				     << endl;
+		bool rtpab_ok[2] = {false, false};
+		for(int pass_rtpab = 0; pass_rtpab < (opt_rtpfromsdp_onlysip ? 1 : 2); pass_rtpab++) {
+			for(int k = 0; k < ssrc_n; k++) {
+				if(pass_rtpab == 0) {
+					if(sverb.process_rtp || sverb.read_rtp) {
+						cout << "RTP - final stream: " 
+						     << hex << rtp[indexes[k]]->ssrc << dec << " : "
+						     << inet_ntostring(htonl(rtp[indexes[k]]->saddr)) << " -> "
+						     << inet_ntostring(htonl(rtp[indexes[k]]->daddr)) << " / "
+						     << (rtp[indexes[k]]->iscaller ? "caller" : "called") 
+						     << " packets received: " << rtp[indexes[k]]->s->received << " "
+						     << " ssrc index: " << rtp[indexes[k]]->ssrc_index << " "
+						     << endl;
+					}
+				}
+				if(opt_rtpfromsdp_onlysip || rtp[indexes[k]]->ok_other_ip_side_by_sip || pass_rtpab == 1) {
+					if(!rtpab_ok[0] &&
+					   rtp[indexes[k]]->iscaller && 
+					   (!rtpab[0] || rtp[indexes[k]]->stats.received > rtpab[0]->stats.received)) {
+						rtpab[0] = rtp[indexes[k]];
+					}
+					if(!rtpab_ok[1] &&
+					   !rtp[indexes[k]]->iscaller && 
+					   (!rtpab[1] || rtp[indexes[k]]->stats.received > rtpab[1]->stats.received)) {
+						rtpab[1] = rtp[indexes[k]];
+					}
+				}
 			}
-			if(rtp[indexes[k]]->iscaller && (!rtpab[0] || rtp[indexes[k]]->stats.received > rtpab[0]->stats.received)) {
-				rtpab[0] = rtp[indexes[k]];
-			}
-			if(!rtp[indexes[k]]->iscaller && (!rtpab[1] || rtp[indexes[k]]->stats.received > rtpab[1]->stats.received)) {
-				rtpab[1] = rtp[indexes[k]];
+			if(!opt_rtpfromsdp_onlysip && pass_rtpab == 0) {
+				if(rtpab[0]) {
+					rtpab_ok[0] = true;
+				}
+				if(rtpab[1]) {
+					rtpab_ok[1] = true;
+				}
+				if(rtpab_ok[0] && rtpab_ok[1]) {
+					break;
+				}
 			}
 		}
 
