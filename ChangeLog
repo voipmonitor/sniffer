@@ -1,3 +1,15 @@
+17.10 19.12.2016
+=================
+- prioritize RTP stream with src port:ip from SDP in case there are same IP:port destination RTP streams [VS-506]
+- fix loop (100% cpu) for 32bit 
+- fix vsz & thread handlers overflow in receiver with bad time in sender
+- rebuild create dirname for files in spool
+- fix memory leak in udp defrag if exists duplicity in fragments
+- fix cachedir
+- fix ipaccount
+- fix saveaudio=wav for some case 
+
+
 17.9 14.12.2016
 ===============
 - fix loading fraud alerts >= 17.8 when some DB columns are missing (if GUI was not yet upgraded)
