@@ -1,5 +1,6 @@
 17.10 19.12.2016
 =================
+- fix register failed 404 which was adding new record instead of increasing count [VS-543]
 - prioritize RTP stream with src port:ip from SDP in case there are same IP:port destination RTP streams [VS-506]
 - fix loop (100% cpu) for 32bit 
 - fix vsz & thread handlers overflow in receiver with bad time in sender
