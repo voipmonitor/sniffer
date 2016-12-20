@@ -157,7 +157,7 @@ void RegisterState::copyFrom(const RegisterState *src) {
 	ua = REG_NEW_STR(src->ua);
 }
 
-bool RegisterState::isEq(Call *call, Register *reg) {
+bool RegisterState::isEq(Call *call, Register *reg, bool useFname) {
 	/*
 	if(state == convRegisterState(call)) cout << "ok state" << endl;
 	//if(REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, call->contact_num)) cout << "ok contact_num" << endl;
@@ -176,7 +176,7 @@ bool RegisterState::isEq(Call *call, Register *reg) {
 	       REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, call->caller_domain) &&
 	       REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, call->digest_realm) &&
 	       REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua) &&
-	       fname == call->fname_register &&
+	       (!useFname || fname == call->fname_register) &&
 	       id_sensor == call->useSensorId);
 }
 
@@ -233,7 +233,7 @@ void Register::update(Call *call) {
 
 void Register::addState(Call *call) {
 	lock_states();
-	if(convRegisterState(call) == rs_Failed && eqLastState(call)) {
+	if(convRegisterState(call) == rs_Failed && eqLastState(call, false)) {
 		updateLastState(call);
 	} else {
 		shiftStates();
@@ -301,9 +301,9 @@ void Register::updateLastState(Call *call) {
 	}
 }
 
-bool Register::eqLastState(Call *call) {
+bool Register::eqLastState(Call *call, bool useFname) {
 	RegisterState *state = states_last();
-	if(state && state->isEq(call, this)) {
+	if(state && state->isEq(call, this, useFname)) {
 		return(true);
 	}
 	return(false);
