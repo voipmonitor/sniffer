@@ -3636,10 +3636,10 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		cdr.add(sqlEscapeString(geoposition), "GeoPosition");
 	}
 	cdr.add(sqlEscapeString(fbasename), "fbasename");
-	if(message || message_info) {
+	if((message && message[0]) || (message_info && message_info[0])) {
 		string message_save;
 		bool message_is_url = false;
-		if(message) {
+		if(message && message[0]) {
 			for(unsigned i = 0; i < opt_message_body_url_reg.size(); i++) {
 				if(reg_match(message, opt_message_body_url_reg[i].c_str(), __FILE__, __LINE__)) {
 					message_is_url = true;
@@ -3655,7 +3655,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 				message_save = message;
 			}
 		}
-		if(message_is_url || message_info) {
+		if(message_is_url || (message_info && message_info[0])) {
 			if(message) {
 				message_save += '\n';
 			}

@@ -2155,10 +2155,10 @@ static inline int parse_packet__last_sip_response(char *data, unsigned int datal
 						  char *lastSIPresponse, bool *call_cancel_lsr487);
 static inline int parse_packet__last_sip_response(packet_s_process *packetS, int sip_method, bool sip_response,
 						  char *lastSIPresponse, bool *call_cancel_lsr487);
-static inline int parse_packet__message_content(char *message, unsigned int messageLength,
-						char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber,
-						unsigned int *rsltDcs, Call::eVoicemail *rsltVoicemail,
-						bool maskMessage = false);
+static inline void parse_packet__message_content(char *message, unsigned int messageLength,
+						 char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber,
+						 unsigned int *rsltDcs, Call::eVoicemail *rsltVoicemail,
+						 bool maskMessage = false);
 static inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, int *merged, bool preprocess);
 
 inline void process_packet_sip_call_inline(packet_s_process *packetS) {
@@ -2499,22 +2499,26 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 						     &rsltMessage, &rsltMessageInfo, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength,
 						     &rsltDcs, &rsltVoicemail)) {
 			case 2:
-				if(call->message) {
-					delete [] call->message;
+				if(rsltMessage) {
+					if(call->message) {
+						delete [] call->message;
+					}
+					call->message = rsltMessage;
+				} else {
+					if(!call->message) {
+						call->message = new FILE_LINE(27003) char[1];
+						call->message[0] = '\0';
+					}
 				}
-				call->message = rsltMessage;
-				if(call->message_info) {
-					delete [] call->message_info;
+				if(rsltMessageInfo) {
+					if(call->message_info) {
+						delete [] call->message_info;
+					}
+					call->message_info = rsltMessageInfo;
 				}
-				call->message_info = rsltMessageInfo;
+			case 1:
 				call->dcs = rsltDcs;
 				call->voicemail = rsltVoicemail;
-				break;
-			case 1:
-				if(!call->message) {
-					call->message = new FILE_LINE(27003) char[1];
-					call->message[0] = '\0';
-				}
 				break;
 			}
 			if(rsltDestNumber.length()) {
@@ -2882,16 +2886,18 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					     &rsltMessage, &rsltMessageInfo, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength,
 					     &rsltDcs, &rsltVoicemail)) {
 		case 2:
-			call->message = rsltMessage;
-			call->message_info = rsltMessageInfo;
-			call->dcs = rsltDcs;
-			call->voicemail = rsltVoicemail;
-			break;
-		case 1:
-			if(!call->message) {
+			if(rsltMessage) {
+				call->message = rsltMessage;
+			} else {
 				call->message = new FILE_LINE(27005) char[1];
 				call->message[0] = '\0';
 			}
+			if(rsltMessageInfo) {
+				call->message_info = rsltMessageInfo;
+			}
+		case 1:
+			call->dcs = rsltDcs;
+			call->voicemail = rsltVoicemail;
 			break;
 		case -1:
 			goto notfound;
@@ -3937,19 +3943,16 @@ inline int parse_packet__message(packet_s_process *packetS, bool strictCheckLeng
 				contentEnd = contentBegin + contentLength;
 			}
 			data[datalen - 1] = endCharData;
-			if(parse_packet__message_content(contentBegin, contentEnd - contentBegin,
-							 rsltMessage, rsltMessageInfo, rsltDestNumber, rsltSrcNumber,
-							 rsltDcs, rsltVoicemail,
-							 maskMessage)) {
-				setMessage = 2;
-			} else {
-				setMessage = 1;
-			}
+			parse_packet__message_content(contentBegin, contentEnd - contentBegin,
+						      rsltMessage, rsltMessageInfo, rsltDestNumber, rsltSrcNumber,
+						      rsltDcs, rsltVoicemail,
+						      maskMessage);
+			setMessage = (rsltMessage && *rsltMessage) || (rsltMessageInfo && *rsltMessageInfo) ? 2 : 1;
 		} else {
 			data[datalen - 1] = endCharData;
 		}
 	} else {
-		setMessage = 1;
+		setMessage = contentLength == 0;
 		data[datalen - 1] = endCharData;
 	}
 	return(setMessage);
@@ -4327,11 +4330,10 @@ struct sGsmMessageAck {
 	int timezone;
 };
 
-int parse_packet__message_content(char *message, unsigned int messageLength,
-				  char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber,
-				  unsigned int *rsltDcs, Call::eVoicemail *rsltVoicemail,
-				  bool maskMessage) {
-	int rslt = 0;
+void parse_packet__message_content(char *message, unsigned int messageLength,
+				   char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber,
+				   unsigned int *rsltDcs, Call::eVoicemail *rsltVoicemail,
+				   bool maskMessage) {
 	if(rsltMessage) {
 		*rsltMessage = NULL;
 	}
@@ -4366,7 +4368,6 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 							*rsltMessage = new FILE_LINE(27006) char[rslt_message.length() + 1];
 							memcpy(*rsltMessage, rslt_message.c_str(), rslt_message.length());
 							(*rsltMessage)[rslt_message.length()] = '\0';
-							rslt = 1;
 						}
 						if(rsltMessageInfo) {
 							string rslt_message_info;
@@ -4419,7 +4420,6 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 							 sGsmMessageAck.timezone);
 						*rsltMessageInfo = new FILE_LINE(27008) char[strlen(rslt_message_info_buff) + 1];
 						strcpy(*rsltMessageInfo, rslt_message_info_buff);
-						rslt = 1;
 					}
 				}
 				}
@@ -4431,7 +4431,6 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 						 "ACK");
 					*rsltMessageInfo = new FILE_LINE(27009) char[strlen(rslt_message_info_buff) + 1];
 					strcpy(*rsltMessageInfo, rslt_message_info_buff);
-					rslt = 1;
 				}
 				}
 				break;
@@ -4447,10 +4446,8 @@ int parse_packet__message_content(char *message, unsigned int messageLength,
 			if(maskMessage) {
 				memset(message, 'x', messageLength);
 			}
-			rslt = 1;
 		}
 	}
-	return(rslt);
 }
 
 
