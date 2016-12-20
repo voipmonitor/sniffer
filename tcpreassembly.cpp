@@ -2393,6 +2393,9 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 	   !(type == ssl || 
 	     type == sip ||
 	     this->check_ip(htonl(header_ip->saddr)) || this->check_ip(htonl(header_ip->daddr)))) {
+		if(block_store && block_store_locked) {
+			block_store->unlock_packet(block_store_index);
+		}
 		return;
 	}
 	if(this->enablePacketThread) {

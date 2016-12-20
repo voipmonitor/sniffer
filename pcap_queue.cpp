@@ -6377,7 +6377,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		if(bogusDumper) {
 			bogusDumper->dump(header, hp->packet, hp->dlt, "process_packet");
 		}
-		if(verbosity) {
+		if(verbosity &&
+		   !(opt_udpfrag && opt_pcap_queue_use_blocks)) {
 			static u_long lastTimeSyslog = 0;
 			u_long actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
