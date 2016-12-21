@@ -1331,7 +1331,7 @@ bool cConfig::loadFromConfigFile(const char *filename, string *error) {
 		return(true);
 	}
 	size_t fileSizeWithGeneralHedaer = fileSize + 10;
-	char *fileContent = new FILE_LINE(3001) char[fileSizeWithGeneralHedaer];
+	char *fileContent = new FILE_LINE(2001) char[fileSizeWithGeneralHedaer];
 	if(!fileContent) {
 		loadFromConfigFileError("Cannot alloc memory for config file %s!", filename, error);
 		fclose(fp);

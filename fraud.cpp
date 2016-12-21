@@ -213,11 +213,11 @@ void GeoIP_country::load() {
 
 CacheNumber_location::CacheNumber_location() {
 	if(!countryCodes) {
-		countryCodes = new FILE_LINE(8001) CountryCodes();
+		countryCodes = new FILE_LINE(7001) CountryCodes();
 		countryCodes->load();
 	}
 	if(!geoIP_country) {
-		geoIP_country = new FILE_LINE(8002) GeoIP_country();
+		geoIP_country = new FILE_LINE(7001) GeoIP_country();
 		geoIP_country->load();
 	}
 	sqlDb = createSqlObject();
@@ -848,7 +848,7 @@ void FraudAlertReg_filter::evRegister(sFraudRegisterInfo *registerInfo) {
 	    registerInfo->at - start_interval > parent->intervalLength * 1000000ull :
     	    ev_counter >= parent->intervalLimit) {
 		if(ev_counter >= parent->intervalLimit) {
-			FraudAlertInfo_reg *alertInfo = new FILE_LINE(8003) FraudAlertInfo_reg(parent);
+			FraudAlertInfo_reg *alertInfo = new FILE_LINE(7001) FraudAlertInfo_reg(parent);
 			alertInfo->set(description.c_str(), ev_counter, &ev_map);
 			parent->evAlert(alertInfo);
 		}
@@ -1032,7 +1032,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 				if(callsIter_by_ip != calls_by_ip.end()) {
 					call = callsIter_by_ip->second;
 				} else {
-					call = new FILE_LINE(8004) FraudAlert_rcc_callInfo;
+					call = new FILE_LINE(7001) FraudAlert_rcc_callInfo;
 					calls_by_ip[callInfo->caller_ip] = call;
 				}
 				break;
@@ -1042,7 +1042,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 				if(callsIter_by_number != calls_by_number.end()) {
 					call = callsIter_by_number->second;
 				} else {
-					call = new FILE_LINE(8005) FraudAlert_rcc_callInfo;
+					call = new FILE_LINE(7001) FraudAlert_rcc_callInfo;
 					calls_by_number[callInfo->caller_number] = call;
 				}
 				break;
@@ -1081,7 +1081,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 					   callInfo->at_connect > call->last_alert_info_local + 1000000ull &&
 					   this->checkOkAlert(idAlert, _actCalls, callInfo->at_connect,
 							      _li, alert)) {
-						FraudAlertInfo_rcc *alertInfo = new FILE_LINE(8006) FraudAlertInfo_rcc(alert);
+						FraudAlertInfo_rcc *alertInfo = new FILE_LINE(7001) FraudAlertInfo_rcc(alert);
 						if(parent->typeBy == FraudAlert::_typeBy_source_ip) {
 							alertInfo->set_ip(_li, this->getDescr().c_str(), 
 									  callInfo->caller_ip, callInfo->country_code_caller_ip.c_str(),
@@ -1183,7 +1183,7 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 				if(callsIter_by_rtp_stream != calls_by_rtp_stream.end()) {
 					call = callsIter_by_rtp_stream->second;
 				} else {
-					call = new FILE_LINE(8007) FraudAlert_rcc_rtpStreamInfo;
+					call = new FILE_LINE(7001) FraudAlert_rcc_rtpStreamInfo;
 					calls_by_rtp_stream[rtp_stream_id] = call;
 				}
 				break;
@@ -1233,7 +1233,7 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 					   rtpStreamInfo->at > call->last_alert_info_local + 1000000ull &&
 					   this->checkOkAlert(idAlert, _actCalls, rtpStreamInfo->at,
 							      FraudAlert::_li_local, alert)) {
-						FraudAlertInfo_rcc *alertInfo = new FILE_LINE(8008) FraudAlertInfo_rcc(alert);
+						FraudAlertInfo_rcc *alertInfo = new FILE_LINE(7001) FraudAlertInfo_rcc(alert);
 						alertInfo->set_rtp_stream(_li, this->getDescr().c_str(), 
 									  parent->typeBy, rtp_stream_id,
 									  _actCalls);
@@ -1518,7 +1518,7 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
 						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
 			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
-				FraudAlertInfo_chc *alertInfo = new FILE_LINE(8009) FraudAlertInfo_chc(this);
+				FraudAlertInfo_chc *alertInfo = new FILE_LINE(7001) FraudAlertInfo_chc(this);
 				alertInfo->set(callInfo->caller_number.c_str(),
 					       _typeLocation_country,
 					       callInfo->caller_ip,
@@ -1529,7 +1529,7 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 				this->evAlert(alertInfo);
 			}
 			if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
-				FraudAlertInfo_chc *alertInfo = new FILE_LINE(8010) FraudAlertInfo_chc(this);
+				FraudAlertInfo_chc *alertInfo = new FILE_LINE(7001) FraudAlertInfo_chc(this);
 				alertInfo->set(callInfo->caller_number.c_str(),
 					       _typeLocation_continent,
 					       callInfo->caller_ip,
@@ -1572,7 +1572,7 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
 						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
 			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
-				FraudAlertInfo_chc *alertInfo = new FILE_LINE(8011) FraudAlertInfo_chc(this);
+				FraudAlertInfo_chc *alertInfo = new FILE_LINE(7001) FraudAlertInfo_chc(this);
 				alertInfo->set(callInfo->caller_number.c_str(),
 					       _typeLocation_country,
 					       callInfo->caller_ip,
@@ -1583,7 +1583,7 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 				this->evAlert(alertInfo);
 			}
 			if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
-				FraudAlertInfo_chc *alertInfo = new FILE_LINE(8012) FraudAlertInfo_chc(this);
+				FraudAlertInfo_chc *alertInfo = new FILE_LINE(7001) FraudAlertInfo_chc(this);
 				alertInfo->set(callInfo->caller_number.c_str(),
 					       _typeLocation_continent,
 					       callInfo->caller_ip,
@@ -1647,7 +1647,7 @@ void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 		    countryCodes->isLocationIn(callInfo->continent_code_called_number.c_str(), &this->destLocation, true)) &&
 		   this->checkOkAlert(callInfo->caller_number.c_str(), callInfo->called_number.c_str(),
 				      callInfo->country_code_called_number.c_str(), callInfo->at_begin)) {
-			FraudAlertInfo_d *alertInfo = new FILE_LINE(8013) FraudAlertInfo_d(this);
+			FraudAlertInfo_d *alertInfo = new FILE_LINE(7001) FraudAlertInfo_d(this);
 			alertInfo->set(callInfo->caller_number.c_str(),
 				       callInfo->called_number.c_str(),
 				       callInfo->country_code_called_number.c_str(),
@@ -1744,7 +1744,7 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 		for(iter = count.begin(); iter != count.end(); iter++) {
 			if(iter->second.count >= intervalLimit &&
 			   this->checkOkAlert(iter->first, iter->second.count, eventInfo->at)) {
-				FraudAlertInfo_spc *alertInfo = new FILE_LINE(8014) FraudAlertInfo_spc(this);
+				FraudAlertInfo_spc *alertInfo = new FILE_LINE(7001) FraudAlertInfo_spc(this);
 				alertInfo->set(iter->first,
 					       iter->second.count,
 					       iter->second.count_invite,
@@ -1816,7 +1816,7 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 		for(iter = count.begin(); iter != count.end(); iter++) {
 			if(iter->second >= intervalLimit) {
 				if(this->checkOkAlert(iter->first, iter->second, eventInfo->at)) {
-					FraudAlertInfo_spc *alertInfo = new FILE_LINE(8015) FraudAlertInfo_spc(this);
+					FraudAlertInfo_spc *alertInfo = new FILE_LINE(7001) FraudAlertInfo_spc(this);
 					alertInfo->set(iter->first,
 						       iter->second);
 					this->evAlert(alertInfo);
@@ -1844,7 +1844,7 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 		map<u_int32_t, PcapDumper*>::iterator iter_dumper = this->dumpers.find(ip);
 		if(iter_dumper != this->dumpers.end()) {
 			if(iter_dumper->second == (PcapDumper*)1) {
-				PcapDumper *dumper = new FILE_LINE(0) PcapDumper(PcapDumper::na, NULL);
+				PcapDumper *dumper = new FILE_LINE(7001) PcapDumper(PcapDumper::na, NULL);
 				dumper->setEnableAsyncWrite(false);
 				dumper->setTypeCompress(FileZipHandler::gzip);
 				if(dumper->open(tsf_na, getDumpName(ip, eventInfo->at).c_str(), eventInfo->dlt)) {
@@ -1951,7 +1951,7 @@ void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
 		for(iter = count.begin(); iter != count.end(); iter++) {
 			if(iter->second >= intervalLimit &&
 			   this->checkOkAlert(iter->first, iter->second, callInfo->at_last)) {
-				FraudAlertInfo_seq *alertInfo = new FILE_LINE(8016) FraudAlertInfo_seq(this);
+				FraudAlertInfo_seq *alertInfo = new FILE_LINE(7001) FraudAlertInfo_seq(this);
 				alertInfo->set(iter->first.ip,
 					       iter->first.number.c_str(),
 					       iter->second,
@@ -2092,34 +2092,34 @@ void FraudAlerts::loadAlerts(bool lock) {
 		unsigned int dbId = atol(row["id"].c_str());
 		switch(atoi(row["alert_type"].c_str())) {
 		case FraudAlert::_rcc:
-			alert = new FILE_LINE(8017) FraudAlert_rcc(dbId);
+			alert = new FILE_LINE(7001) FraudAlert_rcc(dbId);
 			break;
 		case FraudAlert::_chc:
-			alert = new FILE_LINE(8018) FraudAlert_chc(dbId);
+			alert = new FILE_LINE(7001) FraudAlert_chc(dbId);
 			break;
 		case FraudAlert::_chcr:
-			alert = new FILE_LINE(8019) FraudAlert_chcr(dbId);
+			alert = new FILE_LINE(7001) FraudAlert_chcr(dbId);
 			break;
 		case FraudAlert::_d:
-			alert = new FILE_LINE(8020) FraudAlert_d(dbId);
+			alert = new FILE_LINE(7001) FraudAlert_d(dbId);
 			break;
 		case FraudAlert::_spc:
-			alert = new FILE_LINE(8021) FraudAlert_spc(dbId);
+			alert = new FILE_LINE(7001) FraudAlert_spc(dbId);
 			break;
 		case FraudAlert::_rc:
-			alert = new FILE_LINE(8022) FraudAlert_rc(dbId);
+			alert = new FILE_LINE(7001) FraudAlert_rc(dbId);
 			break;
 		case FraudAlert::_seq:
-			alert = new FILE_LINE(8023) FraudAlert_seq(dbId);
+			alert = new FILE_LINE(7001) FraudAlert_seq(dbId);
 			break;
 		case FraudAlert::_reg_ua:
-			alert = new FILE_LINE(8024) FraudAlert_reg_ua(dbId);
+			alert = new FILE_LINE(7001) FraudAlert_reg_ua(dbId);
 			break;
 		case FraudAlert::_reg_short:
-			alert = new FILE_LINE(8025) FraudAlert_reg_short(dbId);
+			alert = new FILE_LINE(7001) FraudAlert_reg_short(dbId);
 			break;
 		case FraudAlert::_reg_expire:
-			alert = new FILE_LINE(8026) FraudAlert_reg_expire(dbId);
+			alert = new FILE_LINE(7001) FraudAlert_reg_expire(dbId);
 			break;
 		}
 		if(alert && alert->loadAlert()) {
@@ -2432,25 +2432,25 @@ void initFraud() {
 		return;
 	}
 	if(!countryCodes) {
-		countryCodes = new FILE_LINE(8027) CountryCodes();
+		countryCodes = new FILE_LINE(7001) CountryCodes();
 		countryCodes->load();
 	}
 	if(!countryPrefixes) {
-		countryPrefixes = new FILE_LINE(8028) CountryPrefixes();
+		countryPrefixes = new FILE_LINE(7001) CountryPrefixes();
 		countryPrefixes->load();
 	}
 	if(!geoIP_country) {
-		geoIP_country = new FILE_LINE(8029) GeoIP_country();
+		geoIP_country = new FILE_LINE(7001) GeoIP_country();
 		geoIP_country->load();
 	}
 	if(!cacheNumber_location) {
-		cacheNumber_location = new FILE_LINE(8030) CacheNumber_location();
+		cacheNumber_location = new FILE_LINE(7001) CacheNumber_location();
 	}
 	if(fraudAlerts) {
 		return;
 	}
 	fraudAlerts_lock();
-	fraudAlerts = new FILE_LINE(8031) FraudAlerts();
+	fraudAlerts = new FILE_LINE(7001) FraudAlerts();
 	fraudAlerts->loadData();
 	fraudAlerts->loadAlerts();
 	fraudAlerts_unlock();

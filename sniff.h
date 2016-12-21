@@ -239,8 +239,8 @@ struct packet_s_process_0 : public packet_s {
 		init_reuse();
 	}
 	inline void new_alloc_packet_header() {
-		pcap_pkthdr *header_pt_new = new FILE_LINE(28001) pcap_pkthdr;
-		u_char *packet_new = new FILE_LINE(28002) u_char[header_pt->caplen];
+		pcap_pkthdr *header_pt_new = new FILE_LINE(27001) pcap_pkthdr;
+		u_char *packet_new = new FILE_LINE(27001) u_char[header_pt->caplen];
 		*header_pt_new = *header_pt;
 		memcpy(packet_new, packet, header_pt->caplen);
 		header_pt = header_pt_new;
@@ -367,10 +367,10 @@ public:
 		batch_packet_rtp_base(unsigned max_count) {
 			extern bool opt_t2_boost;
 			if(!opt_t2_boost) {
-				batch.c = new FILE_LINE(28003) rtp_packet_pcap_queue[max_count];
+				batch.c = new FILE_LINE(27001) rtp_packet_pcap_queue[max_count];
 				memset(batch.c, 0, sizeof(rtp_packet_pcap_queue) * max_count);
 			} else {
-				batch.pt = new FILE_LINE(0) rtp_packet_pt_pcap_queue[max_count];
+				batch.pt = new FILE_LINE(27001) rtp_packet_pt_pcap_queue[max_count];
 				memset(batch.pt, 0, sizeof(rtp_packet_pt_pcap_queue) * max_count);
 			}
 			this->max_count = max_count;

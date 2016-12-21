@@ -234,7 +234,7 @@ unsigned int WebrtcData::WebrtcDecodeData::decode(u_char *data, unsigned int dat
 	}
 	if(payload_length && !checkOkOnly) {
 		u_int32_t dataLength = payload_length / 4 * 4 + (payload_length % 4 ? 4 : 0);
-		this->data = new FILE_LINE(44001) u_char[dataLength + 1];
+		this->data = new FILE_LINE(43001) u_char[dataLength + 1];
 		memcpy_heapsafe(this->data, this->data,
 				data + headerLength, data,
 				payload_length,

@@ -27,8 +27,8 @@ public:
 		this->popUsleep = popUsleep;
 		this->term_rqueue = term_rqueue;
 		this->binaryBuffer = binaryBuffer;
-		buffer = new FILE_LINE(22003) typeItem[this->length + 1];
-		free = new FILE_LINE(22004) v_int[this->length + 1];
+		buffer = new FILE_LINE(21001) typeItem[this->length + 1];
+		free = new FILE_LINE(21001) v_int[this->length + 1];
 		for(size_t i = 0; i < this->length; i++) {
 			free[i] = 1;
 		}

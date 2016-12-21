@@ -1519,11 +1519,11 @@ int rrd_call(
 	}
 //	printf ("CountArgs vratil %d\n",myargc);
 
-	if ((tmpLine = new FILE_LINE(23001) char[strlen(aLine) + 1]) == NULL) {
+	if ((tmpLine = new FILE_LINE(22001) char[strlen(aLine) + 1]) == NULL) {
 		syslog(LOG_ERR, "rrd_call malloc error\n");
 		return -1;
 	}
-	if ((myargv = new FILE_LINE(23002) char*[myargc + 1]) == NULL) {
+	if ((myargv = new FILE_LINE(22001) char*[myargc + 1]) == NULL) {
 		free(tmpLine);
 		syslog(LOG_ERR, "rrd_call malloc error2\n");
 		return -1;

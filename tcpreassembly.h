@@ -33,7 +33,7 @@ public:
 	}
 	TcpReassemblyDataItem(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, eDirection direction = DIRECTION_NA) {
 		if(data && datalen) {
-			this->data = new FILE_LINE(38001) u_char[datalen + 1];
+			this->data = new FILE_LINE(37001) u_char[datalen + 1];
 			memcpy_heapsafe(this->data, data, datalen, 
 					__FILE__, __LINE__);
 			this->data[datalen] = 0;
@@ -48,7 +48,7 @@ public:
 	}
 	TcpReassemblyDataItem(const TcpReassemblyDataItem &dataItem) {
 		if(dataItem.data && dataItem.datalen) {
-			this->data = new FILE_LINE(38002) u_char[dataItem.datalen + 1];
+			this->data = new FILE_LINE(37001) u_char[dataItem.datalen + 1];
 			memcpy_heapsafe(this->data, dataItem.data, dataItem.datalen, 
 					__FILE__, __LINE__);
 			this->data[dataItem.datalen] = 0;
@@ -71,7 +71,7 @@ public:
 			delete [] this->data;
 		}
 		if(dataItem.data && dataItem.datalen) {
-			this->data = new FILE_LINE(38003) u_char[dataItem.datalen + 1];
+			this->data = new FILE_LINE(37001) u_char[dataItem.datalen + 1];
 			memcpy_heapsafe(this->data, dataItem.data, dataItem.datalen, 
 					__FILE__, __LINE__);
 			this->data[dataItem.datalen] = 0;
@@ -91,7 +91,7 @@ public:
 		}
 		if(data && datalen) {
 			if(newAlloc) {
-				this->data = new FILE_LINE(38004) u_char[datalen + 1];
+				this->data = new FILE_LINE(37001) u_char[datalen + 1];
 				memcpy_heapsafe(this->data, data, datalen, 
 						__FILE__, __LINE__);
 				this->data[datalen] = 0;
@@ -254,7 +254,7 @@ public:
 	TcpReassemblyStream_packet(const TcpReassemblyStream_packet &packet) {
 		this->copyFrom(packet);
 		if(packet.data) {
-			this->data = new FILE_LINE(38005) u_char[packet.datacaplen];
+			this->data = new FILE_LINE(37001) u_char[packet.datacaplen];
 			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
 					__FILE__, __LINE__);
 		}
@@ -270,7 +270,7 @@ public:
 		}
 		this->copyFrom(packet);
 		if(packet.data) {
-			this->data = new FILE_LINE(38006) u_char[packet.datacaplen];
+			this->data = new FILE_LINE(37001) u_char[packet.datacaplen];
 			memcpy_heapsafe(this->data, packet.data, packet.datacaplen, 
 					__FILE__, __LINE__);
 		}
@@ -283,7 +283,7 @@ public:
 		this->header_tcp = header_tcp;
 		this->next_seq = header_tcp.seq + datalen;
 		if(datacaplen) {
-			this->data = new FILE_LINE(38007) u_char[datacaplen];
+			this->data = new FILE_LINE(37001) u_char[datacaplen];
 			memcpy_heapsafe(this->data, this->data,
 					data, block_store ? NULL : data,
 					datacaplen, 

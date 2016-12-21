@@ -1574,7 +1574,7 @@ unsigned int dsp_get_sample_rate(const struct dsp *dsp)
 static struct dsp *__dsp_new(unsigned int sample_rate)
 {
 	extern int opt_silencethreshold;
-	dsp *dsp_new = new FILE_LINE(4001) dsp;
+	dsp *dsp_new = new FILE_LINE(3001) dsp;
 	memset(dsp_new, 0, sizeof(dsp));
 
 	if (dsp_new) {

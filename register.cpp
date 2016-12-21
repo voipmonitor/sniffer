@@ -22,7 +22,7 @@ Registers registers;
 
 
 #define EQ_REG				((char*)-1)
-#define REG_NEW_STR(src)		((src) == EQ_REG ? EQ_REG : (src) && *(src) ? (tmp_str = new FILE_LINE(21001) char[strlen(src) + 1], strcpy(tmp_str, src), tmp_str) : NULL)
+#define REG_NEW_STR(src)		((src) == EQ_REG ? EQ_REG : (src) && *(src) ? (tmp_str = new FILE_LINE(20001) char[strlen(src) + 1], strcpy(tmp_str, src), tmp_str) : NULL)
 #define REG_FREE_STR(str)		((str) && (str) != EQ_REG ? (delete [] (str), str = NULL, true) : (str = NULL, false))
 #define REG_EQ_STR(str1, str2)		((!(str1) || !*(str1)) && (!(str2) || !*(str2)) ? true : (!(str1) || !*(str1)) || (!(str2) || !*(str2)) ? false : !strcasecmp(str1, str2))
 #define REG_CMP_STR(str1, str2)		((!(str1) || !*(str1)) && (!(str2) || !*(str2)) ? 0 : (!(str1) || !*(str1)) ? -1 : (!(str2) || !*(str2)) ? 1 : strcasecmp(str1, str2))
@@ -237,7 +237,7 @@ void Register::addState(Call *call) {
 		updateLastState(call);
 	} else {
 		shiftStates();
-		states[0] = new FILE_LINE(21002) RegisterState(call, this);
+		states[0] = new FILE_LINE(20001) RegisterState(call, this);
 		++countStates;
 	}
 	RegisterState *state = states_last();
@@ -279,7 +279,7 @@ void Register::expire(bool need_lock_states) {
 	RegisterState *lastState = states_last();
 	if(lastState && (lastState->state == rs_OK || lastState->state == rs_UnknownMessageOK)) {
 		shiftStates();
-		RegisterState *newState = new FILE_LINE(21003) RegisterState(NULL, NULL);
+		RegisterState *newState = new FILE_LINE(20001) RegisterState(NULL, NULL);
 		newState->copyFrom(lastState);
 		newState->state = rs_Expired;
 		newState->expires = 0;
@@ -496,7 +496,7 @@ void Registers::add(Call *call) {
 	if(!convRegisterState(call)) {
 		return;
 	}
-	Register *reg = new FILE_LINE(21004) Register(call);
+	Register *reg = new FILE_LINE(20001) Register(call);
 	RegisterId rid(reg);
 	lock_registers();
 	map<RegisterId, Register*>::iterator iter = registers.find(rid);
@@ -647,7 +647,7 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	
 	u_int32_t list_registers_size = registers.size();
 	u_int32_t list_registers_count = 0;
-	Register **list_registers = new FILE_LINE(21005) Register*[list_registers_size];
+	Register **list_registers = new FILE_LINE(20001) Register*[list_registers_size];
 	
 	//cout << "**** 001 " << getTimeMS() << endl;
 	

@@ -482,7 +482,7 @@ private:
 		bool open(const char *filename, u_long createAt) {
 			this->filename = filename;
 			this->createAt = createAt;
-			fileZipHandler =  new FILE_LINE(31001) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
+			fileZipHandler =  new FILE_LINE(30001) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
 			fileZipHandler->open(tsf_na, this->filename.c_str());
 			if(fileZipHandler->_open_write()) {
 				is_open = true;

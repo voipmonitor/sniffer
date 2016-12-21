@@ -48,7 +48,7 @@
 
 #define DEBUG_QUEUE_RTP_THREAD false
 
-#define HEAPSAFE false
+#define HEAPSAFE true
 
 #define RQUEUE_SAFE true
 

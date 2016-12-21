@@ -5628,14 +5628,14 @@ void NoHashMessageRule::load(const char *name,
 	if(header_regexp && *header_regexp) {
 		vector<string> header_regexp_a = split(header_regexp, "\n", true);
 		for(unsigned i = 0; i < header_regexp_a.size(); i++) {
-			cRegExp *regExp = new FILE_LINE(0) cRegExp(header_regexp_a[i].c_str());
+			cRegExp *regExp = new FILE_LINE(1013) cRegExp(header_regexp_a[i].c_str());
 			this->header_regexp.push_back(regExp);
 		}
 	}
 	if(content_regexp && *content_regexp) {
 		vector<string> content_regexp_a = split(content_regexp, "\n", true);
 		for(unsigned i = 0; i < content_regexp_a.size(); i++) {
-			cRegExp *regExp = new FILE_LINE(0) cRegExp(content_regexp_a[i].c_str());
+			cRegExp *regExp = new FILE_LINE(1014) cRegExp(content_regexp_a[i].c_str());
 			this->content_regexp.push_back(regExp);
 		}
 	}
@@ -5694,7 +5694,7 @@ void NoHashMessageRules::load(class SqlDb *sqlDb, bool lock) {
 			      JOIN message_custom_headers ch on (ch.id = nhr.msg_custom_headers_id)");
 		SqlDb_row row;
 		while((row = sqlDb->fetchRow())) {
-			NoHashMessageRule *rule = new FILE_LINE(0) NoHashMessageRule;
+			NoHashMessageRule *rule = new FILE_LINE(1015) NoHashMessageRule;
 			rule->load(row["name"].c_str(), 
 				   atoi(row["msg_custom_headers_id"].c_str()),
 				   row["msg_custom_headers_name"].c_str(),

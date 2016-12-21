@@ -352,7 +352,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	this->readData.filename = filename;
 	this->readData.endFilename = endFilename;
 	this->readData.init(T_BLOCKSIZE * 64);
-	CompressStream *decompressStream = new FILE_LINE(35001) CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz", __FILE__, __LINE__) ?
+	CompressStream *decompressStream = new FILE_LINE(34001) CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz", __FILE__, __LINE__) ?
 									 CompressStream::gzip :
 									reg_match(this->pathname.c_str(), "tar\\.xz", __FILE__, __LINE__) ?
 									 CompressStream::lzma :
@@ -360,7 +360,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 									this->readData.bufferBaseSize, 0);
 	size_t read_position = 0;
 	size_t read_size;
-	char *read_buffer = new FILE_LINE(35002) char[T_BLOCKSIZE];
+	char *read_buffer = new FILE_LINE(34001) char[T_BLOCKSIZE];
 	bool decompressFailed = false;
 	list<u_int64_t> tarPos;
 	if(tarPosString && *tarPosString && *tarPosString != 'x') {
@@ -454,7 +454,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 				while(read_size_for_decompress > GZIP_HEADER_LENGTH + GZIP_HEADER_CHECK_LENGTH &&
 				      GZIP_HEADER_CHECK(read_buffer, 0) &&
 				      GZIP_HEADER_CHECK(read_buffer, GZIP_HEADER_LENGTH)) {
-					char *new_read_buffer = new FILE_LINE(35003) char[T_BLOCKSIZE];
+					char *new_read_buffer = new FILE_LINE(34001) char[T_BLOCKSIZE];
 					memcpy(new_read_buffer, read_buffer + GZIP_HEADER_LENGTH, read_size - GZIP_HEADER_LENGTH);
 					delete [] read_buffer;
 					read_buffer = new_read_buffer;
@@ -597,12 +597,12 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_
 	}
 	if(len) {
 		if(!this->readData.decompressStreamFromLzo) {
-			this->readData.decompressStreamFromLzo = new FILE_LINE(35004) CompressStream(CompressStream::compress_auto, 0, 0);
+			this->readData.decompressStreamFromLzo = new FILE_LINE(34001) CompressStream(CompressStream::compress_auto, 0, 0);
 			this->readData.decompressStreamFromLzo->enableAutoPrefixFile();
 			this->readData.decompressStreamFromLzo->enableForceStream();
 		}
 		if(!this->readData.compressStreamToGzip) {
-			this->readData.compressStreamToGzip = new FILE_LINE(35005) CompressStream(this->readData.send_parameters_zip ? CompressStream::gzip : CompressStream::compress_na, 0, 0);
+			this->readData.compressStreamToGzip = new FILE_LINE(34001) CompressStream(this->readData.send_parameters_zip ? CompressStream::gzip : CompressStream::compress_na, 0, 0);
 		}
 		if(this->readData.decompressStreamFromLzo->isError() ||
 		   this->readData.compressStreamToGzip->isError()) {
@@ -627,7 +627,7 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_
 int    
 Tar::initZip() {
 	if(!this->zipStream) {
-		this->zipStream =  new FILE_LINE(35006) z_stream;
+		this->zipStream =  new FILE_LINE(34001) z_stream;
 		this->zipStream->zalloc = Z_NULL;
 		this->zipStream->zfree = Z_NULL;
 		this->zipStream->opaque = Z_NULL;
@@ -637,7 +637,7 @@ Tar::initZip() {
 			return(false);
 		} else {
 			this->zipBufferLength = 8192*4;
-			this->zipBuffer = new FILE_LINE(35007) char[this->zipBufferLength];
+			this->zipBuffer = new FILE_LINE(34001) char[this->zipBufferLength];
 		}
 	}
 	return(true);
@@ -697,7 +697,7 @@ Tar::initLzma() {
 		/* initialize xz encoder */
 		//uint32_t preset = LZMA_COMPRESSION_LEVEL | (LZMA_COMPRESSION_EXTREME ? LZMA_PRESET_EXTREME : 0);
 		lzma_stream lzstmp = LZMA_STREAM_INIT;
-		lzmaStream = new FILE_LINE(35008) lzma_stream;
+		lzmaStream = new FILE_LINE(34001) lzma_stream;
 		*lzmaStream = lzstmp;
 
 		int ret_xz = lzma_easy_encoder (this->lzmaStream, lzmalevel, LZMA_CHECK_CRC64);
@@ -706,7 +706,7 @@ Tar::initLzma() {
 			return(false);
 		} else {
 			this->zipBufferLength = 8192*4;
-			this->zipBuffer = new FILE_LINE(35009) char[this->zipBufferLength];
+			this->zipBuffer = new FILE_LINE(34001) char[this->zipBufferLength];
 		}
 	}
 	return(true);
@@ -1051,7 +1051,7 @@ TarQueue::write(int qtype, data_t data) {
 	pthread_mutex_lock(&tarslock);
 	Tar *tar = tars[tar_name.str()];
 	if(!tar) {
-		tar = new FILE_LINE(35010) Tar;
+		tar = new FILE_LINE(34001) Tar;
 		tar->typeSpoolFile = typeSpoolFile;
 		lock_okTarPointers();
 		okTarPointers[tar] = getGlobalPacketTimeS();
@@ -1581,7 +1581,7 @@ TarQueue::TarQueue(int spoolIndex) {
 	for(int i = 0; i < maxthreads; i++) {
 		tarthreads[i].tarQueue = this;
 		tarthreads[i].threadEnd = false;
-		tarthreadworker_arg *arg = new FILE_LINE(35011) tarthreadworker_arg;
+		tarthreadworker_arg *arg = new FILE_LINE(34001) tarthreadworker_arg;
 		arg->i = i;
 		arg->tq = this;
 		tarthreads[i].cpuPeak = 0;
@@ -1846,11 +1846,11 @@ int unlzo_gui(const char *args) {
 		cerr << "unlzo: open output file " << outputFile << " failed" << endl;
 		return(1);
 	}
-	CompressStream *decompressStreamFromLzo = new FILE_LINE(35012) CompressStream(CompressStream::lzo, 1024 * 8, 0);
+	CompressStream *decompressStreamFromLzo = new FILE_LINE(34001) CompressStream(CompressStream::lzo, 1024 * 8, 0);
 	decompressStreamFromLzo->enableForceStream();
-	CompressStream *compressStreamToGzip = new FILE_LINE(35013) CompressStream(CompressStream::gzip, 1024 * 8, 0);
-	c_unlzo_gui_compress_to_gzip *unlzo_gui_compress_to_gzip = new FILE_LINE(35014) c_unlzo_gui_compress_to_gzip(outputFileHandle);
-	c_unlzo_gui_decompress_from_lzo *unlzo_gui_decompress_from_lzo = new FILE_LINE(35015) c_unlzo_gui_decompress_from_lzo(compressStreamToGzip, unlzo_gui_compress_to_gzip);
+	CompressStream *compressStreamToGzip = new FILE_LINE(34001) CompressStream(CompressStream::gzip, 1024 * 8, 0);
+	c_unlzo_gui_compress_to_gzip *unlzo_gui_compress_to_gzip = new FILE_LINE(34001) c_unlzo_gui_compress_to_gzip(outputFileHandle);
+	c_unlzo_gui_decompress_from_lzo *unlzo_gui_decompress_from_lzo = new FILE_LINE(34001) c_unlzo_gui_decompress_from_lzo(compressStreamToGzip, unlzo_gui_compress_to_gzip);
 	while(!feof(lzoFileHandle)) {
 		char buff[1024 * 8];
 		size_t readSize = fread(buff, 1, sizeof(buff), lzoFileHandle);

@@ -321,11 +321,11 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool ch
 			}
 			if(!data) {
 				databuff_len = max(PACKET_DATALEN(packet.datalen, packet.datacaplen) + 1, 10000u);
-				data = new FILE_LINE(37001) u_char[databuff_len];
+				data = new FILE_LINE(36001) u_char[databuff_len];
 				
 			} else if(databuff_len < *datalen + PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
 				databuff_len = max(*datalen, databuff_len) + max(PACKET_DATALEN(packet.datalen, packet.datacaplen) + 1, 10000u);
-				u_char* newdata = new FILE_LINE(37002) u_char[databuff_len];
+				u_char* newdata = new FILE_LINE(36001) u_char[databuff_len];
 				memcpy_heapsafe(newdata, data, *datalen, 
 						__FILE__, __LINE__);
 				delete [] data;
@@ -481,7 +481,7 @@ bool TcpReassemblyStream::checkOkPost(TcpReassemblyStream *nextStream) {
 		datalen += nextStream->complete_data.getDatalen();
 		useNextStream = true;
 	}
-	char *data = new FILE_LINE(37003) char[datalen + 1];
+	char *data = new FILE_LINE(36001) char[datalen + 1];
 	memcpy_heapsafe(data, this->complete_data.getData(), this->complete_data.getDatalen(), 
 			__FILE__, __LINE__);
 	if(useNextStream) {
@@ -975,7 +975,7 @@ bool TcpReassemblyLink::push_crazy(
 									      &this->queue_nul_by_ack;
 			iter = queue->find(packet.header_tcp.ack_seq);
 			if(iter == queue->end()) {
-				stream = new FILE_LINE(37004) TcpReassemblyStream(this);
+				stream = new FILE_LINE(36001) TcpReassemblyStream(this);
 				stream->direction = direction;
 				stream->ack = packet.header_tcp.ack_seq;
 				if(i == 1) {
@@ -1059,7 +1059,7 @@ void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 		if(this->queueStreams.size() && this->queue_by_ack.find(this->last_ack) != this->queue_by_ack.end()) {
 			prevStreamByLastAck = this->queue_by_ack[this->last_ack];
 		}
-		stream = new FILE_LINE(37005) TcpReassemblyStream(this);
+		stream = new FILE_LINE(36001) TcpReassemblyStream(this);
 		stream->direction = direction;
 		stream->ack = packet.header_tcp.ack_seq;
 		if(!reassembly->simpleByAck) {
@@ -1611,7 +1611,7 @@ void TcpReassemblyLink::complete_normal(bool final) {
 			   stream->direction == direction ||
 			   (stream->direction == TcpReassemblyStream::DIRECTION_TO_SOURCE && countRequest)) {
 				if(!reassemblyData) {
-					reassemblyData = new FILE_LINE(37006) TcpReassemblyData;
+					reassemblyData = new FILE_LINE(36001) TcpReassemblyData;
 				}
 				if(reassembly->enableIgnorePairReqResp) {
 					++countData;
@@ -1698,7 +1698,7 @@ void TcpReassemblyLink::complete_simple_by_ack() {
 	for(unsigned i = 0; i < this->ok_streams.size(); i++) {
 		data.add(this->ok_streams[i]->complete_data.getData(), this->ok_streams[i]->complete_data.getDatalen());
 	}
-	TcpReassemblyData *reassemblyData = new FILE_LINE(37007) TcpReassemblyData;
+	TcpReassemblyData *reassemblyData = new FILE_LINE(36001) TcpReassemblyData;
 	reassemblyData->addData(data.data(), data.size(),
 				this->ok_streams[0]->complete_data.getTime(), this->ok_streams[0]->ack, (TcpReassemblyDataItem::eDirection)this->ok_streams[0]->direction);
 	reassembly->dataCallback->processData(
@@ -1809,7 +1809,7 @@ void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams) {
 				break;
 			}
 		}
-		reassemblyData = new FILE_LINE(37008) TcpReassemblyData;
+		reassemblyData = new FILE_LINE(36001) TcpReassemblyData;
 		bool existsSeparateExpectContinueData = false;
 		for(size_t i = 0; i < countRequest + countRslt; i++) {
 			TcpReassemblyStream *stream = this->ok_streams[skip_offset + i];
@@ -1988,7 +1988,7 @@ void TcpReassemblyLink::createEthHeader(u_char *packet, int dlt) {
 			    header_sll, header_eth, header_ip_offset, protocol)) {
 		this->ethHeaderLength = header_ip_offset;
 		if(this->ethHeaderLength > 0 && this->ethHeaderLength < 50) {
-			this->ethHeader = new FILE_LINE(37009) u_char[this->ethHeaderLength];
+			this->ethHeader = new FILE_LINE(36001) u_char[this->ethHeaderLength];
 			memcpy(this->ethHeader, packet, this->ethHeaderLength);
 		}
 	}
@@ -2049,7 +2049,7 @@ void TcpReassemblyLink::setRemainData(u_char *data, u_int32_t datalen, TcpReasse
 	if(index >= 0) {
 		this->clearRemainData(direction);
 		if(data && datalen) {
-			this->remainData[index] = new FILE_LINE(37010) u_char[datalen];
+			this->remainData[index] = new FILE_LINE(36001) u_char[datalen];
 			memcpy(this->remainData[index], data, datalen);
 			this->remainDataLength[index] = datalen;
 		}
@@ -2572,7 +2572,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 					     << setw(15) << inet_ntostring(htonl(header_ip->daddr)) << "/" << setw(6) << header_tcp.dest
 					     << endl;
 				}
-				link = new FILE_LINE(37011) TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest,
+				link = new FILE_LINE(36001) TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest,
 								       packet, header_ip,
 								       handle_index, dlt, sensor_id, sensor_ip,
 								       uData);
@@ -2591,7 +2591,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 					     << setw(15) << inet_ntostring(htonl(header_ip->daddr)) << "/" << setw(6) << header_tcp.dest
 					     << endl;
 				}
-				link = new FILE_LINE(37012) TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest,
+				link = new FILE_LINE(36001) TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest,
 								       packet, header_ip,
 								       handle_index, dlt, sensor_id, sensor_ip,
 								       uData);
@@ -2613,7 +2613,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 				     << setw(15) << inet_ntostring(htonl(header_ip->daddr)) << "/" << setw(6) << header_tcp.dest
 				     << endl;
 			}
-			link = new FILE_LINE(37013) TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest,
+			link = new FILE_LINE(36001) TcpReassemblyLink(this, header_ip->saddr, header_ip->daddr, header_tcp.source, header_tcp.dest,
 							       packet, header_ip,
 							       handle_index, dlt, sensor_id, sensor_ip,
 							       uData);
@@ -2647,7 +2647,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	if(ENABLE_DEBUG(type, _debug_packet)) {
 		string _data;
 		if(datalen) {
-			char *__data = new FILE_LINE(37014) char[datalen + 1];
+			char *__data = new FILE_LINE(36001) char[datalen + 1];
 			memcpy_heapsafe(__data, __data,
 					data, NULL,
 					datalen, 

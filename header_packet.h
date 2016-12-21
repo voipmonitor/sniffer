@@ -40,7 +40,7 @@ public:
 		}
 		pop_queue_pool_prepared = false;
 		_sync_prepare = 0;
-		this->stack = new FILE_LINE(10001) rqueue_quick<sHeaderPacketPool>(size_max / HEADER_PACKET_STACK_POOL_SIZE, 0, 0, NULL, false);
+		this->stack = new FILE_LINE(9001) rqueue_quick<sHeaderPacketPool>(size_max / HEADER_PACKET_STACK_POOL_SIZE, 0, 0, NULL, false);
 	}
 	~cHeaderPacketStack() {
 		for(int ipush = 0; ipush < HEADER_PACKET_STACK_PUSH_QUEUE_MAX; ipush++) {
@@ -92,7 +92,7 @@ public:
 				this->pop_queue_size = HEADER_PACKET_STACK_POOL_SIZE - 1;
 				//cout << "P" << flush;
 			} else {
-				*headerPacket = (sHeaderPacket*)new FILE_LINE(10002) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
+				*headerPacket = (sHeaderPacket*)new FILE_LINE(9001) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
 				(*headerPacket)->stack = this;
 				(*headerPacket)->packet_alloc_size = packet_alloc_size;
 				(*headerPacket)->clearPcapProcessData();
@@ -143,7 +143,7 @@ public:
 				//cout << "P" << flush;
 			} else {
 				__sync_lock_release(&_sync_prepare);
-				*headerPacket = (sHeaderPacket*)new FILE_LINE(10003) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
+				*headerPacket = (sHeaderPacket*)new FILE_LINE(9001) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
 				(*headerPacket)->stack = this;
 				(*headerPacket)->packet_alloc_size = packet_alloc_size;
 				(*headerPacket)->clearPcapProcessData();
@@ -165,7 +165,7 @@ public:
 };
 
 inline sHeaderPacket *CREATE_HP(u_int16_t packet_alloc_size) {
-	sHeaderPacket *header_packet = (sHeaderPacket*)new FILE_LINE(10004) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
+	sHeaderPacket *header_packet = (sHeaderPacket*)new FILE_LINE(9001) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
 	header_packet->stack = NULL;
 	header_packet->packet_alloc_size = packet_alloc_size;
 	header_packet->clearPcapProcessData();

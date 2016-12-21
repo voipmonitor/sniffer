@@ -629,10 +629,10 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 	}
 	if(packetLen != packetS->header_pt->caplen ||
 	   ENABLE_CONVERT_DLT_SLL_TO_EN10(packetS->dlt)) {
-		header = new FILE_LINE(27001) pcap_pkthdr;
+		header = new FILE_LINE(26001) pcap_pkthdr;
 		memcpy(header, packetS->header_pt, sizeof(pcap_pkthdr));
 		allocHeader = true;
-		packet = new FILE_LINE(27002) u_char[header->caplen];
+		packet = new FILE_LINE(26001) u_char[header->caplen];
 		allocPacket = true;
 		if(packetLen != packetS->header_pt->caplen) {
 			if(type == TYPE_SIP && packetS->isSip) {
@@ -2484,7 +2484,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			}
 
 			if(call->contenttype) delete [] call->contenttype;
-			call->contenttype = new FILE_LINE(27004) char[contenttypelen + 1];
+			call->contenttype = new FILE_LINE(26001) char[contenttypelen + 1];
 			strcpy(call->contenttype, contenttypestr);
 			
 			// UPDATE TEXT
@@ -2506,7 +2506,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					call->message = rsltMessage;
 				} else {
 					if(!call->message) {
-						call->message = new FILE_LINE(27003) char[1];
+						call->message = new FILE_LINE(26001) char[1];
 						call->message[0] = '\0';
 					}
 				}
@@ -2871,7 +2871,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	// Content-Type found 
 	if(call->type == MESSAGE && call->message == NULL && call->message_info == NULL) {
 		if(call->contenttype) delete [] call->contenttype;
-		call->contenttype = new FILE_LINE(27004) char[contenttypelen + 1];
+		call->contenttype = new FILE_LINE(26001) char[contenttypelen + 1];
 		strcpy(call->contenttype, contenttypestr);
 		
 		char *rsltMessage;
@@ -2889,7 +2889,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			if(rsltMessage) {
 				call->message = rsltMessage;
 			} else {
-				call->message = new FILE_LINE(27005) char[1];
+				call->message = new FILE_LINE(26001) char[1];
 				call->message[0] = '\0';
 			}
 			if(rsltMessageInfo) {
@@ -4365,7 +4365,7 @@ void parse_packet__message_content(char *message, unsigned int messageLength,
 					if(rsltMessage) {
 						string rslt_message = gsmMessageData.getUserDataMessage(userData);
 						if(rslt_message.length()) {
-							*rsltMessage = new FILE_LINE(27006) char[rslt_message.length() + 1];
+							*rsltMessage = new FILE_LINE(26001) char[rslt_message.length() + 1];
 							memcpy(*rsltMessage, rslt_message.c_str(), rslt_message.length());
 							(*rsltMessage)[rslt_message.length()] = '\0';
 						}
@@ -4385,7 +4385,7 @@ void parse_packet__message_content(char *message, unsigned int messageLength,
 								rslt_message_info += string("dcs: voicemail ") + (gsmMessageData.dcs & 0x8 ? "active" : "inactive");
 							}
 							if(rslt_message_info.length()) {
-								*rsltMessageInfo = new FILE_LINE(27007) char[rslt_message_info.length() + 1];
+								*rsltMessageInfo = new FILE_LINE(26001) char[rslt_message_info.length() + 1];
 								strcpy(*rsltMessageInfo, rslt_message_info.c_str());
 							}
 							if(rsltDcs) {
@@ -4418,7 +4418,7 @@ void parse_packet__message_content(char *message, unsigned int messageLength,
 							 sGsmMessageAck.minute,
 							 sGsmMessageAck.second,
 							 sGsmMessageAck.timezone);
-						*rsltMessageInfo = new FILE_LINE(27008) char[strlen(rslt_message_info_buff) + 1];
+						*rsltMessageInfo = new FILE_LINE(26001) char[strlen(rslt_message_info_buff) + 1];
 						strcpy(*rsltMessageInfo, rslt_message_info_buff);
 					}
 				}
@@ -4429,7 +4429,7 @@ void parse_packet__message_content(char *message, unsigned int messageLength,
 					char rslt_message_info_buff[100];
 					snprintf(rslt_message_info_buff, 100, 
 						 "ACK");
-					*rsltMessageInfo = new FILE_LINE(27009) char[strlen(rslt_message_info_buff) + 1];
+					*rsltMessageInfo = new FILE_LINE(26001) char[strlen(rslt_message_info_buff) + 1];
 					strcpy(*rsltMessageInfo, rslt_message_info_buff);
 				}
 				}
@@ -4439,7 +4439,7 @@ void parse_packet__message_content(char *message, unsigned int messageLength,
 			}
 		} else {
 			if(rsltMessage) {
-				*rsltMessage = new FILE_LINE(27010) char[messageLength + 1];
+				*rsltMessage = new FILE_LINE(26001) char[messageLength + 1];
 				memcpy(*rsltMessage, message, messageLength);
 				(*rsltMessage)[messageLength] = '\0';
 			}
@@ -4665,8 +4665,8 @@ inline int _ipfrag_dequeue(ip_frag_queue_t *queue,
 			i++;
 		}
 	} else {
-		header_packet_pqout->header = new FILE_LINE(27011) pcap_pkthdr_plus;
-		header_packet_pqout->packet = new FILE_LINE(27012) u_char[totallen];
+		header_packet_pqout->header = new FILE_LINE(26001) pcap_pkthdr_plus;
+		header_packet_pqout->packet = new FILE_LINE(26001) u_char[totallen];
 		header_packet_pqout->block_store = NULL;
 		header_packet_pqout->block_store_index = 0;
 		header_packet_pqout->block_store_locked = false;
@@ -4773,7 +4773,7 @@ inline int _ipfrag_add(ip_frag_queue_t *queue,
 		// this offset number is not yet in the queue - add packet to queue which automatically sort it into right position
 
 		// create node
-		ip_frag_s *node = new FILE_LINE(27013) ip_frag_s;
+		ip_frag_s *node = new FILE_LINE(26001) ip_frag_s;
 
 		if(queue->size()) {
 			// update totallen for the first node 
@@ -4794,7 +4794,7 @@ inline int _ipfrag_add(ip_frag_queue_t *queue,
 			*header_packet = NULL;
 		} else {
 			node->ts = header_packet_pqout->header->get_tv_sec();
-			node->header_packet_pqout = new FILE_LINE(27014) sHeaderPacketPQout;
+			node->header_packet_pqout = new FILE_LINE(26001) sHeaderPacketPQout;
 			node->header_packet = NULL;
 			*(sHeaderPacketPQout*)node->header_packet_pqout = *header_packet_pqout;
 			((sHeaderPacketPQout*)node->header_packet_pqout)->alloc_and_copy_blockstore();
@@ -4881,7 +4881,7 @@ inline int _handle_defrag(iphdr2 *header_ip,
 	ip_frag_queue_t *queue = ipfrag_data->ip_frag_stream[header_ip_orig.saddr][header_ip_orig.id];
 	if(!queue) {
 		// queue does not exists yet - create it and assign to map 
-		queue = new FILE_LINE(27015) ip_frag_queue_t;
+		queue = new FILE_LINE(26001) ip_frag_queue_t;
 		ipfrag_data->ip_frag_stream[header_ip_orig.saddr][header_ip_orig.id] = queue;
 	}
 	int res = header_packet ?
@@ -5017,9 +5017,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 			mirrorip->send((char *)ppd.header_ip, (int)(HPH(header_packet)->caplen - ((u_char*)ppd.header_ip - HPP(header_packet))));
 		}
 		if(!opt_mirroronly) {
-			pcap_pkthdr *header = new FILE_LINE(27016) pcap_pkthdr;
+			pcap_pkthdr *header = new FILE_LINE(26001) pcap_pkthdr;
 			*header = *HPH(header_packet);
-			u_char *packet = new FILE_LINE(27017) u_char[header->caplen];
+			u_char *packet = new FILE_LINE(26001) u_char[header->caplen];
 			memcpy(packet, HPP(header_packet), header->caplen);
 			unsigned dataoffset = (u_char*)ppd.data - HPP(header_packet);
 			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
@@ -5352,7 +5352,7 @@ bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_
 	
 	tcp_stream_packet *lastPacket = stream->packets ? getLastStreamPacket(stream) : NULL;
 	
-	tcp_stream_packet *newPacket = new FILE_LINE(27018) tcp_stream_packet;
+	tcp_stream_packet *newPacket = new FILE_LINE(26001) tcp_stream_packet;
 	newPacket->packetS = packetS;
 	newPacket->next = NULL;
 	newPacket->ts = packetS->header_pt->ts.tv_sec;
@@ -5371,7 +5371,7 @@ bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_
 		if(stream->complete_data) {
 			stream->complete_data->add(packetS->data, packetS->datalen);
 		} else {
-			stream->complete_data =  new FILE_LINE(27019) SimpleBuffer(10000);
+			stream->complete_data =  new FILE_LINE(26001) SimpleBuffer(10000);
 			stream->complete_data->add(stream->packets->packetS->data, stream->packets->packetS->datalen);
 			stream->complete_data->add(packetS->data, packetS->datalen);
 		}
@@ -5404,7 +5404,7 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id id, PreProcess
 		*new_header = *completePacketS->header_pt;
 		new_header->caplen = newLen;
 		new_header->len = newLen;
-		u_char *new_packet = new FILE_LINE(27020) u_char[newLen];
+		u_char *new_packet = new FILE_LINE(26001) u_char[newLen];
 		memcpy(new_packet, completePacketS->packet, completePacketS->dataoffset);
 		memcpy(new_packet + completePacketS->dataoffset, new_data, new_data_len);
 		new_data = new_packet + completePacketS->dataoffset;
@@ -5474,16 +5474,16 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	this->readit = 0;
 	this->writeit = 0;
 	if(typePreProcessThread == ppt_detach) {
-		this->qring_detach = new FILE_LINE(27021) batch_packet_s*[this->qring_length];
+		this->qring_detach = new FILE_LINE(26001) batch_packet_s*[this->qring_length];
 		for(unsigned int i = 0; i < this->qring_length; i++) {
-			this->qring_detach[i] = new FILE_LINE(27022) batch_packet_s(this->qring_batch_item_length);
+			this->qring_detach[i] = new FILE_LINE(26001) batch_packet_s(this->qring_batch_item_length);
 			this->qring_detach[i]->used = 0;
 		}
 		this->qring = NULL;
 	} else {
-		this->qring = new FILE_LINE(27023) batch_packet_s_process*[this->qring_length];
+		this->qring = new FILE_LINE(26001) batch_packet_s_process*[this->qring_length];
 		for(unsigned int i = 0; i < this->qring_length; i++) {
-			this->qring[i] = new FILE_LINE(27024) batch_packet_s_process(this->qring_batch_item_length);
+			this->qring[i] = new FILE_LINE(26001) batch_packet_s_process(this->qring_batch_item_length);
 			this->qring[i]->used = 0;
 		}
 		this->qring_detach = NULL;
@@ -5496,11 +5496,11 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	this->_sync_count = 0;
 	this->term_preProcess = false;
 	if(typePreProcessThread == ppt_detach) {
-		this->stackSip = new FILE_LINE(27025) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
+		this->stackSip = new FILE_LINE(26001) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
 									      opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
 									      opt_preprocess_packets_qring_length, 
 									     1, 10);
-		this->stackRtp = new FILE_LINE(27026) cHeapItemsPointerStack((opt_preprocess_packets_qring_item_length ?
+		this->stackRtp = new FILE_LINE(26001) cHeapItemsPointerStack((opt_preprocess_packets_qring_item_length ?
 									       opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
 									       opt_preprocess_packets_qring_length) * 10, 
 									     1, 100);
@@ -6228,12 +6228,12 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 			      opt_process_rtp_packets_qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
-	this->qring = new FILE_LINE(27027) batch_packet_s_process*[this->qring_length];
+	this->qring = new FILE_LINE(26001) batch_packet_s_process*[this->qring_length];
 	for(unsigned int i = 0; i < this->qring_length; i++) {
-		this->qring[i] = new FILE_LINE(27028) batch_packet_s_process(this->qring_batch_item_length);
+		this->qring[i] = new FILE_LINE(26001) batch_packet_s_process(this->qring_batch_item_length);
 		this->qring[i]->used = 0;
 	}
-	this->hash_find_flag = new FILE_LINE(0) volatile int[this->qring_batch_item_length];
+	this->hash_find_flag = new FILE_LINE(26001) volatile int[this->qring_batch_item_length];
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	this->qring_active_push_item = NULL;
@@ -6254,7 +6254,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 			for(int j = 0; j < opt_process_rtp_packets_hash_next_thread_sem_sync; j++) {
 				sem_init(&sem_sync_next_thread[i][j], 0, 0);
 			}
-			arg_next_thread *arg = new FILE_LINE(27029) arg_next_thread;
+			arg_next_thread *arg = new FILE_LINE(26001) arg_next_thread;
 			arg->processRtpPacket = this;
 			arg->next_thread_id = i + 1;
 			vm_pthread_create("hash next",
@@ -6658,9 +6658,9 @@ void ProcessRtpPacket::autoStartProcessRtpPacket() {
 	   opt_enable_process_rtp_packet && enable_pcap_split &&
 	   !is_read_from_file_simple()) {
 		process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
-		ProcessRtpPacket *_processRtpPacketHash = new FILE_LINE(27030) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
+		ProcessRtpPacket *_processRtpPacketHash = new FILE_LINE(26001) ProcessRtpPacket(ProcessRtpPacket::hash, 0);
 		for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
-			processRtpPacketDistribute[i] = new FILE_LINE(27031) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
+			processRtpPacketDistribute[i] = new FILE_LINE(26001) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
 		}
 		processRtpPacketHash = _processRtpPacketHash;
 	}
@@ -6671,7 +6671,7 @@ void ProcessRtpPacket::addRtpRhThread() {
 		for(int j = 0; j < opt_process_rtp_packets_hash_next_thread_sem_sync; j++) {
 			sem_init(&sem_sync_next_thread[this->process_rtp_packets_hash_next_threads][j], 0, 0);
 		}
-		arg_next_thread *arg = new FILE_LINE(27032) arg_next_thread;
+		arg_next_thread *arg = new FILE_LINE(26001) arg_next_thread;
 		arg->processRtpPacket = this;
 		arg->next_thread_id = this->process_rtp_packets_hash_next_threads + 1;
 		vm_pthread_create("hash next",
@@ -6683,7 +6683,7 @@ void ProcessRtpPacket::addRtpRhThread() {
 void ProcessRtpPacket::addRtpRdThread() {
 	if(process_rtp_packets_distribute_threads_use < MAX_PROCESS_RTP_PACKET_THREADS &&
 	   !processRtpPacketDistribute[process_rtp_packets_distribute_threads_use]) {
-		ProcessRtpPacket *_processRtpPacketDistribute = new FILE_LINE(27033) ProcessRtpPacket(ProcessRtpPacket::distribute, process_rtp_packets_distribute_threads_use);
+		ProcessRtpPacket *_processRtpPacketDistribute = new FILE_LINE(26001) ProcessRtpPacket(ProcessRtpPacket::distribute, process_rtp_packets_distribute_threads_use);
 		processRtpPacketDistribute[process_rtp_packets_distribute_threads_use] = _processRtpPacketDistribute;
 		++process_rtp_packets_distribute_threads_use;
 	}
@@ -6707,9 +6707,9 @@ void rtp_read_thread::init_qring(size_t qring_length) {
 	this->qring_length = qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
-	this->qring = new FILE_LINE(27034) batch_packet_rtp*[this->qring_length];
+	this->qring = new FILE_LINE(26001) batch_packet_rtp*[this->qring_length];
 	for(unsigned int i = 0; i < this->qring_length; i++) {
-		this->qring[i] = new FILE_LINE(27035) batch_packet_rtp(this->qring_batch_item_length);
+		this->qring[i] = new FILE_LINE(26001) batch_packet_rtp(this->qring_batch_item_length);
 		this->qring[i]->used = 0;
 	}
 	this->qring_push_index = 0;
@@ -6718,12 +6718,12 @@ void rtp_read_thread::init_qring(size_t qring_length) {
 
 void rtp_read_thread::init_thread_buffer() {
 	thread_buffer_length = 10;
-	this->thread_buffer = new FILE_LINE(0) batch_packet_rtp_thread_buffer*[thread_buffer_length];
+	this->thread_buffer = new FILE_LINE(26001) batch_packet_rtp_thread_buffer*[thread_buffer_length];
 	for(unsigned int i = 0; i < thread_buffer_length; i++) {
-		this->thread_buffer[i] = new FILE_LINE(0) batch_packet_rtp_thread_buffer(this->qring_batch_item_length);
+		this->thread_buffer[i] = new FILE_LINE(26001) batch_packet_rtp_thread_buffer(this->qring_batch_item_length);
 	}
 	#if DEBUG_QUEUE_RTP_THREAD
-	tdd = new FILE_LINE(0) thread_debug_data[thread_buffer_length];
+	tdd = new FILE_LINE(26001) thread_debug_data[thread_buffer_length];
 	memset(tdd, 0, thread_buffer_length * sizeof(thread_debug_data));
 	#endif
 }
