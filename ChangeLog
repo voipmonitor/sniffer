@@ -1,3 +1,11 @@
+17.10.1 19.12.2016
+==================
+- fix issue with message without content and with exists dcs [VG-870]
+- fix pcap_queue_use_blocks mode
+- fix leak / unlock issue with http / tcpreassembly
+- suppress warning 'incorrect dataoffset/caplen' when udpfrag is enabled
+
+
 17.10 19.12.2016
 =================
 - fix register failed 404 which was adding new record instead of increasing count [VS-543]
