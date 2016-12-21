@@ -350,7 +350,7 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 	}
 
 	if(in2 != NULL) {
-		bitstream_buf2 = new FILE_LINE(5001) char[file_size2];
+		bitstream_buf2 = new FILE_LINE(5002) char[file_size2];
 		if(!bitstream_buf2) {
 			if(f_in1 != NULL)
 				fclose(f_in1);

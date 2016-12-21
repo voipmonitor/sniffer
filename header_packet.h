@@ -92,7 +92,7 @@ public:
 				this->pop_queue_size = HEADER_PACKET_STACK_POOL_SIZE - 1;
 				//cout << "P" << flush;
 			} else {
-				*headerPacket = (sHeaderPacket*)new FILE_LINE(9001) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
+				*headerPacket = (sHeaderPacket*)new FILE_LINE(9002) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
 				(*headerPacket)->stack = this;
 				(*headerPacket)->packet_alloc_size = packet_alloc_size;
 				(*headerPacket)->clearPcapProcessData();
@@ -143,7 +143,7 @@ public:
 				//cout << "P" << flush;
 			} else {
 				__sync_lock_release(&_sync_prepare);
-				*headerPacket = (sHeaderPacket*)new FILE_LINE(9001) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
+				*headerPacket = (sHeaderPacket*)new FILE_LINE(9003) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
 				(*headerPacket)->stack = this;
 				(*headerPacket)->packet_alloc_size = packet_alloc_size;
 				(*headerPacket)->clearPcapProcessData();
@@ -165,7 +165,7 @@ public:
 };
 
 inline sHeaderPacket *CREATE_HP(u_int16_t packet_alloc_size) {
-	sHeaderPacket *header_packet = (sHeaderPacket*)new FILE_LINE(9001) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
+	sHeaderPacket *header_packet = (sHeaderPacket*)new FILE_LINE(9004) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
 	header_packet->stack = NULL;
 	header_packet->packet_alloc_size = packet_alloc_size;
 	header_packet->clearPcapProcessData();

@@ -177,7 +177,7 @@ struct pcap_block_store {
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		this->_sync_packets_lock = new FILE_LINE(17001) volatile int8_t[DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH];
 		memset((void*)this->_sync_packets_lock, 0, sizeof(int8_t) * DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH);
-		this->_sync_packets_flag = new FILE_LINE(17001) volatile int8_t[DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+		this->_sync_packets_flag = new FILE_LINE(17002) volatile int8_t[DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
 		memset((void*)this->_sync_packets_flag, 0, sizeof(int8_t) * DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
 		#endif
 	}

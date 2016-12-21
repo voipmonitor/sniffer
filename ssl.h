@@ -1214,7 +1214,7 @@ static gboolean from_hex(StringInfo* out, const char* in, gsize hex_len) {
 	if (hex_len & 1)
 		return FALSE;
 
-	out->data = new FILE_LINE(32001) guchar[hex_len / 2];
+	out->data = new FILE_LINE(32002) guchar[hex_len / 2];
 	for (i = 0; i < hex_len / 2; i++) {
 		int a = ws_xton(in[i*2]);
 		int b = ws_xton(in[i*2 + 1]);
@@ -1296,7 +1296,7 @@ bytes_to_ep_str(const guint8 *bd, int bd_len)
 			//REPORT_DISSECTOR_BUG("Null pointer passed to bytes_to_ep_str()");
 			return NULL;
 
-		cur = new FILE_LINE(32001) gchar[MAX_BYTE_STR_LEN+3+1];
+		cur = new FILE_LINE(32003) gchar[MAX_BYTE_STR_LEN+3+1];
 		if (bd_len <= 0) { cur[0] = '\0'; return cur; }
 
 		if (bd_len > MAX_BYTE_STR_LEN/2) {	  /* bd_len > 24 */
@@ -1354,7 +1354,7 @@ bytes_to_ep_str_punct(const guint8 *bd, int bd_len, gchar punct)
 		if (!punct)
 			return bytes_to_ep_str(bd, bd_len);
 	   
-		cur = new FILE_LINE(32001) gchar[MAX_BYTE_STR_LEN+3+1];
+		cur = new FILE_LINE(32004) gchar[MAX_BYTE_STR_LEN+3+1];
 		if (bd_len <= 0) { cur[0] = '\0'; return cur; }
 	   
 		if (bd_len > MAX_BYTE_STR_LEN/3) {	  /* bd_len > 16 */
@@ -1393,7 +1393,7 @@ BAGTYPE(gnutls_pkcs12_bag_type_t x) {
 static gint     
 ssl_data_alloc(StringInfo* str, size_t len)
 {                       
-	str->data = new FILE_LINE(32001) guchar[len];
+	str->data = new FILE_LINE(32005) guchar[len];
 	/* the allocator can return a null pointer for a size equal to 0,
 	 * and that must be allowed */
 	if (len > 0 && !str->data)

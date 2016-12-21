@@ -277,7 +277,7 @@ public:
 	struct s_worker {
 		s_worker(Call *call) {
 			this->call = call;
-			spybuffer = new FILE_LINE(13001) FifoBuffer((string("spybuffer for call ") + call->call_id).c_str());
+			spybuffer = new FILE_LINE(13002) FifoBuffer((string("spybuffer for call ") + call->call_id).c_str());
 			spybuffer->setMinItemBufferLength(1000);
 			spybuffer->setMaxSize(10000000);
 			thread = 0;
@@ -309,7 +309,7 @@ public:
 		unlock_map();
 	}
 	s_worker *add(Call *call) {
-		s_worker *worker = new FILE_LINE(13001) s_worker(call);
+		s_worker *worker = new FILE_LINE(13003) s_worker(call);
 		lock_map();
 		workers[call] = worker;
 		unlock_map();
@@ -428,7 +428,7 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 	
 	unsigned int period_msec = 50;
 	unsigned int period_samples = 8000 * period_msec / 1000;
-	u_char *spybufferchunk = new FILE_LINE(13001) u_char[period_samples * 2];
+	u_char *spybufferchunk = new FILE_LINE(13004) u_char[period_samples * 2];
 	u_int32_t len1, len2;
 	short int r1, r2;
 	char *s16char;
@@ -754,12 +754,12 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			pthread_mutex_unlock(&vm_rrd_lock);
 			return -1;
 		}
-		if ((manager_cmd_line = new FILE_LINE(13001) char[strlen(buf) + 1]) == NULL) {
+		if ((manager_cmd_line = new FILE_LINE(13005) char[strlen(buf) + 1]) == NULL) {
 			syslog(LOG_ERR, "parse_command creategraph malloc error\n");
 			pthread_mutex_unlock(&vm_rrd_lock);
 			return -1;
 		}
-		if ((manager_args = new FILE_LINE(13001) char*[manager_argc + 1]) == NULL) {
+		if ((manager_args = new FILE_LINE(13006) char*[manager_argc + 1]) == NULL) {
 			delete [] manager_cmd_line;
 			syslog(LOG_ERR, "parse_command creategraph malloc error2\n");
 			pthread_mutex_unlock(&vm_rrd_lock);
@@ -1362,7 +1362,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			if(it != ipacc_live.end()) {
 				filter = it->second;
 			} else {
-				filter = new FILE_LINE(13001) octects_live_t;
+				filter = new FILE_LINE(13007) octects_live_t;
 				memset(filter, 0, sizeof(octects_live_t));
 				filter->all = 1;
 				filter->fetch_timestamp = time(NULL);
@@ -1374,7 +1374,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			return 0;
 		} else {
 			octects_live_t* filter;
-			filter = new FILE_LINE(13001) octects_live_t;
+			filter = new FILE_LINE(13008) octects_live_t;
 			memset(filter, 0, sizeof(octects_live_t));
 			filter->setFilter(ipfilter.c_str());
 			filter->fetch_timestamp = time(NULL);
@@ -1492,7 +1492,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			if(usersnifferIT != usersniffer.end()) {
 				filter = usersnifferIT->second;
 			} else {
-				filter = new FILE_LINE(13001) livesnifferfilter_t;
+				filter = new FILE_LINE(13009) livesnifferfilter_t;
 				memset(filter, 0, sizeof(livesnifferfilter_t));
 				usersniffer[uid] = filter;
 			}
@@ -1506,7 +1506,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		if(usersnifferIT != usersniffer.end()) {
 			filter = usersnifferIT->second;
 		} else {
-			filter = new FILE_LINE(13001) livesnifferfilter_t;
+			filter = new FILE_LINE(13010) livesnifferfilter_t;
 			memset(filter, 0, sizeof(livesnifferfilter_t));
 			usersniffer[uid] = filter;
 		}
@@ -1955,7 +1955,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		char dateTimeKey[2048];
 		u_int32_t recordId = 0;
 		char tableType[100] = "";
-		char *tarPosI = new FILE_LINE(13001) char[1000000];
+		char *tarPosI = new FILE_LINE(13011) char[1000000];
 		unsigned spool_index = 0;
 		int type_spool_file = (int)tsf_na;
 		*tarPosI = 0;
@@ -2230,7 +2230,7 @@ getwav:
 	} else if(strstr(buf, "genhttppcap") != NULL) {
 		char timestamp_from[100]; 
 		char timestamp_to[100]; 
-		char *ids = new FILE_LINE(13001) char [1000000];
+		char *ids = new FILE_LINE(13012) char [1000000];
 		sscanf(buf, "genhttppcap %19[T0-9--: ] %19[T0-9--: ] %s", timestamp_from, timestamp_to, ids);
 		/*
 		cout << timestamp_from << endl
@@ -2462,7 +2462,7 @@ getwav:
 		}
 		return(0);
 	} else if(strstr(buf, "login_screen_popup") != NULL) {
-		*managerClientThread =  new FILE_LINE(13001) ManagerClientThread_screen_popup(client, buf);
+		*managerClientThread =  new FILE_LINE(13013) ManagerClientThread_screen_popup(client, buf);
 	} else if(strstr(buf, "ac_add_thread") != NULL) {
 		extern AsyncClose *asyncClose;
 		asyncClose->addThread();
@@ -2607,20 +2607,20 @@ getwav:
 	} else if(strstr(buf, "malloc_trim") != NULL) {
 		malloc_trim(0);
 	} else if(strstr(buf, "memcrash_test_1") != NULL) {
-		char *test = new FILE_LINE(13001) char[10];
+		char *test = new FILE_LINE(13014) char[10];
 		test[10] = 1;
 	} else if(strstr(buf, "memcrash_test_2") != NULL) {
-		char *test = new FILE_LINE(13001) char[10];
+		char *test = new FILE_LINE(13015) char[10];
 		delete [] test;
 		delete [] test;
 	} else if(strstr(buf, "memcrash_test_3") != NULL) {
-		char *test = new FILE_LINE(13001) char[10];
+		char *test = new FILE_LINE(13016) char[10];
 		delete [] test;
 		test[0] = 1;
 	} else if(strstr(buf, "memcrash_test_4") != NULL) {
 		char *test[10];
 		for(int i = 0; i < 10; i++) {
-			test[i] = new FILE_LINE(13001) char[10];
+			test[i] = new FILE_LINE(13017) char[10];
 		}
 		memset(test[4] + 10, 0, 40);
 		*(char*)0 = 0;
@@ -3085,7 +3085,7 @@ tryagain:
 			}
 
 			pthread_attr_init(&attr);
-			unsigned int *_ids = new FILE_LINE(13001) unsigned int;
+			unsigned int *_ids = new FILE_LINE(13018) unsigned int;
 			*_ids = client;
 			int rslt = pthread_create (		/* Create a child thread        */
 				       &threads,		/* Thread ID (system assigned)  */    
@@ -3351,7 +3351,7 @@ void ManagerClientThread::run() {
 	int flag = 0;
 	setsockopt(client, IPPROTO_TCP, TCP_NODELAY, (char *) &flag, sizeof(int));
 	int flushBuffLength = 1000;
-	char *flushBuff = new FILE_LINE(13001) char[flushBuffLength];
+	char *flushBuff = new FILE_LINE(13019) char[flushBuffLength];
 	memset(flushBuff, '_', flushBuffLength - 1);
 	flushBuff[flushBuffLength - 1] = '\n';
 	while(true && !is_terminating_without_error() && !disconnect) {
@@ -3647,7 +3647,7 @@ int sendFile(const char *fileName, int client, ssh_channel sshchannel, bool zip)
 	}
 	CompressStream *compressStream = NULL;
 	if(zip) {
-		compressStream = new FILE_LINE(13001) CompressStream(CompressStream::gzip, 1024, 0);
+		compressStream = new FILE_LINE(13020) CompressStream(CompressStream::gzip, 1024, 0);
 		compressStream->setSendParameters(client, sshchannel);
 	}
 	ssize_t nread;
@@ -3690,7 +3690,7 @@ int sendString(string *str, int client, ssh_channel sshchannel, bool zip) {
 	CompressStream *compressStream = NULL;
 	if(zip &&
 	   ((*str)[0] != 0x1f || (str->length() > 1 && (*str)[1] != 0x8b))) {
-		compressStream = new FILE_LINE(13001) CompressStream(CompressStream::gzip, 1024, 0);
+		compressStream = new FILE_LINE(13021) CompressStream(CompressStream::gzip, 1024, 0);
 		compressStream->setSendParameters(client, sshchannel);
 	}
 	unsigned chunkLength = 4096;

@@ -243,7 +243,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	codecchanged = false;
 	had_audio = false;
 
-	channel_fix1 = new FILE_LINE(24001) ast_channel;
+	channel_fix1 = new FILE_LINE(24002) ast_channel;
 	memset(channel_fix1, 0, sizeof(ast_channel));
 	channel_fix1->jitter_impl = 0; // fixed
 	channel_fix1->jitter_max = 50; 
@@ -253,7 +253,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	channel_fix1->resync = 1;
 	channel_fix1->audiobuf = NULL;
 
-	channel_fix2  = new FILE_LINE(24001) ast_channel;
+	channel_fix2  = new FILE_LINE(24003) ast_channel;
 	memset(channel_fix2, 0, sizeof(ast_channel));
 	channel_fix2->jitter_impl = 0; // fixed
 	channel_fix2->jitter_max = 200; 
@@ -263,7 +263,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	channel_fix2->resync = 1;
 	channel_fix2->audiobuf = NULL;
 
-	channel_adapt = new FILE_LINE(24001) ast_channel;
+	channel_adapt = new FILE_LINE(24004) ast_channel;
 	memset(channel_adapt, 0, sizeof(ast_channel));
 	channel_adapt->jitter_impl = 1; // adaptive
 	channel_adapt->jitter_max = 500; 
@@ -273,7 +273,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	channel_adapt->resync = 1;
 	channel_adapt->audiobuf = NULL;
 
-	channel_record = new FILE_LINE(24001) ast_channel;
+	channel_record = new FILE_LINE(24005) ast_channel;
 	memset(channel_record, 0, sizeof(ast_channel));
 	channel_record->jitter_impl = 0; // fixed
 	channel_record->jitter_max = 60; 
@@ -291,7 +291,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	last_voice_frame_timestamp = 0;
 
 	//channel->name = "SIP/fixed";
-	frame = new FILE_LINE(24001) ast_frame;
+	frame = new FILE_LINE(24006) ast_frame;
 	memset(frame, 0, sizeof(ast_frame));
 	frame->frametype = AST_FRAME_VOICE;
 	lastframetype = AST_FRAME_VOICE;
@@ -1385,7 +1385,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					}
 				}
 				if(!gfileRAW_buffer) {
-					gfileRAW_buffer = new FILE_LINE(24001) char[32768];
+					gfileRAW_buffer = new FILE_LINE(24007) char[32768];
 					if(gfileRAW_buffer == NULL) {
 						syslog(LOG_ERR, "Cannot allocate memory for gfileRAW_buffer - low memory this is FATAL");
 						exit(2);
@@ -1819,7 +1819,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(!DSP) DSP = dsp_new();
 		char event_digit;
 		int event_len;
-		short int *sdata = new FILE_LINE(24001) short int[payload_len];
+		short int *sdata = new FILE_LINE(24008) short int[payload_len];
 		if(!sdata) {
 			syslog(LOG_ERR, "sdata malloc failed [%u]\n", (unsigned int)(payload_len * 2));
 			return(false);

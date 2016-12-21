@@ -32,7 +32,7 @@ public:
 			}
 			if(!this->buffer) {
 				this->buffer_length = this->getBufferLength(length - offset);
-				this->buffer = new FILE_LINE(41001) u_char[this->buffer_length];
+				this->buffer = new FILE_LINE(41002) u_char[this->buffer_length];
 			}
 			if(this->length < this->buffer_length) {
 				if(length - offset <= this->buffer_length - this->length) {
@@ -46,7 +46,7 @@ public:
 				}
 			}
 			if(!this->next) {
-				this->next = new FILE_LINE(41001) FifoBufferItem(this->owner, length - offset);
+				this->next = new FILE_LINE(41003) FifoBufferItem(this->owner, length - offset);
 			}
 			return(this->next->add(buffer, length, offset));
 		}
@@ -113,7 +113,7 @@ public:
 			return(false);
 		}
 		if(!this->first) {
-			this->first = new FILE_LINE(41001) FifoBufferItem(this, size);
+			this->first = new FILE_LINE(41004) FifoBufferItem(this, size);
 		}
 		this->last(false)->add(buffer, size);
 		unlock();
@@ -137,7 +137,7 @@ public:
 		   size < *get_size) {
 			*get_size = size;
 		}
-		u_char *get_buffer = new FILE_LINE(41001) u_char[*get_size];
+		u_char *get_buffer = new FILE_LINE(41005) u_char[*get_size];
 		u_int32_t _all_size = 0;
 		u_int32_t _get_size = 0;
 		FifoBufferItem *iter = this->first;

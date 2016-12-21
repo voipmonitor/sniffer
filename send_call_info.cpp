@@ -239,7 +239,7 @@ void initSendCallInfo() {
 		return;
 	}
 	sendCallInfo_lock();
-	sendCallInfo = new FILE_LINE(25001) SendCallInfo();
+	sendCallInfo = new FILE_LINE(25002) SendCallInfo();
 	sendCallInfo->load();
 	sendCallInfo_unlock();
 	_sendCallInfo_ready = 1;

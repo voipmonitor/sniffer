@@ -188,7 +188,7 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap, int stere
 	}
 
 	if(in2 != NULL) {
-		bitstream_buf2 = new FILE_LINE(6001) char[file_size2];
+		bitstream_buf2 = new FILE_LINE(6002) char[file_size2];
 		if(!bitstream_buf2) {
 			fclose(f_in1);
 			fclose(f_in2);

@@ -399,8 +399,8 @@ void HttpDataCache_link::addRequest(u_int64_t timestamp,
 	if(relations_map.find(relations_map_id) != relations_map.end()) {
 		return;
 	}
-	HttpDataCache_relation *new_relation = new FILE_LINE(11001) HttpDataCache_relation();
-	new_relation->request = new FILE_LINE(11001) HttpDataCache_data(
+	HttpDataCache_relation *new_relation = new FILE_LINE(11002) HttpDataCache_relation();
+	new_relation->request = new FILE_LINE(11003) HttpDataCache_data(
 					url, url_md5.c_str(),
 					http, http_md5.c_str(),
 					body, body_md5.c_str(),
@@ -691,7 +691,7 @@ void HttpPacketsDumper::dumpDataItem(eReqResp reqResp, string header, string bod
 		links[link_id].seq[linkDirectionIndex] += dataLength;
 		
 		u_int32_t packetLen = sizeof(eth_header) + sizeof(ip_header) + sizeof(tcp_header) + dataLength;
-		u_char *packet = new FILE_LINE(11001) u_char[packetLen];
+		u_char *packet = new FILE_LINE(11004) u_char[packetLen];
 		
 		memcpy(packet, 
 		       &eth_header, sizeof(eth_header));
@@ -726,7 +726,7 @@ string HttpPacketsDumper::getPcapName() {
 
 void HttpPacketsDumper::openPcapDumper() {
 	if(!this->pcapDumper && !this->pcapName.empty()) {
-		this->pcapDumper = new FILE_LINE(11001) PcapDumper();
+		this->pcapDumper = new FILE_LINE(11005) PcapDumper();
 		this->pcapDumper->open(tsf_na, this->pcapName.c_str(), DLT_EN10MB);
 		this->selfOpenPcapDumper = true;
 	}
