@@ -4892,7 +4892,7 @@ inline int _handle_defrag(iphdr2 *header_ip,
 		   ipfrag_add(queue,
 			      header_packet_pqout, 
 			      (u_char*)header_ip - header_packet_pqout->packet, ntohs(header_ip_orig.tot_len));
-	if(res) {
+	if(res > 0) {
 		// packet was created from all pieces - delete queue and remove it from map
 		ipfrag_data->ip_frag_stream[header_ip_orig.saddr].erase(header_ip_orig.id);
 		delete queue;
