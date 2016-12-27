@@ -134,6 +134,7 @@ public:
 	void printContentSummary();
 private:
 	unsigned int counterProcessData;
+	unsigned int counterSaveData;
 	HttpDataCache cache;
 };
 

@@ -56,6 +56,7 @@ void TcpReassemblyStream_packet_var::push(TcpReassemblyStream_packet packet) {
 		this->queuePackets[packet.next_seq];
 		this->queuePackets[packet.next_seq] = packet;
 	}
+	this->last_packet_at_from_header = packet.time.tv_sec * 1000 + packet.time.tv_usec / 1000;
 }
 
 void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
@@ -1138,32 +1139,62 @@ void TcpReassemblyLink::cleanup(u_int64_t act_time) {
 	*/
 	
 	if(reassembly->type == TcpReassembly::http) {
-		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); ) {
-			if(iter->second->queuePacketVars.size() > 500) {
-				if(this->reassembly->isActiveLog() || ENABLE_DEBUG(reassembly->getType(), _debug_cleanup)) {
-					in_addr ip;
-					ip.s_addr = this->ip_src;
-					string ip_src = inet_ntoa(ip);
-					ip.s_addr = this->ip_dst;
-					string ip_dst = inet_ntoa(ip);
-					ostringstream outStr;
-					outStr << fixed 
-					       << "cleanup " 
-					       << reassembly->getTypeString()
-					       << " - remove ack " << iter->first 
-					       << " (too much seq - " << iter->second->queuePacketVars.size() << ") "
-					       << setw(15) << ip_src << "/" << setw(6) << this->port_src
-					       << " -> " 
-					       << setw(15) << ip_dst << "/" << setw(6) << this->port_dst;
-					if(ENABLE_DEBUG(reassembly->getType(), _debug_cleanup)) {
-						cout << outStr.str() << endl;
+		if(reassembly->enableHttpCleanupExt) {
+			unsigned queue_by_ack_size = this->queue_by_ack.size();
+			float divLinkTimeout = queue_by_ack_size > 500 ? 20 :
+					       queue_by_ack_size > 300 ? 10 :
+					       queue_by_ack_size > 200 ? 2 : 0.5;
+			for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); ) {
+				bool erase_qpv = false;
+				map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter_qpv;
+				for(iter_qpv = iter->second->queuePacketVars.begin(); iter_qpv != iter->second->queuePacketVars.end(); ) {
+					if(iter_qpv->second.last_packet_at_from_header &&
+					   iter_qpv->second.last_packet_at_from_header < act_time - (reassembly->linkTimeout/divLinkTimeout) * 1000 &&
+					   iter_qpv->second.last_packet_at_from_header < this->last_packet_process_cleanup_at) {
+						iter->second->queuePacketVars.erase(iter_qpv++);
+						erase_qpv = true;
+					} else {
+						iter_qpv++;
 					}
-					this->reassembly->addLog(outStr.str().c_str());
 				}
-				delete iter->second;
-				this->queue_by_ack.erase(iter++);
-			} else {
-				++iter;
+				if(!iter->second->queuePacketVars.size()) {
+					delete iter->second;
+					this->queue_by_ack.erase(iter++);
+				} else {
+					if(erase_qpv) {
+						iter->second->clearCompleteData();
+					}
+					iter++;
+				}
+			}
+		} else {
+			for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); ) {
+				if(iter->second->queuePacketVars.size() > 500) {
+					if(this->reassembly->isActiveLog() || ENABLE_DEBUG(reassembly->getType(), _debug_cleanup)) {
+						in_addr ip;
+						ip.s_addr = this->ip_src;
+						string ip_src = inet_ntoa(ip);
+						ip.s_addr = this->ip_dst;
+						string ip_dst = inet_ntoa(ip);
+						ostringstream outStr;
+						outStr << fixed 
+						       << "cleanup " 
+						       << reassembly->getTypeString()
+						       << " - remove ack " << iter->first 
+						       << " (too much seq - " << iter->second->queuePacketVars.size() << ") "
+						       << setw(15) << ip_src << "/" << setw(6) << this->port_src
+						       << " -> " 
+						       << setw(15) << ip_dst << "/" << setw(6) << this->port_dst;
+						if(ENABLE_DEBUG(reassembly->getType(), _debug_cleanup)) {
+							cout << outStr.str() << endl;
+						}
+						this->reassembly->addLog(outStr.str().c_str());
+					}
+					delete iter->second;
+					this->queue_by_ack.erase(iter++);
+				} else {
+					++iter;
+				}
 			}
 		}
 	}
@@ -1725,6 +1756,8 @@ void TcpReassemblyLink::complete_simple_by_ack() {
 }
 
 void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams) {
+	size_t lastCountAllWithSkip = 0;
+	unsigned counterEqLastCountAllWithSkip = 0;
 	while(true) {
 		size_t size_ok_streams = this->ok_streams.size();
 		TcpReassemblyData *reassemblyData = NULL;
@@ -1807,6 +1840,16 @@ void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams) {
 				// OK
 			} else {
 				break;
+			}
+		}
+		if(reassembly->enableHttpCleanupExt) {
+			if(lastCountAllWithSkip == skip_offset + countRequest + countRslt) {
+				if((++counterEqLastCountAllWithSkip) > 100) {
+					break;
+				}
+			} else {
+				lastCountAllWithSkip = skip_offset + countRequest + countRslt;
+				counterEqLastCountAllWithSkip = 0;
 			}
 		}
 		reassemblyData = new FILE_LINE(36008) TcpReassemblyData;
@@ -2086,6 +2129,13 @@ list<d_u_int32_t> *TcpReassemblyLink::getSipOffsets() {
 	return(&reassembly->sip_offsets);
 }
 
+void TcpReassemblyLink::clearCompleteStreamsData() {
+	map<uint32_t, TcpReassemblyStream*>::iterator iter;
+	for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {
+		iter->second->clearCompleteData();
+	}
+}
+
 
 TcpReassembly::TcpReassembly(eType type) {
 	this->type = type;
@@ -2103,6 +2153,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->simpleByAck = false;
 	this->ignorePshInCheckOkData = false;
 	this->enableCleanupThread = false;
+	this->enableHttpCleanupExt = false;
 	this->enablePacketThread = false;
 	this->dataCallback = NULL;
 	this->enablePushLock = false;
@@ -2728,6 +2779,7 @@ void TcpReassembly::cleanup(bool all) {
 		link->lock_queue();
 		
 		if(type == http  &&
+		   !enableHttpCleanupExt &&
 		   link && link->queue_by_ack.size() > 500) {
 			if(this->isActiveLog() || ENABLE_DEBUG(type, _debug_cleanup)) {
 				in_addr ip;

@@ -330,6 +330,9 @@ friend class TcpReassembly;
 
 class TcpReassemblyStream_packet_var {
 public:
+	TcpReassemblyStream_packet_var() {
+		last_packet_at_from_header = 0;
+	}
 	void push(TcpReassemblyStream_packet packet);
 	u_int32_t getNextSeqCheck() {
 		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
@@ -360,6 +363,7 @@ private:
 	}
 private:
 	map<uint32_t, TcpReassemblyStream_packet> queuePackets;
+	u_int64_t last_packet_at_from_header;
 friend class TcpReassemblyStream;
 friend class TcpReassemblyLink;
 friend class TcpReassembly;
@@ -675,6 +679,7 @@ public:
 	u_char *getRemainData(TcpReassemblyDataItem::eDirection direction);
 	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction);
 	list<d_u_int32_t> *getSipOffsets();
+	void clearCompleteStreamsData();
 private:
 	void lock_queue() {
 		while(__sync_lock_test_and_set(&this->_sync_queue, 1)) usleep(100);
@@ -800,6 +805,9 @@ public:
 	void setEnableCleanupThread(bool enableCleanupThread = true) {
 		this->enableCleanupThread = enableCleanupThread;
 		this->createCleanupThread();
+	}
+	void setEnableHttpCleanupExt(bool enableHttpCleanupExt = true) {
+		this->enableHttpCleanupExt = enableHttpCleanupExt;
 	}
 	void setEnablePacketThread(bool enablePacketThread = true) {
 		this->enablePacketThread = enablePacketThread;
@@ -941,6 +949,7 @@ private:
 	bool simpleByAck;
 	bool ignorePshInCheckOkData;
 	bool enableCleanupThread;
+	bool enableHttpCleanupExt;
 	bool enablePacketThread;
 	TcpReassemblyProcessData *dataCallback;
 	bool enablePushLock;

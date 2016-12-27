@@ -19,9 +19,11 @@ SqlDb *sqlDbSaveHttp = NULL;
 
 HttpData::HttpData() {
 	this->counterProcessData = 0;
+	this->counterSaveData = 0;
 }
 
 HttpData::~HttpData() {
+	cout << "save HttpData: " << this->counterSaveData << endl;
 }
 
 void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
@@ -170,6 +172,7 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		callid = this->getJsonValue(body, "variable_sip_call_id");
 	}
 	if(externalTransactionId.length() || sessionid.length() || callid.length()) {
+		++this->counterSaveData;
 		static int saveCounter;
 		if(debugSave) {
 			cout << "SAVE " << (++saveCounter) << " time: " << sqlDateTimeString(request_data->getTime().tv_sec) 

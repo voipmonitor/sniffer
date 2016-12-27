@@ -304,6 +304,7 @@ unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
 bool opt_process_rtp_packets_qring_force_push = true;
 int opt_enable_http = 0;
+bool opt_http_cleanup_ext = false;
 int opt_enable_webrtc = 0;
 int opt_enable_ssl = 0;
 unsigned int opt_ssl_link_timeout = 5 * 60;
@@ -2893,6 +2894,7 @@ int main_init_read() {
 			tcpReassemblyHttp->setEnableCrazySequence();
 			tcpReassemblyHttp->setEnableValidateDataViaCheckData();
 			tcpReassemblyHttp->setEnableCleanupThread();
+			tcpReassemblyHttp->setEnableHttpCleanupExt(opt_http_cleanup_ext);
 			tcpReassemblyHttp->setEnablePacketThread();
 			httpData = new FILE_LINE(42026) HttpData;
 			tcpReassemblyHttp->setDataCallback(httpData);
@@ -5140,6 +5142,7 @@ void cConfig::addConfigItems() {
 				->addAlias("tcpreassembly"));
 			addConfigItem(new FILE_LINE(42363) cConfigItem_ports("httpport", httpportmatrix));
 			addConfigItem(new FILE_LINE(42364) cConfigItem_hosts("httpip", &httpip, &httpnet));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("http_cleanup_ext", &opt_http_cleanup_ext));
 				expert();
 				addConfigItem((new FILE_LINE(42365) cConfigItem_yesno("enable_http_enum_tables", &opt_enable_http_enum_tables))
 					->addAlias("enable_lua_tables"));
@@ -7650,6 +7653,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||
 	   (value = ini.GetValue("general", "http", NULL))) {
 		opt_enable_http = strcmp(value, "only") ? yesno(value) : 2;
+	}
+	if((value = ini.GetValue("general", "http_cleanup_ext", NULL))) {
+		opt_http_cleanup_ext = yesno(value);
 	}
 	if((value = ini.GetValue("general", "webrtc", NULL))) {
 		opt_enable_webrtc = strcmp(value, "only") ? yesno(value) : 2;
