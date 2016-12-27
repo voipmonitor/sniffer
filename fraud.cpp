@@ -163,6 +163,7 @@ void CheckInternational::load(SqlDb_row *dbRow) {
 		internationalPrefixes.clear();
 	}
 	internationalMinLength = atoi((*dbRow)["international_number_min_length"].c_str());
+	internationalMinLengthPrefixesStrict = atoi((*dbRow)["international_number_min_length_prefixes_strict"].c_str());
 	countryCodeForLocalNumbers = (*dbRow)["country_code_for_local_numbers"];
 	_prefixes = (*dbRow)["skip_prefixes"];
 	if(!_prefixes.empty()) {
