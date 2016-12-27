@@ -3878,6 +3878,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 	""));
+	
+	checkColumns_register(true);
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
@@ -5093,6 +5095,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 		this->checkColumns_cdr_next();
 		this->checkColumns_cdr_rtp();
 		this->checkColumns_message();
+		this->checkColumns_register();
 		this->checkColumns_other();
 	}
 	
@@ -5336,6 +5339,30 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 				   "ALTER TABLE message "
 				   "ADD COLUMN `spool_index` tinyint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.message_spool_index);
+	}
+}
+
+void SqlDb_mysql::checkColumns_register(bool log) {
+	map<string, u_int64_t> tableSize;
+	extern int opt_sip_register;
+	if(opt_sip_register == 1) {
+		bool registerFailedIdIsBig = true;
+		this->query("show columns from register_failed like 'id'");
+		SqlDb_row register_failed_struct_row = this->fetchRow();
+		if(register_failed_struct_row) {
+			string idType = register_failed_struct_row["type"];
+			std::transform(idType.begin(), idType.end(), idType.begin(), ::toupper);
+			if(idType.find("BIG") == string::npos) {
+				registerFailedIdIsBig = false;
+			}
+		}
+		if(!registerFailedIdIsBig) {
+			this->logNeedAlter("register_failed",
+					   "register failed",
+					   "ALTER TABLE register_failed "
+					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL;",
+					   log, &tableSize, NULL);
+		}
 	}
 }
 

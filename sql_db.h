@@ -295,6 +295,7 @@ public:
 	void checkColumns_cdr_next(bool log = false);
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_message(bool log = false);
+	void checkColumns_register(bool log = false);
 	void checkColumns_other(bool log = false);
 	bool isExtPrecissionBilling();
 	bool checkSourceTables();
