@@ -1157,6 +1157,7 @@ read:
 		rtp[ssrc_n]->iscaller = iscaller; 
 		rtp[ssrc_n]->find_by_dest = find_by_dest;
 		rtp[ssrc_n]->ok_other_ip_side_by_sip = opt_rtpfromsdp_onlysip ||
+						       this->type == SKINNY_NEW ||
 						       this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr : packetS->daddr) ||
 						       (calltable->hashfind_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr, find_by_dest ? packetS->source : packetS->dest) &&
 						        this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr : packetS->saddr));
@@ -2426,7 +2427,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		// find first caller and first called
 		RTP *rtpab[2] = {NULL, NULL};
 		bool rtpab_ok[2] = {false, false};
-		for(int pass_rtpab = 0; pass_rtpab < (opt_rtpfromsdp_onlysip ? 1 : 2); pass_rtpab++) {
+		bool pass_rtpab_simple = opt_rtpfromsdp_onlysip || this->type == SKINNY_NEW;
+		for(int pass_rtpab = 0; pass_rtpab < (pass_rtpab_simple ? 1 : 2); pass_rtpab++) {
 			for(int k = 0; k < ssrc_n; k++) {
 				if(pass_rtpab == 0) {
 					if(sverb.process_rtp || sverb.read_rtp) {
@@ -2440,7 +2442,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						     << endl;
 					}
 				}
-				if(opt_rtpfromsdp_onlysip || rtp[indexes[k]]->ok_other_ip_side_by_sip || pass_rtpab == 1) {
+				if(pass_rtpab_simple || rtp[indexes[k]]->ok_other_ip_side_by_sip || pass_rtpab == 1) {
 					if(!rtpab_ok[0] &&
 					   rtp[indexes[k]]->iscaller && 
 					   (!rtpab[0] || rtp[indexes[k]]->stats.received > rtpab[0]->stats.received)) {
@@ -2453,7 +2455,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					}
 				}
 			}
-			if(!opt_rtpfromsdp_onlysip && pass_rtpab == 0) {
+			if(!pass_rtpab_simple && pass_rtpab == 0) {
 				if(rtpab[0]) {
 					rtpab_ok[0] = true;
 				}

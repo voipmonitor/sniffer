@@ -3537,6 +3537,7 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 			hash_node_call *node_call;
 			for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
 				if(!opt_rtpfromsdp_onlysip ||
+				   node_call->call->type == SKINNY_NEW ||
 				   (call_info_find_by_dest ?
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
@@ -6575,6 +6576,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 		hash_node_call *node_call;
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
 			if(!opt_rtpfromsdp_onlysip ||
+			   node_call->call->type == SKINNY_NEW ||
 			   (packetS->call_info_find_by_dest ?
 			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
 			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
