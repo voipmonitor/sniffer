@@ -1539,11 +1539,12 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 
 			// skinny message has variable lenght strings - parse one by one 
 			char *cur = data + 44;
-			char *end = NULL;
 			int i = 0;
 			char *strings[20];
 			for(i = 0; i < 20; i++) strings[i] = NULL;
 			i = 0;
+			/*
+			char *end = NULL;
 			while(i < 20 and (end = strchr(cur, '\0'))) {	
 				//printf("i:%u cur[%p] s[%s]\n", i, cur, cur);
 				strings[i] = cur;
@@ -1551,6 +1552,20 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 				if(cur + 1 > data + datalen) break;
 				i++;
 			}
+			*/
+			bool new_str = true;
+			while(cur < data + datalen &&  i < 20) {
+				if(!*cur) {
+					++i;
+					new_str = true;
+				} else if(new_str) {
+					//printf("i:%u cur[%p] s[%s]\n", i, cur, cur);
+					strings[i] = cur;
+					new_str = false;
+				}
+				++cur;
+			}
+			
 			char *callingParty = NULL, *calledParty = NULL, *callingPartyName = NULL;
 
 /*
