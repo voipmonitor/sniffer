@@ -81,6 +81,7 @@ extern int opt_pcap_split;
 extern int opt_newdir;
 extern int opt_callslimit;
 extern int opt_skiprtpdata;
+extern int opt_skinny_call_info_message_decode_type;
 extern char opt_silencedtmfseq[16];
 extern int opt_skinny;
 extern unsigned int opt_skinny_ignore_rtpip;
@@ -1568,28 +1569,50 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			
 			char *callingParty = NULL, *calledParty = NULL, *callingPartyName = NULL;
 
-/*
-
-			0	callingParty
-			1	AlternateCallingParty_len
-			2	calledParty_len
-			3	originalCalledParty_len
-			4	lastRedirectingParty_len
-			5	cgpnVoiceMailbox_len
-			6	cdpnVoiceMailbox_len
-			7	originalCdpnVoiceMailbox_len
-			8	lastRedirectingVoiceMailbox_len
-			9	callingPartyName_len
-			10	calledPartyName_len
-			11	originalCalledPartyName_len
-			12	lastRedirectingPartyName_len
-*/
-			
-
-			callingParty = strings[0];
-			calledParty = strings[2];
-			callingPartyName = strings[9];
-
+			if(opt_skinny_call_info_message_decode_type == 2) {
+				// 2 (default)
+				// by tshark v >= 2.
+				/*
+				0	callingParty
+				1	AlternateCallingParty_len
+				2	calledParty_len
+				3	originalCalledParty_len
+				4	lastRedirectingParty_len
+				5	cgpnVoiceMailbox_len
+				6	cdpnVoiceMailbox_len
+				7	originalCdpnVoiceMailbox_len
+				8	lastRedirectingVoiceMailbox_len
+				9	callingPartyName_len
+				10	calledPartyName_len
+				11	originalCalledPartyName_len
+				12	lastRedirectingPartyName_len
+				*/
+				callingParty = strings[0];
+				calledParty = strings[2];
+				callingPartyName = strings[9];
+			} else {
+				// 1
+				// by tshark v < 2.
+				/*
+				// 8x party numbers
+				0	hf_skinny_callingPartyNumber
+				1	hf_skinny_calledPartyNumber
+				2	hf_skinny_originalCalledParty
+				3	hf_cast_lastRedirectingParty
+				4	hf_cast_cgpnVoiceMailbox
+				5	hf_cast_cdpnVoiceMailbox
+				6	hf_cast_originalCdpnVoiceMailbox
+				7	hf_cast_lastRedirectingVoiceMailbox
+				// 4x party names
+				8	hf_skinny_callingPartyName
+				9	hf_skinny_calledPartyName
+				10	hf_skinny_originalCalledPartyName
+				11	hf_cast_lastRedirectingPartyName
+				*/
+				callingParty = strings[0];
+				calledParty = strings[2]; // use originalCalledParty
+				callingPartyName = strings[8];
+			}
 
 			if(callingParty) {
 				memcpy(call->caller, callingParty, MIN(sizeof(call->caller), strlen(callingParty) + 1));

@@ -272,6 +272,7 @@ char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
 unsigned int opt_skinny_ignore_rtpip = 0;
+unsigned int opt_skinny_call_info_message_decode_type = 2;
 int opt_read_from_file = 0;
 char opt_read_from_file_fname[1024] = "";
 bool opt_read_from_file_no_sip_reassembly = false;
@@ -4987,6 +4988,8 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42257) cConfigItem_yesno("skinny", &opt_skinny));
 		addConfigItem((new FILE_LINE(42258) cConfigItem_integer("skinny_ignore_rtpip", &opt_skinny_ignore_rtpip))
 			->setIp());
+			advanced();
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("skinny_call_info_message_decode_type", &opt_skinny_call_info_message_decode_type));
 		setDisableIfEnd();
 	group("CDR");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -6877,6 +6880,9 @@ int eval_config(string inistr) {
 		struct sockaddr_in sa;
 		inet_pton(AF_INET, value, &(sa.sin_addr));
 		opt_skinny_ignore_rtpip = (unsigned int)(sa.sin_addr.s_addr);
+	}
+	if((value = ini.GetValue("general", "skinny_call_info_message_decode_type", NULL))) {
+		opt_skinny_call_info_message_decode_type = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cdr_partition", NULL))) {
 		opt_cdr_partition = yesno(value);
