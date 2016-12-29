@@ -383,13 +383,16 @@ void Register::saveFailedToDb(RegisterState *state, bool force, bool enableBatch
 	if(opt_nocdr) {
 		return;
 	}
+	bool save = false;
 	if(state->counter == 1) {
 		saveStateToDb(state);
+		save = true;
 	} else if(state->counter > state->save_at_counter) {
 		if(!force && (state->state_to - state->state_from) > NEW_REGISTER_NEW_RECORD_FAILED) {
 			state->state_from = state->state_to;
 			state->counter -= state->save_at_counter;
 			saveStateToDb(state);
+			save = true;
 		} else if(force || (state->state_to - state->save_at) > NEW_REGISTER_UPDATE_FAILED_PERIOD) {
 			if(!sqlDbSaveRegister) {
 				sqlDbSaveRegister = createSqlObject();
@@ -412,10 +415,13 @@ void Register::saveFailedToDb(RegisterState *state, bool force, bool enableBatch
 				sqlDbSaveRegister->update("register_failed", row, 
 							  ("ID = " + intToString(state->db_id)).c_str());
 			}
+			save = true;
 		}
 	}
-	state->save_at = state->state_to;
-	state->save_at_counter = state->counter;
+	if(save) {
+		state->save_at = state->state_to;
+		state->save_at_counter = state->counter;
+	}
 }
 
 eRegisterState Register::getState() {
@@ -549,14 +555,19 @@ void Registers::cleanup(u_int32_t act_time, bool force) {
 						reg->expire(false);
 						// cout << "expire" << endl;
 					}
-				} else if(!_sync_registers_erase) {
-					if(regstate->state == rs_Failed && reg->countStates == 1 &&
-					   regstate->state_to + NEW_REGISTER_ERASE_FAILED_TIMEOUT < act_time) {
-						eraseRegisterFailed = true;
-						// cout << "erase failed" << endl;
-					} else if(regstate->state_to + NEW_REGISTER_ERASE_TIMEOUT < act_time) {
-						eraseRegister = true;
-						// cout << "erase" << endl;
+				} else {
+					if(regstate->state == rs_Failed) {
+						iter->second->saveFailedToDb(regstate);
+					}
+					if(!_sync_registers_erase) {
+						if(regstate->state == rs_Failed && reg->countStates == 1 &&
+						   regstate->state_to + NEW_REGISTER_ERASE_FAILED_TIMEOUT < act_time) {
+							eraseRegisterFailed = true;
+							// cout << "erase failed" << endl;
+						} else if(regstate->state_to + NEW_REGISTER_ERASE_TIMEOUT < act_time) {
+							eraseRegister = true;
+							// cout << "erase" << endl;
+						}
 					}
 				}
 			}
