@@ -3148,7 +3148,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		save_packet(call, packetS, TYPE_SIP);
 		if(call->regstate == 1 &&
 		   call->reg200count < call->regcount) {
-			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 5;
+			call->destroy_call_at = packetS->header_pt->ts.tv_sec + opt_register_timeout;
 		} else {
 			call->saveregister();
 		}
@@ -3223,7 +3223,9 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			break;
 		}
 		if((packetS->sip_method == RES401 && okres401 && call->reg401count > call->reg401count_distinct) || 
-		   (packetS->sip_method == RES403 && call->reg403count > call->reg403count_distinct) || 
+		   // suppress use reg403count - from 2016-12-29
+		   // (packetS->sip_method == RES403 && call->reg403count > call->reg403count_distinct) || 
+		   packetS->sip_method == RES403 ||
 		   packetS->sip_method == RES404) {
 			// registration failed
 			call->regstate = 2;

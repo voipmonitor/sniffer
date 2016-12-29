@@ -800,12 +800,15 @@ public:
 	
 	void shift_destroy_call_at(pcap_pkthdr *header, int lastSIPresponseNum = 0) {
 		if(this->destroy_call_at > 0) {
+			extern int opt_register_timeout;
 			time_t new_destroy_call_at = 
-				this->seenbyeandok ?
-					header->ts.tv_sec + 5 :
-				this->seenbye ?
-					header->ts.tv_sec + 60 :
-					header->ts.tv_sec + (lastSIPresponseNum == 487 || this->lastSIPresponseNum == 487 ? 15 : 5);
+				this->type == REGISTER ?
+					header->ts.tv_sec + opt_register_timeout :
+					(this->seenbyeandok ?
+						header->ts.tv_sec + 5 :
+					 this->seenbye ?
+						header->ts.tv_sec + 60 :
+						header->ts.tv_sec + (lastSIPresponseNum == 487 || this->lastSIPresponseNum == 487 ? 15 : 5));
 			if(new_destroy_call_at > this->destroy_call_at) {
 				this->destroy_call_at = new_destroy_call_at;
 			}
