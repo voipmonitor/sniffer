@@ -277,6 +277,7 @@ void CleanSpool::run_check_spooldir_filesindex(const char *dirfilter, int spoolI
 }
 
 bool CleanSpool::isSetCleanspoolParameters(int spoolIndex) {
+	extern bool opt_cleanspool;
 	extern unsigned int opt_maxpoolsize;
 	extern unsigned int opt_maxpooldays;
 	extern unsigned int opt_maxpoolsipsize;
@@ -301,31 +302,32 @@ bool CleanSpool::isSetCleanspoolParameters(int spoolIndex) {
 	extern int opt_cleanspool_sizeMB;
 	extern int opt_autocleanspoolminpercent;
 	extern int opt_autocleanmingb;
-	return((spoolIndex == 0 ?
-		 opt_maxpoolsize ||
-		 opt_maxpooldays ||
-		 opt_maxpoolsipsize ||
-		 opt_maxpoolsipdays ||
-		 opt_maxpoolrtpsize ||
-		 opt_maxpoolrtpdays ||
-		 opt_maxpoolgraphsize ||
-		 opt_maxpoolgraphdays ||
-		 opt_maxpoolaudiosize ||
-		 opt_maxpoolaudiodays :
-		 opt_maxpoolsize_2 ||
-		 opt_maxpooldays_2 ||
-		 opt_maxpoolsipsize_2 ||
-		 opt_maxpoolsipdays_2 ||
-		 opt_maxpoolrtpsize_2 ||
-		 opt_maxpoolrtpdays_2 ||
-		 opt_maxpoolgraphsize_2 ||
-		 opt_maxpoolgraphdays_2 ||
-		 opt_maxpoolaudiosize_2 ||
-		 opt_maxpoolaudiodays_2) ||
-	       opt_cleanspool_interval ||
-	       opt_cleanspool_sizeMB ||
-	       opt_autocleanspoolminpercent ||
-	       opt_autocleanmingb);
+	return(opt_cleanspool &&
+	       ((spoolIndex == 0 ?
+		  opt_maxpoolsize ||
+		  opt_maxpooldays ||
+		  opt_maxpoolsipsize ||
+		  opt_maxpoolsipdays ||
+		  opt_maxpoolrtpsize ||
+		  opt_maxpoolrtpdays ||
+		  opt_maxpoolgraphsize ||
+		  opt_maxpoolgraphdays ||
+		  opt_maxpoolaudiosize ||
+		  opt_maxpoolaudiodays :
+		  opt_maxpoolsize_2 ||
+		  opt_maxpooldays_2 ||
+		  opt_maxpoolsipsize_2 ||
+		  opt_maxpoolsipdays_2 ||
+		  opt_maxpoolrtpsize_2 ||
+		  opt_maxpoolrtpdays_2 ||
+		  opt_maxpoolgraphsize_2 ||
+		  opt_maxpoolgraphdays_2 ||
+		  opt_maxpoolaudiosize_2 ||
+		  opt_maxpoolaudiodays_2) ||
+		opt_cleanspool_interval ||
+		opt_cleanspool_sizeMB ||
+		opt_autocleanspoolminpercent ||
+		opt_autocleanmingb));
 }
 
 bool CleanSpool::isSetCleanspool(int spoolIndex) {

@@ -236,6 +236,7 @@ int sipwithoutrtptimeout = 3600;
 int absolute_timeout = 4 * 3600;
 int opt_destination_number_mode = 1;
 int opt_update_dstnum_onanswer = 0;
+bool opt_cleanspool = true;
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
 int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
 int opt_domainport = 0;
@@ -2687,6 +2688,7 @@ int main_init_read() {
 		rtp_threaded = 0;
 		opt_mirrorip = 0; // disable mirroring packets when reading pcap files from file
 		opt_cachedir[0] = '\0'; //disabling cache if reading from file 
+		opt_cleanspool = false;
 		opt_cleanspool_interval = 0; // disable cleaning spooldir when reading from file 
 		opt_maxpoolsize = 0;
 		opt_maxpooldays = 0;
@@ -4939,6 +4941,7 @@ void cConfig::addConfigItems() {
 		setDisableIfEnd();
 	group("data spool directory cleaning");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
+		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleanspool", &opt_cleanspool));
 			advanced();
 			addConfigItem(new FILE_LINE(42231) cConfigItem_integer("cleanspool_interval", &opt_cleanspool_interval));
 		normal();
@@ -6702,6 +6705,10 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cleandatabase_rtp_stat", NULL))) {
 		opt_cleandatabase_rtp_stat = atoi(value);
 	}
+	
+	if((value = ini.GetValue("general", "cleanspool", NULL))) {
+		opt_cleanspool = atoi(value);
+	}
 	if((value = ini.GetValue("general", "cleanspool_interval", NULL))) {
 		opt_cleanspool_interval = atoi(value);
 	}
@@ -8318,7 +8325,8 @@ bool is_enable_rtp_threads() {
 }
 
 bool is_enable_cleanspool(bool log) {
-	if(!opt_nocdr &&
+	if(opt_cleanspool &&
+	   !opt_nocdr &&
 	   isSqlDriver("mysql") &&
 	   !is_read_from_file_simple() &&
 	   !is_sender()) {
