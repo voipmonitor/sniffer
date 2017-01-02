@@ -474,6 +474,8 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 			curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
 			curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
 			curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
+			curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+
 			char *urlPathSeparator = (char*)strchr(url + 8, '/');
 			string path = urlPathSeparator ? urlPathSeparator : "/";
 			string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;
