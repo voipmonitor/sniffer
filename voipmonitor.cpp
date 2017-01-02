@@ -6707,7 +6707,7 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "cleanspool", NULL))) {
-		opt_cleanspool = atoi(value);
+		opt_cleanspool = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cleanspool_interval", NULL))) {
 		opt_cleanspool_interval = atoi(value);
