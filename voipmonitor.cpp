@@ -2766,6 +2766,14 @@ int main_init_read() {
 			if(isSetSpoolDir(i) &&
 			   CleanSpool::isSetCleanspoolParameters(i)) {
 				cleanSpool[i] = new FILE_LINE(42018) CleanSpool(i);
+				if(opt_pcap_dump_tar && opt_fork) {
+					string maxSpoolDate = cleanSpool[i]->getMaxSpoolDate();
+					if(maxSpoolDate.length()) {
+						syslog(LOG_NOTICE, "run reindex date %s", maxSpoolDate.c_str());
+						CleanSpool::run_reindex_date(maxSpoolDate, i);
+						syslog(LOG_NOTICE, "reindex date %s completed", maxSpoolDate.c_str());
+					}
+				}
 			}
 		}
 		if(cleanSpool[0] && !is_read_from_file()) {
@@ -2956,19 +2964,6 @@ int main_init_read() {
 	
 	if(opt_bogus_dumper_path[0]) {
 		bogusDumper = new FILE_LINE(42034) BogusDumper(opt_bogus_dumper_path);
-	}
-	
-	if(opt_pcap_dump_tar && opt_fork) {
-		for(int i = 0; i < 2; i++) {
-			if(isSetSpoolDir(i) && cleanSpool[i]) {
-				string maxSpoolDate = cleanSpool[i]->getMaxSpoolDate();
-				if(maxSpoolDate.length()) {
-					syslog(LOG_NOTICE, "run reindex date %s", maxSpoolDate.c_str());
-					CleanSpool::run_reindex_date(maxSpoolDate, i);
-					syslog(LOG_NOTICE, "reindex date %s completed", maxSpoolDate.c_str());
-				}
-			}
-		}
 	}
 	
 	clear_readend();

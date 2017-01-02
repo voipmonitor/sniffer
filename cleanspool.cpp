@@ -766,55 +766,59 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 	if(tarQueue[spoolIndex]) {
 		listOpenTars = tarQueue[spoolIndex]->listOpenTars();
 	}
-	for(unsigned m = 0; m < 60; m++) {
-		char min[3];
-		snprintf(min, 3, "%02d", m);
-		string dhmt = date + '/' + hour + '/' + min + '/' + spoolDirTypeName;
-		string spool_dhmt = this->findExistsSpoolDirFile(typeSpoolFile, dhmt);
-		bool exists_spool_dhmt = file_exists(spool_dhmt);
-		if(!exists_spool_dhmt && !alterSpoolDirTypeName.empty()) {
-			dhmt = date + '/' + hour + '/' + min + '/' + alterSpoolDirTypeName;
-			spool_dhmt = this->findExistsSpoolDirFile(typeSpoolFile, dhmt);
-			exists_spool_dhmt = file_exists(spool_dhmt);
-		}
-		if(exists_spool_dhmt) {
-			bool existsFile = false;
-			DIR* dp = opendir(spool_dhmt.c_str());
-			if(dp) {
-				while(true) {
-					dirent *de = readdir(dp);
-					if(de == NULL) break;
-					if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-					existsFile = true;
-					if(quickCheck) {
-						sumsize = 1;
-						break;
-					}
-					string dhmt_file = dhmt + '/' + de->d_name;
-					string spool_dhmt_file = spool_dhmt + '/' + de->d_name;
-					if(!tarQueue[spoolIndex] ||
-					   !fileIsOpenTar(listOpenTars, spool_dhmt_file)) {
-						long long size = GetFileSizeDU(spool_dhmt_file, typeSpoolFile, spoolIndex);
-						if(size == 0) size = 1;
-						sumsize += size;
-						if(!readOnly) {
-							if(!spool_fileindex_stream.is_open()) {
-								mkdir_r(spool_fileindex_path, 0777);
-								spool_fileindex_stream.open(spool_fileindex.c_str(), ios::trunc | ios::out);
+	string dh = date + '/' + hour;
+	string spool_dh = this->findExistsSpoolDirFile(typeSpoolFile, dh);
+	if(file_exists(spool_dh)) {
+		for(unsigned m = 0; m < 60; m++) {
+			char min[3];
+			snprintf(min, 3, "%02d", m);
+			string dhmt = date + '/' + hour + '/' + min + '/' + spoolDirTypeName;
+			string spool_dhmt = this->findExistsSpoolDirFile(typeSpoolFile, dhmt);
+			bool exists_spool_dhmt = file_exists(spool_dhmt);
+			if(!exists_spool_dhmt && !alterSpoolDirTypeName.empty()) {
+				dhmt = date + '/' + hour + '/' + min + '/' + alterSpoolDirTypeName;
+				spool_dhmt = this->findExistsSpoolDirFile(typeSpoolFile, dhmt);
+				exists_spool_dhmt = file_exists(spool_dhmt);
+			}
+			if(exists_spool_dhmt) {
+				bool existsFile = false;
+				DIR* dp = opendir(spool_dhmt.c_str());
+				if(dp) {
+					while(true) {
+						dirent *de = readdir(dp);
+						if(de == NULL) break;
+						if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+						existsFile = true;
+						if(quickCheck) {
+							sumsize = 1;
+							break;
+						}
+						string dhmt_file = dhmt + '/' + de->d_name;
+						string spool_dhmt_file = spool_dhmt + '/' + de->d_name;
+						if(!tarQueue[spoolIndex] ||
+						   !fileIsOpenTar(listOpenTars, spool_dhmt_file)) {
+							long long size = GetFileSizeDU(spool_dhmt_file, typeSpoolFile, spoolIndex);
+							if(size == 0) size = 1;
+							sumsize += size;
+							if(!readOnly) {
+								if(!spool_fileindex_stream.is_open()) {
+									mkdir_r(spool_fileindex_path, 0777);
+									spool_fileindex_stream.open(spool_fileindex.c_str(), ios::trunc | ios::out);
+								}
+								spool_fileindex_stream << dhmt_file << ":" << size << "\n";
 							}
-							spool_fileindex_stream << dhmt_file << ":" << size << "\n";
 						}
 					}
+					closedir(dp);
 				}
-				closedir(dp);
-			}
-			if(existsFile) {
-				(*fillMinutes)[m] = true;
-				if(quickCheck) {
-					break;
+				if(existsFile) {
+					(*fillMinutes)[m] = true;
+					if(quickCheck) {
+						break;
+					}
+				} else if(!readOnly) {
+					rmdir_r(spool_dhmt);
 				}
-			} else if(!readOnly) {
-				rmdir_r(spool_dhmt);
 			}
 		}
 	}
