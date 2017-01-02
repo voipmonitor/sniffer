@@ -658,24 +658,30 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 		(*typeSize)["audio"] = 0;
 	}
 	map<unsigned, bool> fillMinutes;
-	long long sipsize = reindex_date_hour_type(date, h, "sip", readOnly, quickCheck, &fillMinutes);
-	long long regsize = reindex_date_hour_type(date, h, "reg", readOnly, quickCheck, &fillMinutes);
-	long long skinnysize = reindex_date_hour_type(date, h, "skinny", readOnly, quickCheck, &fillMinutes);
-	long long rtpsize = reindex_date_hour_type(date, h, "rtp", readOnly, quickCheck, &fillMinutes);
-	long long graphsize = reindex_date_hour_type(date, h, "graph", readOnly, quickCheck, &fillMinutes);
-	long long audiosize = reindex_date_hour_type(date, h, "audio", readOnly, quickCheck, &fillMinutes);
+	bool existsDhDir[MAX_TYPE_SPOOL_FILE];
+	for(int i = 0; i < MAX_TYPE_SPOOL_FILE; i++) {
+		existsDhDir[i] = false;
+	}
+	long long sipsize = reindex_date_hour_type(date, h, "sip", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_sip]);
+	long long regsize = reindex_date_hour_type(date, h, "reg", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_reg]);
+	long long skinnysize = reindex_date_hour_type(date, h, "skinny", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_skinny]);
+	long long rtpsize = reindex_date_hour_type(date, h, "rtp", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_rtp]);
+	long long graphsize = reindex_date_hour_type(date, h, "graph", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_graph]);
+	long long audiosize = reindex_date_hour_type(date, h, "audio", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_audio]);
 	if((sipsize + regsize + skinnysize + rtpsize + graphsize + audiosize) && !readOnly) {
 		string dh = date + '/' + hour;
 		syslog(LOG_NOTICE, "cleanspool[%i]: reindex_date_hour - %s/%s", spoolIndex, getSpoolDir(tsf_main), dh.c_str());
 	}
 	if(!readOnly) {
 		for(int typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; ++typeSpoolFile) {
-			for(unsigned m = 0; m < 60; m++) {
-				char min[3];
-				snprintf(min, 3, "%02d", m);
-				string dhm = getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + date + '/' + hour + '/' + min;
-				if(!fillMinutes[m]) {
-					rmdir_r(dhm);
+			if(existsDhDir[typeSpoolFile]) {
+				for(unsigned m = 0; m < 60; m++) {
+					char min[3];
+					snprintf(min, 3, "%02d", m);
+					string dhm = getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + date + '/' + hour + '/' + min;
+					if(!fillMinutes[m]) {
+						rmdir_r(dhm);
+					}
 				}
 			}
 		}
@@ -723,7 +729,8 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 	return(sipsize + regsize + skinnysize + rtpsize + graphsize + audiosize);
 }
 
-long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bool readOnly, bool quickCheck, map<unsigned, bool> *fillMinutes) {
+long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bool readOnly, bool quickCheck, 
+					     map<unsigned, bool> *fillMinutes, bool *existsDhDir) {
 	long long sumsize = 0;
 	string filesIndexDirName;
 	string spoolDirTypeName;
@@ -769,6 +776,7 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 	string dh = date + '/' + hour;
 	string spool_dh = this->findExistsSpoolDirFile(typeSpoolFile, dh);
 	if(file_exists(spool_dh)) {
+		*existsDhDir = true;
 		for(unsigned m = 0; m < 60; m++) {
 			char min[3];
 			snprintf(min, 3, "%02d", m);

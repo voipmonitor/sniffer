@@ -68,7 +68,8 @@ private:
 	void reindex_all(const char *reason);
 	long long reindex_date(string date);
 	long long reindex_date_hour(string date, int h, bool readOnly = false, map<string, long long> *typeSize = NULL, bool quickCheck = false);
-	long long reindex_date_hour_type(string date, int h, string type, bool readOnly, bool quickCheck, map<unsigned, bool> *fillMinutes);
+	long long reindex_date_hour_type(string date, int h, string type, bool readOnly, bool quickCheck, 
+					 map<unsigned, bool> *fillMinutes, bool *existsDhDir);
 	void unlinkfileslist(eTypeSpoolFile typeSpoolFile, string fname, string callFrom);
 	void unlink_dirs(string datehour, int sip, int reg, int skinny, int rtp, int graph, int audio, string callFrom);
 	void clean_spooldir_run();
