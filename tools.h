@@ -190,9 +190,15 @@ vector<string> explode(const string&, const char&);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);
-u_int64_t file_exists (string filename);
-u_int64_t file_exists (char * fileName);
-u_int64_t file_exists (const char * fileName);
+bool file_exists(const char * fileName, int *error_code = NULL);
+bool file_exists(char * fileName, int *error_code = NULL) { return(file_exists((const char*)fileName, error_code)); }
+bool file_exists(string fileName, int *error_code = NULL) { return(file_exists(fileName.c_str(), error_code)); }
+u_int64_t file_size(const char * fileName);
+u_int64_t file_size(char * fileName) { return(file_size((const char*)fileName)); }
+u_int64_t file_size(string fileName) { return(file_size(fileName.c_str())); }
+bool is_dir(const char * fileName);
+bool is_dir(char * fileName) { return(is_dir((const char*)fileName)); }
+bool is_dir(string fileName) { return(is_dir(fileName.c_str())); }
 void set_mac();
 int mkdir_r(std::string, mode_t);
 int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
@@ -347,8 +353,6 @@ u_int32_t checksum32buf(char *buf, size_t len);
 u_int32_t checksum32buf(u_char *buf, size_t len) {
 	return(checksum32buf((char*)buf, len));
 }
-bool DirExists(char *strFilename);
-bool FileExists(char *strFilename, int *error_code = NULL);
 void ntoa(char *res, unsigned int addr);
 string escapeShellArgument(string str);
 time_t stringToTime(const char *timeStr);

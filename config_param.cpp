@@ -1277,10 +1277,10 @@ void cConfig::setDisableIfEnd() {
 }
 
 bool cConfig::loadFromConfigFileOrDirectory(const char *filename) {
-	if(!FileExists((char*)filename)) {
+	if(!file_exists(filename)) {
 		return(false);
 	}
-	if(DirExists((char*)filename)) {
+	if(is_dir((char*)filename)) {
 		DIR *dir = opendir(filename);
 		if(dir != NULL) {
 			struct dirent *ent;

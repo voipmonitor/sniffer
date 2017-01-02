@@ -202,76 +202,32 @@ int msleep(long msec)
 	return select(0,0,0,0,&tv);
 }
 
-u_int64_t file_exists (string fileName)
-{
+bool file_exists(const char * fileName, int *error_code) {
 	struct stat buf;
-	/* File found */
-	if (stat(fileName.c_str(), &buf) == 0) {
-		return buf.st_size;
-	}
-	return 0;
-}
-
-u_int64_t file_exists (char * fileName)
-{
-	struct stat buf;
-	/* File found */
-	if (stat(fileName, &buf) == 0) {
-		return buf.st_size;
-	}
-	return 0;
-}
-
-u_int64_t file_exists (const char * fileName) {
-	return(file_exists((char*)fileName));
-}
-
-bool DirExists(char *strFilename) {
-	struct stat stFileInfo;
-	int intStat;
-
-	// Attempt to get the file attributes 
-	intStat = stat(strFilename, &stFileInfo);
-	if(intStat == 0 && S_ISDIR(stFileInfo.st_mode))  {
-		// We were able to get the dir attributes 
-		// so the file obviously exists. 
-		return true;
-	} else {
-		// We were not able to get the file attributes. 
-		// This may mean that we don't have permission to 
-		// access the folder which contains this file. If you 
-		// need to do that level of checking, lookup the 
-		// return values of stat which will give you 
-		// more details on why stat failed. 
-		return false;
-	}
-}
-
-bool FileExists(char *strFilename, int *error_code) {
-	struct stat stFileInfo;
-	int intStat;
-
-	// Attempt to get the file attributes 
-	intStat = stat(strFilename, &stFileInfo);
-	if(intStat == 0) {
-		// We were able to get the file attributes 
-		// so the file obviously exists. 
+	int rsltStat = stat(fileName, &buf);
+	if(rsltStat == 0) {
 		if(error_code) {
 			*error_code = 0;
 		}
-		return true;
-	} else {
-		// We were not able to get the file attributes. 
-		// This may mean that we don't have permission to 
-		// access the folder which contains this file. If you 
-		// need to do that level of checking, lookup the 
-		// return values of stat which will give you 
-		// more details on why stat failed. 
-		if(error_code) {
-			*error_code = errno;
-		}
-		return false;
+		return(true);
 	}
+	if(error_code) {
+		*error_code = errno;
+	}
+	return(false);
+}
+
+u_int64_t file_size(const char * fileName) {
+	long long size = GetFileSize(fileName);
+	return(size > 0 ? size : 0);
+}
+
+bool is_dir(const char * fileName) {
+	struct stat buf;
+	if(stat(fileName, &buf) == 0) {
+		return(S_ISDIR(buf.st_mode));
+	}
+	return(false);
 }
 
 void
@@ -401,7 +357,7 @@ unsigned long long copy_file(const char *src, const char *dst, bool move, bool a
 	int renamedebug = 0;
 
 	//check if the file exists
-	if(!FileExists((char*)src)) {
+	if(!file_exists(src)) {
 		return(0);
 	}
 
@@ -1538,7 +1494,7 @@ bool RestartUpgrade::runUpgrade() {
 			}
 		}
 	}
-	if(!FileExists((char*)binaryGzFilepathName.c_str())) {
+	if(!file_exists(binaryGzFilepathName)) {
 		this->errorString = "failed download - missing destination file";
 		rmdir_r(this->upgradeTempFileName.c_str());
 		if(verbosity > 0) {
@@ -1674,7 +1630,7 @@ bool RestartUpgrade::createSafeRunScript() {
 }
 
 bool RestartUpgrade::checkReadyRestart() {
-	if(!FileExists((char*)this->restartTempScriptFileName.c_str())) {
+	if(!file_exists(this->restartTempScriptFileName)) {
 		this->errorString = "failed check restart script - script missing";
 		return(false);
 	}
@@ -1687,7 +1643,7 @@ bool RestartUpgrade::checkReadyRestart() {
 }
 
 bool RestartUpgrade::checkReadySafeRun() {
-	if(!FileExists((char*)this->safeRunTempScriptFileName.c_str())) {
+	if(!file_exists(this->safeRunTempScriptFileName)) {
 		this->errorString = "failed check safe run script - script missing";
 		return(false);
 	}

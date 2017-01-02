@@ -2015,14 +2015,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		
 		int error_code;
-		if(FileExists((char*)(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename).c_str(), &error_code)) {
-			size = file_exists(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename);
+		if(file_exists(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename, &error_code)) {
+			size = file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename);
 			rslt = intToString(size);
 			if(size > 0 && strstr(filename, "tar")) {
 				for(int i = 1; i <= 5; i++) {
 					string nextfilename = filename;
 					nextfilename += "." + intToString(i);
-					u_int64_t nextsize = file_exists(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + nextfilename);
+					u_int64_t nextsize = file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + nextfilename);
 					if(nextsize > 0) {
 						rslt += ";" + nextfilename + ":" + intToString(nextsize);
 					} else {
@@ -2040,7 +2040,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		unsigned int size;
 
 		sscanf(buf, "fileexists %s", filename);
-		size = file_exists(filename);
+		size = file_size(filename);
 		snprintf(buf_output, sizeof(buf_output), "%d", size);
 		sendvm(client, sshchannel, buf_output, strlen(buf_output), 0);
 		return 0;
@@ -2064,7 +2064,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		sprintf(wavfile, "%s.wav", filename);
 
 getwav2:
-		size = file_exists(wavfile);
+		size = file_size(wavfile);
 		if(size) {
 			snprintf(buf_output, sizeof(buf_output), "%d", size);
 			sendvm(client, sshchannel, buf_output, strlen(buf_output), 0);
@@ -2077,7 +2077,7 @@ getwav2:
 		}
 
 		// wav does not exists, check if exists pcap and try to create wav
-		size = file_exists(pcapfile);
+		size = file_size(pcapfile);
 		if(!size) {
 			sendvm(client, sshchannel, "0", 1, 0);
 			return -1;
@@ -2104,7 +2104,7 @@ getwav2:
 		sprintf(wavfile, "%s.wav", filename);
 
 getwav:
-		size = file_exists(wavfile);
+		size = file_size(wavfile);
 		if(size) {
 			fd = open(wavfile, O_RDONLY);
 			if(fd < 0) {
@@ -2136,7 +2136,7 @@ getwav:
 		}
 
 		// wav does not exists, check if exists pcap and try to create wav
-		size = file_exists(pcapfile);
+		size = file_size(pcapfile);
 		if(!size) {
 			sendvm(client, sshchannel, "0", 1, 0);
 			return -1;
@@ -2162,7 +2162,7 @@ getwav:
 		sprintf(pcapfile, "%s.pcap", filename);
 
 
-		size = file_exists(tsharkfile);
+		size = file_size(tsharkfile);
 		if(size) {
 			fd = open(tsharkfile, O_RDONLY);
 			if(fd < 0) {
@@ -2188,7 +2188,7 @@ getwav:
 			return 0;
 		}
 
-		size = file_exists(pcapfile);
+		size = file_size(pcapfile);
 		if(!size) {
 			sendvm(client, sshchannel, "0", 1, 0);
 			return -1;
@@ -2201,7 +2201,7 @@ getwav:
 		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin tshark -r \"%s.pcap\" -V -R sip >> \"%s.pcap2txt\" 2>/dev/null", filename, filename);
 		system(cmd);
 
-		size = file_exists(tsharkfile);
+		size = file_size(tsharkfile);
 		if(size) {
 			fd = open(tsharkfile, O_RDONLY);
 			if(fd < 0) {

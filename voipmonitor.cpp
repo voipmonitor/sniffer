@@ -8169,7 +8169,7 @@ int eval_config(string inistr) {
 int load_config(char *fname) {
 	int res = 0;
 
-	if(!FileExists(fname)) {
+	if(!file_exists(fname)) {
 		return 1;
 	}
 
@@ -8178,7 +8178,7 @@ int load_config(char *fname) {
 	string inistr;
 
 	//Is it really file or directory?
-	if(!DirExists(fname)) {
+	if(!is_dir(fname)) {
 		printf("Loading configuration from file %s ", fname);
 		ini.SetUnicode();
 		ini.SetMultiKey(true);

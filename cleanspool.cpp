@@ -593,7 +593,7 @@ bool CleanSpool::check_exists_act_files_in_filesindex() {
 			char datehour[20];
 			strcpy(datehour, date);
 			sprintf(datehour + strlen(datehour), "%02i", j);
-			if(FileExists((char*)(getSpoolDir_string(tsf_main) + "/filesindex/sipsize/" + datehour).c_str())) {
+			if(file_exists(getSpoolDir_string(tsf_main) + "/filesindex/sipsize/" + datehour)) {
 				ok = true;
 				break;
 			}
@@ -952,7 +952,7 @@ void CleanSpool::clean_spooldir_run() {
 		opt_max.maxpoolsize = opt_other.cleanspool_sizeMB;
 		// if old cleanspool interval is defined convert the config to new config 
 		extern char configfile[1024];
-		if(FileExists(configfile)) {
+		if(file_exists(configfile)) {
 			syslog(LOG_NOTICE, "cleanspool[%i]: converting [%s] cleanspool_interval and cleanspool_size to maxpoolsize", spoolIndex, configfile);
 			reindex_all("convert configuration");
 			string tmpf = "/tmp/VM_pRjSYLAyx.conf";
