@@ -2567,6 +2567,8 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				memcpy(call->cancelcseq, cseq, cseqlen);
 				call->cancelcseq[cseqlen] = '\0';
 			}
+		} else if(packetS->sip_method == ACK) {
+			call->ack_packet_time_us = packetS->header_pt->ts.tv_sec *1000000ull + packetS->header_pt->ts.tv_usec;
 		} else if(IS_SIP_RESXXX(packetS->sip_method)) {
 			int cseq_method = 0;
 			if(cseq && cseqlen < 32) {

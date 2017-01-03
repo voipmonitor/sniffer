@@ -67,6 +67,7 @@ extern SqlDb *sqlDbSaveCall;
 extern int opt_mysqlstore_max_threads_cdr;
 extern MySqlStore *sqlStore;
 extern int opt_id_sensor;
+extern bool opt_saveaudio_answeronly;
 
 RTPstat rtp_stat;
 
@@ -1283,6 +1284,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		}
 		resetgraph = true;
 	}
+	
+	bool recordingRequested = opt_saveRAW || opt_savewav_force || 
+				  (owner && 
+				   (((owner->flags & FLAG_SAVEAUDIO) &&
+				     (!opt_saveaudio_answeronly ||
+				      (owner->ack_packet_time_us && (header->ts.tv_sec *1000000ull + header->ts.tv_usec) > owner->ack_packet_time_us))) ||
+				    (owner->audiobuffer1 || owner->audiobuffer2)));
 
 	// codec changed 
 	if(defer_codec_change or (curpayload != prev_payload and codec != PAYLOAD_TELEVENT and (prev_codec != PAYLOAD_TELEVENT or !codecchanged) and curpayload != 13 and prev_payload != 13 and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19)) {
@@ -1334,10 +1342,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				owner->last_calledcodec = codec;
 			}
 
-			if(opt_saveRAW || opt_savewav_force || (owner && (owner->flags & FLAG_SAVEAUDIO)) ||
-				(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
-			) {
-	//			if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u]\n", owner->flags);
+			if(recordingRequested) {
+				//if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u]\n", owner->flags);
 				/* open file for raw codec */
 				unsigned long unique = getTimestamp();
 				char tmp[1024];
@@ -1361,10 +1367,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 						if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 							// MOS LQO is calculated only if the call is connected 
 							if(owner->connect_time) {
-								prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
+								prevrtp->jitterbuffer(prevrtp->channel_record, recordingRequested);
 							}
 						} else {
-							prevrtp->jitterbuffer(prevrtp->channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
+							prevrtp->jitterbuffer(prevrtp->channel_record, recordingRequested);
 						}
 					}
 				}
@@ -1535,7 +1541,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 #endif
 
 		/* for recording, we cannot loose any packet */
-		if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) || (owner && (owner->audiobuffer1 || owner->audiobuffer2))) { // if recording requested 
+		if(recordingRequested) {
 			if(packetization < 10) {
 				if(curpayload == PAYLOAD_G729) {
 					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
@@ -1574,10 +1580,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 			if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 				if(owner->connect_time) {
-					jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
+					jitterbuffer(channel_record, recordingRequested);
 				}
 			} else {
-				jitterbuffer(channel_record, opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) || (owner && (owner->audiobuffer1 || owner->audiobuffer2)));
+				jitterbuffer(channel_record, recordingRequested);
 			}
 		}
 	} else if(packetization_iterator == 1) {
@@ -1618,9 +1624,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				packetization_iterator = 0;
 
 				/* for recording, we cannot loose any packet */
-				if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) ||
-					(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
-				){
+				if(recordingRequested) {
 					packetization = channel_record->packetization = default_packetization;
 					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 						if(owner->connect_time) {
@@ -1641,9 +1645,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					jitterbuffer(channel_fix2, 0);
 				if(opt_jitterbuffer_adapt)
 					jitterbuffer(channel_adapt, 0);
-				if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) ||
-					(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
-				){
+				if(recordingRequested) {
 					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 						if(owner->connect_time) {
 							jitterbuffer(channel_record, 1);
@@ -1656,9 +1658,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		} else {
 			packetization_iterator = 0;
 			/* for recording, we cannot loose any packet */
-			if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) ||
-				(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
-			){
+			if(recordingRequested) {
 				if(curpayload == PAYLOAD_G729) {
 					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
 					if(payload_len == 60) {
@@ -1793,9 +1793,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			jitterbuffer(channel_fix2, 0);
 		if(opt_jitterbuffer_adapt)
 			jitterbuffer(channel_adapt, 0);
-		if(opt_saveRAW || opt_savewav_force || (owner->flags & FLAG_SAVEAUDIO) ||
-			(owner && (owner->audiobuffer1 || owner->audiobuffer2))// if recording requested 
-		){
+		if(recordingRequested) {
 			if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
 				if(owner->connect_time) {
 					jitterbuffer(channel_record, 1);

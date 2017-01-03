@@ -158,7 +158,6 @@ unsigned int last_register_clean = 0;
 
 extern int opt_onewaytimeout;
 extern int opt_saveaudio_reversestereo;
-
 extern int opt_saveaudio_stereo;
 extern int opt_saveaudio_reversestereo;
 extern float opt_saveaudio_oggquality;
@@ -198,6 +197,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	ssrc_n = 0;
 	first_packet_time = time;
 	first_packet_usec = 0;
+	ack_packet_time_us = 0;
 	last_packet_time = time;
 	last_rtp_a_packet_time = 0;
 	last_rtp_b_packet_time = 0;
