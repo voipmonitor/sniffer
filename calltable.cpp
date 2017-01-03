@@ -915,20 +915,6 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 	}
 }
 
-/* Return reference to Call if IP:port was found, otherwise return NULL */
-Call*
-Call::find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller){
-	for(int i = 0; i < ipport_n; i++) {
-		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
-			// we have found it
-			*iscaller = this->ip_port[i].iscaller;
-			return this;
-		}
-	}
-	// not found
-	return NULL;
-}
-
 int
 Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
 	for(int i = 0; i < ipport_n; i++) {
@@ -1159,8 +1145,8 @@ read:
 		rtp[ssrc_n]->ok_other_ip_side_by_sip = opt_rtpfromsdp_onlysip ||
 						       this->type == SKINNY_NEW ||
 						       this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr : packetS->daddr) ||
-						       (calltable->hashfind_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr, find_by_dest ? packetS->source : packetS->dest) &&
-						        this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr : packetS->saddr));
+						       (this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr, find_by_dest ? packetS->source : packetS->dest) >= 0 &&
+							this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr : packetS->saddr));
 		if(rtp_cur[iscaller]) {
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}

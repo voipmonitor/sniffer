@@ -484,18 +484,6 @@ public:
 	*/
 	~Call();
 
-	/**
-	 * @brief find Call by IP adress and port. 
-	 *
-	 * This function is applied for every incoming UDP packet
-	 *
-	 * @param addr IP address of the packet
-	 * @param port port number of the packet
-	 * 
-	 * @return reference to the finded Call or NULL if not found. 
-	*/
-	Call *find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller);
-
 	int get_index_by_ip_port(in_addr_t addr, unsigned short port);
 	
 	int get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr = 0);
