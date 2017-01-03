@@ -53,18 +53,16 @@ extern unsigned int duplicate_counter;
 inline 
 #endif
 iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
-	char gre[8];
-	uint16_t a, b;
-	// if anyone know how to make network to hostbyte nicely, redesign this
-	a = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2)));
-	b = ntohs(*(uint16_t*)((char*)header_ip + sizeof(iphdr2) + 2));
-	memcpy(gre, &a, 2);
-	memcpy(gre + 2, &b, 2);
-	struct gre_hdr *grehdr = (struct gre_hdr *)gre;			
+	gre_hdr *grehdr = (gre_hdr*)((char*)header_ip + sizeof(iphdr2));
+	grehdr->protocol = ntohs(grehdr->protocol);
 	if(grehdr->version == 0 and (grehdr->protocol == 0x6558 || grehdr->protocol == 0x88BE)) {
-		// 0x6558 - GRE          - header size 8 bytes
-		// 0x88BE - GRE & ERSPAN - headers size 8 + 8 bytes
-		struct ether_header *header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + (grehdr->protocol == 0x88BE ? 16 : 8));
+		// 0x6558 - GRE                             - header size 8 bytes
+		// 0x88BE - GRE & ERSPAN & grehdr->seq == 1 - headers size 8 + 8 bytes
+		// 0x88BE - GRE & ERSPAN & grehdr->seq == 0 - headers size 4 bytes
+		struct ether_header *header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 
+						  (grehdr->protocol == 0x6558 ? 8 :
+						   grehdr->protocol == 0x88BE ? (grehdr->seq ? 16 : 4) :
+										8));
 		unsigned int vlanoffset;
 		u_int16_t protocol = 0;
 		if(header_eth->ether_type == 129) {
