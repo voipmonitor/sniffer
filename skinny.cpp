@@ -1611,7 +1611,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 				*/
 				callingParty = strings[0];
 				calledParty = strings[2]; // use originalCalledParty
-				callingPartyName = strings[8];
+				callingPartyName = strings[req.res == 22 ? 10 : 8];
 			}
 
 			if(callingParty) {
