@@ -1285,16 +1285,33 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		resetgraph = true;
 	}
 	
-	bool recordingRequested = opt_saveRAW || opt_savewav_force || 
-				  (owner && 
-				   (((owner->flags & FLAG_SAVEAUDIO) &&
-				     (!opt_saveaudio_answeronly || 
-				      (owner->connect_time &&
-				       (header->ts.tv_sec *1000000ull + header->ts.tv_usec) > (owner->connect_time * 1000000ull + owner->connect_time_usec)))) ||
-				    (owner->audiobuffer1 || owner->audiobuffer2)));
+	bool recordingRequested = 
+		opt_saveRAW || opt_savewav_force || 
+		(owner && 
+		 ((owner->flags & FLAG_SAVEAUDIO) ||
+		  owner->audiobuffer1 || owner->audiobuffer2));
+	bool recordingRequested_use_jitterbuffer_channel_record = false;
+	bool recordingRequested_enable_jitterbuffer_savepayload = false;
+	if(recordingRequested) {
+		// MOS LQO is calculated only if the call is connected 
+		recordingRequested_use_jitterbuffer_channel_record =
+			!owner ||
+			!((owner->flags & FLAG_RUNAMOSLQO) || (owner->flags & FLAG_RUNBMOSLQO)) || 
+			(owner->connect_time &&
+			 (header->ts.tv_sec *1000000ull + header->ts.tv_usec) > (owner->connect_time * 1000000ull + owner->connect_time_usec));
+		recordingRequested_enable_jitterbuffer_savepayload = 
+			!opt_saveaudio_answeronly ||
+			!owner ||
+			(owner->connect_time &&
+			 (header->ts.tv_sec *1000000ull + header->ts.tv_usec) > (owner->connect_time * 1000000ull + owner->connect_time_usec));
+	}
 
 	// codec changed 
-	if(defer_codec_change or (curpayload != prev_payload and codec != PAYLOAD_TELEVENT and (prev_codec != PAYLOAD_TELEVENT or !codecchanged) and curpayload != 13 and prev_payload != 13 and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19)) {
+	if(defer_codec_change or 
+	   (curpayload != prev_payload and 
+	    codec != PAYLOAD_TELEVENT and 
+	    (prev_codec != PAYLOAD_TELEVENT or !codecchanged) and 
+	    curpayload != 13 and prev_payload != 13 and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19)) {
 		if(defer_codec_change) {
 			defer_codec_change = false;
 		}
@@ -1365,13 +1382,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 						prevrtp->len = len;
 						prevrtp->header_ts = header_ts;
 						prevrtp->codec = prevrtp->prev_codec;
-						if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
-							// MOS LQO is calculated only if the call is connected 
-							if(owner->connect_time) {
-								prevrtp->jitterbuffer(prevrtp->channel_record, recordingRequested);
-							}
-						} else {
-							prevrtp->jitterbuffer(prevrtp->channel_record, recordingRequested);
+						if(recordingRequested_use_jitterbuffer_channel_record) {
+							prevrtp->jitterbuffer(prevrtp->channel_record, recordingRequested_enable_jitterbuffer_savepayload);
 						}
 					}
 				}
@@ -1579,12 +1591,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					packetization = channel_record->packetization = default_packetization;
 				}
 			}
-			if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
-				if(owner->connect_time) {
-					jitterbuffer(channel_record, recordingRequested);
-				}
-			} else {
-				jitterbuffer(channel_record, recordingRequested);
+			if(recordingRequested_use_jitterbuffer_channel_record) {
+				jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
 			}
 		}
 	} else if(packetization_iterator == 1) {
@@ -1627,12 +1635,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				/* for recording, we cannot loose any packet */
 				if(recordingRequested) {
 					packetization = channel_record->packetization = default_packetization;
-					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
-						if(owner->connect_time) {
-							jitterbuffer(channel_record, 1);
-						}
-					} else {
-						jitterbuffer(channel_record, 1);
+					if(recordingRequested_use_jitterbuffer_channel_record) {
+						jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
 					}
 				}
 			} else {
@@ -1647,12 +1651,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				if(opt_jitterbuffer_adapt)
 					jitterbuffer(channel_adapt, 0);
 				if(recordingRequested) {
-					if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
-						if(owner->connect_time) {
-							jitterbuffer(channel_record, 1);
-						}
-					} else {
-						jitterbuffer(channel_record, 1);
+					if(recordingRequested_use_jitterbuffer_channel_record) {
+						jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
 					}
 				}
 			}
@@ -1695,12 +1695,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					packetization = channel_record->packetization = default_packetization;
 				}
 
-				if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
-					if(owner->connect_time) {
-						jitterbuffer(channel_record, 1);
-					}
-				} else {
-					jitterbuffer(channel_record, 1);
+				if(recordingRequested_use_jitterbuffer_channel_record) {
+					jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
 				}
 			}
 		}
@@ -1795,12 +1791,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		if(opt_jitterbuffer_adapt)
 			jitterbuffer(channel_adapt, 0);
 		if(recordingRequested) {
-			if(owner->flags & FLAG_RUNAMOSLQO or owner->flags & FLAG_RUNBMOSLQO) {
-				if(owner->connect_time) {
-					jitterbuffer(channel_record, 1);
-				}
-			} else {
-				jitterbuffer(channel_record, 1);
+			if(recordingRequested_use_jitterbuffer_channel_record) {
+				jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
 			}
 		}
 	}
