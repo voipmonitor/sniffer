@@ -197,7 +197,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	ssrc_n = 0;
 	first_packet_time = time;
 	first_packet_usec = 0;
-	ack_packet_time_us = 0;
 	last_packet_time = time;
 	last_rtp_a_packet_time = 0;
 	last_rtp_b_packet_time = 0;
@@ -236,6 +235,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	progress_time = 0;
 	first_rtp_time = 0;
 	connect_time = 0;
+	connect_time_usec = 0;
 	first_invite_time_usec = 0;
 	first_response_100_time_usec = 0;
 	first_response_xxx_time_usec = 0;

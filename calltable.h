@@ -332,12 +332,12 @@ public:
 	time_t progress_time;		//!< time in seconds of 18X response
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
 	time_t connect_time;		//!< time in seconds of 200 OK
+	unsigned int connect_time_usec;
 	time_t last_packet_time;	
 	time_t last_rtp_a_packet_time;	
 	time_t last_rtp_b_packet_time;	
 	time_t first_packet_time;	
 	unsigned int first_packet_usec;
-	u_int64_t ack_packet_time_us;
 	time_t destroy_call_at;	
 	time_t destroy_call_at_bye;	
 	std::queue <dtmfq> dtmf_history;

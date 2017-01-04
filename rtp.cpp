@@ -1288,8 +1288,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	bool recordingRequested = opt_saveRAW || opt_savewav_force || 
 				  (owner && 
 				   (((owner->flags & FLAG_SAVEAUDIO) &&
-				     (!opt_saveaudio_answeronly ||
-				      (owner->ack_packet_time_us && (header->ts.tv_sec *1000000ull + header->ts.tv_usec) > owner->ack_packet_time_us))) ||
+				     (!opt_saveaudio_answeronly || 
+				      (owner->connect_time &&
+				       (header->ts.tv_sec *1000000ull + header->ts.tv_usec) > (owner->connect_time * 1000000ull + owner->connect_time_usec)))) ||
 				    (owner->audiobuffer1 || owner->audiobuffer2)));
 
 	// codec changed 

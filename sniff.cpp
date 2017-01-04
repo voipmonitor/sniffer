@@ -2567,8 +2567,6 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				memcpy(call->cancelcseq, cseq, cseqlen);
 				call->cancelcseq[cseqlen] = '\0';
 			}
-		} else if(packetS->sip_method == ACK) {
-			call->ack_packet_time_us = packetS->header_pt->ts.tv_sec *1000000ull + packetS->header_pt->ts.tv_usec;
 		} else if(IS_SIP_RESXXX(packetS->sip_method)) {
 			int cseq_method = 0;
 			if(cseq && cseqlen < 32) {
@@ -2623,6 +2621,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 						call->seeninviteok = true;
 						if(!call->connect_time) {
 							call->connect_time = packetS->header_pt->ts.tv_sec;
+							call->connect_time_usec = packetS->header_pt->ts.tv_usec;
 							if(opt_enable_fraud && isFraudReady()) {
 								fraudConnectCall(call, packetS->header_pt->ts);
 							}
