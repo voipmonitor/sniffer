@@ -3118,6 +3118,8 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 
 	} else if(packetS->sip_method == RES2XX) {
 		call->seenRES2XX = true;
+		call->reg401count = 0;
+		call->reg403count = 0;
 		// update expires header from all REGISTER dialog messages (from 200 OK which can override the expire) but not if register_expires == 0
 		if(call->register_expires != 0) {
 			s = gettag_sip(packetS, "\nExpires:", &l);
