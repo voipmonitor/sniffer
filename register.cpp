@@ -384,38 +384,40 @@ void Register::saveFailedToDb(RegisterState *state, bool force, bool enableBatch
 		return;
 	}
 	bool save = false;
-	if(state->counter == 1) {
-		saveStateToDb(state);
-		save = true;
-	} else if(state->counter > state->save_at_counter) {
-		if(!force && (state->state_to - state->state_from) > NEW_REGISTER_NEW_RECORD_FAILED) {
-			state->state_from = state->state_to;
-			state->counter -= state->save_at_counter;
+	if(state->counter > state->save_at_counter) {
+		if(state->counter == 1) {
 			saveStateToDb(state);
 			save = true;
-		} else if(force || (state->state_to - state->save_at) > NEW_REGISTER_UPDATE_FAILED_PERIOD) {
-			if(!sqlDbSaveRegister) {
-				sqlDbSaveRegister = createSqlObject();
-				sqlDbSaveRegister->setEnableSqlStringInContent(true);
+		} else {
+			if(!force && (state->state_to - state->state_from) > NEW_REGISTER_NEW_RECORD_FAILED) {
+				state->state_from = state->state_to;
+				state->counter -= state->save_at_counter;
+				saveStateToDb(state);
+				save = true;
+			} else if(force || (state->state_to - state->save_at) > NEW_REGISTER_UPDATE_FAILED_PERIOD) {
+				if(!sqlDbSaveRegister) {
+					sqlDbSaveRegister = createSqlObject();
+					sqlDbSaveRegister->setEnableSqlStringInContent(true);
+				}
+				SqlDb_row row;
+				row.add(state->counter, "counter");
+				if(enableBatchIfPossible && isSqlDriver("mysql")) {
+					string query_str = sqlDbSaveRegister->updateQuery("register_failed", row, 
+											  ("ID = " + intToString(state->db_id)).c_str());
+					static unsigned int counterSqlStore = 0;
+					int storeId = STORE_PROC_ID_REGISTER_1 + 
+						      (opt_mysqlstore_max_threads_register > 1 &&
+						       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
+							counterSqlStore % opt_mysqlstore_max_threads_register : 
+							0);
+					++counterSqlStore;
+					sqlStore->query_lock(query_str.c_str(), storeId);
+				} else {
+					sqlDbSaveRegister->update("register_failed", row, 
+								  ("ID = " + intToString(state->db_id)).c_str());
+				}
+				save = true;
 			}
-			SqlDb_row row;
-			row.add(state->counter, "counter");
-			if(enableBatchIfPossible && isSqlDriver("mysql")) {
-				string query_str = sqlDbSaveRegister->updateQuery("register_failed", row, 
-										  ("ID = " + intToString(state->db_id)).c_str());
-				static unsigned int counterSqlStore = 0;
-				int storeId = STORE_PROC_ID_REGISTER_1 + 
-					      (opt_mysqlstore_max_threads_register > 1 &&
-					       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
-						counterSqlStore % opt_mysqlstore_max_threads_register : 
-						0);
-				++counterSqlStore;
-				sqlStore->query_lock(query_str.c_str(), storeId);
-			} else {
-				sqlDbSaveRegister->update("register_failed", row, 
-							  ("ID = " + intToString(state->db_id)).c_str());
-			}
-			save = true;
 		}
 	}
 	if(save) {
@@ -503,6 +505,21 @@ void Registers::add(Call *call) {
 		return;
 	}
 	Register *reg = new FILE_LINE(20004) Register(call);
+	/*
+	cout 
+		<< "* sipcallerip:" << reg->sipcallerip << " / "
+		<< "* sipcalledip:" << reg->sipcalledip << " / "
+		<< "* to_num:" << (reg->to_num ? reg->to_num : "") << " / "
+		<< "* to_domain:" << (reg->to_domain ? reg->to_domain : "") << " / "
+		<< "contact_num:" << (reg->contact_num ? reg->contact_num : "") << " / "
+		<< "contact_domain:" << (reg->contact_domain ? reg->contact_domain : "") << " / "
+		<< "* digest_username:" << (reg->digest_username ? reg->digest_username : "") << " / "
+		<< "from_num:" << (reg->from_num ? reg->from_num : "") << " / "
+		<< "from_name:" << (reg->from_name ? reg->from_name : "") << " / "
+		<< "from_domain:" << (reg->from_domain ? reg->from_domain : "") << " / "
+		<< "digest_realm:" << (reg->digest_realm ? reg->digest_realm : "") << " / "
+		<< "ua:" << (reg->ua ? reg->ua : "") << endl;
+	*/
 	RegisterId rid(reg);
 	lock_registers();
 	map<RegisterId, Register*>::iterator iter = registers.find(rid);
