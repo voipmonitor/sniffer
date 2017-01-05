@@ -1544,14 +1544,14 @@ void *rtp_read_thread_func(void *arg) {
 			usleepCounter = 0;
 		} else {
 			if(read_thread->remove_flag &&
-				  ((getTimeMS_rdtsc() / 1000) > (read_thread->last_use_time_s + 60))) {
+				  ((getTimeMS_rdtsc() / 1000) > (read_thread->last_use_time_s + (opt_ipaccount ? 10 : 60)))) {
 				lock_add_remove_rtp_threads();
 				if(read_thread->remove_flag && !read_thread->calls) {
 					break;
 				}
 				unlock_add_remove_rtp_threads();
 				if(!opt_t2_boost && read_thread->remove_flag &&
-				   !(usleepCounter % 1000)) {
+				   (opt_ipaccount || !(usleepCounter % 1000))) {
 					read_thread->push_batch();
 				}
 			}
