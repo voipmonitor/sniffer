@@ -1,3 +1,19 @@
+17.11 06.01.2017
+================
+- fix one way calls (only one RTP stream) for some cases (broken since >= 17.8)
+- fix memory leak in IP defrag
+- check if id is bigint in register_failed [VS-545]
+- fix missing load fraud parameter international_number_min_length_prefixes_stric [VG-1112]
+- fix skinny callername (add support for skinny header CM5CALL_INFO_MESSAGE V22) [VS-546]
+- add option skinny_call_info_message_decode_type (1 for wireshark < 2, 2 (default) for wireshark >= 2) [VS-546]
+- fix increment counter in register failed (prevents duplicate records) [VS-543]
+- cleanspool optimizations (more friendly to amazon s3)
+- allow to disable cleanspool (option cleanspool no/yes)A
+- set timeout for curl request (fix cloud variant)
+- extend support for fake ERSPAN [VS-548]
+- new option saveaudio_answeronly which will store audio only for connected calls (no ringing) [VS-521]
+
+
 17.10.1 19.12.2016
 ==================
 - fix issue with message without content and with exists dcs [VG-870]
