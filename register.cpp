@@ -233,9 +233,28 @@ void Register::update(Call *call) {
 
 void Register::addState(Call *call) {
 	lock_states();
-	if(convRegisterState(call) == rs_Failed && eqLastState(call, false)) {
-		updateLastState(call);
-	} else {
+	bool updateRsFailedOk = false;
+	if(convRegisterState(call) == rs_Failed) {
+		if(eqLastState(call, false)) {
+			updateLastState(call);
+			updateRsFailedOk = true;
+		} else if(countStates > 1) {
+			for(unsigned i = 1; i < countStates; i++) {
+				if(states[i]->state == rs_Failed &&
+				   states[i]->isEq(call, this, false)) {
+					RegisterState *failedState = states[i];
+					for(unsigned j = i; j > 0; j--) {
+						states[j] = states[j - 1];
+					}
+					states[0] = failedState;
+					updateLastState(call);
+					updateRsFailedOk = true;
+					break;
+				}
+			}
+		}
+	}
+	if(!updateRsFailedOk) {
 		shiftStates();
 		states[0] = new FILE_LINE(20002) RegisterState(call, this);
 		++countStates;
