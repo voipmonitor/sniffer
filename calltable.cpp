@@ -4157,7 +4157,10 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* c
 			hash_node_call *prev = NULL;
 			node_call = (hash_node_call *)node->calls;
 			while(node_call != NULL) {
-				if(node_call->call->destroy_call_at != 0 && time_s != 0 && time_s > node_call->call->destroy_call_at) {
+				if(node_call->call->destroy_call_at != 0 &&
+				   (node_call->call->seenbye ||
+				    node_call->call->lastSIPresponseNum / 10 == 48 ||
+				    (time_s != 0 && time_s > node_call->call->destroy_call_at))) {
 					if(sverb.hash_rtp) {
 						cout << "remove call with destroy_call_at: " 
 						     << node_call->call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << " " 
