@@ -10,6 +10,7 @@
 #define NEW_REGISTER_NEW_RECORD_FAILED 120
 #define NEW_REGISTER_ERASE_FAILED_TIMEOUT 60
 #define NEW_REGISTER_ERASE_TIMEOUT 2*3600
+#define NEW_REGISTER_USE_CMP_UA_STATE false
 
 
 extern char sql_cdr_ua_table[256];
@@ -157,7 +158,7 @@ void RegisterState::copyFrom(const RegisterState *src) {
 	ua = REG_NEW_STR(src->ua);
 }
 
-bool RegisterState::isEq(Call *call, Register *reg, bool useFname) {
+bool RegisterState::isEq(Call *call, Register *reg, bool useCmpUa) {
 	/*
 	if(state == convRegisterState(call)) cout << "ok state" << endl;
 	//if(REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, call->contact_num)) cout << "ok contact_num" << endl;
@@ -175,8 +176,7 @@ bool RegisterState::isEq(Call *call, Register *reg, bool useFname) {
 	       REG_EQ_STR(from_name == EQ_REG ? reg->from_name : from_name, call->callername) &&
 	       REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, call->caller_domain) &&
 	       REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, call->digest_realm) &&
-	       REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua) &&
-	       (!useFname || fname == call->fname_register) &&
+	       (!useCmpUa || REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua)) &&
 	       id_sensor == call->useSensorId);
 }
 
@@ -233,28 +233,50 @@ void Register::update(Call *call) {
 
 void Register::addState(Call *call) {
 	lock_states();
+	bool updateRsOk = false;
 	bool updateRsFailedOk = false;
-	if(convRegisterState(call) == rs_Failed) {
-		if(eqLastState(call, false)) {
+	if(convRegisterState(call) != rs_Failed) {
+		if(eqLastState(call, NEW_REGISTER_USE_CMP_UA_STATE)) {
+			updateLastState(call);
+			updateRsOk = true;
+		} else if(countStates > 1) {
+			for(unsigned i = 1; i < countStates; i++) {
+				if(states[i]->state != rs_Failed) {
+					if(states[i]->isEq(call, this, NEW_REGISTER_USE_CMP_UA_STATE)) {
+						RegisterState *state = states[i];
+						for(unsigned j = i; j > 0; j--) {
+							states[j] = states[j - 1];
+						}
+						states[0] = state;
+						updateLastState(call);
+						updateRsOk = true;
+					}
+					break;
+				}
+			}
+		}
+	} else {
+		if(eqLastState(call, NEW_REGISTER_USE_CMP_UA_STATE)) {
 			updateLastState(call);
 			updateRsFailedOk = true;
 		} else if(countStates > 1) {
 			for(unsigned i = 1; i < countStates; i++) {
-				if(states[i]->state == rs_Failed &&
-				   states[i]->isEq(call, this, false)) {
-					RegisterState *failedState = states[i];
-					for(unsigned j = i; j > 0; j--) {
-						states[j] = states[j - 1];
+				if(states[i]->state == rs_Failed) {
+					if(states[i]->isEq(call, this, NEW_REGISTER_USE_CMP_UA_STATE)) {
+						RegisterState *failedState = states[i];
+						for(unsigned j = i; j > 0; j--) {
+							states[j] = states[j - 1];
+						}
+						states[0] = failedState;
+						updateLastState(call);
+						updateRsFailedOk = true;
 					}
-					states[0] = failedState;
-					updateLastState(call);
-					updateRsFailedOk = true;
 					break;
 				}
 			}
 		}
 	}
-	if(!updateRsFailedOk) {
+	if(!updateRsOk && !updateRsFailedOk) {
 		shiftStates();
 		states[0] = new FILE_LINE(20002) RegisterState(call, this);
 		++countStates;
@@ -267,16 +289,16 @@ void Register::addState(Call *call) {
 	}
 	if(state->state == rs_Failed) {
 		saveFailedToDb(state);
-	} else {
+	} else if(!updateRsOk) {
 		saveStateToDb(state);
 		RegisterState *prevState = states_prev_last();
 		if(prevState && prevState->state == rs_Failed) {
-			saveFailedToDb(state, true);
+			saveFailedToDb(prevState, true);
 		}
 	}
 	if(opt_enable_fraud && isFraudReady()) {
-		RegisterState *prev_state = states_prev_last();
-		fraudRegister(call, state->state, prev_state ? prev_state->state : rs_na, prev_state ? prev_state->state_to : 0);
+		RegisterState *prevState = states_prev_last();
+		fraudRegister(call, state->state, prevState ? prevState->state : rs_na, prevState ? prevState->state_to : 0);
 	}
 	unlock_states();
 }
@@ -320,9 +342,9 @@ void Register::updateLastState(Call *call) {
 	}
 }
 
-bool Register::eqLastState(Call *call, bool useFname) {
+bool Register::eqLastState(Call *call, bool useCmpUa) { 
 	RegisterState *state = states_last();
-	if(state && state->isEq(call, this, useFname)) {
+	if(state && state->isEq(call, this, useCmpUa)) {
 		return(true);
 	}
 	return(false);
