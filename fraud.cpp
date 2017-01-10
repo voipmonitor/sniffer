@@ -473,6 +473,8 @@ void FraudAlertInfo::setAlertJsonBase(JsonExport *json) {
 FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	this->type = type;
 	this->dbId = dbId;
+	ipFilterCondition12 = _cond12_and;
+	phoneNumberFilterCondition12 = _cond12_and;
 	concurentCallsLimitLocal = 0;
 	concurentCallsLimitInternational = 0;
 	concurentCallsLimitBoth = 0;
@@ -557,17 +559,25 @@ bool FraudAlert::loadAlert() {
 			 dbRow["fraud_rcc_by"] == "rtp_stream_ip_group" ? _typeBy_rtp_stream_ip_group :
 				_typeBy_source_ip;
 	}
-	if(defFilterIp() || defStreamFilterIp()) {
+	if(defFilterIp()) {
 		ipFilter.addWhite(dbRow["fraud_whitelist_ip"].c_str());
 		ipFilter.addWhite(dbRow["fraud_whitelist_ip_g"].c_str());
 		ipFilter.addBlack(dbRow["fraud_blacklist_ip"].c_str());
 		ipFilter.addBlack(dbRow["fraud_blacklist_ip_g"].c_str());
 	}
-	if(defFilterIp2() || defStreamFilterIp()) {
+	if(defFilterIp2()) {
 		ipFilter2.addWhite(dbRow["fraud_whitelist_ip_2"].c_str());
 		ipFilter2.addWhite(dbRow["fraud_whitelist_ip_2_g"].c_str());
 		ipFilter2.addBlack(dbRow["fraud_blacklist_ip_2"].c_str());
 		ipFilter2.addBlack(dbRow["fraud_blacklist_ip_2_g"].c_str());
+	}
+	if(defFilterIpCondition12()) {
+		ipFilterCondition12 = dbRow["fraud_ip_condition_12"] == "and" ? _cond12_and :
+				      dbRow["fraud_ip_condition_12"] == "or" ? _cond12_or :
+				      dbRow["fraud_ip_condition_12"] == "both_direction" ? _cond12_both_directions :
+				      typeBy == _typeBy_rtp_stream_ip || typeBy == _typeBy_rtp_stream_ip_group ? 
+				       _cond12_both_directions : 
+				       _cond12_and;
 	}
 	if(defFilterNumber()) {
 		phoneNumberFilter.addWhite(dbRow["fraud_whitelist_number"].c_str());
@@ -580,6 +590,14 @@ bool FraudAlert::loadAlert() {
 		phoneNumberFilter2.addWhite(dbRow["fraud_whitelist_number_2_g"].c_str());
 		phoneNumberFilter2.addBlack(dbRow["fraud_blacklist_number_2"].c_str());
 		phoneNumberFilter2.addBlack(dbRow["fraud_blacklist_number_2_g"].c_str());
+	}
+	if(defFilterNumberCondition12()) {
+		phoneNumberFilterCondition12 = dbRow["fraud_number_condition_12"] == "and" ? _cond12_and :
+					       dbRow["fraud_number_condition_12"] == "or" ? _cond12_or :
+					       dbRow["fraud_number_condition_12"] == "both_direction" ? _cond12_both_directions :
+					       typeBy == _typeBy_rtp_stream_ip || typeBy == _typeBy_rtp_stream_ip_group ? 
+						_cond12_both_directions :
+						_cond12_and;
 	}
 	if(defFilterUA()) {
 		uaFilter.addWhite(dbRow["fraud_whitelist_ua"].c_str());
@@ -700,22 +718,57 @@ string FraudAlert::getTypeString() {
 	return("");
 }
 
+bool FraudAlert::okFilterIp(u_int32_t ip, u_int32_t ip2) {
+	if((!this->defFilterIp() || this->ipFilter.is_empty()) && 
+	   (!this->defFilterIp2() || this->ipFilter2.is_empty())) {
+		return(true);
+	}
+	switch(ipFilterCondition12) {
+	case _cond12_and:
+		return((!this->defFilterIp() || this->ipFilter.checkIP(ip)) &&
+		       (!this->defFilterIp2() || this->ipFilter2.checkIP(ip2)));
+	case _cond12_or:
+		return((!this->defFilterIp() || (!this->ipFilter.is_empty() && this->ipFilter.checkIP(ip))) ||
+		       (!this->defFilterIp2() || (!this->ipFilter2.is_empty() && this->ipFilter2.checkIP(ip2))));
+	case _cond12_both_directions:
+		return(((!this->defFilterIp() || this->ipFilter.checkIP(ip)) &&
+			(!this->defFilterIp2() || this->ipFilter2.checkIP(ip2))) ||
+		       ((!this->defFilterIp() || this->ipFilter.checkIP(ip2)) &&
+			(!this->defFilterIp2() || this->ipFilter2.checkIP(ip))));
+	default:
+		return(true);
+	}
+	return(false);
+}
+
+bool FraudAlert::okFilterPhoneNumber(const char *numb, const char *numb2) {
+	if((!this->defFilterNumber() || this->phoneNumberFilter.is_empty()) && 
+	   (!this->defFilterNumber2() || this->phoneNumberFilter2.is_empty())) {
+		return(true);
+	}
+	switch(phoneNumberFilterCondition12) {
+	case _cond12_and:
+		return((!this->defFilterNumber() || this->phoneNumberFilter.checkNumber(numb)) &&
+		       (!this->defFilterNumber2() || this->phoneNumberFilter2.checkNumber(numb2)));
+	case _cond12_or:
+		return((!this->defFilterNumber() || (!this->phoneNumberFilter.is_empty() && this->phoneNumberFilter.checkNumber(numb))) ||
+		       (!this->defFilterNumber2() || (!this->phoneNumberFilter2.is_empty() && this->phoneNumberFilter2.checkNumber(numb2))));
+	case _cond12_both_directions:
+		return(((!this->defFilterNumber() || this->phoneNumberFilter.checkNumber(numb)) &&
+			(!this->defFilterNumber2() || this->phoneNumberFilter2.checkNumber(numb2))) ||
+		       ((!this->defFilterNumber() || this->phoneNumberFilter.checkNumber(numb2)) &&
+			(!this->defFilterNumber2() || this->phoneNumberFilter2.checkNumber(numb))));
+	default:
+		return(true);
+	}
+	return(false);
+}
+
 bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
-	if(this->defFilterIp() && !this->ipFilter.checkIP(callInfo->caller_ip)) {
+	if(!this->okFilterIp(callInfo->caller_ip, callInfo->called_ip)) {
 		return(false);
 	}
-	if(this->defFilterIp2() && !this->ipFilter2.checkIP(callInfo->called_ip)) {
-		return(false);
-	}
-	if(this->defStreamFilterIp() &&
-	   !((this->ipFilter.checkIP(callInfo->caller_ip) && this->ipFilter2.checkIP(callInfo->called_ip)) ||
-	     (this->ipFilter.checkIP(callInfo->called_ip) && this->ipFilter2.checkIP(callInfo->caller_ip)))) {
-		return(false);
-	}
-	if(this->defFilterNumber() && !this->phoneNumberFilter.checkNumber(callInfo->caller_number.c_str())) {
-		return(false);
-	}
-	if(this->defFilterNumber2() && !this->phoneNumberFilter2.checkNumber(callInfo->called_number.c_str())) {
+	if(!this->okFilterPhoneNumber(callInfo->caller_number.c_str(), callInfo->called_number.c_str())) {
 		return(false);
 	}
 	if(this->defDestPrefixes() && this->destPrefixes.size()) {
@@ -737,31 +790,17 @@ bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
 }
 
 bool FraudAlert::okFilter(sFraudRtpStreamInfo *rtpStreamInfo) {
-	if(this->defFilterIp() && !this->ipFilter.checkIP(rtpStreamInfo->rtp_src_ip)) {
+	if(!this->okFilterIp(rtpStreamInfo->rtp_src_ip, rtpStreamInfo->rtp_dst_ip)) {
 		return(false);
 	}
-	if(this->defFilterIp2() && !this->ipFilter2.checkIP(rtpStreamInfo->rtp_dst_ip)) {
-		return(false);
-	}
-	if(this->defStreamFilterIp() &&
-	   !((this->ipFilter.checkIP(rtpStreamInfo->rtp_src_ip) && this->ipFilter2.checkIP(rtpStreamInfo->rtp_dst_ip)) ||
-	     (this->ipFilter.checkIP(rtpStreamInfo->rtp_dst_ip) && this->ipFilter2.checkIP(rtpStreamInfo->rtp_src_ip)))) {
-		return(false);
-	}
-	if(this->defFilterNumber() && !this->phoneNumberFilter.checkNumber(rtpStreamInfo->caller_number.c_str())) {
-		return(false);
-	}
-	if(this->defFilterNumber2() && !this->phoneNumberFilter2.checkNumber(rtpStreamInfo->called_number.c_str())) {
+	if(!this->okFilterPhoneNumber(rtpStreamInfo->caller_number.c_str(), rtpStreamInfo->called_number.c_str())) {
 		return(false);
 	}
 	return(true);
 }
 
 bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
-	if(this->defFilterIp() && !this->ipFilter.checkIP(eventInfo->src_ip)) {
-		return(false);
-	}
-	if(this->defFilterIp2() && !this->ipFilter2.checkIP(eventInfo->dst_ip)) {
+	if(!this->okFilterIp(eventInfo->src_ip, eventInfo->dst_ip)) {
 		return(false);
 	}
 	if(this->defFilterUA() && !this->uaFilter.checkUA(eventInfo->ua.c_str())) {

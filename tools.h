@@ -1695,6 +1695,9 @@ public:
 		inet_aton(check_ip, &ips);
 		return(checkIP(htonl(ips.s_addr)));
 	}
+	bool is_empty() {
+		return(white.is_empty() && black.is_empty());
+	}
 private:
 	ListIP white;
 	ListIP black;
@@ -1710,6 +1713,9 @@ public:
 	bool checkNumber(const char *check_number) {
 		return((white.is_empty() || white.checkNumber(check_number)) &&
 		       !black.checkNumber(check_number));
+	}
+	bool is_empty() {
+		return(white.is_empty() && black.is_empty());
 	}
 private:
 	ListPhoneNumber white;

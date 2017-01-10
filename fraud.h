@@ -643,6 +643,11 @@ public:
 		_li_international,
 		_li_booth
 	};
+	enum eCondition12 {
+		_cond12_and,
+		_cond12_or,
+		_cond12_both_directions
+	};
 	FraudAlert(eFraudAlertType type, unsigned int dbId);
 	virtual ~FraudAlert();
 	bool isReg();
@@ -662,6 +667,8 @@ public:
 	virtual void evRtpStream(sFraudRtpStreamInfo *rtpStreamInfo) {}
 	virtual void evEvent(sFraudEventInfo *eventInfo) {}
 	virtual void evRegister(sFraudRegisterInfo *registerInfo) {}
+	virtual bool okFilterIp(u_int32_t ip, u_int32_t ip2);
+	virtual bool okFilterPhoneNumber(const char *numb, const char *numb2);
 	virtual bool okFilter(sFraudCallInfo *callInfo);
 	virtual bool okFilter(sFraudRtpStreamInfo *rtpStreamInfo);
 	virtual bool okFilter(sFraudEventInfo *eventInfo);
@@ -691,9 +698,10 @@ protected:
 	virtual void addFraudDef(SqlDb_row *row) {}
 	virtual bool defFilterIp() { return(false); }
 	virtual bool defFilterIp2() { return(false); }
-	virtual bool defStreamFilterIp() { return(false); }
+	virtual bool defFilterIpCondition12() { return(false); }
 	virtual bool defFilterNumber() { return(false); }
 	virtual bool defFilterNumber2() { return(false); }
+	virtual bool defFilterNumberCondition12() { return(false); }
 	virtual bool defFilterUA() { return(false); }
 	virtual bool defFraudDef() { return(false); }
 	virtual bool defConcuretCallsLimit() { return(false); }
@@ -713,8 +721,10 @@ protected:
 	string descr;
 	ListIP_wb ipFilter;
 	ListIP_wb ipFilter2;
+	eCondition12 ipFilterCondition12;
 	ListPhoneNumber_wb phoneNumberFilter;
 	ListPhoneNumber_wb phoneNumberFilter2;
+	eCondition12 phoneNumberFilterCondition12;
 	ListUA_wb uaFilter;
 	unsigned int concurentCallsLimitLocal;
 	unsigned int concurentCallsLimitInternational;
@@ -985,14 +995,12 @@ public:
 	void evRtpStream(sFraudRtpStreamInfo *rtpStreamInfo);
 protected:
 	void addFraudDef(SqlDb_row *row);
-	bool defFilterIp() { return(getTypeBy() == FraudAlert::_typeBy_source_ip || 
-				    getTypeBy() == FraudAlert::_typeBy_source_number); }
-	bool defFilterIp2() { return(getTypeBy() == FraudAlert::_typeBy_source_ip || 
-				     getTypeBy() == FraudAlert::_typeBy_source_number); }
-	bool defStreamFilterIp() { return(getTypeBy() == FraudAlert::FraudAlert::_typeBy_rtp_stream_ip || 
-					  getTypeBy() == FraudAlert::_typeBy_rtp_stream_ip_group); }
+	bool defFilterIp() { return(true); }
+	bool defFilterIp2() { return(true); }
+	bool defFilterIpCondition12() { return(true); }
 	bool defFilterNumber() { return(true); }
 	bool defFilterNumber2() { return(true); }
+	bool defFilterNumberCondition12() { return(true); }
 	bool defFraudDef() { return(true); }
 	bool defConcuretCallsLimit() { return(true); }
 	bool defDestPrefixes() { return(true); }
