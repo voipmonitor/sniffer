@@ -1,3 +1,8 @@
+17.12 09.01.2017
+================
+- optimize number of register_failed and _state
+
+
 17.11 06.01.2017
 ================
 - fix one way calls (only one RTP stream) for some cases (broken since >= 17.8)
