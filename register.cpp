@@ -615,7 +615,7 @@ void Registers::cleanup(u_int32_t act_time, bool force) {
 					}
 				} else {
 					if(regstate->state == rs_Failed) {
-						iter->second->saveFailedToDb(regstate);
+						iter->second->saveFailedToDb(regstate, force);
 					}
 					if(!_sync_registers_erase) {
 						if(regstate->state == rs_Failed && reg->countStates == 1 &&

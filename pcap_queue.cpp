@@ -2993,6 +2993,11 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 			if(sleepCounter > 10 && sleepCounter <= 15) {
 				calltable->cleanup_calls(0);
 				calltable->cleanup_registers(0);
+				extern int opt_sip_register;
+				if(opt_sip_register == 1) {
+					extern Registers registers;
+					registers.cleanup(0, true);
+				}
 			}
 			if(sleepCounter > 15) {
 				calltable->destroyCallsIfPcapsClosed();
@@ -3023,6 +3028,11 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 				if(!sleepTimeBeforeCleanup) {
 					calltable->cleanup_calls(0);
 					calltable->cleanup_registers(0);
+					extern int opt_sip_register;
+					if(opt_sip_register == 1) {
+						extern Registers registers;
+						registers.cleanup(0, true);
+					}
 				}
 			} else if(sleepTimeAfterCleanup) {
 				--sleepTimeAfterCleanup;
