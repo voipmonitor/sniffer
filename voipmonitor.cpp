@@ -6060,10 +6060,6 @@ void set_context_config() {
 		}
 	}
 	
-	if(!enable_pcap_split) {
-		opt_rtpsave_threaded = 0;
-	}
-	
 	if(opt_enable_http) {
 		opt_enable_http_enum_tables = true;
 	}
