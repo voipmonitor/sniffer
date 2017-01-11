@@ -3394,7 +3394,8 @@ bool ManagerClientThread_screen_popup::parseCommand() {
 }
 
 void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
-					      unsigned int sipSaddr, unsigned int sipDaddr) {
+					      unsigned int sipSaddr, unsigned int sipDaddr,
+					      const char *screenPopupFieldsString) {
 	/*
 	cout << "** call 01" << endl;
 	cout << "** - called num : " << calledNum << endl;
@@ -3447,13 +3448,15 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 		"caller:[[%s]] "
 		"called:[[%s]] "
 		"sipcallerip:[[%s]] "
-		"sipcalledip:[[%s]]\n",
+		"sipcalledip:[[%s]] "
+		"fields:[[%s]]\n",
 		sipResponseNum,
 		callerName,
 		callerNumStr.c_str(),
 		calledNum,
 		sipSaddrIP,
-		sipDaddrIP);
+		sipDaddrIP,
+		screenPopupFieldsString);
 	this->lock_responses();
 	this->responses.push(rsltString);
 	this->unlock_responses();
@@ -3606,11 +3609,14 @@ void ManagerClientThreads::add(ManagerClientThread *clientThread) {
 }
 
 void ManagerClientThreads::onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
-				  unsigned int sipSaddr, unsigned int sipDaddr) {
+				  unsigned int sipSaddr, unsigned int sipDaddr,
+				  const char *screenPopupFieldsString) {
 	this->lock_client_threads();
 	vector<ManagerClientThread*>::iterator iter;
 	for(iter = this->clientThreads.begin(); iter != this->clientThreads.end(); ++iter) {
-		(*iter)->onCall(sipResponseNum, callerName, callerNum, calledNum, sipSaddr, sipDaddr);
+		(*iter)->onCall(sipResponseNum, callerName, callerNum, calledNum, 
+				sipSaddr, sipDaddr, 
+				screenPopupFieldsString);
 	}
 	this->unlock_client_threads();
 }

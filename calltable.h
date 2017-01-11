@@ -1172,6 +1172,7 @@ public:
 		string leftBorder;
 		string rightBorder;
 		string regularExpression;
+		bool screenPopupField;
 	};
 	struct sCustomHeaderDataPlus : public sCustomHeaderData {
 		string type;
@@ -1188,6 +1189,7 @@ public:
 	void setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content);
 	void prepareSaveRows_cdr(Call *call, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
 	void prepareSaveRows_message(Call *call, class SqlDb_row *message, class SqlDb_row message_next_ch[], char *message_next_ch_name[]);
+	string getScreenPopupFieldsString(Call *call);
 	string getDeleteQuery(const char *id, const char *prefix, const char *suffix);
 	list<string> getAllNextTables() {
 		return(allNextTables);

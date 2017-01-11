@@ -5143,6 +5143,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 				ch_data.leftBorder = row["left_border"];
 				ch_data.rightBorder = row["right_border"];
 				ch_data.regularExpression = row["regular_expression"];
+				ch_data.screenPopupField = atoi(row["screen_popup_field"].c_str());
 				ch_data.dynamic_table = atoi(row["dynamic_table"].c_str());
 				ch_data.dynamic_column = atoi(row["dynamic_column"].c_str());
 				customHeaderData.push_back(ch_data);
@@ -5370,6 +5371,29 @@ void CustomHeaders::prepareSaveRows_cdr(Call *call, SqlDb_row *cdr_next, SqlDb_r
 
 void CustomHeaders::prepareSaveRows_message(Call *call, class SqlDb_row *message, class SqlDb_row message_next_ch[], char *message_next_ch_name[]) {
 	this->prepareSaveRows_cdr(call, message, message_next_ch, message_next_ch_name);
+}
+
+string CustomHeaders::getScreenPopupFieldsString(Call *call) {
+	string fields;
+	map<int, map<int, dstring> >::iterator iter;
+	for(iter = call->custom_headers.begin(); iter != call->custom_headers.end(); iter++) {
+		map<int, dstring>::iterator iter2;
+		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			if(!this->custom_headers[iter->first][iter2->first].screenPopupField ||
+			   iter2->second[1].empty()) {
+				continue;
+			}
+			if(!fields.empty()) {
+				fields += "||";
+			}
+			string name = iter2->second[0];
+			std::transform(name.begin(), name.end(), name.begin(), ::toupper);
+			fields += name;
+			fields += "::";
+			fields += iter2->second[1];
+		}
+	}
+	return(fields);
 }
 
 string CustomHeaders::getDeleteQuery(const char *id, const char *prefix, const char *suffix) {

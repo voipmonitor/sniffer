@@ -2643,7 +2643,8 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 							syslog(LOG_NOTICE, "Call answered\n");
 						if(!call->onCall_2XX) {
 							ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-									     call->sipcallerip[0], call->sipcalledip[0]);
+									     call->sipcallerip[0], call->sipcalledip[0],
+									     custom_headers_cdr->getScreenPopupFieldsString(call).c_str());
 							sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->header_pt->ts);
 							call->onCall_2XX = true;
 						}
@@ -2660,7 +2661,8 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				}
 				if(!call->onCall_18X) {
 					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-							     call->sipcallerip[0], call->sipcalledip[0]);
+							     call->sipcallerip[0], call->sipcalledip[0],
+							     custom_headers_cdr->getScreenPopupFieldsString(call).c_str());
 					sendCallInfoEvCall(call, sSciInfo::sci_18X, packetS->header_pt->ts);
 					call->onCall_18X = true;
 				}
