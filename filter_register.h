@@ -14,7 +14,7 @@ public:
 	}
 	virtual ~cRegisterFilterItem_base() {
 	}
-	virtual bool check(void *rec) = 0;
+	virtual bool check(void *rec, bool *findInBlackList = NULL) = 0;
 	void setCodebook(const char *table, const char *column);
 	string getCodebookValue(u_int32_t id);
 	virtual u_int64_t getField_int(void *rec);
@@ -34,7 +34,7 @@ public:
 		this->calldate = calldate;
 		this->from = from;
 	}
-	bool check(void *rec) {
+	bool check(void *rec, bool */*findInBlackList*/ = NULL) {
 		if((from && getField_int(rec) < calldate) ||
 		   (!from && getField_int(rec) >= calldate)) {
 			return(false);
@@ -54,8 +54,8 @@ public:
 	void addWhite(const char *ip) {
 		ipData.addWhite(ip);
 	}
-	bool check(void *rec) {
-		if(!ipData.checkIP(getField_int(rec))) {
+	bool check(void *rec, bool *findInBlackList = NULL) {
+		if(!ipData.checkIP(getField_int(rec), findInBlackList)) {
 			return(false);
 		}
 		return(true);
@@ -79,9 +79,9 @@ public:
 		setCodebook(table, column);
 		checkStringData.addWhite(getCodebookValue(id).c_str());
 	}
-	bool check(void *rec) {
+	bool check(void *rec, bool *findInBlackList = NULL) {
 		if(!getField_string(rec) ||
-		   !checkStringData.check(getField_string(rec))) {
+		   !checkStringData.check(getField_string(rec), findInBlackList)) {
 			return(false);
 		}
 		return(true);
@@ -98,7 +98,7 @@ public:
 		this->num = num;
 		this->from = from;
 	}
-	bool check(void *rec) {
+	bool check(void *rec, bool */*findInBlackList*/ = NULL) {
 		if((from && getField_int(rec) < num) ||
 		   (!from && getField_int(rec) >= num)) {
 			return(false);
@@ -118,7 +118,7 @@ public:
 	void addNum(u_int64_t num) {
 		nums.push_back(num);
 	}
-	bool check(void *rec) {
+	bool check(void *rec, bool */*findInBlackList*/ = NULL) {
 		if(nums.size()) {
 			for(list<u_int64_t>::iterator iter = nums.begin(); iter != nums.end(); iter++) {
 				if(*iter == getField_int(rec)) {
@@ -139,8 +139,12 @@ public:
 	bool check(void *rec) {
 		list<cRegisterFilterItem_base*>::iterator iter;
 		for(iter = fItems.begin(); iter !=fItems.end(); iter++) {
-			if((*iter)->check(rec)) {
+			bool findInBlackList = false;
+			if((*iter)->check(rec, &findInBlackList)) {
 				return(true);
+			}
+			if(findInBlackList) {
+				return(false);
 			}
 		}
 		return(false);

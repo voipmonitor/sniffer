@@ -1686,9 +1686,20 @@ public:
 	void addWhite(const char *ip);
 	void addBlack(string &ip);
 	void addBlack(const char *ip);
-	bool checkIP(uint check_ip) {
-		return((white.is_empty() || white.checkIP(check_ip)) &&
-		       !black.checkIP(check_ip));
+	bool checkIP(uint check_ip, bool *findInBlackList = NULL) {
+		if(findInBlackList) {
+			*findInBlackList = false;
+		}
+		if(!white.is_empty() && !white.checkIP(check_ip)) {
+			return(false);
+		}
+		if(!black.is_empty() && black.checkIP(check_ip)) {
+			if(findInBlackList) {
+				*findInBlackList = true;
+			}
+			return(false);
+		}
+		return(true);
 	}
 	bool checkIP(const char *check_ip) {
 		in_addr ips;
@@ -1710,9 +1721,20 @@ public:
 	void addWhite(const char *number);
 	void addBlack(string &number);
 	void addBlack(const char *number);
-	bool checkNumber(const char *check_number) {
-		return((white.is_empty() || white.checkNumber(check_number)) &&
-		       !black.checkNumber(check_number));
+	bool checkNumber(const char *check_number, bool *findInBlackList = NULL) {
+		if(findInBlackList) {
+			*findInBlackList = false;
+		}
+		if(!white.is_empty() && !white.checkNumber(check_number)) {
+			return(false);
+		}
+		if(!black.is_empty() && black.checkNumber(check_number)) {
+			if(findInBlackList) {
+				*findInBlackList = true;
+			}
+			return(false);
+		}
+		return(true);
 	}
 	bool is_empty() {
 		return(white.is_empty() && black.is_empty());
@@ -1729,9 +1751,20 @@ public:
 	void addWhite(const char *ua);
 	void addBlack(string &ua);
 	void addBlack(const char *ua);
-	bool checkUA(const char *check_ua) {
-		return((!white.size() || white.checkUA(check_ua)) &&
-		       !black.checkUA(check_ua));
+	bool checkUA(const char *check_ua, bool *findInBlackList = NULL) {
+		if(findInBlackList) {
+			*findInBlackList = false;
+		}
+		if(white.size() && !white.checkUA(check_ua)) {
+			return(false);
+		}
+		if(black.size() && black.checkUA(check_ua)) {
+			if(findInBlackList) {
+				*findInBlackList = true;
+			}
+			return(false);
+		}
+		return(true);
 	}
 private:
 	ListUA white;
@@ -1745,9 +1778,20 @@ public:
 	void addWhite(const char *checkString);
 	void addBlack(string &checkString);
 	void addBlack(const char *checkString);
-	bool check(const char *checkString) {
-		return((!white.size() || white.check(checkString)) &&
-		       !black.check(checkString));
+	bool check(const char *checkString, bool *findInBlackList = NULL) {
+		if(findInBlackList) {
+			*findInBlackList = false;
+		}
+		if(white.size() && !white.check(checkString)) {
+			return(false);
+		}
+		if(black.size() && black.check(checkString)) {
+			if(findInBlackList) {
+				*findInBlackList = true;
+			}
+			return(false);
+		}
+		return(true);
 	}
 private:
 	ListCheckString white;
