@@ -550,7 +550,10 @@ bool CleanSpool::check_exists_act_records_in_files() {
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 	}
-	sqlDb->query("select max(calldate) as max_calldate from cdr where calldate > date_add(now(), interval -1 day)");
+	string condIdSensor_cdr = getCondIdSensor_cdr();
+	sqlDb->query("select max(calldate) as max_calldate from cdr "
+		     "where calldate > date_add(now(), interval -1 day) " + 
+		     (condIdSensor_cdr.empty() ? "" : " and " + condIdSensor_cdr));
 	SqlDb_row row = sqlDb->fetchRow();
 	if(!row || !row["max_calldate"].length()) {
 		return(true);
@@ -580,7 +583,10 @@ bool CleanSpool::check_exists_act_files_in_filesindex() {
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 	}
-	sqlDb->query("select max(calldate) as max_calldate from cdr where calldate > date_add(now(), interval -1 day)");
+	string condIdSensor_cdr = getCondIdSensor_cdr();
+	sqlDb->query("select max(calldate) as max_calldate from cdr "
+		     "where calldate > date_add(now(), interval -1 day) " + 
+		     (condIdSensor_cdr.empty() ? "" : " and " + condIdSensor_cdr));
 	SqlDb_row row = sqlDb->fetchRow();
 	if(!row || !row["max_calldate"].length()) {
 		return(true);

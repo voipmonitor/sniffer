@@ -126,6 +126,15 @@ private:
 		extern int opt_id_sensor_cleanspool;
 		return(intToString(opt_id_sensor_cleanspool > 0 ? opt_id_sensor_cleanspool : 0));
 	}
+	string getCondIdSensor_cdr() {
+		if(is_receiver()) {
+			return("");
+		}
+		extern int opt_id_sensor_cleanspool;
+		return(opt_id_sensor_cleanspool > 0 ?
+			"id_sensor = " + intToString(opt_id_sensor_cleanspool) :
+			"id_sensor is null");
+	}
 private:
 	int spoolIndex;
 	CleanSpoolDirs opt_dirs;
