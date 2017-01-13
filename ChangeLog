@@ -1,3 +1,13 @@
+17.13 13.01.2017
+================
+- apply new operator (and/or/both directions) between src / dst in rcc alert [VG-1079]
+- add id_sensor condition to functions in check_exists_act_... in cleanspool
+- add / fix cleanup registers cache when reading from file with -rpb
+- fix '!' operator in active registers filter 
+- add the posibility of using custom headers in 'easy caller' [VG-1082]
+- fix RTP threading when pcapsplit is set to no (rare configuration) 
+
+
 17.12 09.01.2017
 ================
 - optimize number of register_failed and _state
