@@ -3644,7 +3644,13 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 		}
 		packetLossPtr[packetLossLen] = endChar;
 	}
-	call->rtcpXrData.add(atoll(ssrc.c_str()), tv, moslq, nlr);
+	u_int32_t ssrc_int;
+	if(ssrc.length() > 2 && ssrc[0] == '0' && ssrc[1] == 'x') {
+		sscanf(ssrc.c_str() + 2, "%x", &ssrc_int);
+	} else {
+		ssrc_int = atoll(ssrc.c_str());
+	}
+	call->rtcpXrData.add(ssrc_int, tv, moslq, nlr);
 }
 
 inline void process_packet__cleanup_calls(pcap_pkthdr* header, u_long timeS) {
