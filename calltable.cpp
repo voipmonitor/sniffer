@@ -1692,8 +1692,36 @@ Call::convertRawToWav() {
 
 	int maxsamplerate = 0;
 
-	/* process all files in playlist for each direction */
+	/* get max sample rate */
 	int samplerate = 8000;
+	for(int i = 0; i <= 1; i++) {
+		char *wav = NULL;
+		if(i == 0 and adir == 0) continue;
+		if(i == 1 and bdir == 0) continue;
+		wav = i == 0 ? wav0 : wav1;
+
+		/* open playlist */
+		char rawinfo_extension[100];
+		snprintf(rawinfo_extension, sizeof(rawinfo_extension), "i%d.rawInfo", i);
+		strncpy(rawInfo, get_pathfilename(tsf_audio, rawinfo_extension).c_str(), sizeof(rawInfo));
+		rawInfo[sizeof(rawInfo) - 1] = 0;
+		pl = fopen(rawInfo, "r");
+		while(fgets(line, 256, pl)) {
+			line[strlen(line)] = '\0'; // remove '\n' which is last character
+			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+			char raw_extension[1024];
+			snprintf(raw_extension, sizeof(raw_extension), "i%d.%d.%lu.%d.%ld.%ld.raw", i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+			string raw_pathfilename = this->get_pathfilename(tsf_audio, raw_extension);
+			samplerate = 1000 * get_ticks_bycodec(codec);
+			if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
+			if(maxsamplerate < samplerate) {
+				maxsamplerate = samplerate;
+			}
+		}
+		fclose(pl);
+	}
+
+	/* process all files in playlist for each direction */
 	for(int i = 0; i <= 1; i++) {
 		char *wav = NULL;
 		if(i == 0 and adir == 0) continue;
@@ -1730,9 +1758,6 @@ Call::convertRawToWav() {
 			string raw_pathfilename = this->get_pathfilename(tsf_audio, raw_extension);
 			samplerate = 1000 * get_ticks_bycodec(codec);
 			if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
-			if(maxsamplerate < samplerate) {
-				maxsamplerate = samplerate;
-			}
 			if(ssrc_index >= ssrc_n ||
 			   last_ssrc_index >= (unsigned)ssrc_n) {
 				syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] or last_ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x]", 
