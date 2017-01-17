@@ -54,14 +54,14 @@ inline
 #endif
 iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 	gre_hdr *grehdr = (gre_hdr*)((char*)header_ip + sizeof(iphdr2));
-	grehdr->protocol = ntohs(grehdr->protocol);
-	if(grehdr->version == 0 and (grehdr->protocol == 0x6558 || grehdr->protocol == 0x88BE)) {
+	u_int16_t grehdr_protocol = ntohs(grehdr->protocol);
+	if(grehdr->version == 0 && (grehdr_protocol == 0x6558 || grehdr_protocol == 0x88BE)) {
 		// 0x6558 - GRE                             - header size 8 bytes
 		// 0x88BE - GRE & ERSPAN & grehdr->seq == 1 - headers size 8 + 8 bytes
 		// 0x88BE - GRE & ERSPAN & grehdr->seq == 0 - headers size 4 bytes
 		struct ether_header *header_eth = (struct ether_header *)((char*)header_ip + sizeof(iphdr2) + 
-						  (grehdr->protocol == 0x6558 ? 8 :
-						   grehdr->protocol == 0x88BE ? (grehdr->seq ? 16 : 4) :
+						  (grehdr_protocol == 0x6558 ? 8 :
+						   grehdr_protocol == 0x88BE ? (grehdr->seq ? 16 : 4) :
 										8));
 		unsigned int vlanoffset;
 		u_int16_t protocol = 0;
@@ -82,9 +82,9 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 		} else {
 			return(NULL);
 		}
-	} else if(grehdr->version == 0 and grehdr->protocol == 0x800) {
+	} else if(grehdr->version == 0 and grehdr_protocol == 0x800) {
 		header_ip = (struct iphdr2 *) ((char*)header_ip + sizeof(iphdr2) + 4);
-	} else if(grehdr->version == 0 and grehdr->protocol == 0x8847) {
+	} else if(grehdr->version == 0 and grehdr_protocol == 0x8847) {
 		// 0x88BE - GRE & MPLS - + 4 bytes (GRE) + N * 4 bytes (MPLS)
 		u_int header_ip_offset = sizeof(iphdr2) + 4;
 		u_int8_t mpls_bottomOfLabelStackFlag;
