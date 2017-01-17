@@ -1,3 +1,11 @@
+17.14 13.01.2017
+================
+- fix ssrc conversion from hexadecimal value in SIP/PUBLISH/LocalAddr/SSRC (pairing RTCP-XR) VS-551
+- add configuration parameters for spooldir permissions, new options: spooldir_file_permission (default 0666), spooldir_dir_permission (default 0777), spooldir_owner, spooldir_group [VS-362]
+- fix GRE encapsulation pcap storing (broken since 17.11) [VG-1131]
+- fix fast forward voice in case caller/called sample rate differs (one direction G722 the other G711)
+
+
 17.13 13.01.2017
 ================
 - apply new operator (and/or/both directions) between src / dst in rcc alert [VG-1079]
