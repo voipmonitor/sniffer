@@ -302,7 +302,7 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 			char *pointToLastDirSeparator = strrchr(out, '/');
 			if(pointToLastDirSeparator) {
 				*pointToLastDirSeparator = 0;
-				mkdir_r(out, 0777);
+				spooldir_mkdir(out);
 				*pointToLastDirSeparator = '/';
 			} else {
 				break;
@@ -310,6 +310,7 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 		}
 		f_out = fopen(out, "w");
 		if(f_out) {
+			spooldir_file_chmod_own(f_out);
 			break;
 		}
 	}

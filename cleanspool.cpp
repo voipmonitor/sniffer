@@ -76,13 +76,17 @@ void CleanSpool::addFile(const char *ymdh, eTypeSpoolFile typeSpoolFile, const c
 			size_t posLastDirSeparator = fname.rfind('/');
 			if(posLastDirSeparator != string::npos) {
 				string fname_path = fname.substr(0, posLastDirSeparator);
-				mkdir_r(fname_path, 0777);
+				spooldir_mkdir(fname_path);
 			} else {
 				break;
 			}
 		}
+		bool fname_exists = file_exists(fname);
 		fname_stream.open(fname.c_str(), ios::app | ios::out);
 		if(fname_stream.is_open()) {
+			if(!fname_exists) {
+				spooldir_file_chmod_own(fname);
+			}
 			break;
 		}
 	}
@@ -818,8 +822,9 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 							sumsize += size;
 							if(!readOnly) {
 								if(!spool_fileindex_stream.is_open()) {
-									mkdir_r(spool_fileindex_path, 0777);
+									spooldir_mkdir(spool_fileindex_path);
 									spool_fileindex_stream.open(spool_fileindex.c_str(), ios::trunc | ios::out);
+									spooldir_file_chmod_own(spool_fileindex);
 								}
 								spool_fileindex_stream << dhmt_file << ":" << size << "\n";
 							}

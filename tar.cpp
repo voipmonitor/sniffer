@@ -242,7 +242,7 @@ Tar::int_to_oct_nonull(int num, char *oct, size_t octlen)
 }
 
 int
-Tar::tar_init(int oflags, int mode, int options)
+Tar::tar_init(int oflags, int options)
 {
 	memset(&tar, 0, sizeof(TAR));
 	
@@ -261,11 +261,11 @@ Tar::tar_init(int oflags, int mode, int options)
 
 /* open a new tarfile handle */
 int     
-Tar::tar_open(string pathname, int oflags, int mode, int options)
+Tar::tar_open(string pathname, int oflags, int options)
 {       
 	this->pathname = pathname;
 	this->open_flags = oflags;
-	if (tar_init(oflags, mode, options) == -1)
+	if (tar_init(oflags, options) == -1)
 		return -1;
 
 	if ((options & TAR_NOOVERWRITE) && (oflags & O_CREAT))
@@ -289,10 +289,13 @@ Tar::tar_open(string pathname, int oflags, int mode, int options)
 			}
 		}
 	}
-	tar.fd = open((char*)this->pathname.c_str(), oflags | O_LARGEFILE, mode);
+	tar.fd = open((char*)this->pathname.c_str(), oflags | O_LARGEFILE, spooldir_file_permission());
 	if (tar.fd == -1)
 	{
 		return -1;
+	}
+	if(oflags & O_CREAT) {
+		spooldir_chown(tar.fd);
 	}
 	return 0;
 }
@@ -1045,7 +1048,7 @@ TarQueue::write(int qtype, data_t data) {
 		}
 		break;
 	}
-	mkdir_r(tar_dir.str(), 0777);
+	spooldir_mkdir(tar_dir.str());
 	//printf("tar_name %s\n", tar_name.str().c_str());
        
 	pthread_mutex_lock(&tarslock);
@@ -1062,7 +1065,7 @@ TarQueue::write(int qtype, data_t data) {
 		}
 		tars[tar_name.str()] = tar;
 		pthread_mutex_unlock(&tarslock);
-		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, 0777, TAR_GNU);
+		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, TAR_GNU);
 		tar->tar.qtype = qtype;
 		tar->time = data;
 		tar->created_at = data.time;

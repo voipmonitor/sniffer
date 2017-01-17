@@ -308,4 +308,21 @@ eTypeSpoolFile findTypeSpoolFile(unsigned int spool_index, const char *filePathN
 #define snifferMode_read_from_files_str string("2")
 #define snifferMode_sender_str string("3")
 
+inline unsigned spooldir_file_permission() {
+	extern unsigned opt_spooldir_file_permission_int;
+	return(opt_spooldir_file_permission_int);
+}
+inline unsigned spooldir_dir_permission() {
+	extern unsigned opt_spooldir_dir_permission_int;
+	return(opt_spooldir_dir_permission_int);
+}
+inline unsigned spooldir_owner_id() {
+	extern unsigned opt_spooldir_owner_id;
+	return(opt_spooldir_owner_id);
+}
+inline unsigned spooldir_group_id() {
+	extern unsigned opt_spooldir_group_id;
+	return(opt_spooldir_group_id);
+}
+
 #endif

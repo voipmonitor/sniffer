@@ -126,8 +126,8 @@ public:
 	virtual ~Tar();
 
 	//tar functions 
-	int tar_init(int oflags, int mode, int options);
-	int tar_open(string pathname, int oflags, int mode = 0, int options = 0);
+	int tar_init(int oflags, int options);
+	int tar_open(string pathname, int oflags, int options = 0);
 	void th_finish();
 	int th_write();
 	int tar_append_buffer(ChunkBuffer *buffer, size_t lenForProceed = 0);

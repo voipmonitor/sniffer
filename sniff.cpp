@@ -3496,7 +3496,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 
 	// opening dump file
 	if(enable_save_any(call)) {
-		mkdir_r(call->get_pathname(tsf_rtp).c_str(), 0777);
+		spooldir_mkdir(call->get_pathname(tsf_rtp));
 	}
 	if(enable_save_packet(call)) {
 		string pathfilename = call->get_pathfilename(tsf_rtp);

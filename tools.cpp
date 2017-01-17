@@ -257,7 +257,7 @@ set_mac() {
 }
 
 int
-mkdir_r(std::string s, mode_t mode)
+mkdir_r(std::string s, mode_t mode, unsigned uid, unsigned gid)
 {
 	size_t pre = 0, pos;
 	std::string dir;
@@ -272,8 +272,14 @@ mkdir_r(std::string s, mode_t mode)
 		dir = s.substr(0, pos++);
 		pre = pos;
 		if(dir.size() == 0) continue; // if leading / first time is 0 length
-		if((mdret = mkdir(dir.c_str(), mode)) && errno != EEXIST){
-			return mdret;
+		if((mdret = mkdir(dir.c_str(), mode))) {
+			if(errno != EEXIST) {
+				return mdret;
+			}
+		} else {
+			if(uid || gid) {
+				chown(dir.c_str(), uid, gid);
+			}
 		}
 	}
 	return mdret;
@@ -2969,7 +2975,10 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 		enableAsyncWrite = 0;
 		typeCompress = compress_na;
 	}
-	this->permission = 0;
+	this->permission_file = 0;
+	this->permission_dir = 0;
+	this->uid = 0;
+	this->gid = 0;
 	this->fh = 0;
 	this->tar = opt_pcap_dump_tar && call && typeFile != FileZipHandler::na ? 
 		     (call->getSpoolIndex() + 1) :
@@ -3029,10 +3038,14 @@ FileZipHandler::~FileZipHandler() {
 	}
 }
 
-bool FileZipHandler::open(eTypeSpoolFile typeSpoolFile, const char *fileName, int permission) {
+bool FileZipHandler::open(eTypeSpoolFile typeSpoolFile, const char *fileName, 
+			  int permission_file, int permission_dir, unsigned uid, unsigned gid) {
 	this->typeSpoolFile = typeSpoolFile;
 	this->fileName = fileName;
-	this->permission = permission;
+	this->permission_file = permission_file ? permission_file : spooldir_file_permission();
+	this->permission_dir = permission_dir ? permission_dir : spooldir_dir_permission();
+	this->uid = uid ? uid : spooldir_owner_id();
+	this->gid = gid ? gid : spooldir_group_id();
 	if(this->tar) {
 		if(this->call) {
 			this->tar_data.set(typeSpoolFile, this->call, this->fileName.c_str());
@@ -3297,14 +3310,17 @@ bool FileZipHandler::_open_write() {
 			char *pointToLastDirSeparator = strrchr((char*)fileName.c_str(), '/');
 			if(pointToLastDirSeparator) {
 				*pointToLastDirSeparator = 0;
-				mkdir_r(fileName.c_str(), 0777);
+				mkdir_r(fileName.c_str(), permission_dir, this->uid, this->gid);
 				*pointToLastDirSeparator = '/';
 			} else {
 				break;
 			}
 		}
-		this->fh = ::open(fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, permission);
+		this->fh = ::open(fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, permission_file);
 		if(this->okHandle()) {
+			if(this->uid || this->gid) {
+				fchown(this->fh, this->uid, this->gid);
+			}
 			break;
 		}
 	}
@@ -5443,4 +5459,61 @@ void close_all_fd() {
 		}
 		close(fd);
 	}
+}
+
+
+int spooldir_file_chmod_own(string filename) {
+	return(spooldir_file_chmod_own(filename.c_str()));
+}
+
+int spooldir_file_chmod_own(const char *filename) {
+	int rslt_chmod = spooldir_file_chmod(filename);
+	int rslt_chown = spooldir_chown(filename);
+	return(rslt_chmod ? rslt_chmod : rslt_chown);
+}
+
+int spooldir_dir_chmod_own(const char *filename) {
+	int rslt_chmod = spooldir_dir_chmod(filename);
+	int rslt_chown = spooldir_chown(filename);
+	return(rslt_chmod ? rslt_chmod : rslt_chown);
+}
+
+int spooldir_file_chmod_own(FILE *file) {
+	return(spooldir_file_chmod_own(fileno(file)));
+}
+
+int spooldir_file_chmod_own(int filehandle) {
+	int rslt_chmod = spooldir_file_chmod(filehandle);
+	int rslt_chown = spooldir_chown(filehandle);
+	return(rslt_chmod ? rslt_chmod : rslt_chown);
+}
+
+int spooldir_file_chmod(const char *filename) {
+	return(chmod(filename, spooldir_file_permission()));
+}
+
+int spooldir_dir_chmod(const char *filename) {
+	return(chmod(filename, spooldir_dir_permission()));
+}
+
+int spooldir_chown(const char *filename) {
+	if(spooldir_owner_id() || spooldir_group_id()) {
+		return(chown(filename, spooldir_owner_id(), spooldir_group_id()));
+	}
+	return(0);
+}
+
+int spooldir_file_chmod(int filehandle) {
+	return(fchmod(filehandle, spooldir_file_permission()));
+}
+
+int spooldir_chown(int filehandle) {
+	if(spooldir_owner_id() || spooldir_group_id()) {
+		return(fchown(filehandle, spooldir_owner_id(), spooldir_group_id()));
+	}
+	return(0);
+}
+
+int spooldir_mkdir(std::string dir) {
+	return(mkdir_r(dir, spooldir_dir_permission(), spooldir_owner_id(), spooldir_group_id()));
 }

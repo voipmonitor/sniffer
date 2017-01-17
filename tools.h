@@ -200,7 +200,7 @@ bool is_dir(const char * fileName);
 bool is_dir(char * fileName) { return(is_dir((const char*)fileName)); }
 bool is_dir(string fileName) { return(is_dir(fileName.c_str())); }
 void set_mac();
-int mkdir_r(std::string, mode_t);
+int mkdir_r(std::string, mode_t, unsigned uid = 0, unsigned gid = 0);
 int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
 int rmdir_r(std::string dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
 int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir = false, bool withoutRemoveRoot = false);
@@ -612,7 +612,8 @@ public:
 		       bool dumpHandler = false, class Call *call = NULL,
 		       eTypeFile typeFile = na);
 	virtual ~FileZipHandler();
-	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, int permission = 0666);
+	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, 
+		  int permission_file = 0, int permission_dir = 0, unsigned uid = 0, unsigned gid = 0);
 	void close();
 	bool write(char *data, int length, bool isHeader = false) {
 		mode = mode_write;
@@ -661,7 +662,10 @@ public:
 	eMode mode;
 	eTypeSpoolFile typeSpoolFile;
 	string fileName;
-	int permission;
+	int permission_file;
+	int permission_dir;
+	unsigned uid;
+	unsigned gid;
 	int fh;
 	int tar;
 	data_tar tar_data;
@@ -3185,6 +3189,19 @@ private:
 void read_pcap(const char *pcapFileName);
 
 void close_all_fd();
+
+
+int spooldir_file_chmod_own(string filename);
+int spooldir_file_chmod_own(const char *filename);
+int spooldir_dir_chmod_own(const char *filename);
+int spooldir_file_chmod_own(FILE *file);
+int spooldir_file_chmod_own(int filehandle);
+int spooldir_file_chmod(const char *filename);
+int spooldir_dir_chmod(const char *filename);
+int spooldir_chown(const char *filename);
+int spooldir_file_chmod(int filehandle);
+int spooldir_chown(int filehandle);
+int spooldir_mkdir(std::string dir);
 
 
 #endif

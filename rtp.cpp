@@ -1392,7 +1392,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 						char *pointToLastDirSeparator = strrchr(tmp, '/');
 						if(pointToLastDirSeparator) {
 							*pointToLastDirSeparator = 0;
-							mkdir_r(tmp, 0777);
+							spooldir_mkdir(tmp);
 							*pointToLastDirSeparator = '/';
 						} else {
 							break;
@@ -1400,6 +1400,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					}
 					gfileRAW = fopen(tmp, "w");
 					if(gfileRAW) {
+						spooldir_file_chmod_own(tmp);
 						break;
 					}
 				}
@@ -1418,8 +1419,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 				/* write file info to "playlist" */
 				sprintf(tmp, "%s.rawInfo", basefilename);
+				bool gfileRAWInfo_exists = file_exists(tmp);
 				FILE *gfileRAWInfo = fopen(tmp, "a");
 				if(gfileRAWInfo) {
+					if(!gfileRAWInfo_exists) {
+						spooldir_file_chmod_own(tmp);
+					}
 					fprintf(gfileRAWInfo, "%d:%lu:%d:%ld:%ld\n", ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
 					fclose(gfileRAWInfo);
 				} else {

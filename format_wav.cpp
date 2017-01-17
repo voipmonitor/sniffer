@@ -1,3 +1,5 @@
+#include <sys/stat.h>
+
 #include "format_wav.h"
 #include "format_slinear.h"
 #include "tools.h"
@@ -141,7 +143,7 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap, int stere
 			char *pointToLastDirSeparator = strrchr(out, '/');
 			if(pointToLastDirSeparator) {
 				*pointToLastDirSeparator = 0;
-				mkdir_r(out, 0777);
+				spooldir_mkdir(out);
 				*pointToLastDirSeparator = '/';
 			} else {
 				break;
@@ -149,6 +151,7 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap, int stere
 		}
 		f_out = fopen(out, "w");
 		if(f_out) {
+			spooldir_file_chmod_own(f_out);
 			break;
 		}
 	}

@@ -48,6 +48,8 @@
 #include <execinfo.h>
 #include <sstream>
 #include <dirent.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -622,6 +624,14 @@ char opt_spooldir_2_main[1024];
 char opt_spooldir_2_rtp[1024];
 char opt_spooldir_2_graph[1024];
 char opt_spooldir_2_audio[1024];
+char opt_spooldir_file_permission[10];
+unsigned opt_spooldir_file_permission_int = 0666;
+char opt_spooldir_dir_permission[10];
+unsigned opt_spooldir_dir_permission_int = 0777;
+char opt_spooldir_owner[100];
+unsigned opt_spooldir_owner_id;
+char opt_spooldir_group[100];
+unsigned opt_spooldir_group_id;
 char opt_cachedir[1024];
 
 int opt_upgrade_try_http_if_https_fail = 0;
@@ -1155,7 +1165,7 @@ void *moving_cache( void *dummy ) {
 									char hour_str[10];
 									sprintf(hour_str, "%02i", hour);
 									if(file_exists((char*)(string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str())) {
-										mkdir_r((string(opt_spooldir_main) + "/" + de->d_name + "/" + hour_str).c_str(), 0777);
+										spooldir_mkdir(string(opt_spooldir_main) + "/" + de->d_name + "/" + hour_str);
 										mv_r((string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str(), (string(opt_spooldir_main) + "/" + de->d_name + "/" + hour_str).c_str());
 										rmdir((string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str());
 										moveHourDir = true;
@@ -4874,6 +4884,10 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42187) cConfigItem_string("spooldir_2_audio", opt_spooldir_2_audio, sizeof(opt_spooldir_2_audio)));
 			addConfigItem(new FILE_LINE(42188) cConfigItem_yesno("tar", &opt_pcap_dump_tar));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_file_permission", opt_spooldir_file_permission, sizeof(opt_spooldir_file_permission)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_dir_permission", opt_spooldir_dir_permission, sizeof(opt_spooldir_dir_permission)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_owner", opt_spooldir_owner, sizeof(opt_spooldir_owner)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_group", opt_spooldir_group, sizeof(opt_spooldir_group)));
 				addConfigItem(new FILE_LINE(42189) cConfigItem_string("convertchar", opt_convert_char, sizeof(opt_convert_char)));
 				addConfigItem(new FILE_LINE(42190) cConfigItem_string("cachedir", opt_cachedir, sizeof(opt_cachedir)));
 					expert();
@@ -5351,7 +5365,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		opt_create_old_partitions = getNumberOfDayToNow(opt_database_backup_from_date);
 	}
 	if(configItem->config_name == "cachedir") {
-		mkdir_r(opt_cachedir, 0777);
+		spooldir_mkdir(opt_cachedir);
 	}
 	if(configItem->config_name == "timezone") {
 		if(opt_timezone[0]) {
@@ -5901,7 +5915,7 @@ void get_command_line_arguments() {
 				break;
 			case 'd':
 				strncpy(opt_spooldir_main, optarg, sizeof(opt_spooldir_main));
-				mkdir_r(opt_spooldir_main, 0777);
+				spooldir_mkdir(opt_spooldir_main);
 				break;
 			case 'k':
 				opt_fork = 0;
@@ -5969,6 +5983,39 @@ void get_command_line_arguments() {
 		if(optarg) {
 			delete [] optarg;
 		}
+	}
+}
+
+void set_spool_permission() {
+	if(opt_spooldir_file_permission[0]) {
+		opt_spooldir_file_permission_int = strtol(opt_spooldir_file_permission, NULL, 8);
+	} else {
+		opt_spooldir_file_permission_int = 0666;
+	}
+	if(opt_spooldir_dir_permission[0]) {
+		opt_spooldir_dir_permission_int = strtol(opt_spooldir_dir_permission, NULL, 8);
+	} else {
+		opt_spooldir_dir_permission_int = 0777;
+	}
+	if(opt_spooldir_owner[0]) {
+		passwd *pwd = getpwnam(opt_spooldir_owner);
+		if(pwd != NULL) {
+			opt_spooldir_owner_id = pwd->pw_uid;
+		} else {
+			syslog(LOG_ERR, "unknown user '%s' in parameter spooldir_owner", opt_spooldir_owner);
+		}
+	} else {
+		opt_spooldir_owner_id = 0;
+	}
+	if(opt_spooldir_group[0]) {
+		group *grp = getgrnam(opt_spooldir_group);
+		if(grp != NULL) {
+			opt_spooldir_group_id = grp->gr_gid;
+		} else {
+			syslog(LOG_ERR, "unknown group '%s' in parameter spooldir_group", opt_spooldir_group);
+		}
+	} else {
+		opt_spooldir_group_id = 0;
 	}
 }
 
@@ -6216,32 +6263,34 @@ void set_context_config() {
 			opt_process_rtp_packets_qring_item_length = 5000;
 		}
 	}
+	
+	set_spool_permission();
 }
 
 void create_spool_dirs() {
 	if(opt_spooldir_main[0]) {
-		mkdir_r(opt_spooldir_main, 0777);
+		spooldir_mkdir(opt_spooldir_main);
 	}
 	if(opt_spooldir_rtp[0]) {
-		mkdir_r(opt_spooldir_rtp, 0777);
+		spooldir_mkdir(opt_spooldir_rtp);
 	}
 	if(opt_spooldir_graph[0]) {
-		mkdir_r(opt_spooldir_graph, 0777);
+		spooldir_mkdir(opt_spooldir_graph);
 	}
 	if(opt_spooldir_audio[0]) {
-		mkdir_r(opt_spooldir_audio, 0777);
+		spooldir_mkdir(opt_spooldir_audio);
 	}
 	if(opt_spooldir_2_main[0]) {
-		mkdir_r(opt_spooldir_2_main, 0777);
+		spooldir_mkdir(opt_spooldir_2_main);
 	}
 	if(opt_spooldir_2_rtp[0]) {
-		mkdir_r(opt_spooldir_2_rtp, 0777);
+		spooldir_mkdir(opt_spooldir_2_rtp);
 	}
 	if(opt_spooldir_2_graph[0]) {
-		mkdir_r(opt_spooldir_2_graph, 0777);
+		spooldir_mkdir(opt_spooldir_2_graph);
 	}
 	if(opt_spooldir_2_audio[0]) {
-		mkdir_r(opt_spooldir_2_audio, 0777);
+		spooldir_mkdir(opt_spooldir_2_audio);
 	}
 }
 
@@ -7106,7 +7155,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cachedir", NULL))) {
 		strncpy(opt_cachedir, value, sizeof(opt_cachedir));
-		mkdir_r(opt_cachedir, 0777);
+		spooldir_mkdir(opt_cachedir);
 	}
 	if((value = ini.GetValue("general", "spooldir", NULL))) {
 		strncpy(opt_spooldir_main, value, sizeof(opt_spooldir_main));
@@ -7131,6 +7180,18 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "spooldir_2_audio", NULL))) {
 		strncpy(opt_spooldir_2_audio, value, sizeof(opt_spooldir_2_audio));
+	}
+	if((value = ini.GetValue("general", "spooldir_file_permission", NULL))) {
+		strncpy(opt_spooldir_file_permission, value, sizeof(opt_spooldir_file_permission));
+	}
+	if((value = ini.GetValue("general", "spooldir_dir_permission", NULL))) {
+		strncpy(opt_spooldir_dir_permission, value, sizeof(opt_spooldir_dir_permission));
+	}
+	if((value = ini.GetValue("general", "spooldir_owner", NULL))) {
+		strncpy(opt_spooldir_owner, value, sizeof(opt_spooldir_owner));
+	}
+	if((value = ini.GetValue("general", "spooldir_group", NULL))) {
+		strncpy(opt_spooldir_group, value, sizeof(opt_spooldir_group));
 	}
 	if((value = ini.GetValue("general", "spooldiroldschema", NULL))) {
 		opt_newdir = !yesno(value);

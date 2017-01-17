@@ -1288,7 +1288,9 @@ int convertALAW2WAV(const char *fname1, char *fname3, int maxsamplerate) {
 	}
 
 	FILE *f_out = fopen(fname3, "a"); // THIS HAS TO BE APPEND!
-	if(!f_out) {
+	if(f_out) {
+		spooldir_file_chmod_own(f_out);
+	} else {
 		fclose(f_in1);
 		syslog(LOG_ERR,"File [%s] cannot be opened for write", fname3);
 		return -1;
@@ -1350,7 +1352,9 @@ int convertULAW2WAV(const char *fname1, char *fname3, int maxsamplerate) {
 	}
 		
 	FILE *f_out = fopen(fname3, "a"); // THIS HAS TO BE APPEND!
-	if(!f_out) {
+	if(f_out) {
+		spooldir_file_chmod_own(f_out);
+	} else {
 		fclose(f_in1);
 		syslog(LOG_ERR,"File [%s] cannot be opened for write", fname3);
 		return -1;
@@ -1605,7 +1609,7 @@ Call::convertRawToWav() {
 				char *pointToLastDirSeparator = strrchr(fileNameWav, '/');
 				if(pointToLastDirSeparator) {
 					*pointToLastDirSeparator = 0;
-					mkdir_r(fileNameWav, 0777);
+					spooldir_mkdir(fileNameWav);
 					*pointToLastDirSeparator = '/';
 				} else {
 					break;
@@ -1613,6 +1617,7 @@ Call::convertRawToWav() {
 			}
 			wav = fopen(fileNameWav, "w");
 			if(wav) {
+				spooldir_file_chmod_own(fileNameWav);
 				break;
 			}
 		}

@@ -2086,7 +2086,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			//CREATE rrd files:
 			char filename[1000];
 			sprintf(filename, "%s/rrd/" , getRrdDir());
-			mkdir_r(filename, 0777);
+			spooldir_mkdir(filename);
 			sprintf(filename, "%s/rrd/2db-drop.rrd", getRrdDir());
 			vm_rrd_create_rrddrop(filename);
 			sprintf(filename, "%s/rrd/2db-heap.rrd", getRrdDir());
