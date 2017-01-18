@@ -989,8 +989,11 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		char outbuf[2048];
 		string rslt_data;
 		/* headers */
-		snprintf(outbuf, sizeof(outbuf),
-			"[[\"callreference\", "
+		snprintf(outbuf, sizeof(outbuf), 
+			 "%s",
+			(string(
+			"[["
+			"\"callreference\", "
 			"\"callid\", "
 			"\"callercodec\", "
 			"\"calledcodec\", "
@@ -1019,7 +1022,10 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			"\"dst_mosAD\", "
 			"\"dst_jitter\", "
 			"\"dst_loss\", "
-			"\"dst_loss_last10sec\"]");
+			"\"dst_loss_last10sec\"") + 
+			(is_receiver() ? ",\"id_sensor\"" : "") +
+			"]"
+			).c_str());
 		rslt_data += outbuf;
 		calltable->lock_calls_listMAP();
 		unsigned int now = time(NULL);
@@ -1071,7 +1077,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 				 "\"%d\", " //dst_mosAD
 				 "\"%d\", " //dst_jitter
 				 "\"%f\", " //dst_loss
-				 "\"%f\"]", //dst_loss_last10sec
+				 "\"%f\"", //dst_loss_last10sec
 				 call, 
 				 json_encode(call->call_id).c_str(), 
 				 call->last_callercodec, 
@@ -1106,6 +1112,10 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 				 (call->lastcalledrtp and call->lastcalledrtp->stats.received > 50 ? (float)((double)call->lastcalledrtp->stats.lost / ((double)call->lastcalledrtp->stats.received + (double)call->lastcalledrtp->stats.lost) * 100.0) : 0),
 				 (call->lastcalledrtp ? (float)(call->lastcalledrtp->last_stat_loss_perc_mult10) : 0));
 			rslt_data += outbuf;
+			if(is_receiver()) {
+				rslt_data += "," + intToString(call->useSensorId);
+			}
+			rslt_data += "]";
 		}
 		calltable->unlock_calls_listMAP();
 		rslt_data += ",[\"encoded\"]]";
