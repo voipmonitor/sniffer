@@ -294,6 +294,7 @@ public:
 	void checkColumns_cdr(bool log = false);
 	void checkColumns_cdr_next(bool log = false);
 	void checkColumns_cdr_rtp(bool log = false);
+	void checkColumns_cdr_dtmf(bool log = false);
 	void checkColumns_message(bool log = false);
 	void checkColumns_register(bool log = false);
 	void checkColumns_other(bool log = false);
@@ -721,6 +722,7 @@ struct sExistsColumns {
 	bool cdr_rtp_index;
 	bool cdr_rtp_flags;
 	bool cdr_dtmf_calldate;
+	bool cdr_dtmf_type;
 	bool cdr_sipresp_calldate;
 	bool cdr_siphistory_calldate;
 	bool cdr_tar_part_calldate;

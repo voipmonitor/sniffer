@@ -1695,10 +1695,8 @@ Call::convertRawToWav() {
 	/* get max sample rate */
 	int samplerate = 8000;
 	for(int i = 0; i <= 1; i++) {
-		char *wav = NULL;
 		if(i == 0 and adir == 0) continue;
 		if(i == 1 and bdir == 0) continue;
-		wav = i == 0 ? wav0 : wav1;
 
 		/* open playlist */
 		char rawinfo_extension[100];
@@ -2877,7 +2875,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		if(opt_dbdtmf) {
 			while(dtmf_history.size()) {
-				dtmfq q;
+				s_dtmf q;
 				q = dtmf_history.front();
 				dtmf_history.pop();
 
@@ -2889,6 +2887,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				dtmf.add(q.daddr, "daddr");
 				dtmf.add(tmp, "dtmf");
 				dtmf.add(q.ts, "firsttime");
+				if(existsColumns.cdr_dtmf_type) {
+					dtmf.add(q.type, "type");
+				}
 				if(existsColumns.cdr_dtmf_calldate) {
 					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
@@ -3099,7 +3100,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		if(opt_dbdtmf) {
 			while(dtmf_history.size()) {
-				dtmfq q;
+				s_dtmf q;
 				q = dtmf_history.front();
 				dtmf_history.pop();
 
@@ -3111,6 +3112,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				dtmf.add(q.daddr, "daddr");
 				dtmf.add(tmp, "dtmf");
 				dtmf.add(q.ts, "firsttime");
+				if(existsColumns.cdr_dtmf_type) {
+					dtmf.add(q.type, "type");
+				}
 				if(existsColumns.cdr_dtmf_calldate) {
 					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
@@ -4827,12 +4831,13 @@ void Call::saveregister() {
 }
 
 void
-Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr, int callFromType) {
+Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr, s_dtmf::e_type dtmf_type) {
 
 	if(opt_dbdtmf) {
-		dtmfq q;
+		s_dtmf q;
 		q.dtmf = dtmf;
 		q.ts = dtmf_time - ts2double(first_packet_time, first_packet_usec);
+		q.type = dtmf_type;
 		q.saddr = ntohl(saddr);
 		q.daddr = ntohl(daddr);
 
@@ -4858,20 +4863,26 @@ Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int 
 		}       
 	}
 	if(opt_silencedtmfseq[0] != '\0') {
-		unsigned int dtmfflag2_index = callFromType ? 1 : 0;
+		unsigned int dtmfflag2_index = dtmf_type == s_dtmf::sip_info ? 0 : 1;
+		const char *dtmf_type_string = "";
+		if(sverb.dtmf) {
+			dtmf_type_string = dtmf_type == s_dtmf::sip_info ? "sip_info" :
+					   dtmf_type == s_dtmf::inband ? "inband" :
+					   dtmf_type == s_dtmf::rfc2833 ? "rfc2833" : "";
+		}
 
 		if (dtmfflag2[dtmfflag2_index] == 0) {
 			if (sverb.dtmf)
-				syslog(LOG_NOTICE, "[%s] initial DTMF detected %s ", fbasename, callFromType ? "RTP" : "SIP");
+				syslog(LOG_NOTICE, "[%s] initial DTMF detected %s ", fbasename, dtmf_type_string);
 		} else {
 			if (dtmf_time - this->lastdtmf_time > opt_pauserecordingdtmf_timeout) {	//timeout reset flag
 				dtmfflag2[dtmfflag2_index] = 0;
 				if (sverb.dtmf)
 					syslog(LOG_NOTICE, "[%s] DTMF detected %s / Diff from last DTMF: %lf s / possible timeout %i s. Too late, resetting dtmf flag",
-					    fbasename, callFromType ? "RTP" : "SIP", dtmf_time - this->lastdtmf_time, opt_pauserecordingdtmf_timeout);
+					    fbasename, dtmf_type_string, dtmf_time - this->lastdtmf_time, opt_pauserecordingdtmf_timeout);
 			} else {
 				if (sverb.dtmf)
-					syslog(LOG_NOTICE, "[%s] DTMF detected %s / Diff from last DTMF: %lf s.", fbasename, callFromType ? "RTP" : "SIP", dtmf_time - this->lastdtmf_time);
+					syslog(LOG_NOTICE, "[%s] DTMF detected %s / Diff from last DTMF: %lf s.", fbasename, dtmf_type_string, dtmf_time - this->lastdtmf_time);
 			}
 		}
 		this->lastdtmf_time = dtmf_time;
@@ -4888,12 +4899,12 @@ Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int 
 					if(silencerecording == 0) {
 						if(sverb.dtmf)
 							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - pausing recording - %s / %lf s", fbasename, 
-							       callFromType ? "RTP" : "SIP", dtmf_time - ts2double(this->first_packet_time, this->first_packet_usec));
+							       dtmf_type_string, dtmf_time - ts2double(this->first_packet_time, this->first_packet_usec));
 						silencerecording = 1;
 					} else {
 						if(sverb.dtmf)
 							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - unpausing recording - %s / %lf s", fbasename, 
-							       callFromType ? "RTP" : "SIP", dtmf_time - ts2double(this->first_packet_time, this->first_packet_usec));
+							       dtmf_type_string, dtmf_time - ts2double(this->first_packet_time, this->first_packet_usec));
 						silencerecording = 0;
 					}       
 					dtmfflag2[dtmfflag2_index] = 0;

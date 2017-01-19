@@ -3646,6 +3646,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`saddr` int unsigned DEFAULT NULL,\
 			`firsttime` float DEFAULT NULL,\
 			`dtmf` char DEFAULT NULL,\
+			`type` tinyint unsigned DEFAULT NULL,\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -3661,6 +3662,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+	
+	checkColumns_cdr_dtmf(true);
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_sipresp` (\
@@ -5094,6 +5097,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 		this->checkColumns_cdr();
 		this->checkColumns_cdr_next();
 		this->checkColumns_cdr_rtp();
+		this->checkColumns_cdr_dtmf();
 		this->checkColumns_message();
 		this->checkColumns_register();
 		this->checkColumns_other();
@@ -5318,6 +5322,19 @@ void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 				   "ALTER TABLE cdr_rtp "
 					"ADD COLUMN `flags` bigint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.cdr_rtp_flags);
+	}
+}
+
+void SqlDb_mysql::checkColumns_cdr_dtmf(bool log) {
+	extern int opt_dbdtmf;
+	map<string, u_int64_t> tableSize;
+	existsColumns.cdr_dtmf_type = this->existsColumn("cdr_dtmf", "type");
+	if(opt_dbdtmf && !existsColumns.cdr_dtmf_type) {
+		this->logNeedAlter("cdr_dtmf",
+				   "type",
+				   "ALTER TABLE cdr_dtmf "
+					"ADD COLUMN `type` tinyint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.cdr_dtmf_type);
 	}
 }
 

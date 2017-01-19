@@ -97,12 +97,19 @@
 #define CDR_CHANGE_SRC_PORT_CALLED	(1 << 1)
 
 
-typedef struct {
+	
+struct s_dtmf {
+	enum e_type {
+		sip_info,
+		inband,
+		rfc2833
+	};
+	e_type type;
 	double ts;
 	char dtmf;
 	unsigned int saddr;
 	unsigned int daddr;
-} dtmfq;
+};
 
 struct s_sdp_flags {
 	s_sdp_flags() {
@@ -293,7 +300,7 @@ public:
 	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
 	int recordstopped;		//!< flag holding if call was stopped to avoid double free
 	int dtmfflag;			//!< used for holding dtmf states 
-	unsigned int dtmfflag2[2];		//!< used for holding dtmf states 
+	unsigned int dtmfflag2[2];	//!< used for holding dtmf states 
 	double lastdtmf_time;		//!< used for holding time of last dtmf
 
 	int silencerecording;
@@ -340,7 +347,7 @@ public:
 	unsigned int first_packet_usec;
 	time_t destroy_call_at;	
 	time_t destroy_call_at_bye;	
-	std::queue <dtmfq> dtmf_history;
+	std::queue <s_dtmf> dtmf_history;
 	
 	u_int64_t first_invite_time_usec;
 	u_int64_t first_response_100_time_usec;
@@ -722,7 +729,7 @@ public:
 
 	float mos_lqo(char *deg, int samplerate);
 
-	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr, int callFromType);
+	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr, s_dtmf::e_type dtmf_type);
 	
 	void handle_dscp(struct iphdr2 *header_ip, bool iscaller);
 	

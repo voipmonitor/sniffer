@@ -876,7 +876,7 @@ RTP::process_dtmf_rfc2833() {
 		last_end_timestamp = timestamp;
 		Call *owner = (Call*)call_owner;
 		if(owner) {
-			owner->handle_dtmf(resp, ts2double(header_ts.tv_sec, header_ts.tv_usec), saddr, daddr, 2);
+			owner->handle_dtmf(resp, ts2double(header_ts.tv_sec, header_ts.tv_usec), saddr, daddr, s_dtmf::rfc2833);
 		}
 	}
 
@@ -1871,7 +1871,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					owner->isfax = 2;
 					owner->flags1 |= T30FAX;
 				} else if(opt_inbanddtmf and res == 5) {
-					owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr, 1);
+					owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr, s_dtmf::inband);
 				}
 			}
 		}
