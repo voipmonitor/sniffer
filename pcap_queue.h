@@ -660,7 +660,6 @@ private:
 			(double)(_writeit - _readit) / qringmax * 100 :
 			(double)(qringmax - _readit + _writeit) / qringmax * 100);
 	}
-	string getQringFillingPercStr();
 	void terminate();
 	const char *getTypeThreadName();
 	void prepareLogTraffic();

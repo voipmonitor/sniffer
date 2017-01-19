@@ -4117,21 +4117,6 @@ double PcapQueue_readFromInterfaceThread::getCpuUsagePerc(bool preparePstatData)
 	return(-1);
 }
 
-string PcapQueue_readFromInterfaceThread::getQringFillingPercStr() {
-	ostringstream outStr;
-	outStr << fixed;
-	for(int i = 0; i < 2; i++) {
-		double perc = getQringFillingPerc();
-		if(perc >= 0) {
-			if(outStr.str().length()) {
-				outStr << ",";
-			}
-			outStr << setprecision(0) << perc;
-		}
-	}
-	return(outStr.str());
-}
-
 void PcapQueue_readFromInterfaceThread::terminate() {
 	if(this->detachThread) {
 		this->detachThread->terminate();
@@ -4817,8 +4802,8 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			outStrStat << setprecision(1) << this->readThreads[i]->getTraffic(divide) << "Mb/s";
 			outStrStat << ';' << setprecision(1) << ti_cpu;
 			if(sverb.qring_stat) {
-				string qringFillingPerc = this->readThreads[i]->getQringFillingPercStr();
-				if(qringFillingPerc.length()) {
+				double qringFillingPerc = this->readThreads[i]->getQringFillingPerc();
+				if(qringFillingPerc > 0) {
 					outStrStat << "r" << qringFillingPerc;
 				}
 			}
@@ -4843,8 +4828,8 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->detachThread->getQringFillingPercStr();
-						if(qringFillingPerc.length()) {
+						double qringFillingPerc = this->readThreads[i]->detachThread->getQringFillingPerc();
+						if(qringFillingPerc > 0) {
 							outStrStat << "r" << qringFillingPerc;
 						}
 					}
@@ -4871,8 +4856,8 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->pcapProcessThread->getQringFillingPercStr();
-						if(qringFillingPerc.length()) {
+						double qringFillingPerc = this->readThreads[i]->pcapProcessThread->getQringFillingPerc();
+						if(qringFillingPerc > 0) {
 							outStrStat << "r" << qringFillingPerc;
 						}
 					}
@@ -4885,8 +4870,8 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->defragThread->getQringFillingPercStr();
-						if(qringFillingPerc.length()) {
+						double qringFillingPerc = this->readThreads[i]->defragThread->getQringFillingPerc();
+						if(qringFillingPerc > 0) {
 							outStrStat << "r" << qringFillingPerc;
 						}
 					}
@@ -4899,8 +4884,8 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->md1Thread->getQringFillingPercStr();
-						if(qringFillingPerc.length()) {
+						double qringFillingPerc = this->readThreads[i]->md1Thread->getQringFillingPerc();
+						if(qringFillingPerc > 0) {
 							outStrStat << "r" << qringFillingPerc;
 						}
 					}
@@ -4913,8 +4898,8 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->md2Thread->getQringFillingPercStr();
-						if(qringFillingPerc.length()) {
+						double qringFillingPerc = this->readThreads[i]->md2Thread->getQringFillingPerc();
+						if(qringFillingPerc > 0) {
 							outStrStat << "r" << qringFillingPerc;
 						}
 					}
@@ -4927,8 +4912,8 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->dedupThread->getQringFillingPercStr();
-						if(qringFillingPerc.length()) {
+						double qringFillingPerc = this->readThreads[i]->dedupThread->getQringFillingPerc();
+						if(qringFillingPerc > 0) {
 							outStrStat << "r" << qringFillingPerc;
 						}
 					}
@@ -4941,8 +4926,8 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 					sum += tid_cpu;
 					outStrStat << "%/" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
-						string qringFillingPerc = this->readThreads[i]->serviceThread->getQringFillingPercStr();
-						if(qringFillingPerc.length()) {
+						double qringFillingPerc = this->readThreads[i]->serviceThread->getQringFillingPerc();
+						if(qringFillingPerc> 0) {
 							outStrStat << "r" << qringFillingPerc;
 						}
 					}
