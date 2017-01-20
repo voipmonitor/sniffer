@@ -128,6 +128,58 @@ enum skinny_codecs {
 	SKINNY_CODEC_H263 = 101
 };
 
+struct s_skinny_payload_conv {
+	unsigned skinny_payload;
+	unsigned codec;
+} skinny_payload_conv[] = {
+	{ SKINNY_PAYLOAD_G711ALAW64K,			PAYLOAD_PCMA },
+	{ SKINNY_PAYLOAD_G711ALAW56K,			PAYLOAD_PCMA },
+	{ SKINNY_PAYLOAD_G711ULAW64K,			PAYLOAD_PCMU },
+	{ SKINNY_PAYLOAD_G711ULAW56K,			PAYLOAD_PCMU },
+	{ SKINNY_PAYLOAD_G722_64K,			PAYLOAD_G722 },
+	{ SKINNY_PAYLOAD_G722_56K,			PAYLOAD_G722 },
+	{ SKINNY_PAYLOAD_G722_48K,			PAYLOAD_G722 },
+	{ SKINNY_PAYLOAD_G7231,				PAYLOAD_G723 },
+	{ SKINNY_PAYLOAD_G728,				(unsigned)-1 },
+	{ SKINNY_PAYLOAD_G729,				PAYLOAD_G729 },
+	{ SKINNY_PAYLOAD_G729ANNEXA,			PAYLOAD_G729 },
+	{ SKINNY_PAYLOAD_G729ANNEXB,			PAYLOAD_G729 },
+	{ SKINNY_PAYLOAD_G729ANNEXAWANNEXB,		PAYLOAD_G729 },
+	{ SKINNY_PAYLOAD_GSM_FULL_RATE,			PAYLOAD_GSM },
+	{ SKINNY_PAYLOAD_GSM_HALF_RATE,			PAYLOAD_GSM },
+	{ SKINNY_PAYLOAD_GSM_ENHANCED_FULL_RATE,	PAYLOAD_GSM },
+	{ SKINNY_PAYLOAD_WIDE_BAND_256K,		(unsigned)-1 },
+	{ SKINNY_PAYLOAD_DATA64,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_DATA56,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_G7221_32K,			PAYLOAD_G722132 },
+	{ SKINNY_PAYLOAD_G7221_24K,			PAYLOAD_G722124 },
+	{ SKINNY_PAYLOAD_AAC,				(unsigned)-1 },
+	{ SKINNY_PAYLOAD_MP4ALATM_128,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_MP4ALATM_64,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_MP4ALATM_56,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_MP4ALATM_48,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_MP4ALATM_32,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_MP4ALATM_24,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_MP4ALATM_NA,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_GSM,				PAYLOAD_GSM },
+	{ SKINNY_PAYLOAD_G726_32K,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_G726_24K,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_G726_16K,			(unsigned)-1 },
+	{ SKINNY_PAYLOAD_ILBC,				PAYLOAD_ILBC },
+	{ SKINNY_PAYLOAD_ISAC,				PAYLOAD_ISAC },
+	{ SKINNY_PAYLOAD_OPUS,				PAYLOAD_OPUS },
+	{ SKINNY_PAYLOAD_AMR,				PAYLOAD_AMR },
+	{ SKINNY_PAYLOAD_AMR_WB,			PAYLOAD_AMRWB }
+};
+unsigned convSkinnyPayloadToCodec(unsigned skinnyPayload) {
+	for(unsigned i = 0; i < sizeof(skinny_payload_conv) / sizeof(skinny_payload_conv[0]); i++) {
+		if(skinny_payload_conv[i].skinny_payload == skinnyPayload) {
+			return(skinny_payload_conv[i].codec);
+		}
+	}
+	return(-1);
+}
+
 #define DEFAULT_SKINNY_PORT 2000
 #define DEFAULT_SKINNY_BACKLOG 2
 #define SKINNY_MAX_PACKET 2000
@@ -404,7 +456,7 @@ struct start_media_transmission_message_ip4 {
 	uint32_t space[19];
 };
 
-struct CM7_start_media_transmission_message_ip4 {
+struct CM7a_start_media_transmission_message_ip4 {
 	uint32_t conferenceId;
 	uint32_t passThruPartyId;
 	uint32_t ipVersion;
@@ -413,6 +465,15 @@ struct CM7_start_media_transmission_message_ip4 {
 	uint32_t remotePort;
 	uint32_t packetSize;
 	uint32_t payloadType;
+};
+
+struct CM7b_start_media_transmission_message_ip4 : public CM7a_start_media_transmission_message_ip4 {
+	uint32_t precedenceValue;
+	uint32_t ssValue;
+	uint16_t maxFramesPerPacket;
+	uint16_t padding;
+	uint8_t codecMode;
+	uint8_t dynamicPayload;
 };
 
 struct start_media_transmission_message_ip6 {
@@ -1062,7 +1123,8 @@ union skinny_data {
 	struct call_info_message callinfo;
 	struct cm5call_info_message cm5callinfo;
 	struct start_media_transmission_message_ip4 startmedia_ip4;
-	struct CM7_start_media_transmission_message_ip4 CM7_startmedia_ip4;
+	struct CM7a_start_media_transmission_message_ip4 CM7a_startmedia_ip4;
+	struct CM7b_start_media_transmission_message_ip4 CM7b_startmedia_ip4;
 	struct start_media_transmission_message_ip6 startmedia_ip6;
 	struct stop_media_transmission_message stopmedia;
 	struct open_receive_channel_message openreceivechannel;
@@ -1671,6 +1733,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 	case START_MEDIA_TRANSMISSION_MESSAGE:
 		{
 		unsigned int ref, ipaddr, port;
+		unsigned int payloadType = 0, dynamicPayload = 0;
 		if(req.res == 0) {
 
 			/* BASIC HEADER
@@ -1688,9 +1751,13 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			ipaddr = letohl(req.data.startmedia_ip4.remoteIp);
 			port = letohl(req.data.startmedia_ip4.remotePort);
 		} else if(req.res >= 17 ) {
-			ref = letohl(req.data.CM7_startmedia_ip4.conferenceId);
-			ipaddr = letohl(req.data.CM7_startmedia_ip4.remoteIp);
-			port = letohl(req.data.CM7_startmedia_ip4.remotePort);
+			ref = letohl(req.data.CM7a_startmedia_ip4.conferenceId);
+			ipaddr = letohl(req.data.CM7a_startmedia_ip4.remoteIp);
+			port = letohl(req.data.CM7a_startmedia_ip4.remotePort);
+			if(req.res >= 20 && req.data.CM7a_startmedia_ip4.payloadType != SKINNY_PAYLOAD_G7231) {
+				payloadType = req.data.CM7b_startmedia_ip4.payloadType;
+				dynamicPayload = req.data.CM7b_startmedia_ip4.dynamicPayload;
+			}
 		} else {
 			if(verbosity > 0)
 				syslog(LOG_NOTICE, "Unsupported header version START_MEDIA_TRANSMISSION_MESSAGE:[hex %x|dec %d]\n", req.res, req.res);
@@ -1708,6 +1775,12 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		if((call = calltable->find_by_call_id(callid, strlen(callid), 0)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+			if(dynamicPayload) {
+				unsigned codec = convSkinnyPayloadToCodec(payloadType);
+				if(codec >= 0) {
+					rtpmap[0] = dynamicPayload * 1000 + codec;
+				}
+			}
 			call->add_ip_port_hash(saddr, ipaddr, port, header, NULL, NULL, call->sipcallerip[0] == saddr, rtpmap, s_sdp_flags(), 1);
 		}
 		}
