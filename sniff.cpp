@@ -2296,6 +2296,9 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		goto endsip;
 	}
 	
+	call->max_length_sip_data = max(call->max_length_sip_data, packetS->sipDataLen);
+	call->max_length_sip_packet = max(call->max_length_sip_packet, packetS->header_pt->len);
+	
 	if(!packetS->_createCall && (call->flags & (FLAG_SAVERTP | FLAG_SAVEAUDIO))) {
 		unsigned int flags = call->flags;
 		SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags);

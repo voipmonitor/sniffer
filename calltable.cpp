@@ -325,6 +325,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	content_length = 0;
 	dcs = 0;
 	voicemail = voicemail_na;
+	max_length_sip_data = 0;
+	max_length_sip_packet = 0;
 	unrepliedinvite = 0;
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
 		 sipcallerip[i] = 0;
@@ -5176,7 +5178,9 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 			while((row = sqlDb->fetchRow())) {
 				sCustomHeaderDataPlus ch_data;
 				string specialType = row["special_type"];
-				ch_data.specialType = specialType == "gsm_dcs" ? gsm_dcs :
+				ch_data.specialType = specialType == "max_length_sip_data" ? max_length_sip_data :
+						      specialType == "max_length_sip_packet" ? max_length_sip_packet :
+						      specialType == "gsm_dcs" ? gsm_dcs :
 						      specialType == "gsm_voicemail" ? gsm_voicemail : st_na;
 				ch_data.db_id = atoi(row["id"].c_str());
 				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
@@ -5295,6 +5299,16 @@ void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket::ppCo
 			if(iter2->second.specialType) {
 				string content;
 				switch(iter2->second.specialType) {
+				case max_length_sip_data:
+					if(call->max_length_sip_data) {
+						content = intToString(call->max_length_sip_data);
+					}
+					break;
+				case max_length_sip_packet:
+					if(call->max_length_sip_packet) {
+						content = intToString(call->max_length_sip_packet);
+					}
+					break;
 				case gsm_dcs:
 					if(call->dcs) {
 						content = intToString(call->dcs);
@@ -5316,7 +5330,7 @@ void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket::ppCo
 					break;
 				}
 				dstring ds_content(iter2->second.header, content);
-				this->setCustomHeaderContent(call, iter->first, iter2->first, &ds_content);
+				this->setCustomHeaderContent(call, iter->first, iter2->first, &ds_content, true);
 			} else {
 				string findHeader = iter2->second.header;
 				if(findHeader[findHeader.length() - 1] != ':' &&
@@ -5366,9 +5380,9 @@ void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket::ppCo
 	unlock_custom_headers();
 }
 
-void CustomHeaders::setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content) {
+void CustomHeaders::setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content, bool useLastValue) {
 	bool exists = false;
-	if(!opt_custom_headers_last_value) {
+	if(!opt_custom_headers_last_value && !useLastValue) {
 		map<int, map<int, dstring> >::iterator iter = call->custom_headers.find(pos1);
 		if(iter != call->custom_headers.end()) {
 			map<int, dstring>::iterator iter2 = iter->second.find(pos2);
@@ -5377,7 +5391,7 @@ void CustomHeaders::setCustomHeaderContent(Call *call, int pos1, int pos2, dstri
 			}
 		}
 	}
-	if(!exists || opt_custom_headers_last_value) {
+	if(!exists || opt_custom_headers_last_value || useLastValue) {
 		call->custom_headers[pos1][pos2] = *content;
 	}
 }

@@ -400,6 +400,9 @@ public:
 
 	int codec_caller;
 	int codec_called;
+	
+	unsigned max_length_sip_data;
+	unsigned max_length_sip_packet;
 
 	FifoBuffer *audiobuffer1;
 	int last_seq_audiobuffer1;
@@ -1169,6 +1172,8 @@ public:
 	};
 	enum eSpecialType {
 		st_na,
+		max_length_sip_data,
+		max_length_sip_packet,
 		gsm_dcs,
 		gsm_voicemail
 	};
@@ -1193,7 +1198,7 @@ public:
 	void refresh(SqlDb *sqlDb = NULL);
 	void addToStdParse(ParsePacket *parsePacket);
 	void parse(Call *call, char *data, int datalen, ParsePacket::ppContentsX *parseContents);
-	void setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content);
+	void setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content, bool useLastValue = false);
 	void prepareSaveRows_cdr(Call *call, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
 	void prepareSaveRows_message(Call *call, class SqlDb_row *message, class SqlDb_row message_next_ch[], char *message_next_ch_name[]);
 	string getScreenPopupFieldsString(Call *call);
