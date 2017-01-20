@@ -3043,7 +3043,7 @@ int main_init_read() {
 		while(!is_terminating()) {
 			long timeProcessStatMS = 0;
 			if(_counter) {
-				u_long startTimeMS = getTimeMS();
+				u_long startTimeMS = getTimeMS_rdtsc();
 				pthread_mutex_lock(&terminate_packetbuffer_lock);
 				pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : sverb.pcap_stat_period);
 				pthread_mutex_unlock(&terminate_packetbuffer_lock);
@@ -3056,7 +3056,7 @@ int main_init_read() {
 				if(tcpReassemblyWebrtc) {
 					tcpReassemblyWebrtc->setDoPrintContent();
 				}
-				u_long endTimeMS = getTimeMS();
+				u_long endTimeMS = getTimeMS_rdtsc();
 				if(endTimeMS > startTimeMS) {
 					timeProcessStatMS = endTimeMS - startTimeMS;
 				}

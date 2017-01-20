@@ -1222,7 +1222,7 @@ void PcapQueue::setInstancePcapFifo(PcapQueue_readFromFifo *pcapQueue) {
 }
 
 void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
- 
+	u_long startTimeMS = getTimeMS_rdtsc();
 	++pcapStatCounter;
 
 	sumPacketsCounterIn[2] = sumPacketsCounterIn[0] - sumPacketsCounterIn[1];
@@ -2061,6 +2061,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		extern char opt_syslog_string[256];
 		if(opt_syslog_string[0]) {
 			outStr << " " << opt_syslog_string;
+		}
+		u_long endTimeMS = getTimeMS_rdtsc();
+		if(endTimeMS > startTimeMS + 100) {
+			outStr << " (" << (endTimeMS - startTimeMS) << "ms)";
 		}
 		outStr << endl;
 		outStr << pcapStatString_interface_rslt;
