@@ -636,7 +636,8 @@ public:
 		_typeBy_destination_ip,
 		_typeBy_source_number,
 		_typeBy_rtp_stream_ip,
-		_typeBy_rtp_stream_ip_group
+		_typeBy_rtp_stream_ip_group,
+		_typeBy_summary
 	};
 	enum eLocalInternational {
 		_li_local,
@@ -906,6 +907,7 @@ protected:
 	unsigned int concurentCallsLimitLocal_tp;
 	unsigned int concurentCallsLimitInternational_tp;
 	unsigned int concurentCallsLimitBoth_tp;
+	FraudAlert_rcc_callInfo calls_summary;
 	map<u_int32_t, FraudAlert_rcc_callInfo*> calls_by_ip;
 	map<string, FraudAlert_rcc_callInfo*> calls_by_number;
 	map<d_u_int32_t, FraudAlert_rcc_rtpStreamInfo*> calls_by_rtp_stream;
@@ -975,6 +977,9 @@ public:
 			    const char *timeperiod_name,
 			    FraudAlert::eTypeBy type_by, d_u_int32_t rtp_stream,
 			    unsigned int concurentCalls);
+	void set_summary(FraudAlert::eLocalInternational localInternational,
+			 const char *timeperiod_name,
+			 unsigned int concurentCalls);
 	string getJson();
 private:
 	FraudAlert::eLocalInternational localInternational;

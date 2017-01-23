@@ -557,6 +557,7 @@ bool FraudAlert::loadAlert() {
 			 dbRow["fraud_rcc_by"] == "source_number" ? _typeBy_source_number :
 			 dbRow["fraud_rcc_by"] == "rtp_stream_ip" ? _typeBy_rtp_stream_ip :
 			 dbRow["fraud_rcc_by"] == "rtp_stream_ip_group" ? _typeBy_rtp_stream_ip_group :
+			 dbRow["fraud_rcc_by"] == "summary" ? _typeBy_summary :
 				_typeBy_source_ip;
 	}
 	if(defFilterIp()) {
@@ -1086,6 +1087,9 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 					calls_by_number[callInfo->caller_number] = call;
 				}
 				break;
+			case FraudAlert::_typeBy_summary:
+				call = &this->calls_summary;
+				break;
 			default:
 				break;
 			}
@@ -1126,10 +1130,13 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 							alertInfo->set_ip(_li, this->getDescr().c_str(), 
 									  callInfo->caller_ip, callInfo->country_code_caller_ip.c_str(),
 									  _actCalls); 
-						} else {
+						} else if(parent->typeBy == FraudAlert::_typeBy_source_number) {
 							alertInfo->set_number(_li, this->getDescr().c_str(), 
 									      callInfo->caller_number, callInfo->country_code_caller_number.c_str(),
 									      _actCalls); 
+						} else {
+							alertInfo->set_summary(_li, this->getDescr().c_str(),
+									       _actCalls);
 						}
 						alert->evAlert(alertInfo);
 						switch(_li) {
@@ -1162,6 +1169,9 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 			if(callsIter_by_number != calls_by_number.end()) {
 				call = callsIter_by_number->second;
 			}
+			break;
+		case FraudAlert::_typeBy_summary:
+			call = &this->calls_summary;
 			break;
 		default:
 			break;
@@ -1408,6 +1418,17 @@ void FraudAlertInfo_rcc::set_rtp_stream(FraudAlert::eLocalInternational localInt
 	}
 	this->type_by = type_by;
 	this->rtp_stream = rtp_stream;
+	this->concurentCalls = concurentCalls;
+}
+
+void FraudAlertInfo_rcc::set_summary(FraudAlert::eLocalInternational localInternational,
+				     const char *timeperiod_name,
+				     unsigned int concurentCalls) {
+	this->localInternational = localInternational;
+	if(timeperiod_name) {
+		this->timeperiod_name = timeperiod_name;
+	}
+	this->type_by = FraudAlert::_typeBy_summary;
 	this->concurentCalls = concurentCalls;
 }
 
