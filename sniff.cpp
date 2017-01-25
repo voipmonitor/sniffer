@@ -2970,9 +2970,10 @@ endsip:
 				_lastSIPresponse = lastSIPresponse;
 				_lastSIPresponseNum = lastSIPresponseNum;
 			}
-			if(_request[0] || 
-			   (_lastSIPresponse && _lastSIPresponse[0]) || 
-			   _lastSIPresponseNum) {
+			if((_request[0] || 
+			    (_lastSIPresponse && _lastSIPresponse[0]) || 
+			    _lastSIPresponseNum) &&
+			   call->SIPhistory.size() < 1000) {
 				call->SIPhistory.push_back(Call::sSipHistory(
 					packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec,
 					_request,
