@@ -221,6 +221,9 @@ extern bool _save_sip_history_all_responses;
 extern int opt_rtpfromsdp_onlysip;
 extern bool opt_t2_boost;
 unsigned int glob_ssl_calls = 0;
+extern int opt_bye_timeout;
+extern int opt_bye_confirmed_timeout;
+bool opt_ignore_rtp_after_bye_confirmed;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
@@ -2447,10 +2450,11 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		if(packetS->sip_method == INVITE) {
 			// festr - 14.03.2015 - this prevents some type of call to process call in case of call merging
 			// if(!call->seenbye) {
-				call->seenbye = 0;
-				call->seenbye_time_usec = 0;
-				call->destroy_call_at = 0;
-				call->destroy_call_at_bye = 0;
+			call->seenbye = 0;
+			call->seenbye_time_usec = 0;
+			call->destroy_call_at = 0;
+			call->destroy_call_at_bye = 0;
+			call->destroy_call_at_bye_confirmed = 0;
 			if(call->lastSIPresponseNum == 487) {
 				call->new_invite_after_lsr487 = true;
 			}
@@ -2538,7 +2542,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
 				//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header 
 				call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;
-				call->destroy_call_at_bye = packetS->header_pt->ts.tv_sec + 20 * 60;
+				call->destroy_call_at_bye = packetS->header_pt->ts.tv_sec + opt_bye_timeout;
 			}
 			//check and save CSeq for later to compare with OK 
 			if(cseq && cseqlen < 32) {
@@ -2612,6 +2616,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 
 						// destroy call after 5 seonds from now 
 						call->destroy_call_at = packetS->header_pt->ts.tv_sec + 5;
+						call->destroy_call_at_bye_confirmed = packetS->header_pt->ts.tv_sec + opt_bye_confirmed_timeout;
 						process_packet__parse_custom_headers(call, packetS);
 						goto endsip_save_packet;
 					} else if((cseq_method == INVITE || cseq_method == MESSAGE) &&
@@ -2671,6 +2676,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				}
 				call->destroy_call_at = 0;
 				call->destroy_call_at_bye = 0;
+				call->destroy_call_at_bye_confirmed = 0;
 			} else if((cseq_method == INVITE || cseq_method == MESSAGE) &&
 				  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
 				if(lastSIPresponseNum == 481) {
@@ -3547,16 +3553,19 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 		if(calls) {
 			hash_node_call *node_call;
 			for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-				if(!opt_rtpfromsdp_onlysip ||
-				   node_call->call->type == SKINNY_NEW ||
-				   (call_info_find_by_dest ?
-				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
-				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
-				   (call_info_find_by_dest ?
-				     calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->saddr, packetS->source, false) &&
-				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr) :
-				     calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->daddr, packetS->dest, false) &&
-				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) {
+				if((!opt_rtpfromsdp_onlysip ||
+				    node_call->call->type == SKINNY_NEW ||
+				    (call_info_find_by_dest ?
+				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
+				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
+				    (call_info_find_by_dest ?
+				      calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->saddr, packetS->source, false) &&
+				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr) :
+				      calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->daddr, packetS->dest, false) &&
+				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) &&
+				   !(opt_ignore_rtp_after_bye_confirmed &&
+				     node_call->call->seenbyeandok && node_call->call->seenbyeandok_time_usec &&
+				     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seenbyeandok_time_usec)) {
 					packetS->blockstore_addflag(27 /*pb lock flag*/);
 					call_info[call_info_length].call = node_call->call;
 					call_info[call_info_length].iscaller = node_call->iscaller;
@@ -6592,16 +6601,19 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	if(calls) {
 		hash_node_call *node_call;
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-			if(!opt_rtpfromsdp_onlysip ||
-			   node_call->call->type == SKINNY_NEW ||
-			   (packetS->call_info_find_by_dest ?
-			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
-			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
-			   (packetS->call_info_find_by_dest ?
-			     calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->saddr, packetS->source, false) &&
-			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr) :
-			     calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->daddr, packetS->dest, false) &&
-			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) {
+			if((!opt_rtpfromsdp_onlysip ||
+			    node_call->call->type == SKINNY_NEW ||
+			    (packetS->call_info_find_by_dest ?
+			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
+			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
+			    (packetS->call_info_find_by_dest ?
+			      calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->saddr, packetS->source, false) &&
+			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr) :
+			      calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->daddr, packetS->dest, false) &&
+			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) &&
+			   !(opt_ignore_rtp_after_bye_confirmed &&
+			     node_call->call->seenbyeandok && node_call->call->seenbyeandok_time_usec &&
+			     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seenbyeandok_time_usec)) {
 				packetS->blockstore_addflag(34 /*pb lock flag*/);
 				packetS->call_info[packetS->call_info_length].call = node_call->call;
 				packetS->call_info[packetS->call_info_length].iscaller = node_call->iscaller;

@@ -1033,7 +1033,8 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			call = (*callMAPIT).second;
 			if(call->type == REGISTER or call->type == MESSAGE or 
 			   (call->destroy_call_at and call->destroy_call_at < now) or 
-			   (call->destroy_call_at_bye and call->destroy_call_at_bye < now)) {
+			   (call->destroy_call_at_bye and call->destroy_call_at_bye < now) or 
+			   (call->destroy_call_at_bye_confirmed and call->destroy_call_at_bye_confirmed < now)) {
 				// skip register or message or calls which are scheduled to be closed
 				continue;
 			}

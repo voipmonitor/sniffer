@@ -345,6 +345,9 @@ char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_origina
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
 regcache *regfailedcache;
 int opt_onewaytimeout = 15;
+int opt_bye_timeout = 20 * 60;
+int opt_bye_confirmed_timeout = 10 * 60;
+bool opt_ignore_rtp_after_bye_confirmed = false;
 int opt_saveaudio_reversestereo = 0;
 float opt_saveaudio_oggquality = 0.4;
 int opt_audioqueue_threads_max = 10;
@@ -4658,7 +4661,6 @@ void cConfig::addConfigItems() {
  
 	// TODO
 	// what is ?
-	//  - destroy_call_at_bye
 	//  - sip-register-active-nologbin
  
 	group("sql");
@@ -5010,6 +5012,9 @@ void cConfig::addConfigItems() {
 			advanced();
 			addConfigItem(new FILE_LINE(42259) cConfigItem_integer("absolute_timeout", &absolute_timeout));
 			addConfigItem(new FILE_LINE(42260) cConfigItem_integer("onewaytimeout", &opt_onewaytimeout));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_timeout", &opt_bye_timeout));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_confirmed_timeout", &opt_bye_confirmed_timeout));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye_confirmed", &opt_ignore_rtp_after_bye_confirmed));
 			addConfigItem(new FILE_LINE(42261) cConfigItem_yesno("nocdr", &opt_nocdr));
 			addConfigItem((new FILE_LINE(42262) cConfigItem_string("cdr_ignore_response", opt_nocdr_for_last_responses, sizeof(opt_nocdr_for_last_responses)))
 				->addAlias("nocdr_for_last_responses"));
@@ -7796,6 +7801,15 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "onewaytimeout", NULL))) {
 		opt_onewaytimeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "bye_timeout", NULL))) {
+		opt_bye_timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "bye_confirmed_timeout", NULL))) {
+		opt_bye_confirmed_timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ignore_rtp_after_bye_confirmed", NULL))) {
+		opt_ignore_rtp_after_bye_confirmed = yesno(value);
 	}
 	if((value = ini.GetValue("general", "saveaudio_answeronly", NULL))) {
 		opt_saveaudio_answeronly = yesno(value);

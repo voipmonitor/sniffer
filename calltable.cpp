@@ -288,6 +288,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	lastcalledrtp = NULL;
 	destroy_call_at = 0;
 	destroy_call_at_bye = 0;
+	destroy_call_at_bye_confirmed = 0;
 	custom_header1[0] = '\0';
 	match_header[0] = '\0';
 	if(type == INVITE && is_enable_rtp_threads() && num_threads_active > 0) {
@@ -4594,7 +4595,8 @@ Calltable::cleanup_calls( time_t currtime ) {
 			   (call->in_preprocess_queue_before_process_packet_at && call->in_preprocess_queue_before_process_packet_at < currtime - 300))) {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
-			} else if(call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) {
+			} else if((call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) ||
+				  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currtime)) {
 				closeCall = true;
 				call->bye_timeout_exceeded = true;
 			} else if(call->first_rtp_time &&

@@ -345,8 +345,9 @@ public:
 	time_t last_rtp_b_packet_time;	
 	time_t first_packet_time;	
 	unsigned int first_packet_usec;
-	time_t destroy_call_at;	
-	time_t destroy_call_at_bye;	
+	time_t destroy_call_at;
+	time_t destroy_call_at_bye;
+	time_t destroy_call_at_bye_confirmed;
 	std::queue <s_dtmf> dtmf_history;
 	
 	u_int64_t first_invite_time_usec;
