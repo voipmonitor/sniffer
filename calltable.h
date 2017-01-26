@@ -1104,6 +1104,25 @@ public:
 		}
 		return rslt;
 	}
+	inline bool check_call_in_hashfind_by_ip_port(Call *call, in_addr_t addr, unsigned short port, bool lock = true) {
+		bool rslt = false;
+		if(lock) {
+			lock_calls_hash();
+		}
+		hash_node_call *calls = this->hashfind_by_ip_port(addr, port, false);
+		if(calls) {
+			for(hash_node_call *node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
+				if(node_call->call == call) {
+					rslt = true;
+					break;
+				}
+			}
+		}
+		if(lock) {
+			unlock_calls_hash();
+		}
+		return rslt;
+	}
 
 	/**
 	 * @brief remove call from hash

@@ -3553,9 +3553,9 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
 				   (call_info_find_by_dest ?
-				     calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, false) &&
+				     calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->saddr, packetS->source, false) &&
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr) :
-				     calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, false) &&
+				     calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->daddr, packetS->dest, false) &&
 				     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) {
 					packetS->blockstore_addflag(27 /*pb lock flag*/);
 					call_info[call_info_length].call = node_call->call;
@@ -6598,9 +6598,9 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
 			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
 			   (packetS->call_info_find_by_dest ?
-			     calltable->hashfind_by_ip_port(packetS->saddr, packetS->source, false) &&
+			     calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->saddr, packetS->source, false) &&
 			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr) :
-			     calltable->hashfind_by_ip_port(packetS->daddr, packetS->dest, false) &&
+			     calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->daddr, packetS->dest, false) &&
 			     node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) {
 				packetS->blockstore_addflag(34 /*pb lock flag*/);
 				packetS->call_info[packetS->call_info_length].call = node_call->call;
