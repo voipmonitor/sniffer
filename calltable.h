@@ -95,9 +95,10 @@
 
 #define CDR_CHANGE_SRC_PORT_CALLER	(1 << 0)
 #define CDR_CHANGE_SRC_PORT_CALLED	(1 << 1)
+#define CDR_UNCONFIRMED_BYE		(1 << 2)
+#define CDR_ALONE_UNCONFIRMED_BYE	(1 << 3)
 
 
-	
 struct s_dtmf {
 	enum e_type {
 		sip_info,
@@ -279,6 +280,7 @@ public:
 	u_int64_t seenbye_time_usec;
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANEL within the Call
 	u_int64_t seenbyeandok_time_usec;
+	bool unconfirmed_bye;
 	bool seenRES2XX;
 	bool seenRES2XX_no_BYE;
 	bool seenRES18X;
@@ -612,6 +614,7 @@ public:
 	 *
 	*/
 	int saveToDb(bool enableBatchIfPossible = true);
+	int saveAloneByeToDb(bool enableBatchIfPossible = true);
 
 	/**
 	 * @brief save register msgs to database
@@ -848,6 +851,19 @@ public:
 	}
 	
 	u_int32_t getSipcalledipConfirmed(u_int16_t *dport);
+	
+	void calls_counter_inc() {
+		extern volatile int calls_counter;
+		if(type == INVITE || type == MESSAGE) {
+			++calls_counter;
+		}
+	}
+	void calls_counter_dec() {
+		extern volatile int calls_counter;
+		if(type == INVITE || type == MESSAGE) {
+			--calls_counter;
+		}
+	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -913,19 +929,11 @@ public:
 	deque<Call*> registers_deletequeue;
 	queue<string> files_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
-	//list<Call*> calls_list; //!< 
-	//list<Call*>::iterator call;
-	map<string, Call*> calls_listMAP; //!< 
-	map<string, Call*>::iterator callMAPIT; //!< 
-	map<string, Call*> calls_mergeMAP; //!< 
-	map<string, Call*>::iterator mergeMAPIT; //!<
-	map<string, Call*> registers_listMAP; //!< 
-	map<string, Call*>::iterator registerMAPIT; //!< 
-	map<string, Call*> skinny_ipTuples; //!< 
-	map<string, Call*>::iterator skinny_ipTuplesIT; //!< 
-	map<unsigned int, Call*> skinny_partyID; //!< 
-	map<unsigned int, Call*>::iterator skinny_partyIDIT; //!< 
-	map<unsigned int, Ipportnode*>::iterator ipportmapIT;
+	map<string, Call*> calls_listMAP;
+	map<string, Call*> calls_mergeMAP;
+	map<string, Call*> registers_listMAP;
+	map<string, Call*> skinny_ipTuples;
+	map<unsigned int, Call*> skinny_partyID;
 
 	/**
 	 * @brief constructor
@@ -998,7 +1006,7 @@ public:
 		Call *rslt_call = NULL;
 		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
 		lock_calls_listMAP();
-		callMAPIT = calls_listMAP.find(call_idS);
+		map<string, Call*>::iterator callMAPIT = calls_listMAP.find(call_idS);
 		if(callMAPIT != calls_listMAP.end() &&
 		   !callMAPIT->second->end_call) {
 			rslt_call = callMAPIT->second;
@@ -1014,7 +1022,7 @@ public:
 		Call *rslt_call = NULL;
 		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
 		lock_calls_mergeMAP();
-		mergeMAPIT = calls_mergeMAP.find(call_idS);
+		map<string, Call*>::iterator mergeMAPIT = calls_mergeMAP.find(call_idS);
 		if(mergeMAPIT != calls_mergeMAP.end() &&
 		   !mergeMAPIT->second->end_call) {
 			rslt_call = mergeMAPIT->second;
@@ -1030,7 +1038,7 @@ public:
 		Call *rslt_register = NULL;
 		string register_idS = register_id_len ? string(register_id, register_id_len) : string(register_id);
 		lock_registers_listMAP();
-		registerMAPIT = registers_listMAP.find(register_idS);
+		map<string, Call*>::iterator registerMAPIT = registers_listMAP.find(register_idS);
 		if(registerMAPIT != registers_listMAP.end() &&
 		   !registerMAPIT->second->end_call) {
 			rslt_register = registerMAPIT->second;

@@ -473,9 +473,8 @@ unsigned int graph_mos = GRAPH_MOS;
 unsigned int graph_silence = GRAPH_SILENCE;
 unsigned int graph_event = GRAPH_EVENT;
 int opt_mos_lqo = 0;
-
 char opt_capture_rules_telnum_file[1024];
-
+bool opt_detect_alone_bye = false;
 bool opt_cdr_partition = 1;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
@@ -833,6 +832,7 @@ SensorsMap sensorsMap;
 static void parse_command_line_arguments(int argc, char *argv[]);
 static void get_command_line_arguments();
 static void set_context_config();
+static void set_context_config_after_check_db_schema();
 static void create_spool_dirs();
 static bool check_complete_parameters();
 static void dns_lookup_common_hostnames();
@@ -1411,6 +1411,8 @@ void *storing_cdr( void *dummy ) {
 							call->saveToDb(!is_read_from_file_simple());
 						} else if(call->type == MESSAGE){
 							call->saveMessageToDb();
+						} else if(call->type == BYE){
+							call->saveAloneByeToDb();
 						}
 					}
 
@@ -2427,6 +2429,7 @@ int main(int argc, char *argv[]) {
 					} else {
 						sqlDb->checkSchema(connectId, true);
 					}
+					set_context_config_after_check_db_schema();
 				}
 				sensorsMap.fillSensors();
 			} else {
@@ -3277,21 +3280,21 @@ void main_term_read() {
 	while(calltable->calls_queue.size() != 0) {
 			call = calltable->calls_queue.front();
 			calltable->calls_queue.pop_front();
+			call->calls_counter_dec();
 			delete call;
-			calls_counter--;
 	}
 	while(calltable->audio_queue.size() != 0) {
 			call = calltable->audio_queue.front();
 			calltable->audio_queue.pop_front();
+			call->calls_counter_dec();
 			delete call;
-			calls_counter--;
 	}
 	while(calltable->calls_deletequeue.size() != 0) {
 			call = calltable->calls_deletequeue.front();
 			calltable->calls_deletequeue.pop_front();
 			call->atFinish();
+			call->calls_counter_dec();
 			delete call;
-			calls_counter--;
 	}
 	while(calltable->registers_queue.size() != 0) {
 			call = calltable->registers_queue.front();
@@ -4813,6 +4816,7 @@ void cConfig::addConfigItems() {
 			setDisableIfEnd();
 				advanced();
 				addConfigItem(new FILE_LINE(42148) cConfigItem_string("capture_rules_telnum_file", opt_capture_rules_telnum_file, sizeof(opt_capture_rules_telnum_file)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("detect_alone_bye", &opt_detect_alone_bye));
 		subgroup("scaling");
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem((new FILE_LINE(42149) cConfigItem_yesno("threading_mod"))
@@ -6270,6 +6274,21 @@ void set_context_config() {
 	}
 	
 	set_spool_permission();
+	
+}
+
+void set_context_config_after_check_db_schema() {
+	extern sExistsColumns existsColumns;
+	if(opt_detect_alone_bye) {
+		if(!existsColumns.cdr_flags) {
+			syslog(LOG_ERR, "option detect_alone_bye is not suported without column cdr.flags");
+			opt_detect_alone_bye = false;
+		}
+		if(!existsColumns.cdr_next_calldate) {
+			syslog(LOG_ERR, "option detect_alone_bye is not suported without column cdr_next.calldate");
+			opt_detect_alone_bye = false;
+		}
+	}
 }
 
 void create_spool_dirs() {
@@ -7700,11 +7719,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mirror_use_checksum", NULL))) {
 		opt_pcap_queues_mirror_use_checksum = yesno(value);
 	}
-	
 	if((value = ini.GetValue("general", "capture_rules_telnum_file", NULL))) {
 		strncpy(opt_capture_rules_telnum_file, value, sizeof(opt_capture_rules_telnum_file));
 	}
-	
+	if((value = ini.GetValue("general", "detect_alone_bye", NULL))) {
+		opt_detect_alone_bye = yesno(value);
+	}
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
 					       !strcmp(value, "extend") ? PreProcessPacket::ppt_end :

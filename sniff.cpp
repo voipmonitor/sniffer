@@ -223,7 +223,8 @@ extern bool opt_t2_boost;
 unsigned int glob_ssl_calls = 0;
 extern int opt_bye_timeout;
 extern int opt_bye_confirmed_timeout;
-bool opt_ignore_rtp_after_bye_confirmed;
+extern bool opt_ignore_rtp_after_bye_confirmed;
+extern bool opt_detect_alone_bye;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
@@ -2065,7 +2066,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
 			}
 		}
-	} else if(call->type != REGISTER && enable_save_sip_rtp(call)) {
+	} else if((call->type == INVITE || call->type == MESSAGE) && enable_save_sip_rtp(call)) {
 		if(enable_pcap_split ? enable_save_sip(call) : enable_save_sip_rtp(call)) {
 			string pathfilename = call->get_pathfilename(tsf_sip);
 			PcapDumper *dumper = enable_pcap_split ? call->getPcapSip() : call->getPcap();
@@ -2080,11 +2081,18 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	//check and save CSeq for later to compare with OK 
 	s = gettag_sip(packetS, "\nCSeq:", &l);
 	if(s && l < 32) {
-		memcpy(call->invitecseq, s, l);
-		call->unrepliedinvite++;
-		call->invitecseq[l] = '\0';
-		if(verbosity > 2)
-			syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
+		if(sip_method == INVITE || sip_method == MESSAGE || sip_method == REGISTER) {
+			memcpy(call->invitecseq, s, l);
+			call->unrepliedinvite++;
+			call->invitecseq[l] = '\0';
+			if(verbosity > 2)
+				syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
+		} else if(sip_method == BYE) {
+			memcpy(call->byecseq, s, l);
+			call->byecseq[l] = '\0';
+			if(verbosity > 2)
+				syslog(LOG_NOTICE, "Seen bye, CSeq: %s\n", call->byecseq);
+		}
 	}
 	
 	return call;
@@ -2706,6 +2714,11 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 						call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;
 					}
 				}
+			} else if(cseq_method == BYE &&
+				  IS_SIP_RES4XX(packetS->sip_method) &&
+				  call->byecseq[0] && strncmp(cseq, call->byecseq, cseqlen) == 0 &&
+				  lastSIPresponseNum == 481) {
+				call->unconfirmed_bye = true;
 			}
 		}
 	}
@@ -3028,6 +3041,47 @@ endsip:
 			, packetS->sip_method, lastSIPresponseNum, packetS->header_pt, 
 			packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 			call, logPacketSipMethodCallDescr);
+	}
+}
+
+inline void process_packet_sip_alone_bye_inline(packet_s_process *packetS) {
+	if(sverb.dump_sip) {
+		string dump_data(packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
+		if(sverb.dump_sip_line) {
+			find_and_replace(dump_data, "\r", "\\r");
+			find_and_replace(dump_data, "\n", "\\n");
+		}
+		if(!sverb.dump_sip_without_counter) {
+			#if USE_PACKET_NUMBER
+			cout << packetS->packet_number << endl
+			#else
+			cout << (++glob_packet_number) << endl;
+			#endif
+		}
+		cout << dump_data << endl;
+	}
+	Call *call = packetS->call ? packetS->call : packetS->call_created;
+	if(!call) {
+		return;
+	}
+	call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;
+	if(IS_SIP_RESXXX(packetS->sip_method)) {
+		long unsigned int cseqlen = 0;
+		char *cseq = gettag_sip(packetS, "\nCSeq:", &cseqlen);
+		if(cseq && cseqlen < 32) {
+			int cseq_method = 0;
+			unsigned cseq_pos = 0;
+			while(cseq_pos < cseqlen && (isdigit(cseq[cseq_pos]) || cseq[cseq_pos] == ' ')) {
+				++cseq_pos;
+			}
+			if(cseq_pos < cseqlen) {
+				cseq_method = process_packet__parse_sip_method(cseq + cseq_pos, cseqlen - cseq_pos, NULL);
+			}
+			if(cseq_method == BYE &&
+			   call->byecseq[0] && strncmp(cseq, call->byecseq, cseqlen) == 0) {
+				call->lastSIPresponseNum = packetS->lastSIPresponseNum;
+			}
+		}
 	}
 }
 
@@ -5977,7 +6031,13 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 			__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
 		}
 		_process_packet__cleanup_calls(packetS->header_pt);
-		process_packet_sip_call_inline(packetS);
+		if(opt_detect_alone_bye &&
+		   ((packetS->_findCall && packetS->call && packetS->call->type == BYE) ||
+		    (packetS->_createCall && packetS->call_created && packetS->call_created->type == BYE))) {
+			process_packet_sip_alone_bye_inline(packetS);
+		} else {
+			process_packet_sip_call_inline(packetS);
+		}
 	} else if(packetS->isSkinny) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
@@ -6200,7 +6260,8 @@ void PreProcessPacket::process_findCall(packet_s_process **packetS_ref) {
 void PreProcessPacket::process_createCall(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	if(packetS->_findCall && !packetS->call &&
-	   (packetS->sip_method == INVITE || packetS->sip_method == MESSAGE)) {
+	   (packetS->sip_method == INVITE || packetS->sip_method == MESSAGE ||
+	    (opt_detect_alone_bye && packetS->sip_method == BYE))) {
 		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 		packetS->_createCall = true;
 	}

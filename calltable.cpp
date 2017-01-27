@@ -214,6 +214,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	seenbye_time_usec = 0;
 	seenbyeandok = false;
 	seenbyeandok_time_usec = 0;
+	unconfirmed_bye = false;
 	seenRES2XX = false;
 	seenRES2XX_no_BYE = false;
 	seenRES18X = false;
@@ -437,11 +438,11 @@ Call::skinnyTablesRemove() {
 		tmp[1] << this->sipcallerip << '|' << this->sipcalledip;
 		*/
 
-		for (((Calltable *)calltable)->skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.begin(); ((Calltable *)calltable)->skinny_ipTuplesIT != ((Calltable *)calltable)->skinny_ipTuples.end();) {
-			if(((Calltable *)calltable)->skinny_ipTuplesIT->second == this) {
-				((Calltable *)calltable)->skinny_ipTuples.erase(((Calltable *)calltable)->skinny_ipTuplesIT++);
+		for (map<string, Call*>::iterator skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.begin(); skinny_ipTuplesIT != ((Calltable *)calltable)->skinny_ipTuples.end();) {
+			if(skinny_ipTuplesIT->second == this) {
+				((Calltable *)calltable)->skinny_ipTuples.erase(skinny_ipTuplesIT++);
 			} else {
-				++((Calltable *)calltable)->skinny_ipTuplesIT;
+				++skinny_ipTuplesIT;
 			}
 		}
 	}
@@ -2216,7 +2217,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			reason_q850_id = 0,
 			a_ua_id = 0,
 			b_ua_id = 0;
-	u_int64_t cdr_flags = 0;
+	u_int64_t cdr_flags = this->unconfirmed_bye ? CDR_UNCONFIRMED_BYE : 0;
 
 	string query_str_cdrproxy;
 	if(opt_cdrproxy) {
@@ -3192,6 +3193,44 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	return(cdrID <= 0);
+}
+
+int
+Call::saveAloneByeToDb(bool enableBatchIfPossible) {
+	if(lastSIPresponseNum != 481 ||
+	   !existsColumns.cdr_next_calldate ||
+	   !existsColumns.cdr_flags) {
+		return(0);
+	}
+	
+	if(!sqlDbSaveCall) {
+		sqlDbSaveCall = createSqlObject();
+		sqlDbSaveCall->setEnableSqlStringInContent(true);
+	}
+	
+	string updateFlagsQuery =
+	       "update cdr \
+		set flags = coalesce(flags, 0) | " + intToString(CDR_ALONE_UNCONFIRMED_BYE) + " \
+		where id = ( \
+			select max(cdr_id) \
+			from cdr_next \
+			where calldate > '" + sqlDateTimeString(calltime() - 60 * 60) + "' and \
+			      fbasename = '" + fbasename + "' \
+			limit 1)";
+	if(enableBatchIfPossible) {
+		static unsigned int counterSqlStore = 0;
+		int storeId = STORE_PROC_ID_CDR_1 + 
+			      (opt_mysqlstore_max_threads_cdr > 1 &&
+			       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
+				counterSqlStore % opt_mysqlstore_max_threads_cdr : 
+				0);
+		++counterSqlStore;
+		sqlStore->query_lock(updateFlagsQuery.c_str(), storeId);
+	} else {
+		sqlDbSaveCall->query(updateFlagsQuery);
+	}
+	
+	return(0);
 }
 
 /* TODO: implement failover -> write INSERT into file */
@@ -4456,8 +4495,8 @@ Calltable::destroyCallsIfPcapsClosed() {
 			if(call->isPcapsClose()) {
 				call->removeFindTables();
 				call->atFinish();
+				call->calls_counter_dec();
 				delete call;
-				calls_counter--;
 				this->calls_deletequeue.erase(this->calls_deletequeue.begin() + i);
 				--size;
 			} else {
@@ -4520,7 +4559,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t t
 	} else {
 		lock_calls_listMAP();
 		calls_listMAP[call_idS] = newcall;
-		calls_counter++;
+		newcall->calls_counter_inc();
 		unlock_calls_listMAP();
 	}
 	return newcall;
@@ -4528,7 +4567,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t t
 
 Call*
 Calltable::find_by_skinny_partyid(unsigned int partyid) {
-	skinny_partyIDIT = skinny_partyID.find(partyid);
+	map<unsigned int, Call*>::iterator skinny_partyIDIT = skinny_partyID.find(partyid);
 	if(skinny_partyIDIT == skinny_partyID.end()) {
 		// not found
 		return NULL;
@@ -4547,7 +4586,7 @@ Calltable::find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr) {
 		tmp << daddr << '|' << saddr;
 	}
 
-	skinny_ipTuplesIT = skinny_ipTuples.find(tmp.str());
+	map<string, Call*>::iterator skinny_ipTuplesIT = skinny_ipTuples.find(tmp.str());
 	if(skinny_ipTuplesIT == skinny_ipTuples.end()) {
 		return NULL;
 	} else {
@@ -4574,7 +4613,7 @@ Calltable::cleanup_calls( time_t currtime ) {
 	lock_calls_listMAP();
 	Call **closeCalls = new FILE_LINE(1012) Call*[calls_listMAP.size()];
 	unsigned int closeCalls_count = 0;
-	for (callMAPIT = calls_listMAP.begin(); callMAPIT != calls_listMAP.end();) {
+	for (map<string, Call*>::iterator callMAPIT = calls_listMAP.begin(); callMAPIT != calls_listMAP.end();) {
 		call = (*callMAPIT).second;
 		if(verbosity > 2) {
 			call->dump();
@@ -4698,7 +4737,7 @@ Calltable::cleanup_registers( time_t currtime ) {
 	}
 	Call* reg;
 	lock_registers_listMAP();
-	for (registerMAPIT = registers_listMAP.begin(); registerMAPIT != registers_listMAP.end();) {
+	for (map<string, Call*>::iterator registerMAPIT = registers_listMAP.begin(); registerMAPIT != registers_listMAP.end();) {
 		reg = (*registerMAPIT).second;
 		if(verbosity > 2) {
 			reg->dump();
