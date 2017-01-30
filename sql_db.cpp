@@ -3882,8 +3882,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 	""));
 	
-	checkColumns_register(true);
-
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
@@ -3980,6 +3978,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(created_at)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 	""));
+
+	checkColumns_register(true);
 
 	this->query("CREATE TABLE IF NOT EXISTS `sensors` (\
 			`id_sensor` int unsigned NOT NULL,\
@@ -4354,8 +4354,11 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 	
 	//17
 	if(opt_enable_fraud) {
-	outStrAlter << "ALTER TABLE fraud_alert_info\
-			ADD `id_sensor` smallint unsigned;" << endl;
+		this->query("show tables like 'fraud_alert_info'");
+		if(this->fetchRow()) {
+			outStrAlter << "ALTER TABLE fraud_alert_info\
+					ADD `id_sensor` smallint unsigned;" << endl;
+		}
 	}
 	
 	//17.9

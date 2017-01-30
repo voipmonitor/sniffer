@@ -4436,20 +4436,23 @@ void SensorsMap::fillSensors(SqlDb *sqlDb) {
 	}
 	sqlDb->query("show tables like 'sensors'");
 	if(sqlDb->fetchRow()) {
-		sqlDb->query("select id_sensor, id, name from sensors");
-		SqlDb_row row;
-		lock();
-		sensors.clear();
-		while((row = sqlDb->fetchRow())) {
-			int idSensor = atoi(row["id_sensor"].c_str());
-			sSensorData data;
-			data.table_id = atoi(row["id"].c_str());
-			data.name = row["name"];
-			data.name_file = row["name"];
-			prepare_string_to_filename((char*)data.name_file.c_str(), data.name_file.length());
-			sensors[idSensor] = data;
+		sqlDb->query("show columns from sensors where Field='id'");
+		if(sqlDb->fetchRow()) {
+			sqlDb->query("select id_sensor, id, name from sensors");
+			SqlDb_row row;
+			lock();
+			sensors.clear();
+			while((row = sqlDb->fetchRow())) {
+				int idSensor = atoi(row["id_sensor"].c_str());
+				sSensorData data;
+				data.table_id = atoi(row["id"].c_str());
+				data.name = row["name"];
+				data.name_file = row["name"];
+				prepare_string_to_filename((char*)data.name_file.c_str(), data.name_file.length());
+				sensors[idSensor] = data;
+			}
+			unlock();
 		}
-		unlock();
 	}
 	if(_createSqlObject) {
 		delete sqlDb;

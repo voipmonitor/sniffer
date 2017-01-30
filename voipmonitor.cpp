@@ -6194,7 +6194,6 @@ void set_context_config() {
 	}
 	
 	opt_database_backup = !opt_test &&
-			      opt_database_backup_from_date[0] != '\0' &&
 			      opt_database_backup_from_mysql_host[0] != '\0' &&
 			      opt_database_backup_from_mysql_database[0] != '\0' &&
 			      opt_database_backup_from_mysql_user[0] != '\0';
