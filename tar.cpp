@@ -289,7 +289,14 @@ Tar::tar_open(string pathname, int oflags, int options)
 			}
 		}
 	}
-	tar.fd = open((char*)this->pathname.c_str(), oflags | O_LARGEFILE, spooldir_file_permission());
+	tar.fd = open((char*)this->pathname.c_str(), 
+		      oflags | 
+		      #ifndef FREEBSD
+		      O_LARGEFILE
+		      #else
+		      0
+		      #endif
+		      , spooldir_file_permission());
 	if (tar.fd == -1)
 	{
 		return -1;

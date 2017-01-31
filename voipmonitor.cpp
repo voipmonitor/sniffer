@@ -4581,6 +4581,7 @@ void test() {
 }
 
 
+#ifndef FREEBSD
 extern "C"{
 void __cyg_profile_func_enter(void *this_fn, void *call_site) __attribute__((no_instrument_function));
 void __cyg_profile_func_enter(void *this_fn, void *call_site) {
@@ -4609,6 +4610,7 @@ void __cyg_profile_func_exit(void *this_fn, void *call_site) {
 	--threadStackSize[tid];
 }
 }
+#endif
 
 
 //#define HAVE_LIBJEMALLOC
@@ -5264,6 +5266,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42428) cConfigItem_yesno("mirroronly", &opt_mirroronly));
 					addConfigItem(new FILE_LINE(42429) cConfigItem_string("mirroripsrc", opt_mirrorip_src, sizeof(opt_mirrorip_src)));
 					addConfigItem(new FILE_LINE(42430) cConfigItem_string("mirroripdst", opt_mirrorip_dst, sizeof(opt_mirrorip_dst)));
+		#ifndef FREEBSD
 		subgroup("scanpcapdir");
 				advanced();
 				char scanpcapmethod_values[100];
@@ -5273,6 +5276,7 @@ void cConfig::addConfigItems() {
 					->disableNo()
 					->addValues(scanpcapmethod_values));
 				addConfigItem(new FILE_LINE(42432) cConfigItem_yesno("scanpcapdir_disable_inotify", &opt_scanpcapdir_disable_inotify));
+		#endif
 		subgroup("manager");
 				advanced();
 				addConfigItem(new FILE_LINE(42433) cConfigItem_string("managerclient", opt_clientmanager, sizeof(opt_clientmanager)));
@@ -5434,9 +5438,11 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			break;
 		}
 	}
+	#ifndef FREEBSD
 	if(configItem->config_name == "scanpcapmethod") {
 		opt_scanpcapmethod = !configItem->getValueStr().empty() && configItem->getValueStr()[0] == 'r' ? IN_MOVED_TO : IN_CLOSE_WRITE;
 	}
+	#endif
 	if(configItem->config_name == "packetbuffer_compress_method") {
 		switch(configItem->getValueInt()) {
 		case 0:

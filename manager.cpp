@@ -16,7 +16,6 @@
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
 #include <pcap.h>
-#include <malloc.h>
 #include <math.h>
 #include <time.h>
 
@@ -50,6 +49,10 @@
 #include "config_param.h"
 #include "sniff_proc_class.h"
 #include "register.h"
+
+#ifndef FREEBSD
+#include <malloc.h>
+#endif
 
 //#define BUFSIZE 1024
 //define BUFSIZE 20480
@@ -2615,8 +2618,10 @@ getwav:
 		opt_block_alloc_stack = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblock_alloc_stack") != NULL) {
 		opt_block_alloc_stack = 0;
+#ifndef FREEBSD
 	} else if(strstr(buf, "malloc_trim") != NULL) {
 		malloc_trim(0);
+#endif
 	} else if(strstr(buf, "memcrash_test_1") != NULL) {
 		char *test = new FILE_LINE(13014) char[10];
 		test[10] = 1;

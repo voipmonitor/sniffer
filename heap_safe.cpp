@@ -1,7 +1,15 @@
+#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
+# ifndef FREEBSD
+#  define FREEBSD
+# endif
+#endif
+
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#ifndef FREEBSD
 #include <malloc.h>
+#endif
 #include <execinfo.h>
 
 #include "heap_safe.h"
@@ -121,6 +129,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 		HEAPSAFE_COPY_END_MEMORY_CONTROL_BLOCK(end->stringInfo);
 		end->length = sizeOfObject;
 		end->memory_type = 0;
+#ifndef FREEBSD
 		if(sverb.memory_stat) {
 			if(memory_type1) {
 				std::string memory_type = memory_type1;
@@ -249,6 +258,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 				__sync_fetch_and_add(&memoryStatOtherSum, sizeOfObject);
 			}
 		}
+#endif
 	}
 	return((unsigned char*)pointerToObject +
 	       (HeapSafeCheck & _HeapSafeErrorBeginEnd ?
@@ -730,7 +740,9 @@ std::string addThousandSeparators(u_int64_t num) {
 }
 
 void printMemoryStat(bool all) {
+#ifndef FREEBSD
 	malloc_trim(0);
+#endif
 	std::cout << getMemoryStat(all);
 }
 

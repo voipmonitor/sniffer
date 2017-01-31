@@ -13,11 +13,11 @@
 #include <math.h>
 #include <signal.h>
 
+#include "voipmonitor.h"
+
 #ifndef FREEBSD
 #include <sys/inotify.h>
 #endif
-
-#include "voipmonitor.h"
 
 #include "tools.h"
 

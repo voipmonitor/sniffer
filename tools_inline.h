@@ -5,6 +5,10 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 
+#ifdef FREEBSD
+#include <sys/thr.h>
+#endif
+
 
 inline unsigned int get_unix_tid(void) {
 	static __thread int tid = 0;

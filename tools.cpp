@@ -2,7 +2,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
-#include <sys/sysinfo.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <dirent.h>
@@ -45,8 +44,10 @@
 #ifdef FREEBSD
 #include <sys/uio.h>
 #include <sys/thr.h>
+#include <sys/sysctl.h>
 #else
 #include <sys/sendfile.h>
+#include <sys/sysinfo.h>
 #endif
 
 #include <algorithm> // for std::min
@@ -4399,9 +4400,19 @@ std::vector<std::string> parse_cmd_line(const char *cmdLine) {
 }
 
 u_int64_t getTotalMemory() {
+	#ifndef FREEBSD
 	struct sysinfo sysInfo;
 	sysinfo(&sysInfo);
 	return((u_int64_t)sysInfo.totalram * (sysInfo.mem_unit ? sysInfo.mem_unit : 1));
+	#else
+	int mib[2];
+	mib[0] = CTL_HW;
+	mib[1] = HW_REALMEM;
+	unsigned long rslt;
+	size_t rslt_len = sizeof(rslt);
+	sysctl(mib, 2, &rslt, &rslt_len, NULL, 0);
+	return(rslt);
+	#endif
 }
 
 string ascii_str(string str) {

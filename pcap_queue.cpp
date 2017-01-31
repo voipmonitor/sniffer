@@ -13,7 +13,6 @@
 #include <sstream>
 #include <sys/syscall.h>
 #include <vector>
-#include <malloc.h>
 #include <dirent.h>
 
 #include <snappy-c.h>
@@ -35,6 +34,10 @@
 #include "ssldata.h"
 #include "tar.h"
 #include "voipmonitor.h"
+
+#ifndef FREEBSD
+#include <malloc.h>
+#endif
 
 
 #define TEST_DEBUG_PARAMS 0
