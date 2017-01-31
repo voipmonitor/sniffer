@@ -286,7 +286,6 @@ private:
 	volatile u_int32_t compress_orig_data_len;
 	sChunk *lastChunk;
 	CompressStream *compressStream;
-	u_int32_t iterate_index;
 	ChunkBuffer_baseIterate *decompress_chunkbufferIterateEv;
 	u_int32_t decompress_pos;
 	sChunkIterateCompleteBufferInfo chunkIterateCompleteBufferInfo;

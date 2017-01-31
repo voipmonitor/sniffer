@@ -2,7 +2,7 @@
 #define SYNC_H
 
 
-#define __SYNC_LOCK(vint) while(__sync_lock_test_and_set(&vint, 1));
+#define __SYNC_LOCK(vint) while(__sync_lock_test_and_set(&vint, 1)) {};
 #define __SYNC_LOCK_USLEEP(vint, us_sleep) while(__sync_lock_test_and_set(&vint, 1)) { if(us_sleep) { usleep(us_sleep); } }
 #define __SYNC_UNLOCK(vint) __sync_lock_release(&vint);
 

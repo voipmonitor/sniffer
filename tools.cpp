@@ -360,7 +360,6 @@ unsigned long long copy_file(const char *src, const char *dst, bool move, bool a
 	int read_fd = 0;
 	int write_fd = 0;
 	struct stat stat_buf;
-	off_t offset = 0;
 	int renamedebug = 0;
 
 	//check if the file exists
@@ -415,6 +414,7 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 	posix_fadvise(write_fd, 0, 0, POSIX_FADV_DONTNEED);
 	/* Blast the bytes from one file to the other. */
 #ifndef FREEBSD
+	off_t offset = 0;
 	int res = sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
 	unsigned long long bytestransfered = stat_buf.st_size;
 #else
