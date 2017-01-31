@@ -1,3 +1,15 @@
+17.15 30.01.2017
+================
+- send id-sensor for activecalls (listcalls in manager) [VG-781]
+- store DTMF type to cdr_dtmf so user can see DTMF type in db (GUI) [VG-845]
+- add two new special types in custom header 'max_length_sip_data', 'max_length_sip_packet' which allows to store and search by the largest SIP packet so user can find packets with >= N bytes [VG-1067]
+- add support for dynamic payload in skinny (supports newer protocol) [VG-1132]
+- allow concurrent calls alert trigger by summarize which will not filter by IP or by tel.num (so it is like global concurrent calls alert) [VG-1134]
+- new config options - bye_timeout, bye_confirmed_timeout, ignore_rtp_after_bye_confirmed (see voipmonitor.conf for more details) [VS-554]
+- new detect_alone_bye option which if enabled (default disabled) marks CDR in case there is BYE within dialog with transaction does not exists reply [VG-808]
+- fix parameter rtpfromsdp_onlysip [VG-1137]
+
+
 17.14 13.01.2017
 ================
 - fix ssrc conversion from hexadecimal value in SIP/PUBLISH/LocalAddr/SSRC (pairing RTCP-XR) VS-551
