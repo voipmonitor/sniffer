@@ -70,6 +70,12 @@ extern "C" {
 */
 
 extern unsigned int __unsigned_int_flags_dummy;
+#ifndef FREEBSD
+extern unsigned int HeapSafeCheck;
+#else
+extern "C++" unsigned int HeapSafeCheck;
+#endif
+
 
 #define ast_test_flag(p,flag) 		({ \
 					typeof ((p)->flags) __p = (p)->flags; \
@@ -331,7 +337,6 @@ void * attribute_malloc _ast_malloc(size_t len, const char *file, int lineno, co
 {
 	void *p;
 
-	extern unsigned int HeapSafeCheck;
 	if(HeapSafeCheck) {
 		p = c_heapsafe_alloc(len, file, lineno);
 	} else
@@ -359,7 +364,6 @@ void * attribute_malloc _ast_calloc(size_t num, size_t len, const char *file, in
 {
 	void *p;
 	
-	extern unsigned int HeapSafeCheck;
 	if(HeapSafeCheck) {
 		p = c_heapsafe_alloc(num * len, file, lineno);
 		if(p) {
@@ -391,7 +395,6 @@ void * attribute_malloc _ast_realloc(void *p, size_t len, const char *file, int 
 {
 	void *newp;
 
-	extern unsigned int HeapSafeCheck;
 	if(HeapSafeCheck) {
 		newp = c_heapsafe_realloc(p, len, file, lineno);
 	} else
@@ -413,7 +416,6 @@ void * attribute_malloc _ast_realloc(void *p, size_t len, const char *file, int 
 AST_INLINE_API(
 void _ast_free(void *p),
 {
-	extern unsigned int HeapSafeCheck;
 	if(HeapSafeCheck) {
 		c_heapsafe_free(p);
 	} else

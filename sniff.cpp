@@ -5644,7 +5644,11 @@ void *PreProcessPacket::outThreadFunction() {
 		 pthread_attr_init(&thAttr);
 		 pthread_attr_getschedpolicy(&thAttr, &policy);
 		 max_prio_for_policy = sched_get_priority_max(policy);
+		 #ifndef FREEBSD
 		 pthread_setschedprio(thId, max_prio_for_policy);
+		 #else
+		 pthread_setprio(thId, max_prio_for_policy);
+		 #endif
 		 pthread_attr_destroy(&thAttr);
 	}
 	this->outThreadId = get_unix_tid();
@@ -6369,7 +6373,11 @@ void *ProcessRtpPacket::outThreadFunction() {
 		 pthread_attr_init(&thAttr);
 		 pthread_attr_getschedpolicy(&thAttr, &policy);
 		 max_prio_for_policy = sched_get_priority_max(policy);
+		 #ifndef FREEBSD
 		 pthread_setschedprio(thId, max_prio_for_policy);
+		 #else
+		 pthread_setprio(thId, max_prio_for_policy);
+		 #endif
 		 pthread_attr_destroy(&thAttr);
 	}
 	this->outThreadId = get_unix_tid();
