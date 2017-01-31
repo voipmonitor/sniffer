@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 
+#include "common.h"
+
 #ifdef FREEBSD
 #include <sys/thr.h>
 #endif
