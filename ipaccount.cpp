@@ -978,7 +978,7 @@ int CustIpCache::fetchAllIpQueryFromDb() {
 	if(this->sqlDb->query(this->query_fetchAllIp)) {
 		this->custCacheVect.clear();
 		SqlDb_row row;
-		while(row = this->sqlDb->fetchRow()) {
+		while((row = this->sqlDb->fetchRow())) {
 			cust_cache_rec rec;
 			in_addr ips;
 			inet_aton(row["IP"].c_str(), &ips);
@@ -990,7 +990,7 @@ int CustIpCache::fetchAllIpQueryFromDb() {
 			map<string, unsigned int> radiusUsers;
 			string condRadiusUsers;
 			SqlDb_row row;
-			while(row = this->sqlDb->fetchRow()) {
+			while((row = this->sqlDb->fetchRow())) {
 				radiusUsers[row["radius_username"]] = atol(row["ID"].c_str());
 				if(condRadiusUsers.length()) {
 					condRadiusUsers += ",";
@@ -1002,7 +1002,7 @@ int CustIpCache::fetchAllIpQueryFromDb() {
 					this->query_fetchAllRadiusIp + " " +
 					this->query_fetchAllRadiusIpWhere + "(" + condRadiusUsers + ")")) {
 				SqlDb_row row;
-				while(row = this->sqlDbRadius->fetchRow()) {
+				while((row = this->sqlDbRadius->fetchRow())) {
 					cust_cache_rec rec;
 					in_addr ips;
 					inet_aton(row["IP"].c_str(), &ips);
@@ -1120,7 +1120,7 @@ void NextIpCache::fetch() {
 	if(this->sqlDb->query("select ip, mask from ipacc_capt_ip where enable")) {
 		this->nextCache.clear();
 		SqlDb_row row;
-		while(row = this->sqlDb->fetchRow()) {
+		while((row = this->sqlDb->fetchRow())) {
 			next_cache_rec rec;
 			rec.ip = atol(row["ip"].c_str());
 			rec.mask = atol(row["mask"].c_str());
@@ -1243,7 +1243,7 @@ int CustPhoneNumberCache::fetchPhoneNumbersFromDb() {
 	if(this->sqlDb->query(this->query_fetchPhoneNumbers)) {
 		this->custCache.clear();
 		SqlDb_row row;
-		while(row = this->sqlDb->fetchRow()) {
+		while((row = this->sqlDb->fetchRow())) {
 			cust_pn_cache_rec rec;
 			rec.numberFrom = row["numberFrom"];
 			rec.numberTo = row["numberTo"];

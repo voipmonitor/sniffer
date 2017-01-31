@@ -80,14 +80,14 @@ void CountryCodes::load() {
 		     "from " + (cloud_host[0] ? "cloudshare." : "") + "country_code\
 		      where parent_id is null");
 	SqlDb_row row;
-	while(row = sqlDb->fetchRow()) {
+	while((row = sqlDb->fetchRow())) {
 		continents[row["code"]] = row["name"];
 	}
 	sqlDb->query(string("select country.*, continent.code as continent ") + 
 		     "from " + (cloud_host[0] ? "cloudshare." : "") + "country_code country\
 		      join " + (cloud_host[0] ? "cloudshare." : "") + "country_code continent on (continent.id = country.parent_id)\
 		      where country.parent_id is not null");
-	while(row = sqlDb->fetchRow()) {
+	while((row = sqlDb->fetchRow())) {
 		countries[row["code"]] = row["name"];
 		countryContinent[row["code"]] = row["continent"];
 		continentCountry[row["continent"]].push_back(row["code"]);
@@ -181,7 +181,7 @@ void CountryPrefixes::load() {
 		     "from " + (cloud_host[0] ? "cloudshare." : "") + "country_code_prefix\
 		      order by prefix");
 	SqlDb_row row;
-	while(row = sqlDb->fetchRow()) {
+	while((row = sqlDb->fetchRow())) {
 		data.push_back(CountryPrefix_rec(
 			row["prefix"].c_str(),
 			row["country_code"].c_str(),
@@ -201,7 +201,7 @@ void GeoIP_country::load() {
 		     "from " + (cloud_host[0] ? "cloudshare." : "") + "geoip_country\
 		      order by ip_from");
 	SqlDb_row row;
-	while(row = sqlDb->fetchRow()) {
+	while((row = sqlDb->fetchRow())) {
 		data.push_back(GeoIP_country_rec(
 			atol(row["ip_from"].c_str()),
 			atol(row["ip_to"].c_str()),
@@ -694,7 +694,7 @@ void FraudAlert::loadFraudDef() {
 		 from alerts_fraud\
 		 where alerts_id = ") + intToString(dbId));
 	SqlDb_row row;
-	while(row = sqlDb->fetchRow()) {
+	while((row = sqlDb->fetchRow())) {
 		if(fraudDebug) {
 			syslog(LOG_NOTICE, "add fraud def %s", row["descr"].c_str());
 		}
@@ -810,7 +810,7 @@ bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
 	return(true);
 }
 
-bool FraudAlert::okFilter(sFraudRegisterInfo *registerInfo) {
+bool FraudAlert::okFilter(sFraudRegisterInfo */*registerInfo*/) {
 	return(true);
 }
 
@@ -985,7 +985,7 @@ void FraudAlertReg::loadFilters() {
 		 from alerts_reg_filters\
 		 where alerts_id = ") + intToString(dbId));
 	SqlDb_row dbRowFilters;
-	while(dbRowFilters = sqlDb->fetchRow()) {
+	while((dbRowFilters = sqlDb->fetchRow())) {
 		filter = new FraudAlertReg_filter(this);
 		filter->setFilter(dbRowFilters["descr"].c_str(), dbRowFilters["config_filter_register"].c_str());
 		filters[atoi(dbRowFilters["id"].c_str())] = filter;
@@ -1029,7 +1029,7 @@ void FraudAlert_rcc_timePeriods::loadTimePeriods() {
 		 join cb_timeperiod on (cb_timeperiod.id = alerts_fraud_timeperiod.timeperiod_id)\
 		 where alerts_fraud_id = ") + intToString(dbId));
 	SqlDb_row row;
-	while(row = sqlDb->fetchRow()) {
+	while((row = sqlDb->fetchRow())) {
 		timePeriods.push_back(TimePeriod(&row));
 	}
 	delete sqlDb;
@@ -2142,7 +2142,7 @@ void FraudAlerts::loadAlerts(bool lock) {
 		      from alerts\
 		      where " + whereCondFraudAlerts());
 	SqlDb_row row;
-	while(row = sqlDb->fetchRow()) {
+	while((row = sqlDb->fetchRow())) {
 		if(!selectSensorsContainSensorId(row["select_sensors"])) {
 			continue;
 		}

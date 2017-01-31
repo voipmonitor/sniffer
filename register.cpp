@@ -95,25 +95,25 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		state_from = state_to = call->calltime();
 		counter = 1;
 		state = convRegisterState(call);
-		contact_num = call->contact_num && reg->contact_num && REG_EQ_STR(call->contact_num, reg->contact_num) ?
+		contact_num = reg->contact_num && REG_EQ_STR(call->contact_num, reg->contact_num) ?
 			       EQ_REG :
 			       REG_NEW_STR(call->contact_num);
-		contact_domain = call->contact_domain && reg->contact_domain && REG_EQ_STR(call->contact_domain, reg->contact_domain) ?
+		contact_domain = reg->contact_domain && REG_EQ_STR(call->contact_domain, reg->contact_domain) ?
 				  EQ_REG :
 				  REG_NEW_STR(call->contact_domain);
-		from_num = call->caller && reg->from_num && REG_EQ_STR(call->caller, reg->from_num) ?
+		from_num = reg->from_num && REG_EQ_STR(call->caller, reg->from_num) ?
 			    EQ_REG :
 			    REG_NEW_STR(call->caller);
-		from_name = call->callername && reg->from_name && REG_EQ_STR(call->callername, reg->from_name) ?
+		from_name = reg->from_name && REG_EQ_STR(call->callername, reg->from_name) ?
 			     EQ_REG :
 			     REG_NEW_STR(call->callername);
-		from_domain = call->caller_domain && reg->from_domain && REG_EQ_STR(call->caller_domain, reg->from_domain) ?
+		from_domain = reg->from_domain && REG_EQ_STR(call->caller_domain, reg->from_domain) ?
 			       EQ_REG :
 			       REG_NEW_STR(call->caller_domain);
-		digest_realm = call->digest_realm && reg->digest_realm && REG_EQ_STR(call->digest_realm, reg->digest_realm) ?
+		digest_realm = reg->digest_realm && REG_EQ_STR(call->digest_realm, reg->digest_realm) ?
 				EQ_REG :
 				REG_NEW_STR(call->digest_realm);
-		ua = call->a_ua && reg->ua && REG_EQ_STR(call->a_ua, reg->ua) ?
+		ua = reg->ua && REG_EQ_STR(call->a_ua, reg->ua) ?
 		      EQ_REG :
 		      REG_NEW_STR(call->a_ua);
 		fname = call->fname_register;

@@ -127,7 +127,7 @@ public:
 	virtual string getContentSeparator() {
 		return(",");
 	} 
-	virtual bool checkLastError(string prefixError, bool sysLog = false, bool clearLastError = false) {
+	virtual bool checkLastError(string /*prefixError*/, bool /*sysLog*/ = false, bool /*clearLastError*/ = false) {
 		return(false);
 	}
 	void setLastError(unsigned int lastError, const char *lastErrorString, bool sysLog = false) {
@@ -177,7 +177,7 @@ public:
 	virtual int getDbMajorVersion() {
 		return(0);
 	}
-	virtual int getDbMinorVersion(int minorLevel  = 0) {
+	virtual int getDbMinorVersion(int /*minorLevel*/  = 0) {
 		return(0);
 	}
 	void setEnableSqlStringInContent(bool enableSqlStringInContent);

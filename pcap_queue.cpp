@@ -1334,7 +1334,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					if(pointToLineBreak) {
 						*pointToLineBreak = '\0';
 					}
-					syslog(LOG_NOTICE, pointToBeginLine);
+					syslog(LOG_NOTICE, "%s", pointToBeginLine);
 					if(pointToLineBreak) {
 						*pointToLineBreak = '\n';
 						pointToBeginLine = pointToLineBreak + 1;
@@ -2053,7 +2053,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			cout << outStrStat.str() << endl;
 		} else {
 			syslog(LOG_NOTICE, "packetbuffer cpu / mem stat:");
-			syslog(LOG_NOTICE, outStrStat.str().c_str());
+			syslog(LOG_NOTICE, "%s", outStrStat.str().c_str());
 		}
 	} else if(VERBOSE) {
 		outStr << outStrStat.str();
@@ -2078,7 +2078,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(pointToLineBreak) {
 				*pointToLineBreak = '\0';
 			}
-			syslog(LOG_NOTICE, pointToBeginLine);
+			syslog(LOG_NOTICE, "%s", pointToBeginLine);
 			if(pointToLineBreak) {
 				*pointToLineBreak = '\n';
 				pointToBeginLine = pointToLineBreak + 1;
@@ -2284,7 +2284,7 @@ int PcapQueue::pcap_next_ex_queue(pcap_t *pcapHandle, pcap_pkthdr** header, u_ch
 	return(1);
 }
 
-bool PcapQueue::initThread(void *arg, unsigned int arg2, string *error) {
+bool PcapQueue::initThread(void *arg, unsigned int arg2, string */*error*/) {
 	return(!this->enableMainThread || this->openFifoForRead(arg, arg2));
 }
 
@@ -2431,11 +2431,6 @@ long unsigned int PcapQueue::getRssUsage(bool preparePstatData) {
 }
 
 void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packet, u_int offset) {
-	if(offset < 0) {
-		//// doplnit zjištění offsetu
-		return;
-	}
-	
 	extern SocketSimpleBufferWrite *sipSendSocket;
 	extern int opt_sip_send_before_packetbuffer;
 	if(!sipSendSocket || !opt_sip_send_before_packetbuffer) {
@@ -2563,7 +2558,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 		this->pcapHandle = pcap_open_offline_zip(opt_pb_read_from_file, errbuf);
 		if(!this->pcapHandle) {
 			sprintf(errorstr, "pcap_open_offline %s failed: %s", opt_pb_read_from_file, errbuf); 
-			syslog(LOG_ERR, errorstr);
+			syslog(LOG_ERR, "%s", errorstr);
 			*error = errorstr;
 			__sync_lock_release(&_sync_start_capture);
 			return(false);
@@ -2684,7 +2679,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 	return(true);
 failed:
 	__sync_lock_release(&_sync_start_capture);
-	syslog(LOG_ERR, errorstr);
+	syslog(LOG_ERR, "%s", errorstr);
 	*error = errorstr;
 	return(false);
 }
@@ -2907,7 +2902,7 @@ inline int PcapQueue_readFromInterface_base::pcapProcess(sHeaderPacket **header_
 	return(0);
 }
 
-string PcapQueue_readFromInterface_base::pcapStatString_interface(int statPeriod) {
+string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeriod*/) {
 	ostringstream outStr;
 	if(this->pcapHandle) {
 		pcap_stat ps;
@@ -3443,14 +3438,14 @@ inline pcap_block_store *PcapQueue_readFromInterfaceThread::POP_BLOCK() {
 	} \
 	this->counter_pop_usleep = 0;
 
-void *PcapQueue_readFromInterfaceThread::threadFunction(void *arg, unsigned int arg2) {
+void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned int /*arg2*/) {
 	this->threadId = get_unix_tid();
 	if(VERBOSE) {
 		ostringstream outStr;
 		outStr << "start thread t0i_" 
 		       << getTypeThreadName()
 		       << " (" << this->getInterfaceName() << ") - pid: " << this->threadId << endl;
-		syslog(LOG_NOTICE, outStr.str().c_str());
+		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 	if(this->typeThread == read) {
 		if(!opt_pcap_queue_use_blocks) {
@@ -4250,7 +4245,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
-			syslog(LOG_NOTICE, outStr.str().c_str());
+			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 		}
 	}
 	string error;
@@ -4594,7 +4589,7 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
-			syslog(LOG_NOTICE, outStr.str().c_str());
+			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 		}
 	}
 	if(this->initWriteThread(arg, arg2)) {
@@ -4634,7 +4629,7 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 	return(NULL);
 }
 
-bool PcapQueue_readFromInterface::openFifoForWrite(void *arg, unsigned int arg2) {
+bool PcapQueue_readFromInterface::openFifoForWrite(void */*arg*/, unsigned int /*arg2*/) {
 	return(true);
 }
 
@@ -4698,7 +4693,7 @@ bool PcapQueue_readFromInterface::openPcap(const char *filename) {
 	return(true);
 }
 
-string PcapQueue_readFromInterface::pcapStatString_bypass_buffer(int statPeriod) {
+string PcapQueue_readFromInterface::pcapStatString_bypass_buffer(int /*statPeriod*/) {
 	ostringstream outStr;
 	outStr << fixed;
 	uint64_t useSize = blockStoreBypassQueue->getUseSize();
@@ -5158,7 +5153,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
-			syslog(LOG_NOTICE, outStr.str().c_str());
+			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 		}
 	}
 	string error;
@@ -5222,7 +5217,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									sensorName = "";
 									while((unsigned)(pointToSensorIdName - (char*)buffer + offset) < bufferLen &&
 									      (pointToSensorIdName[offset] == 0 ||
-									       (pointToSensorIdName[offset] >= ' ' && pointToSensorIdName[offset] < 128))) {
+									       (pointToSensorIdName[offset] >= ' ' && (unsigned char)pointToSensorIdName[offset] < 128))) {
 										if(pointToSensorIdName[offset] == 0) {
 											if(separator) {
 												nullTerm = true;
@@ -5254,7 +5249,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									bool nullTerm = false;
 									while((unsigned)(pointToSensorTime - (char*)buffer + offset) < bufferLen &&
 									      (pointToSensorTime[offset] == 0 ||
-									       (pointToSensorTime[offset] >= ' ' && pointToSensorTime[offset] < 128))) {
+									       (pointToSensorTime[offset] >= ' ' && (unsigned char)pointToSensorTime[offset] < 128))) {
 										if(pointToSensorTime[offset] == 0) {
 											nullTerm = true;
 											break;
@@ -5462,7 +5457,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
-			syslog(LOG_NOTICE, outStr.str().c_str());
+			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 		}
 	}
 	if(this->initWriteThread(arg, arg2)) {
@@ -5735,7 +5730,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 	return(NULL);
 }
 
-void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void *arg, unsigned int arg2) {
+void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigned int /*arg2*/) {
 	int tid = get_unix_tid();
 	this->nextThreadsId[destroyBlocksThread - nextThread1] = tid;
 	if(VERBOSE || DEBUG_VERBOSE) {
@@ -5744,7 +5739,7 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void *arg, unsigned in
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
-			syslog(LOG_NOTICE, outStr.str().c_str());
+			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 		}
 	}
 	while(!TERMINATING) {
@@ -5797,7 +5792,7 @@ bool PcapQueue_readFromFifo::openFifoForRead(void *arg, unsigned int arg2) {
 	return(false);
 }
 
-bool PcapQueue_readFromFifo::openFifoForWrite(void *arg, unsigned int arg2) {
+bool PcapQueue_readFromFifo::openFifoForWrite(void */*arg*/, unsigned int /*arg2*/) {
 	if(this->packetServerDirection == directionWrite) {
 		return(this->socketGetHost() &&
 		       this->socketReadyForConnect());
@@ -5848,7 +5843,7 @@ bool PcapQueue_readFromFifo::openPcapDeadHandle(int dlt) {
 	return(true);
 }
 
-string PcapQueue_readFromFifo::pcapStatString_memory_buffer(int statPeriod) {
+string PcapQueue_readFromFifo::pcapStatString_memory_buffer(int /*statPeriod*/) {
 	ostringstream outStr;
 	outStr << fixed;
 	uint64_t useSize = buffersControl.get__pcap_store_queue__sizeOfBlocksInMemory() + buffersControl.get__PcapQueue_readFromFifo__blockStoreTrash_size();
@@ -5861,7 +5856,7 @@ string PcapQueue_readFromFifo::pcapStatString_memory_buffer(int statPeriod) {
 	return(outStr.str());
 }
 
-string PcapQueue_readFromFifo::pcapStatString_disk_buffer(int statPeriod) {
+string PcapQueue_readFromFifo::pcapStatString_disk_buffer(int /*statPeriod*/) {
 	ostringstream outStr;
 	if(opt_pcap_queue_store_queue_max_disk_size &&
 	   this->pcapStoreQueue.fileStoreFolder.length()) {

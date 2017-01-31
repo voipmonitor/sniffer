@@ -487,7 +487,6 @@ public:
 	 * @param call_id unique identification of call parsed from packet
 	 * @param call_id_len lenght of the call_id buffer
 	 * @param time time of the first packet
-	 * @param ct reference to calltable
 	 * 
 	*/
 	Call(int call_type, char *call_id, unsigned long call_id_len, time_t time);
@@ -507,7 +506,6 @@ public:
 	 *
 	 * close all RTP[].gfileRAW to flush writes 
 	 * 
-	 * @return nothing
 	*/
 	void closeRawFiles();
 	
@@ -515,11 +513,6 @@ public:
 	 * @brief read RTP packet 
 	 *
 	 * Used for reading RTP packet 
-	 *
-	 * @param data pointer to the packet buffer
-	 * @param datalen lenght of the buffer
-	 * @param header header structure of the packet
-	 * @param saddr source IP adress of the packet
 	 * 
 	*/
 	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char enable_save_packet, char *ifname = NULL);
@@ -528,11 +521,6 @@ public:
 	 * @brief read RTCP packet 
 	 *
 	 * Used for reading RTCP packet 
-	 *
-	 * @param data pointer to the packet buffer
-	 * @param datalen lenght of the buffer
-	 * @param header header structure of the packet
-	 * @param saddr source IP adress of the packet
 	 * 
 	*/
 	bool read_rtcp(struct packet_s *packetS, int iscaller, char enable_save_packet);
@@ -551,7 +539,7 @@ public:
 	
 	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
-	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation);
+	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
@@ -581,8 +569,6 @@ public:
 	 *
 	 * this time is used for calculating lenght of the call
 	 *
-	 * @param timestamp in seconds from UNIX epoch
-	 *
 	*/
 	void set_last_packet_time(time_t mtime) { last_packet_time = mtime; };
 
@@ -597,8 +583,6 @@ public:
 
 	/**
 	 * @brief set first time of the the packet which belongs to this call
-	 *
-	 * @param timestamp in seconds from UNIX epoch
 	 *
 	*/
 	void set_first_packet_time(time_t mtime, unsigned int usec) { first_packet_time = mtime; first_packet_usec = usec;};
@@ -644,7 +628,6 @@ public:
 	/**
 	 * @brief return start of the call which is first seen packet 
 	 *
-	 * @param timestamp in seconds from UNIX epoch
 	*/
 	int calltime() { return first_packet_time; };
 
@@ -1078,7 +1061,7 @@ public:
 	 * walk this list of Calls and if any of the call is inactive more
 	 * than 5 minutes, save it to MySQL and delete it from the list
 	 *
-	 * @param cuutime current time
+	 * @param currtime current time
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
@@ -1089,7 +1072,7 @@ public:
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, int allowrelation);
+	void hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags);
 
 
 	/**

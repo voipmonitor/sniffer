@@ -331,14 +331,6 @@ public:
 	*/
 	void jitterbuffer(struct ast_channel *channel, int savePayload);
 
-	/**
-	 * @brief decode rfc2833 DTMF 
-	 *
-	 * handles DTMF for RTP payload type 101 rfc2833
-	 *
-	 * @param none
-	 *
-	*/
 	void process_dtmf_rfc2833();
 
 	/**
@@ -347,12 +339,11 @@ public:
 	 * Used for reading RTP packet
 	 *
 	 * @param data pointer to the packet buffer
-	 * @param datalen lenght of the buffer
 	 * @param header header structure of the packet
 	 * @param saddr source IP adress of the packet
 	 *
 	*/
-	bool read(unsigned char* data, int len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport, int seeninviteok, 
+	bool read(unsigned char* data, int len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport,
 		  int sensor_id, u_int32_t sensor_ip, char *ifname = NULL);
 
 
@@ -362,7 +353,6 @@ public:
 	 * Used for temporary operations on RTP packet
 	 *
 	 * @param data pointer to the packet buffer
-	 * @param datalen lenght of the buffer
 	 * @param header header structure of the packet
 	 * @param saddr source IP adress of the packet
 	 *

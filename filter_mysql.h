@@ -1,3 +1,7 @@
+#ifndef FILTER_MYSQL_H
+#define FILTER_MYSQL_H
+
+
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -250,10 +254,10 @@ public:
 	SIP_HEADERfilter();
 	~SIP_HEADERfilter();
 	void load();
-	int _add_call_flags(class ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags);
+	int _add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags);
 	void dump();
 	void _addNodes(ParsePacket *parsePacket);
-	static int add_call_flags(class ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags, bool enableReload = false);
+	static int add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags, bool enableReload = false);
 	static void addNodes(ParsePacket *parsePacket);
 	static void loadActive();
 	static void freeActive();
@@ -324,3 +328,6 @@ inline void set_global_flags(volatile unsigned int &flags) {
 		flags |= FLAG_SAVEREGISTER;
 	}
 }
+
+
+#endif //FILTER_MYSQL_H

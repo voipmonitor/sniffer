@@ -255,7 +255,11 @@ struct pcap_block_store {
 		}
 		return(true);
 	}
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	void lock_packet(int index, int flag) {
+	#else
+	void lock_packet(int /*index*/, int /*flag*/) {
+	#endif
 		__sync_add_and_fetch(&this->_sync_packet_lock, 1);
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		__sync_add_and_fetch(&this->_sync_packets_lock[index], 1);
@@ -265,7 +269,11 @@ struct pcap_block_store {
 		}
 		#endif
 	}
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	void unlock_packet(int index) {
+	#else
+	void unlock_packet(int /*index*/) {
+	#endif
 		__sync_sub_and_fetch(&this->_sync_packet_lock, 1);
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		if(this->_sync_packets_lock[index] <= 0) {
@@ -277,7 +285,11 @@ struct pcap_block_store {
 		__sync_sub_and_fetch(&this->_sync_packets_lock[index], 1);
 		#endif
 	}
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	void add_flag(int index, int flag) {
+	#else
+	void add_flag(int /*index*/, int /*flag*/) {
+	#endif
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		if(flag && this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] < DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH - 1) {
 			this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] + 1] = flag;

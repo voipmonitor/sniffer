@@ -29,9 +29,9 @@ HttpData::~HttpData() {
 void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			   u_int16_t port_src, u_int16_t port_dst,
 			   TcpReassemblyData *data,
-			   u_char *ethHeader, u_int32_t ethHeaderLength,
-			   u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
-			   void *uData, TcpReassemblyLink *reassemblyLink,
+			   u_char */*ethHeader*/, u_int32_t /*ethHeaderLength*/,
+			   u_int16_t /*handle_index*/, int /*dlt*/, int /*sensor_id*/, u_int32_t /*sensor_ip*/,
+			   void */*uData*/, TcpReassemblyLink */*reassemblyLink*/,
 			   bool debugSave) {
  
 	++this->counterProcessData;
@@ -638,7 +638,7 @@ void HttpPacketsDumper::dumpData(const char *timestamp_from, const char *timesta
 	delete sqlDb;
 }
 
-void HttpPacketsDumper::dumpDataItem(eReqResp reqResp, string header, string body,
+void HttpPacketsDumper::dumpDataItem(eReqResp /*reqResp*/, string header, string body,
 				     timeval time,
 				     u_int32_t ip_src, u_int32_t ip_dst,
 				     u_int16_t port_src, u_int16_t port_dst) {

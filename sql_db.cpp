@@ -667,7 +667,7 @@ void SqlDb::logNeedAlter(string table, string reason, string alter,
 			"It is recommended to alter the table in non working hours. "
 			"Login to the mysql voipmonitor database (mysql -uroot voipmonitor) and run on the CLI> " +
 			alter;
-		syslog(LOG_WARNING, msg.c_str());
+		syslog(LOG_WARNING, "%s", msg.c_str());
 	}
 }
 
@@ -897,7 +897,7 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 			string errorString = 
 				string("create routine ") + routineName + " failed\n" +
 				"tip: SET GLOBAL log_bin_trust_function_creators = 1  or put it in my.cnf configuration or grant SUPER privileges to your voipmonitor mysql user.";
-			syslog(LOG_ERR, errorString.c_str());
+			syslog(LOG_ERR, "%s", errorString.c_str());
 			vm_terminate_error(errorString.c_str());
 		}
 		return(rslt);
@@ -937,7 +937,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 	if(isCloud()) {
 		string preparedQuery = this->prepareQuery(query, false);
 		if(verbosity > 1) {
-			syslog(LOG_INFO, prepareQueryForPrintf(preparedQuery).c_str());
+			syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
 		}
 		return(this->queryByCurl(preparedQuery));
 	}
@@ -978,7 +978,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
 		string preparedQuery = this->prepareQuery(query, !callFromStoreProcessWithFixDeadlock && attempt > 1);
 		if(attempt == 1 && verbosity > 1) {
-			syslog(LOG_INFO, prepareQueryForPrintf(preparedQuery).c_str());
+			syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
 		}
 		if(pass > 0) {
 			if(is_terminating()) {
@@ -1259,7 +1259,7 @@ void SqlDb_odbc::setSubtypeDb(string subtypeDb) {
 	this->subtypeDb = subtypeDb;
 }
 
-bool SqlDb_odbc::connect(bool createDb, bool mainInit) {
+bool SqlDb_odbc::connect(bool /*createDb*/, bool /*mainInit*/) {
 	this->connecting = true;
 	SQLRETURN rslt;
 	this->clearLastError();
@@ -1327,7 +1327,7 @@ bool SqlDb_odbc::connected() {
 	return(this->hConnection != NULL);
 }
 
-bool SqlDb_odbc::query(string query, bool callFromStoreProcessWithFixDeadlock, const char *dropProcQuery) {
+bool SqlDb_odbc::query(string query, bool /*callFromStoreProcessWithFixDeadlock*/, const char */*dropProcQuery*/) {
 	SQLRETURN rslt = SQL_NULL_DATA;
 	if(this->hStatement) {
 		SQLFreeHandle(SQL_HANDLE_STMT, this->hStatement);
@@ -1338,7 +1338,7 @@ bool SqlDb_odbc::query(string query, bool callFromStoreProcessWithFixDeadlock, c
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
 		string preparedQuery = this->prepareQuery(query, attempt > 1);
 		if(attempt == 1 && verbosity > 1) { 
-			syslog(LOG_INFO, prepareQueryForPrintf(preparedQuery).c_str());
+			syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
 		}
 		if(pass > 0) {
 			if(is_terminating()) {
@@ -1424,12 +1424,12 @@ int SqlDb_odbc::getInsertId() {
 	return(-1);
 }
 
-bool SqlDb_odbc::existsTable(const char *table) {
+bool SqlDb_odbc::existsTable(const char */*table*/) {
 	// TODO
 	return(false);
 }
 
-bool SqlDb_odbc::existsColumn(const char *table, const char *column) {
+bool SqlDb_odbc::existsColumn(const char */*table*/, const char */*column*/) {
 	// TODO
 	return(false);
 }
@@ -1447,7 +1447,7 @@ string SqlDb_odbc::escape(const char *inputString, int length) {
 	return sqlEscapeString(inputString, length, this->getTypeDb().c_str());
 }
 
-bool SqlDb_odbc::checkLastError(string prefixError, bool sysLog, bool clearLastError) {
+bool SqlDb_odbc::checkLastError(string prefixError, bool sysLog, bool /*clearLastError*/) {
 	if(this->hConnection) {
 		SQLCHAR sqlState[10];
 		SQLINTEGER nativeError;
@@ -2529,7 +2529,7 @@ int MySqlStore::getSizeMult(int n, ...) {
 	return(size);
 }
 
-int MySqlStore::getSizeVect(int id1, int id2, bool lock) {
+int MySqlStore::getSizeVect(int id1, int id2, bool /*lock*/) {
 	int size = -1;
 	for(int id = id1; id <= id2; id++) {
 		int _size = this->getSize(id);
@@ -2543,7 +2543,7 @@ int MySqlStore::getSizeVect(int id1, int id2, bool lock) {
 	return(size);
 }
 
-int MySqlStore::getActiveIdsVect(int id1, int id2, bool lock) {
+int MySqlStore::getActiveIdsVect(int id1, int id2, bool /*lock*/) {
 	int activeIds  = 0;
 	for(int id = id1; id <= id2; id++) {
 		int _size = this->getSize(id);
@@ -5386,7 +5386,7 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	}
 }
 
-void SqlDb_mysql::checkColumns_other(bool log) {
+void SqlDb_mysql::checkColumns_other(bool /*log*/) {
 	if(!this->existsColumn("files", "spool_index")) {
 		this->query(
 			"ALTER TABLE `files`\
@@ -5404,7 +5404,7 @@ bool SqlDb_mysql::isExtPrecissionBilling() {
 		if(this->fetchRow()) {
 			this->query("select * from " + table);
 			SqlDb_row row;
-			while(row = this->fetchRow()) {
+			while((row = this->fetchRow())) {
 				for(int j = 0; j < 2 && !existsExtPrecisionBilling; j++) {
 					double price = atof(row[i ? (j ? "price_peak" : "price") :
 								    (j ? "default_price_peak" : "default_price")].c_str());
@@ -5486,7 +5486,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		map<string, int> columnsDest;
 		this->query(string("show columns from ") + tableName);
 		size_t i = 0;
-		while(row = this->fetchRow()) {
+		while((row = this->fetchRow())) {
 			columnsDest[row["Field"]] = ++i;
 		}
 		vector<string> condSrc;
@@ -5511,7 +5511,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		}
 		queryStr << " order by " << orderSrc;
 		queryStr << " limit " << limit;
-		syslog(LOG_NOTICE, ("select query: " + queryStr.str()).c_str());
+		syslog(LOG_NOTICE, "%s", ("select query: " + queryStr.str()).c_str());
 		if(sqlDbSrc->query(queryStr.str())) {
 			extern MySqlStore *sqlStore;
 			SqlDb_row row;
@@ -5605,7 +5605,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 	map<string, int> columnsDest;
 	this->query(string("show columns from ") + slaveTableName);
 	size_t i = 0;
-	while(row = this->fetchRow()) {
+	while((row = this->fetchRow())) {
 		columnsDest[row["Field"]] = ++i;
 	}
 	vector<string> condSrc;
@@ -5636,7 +5636,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 	}
 	queryStr << " order by " << orderSrc;
 	queryStr << " limit " << limit;
-	syslog(LOG_NOTICE, ("select query: " + queryStr.str()).c_str());
+	syslog(LOG_NOTICE, "%s", ("select query: " + queryStr.str()).c_str());
 	if(sqlDbSrc->query(queryStr.str())) {
 		extern MySqlStore *sqlStore;
 		SqlDb_row row;
@@ -5718,7 +5718,7 @@ void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 	};
 	sqlDbSrc->query("show tables");
 	SqlDb_row row;
-	while(row = sqlDbSrc->fetchRow()) {
+	while((row = sqlDbSrc->fetchRow())) {
 		string tableName = row[0];
 		bool isMainSourceTable = false;
 		for(size_t i = 0; i < mainSourceTables.size(); i++) {
@@ -5866,17 +5866,17 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 }
 
 
-bool SqlDb_odbc::createSchema(int connectId) {
+bool SqlDb_odbc::createSchema(int /*connectId*/) {
 	return(true);
 }
 
-void SqlDb_odbc::createTable(const char *tableName) {
+void SqlDb_odbc::createTable(const char */*tableName*/) {
 }
 
 void SqlDb_odbc::checkDbMode() {
 }
 
-void SqlDb_odbc::checkSchema(int connectId, bool checkColumns) {
+void SqlDb_odbc::checkSchema(int /*connectId*/, bool /*checkColumns*/) {
 }
 
 void createMysqlPartitionsCdr() {

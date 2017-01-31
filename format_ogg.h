@@ -1,3 +1,7 @@
+#ifndef FORMAT_OGG_H
+#define FORMAT_OGG_H
+
+
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
 
@@ -28,3 +32,5 @@ void write_stream_live(struct vorbis_desc *s, std::queue <char> spybuffer);
 int ogg_write_live(struct vorbis_desc *s, std::queue <char> *spybuffer, short *data);
 int ogg_header_live(std::queue <char> *spybuffer, struct vorbis_desc *tmp);
 
+
+#endif //FORMAT_OGG_H

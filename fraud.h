@@ -664,10 +664,10 @@ public:
 	unsigned int getDbId() {
 		return(dbId);
 	}
-	virtual void evCall(sFraudCallInfo *callInfo) {}
-	virtual void evRtpStream(sFraudRtpStreamInfo *rtpStreamInfo) {}
-	virtual void evEvent(sFraudEventInfo *eventInfo) {}
-	virtual void evRegister(sFraudRegisterInfo *registerInfo) {}
+	virtual void evCall(sFraudCallInfo */*callInfo*/) {}
+	virtual void evRtpStream(sFraudRtpStreamInfo */*rtpStreamInfo*/) {}
+	virtual void evEvent(sFraudEventInfo */*eventInfo*/) {}
+	virtual void evRegister(sFraudRegisterInfo */*registerInfo*/) {}
 	virtual bool okFilterIp(u_int32_t ip, u_int32_t ip2);
 	virtual bool okFilterPhoneNumber(const char *numb, const char *numb2);
 	virtual bool okFilter(sFraudCallInfo *callInfo);
@@ -696,7 +696,7 @@ public:
 	virtual void evAlert(FraudAlertInfo *alertInfo);
 protected:
 	virtual void loadAlertVirt() {}
-	virtual void addFraudDef(SqlDb_row *row) {}
+	virtual void addFraudDef(SqlDb_row */*row*/) {}
 	virtual bool defFilterIp() { return(false); }
 	virtual bool defFilterIp2() { return(false); }
 	virtual bool defFilterIpCondition12() { return(false); }
@@ -896,7 +896,7 @@ public:
 	void evCall_rcc(sFraudCallInfo *callInfo, class FraudAlert_rcc *alert, bool timeperiod);
 	void evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, class FraudAlert_rcc *alert, bool timeperiod);
 protected:
-	virtual bool checkTime(u_int64_t time) { return(true); }
+	virtual bool checkTime(u_int64_t /*time*/) { return(true); }
 	virtual string getDescr() { return(""); }
 	FraudAlert::eTypeBy getTypeBy();
 private:

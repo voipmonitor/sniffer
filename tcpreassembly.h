@@ -199,7 +199,7 @@ public:
 				 void *uData,
 				 class TcpReassemblyLink *reassemblyLink,
 				 bool debugSave) = 0;
-	virtual void writeToDb(bool all = false) {}
+	virtual void writeToDb(bool /*all*/ = false) {}
 	virtual void printContentSummary() {}
 };
 

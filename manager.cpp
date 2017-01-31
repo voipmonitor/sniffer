@@ -613,7 +613,7 @@ int sendssh(ssh_channel channel, const char *buf, int len) {
 }
 #endif
 
-int sendvm(int socket, ssh_channel channel, const char *buf, size_t len, int mode) {
+int sendvm(int socket, ssh_channel channel, const char *buf, size_t len, int /*mode*/) {
 	int res;
 	if(channel) {
 		res = sendssh(channel, buf, len);
@@ -627,7 +627,7 @@ int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode) {
 	return(sendvm(socket, (ssh_channel)channel, buf, len, mode));
 }
 
-int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel, char *buf, size_t len, int mode) {
+int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel, char */*buf*/, size_t /*len*/, int /*mode*/) {
 	SimpleBuffer out;
 	if(vm_pexec(command, &out) && out.size()) {
 		if(sendvm(socket, channel, (const char*)out.data(), out.size(), 0) == -1) {
@@ -1459,7 +1459,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		return 0;
         } else if(strstr(buf, "stoplivesniffer")) {
                 sscanf(buf, "stoplivesniffer %u", &uid);
-		while(__sync_lock_test_and_set(&usersniffer_sync, 1));
+		while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
                 map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
                 if(usersnifferIT != usersniffer.end()) {
                         delete usersnifferIT->second;
@@ -2639,7 +2639,9 @@ getwav:
 			test[i] = new FILE_LINE(13017) char[10];
 		}
 		memset(test[4] + 10, 0, 40);
-		*(char*)0 = 0;
+	} else if(strstr(buf, "memcrash_test_5") != NULL) {
+		char *test = NULL;
+		*test = 0;
 	} else if(strstr(buf, "set_pcap_stat_period") != NULL) {
 		int new_pcap_stat_period = atoi(buf + 21);
 		if(new_pcap_stat_period > 0 && new_pcap_stat_period < 600) {
@@ -2655,7 +2657,7 @@ getwav:
 }
 
 
-void *manager_client(void *dummy) {
+void *manager_client(void */*dummy*/) {
 	u_int32_t host_ipl;
 	struct sockaddr_in addr;
 	int res;
@@ -3023,7 +3025,7 @@ ssh_disconnect:
 #endif
 
 #ifdef HAVE_LIBSSH
-void *manager_ssh(void *arg) {
+void *manager_ssh(void */*arg*/) {
 	while (ssh_host[0] == '\0') {	//wait until register.php POST done
 		sleep(1);
 	}
@@ -3042,7 +3044,7 @@ void *manager_ssh(void *arg) {
 #endif
 
 
-void *manager_server(void *dummy) {
+void *manager_server(void */*dummy*/) {
  
 	sockaddr_in sockName;
 	sockaddr_in clientInfo;
@@ -3711,7 +3713,7 @@ int sendString(string *str, int client, ssh_channel sshchannel, bool zip) {
 	}
 	CompressStream *compressStream = NULL;
 	if(zip &&
-	   ((*str)[0] != 0x1f || (str->length() > 1 && (*str)[1] != 0x8b))) {
+	   ((*str)[0] != 0x1f || (str->length() > 1 && (unsigned char)(*str)[1] != 0x8b))) {
 		compressStream = new FILE_LINE(13021) CompressStream(CompressStream::gzip, 1024, 0);
 		compressStream->setSendParameters(client, sshchannel);
 	}

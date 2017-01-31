@@ -351,6 +351,7 @@ static inline void goertzel_sample(goertzel_state_t *s, short sample)
 	}
 }
 
+/*
 static inline void goertzel_update(goertzel_state_t *s, short *samps, int count)
 {
 	int i;
@@ -359,7 +360,7 @@ static inline void goertzel_update(goertzel_state_t *s, short *samps, int count)
 		goertzel_sample(s, samps[i]);
 	}
 }
-
+*/
 
 static inline float goertzel_result(goertzel_state_t *s)
 {
@@ -557,7 +558,7 @@ static void digit_detect_init(digit_detect_state_t *s, int mf, unsigned int samp
 	}
 }
 
-static int tone_detect(struct dsp *dsp, tone_detect_state_t *s, int16_t *amp, int samples)
+static int tone_detect(struct dsp */*dsp*/, tone_detect_state_t *s, int16_t *amp, int samples)
 {
 	float tone_energy;
 	int i;
@@ -680,7 +681,7 @@ static void store_digit(digit_detect_state_t *s, char digit)
 	}
 }
 
-static int dtmf_detect(struct dsp *dsp, digit_detect_state_t *s, int16_t amp[], int samples, int squelch, int relax)
+static int dtmf_detect(struct dsp */*dsp*/, digit_detect_state_t *s, int16_t amp[], int samples, int /*squelch*/, int relax)
 {
 	float row_energy[4];
 	float col_energy[4];
@@ -888,8 +889,8 @@ static int dtmf_detect(struct dsp *dsp, digit_detect_state_t *s, int16_t amp[], 
 	return (s->td.dtmf.current_hit);	/* return the debounced hit */
 }
 
-static int mf_detect(struct dsp *dsp, digit_detect_state_t *s, int16_t amp[],
-		int samples, int squelch, int relax)
+static int mf_detect(struct dsp */*dsp*/, digit_detect_state_t *s, int16_t amp[],
+		int samples, int /*squelch*/, int /*relax*/)
 {
 	float energy[6];
 	int best;
@@ -1740,7 +1741,7 @@ int dsp_get_tcount(struct dsp *dsp)
 	return dsp->tcount;
 }
 
-static int _dsp_init(int reload)
+static int _dsp_init(int /*reload*/)
 {
 	thresholds[THRESHOLD_SILENCE] = DEFAULT_SILENCE_THRESHOLD;
 	dtmf_normal_twist = DEF_DTMF_NORMAL_TWIST;

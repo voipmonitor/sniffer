@@ -1,3 +1,6 @@
+#ifndef FORMAT_WAV_H
+#define FORMAT_WAV_H
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,3 +40,6 @@ void slinear_saturated_add(short *input, short *value);
 int wav_write_header(FILE *f, int samplerate, int stereo);
 int wav_update_header(FILE *f);
 int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap, int stereo);
+
+
+#endif //FORMAT_WAV_H

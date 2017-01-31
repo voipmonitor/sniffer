@@ -846,7 +846,7 @@ void handle_error(const char *file, int lineno, const char *msg){
 static MUTEX_TYPE *mutex_buf= NULL;
  
  
-static void locking_function(int mode, int n, const char * file, int line)
+static void locking_function(int mode, int n, const char * /*file*/, int /*line*/)
 {
   if (mode & CRYPTO_LOCK)
     MUTEX_LOCK(mutex_buf[n]);
@@ -938,7 +938,7 @@ void exit_handler_fork_mode()
 #endif
 
 /* handler for INTERRUPT signal */
-void sigint_handler(int param)
+void sigint_handler(int /*param*/)
 {
 	syslog(LOG_ERR, "SIGINT received, terminating\n");
 	vm_terminate();
@@ -948,7 +948,7 @@ void sigint_handler(int param)
 }
 
 /* handler for TERMINATE signal */
-void sigterm_handler(int param)
+void sigterm_handler(int /*param*/)
 {
 	syslog(LOG_ERR, "SIGTERM received, terminating\n");
 	vm_terminate();
@@ -964,7 +964,7 @@ struct sPidInfo {
 };
 volatile unsigned childPidsExit_count;
 sPidInfo childPidsExit[childPidsExit_max];
-void sigchld_handler(int param)
+void sigchld_handler(int /*param*/)
 {
 	pid_t childpid;
 	int status;
@@ -994,7 +994,7 @@ int getChildPidExitCode(unsigned pid) {
 	return(-1);
 }
 
-void *database_backup(void *dummy) {
+void *database_backup(void */*dummy*/) {
 	if(!isSqlDriver("mysql")) {
 		syslog(LOG_ERR, "database_backup is only for mysql driver!");
 		return(NULL);
@@ -1090,7 +1090,7 @@ void *database_backup(void *dummy) {
 }
 
 /* cycle files_queue and move it to spool dir */
-void *moving_cache( void *dummy ) {
+void *moving_cache( void */*dummy*/ ) {
 	string file;
 	char src_c[1024];
 	char dst_c[1024];
@@ -1301,7 +1301,7 @@ void *defered_service_fork(void *) {
 }
 
 /* cycle calls_queue and save it to MySQL */
-void *storing_cdr( void *dummy ) {
+void *storing_cdr( void */*dummy*/ ) {
 	Call *call;
 	time_t createPartitionAt = 0;
 	time_t dropPartitionAt = 0;
@@ -1491,7 +1491,7 @@ void *storing_cdr( void *dummy ) {
 	return NULL;
 }
 
-void *storing_registers( void *dummy ) {
+void *storing_registers( void */*dummy*/ ) {
 	Call *call;
 	while(1) {
 		
@@ -1576,7 +1576,7 @@ void cloud_initial_register( void ) {
 	} while (terminating == 0);
 }
 
-void *activechecking_cloud( void *dummy ) {
+void *activechecking_cloud( void */*dummy*/ ) {
 	if (verbosity) syslog(LOG_NOTICE, "start - activechecking cloud thread");
 	cloud_activecheck_set();
 
@@ -1620,7 +1620,7 @@ void *activechecking_cloud( void *dummy ) {
 	return NULL;
 }
 
-void *scanpcapdir( void *dummy ) {
+void *scanpcapdir( void */*dummy*/ ) {
  
 #ifndef FREEBSD
  
@@ -2439,7 +2439,7 @@ int main(int argc, char *argv[]) {
 			if(useNewCONFIG && !is_read_from_file()) {
 				vm_terminate_error(connectErrorString.c_str());
 			} else {
-				syslog(LOG_ERR, (connectErrorString + " - exit!").c_str());
+				syslog(LOG_ERR, "%s", (connectErrorString + " - exit!").c_str());
 				return 1;
 			}
 		}
@@ -3707,7 +3707,7 @@ void test_alloc_speed() {
 		for(u_int32_t i = 0; i < ii; i++) {
 			delete [] pointers[i];
 		}
-		delete pointers;
+		delete [] pointers;
 	}
 }
 
@@ -3723,7 +3723,7 @@ void test_alloc_speed_malloc() {
 		for(u_int32_t i = 0; i < ii; i++) {
 			free(pointers[i]);
 		}
-		delete pointers;
+		delete [] pointers;
 	}
 }
 
@@ -3745,7 +3745,7 @@ void test_alloc_speed_tc() {
 		for(u_int32_t i = 0; i < ii; i++) {
 			tc_free(pointers[i]);
 		}
-		delete pointers;
+		delete [] pointers;
 	}
 }
 #endif
@@ -3820,7 +3820,7 @@ public:
 	cTestCompress(CompressStream::eTypeCompress typeCompress)
 	 : CompressStream(typeCompress, 1024 * 8, 0) {
 	}
-	bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false) {
+	bool compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/ = false) {
 		fwrite(data, 1, len, fileO);
 		return(true);
 	}
@@ -4579,10 +4579,10 @@ void test() {
 
 
 #ifndef FREEBSD
+extern unsigned int HeapSafeCheck;
 extern "C"{
 void __cyg_profile_func_enter(void *this_fn, void *call_site) __attribute__((no_instrument_function));
 void __cyg_profile_func_enter(void *this_fn, void *call_site) {
-	extern unsigned int HeapSafeCheck;
 	if(!MCB_STACK ||
 	   this_fn == syscall || this_fn == get_unix_tid) {
 		return;
@@ -4596,8 +4596,7 @@ void __cyg_profile_func_enter(void *this_fn, void *call_site) {
 	++threadStackSize[tid];
 }
 void __cyg_profile_func_exit(void *this_fn, void *call_site) __attribute__((no_instrument_function));
-void __cyg_profile_func_exit(void *this_fn, void *call_site) {
-	extern unsigned int HeapSafeCheck;
+void __cyg_profile_func_exit(void *this_fn, void */*call_site*/) {
 	if(!MCB_STACK ||
 	   this_fn == syscall || this_fn == get_unix_tid) {
 		return;
@@ -4616,7 +4615,7 @@ void __cyg_profile_func_exit(void *this_fn, void *call_site) {
 #include <jemalloc/jemalloc.h>
 #endif //HAVE_LIBJEMALLOC
 
-string jeMallocStat(bool full) {
+string jeMallocStat(bool /*full*/) {
 	string rslt;
 #ifdef HAVE_LIBJEMALLOC
 	char tempFileName[L_tmpnam+1];

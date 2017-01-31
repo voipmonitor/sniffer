@@ -21,9 +21,9 @@ public:
 	void run();
 	bool isFinished() { return(finished); }
 	virtual bool parseCommand() = 0;
-	virtual void onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
-			    unsigned int sipSaddr, unsigned int sipDaddr,
-			    const char *screenPopupFieldsString) {}
+	virtual void onCall(int /*sipResponseNum*/, const char */*callerName*/, const char */*callerNum*/, const char */*calledNum*/,
+			    unsigned int /*sipSaddr*/, unsigned int /*sipDaddr*/,
+			    const char */*screenPopupFieldsString*/) {}
 protected:
 	void lock_responses() {
 		while(__sync_lock_test_and_set(&this->_sync_responses, 1));

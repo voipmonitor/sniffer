@@ -353,9 +353,9 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 		if(rtp) {
 			rtp->rtcp.counter++;
 			rtp->rtcp.loss = loss;
-			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < rtp->rtcp.maxfr) ? reportblock.frac_lost : rtp->rtcp.maxfr;
+			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock.frac_lost) ? reportblock.frac_lost : rtp->rtcp.maxfr;
 			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock.frac_lost) / rtp->rtcp.counter;
-			rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < rtp->rtcp.maxjitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
+			rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
 			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock.jitter) / rtp->rtcp.counter;
 		} 
 
@@ -528,7 +528,7 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
 
 		if(rtp) {
 			rtp->rtcp_xr.counter++;
-			rtp->rtcp_xr.maxfr = (rtp->rtcp_xr.maxfr < rtp->rtcp_xr.maxfr) ? xr->loss_rate : rtp->rtcp_xr.maxfr;
+			rtp->rtcp_xr.maxfr = (rtp->rtcp_xr.maxfr < xr->loss_rate) ? xr->loss_rate : rtp->rtcp_xr.maxfr;
 			rtp->rtcp_xr.avgfr = (rtp->rtcp_xr.avgfr * (rtp->rtcp_xr.counter - 1) + xr->loss_rate) / rtp->rtcp_xr.counter;
 			rtp->rtcp_xr.minmos = (rtp->rtcp_xr.minmos > xr->mos_lq) ? xr->mos_lq : rtp->rtcp_xr.minmos;
 			rtp->rtcp_xr.avgmos = (rtp->rtcp_xr.avgmos * (rtp->rtcp_xr.counter - 1) + xr->mos_lq) / rtp->rtcp_xr.counter;

@@ -220,7 +220,7 @@ struct sHeaderPacketPQout {
 			block_store_index = 0;
 		}
 	}
-	inline void blockstore_addflag(int flag) {
+	inline void blockstore_addflag(int /*flag*/) {
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		if(block_store) {
 			block_store->add_flag(block_store_index, flag);
@@ -270,31 +270,31 @@ protected:
 	virtual bool initThread(void *arg, unsigned int arg2, string *error);
 	virtual bool initWriteThread(void *arg, unsigned int arg2);
 	virtual void *threadFunction(void *arg, unsigned int arg2) = 0;
-	virtual void *writeThreadFunction(void *arg, unsigned int arg2) { return(NULL); }
-	virtual bool openFifoForRead(void *arg, unsigned int arg2) { return(true); }
-	virtual bool openFifoForWrite(void *arg, unsigned int arg2) { return(true); }
-	virtual pcap_t* _getPcapHandle(int dlt) { 
+	virtual void *writeThreadFunction(void */*arg*/, unsigned int /*arg2*/) { return(NULL); }
+	virtual bool openFifoForRead(void */*arg*/, unsigned int /*arg2*/) { return(true); }
+	virtual bool openFifoForWrite(void */*arg*/, unsigned int /*arg2*/) { return(true); }
+	virtual pcap_t* _getPcapHandle(int /*dlt*/) { 
 		extern pcap_t *global_pcap_handle;
 		return(global_pcap_handle); 
 	}
-	virtual u_int16_t _getPcapHandleIndex(int dlt) { 
+	virtual u_int16_t _getPcapHandleIndex(int /*dlt*/) { 
 		extern u_int16_t global_pcap_handle_index;
 		return(global_pcap_handle_index); 
 	}
 	virtual string pcapStatString_packets(int statPeriod);
 	virtual double pcapStat_get_compress();
 	virtual double pcapStat_get_speed_mb_s(int statPeriod);
-	virtual string pcapStatString_bypass_buffer(int statPeriod) { return(""); }
+	virtual string pcapStatString_bypass_buffer(int /*statPeriod*/) { return(""); }
 	virtual unsigned long pcapStat_get_bypass_buffer_size_exeeded() { return(0); }
-	virtual string pcapStatString_memory_buffer(int statPeriod) { return(""); }
-	virtual string pcapStatString_disk_buffer(int statPeriod) { return(""); }
+	virtual string pcapStatString_memory_buffer(int /*statPeriod*/) { return(""); }
+	virtual string pcapStatString_disk_buffer(int /*statPeriod*/) { return(""); }
 	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
 	virtual double pcapStat_get_disk_buffer_mb() { return(-1); }
-	virtual string pcapStatString_interface(int statPeriod) { return(""); }
+	virtual string pcapStatString_interface(int /*statPeriod*/) { return(""); }
 	virtual string pcapDropCountStat_interface() { return(""); }
 	virtual ulong getCountPacketDrop() { return(0); }
 	virtual string getStatPacketDrop() { return(""); }
-	virtual string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide) { 
+	virtual string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int /*divide*/) { 
 		if(sumMax) *sumMax = 0;
 		if(countThreadsSumMax) *countThreadsSumMax = 0;
 		return(""); 
@@ -305,7 +305,7 @@ protected:
 	void preparePstatData(eTypeThread typeThread = mainThread);
 	void prepareProcPstatData();
 	double getCpuUsagePerc(eTypeThread typeThread = mainThread, bool preparePstatData = false);
-	virtual string getCpuUsage(bool writeThread = false, bool preparePstatData = false) { return(""); }
+	virtual string getCpuUsage(bool /*writeThread*/ = false, bool /*preparePstatData*/ = false) { return(""); }
 	long unsigned int getVsizeUsage(bool preparePstatData = false);
 	long unsigned int getRssUsage(bool preparePstatData = false);
 	virtual bool isMirrorSender() {
@@ -444,7 +444,7 @@ private:
 	u_int64_t lastPacketTimeUS;
 	u_long lastTimeLogErrPcapNextExNullPacket;
 	u_long lastTimeLogErrPcapNextExErrorReading;
-	u_int32_t libpcap_buffer_offset;
+	int32_t libpcap_buffer_offset;
 	u_char **libpcap_buffer;
 	u_char *libpcap_buffer_old;
 	u_int64_t packets_counter;
@@ -733,10 +733,10 @@ protected:
 	void *writeThreadFunction(void *arg, unsigned int arg2);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
 	bool startCapture(string *error);
-	pcap_t* _getPcapHandle(int dlt) { 
+	pcap_t* _getPcapHandle(int /*dlt*/) { 
 		return(this->pcapHandle);
 	}
-	u_int16_t _getPcapHandleIndex(int dlt) { 
+	u_int16_t _getPcapHandleIndex(int /*dlt*/) { 
 		return(this->pcapHandleIndex);
 	}
 	string pcapStatString_bypass_buffer(int statPeriod);

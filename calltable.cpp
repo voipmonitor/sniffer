@@ -526,7 +526,7 @@ Call::_addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string dirname
 }
 
 void 
-Call::evStartRtpStream(int index_ip_port, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time) {
+Call::evStartRtpStream(int /*index_ip_port*/, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time) {
 	/*cout << "start rtp stream : "
 	     << inet_ntostring(htonl(saddr)) << ":" << sport << " -> " 
 	     << inet_ntostring(htonl(daddr)) << ":" << dport << endl;*/
@@ -536,7 +536,7 @@ Call::evStartRtpStream(int index_ip_port, u_int32_t saddr, u_int16_t sport, u_in
 }
 
 void 
-Call::evEndRtpStream(int index_ip_port, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time) {
+Call::evEndRtpStream(int /*index_ip_port*/, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time) {
 	/*cout << "stop rtp stream : "
 	     << inet_ntostring(htonl(saddr)) << ":" << sport << " -> " 
 	     << inet_ntostring(htonl(daddr)) << ":" << dport << endl;*/
@@ -878,7 +878,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 }
 
 void
-Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags, int allowrelation) {
+Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return;
 	}
@@ -891,11 +891,11 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 			    this->ip_port[sessidIndex].port != port ||
 			    this->ip_port[sessidIndex].iscaller != iscaller)) {
 				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
-				((Calltable*)calltable)->hashAdd(addr, port, header->ts.tv_sec, this, iscaller, 0, sdp_flags, allowrelation);
+				((Calltable*)calltable)->hashAdd(addr, port, header->ts.tv_sec, this, iscaller, 0, sdp_flags);
 				if(opt_rtcp) {
 					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port + 1, true);
 					if(!sdp_flags.rtcp_mux) {
-						((Calltable*)calltable)->hashAdd(addr, port + 1, header->ts.tv_sec, this, iscaller, 1, sdp_flags, 0);
+						((Calltable*)calltable)->hashAdd(addr, port + 1, header->ts.tv_sec, this, iscaller, 1, sdp_flags);
 					}
 				}
 				//cout << "change ip/port for sessid " << sessid << " ip:" << inet_ntostring(htonl(addr)) << "/" << inet_ntostring(htonl(this->ip_port[sessidIndex].addr)) << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
@@ -912,9 +912,9 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 		}
 	}
 	if(this->add_ip_port(sip_src_addr, addr, port, header, sessid, to, iscaller, rtpmap, sdp_flags) != -1) {
-		((Calltable*)calltable)->hashAdd(addr, port, header->ts.tv_sec, this, iscaller, 0, sdp_flags, allowrelation);
+		((Calltable*)calltable)->hashAdd(addr, port, header->ts.tv_sec, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
-			((Calltable*)calltable)->hashAdd(addr, port + 1, header->ts.tv_sec, this, iscaller, 1, sdp_flags, 0);
+			((Calltable*)calltable)->hashAdd(addr, port + 1, header->ts.tv_sec, this, iscaller, 1, sdp_flags);
 		}
 	}
 }
@@ -947,7 +947,7 @@ Call::get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr){
 
 /* analyze rtcp packet */
 bool
-Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
+Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 
 	extern int opt_vlan_siprtpsame;
 	if(opt_vlan_siprtpsame && this->vlan >= 0) {
@@ -1098,7 +1098,7 @@ read:
 						    rtp[i]->prev_dport && rtp[i]->prev_dport != packetS->dest) {
 							rtp[i]->change_src_port = true;
 						}
-						if(rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
+						if(rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
 								packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
 							rtp_read_rslt = true;
 							if(stream_in_multiple_calls) {
@@ -1203,7 +1203,7 @@ read:
 			}
 		}
 
-		if(rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, seeninviteok, 
+		if(rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
 				     packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
 			rtp_read_rslt = true;
 			if(stream_in_multiple_calls) {
@@ -4202,7 +4202,7 @@ Calltable::~Calltable() {
 
 /* add node to hash. collisions are linked list of nodes*/
 void
-Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, int allowrelation) {
+Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags) {
  
 	if(call->end_call) {
 		return;
@@ -4220,7 +4220,6 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* c
 	hash_node_call *node_call = NULL;
 
 	h = tuplehash(addr, port);
-	//allowrelation = 1;
 	lock_calls_hash();
 	// check if there is not already call in hash 
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {

@@ -1,12 +1,13 @@
+#ifndef VOIPMONITOR_H
+#define VOIPMONITOR_H
+
+
 #include <sys/types.h>
 #include <string>
 #include <netdb.h>
 #include "config.h"
 #include "common.h"
 #include "heap_safe.h"
-
-#ifndef VOIPMONITOR_H
-#define VOIPMONITOR_H
 
 #include "voipmonitor_define.h"
 
@@ -319,4 +320,4 @@ inline unsigned spooldir_group_id() {
 	return(opt_spooldir_group_id);
 }
 
-#endif
+#endif //VOIPMONITOR_H

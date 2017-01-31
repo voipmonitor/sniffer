@@ -514,8 +514,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 	return(1);
 }
 
-void pcapProcessEvalError(error_type error, pcap_pkthdr header, u_char *packet,
-			  pcapProcessData *ppd, int pcapLinklayerHeaderType, pcap_dumper_t *pcapDumpHandle, const char *interfaceName) {
+void pcapProcessEvalError(error_type error, pcap_pkthdr header, u_char *packet, 
+			  pcapProcessData *ppd, int pcapLinklayerHeaderType, pcap_dumper_t */*pcapDumpHandle*/, const char *interfaceName) {
 	switch(error) {
 	case bad_eth_protocol: {
 		static int info_tcpreplay = 0;

@@ -295,7 +295,7 @@ int cConfigItem_yesno::getValue() {
 	return(0);
 }
 
-string cConfigItem_yesno::getValueStr(bool configFile) {
+string cConfigItem_yesno::getValueStr(bool /*configFile*/) {
 	int val = 0;
 	if(param_bool) {
 		val = *param_bool;
@@ -414,7 +414,7 @@ int64_t cConfigItem_integer::getValue() {
 	return(0);
 }
 
-string cConfigItem_integer::getValueStr(bool configFile) {
+string cConfigItem_integer::getValueStr(bool /*configFile*/) {
 	int64_t val = 0;
 	if(param_int) {
 		val = *param_int;
@@ -587,7 +587,7 @@ double cConfigItem_float::getValue() {
 	return(0);
 }
 
-string cConfigItem_float::getValueStr(bool configFile) {
+string cConfigItem_float::getValueStr(bool /*configFile*/) {
 	double val;
 	if(param_float) {
 		val = *param_float;
@@ -652,7 +652,7 @@ string cConfigItem_string::getValue() {
 	return("");
 }
 
-string cConfigItem_string::getValueStr(bool configFile) {
+string cConfigItem_string::getValueStr(bool /*configFile*/) {
 	ostringstream outStr;
 	if(param_vect_str) {
 		int counter = 0;
@@ -726,7 +726,7 @@ cConfigItem_hour_interval::cConfigItem_hour_interval(const char *name, int *from
 	this->param_to = to;
 }
 
-string cConfigItem_hour_interval::getValueStr(bool configFile) {
+string cConfigItem_hour_interval::getValueStr(bool /*configFile*/) {
 	if(!param_from || !param_to || *param_from == -1 || *param_to == -1) {
 		return("");
 	}
@@ -936,7 +936,7 @@ ip_port cConfigItem_ip_port::getValue() {
 	return(*param_ip_port);
 }
 
-string cConfigItem_ip_port::getValueStr(bool configFile) {
+string cConfigItem_ip_port::getValueStr(bool /*configFile*/) {
 	if(!param_ip_port || !*param_ip_port) {
 		return("");
 	}
@@ -1134,7 +1134,7 @@ cConfigItem_custom_headers::cConfigItem_custom_headers(const char* name, vector<
 	this->param_custom_headers = custom_headers;
 }
 
-string cConfigItem_custom_headers::getValueStr(bool configFile) {
+string cConfigItem_custom_headers::getValueStr(bool /*configFile*/) {
 	if(!param_custom_headers || !param_custom_headers->size()) {
 		return("");
 	}
@@ -1391,7 +1391,7 @@ void cConfig::loadFromConfigFileError(const char *errorString, const char *filen
 	snprintf(error_buff, sizeof(error_buff), errorString, filename);
 	printf("ERROR: %s\n", error_buff);
 	if(error) *error = error_buff;
-	syslog(LOG_ERR, error_buff);
+	syslog(LOG_ERR, "%s", error_buff);
 }
 
 string cConfig::getContentConfig(bool configFile) {
@@ -1501,7 +1501,7 @@ void cConfig::putToMysql() {
 	list<string> sensor_config_columns;
 	sqlDb->query("show columns from sensor_config");
 	SqlDb_row row;
-	while(row = sqlDb->fetchRow()) {
+	while((row = sqlDb->fetchRow())) {
 		sensor_config_columns.push_back(row[0]);
 	}
 	ostringstream q;

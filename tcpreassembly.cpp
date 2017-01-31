@@ -2377,7 +2377,7 @@ void* TcpReassembly::cleanupThreadFunction(void*) {
 		this->cleanupThreadId = get_unix_tid();
 		outStr << "start cleanup thread t" << getTypeString()
 		       << " - pid: " << this->cleanupThreadId << endl;
-		syslog(LOG_NOTICE, outStr.str().c_str());
+		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 	unsigned counter = 0;
 	while((!is_terminating() || this->ignoreTerminating) &&
@@ -2399,7 +2399,7 @@ void* TcpReassembly::packetThreadFunction(void*) {
 		this->packetThreadId = get_unix_tid();
 		outStr << "start packet thread t" << getTypeString()
 		       << " - pid: " << this->packetThreadId << endl;
-		syslog(LOG_NOTICE, outStr.str().c_str());
+		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 	sPacket packet;
 	while((!is_terminating() || this->ignoreTerminating) &&

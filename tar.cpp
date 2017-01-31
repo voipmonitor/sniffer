@@ -147,7 +147,7 @@ Tar::th_set_path(char *pathname, bool partSuffix)
 
 /* map a file mode to a typeflag */
 void
-Tar::th_set_type(mode_t mode)
+Tar::th_set_type(mode_t /*mode*/)
 {       
 	tar.th_buf.typeflag = 0; // regular file
 }
@@ -388,7 +388,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 			char queryBuff[1000];
 			sprintf(queryBuff, "SELECT calldate FROM cdr where id = %u", recordId);
 			sqlDb->query(queryBuff);
-			if(row = sqlDb->fetchRow()) {
+			if((row = sqlDb->fetchRow())) {
 				sprintf(queryBuff, 
 					"SELECT pos FROM cdr_tar_part where cdr_id = %u and calldate = '%s' and type = %i", 
 					recordId, row["calldate"].c_str(),
@@ -396,7 +396,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 					strstr(this->pathname.c_str(), "/RTP/") ? 2 :
 					strstr(this->pathname.c_str(), "/GRAPH/") ? 3 : 0);
 				sqlDb->query(queryBuff);
-				while(row = sqlDb->fetchRow()) {
+				while((row = sqlDb->fetchRow())) {
 					cout << "fetch tar position: " << atoll(row["pos"].c_str()) << endl;
 					tarPos.push_back(atoll(row["pos"].c_str()));
 				}
@@ -594,7 +594,7 @@ Tar::tar_read_block_ev(char *data) {
 
 extern int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode);
 void 
-Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_t len) {
+Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t /*pos*/, u_int32_t len) {
 	int cmpLengthNameInTar = strlen(fileHeader.name);
 	if(reg_match(fileHeader.name, "#[0-9]+$", __FILE__, __LINE__) ||
 	   reg_match(fileHeader.name, "_[0-9]{1,6}$", __FILE__, __LINE__)) {
@@ -941,7 +941,7 @@ bool Tar::ReadData::decompress_ev(char *data, u_int32_t len) {
 	return(true);
 }
 
-bool Tar::ReadData::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
+bool Tar::ReadData::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
 	if(this->output_file_handle) {
 		fwrite(data, len, 1, this->output_file_handle);
 	} else if(this->send_parameters_client || this->send_parameters_sshchannel) {
@@ -1810,7 +1810,7 @@ public:
 	c_unlzo_gui_compress_to_gzip(FILE *outputFileHandle) {
 		this->outputFileHandle = outputFileHandle;
 	}
-	bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
+	bool compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
 		fwrite(data, 1, len, outputFileHandle);
 		return(true);
 	}

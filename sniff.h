@@ -169,7 +169,7 @@ struct packet_s {
 		block_store_index = 0; 
 		_blockstore_lock = false;
 	}
-	inline void blockstore_addflag(int flag) {
+	inline void blockstore_addflag(int /*flag*/) {
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		if(_blockstore_lock && block_store) {
 			block_store->add_flag(block_store_index, flag);
@@ -180,7 +180,7 @@ struct packet_s {
 		if(_packet_alloc) {
 			delete header_pt;
 			delete [] packet;
-			_packet_alloc = NULL;
+			_packet_alloc = false;
 		}
 	}
 };

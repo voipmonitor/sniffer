@@ -1,3 +1,7 @@
+#ifndef CODECS_H
+#define CODECS_H
+
+
 #define PAYLOAD_PCMU 0
 #define PAYLOAD_GSM 3
 #define PAYLOAD_G723 4
@@ -117,3 +121,5 @@ inline const char *codec2text(int codec) {
 
 #define UNLINK_RAW 1
 
+
+#endif //CODECS_H

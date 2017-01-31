@@ -115,8 +115,8 @@ char dbgsub_buf[256];
 /*************************************
  * Skinny/Asterisk Protocol Settings *
  *************************************/
-static const char tdesc[] = "Skinny Client Control Protocol (Skinny)";
-static const char config[] = "skinny.conf";
+// static const char tdesc[] = "Skinny Client Control Protocol (Skinny)";
+// static const char config[] = "skinny.conf";
 
 enum skinny_codecs {
 	SKINNY_CODEC_ALAW = 2,
@@ -171,7 +171,7 @@ struct s_skinny_payload_conv {
 	{ SKINNY_PAYLOAD_AMR,				PAYLOAD_AMR },
 	{ SKINNY_PAYLOAD_AMR_WB,			PAYLOAD_AMRWB }
 };
-unsigned convSkinnyPayloadToCodec(unsigned skinnyPayload) {
+int convSkinnyPayloadToCodec(unsigned skinnyPayload) {
 	for(unsigned i = 0; i < sizeof(skinny_payload_conv) / sizeof(skinny_payload_conv[0]); i++) {
 		if(skinny_payload_conv[i].skinny_payload == skinnyPayload) {
 			return(skinny_payload_conv[i].codec);
@@ -914,14 +914,15 @@ struct soft_key_definitions {
 	const int count;
 };
 
+/*
 static const uint8_t soft_key_default_onhook[] = {
 	SOFTKEY_REDIAL,
 	SOFTKEY_NEWCALL,
 	SOFTKEY_CFWDALL,
 	SOFTKEY_CFWDBUSY,
 	SOFTKEY_DND,
-	/*SOFTKEY_GPICKUP,
-	SOFTKEY_CONFRN,*/
+//	SOFTKEY_GPICKUP,
+//	SOFTKEY_CONFRN,
 };
 
 static const uint8_t soft_key_default_connected[] = {
@@ -951,7 +952,7 @@ static const uint8_t soft_key_default_offhook[] = {
 	SOFTKEY_ENDCALL,
 	SOFTKEY_CFWDALL,
 	SOFTKEY_CFWDBUSY,
-	/*SOFTKEY_GPICKUP,*/
+//	SOFTKEY_GPICKUP,
 };
 
 static const uint8_t soft_key_default_connwithtrans[] = {
@@ -1014,6 +1015,7 @@ static const struct soft_key_definitions soft_key_default_definitions[] = {
 	{KEYDEF_SLAHOLD, soft_key_default_SLAhold, sizeof(soft_key_default_SLAhold) / sizeof(uint8_t)},
 	{KEYDEF_SLACONNECTEDNOTACTIVE, soft_key_default_SLAconnectednotactive, sizeof(soft_key_default_SLAconnectednotactive) / sizeof(uint8_t)}
 };
+*/
 
 struct soft_key_template_res_message {
 	uint32_t softKeyOffset;
@@ -1303,7 +1305,7 @@ struct skinny_container {
 
 static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet,
 			       unsigned int saddr, int source, unsigned int daddr, int dest, 
-			       int istcp, iphdr2 *header_ip, char *data, unsigned int datalen, unsigned int dataoffset, int type, 
+			       int istcp, iphdr2 *header_ip, char */*data*/, unsigned int datalen, unsigned int dataoffset, int type, 
 			       int dlt, int sensor_id, u_int32_t sensor_ip) {
 	packet_s packetS;
 	packetS.header_pt = header;
@@ -1323,7 +1325,7 @@ static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_c
 }
 
 
-Call *new_skinny_channel(int state, char *data, int datalen, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest, char *s, long unsigned int l,
+Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest, char *s, long unsigned int l,
 			 pcap_t *handle, int dlt, int sensor_id){
 	if(opt_callslimit != 0 and opt_callslimit > (calls_counter + registers_counter)) {
 		if(verbosity > 0)
@@ -1776,12 +1778,12 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 			if(dynamicPayload) {
-				unsigned codec = convSkinnyPayloadToCodec(payloadType);
+				int codec = convSkinnyPayloadToCodec(payloadType);
 				if(codec >= 0) {
 					rtpmap[0] = dynamicPayload * 1000 + codec;
 				}
 			}
-			call->add_ip_port_hash(saddr, ipaddr, port, header, NULL, NULL, call->sipcallerip[0] == saddr, rtpmap, s_sdp_flags(), 1);
+			call->add_ip_port_hash(saddr, ipaddr, port, header, NULL, NULL, call->sipcallerip[0] == saddr, rtpmap, s_sdp_flags());
 		}
 		}
 		break;
@@ -1984,7 +1986,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		if((call = calltable->find_by_skinny_partyid(pid)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-			call->add_ip_port_hash(saddr, ipaddr, port, header, NULL, NULL, call->sipcallerip[0] == saddr, rtpmap, s_sdp_flags(), 1);
+			call->add_ip_port_hash(saddr, ipaddr, port, header, NULL, NULL, call->sipcallerip[0] == saddr, rtpmap, s_sdp_flags());
 		}
 		}
 		break;

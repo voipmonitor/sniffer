@@ -844,7 +844,7 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 }
 
 extern int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode);
-bool CompressStream::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
+bool CompressStream::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
 	if(this->sendParameter_client) {
 		if(_sendvm(this->sendParameter_client, this->sendParameter_sshchannel, data, len, 0) == -1) {
 			this->setError("send error");
@@ -1143,7 +1143,7 @@ void ChunkBuffer::close() {
 	this->closed = true;
 }
 
-bool ChunkBuffer::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
+bool ChunkBuffer::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool /*format_data*/) {
 	this->add(data, len, false, decompress_len, true);
 	return(true);
 }

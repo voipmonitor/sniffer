@@ -2139,14 +2139,14 @@ void process_sdp(Call *call, packet_s_process *packetS, bool iscaller, char *fro
 			char to[1024];
 			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to));
 			
-			call->add_ip_port_hash(packetS->saddr, tmp_addr, tmp_port, packetS->header_pt, sessid, to, iscaller, rtpmap, sdp_flags, 0);
+			call->add_ip_port_hash(packetS->saddr, tmp_addr, tmp_port, packetS->header_pt, sessid, to, iscaller, rtpmap, sdp_flags);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				call->add_ip_port_hash(packetS->saddr, alias, tmp_port, packetS->header_pt, sessid, to, iscaller, rtpmap, sdp_flags, 0);
+				call->add_ip_port_hash(packetS->saddr, alias, tmp_port, packetS->header_pt, sessid, to, iscaller, rtpmap, sdp_flags);
 			}
 			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(packetS->saddr, packetS->saddr, tmp_port, packetS->header_pt, sessid, to, iscaller, rtpmap, sdp_flags, 0);
+				call->add_ip_port_hash(packetS->saddr, packetS->saddr, tmp_port, packetS->header_pt, sessid, to, iscaller, rtpmap, sdp_flags);
 			}
 		}
 	} else {
@@ -3510,9 +3510,9 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 }
 
 Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int daddr, int dest, 
-				char *data, int datalen, int dataoffset,
-				pcap_pkthdr *header, const u_char *packet, int istcp, struct iphdr2 *header_ip,
-				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+				char *data, int datalen, int /*dataoffset*/,
+				pcap_pkthdr *header, const u_char */*packet*/, int /*istcp*/, struct iphdr2 */*header_ip*/,
+				pcap_block_store */*block_store*/, int /*block_store_index*/, int dlt, int sensor_id, u_int32_t sensor_ip,
 				pcap_t *handle) {
 	++counter_rtp_packets;
 	
@@ -3531,7 +3531,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	int rtpmap[MAX_RTPMAP];
 	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 
-	rtp.read((unsigned char*)data, datalen, header, saddr, daddr, source, dest, 0, sensor_id, sensor_ip);
+	rtp.read((unsigned char*)data, datalen, header, saddr, daddr, source, dest, sensor_id, sensor_ip);
 
 	if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
 		return NULL;
@@ -3571,8 +3571,8 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 		}
 	}
 
-	call->add_ip_port_hash(saddr, daddr, dest, header, NULL, NULL, 1, rtpmap, s_sdp_flags(), 0);
-	call->add_ip_port_hash(saddr, saddr, source, header, NULL, NULL, 0, rtpmap, s_sdp_flags(), 0);
+	call->add_ip_port_hash(saddr, daddr, dest, header, NULL, NULL, 1, rtpmap, s_sdp_flags());
+	call->add_ip_port_hash(saddr, saddr, source, header, NULL, NULL, 0, rtpmap, s_sdp_flags());
 	
 	return(call);
 }
@@ -5396,7 +5396,7 @@ void TcpReassemblySip::clean(time_t ts) {
 	}
 }
 
-bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_ref, PreProcessPacket *processPacket) {
+bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_ref, PreProcessPacket */*processPacket*/) {
 	packet_s_process *packetS = *packetS_ref;
 	if(!packetS->datalen) {
 		return(false);
@@ -5466,7 +5466,7 @@ bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_
 	return(true);
 }
 
-void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id id, PreProcessPacket *processPacket) {
+void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id /*id*/, PreProcessPacket *processPacket) {
 	if(!stream->packets) {
 		return;
 	}
@@ -5520,7 +5520,7 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id id, PreProcess
 	cleanStream(stream);
 }
 
-void TcpReassemblySip::cleanStream(tcp_stream* stream, bool callFromClean) {
+void TcpReassemblySip::cleanStream(tcp_stream* stream, bool /*callFromClean*/) {
 	if(stream->packets) {
 		tcp_stream_packet *packet = stream->packets;
 		while(packet) {

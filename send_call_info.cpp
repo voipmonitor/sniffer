@@ -148,7 +148,7 @@ void SendCallInfo::load(bool lock) {
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->query("select id, name from send_call_info");
 	SqlDb_row row;
-	while(row = sqlDb->fetchRow()) {
+	while((row = sqlDb->fetchRow())) {
 		if(sendCallInfoDebug) {
 			syslog(LOG_NOTICE, "load send_call_info %s", row["name"].c_str());
 		}

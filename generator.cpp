@@ -6,7 +6,7 @@
 
 
 void 
-*gensiprtp(void *params) {
+*gensiprtp(void */*params*/) {
 	Generator *gen = new FILE_LINE(8001) Generator("1.1.1.1", "2.2.2.2");
 	//send test data 
 	struct udphdr2 udph;

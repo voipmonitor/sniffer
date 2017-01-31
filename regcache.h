@@ -1,5 +1,5 @@
-#ifndef PCAP_REQCACHE_H
-#define PCAP_REGCACHE_H
+#ifndef REGCACHE_H
+#define REGCACHE_H
 
 
 #include <memory.h>
@@ -48,4 +48,6 @@ public:
 	~regcache();
 
 };
-#endif
+
+
+#endif //REGCACHE_H

@@ -528,7 +528,7 @@ const int RTP::get_payload_len() {
 }
 
 /* flush jitterbuffer */
-void RTP::jitterbuffer_fixed_flush(struct ast_channel *jchannel) {
+void RTP::jitterbuffer_fixed_flush(struct ast_channel */*jchannel*/) {
 	jb_fixed_flush_deliver(channel_record);
 }
 
@@ -885,7 +885,7 @@ RTP::process_dtmf_rfc2833() {
 
 /* read rtp packet */
 bool
-RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport, int seeninviteok, 
+RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport,
 	  int sensor_id, u_int32_t sensor_ip, char *ifname) {
 	this->data = data; 
 	this->len = len;

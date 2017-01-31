@@ -1440,7 +1440,7 @@ bool RestartUpgrade::runUpgrade() {
 	if(verbosity > 0) {
 		syslog(LOG_NOTICE, "start upgrade from: '%s'", url.c_str());
 	}
-	bool okUrl;
+	bool okUrl = false;
 	string urlHttp;
 	if(url.find("http://voipmonitor.org") == 0 ||
 	   url.find("http://www.voipmonitor.org") == 0 ||
@@ -2144,7 +2144,7 @@ void GroupsIP::load() {
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->query("select * from cb_ip_groups");
 	SqlDb_row row;
-	while(row = sqlDb->fetchRow()) {
+	while((row = sqlDb->fetchRow())) {
 		unsigned id = atoi(row["id"].c_str());
 		GroupIP *group = new FILE_LINE(38004) GroupIP(id, row["descr"].c_str(), row["ip"].c_str());
 		groups[id] = group;
@@ -2873,7 +2873,7 @@ JsonExport::~JsonExport() {
 	}
 }
 
-string JsonExport::getJson(JsonExport *parent) {
+string JsonExport::getJson(JsonExport */*parent*/) {
 	ostringstream outStr;
 	if(!name.empty()) {
 		outStr << '\"' << name << "\":";
@@ -3107,7 +3107,7 @@ bool FileZipHandler::read(unsigned length) {
 		}
 		this->eof = true;
 	}
-	delete buffer;
+	delete [] buffer;
 	return(read_length >= 0 && (!this->compressStream || this->compressStream->isOk()));
 }
 
@@ -3412,7 +3412,7 @@ void FileZipHandler::setTypeCompressDefault() {
 	}
 }
 
-bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data) {
+bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
 	if(this->tar) {
 		if(!this->tarBuffer) {
 			this->initTarbuffer(true);

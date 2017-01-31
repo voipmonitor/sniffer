@@ -76,7 +76,7 @@ public:
 		        AsyncClose__sizeOfDataInMemory + add < max_buffer_mem * 0.9) ||
 		       AsyncClose__sizeOfDataInMemory + add < max_buffer_mem * 0.1);
 	}
-	bool check(size_t add = 0) {
+	bool check() {
 		return(pcap_store_queue__sizeOfBlocksInMemory + 
 		       PcapQueue_readFromFifo__blockStoreTrash_size + 
 		       AsyncClose__sizeOfDataInMemory < max_buffer_mem);

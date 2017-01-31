@@ -178,11 +178,11 @@ ssl_md_cleanup(SSL_MD* md)
 }	   
 
 /* memory allocation functions for zlib initialization */
-static void* ssl_zalloc(void* opaque, unsigned int no, unsigned int size)
+static void* ssl_zalloc(void* /*opaque*/, unsigned int no, unsigned int size)
 {   
 	return(new FILE_LINE(31001) guchar[no*size]);
 }
-static void ssl_zfree(void* opaque, void* addr)
+static void ssl_zfree(void* /*opaque*/, void* addr)
 {	   
 	delete [] ((guchar*)addr);
 }	  
@@ -932,7 +932,7 @@ skip_mac:
 
 
 static gint
-decrypt_ssl3_record(char *data, int datalen, packet_info *pinfo, guint32 offset,
+decrypt_ssl3_record(char *data, int /*datalen*/, packet_info *pinfo, guint32 offset,
 		guint32 record_length, guint8 content_type, SslDecryptSessionC *ssl,
 		gboolean save_plaintext)
 {
@@ -1213,7 +1213,7 @@ ssl_find_private_key(SslDecryptSessionC *ssl_session, GHashTable *key_hash, pack
 
 static gint
 //ssl_dissect_hnd_hello_common(ssl_common_dissect_t *hf, tvbuff_t *tvb,
-ssl_dissect_hnd_hello_common(char *data, unsigned int datalen, guint32 offset, SslDecryptSessionC *ssl, gboolean from_server)
+ssl_dissect_hnd_hello_common(char *data, unsigned int /*datalen*/, guint32 offset, SslDecryptSessionC *ssl, gboolean from_server)
 {
 //	nstime_t	 gmt_unix_time;
 	guint8	   sessid_length;
@@ -1267,8 +1267,8 @@ ssl_dissect_hnd_hello_common(char *data, unsigned int datalen, guint32 offset, S
 void
 //ssl_dissect_hnd_cli_hello(ssl_common_dissect_t *hf, char *data, unsigned int datalen,
 ssl_dissect_hnd_cli_hello(char *data, unsigned int datalen,
-						  packet_info *pinfo, guint32 offset,
-						  guint32 length, SslSession *session,
+						  packet_info */*pinfo*/, guint32 offset,
+						  guint32 /*length*/, SslSession */*session*/,
 						  SslDecryptSessionC *ssl, dtls_hfs_t *dtls_hfs)
 {
 	/* struct {
@@ -1358,7 +1358,7 @@ ssl_find_cipher(int num, SslCipherSuite* cs)
 void
 ssl_dissect_hnd_srv_hello(char *data, unsigned int datalen, 
 						  guint32 offset, guint32 length,
-						  SslSession *session, SslDecryptSessionC *ssl)
+						  SslSession */*session*/, SslDecryptSessionC *ssl)
 {
 	/* struct {
 	 *	 ProtocolVersion server_version;
@@ -1675,7 +1675,7 @@ ssl_restore_master_key(SslDecryptSessionC *ssl, const char *label,
 
 gboolean
 ssl_generate_pre_master_secret(SslDecryptSessionC *ssl_session,
-							   guint32 length, char *data, unsigned int datalen, guint32 offset,
+							   guint32 length, char *data, unsigned int /*datalen*/, guint32 offset,
 							   const gchar *ssl_psk,
 							   const ssl_master_key_map_t *mk_map)
 {		  
@@ -2012,8 +2012,8 @@ static void
 dissect_ssl3_handshake(char *data, unsigned int datalen, packet_info *pinfo,
 					   guint32 offset,
 					   guint32 record_length, SslSession *session,
-					   gint is_from_server,
-					   SslDecryptSessionC *ssl, const guint8 content_type)
+					   gint /*is_from_server*/,
+					   SslDecryptSessionC *ssl, const guint8 /*content_type*/)
 {   
 
 	if(debug) printf("dissect_ssl3_handshake\n");
@@ -3120,7 +3120,7 @@ const value_string ssl_20_msg_types[] = {
 static gint
 dissect_ssl2_record(char *data, unsigned int datalen, packet_info *pinfo,
 					guint32 offset,
-					SslSession *session, gint is_from_server,
+					SslSession *session, gint /*is_from_server*/,
 					SslDecryptSessionC *ssl)
 {											
 	guint32	  initial_offset;			 
@@ -3712,7 +3712,7 @@ free_sessions(map<string, session_t*> *sessions) {
 /* private key table entries have a scope 'larger' then packet capture,
  * so we can't relay on se_alloc** function */
 void
-ssl_private_key_free(gpointer id, gpointer key, gpointer dummy)
+ssl_private_key_free(gpointer id, gpointer key, gpointer /*dummy*/)
 {
 	if (id != NULL) {		   
 		delete ((StringInfo*)id);

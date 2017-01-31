@@ -49,12 +49,12 @@ public:
 	cConfigItem *setSubtype(const char *subtype);
 	cConfigItem *setDescription(const char *description);
 	cConfigItem *setHelp(const char *help);
-	virtual string getValueStr(bool configFile = false) { return(""); }
+	virtual string getValueStr(bool /*configFile*/ = false) { return(""); }
 	virtual int64_t getValueInt() { return(0); }
 protected:
 	virtual bool setParamFromConfigFile(CSimpleIniA *ini) = 0;
 	virtual bool setParamFromValueStr(string value_str) = 0;
-	virtual bool setParamFromValuesStr(vector<string> list_value_str) { return(false); }
+	virtual bool setParamFromValuesStr(vector<string> /*list_value_str*/) { return(false); }
 	string getValueFromConfigFile(CSimpleIniA *ini);
 	vector<string> getValuesFromConfigFile(CSimpleIniA *ini);
 	bool getValueFromMapValues(const char *str_value, int *rslt_value);

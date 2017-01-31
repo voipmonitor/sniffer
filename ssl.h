@@ -1,6 +1,8 @@
-#ifdef HAVE_LIBGNUTLS
 #ifndef SSL_H
 #define SSL_H
+
+
+#ifdef HAVE_LIBGNUTLS
 
 #include <stdint.h>
 #include <arpa/inet.h>
@@ -1566,4 +1568,5 @@ struct session_t {
 
 
 #endif
-#endif
+
+#endif //SSL_H
