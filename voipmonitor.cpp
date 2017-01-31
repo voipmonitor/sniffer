@@ -9,10 +9,6 @@
 #define GLOBAL_DECLARATION true
 #include "voipmonitor.h"
 
-#ifndef FREEBSD
-#include <sys/inotify.h>
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +23,7 @@
 #include <sys/endian.h>
 #else
 #include <endian.h>
+#include <sys/inotify.h>
 #endif
 
 #include <arpa/inet.h>

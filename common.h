@@ -1,6 +1,18 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+
+#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
+# ifndef FREEBSD
+#  define FREEBSD
+# endif
+#else
+# ifndef NO_FREEBSD
+#  define NO_FREEBSD
+# endif
+#endif
+
+
 struct sVerbose {
 	int graph;
 	int process_rtp;

@@ -1,15 +1,6 @@
 #ifndef SNIFF_INLINE_C
 #define SNIFF_INLINE_C
 
-#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
-# ifndef FREEBSD
-#  define FREEBSD
-# endif
-#endif
-
-#ifdef FREEBSD
-#include <sys/types.h>
-#endif
 
 #include <syslog.h>
 #include <net/ethernet.h>
@@ -17,6 +8,10 @@
 #include "tcpreassembly.h"
 #include "sniff.h"
 #include "sniff_inline.h"
+
+#ifdef FREEBSD
+#include <sys/types.h>
+#endif
 
 
 #ifndef DEBUG_ALL_PACKETS

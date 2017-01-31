@@ -31,12 +31,6 @@ void terminate_packetbuffer();
 
 /* For compatibility with Linux definitions... */
 
-#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
-# ifndef FREEBSD
-#  define FREEBSD
-# endif
-#endif
-
 #ifdef FREEBSD
 # include <sys/endian.h>
 # define __BYTE_ORDER _BYTE_ORDER

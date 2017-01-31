@@ -1,8 +1,4 @@
 #include "voipmonitor.h"
-#ifdef FREEBSD
-#include <sys/types.h>
-#include <netinet/in.h>
-#endif
 
 #include <regex.h>
 #include <sys/time.h>
@@ -28,6 +24,8 @@
 #ifdef FREEBSD
 #include <sys/uio.h>
 #include <sys/thr.h>
+#include <sys/types.h>
+#include <netinet/in.h>
 #else
 #include <sys/sendfile.h>
 #endif

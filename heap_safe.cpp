@@ -1,20 +1,15 @@
-#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
-# ifndef FREEBSD
-#  define FREEBSD
-# endif
-#endif
-
 #include <iostream>
 #include <sstream>
 #include <iomanip>
-#ifndef FREEBSD
-#include <malloc.h>
-#endif
 #include <execinfo.h>
 
 #include "heap_safe.h"
 #include "tools.h"
 #include "common.h"
+
+#ifndef FREEBSD
+#include <malloc.h>
+#endif
 
 #ifdef HEAP_CHUNK_ENABLE
 #include "heap_chunk.h"
