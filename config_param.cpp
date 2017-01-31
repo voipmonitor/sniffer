@@ -8,6 +8,10 @@
 #include "voipmonitor.h"
 #include "sql_db.h"
 
+#ifdef FREEBSD
+#include <sys/socket.h>
+#endif
+
 
 extern int verbosity;
 
