@@ -809,6 +809,8 @@ map<int, string> command_line_data;
 cConfig CONFIG;
 bool useNewCONFIG = 0;
 bool printConfigStruct = false;
+bool printConfigFile = false;
+bool printConfigFile_default = false;
 bool updateSchema = false;
 
 SensorsMap sensorsMap;
@@ -2079,7 +2081,7 @@ int main(int argc, char *argv[]) {
 	
 	parse_command_line_arguments(argc, argv);
 	get_command_line_arguments();
-	if(useNewCONFIG || printConfigStruct) {
+	if(useNewCONFIG || printConfigStruct || printConfigFile) {
 		CONFIG.addConfigItems();
 	}
 	if(configfile[0]) {
@@ -2092,7 +2094,8 @@ int main(int argc, char *argv[]) {
 			load_config((char*)"/etc/voipmonitor/conf.d/");
 		}
 	}
-	if(!opt_nocdr && !is_set_gui_params() && !printConfigStruct &&
+	if(!opt_nocdr && !is_set_gui_params() && 
+	   !printConfigStruct && !printConfigFile &&
 	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
 			CONFIG.setFromMysql(true);
@@ -2184,6 +2187,12 @@ int main(int argc, char *argv[]) {
 	if(printConfigStruct) {
 		cout << "configuration: ";
 		cout << CONFIG.getJson();
+		cout << endl;
+		return(0);
+	}
+	if(printConfigFile) {
+		cout << "configuration: ";
+		cout << CONFIG.getContentConfig(true, printConfigFile_default);
 		cout << endl;
 		return(0);
 	}
@@ -5583,6 +5592,8 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"update-schema", 0, 0, 208},
 	    {"new-config", 0, 0, 203},
 	    {"print-config-struct", 0, 0, 204},
+	    {"print-config-file", 0, 0, 211},
+	    {"print-config-file-default", 0, 0, 212},
 	    {"check-regexp", 1, 0, 209},
 	    {"read-pcap", 1, 0, 210},
 	    {"max-packets", 1, 0, 301},
@@ -5678,6 +5689,13 @@ void get_command_line_arguments() {
 				break;
 			case 204:
 				printConfigStruct = true;
+				break;
+			case 211:
+				printConfigFile = true;
+				break;
+			case 212:
+				printConfigFile = true;
+				printConfigFile_default = true;
 				break;
 			case 'x':
 				opt_ipaccount = 1;
@@ -6323,7 +6341,7 @@ void create_spool_dirs() {
 bool check_complete_parameters() {
 	if (!is_read_from_file() && ifname[0] == '\0' && opt_scanpcapdir[0] == '\0' && 
 	    !is_set_gui_params() && 
-	    !printConfigStruct && !is_receiver() &&
+	    !printConfigStruct && !printConfigFile && !is_receiver() &&
 	    !opt_test){
                         /* Ruler to assist with keeping help description to max. 80 chars wide:
                                   1         2         3         4         5         6         7         8

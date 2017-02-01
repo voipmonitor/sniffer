@@ -471,7 +471,7 @@ public:
 	bool loadFromConfigFileOrDirectory(const char *filename);
 	bool loadFromConfigFile(const char *filename, string *error = NULL);
 	void evSetConfigItem(cConfigItem *configItem);
-	string getContentConfig(bool configFile = false);
+	string getContentConfig(bool configFile = false, bool putDefaultValues = false);
 	string getJson(bool onlyIfSet = false);
 	void setFromJson(const char *jsonStr, bool onlyIfSet = false);
 	void setFromMysql(bool checkConnect = false);

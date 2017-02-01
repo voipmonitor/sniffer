@@ -1394,7 +1394,7 @@ void cConfig::loadFromConfigFileError(const char *errorString, const char *filen
 	syslog(LOG_ERR, "%s", error_buff);
 }
 
-string cConfig::getContentConfig(bool configFile) {
+string cConfig::getContentConfig(bool configFile, bool putDefault) {
 	ostringstream outStr;
 	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
 		map<string, cConfigItem*>::iterator iter_map = config_map.find(*iter);
@@ -1402,8 +1402,15 @@ string cConfig::getContentConfig(bool configFile) {
 			if(iter_map->second->set) {
 				outStr << *iter
 				       << " = "
-				       << iter_map->second->getValueStr(configFile)
-				       << endl;
+				       << iter_map->second->getValueStr(configFile);
+				if(putDefault && iter_map->second->defaultValueStr_set) {
+					if(iter_map->second->defaultValueStr != iter_map->second->getValueStr(configFile)) {
+						outStr << " ## " << iter_map->second->defaultValueStr;
+					} else {
+						outStr << " ## ==";
+					}
+				}
+				outStr << endl;
 			}
 		}
 	}
