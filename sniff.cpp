@@ -1078,7 +1078,7 @@ int get_sip_headerstr(packet_s_process *packetS, const char *tag, const char *ta
                 goto fail_exit;
         }
         memcpy(headerstr, header_tag, MIN(headerstr_tag_len, headerstr_len));
-        headerstr[headerstr_tag_len - 1] = '\0';
+        headerstr[MIN(headerstr_tag_len, headerstr_len - 1)] = '\0';
         return 0;
 fail_exit:
 	strcpy(headerstr, "");
