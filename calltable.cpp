@@ -4491,7 +4491,7 @@ Calltable::destroyCallsIfPcapsClosed() {
 		size_t size = this->calls_deletequeue.size();
 		for(size_t i = 0; i < size;) {
 			Call *call = this->calls_deletequeue[i];
-			if(call->isPcapsClose()) {
+			if(call->isPcapsClose() && call->isEmptyChunkBuffersCount()) {
 				call->removeFindTables();
 				call->atFinish();
 				call->calls_counter_dec();
@@ -4513,7 +4513,7 @@ Calltable::destroyRegistersIfPcapsClosed() {
 		size_t size = this->registers_deletequeue.size();
 		for(size_t i = 0; i < size;) {
 			Call *reg = this->registers_deletequeue[i];
-			if(reg->isPcapsClose()) {
+			if(reg->isPcapsClose() && call->isEmptyChunkBuffersCount()) {
 				reg->atFinish();
 				delete reg;
 				registers_counter--;

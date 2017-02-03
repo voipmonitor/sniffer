@@ -765,6 +765,9 @@ public:
 		return(isPcapsClose() && isGraphsClose() &&
 		       !chunkBuffersCount);
 	}
+	bool isEmptyChunkBuffersCount() {
+		return(!chunkBuffersCount);
+	}
 	
 	u_int32_t getAllReceivedRtpPackets();
 	
