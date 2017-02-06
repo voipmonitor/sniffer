@@ -4513,7 +4513,7 @@ Calltable::destroyRegistersIfPcapsClosed() {
 		size_t size = this->registers_deletequeue.size();
 		for(size_t i = 0; i < size;) {
 			Call *reg = this->registers_deletequeue[i];
-			if(reg->isPcapsClose() && call->isEmptyChunkBuffersCount()) {
+			if(reg->isPcapsClose() && reg->isEmptyChunkBuffersCount()) {
 				reg->atFinish();
 				delete reg;
 				registers_counter--;
