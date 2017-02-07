@@ -6166,7 +6166,7 @@ void set_context_config() {
 		opt_enable_http = 0;
 		opt_enable_webrtc = 0;
 		opt_enable_ssl = 0;
-		opt_sip_tcp_reassembly_ext = 0;
+		//opt_sip_tcp_reassembly_ext = 0;
 		opt_pcap_dump_tar = 0;
 		if(opt_pcap_dump_zip_sip == FileZipHandler::compress_default ||
 		   opt_pcap_dump_zip_sip == FileZipHandler::lzo) {

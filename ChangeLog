@@ -1,3 +1,10 @@
+18.0 6.2.2017
+=============
+- added freeBSD support again
+- fix crash when storing SIP REGISTER to pcap files 
+- new parameterers --print-config-file and --print-config-file-default (need together with parameter --new-config which loads config from the DB) [VG-12]
+
+
 17.15 30.01.2017
 ================
 - send id-sensor for activecalls (listcalls in manager) [VG-781]
