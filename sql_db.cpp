@@ -3742,6 +3742,36 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		""));
 
 	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_country_code` (\
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` datetime NOT NULL," :
+				"") + 
+			"`sipcallerip_country_code` char(5),\
+			`sipcalledip_country_code` char(5),\
+			`caller_number_country_code` char(5),\
+			`called_number_country_code` char(5),\
+		KEY (`cdr_ID`)" + 
+		(opt_cdr_partition ? 
+			",KEY (`calldate`)" :
+			"") +
+			",KEY(`sipcallerip_country_code`),\
+			KEY(`sipcalledip_country_code`),\
+			KEY(`caller_number_country_code`),\
+			KEY(`called_number_country_code`)" +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_country_code_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `rtp_stat` (\
 			`id_sensor` smallint unsigned NOT NULL,\
 			`time` datetime NOT NULL,\
@@ -5082,6 +5112,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 		existsColumns.cdr_siphistory_calldate = this->existsColumn("cdr_siphistory", "calldate");
 	}
 	existsColumns.cdr_tar_part_calldate = this->existsColumn("cdr_tar_part", "calldate");
+	existsColumns.cdr_country_code_calldate = this->existsColumn("cdr_country_code", "calldate");
 	if(!opt_cdr_partition &&
 	   (cloud_host[0] ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
@@ -5440,17 +5471,20 @@ void SqlDb_mysql::copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc) {
 	}
 }
 
-void SqlDb_mysql::copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc) {
+void SqlDb_mysql::copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc,
+					   unsigned long limit, bool descDir,
+					   bool skipRegister) {
 	vector<string> tablesMain = getSourceTables(tt_main);
 	for(size_t i = 0; i < tablesMain.size() && !is_terminating(); i++) {
-		this->copyFromSourceTable(sqlDbSrc, tablesMain[i].c_str(), 10000);
+		if(!skipRegister || !strstr(tablesMain[i].c_str(), "register")) {
+			this->copyFromSourceTable(sqlDbSrc, tablesMain[i].c_str(), limit ? limit : 10000, descDir);
+		}
 	}
-	
 }
 
 void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, 
 				      const char *tableName, 
-				      unsigned long limit) {
+				      unsigned long limit, bool descDir) {
 	u_int64_t minIdSrc = 0;
 	extern char opt_database_backup_from_date[20];
 	if(opt_database_backup_from_date[0]) {
@@ -5464,6 +5498,12 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 					"(select min(" + timeColumn + ") from " + tableName + " where " + timeColumn + " > '" + opt_database_backup_from_date + "')");
 			minIdSrc = atoll(sqlDbSrc->fetchRow()["min_id"].c_str());
 		}
+	} else {
+		sqlDbSrc->query(string("select min(id) as min_id from ") + tableName);
+		SqlDb_row row = sqlDbSrc->fetchRow();
+		if(row) {
+			minIdSrc = atoll(row["min_id"].c_str());
+		}
 	}
 	u_int64_t maxIdSrc = 0;
 	sqlDbSrc->query(string("select max(id) as max_id from ") + tableName);
@@ -5475,14 +5515,29 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		return;
 	}
 	u_int64_t maxIdDst = 0;
-	this->query(string("select max(id) as max_id from ") + tableName);
-	row = this->fetchRow();
-	if(row) {
-		maxIdDst = atoll(row["max_id"].c_str());
-	}
+	u_int64_t minIdDst = 0;
 	u_int64_t useMaxIdInSrc = 0;
-	u_int64_t startIdSrc = max(minIdSrc, maxIdDst + 1);
-	if(startIdSrc <= maxIdSrc) {
+	u_int64_t useMinIdInSrc = 0;
+	u_int64_t startIdSrc = 0;
+	bool okStartIdSrc = false;
+	if(!descDir) {
+		this->query(string("select max(id) as max_id from ") + tableName);
+		row = this->fetchRow();
+		if(row) {
+			maxIdDst = atoll(row["max_id"].c_str());
+		}
+		startIdSrc = max(minIdSrc, maxIdDst + 1);
+		okStartIdSrc = startIdSrc <= maxIdSrc;
+	} else {
+		this->query(string("select min(id) as min_id from ") + tableName);
+		row = this->fetchRow();
+		if(row) {
+			minIdDst = atoll(row["min_id"].c_str());
+		}
+		startIdSrc = minIdDst ? min(maxIdSrc, minIdDst - 1) : maxIdSrc;
+		okStartIdSrc = startIdSrc && startIdSrc >= minIdSrc;
+	}
+	if(okStartIdSrc) {
 		map<string, int> columnsDest;
 		this->query(string("show columns from ") + tableName);
 		size_t i = 0;
@@ -5490,11 +5545,15 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 			columnsDest[row["Field"]] = ++i;
 		}
 		vector<string> condSrc;
-		if(startIdSrc) {
-			condSrc.push_back(string("id >= ") + intToString(startIdSrc));
-		}
-		if(string(tableName) == "register_failed") {
-			condSrc.push_back(string("created_at < '") + sqlDateTimeString(time(NULL) - 3600) + "'");
+		if(!descDir) {
+			if(startIdSrc) {
+				condSrc.push_back(string("id >= ") + intToString(startIdSrc));
+			}
+			if(string(tableName) == "register_failed") {
+				condSrc.push_back(string("created_at < '") + sqlDateTimeString(time(NULL) - 3600) + "'");
+			}
+		} else {
+			condSrc.push_back(string("id <= ") + intToString(startIdSrc));
 		}
 		string orderSrc = "id";
 		stringstream queryStr;
@@ -5510,6 +5569,9 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 			}
 		}
 		queryStr << " order by " << orderSrc;
+		if(descDir) {
+			queryStr << " desc";
+		}
 		queryStr << " limit " << limit;
 		syslog(LOG_NOTICE, "%s", ("select query: " + queryStr.str()).c_str());
 		if(sqlDbSrc->query(queryStr.str())) {
@@ -5521,7 +5583,11 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 			unsigned int insertThreads = opt_database_backup_insert_threads > 1 ? opt_database_backup_insert_threads : 1;
 			while(!is_terminating() && (row = sqlDbSrc->fetchRow(true))) {
 				row.removeFieldsIfNotContainIn(&columnsDest);
-				useMaxIdInSrc = atoll(row["id"].c_str());
+				if(!descDir) {
+					useMaxIdInSrc = atoll(row["id"].c_str());
+				} else {
+					useMinIdInSrc = atoll(row["id"].c_str());
+				}
 				rows.push_back(row);
 				if(rows.size() >= 100) {
 					string insertQuery = this->insertQuery(tableName, &rows, false, true, true);
@@ -5556,12 +5622,21 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		slaveIdToMasterColumn = "message_id";
 	}
 	for(size_t i = 0; i < slaveTables.size() && !is_terminating(); i++) {
-		this->copyFromSourceTableSlave(sqlDbSrc,
-					       tableName, slaveTables[i].c_str(),
-					       slaveIdToMasterColumn.c_str(), 
-					       "calldate", "calldate",
-					       minIdSrc, useMaxIdInSrc > 100 ? useMaxIdInSrc - 100 : 0,
-					       limit * 10);
+		if(!descDir) {
+			this->copyFromSourceTableSlave(sqlDbSrc,
+						       tableName, slaveTables[i].c_str(),
+						       slaveIdToMasterColumn.c_str(), 
+						       "calldate", "calldate",
+						       minIdSrc, useMaxIdInSrc > 100 ? useMaxIdInSrc - 100 : 0,
+						       limit * 10);
+		} else {
+			this->copyFromSourceTableSlave(sqlDbSrc,
+						       tableName, slaveTables[i].c_str(),
+						       slaveIdToMasterColumn.c_str(), 
+						       "calldate", "calldate",
+						       useMinIdInSrc, 0,
+						       limit * 10, true);
+		}
 	}
 }
 
@@ -5570,7 +5645,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 					   const char *slaveIdToMasterColumn, 
 					   const char *masterCalldateColumn, const char *slaveCalldateColumn,
 					   u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
-					   unsigned long limit) {
+					   unsigned long limit, bool descDir) {
 	u_int64_t maxIdToMasterInSlaveSrc = 0;
 	sqlDbSrc->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName);
 	SqlDb_row row = sqlDbSrc->fetchRow();
@@ -5580,15 +5655,36 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 	if(!maxIdToMasterInSlaveSrc) {
 		return;
 	}
-	u_int64_t maxIdToMasterInSlaveDst = 0;
-	this->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName);
-	row = this->fetchRow();
+	u_int64_t minIdToMasterInSlaveSrc = 0;
+	sqlDbSrc->query(string("select min(") + slaveIdToMasterColumn + ") as min_id from " + slaveTableName);
+	row = sqlDbSrc->fetchRow();
 	if(row) {
-		maxIdToMasterInSlaveDst = atoll(row["max_id"].c_str());
+		minIdToMasterInSlaveSrc = atoll(row["min_id"].c_str());
 	}
-	u_int64_t startIdToMasterSrc = max(useMinIdMaster, maxIdToMasterInSlaveDst + 1);
-	if(startIdToMasterSrc >= maxIdToMasterInSlaveSrc) {
-		return;
+	u_int64_t maxIdToMasterInSlaveDst = 0;
+	u_int64_t minIdToMasterInSlaveDst = 0;
+	u_int64_t startIdToMasterSrc = 0;
+	if(!descDir) {
+		this->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName);
+		row = this->fetchRow();
+		if(row) {
+			maxIdToMasterInSlaveDst = atoll(row["max_id"].c_str());
+		}
+		startIdToMasterSrc = max(useMinIdMaster, maxIdToMasterInSlaveDst + 1);
+		if(startIdToMasterSrc >= maxIdToMasterInSlaveSrc) {
+			return;
+		}
+	} else {
+		this->query(string("select min(") + slaveIdToMasterColumn + ") as min_id from " + slaveTableName);
+		row = this->fetchRow();
+		if(row) {
+			minIdToMasterInSlaveDst = atoll(row["min_id"].c_str());
+		}
+		startIdToMasterSrc = minIdToMasterInSlaveDst ? minIdToMasterInSlaveDst - 1 : maxIdToMasterInSlaveSrc;
+		if(startIdToMasterSrc < useMinIdMaster ||
+		   startIdToMasterSrc <= minIdToMasterInSlaveSrc) {
+			return;
+		}
 	}
 	bool existsCalldateInSlaveTableSrc = false;
 	bool existsCalldateInSlaveTableDst = false;
@@ -5609,11 +5705,18 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 		columnsDest[row["Field"]] = ++i;
 	}
 	vector<string> condSrc;
-	if(useMinIdMaster || maxIdToMasterInSlaveDst) {
-		condSrc.push_back(string(slaveIdToMasterColumn) + " >= " + intToString(startIdToMasterSrc));
-	}
-	if(useMaxIdMaster) {
-		condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(useMaxIdMaster));
+	if(!descDir) {
+		if(useMinIdMaster || maxIdToMasterInSlaveDst) {
+			condSrc.push_back(string(slaveIdToMasterColumn) + " >= " + intToString(startIdToMasterSrc));
+		}
+		if(useMaxIdMaster) {
+			condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(useMaxIdMaster));
+		}
+	} else {
+		condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(startIdToMasterSrc));
+		if(useMinIdMaster) {
+			condSrc.push_back(string(slaveIdToMasterColumn) + " >= " + intToString(useMinIdMaster));
+		}
 	}
 	string orderSrc = slaveIdToMasterColumn;
 	stringstream queryStr;
@@ -5635,6 +5738,9 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 		}
 	}
 	queryStr << " order by " << orderSrc;
+	if(descDir) {
+		queryStr << " desc";
+	}
 	queryStr << " limit " << limit;
 	syslog(LOG_NOTICE, "%s", ("select query: " + queryStr.str()).c_str());
 	if(sqlDbSrc->query(queryStr.str())) {
@@ -5651,7 +5757,8 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 			++counterRows;
 			row.removeFieldsIfNotContainIn(&columnsDest);
 			u_int64_t readMasterId = atoll(row[slaveIdToMasterColumn].c_str());
-			if(readMasterId != lastMasterId) {
+			if(readMasterId != lastMasterId ||
+			   (descDir && readMasterId == minIdToMasterInSlaveSrc)) {
 				if(lastMasterId) {
 					for(size_t i = 0; i < rowsMasterId.size(); i++) {
 						rows.push_back(rowsMasterId[i]);
@@ -5815,6 +5922,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 				}
 				tables.push_back("cdr_proxy");
 				tables.push_back("cdr_tar_part");
+				tables.push_back("cdr_country_code");
 			}
 		}
 		if(opt_enable_http_enum_tables && 
@@ -6044,6 +6152,7 @@ void dropMysqlPartitionsCdr() {
 				_dropMysqlPartitions("cdr_siphistory", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 			}
 			_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+			_dropMysqlPartitions("cdr_country_code", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 			_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 			_dropMysqlPartitions("message", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 			_dropMysqlPartitions("message_proxy", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);

@@ -2187,6 +2187,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	SqlDb_row cdr,
 			cdr_next,
 			cdr_next_ch[CDR_NEXT_MAX],
+			cdr_country_code,
 			/*
 			cdr_phone_number_caller,
 			cdr_phone_number_called,
@@ -2712,6 +2713,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_next.add(getSpoolIndex(), "spool_index");
 	}
 	
+	cdr_country_code.add(getCountryByIP(htonl(sipcallerip[0])), "sipcallerip_country_code");
+	cdr_country_code.add(getCountryByIP(htonl(sipcalledip[0])), "sipcalledip_country_code");
+	cdr_country_code.add(getCountryByPhoneNumber(caller), "caller_number_country_code");
+	cdr_country_code.add(getCountryByPhoneNumber(called), "called_number_country_code");
+	if(existsColumns.cdr_country_code_calldate) {
+		cdr_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+	}
+	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
@@ -2771,7 +2780,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(custom_headers_cdr) {
 					query_str += custom_headers_cdr->getDeleteQuery("@exists_call_id", "  ", ";\n");
 				}
-				query_str += string("  delete from cdr_rtp where cdr_id = @exists_call_id;\n") +
+				query_str += string("  delete from cdr_country_code where cdr_id = @exists_call_id;\n") +
+					     "  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
 					     (opt_dbdtmf ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
 					     "  delete from cdr_sipresp where cdr_id = @exists_call_id;\n" +
 					     (opt_pcap_dump_tar ? "  delete from cdr_tar_part where cdr_id = @exists_call_id;\n" : "") +
@@ -2797,7 +2807,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		cdr_next.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 		query_str += sqlDbSaveCall->insertQuery(sql_cdr_next_table, cdr_next) + ";\n";
-
+		
 		bool existsNextCh = false;
 		for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
 			if(cdr_next_ch_name[i][0]) {
@@ -2813,6 +2823,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
+		cdr_country_code.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+		query_str += sqlDbSaveCall->insertQuery("cdr_country_code", cdr_country_code) + ";\n";
+
 		if(sql_cdr_table_last30d[0] ||
 		   sql_cdr_table_last7d[0] ||
 		   sql_cdr_table_last1d[0]) {
@@ -3175,6 +3188,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				sqlDbSaveCall->insert(cdr_next_ch_name[i], cdr_next_ch[i]);
 			}
 		}
+		
+		cdr_country_code.add(cdrID, "cdr_ID");
+		sqlDbSaveCall->insert("cdr_country_code", cdr_country_code);
 		
 		if(sql_cdr_table_last30d[0] ||
 		   sql_cdr_table_last7d[0] ||
@@ -4491,7 +4507,7 @@ Calltable::destroyCallsIfPcapsClosed() {
 		size_t size = this->calls_deletequeue.size();
 		for(size_t i = 0; i < size;) {
 			Call *call = this->calls_deletequeue[i];
-			if(call->isPcapsClose()) {
+			if(call->isPcapsClose() && call->isEmptyChunkBuffersCount()) {
 				call->removeFindTables();
 				call->atFinish();
 				call->calls_counter_dec();
@@ -4513,7 +4529,7 @@ Calltable::destroyRegistersIfPcapsClosed() {
 		size_t size = this->registers_deletequeue.size();
 		for(size_t i = 0; i < size;) {
 			Call *reg = this->registers_deletequeue[i];
-			if(reg->isPcapsClose()) {
+			if(reg->isPcapsClose() && reg->isEmptyChunkBuffersCount()) {
 				reg->atFinish();
 				delete reg;
 				registers_counter--;

@@ -301,17 +301,18 @@ public:
 	bool isExtPrecissionBilling();
 	bool checkSourceTables();
 	void copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc);
-	void copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc);
+	void copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc,
+				      unsigned long limit = 0, bool descDir = false,
+				      bool skipRegister = false);
 	void copyFromSourceTable(SqlDb_mysql *sqlDbSrc, 
 				 const char *tableName, 
-				 unsigned long limit);
+				 unsigned long limit, bool descDir = false);
 	void copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 				      const char *masterTableName, const char *slaveTableName,
 				      const char *slaveIdToMasterColumn, 
 				      const char *masterCalldateColumn, const char *slaveCalldateColumn,
 				      u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
-				      unsigned long limit);
-	
+				      unsigned long limit, bool descDir = false);
 	void copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc);
 	void copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tableName);
 	vector<string> getSourceTables(int typeTables = tt_all, int typeTables2 = tt2_na);
@@ -726,6 +727,7 @@ struct sExistsColumns {
 	bool cdr_sipresp_calldate;
 	bool cdr_siphistory_calldate;
 	bool cdr_tar_part_calldate;
+	bool cdr_country_code_calldate;
 	bool message_content_length;
 	bool message_response_time;
 	bool message_spool_index;

@@ -85,6 +85,7 @@
 #include "config_param.h"
 #include "register.h"
 #include "tools_fifo_buffer.h"
+#include "country_detect.h"
 
 #ifndef FREEBSD
 #define BACKTRACE 1
@@ -337,6 +338,9 @@ char opt_database_backup_from_mysql_password[256] = "";
 unsigned int opt_database_backup_from_mysql_port = 0;
 int opt_database_backup_pause = 300;
 int opt_database_backup_insert_threads = 1;
+int opt_database_backup_pass_rows = 0;
+bool opt_database_backup_desc_dir = false;
+bool opt_database_backup_skip_register = false;
 char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
@@ -1058,7 +1062,10 @@ void *database_backup(void */*dummy*/) {
 					dropPartitionAt = actTime;
 				}
 			 
-				sqlDb_mysql->copyFromSourceTablesMain(sqlDbSrc_mysql);
+				sqlDb_mysql->copyFromSourceTablesMain(sqlDbSrc_mysql, 
+								      opt_database_backup_pass_rows, 
+								      opt_database_backup_desc_dir, 
+								      opt_database_backup_skip_register);
 			}
 		}
 		delete sqlDbSrc;
@@ -2814,6 +2821,8 @@ int main_init_read() {
 		}
 	}
 	
+	CountryDetectInit();
+	
 	if(opt_enable_fraud) {
 		initFraud();
 	}
@@ -3234,6 +3243,9 @@ void main_term_read() {
 	if(opt_enable_fraud) {
 		termFraud();
 	}
+	
+	CountryDetectTerm();
+	
 	termSendCallInfo();
 	if(SafeAsyncQueue_base::isRunTimerThread()) {
 		SafeAsyncQueue_base::stopTimerThread(true);
@@ -4776,6 +4788,10 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42128) cConfigItem_integer("database_backup_from_mysqlport", &opt_database_backup_from_mysql_port));
 				addConfigItem(new FILE_LINE(42129) cConfigItem_integer("database_backup_pause", &opt_database_backup_pause));
 				addConfigItem(new FILE_LINE(42130) cConfigItem_integer("database_backup_insert_threads", &opt_database_backup_insert_threads));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("database_backup_pass_rows", &opt_database_backup_pass_rows));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_desc_dir", &opt_database_backup_desc_dir));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_skip_register", &opt_database_backup_skip_register));
 	group("sniffer mode");
 		// SNIFFER MODE
 		subgroup("main");
@@ -7410,6 +7426,15 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "database_backup_insert_threads", NULL))) {
 		opt_database_backup_insert_threads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "database_backup_pass_rows", NULL))) {
+		opt_database_backup_pass_rows = atoi(value);
+	}
+	if((value = ini.GetValue("general", "database_backup_desc_dir", NULL))) {
+		opt_database_backup_desc_dir = yesno(value);
+	}
+	if((value = ini.GetValue("general", "database_backup_skip_register", NULL))) {
+		opt_database_backup_skip_register = yesno(value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_sql_driver", NULL))) {
 		strncpy(get_customer_by_ip_sql_driver, value, sizeof(get_customer_by_ip_sql_driver));
