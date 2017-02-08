@@ -299,11 +299,32 @@ public:
 	string getCountryByPhoneNumber(const char *phoneNumber);
 	string getCountryByIP(u_int32_t ip);
 	string getContinentByCountry(const char *country);
+	void prepareReload();
+	void applyReload();
+	void lock() {
+		while(__sync_lock_test_and_set(&_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&_sync);
+	}
+	void lock_reload() {
+		while(__sync_lock_test_and_set(&_sync_reload, 1));
+	}
+	void unlock_reload() {
+		__sync_lock_release(&_sync_reload);
+	}
 private:
 	CountryCodes *countryCodes;
 	CountryPrefixes *countryPrefixes;
 	GeoIP_country *geoIP_country;
 	CheckInternational *checkInternational;
+	CountryCodes *countryCodes_reload;
+	CountryPrefixes *countryPrefixes_reload;
+	GeoIP_country *geoIP_country_reload;
+	CheckInternational *checkInternational_reload;
+	volatile bool reload_do;
+	volatile int _sync;
+	volatile int _sync_reload;
 };
 
 
@@ -312,6 +333,8 @@ void CountryDetectTerm();
 string getCountryByPhoneNumber(const char *phoneNumber);
 string getCountryByIP(u_int32_t ip);
 string getContinentByCountry(const char *country);
+void CountryDetectPrepareReload();
+void CountryDetectApplyReload();
 
 
 #endif //COUNTRY_DETECT_H

@@ -41,6 +41,7 @@
 #include "cleanspool.h"
 #include "pcap_queue.h"
 #include "manager.h"
+#include "country_detect.h"
 #include "fraud.h"
 #include "rrd.h"
 #include "tar.h"
@@ -1936,6 +1937,13 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		if(no_hash_message_rules) {
 			no_hash_message_rules->refresh();
 		}
+		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "country_detect_refresh") != NULL) {
+		CountryDetectPrepareReload();
 		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

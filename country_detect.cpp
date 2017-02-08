@@ -4,6 +4,7 @@
 
 CountryDetect *countryDetect;
 
+extern int opt_nocdr;
 extern char cloud_host[256];
 
 
@@ -166,6 +167,13 @@ CountryDetect::CountryDetect() {
 	countryPrefixes = new FILE_LINE(0) CountryPrefixes;
 	geoIP_country = new FILE_LINE(0) GeoIP_country;
 	checkInternational = new FILE_LINE(0) CheckInternational;
+	countryCodes_reload = NULL;
+	countryPrefixes_reload = NULL;
+	geoIP_country_reload = NULL;
+	checkInternational_reload = NULL;
+	reload_do = false;
+	_sync = 0;
+	_sync_reload = 0;
 }
 
 CountryDetect::~CountryDetect() {
@@ -183,21 +191,86 @@ void CountryDetect::load() {
 }
 
 string CountryDetect::getCountryByPhoneNumber(const char *phoneNumber) {
-	return(countryPrefixes->getCountry(phoneNumber, NULL, NULL, checkInternational));
+	lock();
+	string rslt = countryPrefixes->getCountry(phoneNumber, NULL, NULL, checkInternational);
+	unlock();
+	return(rslt);
 }
 
 string CountryDetect::getCountryByIP(u_int32_t ip) {
-	return(geoIP_country->getCountry(ip));
+	lock();
+	string rslt = geoIP_country->getCountry(ip);
+	unlock();
+	return(rslt);
 }
 
 string CountryDetect::getContinentByCountry(const char *country) {
-	return(countryCodes->getContinent(country));
+	lock();
+	string rslt = countryCodes->getContinent(country);
+	unlock();
+	return(rslt);
+}
+
+void CountryDetect::prepareReload() {
+	if(opt_nocdr) {
+		return;
+	}
+	reload_do = false;
+	lock_reload();
+	if(countryCodes_reload) {
+		delete countryCodes_reload;
+	}
+	if(countryPrefixes_reload) {
+		delete countryPrefixes_reload;
+	}
+	if(geoIP_country_reload) {
+		delete geoIP_country_reload;
+	}
+	if(checkInternational_reload) {
+		delete checkInternational_reload;
+	}
+	countryCodes_reload = new FILE_LINE(0) CountryCodes;
+	countryPrefixes_reload = new FILE_LINE(0) CountryPrefixes;
+	geoIP_country_reload = new FILE_LINE(0) GeoIP_country;
+	checkInternational_reload = new FILE_LINE(0) CheckInternational;
+	countryCodes_reload->load();
+	countryPrefixes_reload->load();
+	geoIP_country_reload->load();
+	checkInternational_reload->load();
+	reload_do = true;
+	syslog(LOG_NOTICE, "CountryDetect::prepareReload");
+	unlock_reload();
+}
+
+void CountryDetect::applyReload() {
+	if(reload_do) {
+		lock_reload();
+		lock();
+		delete countryCodes;
+		delete countryPrefixes;
+		delete geoIP_country;
+		delete checkInternational;
+		countryCodes = countryCodes_reload;
+		countryPrefixes = countryPrefixes_reload;
+		geoIP_country = geoIP_country_reload;
+		checkInternational = checkInternational_reload;
+		unlock();
+		countryCodes_reload = NULL;
+		countryPrefixes_reload = NULL;
+		geoIP_country_reload = NULL;
+		checkInternational_reload = NULL;
+		reload_do = false;
+		syslog(LOG_NOTICE, "CountryDetect::applyReload");
+		unlock_reload();
+	}
 }
 
 
 void CountryDetectInit() {
-	countryDetect = new FILE_LINE(0) CountryDetect;
-	countryDetect->load();
+	if(!opt_nocdr) {
+		countryDetect = new FILE_LINE(0) CountryDetect;
+		countryDetect->load();
+	}
 }
 
 void CountryDetectTerm() {
@@ -225,4 +298,16 @@ string getContinentByCountry(const char *country) {
 		return(countryDetect->getContinentByCountry(country));
 	}
 	return("");
+}
+
+void CountryDetectPrepareReload() {
+	if(countryDetect) {
+		return(countryDetect->prepareReload());
+	}
+}
+
+void CountryDetectApplyReload() {
+	if(countryDetect) {
+		return(countryDetect->applyReload());
+	}
 }

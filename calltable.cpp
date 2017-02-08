@@ -2713,6 +2713,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_next.add(getSpoolIndex(), "spool_index");
 	}
 	
+	CountryDetectApplyReload();
 	cdr_country_code.add(getCountryByIP(htonl(sipcallerip[0])), "sipcallerip_country_code");
 	cdr_country_code.add(getCountryByIP(htonl(sipcalledip[0])), "sipcalledip_country_code");
 	cdr_country_code.add(getCountryByPhoneNumber(caller), "caller_number_country_code");
