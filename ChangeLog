@@ -1,3 +1,10 @@
+18.1 8.2.2017
+=============
+- enabling extended reassembling for tcp also when loading pcap from GUI - in case it i enabled in voipmonitor.conf
+- document database_backup* options
+- store country source/destination by IP / tel.prefixes (new table cdr_country_code ) [VG-319]
+
+
 18.0 6.2.2017
 =============
 - added freeBSD support again
