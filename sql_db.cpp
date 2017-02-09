@@ -3912,6 +3912,32 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 	""));
 	
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `message_country_code` (\
+			`message_ID` " + messageIdType + " unsigned NOT NULL,\
+			`calldate` datetime NOT NULL,\
+			`sipcallerip_country_code` char(5),\
+			`sipcalledip_country_code` char(5),\
+			`caller_number_country_code` char(5),\
+			`called_number_country_code` char(5),\
+		KEY (`message_ID`),\
+		KEY (`calldate`),\
+		KEY(`sipcallerip_country_code`),\
+		KEY(`sipcalledip_country_code`),\
+		KEY(`caller_number_country_code`),\
+		KEY(`called_number_country_code`)") +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `message_country_code_ibfk_1` FOREIGN KEY (`message_ID`) REFERENCES `message` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+	""));
+	
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
@@ -5961,6 +5987,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 		if(typeTables2 == tt2_na || typeTables2 & tt2_message_static) {
 			if(typeTables & tt_child) {
 				tables.push_back("message_proxy");
+				tables.push_back("message_country_code");
 			}
 		}
 		if(typeTables2 == tt2_na || typeTables2 & tt2_register) {
@@ -6156,6 +6183,7 @@ void dropMysqlPartitionsCdr() {
 			_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 			_dropMysqlPartitions("message", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 			_dropMysqlPartitions("message_proxy", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
+			_dropMysqlPartitions("message_country_code", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
 			if(custom_headers_cdr) {
 				list<string> nextTables = custom_headers_cdr->getAllNextTables();
 				for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {

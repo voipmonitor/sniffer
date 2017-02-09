@@ -3666,8 +3666,9 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	
 	adjustUA();
 
-	SqlDb_row cdr,
+	SqlDb_row msg,
 			msg_next_ch[CDR_NEXT_MAX],
+			msg_country_code,
 			m_contenttype,
 			cdr_sip_response,
 			cdr_ua_a,
@@ -3697,26 +3698,26 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 	
 	if(useSensorId > -1) {
-		cdr.add(useSensorId, "id_sensor");
+		msg.add(useSensorId, "id_sensor");
 	}
-	cdr.add(sqlEscapeString(caller), "caller");
-	cdr.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
-	cdr.add(sqlEscapeString(called), "called");
-	cdr.add(sqlEscapeString(reverseString(called).c_str()), "called_reverse");
-	cdr.add(sqlEscapeString(caller_domain), "caller_domain");
-	cdr.add(sqlEscapeString(called_domain), "called_domain");
-	cdr.add(sqlEscapeString(callername), "callername");
-	cdr.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
+	msg.add(sqlEscapeString(caller), "caller");
+	msg.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
+	msg.add(sqlEscapeString(called), "called");
+	msg.add(sqlEscapeString(reverseString(called).c_str()), "called_reverse");
+	msg.add(sqlEscapeString(caller_domain), "caller_domain");
+	msg.add(sqlEscapeString(called_domain), "called_domain");
+	msg.add(sqlEscapeString(callername), "callername");
+	msg.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
 
 	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
 
-	cdr.add(htonl(sipcallerip[0]), "sipcallerip");
-	cdr.add(htonl(sipcalledip[0]), "sipcalledip");
-	cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+	msg.add(htonl(sipcallerip[0]), "sipcallerip");
+	msg.add(htonl(sipcalledip[0]), "sipcalledip");
+	msg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	if(!geoposition.empty()) {
-		cdr.add(sqlEscapeString(geoposition), "GeoPosition");
+		msg.add(sqlEscapeString(geoposition), "GeoPosition");
 	}
-	cdr.add(sqlEscapeString(fbasename), "fbasename");
+	msg.add(sqlEscapeString(fbasename), "fbasename");
 	if((message && message[0]) || (message_info && message_info[0])) {
 		string message_save;
 		bool message_is_url = false;
@@ -3742,59 +3743,52 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			}
 			message_save += string("_INF:") + (message_is_url ? "URL" : message_info);
 		}
-		cdr.add(sqlEscapeString(message_save), "message");
+		msg.add(sqlEscapeString(message_save), "message");
 	}
 	if(existsColumns.message_content_length && content_length) {
-		cdr.add(content_length, "content_length");
+		msg.add(content_length, "content_length");
 	}
 
-	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
+	msg.add(lastSIPresponseNum, "lastSIPresponseNum");
 	
 	if(existsColumns.message_response_time && this->first_message_time_usec) {
 		if(this->first_response_200_time_usec) {
-			cdr.add(MIN(65535, round((this->first_response_200_time_usec - this->first_message_time_usec) / 1000.0)), "response_time");
+			msg.add(MIN(65535, round((this->first_response_200_time_usec - this->first_message_time_usec) / 1000.0)), "response_time");
 		}
 	}
 
 	if(getSpoolIndex() && existsColumns.message_spool_index) {
-		cdr.add(getSpoolIndex(), "spool_index");
+		msg.add(getSpoolIndex(), "spool_index");
 	}
-
-/*
-	if(strlen(match_header)) {
-		cdr_next.add(sqlEscapeString(match_header), "match_header");
-	}
-	if(strlen(custom_header1)) {
-		cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
-	}
-*/
-	/* obsolete
-	for(map<string, string>::iterator iCustHeadersIter = custom_headers.begin(); iCustHeadersIter != custom_headers.end(); iCustHeadersIter++) {
-		cdr.add(sqlEscapeString(iCustHeadersIter->second), iCustHeadersIter->first);
-	}
-	*/
 
 	if(custom_headers_message) {
-		custom_headers_message->prepareSaveRows_message(this, &cdr, msg_next_ch, msg_next_ch_name);
+		custom_headers_message->prepareSaveRows_message(this, &msg, msg_next_ch, msg_next_ch_name);
 	}
 
+	CountryDetectApplyReload();
+	msg_country_code.add(getCountryByIP(htonl(sipcallerip[0])), "sipcallerip_country_code");
+	msg_country_code.add(getCountryByIP(htonl(sipcalledip[0])), "sipcalledip_country_code");
+	msg_country_code.add(getCountryByPhoneNumber(caller), "caller_number_country_code");
+	msg_country_code.add(getCountryByPhoneNumber(called), "called_number_country_code");
+	msg_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
-		cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+		msg.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 		if(a_ua[0]) {
 			query_str += string("set @uaA_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
-			cdr.add("_\\_'SQL'_\\_:@uaA_id", "a_ua_id");
+			msg.add("_\\_'SQL'_\\_:@uaA_id", "a_ua_id");
 			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
 		}
 		if(b_ua[0]) {
 			query_str += string("set @uaB_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ");\n";
-			cdr.add("_\\_'SQL'_\\_:@uaB_id", "b_ua_id");
+			msg.add("_\\_'SQL'_\\_:@uaB_id", "b_ua_id");
 			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
 		}
 		if(contenttype) {
 			query_str += string("set @cntt_id = ") +  "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ");\n";
-			cdr.add("_\\_'SQL'_\\_:@cntt_id", "id_contenttype");
+			msg.add("_\\_'SQL'_\\_:@cntt_id", "id_contenttype");
 			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ")", "id_contenttype");
 		}
 		
@@ -3811,7 +3805,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			query_str += "__NEXT_PASS_QUERY_END__";
 		}
 		
-		query_str += sqlDbSaveCall->insertQuery("message", cdr) + ";\n";
+		query_str += sqlDbSaveCall->insertQuery("message", msg) + ";\n";
 
 		query_str += "if row_count() > 0 then\n";
 		query_str += "set @msg_id = last_insert_id();\n";
@@ -3830,6 +3824,9 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 				query_str += queryForSaveUseInfo + ";\n";
 			}
 		}
+		
+		msg_country_code.add("_\\_'SQL'_\\_:@msg_id", "message_ID");
+		query_str += sqlDbSaveCall->insertQuery("message_country_code", msg_country_code) + ";\n";
 		
 		query_str += query_str_messageproxy;
 		
@@ -3872,14 +3869,14 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	if(contenttype && contenttype[0]) {
 		m_contenttype.add(sqlEscapeString(contenttype), "contenttype");
 		unsigned int id_contenttype = sqlDbSaveCall->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype);
-		cdr.add(id_contenttype, "id_contenttype");
+		msg.add(id_contenttype, "id_contenttype");
 	}
 
-	cdr.add(lastSIPresponse_id, "lastSIPresponse_id", true);
-	cdr.add(a_ua_id, "a_ua_id", true);
-	cdr.add(b_ua_id, "b_ua_id", true);
+	msg.add(lastSIPresponse_id, "lastSIPresponse_id", true);
+	msg.add(a_ua_id, "a_ua_id", true);
+	msg.add(b_ua_id, "b_ua_id", true);
 
-	int msgID = sqlDbSaveCall->insert("message", cdr);
+	int msgID = sqlDbSaveCall->insert("message", msg);
 	
 	if(msgID > 0) {
 	
@@ -3904,6 +3901,9 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			}
 		}
 	
+		msg_country_code.add(msgID, "message_ID");
+		sqlDbSaveCall->insert("message_country_code", msg_country_code);
+		
 	}
 
 	return(msgID <= 0);
