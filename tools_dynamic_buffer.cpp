@@ -917,6 +917,48 @@ string CompressStream::getConfigMenuString() {
 	return(outStr.str());
 }
 
+RecompressStream::RecompressStream(eTypeCompress typeDecompress, eTypeCompress typeCompress) 
+ : CompressStream(typeDecompress, 1024, 0) {
+	this->compressStream = new FILE_LINE(0) CompressStream(typeCompress, 1024, 0);
+}
+
+RecompressStream::~RecompressStream() {
+	this->end();
+	delete this->compressStream;
+}
+
+void RecompressStream::setTypeDecompress(eTypeCompress typeDecompress, bool enableForceStream) {
+	this->CompressStream::setTypeCompress(typeDecompress);
+	if(enableForceStream) {
+		this->enableForceStream();
+	}
+}
+
+void RecompressStream::setTypeCompress(eTypeCompress typeCompress) {
+	this->compressStream->setTypeCompress(typeCompress);
+}
+
+void RecompressStream::setSendParameters(int client, void *sshchannel) {
+	this->compressStream->setSendParameters(client, sshchannel);
+}
+
+void RecompressStream::processData(char *data, u_int32_t len) {
+	this->decompress(data, len, 0, false, this);
+}
+
+void RecompressStream::end() {
+	this->decompress(NULL, 0, 0, true, this);
+	this->compressStream->compress(NULL, 0, true, this->compressStream);
+}
+
+bool RecompressStream::isError() {
+	return(this->CompressStream::isError() || this->compressStream->isError());
+}
+
+bool RecompressStream::decompress_ev(char *data, u_int32_t len) {
+	return(this->compressStream->compress(data, len, false, this->compressStream));
+}
+
 ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
 			 u_int32_t chunk_fix_len, Call *call, int typeContent) {
 	this->time = time;

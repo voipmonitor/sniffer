@@ -94,6 +94,9 @@ public:
 	string getErrorString() {
 		return(errorString);
 	}
+	void setTypeCompress(eTypeCompress typeCompress) {
+		this->typeCompress = typeCompress;
+	}
 	eTypeCompress getTypeCompress() {
 		return(typeCompress);
 	}
@@ -137,6 +140,22 @@ private:
 	int sendParameter_client;
 	void *sendParameter_sshchannel;
 friend class ChunkBuffer;
+};
+
+class RecompressStream : public CompressStream {
+public:
+	RecompressStream(eTypeCompress typeDecompress = compress_na, eTypeCompress typeCompress = compress_na);
+	~RecompressStream();
+	void setTypeDecompress(eTypeCompress typeDecompress, bool enableForceStream = false);
+	void setTypeCompress(eTypeCompress typeCompress);
+	void setSendParameters(int client, void *sshchannel);
+	void processData(char *data, u_int32_t len);
+	void end();
+	bool isError();
+protected:
+	virtual bool decompress_ev(char *data, u_int32_t len);
+private:
+	CompressStream *compressStream;
 };
 
 class ChunkBuffer_baseIterate {

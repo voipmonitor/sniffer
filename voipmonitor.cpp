@@ -190,7 +190,12 @@ int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
-FileZipHandler::eTypeCompress opt_gzipGRAPH = FileZipHandler::lzo;
+FileZipHandler::eTypeCompress opt_gzipGRAPH =
+	#ifdef HAVE_LIBLZO
+		FileZipHandler::lzo;
+	#else
+		FileZipHandler::gzip;
+	#endif //HAVE_LIBLZO
 int opt_saverfc2833 = 0;
 int opt_silencedetect = 0;
 int opt_clippingdetect = 0;

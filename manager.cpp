@@ -3677,41 +3677,34 @@ int sendFile(const char *fileName, int client, ssh_channel sshchannel, bool zip)
 		}
 		return -1;
 	}
-	CompressStream *compressStream = NULL;
-	if(zip) {
-		compressStream = new FILE_LINE(13020) CompressStream(CompressStream::gzip, 1024, 0);
-		compressStream->setSendParameters(client, sshchannel);
-	}
+	RecompressStream *recompressStream = new FILE_LINE(0) RecompressStream(RecompressStream::compress_na, zip ? RecompressStream::gzip : RecompressStream::compress_na);
+	recompressStream->setSendParameters(client, sshchannel);
 	ssize_t nread;
 	size_t read_size = 0;
 	char rbuf[4096];
-	while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-		if(!read_size && compressStream &&
-		   (unsigned char)rbuf[0] == 0x1f &&
-		   (nread == 1 || (unsigned char)rbuf[1] == 0x8b)) {
-			delete compressStream;
-			compressStream = NULL;
+	while(nread = read(fd, rbuf, sizeof(rbuf)), nread > 0) {
+		if(!read_size) {
+			if(nread >= 2 &&
+			   (unsigned char)rbuf[0] == 0x1f && 
+			   (unsigned char)rbuf[1] == 0x8b) {
+				if(zip) {
+					recompressStream->setTypeCompress(RecompressStream::compress_na);
+					recompressStream->setTypeDecompress(RecompressStream::compress_na);
+				}
+			} else if(nread >= 3 &&
+				  rbuf[0] == 'L' && rbuf[1] == 'Z' && rbuf[2] == 'O') {
+				recompressStream->setTypeDecompress(RecompressStream::lzo, true);
+			}
 		}
 		read_size += nread;
-		if(compressStream) {
-			compressStream->compress(rbuf, nread, false, compressStream);
-			if(compressStream->isError()) {
-				close(fd);
-				return -1;
-			}
-		} else {
-			if(sendvm(client, sshchannel, rbuf, nread, 0) == -1){
-				close(fd);
-				return -1;
-			}
+		recompressStream->processData(rbuf, nread);
+		if(recompressStream->isError()) {
+			close(fd);
+			return -1;
 		}
 	}
-	if(compressStream) {
-		compressStream->compress(rbuf, 0, true, compressStream);
-		delete compressStream;
-	}
 	close(fd);
-	
+	delete recompressStream;
 	return(0);
 }
 
