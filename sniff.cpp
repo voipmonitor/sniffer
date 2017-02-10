@@ -983,6 +983,230 @@ inline char * gettag_sip_from(packet_s_process *packetS, const char *from,
 	return(rslt);
 }
 
+
+
+static struct {
+	const char *prefix;
+	unsigned length;
+	unsigned skip;
+	int type;
+} peername_sip_tags[] = {
+	{ "sip:", 4, 4, 0 },
+	{ "sips:", 5, 5, 0 },
+	{ "urn:", 4, 0, 1 }
+};
+
+inline const char* get_peername_begin_sip_tag(const char *peername_tag, unsigned int peername_tag_len, int *peer_sip_tags_index) {
+	const char *p = NULL;
+	for(unsigned i = 0; i < sizeof(peername_sip_tags) / sizeof(peername_sip_tags[0]); i++) {
+		if((p = (const char*)memmem(peername_tag, peername_tag_len, peername_sip_tags[i].prefix, peername_sip_tags[i].length))) {
+			*peer_sip_tags_index = i;
+			break;
+		}
+	}
+	if(p && 
+	   (p == peername_tag || *(p-1) == '<')) {
+		return(p);
+	}
+	*peer_sip_tags_index = -1;
+	return(NULL);
+}
+ 
+inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_len,
+			   int parse_type,
+			   char *rslt, unsigned int rslt_max_len) {
+	int peer_sip_tags_index;
+	const char *sip_tag = get_peername_begin_sip_tag(peername_tag, peername_tag_len, &peer_sip_tags_index);
+	if(!sip_tag) {
+		*rslt = 0;
+		return(false);
+	}
+	const char *begin = NULL;
+	const char *end = NULL;
+	bool ok = false;
+	if(parse_type == 1) { // peername
+		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
+		for(end = begin; end < peername_tag + peername_tag_len; end++) {
+			if(*end == '@') {
+				if(peername_sip_tags[peer_sip_tags_index].type == 0) {
+					--end;
+					ok = true;
+					break;
+				}
+			} else if(*end == '>') {
+				if(peername_sip_tags[peer_sip_tags_index].type == 0) {
+					break;
+				} else {
+					--end;
+					ok = true;
+					break;
+				}
+			}
+		}
+	} else if(parse_type == 2) { // peercname
+		begin = peername_tag;
+		end = sip_tag - 1;
+		while(end > begin &&
+		      (*end == '<' || *end == ' ')) {
+			--end;
+		}
+		if(begin < end && *begin == '"' && *end == '"') {
+			++begin;
+			--end;
+		}
+		ok = begin < end;
+	} else if(parse_type == 3 && peername_sip_tags[peer_sip_tags_index].type == 0) { // domain
+		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
+		while(begin < peername_tag + peername_tag_len) {
+			if(*begin == '@') {
+				++begin;
+				ok = true;
+				break;
+			} else if(*begin == '>') {
+				begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
+				ok = true;
+				break;
+			}
+			++begin;
+		}
+		if(ok) {
+			ok = false;
+			for(end = begin; end < peername_tag + peername_tag_len; end++) {
+				if(*end == '>' || *end == ';' || *end == ':') {
+					--end;
+					ok = true;
+					break;
+				}
+			}
+		}
+	}
+	if(ok) {
+		if(end > begin && end - begin + 1 <= peername_tag_len) {
+			memcpy(rslt, begin, MIN(end - begin + 1, rslt_max_len));
+			rslt[MIN(end - begin + 1, rslt_max_len - 1)] = '\0';
+			return(true);
+		}
+	}
+	*rslt = 0;
+	return(false);
+}
+
+int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
+		     char *peername, unsigned int peername_len) {
+	unsigned long peername_tag_len;
+	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
+	if(!peername_tag_len) {
+		*peername = 0;
+		return(1);
+	}
+	return(parse_peername(peername_tag, peername_tag_len,
+			      1,
+			      peername, peername_len) ? 0 : 1);
+} 
+
+int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag2, 
+		     char *peername, unsigned int peername_len) {
+	unsigned long peername_tag_len;
+	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
+	if(!peername_tag_len) {
+		*peername = 0;
+		return(1);
+	}
+	return(parse_peername(peername_tag, peername_tag_len,
+			      2,
+			      peername, peername_len) ? 0 : 1);
+}
+
+int get_sip_domain(packet_s_process *packetS, const char *tag, const char *tag2,
+		   char *domain, unsigned int domain_len) {
+	unsigned long peername_tag_len;
+	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
+	if(!peername_tag_len) {
+		*domain = 0;
+		return(1);
+	}
+	return(parse_peername(peername_tag, peername_tag_len,
+			      3,
+			      domain, domain_len) ? 0 : 1);
+}
+
+void testPN() {
+	const char *e[] = {
+		"<sip:706912@sip.odorik.cz>;tag=1645803335",
+		"\"A. G. Bell\" <sip:agb@bell-telephone.com> ;tag=a48s",
+		"Anonymous <sip:c8oqz84zk7z@privacy.org>;tag=hyh8",
+		"sip:+12125551212@server.phone2net.com;tag=887s",
+		"\"Call Manager\" <sip:10.45.55.17>;tag=486739~121a78c0-1834-4f45-9aef-960da02c9618-29204586",
+		"sip:kljahfkjlahld",
+		"ů§jk§ůjsip:kljahfkjlahld",
+		"klhkjlh"
+	};
+	for(unsigned i = 0; i < sizeof(e) / sizeof(e[0]); i++) {
+		char rslt[1000];
+		unsigned int rslt_len = sizeof(rslt);
+		
+		cout << endl << e[i] << endl;
+		
+		parse_peername(e[i], strlen(e[i]),
+			       1,
+			       rslt, rslt_len);
+		cout << "peername: " << rslt << endl;
+		parse_peername(e[i], strlen(e[i]),
+			       2,
+			       rslt, rslt_len);
+		cout << "peercname: " << rslt << endl;
+		parse_peername(e[i], strlen(e[i]),
+			       3,
+			       rslt, rslt_len);
+		cout << "domain: " << rslt << endl;
+		
+		
+	}
+}
+
+/*
+int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
+		     char *peername, unsigned int peername_len){
+	struct {
+		const char *prefix;
+		unsigned length;
+		unsigned skip;
+		int type;
+	} prefixes[] = {
+		{ "sip:", 4, 4, 0 },
+		{ "sips:", 5, 5, 0 },
+		{ "urn:", 4, 0, 1 }
+	};
+	unsigned long r, r2, peername_tag_len;
+	bool r2_ok = false;
+	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
+	if(!peername_tag_len) {
+		goto fail_exit;
+	}
+	unsigned i_prefix;
+	for(i_prefix = 0; i_prefix < sizeof(prefixes) / sizeof(prefixes[0]); i_prefix++) {
+		if((r = (unsigned long)memmem(peername_tag, peername_tag_len, prefixes[i_prefix].prefix, prefixes[i_prefix].length))) {
+			r += prefixes[i_prefix].skip;
+			break;
+		}
+	}
+	if(i_prefix == sizeof(prefixes) / sizeof(prefixes[0])) {
+		goto fail_exit;
+	}
+	if ((r2 = (unsigned long)memmem((char*)r, peername_tag_len - (r - (unsigned long)peername_tag), prefixes[i_prefix].type == 0 ? "@" : ">", 1)) == 0){
+		goto fail_exit;
+	}
+	if (r2 <= r || ((r2 - r) > (unsigned long)peername_len)  ){
+		goto fail_exit;
+	}
+	memcpy(peername, (void*)r, MIN(r2 - r, peername_len));
+	peername[MIN(r2 - r, peername_len - 1)] = '\0';
+	return 0;
+fail_exit:
+	strcpy(peername, "");
+	return 1;
+}
+
 int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag2, 
 		     char *peername, unsigned int peername_len){
 	unsigned long r, r2, peername_tag_len;
@@ -991,11 +1215,11 @@ int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag
 		goto fail_exit;
 	}
 
-/* three types of URI
- 1)     "A. G. Bell" <sip:agb@bell-telephone.com> ;tag=a48s
- 2)     Anonymous <sip:c8oqz84zk7z@privacy.org>;tag=hyh8
- 3)     sip:+12125551212@server.phone2net.com;tag=887s
-*/
+// three types of URI
+// 1)     "A. G. Bell" <sip:agb@bell-telephone.com> ;tag=a48s
+// 2)     Anonymous <sip:c8oqz84zk7z@privacy.org>;tag=hyh8
+// 3)     sip:+12125551212@server.phone2net.com;tag=887s
+
 	if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "\"", 1)) == 0){
 		// try without ""
 		if ((r = (unsigned long)memmem(peername_tag, peername_tag_len, "<", 1)) == 0){
@@ -1025,63 +1249,6 @@ int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag
 	return 0;
 fail_exit:
 	strcpy(peername, "");
-	return 1;
-}
-
-
-int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
-		     char *peername, unsigned int peername_len){
-	struct {
-		const char *prefix;
-		unsigned length;
-		unsigned skip;
-		int type;
-	} prefixes[] = {
-		{ "sip:", 4, 4, 0 },
-		{ "sips:", 5, 5, 0 },
-		{ "urn:", 4, 0, 1 }
-	};
-	unsigned long r, r2, peername_tag_len;
-	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
-	if(!peername_tag_len) {
-		goto fail_exit;
-	}
-	unsigned i_prefix;
-	for(i_prefix = 0; i_prefix < sizeof(prefixes) / sizeof(prefixes[0]); i_prefix++) {
-		if((r = (unsigned long)memmem(peername_tag, peername_tag_len, prefixes[i_prefix].prefix, prefixes[i_prefix].length))) {
-			r += prefixes[i_prefix].skip;
-			break;
-		}
-	}
-	if(i_prefix == sizeof(prefixes) / sizeof(prefixes[0])) {
-		goto fail_exit;
-	}
-	if ((r2 = (unsigned long)memmem((char*)r, peername_tag_len, prefixes[i_prefix].type == 0 ? "@" : ">", 1)) == 0){
-		goto fail_exit;
-	}
-	if (r2 <= r || ((r2 - r) > (unsigned long)peername_len)  ){
-		goto fail_exit;
-	}
-	memcpy(peername, (void*)r, MIN(r2 - r, peername_len));
-	peername[MIN(r2 - r, peername_len - 1)] = '\0';
-	return 0;
-fail_exit:
-	strcpy(peername, "");
-	return 1;
-}
-
-int get_sip_headerstr(packet_s_process *packetS, const char *tag, const char *tag2,
-		      char *headerstr, unsigned int headerstr_len){
-        unsigned long headerstr_tag_len;
-        char *header_tag = gettag_sip(packetS, tag, tag2, &headerstr_tag_len);
-        if(!headerstr_tag_len) {
-                goto fail_exit;
-        }
-        memcpy(headerstr, header_tag, MIN(headerstr_tag_len, headerstr_len));
-        headerstr[MIN(headerstr_tag_len, headerstr_len - 1)] = '\0';
-        return 0;
-fail_exit:
-	strcpy(headerstr, "");
 	return 1;
 }
 
@@ -1135,7 +1302,22 @@ fail_exit:
 	strcpy(domain, "");
 	return 1;
 }
+*/
 
+int get_sip_headerstr(packet_s_process *packetS, const char *tag, const char *tag2,
+		      char *headerstr, unsigned int headerstr_len){
+        unsigned long headerstr_tag_len;
+        char *header_tag = gettag_sip(packetS, tag, tag2, &headerstr_tag_len);
+        if(!headerstr_tag_len) {
+                goto fail_exit;
+        }
+        memcpy(headerstr, header_tag, MIN(headerstr_tag_len, headerstr_len));
+        headerstr[MIN(headerstr_tag_len, headerstr_len - 1)] = '\0';
+        return 0;
+fail_exit:
+	strcpy(headerstr, "");
+	return 1;
+}
 
 int get_sip_branch(packet_s_process *packetS, const char *tag, char *branch, unsigned int branch_len){
 	unsigned long branch_tag_len;
@@ -1160,7 +1342,6 @@ fail_exit:
 	strcpy(branch, "");
 	return 1;
 }
-
 
 int get_ip_port_from_sdp(Call *call, char *sdp_text, in_addr_t *addr, unsigned short *port, int16_t *fax, char *sessid, int16_t *rtcp_mux){
 	unsigned long l;

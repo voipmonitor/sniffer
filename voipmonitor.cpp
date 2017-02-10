@@ -4035,6 +4035,10 @@ void test() {
 	 
 	case 1: {
 	 
+		extern void testPN();
+		testPN();
+		break;
+	 
 		cCsv *csv = new cCsv();
 		csv->setFirstRowContainFieldNames();
 		csv->load("/home/jumbox/Plocha/table.csv");
