@@ -341,6 +341,32 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					return(0);
 				}
 			}
+		} else if(ppd->header_ip->protocol == IPPROTO_UDP &&							// Layer 2 Tunelling protocol / UDP
+			  htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->dest) == 1701 &&			// check destination port 1701
+			  htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->source) == 1701 &&		// check source port 1701
+			  htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->len) > (sizeof(udphdr2) + 10)) {	// check minimal length
+			unsigned int l2tp_length = 6;	// flags (2) + tunel id (2) + session id (2)
+			unsigned int ptp_length = 4;	// address (1) + control (1) + protocol (2)
+			unsigned int l2tp_offset = sizeof(iphdr2) + sizeof(udphdr2);
+			u_int16_t l2tp_flags = htons(*(u_int16_t*)((unsigned char*)ppd->header_ip + l2tp_offset));
+			if(l2tp_flags & 0x4000) {	// length bit - length field is present
+				l2tp_length += 2;
+			}
+			unsigned int ptp_offset = l2tp_offset + l2tp_length;
+			if(*((unsigned char*)ppd->header_ip + ptp_offset + 1) == 0x03 &&				// check control (0x03)
+			   htons(*(u_int16_t*)((unsigned char*)ppd->header_ip + ptp_offset + 2)) == 0x0021) {		// check ptp protocol IPv4 (0x0021)
+				unsigned int next_header_ip_offset = ptp_offset + ptp_length;
+				ppd->header_ip = (iphdr2*)((char*)ppd->header_ip + next_header_ip_offset);
+				ppd->header_ip_offset += next_header_ip_offset;
+			} else {
+				if(ppf & ppf_returnZeroInCheckData) {
+					//cout << "pcapProcess exit 008" << endl;
+					if(pcap_header_plus2) {
+						pcap_header_plus2->ignore = true;
+					}
+					return(0);
+				}
+			}
 		} else {
 			break;
 		}
