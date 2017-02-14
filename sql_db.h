@@ -111,7 +111,11 @@ public:
 	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2 = NULL);
 	virtual int getInsertId() = 0;
 	virtual bool existsTable(const char *table) = 0;
+	bool existsTable(string table) { return(existsTable(table.c_str())); }
 	virtual bool existsColumn(const char *table, const char *column) = 0;
+	bool existsColumn(string table, string column) { return(existsColumn(table.c_str(), column.c_str())); }
+	virtual bool emptyTable(const char *table) = 0;
+	bool emptyTable(string table) { return(emptyTable(table.c_str())); }
 	virtual int getIndexField(string fieldName);
 	virtual string getNameField(int indexField);
 	virtual string escape(const char *inputString, int length = 0) = 0;
@@ -271,6 +275,7 @@ public:
 	int getInsertId();
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
+	bool emptyTable(const char *table);
 	string escape(const char *inputString, int length = 0);
 	string getFieldBorder() {
 		return("`");
@@ -387,6 +392,7 @@ public:
 	int getInsertId();
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
+	bool emptyTable(const char *table);
 	int getIndexField(string fieldName);
 	string escape(const char *inputString, int length = 0);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);

@@ -1133,6 +1133,12 @@ bool SqlDb_mysql::existsColumn(const char *table, const char *column) {
 	return(countRow > 0);
 }
 
+bool SqlDb_mysql::emptyTable(const char *table) {
+	this->query(string("select count(*) as cnt from ") + table);
+	SqlDb_row row = this->fetchRow();
+	return(!row || !atol(row["cnt"].c_str()));
+}
+
 string SqlDb_mysql::escape(const char *inputString, int length) {
 	return sqlEscapeString(inputString, length, this->getTypeDb().c_str(), this);
 }
@@ -1430,6 +1436,11 @@ bool SqlDb_odbc::existsTable(const char */*table*/) {
 }
 
 bool SqlDb_odbc::existsColumn(const char */*table*/, const char */*column*/) {
+	// TODO
+	return(false);
+}
+
+bool SqlDb_odbc::emptyTable(const char */*table*/) {
 	// TODO
 	return(false);
 }

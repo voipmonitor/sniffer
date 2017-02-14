@@ -8,21 +8,76 @@ extern int opt_nocdr;
 extern char cloud_host[256];
 
 
+CountryDetect_base_table::CountryDetect_base_table() {
+	loadOK = false;
+}
+
+bool CountryDetect_base_table::checkTable(eTableType tableType, string &tableName) {
+	tableName = getTableName(tableType);
+	if(tableName.empty()) {
+		loadOK = false;
+		return(false);
+	}
+	bool rslt = true;
+	SqlDb *sqlDb = createSqlObject();
+	if(!sqlDb->existsTable(tableName)) {
+		syslog(LOG_WARNING, "missing table %s - table is created from gui", tableName.c_str());
+		rslt = false;
+	} else if(sqlDb->emptyTable(tableName)) {
+		syslog(LOG_WARNING, "table %s is empty - table is filled from gui", tableName.c_str());
+		rslt = false;
+	}
+	delete sqlDb;
+	loadOK = rslt;
+	return(rslt);
+}
+
+string CountryDetect_base_table::getTableName(eTableType tableType) {
+	string tableName;
+	bool useCloudShare = false;
+	switch(tableType) {
+	case _country_code:
+		tableName = "country_code";
+		useCloudShare = true;
+		break;
+	case _international_rules:
+		tableName = "international_rules";
+		break;
+	case _country_code_prefix:
+		tableName = "country_code_prefix";
+		useCloudShare = true;
+		break;
+	case _geoip_country:
+		tableName = "geoip_country";
+		useCloudShare = true;
+		break;
+	}
+	if(!tableName.empty() && cloud_host[0] && useCloudShare) {
+		tableName =  "cloudshare." + tableName;
+	}
+	return(tableName);
+}
+
+
 CountryCodes::CountryCodes() {
 }
 
-void CountryCodes::load() {
+bool CountryCodes::load() {
+	string tableName;
+	if(!checkTable(_country_code, tableName)) {
+		return(false);
+	}
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query(string("select * ") + 
-		     "from " + (cloud_host[0] ? "cloudshare." : "") + "country_code\
+	sqlDb->query("select * \
+		      from " + tableName + " \
 		      where parent_id is null");
 	SqlDb_row row;
 	while((row = sqlDb->fetchRow())) {
 		continents[row["code"]] = row["name"];
 	}
-	sqlDb->query(string("select country.*, continent.code as continent ") + 
-		     "from " + (cloud_host[0] ? "cloudshare." : "") + "country_code country\
-		      join " + (cloud_host[0] ? "cloudshare." : "") + "country_code continent on (continent.id = country.parent_id)\
+	sqlDb->query("select country.*, continent.code as continent \
+		      from " + tableName + " country \
+		      join " + tableName + " continent on (continent.id = country.parent_id) \
 		      where country.parent_id is not null");
 	while((row = sqlDb->fetchRow())) {
 		countries[row["code"]] = row["name"];
@@ -30,6 +85,7 @@ void CountryCodes::load() {
 		continentCountry[row["continent"]].push_back(row["code"]);
 	}
 	delete sqlDb;
+	return(true);
 }
 
 bool CountryCodes::isCountry(const char *code) {
@@ -108,27 +164,33 @@ void CheckInternational::load(SqlDb_row *dbRow) {
 	}
 }
 
-void CheckInternational::load() {
+bool CheckInternational::load() {
+	string tableName;
+	if(!checkTable(_international_rules, tableName)) {
+		return(false);
+	}
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("show tables like 'international_rules'");
-	if(sqlDb->fetchRow()) {
-		sqlDb->query("select * from international_rules");
-		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
-			this->load(&row);
-		}
+	sqlDb->query("select * from " + tableName);
+	SqlDb_row row;
+	while((row = sqlDb->fetchRow())) {
+		this->load(&row);
 	}
 	delete sqlDb;
+	return(true);
 }
 
 
 CountryPrefixes::CountryPrefixes() {
 }
 
-void CountryPrefixes::load() {
+bool CountryPrefixes::load() {
+	string tableName;
+	if(!checkTable(_country_code_prefix, tableName)) {
+		return(false);
+	}
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query(string("select * ") + 
-		     "from " + (cloud_host[0] ? "cloudshare." : "") + "country_code_prefix\
+	sqlDb->query("select * \
+		      from " + tableName + " \
 		      order by prefix");
 	SqlDb_row row;
 	while((row = sqlDb->fetchRow())) {
@@ -139,16 +201,21 @@ void CountryPrefixes::load() {
 	}
 	std::sort(data.begin(), data.end());
 	delete sqlDb;
+	return(true);
 }
 
 
 GeoIP_country::GeoIP_country() {
 }
 
-void GeoIP_country::load() {
+bool GeoIP_country::load() {
+	string tableName;
+	if(!checkTable(_geoip_country, tableName)) {
+		return(false);
+	}
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query(string("select * ") + 
-		     "from " + (cloud_host[0] ? "cloudshare." : "") + "geoip_country\
+	sqlDb->query("select * \
+		      from " + tableName + " \
 		      order by ip_from");
 	SqlDb_row row;
 	while((row = sqlDb->fetchRow())) {
@@ -159,6 +226,7 @@ void GeoIP_country::load() {
 	}
 	std::sort(data.begin(), data.end());
 	delete sqlDb;
+	return(true);
 }
 
 
@@ -191,22 +259,31 @@ void CountryDetect::load() {
 }
 
 string CountryDetect::getCountryByPhoneNumber(const char *phoneNumber) {
+	string rslt;
 	lock();
-	string rslt = countryPrefixes->getCountry(phoneNumber, NULL, NULL, checkInternational);
+	if(countryPrefixes->loadOK) {
+		rslt = countryPrefixes->getCountry(phoneNumber, NULL, NULL, checkInternational);
+	}
 	unlock();
 	return(rslt);
 }
 
 string CountryDetect::getCountryByIP(u_int32_t ip) {
+	string rslt;
 	lock();
-	string rslt = geoIP_country->getCountry(ip);
+	if(geoIP_country->loadOK) {
+		rslt = geoIP_country->getCountry(ip);
+	}
 	unlock();
 	return(rslt);
 }
 
 string CountryDetect::getContinentByCountry(const char *country) {
+	string rslt;
 	lock();
-	string rslt = countryCodes->getContinent(country);
+	if(countryCodes->loadOK) {
+		rslt = countryCodes->getContinent(country);
+	}
 	unlock();
 	return(rslt);
 }

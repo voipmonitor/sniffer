@@ -13,10 +13,26 @@
 using namespace std;
 
 
-class CountryCodes {
+class CountryDetect_base_table {
+public:
+	enum eTableType {
+		_country_code,
+		_international_rules,
+		_country_code_prefix,
+		_geoip_country
+	};
+public:
+	CountryDetect_base_table();
+	bool checkTable(eTableType tableType, string &tableName);
+	string getTableName(eTableType tableType);
+public:
+	bool loadOK;
+};
+
+class CountryCodes : public CountryDetect_base_table {
 public:
 	CountryCodes();
-	void load();
+	bool load();
 	bool isCountry(const char *code);
 	string getNameCountry(const char *code);
 	string getNameContinent(const char *code);
@@ -30,14 +46,14 @@ private:
 	map<string, string> countryContinent;
 };
 
-class CheckInternational {
+class CheckInternational : public CountryDetect_base_table {
 public:
 	CheckInternational();
 	void setInternationalPrefixes(const char *prefixes);
 	void setSkipPrefixes(const char *prefixes);
 	void setInternationalMinLength(int internationalMinLength, bool internationalMinLengthPrefixesStrict);
 	void load(SqlDb_row *dbRow);
-	void load();
+	bool load();
 	bool isInternational(const char *number, const char **prefix = NULL) {
 		if(prefix) {
 			*prefix = NULL;
@@ -120,7 +136,7 @@ private:
 	vector<string> skipPrefixes;
 };
 
-class CountryPrefixes {
+class CountryPrefixes : public CountryDetect_base_table {
 public:
 	struct CountryPrefix_rec {
 		CountryPrefix_rec(const char *number = NULL, const char *country_code = NULL, const char *descr  = NULL) {
@@ -143,7 +159,7 @@ public:
 	};
 public:
 	CountryPrefixes();
-	void load();
+	bool load();
 	string getCountry(const char *number, vector<string> *countries, string *country_prefix,
 			  CheckInternational *checkInternational) {
 		if(countries) {
@@ -231,7 +247,7 @@ private:
 };
 
 
-class GeoIP_country {
+class GeoIP_country : public CountryDetect_base_table {
 public:
 	struct GeoIP_country_rec {
 		GeoIP_country_rec(unsigned int ip_from = 0, unsigned int ip_to = 0, const char *country_code = NULL) {
@@ -250,7 +266,7 @@ public:
 	};
 public:
 	GeoIP_country();
-	void load();
+	bool load();
 	string getCountry(unsigned int ip) {
 		if(data.size()) {
 			vector<GeoIP_country_rec>::iterator findRecIt;
