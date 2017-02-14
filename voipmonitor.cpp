@@ -2269,9 +2269,11 @@ int main(int argc, char *argv[]) {
 		cloud_initial_register();
 
 		//Override query_cache option in /etc/voipmonitor.conf  settings while in cloud mode always on:
-                opt_save_query_to_files = true;
-                opt_load_query_from_files = 1;
-                opt_load_query_from_files_inotify = true;
+		if(opt_fork) {
+			opt_save_query_to_files = true;
+			opt_load_query_from_files = 1;
+			opt_load_query_from_files_inotify = true;
+		}
 	}
 	checkRrdVersion();
 
@@ -3249,8 +3251,6 @@ void main_term_read() {
 		termFraud();
 	}
 	
-	CountryDetectTerm();
-	
 	termSendCallInfo();
 	if(SafeAsyncQueue_base::isRunTimerThread()) {
 		SafeAsyncQueue_base::stopTimerThread(true);
@@ -3387,6 +3387,8 @@ void main_term_read() {
 		delete no_hash_message_rules;
 		no_hash_message_rules = NULL;
 	}
+	
+	CountryDetectTerm();
 	
 	for(int i = 0; i < 2; i++) {
 		if(cleanSpool[i]) {
