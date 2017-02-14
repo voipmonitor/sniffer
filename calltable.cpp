@@ -2714,10 +2714,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	CountryDetectApplyReload();
-	cdr_country_code.add(getCountryByIP(htonl(sipcallerip[0])), "sipcallerip_country_code");
-	cdr_country_code.add(getCountryByIP(htonl(sipcalledip[0])), "sipcalledip_country_code");
-	cdr_country_code.add(getCountryByPhoneNumber(caller), "caller_number_country_code");
-	cdr_country_code.add(getCountryByPhoneNumber(called), "called_number_country_code");
+	cdr_country_code.add(getCountryByIP(htonl(sipcallerip[0]), true), "sipcallerip_country_code");
+	cdr_country_code.add(getCountryByIP(htonl(sipcalledip[0]), true), "sipcalledip_country_code");
+	cdr_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
+	cdr_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
 	if(existsColumns.cdr_country_code_calldate) {
 		cdr_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	}
@@ -3766,10 +3766,10 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 
 	CountryDetectApplyReload();
-	msg_country_code.add(getCountryByIP(htonl(sipcallerip[0])), "sipcallerip_country_code");
-	msg_country_code.add(getCountryByIP(htonl(sipcalledip[0])), "sipcalledip_country_code");
-	msg_country_code.add(getCountryByPhoneNumber(caller), "caller_number_country_code");
-	msg_country_code.add(getCountryByPhoneNumber(called), "called_number_country_code");
+	msg_country_code.add(getCountryByIP(htonl(sipcallerip[0]), true), "sipcallerip_country_code");
+	msg_country_code.add(getCountryByIP(htonl(sipcalledip[0]), true), "sipcalledip_country_code");
+	msg_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
+	msg_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
 	msg_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {

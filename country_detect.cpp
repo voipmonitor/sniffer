@@ -279,16 +279,24 @@ void CountryDetectTerm() {
 	}
 }
 
-string getCountryByPhoneNumber(const char *phoneNumber) {
+string getCountryByPhoneNumber(const char *phoneNumber, bool suppressStringLocal) {
 	if(countryDetect) {
-		return(countryDetect->getCountryByPhoneNumber(phoneNumber));
+		string country = countryDetect->getCountryByPhoneNumber(phoneNumber);
+		if(suppressStringLocal && country == "local") {
+			country = "";
+		}
+		return(country);
 	}
 	return("");
 }
 
-string getCountryByIP(u_int32_t ip) {
+string getCountryByIP(u_int32_t ip, bool suppressStringLocal) {
 	if(countryDetect) {
-		return(countryDetect->getCountryByIP(ip));
+		string country = countryDetect->getCountryByIP(ip);
+		if(suppressStringLocal && country == "local") {
+			country = "";
+		}
+		return(country);
 	}
 	return("");
 }

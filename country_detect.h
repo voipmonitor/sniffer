@@ -330,8 +330,8 @@ private:
 
 void CountryDetectInit();
 void CountryDetectTerm();
-string getCountryByPhoneNumber(const char *phoneNumber);
-string getCountryByIP(u_int32_t ip);
+string getCountryByPhoneNumber(const char *phoneNumber, bool suppressStringLocal = false);
+string getCountryByIP(u_int32_t ip, bool suppressStringLocal = false);
 string getContinentByCountry(const char *country);
 void CountryDetectPrepareReload();
 void CountryDetectApplyReload();
