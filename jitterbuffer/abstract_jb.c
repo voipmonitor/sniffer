@@ -515,6 +515,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 		case JB_IMPL_OK:
 			if(f->skip) {
 				save_empty_frame(chan);
+				ast_frfree(f);
 				break;
 			}	
 			if(f->ignore) {
