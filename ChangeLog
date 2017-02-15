@@ -1,3 +1,9 @@
+18.3.1 15.2.2017
+================
+- disable pcap_queue_use_blocks in receiver mode [VS-564]
+- allow space separator for international prefixes settings (GUI->settings->common settings->international prefixes) [VG-1163]
+
+
 18.3 15.2.2017
 ==============
 - fix memory leak when using pauserecording feature
