@@ -1,3 +1,14 @@
+18.3 15.2.2017
+==============
+- fix memory leak when using pauserecording feature
+- fix parsing From and To in case the format is From: "Call Manager" <sip:10.0.0.1>;tag=486739~121a78c0-1834-4f45-9aef-960da02c9618-29204586 (Cisco CUCM-8.6) [VS-557]
+- implemented l2tp udp tunnel decapsulation [VS-560]
+- do not use 'local' string in country detect [VG-1159]
+- check and create country tables if they are not created yet [VG-1158]
+- fix crash in simple read mode (-r) - fix call function CountryDetectTerm [VS-563]
+- use query_cache in cloud mode only if set opt_fork
+
+
 18.2 10.2.2017
 ==============
 - implement country grouping also for SIP MESSAGE [VS-319]
