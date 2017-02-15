@@ -108,7 +108,7 @@ public:
 			if(prefix) {
 				number += strlen(prefix);
 			}
-			while(*number == '0') {
+			while(*number == '0' || (!prefix && *number == '+')) {
 				++number;
 			}
 		}
