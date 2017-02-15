@@ -3046,7 +3046,7 @@ int main_init_read() {
 			pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
 		}
 		
-		if(opt_pcap_queue_use_blocks && opt_udpfrag) {
+		if(opt_pcap_queue_use_blocks && opt_udpfrag && !is_sender()) {
 			pcapQueueQ_outThread_defrag = new PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
 			pcapQueueQ_outThread_defrag->start();
 		}
@@ -6245,7 +6245,7 @@ void set_context_config() {
 			      opt_database_backup_from_mysql_database[0] != '\0' &&
 			      opt_database_backup_from_mysql_user[0] != '\0';
 	
-	if(is_sender()) {
+	if(is_sender() || is_receiver()) {
 		opt_pcap_queue_use_blocks = false;
 	}
 	
