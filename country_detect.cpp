@@ -160,7 +160,7 @@ void CheckInternational::load(SqlDb_row *dbRow) {
 	countryCodeForLocalNumbers = (*dbRow)["country_code_for_local_numbers"];
 	_prefixes = (*dbRow)["skip_prefixes"];
 	if(!_prefixes.empty()) {
-		skipPrefixes = split(_prefixes.c_str(), split(",|;", "|"), true);
+		skipPrefixes = split(_prefixes.c_str(), split(",|;| ", "|"), true);
 	}
 }
 
