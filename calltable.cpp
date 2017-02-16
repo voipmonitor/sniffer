@@ -398,6 +398,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	is_ssl = false;
 
 	rtp_zeropackets_stored = 0;
+
+	lastraw[0] = NULL;
+	lastraw[1] = NULL;
 }
 
 void

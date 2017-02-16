@@ -440,6 +440,8 @@ public:
 	int ssrc_n;				//!< last index of rtp array
 	int ipport_n;				//!< last index of addr and port array 
 
+	RTP *lastraw[2];
+
 	string geoposition;
 
 	/* obsolete

@@ -1308,6 +1308,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	// codec changed 
 	if(defer_codec_change or 
+	    owner->lastraw[iscaller] != this or
 	   (curpayload != prev_payload and 
 	    codec != PAYLOAD_TELEVENT and 
 	    (prev_codec != PAYLOAD_TELEVENT or !codecchanged) and 
@@ -1366,9 +1367,10 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				unsigned long unique = getTimestamp();
 				char tmp[1024];
 				sprintf(tmp, "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
-				if(gfileRAW) {
-					//there is already opened gfileRAW
+				if(gfileRAW)  {
 					jitterbuffer_fixed_flush(channel_record);
+					ast_jb_empty_and_reset(channel_record);
+					ast_jb_destroy(channel_record);
 					fclose(gfileRAW);
 				} else {
 					/* look for the last RTP stream belonging to this direction and let jitterbuffer put silence 
@@ -1419,6 +1421,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 				/* write file info to "playlist" */
 				sprintf(tmp, "%s.rawInfo", basefilename);
+				owner->lastraw[iscaller] = this;
 				bool gfileRAWInfo_exists = file_exists(tmp);
 				FILE *gfileRAWInfo = fopen(tmp, "a");
 				if(gfileRAWInfo) {
