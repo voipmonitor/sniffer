@@ -3027,9 +3027,13 @@ int main_init_read() {
 			}
 		}
 	
-		if(ifname[0] || is_read_from_file_by_pb()) {
+		if(ifname[0] || is_read_from_file_by_pb() || opt_scanpcapdir[0]) {
 			pcapQueueI = new FILE_LINE(42035) PcapQueue_readFromInterface("interface");
-			pcapQueueI->setInterfaceName(ifname);
+			pcapQueueI->setInterfaceName(ifname[0] ? 
+						      ifname :
+						     is_read_from_file_by_pb() ? 
+						      "read_from_file" :
+						      "scanpcapdir");
 			pcapQueueI->setEnableAutoTerminate(false);
 		}
 		
