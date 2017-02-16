@@ -926,8 +926,8 @@ pcap_store_queue::pcap_store_queue(const char *fileStoreFolder) {
 	this->cleanupFileStoreCounter = 0;
 	this->lastTimeLogErrDiskIsFull = 0;
 	this->lastTimeLogErrMemoryIsFull = 0;
-	if(!access(fileStoreFolder, F_OK )) {
-		mkdir(fileStoreFolder, 0700);
+	if(access(fileStoreFolder, F_OK ) == -1) {
+		mkdir_r(fileStoreFolder, 0700);
 	}
 }
 
