@@ -801,7 +801,7 @@ bool opt_load_query_from_files_inotify;
 bool opt_virtualudppacket = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
 int opt_sip_tcp_reassembly_clean_period = 10;
-bool opt_sip_tcp_reassembly_ext = false;
+bool opt_sip_tcp_reassembly_ext = true;
 
 int opt_test = 0;
 bool opt_check_db = false;
@@ -6177,7 +6177,6 @@ void set_context_config() {
 		opt_enable_http = 0;
 		opt_enable_webrtc = 0;
 		opt_enable_ssl = 0;
-		//opt_sip_tcp_reassembly_ext = 0;
 		opt_pcap_dump_tar = 0;
 		if(opt_pcap_dump_zip_sip == FileZipHandler::compress_default ||
 		   opt_pcap_dump_zip_sip == FileZipHandler::lzo) {
