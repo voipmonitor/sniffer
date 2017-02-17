@@ -1022,6 +1022,7 @@ public:
 			pcap_block_store *block_store, u_int32_t block_store_index, u_int16_t dlt);
 	void evRegisterResponse(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len);
 	void evRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
+	void evRegister(class Register *reg, class RegisterState *regState, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 	void stopPopCallInfoThread(bool wait = false);
 	void refresh();
 	const char *getGuiTimezone() {
@@ -1043,6 +1044,7 @@ private:
 	void completeCallInfoAfterPop(sFraudCallInfo *callInfo, CheckInternational *checkInternational);
 	void completeRtpStreamInfoAfterPop(sFraudRtpStreamInfo *rtpStreamInfo, CheckInternational *checkInternational);
 	void completeRegisterInfo(sFraudRegisterInfo *registerInfo, Call *call);
+	void completeRegisterInfo(sFraudRegisterInfo *registerInfo, Register *reg, RegisterState *regState);
 	void lock_alerts() {
 		while(__sync_lock_test_and_set(&this->_sync_alerts, 1));
 	}
@@ -1126,6 +1128,7 @@ void fraudRegister(u_int32_t src_ip, u_int32_t dst_ip, timeval tv, const char *u
 		   struct packet_s *packetS);
 void fraudRegisterResponse(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len);
 void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
+void fraudRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 string whereCondFraudAlerts();
 bool isExistsFraudAlerts(bool *storePcaps = NULL);
 bool selectSensorsContainSensorId(string select_sensors);

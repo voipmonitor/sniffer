@@ -1966,7 +1966,7 @@ FraudAlert_reg_expire::FraudAlert_reg_expire(unsigned int dbId)
 }
 
 bool FraudAlert_reg_expire::okFilter(sFraudRegisterInfo *registerInfo) {
-	return(registerInfo->state != rs_OK && registerInfo->state != rs_UnknownMessageOK);
+	return(registerInfo->state == rs_Expired);
 }
 
 
@@ -2167,6 +2167,15 @@ void FraudAlerts::evRegister(Call *call, eRegisterState state, eRegisterState pr
 	registerQueue.push(registerInfo);
 }
 
+void FraudAlerts::evRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state, time_t prev_state_at) {
+	sFraudRegisterInfo registerInfo;
+	this->completeRegisterInfo(&registerInfo, reg, regState);
+	registerInfo.state = state;
+	registerInfo.prev_state = prev_state;
+	registerInfo.prev_state_at = prev_state_at * 1000000ull;
+	registerQueue.push(registerInfo);
+}
+
 void FraudAlerts::stopPopCallInfoThread(bool wait) {
 	termPopCallInfoThread = true;
 	while(wait && runPopCallInfoThread) {
@@ -2328,6 +2337,22 @@ void FraudAlerts::completeRegisterInfo(sFraudRegisterInfo *registerInfo, Call *c
 	registerInfo->digest_realm = call->digest_realm;
 	registerInfo->ua = call->a_ua;
 	registerInfo->at = call->calltime() * 1000000ull;
+}
+
+void FraudAlerts::completeRegisterInfo(sFraudRegisterInfo *registerInfo, Register *reg, RegisterState *regState) {
+	registerInfo->sipcallerip = reg->sipcallerip;
+	registerInfo->sipcalledip = reg->sipcalledip;
+	registerInfo->to_num = REG_CONV_STR(reg->to_num);
+	registerInfo->to_domain = REG_CONV_STR(reg->to_domain);
+	registerInfo->contact_num = REG_CONV_STR(regState->contact_num == EQ_REG ? reg->contact_num : regState->contact_num);
+	registerInfo->contact_domain = REG_CONV_STR(regState->contact_domain == EQ_REG ? reg->contact_domain : regState->contact_domain);
+	registerInfo->digest_username = REG_CONV_STR(reg->digest_username);
+	registerInfo->from_num = REG_CONV_STR(regState->from_num == EQ_REG ? reg->from_num : regState->from_num);
+	registerInfo->from_name = REG_CONV_STR(regState->from_name == EQ_REG ? reg->from_name : regState->from_name);
+	registerInfo->from_domain = REG_CONV_STR(regState->from_domain == EQ_REG ? reg->from_domain : regState->from_domain);
+	registerInfo->digest_realm = REG_CONV_STR(regState->digest_realm == EQ_REG ? reg->digest_realm : regState->digest_realm);
+	registerInfo->ua = REG_CONV_STR(regState->ua == EQ_REG ? reg->ua : regState->ua);
+	registerInfo->at = regState->state_from * 1000000ull;
 }
 
 void FraudAlerts::refresh() {
@@ -2548,6 +2573,14 @@ void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state, 
 	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->evRegister(call, state, prev_state, prev_state_at);
+		fraudAlerts_unlock();
+	}
+}
+
+void fraudRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state, time_t prev_state_at) {
+	if(isFraudReady()) {
+		fraudAlerts_lock();
+		fraudAlerts->evRegister(reg, regState, state, prev_state, prev_state_at);
 		fraudAlerts_unlock();
 	}
 }

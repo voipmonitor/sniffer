@@ -22,14 +22,6 @@ extern int opt_enable_fraud;
 Registers registers;
 
 
-#define EQ_REG				((char*)-1)
-#define REG_NEW_STR(src)		((src) == EQ_REG ? EQ_REG : (src) && *(src) ? (tmp_str = new FILE_LINE(20001) char[strlen(src) + 1], strcpy(tmp_str, src), tmp_str) : NULL)
-#define REG_FREE_STR(str)		((str) && (str) != EQ_REG ? (delete [] (str), str = NULL, true) : (str = NULL, false))
-#define REG_EQ_STR(str1, str2)		((!(str1) || !*(str1)) && (!(str2) || !*(str2)) ? true : (!(str1) || !*(str1)) || (!(str2) || !*(str2)) ? false : !strcasecmp(str1, str2))
-#define REG_CMP_STR(str1, str2)		((!(str1) || !*(str1)) && (!(str2) || !*(str2)) ? 0 : (!(str1) || !*(str1)) ? -1 : (!(str2) || !*(str2)) ? 1 : strcasecmp(str1, str2))
-#define REG_CONV_STR(str)		((str) && (str) != EQ_REG ? string(str) : string())
-
-
 struct RegisterFields {
 	eRegisterField filedType;
 	const char *fieldName;
@@ -328,6 +320,10 @@ void Register::expire(bool need_lock_states) {
 		states[0] = newState;
 		++countStates;
 		saveStateToDb(newState);
+		if(opt_enable_fraud && isFraudReady()) {
+			RegisterState *prevState = states_prev_last();
+			fraudRegister(this, prevState, rs_Expired, prevState ? prevState->state : rs_na, prevState ? prevState->state_to : 0);
+		}
 	}
 	if(need_lock_states) {
 		unlock_states();
