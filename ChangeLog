@@ -1,7 +1,10 @@
-18.3.1 15.2.2017
-================
-- disable pcap_queue_use_blocks in receiver mode [VS-564]
-- allow space separator for international prefixes settings (GUI->settings->common settings->international prefixes) [VG-1163]
+19.0 16.2.2017
+==============
+- new TCP reassembler is now default for reassembling SIP messages which can reassemble more messages than the old one (tested for months). It can be changed to the old one with sip_tcp_reassembly_ext=no [VS-565]
+- allow space separator for country prefixes setting 
+- check & create folder packetbuffer_file_path [VS-503]
+- fix scanpcapdir if interface is not set in voipmonitor.conf [VS-566]
+- fix audio decode in case one RTP stream is interleaved with another RTP stream with different codec (example: G711(ssrc:0x00001111) - G729(ssrc:0x00009999) - G711(ssrc:0x00001111)) [VS-357]
 
 
 18.3 15.2.2017
