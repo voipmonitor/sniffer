@@ -1,3 +1,8 @@
+19.0.1 16.2.2017
+================
+- fix broken audio decode (since 19.0) when multiple RTP streams were recorded which belongs both to caller or called (with the same SSRC) [VS-357]
+
+
 19.0 16.2.2017
 ==============
 - new TCP reassembler is now default for reassembling SIP messages which can reassemble more messages than the old one (tested for months). It can be changed to the old one with sip_tcp_reassembly_ext=no [VS-565]
