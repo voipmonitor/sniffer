@@ -761,11 +761,11 @@ TcpReassemblyLink::~TcpReassemblyLink() {
 	}
 	if(reassembly->getType() == TcpReassembly::ssl) {
 		if(opt_enable_ssl == 10) {
-			end_decrypt_ssl_dssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
-		} else {
 			#ifdef HAVE_LIBGNUTLS
 			end_decrypt_ssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
 			#endif
+		} else {
+			end_decrypt_ssl_dssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
 		}
 	}
 	if(this->check_duplicity_seq) {

@@ -100,11 +100,11 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 					u_int16_t _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
 					vector<string> rslt_decrypt;
 					if(opt_enable_ssl == 10) {
-						decrypt_ssl_dssl(&rslt_decrypt, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst, dataItem->getTime());
-					} else {
 						#ifdef HAVE_LIBGNUTLS
 						decrypt_ssl(&rslt_decrypt, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
 						#endif
+					} else {
+						decrypt_ssl_dssl(&rslt_decrypt, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst, dataItem->getTime());
 					}
 					for(size_t i = 0; i < rslt_decrypt.size(); i++) {
 						if(debugSave) {

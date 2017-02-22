@@ -2970,11 +2970,11 @@ int main_init_read() {
 	}
 	if(opt_enable_ssl && ssl_ipport.size()) {
 		if(opt_enable_ssl == 10) {
-			ssl_dssl_init();
-		} else {
 			#ifdef HAVE_LIBGNUTLS
 			ssl_init();
 			#endif
+		} else {
+			ssl_dssl_init();
 		}
 		tcpReassemblySsl = new FILE_LINE(42029) TcpReassembly(TcpReassembly::ssl);
 		tcpReassemblySsl->setEnableIgnorePairReqResp();
@@ -3148,11 +3148,11 @@ void terminate_processpacket() {
 	}
 	if(opt_enable_ssl && ssl_ipport.size()) {
 		if(opt_enable_ssl == 10) {
-			ssl_dssl_clean();
-		} else {
 			#ifdef HAVE_LIBGNUTLS
 			ssl_clean();
 			#endif
+		} else {
+			ssl_dssl_clean();
 		}
 	}
 	if(sslData) {
@@ -5052,7 +5052,7 @@ void cConfig::addConfigItems() {
 	group("SSL");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem((new FILE_LINE(42254) cConfigItem_yesno("ssl", &opt_enable_ssl))
-			->addValues("dssl:10|only:2"));
+			->addValues("old:10|only:2"));
 		addConfigItem(new FILE_LINE(42255) cConfigItem_ip_port_str_map("ssl_ipport", &ssl_ipport));
 		addConfigItem(new FILE_LINE(42256) cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
 		setDisableIfEnd();
@@ -7816,7 +7816,7 @@ int eval_config(string inistr) {
 		opt_enable_webrtc = strcmp(value, "only") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "ssl", NULL))) {
-		opt_enable_ssl = !strcmp(value, "dssl") ? 10 : 
+		opt_enable_ssl = !strcmp(value, "old") ? 10 : 
 				 strcmp(value, "only") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "ssl_link_timeout", NULL))) {
