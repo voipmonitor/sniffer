@@ -29,9 +29,11 @@ public:
 		this->time.tv_sec = 0;
 		this->time.tv_usec = 0;
 		this->ack = 0;
+		this->seq = 0;
 		this->direction = DIRECTION_NA;
 	}
-	TcpReassemblyDataItem(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, eDirection direction = DIRECTION_NA) {
+	TcpReassemblyDataItem(u_char *data, u_int32_t datalen, timeval time, 
+			      u_int32_t ack = 0, u_int32_t seq = 0, eDirection direction = DIRECTION_NA) {
 		if(data && datalen) {
 			this->data = new FILE_LINE(37001) u_char[datalen + 1];
 			memcpy_heapsafe(this->data, data, datalen, 
@@ -44,6 +46,7 @@ public:
 		}
 		this->time = time;
 		this->ack = ack;
+		this->seq = seq;
 		this->direction = direction;
 	}
 	TcpReassemblyDataItem(const TcpReassemblyDataItem &dataItem) {
@@ -59,6 +62,7 @@ public:
 		}
 		this->time = dataItem.time;
 		this->ack = dataItem.ack;
+		this->seq = dataItem.seq;
 		this->direction = dataItem.direction;
 	}
 	~TcpReassemblyDataItem() {
@@ -82,6 +86,7 @@ public:
 		}
 		this->time = dataItem.time;
 		this->ack = dataItem.ack;
+		this->seq = dataItem.seq;
 		this->direction = dataItem.direction;
 		return(*this);
 	}
@@ -110,17 +115,15 @@ public:
 	void setAck(u_int32_t ack) {
 		this->ack = ack;
 	}
+	void setSeq(u_int32_t seq) {
+		this->seq = seq;
+	}
 	void setDirection(eDirection direction) {
 		this->direction = direction;
 	}
 	void setDataTime(u_char *data, u_int32_t datalen, timeval time, bool newAlloc = true) {
 		this->setData(data, datalen, newAlloc);
 		this->setTime(time);
-	}
-	void setDataTimeAck(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack, bool newAlloc = true) {
-		this->setData(data, datalen, newAlloc);
-		this->setTime(time);
-		this->setAck(ack);
 	}
 	void clearData() {
 		if(this->data) {
@@ -129,6 +132,7 @@ public:
 		this->data = NULL;
 		this->datalen = 0;
 		this->ack = 0;
+		this->seq = 0;
 	}
 	u_char *getData() {
 		return(this->data);
@@ -145,6 +149,9 @@ public:
 	u_int32_t getAck() {
 		return(this->ack);
 	}
+	u_int32_t getSeq() {
+		return(this->seq);
+	}
 	eDirection getDirection() {
 		return(this->direction);
 	}
@@ -156,6 +163,7 @@ private:
 	u_int32_t datalen;
 	timeval time;
 	u_int32_t ack;
+	u_int32_t seq;
 	eDirection direction;
 };
 
@@ -164,20 +172,21 @@ public:
 	TcpReassemblyData() {
 		this->forceAppendExpectContinue = false;
 	}
-	void addData(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, TcpReassemblyDataItem::eDirection direction = TcpReassemblyDataItem::DIRECTION_NA) {
-		this->data.push_back(TcpReassemblyDataItem(data, datalen, time, ack, direction));
+	void addData(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, u_int32_t seq = 0, 
+		     TcpReassemblyDataItem::eDirection direction = TcpReassemblyDataItem::DIRECTION_NA) {
+		this->data.push_back(TcpReassemblyDataItem(data, datalen, time, ack, seq, direction));
 	}
-	void addRequest(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0) {
-		request.push_back(TcpReassemblyDataItem(data, datalen, time, ack));
+	void addRequest(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, u_int32_t seq = 0) {
+		request.push_back(TcpReassemblyDataItem(data, datalen, time, ack, seq));
 	}
-	void addResponse(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0) {
-		response.push_back(TcpReassemblyDataItem(data, datalen, time, ack));
+	void addResponse(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, u_int32_t seq = 0) {
+		response.push_back(TcpReassemblyDataItem(data, datalen, time, ack, seq));
 	}
-	void addExpectContinue(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0) {
-		expectContinue.push_back(TcpReassemblyDataItem(data, datalen, time, ack));
+	void addExpectContinue(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, u_int32_t seq = 0) {
+		expectContinue.push_back(TcpReassemblyDataItem(data, datalen, time, ack, seq));
 	}
-	void addExpectContinueResponse(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0) {
-		expectContinueResponse.push_back(TcpReassemblyDataItem(data, datalen, time, ack));
+	void addExpectContinueResponse(u_char *data, u_int32_t datalen, timeval time, u_int32_t ack = 0, u_int32_t seq = 0) {
+		expectContinueResponse.push_back(TcpReassemblyDataItem(data, datalen, time, ack, seq));
 	}
 	bool isFill();
 public:
@@ -421,7 +430,7 @@ public:
 	       int enableValidateDataViaCheckData = -1, int needValidateDataViaCheckData = -1, TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
 	       u_int32_t forceFirstSeq = 0, int ignorePsh = -1);
 	bool ok2_ec(u_int32_t nextAck, bool enableDebug = false);
-	u_char *complete(u_int32_t *datalen, timeval *time, bool check = false,
+	u_char *complete(u_int32_t *datalen, timeval *time, u_int32_t *seq, bool check = false,
 			 size_t startIndex = 0, size_t *endIndex = NULL, bool breakIfPsh = false);
 	bool saveCompleteData(bool check = false, TcpReassemblyStream *prevHttpStream = NULL);
 	bool isSetCompleteData();
@@ -551,6 +560,8 @@ public:
 			this->remainData[i] = NULL;
 			this->remainDataLength[i] = 0;
 		}
+		this->check_duplicity_seq = NULL;
+		this->check_duplicity_seq_length = 10;
 	}
 	~TcpReassemblyLink();
 	bool push(TcpReassemblyStream::eDirection direction,
@@ -680,6 +691,7 @@ public:
 	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction);
 	list<d_u_int32_t> *getSipOffsets();
 	void clearCompleteStreamsData();
+	bool checkDuplicitySeq(u_int32_t newSeq);
 private:
 	void lock_queue() {
 		while(__sync_lock_test_and_set(&this->_sync_queue, 1)) usleep(100);
@@ -733,6 +745,8 @@ private:
 	void *uData;
 	u_char *remainData[2];
 	u_int32_t remainDataLength[2];
+	u_int32_t *check_duplicity_seq;
+	unsigned check_duplicity_seq_length;
 friend class TcpReassembly;
 friend class TcpReassemblyStream;
 };

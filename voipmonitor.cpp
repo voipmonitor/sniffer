@@ -86,6 +86,7 @@
 #include "register.h"
 #include "tools_fifo_buffer.h"
 #include "country_detect.h"
+#include "ssl_dssl.h"
 
 #ifndef FREEBSD
 #define BACKTRACE 1
@@ -158,6 +159,7 @@ signal_def signal_data[] =
 extern void ssl_init();
 extern void ssl_clean();
 #endif
+
 
 using namespace std;
 
@@ -2229,8 +2231,9 @@ int main(int argc, char *argv[]) {
 		//sigaction(SIGUSR2, &sa, NULL);
 	}
 #endif
-	
+
 	// BEGIN RELOAD LOOP
+	
 	int reloadLoopCounter = -1;
 	while(1) {
 	 
@@ -2605,10 +2608,6 @@ int main(int argc, char *argv[]) {
 	
 	delete regfailedcache;
 	
-#ifdef HAVE_LIBGNUTLS
-	ssl_clean();
-#endif
-	
 	if(sverb.memory_stat) {
 		cout << "memory stat at end" << endl;
 		printMemoryStat(true);
@@ -2970,6 +2969,13 @@ int main_init_read() {
 		}
 	}
 	if(opt_enable_ssl && ssl_ipport.size()) {
+		if(opt_enable_ssl == 10) {
+			ssl_dssl_init();
+		} else {
+			#ifdef HAVE_LIBGNUTLS
+			ssl_init();
+			#endif
+		}
 		tcpReassemblySsl = new FILE_LINE(42029) TcpReassembly(TcpReassembly::ssl);
 		tcpReassemblySsl->setEnableIgnorePairReqResp();
 		tcpReassemblySsl->setEnableDestroyStreamsInComplete();
@@ -3139,6 +3145,15 @@ void terminate_processpacket() {
 	if(tcpReassemblySsl) {
 		delete tcpReassemblySsl;
 		tcpReassemblySsl = NULL;
+	}
+	if(opt_enable_ssl && ssl_ipport.size()) {
+		if(opt_enable_ssl == 10) {
+			ssl_dssl_clean();
+		} else {
+			#ifdef HAVE_LIBGNUTLS
+			ssl_clean();
+			#endif
+		}
 	}
 	if(sslData) {
 		delete sslData;
@@ -5037,7 +5052,7 @@ void cConfig::addConfigItems() {
 	group("SSL");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem((new FILE_LINE(42254) cConfigItem_yesno("ssl", &opt_enable_ssl))
-			->addValue("only", 2));
+			->addValues("dssl:10|only:2"));
 		addConfigItem(new FILE_LINE(42255) cConfigItem_ip_port_str_map("ssl_ipport", &ssl_ipport));
 		addConfigItem(new FILE_LINE(42256) cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
 		setDisableIfEnd();
@@ -5385,11 +5400,6 @@ void cConfig::addConfigItems() {
 }
 
 void cConfig::evSetConfigItem(cConfigItem *configItem) {
-	if(configItem->config_name == "ssl_ipport") {
-		#ifdef HAVE_LIBGNUTLS
-			ssl_init();
-		#endif
-	}
 	if(configItem->config_name == "cleandatabase") {
 		opt_cleandatabase_cdr =
 		opt_cleandatabase_http_enum =
@@ -6663,11 +6673,6 @@ int eval_config(string inistr) {
 				ssl_ipport[d_u_int32_t(ip, port)] = key;
 			}
 		}
-		if(ssl_ipport.size()) {
-#ifdef HAVE_LIBGNUTLS
-			ssl_init();
-#endif
-		}
 	}
 	
 	// http ip
@@ -7811,7 +7816,8 @@ int eval_config(string inistr) {
 		opt_enable_webrtc = strcmp(value, "only") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "ssl", NULL))) {
-		opt_enable_ssl = strcmp(value, "only") ? yesno(value) : 2;
+		opt_enable_ssl = !strcmp(value, "dssl") ? 10 : 
+				 strcmp(value, "only") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "ssl_link_timeout", NULL))) {
 		opt_ssl_link_timeout = atol(value);

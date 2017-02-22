@@ -6414,7 +6414,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		}
 	}
 
-	if((opt_enable_http < 2 && opt_enable_webrtc < 2 && opt_enable_ssl < 2) &&
+	if((opt_enable_http != 2 && opt_enable_webrtc != 2 && opt_enable_ssl != 2) &&
 	   !sverb.disable_push_to_t2_in_packetbuffer) {
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 			false /*is_ssl*/, 

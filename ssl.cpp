@@ -984,7 +984,7 @@ decrypt_ssl3_record(char *data, int /*datalen*/, packet_info *pinfo, guint32 off
 	if (ret && save_plaintext) {
 		//TODO
 		//ssl_add_data_info(proto_ssl, pinfo, ssl_decrypted_data.data, ssl_decrypted_data_avail,  tvb_raw_offset(tvb)+offset, decoder->flow);
-		pinfo->decrypt_vec.push_back(string((char*)ssl_decrypted_data.data, ssl_decrypted_data_avail));
+		pinfo->decrypt_vec->push_back(string((char*)ssl_decrypted_data.data, ssl_decrypted_data_avail));
 	}
 	return ret;
 }
@@ -3609,8 +3609,7 @@ delete_session(packet_info *pinfo) {
 	}
 }
 
-vector<string>
-decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport) {
+void decrypt_ssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport) {
 
 	packet_info pinfo;
 	pinfo.ptype = PT_TCP;
@@ -3620,6 +3619,9 @@ decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int d
 	pinfo.src2 = saddr;
 	set_address(&pinfo.dst, AT_IPv4, 4, &daddr);
 	set_address(&pinfo.src, AT_IPv4, 4, &saddr);
+	
+	rslt_decrypt->clear();
+	pinfo.decrypt_vec = rslt_decrypt;
 
 	SslDecryptSessionC *ssl_session = find_or_create_session(&pinfo);
 	SslSession		*session = &ssl_session->session;
@@ -3656,8 +3658,6 @@ decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int d
 			offset = datalen;
 		}
 	}
-
-	return pinfo.decrypt_vec;
 
 /*
 	for(std::vector<string>::iterator it = pinfo.decrypt_vec.begin(); it != pinfo.decrypt_vec.end(); ++it) {	
@@ -3821,14 +3821,21 @@ ssl_init() {
 
 void
 ssl_clean(){
+	if(!ssl_master_key_map.session) {
+		return;
+	}
+ 
 	if(ssl_master_key_map.session) {
 		g_hash_table_destroy(ssl_master_key_map.session);
+		ssl_master_key_map.session = NULL;
 	}
 	if(ssl_master_key_map.crandom) {
 		g_hash_table_destroy(ssl_master_key_map.crandom);
+		ssl_master_key_map.crandom = NULL;
 	}
 	if(ssl_master_key_map.pre_master) {
 		g_hash_table_destroy(ssl_master_key_map.pre_master);
+		ssl_master_key_map.pre_master = NULL;
 	}
 //	g_hash_table_destroy(ssl_key_hash);
 
@@ -3875,38 +3882,38 @@ void test_ssl() {
 
 #if 1
 
-	dec = decrypt_ssl((char*)ssl1_peer0_0, sizeof(ssl1_peer0_0), 1, 3633813416, 123, 5061);
+	decrypt_ssl(&dec, (char*)ssl1_peer0_0, sizeof(ssl1_peer0_0), 1, 3633813416, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl1_peer1_0, sizeof(ssl1_peer1_0), 3633813416, 1, 5061, 123);
+	decrypt_ssl(&dec, (char*)ssl1_peer1_0, sizeof(ssl1_peer1_0), 3633813416, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl1_peer0_1, sizeof(ssl1_peer0_1), 1, 3633813416, 123, 5061);
+	decrypt_ssl(&dec, (char*)ssl1_peer0_1, sizeof(ssl1_peer0_1), 1, 3633813416, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl1_peer1_1, sizeof(ssl1_peer1_1), 3633813416, 1, 5061, 123);
+	decrypt_ssl(&dec, (char*)ssl1_peer1_1, sizeof(ssl1_peer1_1), 3633813416, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl1_peer0_2, sizeof(ssl1_peer0_2), 1, 3633813416, 123, 5061);
+	decrypt_ssl(&dec, (char*)ssl1_peer0_2, sizeof(ssl1_peer0_2), 1, 3633813416, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl1_peer1_2, sizeof(ssl1_peer1_2), 3633813416, 1, 5061, 123);
+	decrypt_ssl(&dec, (char*)ssl1_peer1_2, sizeof(ssl1_peer1_2), 3633813416, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl1_peer0_3, sizeof(ssl1_peer0_3), 1, 3633813416, 123, 5061);
+	decrypt_ssl(&dec, (char*)ssl1_peer0_3, sizeof(ssl1_peer0_3), 1, 3633813416, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl1_peer1_3, sizeof(ssl1_peer1_3), 3633813416, 1, 5061, 123);
+	decrypt_ssl(&dec, (char*)ssl1_peer1_3, sizeof(ssl1_peer1_3), 3633813416, 1, 5061, 123);
 #endif
 
 #if 1
 	printf("############################################\n");
-	dec = decrypt_ssl((char*)ssl2peer0_0, sizeof(ssl2peer0_0), 1, 1123116675, 123, 5061);
+	decrypt_ssl(&dec, (char*)ssl2peer0_0, sizeof(ssl2peer0_0), 1, 1123116675, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl2peer1_0, sizeof(ssl2peer1_0), 1123116675, 1, 5061, 123);
+	decrypt_ssl(&dec, (char*)ssl2peer1_0, sizeof(ssl2peer1_0), 1123116675, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl2peer0_2, sizeof(ssl2peer0_2), 1, 1123116675, 123, 5061);
+	decrypt_ssl(&dec, (char*)ssl2peer0_2, sizeof(ssl2peer0_2), 1, 1123116675, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl2peer1_2, sizeof(ssl2peer1_2), 1123116675, 1, 5061, 123);
+	decrypt_ssl(&dec, (char*)ssl2peer1_2, sizeof(ssl2peer1_2), 1123116675, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl2peer0_8, sizeof(ssl2peer0_8), 1, 1123116675, 123, 5061);
+	decrypt_ssl(&dec, (char*)ssl2peer0_8, sizeof(ssl2peer0_8), 1, 1123116675, 123, 5061);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl2peer1_3, sizeof(ssl2peer1_3), 1123116675, 1, 5061, 123);
+	decrypt_ssl(&dec, (char*)ssl2peer1_3, sizeof(ssl2peer1_3), 1123116675, 1, 5061, 123);
 	print_decvec(&dec);
-	dec = decrypt_ssl((char*)ssl2peer0_12, sizeof(ssl2peer0_12), 1, 1123116675, 123, 5061);
+	decrypt_ssl(&dec, (char*)ssl2peer0_12, sizeof(ssl2peer0_12), 1, 1123116675, 123, 5061);
 	print_decvec(&dec);
 #endif
 

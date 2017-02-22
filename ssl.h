@@ -453,7 +453,7 @@ typedef struct _packet_info {
 	address dst;					  /**< destination address (net if present, DL otherwise )*/
 	unsigned int src2;
 	unsigned int dst2;
-	vector<string> decrypt_vec;
+	vector<string> *decrypt_vec;
 
 	int vetsion;
 } packet_info;

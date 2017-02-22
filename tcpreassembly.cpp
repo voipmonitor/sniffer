@@ -12,6 +12,8 @@
 #include "sql_db.h"
 #include "tools.h"
 #include "sniff_inline.h"
+#include "ssl_dssl.h"
+
 
 using namespace std;
 
@@ -298,7 +300,7 @@ bool TcpReassemblyStream::ok2_ec(u_int32_t nextAck, bool enableDebug) {
 	return(false);
 }
 
-u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool check,
+u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, u_int32_t *seq, bool check,
 				      size_t startIndex, size_t *endIndex, bool breakIfPsh) {
 	if(!check && !this->is_ok) {
 		*datalen = 0;
@@ -306,6 +308,9 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool ch
 	}
 	u_char *data = NULL;
 	*datalen = 0;
+	if(seq) {
+		*seq = 0;
+	}
 	time->tv_sec = 0;
 	time->tv_usec = 0;
 	u_int32_t databuff_len = 0;
@@ -314,6 +319,9 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, bool ch
 	for(i = startIndex; i < this->ok_packets.size(); i++) {
 		TcpReassemblyStream_packet packet = this->queuePacketVars[this->ok_packets[i][0]].queuePackets[this->ok_packets[i][1]];
 		if(PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
+			if(seq && !*seq) {
+				*seq = packet.header_tcp.seq;
+			}
 			if(lastNextSeq > this->ok_packets[i][0]) {
 				*datalen -= lastNextSeq - this->ok_packets[i][0];
 			}
@@ -379,10 +387,11 @@ bool TcpReassemblyStream::saveCompleteData(bool check, TcpReassemblyStream *prev
 		} else {
 			u_char *data;
 			u_int32_t datalen;
+			u_int32_t seq;
 			timeval time;
 			switch(this->link->reassembly->getType()) {
 			case TcpReassembly::http:
-				data = this->complete(&datalen, &time, check);
+				data = this->complete(&datalen, &time, NULL, check);
 				if(data) {
 					this->complete_data.setDataTime(data, datalen, time, false);
 					if(datalen > 5 && !memcmp(data, "POST ", 5)) {
@@ -438,9 +447,10 @@ bool TcpReassemblyStream::saveCompleteData(bool check, TcpReassemblyStream *prev
 			case TcpReassembly::webrtc:
 			case TcpReassembly::ssl:
 			case TcpReassembly::sip:
-				data = this->complete(&datalen, &time, check);
+				data = this->complete(&datalen, &time, &seq, check);
 				if(data) {
 					this->complete_data.setDataTime(data, datalen, time, false);
+					this->complete_data.setSeq(seq);
 					return(true);
 				}
 				break;
@@ -715,9 +725,8 @@ bool TcpReassemblyLink::streamIterator::findFirstDataToDest() {
 
 #ifdef HAVE_LIBGNUTLS
 extern void end_decrypt_ssl(unsigned int saddr, unsigned int daddr, int sport, int dport);
-#else
-void end_decrypt_ssl(unsigned int saddr, unsigned int daddr, int sport, int dport) {}
 #endif
+
 
 TcpReassemblyLink::~TcpReassemblyLink() {
 	while(this->queueStreams.size()) {
@@ -751,7 +760,16 @@ TcpReassemblyLink::~TcpReassemblyLink() {
 		}
 	}
 	if(reassembly->getType() == TcpReassembly::ssl) {
-		end_decrypt_ssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
+		if(opt_enable_ssl == 10) {
+			end_decrypt_ssl_dssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
+		} else {
+			#ifdef HAVE_LIBGNUTLS
+			end_decrypt_ssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
+			#endif
+		}
+	}
+	if(this->check_duplicity_seq) {
+		delete [] this->check_duplicity_seq;
 	}
 }
 
@@ -1659,12 +1677,13 @@ void TcpReassemblyLink::complete_normal(bool final) {
 				timeval time = stream->complete_data.getTime();
 				if(data) {
 					if(reassembly->enableIgnorePairReqResp) {
-						reassemblyData->addData(data, datalen, time, stream->ack, (TcpReassemblyDataItem::eDirection)stream->direction);
+						reassemblyData->addData(data, datalen, time, stream->ack, stream->complete_data.getSeq(),
+									(TcpReassemblyDataItem::eDirection)stream->direction);
 					} else {
 						if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
-							reassemblyData->addRequest(data, datalen, time, stream->ack);
+							reassemblyData->addRequest(data, datalen, time, stream->ack, stream->complete_data.getSeq());
 						} else {
-							reassemblyData->addResponse(data, datalen, time, stream->ack);
+							reassemblyData->addResponse(data, datalen, time, stream->ack, stream->complete_data.getSeq());
 						}
 					}
 				}
@@ -1731,7 +1750,8 @@ void TcpReassemblyLink::complete_simple_by_ack() {
 	}
 	TcpReassemblyData *reassemblyData = new FILE_LINE(36007) TcpReassemblyData;
 	reassemblyData->addData(data.data(), data.size(),
-				this->ok_streams[0]->complete_data.getTime(), this->ok_streams[0]->ack, (TcpReassemblyDataItem::eDirection)this->ok_streams[0]->direction);
+				this->ok_streams[0]->complete_data.getTime(), this->ok_streams[0]->ack, this->ok_streams[0]->complete_data.getSeq(),
+				(TcpReassemblyDataItem::eDirection)this->ok_streams[0]->direction);
 	reassembly->dataCallback->processData(
 					this->ip_src, this->ip_dst,
 					this->port_src, this->port_dst,
@@ -2134,6 +2154,26 @@ void TcpReassemblyLink::clearCompleteStreamsData() {
 	for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {
 		iter->second->clearCompleteData();
 	}
+}
+
+bool TcpReassemblyLink::checkDuplicitySeq(u_int32_t newSeq) {
+	if(this->check_duplicity_seq) {
+		for(unsigned i = 0; i < this->check_duplicity_seq_length; i++) {
+			if(newSeq == this->check_duplicity_seq[i]) {
+				return(true);
+			}
+		}
+		for(unsigned i = this->check_duplicity_seq_length - 1; i >= 1; i--) {
+			this->check_duplicity_seq[i] = this->check_duplicity_seq[i - 1];
+		}
+	} else {
+		this->check_duplicity_seq = new FILE_LINE(0) u_int32_t[this->check_duplicity_seq_length];
+		for(unsigned i = 1; i < this->check_duplicity_seq_length; i++) {
+			this->check_duplicity_seq[i] = 0;
+		}
+	}
+	this->check_duplicity_seq[0] = newSeq;
+	return(false);
 }
 
 

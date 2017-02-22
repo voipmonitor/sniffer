@@ -3,6 +3,7 @@
 #include "ssldata.h"
 #include "sniff_proc_class.h"
 #include "sql_db.h"
+#include "ssl_dssl.h"
 
 #ifdef FREEBSD
 #include <sys/socket.h>
@@ -11,11 +12,10 @@
 
 using namespace std;
 
+extern int opt_enable_ssl;
 
 #ifdef HAVE_LIBGNUTLS
-extern vector<string> decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport);
-#else
-vector<string> decrypt_ssl(char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport) { vector<string> nothing; return nothing;}
+extern void decrypt_ssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport);
 #endif
 
 extern map<d_u_int32_t, string> ssl_ipport;
@@ -43,6 +43,12 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
 		TcpReassemblyDataItem *dataItem = &data->data[i_data];
 		if(!dataItem->getData()) {
+			continue;
+		}
+		if(reassemblyLink->checkDuplicitySeq(dataItem->getSeq())) {
+			if(debugSave) {
+				cout << "SKIP SEQ " << dataItem->getSeq() << endl;
+			}
 			continue;
 		}
 		if(debugSave) {
@@ -92,7 +98,14 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 					u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
 					u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
 					u_int16_t _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
-					vector<string> rslt_decrypt = decrypt_ssl((char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
+					vector<string> rslt_decrypt;
+					if(opt_enable_ssl == 10) {
+						decrypt_ssl_dssl(&rslt_decrypt, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
+					} else {
+						#ifdef HAVE_LIBGNUTLS
+						decrypt_ssl(&rslt_decrypt, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
+						#endif
+					}
 					for(size_t i = 0; i < rslt_decrypt.size(); i++) {
 						if(debugSave) {
 							string out(rslt_decrypt[i], 0,100);
