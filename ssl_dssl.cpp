@@ -97,7 +97,7 @@ void cSslDsslSession::termSession() {
 	process_counter = 0;
 }
 
-void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport) {
+void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts) {
 	rslt_decrypt->clear();
 	if(!session) {
 		return;
@@ -117,8 +117,7 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 				init();
 				rslt_decrypt->clear();
 			}
-			session->last_packet->pcap_header.ts.tv_sec = 0;
-			session->last_packet->pcap_header.ts.tv_usec = 0;
+			session->last_packet->pcap_header.ts = ts;
 			this->decrypted_data = rslt_decrypt;
 			int rc = DSSL_SessionProcessData(session, dir, (u_char*)data, datalen);
 			if(rc == DSSL_RC_OK) {
@@ -164,7 +163,7 @@ cSslDsslSessions::~cSslDsslSessions() {
 	term();
 }
 
-void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport) {
+void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts) {
 	lock_sessions();
 	NM_PacketDir dir = checkIpPort(saddr, sport, daddr, dport);
 	if(dir == ePacketDirInvalid) {
@@ -187,7 +186,7 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 		sessions[sid] = session;
 	}
 	if(session) {
-		session->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport);
+		session->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts);
 	}
 	unlock_sessions();
 }
@@ -264,9 +263,9 @@ void ssl_dssl_clean() {
 }
 
 
-void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport) {
+void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts) {
 	#ifdef HAVE_LIBOPENSSL
-	SslDsslSessions->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport);
+	SslDsslSessions->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts);
 	#endif
 }
 

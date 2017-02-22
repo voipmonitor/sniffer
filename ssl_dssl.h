@@ -61,7 +61,7 @@ public:
 	bool initSession();
 	void termServer();
 	void termSession();
-	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport);
+	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts);
 private:
 	NM_PacketDir getDirection(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport);
 	static void dataCallback(NM_PacketDir dir, void* user_data, u_char* data, uint32_t len, DSSL_Pkt* pkt);
@@ -86,7 +86,7 @@ public:
 	cSslDsslSessions();
 	~cSslDsslSessions();
 public:
-	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport);
+	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts);
 	void destroySession(unsigned int saddr, unsigned int daddr, int sport, int dport);
 private:
 	cSslDsslSession *addSession(u_int32_t ip, u_int16_t port);
@@ -110,7 +110,7 @@ private:
 
 void ssl_dssl_init();
 void ssl_dssl_clean();
-void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport);
+void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts);
 void end_decrypt_ssl_dssl(unsigned int saddr, unsigned int daddr, int sport, int dport);
 
 
