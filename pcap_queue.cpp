@@ -2167,7 +2167,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			outStrLogProfiler << (endTimeMS > startTimeMS ? endTimeMS - startTimeMS : 0);
 			outStr << "("
-			       << (endTimeMS > startTimeMS + 100 ? "LOG PROFILER" : "log profiler")
+			       << (endTimeMS > startTimeMS + 100 ? "LOG PROFILER" : "log profiler") << " "
 			       << outStrLogProfiler.str() << "ms) ";
 		}
 		outStr << endl;
