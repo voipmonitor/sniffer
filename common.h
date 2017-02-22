@@ -76,6 +76,7 @@ struct sVerbose {
 	int dtmf;
 	int cleanspool;
 	int t2_destroy_all;
+	int log_profiler;
 	int _debug1;
 	int _debug2;
 	int _debug3;
