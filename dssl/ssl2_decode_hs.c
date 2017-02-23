@@ -20,6 +20,9 @@
 */
 
 #include "stdinc.h"
+
+#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
+
 #include "string.h"
 #include "ssl_session.h"
 #include "ssl2_decode_hs.h"
@@ -321,7 +324,7 @@ static int ssl2_decode_client_master_key(  DSSL_Session* sess, u_char* data, uin
 		if( pk )
 		{
 			uint32_t encLen2 = RSA_private_decrypt( encKeyLen, pEncKey, 
-					sess->master_secret + clearKeyLen, pk->pkey.rsa, RSA_PKCS1_PADDING );
+					sess->master_secret + clearKeyLen, EVP_PKEY_get0_RSA( pk ), RSA_PKCS1_PADDING );
 
 			if( clearKeyLen + encLen2 >= sizeof( sess->master_secret ) )
 			{
@@ -512,3 +515,5 @@ int ssl2_decode_handshake( DSSL_Session* sess, NM_PacketDir dir,
 
 	return rc;
 }
+
+#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)

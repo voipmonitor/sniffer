@@ -277,7 +277,7 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 		u_char mac[EVP_MAX_MD_SIZE*2];
 		u_char* rec_mac = NULL;
 		int l = EVP_MD_size( stack->md );
-		int ivl = EVP_CIPHER_iv_length( stack->cipher->cipher );
+		int ivl = EVP_CIPHER_iv_length( EVP_CIPHER_CTX_cipher( stack->cipher ) );
 
 		if ( EVP_CIPH_CBC_MODE == stack->sess->cipher_mode || EVP_CIPH_STREAM_CIPHER == stack->sess->cipher_mode )
 			recLen -= l;

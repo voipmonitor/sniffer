@@ -59,7 +59,7 @@ int ssl3_calculate_mac( dssl_decoder_stack* stack, u_char type,
 {
 	uint32_t mac_size = 0, pad_size = 0;
 	const EVP_MD* md = stack->md;
-	EVP_MD_CTX	md_ctx;
+	EVP_MD_CTX	*md_ctx;
 	u_char hdr[3];
 	u_char seq_buf[8];
 
@@ -76,23 +76,24 @@ int ssl3_calculate_mac( dssl_decoder_stack* stack, u_char type,
 	fmt_seq( stack->seq_num, seq_buf );
 	++stack->seq_num;
 
-	EVP_MD_CTX_init( &md_ctx );
-	EVP_DigestInit_ex( &md_ctx, md, NULL );
+	md_ctx = EVP_MD_CTX_create();
+	EVP_MD_CTX_init( md_ctx );
+	EVP_DigestInit_ex( md_ctx, md, NULL );
 
-	EVP_DigestUpdate( &md_ctx, stack->mac_key, mac_size );
-	EVP_DigestUpdate( &md_ctx, ssl3_pad_1, pad_size );
-	EVP_DigestUpdate( &md_ctx, seq_buf, 8 );
-	EVP_DigestUpdate( &md_ctx, hdr, sizeof(hdr) );
-	EVP_DigestUpdate( &md_ctx, data, len );
-	EVP_DigestFinal_ex( &md_ctx, mac, NULL );
+	EVP_DigestUpdate( md_ctx, stack->mac_key, mac_size );
+	EVP_DigestUpdate( md_ctx, ssl3_pad_1, pad_size );
+	EVP_DigestUpdate( md_ctx, seq_buf, 8 );
+	EVP_DigestUpdate( md_ctx, hdr, sizeof(hdr) );
+	EVP_DigestUpdate( md_ctx, data, len );
+	EVP_DigestFinal_ex( md_ctx, mac, NULL );
 
-	EVP_DigestInit_ex( &md_ctx, md, NULL);
-	EVP_DigestUpdate( &md_ctx, stack->mac_key, mac_size );
-	EVP_DigestUpdate( &md_ctx, ssl3_pad_2, pad_size );
-	EVP_DigestUpdate( &md_ctx, mac, mac_size );
-	EVP_DigestFinal_ex( &md_ctx, mac, NULL );
+	EVP_DigestInit_ex( md_ctx, md, NULL);
+	EVP_DigestUpdate( md_ctx, stack->mac_key, mac_size );
+	EVP_DigestUpdate( md_ctx, ssl3_pad_2, pad_size );
+	EVP_DigestUpdate( md_ctx, mac, mac_size );
+	EVP_DigestFinal_ex( md_ctx, mac, NULL );
 
-	EVP_MD_CTX_cleanup(&md_ctx);
+	EVP_MD_CTX_destroy(md_ctx);
 
 	return DSSL_RC_OK;
 }
@@ -101,7 +102,7 @@ int ssl3_calculate_mac( dssl_decoder_stack* stack, u_char type,
 static int ssl3_calculate_handshake_hash( DSSL_Session* sess, NM_PacketDir dir, 
 										 EVP_MD_CTX* ctx, u_char* out)
 {
-	EVP_MD_CTX md_ctx;
+	EVP_MD_CTX *md_ctx;
 	uint32_t md_size = 0, pad_size = 0;
 	u_char* sender; uint32_t sender_len;
 	static u_char sender_c[] = "\x43\x4c\x4e\x54";
@@ -116,22 +117,23 @@ static int ssl3_calculate_handshake_hash( DSSL_Session* sess, NM_PacketDir dir,
 	sender = ( dir == ePacketDirFromClient ) ? sender_c : sender_s;
 	sender_len = 4;
 
-	EVP_MD_CTX_init( &md_ctx );
-	EVP_MD_CTX_copy_ex( &md_ctx, ctx );
+	md_ctx = EVP_MD_CTX_create();
+	EVP_MD_CTX_init( md_ctx );
+	EVP_MD_CTX_copy_ex( md_ctx, ctx );
 
-	EVP_DigestUpdate( &md_ctx, sender, sender_len );
-	EVP_DigestUpdate( &md_ctx, sess->master_secret, sizeof( sess->master_secret ) );
-	EVP_DigestUpdate( &md_ctx, ssl3_pad_1, pad_size );
-	EVP_DigestFinal_ex( &md_ctx, out, NULL );
+	EVP_DigestUpdate( md_ctx, sender, sender_len );
+	EVP_DigestUpdate( md_ctx, sess->master_secret, sizeof( sess->master_secret ) );
+	EVP_DigestUpdate( md_ctx, ssl3_pad_1, pad_size );
+	EVP_DigestFinal_ex( md_ctx, out, NULL );
 
-	EVP_DigestInit_ex( &md_ctx, md, NULL);
-	EVP_DigestUpdate( &md_ctx, sess->master_secret, sizeof( sess->master_secret ) );
-	EVP_DigestUpdate( &md_ctx, ssl3_pad_2, pad_size );
-	EVP_DigestUpdate( &md_ctx, out, md_size );
+	EVP_DigestInit_ex( md_ctx, md, NULL);
+	EVP_DigestUpdate( md_ctx, sess->master_secret, sizeof( sess->master_secret ) );
+	EVP_DigestUpdate( md_ctx, ssl3_pad_2, pad_size );
+	EVP_DigestUpdate( md_ctx, out, md_size );
 
-	EVP_DigestFinal_ex( &md_ctx, out, &md_size );
+	EVP_DigestFinal_ex( md_ctx, out, &md_size );
 
-	EVP_MD_CTX_cleanup( &md_ctx );
+	EVP_MD_CTX_destroy( md_ctx );
 
 	return md_size;
 }
@@ -144,10 +146,10 @@ int ssl3_decode_finished( DSSL_Session* sess, NM_PacketDir dir, u_char* data, ui
 	int rc = DSSL_RC_OK;
 
 	md5_hash_len = ssl3_calculate_handshake_hash( sess, dir, 
-			&sess->handshake_digest_md5, hash );
+			sess->handshake_digest_md5, hash );
 	
 	sha_hash_len = ssl3_calculate_handshake_hash( sess, dir, 
-		&sess->handshake_digest_sha, hash + md5_hash_len );
+		sess->handshake_digest_sha, hash + md5_hash_len );
 	
 	if( len != sha_hash_len + md5_hash_len ) rc = NM_ERROR( DSSL_E_SSL_BAD_FINISHED_DIGEST );
 
@@ -163,7 +165,7 @@ int ssl3_decode_finished( DSSL_Session* sess, NM_PacketDir dir, u_char* data, ui
 int tls1_calculate_mac( dssl_decoder_stack* stack, u_char type, 
 						 u_char* data, uint32_t len, u_char* mac )
 {
-	HMAC_CTX hmac;
+	HMAC_CTX *hmac;
 	uint32_t mac_size = 0;
 	const EVP_MD* md = stack->md;
 	u_char seq_buf[8];
@@ -175,13 +177,13 @@ int tls1_calculate_mac( dssl_decoder_stack* stack, u_char type,
 	if( md == NULL ) return NM_ERROR( DSSL_E_INVALID_PARAMETER );
 
 	mac_size = EVP_MD_size( md );
-	HMAC_CTX_init( &hmac );
-	HMAC_Init_ex( &hmac, stack->mac_key, mac_size, md , NULL );
+	hmac = HMAC_CTX_new();
+	HMAC_Init_ex( hmac, stack->mac_key, mac_size, md , NULL );
 
 	fmt_seq( stack->seq_num, seq_buf );
 	++stack->seq_num;
 
-	HMAC_Update( &hmac, seq_buf, 8 );
+	HMAC_Update( hmac, seq_buf, 8 );
 
 	hdr[0] = type; 
 	hdr[1] = (u_char)(stack->sess->version >> 8);
@@ -189,16 +191,17 @@ int tls1_calculate_mac( dssl_decoder_stack* stack, u_char type,
 	hdr[3] = (u_char)((len & 0x0000ff00) >> 8);
 	hdr[4] = (u_char)(len & 0xff);
 
-	HMAC_Update( &hmac, hdr, sizeof(hdr) );
-	HMAC_Update( &hmac, data, len );
-	HMAC_Final( &hmac, mac, &mac_size );
-	HMAC_CTX_cleanup( &hmac );
+	HMAC_Update( hmac, hdr, sizeof(hdr) );
+	HMAC_Update( hmac, data, len );
+	HMAC_Final( hmac, mac, &mac_size );
+	HMAC_CTX_free( hmac );
 	
 	DEBUG_TRACE_BUF("mac", mac, mac_size);
 
 	return DSSL_RC_OK;
 }
 
+#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 int ssl2_calculate_mac( dssl_decoder_stack* stack, u_char type, 
 						 u_char* data, uint32_t len, u_char* mac )
 {
@@ -211,6 +214,7 @@ int ssl2_calculate_mac( dssl_decoder_stack* stack, u_char type,
 	type; data; len; mac;
 	return NM_ERROR( DSSL_E_NOT_IMPL );
 }
+#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 
 int tls1_decode_finished( DSSL_Session* sess, NM_PacketDir dir, u_char* data, uint32_t len )
@@ -218,7 +222,7 @@ int tls1_decode_finished( DSSL_Session* sess, NM_PacketDir dir, u_char* data, ui
 	u_char buf[TLS_MD_MAX_CONST_SIZE + MD5_DIGEST_LENGTH + SHA_DIGEST_LENGTH];
 	u_char* cur_ptr = NULL;
 	u_char prf_out[12];
-	EVP_MD_CTX digest;
+	EVP_MD_CTX *digest;
 	uint32_t sz = 0;
 	const char* label;
 	int rc = DSSL_RC_OK;
@@ -228,30 +232,31 @@ int tls1_decode_finished( DSSL_Session* sess, NM_PacketDir dir, u_char* data, ui
 
 	label = (dir == ePacketDirFromClient) ? TLS_MD_CLIENT_FINISH_CONST : TLS_MD_SERVER_FINISH_CONST;
 	
-	EVP_MD_CTX_init( &digest );
+	digest = EVP_MD_CTX_create();
+	EVP_MD_CTX_init( digest );
 
 	if ( sess->version >= TLS1_2_VERSION )
 	{
-		EVP_MD_CTX_copy_ex(&digest, &sess->handshake_digest );
+		EVP_MD_CTX_copy_ex(digest, sess->handshake_digest );
 
 		cur_ptr = buf;
-		EVP_DigestFinal_ex( &digest, cur_ptr, &sz );
+		EVP_DigestFinal_ex( digest, cur_ptr, &sz );
 		cur_ptr += sz;
 	}
 	else
 	{
-		EVP_MD_CTX_copy_ex(&digest, &sess->handshake_digest_md5 );
+		EVP_MD_CTX_copy_ex(digest, sess->handshake_digest_md5 );
 
 		cur_ptr = buf;
-		EVP_DigestFinal_ex( &digest, cur_ptr, &sz );
+		EVP_DigestFinal_ex( digest, cur_ptr, &sz );
 		cur_ptr += sz;
 
-		EVP_MD_CTX_copy_ex(&digest, &sess->handshake_digest_sha );
-		EVP_DigestFinal_ex( &digest, cur_ptr, &sz );
+		EVP_MD_CTX_copy_ex(digest, sess->handshake_digest_sha );
+		EVP_DigestFinal_ex( digest, cur_ptr, &sz );
 		cur_ptr += sz;
 	}
 
-	EVP_MD_CTX_cleanup( &digest );
+	EVP_MD_CTX_destroy( digest );
 
 	if ( sess->version == TLS1_2_VERSION )
 		rc = tls12_PRF( EVP_get_digestbyname( sess->dssl_cipher_suite->digest ), sess->master_secret, sizeof( sess->master_secret ),

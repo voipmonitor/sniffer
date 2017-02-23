@@ -40,10 +40,12 @@ int tls1_PRF( const u_char* secret, uint32_t secret_len,
 		u_char* random2, uint32_t random2_len,
 		u_char *out, uint32_t out_len );
 
+#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 int ssl2_PRF( const u_char* secret, uint32_t secret_len,
 		const u_char* challenge, uint32_t challenge_len, 
 		const u_char* conn_id, uint32_t conn_id_len,
 		u_char* out, uint32_t out_len );
+#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 #ifdef  __cplusplus
 }

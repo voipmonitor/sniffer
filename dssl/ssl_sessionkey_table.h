@@ -30,9 +30,13 @@ typedef struct _DSSL_SessionKeyData
 	u_char							id[DSSL_SESSION_ID_SIZE];
 	u_char							master_secret[SSL3_MASTER_SECRET_SIZE];
 	uint32_t						master_secret_len; /*SSL v2 only */
+	
+	#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 	u_char							ssl2_key_arg[SSL2_KEYARG_MAX_LEN];/* SSL v2 only */
 	uint16_t						ssl2_key_arg_length;/* SSL v2 only */
 	uint16_t						ssl2_cipher_suite;/* SSL v2 only */
+	#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
+	
 	volatile uint32_t				refcount;
 	time_t							released_time;
 	struct _DSSL_SessionKeyData*	next;

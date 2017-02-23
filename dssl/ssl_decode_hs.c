@@ -22,7 +22,9 @@
 #include <string.h>
 #include "ssl_session.h"
 #include "ssl_decode_hs.h"
+#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 #include "ssl2_decode_hs.h"
+#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
 #include "decoder_stack.h"
 #include "packet.h"
 #include "ciphersuites.h"
@@ -295,6 +297,7 @@ int ssl_decode_first_client_hello( DSSL_Session* sess, u_char* data, uint32_t le
 {
 	int rc = DSSL_RC_OK;
 	
+	#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 	if( data[0] & 0x80 && len >= 3 && data[2] == SSL2_MT_CLIENT_HELLO )
 	{
 		int hdrLen = SSL20_CLIENT_HELLO_HDR_LEN;
@@ -313,7 +316,9 @@ int ssl_decode_first_client_hello( DSSL_Session* sess, u_char* data, uint32_t le
 			*processed += hdrLen;
 		}
 	}
-	else if( data[0] == SSL3_RT_HANDSHAKE && len > 6 && 
+	else 
+	#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
+	if( data[0] == SSL3_RT_HANDSHAKE && len > 6 && 
 		data[1] == SSL3_VERSION_MAJOR && data[5] == SSL3_MT_CLIENT_HELLO )
 	{
 		uint32_t recLen = 0;
@@ -379,11 +384,14 @@ int ssl_detect_server_hello_version( u_char* data, uint32_t len, uint16_t* ver )
 	_ASSERT( ver != NULL );
 	_ASSERT( data != NULL );
 	
+	#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 	if( data[0] & 0x80 && len >= SSL20_SERVER_HELLO_MIN_LEN && data[2] == SSL2_MT_SERVER_HELLO )
 	{
 		*ver = MAKE_UINT16( data[5], data[6] );
 	}
-	else if( data[0] == SSL3_RT_HANDSHAKE && len > 11 && 
+	else 
+	#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
+	if( data[0] == SSL3_RT_HANDSHAKE && len > 11 && 
 		data[1] == SSL3_VERSION_MAJOR && data[5] == SSL3_MT_SERVER_HELLO )
 	{
 		uint16_t sever_hello_ver = MAKE_UINT16( data[9], data[10] );
@@ -478,9 +486,9 @@ int ssl3_decode_client_key_exchange( DSSL_Session* sess, u_char* data, uint32_t 
 		return NM_ERROR( DSSL_E_SSL_SERVER_KEY_UNKNOWN );
 	}
 
-	if(pk->type != EVP_PKEY_RSA) return NM_ERROR( DSSL_E_SSL_CANNOT_DECRYPT_NON_RSA );
+	if(EVP_PKEY_id( pk ) != EVP_PKEY_RSA) return NM_ERROR( DSSL_E_SSL_CANNOT_DECRYPT_NON_RSA );
 
-	pms_len = RSA_private_decrypt( len, data, sess->PMS, pk->pkey.rsa, RSA_PKCS1_PADDING );
+	pms_len = RSA_private_decrypt( len, data, sess->PMS, EVP_PKEY_get0_RSA( pk ), RSA_PKCS1_PADDING );
 
 	if( pms_len != SSL_MAX_MASTER_KEY_LENGTH )
 	{
@@ -571,8 +579,8 @@ static int ssl3_decode_new_session_ticket(DSSL_Session* sess, u_char* data, uint
 /* ========== Finished, handshake digest routines ========== */
 void ssl3_init_handshake_digests( DSSL_Session* sess )
 {
-	EVP_DigestInit_ex( &sess->handshake_digest_md5, EVP_md5(), NULL );
-	EVP_DigestInit_ex( &sess->handshake_digest_sha, EVP_sha1(), NULL );
+	EVP_DigestInit_ex( sess->handshake_digest_md5, EVP_md5(), NULL );
+	EVP_DigestInit_ex( sess->handshake_digest_sha, EVP_sha1(), NULL );
 
 	if ( sess->version >= TLS1_2_VERSION )
 	{
@@ -586,7 +594,7 @@ void ssl3_init_handshake_digests( DSSL_Session* sess )
 			digest = EVP_sha256();
 
 		if ( digest )
-			EVP_DigestInit_ex( &sess->handshake_digest, digest, NULL );
+			EVP_DigestInit_ex( sess->handshake_digest, digest, NULL );
 	}
 }
 
@@ -595,13 +603,13 @@ void ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t l
 	DSSL_handshake_buffer *q = NULL, *next;
 
 	/* sanity check in case client hello is not received */
-	if( sess->handshake_digest_md5.digest == NULL
-		|| sess->handshake_digest_sha.digest == NULL)
+	if( EVP_MD_CTX_md( sess->handshake_digest_md5 ) == NULL
+		|| EVP_MD_CTX_md( sess->handshake_digest_sha ) == NULL)
 	{
 		ssl3_init_handshake_digests( sess );
 	}
-	EVP_DigestUpdate( &sess->handshake_digest_md5, data, len );
-	EVP_DigestUpdate( &sess->handshake_digest_sha, data, len );
+	EVP_DigestUpdate( sess->handshake_digest_md5, data, len );
+	EVP_DigestUpdate( sess->handshake_digest_sha, data, len );
 	
 	if ( sess->version >= TLS1_2_VERSION )
 	{
@@ -629,17 +637,17 @@ void ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t l
 			
 			DEBUG_TRACE3( "Queue handshake packet %p (%u @ %p)", q, q->len, q->data );
 		}
-		else if ( digest != sess->handshake_digest.digest && EVP_MD_size( digest ) >= EVP_MD_size( sess->handshake_digest.digest ) ) 
+		else if ( digest != EVP_MD_CTX_md( sess->handshake_digest ) && EVP_MD_size( digest ) >= EVP_MD_size( EVP_MD_CTX_md( sess->handshake_digest ) ) ) 
 		{
 			/* specified digest is different than the default.
 			 * re-init and re-hash all queued packets.
 			 */
-			EVP_MD_CTX_cleanup( &sess->handshake_digest );
-			EVP_DigestInit_ex( &sess->handshake_digest, digest, NULL );
+			EVP_MD_CTX_reset( sess->handshake_digest );
+			EVP_DigestInit_ex( sess->handshake_digest, digest, NULL );
 			for (q = sess->handshake_queue; q != NULL; q = next)
 			{
 				DEBUG_TRACE3( "Re-hash handshake packet %p (%u @ %p)", q, q->len, q->data );
-				EVP_DigestUpdate( &sess->handshake_digest, q->data, q->len );
+				EVP_DigestUpdate( sess->handshake_digest, q->data, q->len );
 				next = q->next;
 				free ( q->data );
 				free ( q );
@@ -661,8 +669,8 @@ void ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t l
 			sess->handshake_queue = NULL;
 		}
 		
-		if ( sess->handshake_digest.digest )
-			EVP_DigestUpdate( &sess->handshake_digest, data, len );
+		if ( EVP_MD_CTX_md( sess->handshake_digest ) )
+			EVP_DigestUpdate( sess->handshake_digest, data, len );
 	}
 }
 

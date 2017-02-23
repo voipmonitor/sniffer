@@ -83,4 +83,12 @@
 #include "dssl_defs.h"
 #include "netdefs.h"
 
+
+#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
+HMAC_CTX *HMAC_CTX_new(void);
+void HMAC_CTX_free(HMAC_CTX *ctx);
+void EVP_MD_CTX_reset(EVP_MD_CTX *ctx);
+struct rsa_st *EVP_PKEY_get0_RSA(EVP_PKEY *pkey);
+#endif
+
 #endif

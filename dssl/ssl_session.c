@@ -46,9 +46,12 @@ void DSSL_SessionInit( DSSL_Env* env, DSSL_Session* s, DSSL_ServerInfo* si )
 	dssl_decoder_stack_init( &s->c_dec );
 	dssl_decoder_stack_init( &s->s_dec );
 
-	EVP_MD_CTX_init( &s->handshake_digest_md5 );
-	EVP_MD_CTX_init( &s->handshake_digest_sha );
-	EVP_MD_CTX_init( &s->handshake_digest );
+	s->handshake_digest_md5 = EVP_MD_CTX_create();
+	EVP_MD_CTX_init( s->handshake_digest_md5 );
+	s->handshake_digest_sha = EVP_MD_CTX_create();
+	EVP_MD_CTX_init( s->handshake_digest_sha );
+	s->handshake_digest = EVP_MD_CTX_create();
+	EVP_MD_CTX_init( s->handshake_digest );
 }
 
 
@@ -65,9 +68,9 @@ void DSSL_SessionDeInit( DSSL_Session* s )
 
 	ssls_free_extension_data(s);
 
-	EVP_MD_CTX_cleanup( &s->handshake_digest_md5 );
-	EVP_MD_CTX_cleanup( &s->handshake_digest_sha );
-	EVP_MD_CTX_cleanup( &s->handshake_digest );
+	EVP_MD_CTX_destroy( s->handshake_digest_md5 );
+	EVP_MD_CTX_destroy( s->handshake_digest_sha );
+	EVP_MD_CTX_destroy( s->handshake_digest );
 }
 
 
@@ -197,10 +200,12 @@ int ssls_set_session_version( DSSL_Session* sess, uint16_t ver )
 			ssls_convert_v2challenge(sess);
 		break;
 
+	#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 	case SSL2_VERSION:
 		sess->decode_finished_proc = NULL;
 		sess->caclulate_mac_proc = ssl2_calculate_mac;
 		break;
+	#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 	default:
 		rc = NM_ERROR( DSSL_E_SSL_UNKNOWN_VERSION );
@@ -311,7 +316,7 @@ int ssls_generate_keys( DSSL_Session* sess )
 	{
 /*		_ASSERT( FALSE ); */
 		EVP_CIPHER_CTX_cleanup( sess->c_dec.cipher_new );
-		free( sess->c_dec.cipher_new );
+		EVP_CIPHER_CTX_free( sess->c_dec.cipher_new );
 		sess->c_dec.cipher_new = NULL;
 	}
 
@@ -319,7 +324,7 @@ int ssls_generate_keys( DSSL_Session* sess )
 	{
 /*		_ASSERT( FALSE ); */
 		EVP_CIPHER_CTX_cleanup( sess->s_dec.cipher_new );
-		free( sess->s_dec.cipher_new );
+		EVP_CIPHER_CTX_free( sess->s_dec.cipher_new );
 		sess->s_dec.cipher_new = NULL;
 	}
 
@@ -488,8 +493,8 @@ int ssls_generate_keys( DSSL_Session* sess )
 	/* create ciphers */
 	if(  c != NULL && rc == DSSL_RC_OK )
 	{
-		c_cipher = (EVP_CIPHER_CTX*) malloc( sizeof(EVP_CIPHER_CTX) );
-		s_cipher = (EVP_CIPHER_CTX*) malloc( sizeof(EVP_CIPHER_CTX) );
+		c_cipher = EVP_CIPHER_CTX_new();
+		s_cipher = EVP_CIPHER_CTX_new();
 
 		if( !c_cipher || !s_cipher ) 
 		{
@@ -535,19 +540,20 @@ int ssls_generate_keys( DSSL_Session* sess )
 
 	if( c_cipher )
 	{
-		free( c_cipher );
+		EVP_CIPHER_CTX_free( c_cipher );
 		c_cipher = NULL;
 	}
 
 	if( s_cipher )
 	{
-		free( c_cipher );
+		EVP_CIPHER_CTX_free( c_cipher );
 		c_cipher = NULL;
 	}
 
 	return rc;
 }
 
+#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 #define SSL2_MAX_KEYBLOCK_LEN	48
 /* generate read/write keys for SSL v2 session */
 int ssls2_generate_keys( DSSL_Session* sess, u_char* keyArg, uint32_t keyArgLen )
@@ -571,7 +577,7 @@ int ssls2_generate_keys( DSSL_Session* sess, u_char* keyArg, uint32_t keyArgLen 
 	{
 		_ASSERT( FALSE );
 		EVP_CIPHER_CTX_cleanup( sess->c_dec.cipher_new );
-		free( sess->c_dec.cipher_new );
+		EVP_CIPHER_CTX_free( sess->c_dec.cipher_new );
 		sess->c_dec.cipher_new = NULL;
 	}
 
@@ -579,7 +585,7 @@ int ssls2_generate_keys( DSSL_Session* sess, u_char* keyArg, uint32_t keyArgLen 
 	{
 		_ASSERT( FALSE );
 		EVP_CIPHER_CTX_cleanup( sess->s_dec.cipher_new );
-		free( sess->s_dec.cipher_new );
+		EVP_CIPHER_CTX_free( sess->s_dec.cipher_new );
 		sess->s_dec.cipher_new = NULL;
 	}
 
@@ -601,7 +607,7 @@ int ssls2_generate_keys( DSSL_Session* sess, u_char* keyArg, uint32_t keyArgLen 
 		return NM_ERROR( DSSL_E_SSL_PROTOCOL_ERROR );
 	}
 
-	keyLen = c->key_len;
+	keyLen = EVP_CIPHER_key_length( c );
 
 	_ASSERT( keyLen*2 <= sizeof(keydata) );
 
@@ -614,8 +620,8 @@ int ssls2_generate_keys( DSSL_Session* sess, u_char* keyArg, uint32_t keyArgLen 
 	/* create ciphers */
 	if( rc == DSSL_RC_OK )
 	{
-		c_cipher = (EVP_CIPHER_CTX*) malloc( sizeof(EVP_CIPHER_CTX) );
-		s_cipher = (EVP_CIPHER_CTX*) malloc( sizeof(EVP_CIPHER_CTX) );
+		c_cipher = EVP_CIPHER_CTX_new();
+		s_cipher = EVP_CIPHER_CTX_new();
 
 
 		if( !c_cipher || !s_cipher ) 
@@ -641,8 +647,8 @@ int ssls2_generate_keys( DSSL_Session* sess, u_char* keyArg, uint32_t keyArgLen 
 
 	if( rc != DSSL_RC_OK )
 	{
-		if( c_cipher ) { free( c_cipher ); c_cipher = NULL; }
-		if( s_cipher ) { free( s_cipher ); s_cipher = NULL; }
+		if( c_cipher ) { EVP_CIPHER_CTX_free( c_cipher ); c_cipher = NULL; }
+		if( s_cipher ) { EVP_CIPHER_CTX_free( s_cipher ); s_cipher = NULL; }
 	}
 
 	/* store KEY-ARG data for session cache */
@@ -655,6 +661,7 @@ int ssls2_generate_keys( DSSL_Session* sess, u_char* keyArg, uint32_t keyArgLen 
 
 	return rc;
 }
+#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 
 int ssls_lookup_session( DSSL_Session* sess )
@@ -675,12 +682,14 @@ int ssls_lookup_session( DSSL_Session* sess )
 	memcpy( sess->master_secret, sess_data->master_secret, SSL3_MASTER_SECRET_SIZE );
 	sess->master_key_len = sess_data->master_secret_len;
 
+	#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 	if(sess->version == SSL2_VERSION)
 	{
 		memcpy(sess->ssl2_key_arg, sess_data->ssl2_key_arg, SSL2_KEYARG_MAX_LEN );
 		sess->ssl2_key_arg_len = sess_data->ssl2_key_arg_length;
 		sess->cipher_suite = sess_data->ssl2_cipher_suite;
 	}
+	#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 	return DSSL_RC_OK;
 }
@@ -766,7 +775,7 @@ EVP_PKEY* ssls_try_ssl_keys( DSSL_Session* sess, u_char* data, uint32_t len)
 		int idx = (i + env->keys_try_index) % env->key_count;
 
 		int pms_len = RSA_private_decrypt( len, data, pms_buff, 
-				env->keys[idx]->pkey.rsa, RSA_PKCS1_PADDING );
+				EVP_PKEY_get0_RSA( env->keys[idx] ), RSA_PKCS1_PADDING );
 
 		if( pms_len != -1 )
 		{

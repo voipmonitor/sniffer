@@ -66,7 +66,9 @@ struct DSSL_Session_
 	u_char				PMS[SSL_MAX_MASTER_KEY_LENGTH];
 	u_char				master_secret[SSL3_MASTER_SECRET_SIZE];
 
+	#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 	u_char				ssl2_key_arg[SSL2_KEYARG_MAX_LEN];
+	#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 	u_char				session_id[DSSL_SESSION_ID_SIZE];
 	uint32_t			flags;
@@ -74,13 +76,16 @@ struct DSSL_Session_
 	DSSL_ServerInfo*	ssl_si;
 
 	uint16_t			cipher_suite;
+	
+	#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 	uint16_t			ssl2_key_arg_len;
+	#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 	u_char				compression_method;
 
-	EVP_MD_CTX			handshake_digest_sha;
-	EVP_MD_CTX			handshake_digest_md5;
-	EVP_MD_CTX			handshake_digest;
+	EVP_MD_CTX			*handshake_digest_sha;
+	EVP_MD_CTX			*handshake_digest_md5;
+	EVP_MD_CTX			*handshake_digest;
 
 	int (*decode_finished_proc)( struct DSSL_Session_* sess, NM_PacketDir dir, u_char* data, uint32_t len );
 	int (*caclulate_mac_proc)( dssl_decoder_stack* stack, u_char type, u_char* data, 

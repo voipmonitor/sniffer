@@ -20,6 +20,9 @@
 */
 #include <string.h>
 #include "stdinc.h"
+
+#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
+
 #include "ssl_session.h"
 #include "ssl2_decode.h"
 #include "session.h"
@@ -183,3 +186,5 @@ int ssl2_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 	return rc;
 
 }
+
+#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)

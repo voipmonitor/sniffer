@@ -25,8 +25,10 @@
 #include "ssl_decode.h"
 #include "ssl_decode_hs.h"
 #include "compression.h"
+#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 #include "ssl2_decode.h"
 #include "ssl2_decode_hs.h"
+#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 void dssl_decoder_stack_init( dssl_decoder_stack* stack )
 {
@@ -46,14 +48,14 @@ void dssl_decoder_stack_deinit( dssl_decoder_stack* stack )
 	if( stack->cipher )
 	{
 		EVP_CIPHER_CTX_cleanup( stack->cipher );
-		free( stack->cipher );
+		EVP_CIPHER_CTX_free( stack->cipher );
 		stack->cipher = NULL;
 	}
 
 	if( stack->cipher_new )
 	{
 		EVP_CIPHER_CTX_cleanup( stack->cipher_new );
-		free( stack->cipher_new );
+		EVP_CIPHER_CTX_free( stack->cipher_new );
 		stack->cipher_new = NULL;
 	}
 
@@ -96,11 +98,13 @@ int dssl_decoder_stack_set( dssl_decoder_stack* d, DSSL_Session* sess, uint16_t 
 		dssl_decoder_init( &d->dalert, ssl3_alert_decoder, d );
 		break;
 
+	#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 	case SSL2_VERSION:
 		dssl_decoder_init( &d->drecord, ssl2_record_layer_decoder, d );
 		dssl_decoder_init( &d->dhandshake, ssl2_handshake_record_decode_wrapper, d );
 		dssl_decoder_init( &d->dappdata, ssl_application_data_decoder, d );
 		break;
+	#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 	default:
 		rc = NM_ERROR( DSSL_E_SSL_UNKNOWN_VERSION );
@@ -129,7 +133,7 @@ int dssl_decoder_stack_flip_cipher( dssl_decoder_stack* stack )
 	if( stack->cipher )
 	{
 		EVP_CIPHER_CTX_cleanup( stack->cipher );
-		free( stack->cipher );
+		EVP_CIPHER_CTX_free( stack->cipher );
 		stack->cipher = NULL;
 	}
 

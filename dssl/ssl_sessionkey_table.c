@@ -101,10 +101,11 @@ static DSSL_SessionKeyData* CreateSessionKeyData( DSSL_Session* sess )
 	memcpy( new_data->master_secret, sess->master_secret, sizeof(new_data->master_secret) );
 	new_data->master_secret_len = sess->master_key_len;
 
+	#if (OPENSSL_VERSION_NUMBER < 0x10100000L)
 	memcpy(new_data->ssl2_key_arg, sess->ssl2_key_arg, SSL2_KEYARG_MAX_LEN);
 	new_data->ssl2_key_arg_length = sess->ssl2_key_arg_len;
-
 	new_data->ssl2_cipher_suite = sess->cipher_suite;
+	#endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)
 
 	new_data->refcount = 1;
 	new_data->next = NULL;
