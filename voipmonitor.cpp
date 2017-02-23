@@ -2903,6 +2903,7 @@ int main_init_read() {
 								rtpthreadbuffer * 1024 * 1024 / sizeof(rtp_packet_pcap_queue);
 				rtp_threads[i].init(i + 1, _rtp_qring_length);
 				if(i < num_threads_active) {
+					rtp_threads[i].alloc_qring();
 					vm_pthread_create_autodestroy("rtp read",
 								      &(rtp_threads[i].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[i], __FILE__, __LINE__);
 				}
@@ -4666,7 +4667,7 @@ void __cyg_profile_func_exit(void *this_fn, void */*call_site*/) {
 #include <jemalloc/jemalloc.h>
 #endif //HAVE_LIBJEMALLOC
 
-string jeMallocStat(bool /*full*/) {
+string jeMallocStat(bool full) {
 	string rslt;
 #ifdef HAVE_LIBJEMALLOC
 	char tempFileName[L_tmpnam+1];

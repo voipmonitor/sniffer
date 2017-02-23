@@ -412,6 +412,7 @@ public:
 	}
 	void init(int threadNum, size_t qring_length);
 	void init_qring(size_t qring_length);
+	void alloc_qring();
 	void init_thread_buffer();
 	void term();
 	void term_qring();

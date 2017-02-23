@@ -1782,6 +1782,7 @@ void add_rtp_read_thread() {
 		rtp_threads[num_threads_active].remove_flag = false;
 		if(!rtp_threads[num_threads_active].threadId) {
 			rtp_threads[num_threads_active].threadId = -1;
+			rtp_threads[num_threads_active].alloc_qring();
 			vm_pthread_create_autodestroy("rtp read",
 						      &(rtp_threads[num_threads_active].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[num_threads_active], __FILE__, __LINE__);
 		}
@@ -6988,13 +6989,19 @@ void rtp_read_thread::init_qring(size_t qring_length) {
 	this->qring_length = qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
-	this->qring = new FILE_LINE(26036) batch_packet_rtp*[this->qring_length];
-	for(unsigned int i = 0; i < this->qring_length; i++) {
-		this->qring[i] = new FILE_LINE(26037) batch_packet_rtp(this->qring_batch_item_length);
-		this->qring[i]->used = 0;
-	}
+	this->qring = NULL;
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
+}
+
+void rtp_read_thread::alloc_qring() {
+	if(!this->qring) {
+		this->qring = new FILE_LINE(26036) batch_packet_rtp*[this->qring_length];
+		for(unsigned int i = 0; i < this->qring_length; i++) {
+			this->qring[i] = new FILE_LINE(26037) batch_packet_rtp(this->qring_batch_item_length);
+			this->qring[i]->used = 0;
+		}
+	}
 }
 
 void rtp_read_thread::init_thread_buffer() {
@@ -7015,10 +7022,13 @@ void rtp_read_thread::term() {
 }
 
 void rtp_read_thread::term_qring() {
-	for(unsigned int i = 0; i < this->qring_length; i++) {
-		delete this->qring[i];
+	if(this->qring) {
+		for(unsigned int i = 0; i < this->qring_length; i++) {
+			delete this->qring[i];
+		}
+		delete [] this->qring;
+		this->qring = NULL;
 	}
-	delete [] this->qring;
 }
 
 void rtp_read_thread::term_thread_buffer() {
