@@ -1303,12 +1303,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	ostringstream outStr;
 	pcap_drop_flag = 0;
+	if(sverb.log_profiler) {
+		lapTime.push_back(getTimeMS_rdtsc());
+		lapTimeDescr.push_back("pcapStatString_interface-before");
+	}
 	string pcapStatString_interface_rslt = this->instancePcapHandle ? 
 						this->instancePcapHandle->pcapStatString_interface(statPeriod) :
 						this->pcapStatString_interface(statPeriod);
 	if(sverb.log_profiler) {
 		lapTime.push_back(getTimeMS_rdtsc());
-		lapTimeDescr.push_back("pcapStatString_interface");
+		lapTimeDescr.push_back("pcapStatString_interface-after");
 	}
 	if(EXTENDED_LOG) {
 		string statString = "\n";
@@ -1756,6 +1760,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		u_int64_t tarBufferSize = ChunkBuffer::getChunkBuffersSumsize();
 		if(tarBufferSize) {
 			outStr << "tarB[" << setprecision(0) << tarBufferSize / 1024 / 1024 << "MB] ";
+		}
+		if(sverb.log_profiler) {
+			lapTime.push_back(getTimeMS_rdtsc());
+			lapTimeDescr.push_back("tarbuffer");
 		}
 		extern TarQueue *tarQueue[2];
 		for(int i = 0; i < 2; i++) {
