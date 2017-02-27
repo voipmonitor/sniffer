@@ -5657,10 +5657,22 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 */
 	    {0, 0, 0, 0}
 	};
+	string argOptions;
+	string noArgOptions;
+	for(unsigned i = 0; long_options[i].name; i++) {
+		if(long_options[i].val >= '0' && long_options[i].val <= 'z') {
+			if(long_options[i].has_arg == 1) {
+				argOptions += (char)long_options[i].val;
+				argOptions += ':';
+			} else {
+				noArgOptions += (char)long_options[i].val;
+			}
+		}
+	}
 
 	while(1) {
 		int c;
-		c = getopt_long(argc, argv, "C:f:i:r:d:v:O:h:b:t:u:p:P:s:T:D:e:E:m:X:lLkncUSRoAWGNIKy4Mx", long_options, &option_index);
+		c = getopt_long(argc, argv, (argOptions + noArgOptions).c_str(), long_options, &option_index);
 		if (c == -1)
 			break;
 		command_line_data[c] = optarg ? optarg : "";
