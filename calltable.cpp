@@ -1150,7 +1150,6 @@ read:
 		rtp[ssrc_n]->iscaller = iscaller; 
 		rtp[ssrc_n]->find_by_dest = find_by_dest;
 		rtp[ssrc_n]->ok_other_ip_side_by_sip = opt_rtpfromsdp_onlysip ||
-						       this->type == SKINNY_NEW ||
 						       this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr : packetS->daddr) ||
 						       (this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr, find_by_dest ? packetS->source : packetS->dest) >= 0 &&
 							this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr : packetS->saddr));
@@ -2449,7 +2448,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		// find first caller and first called
 		RTP *rtpab[2] = {NULL, NULL};
 		bool rtpab_ok[2] = {false, false};
-		bool pass_rtpab_simple = opt_rtpfromsdp_onlysip || this->type == SKINNY_NEW;
+		bool pass_rtpab_simple = opt_rtpfromsdp_onlysip;
 		for(int pass_rtpab = 0; pass_rtpab < (pass_rtpab_simple ? 1 : 2); pass_rtpab++) {
 			for(int k = 0; k < ssrc_n; k++) {
 				if(pass_rtpab == 0) {

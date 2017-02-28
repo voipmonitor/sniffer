@@ -3589,6 +3589,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 		if(sverb.process_rtp) {
 			++process_rtp_counter;
 			cout << "RTP - process_packet -"
+			     << " callid: " << call->call_id
 			     << (find_by_dest ? " src: " : " SRC: ") << inet_ntostring(htonl(packetS->saddr)) << " : " << packetS->source
 			     << (find_by_dest ? " DST: " : " dst: ") << inet_ntostring(htonl(packetS->daddr)) << " : " << packetS->dest
 			     << " iscaller: " << (iscaller ? "caller" : "called") 
@@ -3790,7 +3791,6 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 			hash_node_call *node_call;
 			for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
 				if((!opt_rtpfromsdp_onlysip ||
-				    node_call->call->type == SKINNY_NEW ||
 				    (call_info_find_by_dest ?
 				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
 				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
@@ -6853,7 +6853,6 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 		hash_node_call *node_call;
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
 			if((!opt_rtpfromsdp_onlysip ||
-			    node_call->call->type == SKINNY_NEW ||
 			    (packetS->call_info_find_by_dest ?
 			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
 			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
