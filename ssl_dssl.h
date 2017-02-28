@@ -9,7 +9,7 @@
 #include <vector>
 
 
-#ifdef HAVE_LIBOPENSSL
+#ifdef HAVE_OPENSSL101
 
 
 #include <openssl/ssl.h>
@@ -105,7 +105,7 @@ private:
 };
 
 
-#endif
+#endif //HAVE_OPENSSL101
 
 
 void ssl_dssl_init();

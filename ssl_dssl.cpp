@@ -3,7 +3,7 @@
 #include "ssl_dssl.h"
 
 
-#ifdef HAVE_LIBOPENSSL
+#ifdef HAVE_OPENSSL101
 
 
 extern map<d_u_int32_t, string> ssl_ipport;
@@ -244,33 +244,33 @@ void cSslDsslSessions::term() {
 }
 
 
-#endif
+#endif //HAVE_OPENSSL101
 
 
 void ssl_dssl_init() {
-	#ifdef HAVE_LIBOPENSSL
+	#ifdef HAVE_OPENSSL101
 	SslDsslSessions = new FILE_LINE(0) cSslDsslSessions;
-	#endif
+	#endif //HAVE_OPENSSL101
 }
 
 void ssl_dssl_clean() {
-	#ifdef HAVE_LIBOPENSSL
+	#ifdef HAVE_OPENSSL101
 	if(SslDsslSessions) {
 		delete SslDsslSessions;
 		SslDsslSessions = NULL;
 	}
-	#endif
+	#endif //HAVE_OPENSSL101
 }
 
 
 void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts) {
-	#ifdef HAVE_LIBOPENSSL
+	#ifdef HAVE_OPENSSL101
 	SslDsslSessions->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts);
-	#endif
+	#endif //HAVE_OPENSSL101
 }
 
 void end_decrypt_ssl_dssl(unsigned int saddr, unsigned int daddr, int sport, int dport) {
-	#ifdef HAVE_LIBOPENSSL
+	#ifdef HAVE_OPENSSL101
 	SslDsslSessions->destroySession(saddr, daddr, sport, dport);
-	#endif
+	#endif //HAVE_OPENSSL101
 }

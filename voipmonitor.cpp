@@ -6346,6 +6346,12 @@ void set_context_config() {
 		}
 	}
 	
+	#ifndef HAVE_OPENSSL101
+	if(opt_enable_ssl == 1) {
+		opt_enable_ssl = 10;
+	}
+	#endif //HAVE_OPENSSL101
+	
 	set_spool_permission();
 	
 }
