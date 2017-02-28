@@ -231,21 +231,6 @@ void Register::addState(Call *call) {
 		if(eqLastState(call, NEW_REGISTER_USE_CMP_UA_STATE)) {
 			updateLastState(call);
 			updateRsOk = true;
-		} else if(countStates > 1) {
-			for(unsigned i = 1; i < countStates; i++) {
-				if(states[i]->state != rs_Failed) {
-					if(states[i]->isEq(call, this, NEW_REGISTER_USE_CMP_UA_STATE)) {
-						RegisterState *state = states[i];
-						for(unsigned j = i; j > 0; j--) {
-							states[j] = states[j - 1];
-						}
-						states[0] = state;
-						updateLastState(call);
-						updateRsOk = true;
-					}
-					break;
-				}
-			}
 		}
 	} else {
 		if(eqLastState(call, NEW_REGISTER_USE_CMP_UA_STATE)) {
