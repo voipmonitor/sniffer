@@ -3863,7 +3863,7 @@ else
 	LIBJSON_NAME="$LIBJSON_NAME"
 
 fi
-ac_fn_c_check_decl "$LINENO" "LN_aes_128_gcm" "ac_cv_have_decl_LN_aes_128_gcm" "#include <ssl.h>
+ac_fn_c_check_decl "$LINENO" "LN_aes_128_gcm" "ac_cv_have_decl_LN_aes_128_gcm" "#include <openssl/obj_mac.h>
 "
 if test "x$ac_cv_have_decl_LN_aes_128_gcm" = xyes; then :
   ac_have_decl=1
