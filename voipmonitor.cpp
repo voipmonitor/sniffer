@@ -5622,7 +5622,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"nodaemon", 0, 0, 'k'},
 	    {"promisc", 0, 0, 'n'},
 	    {"pcapbuffered", 0, 0, 'U'},
-	    {"test", 0, 0, 'X'},
+	    {"test", 1, 0, 'X'},
 	    {"allsipports", 0, 0, 'y'},
 	    {"sipports", 1, 0, 'Y'},
 	    {"skinny", 0, 0, 200},

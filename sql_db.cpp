@@ -5897,21 +5897,17 @@ void SqlDb_mysql::copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tabl
 	this->query("set FOREIGN_KEY_CHECKS=0");
 	this->query(string("drop table if exists ") + tableName);
 	this->query("set FOREIGN_KEY_CHECKS=1");
-	char conn_port_str[10] = "";
-	if(sqlDbSrc->conn_port) {
-		sprintf(conn_port_str, "%u", sqlDbSrc->conn_port);
-	}
 	string cmdCopyTable = 
 		string("mysqldump --opt") +
 		" -h" + sqlDbSrc->conn_server +
-		(sqlDbSrc->conn_port ? " --port " + string(conn_port_str) : "") +
+		(sqlDbSrc->conn_port ? " --port " + intToString(sqlDbSrc->conn_port) : "") +
 		" -u" + sqlDbSrc->conn_user +
 		(sqlDbSrc->conn_password.length() ? " -p" + sqlDbSrc->conn_password : "") +
 		" " + sqlDbSrc->conn_database + 
 		" " + tableName +
 		" | mysql" +
-		
 		" -h" + this->conn_server +
+		(this->conn_port ? " --port " + intToString(this->conn_port) : "") +
 		" -u" + this->conn_user +
 		(this->conn_password.length() ? " -p" + this->conn_password : "") +
 		" -D" + this->conn_database;
