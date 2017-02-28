@@ -55,6 +55,7 @@ if test "x$LIBJSON_NAME" = "x"; then
 else
 	AC_SUBST([LIBJSON_NAME],["$LIBJSON_NAME"])
 fi
+AC_CHECK_DECLS([LN_aes_128_gcm], HAVE_OPENSSL101=1, AC_MSG_WARN([disabling tls - ssl is too old - you need >= 1.0.1]), [[#include <ssl.h>]])
 AC_CHECK_LIB([rrd], [main], , AC_MSG_ERROR([Unable to find librrd library. apt-get install librrd-dev | yum install rrdtool-devel | or compile from source http://oss.oetiker.ch/rrdtool/doc/librrd.en.html]))
 AC_CHECK_LIB([glib-2.0], [main], , AC_MSG_ERROR([Unable to find libglib library. apt-get install  libglib2.0-dev | yum install glib2-devel]))
 AC_CHECK_LIB([xml2], [main], , AC_MSG_ERROR([Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel]))
@@ -149,6 +150,11 @@ if test "x$HAVE_LIBTCMALLOC" = "x1"; then
 	AC_SUBST([LIBTCMALLOC],["-ltcmalloc_minimal"])
 	TCMALLOC_T=yes
 fi
+OPENSSL_T=no
+if test "x$HAVE_OPENSSL101" = "x1"; then 
+	AC_DEFINE([HAVE_OPENSSL101], [1], [Define if using libtcmalloc])
+	OPENSSL_T=yes
+fi
 
 # Checks for header files.
 #AC_FUNC_ALLOCA
@@ -205,6 +211,7 @@ gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
+openssl >= 101 found		       : $OPENSSL_T
 
 shared binary: run make 
 static binary: run make static

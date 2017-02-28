@@ -1490,6 +1490,52 @@ fi
   as_fn_set_status $ac_retval
 
 } # ac_fn_c_try_link
+
+# ac_fn_c_check_decl LINENO SYMBOL VAR INCLUDES
+# ---------------------------------------------
+# Tests whether SYMBOL is declared in INCLUDES, setting cache variable VAR
+# accordingly.
+ac_fn_c_check_decl ()
+{
+  as_lineno=${as_lineno-"$1"} as_lineno_stack=as_lineno_stack=$as_lineno_stack
+  as_decl_name=`echo $2|sed 's/ *(.*//'`
+  as_decl_use=`echo $2|sed -e 's/(/((/' -e 's/)/) 0&/' -e 's/,/) 0& (/g'`
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $as_decl_name is declared" >&5
+$as_echo_n "checking whether $as_decl_name is declared... " >&6; }
+if eval \${$3+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+$4
+int
+main ()
+{
+#ifndef $as_decl_name
+#ifdef __cplusplus
+  (void) $as_decl_use;
+#else
+  (void) $as_decl_name;
+#endif
+#endif
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  eval "$3=yes"
+else
+  eval "$3=no"
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+eval ac_res=\$$3
+	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+$as_echo "$ac_res" >&6; }
+  eval $as_lineno_stack; ${as_lineno_stack:+:} unset as_lineno
+
+} # ac_fn_c_check_decl
 cat >config.log <<_ACEOF
 This file contains any messages produced by compilers while
 running configure, to aid debugging if configure makes a mistake.
@@ -3817,6 +3863,24 @@ else
 	LIBJSON_NAME="$LIBJSON_NAME"
 
 fi
+ac_fn_c_check_decl "$LINENO" "LN_aes_128_gcm" "ac_cv_have_decl_LN_aes_128_gcm" "#include <ssl.h>
+"
+if test "x$ac_cv_have_decl_LN_aes_128_gcm" = xyes; then :
+  ac_have_decl=1
+else
+  ac_have_decl=0
+fi
+
+cat >>confdefs.h <<_ACEOF
+#define HAVE_DECL_LN_AES_128_GCM $ac_have_decl
+_ACEOF
+if test $ac_have_decl = 1; then :
+  HAVE_OPENSSL101=1
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: disabling tls - ssl is too old - you need >= 1.0.1" >&5
+$as_echo "$as_me: WARNING: disabling tls - ssl is too old - you need >= 1.0.1" >&2;}
+fi
+
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lrrd" >&5
 $as_echo_n "checking for main in -lrrd... " >&6; }
 if ${ac_cv_lib_rrd_main+:} false; then :
@@ -4227,7 +4291,7 @@ if test "x$ac_cv_lib_tcmalloc_minimal_tc_malloc" = xyes; then :
   HAVE_LIBTCMALLOC=1
 else
   { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev or compile from source https://code.google.com/p/gperftools/" >&5
-$as_echo "$as_me: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libtcmalloc-minimal4 or compile from source https://code.google.com/p/gperftools/" >&6;}
+$as_echo "$as_me: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev or compile from source https://code.google.com/p/gperftools/" >&6;}
 fi
 
 
@@ -4300,6 +4364,13 @@ $as_echo "#define HAVE_LIBTCMALLOC 1" >>confdefs.h
 	LIBTCMALLOC="-ltcmalloc_minimal"
 
 	TCMALLOC_T=yes
+fi
+OPENSSL_T=no
+if test "x$HAVE_OPENSSL101" = "x1"; then
+
+$as_echo "#define HAVE_OPENSSL101 1" >>confdefs.h
+
+	OPENSSL_T=yes
 fi
 
 # Checks for header files.
@@ -5635,6 +5706,7 @@ gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
+openssl >= 101 found		       : $OPENSSL_T
 
 shared binary: run make
 static binary: run make static
@@ -5663,6 +5735,7 @@ gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
+openssl >= 101 found		       : $OPENSSL_T
 
 shared binary: run make
 static binary: run make static

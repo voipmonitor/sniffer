@@ -1,5 +1,9 @@
 /* config.h.in.  Generated from configure.in by autoheader.  */
 
+/* Define to 1 if you have the declaration of `LN_aes_128_gcm', and to 0 if
+   you don't. */
+#undef HAVE_DECL_LN_AES_128_GCM
+
 /* Define to 1 if you have the `c' library (-lc). */
 #undef HAVE_LIBC
 
@@ -74,6 +78,9 @@
 
 /* Define to 1 if you have the `z' library (-lz). */
 #undef HAVE_LIBZ
+
+/* Define if using libtcmalloc */
+#undef HAVE_OPENSSL101
 
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT
