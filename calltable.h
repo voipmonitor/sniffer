@@ -852,6 +852,13 @@ public:
 			--calls_counter;
 		}
 	}
+	
+	bool selectRtpStreams();
+	bool selectRtpStreams_bySipcallerip();
+	bool selectRtpStreams_byMaxLengthInLink();
+	u_int64_t getFirstTimeInRtpStreams(int caller, bool selected);
+	void printSelectedRtpStreams(int caller, bool selected);
+	bool existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms);
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];

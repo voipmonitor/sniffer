@@ -360,6 +360,7 @@ int opt_saveaudio_reversestereo = 0;
 float opt_saveaudio_oggquality = 0.4;
 int opt_audioqueue_threads_max = 10;
 bool opt_saveaudio_answeronly = false;
+bool opt_saveaudio_filteripbysipip = false;
 int opt_saveaudio_stereo = 1;
 int opt_register_timeout = 5;
 int opt_register_timeout_disable_save_failed = 0;
@@ -5008,6 +5009,7 @@ void cConfig::addConfigItems() {
 				->setDefaultValueStr("no"));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_answeronly", &opt_saveaudio_answeronly));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_filteripbysipip", &opt_saveaudio_filteripbysipip));
 				addConfigItem(new FILE_LINE(42226) cConfigItem_yesno("saveaudio_stereo", &opt_saveaudio_stereo));
 				addConfigItem(new FILE_LINE(42227) cConfigItem_yesno("saveaudio_reversestereo", &opt_saveaudio_reversestereo));
 				addConfigItem(new FILE_LINE(42228) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
@@ -7917,6 +7919,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "saveaudio_answeronly", NULL))) {
 		opt_saveaudio_answeronly = yesno(value);
+	}
+	if((value = ini.GetValue("general", "saveaudio_filteripbysipip", NULL))) {
+		opt_saveaudio_filteripbysipip = yesno(value);
 	}
 	if((value = ini.GetValue("general", "saveaudio_stereo", NULL))) {
 		opt_saveaudio_stereo = yesno(value);

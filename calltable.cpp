@@ -23,6 +23,7 @@
 #include <net/if.h>
 
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 #include <vector>
 #include <list>
@@ -161,6 +162,7 @@ extern int opt_saveaudio_reversestereo;
 extern int opt_saveaudio_stereo;
 extern int opt_saveaudio_reversestereo;
 extern float opt_saveaudio_oggquality;
+extern bool opt_saveaudio_filteripbysipip;
 extern int opt_skinny;
 extern int opt_enable_fraud;
 extern char opt_callidmerge_header[128];
@@ -1467,98 +1469,22 @@ Call::convertRawToWav() {
 	int adir = 0;
 	int bdir = 0;
 
-
-	// decide which RTP streams should be skipped 
-	for(int i = 0; i < ssrc_n; i++) {
-		Call *owner = (Call*)rtp[i]->call_owner;
-		if(!owner) continue;
-		//check for SSRC duplicity  - walk all RTP 
-		RTP *A = rtp[i];
-		RTP *B = NULL;
-		RTP *C = NULL;
-		for(int k = 0; owner and k < ssrc_n; k++) {
-			B = rtp[k];
-			if(!B->had_audio or B->stats.received == 0) {
-				if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] codec is comfortnoise received[%u]\n", 
-					B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k, B->stats.received);
-				B->skip = true;
-			}
-
-			if(A == B or A->skip or B->skip or A->stats.received < 50 or B->stats.received < 50) continue; // do not compare with ourself or already removed RTP or with RTP with <20 packets
-
-			// check if A or B time overlaps - if not we cannot treat it as duplicate stream 
-			u_int64_t Astart = A->first_packet_time * 1000000ull + A->first_packet_usec;
-			u_int64_t Astop = A->last_pcap_header_ts;
-			u_int64_t Bstart = B->first_packet_time * 1000000ull + B->first_packet_usec;
-			u_int64_t Bstop = B->last_pcap_header_ts;
-			if(((Bstart > Astart) and (Bstart > Astop)) or ((Astart > Bstart) and (Astart > Bstop))) {
-				if(verbosity > 1) syslog(LOG_ERR, "Not removing SSRC[%x][%p] and SSRC[%x][%p] %lu %lu\n", A->ssrc, A, B->ssrc, B, Astart, Bstop);
-				continue;
-				
-			}
-
-			if(A->ssrc == B->ssrc) {
-				if(A->daddr == B->daddr and A->saddr == B->saddr and A->sport == B->sport and A->dport == B->dport){
-					// A and B have the same SSRC but both is identical ips and ports
-					continue;
-				}
-				// found another stream with the same SSRC 
-
-				if(owner->get_index_by_ip_port(A->daddr, A->dport) >= 0) {
-					//A.daddr is in SDP
-					if(owner->get_index_by_ip_port(B->daddr, B->dport) >= 0) {
-						//B.daddr is also in SDP now we have to decide if A or B will be removed. Check if we remove B if there will be still B.dst in some other RTP stream 
-						bool test = false;
-						for(int i = 0; i < ssrc_n; i++) {
-							C = rtp[i];
-							if(C->skip or C == B or C->codec != B->codec) continue; 
-							if(B->daddr == C->daddr){
-								// we have found another stream C with the same B.daddr so we can remove the stream B
-								test = true;
-								break;
-							}
-						}
-						if(test) {
-							B->skip = true;
-							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x][%p] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 0\n", 
-								B->ssrc, B, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k);
-						} else {
-							// test is not true which means that if we remove B there will be no other stream with the B.daddr so we can remove A
-							A->skip = true;
-							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x][%p] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
-								A->ssrc, A, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
-						}
-					} else {
-						// B.daddr is not in SDP but A.dst is in SDP - but lets check if removing B will not remove all caller/called streams 
-						int caller_called = B->iscaller;
-						bool test = false;
-						for(int i = 0; i < ssrc_n; i++) {
-							C = rtp[i];
-							if(C == B or C->skip) continue;
-							if(C->iscaller == caller_called) {
-								test = true;
-							}
-						}
-						if(test) {
-							// B can be removed because removing it will still leave some caller/called stream
-							B->skip = 1;
-							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 2B\n", 
-								B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k);
-						} else {
-							// B cannot be removed because the B is the last caller/called stream
-							A->skip = 1;
-							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 2A\n", 
-								A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
-						}
-					}
-				} else {
-					//A.daddr is not in SDP so we can remove that stream 
-					A->skip = 1;
-					if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 33\n", 
-						A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
-				}
-			}
+	bool okSelect = false;
+	if(opt_saveaudio_filteripbysipip) {
+		if(selectRtpStreams_bySipcallerip()) {
+			okSelect = true;
 		}
+	}
+	if(!okSelect) {
+		this->selectRtpStreams();
+		if(this->existsConcurenceInSelectedRtpStream(-1, 200) && 
+		   !selectRtpStreams_byMaxLengthInLink()) {
+			this->selectRtpStreams();
+		}
+	}
+	
+	if(sverb.read_rtp) {
+		this->printSelectedRtpStreams(-1, false);
 	}
 
 	if(!(flags & FLAG_FORMATAUDIO_OGG)) {
@@ -2116,6 +2042,245 @@ Call::convertRawToWav() {
 		Call::_addtocachequeue(tmp);
 	}
 	return 0;
+}
+
+bool Call::selectRtpStreams() {
+	for(int i = 0; i < ssrc_n; i++) {
+		rtp[i]->skip = false;
+	}
+	// decide which RTP streams should be skipped 
+	for(int i = 0; i < ssrc_n; i++) {
+		Call *owner = (Call*)rtp[i]->call_owner;
+		if(!owner) continue;
+		//check for SSRC duplicity  - walk all RTP 
+		RTP *A = rtp[i];
+		RTP *B = NULL;
+		RTP *C = NULL;
+		for(int k = 0; owner and k < ssrc_n; k++) {
+			B = rtp[k];
+			if(!B->had_audio or B->stats.received == 0) {
+				if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] codec is comfortnoise received[%u]\n", 
+					B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k, B->stats.received);
+				B->skip = true;
+			}
+
+			if(A == B or A->skip or B->skip or A->stats.received < 50 or B->stats.received < 50) continue; // do not compare with ourself or already removed RTP or with RTP with <20 packets
+
+			// check if A or B time overlaps - if not we cannot treat it as duplicate stream 
+			u_int64_t Astart = A->first_packet_time * 1000000ull + A->first_packet_usec;
+			u_int64_t Astop = A->last_pcap_header_ts;
+			u_int64_t Bstart = B->first_packet_time * 1000000ull + B->first_packet_usec;
+			u_int64_t Bstop = B->last_pcap_header_ts;
+			if(((Bstart > Astart) and (Bstart > Astop)) or ((Astart > Bstart) and (Astart > Bstop))) {
+				if(verbosity > 1) syslog(LOG_ERR, "Not removing SSRC[%x][%p] and SSRC[%x][%p] %lu %lu\n", A->ssrc, A, B->ssrc, B, Astart, Bstop);
+				continue;
+				
+			}
+
+			if(A->ssrc == B->ssrc) {
+				if(A->daddr == B->daddr and A->saddr == B->saddr and A->sport == B->sport and A->dport == B->dport){
+					// A and B have the same SSRC but both is identical ips and ports
+					continue;
+				}
+				// found another stream with the same SSRC 
+
+				if(owner->get_index_by_ip_port(A->daddr, A->dport) >= 0) {
+					//A.daddr is in SDP
+					if(owner->get_index_by_ip_port(B->daddr, B->dport) >= 0) {
+						//B.daddr is also in SDP now we have to decide if A or B will be removed. Check if we remove B if there will be still B.dst in some other RTP stream 
+						bool test = false;
+						for(int i = 0; i < ssrc_n; i++) {
+							C = rtp[i];
+							if(C->skip or C == B or C->codec != B->codec) continue; 
+							if(B->daddr == C->daddr){
+								// we have found another stream C with the same B.daddr so we can remove the stream B
+								test = true;
+								break;
+							}
+						}
+						if(test) {
+							B->skip = true;
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x][%p] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 0\n", 
+								B->ssrc, B, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k);
+						} else {
+							// test is not true which means that if we remove B there will be no other stream with the B.daddr so we can remove A
+							A->skip = true;
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x][%p] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 1\n", 
+								A->ssrc, A, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
+						}
+					} else {
+						// B.daddr is not in SDP but A.dst is in SDP - but lets check if removing B will not remove all caller/called streams 
+						int caller_called = B->iscaller;
+						bool test = false;
+						for(int i = 0; i < ssrc_n; i++) {
+							C = rtp[i];
+							if(C == B or C->skip) continue;
+							if(C->iscaller == caller_called) {
+								test = true;
+							}
+						}
+						if(test) {
+							// B can be removed because removing it will still leave some caller/called stream
+							B->skip = 1;
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 2B\n", 
+								B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k);
+						} else {
+							// B cannot be removed because the B is the last caller/called stream
+							A->skip = 1;
+							if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 2A\n", 
+								A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
+						}
+					}
+				} else {
+					//A.daddr is not in SDP so we can remove that stream 
+					A->skip = 1;
+					if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] 33\n", 
+						A->ssrc, inet_ntostring(htonl(A->saddr)).c_str(), A->sport, inet_ntostring(htonl(A->daddr)).c_str(), A->dport, A->iscaller, k);
+				}
+			}
+		}
+	}
+	return(true);
+}
+
+bool Call::selectRtpStreams_bySipcallerip() {
+	for(int i = 0; i < ssrc_n; i++) {
+		rtp[i]->skip = false;
+	}
+	unsigned countSelectStreams = 0;
+	for(int i = 0; i < ssrc_n; i++) {
+		if(rtp[i]->saddr != this->sipcallerip[0] && rtp[i]->daddr != this->sipcallerip[0]) {
+			rtp[i]->skip = true;
+		} else {
+			++countSelectStreams;
+		}
+	}
+	if(!countSelectStreams) {
+		for(int i = 0; i < ssrc_n; i++) {
+			rtp[i]->skip = false;
+		}
+	}
+	return(countSelectStreams > 0);
+}
+
+bool Call::selectRtpStreams_byMaxLengthInLink() {
+	for(int i = 0; i < ssrc_n; i++) {
+		rtp[i]->skip = false;
+	}
+	struct sLink {
+		sLink() {
+			length = 0;
+			bad = false;
+		}
+		list<int> streams_i;
+		u_int64_t length;
+		bool bad;
+	};
+	map<d_u_int32_t, sLink> links;
+	for(int i = 0; i < ssrc_n; i++) {
+		d_u_int32_t linkIndex = d_u_int32_t(min(rtp[i]->saddr, rtp[i]->daddr),
+						    max(rtp[i]->saddr, rtp[i]->daddr));
+		links[linkIndex].streams_i.push_back(i);
+		links[linkIndex].length += rtp[i]->last_pcap_header_ts - (rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec);
+	}
+	while(true) {
+		unsigned max_count_streams = 0;
+		for(map<d_u_int32_t, sLink>::iterator iter = links.begin(); iter != links.end(); iter++) {
+			if(!iter->second.bad &&
+			   iter->second.streams_i.size() > max_count_streams) {
+				max_count_streams = iter->second.streams_i.size();
+			}
+		}
+		if(!max_count_streams) {
+			break;
+		}
+		u_int64_t max_length = 0;
+		d_u_int32_t max_length_linkIndex;
+		for(map<d_u_int32_t, sLink>::iterator iter = links.begin(); iter != links.end(); iter++) {
+			if(!iter->second.bad &&
+			   iter->second.streams_i.size() == max_count_streams &&
+			   iter->second.length > max_length) {
+				max_length = iter->second.length;
+				max_length_linkIndex = iter->first;
+			}
+		}
+		if(!max_length) {
+			break;
+		}
+		for(int i = 0; i < ssrc_n; i++) {
+			rtp[i]->skip = true;
+		}
+		for(list<int>::iterator iter = links[max_length_linkIndex].streams_i.begin(); iter != links[max_length_linkIndex].streams_i.end(); iter++) {
+			rtp[*iter]->skip = false;
+		}
+		if(this->existsConcurenceInSelectedRtpStream(-1, 200)) {
+			links[max_length_linkIndex].bad = true;
+		} else {
+			return(true);
+		}
+	}
+	for(int i = 0; i < ssrc_n; i++) {
+		rtp[i]->skip = false;
+	}
+	return(false);
+}
+
+u_int64_t Call::getFirstTimeInRtpStreams(int caller, bool selected) {
+	u_int64_t firstTime = 0;
+	for(int i = 0; i < ssrc_n; i++) {
+		if((caller == -1 || rtp[i]->iscaller == caller) &&
+		   (!selected || !rtp[i]->skip)) {
+			if(!firstTime || (rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec) < firstTime) {
+				firstTime = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec;
+			}
+		}
+	}
+	return(firstTime);
+}
+
+void Call::printSelectedRtpStreams(int caller, bool selected) {
+	u_int64_t firstTime = this->getFirstTimeInRtpStreams(caller, selected);
+	for(int pass_caller = 1; pass_caller >= 0; pass_caller--) {
+		for(int i = 0; i < ssrc_n; i++) {
+			if((caller == -1 || pass_caller == caller) && 
+			   rtp[i]->iscaller == pass_caller &&
+			   (!selected || !rtp[i]->skip)) {
+				u_int64_t start = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec - firstTime;
+				u_int64_t stop = rtp[i]->last_pcap_header_ts - firstTime;
+				cout << hex << setw(10) << rtp[i]->ssrc << dec << "   "
+				     << (rtp[i]->iscaller ? "caller" : "called") << "   "
+				     << setw(10) << (start / 1000000.) << " - "
+				     << setw(10) << (stop / 1000000.) <<  "   "
+				     << setw(15) << inet_ntostring(htonl(rtp[i]->saddr)) << " -> " << setw(15) << inet_ntostring(htonl(rtp[i]->daddr)) << "   "
+				     << (rtp[i]->skip ? "SKIP" : "")
+				     << endl;
+			}
+		}
+	}
+}
+
+bool Call::existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms) {
+	if(caller == -1) {
+		return(existsConcurenceInSelectedRtpStream(0, tolerance_ms) ||
+		       existsConcurenceInSelectedRtpStream(1, tolerance_ms));
+	}
+	for(int i = 0; i < ssrc_n; i++) {
+		if(rtp[i]->iscaller == caller && !rtp[i]->skip) {
+			u_int64_t a_start = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec;
+			u_int64_t a_stop = rtp[i]->last_pcap_header_ts;
+			for(int j = 0; j < ssrc_n; j++) {
+				if(j != i && rtp[j]->iscaller == caller && !rtp[j]->skip) {
+					u_int64_t b_start = rtp[j]->first_packet_time * 1000000ull + rtp[j]->first_packet_usec;
+					u_int64_t b_stop = rtp[j]->last_pcap_header_ts;
+					if(!(b_start + tolerance_ms * 1000 > a_stop ||
+					     a_start + tolerance_ms * 1000 > b_stop)) {
+						return(true);
+					}
+				}
+			}
+		}
+	}
+	return(false);
 }
 
 size_t write_data(char *ptr, size_t size, size_t nmemb, void *userdata) {
