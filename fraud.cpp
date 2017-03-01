@@ -835,9 +835,6 @@ void FraudAlertReg::loadAlertVirt() {
 }
 
 void FraudAlertReg::loadFilters() {
-	FraudAlertReg_filter *filter = new FraudAlertReg_filter(this);
-	filter->setFilter("main", dbRow["config_filter_register"].c_str());
-	filters[0] = filter;
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->query(string(
 		"select *\
@@ -845,9 +842,14 @@ void FraudAlertReg::loadFilters() {
 		 where alerts_id = ") + intToString(dbId));
 	SqlDb_row dbRowFilters;
 	while((dbRowFilters = sqlDb->fetchRow())) {
-		filter = new FraudAlertReg_filter(this);
+		FraudAlertReg_filter *filter = new FraudAlertReg_filter(this);
 		filter->setFilter(dbRowFilters["descr"].c_str(), dbRowFilters["config_filter_register"].c_str());
 		filters[atoi(dbRowFilters["id"].c_str())] = filter;
+	}
+	if(filters.size() == 0) {
+		FraudAlertReg_filter *filter = new FraudAlertReg_filter(this);
+		filter->setFilter("main", dbRow["config_filter_register"].c_str());
+		filters[0] = filter;
 	}
 	delete sqlDb;
 }
