@@ -1,3 +1,19 @@
+19.1 1.3.2017
+=============
+- fix and enhance SIP decryption, not it supports SSLv3, TLSv1, TLSv1.1 and TLSv1.2 (new libdssl) (for old implementation use ssl = old, default is now libdssl if ssl = yes) [VS-573]
+- less memory usage 
+- fix registration expirations [VG-1167]
+- allow rtpfromsdp_onlysip option also for skinny [VS-574]
+- add support for destination mysql port for '-X10' switch (db migration) [VS-576]
+- fix loading SIP REGISTER expire default filters [VG-1148]
+- fix SSLv3 only when upgrading from 19.0.1 (if on static 19.0.1 you must upgrade manually)
+
+
+19.0.2 16.2.2017
+================
+- compile with opensslv3 support
+
+
 19.0.1 16.2.2017
 ================
 - fix broken audio decode (since 19.0) when multiple RTP streams were recorded which belongs both to caller or called (with the same SSRC) [VS-357]
