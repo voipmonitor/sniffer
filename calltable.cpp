@@ -163,6 +163,7 @@ extern int opt_saveaudio_stereo;
 extern int opt_saveaudio_reversestereo;
 extern float opt_saveaudio_oggquality;
 extern bool opt_saveaudio_filteripbysipip;
+extern bool opt_saveaudio_filter_ext;
 extern int opt_skinny;
 extern int opt_enable_fraud;
 extern char opt_callidmerge_header[128];
@@ -1477,7 +1478,8 @@ Call::convertRawToWav() {
 	}
 	if(!okSelect) {
 		this->selectRtpStreams();
-		if(this->existsConcurenceInSelectedRtpStream(-1, 200) && 
+		if(opt_saveaudio_filter_ext &&
+		   this->existsConcurenceInSelectedRtpStream(-1, 200) && 
 		   !selectRtpStreams_byMaxLengthInLink()) {
 			this->selectRtpStreams();
 		}
@@ -2163,20 +2165,20 @@ bool Call::selectRtpStreams_bySipcallerip() {
 	return(countSelectStreams > 0);
 }
 
+struct selectRtpStreams_byMaxLengthInLink_sLink {
+	selectRtpStreams_byMaxLengthInLink_sLink() {
+		length = 0;
+		bad = false;
+	}
+	list<int> streams_i;
+	u_int64_t length;
+	bool bad;
+};
 bool Call::selectRtpStreams_byMaxLengthInLink() {
 	for(int i = 0; i < ssrc_n; i++) {
 		rtp[i]->skip = false;
 	}
-	struct sLink {
-		sLink() {
-			length = 0;
-			bad = false;
-		}
-		list<int> streams_i;
-		u_int64_t length;
-		bool bad;
-	};
-	map<d_u_int32_t, sLink> links;
+	map<d_u_int32_t, selectRtpStreams_byMaxLengthInLink_sLink> links;
 	for(int i = 0; i < ssrc_n; i++) {
 		d_u_int32_t linkIndex = d_u_int32_t(min(rtp[i]->saddr, rtp[i]->daddr),
 						    max(rtp[i]->saddr, rtp[i]->daddr));
@@ -2185,7 +2187,7 @@ bool Call::selectRtpStreams_byMaxLengthInLink() {
 	}
 	while(true) {
 		unsigned max_count_streams = 0;
-		for(map<d_u_int32_t, sLink>::iterator iter = links.begin(); iter != links.end(); iter++) {
+		for(map<d_u_int32_t, selectRtpStreams_byMaxLengthInLink_sLink>::iterator iter = links.begin(); iter != links.end(); iter++) {
 			if(!iter->second.bad &&
 			   iter->second.streams_i.size() > max_count_streams) {
 				max_count_streams = iter->second.streams_i.size();
@@ -2196,7 +2198,7 @@ bool Call::selectRtpStreams_byMaxLengthInLink() {
 		}
 		u_int64_t max_length = 0;
 		d_u_int32_t max_length_linkIndex;
-		for(map<d_u_int32_t, sLink>::iterator iter = links.begin(); iter != links.end(); iter++) {
+		for(map<d_u_int32_t, selectRtpStreams_byMaxLengthInLink_sLink>::iterator iter = links.begin(); iter != links.end(); iter++) {
 			if(!iter->second.bad &&
 			   iter->second.streams_i.size() == max_count_streams &&
 			   iter->second.length > max_length) {
