@@ -1308,7 +1308,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	// codec changed 
 	if(defer_codec_change or 
-	    (owner->lastraw[iscaller] != this and (lastssrc and *lastssrc != ssrc)) or
+	    (owner->lastraw[iscaller] != this and (lastssrc and *lastssrc != ssrc and (owner->lastcalledrtp and owner->lastcalledrtp->daddr == daddr))) or
 	   (curpayload != prev_payload and 
 	    codec != PAYLOAD_TELEVENT and 
 	    (prev_codec != PAYLOAD_TELEVENT or !codecchanged) and 
