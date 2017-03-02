@@ -401,6 +401,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	is_ssl = false;
 
 	rtp_zeropackets_stored = 0;
+	
+	last_udptl_seq = 0;
 
 	lastraw[0] = NULL;
 	lastraw[1] = NULL;
@@ -979,7 +981,7 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 
 /* analyze rtp packet */
 bool
-Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char enable_save_packet, char *ifname) {
+Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname) {
  
 	extern int opt_vlan_siprtpsame;
 	if(packetS->datalen == 12) {
@@ -1242,6 +1244,18 @@ read:
 	}
 	
 end:
+	extern int opt_fax_dup_seq_check;
+	if(opt_fax_dup_seq_check &&
+	   is_fax && packetS->datalen > 3) {
+		UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
+		if(udptl->data_field) {
+			unsigned seq = htons(udptl->sequence);
+			if(seq <= this->last_udptl_seq) {
+				enable_save_packet = false;
+			}
+			this->last_udptl_seq = seq;
+		}
+	}
 	if(enable_save_packet) {
 		if((this->silencerecording || (this->flags & FLAG_SAVERTPHEADER)) && !this->isfax && !record_dtmf) {
 			if(packetS->datalen >= RTP_FIXED_HEADERLEN &&

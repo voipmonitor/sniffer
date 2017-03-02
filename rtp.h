@@ -141,6 +141,28 @@ struct RTPFixedHeader {
 };
 #endif
 
+struct UDPTLFixedHeader {
+	u_int16_t sequence;
+	u_int8_t size;
+#if     __BYTE_ORDER == __BIG_ENDIAN
+	// For big endian boxes
+	unsigned char data_field:1;
+	unsigned char type:1;
+	unsigned char t30_indicator:5;
+	unsigned char _fill:1;
+#else
+	// For little endian boxes
+	unsigned char _fill:1;
+	unsigned char t30_indicator:5;
+	unsigned char type:1;
+	unsigned char data_field:1;
+#endif
+#ifdef PACKED
+} __attribute__((packed));
+#else
+};
+#endif
+
 
 /**
  * This class implements operations on RTP strem

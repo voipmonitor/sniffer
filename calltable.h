@@ -482,6 +482,8 @@ public:
 	bool rtp_zeropackets_stored;
 	
 	sRtcpXrData rtcpXrData;
+	
+	unsigned last_udptl_seq;
 
 	/**
 	 * constructor
@@ -517,7 +519,7 @@ public:
 	 * Used for reading RTP packet 
 	 * 
 	*/
-	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char enable_save_packet, char *ifname = NULL);
+	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname = NULL);
 
 	/**
 	 * @brief read RTCP packet 
