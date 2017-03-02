@@ -1,12 +1,16 @@
-19.1 1.3.2017
-=============
-- fix and enhance SIP decryption, not it supports SSLv3, TLSv1, TLSv1.1 and TLSv1.2 (new libdssl) (for old implementation use ssl = old, default is now libdssl if ssl = yes) [VS-573]
-- less memory usage 
+19.1.1 2.3.2017
+===============
+- fix and enhance SIP decryption, now SSLv3, TLSv1, TLSv1.1 and TLSv1.2 are supported (new libdssl) (for old implementation use ssl = old, default is now libdssl if ssl = yes) [VS-573]
+- fix SSLv3 only when upgrading from 19.0.1 (if on static 19.0.1 you must upgrade manually)
 - fix registration expirations [VG-1167]
 - allow rtpfromsdp_onlysip option also for skinny [VS-574]
-- add support for destination mysql port for '-X10' switch (db migration) [VS-576]
 - fix loading SIP REGISTER expire default filters [VG-1148]
-- fix SSLv3 only when upgrading from 19.0.1 (if on static 19.0.1 you must upgrade manually)
+- reimplement heurestic which determines which streams should be assigned to which party (caller/called) in case of many streams in a call
+- fix caller/called stream assign when using callidmerge_header option in voipmonitor.conf
+- fix choppy audio when two streams (parallel) belongs to caller or called with different SSRC 
+- fix parsing from/to headers for 1 character lenght (like called "*") [VS-577]
+- less memory usage 
+- add support for destination mysql port for '-X10' switch (db migration) [VS-576]
 
 
 19.0.2 16.2.2017
