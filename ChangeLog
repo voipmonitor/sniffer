@@ -3,6 +3,7 @@
 - fix and enhance SIP decryption, now SSLv3, TLSv1, TLSv1.1 and TLSv1.2 are supported (new libdssl) (for old implementation use ssl = old, default is now libdssl if ssl = yes) [VS-573]
 - fix SSLv3 only when upgrading from 19.0.1 (if on static 19.0.1 you must upgrade manually)
 - fix registration expirations [VG-1167]
+- new command line parameter --fax-deduplicate which deduplicates udptl by seq [VS-569] [VS-571]
 - allow rtpfromsdp_onlysip option also for skinny [VS-574]
 - fix loading SIP REGISTER expire default filters [VG-1148]
 - reimplement heurestic which determines which streams should be assigned to which party (caller/called) in case of many streams in a call
