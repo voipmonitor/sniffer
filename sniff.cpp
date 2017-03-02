@@ -1081,7 +1081,7 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 		}
 	}
 	if(ok) {
-		if(end > begin && end - begin + 1 <= peername_tag_len) {
+		if(end >= begin && end - begin + 1 <= peername_tag_len) {
 			memcpy(rslt, begin, MIN(end - begin + 1, rslt_max_len));
 			rslt[MIN(end - begin + 1, rslt_max_len - 1)] = '\0';
 			return(true);
@@ -1137,6 +1137,7 @@ void testPN() {
 		"Anonymous <sip:c8oqz84zk7z@privacy.org>;tag=hyh8",
 		"sip:+12125551212@server.phone2net.com;tag=887s",
 		"\"Call Manager\" <sip:10.45.55.17>;tag=486739~121a78c0-1834-4f45-9aef-960da02c9618-29204586",
+		"sip:*@10.99.1.6:5060",
 		"sip:kljahfkjlahld",
 		"ů§jk§ůjsip:kljahfkjlahld",
 		"klhkjlh"
