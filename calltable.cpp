@@ -2215,10 +2215,11 @@ bool Call::selectRtpStreams_byMaxLengthInLink() {
 		for(list<int>::iterator iter = links[max_length_linkIndex].streams_i.begin(); iter != links[max_length_linkIndex].streams_i.end(); iter++) {
 			rtp[*iter]->skip = false;
 		}
-		if(this->existsConcurenceInSelectedRtpStream(-1, 200)) {
-			links[max_length_linkIndex].bad = true;
-		} else {
+		if(!this->existsConcurenceInSelectedRtpStream(-1, 200) &&
+		   this->existsBothDirectionsInSelectedRtpStream()) {
 			return(true);
+		} else {
+			links[max_length_linkIndex].bad = true;
 		}
 	}
 	for(int i = 0; i < ssrc_n; i++) {
@@ -2283,6 +2284,21 @@ bool Call::existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms
 		}
 	}
 	return(false);
+}
+
+bool Call::existsBothDirectionsInSelectedRtpStream() {
+	bool existsCalllerDirection = false;
+	bool existsCallledDirection = false;
+	for(int i = 0; i < ssrc_n; i++) {
+		if(!rtp[i]->skip) {
+			if(rtp[i]->iscaller) {
+				existsCalllerDirection = true;
+			} else {
+				existsCallledDirection = true;
+			}
+		}
+	}
+	return(existsCalllerDirection && existsCallledDirection);
 }
 
 size_t write_data(char *ptr, size_t size, size_t nmemb, void *userdata) {

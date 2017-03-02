@@ -177,8 +177,8 @@ public:
 	struct sSipcalleRD_IP {
 		sSipcalleRD_IP() {
 			for(unsigned i = 0; i < MAX_SIPCALLERDIP; i++) {
-				sipcallerip[0] = 0;
-				sipcalledip[0] = 0;
+				sipcallerip[i] = 0;
+				sipcalledip[i] = 0;
 			}
 		}
 		u_int32_t sipcallerip[MAX_SIPCALLERDIP];
@@ -859,6 +859,24 @@ public:
 	u_int64_t getFirstTimeInRtpStreams(int caller, bool selected);
 	void printSelectedRtpStreams(int caller, bool selected);
 	bool existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms);
+	bool existsBothDirectionsInSelectedRtpStream();
+	
+	void setSipcallerip(u_int32_t ip, const char *call_id) {
+		extern char opt_callidmerge_header[128];
+		sipcallerip[0] = ip;
+		if(opt_callidmerge_header[0] != '\0' &&
+		   call_id && *call_id) {
+			map_sipcallerdip[call_id].sipcallerip[0] = ip;
+		}
+	}
+	void setSipcalledip(u_int32_t ip, const char *call_id) {
+		extern char opt_callidmerge_header[128];
+		sipcalledip[0] = ip;
+		if(opt_callidmerge_header[0] != '\0' &&
+		   call_id && *call_id) {
+			map_sipcallerdip[call_id].sipcalledip[0] = ip;
+		}
+	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];

@@ -2079,8 +2079,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	call->chantype = CHAN_SIP;
 	call->is_ssl = packetS->is_ssl;
 	call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
-	call->sipcallerip[0] = packetS->saddr;
-	call->sipcalledip[0] = packetS->daddr;
+	call->setSipcallerip(packetS->saddr, packetS->get_callid());
+	call->setSipcalledip(packetS->daddr, packetS->get_callid());
 	call->sipcallerport = packetS->source;
 	call->sipcalledport = packetS->dest;
 	call->flags = flags;
@@ -2910,7 +2910,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 
 	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
 		if(call->sipcallerip[0] == packetS->saddr) {
-			call->sipcalledip[0] = packetS->daddr;
+			call->setSipcalledip(packetS->daddr, packetS->get_callid());
 		}
 		if(opt_update_dstnum_onanswer) {
 			char branch[100];
@@ -2940,7 +2940,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				updateDest = true;
 			}
 			if(updateDest) {
-				call->sipcalledip[0] = packetS->daddr;
+				call->setSipcalledip(packetS->daddr, packetS->get_callid());
 				call->sipcalledport = packetS->dest;
 				call->lastsipcallerip = packetS->saddr;
 			}
