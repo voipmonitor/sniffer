@@ -1,3 +1,8 @@
+19.2 3.3.2017
+=============
+- command line parameter --fax-deduplicate for deduplicate udptl by seq 
+
+
 19.1.1 2.3.2017
 ===============
 - fix and enhance SIP decryption, now SSLv3, TLSv1, TLSv1.1 and TLSv1.2 are supported (new libdssl) (for old implementation use ssl = old, default is now libdssl if ssl = yes) [VS-573]
