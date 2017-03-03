@@ -1288,17 +1288,17 @@ end:
 					u_int16_t old_ether_type = header_eth->ether_type;
 					header_eth->ether_type = htons(0x800);
 					createSimpleUdpDataPacket(sizeof(ether_header), &header, &packet,
-								  (u_char*)packetS->packet, (u_char*)packetS->data_(), packetS->datalen,
+								  (u_char*)packetS->packet, (u_char*)packetS->data_(), htons(((udphdr2*)(packetS->packet + packetS->header_ip_offset + sizeof(iphdr2)))->len) - sizeof(udphdr2) /* eliminate padding */,
 								  packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
 								  packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
 					udptlDumper->dumper->dump(header, packet, packetS->dlt);
 					delete [] packet;
 					delete header;
 					header_eth->ether_type = old_ether_type;
+					enable_save_packet = false;
 				}
 			}
 		}
-		enable_save_packet = false;
 	} else {
 		extern int opt_fax_dup_seq_check;
 		if(opt_fax_dup_seq_check &&
