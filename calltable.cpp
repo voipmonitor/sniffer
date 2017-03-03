@@ -1284,15 +1284,19 @@ end:
 			if(parseEtherHeader(packetS->dlt, (u_char*)packetS->packet, header_sll, header_eth, header_ip_offset, protocol)) {
 				pcap_pkthdr *header;
 				u_char *packet;
-				createSimpleUdpDataPacket(header_ip_offset,  &header, &packet,
+				u_int16_t old_ether_type = header_eth->ether_type;
+				header_eth->ether_type = htons(0x800);
+				createSimpleUdpDataPacket(sizeof(ether_header), &header, &packet,
 							  (u_char*)packetS->packet, (u_char*)packetS->data_(), packetS->datalen,
 							  packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
 							  packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
 				udptlDumper->dumper->dump(header, packet, packetS->dlt);
 				delete [] packet;
 				delete header;
+				header_eth->ether_type = old_ether_type;
 			}
 		}
+		enable_save_packet = false;
 	}
 	extern int opt_fax_dup_seq_check;
 	if(opt_fax_dup_seq_check &&
