@@ -1249,65 +1249,68 @@ read:
 	
 end:
 	extern int opt_fax_create_udptl_streams;
-	if(is_fax && opt_fax_create_udptl_streams) {
-		sUdptlDumper *udptlDumper;
-		sStreamId streamId(packetS->saddr, packetS->source, packetS->daddr, packetS->dest);
-		map<sStreamId, sUdptlDumper*>::iterator iter = udptlDumpers.find(streamId);
-		if(iter == udptlDumpers.end()) {
-			udptlDumper = new FILE_LINE(0) sUdptlDumper();
-			udptlDumper->dumper = new FILE_LINE(0) PcapDumper();
-			extern pcap_t *global_pcap_handle;
-			string filename = "udptl_stream_" + 
-					  inet_ntostring(htonl(packetS->saddr)) + "_" + 
-					  intToString(packetS->source) + "_" + 
-					  inet_ntostring(htonl(packetS->daddr)) + "_" + 
-					  intToString(packetS->dest) + ".pcap";
-			udptlDumper->dumper->open(tsf_na, (get_pathname(tsf_rtp) + "/" + filename).c_str(), global_pcap_handle, packetS->dlt);
-			udptlDumpers[streamId] = udptlDumper;
-		} else {
-			udptlDumper = iter->second;
-		}
-		bool enableDump = true;
-		UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
-		if(udptl->data_field) {
-			unsigned seq = htons(udptl->sequence);
-			if(seq <= udptlDumper->last_seq) {
-				enableDump = false;
+	if(opt_fax_create_udptl_streams) {
+		if(is_fax) {
+			sUdptlDumper *udptlDumper;
+			sStreamId streamId(packetS->saddr, packetS->source, packetS->daddr, packetS->dest);
+			map<sStreamId, sUdptlDumper*>::iterator iter = udptlDumpers.find(streamId);
+			if(iter == udptlDumpers.end()) {
+				udptlDumper = new FILE_LINE(0) sUdptlDumper();
+				udptlDumper->dumper = new FILE_LINE(0) PcapDumper();
+				extern pcap_t *global_pcap_handle;
+				string filename = "udptl_stream_" + 
+						  inet_ntostring(htonl(packetS->saddr)) + "_" + 
+						  intToString(packetS->source) + "_" + 
+						  inet_ntostring(htonl(packetS->daddr)) + "_" + 
+						  intToString(packetS->dest) + ".pcap";
+				udptlDumper->dumper->open(tsf_na, (get_pathname(tsf_rtp) + "/" + filename).c_str(), global_pcap_handle, packetS->dlt);
+				udptlDumpers[streamId] = udptlDumper;
+			} else {
+				udptlDumper = iter->second;
 			}
-			udptlDumper->last_seq = seq;
-		}
-		if(enableDump) {
-			sll_header *header_sll = NULL;
-			ether_header *header_eth = NULL;
-			u_int header_ip_offset = 0;
-			int protocol = 0;
-			if(parseEtherHeader(packetS->dlt, (u_char*)packetS->packet, header_sll, header_eth, header_ip_offset, protocol)) {
-				pcap_pkthdr *header;
-				u_char *packet;
-				u_int16_t old_ether_type = header_eth->ether_type;
-				header_eth->ether_type = htons(0x800);
-				createSimpleUdpDataPacket(sizeof(ether_header), &header, &packet,
-							  (u_char*)packetS->packet, (u_char*)packetS->data_(), packetS->datalen,
-							  packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
-							  packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
-				udptlDumper->dumper->dump(header, packet, packetS->dlt);
-				delete [] packet;
-				delete header;
-				header_eth->ether_type = old_ether_type;
+			bool enableDump = true;
+			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
+			if(udptl->data_field) {
+				unsigned seq = htons(udptl->sequence);
+				if(seq <= udptlDumper->last_seq) {
+					enableDump = false;
+				}
+				udptlDumper->last_seq = seq;
+			}
+			if(enableDump) {
+				sll_header *header_sll = NULL;
+				ether_header *header_eth = NULL;
+				u_int header_ip_offset = 0;
+				int protocol = 0;
+				if(parseEtherHeader(packetS->dlt, (u_char*)packetS->packet, header_sll, header_eth, header_ip_offset, protocol)) {
+					pcap_pkthdr *header;
+					u_char *packet;
+					u_int16_t old_ether_type = header_eth->ether_type;
+					header_eth->ether_type = htons(0x800);
+					createSimpleUdpDataPacket(sizeof(ether_header), &header, &packet,
+								  (u_char*)packetS->packet, (u_char*)packetS->data_(), packetS->datalen,
+								  packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
+								  packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
+					udptlDumper->dumper->dump(header, packet, packetS->dlt);
+					delete [] packet;
+					delete header;
+					header_eth->ether_type = old_ether_type;
+				}
 			}
 		}
 		enable_save_packet = false;
-	}
-	extern int opt_fax_dup_seq_check;
-	if(opt_fax_dup_seq_check &&
-	   is_fax && packetS->datalen > 3) {
-		UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
-		if(udptl->data_field) {
-			unsigned seq = htons(udptl->sequence);
-			if(seq <= this->last_udptl_seq) {
-				enable_save_packet = false;
+	} else {
+		extern int opt_fax_dup_seq_check;
+		if(opt_fax_dup_seq_check &&
+		   is_fax && packetS->datalen > 3) {
+			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
+			if(udptl->data_field) {
+				unsigned seq = htons(udptl->sequence);
+				if(seq <= this->last_udptl_seq) {
+					enable_save_packet = false;
+				}
+				this->last_udptl_seq = seq;
 			}
-			this->last_udptl_seq = seq;
 		}
 	}
 	if(enable_save_packet) {
