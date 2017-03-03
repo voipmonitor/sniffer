@@ -239,6 +239,7 @@ int readend = 0;
 int opt_dup_check = 0;
 int opt_dup_check_ipheader = 1;
 int opt_fax_dup_seq_check = 0;
+int opt_fax_create_udptl_streams = 0;
 int rtptimeout = 300;
 int sipwithoutrtptimeout = 3600;
 int absolute_timeout = 4 * 3600;
@@ -5651,6 +5652,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"clean-obsolete", 0, 0, 306},
 	    {"check-db", 0, 0, 307},
 	    {"fax-deduplicate", 0, 0, 308},
+	    {"create-udptl-streams", 0, 0, 309},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -5999,6 +6001,9 @@ void get_command_line_arguments() {
 				break;
 			case 308:
 				opt_fax_dup_seq_check = 1;
+				break;
+			case 309:
+				opt_fax_create_udptl_streams = 1;
 				break;
 			case 'c':
 				opt_nocdr = 1;

@@ -126,6 +126,23 @@ struct d_item
 	type_item items[2];
 };
 
+struct sStreamId {
+	sStreamId(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport) {
+		s = d_u_int32_t(sip, sport);
+		c = d_u_int32_t(cip, cport);
+	}
+	bool operator == (const sStreamId& other) const { 
+		return(this->s == other.s &&
+		       this->c == other.c); 
+	}
+	bool operator < (const sStreamId& other) const { 
+		return(this->s < other.s ||
+		       (this->s == other.s && this->c < other.c)); 
+	}
+	d_u_int32_t s;
+	d_u_int32_t c;
+};
+
 template <class type_atomic>
 class vm_atomic {
 public:

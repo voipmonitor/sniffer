@@ -172,11 +172,11 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 		return;
 	}
 	cSslDsslSession *session = NULL;
-	sSslDsslSessionId sid(dir == ePacketDirFromClient ? daddr : saddr,
-			      dir == ePacketDirFromClient ? dport : sport,
-			      dir == ePacketDirFromClient ? saddr : daddr,
-			      dir == ePacketDirFromClient ? sport : dport);
-	map<sSslDsslSessionId, cSslDsslSession*>::iterator iter_session;
+	sStreamId sid(dir == ePacketDirFromClient ? daddr : saddr,
+		      dir == ePacketDirFromClient ? dport : sport,
+		      dir == ePacketDirFromClient ? saddr : daddr,
+		      dir == ePacketDirFromClient ? sport : dport);
+	map<sStreamId, cSslDsslSession*>::iterator iter_session;
 	iter_session = sessions.find(sid);
 	if(iter_session != sessions.end()) {
 		session = iter_session->second;
@@ -198,11 +198,11 @@ void cSslDsslSessions::destroySession(unsigned int saddr, unsigned int daddr, in
 		unlock_sessions();
 		return;
 	}
-	sSslDsslSessionId sid(dir == ePacketDirFromClient ? daddr : saddr,
-			      dir == ePacketDirFromClient ? dport : sport,
-			      dir == ePacketDirFromClient ? saddr : daddr,
-			      dir == ePacketDirFromClient ? sport : dport);
-	map<sSslDsslSessionId, cSslDsslSession*>::iterator iter_session;
+	sStreamId sid(dir == ePacketDirFromClient ? daddr : saddr,
+		      dir == ePacketDirFromClient ? dport : sport,
+		      dir == ePacketDirFromClient ? saddr : daddr,
+		      dir == ePacketDirFromClient ? sport : dport);
+	map<sStreamId, cSslDsslSession*>::iterator iter_session;
 	iter_session = sessions.find(sid);
 	if(iter_session != sessions.end()) {
 		delete iter_session->second;
@@ -236,7 +236,7 @@ void cSslDsslSessions::init() {
 }
 
 void cSslDsslSessions::term() {
-	map<sSslDsslSessionId, cSslDsslSession*>::iterator iter_session;
+	map<sStreamId, cSslDsslSession*>::iterator iter_session;
 	for(iter_session = sessions.begin(); iter_session != sessions.end();) {
 		delete iter_session->second;
 		sessions.erase(iter_session++);

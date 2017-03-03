@@ -27,23 +27,6 @@
 using namespace std;
 
 
-struct sSslDsslSessionId {
-	sSslDsslSessionId(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport) {
-		s = d_u_int32_t(sip, sport);
-		c = d_u_int32_t(cip, cport);
-	}
-	bool operator == (const sSslDsslSessionId& other) const { 
-		return(this->s == other.s &&
-		       this->c == other.c); 
-	}
-	bool operator < (const sSslDsslSessionId& other) const { 
-		return(this->s < other.s ||
-		       (this->s == other.s && this->c < other.c)); 
-	}
-	d_u_int32_t s;
-	d_u_int32_t c;
-};
-
 class cSslDsslSession {
 public:
 	enum eServerErrors {
@@ -100,7 +83,7 @@ private:
 		__sync_lock_release(&this->_sync_sessions);
 	}
 private:
-	map<sSslDsslSessionId, cSslDsslSession*> sessions;
+	map<sStreamId, cSslDsslSession*> sessions;
 	volatile int _sync_sessions;
 };
 

@@ -241,6 +241,19 @@ public:
 			(*this)[ssrc].add(tv, moslq, nlr);
 		}
 	};
+	struct sUdptlDumper {
+		sUdptlDumper() {
+			dumper = NULL;
+			last_seq = 0;
+		}
+		~sUdptlDumper() {
+			if(dumper) {
+				delete dumper;
+			}
+		}
+		PcapDumper *dumper;
+		unsigned last_seq;
+	};
 	enum eVoicemail {
 		voicemail_na,
 		voicemail_active,
@@ -885,6 +898,7 @@ private:
 	PcapDumper pcap;
 	PcapDumper pcapSip;
 	PcapDumper pcapRtp;
+	map<sStreamId, sUdptlDumper*> udptlDumpers;
 	volatile u_int16_t chunkBuffersCount;
 	list<u_int64_t> tarPosSip;
 	list<u_int64_t> tarPosRtp;
