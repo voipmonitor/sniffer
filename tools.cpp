@@ -478,7 +478,7 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
 			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
 			//curl_easy_setopt(curl, CURLOPT_SSLVERSION, 3);
-			curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+			curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_0);
 			curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
 			curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
 			curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
@@ -550,7 +550,7 @@ bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
-		curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+		curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_0);
 		curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
 		curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
 		curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
