@@ -219,6 +219,7 @@ extern bool _save_sip_history_request_types[1000];
 extern bool _save_sip_history_all_requests;
 extern bool _save_sip_history_all_responses;
 extern int opt_rtpfromsdp_onlysip;
+extern int opt_rtpfromsdp_onlysip_skinny;
 extern bool opt_t2_boost;
 unsigned int glob_ssl_calls = 0;
 extern int opt_bye_timeout;
@@ -3793,7 +3794,7 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 		if(calls) {
 			hash_node_call *node_call;
 			for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-				if((!opt_rtpfromsdp_onlysip ||
+				if((!(node_call->call->type == SKINNY_NEW ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
 				    (call_info_find_by_dest ?
 				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
 				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
@@ -6855,7 +6856,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	if(calls) {
 		hash_node_call *node_call;
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-			if((!opt_rtpfromsdp_onlysip ||
+			if((!(node_call->call->type == SKINNY_NEW ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
 			    (packetS->call_info_find_by_dest ?
 			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr) :
 			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr)) ||
