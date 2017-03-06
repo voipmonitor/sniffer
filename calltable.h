@@ -497,6 +497,8 @@ public:
 	sRtcpXrData rtcpXrData;
 	
 	unsigned last_udptl_seq;
+	
+	string force_spool_path;
 
 	/**
 	 * constructor

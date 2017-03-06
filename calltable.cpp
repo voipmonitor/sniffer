@@ -21,6 +21,7 @@
 #include <sys/socket.h>
 #include <sys/resource.h>
 #include <net/if.h>
+#include <dirent.h>
 
 #include <iostream>
 #include <iomanip>
@@ -711,6 +712,9 @@ Call::get_sensordir() {
 
 string
 Call::get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpoolDir) {
+	if(!force_spool_path.empty()) {
+		return(force_spool_path);
+	}
 	string spoolDir;
 	string sensorDir;
 	string timeDir;
@@ -1541,24 +1545,48 @@ Call::convertRawToWav() {
 	FILE *wav = NULL;
 	int adir = 0;
 	int bdir = 0;
-
-	bool okSelect = false;
-	if(opt_saveaudio_filteripbysipip) {
-		if(selectRtpStreams_bySipcallerip()) {
-			okSelect = true;
-		}
-	}
-	if(!okSelect) {
-		this->selectRtpStreams();
-		if(opt_saveaudio_filter_ext &&
-		   this->existsConcurenceInSelectedRtpStream(-1, 200) && 
-		   !selectRtpStreams_byMaxLengthInLink()) {
-			this->selectRtpStreams();
-		}
-	}
 	
-	if(sverb.read_rtp) {
-		this->printSelectedRtpStreams(-1, false);
+	bool force_convert_raw_to_wav = this->call_id == string("conv-raw-info") &&
+					!force_spool_path.empty();
+
+	if(!force_convert_raw_to_wav) {
+		bool okSelect = false;
+		if(opt_saveaudio_filteripbysipip) {
+			if(selectRtpStreams_bySipcallerip()) {
+				okSelect = true;
+			}
+		}
+		if(!okSelect) {
+			this->selectRtpStreams();
+			if(opt_saveaudio_filter_ext &&
+			   this->existsConcurenceInSelectedRtpStream(-1, 200) && 
+			   !selectRtpStreams_byMaxLengthInLink()) {
+				this->selectRtpStreams();
+			}
+		}
+		
+		if(sverb.read_rtp) {
+			this->printSelectedRtpStreams(-1, false);
+		}
+	} else {
+		DIR* dp = opendir(get_pathname(tsf_audio).c_str());
+		if(dp) {
+			dirent* de;
+			while((de = readdir(dp)) != NULL) {
+				if(de->d_type != 4 && string(de->d_name) != ".." && string(de->d_name) != ".") {
+					if(strstr(de->d_name, ".i0.rawInfo") ||
+					   strstr(de->d_name, ".i1.rawInfo")) {
+						cout << de->d_name << endl;
+						this->call_id = de->d_name;
+						this->call_id.resize(this->call_id.length() - 11);
+						strncpy(this->fbasename, this->call_id.c_str(), sizeof(this->fbasename));
+						this->fbasename[sizeof(this->fbasename) - 1] = 0;
+						break;
+					}
+				}
+			}
+			closedir(dp);
+		}
 	}
 
 	if(!(flags & FLAG_FORMATAUDIO_OGG)) {
@@ -1575,7 +1603,10 @@ Call::convertRawToWav() {
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			if(ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip) continue;
+			if(!force_convert_raw_to_wav &&
+			   (ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip)) {
+				continue;
+			}
 			adir = 1;
 			strncpy(wav0, get_pathfilename(tsf_audio, "i0.wav").c_str(), sizeof(wav0));
 			wav0[sizeof(wav0) - 1] = 0;
@@ -1591,7 +1622,10 @@ Call::convertRawToWav() {
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
-			if(ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip) continue;
+			if(!force_convert_raw_to_wav &&
+			   (ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip)) {
+				continue;
+			}
 			bdir = 1;
 			strncpy(wav1, get_pathfilename(tsf_audio, "i1.wav").c_str(), sizeof(wav1));
 			wav1[sizeof(wav1) - 1] = 0;
@@ -1762,8 +1796,9 @@ Call::convertRawToWav() {
 			string raw_pathfilename = this->get_pathfilename(tsf_audio, raw_extension);
 			samplerate = 1000 * get_ticks_bycodec(codec);
 			if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
-			if(ssrc_index >= ssrc_n ||
-			   last_ssrc_index >= (unsigned)ssrc_n) {
+			if(!force_convert_raw_to_wav &&
+			   (ssrc_index >= ssrc_n ||
+			    last_ssrc_index >= (unsigned)ssrc_n)) {
 				syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] or last_ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x]", 
 				       ssrc_index, last_ssrc_index, 
 				       ssrc_n, fbasename, raw_pathfilename.c_str(), 
@@ -1779,14 +1814,16 @@ Call::convertRawToWav() {
 				rawl.codec = codec;
 				rawl.filename = raw_pathfilename.c_str();
 				if(iter > 0) {
-					if(rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
-						  abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
-						  last_size > 10000) {
+					if(!force_convert_raw_to_wav &&
+					   (rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
+					    abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
+					    last_size > 10000)) {
 						// ignore this raw file it is duplicate 
 						if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
 						if(verbosity > 1) syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw_pathfilename.c_str(), rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 					} else {
-						if(rtp[rawl.ssrc_index]->skip) {
+						if(!force_convert_raw_to_wav &&
+						   rtp[rawl.ssrc_index]->skip) {
 							if(verbosity > 1) syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw_pathfilename.c_str(), rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
 							if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
 						} else {
@@ -1794,7 +1831,8 @@ Call::convertRawToWav() {
 						}
 					}
 				} else {
-					if(!rtp[rawl.ssrc_index]->skip) {
+					if(force_convert_raw_to_wav ||
+					   !rtp[rawl.ssrc_index]->skip) {
 						raws.push_back(rawl);
 					} else {
 						if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
@@ -2383,7 +2421,6 @@ size_t write_data(char *ptr, size_t size, size_t nmemb, void *userdata) {
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
- 
 	if(lastSIPresponseNum && nocdr_for_last_responses_count) {
 		for(int i = 0; i < nocdr_for_last_responses_count; i++) {
 			int lastSIPresponseNum_left = lastSIPresponseNum;

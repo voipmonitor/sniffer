@@ -811,6 +811,7 @@ int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
 
 int opt_test = 0;
+char opt_test_arg[1024] = "";
 bool opt_check_db = false;
 
 char *opt_untar_gui_params = NULL;
@@ -4360,6 +4361,15 @@ void test() {
 		sqlStore = NULL;
 		}
 		break;
+	case 310:
+		{
+		Call *call = new Call(0, (char*)"conv-raw-info", 0, 0);
+		call->type = INVITE;
+		call->force_spool_path = opt_test_arg;
+		sverb.noaudiounlink = true;
+		call->convertRawToWav();
+		}
+		break;
 	}
  
 	/*
@@ -5655,6 +5665,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"check-db", 0, 0, 307},
 	    {"fax-deduplicate", 0, 0, 308},
 	    {"create-udptl-streams", 0, 0, 309},
+	    {"conv-raw-info", 1, 0, 310},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -6006,6 +6017,12 @@ void get_command_line_arguments() {
 				break;
 			case 309:
 				opt_fax_create_udptl_streams = 1;
+				break;
+			case 310:
+				opt_test = c;
+				if(optarg) {
+					strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
+				}
 				break;
 			case 'c':
 				opt_nocdr = 1;
