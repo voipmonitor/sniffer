@@ -2813,6 +2813,7 @@ void JsonItem::parse(string valStr) {
 			this->items.push_back(newItem);
 		}
 	}
+	json_object_put(object);
 }
 
 JsonItem *JsonItem::getItem(string path, int index) {

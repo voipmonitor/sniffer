@@ -1576,7 +1576,6 @@ Call::convertRawToWav() {
 				if(de->d_type != 4 && string(de->d_name) != ".." && string(de->d_name) != ".") {
 					if(strstr(de->d_name, ".i0.rawInfo") ||
 					   strstr(de->d_name, ".i1.rawInfo")) {
-						cout << de->d_name << endl;
 						this->call_id = de->d_name;
 						this->call_id.resize(this->call_id.length() - 11);
 						strncpy(this->fbasename, this->call_id.c_str(), sizeof(this->fbasename));
