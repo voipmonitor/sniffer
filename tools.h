@@ -352,6 +352,7 @@ private:
 	u_int32_t bufferCapacity;
 	u_int32_t capacityReserve;
 };
+bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL);
 bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL);
 double ts2double(unsigned int sec, unsigned int usec);
 long long GetFileSize(std::string filename);
