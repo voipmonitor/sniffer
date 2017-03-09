@@ -536,6 +536,83 @@ size_t _get_url_response_writer_function(void *ptr, size_t size, size_t nmemb, S
 	response->add(ptr, size * nmemb);
 	return size * nmemb;
 }
+
+bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error) {
+	if(error) {
+		*error = "";
+	}
+	bool rslt = false;
+	CURL *curl = curl_easy_init();
+	if(curl) {
+		struct curl_slist *headers = NULL;
+		char errorBuffer[1024];
+		curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_url_response_writer_function);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
+		curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_0);
+		curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
+		curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
+		curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
+		curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_sec);
+		char *urlPathSeparator = (char*)strchr(url + 8, '/');
+		string path = urlPathSeparator ? urlPathSeparator : "/";
+		string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;
+		string hostProtPrefix;
+		size_t posEndHostProtPrefix = host.rfind('/');
+		if(posEndHostProtPrefix != string::npos) {
+			hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
+			host = host.substr(posEndHostProtPrefix + 1);
+		}
+		extern map<string, string> hosts;
+		map<string, string>::iterator iter = hosts.find(host.c_str());
+		if(iter != hosts.end()) {
+			string hostIP = iter->second;
+			headers = curl_slist_append(headers, ("Host: " + host).c_str());
+			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+			curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
+		} else {
+			curl_easy_setopt(curl, CURLOPT_URL, url);
+		}
+		extern char opt_curlproxy[256];
+		if(opt_curlproxy[0]) {
+			curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
+		}
+		string postFields;
+		if(postData) {
+			for(size_t i = 0; i < postData->size(); i++) {
+				if(!postFields.empty()) {
+					postFields.append("&");
+				}
+				postFields.append((*postData)[i][0]);
+				postFields.append("=");
+				postFields.append(url_encode((*postData)[i][1]));
+			}
+			if(!postFields.empty()) {
+				curl_easy_setopt(curl, CURLOPT_POST, 1);
+				curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postFields.c_str());
+			}
+		}
+		if(curl_easy_perform(curl) == CURLE_OK) {
+			rslt = true;
+		} else {
+			if(error) {
+				*error = errorBuffer;
+			}
+		}
+		if(headers) {
+			curl_slist_free_all(headers);
+		}
+		curl_easy_cleanup(curl);
+	} else {
+		if(error) {
+			*error = "initialize curl failed";
+		}
+	}
+	return(rslt);
+}
+
 bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error) {
 	if(error) {
 		*error = "";
@@ -554,7 +631,6 @@ bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *
 		curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
 		curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
 		curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
-		curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
 		char *urlPathSeparator = (char*)strchr(url + 8, '/');
 		string path = urlPathSeparator ? urlPathSeparator : "/";
 		string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;

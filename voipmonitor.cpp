@@ -2634,7 +2634,7 @@ bool cloud_register() {
 	SimpleBuffer responseBuffer;
 	string error;
 	syslog(LOG_NOTICE, "connecting to %s", cloud_url);
-	get_url_response(cloud_url, &responseBuffer, &postData, &error);
+	get_url_response_wt(10, cloud_url, &responseBuffer, &postData, &error);
 	if(error.empty()) {
 		if(!responseBuffer.empty()) {
 			if(responseBuffer.isJsonObject()) {
@@ -2676,7 +2676,7 @@ bool cloud_activecheck_send() {
 	SimpleBuffer responseBuffer;
 	string error;
 	syslog(LOG_NOTICE, "connecting to %s", cloud_url_activecheck);
-	get_url_response(cloud_url_activecheck, &responseBuffer, &postData, &error);
+	get_url_response_wt(10, cloud_url_activecheck, &responseBuffer, &postData, &error);
 	if(error.empty()) {
 		if(!responseBuffer.empty()) {
 			if(responseBuffer.isJsonObject()) {
