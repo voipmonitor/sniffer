@@ -196,6 +196,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	has_second_merged_leg = false;
 	isfax = 0;
 	seenudptl = 0;
+	exists_udptl_data = false;
 	not_acceptable = false;
 	last_callercodec = -1;
 	ipport_n = 0;
@@ -1254,8 +1255,9 @@ read:
 	
 end:
 	extern int opt_fax_create_udptl_streams;
+	extern int opt_fax_dup_seq_check;
 	if(opt_fax_create_udptl_streams) {
-		if(is_fax) {
+		if(is_fax && packetS->datalen > 3) {
 			sUdptlDumper *udptlDumper;
 			sStreamId streamId(packetS->saddr, packetS->source, packetS->daddr, packetS->dest);
 			map<sStreamId, sUdptlDumper*>::iterator iter = udptlDumpers.find(streamId);
@@ -1304,10 +1306,8 @@ end:
 				}
 			}
 		}
-	} else {
-		extern int opt_fax_dup_seq_check;
-		if(opt_fax_dup_seq_check &&
-		   is_fax && packetS->datalen > 3) {
+	} else if(opt_fax_dup_seq_check) {
+		if(is_fax && packetS->datalen > 3) {
 			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
 			if(udptl->data_field) {
 				unsigned seq = htons(udptl->sequence);
@@ -1315,6 +1315,13 @@ end:
 					enable_save_packet = false;
 				}
 				this->last_udptl_seq = seq;
+			}
+		}
+	} else {
+		if(is_fax && packetS->datalen > 3) {
+			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
+			if(udptl->data_field) {
+				this->exists_udptl_data = true;
 			}
 		}
 	}
@@ -2936,7 +2943,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 		}
-		if(seenudptl && !not_acceptable) {
+		if(seenudptl && (exists_udptl_data || !not_acceptable)) {
 			// T.38
 			cdr.add(1000, "payload");
 		} else if(isfax == 2 && !not_acceptable) {
