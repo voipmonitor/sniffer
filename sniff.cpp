@@ -5869,50 +5869,54 @@ void *PreProcessPacket::outThreadFunction() {
 				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 					packetS = batch->batch[batch_index];
 					batch->batch[batch_index] = NULL;
-					switch(this->typePreProcessThread) {
-					case ppt_detach:
-						break;
-					#ifdef PREPROCESS_DETACH2
-					case ppt_detach2:
-						preProcessPacket[ppt_sip]->push_packet(packetS);
-						if(opt_preprocess_packets_qring_force_push &&
-						   batch_index == count - 1) {
-							preProcessPacket[ppt_sip]->push_batch();
-						}
-						break;
-					#endif
-					case ppt_sip:
-						this->process_SIP(packetS);
-						if(opt_preprocess_packets_qring_force_push &&
-						   batch_index == count - 1) {
-							preProcessPacket[ppt_extend]->push_batch();
-							if(opt_t2_boost) {
-								preProcessPacket[ppt_pp_rtp]->push_batch();
+					if(is_terminating()) {
+						PACKET_S_PROCESS_DESTROY(&packetS);
+					} else {
+						switch(this->typePreProcessThread) {
+						case ppt_detach:
+							break;
+						#ifdef PREPROCESS_DETACH2
+						case ppt_detach2:
+							preProcessPacket[ppt_sip]->push_packet(packetS);
+							if(opt_preprocess_packets_qring_force_push &&
+							   batch_index == count - 1) {
+								preProcessPacket[ppt_sip]->push_batch();
 							}
-						}
-						break;
-					case ppt_extend:
-						this->process_SIP_EXTEND(packetS);
-						if(opt_preprocess_packets_qring_force_push &&
-						   batch_index == count - 1) {
-							preProcessPacket[ppt_pp_call]->push_batch();
-							preProcessPacket[ppt_pp_register]->push_batch();
-							if(!opt_t2_boost) {
-								preProcessPacket[ppt_pp_rtp]->push_batch();
+							break;
+						#endif
+						case ppt_sip:
+							this->process_SIP(packetS);
+							if(opt_preprocess_packets_qring_force_push &&
+							   batch_index == count - 1) {
+								preProcessPacket[ppt_extend]->push_batch();
+								if(opt_t2_boost) {
+									preProcessPacket[ppt_pp_rtp]->push_batch();
+								}
 							}
+							break;
+						case ppt_extend:
+							this->process_SIP_EXTEND(packetS);
+							if(opt_preprocess_packets_qring_force_push &&
+							   batch_index == count - 1) {
+								preProcessPacket[ppt_pp_call]->push_batch();
+								preProcessPacket[ppt_pp_register]->push_batch();
+								if(!opt_t2_boost) {
+									preProcessPacket[ppt_pp_rtp]->push_batch();
+								}
+							}
+							break;
+						case ppt_pp_call:
+							this->process_CALL(packetS);
+							break;
+						case ppt_pp_register:
+							this->process_REGISTER(packetS);
+							break;
+						case ppt_pp_rtp:
+							this->process_RTP(packetS);
+							break;
+						case ppt_end:
+							break;
 						}
-						break;
-					case ppt_pp_call:
-						this->process_CALL(packetS);
-						break;
-					case ppt_pp_register:
-						this->process_REGISTER(packetS);
-						break;
-					case ppt_pp_rtp:
-						this->process_RTP(packetS);
-						break;
-					case ppt_end:
-						break;
 					}
 				}
 				#if RQUEUE_SAFE
@@ -6576,7 +6580,15 @@ void *ProcessRtpPacket::outThreadFunction() {
 			__SYNC_LOCK(this->_sync_count);
 			unsigned count = batch->count;
 			__SYNC_UNLOCK(this->_sync_count);
-			this->rtp_batch(batch, count);
+			if(is_terminating()) {
+				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+					packet_s_process_0 *packetS = batch->batch[batch_index];
+					batch->batch[batch_index] = NULL;
+					PACKET_S_PROCESS_DESTROY(&packetS);
+				}
+			} else {
+				this->rtp_batch(batch, count);
+			}
 			#if RQUEUE_SAFE
 				__SYNC_NULL(batch->count);
 				__SYNC_NULL(batch->used);
