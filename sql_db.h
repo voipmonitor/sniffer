@@ -178,10 +178,18 @@ public:
 	virtual int multi_off() {
 		return(1);
 	}
+	virtual int getDbVersion() {
+		return(getDbMajorVersion() * 10000 + 
+		       getDbMinorVersion() * 100 + 
+		       getDbMinorVersion(1));
+	}
 	virtual int getDbMajorVersion() {
 		return(0);
 	}
 	virtual int getDbMinorVersion(int /*minorLevel*/  = 0) {
+		return(0);
+	}
+	virtual int getMaximumPartitions() {
 		return(0);
 	}
 	void setEnableSqlStringInContent(bool enableSqlStringInContent);
@@ -331,6 +339,7 @@ public:
 	int multi_off();
 	int getDbMajorVersion();
 	int getDbMinorVersion(int minorLevel  = 0);
+	int getMaximumPartitions();
 	bool createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType, bool abortIfFailed = false);
 	bool createFunction(string routine, string routineName, string routineParamsAndReturn, bool abortIfFailed = false) {
 		return(this->createRoutine(routine, routineName, routineParamsAndReturn, function, abortIfFailed));

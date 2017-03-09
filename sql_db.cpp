@@ -840,7 +840,18 @@ int SqlDb_mysql::multi_off() {
 }
 
 int SqlDb_mysql::getDbMajorVersion() {
+	if(this->dbVersion.empty() && !cloud_host[0]) {
+		this->query("SHOW VARIABLES LIKE \"version\"");
+		SqlDb_row row = this->fetchRow();
+		if(row) {
+			this->dbVersion = row[1];
+		}
+	}
 	return(atoi(this->dbVersion.c_str()));
+}
+
+int SqlDb_mysql::getMaximumPartitions() {
+	return(getDbVersion() < 50607 ? 1024 : 8192);
 }
 
 int SqlDb_mysql::getDbMinorVersion(int minorLevel) {
@@ -6158,7 +6169,7 @@ void createMysqlPartitionsBillingAgregation() {
 	syslog(LOG_NOTICE, "create billing agregation partitions - end");
 }
 
-static void _dropMysqlPartitions(const char *table, int cleanParam, bool checkAllPartitions, SqlDb *sqlDb);
+static void _dropMysqlPartitions(const char *table, int cleanParam, SqlDb *sqlDb);
 
 void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_cdr;
@@ -6166,129 +6177,137 @@ void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_webrtc;
 	extern int opt_cleandatabase_register_state;
 	extern int opt_cleandatabase_register_failed;
-	static unsigned long counterDropPartitions = 0;
-	if(opt_cleandatabase_cdr > 0 ||
-	   (opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) ||
-	   (opt_enable_webrtc_table && opt_cleandatabase_webrtc > 0) ||
-	   opt_cleandatabase_register_state > 0 ||
-	   opt_cleandatabase_register_failed > 0) {
-		syslog(LOG_NOTICE, "drop old partitions cdr - begin");
-		SqlDb *sqlDb = createSqlObject();
-		sqlDb->setDisableLogError();
-		sqlDb->setDisableNextAttemptIfError();
-		if(opt_cleandatabase_cdr > 0) {
-			_dropMysqlPartitions("cdr", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			_dropMysqlPartitions("cdr_next", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			_dropMysqlPartitions("cdr_rtp", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			_dropMysqlPartitions("cdr_dtmf", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			_dropMysqlPartitions("cdr_sipresp", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			if(_save_sip_history) {
-				_dropMysqlPartitions("cdr_siphistory", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			}
-			_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			_dropMysqlPartitions("cdr_country_code", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			_dropMysqlPartitions("message", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			_dropMysqlPartitions("message_proxy", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			_dropMysqlPartitions("message_country_code", opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-			if(custom_headers_cdr) {
-				list<string> nextTables = custom_headers_cdr->getAllNextTables();
-				for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
-					_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-				}
-			}
-			if(custom_headers_message) {
-				list<string> nextTables = custom_headers_message->getAllNextTables();
-				for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
-					_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, counterDropPartitions == 0, sqlDb);
-				}
-			}
-		}
-		if(opt_enable_http_enum_tables && opt_cleandatabase_http_enum > 0) {
-			SqlDb *sqlDbHttp;
-			if(use_mysql_2_http()) {
-				sqlDbHttp = createSqlObject(1);
-			} else {
-				sqlDbHttp = sqlDb;
-			}
-			_dropMysqlPartitions("http_jj", opt_cleandatabase_http_enum, counterDropPartitions == 0, sqlDbHttp);
-			/* obsolete
-			_dropMysqlPartitions("enum_jj", opt_cleandatabase_http_enum, counterDropPartitions == 0, sqlDbHttp);
-			*/
-			if(use_mysql_2_http()) {
-				delete sqlDbHttp;
-			}
-		}
-		if(opt_enable_webrtc_table && opt_cleandatabase_webrtc > 0) {
-			_dropMysqlPartitions("webrtc", opt_cleandatabase_webrtc, counterDropPartitions == 0, sqlDb);
-		}
-		if(opt_cleandatabase_register_state > 0) {
-			_dropMysqlPartitions("register_state", opt_cleandatabase_register_state, counterDropPartitions == 0, sqlDb);
-		}
-		if(opt_cleandatabase_register_failed > 0) {
-			_dropMysqlPartitions("register_failed", opt_cleandatabase_register_failed, counterDropPartitions == 0, sqlDb);
-		}
-		++counterDropPartitions;
-		delete sqlDb;
-		syslog(LOG_NOTICE, "drop old partitions cdr - end");
+	syslog(LOG_NOTICE, "drop old partitions cdr - begin");
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->setDisableLogError();
+	sqlDb->setDisableNextAttemptIfError();
+	_dropMysqlPartitions("cdr", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("cdr_next", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("cdr_rtp", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("cdr_dtmf", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("cdr_sipresp", opt_cleandatabase_cdr, sqlDb);
+	if(_save_sip_history) {
+		_dropMysqlPartitions("cdr_siphistory", opt_cleandatabase_cdr, sqlDb);
 	}
+	_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("cdr_country_code", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("message", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("message_proxy", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("message_country_code", opt_cleandatabase_cdr, sqlDb);
+	if(custom_headers_cdr) {
+		list<string> nextTables = custom_headers_cdr->getAllNextTables();
+		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
+			_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, sqlDb);
+		}
+	}
+	if(custom_headers_message) {
+		list<string> nextTables = custom_headers_message->getAllNextTables();
+		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
+			_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, sqlDb);
+		}
+	}
+	if(opt_enable_http_enum_tables) {
+		SqlDb *sqlDbHttp;
+		if(use_mysql_2_http()) {
+			sqlDbHttp = createSqlObject(1);
+		} else {
+			sqlDbHttp = sqlDb;
+		}
+		_dropMysqlPartitions("http_jj", opt_cleandatabase_http_enum, sqlDbHttp);
+		/* obsolete
+		_dropMysqlPartitions("enum_jj", opt_cleandatabase_http_enum, sqlDbHttp);
+		*/
+		if(use_mysql_2_http()) {
+			delete sqlDbHttp;
+		}
+	}
+	if(opt_enable_webrtc_table) {
+		_dropMysqlPartitions("webrtc", opt_cleandatabase_webrtc, sqlDb);
+	}
+	_dropMysqlPartitions("register_state", opt_cleandatabase_register_state, sqlDb);
+	_dropMysqlPartitions("register_failed", opt_cleandatabase_register_failed, sqlDb);
+	delete sqlDb;
+	syslog(LOG_NOTICE, "drop old partitions cdr - end");
 }
 
 void dropMysqlPartitionsRtpStat() {
 	extern int opt_cleandatabase_rtp_stat;
-	static unsigned long counterDropPartitions = 0;
-	if(opt_cleandatabase_rtp_stat > 0) {
-		syslog(LOG_NOTICE, "drop old partitions rtp_stat - begin");
-		SqlDb *sqlDb = createSqlObject();
-		sqlDb->setDisableLogError();
-		sqlDb->setDisableNextAttemptIfError();
-		_dropMysqlPartitions("rtp_stat", opt_cleandatabase_rtp_stat, counterDropPartitions == 0, sqlDb);
-		++counterDropPartitions;
-		delete sqlDb;
-		syslog(LOG_NOTICE, "drop old partitions - end");
-	}
+	syslog(LOG_NOTICE, "drop old partitions rtp_stat - begin");
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->setDisableLogError();
+	sqlDb->setDisableNextAttemptIfError();
+	_dropMysqlPartitions("rtp_stat", opt_cleandatabase_rtp_stat, sqlDb);
+	delete sqlDb;
+	syslog(LOG_NOTICE, "drop old partitions - end");
 }
 
-void _dropMysqlPartitions(const char *table, int cleanParam, bool checkAllPartitions, SqlDb *sqlDb) {
+void _dropMysqlPartitions(const char *table, int cleanParam, SqlDb *sqlDb) {
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		sqlDb->setDisableLogError();
+		sqlDb->setDisableNextAttemptIfError();
+	}
+	string limitPartName;
 	if(cleanParam > 0) {
-		if(!sqlDb) {
-			sqlDb = createSqlObject();
-			sqlDb->setDisableLogError();
-			sqlDb->setDisableNextAttemptIfError();
-		}
 		time_t act_time = time(NULL);
 		time_t prev_day_time = act_time - cleanParam * 24 * 60 * 60;
 		struct tm prevDayTime = time_r(&prev_day_time);
-		char limitPartName[20] = "";
-		strftime(limitPartName, sizeof(limitPartName), "p%y%m%d", &prevDayTime);
-		vector<string> partitions;
-		if(checkAllPartitions) {
-			if(cloud_host[0]) {
-				sqlDb->query(string("explain partitions select * from ") + table);
-				SqlDb_row row = sqlDb->fetchRow();
-				if(row) {
-					vector<string> exists_partitions = split(row["partitions"], ',');
-					for(size_t i = 0; i < exists_partitions.size(); i++) {
-						if(exists_partitions[i] <= limitPartName) {
-							partitions.push_back(exists_partitions[i]);
-						}
+		char limitPartName_buff[20] = "";
+		strftime(limitPartName_buff, sizeof(limitPartName_buff), "p%y%m%d", &prevDayTime);
+		limitPartName = limitPartName_buff;
+	}
+	map<string, int> partitions;
+	unsigned maximumPartitions = sqlDb->getMaximumPartitions();
+	if(maximumPartitions > 10) {
+		maximumPartitions -= 10;
+	}
+	SqlDb_row row;
+	if(cloud_host[0]) {
+		sqlDb->query(string("explain partitions select * from ") + table);
+		row = sqlDb->fetchRow();
+		if(row) {
+			vector<string> exists_partitions = split(row["partitions"], ',');
+			std::sort(exists_partitions.begin(), exists_partitions.end());
+			if(maximumPartitions) {
+				if(exists_partitions.size() > maximumPartitions) {
+					for(size_t i = 0; i < (exists_partitions.size() - maximumPartitions); i++) {
+						partitions[exists_partitions[i]] = 1;
 					}
 				}
-			} else {
-				sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
-					     mysql_database+ "' and table_name='" + table + "' and partition_name<='" + limitPartName+ "' order by partition_name");
-				SqlDb_row row;
-				while((row = sqlDb->fetchRow())) {
-					partitions.push_back(row["partition_name"]);
+			}
+			if(cleanParam > 0) {
+				for(size_t i = 0; i < exists_partitions.size() && exists_partitions[i] <= limitPartName; i++) {
+					partitions[exists_partitions[i]] = 1;
 				}
 			}
-		} else {
-			partitions.push_back(limitPartName);
 		}
-		for(size_t i = 0; i < partitions.size(); i++) {
-			syslog(LOG_NOTICE, "DROP PARTITION %s : %s", table, partitions[i].c_str());
-			sqlDb->query(string("ALTER TABLE ") + table + " DROP PARTITION " + partitions[i]);
+	} else {
+		if(maximumPartitions) {
+			sqlDb->query(string("select count(*) as cnt from information_schema.partitions where table_schema='") + 
+				     mysql_database+ "' and table_name='" + table + "'");
+			if((row = sqlDb->fetchRow())) {
+				unsigned countPartitions = atoi(row["cnt"].c_str());
+				if(countPartitions > maximumPartitions) {
+					sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+						     mysql_database+ "' and table_name='" + table + "' order by partition_name limit " + intToString(countPartitions - maximumPartitions));
+					while((row = sqlDb->fetchRow())) {
+						partitions[row["partition_name"]] = 1;
+					}
+				}
+			}
 		}
+		if(cleanParam > 0) {
+			sqlDb->query(string("select partition_name from information_schema.partitions where table_schema='") + 
+				     mysql_database+ "' and table_name='" + table + "' and partition_name<='" + limitPartName+ "' order by partition_name");
+			while((row = sqlDb->fetchRow())) {
+				partitions[row["partition_name"]] = 1;
+			}
+		}
+	}
+	for(map<string, int>::iterator iter = partitions.begin(); iter != partitions.end(); iter++) {
+		syslog(LOG_NOTICE, "DROP PARTITION %s : %s", table, iter->first.c_str());
+		sqlDb->query(string("ALTER TABLE ") + table + " DROP PARTITION " + iter->first);
 	}
 }
 
