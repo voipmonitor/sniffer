@@ -40,6 +40,12 @@
 #define PAYLOAD_XOPUS16 340
 #define PAYLOAD_XOPUS24 341
 #define PAYLOAD_XOPUS48 342
+#define PAYLOAD_VXOPUS 343
+#define PAYLOAD_VXOPUS8 344
+#define PAYLOAD_VXOPUS12 345
+#define PAYLOAD_VXOPUS16 346
+#define PAYLOAD_VXOPUS24 347
+#define PAYLOAD_VXOPUS48 348
 #define PAYLOAD_TELEVENT 400
 
 inline const char *codec2text(int codec) {
@@ -97,6 +103,13 @@ inline const char *codec2text(int codec) {
 	case PAYLOAD_XOPUS24:
 	case PAYLOAD_XOPUS48:
 		return "XOPUS";
+	case PAYLOAD_VXOPUS:
+	case PAYLOAD_VXOPUS8:
+	case PAYLOAD_VXOPUS12:
+	case PAYLOAD_VXOPUS16:
+	case PAYLOAD_VXOPUS24:
+	case PAYLOAD_VXOPUS48:
+		return "VXOPUS";
 	case PAYLOAD_TELEVENT:
 		return "TELEPHONE EVENT";
 	default:
