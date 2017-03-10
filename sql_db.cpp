@@ -806,7 +806,8 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				}
 				while(this->fetchRow());
 				if(this->conn_showversion) {
-					syslog(LOG_INFO, "connect - db version %i.%i", this->getDbMajorVersion(), this->getDbMinorVersion());
+					syslog(LOG_INFO, "connect - db version %s (%i) %s / maximum partitions: %i", 
+					       this->getDbVersionString().c_str(), this->getDbVersion(), this->getDbName().c_str(), this->getMaximumPartitions());
 				}
 			}
 			sql_disable_next_attempt_if_error = 0;
@@ -840,6 +841,7 @@ int SqlDb_mysql::multi_off() {
 }
 
 int SqlDb_mysql::getDbMajorVersion() {
+	this->_getDbVersion();
 	if(this->dbVersion.empty() && !cloud_host[0]) {
 		this->query("SHOW VARIABLES LIKE \"version\"");
 		SqlDb_row row = this->fetchRow();
@@ -850,11 +852,8 @@ int SqlDb_mysql::getDbMajorVersion() {
 	return(atoi(this->dbVersion.c_str()));
 }
 
-int SqlDb_mysql::getMaximumPartitions() {
-	return(getDbVersion() < 50607 ? 1024 : 8192);
-}
-
 int SqlDb_mysql::getDbMinorVersion(int minorLevel) {
+	this->_getDbVersion();
 	const char *pointToVersion = this->dbVersion.c_str();
 	for(int i = 0; i < minorLevel + 1 && pointToVersion; i++) {
 		const char *pointToSeparator = strchr(pointToVersion, '.');
@@ -863,6 +862,28 @@ int SqlDb_mysql::getDbMinorVersion(int minorLevel) {
 		}
 	}
 	return(pointToVersion ? atoi(pointToVersion) : 0);
+}
+
+string SqlDb_mysql::getDbName() {
+	this->_getDbVersion();
+	return(strcasestr(this->dbVersion.c_str(), "MariaDB") ? "mariadb" : "mysql");
+}
+
+int SqlDb_mysql::getMaximumPartitions() {
+	return(getDbName() == "mariadb" ? 
+		(getDbVersion() < 100004 ? 1024 : 8192) :
+		(getDbVersion() < 50607 ? 1024 : 8192));
+}
+
+bool SqlDb_mysql::_getDbVersion() {
+	if(this->dbVersion.empty() && !cloud_host[0]) {
+		this->query("SHOW VARIABLES LIKE \"version\"");
+		SqlDb_row row = this->fetchRow();
+		if(row) {
+			this->dbVersion = row[1];
+		}
+	}
+	return(!this->dbVersion.empty());
 }
 
 bool SqlDb_mysql::createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType, bool abortIfFailed) {

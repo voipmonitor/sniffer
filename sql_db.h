@@ -183,11 +183,19 @@ public:
 		       getDbMinorVersion() * 100 + 
 		       getDbMinorVersion(1));
 	}
+	virtual string getDbVersionString() {
+		return(intToString(getDbMajorVersion()) + "." +
+		       intToString(getDbMinorVersion()) + "." +
+		       intToString(getDbMinorVersion(1)));
+	}
 	virtual int getDbMajorVersion() {
 		return(0);
 	}
 	virtual int getDbMinorVersion(int /*minorLevel*/  = 0) {
 		return(0);
+	}
+	virtual string getDbName() {
+		return("");
 	}
 	virtual int getMaximumPartitions() {
 		return(0);
@@ -339,7 +347,9 @@ public:
 	int multi_off();
 	int getDbMajorVersion();
 	int getDbMinorVersion(int minorLevel  = 0);
+	string getDbName();
 	int getMaximumPartitions();
+	bool _getDbVersion();
 	bool createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType, bool abortIfFailed = false);
 	bool createFunction(string routine, string routineName, string routineParamsAndReturn, bool abortIfFailed = false) {
 		return(this->createRoutine(routine, routineName, routineParamsAndReturn, function, abortIfFailed));
