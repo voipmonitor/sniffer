@@ -4370,6 +4370,12 @@ void test() {
 		call->convertRawToWav();
 		}
 		break;
+	case 311:
+		CountryDetectInit();
+		cout << "number:           " << opt_test_arg << endl;
+		cout << "country:          " << getCountryByPhoneNumber(opt_test_arg) << endl;
+		cout << "is international: " << (isLocalByPhoneNumber(opt_test_arg) ? "N" : "Y") << endl;
+		break;
 	}
  
 	/*
@@ -5666,6 +5672,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"fax-deduplicate", 0, 0, 308},
 	    {"create-udptl-streams", 0, 0, 309},
 	    {"conv-raw-info", 1, 0, 310},
+	    {"find-country-for-number", 1, 0, 311},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -6019,6 +6026,7 @@ void get_command_line_arguments() {
 				opt_fax_create_udptl_streams = 1;
 				break;
 			case 310:
+			case 311:
 				opt_test = c;
 				if(optarg) {
 					strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));

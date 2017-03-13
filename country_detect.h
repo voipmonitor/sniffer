@@ -52,6 +52,7 @@ public:
 	void setInternationalPrefixes(const char *prefixes);
 	void setSkipPrefixes(const char *prefixes);
 	void setInternationalMinLength(int internationalMinLength, bool internationalMinLengthPrefixesStrict);
+	void setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWithoutPrefix);
 	void load(SqlDb_row *dbRow);
 	bool load();
 	bool isInternational(const char *number, const char **prefix = NULL) {
@@ -133,7 +134,9 @@ private:
 	int internationalMinLength;
 	bool internationalMinLengthPrefixesStrict;
 	string countryCodeForLocalNumbers;
+	bool enableCheckNapaWithoutPrefix;
 	vector<string> skipPrefixes;
+friend class CountryPrefixes;
 };
 
 class CountryPrefixes : public CountryDetect_base_table {
@@ -161,7 +164,7 @@ public:
 	CountryPrefixes();
 	bool load();
 	string getCountry(const char *number, vector<string> *countries, string *country_prefix,
-			  CheckInternational *checkInternational) {
+			  CheckInternational *checkInternational, bool disableCheckNapaWithoutPrefix = false) {
 		if(countries) {
 			countries->clear();
 		}
@@ -171,11 +174,35 @@ public:
 		bool isInternational;
 		string normalizeNumber = checkInternational->normalize(number, &isInternational);
 		if(!isInternational) {
-			string country = checkInternational->getLocalCountry();
-			if(countries) {
-				countries->push_back(country);
+			string local_country = checkInternational->getLocalCountry();
+			if(checkInternational->enableCheckNapaWithoutPrefix && !disableCheckNapaWithoutPrefix && 
+			   ((strlen(number) == 10 && number[0] != '1') ||
+			    (strlen(number) == 11 && number[0] == '1')) &&
+			   countryIsNapa(local_country)) {
+				string number2 = number;
+				if(strlen(number) == 10 && number[0] != '1') {
+					number2 = "1" + number2;
+				}
+				if(checkInternational->internationalPrefixes.size() && 
+				   (checkInternational->internationalMinLengthPrefixesStrict ||
+				    (checkInternational->internationalMinLength &&
+				     number2.length() < (unsigned)checkInternational->internationalMinLength))) {
+					number2 = checkInternational->internationalPrefixes[0] + number2;
+				}
+				string country = this->getCountry(number2.c_str(), countries, country_prefix,
+								  checkInternational, true);
+				if((!countries || countries->size() == 1) && countryIsNapa(local_country)) {
+					return(country);
+				} else {
+					if(countries) {
+						countries->clear();
+					}
+				}
 			}
-			return(country);
+			if(countries) {
+				countries->push_back(local_country);
+			}
+			return(local_country);
 		}
 		number = normalizeNumber.c_str();
 		vector<CountryPrefix_rec>::iterator findRecIt;
@@ -230,14 +257,24 @@ public:
 	}
 	bool isLocal(const char *number,
 		     CheckInternational *checkInternational) {
-		if(!checkInternational->isInternational(number)) {
-			return(true);
-		}
 		vector<string> countries;
 		getCountry(number, &countries, NULL, checkInternational);
 		for(size_t i = 0; i < countries.size(); i++) {
 			if(checkInternational->countryCodeIsLocal(countries[i].c_str())) {
 				return(true); 
+			}
+		}
+		return(false);
+	}
+	bool countryIsNapa(string country) {
+		return(countryIsNapa(country.c_str()));
+	}
+	bool countryIsNapa(const char *country) {
+		for(vector<CountryPrefix_rec>::iterator iter = data.begin(); iter != data.end(); iter++) {
+			if(iter->country_code == country &&
+			   iter->number.length() == 4 &&
+			   iter->number[0] == '1') {
+				return(true);
 			}
 		}
 		return(false);
@@ -313,6 +350,7 @@ public:
 	~CountryDetect();
 	void load();
 	string getCountryByPhoneNumber(const char *phoneNumber);
+	bool isLocalByPhoneNumber(const char *phoneNumber);
 	string getCountryByIP(u_int32_t ip);
 	string getContinentByCountry(const char *country);
 	void prepareReload();
@@ -347,6 +385,7 @@ private:
 void CountryDetectInit();
 void CountryDetectTerm();
 string getCountryByPhoneNumber(const char *phoneNumber, bool suppressStringLocal = false);
+bool isLocalByPhoneNumber(const char *phoneNumber);
 string getCountryByIP(u_int32_t ip, bool suppressStringLocal = false);
 string getContinentByCountry(const char *country);
 void CountryDetectPrepareReload();

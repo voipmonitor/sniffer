@@ -133,6 +133,7 @@ CheckInternational::CheckInternational() {
 	internationalPrefixes = split("+, 00", ",", true);
 	internationalMinLength = 0;
 	internationalMinLengthPrefixesStrict = false;
+	enableCheckNapaWithoutPrefix = false;
 }
 
 void CheckInternational::setInternationalPrefixes(const char *prefixes) {
@@ -148,6 +149,10 @@ void CheckInternational::setInternationalMinLength(int internationalMinLength, b
 	this->internationalMinLengthPrefixesStrict = internationalMinLengthPrefixesStrict;
 }
 
+void CheckInternational::setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWithoutPrefix) {
+	this->enableCheckNapaWithoutPrefix = enableCheckNapaWithoutPrefix;
+}
+
 void CheckInternational::load(SqlDb_row *dbRow) {
 	string _prefixes = (*dbRow)["international_prefixes"];
 	if(!_prefixes.empty()) {
@@ -158,6 +163,7 @@ void CheckInternational::load(SqlDb_row *dbRow) {
 	internationalMinLength = atoi((*dbRow)["international_number_min_length"].c_str());
 	internationalMinLengthPrefixesStrict = atoi((*dbRow)["international_number_min_length_prefixes_strict"].c_str());
 	countryCodeForLocalNumbers = (*dbRow)["country_code_for_local_numbers"];
+	enableCheckNapaWithoutPrefix = atoi((*dbRow)["enable_check_napa_without_prefix"].c_str());
 	_prefixes = (*dbRow)["skip_prefixes"];
 	if(!_prefixes.empty()) {
 		skipPrefixes = split(_prefixes.c_str(), split(",|;| ", "|"), true);
@@ -268,6 +274,16 @@ string CountryDetect::getCountryByPhoneNumber(const char *phoneNumber) {
 	return(rslt);
 }
 
+bool CountryDetect::isLocalByPhoneNumber(const char *phoneNumber) {
+	bool rslt = false;
+	lock();
+	if(countryPrefixes->loadOK) {
+		rslt = countryPrefixes->isLocal(phoneNumber, checkInternational);
+	}
+	unlock();
+	return(rslt);
+}
+
 string CountryDetect::getCountryByIP(u_int32_t ip) {
 	string rslt;
 	lock();
@@ -365,6 +381,13 @@ string getCountryByPhoneNumber(const char *phoneNumber, bool suppressStringLocal
 		return(country);
 	}
 	return("");
+}
+
+bool isLocalByPhoneNumber(const char *phoneNumber) {
+	if(countryDetect) {
+		return(countryDetect->isLocalByPhoneNumber(phoneNumber));
+	}
+	return(false);
 }
 
 string getCountryByIP(u_int32_t ip, bool suppressStringLocal) {
