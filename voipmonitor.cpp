@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <iomanip>
 #include <sys/wait.h>
+#include <curl/curl.h>
 
 #ifdef FREEBSD
 #include <sys/endian.h>
@@ -1754,6 +1755,8 @@ pthread_mutex_t daemonizeErrorTempFileLock;
 static void daemonize(void)
 {
  
+	curl_global_cleanup();
+	
 	tmpnam(daemonizeErrorTempFileName);
 	pthread_mutex_init(&daemonizeErrorTempFileLock, NULL);
  
@@ -1794,6 +1797,8 @@ static void daemonize(void)
 		close(0); open("/dev/null", O_RDONLY);
 		close(1); open("/dev/null", O_WRONLY);
 		close(2); open("/dev/null", O_WRONLY);
+		
+		curl_global_init(CURL_GLOBAL_ALL);
 	}
 }
 
