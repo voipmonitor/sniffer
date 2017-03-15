@@ -217,6 +217,7 @@ static unsigned long maxBypassBufferItems;
 static unsigned long maxBypassBufferSize;
 static unsigned long countBypassBufferSizeExceeded;
 static double heapPerc = 0;
+static double heapTrashPerc = 0;
 
 extern MySqlStore *sqlStore;
 extern MySqlStore *loadFromQFiles;
@@ -1359,6 +1360,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc = buffersControl.getPercUsePBwithouttrash();
 		heapPerc = memoryBufferPerc;
 		double memoryBufferPerc_trash = buffersControl.getPercUsePBtrash();
+		heapTrashPerc = memoryBufferPerc_trash;
 		if(sverb.abort_if_heap_full &&
 		   (memoryBufferPerc + memoryBufferPerc_trash) > 98) {
 			syslog(LOG_ERR, "HEAP FULL - ABORT!");
@@ -2196,6 +2198,24 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 		}
 	}
+	
+	if(heapPerc + heapTrashPerc >= 60) {
+		extern int global_livesniffer;
+		extern map<unsigned int, livesnifferfilter_t*> usersniffer;
+		extern volatile int usersniffer_sync;
+		while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+		if(usersniffer.size()) {
+			cLogSensor *log = cLogSensor::begin(cLogSensor::warning, "live sniffer", "too high load - terminate");
+			for(map<unsigned int, livesnifferfilter_t*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
+				log->log(NULL, "uid: %u, state: %s", iter->first, iter->second->getStringState().c_str());
+				delete iter->second;
+				usersniffer.erase(iter++);
+			}
+			global_livesniffer = 0;
+			log->end();
+		}
+		__sync_lock_release(&usersniffer_sync);
+	}
 
 	if (opt_rrd) {
 		if (opt_rrd == 1) {
@@ -2866,7 +2886,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			}
 			this->lastPacketTimeUS = packetTime;
 		} else {
-			if(heapPerc > 80) {
+			if((heapPerc + heapTrashPerc) > 80) {
 				usleep(1);
 			}
 		}
@@ -5865,7 +5885,21 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigne
                    block->getLastPacketHeaderTimeMS() + 2000 < actTimeMS) {
 			this->blockStoreTrash.pop_front();
 		} else {
-			block = NULL;
+			if(block->timestampMS + 10000 < actTimeMS &&
+			   block->getLastPacketHeaderTimeMS() + 10000 < actTimeMS) {
+				block = NULL;
+				for(int i = 0; i < ((int)this->blockStoreTrash.size() - 5); i++) {
+					if(this->blockStoreTrash[i]->enableDestroy() &&
+					   this->blockStoreTrash[i]->timestampMS + 2000 < actTimeMS &&
+					   this->blockStoreTrash[i]->getLastPacketHeaderTimeMS() + 2000 < actTimeMS) {
+						block = this->blockStoreTrash[i];
+						this->blockStoreTrash.erase(this->blockStoreTrash.begin() + i);
+						break;
+					}
+				}
+			} else {
+				block = NULL;
+			}
 		} 
 		unlock_blockStoreTrash();
 		if(block) {

@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <iomanip>
 #include <sys/wait.h>
+#include <curl/curl.h>
 
 #ifdef FREEBSD
 #include <sys/endian.h>
@@ -479,6 +480,7 @@ int opt_cleandatabase_webrtc = 0;
 int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
 int opt_cleandatabase_rtp_stat = 2;
+int opt_cleandatabase_log_sensor = 30;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
 unsigned int graph_version = GRAPH_VERSION;
 unsigned int graph_mark = GRAPH_MARK;
@@ -1219,14 +1221,19 @@ public:
 		dropCdr = false;
 		createRtpStat = false;
 		dropRtpStat = false;
+		createLogSensor = false;
+		dropLogSensor = false;
 		createIpacc = false;
 		createBilling = false;
+		dropBilling = false;
 		_runInThread = false;
 	}
 	bool isSet() {
 		return(createCdr || dropCdr || 
 		       createRtpStat || dropRtpStat ||
-		       createIpacc || createBilling);
+		       createLogSensor || dropLogSensor ||
+		       createIpacc || 
+		       createBilling || dropBilling);
 	}
 	void createPartitions(bool inThread = false) {
 		if(isSet()) {
@@ -1251,8 +1258,11 @@ public:
 	bool dropCdr;
 	bool createRtpStat;
 	bool dropRtpStat;
+	bool createLogSensor;
+	bool dropLogSensor;
 	bool createIpacc;
 	bool createBilling;
+	bool dropBilling;
 	bool _runInThread;
 } createPartitions;
 
@@ -1270,11 +1280,20 @@ void *sCreatePartitions::_createPartitions(void *arg) {
 	if(createPartitionsData->dropRtpStat) {
 		dropMysqlPartitionsRtpStat();
 	}
+	if(createPartitionsData->createLogSensor) {
+		createMysqlPartitionsLogSensor();
+	}
+	if(createPartitionsData->dropLogSensor) {
+		dropMysqlPartitionsLogSensor();
+	}
 	if(createPartitionsData->createIpacc) {
 		createMysqlPartitionsIpacc();
 	}
 	if(createPartitionsData->createBilling) {
-		createMysqlPartitionsBillingAgregation();
+		createDropMysqlPartitionsBillingAgregation();
+	}
+	if(createPartitionsData->dropBilling) {
+		createDropMysqlPartitionsBillingAgregation(true);
 	}
 	if(createPartitionsData->_runInThread) {
 		delete createPartitionsData;
@@ -1329,8 +1348,11 @@ void *storing_cdr( void */*dummy*/ ) {
 	time_t dropPartitionAt = 0;
 	time_t createPartitionRtpStatAt = 0;
 	time_t dropPartitionRtpStatAt = 0;
+	time_t createPartitionLogSensorAt = 0;
+	time_t dropPartitionLogSensorAt = 0;
 	time_t createPartitionIpaccAt = 0;
 	time_t createPartitionBillingAgregationAt = 0;
+	time_t dropPartitionBillingAgregationAt = 0;
 	time_t checkMysqlIdCdrChildTablesAt = 0;
 	bool firstIter = true;
 	while(1) {
@@ -1357,6 +1379,17 @@ void *storing_cdr( void */*dummy*/ ) {
 				dropPartitionRtpStatAt = actTime;
 			}
 		}
+		if(!opt_nocdr and !opt_disable_partition_operations and isSqlDriver("mysql")) {
+			time_t actTime = time(NULL);
+			if(actTime - createPartitionLogSensorAt > 12 * 3600) {
+				createPartitions.createLogSensor = true;
+				createPartitionLogSensorAt = actTime;
+			}
+			if(actTime - dropPartitionLogSensorAt > 12 * 3600) {
+				createPartitions.dropLogSensor = true;
+				dropPartitionLogSensorAt = actTime;
+			}
+		}
 		if(!opt_nocdr and opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
 			if(actTime - createPartitionIpaccAt > 12 * 3600) {
@@ -1369,6 +1402,10 @@ void *storing_cdr( void */*dummy*/ ) {
 			if(actTime - createPartitionBillingAgregationAt > 12 * 3600) {
 				createPartitions.createBilling = true;
 				createPartitionBillingAgregationAt = actTime;
+			}
+			if(actTime - dropPartitionBillingAgregationAt > 12 * 3600) {
+				createPartitions.dropBilling = true;
+				dropPartitionBillingAgregationAt = actTime;
 			}
 		}
 		if(createPartitions.isSet()) {
@@ -1754,6 +1791,8 @@ pthread_mutex_t daemonizeErrorTempFileLock;
 static void daemonize(void)
 {
  
+	curl_global_cleanup();
+	
 	tmpnam(daemonizeErrorTempFileName);
 	pthread_mutex_init(&daemonizeErrorTempFileLock, NULL);
  
@@ -1794,6 +1833,8 @@ static void daemonize(void)
 		close(0); open("/dev/null", O_RDONLY);
 		close(1); open("/dev/null", O_WRONLY);
 		close(2); open("/dev/null", O_WRONLY);
+		
+		curl_global_init(CURL_GLOBAL_ALL);
 	}
 }
 
@@ -2131,7 +2172,7 @@ int main(int argc, char *argv[]) {
 	
 	if(!is_read_from_file_simple() && !is_set_gui_params() && command_line_data.size()) {
 		printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
-		syslog(LOG_NOTICE, "start voipmonitor version %s", RTPSENSOR_VERSION);
+		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", RTPSENSOR_VERSION);
 		
 		string localActTime = sqlDateTimeString(time(NULL));
 		printf("local time %s\n", localActTime.c_str());
@@ -4830,6 +4871,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42120) cConfigItem_integer("cleandatabase_register_state", &opt_cleandatabase_register_state));
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_register_failed", &opt_cleandatabase_register_failed));
 			addConfigItem(new FILE_LINE(42122) cConfigItem_integer("cleandatabase_rtp_stat", &opt_cleandatabase_rtp_stat));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor", &opt_cleandatabase_log_sensor));
 		subgroup("backup");
 				advanced();
 				addConfigItem(new FILE_LINE(42123) cConfigItem_string("database_backup_from_date", opt_database_backup_from_date, sizeof(opt_database_backup_from_date)));
@@ -6890,6 +6932,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleandatabase_rtp_stat", NULL))) {
 		opt_cleandatabase_rtp_stat = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleandatabase_log_sensor", NULL))) {
+		opt_cleandatabase_log_sensor = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "cleanspool", NULL))) {

@@ -93,6 +93,7 @@ int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
 bool opt_cdr_partition_oldver = false;
 bool opt_rtp_stat_partition_oldver = false;
+bool opt_log_sensor_partition_oldver = false;
 sExistsColumns existsColumns;
 SqlDb::eSupportPartitions supportPartitions = SqlDb::_supportPartitions_ok;
 bool is_cloud = false;
@@ -4167,6 +4168,31 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	this->createTable("fraud_alert_info");
 	}
 	
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `log_sensor` (\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
+			`time` datetime NOT NULL,\
+			`ID_parent` bigint unsigned,\
+			`id_sensor` smallint unsigned DEFAULT NULL,\
+			`type` enum('debug','info','notice','warning','error','critical','alert','emergency'),\
+			`confirmed` bool,\
+			`subject` text,\
+			`message` text,") +
+		(supportPartitions != _supportPartitions_na ? 
+			"PRIMARY KEY (`ID`, `time`)," :
+			"PRIMARY KEY (`ID`),") + 
+		"KEY `time` (`time`),\
+		KEY `ID_parent` (`ID_parent`),\
+		KEY `id_sensor` (`id_sensor`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8 " + compress +  
+	(supportPartitions != _supportPartitions_na ?
+		(opt_log_sensor_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(`time`))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(`time`)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	
 	checkColumns_other(true);
 
 	return(true);
@@ -5125,6 +5151,7 @@ void SqlDb_mysql::checkDbMode() {
 					syslog(LOG_NOTICE, "mysql <= 5.1 - use old mode partitions");
 				}
 				opt_rtp_stat_partition_oldver = true;
+				opt_log_sensor_partition_oldver = true;
 			} else {
 				if(opt_cdr_partition) {
 					this->query(string("select partition_description from information_schema.partitions where table_schema='") +mysql_database + 
@@ -5134,12 +5161,17 @@ void SqlDb_mysql::checkDbMode() {
 						syslog(LOG_NOTICE, "database contain old mode partitions");
 					}
 				}
-				
 				this->query(string("select partition_description from information_schema.partitions where table_schema='") +mysql_database + 
 						   "' and table_name = 'rtp_stat' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
 				if(this->fetchRow()) {
 					opt_rtp_stat_partition_oldver = true;
 					syslog(LOG_NOTICE, "table rtp_stat contain old mode partitions");
+				}
+				this->query(string("select partition_description from information_schema.partitions where table_schema='") +mysql_database + 
+						   "' and table_name = 'log_sensor' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
+				if(this->fetchRow()) {
+					opt_log_sensor_partition_oldver = true;
+					syslog(LOG_NOTICE, "table log_sensor contain old mode partitions");
 				}
 			}
 		}
@@ -5890,7 +5922,8 @@ void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 		"file_cache",
 		"hostname_cache",
 		"ipacc*",
-		"geoip*"
+		"geoip*",
+		"log_sensor"
 	};
 	sqlDbSrc->query("show tables");
 	SqlDb_row row;
@@ -6053,8 +6086,9 @@ void SqlDb_odbc::checkDbMode() {
 void SqlDb_odbc::checkSchema(int /*connectId*/, bool /*checkColumns*/) {
 }
 
+
 void createMysqlPartitionsCdr() {
-	syslog(LOG_NOTICE, "create cdr partitions - begin");
+	syslog(LOG_NOTICE, "%s", "create cdr partitions - begin");
 	for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
 		SqlDb *sqlDb = createSqlObject(connectId);
 		for(int day = 0; day < 2; day++) {
@@ -6070,7 +6104,7 @@ void createMysqlPartitionsCdr() {
 		}
 		delete sqlDb;
 	}
-	syslog(LOG_NOTICE, "create cdr partitions - end");
+	syslog(LOG_NOTICE, "%s", "create cdr partitions - end");
 }
 
 void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
@@ -6116,36 +6150,40 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
 }
 
 void createMysqlPartitionsRtpStat() {
-	syslog(LOG_NOTICE, "create rtp_stat partitions - begin");
+	createMysqlPartitionsTable("rtp_stat");
+}
+
+void createMysqlPartitionsLogSensor() {
+	createMysqlPartitionsTable("log_sensor");
+}
+
+void createMysqlPartitionsTable(const char* table) {
+	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
 	bool disableLogErrorOld = sqlDb->getDisableLogError();
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
 	if(cloud_host[0]) {
 		sqlDb->setDisableLogError(true);
 		sqlDb->setMaxQueryPass(1);
-		sqlDb->query(
-			string("call create_partition_v2('rtp_stat', 'day', 0, ") + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
-		sqlDb->query(
-			string("call create_partition_v2('rtp_stat', 'day', 1, ") + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 0, " + (opt_log_sensor_partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 1, " + (opt_log_sensor_partition_oldver ? "true" : "false") + ");");
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 		sqlDb->setDisableLogError(disableLogErrorOld);
 	} else {
 		sqlDb->setDisableLogError(true);
 		sqlDb->setMaxQueryPass(2);
-		sqlDb->query(
-			string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', 'rtp_stat', 'day', 0, " + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + table + "', 'day', 0, " + (opt_log_sensor_partition_oldver ? "true" : "false") + ");");
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 		sqlDb->setDisableLogError(disableLogErrorOld);
-		sqlDb->query(
-			string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', 'rtp_stat', 'day', 1, " + (opt_rtp_stat_partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + table + "', 'day', 1, " + (opt_log_sensor_partition_oldver ? "true" : "false") + ");");
 	}
 	delete sqlDb;
-	syslog(LOG_NOTICE, "create rtp_stat partitions - end");
+	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - end").c_str());
 }
 
 void createMysqlPartitionsIpacc() {
 	SqlDb *sqlDb = createSqlObject();
-	syslog(LOG_NOTICE, "create ipacc partitions - begin");
+	syslog(LOG_NOTICE, "%s", "create ipacc partitions - begin");
 	if(cloud_host[0]) {
 		sqlDb->setMaxQueryPass(1);
 		sqlDb->query(
@@ -6159,10 +6197,10 @@ void createMysqlPartitionsIpacc() {
 			string("call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);");
 	}
 	delete sqlDb;
-	syslog(LOG_NOTICE, "create ipacc partitions - end");
+	syslog(LOG_NOTICE, "%s", "create ipacc partitions - end");
 }
 
-void createMysqlPartitionsBillingAgregation() {
+void createDropMysqlPartitionsBillingAgregation(bool drop) {
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->query("show tables like 'billing'");
 	if(!sqlDb->fetchRow()) {
@@ -6179,18 +6217,22 @@ void createMysqlPartitionsBillingAgregation() {
 		delete sqlDb;
 		return;
 	}
-	syslog(LOG_NOTICE, "create billing agregation partitions - begin");
-	
+	syslog(LOG_NOTICE, "%s", 
+	       drop ?
+		"drop billing agregation old partitions - begin" :
+		"create billing agregation partitions - begin");
 	if(cloud_host[0]) {
 		sqlDb->setMaxQueryPass(1);
 	}
-	sqlDb->query(
-		"call billing_agregation_create_parts();");
+	sqlDb->query(drop ?
+		      "call billing_agregation_destroy_parts();" :
+		      "call billing_agregation_create_parts();");
 	delete sqlDb;
-	syslog(LOG_NOTICE, "create billing agregation partitions - end");
+	syslog(LOG_NOTICE, "%s", 
+	       drop ?
+		"drop billing agregation old partitions - end" :
+		"create billing agregation partitions - end");
 }
-
-static void _dropMysqlPartitions(const char *table, int cleanParam, SqlDb *sqlDb);
 
 void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_cdr;
@@ -6198,7 +6240,7 @@ void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_webrtc;
 	extern int opt_cleandatabase_register_state;
 	extern int opt_cleandatabase_register_failed;
-	syslog(LOG_NOTICE, "drop old partitions cdr - begin");
+	syslog(LOG_NOTICE, "drop cdr old partitions - begin");
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->setDisableLogError();
 	sqlDb->setDisableNextAttemptIfError();
@@ -6249,18 +6291,27 @@ void dropMysqlPartitionsCdr() {
 	_dropMysqlPartitions("register_state", opt_cleandatabase_register_state, sqlDb);
 	_dropMysqlPartitions("register_failed", opt_cleandatabase_register_failed, sqlDb);
 	delete sqlDb;
-	syslog(LOG_NOTICE, "drop old partitions cdr - end");
+	syslog(LOG_NOTICE, "drop cdr old partitions - end");
 }
 
 void dropMysqlPartitionsRtpStat() {
 	extern int opt_cleandatabase_rtp_stat;
-	syslog(LOG_NOTICE, "drop old partitions rtp_stat - begin");
+	dropMysqlPartitionsTable("rtp_stat", opt_cleandatabase_rtp_stat);
+}
+
+void dropMysqlPartitionsLogSensor() {
+	extern int opt_cleandatabase_log_sensor;
+	dropMysqlPartitionsTable("log_sensor", opt_cleandatabase_log_sensor);
+}
+
+void dropMysqlPartitionsTable(const char *table, int cleanParam) {
+	syslog(LOG_NOTICE, "%s", (string("drop ") + table + " old partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->setDisableLogError();
 	sqlDb->setDisableNextAttemptIfError();
-	_dropMysqlPartitions("rtp_stat", opt_cleandatabase_rtp_stat, sqlDb);
+	_dropMysqlPartitions(table, cleanParam, sqlDb);
 	delete sqlDb;
-	syslog(LOG_NOTICE, "drop old partitions - end");
+	syslog(LOG_NOTICE, "%s", (string("drop ") + table + " old partitions - end").c_str());
 }
 
 void _dropMysqlPartitions(const char *table, int cleanParam, SqlDb *sqlDb) {
@@ -6474,4 +6525,162 @@ bool _checkMysqlIdCdrChildTables_setAutoIncrement_v2(string table, u_int64_t aut
 	} else {
 		return(sqlDb->query("UPDATE `" + table + "_auto_increment` set `auto_increment` = " + intToString(autoIncrement)));
 	}
+}
+
+
+cLogSensor::cLogSensor() {
+}
+
+void cLogSensor::log(eType type, const char *subject, const char *formatMessage, ...) {
+	cLogSensor *log = new FILE_LINE(0) cLogSensor;
+	string message;
+	if(formatMessage && *formatMessage) {
+		unsigned message_buffer_length = 1024*1024;
+		char *message_buffer = new FILE_LINE(0) char[message_buffer_length];
+		va_list args;
+		va_start(args, formatMessage);
+		vsnprintf(message_buffer, message_buffer_length, formatMessage, args);
+		va_end(args);
+		message = message_buffer;
+		delete [] message_buffer;
+	}
+	log->_log(type, subject, message.c_str());
+	log->_end();
+	delete log;
+}
+
+cLogSensor *cLogSensor::begin(eType type, const char *subject, const char *formatMessage, ...) {
+	cLogSensor *log = new FILE_LINE(0) cLogSensor;
+	string message;
+	if(formatMessage && *formatMessage) {
+		unsigned message_buffer_length = 1024*1024;
+		char *message_buffer = new FILE_LINE(0) char[message_buffer_length];
+		va_list args;
+		va_start(args, formatMessage);
+		vsnprintf(message_buffer, message_buffer_length, formatMessage, args);
+		va_end(args);
+		message = message_buffer;
+		delete [] message_buffer;
+	}
+	log->_log(type, subject, message.c_str());
+	return(log);
+}
+
+void cLogSensor::log(cLogSensor *log, const char *subject, const char *formatMessage, ...) {
+	string message;
+	if(formatMessage && *formatMessage) {
+		unsigned message_buffer_length = 1024*1024;
+		char *message_buffer = new FILE_LINE(0) char[message_buffer_length];
+		va_list args;
+		va_start(args, formatMessage);
+		vsnprintf(message_buffer, message_buffer_length, formatMessage, args);
+		va_end(args);
+		message = message_buffer;
+		delete [] message_buffer;
+	}
+	log->_log(subject, message.c_str());
+}
+
+void cLogSensor::log(const char *subject, const char *formatMessage, ...) {
+	string message;
+	if(formatMessage && *formatMessage) {
+		unsigned message_buffer_length = 1024*1024;
+		char *message_buffer = new FILE_LINE(0) char[message_buffer_length];
+		va_list args;
+		va_start(args, formatMessage);
+		vsnprintf(message_buffer, message_buffer_length, formatMessage, args);
+		va_end(args);
+		message = message_buffer;
+		delete [] message_buffer;
+	}
+	this->_log(subject, message.c_str());
+}
+
+void cLogSensor::end(cLogSensor *log) {
+	log->_end();
+	delete log;
+}
+
+void cLogSensor::_log(eType type, const char *subject, const char *message) {
+	sItem item;
+	item.type = type;
+	if(subject) {
+		item.subject = subject;
+	}
+	if(message) {
+		item.message = message;
+	}
+	items.push_back(item);
+}
+
+void cLogSensor::_log(const char *subject, const char *message) {
+	_log(_na, subject, message);
+}
+
+void cLogSensor::_end() {
+	_save();
+}
+
+void cLogSensor::_save() {
+	extern int opt_nocdr;
+	if(!items.size()) {
+		return;
+	}
+	extern MySqlStore *sqlStore;
+	SqlDb *sqlDb = createSqlObject();
+	bool existsOkLogSensorTable = true;
+	if(!sqlStore) {
+		existsOkLogSensorTable = sqlDb->existsTable("log_sensor");
+	}
+	sqlDb->setEnableSqlStringInContent(true);
+	string query_str;
+	sItem *firstItem = &(*items.begin());
+	unsigned counter = 0;
+	unsigned ID_parent = 0;
+	for(list<sItem>::iterator iter = items.begin(); iter != items.end(); ++iter) {
+		if(!opt_nocdr) {
+			SqlDb_row logRow;
+			logRow.add(sqlEscapeString(sqlDateTimeString(firstItem->time).c_str()), "time");
+			if(firstItem->id_sensor > 0) {
+				logRow.add(firstItem->id_sensor, "id_sensor");
+			}
+			logRow.add(firstItem->type, "type");
+			logRow.add(sqlEscapeString(iter->subject), "subject");
+			logRow.add(sqlEscapeString(iter->message), "message");
+			if(sqlStore) {
+				if(counter > 0) {
+					logRow.add("_\\_'SQL'_\\_:@group_id", "ID_parent");
+				}
+				query_str += sqlDb->insertQuery("log_sensor", logRow) + ";\n";
+				if(counter == 0 && items.size() > 1) {
+					query_str += "set @group_id = last_insert_id();\n";
+				}
+			} else if(existsOkLogSensorTable) {
+				if(counter > 0) {
+					logRow.add(ID_parent, "ID_parent");
+				}
+				sqlDb->insert("log_sensor", logRow);
+				if(counter == 0 && items.size() > 1) {
+					ID_parent = sqlDb->getInsertId();
+				}
+			}
+		}
+		syslog(firstItem->type == debug ? LOG_DEBUG :
+		       firstItem->type == info ? LOG_INFO :
+		       firstItem->type == notice ? LOG_NOTICE :
+		       firstItem->type == warning ? LOG_WARNING :
+		       firstItem->type == error ? LOG_ERR :
+		       firstItem->type == critical ? LOG_CRIT :
+		       firstItem->type == alert ? LOG_ALERT :
+		       firstItem->type == emergency ? LOG_EMERG : LOG_INFO,
+		       "%s%s%s",
+		       iter->subject.c_str(),
+		       !iter->subject.empty() && !iter->message.empty() ? " - " : "",
+		       iter->message.c_str());
+		++counter;
+	}
+	if(sqlStore && !query_str.empty()) {
+		sqlStore->query_lock(query_str, STORE_PROC_ID_LOG_SENSOR);
+	}
+	delete sqlDb;
 }

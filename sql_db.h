@@ -721,11 +721,17 @@ string prepareQueryForPrintf(string &query);
 void createMysqlPartitionsCdr();
 void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb);
 void createMysqlPartitionsRtpStat();
+void createMysqlPartitionsLogSensor();
+void createMysqlPartitionsTable(const char *table);
 void createMysqlPartitionsIpacc();
-void createMysqlPartitionsBillingAgregation();
+void createDropMysqlPartitionsBillingAgregation(bool drop = false);
 void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsRtpStat();
+void dropMysqlPartitionsLogSensor();
+void dropMysqlPartitionsTable(const char *table, int cleanParam);
+void _dropMysqlPartitions(const char *table, int cleanParam, SqlDb *sqlDb);
 void checkMysqlIdCdrChildTables();
+
 
 struct sExistsColumns {
 	bool cdr_response_time;
@@ -758,5 +764,53 @@ struct sExistsColumns {
 	bool message_spool_index;
 	bool register_rrd_count;
 };
+
+
+class cLogSensor {
+public: 
+	enum eType {
+	      _na,
+	      debug,
+	      info,
+	      notice,
+	      warning,
+	      error,
+	      critical,
+	      alert,
+	      emergency
+	};
+private:
+	struct sItem {
+		sItem() {
+			extern int opt_id_sensor;
+			time = getTimeS();
+			id_sensor = opt_id_sensor;
+			type = _na;
+		};
+		u_int32_t time;
+		int id_sensor;
+		eType type;
+		string subject;
+		string message;
+	};
+public:
+	cLogSensor();
+	static void log(eType type, const char *subject, const char *formatMessage = NULL, ...);
+	static cLogSensor *begin(eType type, const char *subject, const char *formatMessage = NULL, ...);
+	static void log(cLogSensor *log, const char *subject, const char *formatMessage = NULL, ...);
+	void log(const char *subject, const char *formatMessage = NULL, ...);
+	static void end(cLogSensor *log);
+	void end() {
+		end(this);
+	}
+private:
+	void _log(eType type, const char *subject, const char *message);
+	void _log(const char *subject, const char *message);
+	void _end();
+	void _save();
+private:
+	list<sItem> items;
+};
+
 
 #endif
