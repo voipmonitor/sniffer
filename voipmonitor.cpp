@@ -4104,6 +4104,10 @@ void test() {
 	 
 	case 1: {
 	 
+		extern void ws_test(const char *pcapFile);
+		ws_test("/home/jumbox/Plocha/jira/VG-1191/trace.pcap");
+		break;
+	 
 		extern void testPN();
 		testPN();
 		break;
@@ -4235,7 +4239,7 @@ void test() {
 		test_alloc_speed_malloc();
 		break;
 	case 53:
-		#ifdef HAVE_LIBTCMALLOC
+		#if HAVE_LIBTCMALLOC
 		test_alloc_speed_tc();
 		#else
 		cout << "tcmalloc not exists" << endl;
@@ -6007,6 +6011,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "cleanspool")			sverb.cleanspool = 1;
 						else if(verbparams[i] == "t2_destroy_all")		sverb.t2_destroy_all = 1;
 						else if(verbparams[i] == "log_profiler")		sverb.log_profiler = 1;
+						else if(verbparams[i] == "dump_packets_via_wireshark")	sverb.dump_packets_via_wireshark = 1;
 						//
 						else if(verbparams[i] == "debug1")			sverb._debug1 = 1;
 						else if(verbparams[i] == "debug2")			sverb._debug2 = 1;

@@ -77,6 +77,7 @@ struct sVerbose {
 	int cleanspool;
 	int t2_destroy_all;
 	int log_profiler;
+	int dump_packets_via_wireshark;
 	int _debug1;
 	int _debug2;
 	int _debug3;

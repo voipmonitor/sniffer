@@ -5283,7 +5283,15 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		} else {
 			header_packet = CREATE_HP(0xFFFF);
 		}
-
+		
+		if(sverb.dump_packets_via_wireshark) {
+			extern string ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt);
+			string dissect_rslt = ws_dissect_packet(pcap_next_ex_header, pcap_next_ex_packet, global_pcap_dlink);
+			if(!dissect_rslt.empty()) {
+				cout << ws_dissect_packet(pcap_next_ex_header, pcap_next_ex_packet, global_pcap_dlink) << endl;
+			}
+		}
+		
 		memcpy_heapsafe(HPH(header_packet), header_packet,
 				pcap_next_ex_header, NULL,
 				sizeof(pcap_pkthdr));
