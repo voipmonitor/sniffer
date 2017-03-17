@@ -6628,10 +6628,12 @@ void cLogSensor::_save() {
 	}
 	extern MySqlStore *sqlStore;
 	SqlDb *sqlDb = createSqlObject();
-	bool existsOkLogSensorTable = true;
-	if(!sqlStore) {
+	bool existsOkLogSensorTable = false;
+	if(!sqlStore && !cloud_token[0]) {
 		existsOkLogSensorTable = sqlDb->existsTable("log_sensor");
 	}
+	sqlDb->setMaxQueryPass(1);
+	sqlDb->setDisableLogError(true);
 	sqlDb->setEnableSqlStringInContent(true);
 	string query_str;
 	sItem *firstItem = &(*items.begin());
