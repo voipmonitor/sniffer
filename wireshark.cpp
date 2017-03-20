@@ -33,6 +33,7 @@ static epan_t *ws_epan;
 void ws_init() {
 	if(!ws_init_ok) {
 		init_process_policies();
+		wtap_init();
 		epan_init(register_all_protocols, register_all_protocol_handoffs, NULL, NULL);
 		ws_init_ok = true;
 	}
@@ -88,8 +89,11 @@ void ws_gener_json(epan_dissect_t *edt, string *rslt) {
 	if(file) {
 		output_fields_t* output_fields  = NULL;
 		print_args_t print_args;
+		memset(&print_args, 0, sizeof(print_args));
+		print_args.print_dissections = print_dissections_expanded;
 		gchar **protocolfilter = NULL;
-		write_json_proto_tree(output_fields, &print_args, protocolfilter, edt, file);
+		pf_flags protocolfilter_flags = PF_NONE;
+		write_json_proto_tree(output_fields, &print_args, protocolfilter, protocolfilter_flags, edt, file);
 		fclose(file);
 		*rslt = buff;
 	}
@@ -104,7 +108,8 @@ void ws_gener_pdml(epan_dissect_t *edt, string *rslt) {
 	if(file) {
 		output_fields_t* output_fields  = NULL;
 		gchar **protocolfilter = NULL;
-		write_pdml_proto_tree(output_fields, protocolfilter, edt, file);
+		pf_flags protocolfilter_flags = PF_NONE;
+		write_pdml_proto_tree(output_fields, protocolfilter, protocolfilter_flags, edt, file);
 		fclose(file);
 		*rslt = buff;
 	}
