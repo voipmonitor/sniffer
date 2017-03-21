@@ -296,6 +296,10 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 				}
 			}
 		}
+		
+		if((int32_t)recLen <= 0) {
+			return(NM_ERROR(DSSL_E_SSL_INVALID_RECORD_LENGTH));
+		}
 
 		/* AEAD ciphers have no mac */
 		if ( EVP_CIPH_CBC_MODE == stack->sess->cipher_mode || EVP_CIPH_STREAM_CIPHER == stack->sess->cipher_mode )
