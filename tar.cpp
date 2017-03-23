@@ -74,7 +74,7 @@ extern int terminated_tar_flush_queue[2];
 extern int terminated_tar[2];
 
 
-void data_tar::set(int typeSpoolFile, Call *call, const char *fileName) {
+void data_tar::set(int typeSpoolFile, Call_abstract *call, const char *fileName) {
 	this->sensorName = call->get_sensordir();
 	struct tm t = time_r((const time_t*)(&call->first_packet_time));
 	this->year = t.tm_year + 1900;
@@ -965,6 +965,7 @@ TarQueue::add(data_tar *tar_data, ChunkBuffer *buffer, unsigned int time){
 	case tsf_sip:
 	case tsf_reg:
 	case tsf_skinny:
+	case tsf_ss7:
 		queue_data[1][data].push_back(data);
 		break;
 	case tsf_rtp:

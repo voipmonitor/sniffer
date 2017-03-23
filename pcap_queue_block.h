@@ -17,6 +17,7 @@
 #define PCAP_BLOCK_STORE_HEADER_VERSION		2
 
 
+extern int opt_enable_ss7;
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
 extern int opt_enable_ssl;

@@ -386,6 +386,7 @@ struct pcapProcessData {
 	int datalen;
 	int traillen;
 	int istcp;
+	int isother;
 	unsigned char *prevmd5s;
 	MD5_CTX ctx;
 	u_int ipfrag_lastprune;

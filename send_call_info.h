@@ -62,7 +62,7 @@ public:
 	void clear(bool lock = true);
 	void refresh();
 	void stopPopCallInfoThread(bool wait = false);
-	void evCall(Call *call, sSciInfo::eTypeSci typeSci, u_int64_t at);
+	void evCall(class Call *call, sSciInfo::eTypeSci typeSci, u_int64_t at);
 private:
 	void initPopCallInfoThread();
 	void popCallInfoThread();

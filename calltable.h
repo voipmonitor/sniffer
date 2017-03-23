@@ -17,6 +17,7 @@
 
 #include <arpa/inet.h>
 #include <time.h>
+#include <limits.h>
 
 #include <pcap.h>
 
@@ -64,6 +65,7 @@
 #define REFER 13
 #define UPDATE 14
 #define SKINNY_NEW 100
+#define SS7 200
 
 #define IS_SIP_RES18X(sip_method) (sip_method == RES18X || sip_method == RES182)
 #define IS_SIP_RES3XX(sip_method) (sip_method == RES300 || sip_method == RES3XX)
@@ -97,6 +99,13 @@
 #define CDR_CHANGE_SRC_PORT_CALLED	(1 << 1)
 #define CDR_UNCONFIRMED_BYE		(1 << 2)
 #define CDR_ALONE_UNCONFIRMED_BYE	(1 << 3)
+
+#define SS7_IAM 1
+#define SS7_ACM 6
+#define SS7_CPG 44
+#define SS7_ANM 9
+#define SS7_REL 12
+#define SS7_RLC 16
 
 
 struct s_dtmf {
@@ -167,12 +176,60 @@ struct raws_t {
 	string filename;
 };
 
-
+class Call_abstract {
+public:
+	Call_abstract(int call_type, time_t time);
+	int calltime() { return first_packet_time; };
+	string get_sensordir();
+	string get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpoolDir = NULL);
+	string get_filename(eTypeSpoolFile typeSpoolFile, const char *fileExtension = NULL);
+	string get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileExtension = NULL);
+	string dirnamesqlfiles();
+	char *get_fbasename_safe();
+	const char *getSpoolDir(eTypeSpoolFile typeSpoolFile) {
+		return(::getSpoolDir(typeSpoolFile, getSpoolIndex()));
+	}
+	int getSpoolIndex() {
+		extern sExistsColumns existsColumns;
+		return((flags & FLAG_USE_SPOOL_2) && isSetSpoolDir2() &&
+			((type == INVITE && existsColumns.cdr_next_spool_index) ||
+			 (type == MESSAGE && existsColumns.message_spool_index)) ?
+			1 : 
+			0);
+	}
+	bool isEmptyChunkBuffersCount() {
+		return(!chunkBuffersCount);
+	}
+	void incChunkBuffers() {
+		__sync_add_and_fetch(&chunkBuffersCount, 1);
+	}
+	void decChunkBuffers() {
+		__sync_sub_and_fetch(&chunkBuffersCount, 1);
+	}
+	void addTarPos(u_int64_t pos, int type);
+public:
+	int type;
+	time_t first_packet_time;
+	char fbasename[MAX_FNAME];
+	char fbasename_safe[MAX_FNAME];
+	u_int64_t fname_register;
+	int useSensorId;
+	int useDlt;
+	pcap_t *useHandle;
+	string force_spool_path;
+	volatile unsigned int flags;
+protected:
+	list<u_int64_t> tarPosSip;
+	list<u_int64_t> tarPosRtp;
+	list<u_int64_t> tarPosGraph;
+private:
+	volatile u_int16_t chunkBuffersCount;
+};
 
 /**
   * This class implements operations on call
 */
-class Call {
+class Call : public Call_abstract {
 public:
 	struct sSipcalleRD_IP {
 		sSipcalleRD_IP() {
@@ -260,16 +317,12 @@ public:
 		voicemail_inactive
 	};
 public:
-	int type;			//!< type of call, INVITE or REGISTER
 	bool is_ssl;			//!< call was decrypted
 	char chantype;
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
 	volatile int rtplock;
 	unsigned long call_id_len;	//!< length of call-id 	
 	string call_id;	//!< call-id from SIP session
-	char fbasename[MAX_FNAME];	//!< basename of file 
-	char fbasename_safe[MAX_FNAME];	//!< basename of file 
-	u_int64_t fname_register;
 	char callername[256];		//!< callerid name from SIP header
 	char caller[256];		//!< From: xxx 
 	char caller_domain[256];	//!< From: xxx 
@@ -298,12 +351,6 @@ public:
 	bool seenRES2XX_no_BYE;
 	bool seenRES18X;
 	bool sighup;			//!< true if call is saving during sighup
-	string get_sensordir();
-	string get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpoolDir = NULL);
-	string get_filename(eTypeSpoolFile typeSpoolFile, const char *fileExtension = NULL);
-	string get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileExtension = NULL);
-					//!< name of the directory to store files for the Call
-	string dirnamesqlfiles();
 	char a_ua[1024];		//!< caller user agent 
 	char b_ua[1024];		//!< callee user agent 
 	int rtpmap[MAX_IP_PER_CALL][MAX_RTPMAP]; //!< rtpmap for every rtp stream
@@ -358,7 +405,6 @@ public:
 	time_t last_packet_time;	
 	time_t last_rtp_a_packet_time;	
 	time_t last_rtp_b_packet_time;	
-	time_t first_packet_time;	
 	unsigned int first_packet_usec;
 	time_t destroy_call_at;
 	time_t destroy_call_at_bye;
@@ -430,8 +476,6 @@ public:
 
 	unsigned int skinny_partyid;
 
-	volatile unsigned int flags;		//!< structure holding FLAGS*
-
 	int *listening_worker_run;
 	pthread_mutex_t listening_worker_run_lock;
 
@@ -470,10 +514,6 @@ public:
 	bool updateDstnumOnAnswer;
 	bool updateDstnumFromMessage;
 	
-	int useSensorId;
-	int useDlt;
-	pcap_t *useHandle;
-	
 	bool force_close;
 
 	unsigned int caller_silence;
@@ -499,8 +539,6 @@ public:
 	
 	unsigned last_udptl_seq;
 	
-	string force_spool_path;
-
 	/**
 	 * constructor
 	 *
@@ -646,12 +684,6 @@ public:
 	int connect_duration_active() { return(connect_time ? duration_active() - (connect_time - first_packet_time) : 0); };
 	
 	/**
-	 * @brief return start of the call which is first seen packet 
-	 *
-	*/
-	int calltime() { return first_packet_time; };
-
-	/**
 	 * @brief remove call from hash table
 	 *
 	*/
@@ -672,12 +704,6 @@ public:
 	 *
 	*/
 	void stoprecording();
-
-	/**
-	 * @brief substitute all nonalphanum string to "_" (except for @)
-	 *
-	*/
-	char *get_fbasename_safe();
 
 	/**
 	 * @brief save call to register tables and remove from calltable 
@@ -783,22 +809,10 @@ public:
 	}
 	bool isReadyForWriteCdr() {
 		return(isPcapsClose() && isGraphsClose() &&
-		       !chunkBuffersCount);
-	}
-	bool isEmptyChunkBuffersCount() {
-		return(!chunkBuffersCount);
+		       isEmptyChunkBuffersCount());
 	}
 	
 	u_int32_t getAllReceivedRtpPackets();
-	
-	void incChunkBuffers() {
-		__sync_add_and_fetch(&chunkBuffersCount, 1);
-	}
-	void decChunkBuffers() {
-		__sync_sub_and_fetch(&chunkBuffersCount, 1);
-	}
-	
-	void addTarPos(u_int64_t pos, int type);
 	
 	void forcemark_lock() {
 		while(__sync_lock_test_and_set(&this->_forcemark_lock, 1));
@@ -833,18 +847,6 @@ public:
 	void createListeningBuffers();
 	void destroyListeningBuffers();
 	void disableListeningBuffers();
-	
-	int getSpoolIndex() {
-		extern sExistsColumns existsColumns;
-		return((flags & FLAG_USE_SPOOL_2) && isSetSpoolDir2() &&
-			((type == INVITE && existsColumns.cdr_next_spool_index) ||
-			 (type == MESSAGE && existsColumns.message_spool_index)) ?
-			1 : 
-			0);
-	}
-	const char *getSpoolDir(eTypeSpoolFile typeSpoolFile) {
-		return(::getSpoolDir(typeSpoolFile, getSpoolIndex()));
-	}
 	
 	bool checkKnownIP_inSipCallerdIP(u_int32_t ip) {
 		for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
@@ -902,10 +904,6 @@ private:
 	PcapDumper pcapSip;
 	PcapDumper pcapRtp;
 	map<sStreamId, sUdptlDumper*> udptlDumpers;
-	volatile u_int16_t chunkBuffersCount;
-	list<u_int64_t> tarPosSip;
-	list<u_int64_t> tarPosRtp;
-	list<u_int64_t> tarPosGraph;
 public:
 	bool error_negative_payload_length;
 	bool use_removeRtp;
@@ -940,6 +938,134 @@ inline unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
 }
 
 
+class Ss7 : public Call_abstract {
+public:
+	enum eState {
+		iam,
+		acm,
+		cpg,
+		anm,
+		rel,
+		rlc
+	};
+	struct sParseData {
+		sParseData() {
+			isup_message_type = 0;
+			isup_cic = 0;
+			isup_satellite_indicator = 0;
+			isup_echo_control_device_indicator = 0;
+			isup_calling_partys_category = 0;
+			isup_calling_party_nature_of_address_indicator = 0;
+			isup_ni_indicator = 0;
+			isup_address_presentation_restricted_indicator = 0;
+			isup_screening_indicator = 0;
+			isup_transmission_medium_requirement = 0;
+			isup_called_party_nature_of_address_indicator = 0;
+			isup_inn_indicator = 0;
+			m3ua_protocol_data_opc = 0;
+			m3ua_protocol_data_dpc = 0;
+			mtp3_opc = 0;
+			mtp3_dpc = 0;
+		}
+		bool parse(struct packet_s_stack *packetS);
+		string ss7_id() {
+			if(!isOk()) {
+				return("");
+			}
+			unsigned opc = isset_unsigned(m3ua_protocol_data_opc) ? m3ua_protocol_data_opc : mtp3_opc;
+			unsigned dpc = isset_unsigned(m3ua_protocol_data_dpc) ? m3ua_protocol_data_dpc : mtp3_dpc;
+			unsigned low_point = min(opc, dpc);
+			unsigned high_point = max(opc, dpc);
+			return(intToString(isup_cic) + "-" + intToString(low_point) + "-" + intToString(high_point));
+		}
+		string filename() {
+			if(!isOk()) {
+				return("");
+			}
+			unsigned opc = isset_unsigned(m3ua_protocol_data_opc) ? m3ua_protocol_data_opc : mtp3_opc;
+			unsigned dpc = isset_unsigned(m3ua_protocol_data_dpc) ? m3ua_protocol_data_dpc : mtp3_dpc;
+			return(intToString(isup_cic) + "-" + intToString(opc) + "-" + intToString(dpc) + "-" +
+			       e164_calling_party_number_digits + "-" + e164_called_party_number_digits);
+		}
+		bool isOk() {
+			return(isset_unsigned(isup_cic) &&
+			       (isset_unsigned(m3ua_protocol_data_opc) || isset_unsigned(mtp3_opc)) &&
+			       (isset_unsigned(m3ua_protocol_data_dpc) || isset_unsigned(mtp3_dpc)));
+		}
+		bool isset_unsigned(unsigned value) {
+			return(value != UINT_MAX);
+		}
+		void debugOutput();
+		unsigned isup_message_type;
+		unsigned isup_cic;
+		bool exists_isup_cic;
+		unsigned isup_satellite_indicator;
+		unsigned isup_echo_control_device_indicator;
+		unsigned isup_calling_partys_category;
+		unsigned isup_calling_party_nature_of_address_indicator;
+		unsigned isup_ni_indicator;
+		unsigned isup_address_presentation_restricted_indicator;
+		unsigned isup_screening_indicator;
+		unsigned isup_transmission_medium_requirement;
+		unsigned isup_called_party_nature_of_address_indicator;
+		unsigned isup_inn_indicator;
+		unsigned m3ua_protocol_data_opc;
+		bool exists_m3ua_protocol_data_opc;
+		unsigned m3ua_protocol_data_dpc;
+		bool exists_m3ua_protocol_data_dpc;
+		unsigned mtp3_opc;
+		bool exists_mtp3_opc;
+		unsigned mtp3_dpc;
+		bool exists_mtp3_dpc;
+		string e164_called_party_number_digits;
+		string e164_calling_party_number_digits;
+	};
+public:
+	Ss7(time_t time);
+	void processData(packet_s_stack *packetS, sParseData *data);
+	void pushToQueue(string *ss7_id = NULL);
+	int saveToDb(bool enableBatchIfPossible = true);
+	string ss7_id() {
+		return(iam_data.ss7_id());
+	}
+	string filename() {
+		return(intToString(iam_time_us) + "-" + iam_data.filename());
+	}
+	string stateToString() {
+		return(state == iam ? "iam" :
+		       state == acm ? "acm" :
+		       state == cpg ? "cpg" :
+		       state == anm ? "anm" :
+		       state == rel ? "rel" :
+		       state == rlc ? "rlc" : "");
+	}
+	bool isset_unsigned(unsigned value) {
+		return(value != UINT_MAX);
+	}
+private:
+	void init();
+public:
+	eState state;
+	// IAM (Initial Address)
+	sParseData iam_data;
+	u_int32_t iam_src_ip;
+	u_int32_t iam_dst_ip;
+	u_int64_t iam_time_us;
+	// ACM (Address Complete)
+	u_int64_t acm_time_us;
+	// CPG (Call Progress)
+	u_int64_t cpg_time_us;
+	// ANM (Answer)
+	u_int64_t anm_time_us;
+	// REL (Reelease)
+	u_int64_t rel_time_us;
+	// RLC (Release complete)
+	u_int64_t rlc_time_us;
+	u_int64_t last_time_us;
+	PcapDumper pcap;
+};
+
+
 /**
   * This class implements operations on Call list
 */
@@ -959,6 +1085,7 @@ public:
 	deque<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	deque<Call*> registers_queue;
 	deque<Call*> registers_deletequeue;
+	deque<Ss7*> ss7_queue;
 	queue<string> files_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	map<string, Call*> calls_listMAP;
@@ -966,6 +1093,7 @@ public:
 	map<string, Call*> registers_listMAP;
 	map<string, Call*> skinny_ipTuples;
 	map<unsigned int, Call*> skinny_partyID;
+	map<string, Ss7*> ss7_listMAP;
 
 	/**
 	 * @brief constructor
@@ -1000,6 +1128,9 @@ public:
 	void lock_calls_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP, 1)) usleep(10); /*pthread_mutex_lock(&calls_listMAPlock);*/ };
 	void lock_calls_mergeMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_mergeMAP, 1)) usleep(10); /*pthread_mutex_lock(&calls_mergeMAPlock);*/ };
 	void lock_registers_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_listMAP, 1)) usleep(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
+	void lock_ss7_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_ss7_listMAP, 1)) usleep(10); }
+	void lock_process_ss7_listmap() { while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_listmap, 1)) usleep(10); }
+	void lock_process_ss7_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_queue, 1)) usleep(10); }
 
 	/**
 	 * @brief unlock calls_queue structure 
@@ -1014,6 +1145,9 @@ public:
 	void unlock_calls_listMAP() { __sync_lock_release(&this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ };
 	void unlock_calls_mergeMAP() { __sync_lock_release(&this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ };
 	void unlock_registers_listMAP() { __sync_lock_release(&this->_sync_lock_registers_listMAP); /*pthread_mutex_unlock(&registers_listMAPlock);*/ };
+	void unlock_ss7_listMAP() { __sync_lock_release(&this->_sync_lock_ss7_listMAP); };
+	void unlock_process_ss7_listmap() { __sync_lock_release(&this->_sync_lock_process_ss7_listmap); };
+	void unlock_process_ss7_queue() { __sync_lock_release(&this->_sync_lock_process_ss7_queue); };
 
 	/**
 	 * @brief add Call to Calltable
@@ -1025,6 +1159,7 @@ public:
 	 * @return reference of the new Call class
 	*/
 	Call *add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port, pcap_t *handle, int dlt, int sensorId);
+	Ss7 *add_ss7(packet_s_stack *packetS, Ss7::sParseData *data);
 
 	/**
 	 * @brief find Call by call_id
@@ -1092,6 +1227,16 @@ public:
 	}
 	Call *find_by_skinny_partyid(unsigned int partyid);
 	Call *find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr);
+	Ss7 *find_by_ss7_id(string *ss7_id) {
+		Ss7 *rslt_ss7 = NULL;
+		lock_ss7_listMAP();
+		map<string, Ss7*>::iterator ss7MAPIT = ss7_listMAP.find(*ss7_id);
+		if(ss7MAPIT != ss7_listMAP.end()) {
+			rslt_ss7 = ss7MAPIT->second;
+		}
+		unlock_ss7_listMAP();
+		return(rslt_ss7);
+	}
 
 	/**
 	 * @brief find Call by IP adress and port number
@@ -1116,6 +1261,7 @@ public:
 	*/
 	int cleanup_calls( time_t currtime );
 	int cleanup_registers( time_t currtime );
+	int cleanup_ss7( time_t currtime );
 
 	/**
 	 * @brief add call to hash table
@@ -1198,6 +1344,7 @@ public:
 		__sync_lock_release(&this->_sync_lock_calls_hash);
 	}
 private:
+	/*
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
 	pthread_mutex_t qaudiolock;	//!< mutex locking calls_audioqueue
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue
@@ -1205,6 +1352,7 @@ private:
 	pthread_mutex_t calls_listMAPlock;
 	pthread_mutex_t calls_mergeMAPlock;
 	pthread_mutex_t registers_listMAPlock;
+	*/
 
 	void *calls_hash[MAXNODE];
 	volatile int _sync_lock_calls_hash;
@@ -1217,6 +1365,9 @@ private:
 	volatile int _sync_lock_registers_queue;
 	volatile int _sync_lock_registers_deletequeue;
 	volatile int _sync_lock_files_queue;
+	volatile int _sync_lock_ss7_listMAP;
+	volatile int _sync_lock_process_ss7_listmap;
+	volatile int _sync_lock_process_ss7_queue;
 	
 	list<sAudioQueueThread*> audioQueueThreads;
 	unsigned int audioQueueThreadsMax;

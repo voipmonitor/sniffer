@@ -146,7 +146,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 							_ip_src, _port_src, _ip_dst, _port_dst, 
 							rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
 							handle_index, udpHeader, udpPacket, true, 
-							false, (iphdr2*)(udpPacket + ethHeaderLength),
+							false, false, (iphdr2*)(udpPacket + ethHeaderLength),
 							NULL, 0, dlt, sensor_id, sensor_ip,
 							false);
 					}

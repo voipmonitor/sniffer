@@ -130,7 +130,13 @@ void CleanSpool::check_index_date(string date, SqlDb *sqlDb) {
 		string ymdh = string(date.substr(0,4)) + date.substr(5,2) + date.substr(8,2) + hour;
 		map<string, long long> typeSize;
 		reindex_date_hour(date, h, true, &typeSize, true);
-		if(typeSize["sip"] || typeSize["reg"] || typeSize["skinny"] || typeSize["rtp"] || typeSize["graph"] || typeSize["audio"]) {
+		if(typeSize["sip"] || 
+		   typeSize["reg"] || 
+		   typeSize["skinny"] || 
+		   typeSize["ss7"] || 
+		   typeSize["rtp"] || 
+		   typeSize["graph"] || 
+		   typeSize["audio"]) {
 			bool needReindex = false;
 			sqlDb->query(
 			       "select * \
@@ -143,6 +149,7 @@ void CleanSpool::check_index_date(string date, SqlDb *sqlDb) {
 				if((typeSize["sip"] && !atoll(row["sipsize"].c_str())) ||
 				   (typeSize["reg"] && !atoll(row["regsize"].c_str())) ||
 				   (typeSize["skinny"] && !atoll(row["skinnysize"].c_str())) ||
+				   (typeSize["ss7"] && !atoll(row["ss7size"].c_str())) ||
 				   (typeSize["rtp"] && !atoll(row["rtpsize"].c_str())) ||
 				   (typeSize["graph"] && !atoll(row["graphsize"].c_str())) ||
 				   (typeSize["audio"] && !atoll(row["audiosize"].c_str()))) {
@@ -155,6 +162,7 @@ void CleanSpool::check_index_date(string date, SqlDb *sqlDb) {
 			   ((typeSize["sip"] && !file_exists(getSpoolDir_string(tsf_main) + "/filesindex/sipsize/" + ymdh)) ||
 			    (typeSize["reg"] && !file_exists(getSpoolDir_string(tsf_main) + "/filesindex/regsize/" + ymdh)) ||
 			    (typeSize["skinny"] && !file_exists(getSpoolDir_string(tsf_main) + "/filesindex/skinnysize/" + ymdh)) ||
+			    (typeSize["ss7"] && !file_exists(getSpoolDir_string(tsf_main) + "/filesindex/ss7size/" + ymdh)) ||
 			    (typeSize["rtp"] && !file_exists(getSpoolDir_string(tsf_main) + "/filesindex/rtpsize/" + ymdh)) ||
 			    (typeSize["graph"] && !file_exists(getSpoolDir_string(tsf_main) + "/filesindex/graphsize/" + ymdh)) ||
 			    (typeSize["audio"] && !file_exists(getSpoolDir_string(tsf_main) + "/filesindex/audiosize/" + ymdh)))) {
@@ -506,6 +514,7 @@ void CleanSpool::cleanThreadProcess() {
 			       "SELECT SUM(coalesce(sipsize,0) + \
 					   coalesce(regsize,0) + \
 					   coalesce(skinnysize,0) + \
+					   coalesce(ss7size,0) + \
 					   coalesce(rtpsize,0) + \
 					   coalesce(graphsize,0) + \
 					   coalesce(audiosize,0)) as sum_size \
@@ -665,6 +674,7 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 		(*typeSize)["sip"] = 0;
 		(*typeSize)["reg"] = 0;
 		(*typeSize)["skinny"] = 0;
+		(*typeSize)["ss7"] = 0;
 		(*typeSize)["rtp"] = 0;
 		(*typeSize)["graph"] = 0;
 		(*typeSize)["audio"] = 0;
@@ -677,6 +687,7 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 	long long sipsize = reindex_date_hour_type(date, h, "sip", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_sip]);
 	long long regsize = reindex_date_hour_type(date, h, "reg", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_reg]);
 	long long skinnysize = reindex_date_hour_type(date, h, "skinny", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_skinny]);
+	long long ss7size = reindex_date_hour_type(date, h, "ss7", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_ss7]);
 	long long rtpsize = reindex_date_hour_type(date, h, "rtp", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_rtp]);
 	long long graphsize = reindex_date_hour_type(date, h, "graph", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_graph]);
 	long long audiosize = reindex_date_hour_type(date, h, "audio", readOnly, quickCheck, &fillMinutes, &existsDhDir[tsf_audio]);
@@ -707,6 +718,7 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 				    sipsize = " + intToString(sipsize) + ", \
 				    regsize = " + intToString(regsize) + ", \
 				    skinnysize = " + intToString(skinnysize) + ", \
+				    ss7size = " + intToString(ss7size) + ", \
 				    rtpsize = " + intToString(rtpsize) + ", \
 				    graphsize = " + intToString(graphsize) + ", \
 				    audiosize = " + intToString(audiosize) + " \
@@ -714,6 +726,7 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 				    sipsize = " + intToString(sipsize) + ", \
 				    regsize = " + intToString(regsize) + ", \
 				    skinnysize = " + intToString(skinnysize) + ", \
+				    ss7size = " + intToString(ss7size) + ", \
 				    rtpsize = " + intToString(rtpsize) + ", \
 				    graphsize = " + intToString(graphsize) + ", \
 				    audiosize = " + intToString(audiosize),
@@ -734,6 +747,7 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 		(*typeSize)["sip"] = sipsize;
 		(*typeSize)["reg"] = regsize;
 		(*typeSize)["skinny"] = skinnysize;
+		(*typeSize)["ss7"] = ss7size;
 		(*typeSize)["rtp"] = rtpsize;
 		(*typeSize)["graph"] = graphsize;
 		(*typeSize)["audio"] = audiosize;
@@ -761,6 +775,10 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 		filesIndexDirName = "skinnysize";
 		spoolDirTypeName = "SKINNY";
 		typeSpoolFile = tsf_skinny;
+	} else if(type == "ss7") {
+		filesIndexDirName = "ss7size";
+		spoolDirTypeName = "SS7";
+		typeSpoolFile = tsf_ss7;
 	} else if(type == "rtp") {
 		filesIndexDirName = "rtpsize";
 		spoolDirTypeName = "RTP";
@@ -891,16 +909,17 @@ void CleanSpool::unlinkfileslist(eTypeSpoolFile typeSpoolFile, string fname, str
 	}
 }
 
-void CleanSpool::unlink_dirs(string datehour, int sip, int reg, int skinny, int rtp, int graph, int audio, string callFrom) {
+void CleanSpool::unlink_dirs(string datehour, int sip, int reg, int skinny, int ss7, int rtp, int graph, int audio, string callFrom) {
 	if(DISABLE_CLEANSPOOL || !check_datehour(datehour.c_str())) {
 		return;
 	}
-	syslog(LOG_NOTICE, "cleanspool[%i]: call unlink_dirs(%s,%s,%s,%s,%s,%s,%s) from %s", 
+	syslog(LOG_NOTICE, "cleanspool[%i]: call unlink_dirs(%s,%s,%s,%s,%s,%s,%s, %s) from %s", 
 	       spoolIndex,
 	       datehour.c_str(), 
 	       sip == 2 ? "SIP" : sip == 1 ? "sip" : "---",
 	       reg == 2 ? "REG" : reg == 1 ? "reg" : "---",
 	       skinny == 2 ? "SKINNY" : skinny == 1 ? "skinny" : "---",
+	       ss7 == 2 ? "SS7" : ss7 == 1 ? "ss7" : "---",
 	       rtp == 2 ? "RTP" : rtp == 1 ? "rtp" : "---",
 	       graph == 2 ? "GRAPH" : graph == 1 ? "graph" : "---",
 	       audio == 2 ? "AUDIO" : audio == 1 ? "audio" : "---",
@@ -926,6 +945,10 @@ void CleanSpool::unlink_dirs(string datehour, int sip, int reg, int skinny, int 
 		if(skinny) {
 			rmdir_if_r(this->findExistsSpoolDirFile(tsf_skinny,'/' + dhm + "/SKINNY"),
 				   skinny == 2);
+		}
+		if(ss7) {
+			rmdir_if_r(this->findExistsSpoolDirFile(tsf_ss7,'/' + dhm + "/SS7"),
+				   ss7 == 2);
 		}
 		if(rtp) {
 			rmdir_if_r(this->findExistsSpoolDirFile(tsf_rtp, '/' + dhm + "/RTP"),
@@ -1056,6 +1079,7 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 		       "SELECT SUM(sipsize) AS sipsize, \
 			       SUM(regsize) AS regsize, \
 			       SUM(skinnysize) AS skinnysize, \
+			       SUM(ss7size) AS ss7size, \
 			       SUM(rtpsize) AS rtpsize, \
 			       SUM(graphsize) as graphsize, \
 			       SUM(audiosize) AS audiosize \
@@ -1065,7 +1089,8 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 		SqlDb_row row = sqlDb->fetchRow();
 		uint64_t sipsize_total = strtoull(row["sipsize"].c_str(), NULL, 0) + 
 					 strtoull(row["regsize"].c_str(), NULL, 0) + 
-					 strtoull(row["skinnysize"].c_str(), NULL, 0);
+					 strtoull(row["skinnysize"].c_str(), NULL, 0) + 
+					 strtoull(row["ss7size"].c_str(), NULL, 0);
 		uint64_t rtpsize_total = strtoull(row["rtpsize"].c_str(), NULL, 0);
 		uint64_t graphsize_total = strtoull(row["graphsize"].c_str(), NULL, 0);
 		uint64_t audiosize_total = strtoull(row["audiosize"].c_str(), NULL, 0);
@@ -1095,7 +1120,7 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 		// walk all rows ordered by datehour and delete everything 
 		string sizeCond;
 		if(!(sip && rtp && graph && audio)) {
-			sizeCond = sip ? "(sipsize > 0 or regsize > 0 or skinnysize > 0)" :
+			sizeCond = sip ? "(sipsize > 0 or regsize > 0 or skinnysize > 0 or ss7size > 0)" :
 				   rtp ? "rtpsize > 0" :
 				   graph ? "graphsize > 0" :
 					   "audiosize > 0";
@@ -1122,7 +1147,8 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 		}
 		uint64_t sipsize = strtoull(row["sipsize"].c_str(), NULL, 0) +
 				   strtoull(row["regsize"].c_str(), NULL, 0) + 
-				   strtoull(row["skinnysize"].c_str(), NULL, 0);
+				   strtoull(row["skinnysize"].c_str(), NULL, 0) + 
+				   strtoull(row["ss7size"].c_str(), NULL, 0);
 		uint64_t rtpsize = strtoull(row["rtpsize"].c_str(), NULL, 0);
 		uint64_t graphsize = strtoull(row["graphsize"].c_str(), NULL, 0);
 		uint64_t audiosize = strtoull(row["audiosize"].c_str(), NULL, 0);
@@ -1130,6 +1156,7 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 			unlinkfileslist(tsf_sip, "filesindex/sipsize/" + row["datehour"], "clean_maxpoolsize");
 			unlinkfileslist(tsf_reg, "filesindex/regsize/" + row["datehour"], "clean_maxpoolsize");
 			unlinkfileslist(tsf_skinny, "filesindex/skinnysize/" + row["datehour"], "clean_maxpoolsize");
+			unlinkfileslist(tsf_ss7, "filesindex/ss7size/" + row["datehour"], "clean_maxpoolsize");
 			if(DISABLE_CLEANSPOOL) {
 				break;
 			}
@@ -1153,9 +1180,10 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 			}
 		}
 		if(sip && rtp && graph && audio) {
-			unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2, "clean_maxpoolsize");
+			unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2, 2, "clean_maxpoolsize");
 		} else {
 			unlink_dirs(row["datehour"],
+				    sip ? 2 : 1, 
 				    sip ? 2 : 1, 
 				    sip ? 2 : 1, 
 				    sip ? 2 : 1, 
@@ -1175,7 +1203,7 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 				      spool_index = " + getSpoolIndex_string() + " and \
 				      id_sensor = " + getIdSensor_string());
 		} else {
-			string columnSetNul = sip ? "sipsize = 0, regsize = 0, skinnysize = 0" :
+			string columnSetNul = sip ? "sipsize = 0, regsize = 0, skinnysize = 0, ss7size = 0" :
 					      rtp ? "rtpsize = 0" :
 					      graph ? "graphsize = 0" : "audiosize = 0";
 			sqlDb->query(
@@ -1212,7 +1240,7 @@ void CleanSpool::clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio) {
 	while(!is_terminating() && !DISABLE_CLEANSPOOL) {
 		string sizeCond;
 		if(!(sip && rtp && graph && audio)) {
-			sizeCond = sip ? "(sipsize > 0 or regsize > 0 or skinnysize > 0)" :
+			sizeCond = sip ? "(sipsize > 0 or regsize > 0 or skinnysize > 0 or ss7size > 0)" :
 				   rtp ? "rtpsize > 0" :
 				   graph ? "graphsize > 0" :
 					   "audiosize > 0";
@@ -1232,7 +1260,8 @@ void CleanSpool::clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio) {
 		}
 		uint64_t sipsize = strtoull(row["sipsize"].c_str(), NULL, 0) + 
 				   strtoull(row["regsize"].c_str(), NULL, 0) + 
-				   strtoull(row["skinnysize"].c_str(), NULL, 0);
+				   strtoull(row["skinnysize"].c_str(), NULL, 0) + 
+				   strtoull(row["ss7size"].c_str(), NULL, 0);
 		uint64_t rtpsize = strtoull(row["rtpsize"].c_str(), NULL, 0);
 		uint64_t graphsize = strtoull(row["graphsize"].c_str(), NULL, 0);
 		uint64_t audiosize = strtoull(row["audiosize"].c_str(), NULL, 0);
@@ -1240,6 +1269,7 @@ void CleanSpool::clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio) {
 			unlinkfileslist(tsf_sip, "filesindex/sipsize/" + row["datehour"], "clean_maxpooldays");
 			unlinkfileslist(tsf_sip, "filesindex/regsize/" + row["datehour"], "clean_maxpooldays");
 			unlinkfileslist(tsf_sip, "filesindex/skinnysize/" + row["datehour"], "clean_maxpooldays");
+			unlinkfileslist(tsf_sip, "filesindex/ss7size/" + row["datehour"], "clean_maxpooldays");
 			if(DISABLE_CLEANSPOOL) {
 				break;
 			}
@@ -1263,9 +1293,10 @@ void CleanSpool::clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio) {
 			}
 		}
 		if(sip && rtp && graph && audio) {
-			unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2, "clean_maxpooldays");
+			unlink_dirs(row["datehour"], 2, 2, 2, 2, 2, 2, 2, "clean_maxpooldays");
 		} else {
 			unlink_dirs(row["datehour"],
+				    sip ? 2 : 1, 
 				    sip ? 2 : 1, 
 				    sip ? 2 : 1, 
 				    sip ? 2 : 1, 
@@ -1285,7 +1316,7 @@ void CleanSpool::clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio) {
 				      spool_index = " + getSpoolIndex_string() + " and \
 				      id_sensor = " + getIdSensor_string());
 		} else {
-			string columnSetNul = sip ? "sipsize = 0, regsize = 0, skinnysize = 0" :
+			string columnSetNul = sip ? "sipsize = 0, regsize = 0, skinnysize = 0, ss7size = 0" :
 					      rtp ? "rtpsize = 0" :
 					      graph ? "graphsize = 0" : "audiosize = 0";
 			sqlDb->query(
@@ -1304,6 +1335,7 @@ void CleanSpool::clean_obsolete_dirs() {
 	maxDays[(int)tsf_sip] = opt_max.maxpoolsipdays ? opt_max.maxpoolsipdays : defaultMaxPolDays;
 	maxDays[(int)tsf_reg] = opt_max.maxpoolsipdays ? opt_max.maxpoolsipdays : defaultMaxPolDays;
 	maxDays[(int)tsf_skinny] = opt_max.maxpoolsipdays ? opt_max.maxpoolsipdays : defaultMaxPolDays;
+	maxDays[(int)tsf_ss7] = opt_max.maxpoolsipdays ? opt_max.maxpoolsipdays : defaultMaxPolDays;
 	maxDays[(int)tsf_rtp] = opt_max.maxpoolrtpdays ? opt_max.maxpoolrtpdays : defaultMaxPolDays;
 	maxDays[(int)tsf_graph] = opt_max.maxpoolgraphdays ? opt_max.maxpoolgraphdays : defaultMaxPolDays;
 	maxDays[(int)tsf_audio] = opt_max.maxpoolaudiodays ? opt_max.maxpoolaudiodays : defaultMaxPolDays;
@@ -1535,14 +1567,15 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 						}
 					}
 				}
-				if(sumSize[0][(int)tsf_sip] || sumSize[0][(int)tsf_reg] || sumSize[0][(int)tsf_skinny] ||
+				if(sumSize[0][(int)tsf_sip] || sumSize[0][(int)tsf_reg] || sumSize[0][(int)tsf_skinny] || sumSize[0][(int)tsf_ss7] ||
 				   sumSize[0][(int)tsf_rtp] || sumSize[0][(int)tsf_graph] || sumSize[0][(int)tsf_audio] ||
-				   sumSize[1][(int)tsf_sip] || sumSize[1][(int)tsf_reg] || sumSize[1][(int)tsf_skinny] ||
+				   sumSize[1][(int)tsf_sip] || sumSize[1][(int)tsf_reg] || sumSize[1][(int)tsf_skinny] || sumSize[1][(int)tsf_ss7] ||
 				   sumSize[1][(int)tsf_rtp] || sumSize[1][(int)tsf_graph] || sumSize[1][(int)tsf_audio]) {
 					sqlDb->query(
 					       "SELECT SUM(sipsize) AS sipsize,\
 						       SUM(regsize) AS regsize,\
 						       SUM(skinnysize) AS skinnysize,\
+						       SUM(ss7size) AS ss7size,\
 						       SUM(rtpsize) AS rtpsize,\
 						       SUM(graphsize) AS graphsize,\
 						       SUM(audiosize) AS audiosize,\
@@ -1558,12 +1591,14 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 						if(atoll(rowSum["sipsize"].c_str()) == sumSize[0][(int)tsf_sip] &&
 						   atoll(rowSum["regsize"].c_str()) == sumSize[0][(int)tsf_reg] &&
 						   atoll(rowSum["skinnysize"].c_str()) == sumSize[0][(int)tsf_skinny] &&
+						   atoll(rowSum["ss7size"].c_str()) == sumSize[0][(int)tsf_ss7] &&
 						   atoll(rowSum["rtpsize"].c_str()) == sumSize[0][(int)tsf_rtp] &&
 						   atoll(rowSum["graphsize"].c_str()) == sumSize[0][(int)tsf_graph] &&
 						   atoll(rowSum["audiosize"].c_str()) == sumSize[0][(int)tsf_audio] &&
 						   atoll(rowSum["sipsize"].c_str()) == sumSize[1][(int)tsf_sip] &&
 						   atoll(rowSum["regsize"].c_str()) == sumSize[1][(int)tsf_reg] &&
 						   atoll(rowSum["skinnysize"].c_str()) == sumSize[1][(int)tsf_skinny] &&
+						   atoll(rowSum["ss7size"].c_str()) == sumSize[1][(int)tsf_ss7] &&
 						   atoll(rowSum["rtpsize"].c_str()) == sumSize[1][(int)tsf_rtp] &&
 						   atoll(rowSum["graphsize"].c_str()) == sumSize[1][(int)tsf_graph] &&
 						   atoll(rowSum["audiosize"].c_str()) == sumSize[1][(int)tsf_audio]) {
@@ -1580,6 +1615,9 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 							}
 							if(atoll(rowSum["skinnysize"].c_str()) != sumSize[1][(int)tsf_skinny]) {
 								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum skinnysize in files [ %llu ri / %llu f ]", spoolIndex, sumSize[1][(int)tsf_skinny], atoll(rowSum["skinnysize"].c_str()));
+							}
+							if(atoll(rowSum["ss7size"].c_str()) != sumSize[1][(int)tsf_ss7]) {
+								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum ss7size in files [ %llu ri / %llu f ]", spoolIndex, sumSize[1][(int)tsf_ss7], atoll(rowSum["ss7size"].c_str()));
 							}
 							if(atoll(rowSum["rtpsize"].c_str()) != sumSize[0][(int)tsf_rtp]) {
 								syslog(LOG_NOTICE, "cleanspool[%i]: # ERROR sum rtpsize in files [ %llu ii / %llu f ]", spoolIndex, sumSize[0][(int)tsf_rtp], atoll(rowSum["rtpsize"].c_str()));

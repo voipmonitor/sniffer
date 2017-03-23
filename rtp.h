@@ -515,7 +515,7 @@ public:
 
 	void save_mos_graph(bool delimiter);
 	
-	inline void clearAudioBuff(Call *call, ast_channel *channel);
+	inline void clearAudioBuff(class Call *call, ast_channel *channel);
 
 private: 
 	/*

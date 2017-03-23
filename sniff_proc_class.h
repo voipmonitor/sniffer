@@ -155,6 +155,7 @@ public:
 		ppt_pp_call,
 		ppt_pp_register,
 		ppt_pp_rtp,
+		ppt_pp_other,
 		ppt_end
 	};
 	struct batch_packet_s {
@@ -213,7 +214,7 @@ public:
 				unsigned int saddr, int source, unsigned int daddr, int dest, 
 				int datalen, int dataoffset,
 				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
-				int istcp, struct iphdr2 *header_ip,
+				int istcp, int isother, struct iphdr2 *header_ip,
 				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, u_int32_t sensor_ip,
 				int blockstore_lock = 1) {
 		if(opt_enable_ssl) {
@@ -234,6 +235,7 @@ public:
 		packetS.packet = packet; 
 		packetS._packet_alloc = packetDelete; 
 		packetS.istcp = istcp; 
+		packetS.isother = isother; 
 		packetS.header_ip_offset = header_ip ? ((u_char*)header_ip - packet) : 0; 
 		packetS.block_store = block_store; 
 		packetS.block_store_index =  block_store_index; 
@@ -244,9 +246,10 @@ public:
 		extern int opt_skinny;
 		extern char *sipportmatrix;
 		packetS.is_skinny = opt_skinny && istcp && (source == 2000 || dest == 2000);
-		packetS.is_need_sip_process = is_ssl ||
-					      sipportmatrix[source] || sipportmatrix[dest] ||
-					      packetS.is_skinny;
+		packetS.is_need_sip_process = !packetS.isother &&
+					      (is_ssl ||
+					       sipportmatrix[source] || sipportmatrix[dest] ||
+					       packetS.is_skinny);
 		extern bool opt_t2_boost;
 		if(!opt_t2_boost ||
 		   packetS.is_need_sip_process ||
@@ -284,9 +287,12 @@ public:
 			if(packetS->is_need_sip_process) {
 				p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack();
 				p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackSip;
-			} else {
+			} else if(!packetS->isother) {
 				p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack();
 				p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackRtp;
+			} else {
+				p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack();
+				p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackOther;
 			}
 			++qring_push_index_count;
 			if(qring_push_index_count == qring_detach_active_push_item->max_count) {
@@ -375,6 +381,9 @@ public:
 					case ppt_pp_rtp:
 						this->process_RTP(_packetS);
 						break;
+					case ppt_pp_other:
+						this->process_OTHER(_packetS);
+						break;
 					case ppt_end:
 						break;
 					}
@@ -402,6 +411,9 @@ public:
 				break;
 			case ppt_pp_rtp:
 				this->process_RTP(packetS);
+				break;
+			case ppt_pp_other:
+				this->process_OTHER(packetS);
 				break;
 			case ppt_end:
 				break;
@@ -471,6 +483,10 @@ public:
 		packet_s_process_0 *packetS = new FILE_LINE(28005) packet_s_process_0;
 		return(packetS);
 	}
+	inline packet_s_stack *packetS_other_create() {
+		packet_s_stack *packetS = new FILE_LINE(0) packet_s_stack;
+		return(packetS);
+	}
 	inline packet_s_process *packetS_sip_pop_from_stack() {
 		packet_s_process *packetS;
 		if(this->stackSip->popq((void**)&packetS)) {
@@ -487,6 +503,16 @@ public:
 			++allocStackCounter[0];
 		} else {
 			packetS = new FILE_LINE(28007) packet_s_process_0;
+			++allocCounter[0];
+		}
+		return(packetS);
+	}
+	inline packet_s_stack *packetS_other_pop_from_stack() {
+		packet_s_stack *packetS;
+		if(this->stackOther->popq((void**)&packetS)) {
+			++allocStackCounter[0];
+		} else {
+			packetS = new FILE_LINE(0) packet_s_stack;
 			++allocCounter[0];
 		}
 		return(packetS);
@@ -523,6 +549,12 @@ public:
 		delete *packetS;
 		*packetS = NULL;
 	}
+	inline void packetS_destroy(packet_s_stack **packetS) {
+		(*packetS)->blockstore_unlock();
+		(*packetS)->packetdelete();
+		delete *packetS;
+		*packetS = NULL;
+	}
 	inline void packetS_push_to_stack(packet_s_process **packetS, u_int16_t queue_index) {
 		if(sverb.t2_destroy_all) {
 			this->packetS_destroy(packetS);
@@ -552,6 +584,26 @@ public:
 			return;
 		}
 		if(!check_enable_push_to_stack(*packetS)) {
+			return;
+		}
+		if((*packetS)->_blockstore_lock) {
+			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
+		}
+		if((*packetS)->_packet_alloc) {
+			delete (*packetS)->header_pt;
+			delete [] (*packetS)->packet;
+		}
+		extern int opt_block_alloc_stack;
+		if(opt_block_alloc_stack ||
+		   !(*packetS)->stack ||
+		   !(*packetS)->stack->push((void*)*packetS, queue_index)) {
+			delete *packetS;
+		}
+		*packetS = NULL;
+	}
+	inline void packetS_push_to_stack(packet_s_stack **packetS, u_int16_t queue_index) {
+		if(sverb.t2_destroy_all) {
+			this->packetS_destroy(packetS);
 			return;
 		}
 		if((*packetS)->_blockstore_lock) {
@@ -611,6 +663,8 @@ public:
 			return("register");
 		case ppt_pp_rtp:
 			return("rtp");
+		case ppt_pp_other:
+			return("other");
 		case ppt_end:
 			break;
 		}
@@ -634,6 +688,8 @@ public:
 			return("g");
 		case ppt_pp_rtp:
 			return("r");
+		case ppt_pp_other:
+			return("o");
 		case ppt_end:
 			break;
 		}
@@ -647,6 +703,7 @@ private:
 	void process_CALL(packet_s_process *packetS);
 	void process_REGISTER(packet_s_process *packetS);
 	void process_RTP(packet_s_process_0 *packetS);
+	void process_OTHER(packet_s_stack *packetS);
 	void process_parseSipDataExt(packet_s_process **packetS_ref);
 	inline void process_parseSipData(packet_s_process **packetS_ref);
 	inline void process_sip(packet_s_process **packetS_ref);
@@ -688,6 +745,7 @@ private:
 	bool term_preProcess;
 	cHeapItemsPointerStack *stackSip;
 	cHeapItemsPointerStack *stackRtp;
+	cHeapItemsPointerStack *stackOther;
 	volatile int outThreadState;
 	unsigned long allocCounter[2];
 	unsigned long allocStackCounter[2];
@@ -709,6 +767,11 @@ inline packet_s_process_0 *PACKET_S_PROCESS_RTP_CREATE() {
 	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_create());
 }
 
+inline packet_s_stack *PACKET_S_PROCESS_OTHER_CREATE() {
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_create());
+}
+
 inline packet_s_process *PACKET_S_PROCESS_SIP_POP_FROM_STACK() {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack());
@@ -717,6 +780,11 @@ inline packet_s_process *PACKET_S_PROCESS_SIP_POP_FROM_STACK() {
 inline packet_s_process_0 *PACKET_S_PROCESS_RTP_POP_FROM_STACK() {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack());
+}
+
+inline packet_s_stack *PACKET_S_PROCESS_OTHER_POP_FROM_STACK() {
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack());
 }
 
 inline void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet) {
@@ -729,12 +797,22 @@ inline void PACKET_S_PROCESS_DESTROY(packet_s_process **packet) {
 	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy(packet);
 }
 
+inline void PACKET_S_PROCESS_DESTROY(packet_s_stack **packet) {
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy(packet);
+}
+
 inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process_0 **packet, u_int16_t queue_index) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
 }
 
 inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process **packet, u_int16_t queue_index) {
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
+}
+
+inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_stack **packet, u_int16_t queue_index) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
 }

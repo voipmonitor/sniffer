@@ -106,6 +106,7 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				packetS->packet = tcpPacket; 
 				packetS->_packet_alloc = true; 
 				packetS->istcp = 2;
+				packetS->isother = 0;
 				packetS->header_ip_offset = ethHeaderLength; 
 				packetS->block_store = NULL; 
 				packetS->block_store_index =  0; 
@@ -116,8 +117,9 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				extern int opt_skinny;
 				extern char *sipportmatrix;
 				packetS->is_skinny = opt_skinny && (_port_src == 2000 || _port_dst == 2000);
-				packetS->is_need_sip_process = sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
-							       packetS->is_skinny;
+				packetS->is_need_sip_process = !packetS->isother &&
+							       (sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
+								packetS->is_skinny);
 				packetS->init2();
 				((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS);
 			} else {
@@ -129,7 +131,7 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 						_ip_src, _port_src, _ip_dst, _port_dst, 
 						(*iter_sip_offset)[1], dataOffset,
 						handle_index, tcpHeader, tcpPacket, true, 
-						2, (iphdr2*)(tcpPacket + ethHeaderLength),
+						2, false, (iphdr2*)(tcpPacket + ethHeaderLength),
 						NULL, 0, dlt, sensor_id, sensor_ip,
 						false);
 			}

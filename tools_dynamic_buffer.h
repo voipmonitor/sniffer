@@ -224,7 +224,7 @@ public:
 	};
 public:
 	ChunkBuffer(int time, data_tar_time tar_time,
-		    u_int32_t chunk_fix_len = 0, class Call *call = NULL, int typeCotent = 0);
+		    u_int32_t chunk_fix_len = 0, class Call_abstract *call = NULL, int typeContent = 0);
 	virtual ~ChunkBuffer();
 	void setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	void setZipLevel(int zipLevel);
@@ -296,7 +296,7 @@ public:
 private:
 	int time;
 	data_tar_time tar_time;
-	Call *call;
+	Call_abstract *call;
 	int typeContent;
 	list<sChunk> chunkBuffer;
 	volatile unsigned int chunkBuffer_countItems;

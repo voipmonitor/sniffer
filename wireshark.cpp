@@ -116,7 +116,7 @@ void ws_gener_pdml(epan_dissect_t *edt, string *rslt) {
 	delete [] buff;
 }
 
-void ws_dissect_packet(wtap_pkthdr *whdr, const guchar *pd, capture_file *cfile, gint64 data_offset) {
+void ws_dissect_packet(wtap_pkthdr *whdr, const guchar *pd, capture_file *cfile, gint64 data_offset, string *rslt) {
 
 	frame_data fdlocal;
 	guint32 cum_bytes = 0;
@@ -149,15 +149,11 @@ void ws_dissect_packet(wtap_pkthdr *whdr, const guchar *pd, capture_file *cfile,
 	frame_data_set_after_dissect(&fdlocal, 
 				     &cum_bytes);
 
-	string rslt;
-	ws_gener_json(edt, &rslt);
-	cout << rslt;
+	ws_gener_json(edt, rslt);
  
 }
 
-string ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt) {
- 
-	string rslt;
+void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt) {
  
 	ws_init();
 	ws_epan_init();
@@ -171,7 +167,8 @@ string ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt) {
 	whdr.ts.nsecs = header->ts.tv_usec * 1000;
 	whdr.caplen = header->caplen;
 	whdr.len = header->len;
-	whdr.pkt_encap = dlt;
+	whdr.pkt_encap = dlt == DLT_MTP2 ? WTAP_ENCAP_MTP2 :
+			 WTAP_ENCAP_ETHERNET;
 	whdr.presence_flags = 3;
 	
 	frame_data_init(&fdlocal, 
@@ -204,7 +201,7 @@ string ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt) {
 	frame_data_set_after_dissect(&fdlocal, 
 				     &cum_bytes);
 	
-	ws_gener_json(edt, &rslt);
+	ws_gener_json(edt, rslt);
 	
 	frame_data_destroy(&fdlocal);
 	
@@ -212,7 +209,11 @@ string ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt) {
 	epan_dissect_free(edt);
 	postseq_cleanup_all_protocols();
 	
-	return(rslt);
+	static unsigned _counter;
+	if(!((++_counter) % 1000)) {
+		ws_epan_term();
+	}
+	
 }
 
 void ws_test(const char *pcapFile) {
@@ -228,7 +229,9 @@ void ws_test(const char *pcapFile) {
 	const guchar *pd;
 	gint64 data_offset = 0;
 	while(ws_read_packet(cfile, &whdr, &pd, &data_offset)) {
-		ws_dissect_packet(whdr, pd, cfile, data_offset);
+		string rslt;
+		ws_dissect_packet(whdr, pd, cfile, data_offset, &rslt);
+		cout << rslt << endl;
 	}
 
 }
@@ -541,8 +544,8 @@ tvbuff_t *frame_tvbuff_new(const frame_data *fd, const guint8 *buf)
 
 using namespace std;
 
-string ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt) {
-	return("");
+void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt) {
+	rslt->resize(0);
 }
 void ws_test(const char *pcapFile) {
 }

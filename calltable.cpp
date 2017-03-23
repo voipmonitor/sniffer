@@ -175,6 +175,7 @@ extern char opt_hide_message_content_secret[1024];
 extern vector<string> opt_message_body_url_reg;
 
 SqlDb *sqlDbSaveCall = NULL;
+SqlDb *sqlDbSaveSs7 = NULL;
 extern sExistsColumns existsColumns;
 
 extern int opt_pcap_dump_tar_sip_use_pos;
@@ -185,14 +186,135 @@ extern unsigned int glob_ssl_calls;
 extern bool opt_cdr_partition;
 
 
+Call_abstract::Call_abstract(int call_type, time_t time) {
+	type = call_type;
+	first_packet_time = time;
+	fbasename[0] = 0;
+	fbasename_safe[0] = 0;
+	fname_register = 0;
+	useSensorId = opt_id_sensor;
+	useDlt = global_pcap_dlink;
+	useHandle = global_pcap_handle;
+	flags = 0;
+	chunkBuffersCount = 0;
+}
+
+string
+Call_abstract::get_sensordir() {
+	string sensorDir;
+	extern int opt_spooldir_by_sensor;
+	extern int opt_spooldir_by_sensorname;
+	if((opt_spooldir_by_sensor && useSensorId > 0) || 
+	   opt_spooldir_by_sensorname) {
+		if(opt_spooldir_by_sensorname) {
+			extern SensorsMap sensorsMap;
+			sensorDir = sensorsMap.getSensorNameFile(useSensorId);
+		} else if(opt_spooldir_by_sensor) {
+			char sensorDir_buff[10];
+			snprintf(sensorDir_buff, sizeof(sensorDir_buff), "%i", useSensorId);
+			sensorDir = sensorDir_buff;
+		}
+	}
+	return(sensorDir);
+}
+
+string
+Call_abstract::get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpoolDir) {
+	if(!force_spool_path.empty()) {
+		return(force_spool_path);
+	}
+	string spoolDir;
+	string sensorDir;
+	string timeDir;
+	string typeDir;
+	spoolDir = substSpoolDir ?
+		    substSpoolDir :
+		    (opt_cachedir[0] ? opt_cachedir : getSpoolDir(typeSpoolFile));
+	sensorDir = get_sensordir();
+	struct tm t = time_r((const time_t*)(&first_packet_time));
+	char timeDir_buffer[100];
+	if(opt_newdir) {
+		snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
+			 "%04d-%02d-%02d/%02d/%02d", 
+			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
+	} else {
+		snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
+			 "%04d-%02d-%02d", 
+			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
+	}
+	timeDir = timeDir_buffer;
+	typeDir = opt_newdir ? getSpoolTypeDir(typeSpoolFile) : "";
+	return(spoolDir + (spoolDir.length() ? "/" : "") +
+	       sensorDir + (sensorDir.length() ? "/" : "") +
+	       timeDir + (timeDir.length() ? "/" : "") +
+	       typeDir + (typeDir.length() ? "/" : ""));
+}
+
+string 
+Call_abstract::get_filename(eTypeSpoolFile typeSpoolFile, const char *fileExtension) {
+	string extension = fileExtension ? fileExtension : getFileTypeExtension(typeSpoolFile);
+	return((type == REGISTER ?
+		 intToString(fname_register) :
+		 get_fbasename_safe()) + 
+	       (extension.length() ? "." : "") + extension);
+}
+
+string
+Call_abstract::get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileExtension) {
+	string pathname = get_pathname(typeSpoolFile);
+	string filename = get_filename(typeSpoolFile, fileExtension);
+	return(pathname + (pathname.length() && pathname[pathname.length() - 1] != '/' ? "/" : "") +
+	       filename);
+}
+
+/* returns name of the directory in format YYYY-MM-DD */
+string
+Call_abstract::dirnamesqlfiles() {
+	char sdirname[11];
+	struct tm t = time_r((const time_t*)(&first_packet_time));
+	snprintf(sdirname, 11, "%04d%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
+	sdirname[10] = 0;
+	string s(sdirname);
+	return s;
+}
+
+char *
+Call_abstract::get_fbasename_safe() {
+	strncpy(fbasename_safe, fbasename, MAX_FNAME * sizeof(char));
+	prepare_string_to_filename(fbasename_safe);
+	return fbasename_safe;
+}
+
+void 
+Call_abstract::addTarPos(u_int64_t pos, int type) {
+	switch(type) {
+	case FileZipHandler::pcap_sip:
+		if(opt_pcap_dump_tar_sip_use_pos) {
+			this->tarPosSip.push_back(pos);
+		}
+		break;
+	case FileZipHandler::pcap_rtp:
+		if(opt_pcap_dump_tar_rtp_use_pos) {
+			this->tarPosRtp.push_back(pos);
+		}
+		break;
+	case FileZipHandler::graph_rtp:
+		if(opt_pcap_dump_tar_graph_use_pos) {
+			this->tarPosGraph.push_back(pos);
+		}
+		break;
+	}
+}
+
+
 /* constructor */
 Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time) :
+ Call_abstract(call_type, time),
  tmprtp(-1, 0),
  pcap(PcapDumper::na, this),
  pcapSip(PcapDumper::sip, this),
  pcapRtp(PcapDumper::rtp, this) {
 	//increaseTartimemap(time);
-	type = call_type;
 	has_second_merged_leg = false;
 	isfax = 0;
 	seenudptl = 0;
@@ -201,7 +323,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	last_callercodec = -1;
 	ipport_n = 0;
 	ssrc_n = 0;
-	first_packet_time = time;
 	first_packet_usec = 0;
 	last_packet_time = time;
 	last_rtp_a_packet_time = 0;
@@ -290,7 +411,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	last_ssrc_audiobuffer2 = 0;
 	listening_worker_run = NULL;
 	tmprtp.call_owner = this;
-	flags = 0;
 	lastcallerrtp = NULL;
 	lastcalledrtp = NULL;
 	destroy_call_at = 0;
@@ -343,7 +463,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	lastsipcallerip = 0;
 	sipcallerport = 0;
 	sipcalledport = 0;
-	fname_register = 0;
 	skinny_partyid = 0;
 	pthread_mutex_init(&listening_worker_run_lock, NULL);
 	caller_sipdscp = 0;
@@ -372,17 +491,11 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	updateDstnumOnAnswer = false;
 	updateDstnumFromMessage = false;
 	
-	useSensorId = opt_id_sensor;
-	useDlt = global_pcap_dlink;
-	useHandle = global_pcap_handle;
-	
 	force_close = false;
 	
 	first_codec = -1;
 	chantype = 0;
 	
-	chunkBuffersCount = 0;
-
         caller_silence = 0;
         called_silence = 0;
         caller_noise = 0;
@@ -691,86 +804,6 @@ Call::closeRawFiles() {
 		}
 	}
 }
-
-string
-Call::get_sensordir() {
-	string sensorDir;
-	extern int opt_spooldir_by_sensor;
-	extern int opt_spooldir_by_sensorname;
-	if((opt_spooldir_by_sensor && useSensorId > 0) || 
-	   opt_spooldir_by_sensorname) {
-		if(opt_spooldir_by_sensorname) {
-			extern SensorsMap sensorsMap;
-			sensorDir = sensorsMap.getSensorNameFile(useSensorId);
-		} else if(opt_spooldir_by_sensor) {
-			char sensorDir_buff[10];
-			snprintf(sensorDir_buff, sizeof(sensorDir_buff), "%i", useSensorId);
-			sensorDir = sensorDir_buff;
-		}
-	}
-	return(sensorDir);
-}
-
-string
-Call::get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpoolDir) {
-	if(!force_spool_path.empty()) {
-		return(force_spool_path);
-	}
-	string spoolDir;
-	string sensorDir;
-	string timeDir;
-	string typeDir;
-	spoolDir = substSpoolDir ?
-		    substSpoolDir :
-		    (opt_cachedir[0] ? opt_cachedir : getSpoolDir(typeSpoolFile));
-	sensorDir = get_sensordir();
-	struct tm t = time_r((const time_t*)(&first_packet_time));
-	char timeDir_buffer[100];
-	if(opt_newdir) {
-		snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
-			 "%04d-%02d-%02d/%02d/%02d", 
-			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
-	} else {
-		snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
-			 "%04d-%02d-%02d", 
-			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
-	}
-	timeDir = timeDir_buffer;
-	typeDir = opt_newdir ? getSpoolTypeDir(typeSpoolFile) : "";
-	return(spoolDir + (spoolDir.length() ? "/" : "") +
-	       sensorDir + (sensorDir.length() ? "/" : "") +
-	       timeDir + (timeDir.length() ? "/" : "") +
-	       typeDir + (typeDir.length() ? "/" : ""));
-}
-
-string 
-Call::get_filename(eTypeSpoolFile typeSpoolFile, const char *fileExtension) {
-	string extension = fileExtension ? fileExtension : getFileTypeExtension(typeSpoolFile);
-	return((type == REGISTER ?
-		 intToString(fname_register) :
-		 get_fbasename_safe()) + 
-	       (extension.length() ? "." : "") + extension);
-}
-
-string
-Call::get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileExtension) {
-	string pathname = get_pathname(typeSpoolFile);
-	string filename = get_filename(typeSpoolFile, fileExtension);
-	return(pathname + (pathname.length() && pathname[pathname.length() - 1] != '/' ? "/" : "") +
-	       filename);
-}
-
-/* returns name of the directory in format YYYY-MM-DD */
-string
-Call::dirnamesqlfiles() {
-	char sdirname[11];
-	struct tm t = time_r((const time_t*)(&first_packet_time));
-	snprintf(sdirname, 11, "%04d%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
-	sdirname[10] = 0;
-	string s(sdirname);
-	return s;
-}
-
 
 /* add ip adress and port to this call */
 int
@@ -4215,13 +4248,6 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 
 }
 
-char *
-Call::get_fbasename_safe() {
-	strncpy(fbasename_safe, fbasename, MAX_FNAME * sizeof(char));
-	prepare_string_to_filename(fbasename_safe);
-	return fbasename_safe;
-}
-
 /* for debug purpose */
 void
 Call::dump(){
@@ -4291,27 +4317,6 @@ Call::getAllReceivedRtpPackets() {
 		receivedPackets += rtp[i]->stats.received;
 	}
 	return(receivedPackets);
-}
-
-void 
-Call::addTarPos(u_int64_t pos, int type) {
-	switch(type) {
-	case FileZipHandler::pcap_sip:
-		if(opt_pcap_dump_tar_sip_use_pos) {
-			this->tarPosSip.push_back(pos);
-		}
-		break;
-	case FileZipHandler::pcap_rtp:
-		if(opt_pcap_dump_tar_rtp_use_pos) {
-			this->tarPosRtp.push_back(pos);
-		}
-		break;
-	case FileZipHandler::graph_rtp:
-		if(opt_pcap_dump_tar_graph_use_pos) {
-			this->tarPosGraph.push_back(pos);
-		}
-		break;
-	}
 }
 
 void
@@ -4484,15 +4489,233 @@ void adjustUA(char *ua) {
 	}
 }
 
+
+bool Ss7::sParseData::parse(packet_s_stack *packetS) {
+	extern void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt);
+	string dissect_rslt;
+	ws_dissect_packet(packetS->header_pt, packetS->packet, packetS->dlt, &dissect_rslt);
+	if(!dissect_rslt.empty()) {
+		gettag_json(dissect_rslt.c_str(), "isup.message_type", &isup_message_type, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "isup.cic", &isup_cic, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "isup.satellite_indicator", &isup_satellite_indicator, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "isup.echo_control_device_indicator", &isup_echo_control_device_indicator, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "isup.calling_partys_category", &isup_calling_partys_category, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "isup.calling_party_nature_of_address_indicator", &isup_calling_party_nature_of_address_indicator, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "isup.ni_indicator", &isup_ni_indicator, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "isup.address_presentation_restricted_indicator", &isup_address_presentation_restricted_indicator, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "isup.screening_indicator", &isup_screening_indicator, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "isup.transmission_medium_requirement", &isup_transmission_medium_requirement, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "isup.called_party_nature_of_address_indicator", &isup_called_party_nature_of_address_indicator, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "isup.inn_indicator", &isup_inn_indicator, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "m3ua.protocol_data_opc", &m3ua_protocol_data_opc, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "m3ua.protocol_data_dpc", &m3ua_protocol_data_dpc, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "mtp3.opc", &mtp3_opc, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "mtp3.dpc", &mtp3_dpc, UINT_MAX);
+		gettag_json(dissect_rslt.c_str(), "e164.called_party_number.digits", &e164_called_party_number_digits);
+		gettag_json(dissect_rslt.c_str(), "e164.calling_party_number.digits", &e164_calling_party_number_digits);
+		return(true);
+	}
+	return(false);
+}
+
+void Ss7::sParseData::debugOutput() {
+	cout << "isup.message_type: " << isup_message_type << endl
+	     << "isup.cic: " << isup_cic << endl
+	     << "isup.satellite_indicator: " << isup_satellite_indicator << endl
+	     << "isup.echo_control_device_indicator: " << isup_echo_control_device_indicator << endl
+	     << "isup.calling_partys_category: " << isup_calling_partys_category << endl
+	     << "isup.calling_party_nature_of_address_indicator: " << isup_calling_party_nature_of_address_indicator << endl
+	     << "isup.ni_indicator: " << isup_ni_indicator << endl
+	     << "isup.address_presentation_restricted_indicator: " << isup_address_presentation_restricted_indicator << endl
+	     << "isup.screening_indicator: " << isup_screening_indicator << endl
+	     << "isup.transmission_medium_requirement: " << isup_transmission_medium_requirement << endl
+	     << "isup.called_party_nature_of_address_indicator: " << isup_called_party_nature_of_address_indicator << endl
+	     << "isup.inn_indicator: " << isup_inn_indicator << endl
+	     << "m3ua.protocol_data_opc: " << m3ua_protocol_data_opc << endl
+	     << "m3ua.protocol_data_dpc: " << m3ua_protocol_data_dpc << endl
+	     << "mtp3.opc: " << mtp3_opc << endl
+	     << "mtp3.dpc: " << mtp3_dpc << endl
+	     << "e164.called_party_number.digits: " << e164_called_party_number_digits << endl
+	     << "e164.calling_party_number.digits: " << e164_calling_party_number_digits << endl
+	     << "---" << endl;
+}
+
+Ss7::Ss7(time_t time) :
+ Call_abstract(SS7, time),
+ pcap(PcapDumper::sip, this) {
+	init();
+}
+
+void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
+	switch(data->isup_message_type) {
+	case SS7_IAM:
+		state = iam;
+		iam_data = *data;
+		iam_src_ip = packetS->saddr;
+		iam_dst_ip = packetS->daddr;
+		iam_time_us = getTimeUS(packetS->header_pt);
+		strncpy(fbasename, filename().c_str(), MAX_FNAME);
+		break;
+	case SS7_ACM:
+		state = acm;
+		acm_time_us = getTimeUS(packetS->header_pt);
+		break;
+	case SS7_CPG:
+		state = cpg;
+		cpg_time_us = getTimeUS(packetS->header_pt);
+		break;
+	case SS7_ANM:
+		state = anm;
+		anm_time_us = getTimeUS(packetS->header_pt);
+		break;
+	case SS7_REL:
+		state = rel;
+		rel_time_us = getTimeUS(packetS->header_pt);
+		break;
+	case SS7_RLC:
+		state = rlc;
+		rlc_time_us = getTimeUS(packetS->header_pt);
+		break;
+	}
+	last_time_us = getTimeUS(packetS->header_pt);
+	if(!pcap.isOpen()) {
+		string pathfilename = get_pathfilename(tsf_ss7);
+		pcap.open(tsf_ss7, pathfilename.c_str(), useHandle, useDlt);
+	}
+	if(pcap.isOpen()) {
+		pcap.dump(packetS->header_pt, packetS->packet, packetS->dlt);
+	}
+}
+
+void Ss7::pushToQueue(string *ss7_id) {
+	calltable->lock_process_ss7_queue();
+	calltable->ss7_queue.push_back(this);
+	calltable->unlock_process_ss7_queue();
+	if(ss7_id) {
+		calltable->lock_ss7_listMAP();
+		calltable->ss7_listMAP.erase(*ss7_id);
+		calltable->unlock_ss7_listMAP();
+	}
+}
+
+int Ss7::saveToDb(bool enableBatchIfPossible) {
+	if(!sqlDbSaveSs7) {
+		sqlDbSaveSs7 = createSqlObject();
+	}
+	SqlDb_row ss7;
+	ss7.add(sqlEscapeString(sqlDateTimeString(iam_time_us / 1000000ull)), "time_iam");
+	if(acm_time_us) {
+		ss7.add(sqlEscapeString(sqlDateTimeString(acm_time_us / 1000000ull)), "time_acm");
+	}
+	if(cpg_time_us) {
+		ss7.add(sqlEscapeString(sqlDateTimeString(cpg_time_us / 1000000ull)), "time_cpg");
+	}
+	if(anm_time_us) {
+		ss7.add(sqlEscapeString(sqlDateTimeString(anm_time_us / 1000000ull)), "time_anm");
+	}
+	if(rel_time_us) {
+		ss7.add(sqlEscapeString(sqlDateTimeString(rel_time_us / 1000000ull)), "time_rel");
+	}
+	if(rlc_time_us) {
+		ss7.add(sqlEscapeString(sqlDateTimeString(rlc_time_us / 1000000ull)), "time_rlc");
+	}
+	if(isset_unsigned(iam_data.isup_cic)) {
+		ss7.add(iam_data.isup_cic, "cic");
+	}
+	if(isset_unsigned(iam_data.isup_satellite_indicator)) {
+		ss7.add(iam_data.isup_satellite_indicator, "satellite_indicator");
+	}
+	if(isset_unsigned(iam_data.isup_satellite_indicator)) {
+		ss7.add(iam_data.isup_satellite_indicator, "echo_control_device_indicator");
+	}
+	if(isset_unsigned(iam_data.isup_calling_partys_category)) {
+		ss7.add(iam_data.isup_calling_partys_category, "calling_partys_category");
+	}
+	if(isset_unsigned(iam_data.isup_calling_party_nature_of_address_indicator)) {
+		ss7.add(iam_data.isup_calling_party_nature_of_address_indicator, "calling_party_nature_of_address_indicator");
+	}
+	if(isset_unsigned(iam_data.isup_ni_indicator)) {
+		ss7.add(iam_data.isup_ni_indicator, "ni_indicator");
+	}
+	if(isset_unsigned(iam_data.isup_address_presentation_restricted_indicator)) {
+		ss7.add(iam_data.isup_address_presentation_restricted_indicator, "address_presentation_restricted_indicator");
+	}
+	if(isset_unsigned(iam_data.isup_screening_indicator)) {
+		ss7.add(iam_data.isup_screening_indicator, "screening_indicator");
+	}
+	if(isset_unsigned(iam_data.isup_transmission_medium_requirement)) {
+		ss7.add(iam_data.isup_transmission_medium_requirement, "transmission_medium_requirement");
+	}
+	if(isset_unsigned(iam_data.isup_called_party_nature_of_address_indicator)) {
+		ss7.add(iam_data.isup_called_party_nature_of_address_indicator, "called_party_nature_of_address_indicator");
+	}
+	if(isset_unsigned(iam_data.isup_inn_indicator)) {
+		ss7.add(iam_data.isup_inn_indicator, "inn_indicator");
+	}
+	if(isset_unsigned(iam_data.m3ua_protocol_data_opc)) {
+		ss7.add(iam_data.m3ua_protocol_data_opc, "protocol_data_opc");
+	}
+	if(isset_unsigned(iam_data.m3ua_protocol_data_dpc)) {
+		ss7.add(iam_data.m3ua_protocol_data_dpc, "protocol_data_dpc");
+	}
+	if(isset_unsigned(iam_data.mtp3_opc)) {
+		ss7.add(iam_data.mtp3_opc, "opc");
+	}
+	if(isset_unsigned(iam_data.mtp3_dpc)) {
+		ss7.add(iam_data.mtp3_dpc, "dpc");
+	}
+	if(!iam_data.e164_called_party_number_digits.empty()) {
+		ss7.add(iam_data.e164_called_party_number_digits, "called_party_number");
+	}
+	if(!iam_data.e164_calling_party_number_digits.empty()) {
+		ss7.add(iam_data.e164_calling_party_number_digits, "calling_party_number");
+	}
+	ss7.add(sqlEscapeString(stateToString()), "state");
+	if(iam_src_ip) {
+		ss7.add(iam_src_ip, "src_ip");
+	}
+	if(iam_dst_ip) {
+		ss7.add(-1, "dst_ip");
+	}
+	ss7.add(sqlEscapeString(ss7_id()), "ss7_id");
+	ss7.add(sqlEscapeString(filename()), "pcap_filename");
+	if(useSensorId > -1) {
+		ss7.add(useSensorId, "id_sensor");
+	}
+	if(enableBatchIfPossible && isSqlDriver("mysql")) {
+		string query_str = sqlDbSaveSs7->insertQuery("ss7", ss7);
+		sqlStore->query_lock(query_str.c_str(), STORE_PROC_ID_SS7);
+	} else {
+		sqlDbSaveCall->insert("ss7", ss7);
+	}
+	return(0);
+}
+
+void Ss7::init() {
+	state = iam;
+	iam_src_ip = 0;
+	iam_dst_ip = 0;
+	iam_time_us = 0;
+	acm_time_us = 0;
+	cpg_time_us = 0;
+	anm_time_us = 0;
+	rel_time_us = 0;
+	rlc_time_us = 0;
+	last_time_us = 0;
+}
+
+
 /* constructor */
 Calltable::Calltable() {
+	/*
 	pthread_mutex_init(&qlock, NULL);
 	pthread_mutex_init(&qaudiolock, NULL);
 	pthread_mutex_init(&qdellock, NULL);
 	pthread_mutex_init(&flock, NULL);
-	//pthread_mutex_init(&calls_listMAPlock, NULL);
-	//pthread_mutex_init(&calls_mergeMAPlock, NULL);
-	//pthread_mutex_init(&registers_listMAPlock, NULL);
+	pthread_mutex_init(&calls_listMAPlock, NULL);
+	pthread_mutex_init(&calls_mergeMAPlock, NULL);
+	pthread_mutex_init(&registers_listMAPlock, NULL);
+	*/
 
 	memset(calls_hash, 0x0, sizeof(calls_hash));
 	_sync_lock_calls_hash = 0;
@@ -4505,6 +4728,9 @@ Calltable::Calltable() {
 	_sync_lock_registers_queue = 0;
 	_sync_lock_registers_deletequeue = 0;
 	_sync_lock_files_queue = 0;
+	_sync_lock_ss7_listMAP = 0;
+	_sync_lock_process_ss7_listmap = 0;
+	_sync_lock_process_ss7_queue = 0;
 	
 	extern int opt_audioqueue_threads_max;
 	audioQueueThreadsMax = min(max(2l, sysconf( _SC_NPROCESSORS_ONLN ) - 1), (long)opt_audioqueue_threads_max);
@@ -4513,13 +4739,15 @@ Calltable::Calltable() {
 
 /* destructor */
 Calltable::~Calltable() {
+	/*
 	pthread_mutex_destroy(&qlock);
 	pthread_mutex_destroy(&qaudiolock);
 	pthread_mutex_destroy(&qdellock);
 	pthread_mutex_destroy(&flock);
-	//pthread_mutex_destroy(&calls_listMAPlock);
-	//pthread_mutex_destroy(&calls_mergeMAPlock);
-	//pthread_mutex_destroy(&registers_listMAPlock);
+	pthread_mutex_destroy(&calls_listMAPlock);
+	pthread_mutex_destroy(&calls_mergeMAPlock);
+	pthread_mutex_destroy(&registers_listMAPlock);
+	*/
 };
 
 /* add node to hash. collisions are linked list of nodes*/
@@ -4886,6 +5114,19 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t t
 	return newcall;
 }
 
+Ss7 *
+Calltable::add_ss7(packet_s_stack *packetS, Ss7::sParseData *data) {
+	Ss7 *newss7 = new FILE_LINE(0) Ss7(packetS->header_pt->ts.tv_sec);
+	newss7->useHandle = get_pcap_handle(packetS->handle_index);
+	newss7->useDlt = packetS->dlt;
+	newss7->processData(packetS, data);
+	string ss7_id = data->ss7_id();
+	lock_ss7_listMAP();
+	ss7_listMAP[ss7_id] = newss7;
+	unlock_ss7_listMAP();
+	return(newss7);
+}
+
 Call*
 Calltable::find_by_skinny_partyid(unsigned int partyid) {
 	map<unsigned int, Call*>::iterator skinny_partyIDIT = skinny_partyID.find(partyid);
@@ -5156,6 +5397,41 @@ Calltable::cleanup_registers( time_t currtime ) {
 	}
 	
 	return 0;
+}
+
+int Calltable::cleanup_ss7( time_t currtime ) {
+	lock_process_ss7_listmap();
+	lock_ss7_listMAP();
+	map<string, Ss7*>::iterator iter;
+	for(iter = ss7_listMAP.begin(); iter != ss7_listMAP.end(); ) {
+		if(iter->second->state == Ss7::rlc || 
+		   !currtime ||
+		   (currtime - (long int)(iter->second->last_time_us / 1000000ull)) > absolute_timeout) {
+			iter->second->pushToQueue();
+			ss7_listMAP.erase(iter++);
+			continue;
+		}
+		iter++;
+	}
+	unlock_ss7_listMAP();
+	unlock_process_ss7_listmap();
+	lock_process_ss7_queue();
+	for(unsigned i = 0; i < ss7_queue.size(); i++) {
+		if(ss7_queue[i]->pcap.isOpen()) {
+			ss7_queue[i]->pcap.close();
+		}
+	}
+	Ss7 *ss7;
+	while(ss7_queue.size() &&
+	      (ss7 = ss7_queue.front()) &&
+	      ss7->pcap.isClose() &&
+	      ss7->isEmptyChunkBuffersCount()) {
+		ss7->saveToDb();
+		delete ss7;
+		ss7_queue.pop_front();
+	}
+	unlock_process_ss7_queue();
+	return(0);
 }
 
 void Call::saveregister() {

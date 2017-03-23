@@ -116,6 +116,8 @@ public:
 	bool existsColumn(string table, string column) { return(existsColumn(table.c_str(), column.c_str())); }
 	virtual bool emptyTable(const char *table) = 0;
 	bool emptyTable(string table) { return(emptyTable(table.c_str())); }
+	virtual bool isOldVerPartition(const char *table) { return(false); }
+	bool isOldVerPartition(string table) { return(isOldVerPartition(table.c_str())); }
 	virtual int getIndexField(string fieldName);
 	virtual string getNameField(int indexField);
 	virtual string escape(const char *inputString, int length = 0) = 0;
@@ -292,6 +294,7 @@ public:
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
 	bool emptyTable(const char *table);
+	bool isOldVerPartition(const char *table);
 	string escape(const char *inputString, int length = 0);
 	string getFieldBorder() {
 		return("`");
@@ -720,12 +723,14 @@ string prepareQueryForPrintf(string &query);
 
 void createMysqlPartitionsCdr();
 void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb);
+void createMysqlPartitionsSs7();
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsLogSensor();
-void createMysqlPartitionsTable(const char *table);
+void createMysqlPartitionsTable(const char* table, bool partition_oldver);
 void createMysqlPartitionsIpacc();
 void createDropMysqlPartitionsBillingAgregation(bool drop = false);
 void dropMysqlPartitionsCdr();
+void dropMysqlPartitionsSs7();
 void dropMysqlPartitionsRtpStat();
 void dropMysqlPartitionsLogSensor();
 void dropMysqlPartitionsTable(const char *table, int cleanParam);

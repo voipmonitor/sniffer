@@ -56,6 +56,7 @@ extern char opt_pb_read_from_file[256];
 extern int opt_enable_fraud;
 extern bool _save_sip_history;
 extern bool opt_sql_time_utc;
+extern int opt_enable_ss7;
 
 extern char sql_driver[256];
 
@@ -92,6 +93,7 @@ extern int opt_ptime;
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
 bool opt_cdr_partition_oldver = false;
+bool opt_ss7_partition_oldver;
 bool opt_rtp_stat_partition_oldver = false;
 bool opt_log_sensor_partition_oldver = false;
 sExistsColumns existsColumns;
@@ -1170,6 +1172,12 @@ bool SqlDb_mysql::emptyTable(const char *table) {
 	this->query(string("select count(*) as cnt from ") + table);
 	SqlDb_row row = this->fetchRow();
 	return(!row || !atol(row["cnt"].c_str()));
+}
+
+bool SqlDb_mysql::isOldVerPartition(const char *table) {
+	this->query(string("select partition_description from information_schema.partitions where table_schema='")  + mysql_database + 
+			   "' and table_name like '" + table + "' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
+	return(this->fetchRow());
 }
 
 string SqlDb_mysql::escape(const char *inputString, int length) {
@@ -3850,6 +3858,53 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `contenttype` (`contenttype`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8 ") + compress + ";");
 
+	if(opt_enable_ss7) {
+		this->query(string(
+		"CREATE TABLE IF NOT EXISTS `ss7` (\
+				`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
+				`time_iam` datetime NOT NULL,\
+				`time_acm` datetime,\
+				`time_cpg` datetime,\
+				`time_anm` datetime,\
+				`time_rel` datetime,\
+				`time_rlc` datetime,\
+				`cic` int unsigned,\
+				`satellite_indicator` int unsigned,\
+				`echo_control_device_indicator` int unsigned,\
+				`calling_partys_category` int unsigned,\
+				`calling_party_nature_of_address_indicator` int unsigned,\
+				`ni_indicator` int unsigned,\
+				`address_presentation_restricted_indicator` int unsigned,\
+				`screening_indicator` int unsigned,\
+				`transmission_medium_requirement` int unsigned,\
+				`called_party_nature_of_address_indicator` int unsigned,\
+				`inn_indicator` int unsigned,\
+				`protocol_data_opc` int unsigned,\
+				`protocol_data_dpc` int unsigned,\
+				`opc` int unsigned,\
+				`dpc` int unsigned,\
+				`called_party_number` varchar(255),\
+				`calling_party_number` varchar(255),\
+				`state` enum('iam','acm','cpg','anm','rel','rlc'),\
+				`src_ip` int unsigned,\
+				`dst_ip` int unsigned,\
+				`ss7_id` varchar(255),\
+				`pcap_filename` varchar(255),\
+				`id_sensor` smallint unsigned,") +
+			(supportPartitions != _supportPartitions_na ?
+				"PRIMARY KEY (`ID`, `time_iam`)," :
+				"PRIMARY KEY (`ID`),") + 
+			"KEY `time_iam` (`time_iam`)"\
+		") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + 
+		(supportPartitions != _supportPartitions_na ?
+			(opt_ss7_partition_oldver ? 
+				string(" PARTITION BY RANGE (to_days(time_iam))(\
+					 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+				string(" PARTITION BY RANGE COLUMNS(time_iam)(\
+					 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+			""));
+	}
+
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `message` (\
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
@@ -4147,6 +4202,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`audiosize` bigint unsigned DEFAULT 0,\
 			`regsize` bigint unsigned DEFAULT 0,\
 			`skinnysize` bigint unsigned DEFAULT 0,\
+			`ss7size` bigint unsigned DEFAULT 0,\
 		PRIMARY KEY (`datehour`, `spool_index`, `id_sensor`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	
@@ -4489,6 +4545,9 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 	//17.9
 	outStrAlter << "ALTER TABLE `files`\
 			ADD COLUMN `skinnysize` bigint unsigned DEFAULT 0;" << endl;
+	//19.3
+	outStrAlter << "ALTER TABLE `files`\
+			ADD COLUMN `ss7size` bigint unsigned DEFAULT 0;" << endl;
 
 	//
 	outStrAlter << "end;" << endl;
@@ -5150,26 +5209,25 @@ void SqlDb_mysql::checkDbMode() {
 					opt_cdr_partition_oldver = true;
 					syslog(LOG_NOTICE, "mysql <= 5.1 - use old mode partitions");
 				}
+				opt_ss7_partition_oldver = true;
 				opt_rtp_stat_partition_oldver = true;
 				opt_log_sensor_partition_oldver = true;
 			} else {
 				if(opt_cdr_partition) {
-					this->query(string("select partition_description from information_schema.partitions where table_schema='") +mysql_database + 
-						    "' and table_name like 'cdr%' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
-					if(this->fetchRow()) {
+					if(this->isOldVerPartition("cdr%")) {
 						opt_cdr_partition_oldver = true;
 						syslog(LOG_NOTICE, "database contain old mode partitions");
 					}
 				}
-				this->query(string("select partition_description from information_schema.partitions where table_schema='") +mysql_database + 
-						   "' and table_name = 'rtp_stat' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
-				if(this->fetchRow()) {
+				if(this->isOldVerPartition("ss7")) {
+					opt_ss7_partition_oldver = true;
+					syslog(LOG_NOTICE, "table ss7 contain old mode partitions");
+				}
+				if(this->isOldVerPartition("rtp_stat")) {
 					opt_rtp_stat_partition_oldver = true;
 					syslog(LOG_NOTICE, "table rtp_stat contain old mode partitions");
 				}
-				this->query(string("select partition_description from information_schema.partitions where table_schema='") +mysql_database + 
-						   "' and table_name = 'log_sensor' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
-				if(this->fetchRow()) {
+				if(this->isOldVerPartition("log_sensor")) {
 					opt_log_sensor_partition_oldver = true;
 					syslog(LOG_NOTICE, "table log_sensor contain old mode partitions");
 				}
@@ -6149,15 +6207,19 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
 	}
 }
 
+void createMysqlPartitionsSs7() {
+	createMysqlPartitionsTable("ss7", opt_ss7_partition_oldver);
+}
+
 void createMysqlPartitionsRtpStat() {
-	createMysqlPartitionsTable("rtp_stat");
+	createMysqlPartitionsTable("rtp_stat", opt_rtp_stat_partition_oldver);
 }
 
 void createMysqlPartitionsLogSensor() {
-	createMysqlPartitionsTable("log_sensor");
+	createMysqlPartitionsTable("log_sensor", opt_log_sensor_partition_oldver);
 }
 
-void createMysqlPartitionsTable(const char* table) {
+void createMysqlPartitionsTable(const char* table, bool partition_oldver) {
 	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
 	bool disableLogErrorOld = sqlDb->getDisableLogError();
@@ -6165,17 +6227,17 @@ void createMysqlPartitionsTable(const char* table) {
 	if(cloud_host[0]) {
 		sqlDb->setDisableLogError(true);
 		sqlDb->setMaxQueryPass(1);
-		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 0, " + (opt_log_sensor_partition_oldver ? "true" : "false") + ");");
-		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 1, " + (opt_log_sensor_partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 0, " + (partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 1, " + (partition_oldver ? "true" : "false") + ");");
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 		sqlDb->setDisableLogError(disableLogErrorOld);
 	} else {
 		sqlDb->setDisableLogError(true);
 		sqlDb->setMaxQueryPass(2);
-		sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + table + "', 'day', 0, " + (opt_log_sensor_partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + table + "', 'day', 0, " + (partition_oldver ? "true" : "false") + ");");
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 		sqlDb->setDisableLogError(disableLogErrorOld);
-		sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + table + "', 'day', 1, " + (opt_log_sensor_partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + table + "', 'day', 1, " + (partition_oldver ? "true" : "false") + ");");
 	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - end").c_str());
@@ -6292,6 +6354,11 @@ void dropMysqlPartitionsCdr() {
 	_dropMysqlPartitions("register_failed", opt_cleandatabase_register_failed, sqlDb);
 	delete sqlDb;
 	syslog(LOG_NOTICE, "drop cdr old partitions - end");
+}
+
+void dropMysqlPartitionsSs7() {
+	extern int opt_cleandatabase_ss7;
+	dropMysqlPartitionsTable("ss7", opt_cleandatabase_ss7);
 }
 
 void dropMysqlPartitionsRtpStat() {
@@ -6629,7 +6696,7 @@ void cLogSensor::_save() {
 	extern MySqlStore *sqlStore;
 	SqlDb *sqlDb = createSqlObject();
 	bool existsOkLogSensorTable = false;
-	if(!sqlStore && !cloud_token[0]) {
+	if(!sqlStore && !cloud_token[0] && !opt_nocdr) {
 		existsOkLogSensorTable = sqlDb->existsTable("log_sensor");
 	}
 	sqlDb->setMaxQueryPass(1);

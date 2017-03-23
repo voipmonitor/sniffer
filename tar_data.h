@@ -40,7 +40,7 @@ struct data_tar : public data_tar_time {
 	std::string sensorName;
 	int typeSpoolFile;
 	std::string filename;
-	void set(int typeSpoolFile, class Call *call, const char *fileName);
+	void set(int typeSpoolFile, class Call_abstract *call, const char *fileName);
 };
 
 

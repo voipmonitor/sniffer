@@ -110,6 +110,7 @@ struct packet_s {
 	u_int16_t dataoffset;
 	u_int16_t header_ip_offset;
 	unsigned int istcp : 2;
+	bool isother: 1;
 	bool is_ssl : 1;
 	bool is_skinny : 1;
 	bool is_need_sip_process : 1;
@@ -185,6 +186,17 @@ struct packet_s {
 	}
 };
 
+struct packet_s_stack : public packet_s {
+	cHeapItemsPointerStack *stack;
+	inline packet_s_stack() {
+		init();
+	}
+	inline void init() {
+		packet_s::init();
+		stack = NULL;
+	}
+};
+
 struct packet_s_plus_pointer : public packet_s {
 	void *pointer[2];
 };
@@ -198,10 +210,9 @@ struct packet_s_process_rtp_call_info {
 	bool multiple_calls;
 };
 
-struct packet_s_process_0 : public packet_s {
+struct packet_s_process_0 : public packet_s_stack {
 	char *data;
 	struct iphdr2 *header_ip; 
-	cHeapItemsPointerStack *stack;
 	volatile u_int8_t use_reuse_counter;
 	volatile u_int8_t reuse_counter;
 	volatile u_int8_t reuse_counter_sync;
@@ -215,8 +226,7 @@ struct packet_s_process_0 : public packet_s {
 		init2();
 	}
 	inline void init() {
-		packet_s::init();
-		stack = NULL;
+		packet_s_stack::init();
 		use_reuse_counter = 0;
 	}
 	inline void init_reuse() {

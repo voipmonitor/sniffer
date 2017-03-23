@@ -1315,6 +1315,7 @@ static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_c
 	packetS.daddr = daddr;
 	packetS.dest = dest;
 	packetS.istcp = istcp;
+	packetS.isother = 0;
 	packetS.header_ip_offset = header_ip ? ((u_char*)header_ip - packet) : 0;
 	packetS.datalen = datalen;
 	packetS.dataoffset = dataoffset;

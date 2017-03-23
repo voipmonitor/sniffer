@@ -316,6 +316,7 @@ unsigned int opt_process_rtp_packets_qring_length = 2000;
 unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
 bool opt_process_rtp_packets_qring_force_push = true;
+int opt_enable_ss7 = 0;
 int opt_enable_http = 0;
 bool opt_http_cleanup_ext = false;
 int opt_enable_webrtc = 0;
@@ -475,6 +476,7 @@ extern bool opt_pcap_queues_mirror_use_checksum;
 extern int opt_pcap_dispatch;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
+int opt_cleandatabase_ss7 = 0;
 int opt_cleandatabase_http_enum = 0;
 int opt_cleandatabase_webrtc = 0;
 int opt_cleandatabase_register_state = 0;
@@ -1219,6 +1221,8 @@ public:
 	void init() {
 		createCdr = false;
 		dropCdr = false;
+		createSs7 = false;
+		dropSs7 = false;
 		createRtpStat = false;
 		dropRtpStat = false;
 		createLogSensor = false;
@@ -1230,6 +1234,7 @@ public:
 	}
 	bool isSet() {
 		return(createCdr || dropCdr || 
+		       createSs7 || dropSs7 ||
 		       createRtpStat || dropRtpStat ||
 		       createLogSensor || dropLogSensor ||
 		       createIpacc || 
@@ -1256,6 +1261,8 @@ public:
 public:
 	bool createCdr;
 	bool dropCdr;
+	bool createSs7;
+	bool dropSs7;
 	bool createRtpStat;
 	bool dropRtpStat;
 	bool createLogSensor;
@@ -1273,6 +1280,12 @@ void *sCreatePartitions::_createPartitions(void *arg) {
 	}
 	if(createPartitionsData->dropCdr) {
 		dropMysqlPartitionsCdr();
+	}
+	if(createPartitionsData->createSs7) {
+		createMysqlPartitionsSs7();
+	}
+	if(createPartitionsData->dropSs7) {
+		dropMysqlPartitionsSs7();
 	}
 	if(createPartitionsData->createRtpStat) {
 		createMysqlPartitionsRtpStat();
@@ -1344,8 +1357,10 @@ void *defered_service_fork(void *) {
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void */*dummy*/ ) {
 	Call *call;
-	time_t createPartitionAt = 0;
-	time_t dropPartitionAt = 0;
+	time_t createPartitionCdrAt = 0;
+	time_t dropPartitionCdrAt = 0;
+	time_t createPartitionSs7At = 0;
+	time_t dropPartitionSs7At = 0;
 	time_t createPartitionRtpStatAt = 0;
 	time_t dropPartitionRtpStatAt = 0;
 	time_t createPartitionLogSensorAt = 0;
@@ -1356,73 +1371,81 @@ void *storing_cdr( void */*dummy*/ ) {
 	time_t checkMysqlIdCdrChildTablesAt = 0;
 	bool firstIter = true;
 	while(1) {
-		createPartitions.init();
-		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations and isSqlDriver("mysql")) {
+		if(!opt_nocdr && !opt_disable_partition_operations && isSqlDriver("mysql")) {
 			time_t actTime = time(NULL);
-			if(actTime - createPartitionAt > 12 * 3600) {
-				createPartitions.createCdr = true;
-				createPartitionAt = actTime;
+			createPartitions.init();
+			if(opt_cdr_partition) {
+				if(actTime - createPartitionCdrAt > 12 * 3600) {
+					createPartitions.createCdr = true;
+					createPartitionCdrAt = actTime;
+				}
+				if(actTime - dropPartitionCdrAt > 12 * 3600) {
+					createPartitions.dropCdr = true;
+					dropPartitionCdrAt = actTime;
+				}
 			}
-			if(actTime - dropPartitionAt > 12 * 3600) {
-				createPartitions.dropCdr = true;
-				dropPartitionAt = actTime;
+			if(opt_enable_ss7) {
+				if(actTime - createPartitionSs7At > 12 * 3600) {
+					createPartitions.createSs7 = true;
+					createPartitionSs7At = actTime;
+				}
+				if(actTime - dropPartitionSs7At > 12 * 3600) {
+					createPartitions.dropSs7 = true;
+					dropPartitionSs7At = actTime;
+				}
+			}
+			if(true /* rtp_stat */) {
+				if(actTime - createPartitionRtpStatAt > 12 * 3600) {
+					createPartitions.createRtpStat = true;
+					createPartitionRtpStatAt = actTime;
+				}
+				if(actTime - dropPartitionRtpStatAt > 12 * 3600) {
+					createPartitions.dropRtpStat = true;
+					dropPartitionRtpStatAt = actTime;
+				}
+			}
+			if(true /* log_sensor */) {
+				if(actTime - createPartitionLogSensorAt > 12 * 3600) {
+					createPartitions.createLogSensor = true;
+					createPartitionLogSensorAt = actTime;
+				}
+				if(actTime - dropPartitionLogSensorAt > 12 * 3600) {
+					createPartitions.dropLogSensor = true;
+					dropPartitionLogSensorAt = actTime;
+				}
+			}
+			if(opt_ipaccount) {
+				if(actTime - createPartitionIpaccAt > 12 * 3600) {
+					createPartitions.createIpacc = true;
+					createPartitionIpaccAt = actTime;
+				}
+			}
+			if(true /* billing agregation */) {
+				time_t actTime = time(NULL);
+				if(actTime - createPartitionBillingAgregationAt > 12 * 3600) {
+					createPartitions.createBilling = true;
+					createPartitionBillingAgregationAt = actTime;
+				}
+				if(actTime - dropPartitionBillingAgregationAt > 12 * 3600) {
+					createPartitions.dropBilling = true;
+					dropPartitionBillingAgregationAt = actTime;
+				}
+			}
+			if(createPartitions.isSet()) {
+				createPartitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
+			}
+			if(opt_cdr_partition) {
+				time_t actTime = time(NULL);
+				checkIdCdrChildTables.init();
+				if(actTime - checkMysqlIdCdrChildTablesAt > 1 * 3600) {
+					checkIdCdrChildTables.check = true;
+					checkMysqlIdCdrChildTablesAt = actTime;
+				}
+				if(checkIdCdrChildTables.isSet()) {
+					checkIdCdrChildTables.checkIdCdrChildTables(!firstIter && opt_partition_operations_in_thread);
+				}
 			}
 		}
-		if(!opt_nocdr and !opt_disable_partition_operations and isSqlDriver("mysql")) {
-			time_t actTime = time(NULL);
-			if(actTime - createPartitionRtpStatAt > 12 * 3600) {
-				createPartitions.createRtpStat = true;
-				createPartitionRtpStatAt = actTime;
-			}
-			if(actTime - dropPartitionRtpStatAt > 12 * 3600) {
-				createPartitions.dropRtpStat = true;
-				dropPartitionRtpStatAt = actTime;
-			}
-		}
-		if(!opt_nocdr and !opt_disable_partition_operations and isSqlDriver("mysql")) {
-			time_t actTime = time(NULL);
-			if(actTime - createPartitionLogSensorAt > 12 * 3600) {
-				createPartitions.createLogSensor = true;
-				createPartitionLogSensorAt = actTime;
-			}
-			if(actTime - dropPartitionLogSensorAt > 12 * 3600) {
-				createPartitions.dropLogSensor = true;
-				dropPartitionLogSensorAt = actTime;
-			}
-		}
-		if(!opt_nocdr and opt_ipaccount and !opt_disable_partition_operations and isSqlDriver("mysql")) {
-			time_t actTime = time(NULL);
-			if(actTime - createPartitionIpaccAt > 12 * 3600) {
-				createPartitions.createIpacc = true;
-				createPartitionIpaccAt = actTime;
-			}
-		}
-		if(!opt_nocdr and !opt_disable_partition_operations and isSqlDriver("mysql")) {
-			time_t actTime = time(NULL);
-			if(actTime - createPartitionBillingAgregationAt > 12 * 3600) {
-				createPartitions.createBilling = true;
-				createPartitionBillingAgregationAt = actTime;
-			}
-			if(actTime - dropPartitionBillingAgregationAt > 12 * 3600) {
-				createPartitions.dropBilling = true;
-				dropPartitionBillingAgregationAt = actTime;
-			}
-		}
-		if(createPartitions.isSet()) {
-			createPartitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
-		}
-		checkIdCdrChildTables.init();
-		if(!opt_nocdr and opt_cdr_partition and !opt_disable_partition_operations) {
-			time_t actTime = time(NULL);
-			if(actTime - checkMysqlIdCdrChildTablesAt > 1 * 3600) {
-				checkIdCdrChildTables.check = true;
-				checkMysqlIdCdrChildTablesAt = actTime;
-			}
-		}
-		if(checkIdCdrChildTables.isSet()) {
-			checkIdCdrChildTables.checkIdCdrChildTables(!firstIter && opt_partition_operations_in_thread);
-		}
-		firstIter = false;
 		
 		if(verbosity > 0 && is_read_from_file_simple()) { 
 			ostringstream outStr;
@@ -1517,6 +1540,8 @@ void *storing_cdr( void */*dummy*/ ) {
 			break;
 		}
 		calltable->unlock_calls_queue();
+		
+		firstIter = false;
 	}
 	if(verbosity && !opt_nocdr) {
 		syslog(LOG_NOTICE, "terminated - storing cdr / message / register");
@@ -3281,8 +3306,10 @@ void main_term_read() {
 	// flush all queues
 
 	Call *call;
+	Ss7 *ss7;
 	calltable->cleanup_calls(0);
 	calltable->cleanup_registers(0);
+	calltable->cleanup_ss7(0);
 
 	set_terminating();
 
@@ -3399,6 +3426,11 @@ void main_term_read() {
 			delete call;
 			registers_counter--;
 	}
+	while(calltable->ss7_queue.size() != 0) {
+			ss7 = calltable->ss7_queue.front();
+			calltable->ss7_queue.pop_front();
+			delete ss7;
+	}
 	delete calltable;
 	calltable = NULL;
 	
@@ -3407,6 +3439,11 @@ void main_term_read() {
 	if(sqlDbSaveCall) {
 		delete sqlDbSaveCall;
 		sqlDbSaveCall = NULL;
+	}
+	extern SqlDb *sqlDbSaveSs7;
+	if(sqlDbSaveSs7) {
+		delete sqlDbSaveSs7;
+		sqlDbSaveSs7 = NULL;
 	}
 	extern SqlDb *sqlDbSaveHttp;
 	if(sqlDbSaveHttp) {
@@ -4105,7 +4142,7 @@ void test() {
 	case 1: {
 	 
 		extern void ws_test(const char *pcapFile);
-		ws_test("/home/jumbox/Plocha/jira/VG-1191/trace.pcap");
+		ws_test("/home/jumbox/Plocha/jira/VG-1191/isdn.pcap");
 		break;
 	 
 		extern void testPN();
@@ -4870,6 +4907,7 @@ void cConfig::addConfigItems() {
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_ss7", &opt_cleandatabase_ss7));
 			addConfigItem(new FILE_LINE(42118) cConfigItem_integer("cleandatabase_http_enum", &opt_cleandatabase_http_enum));
 			addConfigItem(new FILE_LINE(42119) cConfigItem_integer("cleandatabase_webrtc", &opt_cleandatabase_webrtc));
 			addConfigItem(new FILE_LINE(42120) cConfigItem_integer("cleandatabase_register_state", &opt_cleandatabase_register_state));
@@ -5285,6 +5323,9 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42361) cConfigItem_yesno("ipaccount_agregate_only_customers_on_any_side", &opt_ipacc_agregate_only_customers_on_any_side));
 
 	minorGroupIfNotSetBegin();
+	group("ss7");
+			advanced();
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7", &opt_enable_ss7));
 	group("http");
 			advanced();
 			addConfigItem((new FILE_LINE(42362) cConfigItem_yesno("http", &opt_enable_http))
@@ -6923,6 +6964,9 @@ int eval_config(string inistr) {
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc = atoi(value);
 	}
+	if((value = ini.GetValue("general", "cleandatabase_ss7", NULL))) {
+		opt_cleandatabase_ss7 = atoi(value);
+	}
 	if((value = ini.GetValue("general", "cleandatabase_http_enum", NULL))) {
 		opt_cleandatabase_http_enum = atoi(value);
 	}
@@ -7919,6 +7963,9 @@ int eval_config(string inistr) {
 		opt_process_rtp_packets_hash_next_thread_sem_sync = atoi(value) == 2 ? 2 :yesno(value);
 	}
 	
+	if((value = ini.GetValue("general", "ss7", NULL))) {
+		opt_enable_ss7 = yesno(value);
+	}
 	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||
 	   (value = ini.GetValue("general", "http", NULL))) {
 		opt_enable_http = strcmp(value, "only") ? yesno(value) : 2;

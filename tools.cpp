@@ -1000,7 +1000,7 @@ unsigned long getUptime() {
 }
 
 
-PcapDumper::PcapDumper(eTypePcapDump type, class Call *call) {
+PcapDumper::PcapDumper(eTypePcapDump type, Call_abstract *call) {
 	this->typeSpoolFile = tsf_na;
 	this->type = type;
 	this->call = call;
@@ -1271,7 +1271,7 @@ void RtpGraphSaver::clearAutoOpen() {
 	this->enableAutoOpen = false;
 }
 
-AsyncClose::AsyncCloseItem::AsyncCloseItem(Call *call, PcapDumper *pcapDumper, 
+AsyncClose::AsyncCloseItem::AsyncCloseItem(Call_abstract *call, PcapDumper *pcapDumper, 
 					   eTypeSpoolFile typeSpoolFile, const char *file, 
 					   long long writeBytes) {
 	this->call = call;
@@ -3046,7 +3046,7 @@ string JsonExport_template<type_item>::getJson(JsonExport *parent) {
 #define DEFAULT_BUFFER_LENGTH		8192
 
 FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeCompress typeCompress,
-			       bool dumpHandler, Call *call,
+			       bool dumpHandler, Call_abstract *call,
 			       eTypeFile typeFile) {
 	this->mode = mode_na;
 	this->typeSpoolFile = tsf_na;
@@ -3579,7 +3579,7 @@ u_int64_t FileZipHandler::scounter = 0;
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, eTypeSpoolFile typeSpoolFile, const char *fname, int linktype, string *errorString,
 				int _bufflength, int _asyncwrite, FileZipHandler::eTypeCompress _typeCompress,
-				Call *call, PcapDumper::eTypePcapDump type) {
+				Call_abstract *call, PcapDumper::eTypePcapDump type) {
 	if(opt_pcap_dump_bufflength) {
 		FileZipHandler *handler = new FILE_LINE(38021) FileZipHandler(_bufflength < 0 ? opt_pcap_dump_bufflength : _bufflength, 
 									      _asyncwrite < 0 ? opt_pcap_dump_asyncwrite : _asyncwrite, 
@@ -4069,6 +4069,53 @@ string json_encode(const string &value) {
 		}
 	}
 	return escaped.str();
+}
+
+char * gettag_json(const char *data, const char *tag, unsigned *contentlen, char *dest, unsigned destlen) {
+	string _tag = "\"" + string(tag) + "\": \"";
+	const char *ptrToBegin = strcasestr(data, _tag.c_str());
+	if(ptrToBegin) {
+		ptrToBegin += _tag.length();
+		const char *ptrToEnd = ptrToBegin;
+		while(*ptrToEnd && *ptrToEnd != '"' && *(ptrToEnd - 1) != '\\') {
+			++ptrToEnd;
+		}
+		if(ptrToEnd > ptrToBegin) {
+			*contentlen = ptrToEnd - ptrToBegin;
+			if(dest) {
+				strncpy(dest, ptrToBegin, min(*contentlen, destlen - 1));
+				dest[min(*contentlen, destlen - 1)] = 0;
+			}
+			return((char*)ptrToBegin);
+		}
+	}
+	*contentlen = 0;
+	if(dest) {
+		*dest = 0;
+	}
+	return(NULL);
+}
+
+char * gettag_json(const char *data, const char *tag, string *dest) {
+	unsigned contentlen;
+	char *content = gettag_json(data, tag, &contentlen, NULL, 0);
+	if(content && dest) {
+		*dest = string(content, contentlen);
+	}
+	return(content);
+}
+
+char * gettag_json(const char *data, const char *tag, unsigned *dest, unsigned dest_not_exists) {
+	unsigned contentlen;
+	char *content = gettag_json(data, tag, &contentlen, NULL, 0);
+	if(content) {
+		if(dest) {
+			*dest = atoi(string(content, contentlen).c_str());
+		}
+	} else if(dest && dest_not_exists) {
+		*dest = dest_not_exists;
+	}
+	return(content);
 }
 
 SocketSimpleBufferWrite::SocketSimpleBufferWrite(const char *name, ip_port ipPort, bool udp, uint64_t maxSize) {

@@ -159,6 +159,7 @@ enum eTypeSpoolFile {
 	tsf_sip = 1,
 	tsf_reg,
 	tsf_skinny,
+	tsf_ss7,
 	tsf_rtp,
 	tsf_graph,
 	tsf_audio,
@@ -250,6 +251,7 @@ const char *getSpoolTypeDir(eTypeSpoolFile typeSpoolFile) {
 	return(typeSpoolFile == tsf_sip ? (enable_pcap_split ? "SIP" : "ALL") :
 	       typeSpoolFile == tsf_reg ? "REG" :
 	       typeSpoolFile == tsf_skinny ? (enable_pcap_split ? "SKINNY" : "ALL") :
+	       typeSpoolFile == tsf_ss7 ? "SS7" :
 	       typeSpoolFile == tsf_rtp ? (enable_pcap_split ? "RTP" : "ALL") :
 	       typeSpoolFile == tsf_graph ? "GRAPH" :
 	       typeSpoolFile == tsf_audio ? "AUDIO" : 
@@ -264,6 +266,7 @@ const char *getSpoolTypeFilesIndex(eTypeSpoolFile typeSpoolFile, bool addFileCon
 		typeSpoolFile == tsf_sip ? "sip" :
 		typeSpoolFile == tsf_reg ? "sip" : 
 		typeSpoolFile == tsf_skinny ? "sip" : 
+		typeSpoolFile == tsf_ss7 ? "sip" : 
 		typeSpoolFile == tsf_rtp ? "rtp" :
 		typeSpoolFile == tsf_graph ? "graph" :
 		typeSpoolFile == tsf_audio ? "audio" : 
@@ -272,6 +275,7 @@ const char *getSpoolTypeFilesIndex(eTypeSpoolFile typeSpoolFile, bool addFileCon
 		typeSpoolFile == tsf_sip ? "sip" :
 		typeSpoolFile == tsf_reg ? "reg" : 
 		typeSpoolFile == tsf_skinny ? "sip" : 
+		typeSpoolFile == tsf_ss7 ? "ss7" : 
 		typeSpoolFile == tsf_rtp ? "sip" :
 		typeSpoolFile == tsf_graph ? "graph" :
 		typeSpoolFile == tsf_audio ? "audio" : 
@@ -280,6 +284,7 @@ const char *getSpoolTypeFilesIndex(eTypeSpoolFile typeSpoolFile, bool addFileCon
 		typeSpoolFile == tsf_sip ? "sip" :
 		typeSpoolFile == tsf_reg ? "reg" : 
 		typeSpoolFile == tsf_skinny ? "skinny" : 
+		typeSpoolFile == tsf_ss7 ? "ss7" : 
 		typeSpoolFile == tsf_rtp ? "rtp" :
 		typeSpoolFile == tsf_graph ? "graph" :
 		typeSpoolFile == tsf_audio ? "audio" :
@@ -291,6 +296,7 @@ const char *getFileTypeExtension(eTypeSpoolFile typeSpoolFile) {
 	return(typeSpoolFile == tsf_sip ? "pcap" :
 	       typeSpoolFile == tsf_reg ? "pcap" : 
 	       typeSpoolFile == tsf_skinny ? "pcap" : 
+	       typeSpoolFile == tsf_ss7 ? "pcap" : 
 	       typeSpoolFile == tsf_rtp ? "pcap" :
 	       typeSpoolFile == tsf_graph ? "graph" :
 	       typeSpoolFile == tsf_audio ? "wav" : 

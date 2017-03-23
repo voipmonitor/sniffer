@@ -960,7 +960,7 @@ bool RecompressStream::decompress_ev(char *data, u_int32_t len) {
 }
 
 ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
-			 u_int32_t chunk_fix_len, Call *call, int typeContent) {
+			 u_int32_t chunk_fix_len, Call_abstract *call, int typeContent) {
 	this->time = time;
 	this->tar_time = tar_time;
 	this->call = call;

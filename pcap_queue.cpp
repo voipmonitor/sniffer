@@ -1397,6 +1397,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 #endif
 			outStr << " ";
+			if(opt_enable_ss7) {
+				outStr << "ss7[" << calltable->ss7_listMAP.size() << "]"
+				       << "[" << calltable->ss7_queue.size() << "] ";
+			}
 			if(opt_ipaccount) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
 			}
@@ -1601,6 +1605,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 								if (rrdSQLq_R < 0)rrdSQLq_R = sizeSQLq / 100;
 								else rrdSQLq_R += sizeSQLq / 100;
 							}
+						}
+					}
+					if(opt_enable_ss7) {
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SS7);
+						if(sizeSQLq >= 0) {
+							outStr << " 7:" << sizeSQLq;
 						}
 					}
 					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL);
@@ -1906,11 +1916,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 					if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
 					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
-					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_rtp) {
+					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_rtp && 
+					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
 						last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
 					}
 					if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
-					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register) {
+					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
+					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
 						last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
 					}
 				}
@@ -3124,6 +3136,7 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 			if(sleepCounter > 10 && sleepCounter <= 15) {
 				calltable->cleanup_calls(0);
 				calltable->cleanup_registers(0);
+				calltable->cleanup_ss7(0);
 				extern int opt_sip_register;
 				if(opt_sip_register == 1) {
 					extern Registers registers;
@@ -3159,6 +3172,7 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 				if(!sleepTimeBeforeCleanup) {
 					calltable->cleanup_calls(0);
 					calltable->cleanup_registers(0);
+					calltable->cleanup_ss7(0);
 					extern int opt_sip_register;
 					if(opt_sip_register == 1) {
 						extern Registers registers;
@@ -6467,49 +6481,65 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		this->_last_ts = header->ts;
 	}
 	
-	iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+	iphdr2 *header_ip = hp->header->header_ip_offset == (u_int16_t)0xFFFFFFFF ?
+			     NULL :
+			     (iphdr2*)(hp->packet + hp->header->header_ip_offset);
 
-	bool nextPass;
-	do {
-		nextPass = false;
-		if(header_ip->protocol == IPPROTO_IPIP) {
-			// ip in ip protocol
-			header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
-		} else if(header_ip->protocol == IPPROTO_GRE) {
-			// gre protocol
-			header_ip = convertHeaderIP_GRE(header_ip);
-			if(header_ip) {
-				nextPass = true;
-			} else {
-				return(0);
+	if(header_ip) {
+		bool nextPass;
+		do {
+			nextPass = false;
+			if(header_ip->protocol == IPPROTO_IPIP) {
+				// ip in ip protocol
+				header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
+			} else if(header_ip->protocol == IPPROTO_GRE) {
+				// gre protocol
+				header_ip = convertHeaderIP_GRE(header_ip);
+				if(header_ip) {
+					nextPass = true;
+				} else {
+					return(0);
+				}
 			}
-		}
-	} while(nextPass);
+		} while(nextPass);
+	}
 
 	char *data = NULL;
 	int datalen = 0;
 	int istcp = 0;
+	int isother = 0;
 	u_int16_t sport = 0;
 	u_int16_t dport = 0;
-	if (header_ip->protocol == IPPROTO_UDP) {
-		udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
-		data = (char *) header_udp + sizeof(*header_udp);
-		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2), 
-				   header->caplen - ((u_char*)data - hp->packet));
-		istcp = 0;
-		sport = header_udp->source;
-		dport = header_udp->dest;
-	} else if (header_ip->protocol == IPPROTO_TCP) {
-		tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
-		data = (char *) header_tcp + (header_tcp->doff * 4);
-		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - header_tcp->doff * 4, 
-				   header->caplen - ((u_char*)data - hp->packet)); 
-		istcp = 1;
-		sport = header_tcp->source;
-		dport = header_tcp->dest;
-	} else {
-		//packet is not UDP and is not TCP, we are not interested, go to the next packet
-		return(0);
+	if(header_ip) {
+		if (header_ip->protocol == IPPROTO_UDP) {
+			udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
+			data = (char *) header_udp + sizeof(*header_udp);
+			datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2), 
+					   header->caplen - ((u_char*)data - hp->packet));
+			sport = header_udp->source;
+			dport = header_udp->dest;
+		} else if (header_ip->protocol == IPPROTO_TCP) {
+			tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
+			data = (char *) header_tcp + (header_tcp->doff * 4);
+			datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - header_tcp->doff * 4, 
+					   header->caplen - ((u_char*)data - hp->packet)); 
+			istcp = 1;
+			sport = header_tcp->source;
+			dport = header_tcp->dest;
+		} else if (opt_enable_ss7 && header_ip->protocol == IPPROTO_SCTP) {
+			isother = 1;
+			unsigned sizeOfSctpHeader = 12;
+			data = (char*) header_ip + sizeof(*header_ip) + sizeOfSctpHeader;
+			datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeOfSctpHeader, 
+					   header->caplen - ((u_char*)data - hp->packet));
+		} else {
+			//packet is not UDP and is not TCP, we are not interested, go to the next packet
+			return(0);
+		}
+	} else if(opt_enable_ss7) {
+		data = (char*)hp->packet;
+		datalen = header->caplen;
+		isother = 1;
 	}
 	
 	if((data - (char*)hp->packet) > header->caplen) {
@@ -6533,7 +6563,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - hp->packet)));
 	}
 
-	if(header_ip->protocol == IPPROTO_TCP) {
+	if(header_ip && header_ip->protocol == IPPROTO_TCP) {
 		if(opt_enable_http && (httpportmatrix[htons(sport)] || httpportmatrix[htons(dport)])) {
 			tcpReassemblyHttp->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						    hp->block_store, hp->block_store_index, hp->block_store_locked,
@@ -6565,10 +6595,10 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			#if USE_PACKET_NUMBER
 			packet_counter_all,
 			#endif
-			header_ip->saddr, htons(sport), header_ip->daddr, htons(dport),
+			header_ip ? header_ip->saddr : 0, header_ip ? htons(sport) : 0, header_ip ? header_ip->daddr : 0, header_ip ?htons(dport) : 0,
 			datalen, data - (char*)hp->packet,
 			this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
-			istcp, header_ip,
+			istcp, isother, header_ip,
 			hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip,
 			hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);
 		return(1);

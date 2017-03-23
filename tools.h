@@ -601,6 +601,10 @@ inline u_long getGlobalPacketTimeS() {
 		glob_last_packet_time);
 }
 
+inline unsigned long long getTimeUS(pcap_pkthdr *pkthdr) {
+    return(pkthdr->ts.tv_sec * 1000000ull + pkthdr->ts.tv_usec);
+}
+
 class FileZipHandler : public CompressStream_baseEv {
 public:
 	enum eMode {
@@ -627,7 +631,7 @@ public:
 	};
 public:
 	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, eTypeCompress typeCompress = compress_na,
-		       bool dumpHandler = false, class Call *call = NULL,
+		       bool dumpHandler = false, class Call_abstract *call = NULL,
 		       eTypeFile typeFile = na);
 	virtual ~FileZipHandler();
 	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, 
@@ -697,7 +701,7 @@ public:
 	bool enableAsyncWrite;
 	eTypeCompress typeCompress;
 	bool dumpHandler;
-	Call *call;
+	Call_abstract *call;
 	int time;
 	u_int64_t size;
 	bool existsData;
@@ -724,7 +728,7 @@ public:
 		state_do_close,
 		state_close
 	};
-	PcapDumper(eTypePcapDump type = na, class Call *call = NULL);
+	PcapDumper(eTypePcapDump type = na, class Call_abstract *call = NULL);
 	~PcapDumper();
 	void setBuffLength(int bufflength) {
 		_bufflength = bufflength;
@@ -762,7 +766,7 @@ private:
 	eTypeSpoolFile typeSpoolFile;
 	string fileName;
 	eTypePcapDump type;
-	class Call *call;
+	class Call_abstract *call;
 	u_int64_t capsize;
 	u_int64_t size;
 	pcap_dumper_t *handle;
@@ -779,7 +783,7 @@ private:
 
 pcap_dumper_t *__pcap_dump_open(pcap_t *p, eTypeSpoolFile typeSpoolFile, const char *fname, int linktype, string *errorString = NULL,
 				int _bufflength = -1 , int _asyncwrite = -1, FileZipHandler::eTypeCompress _typeCompress = FileZipHandler::compress_na,
-				Call *call = NULL, PcapDumper::eTypePcapDump type = PcapDumper::na);
+				Call_abstract *call = NULL, PcapDumper::eTypePcapDump type = PcapDumper::na);
 void __pcap_dump(u_char *user, const struct pcap_pkthdr *h, const u_char *sp, bool allPackets = false);
 void __pcap_dump_close(pcap_dumper_t *p);
 void __pcap_dump_flush(pcap_dumper_t *p);
@@ -830,7 +834,7 @@ class AsyncClose {
 public:
 	class AsyncCloseItem {
 	public:
-		AsyncCloseItem(Call *call = NULL, PcapDumper *pcapDumper = NULL, 
+		AsyncCloseItem(Call_abstract *call = NULL, PcapDumper *pcapDumper = NULL, 
 			       eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 			       long long writeBytes = 0);
 		virtual ~AsyncCloseItem() {}
@@ -841,7 +845,7 @@ public:
 	protected:
 		void addtofilesqueue();
 	protected:
-		Call *call;
+		Call_abstract *call;
 		string call_dirnamesqlfiles;
 		int call_spoolindex;
 		string call_spooldir;
@@ -855,7 +859,7 @@ public:
 	class AsyncCloseItem_pcap : public AsyncCloseItem {
 	public:
 		AsyncCloseItem_pcap(pcap_dumper_t *handle, bool updateFilesQueue = false,
-				    Call *call = NULL, PcapDumper *pcapDumper = NULL, 
+				    Call_abstract *call = NULL, PcapDumper *pcapDumper = NULL, 
 				    eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 				    long long writeBytes = 0)
 		 : AsyncCloseItem(call, pcapDumper, 
@@ -918,7 +922,7 @@ public:
 	class AsyncCloseItem_fileZipHandler  : public AsyncCloseItem{
 	public:
 		AsyncCloseItem_fileZipHandler(FileZipHandler *handle, bool updateFilesQueue = false,
-					      Call *call = NULL, 
+					      Call_abstract *call = NULL, 
 					      eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 					      long long writeBytes = 0)
 		 : AsyncCloseItem(call, NULL, 
@@ -985,7 +989,7 @@ public:
 	void addThread();
 	void removeThread();
 	void add(pcap_dumper_t *handle, bool updateFilesQueue = false,
-		 Call *call = NULL, PcapDumper *pcapDumper = NULL, 
+		 Call_abstract *call = NULL, PcapDumper *pcapDumper = NULL, 
 		 eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 		 long long writeBytes = 0) {
 		extern int opt_pcap_dump_bufflength;
@@ -1056,7 +1060,7 @@ public:
 		}
 	}
 	void add(FileZipHandler *handle, bool updateFilesQueue = false,
-		 Call *call = NULL, 
+		 Call_abstract *call = NULL, 
 		 eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 		 long long writeBytes = 0) {
 		for(int pass = 0; pass < 2; pass++) {
@@ -2251,6 +2255,10 @@ bool isGunzip(const char *zipFilename);
 string url_encode(const string &value);
 string json_encode(const char *str);
 string json_encode(const string &value);
+
+char * gettag_json(const char *data, const char *tag, unsigned *contentlen, char *dest, unsigned destlen);
+char * gettag_json(const char *data, const char *tag, string *dest);
+char * gettag_json(const char *data, const char *tag, unsigned *dest, unsigned dest_not_exists = 0);
 
 class SocketSimpleBufferWrite {
 public:
