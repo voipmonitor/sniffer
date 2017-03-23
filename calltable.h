@@ -241,6 +241,14 @@ public:
 		u_int32_t sipcallerip[MAX_SIPCALLERDIP];
 		u_int32_t sipcalledip[MAX_SIPCALLERDIP];
 	};
+	struct sMergeLegInfo {
+		sMergeLegInfo() {
+			seenbye = false;
+			seenbye_time_usec = 0;
+		}
+		bool seenbye;
+		u_int64_t seenbye_time_usec;
+	};
 	struct sInviteSD_Addr {
 		sInviteSD_Addr() {
 			confirmed = false;
@@ -531,7 +539,7 @@ public:
 	unsigned int lastcallerssrc;
 	unsigned int lastcalledssrc;
 
-	vector<string> mergecalls;
+	map<string, sMergeLegInfo> mergecalls;
 
 	bool rtp_zeropackets_stored;
 	
@@ -896,6 +904,32 @@ public:
 		   call_id && *call_id) {
 			map_sipcallerdip[call_id].sipcalledip[0] = ip;
 		}
+	}
+	void setSeenbye(bool seenbye, u_int64_t seenbye_time_usec, const char *call_id) {
+		extern char opt_callidmerge_header[128];
+		this->seenbye = seenbye;
+		this->seenbye_time_usec = seenbye_time_usec;
+		if(opt_callidmerge_header[0] != '\0' &&
+		   call_id && *call_id) {
+			mergecalls[call_id].seenbye = seenbye;
+			mergecalls[call_id].seenbye_time_usec = seenbye_time_usec;
+		}
+	}
+	u_int64_t getSeenbyeTimeUS() {
+		extern char opt_callidmerge_header[128];
+		if(opt_callidmerge_header[0] != '\0') {
+			u_int64_t seenbye_time_usec = 0;
+			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+				if(!it->second.seenbye || !it->second.seenbye_time_usec) {
+					return(0);
+				}
+				if(seenbye_time_usec < it->second.seenbye_time_usec) {
+					seenbye_time_usec = it->second.seenbye_time_usec;
+				}
+			}
+			return(seenbye_time_usec);
+		}
+		return(seenbye ? seenbye_time_usec : 0);
 	}
 
 private:

@@ -978,14 +978,15 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		this->first_packet_usec = header->ts.tv_usec;
 	}
 
-	if(owner && owner->seenbye && owner->seenbye_time_usec &&
-	   (header->ts.tv_sec * 1000000ull + header->ts.tv_usec) >= owner->seenbye_time_usec && 
-	   !opt_pb_read_from_file[0] && !is_read_from_file()){
-		// do not process RTP if call is hangedup to prevent false negative statistics
-		return(false);
+	if(owner && 
+	   !opt_pb_read_from_file[0] && !is_read_from_file()) {
+		u_int64_t seenbye_time_usec = owner->getSeenbyeTimeUS();
+		if(seenbye_time_usec && getTimeUS(header) > seenbye_time_usec) {
+			return(false);
+		}
 	}
 
-       if(owner) {
+	if(owner) {
 		owner->forcemark_lock();
 		bool nextcycle = false;
 		do {

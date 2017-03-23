@@ -728,8 +728,8 @@ Call::removeRTP() {
 Call::~Call(){
 	if(opt_callidmerge_header[0] != '\0') {
 		((Calltable*)calltable)->lock_calls_mergeMAP();
-		for(std::vector<string>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
-			((Calltable*)calltable)->calls_mergeMAP.erase(*it);
+		for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+			((Calltable*)calltable)->calls_mergeMAP.erase(it->first);
 		}
 		((Calltable*)calltable)->unlock_calls_mergeMAP();
 	}

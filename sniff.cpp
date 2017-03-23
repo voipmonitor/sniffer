@@ -2663,8 +2663,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		if(packetS->sip_method == INVITE) {
 			// festr - 14.03.2015 - this prevents some type of call to process call in case of call merging
 			// if(!call->seenbye) {
-			call->seenbye = 0;
-			call->seenbye_time_usec = 0;
+			call->setSeenbye(false, 0, packetS->get_callid());
 			call->destroy_call_at = 0;
 			call->destroy_call_at_bye = 0;
 			call->destroy_call_at_bye_confirmed = 0;
@@ -2761,8 +2760,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			if(cseq && cseqlen < 32) {
 				memcpy(call->byecseq, cseq, cseqlen);
 				call->byecseq[cseqlen] = '\0';
-				call->seenbye = true;
-				call->seenbye_time_usec = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
+				call->setSeenbye(true, getTimeUS(packetS->header_pt), packetS->get_callid());
 				if(verbosity > 2)
 					syslog(LOG_NOTICE, "Seen bye\n");
 				if(opt_enable_fraud && isFraudReady()) {
@@ -4330,7 +4328,7 @@ inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, i
 				call->has_second_merged_leg = true;
 				calltable->calls_mergeMAP[callidstr] = call;
 				calltable->unlock_calls_mergeMAP();
-				call->mergecalls.push_back(callidstr);
+				call->mergecalls[callidstr] = Call::sMergeLegInfo();
 			}
 		}
 	} else {
