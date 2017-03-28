@@ -4513,6 +4513,7 @@ bool Ss7::sParseData::parse(packet_s_stack *packetS) {
 		gettag_json(dissect_rslt.c_str(), "mtp3.dpc", &mtp3_dpc, UINT_MAX);
 		gettag_json(dissect_rslt.c_str(), "e164.called_party_number.digits", &e164_called_party_number_digits);
 		gettag_json(dissect_rslt.c_str(), "e164.calling_party_number.digits", &e164_calling_party_number_digits);
+		gettag_json(dissect_rslt.c_str(), "isup.cause_indicator", &isup_cause_indicator, UINT_MAX);
 		return(true);
 	}
 	return(false);
@@ -4549,7 +4550,7 @@ Ss7::Ss7(time_t time) :
 void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 	switch(data->isup_message_type) {
 	case SS7_IAM:
-		state = iam;
+		last_message_type = iam;
 		iam_data = *data;
 		iam_src_ip = packetS->saddr;
 		iam_dst_ip = packetS->daddr;
@@ -4557,24 +4558,37 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 		strncpy(fbasename, filename().c_str(), MAX_FNAME);
 		break;
 	case SS7_ACM:
-		state = acm;
-		acm_time_us = getTimeUS(packetS->header_pt);
+		last_message_type = acm;
+		if(!acm_time_us) {
+			acm_time_us = getTimeUS(packetS->header_pt);
+		}
 		break;
 	case SS7_CPG:
-		state = cpg;
-		cpg_time_us = getTimeUS(packetS->header_pt);
+		last_message_type = cpg;
+		if(!cpg_time_us) {
+			cpg_time_us = getTimeUS(packetS->header_pt);
+		}
 		break;
 	case SS7_ANM:
-		state = anm;
-		anm_time_us = getTimeUS(packetS->header_pt);
+		last_message_type = anm;
+		if(!anm_time_us) {
+			anm_time_us = getTimeUS(packetS->header_pt);
+		}
 		break;
 	case SS7_REL:
-		state = rel;
-		rel_time_us = getTimeUS(packetS->header_pt);
+		last_message_type = rel;
+		if(!rel_time_us) {
+			rel_time_us = getTimeUS(packetS->header_pt);
+		}
+		if(isset_unsigned(data->isup_cause_indicator)) {
+			rel_cause_indicator = data->isup_cause_indicator;
+		}
 		break;
 	case SS7_RLC:
-		state = rlc;
-		rlc_time_us = getTimeUS(packetS->header_pt);
+		last_message_type = rlc;
+		if(!rlc_time_us) {
+			rlc_time_us = getTimeUS(packetS->header_pt);
+		}
 		break;
 	}
 	last_time_us = getTimeUS(packetS->header_pt);
@@ -4619,6 +4633,15 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 	if(rlc_time_us) {
 		ss7.add(sqlEscapeString(sqlDateTimeString(rlc_time_us / 1000000ull)), "time_rlc");
 	}
+	if(rlc_time_us) {
+		ss7.add((unsigned)round((rlc_time_us - iam_time_us) / 1000000.), "duration");
+		if(anm_time_us) {
+			ss7.add((unsigned)round((rlc_time_us - anm_time_us) / 1000000.), "connect_duration");
+		}
+	}
+	if(anm_time_us) {
+		ss7.add((unsigned)round((anm_time_us - iam_time_us) / 1000000.), "progress_time");
+	}
 	if(isset_unsigned(iam_data.isup_cic)) {
 		ss7.add(iam_data.isup_cic, "cic");
 	}
@@ -4629,10 +4652,10 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 		ss7.add(iam_data.isup_satellite_indicator, "echo_control_device_indicator");
 	}
 	if(isset_unsigned(iam_data.isup_calling_partys_category)) {
-		ss7.add(iam_data.isup_calling_partys_category, "calling_partys_category");
+		ss7.add(iam_data.isup_calling_partys_category, "caller_partys_category");
 	}
 	if(isset_unsigned(iam_data.isup_calling_party_nature_of_address_indicator)) {
-		ss7.add(iam_data.isup_calling_party_nature_of_address_indicator, "calling_party_nature_of_address_indicator");
+		ss7.add(iam_data.isup_calling_party_nature_of_address_indicator, "caller_party_nature_of_address_indicator");
 	}
 	if(isset_unsigned(iam_data.isup_ni_indicator)) {
 		ss7.add(iam_data.isup_ni_indicator, "ni_indicator");
@@ -4653,29 +4676,47 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 		ss7.add(iam_data.isup_inn_indicator, "inn_indicator");
 	}
 	if(isset_unsigned(iam_data.m3ua_protocol_data_opc)) {
-		ss7.add(iam_data.m3ua_protocol_data_opc, "protocol_data_opc");
+		ss7.add(iam_data.m3ua_protocol_data_opc, "m3ua_protocol_data_opc");
 	}
 	if(isset_unsigned(iam_data.m3ua_protocol_data_dpc)) {
-		ss7.add(iam_data.m3ua_protocol_data_dpc, "protocol_data_dpc");
+		ss7.add(iam_data.m3ua_protocol_data_dpc, "m3ua_protocol_data_dpc");
 	}
 	if(isset_unsigned(iam_data.mtp3_opc)) {
-		ss7.add(iam_data.mtp3_opc, "opc");
+		ss7.add(iam_data.mtp3_opc, "mtp3_opc");
 	}
 	if(isset_unsigned(iam_data.mtp3_dpc)) {
-		ss7.add(iam_data.mtp3_dpc, "dpc");
+		ss7.add(iam_data.mtp3_dpc, "mtp3_dpc");
+	}
+	if(isset_unsigned(iam_data.m3ua_protocol_data_opc) ||
+	   isset_unsigned(iam_data.mtp3_opc)) {
+		ss7.add(isset_unsigned(iam_data.m3ua_protocol_data_opc) ? iam_data.m3ua_protocol_data_opc : iam_data.mtp3_opc, "opc");
+	}
+	if(isset_unsigned(iam_data.m3ua_protocol_data_dpc) ||
+	   isset_unsigned(iam_data.mtp3_dpc)) {
+		ss7.add(isset_unsigned(iam_data.m3ua_protocol_data_dpc) ? iam_data.m3ua_protocol_data_dpc : iam_data.mtp3_dpc, "dpc");
 	}
 	if(!iam_data.e164_called_party_number_digits.empty()) {
-		ss7.add(iam_data.e164_called_party_number_digits, "called_party_number");
+		ss7.add(sqlEscapeString(iam_data.e164_called_party_number_digits), "called_number");
+		ss7.add(sqlEscapeString(reverseString(iam_data.e164_called_party_number_digits.c_str())), "called_number_reverse");
+		ss7.add(getCountryByPhoneNumber(iam_data.e164_called_party_number_digits.c_str(), true), "called_number_country_code");
 	}
 	if(!iam_data.e164_calling_party_number_digits.empty()) {
-		ss7.add(iam_data.e164_calling_party_number_digits, "calling_party_number");
+		ss7.add(sqlEscapeString(iam_data.e164_calling_party_number_digits), "caller_number");
+		ss7.add(sqlEscapeString(reverseString(iam_data.e164_calling_party_number_digits.c_str())), "caller_number_reverse");
+		ss7.add(getCountryByPhoneNumber(iam_data.e164_calling_party_number_digits.c_str(), true), "caller_number_country_code");
 	}
-	ss7.add(sqlEscapeString(stateToString()), "state");
+	if(isset_unsigned(rel_cause_indicator)) {
+		ss7.add(rel_cause_indicator, "rel_cause_indicator");
+	}
+	ss7.add(sqlEscapeString(getStateToString()), "state");
+	ss7.add(sqlEscapeString(lastMessageTypeToString()), "last_message_type");
 	if(iam_src_ip) {
-		ss7.add(iam_src_ip, "src_ip");
+		ss7.add(htonl(iam_src_ip), "src_ip");
+		ss7.add(getCountryByIP(htonl(iam_src_ip), true), "src_ip_country_code");
 	}
 	if(iam_dst_ip) {
-		ss7.add(-1, "dst_ip");
+		ss7.add(htonl(iam_dst_ip), "dst_ip");
+		ss7.add(getCountryByIP(htonl(iam_dst_ip), true), "dst_ip_country_code");
 	}
 	ss7.add(sqlEscapeString(ss7_id()), "ss7_id");
 	ss7.add(sqlEscapeString(filename()), "pcap_filename");
@@ -4692,7 +4733,7 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 }
 
 void Ss7::init() {
-	state = iam;
+	last_message_type = iam;
 	iam_src_ip = 0;
 	iam_dst_ip = 0;
 	iam_time_us = 0;
@@ -4702,6 +4743,7 @@ void Ss7::init() {
 	rel_time_us = 0;
 	rlc_time_us = 0;
 	last_time_us = 0;
+	rel_cause_indicator = UINT_MAX;
 }
 
 
@@ -5404,7 +5446,7 @@ int Calltable::cleanup_ss7( time_t currtime ) {
 	lock_ss7_listMAP();
 	map<string, Ss7*>::iterator iter;
 	for(iter = ss7_listMAP.begin(); iter != ss7_listMAP.end(); ) {
-		if(iter->second->state == Ss7::rlc || 
+		if(iter->second->last_message_type == Ss7::rlc || 
 		   !currtime ||
 		   (currtime - (long int)(iter->second->last_time_us / 1000000ull)) > absolute_timeout) {
 			iter->second->pushToQueue();

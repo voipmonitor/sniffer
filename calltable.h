@@ -975,6 +975,13 @@ inline unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
 class Ss7 : public Call_abstract {
 public:
 	enum eState {
+		call_setup,
+		in_call,
+		completed,
+		rejected,
+		canceled
+	};
+	enum eMessageType {
 		iam,
 		acm,
 		cpg,
@@ -1000,6 +1007,7 @@ public:
 			m3ua_protocol_data_dpc = 0;
 			mtp3_opc = 0;
 			mtp3_dpc = 0;
+			isup_cause_indicator = 0;
 		}
 		bool parse(struct packet_s_stack *packetS);
 		string ss7_id() {
@@ -1032,7 +1040,6 @@ public:
 		void debugOutput();
 		unsigned isup_message_type;
 		unsigned isup_cic;
-		bool exists_isup_cic;
 		unsigned isup_satellite_indicator;
 		unsigned isup_echo_control_device_indicator;
 		unsigned isup_calling_partys_category;
@@ -1044,15 +1051,12 @@ public:
 		unsigned isup_called_party_nature_of_address_indicator;
 		unsigned isup_inn_indicator;
 		unsigned m3ua_protocol_data_opc;
-		bool exists_m3ua_protocol_data_opc;
 		unsigned m3ua_protocol_data_dpc;
-		bool exists_m3ua_protocol_data_dpc;
 		unsigned mtp3_opc;
-		bool exists_mtp3_opc;
 		unsigned mtp3_dpc;
-		bool exists_mtp3_dpc;
 		string e164_called_party_number_digits;
 		string e164_calling_party_number_digits;
+		unsigned isup_cause_indicator;
 	};
 public:
 	Ss7(time_t time);
@@ -1065,13 +1069,32 @@ public:
 	string filename() {
 		return(intToString(iam_time_us) + "-" + iam_data.filename());
 	}
-	string stateToString() {
-		return(state == iam ? "iam" :
-		       state == acm ? "acm" :
-		       state == cpg ? "cpg" :
-		       state == anm ? "anm" :
-		       state == rel ? "rel" :
-		       state == rlc ? "rlc" : "");
+	eState getState() {
+		return(rel_time_us ?
+			(anm_time_us ? 
+			  completed :
+			(rel_cause_indicator == 16 ? 
+			  canceled : 
+			  rejected)) :
+			(anm_time_us ? 
+			  in_call : 
+			  call_setup));
+	}
+	string getStateToString() {
+		eState state = getState();
+		return(state == call_setup ? "call_setup" :
+		       state == in_call ? "in_call" :
+		       state == completed ? "completed" :
+		       state == rejected ? "rejected" :
+		       state == canceled ? "canceled" : "");
+	}
+	string lastMessageTypeToString() {
+		return(last_message_type == iam ? "iam" :
+		       last_message_type == acm ? "acm" :
+		       last_message_type == cpg ? "cpg" :
+		       last_message_type == anm ? "anm" :
+		       last_message_type == rel ? "rel" :
+		       last_message_type == rlc ? "rlc" : "");
 	}
 	bool isset_unsigned(unsigned value) {
 		return(value != UINT_MAX);
@@ -1079,7 +1102,7 @@ public:
 private:
 	void init();
 public:
-	eState state;
+	eMessageType last_message_type;
 	// IAM (Initial Address)
 	sParseData iam_data;
 	u_int32_t iam_src_ip;
@@ -1096,6 +1119,7 @@ public:
 	// RLC (Release complete)
 	u_int64_t rlc_time_us;
 	u_int64_t last_time_us;
+	unsigned rel_cause_indicator;
 	PcapDumper pcap;
 };
 

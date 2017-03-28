@@ -3868,26 +3868,39 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`time_anm` datetime,\
 				`time_rel` datetime,\
 				`time_rlc` datetime,\
+				`duration` mediumint unsigned,\
+				`connect_duration` mediumint unsigned,\
+				`progress_time` mediumint unsigned,\
 				`cic` int unsigned,\
 				`satellite_indicator` int unsigned,\
 				`echo_control_device_indicator` int unsigned,\
-				`calling_partys_category` int unsigned,\
-				`calling_party_nature_of_address_indicator` int unsigned,\
+				`caller_partys_category` int unsigned,\
+				`caller_party_nature_of_address_indicator` int unsigned,\
 				`ni_indicator` int unsigned,\
 				`address_presentation_restricted_indicator` int unsigned,\
 				`screening_indicator` int unsigned,\
 				`transmission_medium_requirement` int unsigned,\
 				`called_party_nature_of_address_indicator` int unsigned,\
 				`inn_indicator` int unsigned,\
-				`protocol_data_opc` int unsigned,\
-				`protocol_data_dpc` int unsigned,\
+				`m3ua_protocol_data_opc` int unsigned,\
+				`m3ua_protocol_data_dpc` int unsigned,\
+				`mtp3_opc` int unsigned,\
+				`mtp3_dpc` int unsigned,\
 				`opc` int unsigned,\
 				`dpc` int unsigned,\
-				`called_party_number` varchar(255),\
-				`calling_party_number` varchar(255),\
-				`state` enum('iam','acm','cpg','anm','rel','rlc'),\
+				`called_number` varchar(255),\
+				`caller_number` varchar(255),\
+				`called_number_reverse` varchar(255),\
+				`caller_number_reverse` varchar(255),\
+				`called_number_country_code` char(5),\
+				`caller_number_country_code` char(5),\
+				`rel_cause_indicator` int unsigned,\
+				`state` enum('call_setup','in_call','completed','rejected','canceled'),\
+				`last_message_type` enum('iam','acm','cpg','anm','rel','rlc'),\
 				`src_ip` int unsigned,\
 				`dst_ip` int unsigned,\
+				`src_ip_country_code` char(5),\
+				`dst_ip_country_code` char(5),\
 				`ss7_id` varchar(255),\
 				`pcap_filename` varchar(255),\
 				`id_sensor` smallint unsigned,") +
