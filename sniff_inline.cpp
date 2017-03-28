@@ -104,49 +104,60 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 	if(vlan) {
 		*vlan = -1;
 	}
+	bool exists_vlan = false;
 	switch(pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
 			header_sll = (sll_header*)packet;
-			if(header_sll->sll_protocol == 129) {
+			if(htons(header_sll->sll_protocol) == 0x8100) {
 				// VLAN tag
 				header_ip_offset = 0;
+				exists_vlan = true;
+			} else {
+				header_ip_offset = 0;
+				protocol = htons(header_sll->sll_protocol);
+			}
+			if(exists_vlan) {
 				u_int16_t _protocol;
 				do {
 					if(vlan) {
 						*vlan = htons(*(u_int16_t*)(packet + sizeof(sll_header) + header_ip_offset)) & 0xFFF;
 					}
-					_protocol = *(u_int16_t*)(packet + sizeof(sll_header) + header_ip_offset + 2);
+					_protocol = htons(*(u_int16_t*)(packet + sizeof(sll_header) + header_ip_offset + 2));
 					header_ip_offset += 4;
-				} while(_protocol == 129);
-				protocol = htons(_protocol);
-			} else {
-				header_ip_offset = 0;
-				protocol = htons(header_sll->sll_protocol);
+				} while(_protocol == 0x8100);
+				protocol = _protocol;
 			}
 			header_ip_offset += sizeof(sll_header);
 			break;
 		case DLT_EN10MB:
 			header_eth = (ether_header*)packet;
-			if(header_eth->ether_type == 129) {
+			if(htons(header_eth->ether_type) == 0x8100) {
 				// VLAN tag
 				header_ip_offset = 0;
-				u_int16_t _protocol;
-				do {
-					if(vlan) {
-						*vlan = htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset)) & 0xFFF;
-					}
-					_protocol = *(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset + 2);
-					header_ip_offset += 4;
-				} while(_protocol == 129);
-				protocol = htons(_protocol);
+				exists_vlan = true;
 				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
 			} else if(htons(header_eth->ether_type) == 0x88A8) {
 				// IEEE 8021ad
 				header_ip_offset = 4;
 				protocol = htons(*(u_int16_t*)(packet + sizeof(ether_header) + 2));
+				if(protocol == 0x8100) {
+					// VLAN tag
+					exists_vlan = true;
+				}
 			} else {
 				header_ip_offset = 0;
 				protocol = htons(header_eth->ether_type);
+			}
+			if(exists_vlan) {
+				u_int16_t _protocol;
+				do {
+					if(vlan) {
+						*vlan = htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset)) & 0xFFF;
+					}
+					_protocol = htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset + 2));
+					header_ip_offset += 4;
+				} while(_protocol == 0x8100);
+				protocol = _protocol;
 			}
 			header_ip_offset += sizeof(ether_header);
 			break;
