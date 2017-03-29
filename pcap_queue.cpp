@@ -5339,6 +5339,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				bufferLen = 0;
 				offsetBufferSyncRead = 0;
 				int require_confirmation = -1;
+				unsigned counterEmptyData = 0;
 				while(!TERMINATING && !forceStop) {
 					readLen = bufferSize;
 					if(!this->socketRead(buffer + offsetBufferSyncRead, &readLen, arg2)) {
@@ -5348,6 +5349,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 						break;
 					}
 					if(readLen) {
+						counterEmptyData = 0;
 						bufferLen += readLen;
 						if(syncBeginBlock) {
 							if(!detectSensorName) {
@@ -5555,6 +5557,15 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 						}
 						bufferLen = 0;
 						offsetBufferSyncRead = 0;
+					} else {
+						++counterEmptyData;
+						if(counterEmptyData > 100) {
+							syslog(LOG_NOTICE, "enforce close connection (too empty data) from %s:%i", this->packetServerConnections[arg2]->socketClientIP.c_str(), this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+							this->packetServerConnections[arg2]->active = false;
+							forceStop = true;
+						} else {
+							usleep(100);
+						}
 					}
 				}
 			}
@@ -6109,7 +6120,7 @@ bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) 
 						sleep(1);
 					}
 				} else {
-					syslog(LOG_ERR, "unknown response from receiver - try send block again");
+					syslog(LOG_ERR, "%s response from receiver - try send block again", recv_data_len ? "unknown" : "no");
 					sleep(1);
 				}
 			} else {
