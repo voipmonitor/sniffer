@@ -54,34 +54,43 @@ bool pstat_get_data(const int pid, pstat_data* result) {
 	}
 	fclose(fpstat);
 	result->rss = rss * getpagesize();
-	long long unsigned int cpu_time[10];
-	memset(cpu_time, 0, sizeof(cpu_time));
+	unsigned long long int usertime, nicetime, systemtime, idletime;
+	unsigned long long int ioWait, irq, softIrq, steal, guest, guestnice;
 	if(fscanf(fstat, 
-		  "%*s %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu",
-			&cpu_time[0], &cpu_time[1], &cpu_time[2], &cpu_time[3],
-			&cpu_time[4], &cpu_time[5], &cpu_time[6], &cpu_time[7],
-			&cpu_time[8], &cpu_time[9]) == EOF) {
+		  "cpu  %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu",
+			&usertime, &nicetime, &systemtime, &idletime, 
+			&ioWait, &irq, &softIrq, &steal, &guest, &guestnice) == EOF) {
 		fclose(fstat);
 		return(false);
 	}
 	fclose(fstat);
-	for(int i = 0; i < 10 ; i++) {
-		result->cpu_total_time += cpu_time[i];
-	}
+	unsigned long long int idlealltime = idletime + ioWait;
+	unsigned long long int systemalltime = systemtime + irq + softIrq;
+	unsigned long long int virtalltime = guest + guestnice;
+	unsigned long long int totaltime = usertime + nicetime + systemalltime + idlealltime + steal + virtalltime;
+	result->cpu_total_time = totaltime;
 	return(true);
 }
 
 void pstat_calc_cpu_usage_pct(const pstat_data* cur_usage,
 			      const pstat_data* last_usage,
 			      double* ucpu_usage, double* scpu_usage) {
-    const long unsigned int total_time_diff = cur_usage->cpu_total_time - last_usage->cpu_total_time;
-    const int cpuCore = sysconf(_SC_NPROCESSORS_ONLN);
-    *ucpu_usage = 100 * (((cur_usage->utime_ticks + cur_usage->cutime_ticks)
-				- (last_usage->utime_ticks + last_usage->cutime_ticks))
-			/ (double) total_time_diff) * cpuCore;
-    *scpu_usage = 100 * ((((cur_usage->stime_ticks + cur_usage->cstime_ticks)
-				- (last_usage->stime_ticks + last_usage->cstime_ticks))) /
-			(double) total_time_diff) * cpuCore;
+	const long unsigned int total_time_diff = cur_usage->cpu_total_time - last_usage->cpu_total_time;
+	static int cpuCore = 0;
+	if(cpuCore == 0) {
+		cpuCore = sysconf(_SC_NPROCESSORS_ONLN);
+	}
+	static double jiffy = 0.0;
+	if(jiffy == 0.0) {
+		jiffy = sysconf(_SC_CLK_TCK);
+	}
+	double jiffytime = 1.0 / jiffy * 100;
+	*ucpu_usage = 100 * (((cur_usage->utime_ticks + cur_usage->cutime_ticks)
+				    - (last_usage->utime_ticks + last_usage->cutime_ticks))
+			    / (double) total_time_diff) * jiffytime * cpuCore;
+	*scpu_usage = 100 * ((((cur_usage->stime_ticks + cur_usage->cstime_ticks)
+				    - (last_usage->stime_ticks + last_usage->cstime_ticks))) /
+			    (double) total_time_diff) * jiffytime * cpuCore;
 }
 
 void pstat_calc_cpu_usage(const pstat_data* cur_usage,

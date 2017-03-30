@@ -4072,6 +4072,40 @@ void test_filezip_handler() {
 	delete fzh;
 }
 
+void *_test_thread(void *) {
+	int threadId = get_unix_tid();
+	u_long time_ms_last = 0;
+	while(!terminating) {
+		u_long time_ms = getTimeMS_rdtsc();
+		if(time_ms > time_ms_last + 2000) {
+			pstat_data stat[2];
+			if(stat[0].cpu_total_time) {
+				stat[1] = stat[0];
+			}
+			pstat_get_data(threadId, stat);
+			double ucpu_usage, scpu_usage;
+			if(stat[0].cpu_total_time && stat[1].cpu_total_time) {
+				pstat_calc_cpu_usage_pct(
+					&stat[0], &stat[1],
+					&ucpu_usage, &scpu_usage);
+				double rslt = ucpu_usage + scpu_usage;
+				cout << rslt << endl;
+			}
+			time_ms_last = time_ms;
+		}
+	}
+	return(NULL);
+}
+
+void test_thread() {
+	pthread_t test_thread_handle;
+	vm_pthread_create("test_thread",
+			  &test_thread_handle, NULL, _test_thread, NULL, __FILE__, __LINE__);
+	while(!terminating) {
+		usleep(10000);
+	}
+}
+
 static void setAllocNumb();
 
 void test() {
@@ -4135,6 +4169,9 @@ void test() {
 	} break;
 	 
 	case 1: {
+	 
+		test_thread();
+		break;
 	 
 		extern void ws_test(const char *pcapFile);
 		ws_test("/home/jumbox/Plocha/jira/VG-1191/isdn.pcap");
