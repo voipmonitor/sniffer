@@ -1075,9 +1075,9 @@ public:
 	u_int64_t getField_int(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case rf_sipcallerip:
-			return(((sFraudRegisterInfo*)rec)->sipcallerip);
+			return(htonl(((sFraudRegisterInfo*)rec)->sipcallerip));
 		case rf_sipcalledip:
-			return(((sFraudRegisterInfo*)rec)->sipcalledip);
+			return(htonl(((sFraudRegisterInfo*)rec)->sipcalledip));
 		}
 		return(0);
 	}
