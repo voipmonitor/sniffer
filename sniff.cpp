@@ -4009,6 +4009,10 @@ inline void process_packet__cleanup_registers(pcap_pkthdr* header, u_long timeS)
 	if(timeS - process_packet__last_cleanup_registers < 10) {
 		return;
 	}
+	if(opt_sip_register == 1) {
+		extern Registers registers;
+		registers.cleanup(timeS);
+	}
 	calltable->cleanup_registers(timeS);
 	process_packet__last_cleanup_registers = timeS;
 }
