@@ -85,12 +85,8 @@ void pstat_calc_cpu_usage_pct(const pstat_data* cur_usage,
 		jiffy = sysconf(_SC_CLK_TCK);
 	}
 	double jiffytime = 1.0 / jiffy * 100;
-	*ucpu_usage = 100 * (((cur_usage->utime_ticks + cur_usage->cutime_ticks)
-				    - (last_usage->utime_ticks + last_usage->cutime_ticks))
-			    / (double) total_time_diff) * jiffytime * cpuCore;
-	*scpu_usage = 100 * ((((cur_usage->stime_ticks + cur_usage->cstime_ticks)
-				    - (last_usage->stime_ticks + last_usage->cstime_ticks))) /
-			    (double) total_time_diff) * jiffytime * cpuCore;
+	*ucpu_usage = 100 * ((cur_usage->utime_ticks - last_usage->utime_ticks) / (double) total_time_diff) * jiffytime * cpuCore;
+	*scpu_usage = 100 * ((cur_usage->stime_ticks - last_usage->stime_ticks) / (double) total_time_diff) * jiffytime * cpuCore;
 }
 
 void pstat_calc_cpu_usage(const pstat_data* cur_usage,
