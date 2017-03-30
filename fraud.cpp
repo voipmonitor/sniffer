@@ -819,7 +819,7 @@ bool FraudAlertReg::checkRegisterTimeSecLe(sFraudRegisterInfo *registerInfo) {
 }
 
 void FraudAlertReg::loadAlertVirt() {
-	intervalLength = atol(dbRow["reg_interval_length"].c_str());
+	intervalLength = atol(dbRow["reg_interval_length_sec"].c_str());
 	intervalLimit = atol(dbRow["reg_interval_limit"].c_str());
 	vector<string> ua_split = split(dbRow["reg_ua"].c_str(), split(",|;", "|"), true);
 	for(unsigned i = 0; i < ua_split.size(); i ++) {
