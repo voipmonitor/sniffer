@@ -234,7 +234,8 @@ int opt_norecord_dtmf = 0;	// if = 1 SIP call with dtmf == *0 sequence (in SIP I
 int opt_savewav_force = 0;	// if = 1 WAV will be generated no matter on filter rules
 int opt_sipoverlap = 1;		
 int opt_id_sensor = -1;		
-int opt_id_sensor_cleanspool = -1;		
+int opt_id_sensor_cleanspool = -1;	
+bool opt_use_id_sensor_for_receiver_in_files = false;
 char opt_name_sensor[256] = "";
 int readend = 0;
 int opt_dup_check = 0;
@@ -5415,6 +5416,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42396) cConfigItem_yesno("spooldir_by_sensor", &opt_spooldir_by_sensor));
 					expert();
 					addConfigItem(new FILE_LINE(42397) cConfigItem_yesno("spooldir_by_sensorname", &opt_spooldir_by_sensorname));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_id_sensor_for_receiver_in_files", &opt_use_id_sensor_for_receiver_in_files));
 		subgroup("sql");
 			addConfigItem(new FILE_LINE(42398) cConfigItem_string("mysqldb", mysql_database, sizeof(mysql_database)));
 				advanced();
@@ -6346,10 +6348,10 @@ void set_context_config() {
 				buffersControl.setMaxBufferMem(opt_pcap_queue_store_queue_max_memory_size + opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
 			}
 		}
-		
-		if(opt_pcap_queue_receive_from_ip_port) {
-			opt_id_sensor_cleanspool = -1;
-		}
+	}
+	
+	if(opt_pcap_queue_receive_from_ip_port && !opt_use_id_sensor_for_receiver_in_files) {
+		opt_id_sensor_cleanspool = -1;
 	}
 	
 	if(opt_enable_http) {
@@ -7092,6 +7094,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "id_sensor", NULL))) {
 		opt_id_sensor = atoi(value);
 		opt_id_sensor_cleanspool = opt_id_sensor;
+	}
+	if((value = ini.GetValue("general", "use_id_sensor_for_receiver_in_files", NULL))) {
+		opt_use_id_sensor_for_receiver_in_files = yesno(value);
 	}
 	if((value = ini.GetValue("general", "name_sensor", NULL))) {
 		strncpy(opt_name_sensor, value, sizeof(opt_name_sensor));
