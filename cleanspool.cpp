@@ -527,7 +527,9 @@ void CleanSpool::cleanThreadProcess() {
 				maxpoolsize = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_other.autocleanspoolminpercent / 100, (double)opt_other.autocleanmingb)) * 1024;
 				if(maxpoolsize > 1000 &&
 				   (!opt_max.maxpoolsize || maxpoolsize < opt_max.maxpoolsize)) {
-					if(opt_max.maxpoolsize && maxpoolsize < opt_max.maxpoolsize * 0.8) {
+					if(opt_max.maxpoolsize && 
+					   opt_max.maxpoolsize < totalSpaceGB * 1024 * 1.05 &&
+					   maxpoolsize < opt_max.maxpoolsize * 0.8) {
 						maxpoolsize = opt_max.maxpoolsize * 0.8;
 					}
 					syslog(LOG_NOTICE, "cleanspool[%i]: %s: %li MB", 
