@@ -4804,6 +4804,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* c
 		cout << "hashAdd: " 
 		     << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << " " 
 		     << (is_rtcp ? "rtcp" : "") << " "
+		     << (iscaller ? "caller" : "called") << " "
 		     << endl;
 	}
  

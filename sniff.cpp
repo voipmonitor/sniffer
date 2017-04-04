@@ -3607,6 +3607,10 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 		is_rtcp = call_info[call_info_index].is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data_()[1] == 0xC8);
 		stream_in_multiple_calls = call_info[call_info_index].multiple_calls;
 		
+		if(!find_by_dest) {
+			iscaller = !iscaller;
+		}
+		
 		if(sverb.process_rtp) {
 			++process_rtp_counter;
 			cout << "RTP - process_packet -"
@@ -3617,10 +3621,6 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			     << " find_by_dest: " << find_by_dest
 			     << " counter: " << process_rtp_counter
 			     << endl;
-		}
-		
-		if(!find_by_dest) {
-			iscaller = !iscaller;
 		}
 
 		if(pcap_drop_flag) {
