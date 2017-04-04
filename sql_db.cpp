@@ -4554,13 +4554,6 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 					ADD `id_sensor` smallint unsigned;" << endl;
 		}
 	}
-	
-	//17.9
-	outStrAlter << "ALTER TABLE `files`\
-			ADD COLUMN `skinnysize` bigint unsigned DEFAULT 0;" << endl;
-	//19.3
-	outStrAlter << "ALTER TABLE `files`\
-			ADD COLUMN `ss7size` bigint unsigned DEFAULT 0;" << endl;
 
 	//
 	outStrAlter << "end;" << endl;
@@ -5596,6 +5589,16 @@ void SqlDb_mysql::checkColumns_other(bool /*log*/) {
 			 ADD COLUMN `spool_index` INT NOT NULL AFTER `id_sensor`,\
 			 DROP PRIMARY KEY,\
 			 ADD PRIMARY KEY (`datehour`, `id_sensor`, `spool_index`)");
+	}
+	if(!this->existsColumn("files", "skinnysize")) {
+		this->query(
+			"ALTER TABLE `files`\
+			 ADD COLUMN `skinnysize` bigint unsigned DEFAULT 0");
+	}
+	if(!this->existsColumn("files", "ss7size")) {
+		this->query(
+			"ALTER TABLE `files`\
+			 ADD COLUMN `ss7size` bigint unsigned DEFAULT 0");
 	}
 }
 
