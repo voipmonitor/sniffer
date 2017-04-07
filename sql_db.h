@@ -13,6 +13,7 @@
 #include <sys/file.h>
 
 #include "tools.h"
+#include "cloud_router/cloud_router.h"
 
 
 using namespace std;
@@ -100,6 +101,7 @@ public:
 	bool reconnect();
 	virtual bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL) = 0;
 	bool queryByCurl(string query);
+	bool queryByCloudRouter(string query);
 	virtual string prepareQuery(string query, bool nextPass);
 	virtual SqlDb_row fetchRow(bool assoc = false) = 0;
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
@@ -254,6 +256,7 @@ private:
 	string lastErrorString;
 	static volatile u_int64_t delayQuery_sum_ms;
 	static volatile u_int32_t delayQuery_count;
+	cSocketBlock *cloud_router_socket;
 friend class MySqlStore_process;
 };
 

@@ -108,8 +108,8 @@ struct listening_worker_arg {
 static void updateLivesnifferfilters();
 static bool cmpCallBy_destroy_call_at(Call* a, Call* b);
 static bool cmpCallBy_first_packet_time(Call* a, Call* b);
-static int sendFile(const char *fileName, int client, ssh_channel sshchannel, bool zip);
-static int sendString(string *str, int client, ssh_channel sshchannel, bool zip);
+static int sendFile(const char *fileName, int client, ssh_channel sshchannel, cCR_Client_response *cr_client, bool zip);
+static int sendString(string *str, int client, ssh_channel sshchannel, cCR_Client_response *cr_client, bool zip);
 
 livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 
@@ -614,9 +614,12 @@ int sendssh(ssh_channel channel, const char *buf, int len) {
 }
 #endif
 
-int sendvm(int socket, ssh_channel channel, const char *buf, size_t len, int /*mode*/) {
+int sendvm(int socket, ssh_channel channel, cCR_Client_response *cr_client, const char *buf, size_t len, int /*mode*/) {
 	int res;
-	if(channel) {
+	if(cr_client) {
+		extern char cloud_token[256];
+		res = cr_client->writeEnc((u_char*)buf, len, cloud_token);
+	} else if(channel) {
 		res = sendssh(channel, buf, len);
 	} else {
 		res = send(socket, buf, len, 0);
@@ -624,14 +627,14 @@ int sendvm(int socket, ssh_channel channel, const char *buf, size_t len, int /*m
 	return res;
 }
 
-int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode) {
-	return(sendvm(socket, (ssh_channel)channel, buf, len, mode));
+int _sendvm(int socket, void *channel, void *cr_client, const char *buf, size_t len, int mode) {
+	return(sendvm(socket, (ssh_channel)channel, (cCR_Client_response*)cr_client, buf, len, mode));
 }
 
-int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel, char */*buf*/, size_t /*len*/, int /*mode*/) {
+int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel, cCR_Client_response *cr_client, char */*buf*/, size_t /*len*/, int /*mode*/) {
 	SimpleBuffer out;
 	if(vm_pexec(command, &out) && out.size()) {
-		if(sendvm(socket, channel, (const char*)out.data(), out.size(), 0) == -1) {
+		if(sendvm(socket, channel, cr_client, (const char*)out.data(), out.size(), 0) == -1) {
 			if (verbosity > 0) syslog(LOG_NOTICE, "sendvm_from_stdout_of_command: sending data problem");
 			return -1;
 		}
@@ -705,7 +708,26 @@ void manager_parse_command_disable() {
 	enable_parse_command = false;
 }
 
-int parse_command(char *buf, int size, int client, int eof, ManagerClientThread **managerClientThread = NULL, ssh_channel sshchannel = NULL) {
+static int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCR_Client_response *cr_client, ManagerClientThread **managerClientThread);
+
+int parse_command(string cmd, int client, cCR_Client_response *cr_client) {
+	ManagerClientThread *managerClientThread = NULL;
+	int rslt = _parse_command((char*)cmd.c_str(), cmd.length(), client, NULL, cr_client, &managerClientThread);
+	if(managerClientThread) {
+		if(managerClientThread->parseCommand()) {
+			ClientThreads.add(managerClientThread);
+			managerClientThread->run();
+		} else {
+			delete managerClientThread;
+			close(client);
+		}
+	} else {
+		close(client);
+	}
+	return(rslt);
+}
+
+int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCR_Client_response *cr_client, ManagerClientThread **managerClientThread) {
 	if(!enable_parse_command) {
 		return(0);
 	}
@@ -724,7 +746,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 	u_int32_t uid = 0;
 
 	if(strstr(buf, "getversion") != NULL) {
-		if ((size = sendvm(client, sshchannel, RTPSENSOR_VERSION, strlen(RTPSENSOR_VERSION), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, RTPSENSOR_VERSION, strlen(RTPSENSOR_VERSION), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -732,7 +754,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		checkRrdVersion(true);
 		extern int vm_rrd_version;
 		if(!vm_rrd_version) {
-			if ((size = sendvm(client, sshchannel, "missing rrdtool", 15, 0)) == -1){
+			if ((size = sendvm(client, sshchannel, cr_client, "missing rrdtool", 15, 0)) == -1){
 				cerr << "Error sending data to client" << endl;
 				return -1;
 			}
@@ -752,7 +774,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		if (( manager_argc = vm_rrd_countArgs(buf)) < 6) {	//few arguments passed
 			if (verbosity > 0) syslog(LOG_NOTICE, "parse_command creategraph too few arguments, passed%d need at least 6!\n", manager_argc);
 			snprintf(sendbuf, BUFSIZE, "Syntax: creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels  [ slope-mode  [ icon-mode  [ color  [ dstfile ]]]]\n");
-			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+			if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1){
 				cerr << "Error sending data to client 1" << endl;
 			}
 			pthread_mutex_unlock(&vm_rrd_lock);
@@ -876,7 +898,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			}
 			if ((dstfile == NULL) && (res == 0)) {		//send from stdout of a command (binary data)
 				if (sverb.rrd_info) syslog(LOG_NOTICE, "COMMAND for system pipe:%s", sendcommand);
-				if (sendvm_from_stdout_of_command(sendcommand, client, sshchannel, sendbuf, sizeof(sendbuf), 0) == -1 ){
+				if (sendvm_from_stdout_of_command(sendcommand, client, sshchannel, cr_client, sendbuf, sizeof(sendbuf), 0) == -1 ){
 					cerr << "Error sending data to client 2" << endl;
 					delete [] manager_cmd_line;
 					delete [] manager_args;
@@ -889,7 +911,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 				if ((verbosity > 0) && (res > 0)) snprintf(sendbuf, BUFSIZE, "ERROR while creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
 				if ((verbosity > 0) && (res == 0)) snprintf(sendbuf, BUFSIZE, "Created graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s in file %s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no", dstfile);
 				if (strlen(sendbuf)) {
-					if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+					if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1){
 						cerr << "Error sending data to client 3" << endl;
 						delete [] manager_cmd_line;
 						delete [] manager_args;
@@ -920,13 +942,13 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			}
 			if(badParams) {
 				snprintf(sendbuf, BUFSIZE, "bad parameters");
-				if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+				if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1){
 					cerr << "Error sending data to client" << endl;
 				}
 				return -1;
 			}
 			snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
-			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+			if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1){
 				cerr << "Error sending data to client" << endl;
 				return -1;
 			}
@@ -941,14 +963,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		} else {
 			strcpy(sendbuf, "cleanspool is disable\r\n");
 		}
-		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "check_filesindex") != NULL) {
 		if(is_enable_cleanspool()) {
 			snprintf(sendbuf, BUFSIZE, "starting checking indexing please wait...");
-			if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+			if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1){
 				cerr << "Error sending data to client" << endl;
 				return -1;
 			}
@@ -957,31 +979,31 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		} else {
 			strcpy(sendbuf, "cleanspool is disable\r\n");
 		}
-		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "totalcalls") != NULL) {
 		snprintf(sendbuf, BUFSIZE, "%d", calls_counter);
-		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "totalregisters") != NULL) {
 		snprintf(sendbuf, BUFSIZE, "%d", registers_counter);
-		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "disablecdr") != NULL) {
 		opt_nocdr = 1;
-		if ((size = sendvm(client, sshchannel, "disabled", 8, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "disabled", 8, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "enablecdr") != NULL) {
 		opt_nocdr = 0;
-		if ((size = sendvm(client, sshchannel, "enabled", 7, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "enabled", 7, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1124,7 +1146,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		calltable->unlock_calls_listMAP();
 		rslt_data += ",[\"encoded\"]]";
-		if ((size = sendvm(client, sshchannel, rslt_data.c_str(), rslt_data.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, rslt_data.c_str(), rslt_data.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1132,7 +1154,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		return 0;
 	} else if(strstr(buf, "is_register_new") != NULL) {
 		extern int opt_sip_register;
-		if ((size = sendvm(client, sshchannel, opt_sip_register == 1 ? "ok" : "no", 2, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, opt_sip_register == 1 ? "ok" : "no", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1146,7 +1168,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		bool zip = false;
 		extern Registers registers;
 		rslt_data = registers.getDataTableJson(buf + strlen("listregisters") + 1, &zip);
-		if(sendString(&rslt_data, client, sshchannel, zip) == -1) {
+		if(sendString(&rslt_data, client, sshchannel, cr_client, zip) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1158,7 +1180,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		extern Registers registers;
 		registers.cleanupByJson(buf + strlen("cleanupregisters") + 1);
-		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1167,7 +1189,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		ostringstream outStr;
 		if(!calltable && !terminating) {
 			outStr << "sniffer not initialized yet" << endl;
-			if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+			if ((size = sendvm(client, sshchannel, cr_client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
 				cerr << "Error sending data to client" << endl;
 				return -1;
 			}
@@ -1202,7 +1224,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			calltable->unlock_calls_queue();
 		}
 		outStr << "-----------" << endl;
-		if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1211,7 +1233,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		ostringstream outStr;
 		if(!calltable && !terminating) {
 			outStr << "sniffer not initialized yet" << endl;
-			if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+			if ((size = sendvm(client, sshchannel, cr_client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
 				cerr << "Error sending data to client" << endl;
 				return -1;
 			}
@@ -1245,7 +1267,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		calltable->unlock_calls_listMAP();
 		outStr << "-----------" << endl;
-		if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1254,7 +1276,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		ostringstream outStr;
 		if(!calltable && !terminating) {
 			outStr << "sniffer not initialized yet" << endl;
-			if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+			if ((size = sendvm(client, sshchannel, cr_client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
 				cerr << "Error sending data to client" << endl;
 				return -1;
 			}
@@ -1287,7 +1309,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		calltable->unlock_calls_listMAP();
 		outStr << "-----------" << endl;
-		if ((size = sendvm(client, sshchannel, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1306,21 +1328,21 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			}
 		}
 		calltable->unlock_calls_listMAP();
-		if ((size = sendvm(client, sshchannel, (rslt + "\n").c_str(), rslt.length() + 1, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, (rslt + "\n").c_str(), rslt.length() + 1, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		return 0;
 	} else if(strstr(buf, "cleanup_calls") != NULL) {
 		calltable->cleanup_calls(0);
-		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		return 0;
 	} else if(strstr(buf, "cleanup_registers") != NULL) {
 		calltable->cleanup_registers(0);
-		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1331,7 +1353,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			extern Registers registers;
 			registers.cleanup(time(NULL), true);
 		}
-		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1339,14 +1361,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 	} else if(strstr(buf, "cleanup_tcpreassembly") != NULL) {
 		extern TcpReassemblySip tcpReassemblySip;
 		tcpReassemblySip.clean();
-		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		return 0;
 	} else if(strstr(buf, "destroy_close_calls") != NULL) {
 		calltable->destroyCallsIfPcapsClosed();
-		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1359,7 +1381,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		} else {
 			snprintf(sendbuf, BUFSIZE, "%d", 0);
 		}
-		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1430,7 +1452,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 				data->voipall_octects, data->voipall_numpackets);
 			data->fetch_timestamp = time(NULL);
 		}
-		if((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1) {
+		if((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1453,7 +1475,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		jsonResult += "]";
 		__sync_lock_release(&usersniffer_sync);
-		if((size = sendvm(client, sshchannel, jsonResult.c_str(), jsonResult.length(), 0)) == -1) {
+		if((size = sendvm(client, sshchannel, cr_client, jsonResult.c_str(), jsonResult.length(), 0)) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1485,7 +1507,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			snprintf(sendbuf, BUFSIZE, "%d", 0);
 		}
 		__sync_lock_release(&usersniffer_sync);
-		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1726,7 +1748,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		
 		__sync_lock_release(&usersniffer_sync);
 		
-		if ((size = sendvm(client, sshchannel, "ok", 2, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1787,7 +1809,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			if(!newWorker) {
 				l_client->spybuffer_start_pos = l_worker->spybuffer->size_all_with_freed_pos();
 			}
-			if((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1) {
+			if((size = sendvm(client, sshchannel, cr_client, rslt.c_str(), rslt.length(), 0)) == -1) {
 				cerr << "Error sending data to client" << endl;
 				rslt = -1;
 			}
@@ -1796,7 +1818,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		}
 		listening_master_unlock();
 		if(!error.empty()) {
-			if((size = sendvm(client, sshchannel, error.c_str(), error.length(), 0)) == -1) {
+			if((size = sendvm(client, sshchannel, cr_client, error.c_str(), error.length(), 0)) == -1) {
 				cerr << "Error sending data to client" << endl;
 				rslt = -1;
 			}
@@ -1836,7 +1858,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 							l_worker->spybuffer->free_pos(min_use_spybuffer_sample);
 						}
 						l_worker->spybuffer->unlock_master();
-						if((size = sendvm(client, sshchannel, (char*)buff, bsize, 0)) == -1) {
+						if((size = sendvm(client, sshchannel, cr_client, (char*)buff, bsize, 0)) == -1) {
 							cerr << "Error sending data to client" << endl;
 							rslt = -1;
 						}
@@ -1860,7 +1882,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			string data = !error.empty() ?
 					"error: " + error :
 					"information: " + information;
-			if((size = sendvm(client, sshchannel, data.c_str(), data.length(), 0)) == -1) {
+			if((size = sendvm(client, sshchannel, cr_client, data.c_str(), data.length(), 0)) == -1) {
 				cerr << "Error sending data to client" << endl;
 				rslt = -1;
 			}
@@ -1868,21 +1890,21 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		return(rslt);
 	} else if(strstr(buf, "reload") != NULL) {
 		reload_capture_rules();
-		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		return 0;
 	} else if(strstr(buf, "hot_restart") != NULL) {
 		hot_restart();
-		if ((size = sendvm(client, sshchannel, "hot restart ok", 14, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "hot restart ok", 14, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		return 0;
 	} else if(strstr(buf, "get_json_config") != NULL) {
 		string rslt = useNewCONFIG ? CONFIG.getJson() : "not supported";
-		if ((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, rslt.c_str(), rslt.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1895,21 +1917,21 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		} else {
 			rslt = "not supported";
 		}
-		if ((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, rslt.c_str(), rslt.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		return 0;
 	} else if(strstr(buf, "fraud_refresh") != NULL) {
 		refreshFraud();
-		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		return 0;
 	} else if(strstr(buf, "send_call_info_refresh") != NULL) {
 		refreshSendCallInfo();
-		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1927,7 +1949,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		if(no_hash_message_rules) {
 			no_hash_message_rules->refresh();
 		}
-		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1937,20 +1959,20 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		if(no_hash_message_rules) {
 			no_hash_message_rules->refresh();
 		}
-		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		return 0;
 	} else if(strstr(buf, "country_detect_refresh") != NULL) {
 		CountryDetectPrepareReload();
-		if ((size = sendvm(client, sshchannel, "reload ok", 9, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		return 0;
 	} else if(strstr(buf, "getfile_is_zip_support") != NULL) {
-		if ((size = sendvm(client, sshchannel, "OK", 2, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "OK", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1964,7 +1986,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		
 		const char *rslt = getfile_in_tar_completed.check(tar_filename, filename, dateTimeKey) ? "OK" : "uncomplete";
 		
-		if ((size = sendvm(client, sshchannel, rslt, strlen(rslt), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, rslt, strlen(rslt), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -1991,14 +2013,14 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		if(!tar.tar_open(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + tar_filename, O_RDONLY)) {
 			string filename_conv = filename;
 			prepare_string_to_filename((char*)filename_conv.c_str());
-			tar.tar_read_send_parameters(client, sshchannel, zip);
+			tar.tar_read_send_parameters(client, sshchannel, cr_client, zip);
 			tar.tar_read((filename_conv + ".*").c_str(), filename, recordId, tableType, tarPosI);
 			if(tar.isReadEnd()) {
 				getfile_in_tar_completed.add(tar_filename, filename, dateTimeKey);
 			}
 		} else {
 			snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", tar_filename);
-			if ((size = sendvm(client, sshchannel, buf_output, strlen(buf_output), 0)) == -1){
+			if ((size = sendvm(client, sshchannel, cr_client, buf_output, strlen(buf_output), 0)) == -1){
 				cerr << "Error sending data to client" << endl;
 			}
 			delete [] tarPosI;
@@ -2018,10 +2040,10 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 			type_spool_file = findTypeSpoolFile(spool_index, filename);
 		}
 
-		return(sendFile((string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename).c_str(), client, sshchannel, zip));
+		return(sendFile((string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename).c_str(), client, sshchannel, cr_client, zip));
 	} else if(strstr(buf, "file_exists") != NULL) {
 		if(opt_pcap_queue_send_to_ip_port) {
-			sendvm(client, sshchannel, "mirror", 6, 0);
+			sendvm(client, sshchannel, cr_client, "mirror", 6, 0);
 			return 0;
 		}
 	 
@@ -2055,7 +2077,7 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		} else {
 			rslt = error_code == EACCES ? "permission_denied" : "not_exists";
 		}
-		sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0);
+		sendvm(client, sshchannel, cr_client, rslt.c_str(), rslt.length(), 0);
 		return 0;
 	} else if(strstr(buf, "fileexists") != NULL) {
 		char filename[2048];
@@ -2064,13 +2086,13 @@ int parse_command(char *buf, int size, int client, int eof, ManagerClientThread 
 		sscanf(buf, "fileexists %s", filename);
 		size = file_size(filename);
 		snprintf(buf_output, sizeof(buf_output), "%d", size);
-		sendvm(client, sshchannel, buf_output, strlen(buf_output), 0);
+		sendvm(client, sshchannel, cr_client, buf_output, strlen(buf_output), 0);
 		return 0;
 	} else if(strstr(buf, "flush_tar") != NULL) {
 		char filename[2048];
 		sscanf(buf, "flush_tar %s", filename);
 		flushTar(filename);
-		sendvm(client, sshchannel, "OK", 2, 0);
+		sendvm(client, sshchannel, cr_client, "OK", 2, 0);
 		return 0;
 	} else if(strstr(buf, "genwav") != NULL) {
 		char filename[2048];
@@ -2089,19 +2111,19 @@ getwav2:
 		size = file_size(wavfile);
 		if(size) {
 			snprintf(buf_output, sizeof(buf_output), "%d", size);
-			sendvm(client, sshchannel, buf_output, strlen(buf_output), 0);
+			sendvm(client, sshchannel, cr_client, buf_output, strlen(buf_output), 0);
 			return 0;
 		}
 		if(secondrun > 0) {
 			// wav does not exist 
-			sendvm(client, sshchannel, "0", 1, 0);
+			sendvm(client, sshchannel, cr_client, "0", 1, 0);
 			return -1;
 		}
 
 		// wav does not exists, check if exists pcap and try to create wav
 		size = file_size(pcapfile);
 		if(!size) {
-			sendvm(client, sshchannel, "0", 1, 0);
+			sendvm(client, sshchannel, cr_client, "0", 1, 0);
 			return -1;
 		}
 		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y -d %s 2>/dev/null >/dev/null", filename, getSpoolDir(tsf_main, 0));
@@ -2131,19 +2153,19 @@ getwav:
 			fd = open(wavfile, O_RDONLY);
 			if(fd < 0) {
 				snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", wavfile);
-				if ((res = sendvm(client, sshchannel, buf_output, strlen(buf_output), 0)) == -1){
+				if ((res = sendvm(client, sshchannel, cr_client, buf_output, strlen(buf_output), 0)) == -1){
 					cerr << "Error sending data to client" << endl;
 				}
 				return -1;
 			}
 			while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-				if ((res = sendvm(client, sshchannel, rbuf, nread, 0)) == -1){
+				if ((res = sendvm(client, sshchannel, cr_client, rbuf, nread, 0)) == -1){
 					close(fd);
 					return -1;
 				}
 			}
-			if(eof) {
-				if ((res = sendvm(client, sshchannel, "EOF", 3, 0)) == -1){
+			if(true /*eof*/) { // obsolete parameter eof
+				if ((res = sendvm(client, sshchannel, cr_client, "EOF", 3, 0)) == -1){
 					close(fd);
 					return -1;
 				}
@@ -2153,14 +2175,14 @@ getwav:
 		}
 		if(secondrun > 0) {
 			// wav does not exist 
-			sendvm(client, sshchannel, "0", 1, 0);
+			sendvm(client, sshchannel, cr_client, "0", 1, 0);
 			return -1;
 		}
 
 		// wav does not exists, check if exists pcap and try to create wav
 		size = file_size(pcapfile);
 		if(!size) {
-			sendvm(client, sshchannel, "0", 1, 0);
+			sendvm(client, sshchannel, cr_client, "0", 1, 0);
 			return -1;
 		}
 		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y 2>/dev/null >/dev/null", filename);
@@ -2189,19 +2211,19 @@ getwav:
 			fd = open(tsharkfile, O_RDONLY);
 			if(fd < 0) {
 				snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", tsharkfile);
-				if ((res = sendvm(client, sshchannel, buf_output, strlen(buf_output), 0)) == -1){
+				if ((res = sendvm(client, sshchannel, cr_client, buf_output, strlen(buf_output), 0)) == -1){
 					cerr << "Error sending data to client" << endl;
 				}
 				return -1;
 			}
 			while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-				if ((res = sendvm(client, sshchannel, rbuf, nread, 0)) == -1){
+				if ((res = sendvm(client, sshchannel, cr_client, rbuf, nread, 0)) == -1){
 					close(fd);
 					return -1;
 				}
 			}
-			if(eof) {
-				if ((res = sendvm(client, sshchannel, "EOF", 3, 0)) == -1){
+			if(true /*eof*/) { // obsolete parameter eof
+				if ((res = sendvm(client, sshchannel, cr_client, "EOF", 3, 0)) == -1){
 					close(fd);
 					return -1;
 				}
@@ -2212,7 +2234,7 @@ getwav:
 
 		size = file_size(pcapfile);
 		if(!size) {
-			sendvm(client, sshchannel, "0", 1, 0);
+			sendvm(client, sshchannel, cr_client, "0", 1, 0);
 			return -1;
 		}
 	
@@ -2228,19 +2250,19 @@ getwav:
 			fd = open(tsharkfile, O_RDONLY);
 			if(fd < 0) {
 				snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", filename);
-				if ((res = sendvm(client, sshchannel, buf_output, strlen(buf_output), 0)) == -1){
+				if ((res = sendvm(client, sshchannel, cr_client, buf_output, strlen(buf_output), 0)) == -1){
 					cerr << "Error sending data to client" << endl;
 				}
 				return -1;
 			}
 			while(nread = read(fd, rbuf, sizeof rbuf), nread > 0) {
-				if ((res = sendvm(client, sshchannel, rbuf, nread, 0)) == -1){
+				if ((res = sendvm(client, sshchannel, cr_client, rbuf, nread, 0)) == -1){
 					close(fd);
 					return -1;
 				}
 			}
-			if(eof) {
-				if ((res = sendvm(client, sshchannel, "EOF", 3, 0)) == -1){
+			if(true /*eof*/) { // obsolete parameter eof
+				if ((res = sendvm(client, sshchannel, cr_client, "EOF", 3, 0)) == -1){
 					close(fd);
 					return -1;
 				}
@@ -2269,9 +2291,9 @@ getwav:
 		
 		if(!dumper.getPcapName().empty() &&
 		   file_exists(dumper.getPcapName()) > 0) {
-			return(sendFile(dumper.getPcapName().c_str(), client, sshchannel, false));
+			return(sendFile(dumper.getPcapName().c_str(), client, sshchannel, cr_client, false));
 		} else {
-			sendvm(client, sshchannel, "null", 4, 0);
+			sendvm(client, sshchannel, cr_client, "null", 4, 0);
 			return(0);
 		}
 	} else if(strstr(buf, "quit") != NULL) {
@@ -2295,7 +2317,7 @@ getwav:
 		if(custIpCache) {
 			unsigned int cust_id = custIpCache->getCustByIp(inet_addr(ip));
 			snprintf(sendbuf, BUFSIZE, "cust_id: %u\n", cust_id);
-			if((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1) {
+			if((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1) {
 				cerr << "Error sending data to client" << endl;
 				return -1;
 			}
@@ -2304,7 +2326,7 @@ getwav:
 	} else if(strstr(buf, "custipcache_refresh") != NULL) {
 		int rslt = refreshCustIpCache();
 		snprintf(sendbuf, BUFSIZE, "rslt: %i\n", rslt);
-		if((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1) {
+		if((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2313,7 +2335,7 @@ getwav:
 		CustIpCache *custIpCache = getCustIpCache();
 		if(custIpCache) {
 			string rslt = custIpCache->printVect();
-			if((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1) {
+			if((size = sendvm(client, sshchannel, cr_client, rslt.c_str(), rslt.length(), 0)) == -1) {
 				cerr << "Error sending data to client" << endl;
 				return -1;
 			}
@@ -2400,7 +2422,7 @@ getwav:
 			}
 			rsltForSend = restart.getRsltString();
 		}
-		if ((size = sendvm(client, sshchannel, rsltForSend.c_str(), rsltForSend.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, rsltForSend.c_str(), rsltForSend.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2420,7 +2442,7 @@ getwav:
 			rsltString = upgrade.getErrorString();
 		}
 		rsltString.append("\n");
-		if ((size = sendvm(client, sshchannel, rsltString.c_str(), rsltString.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, rsltString.c_str(), rsltString.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2454,7 +2476,7 @@ getwav:
 		outStrStat << "}";
 		outStrStat << endl;
 		string outStrStatStr = outStrStat.str();
-		if ((size = sendvm(client, sshchannel, outStrStatStr.c_str(), outStrStatStr.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, outStrStatStr.c_str(), outStrStatStr.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2462,7 +2484,7 @@ getwav:
 	} else if(strstr(buf, "sniffer_threads") != NULL) {
 		extern cThreadMonitor threadMonitor;
 		string threads = threadMonitor.output();
-		if ((size = sendvm(client, sshchannel, threads.c_str(), threads.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, threads.c_str(), threads.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2478,7 +2500,7 @@ getwav:
 		} else {
 			rslt = "no PcapQueue mode";
 		}
-		if ((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, rslt.c_str(), rslt.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2488,44 +2510,44 @@ getwav:
 	} else if(strstr(buf, "ac_add_thread") != NULL) {
 		extern AsyncClose *asyncClose;
 		asyncClose->addThread();
-		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok\n", 3, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "ac_remove_thread") != NULL) {
 		extern AsyncClose *asyncClose;
 		asyncClose->removeThread();
-		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok\n", 3, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "t2sip_add_thread") != NULL) {
 		PreProcessPacket::autoStartNextLevelPreProcessPacket();
-		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok\n", 3, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "t2sip_remove_thread") != NULL) {
 		PreProcessPacket::autoStopLastLevelPreProcessPacket(true);
-		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok\n", 3, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "rtpread_add_thread") != NULL) {
 		add_rtp_read_thread();
-		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok\n", 3, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "rtpread_remove_thread") != NULL) {
 		set_remove_rtp_read_thread();
-		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok\n", 3, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "enable_bad_packet_order_warning") != NULL) {
 		enable_bad_packet_order_warning = 1;
-		if ((size = sendvm(client, sshchannel, "ok\n", 3, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "ok\n", 3, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2539,7 +2561,7 @@ getwav:
 		}
 		outStrSipPorts << endl;
 		string strSipPorts = outStrSipPorts.str();
-		if ((size = sendvm(client, sshchannel, strSipPorts.c_str(), strSipPorts.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, strSipPorts.c_str(), strSipPorts.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2551,7 +2573,7 @@ getwav:
 		}
 		outStrConvertchar << endl;
 		string strConvertchar = outStrConvertchar.str();
-		if ((size = sendvm(client, sshchannel, strConvertchar.c_str(), strConvertchar.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, strConvertchar.c_str(), strConvertchar.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2574,7 +2596,7 @@ getwav:
 			 timezone_name.c_str(),
 			 timezone_offset,
 			 sqlDateTimeString(time(NULL)).c_str());
-		if ((size = sendvm(client, sshchannel, sendbuf, strlen(sendbuf), 0)) == -1) {
+		if ((size = sendvm(client, sshchannel, cr_client, sendbuf, strlen(sendbuf), 0)) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2583,20 +2605,20 @@ getwav:
 		bool sqlFormat = strstr(buf, "sqlexport") != NULL;
 		extern MySqlStore *sqlStore;
 		string rslt = sqlStore->exportToFile(NULL, "auto", sqlFormat, strstr(buf, "clean") != NULL);
-		if ((size = sendvm(client, sshchannel, rslt.c_str(), rslt.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, rslt.c_str(), rslt.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "memory_stat") != NULL) {
 		string rsltMemoryStat = getMemoryStat();
-		if ((size = sendvm(client, sshchannel, rsltMemoryStat.c_str(), rsltMemoryStat.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, rsltMemoryStat.c_str(), rsltMemoryStat.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 	} else if(strstr(buf, "jemalloc_stat") != NULL) {
 		string jeMallocStat(bool full);
 		string rsltMemoryStat = jeMallocStat(strstr(buf, "full"));
-		if ((size = sendvm(client, sshchannel, rsltMemoryStat.c_str(), rsltMemoryStat.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, rsltMemoryStat.c_str(), rsltMemoryStat.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2656,7 +2678,7 @@ getwav:
 			sverb.pcap_stat_period = new_pcap_stat_period;
 		}
 	} else {
-		if ((size = sendvm(client, sshchannel, "command not found\n", 18, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, cr_client, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2728,7 +2750,7 @@ connect:
 		buf[size] = '\0';
 //		if(verbosity > 0) syslog(LOG_NOTICE, "recv[%s]\n", buf);
 		//res = parse_command(buf, size, client, 1, buf_long.c_str());
-		res = parse_command(buf, size, client, 1);
+		res = _parse_command(buf, size, client, NULL, NULL, NULL);
 	
 #if 0	
 		//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;
@@ -2888,34 +2910,8 @@ void *manager_read_thread(void * arg) {
 			}
 		}
 	}
-	ManagerClientThread *managerClientThread = NULL;
-	/*
-	string command_type;
-	size_t pos_separator = buf_long.find(' ');
-	if(pos_separator == string::npos) {
-		command_type = buf_long;
-	} else {
-		command_type = buf_long.substr(0, pos_separator);
-	}
-	if(addCommandType(command_type)) {
-		parse_command((char*)buf_long.c_str(), size, client, 0, &managerClientThread);
-		subCommandType(command_type);
-	} else {
-		syslog(LOG_NOTICE, "suppress run command %s", command_type.c_str());
-	}
-	*/
-	parse_command((char*)buf_long.c_str(), size, client, 0, &managerClientThread);
-	if(managerClientThread) {
-		if(managerClientThread->parseCommand()) {
-			ClientThreads.add(managerClientThread);
-			managerClientThread->run();
-		} else {
-			delete managerClientThread;
-			close(client);
-		}
-	} else {
-		close(client);
-	}
+	
+	parse_command(buf_long, client, NULL);
 
 	return 0;
 }
@@ -3014,7 +3010,7 @@ void *manager_ssh_(void) {
 					continue;
 				}
 				buf[len] = '\0';
-				parse_command(buf, len, 0, 0, NULL, channel);
+				_parse_command(buf, len, 0, channel, NULL, NULL);
 				ssh_channel_send_eof(channel);
 				ssh_channel_free(channel);
 				ssh_chans.erase(it1++);
@@ -3667,18 +3663,18 @@ int ManagerClientThreads::getCount() {
 	return(count);
 }
 
-int sendFile(const char *fileName, int client, ssh_channel sshchannel, bool zip) {
+int sendFile(const char *fileName, int client, ssh_channel sshchannel, cCR_Client_response *cr_client, bool zip) {
 	int fd = open(fileName, O_RDONLY);
 	if(fd < 0) {
 		char buf[1000];
 		sprintf(buf, "error: cannot open file [%s]", fileName);
-		if(sendvm(client, sshchannel, buf, strlen(buf), 0) == -1){
+		if(sendvm(client, sshchannel, cr_client, buf, strlen(buf), 0) == -1){
 			cerr << "Error sending data to client" << endl;
 		}
 		return -1;
 	}
 	RecompressStream *recompressStream = new FILE_LINE(0) RecompressStream(RecompressStream::compress_na, zip ? RecompressStream::gzip : RecompressStream::compress_na);
-	recompressStream->setSendParameters(client, sshchannel);
+	recompressStream->setSendParameters(client, sshchannel, cr_client);
 	ssize_t nread;
 	size_t read_size = 0;
 	char rbuf[4096];
@@ -3708,7 +3704,7 @@ int sendFile(const char *fileName, int client, ssh_channel sshchannel, bool zip)
 	return(0);
 }
 
-int sendString(string *str, int client, ssh_channel sshchannel, bool zip) {
+int sendString(string *str, int client, ssh_channel sshchannel, cCR_Client_response *cr_client, bool zip) {
 	if(str->empty()) {
 		return(0);
 	}
@@ -3716,7 +3712,7 @@ int sendString(string *str, int client, ssh_channel sshchannel, bool zip) {
 	if(zip &&
 	   ((*str)[0] != 0x1f || (str->length() > 1 && (unsigned char)(*str)[1] != 0x8b))) {
 		compressStream = new FILE_LINE(13021) CompressStream(CompressStream::gzip, 1024, 0);
-		compressStream->setSendParameters(client, sshchannel);
+		compressStream->setSendParameters(client, sshchannel, cr_client);
 	}
 	unsigned chunkLength = 4096;
 	unsigned processedLength = 0;
@@ -3728,7 +3724,7 @@ int sendString(string *str, int client, ssh_channel sshchannel, bool zip) {
 				return -1;
 			}
 		} else {
-			if(sendvm(client, sshchannel, (char*)str->c_str() + processedLength, processLength, 0) == -1){
+			if(sendvm(client, sshchannel, cr_client, (char*)str->c_str() + processedLength, processLength, 0) == -1){
 				return -1;
 			}
 		}

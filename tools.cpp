@@ -2178,6 +2178,13 @@ string inet_ntostring(u_int32_t ip) {
 }
 
 
+void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos) {
+	for(size_t i = 0; i < dataLen; i++) {
+		data[i] = data[i] ^ key[(initPos + i) % keyLength];
+	}
+}
+
+
 void ListIP::addComb(string &ip, ListIP *negList) {
 	addComb(ip.c_str(), negList);
 }
@@ -2984,7 +2991,16 @@ void JsonExport::add(const char *name, const char *content) {
 	JsonExport_template<string> *item = new FILE_LINE(38010) JsonExport_template<string>;
 	item->setTypeItem(_string);
 	item->setName(name);
-	item->setContent(string(content));
+	string content_esc;
+	const char *ptr = content;
+	while(*ptr) {
+		if(*ptr == '"') {
+			content_esc += '\\';
+		}
+		content_esc += *ptr;
+		++ptr;
+	}
+	item->setContent(content_esc);
 	items.push_back(item);
 }
 
@@ -3027,7 +3043,7 @@ void JsonExport::addJson(const char *name, const char *content) {
 template <class type_item>
 string JsonExport_template<type_item>::getJson(JsonExport *parent) {
 	ostringstream outStr;
-	if(parent->getTypeItem() == _array || !name.empty()) {
+	if(parent->getTypeItem() != _array || !name.empty()) {
 		outStr << '\"' << name << "\":";
 	}
 	if(typeItem == _string) {
@@ -3863,6 +3879,12 @@ string intToString(long long i) {
 	return(outStr.str());
 }
 
+string intToString(u_int16_t i) {
+	ostringstream outStr;
+	outStr << i;
+	return(outStr.str());
+}
+
 string intToString(u_int32_t i) {
 	ostringstream outStr;
 	outStr << i;
@@ -3873,6 +3895,10 @@ string intToString(u_int64_t i) {
 	ostringstream outStr;
 	outStr << i;
 	return(outStr.str());
+}
+
+bool isJsonObject(string str) {
+	return(!str.empty() && str[0] == '{' && str[str.length() - 1] == '}');
 }
 
 AutoDeleteAtExit GlobalAutoDeleteAtExit;

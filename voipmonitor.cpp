@@ -564,9 +564,12 @@ volatile bool cloud_activecheck_sshclose = false;		//is forced close/re-open of 
 timeval cloud_last_activecheck;					//Time of a last check request sent
 
 char cloud_host[256] = "";
-
 char cloud_url[1024] = "";
 char cloud_token[256] = "";
+bool cloud_router = false;
+unsigned cloud_router_port = 0;
+
+cCR_Receiver_service *cloud_receiver = NULL;
 
 char ssh_host[1024] = "";
 int ssh_port = 22;
@@ -1656,6 +1659,11 @@ void cloud_initial_register( void ) {
 	} while (terminating == 0);
 }
 
+void start_cloud_receiver() {
+	cloud_receiver = new FILE_LINE(0) cCR_Receiver_service(cloud_token, opt_id_sensor > 0 ? opt_id_sensor : 0);
+	cloud_receiver->start(cloud_host, cloud_router_port);
+}
+
 void *activechecking_cloud( void */*dummy*/ ) {
 	if (verbosity) syslog(LOG_NOTICE, "start - activechecking cloud thread");
 	cloud_activecheck_set();
@@ -2337,7 +2345,11 @@ int main(int argc, char *argv[]) {
 	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
 	if(cloud_url[0] != '\0') {
 		//vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
-		cloud_initial_register();
+		if(cloud_router) {
+			start_cloud_receiver();
+		} else {
+			cloud_initial_register();
+		}
 
 		//Override query_cache option in /etc/voipmonitor.conf  settings while in cloud mode always on:
 		if(opt_fork) {
@@ -2568,7 +2580,7 @@ int main(int argc, char *argv[]) {
 		} else {
 			if(opt_database_backup) {
 				sqlStore = new FILE_LINE(42010) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, 
-								    cloud_host, cloud_token);
+									   cloud_host, cloud_token);
 				custom_headers_cdr = new FILE_LINE(42011) CustomHeaders(CustomHeaders::cdr);
 				custom_headers_message = new FILE_LINE(42012) CustomHeaders(CustomHeaders::message);
 				vm_pthread_create("database backup",
@@ -2929,7 +2941,7 @@ int main_init_read() {
 	}
 
 	// start activechecking cloud thread if in cloud mode and no zero activecheck_period
-	if(cloud_url[0] != '\0') {
+	if(cloud_url[0] != '\0' && !cloud_router) {
 		if (!opt_cloud_activecheck_period) {
 			if(verbosity) syslog(LOG_NOTICE, "notice - activechecking is disabled by config");
 		} else {
@@ -3511,7 +3523,7 @@ void main_init_sqlstore() {
 	if(isSqlDriver("mysql")) {
 		if(opt_load_query_from_files != 2) {
 			sqlStore = new FILE_LINE(42037) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-							    cloud_host, cloud_token);
+								   cloud_host, cloud_token);
 			if(opt_save_query_to_files) {
 				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 			}
@@ -3524,7 +3536,7 @@ void main_init_sqlstore() {
 		}
 		if(opt_load_query_from_files) {
 			loadFromQFiles = new FILE_LINE(42039) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-								  cloud_host, cloud_token);
+									 cloud_host, cloud_token);
 			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
 		}
 		if(opt_load_query_from_files != 2) {
@@ -4451,7 +4463,7 @@ void test() {
 	case 306:
 		{
 		sqlStore = new FILE_LINE(42059) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-						    cloud_host, cloud_token);
+							   cloud_host, cloud_token);
 		for(int i = 0; i < 2; i++) {
 			if(isSetSpoolDir(i) &&
 			   CleanSpool::isSetCleanspoolParameters(i)) {
@@ -5514,6 +5526,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42454) cConfigItem_string("cloud_host", cloud_host, sizeof(cloud_host)));
 			addConfigItem(new FILE_LINE(42455) cConfigItem_string("cloud_url", cloud_url, sizeof(cloud_url)));
 			addConfigItem(new FILE_LINE(42456) cConfigItem_string("cloud_token", cloud_token, sizeof(cloud_token)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cloud_router", &cloud_router));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cloud_router_port", &cloud_router_port));
 			addConfigItem(new FILE_LINE(42457) cConfigItem_integer("cloud_activecheck_period", &opt_cloud_activecheck_period));
 			addConfigItem(new FILE_LINE(42458) cConfigItem_string("cloud_url_activecheck", cloud_url_activecheck, sizeof(cloud_url_activecheck)));
 		subgroup("other");
@@ -7613,6 +7627,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cloud_token", NULL))) {
 		strncpy(cloud_token, value, sizeof(cloud_token));
+	}
+	if((value = ini.GetValue("general", "cloud_router", NULL))) {
+		cloud_router = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cloud_router_port", NULL))) {
+		cloud_router_port = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cloud_activecheck_period", NULL))) {
 		opt_cloud_activecheck_period = atoi(value);

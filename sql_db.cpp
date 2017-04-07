@@ -25,6 +25,7 @@
 #include "fraud.h"
 #include "calltable.h"
 #include "cleanspool.h"
+#include "cloud_router/cloud_router.h"
 
 #define QFILE_PREFIX "qoq"
 
@@ -83,6 +84,7 @@ extern char odbc_driver[256];
 
 extern char cloud_host[256];
 extern char cloud_token[256];
+extern bool cloud_router;
 
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
@@ -316,9 +318,13 @@ SqlDb::SqlDb() {
 	this->cloud_data_index = 0;
 	this->maxAllowedPacket = 1024*1024;
 	this->lastError = 0;
+	this->cloud_router_socket = NULL;
 }
 
 SqlDb::~SqlDb() {
+	if(this->cloud_router_socket) {
+		delete this->cloud_router_socket;
+	}
 }
 
 void SqlDb::setConnectParameters(string server, string user, string password, string database, u_int16_t port, bool showversion) {
@@ -465,6 +471,137 @@ bool SqlDb::queryByCurl(string query) {
 			}
 		} else {
 			setLastError(0, error.c_str(), true);
+		}
+	}
+	return(ok);
+}
+
+bool SqlDb::queryByCloudRouter(string query) {
+	cloud_data_columns.clear();
+	cloud_data.clear();
+	cloud_data_rows = 0;
+	cloud_data_index = 0;
+	clearLastError();
+	bool ok = false;
+	unsigned int attempt = 0;
+	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
+		if(pass > 0) {
+			if(this->cloud_router_socket) {
+				delete this->cloud_router_socket;
+				this->cloud_router_socket = NULL;
+			}
+			sleep(1);
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(query).c_str());
+		}
+		if(!this->cloud_router_socket) {
+			this->cloud_router_socket = new FILE_LINE(0) cSocketBlock("sql query", true);
+			this->cloud_router_socket->setHostPort(cloud_host, 1234);
+			if(!this->cloud_router_socket->connect()) {
+				setLastError(0, "failed connect to cloud router", true);
+				continue;
+			}
+			string cmd = "{\"type_connection\":\"sniffer_sql_query\"}\r\n";
+			if(!this->cloud_router_socket->write(cmd)) {
+				setLastError(0, "failed send command", true);
+				continue;
+			}
+			string cmdResponse;
+			if(!this->cloud_router_socket->readBlock(&cmdResponse) || cmdResponse != "OK") {
+				setLastError(0, "failed read command response", true);
+				continue;
+			}
+			// TODO: encrypt token
+			string data = "{\"token\":\"" + cloud_token + "\"}\r\n";
+			if(!this->cloud_router_socket->writeBlock(data)) {
+				setLastError(0, "failed send data", true);
+				continue;
+			}
+			string dataResponse;
+			if(!this->cloud_router_socket->readBlock(&dataResponse) || dataResponse != "OK") {
+				setLastError(0, "failed read data response", true);
+				continue;
+			}
+		}
+		if(!this->cloud_router_socket->writeBlock(query, cloud_token)) {
+			setLastError(0, "failed send query", true);
+			continue;
+		}
+		string queryResponse;
+		if(!this->cloud_router_socket->readBlock(&queryResponse, cloud_token)) {
+			setLastError(0, "failed read query response", true);
+			continue;
+		}
+		if(queryResponse.empty()) {
+			setLastError(0, "response is empty", true);
+			continue;
+		}
+		if(!isJsonObject(queryResponse)) {
+			setLastError(0, "response is not json", true);
+			continue;
+		}
+		JsonItem jsonData;
+		jsonData.parse(queryResponse);
+		string result = jsonData.getValue("result");
+		trim(result);
+		if(!strcasecmp(result.c_str(), "OK")) {
+			ok = true;
+		} else {
+			bool tryNext = true;
+			unsigned int errorCode = atol(result.c_str());
+			size_t posSeparator = result.find('|');
+			string errorString;
+			if(posSeparator != string::npos) {
+				size_t posSeparator2 = result.find('|', posSeparator + 1);
+				if(posSeparator2 != string::npos) {
+					tryNext = atoi(result.substr(posSeparator + 1).c_str());
+					errorString = result.substr(posSeparator2 + 1);
+				} else {
+					errorString = result.substr(posSeparator + 1);
+				}
+			} else {
+				errorString = result;
+			}
+			if(!sql_noerror && !this->disableLogError) {
+				setLastError(errorCode, errorString.c_str(), true);
+			}
+			if(tryNext) {
+				if(sql_noerror || sql_disable_next_attempt_if_error || 
+				   this->disableLogError || this->disableNextAttemptIfError ||
+				   errorCode == ER_PARSE_ERROR) {
+					break;
+				} else if(errorCode != CR_SERVER_GONE_ERROR &&
+					  pass < this->maxQueryPass - 5) {
+					pass = this->maxQueryPass - 5;
+				}
+			} else {
+				break;
+			}
+		}
+		if(ok) {
+			JsonItem *dataJsonDataRows = jsonData.getItem("data_rows");
+			if(dataJsonDataRows) {
+				cloud_data_rows = atol(dataJsonDataRows->getLocalValue().c_str());
+			}
+			JsonItem *dataJsonItems = jsonData.getItem("data");
+			if(dataJsonItems) {
+				for(size_t i = 0; i < dataJsonItems->getLocalCount(); i++) {
+					JsonItem *dataJsonItem = dataJsonItems->getLocalItem(i);
+					for(size_t j = 0; j < dataJsonItem->getLocalCount(); j++) {
+						string dataItem = dataJsonItem->getLocalItem(j)->getLocalValue();
+						bool dataItemIsNull = dataJsonItem->getLocalItem(j)->localValueIsNull();
+						if(i == 0) {
+							cloud_data_columns.push_back(dataItem);
+						} else {
+							if(cloud_data.size() < i) {
+								vector<sCloudDataItem> row;
+								cloud_data.push_back(row);
+							}
+							cloud_data[i-1].push_back(sCloudDataItem(dataItem.c_str(), dataItemIsNull));
+						}
+					}
+				}
+			}
+			break;
 		}
 	}
 	return(ok);
@@ -974,7 +1111,11 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		if(verbosity > 1) {
 			syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
 		}
-		return(this->queryByCurl(preparedQuery));
+		if(cloud_router) {
+			return(this->queryByCloudRouter(preparedQuery));
+		} else {
+			return(this->queryByCurl(preparedQuery));
+		}
 	}
 	u_int32_t startTimeMS = getTimeMS();
 	if(this->hMysqlConn) {
