@@ -7,8 +7,8 @@
 #include <arpa/inet.h>
 #include <iostream>
 #include <syslog.h>
-#include <mysql/mysql.h>
-#include <mysql/mysqld_error.h>
+#include <mysql.h>
+#include <mysqld_error.h>
 
 #include "cloud_router.h"
 

@@ -7,7 +7,7 @@
 #include <map>
 #include <string>
 #include <queue>
-#include <mysql/mysql.h>
+#include <mysql.h>
 
 #include "tools.h"
 
