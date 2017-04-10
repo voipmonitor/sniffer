@@ -136,7 +136,7 @@ bool cSocket::listen() {
 	if(!ipl) {
 		ipl = CR_RESOLVER()->resolve(host);
 		if(!ipl) {
-			setError("failed resolve host name %s", host);
+			setError("failed resolve host name %s", host.c_str());
 			return(false);
 		}
 	}
