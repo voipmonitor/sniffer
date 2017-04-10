@@ -7,6 +7,7 @@
 #include <sstream>
 #include <syslog.h>
 #include <stdarg.h>
+#include <errno.h>
 
 
 extern cResolver *CR_RESOLVER();
