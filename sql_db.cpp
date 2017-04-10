@@ -25,7 +25,6 @@
 #include "fraud.h"
 #include "calltable.h"
 #include "cleanspool.h"
-#include "cloud_router/cloud_router.h"
 
 #define QFILE_PREFIX "qoq"
 

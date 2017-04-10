@@ -13,7 +13,8 @@
 #include <sys/file.h>
 
 #include "tools.h"
-#include "cloud_router/cloud_router.h"
+
+#include "cloud_router/cloud_router_client.h"
 
 
 using namespace std;

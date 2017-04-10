@@ -9004,3 +9004,21 @@ eTypeSpoolFile findTypeSpoolFile(unsigned int spool_index, const char *filePathN
 	}
 	return(type_spool_file_check);
 }
+
+
+sCloudRouterVerbose CR_VERBOSE() {
+	sCloudRouterVerbose v;
+	return(v);
+}
+
+bool CR_TERMINATE() {
+	return(is_terminating());
+}
+
+cResolver *CR_RESOLVER() {
+	static cResolver *resolver;
+	if(!resolver) {
+		resolver = new FILE_LINE(0) cResolver;
+	}
+	return(resolver);
+}
