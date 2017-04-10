@@ -33,12 +33,18 @@ u_int32_t cResolver::resolve(const char *host) {
 		ipl = iter_find->second.ipl;
 	}
 	if(!ipl) {
-		hostent *rslt_hostent = gethostbyname(host);
-		if(rslt_hostent) {
-			ipl = ((in_addr*)rslt_hostent->h_addr)->s_addr;
-			if(ipl) {
-				res_table[host].ipl = ipl;
-				res_table[host].at = now;
+		if(reg_match(host, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
+			in_addr ips;
+			inet_aton(host, &ips);
+			ipl = ips.s_addr;
+		} else {
+			hostent *rslt_hostent = gethostbyname(host);
+			if(rslt_hostent) {
+				ipl = ((in_addr*)rslt_hostent->h_addr)->s_addr;
+				if(ipl) {
+					res_table[host].ipl = ipl;
+					res_table[host].at = now;
+				}
 			}
 		}
 	}
@@ -133,15 +139,17 @@ bool cSocket::connect(unsigned loopSleepS) {
 }
 
 bool cSocket::listen() {
-	if(!ipl) {
+	if(!ipl && !host.empty()) {
 		ipl = CR_RESOLVER()->resolve(host);
-		if(!ipl) {
+		if(!ipl && host != "0.0.0.0") {
 			setError("failed resolve host name %s", host.c_str());
+			logError();
 			return(false);
 		}
 	}
 	if((handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
 		setError("cannot create socket");
+		logError();
 		return(false);
 	}
 	int flags = fcntl(handle, F_GETFL, 0);
@@ -158,6 +166,7 @@ bool cSocket::listen() {
 	do {
 		while(bind(handle, (sockaddr*)&addr, sizeof(addr)) == -1 && !terminate) {
 			setError("cannot bind to port [%d] - trying again after 5 seconds", port);
+			logError();
 			sleep(5);
 		}
 		if(terminate) {
@@ -166,6 +175,7 @@ bool cSocket::listen() {
 		rsltListen = ::listen(handle, 5);
 		if(rsltListen == -1) {
 			setError("listen failed - trying again after 5 seconds");
+			logError();
 			sleep(5);
 		}
 	} while(rsltListen == -1);
