@@ -461,6 +461,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 		 sipcalledip[i] = 0;
 	}
 	lastsipcallerip = 0;
+	sipcallerdip_reverse = false;
 	sipcallerport = 0;
 	sipcalledport = 0;
 	skinny_partyid = 0;

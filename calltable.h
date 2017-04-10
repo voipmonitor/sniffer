@@ -440,6 +440,7 @@ public:
 	u_int32_t sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
 	map<string, sSipcalleRD_IP> map_sipcallerdip;
 	u_int32_t lastsipcallerip;
+	bool sipcallerdip_reverse;
 	
 	list<sInviteSD_Addr> invite_sdaddr;
 
