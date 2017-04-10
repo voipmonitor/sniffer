@@ -3725,7 +3725,8 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
 			       u_char *source_packet, u_char *data, unsigned int datalen,
 			       unsigned int saddr, unsigned int daddr, int source, int dest,
-			       u_int32_t ack_seq, u_int32_t time_sec, u_int32_t time_usec) {
+			       u_int32_t seq, u_int32_t ack_seq, 
+			       u_int32_t time_sec, u_int32_t time_usec) {
 	unsigned tcp_options_length = 12;
 	unsigned tcp_doff = (sizeof(tcphdr2) + tcp_options_length) / 4 + ((sizeof(tcphdr2) + tcp_options_length) % 4 ? 1 : 0);
 	u_int32_t packet_length = ether_header_length + sizeof(iphdr2) + tcp_doff * 4 + datalen;
@@ -3745,6 +3746,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	memset(&tcphdr, 0, sizeof(tcphdr2));
 	tcphdr.source = htons(source);
 	tcphdr.dest = htons(dest);
+	tcphdr.seq = seq;
 	tcphdr.ack_seq = ack_seq;
 	tcphdr.ack = 1;
 	tcphdr.doff = tcp_doff;

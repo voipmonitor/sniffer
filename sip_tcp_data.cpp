@@ -88,7 +88,8 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
 						  ethHeader, dataItem->getData() + (*iter_sip_offset)[0], (*iter_sip_offset)[1],
 						  _ip_src, _ip_dst, _port_src, _port_dst,
-						  dataItem->getAck(), dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
+						  dataItem->getSeq(), dataItem->getAck(), 
+						  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
 			unsigned dataOffset = ethHeaderLength + sizeof(iphdr2) + ((tcphdr2*)(tcpPacket + ethHeaderLength + sizeof(iphdr2)))->doff * 4;
 			if(uData) {
 				packet_s_process *packetS = PACKET_S_PROCESS_SIP_CREATE();
