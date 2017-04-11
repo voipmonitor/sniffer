@@ -3,6 +3,7 @@
 #include <iostream>
 #include <sstream>
 #include <syslog.h>
+#include <stdlib.h>
 
 
 extern sCloudRouterVerbose CR_VERBOSE();
@@ -25,6 +26,7 @@ bool cCR_Receiver_service::start(string host, u_int16_t port) {
 bool cCR_Receiver_service::receive_process_loop_begin() {
 	if(connection_ok) {
 		if(receive_socket->isError()) {
+			receive_socket->logError();
 			_close();
 			connection_ok = false;
 		} else {

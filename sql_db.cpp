@@ -84,6 +84,7 @@ extern char odbc_driver[256];
 extern char cloud_host[256];
 extern char cloud_token[256];
 extern bool cloud_router;
+extern unsigned cloud_router_port;
 
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
@@ -494,7 +495,7 @@ bool SqlDb::queryByCloudRouter(string query) {
 		}
 		if(!this->cloud_router_socket) {
 			this->cloud_router_socket = new FILE_LINE(0) cSocketBlock("sql query", true);
-			this->cloud_router_socket->setHostPort(cloud_host, 1234);
+			this->cloud_router_socket->setHostPort(cloud_host, cloud_router_port);
 			if(!this->cloud_router_socket->connect()) {
 				setLastError(0, "failed connect to cloud router", true);
 				continue;

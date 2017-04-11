@@ -6,13 +6,18 @@
 #include <iostream>
 #include <sstream>
 #include <syslog.h>
+#include <stdio.h>
 #include <stdarg.h>
 #include <errno.h>
+#include <sys/poll.h>
 
 
 extern cResolver *CR_RESOLVER();
 extern bool CR_TERMINATE();
 extern sCloudRouterVerbose CR_VERBOSE();
+
+
+static bool use_pool = true;
 
 
 cResolver::cResolver() {
@@ -88,7 +93,7 @@ void cSocket::setKey(string key) {
 bool cSocket::connect(unsigned loopSleepS) {
 	if(CR_VERBOSE().socket_connect) {
 		ostringstream verbstr;
-		verbstr << "connect (" << name << ")"
+		verbstr << "try connect (" << name << ")"
 			<< " - " << getHostPort();
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
@@ -110,12 +115,18 @@ bool cSocket::connect(unsigned loopSleepS) {
 				continue;
 			}
 		}
-		if((handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+		int pass_call_socket = 0;
+		do {
+			handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			++pass_call_socket;
+		} while(handle == 0 && pass_call_socket < 5);
+		if(handle == -1) {
 			setError("cannot create socket");
 			rslt = false;
 			continue;
 		}
 		sockaddr_in addr;
+		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
 		addr.sin_port = htons(port);
 		addr.sin_addr.s_addr = ipl;
@@ -131,6 +142,16 @@ bool cSocket::connect(unsigned loopSleepS) {
 		if(flags >= 0) {
 			fcntl(handle, F_SETFL, flags | O_NONBLOCK);
 		}
+		if(rslt) {
+			if(CR_VERBOSE().socket_connect) {
+				ostringstream verbstr;
+				verbstr << "OK connect (" << name << ")"
+					<< " - " << getHostPort()
+					<< " handle " << handle;
+				syslog(LOG_INFO, "%s", verbstr.str().c_str());
+			}
+		}
+		
 	} while(!rslt && loopSleepS && !(terminate || CR_TERMINATE()));
 	if(!rslt) {
 		logError();
@@ -157,6 +178,7 @@ bool cSocket::listen() {
 		fcntl(handle, F_SETFL, flags | O_NONBLOCK);
 	}
 	sockaddr_in addr;
+	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(port);
 	addr.sin_addr.s_addr = ipl;
@@ -187,7 +209,8 @@ void cSocket::close() {
 		if(CR_VERBOSE().socket_connect) {
 			ostringstream verbstr;
 			verbstr << "close (" << name << ")"
-				<< " - " << getHostPort();
+				<< " - " << getHostPort()
+				<< " handle " << handle;
 			syslog(LOG_INFO, "%s", verbstr.str().c_str());
 		}
 		::close(handle);
@@ -197,7 +220,7 @@ void cSocket::close() {
 
 bool cSocket::await(cSocket **clientSocket) {
 	if(isError() || !okHandle()) {
-		setError(_se_bad_connection);
+		setError(_se_bad_connection, "await");
 		return(false);
 	}
 	int clientHandle = -1;
@@ -207,13 +230,27 @@ bool cSocket::await(cSocket **clientSocket) {
 	sockaddr_in clientInfo;
 	socklen_t clientInfoLen = sizeof(sockaddr_in);
 	while(clientHandle < 0 && !terminate) {
-		fd_set rfds;
-		FD_ZERO(&rfds);
-		FD_SET(handle, &rfds);
-		struct timeval tv;
-		tv.tv_sec = timeouts.await;
-		tv.tv_usec = 0;
-		if(select(handle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
+		bool doAccept = false;
+		if(use_pool) {
+			pollfd fds[2];
+			memset(fds, 0 , sizeof(fds));
+			fds[0].fd = handle;
+			fds[0].events = POLLIN;
+			if(poll(fds, 1, timeouts.await * 1000) > 0) {
+				doAccept = true;
+			}
+		} else {
+			fd_set rfds;
+			FD_ZERO(&rfds);
+			FD_SET(handle, &rfds);
+			struct timeval tv;
+			tv.tv_sec = timeouts.await;
+			tv.tv_usec = 0;
+			if(select(handle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
+				doAccept = true;
+			}
+		}
+		if(doAccept) {
 			clientHandle = accept(handle, (sockaddr*)&clientInfo, &clientInfoLen);
 			int flags = fcntl(clientHandle, F_GETFL, 0);
 			if(flags >= 0) {
@@ -233,7 +270,7 @@ bool cSocket::await(cSocket **clientSocket) {
 
 bool cSocket::write(u_char *data, size_t dataLen) {
 	if(isError() || !okHandle()) {
-		setError(_se_bad_connection);
+		setError(_se_bad_connection, "write");
 		return(false);
 	}
 	size_t dataLenWrited = 0;
@@ -266,21 +303,44 @@ bool cSocket::write(string &data) {
 bool cSocket::_write(u_char *data, size_t *dataLen) {
 	if(isError() || !okHandle()) {
 		*dataLen = 0;
-		setError(_se_bad_connection);
+		setError(_se_bad_connection, "_write");
 		return(false);
 	}
-	fd_set wfds;
-	FD_ZERO(&wfds);
-	FD_SET(handle, &wfds);
-	struct timeval tv;
-	tv.tv_sec = timeouts.write;
-	tv.tv_usec = 0;
-	int rsltSelect = select(handle + 1, (fd_set *) 0, &wfds, (fd_set *) 0, &tv);
-	if(rsltSelect < 0) {
-		*dataLen = 0;
-		return(false);
+	bool doWrite = false;
+	if(use_pool) {
+		pollfd fds[2];
+		memset(fds, 0 , sizeof(fds));
+		fds[0].fd = handle;
+		fds[0].events = POLLOUT;
+		int rsltPool = poll(fds, 1, timeouts.write * 1000);
+		if(rsltPool < 0) {
+			*dataLen = 0;
+			setError(_se_bad_connection, "rslt poll() < 0");
+			perror("poll()");
+			return(false);
+		}
+		if(rsltPool > 0 && fds[0].revents) {
+			doWrite = true;
+		}
+	} else {
+		fd_set wfds;
+		FD_ZERO(&wfds);
+		FD_SET(handle, &wfds);
+		struct timeval tv;
+		tv.tv_sec = timeouts.write;
+		tv.tv_usec = 0;
+		int rsltSelect = select(handle + 1, (fd_set *) 0, &wfds, (fd_set *) 0, &tv);
+		if(rsltSelect < 0) {
+			*dataLen = 0;
+			setError(_se_bad_connection, "rslt select() < 0");
+			perror("select()");
+			return(false);
+		}
+		if(rsltSelect > 0 && FD_ISSET(handle, &wfds)) {
+			doWrite = true;
+		}
 	}
-	if(rsltSelect > 0 && FD_ISSET(handle, &wfds)) {
+	if(doWrite) {
 		ssize_t sendLen = send(handle, data, *dataLen, 0);
 		if(sendLen > 0) {
 			*dataLen = sendLen;
@@ -297,29 +357,52 @@ bool cSocket::_write(u_char *data, size_t *dataLen) {
 bool cSocket::read(u_char *data, size_t *dataLen) {
 	if(isError() || !okHandle()) {
 		*dataLen = 0;
-		setError(_se_bad_connection);
+		setError(_se_bad_connection, "read");
+		cout << "004" << endl;
 		return(false);
 	}
-	fd_set rfds;
-	FD_ZERO(&rfds);
-	FD_SET(handle, &rfds);
-	struct timeval tv;
-	tv.tv_sec = timeouts.read;
-	tv.tv_usec = 0;
-	int rsltSelect = select(handle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
-	if(rsltSelect < 0) {
-		*dataLen = 0;
-		setError(_se_bad_connection);
-		return(false);
+	bool doRead = false;
+	if(use_pool) {
+		pollfd fds[2];
+		memset(fds, 0 , sizeof(fds));
+		fds[0].fd = handle;
+		fds[0].events = POLLIN;
+		int rsltPool = poll(fds, 1, timeouts.read * 1000);
+		if(rsltPool < 0) {
+			*dataLen = 0;
+			setError(_se_bad_connection, "rslt poll() < 0");
+			perror("poll()");
+			return(false);
+		}
+		if(rsltPool > 0 && fds[0].revents) {
+			doRead = true;
+		}
+	} else {
+		fd_set rfds;
+		FD_ZERO(&rfds);
+		FD_SET(handle, &rfds);
+		struct timeval tv;
+		tv.tv_sec = timeouts.read;
+		tv.tv_usec = 0;
+		int rsltSelect = select(handle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
+		if(rsltSelect < 0) {
+			*dataLen = 0;
+			setError(_se_bad_connection, "rslt select() < 0");
+			perror("select()");
+			return(false);
+		}
+		if(rsltSelect > 0 && FD_ISSET(handle, &rfds)) {
+			doRead = true;
+		}
 	}
-	if(rsltSelect > 0 && FD_ISSET(handle, &rfds)) {
+	if(doRead) {
 		ssize_t recvLen = recv(handle, data, *dataLen, 0);
 		if(recvLen > 0) {
 			*dataLen = recvLen;
 		} else {
 			*dataLen = 0;
 			if(errno != EWOULDBLOCK) {
-				setError(_se_bad_connection);
+				setError(_se_bad_connection, "errno != EWOULDBLOCK");
 				return(false);
 			}
 		}
@@ -362,17 +445,35 @@ bool cSocket::checkHandleRead() {
 	if(!okHandle()) {
 		return(false);
 	}
-	fd_set rfds;
-	FD_ZERO(&rfds);
-	FD_SET(handle, &rfds);
-	struct timeval tv;
-	tv.tv_sec = 1;
-	tv.tv_usec = 0;
-	int rsltSelect = select(handle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
-	if(rsltSelect < 0) {
-		return(false);
+	bool doRead = false;
+	if(use_pool) {
+		pollfd fds[2];
+		memset(fds, 0 , sizeof(fds));
+		fds[0].fd = handle;
+		fds[0].events = POLLIN;
+		int rsltPool = poll(fds, 1, 100);
+		if(rsltPool < 0) {
+			return(false);
+		}
+		if(rsltPool > 0 && fds[0].revents) {
+			doRead = true;
+		}
+	} else {
+		fd_set rfds;
+		FD_ZERO(&rfds);
+		FD_SET(handle, &rfds);
+		struct timeval tv;
+		tv.tv_sec = 0;
+		tv.tv_usec = 100000;
+		int rsltSelect = select(handle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
+		if(rsltSelect < 0) {
+			return(false);
+		}
+		if(rsltSelect > 0 && FD_ISSET(handle, &rfds)) {
+			doRead = true;
+		}
 	}
-	if(rsltSelect > 0 && FD_ISSET(handle, &rfds)) {
+	if(doRead) {
 		u_char buffer[10];
 		ssize_t recvLen = recv(handle, buffer, 10, 0);
 		if(!recvLen && errno != EWOULDBLOCK) {
@@ -410,11 +511,12 @@ void cSocket::logError() {
 	}
 }
 
-void cSocket::setError(eSocketError error) {
+void cSocket::setError(eSocketError error, const char *descr) {
 	if(isError()) {
 		return;
 	}
 	this->error = error;
+	this->error_descr = descr ? descr : "";
 }
 
 void cSocket::setError(const char *formatError, ...) {
@@ -435,6 +537,7 @@ void cSocket::setError(const char *formatError, ...) {
 void cSocket::clearError() {
 	error = _se_na;
 	error_str.resize(0);
+	error_descr.resize(0);
 }
 
 void cSocket::sleep(int s) {

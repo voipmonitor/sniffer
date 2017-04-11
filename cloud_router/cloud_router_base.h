@@ -119,7 +119,7 @@ public:
 		return(error == _se_error_str ?
 			(!error_str.empty() ? error_str : "unknown error") :
 		       error == _se_bad_connection ?
-			"bad connection":
+			("bad connection" + (!error_descr.empty() ? " - " + error_descr : "")) :
 		       error == _se_na ?
 		        "" :
 		        "unknown error");
@@ -140,7 +140,7 @@ public:
 	bool isTerminate() {
 		return(terminate);
 	}
-	void setError(eSocketError error);
+	void setError(eSocketError error, const char *descr);
 	void setError(const char *formatError, ...);
 protected:
 	void clearError();
@@ -157,6 +157,7 @@ protected:
 	bool terminate;
 	eSocketError error;
 	string error_str;
+	string error_descr;
 	string key;
 	u_int64_t writeEncPos;
 	u_int64_t readDecPos;

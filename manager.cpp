@@ -719,10 +719,14 @@ int parse_command(string cmd, int client, cCR_Client_response *cr_client) {
 			managerClientThread->run();
 		} else {
 			delete managerClientThread;
-			close(client);
+			if(client) {
+				close(client);
+			}
 		}
 	} else {
-		close(client);
+		if(client) {
+			close(client);
+		}
 	}
 	return(rslt);
 }
