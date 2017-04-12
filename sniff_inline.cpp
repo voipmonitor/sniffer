@@ -40,6 +40,7 @@ extern int opt_dup_check_ipheader;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
 extern char *webrtcportmatrix;
+extern char *skinnyportmatrix;
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern unsigned int defrag_counter;
@@ -477,7 +478,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				    !(opt_enable_ssl && 
 				      (isSslIpPort(htonl(ppd->header_ip->saddr), htons(ppd->header_tcp->source)) ||
 				       isSslIpPort(htonl(ppd->header_ip->daddr), htons(ppd->header_tcp->dest)))) &&
-				    !(opt_skinny && (htons(ppd->header_tcp->source) == 2000 || htons(ppd->header_tcp->dest) == 2000))) {
+				    !(opt_skinny && (skinnyportmatrix[htons(ppd->header_tcp->source)] || skinnyportmatrix[htons(ppd->header_tcp->dest)]))) {
 					// not interested in TCP packet other than SIP port
 					if(!opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
 						//cout << "pcapProcess exit 005" << endl;
