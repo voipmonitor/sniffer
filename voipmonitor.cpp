@@ -5793,6 +5793,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"allsipports", 0, 0, 'y'},
 	    {"sipports", 1, 0, 'Y'},
 	    {"skinny", 0, 0, 200},
+	    {"skinnyports", 1, 0, 199},
 	    {"mono", 0, 0, 201},
 	    {"untar-gui", 1, 0, 202},
 	    {"unlzo-gui", 1, 0, 205},
@@ -5864,6 +5865,15 @@ void get_command_line_arguments() {
 				printf ("option %s\n", long_options[option_index].name);
 				break;
 			*/
+			case 199:
+				{
+					skinnyportmatrix[2000] = 0;
+					vector<string> result = explode(optarg, ',');
+					for (size_t tier = 0; tier < result.size(); tier++) {
+						skinnyportmatrix[atoi(result[tier].c_str())] = 1;
+					}
+				}
+				break;
 			case 200:
 				opt_skinny = 1;
 				break;
@@ -6713,6 +6723,9 @@ bool check_complete_parameters() {
                         "\n"
                         " -y   Listen to SIP protocol on ports 5060 - 5099\n"
                         "\n"
+                        " -Y, --sipports=<ports>\n"
+                        "      Listen to SIP protocol on entered ports. Separated by commas.\n"
+                        "\n"
                         " --audio-format=<wav|ogg>\n"
                         "      Save to WAV or OGG audio format. Default is WAV.\n"
                         "\n"
@@ -6766,7 +6779,10 @@ bool check_complete_parameters() {
                         "      Save SIP register requests to cdr.register table and to pcap file.\n"
                         "\n"
                         " --skinny\n"
-                        "      analyze SKINNY VoIP protocol on TCP port 2000\n"
+                        "      analyze SKINNY VoIP protocol. Default port is TCP port 2000\n"
+                        "\n"
+                        " --skinnyports=<ports>\n"
+                        "      Listen to SKINNY protocol on entered ports. Separated by commas.\n"
                         "\n"
                         " --update-schema\n"
                         "      Create or upgrade the database schema, and then exit.  Forces -k option\n"
