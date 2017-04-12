@@ -2569,6 +2569,23 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "skinnyports") != NULL) {
+		ostringstream outStrSkinnyPorts;
+		extern char *skinnyportmatrix;
+		extern int opt_skinny;
+		if (opt_skinny) {
+			for(int i = 0; i < 65537; i++) {
+				if(skinnyportmatrix[i]) {
+					outStrSkinnyPorts << i << ',';
+				}
+			}
+		}
+		outStrSkinnyPorts << endl;
+		string strSkinnyPorts = outStrSkinnyPorts.str();
+		if ((size = sendvm(client, sshchannel, cr_client, strSkinnyPorts.c_str(), strSkinnyPorts.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "convertchars") != NULL) {
 		ostringstream outStrConvertchar;
 		extern char opt_convert_char[64];
