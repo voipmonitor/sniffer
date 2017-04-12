@@ -937,7 +937,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			if(!this->query(tmp)) {
 				rslt = false;
 			}
-			if(mainInit && !cloud_host[0]) {
+			if(mainInit && !isCloud()) {
 				this->query("SHOW VARIABLES LIKE \"version\"");
 				SqlDb_row row;
 				if((row = this->fetchRow())) {
@@ -981,7 +981,7 @@ int SqlDb_mysql::multi_off() {
 
 int SqlDb_mysql::getDbMajorVersion() {
 	this->_getDbVersion();
-	if(this->dbVersion.empty() && !cloud_host[0]) {
+	if(this->dbVersion.empty() && !isCloud()) {
 		this->query("SHOW VARIABLES LIKE \"version\"");
 		SqlDb_row row = this->fetchRow();
 		if(row) {
@@ -1015,7 +1015,7 @@ int SqlDb_mysql::getMaximumPartitions() {
 }
 
 bool SqlDb_mysql::_getDbVersion() {
-	if(this->dbVersion.empty() && !cloud_host[0]) {
+	if(this->dbVersion.empty() && !isCloud()) {
 		this->query("SHOW VARIABLES LIKE \"version\"");
 		SqlDb_row row = this->fetchRow();
 		if(row) {
@@ -1110,7 +1110,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		if(verbosity > 1) {
 			syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
 		}
-		if(cloud_router) {
+		if(isCloudRouter()) {
 			return(this->queryByCloudRouter(preparedQuery));
 		} else {
 			return(this->queryByCurl(preparedQuery));
@@ -2629,7 +2629,7 @@ void MySqlStore::setDefaultConcatLimit(int defaultConcatLimit) {
 }
 
 MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		id = 1;
 	}
 	this->lock_processes();
@@ -2655,7 +2655,7 @@ MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
 }
 
 MySqlStore_process *MySqlStore::check(int id) {
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		id = 1;
 	}
 	this->lock_processes();
@@ -2931,7 +2931,7 @@ SqlDb *createSqlObject(int connectId) {
 			sqlDb->setConnectParameters(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port);
 		} else {
 			sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port);
-			if(cloud_host[0]) {
+			if(isCloud()) {
 				sqlDb->setCloudParameters(cloud_host, cloud_token);
 			}
 		}
@@ -2970,7 +2970,7 @@ string sqlEscapeString(const char *inputStr, int length, const char *typeDb, Sql
 		length = strlen(inputStr);
 	}
 	/* disabled - use only offline varint - online variant can cause problems in connect to db
-	if(isTypeDb("mysql", sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb) && !cloud_host[0]) {
+	if(isTypeDb("mysql", sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb) && !isCloud()) {
 		bool okEscape = false;
 		int sizeBuffer = length * 2 + 10;
 		char *buffer = new FILE_LINE(29012) char[sizeBuffer];
@@ -4695,6 +4695,10 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 		}
 	}
 
+	//19.3
+	outStrAlter << "ALTER TABLE sensors \
+		ADD `cloud_router` tinyint;" << endl;
+	
 	//
 	outStrAlter << "end;" << endl;
 
@@ -5327,7 +5331,7 @@ void SqlDb_mysql::saveTimezoneInformation() {
 void SqlDb_mysql::checkDbMode() {
 	sql_disable_next_attempt_if_error = 1;
 	if(!opt_cdr_partition &&
-	   (cloud_host[0] ||
+	   (isCloud() ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
 		this->query("show tables like 'cdr'");
 		if(this->fetchRow()) {
@@ -5341,7 +5345,7 @@ void SqlDb_mysql::checkDbMode() {
 			}
 		}
 	}
-	if(!cloud_host[0]) {
+	if(!isCloud()) {
 		if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 500) {
 			supportPartitions = _supportPartitions_na;
 			if(opt_cdr_partition) {
@@ -5419,7 +5423,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 	existsColumns.cdr_tar_part_calldate = this->existsColumn("cdr_tar_part", "calldate");
 	existsColumns.cdr_country_code_calldate = this->existsColumn("cdr_country_code", "calldate");
 	if(!opt_cdr_partition &&
-	   (cloud_host[0] ||
+	   (isCloud() ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
 		this->query("EXPLAIN PARTITIONS SELECT * from cdr limit 1");
 		SqlDb_row row;
@@ -5443,6 +5447,29 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 	}
 	
 	sql_disable_next_attempt_if_error = 0;
+}
+
+void SqlDb_mysql::updateSensorState() {
+	if(opt_id_sensor > 0) {
+		if(this->existsColumn("sensors", "cloud_router")) {
+			SqlDb_row rowU;
+			rowU.add(isCloudRouter(), "cloud_router");
+			this->update("sensors", rowU, ("id_sensor=" + intToString(opt_id_sensor)).c_str());
+		}
+	} else {
+		this->query("select content from `system` where type='cloud_router_local_sensor'");
+		SqlDb_row row = this->fetchRow();
+		if(row) {
+			SqlDb_row rowU;
+			rowU.add(intToString(isCloudRouter()), "content");
+			this->update("system", rowU, "type='cloud_router_local_sensor'");
+		} else {
+			SqlDb_row rowI;
+			rowI.add(intToString(isCloudRouter()), "content");
+			rowI.add("cloud_router_local_sensor", "type");
+			this->insert("system", rowI);
+		}
+	}
 }
 
 void SqlDb_mysql::checkColumns_cdr(bool log) {
@@ -6300,6 +6327,9 @@ void SqlDb_odbc::checkDbMode() {
 void SqlDb_odbc::checkSchema(int /*connectId*/, bool /*checkColumns*/) {
 }
 
+void SqlDb_odbc::updateSensorState() {
+}
+
 
 void createMysqlPartitionsCdr() {
 	syslog(LOG_NOTICE, "%s", "create cdr partitions - begin");
@@ -6329,7 +6359,7 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
 	vector<string> tablesForCreatePartitions = sqlDbMysql->getSourceTables(SqlDb_mysql::tt_main | SqlDb_mysql::tt_child, SqlDb_mysql::tt2_static);
 	bool disableLogErrorOld = sqlDb->getDisableLogError();
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		sqlDb->setDisableLogError(true);
 		sqlDb->setMaxQueryPass(1);
 		for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
@@ -6380,7 +6410,7 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver) {
 	SqlDb *sqlDb = createSqlObject();
 	bool disableLogErrorOld = sqlDb->getDisableLogError();
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		sqlDb->setDisableLogError(true);
 		sqlDb->setMaxQueryPass(1);
 		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 0, " + (partition_oldver ? "true" : "false") + ");");
@@ -6402,7 +6432,7 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver) {
 void createMysqlPartitionsIpacc() {
 	SqlDb *sqlDb = createSqlObject();
 	syslog(LOG_NOTICE, "%s", "create ipacc partitions - begin");
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		sqlDb->setMaxQueryPass(1);
 		sqlDb->query(
 			"call create_partitions_ipacc(0);");
@@ -6439,7 +6469,7 @@ void createDropMysqlPartitionsBillingAgregation(bool drop) {
 	       drop ?
 		"drop billing agregation old partitions - begin" :
 		"create billing agregation partitions - begin");
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		sqlDb->setMaxQueryPass(1);
 	}
 	sqlDb->query(drop ?
@@ -6558,7 +6588,7 @@ void _dropMysqlPartitions(const char *table, int cleanParam, SqlDb *sqlDb) {
 		maximumPartitions -= 10;
 	}
 	SqlDb_row row;
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		sqlDb->query(string("explain partitions select * from ") + table);
 		row = sqlDb->fetchRow();
 		if(row) {
