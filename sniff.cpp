@@ -206,7 +206,6 @@ extern int opt_remotepartypriority;
 extern int opt_ppreferredidentity;
 extern int opt_passertedidentity;
 extern int opt_182queuedpauserecording;
-extern char cloud_host[256];
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
@@ -404,7 +403,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		packetS->header_pt->ts.tv_usec,
 		sqlEscapeStringBorder(call ? call->call_id : callidstr).c_str(),
 		sqlEscapeStringBorder(description).c_str());
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		strcat(query_buff, "concat('#', from_base64('");
 		_base64_encode((unsigned char*)mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff));
 		strcat(query_buff, "'), '#')");

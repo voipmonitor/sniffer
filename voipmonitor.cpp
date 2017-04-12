@@ -567,7 +567,7 @@ char cloud_host[256] = "";
 char cloud_url[1024] = "";
 char cloud_token[256] = "";
 bool cloud_router = false;
-unsigned cloud_router_port = 0;
+unsigned cloud_router_port = 60023;
 
 cCR_Receiver_service *cloud_receiver = NULL;
 
@@ -2467,9 +2467,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
-	if(cloud_url[0] != '\0') {
+	if(isCloud()) {
 		//vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
-		if(cloud_router) {
+		if(isCloudRouter()) {
 			start_cloud_receiver();
 		} else {
 			cloud_initial_register();
@@ -2507,7 +2507,7 @@ int main(int argc, char *argv[]) {
 	};
 
 	//cout << "SQL DRIVER: " << sql_driver << endl;
-	if(!opt_nocdr && !is_sender()/* && cloud_url[0] == '\0'*/) {
+	if(!opt_nocdr && !is_sender()) {
 		bool connectError = false;
 		string connectErrorString;
 		for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
@@ -2537,6 +2537,7 @@ int main(int argc, char *argv[]) {
 					} else {
 						sqlDb->checkSchema(connectId, true);
 					}
+					sqlDb->updateSensorState();
 					set_context_config_after_check_db_schema();
 				}
 				sensorsMap.fillSensors();
@@ -2947,7 +2948,7 @@ int main_init_read() {
 	}
 
 	// start activechecking cloud thread if in cloud mode and no zero activecheck_period
-	if(cloud_url[0] != '\0' && !cloud_router) {
+	if(isCloudSsh()) {
 		if (!opt_cloud_activecheck_period) {
 			if(verbosity) syslog(LOG_NOTICE, "notice - activechecking is disabled by config");
 		} else {
@@ -2973,7 +2974,7 @@ int main_init_read() {
 	}
 
 #ifdef HAVE_LIBSSH
-	if(cloud_url[0] != '\0') {
+	if(isCloudSsh()) {
 		vm_pthread_create("manager ssh",
 				  &manager_ssh_thread, NULL, manager_ssh, NULL, __FILE__, __LINE__);
 	}
@@ -8820,7 +8821,7 @@ u_int32_t gethostbyname_lock(const char *name) {
 
 bool _use_mysql_2() {
 	return(!opt_database_backup &&
-	       !cloud_host[0] &&
+	       !isCloud() &&
 	       mysql_2_host[0] && mysql_2_user[0] && mysql_2_database[0]);
 }
 

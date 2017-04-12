@@ -326,4 +326,18 @@ inline unsigned spooldir_group_id() {
 	return(opt_spooldir_group_id);
 }
 
+inline bool isCloud() {
+	extern char cloud_host[256];
+	extern char cloud_token[256];
+	return(cloud_host[0] && cloud_token[0]);
+}
+inline bool isCloudRouter() {
+	extern bool cloud_router;
+	extern unsigned cloud_router_port;
+	return(isCloud() && cloud_router && cloud_router_port);
+}
+inline bool isCloudSsh() {
+	return(isCloud() && !isCloudRouter());
+}
+
 #endif //VOIPMONITOR_H
