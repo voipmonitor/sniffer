@@ -2342,22 +2342,6 @@ int main(int argc, char *argv[]) {
 		opt_rrd = 0;
 	}
 
-	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
-	if(cloud_url[0] != '\0') {
-		//vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
-		if(cloud_router) {
-			start_cloud_receiver();
-		} else {
-			cloud_initial_register();
-		}
-
-		//Override query_cache option in /etc/voipmonitor.conf  settings while in cloud mode always on:
-		if(opt_fork) {
-			opt_save_query_to_files = true;
-			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
-		}
-	}
 	checkRrdVersion();
 
 	
@@ -2478,6 +2462,23 @@ int main(int argc, char *argv[]) {
 		daemonize();
 	}
 
+	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
+	if(cloud_url[0] != '\0') {
+		//vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
+		if(cloud_router) {
+			start_cloud_receiver();
+		} else {
+			cloud_initial_register();
+		}
+
+		//Override query_cache option in /etc/voipmonitor.conf  settings while in cloud mode always on:
+		if(opt_fork) {
+			opt_save_query_to_files = true;
+			opt_load_query_from_files = 1;
+			opt_load_query_from_files_inotify = true;
+		}
+	}
+	
 	if(opt_generator) {
 		opt_generator_channels = 2;
 		pthread_t *genthreads = new FILE_LINE(42009) pthread_t[opt_generator_channels];		// ID of worker storing CDR thread 
