@@ -685,6 +685,7 @@ vm_atomic<string> terminating_error;
 char *sipportmatrix;		// matrix of sip ports to monitor
 char *httpportmatrix;		// matrix of http ports to monitor
 char *webrtcportmatrix;		// matrix of webrtc ports to monitor
+char *skinnyportmatrix;		// matrix of skinny ports to monitor
 char *ipaccountportmatrix;
 map<d_u_int32_t, string> ssl_ipport;
 vector<u_int32_t> httpip;
@@ -2148,6 +2149,9 @@ int main(int argc, char *argv[]) {
 	memset(httpportmatrix, 0, 65537);
 	webrtcportmatrix = new FILE_LINE(42008) char[65537];
 	memset(webrtcportmatrix, 0, 65537);
+	skinnyportmatrix = new FILE_LINE(0) char[65537];
+	memset(skinnyportmatrix, 0, 65537);
+	skinnyportmatrix[2000] = 1;
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&vm_rrd_lock, NULL);
@@ -2685,6 +2689,7 @@ int main(int argc, char *argv[]) {
 	delete [] sipportmatrix;
 	delete [] httpportmatrix;
 	delete [] webrtcportmatrix;
+	delete [] skinnyportmatrix;
 	
 	delete regfailedcache;
 	
@@ -5212,6 +5217,7 @@ void cConfig::addConfigItems() {
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem(new FILE_LINE(42257) cConfigItem_yesno("skinny", &opt_skinny));
+		addConfigItem(new FILE_LINE(0) cConfigItem_ports("skinny_port", skinnyportmatrix));
 		addConfigItem((new FILE_LINE(42258) cConfigItem_integer("skinny_ignore_rtpip", &opt_skinny_ignore_rtpip))
 			->setIp());
 			advanced();
@@ -7216,6 +7222,15 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "skinny_call_info_message_decode_type", NULL))) {
 		opt_skinny_call_info_message_decode_type = atoi(value);
+	}
+	// skinny ports
+	if (ini.GetAllValues("general", "skinny_port", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		// reset default port
+		skinnyportmatrix[2000] = 0;
+		for (; i != values.end(); ++i) {
+			skinnyportmatrix[atoi(i->pItem)] = 1;
+		}
 	}
 	if((value = ini.GetValue("general", "cdr_partition", NULL))) {
 		opt_cdr_partition = yesno(value);

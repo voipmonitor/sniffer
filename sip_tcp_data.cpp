@@ -117,7 +117,8 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				packetS->is_ssl = false;
 				extern int opt_skinny;
 				extern char *sipportmatrix;
-				packetS->is_skinny = opt_skinny && (_port_src == 2000 || _port_dst == 2000);
+				extern char *skinnyportmatrix;
+				packetS->is_skinny = opt_skinny && (skinnyportmatrix[_port_src] || skinnyportmatrix[_port_dst]);
 				packetS->is_need_sip_process = !packetS->isother &&
 							       (sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
 								packetS->is_skinny);

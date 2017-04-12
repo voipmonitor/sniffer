@@ -245,7 +245,8 @@ public:
 		packetS.is_ssl = is_ssl;
 		extern int opt_skinny;
 		extern char *sipportmatrix;
-		packetS.is_skinny = opt_skinny && istcp && (source == 2000 || dest == 2000);
+		extern char *skinnyportmatrix;
+		packetS.is_skinny = opt_skinny && istcp && (skinnyportmatrix[source] || skinnyportmatrix[dest]);
 		packetS.is_need_sip_process = !packetS.isother &&
 					      (is_ssl ||
 					       sipportmatrix[source] || sipportmatrix[dest] ||
