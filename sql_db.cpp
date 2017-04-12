@@ -510,9 +510,8 @@ bool SqlDb::queryByCloudRouter(string query) {
 				setLastError(0, "failed read command response", true);
 				continue;
 			}
-			// TODO: encrypt token
 			string data = "{\"token\":\"" + cloud_token + "\"}\r\n";
-			if(!this->cloud_router_socket->writeBlock(data)) {
+			if(!this->cloud_router_socket->writeBlock(data, intToString((u_int64_t)(M_PI * 1000000000ull)))) {
 				setLastError(0, "failed send data", true);
 				continue;
 			}

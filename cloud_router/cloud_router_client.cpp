@@ -4,6 +4,7 @@
 #include <sstream>
 #include <syslog.h>
 #include <stdlib.h>
+#include <math.h>
 
 
 extern sCloudRouterVerbose CR_VERBOSE();
@@ -59,9 +60,8 @@ bool cCR_Receiver_service::receive_process_loop_begin() {
 		_close();
 		return(false);
 	}
-	// TODO: encrypt token
 	string connectData = "{\"token\":\"" + token + "\",\"sensor_id\":" + intToString(sensor_id) + "}";
-	if(!receive_socket->writeBlock(connectData)) {
+	if(!receive_socket->writeBlock(connectData, intToString((u_int64_t)(M_PI * 1000000000ull)))) {
 		if(receive_socket->isError()) {
 			receive_socket->logError();
 		} else {
