@@ -3669,7 +3669,7 @@ _ACEOF
   LIBS="-lcurl $LIBS"
 
 else
-  as_fn_error $? "Unable to find curl library. apt-get libcurl4-openssl-dev | yum curl-devel" "$LINENO" 5
+  as_fn_error $? "Unable to find curl library. apt-get install libcurl4-openssl-dev | yum install curl-devel" "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for ssh_forward_accept in -lssh" >&5
