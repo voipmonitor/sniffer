@@ -240,9 +240,9 @@ void cAes::generate_keys() {
 
 bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *datalen_enc, bool final) {
 	if(!ctx_enc) {
-		ctx_enc = new EVP_CIPHER_CTX;
+		ctx_enc = EVP_CIPHER_CTX_new();
 		if(!EVP_EncryptInit(ctx_enc, EVP_aes_128_cbc(), (u_char*)ckey.c_str(), (u_char*)ivec.c_str())) {
-			delete ctx_enc;
+			EVP_CIPHER_CTX_free(ctx_enc);
 			ctx_enc = NULL;
 			return(false);
 		}
@@ -273,9 +273,9 @@ bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *data
 
 bool cAes::decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *datalen_dec, bool final) {
 	if(!ctx_dec) {
-		ctx_dec = new EVP_CIPHER_CTX;
+		ctx_dec = EVP_CIPHER_CTX_new();
 		if(!EVP_DecryptInit(ctx_dec, EVP_aes_128_cbc(), (u_char*)ckey.c_str(), (u_char*)ivec.c_str())) {
-			delete ctx_dec;
+			EVP_CIPHER_CTX_free(ctx_dec);
 			ctx_dec = NULL;
 			return(false);
 		}
@@ -316,7 +316,7 @@ string cAes::getError() {
 void cAes::destroyCtxEnc() {
 	if(ctx_enc) {
 		EVP_CIPHER_CTX_cleanup(ctx_enc);
-		delete ctx_enc;
+		EVP_CIPHER_CTX_free(ctx_enc);
 		ctx_enc = NULL;
 	}
 }
@@ -324,7 +324,7 @@ void cAes::destroyCtxEnc() {
 void cAes::destroyCtxDec() {
 	if(ctx_dec) {
 		EVP_CIPHER_CTX_cleanup(ctx_dec);
-		delete ctx_dec;
+		EVP_CIPHER_CTX_free(ctx_dec);
 		ctx_dec = NULL;
 	}
 }
