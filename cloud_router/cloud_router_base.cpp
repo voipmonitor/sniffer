@@ -102,7 +102,7 @@ void cRsa::generate_keys() {
 }
 
 RSA *cRsa::create_rsa(const char *key, eTypeKey typeKey) {
-	BIO *key_bio = BIO_new_mem_buf(key, -1);
+	BIO *key_bio = BIO_new_mem_buf((void*)key, -1);
 	if(!key_bio) {
 		return(NULL);
 	}
@@ -239,7 +239,12 @@ void cAes::generate_keys() {
 }
 
 bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *datalen_enc, bool final) {
+	*data_enc = NULL;
+	*datalen_enc = 0;
 	if(!ctx_enc) {
+		if(!data && final) {
+			return(true);
+		}
 		ctx_enc = EVP_CIPHER_CTX_new();
 		if(!EVP_EncryptInit(ctx_enc, EVP_aes_128_cbc(), (u_char*)ckey.c_str(), (u_char*)ivec.c_str())) {
 			EVP_CIPHER_CTX_free(ctx_enc);
@@ -272,7 +277,12 @@ bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *data
 }
 
 bool cAes::decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *datalen_dec, bool final) {
+	*data_dec = NULL;
+	*datalen_dec = 0;
 	if(!ctx_dec) {
+		if(!data && final) {
+			return(true);
+		}
 		ctx_dec = EVP_CIPHER_CTX_new();
 		if(!EVP_DecryptInit(ctx_dec, EVP_aes_128_cbc(), (u_char*)ckey.c_str(), (u_char*)ivec.c_str())) {
 			EVP_CIPHER_CTX_free(ctx_dec);
@@ -901,7 +911,7 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 	u_char *buffer = new u_char[bufferLength];
 	bool rsltRead = true;
 	readBuffer.clear();
-	size_t readLength = bufferLength;
+	size_t readLength = sizeof(sBlockHeader);
 	bool blockHeaderOK = false;
 	while((rsltRead = read(buffer, &readLength, quietEwouldblock))) {
 		if(readLength) {
@@ -958,7 +968,9 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 		} else {
 			usleep(1000);
 		}
-		readLength = bufferLength;
+		readLength = blockHeaderOK ?
+			      min(bufferLength, readBuffer.lengthBlockHeader(true) - readBuffer.length) :
+			      min(bufferLength, sizeof(sBlockHeader) - readBuffer.length);
 	}
 	delete [] buffer;
 	if(rsltRead) {
