@@ -617,8 +617,10 @@ int sendssh(ssh_channel channel, const char *buf, int len) {
 int sendvm(int socket, ssh_channel channel, cCR_Client_response *cr_client, const char *buf, size_t len, int /*mode*/) {
 	int res;
 	if(cr_client) {
-		extern char cloud_token[256];
-		res = cr_client->writeEnc((u_char*)buf, len, cloud_token);
+		extern cCR_Receiver_service *cloud_receiver;
+		string aes_ckey, aes_ivec;
+		cloud_receiver->get_aes_keys(&aes_ckey, &aes_ivec);
+		cr_client->writeAesEnc((u_char*)buf, len, aes_ckey.c_str(), aes_ivec.c_str());
 	} else if(channel) {
 		res = sendssh(channel, buf, len);
 	} else {

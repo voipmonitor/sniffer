@@ -1663,6 +1663,9 @@ void cloud_initial_register( void ) {
 void start_cloud_receiver() {
 	cloud_receiver = new FILE_LINE(0) cCR_Receiver_service(cloud_token, opt_id_sensor > 0 ? opt_id_sensor : 0);
 	cloud_receiver->start(cloud_host, cloud_router_port);
+	while(!cloud_receiver->isStartOk() && !is_terminating()) {
+		usleep(100000);
+	}
 }
 
 void *activechecking_cloud( void */*dummy*/ ) {
@@ -2507,7 +2510,7 @@ int main(int argc, char *argv[]) {
 	};
 
 	//cout << "SQL DRIVER: " << sql_driver << endl;
-	if(!opt_nocdr && !is_sender()) {
+	if(!opt_nocdr && !is_sender() && !is_terminating()) {
 		bool connectError = false;
 		string connectErrorString;
 		for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
@@ -9046,6 +9049,10 @@ sCloudRouterVerbose CR_VERBOSE() {
 
 bool CR_TERMINATE() {
 	return(is_terminating());
+}
+
+void CR_SET_TERMINATE() {
+	return(set_terminating());
 }
 
 cResolver *CR_RESOLVER() {

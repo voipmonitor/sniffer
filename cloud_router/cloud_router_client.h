@@ -21,14 +21,15 @@ protected:
 
 class cCR_Client_response : public cClient {
 public:
-	cCR_Client_response(const char *command, u_int64_t gui_task_id);
+	cCR_Client_response(string gui_task_id, string command);
 	bool start(string host, u_int16_t port);
 	virtual void client_process();
 	bool write(u_char *data, size_t dataLen);
-	bool writeEnc(u_char *data, size_t dataLen, const char *key);
+	bool writeXorKeyEnc(u_char *data, size_t dataLen, const char *key);
+	bool writeAesEnc(u_char *data, size_t dataLen, const char *ckey, const char *ivec);
 protected:
+	string gui_task_id;
 	string command;
-	u_int64_t gui_task_id;
 };
 
 

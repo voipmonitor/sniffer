@@ -14,6 +14,7 @@
 
 extern cResolver *CR_RESOLVER();
 extern bool CR_TERMINATE();
+extern void CR_SET_TERMINATE();
 extern sCloudRouterVerbose CR_VERBOSE();
 
 
@@ -60,6 +61,275 @@ u_int32_t cResolver::resolve(const char *host) {
 }
 
 
+cRsa::cRsa() {
+	priv_rsa = NULL;
+	pub_rsa = NULL;
+	padding = RSA_PKCS1_PADDING;
+}
+
+cRsa::~cRsa() {
+	if(priv_rsa) {
+		RSA_free(priv_rsa);
+	}
+	if(pub_rsa) {
+		RSA_free(pub_rsa);
+	}
+}
+
+void cRsa::generate_keys() {
+	RSA *rsa = RSA_generate_key(2048, RSA_F4, 0, 0);
+	// priv key
+	BIO *priv_key_bio = BIO_new(BIO_s_mem());
+	PEM_write_bio_RSAPrivateKey(priv_key_bio, rsa, NULL, NULL, 0, NULL, NULL);
+	int priv_key_length = BIO_pending(priv_key_bio);
+	char *priv_key_buffer = new char[priv_key_length];
+	BIO_read(priv_key_bio, priv_key_buffer, priv_key_length);
+	priv_key = string(priv_key_buffer, priv_key_length);
+	delete [] priv_key_buffer;
+	BIO_free_all(priv_key_bio);
+	// pub key
+	BIO *pub_key_bio = BIO_new(BIO_s_mem());
+	PEM_write_bio_RSA_PUBKEY(pub_key_bio, rsa);
+	int pub_key_length = BIO_pending(pub_key_bio);
+	char *pub_key_buffer = new char[pub_key_length];
+	BIO_read(pub_key_bio, pub_key_buffer, pub_key_length);
+	pub_key_gener = string(pub_key_buffer, pub_key_length);
+	pub_key = pub_key_gener;
+	delete [] pub_key_buffer;
+	BIO_free_all(pub_key_bio);
+	//
+	RSA_free(rsa);
+}
+
+RSA *cRsa::create_rsa(const char *key, eTypeKey typeKey) {
+	BIO *key_bio = BIO_new_mem_buf(key, -1);
+	if(!key_bio) {
+		return(NULL);
+	}
+	RSA *rsa = NULL;
+	if(typeKey == _private) {
+		rsa = PEM_read_bio_RSAPrivateKey(key_bio, &rsa, NULL, NULL);
+	} else {
+		rsa = PEM_read_bio_RSA_PUBKEY(key_bio, &rsa, NULL, NULL);
+	}
+	BIO_free_all(key_bio);
+	return(rsa);
+}
+
+RSA *cRsa::create_rsa(eTypeKey typeKey) {
+	RSA *rsa = create_rsa(typeKey == _private ? priv_key.c_str() : pub_key.c_str(), typeKey);
+	if(rsa) {
+		if(typeKey == _private) {
+			priv_rsa = rsa;
+		} else {
+			pub_rsa = rsa;
+		}
+	}
+	return(rsa);
+}
+
+bool cRsa::public_encrypt(u_char **data, size_t *datalen, bool destroyOldData) {
+	if(!pub_rsa) {
+		if(!create_rsa(_public)) {
+			return(false);
+		}
+	}
+	u_char *data_enc = new u_char[*datalen * 2 + 1000];
+	int data_enc_len = RSA_public_encrypt(*datalen, *data, data_enc, pub_rsa, padding);
+	if(data_enc_len <= 0) {
+		return(false);
+	}
+	if(destroyOldData) {
+		delete [] *data;
+	}
+	*data  = data_enc;
+	*datalen = data_enc_len;
+	return(true);
+}
+
+bool cRsa::private_decrypt(u_char **data, size_t *datalen, bool destroyOldData) {
+	if(!priv_rsa) {
+		if(!create_rsa(_private)) {
+			return(false);
+		}
+	}
+	u_char *data_dec = new u_char[*datalen * 2 + 1000];
+	int data_dec_len = RSA_private_decrypt(*datalen, *data, data_dec, priv_rsa, padding);
+	if(data_dec_len <= 0) {
+		return(false);
+	}
+	if(destroyOldData) {
+		delete [] *data;
+	}
+	*data  = data_dec;
+	*datalen = data_dec_len;
+	return(true);
+}
+ 
+bool cRsa::private_encrypt(u_char **data, size_t *datalen, bool destroyOldData) {
+	if(!priv_rsa) {
+		if(!create_rsa(_private)) {
+			return(false);
+		}
+	}
+	u_char *data_enc = new u_char[*datalen * 2 + 1000];
+	int data_enc_len = RSA_private_encrypt(*datalen, *data, data_enc, priv_rsa, padding);
+	if(data_enc_len <= 0) {
+		return(false);
+	}
+	if(destroyOldData) {
+		delete [] *data;
+	}
+	*data  = data_enc;
+	*datalen = data_enc_len;
+	return(true);
+}
+
+bool cRsa::public_decrypt(u_char **data, size_t *datalen, bool destroyOldData) {
+	if(!pub_rsa) {
+		if(!create_rsa(_public)) {
+			return(false);
+		}
+	}
+	u_char *data_dec = new u_char[*datalen * 2 + 1000];
+	int data_dec_len = RSA_public_decrypt(*datalen, *data, data_dec, pub_rsa, padding);
+	if(data_dec_len <= 0) {
+		return(false);
+	}
+	if(destroyOldData) {
+		delete [] *data;
+	}
+	*data  = data_dec;
+	*datalen = data_dec_len;
+	return(true);
+}
+
+string cRsa::getError() {
+	char *error_buffer = new char[1000];;
+	ERR_load_crypto_strings();
+	ERR_error_string(ERR_get_error(), error_buffer);
+	string error = error_buffer;
+	delete [] error_buffer;
+	return(error);
+}
+
+
+cAes::cAes() {
+	ctx_enc = NULL;
+	ctx_dec = NULL;
+}
+
+cAes::~cAes() {
+	destroyCtxEnc();
+	destroyCtxDec();
+}
+
+void cAes::generate_keys() {
+	srand(getTimeUS());
+	ckey.resize(0);
+	for(int i = 0; i < 32; i++) {
+		char ch = (char)((double)rand() * ('z' - '0') / RAND_MAX + '0');
+		ckey.append(1, ch);
+	}
+	ivec.resize(0);
+	for(int i = 0; i < 16; i++) {
+		char ch = (char)((double)rand() * ('z' - '0') / RAND_MAX + '0');
+		ivec.append(1, ch);
+	}
+}
+
+bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *datalen_enc, bool final) {
+	if(!ctx_enc) {
+		ctx_enc = new EVP_CIPHER_CTX;
+		if(!EVP_EncryptInit(ctx_enc, EVP_aes_128_cbc(), (u_char*)ckey.c_str(), (u_char*)ivec.c_str())) {
+			delete ctx_enc;
+			ctx_enc = NULL;
+			return(false);
+		}
+	}
+	*data_enc = new u_char[datalen * 2 + 1000];
+	int datalen_enc_part1 = 0;
+	int datalen_enc_part2 = 0;
+	if(datalen) {
+		if(!EVP_EncryptUpdate(ctx_enc, *data_enc, &datalen_enc_part1, data, datalen)) {
+			destroyCtxEnc();
+			return(false);
+		}
+	}
+	if(final) {
+		if(!EVP_EncryptFinal(ctx_enc, *data_enc + datalen_enc_part1, &datalen_enc_part2)) {
+			destroyCtxEnc();
+			return(false);
+		}
+		destroyCtxEnc();
+	}
+	*datalen_enc = datalen_enc_part1 + datalen_enc_part2;
+	if(!*datalen_enc) {
+		delete [] *data_enc;
+		*data_enc = NULL;
+	}
+	return(true);
+}
+
+bool cAes::decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *datalen_dec, bool final) {
+	if(!ctx_dec) {
+		ctx_dec = new EVP_CIPHER_CTX;
+		if(!EVP_DecryptInit(ctx_dec, EVP_aes_128_cbc(), (u_char*)ckey.c_str(), (u_char*)ivec.c_str())) {
+			delete ctx_dec;
+			ctx_dec = NULL;
+			return(false);
+		}
+	}
+	*data_dec = new u_char[datalen + 1000];
+	int datalen_dec_part1 = 0;
+	int datalen_dec_part2 = 0;
+	if(datalen) {
+		if(!EVP_DecryptUpdate(ctx_dec, *data_dec, &datalen_dec_part1, data, datalen)) {
+			destroyCtxDec();
+			return(false);
+		}
+	}
+	if(final) {
+		if(!EVP_DecryptFinal(ctx_dec, *data_dec + datalen_dec_part1, &datalen_dec_part2)) {
+			destroyCtxDec();
+			return(false);
+		}
+		destroyCtxDec();
+	}
+	*datalen_dec = datalen_dec_part1 + datalen_dec_part2;
+	if(!*datalen_dec) {
+		delete [] *data_dec;
+		*data_dec = NULL;
+	}
+	return(true);
+}
+
+string cAes::getError() {
+	char *error_buffer = new char[1000];;
+	ERR_load_crypto_strings();
+	ERR_error_string(ERR_get_error(), error_buffer);
+	string error = error_buffer;
+	delete [] error_buffer;
+	return(error);
+}
+
+void cAes::destroyCtxEnc() {
+	if(ctx_enc) {
+		EVP_CIPHER_CTX_cleanup(ctx_enc);
+		delete ctx_enc;
+		ctx_enc = NULL;
+	}
+}
+
+void cAes::destroyCtxDec() {
+	if(ctx_dec) {
+		EVP_CIPHER_CTX_cleanup(ctx_dec);
+		delete ctx_dec;
+		ctx_dec = NULL;
+	}
+}
+
+
 cSocket::cSocket(const char *name, bool autoClose) {
 	if(name) {
 		this->name = name;
@@ -86,8 +356,8 @@ void cSocket::setHostPort(string host, u_int16_t port) {
 	this->port = port;
 }
 
-void cSocket::setKey(string key) {
-	this->key = key;
+void cSocket::setXorKey(string xor_key) {
+	this->xor_key = xor_key;
 }
 
 bool cSocket::connect(unsigned loopSleepS) {
@@ -102,7 +372,6 @@ bool cSocket::connect(unsigned loopSleepS) {
 	do {
 		++passCounter;
 		if(passCounter > 1 && loopSleepS) {
-			logError();
 			sleep(loopSleepS);
 		}
 		rslt = true;
@@ -153,9 +422,6 @@ bool cSocket::connect(unsigned loopSleepS) {
 		}
 		
 	} while(!rslt && loopSleepS && !(terminate || CR_TERMINATE()));
-	if(!rslt) {
-		logError();
-	}
 	return(true);
 }
 
@@ -164,13 +430,11 @@ bool cSocket::listen() {
 		ipl = CR_RESOLVER()->resolve(host);
 		if(!ipl && host != "0.0.0.0") {
 			setError("failed resolve host name %s", host.c_str());
-			logError();
 			return(false);
 		}
 	}
 	if((handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
 		setError("cannot create socket");
-		logError();
 		return(false);
 	}
 	int flags = fcntl(handle, F_GETFL, 0);
@@ -188,7 +452,6 @@ bool cSocket::listen() {
 	do {
 		while(bind(handle, (sockaddr*)&addr, sizeof(addr)) == -1 && !terminate) {
 			setError("cannot bind to port [%d] - trying again after 5 seconds", port);
-			logError();
 			sleep(5);
 		}
 		if(terminate) {
@@ -197,7 +460,6 @@ bool cSocket::listen() {
 		rsltListen = ::listen(handle, 5);
 		if(rsltListen == -1) {
 			setError("listen failed - trying again after 5 seconds");
-			logError();
 			sleep(5);
 		}
 	} while(rsltListen == -1);
@@ -354,7 +616,7 @@ bool cSocket::_write(u_char *data, size_t *dataLen) {
 	return(true);
 }
 
-bool cSocket::read(u_char *data, size_t *dataLen) {
+bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
 	if(isError() || !okHandle()) {
 		*dataLen = 0;
 		setError(_se_bad_connection, "read");
@@ -402,7 +664,9 @@ bool cSocket::read(u_char *data, size_t *dataLen) {
 		} else {
 			*dataLen = 0;
 			if(errno != EWOULDBLOCK) {
-				setError(_se_bad_connection, "errno != EWOULDBLOCK");
+				if(!quietEwouldblock) {
+					setError(_se_bad_connection, "errno != EWOULDBLOCK");
+				}
 				return(false);
 			}
 		}
@@ -412,10 +676,10 @@ bool cSocket::read(u_char *data, size_t *dataLen) {
 	return(true);
 }
 
-bool cSocket::writeEnc(u_char *data, size_t dataLen) {
+bool cSocket::writeXorKeyEnc(u_char *data, size_t dataLen) {
 	u_char *dataEnc = new u_char[dataLen];
 	memcpy(dataEnc, data, dataLen);
-	encodeWriteBuffer(dataEnc, dataLen);
+	encodeXorKeyWriteBuffer(dataEnc, dataLen);
 	bool rsltWrite = write(dataEnc, dataLen);
 	delete [] dataEnc;
 	if(rsltWrite) {
@@ -424,21 +688,43 @@ bool cSocket::writeEnc(u_char *data, size_t dataLen) {
 	return(rsltWrite);
 }
 
-bool cSocket::readDec(u_char *data, size_t *dataLen) {
+bool cSocket::readXorKeyDec(u_char *data, size_t *dataLen) {
 	bool rsltRead = read(data, dataLen);
 	if(rsltRead && *dataLen) {
-		decodeReadBuffer(data, *dataLen);
+		decodeXorKeyReadBuffer(data, *dataLen);
 	}
 	return(rsltRead);
 }
 
-void cSocket::encodeWriteBuffer(u_char *data, size_t dataLen) {
-	xorData(data, dataLen, key.c_str(), key.length(), writeEncPos);
+bool cSocket::writeAesEnc(u_char *data, size_t dataLen, bool final) {
+	u_char *data_enc;
+	size_t data_enc_len;
+	if(!encodeAesWriteBuffer(data, dataLen, &data_enc, &data_enc_len, final)) {
+		return(false);
+	}
+	bool rsltWrite = true;
+	if(data_enc_len) {
+		rsltWrite = write(data_enc, data_enc_len);
+		delete [] data_enc;
+	}
+	return(rsltWrite);
 }
 
-void cSocket::decodeReadBuffer(u_char *data, size_t dataLen) {
-	xorData(data, dataLen, key.c_str(), key.length(), readDecPos);
+void cSocket::encodeXorKeyWriteBuffer(u_char *data, size_t dataLen) {
+	xorData(data, dataLen, xor_key.c_str(), xor_key.length(), writeEncPos);
+}
+
+void cSocket::decodeXorKeyReadBuffer(u_char *data, size_t dataLen) {
+	xorData(data, dataLen, xor_key.c_str(), xor_key.length(), readDecPos);
 	readDecPos += dataLen;
+}
+
+bool cSocket::encodeAesWriteBuffer(u_char *data, size_t dataLen, u_char **data_enc, size_t *dataLenEnc, bool final) {
+	return(aes.encrypt(data, dataLen, data_enc, dataLenEnc, final));
+}
+
+bool cSocket::decodeAesReadBuffer(u_char *data, size_t dataLen, u_char **data_dec, size_t *dataLenDec, bool final) {
+	return(aes.decrypt(data, dataLen, data_dec, dataLenDec, final));
 }
 
 bool cSocket::checkHandleRead() {
@@ -502,21 +788,13 @@ bool cSocket::checkHandleWrite() {
 	
 }
 
-void cSocket::logError() {
-	if(isError()) {
-		syslog(LOG_ERR, "%s%s%s", 
-		       name.c_str(),
-		       name.empty() ? "" : " - ",
-		       getError().c_str());
-	}
-}
-
 void cSocket::setError(eSocketError error, const char *descr) {
 	if(isError()) {
 		return;
 	}
 	this->error = error;
 	this->error_descr = descr ? descr : "";
+	logError();
 }
 
 void cSocket::setError(const char *formatError, ...) {
@@ -532,6 +810,19 @@ void cSocket::setError(const char *formatError, ...) {
 	va_end(args);
 	error_str = error_buffer;
 	delete [] error_buffer;
+	logError();
+}
+
+void cSocket::logError() {
+	if(isError()) {
+		string logStr;
+		if(!name.empty()) {
+			logStr += name + " - ";
+		}
+		logStr += getHostPort() + " - ";
+		logStr += getError();
+		syslog(LOG_ERR, "%s", logStr.c_str());
+	}
 }
 
 void cSocket::clearError() {
@@ -554,32 +845,65 @@ cSocketBlock::cSocketBlock(const char *name, bool autoClose)
        
 }
 
-bool cSocketBlock::writeBlock(u_char *data, size_t dataLen, string key) {
+bool cSocketBlock::writeBlock(u_char *data, size_t dataLen, eTypeEncode typeEncode, string xor_key) {
+	unsigned int data_sum = dataSum(data, dataLen);
+	u_char *xor_key_data = NULL;
+	u_char *rsa_data = NULL;
+	u_char *aes_data = NULL;
+	if(typeEncode == _te_xor && !xor_key.empty()) {
+		xor_key_data = new u_char[dataLen];
+		memcpy(xor_key_data, data, dataLen);
+		xorData(xor_key_data, dataLen, xor_key.c_str(), xor_key.length(), 0);
+		data = xor_key_data;
+	} else if(typeEncode == _te_rsa && rsa.isSetPubKey()) {
+		rsa_data = data;
+		size_t rsa_data_len = dataLen;
+		if(rsa.public_encrypt(&rsa_data, &rsa_data_len, false)) {
+			data = rsa_data;
+			dataLen = rsa_data_len;
+		} else {
+			return(false);
+		}
+	} else if(typeEncode == _te_aes) {
+		size_t aes_data_len;
+		if(aes.encrypt(data, dataLen, &aes_data, &aes_data_len, true)) {
+			data = aes_data;
+			dataLen = aes_data_len;
+		} else {
+			return(false);
+		}
+	}
 	u_char *block = new u_char[sizeof(sBlockHeader) + dataLen];
 	((sBlockHeader*)block)->init();
 	((sBlockHeader*)block)->length = dataLen;
-	((sBlockHeader*)block)->sum = dataSum(data, dataLen);
+	((sBlockHeader*)block)->sum = data_sum;
 	memcpy(block + sizeof(sBlockHeader), data, dataLen);
-	if(!key.empty()) {
-		xorData(block + sizeof(sBlockHeader), dataLen, key.c_str(), key.length(), 0);
+	if(xor_key_data) {
+		delete xor_key_data;
+	}
+	if(rsa_data) {
+		delete [] rsa_data;
+	}
+	if(aes_data) {
+		delete [] aes_data;
 	}
 	bool rsltWrite = write(block, sizeof(sBlockHeader) + dataLen);
 	delete [] block;
 	return(rsltWrite);
 }
 
-bool cSocketBlock::writeBlock(string str, string key) {
-	return(writeBlock((u_char*)str.c_str(), str.length(), key));
+bool cSocketBlock::writeBlock(string str, eTypeEncode typeEncode, string xor_key) {
+	return(writeBlock((u_char*)str.c_str(), str.length(), typeEncode, xor_key));
 }
 
-u_char *cSocketBlock::readBlock(size_t *dataLen, string key) {
+u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string xor_key, bool quietEwouldblock) {
 	size_t bufferLength = 10 * 1024;
 	u_char *buffer = new u_char[bufferLength];
 	bool rsltRead = true;
 	readBuffer.clear();
 	size_t readLength = bufferLength;
 	bool blockHeaderOK = false;
-	while((rsltRead = read(buffer, &readLength))) {
+	while((rsltRead = read(buffer, &readLength, quietEwouldblock))) {
 		if(readLength) {
 			readBuffer.add(buffer, readLength);
 			if(!blockHeaderOK) {
@@ -594,10 +918,38 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, string key) {
 			}
 			if(blockHeaderOK) {
 				if(readBuffer.length >= readBuffer.lengthBlockHeader(true)) {
-					if(!key.empty()) {
-						xorData(readBuffer.buffer + sizeof(sBlockHeader), readBuffer.lengthBlockHeader(), key.c_str(), key.length(), 0);
+					if(typeEncode == _te_xor && !xor_key.empty()) {
+						xorData(readBuffer.buffer + sizeof(sBlockHeader), readBuffer.lengthBlockHeader(), xor_key.c_str(), xor_key.length(), 0);
+					} else if(typeEncode == _te_rsa && rsa.isSetPrivKey()) {
+						u_char *rsa_data = readBuffer.buffer + sizeof(sBlockHeader);
+						size_t rsa_data_len = readBuffer.lengthBlockHeader();
+						if(rsa.private_decrypt(&rsa_data, &rsa_data_len, false)) {
+							size_t new_buffer_length = rsa_data_len + sizeof(sBlockHeader);
+							u_char *new_buffer = new u_char[new_buffer_length];
+							memcpy(new_buffer, readBuffer.buffer, sizeof(sBlockHeader));
+							((sBlockHeader*)new_buffer)->length = rsa_data_len;
+							memcpy(new_buffer + sizeof(sBlockHeader), rsa_data, rsa_data_len);
+							readBuffer.set(new_buffer, new_buffer_length);
+							delete [] rsa_data;
+						} else {
+							rsltRead = false;
+						}
+					} else if(typeEncode == _te_aes) {
+						u_char *aes_data;
+						size_t aes_data_len;
+						if(aes.decrypt(readBuffer.buffer + sizeof(sBlockHeader), readBuffer.lengthBlockHeader(), &aes_data, &aes_data_len, true)) {
+							size_t new_buffer_length = aes_data_len + sizeof(sBlockHeader);
+							u_char *new_buffer = new u_char[new_buffer_length];
+							memcpy(new_buffer, readBuffer.buffer, sizeof(sBlockHeader));
+							((sBlockHeader*)new_buffer)->length = aes_data_len;
+							memcpy(new_buffer + sizeof(sBlockHeader), aes_data, aes_data_len);
+							readBuffer.set(new_buffer, new_buffer_length);
+							delete [] aes_data;
+						} else  {
+							rsltRead = false;
+						}
 					}
-					if(!checkSumReadBuffer()) {
+					if(rsltRead && !checkSumReadBuffer()) {
 						rsltRead = false;
 					}
 					break;
@@ -618,10 +970,10 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, string key) {
 	}
 }
 
-bool cSocketBlock::readBlock(string *str, string key) {
+bool cSocketBlock::readBlock(string *str, eTypeEncode typeEncode, string xor_key, bool quietEwouldblock) {
 	u_char *data;
 	size_t dataLen;
-	data = readBlock(&dataLen, key);
+	data = readBlock(&dataLen, typeEncode, xor_key, quietEwouldblock);
 	if(data && !isError()) {
 		*str = string((char*)data, dataLen);
 		return(true);
@@ -788,6 +1140,7 @@ void cServerConnection::evData(u_char *data, size_t dataLen) {
 
 cReceiver::cReceiver() {
 	receive_socket = NULL;
+	start_ok = false;
 }
 
 cReceiver::~cReceiver() {
@@ -837,6 +1190,7 @@ void *cReceiver::receive_process(void *arg) {
 void cReceiver::receive_process() {
 	while(!((receive_socket && receive_socket->isTerminate()) || CR_TERMINATE())) {
 		if(receive_process_loop_begin()) {
+			start_ok = true;
 			u_char *data;
 			size_t dataLen;
 			data = receive_socket->readBlock(&dataLen);

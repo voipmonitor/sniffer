@@ -8,6 +8,11 @@
 #include <map>
 #include <string>
 #include <arpa/inet.h>
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
+#include <openssl/aes.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
 
 #include "cloud_router.h"
 
@@ -72,8 +77,94 @@ private:
 };
 
 
+class cRsa {
+public:
+	enum eTypeKey {
+		_private,
+		_public
+	};
+public:
+	cRsa();
+	~cRsa();
+	void generate_keys();
+	RSA *create_rsa(const char *key, eTypeKey typeKey);
+	RSA *create_rsa(eTypeKey typeKey);
+	bool public_encrypt(u_char **data, size_t *datalen, bool destroyOldData);
+	bool private_decrypt(u_char **data, size_t *datalen, bool destroyOldData);
+	bool private_encrypt(u_char **data, size_t *datalen, bool destroyOldData);
+	bool public_decrypt(u_char **data, size_t *datalen, bool destroyOldData);
+	void setPubKey(string pub_key) {
+		this->pub_key = pub_key;
+	}
+	string getPrivKey() {
+		return(this->priv_key);
+	}
+	string getPubKey() {
+		return(this->pub_key);
+	}
+	string getError();
+	bool isSetPrivKey() {
+		return(!priv_key.empty());
+	}
+	bool isSetPubKey() {
+		return(!pub_key.empty());
+	}
+	bool isSetKeys() {
+		return(!priv_key.empty() && !pub_key.empty());
+	}
+private:
+	string priv_key;
+	string pub_key_gener;
+	string pub_key;
+	RSA *priv_rsa;
+	RSA *pub_rsa;
+	int padding;
+};
+
+
+class cAes {
+public:
+	cAes();
+	~cAes();
+	void generate_keys();
+	void setKeys(string ckey, string ivec) {
+		this->ckey = ckey;
+		this->ivec = ivec;
+	}
+	bool getKeys(string *ckey, string *ivec) {
+		if(!this->ckey.empty() && !this->ivec.empty()) {
+			*ckey = this->ckey;
+			*ivec = this->ivec;
+			return(true);
+		} else {
+			return(false);
+		}
+	}
+	bool encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *datalen_enc, bool final);
+	bool decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *datalen_dec, bool final);
+	string getError();
+	bool isSetKeys() {
+		return(!ckey.empty() && !ivec.empty());
+	}
+private:
+	void destroyCtxEnc();
+	void destroyCtxDec();
+private:
+	EVP_CIPHER_CTX *ctx_enc;
+	EVP_CIPHER_CTX *ctx_dec;
+	string ckey;
+	string ivec;
+};
+
+
 class cSocket {
 public:
+	enum eTypeEncode {
+		_te_na,
+		_te_xor,
+		_te_rsa,
+		_te_aes
+	};
 	enum eSocketError {
 		_se_na,
 		_se_bad_connection,
@@ -93,7 +184,7 @@ public:
 	cSocket(const char *name, bool autoClose = false);
 	virtual ~cSocket();
 	void setHostPort(string host, u_int16_t port);
-	void setKey(string key);
+	void setXorKey(string xor_key);
 	bool connect(unsigned loopSleepS = 0);
 	bool listen();
 	void close();
@@ -102,11 +193,14 @@ public:
 	bool write(const char *data);
 	bool write(string &data);
 	bool _write(u_char *data, size_t *dataLen);
-	bool read(u_char *data, size_t *dataLen);
-	bool writeEnc(u_char *data, size_t dataLen);
-	bool readDec(u_char *data, size_t *dataLen);
-	void encodeWriteBuffer(u_char *data, size_t dataLen);
-	void decodeReadBuffer(u_char *data, size_t dataLen);
+	bool read(u_char *data, size_t *dataLen, bool quietEwouldblock = false);
+	bool writeXorKeyEnc(u_char *data, size_t dataLen);
+	bool readXorKeyDec(u_char *data, size_t *dataLen);
+	bool writeAesEnc(u_char *data, size_t dataLen, bool final);
+	void encodeXorKeyWriteBuffer(u_char *data, size_t dataLen);
+	void decodeXorKeyReadBuffer(u_char *data, size_t dataLen);
+	bool encodeAesWriteBuffer(u_char *data, size_t dataLen, u_char **data_enc, size_t *dataLenEnc, bool final);
+	bool decodeAesReadBuffer(u_char *data, size_t dataLen, u_char **data_dec, size_t *dataLenDec, bool final);
 	bool checkHandleRead();
 	bool checkHandleWrite();
 	bool okHandle() {
@@ -124,7 +218,6 @@ public:
 		        "" :
 		        "unknown error");
 	}
-	void logError();
 	string getHost() {
 		return(host.empty() ? getIP() : host);
 	}
@@ -142,6 +235,16 @@ public:
 	}
 	void setError(eSocketError error, const char *descr);
 	void setError(const char *formatError, ...);
+	void logError();
+	void generate_aes_keys() {
+		aes.generate_keys();
+	}
+	void set_aes_keys(string ckey, string ivec) {
+		aes.setKeys(ckey, ivec);
+	}
+	bool get_aes_keys(string *ckey, string *ivec) {
+		return(aes.getKeys(ckey, ivec));
+	}
 protected:
 	void clearError();
 	void sleep(int s);
@@ -158,7 +261,8 @@ protected:
 	eSocketError error;
 	string error_str;
 	string error_descr;
-	string key;
+	string xor_key;
+	cAes aes;
 	u_int64_t writeEncPos;
 	u_int64_t readDecPos;
 };
@@ -207,6 +311,14 @@ public:
 			memcpy(buffer + length, data, dataLen);
 			length += dataLen;
 		}
+		void set(u_char *buffer, size_t length) {
+			if(this->buffer) {
+				delete [] this->buffer;
+			}
+			this->buffer = buffer;
+			this->length = length;
+			this->capacity = length;
+		}
 		void clear() {
 			if(buffer) {
 				delete [] buffer;
@@ -238,16 +350,26 @@ public:
 	};
 public:
 	cSocketBlock(const char *name, bool autoClose = false);
-	bool writeBlock(u_char *data, size_t dataLen, string key = "");
-	bool writeBlock(string str, string key = "");
-	u_char *readBlock(size_t *dataLen, string key = "");
-	bool readBlock(string *str, string key = "");
+	bool writeBlock(u_char *data, size_t dataLen, eTypeEncode typeEncode = _te_na, string xor_key = "");
+	bool writeBlock(string str, eTypeEncode typeCode = _te_na, string xor_key = "");
+	u_char *readBlock(size_t *dataLen, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false);
+	bool readBlock(string *str, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false);
 	string readLine(u_char **remainder = NULL, size_t *remainder_length = NULL);
+	void generate_rsa_keys() {
+		rsa.generate_keys();
+	}
+	string get_rsa_pub_key() {
+		return(rsa.getPubKey());
+	}
+	void set_rsa_pub_key(string key) {
+		return(rsa.setPubKey(key));
+	}
 protected:
 	bool checkSumReadBuffer();
 	u_int32_t dataSum(u_char *data, size_t dataLen);
 protected:
 	sReadBuffer readBuffer;
+	cRsa rsa;
 };
 
 
@@ -291,9 +413,16 @@ public:
 	virtual void receive_process();
 	virtual bool receive_process_loop_begin();
 	virtual void evData(u_char *data, size_t dataLen);
+	bool get_aes_keys(string *ckey, string *ivec) {
+		return(receive_socket->get_aes_keys(ckey, ivec));
+	}
+	bool isStartOk() {
+		return(start_ok);
+	}
 protected:
 	cSocketBlock *receive_socket;
 	pthread_t receive_thread;
+	bool start_ok;
 };
 
 

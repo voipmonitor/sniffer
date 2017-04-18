@@ -485,12 +485,19 @@ bool SqlDb::queryByCloudRouter(string query) {
 	bool ok = false;
 	unsigned int attempt = 0;
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
+		if(is_terminating() > 1 && attempt > 2) {
+			break;
+		}
 		if(pass > 0) {
 			if(this->cloud_router_socket) {
 				delete this->cloud_router_socket;
 				this->cloud_router_socket = NULL;
 			}
-			sleep(1);
+			if(is_terminating()) {
+				usleep(100000);
+			} else {
+				sleep(1);
+			}
 			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(query).c_str());
 		}
 		if(!this->cloud_router_socket) {
@@ -505,28 +512,45 @@ bool SqlDb::queryByCloudRouter(string query) {
 				setLastError(0, "failed send command", true);
 				continue;
 			}
-			string cmdResponse;
-			if(!this->cloud_router_socket->readBlock(&cmdResponse) || cmdResponse != "OK") {
-				setLastError(0, "failed read command response", true);
+			string rsltRsaKey;
+			if(!this->cloud_router_socket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
+				setLastError(0, "failed read rsa key", true);
 				continue;
 			}
-			string data = "{\"token\":\"" + cloud_token + "\"}\r\n";
-			if(!this->cloud_router_socket->writeBlock(data, intToString((u_int64_t)(M_PI * 1000000000ull)))) {
-				setLastError(0, "failed send data", true);
+			JsonItem jsonRsaKey;
+			jsonRsaKey.parse(rsltRsaKey);
+			string rsa_key = jsonRsaKey.getValue("rsa_key");
+			this->cloud_router_socket->set_rsa_pub_key(rsa_key);
+			this->cloud_router_socket->generate_aes_keys();
+			JsonExport json_keys;
+			json_keys.add("token", cloud_token);
+			string aes_ckey, aes_ivec;
+			this->cloud_router_socket->get_aes_keys(&aes_ckey, &aes_ivec);
+			json_keys.add("aes_ckey", aes_ckey);
+			json_keys.add("aes_ivec", aes_ivec);
+			if(!this->cloud_router_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
+				setLastError(0, "failed send token & aes keys", true);
 				continue;
 			}
-			string dataResponse;
-			if(!this->cloud_router_socket->readBlock(&dataResponse) || dataResponse != "OK") {
-				setLastError(0, "failed read data response", true);
-				continue;
+			string tokenResponse;
+			if(!this->cloud_router_socket->readBlock(&tokenResponse) || tokenResponse != "OK") {
+				if(!this->cloud_router_socket->isError() && tokenResponse != "OK") {
+					setLastError(0, "failed response from cloud router - " + tokenResponse, true);
+					delete this->cloud_router_socket;
+					this->cloud_router_socket = NULL;
+					break;
+				} else {
+					setLastError(0, "failed read ok", true);
+					continue;
+				}
 			}
 		}
-		if(!this->cloud_router_socket->writeBlock(query, cloud_token)) {
+		if(!this->cloud_router_socket->writeBlock(query, cSocket::_te_aes)) {
 			setLastError(0, "failed send query", true);
 			continue;
 		}
 		string queryResponse;
-		if(!this->cloud_router_socket->readBlock(&queryResponse, cloud_token)) {
+		if(!this->cloud_router_socket->readBlock(&queryResponse, cSocket::_te_aes)) {
 			setLastError(0, "failed read query response", true);
 			continue;
 		}

@@ -2994,10 +2994,17 @@ void JsonExport::add(const char *name, const char *content) {
 	string content_esc;
 	const char *ptr = content;
 	while(*ptr) {
-		if(*ptr == '"') {
-			content_esc += '\\';
+		switch (*ptr) {
+		case '\\':	content_esc += "\\\\"; break;
+		case '"':	content_esc += "\\\""; break;
+		case '/':	content_esc += "\\/"; break;
+		case '\b':	content_esc += "\\b"; break;
+		case '\f':	content_esc += "\\f"; break;
+		case '\n':	content_esc += "\\n"; break;
+		case '\r':	content_esc += "\\r"; break;
+		case '\t':	content_esc += "\\t"; break;
+		default:	content_esc += *ptr; break;
 		}
-		content_esc += *ptr;
 		++ptr;
 	}
 	item->setContent(content_esc);
