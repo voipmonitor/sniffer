@@ -11,7 +11,6 @@ extern int opt_id_sensor;
 extern int opt_enable_fraud;
 extern int opt_nocdr;
 extern MySqlStore *sqlStore;
-extern char cloud_host[256];
 
 FraudAlerts *fraudAlerts = NULL;
 volatile int _fraudAlerts_ready = 0;
@@ -2447,9 +2446,9 @@ bool checkFraudTables() {
 	checkTable checkTables[] = {
 		{"alerts", help_gui_loginAdmin, NULL},
 		{"alerts_fraud", help_gui_loginAdmin, NULL},
-		{cloud_host[0]?"cloudshare.country_code":"country_code", help_gui_loginAdmin, help_gui_loginAdmin},
-		{cloud_host[0]?"cloudshare.country_code_prefix":"country_code_prefix", help_gui_loginAdmin, help_gui_loginAdmin},
-		{cloud_host[0]?"cloudshare.geoip_country":"geoip_country", help_gui_loginAdmin, help_gui_loginAdmin}
+		{isCloud()?"cloudshare.country_code":"country_code", help_gui_loginAdmin, help_gui_loginAdmin},
+		{isCloud()?"cloudshare.country_code_prefix":"country_code_prefix", help_gui_loginAdmin, help_gui_loginAdmin},
+		{isCloud()?"cloudshare.geoip_country":"geoip_country", help_gui_loginAdmin, help_gui_loginAdmin}
 	};
 	for(size_t i = 0; i < sizeof(checkTables) / sizeof(checkTables[0]); i++) {
 		sqlDb->query((string("show tables like '") + checkTables[i].table + "'").c_str());

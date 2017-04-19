@@ -425,6 +425,7 @@ private:
 };
 
 string inet_ntostring(u_int32_t ip);
+void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos);
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
 void find_and_replace(string &source, const string find, string replace);
@@ -433,8 +434,10 @@ bool isLocalIP(u_int32_t ip);
 char *strlwr(char *string, u_int32_t maxLength = 0);
 string intToString(int i);
 string intToString(long long i);
+string intToString(u_int16_t i);
 string intToString(u_int32_t i);
 string intToString(u_int64_t i);
+bool isJsonObject(string str);
 
 class CircularBuffer
 {
@@ -795,7 +798,8 @@ void createSimpleUdpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_c
 void createSimpleTcpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_char **packet,
 			       u_char *source_packet, u_char *data, unsigned int datalen,
 			       unsigned int saddr, unsigned int daddr, int source, int dest,
-			       u_int32_t ack_seq, u_int32_t time_sec, u_int32_t time_usec);
+			       u_int32_t seq, u_int32_t ack_seq, 
+			       u_int32_t time_sec, u_int32_t time_usec);
 
 class RtpGraphSaver {
 public:
@@ -2209,7 +2213,9 @@ public:
 		return(typeItem);
 	}
 	void setName(const char *name) {
-		this->name = name;
+		if(name) {
+			this->name = name;
+		}
 	}
 	void add(const char *name, string content);
 	void add(const char *name, const char *content);

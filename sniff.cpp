@@ -206,7 +206,6 @@ extern int opt_remotepartypriority;
 extern int opt_ppreferredidentity;
 extern int opt_passertedidentity;
 extern int opt_182queuedpauserecording;
-extern char cloud_host[256];
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
@@ -404,7 +403,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		packetS->header_pt->ts.tv_usec,
 		sqlEscapeStringBorder(call ? call->call_id : callidstr).c_str(),
 		sqlEscapeStringBorder(description).c_str());
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		strcat(query_buff, "concat('#', from_base64('");
 		_base64_encode((unsigned char*)mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff));
 		strcat(query_buff, "'), '#')");
@@ -3607,6 +3606,10 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 		is_rtcp = call_info[call_info_index].is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data_()[1] == 0xC8);
 		stream_in_multiple_calls = call_info[call_info_index].multiple_calls;
 		
+		if(!find_by_dest) {
+			iscaller = !iscaller;
+		}
+		
 		if(sverb.process_rtp) {
 			++process_rtp_counter;
 			cout << "RTP - process_packet -"
@@ -3617,10 +3620,6 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			     << " find_by_dest: " << find_by_dest
 			     << " counter: " << process_rtp_counter
 			     << endl;
-		}
-		
-		if(!find_by_dest) {
-			iscaller = !iscaller;
 		}
 
 		if(pcap_drop_flag) {

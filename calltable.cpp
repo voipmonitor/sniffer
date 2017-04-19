@@ -461,6 +461,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 		 sipcalledip[i] = 0;
 	}
 	lastsipcallerip = 0;
+	sipcallerdip_reverse = false;
 	sipcallerport = 0;
 	sipcalledport = 0;
 	skinny_partyid = 0;
@@ -4804,6 +4805,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* c
 		cout << "hashAdd: " 
 		     << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << " " 
 		     << (is_rtcp ? "rtcp" : "") << " "
+		     << (iscaller ? "caller" : "called") << " "
 		     << endl;
 	}
  

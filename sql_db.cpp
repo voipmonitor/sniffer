@@ -83,6 +83,8 @@ extern char odbc_driver[256];
 
 extern char cloud_host[256];
 extern char cloud_token[256];
+extern bool cloud_router;
+extern unsigned cloud_router_port;
 
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
@@ -316,9 +318,13 @@ SqlDb::SqlDb() {
 	this->cloud_data_index = 0;
 	this->maxAllowedPacket = 1024*1024;
 	this->lastError = 0;
+	this->cloud_router_socket = NULL;
 }
 
 SqlDb::~SqlDb() {
+	if(this->cloud_router_socket) {
+		delete this->cloud_router_socket;
+	}
 }
 
 void SqlDb::setConnectParameters(string server, string user, string password, string database, u_int16_t port, bool showversion) {
@@ -465,6 +471,160 @@ bool SqlDb::queryByCurl(string query) {
 			}
 		} else {
 			setLastError(0, error.c_str(), true);
+		}
+	}
+	return(ok);
+}
+
+bool SqlDb::queryByCloudRouter(string query) {
+	cloud_data_columns.clear();
+	cloud_data.clear();
+	cloud_data_rows = 0;
+	cloud_data_index = 0;
+	clearLastError();
+	bool ok = false;
+	unsigned int attempt = 0;
+	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
+		if(is_terminating() > 1 && attempt > 2) {
+			break;
+		}
+		if(pass > 0) {
+			if(this->cloud_router_socket) {
+				delete this->cloud_router_socket;
+				this->cloud_router_socket = NULL;
+			}
+			if(is_terminating()) {
+				usleep(100000);
+			} else {
+				sleep(1);
+			}
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(query).c_str());
+		}
+		if(!this->cloud_router_socket) {
+			this->cloud_router_socket = new FILE_LINE(0) cSocketBlock("sql query", true);
+			this->cloud_router_socket->setHostPort(cloud_host, cloud_router_port);
+			if(!this->cloud_router_socket->connect()) {
+				setLastError(0, "failed connect to cloud router", true);
+				continue;
+			}
+			string cmd = "{\"type_connection\":\"sniffer_sql_query\"}\r\n";
+			if(!this->cloud_router_socket->write(cmd)) {
+				setLastError(0, "failed send command", true);
+				continue;
+			}
+			string rsltRsaKey;
+			if(!this->cloud_router_socket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
+				setLastError(0, "failed read rsa key", true);
+				continue;
+			}
+			JsonItem jsonRsaKey;
+			jsonRsaKey.parse(rsltRsaKey);
+			string rsa_key = jsonRsaKey.getValue("rsa_key");
+			this->cloud_router_socket->set_rsa_pub_key(rsa_key);
+			this->cloud_router_socket->generate_aes_keys();
+			JsonExport json_keys;
+			json_keys.add("token", cloud_token);
+			string aes_ckey, aes_ivec;
+			this->cloud_router_socket->get_aes_keys(&aes_ckey, &aes_ivec);
+			json_keys.add("aes_ckey", aes_ckey);
+			json_keys.add("aes_ivec", aes_ivec);
+			if(!this->cloud_router_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
+				setLastError(0, "failed send token & aes keys", true);
+				continue;
+			}
+			string tokenResponse;
+			if(!this->cloud_router_socket->readBlock(&tokenResponse) || tokenResponse != "OK") {
+				if(!this->cloud_router_socket->isError() && tokenResponse != "OK") {
+					setLastError(0, "failed response from cloud router - " + tokenResponse, true);
+					delete this->cloud_router_socket;
+					this->cloud_router_socket = NULL;
+					break;
+				} else {
+					setLastError(0, "failed read ok", true);
+					continue;
+				}
+			}
+		}
+		if(!this->cloud_router_socket->writeBlock(query, cSocket::_te_aes)) {
+			setLastError(0, "failed send query", true);
+			continue;
+		}
+		string queryResponse;
+		if(!this->cloud_router_socket->readBlock(&queryResponse, cSocket::_te_aes)) {
+			setLastError(0, "failed read query response", true);
+			continue;
+		}
+		if(queryResponse.empty()) {
+			setLastError(0, "response is empty", true);
+			continue;
+		}
+		if(!isJsonObject(queryResponse)) {
+			setLastError(0, "response is not json", true);
+			continue;
+		}
+		JsonItem jsonData;
+		jsonData.parse(queryResponse);
+		string result = jsonData.getValue("result");
+		trim(result);
+		if(!strcasecmp(result.c_str(), "OK")) {
+			ok = true;
+		} else {
+			bool tryNext = true;
+			unsigned int errorCode = atol(result.c_str());
+			size_t posSeparator = result.find('|');
+			string errorString;
+			if(posSeparator != string::npos) {
+				size_t posSeparator2 = result.find('|', posSeparator + 1);
+				if(posSeparator2 != string::npos) {
+					tryNext = atoi(result.substr(posSeparator + 1).c_str());
+					errorString = result.substr(posSeparator2 + 1);
+				} else {
+					errorString = result.substr(posSeparator + 1);
+				}
+			} else {
+				errorString = result;
+			}
+			if(!sql_noerror && !this->disableLogError) {
+				setLastError(errorCode, errorString.c_str(), true);
+			}
+			if(tryNext) {
+				if(sql_noerror || sql_disable_next_attempt_if_error || 
+				   this->disableLogError || this->disableNextAttemptIfError ||
+				   errorCode == ER_PARSE_ERROR) {
+					break;
+				} else if(errorCode != CR_SERVER_GONE_ERROR &&
+					  pass < this->maxQueryPass - 5) {
+					pass = this->maxQueryPass - 5;
+				}
+			} else {
+				break;
+			}
+		}
+		if(ok) {
+			JsonItem *dataJsonDataRows = jsonData.getItem("data_rows");
+			if(dataJsonDataRows) {
+				cloud_data_rows = atol(dataJsonDataRows->getLocalValue().c_str());
+			}
+			JsonItem *dataJsonItems = jsonData.getItem("data");
+			if(dataJsonItems) {
+				for(size_t i = 0; i < dataJsonItems->getLocalCount(); i++) {
+					JsonItem *dataJsonItem = dataJsonItems->getLocalItem(i);
+					for(size_t j = 0; j < dataJsonItem->getLocalCount(); j++) {
+						string dataItem = dataJsonItem->getLocalItem(j)->getLocalValue();
+						bool dataItemIsNull = dataJsonItem->getLocalItem(j)->localValueIsNull();
+						if(i == 0) {
+							cloud_data_columns.push_back(dataItem);
+						} else {
+							if(cloud_data.size() < i) {
+								vector<sCloudDataItem> row;
+								cloud_data.push_back(row);
+							}
+							cloud_data[i-1].push_back(sCloudDataItem(dataItem.c_str(), dataItemIsNull));
+						}
+					}
+				}
+			}
+			break;
 		}
 	}
 	return(ok);
@@ -801,7 +961,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			if(!this->query(tmp)) {
 				rslt = false;
 			}
-			if(mainInit && !cloud_host[0]) {
+			if(mainInit && !isCloud()) {
 				this->query("SHOW VARIABLES LIKE \"version\"");
 				SqlDb_row row;
 				if((row = this->fetchRow())) {
@@ -845,7 +1005,7 @@ int SqlDb_mysql::multi_off() {
 
 int SqlDb_mysql::getDbMajorVersion() {
 	this->_getDbVersion();
-	if(this->dbVersion.empty() && !cloud_host[0]) {
+	if(this->dbVersion.empty() && !isCloud()) {
 		this->query("SHOW VARIABLES LIKE \"version\"");
 		SqlDb_row row = this->fetchRow();
 		if(row) {
@@ -879,7 +1039,7 @@ int SqlDb_mysql::getMaximumPartitions() {
 }
 
 bool SqlDb_mysql::_getDbVersion() {
-	if(this->dbVersion.empty() && !cloud_host[0]) {
+	if(this->dbVersion.empty() && !isCloud()) {
 		this->query("SHOW VARIABLES LIKE \"version\"");
 		SqlDb_row row = this->fetchRow();
 		if(row) {
@@ -974,7 +1134,11 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		if(verbosity > 1) {
 			syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
 		}
-		return(this->queryByCurl(preparedQuery));
+		if(isCloudRouter()) {
+			return(this->queryByCloudRouter(preparedQuery));
+		} else {
+			return(this->queryByCurl(preparedQuery));
+		}
 	}
 	u_int32_t startTimeMS = getTimeMS();
 	if(this->hMysqlConn) {
@@ -2489,7 +2653,7 @@ void MySqlStore::setDefaultConcatLimit(int defaultConcatLimit) {
 }
 
 MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		id = 1;
 	}
 	this->lock_processes();
@@ -2515,7 +2679,7 @@ MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
 }
 
 MySqlStore_process *MySqlStore::check(int id) {
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		id = 1;
 	}
 	this->lock_processes();
@@ -2791,7 +2955,7 @@ SqlDb *createSqlObject(int connectId) {
 			sqlDb->setConnectParameters(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port);
 		} else {
 			sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port);
-			if(cloud_host[0]) {
+			if(isCloud()) {
 				sqlDb->setCloudParameters(cloud_host, cloud_token);
 			}
 		}
@@ -2830,7 +2994,7 @@ string sqlEscapeString(const char *inputStr, int length, const char *typeDb, Sql
 		length = strlen(inputStr);
 	}
 	/* disabled - use only offline varint - online variant can cause problems in connect to db
-	if(isTypeDb("mysql", sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb) && !cloud_host[0]) {
+	if(isTypeDb("mysql", sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb) && !isCloud()) {
 		bool okEscape = false;
 		int sizeBuffer = length * 2 + 10;
 		char *buffer = new FILE_LINE(29012) char[sizeBuffer];
@@ -4554,14 +4718,11 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 					ADD `id_sensor` smallint unsigned;" << endl;
 		}
 	}
-	
-	//17.9
-	outStrAlter << "ALTER TABLE `files`\
-			ADD COLUMN `skinnysize` bigint unsigned DEFAULT 0;" << endl;
-	//19.3
-	outStrAlter << "ALTER TABLE `files`\
-			ADD COLUMN `ss7size` bigint unsigned DEFAULT 0;" << endl;
 
+	//19.3
+	outStrAlter << "ALTER TABLE sensors \
+		ADD `cloud_router` tinyint;" << endl;
+	
 	//
 	outStrAlter << "end;" << endl;
 
@@ -5194,7 +5355,7 @@ void SqlDb_mysql::saveTimezoneInformation() {
 void SqlDb_mysql::checkDbMode() {
 	sql_disable_next_attempt_if_error = 1;
 	if(!opt_cdr_partition &&
-	   (cloud_host[0] ||
+	   (isCloud() ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
 		this->query("show tables like 'cdr'");
 		if(this->fetchRow()) {
@@ -5208,7 +5369,7 @@ void SqlDb_mysql::checkDbMode() {
 			}
 		}
 	}
-	if(!cloud_host[0]) {
+	if(!isCloud()) {
 		if(this->getDbMajorVersion() * 100 + this->getDbMinorVersion() <= 500) {
 			supportPartitions = _supportPartitions_na;
 			if(opt_cdr_partition) {
@@ -5286,7 +5447,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 	existsColumns.cdr_tar_part_calldate = this->existsColumn("cdr_tar_part", "calldate");
 	existsColumns.cdr_country_code_calldate = this->existsColumn("cdr_country_code", "calldate");
 	if(!opt_cdr_partition &&
-	   (cloud_host[0] ||
+	   (isCloud() ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
 		this->query("EXPLAIN PARTITIONS SELECT * from cdr limit 1");
 		SqlDb_row row;
@@ -5310,6 +5471,29 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 	}
 	
 	sql_disable_next_attempt_if_error = 0;
+}
+
+void SqlDb_mysql::updateSensorState() {
+	if(opt_id_sensor > 0) {
+		if(this->existsColumn("sensors", "cloud_router")) {
+			SqlDb_row rowU;
+			rowU.add(isCloudRouter(), "cloud_router");
+			this->update("sensors", rowU, ("id_sensor=" + intToString(opt_id_sensor)).c_str());
+		}
+	} else {
+		this->query("select content from `system` where type='cloud_router_local_sensor'");
+		SqlDb_row row = this->fetchRow();
+		if(row) {
+			SqlDb_row rowU;
+			rowU.add(intToString(isCloudRouter()), "content");
+			this->update("system", rowU, "type='cloud_router_local_sensor'");
+		} else {
+			SqlDb_row rowI;
+			rowI.add(intToString(isCloudRouter()), "content");
+			rowI.add("cloud_router_local_sensor", "type");
+			this->insert("system", rowI);
+		}
+	}
 }
 
 void SqlDb_mysql::checkColumns_cdr(bool log) {
@@ -5596,6 +5780,16 @@ void SqlDb_mysql::checkColumns_other(bool /*log*/) {
 			 ADD COLUMN `spool_index` INT NOT NULL AFTER `id_sensor`,\
 			 DROP PRIMARY KEY,\
 			 ADD PRIMARY KEY (`datehour`, `id_sensor`, `spool_index`)");
+	}
+	if(!this->existsColumn("files", "skinnysize")) {
+		this->query(
+			"ALTER TABLE `files`\
+			 ADD COLUMN `skinnysize` bigint unsigned DEFAULT 0");
+	}
+	if(!this->existsColumn("files", "ss7size")) {
+		this->query(
+			"ALTER TABLE `files`\
+			 ADD COLUMN `ss7size` bigint unsigned DEFAULT 0");
 	}
 }
 
@@ -6157,6 +6351,9 @@ void SqlDb_odbc::checkDbMode() {
 void SqlDb_odbc::checkSchema(int /*connectId*/, bool /*checkColumns*/) {
 }
 
+void SqlDb_odbc::updateSensorState() {
+}
+
 
 void createMysqlPartitionsCdr() {
 	syslog(LOG_NOTICE, "%s", "create cdr partitions - begin");
@@ -6186,7 +6383,7 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
 	vector<string> tablesForCreatePartitions = sqlDbMysql->getSourceTables(SqlDb_mysql::tt_main | SqlDb_mysql::tt_child, SqlDb_mysql::tt2_static);
 	bool disableLogErrorOld = sqlDb->getDisableLogError();
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		sqlDb->setDisableLogError(true);
 		sqlDb->setMaxQueryPass(1);
 		for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
@@ -6237,7 +6434,7 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver) {
 	SqlDb *sqlDb = createSqlObject();
 	bool disableLogErrorOld = sqlDb->getDisableLogError();
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		sqlDb->setDisableLogError(true);
 		sqlDb->setMaxQueryPass(1);
 		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 0, " + (partition_oldver ? "true" : "false") + ");");
@@ -6259,7 +6456,7 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver) {
 void createMysqlPartitionsIpacc() {
 	SqlDb *sqlDb = createSqlObject();
 	syslog(LOG_NOTICE, "%s", "create ipacc partitions - begin");
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		sqlDb->setMaxQueryPass(1);
 		sqlDb->query(
 			"call create_partitions_ipacc(0);");
@@ -6296,7 +6493,7 @@ void createDropMysqlPartitionsBillingAgregation(bool drop) {
 	       drop ?
 		"drop billing agregation old partitions - begin" :
 		"create billing agregation partitions - begin");
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		sqlDb->setMaxQueryPass(1);
 	}
 	sqlDb->query(drop ?
@@ -6415,7 +6612,7 @@ void _dropMysqlPartitions(const char *table, int cleanParam, SqlDb *sqlDb) {
 		maximumPartitions -= 10;
 	}
 	SqlDb_row row;
-	if(cloud_host[0]) {
+	if(isCloud()) {
 		sqlDb->query(string("explain partitions select * from ") + table);
 		row = sqlDb->fetchRow();
 		if(row) {

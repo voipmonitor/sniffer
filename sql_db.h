@@ -14,6 +14,8 @@
 
 #include "tools.h"
 
+#include "cloud_router/cloud_router_client.h"
+
 
 using namespace std;
 
@@ -100,6 +102,7 @@ public:
 	bool reconnect();
 	virtual bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL) = 0;
 	bool queryByCurl(string query);
+	bool queryByCloudRouter(string query);
 	virtual string prepareQuery(string query, bool nextPass);
 	virtual SqlDb_row fetchRow(bool assoc = false) = 0;
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
@@ -172,6 +175,7 @@ public:
 	virtual void createTable(const char *tableName) = 0;
 	virtual void checkDbMode() = 0;
 	virtual void checkSchema(int connectId = 0, bool checkColumns = false) = 0;
+	virtual void updateSensorState() = 0;
 	virtual string getTypeDb() = 0;
 	virtual string getSubtypeDb() = 0;
 	virtual int multi_on() {
@@ -254,6 +258,7 @@ private:
 	string lastErrorString;
 	static volatile u_int64_t delayQuery_sum_ms;
 	static volatile u_int32_t delayQuery_count;
+	cSocketBlock *cloud_router_socket;
 friend class MySqlStore_process;
 };
 
@@ -315,6 +320,7 @@ public:
 	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema(int connectId = 0, bool checkColumns = false);
+	void updateSensorState();
 	void checkColumns_cdr(bool log = false);
 	void checkColumns_cdr_next(bool log = false);
 	void checkColumns_cdr_rtp(bool log = false);
@@ -424,6 +430,7 @@ public:
 	void createTable(const char *tableName);
 	void checkDbMode();
 	void checkSchema(int connectId = 0, bool checkColumns = false);
+	void updateSensorState();
 	string getTypeDb() {
 		return("odbc");
 	}

@@ -48,6 +48,7 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->processed_len = 0;
 	this->sendParameter_client = 0;
 	this->sendParameter_sshchannel = NULL;
+	this->sendParameter_cr_client = NULL;
 }
 
 CompressStream::~CompressStream() {
@@ -71,9 +72,10 @@ void CompressStream::enableForceStream() {
 	this->forceStream = true;
 }
 
-void CompressStream::setSendParameters(int client, void *sshchannel) {
+void CompressStream::setSendParameters(int client, void *sshchannel, void *cr_client) {
 	this->sendParameter_client = client;
 	this->sendParameter_sshchannel = sshchannel;
+	this->sendParameter_cr_client = cr_client;
 }
 
 void CompressStream::initCompress() {
@@ -843,10 +845,10 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 	}
 }
 
-extern int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode);
+extern int _sendvm(int socket, void *channel, void *cr_client, const char *buf, size_t len, int mode);
 bool CompressStream::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
 	if(this->sendParameter_client) {
-		if(_sendvm(this->sendParameter_client, this->sendParameter_sshchannel, data, len, 0) == -1) {
+		if(_sendvm(this->sendParameter_client, this->sendParameter_sshchannel, this->sendParameter_cr_client, data, len, 0) == -1) {
 			this->setError("send error");
 			return(false);
 		}
@@ -938,8 +940,8 @@ void RecompressStream::setTypeCompress(eTypeCompress typeCompress) {
 	this->compressStream->setTypeCompress(typeCompress);
 }
 
-void RecompressStream::setSendParameters(int client, void *sshchannel) {
-	this->compressStream->setSendParameters(client, sshchannel);
+void RecompressStream::setSendParameters(int client, void *sshchannel, void *cr_client) {
+	this->compressStream->setSendParameters(client, sshchannel, cr_client);
 }
 
 void RecompressStream::processData(char *data, u_int32_t len) {

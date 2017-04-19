@@ -1,3 +1,23 @@
+19.3 1.4.2017
+=============
+- Disable curl timeout when in cloud mode querying cloud.database
+- check partition limit based on mysql version [VS-580]
+- mark call as fax if there is udptl data [VS-582]
+- vx-opus support [VS-386]
+- add support for NANPA numbers without '1' prefix [VG-1178]
+- new mysql logger (if heap is growing) 
+- ISUP SS7 libwireshark support (experimental) [VG-1191]
+- fix crash in dssl - add recLen condition to ssl3_record_layer_decoder
+- fix loading pcap from file [VS-588]
+- add support for IEEE 802.1ad with VLAN [VG-1208]
+- fix mirroring packets (sender/receiver) in some case where it can use all CPU
+- fix some false positive SIP registration expires [VG-1205]
+- fix IP condition in fraud register filter [VG-1195]
+- fix load/cpu usage in syslog 
+- fix issue with incorrect maxpoolsize in configuration
+- new use_id_sensor_for_receiver_in_files option
+
+
 19.2.1 7.3.2017
 ===============
 - fix memory leak for cloud more

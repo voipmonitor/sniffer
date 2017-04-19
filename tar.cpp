@@ -458,6 +458,7 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 			}
 		}
 	} else {
+		bool tryNextDecompressBlock = false;
 		while(!this->readData.end && !this->readData.error && (read_size = read(tar.fd, read_buffer, T_BLOCKSIZE)) > 0) {
 			bool findNextDecompressBlock = false;
 			size_t read_size_for_decompress = read_size;
@@ -489,25 +490,31 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 			while(use_len < read_size_for_decompress) {
 				if(counter_pass) {
 					decompressStream->termDecompress();
+					if(decompressFailed && tryNextDecompressBlock) {
+						decompressStream->clearError();
+						decompressFailed = false;
+						tryNextDecompressBlock = false;
+						--counter_pass;
+					}
 				}
 				u_int32_t _use_len = 0;
-				if(!decompressStream->decompress(read_buffer + use_len, read_size_for_decompress - use_len, 0, false, this, &_use_len)) {
+				if(decompressStream->decompress(read_buffer + use_len, read_size_for_decompress - use_len, 0, false, this, &_use_len)) {
+					if(counter_pass && !_use_len) {
+						break;
+					}
+					use_len += _use_len;
+				} else {
 					decompressFailed = true;
-					break;
+					if(counter_pass || !tryNextDecompressBlock) {
+						break;
+					}
 				}
-				if(counter_pass && !_use_len) {
-					break;
-				}
-				use_len += _use_len;
 				++counter_pass;
 			}
 			if(decompressFailed && decompressStream->getTypeCompress() != CompressStream::gzip) {
 				break;
 			}
-			if(findNextDecompressBlock) {
-				decompressStream->termDecompress();
-				decompressStream->clearError();
-			}
+			tryNextDecompressBlock = findNextDecompressBlock;
 		}
 	}
 	delete [] read_buffer;
@@ -519,9 +526,10 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 }
 
 void 
-Tar::tar_read_send_parameters(int client, void *sshchannel, bool zip) {
+Tar::tar_read_send_parameters(int client, void *sshchannel, void *cr_client, bool zip) {
 	this->readData.send_parameters_client = client;
 	this->readData.send_parameters_sshchannel = sshchannel;
+	this->readData.send_parameters_cr_client = cr_client;
 	this->readData.send_parameters_zip = zip;
 }
 
@@ -582,17 +590,17 @@ Tar::tar_read_block_ev(char *data) {
 			this->readData.nullFileHeader();
 		}
 		memcpy(&this->readData.fileHeader, data, min((u_int32_t)T_BLOCKSIZE, (u_int32_t)sizeof(this->readData.fileHeader)));
-		
+		/*
 		cout << "tar_read_block_ev - header - file "
 		     << this->readData.fileHeader.name
 		     << " size "
 		     << this->readData.fileHeader.get_size() << endl;
-		
+		*/
 		this->readData.fileSize = 0;
 	}
 }
 
-extern int _sendvm(int socket, void *channel, const char *buf, size_t len, int mode);
+extern int _sendvm(int socket, void *channel, void *cr_client, const char *buf, size_t len, int mode);
 void 
 Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t /*pos*/, u_int32_t len) {
 	int cmpLengthNameInTar = strlen(fileHeader.name);
@@ -621,6 +629,11 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t /*pos*/, u_in
 		} else {
 			this->readData.decompressStreamFromLzo->decompress(data, len, 0, false, &this->readData);
 		}
+	} else if(fileHeader.name[0]) {
+		cout << "tar_read_block_ev - header - file "
+		     << fileHeader.name
+		     << " size "
+		     << fileHeader.get_size() << endl;
 	}
 	if(*fileHeader.name && !len) {
 		if(!this->readData.endFilename.empty()) {
@@ -944,8 +957,8 @@ bool Tar::ReadData::decompress_ev(char *data, u_int32_t len) {
 bool Tar::ReadData::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
 	if(this->output_file_handle) {
 		fwrite(data, len, 1, this->output_file_handle);
-	} else if(this->send_parameters_client || this->send_parameters_sshchannel) {
-		if(_sendvm(this->send_parameters_client, this->send_parameters_sshchannel, data, len, 0) == -1) {
+	} else if(this->send_parameters_client || this->send_parameters_sshchannel || this->send_parameters_cr_client) {
+		if(_sendvm(this->send_parameters_client, this->send_parameters_sshchannel, this->send_parameters_cr_client, data, len, 0) == -1) {
 			this->compressStreamToGzip->setError("send error");
 			return(false);
 		}

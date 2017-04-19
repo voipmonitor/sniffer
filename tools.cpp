@@ -2178,6 +2178,13 @@ string inet_ntostring(u_int32_t ip) {
 }
 
 
+void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos) {
+	for(size_t i = 0; i < dataLen; i++) {
+		data[i] = data[i] ^ key[(initPos + i) % keyLength];
+	}
+}
+
+
 void ListIP::addComb(string &ip, ListIP *negList) {
 	addComb(ip.c_str(), negList);
 }
@@ -2984,7 +2991,23 @@ void JsonExport::add(const char *name, const char *content) {
 	JsonExport_template<string> *item = new FILE_LINE(38010) JsonExport_template<string>;
 	item->setTypeItem(_string);
 	item->setName(name);
-	item->setContent(string(content));
+	string content_esc;
+	const char *ptr = content;
+	while(*ptr) {
+		switch (*ptr) {
+		case '\\':	content_esc += "\\\\"; break;
+		case '"':	content_esc += "\\\""; break;
+		case '/':	content_esc += "\\/"; break;
+		case '\b':	content_esc += "\\b"; break;
+		case '\f':	content_esc += "\\f"; break;
+		case '\n':	content_esc += "\\n"; break;
+		case '\r':	content_esc += "\\r"; break;
+		case '\t':	content_esc += "\\t"; break;
+		default:	content_esc += *ptr; break;
+		}
+		++ptr;
+	}
+	item->setContent(content_esc);
 	items.push_back(item);
 }
 
@@ -3027,7 +3050,7 @@ void JsonExport::addJson(const char *name, const char *content) {
 template <class type_item>
 string JsonExport_template<type_item>::getJson(JsonExport *parent) {
 	ostringstream outStr;
-	if(parent->getTypeItem() == _array || !name.empty()) {
+	if(parent->getTypeItem() != _array || !name.empty()) {
 		outStr << '\"' << name << "\":";
 	}
 	if(typeItem == _string) {
@@ -3709,7 +3732,8 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
 			       u_char *source_packet, u_char *data, unsigned int datalen,
 			       unsigned int saddr, unsigned int daddr, int source, int dest,
-			       u_int32_t ack_seq, u_int32_t time_sec, u_int32_t time_usec) {
+			       u_int32_t seq, u_int32_t ack_seq, 
+			       u_int32_t time_sec, u_int32_t time_usec) {
 	unsigned tcp_options_length = 12;
 	unsigned tcp_doff = (sizeof(tcphdr2) + tcp_options_length) / 4 + ((sizeof(tcphdr2) + tcp_options_length) % 4 ? 1 : 0);
 	u_int32_t packet_length = ether_header_length + sizeof(iphdr2) + tcp_doff * 4 + datalen;
@@ -3729,6 +3753,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	memset(&tcphdr, 0, sizeof(tcphdr2));
 	tcphdr.source = htons(source);
 	tcphdr.dest = htons(dest);
+	tcphdr.seq = seq;
 	tcphdr.ack_seq = ack_seq;
 	tcphdr.ack = 1;
 	tcphdr.doff = tcp_doff;
@@ -3863,6 +3888,12 @@ string intToString(long long i) {
 	return(outStr.str());
 }
 
+string intToString(u_int16_t i) {
+	ostringstream outStr;
+	outStr << i;
+	return(outStr.str());
+}
+
 string intToString(u_int32_t i) {
 	ostringstream outStr;
 	outStr << i;
@@ -3873,6 +3904,10 @@ string intToString(u_int64_t i) {
 	ostringstream outStr;
 	outStr << i;
 	return(outStr.str());
+}
+
+bool isJsonObject(string str) {
+	return(!str.empty() && str[0] == '{' && str[str.length() - 1] == '}');
 }
 
 AutoDeleteAtExit GlobalAutoDeleteAtExit;

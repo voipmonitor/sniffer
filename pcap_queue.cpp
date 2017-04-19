@@ -136,7 +136,6 @@ extern char opt_cachedir[1024];
 extern unsigned long long cachedirtransfered;
 unsigned long long lastcachedirtransfered = 0;
 extern char opt_cachedir[1024];
-extern char cloud_host[256];
 extern int opt_pcap_dump_tar;
 extern volatile unsigned int glob_tar_queued_files;
 
@@ -1548,7 +1547,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 			} else if(!opt_save_query_to_files) {
 				outStr << "SQLq[";
-				if(cloud_host[0]) {
+				if(isCloud()) {
 					int sizeSQLq = sqlStore->getSize(1);
 					outStr << (sizeSQLq >=0 ? sizeSQLq : 0);
 				} else {
@@ -6441,7 +6440,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	}
 	*/
 	
-	if(opt_udpfrag && hp_state == _hppq_out_state_NA) {
+	if(opt_udpfrag && hp_state == _hppq_out_state_NA && 
+	   hp->block_store && hp->block_store->hm == pcap_block_store::plus2) {
 		if(pcapQueueQ_outThread_defrag) {
 			pcapQueueQ_outThread_defrag->push(hp);
 			return(-1);

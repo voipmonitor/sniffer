@@ -564,9 +564,12 @@ volatile bool cloud_activecheck_sshclose = false;		//is forced close/re-open of 
 timeval cloud_last_activecheck;					//Time of a last check request sent
 
 char cloud_host[256] = "";
-
 char cloud_url[1024] = "";
 char cloud_token[256] = "";
+bool cloud_router = false;
+unsigned cloud_router_port = 60023;
+
+cCR_Receiver_service *cloud_receiver = NULL;
 
 char ssh_host[1024] = "";
 int ssh_port = 22;
@@ -682,6 +685,7 @@ vm_atomic<string> terminating_error;
 char *sipportmatrix;		// matrix of sip ports to monitor
 char *httpportmatrix;		// matrix of http ports to monitor
 char *webrtcportmatrix;		// matrix of webrtc ports to monitor
+char *skinnyportmatrix;		// matrix of skinny ports to monitor
 char *ipaccountportmatrix;
 map<d_u_int32_t, string> ssl_ipport;
 vector<u_int32_t> httpip;
@@ -1656,6 +1660,14 @@ void cloud_initial_register( void ) {
 	} while (terminating == 0);
 }
 
+void start_cloud_receiver() {
+	cloud_receiver = new FILE_LINE(0) cCR_Receiver_service(cloud_token, opt_id_sensor > 0 ? opt_id_sensor : 0);
+	cloud_receiver->start(cloud_host, cloud_router_port);
+	while(!cloud_receiver->isStartOk() && !is_terminating()) {
+		usleep(100000);
+	}
+}
+
 void *activechecking_cloud( void */*dummy*/ ) {
 	if (verbosity) syslog(LOG_NOTICE, "start - activechecking cloud thread");
 	cloud_activecheck_set();
@@ -2140,6 +2152,9 @@ int main(int argc, char *argv[]) {
 	memset(httpportmatrix, 0, 65537);
 	webrtcportmatrix = new FILE_LINE(42008) char[65537];
 	memset(webrtcportmatrix, 0, 65537);
+	skinnyportmatrix = new FILE_LINE(0) char[65537];
+	memset(skinnyportmatrix, 0, 65537);
+	skinnyportmatrix[2000] = 1;
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&vm_rrd_lock, NULL);
@@ -2334,18 +2349,6 @@ int main(int argc, char *argv[]) {
 		opt_rrd = 0;
 	}
 
-	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
-	if(cloud_url[0] != '\0') {
-		//vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
-		cloud_initial_register();
-
-		//Override query_cache option in /etc/voipmonitor.conf  settings while in cloud mode always on:
-		if(opt_fork) {
-			opt_save_query_to_files = true;
-			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
-		}
-	}
 	checkRrdVersion();
 
 	
@@ -2466,6 +2469,23 @@ int main(int argc, char *argv[]) {
 		daemonize();
 	}
 
+	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
+	if(isCloud()) {
+		//vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
+		if(isCloudRouter()) {
+			start_cloud_receiver();
+		} else {
+			cloud_initial_register();
+		}
+
+		//Override query_cache option in /etc/voipmonitor.conf  settings while in cloud mode always on:
+		if(opt_fork) {
+			opt_save_query_to_files = true;
+			opt_load_query_from_files = 1;
+			opt_load_query_from_files_inotify = true;
+		}
+	}
+	
 	if(opt_generator) {
 		opt_generator_channels = 2;
 		pthread_t *genthreads = new FILE_LINE(42009) pthread_t[opt_generator_channels];		// ID of worker storing CDR thread 
@@ -2490,7 +2510,7 @@ int main(int argc, char *argv[]) {
 	};
 
 	//cout << "SQL DRIVER: " << sql_driver << endl;
-	if(!opt_nocdr && !is_sender()/* && cloud_url[0] == '\0'*/) {
+	if(!opt_nocdr && !is_sender() && !is_terminating()) {
 		bool connectError = false;
 		string connectErrorString;
 		for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
@@ -2520,6 +2540,7 @@ int main(int argc, char *argv[]) {
 					} else {
 						sqlDb->checkSchema(connectId, true);
 					}
+					sqlDb->updateSensorState();
 					set_context_config_after_check_db_schema();
 				}
 				sensorsMap.fillSensors();
@@ -2568,7 +2589,7 @@ int main(int argc, char *argv[]) {
 		} else {
 			if(opt_database_backup) {
 				sqlStore = new FILE_LINE(42010) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, 
-								    cloud_host, cloud_token);
+									   cloud_host, cloud_token);
 				custom_headers_cdr = new FILE_LINE(42011) CustomHeaders(CustomHeaders::cdr);
 				custom_headers_message = new FILE_LINE(42012) CustomHeaders(CustomHeaders::message);
 				vm_pthread_create("database backup",
@@ -2673,6 +2694,7 @@ int main(int argc, char *argv[]) {
 	delete [] sipportmatrix;
 	delete [] httpportmatrix;
 	delete [] webrtcportmatrix;
+	delete [] skinnyportmatrix;
 	
 	delete regfailedcache;
 	
@@ -2929,7 +2951,7 @@ int main_init_read() {
 	}
 
 	// start activechecking cloud thread if in cloud mode and no zero activecheck_period
-	if(cloud_url[0] != '\0') {
+	if(isCloudSsh()) {
 		if (!opt_cloud_activecheck_period) {
 			if(verbosity) syslog(LOG_NOTICE, "notice - activechecking is disabled by config");
 		} else {
@@ -2955,7 +2977,7 @@ int main_init_read() {
 	}
 
 #ifdef HAVE_LIBSSH
-	if(cloud_url[0] != '\0') {
+	if(isCloudSsh()) {
 		vm_pthread_create("manager ssh",
 				  &manager_ssh_thread, NULL, manager_ssh, NULL, __FILE__, __LINE__);
 	}
@@ -3511,7 +3533,7 @@ void main_init_sqlstore() {
 	if(isSqlDriver("mysql")) {
 		if(opt_load_query_from_files != 2) {
 			sqlStore = new FILE_LINE(42037) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-							    cloud_host, cloud_token);
+								   cloud_host, cloud_token);
 			if(opt_save_query_to_files) {
 				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 			}
@@ -3524,7 +3546,7 @@ void main_init_sqlstore() {
 		}
 		if(opt_load_query_from_files) {
 			loadFromQFiles = new FILE_LINE(42039) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-								  cloud_host, cloud_token);
+									 cloud_host, cloud_token);
 			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
 		}
 		if(opt_load_query_from_files != 2) {
@@ -4451,7 +4473,7 @@ void test() {
 	case 306:
 		{
 		sqlStore = new FILE_LINE(42059) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-						    cloud_host, cloud_token);
+							   cloud_host, cloud_token);
 		for(int i = 0; i < 2; i++) {
 			if(isSetSpoolDir(i) &&
 			   CleanSpool::isSetCleanspoolParameters(i)) {
@@ -5200,6 +5222,7 @@ void cConfig::addConfigItems() {
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem(new FILE_LINE(42257) cConfigItem_yesno("skinny", &opt_skinny));
+		addConfigItem(new FILE_LINE(0) cConfigItem_ports("skinny_port", skinnyportmatrix));
 		addConfigItem((new FILE_LINE(42258) cConfigItem_integer("skinny_ignore_rtpip", &opt_skinny_ignore_rtpip))
 			->setIp());
 			advanced();
@@ -5514,6 +5537,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42454) cConfigItem_string("cloud_host", cloud_host, sizeof(cloud_host)));
 			addConfigItem(new FILE_LINE(42455) cConfigItem_string("cloud_url", cloud_url, sizeof(cloud_url)));
 			addConfigItem(new FILE_LINE(42456) cConfigItem_string("cloud_token", cloud_token, sizeof(cloud_token)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cloud_router", &cloud_router));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cloud_router_port", &cloud_router_port));
 			addConfigItem(new FILE_LINE(42457) cConfigItem_integer("cloud_activecheck_period", &opt_cloud_activecheck_period));
 			addConfigItem(new FILE_LINE(42458) cConfigItem_string("cloud_url_activecheck", cloud_url_activecheck, sizeof(cloud_url_activecheck)));
 		subgroup("other");
@@ -5771,6 +5796,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"allsipports", 0, 0, 'y'},
 	    {"sipports", 1, 0, 'Y'},
 	    {"skinny", 0, 0, 200},
+	    {"skinnyports", 1, 0, 199},
 	    {"mono", 0, 0, 201},
 	    {"untar-gui", 1, 0, 202},
 	    {"unlzo-gui", 1, 0, 205},
@@ -5842,6 +5868,15 @@ void get_command_line_arguments() {
 				printf ("option %s\n", long_options[option_index].name);
 				break;
 			*/
+			case 199:
+				{
+					skinnyportmatrix[2000] = 0;
+					vector<string> result = explode(optarg, ',');
+					for (size_t tier = 0; tier < result.size(); tier++) {
+						skinnyportmatrix[atoi(result[tier].c_str())] = 1;
+					}
+				}
+				break;
 			case 200:
 				opt_skinny = 1;
 				break;
@@ -6490,7 +6525,7 @@ void set_context_config() {
 	}
 	if(opt_t2_boost) {
 		opt_enable_preprocess_packet = PreProcessPacket::ppt_end;
-		if(!is_sender()) {
+		if(!is_sender() && !is_receiver()) {
 			opt_pcap_queue_use_blocks = 1;
 		}
 		if(opt_process_rtp_packets_hash_next_thread < 2) {
@@ -6691,6 +6726,9 @@ bool check_complete_parameters() {
                         "\n"
                         " -y   Listen to SIP protocol on ports 5060 - 5099\n"
                         "\n"
+                        " -Y, --sipports=<ports>\n"
+                        "      Listen to SIP protocol on entered ports. Separated by commas.\n"
+                        "\n"
                         " --audio-format=<wav|ogg>\n"
                         "      Save to WAV or OGG audio format. Default is WAV.\n"
                         "\n"
@@ -6744,7 +6782,10 @@ bool check_complete_parameters() {
                         "      Save SIP register requests to cdr.register table and to pcap file.\n"
                         "\n"
                         " --skinny\n"
-                        "      analyze SKINNY VoIP protocol on TCP port 2000\n"
+                        "      analyze SKINNY VoIP protocol. Default port is TCP port 2000\n"
+                        "\n"
+                        " --skinnyports=<ports>\n"
+                        "      Listen to SKINNY protocol on entered ports. Separated by commas.\n"
                         "\n"
                         " --update-schema\n"
                         "      Create or upgrade the database schema, and then exit.  Forces -k option\n"
@@ -7203,6 +7244,15 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "skinny_call_info_message_decode_type", NULL))) {
 		opt_skinny_call_info_message_decode_type = atoi(value);
 	}
+	// skinny ports
+	if (ini.GetAllValues("general", "skinny_port", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		// reset default port
+		skinnyportmatrix[2000] = 0;
+		for (; i != values.end(); ++i) {
+			skinnyportmatrix[atoi(i->pItem)] = 1;
+		}
+	}
 	if((value = ini.GetValue("general", "cdr_partition", NULL))) {
 		opt_cdr_partition = yesno(value);
 	}
@@ -7613,6 +7663,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cloud_token", NULL))) {
 		strncpy(cloud_token, value, sizeof(cloud_token));
+	}
+	if((value = ini.GetValue("general", "cloud_router", NULL))) {
+		cloud_router = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cloud_router_port", NULL))) {
+		cloud_router_port = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cloud_activecheck_period", NULL))) {
 		opt_cloud_activecheck_period = atoi(value);
@@ -8768,7 +8824,7 @@ u_int32_t gethostbyname_lock(const char *name) {
 
 bool _use_mysql_2() {
 	return(!opt_database_backup &&
-	       !cloud_host[0] &&
+	       !isCloud() &&
 	       mysql_2_host[0] && mysql_2_user[0] && mysql_2_database[0]);
 }
 
@@ -8983,4 +9039,26 @@ eTypeSpoolFile findTypeSpoolFile(unsigned int spool_index, const char *filePathN
 		}
 	}
 	return(type_spool_file_check);
+}
+
+
+sCloudRouterVerbose CR_VERBOSE() {
+	sCloudRouterVerbose v;
+	return(v);
+}
+
+bool CR_TERMINATE() {
+	return(is_terminating());
+}
+
+void CR_SET_TERMINATE() {
+	return(set_terminating());
+}
+
+cResolver *CR_RESOLVER() {
+	static cResolver *resolver;
+	if(!resolver) {
+		resolver = new FILE_LINE(0) cResolver;
+	}
+	return(resolver);
 }

@@ -133,7 +133,7 @@ public:
 	int tar_append_buffer(ChunkBuffer *buffer, size_t lenForProceed = 0);
 	virtual void chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos);
 	void tar_read(const char *filename, const char *endFilename = NULL, u_int32_t recordId = 0, const char *tableType = NULL, const char *tarPosString = NULL);
-	void tar_read_send_parameters(int client, void *sshchannel, bool zip);
+	void tar_read_send_parameters(int client, void *sshchannel, void *cr_client, bool zip);
 	void tar_read_save_parameters(FILE *output_file_handle);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void tar_read_block_ev(char *data);
@@ -207,6 +207,7 @@ private:
 		ReadData() {
 			send_parameters_client = 0;
 			send_parameters_sshchannel = 0;
+			send_parameters_cr_client = NULL;
 			send_parameters_zip = false;
 			output_file_handle = NULL;
 			null();
@@ -257,6 +258,7 @@ private:
 		size_t fileSize;
 		int send_parameters_client;
 		void *send_parameters_sshchannel;
+		void *send_parameters_cr_client;
 		bool send_parameters_zip;
 		FILE *output_file_handle;
 		CompressStream *decompressStreamFromLzo;

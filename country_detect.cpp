@@ -5,7 +5,6 @@
 CountryDetect *countryDetect;
 
 extern int opt_nocdr;
-extern char cloud_host[256];
 
 
 CountryDetect_base_table::CountryDetect_base_table() {
@@ -52,7 +51,7 @@ string CountryDetect_base_table::getTableName(eTableType tableType) {
 		useCloudShare = true;
 		break;
 	}
-	if(!tableName.empty() && cloud_host[0] && useCloudShare) {
+	if(!tableName.empty() && isCloud() && useCloudShare) {
 		tableName =  "cloudshare." + tableName;
 	}
 	return(tableName);
