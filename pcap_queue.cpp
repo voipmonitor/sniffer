@@ -6440,7 +6440,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	}
 	*/
 	
-	if(opt_udpfrag && hp_state == _hppq_out_state_NA) {
+	if(opt_udpfrag && hp_state == _hppq_out_state_NA && 
+	   hp->block_store && hp->block_store->hm == pcap_block_store::plus2) {
 		if(pcapQueueQ_outThread_defrag) {
 			pcapQueueQ_outThread_defrag->push(hp);
 			return(-1);
