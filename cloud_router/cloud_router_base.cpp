@@ -1207,7 +1207,9 @@ void cReceiver::receive_process() {
 			size_t dataLen;
 			data = receive_socket->readBlock(&dataLen);
 			if(data) {
-				evData(data, dataLen);
+				if(string((char*)data, dataLen) != "ping") {
+					evData(data, dataLen);
+				}
 			}
 		} else {
 			sleep(1);
