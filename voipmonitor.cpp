@@ -839,6 +839,9 @@ bool printConfigFile = false;
 bool printConfigFile_default = false;
 bool updateSchema = false;
 
+unsigned opt_udp_port_l2tp = 1701;
+unsigned opt_udp_port_tzsp = 0x9090;
+
 SensorsMap sensorsMap;
 
 
@@ -5551,6 +5554,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 					expert();
 					addConfigItem(new FILE_LINE(42465) cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_l2tp",  &opt_udp_port_l2tp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 	minorEnd();
@@ -8566,6 +8571,13 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext", NULL))) {
 		opt_sip_tcp_reassembly_ext = yesno(value);
+	}
+	
+	if((value = ini.GetValue("general", "udp_port_l2tp", NULL))) {
+		opt_udp_port_l2tp = atoi(value);
+	}
+	if((value = ini.GetValue("general", "udp_port_tzsp", NULL))) {
+		opt_udp_port_tzsp = atoi(value);
 	}
 	
 	/*

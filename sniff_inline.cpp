@@ -343,6 +343,9 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		}
 	}
 	
+	extern unsigned opt_udp_port_l2tp;
+	extern unsigned opt_udp_port_tzsp;
+	
 	if(ppd->header_ip) {
 		bool nextPass;
 		do {
@@ -368,9 +371,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 						return(0);
 					}
 				}
-			} else if(ppd->header_ip->protocol == IPPROTO_UDP &&							// Layer 2 Tunelling protocol / UDP
-				  htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->dest) == 1701 &&			// check destination port 1701
-				  htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->source) == 1701 &&		// check source port 1701
+			} else if(opt_udp_port_l2tp &&
+				  ppd->header_ip->protocol == IPPROTO_UDP &&							// Layer 2 Tunelling protocol / UDP
+				  htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->dest) == opt_udp_port_l2tp &&	// check destination port (default 1701)
+				  htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->source) == opt_udp_port_l2tp &&	// check source port (default 1701)
 				  htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->len) > (sizeof(udphdr2) + 10)) {	// check minimal length
 				unsigned int l2tp_length = 6;	// flags (2) + tunel id (2) + session id (2)
 				unsigned int ptp_length = 4;	// address (1) + control (1) + protocol (2)
@@ -380,9 +384,47 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					l2tp_length += 2;
 				}
 				unsigned int ptp_offset = l2tp_offset + l2tp_length;
+				unsigned int next_header_ip_offset = 0;
 				if(*((unsigned char*)ppd->header_ip + ptp_offset + 1) == 0x03 &&				// check control (0x03)
 				   htons(*(u_int16_t*)((unsigned char*)ppd->header_ip + ptp_offset + 2)) == 0x0021) {		// check ptp protocol IPv4 (0x0021)
-					unsigned int next_header_ip_offset = ptp_offset + ptp_length;
+					next_header_ip_offset = ptp_offset + ptp_length;
+				}
+				if(next_header_ip_offset) {
+					ppd->header_ip = (iphdr2*)((char*)ppd->header_ip + next_header_ip_offset);
+					ppd->header_ip_offset += next_header_ip_offset;
+				} else {
+					if(ppf & ppf_returnZeroInCheckData) {
+						//cout << "pcapProcess exit 008" << endl;
+						if(pcap_header_plus2) {
+							pcap_header_plus2->ignore = true;
+						}
+						return(0);
+					}
+				}
+			} else if(opt_udp_port_tzsp &&
+				  ppd->header_ip->protocol == IPPROTO_UDP &&							// TZSP
+				  (htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->dest) == opt_udp_port_tzsp ||	// check destination port (default 0x9090)
+				   htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->source) == opt_udp_port_tzsp) &&	// check source port (default 0x9090)
+				  htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->len) > 
+									 (sizeof(udphdr2) + 5 + sizeof(ether_header))) {	// check minimal length
+				unsigned int tzsp_length = 5;	// version (1) + type (1) + protocol (2) + ... + end (1)
+				unsigned int tzsp_offset = sizeof(iphdr2) + sizeof(udphdr2);
+				unsigned int next_header_ip_offset = 0;
+				if(*((unsigned char*)ppd->header_ip + tzsp_offset) == 1 &&					// check version (1)
+				   htons(*(u_int16_t*)((unsigned char*)ppd->header_ip + tzsp_offset + 2)) == 1) {		// check ethernet protocol (1)
+					while(*((unsigned char*)ppd->header_ip + tzsp_offset + tzsp_length - 1) != 1 &&		// find end (1)
+					      tzsp_length < 10) {
+						if(ppd->header_ip_offset + tzsp_offset + tzsp_length + sizeof(ether_header) < HPH(*header_packet)->caplen) {
+							++tzsp_length;
+						} else {
+							break;
+						}
+					}
+					if(*((unsigned char*)ppd->header_ip + tzsp_offset + tzsp_length - 1) == 1) {		// check find end (1)
+						next_header_ip_offset = tzsp_offset + tzsp_length + sizeof(ether_header);
+					}
+				}
+				if(next_header_ip_offset) {
 					ppd->header_ip = (iphdr2*)((char*)ppd->header_ip + next_header_ip_offset);
 					ppd->header_ip_offset += next_header_ip_offset;
 				} else {
