@@ -870,25 +870,7 @@ public:
 			extern vector<d_u_int32_t> httpnet;
 			extern vector<u_int32_t> webrtcip;
 			extern vector<d_u_int32_t> webrtcnet;
-			vector<u_int32_t> *_ip = (type == http ? &httpip : &webrtcip);
-			vector<d_u_int32_t> *_net  = (type == http ? &httpnet : &webrtcnet);
-			if(!_ip->size() && !_net->size()) {
-				return(true);
-			}
-			if(_ip->size()) {
-				vector<u_int32_t>::iterator iterIp;
-				iterIp = std::lower_bound(_ip->begin(), _ip->end(), ip);
-				if(iterIp != _ip->end() && ((*iterIp) & ip) == (*iterIp)) {
-					return(true);
-				}
-			}
-			if(_net->size()) {
-				for(size_t i = 0; i < _net->size(); i++) {
-					if((*_net)[i][0] == ip >> (32 - (*_net)[i][1]) << (32 - (*_net)[i][1])) {
-						return(true);
-					}
-				}
-			}
+			return(check_ip_in(ip, (type == http ? &httpip : &webrtcip), (type == http ? &httpnet : &webrtcnet), true));
 		} else if(type == ssl) {
 			extern map<d_u_int32_t, string> ssl_ipport;
 			map<d_u_int32_t, string>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));

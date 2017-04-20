@@ -424,6 +424,7 @@ private:
 	bool regex_error;
 };
 
+bool check_ip_in(u_int32_t ip, vector<u_int32_t> *vect_ip, vector<d_u_int32_t> *vect_net, bool trueIfVectEmpty);
 string inet_ntostring(u_int32_t ip);
 void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos);
 void base64_init(void);

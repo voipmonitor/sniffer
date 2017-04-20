@@ -6575,12 +6575,14 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	}
 
 	if(header_ip && header_ip->protocol == IPPROTO_TCP) {
-		if(opt_enable_http && (httpportmatrix[htons(sport)] || httpportmatrix[htons(dport)])) {
+		if(opt_enable_http && (httpportmatrix[htons(sport)] || httpportmatrix[htons(dport)]) && 
+		   (tcpReassemblyHttp->check_ip(htonl(header_ip->saddr)) || tcpReassemblyHttp->check_ip(htonl(header_ip->daddr)))) {
 			tcpReassemblyHttp->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						    hp->block_store, hp->block_store_index, hp->block_store_locked,
 						    this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);
 			return(1);
-		} else if(opt_enable_webrtc && (webrtcportmatrix[htons(sport)] || webrtcportmatrix[htons(dport)])) {
+		} else if(opt_enable_webrtc && (webrtcportmatrix[htons(sport)] || webrtcportmatrix[htons(dport)]) &&
+			  (tcpReassemblyWebrtc->check_ip(htonl(header_ip->saddr)) || tcpReassemblyWebrtc->check_ip(htonl(header_ip->daddr)))) {
 			tcpReassemblyWebrtc->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						      hp->block_store, hp->block_store_index, hp->block_store_locked,
 						      this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);

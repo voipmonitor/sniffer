@@ -2171,6 +2171,27 @@ int cRegExp::match(const char *subject, vector<string> *matches) {
 	return(-1);
 }
 
+bool check_ip_in(u_int32_t ip, vector<u_int32_t> *vect_ip, vector<d_u_int32_t> *vect_net, bool trueIfVectEmpty) {
+	if(!vect_ip->size() && !vect_net->size()) {
+		return(trueIfVectEmpty);
+	}
+	if(vect_ip->size()) {
+		vector<u_int32_t>::iterator iterIp;
+		iterIp = std::lower_bound(vect_ip->begin(), vect_ip->end(), ip);
+		if(iterIp != vect_ip->end() && ((*iterIp) & ip) == (*iterIp)) {
+			return(true);
+		}
+	}
+	if(vect_net->size()) {
+		for(size_t i = 0; i < vect_net->size(); i++) {
+			if((*vect_net)[i][0] == ip >> (32 - (*vect_net)[i][1]) << (32 - (*vect_net)[i][1])) {
+				return(true);
+			}
+		}
+	}
+	return(false);
+}
+
 string inet_ntostring(u_int32_t ip) {
 	struct in_addr in;
 	in.s_addr = htonl(ip);
