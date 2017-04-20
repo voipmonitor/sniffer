@@ -1783,7 +1783,7 @@ void *scanpcapdir( void */*dummy*/ ) {
 		}
 		
 		if(!pcapQueueInterface->openPcap(filename)) {
-			abort();
+			continue;
 		}
 		while(!is_terminating() && !pcapQueueInterface->isPcapEnd()) {
 			usleep(10000);
