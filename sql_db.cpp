@@ -5476,9 +5476,26 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 void SqlDb_mysql::updateSensorState() {
 	if(opt_id_sensor > 0) {
 		if(this->existsColumn("sensors", "cloud_router")) {
-			SqlDb_row rowU;
-			rowU.add(isCloudRouter(), "cloud_router");
-			this->update("sensors", rowU, ("id_sensor=" + intToString(opt_id_sensor)).c_str());
+			this->query("select * from `sensors` where id_sensor=" + intToString(opt_id_sensor));
+			SqlDb_row row = this->fetchRow();
+			if(row) {
+				SqlDb_row rowU;
+				rowU.add(isCloudRouter(), "cloud_router");
+				if(isCloudRouter()) {
+					extern cCR_Receiver_service *cloud_receiver;
+					rowU.add(cloud_receiver->getConnectFrom(), "host");
+				}
+				this->update("sensors", rowU, ("id_sensor=" + intToString(opt_id_sensor)).c_str());
+			} else if(isCloudRouter()) {
+				SqlDb_row rowI;
+				rowI.add(opt_id_sensor, "id_sensor");
+				rowI.add("auto insert id " + intToString(opt_id_sensor), "name");
+				rowI.add(true, "cloud_router");
+				extern cCR_Receiver_service *cloud_receiver;
+				rowI.add(cloud_receiver->getConnectFrom(), "host");
+				rowI.add(5029, "port");
+				this->insert("sensors", rowI);
+			}
 		}
 	} else {
 		this->query("select content from `system` where type='cloud_router_local_sensor'");
@@ -6906,7 +6923,7 @@ void cLogSensor::_save() {
 	extern MySqlStore *sqlStore;
 	SqlDb *sqlDb = createSqlObject();
 	bool existsOkLogSensorTable = false;
-	if(!sqlStore && !cloud_token[0] && !opt_nocdr) {
+	if(!sqlStore && !isCloud() && !opt_nocdr) {
 		existsOkLogSensorTable = sqlDb->existsTable("log_sensor");
 	}
 	sqlDb->setMaxQueryPass(1);

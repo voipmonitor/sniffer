@@ -48,8 +48,8 @@ bool cCR_Receiver_service::receive_process_loop_begin() {
 		_close();
 		return(false);
 	}
-	string rsltRsaKey;
-	if(!receive_socket->readBlock(&rsltRsaKey) || rsltRsaKey.find("rsa_key") == string::npos) {
+	string rsltRsaKeyIP;
+	if(!receive_socket->readBlock(&rsltRsaKeyIP) || rsltRsaKeyIP.find("rsa_key") == string::npos) {
 		if(!receive_socket->isError()) {
 			receive_socket->setError("failed read rsa key");
 		}
@@ -57,8 +57,9 @@ bool cCR_Receiver_service::receive_process_loop_begin() {
 		return(false);
 	}
 	JsonItem jsonRsaKey;
-	jsonRsaKey.parse(rsltRsaKey);
+	jsonRsaKey.parse(rsltRsaKeyIP);
 	string rsa_key = jsonRsaKey.getValue("rsa_key");
+	connect_from = jsonRsaKey.getValue("ip");
 	receive_socket->set_rsa_pub_key(rsa_key);
 	receive_socket->generate_aes_keys();
 	JsonExport json_keys;

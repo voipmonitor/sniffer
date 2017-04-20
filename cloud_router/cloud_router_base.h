@@ -224,6 +224,9 @@ public:
 	string getIP() {
 		return(inet_ntostring(htonl(ipl)));
 	}
+	u_int32_t getIPL() {
+		return(ipl);
+	}
 	u_int16_t getPort() {
 		return(port);
 	}
