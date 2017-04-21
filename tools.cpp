@@ -1484,7 +1484,7 @@ double AsyncClose::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
 	return(-1);
 }
 
-RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm) {
+RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm, const char *md5_64_ws) {
 	this->upgrade = upgrade;
 	if(version) {
 		this->version = version;
@@ -1498,17 +1498,25 @@ RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *ur
 	if(md5_64) {
 		this->md5_64 = md5_64;
 	}
+	if(md5_64_ws) {
+		this->md5_64_ws = md5_64_ws;
+	}
 	if(md5_arm) {
 		this->md5_arm = md5_arm;
 	}
+	this->_64bit = false;
+	this->_64bit_ws = false;
+	this->_arm = false;
 	#if defined(__arm__)
 		this->_arm = true;
 	#else
-		this->_arm = false;
 		if(sizeof(int *) == 8) {
-			this->_64bit = true;
-		} else {
-			this->_64bit = false;
+			extern int opt_enable_ss7;
+			if(opt_enable_ss7) {
+				this->_64bit_ws = true;
+			} else {
+				this->_64bit = true;
+			}
 		}
 	#endif
 }
@@ -1558,9 +1566,11 @@ bool RestartUpgrade::runUpgrade() {
 	extern int opt_upgrade_try_http_if_https_fail;
 	for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
 		string error;
-		string _url = (pass == 1 ? urlHttp : url) + 
-			      "/voipmonitor.gz." + (this->_arm ? "armv6k" :
-						    this->_64bit ? "64" : "32");
+		string _url = (pass == 1 ? urlHttp : url) + "/voipmonitor" +
+			      (this->_64bit_ws ? 
+				"-wireshark.gz.64" :
+				(string(".gz.") + (this->_arm ? "armv6k" :
+						   this->_64bit ? "64" : "32")));
 		if(verbosity > 0) {
 			syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
 		}
@@ -1621,10 +1631,10 @@ bool RestartUpgrade::runUpgrade() {
 		}
 		return(false);
 	}
-	if(!this->_arm || md5_arm.length()) {
+	if(!this->getMD5().empty()) {
 		string md5 = GetFileMD5(binaryFilepathName);
-		if((this->_arm ? md5_arm : this->_64bit ? md5_64 : md5_32) != md5) {
-			this->errorString = "failed download - bad md5: " + md5 + " <> " + (this->_arm ? md5_arm : this->_64bit ? md5_64 : md5_32);
+		if(this->getMD5() != md5) {
+			this->errorString = "failed download - bad md5: " + md5 + " <> " + this->getMD5();
 			rmdir_r(this->upgradeTempFileName.c_str());
 			if(verbosity > 0) {
 				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());

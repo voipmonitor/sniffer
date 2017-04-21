@@ -2355,6 +2355,7 @@ getwav:
 		string md5_32;
 		string md5_64;
 		string md5_arm;
+		string md5_64_ws;
 		string rsltForSend;
 		if(strstr(buf, "upgrade") != NULL) {
 			extern bool opt_upgrade_by_git;
@@ -2386,16 +2387,16 @@ getwav:
 						if(posEnd != string::npos) {
 							md5_32 = command.substr(pos + 6, posEnd - pos - 6);
 						}
-						for(int i = 0; i < 2; i++) {
+						for(int i = 0; i < 3; i++) {
 							pos = command.find(" / [", pos);
 							if(pos != string::npos) {
 								size_t posEnd = command.find("]", pos);
 								if(posEnd != string::npos) {
 									string md5 = command.substr(pos + 4, posEnd - pos - 4);
-									if(i == 0) {
-										md5_64 = md5;
-									} else {
-										md5_arm = md5;
+									switch(i) {
+									case 0: md5_64 = md5; break;
+									case 1: md5_arm = md5; break;
+									case 2: md5_64_ws = md5; break;
 									}
 									pos = posEnd;
 								} else {
@@ -2417,7 +2418,7 @@ getwav:
 			}
 		}
 		bool ok = false;
-		RestartUpgrade restart(upgrade, version.c_str(), url.c_str(), md5_32.c_str(), md5_64.c_str(), md5_arm.c_str());
+		RestartUpgrade restart(upgrade, version.c_str(), url.c_str(), md5_32.c_str(), md5_64.c_str(), md5_arm.c_str(), md5_64_ws.c_str());
 		if(!rsltForSend.length()) {
 			if(restart.createRestartScript() && restart.createSafeRunScript()) {
 				if((!upgrade || restart.runUpgrade()) &&
