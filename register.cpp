@@ -19,6 +19,10 @@ extern MySqlStore *sqlStore;
 extern int opt_nocdr;
 extern int opt_enable_fraud;
 
+extern bool opt_sip_register_compare_sipcallerip;
+extern bool opt_sip_register_compare_sipcalledip;
+extern bool opt_sip_register_state_compare_digest_realm;
+
 Registers registers;
 
 
@@ -56,8 +60,8 @@ RegisterId::RegisterId(Register *reg) {
 }
 
 bool RegisterId:: operator == (const RegisterId& other) const {
-	return(this->reg->sipcallerip == other.reg->sipcallerip &&
-	       this->reg->sipcalledip == other.reg->sipcalledip &&
+	return((!opt_sip_register_compare_sipcallerip || this->reg->sipcallerip == other.reg->sipcallerip) &&
+	       (!opt_sip_register_compare_sipcalledip || this->reg->sipcalledip == other.reg->sipcalledip) &&
 	       REG_EQ_STR(this->reg->to_num, other.reg->to_num) &&
 	       REG_EQ_STR(this->reg->to_domain, other.reg->to_domain) &&
 	       //REG_EQ_STR(this->reg->contact_num, other.reg->contact_num) &&
@@ -71,8 +75,8 @@ bool RegisterId:: operator < (const RegisterId& other) const {
 	//int rslt_cmp_contact_num;
 	//int rslt_cmp_contact_domain;
 	int rslt_cmp_digest_username;
-	return((this->reg->sipcallerip < other.reg->sipcallerip) ? 1 : (this->reg->sipcallerip > other.reg->sipcallerip) ? 0 :
-	       (this->reg->sipcalledip < other.reg->sipcalledip) ? 1 : (this->reg->sipcalledip > other.reg->sipcalledip) ? 0 :
+	return((opt_sip_register_compare_sipcallerip && this->reg->sipcallerip < other.reg->sipcallerip) ? 1 : (opt_sip_register_compare_sipcallerip && this->reg->sipcallerip > other.reg->sipcallerip) ? 0 :
+	       (opt_sip_register_compare_sipcalledip && this->reg->sipcalledip < other.reg->sipcalledip) ? 1 : (opt_sip_register_compare_sipcalledip && this->reg->sipcalledip > other.reg->sipcalledip) ? 0 :
 	       ((rslt_cmp_to_num = REG_CMP_STR(this->reg->to_num, other.reg->to_num)) < 0) ? 1 : (rslt_cmp_to_num > 0) ? 0 :
 	       ((rslt_cmp_to_domain = REG_CMP_STR(this->reg->to_domain, other.reg->to_domain)) < 0) ? 1 : (rslt_cmp_to_domain > 0) ? 0 :
 	       //((rslt_cmp_contact_num = REG_CMP_STR(this->reg->contact_num, other.reg->contact_num)) < 0) ? 1 : (rslt_cmp_contact_num > 0) ? 0 :
@@ -167,7 +171,7 @@ bool RegisterState::isEq(Call *call, Register *reg, bool useCmpUa) {
 	       REG_EQ_STR(from_num == EQ_REG ? reg->from_num : from_num, call->caller) &&
 	       REG_EQ_STR(from_name == EQ_REG ? reg->from_name : from_name, call->callername) &&
 	       REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, call->caller_domain) &&
-	       REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, call->digest_realm) &&
+	       (!opt_sip_register_state_compare_digest_realm || REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, call->digest_realm)) &&
 	       (!useCmpUa || REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua)) &&
 	       id_sensor == call->useSensorId);
 }
@@ -221,6 +225,8 @@ void Register::update(Call *call) {
 	if(!contact_domain && call->contact_domain[0]) {
 		contact_domain = REG_NEW_STR(call->contact_domain);
 	}
+	sipcallerip = call->sipcallerip[0];
+	sipcalledip = call->sipcalledip[0];
 }
 
 void Register::addState(Call *call) {
@@ -231,6 +237,14 @@ void Register::addState(Call *call) {
 		if(eqLastState(call, NEW_REGISTER_USE_CMP_UA_STATE)) {
 			updateLastState(call);
 			updateRsOk = true;
+		} else if(countStates > 1 &&
+			  states[0]->state == rs_Failed &&
+			  states[1]->isEq(call, this, NEW_REGISTER_USE_CMP_UA_STATE)) {
+				RegisterState *state = states[1];
+				states[1] = states[0];
+				states[0] = state;
+				updateLastState(call);
+				updateRsOk = true;
 		}
 	} else {
 		if(eqLastState(call, NEW_REGISTER_USE_CMP_UA_STATE)) {
@@ -483,13 +497,13 @@ bool Register::getDataRow(RecordArray *rec) {
 		rec->fields[rf_id_sensor].set(state->id_sensor);
 	}
 	rec->fields[rf_fname].set(state->fname);
-	rec->fields[rf_calldate].set(state->state_from, RecordArrayField::tf_time);
+	rec->fields[rf_calldate].set(state->state_to, RecordArrayField::tf_time);
 	rec->fields[rf_from_num].set(state->from_num == EQ_REG ? from_num : state->from_num);
 	rec->fields[rf_from_name].set(state->from_name == EQ_REG ? from_name : state->from_name);
 	rec->fields[rf_from_domain].set(state->from_domain == EQ_REG ? from_domain : state->from_domain);
 	rec->fields[rf_digestrealm].set(state->digest_realm == EQ_REG ? digest_realm : state->digest_realm);
 	rec->fields[rf_expires].set(state->expires);
-	rec->fields[rf_expires_at].set(state->state_from + state->expires, RecordArrayField::tf_time);
+	rec->fields[rf_expires_at].set(state->state_to + state->expires, RecordArrayField::tf_time);
 	rec->fields[rf_state].set(state->state);
 	rec->fields[rf_ua].set(state->ua == EQ_REG ? ua : state->ua);
 	if(rrd_count) {

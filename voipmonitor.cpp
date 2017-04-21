@@ -373,6 +373,9 @@ int opt_register_timeout = 5;
 int opt_register_timeout_disable_save_failed = 0;
 int opt_register_ignore_res_401 = 0;
 int opt_register_ignore_res_401_nonce_has_changed = 0;
+bool opt_sip_register_compare_sipcallerip = true;
+bool opt_sip_register_compare_sipcalledip = true;
+bool opt_sip_register_state_compare_digest_realm = true;
 bool opt_sip_register_save_all = false;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -860,6 +863,7 @@ SensorsMap sensorsMap;
 static void parse_command_line_arguments(int argc, char *argv[]);
 static void get_command_line_arguments();
 static void set_context_config();
+static void check_context_config();
 static void set_context_config_after_check_db_schema();
 static void create_spool_dirs();
 static bool check_complete_parameters();
@@ -2217,6 +2221,8 @@ int main(int argc, char *argv[]) {
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
 	}
+	
+	check_context_config();
 
 	if(HeapSafeCheck) {
 		#if not HEAPSAFE
@@ -5288,6 +5294,9 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new FILE_LINE(42293) cConfigItem_yesno("sip-register-ignore-res401", &opt_register_ignore_res_401));
 				addConfigItem(new FILE_LINE(42294) cConfigItem_yesno("sip-register-ignore-res401-nonce-has-changed", &opt_register_ignore_res_401_nonce_has_changed));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerip", &opt_sip_register_compare_sipcallerip));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcalledip", &opt_sip_register_compare_sipcalledip));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_realm", &opt_sip_register_state_compare_digest_realm));
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
 		subgroup("MESSAGE");
@@ -6559,6 +6568,14 @@ void set_context_config() {
 	
 }
 
+void check_context_config() {
+	#if not HAVE_LIBWIRESHARK
+		if(opt_enable_ss7) {
+			cLogSensor::log(cLogSensor::error, "option ss7 need voipmonitor with wireshark module");
+		}
+	#endif
+}
+
 void set_context_config_after_check_db_schema() {
 	extern sExistsColumns existsColumns;
 	if(opt_detect_alone_bye) {
@@ -7197,6 +7214,15 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-ignore-res401-nonce-has-changed", NULL))) {
 		opt_register_ignore_res_401_nonce_has_changed = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-compare-sipcallerip", NULL))) {
+		opt_sip_register_compare_sipcallerip = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-compare-sipcalledip", NULL))) {
+		opt_sip_register_compare_sipcalledip = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-compare-digest_realm", NULL))) {
+		opt_sip_register_state_compare_digest_realm = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-save-all", NULL))) {
 		opt_sip_register_save_all = yesno(value);
