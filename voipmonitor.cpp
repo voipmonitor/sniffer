@@ -375,6 +375,8 @@ int opt_register_ignore_res_401 = 0;
 int opt_register_ignore_res_401_nonce_has_changed = 0;
 bool opt_sip_register_compare_sipcallerip = true;
 bool opt_sip_register_compare_sipcalledip = true;
+bool opt_sip_register_compare_to_domain = true;
+bool opt_sip_register_state_compare_from_domain = true;
 bool opt_sip_register_state_compare_digest_realm = true;
 bool opt_sip_register_save_all = false;
 unsigned int opt_maxpoolsize = 0;
@@ -5296,6 +5298,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42294) cConfigItem_yesno("sip-register-ignore-res401-nonce-has-changed", &opt_register_ignore_res_401_nonce_has_changed));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerip", &opt_sip_register_compare_sipcallerip));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcalledip", &opt_sip_register_compare_sipcalledip));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-to_domain", &opt_sip_register_compare_to_domain));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_domain", &opt_sip_register_state_compare_from_domain));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_realm", &opt_sip_register_state_compare_digest_realm));
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
@@ -7220,6 +7224,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-compare-sipcalledip", NULL))) {
 		opt_sip_register_compare_sipcalledip = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-compare-to_domain", NULL))) {
+		opt_sip_register_compare_to_domain = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-compare-from_domain", NULL))) {
+		opt_sip_register_state_compare_from_domain = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-state-compare-digest_realm", NULL))) {
 		opt_sip_register_state_compare_digest_realm = yesno(value);
