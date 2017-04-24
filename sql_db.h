@@ -93,7 +93,7 @@ public:
 	SqlDb();
 	virtual ~SqlDb();
 	void setConnectParameters(string server, string user, string password, string database = "", u_int16_t port = 0, bool showversion = true);
-	void setCloudParameters(string cloud_host, string cloud_token);
+	void setCloudParameters(string cloud_host, string cloud_token, bool cloud_router);
 	void setLoginTimeout(ulong loginTimeout);
 	void setDisableSecureAuth(bool disableSecureAuth = true);
 	virtual bool connect(bool craeteDb = false, bool mainInit = false) = 0;
@@ -215,13 +215,13 @@ public:
 	bool getDisableLogError();
 	void setSilentConnect();
 	bool isCloud() {
-		if(cloud_host.empty()) {
-			return(false);
-		} else {
-			extern bool is_cloud;
-			is_cloud = true;
-			return(true);
-		}
+		return(isCloudRouter() || isCloudSsh());
+	}
+	bool isCloudRouter() {
+		return(cloud_host[0] && cloud_token[0] && cloud_router);
+	}
+	bool isCloudSsh() {
+		return(cloud_host[0] && cloud_token[0] && !cloud_router);
 	}
 	static void addDelayQuery(u_int32_t delay_ms);
 	static u_int32_t getAvgDelayQuery();
@@ -238,6 +238,7 @@ protected:
 	string cloud_host;
 	string cloud_redirect;
 	string cloud_token;
+	bool cloud_router;
 	bool conn_showversion;
 	ulong loginTimeout;
 	unsigned int maxQueryPass;
@@ -453,7 +454,7 @@ private:
 class MySqlStore_process {
 public:
 	MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database, u_int16_t port,
-			   const char *cloud_host, const char *cloud_token,
+			   const char *cloud_host, const char *cloud_token, bool cloud_router,
 			   int concatLimit);
 	~MySqlStore_process();
 	void connect();
@@ -619,7 +620,7 @@ private:
 	};
 public:
 	MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port,
-		   const char *cloud_host = NULL, const char *cloud_token = NULL);
+		   const char *cloud_host = NULL, const char *cloud_token = NULL, bool cloud_router = true);
 	~MySqlStore();
 	void queryToFiles(bool enable = true, const char *directory = NULL, int period = 0);
 	void queryToFilesTerminate();
@@ -696,6 +697,7 @@ private:
 	u_int16_t port;
 	string cloud_host;
 	string cloud_token;
+	bool cloud_router;
 	int defaultConcatLimit;
 	volatile int _sync_processes;
 	bool enableTerminatingDirectly;

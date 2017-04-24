@@ -330,13 +330,15 @@ inline bool isCloudRouter() {
 	extern bool cloud_router;
 	extern char cloud_host[256];
 	extern unsigned cloud_router_port;
-	return(cloud_router && cloud_host[0] && cloud_router_port);
+	extern char cloud_token[256];
+	return(cloud_router && cloud_host[0] && cloud_router_port && cloud_token[0]);
 }
 inline bool isCloudSsh() {
 	extern bool cloud_router;
+	extern char cloud_host[256];
 	extern char cloud_url[256];
 	extern char cloud_token[256];
-	return(!cloud_router && cloud_url[0] && cloud_token[0]);
+	return(!cloud_router && cloud_host[0] && cloud_url[0] && cloud_token[0]);
 }
 inline bool isCloud() {
 	return(isCloudRouter() || isCloudSsh());

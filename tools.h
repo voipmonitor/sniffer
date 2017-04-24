@@ -2505,8 +2505,7 @@ inline struct tm time_r(const time_t *timestamp, const char *timezone = NULL) {
 		timeCache->getTime(*timestamp, &time, false, timezone);
 	} else {
 		extern bool opt_sql_time_utc;
-		extern bool is_cloud;
-		timeCache->getTime(*timestamp, &time, (opt_sql_time_utc || is_cloud || force_gmt) && !force_local, NULL);
+		timeCache->getTime(*timestamp, &time, (opt_sql_time_utc || isCloud() || force_gmt) && !force_local, NULL);
 	}
 	return(time);
 }

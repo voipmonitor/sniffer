@@ -2605,8 +2605,7 @@ getwav:
 		string timezone_name = "UTC";
 		long timezone_offset = 0;
 		extern bool opt_sql_time_utc;
-		extern bool is_cloud;
-		if(!opt_sql_time_utc && !is_cloud) {
+		if(!opt_sql_time_utc && !isCloud()) {
 			time_t t = time(NULL);
 			struct tm lt;
 			::localtime_r(&t, &lt);

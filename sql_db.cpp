@@ -100,7 +100,6 @@ bool opt_rtp_stat_partition_oldver = false;
 bool opt_log_sensor_partition_oldver = false;
 sExistsColumns existsColumns;
 SqlDb::eSupportPartitions supportPartitions = SqlDb::_supportPartitions_ok;
-bool is_cloud = false;
 
 
 string SqlDb_row::operator [] (const char *fieldName) {
@@ -336,9 +335,10 @@ void SqlDb::setConnectParameters(string server, string user, string password, st
 	this->conn_showversion = showversion;
 }
 
-void SqlDb::setCloudParameters(string cloud_host, string cloud_token) {
+void SqlDb::setCloudParameters(string cloud_host, string cloud_token, bool cloud_router) {
 	this->cloud_host = cloud_host;
 	this->cloud_token = cloud_token;
+	this->cloud_router = cloud_router;
 }
 
 void SqlDb::setLoginTimeout(ulong loginTimeout) {
@@ -1704,7 +1704,7 @@ void *MySqlStore_process_storing(void *storeProcess_addr) {
 }
 	
 MySqlStore_process::MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database, u_int16_t port,
-				       const char *cloud_host, const char *cloud_token,
+				       const char *cloud_host, const char *cloud_token, bool cloud_router,
 				       int concatLimit) {
 	this->id = id;
 	this->terminated = false;
@@ -1720,7 +1720,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->sqlDb = new FILE_LINE(29003) SqlDb_mysql();
 	this->sqlDb->setConnectParameters(host, user, password, database, port);
 	if(cloud_host && *cloud_host) {
-		this->sqlDb->setCloudParameters(cloud_host, cloud_token);
+		this->sqlDb->setCloudParameters(cloud_host, cloud_token, cloud_router);
 	}
 	pthread_mutex_init(&this->lock_mutex, NULL);
 	this->thread = (pthread_t)NULL;
@@ -2010,7 +2010,7 @@ string MySqlStore::QFileConfig::getDirectory() {
 }
 
 MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port,
-		       const char *cloud_host, const char *cloud_token) {
+		       const char *cloud_host, const char *cloud_token, bool cloud_router) {
 	this->host = host;
 	this->user = user;
 	this->password = password;
@@ -2022,6 +2022,7 @@ MySqlStore::MySqlStore(const char *host, const char *user, const char *password,
 	if(cloud_token) {
 		this->cloud_token = cloud_token;
 	}
+	this->cloud_router = cloud_router;
 	this->defaultConcatLimit = 400;
 	this->_sync_processes = 0;
 	this->enableTerminatingDirectly = false;
@@ -2668,7 +2669,7 @@ MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
 						   store ? store->password.c_str() : this->password.c_str(), 
 						   store ? store->database.c_str() : this->database.c_str(),
 						   store ? store->port : this->port,
-						   this->cloud_host.c_str(), this->cloud_token.c_str(),
+						   this->cloud_host.c_str(), this->cloud_token.c_str(), this->cloud_router,
 						   this->defaultConcatLimit);
 	process->setEnableTerminatingDirectly(this->enableTerminatingDirectly);
 	process->setEnableTerminatingIfEmpty(this->enableTerminatingIfEmpty);
@@ -2956,7 +2957,7 @@ SqlDb *createSqlObject(int connectId) {
 		} else {
 			sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port);
 			if(isCloud()) {
-				sqlDb->setCloudParameters(cloud_host, cloud_token);
+				sqlDb->setCloudParameters(cloud_host, cloud_token, cloud_router);
 			}
 		}
 	} else if(isSqlDriver("odbc")) {
@@ -5289,7 +5290,7 @@ string SqlDb_mysql::getPartDayName(string &limitDay_str) {
 void SqlDb_mysql::saveTimezoneInformation() {
 	string timezone_name = "UTC";
 	long timezone_offset = 0;
-	if(!opt_sql_time_utc && !is_cloud) {
+	if(!opt_sql_time_utc && !isCloud()) {
 		time_t t = time(NULL);
 		struct tm lt;
 		::localtime_r(&t, &lt);
