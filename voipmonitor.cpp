@@ -3463,6 +3463,9 @@ void main_term_read() {
 	delete calltable;
 	calltable = NULL;
 	
+	extern RTPstat rtp_stat;
+	rtp_stat.flush();
+	
 	pthread_mutex_destroy(&mysqlconnect_lock);
 	extern SqlDb *sqlDbSaveCall;
 	if(sqlDbSaveCall) {

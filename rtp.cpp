@@ -2583,3 +2583,9 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap, bool needLock) {
 		sqlStore->query_lock(query_str.c_str(), storeId);
 	}
 }
+
+void
+RTPstat::flush() {
+	flush_and_clean(maps[0]);
+	flush_and_clean(maps[1]);
+}
