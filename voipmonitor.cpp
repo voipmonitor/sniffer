@@ -568,7 +568,7 @@ volatile bool cloud_activecheck_inprogress = false;		//is currently checking in 
 volatile bool cloud_activecheck_sshclose = false;		//is forced close/re-open of ssh forward thread?
 timeval cloud_last_activecheck;					//Time of a last check request sent
 
-char cloud_host[256] = "";
+char cloud_host[256] = "cloud.voipmonitor.org";
 char cloud_url[1024] = "";
 char cloud_token[256] = "";
 bool cloud_router = false;
