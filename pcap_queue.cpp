@@ -462,6 +462,7 @@ u_char* pcap_block_store::getSaveBuffer(uint32_t block_counter) {
 	header.sensor_id = this->sensor_id;
 	header.counter = block_counter;
 	strcpy(header.ifname, this->ifname);
+	header.time_s = getTimeS();
 	memcpy_heapsafe(saveBuffer, saveBuffer,
 			&header, NULL,
 			sizeof(header),
@@ -543,6 +544,14 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	if(this->restoreBufferSize >= sizeof(pcap_block_store_header) &&
 	   ((pcap_block_store_header*)this->restoreBuffer)->version != PCAP_BLOCK_STORE_HEADER_VERSION) {
 		return(-6);
+	}
+	if(this->restoreBufferSize >= sizeof(pcap_block_store_header) &&
+	   ((pcap_block_store_header*)this->restoreBuffer)->time_s) {
+		if(abs(((pcap_block_store_header*)this->restoreBuffer)->time_s % 3600 - getTimeS() % 3600) > 30) {
+			return(-7);
+		} else {
+			((pcap_block_store_header*)this->restoreBuffer)->time_s = 0;
+		}
 	}
 	int sizeRestoreBuffer = this->getSizeSaveBufferFromRestoreBuffer();
 	if(this->restoreBufferSize - _size > (size_t)sizeRestoreBuffer) {
@@ -5521,6 +5530,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								case -6:
 									error = "bad version - sender and receiver must be the same version";
 									break;
+								case -7:
+									error = "too different time between sender and receiver";
+									break;
 								default:
 									error = "unknow error";
 									break;
@@ -5529,9 +5541,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								offsetBuffer = bufferLen;
 							}
 							if(error) {
-								if(require_confirmation > 0) {
-									send(this->packetServerConnections[arg2]->socketClient, error, strlen(error), 0);
-								}
+								send(this->packetServerConnections[arg2]->socketClient, error, strlen(error), 0);
 								blockStore->destroyRestoreBuffer();
 								syncBeginBlock = true;
 								u_long actTimeMS = getTimeMS();
@@ -6101,6 +6111,7 @@ string PcapQueue_readFromFifo::getCpuUsage(bool writeThread, bool preparePstatDa
 bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) {
 	++block_counter;
 	bool rslt = false;
+	unsigned counterSleep = 0;
 	while(!TERMINATING) {
 		size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
 		u_char *saveBuffer = blockStore->getSaveBuffer(block_counter);
@@ -6116,11 +6127,13 @@ bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) 
 						break;
 					} else {
 						syslog(LOG_ERR, "response from receiver: %s - try send block again", string(recv_data, recv_data_len).c_str());
-						sleep(1);
+						sleep(counterSleep < 10 ? 1 : 5);
+						++counterSleep;
 					}
 				} else {
 					syslog(LOG_ERR, "%s response from receiver - try send block again", recv_data_len ? "unknown" : "no");
-					sleep(1);
+					sleep(counterSleep < 10 ? 1 : 5);
+					++counterSleep;
 				}
 			} else {
 				break;
