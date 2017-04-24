@@ -547,7 +547,7 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	}
 	if(this->restoreBufferSize >= sizeof(pcap_block_store_header) &&
 	   ((pcap_block_store_header*)this->restoreBuffer)->time_s) {
-		if(abs(((pcap_block_store_header*)this->restoreBuffer)->time_s % 3600 - getTimeS() % 3600) > 30) {
+		if(abs((int)(((pcap_block_store_header*)this->restoreBuffer)->time_s % 3600) - (int)(getTimeS() % 3600)) > 30) {
 			return(-7);
 		} else {
 			((pcap_block_store_header*)this->restoreBuffer)->time_s = 0;
