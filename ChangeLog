@@ -1,3 +1,20 @@
+19.4 25.4.2017
+==============
+- new cloud protocol (not default yet)
+- fix set called / caller side for rtp streams in skinny [VS-592]
+- fix missing BYE packet when tcp/udp SIP packets are used within one dialog [VS-593]
+- make skinny port optional and allow multiple skinny ports [VS-597]
+- disable option pcap_queue_use_blocks for receiver mode if t2_boost is enabled [VS-600]
+- fix issue with fake gzip header inside tar.gz [VS-599]
+- fix skinny spool flush [VS-572]
+- fix issue when http & webrtc & ssl is configured - (add ip filters before enter to http & webrtc procedure) [VS-591]
+- do not abort voipmonitor process in case of pcapscan failure [VS-601]
+- imeplement mikrotik encapsulation (voipmonitor can now dissect mikrotik mirroring) [VS-603]
+- fix SIP registrations for some cases [VS-598]
+- flush rtp_stat when sniffer ends
+- check time synchronization between sender and receiver mode [VS-589]
+
+
 19.3 1.4.2017
 =============
 - Disable curl timeout when in cloud mode querying cloud.database
