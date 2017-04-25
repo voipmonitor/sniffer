@@ -705,18 +705,24 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 									 (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
 									 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
 					} else {
-						call->getPcapSip()->dump(header, packet, packetS->dlt);
+						call->getPcapSip()->dump(header, packet, packetS->dlt, false,
+									 (u_char*)packetS->data_(), packetS->datalen,
+									 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
 					}
 				}
 				break;
 			case TYPE_RTP:
 			case TYPE_RTCP:
 				if(call->getPcapRtp()->isOpen()){
-					call->getPcapRtp()->dump(header, packet, packetS->dlt);
+					call->getPcapRtp()->dump(header, packet, packetS->dlt, false,
+								 (u_char*)packetS->data_(), packetS->datalen,
+								 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
 				} else if(type == TYPE_RTP ? enable_save_rtp(call) : enable_save_rtcp(call)) {
 					string pathfilename = call->get_pathfilename(tsf_rtp);
 					if(call->getPcapRtp()->open(tsf_rtp, pathfilename.c_str(), call->useHandle, call->useDlt)) {
-						call->getPcapRtp()->dump(header, packet, packetS->dlt);
+						call->getPcapRtp()->dump(header, packet, packetS->dlt, false,
+									 (u_char*)packetS->data_(), packetS->datalen,
+									 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
 						if(verbosity > 3) { 
 							syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
 						}
@@ -731,7 +737,9 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 							      (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
 							      packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
 				} else {
-					call->getPcap()->dump(header, packet, packetS->dlt);
+					call->getPcap()->dump(header, packet, packetS->dlt, false,
+							      (u_char*)packetS->data_(), packetS->datalen,
+							      packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
 				}
 			}
 		}
