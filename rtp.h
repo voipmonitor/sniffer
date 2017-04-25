@@ -583,6 +583,7 @@ public:
 	}
 	void update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, double loss);
 	void flush_and_clean(map<uint32_t, node_t> *map, bool needLock = true);
+	void flush();
 
 private:
 	map<uint32_t, node_t>	saddr_map[2];

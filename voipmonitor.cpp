@@ -375,7 +375,12 @@ int opt_register_ignore_res_401 = 0;
 int opt_register_ignore_res_401_nonce_has_changed = 0;
 bool opt_sip_register_compare_sipcallerip = true;
 bool opt_sip_register_compare_sipcalledip = true;
+bool opt_sip_register_compare_to_domain = true;
+bool opt_sip_register_state_compare_from_num = true;
+bool opt_sip_register_state_compare_from_name = true;
+bool opt_sip_register_state_compare_from_domain = true;
 bool opt_sip_register_state_compare_digest_realm = true;
+bool opt_sip_register_state_compare_ua = false;
 bool opt_sip_register_save_all = false;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -566,7 +571,7 @@ volatile bool cloud_activecheck_inprogress = false;		//is currently checking in 
 volatile bool cloud_activecheck_sshclose = false;		//is forced close/re-open of ssh forward thread?
 timeval cloud_last_activecheck;					//Time of a last check request sent
 
-char cloud_host[256] = "";
+char cloud_host[256] = "cloud.voipmonitor.org";
 char cloud_url[1024] = "";
 char cloud_token[256] = "";
 bool cloud_router = false;
@@ -2598,7 +2603,7 @@ int main(int argc, char *argv[]) {
 		} else {
 			if(opt_database_backup) {
 				sqlStore = new FILE_LINE(42010) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, 
-									   cloud_host, cloud_token);
+									   cloud_host, cloud_token, cloud_router);
 				custom_headers_cdr = new FILE_LINE(42011) CustomHeaders(CustomHeaders::cdr);
 				custom_headers_message = new FILE_LINE(42012) CustomHeaders(CustomHeaders::message);
 				vm_pthread_create("database backup",
@@ -3461,6 +3466,9 @@ void main_term_read() {
 	delete calltable;
 	calltable = NULL;
 	
+	extern RTPstat rtp_stat;
+	rtp_stat.flush();
+	
 	pthread_mutex_destroy(&mysqlconnect_lock);
 	extern SqlDb *sqlDbSaveCall;
 	if(sqlDbSaveCall) {
@@ -3542,7 +3550,7 @@ void main_init_sqlstore() {
 	if(isSqlDriver("mysql")) {
 		if(opt_load_query_from_files != 2) {
 			sqlStore = new FILE_LINE(42037) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-								   cloud_host, cloud_token);
+								   cloud_host, cloud_token, cloud_router);
 			if(opt_save_query_to_files) {
 				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 			}
@@ -3555,7 +3563,7 @@ void main_init_sqlstore() {
 		}
 		if(opt_load_query_from_files) {
 			loadFromQFiles = new FILE_LINE(42039) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-									 cloud_host, cloud_token);
+									 cloud_host, cloud_token, cloud_router);
 			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
 		}
 		if(opt_load_query_from_files != 2) {
@@ -4482,7 +4490,7 @@ void test() {
 	case 306:
 		{
 		sqlStore = new FILE_LINE(42059) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-							   cloud_host, cloud_token);
+							   cloud_host, cloud_token, cloud_router);
 		for(int i = 0; i < 2; i++) {
 			if(isSetSpoolDir(i) &&
 			   CleanSpool::isSetCleanspoolParameters(i)) {
@@ -5296,7 +5304,12 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42294) cConfigItem_yesno("sip-register-ignore-res401-nonce-has-changed", &opt_register_ignore_res_401_nonce_has_changed));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerip", &opt_sip_register_compare_sipcallerip));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcalledip", &opt_sip_register_compare_sipcalledip));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-to_domain", &opt_sip_register_compare_to_domain));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_num", &opt_sip_register_state_compare_from_num));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_name", &opt_sip_register_state_compare_from_name));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_domain", &opt_sip_register_state_compare_from_domain));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_realm", &opt_sip_register_state_compare_digest_realm));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_ua", &opt_sip_register_state_compare_ua));
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
 		subgroup("MESSAGE");
@@ -7221,8 +7234,23 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sip-register-compare-sipcalledip", NULL))) {
 		opt_sip_register_compare_sipcalledip = yesno(value);
 	}
+	if((value = ini.GetValue("general", "sip-register-compare-to_domain", NULL))) {
+		opt_sip_register_compare_to_domain = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-compare-from_num", NULL))) {
+		opt_sip_register_state_compare_from_num = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-compare-from_name", NULL))) {
+		opt_sip_register_state_compare_from_name = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-compare-from_domain", NULL))) {
+		opt_sip_register_state_compare_from_domain = yesno(value);
+	}
 	if((value = ini.GetValue("general", "sip-register-state-compare-digest_realm", NULL))) {
 		opt_sip_register_state_compare_digest_realm = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-compare-ua", NULL))) {
+		opt_sip_register_state_compare_ua = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-save-all", NULL))) {
 		opt_sip_register_save_all = yesno(value);

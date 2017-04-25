@@ -67,7 +67,7 @@ public:
 	inline RegisterState(Call *call, Register *reg);
 	inline ~RegisterState();
 	inline void copyFrom(const RegisterState *src);
-	inline bool isEq(Call *call, Register *reg, bool useCmpUa);
+	inline bool isEq(Call *call, Register *reg);
 public:
 	u_int32_t state_from;
 	u_int32_t state_to;
@@ -98,7 +98,7 @@ public:
 	inline void shiftStates();
 	inline void expire(bool need_lock_states = true);
 	inline void updateLastState(Call *call);
-	inline bool eqLastState(Call *call, bool useCmpUa);
+	inline bool eqLastState(Call *call);
 	inline void clean_all();
 	inline void saveStateToDb(RegisterState *state, bool enableBatchIfPossible = true);
 	inline void saveFailedToDb(RegisterState *state, bool force = false, bool enableBatchIfPossible = true);

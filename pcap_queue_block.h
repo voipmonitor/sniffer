@@ -14,7 +14,7 @@
 
 #define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_store"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
-#define PCAP_BLOCK_STORE_HEADER_VERSION		2
+#define PCAP_BLOCK_STORE_HEADER_VERSION		3
 
 
 extern int opt_enable_ss7;
@@ -149,6 +149,7 @@ struct pcap_block_store {
 			this->checksum = 0;
 			this->counter = 0;
 			this->require_confirmation = opt_pcap_queues_mirror_require_confirmation;
+			this->time_s = 0;
 		}
 		char title[PCAP_BLOCK_STORE_HEADER_STRING_LEN];
 		uint8_t version;
@@ -162,6 +163,7 @@ struct pcap_block_store {
 		uint32_t checksum;
 		uint32_t counter;
 		uint8_t require_confirmation;
+		uint32_t time_s;
 	};
 	pcap_block_store(header_mode hm = plus) {
 		this->hm = hm;
