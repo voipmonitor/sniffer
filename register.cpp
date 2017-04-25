@@ -10,7 +10,6 @@
 #define NEW_REGISTER_NEW_RECORD_FAILED 120
 #define NEW_REGISTER_ERASE_FAILED_TIMEOUT 60
 #define NEW_REGISTER_ERASE_TIMEOUT 2*3600
-#define NEW_REGISTER_USE_CMP_UA_STATE false
 
 
 extern char sql_cdr_ua_table[256];
@@ -22,8 +21,12 @@ extern int opt_enable_fraud;
 extern bool opt_sip_register_compare_sipcallerip;
 extern bool opt_sip_register_compare_sipcalledip;
 extern bool opt_sip_register_compare_to_domain;
+
+extern bool opt_sip_register_state_compare_from_num;
+extern bool opt_sip_register_state_compare_from_name;
 extern bool opt_sip_register_state_compare_from_domain;
 extern bool opt_sip_register_state_compare_digest_realm;
+extern bool opt_sip_register_state_compare_ua;
 
 Registers registers;
 
@@ -156,28 +159,30 @@ void RegisterState::copyFrom(const RegisterState *src) {
 	ua = REG_NEW_STR(src->ua);
 }
 
-bool RegisterState::isEq(Call *call, Register *reg, bool useCmpUa) {
+bool RegisterState::isEq(Call *call, Register *reg) {
 	/*
 	if(state == convRegisterState(call)) cout << "ok state" << endl;
 	//if(REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, call->contact_num)) cout << "ok contact_num" << endl;
 	//if(REG_EQ_STR(contact_domain == EQ_REG ? reg->contact_domain : contact_domain, call->contact_domain)) cout << "ok contact_domain" << endl;
-	if(REG_EQ_STR(from_num == EQ_REG ? reg->from_num : from_num, call->caller)) cout << "ok from_num" << endl;
-	if(REG_EQ_STR(from_name == EQ_REG ? reg->from_name : from_name, call->callername)) cout << "ok from_name" << endl;
+	if(!opt_sip_register_state_compare_from_num) cout << "skip from_num" << endl;
+	else if(REG_EQ_STR(from_num == EQ_REG ? reg->from_num : from_num, call->caller)) cout << "ok from_num" << endl;
+	if(!opt_sip_register_state_compare_from_name) cout << "skip from_name" << endl;
+	else if(REG_EQ_STR(from_name == EQ_REG ? reg->from_name : from_name, call->callername)) cout << "ok from_name" << endl;
 	if(!opt_sip_register_state_compare_from_domain) cout << "skip from_domain" << endl;
 	else if(REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, call->caller_domain)) cout << "ok from_domain" << endl;
 	if(!opt_sip_register_state_compare_digest_realm) cout << "skip digest_realm" << endl;
 	else if(REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, call->digest_realm)) cout << "ok digest_realm" << endl;
-	if(!useCmpUa) cout << "skip ua" << endl;
+	if(!opt_sip_register_state_compare_ua) cout << "skip ua" << endl;
 	else if(REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua)) cout << "ok ua" << endl;
 	*/
 	return(state == convRegisterState(call) &&
 	       //REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, call->contact_num) &&
 	       //REG_EQ_STR(contact_domain == EQ_REG ? reg->contact_domain : contact_domain, call->contact_domain) &&
-	       REG_EQ_STR(from_num == EQ_REG ? reg->from_num : from_num, call->caller) &&
-	       REG_EQ_STR(from_name == EQ_REG ? reg->from_name : from_name, call->callername) &&
+	       (!opt_sip_register_state_compare_from_num || REG_EQ_STR(from_num == EQ_REG ? reg->from_num : from_num, call->caller)) &&
+	       (!opt_sip_register_state_compare_from_name || REG_EQ_STR(from_name == EQ_REG ? reg->from_name : from_name, call->callername)) &&
 	       (!opt_sip_register_state_compare_from_domain || REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, call->caller_domain)) &&
 	       (!opt_sip_register_state_compare_digest_realm || REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, call->digest_realm)) &&
-	       (!useCmpUa || REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua)) &&
+	       (!opt_sip_register_state_compare_ua || REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua)) &&
 	       id_sensor == call->useSensorId);
 }
 
@@ -239,12 +244,12 @@ void Register::addState(Call *call) {
 	bool updateRsOk = false;
 	bool updateRsFailedOk = false;
 	if(convRegisterState(call) != rs_Failed) {
-		if(eqLastState(call, NEW_REGISTER_USE_CMP_UA_STATE)) {
+		if(eqLastState(call)) {
 			updateLastState(call);
 			updateRsOk = true;
 		} else if(countStates > 1 &&
 			  states[0]->state == rs_Failed &&
-			  states[1]->isEq(call, this, NEW_REGISTER_USE_CMP_UA_STATE)) {
+			  states[1]->isEq(call, this)) {
 				RegisterState *state = states[1];
 				states[1] = states[0];
 				states[0] = state;
@@ -252,13 +257,13 @@ void Register::addState(Call *call) {
 				updateRsOk = true;
 		}
 	} else {
-		if(eqLastState(call, NEW_REGISTER_USE_CMP_UA_STATE)) {
+		if(eqLastState(call)) {
 			updateLastState(call);
 			updateRsFailedOk = true;
 		} else if(countStates > 1) {
 			for(unsigned i = 1; i < countStates; i++) {
 				if(states[i]->state == rs_Failed) {
-					if(states[i]->isEq(call, this, NEW_REGISTER_USE_CMP_UA_STATE)) {
+					if(states[i]->isEq(call, this)) {
 						RegisterState *failedState = states[i];
 						for(unsigned j = i; j > 0; j--) {
 							states[j] = states[j - 1];
@@ -342,9 +347,9 @@ void Register::updateLastState(Call *call) {
 	}
 }
 
-bool Register::eqLastState(Call *call, bool useCmpUa) { 
+bool Register::eqLastState(Call *call) { 
 	RegisterState *state = states_last();
-	if(state && state->isEq(call, this, useCmpUa)) {
+	if(state && state->isEq(call, this)) {
 		return(true);
 	}
 	return(false);
