@@ -3867,25 +3867,44 @@ inline void process_packet_other_inline(packet_s_stack *packetS) {
 	string dissect_rslt;
 	ws_dissect_packet(packetS->header_pt, packetS->packet, packetS->dlt, &dissect_rslt);
 	if(!dissect_rslt.empty()) {
-		Ss7::sParseData parseData;
-		if(parseData.parse(packetS) && parseData.isOk()) {
-			Ss7 *ss7 = NULL;
-			string ss7_id = parseData.ss7_id();
-			calltable->lock_process_ss7_listmap();
-			ss7 = calltable->find_by_ss7_id(&ss7_id);
-			if(ss7 && parseData.isup_message_type == SS7_IAM) {
-				ss7->pushToQueue(&ss7_id);
-				ss7 = NULL;
+		vector<size_t> sctp_pos;
+		size_t pos = 0;
+		while((pos = dissect_rslt.find("\"sctp\": {", pos + 1)) != string::npos) {
+			sctp_pos.push_back(pos);
+		}
+		vector<string> dissect_rslts;
+		vector<string*> dissect_rslts_pt;
+		if(sctp_pos.size() <= 1) {
+			dissect_rslts_pt.push_back(&dissect_rslt);
+		} else {
+			for(size_t i = 0; i < sctp_pos.size(); i++) {
+				dissect_rslts.push_back(dissect_rslt.substr(sctp_pos[i], i < sctp_pos.size() - 1 ? sctp_pos[i + 1] - sctp_pos[i] : string::npos));
 			}
-			if(ss7) {
-				ss7->processData(packetS, &parseData);
-				if(parseData.isup_message_type == SS7_RLC) {
+			for(size_t i = 0; i < dissect_rslts.size(); i++) {
+				dissect_rslts_pt.push_back(&dissect_rslts[i]);
+			}
+		}
+		for(size_t i = 0; i < dissect_rslts_pt.size(); i++) {
+			Ss7::sParseData parseData;
+			if(parseData.parse(packetS, dissect_rslts_pt[i]->c_str()) && parseData.isOk()) {
+				Ss7 *ss7 = NULL;
+				string ss7_id = parseData.ss7_id();
+				calltable->lock_process_ss7_listmap();
+				ss7 = calltable->find_by_ss7_id(&ss7_id);
+				if(ss7 && parseData.isup_message_type == SS7_IAM) {
 					ss7->pushToQueue(&ss7_id);
+					ss7 = NULL;
 				}
-			} else if(parseData.isup_message_type == SS7_IAM) {
-				ss7 = calltable->add_ss7(packetS, &parseData);
+				if(ss7) {
+					ss7->processData(packetS, &parseData);
+					if(parseData.isup_message_type == SS7_RLC) {
+						ss7->pushToQueue(&ss7_id);
+					}
+				} else if(parseData.isup_message_type == SS7_IAM) {
+					ss7 = calltable->add_ss7(packetS, &parseData);
+				}
+				calltable->unlock_process_ss7_listmap();
 			}
-			calltable->unlock_process_ss7_listmap();
 		}
 	}
 }

@@ -1010,7 +1010,7 @@ public:
 			mtp3_dpc = 0;
 			isup_cause_indicator = 0;
 		}
-		bool parse(struct packet_s_stack *packetS);
+		bool parse(struct packet_s_stack *packetS, const char *dissect_rslt = NULL);
 		string ss7_id() {
 			if(!isOk()) {
 				return("");

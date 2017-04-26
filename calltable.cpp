@@ -4491,30 +4491,35 @@ void adjustUA(char *ua) {
 }
 
 
-bool Ss7::sParseData::parse(packet_s_stack *packetS) {
+bool Ss7::sParseData::parse(packet_s_stack *packetS, const char *dissect_rslt) {
 	extern void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt);
-	string dissect_rslt;
-	ws_dissect_packet(packetS->header_pt, packetS->packet, packetS->dlt, &dissect_rslt);
-	if(!dissect_rslt.empty()) {
-		gettag_json(dissect_rslt.c_str(), "isup.message_type", &isup_message_type, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "isup.cic", &isup_cic, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "isup.satellite_indicator", &isup_satellite_indicator, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "isup.echo_control_device_indicator", &isup_echo_control_device_indicator, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "isup.calling_partys_category", &isup_calling_partys_category, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "isup.calling_party_nature_of_address_indicator", &isup_calling_party_nature_of_address_indicator, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "isup.ni_indicator", &isup_ni_indicator, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "isup.address_presentation_restricted_indicator", &isup_address_presentation_restricted_indicator, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "isup.screening_indicator", &isup_screening_indicator, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "isup.transmission_medium_requirement", &isup_transmission_medium_requirement, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "isup.called_party_nature_of_address_indicator", &isup_called_party_nature_of_address_indicator, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "isup.inn_indicator", &isup_inn_indicator, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "m3ua.protocol_data_opc", &m3ua_protocol_data_opc, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "m3ua.protocol_data_dpc", &m3ua_protocol_data_dpc, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "mtp3.opc", &mtp3_opc, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "mtp3.dpc", &mtp3_dpc, UINT_MAX);
-		gettag_json(dissect_rslt.c_str(), "e164.called_party_number.digits", &e164_called_party_number_digits);
-		gettag_json(dissect_rslt.c_str(), "e164.calling_party_number.digits", &e164_calling_party_number_digits);
-		gettag_json(dissect_rslt.c_str(), "isup.cause_indicator", &isup_cause_indicator, UINT_MAX);
+	string dissect_rslt_str;
+	if(!dissect_rslt) {
+		ws_dissect_packet(packetS->header_pt, packetS->packet, packetS->dlt, &dissect_rslt_str);
+		if(!dissect_rslt_str.empty()) {
+			dissect_rslt = dissect_rslt_str.c_str();
+		}
+	}
+	if(dissect_rslt) {
+		gettag_json(dissect_rslt, "isup.message_type", &isup_message_type, UINT_MAX);
+		gettag_json(dissect_rslt, "isup.cic", &isup_cic, UINT_MAX);
+		gettag_json(dissect_rslt, "isup.satellite_indicator", &isup_satellite_indicator, UINT_MAX);
+		gettag_json(dissect_rslt, "isup.echo_control_device_indicator", &isup_echo_control_device_indicator, UINT_MAX);
+		gettag_json(dissect_rslt, "isup.calling_partys_category", &isup_calling_partys_category, UINT_MAX);
+		gettag_json(dissect_rslt, "isup.calling_party_nature_of_address_indicator", &isup_calling_party_nature_of_address_indicator, UINT_MAX);
+		gettag_json(dissect_rslt, "isup.ni_indicator", &isup_ni_indicator, UINT_MAX);
+		gettag_json(dissect_rslt, "isup.address_presentation_restricted_indicator", &isup_address_presentation_restricted_indicator, UINT_MAX);
+		gettag_json(dissect_rslt, "isup.screening_indicator", &isup_screening_indicator, UINT_MAX);
+		gettag_json(dissect_rslt, "isup.transmission_medium_requirement", &isup_transmission_medium_requirement, UINT_MAX);
+		gettag_json(dissect_rslt, "isup.called_party_nature_of_address_indicator", &isup_called_party_nature_of_address_indicator, UINT_MAX);
+		gettag_json(dissect_rslt, "isup.inn_indicator", &isup_inn_indicator, UINT_MAX);
+		gettag_json(dissect_rslt, "m3ua.protocol_data_opc", &m3ua_protocol_data_opc, UINT_MAX);
+		gettag_json(dissect_rslt, "m3ua.protocol_data_dpc", &m3ua_protocol_data_dpc, UINT_MAX);
+		gettag_json(dissect_rslt, "mtp3.opc", &mtp3_opc, UINT_MAX);
+		gettag_json(dissect_rslt, "mtp3.dpc", &mtp3_dpc, UINT_MAX);
+		gettag_json(dissect_rslt, "e164.called_party_number.digits", &e164_called_party_number_digits);
+		gettag_json(dissect_rslt, "e164.calling_party_number.digits", &e164_calling_party_number_digits);
+		gettag_json(dissect_rslt, "isup.cause_indicator", &isup_cause_indicator, UINT_MAX);
 		return(true);
 	}
 	return(false);
