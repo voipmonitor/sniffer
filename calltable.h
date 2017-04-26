@@ -1122,6 +1122,8 @@ public:
 	u_int64_t last_time_us;
 	unsigned rel_cause_indicator;
 	PcapDumper pcap;
+private:
+	struct timeval last_dump_ts;
 };
 
 

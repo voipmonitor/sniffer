@@ -4603,7 +4603,11 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 		pcap.open(tsf_ss7, pathfilename.c_str(), useHandle, useDlt);
 	}
 	if(pcap.isOpen()) {
-		pcap.dump(packetS->header_pt, packetS->packet, packetS->dlt);
+		if(packetS->header_pt->ts.tv_sec != last_dump_ts.tv_sec ||
+		   packetS->header_pt->ts.tv_usec != last_dump_ts.tv_usec) {
+			pcap.dump(packetS->header_pt, packetS->packet, packetS->dlt);
+			last_dump_ts = packetS->header_pt->ts;
+		}
 	}
 }
 
@@ -4750,6 +4754,8 @@ void Ss7::init() {
 	rlc_time_us = 0;
 	last_time_us = 0;
 	rel_cause_indicator = UINT_MAX;
+	last_dump_ts.tv_sec = 0;
+	last_dump_ts.tv_usec = 0;
 }
 
 
