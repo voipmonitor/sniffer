@@ -513,6 +513,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	use_removeRtp = false;
 	hash_counter = 0;
 	use_rtcp_mux = false;
+	use_sdp_sendonly = false;
 	rtp_from_multiple_sensors = false;
 	
 	is_ssl = false;
@@ -2650,7 +2651,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(connect_time) {
 		cdr.add(duration() - (connect_time - first_packet_time), "connect_duration");
 	}
-	if(existsColumns.cdr_last_rtp_from_end) {
+	if(existsColumns.cdr_last_rtp_from_end && !use_sdp_sendonly) {
 		if(last_rtp_a_packet_time) {
 			cdr.add(last_packet_time - last_rtp_a_packet_time, "a_last_rtp_from_end");
 		}

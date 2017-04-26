@@ -1406,6 +1406,9 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, in_addr_t *addr, unsigned s
 		*rtcp_mux = 1;
 		call->use_rtcp_mux = true;
 	}
+	if(memmem(sdp_text, sdp_text_len, "a=sendonly", 10)) {
+		call->use_sdp_sendonly = true;
+	}
 	return 0;
 }
 

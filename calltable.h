@@ -637,7 +637,7 @@ public:
 	 * this time is used for calculating lenght of the call
 	 *
 	*/
-	void set_last_packet_time(time_t mtime) { last_packet_time = mtime; };
+	void set_last_packet_time(time_t mtime) { if(mtime > last_packet_time) last_packet_time = mtime; };
 
 	/**
 	 * @brief get first time of the the packet which belongs to this call
@@ -943,7 +943,8 @@ public:
 	bool error_negative_payload_length;
 	bool use_removeRtp;
 	volatile int hash_counter;
-	volatile bool use_rtcp_mux;
+	bool use_rtcp_mux;
+	bool use_sdp_sendonly;
 	bool rtp_from_multiple_sensors;
 	volatile int in_preprocess_queue_before_process_packet;
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at;
