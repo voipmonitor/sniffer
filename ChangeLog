@@ -1,3 +1,9 @@
+19.4.2 27.4.2017
+================
+- dump ss7 fix
+- fix incorrect report about last RTP ends before last SIP packet in case it was call put on hold [VS-609]
+
+
 19.4.1 26.4.2017
 ================
 - fix opt_rtp_firstleg option (deprecated) [VS-610]
