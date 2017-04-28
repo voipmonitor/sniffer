@@ -5390,17 +5390,26 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 			u_char *packet = new FILE_LINE(26018) u_char[header->caplen];
 			memcpy(packet, HPP(header_packet), header->caplen);
 			unsigned dataoffset = (u_char*)ppd.data - HPP(header_packet);
-			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-				false, 
-				#if USE_PACKET_NUMBER
-				packet_counter,
-				#endif
-				ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
-				ppd.datalen, dataoffset, 
-				handle_index, header, packet, true,
-				ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_offset),
-				NULL, 0, global_pcap_dlink, opt_id_sensor,
-				false);
+			if(opt_enable_ssl && 
+			   ppd.header_ip && ppd.header_ip->protocol == IPPROTO_TCP &&
+			   (isSslIpPort(htonl(ppd.header_ip->saddr), htons(ppd.header_udp->source)) ||
+			    isSslIpPort(htonl(ppd.header_ip->daddr), htons(ppd.header_udp->dest)))) {
+				tcpReassemblySsl->push_tcp(header, (iphdr2*)(packet + ppd.header_ip_offset), packet, true,
+							   NULL, 0, false,
+							   0, global_pcap_dlink, opt_id_sensor);
+			} else {
+				preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+					false, 
+					#if USE_PACKET_NUMBER
+					packet_counter,
+					#endif
+					ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
+					ppd.datalen, dataoffset, 
+					handle_index, header, packet, true,
+					ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_offset),
+					NULL, 0, global_pcap_dlink, opt_id_sensor,
+					false);
+			}
 		}
 	}
 	if(header_packet) {
