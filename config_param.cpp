@@ -3,6 +3,8 @@
 #include <dirent.h>
 #include <iomanip>
 #include <limits.h>
+#include <algorithm>
+#include <ctype.h>
 
 #include "config_param.h"
 #include "voipmonitor.h"
@@ -313,6 +315,15 @@ string cConfigItem_yesno::getValueStr(bool /*configFile*/) {
 	return(val ? "yes" : "no");
 }
 
+string cConfigItem_yesno::normalizeStringValueForCmp(string value) {
+	int _value;
+	if(getValueFromMapValues(value.c_str(), &_value)) {
+		return(intToString(_value));
+	} else {
+		return(intToString(yesno(value.c_str())));
+	}
+}
+
 bool cConfigItem_yesno::setParamFromConfigFile(CSimpleIniA *ini) {
 	return(setParamFromValueStr(getValueFromConfigFile(ini)));
 }
@@ -446,6 +457,17 @@ string cConfigItem_integer::getValueStr(bool /*configFile*/) {
 	ostringstream outStr;
 	outStr << val;
 	return(outStr.str());
+}
+
+string cConfigItem_integer::normalizeStringValueForCmp(string value) {
+	int _value;
+	if(getValueFromMapValues(value.c_str(), &_value)) {
+		return(intToString(_value));
+	}
+	if(value == "no") {
+		return("0");
+	}
+	return(value);
 }
 
 bool cConfigItem_integer::setParamFromConfigFile(CSimpleIniA *ini) {
@@ -652,13 +674,17 @@ string cConfigItem_string::getValue() {
 	return("");
 }
 
-string cConfigItem_string::getValueStr(bool /*configFile*/) {
+string cConfigItem_string::getValueStr(bool configFile) {
 	ostringstream outStr;
 	if(param_vect_str) {
 		int counter = 0;
 		for(vector<string>::iterator iter = param_vect_str->begin(); iter != param_vect_str->end(); iter++) {
 			if(counter) {
-				outStr << explodeSeparator;
+				if(configFile) {
+					outStr << endl << config_name << " = ";
+				} else {
+					outStr << explodeSeparator;
+				}
 			}
 			outStr << *iter;
 			++counter;
@@ -679,8 +705,43 @@ string cConfigItem_string::getValueStr(bool /*configFile*/) {
 	return(outStr.str());
 }
 
+list<string> cConfigItem_string::getValueListStr() {
+	list<string> l;
+	if(param_vect_str) {
+		for(vector<string>::iterator iter = param_vect_str->begin(); iter != param_vect_str->end(); iter++) {
+			l.push_back(*iter);
+		}
+	} else {
+		l.push_back(getValueStr());
+	}
+	return(l);
+}
+
+string cConfigItem_string::normalizeStringValueForCmp(string value) {
+	if(param_vect_str && !explodeSeparator.empty()) {
+		vector<string> value_vect = split(value.c_str(), explodeSeparator.c_str(), true);
+		string rslt;
+		for(vector<string>::iterator iter = value_vect.begin(); iter != value_vect.end(); iter++) {
+			if(!rslt.empty()) {
+				rslt += explodeSeparator;
+			}
+			rslt += *iter;
+		}
+		return(rslt);
+	}
+	return(value);
+}
+
+bool cConfigItem_string::enableMultiValues() {
+	return(param_vect_str && !explodeSeparator.empty());
+}
+
 bool cConfigItem_string::setParamFromConfigFile(CSimpleIniA *ini) {
-	return(setParamFromValueStr(getValueFromConfigFile(ini)));
+	if(param_vect_str) {
+		return(setParamFromValuesStr(getValuesFromConfigFile(ini)));
+	} else {
+		return(setParamFromValueStr(getValueFromConfigFile(ini)));
+	}
 }
 
 bool cConfigItem_string::setParamFromValueStr(string value_str) {
@@ -709,6 +770,20 @@ bool cConfigItem_string::setParamFromValueStr(string value_str) {
 			initBeforeSet();
 			*param_vect_str = split(value, explodeSeparator.c_str());
 		}
+	}
+	return(ok > 0);
+}
+
+bool cConfigItem_string::setParamFromValuesStr(vector<string> list_values_str) {
+	if(!param_vect_str ||
+	   list_values_str.empty()) {
+		return(false);
+	}
+	int ok = 0;
+	initBeforeSet();
+	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
+		param_vect_str->push_back(*iter);
+		++ok;
 	}
 	return(ok > 0);
 }
@@ -794,6 +869,16 @@ string cConfigItem_ports::getValueStr(bool configFile) {
 	return(outStr.str());
 }
 
+list<string> cConfigItem_ports::getValueListStr() {
+	list<string> l;
+	for(unsigned i = 0; i < 65535; i++) {
+		if(param_port_matrix[i]) {
+			l.push_back(intToString(i));
+		}
+	}
+	return(l);
+}
+
 bool cConfigItem_ports::setParamFromConfigFile(CSimpleIniA *ini) {
 	return(setParamFromValuesStr(getValuesFromConfigFile(ini)));
 }
@@ -865,6 +950,21 @@ string cConfigItem_hosts::getValueStr(bool configFile) {
 		}
 	}
 	return(outStr.str());
+}
+
+list<string> cConfigItem_hosts::getValueListStr() {
+	list<string> l;
+	if(param_adresses) {
+		for(vector<u_int32_t>::iterator iter = param_adresses->begin(); iter != param_adresses->end(); iter++) {
+			l.push_back(inet_ntostring(*iter));
+		}
+	}
+	if(param_nets) {
+		for(vector<d_u_int32_t>::iterator iter = param_nets->begin(); iter != param_nets->end(); iter ++) {
+			l.push_back(inet_ntostring((*iter)[0]) + "/" + intToString((*iter)[1]));
+		}
+	}
+	return(l);
 }
 
 bool cConfigItem_hosts::setParamFromConfigFile(CSimpleIniA *ini) {
@@ -998,6 +1098,23 @@ string cConfigItem_ip_port_str_map::getValueStr(bool configFile) {
 	return(outStr.str());
 }
 
+list<string> cConfigItem_ip_port_str_map::getValueListStr() {
+	list<string> l;
+	for(map<d_u_int32_t, string>::iterator iter = param_ip_port_string_map->begin(); iter != param_ip_port_string_map->end(); iter++) {
+		d_u_int32_t ip_port = iter->first;
+		l.push_back(inet_ntostring(ip_port[0]) + ":" + intToString(ip_port[1]) + 
+			    (!iter->second.empty() ? " " + iter->second : ""));
+	}
+	return(l);
+}
+
+string cConfigItem_ip_port_str_map::normalizeStringValueForCmp(string value) {
+	find_and_replace(value, "  ", " ");
+	find_and_replace(value, " :", ":");
+	find_and_replace(value, ": ", ":");
+	return(value);
+}
+
 bool cConfigItem_ip_port_str_map::setParamFromConfigFile(CSimpleIniA *ini) {
 	return(setParamFromValuesStr(getValuesFromConfigFile(ini)));
 }
@@ -1075,6 +1192,19 @@ string cConfigItem_nat_aliases::getValueStr(bool configFile) {
 	return(outStr.str());
 }
 
+list<string> cConfigItem_nat_aliases::getValueListStr() {
+	list<string> l;
+	for(nat_aliases_t::iterator iter = param_nat_aliases->begin(); iter != param_nat_aliases->end(); iter++) {
+		l.push_back(inet_ntostring(htonl(iter->first)) + ":" + inet_ntostring(htonl(iter->second)));
+	}
+	return(l);
+}
+
+string cConfigItem_nat_aliases::normalizeStringValueForCmp(string value) {
+	find_and_replace(value, ":", " ");
+	return(value);
+}
+
 bool cConfigItem_nat_aliases::setParamFromConfigFile(CSimpleIniA *ini) {
 	return(setParamFromValuesStr(getValuesFromConfigFile(ini)));
 }
@@ -1150,6 +1280,18 @@ string cConfigItem_custom_headers::getValueStr(bool /*configFile*/) {
 	return(outStr.str());
 }
 
+string cConfigItem_custom_headers::normalizeStringValueForCmp(string value) {
+	vector<string> value_vect = split(value.c_str(), ";", true);
+	string rslt;
+	for(vector<string>::iterator iter = value_vect.begin(); iter != value_vect.end(); iter++) {
+		if(!rslt.empty()) {
+			rslt += ";";
+		}
+		rslt += *iter;
+	}
+	return(rslt);
+}
+
 bool cConfigItem_custom_headers::setParamFromConfigFile(CSimpleIniA *ini) {
 	return(setParamFromValueStr(getValueFromConfigFile(ini)));
 }
@@ -1195,6 +1337,89 @@ cConfigItem_type_compress::cConfigItem_type_compress(const char* name, FileZipHa
  : cConfigItem_yesno(name, (int*)type_compress) {
 	addValues(FileZipHandler::getConfigMenuString().c_str());
 }
+
+
+string cConfigMap::cItem::valuesToStr() {
+	ostringstream outStr;
+	int counter = 0;
+	for(list<string>::iterator iter = values.begin(); iter != values.end(); iter++) {
+		if(counter) {
+			outStr << "; ";
+		}
+		outStr << *iter;
+		++counter;
+	}
+	return(outStr.str());
+}
+
+void cConfigMap::addItem(const char *name, const char *value) {
+	config_map[name].add(value);
+}
+
+bool cConfigMap::existsItem(const char *name) {
+	map<string, cItem>::iterator iter = config_map.find(name);
+	return(iter != config_map.end() && iter->second.values.size());
+}
+
+string cConfigMap::getFirstItem(const char *name, bool toLower) {
+	map<string, cItem>::iterator iter = config_map.find(name);
+	if(iter != config_map.end() && iter->second.values.size()) {
+		string rslt = *iter->second.values.begin();
+		if(toLower) {
+			std::transform(rslt.begin(), rslt.end(), rslt.begin(), ::tolower);
+		}
+		return(rslt);
+	}
+	return("");
+}
+
+string cConfigMap::getItems(const char *name, const char *separator, bool toLower) {
+	map<string, cItem>::iterator iter = config_map.find(name);
+	if(iter != config_map.end() && iter->second.values.size()) {
+		string rslt;
+		for(list<string>::iterator iter_l = iter->second.values.begin(); iter_l != iter->second.values.begin(); iter_l++) {
+			if(!rslt.empty()) {
+				rslt += ";";
+			}
+			rslt += *iter_l;
+		}
+		if(toLower) {
+			std::transform(rslt.begin(), rslt.end(), rslt.begin(), ::tolower);
+		}
+		return(rslt);
+	}
+	return("");
+}
+
+string cConfigMap::comp(cConfigMap *other, cConfig *config) {
+	ostringstream outStr;
+	map<string, cItem>::iterator iter1;
+	map<string, cItem>::iterator iter2;
+	for(iter1 = config_map.begin(); iter1 != config_map.end(); iter1++) {
+		iter2 = other->config_map.find(iter1->first);
+		if(iter2 == other->config_map.end()) {
+			outStr << "(++) " << iter1->first << endl;
+		} else if(!(iter1->second == iter2->second)) {
+			if(!config ||
+			   !config->testEqValues(iter1->first, iter1->second.values, iter2->second.values)) {
+				outStr << "(//) " << iter1->first 
+				       << "   " << iter1->second.valuesToStr()
+				       << " // " << iter2->second.valuesToStr() << endl;
+			}
+		}
+	}
+	for(iter2 = other->config_map.begin(); iter2 != other->config_map.end(); iter2++) {
+		if(iter2->first == "new-config") {
+			continue;
+		}
+		iter1 = config_map.find(iter2->first);
+		if(iter1 == config_map.end()) {
+			outStr << "(--) " << iter2->first << endl;
+		}
+	}
+	return(outStr.str());
+}
+
 
 cConfig::cConfig() {
 	defaultLevel = cConfigItem::levelNormal;
@@ -1280,7 +1505,7 @@ void cConfig::setDisableIfEnd() {
 	defaultDisableIf = "";
 }
 
-bool cConfig::loadFromConfigFileOrDirectory(const char *filename) {
+bool cConfig::loadFromConfigFileOrDirectory(const char *filename, bool silent) {
 	if(!file_exists(filename)) {
 		return(false);
 	}
@@ -1296,48 +1521,60 @@ bool cConfig::loadFromConfigFileOrDirectory(const char *filename) {
 				strcpy(filepathname, filename);
 				strcat(filepathname, "/");
 				strcat(filepathname, ent->d_name);
-				if(!loadFromConfigFile(filepathname)) {
+				if(!loadFromConfigFile(filepathname, NULL, silent)) {
 					return(false);
 				}
 			}
 		} else {
-			loadFromConfigFileError("Cannot access directory file %s!", filename);
+			if(!silent) {
+				loadFromConfigFileError("Cannot access directory file %s!", filename);
+			}
 			return(false);
 		}
 	} else {
-		return(loadFromConfigFile(filename));
+		return(loadFromConfigFile(filename, NULL, silent));
 	}
 	return(true);
 }
 
-bool cConfig::loadFromConfigFile(const char *filename, string *error) {
+bool cConfig::loadFromConfigFile(const char *filename, string *error, bool silent) {
 	if(error) {
 		*error = "";
 	}
-	if(verbosity > 1) { 
+	if(verbosity > 1 && !silent) { 
 		syslog(LOG_NOTICE, "Loading configuration from file %s", filename);
 	}
-	printf("Loading configuration from file %s ", filename);
+	if(!silent) {
+		printf("Loading configuration from file %s ", filename);
+	}
 	FILE *fp = fopen(filename, "rb");
 	if(!fp) {
-		loadFromConfigFileError("Cannot open / access config file %s!", filename, error);
+		if(!silent) {
+			loadFromConfigFileError("Cannot open / access config file %s!", filename, error);
+		}
 		return(false);
 	}
 	if(fseek(fp, 0, SEEK_END) == -1) {
-		loadFromConfigFileError("Cannot access config file %s!", filename, error);
+		if(!silent) {
+			loadFromConfigFileError("Cannot access config file %s!", filename, error);
+		}
 		fclose(fp);
 		return(false);
 	}
 	size_t fileSize = ftell(fp);
 	if(fileSize == 0) {
-		printf("WARNING - configuration file %s is empty\n", filename);
+		if(!silent) {
+			printf("WARNING - configuration file %s is empty\n", filename);
+		}
 		fclose(fp);
 		return(true);
 	}
 	size_t fileSizeWithGeneralHedaer = fileSize + 10;
 	char *fileContent = new FILE_LINE(2001) char[fileSizeWithGeneralHedaer];
 	if(!fileContent) {
-		loadFromConfigFileError("Cannot alloc memory for config file %s!", filename, error);
+		if(!silent) {
+			loadFromConfigFileError("Cannot alloc memory for config file %s!", filename, error);
+		}
 		fclose(fp);
 		return(false);
 
@@ -1347,7 +1584,9 @@ bool cConfig::loadFromConfigFile(const char *filename, string *error) {
 	fseek(fp, 0, SEEK_SET);
 	size_t readBytes = fread(fileContent + 10, sizeof(char), fileSize, fp);
 	if(readBytes != fileSize) {
-		loadFromConfigFileError("Cannot read data from config file %s!", filename, error);
+		if(!silent) {
+			loadFromConfigFileError("Cannot read data from config file %s!", filename, error);
+		}
 		fclose(fp);
 		return(false);
 	}
@@ -1359,7 +1598,9 @@ bool cConfig::loadFromConfigFile(const char *filename, string *error) {
 	
 	int rc = ini.LoadData(fileContent, readBytes + 10); //with "[general]\n" thats not included in uRead
 	if (rc != 0) {
-		loadFromConfigFileError("Loading config from file %s FAILED!", filename, error);
+		if(!silent) {
+			loadFromConfigFileError("Loading config from file %s FAILED!", filename, error);
+		}
 		return(false);
 	}
 	delete[] fileContent;
@@ -1367,7 +1608,9 @@ bool cConfig::loadFromConfigFile(const char *filename, string *error) {
 	string inistr;
 	rc = ini.Save(inistr);
 	if (rc != 0) {
-		loadFromConfigFileError("Preparing config from file %s FAILED!", filename, error);
+		if(!silent) {
+			loadFromConfigFileError("Preparing config from file %s FAILED!", filename, error);
+		}
 		return(false);
 	}
 	
@@ -1379,10 +1622,111 @@ bool cConfig::loadFromConfigFile(const char *filename, string *error) {
 	}
 	
 	if (rc != 0) {
-		loadFromConfigFileError("Evaluating config from file %s FAILED!", filename, error);
+		if(!silent) {
+			loadFromConfigFileError("Evaluating config from file %s FAILED!", filename, error);
+		}
 		return(false);
 	}
-	printf("OK\n");
+	if(!silent) {
+		printf("OK\n");
+	}
+	return(true);
+}
+
+bool cConfig::loadConfigMapConfigFileOrDirectory(cConfigMap *configMap, const char *filename) {
+	if(!file_exists(filename)) {
+		return(false);
+	}
+	if(is_dir((char*)filename)) {
+		DIR *dir = opendir(filename);
+		if(dir != NULL) {
+			struct dirent *ent;
+			while((ent = readdir(dir)) != NULL) {
+				if (ent->d_type != 0x8) {
+					continue;
+				}
+				char filepathname[1024];
+				strcpy(filepathname, filename);
+				strcat(filepathname, "/");
+				strcat(filepathname, ent->d_name);
+				if(!loadConfigMapFromConfigFile(configMap, filepathname)) {
+					return(false);
+				}
+			}
+		} else {
+			return(false);
+		}
+	} else {
+		return(loadConfigMapFromConfigFile(configMap, filename));
+	}
+	return(true);
+}
+
+bool cConfig::loadConfigMapFromConfigFile(cConfigMap *configMap, const char *filename) {
+	if(!GetFileSize(filename)) {
+		return(true);
+	}
+	FILE *fp = fopen(filename, "r");
+	if(!fp) {
+		return(false);
+	}
+	unsigned lineBufferSize = 100000;
+	char *lineBuffer = new char[lineBufferSize];
+	while(fgets(lineBuffer, lineBufferSize, fp)) {
+		char *pointerToBegin = lineBuffer;
+		while(*pointerToBegin == ' ' || *pointerToBegin == '\t') {
+			++pointerToBegin;
+		}
+		if(!isalnum(*pointerToBegin)) {
+			continue;
+		}
+		char *pointerToEnd = lineBuffer + strlen(lineBuffer) - 1;
+		while(pointerToEnd > pointerToBegin &&
+		      (*pointerToEnd == '\n' || *pointerToEnd == ' ' || *pointerToEnd == '\t')) {
+			*pointerToEnd = 0;
+			--pointerToEnd;
+		}
+		char *pointerToName = pointerToBegin;
+		char *pointerToSeparator = pointerToName + 1;
+		while(*pointerToSeparator && *pointerToSeparator != '=') {
+			++pointerToSeparator;
+		}
+		if(!*pointerToSeparator) {
+			continue;
+		}
+		string name = string(pointerToName, pointerToSeparator - pointerToName);
+		while(name[name.length() - 1] == ' ' || name[name.length() - 1] == '\t') {
+			name.resize(name.length() - 1);
+		}
+		char *pointerToValue = pointerToSeparator + 1;
+		while(*pointerToValue == ' ' || *pointerToValue == '\t') {
+			++pointerToValue;
+		}
+		if(!*pointerToValue) {
+			continue;
+		}
+		string value = string(pointerToValue);
+		size_t pos = value.find(" #");
+		if(pos == string::npos) {
+			pos = value.find("\t#");
+		}
+		if(pos != string::npos) {
+			value = value.substr(0, pos);
+			while(value[value.length() - 1] == ' ' || value[value.length() - 1] == '\t') {
+				value.resize(value.length() - 1);
+			}
+		}
+		if(!name.empty() && !value.empty()) {
+			name = getMainItemName(name.c_str());
+			map<string, cConfigItem*>::iterator iter = config_map.find(name);
+			if(iter == config_map.end() ||
+			   iter->second->enableMultiValues() ||
+			   !configMap->existsItem(name.c_str()))
+				configMap->addItem(name.c_str(), value.c_str());
+		}
+	}
+	delete [] lineBuffer;
+	fclose(fp);
 	return(true);
 }
 
@@ -1392,6 +1736,22 @@ void cConfig::loadFromConfigFileError(const char *errorString, const char *filen
 	printf("ERROR: %s\n", error_buff);
 	if(error) *error = error_buff;
 	syslog(LOG_ERR, "%s", error_buff);
+}
+
+cConfigMap cConfig::getConfigMap() {
+	cConfigMap configMap;
+	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
+		map<string, cConfigItem*>::iterator iter_map = config_map.find(*iter);
+		if(iter_map != config_map.end()) {
+			if(iter_map->second->set) {
+				list<string> l = iter_map->second->getValueListStr();
+				for(list<string>::iterator iter_l = l.begin(); iter_l != l.end(); iter_l++) {
+					configMap.addItem(iter->c_str(), iter_l->c_str());
+				}
+			}
+		}
+	}
+	return(configMap);
 }
 
 string cConfig::getContentConfig(bool configFile, bool putDefault) {
@@ -1579,4 +1939,54 @@ void cConfig::setHelp(const char *itemName, const char *help) {
 	if(iter != config_map.end()) {
 		iter->second->setHelp(help);
 	}
+}
+
+string cConfig::getMainItemName(const char *name) {
+	map<string, cConfigItem*>::iterator iter = config_map.find(name);
+	if(iter == config_map.end()) {
+		for(iter = config_map.begin(); iter != config_map.end(); iter++) {
+			list<string> *aliases = &iter->second->config_name_alias;
+			for(list<string>::iterator iter_alias = aliases->begin(); iter_alias != aliases->end(); iter_alias++) {
+				if(*iter_alias == name) {
+					return(iter->first);
+				}
+			}
+		}
+	}
+	return(name);
+}
+
+bool cConfig::testEqValues(const char *itemName, const char *value1, const char *value2) {
+	string value1_str = value1;
+	string value2_str = value2;
+	std::transform(value1_str.begin(), value1_str.end(), value1_str.begin(), ::tolower);
+	std::transform(value2_str.begin(), value2_str.end(), value2_str.begin(), ::tolower);
+	if(value1_str == value2_str) {
+		return(true);
+	}
+	map<string, cConfigItem*>::iterator iter = config_map.find(itemName);
+	if(iter == config_map.end()) {
+		return(false);
+	}
+	value1_str = iter->second->normalizeStringValueForCmp(value1_str);
+	value2_str = iter->second->normalizeStringValueForCmp(value2_str);
+	return(value1_str == value2_str);
+}
+
+bool cConfig::testEqValues(string itemName, list<string> values1, list<string> values2) {
+	if(values1.size() != values2.size()) {
+		return(false);
+	}
+	values1.sort();
+	values2.sort();
+	list<string>::iterator iter1 = values1.begin();
+	list<string>::iterator iter2 = values2.begin();
+	while(iter1 != values1.end() && iter2 != values2.end()) {
+		if(!testEqValues(itemName.c_str(), iter1->c_str(), iter2->c_str())) {
+			return(false);
+		}
+		++iter1;
+		++iter2;
+	}
+	return(true);
 }

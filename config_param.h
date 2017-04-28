@@ -51,6 +51,9 @@ public:
 	cConfigItem *setHelp(const char *help);
 	virtual string getValueStr(bool /*configFile*/ = false) { return(""); }
 	virtual int64_t getValueInt() { return(0); }
+	virtual list<string> getValueListStr() { list<string> l; l.push_back(getValueStr()); return(l); }
+	virtual string normalizeStringValueForCmp(string value) { return(value); }
+	virtual bool enableMultiValues() { return(false); }
 protected:
 	virtual bool setParamFromConfigFile(CSimpleIniA *ini) = 0;
 	virtual bool setParamFromValueStr(string value_str) = 0;
@@ -113,6 +116,7 @@ public:
 	int getValue();
 	string getValueStr(bool configFile = false);
 	int64_t getValueInt() { return(getValue()); }
+	string normalizeStringValueForCmp(string value);
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
@@ -182,6 +186,7 @@ public:
 	int64_t getValue();
 	string getValueStr(bool configFile = false);
 	int64_t getValueInt() { return(getValue()); }
+	string normalizeStringValueForCmp(string value);
 	int getMaximum() {
 		return(maximum);
 	}
@@ -275,12 +280,16 @@ public:
 	}
 	string getValue();
 	string getValueStr(bool configFile = false);
+	list<string> getValueListStr();
+	string normalizeStringValueForCmp(string value);
+	bool enableMultiValues();
 	bool isPassword() {
 	       return(password);
 	}
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
+	bool setParamFromValuesStr(vector<string> list_values_str);
 	void initBeforeSet();
 	void initParamPointers() {
 		param_str = NULL;
@@ -333,6 +342,8 @@ class cConfigItem_ports : public cConfigItem {
 public:
 	cConfigItem_ports(const char* name, char *port_matrix);
 	string getValueStr(bool configFile = false);
+	list<string> getValueListStr();
+	bool enableMultiValues() { return(true); }
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
@@ -352,6 +363,8 @@ class cConfigItem_hosts : public cConfigItem {
 public:
 	cConfigItem_hosts(const char* name, vector<u_int32_t> *adresses, vector<d_u_int32_t> *nets);
 	string getValueStr(bool configFile = false);
+	list<string> getValueListStr();
+	bool enableMultiValues() { return(true); }
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
@@ -391,6 +404,9 @@ class cConfigItem_ip_port_str_map : public cConfigItem {
 public:
 	cConfigItem_ip_port_str_map(const char* name, map<d_u_int32_t, string> *ip_port_string_map);
 	string getValueStr(bool configFile = false);
+	list<string> getValueListStr();
+	string normalizeStringValueForCmp(string value);
+	bool enableMultiValues() { return(true); }
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
@@ -410,6 +426,9 @@ class cConfigItem_nat_aliases : public cConfigItem {
 public:
 	cConfigItem_nat_aliases(const char* name, nat_aliases_t *nat_aliases);
 	string getValueStr(bool configFile = false);
+	list<string> getValueListStr();
+	string normalizeStringValueForCmp(string value);
+	bool enableMultiValues() { return(true); }
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
@@ -429,6 +448,7 @@ class cConfigItem_custom_headers : public cConfigItem {
 public:
 	cConfigItem_custom_headers(const char* name, vector<dstring> *custom_headers);
 	string getValueStr(bool configFile = false);
+	string normalizeStringValueForCmp(string value);
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
@@ -450,6 +470,43 @@ public:
 };
 
 
+class cConfigMap {
+public:
+	struct cItem {
+		list<string> values;
+		void add(const char *value) {
+			values.push_back(value);
+		}
+		string valuesToStr();
+		bool operator == (cItem& other) { 
+			if(this->values.size() != other.values.size()) {
+				return(false);
+			}
+			this->values.sort();
+			other.values.sort();
+			list<string>::iterator iter1 = this->values.begin();
+			list<string>::iterator iter2 = other.values.begin();
+			while(iter1 != this->values.end() && iter2 != other.values.end()) {
+				if(*iter1 != *iter2) {
+					return(false);
+				}
+				++iter1;
+				++iter2;
+			}
+			return(true);
+		}
+	};
+public:
+	void addItem(const char *name, const char *value);
+	bool existsItem(const char *name);
+	string getFirstItem(const char *name, bool toLower = false);
+	string getItems(const char *name, const char *separator = ";", bool toLower = false);
+	string comp(cConfigMap *other, class cConfig *config);
+public:
+	map<string, cItem> config_map;
+};
+
+
 class cConfig {
 public:
 	cConfig();
@@ -468,9 +525,12 @@ public:
 	void minorGroupIfNotSetEnd();
 	void setDisableIfBegin(string disableIf);
 	void setDisableIfEnd();
-	bool loadFromConfigFileOrDirectory(const char *filename);
-	bool loadFromConfigFile(const char *filename, string *error = NULL);
+	bool loadFromConfigFileOrDirectory(const char *filename, bool silent = false);
+	bool loadFromConfigFile(const char *filename, string *error = NULL, bool silent = false);
+	bool loadConfigMapConfigFileOrDirectory(cConfigMap *configMap, const char *filename);
+	bool loadConfigMapFromConfigFile(cConfigMap *configMap, const char *filename);
 	void evSetConfigItem(cConfigItem *configItem);
+	cConfigMap getConfigMap();
 	string getContentConfig(bool configFile = false, bool putDefaultValues = false);
 	string getJson(bool onlyIfSet = false);
 	void setFromJson(const char *jsonStr, bool onlyIfSet = false);
@@ -480,6 +540,9 @@ public:
 	void clearToDefaultValues();
 	void setDescription(const char *itemName, const char *description);
 	void setHelp(const char *itemName, const char *help);
+	string getMainItemName(const char *name);
+	bool testEqValues(const char *itemName, const char *value1, const char *value2);
+	bool testEqValues(string itemName, list<string> values1, list<string> values2);
 private:
 	void loadFromConfigFileError(const char *errorString, const char *filename, string *error = NULL);
 private:

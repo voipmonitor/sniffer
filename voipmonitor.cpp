@@ -2167,6 +2167,8 @@ int main(int argc, char *argv[]) {
 	skinnyportmatrix = new FILE_LINE(0) char[65537];
 	memset(skinnyportmatrix, 0, 65537);
 	skinnyportmatrix[2000] = 1;
+	ipaccountportmatrix = new FILE_LINE(42017) char[65537];
+	memset(ipaccountportmatrix, 0, 65537);
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&vm_rrd_lock, NULL);
@@ -2190,6 +2192,16 @@ int main(int argc, char *argv[]) {
 	
 	parse_command_line_arguments(argc, argv);
 	get_command_line_arguments();
+	
+	if(!useNewCONFIG) {
+		cConfigMap configMap;
+		CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, configfile);
+		CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, "/etc/voipmonitor/conf.d/");
+		if(configMap.getFirstItem("new-config", true) == "yes") {
+			useNewCONFIG = true;
+		}
+	}
+	
 	if(useNewCONFIG || printConfigStruct || printConfigFile) {
 		CONFIG.addConfigItems();
 	}
@@ -2197,6 +2209,17 @@ int main(int argc, char *argv[]) {
 		if(useNewCONFIG) {
 			CONFIG.loadFromConfigFileOrDirectory(configfile);
 			CONFIG.loadFromConfigFileOrDirectory("/etc/voipmonitor/conf.d/");
+			cConfigMap configMap1 = CONFIG.getConfigMap();
+			cConfigMap configMap2;
+			CONFIG.loadConfigMapConfigFileOrDirectory(&configMap2, configfile);
+			CONFIG.loadConfigMapConfigFileOrDirectory(&configMap2, "/etc/voipmonitor/conf.d/");
+			string diffConfigStr = configMap1.comp(&configMap2, &CONFIG);
+			if(!diffConfigStr.empty()) {
+				vector<string> diff = split(diffConfigStr.c_str(), "\n");
+				for(size_t i = 0; i < diff.size(); i++) {
+					syslog(LOG_WARNING, "MISMATCH CONFIGURATION PARAMETER : %s", diff[i].c_str());
+				}
+			}
 		} else {
 			int load_config(char *fname);
 			load_config(configfile);
@@ -2709,6 +2732,7 @@ int main(int argc, char *argv[]) {
 	delete [] httpportmatrix;
 	delete [] webrtcportmatrix;
 	delete [] skinnyportmatrix;
+	delete [] ipaccountportmatrix;
 	
 	delete regfailedcache;
 	
@@ -2888,11 +2912,6 @@ int main_init_read() {
 		initIpacc();
 	}
 	
-	if(opt_ipaccount and !ipaccountportmatrix) {
-		ipaccountportmatrix = new FILE_LINE(42017) char[65537];
-		memset(ipaccountportmatrix, 0, 65537);
-	}
-
 	if(opt_save_query_to_files) {
 		sqlStore->queryToFiles_start();
 		if(sqlStore_2) {
@@ -3356,11 +3375,6 @@ void main_term_read() {
 	if(sipSendSocket) {
 		delete sipSendSocket;
 		sipSendSocket = NULL;
-	}
-
-	if(ipaccountportmatrix) {
-		delete [] ipaccountportmatrix;
-		ipaccountportmatrix = NULL;
 	}
 
 	if(opt_cachedir[0] != '\0') {
@@ -4886,11 +4900,6 @@ string jeMallocStat(bool full) {
 // CONFIGURATION
 
 void cConfig::addConfigItems() {
- 
-	// TODO
-	// what is ?
-	//  - sip-register-active-nologbin
- 
 	group("sql");
 		subgroup("read only");
 			addConfigItem((new FILE_LINE(42068) cConfigItem_string("sqldriver", sql_driver, sizeof(sql_driver)))
@@ -6999,10 +7008,6 @@ int eval_config(string inistr) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		// reset default port 
 		for (; i != values.end(); ++i) {
-			if(!ipaccountportmatrix) {
-				ipaccountportmatrix = new FILE_LINE(42474) char[65537];
-				memset(ipaccountportmatrix, 0, 65537);
-			}
 			ipaccountportmatrix[atoi(i->pItem)] = 1;
 		}
 	}
@@ -8009,12 +8014,6 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {
 		opt_pcap_queue_store_queue_max_memory_size = atol(value) * 1024ull *1024ull;
 	}
-	/*
-	INDIRECT VALUE
-	if((value = ini.GetValue("general", "packetbuffer_thread_maxheap", NULL))) {
-		opt_pcap_queue_bypass_max_size = atol(value) * 1024 *1024;
-	}
-	*/
 	if((value = ini.GetValue("general", "packetbuffer_file_totalmaxsize", NULL))) {
 		opt_pcap_queue_store_queue_max_disk_size = atol(value) * 1024ull *1024ull;
 	}
@@ -8637,11 +8636,9 @@ int eval_config(string inistr) {
 	/*
 	packetbuffer default configuration
 	
-	packetbuffer_enable		= no
 	packetbuffer_block_maxsize	= 500	#kB
 	packetbuffer_block_maxtime	= 500	#ms
 	packetbuffer_total_maxheap	= 500	#MB
-	packetbuffer_thread_maxheap	= 500	#MB
 	packetbuffer_file_totalmaxsize	= 20000	#MB
 	packetbuffer_file_path		= /var/spool/voipmonitor/packetbuffer
 	packetbuffer_file_maxfilesize	= 1000	#MB
