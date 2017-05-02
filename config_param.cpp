@@ -622,6 +622,12 @@ string cConfigItem_float::getValueStr(bool /*configFile*/) {
 	return(outStr.str());
 }
 
+string cConfigItem_float::normalizeStringValueForCmp(string value) {
+	ostringstream outStr;
+	outStr << atof(value.c_str());
+	return(outStr.str());
+}
+
 bool cConfigItem_float::setParamFromConfigFile(CSimpleIniA *ini) {
 	return(setParamFromValueStr(getValueFromConfigFile(ini)));
 }
@@ -1412,9 +1418,27 @@ string cConfigMap::comp(cConfigMap *other, cConfig *config) {
 		if(iter2->first == "new-config") {
 			continue;
 		}
+		const char *obsoleteParameters[] = {
+			"autocleanspool",
+			"packetbuffer_enable",
+			"destroy_call_at_bye",
+			"sip-register-active-nologbin",
+			"mysqltable",
+			"vmbuffer",
+			NULL
+		};
 		iter1 = config_map.find(iter2->first);
 		if(iter1 == config_map.end()) {
-			outStr << "(--) " << iter2->first << endl;
+			bool obsolete = false;
+			for(size_t io = 0; obsoleteParameters[io]; ++io) {
+				if(string(obsoleteParameters[io]) == iter2->first) {
+					obsolete = true;
+					break;
+				}
+			}
+			if(!obsolete) {
+				outStr << "(--) " << iter2->first << endl;
+			}
 		}
 	}
 	return(outStr.str());

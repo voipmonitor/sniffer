@@ -246,6 +246,7 @@ public:
 	cConfigItem_float(const char *name, double *param);
 	double getValue();
 	string getValueStr(bool configFile = false);
+	string normalizeStringValueForCmp(string value);
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);

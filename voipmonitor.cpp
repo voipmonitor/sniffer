@@ -5107,7 +5107,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42172) cConfigItem_integer("pcap_queue_iface_qring_size", &opt_pcap_queue_iface_qring_size));
 					expert();
 					addConfigItem(new FILE_LINE(42173) cConfigItem_integer("pcap_queue_dequeu_method", &opt_pcap_queue_dequeu_method));
-					addConfigItem(new FILE_LINE(42174) cConfigItem_integer("pcap_queue_use_blocks", &opt_pcap_queue_use_blocks));
+					addConfigItem(new FILE_LINE(42174) cConfigItem_yesno("pcap_queue_use_blocks", &opt_pcap_queue_use_blocks));
 					addConfigItem((new FILE_LINE(42175) cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
 						->setMultiple(1024));
 					addConfigItem(new FILE_LINE(42176) cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
