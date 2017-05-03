@@ -5835,6 +5835,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"sipports", 1, 0, 'Y'},
 	    {"skinny", 0, 0, 200},
 	    {"skinnyports", 1, 0, 199},
+	    {"ignorertcpjitter", 1, 0, 198},
 	    {"mono", 0, 0, 201},
 	    {"untar-gui", 1, 0, 202},
 	    {"unlzo-gui", 1, 0, 205},
@@ -5906,6 +5907,9 @@ void get_command_line_arguments() {
 				printf ("option %s\n", long_options[option_index].name);
 				break;
 			*/
+			case 198:
+				opt_ignoreRTCPjitter = atoi(optarg);
+				break;
 			case 199:
 				{
 					skinnyportmatrix[2000] = 0;
@@ -6779,6 +6783,9 @@ bool check_complete_parameters() {
                         "\n"
                         " --config-file=<filename>\n"
                         "      Specify configuration file full path.  Suggest /etc/voipmonitor.conf\n"
+                        "\n"
+                        " --ignorertcpjitter=<value>\n"
+                        "      Ignore RTCP jitter values greater than this value. Default is zero (disabled).\n"
                         "\n"
                         " --manager-port=<port-number>\n"
                         "      TCP port top which manager interface should bind.  Default is 5029.\n"
