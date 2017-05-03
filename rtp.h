@@ -267,6 +267,7 @@ public:
 		unsigned int maxjitter;
 		double avgjitter;
 		unsigned int counter;
+		unsigned int jitt_counter;
 	} rtcp;
 
 	struct rtcp_xr_t {
