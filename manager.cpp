@@ -2589,6 +2589,15 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "ignore_rtcp_jitter") != NULL) {
+		extern unsigned int opt_ignoreRTCPjitter;
+		ostringstream outStrIgnoreJitter;
+		outStrIgnoreJitter << opt_ignoreRTCPjitter << endl;
+		string ignoreJitterVal = outStrIgnoreJitter.str();
+		if ((size = sendvm(client, sshchannel, cr_client, ignoreJitterVal.c_str(), ignoreJitterVal.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "convertchars") != NULL) {
 		ostringstream outStrConvertchar;
 		extern char opt_convert_char[64];
