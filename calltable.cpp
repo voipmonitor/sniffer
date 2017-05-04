@@ -1759,6 +1759,7 @@ Call::convertRawToWav() {
 				samplerate = 48000;
 				system(cmd);
 				break;
+			case PAYLOAD_G722:
 			case PAYLOAD_G722116:
 				samplerate = 16000;
 				break;
