@@ -6568,6 +6568,9 @@ void set_context_config() {
 		opt_enable_preprocess_packet = PreProcessPacket::ppt_end;
 		if(!is_sender() && !is_receiver()) {
 			opt_pcap_queue_use_blocks = 1;
+			if(getThreadingMode() < 2) {
+				setThreadingMode(2);
+			}
 		}
 		if(opt_process_rtp_packets_hash_next_thread < 2) {
 			opt_process_rtp_packets_hash_next_thread = 2;
