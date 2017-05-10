@@ -2669,7 +2669,7 @@ MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
 						   store ? store->password.c_str() : this->password.c_str(), 
 						   store ? store->database.c_str() : this->database.c_str(),
 						   store ? store->port : this->port,
-						   this->cloud_host.c_str(), this->cloud_token.c_str(), this->cloud_router,
+						   this->isCloud() ? this->cloud_host.c_str() : NULL, this->cloud_token.c_str(), this->cloud_router,
 						   this->defaultConcatLimit);
 	process->setEnableTerminatingDirectly(this->enableTerminatingDirectly);
 	process->setEnableTerminatingIfEmpty(this->enableTerminatingIfEmpty);
