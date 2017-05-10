@@ -2107,7 +2107,7 @@ void MySqlStore::loadFromQFiles_start() {
 			this->enableInotifyForLoadFromQFile();
 		}
 		extern int opt_mysqlstore_concat_limit_cdr;
-		if(cloud_host.empty()) {
+		if(!isCloud()) {
 			extern int opt_mysqlstore_concat_limit_message;
 			extern int opt_mysqlstore_concat_limit_register;
 			extern int opt_mysqlstore_concat_limit_http;
@@ -2191,7 +2191,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 	if(qfileConfig.terminate) {
 		return;
 	}
-	int idc = cloud_host.empty() ? convIdForQFile(id) : 1;
+	int idc = !isCloud() ? convIdForQFile(id) : 1;
 	QFile *qfile;
 	lock_qfiles();
 	if(qfiles.find(idc) == qfiles.end()) {
@@ -4794,7 +4794,7 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 	}
 	
 	if(opt_ipaccount && !opt_disable_partition_operations) {
-		if(!cloud_host.empty()) {
+		if(isCloud()) {
 			this->createProcedure(
 			"begin\
 			    call create_partition('ipacc', 'day', next_days);\
@@ -5038,7 +5038,7 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId) {
 		return(true);
 	}
 	
-	if(!cloud_host.empty()) {
+	if(isCloud()) {
 		this->createProcedure(string(
 		"begin\
 		    declare part_date date;\

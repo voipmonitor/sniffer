@@ -672,6 +672,15 @@ public:
 	string exportToFile(FILE *file, string filename, bool sqlFormat, bool cleanAfterExport);
 	void autoloadFromSqlVmExport();
 	string getSqlVmExportDirectory();
+	bool isCloud() {
+		return(isCloudRouter() || isCloudSsh());
+	}
+	bool isCloudRouter() {
+		return(cloud_host[0] && cloud_token[0] && cloud_router);
+	}
+	bool isCloudSsh() {
+		return(cloud_host[0] && cloud_token[0] && !cloud_router);
+	}
 private:
 	static void *threadQFilesCheckPeriod(void *arg);
 	static void *threadLoadFromQFiles(void *arg);
