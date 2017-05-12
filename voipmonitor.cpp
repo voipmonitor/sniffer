@@ -575,7 +575,7 @@ timeval cloud_last_activecheck;					//Time of a last check request sent
 char cloud_host[256] = "cloud.voipmonitor.org";
 char cloud_url[1024] = "";
 char cloud_token[256] = "";
-bool cloud_router = false;
+bool cloud_router = true;
 unsigned cloud_router_port = 60023;
 
 cCR_Receiver_service *cloud_receiver = NULL;
