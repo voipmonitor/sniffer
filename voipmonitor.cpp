@@ -88,6 +88,7 @@
 #include "tools_fifo_buffer.h"
 #include "country_detect.h"
 #include "ssl_dssl.h"
+#include "server.h"
 
 #ifndef FREEBSD
 #define BACKTRACE 1
@@ -578,6 +579,9 @@ bool cloud_router = false;
 unsigned cloud_router_port = 60023;
 
 cCR_Receiver_service *cloud_receiver = NULL;
+
+extern sSnifferServerOptions snifferServerOptions;
+extern sSnifferClientOptions snifferClientOptions;
 
 char ssh_host[1024] = "";
 int ssh_port = 22;
@@ -2521,6 +2525,8 @@ int main(int argc, char *argv[]) {
 			opt_load_query_from_files = 1;
 			opt_load_query_from_files_inotify = true;
 		}
+	} else if(snifferClientOptions.isEnable()) {
+		snifferClientStart();
 	}
 	
 	if(opt_generator) {
@@ -2533,6 +2539,10 @@ int main(int argc, char *argv[]) {
 		syslog(LOG_ERR, "Traffic generated");
 		sleep(10000);
 		return 0;
+	}
+	
+	if(!isCloud() && snifferServerOptions.isEnable()) {
+		snifferServerStart();
 	}
 
 	// start manager thread 	
@@ -2547,7 +2557,7 @@ int main(int argc, char *argv[]) {
 	};
 
 	//cout << "SQL DRIVER: " << sql_driver << endl;
-	if(!opt_nocdr && !is_sender() && !is_terminating()) {
+	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender() && !is_terminating()) {
 		bool connectError = false;
 		string connectErrorString;
 		for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
@@ -2626,7 +2636,7 @@ int main(int argc, char *argv[]) {
 		} else {
 			if(opt_database_backup) {
 				sqlStore = new FILE_LINE(42010) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, 
-									   cloud_host, cloud_token, cloud_router);
+									   isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
 				custom_headers_cdr = new FILE_LINE(42011) CustomHeaders(CustomHeaders::cdr);
 				custom_headers_message = new FILE_LINE(42012) CustomHeaders(CustomHeaders::message);
 				vm_pthread_create("database backup",
@@ -2893,7 +2903,7 @@ int main_init_read() {
 	if (setrlimit(RLIMIT_CORE, &rlp) < 0)
 		fprintf(stderr, "setrlimit: %s\nWarning: core dumps may be truncated or non-existant\n", strerror(errno));
 
-	if(!opt_nocdr) {
+	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
 		custom_headers_cdr = new FILE_LINE(42014) CustomHeaders(CustomHeaders::cdr);
 		custom_headers_cdr->createTablesIfNotExists();
 		custom_headers_message = new FILE_LINE(42015) CustomHeaders(CustomHeaders::message);
@@ -2950,12 +2960,15 @@ int main_init_read() {
 		}
 	}
 	
-	CountryDetectInit();
-	
-	if(opt_enable_fraud) {
-		initFraud();
+	if(!is_sender() && !is_client_packetbuffer_sender()) {
+		CountryDetectInit();
+		
+		if(opt_enable_fraud) {
+			initFraud();
+		}
+		
+		initSendCallInfo();
 	}
-	initSendCallInfo();
 	
 	if(opt_ipaccount) {
 		ipaccStartThread();
@@ -2973,7 +2986,7 @@ int main_init_read() {
 	}
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
-	if(!is_sender()) {
+	if(!is_sender() && !is_client_packetbuffer_sender()) {
 		vm_pthread_create("storing cdr",
 				  &storing_cdr_thread, NULL, storing_cdr, NULL, __FILE__, __LINE__);
 		vm_pthread_create("storing register",
@@ -3016,7 +3029,7 @@ int main_init_read() {
 	}
 #endif
 
-	if(!is_sender()) {
+	if(!is_sender() && !is_client_packetbuffer_sender()) {
 		// start reading threads
 		if(is_enable_rtp_threads()) {
 			rtp_threads = new FILE_LINE(42021) rtp_read_thread[num_threads_max];
@@ -3180,7 +3193,7 @@ int main_init_read() {
 			pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
 		}
 		
-		if(opt_pcap_queue_use_blocks && opt_udpfrag && !is_sender()) {
+		if(opt_pcap_queue_use_blocks && opt_udpfrag && !is_sender() && !is_client_packetbuffer_sender()) {
 			pcapQueueQ_outThread_defrag = new PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
 			pcapQueueQ_outThread_defrag->start();
 		}
@@ -3564,7 +3577,7 @@ void main_init_sqlstore() {
 	if(isSqlDriver("mysql")) {
 		if(opt_load_query_from_files != 2) {
 			sqlStore = new FILE_LINE(42037) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-								   cloud_host, cloud_token, cloud_router);
+								   isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
 			if(opt_save_query_to_files) {
 				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 			}
@@ -3577,7 +3590,7 @@ void main_init_sqlstore() {
 		}
 		if(opt_load_query_from_files) {
 			loadFromQFiles = new FILE_LINE(42039) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-									 cloud_host, cloud_token, cloud_router);
+									 isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
 			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
 		}
 		if(opt_load_query_from_files != 2) {
@@ -4224,6 +4237,30 @@ void test() {
 	 
 	case 1: {
 	 
+		/*
+		cGzip gzip;
+		u_char *cbuffer;
+		size_t cbufferLength;
+		string str;
+		for(unsigned i = 0; i < 1000; i++) {
+			str += "abcdefgh";
+		}
+		gzip.compressString(str, &cbuffer, &cbufferLength);
+		if(gzip.isCompress(cbuffer, cbufferLength)) {
+			string str2 = gzip.decompressString(cbuffer, cbufferLength);
+			cout << str2 << endl;
+		}
+		break;
+		*/
+	 
+		SqlDb *sqlDb = createSqlObject();
+		string query = "select * from geoip_country order by ip_from";
+		cout << query << endl;
+		sqlDb->query(query);
+		string rsltQuery = sqlDb->getJsonResult();
+		cout << rsltQuery << endl;
+		break;
+	 
 		test_thread();
 		break;
 	 
@@ -4504,7 +4541,7 @@ void test() {
 	case 306:
 		{
 		sqlStore = new FILE_LINE(42059) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-							   cloud_host, cloud_token, cloud_router);
+							   isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
 		for(int i = 0; i < 2; i++) {
 			if(isSetSpoolDir(i) &&
 			   CleanSpool::isSetCleanspoolParameters(i)) {
@@ -5575,6 +5612,18 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cloud_router_port", &cloud_router_port));
 			addConfigItem(new FILE_LINE(42457) cConfigItem_integer("cloud_activecheck_period", &opt_cloud_activecheck_period));
 			addConfigItem(new FILE_LINE(42458) cConfigItem_string("cloud_url_activecheck", cloud_url_activecheck, sizeof(cloud_url_activecheck)));
+		subgroup("server / client");
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_server", &snifferServerOptions.enable));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("sniffer_server_host", &snifferServerOptions.host));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("sniffer_server_port", &snifferServerOptions.port));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("sniffer_server_password", &snifferServerOptions.password));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_client", &snifferClientOptions.enable));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("sniffer_client_host", &snifferClientOptions.host));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("sniffer_client_port", &snifferClientOptions.port));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("sniffer_client_password", &snifferClientOptions.password));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_client_remote_query", &snifferClientOptions.remote_query));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_client_remote_store", &snifferClientOptions.remote_store));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_client_packetbuffer_sender", &snifferClientOptions.packetbuffer_sender));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 				advanced();
@@ -6505,7 +6554,7 @@ void set_context_config() {
 			      opt_database_backup_from_mysql_database[0] != '\0' &&
 			      opt_database_backup_from_mysql_user[0] != '\0';
 	
-	if(is_sender() || is_receiver()) {
+	if(is_sender() || is_client_packetbuffer_sender() || is_receiver()) {
 		opt_pcap_queue_use_blocks = false;
 	}
 	
@@ -6560,8 +6609,11 @@ void set_context_config() {
 	}
 	if(opt_t2_boost) {
 		opt_enable_preprocess_packet = PreProcessPacket::ppt_end;
-		if(!is_sender() && !is_receiver()) {
+		if(!is_sender() && !is_client_packetbuffer_sender() && !is_receiver()) {
 			opt_pcap_queue_use_blocks = 1;
+			if(getThreadingMode() < 2) {
+				setThreadingMode(2);
+			}
 		}
 		if(opt_process_rtp_packets_hash_next_thread < 2) {
 			opt_process_rtp_packets_hash_next_thread = 2;
@@ -6641,7 +6693,8 @@ void create_spool_dirs() {
 
 bool check_complete_parameters() {
 	if (!is_read_from_file() && ifname[0] == '\0' && opt_scanpcapdir[0] == '\0' && 
-	    !is_set_gui_params() && 
+	    !snifferServerOptions.isEnable() &&
+	    !is_set_gui_params() &&
 	    !printConfigStruct && !printConfigFile && !is_receiver() &&
 	    !opt_test){
                         /* Ruler to assist with keeping help description to max. 80 chars wide:
@@ -8803,7 +8856,7 @@ bool is_enable_packetbuffer() {
 bool is_enable_rtp_threads() {
 	return(is_enable_packetbuffer() &&
 	       rtp_threaded &&
-	       !is_sender());
+	       !is_sender() && !is_client_packetbuffer_sender());
 }
 
 bool is_enable_cleanspool(bool log) {
@@ -8811,7 +8864,7 @@ bool is_enable_cleanspool(bool log) {
 	   !opt_nocdr &&
 	   isSqlDriver("mysql") &&
 	   !is_read_from_file_simple() &&
-	   !is_sender()) {
+	   !is_sender() && !is_client_packetbuffer_sender()) {
 		if(opt_newdir) {
 			return(true);
 		} else if(log) {
@@ -8828,6 +8881,10 @@ bool is_receiver() {
 bool is_sender() {
 	return(!opt_pcap_queue_receive_from_ip_port &&
 	       opt_pcap_queue_send_to_ip_port);
+}
+
+bool is_client_packetbuffer_sender() {
+	return(snifferClientOptions.packetbuffer_sender);
 }
 
 int check_set_rtp_threads(int num_rtp_threads) {

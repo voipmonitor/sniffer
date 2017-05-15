@@ -5565,6 +5565,144 @@ void cCsv::dump() {
 }
 
 
+cGzip::cGzip() {
+	operation = _na;
+	zipStream = NULL;
+	destBuffer = NULL;
+}
+
+cGzip::~cGzip() {
+	term();
+}
+
+bool cGzip::compress(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_t *cbufferLength) {
+	bool ok = true;
+	initCompress();
+	unsigned compressBufferLength = 1024 * 16;
+	u_char *compressBuffer = new FILE_LINE(0) u_char[compressBufferLength];
+	zipStream->avail_in = bufferLength;
+	zipStream->next_in = buffer;
+	do {
+		zipStream->avail_out = compressBufferLength;
+		zipStream->next_out = compressBuffer;
+		int deflateRslt = deflate(zipStream, Z_FINISH);
+		if(deflateRslt == Z_OK || deflateRslt == Z_STREAM_END) {
+			unsigned have = compressBufferLength - zipStream->avail_out;
+			destBuffer->add(compressBuffer, have);
+		} else {
+			ok = false;
+			break;
+		}
+	} while(this->zipStream->avail_out == 0);
+	delete [] compressBuffer;
+	if(destBuffer->size() && ok) {
+		*cbufferLength = destBuffer->size();
+		*cbuffer = new FILE_LINE(0) u_char[*cbufferLength];
+		memcpy(*cbuffer, destBuffer->data(), *cbufferLength);
+	} else {
+		*cbuffer = NULL;
+		*cbufferLength = 0;
+	}
+	return(ok);
+}
+
+bool cGzip::compressString(string &str, u_char **cbuffer, size_t *cbufferLength) {
+	return(compress((u_char*)str.c_str(), str.length(), cbuffer, cbufferLength));
+}
+
+bool cGzip::decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, size_t *dbufferLength) {
+	bool ok = true;
+	initDecompress();
+	unsigned decompressBufferLength = 1024 * 16;
+	u_char *decompressBuffer = new FILE_LINE(0) u_char[decompressBufferLength];
+	zipStream->avail_in = bufferLength;
+	zipStream->next_in = buffer;
+	do {
+		zipStream->avail_out = decompressBufferLength;
+		zipStream->next_out = decompressBuffer;
+		int inflateRslt = inflate(zipStream, Z_NO_FLUSH);
+		if(inflateRslt == Z_OK || inflateRslt == Z_STREAM_END) {
+			int have = decompressBufferLength - zipStream->avail_out;
+			destBuffer->add(decompressBuffer, have);
+		} else {
+			ok = false;
+			break;
+		}
+	} while(zipStream->avail_out == 0);
+	delete [] decompressBuffer;
+	if(destBuffer->size() && ok) {
+		*dbufferLength = destBuffer->size();
+		*dbuffer = new FILE_LINE(0) u_char[*dbufferLength];
+		memcpy(*dbuffer, destBuffer->data(), *dbufferLength);
+	} else {
+		*dbuffer = NULL;
+		*dbufferLength = 0;
+	}
+	return(ok);
+}
+
+string cGzip::decompressString(u_char *buffer, size_t bufferLength) {
+	u_char *dbuffer;
+	size_t dbufferLength;
+	if(decompress(buffer, bufferLength, &dbuffer, &dbufferLength)) {
+		string rslt = string((char*)dbuffer, dbufferLength);
+		delete [] dbuffer;
+		return(rslt);
+	} else {
+		return("");
+	}
+}
+
+bool cGzip::isCompress(u_char *buffer, size_t bufferLength) {
+	return(bufferLength > 2 && buffer && buffer[0] == 0x1F && buffer[1] == 0x8B);
+}
+
+void cGzip::initCompress() {
+	term();
+	destBuffer = new FILE_LINE(0) SimpleBuffer;
+	zipStream =  new FILE_LINE(0) z_stream;
+	zipStream->zalloc = Z_NULL;
+	zipStream->zfree = Z_NULL;
+	zipStream->opaque = Z_NULL;
+	deflateInit2(zipStream, 5, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY);
+	operation = _compress;
+}
+
+void cGzip::initDecompress() {
+	term();
+	destBuffer = new FILE_LINE(0) SimpleBuffer;
+	zipStream =  new FILE_LINE(0) z_stream;
+	zipStream->zalloc = Z_NULL;
+	zipStream->zfree = Z_NULL;
+	zipStream->opaque = Z_NULL;
+	zipStream->avail_in = 0;
+	zipStream->next_in = Z_NULL;
+	inflateInit2(zipStream, MAX_WBITS + 16);
+	operation = _decompress;
+}
+
+void cGzip::term() {
+	if(zipStream) {
+		switch(operation) {
+		case _compress:
+			deflateEnd(zipStream);
+			break;
+		case _decompress:
+			inflateEnd(zipStream);
+			break;
+		case _na:
+			break;
+		}
+		delete zipStream;
+		zipStream = NULL;
+	}
+	if(destBuffer) {
+		delete destBuffer;
+		destBuffer = NULL;
+	}
+}
+
+
 bool is_ok_pcap_header(pcap_sf_pkthdr *header, pcap_sf_pkthdr *prev_header) {
 	return(header->ts.tv_sec >= prev_header->ts.tv_sec && 
 	       header->ts.tv_sec < prev_header->ts.tv_sec + 60 * 60 && 

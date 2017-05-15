@@ -3224,6 +3224,32 @@ private:
 	sTable table;
 };
 
+class cGzip {
+public:
+	enum eOperation {
+		_na,
+		_compress,
+		_decompress
+	};
+public:
+	cGzip();
+	~cGzip();
+public:
+	bool compress(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_t *cbufferLength);
+	bool compressString(string &str, u_char **cbuffer, size_t *cbufferLength);
+	bool decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, size_t *dbufferLength);
+	string decompressString(u_char *buffer, size_t bufferLength);
+	bool isCompress(u_char *buffer, size_t bufferLength);
+private:
+	void initCompress();
+	void initDecompress();
+	void term();
+private:
+	eOperation operation;
+	z_stream *zipStream;
+	SimpleBuffer *destBuffer;
+};
+
 
 void read_pcap(const char *pcapFileName);
 

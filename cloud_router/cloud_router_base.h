@@ -233,6 +233,9 @@ public:
 	string getHostPort() {
 		return(getHost() + " : " + intToString(port));
 	}
+	int getHandle() {
+		return(handle);
+	}
 	bool isTerminate() {
 		return(terminate);
 	}
@@ -358,6 +361,7 @@ public:
 	u_char *readBlock(size_t *dataLen, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false);
 	bool readBlock(string *str, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false);
 	string readLine(u_char **remainder = NULL, size_t *remainder_length = NULL);
+	void readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder = NULL, size_t remainder_length = 0);
 	void generate_rsa_keys() {
 		rsa.generate_keys();
 	}
@@ -438,6 +442,9 @@ public:
 	void _client_start();
 	static void *client_process(void *arg);
 	virtual void client_process();
+	bool write(u_char *data, size_t dataLen);
+	bool writeXorKeyEnc(u_char *data, size_t dataLen, const char *key);
+	bool writeAesEnc(u_char *data, size_t dataLen, const char *ckey, const char *ivec);
 protected:
 	cSocketBlock *client_socket;
 	pthread_t client_thread;

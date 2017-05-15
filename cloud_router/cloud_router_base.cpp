@@ -1041,6 +1041,55 @@ string cSocketBlock::readLine(u_char **remainder, size_t *remainder_length) {
 	return(line);
 }
 
+void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder, size_t remainder_length) {
+	if(remainder) {
+		u_char *data_dec;
+		size_t data_dec_len;
+		this->decodeAesReadBuffer(remainder, remainder_length, &data_dec, &data_dec_len, false);
+		if(data_dec_len) {
+			dest->write(data_dec, data_dec_len);
+		}
+		if(data_dec) {
+			delete [] data_dec;
+		}
+	}
+	size_t bufferLen = 1000;
+	u_char *buffer = new u_char[bufferLen];
+	unsigned counter = 0;
+	while(true) {
+		size_t len = bufferLen;
+		if(this->read(buffer, &len, counter > 0 || remainder)) {
+			if(len) {
+				u_char *data_dec;
+				size_t data_dec_len;
+				this->decodeAesReadBuffer(buffer, len, &data_dec, &data_dec_len, false);
+				if(data_dec_len) {
+					dest->write(data_dec, data_dec_len);
+				}
+				if(data_dec) {
+					delete [] data_dec;
+				}
+			}
+		} else {
+			u_char *data_dec;
+			size_t data_dec_len;
+			this->decodeAesReadBuffer(NULL, 0, &data_dec, &data_dec_len, true);
+			if(data_dec_len) {
+				dest->write(data_dec, data_dec_len);
+			}
+			if(data_dec) {
+				delete [] data_dec;
+			}
+			break;
+		}
+		++counter;
+	}
+	delete [] buffer;
+	if(remainder) {
+		delete [] remainder;
+	}
+}
+
 bool cSocketBlock::checkSumReadBuffer() {
 	return(readBuffer.sumBlockHeader() ==
 	       dataSum(readBuffer.buffer + sizeof(sBlockHeader), readBuffer.length - sizeof(sBlockHeader)));
@@ -1268,4 +1317,18 @@ void *cClient::client_process(void *arg) {
 }
 
 void cClient::client_process() {
+}
+
+bool cClient::write(u_char *data, size_t dataLen) {
+	return(client_socket->write(data, dataLen));
+}
+
+bool cClient::writeXorKeyEnc(u_char *data, size_t dataLen, const char *key) {
+	client_socket->setXorKey(key);
+	return(client_socket->writeXorKeyEnc(data, dataLen));
+}
+
+bool cClient::writeAesEnc(u_char *data, size_t dataLen, const char *ckey, const char *ivec) {
+	client_socket->set_aes_keys(ckey, ivec);
+	return(client_socket->writeAesEnc(data, dataLen, false));
 }

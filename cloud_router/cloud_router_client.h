@@ -28,9 +28,6 @@ public:
 	cCR_Client_response(string gui_task_id, string command);
 	bool start(string host, u_int16_t port);
 	virtual void client_process();
-	bool write(u_char *data, size_t dataLen);
-	bool writeXorKeyEnc(u_char *data, size_t dataLen, const char *key);
-	bool writeAesEnc(u_char *data, size_t dataLen, const char *ckey, const char *ivec);
 protected:
 	string gui_task_id;
 	string command;

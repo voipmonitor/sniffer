@@ -820,6 +820,7 @@ public:
 	size_t getQueueSize() {
 		return(this->pcapStoreQueue.getQueueSize());
 	}
+	bool addBlockStoreToPcapStoreQueue(u_char *buffer, size_t bufferLen, string *error, string *warning, u_int32_t *block_counter);
 	inline void addBlockStoreToPcapStoreQueue(pcap_block_store *blockStore);
 protected:
 	bool createThread();
@@ -881,6 +882,7 @@ protected:
 	double pcapStat_get_disk_buffer_mb();
 	string getCpuUsage(bool writeThread = false, bool preparePstatData = false);
 	bool socketWritePcapBlock(pcap_block_store *blockStore);
+	bool socketWritePcapBlockBySnifferClient(pcap_block_store *blockStore);
 	bool socketGetHost();
 	bool socketReadyForConnect();
 	bool socketConnect();
@@ -892,7 +894,7 @@ protected:
 	bool socketRead(u_char *data, size_t *dataLen, int idConnection);
 	bool _socketRead(int socket, u_char *data, size_t *dataLen, int timeout = 1);
 	bool isMirrorSender() {
-		return(this->packetServerDirection == directionWrite);
+		return(this->packetServerDirection == directionWrite || is_client_packetbuffer_sender());
 	}
 	bool isMirrorReceiver() {
 		return(this->packetServerDirection == directionRead);
@@ -937,6 +939,7 @@ private:
 	volatile int blockStoreTrash_sync;
 	u_int32_t socketHostIPl;
 	int socketHandle;
+	cSocketBlock *clientSocket;
 	map<unsigned int, sPacketServerConnection*> packetServerConnections;
 	volatile int _sync_packetServerConnections;
 	u_long lastCheckFreeSizeCachedir_timeMS;

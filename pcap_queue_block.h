@@ -235,6 +235,7 @@ struct pcap_block_store {
 	u_char *getSaveBuffer(uint32_t block_counter = 0);
 	void restoreFromSaveBuffer(u_char *saveBuffer);
 	int addRestoreChunk(u_char *buffer, size_t size, size_t *offset = NULL, bool autoRestore = true);
+	string addRestoreChunk_getErrorString(int errorCode);
 	inline bool compress();
 	bool compress_snappy();
 	bool compress_lz4();

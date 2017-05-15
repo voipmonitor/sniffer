@@ -25,6 +25,7 @@
 #include "fraud.h"
 #include "calltable.h"
 #include "cleanspool.h"
+#include "server.h"
 
 #define QFILE_PREFIX "qoq"
 
@@ -81,15 +82,12 @@ extern char odbc_user[256];
 extern char odbc_password[256];
 extern char odbc_driver[256];
 
-extern char cloud_host[256];
-extern char cloud_token[256];
-extern bool cloud_router;
-extern unsigned cloud_router_port;
-
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 
 extern int opt_ptime;
+
+extern sSnifferClientOptions snifferClientOptions;
 
 
 int sql_noerror = 0;
@@ -313,16 +311,16 @@ SqlDb::SqlDb() {
 	this->disableLogError = false;
 	this->silentConnect = false;
 	this->connecting = false;
-	this->cloud_data_rows = 0;
-	this->cloud_data_index = 0;
+	this->response_data_rows = 0;
+	this->response_data_index = 0;
 	this->maxAllowedPacket = 1024*1024;
 	this->lastError = 0;
-	this->cloud_router_socket = NULL;
+	this->remote_socket = NULL;
 }
 
 SqlDb::~SqlDb() {
-	if(this->cloud_router_socket) {
-		delete this->cloud_router_socket;
+	if(this->remote_socket) {
+		delete this->remote_socket;
 	}
 }
 
@@ -368,10 +366,6 @@ bool SqlDb::reconnect() {
 }
 
 bool SqlDb::queryByCurl(string query) {
-	cloud_data_columns.clear();
-	cloud_data.clear();
-	cloud_data_rows = 0;
-	cloud_data_index = 0;
 	clearLastError();
 	bool ok = false;
 	vector<dstring> postData;
@@ -387,100 +381,44 @@ bool SqlDb::queryByCurl(string query) {
 		string error;
 		get_url_response(cloud_redirect.empty() ? cloud_host.c_str() : cloud_redirect.c_str(),
 				 &responseBuffer, &postData, &error);
-		if(error.empty()) {
-			if(!responseBuffer.empty()) {
-				if(responseBuffer.isJsonObject()) {
-					JsonItem jsonData;
-					jsonData.parse((char*)responseBuffer);
-					string result = jsonData.getValue("result");
-					trim(result);
-					if(!strcasecmp(result.c_str(), "OK")) {
-						ok = true;
-					} else if(!strncasecmp(result.c_str(), "REDIRECT TO", 11)) {
-						cloud_redirect = result.substr(11);
-						trim(cloud_redirect);
-						if(cloud_redirect.empty()) {
-							setLastError(0, "missing redirect ip / server", true);
-						} else {
-							pass = 0;
-							continue;
-						}
-					} else {
-						bool tryNext = true;
-						unsigned int errorCode = atol(result.c_str());
-						size_t posSeparator = result.find('|');
-						string errorString;
-						if(posSeparator != string::npos) {
-							size_t posSeparator2 = result.find('|', posSeparator + 1);
-							if(posSeparator2 != string::npos) {
-								tryNext = atoi(result.substr(posSeparator + 1).c_str());
-								errorString = result.substr(posSeparator2 + 1);
-							} else {
-								errorString = result.substr(posSeparator + 1);
-							}
-						} else {
-							errorString = result;
-						}
-						if(!sql_noerror && !this->disableLogError) {
-							setLastError(errorCode, errorString.c_str(), true);
-						}
-						if(tryNext) {
-							if(sql_noerror || sql_disable_next_attempt_if_error || 
-							   this->disableLogError || this->disableNextAttemptIfError ||
-							   errorCode == ER_PARSE_ERROR) {
-								break;
-							} else if(errorCode != CR_SERVER_GONE_ERROR &&
-								  pass < this->maxQueryPass - 5) {
-								pass = this->maxQueryPass - 5;
-							}
-						} else {
-							break;
-						}
-					}
-					if(ok) {
-						JsonItem *dataJsonDataRows = jsonData.getItem("data_rows");
-						if(dataJsonDataRows) {
-							cloud_data_rows = atol(dataJsonDataRows->getLocalValue().c_str());
-						}
-						JsonItem *dataJsonItems = jsonData.getItem("data");
-						if(dataJsonItems) {
-							for(size_t i = 0; i < dataJsonItems->getLocalCount(); i++) {
-								JsonItem *dataJsonItem = dataJsonItems->getLocalItem(i);
-								for(size_t j = 0; j < dataJsonItem->getLocalCount(); j++) {
-									string dataItem = dataJsonItem->getLocalItem(j)->getLocalValue();
-									bool dataItemIsNull = dataJsonItem->getLocalItem(j)->localValueIsNull();
-									if(i == 0) {
-										cloud_data_columns.push_back(dataItem);
-									} else {
-										if(cloud_data.size() < i) {
-											vector<sCloudDataItem> row;
-											cloud_data.push_back(row);
-										}
-										cloud_data[i-1].push_back(sCloudDataItem(dataItem.c_str(), dataItemIsNull));
-									}
-								}
-							}
-						}
-						break;
-					}
-				} else {
-					setLastError(0, "bad response - " + string(responseBuffer), true);
-				}
-			} else {
-				setLastError(0, "response is empty", true);
-			}
-		} else {
+		if(!error.empty()) {
 			setLastError(0, error.c_str(), true);
+			continue;
+		}
+		if(responseBuffer.empty()) {
+			setLastError(0, "response is empty", true);
+			continue;
+		}
+		if(!responseBuffer.isJsonObject()) {
+			setLastError(0, "bad response - " + string(responseBuffer), true);
+			continue;
+		}
+		JsonItem jsonData;
+		jsonData.parse((char*)responseBuffer);
+		string result = jsonData.getValue("result");
+		trim(result);
+		if(!strncasecmp(result.c_str(), "REDIRECT TO", 11)) {
+			cloud_redirect = result.substr(11);
+			trim(cloud_redirect);
+			if(cloud_redirect.empty()) {
+				setLastError(0, "missing redirect ip / server", true);
+			} else {
+				pass = 0;
+				continue;
+			}
+		}
+		int rsltProcessResponse = processResponseFromQueryBy(responseBuffer, pass);
+		if(rsltProcessResponse == 1) {
+			ok = true;
+			break;
+		} else if(rsltProcessResponse == -1) {
+			break;
 		}
 	}
 	return(ok);
 }
 
-bool SqlDb::queryByCloudRouter(string query) {
-	cloud_data_columns.clear();
-	cloud_data.clear();
-	cloud_data_rows = 0;
-	cloud_data_index = 0;
+bool SqlDb::queryByRemoteSocket(string query) {
 	clearLastError();
 	bool ok = false;
 	unsigned int attempt = 0;
@@ -489,9 +427,9 @@ bool SqlDb::queryByCloudRouter(string query) {
 			break;
 		}
 		if(pass > 0) {
-			if(this->cloud_router_socket) {
-				delete this->cloud_router_socket;
-				this->cloud_router_socket = NULL;
+			if(this->remote_socket) {
+				delete this->remote_socket;
+				this->remote_socket = NULL;
 			}
 			if(is_terminating()) {
 				usleep(100000);
@@ -500,44 +438,55 @@ bool SqlDb::queryByCloudRouter(string query) {
 			}
 			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(query).c_str());
 		}
-		if(!this->cloud_router_socket) {
-			this->cloud_router_socket = new FILE_LINE(0) cSocketBlock("sql query", true);
-			this->cloud_router_socket->setHostPort(cloud_host, cloud_router_port);
-			if(!this->cloud_router_socket->connect()) {
+		if(!this->remote_socket) {
+			this->remote_socket = new FILE_LINE(0) cSocketBlock("sql query", true);
+			if(isCloud()) {
+				extern unsigned cloud_router_port;
+				this->remote_socket->setHostPort(cloud_host, cloud_router_port);
+			} else {
+				this->remote_socket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
+			}
+			if(!this->remote_socket->connect()) {
 				setLastError(0, "failed connect to cloud router", true);
 				continue;
 			}
-			string cmd = "{\"type_connection\":\"sniffer_sql_query\"}\r\n";
-			if(!this->cloud_router_socket->write(cmd)) {
+			string cmd = isCloud() ?
+				      "{\"type_connection\":\"sniffer_sql_query\"}\r\n" :
+				      "{\"type_connection\":\"query\"}\r\n";
+			if(!this->remote_socket->write(cmd)) {
 				setLastError(0, "failed send command", true);
 				continue;
 			}
 			string rsltRsaKey;
-			if(!this->cloud_router_socket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
+			if(!this->remote_socket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
 				setLastError(0, "failed read rsa key", true);
 				continue;
 			}
 			JsonItem jsonRsaKey;
 			jsonRsaKey.parse(rsltRsaKey);
 			string rsa_key = jsonRsaKey.getValue("rsa_key");
-			this->cloud_router_socket->set_rsa_pub_key(rsa_key);
-			this->cloud_router_socket->generate_aes_keys();
+			this->remote_socket->set_rsa_pub_key(rsa_key);
+			this->remote_socket->generate_aes_keys();
 			JsonExport json_keys;
-			json_keys.add("token", cloud_token);
+			if(isCloud()) {
+				json_keys.add("token", cloud_token);
+			} else {
+				json_keys.add("password", snifferClientOptions.password);
+			}
 			string aes_ckey, aes_ivec;
-			this->cloud_router_socket->get_aes_keys(&aes_ckey, &aes_ivec);
+			this->remote_socket->get_aes_keys(&aes_ckey, &aes_ivec);
 			json_keys.add("aes_ckey", aes_ckey);
 			json_keys.add("aes_ivec", aes_ivec);
-			if(!this->cloud_router_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
+			if(!this->remote_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
 				setLastError(0, "failed send token & aes keys", true);
 				continue;
 			}
-			string tokenResponse;
-			if(!this->cloud_router_socket->readBlock(&tokenResponse) || tokenResponse != "OK") {
-				if(!this->cloud_router_socket->isError() && tokenResponse != "OK") {
-					setLastError(0, "failed response from cloud router - " + tokenResponse, true);
-					delete this->cloud_router_socket;
-					this->cloud_router_socket = NULL;
+			string connectResponse;
+			if(!this->remote_socket->readBlock(&connectResponse) || connectResponse != "OK") {
+				if(!this->remote_socket->isError() && connectResponse != "OK") {
+					setLastError(0, "failed response from cloud router - " + connectResponse, true);
+					delete this->remote_socket;
+					this->remote_socket = NULL;
 					break;
 				} else {
 					setLastError(0, "failed read ok", true);
@@ -545,89 +494,134 @@ bool SqlDb::queryByCloudRouter(string query) {
 				}
 			}
 		}
-		if(!this->cloud_router_socket->writeBlock(query, cSocket::_te_aes)) {
+		bool okSendQuery = true;
+		if(query.length() > 100) {
+			cGzip gzipCompressQuery;
+			u_char *queryGzip;
+			size_t queryGzipLength;
+			if(gzipCompressQuery.compressString(query, &queryGzip, &queryGzipLength)) {
+				if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
+					okSendQuery = false;
+				}
+				delete queryGzip;
+			}
+		} else {
+			if(!this->remote_socket->writeBlock(query, cSocket::_te_aes)) {
+				okSendQuery = false;
+			}
+		}
+		if(!okSendQuery) {
 			setLastError(0, "failed send query", true);
 			continue;
 		}
-		string queryResponse;
-		if(!this->cloud_router_socket->readBlock(&queryResponse, cSocket::_te_aes)) {
+		u_char *queryResponse;
+		size_t queryResponseLength;
+		queryResponse = this->remote_socket->readBlock(&queryResponseLength, cSocket::_te_aes);
+		if(!queryResponse) {
 			setLastError(0, "failed read query response", true);
 			continue;
 		}
-		if(queryResponse.empty()) {
+		string queryResponseStr;
+		cGzip gzipDecompressResponse;
+		if(gzipDecompressResponse.isCompress(queryResponse, queryResponseLength)) {
+			queryResponseStr = gzipDecompressResponse.decompressString(queryResponse, queryResponseLength);
+			if(queryResponseStr.empty()) {
+				setLastError(0, "response is invalid (gunzip failed)", true);
+				continue;
+			}
+		} else {
+			queryResponseStr = string((char*)queryResponse, queryResponseLength);
+		}
+		if(queryResponseStr.empty()) {
 			setLastError(0, "response is empty", true);
 			continue;
 		}
-		if(!isJsonObject(queryResponse)) {
+		if(!isJsonObject(queryResponseStr)) {
 			setLastError(0, "response is not json", true);
 			continue;
 		}
-		JsonItem jsonData;
-		jsonData.parse(queryResponse);
-		string result = jsonData.getValue("result");
-		trim(result);
-		if(!strcasecmp(result.c_str(), "OK")) {
+		int rsltProcessResponse = processResponseFromQueryBy(queryResponseStr.c_str(), pass);
+		if(rsltProcessResponse == 1) {
 			ok = true;
-		} else {
-			bool tryNext = true;
-			unsigned int errorCode = atol(result.c_str());
-			size_t posSeparator = result.find('|');
-			string errorString;
-			if(posSeparator != string::npos) {
-				size_t posSeparator2 = result.find('|', posSeparator + 1);
-				if(posSeparator2 != string::npos) {
-					tryNext = atoi(result.substr(posSeparator + 1).c_str());
-					errorString = result.substr(posSeparator2 + 1);
-				} else {
-					errorString = result.substr(posSeparator + 1);
-				}
-			} else {
-				errorString = result;
-			}
-			if(!sql_noerror && !this->disableLogError) {
-				setLastError(errorCode, errorString.c_str(), true);
-			}
-			if(tryNext) {
-				if(sql_noerror || sql_disable_next_attempt_if_error || 
-				   this->disableLogError || this->disableNextAttemptIfError ||
-				   errorCode == ER_PARSE_ERROR) {
-					break;
-				} else if(errorCode != CR_SERVER_GONE_ERROR &&
-					  pass < this->maxQueryPass - 5) {
-					pass = this->maxQueryPass - 5;
-				}
-			} else {
-				break;
-			}
-		}
-		if(ok) {
-			JsonItem *dataJsonDataRows = jsonData.getItem("data_rows");
-			if(dataJsonDataRows) {
-				cloud_data_rows = atol(dataJsonDataRows->getLocalValue().c_str());
-			}
-			JsonItem *dataJsonItems = jsonData.getItem("data");
-			if(dataJsonItems) {
-				for(size_t i = 0; i < dataJsonItems->getLocalCount(); i++) {
-					JsonItem *dataJsonItem = dataJsonItems->getLocalItem(i);
-					for(size_t j = 0; j < dataJsonItem->getLocalCount(); j++) {
-						string dataItem = dataJsonItem->getLocalItem(j)->getLocalValue();
-						bool dataItemIsNull = dataJsonItem->getLocalItem(j)->localValueIsNull();
-						if(i == 0) {
-							cloud_data_columns.push_back(dataItem);
-						} else {
-							if(cloud_data.size() < i) {
-								vector<sCloudDataItem> row;
-								cloud_data.push_back(row);
-							}
-							cloud_data[i-1].push_back(sCloudDataItem(dataItem.c_str(), dataItemIsNull));
-						}
-					}
-				}
-			}
+			break;
+		} else if(rsltProcessResponse == -1) {
 			break;
 		}
 	}
 	return(ok);
+}
+
+int SqlDb::processResponseFromQueryBy(const char *response, unsigned pass) {
+	response_data_columns.clear();
+	response_data.clear();
+	response_data_rows = 0;
+	response_data_index = 0;
+	bool ok = false;
+	JsonItem jsonData;
+	jsonData.parse(response);
+	string result = jsonData.getValue("result");
+	trim(result);
+	if(!strcasecmp(result.c_str(), "OK")) {
+		ok = true;
+	} else {
+		bool tryNext = true;
+		unsigned int errorCode = atol(result.c_str());
+		size_t posSeparator = result.find('|');
+		string errorString;
+		if(posSeparator != string::npos) {
+			size_t posSeparator2 = result.find('|', posSeparator + 1);
+			if(posSeparator2 != string::npos) {
+				tryNext = atoi(result.substr(posSeparator + 1).c_str());
+				errorString = result.substr(posSeparator2 + 1);
+			} else {
+				errorString = result.substr(posSeparator + 1);
+			}
+		} else {
+			errorString = result;
+		}
+		if(!sql_noerror && !this->disableLogError) {
+			setLastError(errorCode, errorString.c_str(), true);
+		}
+		if(tryNext) {
+			if(sql_noerror || sql_disable_next_attempt_if_error || 
+			   this->disableLogError || this->disableNextAttemptIfError ||
+			   errorCode == ER_PARSE_ERROR) {
+				return(-1);
+			} else if(errorCode != CR_SERVER_GONE_ERROR &&
+				  pass < this->maxQueryPass - 5) {
+				pass = this->maxQueryPass - 5;
+			}
+		} else {
+			return(-1);
+		}
+	}
+	if(ok) {
+		JsonItem *dataJsonDataRows = jsonData.getItem("data_rows");
+		if(dataJsonDataRows) {
+			response_data_rows = atol(dataJsonDataRows->getLocalValue().c_str());
+		}
+		JsonItem *dataJsonItems = jsonData.getItem("data");
+		if(dataJsonItems) {
+			for(size_t i = 0; i < dataJsonItems->getLocalCount(); i++) {
+				JsonItem *dataJsonItem = dataJsonItems->getLocalItem(i);
+				for(size_t j = 0; j < dataJsonItem->getLocalCount(); j++) {
+					string dataItem = dataJsonItem->getLocalItem(j)->getLocalValue();
+					bool dataItemIsNull = dataJsonItem->getLocalItem(j)->localValueIsNull();
+					if(i == 0) {
+						response_data_columns.push_back(dataItem);
+					} else {
+						if(response_data.size() < i) {
+							vector<sCloudDataItem> row;
+							response_data.push_back(row);
+						}
+						response_data[i-1].push_back(sCloudDataItem(dataItem.c_str(), dataItemIsNull));
+					}
+				}
+			}
+		}
+		return(1);
+	}
+	return(0);
 }
 
 string SqlDb::prepareQuery(string query, bool nextPass) {
@@ -710,9 +704,9 @@ int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb
 }
 
 int SqlDb::getIndexField(string fieldName) {
-	if(isCloud()) {
-		for(size_t i = 0; i < this->cloud_data_columns.size(); i++) {
-			if(!strcasecmp(this->cloud_data_columns[i].c_str(), fieldName.c_str())) {
+	if(isCloud() || snifferClientOptions.remote_query) {
+		for(size_t i = 0; i < this->response_data_columns.size(); i++) {
+			if(!strcasecmp(this->response_data_columns[i].c_str(), fieldName.c_str())) {
 				return(i);
 			}
 		}
@@ -727,9 +721,9 @@ int SqlDb::getIndexField(string fieldName) {
 }
 
 string SqlDb::getNameField(int indexField) {
-	if(isCloud()) {
-		if((unsigned)indexField < this->cloud_data_columns.size()) {
-			return(this->cloud_data_columns[indexField]);
+	if(isCloud() || snifferClientOptions.remote_query) {
+		if((unsigned)indexField < this->response_data_columns.size()) {
+			return(this->response_data_columns[indexField]);
 		}
 	} else {
 		if((unsigned)indexField < this->fields.size()) {
@@ -850,7 +844,7 @@ SqlDb_mysql::~SqlDb_mysql() {
 }
 
 bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
-	if(isCloud()) {
+	if(isCloud() || snifferClientOptions.remote_query) {
 		return(true);
 	}
 	this->connecting = true;
@@ -996,11 +990,15 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 }
 
 int SqlDb_mysql::multi_on() {
-	return isCloud() ? true : mysql_set_server_option(this->hMysql, MYSQL_OPTION_MULTI_STATEMENTS_ON);
+	return isCloud() || snifferClientOptions.remote_query ? 
+		true : 
+		mysql_set_server_option(this->hMysql, MYSQL_OPTION_MULTI_STATEMENTS_ON);
 }
 
 int SqlDb_mysql::multi_off() {
-	return isCloud() ? true : mysql_set_server_option(this->hMysql, MYSQL_OPTION_MULTI_STATEMENTS_OFF);
+	return isCloud() || snifferClientOptions.remote_query ? 
+		true : 
+		mysql_set_server_option(this->hMysql, MYSQL_OPTION_MULTI_STATEMENTS_OFF);
 }
 
 int SqlDb_mysql::getDbMajorVersion() {
@@ -1102,7 +1100,7 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 }
 
 void SqlDb_mysql::disconnect() {
-	if(isCloud()) {
+	if(isCloud() || snifferClientOptions.remote_query) {
 		return;
 	}
 	if(this->hMysqlRes) {
@@ -1125,19 +1123,21 @@ void SqlDb_mysql::disconnect() {
 }
 
 bool SqlDb_mysql::connected() {
-	return(isCloud() ? true : this->hMysqlConn != NULL);
+	return(isCloud() || snifferClientOptions.remote_query ? 
+		true : 
+		this->hMysqlConn != NULL);
 }
 
 bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, const char *dropProcQuery) {
-	if(isCloud()) {
+	if(isCloud() || snifferClientOptions.remote_query) {
 		string preparedQuery = this->prepareQuery(query, false);
 		if(verbosity > 1) {
 			syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
 		}
-		if(isCloudRouter()) {
-			return(this->queryByCloudRouter(preparedQuery));
-		} else {
+		if(isCloudSsh()) {
 			return(this->queryByCurl(preparedQuery));
+		} else {
+			return(this->queryByRemoteSocket(preparedQuery));
 		}
 	}
 	u_int32_t startTimeMS = getTimeMS();
@@ -1271,13 +1271,13 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 
 SqlDb_row SqlDb_mysql::fetchRow(bool assoc) {
 	SqlDb_row row(this);
-	if(isCloud()) {
-		if(cloud_data_index < cloud_data_rows &&
-		   cloud_data_index < cloud_data.size()) {
-			for(size_t i = 0; i < min(cloud_data[cloud_data_index].size(), cloud_data_columns.size()); i++) {
-				row.add(cloud_data[cloud_data_index][i].str, assoc ? cloud_data_columns[i] : "", cloud_data[cloud_data_index][i].null);
+	if(isCloud() || snifferClientOptions.remote_query) {
+		if(response_data_index < response_data_rows &&
+		   response_data_index < response_data.size()) {
+			for(size_t i = 0; i < min(response_data[response_data_index].size(), response_data_columns.size()); i++) {
+				row.add(response_data[response_data_index][i].str, assoc ? response_data_columns[i] : "", response_data[response_data_index][i].null);
 			}
-			++cloud_data_index;
+			++response_data_index;
 		}
 	} else if(this->hMysqlConn) {
 		if(!this->hMysqlRes) {
@@ -1304,6 +1304,77 @@ SqlDb_row SqlDb_mysql::fetchRow(bool assoc) {
 		}
 	}
 	return(row);
+}
+
+bool SqlDb_mysql::fetchQueryResult(vector<string> *fields, vector<map<string, string> > *rows) {
+	fields->clear();
+	rows->clear();
+	MYSQL_RES *hMysqlRes = mysql_use_result(this->hMysqlConn);
+	if(hMysqlRes) {
+		MYSQL_FIELD *field;
+		for(int i = 0; (field = mysql_fetch_field(hMysqlRes)); i++) {
+			fields->push_back(field->name);
+		}
+		MYSQL_ROW mysqlRow;
+		while((mysqlRow = mysql_fetch_row(hMysqlRes))) {
+			map<string, string> rslt_row;
+			unsigned int numFields = mysql_num_fields(hMysqlRes);
+			for(unsigned int i = 0; i < numFields; i++) {
+				rslt_row[(*fields)[i]] = mysqlRow[i] ? mysqlRow[i] : "NULL";
+			}
+			rows->push_back(rslt_row);
+		}
+		mysql_free_result(hMysqlRes);
+	}
+	return(true);
+	
+}
+
+string SqlDb_mysql::getJsonResult(vector<string> *fields, vector<map<string, string> > *rows) {
+	JsonExport exp;
+	exp.add("result", "OK");
+	string jsonData;
+	if(rows->size()) {
+		exp.add("data_rows", rows->size());
+		exp.addArray("data");
+		JsonExport expFields;
+		expFields.setTypeItem(JsonExport::_array);
+		for(size_t j = 0; j < fields->size(); j++) {
+			expFields.add(NULL, (*fields)[j]);
+		}
+		jsonData = expFields.getJson();
+		for(size_t i = 0; i < rows->size(); i++) {
+			JsonExport expRow;
+			expRow.setTypeItem(JsonExport::_array);
+			for(size_t j = 0; j < min((*rows)[i].size(), fields->size()); j++) {
+				expRow.add(NULL, (*rows)[i][(*fields)[j]]);
+			}
+			jsonData += "," + expRow.getJson();
+		}
+	}
+	string jsonRslt = exp.getJson();
+	if(!jsonData.empty()) {
+		jsonRslt.resize(jsonRslt.length() - 2);
+		jsonRslt += jsonData + "]}";
+	}
+	return(jsonRslt);
+}
+
+string SqlDb_mysql::getJsonResult() {
+	vector<string> rslt_fields;
+	vector<map<string, string> > rslt_rows;
+	this->fetchQueryResult(&rslt_fields, &rslt_rows);
+	return(this->getJsonResult(&rslt_fields, &rslt_rows));
+}
+
+string SqlDb_mysql::getJsonError() {
+	unsigned int errorCode = mysql_errno(hMysql);
+	string errorStr = mysql_error(hMysql);
+	JsonExport exp;
+	exp.add("result", intToString(errorCode) + "|" + 
+			  intToString((u_int16_t)(errorCode == ER_PARSE_ERROR ? 0 : 1)) + "|" + 
+			  errorStr);
+	return(exp.getJson());
 }
 
 int SqlDb_mysql::getInsertId() {
@@ -1727,12 +1798,16 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->threadRunningCounter = 0;
 	this->lastThreadRunningCounterCheck = 0;
 	this->lastThreadRunningTimeCheck = 0;
+	this->remote_socket = NULL;
 }
 
 MySqlStore_process::~MySqlStore_process() {
 	this->waitForTerminate();
 	if(this->sqlDb) {
 		delete this->sqlDb;
+	}
+	if(this->remote_socket) {
+		delete this->remote_socket;
 	}
 }
 
@@ -1753,6 +1828,10 @@ bool MySqlStore_process::connected() {
 }
 
 void MySqlStore_process::query(const char *query_str) {
+	if(snifferClientOptions.remote_store) {
+		queryByRemoteSocket(query_str);
+		return;
+	}
 	if(sverb.store_process_query) {
 		cout << "store_process_query_" << this->id << ": " << query_str << endl;
 	}
@@ -1781,6 +1860,103 @@ void MySqlStore_process::query(const char *query_str) {
 	}
 	this->query_buff.push_back(query_str);
 	++queryCounter;
+}
+
+void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
+	unsigned maxPass = 100000;
+	for(unsigned int pass = 0; pass < maxPass; pass++) {
+		if(is_terminating() > 1 && pass > 2) {
+			break;
+		}
+		if(pass > 0) {
+			if(this->remote_socket) {
+				delete this->remote_socket;
+				this->remote_socket = NULL;
+			}
+			if(is_terminating()) {
+				usleep(100000);
+			} else {
+				sleep(1);
+			}
+			syslog(LOG_INFO, "next attempt %u - query: %s", pass, prepareQueryForPrintf(query_str).c_str());
+		}
+		if(!this->remote_socket) {
+			this->remote_socket = new FILE_LINE(0) cSocketBlock("sql store", true);
+			this->remote_socket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
+			if(!this->remote_socket->connect()) {
+				syslog(LOG_ERR, "send store query error: %s", "failed connect to cloud router");
+				continue;
+			}
+			string cmd = "{\"type_connection\":\"store\"}\r\n";
+			if(!this->remote_socket->write(cmd)) {
+				syslog(LOG_ERR, "send store query error: %s", "failed send command");
+				continue;
+			}
+			string rsltRsaKey;
+			if(!this->remote_socket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
+				syslog(LOG_ERR, "send store query error: %s", "failed read rsa key");
+				continue;
+			}
+			JsonItem jsonRsaKey;
+			jsonRsaKey.parse(rsltRsaKey);
+			string rsa_key = jsonRsaKey.getValue("rsa_key");
+			this->remote_socket->set_rsa_pub_key(rsa_key);
+			this->remote_socket->generate_aes_keys();
+			JsonExport json_keys;
+			json_keys.add("password", snifferClientOptions.password);
+			string aes_ckey, aes_ivec;
+			this->remote_socket->get_aes_keys(&aes_ckey, &aes_ivec);
+			json_keys.add("aes_ckey", aes_ckey);
+			json_keys.add("aes_ivec", aes_ivec);
+			if(!this->remote_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
+				syslog(LOG_ERR, "send store query error: %s", "failed send token & aes keys");
+				continue;
+			}
+			string connectResponse;
+			if(!this->remote_socket->readBlock(&connectResponse) || connectResponse != "OK") {
+				if(!this->remote_socket->isError() && connectResponse != "OK") {
+					syslog(LOG_ERR, "send store query error: %s", ("failed response from cloud router - " + connectResponse).c_str());
+					delete this->remote_socket;
+					this->remote_socket = NULL;
+					break;
+				} else {
+					syslog(LOG_ERR, "send store query error: %s", "failed read ok");
+					continue;
+				}
+			}
+		}
+		string query_str_with_id = intToString(id) + '|' + query_str;
+		bool okSendQuery = true;
+		if(query_str_with_id.length() > 100) {
+			cGzip gzipCompressQuery;
+			u_char *queryGzip;
+			size_t queryGzipLength;
+			if(gzipCompressQuery.compressString(query_str_with_id, &queryGzip, &queryGzipLength)) {
+				if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
+					okSendQuery = false;
+				}
+				delete [] queryGzip;
+			}
+		} else {
+			if(!this->remote_socket->writeBlock(query_str_with_id, cSocket::_te_aes)) {
+				okSendQuery = false;
+			}
+		}
+		if(!okSendQuery) {
+			syslog(LOG_ERR, "send store query error: %s", "failed send query");
+			continue;
+		}
+		string response;
+		if(!this->remote_socket->readBlock(&response, cSocket::_te_aes)) {
+			syslog(LOG_ERR, "send store query error: %s", "failed read query response");
+			continue;
+		}
+		if(response == "OK") {
+			break;
+		} else {
+			syslog(LOG_ERR, "send store query error: %s", response.empty() ? "response is empty" : ("bad response - " + response).c_str());
+		}
+	}
 }
 
 void MySqlStore_process::store() {
@@ -2107,7 +2283,7 @@ void MySqlStore::loadFromQFiles_start() {
 			this->enableInotifyForLoadFromQFile();
 		}
 		extern int opt_mysqlstore_concat_limit_cdr;
-		if(cloud_host.empty()) {
+		if(!isCloud()) {
 			extern int opt_mysqlstore_concat_limit_message;
 			extern int opt_mysqlstore_concat_limit_register;
 			extern int opt_mysqlstore_concat_limit_http;
@@ -2191,7 +2367,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 	if(qfileConfig.terminate) {
 		return;
 	}
-	int idc = cloud_host.empty() ? convIdForQFile(id) : 1;
+	int idc = !isCloud() ? convIdForQFile(id) : 1;
 	QFile *qfile;
 	lock_qfiles();
 	if(qfiles.find(idc) == qfiles.end()) {
@@ -2669,7 +2845,7 @@ MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
 						   store ? store->password.c_str() : this->password.c_str(), 
 						   store ? store->database.c_str() : this->database.c_str(),
 						   store ? store->port : this->port,
-						   this->cloud_host.c_str(), this->cloud_token.c_str(), this->cloud_router,
+						   this->isCloud() ? this->cloud_host.c_str() : NULL, this->cloud_token.c_str(), this->cloud_router,
 						   this->defaultConcatLimit);
 	process->setEnableTerminatingDirectly(this->enableTerminatingDirectly);
 	process->setEnableTerminatingIfEmpty(this->enableTerminatingIfEmpty);
@@ -2957,6 +3133,9 @@ SqlDb *createSqlObject(int connectId) {
 		} else {
 			sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port);
 			if(isCloud()) {
+				extern char cloud_host[256];
+				extern char cloud_token[256];
+				extern bool cloud_router;
 				sqlDb->setCloudParameters(cloud_host, cloud_token, cloud_router);
 			}
 		}
@@ -4794,7 +4973,7 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 	}
 	
 	if(opt_ipaccount && !opt_disable_partition_operations) {
-		if(!cloud_host.empty()) {
+		if(isCloud()) {
 			this->createProcedure(
 			"begin\
 			    call create_partition('ipacc', 'day', next_days);\
@@ -5038,7 +5217,7 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId) {
 		return(true);
 	}
 	
-	if(!cloud_host.empty()) {
+	if(isCloud()) {
 		this->createProcedure(string(
 		"begin\
 		    declare part_date date;\

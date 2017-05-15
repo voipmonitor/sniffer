@@ -128,22 +128,8 @@ bool cCR_Client_response::start(string host, u_int16_t port) {
 }
 
 void cCR_Client_response::client_process() {
-	extern int parse_command(string cmd, int client, cCR_Client_response *cr_client);
+	extern int parse_command(string cmd, int client, cClient *c_client);
 	parse_command(command, 0, this);
 	client_socket->writeAesEnc(NULL, 0, true);
 	delete this;
-}
-
-bool cCR_Client_response::write(u_char *data, size_t dataLen) {
-	return(client_socket->write(data, dataLen));
-}
-
-bool cCR_Client_response::writeXorKeyEnc(u_char *data, size_t dataLen, const char *key) {
-	client_socket->setXorKey(key);
-	return(client_socket->writeXorKeyEnc(data, dataLen));
-}
-
-bool cCR_Client_response::writeAesEnc(u_char *data, size_t dataLen, const char *ckey, const char *ivec) {
-	client_socket->set_aes_keys(ckey, ivec);
-	return(client_socket->writeAesEnc(data, dataLen, false));
 }

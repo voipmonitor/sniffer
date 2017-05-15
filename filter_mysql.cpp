@@ -157,7 +157,7 @@ IPfilter::~IPfilter() {
 };
 
 void IPfilter::load() {
-	if(opt_nocdr || is_sender()) {
+	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
 	vector<db_row> vectDbRow;
@@ -366,7 +366,7 @@ void TELNUMfilter::add_payload(t_payload *payload) {
 
 void TELNUMfilter::load() {
 	this->loadFile();
-	if(opt_nocdr || is_sender()) {
+	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
 	vector<db_row> vectDbRow;
@@ -393,7 +393,7 @@ void TELNUMfilter::load() {
 
 void TELNUMfilter::loadFile() {
 	extern char opt_capture_rules_telnum_file[1024];
-	if(is_sender() || !opt_capture_rules_telnum_file[0]) {
+	if(is_sender() || is_client_packetbuffer_sender() || !opt_capture_rules_telnum_file[0]) {
 		return;
 	}
 	cCsv csv;
@@ -569,7 +569,7 @@ DOMAINfilter::~DOMAINfilter() {
 };
 
 void DOMAINfilter::load() {
-	if(opt_nocdr || is_sender()) {
+	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
 	vector<db_row> vectDbRow;
@@ -702,7 +702,7 @@ SIP_HEADERfilter::~SIP_HEADERfilter() {
 }
 
 void SIP_HEADERfilter::load() {
-	if(opt_nocdr || is_sender()) {
+	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
 	vector<db_row> vectDbRow;

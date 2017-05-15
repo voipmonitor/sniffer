@@ -34,6 +34,7 @@
 #include "ssldata.h"
 #include "tar.h"
 #include "voipmonitor.h"
+#include "server.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -139,6 +140,7 @@ extern char opt_cachedir[1024];
 extern int opt_pcap_dump_tar;
 extern volatile unsigned int glob_tar_queued_files;
 
+extern sSnifferClientOptions snifferClientOptions;
 extern cBuffersControl buffersControl;
 
 vm_atomic<string> pbStatString;
@@ -573,6 +575,37 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 		this->destroyRestoreBuffer();
 	}
 	return(1);
+}
+
+string pcap_block_store::addRestoreChunk_getErrorString(int errorCode) {
+	string error;
+	switch(errorCode) {
+	case -1:
+		error = "bad size / offset";
+		break;
+	case -2:
+		error = "too big";
+		break;
+	case -3:
+		error = "missing / bad block id";
+		break;
+	case -4:
+		error = "oversize";
+		break;
+	case -5:
+		error = "bad checksum";
+		break;
+	case -6:
+		error = "bad version - sender and receiver must be the same version";
+		break;
+	case -7:
+		error = "too different time between sender and receiver";
+		break;
+	default:
+		error = "unknow error";
+		break;
+	}
+	return(error);
 }
 
 bool pcap_block_store::compress() {
@@ -5188,6 +5221,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->blockStoreTrash_sync = 0;
 	this->socketHostIPl = 0;
 	this->socketHandle = 0;
+	this->clientSocket = NULL;
 	this->_sync_packetServerConnections = 0;
 	this->lastCheckFreeSizeCachedir_timeMS = 0;
 	this->_last_ts.tv_sec = 0;
@@ -5219,6 +5253,9 @@ PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 		}
 		syslog(LOG_NOTICE, "packetbuffer terminating (%s): socketClose", nameQueue.c_str());
 	}
+	if(this->clientSocket) {
+		delete this->clientSocket;
+	}
 	if(this->destroyBlocksThreadHandle) {
 		pthread_join(this->destroyBlocksThreadHandle, NULL);
 	}
@@ -5231,6 +5268,48 @@ void PcapQueue_readFromFifo::setPacketServer(ip_port ipPort, ePacketServerDirect
 	this->packetServerDirection = direction;
 	if(direction == directionRead) {
 		this->setEnableMainThread();
+	}
+}
+
+bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, size_t bufferLen, string *error, string *warning, u_int32_t *block_counter) {
+	pcap_block_store *blockStore = new FILE_LINE(0) pcap_block_store;
+	int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, bufferLen, NULL);
+	*error = "";
+	*warning = "";
+	if(rsltAddRestoreChunk > 0) {
+		if(!blockStore->check_offsets()) {
+			*error = "bad offsets";
+		} else if(!blockStore->size_compress && !blockStore->check_headers()) {
+			*error = "bad headers";
+		}
+	} else if(rsltAddRestoreChunk < 0) {
+		*error = blockStore->addRestoreChunk_getErrorString(rsltAddRestoreChunk);
+	} 
+	if(error->empty()) {
+		if(*block_counter == blockStore->block_counter) {
+			delete blockStore;
+		} else {
+			if(*block_counter &&
+			   *block_counter + 1 != blockStore->block_counter) {
+				*warning = "loss packetbuffer block";
+			}
+			while(!this->pcapStoreQueue.push(blockStore, false)) {
+				if(TERMINATING) {
+					break;
+				} else {
+					usleep(1000);
+				}
+			}
+			sumPacketsCounterIn[0] += blockStore->count;
+			sumPacketsSize[0] += blockStore->size_packets ? blockStore->size_packets : blockStore->size;
+			sumPacketsSizeCompress[0] += blockStore->size_compress;
+			++sumBlocksCounterIn[0];
+			*block_counter = blockStore->block_counter;
+		}
+		return(true);
+	} else {
+		delete blockStore;
+		return(false);
 	}
 }
 
@@ -5469,7 +5548,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 						}
 						offsetBuffer = 0;
 						while(offsetBuffer < bufferLen) {
-							const char *error = NULL;
+							string error;
 							int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer); 
 							if(rsltAddRestoreChunk > 0) {
 								if(!blockStore->check_offsets()) {
@@ -5511,44 +5590,19 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									}
 								}
 							} else if(rsltAddRestoreChunk < 0) {
-								switch(rsltAddRestoreChunk) {
-								case -1:
-									error = "bad size / offset";
-									break;
-								case -2:
-									error = "too big";
-									break;
-								case -3:
-									error = "missing / bad block id";
-									break;
-								case -4:
-									error = "oversize";
-									break;
-								case -5:
-									error = "bad checksum";
-									break;
-								case -6:
-									error = "bad version - sender and receiver must be the same version";
-									break;
-								case -7:
-									error = "too different time between sender and receiver";
-									break;
-								default:
-									error = "unknow error";
-									break;
-								}
+								error = blockStore->addRestoreChunk_getErrorString(rsltAddRestoreChunk);
 							} else {
 								offsetBuffer = bufferLen;
 							}
-							if(error) {
-								send(this->packetServerConnections[arg2]->socketClient, error, strlen(error), 0);
+							if(!error.empty()) {
+								send(this->packetServerConnections[arg2]->socketClient, error.c_str(), error.length(), 0);
 								blockStore->destroyRestoreBuffer();
 								syncBeginBlock = true;
 								u_long actTimeMS = getTimeMS();
 								if(!lastTimeErrorLogMS ||
 								   actTimeMS > lastTimeErrorLogMS + 1000) {
 									syslog(LOG_ERR, "receive bad packetbuffer block (%s) in conection %s - %i",
-									       error,
+									       error.c_str(),
 									       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
 									       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 									lastTimeErrorLogMS = actTimeMS;
@@ -5656,7 +5710,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			}
 			++sumBlocksCounterOut[0];
 		}
-		if(this->packetServerDirection == directionWrite) {
+		if(this->packetServerDirection == directionWrite || snifferClientOptions.packetbuffer_sender) {
 			if(blockStore) {
 				this->socketWritePcapBlock(blockStore);
 				this->blockStoreTrashPush(blockStore);
@@ -6110,6 +6164,9 @@ string PcapQueue_readFromFifo::getCpuUsage(bool writeThread, bool preparePstatDa
 
 bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) {
 	++block_counter;
+	if(snifferClientOptions.packetbuffer_sender) {
+		return(socketWritePcapBlockBySnifferClient(blockStore));
+	}
 	bool rslt = false;
 	unsigned counterSleep = 0;
 	while(!TERMINATING) {
@@ -6141,6 +6198,99 @@ bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) 
 		}
 	}
 	return(rslt);
+}
+
+bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_store *blockStore) {
+	bool ok = false;
+	unsigned maxPass = 100000;
+	for(unsigned int pass = 0; pass < maxPass; pass++) {
+		if(is_terminating() > 1 && pass > 2) {
+			break;
+		}
+		if(pass > 0) {
+			if(this->clientSocket) {
+				delete this->clientSocket;
+				this->clientSocket = NULL;
+			}
+			if(is_terminating()) {
+				usleep(100000);
+			} else {
+				sleep(1);
+			}
+			syslog(LOG_INFO, "send packetbuffer bock - next attempt %u", pass);
+		}
+		if(!this->clientSocket) {
+			this->clientSocket = new FILE_LINE(0) cSocketBlock("packetbuffer block", true);
+			this->clientSocket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
+			if(!this->clientSocket->connect()) {
+				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed connect to cloud router");
+				continue;
+			}
+			string cmd = "{\"type_connection\":\"packetbuffer block\"}\r\n";
+			if(!this->clientSocket->write(cmd)) {
+				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed send command");
+				continue;
+			}
+			string rsltRsaKey;
+			if(!this->clientSocket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
+				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed read rsa key");
+				continue;
+			}
+			JsonItem jsonRsaKey;
+			jsonRsaKey.parse(rsltRsaKey);
+			string rsa_key = jsonRsaKey.getValue("rsa_key");
+			this->clientSocket->set_rsa_pub_key(rsa_key);
+			this->clientSocket->generate_aes_keys();
+			JsonExport json_keys;
+			json_keys.add("password", snifferClientOptions.password);
+			string aes_ckey, aes_ivec;
+			this->clientSocket->get_aes_keys(&aes_ckey, &aes_ivec);
+			json_keys.add("aes_ckey", aes_ckey);
+			json_keys.add("aes_ivec", aes_ivec);
+			json_keys.add("time", sqlDateTimeString(time(NULL)).c_str());
+			json_keys.add("sensor_id", opt_id_sensor);
+			json_keys.add("sensor_name", opt_name_sensor);
+			if(!this->clientSocket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
+				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed send token & aes keys");
+				continue;
+			}
+			string connectResponse;
+			if(!this->clientSocket->readBlock(&connectResponse) || connectResponse != "OK") {
+				if(!this->clientSocket->isError() && connectResponse != "OK") {
+					syslog(LOG_ERR, "send packetbuffer block error: %s", ("failed response from cloud router - " + connectResponse).c_str());
+					delete this->clientSocket;
+					this->clientSocket = NULL;
+					break;
+				} else {
+					syslog(LOG_ERR, "send packetbuffer block error: %s", "failed read ok");
+					continue;
+				}
+			}
+		}
+		bool okSendBlock = true;
+		size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
+		u_char *saveBuffer = blockStore->getSaveBuffer(block_counter);
+		if(!this->clientSocket->writeBlock(saveBuffer, sizeSaveBuffer, cSocket::_te_aes)) {
+			okSendBlock = false;
+		}
+		delete [] saveBuffer;
+		if(!okSendBlock) {
+			syslog(LOG_ERR, "send packetbuffer block error: %s", "failed send");
+			continue;
+		}
+		string response;
+		if(!this->clientSocket->readBlock(&response, cSocket::_te_aes)) {
+			syslog(LOG_ERR, "send packetbuffer block error: %s", "failed read response");
+			continue;
+		}
+		if(response == "OK") {
+			ok = true;
+			break;
+		} else {
+			syslog(LOG_ERR, "send packetbuffer block error: %s", response.empty() ? "response is empty" : ("bad response - " + response).c_str());
+		}
+	}
+	return(ok);
 }
 
 bool PcapQueue_readFromFifo::socketGetHost() {

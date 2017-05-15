@@ -102,9 +102,12 @@ public:
 	bool reconnect();
 	virtual bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL) = 0;
 	bool queryByCurl(string query);
-	bool queryByCloudRouter(string query);
+	bool queryByRemoteSocket(string query);
+	int processResponseFromQueryBy(const char *response, unsigned pass);
 	virtual string prepareQuery(string query, bool nextPass);
 	virtual SqlDb_row fetchRow(bool assoc = false) = 0;
+	virtual string getJsonResult() { return(""); }
+	virtual string getJsonError() { return(""); }
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
@@ -248,10 +251,10 @@ protected:
 	bool disableLogError;
 	bool silentConnect;
 	bool connecting;
-	vector<string> cloud_data_columns;
-	vector<vector<sCloudDataItem> > cloud_data;
-	size_t cloud_data_rows;
-	size_t cloud_data_index;
+	vector<string> response_data_columns;
+	vector<vector<sCloudDataItem> > response_data;
+	size_t response_data_rows;
+	size_t response_data_index;
 	unsigned long maxAllowedPacket;
 	string prevQuery;
 private:
@@ -259,7 +262,7 @@ private:
 	string lastErrorString;
 	static volatile u_int64_t delayQuery_sum_ms;
 	static volatile u_int32_t delayQuery_count;
-	cSocketBlock *cloud_router_socket;
+	cSocketBlock *remote_socket;
 friend class MySqlStore_process;
 };
 
@@ -296,6 +299,10 @@ public:
 	bool connected();
 	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	SqlDb_row fetchRow(bool assoc = false);
+	bool fetchQueryResult(vector<string> *fields, vector<map<string, string> > *rows);
+	string getJsonResult(vector<string> *fields, vector<map<string, string> > *rows);
+	string getJsonResult();
+	string getJsonError();
 	int getInsertId();
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
@@ -461,6 +468,7 @@ public:
 	void disconnect();
 	bool connected();
 	void query(const char *query_str);
+	void queryByRemoteSocket(const char *query_str);
 	void store();
 	void _store(string beginProcedure, string endProcedure, string queries);
 	void exportToFile(FILE *file, bool sqlFormat, bool cleanAfterExport);
@@ -505,6 +513,7 @@ private:
 	bool enableAutoDisconnect;
 	u_long lastQueryTime;
 	u_long queryCounter;
+	cSocketBlock *remote_socket;
 };
 
 class MySqlStore {
@@ -672,6 +681,15 @@ public:
 	string exportToFile(FILE *file, string filename, bool sqlFormat, bool cleanAfterExport);
 	void autoloadFromSqlVmExport();
 	string getSqlVmExportDirectory();
+	bool isCloud() {
+		return(isCloudRouter() || isCloudSsh());
+	}
+	bool isCloudRouter() {
+		return(cloud_host[0] && cloud_token[0] && cloud_router);
+	}
+	bool isCloudSsh() {
+		return(cloud_host[0] && cloud_token[0] && !cloud_router);
+	}
 private:
 	static void *threadQFilesCheckPeriod(void *arg);
 	static void *threadLoadFromQFiles(void *arg);
