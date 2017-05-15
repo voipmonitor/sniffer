@@ -451,7 +451,7 @@ bool SqlDb::queryByRemoteSocket(string query) {
 				continue;
 			}
 			string cmd = isCloud() ?
-				      "{\"type_connection\":\"sniffer_sql_query\"}\r\n" :
+				      "{\"type_connection\":\"sniffer_sql_query\",\"gzip\":1}\r\n" :
 				      "{\"type_connection\":\"query\"}\r\n";
 			if(!this->remote_socket->write(cmd)) {
 				setLastError(0, "failed send command", true);

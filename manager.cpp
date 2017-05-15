@@ -2600,7 +2600,7 @@ getwav:
 		ostringstream outStrIgnoreJitter;
 		outStrIgnoreJitter << opt_ignoreRTCPjitter << endl;
 		string ignoreJitterVal = outStrIgnoreJitter.str();
-		if ((size = sendvm(client, sshchannel, cr_client, ignoreJitterVal.c_str(), ignoreJitterVal.length(), 0)) == -1){
+		if ((size = sendvm(client, sshchannel, c_client, ignoreJitterVal.c_str(), ignoreJitterVal.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
