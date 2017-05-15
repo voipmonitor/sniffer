@@ -1045,6 +1045,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			"\"connect_duration\", "
 			"\"callerip\", "
 			"\"calledip\", "
+			"\"sipproxies\", "
 			"\"lastpackettime\", "
 			"\"lastSIPresponseNum\", "
 			"\"rtp_src\", "
@@ -1076,6 +1077,20 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				// skip register or message or calls which are scheduled to be closed
 				continue;
 			}
+			stringstream spp;
+			set<unsigned int> proxies_undup;
+			call->proxies_undup(&proxies_undup);
+			set<unsigned int>::iterator iter_undup;
+			for (iter_undup = proxies_undup.begin(); iter_undup != proxies_undup.end(); ) {
+				if(*iter_undup == call->sipcalledip[0]) { ++iter_undup; continue; };
+				unsigned int bip = htonl(*iter_undup);
+				spp << (bip & 0xFF) << "." << ((bip >> 8) & 0xFF) << "." << ((bip >> 16) & 0xFF) << "." << ((bip >> 24) & 0xFF);
+				++iter_undup;
+				if (iter_undup != proxies_undup.end()) {
+					spp << ',';
+				}
+			}
+			string sipproxies = spp.str();
 			/* 
 			 * caller 
 			 * callername
@@ -1101,6 +1116,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				 "\"%d\", "
 				 "\"%u\", "
 				 "\"%u\", "
+				 "\"%s\", " // sipproxies
 				 "\"%u\", "
 				 "\"%d\", " //lastSIPresponseNum
 				 "\"%u\", " //rtp_src
@@ -1131,6 +1147,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				 call->connect_duration_active(), 
 				 htonl(call->sipcallerip[0]), 
 				 htonl(call->sipcalledip[0]), 
+				 sipproxies.c_str(),
 				 (unsigned int)call->get_last_packet_time(), 
 				 call->lastSIPresponseNum,
 				     //rtp stat 
