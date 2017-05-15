@@ -189,6 +189,7 @@ int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
 int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
+unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
 int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
@@ -575,7 +576,7 @@ timeval cloud_last_activecheck;					//Time of a last check request sent
 char cloud_host[256] = "cloud.voipmonitor.org";
 char cloud_url[1024] = "";
 char cloud_token[256] = "";
-bool cloud_router = false;
+bool cloud_router = true;
 unsigned cloud_router_port = 60023;
 
 cCR_Receiver_service *cloud_receiver = NULL;
@@ -5204,6 +5205,7 @@ void cConfig::addConfigItems() {
 				->addValues("header:-1|h:-1")
 				->setDefaultValueStr("no"));
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
 					expert();
 					addConfigItem(new FILE_LINE(42212) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
@@ -5882,6 +5884,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"sipports", 1, 0, 'Y'},
 	    {"skinny", 0, 0, 200},
 	    {"skinnyports", 1, 0, 199},
+	    {"ignorertcpjitter", 1, 0, 198},
 	    {"mono", 0, 0, 201},
 	    {"untar-gui", 1, 0, 202},
 	    {"unlzo-gui", 1, 0, 205},
@@ -5953,6 +5956,9 @@ void get_command_line_arguments() {
 				printf ("option %s\n", long_options[option_index].name);
 				break;
 			*/
+			case 198:
+				opt_ignoreRTCPjitter = atoi(optarg);
+				break;
 			case 199:
 				{
 					skinnyportmatrix[2000] = 0;
@@ -6831,6 +6837,9 @@ bool check_complete_parameters() {
                         " --config-file=<filename>\n"
                         "      Specify configuration file full path.  Suggest /etc/voipmonitor.conf\n"
                         "\n"
+                        " --ignorertcpjitter=<value>\n"
+                        "      Ignore RTCP jitter values greater than this value. Default is zero (disabled).\n"
+                        "\n"
                         " --manager-port=<port-number>\n"
                         "      TCP port top which manager interface should bind.  Default is 5029.\n"
                         "\n"
@@ -7545,6 +7554,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "savertcp", NULL))) {
 		opt_saveRTCP = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ignorertcpjitter", NULL))) {
+		opt_ignoreRTCPjitter = atoi(value);
 	}
 	if((value = ini.GetValue("general", "saveaudio", NULL))) {
 		switch(value[0]) {
