@@ -1033,9 +1033,6 @@ void CleanSpool::clean_spooldir_run() {
 	
 	clean_spooldir_run_processing = 1;
 
-	clean_maxpoolsize_all();
-	clean_maxpooldays_all();
-
 	clean_maxpoolsize_sip();
 	clean_maxpooldays_sip();
 
@@ -1048,6 +1045,9 @@ void CleanSpool::clean_spooldir_run() {
 	clean_maxpoolsize_audio();
 	clean_maxpooldays_audio();
 	
+	clean_maxpoolsize_all();
+	clean_maxpooldays_all();
+
 	if(opt_other.maxpool_clean_obsolete) {
 		clean_obsolete_dirs();
 	}
