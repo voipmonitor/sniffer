@@ -846,7 +846,8 @@ bool TcpReassemblyLink::push_normal(
 	if(state == STATE_SYN_OK || 
 	   state == STATE_SYN_FORCE_OK ||
 	   (state >= STATE_RESET &&
-	    !header_tcp.fin && !header_tcp.rst)) {
+	    !header_tcp.fin && !header_tcp.rst) || 
+	   reassembly->ignoreTcpHandshake) {
 		if(datalen > 0) {
 			TcpReassemblyStream_packet packet;
 			packet.setData(time, header_tcp,
@@ -2184,6 +2185,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enableHttpForceInit = false;
 	this->enableCrazySequence = false;
 	this->enableWildLink = false;
+	this->ignoreTcpHandshake = false;
 	this->enableIgnorePairReqResp = false;
 	this->enableDestroyStreamsInComplete = false;
 	this->enableAllCompleteAfterZerodataAck = false;

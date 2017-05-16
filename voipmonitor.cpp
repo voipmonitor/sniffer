@@ -325,6 +325,7 @@ bool opt_http_cleanup_ext = false;
 int opt_enable_webrtc = 0;
 int opt_enable_ssl = 0;
 unsigned int opt_ssl_link_timeout = 5 * 60;
+bool opt_ssl_ignore_tcp_handshake = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
@@ -3123,6 +3124,9 @@ int main_init_read() {
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
 		tcpReassemblySsl->setEnableWildLink();
+		if(opt_ssl_ignore_tcp_handshake) {
+			tcpReassemblySsl->setIgnoreTcpHandshake();
+		}
 	}
 	if(opt_sip_tcp_reassembly_ext) {
 		tcpReassemblySipExt = new FILE_LINE(42031) TcpReassembly(TcpReassembly::sip);
@@ -5283,6 +5287,8 @@ void cConfig::addConfigItems() {
 			->addValues("old:10|only:2"));
 		addConfigItem(new FILE_LINE(42255) cConfigItem_ip_port_str_map("ssl_ipport", &ssl_ipport));
 		addConfigItem(new FILE_LINE(42256) cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
+			advanced();
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -8197,6 +8203,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_link_timeout", NULL))) {
 		opt_ssl_link_timeout = atol(value);
+	}
+	if((value = ini.GetValue("general", "ssl_ignore_tcp_handshake", NULL))) {
+		opt_ssl_ignore_tcp_handshake = yesno(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
 		strncpy(opt_tcpreassembly_http_log, value, sizeof(opt_tcpreassembly_http_log));

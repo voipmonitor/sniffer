@@ -792,6 +792,9 @@ public:
 	void setEnableWildLink(bool enableWildLink = true) {
 		this->enableWildLink = enableWildLink;
 	}
+	void setIgnoreTcpHandshake(bool ignoreTcpHandshake = true) {
+		this->ignoreTcpHandshake = ignoreTcpHandshake;
+	}
 	void setEnableIgnorePairReqResp(bool enableIgnorePairReqResp = true) {
 		this->enableIgnorePairReqResp = enableIgnorePairReqResp;
 	}
@@ -936,6 +939,7 @@ private:
 	bool enableHttpForceInit;
 	bool enableCrazySequence;
 	bool enableWildLink;
+	bool ignoreTcpHandshake;
 	bool enableIgnorePairReqResp;
 	bool enableDestroyStreamsInComplete;
 	bool enableAllCompleteAfterZerodataAck;

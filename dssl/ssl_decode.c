@@ -297,7 +297,7 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 			}
 		}
 		
-		if((int32_t)recLen <= 0) {
+		if((int32_t)recLen < 0) {
 			return(NM_ERROR(DSSL_E_SSL_INVALID_RECORD_LENGTH));
 		}
 
