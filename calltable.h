@@ -516,6 +516,7 @@ public:
 	*/
 	map<int, map<int, dstring> > custom_headers;
 
+	volatile int _proxies_lock;
 	list<unsigned int> proxies;
 	
 	bool onCall_2XX;
@@ -829,6 +830,13 @@ public:
 	void forcemark_unlock() {
 		__sync_lock_release(&this->_forcemark_lock);
 	}
+
+	void proxies_lock() {
+		while(__sync_lock_test_and_set(&this->_proxies_lock, 1));
+	}
+	void proxies_unlock() {
+		__sync_lock_release(&this->_proxies_lock);
+	}
 	
 	void shift_destroy_call_at(pcap_pkthdr *header, int lastSIPresponseNum = 0) {
 		if(this->destroy_call_at > 0) {
@@ -852,6 +860,8 @@ public:
 	void adjustUA();
 	
 	void proxies_undup(set<unsigned int> *proxies_undup);
+
+	void proxy_add(u_int32_t sipproxyip);
 	
 	void createListeningBuffers();
 	void destroyListeningBuffers();

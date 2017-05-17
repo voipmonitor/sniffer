@@ -475,6 +475,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	}
 	forcemark[0] = forcemark[1] = 0;
 	_forcemark_lock = 0;
+	_proxies_lock = 0;
 	a_mos_lqo = -1;
 	b_mos_lqo = -1;
 	oneway = 1;
@@ -4372,6 +4373,7 @@ void Call::adjustUA() {
 }
 
 void Call::proxies_undup(set<unsigned int> *proxies_undup) {
+	proxies_lock();
 	list<unsigned int>::iterator iter = proxies.begin();
 	while (iter != proxies.end()) {
 		if (proxies_undup->find(*iter) == proxies_undup->end()) {
@@ -4379,6 +4381,13 @@ void Call::proxies_undup(set<unsigned int> *proxies_undup) {
 		}
 		++iter;
 	}
+	proxies_unlock();
+}
+
+void Call::proxy_add(u_int32_t sipproxyip) {
+	proxies_lock();
+	proxies.push_back(sipproxyip);
+	proxies_unlock();
 }
 
 void Call::createListeningBuffers() {
