@@ -325,7 +325,7 @@ bool opt_http_cleanup_ext = false;
 int opt_enable_webrtc = 0;
 int opt_enable_ssl = 0;
 unsigned int opt_ssl_link_timeout = 5 * 60;
-bool opt_ssl_ignore_tcp_handshake = false;
+bool opt_ssl_ignore_tcp_handshake = true;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
