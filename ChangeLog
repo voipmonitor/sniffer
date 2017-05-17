@@ -1,3 +1,13 @@
+19.5 17.5.2017
+==============
+- add support for ssl in simple read from file (parameter -r) [VS-611]
+- ignore too high jitter values in rcpt packets [VS-590]
+- fix G722 audio decode [VS-613]
+- use new cloud protocol which solves problem with the connection stability
+- fix fix dssl condition for check invalid record length and allow ssl decoding even if the tcp handshake is incomplete [VS-591]
+- fix cleaning spooldir when combining options (when maxpoolsize and maxpoolrtpsize were set it deleted all sip before rtp) [VS-616]
+
+
 19.4.3 10.5.2017
 ================
 - fix storing SQL when query_cache = yes
