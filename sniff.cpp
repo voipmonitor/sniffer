@@ -2955,7 +2955,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				    (packetS->sip_method == MESSAGE && opt_messageproxy)) &&
 				   packetS->daddr != 0) {
 					// daddr is already set, store previous daddr as sipproxy
-					call->proxies.push_back(call->sipcalledip[0]);
+					call->proxy_add(call->sipcalledip[0]);
 				}
 				updateDest = true;
 			} else if(call->lastsipcallerip == packetS->saddr) {
