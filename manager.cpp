@@ -1083,7 +1083,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			set<unsigned int>::iterator iter_undup;
 			for (iter_undup = proxies_undup.begin(); iter_undup != proxies_undup.end(); ) {
 				if(*iter_undup == call->sipcalledip[0]) { ++iter_undup; continue; };
-				string ipstr = inet_ntostring(*iter_undup);
+				string ipstr = inet_ntostring(htonl(*iter_undup));
 				spp << ipstr;
 				++iter_undup;
 				if (iter_undup != proxies_undup.end()) {
