@@ -26,6 +26,10 @@ endif
 #  GCCARCH = core2
 #endif
 
+.DEFAULT_GOAL := shared
+.PHONY: default
+default: shared ;
+
 core2cust: GCCARCH = core2
 core2: GCCARCH = core2
 armv6k: GCCARCH = armv6k
