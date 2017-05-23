@@ -690,6 +690,9 @@ public:
 	bool isCloudSsh() {
 		return(cloud_host[0] && cloud_token[0] && !cloud_router);
 	}
+	int convStoreId(int id);
+	int getMaxThreadsForStoreId(int id);
+	int getConcatLimitForStoreId(int id);
 private:
 	static void *threadQFilesCheckPeriod(void *arg);
 	static void *threadLoadFromQFiles(void *arg);

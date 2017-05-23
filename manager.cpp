@@ -2670,6 +2670,13 @@ getwav:
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "list_active_clients") != NULL) {
+		extern sSnifferServerServices snifferServerServices;
+		string rslt = snifferServerServices.listJsonServices();
+		if ((size = sendvm(client, sshchannel, c_client, rslt.c_str(), rslt.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "jemalloc_stat") != NULL) {
 		string jeMallocStat(bool full);
 		string rsltMemoryStat = jeMallocStat(strstr(buf, "full"));

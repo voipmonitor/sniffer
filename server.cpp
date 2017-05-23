@@ -184,6 +184,9 @@ void cSnifferServerConnection::connection_process() {
 		verbstr << "CONNECTION PROCESS CMD: " << str;
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
+	if(typeConnection != _tc_response && remainder) {
+		delete [] remainder;
+	}
 	switch(typeConnection) {
 	case _tc_gui_command:
 		cp_gui_command(atol(jsonData.getValue("sensor_id").c_str()), jsonData.getValue("command"));
@@ -207,13 +210,9 @@ void cSnifferServerConnection::connection_process() {
 		cp_manager_command(jsonData.getValue("command"));
 		break;
 	default:
-		if(remainder) {
-			delete [] remainder;
-		}
 		delete this;
 		return;
 	}
-	delete [] remainder;
 }
 
 void cSnifferServerConnection::evData(u_char *data, size_t dataLen) {
@@ -477,7 +476,8 @@ void cSnifferServerConnection::cp_store() {
 			size_t posStoreIdSeparator = queryStr.find('|');
 			if(posStoreIdSeparator != string::npos) {
 				extern MySqlStore *sqlStore;
-				sqlStore->query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), atoi(queryStr.c_str()));
+				sqlStore->query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), 
+						     sqlStore->convStoreId(atoi(queryStr.c_str())));
 				socket->writeBlock("OK", cSocket::_te_aes);
 			}
 		}
