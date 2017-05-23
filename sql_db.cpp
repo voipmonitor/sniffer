@@ -99,6 +99,10 @@ bool opt_log_sensor_partition_oldver = false;
 sExistsColumns existsColumns;
 SqlDb::eSupportPartitions supportPartitions = SqlDb::_supportPartitions_ok;
 
+#define CONV_ID(id) (id < STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS  || id >= STORE_PROC_ID_IPACC_1 ?  (id / 10) * 10 : id)
+#define CONV_ID_FOR_QFILE(id) CONV_ID(id)
+#define CONV_ID_FOR_REMOTE_STORE(id) CONV_ID(id)
+
 
 string SqlDb_row::operator [] (const char *fieldName) {
 	int indexField = this->getIndexField(fieldName);
@@ -1828,10 +1832,12 @@ bool MySqlStore_process::connected() {
 }
 
 void MySqlStore_process::query(const char *query_str) {
+	/*
 	if(snifferClientOptions.remote_store) {
 		queryByRemoteSocket(query_str);
 		return;
 	}
+	*/
 	if(sverb.store_process_query) {
 		cout << "store_process_query_" << this->id << ": " << query_str << endl;
 	}
@@ -1925,7 +1931,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 				}
 			}
 		}
-		string query_str_with_id = intToString(id) + '|' + query_str;
+		string query_str_with_id = intToString(CONV_ID_FOR_REMOTE_STORE(id)) + '|' + query_str;
 		bool okSendQuery = true;
 		if(query_str_with_id.length() > 100) {
 			cGzip gzipCompressQuery;
@@ -1967,54 +1973,64 @@ void MySqlStore_process::store() {
 		string queryqueue = "";
 		while(1) {
 			++this->threadRunningCounter;
-			
-			string beginProcedure = "\nBEGIN\n" + (opt_mysql_enable_transactions || this->enableTransaction ? beginTransaction : "");
-			string endProcedure = (opt_mysql_enable_transactions || this->enableTransaction ? endTransaction : "") + "\nEND";
-			this->lock();
-			if(this->query_buff.size() == 0) {
+			if(snifferClientOptions.remote_store) {
+				this->lock();
+				if(this->query_buff.size() == 0) {
+					this->unlock();
+					break;
+				}
+				string query = this->query_buff.front();
+				this->query_buff.pop_front();
 				this->unlock();
-				if(queryqueue != "") {
+				this->queryByRemoteSocket(query.c_str());
+			} else {
+				string beginProcedure = "\nBEGIN\n" + (opt_mysql_enable_transactions || this->enableTransaction ? beginTransaction : "");
+				string endProcedure = (opt_mysql_enable_transactions || this->enableTransaction ? endTransaction : "") + "\nEND";
+				this->lock();
+				if(this->query_buff.size() == 0) {
+					this->unlock();
+					if(queryqueue != "") {
+						this->_store(beginProcedure, endProcedure, queryqueue);
+						lastQueryTime = getTimeS();
+						queryqueue = "";
+						if(verbosity > 1) {
+							syslog(LOG_INFO, "STORE id: %i", this->id);
+						}
+					}
+					break;
+				}
+				string query = this->query_buff.front();
+				bool maxAllowedPacketIsFull = false;
+				if(queryqueue.size() + query.size() + 100 > this->sqlDb->maxAllowedPacket) {
+					maxAllowedPacketIsFull = true;
+					this->unlock();
+				} else {
+					this->query_buff.pop_front();
+					this->unlock();
+					queryqueue.append(query);
+					size_t query_len = query.length();
+					while(query_len && query[query_len - 1] == ' ') {
+						--query_len;
+					}
+					if(!((query_len && query[query_len - 1] == ';') ||
+					     (query_len > 1 && query[query_len - 1] == '\n' && query[query_len - 2] == ';'))) {
+						queryqueue.append("; ");
+					}
+				}
+				if(size < this->concatLimit && !maxAllowedPacketIsFull) {
+					size++;
+				} else {
 					this->_store(beginProcedure, endProcedure, queryqueue);
 					lastQueryTime = getTimeS();
 					queryqueue = "";
+					size = 0;
 					if(verbosity > 1) {
 						syslog(LOG_INFO, "STORE id: %i", this->id);
 					}
 				}
-				break;
-			}
-			string query = this->query_buff.front();
-			bool maxAllowedPacketIsFull = false;
-			if(queryqueue.size() + query.size() + 100 > this->sqlDb->maxAllowedPacket) {
-				maxAllowedPacketIsFull = true;
-				this->unlock();
-			} else {
-				this->query_buff.pop_front();
-				this->unlock();
-				queryqueue.append(query);
-				size_t query_len = query.length();
-				while(query_len && query[query_len - 1] == ' ') {
-					--query_len;
+				if(is_terminating() && this->sqlDb->getLastError() && this->enableTerminatingIfSqlError) {
+					break;
 				}
-				if(!((query_len && query[query_len - 1] == ';') ||
-				     (query_len > 1 && query[query_len - 1] == '\n' && query[query_len - 2] == ';'))) {
-					queryqueue.append("; ");
-				}
-			}
-			if(size < this->concatLimit && !maxAllowedPacketIsFull) {
-				size++;
-			} else {
-				this->_store(beginProcedure, endProcedure, queryqueue);
-				lastQueryTime = getTimeS();
-				queryqueue = "";
-				size = 0;
-				if(verbosity > 1) {
-					syslog(LOG_INFO, "STORE id: %i", this->id);
-				}
-			}
-			
-			if(is_terminating() && this->sqlDb->getLastError() && this->enableTerminatingIfSqlError) {
-				break;
 			}
 		}
 		if(is_terminating() && 
@@ -2282,37 +2298,25 @@ void MySqlStore::loadFromQFiles_start() {
 		if(opt_load_query_from_files_inotify) {
 			this->enableInotifyForLoadFromQFile();
 		}
-		extern int opt_mysqlstore_concat_limit_cdr;
 		if(!isCloud()) {
-			extern int opt_mysqlstore_concat_limit_message;
-			extern int opt_mysqlstore_concat_limit_register;
-			extern int opt_mysqlstore_concat_limit_http;
-			extern int opt_mysqlstore_concat_limit_webrtc;
-			extern int opt_mysqlstore_concat_limit_ipacc;
-			extern int opt_mysqlstore_max_threads_cdr;
-			extern int opt_mysqlstore_max_threads_message;
-			extern int opt_mysqlstore_max_threads_register;
-			extern int opt_mysqlstore_max_threads_http;
-			extern int opt_mysqlstore_max_threads_webrtc;
-			extern int opt_mysqlstore_max_threads_ipacc_base;
-			extern int opt_mysqlstore_max_threads_ipacc_agreg2;
 			extern MySqlStore *sqlStore_2;
-			this->addLoadFromQFile(10, "cdr", opt_mysqlstore_max_threads_cdr, opt_mysqlstore_concat_limit_cdr);
-			this->addLoadFromQFile(20, "message", opt_mysqlstore_max_threads_message, opt_mysqlstore_concat_limit_message);
-			this->addLoadFromQFile(40, "cleanspool");
-			this->addLoadFromQFile(50, "register", opt_mysqlstore_max_threads_register, opt_mysqlstore_concat_limit_register);
-			this->addLoadFromQFile(60, "save_packet_sql");
-			this->addLoadFromQFile(70, "http", opt_mysqlstore_max_threads_http, opt_mysqlstore_concat_limit_http, 
+			this->addLoadFromQFile((STORE_PROC_ID_CDR_1 / 10) * 10, "cdr");
+			this->addLoadFromQFile((STORE_PROC_ID_MESSAGE_1 / 10) * 10, "message");
+			this->addLoadFromQFile((STORE_PROC_ID_CLEANSPOOL / 10) * 10, "cleanspool");
+			this->addLoadFromQFile((STORE_PROC_ID_REGISTER_1 / 10) * 10, "register");
+			this->addLoadFromQFile((STORE_PROC_ID_SAVE_PACKET_SQL / 10) * 10, "save_packet_sql");
+			this->addLoadFromQFile((STORE_PROC_ID_HTTP_1 / 10) * 10, "http", 0, 0,
 					       use_mysql_2_http() ? sqlStore_2 : NULL);
-			this->addLoadFromQFile(80, "webrtc", opt_mysqlstore_max_threads_webrtc, opt_mysqlstore_concat_limit_webrtc);
-			this->addLoadFromQFile(91, "cache_numbers");
-			this->addLoadFromQFile(92, "fraud_alert_info");
+			this->addLoadFromQFile((STORE_PROC_ID_WEBRTC_1 / 10) * 10, "webrtc");
+			this->addLoadFromQFile(STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS, "cache_numbers");
+			this->addLoadFromQFile(STORE_PROC_ID_FRAUD_ALERT_INFO, "fraud_alert_info");
 			if(opt_ipaccount) {
-				this->addLoadFromQFile(100, "ipacc", opt_mysqlstore_max_threads_ipacc_base, opt_mysqlstore_concat_limit_ipacc);
-				this->addLoadFromQFile(110, "ipacc_agreg", opt_mysqlstore_max_threads_ipacc_agreg2, opt_mysqlstore_concat_limit_ipacc);
-				this->addLoadFromQFile(120, "ipacc_agreg2", opt_mysqlstore_max_threads_ipacc_agreg2, opt_mysqlstore_concat_limit_ipacc);
+				this->addLoadFromQFile((STORE_PROC_ID_IPACC_1 / 10) * 10, "ipacc");
+				this->addLoadFromQFile((STORE_PROC_ID_IPACC_AGR_INTERVAL / 10) * 10, "ipacc_agreg");
+				this->addLoadFromQFile((STORE_PROC_ID_IPACC_AGR2_HOUR_1 / 10) * 10, "ipacc_agreg2");
 			}
 		} else {
+			extern int opt_mysqlstore_concat_limit_cdr;
 			this->addLoadFromQFile(1, "cloud", 1, opt_mysqlstore_concat_limit_cdr);
 		}
 		if(opt_load_query_from_files_inotify) {
@@ -2426,9 +2430,7 @@ string MySqlStore::getQFilename(int idc, u_long actTime) {
 }
 
 int MySqlStore::convIdForQFile(int id) {
-	return(id < STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS  || id >= STORE_PROC_ID_IPACC_1 ? 
-		(id / 10) * 10 :
-		id);
+	return(CONV_ID_FOR_QFILE(id));
 }
 
 bool MySqlStore::existFilenameInQFiles(const char *filename) {
@@ -2496,8 +2498,8 @@ void MySqlStore::addLoadFromQFile(int id, const char *name,
 	LoadFromQFilesThreadData threadData;
 	threadData.id = id;
 	threadData.name = name;
-	threadData.storeThreads = storeThreads > 0 ? storeThreads : 1;
-	threadData.storeConcatLimit = storeConcatLimit;
+	threadData.storeThreads = storeThreads > 0 ? storeThreads : getMaxThreadsForStoreId(id);
+	threadData.storeConcatLimit = storeConcatLimit > 0 ? storeConcatLimit : getConcatLimitForStoreId(id);
 	threadData.store = store;
 	loadFromQFilesThreadData[id] = threadData;
 	LoadFromQFilesThreadInfo *threadInfo = new FILE_LINE(29005) LoadFromQFilesThreadInfo;
@@ -3019,6 +3021,94 @@ void MySqlStore::autoloadFromSqlVmExport() {
 
 string MySqlStore::getSqlVmExportDirectory() {
 	return(getSqlVmExportDir());
+}
+
+int MySqlStore::convStoreId(int id) {
+	int threadId = id;
+	int maxThreads = getMaxThreadsForStoreId(id);
+	if(maxThreads > 1) {
+		ssize_t queryThreadMinSize = -1;
+		for(int i = 0; i < maxThreads; i++) {
+			int qtSize = this->getSize(id + i);
+			if(qtSize < 0) {
+				qtSize = 0;
+			}
+			if(queryThreadMinSize == -1 || qtSize < queryThreadMinSize) {
+				threadId = id  + i + 1;
+				queryThreadMinSize = qtSize;
+			}
+		}
+	}
+	return(threadId);
+}
+
+int MySqlStore::getMaxThreadsForStoreId(int id) {
+	extern int opt_mysqlstore_max_threads_cdr;
+	extern int opt_mysqlstore_max_threads_message;
+	extern int opt_mysqlstore_max_threads_register;
+	extern int opt_mysqlstore_max_threads_http;
+	extern int opt_mysqlstore_max_threads_webrtc;
+	extern int opt_mysqlstore_max_threads_ipacc_base;
+	extern int opt_mysqlstore_max_threads_ipacc_agreg2;
+	int maxThreads = 1;
+	switch((id / 10) * 10) {
+	case (STORE_PROC_ID_CDR_1 / 10) * 10:
+		maxThreads = opt_mysqlstore_max_threads_cdr;
+		break;
+	case (STORE_PROC_ID_MESSAGE_1 / 10) * 10:
+		maxThreads = opt_mysqlstore_max_threads_message;
+		break;
+	case (STORE_PROC_ID_REGISTER_1 / 10) * 10:
+		maxThreads = opt_mysqlstore_max_threads_register;
+		break;
+	case (STORE_PROC_ID_HTTP_1 / 10) * 10:
+		maxThreads = opt_mysqlstore_max_threads_http;
+		break;
+	case (STORE_PROC_ID_WEBRTC_1 / 10) * 10:
+		maxThreads = opt_mysqlstore_max_threads_webrtc;
+		break;
+	case (STORE_PROC_ID_IPACC_1 / 10) * 10:
+		maxThreads = opt_mysqlstore_max_threads_ipacc_base;
+		break;
+	case (STORE_PROC_ID_IPACC_AGR_INTERVAL / 10) * 10:
+	case (STORE_PROC_ID_IPACC_AGR2_HOUR_1 / 10) * 10:
+		maxThreads = opt_mysqlstore_max_threads_ipacc_agreg2;
+		break;
+	}
+	return(maxThreads);
+}
+
+int MySqlStore::getConcatLimitForStoreId(int id) {
+	extern int opt_mysqlstore_concat_limit_cdr;;
+	extern int opt_mysqlstore_concat_limit_message;
+	extern int opt_mysqlstore_concat_limit_register;
+	extern int opt_mysqlstore_concat_limit_http;
+	extern int opt_mysqlstore_concat_limit_webrtc;
+	extern int opt_mysqlstore_concat_limit_ipacc;
+	int concatLimit = 0;
+	switch((id / 10) * 10) {
+	case (STORE_PROC_ID_CDR_1 / 10) * 10:
+		concatLimit = opt_mysqlstore_concat_limit_cdr;
+		break;
+	case (STORE_PROC_ID_MESSAGE_1 / 10) * 10:
+		concatLimit = opt_mysqlstore_concat_limit_message;
+		break;
+	case (STORE_PROC_ID_REGISTER_1 / 10) * 10:
+		concatLimit = opt_mysqlstore_concat_limit_register;
+		break;
+	case (STORE_PROC_ID_HTTP_1 / 10) * 10:
+		concatLimit = opt_mysqlstore_concat_limit_http;
+		break;
+	case (STORE_PROC_ID_WEBRTC_1 / 10) * 10:
+		concatLimit = opt_mysqlstore_concat_limit_webrtc;
+		break;
+	case (STORE_PROC_ID_IPACC_1 / 10) * 10:
+	case (STORE_PROC_ID_IPACC_AGR_INTERVAL / 10) * 10:
+	case (STORE_PROC_ID_IPACC_AGR2_HOUR_1 / 10) * 10:
+		concatLimit = opt_mysqlstore_concat_limit_ipacc;
+		break;
+	}
+	return(concatLimit);
 }
 
 void *MySqlStore::threadQFilesCheckPeriod(void *arg) {

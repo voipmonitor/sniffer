@@ -5622,7 +5622,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42458) cConfigItem_string("cloud_url_activecheck", cloud_url_activecheck, sizeof(cloud_url_activecheck)));
 		subgroup("server / client");
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_server", &snifferServerOptions.enable));
-			addConfigItem(new FILE_LINE(0) cConfigItem_string("sniffer_server_host", &snifferServerOptions.host));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("sniffer_server_bind", &snifferServerOptions.host));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("sniffer_server_port", &snifferServerOptions.port));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("sniffer_server_password", &snifferServerOptions.password));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_client", &snifferClientOptions.enable));
