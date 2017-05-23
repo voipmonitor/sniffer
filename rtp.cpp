@@ -1320,12 +1320,14 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	// codec changed 
 	RTP *laststream = iscaller ? owner->lastcallerrtp : owner->lastcalledrtp;
 
+
 	if(defer_codec_change or 
-	    (owner->lastraw[iscaller] != this and (lastssrc and *lastssrc != ssrc and (laststream and laststream->daddr == daddr))) or
+	    (owner->iscaller_consecutive[iscaller] >= 5 and owner->lastraw[iscaller] != this and (lastssrc and *lastssrc != ssrc and (laststream and laststream->daddr == daddr))) or
 	   (curpayload != prev_payload and 
 	    codec != PAYLOAD_TELEVENT and 
 	    (prev_codec != PAYLOAD_TELEVENT or !codecchanged) and 
 	    curpayload != 13 and prev_payload != 13 and codec != 13 and codec != 19 and prev_codec != 13 and prev_codec != 19)) {
+
 		if(defer_codec_change) {
 			defer_codec_change = false;
 		}
@@ -1438,7 +1440,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 				/* write file info to "playlist" */
 				sprintf(tmp, "%s.rawInfo", basefilename);
-				owner->lastraw[iscaller] = this;
+				owner->iscaller_consecutive[iscaller] = 0;
 				bool gfileRAWInfo_exists = file_exists(tmp);
 				FILE *gfileRAWInfo = fopen(tmp, "a");
 				if(gfileRAWInfo) {
@@ -1453,6 +1455,15 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 		}
 	}
+
+
+	if(owner->lastraw[iscaller] != this) {
+		owner->iscaller_consecutive[iscaller] = 0;
+	} else {
+		owner->iscaller_consecutive[iscaller]++;
+	}
+	owner->lastraw[iscaller] = this;
+
 
 	if(first_codec < 0 && codec != PAYLOAD_TELEVENT && codec != 13 && codec != 19) {
 		/* save payload to statistics based on first payload. TODO: what if payload is dynamically changing? */

@@ -548,6 +548,8 @@ public:
 	sRtcpXrData rtcpXrData;
 	
 	unsigned last_udptl_seq;
+
+	u_int32_t iscaller_consecutive[2];
 	
 	/**
 	 * constructor
