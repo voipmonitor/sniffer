@@ -584,6 +584,7 @@ cCR_Receiver_service *cloud_receiver = NULL;
 
 extern sSnifferServerOptions snifferServerOptions;
 extern sSnifferClientOptions snifferClientOptions;
+extern sSnifferServerClientOptions snifferServerClientOptions;
 
 char ssh_host[1024] = "";
 int ssh_port = 22;
@@ -2203,7 +2204,9 @@ int main(int argc, char *argv[]) {
 		cConfigMap configMap;
 		CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, configfile);
 		CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, "/etc/voipmonitor/conf.d/");
-		if(configMap.getFirstItem("new-config", true) == "yes") {
+		if(configMap.getFirstItem("new-config", true) == "yes" ||
+		   !configMap.getFirstItem("server_bind").empty() ||
+		   !configMap.getFirstItem("server_destination").empty()) {
 			useNewCONFIG = true;
 		}
 	}
@@ -5621,17 +5624,14 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42457) cConfigItem_integer("cloud_activecheck_period", &opt_cloud_activecheck_period));
 			addConfigItem(new FILE_LINE(42458) cConfigItem_string("cloud_url_activecheck", cloud_url_activecheck, sizeof(cloud_url_activecheck)));
 		subgroup("server / client");
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_server", &snifferServerOptions.enable));
-			addConfigItem(new FILE_LINE(0) cConfigItem_string("sniffer_server_bind", &snifferServerOptions.host));
-			addConfigItem(new FILE_LINE(0) cConfigItem_integer("sniffer_server_port", &snifferServerOptions.port));
-			addConfigItem(new FILE_LINE(0) cConfigItem_string("sniffer_server_password", &snifferServerOptions.password));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_client", &snifferClientOptions.enable));
-			addConfigItem(new FILE_LINE(0) cConfigItem_string("sniffer_client_host", &snifferClientOptions.host));
-			addConfigItem(new FILE_LINE(0) cConfigItem_integer("sniffer_client_port", &snifferClientOptions.port));
-			addConfigItem(new FILE_LINE(0) cConfigItem_string("sniffer_client_password", &snifferClientOptions.password));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_client_remote_query", &snifferClientOptions.remote_query));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_client_remote_store", &snifferClientOptions.remote_store));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sniffer_client_packetbuffer_sender", &snifferClientOptions.packetbuffer_sender));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_bind", &snifferServerOptions.host));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_bind_port", &snifferServerOptions.port));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_destination", &snifferClientOptions.host));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_destination_port", &snifferClientOptions.port));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_query", &snifferClientOptions.remote_query));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_store", &snifferClientOptions.remote_store));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("packetbuffer_sender", &snifferClientOptions.packetbuffer_sender));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_password", &snifferServerClientOptions.password));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 				advanced();
@@ -8905,7 +8905,7 @@ bool is_sender() {
 }
 
 bool is_client_packetbuffer_sender() {
-	return(snifferClientOptions.packetbuffer_sender);
+	return(snifferClientOptions.isEnablePacketBufferSender());
 }
 
 int check_set_rtp_threads(int num_rtp_threads) {

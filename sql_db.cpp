@@ -88,6 +88,7 @@ extern CustomHeaders *custom_headers_message;
 extern int opt_ptime;
 
 extern sSnifferClientOptions snifferClientOptions;
+extern sSnifferServerClientOptions snifferServerClientOptions;
 
 
 int sql_noerror = 0;
@@ -475,7 +476,7 @@ bool SqlDb::queryByRemoteSocket(string query) {
 			if(isCloud()) {
 				json_keys.add("token", cloud_token);
 			} else {
-				json_keys.add("password", snifferClientOptions.password);
+				json_keys.add("password", snifferServerClientOptions.password);
 			}
 			string aes_ckey, aes_ivec;
 			this->remote_socket->get_aes_keys(&aes_ckey, &aes_ivec);
@@ -708,7 +709,7 @@ int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb
 }
 
 int SqlDb::getIndexField(string fieldName) {
-	if(isCloud() || snifferClientOptions.remote_query) {
+	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		for(size_t i = 0; i < this->response_data_columns.size(); i++) {
 			if(!strcasecmp(this->response_data_columns[i].c_str(), fieldName.c_str())) {
 				return(i);
@@ -725,7 +726,7 @@ int SqlDb::getIndexField(string fieldName) {
 }
 
 string SqlDb::getNameField(int indexField) {
-	if(isCloud() || snifferClientOptions.remote_query) {
+	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		if((unsigned)indexField < this->response_data_columns.size()) {
 			return(this->response_data_columns[indexField]);
 		}
@@ -848,7 +849,7 @@ SqlDb_mysql::~SqlDb_mysql() {
 }
 
 bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
-	if(isCloud() || snifferClientOptions.remote_query) {
+	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		return(true);
 	}
 	this->connecting = true;
@@ -994,13 +995,13 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 }
 
 int SqlDb_mysql::multi_on() {
-	return isCloud() || snifferClientOptions.remote_query ? 
+	return isCloud() || snifferClientOptions.isEnableRemoteQuery() ? 
 		true : 
 		mysql_set_server_option(this->hMysql, MYSQL_OPTION_MULTI_STATEMENTS_ON);
 }
 
 int SqlDb_mysql::multi_off() {
-	return isCloud() || snifferClientOptions.remote_query ? 
+	return isCloud() || snifferClientOptions.isEnableRemoteQuery() ? 
 		true : 
 		mysql_set_server_option(this->hMysql, MYSQL_OPTION_MULTI_STATEMENTS_OFF);
 }
@@ -1104,7 +1105,7 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 }
 
 void SqlDb_mysql::disconnect() {
-	if(isCloud() || snifferClientOptions.remote_query) {
+	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		return;
 	}
 	if(this->hMysqlRes) {
@@ -1127,13 +1128,13 @@ void SqlDb_mysql::disconnect() {
 }
 
 bool SqlDb_mysql::connected() {
-	return(isCloud() || snifferClientOptions.remote_query ? 
+	return(isCloud() || snifferClientOptions.isEnableRemoteQuery() ? 
 		true : 
 		this->hMysqlConn != NULL);
 }
 
 bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, const char *dropProcQuery) {
-	if(isCloud() || snifferClientOptions.remote_query) {
+	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		string preparedQuery = this->prepareQuery(query, false);
 		if(verbosity > 1) {
 			syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
@@ -1275,7 +1276,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 
 SqlDb_row SqlDb_mysql::fetchRow(bool assoc) {
 	SqlDb_row row(this);
-	if(isCloud() || snifferClientOptions.remote_query) {
+	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		if(response_data_index < response_data_rows &&
 		   response_data_index < response_data.size()) {
 			for(size_t i = 0; i < min(response_data[response_data_index].size(), response_data_columns.size()); i++) {
@@ -1832,12 +1833,6 @@ bool MySqlStore_process::connected() {
 }
 
 void MySqlStore_process::query(const char *query_str) {
-	/*
-	if(snifferClientOptions.remote_store) {
-		queryByRemoteSocket(query_str);
-		return;
-	}
-	*/
 	if(sverb.store_process_query) {
 		cout << "store_process_query_" << this->id << ": " << query_str << endl;
 	}
@@ -1909,7 +1904,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 			this->remote_socket->set_rsa_pub_key(rsa_key);
 			this->remote_socket->generate_aes_keys();
 			JsonExport json_keys;
-			json_keys.add("password", snifferClientOptions.password);
+			json_keys.add("password", snifferServerClientOptions.password);
 			string aes_ckey, aes_ivec;
 			this->remote_socket->get_aes_keys(&aes_ckey, &aes_ivec);
 			json_keys.add("aes_ckey", aes_ckey);
@@ -1973,7 +1968,7 @@ void MySqlStore_process::store() {
 		string queryqueue = "";
 		while(1) {
 			++this->threadRunningCounter;
-			if(snifferClientOptions.remote_store) {
+			if(snifferClientOptions.isEnableRemoteStore()) {
 				this->lock();
 				if(this->query_buff.size() == 0) {
 					this->unlock();

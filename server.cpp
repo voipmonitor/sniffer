@@ -9,6 +9,7 @@ extern int opt_id_sensor;
 
 sSnifferServerOptions snifferServerOptions;
 sSnifferClientOptions snifferClientOptions;
+sSnifferServerClientOptions snifferServerClientOptions;
 sSnifferServerGuiTasks snifferServerGuiTasks;
 sSnifferServerServices snifferServerServices;
 cSnifferServer *snifferServer;
@@ -236,7 +237,7 @@ sSnifferServerGuiTask cSnifferServerConnection::getTask() {
 }
 
 bool cSnifferServerConnection::checkPassword(string password, string *rsltStr) {
-	if(password == snifferServerOptions.password) {
+	if(password == snifferServerClientOptions.password) {
 		*rsltStr = "";
 		return(true);
 	} else {
@@ -681,7 +682,7 @@ bool cSnifferClientService::receive_process_loop_begin() {
 	receive_socket->generate_aes_keys();
 	JsonExport json_keys;
 	json_keys.add("sensor_id", sensor_id);
-	json_keys.add("password", snifferClientOptions.password);
+	json_keys.add("password", snifferServerClientOptions.password);
 	string aes_ckey, aes_ivec;
 	receive_socket->get_aes_keys(&aes_ckey, &aes_ivec);
 	json_keys.add("aes_ckey", aes_ckey);
