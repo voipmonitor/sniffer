@@ -525,6 +525,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 
 	lastraw[0] = NULL;
 	lastraw[1] = NULL;
+
+	iscaller_consecutive[0] = 0;
+	iscaller_consecutive[1] = 0;
 }
 
 void
