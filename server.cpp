@@ -337,6 +337,7 @@ void cSnifferServerConnection::cp_service() {
 			<< "sensor_id: " << sensor_id;
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
+	updateSensorState(sensor_id);
 	sSnifferServerService service;
 	service.connect_ipl = socket->getIPL();
 	service.connect_port = socket->getPort();
@@ -607,6 +608,24 @@ cSnifferServerConnection::eTypeConnection cSnifferServerConnection::convTypeConn
 	} else {
 		return(_tc_na);
 	}
+}
+
+void cSnifferServerConnection::updateSensorState(int32_t sensor_id) {
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query("select * from `sensors` where id_sensor=" + intToString(sensor_id));
+	bool existsRowSensor = sqlDb->fetchRow();
+	if(existsRowSensor) {
+		SqlDb_row rowU;
+		rowU.add(socket->getIP(), "host");
+		sqlDb->update("sensors", rowU, ("id_sensor=" + intToString(sensor_id)).c_str());
+	} else {
+		SqlDb_row rowI;
+		rowI.add(sensor_id, "id_sensor");
+		rowI.add("auto insert id " + intToString(sensor_id), "name");
+		rowI.add(socket->getIP(), "host");
+		sqlDb->insert("sensors", rowI);
+	}
+	delete sqlDb;
 }
 
 

@@ -208,6 +208,7 @@ protected:
 private:
 	bool rsaAesInit();
 	eTypeConnection convTypeConnection(string typeConnection);
+	void updateSensorState(int32_t sensor_id);
 	void lock_tasks() {
 		while(__sync_lock_test_and_set(&_sync_tasks, 1)) {
 			if(SYNC_LOCK_USLEEP) {

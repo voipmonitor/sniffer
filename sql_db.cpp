@@ -5745,22 +5745,29 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 
 void SqlDb_mysql::updateSensorState() {
 	if(opt_id_sensor > 0) {
-		if(this->existsColumn("sensors", "cloud_router")) {
-			this->query("select * from `sensors` where id_sensor=" + intToString(opt_id_sensor));
-			SqlDb_row row = this->fetchRow();
-			if(row) {
+		this->query("select * from `sensors` where id_sensor=" + intToString(opt_id_sensor));
+		bool existsRowSensor = this->fetchRow();
+		if(isCloud()) {
+			bool existsColumnCloudRouter = this->existsColumn("sensors", "cloud_router");
+			if(existsRowSensor) {
 				SqlDb_row rowU;
-				rowU.add(isCloudRouter(), "cloud_router");
+				if(existsColumnCloudRouter) {
+					rowU.add(isCloudRouter(), "cloud_router");
+				}
 				if(isCloudRouter()) {
 					extern cCR_Receiver_service *cloud_receiver;
 					rowU.add(cloud_receiver->getConnectFrom(), "host");
 				}
-				this->update("sensors", rowU, ("id_sensor=" + intToString(opt_id_sensor)).c_str());
+				if(!rowU.isEmpty()) {
+					this->update("sensors", rowU, ("id_sensor=" + intToString(opt_id_sensor)).c_str());
+				}
 			} else if(isCloudRouter()) {
 				SqlDb_row rowI;
 				rowI.add(opt_id_sensor, "id_sensor");
 				rowI.add("auto insert id " + intToString(opt_id_sensor), "name");
-				rowI.add(true, "cloud_router");
+				if(existsColumnCloudRouter) {
+					rowI.add(true, "cloud_router");
+				}
 				extern cCR_Receiver_service *cloud_receiver;
 				rowI.add(cloud_receiver->getConnectFrom(), "host");
 				rowI.add(5029, "port");
@@ -5768,17 +5775,19 @@ void SqlDb_mysql::updateSensorState() {
 			}
 		}
 	} else {
-		this->query("select content from `system` where type='cloud_router_local_sensor'");
-		SqlDb_row row = this->fetchRow();
-		if(row) {
-			SqlDb_row rowU;
-			rowU.add(intToString(isCloudRouter()), "content");
-			this->update("system", rowU, "type='cloud_router_local_sensor'");
-		} else {
-			SqlDb_row rowI;
-			rowI.add(intToString(isCloudRouter()), "content");
-			rowI.add("cloud_router_local_sensor", "type");
-			this->insert("system", rowI);
+		if(isCloud()) {
+			this->query("select content from `system` where type='cloud_router_local_sensor'");
+			SqlDb_row row = this->fetchRow();
+			if(row) {
+				SqlDb_row rowU;
+				rowU.add(intToString(isCloudRouter()), "content");
+				this->update("system", rowU, "type='cloud_router_local_sensor'");
+			} else {
+				SqlDb_row rowI;
+				rowI.add(intToString(isCloudRouter()), "content");
+				rowI.add("cloud_router_local_sensor", "type");
+				this->insert("system", rowI);
+			}
 		}
 	}
 }
