@@ -1752,7 +1752,7 @@ bool RestartUpgrade::checkReadySafeRun() {
 
 bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	if(verbosity > 0) {
-		syslog(LOG_NOTICE, "run restart script");
+		syslog(LOG_NOTICE, "run restart script (%s)", this->restartTempScriptFileName.c_str());
 	}
 	if(!this->checkReadyRestart()) {
 		if(verbosity > 0) {
@@ -1764,7 +1764,7 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	close(socket2);
 	if(!this->safeRunTempScriptFileName.empty() && this->checkReadySafeRun()) {
 		if(!fork()) {
-			syslog(LOG_NOTICE, "run safe run script");
+			syslog(LOG_NOTICE, "run safe run script (%s)", this->safeRunTempScriptFileName.c_str());
 			close_all_fd();
 			execl(this->safeRunTempScriptFileName.c_str(), "Command-line", 0, NULL);
 			return(true);
