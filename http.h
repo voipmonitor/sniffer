@@ -131,6 +131,7 @@ public:
 	string getUriPathValue(string &uri, const char *valueName);
 	string getTag(string &data, const char *tag);
 	string getJsonValue(string &data, const char *valueName);
+	string getXmlValue(string &data, const char *valueName);
 	void printContentSummary();
 private:
 	unsigned int counterProcessData;

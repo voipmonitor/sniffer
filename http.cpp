@@ -160,6 +160,9 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		http = request;
 	}
 	string externalTransactionId = this->getTag(request, "External-Transaction-Id");
+	if(externalTransactionId.empty() && body.length()) {
+		externalTransactionId = this->getXmlValue(body, "correlation-id");
+	}
 	string sessionid = this->getUriValue(uri, "jajahsessionid");
 	if(!sessionid.length() && body.length()) {
 		sessionid = this->getJsonValue(body, "variable_jjSessionId");
@@ -328,6 +331,27 @@ string HttpData::getJsonValue(string &data, const char *valueName) {
 			++pointToBeginValue;
 		}
 		char *pointToEndValue = strchr(pointToBeginValue, '"');
+		if(pointToEndValue && pointToEndValue > pointToBeginValue) {
+			char oldEndChar = *pointToEndValue;
+			*pointToEndValue = 0;
+			string rslt = pointToBeginValue;
+			*pointToEndValue = oldEndChar;
+			return(rslt);
+		}
+	}
+	return("");
+}
+
+string HttpData::getXmlValue(string &data, const char *valueName) {
+	string valueNameWithEq = valueName + string("=");
+	char *pointToBeginName = (char*)strcasestr(data.c_str(), valueNameWithEq.c_str());
+	if(pointToBeginName) {
+		char *pointToBeginValue = pointToBeginName + strlen(valueName) + 1;
+		while(*pointToBeginValue == ' ' || *pointToBeginValue == '\t' || 
+		      *pointToBeginValue == '\'') {
+			++pointToBeginValue;
+		}
+		char *pointToEndValue = strchr(pointToBeginValue, '\'');
 		if(pointToEndValue && pointToEndValue > pointToBeginValue) {
 			char oldEndChar = *pointToEndValue;
 			*pointToEndValue = 0;
