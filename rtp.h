@@ -258,6 +258,7 @@ public:
 	bool had_audio;
 	bool defer_codec_change;
 	bool stream_in_multiple_calls;
+	uint32_t tailedframes;
 
 	/* RTCP data */
 	struct rtcp_t {

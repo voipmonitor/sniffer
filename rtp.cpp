@@ -352,6 +352,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	defer_codec_change = false;
 	stream_in_multiple_calls = false;
 	prev_payload_len = 0;
+	tailedframes = 0;
 }
 
 
@@ -568,6 +569,7 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 	msdiff -= packetization;
 
 	while( msdiff >= packetization )  {
+		tailedframes++;
 		ast_jb_get_and_deliver(channel_record, &channel_record->last_ts);
 		/* adding packetization time to last_ts time */ 
 		struct timeval tmp = ast_tvadd(channel_record->last_ts, ast_samp2tv(packetization, 1000));

@@ -1798,9 +1798,6 @@ Call::convertRawToWav() {
 		while(fgets(line, 256, pl)) {
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
 			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
-			char raw_extension[1024];
-			snprintf(raw_extension, sizeof(raw_extension), "i%d.%d.%lu.%d.%ld.%ld.raw", i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
-			string raw_pathfilename = this->get_pathfilename(tsf_audio, raw_extension);
 			samplerate = 1000 * get_ticks_bycodec(codec);
 			if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
 			if(maxsamplerate < samplerate) {
@@ -1871,11 +1868,11 @@ Call::convertRawToWav() {
 					    last_size > 10000)) {
 						// ignore this raw file it is duplicate 
 						if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
-						if(verbosity > 1) syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw_pathfilename.c_str(), rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+						if(verbosity > 1) syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(tv0, lasttv)=[%d]", raw_pathfilename.c_str(), rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(tv0, lasttv));
 					} else {
 						if(!force_convert_raw_to_wav &&
 						   rtp[rawl.ssrc_index]->skip) {
-							if(verbosity > 1) syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw_pathfilename.c_str(), rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc, ast_tvdiff_ms(lasttv, tv0));
+							if(verbosity > 1) syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] skip==1", raw_pathfilename.c_str(), rtp[last_ssrc_index]->ssrc, rtp[ssrc_index]->ssrc);
 							if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
 						} else {
 							raws.push_back(rawl);
@@ -2221,9 +2218,9 @@ bool Call::selectRtpStreams() {
 		RTP *C = NULL;
 		for(int k = 0; owner and k < ssrc_n; k++) {
 			B = rtp[k];
-			if(!B->had_audio or B->stats.received == 0) {
-				if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] codec is comfortnoise received[%u]\n", 
-					B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k, B->stats.received);
+			if((!B->had_audio or B->stats.received == 0) and B->tailedframes < 2) {
+				if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] codec is comfortnoise received[%u] tailedframes[%u] had_audio[%u]\n", 
+					B->ssrc, inet_ntostring(htonl(B->saddr)).c_str(), B->sport, inet_ntostring(htonl(B->daddr)).c_str(), B->dport, B->iscaller, k, B->stats.received, B->tailedframes, B->had_audio);
 				B->skip = true;
 			}
 
