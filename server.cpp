@@ -9,6 +9,7 @@ extern int opt_id_sensor;
 
 sSnifferServerOptions snifferServerOptions;
 sSnifferClientOptions snifferClientOptions;
+sSnifferServerClientOptions snifferServerClientOptions;
 sSnifferServerGuiTasks snifferServerGuiTasks;
 sSnifferServerServices snifferServerServices;
 cSnifferServer *snifferServer;
@@ -236,7 +237,7 @@ sSnifferServerGuiTask cSnifferServerConnection::getTask() {
 }
 
 bool cSnifferServerConnection::checkPassword(string password, string *rsltStr) {
-	if(password == snifferServerOptions.password) {
+	if(password == snifferServerClientOptions.password) {
 		*rsltStr = "";
 		return(true);
 	} else {
@@ -337,6 +338,7 @@ void cSnifferServerConnection::cp_service() {
 			<< "sensor_id: " << sensor_id;
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
+	updateSensorState(sensor_id);
 	sSnifferServerService service;
 	service.connect_ipl = socket->getIPL();
 	service.connect_port = socket->getPort();
@@ -609,6 +611,24 @@ cSnifferServerConnection::eTypeConnection cSnifferServerConnection::convTypeConn
 	}
 }
 
+void cSnifferServerConnection::updateSensorState(int32_t sensor_id) {
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query("select * from `sensors` where id_sensor=" + intToString(sensor_id));
+	bool existsRowSensor = sqlDb->fetchRow();
+	if(existsRowSensor) {
+		SqlDb_row rowU;
+		rowU.add(socket->getIP(), "host");
+		sqlDb->update("sensors", rowU, ("id_sensor=" + intToString(sensor_id)).c_str());
+	} else {
+		SqlDb_row rowI;
+		rowI.add(sensor_id, "id_sensor");
+		rowI.add("auto insert id " + intToString(sensor_id), "name");
+		rowI.add(socket->getIP(), "host");
+		sqlDb->insert("sensors", rowI);
+	}
+	delete sqlDb;
+}
+
 
 cSnifferClientService::cSnifferClientService(int32_t sensor_id) {
 	this->sensor_id = sensor_id;
@@ -662,7 +682,7 @@ bool cSnifferClientService::receive_process_loop_begin() {
 	receive_socket->generate_aes_keys();
 	JsonExport json_keys;
 	json_keys.add("sensor_id", sensor_id);
-	json_keys.add("password", snifferClientOptions.password);
+	json_keys.add("password", snifferServerClientOptions.password);
 	string aes_ckey, aes_ivec;
 	receive_socket->get_aes_keys(&aes_ckey, &aes_ivec);
 	json_keys.add("aes_ckey", aes_ckey);

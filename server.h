@@ -29,37 +29,45 @@ struct sSnifferServerVerbose {
 
 struct sSnifferServerOptions {
 	sSnifferServerOptions() {
-		enable = false;
-		port = 0;
+		port = 60024;
 	}
 	bool isEnable() {
-		return(enable && !host.empty() && port);
+		return(!host.empty() && port);
 	}
-	bool enable;
 	string host;
 	unsigned port;
-	string password;
 };
 
 
 struct sSnifferClientOptions {
 	sSnifferClientOptions() {
-		enable = false;
-		port = 0;
-		remote_query = false;
-		remote_store = false;
+		port = 60024;
+		remote_query = true;
+		remote_store = true;
 		packetbuffer_sender = false;
 	}
 	bool isEnable() {
-		return(enable && !host.empty() && port);
+		return(!host.empty() && port);
 	}
-	bool enable;
+	bool isEnableRemoteQuery() {
+		return(isEnable() && remote_query);
+	}
+	bool isEnableRemoteStore() {
+		return(isEnable() && remote_store);
+	}
+	bool isEnablePacketBufferSender() {
+		return(isEnable() && packetbuffer_sender);
+	}
 	string host;
 	unsigned port;
-	string password;
 	bool remote_query;
 	bool remote_store;
 	bool packetbuffer_sender;
+};
+
+
+struct sSnifferServerClientOptions {
+	string password;
 };
 
 
@@ -208,6 +216,7 @@ protected:
 private:
 	bool rsaAesInit();
 	eTypeConnection convTypeConnection(string typeConnection);
+	void updateSensorState(int32_t sensor_id);
 	void lock_tasks() {
 		while(__sync_lock_test_and_set(&_sync_tasks, 1)) {
 			if(SYNC_LOCK_USLEEP) {

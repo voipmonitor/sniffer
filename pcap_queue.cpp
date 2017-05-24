@@ -141,6 +141,7 @@ extern int opt_pcap_dump_tar;
 extern volatile unsigned int glob_tar_queued_files;
 
 extern sSnifferClientOptions snifferClientOptions;
+extern sSnifferServerClientOptions snifferServerClientOptions;
 extern cBuffersControl buffersControl;
 
 vm_atomic<string> pbStatString;
@@ -5710,7 +5711,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			}
 			++sumBlocksCounterOut[0];
 		}
-		if(this->packetServerDirection == directionWrite || snifferClientOptions.packetbuffer_sender) {
+		if(this->packetServerDirection == directionWrite || is_client_packetbuffer_sender()) {
 			if(blockStore) {
 				this->socketWritePcapBlock(blockStore);
 				this->blockStoreTrashPush(blockStore);
@@ -6164,7 +6165,7 @@ string PcapQueue_readFromFifo::getCpuUsage(bool writeThread, bool preparePstatDa
 
 bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) {
 	++block_counter;
-	if(snifferClientOptions.packetbuffer_sender) {
+	if(is_client_packetbuffer_sender()) {
 		return(socketWritePcapBlockBySnifferClient(blockStore));
 	}
 	bool rslt = false;
@@ -6242,7 +6243,7 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			this->clientSocket->set_rsa_pub_key(rsa_key);
 			this->clientSocket->generate_aes_keys();
 			JsonExport json_keys;
-			json_keys.add("password", snifferClientOptions.password);
+			json_keys.add("password", snifferServerClientOptions.password);
 			string aes_ckey, aes_ivec;
 			this->clientSocket->get_aes_keys(&aes_ckey, &aes_ivec);
 			json_keys.add("aes_ckey", aes_ckey);
