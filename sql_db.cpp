@@ -667,7 +667,7 @@ string SqlDb::updateQuery(string table, SqlDb_row row, const char *whereCond, bo
 	return(query);
 }
 
-int SqlDb::insert(string table, SqlDb_row row) {
+int64_t SqlDb::insert(string table, SqlDb_row row) {
 	string query = this->insertQuery(table, row);
 	if(this->query(query)) {
 		return(this->getInsertId());
@@ -675,7 +675,7 @@ int SqlDb::insert(string table, SqlDb_row row) {
 	return(-1);
 }
 
-int SqlDb::insert(string table, vector<SqlDb_row> *rows) {
+int64_t SqlDb::insert(string table, vector<SqlDb_row> *rows) {
 	if(!rows->size()) {
 		return(-1);
 	}
@@ -1382,7 +1382,7 @@ string SqlDb_mysql::getJsonError() {
 	return(exp.getJson());
 }
 
-int SqlDb_mysql::getInsertId() {
+int64_t SqlDb_mysql::getInsertId() {
 	if(this->hMysqlConn) {
 		return(mysql_insert_id(this->hMysqlConn));
 	}
@@ -1702,11 +1702,11 @@ SqlDb_row SqlDb_odbc::fetchRow(bool assoc) {
 	return(row);
 }
 
-int SqlDb_odbc::getInsertId() {
+int64_t SqlDb_odbc::getInsertId() {
 	SqlDb_row row;
 	if(this->query("select @@identity as last_insert_id") &&
 	   (row = this->fetchRow()) != 0) {
-		return(atol(row["last_insert_id"].c_str()));
+		return(atoll(row["last_insert_id"].c_str()));
 	}
 	return(-1);
 }

@@ -3381,7 +3381,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add(a_ua_id, "a_ua_id", true);
 	cdr.add(b_ua_id, "b_ua_id", true);
 	
-	int cdrID = sqlDbSaveCall->insert(sql_cdr_table, cdr);
+	u_int64_t cdrID = sqlDbSaveCall->insert(sql_cdr_table, cdr);
 	if (is_read_from_file_simple()) {
 		ostringstream outStr;
 		outStr << "Found new call. Added to db with cdr.ID:" << cdrID ;
@@ -3519,7 +3519,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		
 		if(opt_printinsertid) {
-			printf("CDRID:%d\n", cdrID);
+			printf("CDRID:%ld\n", cdrID);
 		}
 
 		cdr_next.add(cdrID, "cdr_ID");

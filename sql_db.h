@@ -111,11 +111,11 @@ public:
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
-	virtual int insert(string table, SqlDb_row row);
-	virtual int insert(string table, vector<SqlDb_row> *rows);
+	virtual int64_t insert(string table, SqlDb_row row);
+	virtual int64_t insert(string table, vector<SqlDb_row> *rows);
 	virtual bool update(string table, SqlDb_row row, const char *whereCond);
 	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2 = NULL);
-	virtual int getInsertId() = 0;
+	virtual int64_t getInsertId() = 0;
 	virtual bool existsTable(const char *table) = 0;
 	bool existsTable(string table) { return(existsTable(table.c_str())); }
 	virtual bool existsColumn(const char *table, const char *column) = 0;
@@ -303,7 +303,7 @@ public:
 	string getJsonResult(vector<string> *fields, vector<map<string, string> > *rows);
 	string getJsonResult();
 	string getJsonError();
-	int getInsertId();
+	int64_t getInsertId();
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
 	bool emptyTable(const char *table);
@@ -425,7 +425,7 @@ public:
 	bool connected();
 	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	SqlDb_row fetchRow(bool assoc = false);
-	int getInsertId();
+	int64_t getInsertId();
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
 	bool emptyTable(const char *table);
