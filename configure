@@ -4037,8 +4037,8 @@ fi
 
 if test "x$MYSQL_CONFIG" = "x"
 then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-$as_echo "not found" >&6; }
+    { $as_echo "$as_me:${as_lineno-$LINENO}: result: not found - apt-get install libmysqlclient-dev" >&5
+$as_echo "not found - apt-get install libmysqlclient-dev" >&6; }
     exit 3
 else
     MYSQLCFLAGS=`$MYSQL_CONFIG --cflags`
