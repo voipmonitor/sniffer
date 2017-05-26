@@ -4247,8 +4247,51 @@ $as_echo "$ac_cv_lib_gnutls_gnutls_init" >&6; }
 if test "x$ac_cv_lib_gnutls_gnutls_init" = xyes; then :
   HAVE_LIBGNUTLS=1
 else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find gnutls disabling SIP TLS decoder. apt-get install libgnutls-dev | yum install gnutls-devel" >&5
-$as_echo "$as_me: Unable to find gnutls disabling SIP TLS decoder. apt-get install libgnutls-dev | yum install gnutls-devel" >&6;}
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find gnutls - disabling SIP TLS decoder. apt-get install libgnutls-dev | yum install gnutls-devel" >&5
+$as_echo "$as_me: Unable to find gnutls - disabling SIP TLS decoder. apt-get install libgnutls-dev | yum install gnutls-devel" >&6;}
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for gcry_check_version in -lgcrypt" >&5
+$as_echo_n "checking for gcry_check_version in -lgcrypt... " >&6; }
+if ${ac_cv_lib_gcrypt_gcry_check_version+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lgcrypt  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char gcry_check_version ();
+int
+main ()
+{
+return gcry_check_version ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_gcrypt_gcry_check_version=yes
+else
+  ac_cv_lib_gcrypt_gcry_check_version=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_gcrypt_gcry_check_version" >&5
+$as_echo "$ac_cv_lib_gcrypt_gcry_check_version" >&6; }
+if test "x$ac_cv_lib_gcrypt_gcry_check_version" = xyes; then :
+  HAVE_LIBGNUTLS=1
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find libgcrypt - disabling SIP TLS decoder. apt-get install libgcrypt-dev | yum install libgcrypt-devel" >&5
+$as_echo "$as_me: Unable to find libgcrypt - disabling SIP TLS decoder. apt-get install libgcrypt-dev | yum install libgcrypt-devel" >&6;}
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for tc_malloc in -ltcmalloc_minimal" >&5
