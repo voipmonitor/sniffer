@@ -1622,6 +1622,7 @@ Call::convertRawToWav() {
 				this->selectRtpStreams();
 			}
 		}
+		this->setSkipConcurenceStreams(-1);
 		
 		if(sverb.read_rtp) {
 			this->printSelectedRtpStreams(-1, false);
@@ -2396,6 +2397,34 @@ bool Call::selectRtpStreams_byMaxLengthInLink() {
 		rtp[i]->skip = false;
 	}
 	return(false);
+}
+
+void Call::setSkipConcurenceStreams(int caller) {
+	if(caller == -1) {
+		setSkipConcurenceStreams(0);
+		setSkipConcurenceStreams(1);
+		return;
+	}
+	for(int i = 0; i < ssrc_n; i++) {
+		if(rtp[i]->iscaller == caller && !rtp[i]->skip) {
+			u_int64_t a_start = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec;
+			u_int64_t a_stop = rtp[i]->last_pcap_header_ts;
+			u_int64_t a_length = a_stop - a_start;
+			for(int j = 0; j < ssrc_n; j++) {
+				if(j != i && rtp[j]->iscaller == caller && !rtp[j]->skip) {
+					u_int64_t b_start = rtp[j]->first_packet_time * 1000000ull + rtp[j]->first_packet_usec;
+					u_int64_t b_stop = rtp[j]->last_pcap_header_ts;
+					u_int64_t b_length = b_stop - b_start;
+					if(b_start > a_start && b_start < a_stop &&
+					   a_length > 0 && b_length > 0 &&
+					   a_length / b_length > 0.8 && a_length / b_length < 1.25 &&
+					   b_start - a_start < a_length / 10) {
+						rtp[j]->skip = true;
+					}
+				}
+			}
+		}
+	}
 }
 
 u_int64_t Call::getFirstTimeInRtpStreams(int caller, bool selected) {
