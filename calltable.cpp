@@ -1033,10 +1033,16 @@ bool
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname) {
  
 	extern int opt_vlan_siprtpsame;
-	if(packetS->datalen == 12) {
+	bool record_dtmf = 0;
+	bool rtp_read_rslt = false;
+	int curpayload;
+	unsigned int curSSRC;
+	bool okRTP;
+	
+	if(packetS->datalen <= 12) {
 		//Ignoring RTP packets without data
 		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen);
-		return(false);
+		goto end;
 	}
 
 	if(opt_vlan_siprtpsame && this->vlan >= 0) {
@@ -1052,24 +1058,21 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 		}
 	}
 
-	bool record_dtmf = 0;
-	bool rtp_read_rslt = false;
-
 	if(first_rtp_time == 0) {
 		first_rtp_time = packetS->header_pt->ts.tv_sec;
 	}
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
 	tmprtp.fill((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest);
-	int curpayload = tmprtp.getPayload();
+	curpayload = tmprtp.getPayload();
 	
 	// chekc if packet is DTMF and saverfc2833 is enabled 
 	if(opt_saverfc2833 and curpayload == 101) {
 		record_dtmf = 1;
 	}
 	
-	unsigned int curSSRC = tmprtp.getSSRC();
-	bool okRTP = (curSSRC != 0 || opt_allow_zerossrc) && tmprtp.getVersion() == 2;
+	curSSRC = tmprtp.getSSRC();
+	okRTP = (curSSRC != 0 || opt_allow_zerossrc) && tmprtp.getVersion() == 2;
 	if(okRTP || this->seenudptl || this->isfax) {
 		if(iscaller) {
 			last_rtp_a_packet_time = packetS->header_pt->ts.tv_sec;
@@ -1309,7 +1312,7 @@ end:
 						  intToString(packetS->source) + "_" + 
 						  inet_ntostring(htonl(packetS->daddr)) + "_" + 
 						  intToString(packetS->dest) + ".pcap";
-				udptlDumper->dumper->open(tsf_na, (get_pathname(tsf_rtp) + "/" + filename).c_str(), global_pcap_handle, packetS->dlt);
+				udptlDumper->dumper->open(tsf_na, (get_pathname(tsf_rtp) + "/" + filename).c_str(), global_pcap_handle, DLT_EN10MB);
 				udptlDumpers[streamId] = udptlDumper;
 			} else {
 				udptlDumper = iter->second;
@@ -1329,18 +1332,27 @@ end:
 				u_int header_ip_offset = 0;
 				int protocol = 0;
 				if(parseEtherHeader(packetS->dlt, (u_char*)packetS->packet, header_sll, header_eth, header_ip_offset, protocol)) {
-					pcap_pkthdr *header;
-					u_char *packet;
-					u_int16_t old_ether_type = header_eth->ether_type;
+					pcap_pkthdr *header = NULL;
+					u_char *packet = NULL;
+					u_int16_t old_ether_type;
+					ether_header eth_header_tmp;
+					if(packetS->dlt == DLT_EN10MB) {
+						old_ether_type = header_eth->ether_type;
+					} else {
+						memset(&eth_header_tmp, 0, sizeof(eth_header_tmp));
+						header_eth = &eth_header_tmp;
+					}
 					header_eth->ether_type = htons(0x800);
 					createSimpleUdpDataPacket(sizeof(ether_header), &header, &packet,
-								  (u_char*)packetS->packet, (u_char*)packetS->data_(), htons(((udphdr2*)(packetS->packet + packetS->header_ip_offset + sizeof(iphdr2)))->len) - sizeof(udphdr2) /* eliminate padding */,
+								  (u_char*)header_eth, (u_char*)packetS->data_(), htons(((udphdr2*)(packetS->packet + packetS->header_ip_offset + sizeof(iphdr2)))->len) - sizeof(udphdr2) /* eliminate padding */,
 								  packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
 								  packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
-					udptlDumper->dumper->dump(header, packet, packetS->dlt);
+					udptlDumper->dumper->dump(header, packet, DLT_EN10MB);
+					if(packetS->dlt == DLT_EN10MB) {
+						header_eth->ether_type = old_ether_type;
+					}
 					delete [] packet;
 					delete header;
-					header_eth->ether_type = old_ether_type;
 					enable_save_packet = false;
 				}
 			}
