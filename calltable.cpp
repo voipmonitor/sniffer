@@ -2413,6 +2413,7 @@ void Call::printSelectedRtpStreams(int caller, bool selected) {
 				     << setw(10) << (start / 1000000.) << " - "
 				     << setw(10) << (stop / 1000000.) <<  "   "
 				     << setw(15) << inet_ntostring(htonl(rtp[i]->saddr)) << " -> " << setw(15) << inet_ntostring(htonl(rtp[i]->daddr)) << "   "
+				     << setw(10) << rtp[i]->s->received <<  "   "
 				     << (rtp[i]->skip ? "SKIP" : "")
 				     << endl;
 			}
