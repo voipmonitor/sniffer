@@ -6,6 +6,12 @@ apt-get install build-essential git libmysqlclient-dev libvorbis-dev libpcap-dev
 #optional packages
 apt-get install libpng-dev libgcrypt-dev libfftw3-dev libgoogle-perftools-dev
 
+#Debian Jessie (and possibly other Debian builds) need libgnutls28-dev rather than libgnutls-dev present in Ubuntu
+apt-get install libgnutls28-dev
+
+#this works in ubuntu Xenial
+apt-get install libgnutls-dev
+
 cd /usr/src
 git clone git://git.code.sf.net/p/voipmonitor/git voipmonitor-git
 cd voipmonitor-git
