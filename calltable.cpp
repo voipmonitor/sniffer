@@ -1317,14 +1317,20 @@ end:
 			} else {
 				udptlDumper = iter->second;
 			}
-			bool enableDump = true;
-			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
-			if(udptl->data_field) {
-				unsigned seq = htons(udptl->sequence);
-				if(seq <= udptlDumper->last_seq) {
-					enableDump = false;
+			bool enableDump;
+			if(packetS->datalen >= 2 &&
+			   (htons(*(u_int16_t*)packetS->data_()) & 0xC000) == 0x8000) {
+				enableDump = false;
+			} else {
+				enableDump = true;
+				UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
+				if(udptl->data_field) {
+					unsigned seq = htons(udptl->sequence);
+					if(seq <= udptlDumper->last_seq) {
+						enableDump = false;
+					}
+					udptlDumper->last_seq = seq;
 				}
-				udptlDumper->last_seq = seq;
 			}
 			if(enableDump) {
 				sll_header *header_sll = NULL;
