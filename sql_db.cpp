@@ -983,7 +983,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			return(rslt);
 		} else {
 			if(!this->silentConnect) {
-				this->checkLastError("connect error (" + this->conn_server + ")", true);
+				this->checkLastError("MySQL connect error (" + this->conn_server + ")", true);
 			}
 		}
 	} else {
