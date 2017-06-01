@@ -184,6 +184,10 @@ struct packet_s {
 			_packet_alloc = false;
 		}
 	}
+	inline bool isRtp() {
+		return(datalen >= 2 &&
+		       (htons(*(u_int16_t*)data_()) & 0xC000) == 0x8000);
+	}
 };
 
 struct packet_s_stack : public packet_s {

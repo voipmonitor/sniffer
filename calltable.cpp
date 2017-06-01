@@ -1031,18 +1031,31 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 /* analyze rtp packet */
 bool
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname) {
+	bool record_dtmf = false;
+	bool disable_save = false;
+	bool rtp_read_rslt = _read_rtp(packetS, iscaller, find_by_dest, stream_in_multiple_calls, ifname, &record_dtmf, &disable_save);
+	if(!disable_save) {
+		_save_rtp(packetS, is_fax, enable_save_packet, record_dtmf);
+	}
+	return(rtp_read_rslt);
+}
+ 
+bool
+Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
  
 	extern int opt_vlan_siprtpsame;
-	bool record_dtmf = 0;
 	bool rtp_read_rslt = false;
 	int curpayload;
 	unsigned int curSSRC;
 	bool okRTP;
 	
+	*record_dtmf = false;
+	*disable_save = false;
+	
 	if(packetS->datalen <= 12) {
 		//Ignoring RTP packets without data
 		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen);
-		goto end;
+		return(false);
 	}
 
 	if(opt_vlan_siprtpsame && this->vlan >= 0) {
@@ -1054,6 +1067,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 		parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
 				 header_sll, header_eth, header_ip_offset, protocol, &vlan);
 		if(vlan != this->vlan) {
+			*disable_save = true;
 			return(false);
 		}
 	}
@@ -1068,7 +1082,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 	
 	// chekc if packet is DTMF and saverfc2833 is enabled 
 	if(opt_saverfc2833 and curpayload == 101) {
-		record_dtmf = 1;
+		*record_dtmf = true;
 	}
 	
 	curSSRC = tmprtp.getSSRC();
@@ -1082,7 +1096,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 	}
 	if(!okRTP) {
 		// invalid ssrc or version
-		goto end;
+		return(false);
 	}
 
 	if(opt_dscp && packetS->header_ip_offset) {
@@ -1095,7 +1109,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 			if(rtp[i]->last_seq == tmprtp.getSeqNum()) {
 				//ignore duplicated RTP with the same sequence
 				//if(verbosity > 1) printf("ignoring lastseq[%u] seq[%u] saddr[%u] dport[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), packetS->saddr, packetS->dest);
-				goto end;
+				return(false);
 			}
 */
 
@@ -1142,7 +1156,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 						}
 						if(!found) {
 							// dynamic type codec changed but was not negotiated - do not create new RTP stream
-							goto end;
+							return(rtp_read_rslt);
 						}
 					} else {
 						rtp[i]->codec = curpayload;
@@ -1172,7 +1186,7 @@ read:
 						} else {
 							lastcalledrtp = rtp[i];
 						}
-						goto end;
+						return(rtp_read_rslt);
 					} else if(oldcodec != rtp[i]->codec){
 						//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
 						if(verbosity > 1) printf("mchange [%d] [%d]?\n", rtp[i]->codec, oldcodec);
@@ -1295,7 +1309,11 @@ read:
 		__sync_lock_release(&rtplock);
 	}
 	
-end:
+	return(rtp_read_rslt);
+}
+
+void
+Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf) {
 	extern int opt_fax_create_udptl_streams;
 	extern int opt_fax_dup_seq_check;
 	if(opt_fax_create_udptl_streams) {
@@ -1318,8 +1336,7 @@ end:
 				udptlDumper = iter->second;
 			}
 			bool enableDump;
-			if(packetS->datalen >= 2 &&
-			   (htons(*(u_int16_t*)packetS->data_()) & 0xC000) == 0x8000) {
+			if(packetS->isRtp()) {
 				enableDump = false;
 			} else {
 				enableDump = true;
@@ -1364,7 +1381,7 @@ end:
 			}
 		}
 	} else if(opt_fax_dup_seq_check) {
-		if(is_fax && packetS->datalen > 3) {
+		if(is_fax && packetS->datalen > 3 && !packetS->isRtp()) {
 			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
 			if(udptl->data_field) {
 				unsigned seq = htons(udptl->sequence);
@@ -1375,7 +1392,7 @@ end:
 			}
 		}
 	} else {
-		if(is_fax && packetS->datalen > 3) {
+		if(is_fax && packetS->datalen > 3 && !packetS->isRtp()) {
 			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
 			if(udptl->data_field) {
 				this->exists_udptl_data = true;
@@ -1395,7 +1412,6 @@ end:
 			save_packet(this, packetS, TYPE_RTP);
 		}
 	}
-	return(rtp_read_rslt);
 }
 
 void Call::stoprecording() {

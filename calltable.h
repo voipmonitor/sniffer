@@ -586,6 +586,8 @@ public:
 	 * 
 	*/
 	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname = NULL);
+	inline bool _read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save);
+	inline void _save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf);
 
 	/**
 	 * @brief read RTCP packet 
