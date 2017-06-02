@@ -2878,10 +2878,14 @@ JsonItem::JsonItem(string name, string value, bool null) {
 
 void JsonItem::parse(string valStr) {
 	////cerr << "valStr: " << valStr << endl;
-	if(valStr[0] != '{' && valStr[0] != '[') {
+	if(!((valStr[0] == '{' && valStr[valStr.length() - 1] == '}') ||
+	     (valStr[0] == '[' && valStr[valStr.length() - 1] == ']'))) {
 		return;
 	}
 	json_object * object = json_tokener_parse(valStr.c_str());
+	if(!object) {
+		return;
+	}
 	json_type objectType = json_object_get_type(object);
 	////cerr << "type: " << objectType << endl;
 	if(objectType == json_type_object) {

@@ -376,13 +376,13 @@ int opt_register_timeout = 5;
 int opt_register_timeout_disable_save_failed = 0;
 int opt_register_ignore_res_401 = 0;
 int opt_register_ignore_res_401_nonce_has_changed = 0;
-bool opt_sip_register_compare_sipcallerip = true;
-bool opt_sip_register_compare_sipcalledip = true;
-bool opt_sip_register_compare_to_domain = true;
-bool opt_sip_register_state_compare_from_num = true;
-bool opt_sip_register_state_compare_from_name = true;
-bool opt_sip_register_state_compare_from_domain = true;
-bool opt_sip_register_state_compare_digest_realm = true;
+bool opt_sip_register_compare_sipcallerip = false;
+bool opt_sip_register_compare_sipcalledip = false;
+bool opt_sip_register_compare_to_domain = false;
+bool opt_sip_register_state_compare_from_num = false;
+bool opt_sip_register_state_compare_from_name = false;
+bool opt_sip_register_state_compare_from_domain = false;
+bool opt_sip_register_state_compare_digest_realm = false;
 bool opt_sip_register_state_compare_ua = false;
 bool opt_sip_register_save_all = false;
 unsigned int opt_maxpoolsize = 0;
@@ -482,6 +482,7 @@ extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_queue_use_blocks;
 extern int opt_pcap_queue_suppress_t1_thread;
 extern int opt_pcap_queue_block_timeout;
+extern bool opt_pcap_queue_pcap_stat_per_one_interface;
 extern bool opt_pcap_queues_mirror_nonblock_mode;
 extern bool opt_pcap_queues_mirror_require_confirmation;
 extern bool opt_pcap_queues_mirror_use_checksum;
@@ -5157,6 +5158,7 @@ void cConfig::addConfigItems() {
 						->setMultiple(1024));
 					addConfigItem(new FILE_LINE(42176) cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
 					addConfigItem(new FILE_LINE(42177) cConfigItem_integer("packetbuffer_block_timeout", &opt_pcap_queue_block_timeout));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("packetbuffer_pcap_stat_per_one_interface", &opt_pcap_queue_pcap_stat_per_one_interface));
 		subgroup("file cache");
 					expert();
 					addConfigItem((new FILE_LINE(42178) cConfigItem_integer("packetbuffer_file_totalmaxsize", &opt_pcap_queue_store_queue_max_disk_size))
@@ -8079,6 +8081,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "packetbuffer_block_timeout", NULL))) {
 		opt_pcap_queue_block_timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "packetbuffer_pcap_stat_per_one_interface", NULL))) {
+		opt_pcap_queue_pcap_stat_per_one_interface = yesno(value);
 	}
 	//
 	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {

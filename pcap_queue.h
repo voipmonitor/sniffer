@@ -757,6 +757,7 @@ private:
 protected:
 	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];
 	int readThreadsCount;
+	int lastReadThreadsIndex_pcapStatString_interface;
 	u_long lastTimeLogErrThread0BufferIsFull;
 private:
 	rqueue_quick<pcap_block_store*> *block_qring;
