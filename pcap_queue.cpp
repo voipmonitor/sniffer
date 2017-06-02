@@ -196,6 +196,7 @@ int opt_pcap_queue_use_blocks_read_check		= 1;
 int opt_pcap_dispatch					= 0;
 int opt_pcap_queue_suppress_t1_thread			= 0;
 int opt_pcap_queue_block_timeout			= 0;
+bool opt_pcap_queue_pcap_stat_per_one_interface		= false;
 bool opt_pcap_queues_mirror_nonblock_mode 		= true;
 bool opt_pcap_queues_mirror_require_confirmation	= true;
 bool opt_pcap_queues_mirror_use_checksum		= true;
@@ -4357,6 +4358,7 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
  : PcapQueue(readFromInterface, nameQueue) {
 	memset(this->readThreads, 0, sizeof(this->readThreads));
 	this->readThreadsCount = 0;
+	this->lastReadThreadsIndex_pcapStatString_interface = -1;
 	this->lastTimeLogErrThread0BufferIsFull = 0;
 	this->block_qring = NULL;
 	if(opt_pcap_queue_iface_dedup_separate_threads_extend &&
@@ -4898,8 +4900,16 @@ unsigned long PcapQueue_readFromInterface::pcapStat_get_bypass_buffer_size_exeed
 string PcapQueue_readFromInterface::pcapStatString_interface(int statPeriod) {
 	ostringstream outStr;
 	if(this->readThreadsCount) {
-		for(int i = 0; i < this->readThreadsCount; i++) {
-			outStr << this->readThreads[i]->pcapStatString_interface(statPeriod);
+		if(opt_pcap_queue_pcap_stat_per_one_interface) {
+			++this->lastReadThreadsIndex_pcapStatString_interface;
+			if(this->lastReadThreadsIndex_pcapStatString_interface >= this->readThreadsCount) {
+				this->lastReadThreadsIndex_pcapStatString_interface = 0;
+			}
+			outStr << this->readThreads[this->lastReadThreadsIndex_pcapStatString_interface]->pcapStatString_interface(statPeriod);
+		} else {
+			for(int i = 0; i < this->readThreadsCount; i++) {
+				outStr << this->readThreads[i]->pcapStatString_interface(statPeriod);
+			}
 		}
 	} else if(this->pcapHandle) {
 		return(this->PcapQueue_readFromInterface_base::pcapStatString_interface(statPeriod));
