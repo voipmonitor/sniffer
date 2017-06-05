@@ -4593,6 +4593,18 @@ void test() {
 		sqlStore = NULL;
 		}
 		break;
+	case 313:
+		if(atoi(opt_test_arg) > 0) {
+			opt_cleandatabase_cdr = atoi(opt_test_arg);
+			opt_cleandatabase_http_enum = 0;
+			opt_cleandatabase_webrtc = 0;
+			opt_cleandatabase_register_state = 0;
+			opt_cleandatabase_register_failed = 0;
+		} else {
+			return;
+		}
+		dropMysqlPartitionsCdr();
+		break;
 	case 310:
 		{
 		Call *call = new Call(0, (char*)"conv-raw-info", 0, 0);
@@ -5929,6 +5941,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"reindex-all", 0, 0, 304},
 	    {"run-cleanspool", 0, 0, 305},
 	    {"run-cleanspool-maxdays", 1, 0, 312},
+	    {"run-droppartitions-maxdays", 1, 0, 313},
 	    {"clean-obsolete", 0, 0, 306},
 	    {"check-db", 0, 0, 307},
 	    {"fax-deduplicate", 0, 0, 308},
@@ -6294,6 +6307,10 @@ void get_command_line_arguments() {
 						strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
 					}
 				}
+				break;
+			case 313:
+				opt_test = c;
+				strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
 				break;
 			case 307:
 				opt_check_db = true;
