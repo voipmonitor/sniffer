@@ -4547,8 +4547,25 @@ void test() {
 		
 	case 304:
 	case 305:
+	case 312:
 	case 306:
 		{
+		if(opt_test == 312) {
+			if(atoi(opt_test_arg) > 0) {
+				opt_maxpoolsize = 0;
+				opt_maxpooldays = atoi(opt_test_arg);
+				opt_maxpoolsipsize = 0;
+				opt_maxpoolsipdays = 0;
+				opt_maxpoolrtpsize = 0;
+				opt_maxpoolrtpdays = 0;
+				opt_maxpoolgraphsize = 0;
+				opt_maxpoolgraphdays = 0;
+				opt_maxpoolaudiosize = 0;
+				opt_maxpoolaudiodays = 0;
+			} else {
+				return;
+			}
+		}
 		sqlStore = new FILE_LINE(42059) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
 							   isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
 		for(int i = 0; i < 2; i++) {
@@ -4562,6 +4579,7 @@ void test() {
 			CleanSpool::run_reindex_all("");
 			break;
 		case 305:
+		case 312:
 			CleanSpool::run_cleanProcess();
 			break;
 		case 306:
@@ -5910,6 +5928,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"diff-days", 1, 0, 303},
 	    {"reindex-all", 0, 0, 304},
 	    {"run-cleanspool", 0, 0, 305},
+	    {"run-cleanspool-maxdays", 1, 0, 312},
 	    {"clean-obsolete", 0, 0, 306},
 	    {"check-db", 0, 0, 307},
 	    {"fax-deduplicate", 0, 0, 308},
@@ -6267,9 +6286,13 @@ void get_command_line_arguments() {
 				break;
 			case 304:
 			case 305:
+			case 312:
 			case 306:
 				if(is_enable_cleanspool(true)) {
 					opt_test = c;
+					if(c == 312) {
+						strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
+					}
 				}
 				break;
 			case 307:
