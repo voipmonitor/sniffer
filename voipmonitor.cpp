@@ -1140,6 +1140,88 @@ void *database_backup(void */*dummy*/) {
 	return NULL;
 }
 
+void SipHistorySetting (void) {
+	_save_sip_history = false;
+	memset(_save_sip_history_request_types, 0, sizeof(_save_sip_history_request_types));
+	_save_sip_history_all_requests = false;
+	_save_sip_history_all_responses = false;
+	if(!opt_save_sip_history.empty()) {
+		vector<string> opt_save_sip_history_vector = split(opt_save_sip_history.c_str(), split(",|;", '|'), true);
+		for(size_t i = 0; i < opt_save_sip_history_vector.size(); i++) {
+			string item = opt_save_sip_history_vector[i];
+			std::transform(item.begin(), item.end(),item.begin(), ::toupper);
+			if(item == "ALL") {
+				_save_sip_history_all_requests = true;
+				_save_sip_history_all_responses = true;
+				_save_sip_history = true;
+			} else if(item == "REQUESTS") {
+				_save_sip_history_all_requests = true;
+				_save_sip_history = true;
+			} else if(item == "RESPONSES") {
+				_save_sip_history_all_responses = true;
+				_save_sip_history = true;
+			} else {
+				int requestCode = sip_request_name_to_int(item.c_str());
+				if(requestCode) {
+					_save_sip_history_request_types[requestCode] = true;
+					_save_sip_history = true;
+				}
+			}
+		}
+	}
+}
+
+bool SqlInitSchema (void) {
+	bool connectError = false;
+	string connectErrorString;
+	for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
+		SqlDb *sqlDb = createSqlObject(connectId);
+		bool rsltConnect = false;
+		for(int pass = 0; pass < 2; pass++) {
+			if((rsltConnect = sqlDb->connect(true, true))) {
+				break;
+			}
+			sleep(1);
+		}
+		if(rsltConnect && sqlDb->connected()) {
+			if(isSqlDriver("mysql")) {
+				sql_noerror = 1;
+				sqlDb->query("repair table mysql.proc");
+				sql_noerror = 0;
+			}
+			sqlDb->checkDbMode();
+			if(!opt_database_backup) {
+				if (!opt_disable_dbupgradecheck) {
+					if(sqlDb->createSchema(connectId)) {
+						sqlDb->checkSchema(connectId);
+					} else {
+						connectError = true;
+						connectErrorString = sqlDb->getLastErrorString();
+					}
+				} else {
+					sqlDb->checkSchema(connectId, true);
+				}
+				sqlDb->updateSensorState();
+				set_context_config_after_check_db_schema();
+			}
+			sensorsMap.fillSensors();
+		} else {
+			connectError = true;
+			connectErrorString = sqlDb->getLastErrorString();
+		}
+		delete sqlDb;
+	}
+	if(connectError) {
+		if(useNewCONFIG && !is_read_from_file()) {
+			vm_terminate_error(connectErrorString.c_str());
+		} else {
+			syslog(LOG_ERR, "%s", (connectErrorString + " - exit!").c_str());
+			return false;
+		}
+	}
+	return true;
+}
+
 /* cycle files_queue and move it to spool dir */
 void *moving_cache( void */*dummy*/ ) {
 	string file;
@@ -2244,6 +2326,16 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	get_command_line_arguments();
+
+	if(updateSchema) {
+		SipHistorySetting();
+
+		if (!SqlInitSchema()) {
+			return 1;
+		}
+		return 0;
+	}
+
 	set_context_config();
 	create_spool_dirs();
 
@@ -2564,59 +2656,11 @@ int main(int argc, char *argv[]) {
 
 	//cout << "SQL DRIVER: " << sql_driver << endl;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender() && !is_terminating()) {
-		bool connectError = false;
-		string connectErrorString;
-		for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
-			SqlDb *sqlDb = createSqlObject(connectId);
-			bool rsltConnect = false;
-			for(int pass = 0; pass < 2; pass++) {
-				if((rsltConnect = sqlDb->connect(true, true))) {
-					break;
-				}
-				sleep(1);
-			}
-			if(rsltConnect && sqlDb->connected()) {
-				if(isSqlDriver("mysql")) {
-					sql_noerror = 1;
-					sqlDb->query("repair table mysql.proc");
-					sql_noerror = 0;
-				}
-				sqlDb->checkDbMode();
-				if(!opt_database_backup) {
-					if (!opt_disable_dbupgradecheck) {
-						if(sqlDb->createSchema(connectId)) {
-							sqlDb->checkSchema(connectId);
-						} else {
-							connectError = true;
-							connectErrorString = sqlDb->getLastErrorString();
-						}
-					} else {
-						sqlDb->checkSchema(connectId, true);
-					}
-					sqlDb->updateSensorState();
-					set_context_config_after_check_db_schema();
-				}
-				sensorsMap.fillSensors();
-			} else {
-				connectError = true;
-				connectErrorString = sqlDb->getLastErrorString();
-			}
-			delete sqlDb;
-		}
-		if(connectError) {
-			if(useNewCONFIG && !is_read_from_file()) {
-				vm_terminate_error(connectErrorString.c_str());
-			} else {
-				syslog(LOG_ERR, "%s", (connectErrorString + " - exit!").c_str());
-				return 1;
-			}
+		if (!SqlInitSchema()) {
+			return 1;
 		}
 	}
 	
-	if(updateSchema) {
-		return 0;
-	}
-
 	if(!is_terminating()) {
 	
 		if(opt_test) {
@@ -6625,36 +6669,9 @@ void set_context_config() {
 			 opt_pcap_queue_dequeu_window_length = 1000;
 		}
 	}
-	
-	_save_sip_history = false;
-	memset(_save_sip_history_request_types, 0, sizeof(_save_sip_history_request_types));
-	_save_sip_history_all_requests = false;
-	_save_sip_history_all_responses = false;
-	if(!opt_save_sip_history.empty()) {
-		vector<string> opt_save_sip_history_vector = split(opt_save_sip_history.c_str(), split(",|;", '|'), true);
-		for(size_t i = 0; i < opt_save_sip_history_vector.size(); i++) {
-			string item = opt_save_sip_history_vector[i];
-			std::transform(item.begin(), item.end(),item.begin(), ::toupper);
-			if(item == "ALL") {
-				_save_sip_history_all_requests = true;
-				_save_sip_history_all_responses = true;
-				_save_sip_history = true;
-			} else if(item == "REQUESTS") {
-				_save_sip_history_all_requests = true;
-				_save_sip_history = true;
-			} else if(item == "RESPONSES") {
-				_save_sip_history_all_responses = true;
-				_save_sip_history = true;
-			} else {
-				int requestCode = sip_request_name_to_int(item.c_str());
-				if(requestCode) {
-					_save_sip_history_request_types[requestCode] = true;
-					_save_sip_history = true;
-				}
-			}
-		}
-	}
-	
+
+	SipHistorySetting();
+
 	if(!enable_pcap_split && opt_t2_boost) {
 		opt_t2_boost = false;
 	}
@@ -6941,10 +6958,9 @@ bool check_complete_parameters() {
                         "      Listen to SKINNY protocol on entered ports. Separated by commas.\n"
                         "\n"
                         " --update-schema\n"
-                        "      Create or upgrade the database schema, and then exit.  Forces -k option\n"
-                        "      and will use 'root' user to perform operations, so supply root's password\n"
-                        "      with the -p option.  For safety, this is not compatible with the\n"
-                        "      --config-file option.\n"
+                        "      Create or upgrade the database schema, and then exit.  Forces -k option.\n"
+                        "      Database access/name can be set via commandline parameters or in config file\n"
+                        "      via --config-file option. Useful cmd paramereters are -b -p -h -O -u\n"
                         "\n"
                         " --vm-buffer=<n>\n"
                         "      vmbuffer is user space buffers in MB which is used in case there is more\n"
