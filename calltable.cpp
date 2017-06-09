@@ -1114,7 +1114,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 */
 
 			if(
-			    (rtp[i]->saddr == packetS->saddr and rtp[i]->dport == packetS->dest) or (rtp[i]->saddr == packetS->saddr and rtp[i]->sport == packetS->source)
+			    ((rtp[i]->saddr == packetS->saddr and rtp[i]->dport == packetS->dest) or (rtp[i]->saddr == packetS->saddr and rtp[i]->sport == packetS->source)) and rtp[i]->daddr == packetS->daddr
 //				or (rtp[i]->daddr == packetS->saddr and rtp[i]->dport == packetS->source)
 
 			   ) {
