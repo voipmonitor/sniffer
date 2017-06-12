@@ -1113,11 +1113,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 			}
 */
 
-			if(
-			    ((rtp[i]->saddr == packetS->saddr and rtp[i]->dport == packetS->dest) or (rtp[i]->saddr == packetS->saddr and rtp[i]->sport == packetS->source)) and rtp[i]->daddr == packetS->daddr
-//				or (rtp[i]->daddr == packetS->saddr and rtp[i]->dport == packetS->source)
-
-			   ) {
+			if(rtp[i]->eqAddrPort(packetS->saddr, packetS->daddr, packetS->source, packetS->dest)) {
 				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), packetS->saddr, packetS->dest);
 				// found 
 				if(opt_dscp) {
@@ -1639,9 +1635,11 @@ Call::convertRawToWav() {
 		if(!okSelect) {
 			this->selectRtpStreams();
 			if(opt_saveaudio_filter_ext &&
-			   this->existsConcurenceInSelectedRtpStream(-1, 200) && 
-			   !selectRtpStreams_byMaxLengthInLink()) {
-				this->selectRtpStreams();
+			   (this->existsConcurenceInSelectedRtpStream(-1, 200) ||
+			    (this->getLengthStreams() / 1000000ull) >= ((unsigned)duration() + 2))) {
+				if(!selectRtpStreams_byMaxLengthInLink()) {
+					this->selectRtpStreams();
+				}
 			}
 		}
 		this->setSkipConcurenceStreams(-1);
@@ -2360,11 +2358,12 @@ bool Call::selectRtpStreams_bySipcallerip() {
 
 struct selectRtpStreams_byMaxLengthInLink_sLink {
 	selectRtpStreams_byMaxLengthInLink_sLink() {
-		length = 0;
 		bad = false;
 	}
+	u_int64_t getLength(Call *call) {
+		return(call->getLengthStreams(&streams_i));
+	}
 	list<int> streams_i;
-	u_int64_t length;
 	bool bad;
 };
 bool Call::selectRtpStreams_byMaxLengthInLink() {
@@ -2376,7 +2375,6 @@ bool Call::selectRtpStreams_byMaxLengthInLink() {
 		d_u_int32_t linkIndex = d_u_int32_t(min(rtp[i]->saddr, rtp[i]->daddr),
 						    max(rtp[i]->saddr, rtp[i]->daddr));
 		links[linkIndex].streams_i.push_back(i);
-		links[linkIndex].length += rtp[i]->last_pcap_header_ts - (rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec);
 	}
 	while(true) {
 		unsigned max_count_streams = 0;
@@ -2394,8 +2392,8 @@ bool Call::selectRtpStreams_byMaxLengthInLink() {
 		for(map<d_u_int32_t, selectRtpStreams_byMaxLengthInLink_sLink>::iterator iter = links.begin(); iter != links.end(); iter++) {
 			if(!iter->second.bad &&
 			   iter->second.streams_i.size() == max_count_streams &&
-			   iter->second.length > max_length) {
-				max_length = iter->second.length;
+			   iter->second.getLength(this) > max_length) {
+				max_length = iter->second.getLength(this);
 				max_length_linkIndex = iter->first;
 			}
 		}
@@ -2421,6 +2419,30 @@ bool Call::selectRtpStreams_byMaxLengthInLink() {
 	return(false);
 }
 
+u_int64_t Call::getLengthStreams(list<int> *streams_i) {
+	u_int64_t minStart = 0;
+	u_int64_t maxEnd = 0;
+	for(list<int>::iterator iter = streams_i->begin(); iter != streams_i->end(); ++iter) {
+		if(!minStart ||
+		   minStart > rtp[*iter]->first_packet_time * 1000000ull + rtp[*iter]->first_packet_usec) {
+			minStart = rtp[*iter]->first_packet_time * 1000000ull + rtp[*iter]->first_packet_usec;
+		}
+		if(!maxEnd ||
+		   maxEnd < rtp[*iter]->last_pcap_header_ts) {
+			maxEnd = rtp[*iter]->last_pcap_header_ts;
+		}
+	}
+	return(maxEnd - minStart);
+}
+
+u_int64_t Call::getLengthStreams() {
+	list<int> streams_i;
+	for(int i = 0; i < ssrc_n; i++) {
+		streams_i.push_back(i);
+	}
+	return(getLengthStreams(&streams_i));
+}
+
 void Call::setSkipConcurenceStreams(int caller) {
 	if(caller == -1) {
 		setSkipConcurenceStreams(0);
@@ -2433,7 +2455,8 @@ void Call::setSkipConcurenceStreams(int caller) {
 			u_int64_t a_stop = rtp[i]->last_pcap_header_ts;
 			u_int64_t a_length = a_stop - a_start;
 			for(int j = 0; j < ssrc_n; j++) {
-				if(j != i && rtp[j]->iscaller == caller && !rtp[j]->skip) {
+				if(j != i && rtp[j]->iscaller == caller && !rtp[j]->skip &&
+				   !rtp[i]->eqAddrPort(rtp[j])) {
 					u_int64_t b_start = rtp[j]->first_packet_time * 1000000ull + rtp[j]->first_packet_usec;
 					u_int64_t b_stop = rtp[j]->last_pcap_header_ts;
 					u_int64_t b_length = b_stop - b_start;
@@ -2494,7 +2517,8 @@ bool Call::existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms
 			u_int64_t a_start = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec;
 			u_int64_t a_stop = rtp[i]->last_pcap_header_ts;
 			for(int j = 0; j < ssrc_n; j++) {
-				if(j != i && rtp[j]->iscaller == caller && !rtp[j]->skip) {
+				if(j != i && rtp[j]->iscaller == caller && !rtp[j]->skip &&
+				   !rtp[i]->eqAddrPort(rtp[j])) {
 					u_int64_t b_start = rtp[j]->first_packet_time * 1000000ull + rtp[j]->first_packet_usec;
 					u_int64_t b_stop = rtp[j]->last_pcap_header_ts;
 					if(!(b_start + tolerance_ms * 1000 > a_stop ||

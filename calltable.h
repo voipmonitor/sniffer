@@ -899,6 +899,8 @@ public:
 	bool selectRtpStreams();
 	bool selectRtpStreams_bySipcallerip();
 	bool selectRtpStreams_byMaxLengthInLink();
+	u_int64_t getLengthStreams(list<int> *streams_i);
+	u_int64_t getLengthStreams();
 	void setSkipConcurenceStreams(int caller);
 	u_int64_t getFirstTimeInRtpStreams(int caller, bool selected);
 	void printSelectedRtpStreams(int caller, bool selected);

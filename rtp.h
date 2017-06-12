@@ -518,6 +518,14 @@ public:
 	void save_mos_graph(bool delimiter);
 	
 	inline void clearAudioBuff(class Call *call, ast_channel *channel);
+	
+	bool eqAddrPort(u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport) {
+		return(this->saddr == saddr && this->daddr == daddr &&
+		       this->sport == sport && this->dport == dport);
+	}
+	bool eqAddrPort(RTP *rtp) {
+		return(eqAddrPort(rtp->saddr, rtp->daddr, rtp->sport, rtp->dport));
+	}
 
 private: 
 	/*

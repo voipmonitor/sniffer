@@ -1129,7 +1129,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	unsigned int *lastssrc = NULL;
 	RTP *lastrtp = NULL;
-	bool diffSsrcInEqRtp = false;
+	bool diffSsrcInEqAddrPort = false;
 	if(owner) {
 		lastssrc = iscaller ? 
 			(owner->lastcallerrtp ? &owner->lastcallerrtp->ssrc : NULL) :
@@ -1137,13 +1137,13 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		lastrtp = iscaller ?
 			(owner->lastcallerrtp ? owner->lastcallerrtp : NULL) :
 			(owner->lastcalledrtp ? owner->lastcalledrtp : NULL);
-		diffSsrcInEqRtp = lastssrc and *lastssrc != ssrc and 
-				  lastrtp and lastrtp->saddr == this->saddr and lastrtp->ssrc_index == this->ssrc_index;;
+		diffSsrcInEqAddrPort = lastssrc and *lastssrc != ssrc and 
+				       lastrtp and this->eqAddrPort(lastrtp);
 	}
 	
 	// if packet has Mark bit OR last frame was not dtmf and current frame is voice and last ssrc is different then current ssrc packet AND (last RTP saddr == current RTP saddr)  - reset
 	if(getMarker() or
-	   (!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and diffSsrcInEqRtp)) {
+	   (!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and diffSsrcInEqAddrPort)) {
 		if(sverb.graph) printf("rtp[%p] mark[%u] lastframetype[%u] codec[%u] lastssrc[%x] ssrc[%x] iscaller[%u] lastframetype[%u][%u] codec[%u]\n", this, getMarker(), lastframetype, codec, (lastssrc ? *lastssrc : 0), ssrc, iscaller, lastframetype, AST_FRAME_DTMF, codec);
 
 		resetgraph = true;
@@ -1165,8 +1165,8 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			     << endl;
 		}
 
-		if((!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and diffSsrcInEqRtp)) {
-			// reset jitter if ssrc changed 
+		if(!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and diffSsrcInEqAddrPort) {
+			// reset jitter if ssrc changed
 			if(opt_jitterbuffer_adapt) {
 				ast_jb_empty_and_reset(channel_adapt);
 				ast_jb_destroy(channel_adapt);
