@@ -1353,7 +1353,7 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 				if(parseEtherHeader(packetS->dlt, (u_char*)packetS->packet, header_sll, header_eth, header_ip_offset, protocol)) {
 					pcap_pkthdr *header = NULL;
 					u_char *packet = NULL;
-					u_int16_t old_ether_type;
+					u_int16_t old_ether_type = 0;
 					ether_header eth_header_tmp;
 					if(packetS->dlt == DLT_EN10MB) {
 						old_ether_type = header_eth->ether_type;
