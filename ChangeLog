@@ -1,3 +1,18 @@
+20.0 13.6.2017
+==============
+- fix Makefile 
+- better documentation to the --unlzo-gui parameter [VS-491]
+- new client - server architecture for connecting remote sniffers to central sniffer (check voipmonitor.conf SERVER/CLIENT configuration section)
+- fix choppy audio when RTP is duplicated with different SSRC [VS-357]
+- fix desynced audio for some rare cases [VS-622]
+- http - add corelation via xml tag 'correlation-id' [VG-1267]
+- fix storing small udptl packets [VS-621]
+- change default options for register (sip-register-compare* = no, sip-register-state-compare* = no) VS-598
+- new command line option "--run-cleanspool-maxdays=N" for manual spool cleaning(N = days)
+- new command line option "--run-droppartitions-maxdays=N" for manual database partitions cleaning (N = days)
+- fix --update-schema option [VS-625]
+
+
 19.5 17.5.2017
 ==============
 - add support for ssl in simple read from file (parameter -r) [VS-611]
