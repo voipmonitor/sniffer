@@ -145,6 +145,10 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 					// VLAN tag
 					exists_vlan = true;
 				}
+			} else if(htons(header_eth->ether_type) == 0x8864) {
+				// PPPoE
+				header_ip_offset = 8;
+				protocol = ETHERTYPE_IP;
 			} else {
 				header_ip_offset = 0;
 				protocol = htons(header_eth->ether_type);
