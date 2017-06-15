@@ -165,7 +165,10 @@ void CheckInternational::load(SqlDb_row *dbRow) {
 	enableCheckNapaWithoutPrefix = atoi((*dbRow)["enable_check_napa_without_prefix"].c_str());
 	_prefixes = (*dbRow)["skip_prefixes"];
 	if(!_prefixes.empty()) {
-		skipPrefixes = split(_prefixes.c_str(), split(",|;| ", "|"), true);
+		if (_prefixes[0] == '^')
+			skipPrefixes.push_back(_prefixes);
+		else
+			skipPrefixes = split(_prefixes.c_str(), split(",|;| ", "|"), true);
 	}
 }
 
