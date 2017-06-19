@@ -4034,6 +4034,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`fbasename` varchar(255) DEFAULT NULL,\
 			`match_header` VARCHAR(128) DEFAULT NULL,\
 			`GeoPosition` varchar(255) DEFAULT NULL, \
+			`hold` varchar(1024) DEFAULT NULL, \
 			`spool_index` tinyint unsigned DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
@@ -4904,6 +4905,7 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 	//6.5RC2 ->
 	outStrAlter << "ALTER TABLE message ADD GeoPosition varchar(255);" << endl;
 	outStrAlter << "ALTER TABLE cdr_next ADD GeoPosition varchar(255);" << endl;
+	outStrAlter << "ALTER TABLE cdr_next ADD hold varchar(1024);" << endl;
 	outStrAlter << "ALTER TABLE register\
 			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
 	outStrAlter << "ALTER TABLE register_failed\
@@ -5967,6 +5969,14 @@ void SqlDb_mysql::checkColumns_cdr_next(bool log) {
 				   "ALTER TABLE cdr_next "
 				   "ADD COLUMN `spool_index` tinyint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.cdr_next_spool_index);
+	}
+	existsColumns.cdr_next_hold = this->existsColumn("cdr_next", "hold");
+	if(!existsColumns.cdr_next_hold) {
+		this->logNeedAlter("cdr_next",
+				   "cdr hold",
+				   "ALTER TABLE cdr_next "
+				   "ADD COLUMN `hold` varchar(1024) DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.cdr_next_hold);
 	}
 }
 

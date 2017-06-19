@@ -373,6 +373,9 @@ public:
 	unsigned int dtmfflag2[2];	//!< used for holding dtmf states 
 	double lastdtmf_time;		//!< used for holding time of last dtmf
 
+	string hold_times;		//!< used for record hold times
+	bool hold_status;		//!< hold status var
+
 	int silencerecording;
 	int recordingpausedby182;
 	int msgcount;
@@ -659,6 +662,11 @@ public:
 	*/
 	void set_first_packet_time(time_t mtime, unsigned int usec) { first_packet_time = mtime; first_packet_usec = usec;};
 
+	/**
+	 * handle hold times
+	 *
+	*/
+	void HandleHold(bool sdp_sendonly, bool sdp_sendrecv);
 	/**
 	 * @brief convert raw files to one WAV
 	 *
