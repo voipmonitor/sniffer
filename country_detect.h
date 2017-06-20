@@ -73,7 +73,8 @@ public:
 					}
 				} else {
 					if(numberLength > (int)skipPrefixes[i].size() &&
-							!strncmp(number, skipPrefixes[i].c_str(), skipPrefixes[i].size())) {
+					   !strncmp(number, skipPrefixes[i].c_str(), skipPrefixes[i].size())) {
+
 						number += skipPrefixes[i].size();
 						while(*number == ' ') ++number;
 						numberLength = strlen(number);
