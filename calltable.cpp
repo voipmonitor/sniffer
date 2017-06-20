@@ -2780,7 +2780,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(!geoposition.empty()) {
 		cdr_next.add(sqlEscapeString(geoposition), "GeoPosition");
 	}
-	if(!hold_times.empty()) {
+	if(existsColumns.cdr_next_hold && !hold_times.empty()) {
 		hold_times.erase(hold_times.end() - 1);
 		cdr_next.add(hold_times, "hold");
 	}

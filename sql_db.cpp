@@ -4905,7 +4905,6 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 	//6.5RC2 ->
 	outStrAlter << "ALTER TABLE message ADD GeoPosition varchar(255);" << endl;
 	outStrAlter << "ALTER TABLE cdr_next ADD GeoPosition varchar(255);" << endl;
-	outStrAlter << "ALTER TABLE cdr_next ADD hold varchar(1024);" << endl;
 	outStrAlter << "ALTER TABLE register\
 			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
 	outStrAlter << "ALTER TABLE register_failed\
