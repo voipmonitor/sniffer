@@ -1039,7 +1039,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 	seq = getSeqNum();
 
-	if(seq == last_seq and last_markbit == getMarker()) {
+	if(seq == last_seq and !(last_markbit == 0 and getMarker() == 1)) {
 		// ignore duplicated RTP packets unless the second packet has mark bit set but the previous not
 		return(false);
 	}
