@@ -505,7 +505,7 @@ bool SqlDb::queryByRemoteSocket(string query, const char *dropProcQuery) {
 			break;
 		} else if(rsltProcessResponse == -1) {
 			break;
-		} else if(this->getLastError() == ER_SP_ALREADY_EXISTS) {
+		} else if(this->getLastError() == ER_SP_ALREADY_EXISTS && pass >= 2) {
 			if(_queryByRemoteSocket("repair table mysql.proc", 0) == 1) {
 				syslog(LOG_NOTICE, "success call 'repair table mysql.proc'");
 			} else {
