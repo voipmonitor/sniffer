@@ -423,7 +423,7 @@ bool SqlDb::queryByCurl(string query) {
 	return(ok);
 }
 
-bool SqlDb::queryByRemoteSocket(string query) {
+bool SqlDb::queryByRemoteSocket(string query, const char *dropProcQuery) {
 	clearLastError();
 	bool ok = false;
 	unsigned int attempt = 0;
@@ -499,61 +499,78 @@ bool SqlDb::queryByRemoteSocket(string query) {
 				}
 			}
 		}
-		bool okSendQuery = true;
-		if(query.length() > 100) {
-			cGzip gzipCompressQuery;
-			u_char *queryGzip;
-			size_t queryGzipLength;
-			if(gzipCompressQuery.compressString(query, &queryGzip, &queryGzipLength)) {
-				if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
-					okSendQuery = false;
-				}
-				delete queryGzip;
-			}
-		} else {
-			if(!this->remote_socket->writeBlock(query, cSocket::_te_aes)) {
-				okSendQuery = false;
-			}
-		}
-		if(!okSendQuery) {
-			setLastError(0, "failed send query", true);
-			continue;
-		}
-		u_char *queryResponse;
-		size_t queryResponseLength;
-		queryResponse = this->remote_socket->readBlock(&queryResponseLength, cSocket::_te_aes);
-		if(!queryResponse) {
-			setLastError(0, "failed read query response", true);
-			continue;
-		}
-		string queryResponseStr;
-		cGzip gzipDecompressResponse;
-		if(gzipDecompressResponse.isCompress(queryResponse, queryResponseLength)) {
-			queryResponseStr = gzipDecompressResponse.decompressString(queryResponse, queryResponseLength);
-			if(queryResponseStr.empty()) {
-				setLastError(0, "response is invalid (gunzip failed)", true);
-				continue;
-			}
-		} else {
-			queryResponseStr = string((char*)queryResponse, queryResponseLength);
-		}
-		if(queryResponseStr.empty()) {
-			setLastError(0, "response is empty", true);
-			continue;
-		}
-		if(!isJsonObject(queryResponseStr)) {
-			setLastError(0, "response is not json", true);
-			continue;
-		}
-		int rsltProcessResponse = processResponseFromQueryBy(queryResponseStr.c_str(), pass);
+		int rsltProcessResponse = _queryByRemoteSocket(query, pass);
 		if(rsltProcessResponse == 1) {
 			ok = true;
 			break;
 		} else if(rsltProcessResponse == -1) {
 			break;
+		} else if(this->getLastError() == ER_SP_ALREADY_EXISTS && pass >= 2) {
+			if(_queryByRemoteSocket("repair table mysql.proc", 0) == 1) {
+				syslog(LOG_NOTICE, "success call 'repair table mysql.proc'");
+			} else {
+				syslog(LOG_NOTICE, "failed call 'repair table mysql.proc' with error: %s", this->getLastErrorString().c_str());
+			}
+			if(dropProcQuery) {
+				if(_queryByRemoteSocket(dropProcQuery, 0) == 1) {
+					syslog(LOG_NOTICE, "success call '%s'", dropProcQuery);
+				} else {
+					syslog(LOG_NOTICE, "failed call '%s' with error: %s", dropProcQuery, this->getLastErrorString().c_str());
+				}
+			}
 		}
 	}
 	return(ok);
+}
+
+int SqlDb::_queryByRemoteSocket(string query, unsigned int pass) {
+	bool okSendQuery = true;
+	if(query.length() > 100) {
+		cGzip gzipCompressQuery;
+		u_char *queryGzip;
+		size_t queryGzipLength;
+		if(gzipCompressQuery.compressString(query, &queryGzip, &queryGzipLength)) {
+			if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
+				okSendQuery = false;
+			}
+			delete queryGzip;
+		}
+	} else {
+		if(!this->remote_socket->writeBlock(query, cSocket::_te_aes)) {
+			okSendQuery = false;
+		}
+	}
+	if(!okSendQuery) {
+		setLastError(0, "failed send query", true);
+		return(0);
+	}
+	u_char *queryResponse;
+	size_t queryResponseLength;
+	queryResponse = this->remote_socket->readBlock(&queryResponseLength, cSocket::_te_aes);
+	if(!queryResponse) {
+		setLastError(0, "failed read query response", true);
+		return(0);
+	}
+	string queryResponseStr;
+	cGzip gzipDecompressResponse;
+	if(gzipDecompressResponse.isCompress(queryResponse, queryResponseLength)) {
+		queryResponseStr = gzipDecompressResponse.decompressString(queryResponse, queryResponseLength);
+		if(queryResponseStr.empty()) {
+			setLastError(0, "response is invalid (gunzip failed)", true);
+			return(0);
+		}
+	} else {
+		queryResponseStr = string((char*)queryResponse, queryResponseLength);
+	}
+	if(queryResponseStr.empty()) {
+		setLastError(0, "response is empty", true);
+		return(0);
+	}
+	if(!isJsonObject(queryResponseStr)) {
+		setLastError(0, "response is not json", true);
+		return(0);
+	}
+	return(processResponseFromQueryBy(queryResponseStr.c_str(), pass));
 }
 
 int SqlDb::processResponseFromQueryBy(const char *response, unsigned pass) {
@@ -1142,7 +1159,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		if(isCloudSsh()) {
 			return(this->queryByCurl(preparedQuery));
 		} else {
-			return(this->queryByRemoteSocket(preparedQuery));
+			return(this->queryByRemoteSocket(preparedQuery, dropProcQuery));
 		}
 	}
 	u_int32_t startTimeMS = getTimeMS();
@@ -4905,7 +4922,6 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 	//6.5RC2 ->
 	outStrAlter << "ALTER TABLE message ADD GeoPosition varchar(255);" << endl;
 	outStrAlter << "ALTER TABLE cdr_next ADD GeoPosition varchar(255);" << endl;
-	outStrAlter << "ALTER TABLE cdr_next ADD hold varchar(1024);" << endl;
 	outStrAlter << "ALTER TABLE register\
 			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
 	outStrAlter << "ALTER TABLE register_failed\

@@ -1,3 +1,5 @@
+#include <mysqld_error.h>
+
 #include "voipmonitor.h"
 
 #include "server.h"
@@ -448,6 +450,13 @@ void cSnifferServerConnection::cp_query() {
 					socket->writeBlock(rsltQuery, cSocket::_te_aes);
 				}
 			} else {
+				if(sqlDb->getLastError() == ER_SP_ALREADY_EXISTS &&
+				   queryStr.find("create procedure ") == 0 &&
+				   queryStr.find("(") != string::npos) {
+					string procedureName = queryStr.substr(17, queryStr.find("(") - 17);
+					sqlDb->query("repair table mysql.proc");
+					sqlDb->query("drop procedure " + procedureName);
+				}
 				string rsltError = sqlDb->getJsonError();
 				socket->writeBlock(rsltError, cSocket::_te_aes);
 			}
