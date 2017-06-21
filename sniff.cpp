@@ -1352,7 +1352,7 @@ fail_exit:
 	return 1;
 }
 
-int get_ip_port_from_sdp(Call *call, char *sdp_text, in_addr_t *addr, unsigned short *port, int16_t *fax, char *sessid, int16_t *rtcp_mux){
+int get_ip_port_from_sdp(Call *call, char *sdp_text, in_addr_t *addr, unsigned short *port, int16_t *fax, char *sessid, int16_t *rtcp_mux, int sip_method){
 	unsigned long l;
 	char *s;
 	char s1[20];
@@ -1406,9 +1406,20 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, in_addr_t *addr, unsigned s
 		*rtcp_mux = 1;
 		call->use_rtcp_mux = true;
 	}
+	bool sdp_sendonly = false;
+	bool sdp_sendrecv = false;
 	if(memmem(sdp_text, sdp_text_len, "a=sendonly", 10)) {
 		call->use_sdp_sendonly = true;
+		if (sip_method == INVITE)
+			sdp_sendonly = true;
 	}
+	if (sip_method == INVITE) {
+		if(memmem(sdp_text, sdp_text_len, "a=sendrecv", 10))
+			sdp_sendrecv = true;
+
+		call->HandleHold(sdp_sendonly, sdp_sendrecv);
+	}
+
 	return 0;
 }
 
@@ -2326,7 +2337,7 @@ void process_sdp(Call *call, packet_s_process *packetS, bool iscaller, char *fro
 	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 	s_sdp_flags sdp_flags;
 	char sessid[MAXLEN_SDP_SESSID];
-	if (!get_ip_port_from_sdp(call, tmp + 1, &tmp_addr, &tmp_port, &sdp_flags.is_fax, sessid, &sdp_flags.rtcp_mux)){
+	if (!get_ip_port_from_sdp(call, tmp + 1, &tmp_addr, &tmp_port, &sdp_flags.is_fax, sessid, &sdp_flags.rtcp_mux, packetS->sip_method)){
 		if(sdp_flags.is_fax) { 
 			if(verbosity >= 2){
 				syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);

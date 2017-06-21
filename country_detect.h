@@ -55,24 +55,35 @@ public:
 	void setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWithoutPrefix);
 	void load(SqlDb_row *dbRow);
 	bool load();
-	bool isInternational(const char *number, const char **prefix = NULL) {
+	bool isInternational(const char *number, const char **prefix = NULL, int *skippfxsize = 0) {
 		if(prefix) {
 			*prefix = NULL;
 		}
 		int numberLength = strlen(number);
+		*skippfxsize = numberLength;
 		bool existsSkipPrefix = false;
 		do {
 			existsSkipPrefix = false;
 			for(size_t i = 0; i < skipPrefixes.size(); i++) {
-				if(numberLength > (int)skipPrefixes[i].size() &&
-				   !strncmp(number, skipPrefixes[i].c_str(), skipPrefixes[i].size())) {
-					number += skipPrefixes[i].size();
-					while(*number == ' ') ++number;
-					numberLength = strlen(number);
-					existsSkipPrefix = true;
+				if (skipPrefixes[i][0] == '^') {
+					vector<string> found;
+					if (reg_match(number, skipPrefixes[i].c_str(), &found, true, __FILE__, __LINE__)) {
+						number += found[0].size();
+						numberLength = strlen(number);
+					}
+				} else {
+					if(numberLength > (int)skipPrefixes[i].size() &&
+					   !strncmp(number, skipPrefixes[i].c_str(), skipPrefixes[i].size())) {
+
+						number += skipPrefixes[i].size();
+						while(*number == ' ') ++number;
+						numberLength = strlen(number);
+						existsSkipPrefix = true;
+					}
 				}
 			}
 		} while(existsSkipPrefix);
+		*skippfxsize -= numberLength;
 		for(size_t i = 0; i < internationalPrefixes.size(); i++) {
 			if(numberLength > (int)internationalPrefixes[i].size() &&
 			   !strncmp(number, internationalPrefixes[i].c_str(), internationalPrefixes[i].size()) && 
@@ -102,7 +113,13 @@ public:
 			*international = false;
 		}
 		const char *prefix;
-		if(isInternational(number, &prefix)) {
+		int skippfxsize;
+		int isInt = isInternational(number, &prefix, &skippfxsize);
+
+		if (skippfxsize)
+			number += skippfxsize;
+
+		if(isInt) {
 			if(international) {
 				*international = true;
 			}

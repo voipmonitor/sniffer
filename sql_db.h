@@ -784,6 +784,7 @@ struct sExistsColumns {
 	bool cdr_flags;
 	bool cdr_next_calldate;
 	bool cdr_next_spool_index;
+	bool cdr_next_hold;
 	bool cdr_rtp_calldate;
 	bool cdr_rtp_sport;
 	bool cdr_rtp_dport;

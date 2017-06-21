@@ -382,6 +382,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	cancel_lsr487 = false;
 	reason_sip_cause = 0;
 	reason_q850_cause = 0;
+	hold_status = false;
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;
@@ -1605,6 +1606,27 @@ Call::mos_lqo(char *deg, int samplerate) {
 	return -1;
 }
 
+void
+Call::HandleHold(bool sdp_sendonly, bool sdp_sendrecv) {
+
+	if (hold_status) {
+		if (sdp_sendrecv or (!sdp_sendrecv and !sdp_sendonly)) {
+			hold_status = false;
+			ostringstream o;
+			o << "-" << duration() << ",";
+			hold_times.append(o.str());
+		}
+	} else {
+		if (sdp_sendonly) {
+			hold_status = true;
+			ostringstream o;
+			o << "+" << duration() << ",";
+			hold_times.append(o.str());
+		}
+	}
+	return;
+}
+
 int
 Call::convertRawToWav() {
 	char cmd[4092];
@@ -2757,6 +2779,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr_next.add(sqlEscapeString(fbasename), "fbasename");
 	if(!geoposition.empty()) {
 		cdr_next.add(sqlEscapeString(geoposition), "GeoPosition");
+	}
+	if(existsColumns.cdr_next_hold && !hold_times.empty()) {
+		hold_times.erase(hold_times.end() - 1);
+		cdr_next.add(hold_times, "hold");
 	}
 	cdr.add(sighup ? 1 : 0, "sighup");
 	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
