@@ -2183,6 +2183,10 @@ void MySqlStore_process::setConcatLimit(int concatLimit) {
 	this->concatLimit = concatLimit;
 }
 
+int MySqlStore_process::getConcatLimit() {
+	return(this->concatLimit);
+}
+
 void MySqlStore_process::setEnableTransaction(bool enableTransaction) {
 	this->enableTransaction = enableTransaction;
 }
@@ -2823,6 +2827,11 @@ void MySqlStore::setConcatLimit(int id, int concatLimit) {
 	process->setConcatLimit(concatLimit);
 }
 
+int MySqlStore::getConcatLimit(int id) {
+	MySqlStore_process* process = this->find(id);
+	return(process->getConcatLimit());
+}
+
 void MySqlStore::setEnableTransaction(int id, bool enableTransaction) {
 	if(qfileConfig.enable) {
 		return;
@@ -3164,7 +3173,9 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 			usleep(250000);
 		} else {
 			extern int opt_query_cache_speed;
-			while((opt_query_cache_speed ? 
+			while((me->isCloud() ?
+				(me->getSize(id) > me->getConcatLimit(id)) :
+			       opt_query_cache_speed ? 
 			        (me->getActiveIdsVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) == me->loadFromQFilesThreadData[id].storeThreads) :
 			        (me->getSizeVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) > 0)) && 
 			      !is_terminating()) {

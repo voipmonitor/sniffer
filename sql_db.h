@@ -481,6 +481,7 @@ public:
 	void setEnableTerminatingIfSqlError(bool enableTerminatingIfSqlError);
 	void setEnableAutoDisconnect(bool enableAutoDisconnect = true);
 	void setConcatLimit(int concatLimit);
+	int getConcatLimit();
 	void setEnableTransaction(bool enableTransaction = true);
 	void setEnableFixDeadlock(bool enableFixDeadlock = true);
 	int getId() {
@@ -670,6 +671,7 @@ public:
 	void setEnableAutoDisconnect(int id, bool enableAutoDisconnect = true);
 	void setDefaultConcatLimit(int defaultConcatLimit);
 	void setConcatLimit(int id, int concatLimit);
+	int getConcatLimit(int id);
 	void setEnableTransaction(int id, bool enableTransaction = true);
 	void setEnableFixDeadlock(int id, bool enableFixDeadlock = true);
 	MySqlStore_process *find(int id, MySqlStore *store = NULL);
