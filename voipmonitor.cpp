@@ -880,7 +880,7 @@ static void check_context_config();
 static void set_context_config_after_check_db_schema();
 static void create_spool_dirs();
 static bool check_complete_parameters();
-static void dns_lookup_common_hostnames();
+void dns_lookup_common_hostnames();
 static void parse_opt_nocdr_for_last_responses();
  
  

@@ -1,3 +1,12 @@
+20.1 21.6.2017
+==============
+- added support for PPPoE encapsulation [VS-628]
+- fix trim/skip prefixes. Add a possibility to use a regex in the trim/skip prefixes [VG-1275]
+- store call hold/unhold times into new cdr_next.hold column [VS-629]
+- fix audio desync when RTP stream hold/unhold and ssrc does not change (broken since >= 17.4) [VS-631]
+- refresh dns hosts before upgrade [VS-632]
+
+
 20.0 13.6.2017
 ==============
 - new client - server architecture for connecting remote sniffers to central sniffer through one single TCP connection (check voipmonitor.conf SERVER/CLIENT configuration section and new server_* options)

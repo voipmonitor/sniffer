@@ -2380,7 +2380,11 @@ getwav:
 		string md5_arm;
 		string md5_64_ws;
 		string rsltForSend;
+
 		if(strstr(buf, "upgrade") != NULL) {
+			extern void dns_lookup_common_hostnames();
+			dns_lookup_common_hostnames();
+
 			extern bool opt_upgrade_by_git;
 			if(opt_upgrade_by_git) {
 				rsltForSend = "upgrade from official binary source disabled - upgrade by git!";
