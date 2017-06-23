@@ -1628,6 +1628,22 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				i++;
 			}
 			updateLivesnifferfilters();
+		} else if(strstr(search, "bothport")) {
+			int i;
+			//reset filters
+			for(i = 0; i < MAXLIVEFILTERS; i++) {
+				filter->lv_bothport[i] = 0;
+			}
+			stringstream  data(value);
+			string val;
+			i = 0;
+
+			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
+				global_livesniffer = 1;
+				filter->lv_bothport[i] = ntohs(atoi(val.c_str()));
+				i++;
+			}
+			updateLivesnifferfilters();
 		} else if(strstr(search, "srcnum")) {
 			int i = 0;
 			//reset filters 
@@ -3196,6 +3212,7 @@ void livesnifferfilter_s::updateState() {
 	new_state.all_saddr = true;
 	new_state.all_daddr = true;
 	new_state.all_bothaddr = true;
+	new_state.all_bothport = true;
 	new_state.all_srcnum = true;
 	new_state.all_dstnum = true;
 	new_state.all_bothnum = true;
@@ -3213,6 +3230,9 @@ void livesnifferfilter_s::updateState() {
 		}
 		if(this->lv_bothaddr[i]) {
 			new_state.all_bothaddr = false;
+		}
+		if(this->lv_bothport[i]) {
+			new_state.all_bothport = false;
 		}
 		if(this->lv_srcnum[i][0]) {
 			new_state.all_srcnum = false;
@@ -3242,7 +3262,7 @@ void livesnifferfilter_s::updateState() {
 	new_state.all_addr = new_state.all_saddr && new_state.all_daddr && new_state.all_bothaddr;
 	new_state.all_num = new_state.all_srcnum && new_state.all_dstnum && new_state.all_bothnum;
 	new_state.all_hstr = new_state.all_fromhstr && new_state.all_tohstr && new_state.all_bothhstr;
-	new_state.all_all = new_state.all_addr && new_state.all_num && new_state.all_hstr && new_state.all_vlan && new_state.all_siptypes;
+	new_state.all_all = new_state.all_addr && new_state.all_bothport && new_state.all_num && new_state.all_hstr && new_state.all_vlan && new_state.all_siptypes;
 	this->state = new_state;
 }
 

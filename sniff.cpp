@@ -433,6 +433,9 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 	// check saddr and daddr filters
 	unsigned int daddr = htonl(packetS->daddr);
 	unsigned int saddr = htonl(packetS->saddr);
+	//ports
+	u_int16_t srcport = htons(packetS->source);
+	u_int16_t dstport = htons(packetS->dest);
 
 	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 	
@@ -538,6 +541,18 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 					}
 				}
 			}
+			bool okPort = filter->state.all_bothport;
+			if (!okPort) {
+				for(int i = 0; i < MAXLIVEFILTERS && !okPort; i++) {
+					if (filter->state.all_bothport || (filter->lv_bothport[i] &&
+					   (srcport == filter->lv_bothport[i] ||
+					    dstport == filter->lv_bothport[i]))) {
+
+						okPort = true;
+					}
+				}
+			}
+
 			bool okNum = filter->state.all_num;
 			if(!okNum) {
 				for(int i = 0; i < MAXLIVEFILTERS && !okNum; i++) {
@@ -582,7 +597,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 					}
 				}
 			}
-			if(okAddr && okNum && okSipType && okHeader &&okVlan) {
+			if(okAddr && okPort && okNum && okSipType && okHeader && okVlan) {
 				save = true;
 			}
 		}

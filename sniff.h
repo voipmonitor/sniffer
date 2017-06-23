@@ -693,6 +693,7 @@ typedef struct livesnifferfilter_s {
 		bool all_saddr;
 		bool all_daddr;
 		bool all_bothaddr;
+		bool all_bothport;
 		bool all_addr;
 		bool all_srcnum;
 		bool all_dstnum;
@@ -709,6 +710,7 @@ typedef struct livesnifferfilter_s {
         unsigned int lv_saddr[MAXLIVEFILTERS];
         unsigned int lv_daddr[MAXLIVEFILTERS];
 	unsigned int lv_bothaddr[MAXLIVEFILTERS];
+	u_int16_t lv_bothport[MAXLIVEFILTERS];
         char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
         char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 	char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
