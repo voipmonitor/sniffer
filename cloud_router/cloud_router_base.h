@@ -358,8 +358,14 @@ public:
 	cSocketBlock(const char *name, bool autoClose = false);
 	bool writeBlock(u_char *data, size_t dataLen, eTypeEncode typeEncode = _te_na, string xor_key = "");
 	bool writeBlock(string str, eTypeEncode typeCode = _te_na, string xor_key = "");
-	u_char *readBlock(size_t *dataLen, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false);
-	bool readBlock(string *str, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false);
+	u_char *readBlock(size_t *dataLen, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false, u_int16_t timeout = 0);
+	bool readBlock(string *str, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false, u_int16_t timeout = 0);
+	u_char *readBlockTimeout(size_t *dataLen, u_int16_t timeout, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false) {
+		return(readBlock(dataLen, typeCode, xor_key, quietEwouldblock, timeout));
+	}
+	bool readBlockTimeout(string *str, u_int16_t timeout, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false) {
+		return(readBlock(str, typeCode, xor_key, quietEwouldblock, timeout));
+	}
 	string readLine(u_char **remainder = NULL, size_t *remainder_length = NULL);
 	void readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder = NULL, size_t remainder_length = 0);
 	void generate_rsa_keys() {

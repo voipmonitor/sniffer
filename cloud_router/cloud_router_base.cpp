@@ -906,13 +906,14 @@ bool cSocketBlock::writeBlock(string str, eTypeEncode typeEncode, string xor_key
 	return(writeBlock((u_char*)str.c_str(), str.length(), typeEncode, xor_key));
 }
 
-u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string xor_key, bool quietEwouldblock) {
+u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string xor_key, bool quietEwouldblock, u_int16_t timeout) {
 	size_t bufferLength = 10 * 1024;
 	u_char *buffer = new u_char[bufferLength];
 	bool rsltRead = true;
 	readBuffer.clear();
 	size_t readLength = sizeof(sBlockHeader);
 	bool blockHeaderOK = false;
+	u_int64_t startTime = getTimeUS();
 	while((rsltRead = read(buffer, &readLength, quietEwouldblock))) {
 		if(readLength) {
 			readBuffer.add(buffer, readLength);
@@ -967,6 +968,10 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 			}
 		} else {
 			usleep(1000);
+			if(timeout && getTimeUS() > startTime + timeout * 1000000ull) {
+				rsltRead = false;
+				break;
+			}
 		}
 		readLength = blockHeaderOK ?
 			      min(bufferLength, readBuffer.lengthBlockHeader(true) - readBuffer.length) :
@@ -982,10 +987,10 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 	}
 }
 
-bool cSocketBlock::readBlock(string *str, eTypeEncode typeEncode, string xor_key, bool quietEwouldblock) {
+bool cSocketBlock::readBlock(string *str, eTypeEncode typeEncode, string xor_key, bool quietEwouldblock, u_int16_t timeout) {
 	u_char *data;
 	size_t dataLen;
-	data = readBlock(&dataLen, typeEncode, xor_key, quietEwouldblock);
+	data = readBlock(&dataLen, typeEncode, xor_key, quietEwouldblock, timeout);
 	if(data && !isError()) {
 		*str = string((char*)data, dataLen);
 		return(true);
@@ -1254,11 +1259,13 @@ void cReceiver::receive_process() {
 			start_ok = true;
 			u_char *data;
 			size_t dataLen;
-			data = receive_socket->readBlock(&dataLen);
+			data = receive_socket->readBlockTimeout(&dataLen, 30);
 			if(data) {
 				if(string((char*)data, dataLen) != "ping") {
 					evData(data, dataLen);
 				}
+			} else {
+				receive_socket->setError("timeout");
 			}
 		} else {
 			sleep(1);
