@@ -1040,6 +1040,8 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			"\"callerdomain\", "
 			"\"called\", "
 			"\"calleddomain\", "
+			"\"calleragent\", "
+			"\"calledagent\", "
 			"\"calldate\", "
 			"\"duration\", "
 			"\"connect_duration\", "
@@ -1107,10 +1109,12 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				 "\"%d\", "
 				 "\"%d\", "
 				 "\"%s\", "
+				 "\"%s\", " //callername
 				 "\"%s\", "
 				 "\"%s\", "
 				 "\"%s\", "
-				 "\"%s\", "
+				 "\"%s\", " // calleragent
+				 "\"%s\", " // calledagent
 				 "\"%s\", "
 				 "\"%d\", "
 				 "\"%d\", "
@@ -1142,6 +1146,8 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				 json_encode(call->caller_domain).c_str(),
 				 json_encode(call->called).c_str(), 
 				 json_encode(call->called_domain).c_str(),
+				 json_encode(call->a_ua).c_str(),
+				 json_encode(call->b_ua).c_str(),
 				 sqlDateTimeString(call->calltime()).c_str(), 
 				 call->duration_active(), 
 				 call->connect_duration_active(), 
