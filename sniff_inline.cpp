@@ -380,6 +380,11 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 						return(0);
 					}
 				}
+			} else if(ppd->header_ip->protocol == IPPROTO_UDP &&
+				  htons(ppd->header_ip->tot_len) + ppd->header_ip_offset == HPH(*header_packet)->caplen &&
+				  htons(ppd->header_ip->tot_len) > sizeof(iphdr2) + sizeof(udphdr2) &&
+				  IS_RTP((char*)ppd->header_ip + sizeof(iphdr2) + sizeof(udphdr2), htons(ppd->header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2))) {
+				break;
 			} else if(opt_udp_port_l2tp &&
 				  ppd->header_ip->protocol == IPPROTO_UDP &&							// Layer 2 Tunelling protocol / UDP
 				  htons(((udphdr2*)((char*)ppd->header_ip + sizeof(iphdr2)))->dest) == opt_udp_port_l2tp &&	// check destination port (default 1701)
@@ -402,13 +407,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					ppd->header_ip = (iphdr2*)((char*)ppd->header_ip + next_header_ip_offset);
 					ppd->header_ip_offset += next_header_ip_offset;
 				} else {
-					if(ppf & ppf_returnZeroInCheckData) {
-						//cout << "pcapProcess exit 008" << endl;
-						if(pcap_header_plus2) {
-							pcap_header_plus2->ignore = true;
-						}
-						return(0);
-					}
+					break;
 				}
 			} else if(opt_udp_port_tzsp &&
 				  ppd->header_ip->protocol == IPPROTO_UDP &&							// TZSP
@@ -437,13 +436,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					ppd->header_ip = (iphdr2*)((char*)ppd->header_ip + next_header_ip_offset);
 					ppd->header_ip_offset += next_header_ip_offset;
 				} else {
-					if(ppf & ppf_returnZeroInCheckData) {
-						//cout << "pcapProcess exit 008" << endl;
-						if(pcap_header_plus2) {
-							pcap_header_plus2->ignore = true;
-						}
-						return(0);
-					}
+					break;
 				}
 			} else {
 				break;

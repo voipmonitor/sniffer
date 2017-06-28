@@ -90,6 +90,8 @@ struct udphdr2 {
         uint16_t        check;
 };
 
+#define IS_RTP(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x8000)
+
 struct packet_s {
 	#if USE_PACKET_NUMBER
 	u_int64_t packet_number;
@@ -185,8 +187,7 @@ struct packet_s {
 		}
 	}
 	inline bool isRtp() {
-		return(datalen >= 2 &&
-		       (htons(*(u_int16_t*)data_()) & 0xC000) == 0x8000);
+		return(IS_RTP(data_(), datalen));
 	}
 };
 
