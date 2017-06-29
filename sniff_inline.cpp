@@ -381,7 +381,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					}
 				}
 			} else if(ppd->header_ip->protocol == IPPROTO_UDP &&
-				  htons(ppd->header_ip->tot_len) + ppd->header_ip_offset == HPH(*header_packet)->caplen &&
+				  htons(ppd->header_ip->tot_len) + ppd->header_ip_offset == (header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen()) &&
 				  htons(ppd->header_ip->tot_len) > sizeof(iphdr2) + sizeof(udphdr2) &&
 				  IS_RTP((char*)ppd->header_ip + sizeof(iphdr2) + sizeof(udphdr2), htons(ppd->header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2))) {
 				break;
@@ -422,7 +422,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				   htons(*(u_int16_t*)((unsigned char*)ppd->header_ip + tzsp_offset + 2)) == 1) {		// check ethernet protocol (1)
 					while(*((unsigned char*)ppd->header_ip + tzsp_offset + tzsp_length - 1) != 1 &&		// find end (1)
 					      tzsp_length < 10) {
-						if(ppd->header_ip_offset + tzsp_offset + tzsp_length + sizeof(ether_header) < HPH(*header_packet)->caplen) {
+						if(ppd->header_ip_offset + tzsp_offset + tzsp_length + sizeof(ether_header) < (header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen())) {
 							++tzsp_length;
 						} else {
 							break;
