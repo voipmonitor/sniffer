@@ -515,6 +515,8 @@ bool opt_message_check_duplicity_callid_in_next_pass_insert = 0;
 int opt_create_old_partitions = 0;
 char opt_create_old_partitions_from[20];
 bool opt_disable_partition_operations = 0;
+int opt_partition_operations_enable_run_hour_from = -1;
+int opt_partition_operations_enable_run_hour_to = -1;
 bool opt_partition_operations_in_thread = 1;
 bool opt_autoload_from_sqlvmexport = 0;
 vector<dstring> opt_custom_headers_cdr;
@@ -1461,6 +1463,10 @@ void *defered_service_fork(void *) {
 	return(NULL);
 }
 
+#define check_time_partition_operation(at) (firstIter || \
+					    ((!setEnableFromTo || timeOk) && ((actTime - at) > (setEnableFromTo ? 1 : 12) * 3600)) || \
+					    (actTime - at) > 24 * 3600)
+
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void */*dummy*/ ) {
 	Call *call;
@@ -1479,61 +1485,81 @@ void *storing_cdr( void */*dummy*/ ) {
 	bool firstIter = true;
 	while(1) {
 		if(!opt_nocdr && !opt_disable_partition_operations && isSqlDriver("mysql")) {
+			bool setEnableFromTo = false;
+			bool timeOk = false;
+			if(opt_partition_operations_enable_run_hour_from >= 0 &&
+			   opt_partition_operations_enable_run_hour_to >= 0) {
+				setEnableFromTo = true;
+				time_t now;
+				time(&now);
+				struct tm dateTime = time_r(&now);
+				if(opt_partition_operations_enable_run_hour_to >= opt_partition_operations_enable_run_hour_from) {
+					if(dateTime.tm_hour >= opt_partition_operations_enable_run_hour_from &&
+					   dateTime.tm_hour <= opt_partition_operations_enable_run_hour_to) {
+						timeOk = true;
+					}
+				} else {
+					if((dateTime.tm_hour >= opt_partition_operations_enable_run_hour_from && dateTime.tm_hour < 24) ||
+					   dateTime.tm_hour <= opt_partition_operations_enable_run_hour_to) {
+						timeOk = true;
+					}
+				}
+			}
 			time_t actTime = time(NULL);
 			createPartitions.init();
 			if(opt_cdr_partition) {
-				if(actTime - createPartitionCdrAt > 12 * 3600) {
+				if(check_time_partition_operation(createPartitionCdrAt)) {
 					createPartitions.createCdr = true;
 					createPartitionCdrAt = actTime;
 				}
-				if(actTime - dropPartitionCdrAt > 12 * 3600) {
+				if(check_time_partition_operation(dropPartitionCdrAt)) {
 					createPartitions.dropCdr = true;
 					dropPartitionCdrAt = actTime;
 				}
 			}
 			if(opt_enable_ss7) {
-				if(actTime - createPartitionSs7At > 12 * 3600) {
+				if(check_time_partition_operation(createPartitionSs7At)) {
 					createPartitions.createSs7 = true;
 					createPartitionSs7At = actTime;
 				}
-				if(actTime - dropPartitionSs7At > 12 * 3600) {
+				if(check_time_partition_operation(dropPartitionSs7At)) {
 					createPartitions.dropSs7 = true;
 					dropPartitionSs7At = actTime;
 				}
 			}
 			if(true /* rtp_stat */) {
-				if(actTime - createPartitionRtpStatAt > 12 * 3600) {
+				if(check_time_partition_operation(createPartitionRtpStatAt)) {
 					createPartitions.createRtpStat = true;
 					createPartitionRtpStatAt = actTime;
 				}
-				if(actTime - dropPartitionRtpStatAt > 12 * 3600) {
+				if(check_time_partition_operation(dropPartitionRtpStatAt)) {
 					createPartitions.dropRtpStat = true;
 					dropPartitionRtpStatAt = actTime;
 				}
 			}
 			if(true /* log_sensor */) {
-				if(actTime - createPartitionLogSensorAt > 12 * 3600) {
+				if(check_time_partition_operation(createPartitionLogSensorAt)) {
 					createPartitions.createLogSensor = true;
 					createPartitionLogSensorAt = actTime;
 				}
-				if(actTime - dropPartitionLogSensorAt > 12 * 3600) {
+				if(check_time_partition_operation(dropPartitionLogSensorAt)) {
 					createPartitions.dropLogSensor = true;
 					dropPartitionLogSensorAt = actTime;
 				}
 			}
 			if(opt_ipaccount) {
-				if(actTime - createPartitionIpaccAt > 12 * 3600) {
+				if(check_time_partition_operation(createPartitionIpaccAt)) {
 					createPartitions.createIpacc = true;
 					createPartitionIpaccAt = actTime;
 				}
 			}
 			if(true /* billing agregation */) {
 				time_t actTime = time(NULL);
-				if(actTime - createPartitionBillingAgregationAt > 12 * 3600) {
+				if(check_time_partition_operation(createPartitionBillingAgregationAt)) {
 					createPartitions.createBilling = true;
 					createPartitionBillingAgregationAt = actTime;
 				}
-				if(actTime - dropPartitionBillingAgregationAt > 12 * 3600) {
+				if(check_time_partition_operation(dropPartitionBillingAgregationAt)) {
 					createPartitions.dropBilling = true;
 					dropPartitionBillingAgregationAt = actTime;
 				}
@@ -5070,6 +5096,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
+			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
 			advanced();
 				addConfigItem(new FILE_LINE(42092) cConfigItem_yesno("partition_operations_in_thread", &opt_partition_operations_in_thread));
 				expert();
@@ -7486,6 +7513,25 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "disable_partition_operations", NULL))) {
 		opt_disable_partition_operations = yesno(value);
+	}
+	if((value = ini.GetValue("general", "partition_operations_enable_fromto", NULL))) {
+		string fromTo = reg_replace(value, "([0-9]+)[- ]*([0-9]+)", "$1-$2", __FILE__, __LINE__);
+		if(fromTo.empty()) {
+			int h = atoi(value);
+			if(h >= 0 && h < 24) {
+				opt_partition_operations_enable_run_hour_from = h;
+				opt_partition_operations_enable_run_hour_to = h;
+			}
+		} else {
+			sscanf(fromTo.c_str(), "%i-%i", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to);
+			if(opt_partition_operations_enable_run_hour_from < 0 ||
+			   opt_partition_operations_enable_run_hour_from > 23 ||
+			   opt_partition_operations_enable_run_hour_to < 0 ||
+			   opt_partition_operations_enable_run_hour_to > 23) {
+				opt_partition_operations_enable_run_hour_from = -1;
+				opt_partition_operations_enable_run_hour_to = -1;
+			}
+		}
 	}
 	if((value = ini.GetValue("general", "partition_operations_in_thread", NULL))) {
 		opt_partition_operations_in_thread = yesno(value);
