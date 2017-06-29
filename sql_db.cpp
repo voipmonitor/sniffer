@@ -725,6 +725,16 @@ int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb
 	return(this->insert(table, row));
 }
 
+int64_t SqlDb::getQueryRsltIntValue(string query, int indexRslt, int64_t failedResult) {
+	if(this->query(query)) {
+		SqlDb_row row;
+		if((row = this->fetchRow())) {
+			return(atoll(row[indexRslt].c_str()));
+		}
+	}
+	return(failedResult);
+}
+
 int SqlDb::getIndexField(string fieldName) {
 	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		for(size_t i = 0; i < this->response_data_columns.size(); i++) {
@@ -913,37 +923,39 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 			sql_disable_next_attempt_if_error = 1;
 			sql_noerror = !mainInit;
-			if(this->query("SET GLOBAL max_allowed_packet=1024*1024*100") &&
-			   this->query("show variables like 'max_allowed_packet'")) {
-				sql_disable_next_attempt_if_error = 0;
-				sql_noerror = 0;
-				SqlDb_row row;
-				if((row = this->fetchRow())) {
-					this->maxAllowedPacket = atoll(row[1].c_str());
-					if(this->maxAllowedPacket >= 1024*1024*100) {
-						break;
-					} else if(connectPass) {
-						if(mainInit) {
-							syslog(LOG_WARNING, "Max allowed packet size is only %lu. Concat query size is limited. "
-									    "Please set max_allowed_packet to 100MB manually in your mysql configuration file.", 
-							       this->maxAllowedPacket);
+			if(getQueryRsltIntValue("show variables like 'max_allowed_packet'", 1, 0) < 1024*1024*100) {
+				if(this->query("SET GLOBAL max_allowed_packet=1024*1024*100") &&
+				   this->query("show variables like 'max_allowed_packet'")) {
+					sql_disable_next_attempt_if_error = 0;
+					sql_noerror = 0;
+					SqlDb_row row;
+					if((row = this->fetchRow())) {
+						this->maxAllowedPacket = atoll(row[1].c_str());
+						if(this->maxAllowedPacket >= 1024*1024*100) {
+							break;
+						} else if(connectPass) {
+							if(mainInit) {
+								syslog(LOG_WARNING, "Max allowed packet size is only %lu. Concat query size is limited. "
+										    "Please set max_allowed_packet to 100MB manually in your mysql configuration file.", 
+								       this->maxAllowedPacket);
+							}
 						}
+					} else {
+						if(mainInit) {
+							syslog(LOG_WARNING, "Unknown max allowed packet size. Concat query size is limited. "
+									    "Please set max_allowed_packet to 100MB manually in your mysql configuration file.");
+						}
+						break;
 					}
 				} else {
+					sql_disable_next_attempt_if_error = 0;
+					sql_noerror = 0;
 					if(mainInit) {
-						syslog(LOG_WARNING, "Unknown max allowed packet size. Concat query size is limited. "
+						syslog(LOG_WARNING, "Query for set / get max allowed packet size failed. Concat query size is limited. "
 								    "Please set max_allowed_packet to 100MB manually in your mysql configuration file.");
 					}
 					break;
 				}
-			} else {
-				sql_disable_next_attempt_if_error = 0;
-				sql_noerror = 0;
-				if(mainInit) {
-					syslog(LOG_WARNING, "Query for set / get max allowed packet size failed. Concat query size is limited. "
-							    "Please set max_allowed_packet to 100MB manually in your mysql configuration file.");
-				}
-				break;
 			}
 		}
 		if(this->hMysqlConn) {

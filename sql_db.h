@@ -117,6 +117,7 @@ public:
 	virtual bool update(string table, SqlDb_row row, const char *whereCond);
 	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2 = NULL);
 	virtual int64_t getInsertId() = 0;
+	int64_t getQueryRsltIntValue(string query, int indexRslt, int64_t failedResult);
 	virtual bool existsTable(const char *table) = 0;
 	bool existsTable(string table) { return(existsTable(table.c_str())); }
 	virtual bool existsColumn(const char *table, const char *column) = 0;
