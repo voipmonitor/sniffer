@@ -1,3 +1,12 @@
+20.2 28.6.2017
+==============
+- fix bogus header for PPPoE [VS-628]
+- fix flushing sql queues in cloud mode 
+- added port filtering for live sniffing through GUI [VG-1282]
+- listcall api added user agent [VG-1288]
+- fix parsing RTP packets when UDP port 37008 was used [VS-635]
+
+
 20.1 21.6.2017
 ==============
 - added support for PPPoE encapsulation [VS-628]
