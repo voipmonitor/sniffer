@@ -269,6 +269,7 @@ public:
 		double avgjitter;
 		unsigned int counter;
 		unsigned int jitt_counter;
+		unsigned int fraclost_pkt_counter;
 	} rtcp;
 
 	struct rtcp_xr_t {
