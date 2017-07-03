@@ -3669,7 +3669,7 @@ _ACEOF
   LIBS="-lcurl $LIBS"
 
 else
-  as_fn_error $? "Unable to find curl library. apt-get install libcurl4-openssl-dev | yum install curl-devel" "$LINENO" 5
+  as_fn_error $? "Unable to find curl library. apt-get install libcurl4-openssl-dev | yum install libcurl-devel" "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for ssh_forward_accept in -lssh" >&5
@@ -4168,8 +4168,8 @@ $as_echo "$ac_cv_lib_lzma_main" >&6; }
 if test "x$ac_cv_lib_lzma_main" = xyes; then :
   HAVE_LIBLZMA=1
 else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find lzma. apt-get install liblzma-dev | yum install lzma-devel" >&5
-$as_echo "$as_me: Unable to find lzma. apt-get install liblzma-dev | yum install lzma-devel" >&6;}
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find lzma. apt-get install liblzma-dev | yum install xz-devel" >&5
+$as_echo "$as_me: Unable to find lzma. apt-get install liblzma-dev | yum install xz-devel" >&6;}
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llzo2" >&5

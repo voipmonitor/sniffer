@@ -44,7 +44,7 @@ AC_CHECK_LIB([vorbis], [main], ,AC_MSG_ERROR([Unable to find VORBIS library. Deb
 AC_CHECK_LIB([vorbisenc], [main], ,AC_MSG_ERROR([Unable to find VORBISENC library. Debian: apt-get install libvorbis-dev. Centos/Redhat: yum install libogg-devel libvorbis-devel]))
 # FIXME: Replace `main' with a function in `-lz':
 AC_CHECK_LIB([snappy], [main], ,AC_MSG_ERROR([Unable to find snappy library. apt-get install libsnappy-dev | or compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz]))
-AC_CHECK_LIB([curl], [main], , AC_MSG_ERROR([Unable to find curl library. apt-get install libcurl4-openssl-dev | yum install curl-devel]))
+AC_CHECK_LIB([curl], [main], , AC_MSG_ERROR([Unable to find curl library. apt-get install libcurl4-openssl-dev | yum install libcurl-devel]))
 AC_CHECK_LIB([ssh], [ssh_forward_accept], HAVE_LIBSSH=1, AC_MSG_NOTICE([Your libssh is old or missing - cloud feature is disabled. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files]))
 AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
 AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c')

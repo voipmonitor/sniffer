@@ -267,6 +267,8 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 		if(rtp) {
 			rtp->rtcp.counter++;
 			rtp->rtcp.loss = loss;
+			if (reportblock.frac_lost)
+				rtp->rtcp.fraclost_pkt_counter++;
 			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock.frac_lost) ? reportblock.frac_lost : rtp->rtcp.maxfr;
 			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock.frac_lost) / rtp->rtcp.counter;
 			if (opt_ignoreRTCPjitter == 0 or reportblock.jitter < opt_ignoreRTCPjitter) {
@@ -357,6 +359,8 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 		if(rtp) {
 			rtp->rtcp.counter++;
 			rtp->rtcp.loss = loss;
+			if (reportblock.frac_lost)
+				rtp->rtcp.fraclost_pkt_counter++;
 			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock.frac_lost) ? reportblock.frac_lost : rtp->rtcp.maxfr;
 			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock.frac_lost) / rtp->rtcp.counter;
 			if (opt_ignoreRTCPjitter == 0 or reportblock.jitter < opt_ignoreRTCPjitter) {

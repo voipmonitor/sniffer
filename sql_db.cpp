@@ -3916,6 +3916,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`b_rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
 			`a_last_rtp_from_end` smallint unsigned DEFAULT NULL,\
 			`b_last_rtp_from_end` smallint unsigned DEFAULT NULL,\
+			`a_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
+			`b_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
 			`a_rtp_ptime` tinyint unsigned DEFAULT NULL,\
 			`b_rtp_ptime` tinyint unsigned DEFAULT NULL,\
 			`payload` int DEFAULT NULL,\
@@ -5869,6 +5871,15 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ADD COLUMN caller_clipping_div3 smallint unsigned default NULL, "
 				   "ADD COLUMN called_clipping_div3 smallint unsigned default NULL;",
 				   log, &tableSize, &existsColumns.cdr_clippingdetect);
+	}
+	existsColumns.cdr_rtcp_fraclost_pktcount = this->existsColumn("cdr", "a_rtcp_fraclost_pktcount");
+	if(!existsColumns.cdr_rtcp_fraclost_pktcount) {
+		this->logNeedAlter("cdr",
+				   "rctp_fraclost_pktcount",
+				   "ALTER TABLE cdr "
+				   "ADD COLUMN a_rtcp_fraclost_pktcount int unsigned default NULL, "
+				   "ADD COLUMN b_rtcp_fraclost_pktcount int unsigned default NULL;",
+				   log, &tableSize, &existsColumns.cdr_rtcp_fraclost_pktcount);
 	}
 	existsColumns.cdr_rtp_ptime = this->existsColumn("cdr", "a_rtp_ptime");
 	if(!existsColumns.cdr_rtp_ptime) {

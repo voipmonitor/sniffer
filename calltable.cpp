@@ -3093,6 +3093,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec), cneg+"_rtcp_maxjitter");
 				rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
 				cdr.add(rtcp_avgjitter_mult10[i], cneg+"_rtcp_avgjitter_mult10");
+				if (existsColumns.cdr_rtcp_fraclost_pktcount)
+					cdr.add(rtpab[i]->rtcp.fraclost_pkt_counter, cneg+"_rtcp_fraclost_pktcount");
 			}
 			if(existsColumns.cdr_rtp_ptime) {
 				cdr.add(rtpab[i]->avg_ptime, c+"_rtp_ptime");
