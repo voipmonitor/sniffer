@@ -161,6 +161,9 @@ static int ssl3_decode_client_hello( DSSL_Session* sess, u_char* data, uint32_t 
 				sess->session_ticket_len = ext_len;
 			}
 		}
+		if( ext_type == 0x0017)
+		{ 	sess->flags |= SSF_TLS_CLIENT_EXTENDED_MASTER_SECRET;
+		}
 
 		data += ext_len + 4;
 		if(data > org_data + len) return NM_ERROR(DSSL_E_SSL_INVALID_RECORD_LENGTH);
@@ -257,6 +260,9 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 			if( ext_type == 0x0023)
 			{
 				sess->flags |= SSF_TLS_SERVER_SESSION_TICKET;
+			}
+			if( ext_type == 0x0017)
+			{ 	sess->flags |= SSF_TLS_SERVER_EXTENDED_MASTER_SECRET;
 			}
 
 			data += ext_len + 4;
@@ -707,6 +713,11 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 	DEBUG_TRACE2( "===>Decoding SSL v3 handshake: %s len: %d...", SSL3_HandshakeTypeToString( hs_type ), (int) recLen );
 #endif
 
+	if(stack->sess->handshake_data && stack->state == SS_Initial && hs_type == SSL3_MT_CLIENT_KEY_EXCHANGE)
+	{
+		ssls_handshake_data_append(sess, data - SSL3_HANDSHAKE_HEADER_LEN, len + SSL3_HANDSHAKE_HEADER_LEN);
+	}
+
 	switch( hs_type )
 	{
 	case SSL3_MT_HELLO_REQUEST:
@@ -775,6 +786,38 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 	default:
 		rc = NM_ERROR( DSSL_E_SSL_PROTOCOL_ERROR );
 		break;
+	}
+
+	if(stack->sess->handshake_data)
+	{
+		if(stack->state == SS_SeenServerHello)
+		{
+			switch( hs_type )
+			{
+			case SSL3_MT_SERVER_HELLO:
+				if(rc == DSSL_RC_OK &&
+				   (stack->sess->flags & SSF_TLS_SERVER_EXTENDED_MASTER_SECRET))
+				{
+					 ssls_handshake_data_append(sess, data - SSL3_HANDSHAKE_HEADER_LEN, len + SSL3_HANDSHAKE_HEADER_LEN);
+				} else {
+					 ssls_handshake_data_free(sess);
+				}
+				break;
+			case SSL3_MT_CERTIFICATE:
+			case SSL3_MT_SERVER_DONE:
+				if(rc == DSSL_RC_OK)
+				{
+					 ssls_handshake_data_append(sess, data - SSL3_HANDSHAKE_HEADER_LEN, len + SSL3_HANDSHAKE_HEADER_LEN);
+				} else {
+					 ssls_handshake_data_free(sess);
+				}
+				break;
+			}
+		}
+		if(stack->state == SS_Initial && hs_type == SSL3_MT_CLIENT_KEY_EXCHANGE)
+		{
+			ssls_handshake_data_free(sess);
+		}
 	}
 
 	if( rc == DSSL_RC_OK )

@@ -240,6 +240,15 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 	{
 		_ASSERT( dir == ePacketDirFromClient );
 		rc = ssl_decode_first_client_hello( stack->sess, data, len, processed );
+		if(stack->sess->handshake_data) 
+		{
+			ssls_handshake_data_free(stack->sess);
+		}
+		if(rc == DSSL_RC_OK &&
+		   (stack->sess->flags & SSF_TLS_CLIENT_EXTENDED_MASTER_SECRET)) 
+		{
+			ssls_handshake_data_append(stack->sess, data + SSL3_HEADER_LEN, len - SSL3_HEADER_LEN);
+		}
 		return rc;
 	}
 

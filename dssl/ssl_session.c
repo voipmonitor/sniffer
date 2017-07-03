@@ -30,6 +30,7 @@
 #include "tls_ticket_table.h"
 #include "compression.h"
 #include <openssl/evp.h>
+#include <gcrypt.h>
 
 void DSSL_SessionInit( DSSL_Env* env, DSSL_Session* s, DSSL_ServerInfo* si )
 {
@@ -71,6 +72,8 @@ void DSSL_SessionDeInit( DSSL_Session* s )
 	EVP_MD_CTX_destroy( s->handshake_digest_md5 );
 	EVP_MD_CTX_destroy( s->handshake_digest_sha );
 	EVP_MD_CTX_destroy( s->handshake_digest );
+	
+	ssls_handshake_data_free(s);
 }
 
 
@@ -219,6 +222,11 @@ int ssls_set_session_version( DSSL_Session* sess, uint16_t ver )
 int ssls_decode_master_secret( DSSL_Session* sess )
 {
 	DSSL_CipherSuite* suite = NULL;
+	int rc;
+	gcry_md_hd_t gcry_h;
+	int gcry_algo;
+	unsigned int gcry_len;
+	void *gcry_data;
 
 	switch( sess->version )
 	{
@@ -240,11 +248,30 @@ int ssls_decode_master_secret( DSSL_Session* sess )
 		if ( !suite )
 			suite = DSSL_GetSSL3CipherSuite( sess->cipher_suite );
 		if( !suite ) return NM_ERROR( DSSL_E_SSL_CANNOT_DECRYPT );
-		return tls12_PRF( EVP_get_digestbyname( suite->digest ), sess->PMS, SSL_MAX_MASTER_KEY_LENGTH, 
-					TLS_MD_MASTER_SECRET_CONST, 
-					sess->client_random, SSL3_RANDOM_SIZE, 
-					sess->server_random, SSL3_RANDOM_SIZE,
-					sess->master_secret, sizeof( sess->master_secret ) );
+		
+		if((sess->flags & (SSF_TLS_SERVER_EXTENDED_MASTER_SECRET|SSF_TLS_CLIENT_EXTENDED_MASTER_SECRET)) == (SSF_TLS_SERVER_EXTENDED_MASTER_SECRET|SSF_TLS_CLIENT_EXTENDED_MASTER_SECRET) &&
+		   sess->handshake_data) {
+			gcry_md_open(&gcry_h, !strcmp(suite->digest, LN_sha384) ? GCRY_MD_SHA384 : GCRY_MD_SHA256, GCRY_MD_FLAG_SECURE);
+			gcry_md_write(gcry_h, sess->handshake_data, sess->handshake_data_size);
+			gcry_algo = gcry_md_get_algo(gcry_h);
+			gcry_len = gcry_md_get_algo_dlen(gcry_algo);
+			gcry_data = malloc(gcry_len);
+			memcpy(gcry_data, gcry_md_read(gcry_h,  gcry_algo), gcry_len);
+			gcry_md_close(gcry_h);
+			rc = tls12_PRF( EVP_get_digestbyname( suite->digest ), sess->PMS, SSL_MAX_MASTER_KEY_LENGTH, 
+						"extended " TLS_MD_MASTER_SECRET_CONST,
+						gcry_data, gcry_len, 
+						NULL, 0,
+						sess->master_secret, sizeof( sess->master_secret ) );
+			free(gcry_data);
+			return(rc);
+		} else {
+			return tls12_PRF( EVP_get_digestbyname( suite->digest ), sess->PMS, SSL_MAX_MASTER_KEY_LENGTH, 
+						TLS_MD_MASTER_SECRET_CONST, 
+						sess->client_random, SSL3_RANDOM_SIZE, 
+						sess->server_random, SSL3_RANDOM_SIZE,
+						sess->master_secret, sizeof( sess->master_secret ) );
+		}
 
 	default:
 		return NM_ERROR( DSSL_E_NOT_IMPL );
@@ -908,4 +935,35 @@ int ssls_store_new_ticket(DSSL_Session* sess, u_char* ticket, uint32_t len)
 		_ASSERT( FALSE );
 		return NM_ERROR( DSSL_E_UNSPECIFIED_ERROR );
 	}
+}
+
+void ssls_handshake_data_append(DSSL_Session* sess, u_char* data, uint32_t len)
+{
+	void *handshake_data_new;
+
+	if(sess->handshake_data)
+	{
+		handshake_data_new = malloc(sess->handshake_data_size + len);
+		memcpy(handshake_data_new, sess->handshake_data, sess->handshake_data_size);
+		memcpy(handshake_data_new + sess->handshake_data_size, data, len);
+		free(sess->handshake_data);
+		sess->handshake_data = handshake_data_new;
+		sess->handshake_data_size += len;
+	} 
+	else
+	{
+		sess->handshake_data = malloc(len);
+		memcpy(sess->handshake_data, data, len);
+		sess->handshake_data_size = len;
+	}
+}
+
+void ssls_handshake_data_free(DSSL_Session* sess)
+{
+	if(sess->handshake_data)
+	{
+		free(sess->handshake_data);
+		sess->handshake_data = NULL;
+	}
+	sess->handshake_data_size = 0;
 }

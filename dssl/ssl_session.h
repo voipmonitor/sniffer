@@ -49,6 +49,9 @@ struct DSSL_handshake_buffer_
 #define SSF_TLS_SESSION_TICKET_SET		0x0020
 #define SSF_TLS_SERVER_SESSION_TICKET	0x0040
 
+#define SSF_TLS_CLIENT_EXTENDED_MASTER_SECRET	0x0100
+#define SSF_TLS_SERVER_EXTENDED_MASTER_SECRET	0x0200
+
 struct DSSL_Session_
 {
 	DSSL_Env*			env;
@@ -115,6 +118,9 @@ struct DSSL_Session_
 	int					cipher_mode;
 	
 	DSSL_handshake_buffer* handshake_queue;
+	
+	void 			*handshake_data;
+	uint32_t		handshake_data_size;
 };
 
 
@@ -162,6 +168,9 @@ void ssls_free_extension_data(DSSL_Session* sess);
 
 int ssls_init_from_tls_ticket( DSSL_Session* sess );
 int ssls_store_new_ticket(DSSL_Session* sess, u_char* ticket, uint32_t len);
+
+void ssls_handshake_data_append(DSSL_Session* sess, u_char* data, uint32_t len);
+void ssls_handshake_data_free(DSSL_Session* sess);
 
 #ifdef  __cplusplus
 }

@@ -38,6 +38,7 @@ public:
 public:
 	cSslDsslSession(u_int32_t ip, u_int16_t port, string keyfile, string password = "");
 	~cSslDsslSession();
+	void setClientIpPort(u_int32_t ipc, u_int16_t portc);
 	void init();
 	void term();
 	bool initServer();
@@ -55,11 +56,14 @@ private:
 	u_int16_t port;
 	string keyfile;
 	string password;
+	u_int32_t ipc;
+	u_int16_t portc;
 	EVP_PKEY *pkey;
 	DSSL_ServerInfo* server_info;
 	DSSL_Session* session;
 	eServerErrors server_error;
 	bool process_error;
+	int process_error_code;
 	vector<string> *decrypted_data;
 	unsigned process_counter;
 };

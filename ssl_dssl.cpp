@@ -1,3 +1,5 @@
+#include <gcrypt.h>
+
 #include "voipmonitor.h"
 
 #include "ssl_dssl.h"
@@ -16,17 +18,25 @@ cSslDsslSession::cSslDsslSession(u_int32_t ip, u_int16_t port, string keyfile, s
 	this->port = port;
 	this->keyfile = keyfile;
 	this->password = password;
+	ipc = 0;
+	portc = 0;
 	pkey = NULL;
 	server_info = NULL;
 	session = NULL;
 	server_error = _se_na;
 	process_error = false;
+	process_error_code = 0;
 	process_counter = 0;
 	init();
 }
 
 cSslDsslSession::~cSslDsslSession() {
 	term();
+}
+
+void cSslDsslSession::setClientIpPort(u_int32_t ipc, u_int16_t portc) {
+	this->ipc = ipc;
+	this->portc = portc;
 }
 
 void cSslDsslSession::init() {
@@ -141,9 +151,18 @@ void cSslDsslSession::dataCallback(NM_PacketDir /*dir*/, void* user_data, u_char
 	me->decrypted_data->push_back(string((char*)data, len));
 }
 
-void cSslDsslSession::errorCallback(void* user_data, int /*error_code*/) {
+void cSslDsslSession::errorCallback(void* user_data, int error_code) {
 	cSslDsslSession *me = (cSslDsslSession*)user_data;
-	me->process_error = true;
+	if(!me->process_error) {
+		syslog(LOG_ERR, "SSL decode failed: err code %i, connection %s:%u -> %s:%u", 
+		       error_code,
+		       inet_ntostring(me->ipc).c_str(),
+		       me->portc,
+		       inet_ntostring(me->ip).c_str(),
+		       me->port);
+		me->process_error = true;
+	}
+	me->process_error_code = error_code;
 }
 
 int cSslDsslSession::password_calback_direct(char *buf, int size, int /*rwflag*/, void *userdata) {
@@ -183,6 +202,7 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 	}
 	if(!session && dir == ePacketDirFromClient) {
 		session = addSession(daddr, dport);
+		session->setClientIpPort(saddr, sport);
 		sessions[sid] = session;
 	}
 	if(session) {
@@ -250,6 +270,13 @@ void cSslDsslSessions::term() {
 void ssl_dssl_init() {
 	#ifdef HAVE_OPENSSL101
 	SslDsslSessions = new FILE_LINE(0) cSslDsslSessions;
+	if(!gcry_check_version(GCRYPT_VERSION)) {
+		syslog(LOG_ERR, "libgcrypt version mismatch");
+	}
+	gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
+	gcry_control(GCRYCTL_INIT_SECMEM, 16384, 0);
+	gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
+	gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
 	#endif //HAVE_OPENSSL101
 }
 
