@@ -332,8 +332,8 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, u_int32
 				databuff_len = max(PACKET_DATALEN(packet.datalen, packet.datacaplen) + 1, 10000u);
 				data = new FILE_LINE(36001) u_char[databuff_len];
 				
-			} else if(databuff_len < *datalen + PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
-				databuff_len = max(*datalen, databuff_len) + max(PACKET_DATALEN(packet.datalen, packet.datacaplen) + 1, 10000u);
+			} else if(databuff_len < *datalen + PACKET_DATALEN(packet.datalen, packet.datacaplen) + 1) {
+				databuff_len += max(PACKET_DATALEN(packet.datalen, packet.datacaplen) + 1, 10000u);
 				u_char* newdata = new FILE_LINE(36002) u_char[databuff_len];
 				memcpy_heapsafe(newdata, data, *datalen, 
 						__FILE__, __LINE__);
