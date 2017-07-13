@@ -324,6 +324,7 @@ class cConfigItem_hour_interval : public cConfigItem {
 public:
 	cConfigItem_hour_interval(const char *name, int *from, int *to);
 	string getValueStr(bool configFile = false);
+	string normalizeStringValueForCmp(string value);
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);

@@ -816,6 +816,11 @@ string cConfigItem_hour_interval::getValueStr(bool /*configFile*/) {
 	return(outStr.str());
 }
 
+string cConfigItem_hour_interval::normalizeStringValueForCmp(string value) {
+	find_and_replace(value, " ", "");
+	return(value);
+}
+
 bool cConfigItem_hour_interval::setParamFromConfigFile(CSimpleIniA *ini) {
 	return(setParamFromValueStr(getValueFromConfigFile(ini)));
 }
