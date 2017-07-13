@@ -4632,6 +4632,15 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		PRIMARY KEY (`id_sensor`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	
+	this->query("CREATE TABLE IF NOT EXISTS `system` (\
+			`id` int NOT NULL auto_increment,\
+			`type` text default NULL,\
+			`cdate` date default NULL,\
+			`cdatetime` datetime default NULL,\
+			`content` text default NULL,\
+			PRIMARY KEY  (`id`)\
+		) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	
 	if(opt_ipaccount) {
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `ipacc` (\
