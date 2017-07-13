@@ -1750,7 +1750,7 @@ bool RestartUpgrade::checkReadySafeRun() {
 	return(true);
 }
 
-bool RestartUpgrade::runRestart(int socket1, int socket2) {
+bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 	if(verbosity > 0) {
 		syslog(LOG_NOTICE, "run restart script (%s)", this->restartTempScriptFileName.c_str());
 	}
@@ -1762,6 +1762,10 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 	}
 	close(socket1);
 	close(socket2);
+	if(c_client) {
+		c_client->writeFinal();
+		delete c_client;
+	}
 	if(!this->safeRunTempScriptFileName.empty() && this->checkReadySafeRun()) {
 		if(!fork()) {
 			syslog(LOG_NOTICE, "run safe run script (%s)", this->safeRunTempScriptFileName.c_str());
@@ -1780,6 +1784,9 @@ bool RestartUpgrade::runRestart(int socket1, int socket2) {
 		sqlStore->queryToFilesTerminate();
 	}
 	set_readend();
+	if(is_read_from_file_by_pb()) {
+		vm_terminate();
+	}
 	terminate_packetbuffer();
 	sleep(2);
 

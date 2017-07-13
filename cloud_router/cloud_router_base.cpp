@@ -1339,3 +1339,7 @@ bool cClient::writeAesEnc(u_char *data, size_t dataLen, const char *ckey, const 
 	client_socket->set_aes_keys(ckey, ivec);
 	return(client_socket->writeAesEnc(data, dataLen, false));
 }
+
+bool cClient::writeFinal() {
+	return(client_socket->writeAesEnc(NULL, 0, true));
+}

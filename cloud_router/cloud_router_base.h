@@ -451,6 +451,7 @@ public:
 	bool write(u_char *data, size_t dataLen);
 	bool writeXorKeyEnc(u_char *data, size_t dataLen, const char *key);
 	bool writeAesEnc(u_char *data, size_t dataLen, const char *ckey, const char *ivec);
+	bool writeFinal();
 protected:
 	cSocketBlock *client_socket;
 	pthread_t client_thread;

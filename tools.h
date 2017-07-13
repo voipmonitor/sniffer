@@ -1198,7 +1198,7 @@ public:
 	bool createSafeRunScript();
 	bool checkReadyRestart();
 	bool checkReadySafeRun();
-	bool runRestart(int socket1, int socket2);
+	bool runRestart(int socket1, int socket2, class cClient *c_client);
 	bool runGitUpgrade(const char *cmd);
 	bool isOk();
 	string getErrorString();

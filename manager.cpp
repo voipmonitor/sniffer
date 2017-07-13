@@ -2483,7 +2483,7 @@ getwav:
 			return -1;
 		}
 		if(ok) {
-			restart.runRestart(client, manager_socket_server);
+			restart.runRestart(client, manager_socket_server, c_client);
 		}
 		return 0;
 	} else if(strstr(buf, "gitUpgrade") != NULL) {
