@@ -45,6 +45,19 @@ AC_CHECK_LIB([vorbisenc], [main], ,AC_MSG_ERROR([Unable to find VORBISENC librar
 # FIXME: Replace `main' with a function in `-lz':
 AC_CHECK_LIB([snappy], [main], ,AC_MSG_ERROR([Unable to find snappy library. apt-get install libsnappy-dev | or compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz]))
 AC_CHECK_LIB([curl], [main], , AC_MSG_ERROR([Unable to find curl library. apt-get install libcurl4-openssl-dev | yum install libcurl-devel]))
+
+CURL_CFG='curl-config'
+CURL_VER_MAJOR=`$CURL_CFG --version | cut -d" " -f2 | cut -d"." -f1`
+CURL_VER_MINOR=`$CURL_CFG --version | cut -d" " -f2 | cut -d"." -f2`
+if test -z $CURL_VER_MAJOR || test -z $CURL_VER_MINOR; then
+        AC_MSG_ERROR([Can't get about curl's version. $CURL_CFG binary is needed.])
+fi
+if test $CURL_VER_MAJOR -eq 7 && test $CURL_VER_MINOR -ge 34; then
+	AC_MSG_NOTICE([Curl version is ok ($CURL_VER_MAJOR.$CURL_VER_MINOR).])
+else
+	AC_MSG_ERROR([Bad curl version ($CURL_VER_MAJOR.$CURL_VER_MINOR). Version 7.34 or higher is required.])
+fi
+
 AC_CHECK_LIB([ssh], [ssh_forward_accept], HAVE_LIBSSH=1, AC_MSG_NOTICE([Your libssh is old or missing - cloud feature is disabled. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files]))
 AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
 AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c')
@@ -97,10 +110,10 @@ fi
 AC_CHECK_LIB([mysqlclient], [main], , AC_MSG_ERROR([Unable to find libmysqlclient. apt-get install libmysqlclient-dev | yum install mysql-devel | pkg install mysql56-client]))
 
 AC_CHECK_LIB([z], [main], , AC_MSG_ERROR([Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel]))
-AC_CHECK_LIB([lzma], [main], HAVE_LIBLZMA=1, AC_MSG_NOTICE([Unable to find lzma. apt-get install liblzma-dev | yum install lzma-devel]))
+AC_CHECK_LIB([lzma], [main], HAVE_LIBLZMA=1, AC_MSG_NOTICE([Unable to find lzma. apt-get install liblzma-dev | yum install xz-devel]))
 AC_CHECK_LIB([lzo2], [main], HAVE_LIBLZO=1, AC_MSG_ERROR([Unable to find lzo. apt-get install liblzo2-dev | yum install lzo-devel]))
 AC_CHECK_LIB([gnutls], [gnutls_init], HAVE_LIBGNUTLS=1, AC_MSG_NOTICE([Unable to find gnutls - disabling SIP TLS decoder. apt-get install gnutls-dev | yum install gnutls-devel]))
-AC_CHECK_LIB([gcrypt], [gcry_check_version], HAVE_LIBGNUTLS=1, AC_MSG_NOTICE([Unable to find libgcrypt - disabling SIP TLS decoder. apt-get install libgcrypt-dev | yum install libgcrypt-devel]))
+AC_CHECK_LIB([gcrypt], [gcry_check_version], HAVE_LIBGCRYPT=1, AC_MSG_NOTICE([Unable to find libgcrypt - disabling SIP TLS decoder. apt-get install libgcrypt-dev | yum install libgcrypt-devel]))
 AC_CHECK_LIB([tcmalloc_minimal], [tc_malloc], HAVE_LIBTCMALLOC=1, AC_MSG_NOTICE([Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev or compile from source https://code.google.com/p/gperftools/]))
 
 HAVE_LIBPNG_T=no
@@ -139,7 +152,7 @@ if test "x$HAVE_LIBSSH" = "x1"; then
 fi
 
 LIBGNUTLS_T=no
-if test "x$HAVE_LIBGNUTLS" = "x1"; then 
+if test "x$HAVE_LIBGNUTLS" = "x1" && test "x$HAVE_LIBGCRYPT" = "x1"; then
 	AC_DEFINE([HAVE_LIBGNUTLS], [1], [Define if using gnutls])
 	AC_SUBST([LIBGNUTLS],["-lgcrypt -lgnutls"])
 	AC_SUBST([LIBGNUTLSSTATIC],["-lgcrypt -lgnutls -lnettle -lhogweed -lgmp -lgpg-error -lpthread "])
