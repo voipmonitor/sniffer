@@ -326,6 +326,7 @@ int opt_enable_webrtc = 0;
 int opt_enable_ssl = 0;
 unsigned int opt_ssl_link_timeout = 5 * 60;
 bool opt_ssl_ignore_tcp_handshake = true;
+bool opt_ssl_log_errors = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
@@ -3197,8 +3198,8 @@ int main_init_read() {
 		sslData = new FILE_LINE(42030) SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
-		tcpReassemblySsl->setEnableWildLink();
 		if(opt_ssl_ignore_tcp_handshake) {
+			tcpReassemblySsl->setEnableWildLink();
 			tcpReassemblySsl->setIgnoreTcpHandshake();
 		}
 	}
@@ -5395,6 +5396,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42256) cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -6277,6 +6279,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "chunk_buffer")		sverb.chunk_buffer = 1;
 						else if(verbparams[i].substr(0, 15) == "tcp_debug_port=")
 													sverb.tcp_debug_port = atoi(verbparams[i].c_str() + 15);
+						else if(verbparams[i].substr(0, 13) == "tcp_debug_ip=") { in_addr ips; inet_aton(verbparams[i].c_str() + 13, &ips); sverb.tcp_debug_ip = ips.s_addr; }
 						else if(verbparams[i].substr(0, 5) == "ssrc=")          sverb.ssrc = strtol(verbparams[i].c_str() + 5, NULL, 16);
 						else if(verbparams[i] == "jitter")			sverb.jitter = 1;
 						else if(verbparams[i] == "jitter_na")			opt_jitterbuffer_adapt = 0;
@@ -8322,6 +8325,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_ignore_tcp_handshake", NULL))) {
 		opt_ssl_ignore_tcp_handshake = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_log_errors", NULL))) {
+		opt_ssl_log_errors = yesno(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
 		strncpy(opt_tcpreassembly_http_log, value, sizeof(opt_tcpreassembly_http_log));

@@ -2593,6 +2593,11 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 			return;
 		}
 	}
+	if(sverb.tcp_debug_ip) {
+		if(header_ip->saddr != sverb.tcp_debug_ip && header_ip->daddr != sverb.tcp_debug_ip) {
+			return;
+		}
+	}
 	
 	if(debug_seq && header_tcp.seq == debug_seq) {
 		cout << " -- XXX DEBUG SEQ XXX" << endl;

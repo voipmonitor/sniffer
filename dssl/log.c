@@ -26,14 +26,25 @@
 #endif
 #include "errors.h"
 
+int NmDebugCatchError_disabled_log = 0;
 #ifdef _DEBUG
 int NmDebugCatchError( int rc, int line, const char* file  )
 {
-	printf( "\nDSSL error: %d at %s@%u\n", rc, file, line );
+	if(!NmDebugCatchError_disabled_log)
+	{
+		printf( "\nDSSL error: %d at %s@%u\n", rc, file, line );
+	}
 	return rc;
 }
-
 #endif
+void NmDebugCatchError_disable_log()
+{
+	NmDebugCatchError_disabled_log = 1;
+}
+void NmDebugCatchError_enable_log()
+{
+	NmDebugCatchError_disabled_log = 0;
+}
 
 
 static void nmLogCategory( uint32_t category )

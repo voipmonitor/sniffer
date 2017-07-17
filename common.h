@@ -13,6 +13,9 @@
 #endif
 
 
+#include <sys/types.h>
+
+
 struct sVerbose {
 	int graph;
 	int process_rtp;
@@ -38,6 +41,7 @@ struct sVerbose {
 	int fraud;
 	int enable_bt_sighandler;
 	int tcp_debug_port;
+	u_int32_t tcp_debug_ip;
 	int tar;
 	int chunk_buffer;
 	unsigned long int ssrc;

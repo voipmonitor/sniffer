@@ -91,13 +91,21 @@ DSSL_EnvSetServerInfo */
 /* Duplicate SSL server entry */
 #define DSSL_E_TCP_GLOBAL_REASSEMBLY_QUEUE_LIMIT (-39)
 
-//#define _DEBUG true
-
 #ifdef _DEBUG
 	int NmDebugCatchError( int rc, int line, const char* file );
 	#define NM_ERROR( rc ) NmDebugCatchError( rc, __LINE__, __FILE__ )
 #else
 	#define NM_ERROR( rc ) ( rc )
 #endif
+#ifdef  __cplusplus
+extern "C" {
+#endif
+void NmDebugCatchError_disable_log();
+void NmDebugCatchError_enable_log();
+#ifdef  __cplusplus
+}
+#endif
+#define NM_ERROR_DISABLE_LOG NmDebugCatchError_disable_log()
+#define NM_ERROR_ENABLE_LOG NmDebugCatchError_enable_log()
 
 #endif

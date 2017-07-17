@@ -21,6 +21,8 @@
 #ifndef __DSSL_STDINC_H__
 #define __DSSL_STDINC_H__
 
+//#define _DEBUG true
+
 #ifdef _WIN32
   #define _CRT_SECURE_NO_WARNINGS 
   #ifdef _WIN32_WINNT

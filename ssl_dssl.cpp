@@ -116,10 +116,12 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 	if(dir != ePacketDirInvalid) {
 		bool maybeNextClientHello = false;
 		if(process_counter && dir == ePacketDirFromClient) {
+			NM_ERROR_DISABLE_LOG;
 			uint16_t ver = 0;
 			if(!ssl_detect_client_hello_version((u_char*)data, datalen, &ver) && ver) {
 				maybeNextClientHello = true;
 			}
+			NM_ERROR_ENABLE_LOG;
 		}
 		for(unsigned pass = 1; pass <= (maybeNextClientHello ? 2 : 1); pass++) {
 			if(pass == 2) {
@@ -154,12 +156,15 @@ void cSslDsslSession::dataCallback(NM_PacketDir /*dir*/, void* user_data, u_char
 void cSslDsslSession::errorCallback(void* user_data, int error_code) {
 	cSslDsslSession *me = (cSslDsslSession*)user_data;
 	if(!me->process_error) {
-		syslog(LOG_ERR, "SSL decode failed: err code %i, connection %s:%u -> %s:%u", 
-		       error_code,
-		       inet_ntostring(me->ipc).c_str(),
-		       me->portc,
-		       inet_ntostring(me->ip).c_str(),
-		       me->port);
+		extern bool opt_ssl_log_errors;
+		if(opt_ssl_log_errors) {
+			syslog(LOG_ERR, "SSL decode failed: err code %i, connection %s:%u -> %s:%u", 
+			       error_code,
+			       inet_ntostring(me->ipc).c_str(),
+			       me->portc,
+			       inet_ntostring(me->ip).c_str(),
+			       me->port);
+		}
 		me->process_error = true;
 	}
 	me->process_error_code = error_code;
