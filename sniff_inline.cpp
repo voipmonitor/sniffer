@@ -1,7 +1,6 @@
 #ifndef SNIFF_INLINE_C
 #define SNIFF_INLINE_C
 
-
 #include "common.h"
 
 #ifdef FREEBSD
@@ -10,6 +9,7 @@
 
 #include <syslog.h>
 #include <net/ethernet.h>
+#include <iomanip>
 
 #include "tcpreassembly.h"
 #include "sniff.h"
@@ -568,6 +568,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		ppd->datalen = 0;
 	}
 
+	#ifdef DEDUP_DEBUG
+	static long counter = 0;
+	cout << "packet " << (++counter) << " " << HPH(*header_packet)->ts.tv_sec << "." << setw(6) << setfill('0') << HPH(*header_packet)->ts.tv_usec;
+	#endif
 	if(((ppf & ppf_calcMD5) || (ppf & ppf_dedup)) && ppd->header_ip) {
 		// check for duplicate packets (md5 is expensive operation - enable only if you really need it
 		if(opt_dup_check && 
@@ -591,6 +595,9 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					MD5_Update(&ppd->ctx, ppd->data, MAX(0, (unsigned long)ppd->datalen - ppd->traillen));
 				}
 				MD5_Final((unsigned char*)_md5, &ppd->ctx);
+				#ifdef DEDUP_DEBUG
+				cout << " " << MD5_String((unsigned char*)_md5);
+				#endif
 			}
 			if((ppf & ppf_dedup) && _md5[0]) {
 				if(memcmp(_md5, ppd->prevmd5s + (_md5[0] * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
@@ -602,12 +609,18 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					if(pcap_header_plus2) {
 						pcap_header_plus2->ignore = true;
 					}
+					#ifdef DEDUP_DEBUG
+					cout << " DUPL" << endl;
+					#endif
 					return(0);
 				}
 				memcpy(ppd->prevmd5s + (_md5[0] * MD5_DIGEST_LENGTH), _md5, MD5_DIGEST_LENGTH);
 			}
 		}
 	}
+	#ifdef DEDUP_DEBUG
+	cout << endl;
+	#endif
 	
 	if((ppf & ppf_dump) && ppd->header_ip) {
 		if(pcapDumpHandle) {
