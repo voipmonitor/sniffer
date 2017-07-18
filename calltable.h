@@ -158,7 +158,13 @@ struct ip_port_call_info_rtp {
 };
 
 struct ip_port_call_info {
+	enum eTypeAddr {
+		_ta_base,
+		_ta_natalias,
+		_ta_sdp_reverse_ipport
+	};
 	u_int32_t addr;
+	eTypeAddr type_addr;
 	u_int16_t port;
 	bool iscaller;
 	char sessid[MAXLEN_SDP_SESSID];
@@ -572,7 +578,7 @@ public:
 
 	int get_index_by_ip_port(in_addr_t addr, unsigned short port);
 	
-	int get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr = 0);
+	int get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr, ip_port_call_info::eTypeAddr type_addr);
 
 	/**
 	 * @brief close all rtp[].gfileRAW
@@ -610,11 +616,13 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
+			char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
 	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
-	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
+			      char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  

@@ -814,7 +814,8 @@ Call::closeRawFiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
+		  char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return(-1);
 	}
@@ -849,6 +850,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, p
 
 	this->ip_port[ipport_n].sip_src_addr = sip_src_addr;
 	this->ip_port[ipport_n].addr = addr;
+	this->ip_port[ipport_n].type_addr = type_addr;
 	this->ip_port[ipport_n].port = port;
 	this->ip_port[ipport_n].iscaller = iscaller;
 	this->ip_port[ipport_n].sdp_flags = sdp_flags;
@@ -936,13 +938,14 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 }
 
 void
-Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short port, pcap_pkthdr *header, char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
+		       char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return;
 	}
 
 	if(sessid) {
-		int sessidIndex = get_index_by_sessid_to(sessid, to, sip_src_addr);
+		int sessidIndex = get_index_by_sessid_to(sessid, to, sip_src_addr, type_addr);
 		if(sessidIndex >= 0) {
 			if(this->ip_port[sessidIndex].sip_src_addr == sip_src_addr &&
 			   (this->ip_port[sessidIndex].addr != addr ||
@@ -969,7 +972,8 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, unsigned short po
 			return;
 		}
 	}
-	if(this->add_ip_port(sip_src_addr, addr, port, header, sessid, to, iscaller, rtpmap, sdp_flags) != -1) {
+	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, header, 
+			     sessid, to, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, header->ts.tv_sec, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, header->ts.tv_sec, this, iscaller, 1, sdp_flags);
@@ -990,11 +994,12 @@ Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
 }
 
 int
-Call::get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr){
+Call::get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr, ip_port_call_info::eTypeAddr type_addr) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(!strncmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID) &&
 		   !strncmp(this->ip_port[i].to, to, MAXLEN_SDP_TO) &&
-		   (!sip_src_addr || sip_src_addr == this->ip_port[i].sip_src_addr)) {
+		   this->ip_port[i].sip_src_addr == sip_src_addr &&
+		   this->ip_port[i].type_addr == type_addr) {
 			// we have found it
 			return i;
 		}

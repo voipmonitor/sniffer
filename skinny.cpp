@@ -1785,7 +1785,8 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 					rtpmap[0] = dynamicPayload * 1000 + codec;
 				}
 			}
-			call->add_ip_port_hash(saddr, ipaddr, port, header, NULL, NULL, (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
+			call->add_ip_port_hash(saddr, ipaddr, ip_port_call_info::_ta_base, port, header, 
+					       NULL, NULL, (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
 		}
 		}
 		break;
@@ -1988,7 +1989,8 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		if((call = calltable->find_by_skinny_partyid(pid)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			int rtpmap[MAX_RTPMAP];
 			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
-			call->add_ip_port_hash(saddr, ipaddr, port, header, NULL, NULL, (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
+			call->add_ip_port_hash(saddr, ipaddr, ip_port_call_info::_ta_base, port, header, 
+					       NULL, NULL, (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
 		}
 		}
 		break;
