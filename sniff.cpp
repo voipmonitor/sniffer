@@ -2338,7 +2338,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	return call;
 }
 
-void process_sdp(Call *call, packet_s_process *packetS, bool iscaller, char *from, char *callidstr) {
+void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from, char *callidstr) {
  
 	char *data = from;
 	unsigned int datalen = packetS->sipDataLen - (from - (packetS->data + packetS->sipDataOffset));
@@ -2429,8 +2429,8 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	int lastSIPresponseNum = 0;
 	bool existInviteSdaddr = false;
 	bool reverseInviteSdaddr = false;
-	bool iscaller = false;
-	bool iscalled = false;
+	int iscaller = -1;
+	int iscalled = -1;
 	bool detectCallerd = false;
 	const char *logPacketSipMethodCallDescr = NULL;
 	int merged;
@@ -2597,7 +2597,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) || 
 						     IS_SIP_RES18X(packetS->sip_method));
 	if(detectCallerd) {
-		call->handle_dscp(packetS->header_ip, iscaller);
+		call->handle_dscp(packetS->header_ip, iscaller > 0);
 	}
 
 	if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
@@ -3243,19 +3243,19 @@ endsip:
 	}
 
 	if(call && detectCallerd &&
-	   (iscaller ||
-	    (iscalled && !call->a_ua[0]))) {
+	   (iscaller > 0 ||
+	    (iscalled > 0 && !call->a_ua[0]))) {
 		s = gettag_sip(packetS, "\nUser-Agent:", &l);
 		if(s) {
-			//cout << "**** " << call->call_id << " " << (iscaller ? "b" : "a") << " / " << string(s, l) << endl;
-			if(iscaller) {
+			//cout << "**** " << call->call_id << " " << (iscaller > 0 ? "b" : "a") << " / " << string(s, l) << endl;
+			if(iscaller > 0) {
 				memcpy(call->b_ua, s, MIN(l, sizeof(call->b_ua)));
 				call->b_ua[MIN(l, sizeof(call->b_ua) - 1)] = '\0';
 				if(sverb.set_ua) {
 					cout << "set b_ua " << call->b_ua << endl;
 				}
 			}
-			if(iscalled) {
+			if(iscalled > 0) {
 				memcpy(call->a_ua, s, MIN(l, sizeof(call->a_ua)));
 				call->a_ua[MIN(l, sizeof(call->a_ua) - 1)] = '\0';
 				if(sverb.set_ua) {
@@ -3616,7 +3616,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 	packetS->blockstore_addflag(51 /*pb lock flag*/);
 	++counter_rtp_packets;
 	Call *call;
-	bool iscaller;
+	int iscaller;
 	bool is_rtcp;
 	bool stream_in_multiple_calls;
 	s_sdp_flags sdp_flags;
@@ -3638,8 +3638,8 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 		is_rtcp = call_info[call_info_index].is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data_()[1] == 0xC8);
 		stream_in_multiple_calls = call_info[call_info_index].multiple_calls;
 		
-		if(!find_by_dest) {
-			iscaller = !iscaller;
+		if(!find_by_dest && iscaller >= 0) {
+			iscaller = iscaller > 0 ? 0 : 1;
 		}
 		
 		if(sverb.process_rtp) {
@@ -3648,7 +3648,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			     << " callid: " << call->call_id
 			     << (find_by_dest ? " src: " : " SRC: ") << inet_ntostring(htonl(packetS->saddr)) << " : " << packetS->source
 			     << (find_by_dest ? " DST: " : " dst: ") << inet_ntostring(htonl(packetS->daddr)) << " : " << packetS->dest
-			     << " iscaller: " << (iscaller ? "caller" : "called") 
+			     << " iscaller: " << (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "undefined")) 
 			     << " find_by_dest: " << find_by_dest
 			     << " counter: " << process_rtp_counter
 			     << endl;

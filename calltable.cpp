@@ -815,7 +815,7 @@ Call::closeRawFiles() {
 /* add ip adress and port to this call */
 int
 Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		  char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		  char *sessid, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return(-1);
 	}
@@ -833,7 +833,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 	}
 	
 	if(sverb.process_rtp) {
-		cout << "RTP - add_ip_port: " << inet_ntostring(htonl(addr)) << " / " << port << " " << (iscaller ? "caller" : "called") << endl;
+		cout << "RTP - add_ip_port: " << inet_ntostring(htonl(addr)) << " / " << port << " " << (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "undefined")) << endl;
 	}
 
 	if(ipport_n == MAX_IP_PER_CALL){
@@ -866,46 +866,51 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 	}
 	nullIpPortInfoRtpStream(ipport_n);
 	
-	memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
+	if(!opt_rtpmap_by_callerd || iscaller >= 0) {
+		memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
+	}
+	
 	ipport_n++;
 	return 0;
 }
 
 bool 
-Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// reinit rtpmap
-			if(opt_rtpmap_combination) {
-				int *rtpmap_src = rtpmap;
-				int *rtpmap_dst = this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i];
-				for(int i_src = 0; i_src < MAX_RTPMAP - 1; i_src++) {
-					if(rtpmap_src[i_src]) {
-						int indexEqCodec = -1;
-						int indexZero = -1;
-						for(int i_dst = 0; i_dst < MAX_RTPMAP - 2; i_dst++) {
-							if(!rtpmap_dst[i_dst]) {
-								if(indexZero == -1) {
-									indexZero = i_dst;
-									break;
-								}
-							} else if(rtpmap_dst[i_dst] / 1000 == rtpmap_src[i_src] / 1000) {
-								if(indexEqCodec == -1) {
-									indexEqCodec = i_dst;
-									break;
+			if(!opt_rtpmap_by_callerd || iscaller >= 0) {
+				if(opt_rtpmap_combination) {
+					int *rtpmap_src = rtpmap;
+					int *rtpmap_dst = this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i];
+					for(int i_src = 0; i_src < MAX_RTPMAP - 1; i_src++) {
+						if(rtpmap_src[i_src]) {
+							int indexEqCodec = -1;
+							int indexZero = -1;
+							for(int i_dst = 0; i_dst < MAX_RTPMAP - 2; i_dst++) {
+								if(!rtpmap_dst[i_dst]) {
+									if(indexZero == -1) {
+										indexZero = i_dst;
+										break;
+									}
+								} else if(rtpmap_dst[i_dst] / 1000 == rtpmap_src[i_src] / 1000) {
+									if(indexEqCodec == -1) {
+										indexEqCodec = i_dst;
+										break;
+									}
 								}
 							}
-						}
-						if(indexEqCodec >= 0) {
-							rtpmap_dst[indexEqCodec] = rtpmap_src[i_src];
-						} else if(indexZero >= 0) {
-							rtpmap_dst[indexZero] = rtpmap_src[i_src];
-							rtpmap_dst[indexZero + 1] = 0;
+							if(indexEqCodec >= 0) {
+								rtpmap_dst[indexEqCodec] = rtpmap_src[i_src];
+							} else if(indexZero >= 0) {
+								rtpmap_dst[indexZero] = rtpmap_src[i_src];
+								rtpmap_dst[indexZero + 1] = 0;
+							}
 						}
 					}
+				} else {
+					memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
 				}
-			} else {
-				memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
 			}
 			// force mark bit for reinvite for both direction
 			u_int64_t _forcemark_time = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
@@ -939,7 +944,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 
 void
 Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		       char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		       char *sessid, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return;
 	}
@@ -1048,6 +1053,14 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
  
 bool
 Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
+ 
+	if(iscaller < 0) {
+		if(this->is_sipcallerip(packetS->saddr) || this->is_sipcalledip(packetS->daddr)) {
+			iscaller = 1;
+		} else {
+			iscaller = 0;
+		}
+	}
  
 	extern int opt_vlan_siprtpsame;
 	bool rtp_read_rslt = false;
@@ -4948,7 +4961,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* c
 		cout << "hashAdd: " 
 		     << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << " " 
 		     << (is_rtcp ? "rtcp" : "") << " "
-		     << (iscaller ? "caller" : "called") << " "
+		     << (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "undefinned")) << " "
 		     << endl;
 	}
  
@@ -5762,7 +5775,7 @@ Call::handle_dscp(struct iphdr2 *header_ip, bool iscaller) {
 }
 
 bool 
-Call::check_is_caller_called(const char *call_id, int sip_method, unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled, bool enableSetSipcallerdip) {
+Call::check_is_caller_called(const char *call_id, int sip_method, unsigned int saddr, unsigned int daddr, int *iscaller, int *iscalled, bool enableSetSipcallerdip) {
 	*iscaller = 0;
 	bool _iscalled = 0;
 	string debug_str_set;
@@ -5787,8 +5800,13 @@ Call::check_is_caller_called(const char *call_id, int sip_method, unsigned int s
 		u_int32_t *sipcallerip;
 		u_int32_t *sipcalledip;
 		if(opt_callidmerge_header[0] != '\0') {
-			sipcallerip = this->map_sipcallerdip[call_id].sipcallerip;
-			sipcalledip = this->map_sipcallerdip[call_id].sipcalledip;
+			if(call_id) {
+				sipcallerip = this->map_sipcallerdip[call_id].sipcallerip;
+				sipcalledip = this->map_sipcallerdip[call_id].sipcalledip;
+			} else {
+				sipcallerip = this->map_sipcallerdip.begin()->second.sipcallerip;
+				sipcalledip = this->map_sipcallerdip.begin()->second.sipcalledip;
+			}
 			if(!sipcallerip[0] && !sipcalledip[0]) {
 				sipcallerip[0] = saddr;
 				sipcalledip[0] = daddr;
@@ -5847,9 +5865,6 @@ Call::check_is_caller_called(const char *call_id, int sip_method, unsigned int s
 			}
 		}
 	}
-	if(iscalled) {
-		*iscalled = _iscalled;
-	}
 	if(sverb.check_is_caller_called) {
 		cout << "check_is_caller_called: " 
 		     << "call_id: " << call_id  << " "
@@ -5861,112 +5876,50 @@ Call::check_is_caller_called(const char *call_id, int sip_method, unsigned int s
 		     << endl;
 		
 	}
-	return(*iscaller || _iscalled);
-	
-	/* obsolete
-	*iscaller = 0;
-	bool _iscalled = 0;
-	string debug_str_set;
-	string debug_str_cmp;
-	// 1) check by saddr
-	if(this->sipcallerip == saddr) {
-		// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
-		// SDP will be stream from called
-		_iscalled = 1;
-		if(sverb.check_is_caller_called) {
-			debug_str_cmp = "this->sipcallerip (" + inet_ntostring(htonl(this->sipcallerip)) + ") == saddr (" + inet_ntostring(htonl(saddr)) + ")";
+	if(*iscaller || _iscalled) {
+		if(iscalled) {
+			*iscalled = _iscalled;
 		}
+		return(true);
 	} else {
-		// The IP address is different, check if the request matches one of the address from the first invite
-		if(this->sipcallerip == daddr) {
-			// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-			*iscaller = 1;
-			if(sverb.check_is_caller_called) {
-				debug_str_cmp = "this->sipcallerip (" + inet_ntostring(htonl(this->sipcallerip)) + ") == daddr (" + inet_ntostring(htonl(daddr)) + ")";
-			}
-		// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-		} else {
-			if(this->sipcallerip2 == 0 && saddr && daddr) { 
-				this->sipcallerip2 = saddr;
-				this->sipcalledip2 = daddr;
-				if(sverb.check_is_caller_called) {
-					debug_str_set = "sipcallerdip2: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
-				}
-			}
-			if(this->sipcallerip2 == saddr) {
-				_iscalled = 1;
-				if(sverb.check_is_caller_called) {
-					debug_str_cmp = "this->sipcallerip2 (" + inet_ntostring(htonl(this->sipcallerip2)) + ") == saddr (" + inet_ntostring(htonl(saddr)) + ")";
-				}
-			} else {
-				// The IP address is different, check if the request matches one of the address from the first invite
-				if(this->sipcallerip2 == daddr) {
-					// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-					*iscaller = 1;
-					if(sverb.check_is_caller_called) {
-						debug_str_cmp = "this->sipcallerip2 (" + inet_ntostring(htonl(this->sipcallerip2)) + ") == daddr (" + inet_ntostring(htonl(daddr)) + ")";
-					}
-				// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-				} else {
-					if(this->sipcallerip3 == 0 && saddr && daddr) { 
-						this->sipcallerip3 = saddr;
-						this->sipcalledip3 = daddr;
-						if(sverb.check_is_caller_called) {
-							debug_str_set = "sipcallerdip3: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
-						}
-					}
-					if(this->sipcallerip3 == saddr) {
-						_iscalled = 1;
-						if(sverb.check_is_caller_called) {
-							debug_str_cmp = "this->sipcallerip3 (" + inet_ntostring(htonl(this->sipcallerip3)) + ") == saddr (" + inet_ntostring(htonl(saddr)) + ")";
-						}
-					} else {
-						// The IP address is different, check if the request matches one of the address from the first invite
-						if(this->sipcallerip3 == daddr) {
-							// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-							*iscaller = 1;
-							if(sverb.check_is_caller_called) {
-								debug_str_cmp = "this->sipcallerip3 (" + inet_ntostring(htonl(this->sipcallerip3)) + ") == daddr (" + inet_ntostring(htonl(daddr)) + ")";
-							}
-						// src IP address of this SDP SIP message is different from the src/dst IP address used in the first INVITE. 
-						} else {
-							if(this->sipcallerip4 == 0 && saddr && daddr) { 
-								this->sipcallerip4 = saddr;
-								this->sipcalledip4 = daddr;
-								if(sverb.check_is_caller_called) {
-									debug_str_set = "sipcallerdip4: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
-								}
-							}
-							if(this->sipcallerip4 == saddr) {
-								_iscalled = 1;
-								if(sverb.check_is_caller_called) {
-									debug_str_cmp = "this->sipcallerip4 (" + inet_ntostring(htonl(this->sipcallerip4)) + ") == saddr (" + inet_ntostring(htonl(saddr)) + ")";
-								}
-							} else {
-								*iscaller = 1;
-								if(sverb.check_is_caller_called) {
-									debug_str_cmp = "this->sipcallerip4 (" + inet_ntostring(htonl(this->sipcallerip4)) + ") != saddr (" + inet_ntostring(htonl(saddr)) + ")";
-								}
-							}
-						}
-					}
-				}
-			}
+		*iscaller = -1;
+		if(iscalled) {
+			*iscalled = -1;
+		}
+		return(false);
+	}
+}
+
+bool 
+Call::is_sipcallerip(unsigned int addr) {
+	u_int32_t *sipcallerip;
+	if(opt_callidmerge_header[0] != '\0') {
+		sipcallerip = this->map_sipcallerdip.begin()->second.sipcallerip;
+	} else {
+		sipcallerip = this->sipcallerip;
+	}
+	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
+		if(addr == sipcallerip[i]) {
+			return(true);
 		}
 	}
-	if(iscalled) {
-		*iscalled = _iscalled;
+	return(false);
+}
+
+bool 
+Call::is_sipcalledip(unsigned int addr) {
+	u_int32_t *sipcalledip;
+	if(opt_callidmerge_header[0] != '\0') {
+		sipcalledip = this->map_sipcallerdip.begin()->second.sipcalledip;
+	} else {
+		sipcalledip = this->sipcalledip;
 	}
-	if(sverb.check_is_caller_called) {
-		cout << "check_is_caller_called: " 
-		     << inet_ntostring(htonl(saddr)) << " -> " << inet_ntostring(htonl(daddr))
-		     << " = " << (*iscaller ? "caller" : (_iscalled ? "called" : "undefine"))
-		     << (debug_str_set.empty() ? "" : " / " + debug_str_set)
-		     << (debug_str_cmp.empty() ? "" : " / " + debug_str_cmp)
-		     << endl;
+	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
+		if(addr == sipcalledip[i]) {
+			return(true);
+		}
 	}
-	return(*iscaller || _iscalled);
-	*/
+	return(false);
 }
 
 

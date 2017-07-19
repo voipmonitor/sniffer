@@ -137,7 +137,7 @@ struct s_sdp_flags {
 struct hash_node_call {
 	hash_node_call *next;
 	Call *call;
-	int iscaller;
+	int8_t iscaller;
 	u_int16_t is_rtcp;
 	s_sdp_flags sdp_flags;
 };
@@ -164,9 +164,9 @@ struct ip_port_call_info {
 		_ta_sdp_reverse_ipport
 	};
 	u_int32_t addr;
-	eTypeAddr type_addr;
+	u_int8_t type_addr;
 	u_int16_t port;
-	bool iscaller;
+	int8_t iscaller;
 	char sessid[MAXLEN_SDP_SESSID];
 	char to[MAXLEN_SDP_TO];
 	u_int32_t sip_src_addr;
@@ -617,12 +617,12 @@ public:
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
 	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-			char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+			char *sessid, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
-	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
 	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-			      char *sessid, char *to, bool iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+			      char *sessid, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
@@ -799,7 +799,9 @@ public:
 	
 	void handle_dscp(struct iphdr2 *header_ip, bool iscaller);
 	
-	bool check_is_caller_called(const char *call_id, int sip_method, unsigned int saddr, unsigned int daddr, bool *iscaller, bool *iscalled = NULL, bool enableSetSipcallerdip = false);
+	bool check_is_caller_called(const char *call_id, int sip_method, unsigned int saddr, unsigned int daddr, int *iscaller, int *iscalled = NULL, bool enableSetSipcallerdip = false);
+	bool is_sipcallerip(unsigned int addr);
+	bool is_sipcalledip(unsigned int addr);
 
 	void dump();
 
@@ -982,13 +984,6 @@ public:
 	volatile int in_preprocess_queue_before_process_packet;
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at;
 };
-
-typedef struct {
-	Call *call;
-	int is_rtcp;
-	s_sdp_flags sdp_flags;
-	int iscaller;
-} Ipportnode;
 
 
 void adjustUA(char *ua);
@@ -1332,16 +1327,6 @@ public:
 		unlock_ss7_listMAP();
 		return(rslt_ss7);
 	}
-
-	/**
-	 * @brief find Call by IP adress and port number
-	 *
-	 * @param addr IP address of the packet
-	 * @param port port number of the packet
-	 *
-	 * @return reference of the Call if found, otherwise return NULL
-	*/
-	Call *find_by_ip_port(in_addr_t addr, unsigned short port, int *iscaller);
 
 	/**
 	 * @brief Save inactive calls to MySQL and delete it from list

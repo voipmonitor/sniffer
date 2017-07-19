@@ -208,7 +208,7 @@ struct packet_s_plus_pointer : public packet_s {
 
 struct packet_s_process_rtp_call_info {
 	Call *call;
-	bool iscaller;
+	int8_t iscaller;
 	bool is_rtcp;
 	s_sdp_flags sdp_flags;
 	bool use_sync;
@@ -352,7 +352,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type);
 typedef struct {
 	Call *call;
 	packet_s packet;
-	char iscaller;
+	int8_t iscaller;
 	char find_by_dest;
 	char is_rtcp;
 	char stream_in_multiple_calls;
@@ -362,7 +362,7 @@ typedef struct {
 typedef struct {
 	Call *call;
 	packet_s_process_0 *packet;
-	char iscaller;
+	int8_t iscaller;
 	char find_by_dest;
 	char is_rtcp;
 	char stream_in_multiple_calls;
