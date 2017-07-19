@@ -986,7 +986,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				}
 			}
 			sprintf(tmp, "USE `%s`", this->conn_database.c_str());
-			if(!this->query(tmp)) {
+			if(!this->existsDatabase() || !this->query(tmp)) {
 				rslt = false;
 			}
 			if(mainInit && !isCloud()) {
@@ -1427,6 +1427,15 @@ bool SqlDb_mysql::existsTable(const char *table) {
 	return(countRow > 0);
 }
 
+bool SqlDb_mysql::existsDatabase() {
+	this->query(string("show databases like '") + conn_database + "'");
+	int countRow = 0;
+	while(this->fetchRow()) {
+		++countRow;
+	}
+	return(countRow > 0);
+}
+
 bool SqlDb_mysql::existsColumn(const char *table, const char *column) {
 	this->query(string("show columns from ") + table + 
 		    " where Field='" + column + "'");
@@ -1741,6 +1750,11 @@ int64_t SqlDb_odbc::getInsertId() {
 }
 
 bool SqlDb_odbc::existsTable(const char */*table*/) {
+	// TODO
+	return(false);
+}
+
+bool SqlDb_odbc::existsDatabase() {
 	// TODO
 	return(false);
 }
@@ -7267,7 +7281,7 @@ void cLogSensor::_save() {
 	SqlDb *sqlDb = createSqlObject();
 	bool existsOkLogSensorTable = false;
 	if(!sqlStore && !isCloud() && !opt_nocdr) {
-		existsOkLogSensorTable = sqlDb->existsTable("log_sensor");
+		existsOkLogSensorTable = sqlDb->existsDatabase() && sqlDb->existsTable("log_sensor");
 	}
 	sqlDb->setMaxQueryPass(1);
 	sqlDb->setDisableLogError(true);

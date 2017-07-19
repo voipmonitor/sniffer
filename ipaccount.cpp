@@ -1117,6 +1117,10 @@ bool NextIpCache::isIn(unsigned int ip) {
 }
 
 void NextIpCache::fetch() {
+	if(!this->sqlDb->existsTable("ipacc_capt_ip")) {
+		this->nextCache.clear();
+		return;
+	}
 	if(this->sqlDb->query("select ip, mask from ipacc_capt_ip where enable")) {
 		this->nextCache.clear();
 		SqlDb_row row;
