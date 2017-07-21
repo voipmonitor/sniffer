@@ -106,6 +106,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 		*vlan = -1;
 	}
 	bool exists_vlan = false;
+	u_int16_t ether_type;
 	switch(pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
 			header_sll = (sll_header*)packet;
@@ -132,12 +133,15 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 			break;
 		case DLT_EN10MB:
 			header_eth = (ether_header*)packet;
-			if(htons(header_eth->ether_type) == 0x8100) {
+			ether_type = htons(header_eth->ether_type);
+			switch(ether_type) {
+			case 0x8100:
 				// VLAN tag
 				header_ip_offset = 0;
 				exists_vlan = true;
 				//XXX: this is very ugly hack, please do it right! (it will work for "08 00" which is IPV4 but not for others! (find vlan_header or something)
-			} else if(htons(header_eth->ether_type) == 0x88A8) {
+				break;
+			case 0x88A8:
 				// IEEE 8021ad
 				header_ip_offset = 4;
 				protocol = htons(*(u_int16_t*)(packet + sizeof(ether_header) + 2));
@@ -145,7 +149,8 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 					// VLAN tag
 					exists_vlan = true;
 				}
-			} else if(htons(header_eth->ether_type) == 0x8864) {
+				break;
+			case 0x8864:
 				// PPPoE
 				if(htons(*(u_int16_t*)(packet + sizeof(ether_header) + 6)) == 0x0021) { // Point To Point protocol IPv4
 					header_ip_offset = 8;
@@ -154,9 +159,15 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 					header_ip_offset = 0;
 					protocol = 0;
 				}
-			} else {
+				break;
+			case 0x8847:
+				// MPLS
+				header_ip_offset = 4;
+				protocol = ETHERTYPE_IP;
+				break;
+			default:
 				header_ip_offset = 0;
-				protocol = htons(header_eth->ether_type);
+				protocol = ether_type;
 			}
 			if(exists_vlan) {
 				u_int16_t _protocol;
