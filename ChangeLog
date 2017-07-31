@@ -1,3 +1,16 @@
+20.3 31.7.2017
+==============
+- add support for simple MPLS header [VS-651]
+- add support for extended master secret when decoding SSL [VS-639]
+- count number of rtcp packets where fraction lost is >0 [VS-619]
+- fix configure for gnutls/gcrypt [VS-638]
+- fix heap issue / potential crash in tcpreassembly
+- create system table if missing which fixes cloud version [VS-641]
+- fix cloud sniffer upgrade [VG-1292]
+- fix one way RTP in casde of natalias option [VS-645]
+- fix issue with missing table ipacc_capt_ip [VS-647]
+
+
 20.2.1 29.6.2017
 ================
 - fix crashes in 20.2
