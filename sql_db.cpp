@@ -2270,6 +2270,7 @@ MySqlStore::MySqlStore(const char *host, const char *user, const char *password,
 MySqlStore::~MySqlStore() {
 	map<int, MySqlStore_process*>::iterator iter;
 	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
+		iter->second->setEnableTerminatingIfEmpty(true);
 		iter->second->waitForTerminate();
 	}
 	if(!qfileConfig.enable && !loadFromQFileConfig.enable) {
