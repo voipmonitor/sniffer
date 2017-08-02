@@ -90,6 +90,7 @@ void cSslDsslSession::termServer() {
 		EVP_PKEY_free(server_info->pkey);
 		server_info->pkey = NULL;
 		delete server_info;
+		server_info = NULL;
 	}
 	server_error = _se_na;
 }
@@ -102,6 +103,7 @@ void cSslDsslSession::termSession() {
 		session->last_packet = NULL;
 		DSSL_SessionDeInit(session);
 		delete session;
+		session = NULL;
 	}
 	process_error = false;
 	process_counter = 0;
