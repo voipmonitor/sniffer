@@ -3608,6 +3608,11 @@ inline pcap_block_store *PcapQueue_readFromInterfaceThread::POP_BLOCK() {
 	       this->pop_block());
 }
 
+void PcapQueue_readFromInterfaceThread::cancelThread() {
+	syslog(LOG_NOTICE, "cancel read thread (%s)", interfaceName.c_str());
+	pthread_cancel(this->threadHandle);
+}
+
 
 #define POP_FROM_PREV_THREAD \
 	hpii = this->prevThread->pop(); \
@@ -4705,8 +4710,13 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	}
 	
 	while(this->readThreadsCount) {
-		while(!this->readThreads[this->readThreadsCount - 1]->isTerminated()) {
+		unsigned counter = 0;
+		while(!this->readThreads[this->readThreadsCount - 1]->isTerminated() && counter < 50) {
 			usleep(100000);
+			++counter;
+		}
+		if(!this->readThreads[this->readThreadsCount - 1]->isTerminated()) {
+			this->readThreads[this->readThreadsCount - 1]->cancelThread();
 		}
 		delete this->readThreads[this->readThreadsCount - 1];
 		--this->readThreadsCount;
@@ -4758,8 +4768,13 @@ void PcapQueue_readFromInterface::threadFunction_blocks() {
 	}
 
 	while(this->readThreadsCount) {
-		while(!this->readThreads[this->readThreadsCount - 1]->isTerminated()) {
+		unsigned counter = 0;
+		while(!this->readThreads[this->readThreadsCount - 1]->isTerminated() && counter < 50) {
 			usleep(100000);
+			++counter;
+		}
+		if(!this->readThreads[this->readThreadsCount - 1]->isTerminated()) {
+			this->readThreads[this->readThreadsCount - 1]->cancelThread();
 		}
 		delete this->readThreads[this->readThreadsCount - 1];
 		--this->readThreadsCount;
