@@ -642,6 +642,7 @@ protected:
 			this->setForcePush();
 		}
 	}
+	void cancelThread();
 	inline void lock_detach_buffer(int index) {
 		while(__sync_lock_test_and_set(&this->_sync_detachBuffer[index], 1)) usleep(10);
 	}
