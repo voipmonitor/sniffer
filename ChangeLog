@@ -1,3 +1,11 @@
+20.3.2 2.8.2017
+===============
+- Update server/client's documentation.                                                                                                                                                                                      
+- fix potential crash in ssl if user remove ssl key [VS-660]
+- fix sniffe restart for some cases (timeout on napatech cards) [VS-656]
+- document udp_port_tzsp and udp_port_l2tp options [VS-659]
+
+
 20.3.1 1.8.2017
 ===============
 - fix sniffer restart when using query cache (also cloud mode)
