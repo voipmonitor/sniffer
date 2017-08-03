@@ -2,7 +2,7 @@
 #define VOIPMONITOR_DEFINE_H
 
 
-#define RTPSENSOR_VERSION "20.3.5"
+#define RTPSENSOR_VERSION "20.3.6"
 #define NAT
 
 #define CALLID_MAX_LENGTH 127
