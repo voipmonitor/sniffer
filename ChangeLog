@@ -1,3 +1,8 @@
+20.3.5 3.8.2017
+===============
+- create sql partitions for two days ahead
+
+
 20.3.4 3.8.2017
 ===============
 - fix cloud mode reconnect (sniffer were terminated instead of reconnecting)
