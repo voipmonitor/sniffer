@@ -1,3 +1,8 @@
+20.3.4 3.8.2017
+===============
+- fix cloud mode reconnect (sniffer were terminated instead of reconnecting)
+
+
 20.3.3 3.8.2017
 ===============
 - sql partitions are now cleaned only during 1-5am (partition cleaning takes a lot of I/O so it is better to not do it during peaks). New parameter partition_operations_enable_fromto can change this. 
