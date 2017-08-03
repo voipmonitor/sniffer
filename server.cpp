@@ -322,8 +322,9 @@ void cSnifferServerConnection::cp_service() {
 		delete this;
 		return;
 	}
-	if(snifferServerServices.existsService(sensor_id)) {
-		string error = "exists active service with sensor_id " + intToString(sensor_id);
+	if(jsonPasswordAesKeys.getValue("restore").empty() &&
+	   snifferServerServices.existsService(sensor_id)) {
+		string error = "client with sensor_id " + intToString(sensor_id) + " is already connected, refusing connection";
 		socket->writeBlock(error);
 		socket->setError(error.c_str());
 		delete this;
@@ -696,6 +697,9 @@ bool cSnifferClientService::receive_process_loop_begin() {
 	receive_socket->get_aes_keys(&aes_ckey, &aes_ivec);
 	json_keys.add("aes_ckey", aes_ckey);
 	json_keys.add("aes_ivec", aes_ivec);
+	if(start_ok) {
+		json_keys.add("restore", true);
+	}
 	if(!receive_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
 		if(!receive_socket->isError()) {
 			receive_socket->setError("failed send sesnor_id & aes keys");
@@ -707,7 +711,7 @@ bool cSnifferClientService::receive_process_loop_begin() {
 	if(!receive_socket->readBlock(&rsltConnectData) || rsltConnectData != "OK") {
 		if(!receive_socket->isError()) {
 			receive_socket->setError(rsltConnectData != "OK" ? rsltConnectData.c_str() : "failed read ok");
-			if(rsltConnectData != "OK") {
+			if(rsltConnectData != "OK" && !start_ok) {
 				set_terminating();
 			}
 		}

@@ -69,6 +69,9 @@ bool cCR_Receiver_service::receive_process_loop_begin() {
 	receive_socket->get_aes_keys(&aes_ckey, &aes_ivec);
 	json_keys.add("aes_ckey", aes_ckey);
 	json_keys.add("aes_ivec", aes_ivec);
+	if(start_ok) {
+		json_keys.add("restore", true);
+	}
 	if(!receive_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
 		if(!receive_socket->isError()) {
 			receive_socket->setError("failed send token & aes keys");
@@ -80,7 +83,7 @@ bool cCR_Receiver_service::receive_process_loop_begin() {
 	if(!receive_socket->readBlock(&rsltConnectData) || rsltConnectData != "OK") {
 		if(!receive_socket->isError()) {
 			receive_socket->setError(rsltConnectData != "OK" ? rsltConnectData.c_str() : "failed read ok");
-			if(rsltConnectData != "OK") {
+			if(rsltConnectData != "OK" && !start_ok) {
 				CR_SET_TERMINATE();
 			}
 		}
