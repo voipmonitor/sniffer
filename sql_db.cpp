@@ -6734,7 +6734,7 @@ void createMysqlPartitionsCdr() {
 	syslog(LOG_NOTICE, "%s", "create cdr partitions - begin");
 	for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
 		SqlDb *sqlDb = createSqlObject(connectId);
-		for(int day = 0; day < 2; day++) {
+		for(int day = 0; day < 3; day++) {
 			_createMysqlPartitionsCdr(day, connectId, sqlDb);
 		}
 		if(connectId == 0) {
@@ -6814,6 +6814,7 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver) {
 		sqlDb->setMaxQueryPass(1);
 		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 0, " + (partition_oldver ? "true" : "false") + ");");
 		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 1, " + (partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 2, " + (partition_oldver ? "true" : "false") + ");");
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 		sqlDb->setDisableLogError(disableLogErrorOld);
 	} else {
@@ -6823,6 +6824,7 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver) {
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 		sqlDb->setDisableLogError(disableLogErrorOld);
 		sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + table + "', 'day', 1, " + (partition_oldver ? "true" : "false") + ");");
+		sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + table + "', 'day', 2, " + (partition_oldver ? "true" : "false") + ");");
 	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - end").c_str());
