@@ -1791,6 +1791,7 @@ void cloud_initial_register( void ) {
 
 void start_cloud_receiver() {
 	cloud_receiver = new FILE_LINE(0) cCR_Receiver_service(cloud_token, opt_id_sensor > 0 ? opt_id_sensor : 0);
+	cloud_receiver->setErrorTypeString(cSocket::_se_loss_connection, "connection to the cloud server has been lost - trying again");
 	cloud_receiver->start(cloud_host, cloud_router_port);
 	while(!cloud_receiver->isStartOk() && !is_terminating()) {
 		usleep(100000);

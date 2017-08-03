@@ -168,6 +168,7 @@ public:
 	enum eSocketError {
 		_se_na,
 		_se_bad_connection,
+		_se_loss_connection,
 		_se_error_str
 	};
 	struct sTimeouts {
@@ -214,6 +215,8 @@ public:
 			(!error_str.empty() ? error_str : "unknown error") :
 		       error == _se_bad_connection ?
 			("bad connection" + (!error_descr.empty() ? " - " + error_descr : "")) :
+		       error == _se_loss_connection ?
+			("loss connection" + (!error_descr.empty() ? " - " + error_descr : "")) :
 		       error == _se_na ?
 		        "" :
 		        "unknown error");
@@ -251,6 +254,15 @@ public:
 	bool get_aes_keys(string *ckey, string *ivec) {
 		return(aes.getKeys(ckey, ivec));
 	}
+	void setErrorTypeString(eSocketError errorType, const char *errorString) {
+		errorTypeStrings[errorType] = errorString ? errorString : "";
+	}
+	u_int64_t getLastTimeOkRead() {
+		return(lastTimeOkRead);
+	}
+	u_int64_t getLastTimeOkWrite() {
+		return(lastTimeOkWrite);
+	}
 protected:
 	void clearError();
 	void sleep(int s);
@@ -271,6 +283,9 @@ protected:
 	cAes aes;
 	u_int64_t writeEncPos;
 	u_int64_t readDecPos;
+	u_int64_t lastTimeOkRead;
+	u_int64_t lastTimeOkWrite;
+	map<eSocketError, string> errorTypeStrings;
 };
 
 
@@ -432,10 +447,14 @@ public:
 	bool isStartOk() {
 		return(start_ok);
 	}
+	void setErrorTypeString(cSocket::eSocketError errorType, const char *errorString) {
+		errorTypeStrings[errorType] = errorString ? errorString : "";
+	}
 protected:
 	cSocketBlock *receive_socket;
 	pthread_t receive_thread;
 	bool start_ok;
+	map<cSocket::eSocketError, string> errorTypeStrings;
 };
 
 

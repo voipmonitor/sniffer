@@ -773,6 +773,7 @@ void snifferServerStart() {
 
 void snifferClientStart() {
 	snifferClientService = new FILE_LINE(0) cSnifferClientService(opt_id_sensor > 0 ? opt_id_sensor : 0);
+	snifferClientService->setErrorTypeString(cSocket::_se_loss_connection, "connection to the server has been lost - trying again");
 	snifferClientService->start(snifferClientOptions.host, snifferClientOptions.port);
 	while(!snifferClientService->isStartOk() && !is_terminating()) {
 		usleep(100000);

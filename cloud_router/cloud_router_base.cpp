@@ -353,6 +353,8 @@ cSocket::cSocket(const char *name, bool autoClose) {
 	error = _se_na;
 	writeEncPos = 0;
 	readDecPos = 0;
+	lastTimeOkRead = 0;
+	lastTimeOkWrite = 0;
 }
 
 cSocket::~cSocket() {
@@ -561,6 +563,7 @@ bool cSocket::write(u_char *data, size_t dataLen) {
 			dataLenWrited += _dataLen;
 		}
 	}
+	lastTimeOkWrite = getTimeUS();
 	return(true);
 }
 
@@ -587,7 +590,7 @@ bool cSocket::_write(u_char *data, size_t *dataLen) {
 		int rsltPool = poll(fds, 1, timeouts.write * 1000);
 		if(rsltPool < 0) {
 			*dataLen = 0;
-			setError(_se_bad_connection, "rslt poll() < 0");
+			setError(_se_loss_connection, "failed poll()");
 			perror("poll()");
 			return(false);
 		}
@@ -604,7 +607,7 @@ bool cSocket::_write(u_char *data, size_t *dataLen) {
 		int rsltSelect = select(handle + 1, (fd_set *) 0, &wfds, (fd_set *) 0, &tv);
 		if(rsltSelect < 0) {
 			*dataLen = 0;
-			setError(_se_bad_connection, "rslt select() < 0");
+			setError(_se_loss_connection, "failed select()");
 			perror("select()");
 			return(false);
 		}
@@ -642,7 +645,7 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
 		int rsltPool = poll(fds, 1, timeouts.read * 1000);
 		if(rsltPool < 0) {
 			*dataLen = 0;
-			setError(_se_bad_connection, "rslt poll() < 0");
+			setError(_se_loss_connection, "failed poll()");
 			perror("poll()");
 			return(false);
 		}
@@ -659,7 +662,7 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
 		int rsltSelect = select(handle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
 		if(rsltSelect < 0) {
 			*dataLen = 0;
-			setError(_se_bad_connection, "rslt select() < 0");
+			setError(_se_loss_connection, "failed select()");
 			perror("select()");
 			return(false);
 		}
@@ -675,7 +678,7 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
 			*dataLen = 0;
 			if(errno != EWOULDBLOCK) {
 				if(!quietEwouldblock) {
-					setError(_se_bad_connection, "errno != EWOULDBLOCK");
+					setError(_se_loss_connection, "failed read()");
 				}
 				return(false);
 			}
@@ -683,6 +686,7 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
 	} else {
 		*dataLen = 0;
 	}
+	lastTimeOkRead = getTimeUS();
 	return(true);
 }
 
@@ -826,11 +830,16 @@ void cSocket::setError(const char *formatError, ...) {
 void cSocket::logError() {
 	if(isError()) {
 		string logStr;
-		if(!name.empty()) {
-			logStr += name + " - ";
+		if((error == _se_bad_connection || error == _se_loss_connection) &&
+		   !errorTypeStrings[error].empty()) {
+			logStr = errorTypeStrings[error];
+		} else {
+			if(!name.empty()) {
+				logStr += name + " - ";
+			}
+			logStr += getHostPort() + " - ";
+			logStr += getError();
 		}
-		logStr += getHostPort() + " - ";
-		logStr += getError();
 		syslog(LOG_ERR, "%s", logStr.c_str());
 	}
 }
@@ -1228,6 +1237,9 @@ bool cReceiver::receive_start(string host, u_int16_t port) {
 bool cReceiver::_connect(string host, u_int16_t port, unsigned loopSleepS) {
 	if(!receive_socket) {
 		receive_socket = new cSocketBlock("receiver");
+		for(map<cSocket::eSocketError, string>::iterator iter = errorTypeStrings.begin(); iter != errorTypeStrings.end(); iter++) {
+			receive_socket->setErrorTypeString(iter->first, iter->second.c_str());
+		}
 		receive_socket->setHostPort(host, port);
 		if(!receive_socket->connect(loopSleepS)) {
 			_close();

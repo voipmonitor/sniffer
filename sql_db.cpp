@@ -442,6 +442,11 @@ bool SqlDb::queryByRemoteSocket(string query, const char *dropProcQuery) {
 				sleep(1);
 			}
 			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(query).c_str());
+		} else if(this->remote_socket && this->remote_socket->getLastTimeOkRead() && getTimeUS() > this->remote_socket->getLastTimeOkRead() + 10 * 1000000ull) {
+			if(!this->remote_socket->checkHandleRead()) {
+				delete this->remote_socket;
+				this->remote_socket = NULL;
+			}
 		}
 		if(!this->remote_socket) {
 			this->remote_socket = new FILE_LINE(0) cSocketBlock("sql query", true);
