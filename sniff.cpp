@@ -6570,14 +6570,8 @@ bool PreProcessPacket::process_getCallID_publish(packet_s_process **packetS_ref)
 		char *s;
 		unsigned long l;
 		s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
-		if(!s || l > 1023) {
-			return(true);
-		}
-		char endChar = s[l];
-		s[l] = 0;
-		bool isRtcpXr = strcasestr(s, "application/vq-rtcpxr");
-		s[l] = endChar;
-		if(isRtcpXr) {
+		if(s && l <= 1023 &&
+		   strncasestr(s, "application/vq-rtcpxr", l)) {
 			s = gettag_sip(packetS, "\nCallID:", &l);
 			if(s && l <= 1023) {
 				packetS->set_callid(s, l);
@@ -6597,13 +6591,9 @@ void PreProcessPacket::process_getSipMethod(packet_s_process **packetS_ref) {
 	} else if(IS_SIP_RESXXX(packetS->sip_method)) {
 		unsigned long l;
 		char *cseq = gettag_sip(packetS, "\nCSeq:", &l);
-		if(cseq && l <= 1023) {
-			char oldEndChar = cseq[l];
-			cseq[l] = 0;
-			if(strcasestr(cseq, "REGISTER")) {
-				packetS->is_register = true;
-			}
-			cseq[l] = oldEndChar;
+		if(cseq && l <= 1023 && 
+		   strncasestr(cseq, "REGISTER", l)) {
+			packetS->is_register = true;
 		}
 	}
 	packetS->_getSipMethod = true;

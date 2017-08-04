@@ -380,6 +380,10 @@ struct tm getDateTime(const char *timeStr);
 unsigned int getNumberOfDayToNow(const char *date);
 string getActDateTimeF(bool useT_symbol = false);
 unsigned long getUptime();
+
+char *strnstr(const char *haystack, const char *needle, size_t len);
+char *strncasestr(const char *haystack, const char *needle, size_t len);
+
 std::string &trim(std::string &s, const char *trimChars = NULL);
 std::string trim_str(std::string s, const char *trimChars = NULL);
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
