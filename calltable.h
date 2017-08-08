@@ -417,6 +417,7 @@ public:
 
 	time_t progress_time;		//!< time in seconds of 18X response
 	time_t first_rtp_time;		//!< time in seconds of first RTP packet
+	unsigned int first_rtp_time_usec;
 	time_t connect_time;		//!< time in seconds of 200 OK
 	unsigned int connect_time_usec;
 	time_t last_packet_time;	

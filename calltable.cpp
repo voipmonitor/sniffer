@@ -166,6 +166,7 @@ extern int opt_saveaudio_reversestereo;
 extern float opt_saveaudio_oggquality;
 extern bool opt_saveaudio_filteripbysipip;
 extern bool opt_saveaudio_filter_ext;
+extern bool opt_saveaudio_wav_mix;
 extern int opt_skinny;
 extern int opt_enable_fraud;
 extern char opt_callidmerge_header[128];
@@ -362,6 +363,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	sighup = false;
 	progress_time = 0;
 	first_rtp_time = 0;
+	first_rtp_time_usec = 0;
 	connect_time = 0;
 	connect_time_usec = 0;
 	first_invite_time_usec = 0;
@@ -1093,6 +1095,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 
 	if(first_rtp_time == 0) {
 		first_rtp_time = packetS->header_pt->ts.tv_sec;
+		first_rtp_time_usec = packetS->header_pt->ts.tv_usec;
 	}
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
@@ -1645,6 +1648,246 @@ Call::HandleHold(bool sdp_sendonly, bool sdp_sendrecv) {
 	return;
 }
 
+
+class cWavMix {
+public:
+	class cWav {
+	public:
+		cWav(u_int64_t start, unsigned bytes_per_sample, unsigned samplerate);
+		~cWav();
+		bool load(const char *wavFileName);
+		u_int64_t getEnd(bool withoutEndSilence) {
+			return(start + 
+			       get_length_samples(withoutEndSilence) * 1000000ull / samplerate);
+		}
+		u_int32_t get_length_samples(bool withoutEndSilence) {
+			return(withoutEndSilence ? length_data_samples() : length_samples);
+		}
+		u_int32_t length_data_samples() {
+			return(length_samples - end_silence_samples);
+		}
+	private:
+		u_int64_t start;
+		unsigned bytes_per_sample;
+		unsigned samplerate;
+		u_char *wav_buffer;
+		u_int32_t length_samples;
+		u_int32_t end_silence_samples;
+		bool use_in_mix;
+	friend class cWavMix;
+	};
+public:
+	cWavMix(unsigned bytes_per_sample, unsigned samplerate);
+	~cWavMix();
+	void setStartTime(u_int64_t start_time);
+	bool addWav(const char *wavFileName, u_int64_t start,
+		    unsigned bytes_per_sample = 0, unsigned samplerate = 0);
+	void mixTo(const char *wavOutFileName, bool withoutEndSilence);
+private:
+	void mix(bool withoutEndSilence);
+	void mix(cWav *wav, bool withoutEndSilence);
+	u_int64_t getMinStartTime();
+	u_int64_t getMaxEndTime(bool withoutEndSilence);
+	u_int32_t getAllSamples(bool withoutEndSilence);
+	cWav *getWavNoMix(bool withoutEndSilence);
+private:
+        list<cWav*> wavs;
+	unsigned bytes_per_sample;
+	unsigned samplerate;
+	u_int64_t start_time;
+	u_char *mix_buffer;
+	u_int32_t mix_buffer_length_samples;
+};
+
+cWavMix::cWav::cWav(u_int64_t start, unsigned bytes_per_sample, unsigned samplerate) {
+	this->start = start;
+	this->bytes_per_sample = bytes_per_sample;
+	this->samplerate = samplerate;
+	this->wav_buffer = NULL;
+	this->length_samples = 0;
+	this->end_silence_samples = 0;
+	this->use_in_mix = false;
+}
+
+cWavMix::cWav::~cWav() {
+	if(wav_buffer) {
+		delete [] wav_buffer;
+	}
+}
+
+bool cWavMix::cWav::load(const char *wavFileName) {
+	u_int32_t fileSize = GetFileSize(wavFileName);
+	if(!fileSize) {
+		return(false);
+	}
+	FILE *file = fopen(wavFileName, "r");
+	if(!file) {
+		return(false);
+	}
+	wav_buffer = new FILE_LINE(0) u_char[fileSize];
+	u_int32_t wav_buffer_pos = 0;
+	u_int32_t readLength;
+	while((readLength = fread(wav_buffer + wav_buffer_pos, 1, min(fileSize - wav_buffer_pos, (u_int32_t)1024 * 16), file)) > 0) {
+		wav_buffer_pos += readLength;
+		if(wav_buffer_pos >= fileSize) {
+			break;
+		}
+	}
+	fclose(file);
+	if(wav_buffer_pos < fileSize) {
+		if(wav_buffer_pos) {
+			fileSize = wav_buffer_pos;
+		} else {
+			delete [] wav_buffer;
+			wav_buffer = NULL;
+			return(false);
+		}
+	}
+	length_samples = fileSize / bytes_per_sample;
+	while(end_silence_samples < length_samples) {
+		u_int32_t check_pos = (length_samples - end_silence_samples - 1) * bytes_per_sample;
+		bool silence = true;
+		for(unsigned i = 0; i < bytes_per_sample; i++) {
+			if(wav_buffer[check_pos + i]) {
+				silence = false;
+				break;
+			}
+		}
+		if(silence) {
+			++end_silence_samples;
+		} else {
+			break;
+		}
+	}
+	return(true);
+}
+
+cWavMix::cWavMix(unsigned bytes_per_sample, unsigned samplerate) {
+	this->bytes_per_sample = bytes_per_sample;
+	this->samplerate = samplerate;
+	this->start_time = 0;
+	this->mix_buffer = NULL;
+	this->mix_buffer_length_samples = 0;
+}
+
+cWavMix::~cWavMix() {
+	while(wavs.size()) {
+		list<cWav*>::iterator iter = wavs.begin();
+		cWav *wav = *iter;
+		delete wav;
+		wavs.erase(iter);
+	}
+}
+
+void cWavMix::setStartTime(u_int64_t start_time) {
+	this->start_time = start_time;
+}
+
+bool cWavMix::addWav(const char *wavFileName, u_int64_t start,
+		     unsigned bytes_per_sample, unsigned samplerate) {
+	cWav *wav = new FILE_LINE(0) cWav(start,
+					  bytes_per_sample ? bytes_per_sample : this->bytes_per_sample, 
+					  samplerate ? samplerate : this->samplerate);
+	if(wav->load(wavFileName)) {
+		wavs.push_back(wav);
+		return(true);
+	} else {
+		delete wav;
+		return(false);
+	}
+}
+
+void cWavMix::mixTo(const char *wavOutFileName, bool withoutEndSilence) {
+	mix(withoutEndSilence);
+	if(mix_buffer_length_samples) {
+		FILE *file = fopen(wavOutFileName, "w");
+		if(file) {
+			u_int32_t pos = 0;
+			while(pos < (mix_buffer_length_samples * bytes_per_sample)) {
+				size_t writeLength = fwrite(mix_buffer + pos, 1, min(mix_buffer_length_samples * bytes_per_sample - pos, (u_int32_t)1024 * 16), file);
+				pos += writeLength;
+			}
+			fclose(file);
+		}
+	}
+}
+
+void cWavMix::mix(bool withoutEndSilence) {
+	mix_buffer_length_samples = getAllSamples(withoutEndSilence);
+	if(!mix_buffer_length_samples) {
+		return;
+	}
+	mix_buffer = new FILE_LINE(0) u_char[mix_buffer_length_samples * bytes_per_sample];
+	memset(mix_buffer, 0, mix_buffer_length_samples * bytes_per_sample);
+	cWav *wav;
+	while((wav = getWavNoMix(withoutEndSilence)) != NULL) {
+		mix(wav, withoutEndSilence);
+		wav->use_in_mix = true;
+	}
+}
+
+void cWavMix::mix(cWav *wav, bool withoutEndSilence) {
+	u_int64_t startTime = getMinStartTime();
+	u_int32_t startOffsetSamples = (wav->start - startTime) * samplerate / 1000000ull;
+	u_int32_t lengthSamples = wav->get_length_samples(withoutEndSilence);
+	for(u_int32_t i = 0; i < lengthSamples; i++) {
+		if(i + startOffsetSamples < mix_buffer_length_samples) {
+			for(unsigned j = 0; j < bytes_per_sample; j++) {
+				mix_buffer[(i + startOffsetSamples) * bytes_per_sample + j] = wav->wav_buffer[i * bytes_per_sample + j];
+			}
+		}
+	}
+}
+
+u_int64_t cWavMix::getMinStartTime() {
+	if(this->start_time) {
+		return(this->start_time);
+	}
+	u_int64_t minStartTime = 0;
+	for(list<cWav*>::iterator iter = wavs.begin(); iter != wavs.end(); iter++) {
+		if(minStartTime == 0 ||
+		   (*iter)->start < minStartTime) {
+			minStartTime = (*iter)->start;
+		}
+	}
+	return(minStartTime);
+}
+
+u_int64_t cWavMix::getMaxEndTime(bool withoutEndSilence) {
+	u_int64_t maxEndTime = 0;
+	for(list<cWav*>::iterator iter = wavs.begin(); iter != wavs.end(); iter++) {
+		if(maxEndTime == 0 ||
+		   (*iter)->getEnd(withoutEndSilence) > maxEndTime) {
+			maxEndTime = (*iter)->getEnd(withoutEndSilence);
+		}
+	}
+	return(maxEndTime);
+}
+
+u_int32_t cWavMix::getAllSamples(bool withoutEndSilence) {
+	u_int64_t startTime = getMinStartTime();
+	u_int64_t endTime = getMaxEndTime(withoutEndSilence);
+	if(startTime && endTime && startTime < endTime) {
+		return((endTime - startTime) * samplerate / 1000000ull);
+	}
+	return(0);
+}
+
+cWavMix::cWav *cWavMix::getWavNoMix(bool withoutEndSilence) {
+	u_int32_t max_length_samples = 0;
+	cWav *wav_max_length_samples = NULL;
+	for(list<cWav*>::iterator iter = wavs.begin(); iter != wavs.end(); iter++) {
+		if(!(*iter)->use_in_mix &&
+		   (max_length_samples == 0 ||
+		    (*iter)->get_length_samples(withoutEndSilence) > max_length_samples)) {
+			max_length_samples = (*iter)->get_length_samples(withoutEndSilence);
+			wav_max_length_samples = *iter;
+		}
+	}
+	return(wav_max_length_samples);
+}
+
+
 int
 Call::convertRawToWav() {
 	char cmd[4092];
@@ -1662,6 +1905,7 @@ Call::convertRawToWav() {
 	int adir = 0;
 	int bdir = 0;
 	
+	bool useWavMix = opt_saveaudio_wav_mix;
 	bool force_convert_raw_to_wav = this->call_id == string("conv-raw-info") &&
 					!force_spool_path.empty();
 
@@ -1672,18 +1916,20 @@ Call::convertRawToWav() {
 				okSelect = true;
 			}
 		}
-		if(!okSelect) {
-			this->selectRtpStreams();
-			if(opt_saveaudio_filter_ext &&
-			   (this->existsConcurenceInSelectedRtpStream(-1, 200) ||
-			    (this->getLengthStreams() / 1000000ull) >= ((unsigned)duration() + 2))) {
-				if(!selectRtpStreams_byMaxLengthInLink()) {
-					this->selectRtpStreams();
+		if(!useWavMix) {
+			if(!okSelect) {
+				this->selectRtpStreams();
+				if(opt_saveaudio_filter_ext &&
+				   (this->existsConcurenceInSelectedRtpStream(-1, 200) ||
+				    (this->getLengthStreams() / 1000000ull) >= ((unsigned)duration() + 2))) {
+					if(!selectRtpStreams_byMaxLengthInLink()) {
+						this->selectRtpStreams();
+					}
 				}
 			}
+			this->setSkipConcurenceStreams(-1);
 		}
-		this->setSkipConcurenceStreams(-1);
-		
+	
 		if(sverb.read_rtp) {
 			this->printSelectedRtpStreams(-1, false);
 		}
@@ -1756,9 +2002,20 @@ Call::convertRawToWav() {
 		syslog(LOG_ERR, "PCAP file %s cannot be decoded to WAV probably missing RTP\n", get_pathfilename(tsf_sip).c_str());
 		return 1;
 	}
+	
+	u_int64_t minStartTime = 0;
+	if(useWavMix) {
+		minStartTime = this->first_packet_time * 1000000ul + this->first_packet_usec;
+		for(int i = 0; i < ssrc_n; i++) {
+			if(!minStartTime ||
+			   rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec < minStartTime) {
+				minStartTime = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec;
+			}
+		}
+	}
 
 	/* do synchronisation - calculate difference between start of both RTP direction and put silence to achieve proper synchronisation */
-	if(adir && bdir) {
+	if(!useWavMix && (adir && bdir)) {
 		/* calculate difference in milliseconds */
 		int msdiff = ast_tvdiff_ms(tv1, tv0);
 		char *fileNameWav = msdiff < 0 ? wav0 : wav1;
@@ -1968,8 +2225,17 @@ Call::convertRawToWav() {
 			}
 		}
 		fclose(pl);
+		
+		cWavMix *wavMix = NULL;
+		if(useWavMix) {
+			wavMix = new FILE_LINE(0) cWavMix(2, maxsamplerate);
+			wavMix->setStartTime(minStartTime);
+		}
 
 		for (std::list<raws_t>::const_iterator rawf = raws.begin(), end = raws.end(); rawf != end; ++rawf) {
+			if(wavMix) {
+				unlink(wav);
+			}
 			switch(rawf->codec) {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV ssrc[%x] wav[%s] index[%u]\n", rtp[rawf->ssrc_index]->ssrc, wav, rawf->ssrc_index);
@@ -2223,8 +2489,19 @@ Call::convertRawToWav() {
 				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV because the codec [%s][%d] is not supported.\n", rawf->filename.c_str(), codec2text(rawf->codec), rawf->codec);
 			}
 			if(!sverb.noaudiounlink) unlink(rawf->filename.c_str());
+			
+			if(wavMix && file_exists(wav)) {
+				wavMix->addWav(wav, rawf->tv.tv_sec * 1000000ull  + rawf->tv.tv_usec);
+			}
 		}
 		if(!sverb.noaudiounlink) unlink(rawInfo);
+		
+		if(wavMix) {
+			wavMix->mixTo(wav, true);
+			delete wavMix;
+			wavMix = NULL;
+		}
+		
 	}
 
 	if(opt_mos_lqo and adir == 1 and flags & FLAG_RUNAMOSLQO and (samplerate == 8000 or samplerate == 16000)) {
