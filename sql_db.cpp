@@ -1345,7 +1345,7 @@ SqlDb_row SqlDb_mysql::fetchRow(bool assoc) {
 	return(row);
 }
 
-bool SqlDb_mysql::fetchQueryResult(vector<string> *fields, vector<map<string, string> > *rows) {
+bool SqlDb_mysql::fetchQueryResult(vector<string> *fields, vector<map<string, string_null> > *rows) {
 	fields->clear();
 	rows->clear();
 	MYSQL_RES *hMysqlRes = mysql_use_result(this->hMysqlConn);
@@ -1356,10 +1356,10 @@ bool SqlDb_mysql::fetchQueryResult(vector<string> *fields, vector<map<string, st
 		}
 		MYSQL_ROW mysqlRow;
 		while((mysqlRow = mysql_fetch_row(hMysqlRes))) {
-			map<string, string> rslt_row;
+			map<string, string_null> rslt_row;
 			unsigned int numFields = mysql_num_fields(hMysqlRes);
 			for(unsigned int i = 0; i < numFields; i++) {
-				rslt_row[(*fields)[i]] = mysqlRow[i] ? mysqlRow[i] : "NULL";
+				rslt_row[(*fields)[i]] = string_null(mysqlRow[i]);
 			}
 			rows->push_back(rslt_row);
 		}
@@ -1369,7 +1369,7 @@ bool SqlDb_mysql::fetchQueryResult(vector<string> *fields, vector<map<string, st
 	
 }
 
-string SqlDb_mysql::getJsonResult(vector<string> *fields, vector<map<string, string> > *rows) {
+string SqlDb_mysql::getJsonResult(vector<string> *fields, vector<map<string, string_null> > *rows) {
 	JsonExport exp;
 	exp.add("result", "OK");
 	string jsonData;
@@ -1386,7 +1386,11 @@ string SqlDb_mysql::getJsonResult(vector<string> *fields, vector<map<string, str
 			JsonExport expRow;
 			expRow.setTypeItem(JsonExport::_array);
 			for(size_t j = 0; j < min((*rows)[i].size(), fields->size()); j++) {
-				expRow.add(NULL, (*rows)[i][(*fields)[j]]);
+				if((*rows)[i][(*fields)[j]].is_null) {
+					expRow.add(NULL);
+				} else {
+					expRow.add(NULL, (*rows)[i][(*fields)[j]].str);
+				}
 			}
 			jsonData += "," + expRow.getJson();
 		}
@@ -1401,7 +1405,7 @@ string SqlDb_mysql::getJsonResult(vector<string> *fields, vector<map<string, str
 
 string SqlDb_mysql::getJsonResult() {
 	vector<string> rslt_fields;
-	vector<map<string, string> > rslt_rows;
+	vector<map<string, string_null> > rslt_rows;
 	this->fetchQueryResult(&rslt_fields, &rslt_rows);
 	return(this->getJsonResult(&rslt_fields, &rslt_rows));
 }

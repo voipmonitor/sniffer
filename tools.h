@@ -126,6 +126,20 @@ struct d_item
 	type_item items[2];
 };
 
+struct string_null
+{
+	string_null(const char *str = NULL) {
+		if(str) {
+			this->str = str;
+			is_null = false;
+		} else {
+			is_null = true;
+		}
+	}
+	string str;
+	bool is_null;
+};
+
 struct sStreamId {
 	sStreamId(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport) {
 		s = d_u_int32_t(sip, sport);
@@ -2213,6 +2227,7 @@ public:
 		_array,
 		_number,
 		_string,
+		_null,
 		_json
 	};
 public:
@@ -2232,6 +2247,7 @@ public:
 	void add(const char *name, string content);
 	void add(const char *name, const char *content);
 	void add(const char *name, u_int64_t content);
+	void add(const char *name);
 	JsonExport *addArray(const char *name);
 	JsonExport *addObject(const char *name);
 	void addJson(const char *name, const string &content);

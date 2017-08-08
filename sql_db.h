@@ -302,8 +302,8 @@ public:
 	bool connected();
 	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	SqlDb_row fetchRow(bool assoc = false);
-	bool fetchQueryResult(vector<string> *fields, vector<map<string, string> > *rows);
-	string getJsonResult(vector<string> *fields, vector<map<string, string> > *rows);
+	bool fetchQueryResult(vector<string> *fields, vector<map<string, string_null> > *rows);
+	string getJsonResult(vector<string> *fields, vector<map<string, string_null> > *rows);
 	string getJsonResult();
 	string getJsonError();
 	int64_t getInsertId();

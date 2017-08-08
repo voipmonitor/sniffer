@@ -3102,6 +3102,14 @@ void JsonExport::add(const char *name, u_int64_t content) {
 	items.push_back(item);
 }
 
+void JsonExport::add(const char *name) {
+	JsonExport_template<string> *item = new FILE_LINE(38011) JsonExport_template<string>;
+	item->setTypeItem(_null);
+	item->setName(name);
+	item->setContent("NULL");
+	items.push_back(item);
+}
+
 JsonExport *JsonExport::addArray(const char *name) {
 	JsonExport *item = new FILE_LINE(38012) JsonExport;
 	item->setTypeItem(_array);
@@ -3136,12 +3144,16 @@ string JsonExport_template<type_item>::getJson(JsonExport *parent) {
 	if(parent->getTypeItem() != _array || !name.empty()) {
 		outStr << '\"' << name << "\":";
 	}
-	if(typeItem == _string) {
-		outStr << '\"';
-	}
-	outStr << content;
-	if(typeItem == _string) {
-		outStr << '\"';
+	if(typeItem == _null) {
+		outStr << "NULL";
+	} else {
+		if(typeItem == _string) {
+			outStr << '\"';
+		}
+		outStr << content;
+		if(typeItem == _string) {
+			outStr << '\"';
+		}
 	}
 	return(outStr.str());
 }
