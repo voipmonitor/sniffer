@@ -1969,8 +1969,27 @@ RTP::fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 void
 RTP::update_stats() {
 
-	
 	int lost = int((s->cycles + s->max_seq - (s->base_seq + 1)) - s->received);
+	
+	// recalculation base_seq for interlaced streams
+	if(lost > 100 && 
+	   s->max_seq - this->last_seq >= lost) {
+		Call *owner = (Call*)call_owner;
+		u_int16_t maxSeqOtherSsrc = 0;
+		for(int i = 0; i < owner->ssrc_n; i++) {
+			if(owner->rtp[i] != this && owner->rtp[i]->ssrc == this->ssrc) {
+				if(owner->rtp[i]->s->max_seq > maxSeqOtherSsrc) {
+					maxSeqOtherSsrc = owner->rtp[i]->s->max_seq;
+				}
+			}
+		}
+		if(maxSeqOtherSsrc > this->last_seq &&
+		   maxSeqOtherSsrc < s->max_seq) {
+			s->base_seq = s->cycles + s->max_seq - s->received - 1 - (s->max_seq - maxSeqOtherSsrc - 1);
+			lost = int((s->cycles + s->max_seq - (s->base_seq + 1)) - s->received);
+		}
+	}
+	
 	if(lost < 0) {
 		s->cycles += lost * -1;
 		lost = 0;
