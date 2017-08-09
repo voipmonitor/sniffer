@@ -1777,6 +1777,9 @@ cWavMix::~cWavMix() {
 		delete wav;
 		wavs.erase(iter);
 	}
+	if(mix_buffer) {
+		delete [] mix_buffer;
+	}
 }
 
 void cWavMix::setStartTime(u_int64_t start_time) {
