@@ -1,3 +1,11 @@
+20.3.7 8.8.2017
+===============
+- fix possible heap overflow (rare)
+- added experimental option saveaudio_wav_mix (yes/no) default no
+- ignore packet loss report when RTP stream with the same SSRC is interleaved with another RTP stream and seq does not change [VS-640]
+- fix sql 'NULL' response in server/client mode (which also fixes some capture rules glitch)
+
+
 20.3.6 3.8.2017
 ===============
 - fix cloud re-connect issue 
