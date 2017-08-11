@@ -1195,7 +1195,7 @@ bool SqlInitSchema (void) {
 			}
 			sqlDb->checkDbMode();
 			if(!opt_database_backup) {
-				if (!opt_disable_dbupgradecheck) {
+				if (!opt_disable_dbupgradecheck && !is_read_from_file_simple()) {
 					if(sqlDb->createSchema(connectId)) {
 						sqlDb->checkSchema(connectId);
 					} else {
