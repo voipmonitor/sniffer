@@ -5562,7 +5562,8 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t t
 	       pcap_t *handle, int dlt, int sensorId) {
 	Call *newcall = new FILE_LINE(1011) Call(call_type, call_id, call_id_len, time);
 	newcall->in_preprocess_queue_before_process_packet = 1;
-	newcall->in_preprocess_queue_before_process_packet_at = time;
+	newcall->in_preprocess_queue_before_process_packet_at[0] = time;
+	newcall->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 
 	if(handle) {
 		newcall->useHandle = handle;
@@ -5673,7 +5674,8 @@ Calltable::cleanup_calls( time_t currtime ) {
 		} else if(call->type == SKINNY_NEW ||
 			  call->in_preprocess_queue_before_process_packet <= 0 ||
 			  (!is_read_from_file() &&
-			   (call->in_preprocess_queue_before_process_packet_at && call->in_preprocess_queue_before_process_packet_at < currtime - 300))) {
+			   (call->in_preprocess_queue_before_process_packet_at[0] && call->in_preprocess_queue_before_process_packet_at[0] < currtime - 300 &&
+			    call->in_preprocess_queue_before_process_packet_at[1] && call->in_preprocess_queue_before_process_packet_at[1] < (getTimeMS_rdtsc() / 1000) - 300))) {
 			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
 				closeCall = true;
 			} else if((call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) ||

@@ -983,7 +983,7 @@ public:
 	bool use_sdp_sendonly;
 	bool rtp_from_multiple_sensors;
 	volatile int in_preprocess_queue_before_process_packet;
-	volatile u_int32_t in_preprocess_queue_before_process_packet_at;
+	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
 };
 
 
@@ -1270,7 +1270,8 @@ public:
 			rslt_call = callMAPIT->second;
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
-				rslt_call->in_preprocess_queue_before_process_packet_at = time;
+				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
+				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
 		}
 		unlock_calls_listMAP();
@@ -1286,7 +1287,8 @@ public:
 			rslt_call = mergeMAPIT->second;
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
-				rslt_call->in_preprocess_queue_before_process_packet_at = time;
+				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
+				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
 		}
 		unlock_calls_mergeMAP();
