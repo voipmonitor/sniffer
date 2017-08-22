@@ -72,6 +72,7 @@ bool cCR_Receiver_service::receive_process_loop_begin() {
 	if(start_ok) {
 		json_keys.add("restore", true);
 	}
+	json_keys.add("check_ping_response", true);
 	if(!receive_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
 		if(!receive_socket->isError()) {
 			receive_socket->setError("failed send token & aes keys");

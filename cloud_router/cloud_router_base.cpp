@@ -1275,6 +1275,8 @@ void cReceiver::receive_process() {
 			if(data) {
 				if(string((char*)data, dataLen) != "ping") {
 					evData(data, dataLen);
+				} else {
+					receive_socket->writeBlock("pong");
 				}
 			} else {
 				receive_socket->setError("timeout");

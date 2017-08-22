@@ -330,6 +330,7 @@ void cSnifferServerConnection::cp_service() {
 		delete this;
 		return;
 	}
+	bool checkPingResponse = !jsonPasswordAesKeys.getValue("check_ping_response").empty();
 	if(!socket->writeBlock("OK")) {
 		socket->setError("failed send ok");
 		delete this;
@@ -370,6 +371,19 @@ void cSnifferServerConnection::cp_service() {
 		} else {
 			if(time_us > lastWriteTimeUS + 5000000ull) {
 				socket->writeBlock("ping");
+				if(checkPingResponse) {
+					string pingResponse;
+					if(!socket->readBlockTimeout(&pingResponse, 5) ||
+					   pingResponse != "pong") {
+						if(SS_VERBOSE().connect_info) {
+							ostringstream verbstr;
+							verbstr << "SNIFFER SERVICE DISCONNECT: "
+								<< "sensor_id: " << sensor_id;
+							syslog(LOG_INFO, "%s", verbstr.str().c_str());
+						}
+						break;
+					}
+				}
 				lastWriteTimeUS = time_us;
 			}
 			usleep(1000);
@@ -700,6 +714,7 @@ bool cSnifferClientService::receive_process_loop_begin() {
 	if(start_ok) {
 		json_keys.add("restore", true);
 	}
+	json_keys.add("check_ping_response", true);
 	if(!receive_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
 		if(!receive_socket->isError()) {
 			receive_socket->setError("failed send sesnor_id & aes keys");
