@@ -6528,7 +6528,7 @@ void set_context_config() {
 		sniffer_mode = snifferMode_read_from_interface;
 	}
 
-	if(opt_pcap_queue_receive_from_ip_port || opt_pcap_queue_send_to_ip_port) {
+	if(opt_pcap_queue_receive_from_ip_port || opt_pcap_queue_send_to_ip_port || is_client_packetbuffer_sender()) {
 		if(opt_pcap_queue_compress == -1) {
 			opt_pcap_queue_compress = 1;
 		}
