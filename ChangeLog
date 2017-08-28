@@ -1,4 +1,4 @@
-20.4.1 23.8.2017
+20.4.1 29.8.2017
 ================
 - fix sniffer crash in tcp reassemble for some cases [VS-663]
 - do not perform upgrade db check if reading pcap from file 
