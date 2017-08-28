@@ -352,6 +352,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	defer_codec_change = false;
 	stream_in_multiple_calls = false;
 	prev_payload_len = 0;
+	padding_len = 0;
 	tailedframes = 0;
 }
 
@@ -507,6 +508,7 @@ const int RTP::get_payload_len() {
 		* packets in a lower-layer protocol data unit.
 		*/
 		payload_len -= ((u_int8_t *)data)[len - 1];
+		padding_len = ((u_int8_t *)data)[len - 1];
 	}
 	if(getCC() > 0) {
 		/*
@@ -675,6 +677,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			* packets in a lower-layer protocol data unit.
 			*/
 			payload_len -= ((u_int8_t *)data)[payload_len - 1];
+			padding_len = ((u_int8_t *)data)[payload_len - 1];
 		}
 		if(getCC() > 0) {
 			/*
@@ -1211,7 +1214,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 		lastcng = 1;
 		return(true);
 	}
-	if(curpayload == PAYLOAD_G729 and (payload_len <= (packetization == 10 or packetization == 0 ? 9 : 12) or payload_len == 22)) {
+	if(curpayload == PAYLOAD_G729 and (payload_len <= (packetization == 10 or packetization == 0 ? 9 : 12) or (payload_len + padding_len == 22) or (payload_len + padding_len == 32))) {
 		last_seq = seq;
 		if(update_seq(seq)) {
 			update_stats();
