@@ -208,6 +208,22 @@ bool CountryPrefixes::load() {
 			row["descr"].c_str()));
 	}
 	std::sort(data.begin(), data.end());
+	if(sqlDb->existsTable("customer_country_prefix") &&
+	   !sqlDb->emptyTable("customer_country_prefix")) {
+		sqlDb->query("select * \
+			      from customer_country_prefix \
+			      order by prefix");
+		SqlDb_row row;
+		while((row = sqlDb->fetchRow())) {
+			customer_data.push_back(CountryPrefix_rec(
+				row["prefix"].c_str(),
+				row["country_code"].c_str(),
+				row["descr"].c_str()));
+		}
+		std::sort(customer_data.begin(), customer_data.end());
+	} else {
+		customer_data.clear();
+	}
 	delete sqlDb;
 	return(true);
 }

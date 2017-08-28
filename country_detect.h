@@ -223,52 +223,61 @@ public:
 		}
 		number = normalizeNumber.c_str();
 		vector<CountryPrefix_rec>::iterator findRecIt;
-		findRecIt = std::lower_bound(data.begin(), data.end(), number);
-		if(findRecIt == data.end()) {
-			--findRecIt;
-		}
-		int _redukSizeFindNumber = 0;
-		while(strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
-			if(findRecIt->number[0] < number[0]) {
-				return("");
-			}
-			if((!_redukSizeFindNumber || _redukSizeFindNumber > 1) &&
-			   atol(findRecIt->number.c_str()) < atol(normalizeNumber.substr(0, findRecIt->number.length()).c_str())) {
-				if(_redukSizeFindNumber) {
-					--_redukSizeFindNumber;
-				} else {
-					_redukSizeFindNumber = findRecIt->number.length() - 1;
-				}
-				findRecIt = std::lower_bound(data.begin(), data.end(), string(number).substr(0, _redukSizeFindNumber).c_str());
-				if(findRecIt == data.end()) {
+		for(int pass = 0; pass < 2; pass++) {
+			if(pass == 1 || !customer_data.empty()) {
+				vector<CountryPrefix_rec> *data = pass == 0 ? &this->customer_data : &this->data;
+				findRecIt = std::lower_bound(data->begin(), data->end(), number);
+				if(findRecIt == data->end()) {
 					--findRecIt;
 				}
-			} else {
-				if(findRecIt == data.begin()) {
-					return("");
-				} else {
-					--findRecIt;
-				}
-			}
-		}
-		if(!strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
-			string rslt = findRecIt->country_code;
-			string rsltNumber = findRecIt->number;
-			if(country_prefix) {
-				*country_prefix = findRecIt->number;
-			}
-			if(countries) {
-				countries->push_back(rslt);
-				while(findRecIt != data.begin()) {
-					--findRecIt;
-					if(rsltNumber == findRecIt->number) {
-						countries->push_back(findRecIt->country_code);
-					} else {
+				int _redukSizeFindNumber = 0;
+				bool okFind = true;
+				while(strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
+					if(findRecIt->number[0] < number[0]) {
+						okFind = false;
 						break;
 					}
+					if((!_redukSizeFindNumber || _redukSizeFindNumber > 1) &&
+					   atol(findRecIt->number.c_str()) < atol(normalizeNumber.substr(0, findRecIt->number.length()).c_str())) {
+						if(_redukSizeFindNumber) {
+							--_redukSizeFindNumber;
+						} else {
+							_redukSizeFindNumber = findRecIt->number.length() - 1;
+						}
+						findRecIt = std::lower_bound(data->begin(), data->end(), string(number).substr(0, _redukSizeFindNumber).c_str());
+						if(findRecIt == data->end()) {
+							--findRecIt;
+						}
+					} else {
+						if(findRecIt == data->begin()) {
+							okFind = false;
+							break;
+						} else {
+							--findRecIt;
+						}
+					}
+				}
+				if(okFind &&
+				   !strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
+					string rslt = findRecIt->country_code;
+					string rsltNumber = findRecIt->number;
+					if(country_prefix) {
+						*country_prefix = findRecIt->number;
+					}
+					if(countries) {
+						countries->push_back(rslt);
+						while(findRecIt != data->begin()) {
+							--findRecIt;
+							if(rsltNumber == findRecIt->number) {
+								countries->push_back(findRecIt->country_code);
+							} else {
+								break;
+							}
+						}
+					}
+					return(rslt);
 				}
 			}
-			return(rslt);
 		}
 		return("");
 	}
@@ -287,17 +296,23 @@ public:
 		return(countryIsNapa(country.c_str()));
 	}
 	bool countryIsNapa(const char *country) {
-		for(vector<CountryPrefix_rec>::iterator iter = data.begin(); iter != data.end(); iter++) {
-			if(iter->country_code == country &&
-			   iter->number.length() == 4 &&
-			   iter->number[0] == '1') {
-				return(true);
+		for(int pass = 0; pass < 2; pass++) {
+			if(pass == 1 || !customer_data.empty()) {
+				vector<CountryPrefix_rec> *data = pass == 0 ? &this->customer_data : &this->data;
+				for(vector<CountryPrefix_rec>::iterator iter = data->begin(); iter != data->end(); iter++) {
+					if(iter->country_code == country &&
+					   iter->number.length() == 4 &&
+					   iter->number[0] == '1') {
+						return(true);
+					}
+				}
 			}
 		}
 		return(false);
 	}
 private:
 	vector<CountryPrefix_rec> data;
+	vector<CountryPrefix_rec> customer_data;
 };
 
 
