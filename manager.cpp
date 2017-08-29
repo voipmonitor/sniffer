@@ -2765,6 +2765,35 @@ getwav:
 		if(new_pcap_stat_period > 0 && new_pcap_stat_period < 600) {
 			sverb.pcap_stat_period = new_pcap_stat_period;
 		}
+	} else if (strstr(buf, "unpausecall") != NULL) {
+		long long callref = 0;
+		sscanf(buf, "unpausecall 0x%llx", &callref);
+		if (!callref) {
+			if (sendvm(client, sshchannel, c_client, "Bad/missing Call id\n", 20, 0) == -1) {
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+		} else if (Handle_pause_call(callref, 0) == -1) {
+			if (sendvm(client, sshchannel, c_client, "Call id not found\n", 18, 0) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+		}
+
+	} else if (strstr(buf, "pausecall") != NULL) {
+		long long callref = 0;
+		sscanf(buf, "pausecall 0x%llx", &callref);
+		if (!callref) {
+			if (sendvm(client, sshchannel, c_client, "Bad/missing Call id\n", 20, 0) == -1) {
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+		} else if (Handle_pause_call(callref, 1) == -1) {
+			if (sendvm(client, sshchannel, c_client, "Call id not found\n", 18, 0) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+		}
 	} else {
 		if ((size = sendvm(client, sshchannel, c_client, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
@@ -2774,6 +2803,22 @@ getwav:
 	return 1;
 }
 
+int Handle_pause_call(long long callref, int val ) {
+	int retval = 1;
+
+	if (calltable) {
+		calltable->lock_calls_listMAP();
+		Call *call = calltable->find_by_reference(callref, false);
+
+		if (call)
+			call->silencerecording = val;
+		else
+			retval = -1;
+
+		calltable->unlock_calls_listMAP();
+	}
+	return(retval);
+}
 
 void *manager_client(void */*dummy*/) {
 	u_int32_t host_ipl;
