@@ -6743,6 +6743,12 @@ void createMysqlPartitionsCdr() {
 	syslog(LOG_NOTICE, "%s", "create cdr partitions - begin");
 	for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
 		SqlDb *sqlDb = createSqlObject(connectId);
+		if(isCloud() && connectId == 0) {
+			SqlDb_mysql *sqlDbMysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+			if(sqlDbMysql) {
+				sqlDbMysql->createSchema_procedure_partition(0);
+			}
+		}
 		for(int day = 0; day < 3; day++) {
 			_createMysqlPartitionsCdr(day, connectId, sqlDb);
 		}
