@@ -354,6 +354,8 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	prev_payload_len = 0;
 	padding_len = 0;
 	tailedframes = 0;
+
+	change_packetization_iterator = 0;
 }
 
 
@@ -1804,13 +1806,22 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 
 			if(verbosity > 3) printf("curpacketization[%u] = (getTimestamp()[%u] - last_ts[%u]) / (samplerate[%u] / 1000) pl[%u] curpayload[%u] seq[%u]\n", curpacketization, getTimestamp(), last_ts, samplerate, payload_len, curpayload, seq);
 
-
 			if(curpacketization != packetization and curpacketization % 10 == 0 and curpacketization >= 10 and curpacketization <= 120) {
-				if(verbosity > 3) printf("[%x] changing packetization:[%d]->[%d]\n", getSSRC(), curpacketization, packetization);
-				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
+				// packetization changed, check if next packet is the same packetization
+				change_packetization_iterator++;
+			} else {
+				// packetization changed back, reset the iterator
+				change_packetization_iterator = 0;
 			}
 
-			last_packetization = curpacketization;
+			if(change_packetization_iterator > 1) { 
+				//packetization changed for two last packets
+				if(verbosity > 3) printf("[%x] changing packetization:[%d]->[%d]\n", getSSRC(), packetization, curpacketization);
+				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
+				last_packetization = curpacketization;
+				change_packetization_iterator == 0;
+			}
+			
 		}
 		if(curpayload == PAYLOAD_G723) {
 			if(payload_len == 24) {
