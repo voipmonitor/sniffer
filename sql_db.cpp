@@ -318,7 +318,7 @@ SqlDb::SqlDb() {
 	this->connecting = false;
 	this->response_data_rows = 0;
 	this->response_data_index = 0;
-	this->maxAllowedPacket = 1024*1024;
+	this->maxAllowedPacket = 1024*1024*100;
 	this->lastError = 0;
 	this->remote_socket = NULL;
 }
@@ -2048,7 +2048,7 @@ void MySqlStore_process::store() {
 				}
 				string query = this->query_buff.front();
 				bool maxAllowedPacketIsFull = false;
-				if(queryqueue.size() + query.size() + 100 > this->sqlDb->maxAllowedPacket) {
+				if(size > 0 && queryqueue.size() + query.size() + 100 > this->sqlDb->maxAllowedPacket) {
 					maxAllowedPacketIsFull = true;
 					this->unlock();
 				} else {
@@ -6743,6 +6743,12 @@ void createMysqlPartitionsCdr() {
 	syslog(LOG_NOTICE, "%s", "create cdr partitions - begin");
 	for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
 		SqlDb *sqlDb = createSqlObject(connectId);
+		if(isCloud() && connectId == 0) {
+			SqlDb_mysql *sqlDbMysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+			if(sqlDbMysql) {
+				sqlDbMysql->createSchema_procedure_partition(0);
+			}
+		}
 		for(int day = 0; day < 3; day++) {
 			_createMysqlPartitionsCdr(day, connectId, sqlDb);
 		}

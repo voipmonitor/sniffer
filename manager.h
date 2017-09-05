@@ -13,6 +13,7 @@ typedef void* ssh_channel;
 void *manager_client(void *dummy);
 void *manager_server(void *dummy);
 void *manager_ssh(void *dummy);
+int Handle_pause_call(long long callref, int val);
 
 class ManagerClientThread {
 public:

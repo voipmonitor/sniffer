@@ -66,8 +66,6 @@ void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
 		this->clearCompleteData();
 		this->is_ok = false;
 	}
-	map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter;
-	iter = this->queuePacketVars.find(packet.header_tcp.seq);
 	if(debug_seq && packet.header_tcp.seq == debug_seq) {
 		cout << " -- XXX DEBUG SEQ XXX" << endl;
 	}
@@ -199,7 +197,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 				if(waitForPsh ?
 				    this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].header_tcp.psh :
 				    ((maxNextSeq && next_seq == maxNextSeq) ||
-				     (maxNextSeq && next_seq == maxNextSeq - 1) ||
+				     (!enableSimpleCmpMaxNextSeq && maxNextSeq && next_seq == maxNextSeq - 1) ||
 				     (this->last_seq && next_seq == this->last_seq) ||
 				     (this->last_seq && next_seq == this->last_seq - 1) ||
 				     (enableSimpleCmpMaxNextSeq && next_seq == this->max_next_seq) ||
@@ -2581,6 +2579,14 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	if(header->len > header->caplen) {
 		datalen += (header->len - header->caplen);
 	}
+	u_int32_t tcp_data_length = ntohs(header_ip->tot_len) - sizeof(iphdr2) - header_tcp_pointer->doff * 4;
+	if(datalen > tcp_data_length) {
+		datalen = tcp_data_length;
+	}
+	if(datacaplen > tcp_data_length) {
+		datacaplen = tcp_data_length;
+	}
+	
 	header_tcp = *header_tcp_pointer;
 	header_tcp.source = htons(header_tcp.source);
 	header_tcp.dest = htons(header_tcp.dest);
