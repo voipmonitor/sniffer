@@ -1,3 +1,11 @@
+20.4.2 5.9.2017
+===============
+- add pausecall/unpausecall manager commands which pauses/unpauses recording (echo 'pausecall 0x7fd9dc0009b0' |nc 10.133.1.1 5029) [VG-1351]
+- fix issue with default maxAllowedPacket in sql store [VS-678]
+- create mysql procedures for mysql partitions before create cdr partitions is called in cloud mod [VS-680]
+- fix audio sync for some g729 cases
+
+
 20.4.1 29.8.2017
 ================
 - fix sniffer crash in tcp reassemble for some cases [VS-663]

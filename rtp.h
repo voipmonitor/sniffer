@@ -260,6 +260,7 @@ public:
 	bool defer_codec_change;
 	bool stream_in_multiple_calls;
 	uint32_t tailedframes;
+	uint8_t change_packetization_iterator;
 
 	/* RTCP data */
 	struct rtcp_t {
