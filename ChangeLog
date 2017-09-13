@@ -1,6 +1,12 @@
+20.4.4 13.9.2017
+================
+- do not terminate sniffer in cloud mode when there is temporary mysql problem
+- new rpi static build based on debian 9
+
+
 20.4.3 13.9.2017
 ================
-fix crash if voipmonitor is in server mode (remote sniffers) [VS-686] [VS-684]
+- fix crash if voipmonitor is in server mode (remote sniffers) [VS-686] [VS-684]
 
 
 20.4.2 5.9.2017
