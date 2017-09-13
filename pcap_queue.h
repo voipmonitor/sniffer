@@ -261,6 +261,7 @@ public:
 	string pcapDropCountStat();
 	void initStat();
 	void getThreadCpuUsage(bool writeThread = false);
+	bool threadInitIsOk() { return(threadInitOk); }
 protected:
 	virtual bool createThread();
 	virtual bool createMainThread();
@@ -324,7 +325,7 @@ protected:
 	bool enableMainThread;
 	bool enableWriteThread;
 	bool enableAutoTerminate;
-	bool threadInitOk;
+	volatile bool threadInitOk;
 	bool threadInitFailed;
 	bool writeThreadInitOk;
 	bool threadTerminated;

@@ -515,6 +515,10 @@ void cSnifferServerConnection::cp_store() {
 void cSnifferServerConnection::cp_packetbuffer_block() {
 	syslog(LOG_NOTICE, "accept new connection from %s:%i, socket: %i", 
 	       socket->getIP().c_str(), socket->getPort(), socket->getHandle());
+	extern PcapQueue_readFromFifo *pcapQueueQ;
+	while(!pcapQueueQ || !pcapQueueQ->threadInitIsOk()) {
+		usleep(10000);
+	}
 	if(!rsaAesInit()) {
 		delete this;
 		return;
@@ -524,7 +528,6 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 	unsigned counter = 0;
 	u_int32_t block_counter = 0;
 	while((block = socket->readBlock(&blockLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
-		extern PcapQueue_readFromFifo *pcapQueueQ;
 		string errorAddBlock;
 		string warningAddBlock;
 		bool rsltAddBlock = pcapQueueQ->addBlockStoreToPcapStoreQueue(block, blockLength, &errorAddBlock, &warningAddBlock, &block_counter);
