@@ -1,3 +1,8 @@
+20.4.3 13.9.2017
+================
+fix crash if voipmonitor is in server mode (remote sniffers) [VS-686] [VS-684]
+
+
 20.4.2 5.9.2017
 ===============
 - add pausecall/unpausecall manager commands which pauses/unpauses recording (echo 'pausecall 0x7fd9dc0009b0' |nc 10.133.1.1 5029) [VG-1351]
