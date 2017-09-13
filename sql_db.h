@@ -325,7 +325,7 @@ public:
 	bool createSchema_alter_other(int connectId);
 	bool createSchema_alter_http_jj(int connectId);
 	bool createSchema_procedures_other(int connectId);
-	bool createSchema_procedure_partition(int connectId);
+	bool createSchema_procedure_partition(int connectId, bool abortIfFailed = true);
 	bool createSchema_init_cdr_partitions(int connectId);
 	string getPartDayName(string &limitDay_str);
 	void saveTimezoneInformation();

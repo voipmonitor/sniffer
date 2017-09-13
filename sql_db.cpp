@@ -5370,7 +5370,7 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 	return(true);
 }
 
-bool SqlDb_mysql::createSchema_procedure_partition(int connectId) {
+bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFailed) {
 	this->clearLastError();
 	if(!(connectId == 0 ||
 	     (connectId == 1 && use_mysql_2_http())) ||
@@ -5414,7 +5414,7 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId) {
 		    execute stmt;\
 		    deallocate prepare stmt;\
 		 end",
-		"create_partition", "(table_name char(100), type_part char(10), next_days int)", true);
+		"create_partition", "(table_name char(100), type_part char(10), next_days int)", abortIfFailed);
 		this->createProcedure(
 		"begin\
 		    declare part_date date;\
@@ -5453,7 +5453,7 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId) {
 		    execute stmt;\
 		    deallocate prepare stmt;\
 		 end",
-		"create_partition_v2", "(table_name char(100), type_part char(10), next_days int, old_ver_partition bool)", true);
+		"create_partition_v2", "(table_name char(100), type_part char(10), next_days int, old_ver_partition bool)", abortIfFailed);
 	} else {
 		this->createProcedure(string(
 		"begin\
@@ -5520,7 +5520,7 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId) {
 		       end if;\
 		    end if;\
 		 end",
-		"create_partition", "(database_name char(100), table_name char(100), type_part char(10), next_days int)", true);
+		"create_partition", "(database_name char(100), table_name char(100), type_part char(10), next_days int)", abortIfFailed);
 		this->createProcedure(
 		"begin\
 		    declare part_date date;\
@@ -5589,7 +5589,7 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId) {
 		       end if;\
 		    end if;\
 		 end",
-		"create_partition_v2", "(database_name char(100), table_name char(100), type_part char(10), next_days int, old_ver_partition bool)", true);
+		"create_partition_v2", "(database_name char(100), table_name char(100), type_part char(10), next_days int, old_ver_partition bool)", abortIfFailed);
 	}
 	return(true);
 }
@@ -6746,7 +6746,7 @@ void createMysqlPartitionsCdr() {
 		if(isCloud() && connectId == 0) {
 			SqlDb_mysql *sqlDbMysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 			if(sqlDbMysql) {
-				sqlDbMysql->createSchema_procedure_partition(0);
+				sqlDbMysql->createSchema_procedure_partition(0, false);
 			}
 		}
 		for(int day = 0; day < 3; day++) {
