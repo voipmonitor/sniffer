@@ -2008,7 +2008,7 @@ Call::convertRawToWav() {
 	
 	u_int64_t minStartTime = 0;
 	if(useWavMix) {
-		minStartTime = this->first_packet_time * 1000000ul + this->first_packet_usec;
+		minStartTime = this->first_packet_time * 1000000ull + this->first_packet_usec;
 		for(int i = 0; i < ssrc_n; i++) {
 			if(!minStartTime ||
 			   rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec < minStartTime) {
