@@ -242,10 +242,14 @@ public:
 			for(unsigned i = 0; i < MAX_SIPCALLERDIP; i++) {
 				sipcallerip[i] = 0;
 				sipcalledip[i] = 0;
+				sipcallerip_port[i] = 0;
+				sipcalledip_port[i] = 0;
 			}
 		}
 		u_int32_t sipcallerip[MAX_SIPCALLERDIP];
 		u_int32_t sipcalledip[MAX_SIPCALLERDIP];
+		u_int16_t sipcallerip_port[MAX_SIPCALLERDIP];
+		u_int16_t sipcalledip_port[MAX_SIPCALLERDIP];
 	};
 	struct sMergeLegInfo {
 		sMergeLegInfo() {
@@ -448,6 +452,8 @@ public:
 
 	u_int32_t sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
 	u_int32_t sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
+	u_int16_t sipcallerip_port[MAX_SIPCALLERDIP];
+	u_int16_t sipcalledip_port[MAX_SIPCALLERDIP];
 	map<string, sSipcalleRD_IP> map_sipcallerdip;
 	u_int32_t lastsipcallerip;
 	bool sipcallerdip_reverse;
@@ -800,7 +806,9 @@ public:
 	
 	void handle_dscp(struct iphdr2 *header_ip, bool iscaller);
 	
-	bool check_is_caller_called(const char *call_id, int sip_method, unsigned int saddr, unsigned int daddr, int *iscaller, int *iscalled = NULL, bool enableSetSipcallerdip = false);
+	bool check_is_caller_called(const char *call_id, int sip_method, 
+				    unsigned int saddr, unsigned int daddr, unsigned int sport, unsigned int dport,  
+				    int *iscaller, int *iscalled = NULL, bool enableSetSipcallerdip = false);
 	bool is_sipcallerip(unsigned int addr);
 	bool is_sipcalledip(unsigned int addr);
 
