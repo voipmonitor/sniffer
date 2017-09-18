@@ -634,7 +634,7 @@ char ifname[1024];	// Specifies the name of the network device to use for
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
 #ifndef FREEBSD
-uint32_t opt_scanpcapmethod = IN_CLOSE_WRITE; // Specifies how to watch for new files in opt_scanpcapdir
+int opt_scanpcapmethod = IN_CLOSE_WRITE; // Specifies how to watch for new files in opt_scanpcapdir
 #endif
 int opt_promisc = 1;	// put interface to promisc mode?
 int opt_use_oneshot_buffer = 1;
@@ -5680,8 +5680,8 @@ void cConfig::addConfigItems() {
 		subgroup("scanpcapdir");
 				advanced();
 				char scanpcapmethod_values[100];
-				sprintf(scanpcapmethod_values, "close:%i|moved:%i|r:%i", IN_CLOSE_WRITE, IN_MOVED_TO, IN_MOVED_TO);
-				addConfigItem((new FILE_LINE(42431) cConfigItem_yesno("scanpcapmethod"))
+				sprintf(scanpcapmethod_values, "newfile:%i|close:%i|moved:%i|r:%i", IN_CLOSE_WRITE, IN_CLOSE_WRITE, IN_MOVED_TO, IN_MOVED_TO);
+				addConfigItem((new FILE_LINE(42431) cConfigItem_yesno("scanpcapmethod", &opt_scanpcapmethod))
 					->disableYes()
 					->disableNo()
 					->addValues(scanpcapmethod_values));
@@ -5856,11 +5856,6 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			break;
 		}
 	}
-	#ifndef FREEBSD
-	if(configItem->config_name == "scanpcapmethod") {
-		opt_scanpcapmethod = !configItem->getValueStr().empty() && configItem->getValueStr()[0] == 'r' ? IN_MOVED_TO : IN_CLOSE_WRITE;
-	}
-	#endif
 	if(configItem->config_name == "packetbuffer_compress_method") {
 		switch(configItem->getValueInt()) {
 		case 0:
@@ -6685,7 +6680,7 @@ void set_context_config() {
 			      opt_database_backup_from_mysql_database[0] != '\0' &&
 			      opt_database_backup_from_mysql_user[0] != '\0';
 	
-	if(is_sender() || is_client_packetbuffer_sender() || is_receiver()) {
+	if(is_sender() || is_client_packetbuffer_sender() || is_receiver() || opt_scanpcapdir[0]) {
 		opt_pcap_queue_use_blocks = false;
 	}
 	
@@ -6713,7 +6708,7 @@ void set_context_config() {
 	}
 	if(opt_t2_boost) {
 		opt_enable_preprocess_packet = PreProcessPacket::ppt_end;
-		if(!is_sender() && !is_client_packetbuffer_sender() && !is_receiver()) {
+		if(!is_sender() && !is_client_packetbuffer_sender() && !is_receiver() && !opt_scanpcapdir[0]) {
 			opt_pcap_queue_use_blocks = 1;
 			if(getThreadingMode() < 2) {
 				setThreadingMode(2);
