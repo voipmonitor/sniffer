@@ -2957,7 +2957,11 @@ int main_init_read() {
 		opt_manager_port = 0; // disable cleaning spooldir when reading from file 
 		printf("Reading file: %s\n", opt_read_from_file_fname);
 		char errbuf[PCAP_ERRBUF_SIZE];
-		global_pcap_handle = pcap_open_offline_zip(opt_read_from_file_fname, errbuf);
+		if(opt_read_from_file_fname == string("/dev/stdin")) {
+			global_pcap_handle = pcap_open_offline("-", errbuf);
+		} else {
+			global_pcap_handle = pcap_open_offline_zip(opt_read_from_file_fname, errbuf);
+		}
 		if(global_pcap_handle == NULL) {
 			fprintf(stderr, "Couldn't open pcap file '%s': %s\n", opt_read_from_file_fname, errbuf);
 			return(2);
