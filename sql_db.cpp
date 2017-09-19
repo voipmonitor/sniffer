@@ -1090,8 +1090,14 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 	bool missing = false;
 	bool diff = false;
 	if(this->isCloud()) {
-		missing = true;
-		diff = true;
+		syslog(LOG_NOTICE, "check %s %s", (routineType == procedure ? "procedure" : "function"), routineName.c_str());
+		bool rslt = this->query(string("create_routine||") + (routineType == procedure ? "procedure" : "function") + "||" + routineName + "||" + routineParamsAndReturn + "||" + routine);
+		if(!rslt && abortIfFailed) {
+			string errorString = string("create routine ") + routineName + " on cloud side failed";
+			syslog(LOG_ERR, "%s", errorString.c_str());
+			vm_terminate_error(errorString.c_str());
+		}
+		return(rslt);
 	} else {
 		this->query(string("select routine_definition from information_schema.routines where routine_schema='") + this->conn_database + 
 			    "' and routine_name='" + routineName + 
