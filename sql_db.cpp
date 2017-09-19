@@ -6746,7 +6746,13 @@ void createMysqlPartitionsCdr() {
 		if(isCloud() && connectId == 0) {
 			SqlDb_mysql *sqlDbMysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 			if(sqlDbMysql) {
+				bool disableLogErrorOld = sqlDb->getDisableLogError();
+				unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
+				sqlDb->setDisableLogError(true);
+				sqlDb->setMaxQueryPass(1);
 				sqlDbMysql->createSchema_procedure_partition(0, false);
+				sqlDb->setMaxQueryPass(maxQueryPassOld);
+				sqlDb->setDisableLogError(disableLogErrorOld);
 			}
 		}
 		for(int day = 0; day < 3; day++) {
