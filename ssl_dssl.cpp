@@ -1,6 +1,8 @@
-#include <gcrypt.h>
-
 #include "voipmonitor.h"
+
+#ifdef HAVE_OPENSSL101
+#include <gcrypt.h>
+#endif //HAVE_OPENSSL101
 
 #include "ssl_dssl.h"
 

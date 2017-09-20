@@ -2739,7 +2739,11 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 	char errbuf[PCAP_ERRBUF_SIZE];
 	char errorstr[2048];
 	if(opt_pb_read_from_file[0]) {
-		this->pcapHandle = pcap_open_offline_zip(opt_pb_read_from_file, errbuf);
+		if(opt_pb_read_from_file == string("/dev/stdin")) {
+			this->pcapHandle = pcap_open_offline("-", errbuf);
+		} else {
+			this->pcapHandle = pcap_open_offline_zip(opt_pb_read_from_file, errbuf);
+		}
 		if(!this->pcapHandle) {
 			sprintf(errorstr, "pcap_open_offline %s failed: %s", opt_pb_read_from_file, errbuf); 
 			syslog(LOG_ERR, "%s", errorstr);

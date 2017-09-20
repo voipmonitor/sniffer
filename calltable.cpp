@@ -462,6 +462,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
 		 sipcallerip[i] = 0;
 		 sipcalledip[i] = 0;
+		 sipcallerip_port[i] = 0;
+		 sipcalledip_port[i] = 0;
 	}
 	lastsipcallerip = 0;
 	sipcallerdip_reverse = false;
@@ -6057,7 +6059,9 @@ Call::handle_dscp(struct iphdr2 *header_ip, bool iscaller) {
 }
 
 bool 
-Call::check_is_caller_called(const char *call_id, int sip_method, unsigned int saddr, unsigned int daddr, int *iscaller, int *iscalled, bool enableSetSipcallerdip) {
+Call::check_is_caller_called(const char *call_id, int sip_method, 
+			     unsigned int saddr, unsigned int daddr, unsigned int sport, unsigned int dport,
+			     int *iscaller, int *iscalled, bool enableSetSipcallerdip) {
 	*iscaller = 0;
 	bool _iscalled = 0;
 	string debug_str_set;
@@ -6081,21 +6085,31 @@ Call::check_is_caller_called(const char *call_id, int sip_method, unsigned int s
 	} else {
 		u_int32_t *sipcallerip;
 		u_int32_t *sipcalledip;
+		u_int16_t *sipcallerip_port;
+		u_int16_t *sipcalledip_port;
 		if(opt_callidmerge_header[0] != '\0') {
 			if(call_id) {
 				sipcallerip = this->map_sipcallerdip[call_id].sipcallerip;
 				sipcalledip = this->map_sipcallerdip[call_id].sipcalledip;
+				sipcallerip_port = this->map_sipcallerdip[call_id].sipcallerip_port;
+				sipcalledip_port = this->map_sipcallerdip[call_id].sipcalledip_port;
 			} else {
 				sipcallerip = this->map_sipcallerdip.begin()->second.sipcallerip;
 				sipcalledip = this->map_sipcallerdip.begin()->second.sipcalledip;
+				sipcallerip_port = this->map_sipcallerdip.begin()->second.sipcallerip_port;
+				sipcalledip_port = this->map_sipcallerdip.begin()->second.sipcalledip_port;
 			}
 			if(!sipcallerip[0] && !sipcalledip[0]) {
 				sipcallerip[0] = saddr;
 				sipcalledip[0] = daddr;
+				sipcallerip_port[0] = sport;
+				sipcalledip_port[0] = dport;
 			}
 		} else {
 			sipcallerip = this->sipcallerip;
 			sipcalledip = this->sipcalledip;
+			sipcallerip_port = this->sipcallerip_port;
+			sipcalledip_port = this->sipcalledip_port;
 		}
 		int i;
 		for(i = 0; i < MAX_SIPCALLERDIP; i++) {
@@ -6103,19 +6117,24 @@ Call::check_is_caller_called(const char *call_id, int sip_method, unsigned int s
 				if(sip_method == INVITE) {
 					sipcallerip[i] = saddr;
 					sipcalledip[i] = daddr;
+					sipcallerip_port[i] = sport;
+					sipcalledip_port[i] = dport;
 					if(sverb.check_is_caller_called) {
 						debug_str_set += string(" / set sipcallerdip[") + intToString(i) + "]: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
 					}
 				} else if(IS_SIP_RES18X(sip_method))  {
 					sipcallerip[i] = daddr;
 					sipcalledip[i] = saddr;
+					sipcallerip_port[i] = dport;
+					sipcalledip_port[i] = sport;
 					if(sverb.check_is_caller_called) {
 						debug_str_set += string(" / set sipcallerdip[") + intToString(i) + "]: s " + inet_ntostring(htonl(daddr)) + ", d " + inet_ntostring(htonl(saddr));
 					}
 				}
 			}
 			if(sipcallerip[i]) {
-				if(sipcallerip[i] == saddr) {
+				if(sipcallerip[i] == saddr &&
+				   (!ip_is_localhost(htonl(saddr)) || sipcallerip_port[i] == sport)) {
 					// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
 					// SDP will be stream from called
 					_iscalled = 1;
@@ -6126,7 +6145,8 @@ Call::check_is_caller_called(const char *call_id, int sip_method, unsigned int s
 					break;
 				} else {
 					// The IP address is different, check if the request matches one of the address from the first invite
-					if(sipcallerip[i] == daddr) {
+					if(sipcallerip[i] == daddr &&
+					   (!ip_is_localhost(htonl(daddr)) || sipcallerip_port[i] == dport)) {
 						// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
 						*iscaller = 1;
 						if(sverb.check_is_caller_called) {

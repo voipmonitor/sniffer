@@ -2592,8 +2592,9 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		}
 	}
 	
-	detectCallerd = call->check_is_caller_called(packetS->get_callid(),
-						     packetS->sip_method, packetS->saddr, packetS->daddr, &iscaller, &iscalled, 
+	detectCallerd = call->check_is_caller_called(packetS->get_callid(), packetS->sip_method, 
+						     packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
+						     &iscaller, &iscalled, 
 						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) || 
 						     IS_SIP_RES18X(packetS->sip_method));
 	if(detectCallerd) {

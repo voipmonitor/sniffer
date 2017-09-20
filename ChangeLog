@@ -1,3 +1,12 @@
+20.4.6 20.9.2017
+================
+- fix issue with detect caller/called when SIP IPs are localhosts [VS-685]
+- fix scanpcapdir [VS-688]
+- added support for reading packets via /dev/stdin (like piping tcpdump data to voipmonitor) [VS-687]
+- fix compilation if openssl is not on the system
+- fix partition creation for cloud mode (starting is now faster) 
+
+
 20.4.5 13.9.2017
 ================
 - fix audio decode for 32bit platforms
