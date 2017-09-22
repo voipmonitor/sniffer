@@ -1,3 +1,8 @@
+20.4.7 22.9.2017
+================
+- fix crash on arm when running in backround
+
+
 20.4.6 20.9.2017
 ================
 - fix issue with detect caller/called when SIP IPs are localhosts [VS-685]
