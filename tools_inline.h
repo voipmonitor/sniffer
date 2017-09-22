@@ -13,10 +13,14 @@
 
 
 inline unsigned int get_unix_tid(void) {
+#if defined(__arm__) 
+	int tid = 0;
+#else
 	static __thread int tid = 0;
 	if(tid) {
 		return tid;
 	}
+#endif
 #ifdef HAVE_PTHREAD_GETTHREADID_NP
 	tid = pthread_getthreadid_np();
 #elif defined(linux)
