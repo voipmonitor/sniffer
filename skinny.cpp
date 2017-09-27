@@ -1343,8 +1343,8 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	}       
 
 	// store this call only if it starts with invite
-	Call *call = calltable->add(state, s, l, header->ts.tv_sec, saddr, source, handle, dlt, sensor_id);
-	call->chantype = CHAN_SKINNY;
+	Call *call = calltable->add(state, s, l, header->ts.tv_sec, saddr, source, 
+				    handle, dlt, sensor_id);
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 	call->sipcallerip[0] = saddr;
 	call->sipcalledip[0] = daddr;

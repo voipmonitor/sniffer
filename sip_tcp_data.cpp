@@ -119,9 +119,15 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				extern char *sipportmatrix;
 				extern char *skinnyportmatrix;
 				packetS->is_skinny = opt_skinny && (skinnyportmatrix[_port_src] || skinnyportmatrix[_port_dst]);
+				extern int opt_mgcp;
+				extern unsigned opt_tcp_port_mgcp_gateway;
+				extern unsigned opt_tcp_port_mgcp_callagent;
+				packetS->is_mgcp = opt_mgcp && (_port_src == opt_tcp_port_mgcp_gateway || _port_dst == opt_tcp_port_mgcp_gateway ||
+								_port_src == opt_tcp_port_mgcp_callagent || _port_dst == opt_tcp_port_mgcp_callagent);
 				packetS->is_need_sip_process = !packetS->isother &&
 							       (sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
-								packetS->is_skinny);
+								packetS->is_skinny ||
+								packetS->is_mgcp);
 				packetS->init2();
 				((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS);
 			} else {

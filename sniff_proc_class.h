@@ -247,10 +247,22 @@ public:
 		extern char *sipportmatrix;
 		extern char *skinnyportmatrix;
 		packetS.is_skinny = opt_skinny && istcp && (skinnyportmatrix[source] || skinnyportmatrix[dest]);
+		extern int opt_mgcp;
+		extern unsigned opt_tcp_port_mgcp_gateway;
+		extern unsigned opt_udp_port_mgcp_gateway;
+		extern unsigned opt_tcp_port_mgcp_callagent;
+		extern unsigned opt_udp_port_mgcp_callagent;
+		packetS.is_mgcp = opt_mgcp && 
+				  (istcp ?
+				    ((unsigned)source == opt_tcp_port_mgcp_gateway || (unsigned)dest == opt_tcp_port_mgcp_gateway ||
+				     (unsigned)source == opt_tcp_port_mgcp_callagent || (unsigned)dest == opt_tcp_port_mgcp_callagent) :
+				    ((unsigned)source == opt_udp_port_mgcp_gateway || (unsigned)dest == opt_udp_port_mgcp_gateway ||
+				     (unsigned)source == opt_udp_port_mgcp_callagent || (unsigned)dest == opt_udp_port_mgcp_callagent));
 		packetS.is_need_sip_process = !packetS.isother &&
 					      (is_ssl ||
 					       sipportmatrix[source] || sipportmatrix[dest] ||
-					       packetS.is_skinny);
+					       packetS.is_skinny ||
+					       packetS.is_mgcp);
 		extern bool opt_t2_boost;
 		if(!opt_t2_boost ||
 		   packetS.is_need_sip_process ||
@@ -709,6 +721,7 @@ private:
 	inline void process_parseSipData(packet_s_process **packetS_ref);
 	inline void process_sip(packet_s_process **packetS_ref);
 	inline void process_skinny(packet_s_process **packetS_ref);
+	inline void process_mgcp(packet_s_process **packetS_ref);
 	inline bool process_getCallID(packet_s_process **packetS_ref);
 	inline bool process_getCallID_publish(packet_s_process **packetS_ref);
 	inline void process_getSipMethod(packet_s_process **packetS_ref);

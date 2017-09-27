@@ -71,7 +71,7 @@ private:
 	long long reindex_date_hour_type(string date, int h, string type, bool readOnly, bool quickCheck, 
 					 map<unsigned, bool> *fillMinutes, bool *existsDhDir);
 	void unlinkfileslist(eTypeSpoolFile typeSpoolFile, string fname, string callFrom);
-	void unlink_dirs(string datehour, int sip, int reg, int skinny, int ss7, int rtp, int graph, int audio, string callFrom);
+	void unlink_dirs(string datehour, int sip, int reg, int skinny, int mgcp, int ss7, int rtp, int graph, int audio, string callFrom);
 	void clean_spooldir_run();
 	void clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio);
 	void clean_maxpoolsize_all() {

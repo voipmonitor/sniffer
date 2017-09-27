@@ -1415,7 +1415,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			lapTimeDescr.push_back("check heap");
 		}
 		if(!this->isMirrorSender()) {
-			outStr << "calls[" << calltable->calls_listMAP.size() << ",r:" << calltable->registers_listMAP.size() << "]"
+			outStr << "calls[" << (calltable->calls_listMAP.size() + calltable->calls_by_stream_callid_listMAP.size()) << ",r:" << calltable->registers_listMAP.size() << "]"
 			       << "[" << calls_counter << ",r:" << registers_counter << "]";
 			calltable->lock_calls_audioqueue();
 			size_t audioQueueSize = calltable->audio_queue.size();

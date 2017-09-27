@@ -23,6 +23,7 @@
 
 #include <string>
 
+#include "mgcp.h"
 #include "rtp.h"
 #include "tools.h"
 #include "sql_db.h"
@@ -66,6 +67,7 @@
 #define UPDATE 14
 #define SKINNY_NEW 100
 #define SS7 200
+#define MGCP 300
 
 #define IS_SIP_RES18X(sip_method) (sip_method == RES18X || sip_method == RES182)
 #define IS_SIP_RES3XX(sip_method) (sip_method == RES300 || sip_method == RES3XX)
@@ -89,9 +91,6 @@
 #define FLAG_RUNBMOSLQO		(1 << 12)
 #define FLAG_HIDEMESSAGE	(1 << 13)
 #define FLAG_USE_SPOOL_2	(1 << 14)
-
-#define CHAN_SIP	1
-#define CHAN_SKINNY	2
 
 #define CDR_NEXT_MAX 10
 
@@ -336,7 +335,6 @@ public:
 	};
 public:
 	bool is_ssl;			//!< call was decrypted
-	char chantype;
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
 	volatile int rtplock;
 	unsigned long call_id_len;	//!< length of call-id 	
@@ -377,6 +375,8 @@ public:
 	RTP *lastcalledrtp;		//!< last RTP stream from called
 	u_int32_t saddr;		//!< source IP address of first INVITE
 	unsigned short sport;		//!< source port of first INVITE
+	u_int32_t daddr;
+	unsigned short dport;
 	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
 	int recordstopped;		//!< flag holding if call was stopped to avoid double free
 	int dtmfflag;			//!< used for holding dtmf states 
@@ -567,6 +567,12 @@ public:
 
 	u_int32_t iscaller_consecutive[2];
 	
+	string mgcp_callid;
+	list<u_int32_t> mgcp_transactions;
+	map<u_int32_t, sMgcpRequest> mgcp_requests;
+	map<u_int32_t, sMgcpResponse> mgcp_responses;
+	time_t last_mgcp_connect_packet_time;
+	
 	/**
 	 * constructor
 	 *
@@ -661,6 +667,7 @@ public:
 	 *
 	*/
 	void set_last_packet_time(time_t mtime) { if(mtime > last_packet_time) last_packet_time = mtime; };
+	void set_last_mgcp_connect_packet_time(time_t mtime) { if(mtime > last_mgcp_connect_packet_time) last_mgcp_connect_packet_time = mtime; };
 
 	/**
 	 * @brief get first time of the the packet which belongs to this call
@@ -713,8 +720,10 @@ public:
 	 * @return lenght of the call in seconds
 	*/
 	int duration() { return last_packet_time - first_packet_time; };
+	int duration_mgcp() { return last_mgcp_connect_packet_time - first_packet_time; };
 	
 	int connect_duration() { return(connect_time ? duration() - (connect_time - first_packet_time) : 0); };
+	int connect_duration_mgcp() { return(connect_time ? duration_mgcp() - (connect_time - first_packet_time) : 0); };
 	
 	int duration_active() { return(getGlobalPacketTimeS() - first_packet_time); };
 	
@@ -912,13 +921,13 @@ public:
 	
 	void calls_counter_inc() {
 		extern volatile int calls_counter;
-		if(type == INVITE || type == MESSAGE) {
+		if(type == INVITE || type == MESSAGE || type == MGCP) {
 			++calls_counter;
 		}
 	}
 	void calls_counter_dec() {
 		extern volatile int calls_counter;
-		if(type == INVITE || type == MESSAGE) {
+		if(type == INVITE || type == MESSAGE || type == MGCP) {
 			--calls_counter;
 		}
 	}
@@ -1188,6 +1197,9 @@ public:
 	queue<string> files_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	map<string, Call*> calls_listMAP;
+	map<sStreamIds2, Call*> calls_by_stream_callid_listMAP;
+	map<sStreamId2, Call*> calls_by_stream_id2_listMAP;
+	map<sStreamId, Call*> calls_by_stream_listMAP;
 	map<string, Call*> calls_mergeMAP;
 	map<string, Call*> registers_listMAP;
 	map<string, Call*> skinny_ipTuples;
@@ -1257,8 +1269,11 @@ public:
 	 *
 	 * @return reference of the new Call class
 	*/
-	Call *add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port, pcap_t *handle, int dlt, int sensorId);
+	Call *add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port, 
+		  pcap_t *handle, int dlt, int sensorId);
 	Ss7 *add_ss7(packet_s_stack *packetS, Ss7::sParseData *data);
+	Call *add_mgcp(sMgcpRequest *request, time_t time, u_int32_t saddr, unsigned short sport, u_int32_t daddr, unsigned short dport,
+		       pcap_t *handle, int dlt, int sensorId);
 
 	/**
 	 * @brief find Call by call_id
@@ -1281,6 +1296,39 @@ public:
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
+		}
+		unlock_calls_listMAP();
+		return(rslt_call);
+	}
+	Call *find_by_stream_callid(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport, const char *callid) {
+		Call *rslt_call = NULL;
+		lock_calls_listMAP();
+		map<sStreamIds2, Call*>::iterator callMAPIT = calls_by_stream_callid_listMAP.find(sStreamIds2(sip, sport, dip, dport, callid, true));
+		if(callMAPIT != calls_by_stream_callid_listMAP.end() &&
+		   !callMAPIT->second->end_call) {
+			rslt_call = callMAPIT->second;
+		}
+		unlock_calls_listMAP();
+		return(rslt_call);
+	}
+	Call *find_by_stream_id2(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport, u_int64_t id) {
+		Call *rslt_call = NULL;
+		lock_calls_listMAP();
+		map<sStreamId2, Call*>::iterator callMAPIT = calls_by_stream_id2_listMAP.find(sStreamId2(sip, sport, dip, dport, id, true));
+		if(callMAPIT != calls_by_stream_id2_listMAP.end() &&
+		   !callMAPIT->second->end_call) {
+			rslt_call = callMAPIT->second;
+		}
+		unlock_calls_listMAP();
+		return(rslt_call);
+	}
+	Call *find_by_stream(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport) {
+		Call *rslt_call = NULL;
+		lock_calls_listMAP();
+		map<sStreamId, Call*>::iterator callMAPIT = calls_by_stream_listMAP.find(sStreamId(sip, sport, dip, dport, true));
+		if(callMAPIT != calls_by_stream_listMAP.end() &&
+		   !callMAPIT->second->end_call) {
+			rslt_call = callMAPIT->second;
 		}
 		unlock_calls_listMAP();
 		return(rslt_call);
@@ -1420,6 +1468,9 @@ public:
 
 	void destroyCallsIfPcapsClosed();
 	void destroyRegistersIfPcapsClosed();
+	
+	void mgcpCleanupTransactions(Call *call);
+	void mgcpCleanupStream(Call *call);
 	
 	void lock_calls_hash() {
 		unsigned usleepCounter = 0;

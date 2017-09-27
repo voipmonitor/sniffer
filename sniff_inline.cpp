@@ -35,6 +35,11 @@ extern bool isSslIpPort(u_int32_t ip, u_int16_t port);
 extern int opt_udpfrag;
 extern int opt_ipaccount;
 extern int opt_skinny;
+extern int opt_mgcp;
+extern unsigned opt_tcp_port_mgcp_gateway;
+extern unsigned opt_udp_port_mgcp_gateway;
+extern unsigned opt_tcp_port_mgcp_callagent;
+extern unsigned opt_udp_port_mgcp_callagent;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
 extern char *sipportmatrix;
@@ -533,7 +538,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				    !(opt_enable_ssl && 
 				      (isSslIpPort(htonl(ppd->header_ip->saddr), htons(ppd->header_tcp->source)) ||
 				       isSslIpPort(htonl(ppd->header_ip->daddr), htons(ppd->header_tcp->dest)))) &&
-				    !(opt_skinny && (skinnyportmatrix[htons(ppd->header_tcp->source)] || skinnyportmatrix[htons(ppd->header_tcp->dest)]))) {
+				    !(opt_skinny && (skinnyportmatrix[htons(ppd->header_tcp->source)] || skinnyportmatrix[htons(ppd->header_tcp->dest)])) &&
+				    !(opt_mgcp && 
+				      (htons(ppd->header_tcp->source) == opt_tcp_port_mgcp_gateway || htons(ppd->header_tcp->dest) == opt_tcp_port_mgcp_gateway ||
+				       htons(ppd->header_tcp->source) == opt_tcp_port_mgcp_callagent || htons(ppd->header_tcp->dest) == opt_tcp_port_mgcp_callagent))) {
 					// not interested in TCP packet other than SIP port
 					if(!opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
 						//cout << "pcapProcess exit 005" << endl;

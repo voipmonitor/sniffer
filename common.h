@@ -59,6 +59,8 @@ struct sVerbose {
 	int dump_sip;
 	int dump_sip_line;
 	int dump_sip_without_counter;
+	int mgcp;
+	int mgcp_sdp;
 	int manager;
 	int scanpcapdir;
 	int debug_rtcp;

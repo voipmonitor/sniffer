@@ -126,6 +126,27 @@ struct d_item
 	type_item items[2];
 };
 
+template <class type_item1, class type_item2>
+struct d_item2
+{
+	d_item2() {
+	}
+	d_item2(type_item1 item1, type_item2 item2) {
+		this->item1 = item1;
+		this->item2 = item2;
+	}
+	bool operator == (const d_item2<type_item1, type_item2>& other) const { 
+		return(this->item1 == other.item1 &&
+		       this->item2 == other.item2); 
+	}
+	bool operator < (const d_item2<type_item1, type_item2>& other) const { 
+		return(this->item1 < other.item1 ||
+		       (this->item1 == other.item1 && this->item2 < other.item2)); 
+	}
+	type_item1 item1;
+	type_item2 item2;
+};
+
 struct string_null
 {
 	string_null(const char *str = NULL) {
@@ -141,9 +162,14 @@ struct string_null
 };
 
 struct sStreamId {
-	sStreamId(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport) {
+	sStreamId(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport, bool sortSc = false) {
 		s = d_u_int32_t(sip, sport);
 		c = d_u_int32_t(cip, cport);
+		if(sortSc && c < s) {
+			d_u_int32_t t = s;
+			s = c;
+			c = t;
+		}
 	}
 	bool operator == (const sStreamId& other) const { 
 		return(this->s == other.s &&
@@ -155,6 +181,68 @@ struct sStreamId {
 	}
 	d_u_int32_t s;
 	d_u_int32_t c;
+};
+
+struct sStreamId2 {
+	sStreamId2(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport, u_int64_t id, bool sortSc = false) {
+		s = d_u_int32_t(sip, sport);
+		c = d_u_int32_t(cip, cport);
+		if(sortSc && c < s) {
+			d_u_int32_t t = s;
+			s = c;
+			c = t;
+		}
+		this->id = id;
+	}
+	bool operator == (const sStreamId2& other) const { 
+		return(this->s == other.s &&
+		       this->c == other.c &&
+		       this->id == other.id); 
+	}
+	bool operator < (const sStreamId2& other) const { 
+		return((this->s < other.s) ? true : !(this->s == other.s) ? false :
+		       (this->c < other.c) ? true : !(this->c == other.c) ? false :
+		       (this->id < other.id)); 
+	}
+	d_u_int32_t s;
+	d_u_int32_t c;
+	u_int64_t id;
+};
+
+struct sStreamIds2 {
+	sStreamIds2(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport, const char *ids, bool sortSc = false) {
+		s = d_u_int32_t(sip, sport);
+		c = d_u_int32_t(cip, cport);
+		if(sortSc && c < s) {
+			d_u_int32_t t = s;
+			s = c;
+			c = t;
+		}
+		this->ids = ids;
+	}
+	sStreamIds2(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport, u_int64_t id, bool sortSc = false) {
+		s = d_u_int32_t(sip, sport);
+		c = d_u_int32_t(cip, cport);
+		if(sortSc && c < s) {
+			d_u_int32_t t = s;
+			s = c;
+			c = t;
+		}
+		this->ids = intToString(id);
+	}
+	bool operator == (const sStreamIds2& other) const { 
+		return(this->s == other.s &&
+		       this->c == other.c &&
+		       this->ids == other.ids); 
+	}
+	bool operator < (const sStreamIds2& other) const { 
+		return((this->s < other.s) ? true : !(this->s == other.s) ? false :
+		       (this->c < other.c) ? true : !(this->c == other.c) ? false :
+		       (this->ids < other.ids)); 
+	}
+	d_u_int32_t s;
+	d_u_int32_t c;
+	string ids;
 };
 
 template <class type_atomic>
