@@ -1,0 +1,460 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <pcap.h>
+#include <iomanip>
+#include <iostream>
+#include <vector>
+
+#include "voipmonitor.h"
+#include "tools.h"
+#include "mgcp.h"
+#include "sniff.h"
+#include "calltable.h"
+#include "filter_mysql.h"
+#include "pcap_queue.h"
+
+
+using namespace std;
+
+
+extern void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from, char *callidstr);
+
+static bool parse_mgcp_request(sMgcpRequest *request, vector<string> *mgcp_lines);
+static bool parse_mgcp_response(sMgcpResponse *response, vector<string> *mgcp_lines);
+static bool parse_mgcp_parameters(sMgcpParameters *parameters, vector<string> *mgcp_lines);
+static bool parse_mgcp_request(sMgcpRequest *request, const char *mgcp_line);
+static bool parse_mgcp_response(sMgcpResponse *response, const char *mgcp_line);
+static void parse_mgcp_parameters(sMgcpParameters *parameters, const char *mgcp_line);
+
+
+extern Calltable *calltable;
+extern int verbosity;
+extern int opt_saveSIP;
+extern int opt_saveRTP;
+extern int opt_saveudptl;
+extern int opt_saverfc2833;
+extern int opt_savewav_force;
+extern int opt_pcap_split;
+extern int opt_newdir;
+
+
+sMgcpRequestType mgcpRequestType[] = {
+	{ _mgcp_EPCF, "EPCF", "EndpointConfiguration" },
+	{ _mgcp_CRCX, "CRCX", "CreateConnection" },
+	{ _mgcp_MDCX, "MDCX", "ModifyConnection" },
+	{ _mgcp_DLCX, "DLCX", "DeleteConnection" },
+	{ _mgcp_RQNT, "RQNT", "NotificationRequest" },
+	{ _mgcp_NTFY, "NTFY", "Notify" },
+	{ _mgcp_AUEP, "AUEP", "AuditEndpoint" },
+	{ _mgcp_AUCX, "AUCX", "AuditConnection" },
+	{ _mgcp_RSIP, "RSIP", "RestartInProgress" },
+	{ _mgcp_MESG, "MESG", "Message" }
+};
+
+
+eMgcpRequestType getMgcpRequestType(const char *typeString) {
+	for(unsigned i = 0; i < sizeof(mgcpRequestType) / sizeof(mgcpRequestType[0]); i++) {
+		if(!strcasecmp(typeString, mgcpRequestType[i].string)) {
+			return(mgcpRequestType[i].type);
+		}
+	}
+	return(_mgcp_na);
+}
+
+string getMgcpRequestTypeString(eMgcpRequestType type, bool description) {
+	for(unsigned i = 0; i < sizeof(mgcpRequestType) / sizeof(mgcpRequestType[0]); i++) {
+		if(type == mgcpRequestType[i].type) {
+			return(description ? mgcpRequestType[i].description : mgcpRequestType[i].string);
+		}
+	}
+	return("");
+}
+
+
+eMgcpRequestType check_mgcp_request(char *data, unsigned long len) {
+	if(len < 4) {
+		return(_mgcp_na);
+	}
+	for(unsigned i = 0; i < sizeof(mgcpRequestType) / sizeof(mgcpRequestType[0]); i++) {
+		if(!strncmp(data, mgcpRequestType[i].string, 4)) {
+			 return(len == 4 || data[4] == ' ' || data[4] == '\t' ?
+				 mgcpRequestType[i].type :
+				 _mgcp_na);
+		}
+	}
+	return(_mgcp_na);
+}
+
+int check_mgcp_response(char *data, unsigned long len) {
+	if(len < 3) {
+		return(-1);
+	}
+	for(unsigned i = 0; i < 3; i++) {
+		if(!isdigit(data[i])) {
+			return(-1);
+		}
+	}
+	return(len == 3 || data[3] == ' ' || data[3] == '\t' ?
+		atoi(data) : 
+		-1);
+}
+
+bool check_mgcp(char *data, unsigned long len) {
+	return(check_mgcp_request(data, len) != _mgcp_na ||
+	       check_mgcp_response(data, len) >= 0);
+}
+
+
+void *handle_mgcp(packet_s_process *packetS) {
+	bool is_request = false;
+	bool is_response = false;
+	eMgcpRequestType request_type = check_mgcp_request(packetS->data, packetS->datalen);
+	int response_code = -1;
+	if(request_type != _mgcp_na) {
+		is_request = true;
+	} else {
+		response_code = check_mgcp_response(packetS->data, packetS->datalen);
+		if(response_code >= 0) {
+			is_response = true;
+		}
+	}
+	if((!is_request && !is_response) ||
+	   (is_request && 
+	    (request_type == _mgcp_EPCF || request_type == _mgcp_AUEP || request_type == _mgcp_AUCX || request_type == _mgcp_RSIP))) {
+		return(NULL);
+	}
+	int mgcp_header_len = packetS->datalen;
+	u_char *sdp = (u_char*)memmem(packetS->data, packetS->datalen, "\r\n\r\n", 4);
+	if(sdp) {
+		mgcp_header_len = sdp - (u_char*)packetS->data;
+	}
+	vector<string> mgcp_lines = split(string(packetS->data, mgcp_header_len).c_str(), "\r\n", true);
+	if(!mgcp_lines.size()) {
+		return(NULL);
+	}
+	sMgcpRequest request;
+	sMgcpResponse response;
+	if(is_request) {
+		parse_mgcp_request(&request, &mgcp_lines);
+		if(request.is_set()) {
+			request.time = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
+		} else {
+			return(NULL);
+		}
+	}
+	if(is_response) {
+		parse_mgcp_response(&response, &mgcp_lines);
+		if(response.is_set()) {
+			response.time = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
+		} else {
+			return(NULL);
+		}
+	}
+	Call *call = NULL;
+	if(is_request) {
+		if(request.is_set_call_id()) {
+			call = calltable->find_by_stream_callid(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, request.parameters.call_id.c_str());
+			if(request_type == _mgcp_CRCX) {
+				if(call) {
+					calltable->lock_calls_listMAP();
+					map<sStreamIds2, Call*>::iterator callMAPIT = calltable->calls_by_stream_callid_listMAP.find(sStreamIds2(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, request.parameters.call_id.c_str(), true));
+					calltable->calls_by_stream_callid_listMAP.erase(callMAPIT);
+					for(unsigned i = 1; i < 100; i++) {
+						string call_id_undup = request.call_id() + "_" + intToString(i);
+						callMAPIT = calltable->calls_by_stream_callid_listMAP.find(sStreamIds2(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, call_id_undup.c_str(), true));
+						if(callMAPIT == calltable->calls_by_stream_callid_listMAP.end()) {
+							calltable->calls_by_stream_callid_listMAP[sStreamIds2(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, call_id_undup.c_str(), true)] = call;
+							break;
+						}
+					}
+					call->removeFindTables(true);
+					calltable->unlock_calls_listMAP();
+				} else {
+					calltable->lock_calls_listMAP();
+					map<sStreamId, Call*>::iterator callMAPIT = calltable->calls_by_stream_listMAP.find(sStreamId(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, true));
+					if(callMAPIT != calltable->calls_by_stream_listMAP.end()) {
+						callMAPIT->second->removeFindTables(true);
+					}
+					calltable->unlock_calls_listMAP();
+				}
+				unsigned int flags = 0;
+				set_global_flags(flags);
+				IPfilter::add_call_flags(&flags, ntohl(packetS->saddr), ntohl(packetS->daddr));
+				if(flags & FLAG_SKIPCDR) {
+					if(verbosity > 1)
+						syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
+					return NULL;
+				}       
+				call = calltable->add_mgcp(&request, packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
+							   get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
+				call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
+				strncpy(call->called, request.endpoint.c_str(), sizeof(call->called));
+				call->called[sizeof(call->called) - 1] = 0;
+				call->sipcallerip[0] = packetS->saddr;
+				call->sipcalledip[0] = packetS->daddr;
+				call->sipcallerport = packetS->source;
+				call->sipcalledport = packetS->dest;
+				call->flags = flags;
+				strncpy(call->fbasename, request.call_id().c_str(), MAX_FNAME - 1);
+				if(enable_save_sip_rtp_audio(call)) {
+					if(enable_pcap_split) {
+						if(enable_save_sip(call)) {
+							string pathfilename = call->get_pathfilename(tsf_mgcp);
+							if(call->getPcapSip()->open(tsf_mgcp, pathfilename.c_str(), call->useHandle, call->useDlt)) {
+								if(verbosity > 3) {
+									syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
+								}
+							}
+						}
+						if(enable_save_rtp(call)) {
+							string pathfilename = call->get_pathfilename(tsf_rtp);
+							if(call->getPcapRtp()->open(tsf_rtp, pathfilename.c_str(), call->useHandle, call->useDlt)) {
+								if(verbosity > 3) {
+									syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
+								}
+							}
+						}
+					} else {
+						if(enable_save_sip_rtp(call)) {
+							string pathfilename = call->get_pathfilename(tsf_mgcp);
+							if(call->getPcap()->open(tsf_mgcp, pathfilename.c_str(), call->useHandle, call->useDlt)) {
+								if(verbosity > 3) {
+									syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
+								}
+							}
+						}
+					}
+				}
+			} else if(call) {
+				calltable->lock_calls_listMAP();
+				calltable->calls_by_stream_id2_listMAP[sStreamId2(call->saddr, call->sport, call->daddr, call->dport, request.transaction_id, true)] = call;
+				call->mgcp_transactions.push_back(request.transaction_id);
+				calltable->unlock_calls_listMAP();
+			}
+		} else {
+			call = calltable->find_by_stream(packetS->saddr, packetS->source, packetS->daddr, packetS->dest);
+			if(call) {
+				calltable->lock_calls_listMAP();
+				calltable->calls_by_stream_id2_listMAP[sStreamId2(call->saddr, call->sport, call->daddr, call->dport, request.transaction_id, true)] = call;
+				call->mgcp_transactions.push_back(request.transaction_id);
+				calltable->unlock_calls_listMAP();
+			}
+		}
+		if(sverb.mgcp && call) {
+			request.debug_output(sdp ? "(SDP)" : NULL);
+		}
+	}
+	if(is_response) {
+		call = calltable->find_by_stream_id2(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, response.transaction_id);
+		if(sverb.mgcp && call) {
+			response.debug_output();
+		}
+	}
+	if(call) {
+		if(is_request) {
+			call->mgcp_requests[request.transaction_id] = request;
+		}
+		if(is_response) {
+			call->mgcp_responses[response.transaction_id] = response;
+			if(call->mgcp_requests.find(response.transaction_id) != call->mgcp_requests.end()) {
+				request = call->mgcp_requests[response.transaction_id];
+			}
+		}
+		if(is_request && request_type == _mgcp_DLCX) {
+			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 10;
+		} else {
+			call->shift_destroy_call_at(packetS->header_pt);
+		}
+		if(is_response) {
+			if(call->lastSIPresponseNum == 0 || call->lastSIPresponseNum < 300) {
+				call->lastSIPresponseNum = response_code;
+				strncpy(call->lastSIPresponse, response.response.c_str(), sizeof(call->lastSIPresponse));
+				call->lastSIPresponse[sizeof(call->lastSIPresponse) - 1] = 0;
+			}
+		}
+		if(sdp) {
+			if(sverb.mgcp_sdp) {
+				cout << "SDP: " << endl << string((char*)sdp + 4, packetS->datalen - mgcp_header_len - 4) << endl;
+			}
+			process_sdp(call, packetS, packetS->daddr == call->sipcallerip[0], (char*)sdp - 4, (char*)call->call_id.c_str());
+		}
+		if(!call->connect_time && is_request) {
+			if((request_type == _mgcp_CRCX && request.parameters.connection_mode == "SENDRECV") ||
+			   (request_type == _mgcp_RQNT && request.parameters.requested_events == "L/HF(N),L/HU(N)")) {
+				call->connect_time = packetS->header_pt->ts.tv_sec;
+				call->connect_time_usec = packetS->header_pt->ts.tv_usec;
+			}
+		}
+		save_packet(call, packetS, TYPE_MGCP);
+		if(request.type == _mgcp_CRCX || request.type == _mgcp_MDCX || request.type == _mgcp_DLCX) {
+			call->set_last_mgcp_connect_packet_time(packetS->header_pt->ts.tv_sec);
+		}
+		call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
+	}
+	return(NULL);
+}
+
+bool parse_mgcp_request(sMgcpRequest *request, vector<string> *mgcp_lines) {
+	if(!mgcp_lines->size()) {
+		return(false);
+	}
+	if(!parse_mgcp_request(request, (*mgcp_lines)[0].c_str())) {
+		return(false);
+	}
+	if(mgcp_lines->size() > 1) {
+		parse_mgcp_parameters(&request->parameters, mgcp_lines);
+	}
+	return(true);
+}
+
+bool parse_mgcp_response(sMgcpResponse *response, vector<string> *mgcp_lines) {
+	if(!mgcp_lines->size()) {
+		return(false);
+	}
+	if(!parse_mgcp_response(response, (*mgcp_lines)[0].c_str())) {
+		return(false);
+	}
+	if(mgcp_lines->size() > 1) {
+		parse_mgcp_parameters(&response->parameters, mgcp_lines);
+	}
+	return(true);
+}
+
+bool parse_mgcp_parameters(sMgcpParameters *parameters, vector<string> *mgcp_lines) {
+	for(unsigned i = 1; i < mgcp_lines->size(); i++) {
+		parse_mgcp_parameters(parameters, (*mgcp_lines)[i].c_str());
+	}
+	return(parameters->is_set());
+}
+
+bool parse_mgcp_request(sMgcpRequest *request, const char *mgcp_line) {
+	const char *pos = mgcp_line;
+	int counter = 0;
+	while(pos) {
+		const char *posSpaceSeparator = strchr(pos, ' ');
+		if(posSpaceSeparator) {
+			*(char*)posSpaceSeparator = 0;
+		}
+		switch(counter) {
+		case 0:
+			request->type = getMgcpRequestType(pos);
+			if(request->type == _mgcp_na) {
+				return(false);
+			}
+			break;
+		case 1:
+			request->transaction_id = atoll(pos);
+			break;
+		case 2:
+			request->endpoint = pos;
+			break;
+		case 3:
+			if(!strcasecmp(pos, "MGCP")) {
+				request->version_prefix_ok = true;
+			}
+			break;
+		case 4:
+			if(request->version_prefix_ok) {
+				request->version = pos;
+			}
+			break;
+		}
+		if(posSpaceSeparator) {
+			*(char*)posSpaceSeparator = ' ';
+			pos = posSpaceSeparator + 1;
+		} else {
+			pos = NULL;
+		}
+		++counter;
+	}
+	return(request->is_set());
+}
+
+bool parse_mgcp_response(sMgcpResponse *response, const char *mgcp_line) {
+	const char *pos = mgcp_line;
+	int counter = 0;
+	while(pos) {
+		const char *posSpaceSeparator = strchr(pos, ' ');
+		if(posSpaceSeparator) {
+			*(char*)posSpaceSeparator = 0;
+		}
+		switch(counter) {
+		case 0:
+			if(!isdigit(*pos)) {
+				return(false);
+			}
+			response->code = atoi(pos);
+			break;
+		case 1:
+			response->transaction_id = atoll(pos);
+			break;
+		case 2:
+			response->response = pos;
+			break;
+		}
+		if(posSpaceSeparator) {
+			*(char*)posSpaceSeparator = ' ';
+			pos = posSpaceSeparator + 1;
+		} else {
+			pos = NULL;
+		}
+		++counter;
+	}
+	return(response->is_set());
+}
+
+void parse_mgcp_parameters(sMgcpParameters *parameters, const char *mgcp_line) {
+	if(strlen(mgcp_line) < 4 ||
+	   mgcp_line[1] != ':' || mgcp_line[2] != ' ') {
+		return;
+	}
+	switch(mgcp_line[0]) {
+	case 'C':
+		parameters->call_id = mgcp_line + 3;
+		break;
+	case 'R':
+		parameters->requested_events = mgcp_line + 3;
+		break;
+	case 'M':
+		parameters->connection_mode = mgcp_line + 3;
+		break;
+	}
+}
+
+
+void sMgcpParameters::debug_output() {
+	if(!is_set()) {
+		return;
+	}
+	if(!call_id.empty()) {
+		cout << "   par call_id: " << call_id << endl;
+	}
+	if(!requested_events.empty()) {
+		cout << "   par requested_events: " << requested_events << endl;
+	}
+}
+
+void sMgcpRequest::debug_output(const char *firstLineSuffix) {
+	if(!is_set()) {
+		return;
+	}
+	cout << "request " << getMgcpRequestTypeString(type, false) << " (" << getMgcpRequestTypeString(type, true) << ")";
+	if(firstLineSuffix) {
+		cout << " " << firstLineSuffix;
+	}
+	cout << endl;
+	cout << "   transaction_id: " << transaction_id << endl
+	     << "   endpoint: " << endpoint << endl
+	     << "   version_prefix_ok: " << version_prefix_ok << endl
+	     << "   version: " << version << endl;
+	this->parameters.debug_output();
+}
+
+void sMgcpResponse::debug_output() {
+	if(!is_set()) {
+		return;
+	}
+	cout << "response " << code << " (" << response << ")" << endl
+	     << "   transaction_id: " << transaction_id << endl;
+	this->parameters.debug_output();
+}
