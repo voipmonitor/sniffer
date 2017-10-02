@@ -517,6 +517,7 @@ public:
 	char force_terminate;
 	char pcap_drop;
 	unsigned int lastsrcip;
+	unsigned int lastsrcport;
 
 	void *listening_worker_args;
 	

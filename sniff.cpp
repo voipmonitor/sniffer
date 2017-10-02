@@ -2148,6 +2148,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	call->sipcalledport = packetS->dest;
 	call->flags = flags;
 	call->lastsrcip = packetS->saddr;
+	call->lastsrcport = packetS->source;
 	
 	char *s;
 	unsigned long l;
@@ -2610,7 +2611,10 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		call->handle_dscp(packetS->header_ip, iscaller > 0);
 	}
 
-	if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
+	if(call->lastsrcip != packetS->saddr ||
+	   (ip_is_localhost(htonl(call->lastsrcip)) && call->lastsrcport != packetS->source)) { 
+		call->oneway = 0;
+	}
 
 	cseq = gettag_sip(packetS, "\nCSeq:", &cseqlen);
 	if(cseq && cseqlen < 32) {
@@ -3390,7 +3394,11 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 	}
 	call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
 	
-	if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
+	if(call->lastsrcip != packetS->saddr ||
+	   (ip_is_localhost(htonl(call->lastsrcip)) && call->lastsrcport != packetS->source)) { 
+		call->oneway = 0;
+	}
+	
 	if(packetS->lastSIPresponseNum) {
 		call->lastSIPresponseNum = packetS->lastSIPresponseNum;
 	}
@@ -3574,7 +3582,10 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		goto endsip;
 	}
 		
-	if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
+	if(call->lastsrcip != packetS->saddr ||
+	   (ip_is_localhost(htonl(call->lastsrcip)) && call->lastsrcport != packetS->source)) { 
+		call->oneway = 0;
+	}
 
 	if(opt_norecord_header) {
 		s = gettag_sip(packetS, "\nX-VoipMonitor-norecord:", &l);
