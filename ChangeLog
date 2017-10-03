@@ -1,3 +1,8 @@
+21.0 03.10.2017
+===============
+- MGCP support (beta)
+- fix yellow mark in GUI (one-way call mark) if using localhost ips in SIP [VG-1378] 
+
 20.4.7 22.9.2017
 ================
 - fix crash on arm when running in backround
