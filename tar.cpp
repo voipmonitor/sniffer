@@ -978,6 +978,7 @@ TarQueue::add(data_tar *tar_data, ChunkBuffer *buffer, unsigned int time){
 	case tsf_sip:
 	case tsf_reg:
 	case tsf_skinny:
+	case tsf_mgcp:
 	case tsf_ss7:
 		queue_data[1][data].push_back(data);
 		break;

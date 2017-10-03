@@ -416,6 +416,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	tmprtp.call_owner = this;
 	lastcallerrtp = NULL;
 	lastcalledrtp = NULL;
+	saddr = 0;
+	sport = 0;
+	daddr = 0;
+	dport = 0;
 	destroy_call_at = 0;
 	destroy_call_at_bye = 0;
 	destroy_call_at_bye_confirmed = 0;
@@ -501,7 +505,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	force_close = false;
 	
 	first_codec = -1;
-	chantype = 0;
 	
         caller_silence = 0;
         called_silence = 0;
@@ -533,6 +536,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 
 	iscaller_consecutive[0] = 0;
 	iscaller_consecutive[1] = 0;
+	
+	last_mgcp_connect_packet_time = 0;
 }
 
 void
@@ -1240,7 +1245,8 @@ read:
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
 		rtp[ssrc_n]->find_by_dest = find_by_dest;
-		rtp[ssrc_n]->ok_other_ip_side_by_sip = (type == SKINNY_NEW ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
+		rtp[ssrc_n]->ok_other_ip_side_by_sip = type == MGCP || 
+						       (type == SKINNY_NEW ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
 						       this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr : packetS->daddr) ||
 						       (this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr, find_by_dest ? packetS->source : packetS->dest) >= 0 &&
 							this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr : packetS->saddr));
@@ -3053,7 +3059,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(sipcallerport, "sipcallerport");
 		cdr.add(sipcalledport_confirmed ? sipcalledport_confirmed : sipcalledport, "sipcalledport");
 	}
-	cdr.add(duration(), "duration");
+	cdr.add(type == MGCP ? duration_mgcp() : duration(), "duration");
 	if(progress_time) {
 		cdr.add(progress_time - first_packet_time, "progress_time");
 	}
@@ -3061,14 +3067,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(first_rtp_time  - first_packet_time, "first_rtp_time");
 	}
 	if(connect_time) {
-		cdr.add(duration() - (connect_time - first_packet_time), "connect_duration");
+		cdr.add((type == MGCP ? duration_mgcp() : duration()) - (connect_time - first_packet_time), "connect_duration");
 	}
 	if(existsColumns.cdr_last_rtp_from_end && !use_sdp_sendonly) {
 		if(last_rtp_a_packet_time) {
-			cdr.add(last_packet_time - last_rtp_a_packet_time, "a_last_rtp_from_end");
+			cdr.add((type == MGCP ? last_mgcp_connect_packet_time : last_rtp_a_packet_time) - last_rtp_a_packet_time, "a_last_rtp_from_end");
 		}
 		if(last_rtp_b_packet_time) {
-			cdr.add(last_packet_time - last_rtp_b_packet_time, "b_last_rtp_from_end");
+			cdr.add((type == MGCP ? last_mgcp_connect_packet_time : last_packet_time) - last_rtp_b_packet_time, "b_last_rtp_from_end");
 		}
 	}
 	cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -3118,7 +3124,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bye = 107;
 	} else if(sipwithoutrtp_timeout_exceeded) {
 		bye = 108;
-	} else if(oneway && chantype != CHAN_SKINNY) {
+	} else if(oneway && type != SKINNY_NEW && type != MGCP) {
 		bye = 101;
 	} else if(pcap_drop) {
 		bye = 100;
@@ -3202,7 +3208,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		// find first caller and first called
 		RTP *rtpab[2] = {NULL, NULL};
 		bool rtpab_ok[2] = {false, false};
-		bool pass_rtpab_simple = type == SKINNY_NEW ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip;
+		bool pass_rtpab_simple = type == MGCP ||
+					 (type == SKINNY_NEW ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
 		for(int pass_rtpab = 0; pass_rtpab < (pass_rtpab_simple ? 1 : 2); pass_rtpab++) {
 			for(int k = 0; k < ssrc_n; k++) {
 				if(pass_rtpab == 0) {
@@ -5559,6 +5566,26 @@ Calltable::destroyRegistersIfPcapsClosed() {
 	this->unlock_registers_deletequeue();
 }
 
+void 
+Calltable::mgcpCleanupTransactions(Call *call) {
+	for(list<u_int32_t>::iterator iter_transactions = call->mgcp_transactions.begin(); iter_transactions != call->mgcp_transactions.end(); iter_transactions++) {
+		sStreamId2 streamId2(call->saddr, call->sport, call->daddr, call->dport, *iter_transactions, true);
+		map<sStreamId2, Call*>::iterator iter_streamid2 = calls_by_stream_id2_listMAP.find(streamId2);
+		if(iter_streamid2 != calls_by_stream_id2_listMAP.end()) {
+			calls_by_stream_id2_listMAP.erase(iter_streamid2);
+		}
+	}
+}
+
+void 
+Calltable::mgcpCleanupStream(Call *call) {
+	sStreamId streamId(call->saddr, call->sport, call->daddr, call->dport, true);
+	map<sStreamId, Call*>::iterator iter_stream = calls_by_stream_listMAP.find(streamId);
+	if(iter_stream != calls_by_stream_listMAP.end() && iter_stream->second == call) {
+		calls_by_stream_listMAP.erase(streamId);
+	}
+}
+
 Call*
 Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
 	       pcap_t *handle, int dlt, int sensorId) {
@@ -5610,6 +5637,43 @@ Calltable::add_ss7(packet_s_stack *packetS, Ss7::sParseData *data) {
 	return(newss7);
 }
 
+Call *
+Calltable::add_mgcp(sMgcpRequest *request, time_t time, u_int32_t saddr, unsigned short sport, u_int32_t daddr, unsigned short dport,
+		    pcap_t *handle, int dlt, int sensorId) {
+	string call_id = request->call_id();
+	Call *newcall = new FILE_LINE(0) Call(MGCP, (char*)call_id.c_str(), call_id.length(), time);
+
+	if(handle) {
+		newcall->useHandle = handle;
+	}
+	if(dlt) {
+		newcall->useDlt = dlt;
+	}
+	if(sensorId > -1) {
+		newcall->useSensorId = sensorId;
+	}
+	newcall->mgcp_callid = request->parameters.call_id;
+	newcall->saddr = saddr;
+	newcall->sport = sport;
+	newcall->daddr = daddr;
+	newcall->dport = dport;
+	newcall->oneway = 0;
+	
+	//flags
+	set_global_flags(newcall->flags);
+	
+	lock_calls_listMAP();
+	//calls_listMAP[call_id] = newcall;
+	calls_by_stream_callid_listMAP[sStreamIds2(saddr, sport, daddr, dport, request->parameters.call_id.c_str(), true)] = newcall;
+	calls_by_stream_id2_listMAP[sStreamId2(saddr, sport, daddr, dport, request->transaction_id, true)] = newcall;
+	calls_by_stream_listMAP[sStreamId(saddr, sport, daddr, dport, true)] = newcall;
+	newcall->calls_counter_inc();
+	newcall->mgcp_transactions.push_back(request->transaction_id);
+	unlock_calls_listMAP();
+	
+	return(newcall);
+}
+
 Call*
 Calltable::find_by_skinny_partyid(unsigned int partyid) {
 	map<unsigned int, Call*>::iterator skinny_partyIDIT = skinny_partyID.find(partyid);
@@ -5656,70 +5720,96 @@ Calltable::cleanup_calls( time_t currtime ) {
 	}
 	Call* call;
 	lock_calls_listMAP();
-	Call **closeCalls = new FILE_LINE(1012) Call*[calls_listMAP.size()];
+	Call **closeCalls = new FILE_LINE(1012) Call*[calls_listMAP.size() + calls_by_stream_callid_listMAP.size()];
 	unsigned int closeCalls_count = 0;
-	for (map<string, Call*>::iterator callMAPIT = calls_listMAP.begin(); callMAPIT != calls_listMAP.end();) {
-		call = (*callMAPIT).second;
-		if(verbosity > 2) {
-			call->dump();
-		}
-		if(verbosity && verbosityE > 1) {
-			syslog(LOG_NOTICE, "Calltable::cleanup - try callid %s", call->call_id.c_str());
-		}
-		// rtptimeout seconds of inactivity will save this call and remove from call table
-		bool closeCall = false;
-		if(currtime == 0 || call->force_close) {
-			closeCall = true;
-			if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
-				call->force_terminate = true;
-			}
-		} else if(call->type == SKINNY_NEW ||
-			  call->in_preprocess_queue_before_process_packet <= 0 ||
-			  (!is_read_from_file() &&
-			   (call->in_preprocess_queue_before_process_packet_at[0] && call->in_preprocess_queue_before_process_packet_at[0] < currtime - 300 &&
-			    call->in_preprocess_queue_before_process_packet_at[1] && call->in_preprocess_queue_before_process_packet_at[1] < (getTimeMS_rdtsc() / 1000) - 300))) {
-			if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
-				closeCall = true;
-			} else if((call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) ||
-				  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currtime)) {
-				closeCall = true;
-				call->bye_timeout_exceeded = true;
-			} else if(call->first_rtp_time &&
-				  currtime - call->get_last_packet_time() > rtptimeout) {
-				closeCall = true;
-				call->rtp_timeout_exceeded = true;
-			} else if(!call->first_rtp_time &&
-				  currtime - call->first_packet_time > sipwithoutrtptimeout) {
-				closeCall = true;
-				call->sipwithoutrtp_timeout_exceeded = true;
-			} else if(currtime - call->first_packet_time > absolute_timeout) {
-				closeCall = true;
-				call->absolute_timeout_exceeded = true;
-			} else if(currtime - call->first_packet_time > 300 &&
-				  !call->seenRES18X && !call->seenRES2XX && !call->first_rtp_time) {
-				closeCall = true;
-				call->zombie_timeout_exceeded = true;
-			}
-			if(!closeCall &&
-			   (call->oneway == 1 && (currtime - call->get_last_packet_time() > opt_onewaytimeout))) {
-				closeCall = true;
-				call->oneway_timeout_exceeded = true;
-			}
-		}
-		if(closeCall) {
-			call->removeFindTables(true);
-			if(currtime && call->rtppacketsinqueue != 0) {
-				closeCall = false;
-			}
-		}
-		if(closeCall) {
-			if(call->listening_worker_run) {
-				*call->listening_worker_run = 0;
-			}
-			closeCalls[closeCalls_count++] = call;
-			calls_listMAP.erase(callMAPIT++);
+	
+	map<string, Call*>::iterator callMAPIT1;
+	map<sStreamIds2, Call*>::iterator callMAPIT2;
+	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
+		int typeCall = passTypeCall == 0 ? INVITE : MGCP;
+		if(typeCall == INVITE) {
+			callMAPIT1 = calls_listMAP.begin();
 		} else {
-			++callMAPIT;
+			callMAPIT2 = calls_by_stream_callid_listMAP.begin();
+		}
+		while(typeCall == INVITE ? callMAPIT1 != calls_listMAP.end() : callMAPIT2 != calls_by_stream_callid_listMAP.end()) {
+			if(typeCall == INVITE) {
+				call = (*callMAPIT1).second;
+			} else {
+				call = (*callMAPIT2).second;
+			}
+			if(verbosity > 2) {
+				call->dump();
+			}
+			if(verbosity && verbosityE > 1) {
+				syslog(LOG_NOTICE, "Calltable::cleanup - try callid %s", call->call_id.c_str());
+			}
+			// rtptimeout seconds of inactivity will save this call and remove from call table
+			bool closeCall = false;
+			if(currtime == 0 || call->force_close) {
+				closeCall = true;
+				if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
+					call->force_terminate = true;
+				}
+			} else if(call->type == SKINNY_NEW ||
+				  call->type == MGCP ||
+				  call->in_preprocess_queue_before_process_packet <= 0 ||
+				  (!is_read_from_file() &&
+				   (call->in_preprocess_queue_before_process_packet_at[0] && call->in_preprocess_queue_before_process_packet_at[0] < currtime - 300 &&
+				    call->in_preprocess_queue_before_process_packet_at[1] && call->in_preprocess_queue_before_process_packet_at[1] < (getTimeMS_rdtsc() / 1000) - 300))) {
+				if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
+					closeCall = true;
+				} else if((call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) ||
+					  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currtime)) {
+					closeCall = true;
+					call->bye_timeout_exceeded = true;
+				} else if(call->first_rtp_time &&
+					  currtime - call->get_last_packet_time() > rtptimeout) {
+					closeCall = true;
+					call->rtp_timeout_exceeded = true;
+				} else if(!call->first_rtp_time &&
+					  currtime - call->first_packet_time > sipwithoutrtptimeout) {
+					closeCall = true;
+					call->sipwithoutrtp_timeout_exceeded = true;
+				} else if(currtime - call->first_packet_time > absolute_timeout) {
+					closeCall = true;
+					call->absolute_timeout_exceeded = true;
+				} else if(currtime - call->first_packet_time > 300 &&
+					  !call->seenRES18X && !call->seenRES2XX && !call->first_rtp_time) {
+					closeCall = true;
+					call->zombie_timeout_exceeded = true;
+				}
+				if(!closeCall &&
+				   (call->oneway == 1 && (currtime - call->get_last_packet_time() > opt_onewaytimeout))) {
+					closeCall = true;
+					call->oneway_timeout_exceeded = true;
+				}
+			}
+			if(closeCall) {
+				call->removeFindTables(true);
+				if(currtime && call->rtppacketsinqueue != 0) {
+					closeCall = false;
+				}
+			}
+			if(closeCall) {
+				if(call->listening_worker_run) {
+					*call->listening_worker_run = 0;
+				}
+				closeCalls[closeCalls_count++] = call;
+				if(typeCall == INVITE) {
+					calls_listMAP.erase(callMAPIT1++);
+				} else {
+					calls_by_stream_callid_listMAP.erase(callMAPIT2++);
+					mgcpCleanupTransactions(call);
+					mgcpCleanupStream(call);
+				}
+			} else {
+				if(typeCall == INVITE) {
+					++callMAPIT1;
+				} else {
+					++callMAPIT2;
+				}
+			}
 		}
 	}
 	unlock_calls_listMAP();

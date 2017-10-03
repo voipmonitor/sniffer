@@ -4726,6 +4726,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`audiosize` bigint unsigned DEFAULT 0,\
 			`regsize` bigint unsigned DEFAULT 0,\
 			`skinnysize` bigint unsigned DEFAULT 0,\
+			`mgcpsize` bigint unsigned DEFAULT 0,\
 			`ss7size` bigint unsigned DEFAULT 0,\
 		PRIMARY KEY (`datehour`, `spool_index`, `id_sensor`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
@@ -6176,6 +6177,11 @@ void SqlDb_mysql::checkColumns_other(bool /*log*/) {
 			"ALTER TABLE `files`\
 			 ADD COLUMN `skinnysize` bigint unsigned DEFAULT 0");
 	}
+	if(!this->existsColumn("files", "mgcpsize")) {
+		this->query(
+			"ALTER TABLE `files`\
+			 ADD COLUMN `mgcpsize` bigint unsigned DEFAULT 0");
+	}
 	if(!this->existsColumn("files", "ss7size")) {
 		this->query(
 			"ALTER TABLE `files`\
@@ -6615,7 +6621,7 @@ void SqlDb_mysql::copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc) {
 
 void SqlDb_mysql::copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tableName) {
 	this->query("set FOREIGN_KEY_CHECKS=0");
-	this->query(string("drop table if exists ") + tableName);
+	this->query(string("drop table if exists `") + tableName + "`");
 	this->query("set FOREIGN_KEY_CHECKS=1");
 	string cmdCopyTable = 
 		string("mysqldump --opt") +

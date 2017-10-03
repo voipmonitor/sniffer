@@ -115,6 +115,7 @@ struct packet_s {
 	bool isother: 1;
 	bool is_ssl : 1;
 	bool is_skinny : 1;
+	bool is_mgcp: 1;
 	bool is_need_sip_process : 1;
 	bool _blockstore_lock : 1;
 	bool _packet_alloc : 1;
@@ -223,6 +224,7 @@ struct packet_s_process_0 : public packet_s_stack {
 	volatile u_int8_t reuse_counter_sync;
 	int isSip;
 	bool isSkinny;
+	bool isMgcp;
 	packet_s_process_rtp_call_info call_info[MAX_LENGTH_CALL_INFO];
 	int call_info_length;
 	bool call_info_find_by_dest;
@@ -244,6 +246,7 @@ struct packet_s_process_0 : public packet_s_stack {
 		header_ip = (iphdr2*)(packet + header_ip_offset);
 		isSip = -1;
 		isSkinny = false;
+		isMgcp = false;
 		call_info_length = -1;
 		init_reuse();
 	}

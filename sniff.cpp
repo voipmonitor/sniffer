@@ -68,6 +68,7 @@ and insert them into Call class.
 #include "sql_db.h"
 #include "rtp.h"
 #include "skinny.h"
+#include "mgcp.h"
 #include "tcpreassembly.h"
 #include "ip_frag.h"
 #include "regcache.h"
@@ -712,8 +713,9 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 	if(!sverb.disable_save_packet) {
 		if(enable_pcap_split) {
 			switch(type) {
-			case TYPE_SKINNY:
 			case TYPE_SIP:
+			case TYPE_SKINNY:
+			case TYPE_MGCP:
 				if(call->getPcapSip()->isOpen()){
 					if(type == TYPE_SIP) {
 						call->getPcapSip()->dump(header, packet, packetS->dlt, false, 
@@ -1367,13 +1369,17 @@ fail_exit:
 	return 1;
 }
 
-int get_ip_port_from_sdp(Call *call, char *sdp_text, in_addr_t *addr, unsigned short *port, int16_t *fax, char *sessid, int16_t *rtcp_mux, int sip_method){
+int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
+			 in_addr_t *addr, unsigned short *port, int16_t *fax, char *sessid, int16_t *rtcp_mux, int sip_method){
 	unsigned long l;
 	char *s;
 	char s1[20];
-	size_t sdp_text_len = strlen(sdp_text);
 	unsigned long gettagLimitLen = 0;
 
+	if(!sdp_text_len) {
+		sdp_text_len = strlen(sdp_text);
+	}
+	
 	*fax = 0;
 	*rtcp_mux = 0;
 	s = gettag(sdp_text,sdp_text_len, NULL,
@@ -1688,7 +1694,7 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 	if(is_terminating()) {
 		return;
 	}
-	if(call->type < INVITE || call->type > SKINNY_NEW) {
+	if(call->type != INVITE && call->type != SKINNY_NEW && call->type != MGCP) {
 		static u_long lastTimeSyslog = 0;
 		u_long actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog) {
@@ -2132,8 +2138,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		glob_ssl_calls++;
 	}
 	// store this call only if it starts with invite
-	Call *call = calltable->add(sip_method, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
-	call->chantype = CHAN_SIP;
+	Call *call = calltable->add(sip_method, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, 
+				    get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 	call->is_ssl = packetS->is_ssl;
 	call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
 	call->setSipcallerip(packetS->saddr, packetS->get_callid());
@@ -2142,6 +2148,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	call->sipcalledport = packetS->dest;
 	call->flags = flags;
 	call->lastsrcip = packetS->saddr;
+	call->lastsrcport = packetS->source;
 	
 	char *s;
 	unsigned long l;
@@ -2341,7 +2348,9 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from, char *callidstr) {
  
 	char *data = from;
-	unsigned int datalen = packetS->sipDataLen - (from - (packetS->data + packetS->sipDataOffset));
+	unsigned int datalen = call->type == MGCP ?
+				packetS->datalen - (from - packetS->data) :
+				packetS->sipDataLen - (from - (packetS->data + packetS->sipDataOffset));
  
 	char *tmp = strstr(data, "\r\n\r\n");
 	if(!tmp) return;
@@ -2352,7 +2361,8 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 	s_sdp_flags sdp_flags;
 	char sessid[MAXLEN_SDP_SESSID];
-	if (!get_ip_port_from_sdp(call, tmp + 1, &tmp_addr, &tmp_port, &sdp_flags.is_fax, sessid, &sdp_flags.rtcp_mux, packetS->sip_method)){
+	if (!get_ip_port_from_sdp(call, tmp + 1, call->type == MGCP ? datalen - (tmp + 1 - data) : 0,
+				  &tmp_addr, &tmp_port, &sdp_flags.is_fax, sessid, &sdp_flags.rtcp_mux, packetS->sip_method)){
 		if(sdp_flags.is_fax) { 
 			if(verbosity >= 2){
 				syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
@@ -2601,7 +2611,10 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		call->handle_dscp(packetS->header_ip, iscaller > 0);
 	}
 
-	if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
+	if(call->lastsrcip != packetS->saddr ||
+	   (ip_is_localhost(htonl(call->lastsrcip)) && call->lastsrcport != packetS->source)) { 
+		call->oneway = 0;
+	}
 
 	cseq = gettag_sip(packetS, "\nCSeq:", &cseqlen);
 	if(cseq && cseqlen < 32) {
@@ -3381,7 +3394,11 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 	}
 	call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
 	
-	if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
+	if(call->lastsrcip != packetS->saddr ||
+	   (ip_is_localhost(htonl(call->lastsrcip)) && call->lastsrcport != packetS->source)) { 
+		call->oneway = 0;
+	}
+	
 	if(packetS->lastSIPresponseNum) {
 		call->lastSIPresponseNum = packetS->lastSIPresponseNum;
 	}
@@ -3565,7 +3582,10 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		goto endsip;
 	}
 		
-	if(call->lastsrcip != packetS->saddr) { call->oneway = 0; };
+	if(call->lastsrcip != packetS->saddr ||
+	   (ip_is_localhost(htonl(call->lastsrcip)) && call->lastsrcport != packetS->source)) { 
+		call->oneway = 0;
+	}
 
 	if(opt_norecord_header) {
 		s = gettag_sip(packetS, "\nX-VoipMonitor-norecord:", &l);
@@ -3778,8 +3798,8 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 
 	//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
-	Call *call = calltable->add(INVITE, s, strlen(s), header->ts.tv_sec, saddr, source, handle, dlt, sensor_id);
-	call->chantype = CHAN_SIP;
+	Call *call = calltable->add(INVITE, s, strlen(s), header->ts.tv_sec, saddr, source, 
+				    handle, dlt, sensor_id);
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 	call->sipcallerip[0] = saddr;
 	call->sipcalledip[0] = daddr;
@@ -6306,6 +6326,7 @@ void PreProcessPacket::process_DETACH_plus(packet_s_plus_pointer *packetS_detach
 void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 	++counter_all_packets;
 	bool isSip = false;
+	bool isMgcp = false;
 	bool rtp = false;
 	bool other = false;
 	packetS->blockstore_addflag(11 /*pb lock flag*/);
@@ -6314,12 +6335,18 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 		if(check_sip20(packetS->data, packetS->datalen, NULL)) {
 			packetS->blockstore_addflag(12 /*pb lock flag*/);
 			isSip = true;
+		} else if(packetS->is_mgcp && check_mgcp(packetS->data, packetS->datalen)) {
+			//packetS->blockstore_addflag(12 /*pb lock flag*/);
+			isMgcp = true;
 		}
 		if(packetS->istcp) {
 			packetS->blockstore_addflag(13 /*pb lock flag*/);
 			if(packetS->is_skinny) {
 				// call process_skinny before tcp reassembly - TODO !
 				this->process_skinny(&packetS);
+			} else if(packetS->is_mgcp && isMgcp) {
+				// call process_mgcp before tcp reassembly - TODO !
+				this->process_mgcp(&packetS);
 			} else if(no_sip_reassembly()) {
 				if(isSip) {
 					this->process_parseSipData(&packetS);
@@ -6344,6 +6371,9 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 		} else if(isSip) {
 			packetS->blockstore_addflag(14 /*pb lock flag*/);
 			this->process_parseSipData(&packetS);
+		} else if(isMgcp) {
+			//packetS->blockstore_addflag(14 /*pb lock flag*/);
+			this->process_mgcp(&packetS);
 		} else {
 			packetS->blockstore_addflag(15 /*pb lock flag*/);
 			rtp = true;
@@ -6382,6 +6412,9 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	} else if(packetS->isSkinny) {
 		packetS->blockstore_addflag(102 /*pb lock flag*/);
 		preProcessPacket[ppt_pp_call]->push_packet(packetS);
+	} else if(packetS->isMgcp) {
+		//packetS->blockstore_addflag(102 /*pb lock flag*/);
+		preProcessPacket[ppt_pp_call]->push_packet(packetS);
 	} else if(!opt_t2_boost) {
 		packetS->blockstore_addflag(103 /*pb lock flag*/);
 		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
@@ -6414,6 +6447,13 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		_process_packet__cleanup_calls(packetS->header_pt);
 		handle_skinny(packetS->header_pt, packetS->packet, packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->data, packetS->datalen, packetS->dataoffset,
 			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip);
+	} else if(packetS->isMgcp) {
+		if(opt_ipaccount && packetS->block_store) {
+			packetS->block_store->setVoipPacket(packetS->block_store_index);
+		}
+		_process_packet__cleanup_calls(packetS->header_pt);
+		handle_mgcp(packetS/*,
+			    packetS->header_pt, packetS->packet, packetS->saddr, packetS->source, packetS->daddr, packetS->dest*/);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 0);
 }
@@ -6449,6 +6489,10 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	if(packetS->is_skinny) {
 		this->process_skinny(&packetS);
+		return;
+	}
+	if(packetS->is_mgcp) {
+		this->process_mgcp(&packetS);
 		return;
 	}
 	bool isSip = false;
@@ -6549,6 +6593,14 @@ void PreProcessPacket::process_skinny(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	packetS->isSip = false;
 	packetS->isSkinny = true;
+	++counter_sip_packets[1];
+	preProcessPacket[ppt_extend]->push_packet(packetS);
+}
+
+void PreProcessPacket::process_mgcp(packet_s_process **packetS_ref) {
+	packet_s_process *packetS = *packetS_ref;
+	packetS->isSip = false;
+	packetS->isMgcp = true;
 	++counter_sip_packets[1];
 	preProcessPacket[ppt_extend]->push_packet(packetS);
 }

@@ -286,6 +286,7 @@ int opt_rtpfromsdp_onlysip_skinny = 1;
 char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
+int opt_mgcp = 0;
 unsigned int opt_skinny_ignore_rtpip = 0;
 unsigned int opt_skinny_call_info_message_decode_type = 2;
 int opt_read_from_file = 0;
@@ -861,6 +862,11 @@ bool updateSchema = false;
 
 unsigned opt_udp_port_l2tp = 1701;
 unsigned opt_udp_port_tzsp = 0x9090;
+
+unsigned opt_tcp_port_mgcp_gateway = 2427;
+unsigned opt_udp_port_mgcp_gateway = 2427;
+unsigned opt_tcp_port_mgcp_callagent = 2727;
+unsigned opt_udp_port_mgcp_callagent = 2727;
 
 SensorsMap sensorsMap;
 
@@ -1609,7 +1615,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				
 					bool needConvertToWavInThread = false;
 					call->closeRawFiles();
-					if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->type == INVITE || call->type == SKINNY_NEW) &&
+					if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->type == INVITE || call->type == SKINNY_NEW || call->type == MGCP) &&
 					    call->getAllReceivedRtpPackets()) {
 						if(is_read_from_file()) {
 							if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
@@ -1621,7 +1627,7 @@ void *storing_cdr( void */*dummy*/ ) {
 
 					regfailedcache->prunecheck(call->first_packet_time);
 					if(!opt_nocdr) {
-						if(call->type == INVITE or call->type == SKINNY_NEW) {
+						if(call->type == INVITE or call->type == SKINNY_NEW or call->type == MGCP) {
 							call->saveToDb(!is_read_from_file_simple());
 						} else if(call->type == MESSAGE){
 							call->saveMessageToDb();
@@ -5414,6 +5420,15 @@ void cConfig::addConfigItems() {
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("skinny_call_info_message_decode_type", &opt_skinny_call_info_message_decode_type));
 		setDisableIfEnd();
+	group("MGCP");
+		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
+		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mgcp", &opt_mgcp));
+				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_mgcp_gateway", &opt_tcp_port_mgcp_gateway));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_mgcp_gateway", &opt_udp_port_mgcp_gateway));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_mgcp_callagent", &opt_tcp_port_mgcp_callagent));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_mgcp_callagent", &opt_udp_port_mgcp_callagent));
+		setDisableIfEnd();
 	group("CDR");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 			advanced();
@@ -5997,6 +6012,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"sipports", 1, 0, 'Y'},
 	    {"skinny", 0, 0, 200},
 	    {"skinnyports", 1, 0, 199},
+	    {"mgcp", 0, 0, 314},
 	    {"ignorertcpjitter", 1, 0, 198},
 	    {"mono", 0, 0, 201},
 	    {"untar-gui", 1, 0, 202},
@@ -6088,6 +6104,9 @@ void get_command_line_arguments() {
 				break;
 			case 201:
 				opt_saveaudio_stereo = 0;
+				break;
+			case 314:
+				opt_mgcp = 1;
 				break;
 			case 202:
 				if(!opt_untar_gui_params) {
@@ -6304,6 +6323,8 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "dump_sip")			sverb.dump_sip = 1;
 						else if(verbparams[i] == "dump_sip_line")		{ sverb.dump_sip = 1; sverb.dump_sip_line = 1; }
 						else if(verbparams[i] == "dump_sip_without_counter")	{ sverb.dump_sip = 1; sverb.dump_sip_without_counter = 1; }
+						else if(verbparams[i] == "mgcp")			sverb.mgcp = 1;
+						else if(verbparams[i] == "mgcp_sdp")			sverb.mgcp_sdp = 1;
 						else if(verbparams[i] == "manager")			sverb.manager = 1;
 						else if(verbparams[i] == "scanpcapdir")			sverb.scanpcapdir = 1;
 						else if(verbparams[i] == "debug_rtcp")			sverb.debug_rtcp = 1;
@@ -6989,6 +7010,9 @@ bool check_complete_parameters() {
                         " --skinnyports=<ports>\n"
                         "      Listen to SKINNY protocol on entered ports. Separated by commas.\n"
                         "\n"
+                        " --mgcp\n"
+                        "      analyze MGCP VoIP protocol.\n"
+                        "\n"
                         " --update-schema\n"
                         "      Create or upgrade the database schema, and then exit.  Forces -k option.\n"
                         "      Database access/name can be set via commandline parameters or in config file\n"
@@ -7483,6 +7507,23 @@ int eval_config(string inistr) {
 			skinnyportmatrix[atoi(i->pItem)] = 1;
 		}
 	}
+	// mgcp
+	if((value = ini.GetValue("general", "mgcp", NULL))) {
+		opt_mgcp = yesno(value);
+	}
+	if((value = ini.GetValue("general", "tcp_port_mgcp_gateway", NULL))) {
+		opt_tcp_port_mgcp_gateway = atoi(value);
+	}
+	if((value = ini.GetValue("general", "udp_port_mgcp_gateway", NULL))) {
+		opt_udp_port_mgcp_gateway = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tcp_port_mgcp_callagent", NULL))) {
+		opt_tcp_port_mgcp_callagent = atoi(value);
+	}
+	if((value = ini.GetValue("general", "udp_port_mgcp_callagent", NULL))) {
+		opt_udp_port_mgcp_callagent = atoi(value);
+	}
+	
 	if((value = ini.GetValue("general", "cdr_partition", NULL))) {
 		opt_cdr_partition = yesno(value);
 	}

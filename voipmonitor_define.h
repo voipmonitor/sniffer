@@ -2,7 +2,7 @@
 #define VOIPMONITOR_DEFINE_H
 
 
-#define RTPSENSOR_VERSION "20.4.7"
+#define RTPSENSOR_VERSION "21.0"
 #define NAT
 
 #define CALLID_MAX_LENGTH 127
@@ -15,6 +15,7 @@
 #define TYPE_RTP 2
 #define TYPE_RTCP 3
 #define TYPE_SKINNY 4
+#define TYPE_MGCP 5
 
 #define STORE_PROC_ID_CDR_1 11
 #define STORE_PROC_ID_MESSAGE_1 21
