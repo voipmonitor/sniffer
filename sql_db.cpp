@@ -2368,6 +2368,7 @@ void MySqlStore::loadFromQFiles_start() {
 			this->addLoadFromQFile((STORE_PROC_ID_WEBRTC_1 / 10) * 10, "webrtc");
 			this->addLoadFromQFile(STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS, "cache_numbers");
 			this->addLoadFromQFile(STORE_PROC_ID_FRAUD_ALERT_INFO, "fraud_alert_info");
+			this->addLoadFromQFile(STORE_PROC_ID_LOG_SENSOR, "log_sensor");
 			if(opt_ipaccount) {
 				this->addLoadFromQFile((STORE_PROC_ID_IPACC_1 / 10) * 10, "ipacc");
 				this->addLoadFromQFile((STORE_PROC_ID_IPACC_AGR_INTERVAL / 10) * 10, "ipacc_agreg");
