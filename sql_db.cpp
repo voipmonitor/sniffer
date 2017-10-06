@@ -4335,15 +4335,13 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"`ip` int unsigned DEFAULT NULL,\
 			`port` smallint unsigned DEFAULT NULL,\
 			`is_caller` tinyint unsigned DEFAULT NULL,\
-			`sessid` VARCHAR(32) DEFAULT NULL,\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
 			"") +
 			",KEY(`ip`),\
 			KEY(`port`),\
-			KEY(`is_caller`),\
-			KEY(`sessid`)" +
+			KEY(`is_caller`)" +
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_sdp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +

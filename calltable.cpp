@@ -3666,14 +3666,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			bool save_iscaller = false;
 			bool save_iscalled = false;
 			for(int i = ipport_n - 1; i >= 0; i--) {
-				if(opt_save_sdp_ipport == 2 ||
-				   (ip_port[i].iscaller ? !save_iscaller : !save_iscalled)) {
+				if(ip_port[i].type_addr == ip_port_call_info::_ta_base &&
+				   (opt_save_sdp_ipport == 2 ||
+				    (ip_port[i].iscaller ? !save_iscaller : !save_iscalled))) {
 					SqlDb_row sdp;
 					sdp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 					sdp.add(htonl(ip_port[i].addr), "ip");
 					sdp.add(ip_port[i].port, "port");
 					sdp.add(ip_port[i].iscaller, "is_caller");
-					sdp.add(ip_port[i].sessid, "sessid");
 					if(existsColumns.cdr_sdp_calldate) {
 						sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 					}
@@ -3921,14 +3921,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			bool save_iscaller = false;
 			bool save_iscalled = false;
 			for(int i = ipport_n - 1; i >= 0; i--) {
-				if(opt_save_sdp_ipport == 2 ||
-				   (ip_port[i].iscaller ? !save_iscaller : !save_iscalled)) {
+				if(ip_port[i].type_addr == ip_port_call_info::_ta_base &&
+				   (opt_save_sdp_ipport == 2 ||
+				    (ip_port[i].iscaller ? !save_iscaller : !save_iscalled))) {
 					SqlDb_row sdp;
 					sdp.add(cdrID, "cdr_ID");
 					sdp.add(htonl(ip_port[i].addr), "ip");
 					sdp.add(ip_port[i].port, "port");
 					sdp.add(ip_port[i].iscaller, "is_caller");
-					sdp.add(ip_port[i].sessid, "sessid");
 					if(existsColumns.cdr_sdp_calldate) {
 						sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 					}
