@@ -201,6 +201,7 @@ FileZipHandler::eTypeCompress opt_gzipGRAPH =
 	#else
 		FileZipHandler::gzip;
 	#endif //HAVE_LIBLZO
+int opt_save_sdp_ipport = 1;
 int opt_saverfc2833 = 0;
 int opt_silencedetect = 0;
 int opt_clippingdetect = 0;
@@ -5315,6 +5316,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42201) cConfigItem_integer("pcap_ifdrop_limit", &opt_pcap_ifdrop_limit));
 		subgroup("SIP");
 			addConfigItem(new FILE_LINE(42202) cConfigItem_yesno("savesip", &opt_saveSIP));
+				advanced();
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("save_sdp_ipport", &opt_save_sdp_ipport))
+					->addValues("last:1|all:2"));
 					expert();
 					addConfigItem(new FILE_LINE(42203) cConfigItem_type_compress("pcap_dump_zip_sip", &opt_pcap_dump_zip_sip));
 					addConfigItem(new FILE_LINE(42204) cConfigItem_integer("pcap_dump_ziplevel_sip", &opt_pcap_dump_ziplevel_sip));
@@ -7628,6 +7632,24 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "savesip", NULL))) {
 		opt_saveSIP = yesno(value);
+	}
+	if((value = ini.GetValue("general", "save_sdp_ipport", NULL))) {
+		switch(value[0]) {
+		case 'y':
+		case 'Y':
+		case '1':
+			opt_save_sdp_ipport = 1;
+			break;
+		case 'a':
+		case 'A':
+			opt_save_sdp_ipport = 2;
+			break;
+		case 'n':
+		case 'N':
+		case '0':
+			opt_save_sdp_ipport = 0;
+			break;
+		}
 	}
 	if((value = ini.GetValue("general", "savertp", NULL))) {
 		switch(value[0]) {

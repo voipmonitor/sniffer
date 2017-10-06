@@ -75,6 +75,7 @@ extern int opt_saveRAW;                // save RTP payload RAW data?
 extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	// compress GRAPH data to graph file? 
+extern int opt_save_sdp_ipport;
 extern int opt_mos_g729;
 extern int opt_nocdr;
 extern int nocdr_for_last_responses[100];
@@ -3524,15 +3525,17 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		   opt_cdr_check_duplicity_callid_in_next_pass_insert) {
 			// check if exists call-id & rtp records - begin if
 			if(opt_cdr_check_exists_callid) {
-				query_str += string("set @exists_call_id = coalesce(\n") +
-					     "(select cdr_ID from cdr_next\n" +
-					     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
-					     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
-					     "       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
-				query_str += string("set @exists_rtp =\n") +
-					     "if(@exists_call_id,\n" +
-					     "   exists (select * from cdr_rtp where cdr_id = @exists_call_id),\n" +
-					     "   0);\n";
+				query_str += string(
+					"set @exists_call_id = coalesce(\n") +
+					"(select cdr_ID from cdr_next\n" +
+					" where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
+					"       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
+					"       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
+				query_str += string(
+					"set @exists_rtp =\n") +
+					"if(@exists_call_id,\n" +
+					"   exists (select * from cdr_rtp where cdr_id = @exists_call_id),\n" +
+					"   0);\n";
 				bool existsRtp = false;
 				for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 					if(rtp[i] and rtp[i]->s->received) {
@@ -3540,27 +3543,30 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						break;
 					}
 				}
-				query_str += string("if @exists_call_id and not @exists_rtp and ") + (existsRtp ? "1" : "0") + " then\n" +
-					     "  delete from cdr where id = @exists_call_id;\n" +
-					     "  delete from cdr_next where cdr_id = @exists_call_id;\n";
+				query_str += string(
+					"if @exists_call_id and not @exists_rtp and ") + (existsRtp ? "1" : "0") + " then\n" +
+					"  delete from cdr where id = @exists_call_id;\n" +
+					"  delete from cdr_next where cdr_id = @exists_call_id;\n";
 				if(custom_headers_cdr) {
 					query_str += custom_headers_cdr->getDeleteQuery("@exists_call_id", "  ", ";\n");
 				}
-				query_str += string("  delete from cdr_country_code where cdr_id = @exists_call_id;\n") +
-					     "  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
-					     (opt_dbdtmf ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
-					     "  delete from cdr_sipresp where cdr_id = @exists_call_id;\n" +
-					     (opt_pcap_dump_tar ? "  delete from cdr_tar_part where cdr_id = @exists_call_id;\n" : "") +
-					     "  set @exists_call_id = 0;\n" +
-					     "end if;\n";
+				query_str += string(
+					"  delete from cdr_country_code where cdr_id = @exists_call_id;\n") +
+					"  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
+					(opt_dbdtmf ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
+					"  delete from cdr_sipresp where cdr_id = @exists_call_id;\n" +
+					(opt_pcap_dump_tar ? "  delete from cdr_tar_part where cdr_id = @exists_call_id;\n" : "") +
+					"  set @exists_call_id = 0;\n" +
+					"end if;\n";
 				query_str += "if not @exists_call_id then\n";
 			} else if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
 				query_str += "__NEXT_PASS_QUERY_BEGIN__";
-				query_str += string("set @exists_call_id = coalesce(\n") +
-					     "(select cdr_ID from cdr_next\n" +
-					     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 minute) and\n" +
-					     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 minute) and\n" +
-					     "       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
+				query_str += string(
+					"set @exists_call_id = coalesce(\n") +
+					"(select cdr_ID from cdr_next\n" +
+					" where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 minute) and\n" +
+					"       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 minute) and\n" +
+					"       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
 				query_str += "if not @exists_call_id then\n";
 				query_str += "__NEXT_PASS_QUERY_END__";
 			}
@@ -3653,6 +3659,36 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				query_str += sqlDbSaveCall->insertQuery("cdr_rtp", rtps) + ";\n";
+			}
+		}
+		
+		if(opt_save_sdp_ipport) {
+			bool save_iscaller = false;
+			bool save_iscalled = false;
+			for(int i = ipport_n - 1; i >= 0; i--) {
+				if(opt_save_sdp_ipport == 2 ||
+				   (ip_port[i].iscaller ? !save_iscaller : !save_iscalled)) {
+					SqlDb_row sdp;
+					sdp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+					sdp.add(htonl(ip_port[i].addr), "ip");
+					sdp.add(ip_port[i].port, "port");
+					sdp.add(ip_port[i].iscaller, "is_caller");
+					sdp.add(ip_port[i].sessid, "sessid");
+					if(existsColumns.cdr_sdp_calldate) {
+						sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					}
+					query_str += sqlDbSaveCall->insertQuery("cdr_sdp", sdp) + ";\n";
+					if(opt_save_sdp_ipport == 1) {
+						if(ip_port[i].iscaller) {
+							save_iscaller = true;
+						} else {
+							save_iscalled = true;
+						}
+						if(save_iscaller && save_iscalled) {
+							break;
+						}
+					}
+				}
 			}
 		}
 
@@ -3881,6 +3917,36 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 
+		if(opt_save_sdp_ipport) {
+			bool save_iscaller = false;
+			bool save_iscalled = false;
+			for(int i = ipport_n - 1; i >= 0; i--) {
+				if(opt_save_sdp_ipport == 2 ||
+				   (ip_port[i].iscaller ? !save_iscaller : !save_iscalled)) {
+					SqlDb_row sdp;
+					sdp.add(cdrID, "cdr_ID");
+					sdp.add(htonl(ip_port[i].addr), "ip");
+					sdp.add(ip_port[i].port, "port");
+					sdp.add(ip_port[i].iscaller, "is_caller");
+					sdp.add(ip_port[i].sessid, "sessid");
+					if(existsColumns.cdr_sdp_calldate) {
+						sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					}
+					sqlDbSaveCall->insert("cdr_sdp", sdp);
+					if(opt_save_sdp_ipport == 1) {
+						if(ip_port[i].iscaller) {
+							save_iscaller = true;
+						} else {
+							save_iscalled = true;
+						}
+						if(save_iscaller && save_iscalled) {
+							break;
+						}
+					}
+				}
+			}
+		}
+		
 		if(opt_dbdtmf) {
 			while(dtmf_history.size()) {
 				s_dtmf q;

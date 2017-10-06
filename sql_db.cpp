@@ -4327,6 +4327,36 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		""));
 	
 	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_sdp` (\
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` datetime NOT NULL," :
+				"") + 
+			"`ip` int unsigned DEFAULT NULL,\
+			`port` smallint unsigned DEFAULT NULL,\
+			`is_caller` tinyint unsigned DEFAULT NULL,\
+			`sessid` VARCHAR(32) DEFAULT NULL,\
+		KEY (`cdr_ID`)" + 
+		(opt_cdr_partition ? 
+			",KEY (`calldate`)" :
+			"") +
+			",KEY(`ip`),\
+			KEY(`port`),\
+			KEY(`is_caller`),\
+			KEY(`sessid`)" +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_sdp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `rtp_stat` (\
 			`id_sensor` smallint unsigned NOT NULL,\
 			`time` datetime NOT NULL,\
@@ -5795,6 +5825,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 	}
 	existsColumns.cdr_tar_part_calldate = this->existsColumn("cdr_tar_part", "calldate");
 	existsColumns.cdr_country_code_calldate = this->existsColumn("cdr_country_code", "calldate");
+	existsColumns.cdr_sdp_calldate = this->existsColumn("cdr_sdp", "calldate");
 	if(!opt_cdr_partition &&
 	   (isCloud() ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
@@ -6683,6 +6714,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 				tables.push_back("cdr_proxy");
 				tables.push_back("cdr_tar_part");
 				tables.push_back("cdr_country_code");
+				tables.push_back("cdr_sdp");
 			}
 		}
 		if(opt_enable_http_enum_tables && 
@@ -6937,6 +6969,7 @@ void dropMysqlPartitionsCdr() {
 	}
 	_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, sqlDb);
 	_dropMysqlPartitions("cdr_country_code", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("cdr_sdp", opt_cleandatabase_cdr, sqlDb);
 	_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, sqlDb);
 	_dropMysqlPartitions("message", opt_cleandatabase_cdr, sqlDb);
 	_dropMysqlPartitions("message_proxy", opt_cleandatabase_cdr, sqlDb);
