@@ -539,7 +539,7 @@ Registers::~Registers() {
 	clean_all();
 }
 
-void Registers::add(Call *call) {
+void Registers::add(Call *call, time_t currtime) {
  
 	/*
 	string digest_username_orig = call->digest_username;
@@ -574,9 +574,21 @@ void Registers::add(Call *call) {
 		registers[rid] = reg;
 		unlock_registers();
 	} else {
-		iter->second->update(call);
+		Register *existsReg = iter->second;
+		if(currtime) {
+			existsReg->lock_states();
+			RegisterState *regstate = existsReg->states_last();
+			if(regstate &&
+			   (regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) &&
+			   regstate->expires &&
+			   regstate->state_to + regstate->expires < currtime) {
+					existsReg->expire(false);
+			}
+			existsReg->unlock_states();
+		}
+		existsReg->update(call);
 		unlock_registers();
-		iter->second->addState(call);
+		existsReg->addState(call);
 		delete reg;
 	}
 	

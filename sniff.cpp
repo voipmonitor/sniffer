@@ -3417,7 +3417,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		if(call->regcount > 4) {
 			// to much register attempts without OK or 401 responses
 			call->regstate = 4;
-			call->saveregister();
+			call->saveregister(packetS->header_pt->ts.tv_sec);
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 			if(call == NULL) {
 				goto endsip;
@@ -3471,7 +3471,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		   call->reg200count < call->regcount) {
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + opt_register_timeout;
 		} else {
-			call->saveregister();
+			call->saveregister(packetS->header_pt->ts.tv_sec);
 		}
 		if(logPacketSipMethodCall_enable) {
 			logPacketSipMethodCallDescr = "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)";
@@ -3551,7 +3551,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			// registration failed
 			call->regstate = 2;
 			save_packet(call, packetS, TYPE_SIP);
-			call->saveregister();
+			call->saveregister(packetS->header_pt->ts.tv_sec);
 			if(logPacketSipMethodCall_enable) {
 				logPacketSipMethodCallDescr =
 					packetS->sip_method == RES401 ? "REGISTER 401 count > 1" :
@@ -3575,7 +3575,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		// too many REGISTER messages within the same callid
 		call->regstate = 4;
 		save_packet(call, packetS, TYPE_SIP);
-		call->saveregister();
+		call->saveregister(packetS->header_pt->ts.tv_sec);
 		if(logPacketSipMethodCall_enable) {
 			logPacketSipMethodCallDescr = "too many REGISTER messages within the same callid";
 		}

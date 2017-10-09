@@ -6002,7 +6002,7 @@ Calltable::cleanup_registers( time_t currtime ) {
 					}
 					if(reg->regstate != 2 ||
 					   !opt_register_timeout_disable_save_failed) {
-						registers.add(reg);
+						registers.add(reg, currtime);
 					}
 					reg->getPcap()->close();
 					reg->getPcapSip()->close();
@@ -6074,7 +6074,7 @@ int Calltable::cleanup_ss7( time_t currtime ) {
 	return(0);
 }
 
-void Call::saveregister() {
+void Call::saveregister(time_t currtime) {
 	((Calltable*)calltable)->lock_registers_listMAP();
         map<string, Call*>::iterator registerMAPIT = ((Calltable*)calltable)->registers_listMAP.find(call_id);
 	if(registerMAPIT == ((Calltable*)calltable)->registers_listMAP.end()) {
@@ -6098,7 +6098,7 @@ void Call::saveregister() {
 		push_register_to_registers_queue = 1;
 		if(opt_sip_register == 1) {
 			extern Registers registers;
-			registers.add(this);
+			registers.add(this, currtime);
 			((Calltable*)calltable)->lock_registers_deletequeue();
 			((Calltable*)calltable)->registers_deletequeue.push_back(this);
 			((Calltable*)calltable)->unlock_registers_deletequeue();

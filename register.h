@@ -151,7 +151,7 @@ class Registers {
 public: 
 	Registers();
 	~Registers();
-	void add(Call *call);
+	void add(Call *call, time_t currtime);
 	void cleanup(u_int32_t act_time, bool force = false);
 	void clean_all();
 	inline u_int64_t getNewRegisterFailedId(int sensorId);
