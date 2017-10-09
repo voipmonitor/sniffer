@@ -29,10 +29,10 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			     u_char *ethHeader, u_int32_t ethHeaderLength,
 			     u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
 			     void *uData, TcpReassemblyLink *reassemblyLink,
-			     bool debugSave) {
+			     std::ostream *debugStream) {
 	++this->counterProcessData;
-	if(debugSave) {
-		cout << "### SipData::processData " << this->counterProcessData << endl;
+	if(debugStream) {
+		(*debugStream) << "### SipData::processData " << this->counterProcessData << endl;
 	}
 	u_int64_t cache_time = 0;
 	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
@@ -62,22 +62,23 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				cache_data->data[md5_data] = cache_time;
 				cache[cache_id] = cache_data;
 			}
-			if(debugSave) {
-				cout << "###"
-				     << fixed
-				     << setw(15) << inet_ntostring(htonl(ip_src))
-				     << " / "
-				     << setw(5) << port_src
-				     << (dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? " --> " : " <-- ")
-				     << setw(15) << inet_ntostring(htonl(ip_dst))
-				     << " / "
-				     << setw(5) << port_dst
-				     << "  len: " << setw(4) << (*iter_sip_offset)[1];
+			if(debugStream) {
+				(*debugStream)
+					<< "###"
+					<< fixed
+					<< setw(15) << inet_ntostring(htonl(ip_src))
+					<< " / "
+					<< setw(5) << port_src
+					<< (dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? " --> " : " <-- ")
+					<< setw(15) << inet_ntostring(htonl(ip_dst))
+					<< " / "
+					<< setw(5) << port_dst
+					<< "  len: " << setw(4) << (*iter_sip_offset)[1];
 				u_int32_t ack = dataItem->getAck();
 				if(ack) {
-					cout << "  ack: " << setw(5) << ack;
+					(*debugStream) << "  ack: " << setw(5) << ack;
 				}
-				cout << endl;
+				(*debugStream) << endl;
 			}
 			pcap_pkthdr *tcpHeader;
 			u_char *tcpPacket;

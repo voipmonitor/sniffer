@@ -32,7 +32,7 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			   u_char */*ethHeader*/, u_int32_t /*ethHeaderLength*/,
 			   u_int16_t /*handle_index*/, int /*dlt*/, int /*sensor_id*/, u_int32_t /*sensor_ip*/,
 			   void */*uData*/, TcpReassemblyLink */*reassemblyLink*/,
-			   bool debugSave) {
+			   std::ostream *debugStream) {
  
 	++this->counterProcessData;
 
@@ -177,10 +177,11 @@ void HttpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 	if(externalTransactionId.length() || sessionid.length() || callid.length()) {
 		++this->counterSaveData;
 		static int saveCounter;
-		if(debugSave) {
-			cout << "SAVE " << (++saveCounter) << " time: " << sqlDateTimeString(request_data->getTime().tv_sec) 
-			     << (response.length() ? " with response" : "")
-			     << endl;
+		if(debugStream) {
+			(*debugStream)
+				<< "SAVE " << (++saveCounter) << " time: " << sqlDateTimeString(request_data->getTime().tv_sec) 
+				<< (response.length() ? " with response" : "")
+				<< endl;
 		}
 		this->cache.addRequest(request_data->getTime().tv_sec * 1000000ull + request_data->getTime().tv_usec,
 				       htonl(ip_src), htonl(ip_dst),

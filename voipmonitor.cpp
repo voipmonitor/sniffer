@@ -6286,6 +6286,8 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "webrtc")			sverb.webrtc = 1;
 						else if(verbparams[i] == "ssl")				sverb.ssl = 1;
 						else if(verbparams[i] == "sip")				sverb.sip = 1;
+						else if(verbparams[i].substr(0, 25) == "tcpreassembly_debug_file=")
+													{ sverb.tcpreassembly_debug_file = new char[strlen(verbparams[i].c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbparams[i].c_str() + 25); }
 						else if(verbparams[i] == "ssldecode")			sverb.ssldecode = 1;
 						else if(verbparams[i] == "ssldecode_debug")		sverb.ssldecode_debug = 1;
 						else if(verbparams[i] == "sip_packets")			sverb.sip_packets = 1;

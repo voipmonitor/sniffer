@@ -35,10 +35,10 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			  u_char *ethHeader, u_int32_t ethHeaderLength,
 			  u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
 			  void */*uData*/, TcpReassemblyLink *reassemblyLink,
-			  bool debugSave) {
+			  std::ostream *debugStream) {
 	++this->counterProcessData;
-	if(debugSave) {
-		cout << "### SslData::processData " << this->counterProcessData << endl;
+	if(debugStream) {
+		(*debugStream) << "### SslData::processData " << this->counterProcessData << endl;
 	}
 	for(size_t i_data = 0; i_data < data->data.size(); i_data++) {
 		TcpReassemblyDataItem *dataItem = &data->data[i_data];
@@ -46,27 +46,28 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			continue;
 		}
 		if(reassemblyLink->checkDuplicitySeq(dataItem->getSeq())) {
-			if(debugSave) {
-				cout << "SKIP SEQ " << dataItem->getSeq() << endl;
+			if(debugStream) {
+				(*debugStream) << "SKIP SEQ " << dataItem->getSeq() << endl;
 			}
 			continue;
 		}
-		if(debugSave) {
-			cout << "###"
-			     << fixed
-			     << setw(15) << inet_ntostring(htonl(ip_src))
-			     << " / "
-			     << setw(5) << port_src
-			     << (dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? " --> " : " <-- ")
-			     << setw(15) << inet_ntostring(htonl(ip_dst))
-			     << " / "
-			     << setw(5) << port_dst
-			     << "  len: " << setw(4) << dataItem->getDatalen();
+		if(debugStream) {
+			(*debugStream)
+				<< "###"
+				<< fixed
+				<< setw(15) << inet_ntostring(htonl(ip_src))
+				<< " / "
+				<< setw(5) << port_src
+				<< (dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? " --> " : " <-- ")
+				<< setw(15) << inet_ntostring(htonl(ip_dst))
+				<< " / "
+				<< setw(5) << port_dst
+				<< "  len: " << setw(4) << dataItem->getDatalen();
 			u_int32_t ack = dataItem->getAck();
 			if(ack) {
-				cout << "  ack: " << setw(5) << ack;
+				(*debugStream) << "  ack: " << setw(5) << ack;
 			}
-			cout << endl;
+			(*debugStream) << endl;
 		}
 		for(int pass = 0; pass < 2; pass++) {
 			u_char *ssl_data;
@@ -87,12 +88,13 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			      ssl_datalen - ssl_data_offset >= 5) {
 				SslHeader header(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
 				if(header.isOk() && header.length && (u_int32_t)header.length + header.getDataOffsetLength() <= ssl_datalen - ssl_data_offset) {
-					if(debugSave) {
-						cout << "SSL HEADER "
-						     << "content type: " << (int)header.content_type << " / "
-						     << "version: " << hex << header.version << dec << " / "
-						     << "length: " << header.length
-						     << endl;
+					if(debugStream) {
+						(*debugStream)
+							<< "SSL HEADER "
+							<< "content type: " << (int)header.content_type << " / "
+							<< "version: " << hex << header.version << dec << " / "
+							<< "length: " << header.length
+							<< endl;
 					}
 					u_int32_t _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
 					u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
@@ -107,24 +109,20 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 						decrypt_ssl_dssl(&rslt_decrypt, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst, dataItem->getTime());
 					}
 					for(size_t i = 0; i < rslt_decrypt.size(); i++) {
-						if(debugSave) {
+						if(debugStream) {
 							string out(rslt_decrypt[i], 0,100);
 							std::replace( out.begin(), out.end(), '\n', ' ');
 							std::replace( out.begin(), out.end(), '\r', ' ');
-							    
 							unsigned long s_addr = _ip_src;
 							unsigned long d_addr = _ip_dst;
 							char src[INET_ADDRSTRLEN];
 							char dst[INET_ADDRSTRLEN];
 							inet_ntop(AF_INET, &s_addr, src, INET_ADDRSTRLEN);
 							inet_ntop(AF_INET, &d_addr, dst, INET_ADDRSTRLEN);
-					       
-						       
 							if(out.length()) {
-								cout << "TS: " << dataItem->getTime().tv_sec << "." << dataItem->getTime().tv_usec << " " << src << " -> " << dst << " SIP " << rslt_decrypt[i].length() << " " << out << endl;
+								(*debugStream) << "TS: " << dataItem->getTime().tv_sec << "." << dataItem->getTime().tv_usec << " " << src << " -> " << dst << " SIP " << rslt_decrypt[i].length() << " " << out << endl;
 							}
-
-							cout << "DECRYPT DATA: " << rslt_decrypt[i] << endl;
+							(*debugStream) << "DECRYPT DATA: " << rslt_decrypt[i] << endl;
 						}
 						if(sverb.ssldecode) {
 							cout << rslt_decrypt[i];
@@ -162,14 +160,14 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				   _checkOkSslData(dataItem->getData(), dataItem->getDatalen())) {
 					// next pass with ignore remainData
 					reassemblyLink->clearRemainData(dataItem->getDirection());
-					if(debugSave) {
-						cout << "SKIP REMAIN DATA" << endl;
+					if(debugStream) {
+						(*debugStream) << "SKIP REMAIN DATA" << endl;
 					}
 				} else {
 					if(ssl_data_offset < ssl_datalen) {
 						reassemblyLink->setRemainData(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset, dataItem->getDirection());
-						if(debugSave) {
-							cout << "REMAIN DATA LENGTH: " << ssl_datalen - ssl_data_offset << endl;
+						if(debugStream) {
+							(*debugStream) << "REMAIN DATA LENGTH: " << ssl_datalen - ssl_data_offset << endl;
 						}
 					} else {
 						reassemblyLink->clearRemainData(dataItem->getDirection());

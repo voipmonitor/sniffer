@@ -207,7 +207,7 @@ public:
 				 u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
 				 void *uData,
 				 class TcpReassemblyLink *reassemblyLink,
-				 bool debugSave) = 0;
+				 std::ostream *debugStream) = 0;
 	virtual void writeToDb(bool /*all*/ = false) {}
 	virtual void printContentSummary() {}
 };
