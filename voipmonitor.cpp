@@ -299,6 +299,7 @@ int opt_pb_read_from_file_acttime = 0;
 int opt_pb_read_from_file_acttime_diff_days = 0;
 unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
+bool opt_receiver_check_id_sensor = true;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
 int opt_messageproxy = 1;
@@ -5771,6 +5772,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42462) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
 				addConfigItem(new FILE_LINE(42463) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("receiver_check_id_sensor", &opt_receiver_check_id_sensor));
 					expert();
 					addConfigItem(new FILE_LINE(42465) cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_l2tp",  &opt_udp_port_l2tp));
@@ -8889,6 +8891,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext", NULL))) {
 		opt_sip_tcp_reassembly_ext = yesno(value);
+	}
+	if((value = ini.GetValue("general", "receiver_check_id_sensor", NULL))) {
+		opt_receiver_check_id_sensor = yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "udp_port_l2tp", NULL))) {
