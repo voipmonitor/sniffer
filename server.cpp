@@ -276,7 +276,7 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command)
 	snifferServerGuiTasks.add(&task);
 	service_connection->addTask(task);
 	u_int64_t startTime = getTimeUS();
-	while(snifferServerGuiTasks.getTaskState(task.id) != sSnifferServerGuiTask::_complete) {
+	while(snifferServerGuiTasks.getTaskState(task.id) != sSnifferServerGuiTask::_complete && !is_terminating()) {
 		usleep(1000);
 		if(getTimeUS() > startTime + 5 * 60 * 1000000ull) {
 			socket->write("timeout");

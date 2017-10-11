@@ -167,7 +167,12 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 				break;
 			case 0x8847:
 				// MPLS
-				header_ip_offset = 4;
+				header_ip_offset = 0;
+				u_int8_t mpls_bottomOfLabelStackFlag;
+				do {
+					mpls_bottomOfLabelStackFlag = *((u_int8_t*)packet + sizeof(ether_header) + header_ip_offset + 2) & 1;
+					header_ip_offset += 4;
+				} while(mpls_bottomOfLabelStackFlag == 0);
 				protocol = ETHERTYPE_IP;
 				break;
 			default:

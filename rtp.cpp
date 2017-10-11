@@ -939,8 +939,9 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 	
 	Call *owner = (Call*)call_owner;
 
-	if((this->sensor_id >= 0 && this->sensor_id != sensor_id) ||
-	   (this->sensor_ip > 0 && this->sensor_ip != sensor_ip)) {
+	extern bool opt_receiver_check_id_sensor;
+	if(opt_receiver_check_id_sensor && ((this->sensor_id >= 0 && this->sensor_id != sensor_id) ||
+	   (this->sensor_ip > 0 && this->sensor_ip != sensor_ip))) {
 		if(!owner || !owner->rtp_from_multiple_sensors) {
 			extern bool opt_disable_rtp_warning;
 			if(!opt_disable_rtp_warning) {

@@ -1,3 +1,15 @@
+21.1 11.10.2017
+===============
+- fix crash when terminating server mode 
+- Implement 'Only international calls' new checkbox in alerts 'Fraud: SEQUENTIAL' [VG-1345]
+- fix log sensor when sql file cache is enabled [VS-694]
+- store SDP ip/port information to new cdr_sdp table (new option save_sdp_ipport default = yes) [VS-499] [VS-531]
+- add expiration-check of previous registration before evaluating new registration [VS-695]
+- add option "receiver_check_id_sensor" which disables sensor_id check when receiving packets from multiple remote sniffers (see voipmonitor.conf for more info) [VS-654]
+- added support for MPLS header [VS-651]
+- fix parsing SIP packets which have CR-LF before start line [VS-696]
+
+
 21.0 03.10.2017
 ===============
 - MGCP support (beta)

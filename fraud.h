@@ -440,6 +440,7 @@ protected:
 	virtual bool defDestLocation() { return(false); }
 	virtual bool defDestPrefixes() { return(false); }
 	virtual bool defInterval() { return(false); }
+	virtual bool defFilterInternational() { return(false); }
 	virtual bool defOnlyConnected() { return(false); }
 	virtual bool defSuppressRepeatingAlerts() { return(false); }
 	virtual bool defStorePcaps() { return(false); }
@@ -465,6 +466,7 @@ protected:
 	vector<string> destPrefixes;
 	u_int32_t intervalLength;
 	u_int32_t intervalLimit;
+	bool filterInternational;
 	CheckInternational checkInternational;
 	bool onlyConnected;
 	bool suppressRepeatingAlerts;
@@ -958,6 +960,7 @@ protected:
 	bool defFilterIp() { return(true); }
 	bool defFilterNumber() { return(true); }
 	bool defInterval() { return(true); }
+	bool defFilterInternational() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:
 	bool checkOkAlert(sIpNumber ipNumber, u_int64_t count, u_int64_t at);

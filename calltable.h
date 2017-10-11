@@ -756,7 +756,7 @@ public:
 	 * @brief save call to register tables and remove from calltable 
 	 *
 	*/
-	void saveregister();
+	void saveregister(time_t currtime);
 
 	/**
 	 * @brief print debug information for the call to stdout

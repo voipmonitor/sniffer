@@ -340,6 +340,7 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	typeChangeLocation = _typeLocation_NA;
 	intervalLength = 0;
 	intervalLimit = 0;
+	filterInternational = false;
 	onlyConnected = false;
 	suppressRepeatingAlerts = false;
 	alertOncePerHours = 0;
@@ -493,6 +494,9 @@ bool FraudAlert::loadAlert() {
 	if(defInterval()) {
 		intervalLength = atol(dbRow["fraud_interval_length"].c_str());
 		intervalLimit = atol(dbRow["fraud_interval_limit"].c_str());
+	}
+	if(defFilterInternational()) {
+		filterInternational = atoi(dbRow["fraud_filter_international"].c_str());
 	}
 	if(defOnlyConnected()) {
 		onlyConnected = atoi(dbRow["only_connected"].c_str());
@@ -1855,6 +1859,7 @@ FraudAlert_seq::FraudAlert_seq(unsigned int dbId)
 void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
 	if(callInfo->call_type != REGISTER &&
 	   callInfo->typeCallInfo == sFraudCallInfo::typeCallInfo_connectCall &&
+	   (!filterInternational || !callInfo->local_called_number) &&
 	   this->okFilter(callInfo) &&
 	   this->okDayHour(callInfo)) {
 		sIpNumber ipNumber(callInfo->caller_ip, callInfo->called_number.c_str());

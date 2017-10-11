@@ -30,6 +30,7 @@ struct sVerbose {
 	int webrtc;
 	int ssl;
 	int sip;
+	char *tcpreassembly_debug_file;
 	int ssldecode;
 	int ssldecode_debug;
 	int sip_packets;

@@ -778,7 +778,13 @@ void save_packet(Call *call, packet_s *packetS, int type) {
 
 ParsePacket _parse_packet_global_process_packet;
 
-int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents) {
+int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp) {
+ 
+	while(isTcp && len >= 13 && data[0] == '\r' && data[1] == '\n') {
+		data += 2;
+		len -= 2;
+	}
+ 
 	if(len < 11) {
 		return 0;
 	}
@@ -3417,7 +3423,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		if(call->regcount > 4) {
 			// to much register attempts without OK or 401 responses
 			call->regstate = 4;
-			call->saveregister();
+			call->saveregister(packetS->header_pt->ts.tv_sec);
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 			if(call == NULL) {
 				goto endsip;
@@ -3471,7 +3477,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		   call->reg200count < call->regcount) {
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + opt_register_timeout;
 		} else {
-			call->saveregister();
+			call->saveregister(packetS->header_pt->ts.tv_sec);
 		}
 		if(logPacketSipMethodCall_enable) {
 			logPacketSipMethodCallDescr = "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)";
@@ -3551,7 +3557,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 			// registration failed
 			call->regstate = 2;
 			save_packet(call, packetS, TYPE_SIP);
-			call->saveregister();
+			call->saveregister(packetS->header_pt->ts.tv_sec);
 			if(logPacketSipMethodCall_enable) {
 				logPacketSipMethodCallDescr =
 					packetS->sip_method == RES401 ? "REGISTER 401 count > 1" :
@@ -3575,7 +3581,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		// too many REGISTER messages within the same callid
 		call->regstate = 4;
 		save_packet(call, packetS, TYPE_SIP);
-		call->saveregister();
+		call->saveregister(packetS->header_pt->ts.tv_sec);
 		if(logPacketSipMethodCall_enable) {
 			logPacketSipMethodCallDescr = "too many REGISTER messages within the same callid";
 		}
@@ -6332,7 +6338,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 	packetS->blockstore_addflag(11 /*pb lock flag*/);
 	if(packetS->is_need_sip_process) {
 		packetS->init2();
-		if(check_sip20(packetS->data, packetS->datalen, NULL)) {
+		if(check_sip20(packetS->data, packetS->datalen, NULL, packetS->istcp)) {
 			packetS->blockstore_addflag(12 /*pb lock flag*/);
 			isSip = true;
 		} else if(packetS->is_mgcp && check_mgcp(packetS->data, packetS->datalen)) {
@@ -6508,7 +6514,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 			if((packetS->sipDataOffset + packetS->sipDataLen + 11) < packetS->datalen) {
 				if(check_sip20(packetS->data + packetS->sipDataOffset + packetS->sipDataLen,
 					       packetS->datalen - packetS->sipDataOffset - packetS->sipDataLen,
-					       NULL)) {
+					       NULL, packetS->istcp)) {
 					nextSip = true;
 					multipleSip = true;
 				} else {
@@ -6520,7 +6526,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 						if(offsetAfterDoubleEndLine < (unsigned)packetS->datalen - 11) {
 							if(check_sip20(packetS->data + offsetAfterDoubleEndLine, 
 								       packetS->datalen - offsetAfterDoubleEndLine, 
-								       NULL)) {
+								       NULL, packetS->istcp)) {
 								nextSip = true;
 								multipleSip = true;
 								nextSipDataOffset = offsetAfterDoubleEndLine;
