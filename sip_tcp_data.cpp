@@ -86,63 +86,71 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
 			u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
 			u_int16_t _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
-			createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
-						  ethHeader, dataItem->getData() + (*iter_sip_offset)[0], (*iter_sip_offset)[1],
-						  _ip_src, _ip_dst, _port_src, _port_dst,
-						  dataItem->getSeq(), dataItem->getAck(), 
-						  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
-			unsigned dataOffset = ethHeaderLength + sizeof(iphdr2) + ((tcphdr2*)(tcpPacket + ethHeaderLength + sizeof(iphdr2)))->doff * 4;
-			if(uData) {
-				packet_s_process *packetS = PACKET_S_PROCESS_SIP_CREATE();
-				#if USE_PACKET_NUMBER
-				packetS->packet_number = 0;
-				#endif
-				packetS->saddr = _ip_src;
-				packetS->source = _port_src;
-				packetS->daddr = _ip_dst; 
-				packetS->dest = _port_dst;
-				packetS->datalen = (*iter_sip_offset)[1]; 
-				packetS->dataoffset = dataOffset;
-				packetS->handle_index = handle_index; 
-				packetS->header_pt = tcpHeader;
-				packetS->packet = tcpPacket; 
-				packetS->_packet_alloc = true; 
-				packetS->istcp = 2;
-				packetS->isother = 0;
-				packetS->header_ip_offset = ethHeaderLength; 
-				packetS->block_store = NULL; 
-				packetS->block_store_index =  0; 
-				packetS->dlt = dlt; 
-				packetS->sensor_id_u = (u_int16_t)sensor_id;
-				packetS->sensor_ip = sensor_ip;
-				packetS->is_ssl = false;
-				extern int opt_skinny;
-				extern char *sipportmatrix;
-				extern char *skinnyportmatrix;
-				packetS->is_skinny = opt_skinny && (skinnyportmatrix[_port_src] || skinnyportmatrix[_port_dst]);
-				extern int opt_mgcp;
-				extern unsigned opt_tcp_port_mgcp_gateway;
-				extern unsigned opt_tcp_port_mgcp_callagent;
-				packetS->is_mgcp = opt_mgcp && (_port_src == opt_tcp_port_mgcp_gateway || _port_dst == opt_tcp_port_mgcp_gateway ||
-								_port_src == opt_tcp_port_mgcp_callagent || _port_dst == opt_tcp_port_mgcp_callagent);
-				packetS->is_need_sip_process = !packetS->isother &&
-							       (sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
-								packetS->is_skinny ||
-								packetS->is_mgcp);
-				packetS->init2();
-				((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS);
-			} else {
-				preProcessPacket[PreProcessPacket::ppt_extend]->push_packet(
-						true, 
-						#if USE_PACKET_NUMBER
-						0, 
-						#endif
-						_ip_src, _port_src, _ip_dst, _port_dst, 
-						(*iter_sip_offset)[1], dataOffset,
-						handle_index, tcpHeader, tcpPacket, true, 
-						2, false, (iphdr2*)(tcpPacket + ethHeaderLength),
-						NULL, 0, dlt, sensor_id, sensor_ip,
-						false);
+			u_char *_data = dataItem->getData() + (*iter_sip_offset)[0];
+			unsigned int _datalen = (*iter_sip_offset)[1];
+			while(_datalen >= 2 && _data[0] == '\r' && _data[1] == '\n') {
+				_data += 2;
+				_datalen -= 2;
+			}
+			if(_datalen > 0) {
+				createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
+							  ethHeader, _data, _datalen,
+							  _ip_src, _ip_dst, _port_src, _port_dst,
+							  dataItem->getSeq(), dataItem->getAck(), 
+							  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
+				unsigned dataOffset = ethHeaderLength + sizeof(iphdr2) + ((tcphdr2*)(tcpPacket + ethHeaderLength + sizeof(iphdr2)))->doff * 4;
+				if(uData) {
+					packet_s_process *packetS = PACKET_S_PROCESS_SIP_CREATE();
+					#if USE_PACKET_NUMBER
+					packetS->packet_number = 0;
+					#endif
+					packetS->saddr = _ip_src;
+					packetS->source = _port_src;
+					packetS->daddr = _ip_dst; 
+					packetS->dest = _port_dst;
+					packetS->datalen = _datalen; 
+					packetS->dataoffset = dataOffset;
+					packetS->handle_index = handle_index; 
+					packetS->header_pt = tcpHeader;
+					packetS->packet = tcpPacket; 
+					packetS->_packet_alloc = true; 
+					packetS->istcp = 2;
+					packetS->isother = 0;
+					packetS->header_ip_offset = ethHeaderLength; 
+					packetS->block_store = NULL; 
+					packetS->block_store_index =  0; 
+					packetS->dlt = dlt; 
+					packetS->sensor_id_u = (u_int16_t)sensor_id;
+					packetS->sensor_ip = sensor_ip;
+					packetS->is_ssl = false;
+					extern int opt_skinny;
+					extern char *sipportmatrix;
+					extern char *skinnyportmatrix;
+					packetS->is_skinny = opt_skinny && (skinnyportmatrix[_port_src] || skinnyportmatrix[_port_dst]);
+					extern int opt_mgcp;
+					extern unsigned opt_tcp_port_mgcp_gateway;
+					extern unsigned opt_tcp_port_mgcp_callagent;
+					packetS->is_mgcp = opt_mgcp && (_port_src == opt_tcp_port_mgcp_gateway || _port_dst == opt_tcp_port_mgcp_gateway ||
+									_port_src == opt_tcp_port_mgcp_callagent || _port_dst == opt_tcp_port_mgcp_callagent);
+					packetS->is_need_sip_process = !packetS->isother &&
+								       (sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
+									packetS->is_skinny ||
+									packetS->is_mgcp);
+					packetS->init2();
+					((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS);
+				} else {
+					preProcessPacket[PreProcessPacket::ppt_extend]->push_packet(
+							true, 
+							#if USE_PACKET_NUMBER
+							0, 
+							#endif
+							_ip_src, _port_src, _ip_dst, _port_dst, 
+							_datalen, dataOffset,
+							handle_index, tcpHeader, tcpPacket, true, 
+							2, false, (iphdr2*)(tcpPacket + ethHeaderLength),
+							NULL, 0, dlt, sensor_id, sensor_ip,
+							false);
+				}
 			}
 		}
 	}

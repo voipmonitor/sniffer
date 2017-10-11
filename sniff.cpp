@@ -778,7 +778,13 @@ void save_packet(Call *call, packet_s *packetS, int type) {
 
 ParsePacket _parse_packet_global_process_packet;
 
-int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents) {
+int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp) {
+ 
+	while(isTcp && len >= 13 && data[0] == '\r' && data[1] == '\n') {
+		data += 2;
+		len -= 2;
+	}
+ 
 	if(len < 11) {
 		return 0;
 	}
@@ -6332,7 +6338,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 	packetS->blockstore_addflag(11 /*pb lock flag*/);
 	if(packetS->is_need_sip_process) {
 		packetS->init2();
-		if(check_sip20(packetS->data, packetS->datalen, NULL)) {
+		if(check_sip20(packetS->data, packetS->datalen, NULL, packetS->istcp)) {
 			packetS->blockstore_addflag(12 /*pb lock flag*/);
 			isSip = true;
 		} else if(packetS->is_mgcp && check_mgcp(packetS->data, packetS->datalen)) {
@@ -6508,7 +6514,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 			if((packetS->sipDataOffset + packetS->sipDataLen + 11) < packetS->datalen) {
 				if(check_sip20(packetS->data + packetS->sipDataOffset + packetS->sipDataLen,
 					       packetS->datalen - packetS->sipDataOffset - packetS->sipDataLen,
-					       NULL)) {
+					       NULL, packetS->istcp)) {
 					nextSip = true;
 					multipleSip = true;
 				} else {
@@ -6520,7 +6526,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 						if(offsetAfterDoubleEndLine < (unsigned)packetS->datalen - 11) {
 							if(check_sip20(packetS->data + offsetAfterDoubleEndLine, 
 								       packetS->datalen - offsetAfterDoubleEndLine, 
-								       NULL)) {
+								       NULL, packetS->istcp)) {
 								nextSip = true;
 								multipleSip = true;
 								nextSipDataOffset = offsetAfterDoubleEndLine;

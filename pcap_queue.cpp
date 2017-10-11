@@ -76,7 +76,7 @@
 
 using namespace std;
 
-extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
+extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
 void daemonizeOutput(string error);
 
 extern int verbosity;
@@ -2643,6 +2643,7 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 	int datalen = 0;
 	uint16_t sport = 0;
 	uint16_t dport = 0;
+	bool isTcp = false;
 	if (header_ip->protocol == IPPROTO_UDP) {
 		udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
 		data = (char *) header_udp + sizeof(*header_udp);
@@ -2657,13 +2658,14 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 				   header->caplen - ((u_char*)data - packet)); 
 		sport = header_tcp->source;
 		dport = header_tcp->dest;
+		isTcp = true;
 	} else {
 		return;
 	}
 	
 	if(sipSendSocket && sport && dport &&
 	   (sipportmatrix[htons(sport)] || sipportmatrix[htons(dport)]) &&
-	   check_sip20(data, datalen, NULL)) {
+	   check_sip20(data, datalen, NULL, isTcp)) {
 		u_int16_t header_length = datalen;
 		sipSendSocket->addData(&header_length, 2,
 				       data, datalen);

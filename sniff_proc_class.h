@@ -89,10 +89,10 @@ private:
 	void cleanStream(tcp_stream *stream, bool callFromClean = false);
 public:
 	static bool checkSip(u_char *data, int data_len, bool strict, list<d_u_int32_t> *offsets = NULL) {
-		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents);
+		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
 		u_int32_t offset = 0;
 		if(!data || data_len < 10 ||
-		   !check_sip20((char*)data, data_len, NULL)) {
+		   !check_sip20((char*)data, data_len, NULL, true)) {
 			return(false);
 		}
 		while(data_len > 0) {
@@ -122,7 +122,7 @@ public:
 			if(sipDataLen == data_len) {
 				return(true);
 			} else if(sipDataLen > 0 && sipDataLen < data_len) {
-				if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen, NULL)) {
+				if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen, NULL, true)) {
 					return(strict ? false : true);
 				} else {
 					data += sipDataLen;
