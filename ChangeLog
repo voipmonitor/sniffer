@@ -1,3 +1,8 @@
+21.1.1 16.10.2017
+=================
+- support MGCP messages with "\n" instead of "\r\n" separator [VS-700]
+
+
 21.1 11.10.2017
 ===============
 - fix crash when terminating server mode 
