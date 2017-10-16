@@ -2606,8 +2606,10 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
 			if(packetS->saddr == iter->saddr && packetS->daddr == iter->daddr) {
 				existInviteSdaddr = true;
+				++iter->counter;
 			} else if(packetS->daddr == iter->saddr && packetS->saddr == iter->daddr) {
 				reverseInviteSdaddr = true;
+				++iter->counter_reverse;
 			}
 		}
 		if(!existInviteSdaddr && !reverseInviteSdaddr) {
@@ -2616,6 +2618,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			invite_sd.daddr = packetS->daddr;
 			invite_sd.sport = packetS->source;
 			invite_sd.dport = packetS->dest;
+			invite_sd.counter = 1;
 			call->invite_sdaddr.push_back(invite_sd);
 		}
 	}

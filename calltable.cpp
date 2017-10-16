@@ -4956,6 +4956,19 @@ u_int32_t Call::getSipcalledipConfirmed(u_int16_t *dport) {
 	return(daddr);
 }
 
+unsigned Call::getMaxRetransmissionInvite() {
+	unsigned max_retrans = 0;
+	for(list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+		if(iter->counter > 1 && (iter->counter - 1) > max_retrans) {
+			max_retrans = iter->counter - 1;
+		}
+		if(iter->counter_reverse > 1 && (iter->counter_reverse - 1) > max_retrans) {
+			max_retrans = iter->counter_reverse - 1;
+		}
+	}
+	return(max_retrans);
+}
+
 void adjustUA(char *ua) {
 	if(opt_cdr_ua_reg_remove.size()) {
 		bool adjust = false;
@@ -6419,7 +6432,8 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 				ch_data.specialType = specialType == "max_length_sip_data" ? max_length_sip_data :
 						      specialType == "max_length_sip_packet" ? max_length_sip_packet :
 						      specialType == "gsm_dcs" ? gsm_dcs :
-						      specialType == "gsm_voicemail" ? gsm_voicemail : st_na;
+						      specialType == "gsm_voicemail" ? gsm_voicemail : 
+						      specialType == "max_retransmission_invite" ? max_retransmission_invite : st_na;
 				ch_data.db_id = atoi(row["id"].c_str());
 				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
 				ch_data.header = row["header_field"];
@@ -6562,6 +6576,14 @@ void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket::ppCo
 						break;
 					case Call::voicemail_na:
 						break;
+					}
+					break;
+				case max_retransmission_invite:
+					{
+					unsigned max_retrans = call->getMaxRetransmissionInvite();
+					if(max_retrans > 0) {
+						content = intToString(max_retrans);
+					}
 					}
 					break;
 				case st_na:

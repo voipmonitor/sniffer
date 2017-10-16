@@ -261,12 +261,16 @@ public:
 	struct sInviteSD_Addr {
 		sInviteSD_Addr() {
 			confirmed = false;
+			counter = 0;
+			counter_reverse = 0;
 		}
 		u_int32_t saddr;
 		u_int32_t daddr;
 		u_int16_t sport;
 		u_int16_t dport;
 		bool confirmed;
+		unsigned counter;
+		unsigned counter_reverse;
 	};
 	struct sSipResponse {
 		sSipResponse(const char *SIPresponse = NULL, int SIPresponseNum = 0) {
@@ -919,6 +923,7 @@ public:
 	}
 	
 	u_int32_t getSipcalledipConfirmed(u_int16_t *dport);
+	unsigned getMaxRetransmissionInvite();
 	
 	void calls_counter_inc() {
 		extern volatile int calls_counter;
@@ -1555,7 +1560,8 @@ public:
 		max_length_sip_data,
 		max_length_sip_packet,
 		gsm_dcs,
-		gsm_voicemail
+		gsm_voicemail,
+		max_retransmission_invite
 	};
 	struct sCustomHeaderData {
 		eSpecialType specialType;
