@@ -485,6 +485,8 @@ unsigned long getUptime();
 
 char *strnstr(const char *haystack, const char *needle, size_t len);
 char *strncasestr(const char *haystack, const char *needle, size_t len);
+char *strnchr(const char *haystack, char needle, size_t len);
+char *strncasechr(const char *haystack, char needle, size_t len);
 
 std::string &trim(std::string &s, const char *trimChars = NULL);
 std::string trim_str(std::string s, const char *trimChars = NULL);
