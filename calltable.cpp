@@ -357,7 +357,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	digest_username[0] = '\0';
 	digest_realm[0] = '\0';
 	register_expires = -1;
-	byecseq[0] = '\0';
+	for(unsigned i = 0; i < (sizeof(byecseq) / sizeof(byecseq[0])); i++) {
+		byecseq[i][0] = '\0';
+	}
 	invitecseq[0] = '\0';
 	cancelcseq[0] = '\0';
 	updatecseq[0] = '\0';
