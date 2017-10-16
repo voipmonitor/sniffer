@@ -1960,6 +1960,36 @@ char *strncasestr(const char *haystack, const char *needle, size_t len)
         return NULL;
 }
 
+char *strnchr(const char *haystack, char needle, size_t len)
+{
+        int i;
+
+        for (i=0; i<=(int)(len-1); i++)
+        {
+                if (haystack[0] == needle)
+                        return (char *)haystack;
+
+                haystack++;
+        }
+        return NULL;
+}
+
+char *strncasechr(const char *haystack, char needle, size_t len)
+{
+        int i;
+	
+	needle = toupper(needle);
+
+        for (i=0; i<=(int)(len-1); i++)
+        {
+                if (toupper(haystack[0]) == needle)
+                        return (char *)haystack;
+
+                haystack++;
+        }
+        return NULL;
+}
+
 
 std::string &trim(std::string &s, const char *trimChars) {
 	if(!s.length()) {

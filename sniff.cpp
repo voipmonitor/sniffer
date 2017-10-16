@@ -1573,7 +1573,12 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 	do {
 		s = gettag(s, len - (s - sdp_text), NULL,
 			   "a=rtpmap:", &l, &gettagLimitLen);
-		if(l && (z = strchr(s, '\r'))) {
+		
+		char zchr;
+		if(l && 
+		   ((z = strnchr(s, '\r', len - (s - sdp_text))) ||
+		    (z = strnchr(s, '\n', len - (s - sdp_text))))) {
+			zchr = *z;
 			*z = '\0';
 		} else {
 			break;
@@ -1687,7 +1692,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 			}
 		}
 		// return '\r' into sdp_text
-		*z = '\r';
+		*z = zchr;
 	 } while(l && i < (MAX_RTPMAP - 2));
 	 rtpmap[i] = 0; //terminate rtpmap field
 	 return 0;
@@ -2353,13 +2358,21 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 
 void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from, char *callidstr) {
  
-	char *data = from;
-	unsigned int datalen = call->type == MGCP ?
-				packetS->datalen - (from - packetS->data) :
-				packetS->sipDataLen - (from - (packetS->data + packetS->sipDataOffset));
- 
-	char *tmp = strstr(data, "\r\n\r\n");
-	if(!tmp) return;
+	unsigned int datalen;
+	char *sdp;
+	unsigned int sdplen;
+	
+	if(call->type == MGCP) {
+		datalen = packetS->datalen - (from - packetS->data);
+		sdp = from;
+		sdplen = datalen;
+	} else {
+		datalen = packetS->sipDataLen - (from - (packetS->data + packetS->sipDataOffset));
+		sdp = strstr(from, "\r\n\r\n");
+		if(!sdp) return;
+		sdp += 4;
+		sdplen = datalen - (sdp - from);
+	}
 
 	in_addr_t tmp_addr;
 	unsigned short tmp_port;
@@ -2367,7 +2380,7 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 	s_sdp_flags sdp_flags;
 	char sessid[MAXLEN_SDP_SESSID];
-	if (!get_ip_port_from_sdp(call, tmp + 1, call->type == MGCP ? datalen - (tmp + 1 - data) : 0,
+	if (!get_ip_port_from_sdp(call, sdp, sdplen,
 				  &tmp_addr, &tmp_port, &sdp_flags.is_fax, sessid, &sdp_flags.rtcp_mux, packetS->sip_method)){
 		if(sdp_flags.is_fax) { 
 			if(verbosity >= 2){
@@ -2390,7 +2403,7 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 			//printf("sdp [%u] port[%u]\n", tmp_addr, tmp_port);
 
 			// store RTP stream
-			get_rtpmap_from_sdp(tmp + 1, datalen - (tmp + 1 - data), rtpmap);
+			get_rtpmap_from_sdp(sdp, sdplen, rtpmap);
 
 			char to[1024];
 			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to));
@@ -2410,7 +2423,7 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 		}
 	} else {
 		if(verbosity >= 2){
-			syslog(LOG_ERR, "callid[%s] Can't get ip/port from SDP:\n%s\n\n", callidstr, tmp + 1);
+			syslog(LOG_ERR, "callid[%s] Can't get ip/port from SDP:\n%s\n\n", callidstr, sdp);
 		}
 	}
 }

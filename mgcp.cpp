@@ -124,11 +124,19 @@ void *handle_mgcp(packet_s_process *packetS) {
 		return(NULL);
 	}
 	int mgcp_header_len = packetS->datalen;
-	u_char *sdp = (u_char*)memmem(packetS->data, packetS->datalen, "\r\n\r\n", 4);
+	u_char *sdp = NULL;
+	unsigned sdp_separator_length = 0;
+	for(int i = 0; i < 2; i++) {
+		sdp = (u_char*)memmem(packetS->data, packetS->datalen, i == 0 ? "\r\n\r\n" : "\n\n", i == 0 ? 4 : 2);
+		if(sdp) {
+			sdp_separator_length = i == 0 ? 4 : 2;
+			break;
+		}
+	}
 	if(sdp) {
 		mgcp_header_len = sdp - (u_char*)packetS->data;
 	}
-	vector<string> mgcp_lines = split(string(packetS->data, mgcp_header_len).c_str(), "\r\n", true);
+	vector<string> mgcp_lines = split(string(packetS->data, mgcp_header_len).c_str(), "\n", true);
 	if(!mgcp_lines.size()) {
 		return(NULL);
 	}
@@ -274,9 +282,9 @@ void *handle_mgcp(packet_s_process *packetS) {
 		}
 		if(sdp) {
 			if(sverb.mgcp_sdp) {
-				cout << "SDP: " << endl << string((char*)sdp + 4, packetS->datalen - mgcp_header_len - 4) << endl;
+				cout << "SDP: " << endl << string((char*)sdp + sdp_separator_length, packetS->datalen - mgcp_header_len - sdp_separator_length) << endl;
 			}
-			process_sdp(call, packetS, packetS->daddr == call->sipcallerip[0], (char*)sdp - 4, (char*)call->call_id.c_str());
+			process_sdp(call, packetS, packetS->daddr == call->sipcallerip[0], (char*)(sdp + sdp_separator_length), (char*)call->call_id.c_str());
 		}
 		if(!call->connect_time && is_request) {
 			if((request_type == _mgcp_CRCX && request.parameters.connection_mode == "SENDRECV") ||
@@ -404,19 +412,22 @@ bool parse_mgcp_response(sMgcpResponse *response, const char *mgcp_line) {
 }
 
 void parse_mgcp_parameters(sMgcpParameters *parameters, const char *mgcp_line) {
-	if(strlen(mgcp_line) < 4 ||
-	   mgcp_line[1] != ':' || mgcp_line[2] != ' ') {
+	if(strlen(mgcp_line) < 3 || mgcp_line[1] != ':') {
 		return;
+	}
+	unsigned pos_content = 2;
+	while(mgcp_line[pos_content] == ' ') {
+		++pos_content;
 	}
 	switch(mgcp_line[0]) {
 	case 'C':
-		parameters->call_id = mgcp_line + 3;
+		parameters->call_id = mgcp_line + pos_content;
 		break;
 	case 'R':
-		parameters->requested_events = mgcp_line + 3;
+		parameters->requested_events = mgcp_line + pos_content;
 		break;
 	case 'M':
-		parameters->connection_mode = mgcp_line + 3;
+		parameters->connection_mode = mgcp_line + pos_content;
 		break;
 	}
 }
