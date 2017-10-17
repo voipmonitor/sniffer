@@ -2346,10 +2346,9 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen invite, CSeq: %s\n", call->invitecseq);
 		} else if(sip_method == BYE) {
-			memcpy(call->byecseq, s, l);
-			call->byecseq[l] = '\0';
+			unsigned indexSetByeCseq = call->setByeCseq(s, l);
 			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen bye, CSeq: %s\n", call->byecseq);
+				syslog(LOG_NOTICE, "Seen bye, CSeq: %s\n", call->byecseq[indexSetByeCseq]);
 		}
 	}
 	
@@ -2607,8 +2606,10 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
 			if(packetS->saddr == iter->saddr && packetS->daddr == iter->daddr) {
 				existInviteSdaddr = true;
+				++iter->counter;
 			} else if(packetS->daddr == iter->saddr && packetS->saddr == iter->daddr) {
 				reverseInviteSdaddr = true;
+				++iter->counter_reverse;
 			}
 		}
 		if(!existInviteSdaddr && !reverseInviteSdaddr) {
@@ -2617,6 +2618,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			invite_sd.daddr = packetS->daddr;
 			invite_sd.sport = packetS->source;
 			invite_sd.dport = packetS->dest;
+			invite_sd.counter = 1;
 			call->invite_sdaddr.push_back(invite_sd);
 		}
 	}
@@ -2825,8 +2827,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		}
 		//check and save CSeq for later to compare with OK 
 		if(cseq && cseqlen < 32) {
-			memcpy(call->byecseq, cseq, cseqlen);
-			call->byecseq[cseqlen] = '\0';
+			call->setByeCseq(cseq, cseqlen);
 			call->setSeenbye(true, getTimeUS(packetS->header_pt), packetS->get_callid());
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen bye\n");
@@ -2867,7 +2868,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			call->seenRES2XX = true;
 			// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 			if(cseq_method != BYE ||
-			   !call->byecseq[0] || strncmp(cseq, call->byecseq, cseqlen)) {
+			   !call->existsByeCseq(cseq, cseqlen)) {
 				call->seenRES2XX_no_BYE = true;
 				if(!call->progress_time) {
 					call->progress_time = packetS->header_pt->ts.tv_sec;
@@ -2883,11 +2884,19 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 					cseq[cseqlen] = a;
 				}
 				if(cseq_method == BYE &&
-				   call->byecseq[0] && strncmp(cseq, call->byecseq, cseqlen) == 0) {
+				   call->existsByeCseq(cseq, cseqlen)) {
 					// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
 
 					call->seenbyeandok = true;
 					call->seenbyeandok_time_usec = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
+					call->unconfirmed_bye = false;
+					
+					// update who hanged up 
+					if(call->sipcallerip[0] == packetS->daddr) {
+						call->whohanged = 0;
+					} else if(call->sipcalledip[0] == packetS->daddr) {
+						call->whohanged = 1;
+					}
 
 					// Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
 					// first 200 OK will not save the second 200 OK. So rather wait for 5 seconds for some more messages instead of closing the call. 
@@ -2985,8 +2994,9 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				}
 			}
 		} else if(cseq_method == BYE &&
+			  !call->seenbyeandok &&
 			  IS_SIP_RES4XX(packetS->sip_method) &&
-			  call->byecseq[0] && strncmp(cseq, call->byecseq, cseqlen) == 0 &&
+			  call->existsByeCseq(cseq, cseqlen) &&
 			  lastSIPresponseNum == 481) {
 			call->unconfirmed_bye = true;
 		}
@@ -3344,8 +3354,8 @@ inline void process_packet_sip_alone_bye_inline(packet_s_process *packetS) {
 			if(cseq_pos < cseqlen) {
 				cseq_method = process_packet__parse_sip_method(cseq + cseq_pos, cseqlen - cseq_pos, NULL);
 			}
-			if(cseq_method == BYE &&
-			   call->byecseq[0] && strncmp(cseq, call->byecseq, cseqlen) == 0) {
+			if(cseq_method == BYE && 
+			   call->existsByeCseq(cseq, cseqlen)) {
 				call->lastSIPresponseNum = packetS->lastSIPresponseNum;
 			}
 		}

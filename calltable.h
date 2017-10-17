@@ -261,12 +261,16 @@ public:
 	struct sInviteSD_Addr {
 		sInviteSD_Addr() {
 			confirmed = false;
+			counter = 0;
+			counter_reverse = 0;
 		}
 		u_int32_t saddr;
 		u_int32_t daddr;
 		u_int16_t sport;
 		u_int16_t dport;
 		bool confirmed;
+		unsigned counter;
+		unsigned counter_reverse;
 	};
 	struct sSipResponse {
 		sSipResponse(const char *SIPresponse = NULL, int SIPresponseNum = 0) {
@@ -350,7 +354,7 @@ public:
 	char digest_username[64];	//!< 
 	char digest_realm[64];		//!< 
 	int register_expires;	
-	char byecseq[32];		
+	char byecseq[2][32];		
 	char invitecseq[32];		
 	char cancelcseq[32];		
 	char updatecseq[32];		
@@ -919,6 +923,7 @@ public:
 	}
 	
 	u_int32_t getSipcalledipConfirmed(u_int16_t *dport);
+	unsigned getMaxRetransmissionInvite();
 	
 	void calls_counter_inc() {
 		extern volatile int calls_counter;
@@ -985,6 +990,32 @@ public:
 			return(seenbye_time_usec);
 		}
 		return(seenbye ? seenbye_time_usec : 0);
+	}
+	int setByeCseq(const char *cseq, unsigned cseqlen) {
+		unsigned index;
+		unsigned size_byecseq = sizeof(byecseq) / sizeof(byecseq[0]);
+		for(index = 0; index < size_byecseq; index++) {
+			if(!byecseq[index][0]) {
+				break;
+			} else if(!strncmp(byecseq[index], cseq, cseqlen) && !byecseq[index][cseqlen]) {
+				return(index);
+			}
+		}
+		if(index == size_byecseq) {
+			index = size_byecseq - 1;
+		}
+		strncpy(byecseq[index], cseq, cseqlen);
+		byecseq[index][cseqlen] = 0;
+		return(index);
+	}
+	int existsByeCseq(const char *cseq, unsigned cseqlen) {
+		for(unsigned index = 0; index < (sizeof(byecseq) / sizeof(byecseq[0])); index++) {
+			if(byecseq[index][0] &&
+			   !strncmp(byecseq[index], cseq, cseqlen) && !byecseq[index][cseqlen]) {
+				return(index + 1);
+			}
+		}
+		return(0);
 	}
 
 private:
@@ -1529,7 +1560,8 @@ public:
 		max_length_sip_data,
 		max_length_sip_packet,
 		gsm_dcs,
-		gsm_voicemail
+		gsm_voicemail,
+		max_retransmission_invite
 	};
 	struct sCustomHeaderData {
 		eSpecialType specialType;
