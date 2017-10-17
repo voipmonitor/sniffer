@@ -3477,6 +3477,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(cdr_flags, "flags");
 	}
 	
+	if(existsColumns.cdr_max_retransmission_invite) {
+		unsigned max_retrans = getMaxRetransmissionInvite();
+		if(max_retrans > 0) {
+			cdr.add(max_retrans, "max_retransmission_invite");
+		}
+	}
+	
 	if(getSpoolIndex() && existsColumns.cdr_next_spool_index) {
 		cdr_next.add(getSpoolIndex(), "spool_index");
 	}

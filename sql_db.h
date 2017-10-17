@@ -787,6 +787,7 @@ struct sExistsColumns {
 	bool cdr_mos_xr;
 	bool cdr_dscp;
 	bool cdr_mos_lqo;
+	bool cdr_max_retransmission_invite;
 	bool cdr_flags;
 	bool cdr_next_calldate;
 	bool cdr_next_spool_index;

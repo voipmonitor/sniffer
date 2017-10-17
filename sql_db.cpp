@@ -3979,6 +3979,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`called_silence_end` smallint unsigned DEFAULT NULL,\
 			`response_time_100` smallint unsigned DEFAULT NULL,\
 			`response_time_xxx` smallint unsigned DEFAULT NULL,\
+			`max_retransmission_invite` tinyint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
 			`id_sensor` smallint unsigned DEFAULT NULL,") + 
 			(get_customers_pn_query[0] ?
@@ -5984,6 +5985,14 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ALTER TABLE cdr "
 				   "ADD COLUMN `flags` bigint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.cdr_flags);
+	}
+	existsColumns.cdr_max_retransmission_invite = this->existsColumn("cdr", "max_retransmission_invite");
+	if(!existsColumns.cdr_max_retransmission_invite) {
+		this->logNeedAlter("cdr",
+				   "maximum retransmissions invite",
+				   "ALTER TABLE cdr "
+				   "ADD COLUMN `max_retransmission_invite` tinyint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.cdr_max_retransmission_invite);
 	}
 
 	if(!this->existsColumn("cdr", "price_operator_mult100") &&
