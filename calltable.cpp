@@ -4870,6 +4870,14 @@ void Call::adjustUA() {
 	}
 }
 
+bool Call::is_set_proxies() {
+	bool set_proxies;
+	proxies_lock();
+	set_proxies = proxies.size() > 0;
+	proxies_unlock();
+	return(set_proxies);
+}
+
 void Call::proxies_undup(set<unsigned int> *proxies_undup) {
 	proxies_lock();
 	list<unsigned int>::iterator iter = proxies.begin();

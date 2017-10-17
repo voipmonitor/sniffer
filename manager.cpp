@@ -1070,114 +1070,137 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		rslt_data += outbuf;
 		calltable->lock_calls_listMAP();
 		unsigned int now = time(NULL);
-		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
-			call = (*callMAPIT).second;
-			if(call->type == REGISTER or call->type == MESSAGE or 
-			   (call->destroy_call_at and call->destroy_call_at < now) or 
-			   (call->destroy_call_at_bye and call->destroy_call_at_bye < now) or 
-			   (call->destroy_call_at_bye_confirmed and call->destroy_call_at_bye_confirmed < now)) {
-				// skip register or message or calls which are scheduled to be closed
-				continue;
+		map<string, Call*>::iterator callMAPIT1;
+		map<sStreamIds2, Call*>::iterator callMAPIT2;
+		for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
+			int typeCall = passTypeCall == 0 ? INVITE : MGCP;
+			if(typeCall == INVITE) {
+				callMAPIT1 = calltable->calls_listMAP.begin();
+			} else {
+				callMAPIT2 = calltable->calls_by_stream_callid_listMAP.begin();
 			}
-			stringstream spp;
-			set<unsigned int> proxies_undup;
-			call->proxies_undup(&proxies_undup);
-			set<unsigned int>::iterator iter_undup;
-			for (iter_undup = proxies_undup.begin(); iter_undup != proxies_undup.end(); ) {
-				if(*iter_undup == call->sipcalledip[0]) { ++iter_undup; continue; };
-				string ipstr = inet_ntostring(htonl(*iter_undup));
-				spp << ipstr;
-				++iter_undup;
-				if (iter_undup != proxies_undup.end()) {
-					spp << ',';
+			while(typeCall == INVITE ? callMAPIT1 != calltable->calls_listMAP.end() : callMAPIT2 != calltable->calls_by_stream_callid_listMAP.end()) {
+				if(typeCall == INVITE) {
+					call = (*callMAPIT1).second;
+				} else {
+					call = (*callMAPIT2).second;
+				}
+				string sipproxies;
+				if(call->type == REGISTER or call->type == MESSAGE or 
+				   (call->destroy_call_at and call->destroy_call_at < now) or 
+				   (call->destroy_call_at_bye and call->destroy_call_at_bye < now) or 
+				   (call->destroy_call_at_bye_confirmed and call->destroy_call_at_bye_confirmed < now)) {
+					// skip register or message or calls which are scheduled to be closed
+					goto next_call;
+				}
+				if(call->is_set_proxies()) {
+					stringstream spp;
+					set<unsigned int> proxies_undup;
+					call->proxies_undup(&proxies_undup);
+					set<unsigned int>::iterator iter_undup;
+					for (iter_undup = proxies_undup.begin(); iter_undup != proxies_undup.end(); ) {
+						if(*iter_undup == call->sipcalledip[0]) { ++iter_undup; continue; };
+						string ipstr = inet_ntostring(htonl(*iter_undup));
+						spp << ipstr;
+						++iter_undup;
+						if (iter_undup != proxies_undup.end()) {
+							spp << ',';
+						}
+					}
+					sipproxies = spp.str();
+				}
+				/* 
+				 * caller 
+				 * callername
+				 * called
+				 * calldate
+				 * duration
+				 * callerip htonl(sipcallerip)
+				 * sipcalledip htonl(sipcalledip)
+				*/
+				//XXX: escape " or replace it to '
+				snprintf(outbuf, sizeof(outbuf),
+					 ",[\"%p\", "
+					 "\"%s\", "
+					 "\"%d\", "
+					 "\"%d\", "
+					 "\"%s\", "
+					 "\"%s\", " //callername
+					 "\"%s\", "
+					 "\"%s\", "
+					 "\"%s\", "
+					 "\"%s\", " // calleragent
+					 "\"%s\", " // calledagent
+					 "\"%s\", "
+					 "\"%d\", "
+					 "\"%d\", "
+					 "\"%u\", "
+					 "\"%u\", "
+					 "\"%s\", " // sipproxies
+					 "\"%u\", "
+					 "\"%d\", " //lastSIPresponseNum
+					 "\"%u\", " //rtp_src
+					 "\"%u\", " //rtp_dst
+					 "\"%d\", " //src_mosf1
+					 "\"%d\", " //src_mosf1
+					 "\"%d\", " //src_mosAD
+					 "\"%d\", " //src_jitter
+					 "\"%f\", " //src_loss
+					 "\"%f\", " //src_loss_last10sec
+					 "\"%d\", " //dst_mosf1
+					 "\"%d\", " //dst_mosf1
+					 "\"%d\", " //dst_mosAD
+					 "\"%d\", " //dst_jitter
+					 "\"%f\", " //dst_loss
+					 "\"%f\"", //dst_loss_last10sec
+					 call, 
+					 json_encode(call->call_id).c_str(), 
+					 call->last_callercodec, 
+					 call->last_calledcodec, 
+					 json_encode(call->caller).c_str(), 
+					 json_encode(call->callername).c_str(), 
+					 json_encode(call->caller_domain).c_str(),
+					 json_encode(call->called).c_str(), 
+					 json_encode(call->called_domain).c_str(),
+					 json_encode(call->a_ua).c_str(),
+					 json_encode(call->b_ua).c_str(),
+					 sqlDateTimeString(call->calltime()).c_str(), 
+					 call->duration_active(), 
+					 call->connect_duration_active(), 
+					 htonl(call->sipcallerip[0]), 
+					 htonl(call->sipcalledip[0]), 
+					 sipproxies.c_str(),
+					 (unsigned int)call->get_last_packet_time(), 
+					 call->lastSIPresponseNum,
+					     //rtp stat 
+					 (call->lastcallerrtp ? call->lastcallerrtp->saddr : 0),
+					 (call->lastcalledrtp ? call->lastcalledrtp->saddr : 0),
+					     //caller
+					 (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosf1 : 45),
+					 (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosf2 : 45),
+					 (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosAD : 45),
+					 (call->lastcallerrtp ? (int)(round(call->lastcallerrtp->jitter)) : 0),
+					 (call->lastcallerrtp and call->lastcallerrtp->stats.received ? (float)((double)call->lastcallerrtp->stats.lost / ((double)call->lastcallerrtp->stats.received + (double)call->lastcallerrtp->stats.lost) * 100.0) : 0),
+					 (call->lastcallerrtp ? (float)(call->lastcallerrtp->last_stat_loss_perc_mult10) : 0),
+					     //called
+					 (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosf1 : 45),
+					 (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosf2 : 45),
+					 (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosAD : 45),
+					 (call->lastcalledrtp ? (int)round(call->lastcalledrtp->jitter) : 0),
+					 (call->lastcalledrtp and call->lastcalledrtp->stats.received > 50 ? (float)((double)call->lastcalledrtp->stats.lost / ((double)call->lastcalledrtp->stats.received + (double)call->lastcalledrtp->stats.lost) * 100.0) : 0),
+					 (call->lastcalledrtp ? (float)(call->lastcalledrtp->last_stat_loss_perc_mult10) : 0));
+				rslt_data += outbuf;
+				if(is_receiver()) {
+					rslt_data += "," + intToString(call->useSensorId);
+				}
+				rslt_data += "]";
+			next_call:
+				if(typeCall == INVITE) {
+					++callMAPIT1;
+				} else {
+					++callMAPIT2;
 				}
 			}
-			string sipproxies = spp.str();
-			/* 
-			 * caller 
-			 * callername
-			 * called
-			 * calldate
-			 * duration
-			 * callerip htonl(sipcallerip)
-			 * sipcalledip htonl(sipcalledip)
-			*/
-			//XXX: escape " or replace it to '
-			snprintf(outbuf, sizeof(outbuf),
-				 ",[\"%p\", "
-				 "\"%s\", "
-				 "\"%d\", "
-				 "\"%d\", "
-				 "\"%s\", "
-				 "\"%s\", " //callername
-				 "\"%s\", "
-				 "\"%s\", "
-				 "\"%s\", "
-				 "\"%s\", " // calleragent
-				 "\"%s\", " // calledagent
-				 "\"%s\", "
-				 "\"%d\", "
-				 "\"%d\", "
-				 "\"%u\", "
-				 "\"%u\", "
-				 "\"%s\", " // sipproxies
-				 "\"%u\", "
-				 "\"%d\", " //lastSIPresponseNum
-				 "\"%u\", " //rtp_src
-				 "\"%u\", " //rtp_dst
-				 "\"%d\", " //src_mosf1
-				 "\"%d\", " //src_mosf1
-				 "\"%d\", " //src_mosAD
-				 "\"%d\", " //src_jitter
-				 "\"%f\", " //src_loss
-				 "\"%f\", " //src_loss_last10sec
-				 "\"%d\", " //dst_mosf1
-				 "\"%d\", " //dst_mosf1
-				 "\"%d\", " //dst_mosAD
-				 "\"%d\", " //dst_jitter
-				 "\"%f\", " //dst_loss
-				 "\"%f\"", //dst_loss_last10sec
-				 call, 
-				 json_encode(call->call_id).c_str(), 
-				 call->last_callercodec, 
-				 call->last_calledcodec, 
-				 json_encode(call->caller).c_str(), 
-				 json_encode(call->callername).c_str(), 
-				 json_encode(call->caller_domain).c_str(),
-				 json_encode(call->called).c_str(), 
-				 json_encode(call->called_domain).c_str(),
-				 json_encode(call->a_ua).c_str(),
-				 json_encode(call->b_ua).c_str(),
-				 sqlDateTimeString(call->calltime()).c_str(), 
-				 call->duration_active(), 
-				 call->connect_duration_active(), 
-				 htonl(call->sipcallerip[0]), 
-				 htonl(call->sipcalledip[0]), 
-				 sipproxies.c_str(),
-				 (unsigned int)call->get_last_packet_time(), 
-				 call->lastSIPresponseNum,
-				     //rtp stat 
-				 (call->lastcallerrtp ? call->lastcallerrtp->saddr : 0),
-				 (call->lastcalledrtp ? call->lastcalledrtp->saddr : 0),
-				     //caller
-				 (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosf1 : 45),
-				 (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosf2 : 45),
-				 (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosAD : 45),
-				 (call->lastcallerrtp ? (int)(round(call->lastcallerrtp->jitter)) : 0),
-				 (call->lastcallerrtp and call->lastcallerrtp->stats.received ? (float)((double)call->lastcallerrtp->stats.lost / ((double)call->lastcallerrtp->stats.received + (double)call->lastcallerrtp->stats.lost) * 100.0) : 0),
-				 (call->lastcallerrtp ? (float)(call->lastcallerrtp->last_stat_loss_perc_mult10) : 0),
-				     //called
-				 (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosf1 : 45),
-				 (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosf2 : 45),
-				 (call->lastcalledrtp ? call->lastcalledrtp->last_interval_mosAD : 45),
-				 (call->lastcalledrtp ? (int)round(call->lastcalledrtp->jitter) : 0),
-				 (call->lastcalledrtp and call->lastcalledrtp->stats.received > 50 ? (float)((double)call->lastcalledrtp->stats.lost / ((double)call->lastcalledrtp->stats.received + (double)call->lastcalledrtp->stats.lost) * 100.0) : 0),
-				 (call->lastcalledrtp ? (float)(call->lastcalledrtp->last_stat_loss_perc_mult10) : 0));
-			rslt_data += outbuf;
-			if(is_receiver()) {
-				rslt_data += "," + intToString(call->useSensorId);
-			}
-			rslt_data += "]";
 		}
 		calltable->unlock_calls_listMAP();
 		rslt_data += ",[\"encoded\"]]";

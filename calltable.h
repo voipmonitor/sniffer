@@ -904,6 +904,7 @@ public:
 	
 	void adjustUA();
 	
+	bool is_set_proxies();
 	void proxies_undup(set<unsigned int> *proxies_undup);
 
 	void proxy_add(u_int32_t sipproxyip);
