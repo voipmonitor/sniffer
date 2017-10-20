@@ -1494,7 +1494,9 @@ void *storing_cdr( void */*dummy*/ ) {
 	time_t checkMysqlIdCdrChildTablesAt = 0;
 	bool firstIter = true;
 	while(1) {
-		if(!opt_nocdr && !opt_disable_partition_operations && isSqlDriver("mysql")) {
+		if(!opt_nocdr && !opt_disable_partition_operations && 
+		   !snifferClientOptions.isEnable() && 
+		   isSqlDriver("mysql")) {
 			bool setEnableFromTo = false;
 			bool timeOk = false;
 			if(opt_partition_operations_enable_run_hour_from >= 0 &&
