@@ -54,7 +54,7 @@ struct sMgcpRequest {
 		return(!parameters.call_id.empty());
 	}
 	string call_id() {
-		return("MGCP#" + parameters.call_id);
+		return("MGCP#" + parameters.call_id + "/" + intToString(transaction_id));
 	}
 	void debug_output(const char *firstLineSuffix);
 	eMgcpRequestType type;

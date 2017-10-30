@@ -382,9 +382,12 @@ bool parse_mgcp_response(sMgcpResponse *response, const char *mgcp_line) {
 	const char *pos = mgcp_line;
 	int counter = 0;
 	while(pos) {
-		const char *posSpaceSeparator = strchr(pos, ' ');
-		if(posSpaceSeparator) {
-			*(char*)posSpaceSeparator = 0;
+		const char *posSpaceSeparator = NULL;
+		if(counter < 2) {
+			posSpaceSeparator = strchr(pos, ' ');
+			if(posSpaceSeparator) {
+				*(char*)posSpaceSeparator = 0;
+			}
 		}
 		switch(counter) {
 		case 0:

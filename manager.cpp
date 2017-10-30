@@ -1173,8 +1173,8 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 					 (unsigned int)call->get_last_packet_time(), 
 					 call->lastSIPresponseNum,
 					     //rtp stat 
-					 (call->lastcallerrtp ? call->lastcallerrtp->saddr : 0),
-					 (call->lastcalledrtp ? call->lastcalledrtp->saddr : 0),
+					 (call->lastcallerrtp ? htonl(call->lastcallerrtp->saddr) : 0),
+					 (call->lastcalledrtp ? htonl(call->lastcalledrtp->saddr) : 0),
 					     //caller
 					 (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosf1 : 45),
 					 (call->lastcallerrtp ? call->lastcallerrtp->last_interval_mosf2 : 45),
