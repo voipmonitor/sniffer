@@ -6022,6 +6022,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"skinnyports", 1, 0, 199},
 	    {"mgcp", 0, 0, 314},
 	    {"ignorertcpjitter", 1, 0, 198},
+	    {"natalias", 1, 0, 315},
 	    {"mono", 0, 0, 201},
 	    {"untar-gui", 1, 0, 202},
 	    {"unlzo-gui", 1, 0, 205},
@@ -6102,11 +6103,32 @@ void get_command_line_arguments() {
 				{
 					skinnyportmatrix[2000] = 0;
 					vector<string> result = explode(optarg, ',');
-					for (size_t tier = 0; tier < result.size(); tier++) {
-						skinnyportmatrix[atoi(result[tier].c_str())] = 1;
+					for (size_t iter = 0; iter < result.size(); iter++) {
+						skinnyportmatrix[atoi(result[iter].c_str())] = 1;
 					}
 				}
 				break;
+			case 315:
+				{
+					vector<string> nataliases = explode(optarg, ',');
+					for (size_t iter = 0; iter < nataliases.size(); iter++) {
+						string local_ip;
+						string extern_ip;
+						string *ip = &local_ip;
+						for(unsigned i = 0; i < nataliases[iter].length(); i++) {
+							if(nataliases[iter][i] == ' ' || nataliases[iter][i] == ':' || nataliases[iter][i] == '=') {
+								ip = &extern_ip;
+								continue;
+							}
+							*ip = *ip + nataliases[iter][i];
+						}
+						u_int32_t nlocal_ip = inet_addr(local_ip.c_str());
+						u_int32_t nextern_ip = inet_addr(extern_ip.c_str());
+						if(nlocal_ip && nextern_ip) {
+							nat_aliases[nlocal_ip] = nextern_ip;
+						}
+					}
+				}
 			case 200:
 				opt_skinny = 1;
 				break;
@@ -6181,8 +6203,8 @@ void get_command_line_arguments() {
 			case 'Y':
 				{
 					vector<string> result = explode(optarg, ',');
-					for (size_t tier = 0; tier < result.size(); tier++) {
-						sipportmatrix[atoi(result[tier].c_str())] = 1;
+					for (size_t iter = 0; iter < result.size(); iter++) {
+						sipportmatrix[atoi(result[iter].c_str())] = 1;
 					}
 				}
 				break;
