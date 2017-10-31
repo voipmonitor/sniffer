@@ -1,3 +1,9 @@
+21.2.2 30.10.2017
+=================
+- fix MGCP when multiple CDR were created for one call [VS-705]
+- fix MGCP response code text (was cut in the middle) [VG-704]
+
+
 21.2.1 17.10.2017
 =================
 - added support for MGCP active calls
