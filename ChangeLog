@@ -1,3 +1,10 @@
+21.2.3 2.11.2017
+================
+- add support for get natalias from sensor configuration (for GUI) [VG-1403]
+- fix minor issue with manager command is_register_new if sip-register is disabled
+- fix crash in call explode(0x0, ',')
+
+
 21.2.2 30.10.2017
 =================
 - fix MGCP when multiple CDR were created for one call [VS-705]

@@ -1212,7 +1212,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		return 0;
 	} else if(strstr(buf, "is_register_new") != NULL) {
 		extern int opt_sip_register;
-		if ((size = sendvm(client, sshchannel, c_client, opt_sip_register == 1 ? "ok" : "no", 2, 0)) == -1){
+		if ((size = sendvm(client, sshchannel, c_client, opt_sip_register == 2 ? "no" : "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
@@ -2679,6 +2679,22 @@ getwav:
 		outStrConvertchar << endl;
 		string strConvertchar = outStrConvertchar.str();
 		if ((size = sendvm(client, sshchannel, c_client, strConvertchar.c_str(), strConvertchar.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "natalias") != NULL) {
+		extern nat_aliases_t nat_aliases;
+		string strNatAliases;
+		if(nat_aliases.size()) {
+			ostringstream outStrNatAliases;
+			for(nat_aliases_t::iterator iter = nat_aliases.begin(); iter != nat_aliases.end(); iter++) {
+				outStrNatAliases << inet_ntostring(htonl(iter->first)) << ':' << inet_ntostring(htonl(iter->second)) << ',';
+			}
+			strNatAliases = outStrNatAliases.str();
+		} else {
+			strNatAliases = "none";
+		}
+		if ((size = sendvm(client, sshchannel, c_client, strNatAliases.c_str(), strNatAliases.length(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}

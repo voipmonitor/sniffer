@@ -94,7 +94,7 @@ bool cCR_Receiver_service::receive_process_loop_begin() {
 	connection_ok = true;
 	if(CR_VERBOSE().start_client) {
 		ostringstream verbstr;
-		verbstr << "START SNIFFER SERVICE";
+		verbstr << "connection to cloud established";
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
 	return(true);
