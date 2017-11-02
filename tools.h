@@ -305,7 +305,8 @@ private:
 };
 
 queue<string> listFilesDir(char * dir);
-vector<string> explode(const string&, const char&);
+vector<string> explode(const char *, const char);
+vector<string> explode(const string&, const char);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);

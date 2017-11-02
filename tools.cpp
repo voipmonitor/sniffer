@@ -158,9 +158,18 @@ queue<string> listFilesDir (char * dir) {
 	return outQueue;
 }
 
-vector<string> explode(const string& str, const char& ch) {
+vector<string> explode(const char *str, const char ch) {
+	vector<string> result;
+	if(!str) {
+		return(result);
+	} else {
+		return(explode(string(str), ch));
+	}
+}
+
+vector<string> explode(const string& str, const char ch) {
 	string next;
-    vector<string> result;
+	vector<string> result;
 
 	for (string::const_iterator it = str.begin(); it != str.end(); it++) {
 		if (*it == ch) {
