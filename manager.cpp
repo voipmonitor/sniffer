@@ -51,6 +51,7 @@
 #include "sniff_proc_class.h"
 #include "register.h"
 #include "server.h"
+#include "filter_mysql.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -1965,6 +1966,22 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 	} else if(strstr(buf, "reload") != NULL) {
 		reload_capture_rules();
 		if ((size = sendvm(client, sshchannel, c_client, "reload ok", 9, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "crules_print") != NULL) {
+		ostringstream oss;
+		oss << "IPfilter" << endl;
+		IPfilter::dump2man(oss);
+		oss << "TELNUMfilter" << endl;
+		TELNUMfilter::dump2man(oss, NULL);
+		oss << "DOMAINfilter" << endl;
+		DOMAINfilter::dump2man(oss);
+		oss << "SIP_HEADERfilter" << endl;
+		SIP_HEADERfilter::dump2man(oss);
+		string txt = oss.str();
+		if ((size = sendvm(client, sshchannel, c_client, txt.c_str(), txt.size(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
