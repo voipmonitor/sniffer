@@ -1693,9 +1693,9 @@ public:
 	void setStartTime(u_int64_t start_time);
 	bool addWav(const char *wavFileName, u_int64_t start,
 		    unsigned bytes_per_sample = 0, unsigned samplerate = 0);
-	void mixTo(const char *wavOutFileName, bool withoutEndSilence);
+	void mixTo(const char *wavOutFileName, bool withoutEndSilence, bool withoutEndSilenceInRslt);
 private:
-	void mix(bool withoutEndSilence);
+	void mix(bool withoutEndSilence, bool withoutEndSilenceInRslt);
 	void mix(cWav *wav, bool withoutEndSilence);
 	u_int64_t getMinStartTime();
 	u_int64_t getMaxEndTime(bool withoutEndSilence);
@@ -1811,8 +1811,8 @@ bool cWavMix::addWav(const char *wavFileName, u_int64_t start,
 	}
 }
 
-void cWavMix::mixTo(const char *wavOutFileName, bool withoutEndSilence) {
-	mix(withoutEndSilence);
+void cWavMix::mixTo(const char *wavOutFileName, bool withoutEndSilence, bool withoutEndSilenceInRslt) {
+	mix(withoutEndSilence, withoutEndSilenceInRslt);
 	if(mix_buffer_length_samples) {
 		FILE *file = fopen(wavOutFileName, "w");
 		if(file) {
@@ -1826,8 +1826,8 @@ void cWavMix::mixTo(const char *wavOutFileName, bool withoutEndSilence) {
 	}
 }
 
-void cWavMix::mix(bool withoutEndSilence) {
-	mix_buffer_length_samples = getAllSamples(withoutEndSilence);
+void cWavMix::mix(bool withoutEndSilence, bool withoutEndSilenceInRslt) {
+	mix_buffer_length_samples = getAllSamples(withoutEndSilenceInRslt);
 	if(!mix_buffer_length_samples) {
 		return;
 	}
@@ -2511,7 +2511,7 @@ Call::convertRawToWav() {
 		if(!sverb.noaudiounlink) unlink(rawInfo);
 		
 		if(wavMix) {
-			wavMix->mixTo(wav, true);
+			wavMix->mixTo(wav, true, false);
 			delete wavMix;
 			wavMix = NULL;
 		}
