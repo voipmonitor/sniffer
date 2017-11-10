@@ -132,6 +132,7 @@ extern rtp_read_thread *rtp_threads;
 extern int opt_norecord_dtmf;
 extern int opt_onlyRTPheader;
 extern int opt_sipoverlap;
+extern int opt_last_dest_number;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
 extern char opt_fbasename_header[128];
@@ -2740,7 +2741,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			call->new_invite_after_lsr487 = true;
 		}
 		//update called number for each invite due to overlap-dialling
-		if (opt_sipoverlap && packetS->saddr == call->sipcallerip[0]) {
+		if ((opt_sipoverlap && packetS->saddr == call->sipcallerip[0]) || opt_last_dest_number) {
 			get_sip_peername(packetS, "\nTo:", "\nt:",
 					 call->called, sizeof(call->called));
 			if(opt_destination_number_mode == 2) {
