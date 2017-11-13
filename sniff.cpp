@@ -533,12 +533,12 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 			if(!okAddr) {
 				for(int i = 0; i < MAXLIVEFILTERS && !okAddr; i++) {
 					if((filter->state.all_saddr || (filter->lv_saddr[i] && 
-						saddr == filter->lv_saddr[i])) &&
+						(saddr & filter->lv_smask[i]) == filter->lv_saddr[i])) &&
 					   (filter->state.all_daddr || (filter->lv_daddr[i] && 
-						daddr == filter->lv_daddr[i])) &&
+						(daddr & filter->lv_dmask[i]) == filter->lv_daddr[i])) &&
 					   (filter->state.all_bothaddr || (filter->lv_bothaddr[i] && 
-						(saddr == filter->lv_bothaddr[i] || 
-						 daddr == filter->lv_bothaddr[i])))) {
+						((saddr & filter->lv_bothmask[i]) == filter->lv_bothaddr[i] || 
+						 (daddr & filter->lv_bothmask[i]) == filter->lv_bothaddr[i])))) {
 						okAddr = true;
 					}
 				}

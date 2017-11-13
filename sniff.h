@@ -714,6 +714,9 @@ typedef struct livesnifferfilter_s {
         unsigned int lv_saddr[MAXLIVEFILTERS];
         unsigned int lv_daddr[MAXLIVEFILTERS];
 	unsigned int lv_bothaddr[MAXLIVEFILTERS];
+        unsigned int lv_smask[MAXLIVEFILTERS];
+        unsigned int lv_dmask[MAXLIVEFILTERS];
+	unsigned int lv_bothmask[MAXLIVEFILTERS];
 	u_int16_t lv_bothport[MAXLIVEFILTERS];
         char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
         char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];

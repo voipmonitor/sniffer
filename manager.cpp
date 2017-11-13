@@ -707,6 +707,16 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 	*/
 }
 
+void try_ip_mask(uint &addr, uint &mask, string &ipstr) {
+	stringstream data2(ipstr);
+	string prefix, bits;
+	uint tmpmask = ~0;
+	getline(data2, prefix, '/');
+	getline(data2, bits, '/');
+	mask = ~(tmpmask >> atoi(bits.c_str()));
+	addr = ntohl((unsigned int)inet_addr(prefix.c_str())) & mask;
+}
+
 static volatile bool enable_parse_command = false;
 
 void manager_parse_command_enable() {
@@ -1612,6 +1622,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
 				filter->lv_saddr[i] = 0;
+				filter->lv_smask[i] = ~0;
 			}
 			stringstream  data(value);
 			string val;
@@ -1621,6 +1632,11 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				global_livesniffer = 1;
 				//convert doted ip to unsigned int
 				filter->lv_saddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
+
+				// bad ip (signed -1) -> try prefix
+				if ((int)filter->lv_saddr[i] == -1 && strchr(val.c_str(), '/'))
+					try_ip_mask(filter->lv_saddr[i], filter->lv_smask[i], val);
+
 				i++;
 			}
 			updateLivesnifferfilters();
@@ -1629,6 +1645,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
 				filter->lv_daddr[i] = 0;
+				filter->lv_dmask[i] = ~0;
 			}
 			stringstream  data(value);
 			string val;
@@ -1638,6 +1655,11 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				global_livesniffer = 1;
 				//convert doted ip to unsigned int
 				filter->lv_daddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
+
+				// bad ip (signed -1) -> try prefix
+				if ((int)filter->lv_daddr[i] == -1 && strchr(val.c_str(), '/'))
+					try_ip_mask(filter->lv_daddr[i], filter->lv_dmask[i], val);
+
 				i++;
 			}
 			updateLivesnifferfilters();
@@ -1646,6 +1668,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
 				filter->lv_bothaddr[i] = 0;
+				filter->lv_bothmask[i] = ~0;
 			}
 			stringstream  data(value);
 			string val;
@@ -1655,6 +1678,11 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				global_livesniffer = 1;
 				//convert doted ip to unsigned int
 				filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
+
+				// bad ip (signed -1) -> try prefix
+				if ((int)filter->lv_bothaddr[i] == -1 && strchr(val.c_str(), '/'))
+					try_ip_mask(filter->lv_bothaddr[i], filter->lv_bothmask[i], val);
+
 				i++;
 			}
 			updateLivesnifferfilters();
