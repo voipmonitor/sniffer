@@ -198,10 +198,8 @@ void *handle_mgcp(packet_s_process *packetS) {
 				call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
 				strncpy(call->called, request.endpoint.c_str(), sizeof(call->called));
 				call->called[sizeof(call->called) - 1] = 0;
-				call->sipcallerip[0] = packetS->saddr;
-				call->sipcalledip[0] = packetS->daddr;
-				call->sipcallerport = packetS->source;
-				call->sipcalledport = packetS->dest;
+				call->setSipcallerip(packetS->saddr, packetS->source);
+				call->setSipcalledip(packetS->daddr, packetS->dest);
 				call->flags = flags;
 				strncpy(call->fbasename, request.call_id().c_str(), MAX_FNAME - 1);
 				if(enable_save_sip_rtp_audio(call)) {
@@ -284,7 +282,9 @@ void *handle_mgcp(packet_s_process *packetS) {
 			if(sverb.mgcp_sdp) {
 				cout << "SDP: " << endl << string((char*)sdp + sdp_separator_length, packetS->datalen - mgcp_header_len - sdp_separator_length) << endl;
 			}
-			process_sdp(call, packetS, packetS->daddr == call->sipcallerip[0], (char*)(sdp + sdp_separator_length), (char*)call->call_id.c_str());
+			int iscaller;
+			call->check_is_caller_called(NULL, MGCP, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, &iscaller, NULL);
+			process_sdp(call, packetS, iscaller, (char*)(sdp + sdp_separator_length), (char*)call->call_id.c_str());
 		}
 		if(!call->connect_time && is_request) {
 			if((request_type == _mgcp_CRCX && request.parameters.connection_mode == "SENDRECV") ||

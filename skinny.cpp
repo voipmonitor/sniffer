@@ -1346,10 +1346,8 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	Call *call = calltable->add(state, s, l, header->ts.tv_sec, saddr, source, 
 				    handle, dlt, sensor_id);
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
-	call->sipcallerip[0] = saddr;
-	call->sipcalledip[0] = daddr;
-	call->sipcallerport = source;
-	call->sipcalledport = dest;
+	call->setSipcallerip(saddr, source);
+	call->setSipcalledip(daddr, dest);
 	call->flags = flags;
 	strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
 	
@@ -1477,16 +1475,12 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 				call->oneway = 0;       // do not treat skinny as one-way 
 	
 				if(state == SKINNY_OFFHOOK) {
-					call->sipcallerip[0] = daddr;
-					call->sipcalledip[0] = saddr;
-					call->sipcallerport = dest;
-					call->sipcalledport = source;
+					call->setSipcallerip(daddr, dest);
+					call->setSipcalledip(saddr, source);
 					call->sipcallerdip_reverse = true;
 				} else {
-					call->sipcallerip[0] = saddr;
-					call->sipcalledip[0] = daddr;
-					call->sipcallerport = source;
-					call->sipcalledport = dest;
+					call->setSipcallerip(saddr, source);
+					call->setSipcalledip(daddr, dest);
 				}
 			} else {
 				return NULL;

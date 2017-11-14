@@ -2154,12 +2154,11 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				    get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 	call->is_ssl = packetS->is_ssl;
 	call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
-	call->setSipcallerip(packetS->saddr, packetS->get_callid());
-	call->setSipcalledip(packetS->daddr, packetS->get_callid());
-	call->sipcallerport = packetS->source;
-	call->sipcalledport = packetS->dest;
+	call->setSipcallerip(packetS->saddr, packetS->source, packetS->get_callid());
+	call->setSipcalledip(packetS->daddr, packetS->dest, packetS->get_callid());
 	call->flags = flags;
 	call->lastsrcip = packetS->saddr;
+	call->lastdstip = packetS->daddr;
 	call->lastsrcport = packetS->source;
 	
 	char *s;
@@ -2633,10 +2632,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		call->handle_dscp(packetS->header_ip, iscaller > 0);
 	}
 
-	if(call->lastsrcip != packetS->saddr ||
-	   (ip_is_localhost(htonl(call->lastsrcip)) && call->lastsrcport != packetS->source)) { 
-		call->oneway = 0;
-	}
+	call->check_reset_oneway(packetS->saddr, packetS->source);
 
 	cseq = gettag_sip(packetS, "\nCSeq:", &cseqlen);
 	if(cseq && cseqlen < 32) {
@@ -3005,7 +3001,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 
 	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
 		if(call->sipcallerip[0] == packetS->saddr) {
-			call->setSipcalledip(packetS->daddr, packetS->get_callid());
+			call->setSipcalledip(packetS->daddr, packetS->dest, packetS->get_callid());
 		}
 		if(opt_update_dstnum_onanswer) {
 			char branch[100];
@@ -3035,8 +3031,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 				updateDest = true;
 			}
 			if(updateDest) {
-				call->setSipcalledip(packetS->daddr, packetS->get_callid());
-				call->sipcalledport = packetS->dest;
+				call->setSipcalledip(packetS->daddr, packetS->dest, packetS->get_callid());
 				call->lastsipcallerip = packetS->saddr;
 			}
 		}
@@ -3424,10 +3419,7 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 	}
 	call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
 	
-	if(call->lastsrcip != packetS->saddr ||
-	   (ip_is_localhost(htonl(call->lastsrcip)) && call->lastsrcport != packetS->source)) { 
-		call->oneway = 0;
-	}
+	call->check_reset_oneway(packetS->saddr, packetS->source);
 	
 	if(packetS->lastSIPresponseNum) {
 		call->lastSIPresponseNum = packetS->lastSIPresponseNum;
@@ -3612,11 +3604,8 @@ inline void process_packet_sip_register_inline(packet_s_process *packetS) {
 		goto endsip;
 	}
 		
-	if(call->lastsrcip != packetS->saddr ||
-	   (ip_is_localhost(htonl(call->lastsrcip)) && call->lastsrcport != packetS->source)) { 
-		call->oneway = 0;
-	}
-
+	call->check_reset_oneway(packetS->saddr, packetS->source);
+	
 	if(opt_norecord_header) {
 		s = gettag_sip(packetS, "\nX-VoipMonitor-norecord:", &l);
 		if(s) {
@@ -3831,10 +3820,8 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	Call *call = calltable->add(INVITE, s, strlen(s), header->ts.tv_sec, saddr, source, 
 				    handle, dlt, sensor_id);
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
-	call->sipcallerip[0] = saddr;
-	call->sipcalledip[0] = daddr;
-	call->sipcallerport = source;
-	call->sipcalledport = dest;
+	call->setSipcallerip(saddr, source);
+	call->setSipcalledip(daddr, dest);
 	call->flags = flags;
 	strncpy(call->fbasename, s, MAX_FNAME - 1);
 	call->seeninvite = true;
