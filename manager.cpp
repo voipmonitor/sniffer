@@ -1383,6 +1383,29 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			return -1;
 		}
 		return 0;
+	
+	} else if(strstr(buf, "d_pointer_to_call") != NULL) {
+		char fbasename[256];
+		sscanf(buf, "d_pointer_to_call %s", fbasename);
+		ostringstream outStr;
+		calltable->lock_calls_listMAP();
+		for(map<string, Call*>::iterator callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
+			if(!strcmp((*callMAPIT).second->fbasename, fbasename)) {
+				outStr << "find in calltable->calls_listMAP " << hex << (*callMAPIT).second << endl;
+			}
+		}
+		calltable->unlock_calls_listMAP();
+		calltable->lock_calls_queue();
+		for(deque<Call*>::iterator callIT = calltable->calls_queue.begin(); callIT != calltable->calls_queue.end(); ++callIT) {
+			if(!strcmp((*callIT)->fbasename, fbasename)) {
+				outStr << "find in calltable->calls_queue " << hex << (*callIT) << endl;
+			}
+		}
+		calltable->unlock_calls_queue();
+		if ((size = sendvm(client, sshchannel, c_client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "d_close_call") != NULL) {
 		char fbasename[100];
 		sscanf(buf, "d_close_call %s", fbasename);
