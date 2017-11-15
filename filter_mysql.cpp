@@ -236,6 +236,17 @@ void IPfilter::dump() {
 	}
 }
 
+void IPfilter::dump2man(ostringstream &oss) {
+	t_node *node;
+	char ip[16];
+	lock();
+	for(node = filter_active->first_node; node != NULL; node = node->next) {
+		ntoa(ip, ntohl(node->ip));
+		oss << "ip[" << ip << "/" << node->mask << "] direction[" << node->direction << "] flags[0x" << hex << node->flags << "]" << endl;
+	}
+	unlock();
+}
+
 int IPfilter::add_call_flags(volatile unsigned int *flags, unsigned int saddr, unsigned int daddr, bool enableReload) {
 	int rslt = 0;
 	if(enableReload && reload_do) {
@@ -488,6 +499,23 @@ void TELNUMfilter::dump(t_node_tel *node) {
 	}
 }
 
+void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
+	if(!node) {
+		lock();
+		node = filter_active->first_node;
+	}
+	if(node->payload) {
+		oss << "prefix[" << node->payload->prefix << "] direction[" << node->payload->direction << "] flags[0x" << hex << node->payload->flags << "]" << endl;
+	}
+	for(int i = 0; i < 256; i++) {
+		if(node->nodes[i]) {
+			dump2man(oss, node->nodes[i]);
+		}
+	}
+	if (node == filter_active->first_node)
+		unlock();
+}
+
 int TELNUMfilter::add_call_flags(volatile unsigned int *flags, char *telnum_src, char *telnum_dst, bool enableReload) {
 	int rslt = 0;
 	if(enableReload && reload_do) {
@@ -625,6 +653,15 @@ void DOMAINfilter::dump() {
 	for(node = first_node; node != NULL; node = node->next) {
 		printf("domain[%s] flags[%u]\n", node->domain.c_str(), node->flags);
 	}
+}
+
+void DOMAINfilter::dump2man(ostringstream &oss) {
+	t_node *node;
+	lock();
+	for(node = filter_active->first_node; node != NULL; node = node->next) {
+		oss << "domain[" << node->domain << "] direction[" << node->direction << "] flags[0x" << hex << node->flags << "]" << endl;
+	}
+	unlock();
 }
 
 int DOMAINfilter::add_call_flags(volatile unsigned int *flags, char *domain_src, char *domain_dst, bool enableReload) {
@@ -802,6 +839,20 @@ void SIP_HEADERfilter::dump() {
 			printf("header[%s] content[%s] regexp[1] prefix[0] flags[%u]\n", it_header->first.c_str(), it_content->first.c_str(), it_content->second.flags);
 		}
 	}
+}
+
+void SIP_HEADERfilter::dump2man(ostringstream &oss) {
+	lock();
+	for(map<std::string, header_data>::iterator it_header = filter_active->data.begin(); it_header != filter_active->data.end(); it_header++) {
+		header_data *data = &it_header->second;
+		for(map<std::string, item_data>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
+			oss << "Regex header[" << it_header->first << "] content[" << it_content->first << "] direction[" << it_content->second.direction << "] flags[0x" << hex << it_content->second.flags << "]" << endl;
+		}
+		for(map<std::string, item_data>::iterator it_content = data->strict_prefix.begin(); it_content != data->strict_prefix.end(); it_content++) {
+			oss << "Prefix header[" << it_header->first << "] content[" << it_content->first << "] direction[" << it_content->second.direction << "] flags[0x" << hex << it_content->second.flags << "]" << endl;
+		}
+	}
+	unlock();
 }
 
 void SIP_HEADERfilter::_addNodes(ParsePacket *parsePacket) {

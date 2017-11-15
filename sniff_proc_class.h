@@ -550,6 +550,7 @@ public:
 		}
 		(*packetS)->blockstore_unlock();
 		(*packetS)->packetdelete();
+		(*packetS)->term();
 		delete *packetS;
 		*packetS = NULL;
 	}
@@ -583,6 +584,7 @@ public:
 			delete (*packetS)->header_pt;
 			delete [] (*packetS)->packet;
 		}
+		(*packetS)->term();
 		extern int opt_block_alloc_stack;
 		if(opt_block_alloc_stack ||
 		   !(*packetS)->stack ||

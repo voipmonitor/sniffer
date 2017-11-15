@@ -290,7 +290,9 @@ struct packet_s_process : public packet_s_process_0 {
 	ParsePacket::ppContentsX parseContents;
 	u_int32_t sipDataOffset;
 	u_int32_t sipDataLen;
-	char callid[CALLID_MAX_LENGTH + 1];
+	char callid[128];
+	char *callid_long;
+	u_int16_t callid_length;
 	int sip_method;
 	bool is_register;
 	bool sip_response;
@@ -317,6 +319,8 @@ struct packet_s_process : public packet_s_process_0 {
 		sipDataOffset = 0;
 		sipDataLen = 0;
 		callid[0] = 0;
+		callid_long = NULL;
+		callid_length = 0;
 		sip_method = -1;
 		is_register = false;
 		sip_response = false;
@@ -332,18 +336,27 @@ struct packet_s_process : public packet_s_process_0 {
 		_findCall = false;
 		_createCall = false;
 	}
+	inline void term() {
+		if(callid_long) {
+			delete [] callid_long;
+			callid_long = NULL;
+		}
+	}
 	void set_callid(char *callid_input, unsigned callid_length = 0) {
 		if(!callid_length) {
 			callid_length = strlen(callid_input);
 		}
 		if(callid_length > sizeof(callid) - 1) {
-			callid_length = sizeof(callid) - 1;
+			callid_long = new FILE_LINE(0) char[callid_length + 1];
+			strncpy(callid_long, callid_input, callid_length);
+			callid_long[callid_length] = 0;
+		} else {
+			strncpy(callid, callid_input, callid_length);
+			callid[callid_length] = 0;
 		}
-		strncpy(callid, callid_input, callid_length);
-		callid[callid_length] = 0;
 	}
 	inline char *get_callid() {
-		return(callid);
+		return(callid_long ? callid_long : callid);
 	}
 };
 
@@ -714,6 +727,9 @@ typedef struct livesnifferfilter_s {
         unsigned int lv_saddr[MAXLIVEFILTERS];
         unsigned int lv_daddr[MAXLIVEFILTERS];
 	unsigned int lv_bothaddr[MAXLIVEFILTERS];
+        unsigned int lv_smask[MAXLIVEFILTERS];
+        unsigned int lv_dmask[MAXLIVEFILTERS];
+	unsigned int lv_bothmask[MAXLIVEFILTERS];
 	u_int16_t lv_bothport[MAXLIVEFILTERS];
         char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
         char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];

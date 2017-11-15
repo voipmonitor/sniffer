@@ -1,3 +1,13 @@
+21.3 15.11.2017
+===============
+- keep silent part at the end of audio [VS-707]
+- new manager command crules_print will list all capture rules 
+- new last_dest_number option which will store destination number from the latest INVITE [VS-718]
+- live sniffer (GUI feature) accepts ip networks in cidr format now. (E.g. 10.1.1.0/24) [VG-1375]
+- fix caller/called detection if src/dst IP addresses are same [VS-703]
+- fix audio decode if Call-ID is longer than 127 chars [VG-1431]
+
+
 21.2.3 2.11.2017
 ================
 - add support for get natalias from sensor configuration (for GUI) [VG-1403]

@@ -236,6 +236,7 @@ int opt_rtpnosip = 0;		// if = 1 RTP stream will be saved into calls regardless 
 int opt_norecord_dtmf = 0;	// if = 1 SIP call with dtmf == *0 sequence (in SIP INFO) will stop recording
 int opt_savewav_force = 0;	// if = 1 WAV will be generated no matter on filter rules
 int opt_sipoverlap = 1;		
+int opt_last_dest_number = 0;
 int opt_id_sensor = -1;		
 int opt_id_sensor_cleanspool = -1;	
 bool opt_use_id_sensor_for_receiver_in_files = false;
@@ -2399,6 +2400,10 @@ int main(int argc, char *argv[]) {
 		#endif
 	}
 	
+	if (opt_sipoverlap && opt_last_dest_number) {
+		syslog(LOG_NOTICE, "You enabled last_dest_number and sipoverlap options. last_dest_number option takes precedence.");
+	}
+
 	if(opt_untar_gui_params) {
 		vmChdir();
 		int rslt = untar_gui(opt_untar_gui_params);
@@ -5480,6 +5485,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42283) cConfigItem_yesno("cdr_ua_enable", &opt_cdr_ua_enable));
 				addConfigItem(new FILE_LINE(42284) cConfigItem_string("cdr_ua_reg_remove", &opt_cdr_ua_reg_remove));
 				addConfigItem(new FILE_LINE(42285) cConfigItem_yesno("sipoverlap", &opt_sipoverlap));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("last_dest_number", &opt_last_dest_number));
 				addConfigItem(new FILE_LINE(42286) cConfigItem_yesno("update_dstnum_onanswer", &opt_update_dstnum_onanswer));
 				addConfigItem(new FILE_LINE(42287) cConfigItem_integer("sdp_multiplication", &opt_sdp_multiplication));
 				addConfigItem(new FILE_LINE(42288) cConfigItem_yesno("save_sip_responses", &opt_cdr_sipresp));
@@ -8128,6 +8134,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sipoverlap", NULL))) {
 		opt_sipoverlap = yesno(value);
+	}
+	if((value = ini.GetValue("general", "last_dest_number", NULL))) {
+		opt_last_dest_number = yesno(value);
 	}
 	if((value = ini.GetValue("general", "dumpallpackets", NULL))) {
 		opt_pcapdump = yesno(value);

@@ -2,10 +2,8 @@
 #define VOIPMONITOR_DEFINE_H
 
 
-#define RTPSENSOR_VERSION "21.2.3"
+#define RTPSENSOR_VERSION "21.3"
 #define NAT
-
-#define CALLID_MAX_LENGTH 127
 
 #define FORMAT_WAV	1
 #define FORMAT_OGG	2

@@ -51,6 +51,7 @@
 #include "sniff_proc_class.h"
 #include "register.h"
 #include "server.h"
+#include "filter_mysql.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -704,6 +705,16 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
     pclose(inpipe);
     return 0; 
 	*/
+}
+
+void try_ip_mask(uint &addr, uint &mask, string &ipstr) {
+	stringstream data2(ipstr);
+	string prefix, bits;
+	uint tmpmask = ~0;
+	getline(data2, prefix, '/');
+	getline(data2, bits, '/');
+	mask = ~(tmpmask >> atoi(bits.c_str()));
+	addr = ntohl((unsigned int)inet_addr(prefix.c_str())) & mask;
 }
 
 static volatile bool enable_parse_command = false;
@@ -1372,6 +1383,29 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			return -1;
 		}
 		return 0;
+	
+	} else if(strstr(buf, "d_pointer_to_call") != NULL) {
+		char fbasename[256];
+		sscanf(buf, "d_pointer_to_call %s", fbasename);
+		ostringstream outStr;
+		calltable->lock_calls_listMAP();
+		for(map<string, Call*>::iterator callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
+			if(!strcmp((*callMAPIT).second->fbasename, fbasename)) {
+				outStr << "find in calltable->calls_listMAP " << hex << (*callMAPIT).second << endl;
+			}
+		}
+		calltable->unlock_calls_listMAP();
+		calltable->lock_calls_queue();
+		for(deque<Call*>::iterator callIT = calltable->calls_queue.begin(); callIT != calltable->calls_queue.end(); ++callIT) {
+			if(!strcmp((*callIT)->fbasename, fbasename)) {
+				outStr << "find in calltable->calls_queue " << hex << (*callIT) << endl;
+			}
+		}
+		calltable->unlock_calls_queue();
+		if ((size = sendvm(client, sshchannel, c_client, outStr.str().c_str(), outStr.str().length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "d_close_call") != NULL) {
 		char fbasename[100];
 		sscanf(buf, "d_close_call %s", fbasename);
@@ -1611,6 +1645,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
 				filter->lv_saddr[i] = 0;
+				filter->lv_smask[i] = ~0;
 			}
 			stringstream  data(value);
 			string val;
@@ -1620,6 +1655,11 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				global_livesniffer = 1;
 				//convert doted ip to unsigned int
 				filter->lv_saddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
+
+				// bad ip (signed -1) -> try prefix
+				if ((int)filter->lv_saddr[i] == -1 && strchr(val.c_str(), '/'))
+					try_ip_mask(filter->lv_saddr[i], filter->lv_smask[i], val);
+
 				i++;
 			}
 			updateLivesnifferfilters();
@@ -1628,6 +1668,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
 				filter->lv_daddr[i] = 0;
+				filter->lv_dmask[i] = ~0;
 			}
 			stringstream  data(value);
 			string val;
@@ -1637,6 +1678,11 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				global_livesniffer = 1;
 				//convert doted ip to unsigned int
 				filter->lv_daddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
+
+				// bad ip (signed -1) -> try prefix
+				if ((int)filter->lv_daddr[i] == -1 && strchr(val.c_str(), '/'))
+					try_ip_mask(filter->lv_daddr[i], filter->lv_dmask[i], val);
+
 				i++;
 			}
 			updateLivesnifferfilters();
@@ -1645,6 +1691,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			//reset filters 
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
 				filter->lv_bothaddr[i] = 0;
+				filter->lv_bothmask[i] = ~0;
 			}
 			stringstream  data(value);
 			string val;
@@ -1654,6 +1701,11 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				global_livesniffer = 1;
 				//convert doted ip to unsigned int
 				filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
+
+				// bad ip (signed -1) -> try prefix
+				if ((int)filter->lv_bothaddr[i] == -1 && strchr(val.c_str(), '/'))
+					try_ip_mask(filter->lv_bothaddr[i], filter->lv_bothmask[i], val);
+
 				i++;
 			}
 			updateLivesnifferfilters();
@@ -1965,6 +2017,22 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 	} else if(strstr(buf, "reload") != NULL) {
 		reload_capture_rules();
 		if ((size = sendvm(client, sshchannel, c_client, "reload ok", 9, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "crules_print") != NULL) {
+		ostringstream oss;
+		oss << "IPfilter" << endl;
+		IPfilter::dump2man(oss);
+		oss << "TELNUMfilter" << endl;
+		TELNUMfilter::dump2man(oss, NULL);
+		oss << "DOMAINfilter" << endl;
+		DOMAINfilter::dump2man(oss);
+		oss << "SIP_HEADERfilter" << endl;
+		SIP_HEADERfilter::dump2man(oss);
+		string txt = oss.str();
+		if ((size = sendvm(client, sshchannel, c_client, txt.c_str(), txt.size(), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}

@@ -241,14 +241,14 @@ public:
 			for(unsigned i = 0; i < MAX_SIPCALLERDIP; i++) {
 				sipcallerip[i] = 0;
 				sipcalledip[i] = 0;
-				sipcallerip_port[i] = 0;
-				sipcalledip_port[i] = 0;
+				sipcallerport[i] = 0;
+				sipcalledport[i] = 0;
 			}
 		}
 		u_int32_t sipcallerip[MAX_SIPCALLERDIP];
 		u_int32_t sipcalledip[MAX_SIPCALLERDIP];
-		u_int16_t sipcallerip_port[MAX_SIPCALLERDIP];
-		u_int16_t sipcalledip_port[MAX_SIPCALLERDIP];
+		u_int16_t sipcallerport[MAX_SIPCALLERDIP];
+		u_int16_t sipcalledport[MAX_SIPCALLERDIP];
 	};
 	struct sMergeLegInfo {
 		sMergeLegInfo() {
@@ -456,16 +456,13 @@ public:
 
 	u_int32_t sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
 	u_int32_t sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
-	u_int16_t sipcallerip_port[MAX_SIPCALLERDIP];
-	u_int16_t sipcalledip_port[MAX_SIPCALLERDIP];
+	u_int16_t sipcallerport[MAX_SIPCALLERDIP];
+	u_int16_t sipcalledport[MAX_SIPCALLERDIP];
 	map<string, sSipcalleRD_IP> map_sipcallerdip;
 	u_int32_t lastsipcallerip;
 	bool sipcallerdip_reverse;
 	
 	list<sInviteSD_Addr> invite_sdaddr;
-
-	u_int16_t sipcallerport;
-	u_int16_t sipcalledport;
 
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
@@ -521,6 +518,7 @@ public:
 	char force_terminate;
 	char pcap_drop;
 	unsigned int lastsrcip;
+	unsigned int lastdstip;
 	unsigned int lastsrcport;
 
 	void *listening_worker_args;
@@ -823,8 +821,20 @@ public:
 	bool check_is_caller_called(const char *call_id, int sip_method, 
 				    unsigned int saddr, unsigned int daddr, unsigned int sport, unsigned int dport,  
 				    int *iscaller, int *iscalled = NULL, bool enableSetSipcallerdip = false);
-	bool is_sipcallerip(unsigned int addr);
-	bool is_sipcalledip(unsigned int addr);
+	bool is_sipcaller(unsigned int addr, unsigned int port);
+	bool is_sipcalled(unsigned int addr, unsigned int port);
+	
+	bool use_port_for_check_direction(unsigned int addr) {
+		return(true /*ip_is_localhost(htonl(addr))*/);
+	}
+	void check_reset_oneway(unsigned int saddr, unsigned int source) {
+		if(lastsrcip != saddr ||
+		   (lastsrcip == lastdstip &&
+		    use_port_for_check_direction(saddr) && 
+		    lastsrcport != source)) {
+			oneway = 0;
+		}
+	}
 
 	void dump();
 
@@ -950,35 +960,41 @@ public:
 	bool existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms);
 	bool existsBothDirectionsInSelectedRtpStream();
 	
-	void setSipcallerip(u_int32_t ip, const char *call_id) {
+	bool isSetCallidMergeHeader() {
 		extern char opt_callidmerge_header[128];
+		return((type == INVITE || type == MESSAGE) &&
+		       opt_callidmerge_header[0] != '\0');
+	}
+	
+	void setSipcallerip(u_int32_t ip, u_int16_t port, const char *call_id = NULL) {
 		sipcallerip[0] = ip;
-		if(opt_callidmerge_header[0] != '\0' &&
+		sipcallerport[0] = port;
+		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
 			map_sipcallerdip[call_id].sipcallerip[0] = ip;
+			map_sipcallerdip[call_id].sipcallerport[0] = port;
 		}
 	}
-	void setSipcalledip(u_int32_t ip, const char *call_id) {
-		extern char opt_callidmerge_header[128];
+	void setSipcalledip(u_int32_t ip, u_int16_t port, const char *call_id = NULL) {
 		sipcalledip[0] = ip;
-		if(opt_callidmerge_header[0] != '\0' &&
+		sipcalledport[0] = port;
+		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
 			map_sipcallerdip[call_id].sipcalledip[0] = ip;
+			map_sipcallerdip[call_id].sipcalledport[0] = port;
 		}
 	}
 	void setSeenbye(bool seenbye, u_int64_t seenbye_time_usec, const char *call_id) {
-		extern char opt_callidmerge_header[128];
 		this->seenbye = seenbye;
 		this->seenbye_time_usec = seenbye_time_usec;
-		if(opt_callidmerge_header[0] != '\0' &&
+		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
 			mergecalls[call_id].seenbye = seenbye;
 			mergecalls[call_id].seenbye_time_usec = seenbye_time_usec;
 		}
 	}
 	u_int64_t getSeenbyeTimeUS() {
-		extern char opt_callidmerge_header[128];
-		if(opt_callidmerge_header[0] != '\0') {
+		if(isSetCallidMergeHeader()) {
 			u_int64_t seenbye_time_usec = 0;
 			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
 				if(!it->second.seenbye || !it->second.seenbye_time_usec) {

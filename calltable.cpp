@@ -469,13 +469,11 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
 		 sipcallerip[i] = 0;
 		 sipcalledip[i] = 0;
-		 sipcallerip_port[i] = 0;
-		 sipcalledip_port[i] = 0;
+		 sipcallerport[i] = 0;
+		 sipcalledport[i] = 0;
 	}
 	lastsipcallerip = 0;
 	sipcallerdip_reverse = false;
-	sipcallerport = 0;
-	sipcalledport = 0;
 	skinny_partyid = 0;
 	pthread_mutex_init(&listening_worker_run_lock, NULL);
 	caller_sipdscp = 0;
@@ -745,7 +743,7 @@ Call::removeRTP() {
 
 /* destructor */
 Call::~Call(){
-	if(opt_callidmerge_header[0] != '\0') {
+	if(isSetCallidMergeHeader()) {
 		((Calltable*)calltable)->lock_calls_mergeMAP();
 		for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
 			((Calltable*)calltable)->calls_mergeMAP.erase(it->first);
@@ -1067,7 +1065,7 @@ bool
 Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
  
 	if(iscaller < 0) {
-		if(this->is_sipcallerip(packetS->saddr) || this->is_sipcalledip(packetS->daddr)) {
+		if(this->is_sipcaller(packetS->saddr, packetS->source) || this->is_sipcalled(packetS->daddr, packetS->dest)) {
 			iscaller = 1;
 		} else {
 			iscaller = 0;
@@ -1693,9 +1691,9 @@ public:
 	void setStartTime(u_int64_t start_time);
 	bool addWav(const char *wavFileName, u_int64_t start,
 		    unsigned bytes_per_sample = 0, unsigned samplerate = 0);
-	void mixTo(const char *wavOutFileName, bool withoutEndSilence);
+	void mixTo(const char *wavOutFileName, bool withoutEndSilence, bool withoutEndSilenceInRslt);
 private:
-	void mix(bool withoutEndSilence);
+	void mix(bool withoutEndSilence, bool withoutEndSilenceInRslt);
 	void mix(cWav *wav, bool withoutEndSilence);
 	u_int64_t getMinStartTime();
 	u_int64_t getMaxEndTime(bool withoutEndSilence);
@@ -1811,8 +1809,8 @@ bool cWavMix::addWav(const char *wavFileName, u_int64_t start,
 	}
 }
 
-void cWavMix::mixTo(const char *wavOutFileName, bool withoutEndSilence) {
-	mix(withoutEndSilence);
+void cWavMix::mixTo(const char *wavOutFileName, bool withoutEndSilence, bool withoutEndSilenceInRslt) {
+	mix(withoutEndSilence, withoutEndSilenceInRslt);
 	if(mix_buffer_length_samples) {
 		FILE *file = fopen(wavOutFileName, "w");
 		if(file) {
@@ -1826,8 +1824,8 @@ void cWavMix::mixTo(const char *wavOutFileName, bool withoutEndSilence) {
 	}
 }
 
-void cWavMix::mix(bool withoutEndSilence) {
-	mix_buffer_length_samples = getAllSamples(withoutEndSilence);
+void cWavMix::mix(bool withoutEndSilence, bool withoutEndSilenceInRslt) {
+	mix_buffer_length_samples = getAllSamples(withoutEndSilenceInRslt);
 	if(!mix_buffer_length_samples) {
 		return;
 	}
@@ -2511,7 +2509,7 @@ Call::convertRawToWav() {
 		if(!sverb.noaudiounlink) unlink(rawInfo);
 		
 		if(wavMix) {
-			wavMix->mixTo(wav, true);
+			wavMix->mixTo(wav, true, false);
 			delete wavMix;
 			wavMix = NULL;
 		}
@@ -3059,8 +3057,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add(htonl(sipcallerip[0]), "sipcallerip");
 	cdr.add(htonl(sipcalledip_confirmed ? sipcalledip_confirmed : sipcalledip[0]), "sipcalledip");
 	if(existsColumns.cdr_sipport) {
-		cdr.add(sipcallerport, "sipcallerport");
-		cdr.add(sipcalledport_confirmed ? sipcalledport_confirmed : sipcalledport, "sipcalledport");
+		cdr.add(sipcallerport[0], "sipcallerport");
+		cdr.add(sipcalledport_confirmed ? sipcalledport_confirmed : sipcalledport[0], "sipcalledport");
 	}
 	cdr.add(type == MGCP ? duration_mgcp() : duration(), "duration");
 	if(progress_time) {
@@ -6271,31 +6269,31 @@ Call::check_is_caller_called(const char *call_id, int sip_method,
 	} else {
 		u_int32_t *sipcallerip;
 		u_int32_t *sipcalledip;
-		u_int16_t *sipcallerip_port;
-		u_int16_t *sipcalledip_port;
-		if(opt_callidmerge_header[0] != '\0') {
+		u_int16_t *sipcallerport;
+		u_int16_t *sipcalledport;
+		if(isSetCallidMergeHeader()) {
 			if(call_id) {
 				sipcallerip = this->map_sipcallerdip[call_id].sipcallerip;
 				sipcalledip = this->map_sipcallerdip[call_id].sipcalledip;
-				sipcallerip_port = this->map_sipcallerdip[call_id].sipcallerip_port;
-				sipcalledip_port = this->map_sipcallerdip[call_id].sipcalledip_port;
+				sipcallerport = this->map_sipcallerdip[call_id].sipcallerport;
+				sipcalledport = this->map_sipcallerdip[call_id].sipcalledport;
 			} else {
 				sipcallerip = this->map_sipcallerdip.begin()->second.sipcallerip;
 				sipcalledip = this->map_sipcallerdip.begin()->second.sipcalledip;
-				sipcallerip_port = this->map_sipcallerdip.begin()->second.sipcallerip_port;
-				sipcalledip_port = this->map_sipcallerdip.begin()->second.sipcalledip_port;
+				sipcallerport = this->map_sipcallerdip.begin()->second.sipcallerport;
+				sipcalledport = this->map_sipcallerdip.begin()->second.sipcalledport;
 			}
 			if(!sipcallerip[0] && !sipcalledip[0]) {
 				sipcallerip[0] = saddr;
 				sipcalledip[0] = daddr;
-				sipcallerip_port[0] = sport;
-				sipcalledip_port[0] = dport;
+				sipcallerport[0] = sport;
+				sipcalledport[0] = dport;
 			}
 		} else {
 			sipcallerip = this->sipcallerip;
 			sipcalledip = this->sipcalledip;
-			sipcallerip_port = this->sipcallerip_port;
-			sipcalledip_port = this->sipcalledip_port;
+			sipcallerport = this->sipcallerport;
+			sipcalledport = this->sipcalledport;
 		}
 		int i;
 		for(i = 0; i < MAX_SIPCALLERDIP; i++) {
@@ -6303,16 +6301,16 @@ Call::check_is_caller_called(const char *call_id, int sip_method,
 				if(sip_method == INVITE) {
 					sipcallerip[i] = saddr;
 					sipcalledip[i] = daddr;
-					sipcallerip_port[i] = sport;
-					sipcalledip_port[i] = dport;
+					sipcallerport[i] = sport;
+					sipcalledport[i] = dport;
 					if(sverb.check_is_caller_called) {
 						debug_str_set += string(" / set sipcallerdip[") + intToString(i) + "]: s " + inet_ntostring(htonl(saddr)) + ", d " + inet_ntostring(htonl(daddr));
 					}
 				} else if(IS_SIP_RES18X(sip_method))  {
 					sipcallerip[i] = daddr;
 					sipcalledip[i] = saddr;
-					sipcallerip_port[i] = dport;
-					sipcalledip_port[i] = sport;
+					sipcallerport[i] = dport;
+					sipcalledport[i] = sport;
 					if(sverb.check_is_caller_called) {
 						debug_str_set += string(" / set sipcallerdip[") + intToString(i) + "]: s " + inet_ntostring(htonl(daddr)) + ", d " + inet_ntostring(htonl(saddr));
 					}
@@ -6320,7 +6318,9 @@ Call::check_is_caller_called(const char *call_id, int sip_method,
 			}
 			if(sipcallerip[i]) {
 				if(sipcallerip[i] == saddr &&
-				   (!ip_is_localhost(htonl(saddr)) || sipcallerip_port[i] == sport)) {
+				   (sipcallerip[i] != sipcalledip[i] ||
+				    !use_port_for_check_direction(saddr) || 
+				    sipcallerport[i] == sport)) {
 					// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
 					// SDP will be stream from called
 					_iscalled = 1;
@@ -6332,7 +6332,9 @@ Call::check_is_caller_called(const char *call_id, int sip_method,
 				} else {
 					// The IP address is different, check if the request matches one of the address from the first invite
 					if(sipcallerip[i] == daddr &&
-					   (!ip_is_localhost(htonl(daddr)) || sipcallerip_port[i] == dport)) {
+					   (sipcallerip[i] != sipcalledip[i] ||
+					    !use_port_for_check_direction(daddr) || 
+					    sipcallerport[i] == dport)) {
 						// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
 						*iscaller = 1;
 						if(sverb.check_is_caller_called) {
@@ -6379,15 +6381,21 @@ Call::check_is_caller_called(const char *call_id, int sip_method,
 }
 
 bool 
-Call::is_sipcallerip(unsigned int addr) {
+Call::is_sipcaller(unsigned int addr, unsigned int port) {
 	u_int32_t *sipcallerip;
-	if(opt_callidmerge_header[0] != '\0') {
+	u_int16_t *sipcallerport;
+	if(isSetCallidMergeHeader()) {
 		sipcallerip = this->map_sipcallerdip.begin()->second.sipcallerip;
+		sipcallerport = this->map_sipcallerdip.begin()->second.sipcallerport;
 	} else {
 		sipcallerip = this->sipcallerip;
+		sipcallerport = this->sipcallerport;
 	}
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
-		if(addr == sipcallerip[i]) {
+		if(addr == sipcallerip[i] &&
+		   (sipcallerip[i] != sipcalledip[i] ||
+		    !use_port_for_check_direction(addr) || 
+		    port == sipcallerport[i])) {
 			return(true);
 		}
 	}
@@ -6395,15 +6403,21 @@ Call::is_sipcallerip(unsigned int addr) {
 }
 
 bool 
-Call::is_sipcalledip(unsigned int addr) {
+Call::is_sipcalled(unsigned int addr, unsigned int port) {
 	u_int32_t *sipcalledip;
-	if(opt_callidmerge_header[0] != '\0') {
+	u_int16_t *sipcalledport;
+	if(isSetCallidMergeHeader()) {
 		sipcalledip = this->map_sipcallerdip.begin()->second.sipcalledip;
+		sipcalledport = this->map_sipcallerdip.begin()->second.sipcalledport;
 	} else {
 		sipcalledip = this->sipcalledip;
+		sipcalledport = this->sipcalledport;
 	}
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
-		if(addr == sipcalledip[i]) {
+		if(addr == sipcalledip[i] &&
+		   (sipcallerip[i] != sipcalledip[i] ||
+		    !use_port_for_check_direction(addr) || 
+		    port == sipcalledport[i])) {
 			return(true);
 		}
 	}

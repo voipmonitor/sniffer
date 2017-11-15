@@ -1390,7 +1390,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				//if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u]\n", owner->flags);
 				/* open file for raw codec */
 				unsigned long unique = getTimestamp();
-				char tmp[1024];
+				char tmp[1024+16];
 				sprintf(tmp, "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
 				if(gfileRAW)  {
 					jitterbuffer_fixed_flush(channel_record);
@@ -1820,7 +1820,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 				if(verbosity > 3) printf("[%x] changing packetization:[%d]->[%d]\n", getSSRC(), packetization, curpacketization);
 				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization = curpacketization;
 				last_packetization = curpacketization;
-				change_packetization_iterator == 0;
+				change_packetization_iterator = 0;
 			}
 			
 		}

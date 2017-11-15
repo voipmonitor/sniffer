@@ -103,6 +103,7 @@ public:
         void load();
 	int _add_call_flags(volatile unsigned int *flags, unsigned int saddr, unsigned int daddr);
         void dump();
+        static void dump2man(ostringstream &oss);
 	static int add_call_flags(volatile unsigned int *flags, unsigned int saddr, unsigned int daddr, bool enableReload = false);
 	static void loadActive();
 	static void freeActive();
@@ -157,6 +158,7 @@ public:
 	void add_payload(t_payload *payload);
 	int _add_call_flags(volatile unsigned int *flags, char *telnum_src, char *telnum_dst);
         void dump(t_node_tel *node = NULL);
+        static void dump2man(ostringstream &oss, t_node_tel *node = NULL);
 	static int add_call_flags(volatile unsigned int *flags, char *telnum_src, char *telnum_dst, bool enableReload = false);
 	static void loadActive();
 	static void freeActive();
@@ -203,6 +205,7 @@ public:
 	void load();
 	int _add_call_flags(volatile unsigned int *flags, char *domain_src, char *domain_dst);
 	void dump();
+        static void dump2man(ostringstream &oss);
 	static int add_call_flags(volatile unsigned int *flags, char *domain_src, char *domain_dst, bool enableReload = false);
 	static void loadActive();
 	static void freeActive();
@@ -256,6 +259,7 @@ public:
 	void load();
 	int _add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags);
 	void dump();
+        static void dump2man(ostringstream &oss);
 	void _addNodes(ParsePacket *parsePacket);
 	static int add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags, bool enableReload = false);
 	static void addNodes(ParsePacket *parsePacket);
