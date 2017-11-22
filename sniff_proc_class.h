@@ -190,7 +190,7 @@ public:
 			this->max_count = max_count;
 		}
 		~batch_packet_s_process() {
-			for(unsigned i = 0; i < max_count; i++) {
+			for(int i = 0; i < used; i++) {
 				if(batch[i]) {
 					batch[i]->blockstore_clear();
 					batch[i]->packetdelete();
@@ -333,6 +333,10 @@ public:
 		}
 	}
 	inline void push_packet(packet_s_process *packetS) {
+		if(is_terminating()) {
+			this->packetS_destroy(packetS);
+			return;
+		}
 		if(this->outThreadState == 2) {
 			if(!qring_push_index) {
 				unsigned usleepCounter = 0;
@@ -543,6 +547,16 @@ public:
 	}
 	inline bool check_enable_push_to_stack(packet_s_process_0 *packetS) {
 		return(check_enable_destroy(packetS));
+	}
+	inline void packetS_destroy(packet_s *packetS) {
+		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+		if(packetS->__type == _t_packet_s_process) {
+			preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy((packet_s_process**)&packetS);
+		} else if(packetS->__type == _t_packet_s_process_0) {
+			preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy((packet_s_process_0**)&packetS);
+		} else if(packetS->__type == _t_packet_s_stack) {
+			preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy((packet_s_stack**)&packetS);
+		}
 	}
 	inline void packetS_destroy(packet_s_process **packetS) {
 		if(!check_enable_destroy(*packetS)) {
@@ -805,32 +819,68 @@ inline packet_s_stack *PACKET_S_PROCESS_OTHER_POP_FROM_STACK() {
 
 inline void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
-	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy(packet);
+	if((*packet)->__type == _t_packet_s_process_0) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy(packet);
+	} else if((*packet)->__type == _t_packet_s_process) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy((packet_s_process**)packet);
+	} else if((*packet)->__type == _t_packet_s_stack) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy((packet_s_stack**)packet);
+	}
 }
 
 inline void PACKET_S_PROCESS_DESTROY(packet_s_process **packet) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
-	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy(packet);
+	if((*packet)->__type == _t_packet_s_process) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy(packet);
+	} else if((*packet)->__type == _t_packet_s_process_0) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy((packet_s_process_0**)packet);
+	} else if((*packet)->__type == _t_packet_s_stack) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy((packet_s_stack**)packet);
+	}
 }
 
 inline void PACKET_S_PROCESS_DESTROY(packet_s_stack **packet) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
-	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy(packet);
+	if((*packet)->__type == _t_packet_s_stack) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy(packet);
+	} else if((*packet)->__type == _t_packet_s_process) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy((packet_s_process**)packet);
+	} else if((*packet)->__type == _t_packet_s_process_0) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_destroy((packet_s_process_0**)packet);
+	}
 }
 
 inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process_0 **packet, u_int16_t queue_index) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
-	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
+	if((*packet)->__type == _t_packet_s_process_0) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
+	} else if((*packet)->__type == _t_packet_s_process) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process**)packet, queue_index);
+	} else if((*packet)->__type == _t_packet_s_stack) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_stack**)packet, queue_index);
+	}
 }
 
 inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_process **packet, u_int16_t queue_index) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
-	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
+	if((*packet)->__type == _t_packet_s_process) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
+	} else if((*packet)->__type == _t_packet_s_process_0) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process_0**)packet, queue_index);
+	} else if((*packet)->__type == _t_packet_s_stack) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_stack**)packet, queue_index);
+	}
 }
 
 inline void PACKET_S_PROCESS_PUSH_TO_STACK(packet_s_stack **packet, u_int16_t queue_index) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
-	preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
+	if((*packet)->__type == _t_packet_s_stack) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack(packet, queue_index);
+	} else if((*packet)->__type == _t_packet_s_process) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process**)packet, queue_index);
+	} else if((*packet)->__type == _t_packet_s_process_0) {
+		preProcessPacket[PreProcessPacket::ppt_detach]->packetS_push_to_stack((packet_s_process_0**)packet, queue_index);
+	}
 }
 
 
@@ -850,7 +900,7 @@ public:
 			this->max_count = max_count;
 		}
 		~batch_packet_s_process() {
-			for(unsigned i = 0; i < max_count; i++) {
+			for(int i = 0; i < used; i++) {
 				if(batch[i]) {
 					batch[i]->blockstore_clear();
 					delete batch[i];
@@ -886,6 +936,10 @@ public:
 	ProcessRtpPacket(eType type, int indexThread);
 	~ProcessRtpPacket();
 	inline void push_packet(packet_s_process_0 *packetS) {
+		if(is_terminating()) {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+			return;
+		}
 		if(!qring_push_index) {
 			unsigned usleepCounter = 0;
 			while(this->qring[this->writeit]->used != 0) {

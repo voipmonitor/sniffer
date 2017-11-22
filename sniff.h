@@ -92,7 +92,16 @@ struct udphdr2 {
 
 #define IS_RTP(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x8000)
 
+enum e_packet_s_type {
+	_t_packet_s = 1,
+	_t_packet_s_stack,
+	_t_packet_s_plus_pointer,
+	_t_packet_s_process_0,
+	_t_packet_s_process
+};
+
 struct packet_s {
+	u_int8_t __type;
 	#if USE_PACKET_NUMBER
 	u_int64_t packet_number;
 	#endif
@@ -129,6 +138,7 @@ struct packet_s {
 		return(sensor_id_u == 0xFFFF ? -1 : sensor_id_u);
 	}
 	inline packet_s() {
+		__type = _t_packet_s;
 		init();
 	}
 	inline void init() {
@@ -195,6 +205,7 @@ struct packet_s {
 struct packet_s_stack : public packet_s {
 	cHeapItemsPointerStack *stack;
 	inline packet_s_stack() {
+		__type = _t_packet_s_stack; 
 		init();
 	}
 	inline void init() {
@@ -204,6 +215,9 @@ struct packet_s_stack : public packet_s {
 };
 
 struct packet_s_plus_pointer : public packet_s {
+	inline packet_s_plus_pointer() {
+		__type = _t_packet_s_plus_pointer;
+	}
 	void *pointer[2];
 };
 
@@ -229,6 +243,7 @@ struct packet_s_process_0 : public packet_s_stack {
 	int call_info_length;
 	bool call_info_find_by_dest;
 	inline packet_s_process_0() {
+		__type = _t_packet_s_process_0; 
 		init();
 		init2();
 	}
@@ -292,7 +307,6 @@ struct packet_s_process : public packet_s_process_0 {
 	u_int32_t sipDataLen;
 	char callid[128];
 	char *callid_long;
-	u_int16_t callid_length;
 	int sip_method;
 	bool is_register;
 	bool sip_response;
@@ -308,6 +322,7 @@ struct packet_s_process : public packet_s_process_0 {
 	bool _findCall;
 	bool _createCall;
 	inline packet_s_process() {
+		__type = _t_packet_s_process; 
 		init();
 		init2();
 	}
@@ -320,7 +335,6 @@ struct packet_s_process : public packet_s_process_0 {
 		sipDataLen = 0;
 		callid[0] = 0;
 		callid_long = NULL;
-		callid_length = 0;
 		sip_method = -1;
 		is_register = false;
 		sip_response = false;
