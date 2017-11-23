@@ -1717,6 +1717,7 @@ bool RestartUpgrade::createSafeRunScript() {
 	if(fileHandle) {
 		fputs("#!/bin/bash\n", fileHandle);
 		fputs("sleep 60\n", fileHandle);
+		fprintf(fileHandle, "if [[ \"`ps -A -o comm,pid | grep %i`\" == \"voipmonitor\"* ]]; then kill -9 %i; sleep 1; fi\n", getpid(), getpid());
 		fputs("/etc/init.d/voipmonitor start\n", fileHandle);
 		fprintf(fileHandle, "rm %s\n", this->safeRunTempScriptFileName.c_str());
 		fclose(fileHandle);
@@ -1775,8 +1776,10 @@ bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 		c_client->writeFinal();
 		delete c_client;
 	}
+	pid_t pidSafeRunScript = 0;
 	if(!this->safeRunTempScriptFileName.empty() && this->checkReadySafeRun()) {
-		if(!fork()) {
+		pidSafeRunScript = fork();
+		if(!pidSafeRunScript) {
 			syslog(LOG_NOTICE, "run safe run script (%s)", this->safeRunTempScriptFileName.c_str());
 			close_all_fd();
 			execl(this->safeRunTempScriptFileName.c_str(), "Command-line", 0, NULL);
@@ -1807,6 +1810,10 @@ bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 		this->errorString = "failed execution restart script";
 		if(verbosity > 0) {
 			syslog(LOG_ERR, "restart failed - %s", this->errorString.c_str());
+		}
+		if(pidSafeRunScript) {
+			kill(pidSafeRunScript, 9);
+			unlink(this->safeRunTempScriptFileName.c_str());
 		}
 		return(false);
 	} else {

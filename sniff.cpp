@@ -3739,7 +3739,9 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			}
 		}
 		
-		call->shift_destroy_call_at(packetS->header_pt);
+		if(packetS) {
+			call->shift_destroy_call_at(packetS->header_pt);
+		}
 		++count_use;
 	}
 	for(call_info_index = 0; call_info_index < call_info_length; call_info_index++) {
@@ -3761,7 +3763,8 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			}
 		}
 	}
-	if(rtp_threaded && !sverb.disable_threads_rtp &&
+	if(packetS &&
+	   rtp_threaded && !sverb.disable_threads_rtp &&
 	   call_info_temp_length) {
 		for(unsigned i = 0; i < call_info_temp_length; i++) {
 			call = call_info_temp[i].call;
@@ -6319,7 +6322,9 @@ void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
 				    !packetS_detach->isother ?
 				     (packet_s_process*)PACKET_S_PROCESS_RTP_POP_FROM_STACK() :
 				     (packet_s_process*)PACKET_S_PROCESS_OTHER_POP_FROM_STACK();
+	u_int8_t __type = packetS->__type;
 	*(packet_s*)packetS = *(packet_s*)packetS_detach;
+	packetS->__type = __type;
 	#ifdef PREPROCESS_DETACH2
 	preProcessPacket[ppt_detach2]->push_packet(packetS);
 	#else
@@ -6332,7 +6337,9 @@ void PreProcessPacket::process_DETACH_plus(packet_s_plus_pointer *packetS_detach
 	//packetS->init();
 	*(u_int8_t*)(&packetS->header_ip_offset + 1) = 0;
 	packetS->stack = (cHeapItemsPointerStack*)packetS_detach->pointer[1];
+	u_int8_t __type = packetS->__type;
 	*(packet_s*)packetS = *(packet_s*)packetS_detach;
+	packetS->__type = __type;
 	#ifdef PREPROCESS_DETACH2
 	preProcessPacket[ppt_detach2]->push_packet(packetS);
 	#else
