@@ -1,3 +1,9 @@
+21.3.1 23.11.2017
+=================
+- fix crash when upgrading / restarting sniffer [VS-719]
+- fix audio decode when packet has VSS-Monitoring ethernet trailer 
+
+
 21.3 15.11.2017
 ===============
 - keep silent part at the end of audio [VS-707]
