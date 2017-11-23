@@ -525,7 +525,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				// prepare packet pointers 
 				ppd->header_udp = (udphdr2*) ((char*) ppd->header_ip + sizeof(*ppd->header_ip));
 				ppd->data = (char*) ppd->header_udp + sizeof(*ppd->header_udp);
-				ppd->datalen = (int)(caplen - ((u_char*)ppd->data - packet)); 
+				ppd->datalen = min((int)(htons(ppd->header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2)), (int)(caplen - ((u_char*)ppd->data - packet))); 
 				ppd->istcp = 0;
 				ppd->isother = 0;
 			} else if (ppd->header_ip->protocol == IPPROTO_TCP) {
