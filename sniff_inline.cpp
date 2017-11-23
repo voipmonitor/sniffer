@@ -55,6 +55,35 @@ extern unsigned int duplicate_counter;
 #if SNIFFER_INLINE_FUNCTIONS
 inline 
 #endif
+unsigned get_udp_data_len(iphdr2 *header_ip, udphdr2 *header_udp, char** data, u_char *packet, unsigned caplen) {
+	*data = (char*)header_udp + sizeof(udphdr2);
+	return(MIN((unsigned)(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2)), 
+	       MIN((unsigned)(htons(header_udp->len) - sizeof(udphdr2)),
+		   (unsigned)(caplen - ((u_char*)*data - packet)))));
+}
+
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
+unsigned get_tcp_data_len(iphdr2 *header_ip, tcphdr2 *header_tcp, char** data, u_char *packet, unsigned caplen) {
+	*data = (char*)header_tcp + (header_tcp->doff * 4);
+	return(MIN((unsigned)(htons(header_ip->tot_len) - sizeof(iphdr2) - header_tcp->doff * 4), 
+		   (unsigned)(caplen - ((u_char*)*data - packet))));
+}
+
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
+unsigned get_sctp_data_len(iphdr2 *header_ip, char** data, u_char *packet, unsigned caplen) {
+	unsigned sizeOfSctpHeader = 12;
+	*data = (char*)header_ip + sizeof(iphdr2) + sizeOfSctpHeader;
+	return(MIN((unsigned)(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeOfSctpHeader), 
+		   (unsigned)(caplen - ((u_char*)*data - packet))));
+}
+
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
 iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 	gre_hdr *grehdr = (gre_hdr*)((char*)header_ip + sizeof(iphdr2));
 	u_int16_t grehdr_protocol = ntohs(grehdr->protocol);
@@ -524,8 +553,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			if (ppd->header_ip->protocol == IPPROTO_UDP) {
 				// prepare packet pointers 
 				ppd->header_udp = (udphdr2*) ((char*) ppd->header_ip + sizeof(*ppd->header_ip));
-				ppd->data = (char*) ppd->header_udp + sizeof(*ppd->header_udp);
-				ppd->datalen = min((int)(htons(ppd->header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2)), (int)(caplen - ((u_char*)ppd->data - packet))); 
+				ppd->datalen = get_udp_data_len(ppd->header_ip, ppd->header_udp, &ppd->data, packet, caplen);
 				ppd->istcp = 0;
 				ppd->isother = 0;
 			} else if (ppd->header_ip->protocol == IPPROTO_TCP) {
@@ -533,8 +561,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->isother = 0;
 				// prepare packet pointers 
 				ppd->header_tcp = (tcphdr2*) ((char*) ppd->header_ip + sizeof(*ppd->header_ip));
-				ppd->data = (char*) ppd->header_tcp + (ppd->header_tcp->doff * 4);
-				ppd->datalen = (int)(caplen - ((u_char*)ppd->data - packet)); 
+				ppd->datalen = get_tcp_data_len(ppd->header_ip, ppd->header_tcp, &ppd->data, packet, caplen);
 				if (!(sipportmatrix[htons(ppd->header_tcp->source)] || sipportmatrix[htons(ppd->header_tcp->dest)]) &&
 				    !(opt_enable_http && (httpportmatrix[htons(ppd->header_tcp->source)] || httpportmatrix[htons(ppd->header_tcp->dest)]) &&
 				      (tcpReassemblyHttp->check_ip(htonl(ppd->header_ip->saddr)) || tcpReassemblyHttp->check_ip(htonl(ppd->header_ip->daddr)))) &&
@@ -561,9 +588,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			} else if (opt_enable_ss7 && ppd->header_ip->protocol == IPPROTO_SCTP) {
 				ppd->istcp = 0;
 				ppd->isother = 1;
-				unsigned sizeOfSctpHeader = 12;
-				ppd->data = (char*) ppd->header_ip + sizeof(*ppd->header_ip) + sizeOfSctpHeader;
-				ppd->datalen = (int)(caplen - ((u_char*)ppd->data - packet)); 
+				ppd->datalen = get_sctp_data_len(ppd->header_ip, &ppd->data, packet, caplen);
 			} else {
 				//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
 				ppd->datalen = 0;

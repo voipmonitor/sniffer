@@ -5,6 +5,21 @@
 #include "voipmonitor.h"
 
 #if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
+unsigned get_udp_data_len(iphdr2 *header_ip, udphdr2 *header_udp, char** data, u_char *packet, unsigned caplen);
+
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
+unsigned get_tcp_data_len(iphdr2 *header_ip, tcphdr2 *header_tcp, char** data, u_char *packet, unsigned caplen);
+
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
+unsigned get_sctp_data_len(iphdr2 *header_ip, char** data, u_char *packet, unsigned caplen);
+ 
+#if SNIFFER_INLINE_FUNCTIONS
 inline
 #endif
 iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip);

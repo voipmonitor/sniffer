@@ -2646,16 +2646,12 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 	bool isTcp = false;
 	if (header_ip->protocol == IPPROTO_UDP) {
 		udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
-		data = (char *) header_udp + sizeof(*header_udp);
-		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2), 
-				   header->caplen - ((u_char*)data - packet));
+		datalen = get_udp_data_len(header_ip, header_udp, &data, packet, header->caplen);
 		sport = header_udp->source;
 		dport = header_udp->dest;
 	} else if (header_ip->protocol == IPPROTO_TCP) {
 		tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
-		data = (char *) header_tcp + (header_tcp->doff * 4);
-		datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - header_tcp->doff * 4, 
-				   header->caplen - ((u_char*)data - packet)); 
+		datalen = get_tcp_data_len(header_ip, header_tcp, &data, packet, header->caplen);
 		sport = header_tcp->source;
 		dport = header_tcp->dest;
 		isTcp = true;
@@ -6719,25 +6715,18 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	if(header_ip) {
 		if (header_ip->protocol == IPPROTO_UDP) {
 			udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
-			data = (char *) header_udp + sizeof(*header_udp);
-			datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2), 
-					   header->caplen - ((u_char*)data - hp->packet));
+			datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, header->caplen);
 			sport = header_udp->source;
 			dport = header_udp->dest;
 		} else if (header_ip->protocol == IPPROTO_TCP) {
 			tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
-			data = (char *) header_tcp + (header_tcp->doff * 4);
-			datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - header_tcp->doff * 4, 
-					   header->caplen - ((u_char*)data - hp->packet)); 
+			datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, header->caplen);
 			istcp = 1;
 			sport = header_tcp->source;
 			dport = header_tcp->dest;
 		} else if (opt_enable_ss7 && header_ip->protocol == IPPROTO_SCTP) {
 			isother = 1;
-			unsigned sizeOfSctpHeader = 12;
-			data = (char*) header_ip + sizeof(*header_ip) + sizeOfSctpHeader;
-			datalen = (int)MIN(htons(header_ip->tot_len) - sizeof(iphdr2) - sizeOfSctpHeader, 
-					   header->caplen - ((u_char*)data - hp->packet));
+			datalen = get_sctp_data_len(header_ip, &data, hp->packet, header->caplen);
 		} else {
 			//packet is not UDP and is not TCP, we are not interested, go to the next packet
 			return(0);
