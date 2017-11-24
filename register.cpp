@@ -343,6 +343,8 @@ void Register::updateLastState(Call *call) {
 	RegisterState *state = states_last();
 	if(state) {
 		state->state_to = call->calltime();
+		state->fname = call->fname_register;
+		state->expires = call->register_expires;
 		++state->counter;
 	}
 }
