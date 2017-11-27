@@ -3625,6 +3625,9 @@ void main_term_read() {
 	}
 	
 	if(sqlStore) {
+		if(!isCloud() && snifferServerOptions.isEnable()) {
+			snifferServerSetSqlStore(NULL);
+		}
 		sqlStore->setEnableTerminatingIfEmpty(0, true);
 		sqlStore->setEnableTerminatingIfSqlError(0, true);
 		regfailedcache->prune(0);
@@ -3785,6 +3788,9 @@ void main_init_sqlstore() {
 				}
 			}
 		}
+	}
+	if(!isCloud() && snifferServerOptions.isEnable()) {
+		snifferServerSetSqlStore(sqlStore);
 	}
 }
 

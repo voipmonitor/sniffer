@@ -176,7 +176,15 @@ public:
 
 class cSnifferServer : public cServer {
 public:
+	cSnifferServer();
+	void setSqlStore(class MySqlStore *sqlStore);
+	void sql_query_lock(const char *query_str, int id);
+	bool isSetSqlStore() {
+		return(sqlStore != NULL);
+	}
 	virtual void createConnection(cSocket *socket);
+private:
+	MySqlStore *sqlStore;
 };
 
 
@@ -193,7 +201,7 @@ public:
 		_tc_manager_command
 	};
 public:
-	cSnifferServerConnection(cSocket *socket);
+	cSnifferServerConnection(cSocket *socket, cSnifferServer *server);
 	virtual void connection_process();
 	virtual void evData(u_char *data, size_t dataLen);
 	void addTask(sSnifferServerGuiTask task);
@@ -232,6 +240,7 @@ protected:
 	volatile int _sync_tasks;
 	volatile bool terminate;
 	volatile bool orphan;
+	cSnifferServer *server;
 private:
 	eTypeConnection typeConnection;
 };
@@ -264,6 +273,7 @@ protected:
 
 
 void snifferServerStart();
+void snifferServerSetSqlStore(MySqlStore *sqlStore);
 void snifferClientStart();
 
 
