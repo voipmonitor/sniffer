@@ -1591,14 +1591,15 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 			}
 			if((!loadFromQFiles && !opt_save_query_to_files) || sverb.force_log_sqlq) {
+				MySqlStore *sqlStoreLog = loadFromQFiles ? loadFromQFiles : sqlStore;
 				outStr << "SQLq[";
 				if(isCloud()) {
-					int sizeSQLq = sqlStore->getSize(1);
+					int sizeSQLq = sqlStoreLog->getSize(1);
 					outStr << (sizeSQLq >=0 ? sizeSQLq : 0);
 				} else {
 					int sizeSQLq;
 					for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CDR_1 + i);
+						sizeSQLq = sqlStoreLog->getSize(STORE_PROC_ID_CDR_1 + i);
 						if(i == 0 || sizeSQLq >= 1) {
 							if(i) {
 								outStr << " C" << (i+1) << ":";
@@ -1616,7 +1617,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						}
 					}
 					for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_MESSAGE_1 + i);
+						sizeSQLq = sqlStoreLog->getSize(STORE_PROC_ID_MESSAGE_1 + i);
 						if(sizeSQLq >= (i ? 1 : 0)) {
 							if(i) {
 								outStr << " M" << (i+1) << ":";
@@ -1634,7 +1635,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						}
 					}
 					for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER_1 + i);
+						sizeSQLq = sqlStoreLog->getSize(STORE_PROC_ID_REGISTER_1 + i);
 						if(sizeSQLq >= (i ? 1 : 0)) {
 							if(i) {
 								outStr << " R" << (i+1) << ":";
@@ -1652,22 +1653,22 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						}
 					}
 					if(opt_enable_ss7) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SS7);
+						sizeSQLq = sqlStoreLog->getSize(STORE_PROC_ID_SS7);
 						if(sizeSQLq >= 0) {
 							outStr << " 7:" << sizeSQLq;
 						}
 					}
-					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL);
+					sizeSQLq = sqlStoreLog->getSize(STORE_PROC_ID_SAVE_PACKET_SQL);
 					if(sizeSQLq >= 0) {
 						outStr << " L:" << sizeSQLq;
 					}
-					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL);
+					sizeSQLq = sqlStoreLog->getSize(STORE_PROC_ID_CLEANSPOOL);
 					if(sizeSQLq >= 0) {
 						outStr << " Cl:" << sizeSQLq;
 						if (opt_rrd) rrdSQLq_Cl = sizeSQLq / 100;
 					}
 					for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP_1 + i);
+						sizeSQLq = sqlStoreLog->getSize(STORE_PROC_ID_HTTP_1 + i);
 						if(sizeSQLq >= (i ? 1 : 0)) {
 							if(i) {
 								outStr << " H" << (i+1) << ":";
@@ -1683,37 +1684,37 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 					if(opt_ipaccount) {
 						for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
-							sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_1 + i);
+							sizeSQLq = sqlStoreLog->getSize(STORE_PROC_ID_IPACC_1 + i);
 							if(sizeSQLq >= 1) {
 								outStr << " I" << (STORE_PROC_ID_IPACC_1 + i) << ":" << sizeSQLq;
 							}
 						}
 						for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR_DAY; i++) {
-							sizeSQLq = sqlStore->getSize(i);
+							sizeSQLq = sqlStoreLog->getSize(i);
 							if(sizeSQLq >= 1) {
 								outStr << " I" << i << ":" << sizeSQLq;
 							}
 						}
 						for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
-							sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i);
+							sizeSQLq = sqlStoreLog->getSize(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i);
 							if(sizeSQLq >= 1) {
 								outStr << " I" << (STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i) << ":" << sizeSQLq;
 							}
 						}
 						/*
-						sizeSQLq = sqlStore->getSizeMult(12,
-										 STORE_PROC_ID_IPACC_1,
-										 STORE_PROC_ID_IPACC_2,
-										 STORE_PROC_ID_IPACC_3,
-										 STORE_PROC_ID_IPACC_AGR_INTERVAL,
-										 STORE_PROC_ID_IPACC_AGR_HOUR,
-										 STORE_PROC_ID_IPACC_AGR_DAY,
-										 STORE_PROC_ID_IPACC_AGR2_HOUR_1,
-										 STORE_PROC_ID_IPACC_AGR2_HOUR_2,
-										 STORE_PROC_ID_IPACC_AGR2_HOUR_3,
-										 STORE_PROC_ID_IPACC_AGR2_DAY_1,
-										 STORE_PROC_ID_IPACC_AGR2_DAY_2,
-										 STORE_PROC_ID_IPACC_AGR2_DAY_3);
+						sizeSQLq = sqlStoreLog->getSizeMult(12,
+										    STORE_PROC_ID_IPACC_1,
+										    STORE_PROC_ID_IPACC_2,
+										    STORE_PROC_ID_IPACC_3,
+										    STORE_PROC_ID_IPACC_AGR_INTERVAL,
+										    STORE_PROC_ID_IPACC_AGR_HOUR,
+										    STORE_PROC_ID_IPACC_AGR_DAY,
+										    STORE_PROC_ID_IPACC_AGR2_HOUR_1,
+										    STORE_PROC_ID_IPACC_AGR2_HOUR_2,
+										    STORE_PROC_ID_IPACC_AGR2_HOUR_3,
+										    STORE_PROC_ID_IPACC_AGR2_DAY_1,
+										    STORE_PROC_ID_IPACC_AGR2_DAY_2,
+										    STORE_PROC_ID_IPACC_AGR2_DAY_3);
 						if(sizeSQLq >= 0) {
 							outStr << " I:" << sizeSQLq;
 						}
