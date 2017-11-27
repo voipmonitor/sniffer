@@ -1589,7 +1589,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				if(fill) {
 					outStr << "] ";
 				}
-			} else if(!opt_save_query_to_files || sverb.force_log_sqlq) {
+			}
+			if((!loadFromQFiles && !opt_save_query_to_files) || sverb.force_log_sqlq) {
 				outStr << "SQLq[";
 				if(isCloud()) {
 					int sizeSQLq = sqlStore->getSize(1);
