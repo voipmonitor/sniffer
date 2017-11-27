@@ -6491,11 +6491,6 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 				if(iter->first) {
 					char nextTable[100];
 					sprintf(nextTable, "%s%i", this->nextTablePrefix.c_str(), iter->first);
-					sqlDb->query("show tables like '" + string(nextTable) + "'");
-					if(!sqlDb->fetchRow()) {
-						custom_headers.erase(iter++);
-						continue;
-					}
 					allNextTables.push_back(nextTable);
 				}
 				iter++;
