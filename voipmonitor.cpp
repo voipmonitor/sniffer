@@ -6335,6 +6335,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "call_listening")		sverb.call_listening = 1;
 						else if(verbparams[i] == "skinny")			sverb.skinny = 1;
 						else if(verbparams[i] == "fraud")			sverb.fraud = 1;
+						else if(verbparams[i] == "fraud_file_log")		sverb.fraud_file_log = 1;
 						else if(verbparams[i] == "enable_bt_sighandler")	sverb.enable_bt_sighandler = 1;
 						else if(verbparams[i].substr(0, 4) == "tar=")
 													sverb.tar = atoi(verbparams[i].c_str() + 4);

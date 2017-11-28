@@ -40,6 +40,7 @@ struct sVerbose {
 	int call_listening;
 	int skinny;
 	int fraud;
+	int fraud_file_log;
 	int enable_bt_sighandler;
 	int tcp_debug_port;
 	u_int32_t tcp_debug_ip;

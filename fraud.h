@@ -392,6 +392,7 @@ public:
 	unsigned int getDbId() {
 		return(dbId);
 	}
+	bool openVerbLog();
 	virtual void evCall(sFraudCallInfo */*callInfo*/) {}
 	virtual void evRtpStream(sFraudRtpStreamInfo */*rtpStreamInfo*/) {}
 	virtual void evEvent(sFraudEventInfo */*eventInfo*/) {}
@@ -444,6 +445,7 @@ protected:
 	virtual bool defOnlyConnected() { return(false); }
 	virtual bool defSuppressRepeatingAlerts() { return(false); }
 	virtual bool defStorePcaps() { return(false); }
+	virtual bool supportVerbLog() { return(false); }
 protected:
 	eFraudAlertType type;
 	unsigned int dbId;
@@ -477,6 +479,7 @@ protected:
 	bool day_of_week_set;
 	bool storePcaps;
 	string storePcapsToPaths;
+	FILE *verbLog;
 friend class FraudAlerts;
 friend class FraudAlert_rcc_base;
 friend class FraudAlert_rcc_timePeriods;
@@ -741,6 +744,7 @@ protected:
 	bool defDestPrefixes() { return(true); }
 	bool defTypeBy() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
+	bool supportVerbLog() { return(true); }
 private:
 	vector<FraudAlert_rcc_timePeriods> timePeriods;
 };

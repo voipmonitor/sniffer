@@ -351,9 +351,13 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	}
 	day_of_week_set = false;
 	storePcaps = false;
+	verbLog = NULL;
 }
 
 FraudAlert::~FraudAlert() {
+	if(verbLog) {
+		fclose(verbLog);
+	}
 }
 
 bool FraudAlert::isReg() {
@@ -579,6 +583,17 @@ string FraudAlert::getTypeString() {
 	case _reg_expire: return("reg_expire");
 	}
 	return("");
+}
+
+bool FraudAlert::openVerbLog() {
+	string verbLogFileName = string(getSpoolDir(tsf_main, 0)) + "/fraud_log_" + intToString(this->dbId);
+	verbLog = fopen(verbLogFileName.c_str(), "a");
+	if(verbLog) {
+		setbuf(verbLog, NULL);
+		fprintf(verbLog, "start %s %s\n", this->getDescr().c_str(), sqlDateTimeString(time(NULL)).c_str());
+		return(true);
+	}
+	return(false);
 }
 
 bool FraudAlert::okFilterIp(u_int32_t ip, u_int32_t ip2) {
@@ -967,9 +982,21 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 					syslog(LOG_NOTICE, "fraud %s / %s rcc ++ %s / %s / %lu", 
 					       alert->FraudAlert::getDescr().c_str(),
 					       callInfo->local_called_number ? "local" : "international",
-					       inet_ntostring(callInfo->caller_ip).c_str(), 
+					       parent->typeBy == FraudAlert::_typeBy_source_ip ? inet_ntostring(callInfo->caller_ip).c_str() :
+					       parent->typeBy == FraudAlert::_typeBy_source_number ? callInfo->caller_number.c_str() : "",
 					       callInfo->callid.c_str(),
 					       callInfo->local_called_number ? call->calls_local.size() : call->calls_international.size());
+				}
+				if(sverb.fraud_file_log && parent->verbLog) {
+					fprintf(parent->verbLog, 
+						"%s|%i|+|%s|%s|%s|%lu\n",
+						sqlDateTimeString(time(NULL)).c_str(),
+						callInfo->typeCallInfo,
+						callInfo->local_called_number ? "local" : "international",
+						parent->typeBy == FraudAlert::_typeBy_source_ip ? inet_ntostring(callInfo->caller_ip).c_str() :
+						parent->typeBy == FraudAlert::_typeBy_source_number ? callInfo->caller_number.c_str() : "",
+						callInfo->callid.c_str(),
+						callInfo->local_called_number ? call->calls_local.size() : call->calls_international.size());
 				}
 				unsigned int concurentCallsLimitLocal = timeperiod ? this->concurentCallsLimitLocal_tp : alert->concurentCallsLimitLocal;
 				unsigned int concurentCallsLimitInternational = timeperiod ? this->concurentCallsLimitInternational_tp : alert->concurentCallsLimitInternational;
@@ -1050,9 +1077,21 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 				syslog(LOG_NOTICE, "fraud %s / %s rcc -- %s / %s / %lu", 
 				       alert->FraudAlert::getDescr().c_str(),
 				       callInfo->local_called_number ? "local" : "international",
-				       inet_ntostring(callInfo->caller_ip).c_str(), 
+				       parent->typeBy == FraudAlert::_typeBy_source_ip ? inet_ntostring(callInfo->caller_ip).c_str() :
+				       parent->typeBy == FraudAlert::_typeBy_source_number ? callInfo->caller_number.c_str() : "", 
 				       callInfo->callid.c_str(),
 				       callInfo->local_called_number ? call->calls_local.size() : call->calls_international.size());
+			}
+			if(sverb.fraud_file_log && parent->verbLog) {
+				fprintf(parent->verbLog, 
+					"%s|%i|-|%s|%s|%s|%lu\n",
+					sqlDateTimeString(time(NULL)).c_str(),
+					callInfo->typeCallInfo,
+					callInfo->local_called_number ? "local" : "international",
+					parent->typeBy == FraudAlert::_typeBy_source_ip ? inet_ntostring(callInfo->caller_ip).c_str() :
+					parent->typeBy == FraudAlert::_typeBy_source_number ? callInfo->caller_number.c_str() : "",
+					callInfo->callid.c_str(),
+					callInfo->local_called_number ? call->calls_local.size() : call->calls_international.size());
 			}
 		}
 		break;
@@ -2049,6 +2088,9 @@ void FraudAlerts::loadAlerts(bool lock) {
 			break;
 		}
 		if(alert && alert->loadAlert()) {
+			if(sverb.fraud_file_log  && alert->supportVerbLog()) {
+				alert->openVerbLog();
+			}
 			alerts.push_back(alert);
 		}
 	}
