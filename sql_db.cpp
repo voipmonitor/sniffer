@@ -370,18 +370,20 @@ bool SqlDb::reconnect() {
 	return(rslt);
 }
 
-bool SqlDb::queryByCurl(string query) {
+bool SqlDb::queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock) {
 	clearLastError();
 	bool ok = false;
-	vector<dstring> postData;
-	postData.push_back(dstring("query", query.c_str()));
-	postData.push_back(dstring("token", cloud_token));
 	unsigned int attempt = 0;
+	unsigned int send_query_counter = 0;
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
+		string preparedQuery = this->prepareQuery(query, !callFromStoreProcessWithFixDeadlock && send_query_counter > 1);
 		if(pass > 0) {
 			sleep(1);
-			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(query).c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(preparedQuery).c_str());
 		}
+		vector<dstring> postData;
+		postData.push_back(dstring("query", preparedQuery.c_str()));
+		postData.push_back(dstring("token", cloud_token));
 		SimpleBuffer responseBuffer;
 		string error;
 		get_url_response(cloud_redirect.empty() ? cloud_host.c_str() : cloud_redirect.c_str(),
@@ -413,24 +415,31 @@ bool SqlDb::queryByCurl(string query) {
 			}
 		}
 		int rsltProcessResponse = processResponseFromQueryBy(responseBuffer, pass);
+		send_query_counter++;
 		if(rsltProcessResponse == 1) {
 			ok = true;
 			break;
 		} else if(rsltProcessResponse == -1) {
 			break;
+		} else {
+			if(callFromStoreProcessWithFixDeadlock && getLastError() == ER_LOCK_DEADLOCK) {
+				break;
+			}
 		}
 	}
 	return(ok);
 }
 
-bool SqlDb::queryByRemoteSocket(string query, const char *dropProcQuery) {
+bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDeadlock, const char *dropProcQuery) {
 	clearLastError();
 	bool ok = false;
 	unsigned int attempt = 0;
+	unsigned int send_query_counter = 0;
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
 		if(is_terminating() > 1 && attempt > 2) {
 			break;
 		}
+		string preparedQuery = this->prepareQuery(query, !callFromStoreProcessWithFixDeadlock && send_query_counter > 1);
 		if(pass > 0) {
 			if(this->remote_socket) {
 				delete this->remote_socket;
@@ -441,7 +450,7 @@ bool SqlDb::queryByRemoteSocket(string query, const char *dropProcQuery) {
 			} else {
 				sleep(1);
 			}
-			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(query).c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(preparedQuery.c_str()).c_str());
 		} else if(this->remote_socket && this->remote_socket->getLastTimeOkRead() && getTimeUS() > this->remote_socket->getLastTimeOkRead() + 10 * 1000000ull) {
 			if(!this->remote_socket->checkHandleRead()) {
 				delete this->remote_socket;
@@ -504,23 +513,29 @@ bool SqlDb::queryByRemoteSocket(string query, const char *dropProcQuery) {
 				}
 			}
 		}
-		int rsltProcessResponse = _queryByRemoteSocket(query, pass);
+		int rsltProcessResponse = _queryByRemoteSocket(preparedQuery, pass);
+		send_query_counter++;
 		if(rsltProcessResponse == 1) {
 			ok = true;
 			break;
 		} else if(rsltProcessResponse == -1) {
 			break;
-		} else if(this->getLastError() == ER_SP_ALREADY_EXISTS && pass >= 2) {
-			if(_queryByRemoteSocket("repair table mysql.proc", 0) == 1) {
-				syslog(LOG_NOTICE, "success call 'repair table mysql.proc'");
-			} else {
-				syslog(LOG_NOTICE, "failed call 'repair table mysql.proc' with error: %s", this->getLastErrorString().c_str());
+		} else {
+			if(callFromStoreProcessWithFixDeadlock && getLastError() == ER_LOCK_DEADLOCK) {
+				break;
 			}
-			if(dropProcQuery) {
-				if(_queryByRemoteSocket(dropProcQuery, 0) == 1) {
-					syslog(LOG_NOTICE, "success call '%s'", dropProcQuery);
+			if(this->getLastError() == ER_SP_ALREADY_EXISTS && pass >= 2) {
+				if(_queryByRemoteSocket("repair table mysql.proc", 0) == 1) {
+					syslog(LOG_NOTICE, "success call 'repair table mysql.proc'");
 				} else {
-					syslog(LOG_NOTICE, "failed call '%s' with error: %s", dropProcQuery, this->getLastErrorString().c_str());
+					syslog(LOG_NOTICE, "failed call 'repair table mysql.proc' with error: %s", this->getLastErrorString().c_str());
+				}
+				if(dropProcQuery) {
+					if(_queryByRemoteSocket(dropProcQuery, 0) == 1) {
+						syslog(LOG_NOTICE, "success call '%s'", dropProcQuery);
+					} else {
+						syslog(LOG_NOTICE, "failed call '%s' with error: %s", dropProcQuery, this->getLastErrorString().c_str());
+					}
 				}
 			}
 		}
@@ -1180,9 +1195,9 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 			syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
 		}
 		if(isCloudSsh()) {
-			return(this->queryByCurl(preparedQuery));
+			return(this->queryByCurl(preparedQuery, callFromStoreProcessWithFixDeadlock));
 		} else {
-			return(this->queryByRemoteSocket(preparedQuery, dropProcQuery));
+			return(this->queryByRemoteSocket(preparedQuery, callFromStoreProcessWithFixDeadlock, dropProcQuery));
 		}
 	}
 	u_int32_t startTimeMS = getTimeMS();
@@ -3540,7 +3555,7 @@ string prepareQueryForPrintf(const char *query) {
 	return rslt;
 }
 
-void prepareQuery(string subtypeDb, string &query, bool base, int nextPassQuery) {
+void prepareQuery(string subtypeDb, string &query, bool base, int removeNextPassQuery) {
 	size_t findPos;
 	if(base) {
 		if(subtypeDb == "mssql") {
@@ -3566,11 +3581,11 @@ void prepareQuery(string subtypeDb, string &query, bool base, int nextPassQuery)
 			}
 		}
 	}
-	if(nextPassQuery) {
+	if(removeNextPassQuery) {
 		while((findPos  = query.find("__NEXT_PASS_QUERY_BEGIN__")) != string::npos) {
 			size_t findPosEnd = query.find("__NEXT_PASS_QUERY_END__", findPos);
 			if(findPosEnd != string::npos) {
-				if(nextPassQuery == 2) { 
+				if(removeNextPassQuery == 2) { 
 					query.erase(findPosEnd, 23);
 					query.erase(findPos, 25);
 				} else {

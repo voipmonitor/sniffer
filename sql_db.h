@@ -101,8 +101,8 @@ public:
 	virtual bool connected() = 0;
 	bool reconnect();
 	virtual bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL) = 0;
-	bool queryByCurl(string query);
-	bool queryByRemoteSocket(string query, const char *dropProcQuery);
+	bool queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock = false);
+	bool queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	int _queryByRemoteSocket(string query, unsigned int pass);
 	int processResponseFromQueryBy(const char *response, unsigned pass);
 	virtual string prepareQuery(string query, bool nextPass);

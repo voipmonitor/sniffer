@@ -633,7 +633,6 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
 	if(isError() || !okHandle()) {
 		*dataLen = 0;
 		setError(_se_bad_connection, "read");
-		cout << "004" << endl;
 		return(false);
 	}
 	bool doRead = false;
@@ -1162,7 +1161,9 @@ void cServer::listen_process() {
 					<< clientSocket->getIP() << " : " << clientSocket->getPort();
 				syslog(LOG_INFO, "%s", verbstr.str().c_str());
 			}
-			createConnection(clientSocket);
+			if(!CR_TERMINATE()) {
+				createConnection(clientSocket);
+			}
 		}
 	}
 }

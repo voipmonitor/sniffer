@@ -6801,6 +6801,11 @@ void set_context_config() {
 		}
 	}
 	
+	if(isCloud()) {
+		opt_cdr_check_duplicity_callid_in_next_pass_insert = true;
+		opt_message_check_duplicity_callid_in_next_pass_insert = true;
+	}
+	
 	#ifndef HAVE_OPENSSL101
 	if(opt_enable_ssl == 1) {
 		opt_enable_ssl = 10;
