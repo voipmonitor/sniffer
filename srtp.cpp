@@ -139,9 +139,9 @@ void RTPsecure::init() {
 		int key_len;
 		int tag_len;
 	} srtp_crypto_suites[] = {
-		{ .crypro_suite = "AES_CM_128_HMAC_SHA1_32", .key_len = 128, .tag_len = 4 },
-		{ .crypro_suite = "AES_CM_128_HMAC_SHA1_32", .key_len = 128, .tag_len = 4 },
-		{ .crypro_suite = "AES_CM_128_HMAC_SHA1_80", .key_len = 128, .tag_len = 10 }
+		{ "AES_CM_128_HMAC_SHA1_32", 128, 4 },
+		{ "AES_CM_128_HMAC_SHA1_32", 128, 4 },
+		{ "AES_CM_128_HMAC_SHA1_80", 128, 10 }
 	};
 	if(crypto_suite.length()) {
 		for(unsigned i = 0; i < sizeof(srtp_crypto_suites) / sizeof(srtp_crypto_suites[0]); i++) {
