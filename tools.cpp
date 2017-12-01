@@ -1088,7 +1088,7 @@ bool incorrectCaplenDetected = false;
 void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets,
 		      u_char *data, unsigned int datalen,
 		      unsigned int saddr, unsigned int daddr, int source, int dest,
-		      bool istcp) {
+		      bool istcp, bool forceVirtualUdp) {
 	extern int opt_convert_dlt_sll_to_en10;
 	if((dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : dlt) != this->dlt) {
 		/*
@@ -1109,7 +1109,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 				this->existsContent = true;
 				extern bool opt_virtualudppacket;
 				bool use_virtualudppacket = false;
-				if(opt_virtualudppacket && data && datalen) {
+				if((opt_virtualudppacket || forceVirtualUdp) && data && datalen) {
 					sll_header *header_sll = NULL;
 					ether_header *header_eth = NULL;
 					u_int header_ip_offset = 0;
@@ -5969,4 +5969,15 @@ int spooldir_chown(int filehandle) {
 
 int spooldir_mkdir(std::string dir) {
 	return(mkdir_r(dir, spooldir_dir_permission(), spooldir_owner_id(), spooldir_group_id()));
+}
+
+
+void hexdump(u_char *data, unsigned size) {
+	for(unsigned i = 0; i < size; i += 16) {
+		printf("%04x ", i);
+		for(unsigned j = 0; j < 16 && i + j < size; j++) {
+			printf("%02x ", data[i + j]);
+		}
+		cout << endl;
+	}
 }

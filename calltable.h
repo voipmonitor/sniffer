@@ -36,6 +36,7 @@
 #define MAX_RTPMAP 40          //!< max rtpmap records
 #define MAXNODE 150000
 #define MAXLEN_SDP_SESSID 16
+#define MAXLEN_SDP_CRYPTO_KEY 40
 #define MAXLEN_SDP_TO 128
 #define MAX_SIPCALLERDIP 4
 
@@ -167,6 +168,7 @@ struct ip_port_call_info {
 	u_int16_t port;
 	int8_t iscaller;
 	char sessid[MAXLEN_SDP_SESSID];
+	string crypto_key;
 	char to[MAXLEN_SDP_TO];
 	u_int32_t sip_src_addr;
 	s_sdp_flags sdp_flags;
@@ -340,6 +342,7 @@ public:
 public:
 	bool is_ssl;			//!< call was decrypted
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
+	map<int, class RTPsecure*> rtp_secure_map;
 	volatile int rtplock;
 	unsigned long call_id_len;	//!< length of call-id 	
 	string call_id;	//!< call-id from SIP session
@@ -612,7 +615,7 @@ public:
 	*/
 	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname = NULL);
 	inline bool _read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save);
-	inline void _save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf);
+	inline void _save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf, bool forceVirtualUdp = false);
 
 	/**
 	 * @brief read RTCP packet 
@@ -633,12 +636,12 @@ public:
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
 	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-			char *sessid, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+			char *sessid, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
 	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
 	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-			      char *sessid, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+			      char *sessid, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  

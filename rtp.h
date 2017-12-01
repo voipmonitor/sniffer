@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <fstream>
 #include <iostream>
+
 #include "tools.h"
 #include "dsp.h"
 
@@ -347,6 +348,8 @@ public:
 	*
 	*/
 	~RTP();
+	
+	void setSRtpDecrypt(class RTPsecure *srtp_decrypt);
 
 	/**
 	 * @brief simulate jitter buffer
@@ -370,7 +373,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 *
 	*/
-	bool read(unsigned char* data, int len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport,
+	bool read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport,
 		  int sensor_id, u_int32_t sensor_ip, char *ifname = NULL);
 
 
@@ -557,6 +560,8 @@ private:
 	char _last_ifname[10];
 	
 	u_long lastTimeSyslog;
+	
+	class RTPsecure *srtp_decrypt;
 friend class Call;
 };
 
@@ -606,5 +611,6 @@ private:
 	uint32_t lasttime1;
 	uint32_t lasttime2;
 };
+
 
 #endif

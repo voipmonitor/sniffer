@@ -622,7 +622,7 @@ static int parse_packet__message(packet_s_process *packetS, bool strictCheckLeng
    type - 1 is SIP, 2 is RTP, 3 is RTCP
 
 */
-void save_packet(Call *call, packet_s_process *packetS, int type) {
+void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirtualUdp) {
 	if(packetS->header_pt->caplen > 1000000) {
 		static u_long lastTimeSyslog = 0;
 		u_long actTime = getTimeMS();
@@ -721,11 +721,11 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 					if(type == TYPE_SIP) {
 						call->getPcapSip()->dump(header, packet, packetS->dlt, false, 
 									 (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
-									 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
+									 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp, forceVirtualUdp);
 					} else {
 						call->getPcapSip()->dump(header, packet, packetS->dlt, false,
 									 (u_char*)packetS->data_(), packetS->datalen,
-									 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
+									 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp, forceVirtualUdp);
 					}
 				}
 				break;
@@ -734,13 +734,13 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 				if(call->getPcapRtp()->isOpen()){
 					call->getPcapRtp()->dump(header, packet, packetS->dlt, false,
 								 (u_char*)packetS->data_(), packetS->datalen,
-								 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
+								 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp, forceVirtualUdp);
 				} else if(type == TYPE_RTP ? enable_save_rtp(call) : enable_save_rtcp(call)) {
 					string pathfilename = call->get_pathfilename(tsf_rtp);
 					if(call->getPcapRtp()->open(tsf_rtp, pathfilename.c_str(), call->useHandle, call->useDlt)) {
 						call->getPcapRtp()->dump(header, packet, packetS->dlt, false,
 									 (u_char*)packetS->data_(), packetS->datalen,
-									 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
+									 packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp, forceVirtualUdp);
 						if(verbosity > 3) { 
 							syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
 						}
@@ -753,11 +753,11 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 				if(type == TYPE_SIP) {
 					call->getPcap()->dump(header, packet, packetS->dlt, false, 
 							      (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
-							      packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
+							      packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp, forceVirtualUdp);
 				} else {
 					call->getPcap()->dump(header, packet, packetS->dlt, false,
 							      (u_char*)packetS->data_(), packetS->datalen,
-							      packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
+							      packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp, forceVirtualUdp);
 				}
 			}
 		}
@@ -771,9 +771,9 @@ void save_packet(Call *call, packet_s_process *packetS, int type) {
 	}
 }
 
-void save_packet(Call *call, packet_s *packetS, int type) {
+void save_packet(Call *call, packet_s *packetS, int type, bool forceVirtualUdp) {
 	if(type != TYPE_SIP) {
-		save_packet(call, (packet_s_process*)packetS, type);
+		save_packet(call, (packet_s_process*)packetS, type, forceVirtualUdp);
 	}
 }
 
@@ -1377,7 +1377,8 @@ fail_exit:
 }
 
 int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
-			 in_addr_t *addr, unsigned short *port, int16_t *fax, char *sessid, int16_t *rtcp_mux, int sip_method){
+			 in_addr_t *addr, unsigned short *port, int16_t *fax, 
+			 char *sessid, char *crypto_key, int16_t *rtcp_mux, int sip_method){
 	unsigned long l;
 	char *s;
 	char s1[20];
@@ -1429,6 +1430,30 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
 		} else {
 			*fax = 1;
 		}
+	}
+	s = gettag(sdp_text, sdp_text_len, NULL,
+		   "a=crypto:", &l, &gettagLimitLen);
+	if(l > 0) {
+		char *pointToParam = s;
+		unsigned countParams = 0;
+		do {
+			++countParams;
+			char *pointToSeparator = strnchr(pointToParam, ' ', l - (pointToParam - s));
+			unsigned lengthParam = pointToSeparator ? pointToSeparator - pointToParam : l - (pointToParam - s);
+			if(countParams == 3) {
+				if(!strncasecmp(pointToParam, "inline:", 7)) {
+					pointToParam += 7;
+					lengthParam -= 7;
+				}
+				strncpy(crypto_key, pointToParam, MIN(lengthParam, MAXLEN_SDP_CRYPTO_KEY));
+				crypto_key[MIN(lengthParam, MAXLEN_SDP_CRYPTO_KEY)] = 0;
+				break;
+			}
+			pointToParam = pointToSeparator + 1;
+			
+		} while(pointToParam);
+	} else {
+		crypto_key[0] = 0;
 	}
 	if(memmem(sdp_text, sdp_text_len, "a=rtcp-mux", 10)) {
 		*rtcp_mux = 1;
@@ -2379,8 +2404,10 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 	s_sdp_flags sdp_flags;
 	char sessid[MAXLEN_SDP_SESSID];
+	char crypto_key[MAXLEN_SDP_CRYPTO_KEY + 1];
 	if (!get_ip_port_from_sdp(call, sdp, sdplen,
-				  &tmp_addr, &tmp_port, &sdp_flags.is_fax, sessid, &sdp_flags.rtcp_mux, packetS->sip_method)){
+				  &tmp_addr, &tmp_port, &sdp_flags.is_fax, 
+				  sessid, crypto_key, &sdp_flags.rtcp_mux, packetS->sip_method)){
 		if(sdp_flags.is_fax) { 
 			if(verbosity >= 2){
 				syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
@@ -2408,16 +2435,16 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to));
 			
 			call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base, tmp_port, packetS->header_pt, 
-					       sessid, to, iscaller, rtpmap, sdp_flags);
+					       sessid, crypto_key, to, iscaller, rtpmap, sdp_flags);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
 				call->add_ip_port_hash(packetS->saddr, alias, ip_port_call_info::_ta_natalias, tmp_port, packetS->header_pt, 
-						       sessid, to, iscaller, rtpmap, sdp_flags);
+						       sessid, crypto_key, to, iscaller, rtpmap, sdp_flags);
 			}
 			if(opt_sdp_reverse_ipport) {
 				call->add_ip_port_hash(packetS->saddr, packetS->saddr, ip_port_call_info::_ta_sdp_reverse_ipport, tmp_port, packetS->header_pt, 
-						       sessid, to, iscaller, rtpmap, sdp_flags);
+						       sessid, crypto_key, to, iscaller, rtpmap, sdp_flags);
 			}
 		}
 	} else {
@@ -3790,7 +3817,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 }
 
 Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int daddr, int dest, 
-				char *data, int datalen, int /*dataoffset*/,
+				char *data, unsigned datalen, int /*dataoffset*/,
 				pcap_pkthdr *header, const u_char */*packet*/, int /*istcp*/, struct iphdr2 */*header_ip*/,
 				pcap_block_store */*block_store*/, int /*block_store_index*/, int dlt, int sensor_id, u_int32_t sensor_ip,
 				pcap_t *handle) {
@@ -3811,7 +3838,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	int rtpmap[MAX_RTPMAP];
 	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 
-	rtp.read((unsigned char*)data, datalen, header, saddr, daddr, source, dest, sensor_id, sensor_ip);
+	rtp.read((unsigned char*)data, &datalen, header, saddr, daddr, source, dest, sensor_id, sensor_ip);
 
 	if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
 		return NULL;
@@ -3850,9 +3877,9 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	}
 
 	call->add_ip_port_hash(saddr, daddr, ip_port_call_info::_ta_base, dest, header, 
-			       NULL, NULL, 1, rtpmap, s_sdp_flags());
+			       NULL, NULL, NULL, 1, rtpmap, s_sdp_flags());
 	call->add_ip_port_hash(saddr, saddr, ip_port_call_info::_ta_base, source, header, 
-			       NULL, NULL, 0, rtpmap, s_sdp_flags());
+			       NULL, NULL, NULL, 0, rtpmap, s_sdp_flags());
 	
 	return(call);
 }

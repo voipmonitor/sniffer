@@ -32,6 +32,7 @@ Each Call class contains two RTP classes.
 #include "flags.h"
 #include "mos_g729.h"   
 #include "sql_db.h"   
+#include "srtp.h"
 
 #include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/frame.h"
@@ -356,6 +357,13 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	tailedframes = 0;
 
 	change_packetization_iterator = 0;
+	srtp_decrypt = NULL;
+}
+
+
+void 
+RTP::setSRtpDecrypt(RTPsecure *srtp_decrypt) {
+	this->srtp_decrypt = srtp_decrypt;
 }
 
 
@@ -902,10 +910,10 @@ RTP::process_dtmf_rfc2833() {
 
 /* read rtp packet */
 bool
-RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport,
+RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport,
 	  int sensor_id, u_int32_t sensor_ip, char *ifname) {
 	this->data = data; 
-	this->len = len;
+	this->len = *len;
 	this->header_ts = header->ts;
 	this->saddr =  saddr;
 	this->daddr =  daddr;
@@ -1037,6 +1045,12 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 			}
 		}
 		return(false);
+	}
+	
+	if(srtp_decrypt) {
+		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len,
+					  getSeqNum(), getSSRC()); 
+		this->len = *len;
 	}
 
 	if(getVersion() != 2) {
@@ -1406,7 +1420,7 @@ RTP::read(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t s
 					if(prevrtp && prevrtp != this) {
 						prevrtp->ignore = 1; 
 						prevrtp->data = data; 
-						prevrtp->len = len;
+						prevrtp->len = *len;
 						prevrtp->header_ts = header_ts;
 						prevrtp->codec = prevrtp->prev_codec;
 						if(recordingRequested_use_jitterbuffer_channel_record) {
