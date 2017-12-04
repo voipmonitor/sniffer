@@ -1,3 +1,13 @@
+21.4 04.12.2017
+===============
+- SRTP (RTP and RTCP) decryption support added. Keys are taken from SIP SDP packets. By default RTCP packets are decrypted and stored decrypted. RTP is not decrypted by default (in pcap it is stored encrypted) - GUI can decrypt encrypted packets in pcap. New options srtp_rtp and srtp_rtcp. [VG-1415]
+- fix pcap for register active [VS-723]
+- fix crash in server mode 
+- fix recreation of cdr_next_N tables (if they are missing) [VS-724]
+- fix SQL deadlock in client - server mode or cloud mode which leads in duplicated CDRs [VS-697]
+- do not start server mode when reading pcap from cmd line [VS-726]
+
+
 21.3.1 23.11.2017
 =================
 - fix crash when upgrading / restarting sniffer [VS-719]
