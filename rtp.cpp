@@ -1048,8 +1048,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 	}
 	
 	if(srtp_decrypt) {
-		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len,
-					  getSeqNum(), getSSRC()); 
+		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len); 
 		this->len = *len;
 	}
 

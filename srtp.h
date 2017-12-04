@@ -73,12 +73,9 @@ public:
 public:
 	RTPsecure(const char *crypto_suite, const char *key, eMode mode);
 	~RTPsecure();
-	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len,
-			 unsigned seq, unsigned ssrc);
-	bool decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len,
-				unsigned seq, unsigned ssrc);
-	bool decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len,
-				 unsigned seq, unsigned ssrc);
+	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
+	bool decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
+	bool decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
 	bool decrypt_rtcp(u_char *data, unsigned *data_len);
 	bool decrypt_rtcp_native(u_char *data, unsigned *data_len);
 	bool decrypt_rtcp_libsrtp(u_char *data, unsigned *data_len);
@@ -88,7 +85,7 @@ private:
 	bool init_native();
 	bool init_libsrtp();
 	bool decodeKey();
-	bool rtpDecrypt(u_char *payload, unsigned payload_len, unsigned seq, unsigned ssrc);
+	bool rtpDecrypt(u_char *payload, unsigned payload_len, uint16_t seq, uint32_t ssrc);
 	bool rtcpDecrypt(u_char *data, unsigned data_len);
 	int rtp_decrypt(u_char *data, unsigned data_len, uint32_t ssrc, uint32_t roc, uint16_t seq);
 	int rtcp_decrypt(u_char *data, unsigned data_len, uint32_t ssrc, uint32_t index);
@@ -97,6 +94,15 @@ private:
 	u_char *rtcp_digest(u_char *data, size_t data_len);
 	int do_derive(gcry_cipher_hd_t cipher, u_char *r, unsigned rlen, uint8_t label, u_char *out, unsigned outlen);
 	int do_ctr_crypt (gcry_cipher_hd_t cipher, u_char *ctr, u_char *data, unsigned len);
+	uint16_t get_seq_rtp(u_char *data) {
+		return(htons(*(uint16_t*)(data + 2)));
+	}
+	uint32_t get_ssrc_rtp(u_char *data) {
+		return(htonl(*(uint32_t*)(data + 8)));
+	}
+	uint32_t get_ssrc_rtcp(u_char *data) {
+		return(htonl(*(uint32_t*)(data + 4)));
+	}
 private:
 	std::string crypto_suite;
 	std::string sdes;
@@ -115,6 +121,8 @@ private:
 	sDecrypt rtp;
 	sDecrypt rtcp;
 	eError error;
+	int rtcp_unencrypt_header;
+	int rtcp_unencrypt_footer;
 	static bool gcrypt_lib_init;
 	static bool srtp_lib_init;
 };

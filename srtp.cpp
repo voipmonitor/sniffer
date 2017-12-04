@@ -26,6 +26,8 @@ RTPsecure::RTPsecure(const char *crypto_suite, const char *sdes, eMode mode) {
 	rtp_seq = 0;
 	rtp_rcc = 1;
 	error = err_na;
+	rtcp_unencrypt_header = 8;
+	rtcp_unencrypt_footer = 4;
 	init();
 	if(mode == mode_native) {
 		init_native();
@@ -40,20 +42,21 @@ bool RTPsecure::srtp_lib_init = false;
 RTPsecure::~RTPsecure() {
 }
 
-bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len,
-			    unsigned seq, unsigned ssrc) {
+bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len) {
+	if(*payload_len <= tag_len) {
+		return(false);
+	}
 	++rtp.counter_packets;
 	if(mode == mode_native) {
-		return(decrypt_rtp_native(data, data_len, payload, payload_len,
-					  seq, ssrc));
+		return(decrypt_rtp_native(data, data_len, payload, payload_len));
 	} else {
-		return(decrypt_rtp_libsrtp(data, data_len, payload, payload_len,
-					   seq, ssrc));
+		return(decrypt_rtp_libsrtp(data, data_len, payload, payload_len));
 	}
 }
  
-bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len,
-				   unsigned seq, unsigned ssrc) {
+bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len) {
+	uint16_t seq = get_seq_rtp(data);
+	uint32_t ssrc = get_ssrc_rtp(data);
 	if(rtp.counter_packets == 1) {
 		rtp_seq = seq;
 	}
@@ -62,7 +65,6 @@ bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *pay
         if(memcmp(data + *data_len - tag_len, tag, tag_len)) {
 		return(false);
 	}
-	memcpy(&ssrc, data + 8, 4);
 	if(!rtpDecrypt(payload, *payload_len - tag_len, seq, ssrc)) {
 		return(false);
 	}
@@ -73,13 +75,10 @@ bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *pay
 	return(true);
 }
 
-bool RTPsecure::decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len,
-				    unsigned seq, unsigned ssrc) {
+bool RTPsecure::decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char */*payload*/, unsigned *payload_len) {
 	#if HAVE_LIBSRTP
 	if(rtp.counter_packets == 1) {
-		uint32_t ssrc;
-		memcpy(&ssrc, data + 8, 4);
-		rtp.policy.ssrc.value = htonl(ssrc);
+		rtp.policy.ssrc.value = get_ssrc_rtp(data);
 		srtp_create(&rtp.srtp_ctx, &rtp.policy);
 	}
 	int _data_len = *data_len;
@@ -93,6 +92,9 @@ bool RTPsecure::decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char *pa
 }
 
 bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len) {
+	if(*data_len <= (tag_len + rtcp_unencrypt_header + rtcp_unencrypt_footer)) {
+		return(false);
+	}
 	++rtcp.counter_packets;
 	if(mode == mode_native) {
 		return(decrypt_rtcp_native(data, data_len));
@@ -116,9 +118,7 @@ bool RTPsecure::decrypt_rtcp_native(u_char *data, unsigned *data_len) {
 bool RTPsecure::decrypt_rtcp_libsrtp(u_char *data, unsigned *data_len) {
 	#if HAVE_LIBSRTP
 	if(rtcp.counter_packets == 1) {
-		uint32_t ssrc;
-		memcpy(&ssrc, data + 4, 4);
-		rtcp.policy.ssrc.value = htonl(ssrc);
+		rtcp.policy.ssrc.value = get_ssrc_rtcp(data);
 		srtp_create(&rtcp.srtp_ctx, &rtcp.policy);
 	}
 	int _data_len = *data_len;
@@ -287,7 +287,7 @@ bool RTPsecure::decodeKey() {
 	return(true);
 }
 
-bool RTPsecure::rtpDecrypt(u_char *payload, unsigned payload_len, unsigned seq, unsigned ssrc) {
+bool RTPsecure::rtpDecrypt(u_char *payload, unsigned payload_len, uint16_t seq, uint32_t ssrc) {
 	uint32_t roc = compute_rtp_roc(seq);
 	// Updates ROC and sequence (it's safe now)
 	int16_t diff = seq - this->rtp_seq;
@@ -312,10 +312,8 @@ bool RTPsecure::rtpDecrypt(u_char *payload, unsigned payload_len, unsigned seq, 
 }
 
 bool RTPsecure::rtcpDecrypt(u_char *data, unsigned data_len) {
-	int unencrypt_header = 8;
-	int unencrypt_footer = 4;
 	uint32_t index;
-	memcpy(&index, data + data_len - unencrypt_footer, 4);
+	memcpy(&index, data + data_len - rtcp_unencrypt_footer, 4);
 	index = ntohl (index);
 	index &= ~(1 << 31); // clear E-bit for counter
 	// Updates SRTCP index (safe here)
@@ -333,9 +331,7 @@ bool RTPsecure::rtcpDecrypt(u_char *data, unsigned data_len) {
 		}
 		rtp.window |= 1 << diff;
 	}
-	uint32_t ssrc;
-	memcpy (&ssrc, data + 4, 4);
-	if(rtcp_decrypt(data + unencrypt_header, data_len - unencrypt_header - unencrypt_footer, ssrc, index)) {
+	if(rtcp_decrypt(data + rtcp_unencrypt_header, data_len - rtcp_unencrypt_header - rtcp_unencrypt_footer, get_ssrc_rtcp(data), index)) {
 		return(false);
 	}
 	return(true);
@@ -374,7 +370,7 @@ int RTPsecure::rtp_decrypt(u_char *data, unsigned data_len, uint32_t ssrc, uint3
 	// Determines cryptographic counter (IV)
 	uint32_t counter[4];
 	counter[0] = rtp.salt[0];
-	counter[1] = rtp.salt[1] ^ ssrc;
+	counter[1] = rtp.salt[1] ^ htonl(ssrc);
 	counter[2] = rtp.salt[2] ^ htonl(roc);
 	counter[3] = rtp.salt[3] ^ htonl(seq << 16);
 	// Decryption
@@ -384,7 +380,7 @@ int RTPsecure::rtp_decrypt(u_char *data, unsigned data_len, uint32_t ssrc, uint3
 int RTPsecure::rtcp_decrypt(u_char *data, unsigned data_len, uint32_t ssrc, uint32_t index) {
 	uint32_t counter[4];
 	counter[0] = rtcp.salt[0];
-	counter[1] = rtcp.salt[1] ^ ssrc;
+	counter[1] = rtcp.salt[1] ^ htonl(ssrc);
 	counter[2] = rtcp.salt[2] ^ htonl(index >> 16);
 	counter[3] = rtcp.salt[3] ^ htonl((index & 0xffff) << 16);
 	// Decryption
