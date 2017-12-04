@@ -2684,7 +2684,7 @@ int main(int argc, char *argv[]) {
 		return 0;
 	}
 	
-	if(!isCloud() && snifferServerOptions.isEnable()) {
+	if(!isCloud() && snifferServerOptions.isEnable() && !is_read_from_file_simple()) {
 		snifferServerStart();
 	}
 
@@ -3626,7 +3626,7 @@ void main_term_read() {
 	}
 	
 	if(sqlStore) {
-		if(!isCloud() && snifferServerOptions.isEnable()) {
+		if(!isCloud() && snifferServerOptions.isEnable() && !is_read_from_file_simple()) {
 			snifferServerSetSqlStore(NULL);
 		}
 		sqlStore->setEnableTerminatingIfEmpty(0, true);
@@ -3790,7 +3790,7 @@ void main_init_sqlstore() {
 			}
 		}
 	}
-	if(!isCloud() && snifferServerOptions.isEnable()) {
+	if(!isCloud() && snifferServerOptions.isEnable() && !is_read_from_file_simple()) {
 		snifferServerSetSqlStore(sqlStore);
 	}
 }
