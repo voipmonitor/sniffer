@@ -45,6 +45,7 @@ extern int verbosity;
 extern int opt_saveRAW;                //save RTP payload RAW data?
 extern int opt_saveWAV;                //save RTP payload RAW data?
 extern int opt_saveGRAPH;	//save GRAPH data?
+extern bool opt_srtp_rtp_decrypt;
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	//save gzip GRAPH data?
 extern int opt_jitterbuffer_f1;            // turns off/on jitterbuffer simulator to compute MOS score mos_f1
 extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulator to compute MOS score mos_f2
@@ -1047,7 +1048,13 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		return(false);
 	}
 	
-	if(srtp_decrypt) {
+	bool recordingRequested = 
+		opt_saveRAW || opt_savewav_force || 
+		(owner && 
+		 ((owner->flags & FLAG_SAVEAUDIO) ||
+		  owner->audiobuffer1 || owner->audiobuffer2));
+	
+	if(srtp_decrypt && (opt_srtp_rtp_decrypt || recordingRequested)) {
 		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len); 
 		this->len = *len;
 	}
@@ -1315,11 +1322,6 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		resetgraph = true;
 	}
 	
-	bool recordingRequested = 
-		opt_saveRAW || opt_savewav_force || 
-		(owner && 
-		 ((owner->flags & FLAG_SAVEAUDIO) ||
-		  owner->audiobuffer1 || owner->audiobuffer2));
 	bool recordingRequested_use_jitterbuffer_channel_record = false;
 	bool recordingRequested_enable_jitterbuffer_savepayload = false;
 	if(recordingRequested) {

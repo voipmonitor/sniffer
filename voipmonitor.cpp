@@ -189,6 +189,8 @@ int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
 int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
+bool opt_srtp_rtp_decrypt = true;
+bool opt_srtp_rtcp_decrypt = true;
 int opt_use_libsrtp = 0;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
@@ -5350,7 +5352,9 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
 				advanced();
-					addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
 					expert();
 					addConfigItem(new FILE_LINE(42212) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
 					addConfigItem(new FILE_LINE(42213) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_ziplevel_rtp));
@@ -7748,6 +7752,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "savertp-threaded", NULL))) {
 		opt_rtpsave_threaded = yesno(value);
+	}
+	if((value = ini.GetValue("general", "srtp_rtp", NULL))) {
+		opt_srtp_rtp_decrypt= yesno(value);
+	}
+	if((value = ini.GetValue("general", "srtp_rtcp", NULL))) {
+		opt_srtp_rtcp_decrypt= yesno(value);
 	}
 	if((value = ini.GetValue("general", "libsrtp", NULL))) {
 		opt_use_libsrtp = yesno(value);

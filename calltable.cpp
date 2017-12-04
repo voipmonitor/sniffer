@@ -77,6 +77,7 @@ extern int opt_saveRAW;                // save RTP payload RAW data?
 extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	// compress GRAPH data to graph file? 
+extern bool opt_srtp_rtcp_decrypt;
 extern int opt_save_sdp_ipport;
 extern int opt_mos_g729;
 extern int opt_nocdr;
@@ -1057,7 +1058,7 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 	}
 
 	RTPsecure *rtp_decrypt = NULL;
-	if(exists_crypto_suite_key) {
+	if(exists_crypto_suite_key && opt_srtp_rtcp_decrypt) {
 		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source - 1);
 		if(index_call_ip_port_by_src >= 0 && 
 		   this->ip_port[index_call_ip_port_by_src].crypto_suite.length() &&
@@ -1074,7 +1075,7 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 	}
 	
 	unsigned datalen_orig = packetS->datalen;
-	if(rtp_decrypt) {
+	if(rtp_decrypt && opt_srtp_rtcp_decrypt) {
 		rtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &packetS->datalen);
 	}
 
