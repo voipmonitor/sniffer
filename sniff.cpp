@@ -1378,7 +1378,7 @@ fail_exit:
 
 int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
 			 in_addr_t *addr, unsigned short *port, int16_t *fax, 
-			 char *sessid, char *crypto_key, int16_t *rtcp_mux, int sip_method){
+			 char *sessid, char *crypto_suite, char *crypto_key, int16_t *rtcp_mux, int sip_method){
 	unsigned long l;
 	char *s;
 	char s1[20];
@@ -1440,7 +1440,10 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
 			++countParams;
 			char *pointToSeparator = strnchr(pointToParam, ' ', l - (pointToParam - s));
 			unsigned lengthParam = pointToSeparator ? pointToSeparator - pointToParam : l - (pointToParam - s);
-			if(countParams == 3) {
+			if(countParams == 2) {
+				strncpy(crypto_suite, pointToParam, MIN(lengthParam, MAXLEN_SDP_CRYPTO_SUITE));
+				crypto_suite[MIN(lengthParam, MAXLEN_SDP_CRYPTO_SUITE)] = 0;
+			} else if(countParams == 3) {
 				if(!strncasecmp(pointToParam, "inline:", 7)) {
 					pointToParam += 7;
 					lengthParam -= 7;
@@ -2404,10 +2407,11 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 	s_sdp_flags sdp_flags;
 	char sessid[MAXLEN_SDP_SESSID];
-	char crypto_key[MAXLEN_SDP_CRYPTO_KEY + 1];
+	char crypto_suite[MAXLEN_SDP_CRYPTO_SUITE + 1] = "";
+	char crypto_key[MAXLEN_SDP_CRYPTO_KEY + 1] = "";
 	if (!get_ip_port_from_sdp(call, sdp, sdplen,
 				  &tmp_addr, &tmp_port, &sdp_flags.is_fax, 
-				  sessid, crypto_key, &sdp_flags.rtcp_mux, packetS->sip_method)){
+				  sessid, crypto_suite, crypto_key, &sdp_flags.rtcp_mux, packetS->sip_method)){
 		if(sdp_flags.is_fax) { 
 			if(verbosity >= 2){
 				syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
@@ -2435,16 +2439,16 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to));
 			
 			call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base, tmp_port, packetS->header_pt, 
-					       sessid, crypto_key, to, iscaller, rtpmap, sdp_flags);
+					       sessid, crypto_suite, crypto_key, to, iscaller, rtpmap, sdp_flags);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
 				call->add_ip_port_hash(packetS->saddr, alias, ip_port_call_info::_ta_natalias, tmp_port, packetS->header_pt, 
-						       sessid, crypto_key, to, iscaller, rtpmap, sdp_flags);
+						       sessid, crypto_suite, crypto_key, to, iscaller, rtpmap, sdp_flags);
 			}
 			if(opt_sdp_reverse_ipport) {
 				call->add_ip_port_hash(packetS->saddr, packetS->saddr, ip_port_call_info::_ta_sdp_reverse_ipport, tmp_port, packetS->header_pt, 
-						       sessid, crypto_key, to, iscaller, rtpmap, sdp_flags);
+						       sessid, crypto_suite, crypto_key, to, iscaller, rtpmap, sdp_flags);
 			}
 		}
 	} else {
@@ -3877,9 +3881,9 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	}
 
 	call->add_ip_port_hash(saddr, daddr, ip_port_call_info::_ta_base, dest, header, 
-			       NULL, NULL, NULL, 1, rtpmap, s_sdp_flags());
+			       NULL, NULL, NULL, NULL, 1, rtpmap, s_sdp_flags());
 	call->add_ip_port_hash(saddr, saddr, ip_port_call_info::_ta_base, source, header, 
-			       NULL, NULL, NULL, 0, rtpmap, s_sdp_flags());
+			       NULL, NULL, NULL, NULL, 0, rtpmap, s_sdp_flags());
 	
 	return(call);
 }

@@ -521,6 +521,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	
 	vlan = -1;
 	
+	exists_crypto_suite_key = false;
 	error_negative_payload_length = false;
 	use_removeRtp = false;
 	hash_counter = 0;
@@ -831,7 +832,7 @@ Call::closeRawFiles() {
 /* add ip adress and port to this call */
 int
 Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		  char *sessid, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		  char *sessid, char *crypto_suite, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return(-1);
 	}
@@ -875,9 +876,12 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 	} else {
 		this->ip_port[ipport_n].sessid[0] = 0;
 	}
-	if(crypto_key && crypto_key[0]) {
+	if(crypto_suite && crypto_key && crypto_suite[0] && crypto_key[0]) {
+		this->ip_port[ipport_n].crypto_suite = crypto_suite;
 		this->ip_port[ipport_n].crypto_key = crypto_key;
+		this->exists_crypto_suite_key = true;
 	} else {
+		this->ip_port[ipport_n].crypto_suite.resize(0);
 		this->ip_port[ipport_n].crypto_key.resize(0);
 	}
 	if(to) {
@@ -965,7 +969,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 
 void
 Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		       char *sessid, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		       char *sessid, char *crypto_suite, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return;
 	}
@@ -999,7 +1003,7 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info
 		}
 	}
 	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, header, 
-			     sessid, crypto_key, to, iscaller, rtpmap, sdp_flags) != -1) {
+			     sessid, crypto_suite, crypto_key, to, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, header->ts.tv_sec, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, header->ts.tv_sec, this, iscaller, 1, sdp_flags);
@@ -1053,16 +1057,20 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 	}
 
 	RTPsecure *rtp_decrypt = NULL;
-	int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source - 1);
-	if(index_call_ip_port_by_src >= 0 && this->ip_port[index_call_ip_port_by_src].crypto_key.length()) {
-		if(!rtp_secure_map[index_call_ip_port_by_src]) {
-			rtp_secure_map[index_call_ip_port_by_src] = 
-				new FILE_LINE(0) RTPsecure(
-					NULL, 
-					this->ip_port[index_call_ip_port_by_src].crypto_key.c_str(), 
-					opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
+	if(exists_crypto_suite_key) {
+		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source - 1);
+		if(index_call_ip_port_by_src >= 0 && 
+		   this->ip_port[index_call_ip_port_by_src].crypto_suite.length() &&
+		   this->ip_port[index_call_ip_port_by_src].crypto_key.length()) {
+			if(!rtp_secure_map[index_call_ip_port_by_src]) {
+				rtp_secure_map[index_call_ip_port_by_src] = 
+					new FILE_LINE(0) RTPsecure(
+						this->ip_port[index_call_ip_port_by_src].crypto_suite.c_str(),
+						this->ip_port[index_call_ip_port_by_src].crypto_key.c_str(), 
+						opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
+			}
+			rtp_decrypt = rtp_secure_map[index_call_ip_port_by_src];
 		}
-		rtp_decrypt = rtp_secure_map[index_call_ip_port_by_src];
 	}
 	
 	unsigned datalen_orig = packetS->datalen;
@@ -1272,16 +1280,20 @@ read:
 			usleep(100);
 		}
 		rtp[ssrc_n] = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
-		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source);
-		if(index_call_ip_port_by_src >= 0 && this->ip_port[index_call_ip_port_by_src].crypto_key.length()) {
-			if(!rtp_secure_map[index_call_ip_port_by_src]) {
-				rtp_secure_map[index_call_ip_port_by_src] = 
-					new FILE_LINE(0) RTPsecure(
-						NULL, 
-						this->ip_port[index_call_ip_port_by_src].crypto_key.c_str(), 
-						opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
+		if(exists_crypto_suite_key) {
+			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source);
+			if(index_call_ip_port_by_src >= 0 && 
+			   this->ip_port[index_call_ip_port_by_src].crypto_suite.length() &&
+			   this->ip_port[index_call_ip_port_by_src].crypto_key.length()) {
+				if(!rtp_secure_map[index_call_ip_port_by_src]) {
+					rtp_secure_map[index_call_ip_port_by_src] = 
+						new FILE_LINE(0) RTPsecure(
+							this->ip_port[index_call_ip_port_by_src].crypto_suite.c_str(), 
+							this->ip_port[index_call_ip_port_by_src].crypto_key.c_str(), 
+							opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
+				}
+				rtp[ssrc_n]->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src]);
 			}
-			rtp[ssrc_n]->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src]);
 		}
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
