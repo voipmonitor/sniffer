@@ -189,6 +189,9 @@ int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
 int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
+bool opt_srtp_rtp_decrypt = false;
+bool opt_srtp_rtcp_decrypt = true;
+int opt_use_libsrtp = 0;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
 int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
@@ -2683,7 +2686,7 @@ int main(int argc, char *argv[]) {
 		return 0;
 	}
 	
-	if(!isCloud() && snifferServerOptions.isEnable()) {
+	if(!isCloud() && snifferServerOptions.isEnable() && !is_read_from_file_simple()) {
 		snifferServerStart();
 	}
 
@@ -3625,6 +3628,9 @@ void main_term_read() {
 	}
 	
 	if(sqlStore) {
+		if(!isCloud() && snifferServerOptions.isEnable() && !is_read_from_file_simple()) {
+			snifferServerSetSqlStore(NULL);
+		}
 		sqlStore->setEnableTerminatingIfEmpty(0, true);
 		sqlStore->setEnableTerminatingIfSqlError(0, true);
 		regfailedcache->prune(0);
@@ -3785,6 +3791,9 @@ void main_init_sqlstore() {
 				}
 			}
 		}
+	}
+	if(!isCloud() && snifferServerOptions.isEnable() && !is_read_from_file_simple()) {
+		snifferServerSetSqlStore(sqlStore);
 	}
 }
 
@@ -5342,6 +5351,10 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
+				advanced();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
 					expert();
 					addConfigItem(new FILE_LINE(42212) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
 					addConfigItem(new FILE_LINE(42213) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_ziplevel_rtp));
@@ -6329,6 +6342,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "call_listening")		sverb.call_listening = 1;
 						else if(verbparams[i] == "skinny")			sverb.skinny = 1;
 						else if(verbparams[i] == "fraud")			sverb.fraud = 1;
+						else if(verbparams[i] == "fraud_file_log")		sverb.fraud_file_log = 1;
 						else if(verbparams[i] == "enable_bt_sighandler")	sverb.enable_bt_sighandler = 1;
 						else if(verbparams[i].substr(0, 4) == "tar=")
 													sverb.tar = atoi(verbparams[i].c_str() + 4);
@@ -6388,6 +6402,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "t2_destroy_all")		sverb.t2_destroy_all = 1;
 						else if(verbparams[i] == "log_profiler")		sverb.log_profiler = 1;
 						else if(verbparams[i] == "dump_packets_via_wireshark")	sverb.dump_packets_via_wireshark = 1;
+						else if(verbparams[i] == "force_log_sqlq")		sverb.force_log_sqlq = 1;
 						//
 						else if(verbparams[i] == "debug1")			sverb._debug1 = 1;
 						else if(verbparams[i] == "debug2")			sverb._debug2 = 1;
@@ -6791,6 +6806,11 @@ void set_context_config() {
 			opt_process_rtp_packets_qring_length = 4;
 			opt_process_rtp_packets_qring_item_length = 5000;
 		}
+	}
+	
+	if(isCloud()) {
+		opt_cdr_check_duplicity_callid_in_next_pass_insert = true;
+		opt_message_check_duplicity_callid_in_next_pass_insert = true;
 	}
 	
 	#ifndef HAVE_OPENSSL101
@@ -7732,6 +7752,15 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "savertp-threaded", NULL))) {
 		opt_rtpsave_threaded = yesno(value);
+	}
+	if((value = ini.GetValue("general", "srtp_rtp", NULL))) {
+		opt_srtp_rtp_decrypt= yesno(value);
+	}
+	if((value = ini.GetValue("general", "srtp_rtcp", NULL))) {
+		opt_srtp_rtcp_decrypt= yesno(value);
+	}
+	if((value = ini.GetValue("general", "libsrtp", NULL))) {
+		opt_use_libsrtp = yesno(value);
 	}
 	if((value = ini.GetValue("general", "norecord-header", NULL))) {
 		opt_norecord_header = yesno(value);

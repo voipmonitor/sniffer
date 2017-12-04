@@ -54,6 +54,7 @@
 #include "sniff_inline.h"
 #include "register.h"
 #include "manager.h"
+#include "srtp.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -70,11 +71,13 @@ extern int opt_sip_register;
 extern int opt_saveRTP;
 extern int opt_onlyRTPheader;
 extern int opt_saveSIP;
+extern int opt_use_libsrtp;
 extern int opt_rtcp;
 extern int opt_saveRAW;                // save RTP payload RAW data?
 extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	// compress GRAPH data to graph file? 
+extern bool opt_srtp_rtcp_decrypt;
 extern int opt_save_sdp_ipport;
 extern int opt_mos_g729;
 extern int opt_nocdr;
@@ -519,6 +522,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	
 	vlan = -1;
 	
+	exists_crypto_suite_key = false;
 	error_negative_payload_length = false;
 	use_removeRtp = false;
 	hash_counter = 0;
@@ -794,6 +798,10 @@ Call::~Call(){
 	for(map<sStreamId, sUdptlDumper*>::iterator iter = udptlDumpers.begin(); iter != udptlDumpers.end(); iter++) {
 		delete iter->second;
 	}
+	
+	for(map<int, class RTPsecure*>::iterator iter = rtp_secure_map.begin(); iter != rtp_secure_map.end(); iter++) {
+		delete iter->second;
+	}
 }
 
 void
@@ -825,7 +833,7 @@ Call::closeRawFiles() {
 /* add ip adress and port to this call */
 int
 Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		  char *sessid, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		  char *sessid, char *crypto_suite, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return(-1);
 	}
@@ -868,6 +876,14 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 		strncpy(this->ip_port[ipport_n].sessid, sessid, MAXLEN_SDP_SESSID);
 	} else {
 		this->ip_port[ipport_n].sessid[0] = 0;
+	}
+	if(crypto_suite && crypto_key && crypto_suite[0] && crypto_key[0]) {
+		this->ip_port[ipport_n].crypto_suite = crypto_suite;
+		this->ip_port[ipport_n].crypto_key = crypto_key;
+		this->exists_crypto_suite_key = true;
+	} else {
+		this->ip_port[ipport_n].crypto_suite.resize(0);
+		this->ip_port[ipport_n].crypto_key.resize(0);
 	}
 	if(to) {
 		strncpy(this->ip_port[ipport_n].to, to, MAXLEN_SDP_TO);
@@ -954,7 +970,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 
 void
 Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		       char *sessid, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		       char *sessid, char *crypto_suite, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call) {
 		return;
 	}
@@ -988,7 +1004,7 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info
 		}
 	}
 	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, header, 
-			     sessid, to, iscaller, rtpmap, sdp_flags) != -1) {
+			     sessid, crypto_suite, crypto_key, to, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, header->ts.tv_sec, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, header->ts.tv_sec, this, iscaller, 1, sdp_flags);
@@ -1041,10 +1057,32 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 		}
 	}
 
+	RTPsecure *rtp_decrypt = NULL;
+	if(exists_crypto_suite_key && opt_srtp_rtcp_decrypt) {
+		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source - 1);
+		if(index_call_ip_port_by_src >= 0 && 
+		   this->ip_port[index_call_ip_port_by_src].crypto_suite.length() &&
+		   this->ip_port[index_call_ip_port_by_src].crypto_key.length()) {
+			if(!rtp_secure_map[index_call_ip_port_by_src]) {
+				rtp_secure_map[index_call_ip_port_by_src] = 
+					new FILE_LINE(0) RTPsecure(
+						this->ip_port[index_call_ip_port_by_src].crypto_suite.c_str(),
+						this->ip_port[index_call_ip_port_by_src].crypto_key.c_str(), 
+						opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
+			}
+			rtp_decrypt = rtp_secure_map[index_call_ip_port_by_src];
+		}
+	}
+	
+	unsigned datalen_orig = packetS->datalen;
+	if(rtp_decrypt && opt_srtp_rtcp_decrypt) {
+		rtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &packetS->datalen);
+	}
+
 	parse_rtcp((char*)packetS->data_(), packetS->datalen, this);
 	
 	if(enable_save_packet) {
-		save_packet(this, packetS, TYPE_RTCP);
+		save_packet(this, packetS, TYPE_RTCP, packetS->datalen != datalen_orig);
 	}
 	return(true);
 }
@@ -1054,9 +1092,10 @@ bool
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname) {
 	bool record_dtmf = false;
 	bool disable_save = false;
+	unsigned datalen_orig = packetS->datalen;
 	bool rtp_read_rslt = _read_rtp(packetS, iscaller, find_by_dest, stream_in_multiple_calls, ifname, &record_dtmf, &disable_save);
 	if(!disable_save) {
-		_save_rtp(packetS, is_fax, enable_save_packet, record_dtmf);
+		_save_rtp(packetS, is_fax, enable_save_packet, record_dtmf, packetS->datalen != datalen_orig);
 	}
 	return(rtp_read_rslt);
 }
@@ -1198,7 +1237,7 @@ read:
 						    rtp[i]->prev_dport && rtp[i]->prev_dport != packetS->dest) {
 							rtp[i]->change_src_port = true;
 						}
-						if(rtp[i]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
+						if(rtp[i]->read((u_char*)packetS->data_(), &packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
 								packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
 							rtp_read_rslt = true;
 							if(stream_in_multiple_calls) {
@@ -1242,6 +1281,21 @@ read:
 			usleep(100);
 		}
 		rtp[ssrc_n] = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
+		if(exists_crypto_suite_key) {
+			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source);
+			if(index_call_ip_port_by_src >= 0 && 
+			   this->ip_port[index_call_ip_port_by_src].crypto_suite.length() &&
+			   this->ip_port[index_call_ip_port_by_src].crypto_key.length()) {
+				if(!rtp_secure_map[index_call_ip_port_by_src]) {
+					rtp_secure_map[index_call_ip_port_by_src] = 
+						new FILE_LINE(0) RTPsecure(
+							this->ip_port[index_call_ip_port_by_src].crypto_suite.c_str(), 
+							this->ip_port[index_call_ip_port_by_src].crypto_key.c_str(), 
+							opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
+				}
+				rtp[ssrc_n]->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src]);
+			}
+		}
 		rtp[ssrc_n]->call_owner = this;
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
@@ -1303,7 +1357,7 @@ read:
 			}
 		}
 
-		if(rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
+		if(rtp[ssrc_n]->read((u_char*)packetS->data_(), &packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
 				     packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
 			rtp_read_rslt = true;
 			if(stream_in_multiple_calls) {
@@ -1340,7 +1394,7 @@ read:
 }
 
 void
-Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf) {
+Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf, bool forceVirtualUdp) {
 	extern int opt_fax_create_udptl_streams;
 	extern int opt_fax_dup_seq_check;
 	if(opt_fax_create_udptl_streams) {
@@ -1436,7 +1490,7 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 				packetS->header_pt->caplen = tmp_u32;
 			}
 		} else if((this->flags & FLAG_SAVERTP) || this->isfax || record_dtmf) {
-			save_packet(this, packetS, TYPE_RTP);
+			save_packet(this, packetS, TYPE_RTP, forceVirtualUdp);
 		}
 	}
 }
@@ -3534,9 +3588,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(opt_cdr_check_exists_callid) {
 				query_str += string(
 					"set @exists_call_id = coalesce(\n") +
-					"(select cdr_ID from cdr_next\n" +
-					" where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
-					"       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
+					"(select cdr.ID from cdr\n" +
+					" join cdr_next on (cdr_next.cdr_ID = cdr.ID and cdr_next.calldate = cdr.calldate)\n" +
+					" where cdr.calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
+					"       cdr.calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
+					"       " + (useSensorId > -1 ? 
+						      "id_sensor = " + intToString(useSensorId) : 
+						      "id_sensor is null") + " and\n" +
 					"       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
 				query_str += string(
 					"set @exists_rtp =\n") +
@@ -3570,9 +3628,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += "__NEXT_PASS_QUERY_BEGIN__";
 				query_str += string(
 					"set @exists_call_id = coalesce(\n") +
-					"(select cdr_ID from cdr_next\n" +
-					" where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 minute) and\n" +
-					"       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 minute) and\n" +
+					"(select cdr.ID from cdr\n" +
+					" join cdr_next on (cdr_next.cdr_ID = cdr.ID and cdr_next.calldate = cdr.calldate)\n" +
+					" where cdr.calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 minute) and\n" +
+					"       cdr.calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 minute) and\n" +
+					"       " + (useSensorId > -1 ? 
+						      "id_sensor = " + intToString(useSensorId) : 
+						      "id_sensor is null") + " and\n" +
 					"       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
 				query_str += "if not @exists_call_id then\n";
 				query_str += "__NEXT_PASS_QUERY_END__";
@@ -4638,6 +4700,9 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 				     "(select ID from message\n" +
 				     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 minute) and\n" +
 				     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 minute) and\n" +
+				     "       " + (useSensorId > -1 ? 
+						   "id_sensor = " + intToString(useSensorId) : 
+						   "id_sensor is null") + " and\n" +
 				     "       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
 			query_str += "if not @exists_call_id then\n";
 			query_str += "__NEXT_PASS_QUERY_END__";
@@ -6491,11 +6556,6 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 				if(iter->first) {
 					char nextTable[100];
 					sprintf(nextTable, "%s%i", this->nextTablePrefix.c_str(), iter->first);
-					sqlDb->query("show tables like '" + string(nextTable) + "'");
-					if(!sqlDb->fetchRow()) {
-						custom_headers.erase(iter++);
-						continue;
-					}
 					allNextTables.push_back(nextTable);
 				}
 				iter++;

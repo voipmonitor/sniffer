@@ -1,29 +1,69 @@
 #!/bin/bash
-echo "Installing /usr/local/share/voipmonitor/audio"
-mkdir -p /usr/local/share/voipmonitor/audio
-cp usr/local/share/voipmonitor/audio/* /usr/local/share/voipmonitor/audio/
 
-echo "Installing voipmonitor binary to /usr/local/sbin/voipmonitor"
-mkdir -p /usr/local/sbin
-cp usr/local/sbin/voipmonitor /usr/local/sbin/voipmonitor
+SHAREDIR=usr/local/share/voipmonitor
+AUDIODIR=$SHAREDIR/audio
+BINDIR=usr/local/sbin
+CFGDIR=etc
+INITDIR=$CFGDIR/init.d
+SENSOR=voipmonitor
+SPOOLDIR=/var/spool/$SENSOR
 
-echo "Installing etc/voipmonitor.conf to /etc/voipmonitor.conf. Edit this file to your needs"
-cp -i etc/voipmonitor.conf /etc/
+if [ "a$1" == "a--uninstall" ]
+then
 
-echo "Installing etc/init.d/voipmonitor starting script to /etc/init.d/voipmonitor. Start voipmonitor by /etc/init.d/voipmonitor start"
-cp etc/init.d/voipmonitor /etc/init.d/
+	echo "Stopping $SENSOR"
+	/$INITDIR/$SENSOR stop
 
-echo "Creating /var/spool/voipmonitor"
-mkdir /var/spool/voipmonitor
+	echo "Uninstalling /$SHAREDIR"
+	rm -rf /$SHAREDIR
+
+	echo "Uninstalling $SENSOR binary from /$BINDIR/$SENSOR"
+	rm /$BINDIR/$SENSOR
+
+	echo "Moving /$CFGDIR/$SENSOR.conf to /$CFGDIR/$SENSOR.conf-backup."
+	mv /$CFGDIR/$SENSOR.conf /$CFGDIR/$SENSOR.conf-backup
+
+	echo "Deleting $SPOOLDIR"
+	rm -rf $SPOOLDIR
+
+	update-rc.d $SENSOR remove &>/dev/null
+	chkconfig $SENSOR off &>/dev/null
+	chkconfig --del $SENSOR &>/dev/null
+
+	echo "Deleting starting script /$INITDIR/$SENSOR"
+	rm /$INITDIR/$SENSOR
+
+	echo;
+	echo "The database is not deleted. Do it manually.";
+	echo;
+	exit 0;
+fi
+
+echo "Installing /$AUDIODIR"
+mkdir -p /$AUDIODIR
+cp $AUDIODIR/* /$AUDIODIR/
+
+echo "Installing $SENSOR binary to /$BINDIR/$SENSOR"
+mkdir -p /$BINDIR
+cp $BINDIR/$SENSOR /$BINDIR/$SENSOR
+
+echo "Installing $CFGDIR/$SENSOR.conf to /$CFGDIR/$SENSOR.conf. Edit this file to your needs"
+cp -i $CFGDIR/$SENSOR.conf /$CFGDIR/
+
+echo "Installing $INITDIR/$SENSOR starting script to /$INITDIR/$SENSOR. Start $SENSOR by /$INITDIR/$SENSOR start"
+cp $INITDIR/$SENSOR /$INITDIR/
+
+echo "Creating $SPOOLDIR"
+mkdir $SPOOLDIR
 
 
-update-rc.d voipmonitor defaults &>/dev/null
-chkconfig --add voipmonitor &>/dev/null
-chkconfig voipmonitor on &>/dev/null
+update-rc.d $SENSOR defaults &>/dev/null
+chkconfig --add $SENSOR &>/dev/null
+chkconfig $SENSOR on &>/dev/null
 
 echo;
-echo "Create database voipmonitor with this command: mysqladmin create voipmonitor";
-echo "Edit /etc/voipmonitor.conf";
-echo "Run voipmonitor /etc/init.d/voipmonitor start";
+echo "Create database $SENSOR with this command: mysqladmin create $SENSOR";
+echo "Edit /$CFGDIR/$SENSOR.conf";
+echo "Run $SENSOR /$INITDIR/$SENSOR start";
 echo;
 

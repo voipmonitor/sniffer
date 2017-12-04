@@ -375,8 +375,8 @@ struct packet_s_process : public packet_s_process_0 {
 };
 
 
-void save_packet(Call *call, packet_s *packetS, int type);
-void save_packet(Call *call, packet_s_process *packetS, int type);
+void save_packet(Call *call, packet_s *packetS, int type, bool forceVirtualUdp = false);
+void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirtualUdp = false);
 
 
 typedef struct {

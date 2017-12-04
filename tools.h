@@ -860,7 +860,7 @@ public:
 	void dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets = false, 
 		  u_char *data = NULL, unsigned int datalen = 0,
 		  unsigned int saddr = 0, unsigned int daddr = 0, int source = 0, int dest = 0,
-		  bool istcp = false);
+		  bool istcp = false, bool forceVirtualUdp = false);
 	void close(bool updateFilesQueue = true);
 	void flush();
 	void remove();
@@ -3379,6 +3379,8 @@ int spooldir_chown(const char *filename);
 int spooldir_file_chmod(int filehandle);
 int spooldir_chown(int filehandle);
 int spooldir_mkdir(std::string dir);
+
+void hexdump(u_char *data, unsigned size);
 
 
 #endif

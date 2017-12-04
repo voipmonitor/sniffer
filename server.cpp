@@ -159,18 +159,37 @@ string sSnifferServerServices::listJsonServices() {
 }
 
 
+cSnifferServer::cSnifferServer() {
+	sqlStore = NULL;
+}
+
+void cSnifferServer::setSqlStore(MySqlStore *sqlStore) {
+	this->sqlStore = sqlStore;
+}
+
+void cSnifferServer::sql_query_lock(const char *query_str, int id) {
+	while(!sqlStore) {
+		if(is_terminating()) {
+			return;
+		}
+		usleep(1000);
+	}
+	sqlStore->query_lock(query_str, sqlStore->convStoreId(id));
+}
+ 
 void cSnifferServer::createConnection(cSocket *socket) {
-	cSnifferServerConnection *connection = new cSnifferServerConnection(socket);
+	cSnifferServerConnection *connection = new cSnifferServerConnection(socket, this);
 	connection->connection_start();
 }
 
 
-cSnifferServerConnection::cSnifferServerConnection(cSocket *socket) 
+cSnifferServerConnection::cSnifferServerConnection(cSocket *socket, cSnifferServer *server) 
  : cServerConnection(socket) {
 	_sync_tasks = 0;
 	terminate = false;
 	orphan = false;
 	typeConnection = _tc_na;
+	this->server = server;
 }
 
 void cSnifferServerConnection::connection_process() {
@@ -501,9 +520,8 @@ void cSnifferServerConnection::cp_store() {
 		if(!queryStr.empty()) {
 			size_t posStoreIdSeparator = queryStr.find('|');
 			if(posStoreIdSeparator != string::npos) {
-				extern MySqlStore *sqlStore;
-				sqlStore->query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), 
-						     sqlStore->convStoreId(atoi(queryStr.c_str())));
+				server->sql_query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), 
+						       atoi(queryStr.c_str()));
 				socket->writeBlock("OK", cSocket::_te_aes);
 			}
 		}
@@ -786,6 +804,13 @@ void cSnifferClientResponse::client_process() {
 void snifferServerStart() {
 	snifferServer =  new FILE_LINE(0) cSnifferServer;
 	snifferServer->listen_start("sniffer_server", snifferServerOptions.host, snifferServerOptions.port);
+}
+
+
+void snifferServerSetSqlStore(MySqlStore *sqlStore) {
+	if(snifferServer) {
+		snifferServer->setSqlStore(sqlStore);
+	}
 }
 
 
