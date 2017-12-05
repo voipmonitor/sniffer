@@ -413,7 +413,7 @@ public:
 	uint64_t regsrcmac;		// mac if ether layer present in REGISTER
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
 	volatile unsigned int rtppacketsinqueue;
-	volatile int end_call;
+	volatile int end_call_rtp;
 	volatile int push_call_to_calls_queue;
 	volatile int push_register_to_registers_queue;
 	unsigned int unrepliedinvite;
@@ -1294,6 +1294,7 @@ public:
 	void lock_calls_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP, 1)) usleep(10); /*pthread_mutex_lock(&calls_listMAPlock);*/ };
 	void lock_calls_mergeMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_mergeMAP, 1)) usleep(10); /*pthread_mutex_lock(&calls_mergeMAPlock);*/ };
 	void lock_registers_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_listMAP, 1)) usleep(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
+	void lock_skinny_maps() { while(__sync_lock_test_and_set(&this->_sync_lock_skinny_maps, 1)) usleep(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
 	void lock_ss7_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_ss7_listMAP, 1)) usleep(10); }
 	void lock_process_ss7_listmap() { while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_listmap, 1)) usleep(10); }
 	void lock_process_ss7_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_queue, 1)) usleep(10); }
@@ -1311,6 +1312,7 @@ public:
 	void unlock_calls_listMAP() { __sync_lock_release(&this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ };
 	void unlock_calls_mergeMAP() { __sync_lock_release(&this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ };
 	void unlock_registers_listMAP() { __sync_lock_release(&this->_sync_lock_registers_listMAP); /*pthread_mutex_unlock(&registers_listMAPlock);*/ };
+	void unlock_skinny_maps() { __sync_lock_release(&this->_sync_lock_skinny_maps); };
 	void unlock_ss7_listMAP() { __sync_lock_release(&this->_sync_lock_ss7_listMAP); };
 	void unlock_process_ss7_listmap() { __sync_lock_release(&this->_sync_lock_process_ss7_listmap); };
 	void unlock_process_ss7_queue() { __sync_lock_release(&this->_sync_lock_process_ss7_queue); };
@@ -1343,8 +1345,7 @@ public:
 		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
 		lock_calls_listMAP();
 		map<string, Call*>::iterator callMAPIT = calls_listMAP.find(call_idS);
-		if(callMAPIT != calls_listMAP.end() &&
-		   !callMAPIT->second->end_call) {
+		if(callMAPIT != calls_listMAP.end()) {
 			rslt_call = callMAPIT->second;
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
@@ -1359,8 +1360,7 @@ public:
 		Call *rslt_call = NULL;
 		lock_calls_listMAP();
 		map<sStreamIds2, Call*>::iterator callMAPIT = calls_by_stream_callid_listMAP.find(sStreamIds2(sip, sport, dip, dport, callid, true));
-		if(callMAPIT != calls_by_stream_callid_listMAP.end() &&
-		   !callMAPIT->second->end_call) {
+		if(callMAPIT != calls_by_stream_callid_listMAP.end()) {
 			rslt_call = callMAPIT->second;
 		}
 		unlock_calls_listMAP();
@@ -1370,8 +1370,7 @@ public:
 		Call *rslt_call = NULL;
 		lock_calls_listMAP();
 		map<sStreamId2, Call*>::iterator callMAPIT = calls_by_stream_id2_listMAP.find(sStreamId2(sip, sport, dip, dport, id, true));
-		if(callMAPIT != calls_by_stream_id2_listMAP.end() &&
-		   !callMAPIT->second->end_call) {
+		if(callMAPIT != calls_by_stream_id2_listMAP.end()) {
 			rslt_call = callMAPIT->second;
 		}
 		unlock_calls_listMAP();
@@ -1381,8 +1380,7 @@ public:
 		Call *rslt_call = NULL;
 		lock_calls_listMAP();
 		map<sStreamId, Call*>::iterator callMAPIT = calls_by_stream_listMAP.find(sStreamId(sip, sport, dip, dport, true));
-		if(callMAPIT != calls_by_stream_listMAP.end() &&
-		   !callMAPIT->second->end_call) {
+		if(callMAPIT != calls_by_stream_listMAP.end()) {
 			rslt_call = callMAPIT->second;
 		}
 		unlock_calls_listMAP();
@@ -1393,8 +1391,7 @@ public:
 		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
 		lock_calls_mergeMAP();
 		map<string, Call*>::iterator mergeMAPIT = calls_mergeMAP.find(call_idS);
-		if(mergeMAPIT != calls_mergeMAP.end() &&
-		   !mergeMAPIT->second->end_call) {
+		if(mergeMAPIT != calls_mergeMAP.end()) {
 			rslt_call = mergeMAPIT->second;
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
@@ -1410,8 +1407,7 @@ public:
 		string register_idS = register_id_len ? string(register_id, register_id_len) : string(register_id);
 		lock_registers_listMAP();
 		map<string, Call*>::iterator registerMAPIT = registers_listMAP.find(register_idS);
-		if(registerMAPIT != registers_listMAP.end() &&
-		   !registerMAPIT->second->end_call) {
+		if(registerMAPIT != registers_listMAP.end()) {
 			rslt_register = registerMAPIT->second;
 		}
 		unlock_registers_listMAP();
@@ -1429,8 +1425,31 @@ public:
 		if(lock) unlock_calls_listMAP();
 		return(rslt_call);
 	}
-	Call *find_by_skinny_partyid(unsigned int partyid);
-	Call *find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr);
+	Call *find_by_skinny_partyid(unsigned int partyid) {
+		Call *rslt_call = NULL;
+		lock_calls_listMAP();
+		lock_skinny_maps();
+		map<unsigned int, Call*>::iterator skinny_partyIDIT = skinny_partyID.find(partyid);
+		if(skinny_partyIDIT != skinny_partyID.end()) {
+			rslt_call = skinny_partyIDIT->second;
+		}
+		unlock_skinny_maps();
+		unlock_calls_listMAP();
+		return(rslt_call);
+	}
+	Call *find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr) {
+		Call *rslt_call = NULL;
+		lock_calls_listMAP();
+		lock_skinny_maps();
+		string ip2 = intToString(min(saddr, daddr)) + '|' + intToString(max(saddr, daddr));
+		map<string, Call*>::iterator skinny_ipTuplesIT = skinny_ipTuples.find(ip2);
+		if(skinny_ipTuplesIT != skinny_ipTuples.end()) {
+			rslt_call = skinny_ipTuplesIT->second;
+		}
+		unlock_skinny_maps();
+		unlock_calls_listMAP();
+		return(rslt_call);
+	}
 	Ss7 *find_by_ss7_id(string *ss7_id) {
 		Ss7 *rslt_ss7 = NULL;
 		lock_ss7_listMAP();
@@ -1561,6 +1580,7 @@ private:
 	volatile int _sync_lock_calls_deletequeue;
 	volatile int _sync_lock_registers_queue;
 	volatile int _sync_lock_registers_deletequeue;
+	volatile int _sync_lock_skinny_maps;
 	volatile int _sync_lock_files_queue;
 	volatile int _sync_lock_ss7_listMAP;
 	volatile int _sync_lock_process_ss7_listmap;
