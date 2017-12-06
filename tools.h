@@ -1349,11 +1349,15 @@ private:
 	void killOtherScript();
 	bool createScript();
 	void unlinkScript();
+	string getScriptName();
+	string getCmdLine();
+	string getConfigFile();
 private:
-	string scriptName;
 	string scriptFileName;
 	pid_t pid;
 };
+
+std::string getCmdLine();
 
 std::string pexec(char*, int *exitCode = NULL);
 

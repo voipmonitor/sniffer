@@ -878,6 +878,7 @@ SensorsMap sensorsMap;
 
 WDT *wdt;
 bool enable_wdt = true;
+string cmdline;
 
 
 #include <stdio.h>
@@ -2258,6 +2259,29 @@ int main(int argc, char *argv[]) {
 		}
 		sverb.memory_stat = true;
 		memoryStatInit();
+	}
+	
+	for(int i = 0; i < argc; i++) {
+		if(i) {
+			cmdline += ' ';
+		}
+		bool space = strchr(argv[i], ' ');
+		bool apostrophe = strchr(argv[i], '\'');
+		if(space || apostrophe) {
+			cmdline += '\'';
+		}
+		char *parg = argv[i];
+		while(*parg) {
+			if(*parg == '\'') {
+				cmdline += "'\\''";
+			} else {
+				cmdline += *parg;
+			}
+			++parg;
+		}
+		if(space || apostrophe) {
+			cmdline += '\'';
+		}
 	}
 	
 	fillEscTables();

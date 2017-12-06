@@ -1926,7 +1926,6 @@ bool RestartUpgrade::getSafeRunTempScriptFileName() {
 
 
 WDT::WDT() {
-	scriptName = "voipmonitor_watchdog";
 	pid = 0;
 	killOtherScript();
 	if(createScript()) {
@@ -1963,14 +1962,14 @@ void WDT::killScript() {
 
 void WDT::killOtherScript() {
 	char bufRslt[512];
-	FILE *cmd_pipe = popen(("pgrep " + scriptName.substr(0, 15)).c_str(), "r");
+	FILE *cmd_pipe = popen(("ps -A -o pid,args | grep '" + getScriptName() +  "$' | grep -v grep").c_str(), "r");
 	fgets(bufRslt, 512, cmd_pipe);
 	pid_t pidOther = atol(bufRslt);
 	if(pidOther) {
 		syslog(LOG_NOTICE, "kill old watchdog script (pid %i)", pidOther);
 		kill(pidOther, 9);
 	}
-	pclose(cmd_pipe );
+	pclose(cmd_pipe);
 }
 
 bool WDT::createScript() {
@@ -1978,15 +1977,14 @@ bool WDT::createScript() {
 	if(!tmpPath) {
 		tmpPath = "/tmp";
 	}
-	scriptFileName = string(tmpPath) + '/' + scriptName;
+	scriptFileName = string(tmpPath) + '/' + getScriptName();
 	FILE *fileHandle = fopen(scriptFileName.c_str(), "wt");
 	if(fileHandle) {
 		fputs("#!/bin/bash\n", fileHandle);
 		fputs("while [ true ]\n", fileHandle);
 		fputs("do\n", fileHandle);
 		fputs("sleep 5\n", fileHandle);
-		//fputs("pgrep voipmonitor || (echo crash | mail -s crash support@voipmonitor.org; /etc/init.d/voipmonitor start\n)", fileHandle);
-		fputs("pgrep '^voipmonitor$' || /etc/init.d/voipmonitor start\n", fileHandle);
+		fprintf(fileHandle, "if [[ \"`ps -A -o comm,pid | grep %i`\" != \"voipmonitor\"* ]]; then %s; fi\n", getpid(), getCmdLine().c_str());
 		fputs("done\n", fileHandle);
 		fclose(fileHandle);
 		if(!chmod(scriptFileName.c_str(), 0755)) {
@@ -2008,6 +2006,46 @@ void WDT::unlinkScript() {
 	if(scriptFileName.length()) {
 		unlink(scriptFileName.c_str());
 	}
+}
+
+string WDT::getScriptName() {
+	string scriptName = "voipmonitor_watchdog";
+	if(getConfigFile().length()) {
+		scriptName += '_' + getConfigFile();
+	}
+	return(scriptName);
+}
+
+string WDT::getCmdLine() {
+	extern string cmdline;
+	return(cmdline);
+}
+
+string WDT::getConfigFile() {
+	extern char configfile[1024];
+	if(!configfile[0]) {
+		return("");
+	}
+	char *configFile = strrchr(configfile, '/');
+	if(!configFile) {
+		configFile = configfile;
+	}
+	while(*configFile == '.' || *configFile == '/') {
+		++configFile;
+	}
+	return(configFile);
+}
+
+
+std::string getCmdLine() {
+	FILE *fcmdline = fopen(("/proc/" + intToString(getpid()) + "/cmdline").c_str(), "r");
+	if(fcmdline) {
+		char cmdline[1024];
+		fgets(cmdline, sizeof(cmdline), fcmdline);
+		fclose(fcmdline);
+		return(cmdline);
+	}
+	return("");
 }
 
 
