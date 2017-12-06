@@ -7118,6 +7118,9 @@ bool check_complete_parameters() {
                         " --update-schema\n"
                         "      update MySQL structures and quit\n"
                         "\n"
+                        " --watchdog=yes|no\n"
+                        "      enable or disable watchdog script (/tmp/voipmonitor_watchdog) which will start voipmonitor if it is not running (default yes)\n"
+                        "\n"
                         "One of <-i interface> or <-r pcap-file> must be specified, otherwise you may\n"
                         "set interface in configuration file.\n\n"
                         , RTPSENSOR_VERSION);
