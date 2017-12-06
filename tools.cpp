@@ -1926,7 +1926,7 @@ bool RestartUpgrade::getSafeRunTempScriptFileName() {
 
 
 WDT::WDT() {
-	scriptName = "voipmon_wdt";
+	scriptName = "voipmonitor_watchdog";
 	pid = 0;
 	killOtherScript();
 	if(createScript()) {
@@ -1944,7 +1944,7 @@ bool WDT::runScript() {
 		pid = fork();
 		if(!pid) {
 			if(verbosity > 0) {
-				syslog(LOG_NOTICE, "run wdt script (pid %i)", getpid());
+				syslog(LOG_NOTICE, "run watchdog script (pid %i)", getpid());
 			}
 			close_all_fd();
 			execl(scriptFileName.c_str(), "Command-line", 0, NULL);
@@ -1956,18 +1956,18 @@ bool WDT::runScript() {
 
 void WDT::killScript() {
 	if(pid) {
-		syslog(LOG_NOTICE, "kill wdt script (pid %i)", pid);
+		syslog(LOG_NOTICE, "kill watchdog script (pid %i)", pid);
 		kill(pid, 9);
 	}
 }
 
 void WDT::killOtherScript() {
 	char bufRslt[512];
-	FILE *cmd_pipe = popen(("pgrep " + scriptName).c_str(), "r");
+	FILE *cmd_pipe = popen(("pgrep " + scriptName.substr(0, 15)).c_str(), "r");
 	fgets(bufRslt, 512, cmd_pipe);
 	pid_t pidOther = atol(bufRslt);
 	if(pidOther) {
-		syslog(LOG_NOTICE, "kill old wdt script (pid %i)", pidOther);
+		syslog(LOG_NOTICE, "kill old watchdog script (pid %i)", pidOther);
 		kill(pidOther, 9);
 	}
 	pclose(cmd_pipe );
@@ -1984,21 +1984,21 @@ bool WDT::createScript() {
 		fputs("#!/bin/bash\n", fileHandle);
 		fputs("while [ true ]\n", fileHandle);
 		fputs("do\n", fileHandle);
-		fputs("sleep 10\n", fileHandle);
+		fputs("sleep 5\n", fileHandle);
 		//fputs("pgrep voipmonitor || (echo crash | mail -s crash support@voipmonitor.org; /etc/init.d/voipmonitor start\n)", fileHandle);
-		fputs("pgrep voipmonitor || /etc/init.d/voipmonitor start\n", fileHandle);
+		fputs("pgrep '^voipmonitor$' || /etc/init.d/voipmonitor start\n", fileHandle);
 		fputs("done\n", fileHandle);
 		fclose(fileHandle);
 		if(!chmod(scriptFileName.c_str(), 0755)) {
 			return(true);
 		} else {
 			if(verbosity > 0) {
-				syslog(LOG_ERR, "chmod 0755 for wdt script failed");
+				syslog(LOG_ERR, "chmod 0755 for watchdog script failed");
 			}
 		}
 	} else {
 		if(verbosity > 0) {
-			syslog(LOG_ERR, "create wdt script failed");
+			syslog(LOG_ERR, "create watchdog script failed");
 		}
 	}
 	return(false);
