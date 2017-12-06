@@ -877,6 +877,7 @@ unsigned opt_udp_port_mgcp_callagent = 2727;
 SensorsMap sensorsMap;
 
 WDT *wdt;
+bool enable_wdt = true;
 
 
 #include <stdio.h>
@@ -3322,7 +3323,7 @@ int main_init_read() {
 		}
 		manager_parse_command_enable();
 		
-		if(!is_read_from_file() && opt_fork) {
+		if(!is_read_from_file() && opt_fork && enable_wdt) {
 			wdt = new FILE_LINE(0) WDT;
 		}
 		
@@ -5801,6 +5802,7 @@ void cConfig::addConfigItems() {
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("watchdog", &enable_wdt));
 				addConfigItem(new FILE_LINE(42460) cConfigItem_yesno("printinsertid", &opt_printinsertid));
 				addConfigItem(new FILE_LINE(42461) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
 				addConfigItem(new FILE_LINE(42462) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
@@ -6080,6 +6082,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"create-udptl-streams", 0, 0, 309},
 	    {"conv-raw-info", 1, 0, 310},
 	    {"find-country-for-number", 1, 0, 311},
+	    {"watchdog", 1, 0, 316},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -6490,6 +6493,9 @@ void get_command_line_arguments() {
 				if(optarg) {
 					strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
 				}
+				break;
+			case 316:
+				enable_wdt = yesno(optarg);
 				break;
 			case 'c':
 				opt_nocdr = 1;
@@ -8252,6 +8258,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mirroripdst", NULL))) {
 		strncpy(opt_mirrorip_dst, value, sizeof(opt_mirrorip_dst));
+	}
+	if((value = ini.GetValue("general", "watchdog", NULL))) {
+		enable_wdt = yesno(value);
 	}
 	if((value = ini.GetValue("general", "printinsertid", NULL))) {
 		opt_printinsertid = yesno(value);
