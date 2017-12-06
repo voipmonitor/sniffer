@@ -1353,13 +1353,10 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	
 
 	// add saddr|daddr into map
-	stringstream tmp;
-	if(saddr < daddr) {
-		tmp << call->sipcallerip[0] << '|' << call->sipcalledip[0];
-	} else {
-		tmp << call->sipcalledip[0] << '|' << call->sipcallerip[0];
-	}
-	calltable->skinny_ipTuples[tmp.str()] = call;
+	string tmp = intToString(min(call->sipcallerip[0], call->sipcalledip[0])) + '|' + intToString(max(call->sipcallerip[0], call->sipcalledip[0]));
+	calltable->lock_skinny_maps();
+	calltable->skinny_ipTuples[tmp] = call;
+	calltable->unlock_skinny_maps();
 
 	if(enable_save_sip_rtp_audio(call)) {
                 // open one pcap for all packets or open SKINNY and RTP separatly
@@ -1709,7 +1706,9 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received OPEN_RECEIVE_CHANNEL_MESSAGE ref %d partyId [%d]", ref, pid);
 		sprintf(callid, "%u", ref);
 		if ((call = calltable->find_by_call_id(callid, strlen(callid), 0))){
+			calltable->lock_skinny_maps();
 			calltable->skinny_partyID[pid] = call;
+			calltable->unlock_skinny_maps();
 			call->skinny_partyid = pid;
 		}
 		}

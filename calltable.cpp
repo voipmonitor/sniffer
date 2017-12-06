@@ -457,7 +457,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	recordingpausedby182 = 0;
 	flags1 = 0;
 	rtppacketsinqueue = 0;
-	end_call = 0;
+	end_call_rtp = 0;
 	push_call_to_calls_queue = 0;
 	push_register_to_registers_queue = 0;
 	message = NULL;
@@ -572,17 +572,11 @@ Call::hashRemove() {
 void
 Call::skinnyTablesRemove() {
 	if(opt_skinny) {
+		((Calltable *)calltable)->lock_skinny_maps();
 		if(skinny_partyid) {
 			((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
 			skinny_partyid = 0;
 		}
-		/*
-		stringstream tmp[2];
-
-		tmp[0] << this->sipcallerip << '|' << this->sipcalledip;
-		tmp[1] << this->sipcallerip << '|' << this->sipcalledip;
-		*/
-
 		for (map<string, Call*>::iterator skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.begin(); skinny_ipTuplesIT != ((Calltable *)calltable)->skinny_ipTuples.end();) {
 			if(skinny_ipTuplesIT->second == this) {
 				((Calltable *)calltable)->skinny_ipTuples.erase(skinny_ipTuplesIT++);
@@ -590,13 +584,14 @@ Call::skinnyTablesRemove() {
 				++skinny_ipTuplesIT;
 			}
 		}
+		((Calltable *)calltable)->unlock_skinny_maps();
 	}
 }
 
 void
 Call::removeFindTables(bool set_end_call) {
 	if(set_end_call) {
-		this->end_call = 1;
+		this->end_call_rtp = 1;
 	}
 	this->hashRemove();
 	this->skinnyTablesRemove();
@@ -834,7 +829,7 @@ Call::closeRawFiles() {
 int
 Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
 		  char *sessid, char *crypto_suite, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
-	if(this->end_call) {
+	if(this->end_call_rtp) {
 		return(-1);
 	}
  
@@ -971,7 +966,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 void
 Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
 		       char *sessid, char *crypto_suite, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
-	if(this->end_call) {
+	if(this->end_call_rtp) {
 		return;
 	}
 
@@ -5374,6 +5369,7 @@ Calltable::Calltable() {
 	_sync_lock_calls_deletequeue = 0;
 	_sync_lock_registers_queue = 0;
 	_sync_lock_registers_deletequeue = 0;
+	_sync_lock_skinny_maps = 0;
 	_sync_lock_files_queue = 0;
 	_sync_lock_ss7_listMAP = 0;
 	_sync_lock_process_ss7_listmap = 0;
@@ -5401,7 +5397,7 @@ Calltable::~Calltable() {
 void
 Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags) {
  
-	if(call->end_call) {
+	if(call->end_call_rtp) {
 		return;
 	}
 
@@ -5831,35 +5827,6 @@ Calltable::add_mgcp(sMgcpRequest *request, time_t time, u_int32_t saddr, unsigne
 	unlock_calls_listMAP();
 	
 	return(newcall);
-}
-
-Call*
-Calltable::find_by_skinny_partyid(unsigned int partyid) {
-	map<unsigned int, Call*>::iterator skinny_partyIDIT = skinny_partyID.find(partyid);
-	if(skinny_partyIDIT == skinny_partyID.end()) {
-		// not found
-		return NULL;
-	} else {
-		return (*skinny_partyIDIT).second->end_call ? NULL : (*skinny_partyIDIT).second;
-	}
-}
-
-Call*
-Calltable::find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr) {
-	stringstream tmp;
-
-	if(saddr < daddr) {
-		tmp << saddr << '|' << daddr;
-	} else {
-		tmp << daddr << '|' << saddr;
-	}
-
-	map<string, Call*>::iterator skinny_ipTuplesIT = skinny_ipTuples.find(tmp.str());
-	if(skinny_ipTuplesIT == skinny_ipTuples.end()) {
-		return NULL;
-	} else {
-		return skinny_ipTuplesIT->second->end_call ? NULL : skinny_ipTuplesIT->second;
-	}
 }
 
 

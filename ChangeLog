@@ -1,3 +1,8 @@
+21.4.1 06.12.2017
+=================
+- fix rare case where one call had two instances in memory leading to wrong CDR lenght / memory leak and skinny crash (bug since >= end of 2015) 
+
+
 21.4 04.12.2017
 ===============
 - SRTP (RTP and RTCP) decryption support added. Keys are taken from SIP SDP packets. By default RTCP packets are decrypted and stored decrypted. RTP is not decrypted by default (in pcap it is stored encrypted) - GUI can decrypt encrypted packets in pcap. New options srtp_rtp and srtp_rtcp. [VG-1415]
