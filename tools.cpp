@@ -1770,6 +1770,11 @@ bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 		}
 		return(false);
 	}
+	extern WDT *wdt;
+	if(wdt) {
+		delete wdt;
+		wdt = NULL;
+	}
 	close(socket1);
 	close(socket2);
 	if(c_client) {
@@ -1918,6 +1923,93 @@ bool RestartUpgrade::getSafeRunTempScriptFileName() {
 	}
 	return(false);
 }
+
+
+WDT::WDT() {
+	scriptName = "voipmon_wdt";
+	pid = 0;
+	killOtherScript();
+	if(createScript()) {
+		runScript();
+	}
+}
+
+WDT::~WDT() {
+	killScript();
+	unlinkScript();
+}
+
+bool WDT::runScript() {
+	if(!scriptFileName.empty()) {
+		pid = fork();
+		if(!pid) {
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "run wdt script (pid %i)", getpid());
+			}
+			close_all_fd();
+			execl(scriptFileName.c_str(), "Command-line", 0, NULL);
+			return(true);
+		}
+	}
+	return(true);
+}
+
+void WDT::killScript() {
+	if(pid) {
+		syslog(LOG_NOTICE, "kill wdt script (pid %i)", pid);
+		kill(pid, 9);
+	}
+}
+
+void WDT::killOtherScript() {
+	char bufRslt[512];
+	FILE *cmd_pipe = popen(("pgrep " + scriptName).c_str(), "r");
+	fgets(bufRslt, 512, cmd_pipe);
+	pid_t pidOther = atol(bufRslt);
+	if(pidOther) {
+		syslog(LOG_NOTICE, "kill old wdt script (pid %i)", pidOther);
+		kill(pidOther, 9);
+	}
+	pclose(cmd_pipe );
+}
+
+bool WDT::createScript() {
+	char const *tmpPath = getenv("TMPDIR");
+	if(!tmpPath) {
+		tmpPath = "/tmp";
+	}
+	scriptFileName = string(tmpPath) + '/' + scriptName;
+	FILE *fileHandle = fopen(scriptFileName.c_str(), "wt");
+	if(fileHandle) {
+		fputs("#!/bin/bash\n", fileHandle);
+		fputs("while [ true ]\n", fileHandle);
+		fputs("do\n", fileHandle);
+		fputs("sleep 10\n", fileHandle);
+		//fputs("pgrep voipmonitor || (echo crash | mail -s crash support@voipmonitor.org; /etc/init.d/voipmonitor start\n)", fileHandle);
+		fputs("pgrep voipmonitor || /etc/init.d/voipmonitor start\n", fileHandle);
+		fputs("done\n", fileHandle);
+		fclose(fileHandle);
+		if(!chmod(scriptFileName.c_str(), 0755)) {
+			return(true);
+		} else {
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "chmod 0755 for wdt script failed");
+			}
+		}
+	} else {
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "create wdt script failed");
+		}
+	}
+	return(false);
+}
+
+void WDT::unlinkScript() {
+	if(scriptFileName.length()) {
+		unlink(scriptFileName.c_str());
+	}
+}
+
 
 std::string pexec(char* cmd, int *exitCode) {
 	FILE* pipe = popen(cmd, "r");

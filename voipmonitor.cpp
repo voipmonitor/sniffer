@@ -876,6 +876,8 @@ unsigned opt_udp_port_mgcp_callagent = 2727;
 
 SensorsMap sensorsMap;
 
+WDT *wdt;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -3319,6 +3321,11 @@ int main_init_read() {
 			sverb.pcap_stat_period = verbosityE > 0 ? 1 : 10;
 		}
 		manager_parse_command_enable();
+		
+		if(!is_read_from_file() && opt_fork) {
+			wdt = new FILE_LINE(0) WDT;
+		}
+		
 		while(!is_terminating()) {
 			long timeProcessStatMS = 0;
 			if(_counter) {
@@ -3345,6 +3352,12 @@ int main_init_read() {
 			}
 			++_counter;
 		}
+		
+		if(wdt) {
+			delete wdt;
+			wdt = NULL;
+		}
+		
 		manager_parse_command_disable();
 		
 		if(opt_scanpcapdir[0] != '\0') {
