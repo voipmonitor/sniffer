@@ -1351,6 +1351,7 @@ private:
 	void unlinkScript();
 	string getScriptName();
 	string getCmdLine();
+	string getRunDir();
 	string getConfigFile();
 private:
 	string scriptFileName;

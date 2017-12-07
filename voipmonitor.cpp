@@ -879,6 +879,7 @@ SensorsMap sensorsMap;
 WDT *wdt;
 bool enable_wdt = true;
 string cmdline;
+string rundir;
 
 
 #include <stdio.h>
@@ -2283,6 +2284,10 @@ int main(int argc, char *argv[]) {
 			cmdline += '\'';
 		}
 	}
+	
+	char _rundir[256];
+	getcwd(_rundir, sizeof(_rundir));
+	rundir = _rundir;
 	
 	fillEscTables();
 	set_global_vars();

@@ -1984,7 +1984,13 @@ bool WDT::createScript() {
 		fputs("while [ true ]\n", fileHandle);
 		fputs("do\n", fileHandle);
 		fputs("sleep 5\n", fileHandle);
-		fprintf(fileHandle, "if [[ \"`ps -p %i -o comm,pid | grep %i`\" != \"voipmonitor\"* ]]; then %s; fi\n", getpid(), getpid(), getCmdLine().c_str());
+		fprintf(fileHandle, 
+			"if [[ \"`ps -p %i -o comm,pid | grep %i`\" != \"voipmonitor\"* ]]; "
+			"then cd '%s'; %s; "
+			"fi\n", 
+			getpid(), getpid(), 
+			getRunDir().c_str(), 
+			getCmdLine().c_str());
 		fputs("done\n", fileHandle);
 		fclose(fileHandle);
 		if(!chmod(scriptFileName.c_str(), 0755)) {
@@ -2019,6 +2025,11 @@ string WDT::getScriptName() {
 string WDT::getCmdLine() {
 	extern string cmdline;
 	return(cmdline);
+}
+
+string WDT::getRunDir() {
+	extern string rundir;
+	return(rundir);
 }
 
 string WDT::getConfigFile() {
