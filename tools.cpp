@@ -1962,7 +1962,7 @@ void WDT::killScript() {
 
 void WDT::killOtherScript() {
 	char bufRslt[512];
-	FILE *cmd_pipe = popen(("ps -A -o pid,args | grep '" + getScriptName() +  "$' | grep -v grep").c_str(), "r");
+	FILE *cmd_pipe = popen(("ps -C '" + getScriptName() + "' -o pid,args | grep '" + getScriptName() +  "$'").c_str(), "r");
 	fgets(bufRslt, 512, cmd_pipe);
 	pid_t pidOther = atol(bufRslt);
 	if(pidOther) {
@@ -1984,7 +1984,7 @@ bool WDT::createScript() {
 		fputs("while [ true ]\n", fileHandle);
 		fputs("do\n", fileHandle);
 		fputs("sleep 5\n", fileHandle);
-		fprintf(fileHandle, "if [[ \"`ps -A -o comm,pid | grep %i`\" != \"voipmonitor\"* ]]; then %s; fi\n", getpid(), getCmdLine().c_str());
+		fprintf(fileHandle, "if [[ \"`ps -p %i -o comm,pid | grep %i`\" != \"voipmonitor\"* ]]; then %s; fi\n", getpid(), getpid(), getCmdLine().c_str());
 		fputs("done\n", fileHandle);
 		fclose(fileHandle);
 		if(!chmod(scriptFileName.c_str(), 0755)) {
