@@ -1,3 +1,10 @@
+21.5 08.12.2017
+===============
+- new autostart when sniffer crashes or is killed. Enabled by default, can be turned off by watchdog=no or --watchdog=no
+- solve deadlock in client/server (cloud) for some rare cases
+- do not store sip reason from cancel if the cancel is not the last message within the dialog (multiple INVITEs to multiple phones) [VS-401]
+
+
 21.4.1 06.12.2017
 =================
 - fix rare case where one call had two instances in memory leading to wrong CDR lenght / memory leak and skinny crash (bug since >= end of 2015) 
