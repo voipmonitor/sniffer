@@ -176,10 +176,12 @@ public:
 			await = 1;
 			read = 1;
 			write = 1;
+			readblock = 300;
 		}
 		int await;
 		int read;
 		int write;
+		int readblock;
 	};
 public:
 	cSocket(const char *name, bool autoClose = false);

@@ -876,6 +876,11 @@ unsigned opt_udp_port_mgcp_callagent = 2727;
 
 SensorsMap sensorsMap;
 
+WDT *wdt;
+bool enable_wdt = true;
+string cmdline;
+string rundir;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -2257,6 +2262,33 @@ int main(int argc, char *argv[]) {
 		memoryStatInit();
 	}
 	
+	for(int i = 0; i < argc; i++) {
+		if(i) {
+			cmdline += ' ';
+		}
+		bool space = strchr(argv[i], ' ');
+		bool apostrophe = strchr(argv[i], '\'');
+		if(space || apostrophe) {
+			cmdline += '\'';
+		}
+		char *parg = argv[i];
+		while(*parg) {
+			if(*parg == '\'') {
+				cmdline += "'\\''";
+			} else {
+				cmdline += *parg;
+			}
+			++parg;
+		}
+		if(space || apostrophe) {
+			cmdline += '\'';
+		}
+	}
+	
+	char _rundir[256];
+	getcwd(_rundir, sizeof(_rundir));
+	rundir = _rundir;
+	
 	fillEscTables();
 	set_global_vars();
 
@@ -3319,6 +3351,11 @@ int main_init_read() {
 			sverb.pcap_stat_period = verbosityE > 0 ? 1 : 10;
 		}
 		manager_parse_command_enable();
+		
+		if(!is_read_from_file() && opt_fork && enable_wdt) {
+			wdt = new FILE_LINE(0) WDT;
+		}
+		
 		while(!is_terminating()) {
 			long timeProcessStatMS = 0;
 			if(_counter) {
@@ -3345,6 +3382,12 @@ int main_init_read() {
 			}
 			++_counter;
 		}
+		
+		if(wdt) {
+			delete wdt;
+			wdt = NULL;
+		}
+		
 		manager_parse_command_disable();
 		
 		if(opt_scanpcapdir[0] != '\0') {
@@ -5788,6 +5831,7 @@ void cConfig::addConfigItems() {
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("watchdog", &enable_wdt));
 				addConfigItem(new FILE_LINE(42460) cConfigItem_yesno("printinsertid", &opt_printinsertid));
 				addConfigItem(new FILE_LINE(42461) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
 				addConfigItem(new FILE_LINE(42462) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
@@ -6067,6 +6111,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"create-udptl-streams", 0, 0, 309},
 	    {"conv-raw-info", 1, 0, 310},
 	    {"find-country-for-number", 1, 0, 311},
+	    {"watchdog", 1, 0, 316},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -6477,6 +6522,9 @@ void get_command_line_arguments() {
 				if(optarg) {
 					strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
 				}
+				break;
+			case 316:
+				enable_wdt = yesno(optarg);
 				break;
 			case 'c':
 				opt_nocdr = 1;
@@ -7098,6 +7146,9 @@ bool check_complete_parameters() {
                         "\n"
                         " --update-schema\n"
                         "      update MySQL structures and quit\n"
+                        "\n"
+                        " --watchdog=yes|no\n"
+                        "      enable or disable watchdog script (/tmp/voipmonitor_watchdog) which will start voipmonitor if it is not running (default yes)\n"
                         "\n"
                         "One of <-i interface> or <-r pcap-file> must be specified, otherwise you may\n"
                         "set interface in configuration file.\n\n"
@@ -8239,6 +8290,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mirroripdst", NULL))) {
 		strncpy(opt_mirrorip_dst, value, sizeof(opt_mirrorip_dst));
+	}
+	if((value = ini.GetValue("general", "watchdog", NULL))) {
+		enable_wdt = yesno(value);
 	}
 	if((value = ini.GetValue("general", "printinsertid", NULL))) {
 		opt_printinsertid = yesno(value);

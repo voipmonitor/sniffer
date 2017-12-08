@@ -915,6 +915,9 @@ bool cSocketBlock::writeBlock(string str, eTypeEncode typeEncode, string xor_key
 }
 
 u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string xor_key, bool quietEwouldblock, u_int16_t timeout) {
+	if(!timeout) {
+		timeout = timeouts.readblock;
+	}
 	size_t bufferLength = 10 * 1024;
 	u_char *buffer = new u_char[bufferLength];
 	bool rsltRead = true;

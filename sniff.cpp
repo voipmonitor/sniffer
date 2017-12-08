@@ -2712,7 +2712,8 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		call->SIPresponse.push_back(Call::sSipResponse(lastSIPresponse, lastSIPresponseNum));
 	}
 	
-	if(existsColumns.cdr_reason) {
+	if(existsColumns.cdr_reason &&
+	   !(packetS->sip_method == CANCEL && call->seeninviteok && call->called_invite_branch_map.size() > 1)) {
 		char *reason = gettag_sip(packetS, "reason:", &l);
 		if(reason) {
 			char oldEndChar = reason[l];

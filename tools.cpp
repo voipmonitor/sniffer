@@ -1770,6 +1770,11 @@ bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 		}
 		return(false);
 	}
+	extern WDT *wdt;
+	if(wdt) {
+		delete wdt;
+		wdt = NULL;
+	}
 	close(socket1);
 	close(socket2);
 	if(c_client) {
@@ -1918,6 +1923,142 @@ bool RestartUpgrade::getSafeRunTempScriptFileName() {
 	}
 	return(false);
 }
+
+
+WDT::WDT() {
+	pid = 0;
+	killOtherScript();
+	if(createScript()) {
+		runScript();
+	}
+}
+
+WDT::~WDT() {
+	killScript();
+	unlinkScript();
+}
+
+bool WDT::runScript() {
+	if(!scriptFileName.empty()) {
+		pid = fork();
+		if(!pid) {
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "run watchdog script (pid %i)", getpid());
+			}
+			close_all_fd();
+			execl(scriptFileName.c_str(), "Command-line", 0, NULL);
+			return(true);
+		}
+	}
+	return(true);
+}
+
+void WDT::killScript() {
+	if(pid) {
+		syslog(LOG_NOTICE, "kill watchdog script (pid %i)", pid);
+		kill(pid, 9);
+	}
+}
+
+void WDT::killOtherScript() {
+	char bufRslt[512];
+	FILE *cmd_pipe = popen(("ps -C '" + getScriptName() + "' -o pid,args | grep '" + getScriptName() +  "$'").c_str(), "r");
+	fgets(bufRslt, 512, cmd_pipe);
+	pid_t pidOther = atol(bufRslt);
+	if(pidOther) {
+		syslog(LOG_NOTICE, "kill old watchdog script (pid %i)", pidOther);
+		kill(pidOther, 9);
+	}
+	pclose(cmd_pipe);
+}
+
+bool WDT::createScript() {
+	char const *tmpPath = getenv("TMPDIR");
+	if(!tmpPath) {
+		tmpPath = "/tmp";
+	}
+	scriptFileName = string(tmpPath) + '/' + getScriptName();
+	FILE *fileHandle = fopen(scriptFileName.c_str(), "wt");
+	if(fileHandle) {
+		fputs("#!/bin/bash\n", fileHandle);
+		fputs("while [ true ]\n", fileHandle);
+		fputs("do\n", fileHandle);
+		fputs("sleep 5\n", fileHandle);
+		fprintf(fileHandle, 
+			"if [[ \"`ps -p %i -o comm,pid | grep %i`\" != \"voipmonitor\"* ]]; "
+			"then cd '%s'; %s; "
+			"fi\n", 
+			getpid(), getpid(), 
+			getRunDir().c_str(), 
+			getCmdLine().c_str());
+		fputs("done\n", fileHandle);
+		fclose(fileHandle);
+		if(!chmod(scriptFileName.c_str(), 0755)) {
+			return(true);
+		} else {
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "chmod 0755 for watchdog script failed");
+			}
+		}
+	} else {
+		if(verbosity > 0) {
+			syslog(LOG_ERR, "create watchdog script failed");
+		}
+	}
+	return(false);
+}
+
+void WDT::unlinkScript() {
+	if(scriptFileName.length()) {
+		unlink(scriptFileName.c_str());
+	}
+}
+
+string WDT::getScriptName() {
+	string scriptName = "voipmonitor_watchdog";
+	if(getConfigFile().length()) {
+		scriptName += '_' + getConfigFile();
+	}
+	return(scriptName);
+}
+
+string WDT::getCmdLine() {
+	extern string cmdline;
+	return(cmdline);
+}
+
+string WDT::getRunDir() {
+	extern string rundir;
+	return(rundir);
+}
+
+string WDT::getConfigFile() {
+	extern char configfile[1024];
+	if(!configfile[0]) {
+		return("");
+	}
+	char *configFile = strrchr(configfile, '/');
+	if(!configFile) {
+		configFile = configfile;
+	}
+	while(*configFile == '.' || *configFile == '/') {
+		++configFile;
+	}
+	return(configFile);
+}
+
+
+std::string getCmdLine() {
+	FILE *fcmdline = fopen(("/proc/" + intToString(getpid()) + "/cmdline").c_str(), "r");
+	if(fcmdline) {
+		char cmdline[1024];
+		fgets(cmdline, sizeof(cmdline), fcmdline);
+		fclose(fcmdline);
+		return(cmdline);
+	}
+	return("");
+}
+
 
 std::string pexec(char* cmd, int *exitCode) {
 	FILE* pipe = popen(cmd, "r");

@@ -1339,6 +1339,27 @@ private:
 	bool _arm;
 };
 
+class WDT {
+public:
+	WDT();
+	~WDT();
+private:
+	bool runScript();
+	void killScript();
+	void killOtherScript();
+	bool createScript();
+	void unlinkScript();
+	string getScriptName();
+	string getCmdLine();
+	string getRunDir();
+	string getConfigFile();
+private:
+	string scriptFileName;
+	pid_t pid;
+};
+
+std::string getCmdLine();
+
 std::string pexec(char*, int *exitCode = NULL);
 
 class IP {
