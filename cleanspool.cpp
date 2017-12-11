@@ -1146,6 +1146,9 @@ void CleanSpool::unlinkfileslist(eTypeSpoolFile typeSpoolFile, string fname, str
 		return;
 	}
 	syslog(LOG_NOTICE, "cleanspool[%i]: call unlinkfileslist(%s) from %s", spoolIndex, fname.c_str(), callFrom.c_str());
+	if(sverb.cleanspool_disable_rm) {
+		return;
+	}
 	char buf[4092];
 	FILE *fd = fopen((getSpoolDir_string(tsf_main) + '/' + fname).c_str(), "r");
 	if(fd) {
@@ -1196,6 +1199,9 @@ void CleanSpool::unlink_dirs(string datehour, int sip, int reg, int skinny, int 
 	       graph == 2 ? "GRAPH" : graph == 1 ? "graph" : "---",
 	       audio == 2 ? "AUDIO" : audio == 1 ? "audio" : "---",
 	       callFrom.c_str());
+	if(sverb.cleanspool_disable_rm) {
+		return;
+	}
 	string d = datehour.substr(0,4) + "-" + datehour.substr(4,2) + "-" + datehour.substr(6,2);
 	string dh =  d + '/' + datehour.substr(8,2);
 	list<string> spool_dirs;
