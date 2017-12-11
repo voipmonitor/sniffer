@@ -268,6 +268,8 @@ private:
 	bool suspended;
 	volatile int clean_spooldir_run_processing;
 	cSpoolData spoolData;
+	time_t lastRunLoadSpoolDataDir;
+	unsigned counterLoadSpoolDataDir;
 };
 
 

@@ -145,6 +145,8 @@ CleanSpool::CleanSpool(int spoolIndex) {
 	lastCall_reindex_all = 0;
 	suspended = false;
 	clean_spooldir_run_processing = 0;
+	lastRunLoadSpoolDataDir = 0;
+	counterLoadSpoolDataDir = 0;
 }
 
 CleanSpool::~CleanSpool() {
@@ -504,19 +506,24 @@ void CleanSpool::reloadSpoolDataDir() {
 	sSpoolDataDirIndex index;
 	loadSpoolDataDir(&spoolData, index, "");
 	spoolData.unlock();
+	lastRunLoadSpoolDataDir = time(NULL);
+	++counterLoadSpoolDataDir;
 }
 
 void CleanSpool::updateSpoolDataDir() {
-	if(spoolData.isEmpty()) {
+	if(!lastRunLoadSpoolDataDir || !(counterLoadSpoolDataDir % 10) ||
+	   spoolData.isEmpty()) {
 		reloadSpoolDataDir();
 		return;
 	}
 	spoolData.lock();
-	spoolData.removeLastDateHours(12);
+	spoolData.removeLastDateHours(12 + (time(NULL) - lastRunLoadSpoolDataDir) / (60 * 60));
 	spoolData.fillDateHoursMap();
 	sSpoolDataDirIndex index;
 	loadSpoolDataDir(&spoolData, index, "");
 	spoolData.unlock();
+	lastRunLoadSpoolDataDir = time(NULL);
+	++counterLoadSpoolDataDir;
 }
 
 void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex index, string path) {
