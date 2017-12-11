@@ -253,7 +253,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 		RTP *rtp = NULL;
 
 		for(int i = 0; i < call->ssrc_n; i++) {
-			if(call->rtp[i]->ssrc == senderinfo.sender_ssrc) {
+			if(call->rtp[i]->ssrc == reportblock.ssrc) {
 				// found 
 				rtp = call->rtp[i];
 			}
