@@ -255,6 +255,7 @@ int absolute_timeout = 4 * 3600;
 int opt_destination_number_mode = 1;
 int opt_update_dstnum_onanswer = 0;
 bool opt_cleanspool = true;
+bool opt_cleanspool_use_files = true;
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
 int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
 int opt_domainport = 0;
@@ -4692,6 +4693,7 @@ void test() {
 	case 304:
 	case 305:
 	case 312:
+	case 317:
 	case 306:
 		{
 		if(opt_test == 312) {
@@ -4728,6 +4730,9 @@ void test() {
 			break;
 		case 306:
 			CleanSpool::run_clean_obsolete();
+			break;
+		case 317:
+			CleanSpool::run_test_load();
 			break;
 		}
 		set_terminating();
@@ -5438,6 +5443,7 @@ void cConfig::addConfigItems() {
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleanspool", &opt_cleanspool));
 			advanced();
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleanspool_use_files", &opt_cleanspool_use_files));
 			addConfigItem(new FILE_LINE(42231) cConfigItem_integer("cleanspool_interval", &opt_cleanspool_interval));
 		normal();
 		addConfigItem(new FILE_LINE(42232) cConfigItem_hour_interval("cleanspool_enable_fromto", &opt_cleanspool_enable_run_hour_from, &opt_cleanspool_enable_run_hour_to));
@@ -6104,6 +6110,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"reindex-all", 0, 0, 304},
 	    {"run-cleanspool", 0, 0, 305},
 	    {"run-cleanspool-maxdays", 1, 0, 312},
+	    {"test-cleanspool-load", 0, 0, 317},
 	    {"run-droppartitions-maxdays", 1, 0, 313},
 	    {"clean-obsolete", 0, 0, 306},
 	    {"check-db", 0, 0, 307},
@@ -6444,6 +6451,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "heap_use_time")		sverb.heap_use_time = 1;
 						else if(verbparams[i] == "dtmf")			sverb.dtmf = 1;
 						else if(verbparams[i] == "cleanspool")			sverb.cleanspool = 1;
+						else if(verbparams[i] == "cleanspool_disable_rm")	sverb.cleanspool_disable_rm = 1;
 						else if(verbparams[i] == "t2_destroy_all")		sverb.t2_destroy_all = 1;
 						else if(verbparams[i] == "log_profiler")		sverb.log_profiler = 1;
 						else if(verbparams[i] == "dump_packets_via_wireshark")	sverb.dump_packets_via_wireshark = 1;
@@ -6495,6 +6503,7 @@ void get_command_line_arguments() {
 			case 304:
 			case 305:
 			case 312:
+			case 317:
 			case 306:
 				if(is_enable_cleanspool(true)) {
 					opt_test = c;
@@ -7402,6 +7411,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "cleanspool", NULL))) {
 		opt_cleanspool = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cleanspool_use_files", NULL))) {
+		opt_cleanspool_use_files = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cleanspool_interval", NULL))) {
 		opt_cleanspool_interval = atoi(value);

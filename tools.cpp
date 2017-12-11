@@ -975,7 +975,7 @@ struct tm getDateTime(const char *timeStr) {
 	return(getDateTime(stringToTime(timeStr)));
 }
 
-unsigned int getNumberOfDayToNow(const char *date) {
+int getNumberOfDayToNow(const char *date) {
 	int year, month, day;
 	sscanf(date, "%d-%d-%d", &year, &month, &day);
 	time_t now;
@@ -989,6 +989,22 @@ unsigned int getNumberOfDayToNow(const char *date) {
 	dateTime.tm_min = 0; 
 	dateTime.tm_sec = 0;
 	return(difftime(now, mktime(&dateTime)) / (24 * 60 * 60));
+}
+
+int getNumberOfHourToNow(const char *date, int hour) {
+	int year, month, day;
+	sscanf(date, "%d-%d-%d", &year, &month, &day);
+	time_t now;
+	time(&now);
+	struct tm dateTime = time_r(&now);
+	dateTime.tm_year = year - 1900;
+	dateTime.tm_mon = month - 1;  
+	dateTime.tm_mday = day;
+	dateTime.tm_wday = 0;
+	dateTime.tm_hour = hour; 
+	dateTime.tm_min = 0; 
+	dateTime.tm_sec = 0;
+	return(difftime(now, mktime(&dateTime)) / (60 * 60));
 }
 
 string getActDateTimeF(bool useT_symbol) {

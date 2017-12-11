@@ -480,7 +480,8 @@ time_t stringToTime(const char *timeStr);
 struct tm getDateTime(u_int64_t us);
 struct tm getDateTime(time_t time);
 struct tm getDateTime(const char *timeStr);
-unsigned int getNumberOfDayToNow(const char *date);
+int getNumberOfDayToNow(const char *date);
+int getNumberOfHourToNow(const char *date, int hour);
 string getActDateTimeF(bool useT_symbol = false);
 unsigned long getUptime();
 

@@ -261,6 +261,29 @@ const char *getSpoolTypeDir(eTypeSpoolFile typeSpoolFile) {
 	       NULL);
 }
 
+eTypeSpoolFile getSpoolTypeFile(const char *typeDir) {
+	static struct {
+		const char *dir;
+		eTypeSpoolFile type;
+	} dir_type[] = {
+		{ "SIP", tsf_sip },
+		{ "REG", tsf_reg },
+		{ "SKINNY", tsf_skinny },
+		{ "MGCP", tsf_mgcp },
+		{ "SS7", tsf_ss7 },
+		{ "RTP", tsf_rtp },
+		{ "GRAPH", tsf_graph },
+		{ "AUDIO", tsf_audio },
+		{ "ALL", tsf_all }
+	};
+	for(unsigned i = 0; i < sizeof(dir_type) / sizeof(dir_type[0]); i++) {
+		if(!strcasecmp(typeDir, dir_type[i].dir)) {
+			return(dir_type[i].type);
+		}
+	}
+	return(tsf_na);
+}
+
 const char *getSpoolTypeFilesIndex(eTypeSpoolFile typeSpoolFile, bool addFileConv) {
 	extern int opt_pcap_dump_tar;
 	extern int opt_newdir;
