@@ -3341,7 +3341,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 			string c = i == 0 ? "a" : "b";
-			string cneg = i == 0 ? "b" : "a";
 			
 			cdr.add(rtpab[i]->ssrc_index, c+"_index");
 			cdr.add(rtpab[i]->stats.received + 2, c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
@@ -3443,15 +3442,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 			if(rtpab[i]->rtcp.counter) {
-				cdr.add(rtpab[i]->rtcp.loss, cneg+"_rtcp_loss");
-				cdr.add(rtpab[i]->rtcp.maxfr, cneg+"_rtcp_maxfr");
+				cdr.add(rtpab[i]->rtcp.loss, c+"_rtcp_loss");
+				cdr.add(rtpab[i]->rtcp.maxfr, c+"_rtcp_maxfr");
 				rtcp_avgfr_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
-				cdr.add(rtcp_avgfr_mult10[i], cneg+"_rtcp_avgfr_mult10");
-				cdr.add(rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec), cneg+"_rtcp_maxjitter");
+				cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
+				cdr.add(rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec), c+"_rtcp_maxjitter");
 				rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
-				cdr.add(rtcp_avgjitter_mult10[i], cneg+"_rtcp_avgjitter_mult10");
+				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
 				if (existsColumns.cdr_rtcp_fraclost_pktcount)
-					cdr.add(rtpab[i]->rtcp.fraclost_pkt_counter, cneg+"_rtcp_fraclost_pktcount");
+					cdr.add(rtpab[i]->rtcp.fraclost_pkt_counter, c+"_rtcp_fraclost_pktcount");
 			}
 			if(existsColumns.cdr_rtp_ptime) {
 				cdr.add(rtpab[i]->avg_ptime, c+"_rtp_ptime");
