@@ -1008,9 +1008,12 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info
 }
 
 int
-Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
+Call::get_index_by_ip_port(in_addr_t addr, unsigned short port, bool use_sip_src_addr){
 	for(int i = 0; i < ipport_n; i++) {
-		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
+		if((use_sip_src_addr ?
+		     this->ip_port[i].sip_src_addr == addr :
+		     this->ip_port[i].addr == addr) && 
+		   this->ip_port[i].port == port) {
 			// we have found it
 			return i;
 		}
@@ -1278,6 +1281,9 @@ read:
 		rtp[ssrc_n] = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
 		if(exists_crypto_suite_key) {
 			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source);
+			if(index_call_ip_port_by_src < 0) {
+				index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source, true);
+			}
 			if(index_call_ip_port_by_src >= 0 && 
 			   this->ip_port[index_call_ip_port_by_src].crypto_suite.length() &&
 			   this->ip_port[index_call_ip_port_by_src].crypto_key.length()) {

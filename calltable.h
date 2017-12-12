@@ -597,7 +597,7 @@ public:
 	*/
 	~Call();
 
-	int get_index_by_ip_port(in_addr_t addr, unsigned short port);
+	int get_index_by_ip_port(in_addr_t addr, unsigned short port, bool use_sip_src_addr = false);
 	
 	int get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr, ip_port_call_info::eTypeAddr type_addr);
 
