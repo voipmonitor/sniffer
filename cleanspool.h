@@ -99,8 +99,13 @@ public:
 		eTypeSpoolFile _type;
 	};
 	struct sSpoolDataDirItem {
+		sSpoolDataDirItem() {
+			size = 0;
+			is_dir = false;
+		}
 		string path;
 		long long size;
+		bool is_dir;
 	};
 	class cSpoolData {
 	public:
@@ -130,6 +135,7 @@ public:
 		void fillDateHoursMap();
 		void clearDateHoursMap();
 		bool existsDateHour(const char *date, int hour);
+		void eraseDir(string dir);
 		void lock() {
 			while(__sync_lock_test_and_set(&_sync, 1));
 		}

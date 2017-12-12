@@ -81,27 +81,29 @@ void CleanSpool::cSpoolData::getSumSizeByDate(map<string, long long> *sizeByDate
 
 map<CleanSpool::sSpoolDataDirIndex, CleanSpool::sSpoolDataDirItem>::iterator CleanSpool::cSpoolData::getMin(bool sip, bool rtp, bool graph, bool audio) {
 	for(map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = data.begin(); iter != data.end(); iter++) {
-		switch(iter->first._type) {
-		case tsf_rtp:
-			if(rtp) {
-				return(iter);
+		if(!iter->second.is_dir) {
+			switch(iter->first._type) {
+			case tsf_rtp:
+				if(rtp) {
+					return(iter);
+				}
+				break;
+			case tsf_graph:
+				if(graph) {
+					return(iter);
+				}
+				break;
+			case tsf_audio:
+				if(audio) {
+					return(iter);
+				}
+				break;
+			default:
+				if(sip) {
+					return(iter);
+				}
+				break;
 			}
-			break;
-		case tsf_graph:
-			if(graph) {
-				return(iter);
-			}
-			break;
-		case tsf_audio:
-			if(audio) {
-				return(iter);
-			}
-			break;
-		default:
-			if(sip) {
-				return(iter);
-			}
-			break;
 		}
 	}
 	return(data.end());
@@ -137,6 +139,16 @@ void CleanSpool::cSpoolData::clearDateHoursMap() {
 bool CleanSpool::cSpoolData::existsDateHour(const char *date, int hour) {
 	uint64_t dh = CleanSpool::date_to_int(date) * 100ull + hour;
 	return(date_hours_map.find(dh) != date_hours_map.end());
+}
+
+void CleanSpool::cSpoolData::eraseDir(string dir) {
+	for(map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = data.begin(); iter != data.end(); iter++) {
+		if(iter->second.is_dir &&
+		   iter->second.path == dir) {
+			data.erase(iter);
+			break;
+		}
+	}
 }
 
 
@@ -612,6 +624,12 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 			sSpoolDataDirItem item;
 			item.path = path;
 			item.size = size;
+			spoolData->add(index, item);
+		} else if(index.getSettedItems() & sSpoolDataDirIndex::_ti_minute) {
+			sSpoolDataDirItem item;
+			item.path = path;
+			item.size = GetDirSizeDU(0);
+			item.is_dir = true;
 			spoolData->add(index, item);
 		}
 		closedir(dp);
@@ -1324,6 +1342,7 @@ void CleanSpool::erase_dir(string dir, sSpoolDataDirIndex /*index*/, string call
 					if(!sverb.cleanspool_disable_rm) {
 						rmdir(redukDir.c_str());
 					}
+					spoolData.eraseDir(redukDir);
 					if(check_date_dir(lastDir.c_str())) {
 						break;
 					}
