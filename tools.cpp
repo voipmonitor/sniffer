@@ -779,12 +779,17 @@ long long GetFileSize(std::string filename)
 	return rc == 0 ? stat_buf.st_size : -1;
 }
 
-long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index)
+long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize)
 {
-	return(GetDU(GetFileSize(filename), typeSpoolFile, spool_index));
+	return(GetDU(GetFileSize(filename), typeSpoolFile, spool_index, dirItemSize));
 }
 
-long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index) {
+long long GetDirSizeDU(unsigned countFiles)
+{
+	return(max(4096u, countFiles * 100));
+}
+
+long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize) {
 	static int block_size[MAX_COUNT_TYPE_SPOOL_FILE][MAX_COUNT_SPOOL_INDEX];
 	if(!block_size[typeSpoolFile][spool_index]) {
 		extern char opt_spooldir_main[1024];
@@ -804,7 +809,7 @@ long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_inde
 				fileSize = (fileSize / bs * bs) + (fileSize % bs ? bs : 0);
 			}
 		}
-		fileSize += 100; // inode / directory item size
+		fileSize += (dirItemSize == -1 ? 100 : dirItemSize); // inode / directory item size
 	}
 	return(fileSize);
 }

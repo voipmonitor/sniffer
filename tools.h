@@ -459,8 +459,9 @@ bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer
 bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL);
 double ts2double(unsigned int sec, unsigned int usec);
 long long GetFileSize(std::string filename);
-long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index);
-long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index);
+long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
+long long GetDirSizeDU(unsigned countFiles);
+long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
 long long GetFreeDiskSpace(const char* absoluteFilePath, bool percent_mult_100 = false);
 long long GetTotalDiskSpace(const char* absoluteFilePath);
 string GetStringMD5(std::string str);

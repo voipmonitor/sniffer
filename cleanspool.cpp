@@ -72,6 +72,13 @@ long long CleanSpool::cSpoolData::getSplitSumSize(long long *sip, long long *rtp
 	return(size);
 }
 
+void CleanSpool::cSpoolData::getSumSizeByDate(map<string, long long> *sizeByDate) {
+	sizeByDate->clear();
+	for(map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = data.begin(); iter != data.end(); iter++) {
+		(*sizeByDate)[iter->first.date] += iter->second.size;
+	}
+}
+
 map<CleanSpool::sSpoolDataDirIndex, CleanSpool::sSpoolDataDirItem>::iterator CleanSpool::cSpoolData::getMin(bool sip, bool rtp, bool graph, bool audio) {
 	for(map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = data.begin(); iter != data.end(); iter++) {
 		switch(iter->first._type) {
@@ -301,6 +308,18 @@ string CleanSpool::getMaxSpoolDate() {
 		return(maxDate_str);
 	} else {
 		return("");
+	}
+}
+
+void CleanSpool::getSumSizeByDate(map<string, long long> *sizeByDate) {
+	spoolData.getSumSizeByDate(sizeByDate);
+}
+
+void CleanSpool::printSumSizeByDate() {
+	map<string, long long> sizeByDate;
+	getSumSizeByDate(&sizeByDate);
+	for(map<string, long long>::iterator iter = sizeByDate.begin(); iter != sizeByDate.end(); iter++) {
+		cout << iter->first << " : " << iter->second << endl;
 	}
 }
 
@@ -587,8 +606,9 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 		   de_files.size()) {
 			long long size = 0;
 			for(list<string>::iterator iter_file = de_files.begin(); iter_file != de_files.end(); iter_file++) {
-				size += GetFileSizeDU(path + '/' + *iter_file, index.getTypeSpoolFile(), spoolIndex);
+				size += GetFileSizeDU(path + '/' + *iter_file, index.getTypeSpoolFile(), spoolIndex, 0);
 			}
+			size += GetDirSizeDU(de_files.size());
 			sSpoolDataDirItem item;
 			item.path = path;
 			item.size = size;
@@ -1906,11 +1926,13 @@ void CleanSpool::test_load() {
 	unsigned long end1 = getTimeMS();
 	cout << (end1 - start) / 1000. << "s" << endl;
 	cout << spoolData.getSumSize() << endl;
+	printSumSizeByDate();
 	cout << "updateSpoolDataDir" <<  endl;
 	updateSpoolDataDir();
 	unsigned long end2 = getTimeMS();
 	cout << (end2 - end1) / 1000. << "s" << endl;
 	cout << spoolData.getSumSize() << endl;
+	printSumSizeByDate();
 }
 
 void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {

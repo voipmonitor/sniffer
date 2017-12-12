@@ -112,6 +112,7 @@ public:
 		}
 		long long getSumSize();
 		long long getSplitSumSize(long long *sip, long long *rtp, long long *graph, long long *audio);
+		void getSumSizeByDate(map<string, long long> *sizeByDate);
 		map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator getMin(bool sip, bool rtp, bool graph, bool audio);
 		void erase(map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter) {
 			data.erase(iter);
@@ -149,6 +150,8 @@ public:
 	void check_filesindex();
 	void check_index_date(string date, SqlDb *sqlDb);
 	string getMaxSpoolDate();
+	void getSumSizeByDate(map<string, long long> *sizeByDate);
+	void printSumSizeByDate();
 	static void run_cleanProcess(int spoolIndex = -1);
 	static void run_clean_obsolete(int spoolIndex = -1);
 	static void run_test_load(int spoolIndex = -1);
