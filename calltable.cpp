@@ -3234,6 +3234,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(mos, "b_mos_lqo_mult10");
 	}
 	
+	// first caller and called
+	RTP *rtpab[2] = {NULL, NULL};
 	if(ssrc_n > 0) {
 	 
 		this->applyRtcpXrDataToRtp();
@@ -3256,7 +3258,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 
 		// find first caller and first called
-		RTP *rtpab[2] = {NULL, NULL};
 		bool rtpab_ok[2] = {false, false};
 		bool pass_rtpab_simple = type == MGCP ||
 					 (type == SKINNY_NEW ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
@@ -3714,6 +3715,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(rtp[i]->stream_in_multiple_calls) {
 						flags |= 1;
 					}
+					// mark used rtp stream in a/b
+					if (rtp[i] == rtpab[0] or rtp[i] == rtpab[1])
+						flags |= 2;
+
 					if(flags) {
 						rtps.add(flags, "flags");
 					}
@@ -3969,6 +3974,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(rtp[i]->stream_in_multiple_calls) {
 						flags |= 1;
 					}
+					// mark used rtp stream in a/b
+					if (rtp[i] == rtpab[0] or rtp[i] == rtpab[1])
+						flags |= 2;
+
 					if(flags) {
 						rtps.add(flags, "flags");
 					}
