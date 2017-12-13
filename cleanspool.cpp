@@ -603,7 +603,7 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 				}
 			    #if true // speed optimization
 				string pathHour = path + '/' + *iter_dir;
-				char *fts_path[2] = { (char*)pathHour.c_str(), nullptr };
+				char *fts_path[2] = { (char*)pathHour.c_str(), NULL };
 				FTS *tree = fts_open(fts_path, FTS_NOCHDIR, 0);
 				if(!tree) {
 					continue;
