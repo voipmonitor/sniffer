@@ -13,6 +13,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <fts.h>
 
 #include "sql_db.h"
 #include "tools.h"
@@ -596,11 +597,100 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 			} else if(index.getSettedItems() & sSpoolDataDirIndex::_ti_date &&
 				  !(index.getSettedItems() & sSpoolDataDirIndex::_ti_hour) &&
 				  check_hour_dir(iter_dir->c_str())) {
-				sSpoolDataDirIndex _index = index;
-				_index.hour = atoi(iter_dir->c_str());
-				if(!spoolData->existsDateHour(_index.date.c_str(), _index.hour)) {
-					this->loadSpoolDataDir(spoolData, _index, path + '/' + *iter_dir);
+				unsigned hour = atoi(iter_dir->c_str());
+				if(spoolData->existsDateHour(index.date.c_str(), hour)) {
+					continue;
 				}
+			    #if true // speed optimization
+				string pathHour = path + '/' + *iter_dir;
+				char *fts_path[2] = { (char*)pathHour.c_str(), nullptr };
+				FTS *tree = fts_open(fts_path, FTS_NOCHDIR, 0);
+				if(!tree) {
+					continue;
+				}
+				FTSENT *node;
+				string lastDir;
+				int minute = -1;
+				string type;
+				eTypeSpoolFile _type = tsf_na;
+				unsigned countFiles = 0;
+				long long sumSize = 0;
+				while((node = fts_read(tree))) {
+					if(node->fts_info == FTS_D) {
+						if(countFiles) {
+							sSpoolDataDirIndex _index = index;
+							_index.hour = hour;
+							_index.minute = minute;
+							_index.type = type;
+							_index._type = _type;
+							sSpoolDataDirItem item;
+							item.path = lastDir;
+							item.size = sumSize + GetDirSizeDU(countFiles);
+							spoolData->add(_index, item);
+							sumSize = 0;
+							countFiles = 0;
+						}
+						const char *dir = node->fts_path + pathHour.length();
+						if(!*dir) {
+							continue;
+						}
+						++dir;
+						const char *dir_last = dir;
+						const char *dir_temp_pointer = dir;
+						while(*dir_temp_pointer) {
+							if(*dir_temp_pointer == '/') {
+								dir_last = dir_temp_pointer + 1;
+							}
+							++dir_temp_pointer;
+						}
+						if(check_minute_dir(dir_last)) {
+							minute = atoi(dir_last);
+							sSpoolDataDirIndex _index = index;
+							_index.hour = hour;
+							_index.minute = minute;
+							sSpoolDataDirItem item;
+							item.path = node->fts_path;
+							item.size = GetDirSizeDU(0);
+							item.is_dir = true;
+							spoolData->add(_index, item);
+						} else if(check_type_dir(dir_last)) {
+							type = dir_last;
+							_type = getSpoolTypeFile(dir_last);
+						}
+						lastDir = node->fts_path;
+					} else if(node->fts_info == FTS_F) {
+						long long fileSize = node->fts_statp->st_size;
+						int bs = node->fts_statp->st_blksize;
+						if(bs > 0) {
+							if(fileSize == 0) {
+								fileSize = bs;
+							} else {
+								fileSize = (fileSize / bs * bs) + (fileSize % bs ? bs : 0);
+							}
+						}
+						sumSize += fileSize;
+						++countFiles;
+					}
+				}
+				fts_close(tree);
+				if(countFiles) {
+					sSpoolDataDirIndex _index = index;
+					_index.hour = hour;
+					_index.minute = minute;
+					_index.type = type;
+					_index._type = _type;
+					sSpoolDataDirItem item;
+					item.path = lastDir;
+					item.size = sumSize + GetDirSizeDU(countFiles);
+					spoolData->add(_index, item);
+					sumSize = 0;
+					countFiles = 0;
+				}
+			    #else
+				sSpoolDataDirIndex _index = index;
+				_index.hour = hour;
+				this->loadSpoolDataDir(spoolData, _index, path + '/' + *iter_dir);
+			    #endif
 			} else if(index.getSettedItems() & sSpoolDataDirIndex::_ti_hour &&
 				  !(index.getSettedItems() & sSpoolDataDirIndex::_ti_minute) &&
 				  check_minute_dir(iter_dir->c_str())) {
