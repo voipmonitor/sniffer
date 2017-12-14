@@ -183,8 +183,10 @@ bool RTPsecure::decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char */*
 		*payload_len -= diff_len;
 		rslt = true;
 	}
-	#endif
 	return(rslt);
+	#else
+	return(false);
+	#endif
 }
 
 bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len) {
@@ -255,8 +257,10 @@ bool RTPsecure::decrypt_rtcp_libsrtp(u_char *data, unsigned *data_len) {
 		*data_len = _data_len;
 		rslt = true;
 	}
-	#endif
 	return(rslt);
+	#else
+	return(false);
+	#endif
 }
 
 void RTPsecure::setError(eError error) {
