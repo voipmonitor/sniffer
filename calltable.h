@@ -158,7 +158,29 @@ struct ip_port_call_info_rtp {
 	volatile time_t last_packet_time;
 };
 
+struct rtp_crypto_config {
+	unsigned tag;
+	string suite;
+	string key;
+};
+
 struct ip_port_call_info {
+	ip_port_call_info() {
+		rtp_crypto_config_list = NULL;
+	}
+	~ip_port_call_info() {
+		if(rtp_crypto_config_list) {
+			delete rtp_crypto_config_list;
+		}
+	}
+	void setSdpCryptoList(list<rtp_crypto_config> *rtp_crypto_config_list) {
+		if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
+			this->rtp_crypto_config_list = new FILE_LINE(0) list<rtp_crypto_config>;
+			for(list<rtp_crypto_config>::iterator iter = rtp_crypto_config_list->begin(); iter != rtp_crypto_config_list->end(); iter++) {
+				this->rtp_crypto_config_list->push_back(*iter);
+			}
+		}
+	}
 	enum eTypeAddr {
 		_ta_base,
 		_ta_natalias,
@@ -169,8 +191,7 @@ struct ip_port_call_info {
 	u_int16_t port;
 	int8_t iscaller;
 	char sessid[MAXLEN_SDP_SESSID];
-	string crypto_suite;
-	string crypto_key;
+	list<rtp_crypto_config> *rtp_crypto_config_list;
 	char to[MAXLEN_SDP_TO];
 	u_int32_t sip_src_addr;
 	s_sdp_flags sdp_flags;
@@ -638,12 +659,12 @@ public:
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
 	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-			char *sessid, char *crypto_suite, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+			char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
 	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
 	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-			      char *sessid, char *crypto_suite, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+			      char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
