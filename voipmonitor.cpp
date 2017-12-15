@@ -2688,6 +2688,10 @@ int main(int argc, char *argv[]) {
 		daemonize();
 	}
 
+	if(!is_read_from_file() && opt_fork && enable_wdt) {
+		wdt = new FILE_LINE(0) WDT;
+	}
+
 	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
 	if(isCloud()) {
 		//vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
@@ -2883,7 +2887,11 @@ int main(int argc, char *argv[]) {
 	if (opt_fork){
 		unlink(opt_pidfile);
 	}
-	
+
+	if(wdt) {
+		delete wdt;
+	}
+
 	return(0);
 }
 
@@ -3353,7 +3361,7 @@ int main_init_read() {
 		}
 		manager_parse_command_enable();
 		
-		if(!is_read_from_file() && opt_fork && enable_wdt) {
+		if(!wdt && !is_read_from_file() && opt_fork && enable_wdt) {
 			wdt = new FILE_LINE(0) WDT;
 		}
 		
