@@ -828,7 +828,7 @@ Call::closeRawFiles() {
 /* add ip adress and port to this call */
 int
 Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		  char *sessid, char *crypto_suite, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		  char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return(-1);
 	}
@@ -872,13 +872,9 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 	} else {
 		this->ip_port[ipport_n].sessid[0] = 0;
 	}
-	if(crypto_suite && crypto_key && crypto_suite[0] && crypto_key[0]) {
-		this->ip_port[ipport_n].crypto_suite = crypto_suite;
-		this->ip_port[ipport_n].crypto_key = crypto_key;
+	if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
+		this->ip_port[ipport_n].setSdpCryptoList(rtp_crypto_config_list);
 		this->exists_crypto_suite_key = true;
-	} else {
-		this->ip_port[ipport_n].crypto_suite.resize(0);
-		this->ip_port[ipport_n].crypto_key.resize(0);
 	}
 	if(to) {
 		strncpy(this->ip_port[ipport_n].to, to, MAXLEN_SDP_TO);
@@ -965,7 +961,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 
 void
 Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		       char *sessid, char *crypto_suite, char *crypto_key, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		       char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return;
 	}
@@ -999,7 +995,7 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info
 		}
 	}
 	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, header, 
-			     sessid, crypto_suite, crypto_key, to, iscaller, rtpmap, sdp_flags) != -1) {
+			     sessid, rtp_crypto_config_list, to, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, header->ts.tv_sec, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, header->ts.tv_sec, this, iscaller, 1, sdp_flags);
@@ -1008,9 +1004,12 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info
 }
 
 int
-Call::get_index_by_ip_port(in_addr_t addr, unsigned short port){
+Call::get_index_by_ip_port(in_addr_t addr, unsigned short port, bool use_sip_src_addr){
 	for(int i = 0; i < ipport_n; i++) {
-		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
+		if((use_sip_src_addr ?
+		     this->ip_port[i].sip_src_addr == addr :
+		     this->ip_port[i].addr == addr) && 
+		   this->ip_port[i].port == port) {
 			// we have found it
 			return i;
 		}
@@ -1056,14 +1055,15 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 	if(exists_crypto_suite_key && opt_srtp_rtcp_decrypt) {
 		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source - 1);
 		if(index_call_ip_port_by_src >= 0 && 
-		   this->ip_port[index_call_ip_port_by_src].crypto_suite.length() &&
-		   this->ip_port[index_call_ip_port_by_src].crypto_key.length()) {
+		   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->size()) {
 			if(!rtp_secure_map[index_call_ip_port_by_src]) {
 				rtp_secure_map[index_call_ip_port_by_src] = 
-					new FILE_LINE(0) RTPsecure(
-						this->ip_port[index_call_ip_port_by_src].crypto_suite.c_str(),
-						this->ip_port[index_call_ip_port_by_src].crypto_key.c_str(), 
-						opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
+					new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
+				for(list<rtp_crypto_config>::iterator iter = this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->begin();
+				    iter != this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->end();
+				    iter++) {
+					rtp_secure_map[index_call_ip_port_by_src]->addCryptoConfig(iter->tag, iter->suite.c_str(), iter->key.c_str());
+				}
 			}
 			rtp_decrypt = rtp_secure_map[index_call_ip_port_by_src];
 		}
@@ -1278,15 +1278,19 @@ read:
 		rtp[ssrc_n] = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
 		if(exists_crypto_suite_key) {
 			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source);
+			if(index_call_ip_port_by_src < 0) {
+				index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source, true);
+			}
 			if(index_call_ip_port_by_src >= 0 && 
-			   this->ip_port[index_call_ip_port_by_src].crypto_suite.length() &&
-			   this->ip_port[index_call_ip_port_by_src].crypto_key.length()) {
+			   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->size()) {
 				if(!rtp_secure_map[index_call_ip_port_by_src]) {
 					rtp_secure_map[index_call_ip_port_by_src] = 
-						new FILE_LINE(0) RTPsecure(
-							this->ip_port[index_call_ip_port_by_src].crypto_suite.c_str(), 
-							this->ip_port[index_call_ip_port_by_src].crypto_key.c_str(), 
-							opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
+						new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
+					for(list<rtp_crypto_config>::iterator iter = this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->begin();
+					    iter != this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->end();
+					    iter++) {
+						rtp_secure_map[index_call_ip_port_by_src]->addCryptoConfig(iter->tag, iter->suite.c_str(), iter->key.c_str());
+					}
 				}
 				rtp[ssrc_n]->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src]);
 			}
@@ -3234,6 +3238,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(mos, "b_mos_lqo_mult10");
 	}
 	
+	// first caller and called
+	RTP *rtpab[2] = {NULL, NULL};
 	if(ssrc_n > 0) {
 	 
 		this->applyRtcpXrDataToRtp();
@@ -3256,7 +3262,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 
 		// find first caller and first called
-		RTP *rtpab[2] = {NULL, NULL};
 		bool rtpab_ok[2] = {false, false};
 		bool pass_rtpab_simple = type == MGCP ||
 					 (type == SKINNY_NEW ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
@@ -3341,7 +3346,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 			string c = i == 0 ? "a" : "b";
-			string cneg = i == 0 ? "b" : "a";
 			
 			cdr.add(rtpab[i]->ssrc_index, c+"_index");
 			cdr.add(rtpab[i]->stats.received + 2, c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
@@ -3443,15 +3447,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 			if(rtpab[i]->rtcp.counter) {
-				cdr.add(rtpab[i]->rtcp.loss, cneg+"_rtcp_loss");
-				cdr.add(rtpab[i]->rtcp.maxfr, cneg+"_rtcp_maxfr");
+				cdr.add(rtpab[i]->rtcp.loss, c+"_rtcp_loss");
+				cdr.add(rtpab[i]->rtcp.maxfr, c+"_rtcp_maxfr");
 				rtcp_avgfr_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
-				cdr.add(rtcp_avgfr_mult10[i], cneg+"_rtcp_avgfr_mult10");
-				cdr.add(rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec), cneg+"_rtcp_maxjitter");
+				cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
+				cdr.add(rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec), c+"_rtcp_maxjitter");
 				rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
-				cdr.add(rtcp_avgjitter_mult10[i], cneg+"_rtcp_avgjitter_mult10");
+				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
 				if (existsColumns.cdr_rtcp_fraclost_pktcount)
-					cdr.add(rtpab[i]->rtcp.fraclost_pkt_counter, cneg+"_rtcp_fraclost_pktcount");
+					cdr.add(rtpab[i]->rtcp.fraclost_pkt_counter, c+"_rtcp_fraclost_pktcount");
 			}
 			if(existsColumns.cdr_rtp_ptime) {
 				cdr.add(rtpab[i]->avg_ptime, c+"_rtp_ptime");
@@ -3715,6 +3719,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(rtp[i]->stream_in_multiple_calls) {
 						flags |= 1;
 					}
+					// mark used rtp stream in a/b
+					if (rtp[i] == rtpab[0] or rtp[i] == rtpab[1])
+						flags |= 2;
+
 					if(flags) {
 						rtps.add(flags, "flags");
 					}
@@ -3970,6 +3978,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(rtp[i]->stream_in_multiple_calls) {
 						flags |= 1;
 					}
+					// mark used rtp stream in a/b
+					if (rtp[i] == rtpab[0] or rtp[i] == rtpab[1])
+						flags |= 2;
+
 					if(flags) {
 						rtps.add(flags, "flags");
 					}

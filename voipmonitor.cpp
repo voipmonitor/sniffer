@@ -255,6 +255,7 @@ int absolute_timeout = 4 * 3600;
 int opt_destination_number_mode = 1;
 int opt_update_dstnum_onanswer = 0;
 bool opt_cleanspool = true;
+bool opt_cleanspool_use_files = true;
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
 int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
 int opt_domainport = 0;
@@ -2687,6 +2688,10 @@ int main(int argc, char *argv[]) {
 		daemonize();
 	}
 
+	if(!is_read_from_file() && opt_fork && enable_wdt) {
+		wdt = new FILE_LINE(0) WDT;
+	}
+
 	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
 	if(isCloud()) {
 		//vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
@@ -2882,7 +2887,11 @@ int main(int argc, char *argv[]) {
 	if (opt_fork){
 		unlink(opt_pidfile);
 	}
-	
+
+	if(wdt) {
+		delete wdt;
+	}
+
 	return(0);
 }
 
@@ -3352,7 +3361,7 @@ int main_init_read() {
 		}
 		manager_parse_command_enable();
 		
-		if(!is_read_from_file() && opt_fork && enable_wdt) {
+		if(!wdt && !is_read_from_file() && opt_fork && enable_wdt) {
 			wdt = new FILE_LINE(0) WDT;
 		}
 		
@@ -4692,6 +4701,7 @@ void test() {
 	case 304:
 	case 305:
 	case 312:
+	case 317:
 	case 306:
 		{
 		if(opt_test == 312) {
@@ -4728,6 +4738,9 @@ void test() {
 			break;
 		case 306:
 			CleanSpool::run_clean_obsolete();
+			break;
+		case 317:
+			CleanSpool::run_test_load(opt_test_arg);
 			break;
 		}
 		set_terminating();
@@ -5438,6 +5451,7 @@ void cConfig::addConfigItems() {
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleanspool", &opt_cleanspool));
 			advanced();
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleanspool_use_files", &opt_cleanspool_use_files));
 			addConfigItem(new FILE_LINE(42231) cConfigItem_integer("cleanspool_interval", &opt_cleanspool_interval));
 		normal();
 		addConfigItem(new FILE_LINE(42232) cConfigItem_hour_interval("cleanspool_enable_fromto", &opt_cleanspool_enable_run_hour_from, &opt_cleanspool_enable_run_hour_to));
@@ -5521,7 +5535,7 @@ void cConfig::addConfigItems() {
 		subgroup("main");
 			addConfigItem(new FILE_LINE(42270) cConfigItem_ports("sipport", sipportmatrix));
 			addConfigItem(new FILE_LINE(42271) cConfigItem_yesno("cdr_sipport", &opt_cdr_sipport));
-			addConfigItem(new FILE_LINE(42272) cConfigItem_integer("domainport", &opt_domainport));
+			addConfigItem(new FILE_LINE(42272) cConfigItem_yesno("domainport", &opt_domainport));
 			addConfigItem((new FILE_LINE(42273) cConfigItem_string("fbasenameheader", opt_fbasename_header, sizeof(opt_fbasename_header)))
 				->setPrefix("\n")
 				->addAlias("fbasename_header"));
@@ -6104,6 +6118,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"reindex-all", 0, 0, 304},
 	    {"run-cleanspool", 0, 0, 305},
 	    {"run-cleanspool-maxdays", 1, 0, 312},
+	    {"test-cleanspool-load", 1, 0, 317},
 	    {"run-droppartitions-maxdays", 1, 0, 313},
 	    {"clean-obsolete", 0, 0, 306},
 	    {"check-db", 0, 0, 307},
@@ -6444,6 +6459,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "heap_use_time")		sverb.heap_use_time = 1;
 						else if(verbparams[i] == "dtmf")			sverb.dtmf = 1;
 						else if(verbparams[i] == "cleanspool")			sverb.cleanspool = 1;
+						else if(verbparams[i] == "cleanspool_disable_rm")	sverb.cleanspool_disable_rm = 1;
 						else if(verbparams[i] == "t2_destroy_all")		sverb.t2_destroy_all = 1;
 						else if(verbparams[i] == "log_profiler")		sverb.log_profiler = 1;
 						else if(verbparams[i] == "dump_packets_via_wireshark")	sverb.dump_packets_via_wireshark = 1;
@@ -6495,10 +6511,11 @@ void get_command_line_arguments() {
 			case 304:
 			case 305:
 			case 312:
+			case 317:
 			case 306:
 				if(is_enable_cleanspool(true)) {
 					opt_test = c;
-					if(c == 312) {
+					if(c == 312 || c == 317) {
 						strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
 					}
 				}
@@ -6817,7 +6834,7 @@ void set_context_config() {
 	}
 	
 	if(opt_pcap_queue_dequeu_window_length < 0) {
-		if(opt_pcap_queue_receive_from_ip_port) {
+		if(opt_pcap_queue_receive_from_ip_port || snifferServerOptions.isEnable()) {
 			 opt_pcap_queue_dequeu_window_length = 2000;
 		} else if(ifnamev.size() > 1) {
 			 opt_pcap_queue_dequeu_window_length = 1000;
@@ -7403,6 +7420,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cleanspool", NULL))) {
 		opt_cleanspool = yesno(value);
 	}
+	if((value = ini.GetValue("general", "cleanspool_use_files", NULL))) {
+		opt_cleanspool_use_files = yesno(value);
+	}
 	if((value = ini.GetValue("general", "cleanspool_interval", NULL))) {
 		opt_cleanspool_interval = atoi(value);
 	}
@@ -7836,7 +7856,7 @@ int eval_config(string inistr) {
 		strncpy(opt_callidmerge_secret, value, sizeof(opt_callidmerge_secret));
 	}
 	if((value = ini.GetValue("general", "domainport", NULL))) {
-		opt_domainport = atoi(value);
+		opt_domainport = yesno(value);
 	}
 	if((value = ini.GetValue("general", "managerport", NULL))) {
 		opt_manager_port = atoi(value);
@@ -9515,3 +9535,54 @@ cResolver *CR_RESOLVER() {
 	}
 	return(resolver);
 }
+
+
+#include <gcrypt.h>
+volatile int _init_lib_gcrypt_rslt = -1;
+volatile int _init_lib_gcrypt_sync = 0;
+GCRY_THREAD_OPTION_PTHREAD_IMPL;
+bool init_lib_gcrypt() {
+	if(_init_lib_gcrypt_rslt >= 0) {
+		return(_init_lib_gcrypt_rslt);
+	}
+	while(__sync_lock_test_and_set(&_init_lib_gcrypt_sync, 1));
+	if(_init_lib_gcrypt_rslt >= 0) {
+		__sync_lock_release(&_init_lib_gcrypt_sync);
+		return(_init_lib_gcrypt_rslt);
+	}
+	bool rslt = false;
+	if(gcry_check_version(GCRYPT_VERSION)) {
+		gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
+		gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
+		gcry_control(GCRYCTL_INIT_SECMEM, 16384, 0);
+		gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
+		gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
+		rslt = true;
+	} else {
+		syslog(LOG_ERR, "libgcrypt version mismatch");
+	}
+	_init_lib_gcrypt_rslt = rslt;
+	__sync_lock_release(&_init_lib_gcrypt_sync);
+	return(_init_lib_gcrypt_rslt);
+}
+
+
+#if HAVE_LIBSRTP
+#include <srtp/srtp.h>
+volatile int _init_lib_srtp_rslt = -1;
+volatile int _init_lib_srtp_sync = 0;
+bool init_lib_srtp() {
+	if(_init_lib_srtp_rslt >= 0) {
+		return(_init_lib_srtp_rslt);
+	}
+	while(__sync_lock_test_and_set(&_init_lib_srtp_sync, 1));
+	if(_init_lib_srtp_rslt >= 0) {
+		__sync_lock_release(&_init_lib_srtp_sync);
+		return(_init_lib_srtp_rslt);
+	}
+	srtp_init();
+	_init_lib_srtp_rslt = 1;
+	__sync_lock_release(&_init_lib_srtp_sync);
+	return(_init_lib_srtp_rslt);
+}
+#endif

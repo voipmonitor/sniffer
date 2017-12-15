@@ -459,8 +459,9 @@ bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer
 bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL);
 double ts2double(unsigned int sec, unsigned int usec);
 long long GetFileSize(std::string filename);
-long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index);
-long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index);
+long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
+long long GetDirSizeDU(unsigned countFiles);
+long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
 long long GetFreeDiskSpace(const char* absoluteFilePath, bool percent_mult_100 = false);
 long long GetTotalDiskSpace(const char* absoluteFilePath);
 string GetStringMD5(std::string str);
@@ -480,7 +481,8 @@ time_t stringToTime(const char *timeStr);
 struct tm getDateTime(u_int64_t us);
 struct tm getDateTime(time_t time);
 struct tm getDateTime(const char *timeStr);
-unsigned int getNumberOfDayToNow(const char *date);
+int getNumberOfDayToNow(const char *date);
+int getNumberOfHourToNow(const char *date, int hour);
 string getActDateTimeF(bool useT_symbol = false);
 unsigned long getUptime();
 
@@ -493,8 +495,8 @@ std::string &trim(std::string &s, const char *trimChars = NULL);
 std::string trim_str(std::string s, const char *trimChars = NULL);
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);
-std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false);
-std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false);
+std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false, bool useEmptyItems = false);
+std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false, bool useEmptyItems = false);
 
 bool check_regexp(const char *pattern);
 int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);

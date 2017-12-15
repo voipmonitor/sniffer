@@ -1,3 +1,10 @@
+21.5.1 15.12.2017
+=================
+- fix load parameter domainport
+- fix bad SSRC assigning to wrong stream when multiple RTP streams are present [VS-683]
+- fix srtp crashes and add support for multiple crypto tags [VS-729]
+
+
 21.5 08.12.2017
 ===============
 - new autostart when sniffer crashes or is killed. Enabled by default, can be turned off by watchdog=no or --watchdog=no

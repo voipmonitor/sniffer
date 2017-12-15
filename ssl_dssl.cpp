@@ -279,13 +279,8 @@ void cSslDsslSessions::term() {
 void ssl_dssl_init() {
 	#ifdef HAVE_OPENSSL101
 	SslDsslSessions = new FILE_LINE(0) cSslDsslSessions;
-	if(!gcry_check_version(GCRYPT_VERSION)) {
-		syslog(LOG_ERR, "libgcrypt version mismatch");
-	}
-	gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
-	gcry_control(GCRYCTL_INIT_SECMEM, 16384, 0);
-	gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
-	gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
+	extern bool init_lib_gcrypt();
+	init_lib_gcrypt();
 	#endif //HAVE_OPENSSL101
 }
 

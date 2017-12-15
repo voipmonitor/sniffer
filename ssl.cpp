@@ -3778,10 +3778,9 @@ void
 ssl_init() {
 
 	gnutls_global_init();
-	gcry_check_version(GCRYPT_VERSION);
-	gcry_control (GCRYCTL_DISABLE_SECMEM, 0);
-	gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
-
+	
+	extern bool init_lib_gcrypt();
+	init_lib_gcrypt();
 
 	if(debug) printf("gnutls version: %s\n", gnutls_check_version(NULL));
 

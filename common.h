@@ -83,6 +83,7 @@ struct sVerbose {
 	int heap_use_time;
 	int dtmf;
 	int cleanspool;
+	int cleanspool_disable_rm;
 	int t2_destroy_all;
 	int log_profiler;
 	int dump_packets_via_wireshark;

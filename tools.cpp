@@ -779,12 +779,17 @@ long long GetFileSize(std::string filename)
 	return rc == 0 ? stat_buf.st_size : -1;
 }
 
-long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index)
+long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize)
 {
-	return(GetDU(GetFileSize(filename), typeSpoolFile, spool_index));
+	return(GetDU(GetFileSize(filename), typeSpoolFile, spool_index, dirItemSize));
 }
 
-long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index) {
+long long GetDirSizeDU(unsigned countFiles)
+{
+	return(max(4096u, countFiles * 100));
+}
+
+long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize) {
 	static int block_size[MAX_COUNT_TYPE_SPOOL_FILE][MAX_COUNT_SPOOL_INDEX];
 	if(!block_size[typeSpoolFile][spool_index]) {
 		extern char opt_spooldir_main[1024];
@@ -804,7 +809,7 @@ long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_inde
 				fileSize = (fileSize / bs * bs) + (fileSize % bs ? bs : 0);
 			}
 		}
-		fileSize += 100; // inode / directory item size
+		fileSize += (dirItemSize == -1 ? 100 : dirItemSize); // inode / directory item size
 	}
 	return(fileSize);
 }
@@ -975,7 +980,7 @@ struct tm getDateTime(const char *timeStr) {
 	return(getDateTime(stringToTime(timeStr)));
 }
 
-unsigned int getNumberOfDayToNow(const char *date) {
+int getNumberOfDayToNow(const char *date) {
 	int year, month, day;
 	sscanf(date, "%d-%d-%d", &year, &month, &day);
 	time_t now;
@@ -989,6 +994,22 @@ unsigned int getNumberOfDayToNow(const char *date) {
 	dateTime.tm_min = 0; 
 	dateTime.tm_sec = 0;
 	return(difftime(now, mktime(&dateTime)) / (24 * 60 * 60));
+}
+
+int getNumberOfHourToNow(const char *date, int hour) {
+	int year, month, day;
+	sscanf(date, "%d-%d-%d", &year, &month, &day);
+	time_t now;
+	time(&now);
+	struct tm dateTime = time_r(&now);
+	dateTime.tm_year = year - 1900;
+	dateTime.tm_mon = month - 1;  
+	dateTime.tm_mday = day;
+	dateTime.tm_wday = 0;
+	dateTime.tm_hour = hour; 
+	dateTime.tm_min = 0; 
+	dateTime.tm_sec = 0;
+	return(difftime(now, mktime(&dateTime)) / (60 * 60));
 }
 
 string getActDateTimeF(bool useT_symbol) {
@@ -2193,7 +2214,7 @@ std::vector<std::string> split(const std::string &s, char delim) {
     return elems;
 }
 
-std::vector<std::string> split(const char *s, const char *delim, bool enableTrim) {
+std::vector<std::string> split(const char *s, const char *delim, bool enableTrim, bool useEmptyItems) {
 	std::vector<std::string> elems;
 	char *p = (char*)s;
 	int delim_length = strlen(delim);
@@ -2205,7 +2226,7 @@ std::vector<std::string> split(const char *s, const char *delim, bool enableTrim
 		if(enableTrim) {
 			trim(elem);
 		}
-		if(elem.length()) {
+		if(useEmptyItems || elem.length()) {
 			elems.push_back(elem);
 		}
 		p = next_delim ? next_delim + delim_length : NULL;
@@ -2213,7 +2234,7 @@ std::vector<std::string> split(const char *s, const char *delim, bool enableTrim
 	return elems;
 }
 
-std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim) {
+std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim, bool useEmptyItems) {
 	vector<std::string> elems;
 	string elem = s;
 	trim(elem);
@@ -2221,7 +2242,7 @@ std::vector<std::string> split(const char *s, std::vector<std::string> delim, bo
 	for(size_t i = 0; i < delim.size(); i++) {
 		vector<std::string> _elems;
 		for(size_t j = 0; j < elems.size(); j++) {
-			vector<std::string> __elems = split(elems[j].c_str(), delim[i].c_str(), enableTrim);
+			vector<std::string> __elems = split(elems[j].c_str(), delim[i].c_str(), enableTrim, useEmptyItems);
 			for(size_t k = 0; k < __elems.size(); k++) {
 				_elems.push_back(__elems[k]);
 			}
