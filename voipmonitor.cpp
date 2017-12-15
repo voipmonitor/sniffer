@@ -9532,6 +9532,7 @@ cResolver *CR_RESOLVER() {
 #include <gcrypt.h>
 volatile int _init_lib_gcrypt_rslt = -1;
 volatile int _init_lib_gcrypt_sync = 0;
+GCRY_THREAD_OPTION_PTHREAD_IMPL;
 bool init_lib_gcrypt() {
 	if(_init_lib_gcrypt_rslt >= 0) {
 		return(_init_lib_gcrypt_rslt);
@@ -9543,7 +9544,6 @@ bool init_lib_gcrypt() {
 	}
 	bool rslt = false;
 	if(gcry_check_version(GCRYPT_VERSION)) {
-		GCRY_THREAD_OPTION_PTHREAD_IMPL;
 		gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
 		gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
 		gcry_control(GCRYCTL_INIT_SECMEM, 16384, 0);
