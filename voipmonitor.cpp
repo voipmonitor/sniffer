@@ -4732,7 +4732,7 @@ void test() {
 			CleanSpool::run_clean_obsolete();
 			break;
 		case 317:
-			CleanSpool::run_test_load();
+			CleanSpool::run_test_load(opt_test_arg);
 			break;
 		}
 		set_terminating();
@@ -6110,7 +6110,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"reindex-all", 0, 0, 304},
 	    {"run-cleanspool", 0, 0, 305},
 	    {"run-cleanspool-maxdays", 1, 0, 312},
-	    {"test-cleanspool-load", 0, 0, 317},
+	    {"test-cleanspool-load", 1, 0, 317},
 	    {"run-droppartitions-maxdays", 1, 0, 313},
 	    {"clean-obsolete", 0, 0, 306},
 	    {"check-db", 0, 0, 307},
@@ -6507,7 +6507,7 @@ void get_command_line_arguments() {
 			case 306:
 				if(is_enable_cleanspool(true)) {
 					opt_test = c;
-					if(c == 312) {
+					if(c == 312 || c == 317) {
 						strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
 					}
 				}
@@ -6826,7 +6826,7 @@ void set_context_config() {
 	}
 	
 	if(opt_pcap_queue_dequeu_window_length < 0) {
-		if(opt_pcap_queue_receive_from_ip_port) {
+		if(opt_pcap_queue_receive_from_ip_port || snifferServerOptions.isEnable()) {
 			 opt_pcap_queue_dequeu_window_length = 2000;
 		} else if(ifnamev.size() > 1) {
 			 opt_pcap_queue_dequeu_window_length = 1000;
@@ -9527,3 +9527,54 @@ cResolver *CR_RESOLVER() {
 	}
 	return(resolver);
 }
+
+
+#include <gcrypt.h>
+volatile int _init_lib_gcrypt_rslt = -1;
+volatile int _init_lib_gcrypt_sync = 0;
+bool init_lib_gcrypt() {
+	if(_init_lib_gcrypt_rslt >= 0) {
+		return(_init_lib_gcrypt_rslt);
+	}
+	while(__sync_lock_test_and_set(&_init_lib_gcrypt_sync, 1));
+	if(_init_lib_gcrypt_rslt >= 0) {
+		__sync_lock_release(&_init_lib_gcrypt_sync);
+		return(_init_lib_gcrypt_rslt);
+	}
+	bool rslt = false;
+	if(gcry_check_version(GCRYPT_VERSION)) {
+		GCRY_THREAD_OPTION_PTHREAD_IMPL;
+		gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
+		gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
+		gcry_control(GCRYCTL_INIT_SECMEM, 16384, 0);
+		gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
+		gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
+		rslt = true;
+	} else {
+		syslog(LOG_ERR, "libgcrypt version mismatch");
+	}
+	_init_lib_gcrypt_rslt = rslt;
+	__sync_lock_release(&_init_lib_gcrypt_sync);
+	return(_init_lib_gcrypt_rslt);
+}
+
+
+#if HAVE_LIBSRTP
+#include <srtp/srtp.h>
+volatile int _init_lib_srtp_rslt = -1;
+volatile int _init_lib_srtp_sync = 0;
+bool init_lib_srtp() {
+	if(_init_lib_srtp_rslt >= 0) {
+		return(_init_lib_srtp_rslt);
+	}
+	while(__sync_lock_test_and_set(&_init_lib_srtp_sync, 1));
+	if(_init_lib_srtp_rslt >= 0) {
+		__sync_lock_release(&_init_lib_srtp_sync);
+		return(_init_lib_srtp_rslt);
+	}
+	srtp_init();
+	_init_lib_srtp_rslt = 1;
+	__sync_lock_release(&_init_lib_srtp_sync);
+	return(_init_lib_srtp_rslt);
+}
+#endif

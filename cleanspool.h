@@ -59,6 +59,26 @@ public:
 			if(type.length())	typeItem |= _ti_type;
 			return(typeItem);
 		}
+		bool eqSettedItems(const sSpoolDataDirIndex& other) {
+			if(spool.length() && spool != other.spool) return(false);
+			if(sensor.length() && sensor != other.sensor) return(false);
+			if(date.length() && date != other.date)	return(false);
+			if(hour >= 0 && hour != other.hour) return(false);
+			if(minute >= 0 && minute != other.minute) return(false);
+			if(type.length() && type != other.type) return(false);
+			return(true);
+		}
+		bool eqHour(const sSpoolDataDirIndex& other) {
+			return(spool == other.spool &&
+			       sensor == other.sensor &&
+			       date == other.date &&
+			       hour == other.hour);
+		}
+		bool isHour() {
+			return(hour >= 0 &&
+			       minute < 0 &&
+			       !type.length());
+		}
 		eTypeSpoolFile getTypeSpoolFile() {
 			if(type.length()) {
 				return(_type);
@@ -90,6 +110,8 @@ public:
 			if(index.type.length())		os << "type: " << index.type << " ";
 			return(os);
 		}
+		string encode_hour();
+		void decode_hour(string str);
 		string spool;
 		string sensor;
 		string date;
@@ -103,6 +125,8 @@ public:
 			size = 0;
 			is_dir = false;
 		}
+		string encode();
+		void decode(string str);
 		string path;
 		long long size;
 		bool is_dir;
@@ -132,9 +156,14 @@ public:
 		bool isEmpty() {
 			return(data.size() == 0);
 		}
-		void fillDateHoursMap();
-		void clearDateHoursMap();
-		bool existsDateHour(const char *date, int hour);
+		bool saveHourCacheFile(sSpoolDataDirIndex index);
+		bool loadHourCacheFile(sSpoolDataDirIndex index, string pathHour);
+		bool existsHourCacheFile(sSpoolDataDirIndex index, string pathHour);
+		bool deleteHourCacheFile(sSpoolDataDirIndex index);
+		void fillDateHoursCheckMap();
+		void clearDateHoursCheckMap();
+		bool existsDateHourInCheckMap(const char *date, int hour);
+		void saveDeletedHourCacheFiles();
 		void eraseDir(string dir);
 		void lock() {
 			while(__sync_lock_test_and_set(&_sync, 1));
@@ -145,7 +174,18 @@ public:
 	private:
 		map<sSpoolDataDirIndex, sSpoolDataDirItem> data;
 		map<uint64_t, bool> date_hours_map;
+		list<sSpoolDataDirIndex> list_delete_hour_cache_files;
 		volatile int _sync;
+	};
+	struct sLoadParams {
+		sLoadParams() {
+			enable_cache_load = false;
+			enable_cache_save = false;
+			no_cache_last_hours = 0;
+		}
+		bool enable_cache_load;
+		bool enable_cache_save;
+		int no_cache_last_hours;
 	};
 public:
 	CleanSpool(int spoolIndex);
@@ -157,15 +197,17 @@ public:
 	void check_index_date(string date, SqlDb *sqlDb);
 	string getMaxSpoolDate();
 	void getSumSizeByDate(map<string, long long> *sizeByDate);
-	void printSumSizeByDate();
+	string printSumSizeByDate();
 	static void run_cleanProcess(int spoolIndex = -1);
 	static void run_clean_obsolete(int spoolIndex = -1);
-	static void run_test_load(int spoolIndex = -1);
+	static void run_test_load(string type, int spoolIndex = -1);
 	static void run_reindex_all(const char *reason, int spoolIndex = -1);
 	static void run_reindex_date(string date, int spoolIndex = -1);
 	static void run_reindex_date_hour(string date, int hour, int spoolIndex = -1);
 	static void run_check_filesindex(int spoolIndex = -1);
 	static void run_check_spooldir_filesindex(const char *dirfilter = NULL, int spoolIndex = -1);
+	static void run_reindex_spool(int spoolIndex = -1);
+	static string run_print_spool(int spoolIndex = -1);
 	static bool suspend(int spoolIndex = -1);
 	static bool resume(int spoolIndex = -1);
 	static bool isSetCleanspoolParameters(int spoolIndex);
@@ -177,9 +219,9 @@ public:
 	static bool check_type_dir(const char *typedir);
 	static unsigned date_to_int(const char *date);
 private:
-	void reloadSpoolDataDir();
+	void reloadSpoolDataDir(bool enableCacheLoad, bool enableCacheSave);
 	void updateSpoolDataDir();
-	void loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex index, string path);
+	void loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex index, string path, sLoadParams params);
 	void loadOpt();
 	void runCleanThread();
 	void termCleanThread();
@@ -232,8 +274,10 @@ private:
 		clean_maxpooldays(false, false, false, true);
 	}
 	void clean_obsolete_dirs();
-	void test_load();
+	void test_load(string type);
 	void check_spooldir_filesindex(const char *dirfilter);
+	void force_reindex_spool();
+	string print_spool();
 	unsigned int get_reduk_maxpoolsize(unsigned int maxpoolsize);
 	bool fileIsOpenTar(list<string> &listOpenTars, string &file);
 	void readSpoolDateDirs(list<string> *dirs);
@@ -279,6 +323,7 @@ private:
 	cSpoolData spoolData;
 	time_t lastRunLoadSpoolDataDir;
 	unsigned counterLoadSpoolDataDir;
+	bool force_reindex_spool_flag;
 };
 
 

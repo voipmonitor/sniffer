@@ -172,8 +172,6 @@ private:
 	eError error;
 	int rtcp_unencrypt_header_len;
 	int rtcp_unencrypt_footer_len;
-	static bool gcrypt_lib_init;
-	static bool srtp_lib_init;
 };
 
 

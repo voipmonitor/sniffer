@@ -87,9 +87,6 @@ RTPsecure::RTPsecure(eMode mode) {
 	rtcp_unencrypt_footer_len = 4;
 }
 
-bool RTPsecure::gcrypt_lib_init = false;
-bool RTPsecure::srtp_lib_init = false;
-
 RTPsecure::~RTPsecure() {
 	term();
 }
@@ -302,13 +299,10 @@ void RTPsecure::term() {
 }
 
 bool RTPsecure::init_native() {
-	if(!gcrypt_lib_init) {
-		if(gcry_check_version(GCRYPT_VERSION)) {
-			gcrypt_lib_init = true;
-		} else {
-			setError(err_gcrypt_init);
-			return(false);
-		}
+	extern bool init_lib_gcrypt();
+	if(!init_lib_gcrypt()) {
+		setError(err_gcrypt_init);
+		return(false);
 	}
 	if(gcry_cipher_open(&rtp->cipher, cipher(), GCRY_CIPHER_MODE_CTR, 0)) {
 		setError(err_cipher_open);
@@ -363,10 +357,8 @@ bool RTPsecure::init_native() {
 
 bool RTPsecure::init_libsrtp() {
 	#if HAVE_LIBSRTP
-	if(!srtp_lib_init) {
-		srtp_init();
-		srtp_lib_init = true;
-	}
+	extern void init_lib_srtp();
+	init_lib_srtp();
 	for(int i = 0; i < 2; i++) {
 		srtp_policy_t *policy = i == 0 ? &rtp->policy : &rtcp->policy;
 		switch(key_len()) {

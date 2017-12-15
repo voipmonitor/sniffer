@@ -2214,7 +2214,7 @@ std::vector<std::string> split(const std::string &s, char delim) {
     return elems;
 }
 
-std::vector<std::string> split(const char *s, const char *delim, bool enableTrim) {
+std::vector<std::string> split(const char *s, const char *delim, bool enableTrim, bool useEmptyItems) {
 	std::vector<std::string> elems;
 	char *p = (char*)s;
 	int delim_length = strlen(delim);
@@ -2226,7 +2226,7 @@ std::vector<std::string> split(const char *s, const char *delim, bool enableTrim
 		if(enableTrim) {
 			trim(elem);
 		}
-		if(elem.length()) {
+		if(useEmptyItems || elem.length()) {
 			elems.push_back(elem);
 		}
 		p = next_delim ? next_delim + delim_length : NULL;
@@ -2234,7 +2234,7 @@ std::vector<std::string> split(const char *s, const char *delim, bool enableTrim
 	return elems;
 }
 
-std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim) {
+std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim, bool useEmptyItems) {
 	vector<std::string> elems;
 	string elem = s;
 	trim(elem);
@@ -2242,7 +2242,7 @@ std::vector<std::string> split(const char *s, std::vector<std::string> delim, bo
 	for(size_t i = 0; i < delim.size(); i++) {
 		vector<std::string> _elems;
 		for(size_t j = 0; j < elems.size(); j++) {
-			vector<std::string> __elems = split(elems[j].c_str(), delim[i].c_str(), enableTrim);
+			vector<std::string> __elems = split(elems[j].c_str(), delim[i].c_str(), enableTrim, useEmptyItems);
 			for(size_t k = 0; k < __elems.size(); k++) {
 				_elems.push_back(__elems[k]);
 			}

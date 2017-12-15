@@ -1006,6 +1006,29 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "reindexspool") != NULL) {
+		string rslt;
+		if(is_enable_cleanspool()) {
+			CleanSpool::run_reindex_spool();
+			rslt = "done\r\n";
+		} else {
+			rslt = "cleanspool is disable\r\n";
+		}
+		if ((size = sendvm(client, sshchannel, c_client, rslt.c_str(), rslt.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "printspool") != NULL) {
+		string rslt;
+		if(is_enable_cleanspool()) {
+			rslt = CleanSpool::run_print_spool();
+		} else {
+			rslt = "cleanspool is disable\r\n";
+		}
+		if ((size = sendvm(client, sshchannel, c_client, rslt.c_str(), rslt.length(), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "totalcalls") != NULL) {
 		snprintf(sendbuf, BUFSIZE, "%d", calls_counter);
 		if ((size = sendvm(client, sshchannel, c_client, sendbuf, strlen(sendbuf), 0)) == -1){
