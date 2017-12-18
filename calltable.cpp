@@ -828,7 +828,7 @@ Call::closeRawFiles() {
 /* add ip adress and port to this call */
 int
 Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		  char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		  char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return(-1);
 	}
@@ -868,18 +868,17 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 	this->ip_port[ipport_n].iscaller = iscaller;
 	this->ip_port[ipport_n].sdp_flags = sdp_flags;
 	if(sessid) {
-		strncpy(this->ip_port[ipport_n].sessid, sessid, MAXLEN_SDP_SESSID);
-	} else {
-		this->ip_port[ipport_n].sessid[0] = 0;
+		this->ip_port[ipport_n].sessid = sessid;
 	}
 	if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
 		this->ip_port[ipport_n].setSdpCryptoList(rtp_crypto_config_list);
 		this->exists_crypto_suite_key = true;
 	}
 	if(to) {
-		strncpy(this->ip_port[ipport_n].to, to, MAXLEN_SDP_TO);
-	} else {
-		this->ip_port[ipport_n].to[0] = 0;
+		this->ip_port[ipport_n].to = to;
+	}
+	if(branch) {
+		this->ip_port[ipport_n].branch = branch;
 	}
 	nullIpPortInfoRtpStream(ipport_n);
 	
@@ -961,7 +960,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 
 void
 Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		       char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		       char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return;
 	}
@@ -995,10 +994,25 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info
 		}
 	}
 	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, header, 
-			     sessid, rtp_crypto_config_list, to, iscaller, rtpmap, sdp_flags) != -1) {
+			     sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, header->ts.tv_sec, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port + 1, header->ts.tv_sec, this, iscaller, 1, sdp_flags);
+		}
+	}
+}
+
+void 
+Call::cancel_ip_port_hash(in_addr_t sip_src_addr, char *to, char *branch) {
+	for(int i = 0; i < ipport_n; i++) {
+		if(this->ip_port[i].sip_src_addr == sip_src_addr &&
+		   !strcmp(this->ip_port[i].branch.c_str(), branch) &&
+		   !strcmp(this->ip_port[i].to.c_str(), to)) {
+			this->ip_port[i].canceled = true;
+			((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port);
+			if(opt_rtcp) {
+				((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port + 1, true);
+			}
 		}
 	}
 }
@@ -1021,8 +1035,8 @@ Call::get_index_by_ip_port(in_addr_t addr, unsigned short port, bool use_sip_src
 int
 Call::get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr, ip_port_call_info::eTypeAddr type_addr) {
 	for(int i = 0; i < ipport_n; i++) {
-		if(!strncmp(this->ip_port[i].sessid, sessid, MAXLEN_SDP_SESSID) &&
-		   !strncmp(this->ip_port[i].to, to, MAXLEN_SDP_TO) &&
+		if(!strcmp(this->ip_port[i].sessid.c_str(), sessid) &&
+		   !strcmp(this->ip_port[i].to.c_str(), to) &&
 		   this->ip_port[i].sip_src_addr == sip_src_addr &&
 		   this->ip_port[i].type_addr == type_addr) {
 			// we have found it
@@ -1031,6 +1045,49 @@ Call::get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr, ip_
 	}
 	// not found
 	return -1;
+}
+
+bool 
+Call::is_multiple_to_branch() {
+	for(int i = 0; i < ipport_n; i++) {
+		if(sipcallerip[0] && this->ip_port[i].sip_src_addr) {
+			for(int j = 0; j < ipport_n; j++) {
+				if(j != i &&
+				   sipcallerip[0] && this->ip_port[j].sip_src_addr &&
+				   this->ip_port[i].to.length() && this->ip_port[j].to.length() &&
+				   this->ip_port[i].to != this->ip_port[j].to &&
+				   this->ip_port[i].branch.length() && this->ip_port[j].branch.length() &&
+				   this->ip_port[i].branch != this->ip_port[j].branch) {
+					return(true);
+				}
+			}
+		}
+	}
+	return(false);
+}
+
+bool 
+Call::to_is_canceled(char *to) {
+	for(int i = 0; i < ipport_n; i++) {
+		if(sipcallerip[0] && this->ip_port[i].sip_src_addr &&
+		   !strcmp(this->ip_port[i].to.c_str(), to) &&
+		   this->ip_port[i].canceled) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+string
+Call::get_to_not_canceled() {
+	for(int i = 0; i < ipport_n; i++) {
+		if(sipcallerip[0] && this->ip_port[i].sip_src_addr &&
+		   this->ip_port[i].to.length() &&
+		   !this->ip_port[i].canceled) {
+			return(this->ip_port[i].to);
+		}
+	}
+	return("");
 }
 
 /* analyze rtcp packet */
@@ -3069,6 +3126,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	cdr.add(sqlEscapeString(caller), "caller");
 	cdr.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
+	if(is_multiple_to_branch() && to_is_canceled(called)) {
+		string called_not_canceled = get_to_not_canceled();
+		if(called_not_canceled.length()) {
+			strncpy(called, called_not_canceled.c_str(), sizeof(called));
+			called[sizeof(called) - 1] = 0;
+		}
+	}
 	cdr.add(sqlEscapeString(called), "called");
 	cdr.add(sqlEscapeString(reverseString(called).c_str()), "called_reverse");
 	cdr.add(sqlEscapeString(caller_domain), "caller_domain");

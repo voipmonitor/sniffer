@@ -2456,18 +2456,19 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 
 			char to[1024];
 			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to));
-			
+			char branch[100];
+			get_sip_branch(packetS, "via:", branch, sizeof(branch));
 			call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base, tmp_port, packetS->header_pt, 
-					       sessid, rtp_crypto_config_list, to, iscaller, rtpmap, sdp_flags);
+					       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
 			// check if the IP address is listed in nat_aliases
 			in_addr_t alias = 0;
 			if((alias = match_nat_aliases(tmp_addr)) != 0) {
 				call->add_ip_port_hash(packetS->saddr, alias, ip_port_call_info::_ta_natalias, tmp_port, packetS->header_pt, 
-						       sessid, rtp_crypto_config_list, to, iscaller, rtpmap, sdp_flags);
+						       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
 			}
 			if(opt_sdp_reverse_ipport) {
 				call->add_ip_port_hash(packetS->saddr, packetS->saddr, ip_port_call_info::_ta_sdp_reverse_ipport, tmp_port, packetS->header_pt, 
-						       sessid, rtp_crypto_config_list, to, iscaller, rtpmap, sdp_flags);
+						       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
 			}
 		}
 		if(rtp_crypto_config_list) {
@@ -2735,7 +2736,8 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 	}
 	
 	if(existsColumns.cdr_reason &&
-	   !(packetS->sip_method == CANCEL && call->seeninviteok && call->called_invite_branch_map.size() > 1)) {
+	   !(packetS->sip_method == CANCEL && call->seeninviteok && 
+	     (call->called_invite_branch_map.size() > 1 || call->is_multiple_to_branch()))) {
 		char *reason = gettag_sip(packetS, "reason:", &l);
 		if(reason) {
 			char oldEndChar = reason[l];
@@ -2897,6 +2899,14 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
 			//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 10;
+		}
+		
+		if(call->is_multiple_to_branch()) {
+			char to[1024];
+			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to));
+			char branch[100];
+			get_sip_branch(packetS, "via:", branch, sizeof(branch));
+			call->cancel_ip_port_hash(packetS->saddr, to, branch);
 		}
 		
 		//check and save CSeq for later to compare with OK 
@@ -3904,9 +3914,9 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	}
 
 	call->add_ip_port_hash(saddr, daddr, ip_port_call_info::_ta_base, dest, header, 
-			       NULL, NULL, NULL, 1, rtpmap, s_sdp_flags());
+			       NULL, NULL, NULL, NULL, 1, rtpmap, s_sdp_flags());
 	call->add_ip_port_hash(saddr, saddr, ip_port_call_info::_ta_base, source, header, 
-			       NULL, NULL, NULL, 0, rtpmap, s_sdp_flags());
+			       NULL, NULL, NULL, NULL, 0, rtpmap, s_sdp_flags());
 	
 	return(call);
 }

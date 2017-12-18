@@ -2820,10 +2820,7 @@ void ParsePacket::setStdParse() {
 	addNode("cseq:", typeNode_std);
 	addNode("supported:", typeNode_std);
 	addNode("proxy-authenticate:", typeNode_std);
-	extern int opt_update_dstnum_onanswer;
-	if(opt_update_dstnum_onanswer) {
-		addNode("via:", typeNode_std);
-	}
+	addNode("via:", typeNode_std);
 	extern sExistsColumns existsColumns;
 	if(existsColumns.cdr_reason) {
 		addNode("reason:", typeNode_std);

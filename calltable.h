@@ -35,11 +35,10 @@
 #define MAX_FNAME 256		//!< max len of stored call-id
 #define MAX_RTPMAP 40          //!< max rtpmap records
 #define MAXNODE 150000
+#define MAX_SIPCALLERDIP 4
 #define MAXLEN_SDP_SESSID 16
 #define MAXLEN_SDP_CRYPTO_SUITE 40
 #define MAXLEN_SDP_CRYPTO_KEY 40
-#define MAXLEN_SDP_TO 128
-#define MAX_SIPCALLERDIP 4
 
 #define INVITE 1
 #define BYE 2
@@ -167,6 +166,7 @@ struct rtp_crypto_config {
 struct ip_port_call_info {
 	ip_port_call_info() {
 		rtp_crypto_config_list = NULL;
+		canceled = false;
 	}
 	~ip_port_call_info() {
 		if(rtp_crypto_config_list) {
@@ -190,12 +190,14 @@ struct ip_port_call_info {
 	u_int8_t type_addr;
 	u_int16_t port;
 	int8_t iscaller;
-	char sessid[MAXLEN_SDP_SESSID];
+	string sessid;
 	list<rtp_crypto_config> *rtp_crypto_config_list;
-	char to[MAXLEN_SDP_TO];
+	string to;
+	string branch;
 	u_int32_t sip_src_addr;
 	s_sdp_flags sdp_flags;
 	ip_port_call_info_rtp rtp[2];
+	bool canceled;
 };
 
 struct raws_t {
@@ -621,6 +623,10 @@ public:
 	int get_index_by_ip_port(in_addr_t addr, unsigned short port, bool use_sip_src_addr = false);
 	
 	int get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr, ip_port_call_info::eTypeAddr type_addr);
+	
+	bool is_multiple_to_branch();
+	bool to_is_canceled(char *to);
+	string get_to_not_canceled();
 
 	/**
 	 * @brief close all rtp[].gfileRAW
@@ -659,13 +665,15 @@ public:
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
 	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-			char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+			char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
 	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
 	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-			      char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+			      char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 
+	void cancel_ip_port_hash(in_addr_t sip_src_addr, char *to, char *branch);
+	
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
 	 *
