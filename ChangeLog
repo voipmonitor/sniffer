@@ -1,3 +1,8 @@
+21.5.2 18.12.2017
+=================
+- fix dupoicate RTP stream for calls with multiple SIP branches (ring groups) - all versions [VG-1467]
+
+
 21.5.1 15.12.2017
 =================
 - fix load parameter domainport
