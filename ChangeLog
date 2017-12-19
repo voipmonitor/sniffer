@@ -1,3 +1,8 @@
+21.5.3 19.12.2017
+=================
+- fix crash in SRTP decode
+
+
 21.5.2 18.12.2017
 =================
 - fix dupoicate RTP stream for calls with multiple SIP branches (ring groups) - all versions [VG-1467]
@@ -71,7 +76,7 @@
 - new detection of INVITE retransmissions - it requires CDR alter [VG-1313] 
 
 
-21.1.1 16.10.2017
+1.1.1 16.10.2017
 =================
 - support MGCP messages with "\n" instead of "\r\n" separator [VS-700]
 
