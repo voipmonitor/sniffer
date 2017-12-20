@@ -877,6 +877,8 @@ unsigned opt_udp_port_mgcp_callagent = 2727;
 
 SensorsMap sensorsMap;
 
+bool cloud_db = false;
+
 WDT *wdt;
 bool enable_wdt = true;
 string cmdline;
@@ -6127,6 +6129,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"conv-raw-info", 1, 0, 310},
 	    {"find-country-for-number", 1, 0, 311},
 	    {"watchdog", 1, 0, 316},
+	    {"cloud-db", 0, 0, 318},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -6542,6 +6545,9 @@ void get_command_line_arguments() {
 				break;
 			case 316:
 				enable_wdt = yesno(optarg);
+				break;
+			case 318:
+				cloud_db = true;
 				break;
 			case 'c':
 				opt_nocdr = 1;

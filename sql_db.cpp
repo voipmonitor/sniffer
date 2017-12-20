@@ -87,6 +87,8 @@ extern CustomHeaders *custom_headers_message;
 
 extern int opt_ptime;
 
+extern bool cloud_db;
+
 extern sSnifferClientOptions snifferClientOptions;
 extern sSnifferServerClientOptions snifferServerClientOptions;
 
@@ -1459,6 +1461,9 @@ bool SqlDb_mysql::existsTable(const char *table) {
 }
 
 bool SqlDb_mysql::existsDatabase() {
+	if(cloud_db) {
+		return(true);
+	}
 	this->query(string("show databases like '") + conn_database + "'");
 	int countRow = 0;
 	while(this->fetchRow()) {
@@ -6852,7 +6857,8 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
 		sqlDb->setMaxQueryPass(1);
 		for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
 			sqlDb->query(
-				string("call create_partition_v2('") + tablesForCreatePartitions[i] + "', " + 
+				string("call create_partition_v2(") + 
+				       "'" + tablesForCreatePartitions[i] + "', " + 
 				       "'day', " + intToString(day) + ", " + 
 				       (opt_cdr_partition_oldver ? "true" : "false") + ");");
 		}
@@ -6869,7 +6875,9 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
 				string _mysql_database = connectId == 0 ? 
 							  mysql_database : 
 							  mysql_2_database;
-				sqlDb->query(string("call `") + _mysql_database + "`.create_partition_v2('" + _mysql_database + "', '" + tablesForCreatePartitions[i] + "', " + 
+				sqlDb->query(string("call `") + _mysql_database + "`.create_partition_v2(" + 
+					     (cloud_db ? "" : string("'") + _mysql_database + "', ") + 
+					     "'" + tablesForCreatePartitions[i] + "', " + 
 					     "'day', " + intToString(day) + ", " + 
 					     (opt_cdr_partition_oldver ? "true" : "false") + ");");
 			}
