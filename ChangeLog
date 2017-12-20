@@ -1,3 +1,9 @@
+21.5.5 20.12.2017
+=================
+- do not hang on startup when there is no mysql connection [VS-733]
+- fix cloud db connection
+
+
 21.5.4 20.12.2017
 =================
 - fix SRTCP issues
