@@ -870,7 +870,8 @@ void SqlDb::logNeedAlter(string table, string reason, string alter,
 	}
 	if(log && !okAlter) {
 		string msg = 
-			"!!! You need to alter " + table + " database table and add new columns to support " + reason + ". "
+			"!!! New feature was added. If you want to use it then you need to alter " + table +
+			" database table and add new columns to support " + reason + ". "
 			"This operation can take hours based on ammount of data, CPU and I/O speed of your server. "
 			"The alter table will prevent the database to insert new rows and will probably block other operations. "
 			"It is recommended to alter the table in non working hours. "
