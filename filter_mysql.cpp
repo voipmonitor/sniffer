@@ -444,10 +444,15 @@ int TELNUMfilter::_add_call_flags(volatile unsigned int *flags, char *telnum_src
         t_node_tel *tmp = first_node;
         t_payload *lastpayload = NULL;
         for(unsigned int i = 0; i < strlen(telnum_src); i++) {
-                if(!tmp->nodes[(unsigned char)telnum_src[i]]) {
+		unsigned char checkChar = telnum_src[i];
+		if(checkChar == '%' && !strncmp(telnum_src + i, "%23", 3)) {
+			checkChar = '#';
+			i += 2;
+		}
+                if(!tmp->nodes[checkChar]) {
                         break;
                 }
-                tmp = tmp->nodes[(unsigned char)telnum_src[i]];
+                tmp = tmp->nodes[checkChar];
                 if(tmp && tmp->payload) {
 			lastdirection = tmp->payload->direction;
                         lastpayload = tmp->payload;
@@ -462,10 +467,15 @@ int TELNUMfilter::_add_call_flags(volatile unsigned int *flags, char *telnum_src
 		lastpayload = NULL;
 		//src not found or src found , try dst
 		for(unsigned int i = 0; i < strlen(telnum_dst); i++) {
-			if(!tmp->nodes[(unsigned char)telnum_dst[i]]) {
+			unsigned char checkChar = telnum_dst[i];
+			if(checkChar == '%' && !strncmp(telnum_dst + i, "%23", 3)) {
+				checkChar = '#';
+				i += 2;
+			}
+			if(!tmp->nodes[checkChar]) {
 				break;
 			}
-			tmp = tmp->nodes[(unsigned char)telnum_dst[i]];
+			tmp = tmp->nodes[checkChar];
 			if(tmp && tmp->payload) {
 				lastdirection = tmp->payload->direction;
 				lastpayload = tmp->payload;

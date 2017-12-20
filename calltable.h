@@ -1740,5 +1740,7 @@ private:
 int sip_request_name_to_int(const char *requestName, bool withResponse = false);
 const char *sip_request_int_to_name(int requestCode, bool withResponse = false);
 
+string printCallFlags(unsigned int flags);
+
 
 #endif

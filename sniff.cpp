@@ -2182,11 +2182,32 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 
 	//flags
 	unsigned int flags = 0;
+	unsigned int flags_old = 0;
 	set_global_flags(flags);
+	if(sverb.dump_call_flags) {
+		cout << "flags init " << callidstr << " : " << printCallFlags(flags) << endl;
+		flags_old = flags;
+	}
 	IPfilter::add_call_flags(&flags, ntohl(packetS->saddr), ntohl(packetS->daddr), true);
+	if(sverb.dump_call_flags && flags != flags_old) {
+		cout << "set flags for ip " << inet_ntostring(htonl(packetS->saddr)) << " -> " << inet_ntostring(htonl(packetS->daddr)) << " : " << printCallFlags(flags) << endl;
+		flags_old = flags;
+	}
 	TELNUMfilter::add_call_flags(&flags, tcaller, tcalled, true);
+	if(sverb.dump_call_flags && flags != flags_old) {
+		cout << "set flags for number " << tcaller << " -> " << tcalled << " : " << printCallFlags(flags) << endl;
+		flags_old = flags;
+	}
 	DOMAINfilter::add_call_flags(&flags, tcaller_domain, tcalled_domain, true);
+	if(sverb.dump_call_flags && flags != flags_old) {
+		cout << "set flags for domain " << tcaller_domain << " -> " << tcalled_domain << " : " << printCallFlags(flags) << endl;
+		flags_old = flags;
+	}
 	SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags, true);
+	if(sverb.dump_call_flags && flags != flags_old) {
+		cout << "set flags for headers : " << printCallFlags(flags) << endl;
+		flags_old = flags;
+	}
 
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)

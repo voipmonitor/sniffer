@@ -7257,3 +7257,24 @@ const char *sip_request_int_to_name(int requestCode, bool withResponse) {
 	}
 	return(NULL);
 }
+
+
+string printCallFlags(unsigned int flags) {
+	ostringstream outStr;
+	if(flags & FLAG_SAVERTP)		outStr << "savertp ";
+	if(flags & FLAG_SAVERTCP)		outStr << "savertcp ";
+	if(flags & FLAG_SAVESIP)		outStr << "savesip ";
+	if(flags & FLAG_SAVEREGISTER)		outStr << "saveregister ";
+	if(flags & FLAG_SAVEAUDIO)		outStr << "saveaudio ";
+	if(flags & FLAG_FORMATAUDIO_WAV)	outStr << "format_wav ";
+	if(flags & FLAG_FORMATAUDIO_OGG)	outStr << "format_ogg ";
+	if(flags & FLAG_SAVEGRAPH)		outStr << "savegraph ";
+	if(flags & FLAG_SAVERTPHEADER)		outStr << "savertpheader ";
+	if(flags & FLAG_SKIPCDR)		outStr << "skipcdr ";
+	if(flags & FLAG_RUNSCRIPT)		outStr << "runscript ";
+	if(flags & FLAG_RUNAMOSLQO)		outStr << "runamoslqo ";
+	if(flags & FLAG_RUNBMOSLQO)		outStr << "runbmoslqo ";
+	if(flags & FLAG_HIDEMESSAGE)		outStr << "hidemessage ";
+	if(flags & FLAG_USE_SPOOL_2)		outStr << "use_spool_2 ";
+	return(outStr.str());
+}

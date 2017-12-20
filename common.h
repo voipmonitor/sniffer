@@ -88,6 +88,7 @@ struct sVerbose {
 	int log_profiler;
 	int dump_packets_via_wireshark;
 	int force_log_sqlq;
+	int dump_call_flags;
 	int _debug1;
 	int _debug2;
 	int _debug3;
