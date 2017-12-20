@@ -2423,8 +2423,6 @@ int main(int argc, char *argv[]) {
 	
 	if(!is_read_from_file_simple() && !is_set_gui_params() && command_line_data.size()) {
 		printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
-		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", RTPSENSOR_VERSION);
-		
 		string localActTime = sqlDateTimeString(time(NULL));
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
@@ -2688,6 +2686,10 @@ int main(int argc, char *argv[]) {
 		#endif
 		
 		daemonize();
+	}
+
+	if(!is_read_from_file_simple() && !is_set_gui_params() && command_line_data.size()) {
+		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", RTPSENSOR_VERSION);
 	}
 
 	if(!is_read_from_file() && opt_fork && enable_wdt) {

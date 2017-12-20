@@ -7380,13 +7380,13 @@ void cLogSensor::_save() {
 	}
 	extern MySqlStore *sqlStore;
 	SqlDb *sqlDb = createSqlObject();
+	sqlDb->setMaxQueryPass(1);
+	sqlDb->setDisableLogError(true);
+	sqlDb->setEnableSqlStringInContent(true);
 	bool existsOkLogSensorTable = false;
 	if(!sqlStore && !isCloud() && !opt_nocdr) {
 		existsOkLogSensorTable = sqlDb->existsDatabase() && sqlDb->existsTable("log_sensor");
 	}
-	sqlDb->setMaxQueryPass(1);
-	sqlDb->setDisableLogError(true);
-	sqlDb->setEnableSqlStringInContent(true);
 	string query_str;
 	sItem *firstItem = &(*items.begin());
 	unsigned counter = 0;
