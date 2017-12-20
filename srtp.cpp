@@ -80,6 +80,7 @@ RTPsecure::RTPsecure(eMode mode) {
 	rtp_roc = 0;
 	rtp_seq = 0;
 	rtp_rcc = 1;
+	rtp_seq_init = false;
 	rtp = NULL;
 	rtcp = NULL;
 	error = err_na;
@@ -121,6 +122,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 			}
 		}
 	} else {
+		bool counter_packet_inc = false;
 		for(cryptoConfigActiveIndex = 0; cryptoConfigActiveIndex < cryptoConfigVector.size(); cryptoConfigActiveIndex++) {
 			if(cryptoConfigVector[cryptoConfigActiveIndex].attempts_rtp > 10) {
 				continue;
@@ -131,7 +133,10 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 					term();
 					continue;
 				}
-				++rtp->counter_packets;
+				if(!counter_packet_inc) {
+					++rtp->counter_packets;
+					counter_packet_inc = true;
+				}
 				if(!(mode == mode_native ?
 				      decrypt_rtp_native(data, data_len, payload, payload_len) :
 				      decrypt_rtp_libsrtp(data, data_len, payload, payload_len))) {
@@ -148,8 +153,9 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len) {
 	uint16_t seq = get_seq_rtp(data);
 	uint32_t ssrc = get_ssrc_rtp(data);
-	if(rtp->counter_packets == 1) {
+	if(!rtp_seq_init) {
 		rtp_seq = seq;
+		rtp_seq_init = true;
 	}
 	uint32_t roc = compute_rtp_roc(seq);
 	u_char *tag = rtp_digest(data, *data_len - tag_len(), roc);
@@ -167,23 +173,29 @@ bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *pay
 }
 
 bool RTPsecure::decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char */*payload*/, unsigned *payload_len) {
-	#if HAVE_LIBSRTP
-	if(rtp->counter_packets == 1) {
-		rtp->policy.ssrc.value = get_ssrc_rtp(data);
-		srtp_create(&rtp->srtp_ctx, &rtp->policy);
-	}
-	int _data_len = *data_len;
 	bool rslt = false;
-	if(srtp_unprotect(rtp->srtp_ctx, data, &_data_len) == 0) {
-		int diff_len = *data_len - _data_len;
-		*data_len = _data_len;
-		*payload_len -= diff_len;
-		rslt = true;
+	#if HAVE_LIBSRTP
+	int _data_len = *data_len;
+	bool init_ctx = false;
+	for(unsigned pass = 0; pass < 2 && !rslt && !init_ctx; pass ++) {
+		if(!rtp->srtp_ctx || pass == 1) {
+			if(rtp->srtp_ctx) {
+				free(rtp->srtp_ctx);
+				rtp->srtp_ctx = NULL;
+			}
+			rtp->policy.ssrc.value = get_ssrc_rtp(data);
+			srtp_create(&rtp->srtp_ctx, &rtp->policy);
+			init_ctx = true;
+		}
+		if(srtp_unprotect(rtp->srtp_ctx, data, &_data_len) == 0) {
+			int diff_len = *data_len - _data_len;
+			*data_len = _data_len;
+			*payload_len -= diff_len;
+			rslt = true;
+		}
 	}
-	return(rslt);
-	#else
-	return(false);
 	#endif
+	return(rslt);
 }
 
 bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len) {
@@ -206,6 +218,7 @@ bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len) {
 			}
 		} 
 	} else {
+		bool counter_packet_inc = false;
 		for(cryptoConfigActiveIndex = 0; cryptoConfigActiveIndex < cryptoConfigVector.size(); cryptoConfigActiveIndex++) {
 			if(cryptoConfigVector[cryptoConfigActiveIndex].attempts_rtcp > 5) {
 				continue;
@@ -216,7 +229,10 @@ bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len) {
 					term();
 					continue;
 				}
-				++rtcp->counter_packets;
+				if(!counter_packet_inc) {
+					++rtcp->counter_packets;
+					counter_packet_inc = true;
+				}
 				if(!(mode == mode_native ?
 				      decrypt_rtcp_native(data, data_len) :
 				      decrypt_rtcp_libsrtp(data, data_len))) {
@@ -243,21 +259,27 @@ bool RTPsecure::decrypt_rtcp_native(u_char *data, unsigned *data_len) {
 }
 
 bool RTPsecure::decrypt_rtcp_libsrtp(u_char *data, unsigned *data_len) {
-	#if HAVE_LIBSRTP
-	if(rtcp->counter_packets == 1) {
-		rtcp->policy.ssrc.value = get_ssrc_rtcp(data);
-		srtp_create(&rtcp->srtp_ctx, &rtcp->policy);
-	}
-	int _data_len = *data_len;
 	bool rslt = false;
-	if(srtp_unprotect_rtcp(rtcp->srtp_ctx, data, &_data_len) == 0) {
-		*data_len = _data_len;
-		rslt = true;
+	#if HAVE_LIBSRTP
+	int _data_len = *data_len;
+	bool init_ctx = false;
+	for(unsigned pass = 0; pass < 2 && !rslt && !init_ctx; pass ++) {
+		if(!rtcp->srtp_ctx || pass == 1) {
+			if(rtcp->srtp_ctx) {
+				free(rtcp->srtp_ctx);
+				rtcp->srtp_ctx = NULL;
+			}
+			rtcp->policy.ssrc.value = get_ssrc_rtcp(data);
+			srtp_create(&rtcp->srtp_ctx, &rtcp->policy);
+			init_ctx = true;
+		}
+		if(srtp_unprotect_rtcp(rtcp->srtp_ctx, data, &_data_len) == 0) {
+			*data_len = _data_len;
+			rslt = true;
+		}
 	}
-	return(rslt);
-	#else
-	return(false);
 	#endif
+	return(rslt);
 }
 
 void RTPsecure::setError(eError error) {
@@ -277,6 +299,7 @@ bool RTPsecure::init() {
 	rtp_roc = 0;
 	rtp_seq = 0;
 	rtp_rcc = 1;
+	rtp_seq_init = false;
 	rtp = new FILE_LINE(0) sDecrypt;
 	rtcp = new FILE_LINE(0) sDecrypt;
 	if(mode == mode_native) {
@@ -425,7 +448,7 @@ bool RTPsecure::rtcpDecrypt(u_char *data, unsigned data_len) {
 		if ((diff >= 64) || ((rtcp->window >> diff) & 1)) {
 			return(false); // replay attack!
 		}
-		rtp->window |= 1 << diff;
+		rtcp->window |= 1 << diff;
 	}
 	if(rtcp_decrypt(data + rtcp_unencrypt_header_len, data_len - rtcp_unencrypt_header_len - rtcp_unencrypt_footer_len, get_ssrc_rtcp(data), index)) {
 		return(false);

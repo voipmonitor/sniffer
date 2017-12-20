@@ -1111,6 +1111,9 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 	RTPsecure *rtp_decrypt = NULL;
 	if(exists_crypto_suite_key && opt_srtp_rtcp_decrypt) {
 		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source - 1);
+		if(index_call_ip_port_by_src < 0) {
+			index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source - 1, true);
+		}
 		if(index_call_ip_port_by_src >= 0 && 
 		   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list &&
 		   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->size()) {
