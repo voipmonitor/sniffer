@@ -167,6 +167,7 @@ private:
 	uint32_t rtp_roc;
 	uint16_t rtp_seq;
 	uint16_t rtp_rcc;
+	bool rtp_seq_init;
 	sDecrypt *rtp;
 	sDecrypt *rtcp;
 	eError error;
