@@ -77,6 +77,8 @@ extern int opt_saveRAW;                // save RTP payload RAW data?
 extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	// compress GRAPH data to graph file? 
+extern bool opt_srtp_rtp_decrypt;
+extern bool opt_srtp_rtp_audio_decrypt;
 extern bool opt_srtp_rtcp_decrypt;
 extern int opt_save_sdp_ipport;
 extern int opt_mos_g729;
@@ -1337,7 +1339,7 @@ read:
 			usleep(100);
 		}
 		rtp[ssrc_n] = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
-		if(exists_crypto_suite_key) {
+		if(exists_crypto_suite_key && (opt_srtp_rtp_decrypt || opt_srtp_rtp_audio_decrypt)) {
 			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source);
 			if(index_call_ip_port_by_src < 0) {
 				index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source, true);
