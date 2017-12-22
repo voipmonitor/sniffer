@@ -1,3 +1,9 @@
+21.5.7 22.12.2017
+=================
+- fix potential crash ip parse sdp for very long sessid (rare)
+- enable srtp decoding for -W option
+
+
 21.5.6 22.12.2017
 =================
 - due to gcrypt instability srtcp is turned off by default now (fixes crashes in sniffer) 
