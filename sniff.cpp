@@ -1407,7 +1407,7 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
 		++space;
 	}
 	memset(sessid, 0, MAXLEN_SDP_SESSID);
-	memcpy(sessid, s, MIN(ispace, MAXLEN_SDP_SESSID));
+	memcpy(sessid, s, MIN(ispace, MAXLEN_SDP_SESSID - 1));
 	s = gettag(sdp_text,sdp_text_len, NULL, 
 		   "c=IN IP4 ", &l, &gettagLimitLen);
 	if(l == 0) return 1;
@@ -1449,14 +1449,14 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
 					crypto.tag = atoi(pointToParam);
 					break;
 				case 2:
-					crypto.suite = string(pointToParam, MIN(lengthParam, MAXLEN_SDP_CRYPTO_SUITE));
+					crypto.suite = string(pointToParam, lengthParam);
 					break;
 				case 3:
 					if(!strncasecmp(pointToParam, "inline:", 7)) {
 						pointToParam += 7;
 						lengthParam -= 7;
 					}
-					crypto.key = string(pointToParam, MIN(lengthParam, MAXLEN_SDP_CRYPTO_KEY));
+					crypto.key = string(pointToParam, lengthParam);
 					break;
 				}
 				pointToParam = pointToSeparator ? pointToSeparator + 1 : NULL;

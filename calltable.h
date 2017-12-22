@@ -36,9 +36,7 @@
 #define MAX_RTPMAP 40          //!< max rtpmap records
 #define MAXNODE 150000
 #define MAX_SIPCALLERDIP 4
-#define MAXLEN_SDP_SESSID 16
-#define MAXLEN_SDP_CRYPTO_SUITE 40
-#define MAXLEN_SDP_CRYPTO_KEY 40
+#define MAXLEN_SDP_SESSID 30
 
 #define INVITE 1
 #define BYE 2
