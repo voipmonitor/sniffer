@@ -5414,6 +5414,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
 				advanced();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
 					expert();
@@ -7837,6 +7838,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "srtp_rtp", NULL))) {
 		opt_srtp_rtp_decrypt= yesno(value);
 	}
+	if((value = ini.GetValue("general", "srtp_rtp_audio", NULL))) {
+		opt_srtp_rtp_audio_decrypt= yesno(value);
+	}
 	if((value = ini.GetValue("general", "srtp_rtcp", NULL))) {
 		opt_srtp_rtcp_decrypt= yesno(value);
 	}
@@ -9561,8 +9565,8 @@ bool init_lib_gcrypt() {
 		return(_init_lib_gcrypt_rslt);
 	}
 	bool rslt = false;
+	gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
 	if(gcry_check_version(GCRYPT_VERSION)) {
-		gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
 		gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
 		gcry_control(GCRYCTL_INIT_SECMEM, 16384, 0);
 		gcry_control(GCRYCTL_RESUME_SECMEM_WARN);

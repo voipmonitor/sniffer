@@ -1340,7 +1340,10 @@ read:
 			usleep(100);
 		}
 		rtp[ssrc_n] = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
-		if(exists_crypto_suite_key && (opt_srtp_rtp_decrypt || opt_srtp_rtp_audio_decrypt || opt_savewav_force)) {
+		if(exists_crypto_suite_key && 
+		   (opt_srtp_rtp_decrypt || 
+		    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
+		    opt_saveRAW || opt_savewav_force)) {
 			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source);
 			if(index_call_ip_port_by_src < 0) {
 				index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source, true);
