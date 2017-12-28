@@ -1070,6 +1070,7 @@ public:
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	bool exists_crypto_suite_key;
+	bool log_srtp_callid;
 	PcapDumper pcap;
 	PcapDumper pcapSip;
 	PcapDumper pcapRtp;

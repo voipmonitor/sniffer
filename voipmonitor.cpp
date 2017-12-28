@@ -6472,6 +6472,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "dump_packets_via_wireshark")	sverb.dump_packets_via_wireshark = 1;
 						else if(verbparams[i] == "force_log_sqlq")		sverb.force_log_sqlq = 1;
 						else if(verbparams[i] == "dump_call_flags")		sverb.dump_call_flags = 1;
+						else if(verbparams[i] == "log_srtp_callid")		sverb.log_srtp_callid = 1;
 						//
 						else if(verbparams[i] == "debug1")			sverb._debug1 = 1;
 						else if(verbparams[i] == "debug2")			sverb._debug2 = 1;

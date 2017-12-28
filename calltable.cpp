@@ -526,6 +526,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	vlan = -1;
 	
 	exists_crypto_suite_key = false;
+	log_srtp_callid = false;
 	error_negative_payload_length = false;
 	use_removeRtp = false;
 	hash_counter = 0;
@@ -1128,6 +1129,10 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 				    iter++) {
 					rtp_secure_map[index_call_ip_port_by_src]->addCryptoConfig(iter->tag, iter->suite.c_str(), iter->key.c_str());
 				}
+				if(sverb.log_srtp_callid && !log_srtp_callid) {
+					syslog(LOG_INFO, "SRTCP exists in call %s", call_id.c_str());
+					log_srtp_callid = true;
+				}
 			}
 			rtp_decrypt = rtp_secure_map[index_call_ip_port_by_src];
 		}
@@ -1358,6 +1363,10 @@ read:
 					    iter != this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->end();
 					    iter++) {
 						rtp_secure_map[index_call_ip_port_by_src]->addCryptoConfig(iter->tag, iter->suite.c_str(), iter->key.c_str());
+					}
+					if(sverb.log_srtp_callid && !log_srtp_callid) {
+						syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
+						log_srtp_callid = true;
 					}
 				}
 				rtp[ssrc_n]->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src]);
