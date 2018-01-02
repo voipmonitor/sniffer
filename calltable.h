@@ -35,7 +35,7 @@
 #define MAX_FNAME 256		//!< max len of stored call-id
 #define MAX_RTPMAP 40          //!< max rtpmap records
 #define MAXNODE 150000
-#define MAX_SIPCALLERDIP 4
+#define MAX_SIPCALLERDIP 8
 #define MAXLEN_SDP_SESSID 30
 
 #define INVITE 1
@@ -853,9 +853,12 @@ public:
 	bool check_is_caller_called(const char *call_id, int sip_method, 
 				    unsigned int saddr, unsigned int daddr, unsigned int sport, unsigned int dport,  
 				    int *iscaller, int *iscalled = NULL, bool enableSetSipcallerdip = false);
-	bool is_sipcaller(unsigned int addr, unsigned int port);
-	bool is_sipcalled(unsigned int addr, unsigned int port);
-	
+	bool is_sipcaller(unsigned int saddr, unsigned int sport, unsigned int daddr, unsigned int dport);
+	bool is_sipcalled(unsigned int daddr, unsigned int dport, unsigned int saddr, unsigned int sport);
+	bool use_both_side_for_check_direction() {
+		extern bool opt_both_side_for_check_direction;
+		return(opt_both_side_for_check_direction);
+	}
 	bool use_port_for_check_direction(unsigned int addr) {
 		return(true /*ip_is_localhost(htonl(addr))*/);
 	}
