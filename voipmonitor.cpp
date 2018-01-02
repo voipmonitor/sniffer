@@ -191,7 +191,7 @@ int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
 bool opt_srtp_rtp_decrypt = false;
 bool opt_srtp_rtp_audio_decrypt = false;
-bool opt_srtp_rtcp_decrypt = false;
+bool opt_srtp_rtcp_decrypt = true;
 int opt_use_libsrtp = 0;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
