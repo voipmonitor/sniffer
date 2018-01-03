@@ -1098,7 +1098,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			"\"dst_jitter\", "
 			"\"dst_loss\", "
 			"\"dst_loss_last10sec\"") + 
-			(is_receiver() ? ",\"id_sensor\"" : "") +
+			(is_receiver() || is_server() ? ",\"id_sensor\"" : "") +
 			"]"
 			).c_str());
 		rslt_data += outbuf;
@@ -1224,7 +1224,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 					 (call->lastcalledrtp and call->lastcalledrtp->stats.received > 50 ? (float)((double)call->lastcalledrtp->stats.lost / ((double)call->lastcalledrtp->stats.received + (double)call->lastcalledrtp->stats.lost) * 100.0) : 0),
 					 (call->lastcalledrtp ? (float)(call->lastcalledrtp->last_stat_loss_perc_mult10) : 0));
 				rslt_data += outbuf;
-				if(is_receiver()) {
+				if(is_receiver() || is_server()) {
 					rslt_data += "," + intToString(call->useSensorId);
 				}
 				rslt_data += "]";

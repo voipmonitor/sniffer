@@ -139,6 +139,8 @@ bool is_enable_rtp_threads();
 bool is_enable_cleanspool(bool log = false);
 bool is_receiver();
 bool is_sender();
+bool is_server();
+bool is_client();
 bool is_client_packetbuffer_sender();
 int check_set_rtp_threads(int num_rtp_threads);
 u_int32_t gethostbyname_lock(const char *name);

@@ -9257,6 +9257,14 @@ bool is_sender() {
 	       opt_pcap_queue_send_to_ip_port);
 }
 
+bool is_server() {
+	return(snifferServerOptions.isEnable());
+}
+
+bool is_client() {
+	return(snifferClientOptions.isEnable());
+}
+
 bool is_client_packetbuffer_sender() {
 	return(snifferClientOptions.isEnablePacketBufferSender());
 }
