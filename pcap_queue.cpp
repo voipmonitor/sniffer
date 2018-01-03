@@ -6247,7 +6247,7 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			} else {
 				sleep(1);
 			}
-			syslog(LOG_INFO, "send packetbuffer bock - next attempt %u", pass);
+			syslog(LOG_INFO, "send packetbuffer block - next attempt %u", pass);
 		}
 		if(!this->clientSocket) {
 			this->clientSocket = new FILE_LINE(0) cSocketBlock("packetbuffer block", true);
