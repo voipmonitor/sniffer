@@ -1,3 +1,10 @@
+21.6 03.01.2018
+===============
+- fix SRTP crashes and enable SRTCP decoding by default again [VS-736]
+- new experimental option both_side_for_check_direction  if set yes, sniffer detects INVITE direction by both sip sides
+- use source (client) id_sensor for listcalls in client / server mode [VG-1473]
+- fix time_r crash on arm [VS-738]
+
 21.5.7 22.12.2017
 =================
 - fix potential crash ip parse sdp for very long sessid (rare)
