@@ -2622,10 +2622,25 @@ struct sLocalTimeHourCache {
 };
 
 inline struct tm time_r(const time_t *timestamp, const char *timezone = NULL) {
+#if defined(__arm__)
+	static map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
+	static volatile int timeCacheMap_sync = 0;
+	unsigned int tid = get_unix_tid();
+	sLocalTimeHourCache *timeCache = NULL;
+	while(__sync_lock_test_and_set(&timeCacheMap_sync, 1));
+	if(!timeCacheMap[tid]) {
+		timeCache = new FILE_LINE(39014) sLocalTimeHourCache();
+		timeCacheMap[tid] = timeCache;
+	} else {
+		timeCache = timeCacheMap[tid];
+	}
+	__sync_lock_release(&timeCacheMap_sync);
+#else
 	static __thread sLocalTimeHourCache *timeCache = NULL;
 	if(!timeCache) {
 		timeCache = new FILE_LINE(39014) sLocalTimeHourCache();
 	}
+#endif
 	struct tm time;
 	bool force_gmt = false;
 	bool force_local = false;
