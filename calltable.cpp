@@ -6089,7 +6089,7 @@ Calltable::cleanup_calls( time_t currtime ) {
 }
 
 int
-Calltable::cleanup_registers( time_t currtime ) {
+Calltable::cleanup_registers( time_t currtime, int expires_add ) {
 
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
@@ -6159,7 +6159,7 @@ Calltable::cleanup_registers( time_t currtime ) {
 					}
 					if(reg->regstate != 2 ||
 					   !opt_register_timeout_disable_save_failed) {
-						registers.add(reg, currtime);
+						registers.add(reg, currtime, expires_add);
 					}
 					reg->getPcap()->close();
 					reg->getPcapSip()->close();

@@ -1504,7 +1504,7 @@ public:
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
 	int cleanup_calls( time_t currtime );
-	int cleanup_registers( time_t currtime );
+	int cleanup_registers( time_t currtime, int expires_add = 0 );
 	int cleanup_ss7( time_t currtime );
 
 	/**

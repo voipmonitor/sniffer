@@ -541,7 +541,7 @@ Registers::~Registers() {
 	clean_all();
 }
 
-void Registers::add(Call *call, time_t currtime) {
+void Registers::add(Call *call, time_t currtime, int expires_add) {
  
 	/*
 	string digest_username_orig = call->digest_username;
@@ -583,7 +583,7 @@ void Registers::add(Call *call, time_t currtime) {
 			if(regstate &&
 			   (regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) &&
 			   regstate->expires &&
-			   regstate->state_to + regstate->expires < currtime) {
+			   regstate->state_to + regstate->expires + expires_add < currtime) {
 					existsReg->expire(false);
 			}
 			existsReg->unlock_states();
@@ -611,7 +611,7 @@ void Registers::add(Call *call, time_t currtime) {
 	*/
 }
 
-void Registers::cleanup(u_int32_t act_time, bool force) {
+void Registers::cleanup(u_int32_t act_time, bool force, int expires_add) {
 	if(!last_cleanup_time) {
 		last_cleanup_time = act_time;
 		return;
@@ -628,7 +628,7 @@ void Registers::cleanup(u_int32_t act_time, bool force) {
 			if(regstate) {
 				if(regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) {
 					if(regstate->expires &&
-					   regstate->state_to + regstate->expires < act_time) {
+					   regstate->state_to + regstate->expires + expires_add < act_time) {
 						reg->expire(false);
 						// cout << "expire" << endl;
 					}

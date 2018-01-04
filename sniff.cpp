@@ -4174,6 +4174,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, u_long timeS) {
 
 inline void process_packet__cleanup_registers(pcap_pkthdr* header, u_long timeS) {
 	u_long actTimeS = getTimeS();
+	int expires_add = 0;
 	if(timeS) {
 		process_packet__last_cleanup_registers_diff = timeS - actTimeS;
 	} else {
@@ -4182,6 +4183,7 @@ inline void process_packet__cleanup_registers(pcap_pkthdr* header, u_long timeS)
 			process_packet__last_cleanup_registers_diff = timeS - actTimeS;
 		} else {
 			timeS = actTimeS + process_packet__last_cleanup_registers_diff;
+			expires_add = 30;
 		}
 	}
 	if(timeS - process_packet__last_cleanup_registers < 10) {
@@ -4189,9 +4191,9 @@ inline void process_packet__cleanup_registers(pcap_pkthdr* header, u_long timeS)
 	}
 	if(opt_sip_register == 1) {
 		extern Registers registers;
-		registers.cleanup(timeS);
+		registers.cleanup(timeS, false, expires_add);
 	}
-	calltable->cleanup_registers(timeS);
+	calltable->cleanup_registers(timeS, expires_add);
 	process_packet__last_cleanup_registers = timeS;
 }
 
