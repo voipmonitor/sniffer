@@ -366,6 +366,9 @@ public:
 	~SimpleBuffer() {
 		destroy();
 	}
+	void add(const char *data) {
+		add((void*)data, strlen(data));
+	}
 	void add(void *data, u_int32_t dataLength) {
 		if(!data || !dataLength) {
 			return;

@@ -1617,7 +1617,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
 		if(usersnifferIT != usersniffer.end()) {
-			snprintf(sendbuf, BUFSIZE, "%d", 1);
+			snprintf(sendbuf, BUFSIZE, "%d %s", 1, (char*)usersnifferIT->second->parameters);
 		} else {
 			snprintf(sendbuf, BUFSIZE, "%d", 0);
 		}
@@ -1626,6 +1626,115 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "startlivesniffer") != NULL) {
+		char parameters[10000] = "";
+		sscanf(buf, "startlivesniffer %[^\n\r]", parameters);
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "start livesniffer - parameters: %s", parameters);
+		}
+		JsonItem jsonParameters;
+		jsonParameters.parse(parameters);
+		while(__sync_lock_test_and_set(&usersniffer_sync, 1));
+		unsigned int uid = atol(jsonParameters.getValue("uid").c_str());
+		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
+		livesnifferfilter_t* filter;
+		if(usersnifferIT != usersniffer.end()) {
+			filter = usersnifferIT->second;
+		} else {
+			filter = new FILE_LINE(0) livesnifferfilter_t;
+			memset(filter, 0, sizeof(livesnifferfilter_t));
+			filter->parameters.add(parameters);
+			usersniffer[uid] = filter;
+		}
+		string filter_sensor_id = jsonParameters.getValue("filter_sensor_id");
+		if(filter_sensor_id.length()) {
+			filter->sensor_id = atoi(filter_sensor_id.c_str());
+			filter->sensor_id_set = true;
+		}
+		string filter_ip = jsonParameters.getValue("filter_ip");
+		if(filter_ip.length()) {
+			vector<string> ip = split(filter_ip.c_str(), split(",|;| ", "|"), true);
+			for(unsigned i = 0; i < ip.size() && i < MAXLIVEFILTERS; i++) {
+				filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(ip[i].c_str()));
+				if((int)filter->lv_bothaddr[i] == -1 && strchr(ip[i].c_str(), '/')) {
+					try_ip_mask(filter->lv_bothaddr[i], filter->lv_bothmask[i], ip[i]);
+				} else {
+					filter->lv_bothmask[i] = ~0;
+				}
+			}
+		}
+		string filter_port = jsonParameters.getValue("filter_port");
+		if(filter_port.length()) {
+			vector<string> port = split(filter_port.c_str(), split(",|;| ", "|"), true);
+			for(unsigned i = 0; i < port.size() && i < MAXLIVEFILTERS; i++) {
+				filter->lv_bothport[i] = ntohs(atoi(port[i].c_str()));
+			}
+		}
+		string filter_number = jsonParameters.getValue("filter_number");
+		if(filter_number.length()) {
+			vector<string> number = split(filter_number.c_str(), split(",|;| ", "|"), true);
+			for(unsigned i = 0; i < number.size() && i < MAXLIVEFILTERS; i++) {
+				strncpy(filter->lv_bothnum[i], number[i].c_str(), sizeof(filter->lv_bothnum[i]));
+				filter->lv_bothnum[i][sizeof(filter->lv_bothnum[i]) - 1] = 0;
+			}
+		}
+		string filter_vlan = jsonParameters.getValue("filter_vlan");
+		if(filter_vlan.length()) {
+			vector<string> vlan = split(filter_vlan.c_str(), split(",|;| ", "|"), true);
+			for(unsigned i = 0; i < vlan.size() && i < MAXLIVEFILTERS; i++) {
+				filter->lv_vlan[i] = atoi(vlan[i].c_str());
+				filter->lv_vlan_set[i] = true;
+			}
+		}
+		string filter_header_type = jsonParameters.getValue("filter_header_type");
+		string filter_header = jsonParameters.getValue("filter_header");
+		if(filter_header_type.length() && filter_header.length()) {
+			vector<string> header_type = split(filter_header_type.c_str(), split(",|;| ", "|"), true);
+			bool from = false;
+			bool to = false;
+			for(unsigned i = 0; i < header_type.size(); i++) {
+				if(header_type[i] == "F") {
+					from = true;
+				} else if(header_type[i] == "T") {
+					to = true;
+				}
+			}
+			if(from || to) {
+				vector<string> header = split(filter_header.c_str(), split(",|;| ", "|"), true);
+				for(unsigned i = 0; i < header.size() && i < MAXLIVEFILTERS; i++) {
+					if(from && to) {
+						strncpy(filter->lv_bothhstr[i], header[i].c_str(), sizeof(filter->lv_bothhstr[i]));
+						filter->lv_bothhstr[i][sizeof(filter->lv_bothhstr[i]) - 1] = 0;
+					} else if(from) {
+						strncpy(filter->lv_fromhstr[i], header[i].c_str(), sizeof(filter->lv_fromhstr[i]));
+						filter->lv_fromhstr[i][sizeof(filter->lv_fromhstr[i]) - 1] = 0;
+					} else if(to) {
+						strncpy(filter->lv_tohstr[i], header[i].c_str(), sizeof(filter->lv_tohstr[i]));
+						filter->lv_tohstr[i][sizeof(filter->lv_tohstr[i]) - 1] = 0;
+					}
+				}
+			}
+		}
+		string filter_sip_type = jsonParameters.getValue("filter_sip_type");
+		if(filter_sip_type.length()) {
+			vector<string> sip_type = split(filter_sip_type.c_str(), split(",|;| ", "|"), true);
+			for(unsigned i = 0, j = 0; i < sip_type.size(); i++) {
+				int sip_type_i = sip_type[i] == "I" ? INVITE :
+						 sip_type[i] == "R" ? REGISTER :
+						 sip_type[i] == "O" ? OPTIONS :
+						 sip_type[i] == "S" ? SUBSCRIBE :
+						 sip_type[i] == "M" ? MESSAGE :
+						 sip_type[i] == "N" ? NOTIFY :
+								      0;
+				if(sip_type_i) {
+					filter->lv_siptypes[j++] = sip_type_i;
+				}
+			}
+		}
+		updateLivesnifferfilters();
+		global_livesniffer = 1;
+		__sync_lock_release(&usersniffer_sync);
+		return(0);
 	} else if(strstr(buf, "livefilter set") != NULL) {
 		char search[1024] = "";
 		char value[1024] = "";
@@ -1866,7 +1975,8 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			int i = 0;
 			//reset filters
 			for(i = 0; i < MAXLIVEFILTERS; i++) {
-				filter->lv_vlan[i][0] = '\0';
+				filter->lv_vlan[i] = 0;
+				filter->lv_vlan_set[i] = false;
 			}
 			stringstream  data(value);
 			string val;
@@ -1874,10 +1984,8 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			// read all argumens livefilter set bothhstr 123 345 244
 			while(i < MAXLIVEFILTERS and getline(data, val,' ')){
 				global_livesniffer = 1;
-				stringstream tmp;
-				tmp << val;
-				tmp >> filter->lv_vlan[i];
-				//cout << filter->lv_bothhstr[i] << "\n";
+				filter->lv_vlan[i] = atoi(val.c_str());
+				filter->lv_vlan_set[i] = true;
 				i++;
 			}
 			updateLivesnifferfilters();
@@ -3433,7 +3541,7 @@ void livesnifferfilter_s::updateState() {
 		if(this->lv_bothhstr[i][0]) {
 			new_state.all_bothhstr = false;
 		}
-		if(this->lv_vlan[i][0]) {
+		if(this->lv_vlan_set[i]) {
 			new_state.all_vlan = false;
 		}
 		if(this->lv_siptypes[i]) {

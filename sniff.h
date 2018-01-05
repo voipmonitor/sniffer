@@ -15,6 +15,7 @@
 #include "calltable.h"
 #include "pcap_queue_block.h"
 #include "fraud.h"
+#include "tools.h"
 
 #ifdef FREEBSD
 #include <machine/endian.h>
@@ -738,6 +739,8 @@ typedef struct livesnifferfilter_s {
 		bool all_siptypes;
 		bool all_all;
 	};
+	int sensor_id;
+	bool sensor_id_set;
         unsigned int lv_saddr[MAXLIVEFILTERS];
         unsigned int lv_daddr[MAXLIVEFILTERS];
 	unsigned int lv_bothaddr[MAXLIVEFILTERS];
@@ -751,11 +754,13 @@ typedef struct livesnifferfilter_s {
         char lv_fromhstr[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
         char lv_tohstr[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
         char lv_bothhstr[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
-        char lv_vlan[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
+        int lv_vlan[MAXLIVEFILTERS];
+	bool lv_vlan_set[MAXLIVEFILTERS];
 	unsigned char lv_siptypes[MAXLIVEFILTERS];
         int uid;
         time_t created_at;
 	state_s state;
+	SimpleBuffer parameters;
 	void updateState();
 	string getStringState();
 } livesnifferfilter_t;

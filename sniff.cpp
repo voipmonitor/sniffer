@@ -445,7 +445,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 	
 	char caller[1024] = "", called[1024] = "";
 	char fromhstr[1024] = "", tohstr[1024] = "";
-	char vlanstr[1024] = ""; int vlan;
+	int vlan = -1;
         //Check if we use from/to header for filtering, if yes gather info from packet to fromhstr tohstr
         {
 		bool needfromhstr = false;
@@ -468,7 +468,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 			}
 			if(!usersnifferIT->second->state.all_all && !usersnifferIT->second->state.all_vlan) {
 				for(int i = 0; i < MAXLIVEFILTERS; i++) {
-					if(!usersnifferIT->second->state.all_vlan && usersnifferIT->second->lv_vlan[i][0]) {
+					if(!usersnifferIT->second->state.all_vlan && usersnifferIT->second->lv_vlan_set[i]) {
 						needvlan = true;
 					}
 				}
@@ -485,10 +485,8 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 			ether_header *header_eth;
 			u_int header_ip_offset;
 			int protocol;
-
 			parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
-			header_sll, header_eth, header_ip_offset, protocol, &vlan);
-			sprintf(vlanstr, "%d",vlan);
+					 header_sll, header_eth, header_ip_offset, protocol, &vlan);
 			//syslog (LOG_NOTICE,"PAKET obsahuje VLAN: %d '%s'",vlan, vlanstr);
 		}
 	}
@@ -527,6 +525,12 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 	
 	for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
 		livesnifferfilter_t *filter = usersnifferIT->second;
+		if(filter->sensor_id_set && filter->sensor_id &&
+		   (filter->sensor_id < 0 ?
+		     packetS->sensor_id_() > 0 :
+		     filter->sensor_id != packetS->sensor_id_())) {
+			continue;
+		}
 		bool save = filter->state.all_all;
 		if(!save) {
 			bool okAddr = filter->state.all_addr;
@@ -554,7 +558,6 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 					}
 				}
 			}
-
 			bool okNum = filter->state.all_num;
 			if(!okNum) {
 				for(int i = 0; i < MAXLIVEFILTERS && !okNum; i++) {
@@ -586,7 +589,8 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 			bool okVlan = filter->state.all_vlan;
 			if(!okVlan) {
 				for(int i = 0; i < MAXLIVEFILTERS && !okVlan; i++) {
-					if(filter->state.all_vlan || (filter->lv_vlan[i][0] && memmem(vlanstr, strlen(vlanstr), filter->lv_vlan[i], strlen(filter->lv_vlan[i])))) {
+					if(filter->state.all_vlan || 
+					   (filter->lv_vlan_set[i] && vlan == filter->lv_vlan[i])) {
 						okVlan = true;
 					}
 				}
