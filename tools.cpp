@@ -4578,6 +4578,7 @@ bool SocketSimpleBufferWrite::socketWrite(void *data, u_int32_t dataLength) {
 	while(dataLengthWrited < dataLength && !is_terminating()) {
 		ssize_t _dataLengthWrited = send(socketHandle, (u_char*)data + dataLengthWrited, dataLength - dataLengthWrited, 0);
 		if(_dataLengthWrited == -1) {
+			socketClose();
 			socketConnect();
 		} else {
 			dataLengthWrited += _dataLengthWrited;
