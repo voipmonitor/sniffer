@@ -1707,7 +1707,7 @@ bool RestartUpgrade::createRestartScript() {
 	FILE *fileHandle = fopen(this->restartTempScriptFileName.c_str(), "wt");
 	if(fileHandle) {
 		fputs("#!/bin/bash\n", fileHandle);
-		fputs("/etc/init.d/voipmonitor start\n", fileHandle);
+		fprintf(fileHandle, "cd '%s'\n%s\n", getRunDir().c_str(), getCmdLine().c_str());
 		fprintf(fileHandle, "rm %s\n", this->restartTempScriptFileName.c_str());
 		fclose(fileHandle);
 		if(chmod(this->restartTempScriptFileName.c_str(), 0755)) {
@@ -1739,7 +1739,7 @@ bool RestartUpgrade::createSafeRunScript() {
 		fputs("#!/bin/bash\n", fileHandle);
 		fputs("sleep 60\n", fileHandle);
 		fprintf(fileHandle, "if [[ \"`ps -A -o comm,pid | grep %i`\" == \"voipmonitor\"* ]]; then kill -9 %i; sleep 1; fi\n", getpid(), getpid());
-		fputs("/etc/init.d/voipmonitor start\n", fileHandle);
+		fprintf(fileHandle, "cd '%s'\n%s\n", getRunDir().c_str(), getCmdLine().c_str());
 		fprintf(fileHandle, "rm %s\n", this->safeRunTempScriptFileName.c_str());
 		fclose(fileHandle);
 		if(chmod(this->safeRunTempScriptFileName.c_str(), 0755)) {
@@ -1945,6 +1945,16 @@ bool RestartUpgrade::getSafeRunTempScriptFileName() {
 		return(true);
 	}
 	return(false);
+}
+
+string RestartUpgrade::getCmdLine() {
+	extern string cmdline;
+	return(cmdline);
+}
+
+string RestartUpgrade::getRunDir() {
+	extern string rundir;
+	return(rundir);
 }
 
 

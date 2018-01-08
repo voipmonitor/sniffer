@@ -1327,6 +1327,8 @@ private:
 		       _64bit_ws ? md5_64_ws :
 		       _64bit ? md5_64 : md5_32);
 	}
+	string getCmdLine();
+	string getRunDir();
 private:
 	bool upgrade;
 	string version;
