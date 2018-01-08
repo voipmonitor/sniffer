@@ -9549,7 +9549,7 @@ sCloudRouterVerbose CR_VERBOSE() {
 }
 
 bool CR_TERMINATE() {
-	return(is_terminating());
+	return(is_terminating() || is_readend());
 }
 
 void CR_SET_TERMINATE() {

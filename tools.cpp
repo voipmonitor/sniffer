@@ -1782,9 +1782,6 @@ bool RestartUpgrade::checkReadySafeRun() {
 }
 
 bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
-	if(verbosity > 0) {
-		syslog(LOG_NOTICE, "run restart script (%s)", this->restartTempScriptFileName.c_str());
-	}
 	if(!this->checkReadyRestart()) {
 		if(verbosity > 0) {
 			syslog(LOG_ERR, "restart failed - %s", this->errorString.c_str());
@@ -1825,11 +1822,16 @@ bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 	if(is_read_from_file_by_pb()) {
 		vm_terminate();
 	}
+	sleep(2);
 	terminate_packetbuffer();
 	sleep(2);
 
 	// set to all descriptors flag CLOEXEC so exec* will close it and will not inherit it so the next voipmonitor instance will be not blocking it
 	close_all_fd();
+	
+	if(verbosity > 0) {
+		syslog(LOG_NOTICE, "run restart script (%s)", this->restartTempScriptFileName.c_str());
+	}
 	
 	int rsltExec = execl(this->restartTempScriptFileName.c_str(), "Command-line", 0, NULL);
 	if(rsltExec) {

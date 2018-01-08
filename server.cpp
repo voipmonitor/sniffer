@@ -546,6 +546,9 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 	unsigned counter = 0;
 	u_int32_t block_counter = 0;
 	while((block = socket->readBlock(&blockLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
+		if(is_readend() || !pcapQueueQ) {
+			break;
+		}
 		string errorAddBlock;
 		string warningAddBlock;
 		bool rsltAddBlock = pcapQueueQ->addBlockStoreToPcapStoreQueue(block, blockLength, &errorAddBlock, &warningAddBlock, &block_counter);
