@@ -458,7 +458,7 @@ int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_ifdrop_limit = 20;
 
 int opt_sdp_multiplication = 3;
-bool opt_both_side_for_check_direction = false;
+bool opt_both_side_for_check_direction = true;
 string opt_save_sip_history;
 bool _save_sip_history;
 bool _save_sip_history_request_types[1000];
