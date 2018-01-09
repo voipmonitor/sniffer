@@ -1,3 +1,12 @@
+21.6.1 03.01.2018
+=================
+- fix issue with register expiration on small traffic [VS-741]
+- fix socket leaks when using sip_send [VS-742]
+- fix live sniffer for client/server mode [VS-1479]
+- fix crash when restarting/upgrading sniffer [VS-743]
+- fix restart auto script (when sniffer is running from cmd line)
+
+
 21.6 03.01.2018
 ===============
 - fix SRTP crashes and enable SRTCP decoding by default again [VS-736]
