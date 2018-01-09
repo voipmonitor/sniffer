@@ -822,11 +822,11 @@ bool FraudAlertReg::checkUA(const char *ua) {
 	if(ua && *ua) {
 		for(unsigned i = 0; i < ua_regex.size(); i++) {
 			if(ua_regex[i]->match(ua) > 0) {
-				return(true);
+				return(ua_reg_neg ? false : true);
 			}
 		}
 	}
-	return(false);
+	return(ua_reg_neg ? true : false);
 }
 
 bool FraudAlertReg::checkRegisterTimeSecLe(sFraudRegisterInfo *registerInfo) {
@@ -848,6 +848,7 @@ void FraudAlertReg::loadAlertVirt() {
 			delete regExp;
 		}
 	}
+	ua_reg_neg = atoi(dbRow["reg_ua_neg"].c_str());
 	registerTimeSecLe = atol(dbRow["reg_register_time_sec_le"].c_str());
 	loadFilters();
 }

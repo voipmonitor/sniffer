@@ -520,6 +520,7 @@ protected:
 	u_int32_t intervalLength;
 	u_int32_t intervalLimit;
 	vector<cRegExp*> ua_regex;
+	bool ua_reg_neg;
 	u_int32_t registerTimeSecLe;
 friend class FraudAlertReg_filter;
 };
