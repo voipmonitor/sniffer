@@ -5436,7 +5436,7 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFa
 		return(true);
 	}
 	
-	if(isCloud()) {
+	if(isCloud() || cloud_db) {
 		this->createProcedure(string(
 		"begin\
 		    declare part_date date;\

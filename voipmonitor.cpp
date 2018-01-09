@@ -6136,6 +6136,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"find-country-for-number", 1, 0, 311},
 	    {"watchdog", 1, 0, 316},
 	    {"cloud-db", 0, 0, 318},
+	    {"disable-dbupgradecheck", 0, 0, 319},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -6556,6 +6557,9 @@ void get_command_line_arguments() {
 				break;
 			case 318:
 				cloud_db = true;
+				break;
+			case 319:
+				opt_disable_dbupgradecheck = true;
 				break;
 			case 'c':
 				opt_nocdr = 1;
