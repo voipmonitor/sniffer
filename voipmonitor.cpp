@@ -536,6 +536,7 @@ vector<dstring> opt_custom_headers_message;
 CustomHeaders *custom_headers_cdr;
 CustomHeaders *custom_headers_message;
 NoHashMessageRules *no_hash_message_rules;
+bool opt_callernum_numberonly = true;
 int opt_custom_headers_last_value = 1;
 bool opt_sql_time_utc = false;
 
@@ -5552,6 +5553,7 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(42275) cConfigItem_string("callidmerge_header", opt_callidmerge_header, sizeof(opt_callidmerge_header)))
 				->setPrefix("\n"));
 			addConfigItem(new FILE_LINE(42276) cConfigItem_string("callidmerge_secret", opt_callidmerge_secret, sizeof(opt_callidmerge_secret)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("callernum_numberonly", &opt_callernum_numberonly));
 				advanced();
 				addConfigItem(new FILE_LINE(42277) cConfigItem_yesno("custom_headers_last_value", &opt_custom_headers_last_value));
 				addConfigItem(new FILE_LINE(42278) cConfigItem_yesno("remotepartyid", &opt_remotepartyid));
@@ -7769,6 +7771,9 @@ int eval_config(string inistr) {
 				pos = posSep ? posSep + 1 : NULL;
 			}
 		}
+	}
+	if((value = ini.GetValue("general", "callernum_numberonly", NULL))) {
+		opt_callernum_numberonly = yesno(value);
 	}
 	if((value = ini.GetValue("general", "custom_headers_last_value", NULL))) {
 		opt_custom_headers_last_value = yesno(value);

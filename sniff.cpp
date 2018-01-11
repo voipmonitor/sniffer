@@ -422,8 +422,31 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 	stores SIP messags to sql.livepacket based on user filters
 */
 
+enum eParsePeernameTagType {
+	ppntt_undefined,
+	ppntt_invite,
+	ppntt_message,
+	ppntt_from,
+	ppntt_to,
+	ppntt_contact,
+	ppntt_remote_party,
+	ppntt_asserted_identity,
+	ppntt_preferred_identity
+};
+enum eParsePeernameDestType {
+	ppndt_undefined,
+	ppndt_caller,
+	ppndt_called,
+	ppndt_contact,
+	ppndt_caller_domain,
+	ppndt_called_domain,
+	ppndt_contact_domain,
+	ppndt_caller_name
+};
+
 int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
-		     char *peername, unsigned int peername_len);
+		     char *peername, unsigned int peername_len, 
+		     eParsePeernameTagType tagType, eParsePeernameDestType destType);
 int get_sip_headerstr(packet_s_process *packetS, const char *tag, const char *tag2, 
 		      char *headerstr, unsigned int headerstr_len);
 
@@ -516,10 +539,10 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 			}
 		}
 		if(needcaller) {
-			get_sip_peername(packetS, "\nFrom:", "\nf:", caller, sizeof(caller));
+			get_sip_peername(packetS, "\nFrom:", "\nf:", caller, sizeof(caller), ppntt_from, ppndt_caller);
 		}
 		if(needcalled) {
-			get_sip_peername(packetS, "\nTo:", "\nt:", called, sizeof(called));
+			get_sip_peername(packetS, "\nTo:", "\nt:", called, sizeof(called), ppntt_to, ppndt_called);
 		}
 	}
 	
@@ -1050,7 +1073,8 @@ inline const char* get_peername_begin_sip_tag(const char *peername_tag, unsigned
  
 inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_len,
 			   int parse_type,
-			   char *rslt, unsigned int rslt_max_len) {
+			   char *rslt, unsigned int rslt_max_len, 
+			   eParsePeernameTagType /*tagType*/, eParsePeernameDestType destType) {
 	int peer_sip_tags_index;
 	const char *sip_tag = get_peername_begin_sip_tag(peername_tag, peername_tag_len, &peer_sip_tags_index);
 	if(!sip_tag) {
@@ -1063,7 +1087,8 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 	if(parse_type == 1) { // peername
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		for(end = begin; end < peername_tag + peername_tag_len; end++) {
-			if(*end == '@') {
+			extern bool opt_callernum_numberonly;
+			if(*end == '@' || (destType == ppndt_caller && opt_callernum_numberonly && *end == ';')) {
 				if(peername_sip_tags[peer_sip_tags_index].type == 0) {
 					--end;
 					ok = true;
@@ -1128,7 +1153,8 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 }
 
 int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
-		     char *peername, unsigned int peername_len) {
+		     char *peername, unsigned int peername_len, 
+		     eParsePeernameTagType tagType, eParsePeernameDestType destType) {
 	unsigned long peername_tag_len;
 	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
 	if(!peername_tag_len) {
@@ -1137,11 +1163,13 @@ int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag
 	}
 	return(parse_peername(peername_tag, peername_tag_len,
 			      1,
-			      peername, peername_len) ? 0 : 1);
+			      peername, peername_len, 
+			      tagType, destType) ? 0 : 1);
 } 
 
 int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag2, 
-		     char *peername, unsigned int peername_len) {
+		     char *peername, unsigned int peername_len,
+		     eParsePeernameTagType tagType, eParsePeernameDestType destType) {
 	unsigned long peername_tag_len;
 	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
 	if(!peername_tag_len) {
@@ -1150,11 +1178,13 @@ int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag
 	}
 	return(parse_peername(peername_tag, peername_tag_len,
 			      2,
-			      peername, peername_len) ? 0 : 1);
+			      peername, peername_len,
+			      tagType, destType) ? 0 : 1);
 }
 
 int get_sip_domain(packet_s_process *packetS, const char *tag, const char *tag2,
-		   char *domain, unsigned int domain_len) {
+		   char *domain, unsigned int domain_len,
+		   eParsePeernameTagType tagType, eParsePeernameDestType destType) {
 	unsigned long peername_tag_len;
 	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
 	if(!peername_tag_len) {
@@ -1163,7 +1193,8 @@ int get_sip_domain(packet_s_process *packetS, const char *tag, const char *tag2,
 	}
 	return(parse_peername(peername_tag, peername_tag_len,
 			      3,
-			      domain, domain_len) ? 0 : 1);
+			      domain, domain_len,
+			      tagType, destType) ? 0 : 1);
 }
 
 void testPN() {
@@ -1186,15 +1217,18 @@ void testPN() {
 		
 		parse_peername(e[i], strlen(e[i]),
 			       1,
-			       rslt, rslt_len);
+			       rslt, rslt_len,
+			       ppntt_undefined, ppndt_undefined);
 		cout << "peername: " << rslt << endl;
 		parse_peername(e[i], strlen(e[i]),
 			       2,
-			       rslt, rslt_len);
+			       rslt, rslt_len,
+			       ppntt_undefined, ppndt_undefined);
 		cout << "peercname: " << rslt << endl;
 		parse_peername(e[i], strlen(e[i]),
 			       3,
-			       rslt, rslt_len);
+			       rslt, rslt_len,
+			       ppntt_undefined, ppndt_undefined);
 		cout << "domain: " << rslt << endl;
 		
 		
@@ -2072,39 +2106,39 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	if (opt_ppreferredidentity || opt_remotepartyid || opt_passertedidentity) {
 		if (opt_remotepartypriority && opt_remotepartyid) {
 			//Caller number is taken from headers (in this order) Remote-Party-ID,P-Asserted-Identity,P-Preferred-Identity,From,F
-			if(!get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller, sizeof(tcaller)) &&
+			if(!get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller, sizeof(tcaller), ppntt_remote_party, ppndt_caller) &&
 			  tcaller[0] != '\0') {
 				caller_useRemotePartyID = true;
 			} else {
-				if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Assserted-Identity:", NULL, tcaller, sizeof(tcaller)) &&
+				if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Assserted-Identity:", NULL, tcaller, sizeof(tcaller), ppntt_asserted_identity, ppndt_caller) &&
 				  tcaller[0] != '\0') {
 					caller_usePAssertedIdentity = true;
 				} else {
-					if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, tcaller, sizeof(tcaller)) &&
+					if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, tcaller, sizeof(tcaller), ppntt_preferred_identity, ppndt_caller) &&
 					  tcaller[0] != '\0') {
 						caller_usePPreferredIdentity = true;
 					} else {
 						caller_useFrom = true;
-						get_sip_peername(packetS, "\nFrom:", "\nf:", tcaller, sizeof(tcaller));
+						get_sip_peername(packetS, "\nFrom:", "\nf:", tcaller, sizeof(tcaller), ppntt_from, ppndt_caller);
 					}
 				}
 			}
 		} else {
 			//Caller number is taken from headers (in this order) P-Asserted-Identity, P-Preferred-Identity, Remote-Party-ID,From, F
-			if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Asserted-Identity:", NULL, tcaller, sizeof(tcaller)) &&
+			if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Asserted-Identity:", NULL, tcaller, sizeof(tcaller), ppntt_asserted_identity, ppndt_caller) &&
 			  tcaller[0] != '\0') {
 				caller_usePAssertedIdentity = true;
 			} else {
-				if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, tcaller, sizeof(tcaller)) &&
+				if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, tcaller, sizeof(tcaller), ppntt_preferred_identity, ppndt_caller) &&
 				  tcaller[0] != '\0') {
 					caller_usePPreferredIdentity = true;
 				} else {
-					if(opt_remotepartyid && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller, sizeof(tcaller)) &&
+					if(opt_remotepartyid && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller, sizeof(tcaller), ppntt_remote_party, ppndt_caller) &&
 					  tcaller[0] != '\0') {
 						caller_useRemotePartyID = true;
 					} else {
 						caller_useFrom =  true;
-						get_sip_peername(packetS, "\nFrom:", "\nf:", tcaller, sizeof(tcaller));
+						get_sip_peername(packetS, "\nFrom:", "\nf:", tcaller, sizeof(tcaller), ppntt_from, ppndt_caller);
 					}
 				}
 			}
@@ -2112,28 +2146,28 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	} else {
 		//Caller is taken from header From , F
 		caller_useFrom =  true;
-		get_sip_peername(packetS, "\nFrom:", "\nf:", tcaller, sizeof(tcaller));
+		get_sip_peername(packetS, "\nFrom:", "\nf:", tcaller, sizeof(tcaller), ppntt_from, ppndt_caller);
 	}
 
 	if (caller_useFrom && !strcasecmp(tcaller, "anonymous")) {
 		//if caller is anonymous
 		char tcaller2[1024];
-		if(opt_remotepartypriority && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller2, sizeof(tcaller2)) &&
+		if(opt_remotepartypriority && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller2, sizeof(tcaller2), ppntt_remote_party, ppndt_caller) &&
 		   tcaller2[0] != '\0') {
 			strncpy(tcaller, tcaller2, sizeof(tcaller));
 			anonymous_useRemotePartyID = true;
 		} else {
-			if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Asserted-Identity:", NULL, tcaller2, sizeof(tcaller2)) &&
+			if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Asserted-Identity:", NULL, tcaller2, sizeof(tcaller2), ppntt_asserted_identity, ppndt_caller) &&
 			   tcaller2[0] != '\0') {
 				strncpy(tcaller, tcaller2, sizeof(tcaller));
 				anonymous_usePAssertedIdentity = true;
 			} else {
-				if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, tcaller2, sizeof(tcaller2)) &&
+				if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, tcaller2, sizeof(tcaller2), ppntt_preferred_identity, ppndt_caller) &&
 				   tcaller2[0] != '\0') {
 					strncpy(tcaller, tcaller2, sizeof(tcaller));
 					anonymous_usePPreferredIdentity = true;
 				} else {
-					if(!opt_remotepartypriority && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller2, sizeof(tcaller2)) &&
+					if(!opt_remotepartypriority && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller2, sizeof(tcaller2), ppntt_remote_party, ppndt_caller) &&
 					   tcaller2[0] != '\0') {
 						strncpy(tcaller, tcaller2, sizeof(tcaller));
 						anonymous_useRemotePartyID = true;
@@ -2146,10 +2180,10 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	}
 
 	// called number
-	get_sip_peername(packetS, "\nTo:", "\nt:", tcalled, sizeof(tcalled));
+	get_sip_peername(packetS, "\nTo:", "\nt:", tcalled, sizeof(tcalled), ppntt_to, ppndt_called);
 	if(sip_method == INVITE && opt_destination_number_mode == 2) {
 		char tcalled_invite[1024] = "";
-		if(!get_sip_peername(packetS, "INVITE ", NULL, tcalled_invite, sizeof(tcalled_invite)) &&
+		if(!get_sip_peername(packetS, "INVITE ", NULL, tcalled_invite, sizeof(tcalled_invite), ppntt_invite, ppndt_called) &&
 		   tcalled_invite[0] != '\0') {
 			strncpy(tcalled, tcalled_invite, sizeof(tcalled));
 		}
@@ -2159,26 +2193,26 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	char tcaller_domain[1024] = "", tcalled_domain[1024] = "";
 	// caller domain 
 	if(anonymous_useFrom || caller_useFrom) {
-		get_sip_domain(packetS, "\nFrom:", "\nf:", tcaller_domain, sizeof(tcaller_domain));
+		get_sip_domain(packetS, "\nFrom:", "\nf:", tcaller_domain, sizeof(tcaller_domain), ppntt_from, ppndt_caller_domain);
 	} else {
 		if(anonymous_useRemotePartyID || caller_useRemotePartyID) {
-			get_sip_domain(packetS, "\nRemote-Party-ID:", NULL, tcaller_domain, sizeof(tcaller_domain));
+			get_sip_domain(packetS, "\nRemote-Party-ID:", NULL, tcaller_domain, sizeof(tcaller_domain), ppntt_remote_party, ppndt_caller_domain);
 		} else {
 			if (anonymous_usePPreferredIdentity || caller_usePPreferredIdentity) {
-				get_sip_domain(packetS, "\nP-Preferred-Identity:", NULL, tcaller_domain, sizeof(tcaller_domain));
+				get_sip_domain(packetS, "\nP-Preferred-Identity:", NULL, tcaller_domain, sizeof(tcaller_domain), ppntt_preferred_identity, ppndt_caller_domain);
 			} else {
 				if (anonymous_usePAssertedIdentity || caller_usePAssertedIdentity) {
-					get_sip_domain(packetS, "\nP-Asserted-Identity:", NULL, tcaller_domain, sizeof(tcaller_domain));
+					get_sip_domain(packetS, "\nP-Asserted-Identity:", NULL, tcaller_domain, sizeof(tcaller_domain), ppntt_asserted_identity, ppndt_caller_domain);
 				}
 			}
 		}
 	}
 
 	// called domain 
-	get_sip_domain(packetS, "\nTo:", "\nt:", tcalled_domain, sizeof(tcalled_domain));
+	get_sip_domain(packetS, "\nTo:", "\nt:", tcalled_domain, sizeof(tcalled_domain), ppntt_to, ppndt_called_domain);
 	if(sip_method == INVITE && opt_destination_number_mode == 2) {
 		char tcalled_domain_invite[256] = "";
-		get_sip_domain(packetS, "INVITE ", NULL, tcalled_domain_invite, sizeof(tcalled_domain_invite));
+		get_sip_domain(packetS, "INVITE ", NULL, tcalled_domain_invite, sizeof(tcalled_domain_invite), ppntt_invite, ppndt_called_domain);
 		if(tcalled_domain_invite[0] != '\0') {
 			strncpy(tcalled_domain, tcalled_domain_invite, sizeof(tcalled_domain));
 		}
@@ -2269,19 +2303,19 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		// callername
 		if (caller_useFrom) {
 			//try from header
-			get_sip_peercnam(packetS, "\nFrom:", "\nf:", call->callername, sizeof(call->callername));
+			get_sip_peercnam(packetS, "\nFrom:", "\nf:", call->callername, sizeof(call->callername), ppntt_from, ppndt_caller_name);
 		} else {
 			if (caller_useRemotePartyID) {
 				//try Remote-Party-ID
-				get_sip_peercnam(packetS, "\nRemote-Party-ID:", NULL, call->callername, sizeof(call->callername));
+				get_sip_peercnam(packetS, "\nRemote-Party-ID:", NULL, call->callername, sizeof(call->callername), ppntt_remote_party, ppndt_caller_name);
 			} else {
 				if (caller_usePPreferredIdentity) {
 					//try P-Preferred-Identity
-					get_sip_peercnam(packetS, "\nP-Preferred-Identity:", NULL, call->callername, sizeof(call->callername));
+					get_sip_peercnam(packetS, "\nP-Preferred-Identity:", NULL, call->callername, sizeof(call->callername), ppntt_preferred_identity, ppndt_caller_name);
 				} else {
 					if (caller_usePAssertedIdentity) {
 						//try P-Asserted-Identity
-						get_sip_peercnam(packetS,  "\nP-Asserted-Identity:", NULL, call->callername, sizeof(call->callername));
+						get_sip_peercnam(packetS,  "\nP-Asserted-Identity:", NULL, call->callername, sizeof(call->callername), ppntt_asserted_identity, ppndt_caller_name);
 					} else {
 						if(anonymous_useRemotePartyID || anonymous_usePPreferredIdentity || anonymous_usePAssertedIdentity) {
 							strcpy(call->callername, "anonymous");
@@ -2337,9 +2371,9 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				}
 			}
 
-			get_sip_peername(packetS, "\nContact:", "\nm:", call->contact_num, sizeof(call->contact_num));
+			get_sip_peername(packetS, "\nContact:", "\nm:", call->contact_num, sizeof(call->contact_num), ppntt_contact, ppndt_contact);
 			// copy contact domain <sip:num@domain>
-			get_sip_domain(packetS, "\nContact:", "\nm:", call->contact_domain, sizeof(call->contact_domain));
+			get_sip_domain(packetS, "\nContact:", "\nm:", call->contact_domain, sizeof(call->contact_domain), ppntt_contact, ppndt_contact_domain);
 
 			// copy Authorization
 			s = gettag_sip(packetS, "\nAuthorization:", &l);
@@ -2480,7 +2514,7 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 			get_rtpmap_from_sdp(sdp, sdplen, rtpmap);
 
 			char to[1024];
-			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to));
+			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to), ppntt_to, ppndt_called);
 			char branch[100];
 			get_sip_branch(packetS, "via:", branch, sizeof(branch));
 			call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base, tmp_port, packetS->header_pt, 
@@ -2820,10 +2854,10 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		//update called number for each invite due to overlap-dialling
 		if ((opt_sipoverlap && packetS->saddr == call->sipcallerip[0]) || opt_last_dest_number) {
 			get_sip_peername(packetS, "\nTo:", "\nt:",
-					 call->called, sizeof(call->called));
+					 call->called, sizeof(call->called), ppntt_to, ppndt_called);
 			if(opt_destination_number_mode == 2) {
 				char called[1024] = "";
-				if(!get_sip_peername(packetS, "INVITE ", NULL, called, sizeof(called)) &&
+				if(!get_sip_peername(packetS, "INVITE ", NULL, called, sizeof(called), ppntt_invite, ppndt_called) &&
 				   called[0] != '\0') {
 					strncpy(call->called, called, sizeof(call->called));
 				}
@@ -2928,7 +2962,7 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 		
 		if(call->is_multiple_to_branch()) {
 			char to[1024];
-			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to));
+			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to), ppntt_to, ppndt_called);
 			char branch[100];
 			get_sip_branch(packetS, "via:", branch, sizeof(branch));
 			call->cancel_ip_port_hash(packetS->saddr, to, branch);
@@ -3098,7 +3132,8 @@ inline void process_packet_sip_call_inline(packet_s_process *packetS) {
 			   branch[0] != '\0') {
 				char called_invite[1024] = "";
 				if(!get_sip_peername(packetS, packetS->sip_method == MESSAGE ? "MESSAGE " : "INVITE ", NULL,
-						     called_invite, sizeof(called_invite)) &&
+						     called_invite, sizeof(called_invite),
+						     packetS->sip_method == MESSAGE ? ppntt_message : ppntt_invite, ppndt_called) &&
 				   called_invite[0] != '\0') {
 					call->called_invite_branch_map[branch] = called_invite;
 				}
