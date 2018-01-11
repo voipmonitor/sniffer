@@ -3350,6 +3350,32 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bool rtpab_ok[2] = {false, false};
 		bool pass_rtpab_simple = type == MGCP ||
 					 (type == SKINNY_NEW ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
+		if(!pass_rtpab_simple && type == INVITE && ssrc_n >= 2 &&
+		   (rtp[indexes[0]]->iscaller + rtp[indexes[1]]->iscaller) == 1) {
+			if(ssrc_n == 2) {
+				pass_rtpab_simple = true;
+			} else {
+				unsigned callerStreams = 0;
+				unsigned calledStreams = 0;
+				unsigned callerReceivedPackets[MAX_SSRC_PER_CALL];
+				unsigned calledReceivedPackets[MAX_SSRC_PER_CALL];
+				for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+					callerReceivedPackets[i] = 0;
+					calledReceivedPackets[i] = 0;
+				}
+				for(int k = 0; k < ssrc_n; k++) {
+					if(rtp[indexes[k]]->iscaller) {
+						callerReceivedPackets[callerStreams++] = rtp[indexes[k]]->s->received;
+					} else {
+						calledReceivedPackets[calledStreams++] = rtp[indexes[k]]->s->received;
+					}
+				}
+				if((!callerReceivedPackets[1] || (callerReceivedPackets[0] / callerReceivedPackets[1]) > 5) &&
+				   (!calledReceivedPackets[1] || (calledReceivedPackets[0] / calledReceivedPackets[1]) > 5)) {
+					pass_rtpab_simple = true;
+				}
+			}
+		}
 		for(int pass_rtpab = 0; pass_rtpab < (pass_rtpab_simple ? 1 : 2); pass_rtpab++) {
 			for(int k = 0; k < ssrc_n; k++) {
 				if(pass_rtpab == 0) {
