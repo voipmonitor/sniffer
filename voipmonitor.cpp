@@ -2266,15 +2266,20 @@ void store_crash_bt_to_db() {
 					vector<string> addr2line_check_rows;
 					if(file_get_rows(tmpOut, &addr2line_check_rows)) {
 						for(unsigned i = 0; i < bt.size(); i++) {
-							size_t posAddr = bt[i].find("[0x");
-							if(posAddr != string::npos) {
-								size_t posAddrEnd = bt[i].find("]", posAddr);
-								if(posAddrEnd != string::npos) {
-									string addr = bt[i].substr(posAddr + 1, posAddrEnd - posAddr - 1);
-									system((string("addr2line -e /usr/local/sbin/voipmonitor ") + addr + " > " + tmpOut + " 2>/dev/null").c_str());
-									vector<string> addr2line_rows;
-									if(file_get_rows(tmpOut, &addr2line_rows)) {
-										bt[i] += " " + addr2line_rows[0];
+							bool addr2line_ok = false;
+							for(unsigned pass = 0; pass < 2 && !addr2line_ok; pass++) {
+								size_t posAddr = bt[i].find(pass == 0 ? "(+0x" : "[0x");
+								if(posAddr != string::npos) {
+									size_t posAddrEnd = bt[i].find(pass == 0 ? ")" : "]", posAddr);
+									if(posAddrEnd != string::npos) {
+										string addr = bt[i].substr(posAddr + (pass == 0 ? 2 : 1), posAddrEnd - posAddr - (pass == 0 ? 2 : 1));
+										system((string("addr2line -e /usr/local/sbin/voipmonitor ") + addr + " > " + tmpOut + " 2>/dev/null").c_str());
+										vector<string> addr2line_rows;
+										if(file_get_rows(tmpOut, &addr2line_rows) &&
+										   addr2line_rows[0].find("??") == string::npos) {
+											bt[i] += " " + addr2line_rows[0];
+											addr2line_ok = true;
+										}
 									}
 								}
 							}
