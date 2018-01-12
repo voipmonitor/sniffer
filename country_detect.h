@@ -194,6 +194,8 @@ public:
 			string local_country = checkInternational->getLocalCountry();
 			if(checkInternational->enableCheckNapaWithoutPrefix && !disableCheckNapaWithoutPrefix && 
 			   countryIsNapa(local_country)) {
+				bool okLengthForUS_CA = (strlen(number) == 10 && number[0] != '1') ||
+							(strlen(number) == 11 && number[0] == '1');
 				string number2 = number;
 				if(number[0] != '1') {
 					number2 = "1" + number2;
@@ -206,7 +208,8 @@ public:
 				}
 				string country = this->getCountry(number2.c_str(), countries, country_prefix,
 								  checkInternational, true);
-				if((!countries || countries->size() == 1) && countryIsNapa(local_country)) {
+				if((!countries || countries->size() == 1) && countryIsNapa(country) &&
+				   (country == "US" || country == "CA" ? okLengthForUS_CA : true)) {
 					return(country);
 				} else {
 					if(countries) {
