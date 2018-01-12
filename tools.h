@@ -462,6 +462,7 @@ bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer
 bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL);
 double ts2double(unsigned int sec, unsigned int usec);
 long long GetFileSize(std::string filename);
+time_t GetFileCreateTime(std::string filename);
 long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
 long long GetDirSizeDU(unsigned countFiles);
 long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
@@ -3424,6 +3425,8 @@ int spooldir_chown(int filehandle);
 int spooldir_mkdir(std::string dir);
 
 void hexdump(u_char *data, unsigned size);
+
+unsigned file_get_rows(const char *filename, vector<string> *rows);
 
 
 #endif

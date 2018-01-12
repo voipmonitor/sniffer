@@ -779,6 +779,13 @@ long long GetFileSize(std::string filename)
 	return rc == 0 ? stat_buf.st_size : -1;
 }
 
+time_t GetFileCreateTime(std::string filename)
+{
+	struct stat stat_buf;
+	int rc = stat(filename.c_str(), &stat_buf);
+	return rc == 0 ? stat_buf.st_ctime : -1;
+}
+
 long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize)
 {
 	return(GetDU(GetFileSize(filename), typeSpoolFile, spool_index, dirItemSize));
@@ -6152,4 +6159,22 @@ void hexdump(u_char *data, unsigned size) {
 		}
 		cout << endl;
 	}
+}
+
+unsigned file_get_rows(const char *filename, vector<string> *rows) {
+	unsigned countRows = 0;
+	FILE *fh = fopen(filename, "r");
+	if(fh) {
+		char rowbuff[10000];
+		while(fgets(rowbuff, sizeof(rowbuff), fh)) {
+			char *lf = strchr(rowbuff, '\n');
+			if(lf) {
+				*lf = 0;
+			}
+			rows->push_back(rowbuff);
+			++countRows;
+		}
+		fclose(fh);
+	}
+	return(countRows);
 }

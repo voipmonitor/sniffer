@@ -242,6 +242,7 @@ int opt_savewav_force = 0;	// if = 1 WAV will be generated no matter on filter r
 int opt_sipoverlap = 1;		
 int opt_last_dest_number = 0;
 int opt_id_sensor = -1;		
+char opt_id_sensor_str[10];
 int opt_id_sensor_cleanspool = -1;	
 bool opt_use_id_sensor_for_receiver_in_files = false;
 char opt_name_sensor[256] = "";
@@ -886,6 +887,8 @@ WDT *wdt;
 bool enable_wdt = true;
 string cmdline;
 string rundir;
+
+char opt_crash_bt_filename[100];
 
 
 #include <stdio.h>
@@ -2080,6 +2083,44 @@ void reload_capture_rules() {
 }
 
 #ifdef BACKTRACE
+void bt_sighandler_simple(int sig, siginfo_t *info, void *secret)
+{
+	void *trace[16];
+	char **messages;
+	int trace_size = backtrace(trace, 16);
+	messages = backtrace_symbols(trace, trace_size);
+	unlink(opt_crash_bt_filename);
+	int fh = open(opt_crash_bt_filename, O_WRONLY | O_APPEND | O_CREAT, 0644);
+	if(fh > 0) {
+	        write(fh, RTPSENSOR_VERSION, strlen(RTPSENSOR_VERSION));
+		write(fh, " sensor ", 8);
+		write(fh, opt_id_sensor_str, strlen(opt_id_sensor_str));
+		write(fh, " ", 1);
+		#if defined(__arm__)
+			write(fh, "arm", 3);
+		#else
+			if(sizeof(int *) == 8) {
+				extern int opt_enable_ss7;
+				if(opt_enable_ss7) {
+					write(fh, "x86_64_ws", 9);
+				} else {
+					write(fh, "x86_64", 6);
+				}
+			} else {
+				write(fh, "i686", 4);
+			}
+		#endif
+		write(fh, "\n", 1);
+		for (int i = 1; i < trace_size; ++i) {
+			write(fh, "[bt] ", 5);
+			write(fh, messages[i], strlen(messages[i]));
+			write(fh, "\n", 1);
+		}
+		close(fh);
+	}
+	signal(sig, SIG_DFL);
+	kill(getpid(), sig);
+}
 #ifndef USE_SIGCONTEXT
 void bt_sighandler(int sig, siginfo_t *info, void *secret)
 #else
@@ -2179,6 +2220,99 @@ void bt_sighandler(int sig, struct sigcontext ctx)
 	kill(getpid(), sig);
 }
 #endif
+
+void store_crash_bt_to_db() {
+	if(!opt_nocdr && file_exists(opt_crash_bt_filename)) {
+		FILE *crash_bt_fh = fopen(opt_crash_bt_filename, "r");
+		if(!crash_bt_fh) {
+			return;
+		}
+		char rowbuff[1000];
+		int countRows = 0;
+		char version[20];
+		int sensor_id;
+		char arch[20];
+		bool header_ok = false;
+		vector<string> bt;
+		while(fgets(rowbuff, sizeof(rowbuff), crash_bt_fh)) {
+			if(!countRows) {
+				if(sscanf(rowbuff, "%s sensor %i %s", version, &sensor_id, arch) == 3) {
+					header_ok = true;
+				}
+			} else if(!strncmp(rowbuff, "[bt]", 4)) {
+				char *lf = strchr(rowbuff, '\n');
+				if(lf) {
+					*lf = 0;
+				}
+				bt.push_back(rowbuff);
+			}
+			++countRows;
+		}
+		fclose(crash_bt_fh);
+		if(header_ok && bt.size()) {
+			bool version_ok = false;
+			char tmpOut[L_tmpnam+1];
+			if(tmpnam(tmpOut)) {
+				system((string("/usr/local/sbin/voipmonitor | grep version > ") + tmpOut + " 2>/dev/null").c_str());
+				vector<string> version_check_rows;
+				char version_check[20];
+				if(file_get_rows(tmpOut, &version_check_rows) &&
+				   sscanf(version_check_rows[0].c_str(), "voipmonitor version %s", version_check) == 1 &&
+				   !strcmp(version, version_check)) {
+					version_ok = true;
+				}
+				if(version_ok) {
+					system((string("which addr2line > ") + tmpOut + " 2>/dev/null").c_str());
+					vector<string> addr2line_check_rows;
+					if(file_get_rows(tmpOut, &addr2line_check_rows)) {
+						for(unsigned i = 0; i < bt.size(); i++) {
+							size_t posAddr = bt[i].find("[0x");
+							if(posAddr != string::npos) {
+								size_t posAddrEnd = bt[i].find("]", posAddr);
+								if(posAddrEnd != string::npos) {
+									string addr = bt[i].substr(posAddr + 1, posAddrEnd - posAddr - 1);
+									system((string("addr2line -e /usr/local/sbin/voipmonitor ") + addr + " > " + tmpOut + " 2>/dev/null").c_str());
+									vector<string> addr2line_rows;
+									if(file_get_rows(tmpOut, &addr2line_rows)) {
+										bt[i] += " " + addr2line_rows[0];
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			unlink(tmpOut);
+			string crash_bt_content;
+			crash_bt_content = 
+				string("voipmonitor version: ") + version + "\n" +
+				"sensor_id: " + intToString(sensor_id) + "\n" +
+				"arch: " + arch + "\n\n";
+			for(unsigned i = 0; i < bt.size(); i++) {
+				crash_bt_content += bt[i] + "\n";
+			}
+			if(crash_bt_content.length()) {
+				SqlDb *sqlDb = createSqlObject();
+				if(!sqlDb->existsTable("crash_bt")) {
+					sqlDb->query(
+						"CREATE TABLE IF NOT EXISTS `crash_bt` (\
+								`id` int NOT NULL AUTO_INCREMENT,\
+								`created_at` datetime,\
+								`sent_at` datetime,\
+								`crash_bt` blob,\
+							PRIMARY KEY (`id`)\
+						) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+				}
+				SqlDb_row row;
+				row.add(sqlDateTimeString(GetFileCreateTime(opt_crash_bt_filename)), "created_at");
+				row.add(sqlEscapeString(crash_bt_content), "crash_bt");
+				sqlDb->insert("crash_bt", row);
+				delete sqlDb;
+			}
+		}
+		unlink(opt_crash_bt_filename);
+	}
+}
 
 void resetTerminating() {
 	clear_terminating();
@@ -2520,20 +2654,33 @@ int main(int argc, char *argv[]) {
 	signal(SIGTERM,sigterm_handler);
 	signal(SIGCHLD,sigchld_handler);
 #ifdef BACKTRACE
-	if(sverb.enable_bt_sighandler) {
-		/* Install our signal handler */
-		struct sigaction sa;
+	if(opt_fork && !is_read_from_file() && !is_set_gui_params()) {
+		if(sverb.enable_bt_sighandler) {
+			/* Install our signal handler */
+			struct sigaction sa;
 
-		sa.sa_sigaction = bt_sighandler;
-		sigemptyset (&sa.sa_mask);
-		sa.sa_flags = SA_RESTART | SA_SIGINFO;
+			sa.sa_sigaction = bt_sighandler;
+			sigemptyset (&sa.sa_mask);
+			sa.sa_flags = SA_RESTART | SA_SIGINFO;
 
-		sigaction(SIGSEGV, &sa, NULL);
-		sigaction(SIGBUS, &sa, NULL);
-		sigaction(SIGILL, &sa, NULL);
-		sigaction(SIGFPE, &sa, NULL);
-		//sigaction(SIGUSR1, &sa, NULL);
-		//sigaction(SIGUSR2, &sa, NULL);
+			sigaction(SIGSEGV, &sa, NULL);
+			sigaction(SIGBUS, &sa, NULL);
+			sigaction(SIGILL, &sa, NULL);
+			sigaction(SIGFPE, &sa, NULL);
+			//sigaction(SIGUSR1, &sa, NULL);
+			//sigaction(SIGUSR2, &sa, NULL);
+		} else {
+			struct sigaction sa;
+
+			sa.sa_sigaction = bt_sighandler_simple;
+			sigemptyset (&sa.sa_mask);
+			sa.sa_flags = SA_RESTART | SA_SIGINFO;
+
+			sigaction(SIGSEGV, &sa, NULL);
+			sigaction(SIGBUS, &sa, NULL);
+			sigaction(SIGILL, &sa, NULL);
+			sigaction(SIGFPE, &sa, NULL);
+		}
 	}
 #endif
 
@@ -2768,6 +2915,7 @@ int main(int argc, char *argv[]) {
 		}
 		
 		if(!opt_database_backup && opt_load_query_from_files != 2) {
+			store_crash_bt_to_db();
 			main_init_sqlstore();
 			int rslt_main_init_read = main_init_read();
 			if(rslt_main_init_read) {
@@ -6905,6 +7053,14 @@ void set_context_config() {
 	#endif //HAVE_OPENSSL101
 	
 	set_spool_permission();
+	
+	strcpy(opt_id_sensor_str, intToString(opt_id_sensor).c_str());
+	
+	char const *tmpPath = getenv("TMPDIR");
+	if(!tmpPath) {
+		tmpPath = "/tmp";
+	}
+	snprintf(opt_crash_bt_filename, sizeof(opt_crash_bt_filename), "%s/voipmonitor_crash_bt", tmpPath);
 	
 }
 
