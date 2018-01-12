@@ -193,11 +193,9 @@ public:
 		if(!isInternational) {
 			string local_country = checkInternational->getLocalCountry();
 			if(checkInternational->enableCheckNapaWithoutPrefix && !disableCheckNapaWithoutPrefix && 
-			   ((strlen(number) == 10 && number[0] != '1') ||
-			    (strlen(number) == 11 && number[0] == '1')) &&
 			   countryIsNapa(local_country)) {
 				string number2 = number;
-				if(strlen(number) == 10 && number[0] != '1') {
+				if(number[0] != '1') {
 					number2 = "1" + number2;
 				}
 				if(checkInternational->internationalPrefixes.size() && 
