@@ -2268,6 +2268,9 @@ void store_crash_bt_to_db() {
 						for(unsigned i = 0; i < bt.size(); i++) {
 							bool addr2line_ok = false;
 							for(unsigned pass = 0; pass < 2 && !addr2line_ok; pass++) {
+								if(pass == 0 && bt[i].find("voipmonitor") == string::npos) {
+									continue;
+								}
 								size_t posAddr = bt[i].find(pass == 0 ? "(+0x" : "[0x");
 								if(posAddr != string::npos) {
 									size_t posAddrEnd = bt[i].find(pass == 0 ? ")" : "]", posAddr);
