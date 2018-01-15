@@ -4936,9 +4936,13 @@ void test() {
 		break;
 	case 311:
 		CountryDetectInit();
-		cout << "number:           " << opt_test_arg << endl;
-		cout << "country:          " << getCountryByPhoneNumber(opt_test_arg) << endl;
-		cout << "is international: " << (isLocalByPhoneNumber(opt_test_arg) ? "N" : "Y") << endl;
+		vector<string> numbers = split(opt_test_arg, ';');
+		for(unsigned i = 0; i < numbers.size(); i++) {
+			cout << "number:           " << numbers[i] << endl;
+			cout << "country:          " << getCountryByPhoneNumber(numbers[i].c_str()) << endl;
+			cout << "is international: " << (isLocalByPhoneNumber(numbers[i].c_str()) ? "N" : "Y") << endl;
+			cout << "---" << endl;
+		}
 		break;
 	}
  
