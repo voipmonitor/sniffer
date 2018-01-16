@@ -48,89 +48,50 @@ private:
 
 class CheckInternational : public CountryDetect_base_table {
 public:
+	struct CountryPrefix_recAdv {
+		CountryPrefix_recAdv() {
+			number_regexp_cond = NULL;
+			number_length_from = -1;
+			number_length_to = -1;
+			trim_prefix_length = -1;
+			is_international= false;
+		}
+		~CountryPrefix_recAdv() {
+			if(number_regexp_cond) {
+				delete number_regexp_cond;
+			}
+			for(unsigned i = 0; i < trim_prefixes_regexp.size(); i++) {
+				delete trim_prefixes_regexp[i];
+			}
+		}
+		cRegExp *number_regexp_cond;
+		int number_length_from;
+		int number_length_to;
+		vector<string> trim_prefixes_string;
+		vector<cRegExp*> trim_prefixes_regexp;
+		int trim_prefix_length;
+		bool is_international;
+		string country_code;
+		string descr;
+	};
+public:
 	CheckInternational();
-	void setInternationalPrefixes(const char *prefixes);
-	void setSkipPrefixes(const char *prefixes);
+	~CheckInternational();
+	void setInternationalPrefixes(const char *prefixes, vector<string> *separators = NULL);
+	void setSkipPrefixes(const char *prefixes, vector<string> *separators = NULL);
 	void setInternationalMinLength(int internationalMinLength, bool internationalMinLengthPrefixesStrict);
 	void setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWithoutPrefix);
 	void load(SqlDb_row *dbRow);
 	bool load();
-	bool isInternational(const char *number, const char **prefix = NULL, int *skippfxsize = 0) {
-		if(prefix) {
-			*prefix = NULL;
-		}
-		int numberLength = strlen(number);
-		*skippfxsize = numberLength;
-		bool existsSkipPrefix = false;
-		do {
-			existsSkipPrefix = false;
-			for(size_t i = 0; i < skipPrefixes.size(); i++) {
-				if (skipPrefixes[i][0] == '^') {
-					vector<string> found;
-					if (reg_match(number, skipPrefixes[i].c_str(), &found, true, __FILE__, __LINE__)) {
-						number += found[0].size();
-						numberLength = strlen(number);
-					}
-				} else {
-					if(numberLength > (int)skipPrefixes[i].size() &&
-					   !strncmp(number, skipPrefixes[i].c_str(), skipPrefixes[i].size())) {
-
-						number += skipPrefixes[i].size();
-						while(*number == ' ') ++number;
-						numberLength = strlen(number);
-						existsSkipPrefix = true;
-					}
-				}
-			}
-		} while(existsSkipPrefix);
-		*skippfxsize -= numberLength;
-		for(size_t i = 0; i < internationalPrefixes.size(); i++) {
-			if(numberLength > (int)internationalPrefixes[i].size() &&
-			   !strncmp(number, internationalPrefixes[i].c_str(), internationalPrefixes[i].size()) && 
-			   (!internationalMinLengthPrefixesStrict ||
-			    !internationalMinLength ||
-			    numberLength >= (int)(internationalMinLength + internationalPrefixes[i].size()))) {
-				if(prefix) {
-					*prefix = internationalPrefixes[i].c_str();
-				}
-				return(true);
-			}
-		}
-		while(*number == '0') {
-			--numberLength;
-			++number;
-		}
-		if((!internationalMinLengthPrefixesStrict ||
-		    !internationalPrefixes.size()) &&
-		   internationalMinLength &&
-		   numberLength >= internationalMinLength) {
-			return(true);
-		}
-		return(false);
-	}
-	string normalize(const char *number, bool *international) {
-		if(international) {
-			*international = false;
-		}
-		const char *prefix;
-		int skippfxsize;
-		int isInt = isInternational(number, &prefix, &skippfxsize);
-
-		if (skippfxsize)
-			number += skippfxsize;
-
-		if(isInt) {
-			if(international) {
-				*international = true;
-			}
-			if(prefix) {
-				number += strlen(prefix);
-			}
-			while(*number == '0' || (!prefix && *number == '+')) {
-				++number;
-			}
-		}
-		return(number);
+	bool loadCustomerPrefixAdv();
+	void clearInternationalPrefixes();
+	void clearSkipPrefixes();
+	void clearCustomerPrefixAdv();
+	bool inInternationalViaLength(string *numberNormalized) {
+		return((!internationalMinLengthPrefixesStrict ||
+			(!internationalPrefixes_string.size() && !internationalPrefixes_regexp.size())) &&
+		       internationalMinLength &&
+		       (int)numberNormalized->length() >= internationalMinLength);
 	}
 	const char *getLocalCountry() {
 		extern char opt_local_country_code[10];
@@ -146,13 +107,32 @@ public:
 			!strcmp(opt_local_country_code, countryCode) :
 			false);
 	}
+	bool processCustomerDataAdvanced(const char *number, 
+					 bool *isInternational, string *country, string *numberWithoutPrefix = NULL);
+	bool skipPrefixes(const char *number, vector<string> *prefixes_string, vector<cRegExp*> *prefixes_regexp, bool recurse,
+			  string *numberWithoutPrefix = NULL, string *skipPrefix = NULL, unsigned *skipPrefixLength = NULL, vector<string> *skipPrefixes = NULL,
+			  bool isInternationalPrefixes = false);
+	bool skipInternationalPrefixes(const char *number,
+				       string *numberWithoutPrefix = NULL, string *skipPrefix = NULL, unsigned *skipPrefixLength = NULL, vector<string> *skipPrefixes = NULL) {
+		return(this->skipPrefixes(number, &internationalPrefixes_string, &internationalPrefixes_regexp, false,
+					  numberWithoutPrefix, skipPrefix, skipPrefixLength, skipPrefixes,
+					  true));
+	}
+	bool skipSkipPrefixes(const char *number,
+			      string *numberWithoutPrefix = NULL, string *skipPrefix = NULL, unsigned *skipPrefixLength = NULL, vector<string> *skipPrefixes = NULL) {
+		return(this->skipPrefixes(number, &skipPrefixes_string, &skipPrefixes_regexp, true,
+					  numberWithoutPrefix, skipPrefix, skipPrefixLength, skipPrefixes));
+	}
 private:
-	vector<string> internationalPrefixes;
+	vector<string> internationalPrefixes_string;
+	vector<cRegExp*> internationalPrefixes_regexp;
 	int internationalMinLength;
 	bool internationalMinLengthPrefixesStrict;
 	string countryCodeForLocalNumbers;
 	bool enableCheckNapaWithoutPrefix;
-	vector<string> skipPrefixes;
+	vector<string> skipPrefixes_string;
+	vector<cRegExp*> skipPrefixes_regexp;
+	vector<CountryPrefix_recAdv*> customer_data_advanced;
 friend class CountryPrefixes;
 };
 
@@ -179,109 +159,12 @@ public:
 	};
 public:
 	CountryPrefixes();
+	~CountryPrefixes();
 	bool load();
+	void clear();
 	string getCountry(const char *number, vector<string> *countries, string *country_prefix,
-			  CheckInternational *checkInternational, bool disableCheckNapaWithoutPrefix = false) {
-		if(countries) {
-			countries->clear();
-		}
-		if(country_prefix) {
-			*country_prefix = "";
-		}
-		bool isInternational;
-		string normalizeNumber = checkInternational->normalize(number, &isInternational);
-		if(!isInternational) {
-			string local_country = checkInternational->getLocalCountry();
-			if(checkInternational->enableCheckNapaWithoutPrefix && !disableCheckNapaWithoutPrefix && 
-			   countryIsNapa(local_country)) {
-				bool okLengthForUS_CA = (strlen(number) == 10 && number[0] != '1') ||
-							(strlen(number) == 11 && number[0] == '1');
-				string number2 = number;
-				if(number[0] != '1') {
-					number2 = "1" + number2;
-				}
-				if(checkInternational->internationalPrefixes.size() && 
-				   (checkInternational->internationalMinLengthPrefixesStrict ||
-				    (checkInternational->internationalMinLength &&
-				     number2.length() < (unsigned)checkInternational->internationalMinLength))) {
-					number2 = checkInternational->internationalPrefixes[0] + number2;
-				}
-				string country = this->getCountry(number2.c_str(), countries, country_prefix,
-								  checkInternational, true);
-				if((!countries || countries->size() == 1) && countryIsNapa(country) &&
-				   (country == "US" || country == "CA" ? okLengthForUS_CA : true)) {
-					return(country);
-				} else {
-					if(countries) {
-						countries->clear();
-					}
-				}
-			}
-			if(countries) {
-				countries->push_back(local_country);
-			}
-			return(local_country);
-		}
-		number = normalizeNumber.c_str();
-		vector<CountryPrefix_rec>::iterator findRecIt;
-		for(int pass = 0; pass < 2; pass++) {
-			if(pass == 1 || !customer_data.empty()) {
-				vector<CountryPrefix_rec> *data = pass == 0 ? &this->customer_data : &this->data;
-				findRecIt = std::lower_bound(data->begin(), data->end(), number);
-				if(findRecIt == data->end()) {
-					--findRecIt;
-				}
-				int _redukSizeFindNumber = 0;
-				bool okFind = true;
-				while(strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
-					if(findRecIt->number[0] < number[0]) {
-						okFind = false;
-						break;
-					}
-					if((!_redukSizeFindNumber || _redukSizeFindNumber > 1) &&
-					   atol(findRecIt->number.c_str()) < atol(normalizeNumber.substr(0, findRecIt->number.length()).c_str())) {
-						if(_redukSizeFindNumber) {
-							--_redukSizeFindNumber;
-						} else {
-							_redukSizeFindNumber = findRecIt->number.length() - 1;
-						}
-						findRecIt = std::lower_bound(data->begin(), data->end(), string(number).substr(0, _redukSizeFindNumber).c_str());
-						if(findRecIt == data->end()) {
-							--findRecIt;
-						}
-					} else {
-						if(findRecIt == data->begin()) {
-							okFind = false;
-							break;
-						} else {
-							--findRecIt;
-						}
-					}
-				}
-				if(okFind &&
-				   !strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
-					string rslt = findRecIt->country_code;
-					string rsltNumber = findRecIt->number;
-					if(country_prefix) {
-						*country_prefix = findRecIt->number;
-					}
-					if(countries) {
-						countries->push_back(rslt);
-						while(findRecIt != data->begin()) {
-							--findRecIt;
-							if(rsltNumber == findRecIt->number) {
-								countries->push_back(findRecIt->country_code);
-							} else {
-								break;
-							}
-						}
-					}
-					return(rslt);
-				}
-			}
-		}
-		return("");
-	}
+			  CheckInternational *checkInternational);
+	string _getCountry(const char *number, vector<string> *countries, string *country_prefix);
 	bool isLocal(const char *number,
 		     CheckInternational *checkInternational) {
 		vector<string> countries;
@@ -298,8 +181,8 @@ public:
 	}
 	bool countryIsNapa(const char *country) {
 		for(int pass = 0; pass < 2; pass++) {
-			if(pass == 1 || !customer_data.empty()) {
-				vector<CountryPrefix_rec> *data = pass == 0 ? &this->customer_data : &this->data;
+			if(pass == 1 || !customer_data_simple.empty()) {
+				vector<CountryPrefix_rec> *data = pass == 0 ? &this->customer_data_simple : &this->data;
 				for(vector<CountryPrefix_rec>::iterator iter = data->begin(); iter != data->end(); iter++) {
 					if(iter->country_code == country &&
 					   iter->number.length() == 4 &&
@@ -313,7 +196,7 @@ public:
 	}
 private:
 	vector<CountryPrefix_rec> data;
-	vector<CountryPrefix_rec> customer_data;
+	vector<CountryPrefix_rec> customer_data_simple;
 };
 
 

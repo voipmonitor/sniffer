@@ -2330,8 +2330,10 @@ int reg_match(const char *str, const char *pattern, vector<string> *matches, boo
 			if(match[i].rm_so == -1 && match[i].rm_eo == -1) {
 				break;
 			}
-			matches->push_back(string(str).substr(match[i].rm_so, match[i].rm_eo - match[i].rm_so));
-			++match_count;
+			if(match[i].rm_eo > match[i].rm_so) {
+				matches->push_back(string(str).substr(match[i].rm_so, match[i].rm_eo - match[i].rm_so));
+				++match_count;
+			}
 		}
 		return(match_count);
 	}
@@ -2440,10 +2442,12 @@ int cRegExp::match(const char *subject, vector<string> *matches) {
 					if(match[i].rm_so == -1 && match[i].rm_eo == -1) {
 						break;
 					}
-					if(matches) {
-						matches->push_back(string(subject).substr(match[i].rm_so, match[i].rm_eo - match[i].rm_so));
+					if(match[i].rm_eo > match[i].rm_so) {
+						if(matches) {
+							matches->push_back(string(subject).substr(match[i].rm_so, match[i].rm_eo - match[i].rm_so));
+						}
+						++match_count;
 					}
-					++match_count;
 				}
 				return(match_count);
 			} else  {

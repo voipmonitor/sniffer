@@ -129,18 +129,48 @@ bool CountryCodes::isLocationIn(const char *location, vector<string> *in, bool c
 
 
 CheckInternational::CheckInternational() {
-	internationalPrefixes = split("+, 00", ",", true);
+	internationalPrefixes_string = split("+, 00", ",", true);
 	internationalMinLength = 0;
 	internationalMinLengthPrefixesStrict = false;
 	enableCheckNapaWithoutPrefix = false;
 }
 
-void CheckInternational::setInternationalPrefixes(const char *prefixes) {
-	this->internationalPrefixes = split(prefixes, ",", true);
+CheckInternational::~CheckInternational() {
+	clearInternationalPrefixes();
+	clearSkipPrefixes();
+	clearCustomerPrefixAdv();
 }
 
-void CheckInternational::setSkipPrefixes(const char *prefixes) {
-	this->skipPrefixes = split(prefixes, ",", true);
+void CheckInternational::setInternationalPrefixes(const char *prefixes, vector<string> *separators) {
+	clearInternationalPrefixes();
+	vector<string> internationalPrefixes = separators ? 
+						split(prefixes, *separators, true) :
+						split(prefixes, ",", true);
+	for(unsigned i = 0; i < internationalPrefixes.size(); i++) {
+		if(internationalPrefixes[i].length()) {
+			if(internationalPrefixes[i][0] == '^') {
+				this->internationalPrefixes_regexp.push_back(new FILE_LINE(0) cRegExp(internationalPrefixes[i].c_str(), cRegExp::_regexp_icase_mathes));
+			} else {
+				this->internationalPrefixes_string.push_back(internationalPrefixes[i]);
+			}
+		}
+	}
+}
+
+void CheckInternational::setSkipPrefixes(const char *prefixes, vector<string> *separators) {
+	clearSkipPrefixes();
+	vector<string> skipPrefixes = separators ?
+				       split(prefixes, *separators, true) :
+				       split(prefixes, ",", true);
+	for(unsigned i = 0; i < skipPrefixes.size(); i++) {
+		if(skipPrefixes[i].length()) {
+			if(skipPrefixes[i][0] == '^') {
+				this->skipPrefixes_regexp.push_back(new FILE_LINE(0) cRegExp(skipPrefixes[i].c_str(), cRegExp::_regexp_icase_mathes));
+			} else {
+				this->skipPrefixes_string.push_back(skipPrefixes[i]);
+			}
+		}
+	}
 }
 
 void CheckInternational::setInternationalMinLength(int internationalMinLength, bool internationalMinLengthPrefixesStrict) {
@@ -153,23 +183,14 @@ void CheckInternational::setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWit
 }
 
 void CheckInternational::load(SqlDb_row *dbRow) {
-	string _prefixes = (*dbRow)["international_prefixes"];
-	if(!_prefixes.empty()) {
-		internationalPrefixes = split(_prefixes.c_str(), split(",|;| ", "|"), true);
-	} else {
-		internationalPrefixes.clear();
-	}
+	vector<string> prefixesSeparators = split(",|;| ", "|");
+	setInternationalPrefixes((*dbRow)["international_prefixes"].c_str(), &prefixesSeparators);
 	internationalMinLength = atoi((*dbRow)["international_number_min_length"].c_str());
 	internationalMinLengthPrefixesStrict = atoi((*dbRow)["international_number_min_length_prefixes_strict"].c_str());
 	countryCodeForLocalNumbers = (*dbRow)["country_code_for_local_numbers"];
 	enableCheckNapaWithoutPrefix = atoi((*dbRow)["enable_check_napa_without_prefix"].c_str());
-	_prefixes = (*dbRow)["skip_prefixes"];
-	if(!_prefixes.empty()) {
-		if (_prefixes[0] == '^')
-			skipPrefixes.push_back(_prefixes);
-		else
-			skipPrefixes = split(_prefixes.c_str(), split(",|;| ", "|"), true);
-	}
+	setSkipPrefixes((*dbRow)["skip_prefixes"].c_str(), &prefixesSeparators);
+	loadCustomerPrefixAdv();
 }
 
 bool CheckInternational::load() {
@@ -184,14 +205,190 @@ bool CheckInternational::load() {
 		this->load(&row);
 	}
 	delete sqlDb;
+	loadCustomerPrefixAdv();
 	return(true);
+}
+
+bool CheckInternational::loadCustomerPrefixAdv() {
+	unsigned countRecords = 0;
+	clearCustomerPrefixAdv();
+	SqlDb *sqlDb = createSqlObject();
+	if(sqlDb->existsTable("customer_country_prefix") &&
+	   !sqlDb->emptyTable("customer_country_prefix") &&
+	   sqlDb->existsColumn("customer_country_prefix", "advanced_mode")) {
+		sqlDb->query("select * \
+			      from customer_country_prefix \
+			      where advanced_mode");
+		SqlDb_row row;
+		while((row = sqlDb->fetchRow())) {
+			CountryPrefix_recAdv *recAdv = new FILE_LINE(0) CountryPrefix_recAdv;
+			if(row["number_regexp_cond"].length()) {
+				recAdv->number_regexp_cond = new FILE_LINE(0) cRegExp(row["number_regex_cond"].c_str());
+			}
+			if(row["number_length_from"].length()) {
+				recAdv->number_length_from = atoi(row["number_length_from"].c_str());
+			}
+			if(row["number_length_to"].length()) {
+				recAdv->number_length_to = atoi(row["number_length_to"].c_str());
+			}
+			vector<string> trim_prefixes = split(row["trim_prefixes"].c_str(), split(",|;| ", "|"), true);
+			for(unsigned i = 0; i < trim_prefixes.size(); i++) {
+				if(trim_prefixes[i].length()) {
+					if(trim_prefixes[i][0] == '^') {
+						recAdv->trim_prefixes_regexp.push_back(new FILE_LINE(0) cRegExp(trim_prefixes[i].c_str(), cRegExp::_regexp_icase_mathes));
+					} else {
+						recAdv->trim_prefixes_string.push_back(trim_prefixes[i]);
+					}
+				}
+			}
+			if(row["trim_prefix_length"].length()) {
+				recAdv->trim_prefix_length = atoi(row["trim_prefix_length"].c_str());
+			}
+			recAdv->is_international = row["international_local"] == "international";
+			recAdv->country_code = row["country_code"];
+			recAdv->descr = row["description"];
+			customer_data_advanced.push_back(recAdv);
+			++countRecords;
+		}
+	}
+	delete sqlDb;
+	return(countRecords > 0);
+}
+
+void CheckInternational::clearInternationalPrefixes() {
+	internationalPrefixes_string.clear();
+	for(unsigned i = 0; i < internationalPrefixes_regexp.size(); i++) {
+		delete internationalPrefixes_regexp[i];
+	}
+	internationalPrefixes_regexp.clear();
+}
+
+void CheckInternational::clearSkipPrefixes() {
+	skipPrefixes_string.clear();
+	for(unsigned i = 0; i < skipPrefixes_regexp.size(); i++) {
+		delete skipPrefixes_regexp[i];
+	}
+	skipPrefixes_regexp.clear();
+}
+
+void CheckInternational::clearCustomerPrefixAdv() {
+	for(unsigned i = 0; i < customer_data_advanced.size(); i++) {
+		delete customer_data_advanced[i];
+	}
+	customer_data_advanced.clear();
+}
+
+bool CheckInternational::processCustomerDataAdvanced(const char *number, 
+						     bool *isInternational, string *country, string *numberWithoutPrefix) {
+	if(!this->customer_data_advanced.size()) {
+		return(false);
+	}
+	for(unsigned i = 0; i < this->customer_data_advanced.size(); i++) {
+		CountryPrefix_recAdv *recAdv = this->customer_data_advanced[i];
+		int number_length = strlen(number);
+		if(recAdv->number_regexp_cond &&
+		   recAdv->number_regexp_cond->match(number) &&
+		   (recAdv->number_length_from == -1 || number_length >= recAdv->number_length_from) &&
+		   (recAdv->number_length_to == -1 || number_length <= recAdv->number_length_to)) {
+			if(isInternational) {
+				*isInternational = recAdv->is_international;
+			}
+			if(country) {
+				if(recAdv->is_international && recAdv->country_code.length()) {
+					*country = recAdv->country_code;
+				} else {
+					country->resize(0);
+				}
+			}
+			if(numberWithoutPrefix) {
+				if(recAdv->trim_prefixes_string.size() || recAdv->trim_prefixes_regexp.size()) {
+					this->skipPrefixes(number, &recAdv->trim_prefixes_string, &recAdv->trim_prefixes_regexp, true, numberWithoutPrefix);
+				} else if(recAdv->trim_prefix_length > 0 && recAdv->trim_prefix_length < (int)strlen(number)) {
+					*numberWithoutPrefix = number + recAdv->trim_prefix_length;
+				}
+			}
+			return(true);
+		}
+	}
+	return(false);
+}
+
+bool CheckInternational::skipPrefixes(const char *number, vector<string> *prefixes_string, vector<cRegExp*> *prefixes_regexp, bool recurse,
+				      string *numberWithoutPrefix, string *skipPrefix, unsigned *skipPrefixLength, vector<string> *skipPrefixes,
+				      bool isInternationalPrefixes) {
+	unsigned _skipPrefixLength = 0;
+	if(!skipPrefixLength) {
+		skipPrefixLength = &_skipPrefixLength;
+	}
+	*skipPrefixLength = 0;
+	vector<string> _skipPrefixes;
+	if(!skipPrefixes) {
+		skipPrefixes = &_skipPrefixes;
+	}
+	skipPrefixes->clear();
+	unsigned number_length = strlen(number);
+	bool existsPrefix = false;
+	do {
+		existsPrefix = false;
+		if(prefixes_string) {
+			for(unsigned i = 0; i < prefixes_string->size(); i++) {
+				if((number_length - *skipPrefixLength) > (*prefixes_string)[i].length() &&
+				   !strncmp(number + *skipPrefixLength, (*prefixes_string)[i].c_str(), (*prefixes_string)[i].length()) &&
+				   (!isInternationalPrefixes ||
+				    !internationalMinLengthPrefixesStrict ||
+				    !internationalMinLength ||
+				    (number_length - *skipPrefixLength) >= (internationalMinLength + (*prefixes_string)[i].length()))) {
+					existsPrefix = true;
+					*skipPrefixLength += (*prefixes_string)[i].length();
+					skipPrefixes->push_back((*prefixes_string)[i]);
+				}
+			}
+		}
+		if(!existsPrefix && prefixes_regexp) {
+			for(unsigned i = 0; i < prefixes_regexp->size(); i++) {
+				vector<string> matches;
+				if((*prefixes_regexp)[i]->match(number + *skipPrefixLength, &matches) &&
+				   matches.size() &&
+				   (number_length - *skipPrefixLength) > matches[0].length() &&
+				   (!isInternationalPrefixes ||
+				    !internationalMinLengthPrefixesStrict ||
+				    !internationalMinLength ||
+				    (number_length - *skipPrefixLength) >= (internationalMinLength + matches[0].length()))) {
+					existsPrefix = true;
+					*skipPrefixLength += matches[0].length();
+					skipPrefixes->push_back(matches[0]);
+				}
+			}
+		}
+	} while(existsPrefix && recurse);
+	if(*skipPrefixLength) {
+		if(numberWithoutPrefix) {
+			*numberWithoutPrefix = number + *skipPrefixLength;
+		}
+		if(skipPrefix) {
+			*skipPrefix = string(number, *skipPrefixLength);
+		}
+		return(true);
+	}
+	if(numberWithoutPrefix) {
+		*numberWithoutPrefix = number;
+	}
+	if(skipPrefix) {
+		skipPrefix->resize(0);
+	}
+	return(false);
 }
 
 
 CountryPrefixes::CountryPrefixes() {
 }
 
+CountryPrefixes::~CountryPrefixes() {
+	clear();
+}
+
 bool CountryPrefixes::load() {
+	clear();
 	string tableName;
 	if(!checkTable(_country_code_prefix, tableName)) {
 		return(false);
@@ -210,22 +407,170 @@ bool CountryPrefixes::load() {
 	std::sort(data.begin(), data.end());
 	if(sqlDb->existsTable("customer_country_prefix") &&
 	   !sqlDb->emptyTable("customer_country_prefix")) {
-		sqlDb->query("select * \
-			      from customer_country_prefix \
-			      order by prefix");
+		bool existsColumnAdvancedMode = sqlDb->existsColumn("customer_country_prefix", "advanced_mode");
+		sqlDb->query(existsColumnAdvancedMode ?
+			      "select * \
+			       from customer_country_prefix \
+			       where advanced_mode is null or not advanced_mode \
+			       order by prefix" :
+			      "select * \
+			       from customer_country_prefix \
+			       order by prefix");
 		SqlDb_row row;
 		while((row = sqlDb->fetchRow())) {
-			customer_data.push_back(CountryPrefix_rec(
+			customer_data_simple.push_back(CountryPrefix_rec(
 				row["prefix"].c_str(),
 				row["country_code"].c_str(),
 				row["descr"].c_str()));
 		}
-		std::sort(customer_data.begin(), customer_data.end());
-	} else {
-		customer_data.clear();
+		std::sort(customer_data_simple.begin(), customer_data_simple.end());
 	}
 	delete sqlDb;
 	return(true);
+}
+
+void CountryPrefixes::clear() {
+	data.clear();
+	customer_data_simple.clear();
+}
+
+string CountryPrefixes::getCountry(const char *number, vector<string> *countries, string *country_prefix,
+				   CheckInternational *checkInternational) {
+	if(countries) {
+		countries->clear();
+	}
+	if(country_prefix) {
+		*country_prefix = "";
+	}
+	string numberOrig = number;
+	bool _isInternational;
+	string _country;
+	string _numberWithoutPrefix;
+	if(checkInternational->processCustomerDataAdvanced(numberOrig.c_str(), 
+							    &_isInternational, &_country,  &_numberWithoutPrefix)) {
+		if(_country.length()) {
+			if(countries) {
+				countries->push_back(_country);
+			}
+			return(_country);
+		}
+		if(_isInternational) {
+			string country = this->_getCountry(_numberWithoutPrefix.c_str(), countries, country_prefix);
+			return(country);
+		} else {
+			string local_country = checkInternational->getLocalCountry();
+			if(countries) {
+				countries->push_back(local_country);
+			}
+			return(local_country);
+		}
+	}
+	string numberWithoutSkipPrefix;
+	string skipPrefix;
+	checkInternational->skipSkipPrefixes(numberOrig.c_str(), &numberWithoutSkipPrefix, &skipPrefix);
+	string numberWithoutInternationalPrefix;
+	string internationalPrefix;
+	checkInternational->skipInternationalPrefixes(numberWithoutSkipPrefix.c_str(), &numberWithoutInternationalPrefix, &internationalPrefix);
+	string numberNormalized = numberWithoutInternationalPrefix;
+	while(numberNormalized[0] == '0' || 
+	      (!internationalPrefix.length() && numberNormalized[0] == '+')) {
+		numberNormalized = numberNormalized.substr(1);
+	}
+	bool isInternational = internationalPrefix.length() ||
+			       checkInternational->inInternationalViaLength(&numberNormalized);
+	if(!isInternational) {
+		string local_country = checkInternational->getLocalCountry();
+		if(checkInternational->enableCheckNapaWithoutPrefix && countryIsNapa(local_country)) {
+			bool okLengthForUS_CA = (numberNormalized.length() == 10 && numberNormalized[0] != '1') ||
+						(numberNormalized.length() == 11 && numberNormalized[0] == '1');
+			string numberNormalizedNapa = numberNormalized;
+			if(numberNormalizedNapa[0] != '1') {
+				numberNormalizedNapa = "1" + numberNormalizedNapa;
+			}
+			string country = this->_getCountry(numberNormalizedNapa.c_str(), countries, country_prefix);
+			if((!countries || countries->size() == 1) && countryIsNapa(country) &&
+			   (country == "US" || country == "CA" ? okLengthForUS_CA : true)) {
+				return(country);
+			} else {
+				if(countries) {
+					countries->clear();
+				}
+			}
+		}
+		if(countries) {
+			countries->push_back(local_country);
+		}
+		return(local_country);
+	}
+	string country = this->_getCountry(numberNormalized.c_str(), countries, country_prefix);
+	return(country);
+}
+
+string CountryPrefixes::_getCountry(const char *number, vector<string> *countries, string *country_prefix) {
+	if(countries) {
+		countries->clear();
+	}
+	if(country_prefix) {
+		*country_prefix = "";
+	}
+	vector<CountryPrefix_rec>::iterator findRecIt;
+	for(int pass = 0; pass < 2; pass++) {
+		if(pass == 1 || !customer_data_simple.empty()) {
+			vector<CountryPrefix_rec> *data = pass == 0 ? &this->customer_data_simple : &this->data;
+			findRecIt = std::lower_bound(data->begin(), data->end(), number);
+			if(findRecIt == data->end()) {
+				--findRecIt;
+			}
+			int _redukSizeFindNumber = 0;
+			bool okFind = true;
+			while(strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
+				if(findRecIt->number[0] < number[0]) {
+					okFind = false;
+					break;
+				}
+				if((!_redukSizeFindNumber || _redukSizeFindNumber > 1) &&
+				   atol(findRecIt->number.c_str()) < atol(string(number, findRecIt->number.length()).c_str())) {
+					if(_redukSizeFindNumber) {
+						--_redukSizeFindNumber;
+					} else {
+						_redukSizeFindNumber = findRecIt->number.length() - 1;
+					}
+					findRecIt = std::lower_bound(data->begin(), data->end(), string(number).substr(0, _redukSizeFindNumber).c_str());
+					if(findRecIt == data->end()) {
+						--findRecIt;
+					}
+				} else {
+					if(findRecIt == data->begin()) {
+						okFind = false;
+						break;
+					} else {
+						--findRecIt;
+					}
+				}
+			}
+			if(okFind &&
+			   !strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
+				string rslt = findRecIt->country_code;
+				string rsltNumber = findRecIt->number;
+				if(country_prefix) {
+					*country_prefix = findRecIt->number;
+				}
+				if(countries) {
+					countries->push_back(rslt);
+					while(findRecIt != data->begin()) {
+						--findRecIt;
+						if(rsltNumber == findRecIt->number) {
+							countries->push_back(findRecIt->country_code);
+						} else {
+							break;
+						}
+					}
+				}
+				return(rslt);
+			}
+		}
+	}
+	return("");
 }
 
 
