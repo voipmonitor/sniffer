@@ -81,8 +81,10 @@ public:
 	void setSkipPrefixes(const char *prefixes, vector<string> *separators = NULL);
 	void setInternationalMinLength(int internationalMinLength, bool internationalMinLengthPrefixesStrict);
 	void setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWithoutPrefix);
-	void load(SqlDb_row *dbRow);
+	bool isSet(SqlDb_row *dbRow);
+	bool load(SqlDb_row *dbRow);
 	bool load();
+	void _load(SqlDb_row *dbRow);
 	bool loadCustomerPrefixAdv();
 	void clearInternationalPrefixes();
 	void clearSkipPrefixes();

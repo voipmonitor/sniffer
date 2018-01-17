@@ -182,15 +182,20 @@ void CheckInternational::setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWit
 	this->enableCheckNapaWithoutPrefix = enableCheckNapaWithoutPrefix;
 }
 
-void CheckInternational::load(SqlDb_row *dbRow) {
-	vector<string> prefixesSeparators = split(",|;| ", "|");
-	setInternationalPrefixes((*dbRow)["international_prefixes"].c_str(), &prefixesSeparators);
-	internationalMinLength = atoi((*dbRow)["international_number_min_length"].c_str());
-	internationalMinLengthPrefixesStrict = atoi((*dbRow)["international_number_min_length_prefixes_strict"].c_str());
-	countryCodeForLocalNumbers = (*dbRow)["country_code_for_local_numbers"];
-	enableCheckNapaWithoutPrefix = atoi((*dbRow)["enable_check_napa_without_prefix"].c_str());
-	setSkipPrefixes((*dbRow)["skip_prefixes"].c_str(), &prefixesSeparators);
-	loadCustomerPrefixAdv();
+bool CheckInternational::isSet(SqlDb_row *dbRow) {
+	return((*dbRow)["international_prefixes"].length() ||
+	       atoi((*dbRow)["international_number_min_length"].c_str()) ||
+	       (*dbRow)["country_code_for_local_numbers"].length());
+}
+
+bool CheckInternational::load(SqlDb_row *dbRow) {
+	if(isSet(dbRow)) {
+		_load(dbRow);
+		loadCustomerPrefixAdv();
+		return(true);
+	} else {
+		return(load());
+	}
 }
 
 bool CheckInternational::load() {
@@ -202,11 +207,21 @@ bool CheckInternational::load() {
 	sqlDb->query("select * from " + tableName);
 	SqlDb_row row;
 	while((row = sqlDb->fetchRow())) {
-		this->load(&row);
+		this->_load(&row);
 	}
 	delete sqlDb;
 	loadCustomerPrefixAdv();
 	return(true);
+}
+
+void CheckInternational::_load(SqlDb_row *dbRow) {
+	vector<string> prefixesSeparators = split(",|;| ", "|");
+	setInternationalPrefixes((*dbRow)["international_prefixes"].c_str(), &prefixesSeparators);
+	internationalMinLength = atoi((*dbRow)["international_number_min_length"].c_str());
+	internationalMinLengthPrefixesStrict = atoi((*dbRow)["international_number_min_length_prefixes_strict"].c_str());
+	countryCodeForLocalNumbers = (*dbRow)["country_code_for_local_numbers"];
+	enableCheckNapaWithoutPrefix = atoi((*dbRow)["enable_check_napa_without_prefix"].c_str());
+	setSkipPrefixes((*dbRow)["skip_prefixes"].c_str(), &prefixesSeparators);
 }
 
 bool CheckInternational::loadCustomerPrefixAdv() {
