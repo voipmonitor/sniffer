@@ -238,7 +238,7 @@ bool CheckInternational::loadCustomerPrefixAdv() {
 		while((row = sqlDb->fetchRow())) {
 			CountryPrefix_recAdv *recAdv = new FILE_LINE(0) CountryPrefix_recAdv;
 			if(row["number_regexp_cond"].length()) {
-				recAdv->number_regexp_cond = new FILE_LINE(0) cRegExp(row["number_regex_cond"].c_str());
+				recAdv->number_regexp_cond = new FILE_LINE(0) cRegExp(row["number_regexp_cond"].c_str());
 			}
 			if(row["number_length_from"].length()) {
 				recAdv->number_length_from = atoi(row["number_length_from"].c_str());
@@ -394,6 +394,13 @@ bool CheckInternational::skipPrefixes(const char *number, vector<string> *prefix
 	return(false);
 }
 
+string CheckInternational::numberNormalized(const char *number, CountryPrefixes *countryPrefixes) {
+	string numberNormalized;
+	countryPrefixes->getCountry(number, NULL, NULL,
+				    this, &numberNormalized);
+	return(numberNormalized);
+}
+
 
 CountryPrefixes::CountryPrefixes() {
 }
@@ -450,12 +457,15 @@ void CountryPrefixes::clear() {
 }
 
 string CountryPrefixes::getCountry(const char *number, vector<string> *countries, string *country_prefix,
-				   CheckInternational *checkInternational) {
+				   CheckInternational *checkInternational, string *rsltNumberNormalized) {
 	if(countries) {
 		countries->clear();
 	}
 	if(country_prefix) {
 		*country_prefix = "";
+	}
+	if(rsltNumberNormalized) {
+		*rsltNumberNormalized = "";
 	}
 	string numberOrig = number;
 	bool _isInternational;
@@ -463,6 +473,9 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 	string _numberWithoutPrefix;
 	if(checkInternational->processCustomerDataAdvanced(numberOrig.c_str(), 
 							    &_isInternational, &_country,  &_numberWithoutPrefix)) {
+		if(rsltNumberNormalized) {
+			*rsltNumberNormalized = _numberWithoutPrefix;
+		}
 		if(_country.length()) {
 			if(countries) {
 				countries->push_back(_country);
@@ -476,6 +489,9 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 			string local_country = checkInternational->getLocalCountry();
 			if(countries) {
 				countries->push_back(local_country);
+			}
+			if(rsltNumberNormalized) {
+				*rsltNumberNormalized = this->getPrefixNumber(local_country.c_str()) + *rsltNumberNormalized;
 			}
 			return(local_country);
 		}
@@ -505,6 +521,9 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 			string country = this->_getCountry(numberNormalizedNapa.c_str(), countries, country_prefix);
 			if((!countries || countries->size() == 1) && countryIsNapa(country) &&
 			   (country == "US" || country == "CA" ? okLengthForUS_CA : true)) {
+				if(rsltNumberNormalized) {
+					*rsltNumberNormalized = numberNormalizedNapa;
+				}
 				return(country);
 			} else {
 				if(countries) {
@@ -515,9 +534,15 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 		if(countries) {
 			countries->push_back(local_country);
 		}
+		if(rsltNumberNormalized) {
+			*rsltNumberNormalized = this->getPrefixNumber(local_country.c_str()) + numberNormalized;
+		}
 		return(local_country);
 	}
 	string country = this->_getCountry(numberNormalized.c_str(), countries, country_prefix);
+	if(rsltNumberNormalized) {
+		*rsltNumberNormalized = numberNormalized;
+	}
 	return(country);
 }
 

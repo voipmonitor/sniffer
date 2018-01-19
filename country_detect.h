@@ -125,6 +125,7 @@ public:
 		return(this->skipPrefixes(number, &skipPrefixes_string, &skipPrefixes_regexp, true,
 					  numberWithoutPrefix, skipPrefix, skipPrefixLength, skipPrefixes));
 	}
+	string numberNormalized(const char *number, class CountryPrefixes *countryPrefixes);
 private:
 	vector<string> internationalPrefixes_string;
 	vector<cRegExp*> internationalPrefixes_regexp;
@@ -165,7 +166,7 @@ public:
 	bool load();
 	void clear();
 	string getCountry(const char *number, vector<string> *countries, string *country_prefix,
-			  CheckInternational *checkInternational);
+			  CheckInternational *checkInternational, string *rsltNumberNormalized = NULL);
 	string _getCountry(const char *number, vector<string> *countries, string *country_prefix);
 	bool isLocal(const char *number,
 		     CheckInternational *checkInternational) {
@@ -195,6 +196,19 @@ public:
 			}
 		}
 		return(false);
+	}
+	string getPrefixNumber(const char *country) {
+		for(int pass = 0; pass < 2; pass++) {
+			if(pass == 1 || !customer_data_simple.empty()) {
+				vector<CountryPrefix_rec> *data = pass == 0 ? &this->customer_data_simple : &this->data;
+				for(vector<CountryPrefix_rec>::iterator iter = data->begin(); iter != data->end(); iter++) {
+					if(iter->country_code == country) {
+						return(iter->number);
+					}
+				}
+			}
+		}
+		return("");
 	}
 private:
 	vector<CountryPrefix_rec> data;
