@@ -1230,6 +1230,10 @@ bool SqlInitSchema (void) {
 					}
 				} else {
 					sqlDb->checkSchema(connectId, true);
+					SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+					if(sqlDb_mysql) {
+						sqlDb_mysql->createSchema_init_cdr_partitions(connectId);
+					}
 				}
 				sqlDb->updateSensorState();
 				set_context_config_after_check_db_schema();
