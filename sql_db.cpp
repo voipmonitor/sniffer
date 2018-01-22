@@ -151,7 +151,7 @@ void SqlDb_row::add(string content, string fieldName, bool null) {
 	this->row.push_back(SqlDb_rowField(content, fieldName, null));
 }
 
-void SqlDb_row::add(int content, string fieldName, bool null) {
+void SqlDb_row::add(int32_t content, string fieldName, bool null) {
 	if(!content && null) {
 		this->add((const char*)NULL, fieldName);
 	} else {
@@ -161,7 +161,7 @@ void SqlDb_row::add(int content, string fieldName, bool null) {
 	}
 }
 
-void SqlDb_row::add(unsigned int content, string fieldName, bool null) {
+void SqlDb_row::add(u_int32_t content, string fieldName, bool null) {
 	if(!content && null) {
 		this->add((const char*)NULL, fieldName);
 	} else {
@@ -171,12 +171,12 @@ void SqlDb_row::add(unsigned int content, string fieldName, bool null) {
 	}
 }
 
-void SqlDb_row::add(double content,  string fieldName, bool null) {
+void SqlDb_row::add(int64_t content,  string fieldName, bool null) {
 	if(!content && null) {
 		this->add((const char*)NULL, fieldName);
 	} else {
 		char str_content[100];
-		sprintf(str_content, "%lf", content);
+		sprintf(str_content, "%lli", (unsigned long long)content);
 		this->add(str_content, fieldName);
 	}
 }
@@ -191,12 +191,12 @@ void SqlDb_row::add(u_int64_t content,  string fieldName, bool null) {
 	}
 }
 
-void SqlDb_row::add(int64_t content,  string fieldName, bool null) {
+void SqlDb_row::add(double content,  string fieldName, bool null) {
 	if(!content && null) {
 		this->add((const char*)NULL, fieldName);
 	} else {
 		char str_content[100];
-		sprintf(str_content, "%lli", (unsigned long long)content);
+		sprintf(str_content, "%lf", content);
 		this->add(str_content, fieldName);
 	}
 }
@@ -767,11 +767,11 @@ bool SqlDb::existsDayPartition(string table, unsigned addDaysToNow, bool useCach
 	char partitionName[10];
 	snprintf(partitionName, sizeof(partitionName), "p%02i%02i%02i", tm.tm_year - 100, tm.tm_mon + 1, tm.tm_mday);
 	bool rslt = existsPartition(table, partitionName, useCache);
-	/*
+	// /*
 	if(rslt) {
 		cout << "exists partition " << table << '.' << partitionName << endl;
 	}
-	*/
+	// */
 	return(rslt);
 }
 

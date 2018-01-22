@@ -50,11 +50,11 @@ public:
 	operator int();
 	void add(const char *content, string fieldName = "");
 	void add(string content, string fieldName = "", bool null = false);
-	void add(int content, string fieldName, bool null = false);
-	void add(unsigned int content, string fieldName, bool null = false);
-	void add(double content,  string fieldName, bool null = false);
-	void add(u_int64_t content,  string fieldName, bool null = false);
+	void add(int32_t content, string fieldName, bool null = false);
+	void add(u_int32_t content, string fieldName, bool null = false);
 	void add(int64_t content,  string fieldName, bool null = false);
+	void add(u_int64_t content,  string fieldName, bool null = false);
+	void add(double content,  string fieldName, bool null = false);
 	int getIndexField(string fieldName);
 	string getNameField(int indexField);
 	bool isEmpty();
