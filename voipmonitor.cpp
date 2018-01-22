@@ -384,6 +384,8 @@ bool opt_saveaudio_answeronly = false;
 bool opt_saveaudio_filteripbysipip = false;
 bool opt_saveaudio_filter_ext = true;
 bool opt_saveaudio_wav_mix = true;
+bool opt_saveaudio_from_rtp_only = false;
+bool opt_saveaudio_from_connected = false;
 int opt_saveaudio_stereo = 1;
 int opt_register_timeout = 5;
 int opt_register_timeout_disable_save_failed = 0;
@@ -5682,6 +5684,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_filteripbysipip", &opt_saveaudio_filteripbysipip));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_filter_ext", &opt_saveaudio_filter_ext));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_wav_mix", &opt_saveaudio_wav_mix));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_from_rtp_only", &opt_saveaudio_from_rtp_only));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_from_connected", &opt_saveaudio_from_connected));
 				addConfigItem(new FILE_LINE(42226) cConfigItem_yesno("saveaudio_stereo", &opt_saveaudio_stereo));
 				addConfigItem(new FILE_LINE(42227) cConfigItem_yesno("saveaudio_reversestereo", &opt_saveaudio_reversestereo));
 				addConfigItem(new FILE_LINE(42228) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
@@ -8888,6 +8892,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "saveaudio_wav_mix", NULL))) {
 		opt_saveaudio_wav_mix = yesno(value);
+	}
+	if((value = ini.GetValue("general", "saveaudio_from_rtp_only", NULL))) {
+		opt_saveaudio_from_rtp_only = yesno(value);
+	}
+	if((value = ini.GetValue("general", "saveaudio_from_connected", NULL))) {
+		opt_saveaudio_from_connected = yesno(value);
 	}
 	if((value = ini.GetValue("general", "saveaudio_stereo", NULL))) {
 		opt_saveaudio_stereo = yesno(value);

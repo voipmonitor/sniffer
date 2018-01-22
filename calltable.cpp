@@ -174,6 +174,8 @@ extern float opt_saveaudio_oggquality;
 extern bool opt_saveaudio_filteripbysipip;
 extern bool opt_saveaudio_filter_ext;
 extern bool opt_saveaudio_wav_mix;
+extern bool opt_saveaudio_from_rtp_only;
+extern bool opt_saveaudio_from_connected;
 extern int opt_skinny;
 extern int opt_enable_fraud;
 extern char opt_callidmerge_header[128];
@@ -1971,12 +1973,19 @@ void cWavMix::mix(bool withoutEndSilence, bool withoutEndSilenceInRslt) {
 
 void cWavMix::mix(cWav *wav, bool withoutEndSilence) {
 	u_int64_t startTime = getMinStartTime();
-	u_int32_t startOffsetSamples = (wav->start - startTime) * samplerate / 1000000ull;
+	u_int32_t startSamples = 0;
+	int32_t offsetSamples = 0;
+	if(startTime > wav->start) {
+		startSamples = (startTime - wav->start) * samplerate / 1000000ull;
+		offsetSamples = -startSamples;
+	} else if(wav->start > startTime) {
+		offsetSamples = (wav->start - startTime) * samplerate / 1000000ull;
+	}
 	u_int32_t lengthSamples = wav->get_length_samples(withoutEndSilence);
-	for(u_int32_t i = 0; i < lengthSamples; i++) {
-		if(i + startOffsetSamples < mix_buffer_length_samples) {
+	for(u_int32_t i = startSamples; i < lengthSamples; i++) {
+		if(i + offsetSamples < mix_buffer_length_samples) {
 			for(unsigned j = 0; j < bytes_per_sample; j++) {
-				mix_buffer[(i + startOffsetSamples) * bytes_per_sample + j] = wav->wav_buffer[i * bytes_per_sample + j];
+				mix_buffer[(i + offsetSamples) * bytes_per_sample + j] = wav->wav_buffer[i * bytes_per_sample + j];
 			}
 		}
 	}
@@ -2148,7 +2157,9 @@ Call::convertRawToWav() {
 	
 	u_int64_t minStartTime = 0;
 	if(useWavMix) {
-		minStartTime = this->first_packet_time * 1000000ull + this->first_packet_usec;
+		if(!opt_saveaudio_from_rtp_only) {
+			minStartTime = this->first_packet_time * 1000000ull + this->first_packet_usec;
+		}
 		for(int i = 0; i < ssrc_n; i++) {
 			if(!minStartTime ||
 			   rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec < minStartTime) {
@@ -2372,6 +2383,9 @@ Call::convertRawToWav() {
 		cWavMix *wavMix = NULL;
 		if(useWavMix) {
 			wavMix = new FILE_LINE(0) cWavMix(2, maxsamplerate);
+			if(opt_saveaudio_from_connected && (this->connect_time * 1000000ull + this->connect_time_usec) > minStartTime) {
+				minStartTime = this->connect_time * 1000000ull + this->connect_time_usec;
+			}
 			wavMix->setStartTime(minStartTime);
 		}
 
