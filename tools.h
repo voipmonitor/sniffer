@@ -481,6 +481,7 @@ u_int32_t checksum32buf(u_char *buf, size_t len) {
 }
 void ntoa(char *res, unsigned int addr);
 string escapeShellArgument(string str);
+tm stringToTm(const char *timeStr);
 time_t stringToTime(const char *timeStr);
 struct tm getDateTime(u_int64_t us);
 struct tm getDateTime(time_t time);
@@ -488,6 +489,10 @@ struct tm getDateTime(const char *timeStr);
 int getNumberOfDayToNow(const char *date);
 int getNumberOfHourToNow(const char *date, int hour);
 string getActDateTimeF(bool useT_symbol = false);
+tm getEasterMondayDate(unsigned year, int decDays = 0);
+bool isEasterMondayDate(tm &date, int decDays = 0);
+tm getNextBeginDate(tm &dateTime);
+tm dateTimeAdd(tm &dateTime, unsigned add_s);
 unsigned long getUptime();
 
 char *strnstr(const char *haystack, const char *needle, size_t len);
@@ -542,6 +547,7 @@ private:
 
 bool check_ip_in(u_int32_t ip, vector<u_int32_t> *vect_ip, vector<d_u_int32_t> *vect_net, bool trueIfVectEmpty);
 string inet_ntostring(u_int32_t ip);
+u_int32_t inet_strington(const char *ip);
 bool ip_is_localhost(u_int32_t ip) { return((ip >> 8) == 0x7F0000); }
 void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos);
 void base64_init(void);

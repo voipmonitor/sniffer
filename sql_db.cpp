@@ -757,6 +757,24 @@ int64_t SqlDb::getQueryRsltIntValue(string query, int indexRslt, int64_t failedR
 	return(failedResult);
 }
 
+bool SqlDb::existsDayPartition(string table, unsigned addDaysToNow, bool useCache) {
+	time_t now = time(NULL);
+	tm tm = time_r(&now);
+	while(addDaysToNow > 0) {
+		tm = getNextBeginDate(tm);
+		--addDaysToNow;
+	}
+	char partitionName[10];
+	snprintf(partitionName, sizeof(partitionName), "p%02i%02i%02i", tm.tm_year - 100, tm.tm_mon + 1, tm.tm_mday);
+	bool rslt = existsPartition(table, partitionName, useCache);
+	/*
+	if(rslt) {
+		cout << "exists partition " << table << '.' << partitionName << endl;
+	}
+	*/
+	return(rslt);
+}
+
 int SqlDb::getIndexField(string fieldName) {
 	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		for(size_t i = 0; i < this->response_data_columns.size(); i++) {
@@ -892,6 +910,7 @@ SqlDb_mysql::SqlDb_mysql() {
 	this->hMysqlConn = NULL;
 	this->hMysqlRes = NULL;
 	this->mysqlThreadId = 0;
+	this->exists_partition_cache_sync = 0;
 }
 
 SqlDb_mysql::~SqlDb_mysql() {
@@ -1276,6 +1295,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 						  this->disableLogError || this->disableNextAttemptIfError ||
 						  this->getLastError() == ER_PARSE_ERROR ||
 						  this->getLastError() == ER_NO_REFERENCED_ROW_2 ||
+						  this->getLastError() == ER_SAME_NAME_PARTITION ||
 						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
 						break;
 					} else {
@@ -1480,6 +1500,38 @@ bool SqlDb_mysql::existsColumn(const char *table, const char *column) {
 		++countRow;
 	}
 	return(countRow > 0);
+}
+
+bool SqlDb_mysql::existsPartition(const char *table, const char *partition, bool useCache) {
+	string partitions;
+	if(useCache) {
+		while(__sync_lock_test_and_set(&exists_partition_cache_sync, 1));
+		if(exists_partition_cache.find(table) != exists_partition_cache.end()) {
+			partitions = exists_partition_cache[table];
+		}
+		__sync_lock_release(&exists_partition_cache_sync);
+	}
+	if(!partitions.length()) {
+		this->query(string("explain partitions select * from ") + table);
+		SqlDb_row row;
+		if((row = this->fetchRow())) {
+			partitions = row["partitions"];
+		}
+	}
+	if(partitions.length()) {
+		if(useCache) {
+			while(__sync_lock_test_and_set(&exists_partition_cache_sync, 1));
+			exists_partition_cache[table] = partitions;
+			__sync_lock_release(&exists_partition_cache_sync);
+		}
+		vector<string> partitions_v = split(partitions, ',');
+		for(unsigned i = 0; i < partitions_v.size(); i++) {
+			if(partitions_v[i] == partition) {
+				return(true);
+			}
+		}
+	}
+	return(false);
 }
 
 bool SqlDb_mysql::emptyTable(const char *table) {
@@ -1796,6 +1848,11 @@ bool SqlDb_odbc::existsDatabase() {
 }
 
 bool SqlDb_odbc::existsColumn(const char */*table*/, const char */*column*/) {
+	// TODO
+	return(false);
+}
+
+bool SqlDb_odbc::existsPartition(const char *table, const char *partition, bool useCache) {
 	// TODO
 	return(false);
 }
@@ -3337,6 +3394,18 @@ string sqlDateString(time_t unixTime) {
 	struct tm localTime = time_r(&unixTime);
 	char dateBuffer[50];
 	strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &localTime);
+	return string(dateBuffer);
+}
+
+string sqlDateTimeString(tm &time) {
+	char dateTimeBuffer[50];
+	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &time);
+	return string(dateTimeBuffer);
+}
+
+string sqlDateString(tm &time) {
+	char dateBuffer[50];
+	strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &time);
 	return string(dateBuffer);
 }
 
@@ -6850,26 +6919,24 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
 		return;
 	}
 	vector<string> tablesForCreatePartitions = sqlDbMysql->getSourceTables(SqlDb_mysql::tt_main | SqlDb_mysql::tt_child, SqlDb_mysql::tt2_static);
-	bool disableLogErrorOld = sqlDb->getDisableLogError();
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-	if(isCloud()) {
-		sqlDb->setDisableLogError(true);
+	if(day <= 0 ||
+	   isCloud() || cloud_db) {
 		sqlDb->setMaxQueryPass(1);
-		for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
+	}
+	for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
+		if((isCloud() || cloud_db) &&
+		   sqlDb->existsDayPartition(tablesForCreatePartitions[i], day)) {
+			continue;
+		}
+		if(isCloud()) {
 			sqlDb->query(
 				string("call create_partition_v2(") + 
 				       "'" + tablesForCreatePartitions[i] + "', " + 
-				       "'day', " + intToString(day) + ", " + 
+				       "'day', " + 
+				       intToString(day) + ", " + 
 				       (opt_cdr_partition_oldver ? "true" : "false") + ");");
-		}
-		sqlDb->setMaxQueryPass(maxQueryPassOld);
-		sqlDb->setDisableLogError(disableLogErrorOld);
-	} else {
-		if(day <= 0) {
-			sqlDb->setDisableLogError(true);
-			sqlDb->setMaxQueryPass(2);
-		}
-		for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
+		} else {
 			if((connectId == 0 && (!use_mysql_2_http() || tablesForCreatePartitions[i] != "http_jj")) ||
 			   (connectId == 1 && use_mysql_2_http() && tablesForCreatePartitions[i] == "http_jj")) {
 				string _mysql_database = connectId == 0 ? 
@@ -6878,15 +6945,13 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
 				sqlDb->query(string("call `") + _mysql_database + "`.create_partition_v2(" + 
 					     (cloud_db ? "" : string("'") + _mysql_database + "', ") + 
 					     "'" + tablesForCreatePartitions[i] + "', " + 
-					     "'day', " + intToString(day) + ", " + 
+					     "'day', " + 
+					     intToString(day) + ", " + 
 					     (opt_cdr_partition_oldver ? "true" : "false") + ");");
 			}
 		}
-		if(day <= 0) {
-			sqlDb->setMaxQueryPass(maxQueryPassOld);
-			sqlDb->setDisableLogError(disableLogErrorOld);
-		}
 	}
+	sqlDb->setMaxQueryPass(maxQueryPassOld);
 }
 
 void createMysqlPartitionsSs7() {
@@ -6904,24 +6969,33 @@ void createMysqlPartitionsLogSensor() {
 void createMysqlPartitionsTable(const char* table, bool partition_oldver) {
 	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
-	bool disableLogErrorOld = sqlDb->getDisableLogError();
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-	if(isCloud()) {
-		sqlDb->setDisableLogError(true);
-		sqlDb->setMaxQueryPass(1);
-		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 0, " + (partition_oldver ? "true" : "false") + ");");
-		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 1, " + (partition_oldver ? "true" : "false") + ");");
-		sqlDb->query(string("call create_partition_v2('") + table + "', 'day', 2, " + (partition_oldver ? "true" : "false") + ");");
+	for(int day = 0; day < 3; day++) {
+		if(!day ||
+		   isCloud() || cloud_db) {
+			sqlDb->setMaxQueryPass(1);
+		}
+		if((isCloud() || cloud_db) &&
+		   sqlDb->existsDayPartition(table, day)) {
+			continue;
+		}
+		if(isCloud()) {
+			sqlDb->query(
+				string("call create_partition_v2(") + 
+				"'" + table + "', " + 
+				"'day', " + 
+				intToString(day) + ", " + 
+				(partition_oldver ? "true" : "false") + ");");
+		} else {
+			sqlDb->query(
+				string("call `") + mysql_database + "`.create_partition_v2(" + 
+				(cloud_db ? "" : string("'") + mysql_database + "', ") + 
+				"'" + table + "', " + 
+				"'day', " + 
+				intToString(day) + ", " + 
+				(partition_oldver ? "true" : "false") + ");");
+		}
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
-		sqlDb->setDisableLogError(disableLogErrorOld);
-	} else {
-		sqlDb->setDisableLogError(true);
-		sqlDb->setMaxQueryPass(2);
-		sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + table + "', 'day', 0, " + (partition_oldver ? "true" : "false") + ");");
-		sqlDb->setMaxQueryPass(maxQueryPassOld);
-		sqlDb->setDisableLogError(disableLogErrorOld);
-		sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + table + "', 'day', 1, " + (partition_oldver ? "true" : "false") + ");");
-		sqlDb->query(string("call `") + mysql_database + "`.create_partition_v2('" + mysql_database + "', '" + table + "', 'day', 2, " + (partition_oldver ? "true" : "false") + ");");
 	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - end").c_str());

@@ -123,6 +123,9 @@ public:
 	bool existsTable(string table) { return(existsTable(table.c_str())); }
 	virtual bool existsColumn(const char *table, const char *column) = 0;
 	bool existsColumn(string table, string column) { return(existsColumn(table.c_str(), column.c_str())); }
+	virtual bool existsPartition(const char *table, const char *partition, bool useCache = true) = 0;
+	bool existsPartition(string table, string partition, bool useCache) { return(existsPartition(table.c_str(), partition.c_str(), useCache)); }
+	bool existsDayPartition(string table, unsigned addDaysToNow, bool useCache = true);
 	virtual bool emptyTable(const char *table) = 0;
 	bool emptyTable(string table) { return(emptyTable(table.c_str())); }
 	virtual bool isOldVerPartition(const char *table) { return(false); }
@@ -310,6 +313,7 @@ public:
 	bool existsDatabase();
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
+	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table);
 	bool isOldVerPartition(const char *table);
 	string escape(const char *inputString, int length = 0);
@@ -387,6 +391,8 @@ private:
 	MYSQL_RES *hMysqlRes;
 	string dbVersion;
 	unsigned long mysqlThreadId;
+	map<string, string> exists_partition_cache;
+	volatile int exists_partition_cache_sync;
 };
 
 class SqlDb_odbc_bindBufferItem {
@@ -433,6 +439,7 @@ public:
 	bool existsDatabase();
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
+	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table);
 	int getIndexField(string fieldName);
 	string escape(const char *inputString, int length = 0);
@@ -743,6 +750,8 @@ private:
 SqlDb *createSqlObject(int connectId = 0);
 string sqlDateTimeString(time_t unixTime);
 string sqlDateString(time_t unixTime);
+string sqlDateTimeString(tm &time);
+string sqlDateString(tm &time);
 string sqlEscapeString(string inputStr, const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
 string sqlEscapeString(const char *inputStr, int length = 0, const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
 void fillEscTables();

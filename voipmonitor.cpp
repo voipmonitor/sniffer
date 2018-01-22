@@ -89,6 +89,7 @@
 #include "country_detect.h"
 #include "ssl_dssl.h"
 #include "server.h"
+#include "billing.h"
 
 #ifndef FREEBSD
 #define BACKTRACE 1
@@ -1230,6 +1231,12 @@ bool SqlInitSchema (void) {
 					}
 				} else {
 					sqlDb->checkSchema(connectId, true);
+					if(is_read_from_file_simple()) {
+						SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+						if(sqlDb_mysql) {
+							sqlDb_mysql->createSchema_procedure_partition(connectId);
+						}
+					}
 				}
 				sqlDb->updateSensorState();
 				set_context_config_after_check_db_schema();
@@ -4577,6 +4584,43 @@ void test() {
 		}
 		break;
 		*/
+		
+		cBilling billing;
+		billing.load();
+		
+		string calldate = "2017-01-17 08:00";
+		unsigned duration = 9 * 60 * 60;
+		string ip_src = "192.168.101.10";
+		string ip_dst = "192.168.101.151";
+		string number_src = "+4121353333";
+		string number_dst = "+41792926527";
+		
+		double operator_price; 
+		double customer_price;
+		unsigned operator_id;
+		unsigned customer_id;
+		
+		time_t calldate_time = stringToTime(calldate.c_str());
+		
+		/*
+		tm calldate_tm = time_r(&calldate_time);
+		tm next1 = getNextBeginDate(calldate_tm);
+		tm next2 = dateTimeAdd(next1, 24 * 60 * 60);
+		*/
+		
+		billing.billing(calldate_time , duration,
+				inet_strington(ip_src.c_str()), inet_strington(ip_dst.c_str()),
+				number_src.c_str(), number_dst.c_str(),
+				&operator_price, &customer_price,
+				&operator_id, &customer_id);
+				
+		break;
+		
+		for(unsigned y = 2017; y <= 2019; y++) {
+			tm easter = getEasterMondayDate(y);
+			cout << sqlDateString(easter) << endl;
+		}
+		break;
 	 
 		SqlDb *sqlDb = createSqlObject();
 		string query = "select * from geoip_country order by ip_from";
@@ -4935,6 +4979,7 @@ void test() {
 		}
 		break;
 	case 311:
+		{
 		CountryDetectInit();
 		vector<string> numbers = split(opt_test_arg, ';');
 		for(unsigned i = 0; i < numbers.size(); i++) {
@@ -4942,6 +4987,35 @@ void test() {
 			cout << "country:          " << getCountryByPhoneNumber(numbers[i].c_str()) << endl;
 			cout << "is international: " << (isLocalByPhoneNumber(numbers[i].c_str()) ? "N" : "Y") << endl;
 			cout << "---" << endl;
+		}
+		}
+		break;
+	case 320:
+		{
+		cBilling billing;
+		billing.load();
+		vector<string> calls = split(opt_test_arg, ';');
+		for(unsigned i = 0; i < calls.size(); i++) {
+			vector<string> call = split(calls[i], ',');
+			if(call.size() == 6) {
+				cout << "calldate, duration: " << call[0] << ", " << call[1] << endl;
+				cout << "numbers:            " << call[2] << " -> " << call[3] << endl;
+				cout << "IP:                 " << call[4] << " -> " << call[5] << endl;
+				time_t calldate_time = stringToTime(call[0].c_str());
+				double operator_price; 
+				double customer_price;
+				unsigned operator_id;
+				unsigned customer_id;
+				billing.billing(calldate_time , atoi(call[1].c_str()),
+						inet_strington(call[4].c_str()), inet_strington(call[5].c_str()),
+						call[2].c_str(), call[3].c_str(),
+						&operator_price, &customer_price,
+						&operator_id, &customer_id);
+				cout << "rslt operator:      " << operator_price << " / " << operator_id << endl;
+				cout << "rslt customer:      " << customer_price << " / " << customer_id << endl;
+				cout << "---" << endl;
+			}
+		}
 		}
 		break;
 	}
@@ -6296,6 +6370,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"create-udptl-streams", 0, 0, 309},
 	    {"conv-raw-info", 1, 0, 310},
 	    {"find-country-for-number", 1, 0, 311},
+	    {"test-billing", 1, 0, 320},
 	    {"watchdog", 1, 0, 316},
 	    {"cloud-db", 0, 0, 318},
 	    {"disable-dbupgradecheck", 0, 0, 319},
@@ -6709,6 +6784,7 @@ void get_command_line_arguments() {
 				break;
 			case 310:
 			case 311:
+			case 320:
 				opt_test = c;
 				if(optarg) {
 					strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));

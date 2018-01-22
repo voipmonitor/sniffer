@@ -4023,7 +4023,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add(a_ua_id, "a_ua_id", true);
 	cdr.add(b_ua_id, "b_ua_id", true);
 	
-	u_int64_t cdrID = sqlDbSaveCall->insert(sql_cdr_table, cdr);
+	int64_t cdrID = sqlDbSaveCall->insert(sql_cdr_table, cdr);
 	if (is_read_from_file_simple()) {
 		ostringstream outStr;
 		outStr << "Found new call. Added to db with cdr.ID:" << cdrID ;
@@ -6953,21 +6953,39 @@ string CustomHeaders::getDeleteQuery(const char *id, const char *prefix, const c
 }
 
 void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb) {
-	list<string>::iterator iter;
-	for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
-	 	if(sqlDb->isCloud()) {
+	extern bool cloud_db;
+	extern char mysql_database[256];
+	extern bool opt_cdr_partition_oldver;
+	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
+	for(int day = 0; day < 3; day++) {
+		if(!day ||
+		   isCloud() || cloud_db) {
 			sqlDb->setMaxQueryPass(1);
-			sqlDb->query(
-				"call create_partition('" + *iter + "', 'day', 0);");
-			sqlDb->query(
-				"call create_partition('" + *iter + "', 'day', 1);");
-		} else {
-			extern char mysql_database[256];
-			sqlDb->query(
-				string("call `") + mysql_database + "`.create_partition('" + mysql_database + "', '" + *iter + "', 'day', 0);");
-			sqlDb->query(
-				string("call `") + mysql_database + "`.create_partition('" + mysql_database + "', '" + *iter + "', 'day', 1);");
 		}
+		list<string>::iterator iter;
+		for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
+			if((isCloud() || cloud_db) &&
+			   sqlDb->existsDayPartition(*iter, day)) {
+				continue;
+			}
+			if(sqlDb->isCloud()) {
+				sqlDb->query(
+					string("call create_partition_v2(") + 
+					"'" + *iter + "', " +
+					"'day', " +
+					intToString(day) + ", " +
+					(opt_cdr_partition_oldver ? "true" : "false") + ");");
+			} else {
+				sqlDb->query(
+					string("call `") + mysql_database + "`.create_partition_v2(" + 
+					(cloud_db ? "" : "'" + string(mysql_database) + "', ") +
+					"'" + *iter + "', " +
+					"'day', " +
+					intToString(day) + ", " +
+					(opt_cdr_partition_oldver ? "true" : "false") + ");");
+			}
+		}
+		sqlDb->setMaxQueryPass(maxQueryPassOld);
 	}
 }
 

@@ -958,6 +958,23 @@ string escapeShellArgument(string str) {
 	return(rslt);
 }
 
+tm stringToTm(const char *timeStr) {
+	int year, month, day, hour, min, sec;
+	hour = min = sec = 0;
+	sscanf(timeStr, "%d-%d-%d %d:%d:%d", &year, &month, &day, &hour, &min, &sec);
+	struct tm dateTime;
+	memset(&dateTime, 0, sizeof(dateTime));
+	dateTime.tm_year = year - 1900;
+	dateTime.tm_mon = month - 1;  
+	dateTime.tm_mday = day;
+	dateTime.tm_wday = 0;
+	dateTime.tm_hour = hour; 
+	dateTime.tm_min = min; 
+	dateTime.tm_sec = sec;
+	mktime(&dateTime);
+	return(dateTime);
+}
+
 time_t stringToTime(const char *timeStr) {
 	int year, month, day, hour, min, sec;
 	hour = min = sec = 0;
@@ -1027,6 +1044,66 @@ string getActDateTimeF(bool useT_symbol) {
 		 useT_symbol ? "%Y-%m-%dT%T" : "%Y-%m-%d %T", 
 		 &actTimeInfo);
 	return(dateTimeF);
+}
+
+tm getEasterMondayDate(unsigned year, int decDays) {
+	tm rslt;
+	memset(&rslt, 0, sizeof(rslt));
+	if(year < 1900 || year > 2099) {
+		return(rslt);
+	}
+	int m = 24;
+	int n = 5;
+	int a = year % 19;
+	int b = year % 4;
+	int c = year % 7;
+	int d = (19 * a + m) % 30;
+	int e = (2 * b + 4 * c + 6 * d + n) % 7;
+	int v = 81 + d + e;
+	if(v > 115 || (v == 115 && d == 28 && e == 6 && a > 10)) {
+		v = v - 7;
+	}
+	if(!(year % 4) && (year % 100 || !(year % 400))) {
+		v++;
+	}
+	rslt.tm_year = year - 1900;
+	rslt.tm_mon = 0;  
+	rslt.tm_mday = 1;
+	rslt.tm_wday = 0;
+	rslt.tm_hour = 0; 
+	rslt.tm_min = 0; 
+	rslt.tm_sec = 0;
+	time_t time_s = mktime(&rslt);
+	time_s += (v - decDays) * 60 * 60 * 24;
+	rslt = time_r(&time_s, "local");
+	return(rslt);
+}
+
+bool isEasterMondayDate(tm &date, int decDays) {
+	tm ed = getEasterMondayDate(date.tm_year + 1900, decDays);
+	return(ed.tm_year == date.tm_year &&
+	       ed.tm_mon == date.tm_mon &&
+	       ed.tm_mday == date.tm_mday);
+}
+
+tm getNextBeginDate(tm &dateTime) {
+	tm rslt = dateTime;
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	time_t time_s = mktime(&rslt);
+	time_s += 60 * 60 * 36;
+	rslt = time_r(&time_s, "local");
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	return(rslt);
+}
+
+tm dateTimeAdd(tm &dateTime, unsigned add_s) {
+	time_t time_s = mktime(&dateTime);
+	time_s += add_s;
+	return(time_r(&time_s, "local"));
 }
 
 unsigned long getUptime() {
@@ -2487,6 +2564,11 @@ string inet_ntostring(u_int32_t ip) {
 	return(inet_ntoa(in));
 }
 
+u_int32_t inet_strington(const char *ip) {
+	in_addr ips;
+	inet_aton(ip, &ips);
+	return(htonl(ips.s_addr));
+}
 
 void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos) {
 	for(size_t i = 0; i < dataLen; i++) {
