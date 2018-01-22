@@ -787,11 +787,11 @@ bool SqlDb::existsDayPartition(string table, unsigned addDaysToNow, bool useCach
 	char partitionName[10];
 	snprintf(partitionName, sizeof(partitionName), "p%02i%02i%02i", tm.tm_year - 100, tm.tm_mon + 1, tm.tm_mday);
 	bool rslt = existsPartition(table, partitionName, useCache);
-	// /*
+	/*
 	if(rslt) {
 		cout << "exists partition " << table << '.' << partitionName << endl;
 	}
-	// */
+	*/
 	return(rslt);
 }
 
