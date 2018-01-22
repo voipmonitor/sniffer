@@ -52,9 +52,9 @@ public:
 	void add(string content, string fieldName = "", bool null = false);
 	void add(int content, string fieldName, bool null = false);
 	void add(unsigned int content, string fieldName, bool null = false);
-	void add(long int content,  string fieldName, bool null = false);
 	void add(double content,  string fieldName, bool null = false);
 	void add(u_int64_t content,  string fieldName, bool null = false);
+	void add(int64_t content,  string fieldName, bool null = false);
 	int getIndexField(string fieldName);
 	string getNameField(int indexField);
 	bool isEmpty();

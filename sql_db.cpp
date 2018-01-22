@@ -171,16 +171,6 @@ void SqlDb_row::add(unsigned int content, string fieldName, bool null) {
 	}
 }
 
-void SqlDb_row::add(long int content,  string fieldName, bool null) {
-	if(!content && null) {
-		this->add((const char*)NULL, fieldName);
-	} else {
-		char str_content[100];
-		sprintf(str_content, "%li", content);
-		this->add(str_content, fieldName);
-	}
-}
-
 void SqlDb_row::add(double content,  string fieldName, bool null) {
 	if(!content && null) {
 		this->add((const char*)NULL, fieldName);
@@ -197,6 +187,16 @@ void SqlDb_row::add(u_int64_t content,  string fieldName, bool null) {
 	} else {
 		char str_content[100];
 		sprintf(str_content, "%llu", (unsigned long long)content);
+		this->add(str_content, fieldName);
+	}
+}
+
+void SqlDb_row::add(int64_t content,  string fieldName, bool null) {
+	if(!content && null) {
+		this->add((const char*)NULL, fieldName);
+	} else {
+		char str_content[100];
+		sprintf(str_content, "%lli", (unsigned long long)content);
 		this->add(str_content, fieldName);
 	}
 }
