@@ -3224,7 +3224,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	if(existsColumns.cdr_last_rtp_from_end && !use_sdp_sendonly) {
 		if(last_rtp_a_packet_time) {
-			cdr.add((type == MGCP ? last_mgcp_connect_packet_time : last_rtp_a_packet_time) - last_rtp_a_packet_time, "a_last_rtp_from_end");
+			cdr.add((type == MGCP ? last_mgcp_connect_packet_time : last_packet_time) - last_rtp_a_packet_time, "a_last_rtp_from_end");
 		}
 		if(last_rtp_b_packet_time) {
 			cdr.add((type == MGCP ? last_mgcp_connect_packet_time : last_packet_time) - last_rtp_b_packet_time, "b_last_rtp_from_end");
