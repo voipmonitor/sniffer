@@ -492,6 +492,7 @@ string getActDateTimeF(bool useT_symbol = false);
 tm getEasterMondayDate(unsigned year, int decDays = 0);
 bool isEasterMondayDate(tm &date, int decDays = 0);
 tm getNextBeginDate(tm &dateTime);
+tm getPrevBeginDate(tm &dateTime);
 tm dateTimeAdd(tm &dateTime, unsigned add_s);
 unsigned long getUptime();
 

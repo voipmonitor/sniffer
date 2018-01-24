@@ -384,8 +384,8 @@ bool opt_saveaudio_answeronly = false;
 bool opt_saveaudio_filteripbysipip = false;
 bool opt_saveaudio_filter_ext = true;
 bool opt_saveaudio_wav_mix = true;
-bool opt_saveaudio_from_rtp_only = false;
-bool opt_saveaudio_from_connected = false;
+bool opt_saveaudio_from_first_invite = true;
+bool opt_saveaudio_afterconnect = false;
 int opt_saveaudio_stereo = 1;
 int opt_register_timeout = 5;
 int opt_register_timeout_disable_save_failed = 0;
@@ -801,6 +801,7 @@ int opt_mysqlstore_limit_queue_register = 1000000;
 
 char opt_curlproxy[256] = "";
 int opt_enable_fraud = 1;
+int opt_enable_billing = 0;
 char opt_local_country_code[10] = "local";
 
 map<string, string> hosts;
@@ -1449,10 +1450,10 @@ void *sCreatePartitions::_createPartitions(void *arg) {
 		createMysqlPartitionsIpacc();
 	}
 	if(createPartitionsData->createBilling) {
-		createDropMysqlPartitionsBillingAgregation();
+		createMysqlPartitionsBillingAgregation();
 	}
 	if(createPartitionsData->dropBilling) {
-		createDropMysqlPartitionsBillingAgregation(true);
+		dropMysqlPartitionsBillingAgregation();
 	}
 	if(createPartitionsData->_runInThread) {
 		delete createPartitionsData;
@@ -3281,6 +3282,10 @@ int main_init_read() {
 			initFraud();
 		}
 		
+		if(opt_enable_billing) {
+			initBilling();
+		}
+		
 		initSendCallInfo();
 	}
 	
@@ -3886,6 +3891,10 @@ void main_term_read() {
 	}
 	
 	CountryDetectTerm();
+	
+	if(opt_enable_billing) {
+		termBilling();
+	}
 	
 	for(int i = 0; i < 2; i++) {
 		if(cleanSpool[i]) {
@@ -4599,6 +4608,8 @@ void test() {
 		
 		double operator_price; 
 		double customer_price;
+		unsigned operator_currency_id;
+		unsigned customer_currency_id;
 		unsigned operator_id;
 		unsigned customer_id;
 		
@@ -4614,6 +4625,7 @@ void test() {
 				inet_strington(ip_src.c_str()), inet_strington(ip_dst.c_str()),
 				number_src.c_str(), number_dst.c_str(),
 				&operator_price, &customer_price,
+				&operator_currency_id, &customer_currency_id,
 				&operator_id, &customer_id);
 				
 		break;
@@ -5006,15 +5018,18 @@ void test() {
 				time_t calldate_time = stringToTime(call[0].c_str());
 				double operator_price; 
 				double customer_price;
+				unsigned operator_currency_id;
+				unsigned customer_currency_id;
 				unsigned operator_id;
 				unsigned customer_id;
 				billing.billing(calldate_time , atoi(call[1].c_str()),
 						inet_strington(call[4].c_str()), inet_strington(call[5].c_str()),
 						call[2].c_str(), call[3].c_str(),
 						&operator_price, &customer_price,
+						&operator_currency_id, &customer_currency_id,
 						&operator_id, &customer_id);
-				cout << "rslt operator:      " << operator_price << " / " << operator_id << endl;
-				cout << "rslt customer:      " << customer_price << " / " << customer_id << endl;
+				cout << "rslt operator:      " << operator_price << " / " << operator_currency_id << " / " << operator_id << endl;
+				cout << "rslt customer:      " << customer_price << " / " << customer_currency_id << " / " << customer_id << endl;
 				cout << "---" << endl;
 			}
 		}
@@ -5684,8 +5699,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_filteripbysipip", &opt_saveaudio_filteripbysipip));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_filter_ext", &opt_saveaudio_filter_ext));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_wav_mix", &opt_saveaudio_wav_mix));
-				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_from_rtp_only", &opt_saveaudio_from_rtp_only));
-				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_from_connected", &opt_saveaudio_from_connected));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_from_first_invite", &opt_saveaudio_from_first_invite));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_afterconnect", &opt_saveaudio_afterconnect));
 				addConfigItem(new FILE_LINE(42226) cConfigItem_yesno("saveaudio_stereo", &opt_saveaudio_stereo));
 				addConfigItem(new FILE_LINE(42227) cConfigItem_yesno("saveaudio_reversestereo", &opt_saveaudio_reversestereo));
 				addConfigItem(new FILE_LINE(42228) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
@@ -6106,6 +6121,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
+						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
 	minorEnd();
 	
 	setDefaultValues();
@@ -8893,11 +8909,11 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "saveaudio_wav_mix", NULL))) {
 		opt_saveaudio_wav_mix = yesno(value);
 	}
-	if((value = ini.GetValue("general", "saveaudio_from_rtp_only", NULL))) {
-		opt_saveaudio_from_rtp_only = yesno(value);
+	if((value = ini.GetValue("general", "saveaudio_from_first_invite", NULL))) {
+		opt_saveaudio_from_first_invite = yesno(value);
 	}
-	if((value = ini.GetValue("general", "saveaudio_from_connected", NULL))) {
-		opt_saveaudio_from_connected = yesno(value);
+	if((value = ini.GetValue("general", "saveaudio_afterconnect", NULL))) {
+		opt_saveaudio_afterconnect = yesno(value);
 	}
 	if((value = ini.GetValue("general", "saveaudio_stereo", NULL))) {
 		opt_saveaudio_stereo = yesno(value);
@@ -8969,6 +8985,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "enable_fraud", NULL))) {
 		opt_enable_fraud = yesno(value);
+	}
+	if((value = ini.GetValue("general", "enable_billing", NULL))) {
+		opt_enable_billing = yesno(value);
 	}
 	if((value = ini.GetValue("general", "local_country_code", NULL))) {
 		strncpy(opt_local_country_code, value, sizeof(opt_local_country_code));

@@ -1100,6 +1100,20 @@ tm getNextBeginDate(tm &dateTime) {
 	return(rslt);
 }
 
+tm getPrevBeginDate(tm &dateTime) {
+	tm rslt = dateTime;
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	time_t time_s = mktime(&rslt);
+	time_s -= 60 * 60 * 12;
+	rslt = time_r(&time_s, "local");
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	return(rslt);
+}
+
 tm dateTimeAdd(tm &dateTime, unsigned add_s) {
 	time_t time_s = mktime(&dateTime);
 	time_s += add_s;

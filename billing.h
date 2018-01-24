@@ -72,7 +72,7 @@ friend class cBilling;
 
 class cBillingExclude {
 public:
-	cBillingExclude();
+	cBillingExclude(bool agregation = false);
 	void load(SqlDb *sqlDb = NULL);
 	bool checkIP(u_int32_t ip, eBilingSide side);
 	bool checkNumber(const char *number, eBilingSide side);
@@ -84,6 +84,7 @@ private:
 		__sync_lock_release(&_sync);
 	}
 private:
+	bool agregation;
 	ListIP list_ip_src;
 	ListIP list_ip_dst;
 	ListPhoneNumber list_number_src;
@@ -182,6 +183,7 @@ private:
 	unsigned t2;
 	bool default_customer;
 	string currency_code;
+	unsigned currency_id;
 	list<cBillingRuleNumber> numbers;
 friend class cBillingRules;
 friend class cBilling;
@@ -207,7 +209,64 @@ private:
 friend class cBilling;
 };
 
+struct sBillingAgregationSettings {
+	bool enable_by_ip;
+	bool enable_by_number;
+	unsigned week_start;
+	unsigned hours_history_in_days;
+	unsigned days_history_in_weeks;
+	unsigned weeks_history_in_months;
+	unsigned months_history_in_years;
+};
+
+class cBillingAgregationSettings {
+public:
+	cBillingAgregationSettings();
+	void load(SqlDb *sqlDb = NULL);
+	void clear();
+	sBillingAgregationSettings getAgregSettings() {
+		return(settings);
+	}
+private:
+	sBillingAgregationSettings settings;
+friend class cBilling;
+};
+
+class cCurrency {
+public:
+	struct sCurrencyItem {
+		unsigned id;
+		string code;
+		string name;
+		string country_code;
+		bool main_currency;
+		double exchange_rate;
+	};
+public:
+	cCurrency();
+	void load(SqlDb *sqlDb = NULL);
+	void clear(bool useLock = true);
+	double getExchangeRateToMainCurency(unsigned from_id);
+private:
+	void lock() {
+		while(__sync_lock_test_and_set(&_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&_sync);
+	}
+private:
+	list<sCurrencyItem> items;
+	volatile int _sync;
+};
+
 class cBilling {
+public:
+	struct sAgregationTypePart {
+		string type;
+		string type_part;
+		bool week;
+		unsigned limit;
+	};
 public:
 	cBilling();
 	~cBilling();
@@ -216,12 +275,23 @@ public:
 		     u_int32_t ip_src, u_int32_t ip_dst,
 		     const char *number_src, const char *number_dst,
 		     double *operator_price, double *customer_price,
+		     unsigned *operator_currency_id, unsigned *customer_currency_id,
 		     unsigned *operator_id, unsigned *customer_id);
 	bool billing(time_t time, unsigned duration,
 		     u_int32_t ip_src, u_int32_t ip_dst,
 		     const char *number_src, const char *number_dst,
 		     double *operator_price, double *customer_price,
+		     unsigned *operator_currency_id, unsigned *customer_currency_id,
 		     unsigned *operator_id, unsigned *customer_id);
+	list<string> saveAgregation(time_t time,
+				    u_int32_t ip_src, u_int32_t ip_dst,
+				    const char *number_src, const char *number_dst,
+				    double operator_price, double customer_price,
+				    unsigned operator_currency_id, unsigned customer_currency_id);
+	sBillingAgregationSettings getAgregSettings() {
+		return(agreg_settings->settings);
+	}
+	static vector<sAgregationTypePart> getAgregTypeParts(sBillingAgregationSettings *settings);
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
@@ -236,8 +306,16 @@ private:
 	cStatesHolidays *holidays;
 	CountryPrefixes *countryPrefixes;
 	CheckInternational *checkInternational;
+	cBillingExclude *agreg_exclude;
+	cBillingAgregationSettings *agreg_settings;
+	cCurrency *currency;
 	volatile int _sync;
 };
+
+
+void initBilling();
+void termBilling();
+void refreshBilling();
 
 
 #endif //BILLING_H

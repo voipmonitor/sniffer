@@ -43,6 +43,7 @@
 #include "manager.h"
 #include "country_detect.h"
 #include "fraud.h"
+#include "billing.h"
 #include "rrd.h"
 #include "tar.h"
 #include "http.h"
@@ -2237,7 +2238,15 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			return -1;
 		}
 		return 0;
+	} else if(strstr(buf, "billing_refresh") != NULL) {
+		refreshBilling();
+		if ((size = sendvm(client, sshchannel, c_client, "reload ok", 9, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
 	} else if(strstr(buf, "country_detect_refresh") != NULL) {
+		refreshBilling();
 		CountryDetectPrepareReload();
 		if ((size = sendvm(client, sshchannel, c_client, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;

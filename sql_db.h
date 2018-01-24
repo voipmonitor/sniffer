@@ -326,6 +326,7 @@ public:
 	void clean();
 	bool createSchema(int connectId = 0);
 	bool createSchema_tables_other(int connectId);
+	bool createSchema_tables_billing_agregation();
 	bool createSchema_table_http_jj(int connectId);
 	bool createSchema_table_webrtc(int connectId);
 	bool createSchema_alter_other(int connectId);
@@ -774,15 +775,16 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb);
 void createMysqlPartitionsSs7();
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsLogSensor();
+void createMysqlPartitionsBillingAgregation();
 void createMysqlPartitionsTable(const char* table, bool partition_oldver);
 void createMysqlPartitionsIpacc();
-void createDropMysqlPartitionsBillingAgregation(bool drop = false);
 void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsSs7();
 void dropMysqlPartitionsRtpStat();
 void dropMysqlPartitionsLogSensor();
-void dropMysqlPartitionsTable(const char *table, int cleanParam);
-void _dropMysqlPartitions(const char *table, int cleanParam, SqlDb *sqlDb);
+void dropMysqlPartitionsBillingAgregation();
+void dropMysqlPartitionsTable(const char *table, int cleanParam, unsigned maximumPartitions);
+void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPartitions, SqlDb *sqlDb);
 void checkMysqlIdCdrChildTables();
 
 
@@ -800,6 +802,12 @@ struct sExistsColumns {
 	bool cdr_mos_lqo;
 	bool cdr_max_retransmission_invite;
 	bool cdr_flags;
+	bool cdr_price_operator_mult100;
+	bool cdr_price_operator_mult1000000;
+	bool cdr_price_operator_currency_id;
+	bool cdr_price_customer_mult100;
+	bool cdr_price_customer_mult1000000;
+	bool cdr_price_customer_currency_id;
 	bool cdr_next_calldate;
 	bool cdr_next_spool_index;
 	bool cdr_next_hold;

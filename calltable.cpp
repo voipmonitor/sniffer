@@ -49,6 +49,7 @@
 #include "cleanspool.h"
 #include "regcache.h"
 #include "fraud.h"
+#include "billing.h"
 #include "tar.h"
 #include "filter_mysql.h"
 #include "sniff_inline.h"
@@ -174,8 +175,8 @@ extern float opt_saveaudio_oggquality;
 extern bool opt_saveaudio_filteripbysipip;
 extern bool opt_saveaudio_filter_ext;
 extern bool opt_saveaudio_wav_mix;
-extern bool opt_saveaudio_from_rtp_only;
-extern bool opt_saveaudio_from_connected;
+extern bool opt_saveaudio_from_first_invite;
+extern bool opt_saveaudio_afterconnect;
 extern int opt_skinny;
 extern int opt_enable_fraud;
 extern char opt_callidmerge_header[128];
@@ -194,6 +195,8 @@ extern int opt_pcap_dump_tar_graph_use_pos;
 
 extern unsigned int glob_ssl_calls;
 extern bool opt_cdr_partition;
+
+extern cBilling *billing;
 
 
 Call_abstract::Call_abstract(int call_type, time_t time) {
@@ -2157,7 +2160,7 @@ Call::convertRawToWav() {
 	
 	u_int64_t minStartTime = 0;
 	if(useWavMix) {
-		if(!opt_saveaudio_from_rtp_only) {
+		if(opt_saveaudio_from_first_invite) {
 			minStartTime = this->first_packet_time * 1000000ull + this->first_packet_usec;
 		}
 		for(int i = 0; i < ssrc_n; i++) {
@@ -2383,7 +2386,7 @@ Call::convertRawToWav() {
 		cWavMix *wavMix = NULL;
 		if(useWavMix) {
 			wavMix = new FILE_LINE(0) cWavMix(2, maxsamplerate);
-			if(opt_saveaudio_from_connected && (this->connect_time * 1000000ull + this->connect_time_usec) > minStartTime) {
+			if(opt_saveaudio_afterconnect && (this->connect_time * 1000000ull + this->connect_time_usec) > minStartTime) {
 				minStartTime = this->connect_time * 1000000ull + this->connect_time_usec;
 			}
 			wavMix->setStartTime(minStartTime);
@@ -3219,8 +3222,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(first_rtp_time) {
 		cdr.add(first_rtp_time  - first_packet_time, "first_rtp_time");
 	}
+	unsigned connect_duration = 0;
 	if(connect_time) {
-		cdr.add((type == MGCP ? duration_mgcp() : duration()) - (connect_time - first_packet_time), "connect_duration");
+		connect_duration = (type == MGCP ? duration_mgcp() : duration()) - (connect_time - first_packet_time);
+		cdr.add(connect_duration, "connect_duration");
 	}
 	if(existsColumns.cdr_last_rtp_from_end && !use_sdp_sendonly) {
 		if(last_rtp_a_packet_time) {
@@ -3660,6 +3665,56 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 	
+	list<string> billingAgergationsInserts;
+	if(connect_time && billing) {
+		double operator_price = 0; 
+		double customer_price = 0;
+		unsigned operator_currency_id = 0;
+		unsigned customer_currency_id = 0;
+		unsigned operator_id = 0;
+		unsigned customer_id = 0;
+		if(billing->billing(calltime(), connect_duration,
+				    htonl(sipcallerip[0]), htonl(sipcalledip[0]),
+				    caller, called,
+				    &operator_price, &customer_price,
+				    &operator_currency_id, &customer_currency_id,
+				    &operator_id, &customer_id)) {
+			if(existsColumns.cdr_price_operator_mult100) {
+				cdr.add(round(operator_price * 100), "price_operator_mult100");
+			}
+			if(existsColumns.cdr_price_operator_mult1000000) {
+				cdr.add(round(operator_price * 1000000), "price_operator_mult1000000");
+			}
+			if(existsColumns.cdr_price_customer_mult100) {
+				cdr.add(round(customer_price * 100), "price_customer_mult100");
+			}
+			if(existsColumns.cdr_price_customer_mult1000000) {
+				cdr.add(round(customer_price * 1000000), "price_customer_mult1000000");
+			}
+			if(existsColumns.cdr_price_operator_currency_id) {
+				cdr.add(operator_currency_id, "price_operator_currency_id");
+			}
+			if(existsColumns.cdr_price_customer_currency_id) {
+				cdr.add(customer_currency_id, "price_customer_currency_id");
+			}
+			if(operator_price > 0 || customer_price > 0) {
+				billingAgergationsInserts = 
+					billing->saveAgregation(calltime(),
+								htonl(sipcallerip[0]), htonl(sipcalledip[0]),
+								caller, called,
+								operator_price, customer_price,
+								operator_currency_id, customer_currency_id);
+			}
+		} else {
+			if(existsColumns.cdr_price_operator_currency_id) {
+				cdr.add(255, "price_operator_currency_id");
+			}
+			if(existsColumns.cdr_price_customer_currency_id) {
+				cdr.add(255, "price_customer_currency_id");
+			}
+		}
+	}
+	
 	if(getSpoolIndex() && existsColumns.cdr_next_spool_index) {
 		cdr_next.add(getSpoolIndex(), "spool_index");
 	}
@@ -3961,11 +4016,17 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					tar_part.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 					tar_part.add(i, "type");
 					tar_part.add(*it, "pos");
-					if(existsColumns.cdr_dtmf_calldate) {
+					if(existsColumns.cdr_tar_part_calldate) {
 						tar_part.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 					}
 					query_str += sqlDbSaveCall->insertQuery("cdr_tar_part", tar_part) + ";\n";
 				}
+			}
+		}
+		
+		if(billingAgergationsInserts.size()) {
+			for(list<string>::iterator iter = billingAgergationsInserts.begin(); iter != billingAgergationsInserts.end(); iter++) {
+				query_str += *iter + ";\n";
 			}
 		}
 		
@@ -4205,6 +4266,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
 				sqlDbSaveCall->insert("cdr_siphistory", siphist);
+			}
+		}
+		
+		if(billingAgergationsInserts.size()) {
+			for(list<string>::iterator iter = billingAgergationsInserts.begin(); iter != billingAgergationsInserts.end(); iter++) {
+				sqlDbSaveCall->query(*iter);
 			}
 		}
 		
@@ -6982,22 +7049,13 @@ void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb) {
 			   sqlDb->existsDayPartition(*iter, day)) {
 				continue;
 			}
-			if(sqlDb->isCloud()) {
-				sqlDb->query(
-					string("call create_partition_v2(") + 
-					"'" + *iter + "', " +
-					"'day', " +
-					intToString(day) + ", " +
-					(opt_cdr_partition_oldver ? "true" : "false") + ");");
-			} else {
-				sqlDb->query(
-					string("call `") + mysql_database + "`.create_partition_v2(" + 
-					(cloud_db ? "" : "'" + string(mysql_database) + "', ") +
-					"'" + *iter + "', " +
-					"'day', " +
-					intToString(day) + ", " +
-					(opt_cdr_partition_oldver ? "true" : "false") + ");");
-			}
+			sqlDb->query(
+				string("call ") + (isCloud() ? "" : "`" + string(mysql_database) + "`.") + "create_partition_v3(" + 
+				(isCloud() || cloud_db ? "NULL" : "'" + string(mysql_database) + "'") + ", " +
+				"'" + *iter + "', " +
+				"'day', " +
+				intToString(day) + ", " +
+				(opt_cdr_partition_oldver ? "true" : "false") + ");");
 		}
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 	}

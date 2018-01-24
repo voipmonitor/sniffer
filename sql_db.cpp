@@ -23,6 +23,7 @@
 
 #include "sql_db.h"
 #include "fraud.h"
+#include "billing.h"
 #include "calltable.h"
 #include "cleanspool.h"
 #include "server.h"
@@ -4919,6 +4920,46 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	return(true);
 }
 
+bool SqlDb_mysql::createSchema_tables_billing_agregation() {
+	cBillingAgregationSettings agregSettingsInst;
+	agregSettingsInst.load();
+	sBillingAgregationSettings agregSettings = agregSettingsInst.getAgregSettings();
+	if(!agregSettings.enable_by_ip &&
+	   !agregSettings.enable_by_number) {
+		return(true);
+	}
+	this->clearLastError();
+	string compress = opt_mysqlcompress ? "ROW_FORMAT=COMPRESSED" : "";
+	vector<cBilling::sAgregationTypePart> typeParts = cBilling::getAgregTypeParts(&agregSettings);
+	for(unsigned i = 0; i < typeParts.size(); i++) {
+		this->query(string(
+			"CREATE TABLE IF NOT EXISTS `billing_agregation_") + typeParts[i].type + "_addresses` (\
+				`part` INT UNSIGNED,\
+				`time` INT UNSIGNED,\
+				`ip` INT UNSIGNED,\
+				`price_operator_mult100000` BIGINT UNSIGNED,\
+				`price_customer_mult100000` BIGINT UNSIGNED,\
+				PRIMARY KEY (`part`,`time`,`ip`))\
+			ENGINE=InnoDB DEFAULT CHARSET=latin1\
+			" + compress + "\
+			PARTITION BY RANGE (`part`)(\
+				PARTITION p0 VALUES LESS THAN (1) engine innodb)");
+		this->query(string(
+			"CREATE TABLE IF NOT EXISTS `billing_agregation_") + typeParts[i].type + "_numbers` (\
+				`part` INT UNSIGNED,\
+				`time` INT UNSIGNED,\
+				`number` CHAR(20),\
+				`price_operator_mult100000` BIGINT UNSIGNED,\
+				`price_customer_mult100000` BIGINT UNSIGNED,\
+				PRIMARY KEY (`part`,`time`,`number`))\
+			ENGINE=InnoDB DEFAULT CHARSET=latin1\
+			" + compress + "\
+			PARTITION BY RANGE (`part`)(\
+				PARTITION p0 VALUES LESS THAN (1) engine innodb)");
+	}
+	return(true);
+}
+
 bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 	this->clearLastError();
 	if(!((connectId == 0 && !use_mysql_2_http()) ||
@@ -5525,219 +5566,112 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFa
 		return(true);
 	}
 	
-	if(isCloud() || cloud_db) {
-		this->createProcedure(string(
-		"begin\
-		    declare part_date date;\
-		    declare part_limit date;\
-		    declare part_limit_int int;\
-		    declare part_name char(100);\
-		    declare create_part_query varchar(1000);\
-		    set part_date =  date_add(date(now()), interval next_days day);\
-		    if(type_part = 'month') then\
-		       set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
-		       set part_limit = date_add(part_date, interval 1 month);\
-		       set part_name = concat('p', date_format(part_date, '%y%m'));\
-		    else\
-		       set part_limit = date_add(part_date, interval 1 day);\
-		       set part_name = concat('p', date_format(part_date, '%y%m%d'));\
-		    end if;\
-		    set part_limit_int = to_days(part_limit);\
-		    set create_part_query = concat(\
-		       'alter table `',\
-		       table_name,\
-		       '` add partition (partition ',\
-		       part_name,") + 
-		       (opt_cdr_partition_oldver ? 
-			     "' VALUES LESS THAN (',\
-			      part_limit_int,\
-			      '))'" :
-			     "' VALUES LESS THAN (\\'',\
-			      part_limit,\
-			      '\\'))'") + 
-		       ");\
-		    set @_create_part_query = create_part_query;\
-		    prepare stmt FROM @_create_part_query;\
-		    execute stmt;\
-		    deallocate prepare stmt;\
-		 end",
-		"create_partition", "(table_name char(100), type_part char(10), next_days int)", abortIfFailed);
-		this->createProcedure(
-		"begin\
-		    declare part_date date;\
-		    declare part_limit date;\
-		    declare part_limit_int int;\
-		    declare part_name char(100);\
-		    declare create_part_query varchar(1000);\
-		    set part_date =  date_add(date(now()), interval next_days day);\
-		    if(type_part = 'month') then\
-		       set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
-		       set part_limit = date_add(part_date, interval 1 month);\
-		       set part_name = concat('p', date_format(part_date, '%y%m'));\
-		    else\
-		       set part_limit = date_add(part_date, interval 1 day);\
-		       set part_name = concat('p', date_format(part_date, '%y%m%d'));\
-		    end if;\
-		    set part_limit_int = to_days(part_limit);\
-		    set create_part_query = concat(\
-		       'alter table `',\
-		       table_name,\
-		       '` add partition (partition ',\
-		       part_name,\
-		       if(old_ver_partition,\
-			  ' VALUES LESS THAN (',\
-			  ' VALUES LESS THAN (\\''),\
-		       if(old_ver_partition,\
-			  part_limit_int,\
-			  part_limit),\
-		       if(old_ver_partition,\
-			  '',\
-			  '\\''),\
-		       '))'\
-		       );\
-		    set @_create_part_query = create_part_query;\
-		    prepare stmt FROM @_create_part_query;\
-		    execute stmt;\
-		    deallocate prepare stmt;\
-		 end",
-		"create_partition_v2", "(table_name char(100), type_part char(10), next_days int, old_ver_partition bool)", abortIfFailed);
-	} else {
-		this->createProcedure(string(
-		"begin\
-		    declare part_date date;\
-		    declare part_limit date;\
-		    declare part_limit_int int;\
-		    declare part_name char(100);\
-		    declare test_exists_any_part_query varchar(1000);\
-		    declare test_exists_part_query varchar(1000);\
-		    declare create_part_query varchar(1000);\
-		    set test_exists_any_part_query = concat(\
-		       'set @_exists_any_part = exists (select * from information_schema.partitions where table_schema=\\'',\
-		       database_name,\
-		       '\\' and table_name = \\'',\
-		       table_name,\
-		       '\\' and partition_name is not null)');\
-		    set @_test_exists_any_part_query = test_exists_any_part_query;\
-		    prepare stmt FROM @_test_exists_any_part_query;\
-		    execute stmt;\
-		    deallocate prepare stmt;\
-		    if(@_exists_any_part) then\
-		       set part_date =  date_add(date(now()), interval next_days day);\
-		       if(type_part = 'month') then\
-			  set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
-			  set part_limit = date_add(part_date, interval 1 month);\
-			  set part_name = concat('p', date_format(part_date, '%y%m'));\
-		       else\
-			  set part_limit = date_add(part_date, interval 1 day);\
-			  set part_name = concat('p', date_format(part_date, '%y%m%d'));\
-		       end if;\
-		       set part_limit_int = to_days(part_limit);\
-		       set test_exists_part_query = concat(\
-			  'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
-			  database_name,\
-			  '\\' and table_name = \\'',\
-			  table_name,\
-			  '\\' and partition_name = \\'',\
-			  part_name,\
-			  '\\')');\
-		       set @_test_exists_part_query = test_exists_part_query;\
-		       prepare stmt FROM @_test_exists_part_query;\
-		       execute stmt;\
-		       deallocate prepare stmt;\
-		       if(not @_exists_part) then\
-			  set create_part_query = concat(\
-			     'alter table ',\
-			     if(database_name is not null, concat('`', database_name, '`.'), ''),\
-			     '`',\
-			     table_name,\
-			     '` add partition (partition ',\
-			     part_name,") + 
-			     (opt_cdr_partition_oldver ? 
-				   "' VALUES LESS THAN (',\
-				    part_limit_int,\
-				    '))'" :
-				   "' VALUES LESS THAN (\\'',\
-				    part_limit,\
-				    '\\'))'") + 
-			     ");\
-			  set @_create_part_query = create_part_query;\
-			  prepare stmt FROM @_create_part_query;\
-			  execute stmt;\
-			  deallocate prepare stmt;\
-		       end if;\
-		    end if;\
-		 end",
-		"create_partition", "(database_name char(100), table_name char(100), type_part char(10), next_days int)", abortIfFailed);
-		this->createProcedure(
-		"begin\
-		    declare part_date date;\
-		    declare part_limit date;\
-		    declare part_limit_int int;\
-		    declare part_name char(100);\
-		    declare test_exists_any_part_query varchar(1000);\
-		    declare test_exists_part_query varchar(1000);\
-		    declare create_part_query varchar(1000);\
-		    set test_exists_any_part_query = concat(\
-		       'set @_exists_any_part = exists (select * from information_schema.partitions where table_schema=\\'',\
-		       database_name,\
-		       '\\' and table_name = \\'',\
-		       table_name,\
-		       '\\' and partition_name is not null)');\
-		    set @_test_exists_any_part_query = test_exists_any_part_query;\
-		    prepare stmt FROM @_test_exists_any_part_query;\
-		    execute stmt;\
-		    deallocate prepare stmt;\
-		    if(@_exists_any_part) then\
-		       set part_date =  date_add(date(now()), interval next_days day);\
-		       if(type_part = 'month') then\
-			  set part_date = date_add(part_date, interval -(day(part_date)-1) day);\
-			  set part_limit = date_add(part_date, interval 1 month);\
-			  set part_name = concat('p', date_format(part_date, '%y%m'));\
-		       else\
-			  set part_limit = date_add(part_date, interval 1 day);\
-			  set part_name = concat('p', date_format(part_date, '%y%m%d'));\
-		       end if;\
-		       set part_limit_int = to_days(part_limit);\
-		       set test_exists_part_query = concat(\
-			  'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
-			  database_name,\
-			  '\\' and table_name = \\'',\
-			  table_name,\
-			  '\\' and partition_name = \\'',\
-			  part_name,\
-			  '\\')');\
-		       set @_test_exists_part_query = test_exists_part_query;\
-		       prepare stmt FROM @_test_exists_part_query;\
-		       execute stmt;\
-		       deallocate prepare stmt;\
-		       if(not @_exists_part) then\
-			  set create_part_query = concat(\
-			     'alter table ',\
-			     if(database_name is not null, concat('`', database_name, '`.'), ''),\
-			     '`',\
-			     table_name,\
-			     '` add partition (partition ',\
-			     part_name,\
-			     if(old_ver_partition,\
-				' VALUES LESS THAN (',\
-				' VALUES LESS THAN (\\''),\
-			     if(old_ver_partition,\
-				part_limit_int,\
-				part_limit),\
-			     if(old_ver_partition,\
-				'',\
-				'\\''),\
-			     '))'\
-			     );\
-			  set @_create_part_query = create_part_query;\
-			  prepare stmt FROM @_create_part_query;\
-			  execute stmt;\
-			  deallocate prepare stmt;\
-		       end if;\
-		    end if;\
-		 end",
-		"create_partition_v2", "(database_name char(100), table_name char(100), type_part char(10), next_days int, old_ver_partition bool)", abortIfFailed);
-	}
+	this->createProcedure(
+	"begin\
+	    declare part_start_time datetime;\
+	    declare part_start_date date;\
+	    declare part_limit date;\
+	    declare part_limit_int int unsigned;\
+	    declare part_name char(100);\
+	    declare _week_start int;\
+	    declare _week_day int;\
+	    declare test_exists_any_part_query varchar(1000);\
+	    declare test_exists_part_query varchar(1000);\
+	    declare create_part_query varchar(1000);\
+	    if(database_name is not null) then\
+	       set test_exists_any_part_query = concat(\
+		  'set @_exists_any_part = exists (select * from information_schema.partitions where table_schema=\\'',\
+		  database_name,\
+		  '\\' and table_name = \\'',\
+		  table_name,\
+		  '\\' and partition_name is not null)');\
+	       set @_test_exists_any_part_query = test_exists_any_part_query;\
+	       prepare stmt FROM @_test_exists_any_part_query;\
+	       execute stmt;\
+	       deallocate prepare stmt;\
+	    end if;\
+	    if(database_name is null or @_exists_any_part) then\
+	       set part_start_time = date_add(now(), interval next_days day);\
+	       set part_limit_int = NULL;\
+	       if(type_part = 'year_int') then\
+		  set part_start_date = date_format(part_start_time, '%Y-01-01');\
+		  set part_limit_int = date_format(part_start_date + interval 1 year, '%Y%m');\
+		  set part_name = concat('p', date_format(part_start_date, '%Y'));\
+	       elseif(type_part = 'month_int') then\
+		  set part_start_date = date_format(part_start_time, '%Y-%m-01');\
+		  set part_limit_int = date_format(part_start_date + interval 1 month, '%Y%m%d');\
+		  set part_name = concat('p', date_format(part_start_date, '%Y%m'));\
+	       elseif(type_part like 'week_int%') then\
+		  set _week_start = substring_index(type_part, ':', -1);\
+		  set _week_start = if(_week_start = 1, 6, _week_start - 2);\
+		  set _week_day = weekday(part_start_time) - _week_start;\
+		  if(_week_day < 0) then\
+		     set _week_day = _week_day + 7;\
+		  end if;\
+		  set part_start_date = date(part_start_time) - interval _week_day day;\
+		  set part_limit_int = date_format(part_start_date + interval 1 week, '%Y%m%d');\
+		  set part_name = concat('p', date_format(part_start_date, '%Y%m%d'));\
+	       elseif(type_part = 'day_int') then\
+		  set part_start_date =  date(part_start_time);\
+		  set part_limit_int = date_format(date(part_start_date) + interval 1 day, '%Y%m%d00');\
+		  set part_name = concat('p', date_format(part_start_date, '%Y%m%d'));\
+	       elseif(type_part = 'month') then\
+		  set part_start_date = date_add(date(part_start_time), interval -(day(date(part_start_time))-1) day);\
+		  set part_limit = date_add(part_start_date, interval 1 month);\
+		  if(old_ver_partition) then\
+		     set part_limit_int = to_days(part_limit);\
+		  end if;\
+		  set part_name = concat('p', date_format(part_start_date, '%y%m'));\
+	       else\
+		  set part_start_date =  date(part_start_time);\
+		  set part_limit = date_add(part_start_date, interval 1 day);\
+		  if(old_ver_partition) then\
+		     set part_limit_int = to_days(part_limit);\
+		  end if;\
+		  set part_name = concat('p', date_format(part_start_date, '%y%m%d'));\
+	       end if;\
+	       if(database_name is not null) then\
+		  set test_exists_part_query = concat(\
+		     'set @_exists_part = exists (select * from information_schema.partitions where table_schema=\\'',\
+		     database_name,\
+		     '\\' and table_name = \\'',\
+		     table_name,\
+		     '\\' and partition_name = \\'',\
+		     part_name,\
+		     '\\')');\
+		  set @_test_exists_part_query = test_exists_part_query;\
+		  prepare stmt FROM @_test_exists_part_query;\
+		  execute stmt;\
+		  deallocate prepare stmt;\
+	       end if;\
+	       if(database_name is null or not @_exists_part) then\
+		  set create_part_query = concat(\
+		     'alter table ',\
+		     if(database_name is not null, concat('`', database_name, '`.'), ''),\
+		     '`',\
+		     table_name,\
+		     '` add partition (partition ',\
+		     part_name,\
+		     if(part_limit_int is not null,\
+			' VALUES LESS THAN (',\
+			' VALUES LESS THAN (\\''),\
+		     if(part_limit_int is not null,\
+			part_limit_int,\
+			part_limit),\
+		     if(part_limit_int is not null,\
+			'',\
+			'\\''),\
+		     '))'\
+		     );\
+		  set @_create_part_query = create_part_query;\
+		  prepare stmt FROM @_create_part_query;\
+		  execute stmt;\
+		  deallocate prepare stmt;\
+	       end if;\
+	    end if;\
+	 end",
+	"create_partition_v3", "(database_name char(100), table_name char(100), type_part char(10), next_days int, old_ver_partition bool)", abortIfFailed);
+
 	return(true);
 }
 
@@ -6122,6 +6056,12 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 					"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;"),
 				   log, &tableSize, NULL);
 	}
+	existsColumns.cdr_price_operator_mult100 = this->existsColumn("cdr", "price_operator_mult100");
+	existsColumns.cdr_price_operator_mult1000000 = this->existsColumn("cdr", "price_operator_mult1000000");
+	existsColumns.cdr_price_operator_currency_id = this->existsColumn("cdr", "price_operator_currency_id");
+	existsColumns.cdr_price_customer_mult100 = this->existsColumn("cdr", "price_customer_mult100");
+	existsColumns.cdr_price_customer_mult1000000 = this->existsColumn("cdr", "price_customer_mult1000000");
+	existsColumns.cdr_price_customer_currency_id = this->existsColumn("cdr", "price_customer_currency_id");
 	
 	const char *cdrReasonColumns[] = {
 		"reason_sip_cause",
@@ -6949,26 +6889,17 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
 		   sqlDb->existsDayPartition(tablesForCreatePartitions[i], day)) {
 			continue;
 		}
-		if(isCloud()) {
-			sqlDb->query(
-				string("call create_partition_v2(") + 
-				       "'" + tablesForCreatePartitions[i] + "', " + 
-				       "'day', " + 
-				       intToString(day) + ", " + 
-				       (opt_cdr_partition_oldver ? "true" : "false") + ");");
-		} else {
-			if((connectId == 0 && (!use_mysql_2_http() || tablesForCreatePartitions[i] != "http_jj")) ||
-			   (connectId == 1 && use_mysql_2_http() && tablesForCreatePartitions[i] == "http_jj")) {
-				string _mysql_database = connectId == 0 ? 
-							  mysql_database : 
-							  mysql_2_database;
-				sqlDb->query(string("call `") + _mysql_database + "`.create_partition_v2(" + 
-					     (cloud_db ? "" : string("'") + _mysql_database + "', ") + 
-					     "'" + tablesForCreatePartitions[i] + "', " + 
-					     "'day', " + 
-					     intToString(day) + ", " + 
-					     (opt_cdr_partition_oldver ? "true" : "false") + ");");
-			}
+		if((connectId == 0 && (!use_mysql_2_http() || tablesForCreatePartitions[i] != "http_jj")) ||
+		   (connectId == 1 && use_mysql_2_http() && tablesForCreatePartitions[i] == "http_jj")) {
+			string _mysql_database = connectId == 0 ? 
+						  mysql_database : 
+						  mysql_2_database;
+			sqlDb->query(string("call ") + (isCloud() ? "" : "`" +_mysql_database + "`.") + "create_partition_v3(" + 
+				     (isCloud() || cloud_db ? "NULL" : "'" + _mysql_database + "'") + ", "
+				     "'" + tablesForCreatePartitions[i] + "', " + 
+				     "'day', " + 
+				     intToString(day) + ", " + 
+				     (opt_cdr_partition_oldver ? "true" : "false") + ");");
 		}
 	}
 	sqlDb->setMaxQueryPass(maxQueryPassOld);
@@ -6986,6 +6917,68 @@ void createMysqlPartitionsLogSensor() {
 	createMysqlPartitionsTable("log_sensor", opt_log_sensor_partition_oldver);
 }
 
+void createMysqlPartitionsBillingAgregation() {
+	cBillingAgregationSettings agregSettingsInst;
+	agregSettingsInst.load();
+	sBillingAgregationSettings agregSettings = agregSettingsInst.getAgregSettings();
+	if(!agregSettings.enable_by_ip &&
+	   !agregSettings.enable_by_number) {
+		return;
+	}
+	SqlDb *sqlDb = createSqlObject();
+	syslog(LOG_NOTICE, "%s", "create billing partitions - begin");
+	vector<cBilling::sAgregationTypePart> typeParts = cBilling::getAgregTypeParts(&agregSettings);
+	bool tablesExists = true;
+	for(unsigned i = 0; i < typeParts.size() && tablesExists; i++) {
+		for(unsigned j = 0; j < 2 && tablesExists; j++) {
+			string type = typeParts[i].type;
+			string type2 = (j == 0 ? "addresses" : "numbers");
+			string table = "billing_agregation_" + type + '_' + type2;
+			if(!sqlDb->existsTable(table)) {
+				tablesExists = false;
+			}
+		}
+	}
+	if(!tablesExists) {
+		SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+		if(sqlDb_mysql) {
+			sqlDb_mysql->createSchema_tables_billing_agregation();
+		}
+	}
+	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
+	for(int day = 0; day < 3; day++) {
+		if(!day ||
+		   isCloud() || cloud_db) {
+			sqlDb->setMaxQueryPass(1);
+		}
+		for(unsigned i = 0; i < typeParts.size(); i++) {
+			for(unsigned j = 0; j < 2; j++) {
+				if(!((j == 0 && agregSettings.enable_by_ip) ||
+				     (j == 1 && agregSettings.enable_by_number))) {
+					continue;
+				}
+				string type = typeParts[i].type;
+				string type_part = typeParts[i].type_part;
+				string type2 = (j == 0 ? "addresses" : "numbers");
+				string table = "billing_agregation_" + type + '_' + type2;
+				if(typeParts[i].week) {
+					type_part += ':' + intToString(agregSettings.week_start);
+				}
+				sqlDb->query(
+					string("call ") + (isCloud() ? "" : "`" + string(mysql_database) + "`.") + "create_partition_v3(" + 
+					(isCloud() || cloud_db ? "NULL" : "'" + string(mysql_database) + "'") + ", " +
+					"'" + table + "', " + 
+					"'" + type_part + "', " + 
+					intToString(day) + ", " + 
+					"true" + ");");
+			}
+		}
+		sqlDb->setMaxQueryPass(maxQueryPassOld);
+	}
+	delete sqlDb;
+	syslog(LOG_NOTICE, "%s", "create billing partitions - end");
+}
+
 void createMysqlPartitionsTable(const char* table, bool partition_oldver) {
 	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
@@ -6999,22 +6992,13 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver) {
 		   sqlDb->existsDayPartition(table, day)) {
 			continue;
 		}
-		if(isCloud()) {
-			sqlDb->query(
-				string("call create_partition_v2(") + 
-				"'" + table + "', " + 
-				"'day', " + 
-				intToString(day) + ", " + 
-				(partition_oldver ? "true" : "false") + ");");
-		} else {
-			sqlDb->query(
-				string("call `") + mysql_database + "`.create_partition_v2(" + 
-				(cloud_db ? "" : string("'") + mysql_database + "', ") + 
-				"'" + table + "', " + 
-				"'day', " + 
-				intToString(day) + ", " + 
-				(partition_oldver ? "true" : "false") + ");");
-		}
+		sqlDb->query(
+			string("call ") + (isCloud() ? "" : "`" + string(mysql_database) + "`.") + "create_partition_v3(" + 
+			(isCloud() || cloud_db ? "NULL" : "'" + string(mysql_database) + "'") + ", " +
+			"'" + table + "', " + 
+			"'day', " + 
+			intToString(day) + ", " + 
+			(partition_oldver ? "true" : "false") + ");");
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 	}
 	delete sqlDb;
@@ -7040,40 +7024,6 @@ void createMysqlPartitionsIpacc() {
 	syslog(LOG_NOTICE, "%s", "create ipacc partitions - end");
 }
 
-void createDropMysqlPartitionsBillingAgregation(bool drop) {
-	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("show tables like 'billing'");
-	if(!sqlDb->fetchRow()) {
-		delete sqlDb;
-		return;
-	}
-	sqlDb->query("show tables like 'billing_agregation_day_addresses'");
-	if(!sqlDb->fetchRow()) {
-		delete sqlDb;
-		return;
-	}
-	sqlDb->query("select * from billing");
-	if(!sqlDb->fetchRow()) {
-		delete sqlDb;
-		return;
-	}
-	syslog(LOG_NOTICE, "%s", 
-	       drop ?
-		"drop billing agregation old partitions - begin" :
-		"create billing agregation partitions - begin");
-	if(isCloud()) {
-		sqlDb->setMaxQueryPass(1);
-	}
-	sqlDb->query(drop ?
-		      "call billing_agregation_destroy_parts();" :
-		      "call billing_agregation_create_parts();");
-	delete sqlDb;
-	syslog(LOG_NOTICE, "%s", 
-	       drop ?
-		"drop billing agregation old partitions - end" :
-		"create billing agregation partitions - end");
-}
-
 void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_cdr;
 	extern int opt_cleandatabase_http_enum;
@@ -7084,31 +7034,31 @@ void dropMysqlPartitionsCdr() {
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->setDisableLogError();
 	sqlDb->setDisableNextAttemptIfError();
-	_dropMysqlPartitions("cdr", opt_cleandatabase_cdr, sqlDb);
-	_dropMysqlPartitions("cdr_next", opt_cleandatabase_cdr, sqlDb);
-	_dropMysqlPartitions("cdr_rtp", opt_cleandatabase_cdr, sqlDb);
-	_dropMysqlPartitions("cdr_dtmf", opt_cleandatabase_cdr, sqlDb);
-	_dropMysqlPartitions("cdr_sipresp", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("cdr", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("cdr_next", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("cdr_rtp", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("cdr_dtmf", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("cdr_sipresp", opt_cleandatabase_cdr, 0, sqlDb);
 	if(_save_sip_history) {
-		_dropMysqlPartitions("cdr_siphistory", opt_cleandatabase_cdr, sqlDb);
+		_dropMysqlPartitions("cdr_siphistory", opt_cleandatabase_cdr, 0, sqlDb);
 	}
-	_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, sqlDb);
-	_dropMysqlPartitions("cdr_country_code", opt_cleandatabase_cdr, sqlDb);
-	_dropMysqlPartitions("cdr_sdp", opt_cleandatabase_cdr, sqlDb);
-	_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, sqlDb);
-	_dropMysqlPartitions("message", opt_cleandatabase_cdr, sqlDb);
-	_dropMysqlPartitions("message_proxy", opt_cleandatabase_cdr, sqlDb);
-	_dropMysqlPartitions("message_country_code", opt_cleandatabase_cdr, sqlDb);
+	_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("cdr_country_code", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("cdr_sdp", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("message", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("message_proxy", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("message_country_code", opt_cleandatabase_cdr, 0, sqlDb);
 	if(custom_headers_cdr) {
 		list<string> nextTables = custom_headers_cdr->getAllNextTables();
 		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
-			_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, sqlDb);
+			_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, 0, sqlDb);
 		}
 	}
 	if(custom_headers_message) {
 		list<string> nextTables = custom_headers_message->getAllNextTables();
 		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
-			_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, sqlDb);
+			_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, 0, sqlDb);
 		}
 	}
 	if(opt_enable_http_enum_tables) {
@@ -7118,49 +7068,77 @@ void dropMysqlPartitionsCdr() {
 		} else {
 			sqlDbHttp = sqlDb;
 		}
-		_dropMysqlPartitions("http_jj", opt_cleandatabase_http_enum, sqlDbHttp);
+		_dropMysqlPartitions("http_jj", opt_cleandatabase_http_enum, 0, sqlDbHttp);
 		/* obsolete
-		_dropMysqlPartitions("enum_jj", opt_cleandatabase_http_enum, sqlDbHttp);
+		_dropMysqlPartitions("enum_jj", opt_cleandatabase_http_enum, 0, sqlDbHttp);
 		*/
 		if(use_mysql_2_http()) {
 			delete sqlDbHttp;
 		}
 	}
 	if(opt_enable_webrtc_table) {
-		_dropMysqlPartitions("webrtc", opt_cleandatabase_webrtc, sqlDb);
+		_dropMysqlPartitions("webrtc", opt_cleandatabase_webrtc, 0, sqlDb);
 	}
-	_dropMysqlPartitions("register_state", opt_cleandatabase_register_state, sqlDb);
-	_dropMysqlPartitions("register_failed", opt_cleandatabase_register_failed, sqlDb);
+	_dropMysqlPartitions("register_state", opt_cleandatabase_register_state, 0, sqlDb);
+	_dropMysqlPartitions("register_failed", opt_cleandatabase_register_failed, 0, sqlDb);
 	delete sqlDb;
 	syslog(LOG_NOTICE, "drop cdr old partitions - end");
 }
 
 void dropMysqlPartitionsSs7() {
 	extern int opt_cleandatabase_ss7;
-	dropMysqlPartitionsTable("ss7", opt_cleandatabase_ss7);
+	dropMysqlPartitionsTable("ss7", opt_cleandatabase_ss7, 0);
 }
 
 void dropMysqlPartitionsRtpStat() {
 	extern int opt_cleandatabase_rtp_stat;
-	dropMysqlPartitionsTable("rtp_stat", opt_cleandatabase_rtp_stat);
+	dropMysqlPartitionsTable("rtp_stat", opt_cleandatabase_rtp_stat, 0);
 }
 
 void dropMysqlPartitionsLogSensor() {
 	extern int opt_cleandatabase_log_sensor;
-	dropMysqlPartitionsTable("log_sensor", opt_cleandatabase_log_sensor);
+	dropMysqlPartitionsTable("log_sensor", opt_cleandatabase_log_sensor, 0);
 }
 
-void dropMysqlPartitionsTable(const char *table, int cleanParam) {
+void dropMysqlPartitionsBillingAgregation() {
+	cBillingAgregationSettings agregSettingsInst;
+	agregSettingsInst.load();
+	sBillingAgregationSettings agregSettings = agregSettingsInst.getAgregSettings();
+	if(!agregSettings.enable_by_ip &&
+	   !agregSettings.enable_by_number) {
+		return;
+	}
+	SqlDb *sqlDb = createSqlObject();
+	syslog(LOG_NOTICE, "%s", "drop billing old partitions - begin");
+	vector<cBilling::sAgregationTypePart> typeParts = cBilling::getAgregTypeParts(&agregSettings);
+		for(unsigned i = 0; i < typeParts.size(); i++) {
+			for(unsigned j = 0; j < 2; j++) {
+				if(!((j == 0 && agregSettings.enable_by_ip) ||
+				     (j == 1 && agregSettings.enable_by_number))) {
+					continue;
+				}
+				string type = typeParts[i].type;
+				string type2 = (j == 0 ? "addresses" : "numbers");
+				string table = "billing_agregation_" + type + '_' + type2;
+				unsigned limit = typeParts[i].limit;
+				_dropMysqlPartitions(table.c_str(), 0, limit, sqlDb);
+			}
+		}
+	delete sqlDb;
+	syslog(LOG_NOTICE, "%s", "drop billing old partitions - end");
+}
+
+void dropMysqlPartitionsTable(const char *table, int cleanParam, unsigned maximumPartitions) {
 	syslog(LOG_NOTICE, "%s", (string("drop ") + table + " old partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->setDisableLogError();
 	sqlDb->setDisableNextAttemptIfError();
-	_dropMysqlPartitions(table, cleanParam, sqlDb);
+	_dropMysqlPartitions(table, cleanParam, maximumPartitions, sqlDb);
 	delete sqlDb;
 	syslog(LOG_NOTICE, "%s", (string("drop ") + table + " old partitions - end").c_str());
 }
 
-void _dropMysqlPartitions(const char *table, int cleanParam, SqlDb *sqlDb) {
+void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPartitions, SqlDb *sqlDb) {
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 		sqlDb->setDisableLogError();
@@ -7176,9 +7154,14 @@ void _dropMysqlPartitions(const char *table, int cleanParam, SqlDb *sqlDb) {
 		limitPartName = limitPartName_buff;
 	}
 	map<string, int> partitions;
-	unsigned maximumPartitions = sqlDb->getMaximumPartitions();
-	if(maximumPartitions > 10) {
-		maximumPartitions -= 10;
+	unsigned maximumDbPartitions = sqlDb->getMaximumPartitions();
+	if(maximumDbPartitions) {
+		if(maximumDbPartitions > 10) {
+			maximumDbPartitions -= 10;
+		}
+		if(!maximumPartitions || maximumPartitions > maximumDbPartitions) {
+			maximumPartitions = maximumDbPartitions;
+		}
 	}
 	SqlDb_row row;
 	if(isCloud()) {
@@ -7187,7 +7170,7 @@ void _dropMysqlPartitions(const char *table, int cleanParam, SqlDb *sqlDb) {
 		if(row) {
 			vector<string> exists_partitions = split(row["partitions"], ',');
 			std::sort(exists_partitions.begin(), exists_partitions.end());
-			if(maximumPartitions) {
+			if(maximumPartitions ) {
 				if(exists_partitions.size() > maximumPartitions) {
 					for(size_t i = 0; i < (exists_partitions.size() - maximumPartitions); i++) {
 						partitions[exists_partitions[i]] = 1;
