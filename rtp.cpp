@@ -1055,7 +1055,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		  owner->audiobuffer1 || owner->audiobuffer2));
 	
 	if(srtp_decrypt && (opt_srtp_rtp_decrypt || recordingRequested)) {
-		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len); 
+		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header)); 
 		this->len = *len;
 	}
 

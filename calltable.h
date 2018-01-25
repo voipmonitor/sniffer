@@ -159,6 +159,7 @@ struct rtp_crypto_config {
 	unsigned tag;
 	string suite;
 	string key;
+	u_int64_t from_time_us;
 };
 
 struct ip_port_call_info {
@@ -171,11 +172,28 @@ struct ip_port_call_info {
 			delete rtp_crypto_config_list;
 		}
 	}
-	void setSdpCryptoList(list<rtp_crypto_config> *rtp_crypto_config_list) {
+	void setSdpCryptoList(list<rtp_crypto_config> *rtp_crypto_config_list, u_int64_t from_time_us) {
 		if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
-			this->rtp_crypto_config_list = new FILE_LINE(0) list<rtp_crypto_config>;
-			for(list<rtp_crypto_config>::iterator iter = rtp_crypto_config_list->begin(); iter != rtp_crypto_config_list->end(); iter++) {
-				this->rtp_crypto_config_list->push_back(*iter);
+			if(!this->rtp_crypto_config_list) {
+				this->rtp_crypto_config_list = new FILE_LINE(0) list<rtp_crypto_config>;
+				for(list<rtp_crypto_config>::iterator iter = rtp_crypto_config_list->begin(); iter != rtp_crypto_config_list->end(); iter++) {
+					iter->from_time_us = from_time_us;
+					this->rtp_crypto_config_list->push_back(*iter);
+				}
+			} else {
+				for(list<rtp_crypto_config>::iterator iter = rtp_crypto_config_list->begin(); iter != rtp_crypto_config_list->end(); iter++) {
+					bool exists = false;
+					for(list<rtp_crypto_config>::iterator iter2 = this->rtp_crypto_config_list->begin(); iter2 != this->rtp_crypto_config_list->end(); iter2++) {
+						if(iter->suite == iter2->suite && iter->key == iter2->key) {
+							exists = true;
+							break;
+						}
+					}
+					if(!exists) {
+						iter->from_time_us = from_time_us;
+						this->rtp_crypto_config_list->push_back(*iter);
+					}
+				}
 			}
 		}
 	}
@@ -665,7 +683,8 @@ public:
 	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
 			char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
-	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
+	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, 
+				  list<rtp_crypto_config> *rtp_crypto_config_list, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 	
 	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
 			      char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
@@ -1087,6 +1106,7 @@ public:
 	bool rtp_from_multiple_sensors;
 	volatile int in_preprocess_queue_before_process_packet;
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
+friend class RTPsecure;
 };
 
 

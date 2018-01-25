@@ -849,7 +849,8 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 	}
 
 	if(ipport_n > 0) {
-		if(this->refresh_data_ip_port(addr, port, header, iscaller, rtpmap, sdp_flags)) {
+		if(this->refresh_data_ip_port(addr, port, header, 
+					      rtp_crypto_config_list, iscaller, rtpmap, sdp_flags)) {
 			return 1;
 		}
 	}
@@ -880,7 +881,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 		this->ip_port[ipport_n].sessid = sessid;
 	}
 	if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
-		this->ip_port[ipport_n].setSdpCryptoList(rtp_crypto_config_list);
+		this->ip_port[ipport_n].setSdpCryptoList(rtp_crypto_config_list, getTimeUS(header));
 		this->exists_crypto_suite_key = true;
 	}
 	if(to) {
@@ -900,7 +901,8 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 }
 
 bool 
-Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, 
+			   list<rtp_crypto_config> *rtp_crypto_config_list, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// reinit rtpmap
@@ -961,6 +963,10 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 				}
 				calltable->unlock_calls_hash();
 			}
+			if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
+				this->ip_port[i].setSdpCryptoList(rtp_crypto_config_list, getTimeUS(header));
+				this->exists_crypto_suite_key = true;
+			}
 			return true;
 		}
 	}
@@ -998,7 +1004,8 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info
 				}
 				this->ip_port[sessidIndex].iscaller = iscaller;
 			}
-			this->refresh_data_ip_port(addr, port, header, iscaller, rtpmap, sdp_flags);
+			this->refresh_data_ip_port(addr, port, header, 
+						   rtp_crypto_config_list, iscaller, rtpmap, sdp_flags);
 			return;
 		}
 	}
@@ -1128,12 +1135,8 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 		   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->size()) {
 			if(!rtp_secure_map[index_call_ip_port_by_src]) {
 				rtp_secure_map[index_call_ip_port_by_src] = 
-					new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
-				for(list<rtp_crypto_config>::iterator iter = this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->begin();
-				    iter != this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->end();
-				    iter++) {
-					rtp_secure_map[index_call_ip_port_by_src]->addCryptoConfig(iter->tag, iter->suite.c_str(), iter->key.c_str());
-				}
+					new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
+								   this, index_call_ip_port_by_src);
 				if(sverb.log_srtp_callid && !log_srtp_callid) {
 					syslog(LOG_INFO, "SRTCP exists in call %s", call_id.c_str());
 					log_srtp_callid = true;
@@ -1145,7 +1148,7 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 	
 	unsigned datalen_orig = packetS->datalen;
 	if(rtp_decrypt && opt_srtp_rtcp_decrypt) {
-		rtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &packetS->datalen);
+		rtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &packetS->datalen, getTimeUS(packetS->header_pt));
 	}
 
 	parse_rtcp((char*)packetS->data_(), packetS->datalen, this);
@@ -1364,12 +1367,8 @@ read:
 			   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->size()) {
 				if(!rtp_secure_map[index_call_ip_port_by_src]) {
 					rtp_secure_map[index_call_ip_port_by_src] = 
-						new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native);
-					for(list<rtp_crypto_config>::iterator iter = this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->begin();
-					    iter != this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->end();
-					    iter++) {
-						rtp_secure_map[index_call_ip_port_by_src]->addCryptoConfig(iter->tag, iter->suite.c_str(), iter->key.c_str());
-					}
+						new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
+									   this, index_call_ip_port_by_src);
 					if(sverb.log_srtp_callid && !log_srtp_callid) {
 						syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
 						log_srtp_callid = true;

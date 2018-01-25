@@ -46,6 +46,7 @@ public:
 		unsigned tag;
 		std::string suite;
 		std::string sdes;
+		u_int64_t from_time_us;
 		u_char key_salt[30];
 		u_char key[16]; 
 		u_char salt[14];
@@ -95,13 +96,15 @@ public:
 		#endif
 	};
 public:
-	RTPsecure(eMode mode);
+	RTPsecure(eMode mode, class Call *call, unsigned index_ip_port);
 	~RTPsecure();
-	void addCryptoConfig(unsigned tag, const char *suite, const char *sdes);
-	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
+	bool setCryptoConfig();
+	void addCryptoConfig(unsigned tag, const char *suite, const char *sdes, u_int64_t from_time_us);
+	bool existsNewerCryptoConfig(u_int64_t time_us);
+	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us);
 	bool decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
 	bool decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
-	bool decrypt_rtcp(u_char *data, unsigned *data_len);
+	bool decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us);
 	bool decrypt_rtcp_native(u_char *data, unsigned *data_len);
 	bool decrypt_rtcp_libsrtp(u_char *data, unsigned *data_len);
 	void setError(eError error);
@@ -161,7 +164,10 @@ private:
 	}
 private:
 	eMode mode;
+	Call *call;
+	unsigned index_ip_port;
 	vector<sCryptoConfig> cryptoConfigVector;
+	unsigned cryptoConfigCallSize;
 	unsigned cryptoConfigActiveIndex;
 	uint32_t rtcp_index;
 	uint32_t rtp_roc;

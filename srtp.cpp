@@ -5,6 +5,7 @@
 #include "tools.h"
 
 #include "srtp.h"
+#include "calltable.h"
 
 
 bool RTPsecure::sCryptoConfig::init() {
@@ -69,12 +70,15 @@ bool RTPsecure::sCryptoConfig::keyDecode() {
 	return(true);
 }
 
-RTPsecure::RTPsecure(eMode mode) {
+RTPsecure::RTPsecure(eMode mode, Call *call, unsigned index_ip_port) {
 	#if HAVE_LIBSRTP
 		this->mode = mode;
 	#else
 		this->mode = mode_native;
 	#endif
+	this->call = call;
+	this->index_ip_port = index_ip_port;
+	cryptoConfigCallSize = 0;
 	cryptoConfigActiveIndex = 0;
 	rtcp_index = 0;
 	rtp_roc = 0;
@@ -92,21 +96,54 @@ RTPsecure::~RTPsecure() {
 	term();
 }
 
-void RTPsecure::addCryptoConfig(unsigned tag, const char *suite, const char *sdes) {
+bool RTPsecure::setCryptoConfig() {
+	if(cryptoConfigCallSize != call->ip_port[index_ip_port].rtp_crypto_config_list->size()) {
+		for(list<rtp_crypto_config>::iterator iter = call->ip_port[index_ip_port].rtp_crypto_config_list->begin();
+		    iter != call->ip_port[index_ip_port].rtp_crypto_config_list->end();
+		    iter++) {
+			this->addCryptoConfig(iter->tag, iter->suite.c_str(), iter->key.c_str(), iter->from_time_us);
+		}
+		cryptoConfigCallSize = call->ip_port[index_ip_port].rtp_crypto_config_list->size();
+		return(true);
+	}
+	return(false);
+}
+
+void RTPsecure::addCryptoConfig(unsigned tag, const char *suite, const char *sdes, u_int64_t from_time_us) {
+	for(unsigned i = 0; i < cryptoConfigVector.size(); i++) {
+		if(cryptoConfigVector[i].suite == suite && 
+		   cryptoConfigVector[i].sdes == sdes) {
+			 return;
+		}
+	}
 	sCryptoConfig cryptoConfig;
 	cryptoConfig.tag = tag;
 	cryptoConfig.suite = suite;
 	cryptoConfig.sdes = sdes;
+	cryptoConfig.from_time_us = from_time_us;
 	if(cryptoConfig.init() && cryptoConfig.keyDecode()) {
 		cryptoConfigVector.push_back(cryptoConfig);
 	}
 }
 
-bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len) {
+bool RTPsecure::existsNewerCryptoConfig(u_int64_t time_us) {
+	for(unsigned i = 0; i < cryptoConfigVector.size(); i++) {
+		if(i != cryptoConfigActiveIndex &&
+		   cryptoConfigVector[i].from_time_us > cryptoConfigVector[cryptoConfigActiveIndex].from_time_us &&
+		   time_us > cryptoConfigVector[i].from_time_us) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us) {
+	setCryptoConfig();
 	if(!cryptoConfigVector.size()) {
 		return(false);
 	}
 	if(!rtp && cryptoConfigVector.size() == 1) {
+		cryptoConfigActiveIndex = 0;
 		init();
 	}
 	if(!isOK()) {
@@ -119,12 +156,15 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 			    decrypt_rtp_native(data, data_len, payload, payload_len) :
 			    decrypt_rtp_libsrtp(data, data_len, payload, payload_len)) {
 				return(true);
+			} else if(cryptoConfigVector.size() > 1 && existsNewerCryptoConfig(time_us)) {
+				term();
 			}
 		}
-	} else {
+	}
+	if(!rtp) {
 		bool counter_packet_inc = false;
 		for(cryptoConfigActiveIndex = 0; cryptoConfigActiveIndex < cryptoConfigVector.size(); cryptoConfigActiveIndex++) {
-			if(cryptoConfigVector[cryptoConfigActiveIndex].attempts_rtp > 10) {
+			if(cryptoConfigVector[cryptoConfigActiveIndex].attempts_rtp > 50) {
 				continue;
 			}
 			++cryptoConfigVector[cryptoConfigActiveIndex].attempts_rtp;
@@ -160,15 +200,19 @@ bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *pay
 	uint32_t roc = compute_rtp_roc(seq);
 	u_char *tag = rtp_digest(data, *data_len - tag_len(), roc);
         if(memcmp(data + *data_len - tag_len(), tag, tag_len())) {
+		//cout << rtp->counter_packets << " err (tag)" << endl;
+		//hexdump(data + *data_len - tag_len(), tag_len());
+		//hexdump(tag, tag_len());
 		return(false);
 	}
 	if(!rtpDecrypt(payload, *payload_len - tag_len(), seq, ssrc)) {
+		//cout << rtp->counter_packets << " err (decrypt)" << endl;
 		return(false);
 	}
 	*data_len -= tag_len();
 	*payload_len -= tag_len();
-	//cout << rtp.counter_packets << endl;
-	//hexdump(data, data_len - tag_len);
+	//cout << rtp->counter_packets << " ok" << endl;
+	//hexdump(data, *data_len - tag_len());
 	return(true);
 }
 
@@ -195,14 +239,17 @@ bool RTPsecure::decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char */*
 		}
 	}
 	#endif
+	//cout << rtp->counter_packets << (rslt ? " ok" : " err") << endl;
 	return(rslt);
 }
 
-bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len) {
+bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us) {
+	setCryptoConfig();
 	if(!cryptoConfigVector.size()) {
 		return(false);
 	}
 	if(!rtcp && cryptoConfigVector.size() == 1) {
+		cryptoConfigActiveIndex = 0;
 		init();
 	}
 	if(!isOK()) {
@@ -215,12 +262,15 @@ bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len) {
 			    decrypt_rtcp_native(data, data_len) :
 			    decrypt_rtcp_libsrtp(data, data_len)) {
 				return(true);
+			} else if(cryptoConfigVector.size() > 1 && existsNewerCryptoConfig(time_us)) {
+				term();
 			}
 		} 
-	} else {
+	}
+	if(!rtcp) {
 		bool counter_packet_inc = false;
 		for(cryptoConfigActiveIndex = 0; cryptoConfigActiveIndex < cryptoConfigVector.size(); cryptoConfigActiveIndex++) {
-			if(cryptoConfigVector[cryptoConfigActiveIndex].attempts_rtcp > 5) {
+			if(cryptoConfigVector[cryptoConfigActiveIndex].attempts_rtcp > 20) {
 				continue;
 			}
 			++cryptoConfigVector[cryptoConfigActiveIndex].attempts_rtcp;
