@@ -5047,7 +5047,7 @@ void test() {
 						&operator_currency_id, &customer_currency_id,
 						&operator_id, &customer_id);
 				cout << "rslt operator price:      " << operator_price;
-				if(call.size() >= 7) {
+				if(call.size() >= 7 && call[6].length()) {
 					double test_operator_price = atof(call[6].c_str());
 					if(round(test_operator_price * 1e6) == round(operator_price * 1e6)) {
 						cout << " (OK)";
@@ -5057,7 +5057,7 @@ void test() {
 				}
 				cout << " / currency id: " << operator_currency_id << " / operator id: " << operator_id << endl;
 				cout << "rslt customer price:      " << customer_price;
-				if(call.size() >= 8) {
+				if(call.size() >= 8 && call[7].length()) {
 					double test_customer_price = atof(call[7].c_str());
 					if(round(test_customer_price * 1e6) == round(customer_price * 1e6)) {
 						cout << " (OK)";
