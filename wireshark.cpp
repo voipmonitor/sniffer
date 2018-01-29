@@ -92,7 +92,9 @@ void ws_gener_json(epan_dissect_t *edt, string *rslt) {
 		memset(&print_args, 0, sizeof(print_args));
 		print_args.print_dissections = print_dissections_expanded;
 		gchar **protocolfilter = NULL;
-		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20208
+		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20403
+		write_json_proto_tree(output_fields, print_dissections_expanded, false, protocolfilter, PF_NONE, edt, file);
+		#elif defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20208
 		write_json_proto_tree(output_fields, &print_args, protocolfilter, edt, file);
 		#else
 		pf_flags protocolfilter_flags = PF_NONE;
@@ -112,7 +114,9 @@ void ws_gener_pdml(epan_dissect_t *edt, string *rslt) {
 	if(file) {
 		output_fields_t* output_fields  = NULL;
 		gchar **protocolfilter = NULL;
-		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20208
+		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20403
+		write_pdml_proto_tree(output_fields, protocolfilter, PF_NONE, edt, file);
+		#elif defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20208
 		write_pdml_proto_tree(output_fields, protocolfilter, edt, file);
 		#else
 		pf_flags protocolfilter_flags = PF_NONE;
@@ -330,7 +334,9 @@ void cap_file_init(capture_file *cf)
 {
   /* Initialize the capture file struct */
   memset(cf, 0, sizeof(capture_file));
+  #if not defined(LIBWIRESHARK_VERSION) or LIBWIRESHARK_VERSION < 20403
   cf->snap            = WTAP_MAX_PACKET_SIZE;
+  #endif
 }
 
 // file.c
@@ -392,12 +398,15 @@ cf_status_t cf_open(capture_file *cf, const char *fname, unsigned int type, gboo
   cf->drops_known = FALSE;
   cf->drops     = 0;
   cf->snap      = wtap_snapshot_length(cf->wth);
+  
+  #if not defined(LIBWIRESHARK_VERSION) or LIBWIRESHARK_VERSION < 20403
   if (cf->snap == 0) {
     /* Snapshot length not known. */
     cf->has_snap = FALSE;
     cf->snap = WTAP_MAX_PACKET_SIZE;
   } else
     cf->has_snap = TRUE;
+  #endif
 
   /* Allocate a frame_data_sequence for the frames in this file */
   cf->frames = new_frame_data_sequence();
