@@ -5008,13 +5008,31 @@ void test() {
 		{
 		cBilling billing;
 		billing.load();
-		vector<string> calls = split(opt_test_arg, ';');
+		vector<string> calls;
+		if(file_exists(opt_test_arg)) {
+			FILE *file = fopen(opt_test_arg, "r");
+			if(file) {
+				char line[1000];
+				while(fgets(line, sizeof(line), file)) {
+					char *lf = strchr(line, '\n');
+					if(lf) {
+						*lf = 0;
+					}
+					if(*line) {
+						calls.push_back(line);
+					}
+				}
+				fclose(file);
+			}
+		} else {
+			calls = split(opt_test_arg, ';');
+		}
 		for(unsigned i = 0; i < calls.size(); i++) {
 			vector<string> call = split(calls[i], ',');
-			if(call.size() == 6) {
-				cout << "calldate, duration: " << call[0] << ", " << call[1] << endl;
-				cout << "numbers:            " << call[2] << " -> " << call[3] << endl;
-				cout << "IP:                 " << call[4] << " -> " << call[5] << endl;
+			if(call.size() >= 6) {
+				cout << "calldate, duration:       " << call[0] << ", " << call[1] << endl;
+				cout << "numbers:                  " << call[2] << " -> " << call[3] << endl;
+				cout << "IP:                       " << call[4] << " -> " << call[5] << endl;
 				time_t calldate_time = stringToTime(call[0].c_str());
 				double operator_price; 
 				double customer_price;
@@ -5028,8 +5046,26 @@ void test() {
 						&operator_price, &customer_price,
 						&operator_currency_id, &customer_currency_id,
 						&operator_id, &customer_id);
-				cout << "rslt operator:      " << operator_price << " / " << operator_currency_id << " / " << operator_id << endl;
-				cout << "rslt customer:      " << customer_price << " / " << customer_currency_id << " / " << customer_id << endl;
+				cout << "rslt operator price:      " << operator_price;
+				if(call.size() >= 7) {
+					double test_operator_price = atof(call[6].c_str());
+					if(round(test_operator_price * 1e6) == round(operator_price * 1e6)) {
+						cout << " (OK)";
+					} else {
+						cout << " (errror - " << test_operator_price << ")";
+					}
+				}
+				cout << " / currency id: " << operator_currency_id << " / operator id: " << operator_id << endl;
+				cout << "rslt customer price:      " << customer_price;
+				if(call.size() >= 8) {
+					double test_customer_price = atof(call[7].c_str());
+					if(round(test_customer_price * 1e6) == round(customer_price * 1e6)) {
+						cout << " (OK)";
+					} else {
+						cout << " (errror - " << test_customer_price << ")";
+					}
+				}
+				cout << " / currency id: " << customer_currency_id << " / customer id: " << customer_id << endl;
 				cout << "---" << endl;
 			}
 		}
