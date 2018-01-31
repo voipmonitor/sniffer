@@ -1,3 +1,20 @@
+21.7 31.02.2018
+===============
+- fraud alerts: apply new checkbox for not condition for user agents in alert 'SIP REGISTER user agent' [VG-1405]
+- fix caller/called detection for some cases which leads to bad audio [VS-735]
+- better main RTP selection stream for calls with multiple RTP streams [VS-746]
+- store only number from P-Asserted-Identity header (ignore everything behind ";". You can revert this behaviour with callernum_numberonly = no [VS-581]
+- when sniffer crashes store backtrace to crash_bt sql table 
+- remove phone number length condition from nanpa rules [VG-1474]
+- add support for 'advanced mode' in 'customer country prefixes' [VG-1395]
+- fraud alerts - use global international rules in intern.rules if alert is empty
+- create cdr partitions before reading pcap from file 
+- new audio parameters - saveaudio_from_first_invite (yes) saveaudio_afterconnect (no) which allows to skip audio before call is connected [VS-721]
+- srtp - add support for change crypto suite in stream [VS-729]
+- add support for wireshark > 2.4 parse via wireshark in wiresharh > 2.4
+- allow national settings for each sniffer [VG-1425]
+
+
 21.6.1 03.01.2018
 =================
 - fix issue with register expiration on small traffic [VS-741]
