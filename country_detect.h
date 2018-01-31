@@ -17,7 +17,6 @@ class CountryDetect_base_table {
 public:
 	enum eTableType {
 		_country_code,
-		_international_rules,
 		_country_code_prefix,
 		_geoip_country
 	};

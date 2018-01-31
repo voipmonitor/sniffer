@@ -4,6 +4,7 @@
 
 CountryDetect *countryDetect;
 
+extern int opt_id_sensor;
 extern int opt_nocdr;
 
 
@@ -38,9 +39,6 @@ string CountryDetect_base_table::getTableName(eTableType tableType) {
 	case _country_code:
 		tableName = "country_code";
 		useCloudShare = true;
-		break;
-	case _international_rules:
-		tableName = "international_rules";
 		break;
 	case _country_code_prefix:
 		tableName = "country_code_prefix";
@@ -199,15 +197,24 @@ bool CheckInternational::load(SqlDb_row *dbRow) {
 }
 
 bool CheckInternational::load() {
-	string tableName;
-	if(!checkTable(_international_rules, tableName)) {
-		return(false);
-	}
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("select * from " + tableName);
-	SqlDb_row row;
-	while((row = sqlDb->fetchRow())) {
-		this->_load(&row);
+	bool loadFromSensors = false;
+	if(opt_id_sensor > 0) {
+		sqlDb->query("select * from sensors where id_sensor = " + intToString(opt_id_sensor));
+		SqlDb_row row;
+		if((row = sqlDb->fetchRow()) &&
+		   atoi(row["override_international_rules"].c_str()) &&
+		   isSet(&row)) {
+			this->_load(&row);
+			loadFromSensors = true;
+		}
+	}
+	if(!loadFromSensors) {
+		sqlDb->query("select * from international_rules");
+		SqlDb_row row;
+		if((row = sqlDb->fetchRow())) {
+			this->_load(&row);
+		}
 	}
 	delete sqlDb;
 	loadCustomerPrefixAdv();
@@ -228,42 +235,66 @@ bool CheckInternational::loadCustomerPrefixAdv() {
 	unsigned countRecords = 0;
 	clearCustomerPrefixAdv();
 	SqlDb *sqlDb = createSqlObject();
-	if(sqlDb->existsTable("customer_country_prefix") &&
-	   !sqlDb->emptyTable("customer_country_prefix") &&
-	   sqlDb->existsColumn("customer_country_prefix", "advanced_mode")) {
-		sqlDb->query("select * \
-			      from customer_country_prefix \
-			      where advanced_mode");
-		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
-			CountryPrefix_recAdv *recAdv = new FILE_LINE(0) CountryPrefix_recAdv;
-			if(row["number_regexp_cond"].length()) {
-				recAdv->number_regexp_cond = new FILE_LINE(0) cRegExp(row["number_regexp_cond"].c_str());
-			}
-			if(row["number_length_from"].length()) {
-				recAdv->number_length_from = atoi(row["number_length_from"].c_str());
-			}
-			if(row["number_length_to"].length()) {
-				recAdv->number_length_to = atoi(row["number_length_to"].c_str());
-			}
-			vector<string> trim_prefixes = split(row["trim_prefixes"].c_str(), split(",|;| ", "|"), true);
-			for(unsigned i = 0; i < trim_prefixes.size(); i++) {
-				if(trim_prefixes[i].length()) {
-					if(trim_prefixes[i][0] == '^') {
-						recAdv->trim_prefixes_regexp.push_back(new FILE_LINE(0) cRegExp(trim_prefixes[i].c_str(), cRegExp::_regexp_icase_mathes));
-					} else {
-						recAdv->trim_prefixes_string.push_back(trim_prefixes[i]);
-					}
+	for(int pass = 0; pass < 2; pass++) {
+		bool okTable = false;
+		if(pass == 0) {
+			if(opt_id_sensor > 0 &&
+			   sqlDb->existsTable("sensors") &&
+			   sqlDb->existsTable("customer_country_prefix_sensors")) {
+				sqlDb->query("select * from sensors where id_sensor = " + intToString(opt_id_sensor));
+				SqlDb_row row;
+				if((row = sqlDb->fetchRow()) &&
+				   atoi(row["override_country_prefixes"].c_str())) {
+					okTable = true;
+					sqlDb->query("select * \
+						      from customer_country_prefix_sensors \
+						      where advanced_mode and \
+							    sensor_id = " + row["id"]);
 				}
 			}
-			if(row["trim_prefix_length"].length()) {
-				recAdv->trim_prefix_length = atoi(row["trim_prefix_length"].c_str());
+		} else {
+			if(sqlDb->existsTable("customer_country_prefix") &&
+			   !sqlDb->emptyTable("customer_country_prefix") &&
+			   sqlDb->existsColumn("customer_country_prefix", "advanced_mode")) {
+				okTable = true;
+				sqlDb->query("select * \
+					      from customer_country_prefix \
+					      where advanced_mode");
 			}
-			recAdv->is_international = row["international_local"] == "international";
-			recAdv->country_code = row["country_code"];
-			recAdv->descr = row["description"];
-			customer_data_advanced.push_back(recAdv);
-			++countRecords;
+		}
+		if(okTable) {
+			SqlDb_row row;
+			while((row = sqlDb->fetchRow())) {
+				CountryPrefix_recAdv *recAdv = new FILE_LINE(0) CountryPrefix_recAdv;
+				if(row["number_regexp_cond"].length()) {
+					recAdv->number_regexp_cond = new FILE_LINE(0) cRegExp(row["number_regexp_cond"].c_str());
+				}
+				if(row["number_length_from"].length()) {
+					recAdv->number_length_from = atoi(row["number_length_from"].c_str());
+				}
+				if(row["number_length_to"].length()) {
+					recAdv->number_length_to = atoi(row["number_length_to"].c_str());
+				}
+				vector<string> trim_prefixes = split(row["trim_prefixes"].c_str(), split(",|;| ", "|"), true);
+				for(unsigned i = 0; i < trim_prefixes.size(); i++) {
+					if(trim_prefixes[i].length()) {
+						if(trim_prefixes[i][0] == '^') {
+							recAdv->trim_prefixes_regexp.push_back(new FILE_LINE(0) cRegExp(trim_prefixes[i].c_str(), cRegExp::_regexp_icase_mathes));
+						} else {
+							recAdv->trim_prefixes_string.push_back(trim_prefixes[i]);
+						}
+					}
+				}
+				if(row["trim_prefix_length"].length()) {
+					recAdv->trim_prefix_length = atoi(row["trim_prefix_length"].c_str());
+				}
+				recAdv->is_international = row["international_local"] == "international";
+				recAdv->country_code = row["country_code"];
+				recAdv->descr = row["description"];
+				customer_data_advanced.push_back(recAdv);
+				++countRecords;
+			}
+			break;
 		}
 	}
 	delete sqlDb;
@@ -427,25 +458,50 @@ bool CountryPrefixes::load() {
 			row["descr"].c_str()));
 	}
 	std::sort(data.begin(), data.end());
-	if(sqlDb->existsTable("customer_country_prefix") &&
-	   !sqlDb->emptyTable("customer_country_prefix")) {
-		bool existsColumnAdvancedMode = sqlDb->existsColumn("customer_country_prefix", "advanced_mode");
-		sqlDb->query(existsColumnAdvancedMode ?
-			      "select * \
-			       from customer_country_prefix \
-			       where advanced_mode is null or not advanced_mode \
-			       order by prefix" :
-			      "select * \
-			       from customer_country_prefix \
-			       order by prefix");
-		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
-			customer_data_simple.push_back(CountryPrefix_rec(
-				row["prefix"].c_str(),
-				row["country_code"].c_str(),
-				row["descr"].c_str()));
+	for(int pass = 0; pass < 2; pass++) {
+		bool okTable = false;
+		if(pass == 0) {
+			if(opt_id_sensor > 0 &&
+			   sqlDb->existsTable("sensors") &&
+			   sqlDb->existsTable("customer_country_prefix_sensors")) {
+				sqlDb->query("select * from sensors where id_sensor = " + intToString(opt_id_sensor));
+				SqlDb_row row;
+				if((row = sqlDb->fetchRow()) &&
+				   atoi(row["override_country_prefixes"].c_str())) {
+					okTable = true;
+					sqlDb->query("select * \
+						      from customer_country_prefix_sensors \
+						      where advanced_mode is null or not advanced_mode and \
+							    sensor_id = " + row["id"] + " \
+						      order by prefix");
+				}
+			}
+		} else {
+			if(sqlDb->existsTable("customer_country_prefix") &&
+			   !sqlDb->emptyTable("customer_country_prefix")) {
+				okTable = true;
+				bool existsColumnAdvancedMode = sqlDb->existsColumn("customer_country_prefix", "advanced_mode");
+				sqlDb->query(existsColumnAdvancedMode ?
+					      "select * \
+					       from customer_country_prefix \
+					       where advanced_mode is null or not advanced_mode \
+					       order by prefix" :
+					      "select * \
+					       from customer_country_prefix \
+					       order by prefix");
+			}
 		}
-		std::sort(customer_data_simple.begin(), customer_data_simple.end());
+		if(okTable) {
+			SqlDb_row row;
+			while((row = sqlDb->fetchRow())) {
+				customer_data_simple.push_back(CountryPrefix_rec(
+					row["prefix"].c_str(),
+					row["country_code"].c_str(),
+					row["descr"].c_str()));
+			}
+			std::sort(customer_data_simple.begin(), customer_data_simple.end());
+			break;
+		}
 	}
 	delete sqlDb;
 	return(true);
