@@ -30,6 +30,7 @@ class cBillingAssignment {
 public:
 	cBillingAssignment(eBilingTypeAssignment typeAssignment);
 	void load(SqlDb_row *row);
+	bool isSensorOk(SqlDb *sqlDb = NULL);
 	void loadCond(SqlDb *sqlDb = NULL);
 	bool checkIP(u_int32_t ip);
 	bool checkNumber(const char *number);
@@ -38,6 +39,7 @@ private:
 	unsigned id;
 	unsigned billing_rule_id;
 	string name;
+	bool limitation_for_sensors;
 	CheckInternational checkInternational;
 	ListIP list_ip;
 	ListPhoneNumber list_number;

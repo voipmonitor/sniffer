@@ -4,6 +4,9 @@
 #include "billing.h"
 
 
+extern int opt_id_sensor;
+
+
 cBillingAssignment::cBillingAssignment(eBilingTypeAssignment typeAssignment) {
 	this->typeAssignment = typeAssignment;
 }
@@ -12,7 +15,44 @@ void cBillingAssignment::load(SqlDb_row *row) {
 	id = atol((*row)["id"].c_str());
 	billing_rule_id = atol((*row)["id_billing"].c_str());
 	name = (*row)["name"];
+	limitation_for_sensors = atol((*row)["limitation_for_sensors"].c_str());
 	checkInternational.load(row);
+}
+
+bool cBillingAssignment::isSensorOk(SqlDb *sqlDb) {
+	if(!limitation_for_sensors || opt_id_sensor <= 0) {
+		return(true);
+	}
+	bool initSqlDb = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		initSqlDb = true;
+	}
+	bool rslt = false;
+	if(sqlDb->existsTable(typeAssignment == _billing_ta_operator ? 
+			       "billing_operator_assignment_sensors" :
+			       "billing_customer_assignment_sensors")) {
+		sqlDb->query((typeAssignment == _billing_ta_operator ?
+			       "select sensors.id_sensor \
+				from billing_operator_assignment_sensors \
+				join sensors on (sensors.id = billing_operator_assignment_sensors.id_sensor) \
+				where id_operator_assignment = " :
+			       "select sensors.id_sensor \
+				from billing_customer_assignment_sensors \
+				join sensors on (sensors.id = billing_customer_assignment_sensors.id_sensor) \
+				where id_customer_assignment = ") + intToString(id));
+		SqlDb_row row;
+		while((row = sqlDb->fetchRow())) {
+			if(atoi(row["id_sensor"].c_str()) == opt_id_sensor) {
+				rslt = true;
+				break;
+			}
+		}
+	}
+	if(initSqlDb) {
+		delete sqlDb;
+	}
+	return(rslt);
 }
 
 void cBillingAssignment::loadCond(SqlDb *sqlDb) {
@@ -21,7 +61,9 @@ void cBillingAssignment::loadCond(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		initSqlDb = true;
 	}
-	if(sqlDb->existsTable("billing_operator_assignment_addresses")) {
+	if(sqlDb->existsTable(typeAssignment == _billing_ta_operator ? 
+			       "billing_operator_assignment_addresses" :
+			       "billing_customer_assignment_addresses")) {
 		sqlDb->query((typeAssignment == _billing_ta_operator ?
 			       "select * \
 				from billing_operator_assignment_addresses \
@@ -34,7 +76,9 @@ void cBillingAssignment::loadCond(SqlDb *sqlDb) {
 			list_ip.add(atol(row["ip"].c_str()), atoi(row["mask"].c_str()));
 		}
 	}
-	if(sqlDb->existsTable("billing_operator_assignment_numbers")) {
+	if(sqlDb->existsTable(typeAssignment == _billing_ta_operator ?
+			       "billing_operator_assignment_numbers" :
+			       "billing_customer_assignment_numbers")) {
 		sqlDb->query((typeAssignment == _billing_ta_operator ?
 			       "select * \
 				from billing_operator_assignment_numbers \
@@ -97,11 +141,23 @@ void cBillingAssignments::load(SqlDb *sqlDb) {
 			customers[assignment->id] = assignment;
 		}
 	}
-	for(map<unsigned, cBillingAssignment*>::iterator iter = operators.begin(); iter != operators.end(); iter++) {
-		iter->second->loadCond(sqlDb);
+	for(map<unsigned, cBillingAssignment*>::iterator iter = operators.begin(); iter != operators.end();) {
+		if(iter->second->isSensorOk(sqlDb)) {
+			iter->second->loadCond(sqlDb);
+			iter++;
+		} else {
+			delete iter->second;
+			operators.erase(iter++);
+		}
 	}
-	for(map<unsigned, cBillingAssignment*>::iterator iter = customers.begin(); iter != customers.end(); iter++) {
-		iter->second->loadCond(sqlDb);
+	for(map<unsigned, cBillingAssignment*>::iterator iter = customers.begin(); iter != customers.end();) {
+		if(iter->second->isSensorOk(sqlDb)) {
+			iter->second->loadCond(sqlDb);
+			iter++;
+		} else {
+			delete iter->second;
+			customers.erase(iter++);
+		}
 	}
 	if(initSqlDb) {
 		delete sqlDb;
