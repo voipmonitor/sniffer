@@ -244,7 +244,7 @@ Call_abstract::get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpool
 		    substSpoolDir :
 		    (opt_cachedir[0] ? opt_cachedir : getSpoolDir(typeSpoolFile));
 	sensorDir = get_sensordir();
-	struct tm t = time_r((const time_t*)(&first_packet_time));
+	struct tm t = time_r(&first_packet_time);
 	char timeDir_buffer[100];
 	if(opt_newdir) {
 		snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
@@ -284,7 +284,7 @@ Call_abstract::get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileEx
 string
 Call_abstract::dirnamesqlfiles() {
 	char sdirname[11];
-	struct tm t = time_r((const time_t*)(&first_packet_time));
+	struct tm t = time_r(&first_packet_time);
 	snprintf(sdirname, 11, "%04d%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
 	sdirname[10] = 0;
 	string s(sdirname);

@@ -1046,7 +1046,7 @@ string getActDateTimeF(bool useT_symbol) {
 	return(dateTimeF);
 }
 
-tm getEasterMondayDate(unsigned year, int decDays) {
+tm getEasterMondayDate(unsigned year, int decDays, const char *timezone) {
 	tm rslt;
 	memset(&rslt, 0, sizeof(rslt));
 	if(year < 1900 || year > 2099) {
@@ -1073,51 +1073,55 @@ tm getEasterMondayDate(unsigned year, int decDays) {
 	rslt.tm_hour = 0; 
 	rslt.tm_min = 0; 
 	rslt.tm_sec = 0;
-	time_t time_s = mktime(&rslt);
+	time_t time_s = mktime(&rslt, timezone);
 	time_s += (v - decDays) * 60 * 60 * 24;
-	rslt = time_r(&time_s, "local");
+	rslt = time_r(&time_s, timezone ? timezone : "local");
 	return(rslt);
 }
 
-bool isEasterMondayDate(tm &date, int decDays) {
-	tm ed = getEasterMondayDate(date.tm_year + 1900, decDays);
+bool isEasterMondayDate(tm &date, int decDays, const char *timezone) {
+	tm ed = getEasterMondayDate(date.tm_year + 1900, decDays, timezone);
 	return(ed.tm_year == date.tm_year &&
 	       ed.tm_mon == date.tm_mon &&
 	       ed.tm_mday == date.tm_mday);
 }
 
-tm getNextBeginDate(tm &dateTime) {
+tm getNextBeginDate(tm dateTime, const char *timezone) {
 	tm rslt = dateTime;
 	rslt.tm_hour = 0;
 	rslt.tm_min = 0;
 	rslt.tm_sec = 0;
-	time_t time_s = mktime(&rslt);
+	time_t time_s = mktime(&rslt, timezone);
 	time_s += 60 * 60 * 36;
-	rslt = time_r(&time_s, "local");
+	rslt = time_r(&time_s, timezone ? timezone : "local");
 	rslt.tm_hour = 0;
 	rslt.tm_min = 0;
 	rslt.tm_sec = 0;
 	return(rslt);
 }
 
-tm getPrevBeginDate(tm &dateTime) {
+tm getPrevBeginDate(tm dateTime, const char *timezone) {
 	tm rslt = dateTime;
 	rslt.tm_hour = 0;
 	rslt.tm_min = 0;
 	rslt.tm_sec = 0;
-	time_t time_s = mktime(&rslt);
+	time_t time_s = mktime(&rslt, timezone);
 	time_s -= 60 * 60 * 12;
-	rslt = time_r(&time_s, "local");
+	rslt = time_r(&time_s, timezone ? timezone : "local");
 	rslt.tm_hour = 0;
 	rslt.tm_min = 0;
 	rslt.tm_sec = 0;
 	return(rslt);
 }
 
-tm dateTimeAdd(tm &dateTime, unsigned add_s) {
-	time_t time_s = mktime(&dateTime);
+tm dateTimeAdd(tm dateTime, unsigned add_s, const char *timezone) {
+	time_t time_s = mktime(&dateTime, timezone);
 	time_s += add_s;
-	return(time_r(&time_s, "local"));
+	return(time_r(&time_s, timezone ? timezone : "local"));
+}
+
+double diffTime(tm time1, tm time0, const char *timezone) {
+	return(difftime(mktime(&time1, timezone), mktime(&time0, timezone)));
 }
 
 unsigned long getUptime() {
@@ -4815,6 +4819,28 @@ void _base64_encode(const unsigned char *data, size_t input_length, char *encode
 	for(int i = 0; i < mod_table[input_length % 3]; i++)
 		encoded_data[output_length - 1 - i] = '=';
 	encoded_data[output_length] = 0;
+}
+
+volatile int _tz_sync;
+
+string getGuiTimezone(SqlDb *sqlDb) {
+	bool initSqlDb = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		initSqlDb = true;
+	}
+	string gui_timezone;
+	if(sqlDb->existsTable("system") && sqlDb->existsColumn("system", "content")) {
+		sqlDb->query("select content from system where type = 'gui_timezone'");
+		SqlDb_row row = sqlDb->fetchRow();
+		if(row) {
+			gui_timezone = row["content"];
+		}
+	}
+	if(initSqlDb) {
+		delete sqlDb;
+	}
+	return(gui_timezone);
 }
 
 u_int32_t octal_decimal(u_int32_t n) {

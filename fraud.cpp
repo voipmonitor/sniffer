@@ -2031,14 +2031,7 @@ FraudAlerts::~FraudAlerts() {
 void FraudAlerts::loadAlerts(bool lock) {
 	if(lock) lock_alerts();
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("show columns from system where Field='content'");
-	if(sqlDb->fetchRow()) {
-		sqlDb->query("select content from system where type = 'gui_timezone'");
-		SqlDb_row row = sqlDb->fetchRow();
-		if(row) {
-			this->gui_timezone = row["content"];
-		}
-	}
+	this->gui_timezone = ::getGuiTimezone(sqlDb);
 	sqlDb->query("show columns from alerts where Field='select_sensors'");
 	bool existsColumnSelectSensors = sqlDb->fetchRow();
 	sqlDb->query(string("select id, alert_type, descr") + 

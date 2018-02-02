@@ -489,11 +489,12 @@ struct tm getDateTime(const char *timeStr);
 int getNumberOfDayToNow(const char *date);
 int getNumberOfHourToNow(const char *date, int hour);
 string getActDateTimeF(bool useT_symbol = false);
-tm getEasterMondayDate(unsigned year, int decDays = 0);
-bool isEasterMondayDate(tm &date, int decDays = 0);
-tm getNextBeginDate(tm &dateTime);
-tm getPrevBeginDate(tm &dateTime);
-tm dateTimeAdd(tm &dateTime, unsigned add_s);
+tm getEasterMondayDate(unsigned year, int decDays = 0, const char *timezone = NULL);
+bool isEasterMondayDate(tm &date, int decDays = 0, const char *timezone = NULL);
+tm getNextBeginDate(tm dateTime, const char *timezone = NULL);
+tm getPrevBeginDate(tm dateTime, const char *timezone = NULL);
+tm dateTimeAdd(tm dateTime, unsigned add_s, const char *timezone = NULL);
+double diffTime(tm time1, tm time0, const char *timezone = NULL);
 unsigned long getUptime();
 
 char *strnstr(const char *haystack, const char *needle, size_t len);
@@ -2493,21 +2494,33 @@ void _base64_encode(const unsigned char *data, size_t input_length, char *encode
 struct sLocalTimeHourCacheItem {
 	sLocalTimeHourCacheItem() {
 		timestamp_ymdhm15 = 0;
+		ymdhm15 = 0;
 	}
 	void getTime(time_t timestamp, struct tm *time) {
 		u_int64_t min15sec = timestamp % (15 * 60);
 		time->tm_year = year;
 		time->tm_mon = month;
-		time->tm_mday = day;;
+		time->tm_mday = day;
 		time->tm_wday = wday;
 		time->tm_yday = yday;
 		time->tm_hour = hour;
 		time->tm_min = min15 * 15 + min15sec / 60;
 		time->tm_sec = min15sec % 60;
 		time->tm_isdst = isdst;
+		time->tm_zone = zone;
+	}
+	time_t getTimestamp(struct tm *time) {
+		return(timestamp_ymdhm15 * (15 * 60) +
+		       (time->tm_min - min15 * 15) * 60 +
+		       time->tm_sec);
 	}
 	void setTime(time_t timestamp, struct tm *time) {
 		timestamp_ymdhm15 = timestamp / (15 * 60);
+		ymdhm15 = time->tm_year * 10000000ull +
+			  time->tm_mon * 100000ull+
+			  time->tm_mday * 1000ull +
+			  time->tm_hour * 10ull +
+			  time->tm_min / 15;
 		year = time->tm_year;
 		month = time->tm_mon;
 		day = time->tm_mday;
@@ -2516,8 +2529,10 @@ struct sLocalTimeHourCacheItem {
 		hour = time->tm_hour;
 		min15 = time->tm_min / 15;
 		isdst = time->tm_isdst;
+		zone = time->tm_zone;
 	}
 	u_int64_t timestamp_ymdhm15;
+	u_int64_t ymdhm15;
 	u_int16_t year;
 	u_int16_t month;
 	u_int16_t day;
@@ -2526,6 +2541,7 @@ struct sLocalTimeHourCacheItem {
 	u_int16_t hour;
 	u_int16_t min15;
 	bool isdst;
+	const char *zone;
 };
 struct sLocalTimeHourCacheItems {
 	sLocalTimeHourCacheItems(bool gmt = false, const char *timezone = NULL) {
@@ -2555,8 +2571,8 @@ struct sLocalTimeHourCacheItems {
 				     << " / thread " << get_unix_tid() << endl;
 			}
 		} else {
-			static volatile int _sync;
-			while(__sync_lock_test_and_set(&_sync, 1));
+			extern volatile int _tz_sync;
+			while(__sync_lock_test_and_set(&_tz_sync, 1));
 			char oldTZ[1024] = "";
 			if(timezone[0]) {
 				const char *_oldTZ = getenv("TZ");
@@ -2577,13 +2593,50 @@ struct sLocalTimeHourCacheItems {
 				}
 				tzset();
 			}
-			__sync_lock_release(&_sync);
+			__sync_lock_release(&_tz_sync);
 			if(sverb.timezones) {
 				cout << " *** get " << (timezone[0] ? (string("tz ") + timezone) : "local") << " time " << timestamp 
 				     << " / thread " << get_unix_tid() << endl;
 			}
 		}
 		addToCache(timestamp, time);
+	}
+	time_t getTimestamp(struct tm *time) {
+		u_int64_t ymdhm15 = time->tm_year * 10000000ull +
+				    time->tm_mon * 100000ull+
+				    time->tm_mday * 1000ull +
+				    time->tm_hour * 10ull +
+				    time->tm_min / 15;
+		for(int i = 0; i < LOCALTIME_MINCACHE_LENGTH; i++) {
+			if(ymdhm15 == cacheItems[i].ymdhm15) {
+				return(cacheItems[i].getTimestamp(time));
+			}
+		}
+		extern volatile int _tz_sync;
+		while(__sync_lock_test_and_set(&_tz_sync, 1));
+		char oldTZ[1024] = "";
+		if(timezone[0]) {
+			const char *_oldTZ = getenv("TZ");
+			if(_oldTZ) {
+				strncpy(oldTZ, _oldTZ, sizeof(oldTZ));
+			} else {
+				oldTZ[0] = 0;
+			}
+			setenv("TZ", timezone, 1);
+			tzset();
+		}
+		time_t timestamp = mktime(time);
+		if(timezone[0]) {
+			if(oldTZ[0]) {
+				setenv("TZ", oldTZ, 1);
+			} else {
+				unsetenv("TZ");
+			}
+			tzset();
+		}
+		__sync_lock_release(&_tz_sync);
+		addToCache(timestamp, time);
+		return(timestamp);
 	}
 	void addToCache(time_t timestamp, struct tm *time) {
 		cacheItems[cache_insert_index].setTime(timestamp, time);
@@ -2629,13 +2682,39 @@ struct sLocalTimeHourCache {
 			this->timezones[tz_index].getTime(timestamp, time);
 		}
 	}
+	time_t getTimestamp(struct tm *time, bool gmt, const char *timezone) {
+		if(gmt) {
+			return(this->gmt.getTimestamp(time));
+		} else if(!timezone || !*timezone) {
+			return(this->local.getTimestamp(time));
+		} else {
+			int tz_index = -1;
+			for(unsigned i = 0; i < local_timezones_count; i++) {
+				if(!strncmp(timezone, timezones[i].timezone, sizeof(timezones[i].timezone))) {
+					tz_index = i;
+					break;
+				}
+			}
+			if(tz_index == -1) {
+				if(local_timezones_count < LOCALTIME_TIMEZONE_LENGTH - 1) {
+					tz_index = local_timezones_count;
+					timezones[tz_index].setTimezone(false, timezone);
+					++local_timezones_count;
+				} else {
+					syslog(LOG_ERR, "too much timezones - use localtime");
+					return(this->local.getTimestamp(time));
+				}
+			}
+			return(this->timezones[tz_index].getTimestamp(time));
+		}
+	}
 	sLocalTimeHourCacheItems gmt;
 	sLocalTimeHourCacheItems local;
 	sLocalTimeHourCacheItems timezones[LOCALTIME_TIMEZONE_LENGTH];
 	u_int16_t local_timezones_count;
 };
 
-inline struct tm time_r(const time_t *timestamp, const char *timezone = NULL) {
+inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = NULL) {
 #if defined(__arm__)
 	static map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
 	static volatile int timeCacheMap_sync = 0;
@@ -2655,30 +2734,54 @@ inline struct tm time_r(const time_t *timestamp, const char *timezone = NULL) {
 		timeCache = new FILE_LINE(39014) sLocalTimeHourCache();
 	}
 #endif
-	struct tm time;
 	bool force_gmt = false;
 	bool force_local = false;
-	if(timezone) {
-		if(timezone[0] == 'G' && timezone[1] == 'M') {
+	if(timezone && timezone[0]) {
+		if((timezone[0] == 'G' && !strcmp(timezone, "GMT")) || 
+		   (timezone[0] == 'U' && !strcmp(timezone, "UTC"))) {
 			force_gmt = true;
-		} else if(timezone[0] == 'l' && timezone[1] == 'o') {
+		} else if(timezone[0] == 'l' && !strcmp(timezone, "local")) {
 			force_local = true;
 		}
 	}
-	if(timezone && timezone[0] && !force_gmt && !force_local) {
-		timeCache->getTime(*timestamp, &time, false, timezone);
+	if(*timestamp) {
+		if(timezone && timezone[0] && !force_gmt && !force_local) {
+			timeCache->getTime(*timestamp, time, false, timezone);
+		} else {
+			extern bool opt_sql_time_utc;
+			timeCache->getTime(*timestamp, time, (opt_sql_time_utc || isCloud() || force_gmt) && !force_local, NULL);
+		}
 	} else {
-		extern bool opt_sql_time_utc;
-		timeCache->getTime(*timestamp, &time, (opt_sql_time_utc || isCloud() || force_gmt) && !force_local, NULL);
+		if(timezone && timezone[0] && !force_gmt && !force_local) {
+			*timestamp = timeCache->getTimestamp(time, false, timezone);
+		} else {
+			extern bool opt_sql_time_utc;
+			*timestamp = timeCache->getTimestamp(time, (opt_sql_time_utc || isCloud() || force_gmt) && !force_local, NULL);
+		}
 	}
+}
+inline struct tm time_r(time_t *timestamp, const char *timezone = NULL) {
+	struct tm time;
+	conv_tz(timestamp, &time, timezone);
 	return(time);
 }
-inline string time_r_str(const time_t *timestamp, const char *timezone = NULL) {
+inline string time_r_str(time_t *timestamp, const char *timezone = NULL) {
 	struct tm time = time_r(timestamp, timezone);
 	char dateTimeBuffer[50];
 	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &time);
 	return string(dateTimeBuffer);
 }
+inline long int mktime(tm* time, const char *timezone) {
+	if(timezone) {
+		time_t timestamp = 0;
+		conv_tz(&timestamp, time, timezone);
+		return(timestamp);
+	} else {
+		return(mktime(time));
+	}
+}
+
+string getGuiTimezone(class SqlDb *sqlDb = NULL);
 
 u_int32_t octal_decimal(u_int32_t n);
 

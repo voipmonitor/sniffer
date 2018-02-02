@@ -103,14 +103,14 @@ public:
 			memset(&day, 0, sizeof(day));
 		}
 		void load(SqlDb_row *row);
-		bool isHoliday(tm &day);
+		bool isHoliday(tm &day, const char *timezone);
 		eBillingHolidayType type;
 		tm day;
 	};
 public:
 	void load(SqlDb_row *row);
 	void loadHolidays(SqlDb *sqlDb = NULL);
-	bool isHoliday(tm &day);
+	bool isHoliday(tm &day, const char *timezone);
 private:
 	unsigned id;
 	string name;
@@ -123,7 +123,7 @@ class cStatesHolidays {
 public:
 	cStatesHolidays();
 	void load(SqlDb *sqlDb = NULL);
-	bool isHoliday(unsigned id, tm &day);
+	bool isHoliday(unsigned id, tm &day, const char *timezone);
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
@@ -141,7 +141,7 @@ class cPeakDefinition {
 public:
 	cPeakDefinition();
 	void load(SqlDb_row *row, const char *fieldNamePrefix = NULL);
-	bool peakCheck(tm &time, cStateHolidays *holidays, tm *toTime);
+	bool peakCheck(tm &time, cStateHolidays *holidays, tm *toTime, const char *timezone);
 private: 
 	bool enable;
 	unsigned peak_starts_hour;
@@ -173,7 +173,7 @@ public:
 	void load(SqlDb_row *row);
 	void loadNumbers(SqlDb *sqlDb = NULL);
 	double billing(tm &time, unsigned duration, const char *number, const char *number_normalized,
-		       cStateHolidays *holidays);
+		       cStateHolidays *holidays, const char *timezone);
 private:
 	unsigned id;
 	string name;
@@ -311,6 +311,7 @@ private:
 	cBillingExclude *agreg_exclude;
 	cBillingAgregationSettings *agreg_settings;
 	cCurrency *currency;
+	string gui_timezone;
 	volatile int _sync;
 };
 

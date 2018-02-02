@@ -323,7 +323,7 @@ void cStateHolidays::sHoliday::load(SqlDb_row *row) {
 	}
 }
 
-bool cStateHolidays::sHoliday::isHoliday(tm &day) {
+bool cStateHolidays::sHoliday::isHoliday(tm &day, const char *timezone) {
 	switch(type) {
 	case _billing_holiday_fixed:
 		return(this->day.tm_mon == day.tm_mon &&
@@ -333,9 +333,9 @@ bool cStateHolidays::sHoliday::isHoliday(tm &day) {
 		       this->day.tm_mon == day.tm_mon &&
 		       this->day.tm_mday == day.tm_mday);
 	case _billing_holiday_easter_monday:
-		return(isEasterMondayDate(day));
+		return(isEasterMondayDate(day, 0, timezone));
 	case _billing_holiday_easter_friday:
-		return(isEasterMondayDate(day, 3));
+		return(isEasterMondayDate(day, 3, timezone));
 	case _billing_holiday_na:
 		break;
 	}
@@ -371,9 +371,9 @@ void cStateHolidays::loadHolidays(SqlDb *sqlDb) {
 	}
 }
 
-bool cStateHolidays::isHoliday(tm &day) {
+bool cStateHolidays::isHoliday(tm &day, const char *timezone) {
 	for(list<sHoliday>::iterator iter = holidays.begin(); iter != holidays.end(); iter++) {
-		if(iter->isHoliday(day)) {
+		if(iter->isHoliday(day, timezone)) {
 			return(true);
 		}
 	}
@@ -412,11 +412,11 @@ void cStatesHolidays::load(SqlDb *sqlDb) {
 	unlock();
 }
 
-bool cStatesHolidays::isHoliday(unsigned id, tm &day) {
+bool cStatesHolidays::isHoliday(unsigned id, tm &day, const char *timezone) {
 	bool rslt = false;
 	lock();
 	if(holidays.find(id) != holidays.end()) {
-		rslt = holidays[id].isHoliday(day);
+		rslt = holidays[id].isHoliday(day, timezone);
 	}
 	unlock();
 	return(rslt);
@@ -436,12 +436,12 @@ void cPeakDefinition::load(SqlDb_row *row, const char *fieldNamePrefix) {
 	weekend_start = atoi((*row)[_fieldNamePrefix + "weekend_start"].c_str());
 }
 
-bool cPeakDefinition::peakCheck(tm &time, cStateHolidays *holidays, tm *toTime) {
+bool cPeakDefinition::peakCheck(tm &time, cStateHolidays *holidays, tm *toTime, const char *timezone) {
 	tm _toTime;
 	if(!toTime) {
 		toTime = &_toTime;
 	}
-	*toTime = getNextBeginDate(time);
+	*toTime = getNextBeginDate(time, timezone);
 	if(!enable) {
 		return(false);
 	}
@@ -451,20 +451,34 @@ bool cPeakDefinition::peakCheck(tm &time, cStateHolidays *holidays, tm *toTime) 
 	   time.tm_wday == week_day_2 - 1) {
 		return(false);
 	}
-	if(holidays && holidays->isHoliday(time)) {
+	if(holidays && holidays->isHoliday(time, timezone)) {
 		return(false);
 	}
-	if((peak_starts_hour || peak_ends_hour) &&
-	   (peak_ends_hour * 60 + peak_ends_minute) > (peak_starts_hour * 60 + peak_starts_minute)) {
-		if((time.tm_hour * 60 + time.tm_min) < (int)(peak_starts_hour * 60 + peak_starts_minute)) {
-			*toTime = time;
-			toTime->tm_hour = peak_starts_hour;
-			toTime->tm_min = peak_starts_minute;
-		} else if((time.tm_hour * 60 + time.tm_min) < (int)(peak_ends_hour * 60 + peak_ends_minute)) {
-			*toTime = time;
-			toTime->tm_hour = peak_ends_hour;
-			toTime->tm_min = peak_ends_minute;
-			return(true);
+	if(peak_starts_hour || peak_ends_hour) {
+		if((peak_ends_hour * 60 + peak_ends_minute) > (peak_starts_hour * 60 + peak_starts_minute)) {
+			if((time.tm_hour * 60 + time.tm_min) < (int)(peak_starts_hour * 60 + peak_starts_minute)) {
+				*toTime = time;
+				toTime->tm_hour = peak_starts_hour;
+				toTime->tm_min = peak_starts_minute;
+			} else if((time.tm_hour * 60 + time.tm_min) < (int)(peak_ends_hour * 60 + peak_ends_minute)) {
+				*toTime = time;
+				toTime->tm_hour = peak_ends_hour;
+				toTime->tm_min = peak_ends_minute;
+				return(true);
+			}
+		} else if((peak_ends_hour * 60 + peak_ends_minute) < (peak_starts_hour * 60 + peak_starts_minute)) {
+			if((time.tm_hour * 60 + time.tm_min) < (int)(peak_ends_hour * 60 + peak_ends_minute)) {
+				*toTime = time;
+				toTime->tm_hour = peak_ends_hour;
+				toTime->tm_min = peak_ends_minute;
+				return(true);
+			} else if((time.tm_hour * 60 + time.tm_min) < (int)(peak_starts_hour * 60 + peak_starts_minute)) {
+				*toTime = time;
+				toTime->tm_hour = peak_starts_hour;
+				toTime->tm_min = peak_starts_minute;
+			} else {
+				return(true);
+			}
 		}
 	}
 	return(false);
@@ -522,7 +536,7 @@ void cBillingRule::loadNumbers(SqlDb *sqlDb) {
 }
 
 double cBillingRule::billing(tm &time, unsigned duration, const char *number, const char *number_normalized,
-			     cStateHolidays *holidays) {
+			     cStateHolidays *holidays, const char *timezone) {
 	if(!duration) {
 		duration = 1;
 	}
@@ -571,8 +585,8 @@ double cBillingRule::billing(tm &time, unsigned duration, const char *number, co
 		bool peak = false;
 		if(peak_definition.enable) {
 			tm time_iter_to;
-			peak = peak_definition.peakCheck(time_iter, holidays, &time_iter_to);
-			unsigned max_duration_iter = difftime(mktime(&time_iter_to), mktime(&time_iter));
+			peak = peak_definition.peakCheck(time_iter, holidays, &time_iter_to, timezone);
+			unsigned max_duration_iter = diffTime(time_iter_to, time_iter, timezone);
 			if(max_duration_iter < duration_iter && count_iter > 0) {
 				duration_iter = max_duration_iter;
 			}
@@ -581,7 +595,7 @@ double cBillingRule::billing(tm &time, unsigned duration, const char *number, co
 		duration_iter = (duration_iter / t + (duration_iter % t ? 1 : 0)) * t;
 		rslt_price += (duration_iter / t) *
 			      (peak ? price_peak : price) * t / 60;
-		time_iter = dateTimeAdd(time_iter, duration_iter);
+		time_iter = dateTimeAdd(time_iter, duration_iter, timezone);
 		duration_rest -= duration_iter;
 		++count_iter;
 	}
@@ -786,6 +800,7 @@ void cBilling::load() {
 	agreg_exclude->load();
 	agreg_settings->load();
 	currency->load();
+	gui_timezone = getGuiTimezone();
 	unlock();
 	createMysqlPartitionsBillingAgregation();
 }
@@ -834,7 +849,7 @@ bool cBilling::billing(tm &time, unsigned duration,
 						     &this->holidays->holidays[rules->rules[*operator_id]->holiday_id] :
 						     NULL;
 			*operator_price = rules->rules[*operator_id]->billing(time, duration, number_dst, number_dst_normalized.c_str(),
-									      holidays);
+									      holidays, gui_timezone.c_str());
 			*operator_currency_id = rules->rules[*operator_id]->currency_id;
 		}
 		if(*customer_id) {
@@ -846,7 +861,7 @@ bool cBilling::billing(tm &time, unsigned duration,
 						     &this->holidays->holidays[rules->rules[*customer_id]->holiday_id] :
 						     NULL;
 			*customer_price = rules->rules[*customer_id]->billing(time, duration, number_dst, number_dst_normalized.c_str(),
-									      holidays);
+									      holidays, gui_timezone.c_str());
 			*customer_currency_id = rules->rules[*customer_id]->currency_id;
 		}
 	}
@@ -860,7 +875,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 		       double *operator_price, double *customer_price,
 		       unsigned *operator_currency_id, unsigned *customer_currency_id,
 		       unsigned *operator_id, unsigned *customer_id) {
-	tm time_tm = time_r(&time);
+	tm time_tm = time_r(&time, gui_timezone.c_str());
 	return(billing(time_tm, duration,
 		       ip_src, ip_dst,
 		       number_src, number_dst,
@@ -890,14 +905,14 @@ list<string> cBilling::saveAgregation(time_t time,
 		unlock();
 		return(inserts);
 	}
-	tm time_tm = time_r(&time);
+	tm time_tm = time_r(&time, gui_timezone.c_str());
 	int week_day = time_tm.tm_wday - (agregSettings.week_start - 1);
 	if(week_day < 0) {
 		week_day = week_day + 7;
 	}
 	tm week_start_time_tm = time_tm;
 	for(int i = 0; i < week_day; i++) {
-		week_start_time_tm = getPrevBeginDate(week_start_time_tm);
+		week_start_time_tm = getPrevBeginDate(week_start_time_tm, gui_timezone.c_str());
 	}
 	vector<cBilling::sAgregationTypePart> typeParts = cBilling::getAgregTypeParts(&agregSettings);
 	for(unsigned i = 0; i < typeParts.size(); i++) {
