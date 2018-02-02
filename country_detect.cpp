@@ -209,7 +209,7 @@ bool CheckInternational::load() {
 			loadFromSensors = true;
 		}
 	}
-	if(!loadFromSensors) {
+	if(!loadFromSensors && sqlDb->existsTable("international_rules")) {
 		sqlDb->query("select * from international_rules");
 		SqlDb_row row;
 		if((row = sqlDb->fetchRow())) {
