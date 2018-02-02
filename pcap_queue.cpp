@@ -6245,7 +6245,7 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			if(is_terminating()) {
 				usleep(100000);
 			} else {
-				sleep(1);
+				sleep(pass < 10 ? 1 : 5);
 			}
 			syslog(LOG_INFO, "send packetbuffer block - next attempt %u", pass);
 		}
