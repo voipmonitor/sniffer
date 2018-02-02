@@ -5503,7 +5503,7 @@ void cConfig::addConfigItems() {
 			advanced();
 				addConfigItem(new FILE_LINE(42092) cConfigItem_yesno("partition_operations_in_thread", &opt_partition_operations_in_thread));
 				expert();
-					addConfigItem(new FILE_LINE(42093) cConfigItem_integer("create_old_partitions", &opt_create_old_partitions));
+					addConfigItem(new FILE_LINE(42093) cConfigItem_integer("create_old_partitions"));
 					addConfigItem(new FILE_LINE(42094) cConfigItem_string("create_old_partitions_from", opt_create_old_partitions_from, sizeof(opt_create_old_partitions_from)));
 		subgroup("scale");
 				advanced();
@@ -6215,11 +6215,14 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	if(configItem->config_name == "check_duplicity_callid_in_next_pass_insert") {
 		opt_message_check_duplicity_callid_in_next_pass_insert = opt_cdr_check_duplicity_callid_in_next_pass_insert;
 	}
+	if(configItem->config_name == "create_old_partitions") {
+		opt_create_old_partitions = max(opt_create_old_partitions, (int)configItem->getValueInt());
+	}
 	if(configItem->config_name == "create_old_partitions_from") {
-		opt_create_old_partitions = getNumberOfDayToNow(opt_create_old_partitions_from);
+		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(opt_create_old_partitions_from));
 	}
 	if(configItem->config_name == "database_backup_from_date") {
-		opt_create_old_partitions = getNumberOfDayToNow(opt_database_backup_from_date);
+		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(opt_database_backup_from_date));
 	}
 	if(configItem->config_name == "cachedir") {
 		spooldir_mkdir(opt_cachedir);
@@ -8028,11 +8031,13 @@ int eval_config(string inistr) {
 		opt_message_check_duplicity_callid_in_next_pass_insert = yesno(value);
 	}
 	if((value = ini.GetValue("general", "create_old_partitions", NULL))) {
-		opt_create_old_partitions = atoi(value);
-	} else if((value = ini.GetValue("general", "create_old_partitions_from", NULL))) {
-		opt_create_old_partitions = getNumberOfDayToNow(value);
-	} else if((value = ini.GetValue("general", "database_backup_from_date", NULL))) {
-		opt_create_old_partitions = getNumberOfDayToNow(value);
+		opt_create_old_partitions = max(opt_create_old_partitions, atoi(value));
+	}
+	if((value = ini.GetValue("general", "create_old_partitions_from", NULL))) {
+		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(value));
+	}
+	if((value = ini.GetValue("general", "database_backup_from_date", NULL))) {
+		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(value));
 		strncpy(opt_database_backup_from_date, value, sizeof(opt_database_backup_from_date));
 	}
 	if((value = ini.GetValue("general", "disable_partition_operations", NULL))) {
