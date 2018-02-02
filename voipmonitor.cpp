@@ -864,6 +864,7 @@ char *opt_unlzo_gui_params = NULL;
 char *opt_waveform_gui_params = NULL;
 char *opt_spectrogram_gui_params = NULL;
 char *opt_check_regexp_gui_params = NULL;
+char *opt_test_regexp_gui_params = NULL;
 char *opt_read_pcap_gui_params = NULL;
 char opt_test_str[1024];
 
@@ -2364,6 +2365,7 @@ bool is_set_gui_params() {
 	       opt_waveform_gui_params ||
 	       opt_spectrogram_gui_params ||
 	       opt_check_regexp_gui_params ||
+	       opt_test_regexp_gui_params ||
 	       opt_read_pcap_gui_params);
 }
 
@@ -2649,6 +2651,26 @@ int main(int argc, char *argv[]) {
 		bool okRegExp = check_regexp(opt_check_regexp_gui_params);
 		cout << (okRegExp ? "ok" : "failed") << endl;
 		return(okRegExp ? 0 : 1);
+	}
+	if(opt_test_regexp_gui_params) {
+		vector<string> regexp_params = split(opt_test_regexp_gui_params, opt_test_regexp_gui_params[strlen(opt_test_regexp_gui_params)-1]);
+		if(regexp_params.size() == 2) {
+			if(check_regexp(regexp_params[0].c_str())) {
+				vector<string> matches;
+				int rslt = reg_match(regexp_params[1].c_str(), regexp_params[0].c_str(), &matches, false);
+				cout << "rslt " << rslt << endl;
+				for(unsigned i = 0; i < matches.size(); i++) {
+					cout << "match " << (i+1) << " " << matches[i] << endl;
+				}
+				return(rslt);
+			} else {
+				cout << "bad regexp" << endl;
+				return(-1);
+			}
+		} else {
+			cout << "bad parameters" << endl;
+			return(-2);
+		}
 	}
 	if(opt_read_pcap_gui_params) {
 		read_pcap(opt_read_pcap_gui_params);
@@ -6411,6 +6433,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"print-config-file", 0, 0, 211},
 	    {"print-config-file-default", 0, 0, 212},
 	    {"check-regexp", 1, 0, 209},
+	    {"test-regexp", 1, 0, 321},
 	    {"read-pcap", 1, 0, 210},
 	    {"max-packets", 1, 0, 301},
 	    {"continue-after-read", 0, 0, 302},
@@ -6551,6 +6574,12 @@ void get_command_line_arguments() {
 				if(!opt_check_regexp_gui_params) {
 					opt_check_regexp_gui_params = new FILE_LINE(42472) char[strlen(optarg) + 1];
 					strcpy(opt_check_regexp_gui_params, optarg);
+				}
+				break;
+			case 321:
+				if(!opt_test_regexp_gui_params) {
+					opt_test_regexp_gui_params = new FILE_LINE(42472) char[strlen(optarg) + 1];
+					strcpy(opt_test_regexp_gui_params, optarg);
 				}
 				break;
 			case 210:
