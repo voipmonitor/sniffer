@@ -2557,7 +2557,7 @@ static inline void parse_packet__message_content(char *message, unsigned int mes
 						 bool maskMessage = false);
 static inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, int *merged, bool preprocess);
 
-inline void process_packet_sip_call_inline(packet_s_process *packetS) {
+void process_packet_sip_call(packet_s_process *packetS) {
 	
 	Call *call = NULL;
 	char *s;
@@ -3441,7 +3441,7 @@ endsip:
 	}
 }
 
-inline void process_packet_sip_alone_bye_inline(packet_s_process *packetS) {
+void process_packet_sip_alone_bye(packet_s_process *packetS) {
 	if(sverb.dump_sip) {
 		string dump_data(packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
 		if(sverb.dump_sip_line) {
@@ -3482,7 +3482,7 @@ inline void process_packet_sip_alone_bye_inline(packet_s_process *packetS) {
 	}
 }
 
-inline void process_packet_sip_register_inline(packet_s_process *packetS) {
+void process_packet_sip_register(packet_s_process *packetS) {
 	
 	Call *call = NULL;
 	char *s;
@@ -3981,7 +3981,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	return(call);
 }
 
-inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
+bool process_packet_rtp(packet_s_process_0 *packetS) {
 	packetS->blockstore_addflag(21 /*pb lock flag*/);
 	if(packetS->datalen <= 2) { // && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) { // disable condition - failure for udptl (fax)
 		packetS->init2_rtp();
@@ -4060,7 +4060,7 @@ inline bool process_packet_rtp_inline(packet_s_process_0 *packetS) {
 	return(false);
 }
 
-inline void process_packet_other_inline(packet_s_stack *packetS) {
+void process_packet_other(packet_s_stack *packetS) {
 	process_packet__cleanup_ss7(packetS->header_pt);
 	extern void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt);
 	string dissect_rslt;
@@ -6586,9 +6586,9 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		if(opt_detect_alone_bye &&
 		   ((packetS->_findCall && packetS->call && packetS->call->type == BYE) ||
 		    (packetS->_createCall && packetS->call_created && packetS->call_created->type == BYE))) {
-			process_packet_sip_alone_bye_inline(packetS);
+			process_packet_sip_alone_bye(packetS);
 		} else {
-			process_packet_sip_call_inline(packetS);
+			process_packet_sip_call(packetS);
 		}
 	} else if(packetS->isSkinny) {
 		if(opt_ipaccount && packetS->block_store) {
@@ -6613,20 +6613,20 @@ void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
-		process_packet_sip_register_inline(packetS);
+		process_packet_sip_register(packetS);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 1);
 }
 
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
-	if(!process_packet_rtp_inline(packetS)) {
+	if(!process_packet_rtp(packetS)) {
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
 	}
 }
 
 void PreProcessPacket::process_OTHER(packet_s_stack *packetS) {
 	if(packetS->isother) {
-		process_packet_other_inline(packetS);
+		process_packet_other(packetS);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
 }
