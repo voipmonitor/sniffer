@@ -2096,6 +2096,29 @@ void reload_capture_rules() {
 #ifdef BACKTRACE
 void bt_sighandler_simple(int sig, siginfo_t *info, void *secret)
 {
+	void *crash_pnt = NULL;
+	if(secret) {
+		#if defined(__x86_64__)
+			ucontext_t* uc = (ucontext_t*) secret;
+			crash_pnt = (void*) uc->uc_mcontext.gregs[REG_RIP] ;
+		#elif defined(__hppa__)
+			ucontext_t* uc = (ucontext_t*) secret;
+			crash_pnt = (void*) uc->uc_mcontext.sc_iaoq[0] & ~0×3UL ;
+		#elif (defined (__ppc__)) || (defined (__powerpc__))
+			ucontext_t* uc = (ucontext_t*) secret;
+			crash_pnt = (void*) uc->uc_mcontext.regs->nip ;
+		#elif defined(__sparc__)
+		struct sigcontext* sc = (struct sigcontext*) secret;
+			#if __WORDSIZE == 64
+				crash_pnt = (void*) scp->sigc_regs.tpc ;
+			#else  
+				crash_pnt = (void*) scp->si_regs.pc ;
+			#endif
+		#elif defined(__i386__)
+			ucontext_t* uc = (ucontext_t*) secret;
+			crash_pnt = (void*) uc->uc_mcontext.gregs[REG_EIP] ;
+		#endif
+	}
 	void *trace[16];
 	char **messages;
 	int trace_size = backtrace(trace, 16);
@@ -2122,6 +2145,21 @@ void bt_sighandler_simple(int sig, siginfo_t *info, void *secret)
 			}
 		#endif
 		write(fh, "\n", 1);
+		if(crash_pnt) {
+			write(fh, "[--] [0x", 8);
+			for(unsigned i = sizeof(crash_pnt); i > 0; i--) {
+				char ch = *((char*)&crash_pnt + (i - 1));
+				if(ch) {
+					char ch1 = (ch >> 4) & 0xF;
+					char ch2 = (ch & 0xF);
+					ch1 = ch1 + (ch1 < 10 ? '0' : ('a' - 10));
+					ch2 = ch2 + (ch2 < 10 ? '0' : ('a' - 10));
+					write(fh, &ch1, 1);
+					write(fh, &ch2, 1);
+				}
+			}
+			write(fh, "]\n", 2);
+		}
 		for (int i = 1; i < trace_size; ++i) {
 			write(fh, "[bt] ", 5);
 			write(fh, messages[i], strlen(messages[i]));
@@ -2250,7 +2288,8 @@ void store_crash_bt_to_db() {
 				if(sscanf(rowbuff, "%s sensor %i %s", version, &sensor_id, arch) == 3) {
 					header_ok = true;
 				}
-			} else if(!strncmp(rowbuff, "[bt]", 4)) {
+			} else if(!strncmp(rowbuff, "[bt]", 4) ||
+				  !strncmp(rowbuff, "[--]", 4)) {
 				char *lf = strchr(rowbuff, '\n');
 				if(lf) {
 					*lf = 0;
