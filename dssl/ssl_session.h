@@ -121,6 +121,9 @@ struct DSSL_Session_
 	
 	void 			*handshake_data;
 	uint32_t		handshake_data_size;
+	
+	int (*gener_master_secret)(u_char *client_random, u_char *master_secret, DSSL_Session *session);
+	void *gener_master_secret_data[2];
 };
 
 

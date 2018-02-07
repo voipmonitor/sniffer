@@ -722,11 +722,16 @@ char *httpportmatrix;		// matrix of http ports to monitor
 char *webrtcportmatrix;		// matrix of webrtc ports to monitor
 char *skinnyportmatrix;		// matrix of skinny ports to monitor
 char *ipaccountportmatrix;
-map<d_u_int32_t, string> ssl_ipport;
 vector<u_int32_t> httpip;
 vector<d_u_int32_t> httpnet;
 vector<u_int32_t> webrtcip;
 vector<d_u_int32_t> webrtcnet;
+map<d_u_int32_t, string> ssl_ipport;
+bool ssl_client_random_enable = false;
+char *ssl_client_random_portmatrix;
+bool ssl_client_random_portmatrix_set = false;
+vector<u_int32_t> ssl_client_random_ip;
+vector<d_u_int32_t> ssl_client_random_net;
 
 int opt_sdp_reverse_ipport = 0;
 
@@ -2533,6 +2538,8 @@ int main(int argc, char *argv[]) {
 	skinnyportmatrix[2000] = 1;
 	ipaccountportmatrix = new FILE_LINE(42017) char[65537];
 	memset(ipaccountportmatrix, 0, 65537);
+	ssl_client_random_portmatrix = new FILE_LINE(0) char[65537];
+	memset(ssl_client_random_portmatrix, 0, 65537);
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
 	pthread_mutex_init(&vm_rrd_lock, NULL);
@@ -3111,6 +3118,7 @@ int main(int argc, char *argv[]) {
 	delete [] webrtcportmatrix;
 	delete [] skinnyportmatrix;
 	delete [] ipaccountportmatrix;
+	delete [] ssl_client_random_portmatrix;
 	
 	delete regfailedcache;
 	
@@ -5848,6 +5856,9 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42255) cConfigItem_ip_port_str_map("ssl_ipport", &ssl_ipport));
 		addConfigItem(new FILE_LINE(42256) cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
 			advanced();
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_client_random", &ssl_client_random_enable));
+			addConfigItem(new FILE_LINE(0) cConfigItem_ports("ssl_client_random_port", ssl_client_random_portmatrix));
+			addConfigItem(new FILE_LINE(0) cConfigItem_hosts("ssl_client_random_ip", &ssl_client_random_ip, &ssl_client_random_net));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 		setDisableIfEnd();
@@ -7267,6 +7278,15 @@ void set_context_config() {
 	}
 	#endif //HAVE_OPENSSL101
 	
+	if(ssl_client_random_enable) {
+		ssl_client_random_portmatrix_set = false;
+		for(unsigned i = 0; i < 65537; i++) {
+			if(ssl_client_random_portmatrix[i]) {
+				ssl_client_random_portmatrix_set = true;
+			}
+		}
+	}
+	
 	set_spool_permission();
 	
 	strcpy(opt_id_sensor_str, intToString(opt_id_sensor).c_str());
@@ -7632,14 +7652,14 @@ int eval_config(string inistr) {
 				*pointToSeparator = 0;
 				ip = htonl(inet_addr(i->pItem));
 				++pointToSeparator;
-				while(*pointToSeparator == ' ') {
+				while(*pointToSeparator && *pointToSeparator == ' ') {
 					++pointToSeparator;
 				}
 				port = atoi(pointToSeparator);
-				while(*pointToSeparator != ' ') {
+				while(*pointToSeparator && *pointToSeparator != ' ') {
 					++pointToSeparator;
 				}
-				while(*pointToSeparator == ' ') {
+				while(*pointToSeparator && *pointToSeparator == ' ') {
 					++pointToSeparator;
 				}
 				key = pointToSeparator;
@@ -7647,6 +7667,45 @@ int eval_config(string inistr) {
 			if(ip && port) {
 				ssl_ipport[d_u_int32_t(ip, port)] = key;
 			}
+		}
+	}
+	
+	if((value = ini.GetValue("general", "ssl_client_random", NULL))) {
+		ssl_client_random_enable = yesno(value);
+	}
+	if (ini.GetAllValues("general", "ssl_client_random_port", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		// reset default port 
+		for (; i != values.end(); ++i) {
+			ssl_client_random_portmatrix[atoi(i->pItem)] = 1;
+		}
+	}
+	if (ini.GetAllValues("general", "ssl_client_random_ip", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			u_int32_t ip;
+			int lengthMask = 32;
+			char *pointToSeparatorLengthMask = strchr((char*)i->pItem, '/');
+			if(pointToSeparatorLengthMask) {
+				*pointToSeparatorLengthMask = 0;
+				ip = htonl(inet_addr(i->pItem));
+				lengthMask = atoi(pointToSeparatorLengthMask + 1);
+			} else {
+				ip = htonl(inet_addr(i->pItem));
+			}
+			if(lengthMask < 32) {
+				ip = ip >> (32 - lengthMask) << (32 - lengthMask);
+			}
+			if(ip) {
+				if(lengthMask < 32) {
+					ssl_client_random_net.push_back(d_u_int32_t(ip, lengthMask));
+				} else {
+					ssl_client_random_ip.push_back(ip);
+				}
+			}
+		}
+		if(ssl_client_random_ip.size() > 1) {
+			std::sort(ssl_client_random_ip.begin(), ssl_client_random_ip.end());
 		}
 	}
 	

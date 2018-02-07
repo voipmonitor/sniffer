@@ -554,6 +554,7 @@ bool ip_is_localhost(u_int32_t ip) { return((ip >> 8) == 0x7F0000); }
 void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos);
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
+int hexdecode(unsigned char *dst, const char *src, int max);
 void find_and_replace(string &source, const string find, string replace);
 string find_and_replace(const char *source, const char *find, const char *replace);
 bool isLocalIP(u_int32_t ip);

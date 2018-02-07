@@ -24,6 +24,7 @@
 /*
 #define NM_TRACE_SSL
 #define NM_TRACE_TCP
+#define _DEBUG
 */
 
 #ifdef NM_TRACE_SSL

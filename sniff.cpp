@@ -75,6 +75,7 @@ and insert them into Call class.
 #include "manager.h"
 #include "fraud.h"
 #include "send_call_info.h"
+#include "ssl_dssl.h"
 
 extern MirrorIP *mirrorip;
 
@@ -5596,17 +5597,38 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 							   NULL, 0, false,
 							   0, global_pcap_dlink, opt_id_sensor);
 			} else {
-				preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-					false, 
-					#if USE_PACKET_NUMBER
-					packet_counter,
-					#endif
-					ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
-					ppd.datalen, dataoffset, 
-					handle_index, header, packet, true,
-					ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_offset),
-					NULL, 0, global_pcap_dlink, opt_id_sensor,
-					false);
+				bool ssl_client_random = false;
+				extern bool ssl_client_random_enable;
+				extern char *ssl_client_random_portmatrix;
+				extern bool ssl_client_random_portmatrix_set;
+				extern vector<u_int32_t> ssl_client_random_ip;
+				extern vector<d_u_int32_t> ssl_client_random_net;
+				if(ppd.header_ip && ppd.header_ip->protocol == IPPROTO_UDP &&
+				   ssl_client_random_enable &&
+				   (!ssl_client_random_portmatrix_set || 
+				    ssl_client_random_portmatrix[htons(ppd.header_udp->source)] ||
+				    ssl_client_random_portmatrix[htons(ppd.header_udp->dest)]) &&
+				   ((!ssl_client_random_ip.size() && !ssl_client_random_net.size()) ||
+				    check_ip_in(htonl(ppd.header_ip->saddr), &ssl_client_random_ip, &ssl_client_random_net, true) ||
+				    check_ip_in(htonl(ppd.header_ip->daddr), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
+				   ppd.datalen && ppd.data[0] == '{' && ppd.data[ppd.datalen - 1] == '}') {
+					if(ssl_parse_client_random((u_char*)ppd.data, ppd.datalen)) {
+						ssl_client_random = true;
+					}
+				} 
+				if(!ssl_client_random) {
+					preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+						false, 
+						#if USE_PACKET_NUMBER
+						packet_counter,
+						#endif
+						ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
+						ppd.datalen, dataoffset, 
+						handle_index, header, packet, true,
+						ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_offset),
+						NULL, 0, global_pcap_dlink, opt_id_sensor,
+						false);
+				}
 			}
 		}
 	}

@@ -93,6 +93,11 @@ static int ssl3_decode_client_hello( DSSL_Session* sess, u_char* data, uint32_t 
 	memcpy( sess->client_random, data, 32 );
 	data+= 32;
 	DEBUG_TRACE_BUF("client_random", sess->client_random, 32);
+	
+	if( !sess->ssl_si->pkey && sess->gener_master_secret )
+	{
+		sess->gener_master_secret(sess->client_random, sess->master_secret, sess);
+	}
 
 	/* check session ID length */
 	if( data[0] > 32 ) return NM_ERROR( DSSL_E_SSL_PROTOCOL_ERROR );
@@ -463,51 +468,54 @@ int ssl3_decode_client_key_exchange( DSSL_Session* sess, u_char* data, uint32_t 
 		return NM_ERROR( DSSL_E_SSL_INVALID_RECORD_LENGTH );
 	}
 
-	pk = ssls_get_session_private_key( sess );
-
-	/* if SSL server key is not found, try to find a matching one from the key pool */
-	if(pk == NULL) 
+	if( sess->ssl_si->pkey && !sess->master_secret[0] )
 	{
-		_ASSERT( sess->last_packet);
-		pk = ssls_try_ssl_keys( sess, data, len );
+		pk = ssls_get_session_private_key( sess );
 
-		/* if a matching key found, register it with the server IP:port */
-		if(pk != NULL)
+		/* if SSL server key is not found, try to find a matching one from the key pool */
+		if(pk == NULL) 
 		{
-			if( ssls_register_ssl_key( sess, pk ) == DSSL_RC_OK)
+			_ASSERT( sess->last_packet);
+			pk = ssls_try_ssl_keys( sess, data, len );
+
+			/* if a matching key found, register it with the server IP:port */
+			if(pk != NULL)
 			{
-				/* ssls_register_ssl_key clones the key, query the key back */
-				pk = ssls_get_session_private_key( sess );
-			}
-			else
-			{
-				pk = NULL;
+				if( ssls_register_ssl_key( sess, pk ) == DSSL_RC_OK)
+				{
+					/* ssls_register_ssl_key clones the key, query the key back */
+					pk = ssls_get_session_private_key( sess );
+				}
+				else
+				{
+					pk = NULL;
+				}
 			}
 		}
+
+		if(!pk) 
+		{
+			ssls_register_missing_key_server( sess );
+			return NM_ERROR( DSSL_E_SSL_SERVER_KEY_UNKNOWN );
+		}
+
+		if(EVP_PKEY_id( pk ) != EVP_PKEY_RSA) return NM_ERROR( DSSL_E_SSL_CANNOT_DECRYPT_NON_RSA );
+
+		pms_len = RSA_private_decrypt( len, data, sess->PMS, EVP_PKEY_get0_RSA( pk ), RSA_PKCS1_PADDING );
+
+		if( pms_len != SSL_MAX_MASTER_KEY_LENGTH )
+		{
+			return NM_ERROR( DSSL_E_SSL_CORRUPTED_PMS );
+		}
+
+		if( MAKE_UINT16( sess->PMS[0], sess->PMS[1] ) != sess->client_version )
+		{
+			return NM_ERROR( DSSL_E_SSL_PMS_VERSION_ROLLBACK );
+		}
+
+		rc = ssls_decode_master_secret( sess );
+		OPENSSL_cleanse(sess->PMS, sizeof(sess->PMS) );
 	}
-
-	if(!pk) 
-	{
-		ssls_register_missing_key_server( sess );
-		return NM_ERROR( DSSL_E_SSL_SERVER_KEY_UNKNOWN );
-	}
-
-	if(EVP_PKEY_id( pk ) != EVP_PKEY_RSA) return NM_ERROR( DSSL_E_SSL_CANNOT_DECRYPT_NON_RSA );
-
-	pms_len = RSA_private_decrypt( len, data, sess->PMS, EVP_PKEY_get0_RSA( pk ), RSA_PKCS1_PADDING );
-
-	if( pms_len != SSL_MAX_MASTER_KEY_LENGTH )
-	{
-		return NM_ERROR( DSSL_E_SSL_CORRUPTED_PMS );
-	}
-
-	if( MAKE_UINT16( sess->PMS[0], sess->PMS[1] ) != sess->client_version )
-	{
-		return NM_ERROR( DSSL_E_SSL_PMS_VERSION_ROLLBACK );
-	}
-
-	rc = ssls_decode_master_secret( sess );
-	OPENSSL_cleanse(sess->PMS, sizeof(sess->PMS) );
 
 	if( rc != DSSL_RC_OK ) return rc;
 
@@ -542,7 +550,7 @@ static int ssl3_decode_server_certificate( DSSL_Session* sess, u_char* data, uin
 	/* TBD: skip server certificate check if SSL key has not yet been mapped for this server */
 	if( !sess->ssl_si ) return DSSL_RC_OK;
 
-	if( !sess->ssl_si->pkey ) return NM_ERROR( DSSL_E_UNINITIALIZED_ARGUMENT );
+	if( !sess->ssl_si->pkey && !sess->master_secret[0]) return NM_ERROR( DSSL_E_UNINITIALIZED_ARGUMENT );
 
 	if( len < 3 ) return NM_ERROR( DSSL_E_SSL_INVALID_RECORD_LENGTH );
 	
@@ -554,18 +562,21 @@ static int ssl3_decode_server_certificate( DSSL_Session* sess, u_char* data, uin
 	data+=3;
 	if( llen > len ) return NM_ERROR( DSSL_E_SSL_INVALID_CERTIFICATE_LENGTH );
 
-	x = d2i_X509( NULL, &data, llen );
-	if( !x ) 
+	if( sess->ssl_si->pkey && !sess->master_secret[0] )
 	{
-		rc = NM_ERROR( DSSL_E_SSL_BAD_CERTIFICATE );
-	}
+		x = d2i_X509( NULL, &data, llen );
+		if( !x ) 
+		{
+			rc = NM_ERROR( DSSL_E_SSL_BAD_CERTIFICATE );
+		}
 
-	if( rc == DSSL_RC_OK && !X509_check_private_key(x, ssls_get_session_private_key( sess )) )
-	{
-		rc = NM_ERROR( DSSL_E_SSL_CERTIFICATE_KEY_MISMATCH );
-	}
+		if( rc == DSSL_RC_OK && !X509_check_private_key(x, ssls_get_session_private_key( sess )) )
+		{
+			rc = NM_ERROR( DSSL_E_SSL_CERTIFICATE_KEY_MISMATCH );
+		}
 
-	if( x ) X509_free( x );
+		if( x ) X509_free( x );
+	}
 
 	return rc;
 }

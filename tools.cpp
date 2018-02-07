@@ -4247,6 +4247,23 @@ int base64decode(unsigned char *dst, const char *src, int max)
         return cnt;
 }
 
+int hexdecode(unsigned char *dst, const char *src, int max)
+{
+	unsigned src_length = strlen(src);
+	char buff[3];
+	buff[2] = 0;
+	int cnt = 0;
+	for(unsigned i = 0; i < src_length; i+=2) {
+		buff[0] = src[i];
+		buff[1] = src[i + 1];
+		dst[cnt++] = strtol(buff, NULL, 16);
+		if(cnt >= max) {
+			break;
+		}
+	}
+	return cnt;
+}
+
 void find_and_replace(string &source, const string find, string replace) {
  	size_t j;
 	for ( ; (j = source.find( find )) != string::npos ; ) {

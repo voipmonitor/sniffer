@@ -35,6 +35,7 @@
 #include "tar.h"
 #include "voipmonitor.h"
 #include "server.h"
+#include "ssl_dssl.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -6789,12 +6790,30 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	if((opt_enable_http != 2 && opt_enable_webrtc != 2 && opt_enable_ssl != 2) &&
 	   !is_terminating() &&
 	   !sverb.disable_push_to_t2_in_packetbuffer) {
+		extern bool ssl_client_random_enable;
+		extern char *ssl_client_random_portmatrix;
+		extern bool ssl_client_random_portmatrix_set;
+		extern vector<u_int32_t> ssl_client_random_ip;
+		extern vector<d_u_int32_t> ssl_client_random_net;
+		if(header_ip && header_ip->protocol == IPPROTO_UDP &&
+		   ssl_client_random_enable &&
+		   (!ssl_client_random_portmatrix_set || 
+		    ssl_client_random_portmatrix[htons(sport)] ||
+		    ssl_client_random_portmatrix[htons(dport)]) &&
+		   ((!ssl_client_random_ip.size() && !ssl_client_random_net.size()) ||
+		    check_ip_in(htonl(header_ip->saddr), &ssl_client_random_ip, &ssl_client_random_net, true) ||
+		    check_ip_in(htonl(header_ip->daddr), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
+		   datalen && data[0] == '{' && data[datalen - 1] == '}') {
+			if(ssl_parse_client_random((u_char*)data, datalen)) {
+				return(0);
+			}
+		}
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 			false /*is_ssl*/, 
 			#if USE_PACKET_NUMBER
 			packet_counter_all,
 			#endif
-			header_ip ? header_ip->saddr : 0, header_ip ? htons(sport) : 0, header_ip ? header_ip->daddr : 0, header_ip ?htons(dport) : 0,
+			header_ip ? header_ip->saddr : 0, header_ip ? htons(sport) : 0, header_ip ? header_ip->daddr : 0, header_ip ? htons(dport) : 0,
 			datalen, data - (char*)hp->packet,
 			this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
 			istcp, isother, header_ip,

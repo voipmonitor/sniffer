@@ -1151,14 +1151,14 @@ bool cConfigItem_ip_port_str_map::setParamFromValuesStr(vector<string> list_valu
 			*pointToSeparator = 0;
 			ip = htonl(inet_addr(iter_str_char));
 			++pointToSeparator;
-			while(*pointToSeparator == ' ') {
+			while(*pointToSeparator && *pointToSeparator == ' ') {
 				++pointToSeparator;
 			}
 			port = atoi(pointToSeparator);
-			while(*pointToSeparator != ' ') {
+			while(*pointToSeparator && *pointToSeparator != ' ') {
 				++pointToSeparator;
 			}
-			while(*pointToSeparator == ' ') {
+			while(*pointToSeparator && *pointToSeparator == ' ') {
 				++pointToSeparator;
 			}
 			str = pointToSeparator;
