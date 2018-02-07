@@ -5856,9 +5856,9 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42255) cConfigItem_ip_port_str_map("ssl_ipport", &ssl_ipport));
 		addConfigItem(new FILE_LINE(42256) cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
 			advanced();
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_client_random", &ssl_client_random_enable));
-			addConfigItem(new FILE_LINE(0) cConfigItem_ports("ssl_client_random_port", ssl_client_random_portmatrix));
-			addConfigItem(new FILE_LINE(0) cConfigItem_hosts("ssl_client_random_ip", &ssl_client_random_ip, &ssl_client_random_net));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_sessionkey_udp", &ssl_client_random_enable));
+			addConfigItem(new FILE_LINE(0) cConfigItem_ports("ssl_sessionkey_udp_port", ssl_client_random_portmatrix));
+			addConfigItem(new FILE_LINE(0) cConfigItem_hosts("ssl_sessionkey_udp_ip", &ssl_client_random_ip, &ssl_client_random_net));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 		setDisableIfEnd();
@@ -7670,17 +7670,17 @@ int eval_config(string inistr) {
 		}
 	}
 	
-	if((value = ini.GetValue("general", "ssl_client_random", NULL))) {
+	if((value = ini.GetValue("general", "ssl_sessionkey_udp", NULL))) {
 		ssl_client_random_enable = yesno(value);
 	}
-	if (ini.GetAllValues("general", "ssl_client_random_port", values)) {
+	if (ini.GetAllValues("general", "ssl_sessionkey_udp_port", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		// reset default port 
 		for (; i != values.end(); ++i) {
 			ssl_client_random_portmatrix[atoi(i->pItem)] = 1;
 		}
 	}
-	if (ini.GetAllValues("general", "ssl_client_random_ip", values)) {
+	if (ini.GetAllValues("general", "ssl_sessionkey_udp_ip", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
 			u_int32_t ip;
