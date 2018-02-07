@@ -6798,10 +6798,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		if(header_ip && header_ip->protocol == IPPROTO_UDP &&
 		   ssl_client_random_enable &&
 		   (!ssl_client_random_portmatrix_set || 
-		    ssl_client_random_portmatrix[htons(sport)] ||
 		    ssl_client_random_portmatrix[htons(dport)]) &&
 		   ((!ssl_client_random_ip.size() && !ssl_client_random_net.size()) ||
-		    check_ip_in(htonl(header_ip->saddr), &ssl_client_random_ip, &ssl_client_random_net, true) ||
 		    check_ip_in(htonl(header_ip->daddr), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
 		   datalen && data[0] == '{' && data[datalen - 1] == '}') {
 			if(ssl_parse_client_random((u_char*)data, datalen)) {

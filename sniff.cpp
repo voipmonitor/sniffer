@@ -5606,10 +5606,8 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 				if(ppd.header_ip && ppd.header_ip->protocol == IPPROTO_UDP &&
 				   ssl_client_random_enable &&
 				   (!ssl_client_random_portmatrix_set || 
-				    ssl_client_random_portmatrix[htons(ppd.header_udp->source)] ||
 				    ssl_client_random_portmatrix[htons(ppd.header_udp->dest)]) &&
 				   ((!ssl_client_random_ip.size() && !ssl_client_random_net.size()) ||
-				    check_ip_in(htonl(ppd.header_ip->saddr), &ssl_client_random_ip, &ssl_client_random_net, true) ||
 				    check_ip_in(htonl(ppd.header_ip->daddr), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
 				   ppd.datalen && ppd.data[0] == '{' && ppd.data[ppd.datalen - 1] == '}') {
 					if(ssl_parse_client_random((u_char*)ppd.data, ppd.datalen)) {
