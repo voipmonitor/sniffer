@@ -172,7 +172,7 @@ class cBillingRule {
 public:
 	void load(SqlDb_row *row);
 	void loadNumbers(SqlDb *sqlDb = NULL);
-	double billing(tm &time, unsigned duration, const char *number, const char *number_normalized,
+	double billing(time_t time, unsigned duration, const char *number, const char *number_normalized,
 		       cStateHolidays *holidays, const char *timezone);
 private:
 	unsigned id;
@@ -186,6 +186,7 @@ private:
 	bool default_customer;
 	string currency_code;
 	unsigned currency_id;
+	string timezone_name;
 	list<cBillingRuleNumber> numbers;
 friend class cBillingRules;
 friend class cBilling;
@@ -273,12 +274,6 @@ public:
 	cBilling();
 	~cBilling();
 	void load();
-	bool billing(tm &time, unsigned duration,
-		     u_int32_t ip_src, u_int32_t ip_dst,
-		     const char *number_src, const char *number_dst,
-		     double *operator_price, double *customer_price,
-		     unsigned *operator_currency_id, unsigned *customer_currency_id,
-		     unsigned *operator_id, unsigned *customer_id);
 	bool billing(time_t time, unsigned duration,
 		     u_int32_t ip_src, u_int32_t ip_dst,
 		     const char *number_src, const char *number_dst,

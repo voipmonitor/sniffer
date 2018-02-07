@@ -511,6 +511,7 @@ void cBillingRule::load(SqlDb_row *row) {
 	default_customer = atoi((*row)["default_customer_billing"].c_str());
 	currency_code = (*row)["currency_code"];
 	currency_id = atoi((*row)["currency_id"].c_str());
+	timezone_name = (*row)["timezone_name"];
 }
 
 void cBillingRule::loadNumbers(SqlDb *sqlDb) {
@@ -535,8 +536,9 @@ void cBillingRule::loadNumbers(SqlDb *sqlDb) {
 	}
 }
 
-double cBillingRule::billing(tm &time, unsigned duration, const char *number, const char *number_normalized,
+double cBillingRule::billing(time_t time, unsigned duration, const char *number, const char *number_normalized,
 			     cStateHolidays *holidays, const char *timezone) {
+	tm time_tm = time_r(&time, timezone_name.length() ? timezone_name.c_str() : timezone);
 	if(!duration) {
 		duration = 1;
 	}
@@ -576,7 +578,7 @@ double cBillingRule::billing(tm &time, unsigned duration, const char *number, co
 	}
 	double rslt_price = 0;
 	int duration_rest = duration;
-	tm time_iter = time;
+	tm time_iter = time_tm;
 	unsigned count_iter = 0;
 	while(duration_rest > 0) {
 		unsigned duration_iter = count_iter == 0 && t1 != t2 ?
@@ -805,7 +807,7 @@ void cBilling::load() {
 	createMysqlPartitionsBillingAgregation();
 }
 
-bool cBilling::billing(tm &time, unsigned duration,
+bool cBilling::billing(time_t time, unsigned duration,
 		       u_int32_t ip_src, u_int32_t ip_dst,
 		       const char *number_src, const char *number_dst,
 		       double *operator_price, double *customer_price,
@@ -867,21 +869,6 @@ bool cBilling::billing(tm &time, unsigned duration,
 	}
 	unlock();
 	return(rslt);
-}
-
-bool cBilling::billing(time_t time, unsigned duration,
-		       u_int32_t ip_src, u_int32_t ip_dst,
-		       const char *number_src, const char *number_dst,
-		       double *operator_price, double *customer_price,
-		       unsigned *operator_currency_id, unsigned *customer_currency_id,
-		       unsigned *operator_id, unsigned *customer_id) {
-	tm time_tm = time_r(&time, gui_timezone.c_str());
-	return(billing(time_tm, duration,
-		       ip_src, ip_dst,
-		       number_src, number_dst,
-		       operator_price, customer_price,
-		       operator_currency_id, customer_currency_id,
-		       operator_id, customer_id ));
 }
 
 list<string> cBilling::saveAgregation(time_t time,
