@@ -549,7 +549,8 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 	
 	for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
 		livesnifferfilter_t *filter = usersnifferIT->second;
-		if(filter->sensor_id_set && filter->sensor_id &&
+		if(is_server() &&
+		   filter->sensor_id_set && filter->sensor_id &&
 		   (filter->sensor_id < 0 ?
 		     packetS->sensor_id_() > 0 :
 		     filter->sensor_id != packetS->sensor_id_())) {
