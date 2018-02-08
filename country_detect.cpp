@@ -351,6 +351,8 @@ bool CheckInternational::processCustomerDataAdvanced(const char *number,
 					this->skipPrefixes(number, &recAdv->trim_prefixes_string, &recAdv->trim_prefixes_regexp, true, numberWithoutPrefix);
 				} else if(recAdv->trim_prefix_length > 0 && recAdv->trim_prefix_length < (int)strlen(number)) {
 					*numberWithoutPrefix = number + recAdv->trim_prefix_length;
+				} else {
+					*numberWithoutPrefix = number;
 				}
 			}
 			return(true);
