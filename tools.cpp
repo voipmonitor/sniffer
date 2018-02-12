@@ -1895,6 +1895,10 @@ bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 		delete wdt;
 		wdt = NULL;
 	}
+	extern void semaphoreUnlink(int index = -1, bool force = false);
+	extern void semaphoreClose(int index = -1, bool force = false);
+	semaphoreUnlink();
+	semaphoreClose();
 	close(socket1);
 	close(socket2);
 	if(c_client) {
@@ -2168,18 +2172,8 @@ string WDT::getRunDir() {
 }
 
 string WDT::getConfigFile() {
-	extern char configfile[1024];
-	if(!configfile[0]) {
-		return("");
-	}
-	char *configFile = strrchr(configfile, '/');
-	if(!configFile) {
-		configFile = configfile;
-	}
-	while(*configFile == '.' || *configFile == '/') {
-		++configFile;
-	}
-	return(configFile);
+	extern string configfilename;
+	return(configfilename);
 }
 
 

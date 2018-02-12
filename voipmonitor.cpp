@@ -784,8 +784,6 @@ vm_atomic<string> storingRegisterLastWriteAt;
 
 time_t startTime;
 
-sem_t *globalSemaphore;
-
 bool opt_loadsqlconfig = true;
 
 int opt_mysqlstore_concat_limit = 0;
@@ -897,8 +895,17 @@ WDT *wdt;
 bool enable_wdt = true;
 string cmdline;
 string rundir;
+string appname;
+string configfilename;
 
 char opt_crash_bt_filename[100];
+
+bool useSemaphoreLock = false;
+sem_t *semaphoreLock[2];
+const char *anotherInstanceMessage = "another voipmonitor instance with the same configuration file is running";
+
+int ownPidStart;
+int ownPidFork;
 
 
 #include <stdio.h>
@@ -976,27 +983,83 @@ int thread_cleanup(void)
   return 1;
 }
 
+char *semaphoreLockName(int index) {
+	static char semLockName[2][1024] = { "", "" };
+	if(!semLockName[index][0]) {
+		strcpy(semLockName[index], appname.c_str());
+		strcat(semLockName[index], ("_" + intToString(index)).c_str());
+		if(configfilename.length()) {
+			strcat(semLockName[index], "_");
+			strcat(semLockName[index], configfilename.c_str());
+		}
+	}
+	return(semLockName[index]);
+}
 
+void semaphoreUnlink(int index = -1, bool force = false) {
+	if(useSemaphoreLock && (opt_fork || force)) {
+		if(index == -1) {
+			for(int i = 0; i < 2; i++) {
+				semaphoreUnlink(i, force);
+			}
+		} else {
+			sem_unlink(semaphoreLockName(index));
+		}
+	}
+}
 
-#define ENABLE_SEMAPHOR_FORK_MODE 0
-#if ENABLE_SEMAPHOR_FORK_MODE
-string SEMAPHOR_FORK_MODE_NAME() {
- 	char forkModeName[1024] = "";
-	if(!forkModeName[0]) {
-		strcpy(forkModeName, configfile[0] ? configfile : "voipmonitor_fork_mode");
-		if(configfile[0]) {
-			char *point = forkModeName;
-			while(*point) {
-				if(!isdigit(*point) && !isalpha(*point)) {
-					*point = '_';
-				}
-				++point;
+void semaphoreClose(int index = -1, bool force = false) {
+	if(useSemaphoreLock && (opt_fork || force)) {
+		if(index == -1) {
+			for(int i = 0; i < 2; i++) {
+				semaphoreClose(i, force);
+			}
+		} else {
+			if(semaphoreLock[index]) {
+				sem_close(semaphoreLock[index]);
+				semaphoreLock[index] = NULL;
 			}
 		}
 	}
-	return(forkModeName);
 }
-#endif
+
+bool existsAnotherInstance() {
+	bool exists = false;
+	FILE *cmd_pipe = popen(("ps -C '" + appname + "' -o pid,args").c_str(), "r");
+	char buffRslt[512];
+	while(fgets(buffRslt, 512, cmd_pipe)) {
+		if(strstr(buffRslt, configfile)) {
+			char *checkPidPointer = buffRslt;
+			if(*checkPidPointer && !isdigit(*checkPidPointer)) {
+				++checkPidPointer;
+			}
+			int checkPid = atoi(checkPidPointer);
+			if(checkPid != ownPidStart && checkPid != ownPidFork) {
+				exists = true;
+			}
+		}
+	}
+	pclose(cmd_pipe);
+	return(exists);
+}
+
+bool existsPidProcess(int pid) {
+	bool exists = false;
+	FILE *cmd_pipe = popen(("ps -p " + intToString(pid) + " -o pid").c_str(), "r");
+	char buffRslt[512];
+	while(fgets(buffRslt, 512, cmd_pipe)) {
+		char *checkPidPointer = buffRslt;
+		if(*checkPidPointer && !isdigit(*checkPidPointer)) {
+			++checkPidPointer;
+		}
+		int checkPid = atoi(checkPidPointer);
+		if(checkPid == pid) {
+			exists = true;
+		}
+	}
+	pclose(cmd_pipe);
+	return(exists);
+}
 
 void vm_terminate() {
 	set_terminating();
@@ -1013,26 +1076,16 @@ bool is_terminating_without_error() {
 	       (!useNewCONFIG || _terminate_error.empty()));
 }
 
-#if ENABLE_SEMAPHOR_FORK_MODE
-void exit_handler_fork_mode()
-{
-	if(opt_fork) {
-		sem_unlink(SEMAPHOR_FORK_MODE_NAME().c_str());
-		if(globalSemaphore) {
-			sem_close(globalSemaphore);
-		}
-	}
+void exit_handler_fork_mode() {
+	semaphoreUnlink();
+	semaphoreClose();
 }
-#endif
 
 /* handler for INTERRUPT signal */
 void sigint_handler(int /*param*/)
 {
 	syslog(LOG_ERR, "SIGINT received, terminating\n");
 	vm_terminate();
-	#if ENABLE_SEMAPHOR_FORK_MODE
-	exit_handler_fork_mode();
-	#endif
 }
 
 /* handler for TERMINATE signal */
@@ -1040,9 +1093,6 @@ void sigterm_handler(int /*param*/)
 {
 	syslog(LOG_ERR, "SIGTERM received, terminating\n");
 	vm_terminate();
-	#if ENABLE_SEMAPHOR_FORK_MODE
-	exit_handler_fork_mode();
-	#endif
 }
 
 #define childPidsExit_max 10
@@ -2172,6 +2222,8 @@ void bt_sighandler_simple(int sig, siginfo_t *info, void *secret)
 		}
 		close(fh);
 	}
+	semaphoreUnlink();
+	semaphoreClose();
 	signal(sig, SIG_DFL);
 	kill(getpid(), sig);
 }
@@ -2493,6 +2545,15 @@ int main(int argc, char *argv[]) {
 	getcwd(_rundir, sizeof(_rundir));
 	rundir = _rundir;
 	
+	char *_appname = strrchr(argv[0], '/');
+	if(!_appname) {
+		_appname = argv[0];
+	}
+	while(*_appname == '.' || *_appname == '/') {
+		++_appname;
+	}
+	appname = _appname;
+	
 	fillEscTables();
 	set_global_vars();
 
@@ -2564,14 +2625,71 @@ int main(int argc, char *argv[]) {
 	parse_command_line_arguments(argc, argv);
 	get_command_line_arguments();
 	
-	if(!useNewCONFIG) {
-		cConfigMap configMap;
-		CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, configfile);
-		CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, "/etc/voipmonitor/conf.d/");
-		if(configMap.getFirstItem("new-config", true) == "yes" ||
-		   !configMap.getFirstItem("server_bind").empty() ||
-		   !configMap.getFirstItem("server_destination").empty()) {
-			useNewCONFIG = true;
+	if(configfile[0]) {
+		char *_configfilename = strrchr(configfile, '/');
+		if(!_configfilename) {
+			_configfilename = configfile;
+		}
+		while(*_configfilename == '.' || *_configfilename == '/') {
+			++_configfilename;
+		}
+		configfilename = _configfilename;
+	}
+	
+	cConfigMap configMap;
+	CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, configfile);
+	CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, "/etc/voipmonitor/conf.d/");
+	if(configMap.getFirstItem("new-config", true) == "yes" ||
+	   !configMap.getFirstItem("server_bind").empty() ||
+	   !configMap.getFirstItem("server_destination").empty()) {
+		useNewCONFIG = true;
+	}
+	if(opt_fork &&
+	   configMap.getFirstItem("semaphore-lock", true) == "yes") {
+		useSemaphoreLock = true;
+	}
+	
+	ownPidStart = getpid();
+	
+	if(opt_fork && !is_read_from_file()) {
+		bool _existsAnotherInstance = false;
+		if(useSemaphoreLock) {
+			for(unsigned pass = 0; pass < 2; pass++) {
+				semaphoreLock[0] = sem_open(semaphoreLockName(0), O_CREAT | O_EXCL, 0644, getpid());
+				if(semaphoreLock[0] == SEM_FAILED) {
+					if(errno == EEXIST) {
+						if(pass == 0) {
+							int semPid = 0;
+							sem_t *sem = sem_open(semaphoreLockName(1), O_RDONLY);
+							if(sem != SEM_FAILED) {
+								sem_getvalue(sem, &semPid);
+								sem_close(sem);
+							}
+							if((semPid && existsPidProcess(semPid)) || existsAnotherInstance()) {
+								_existsAnotherInstance = true;
+								break;
+							} else {
+								semaphoreUnlink();
+								semaphoreClose();
+							}
+						} else {
+							_existsAnotherInstance = true;
+						}
+					} else {
+						syslog(LOG_ERR, "sem_open failed: %s", strerror(errno));
+						return(1);
+					}
+				} else {
+					break;
+				}
+			}
+		} else {
+			_existsAnotherInstance = existsAnotherInstance();
+		}
+		if(_existsAnotherInstance) {
+			syslog(LOG_ERR, "%s", anotherInstanceMessage);
+			semaphoreClose();
+			return(1);
 		}
 	}
 	
@@ -2822,106 +2940,29 @@ int main(int argc, char *argv[]) {
 		}
 	}
 */
-	
+
 	if(opt_fork && !is_read_from_file() && reloadLoopCounter == 0) {
-		#if ENABLE_SEMAPHOR_FORK_MODE
-		for(int pass = 0; pass < 2; pass ++) {
-			globalSemaphore = sem_open(SEMAPHOR_FORK_MODE_NAME().c_str(), O_CREAT | O_EXCL);
-			if(globalSemaphore == SEM_FAILED) {
-				if(errno != EEXIST) {
+		daemonize();
+		ownPidFork = getpid();
+		bool _existsAnotherInstance = false;
+		if(useSemaphoreLock) {
+			semaphoreLock[1] = sem_open(semaphoreLockName(1), O_CREAT | O_EXCL, 0644, getpid());
+			if(semaphoreLock[1] == SEM_FAILED) {
+				if(errno == EEXIST) {
+					_existsAnotherInstance = true;
+				} else {
 					syslog(LOG_ERR, "sem_open failed: %s", strerror(errno));
-					return 1;
+					return(1);
 				}
-				if(pass == 0) {
-		#endif
-					bool findOwnPid = false;
-					bool findOtherPid = false;
-					char *appName = strrchr(argv[0], '/');
-					if(appName) {
-						++appName;
-					} else {
-						appName = argv[0];
-					}
-					string pgrepCmdAll = string("pgrep ") + appName;
-					string rsltAll = pexec((char*)pgrepCmdAll.c_str());
-					vector<int> allVoipmonitorPid;
-					if(rsltAll != "ERROR") {
-						char *point = (char*)rsltAll.c_str();
-						while(*point) {
-							while(*point && !isdigit(*point)) {
-								++point;
-							}
-							if(*point && isdigit(*point)) {
-								allVoipmonitorPid.push_back(atoi(point));
-							}
-							while(*point && isdigit(*point)) {
-								++point;
-							}
-						}
-					}
-					if(allVoipmonitorPid.size()) {
-						string pgrepCmd = string("pgrep -f ") + appName;
-						if(configfile[0]) {
-							pgrepCmd += string(".*") + configfile;
-						}
-						string rslt = pexec((char*)pgrepCmd.c_str());
-						if(rslt != "ERROR") {
-							int ownPid = getpid();
-							char *point = (char*)rslt.c_str();
-							while(*point) {
-								while(*point && !isdigit(*point)) {
-									++point;
-								}
-								if(*point && isdigit(*point)) {
-									int checkPid = atoi(point);
-									bool findInAll = false;
-									for(size_t i = 0; i < allVoipmonitorPid.size(); i++) {
-										if(allVoipmonitorPid[i] == checkPid) {
-											findInAll = true;
-											break;
-										}
-									}
-									if(findInAll) {
-										if(checkPid == ownPid) {
-										       findOwnPid = true;
-										} else {
-										       findOtherPid =  true;
-										}
-									}
-								}
-								while(*point && isdigit(*point)) {
-									++point;
-								}
-							}
-						}
-					}
-		#if ENABLE_SEMAPHOR_FORK_MODE
-					if(findOwnPid && !findOtherPid) {
-						if(sem_unlink(SEMAPHOR_FORK_MODE_NAME().c_str())) {
-							syslog(LOG_ERR, "sem_unlink failed: %s", strerror(errno));
-							return 1;
-						}
-					} else {
-						pass = 1;
-					}
-				}
-				if(pass == 1) {
-					syslog(LOG_ERR, "another voipmonitor instance with the same configuration file is running");
-					return 1;
-				}
-			} else {
-				break;
 			}
 		}
-		atexit(exit_handler_fork_mode);
-		#else
-		if(findOwnPid && findOtherPid) {
-			syslog(LOG_ERR, "another voipmonitor instance with the same configuration file is running");
-			return 1;
+		if(_existsAnotherInstance || existsAnotherInstance()) {
+			syslog(LOG_ERR, "%s", anotherInstanceMessage);
+			daemonizeOutput(anotherInstanceMessage);
+			semaphoreClose();
+			return(1);
 		}
-		#endif
-		
-		daemonize();
+		atexit(exit_handler_fork_mode);
 	}
 
 	if(!is_read_from_file_simple() && !is_set_gui_params() && command_line_data.size()) {
