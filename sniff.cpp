@@ -76,6 +76,7 @@ and insert them into Call class.
 #include "fraud.h"
 #include "send_call_info.h"
 #include "ssl_dssl.h"
+#include "websocket.h"
 
 extern MirrorIP *mirrorip;
 
@@ -809,6 +810,17 @@ void save_packet(Call *call, packet_s *packetS, int type, bool forceVirtualUdp) 
 ParsePacket _parse_packet_global_process_packet;
 
 int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp) {
+ 
+	if(check_websocket(data, len)) {
+		cWebSocketHeader ws((u_char*)data, len);
+		bool allocData;
+		u_char *ws_data = ws.decodeData(&allocData);
+		int rslt = check_sip20((char*)ws_data, ws.getDataLength(), parseContents, isTcp);
+		if(allocData) {
+			delete [] ws_data;
+		}
+		return(rslt);
+	}
  
 	while(isTcp && len >= 13 && data[0] == '\r' && data[1] == '\n') {
 		data += 2;
@@ -5994,28 +6006,7 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id /*id*/, PrePro
 		completePacketS = stream->packets->packetS;
 		stream->packets->packetS = NULL;
 	} else {
-		completePacketS = PACKET_S_PROCESS_SIP_CREATE();
-		*completePacketS = *stream->packets->packetS;
-		completePacketS->blockstore_clear();
-		int new_data_len = stream->complete_data->size();
-		u_char *new_data = stream->complete_data->data();
-		long newLen = new_data_len + completePacketS->dataoffset;
-		pcap_pkthdr *new_header = new pcap_pkthdr;
-		*new_header = *completePacketS->header_pt;
-		new_header->caplen = newLen;
-		new_header->len = newLen;
-		u_char *new_packet = new FILE_LINE(26021) u_char[newLen];
-		memcpy(new_packet, completePacketS->packet, completePacketS->dataoffset);
-		memcpy(new_packet + completePacketS->dataoffset, new_data, new_data_len);
-		new_data = new_packet + completePacketS->dataoffset;
-		iphdr2 *new_header_ip = (iphdr2*)(new_packet + completePacketS->header_ip_offset);
-		new_header_ip->tot_len = htons(newLen - completePacketS->header_ip_offset);
-		completePacketS->data = (char*)new_data;
-		completePacketS->datalen = new_data_len;
-		completePacketS->header_pt = new_header;
-		completePacketS->packet = new_packet;
-		completePacketS->header_ip = new_header_ip;
-		completePacketS->_packet_alloc = true;
+		completePacketS = PreProcessPacket::clonePacketS(stream->complete_data->data(), stream->complete_data->size(), stream->packets->packetS);
 	}
 	completePacketS->istcp = 2;
 	if(sverb.reassembly_sip || sverb.reassembly_sip_output) {
@@ -6658,6 +6649,10 @@ void PreProcessPacket::process_parseSipDataExt(packet_s_process **packetS_ref) {
 
 void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
+	if(check_websocket(packetS->data, packetS->datalen)) {
+		this->process_websocket(&packetS);
+		return;
+	}
 	if(packetS->is_skinny) {
 		this->process_skinny(&packetS);
 		return;
@@ -6776,6 +6771,19 @@ void PreProcessPacket::process_mgcp(packet_s_process **packetS_ref) {
 	preProcessPacket[ppt_extend]->push_packet(packetS);
 }
 
+void PreProcessPacket::process_websocket(packet_s_process **packetS_ref) {
+	packet_s_process *packetS = *packetS_ref;
+	cWebSocketHeader ws(packetS->data, packetS->datalen);
+	bool allocWsData;
+	u_char *ws_data = ws.decodeData(&allocWsData);
+	packet_s_process *newPacketS = clonePacketS(ws_data, ws.getDataLength(), packetS);
+	if(allocWsData) {
+		delete [] ws_data;
+	}
+	PACKET_S_PROCESS_DESTROY(&packetS);
+	this->process_parseSipData(&newPacketS);
+}
+
 bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	char *s;
@@ -6879,6 +6887,30 @@ void PreProcessPacket::autoStopLastLevelPreProcessPacket(bool force) {
 	if(i > 0 && preProcessPacket[i]->isActiveOutThread()) {
 		preProcessPacket[i]->stopOutThread(force);
 	}
+}
+
+packet_s_process *PreProcessPacket::clonePacketS(u_char *newData, unsigned newDataLength, packet_s_process *packetS) {
+	packet_s_process *newPacketS = PACKET_S_PROCESS_SIP_CREATE();
+	*newPacketS = *packetS;
+	newPacketS->blockstore_clear();
+	long newLen = newDataLength + newPacketS->dataoffset;
+	pcap_pkthdr *new_header = new pcap_pkthdr;
+	*new_header = *newPacketS->header_pt;
+	new_header->caplen = newLen;
+	new_header->len = newLen;
+	u_char *new_packet = new FILE_LINE(0) u_char[newLen];
+	memcpy(new_packet, newPacketS->packet, newPacketS->dataoffset);
+	memcpy(new_packet + newPacketS->dataoffset, newData, newDataLength);
+	u_char *newDataInNewPacket = new_packet + newPacketS->dataoffset;
+	iphdr2 *newHeaderIpInNewPacket = (iphdr2*)(new_packet + newPacketS->header_ip_offset);
+	newHeaderIpInNewPacket->tot_len = htons(newLen - newPacketS->header_ip_offset);
+	newPacketS->data = (char*)newDataInNewPacket;
+	newPacketS->datalen = newDataLength;
+	newPacketS->header_pt = new_header;
+	newPacketS->packet = new_packet;
+	newPacketS->header_ip = newHeaderIpInNewPacket;
+	newPacketS->_packet_alloc = true;
+	return(newPacketS);
 }
 
 u_long PreProcessPacket::autoStartNextLevelPreProcessPacket_last_time_s = 0;

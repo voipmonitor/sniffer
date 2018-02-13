@@ -3537,6 +3537,9 @@ int spooldir_chown(int filehandle);
 int spooldir_mkdir(std::string dir);
 
 void hexdump(u_char *data, unsigned size);
+inline void hexdump(const char *data, unsigned size) {
+	hexdump((u_char*)data, size);
+}
 
 unsigned file_get_rows(const char *filename, vector<string> *rows);
 

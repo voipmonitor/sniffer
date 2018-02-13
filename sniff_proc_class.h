@@ -6,6 +6,7 @@
 #include <list>
 #include "sniff.h"
 #include "calltable.h"
+#include "websocket.h"
 
 
 #define MAX_TCPSTREAMS 1024
@@ -89,6 +90,26 @@ private:
 	void cleanStream(tcp_stream *stream, bool callFromClean = false);
 public:
 	static bool checkSip(u_char *data, int data_len, bool strict, list<d_u_int32_t> *offsets = NULL) {
+		if(check_websocket(data, data_len)) {
+			cWebSocketHeader ws(data, data_len);
+			bool allocData;
+			u_char *ws_data = ws.decodeData(&allocData);
+			bool rslt = checkSip(ws_data, ws.getDataLength(), strict, offsets);
+			if(rslt && offsets && offsets->size()) {
+				unsigned count = 0;
+				for(list<d_u_int32_t>::iterator iter = offsets->begin(); iter != offsets->end(); iter++) {
+					if(count > 0) {
+						iter->val[0] += ws.getHeaderLength();
+					}
+					iter->val[1] += ws.getHeaderLength();
+					++count;
+				}
+			}
+			if(allocData) {
+				delete [] ws_data;
+			}
+			return(rslt);
+		}
 		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
 		u_int32_t offset = 0;
 		if(!data || data_len < 10 ||
@@ -724,6 +745,7 @@ public:
 		}
 		return("");
 	}
+	static packet_s_process *clonePacketS(u_char *newData, unsigned newDataLength, packet_s_process *packetS);
 private:
 	void process_DETACH(packet_s *packetS_detach);
 	void process_DETACH_plus(packet_s_plus_pointer *packetS_detach);
@@ -738,6 +760,7 @@ private:
 	inline void process_sip(packet_s_process **packetS_ref);
 	inline void process_skinny(packet_s_process **packetS_ref);
 	inline void process_mgcp(packet_s_process **packetS_ref);
+	inline void process_websocket(packet_s_process **packetS_ref);
 	inline bool process_getCallID(packet_s_process **packetS_ref);
 	inline bool process_getCallID_publish(packet_s_process **packetS_ref);
 	inline void process_getSipMethod(packet_s_process **packetS_ref);

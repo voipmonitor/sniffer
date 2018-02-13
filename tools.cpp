@@ -6289,12 +6289,30 @@ int spooldir_mkdir(std::string dir) {
 
 
 void hexdump(u_char *data, unsigned size) {
-	for(unsigned i = 0; i < size; i += 16) {
-		printf("%04x ", i);
-		for(unsigned j = 0; j < 16 && i + j < size; j++) {
-			printf("%02x ", data[i + j]);
+	if(!data) {
+		size = 0;
+	}
+	unsigned i, j;
+	for(i = 0; i < size; i += 16) {
+		printf("| ");
+		for (j = 0; j < 16 && (i+j) < size; ++j) {
+			printf("%.2x ", data[i+j]&255);
 		}
-		cout << endl;
+		for (; j < 16; ++j) {
+			printf("   ");
+		}
+		printf("| |");
+		for (j = 0; j < 16 && (i+j) < size; ++j) {
+			if(isprint(data[i+j])) {
+				printf("%c", data[i+j]);
+			} else {
+				printf(".");
+			}
+		}
+		for (; j < 16; ++j) {
+			printf(" ");
+		}
+		printf("|\n");
 	}
 }
 

@@ -4,6 +4,7 @@
 #include "sniff_proc_class.h"
 #include "sql_db.h"
 #include "ssl_dssl.h"
+#include "websocket.h"
 
 #ifdef FREEBSD
 #include <sys/socket.h>
@@ -124,29 +125,70 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 							}
 							(*debugStream) << "DECRYPT DATA: " << rslt_decrypt[i] << endl;
 						}
-						if(sverb.ssldecode) {
-							cout << rslt_decrypt[i];
-						}
 						if(!ethHeader || !ethHeaderLength) {
 							continue;
 						}
-						pcap_pkthdr *udpHeader;
-						u_char *udpPacket;
-						createSimpleUdpDataPacket(ethHeaderLength, &udpHeader,  &udpPacket,
-									  ethHeader, (u_char*)rslt_decrypt[i].c_str(), rslt_decrypt[i].size(),
-									  _ip_src, _ip_dst, _port_src, _port_dst,
-									  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
-						preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-							true, 
-							#if USE_PACKET_NUMBER
-							0,
-							#endif
-							_ip_src, _port_src, _ip_dst, _port_dst, 
-							rslt_decrypt[i].size(), ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
-							handle_index, udpHeader, udpPacket, true, 
-							false, false, (iphdr2*)(udpPacket + ethHeaderLength),
-							NULL, 0, dlt, sensor_id, sensor_ip,
-							false);
+						u_char *data = (u_char*)rslt_decrypt[i].c_str();
+						unsigned dataLength = rslt_decrypt[i].size();
+						bool tcp = false;
+						if(check_websocket(data, dataLength)) {
+							tcp = true;
+							if(sverb.ssldecode) {
+								hexdump(rslt_decrypt[i].c_str(), rslt_decrypt[i].size());
+								cout << "---" << endl;
+								cWebSocketHeader ws(data, dataLength);
+								bool allocData;
+								u_char *ws_data = ws.decodeData(&allocData);
+								cout << string((char*)ws_data, ws.getDataLength()) << endl;
+								if(allocData) {
+									delete [] ws_data;
+								}
+								cout << "------" << endl;
+							}
+						} else {
+							if(sverb.ssldecode) {
+								cout << string(rslt_decrypt[i].c_str(), rslt_decrypt[i].size());
+							}
+						}
+						if(tcp) {
+							pcap_pkthdr *tcpHeader;
+							u_char *tcpPacket;
+							createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
+										  ethHeader, data, dataLength,
+										  _ip_src, _ip_dst, _port_src, _port_dst,
+										  dataItem->getSeq(), dataItem->getAck(), 
+										  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
+							unsigned dataOffset = ethHeaderLength + sizeof(iphdr2) + ((tcphdr2*)(tcpPacket + ethHeaderLength + sizeof(iphdr2)))->doff * 4;
+							preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+								true, 
+								#if USE_PACKET_NUMBER
+								0, 
+								#endif
+								_ip_src, _port_src, _ip_dst, _port_dst, 
+								dataLength, dataOffset,
+								handle_index, tcpHeader, tcpPacket, true, 
+								2, false, (iphdr2*)(tcpPacket + ethHeaderLength),
+								NULL, 0, dlt, sensor_id, sensor_ip,
+								false);
+						} else {
+							pcap_pkthdr *udpHeader;
+							u_char *udpPacket;
+							createSimpleUdpDataPacket(ethHeaderLength, &udpHeader,  &udpPacket,
+										  ethHeader, data, dataLength,
+										  _ip_src, _ip_dst, _port_src, _port_dst,
+										  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
+							preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+								true, 
+								#if USE_PACKET_NUMBER
+								0,
+								#endif
+								_ip_src, _port_src, _ip_dst, _port_dst, 
+								dataLength, ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
+								handle_index, udpHeader, udpPacket, true, 
+								false, false, (iphdr2*)(udpPacket + ethHeaderLength),
+								NULL, 0, dlt, sensor_id, sensor_ip,
+								false);
+						}
 					}
 					ssl_data_offset += header.length + header.getDataOffsetLength();
 				} else {

@@ -13,6 +13,7 @@
 #include "tools.h"
 #include "sniff_inline.h"
 #include "ssl_dssl.h"
+#include "websocket.h"
 
 
 using namespace std;
@@ -2581,7 +2582,10 @@ bool TcpReassembly::checkOkData(u_char * data, unsigned datalen, bool strict) {
 		break;
 	case sip:
 		this->sip_offsets.clear();
-		if(checkOkSipData(data, datalen, strict, &this->sip_offsets)) {
+		if(check_websocket(data, datalen)) {
+			this->sip_offsets.push_back(d_u_int32_t(0, datalen));
+			return(true);
+		} else if(checkOkSipData(data, datalen, strict, &this->sip_offsets)) {
 			return(true);
 		}
 		break;
