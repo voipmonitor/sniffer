@@ -388,13 +388,11 @@ bool cSocket::connect(unsigned loopSleepS) {
 		}
 		rslt = true;
 		clearError();
+		ipl = CR_RESOLVER()->resolve(host);
 		if(!ipl) {
-			ipl = CR_RESOLVER()->resolve(host);
-			if(!ipl) {
-				setError("failed resolve host name %s", host.c_str());
-				rslt = false;
-				continue;
-			}
+			setError("failed resolve host name %s", host.c_str());
+			rslt = false;
+			continue;
 		}
 		int pass_call_socket = 0;
 		do {
