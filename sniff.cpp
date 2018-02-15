@@ -811,15 +811,22 @@ ParsePacket _parse_packet_global_process_packet;
 
 int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp) {
  
-	if(check_websocket(data, len)) {
+	if(check_websocket(data, len, !isTcp)) {
 		cWebSocketHeader ws((u_char*)data, len);
-		bool allocData;
-		u_char *ws_data = ws.decodeData(&allocData);
-		int rslt = check_sip20((char*)ws_data, ws.getDataLength(), parseContents, isTcp);
-		if(allocData) {
-			delete [] ws_data;
+		if(len > ws.getHeaderLength()) {
+			bool allocData;
+			u_char *ws_data = ws.decodeData(&allocData, len);
+			if(!ws_data) {
+				return 0;
+			}
+			int rslt = check_sip20((char*)ws_data, ws.getDataLength(), parseContents, isTcp);
+			if(allocData) {
+				delete [] ws_data;
+			}
+			return(rslt);
+		} else {
+			return 0;
 		}
-		return(rslt);
 	}
  
 	while(isTcp && len >= 13 && data[0] == '\r' && data[1] == '\n') {
@@ -6516,18 +6523,25 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 					PACKET_S_PROCESS_DESTROY(&packetS);
 				}
 			} else {
+				bool possibleWebSocketSip = false;
+				if(!isSip && check_websocket(packetS->data, packetS->datalen, false)) {
+					cWebSocketHeader ws(packetS->data, packetS->datalen);
+					if(packetS->datalen - ws.getHeaderLength() < 11) {
+						possibleWebSocketSip = true;
+					}
+				}
 				extern bool opt_sip_tcp_reassembly_ext;
 				extern TcpReassembly *tcpReassemblySipExt;
 				if(opt_sip_tcp_reassembly_ext && tcpReassemblySipExt) {
 					tcpReassemblySipExt->push_tcp(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet, packetS->_packet_alloc,
 								      packetS->block_store, packetS->block_store_index, packetS->_blockstore_lock,
 								      packetS->handle_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
-								      this, isSip);
+								      this, isSip || possibleWebSocketSip);
 					packetS->_packet_alloc = false;
 					packetS->_blockstore_lock = false;
 					PACKET_S_PROCESS_DESTROY(&packetS);
 				} else {
-					tcpReassemblySip.processPacket(&packetS, isSip, this);
+					tcpReassemblySip.processPacket(&packetS, isSip || possibleWebSocketSip, this);
 				}
 			}
 		} else if(isSip) {

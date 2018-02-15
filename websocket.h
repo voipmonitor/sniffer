@@ -74,10 +74,12 @@ public:
 	u_char *getData() {
 		return(header + getHeaderLength());
 	}
-	u_char *decodeData(bool *allocData);
-	bool isOk() {
-		return(size > getHeaderLength() &&
-		       size == (getHeaderLength() + getDataLength()));
+	u_char *decodeData(bool *allocData, unsigned dataLength = 0);
+	bool isHeaderSizeOk() {
+		return(size >= getHeaderLength());
+	}
+	bool isDataSizeOk() {
+		return(size == (getHeaderLength() + getDataLength()));
 	}
 public:
 	u_char *header;
@@ -85,16 +87,16 @@ public:
 };
 
 
-int check_websocket_header(char *data, unsigned len);
+int check_websocket_header(char *data, unsigned len, bool checkDataSize = true);
 
-inline int check_websocket(char *data, unsigned len) {
+inline int check_websocket(char *data, unsigned len, bool checkDataSize = true) {
 	if(len > 0 && (u_char)(data[0]) == 0x81) {
-		return(check_websocket_header(data, len));
+		return(check_websocket_header(data, len, checkDataSize));
 	}
 	return(false);
 }
-inline int check_websocket(u_char *data, unsigned len) {
-	return(check_websocket((char*)data, len));
+inline int check_websocket(u_char *data, unsigned len, bool checkDataSize = true) {
+	return(check_websocket((char*)data, len, checkDataSize));
 }
 
 
