@@ -6057,6 +6057,145 @@ void TcpReassemblySip::cleanStream(tcp_stream* stream, bool /*callFromClean*/) {
 }
 
 
+/* no need ?
+ReassemblyWebsocket::websocket_stream::~websocket_stream() {
+	clear();
+}
+
+void ReassemblyWebsocket::websocket_stream::add(packet_s_process *packet) {
+	packets.push_back(packet);
+}
+
+u_char *ReassemblyWebsocket::websocket_stream::complete(unsigned *length) {
+	if(packets.size()) {
+		*length = this->length();
+		if(*length) {
+			unsigned pos = 0;
+			u_char *compl_data = new FILE_LINE(0) u_char(*length);
+			for(list<packet_s_process*>::iterator iter = packets.begin(); iter != packets.end(); iter++) {
+				memcpy(compl_data + pos, (*iter)->data, (*iter)->datalen);
+				pos += (*iter)->datalen;
+			}
+			return(compl_data);
+		}
+	} else {
+		*length = 0;
+	}
+	return(NULL);
+}
+
+unsigned ReassemblyWebsocket::websocket_stream::length() {
+	unsigned length = 0;
+	for(list<packet_s_process*>::iterator iter = packets.begin(); iter != packets.end(); iter++) {
+		length += (*iter)->datalen;
+	}
+	return(length);
+}
+
+void ReassemblyWebsocket::websocket_stream::clear() {
+	while(packets.size()) {
+		packet_s_process *packet = packets.front();
+		PACKET_S_PROCESS_DESTROY(&packet);
+		packets.pop_front();
+	}
+}
+
+ReassemblyWebsocket::ReassemblyWebsocket() {
+}
+
+ReassemblyWebsocket::~ReassemblyWebsocket() {
+	for(map<sStreamId, websocket_stream*>::iterator iter = streams.begin(); iter != streams.end(); iter++) {
+		delete iter->second;
+	}
+}
+
+int ReassemblyWebsocket::processPacket(packet_s_process **packetS_ref, bool createStream) {
+	packet_s_process *packetS = *packetS_ref;
+	websocket_stream *stream = NULL;
+	sStreamId id(packetS->saddr, packetS->source, packetS->daddr, packetS->dest);
+	map<sStreamId, websocket_stream*>::iterator iter = streams.find(id);
+	if(iter == streams.end()) {
+		if(!createStream) {
+			return(-1);
+		}
+		stream = new FILE_LINE(0) websocket_stream;
+		streams[id] = stream;
+	} else {
+		stream = iter->second;
+		if(createStream) {
+			stream->clear();
+		}
+	}
+	stream->add(packetS);
+	unsigned compl_data_length;
+	u_char *compl_data = stream->complete(&compl_data_length);
+	if(compl_data) {
+		if(check_websocket(compl_data, compl_data_length)) {
+			return(1);
+		}
+		delete compl_data;
+	}
+	return(0);
+}
+
+bool ReassemblyWebsocket::existsStream(packet_s_process **packetS_ref) {
+	if(!streams.size()) {
+		return(false);
+	}
+	packet_s_process *packetS = *packetS_ref;
+	sStreamId id(packetS->saddr, packetS->source, packetS->daddr, packetS->dest);
+	return(streams.find(id) != streams.end());
+}
+*/
+
+
+ReassemblyWebsocketBuffer::~ReassemblyWebsocketBuffer() {
+	for(map<sStreamId, SimpleBuffer*>::iterator iter = streams.begin(); iter != streams.end(); iter++) {
+		delete iter->second;
+	}
+}
+
+u_char *ReassemblyWebsocketBuffer::processPacket(u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, 
+						 u_char *data, unsigned length,bool createStream,
+						 unsigned *completed_length) {
+	SimpleBuffer *buffer = NULL;
+	sStreamId id(saddr, sport, daddr, dport);
+	map<sStreamId, SimpleBuffer*>::iterator iter = streams.find(id);
+	if(iter == streams.end()) {
+		if(!createStream) {
+			return(NULL);
+		}
+		buffer = new FILE_LINE(0) SimpleBuffer;
+		streams[id] = buffer;
+	} else {
+		buffer = iter->second;
+		if(createStream) {
+			buffer->clear();
+		}
+	}
+	buffer->add(data, length);
+	if(!createStream) {
+		if(check_websocket(buffer->data(), buffer->size())) {
+			*completed_length = buffer->size();
+			u_char *completed_buffer = new FILE_LINE(0) u_char[*completed_length];
+			memcpy(completed_buffer, buffer->data(), *completed_length);
+			delete buffer;
+			streams.erase(iter);
+			return(completed_buffer);
+		}
+	}
+	return(NULL);
+}
+
+bool ReassemblyWebsocketBuffer::existsStream(u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport) {
+	if(!streams.size()) {
+		return(false);
+	}
+	sStreamId id(saddr, sport, daddr, dport);
+	return(streams.find(id) != streams.end());
+}
+
+
 inline void *_PreProcessPacket_outThreadFunction(void *arg) {
 	return(((PreProcessPacket*)arg)->outThreadFunction());
 }
@@ -6516,7 +6655,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 			} else if(packetS->is_mgcp && isMgcp) {
 				// call process_mgcp before tcp reassembly - TODO !
 				this->process_mgcp(&packetS);
-			} else if(no_sip_reassembly()) {
+			} else if(no_sip_reassembly() || packetS->is_ssl) {
 				if(isSip) {
 					this->process_parseSipData(&packetS);
 				} else {

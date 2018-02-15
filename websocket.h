@@ -90,7 +90,7 @@ public:
 int check_websocket_header(char *data, unsigned len, bool checkDataSize = true);
 
 inline int check_websocket(char *data, unsigned len, bool checkDataSize = true) {
-	if(len > 0 && (u_char)(data[0]) == 0x81) {
+	if(len > 0 && (u_char)data[0] == 0x81) {
 		return(check_websocket_header(data, len, checkDataSize));
 	}
 	return(false);

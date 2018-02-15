@@ -9,8 +9,6 @@
 #include "websocket.h"
 
 
-#define MAX_TCPSTREAMS 1024
-
 class TcpReassemblySip {
 public:
 	struct tcp_stream_packet {
@@ -159,6 +157,41 @@ public:
 private:
 	map<tcp_stream_id, tcp_stream> tcp_streams;
 	time_t last_cleanup;
+};
+
+
+/* no need ?
+class ReassemblyWebsocket {
+public:
+	class websocket_stream {
+	public:
+		~websocket_stream();
+		void add(packet_s_process *packet);
+		u_char *complete(unsigned *length);
+		unsigned length();
+		void clear();
+	private:
+		list<packet_s_process*> packets;
+	};
+public:
+	ReassemblyWebsocket();
+	~ReassemblyWebsocket();
+	int processPacket(packet_s_process **packetS_ref, bool createStream);
+	bool existsStream(packet_s_process **packetS_ref);
+private:
+	map<sStreamId, websocket_stream*> streams;
+};
+*/
+
+class ReassemblyWebsocketBuffer {
+public:
+	~ReassemblyWebsocketBuffer();
+	u_char *processPacket(u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, 
+			      u_char *data, unsigned length, bool createStream,
+			      unsigned *completed_length);
+	bool existsStream(u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport);
+private:
+	map<sStreamId, SimpleBuffer*> streams;
 };
 
 

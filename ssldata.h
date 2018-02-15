@@ -3,6 +3,7 @@
 
 //#include "pcap_queue_block.h"
 #include "tcpreassembly.h"
+#include "sniff_proc_class.h"
 
 
 class SslData : public TcpReassemblyProcessData {
@@ -69,6 +70,7 @@ public:
 	void printContentSummary();
 private:
 	unsigned int counterProcessData;
+	ReassemblyWebsocketBuffer reassemblyWebsocketBuffer;
 };
 
 

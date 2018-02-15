@@ -66,7 +66,6 @@
 #define EXTENDED_LOG		(DEBUG_VERBOSE || (VERBOSE && verbosityE > 1))
 #define TERMINATING 		((is_terminating() && this->enableAutoTerminate) || this->threadDoTerminate)
 
-#define MAX_TCPSTREAMS 1024
 #define FILE_BUFFER_SIZE 1000000
 
 #define SNAPLEN (opt_snaplen > 0 ? (unsigned)opt_snaplen : \
@@ -113,7 +112,6 @@ extern u_int16_t global_pcap_handle_index;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
 extern char *webrtcportmatrix;
-extern struct tcp_stream2_t *tcp_streams_hashed[MAX_TCPSTREAMS];
 extern MirrorIP *mirrorip;
 extern char user_filter[10*2048];
 extern Calltable *calltable;
