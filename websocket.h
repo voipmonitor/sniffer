@@ -11,7 +11,7 @@ public:
 	u_int8_t fin : 1;
 	u_int8_t payload_len : 7;
 	u_int8_t mask : 1;
-	#elif __BYTE_ORDER == __BIG_ENDIANs*/
+	#elif __BYTE_ORDER == __BIG_ENDIAN
 	u_int8_t fin : 1;
 	u_int8_t res : 3;
 	u_int8_t opcode : 4;
