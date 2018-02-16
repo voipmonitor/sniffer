@@ -224,8 +224,8 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, Call *call,
 	sci->callid = call->call_id;
 	sci->caller_number = call->caller;
 	sci->called_number = call->called;
-	sci->caller_ip = htonl(call->sipcallerip[0]);
-	sci->called_ip = htonl(call->sipcalledip[0]);
+	sci->caller_ip = htonl(call->getSipcallerip());
+	sci->called_ip = htonl(call->getSipcalledip());
 	sci->typeSci = typeSci;
 	sci->at = at;
 }

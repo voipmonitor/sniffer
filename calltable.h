@@ -284,14 +284,18 @@ public:
 			for(unsigned i = 0; i < MAX_SIPCALLERDIP; i++) {
 				sipcallerip[i] = 0;
 				sipcalledip[i] = 0;
+				sipcalledip_mod = 0;
 				sipcallerport[i] = 0;
 				sipcalledport[i] = 0;
+				sipcalledport_mod = 0;
 			}
 		}
 		u_int32_t sipcallerip[MAX_SIPCALLERDIP];
 		u_int32_t sipcalledip[MAX_SIPCALLERDIP];
+		u_int32_t sipcalledip_mod;
 		u_int16_t sipcallerport[MAX_SIPCALLERDIP];
 		u_int16_t sipcalledport[MAX_SIPCALLERDIP];
+		u_int16_t sipcalledport_mod;
 	};
 	struct sMergeLegInfo {
 		sMergeLegInfo() {
@@ -500,8 +504,10 @@ public:
 
 	u_int32_t sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
 	u_int32_t sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
+	u_int32_t sipcalledip_mod;
 	u_int16_t sipcallerport[MAX_SIPCALLERDIP];
 	u_int16_t sipcalledport[MAX_SIPCALLERDIP];
+	u_int16_t sipcalledport_mod;
 	map<string, sSipcalleRD_IP> map_sipcallerdip;
 	u_int32_t lastsipcallerip;
 	bool sipcallerdip_reverse;
@@ -669,6 +675,8 @@ public:
 	 * 
 	*/
 	bool read_rtcp(struct packet_s *packetS, int iscaller, char enable_save_packet);
+	
+	void read_dtls(struct packet_s *packetS);
 
 	/**
 	 * @brief adds RTP stream to the this Call 
@@ -1030,13 +1038,35 @@ public:
 		}
 	}
 	void setSipcalledip(u_int32_t ip, u_int16_t port, const char *call_id = NULL) {
-		sipcalledip[0] = ip;
-		sipcalledport[0] = port;
+		if(sipcalledip[0]) {
+			sipcalledip_mod = ip;
+			sipcalledport_mod = port;
+		} else {
+			sipcalledip[0] = ip;
+			sipcalledport[0] = port;
+		}
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
-			map_sipcallerdip[call_id].sipcalledip[0] = ip;
-			map_sipcallerdip[call_id].sipcalledport[0] = port;
+			if(map_sipcallerdip[call_id].sipcalledip[0]) {
+				map_sipcallerdip[call_id].sipcalledip_mod = ip;
+				map_sipcallerdip[call_id].sipcalledport_mod = port;
+			} else {
+				map_sipcallerdip[call_id].sipcalledip[0] = ip;
+				map_sipcallerdip[call_id].sipcalledport[0] = port;
+			}
 		}
+	}
+	u_int32_t getSipcallerip() {
+		return(sipcallerip[0]);
+	}
+	u_int32_t getSipcalledip() {
+		return(sipcalledip_mod ? sipcalledip_mod : sipcalledip[0]);
+	}
+	u_int16_t getSipcallerport() {
+		return(sipcallerport[0]);
+	}
+	u_int16_t getSipcalledport() {
+		return(sipcalledport_mod ? sipcalledport_mod : sipcalledport[0]);
 	}
 	void setSeenbye(bool seenbye, u_int64_t seenbye_time_usec, const char *call_id) {
 		this->seenbye = seenbye;

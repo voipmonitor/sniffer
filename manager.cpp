@@ -1134,7 +1134,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 					call->proxies_undup(&proxies_undup);
 					set<unsigned int>::iterator iter_undup;
 					for (iter_undup = proxies_undup.begin(); iter_undup != proxies_undup.end(); ) {
-						if(*iter_undup == call->sipcalledip[0]) { ++iter_undup; continue; };
+						if(*iter_undup == call->getSipcalledip()) { ++iter_undup; continue; };
 						string ipstr = inet_ntostring(htonl(*iter_undup));
 						spp << ipstr;
 						++iter_undup;
@@ -1202,8 +1202,8 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 					 sqlDateTimeString(call->calltime()).c_str(), 
 					 call->duration_active(), 
 					 call->connect_duration_active(), 
-					 htonl(call->sipcallerip[0]), 
-					 htonl(call->sipcalledip[0]), 
+					 htonl(call->getSipcallerip()), 
+					 htonl(call->getSipcalledip()), 
 					 sipproxies.c_str(),
 					 (unsigned int)call->get_last_packet_time(), 
 					 call->lastSIPresponseNum,

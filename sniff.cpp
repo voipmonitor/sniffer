@@ -2873,7 +2873,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->new_invite_after_lsr487 = true;
 		}
 		//update called number for each invite due to overlap-dialling
-		if ((opt_sipoverlap && packetS->saddr == call->sipcallerip[0]) || opt_last_dest_number) {
+		if ((opt_sipoverlap && packetS->saddr == call->getSipcallerip()) || opt_last_dest_number) {
 			get_sip_peername(packetS, "\nTo:", "\nt:",
 					 call->called, sizeof(call->called), ppntt_to, ppndt_called);
 			if(opt_destination_number_mode == 2) {
@@ -2969,9 +2969,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 		}
 		// save who hanged up 
-		if(call->sipcallerip[0] == packetS->saddr) {
+		if(call->getSipcallerip() == packetS->saddr) {
 			call->whohanged = 0;
-		} else if(call->sipcalledip[0] == packetS->saddr) {
+		} else if(call->sipcalledip[0] == packetS->saddr || call->getSipcalledip() == packetS->saddr) {
 			call->whohanged = 1;
 		}
 	} else if(packetS->sip_method == CANCEL) {
@@ -3033,9 +3033,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					call->unconfirmed_bye = false;
 					
 					// update who hanged up 
-					if(call->sipcallerip[0] == packetS->daddr) {
+					if(call->getSipcallerip() == packetS->daddr) {
 						call->whohanged = 0;
-					} else if(call->sipcalledip[0] == packetS->daddr) {
+					} else if(call->sipcalledip[0] == packetS->daddr || call->getSipcalledip() == packetS->daddr) {
 						call->whohanged = 1;
 					}
 
@@ -3079,7 +3079,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						syslog(LOG_NOTICE, "Call answered\n");
 					if(!call->onCall_2XX) {
 						ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-								     call->sipcallerip[0], call->sipcalledip[0],
+								     call->getSipcallerip(), call->getSipcalledip(),
 								     custom_headers_cdr->getScreenPopupFieldsString(call).c_str());
 						sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->header_pt->ts);
 						call->onCall_2XX = true;
@@ -3097,7 +3097,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 			if(!call->onCall_18X) {
 				ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-						     call->sipcallerip[0], call->sipcalledip[0],
+						     call->getSipcallerip(), call->getSipcalledip(),
 						     custom_headers_cdr->getScreenPopupFieldsString(call).c_str());
 				sendCallInfoEvCall(call, sSciInfo::sci_18X, packetS->header_pt->ts);
 				call->onCall_18X = true;
@@ -3144,7 +3144,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 
 	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
-		if(call->sipcallerip[0] == packetS->saddr) {
+		if(call->getSipcallerip() == packetS->saddr) {
 			call->setSipcalledip(packetS->daddr, packetS->dest, packetS->get_callid());
 		}
 		if(opt_update_dstnum_onanswer) {
@@ -3163,13 +3163,13 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		IPfilter::add_call_flags(&(call->flags), ntohl(packetS->saddr), ntohl(packetS->daddr));
 		if(!reverseInviteSdaddr) {
 			bool updateDest = false;
-			if(call->sipcalledip[0] != packetS->daddr && call->sipcallerip[0] != packetS->daddr && 
+			if(call->getSipcalledip() != packetS->daddr && call->getSipcallerip() != packetS->daddr && 
 			   call->lastsipcallerip != packetS->saddr) {
 				if(((packetS->sip_method == INVITE && opt_cdrproxy) ||
 				    (packetS->sip_method == MESSAGE && opt_messageproxy)) &&
 				   packetS->daddr != 0) {
 					// daddr is already set, store previous daddr as sipproxy
-					call->proxy_add(call->sipcalledip[0]);
+					call->proxy_add(call->getSipcalledip());
 				}
 				updateDest = true;
 			} else if(call->lastsipcallerip == packetS->saddr) {

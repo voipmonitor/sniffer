@@ -6884,6 +6884,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;
 						else if(verbparams[i] == "heap_use_time")		sverb.heap_use_time = 1;
 						else if(verbparams[i] == "dtmf")			sverb.dtmf = 1;
+						else if(verbparams[i] == "dtls")			sverb.dtls = 1;
 						else if(verbparams[i] == "cleanspool")			sverb.cleanspool = 1;
 						else if(verbparams[i] == "cleanspool_disable_rm")	sverb.cleanspool_disable_rm = 1;
 						else if(verbparams[i] == "t2_destroy_all")		sverb.t2_destroy_all = 1;

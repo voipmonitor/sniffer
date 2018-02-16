@@ -56,6 +56,7 @@
 #include "register.h"
 #include "manager.h"
 #include "srtp.h"
+#include "dtls.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -483,6 +484,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 		 sipcallerport[i] = 0;
 		 sipcalledport[i] = 0;
 	}
+	sipcalledip_mod = 0;
+	sipcalledport_mod = 0;
 	lastsipcallerip = 0;
 	sipcallerdip_reverse = false;
 	skinny_partyid = 0;
@@ -1162,6 +1165,11 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 /* analyze rtp packet */
 bool
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname) {
+	if(packetS->datalen &&
+	   (packetS->data_()[0] == 0x16 || packetS->data_()[0] == 0x14)) {
+		read_dtls(packetS);
+		return(true);
+	}
 	bool record_dtmf = false;
 	bool disable_save = false;
 	unsigned datalen_orig = packetS->datalen;
@@ -1472,6 +1480,39 @@ read:
 	}
 	
 	return(rtp_read_rslt);
+}
+
+void 
+Call::read_dtls(struct packet_s *packetS) {
+	if(!sverb.dtls) {
+		return;
+	}
+	u_char *data = (u_char*)packetS->data_();
+	unsigned limitSize = packetS->datalen;
+	unsigned pos = 0;
+	unsigned counter = 0;
+	while(pos < limitSize) {
+		cDtlsHeader dtlsHeader(data + pos, limitSize);
+		if(dtlsHeader.isOk()) {
+			cDtlsHeader::sFixHeader fixHeader = dtlsHeader.getFixHeader();
+			if(!counter) {
+				cout << "DTLS " 
+				     << inet_ntostring(htonl(packetS->saddr)) << ':' << intToString(packetS->source) << " -> "
+				     << inet_ntostring(htonl(packetS->daddr)) << ':' << intToString(packetS->dest)
+				     << endl;
+			}
+			cout << "content_type: " << (int)fixHeader.content_type << ", "
+			     << "version: " << hex << fixHeader.version << dec << ", "
+			     << "sequence_number: " << fixHeader.sequence_number << ", "
+			     << "length: " << fixHeader.length
+			     << endl;
+		 
+			pos += dtlsHeader.getHeaderSize() + dtlsHeader.getLength();
+			++counter;
+		} else {
+			break;
+		}
+	}
 }
 
 void
@@ -3132,7 +3173,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		this->proxies_undup(&proxies_undup);
 		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
 		while(iter_undup != proxies_undup.end()) {
-			if(*iter_undup == sipcalledip[0]) { ++iter_undup; continue; };
+			if(*iter_undup == getSipcalledip()) { ++iter_undup; continue; };
 			SqlDb_row cdrproxy;
 			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -3208,11 +3249,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	u_int16_t sipcalledport_confirmed;
 	sipcalledip_confirmed = getSipcalledipConfirmed(&sipcalledport_confirmed);
 	
-	cdr.add(htonl(sipcallerip[0]), "sipcallerip");
-	cdr.add(htonl(sipcalledip_confirmed ? sipcalledip_confirmed : sipcalledip[0]), "sipcalledip");
+	cdr.add(htonl(getSipcallerip()), "sipcallerip");
+	cdr.add(htonl(sipcalledip_confirmed ? sipcalledip_confirmed : getSipcalledip()), "sipcalledip");
 	if(existsColumns.cdr_sipport) {
-		cdr.add(sipcallerport[0], "sipcallerport");
-		cdr.add(sipcalledport_confirmed ? sipcalledport_confirmed : sipcalledport[0], "sipcalledport");
+		cdr.add(getSipcallerport(), "sipcallerport");
+		cdr.add(sipcalledport_confirmed ? sipcalledport_confirmed : getSipcalledport(), "sipcalledport");
 	}
 	cdr.add(type == MGCP ? duration_mgcp() : duration(), "duration");
 	if(progress_time) {
@@ -3673,7 +3714,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		unsigned operator_id = 0;
 		unsigned customer_id = 0;
 		if(billing->billing(calltime(), connect_duration,
-				    htonl(sipcallerip[0]), htonl(sipcalledip[0]),
+				    htonl(getSipcallerip()), htonl(getSipcalledip()),
 				    caller, called,
 				    &operator_price, &customer_price,
 				    &operator_currency_id, &customer_currency_id,
@@ -3699,7 +3740,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(operator_price > 0 || customer_price > 0) {
 				billingAgergationsInserts = 
 					billing->saveAgregation(calltime(),
-								htonl(sipcallerip[0]), htonl(sipcalledip[0]),
+								htonl(getSipcallerip()), htonl(getSipcalledip()),
 								caller, called,
 								operator_price, customer_price,
 								operator_currency_id, customer_currency_id);
@@ -3719,8 +3760,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	CountryDetectApplyReload();
-	cdr_country_code.add(getCountryByIP(htonl(sipcallerip[0]), true), "sipcallerip_country_code");
-	cdr_country_code.add(getCountryByIP(htonl(sipcalledip[0]), true), "sipcalledip_country_code");
+	cdr_country_code.add(getCountryByIP(htonl(getSipcallerip()), true), "sipcallerip_country_code");
+	cdr_country_code.add(getCountryByIP(htonl(getSipcalledip()), true), "sipcalledip_country_code");
 	cdr_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
 	cdr_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
 	if(existsColumns.cdr_country_code_calldate) {
@@ -4457,9 +4498,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			char idsensor[12];
 			char rrddiff[12];
 			//char srcmac[24];
-			snprintf(ips, 31, "%u", htonl(sipcallerip[0]));
+			snprintf(ips, 31, "%u", htonl(getSipcallerip()));
 			ips[31] = 0;
-			snprintf(ipd, 31, "%u", htonl(sipcalledip[0]));
+			snprintf(ipd, 31, "%u", htonl(getSipcalledip()));
 			ipd[31] = 0;
 			snprintf(tmpregstate, 31, "%d", regstate);
 			tmpregstate[31] = 0;
@@ -4558,8 +4599,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						// the previous REGISTER expired, save to register_state
 						SqlDb_row reg;
 						reg.add(sqlEscapeString(sqlDateTimeString(expires_at).c_str()), "created_at");
-						reg.add(htonl(sipcallerip[0]), "sipcallerip");
-						reg.add(htonl(sipcalledip[0]), "sipcalledip");
+						reg.add(htonl(getSipcallerip()), "sipcallerip");
+						reg.add(htonl(getSipcalledip()), "sipcalledip");
 						reg.add(sqlEscapeString(caller), "from_num");
 						reg.add(sqlEscapeString(called), "to_num");
 						reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -4578,8 +4619,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						// state changed or device unregistered, store to register_state
 						SqlDb_row reg;
 						reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-						reg.add(htonl(sipcallerip[0]), "sipcallerip");
-						reg.add(htonl(sipcalledip[0]), "sipcalledip");
+						reg.add(htonl(getSipcallerip()), "sipcallerip");
+						reg.add(htonl(getSipcalledip()), "sipcalledip");
 						reg.add(sqlEscapeString(caller), "from_num");
 						reg.add(sqlEscapeString(called), "to_num");
 						reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -4597,8 +4638,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					// REGISTER message is new, store it to register_state
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-					reg.add(htonl(sipcallerip[0]), "sipcallerip");
-					reg.add(htonl(sipcalledip[0]), "sipcalledip");
+					reg.add(htonl(getSipcallerip()), "sipcallerip");
+					reg.add(htonl(getSipcalledip()), "sipcalledip");
 					reg.add(sqlEscapeString(caller), "from_num");
 					reg.add(sqlEscapeString(called), "to_num");
 					reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -4619,8 +4660,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-					reg.add(htonl(sipcallerip[0]), "sipcallerip");
-					reg.add(htonl(sipcalledip[0]), "sipcalledip");
+					reg.add(htonl(getSipcallerip()), "sipcallerip");
+					reg.add(htonl(getSipcalledip()), "sipcalledip");
 					//reg.add(sqlEscapeString(fbasename), "fbasename");
 					reg.add(sqlEscapeString(caller), "from_num");
 					reg.add(sqlEscapeString(callername), "from_name");
@@ -4661,12 +4702,12 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 
 			stringstream ssipcallerip;
-			ssipcallerip << htonl(sipcallerip[0]);
+			ssipcallerip << htonl(getSipcallerip());
 			stringstream ssipcalledip;
-			ssipcalledip << htonl(sipcalledip[0]);
+			ssipcalledip << htonl(getSipcalledip());
 
 			unsigned int count = 1;
-			int res = regfailedcache->check(htonl(sipcallerip[0]), htonl(sipcalledip[0]), calltime(), &count);
+			int res = regfailedcache->check(htonl(getSipcallerip()), htonl(getSipcalledip()), calltime(), &count);
 			if(res) {
 				break;
 			}
@@ -4689,8 +4730,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 			SqlDb_row reg;
 			reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-			reg.add(htonl(sipcallerip[0]), "sipcallerip");
-			reg.add(htonl(sipcalledip[0]), "sipcalledip");
+			reg.add(htonl(getSipcallerip()), "sipcallerip");
+			reg.add(htonl(getSipcalledip()), "sipcalledip");
 			reg.add(sqlEscapeString(caller), "from_num");
 			reg.add(sqlEscapeString(called), "to_num");
 			reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -4731,8 +4772,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					// this is new failed attempt within hour, insert
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
-					reg.add(htonl(sipcallerip[0]), "sipcallerip");
-					reg.add(htonl(sipcalledip[0]), "sipcalledip");
+					reg.add(htonl(getSipcallerip()), "sipcallerip");
+					reg.add(htonl(getSipcalledip()), "sipcalledip");
 					reg.add(sqlEscapeString(caller), "from_num");
 					reg.add(sqlEscapeString(called), "to_num");
 					reg.add(sqlEscapeString(called_domain), "to_domain");
@@ -4785,7 +4826,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		this->proxies_undup(&proxies_undup);
 		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
 		while (iter_undup != proxies_undup.end()) {
-			if(*iter_undup == sipcalledip[0]) { ++iter_undup; continue; };
+			if(*iter_undup == getSipcalledip()) { ++iter_undup; continue; };
 			SqlDb_row messageproxy;
 			messageproxy.add("_\\_'SQL'_\\_:@msg_id", "message_ID");
 			messageproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -4809,8 +4850,8 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 
 	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
 
-	msg.add(htonl(sipcallerip[0]), "sipcallerip");
-	msg.add(htonl(sipcalledip[0]), "sipcalledip");
+	msg.add(htonl(getSipcallerip()), "sipcallerip");
+	msg.add(htonl(getSipcalledip()), "sipcalledip");
 	msg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	if(!geoposition.empty()) {
 		msg.add(sqlEscapeString(geoposition), "GeoPosition");
@@ -4864,8 +4905,8 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 
 	CountryDetectApplyReload();
-	msg_country_code.add(getCountryByIP(htonl(sipcallerip[0]), true), "sipcallerip_country_code");
-	msg_country_code.add(getCountryByIP(htonl(sipcalledip[0]), true), "sipcalledip_country_code");
+	msg_country_code.add(getCountryByIP(htonl(getSipcallerip()), true), "sipcallerip_country_code");
+	msg_country_code.add(getCountryByIP(htonl(getSipcalledip()), true), "sipcalledip_country_code");
 	msg_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
 	msg_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
 	msg_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -5607,8 +5648,8 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* c
 	if(sverb.hash_rtp) {
 		cout << "hashAdd: " 
 		     << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << " " 
-		     << (is_rtcp ? "rtcp" : "") << " "
-		     << (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "undefinned")) << " "
+		     << (is_rtcp ? "rtcp " : "")
+		     << (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "undefined")) << " "
 		     << endl;
 	}
  
@@ -6625,7 +6666,7 @@ Call::check_is_caller_called(const char *call_id, int sip_method,
 		     << "call_id: " << call_id  << " "
 		     << "sip_method: " << sip_method << " "
 		     << inet_ntostring(htonl(saddr)) << " -> " << inet_ntostring(htonl(daddr))
-		     << " = " << (*iscaller ? "caller" : (_iscalled ? "called" : "undefine"))
+		     << " = " << (*iscaller ? "CALLER" : (_iscalled ? "CALLED" : "UNDEFINED"))
 		     << debug_str_set
 		     << debug_str_cmp
 		     << endl;

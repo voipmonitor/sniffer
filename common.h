@@ -82,6 +82,7 @@ struct sVerbose {
 	int abort_if_heap_full;
 	int heap_use_time;
 	int dtmf;
+	int dtls;
 	int cleanspool;
 	int cleanspool_disable_rm;
 	int t2_destroy_all;
