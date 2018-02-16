@@ -1,3 +1,11 @@
+22.0 16.02.2018
+===============
+- support for webrtc - SIP over websocket (encrypted / unencrypted) (default diffie hellman is not supported - asterisk tlscipher=AES128-SHA, chan_pjsip  cipher = 0x002f) [VS-756]
+- fix normalize number for custom (advanced) prefix without set 'skip prefixes'
+- fix watchdog which could cause two running voipmonitor instances [VS-764]
+- server_destination - check DNS resolve for every reconnect [VS-757]
+
+
 21.8 07.02.2018
 ===============
 - support for SSL decryption using sessionid/mastersecret send on dedicated UDP port - new ssl_sessionkey_udp* config options (solves DH cypher suits problem. vendor must support send keys) [VG-1494]
