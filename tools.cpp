@@ -1911,7 +1911,10 @@ bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 		if(!pidSafeRunScript) {
 			syslog(LOG_NOTICE, "run safe run script (%s)", this->safeRunTempScriptFileName.c_str());
 			close_all_fd();
-			execl(this->safeRunTempScriptFileName.c_str(), "Command-line", 0, NULL);
+			if(execl(this->safeRunTempScriptFileName.c_str(), "Command-line", 0, NULL) == -1) {
+				syslog(LOG_NOTICE, "run safe run script (%s) failed - %s", this->safeRunTempScriptFileName.c_str(), strerror(errno));
+				kill(getpid(), SIGKILL);
+			}
 			return(true);
 		}
 	}
@@ -2085,7 +2088,10 @@ bool WDT::runScript() {
 				syslog(LOG_NOTICE, "run watchdog script (pid %i)", getpid());
 			}
 			close_all_fd();
-			execl(scriptFileName.c_str(), "Command-line", 0, NULL);
+			if(execl(scriptFileName.c_str(), "Command-line", 0, NULL) == -1) {
+				syslog(LOG_NOTICE, "run watchdog script (%s) failed - %s", scriptFileName.c_str(), strerror(errno));
+				kill(getpid(), SIGKILL);
+			}
 			return(true);
 		}
 	}
