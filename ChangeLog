@@ -1,3 +1,9 @@
+22.0.1 21.02.2018
+=================
+- fix one way audio for some cases [VG-1513]
+- fix auto restart script [VS-754]
+
+
 22.0 16.02.2018
 ===============
 - support for webrtc - SIP over websocket (encrypted / unencrypted) (default diffie hellman is not supported - asterisk tlscipher=AES128-SHA, chan_pjsip  cipher = 0x002f) [VS-756]
