@@ -804,7 +804,7 @@ int opt_mysqlstore_limit_queue_register = 1000000;
 
 char opt_curlproxy[256] = "";
 int opt_enable_fraud = 1;
-int opt_enable_billing = 0;
+int opt_enable_billing = 1;
 char opt_local_country_code[10] = "local";
 
 map<string, string> hosts;
