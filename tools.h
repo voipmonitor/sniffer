@@ -1362,17 +1362,17 @@ public:
 	WDT();
 	~WDT();
 private:
-	bool runScript();
+	void runScript();
 	void killScript();
 	void killOtherScript();
 	bool createScript();
 	void unlinkScript();
 	string getScriptName();
+	string getScriptFileName();
 	string getCmdLine();
 	string getRunDir();
 	string getConfigFile();
 private:
-	string scriptFileName;
 	pid_t pid;
 };
 

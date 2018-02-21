@@ -2080,22 +2080,36 @@ WDT::~WDT() {
 	unlinkScript();
 }
 
-bool WDT::runScript() {
-	if(!scriptFileName.empty()) {
-		pid = fork();
-		if(!pid) {
-			if(verbosity > 0) {
-				syslog(LOG_NOTICE, "run watchdog script (pid %i)", getpid());
+void WDT::runScript() {
+	pid = fork();
+	if(!pid) {
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "run watchdog script (pid %i)", getpid());
+		}
+		close_all_fd();
+		bool okRun = false;
+		for(int pass = 0; pass < 2; pass++) {
+			int rsltExec = 0;
+			switch(pass) {
+			case 0:
+				rsltExec = execl(getScriptFileName().c_str(), "Command-line", 0, NULL);
+				break;
+			case 1:
+				syslog(LOG_NOTICE, "try run watchdog script via bash");
+				rsltExec = execlp("bash", "bash", getScriptFileName().c_str(), NULL);
+				break;
 			}
-			close_all_fd();
-			if(execl(scriptFileName.c_str(), "Command-line", 0, NULL) == -1) {
-				syslog(LOG_NOTICE, "run watchdog script (%s) failed - %s", scriptFileName.c_str(), strerror(errno));
-				kill(getpid(), SIGKILL);
+			if(rsltExec == -1) {
+				syslog(LOG_NOTICE, "run watchdog script (%s) failed - %s (%i)", getScriptFileName().c_str(), strerror(errno), errno);
+			} else {
+				okRun = true;
+				break;
 			}
-			return(true);
+		}
+		if(!okRun) {
+			kill(getpid(), SIGKILL);
 		}
 	}
-	return(true);
 }
 
 void WDT::killScript() {
@@ -2106,24 +2120,25 @@ void WDT::killScript() {
 }
 
 void WDT::killOtherScript() {
-	char bufRslt[512];
-	FILE *cmd_pipe = popen(("ps -C '" + getScriptName() + "' -o pid,args | grep '" + getScriptName() +  "$'").c_str(), "r");
-	fgets(bufRslt, 512, cmd_pipe);
-	pid_t pidOther = atol(bufRslt);
-	if(pidOther) {
-		syslog(LOG_NOTICE, "kill old watchdog script (pid %i)", pidOther);
-		kill(pidOther, 9);
+	for(int pass = 0; pass < 2; pass++) {
+		FILE *cmd_pipe = popen(pass == 0 ?
+					("ps -C '" + getScriptName() + "' -o pid,args | grep '" + getScriptName() +  "$'").c_str() :
+					("ps -C 'bash' -o pid,args | grep '" + getScriptFileName() +  "$'").c_str(), 
+				       "r");
+		char bufRslt[512];
+		while(fgets(bufRslt, 512, cmd_pipe)) {
+			pid_t pidOther = atol(bufRslt);
+			if(pidOther) {
+				syslog(LOG_NOTICE, "kill old watchdog script (pid %i)", pidOther);
+				kill(pidOther, 9);
+			}
+		}
+		pclose(cmd_pipe);
 	}
-	pclose(cmd_pipe);
 }
 
 bool WDT::createScript() {
-	char const *tmpPath = getenv("TMPDIR");
-	if(!tmpPath) {
-		tmpPath = "/tmp";
-	}
-	scriptFileName = string(tmpPath) + '/' + getScriptName();
-	FILE *fileHandle = fopen(scriptFileName.c_str(), "wt");
+	FILE *fileHandle = fopen(getScriptFileName().c_str(), "wt");
 	if(fileHandle) {
 		fputs("#!/bin/bash\n", fileHandle);
 		fputs("while [ true ]\n", fileHandle);
@@ -2138,7 +2153,7 @@ bool WDT::createScript() {
 			getCmdLine().c_str());
 		fputs("done\n", fileHandle);
 		fclose(fileHandle);
-		if(!chmod(scriptFileName.c_str(), 0755)) {
+		if(!chmod(getScriptFileName().c_str(), 0755)) {
 			return(true);
 		} else {
 			if(verbosity > 0) {
@@ -2154,9 +2169,7 @@ bool WDT::createScript() {
 }
 
 void WDT::unlinkScript() {
-	if(scriptFileName.length()) {
-		unlink(scriptFileName.c_str());
-	}
+	unlink(getScriptFileName().c_str());
 }
 
 string WDT::getScriptName() {
@@ -2165,6 +2178,14 @@ string WDT::getScriptName() {
 		scriptName += '_' + getConfigFile();
 	}
 	return(scriptName);
+}
+
+string WDT::getScriptFileName() {
+	char const *tmpPath = getenv("TMPDIR");
+	if(!tmpPath) {
+		tmpPath = "/tmp";
+	}
+	return(string(tmpPath) + '/' + getScriptName());
 }
 
 string WDT::getCmdLine() {
