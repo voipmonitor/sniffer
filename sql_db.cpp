@@ -7373,7 +7373,14 @@ void cLogSensor::log(eType type, const char *subject, const char *formatMessage,
 		message = message_buffer;
 		delete [] message_buffer;
 	}
-	log->_log(type, subject, message.c_str());
+	time_t actTime = time(NULL);
+	bool enableSaveToDb = subject != last_subject_db ||
+			      last_subject_db_at + 60 < actTime;
+	log->_log(type, subject, message.c_str(), enableSaveToDb);
+	if(enableSaveToDb) {
+		last_subject_db = subject;
+		last_subject_db_at = actTime;
+	}
 	log->_end();
 	delete log;
 }
@@ -7430,7 +7437,7 @@ void cLogSensor::end(cLogSensor *log) {
 	delete log;
 }
 
-void cLogSensor::_log(eType type, const char *subject, const char *message) {
+void cLogSensor::_log(eType type, const char *subject, const char *message, bool enableSaveToDb) {
 	sItem item;
 	item.type = type;
 	if(subject) {
@@ -7439,6 +7446,7 @@ void cLogSensor::_log(eType type, const char *subject, const char *message) {
 	if(message) {
 		item.message = message;
 	}
+	item.enableSaveToDb = enableSaveToDb;
 	items.push_back(item);
 }
 
@@ -7469,7 +7477,7 @@ void cLogSensor::_save() {
 	unsigned counter = 0;
 	unsigned ID_parent = 0;
 	for(list<sItem>::iterator iter = items.begin(); iter != items.end(); ++iter) {
-		if(!opt_nocdr) {
+		if(!opt_nocdr && iter->enableSaveToDb) {
 			SqlDb_row logRow;
 			logRow.add(sqlEscapeString(sqlDateTimeString(firstItem->time).c_str()), "time");
 			if(firstItem->id_sensor > 0) {
@@ -7515,3 +7523,6 @@ void cLogSensor::_save() {
 	}
 	delete sqlDb;
 }
+
+string cLogSensor::last_subject_db = "";
+u_int32_t cLogSensor::last_subject_db_at = 0;

@@ -851,12 +851,14 @@ private:
 			time = getTimeS();
 			id_sensor = opt_id_sensor;
 			type = _na;
+			enableSaveToDb = true;
 		};
 		u_int32_t time;
 		int id_sensor;
 		eType type;
 		string subject;
 		string message;
+		bool enableSaveToDb;
 	};
 public:
 	cLogSensor();
@@ -869,12 +871,14 @@ public:
 		end(this);
 	}
 private:
-	void _log(eType type, const char *subject, const char *message);
+	void _log(eType type, const char *subject, const char *message, bool enableSaveToDb = true);
 	void _log(const char *subject, const char *message);
 	void _end();
 	void _save();
 private:
 	list<sItem> items;
+	static string last_subject_db;
+	static u_int32_t last_subject_db_at;
 };
 
 

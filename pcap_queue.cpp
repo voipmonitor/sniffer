@@ -5523,10 +5523,12 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 										time_t actualTimeSec = time(NULL);
 										time_t sensorTimeSec = stringToTime(sensorTime.c_str());
 										if(abs(actualTimeSec % 3600 - sensorTimeSec % 3600) > 2) {
-											syslog(LOG_ERR, "sensor is not allowed to connect because of different time between receiver (%s) and sensor %i (%s) - please synchronize clocks on both server ",
-											       sqlDateTimeString(actualTimeSec).c_str(),
-											       sensorId,
-											       sensorTime.c_str());
+											cLogSensor::log(cLogSensor::error, 
+													"sensor is not allowed to connect because of different time",
+													"between receiver (%s) and sensor %i (%s) - please synchronize clocks on both server ",
+													sqlDateTimeString(actualTimeSec).c_str(),
+													sensorId,
+													sensorTime.c_str());
 											string message = "bad time";
 											send(this->packetServerConnections[arg2]->socketClient, message.c_str(), message.length(), 0);	
 											this->packetServerConnections[arg2]->active = false;
