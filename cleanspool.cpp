@@ -117,6 +117,10 @@ void CleanSpool::cSpoolData::getSumSizeByDate(map<string, long long> *sizeByDate
 	}
 }
 
+map<CleanSpool::sSpoolDataDirIndex, CleanSpool::sSpoolDataDirItem>::iterator CleanSpool::cSpoolData::getBegin() {
+	return(data.begin());
+}
+
 map<CleanSpool::sSpoolDataDirIndex, CleanSpool::sSpoolDataDirItem>::iterator CleanSpool::cSpoolData::getMin(bool sip, bool rtp, bool graph, bool audio) {
 	for(map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = data.begin(); iter != data.end(); iter++) {
 		if(!iter->second.is_dir) {
@@ -145,6 +149,16 @@ map<CleanSpool::sSpoolDataDirIndex, CleanSpool::sSpoolDataDirItem>::iterator Cle
 		}
 	}
 	return(data.end());
+}
+
+bool CleanSpool::cSpoolData::existsFileIndex(CleanSpool::sSpoolDataDirIndex *dirIndex) {
+	for(map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = data.begin(); iter != data.end(); iter++) {
+		if(!iter->second.is_dir &&
+		   dirIndex->eqSettedItems(iter->first)) {
+			return(true);
+		}
+	}
+	return(false);
 }
 
 void CleanSpool::cSpoolData::removeLastDateHours(int hours) {
@@ -1652,6 +1666,16 @@ void CleanSpool::erase_dir(string dir, sSpoolDataDirIndex index, string callFrom
 		}
 		closedir(dp);
 	}
+	erase_dir_if_empty(dir);
+}
+
+void CleanSpool::erase_dir_if_empty(string dir, string callFrom) {
+	if(DISABLE_CLEANSPOOL) {
+		return;
+	}
+	if(!callFrom.empty()) {
+		syslog(LOG_NOTICE, "cleanspool[%i]: call erase_dir_if_empty(%s) from %s", spoolIndex, dir.c_str(), callFrom.c_str());
+	}
 	if(dir_is_empty(dir)) {
 		if(!sverb.cleanspool_disable_rm) {
 			rmdir(dir.c_str());
@@ -1984,11 +2008,18 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 			   total <= reduk_maxpoolsize) {
 				break;
 			}
-			map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = this->spoolData.getMin(sip, rtp, graph, audio);
-			if(iter == this->spoolData.end()) {
-				break;
+			map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = this->spoolData.getBegin();
+			if(iter != this->spoolData.end() &&
+			   iter->second.is_dir &&
+			   !this->spoolData.existsFileIndex((sSpoolDataDirIndex*)&iter->first)) {
+				erase_dir_if_empty(iter->second.path.c_str(), "clean_maxpoolsize");
+			} else {
+				iter = this->spoolData.getMin(sip, rtp, graph, audio);
+				if(iter == this->spoolData.end()) {
+					break;
+				}
+				erase_dir(iter->second.path.c_str(), iter->first, "clean_maxpoolsize");
 			}
-			erase_dir(iter->second.path.c_str(), iter->first, "clean_maxpoolsize");
 			this->spoolData.erase(iter);
 		}
 		this->spoolData.saveDeletedHourCacheFiles();
@@ -2115,14 +2146,21 @@ void CleanSpool::clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio) {
 	} else {
 		this->spoolData.lock();
 		while(!is_terminating() && !DISABLE_CLEANSPOOL) {
-			map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = this->spoolData.getMin(sip, rtp, graph, audio);
-			if(iter == this->spoolData.end()) {
-				break;
+			map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = this->spoolData.getBegin();
+			if(iter != this->spoolData.end() &&
+			   iter->second.is_dir &&
+			   !this->spoolData.existsFileIndex((sSpoolDataDirIndex*)&iter->first)) {
+				erase_dir_if_empty(iter->second.path.c_str(), "clean_maxpooldays");
+			} else {
+				iter = this->spoolData.getMin(sip, rtp, graph, audio);
+				if(iter == this->spoolData.end()) {
+					break;
+				}
+				if(getNumberOfDayToNow(iter->first.date.c_str()) <= (int)maxpooldays) {
+					break;
+				}
+				erase_dir(iter->second.path.c_str(), iter->first, "clean_maxpooldays");
 			}
-			if(getNumberOfDayToNow(iter->first.date.c_str()) <= (int)maxpooldays) {
-				break;
-			}
-			erase_dir(iter->second.path.c_str(), iter->first, "clean_maxpooldays");
 			this->spoolData.erase(iter);
 		}
 		this->spoolData.saveDeletedHourCacheFiles();

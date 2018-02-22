@@ -142,7 +142,9 @@ public:
 		long long getSumSize();
 		long long getSplitSumSize(long long *sip, long long *rtp, long long *graph, long long *audio);
 		void getSumSizeByDate(map<string, long long> *sizeByDate);
+		map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator getBegin();
 		map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator getMin(bool sip, bool rtp, bool graph, bool audio);
+		bool existsFileIndex(sSpoolDataDirIndex *dirIndex);
 		void erase(map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter) {
 			data.erase(iter);
 		}
@@ -238,6 +240,7 @@ private:
 	void unlinkfileslist(eTypeSpoolFile typeSpoolFile, string fname, string callFrom);
 	void unlink_dirs(string datehour, int sip, int reg, int skinny, int mgcp, int ss7, int rtp, int graph, int audio, string callFrom);
 	void erase_dir(string dir, sSpoolDataDirIndex index, string callFrom);
+	void erase_dir_if_empty(string dir, string callFrom = "");
 	bool dir_is_empty(string dir);
 	string reduk_dir(string dir, string *last_dir);
 	void clean_spooldir_run();
