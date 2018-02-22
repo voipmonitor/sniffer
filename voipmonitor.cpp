@@ -906,6 +906,7 @@ const char *anotherInstanceMessage = "another voipmonitor instance with the same
 
 int ownPidStart;
 int ownPidFork;
+char ownPidFork_str[10];
 
 
 #include <stdio.h>
@@ -2199,6 +2200,8 @@ void bt_sighandler_simple(int sig, siginfo_t *info, void *secret)
 				write(fh, "i686", 4);
 			}
 		#endif
+		write(fh, " ", 1);
+		write(fh, ownPidFork_str, strlen(ownPidFork_str));
 		write(fh, "\n", 1);
 		if(crash_pnt) {
 			write(fh, "[--] [0x", 8);
@@ -2338,11 +2341,13 @@ void store_crash_bt_to_db() {
 		char version[20];
 		int sensor_id;
 		char arch[20];
+		int pid;
 		bool header_ok = false;
 		vector<string> bt;
+		vector<string> bt_gdb;
 		while(fgets(rowbuff, sizeof(rowbuff), crash_bt_fh)) {
 			if(!countRows) {
-				if(sscanf(rowbuff, "%s sensor %i %s", version, &sensor_id, arch) == 3) {
+				if(sscanf(rowbuff, "%s sensor %i %s %i", version, &sensor_id, arch, &pid) == 4) {
 					header_ok = true;
 				}
 			} else if(!strncmp(rowbuff, "[bt]", 4) ||
@@ -2395,6 +2400,53 @@ void store_crash_bt_to_db() {
 							}
 						}
 					}
+					system((string("which gdb > ") + tmpOut + " 2>/dev/null").c_str());
+					vector<string> gdb_check_rows;
+					if(file_get_rows(tmpOut, &gdb_check_rows)) {
+						vector<string> coredumps = findCoredumps(pid);
+						bool pid_ok = false;
+						for(unsigned i = 0; i < coredumps.size(); i++) {
+							string coredump = coredumps[i];
+							unlink(tmpOut);
+							system(string(
+							       "echo -e '"
+							       "set print elements 1000\n"
+							       "set print pretty on\n"
+							       "set pagination off\n"
+							       "set logging file " + string(tmpOut) + "\n"
+							       "set logging on\n"
+							       "p \"*** PID ***\"\np ownPidFork\n"
+							       "p \"*** BT ***\"\nbt\n"
+							       "p \"*** INFO THREADS\"\ninfo threads\n"
+							       "p \"*** ALL THREADS BT ***\"\nthread apply all bt\n"
+							       "p \"*** VARIABLES ***\"\n"
+							       "p \"terminating\"\np terminating\n"
+							       "quit\n"
+							       "' | gdb /usr/local/sbin/voipmonitor " + coredump + " 2>&1 >/dev/null"
+							       ).c_str());
+							FILE *gdbOutput = fopen(tmpOut, "r");
+							if(gdbOutput) {
+								char buff[10000];
+								unsigned counter = 0;
+								while(fgets(buff, sizeof(buff), gdbOutput)) {
+									if(counter < 2) {
+										if(strstr(buff, intToString(pid).c_str())) {
+											pid_ok = true;
+										}
+									} else if(!pid_ok) {
+										bt_gdb.clear();
+										break;
+									}
+									bt_gdb.push_back(buff);
+									++counter;
+								}
+								fclose(gdbOutput);
+								if(pid_ok) {
+									break;
+								}
+							}
+						}
+					}
 				}
 			}
 			unlink(tmpOut);
@@ -2405,6 +2457,12 @@ void store_crash_bt_to_db() {
 				"arch: " + arch + "\n\n";
 			for(unsigned i = 0; i < bt.size(); i++) {
 				crash_bt_content += bt[i] + "\n";
+			}
+			if(bt_gdb.size()) {
+				crash_bt_content += "\n";
+				for(unsigned i = 0; i < bt_gdb.size(); i++) {
+					crash_bt_content += bt_gdb[i];
+				}
 			}
 			if(crash_bt_content.length()) {
 				SqlDb *sqlDb = createSqlObject();
@@ -2427,6 +2485,11 @@ void store_crash_bt_to_db() {
 		}
 		unlink(opt_crash_bt_filename);
 	}
+}
+
+void *store_crash_bt_to_db_thread_fce(void *) {
+	store_crash_bt_to_db();
+	return(NULL);
 }
 
 void resetTerminating() {
@@ -2651,7 +2714,7 @@ int main(int argc, char *argv[]) {
 	
 	ownPidStart = getpid();
 	
-	if(opt_fork && !is_read_from_file()) {
+	if(opt_fork && !is_read_from_file() && configfile[0]) {
 		bool _existsAnotherInstance = false;
 		if(useSemaphoreLock) {
 			for(unsigned pass = 0; pass < 2; pass++) {
@@ -2944,6 +3007,7 @@ int main(int argc, char *argv[]) {
 	if(opt_fork && !is_read_from_file() && reloadLoopCounter == 0) {
 		daemonize();
 		ownPidFork = getpid();
+		strcpy(ownPidFork_str, intToString(ownPidFork).c_str());
 		bool _existsAnotherInstance = false;
 		if(useSemaphoreLock) {
 			semaphoreLock[1] = sem_open(semaphoreLockName(1), O_CREAT | O_EXCL, 0644, getpid());
@@ -3042,7 +3106,9 @@ int main(int argc, char *argv[]) {
 		}
 		
 		if(!opt_database_backup && opt_load_query_from_files != 2) {
-			store_crash_bt_to_db();
+			pthread_t store_crash_bt_to_db_thread;
+			vm_pthread_create_autodestroy("store_crash_bt_to_db",
+						      &store_crash_bt_to_db_thread, NULL, store_crash_bt_to_db_thread_fce, NULL, __FILE__, __LINE__);
 			main_init_sqlstore();
 			int rslt_main_init_read = main_init_read();
 			if(rslt_main_init_read) {

@@ -305,6 +305,7 @@ private:
 };
 
 queue<string> listFilesDir(char * dir);
+vector<string> listDir(string path, bool withDir = false);
 vector<string> explode(const char *, const char);
 vector<string> explode(const string&, const char);
 int getUpdDifTime(struct timeval *before);
@@ -3542,6 +3543,8 @@ inline void hexdump(const char *data, unsigned size) {
 }
 
 unsigned file_get_rows(const char *filename, vector<string> *rows);
+
+vector<string> findCoredumps(int pid);
 
 
 #endif

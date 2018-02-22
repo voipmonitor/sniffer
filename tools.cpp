@@ -158,6 +158,22 @@ queue<string> listFilesDir (char * dir) {
 	return outQueue;
 }
 
+vector<string> listDir(string path, bool withDir) {
+	vector<string> rslt;
+	DIR* dp = opendir(path.c_str());
+	if(dp) {
+		dirent* de;
+		while((de = readdir(dp)) != NULL && !is_terminating()) {
+			if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+			if(de->d_type != DT_DIR || withDir) {
+				rslt.push_back(de->d_name);
+			}
+		}
+		closedir(dp);
+	}
+	return(rslt);
+}
+
 vector<string> explode(const char *str, const char ch) {
 	vector<string> result;
 	if(!str) {
@@ -6359,4 +6375,49 @@ unsigned file_get_rows(const char *filename, vector<string> *rows) {
 		fclose(fh);
 	}
 	return(countRows);
+}
+
+vector<string> findCoredumps(int pid) {
+	vector<string> coredumps;
+	FILE *corePatternFile = fopen("/proc/sys/kernel/core_pattern", "r");
+	if(corePatternFile) {
+		char buff[1000];
+		if(fgets(buff, sizeof(buff), corePatternFile)) {
+			if(strchr(buff, '\n')) {
+				*strchr(buff, '\n') = 0;
+			}
+			string corePattern = buff;
+			if(corePattern.length()) {
+				if(corePattern == "core") {
+					extern char opt_spooldir_main[1024];
+					vector<string> files = listDir(opt_spooldir_main);
+					for(unsigned i = 0; i < files.size(); i++) {
+						vector<string> matches;
+						if(files[i] == "core" ||
+						   (reg_match(files[i].c_str(), "^core\\.([0-9]+)$", &matches, true) && matches.size() &&
+						    matches[1] == intToString(pid))) {
+							coredumps.push_back(string(opt_spooldir_main) + "/" + files[i]);
+						}
+					}
+				} else if(corePattern[0] == '/') {
+					size_t endDirSeparatorPos = corePattern.rfind('/');
+					if(endDirSeparatorPos != string::npos) {
+						string corePatternDir = corePattern.substr(0, endDirSeparatorPos);
+						string corePatternFile = corePattern.substr(endDirSeparatorPos + 1);
+						if(corePatternDir.length() && corePatternFile.length() &&
+						   (corePatternFile.find("%p") != string::npos || corePatternFile.find("%P") != string::npos)) {
+							vector<string> files = listDir(corePatternDir);
+							for(unsigned i = 0; i < files.size(); i++) {
+								if(files[i].find(intToString(pid)) != string::npos) {
+									coredumps.push_back(corePatternDir + "/" + files[i]);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		fclose(corePatternFile);
+	}
+	return(coredumps);
 }
