@@ -40,15 +40,23 @@ struct RecordArrayField {
 		this->tf = tf;
 		this->v.i = i;
 	}
-	void set(int64_t i, eTypeField tf = tf_int) {
+	void set(long i, eTypeField tf = tf_int) {
 		this->tf = tf;
 		this->v.i = i;
 	}
-	void set(u_int32_t u, eTypeField tf = tf_uint) {
+	void set(long long i, eTypeField tf = tf_int) {
+		this->tf = tf;
+		this->v.i = i;
+	}
+	void set(unsigned u, eTypeField tf = tf_uint) {
 		this->tf = tf;
 		this->v.u = u;
 	}
-	void set(u_int64_t u, eTypeField tf = tf_uint) {
+	void set(long unsigned u, eTypeField tf = tf_uint) {
+		this->tf = tf;
+		this->v.u = u;
+	}
+	void set(long long unsigned u, eTypeField tf = tf_uint) {
 		this->tf = tf;
 		this->v.u = u;
 	}
