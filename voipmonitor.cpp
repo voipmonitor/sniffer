@@ -6943,6 +6943,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "disable_push_to_t2_in_packetbuffer")
 													sverb.disable_push_to_t2_in_packetbuffer = 1;
 						else if(verbparams[i] == "disable_save_packet")		sverb.disable_save_packet = 1;
+						else if(verbparams[i] == "disable_save_call")		sverb.disable_save_call = 1;
 						else if(verbparams[i] == "disable_read_rtp")		sverb.disable_read_rtp = 1;
 						else if(verbparams[i] == "thread_create")		sverb.thread_create = 1;
 						else if(verbparams[i] == "timezones")			sverb.timezones = 1;

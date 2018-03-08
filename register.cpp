@@ -727,7 +727,7 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	if(zip) {
 		string zipParam = jsonParams.getValue("zip");
 		std::transform(zipParam.begin(), zipParam.end(), zipParam.begin(), ::tolower);
-		*zip = zipParam == "yes" || zipParam == "yes";
+		*zip = zipParam == "yes";
 	}
  
 	lock_registers_erase();

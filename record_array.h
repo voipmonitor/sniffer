@@ -20,70 +20,160 @@ struct RecordArrayField {
 	enum eTypeField {
 		tf_na,
 		tf_int,
+		tf_uint,
+		tf_float,
+		tf_pointer,
 		tf_time,
 		tf_string
 	};
 	RecordArrayField() {
 		tf = tf_na;
-		i = 0;
-		s = NULL;
+		v.i = 0;
 	}
 	void free() {
-		if(s) {
-			delete [] s;
-			s = NULL;
+		if(tf == tf_string && v.s) {
+			delete [] v.s;
+			v.s = NULL;
 		}
 	}
-	void set(u_int64_t i, eTypeField tf = tf_int) {
+	void set(int i, eTypeField tf = tf_int) {
 		this->tf = tf;
-		this->i = i;
+		this->v.i = i;
+	}
+	void set(int64_t i, eTypeField tf = tf_int) {
+		this->tf = tf;
+		this->v.i = i;
+	}
+	void set(u_int32_t u, eTypeField tf = tf_uint) {
+		this->tf = tf;
+		this->v.u = u;
+	}
+	void set(u_int64_t u, eTypeField tf = tf_uint) {
+		this->tf = tf;
+		this->v.u = u;
+	}
+	void set(double d, eTypeField tf = tf_float) {
+		this->tf = tf;
+		this->v.d = d;
+	}
+	void set(void *p, eTypeField tf = tf_pointer) {
+		this->tf = tf;
+		this->v.p = p;
 	}
 	void set(const char *s) {
 		tf = tf_string;
 		if(s && *s) {
-			this->s = new FILE_LINE(19001) char[strlen(s) + 1];
-			strcpy(this->s, s);
+			this->v.s = new FILE_LINE(19001) char[strlen(s) + 1];
+			strcpy(this->v.s, s);
 		} else {
-			this->s = NULL;
+			this->v.s = NULL;
 		}
-		this->i = 0;
+	}
+	int64_t get_int() {
+		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || tf == tf_time ?
+			v.i :
+		       tf == tf_float ?
+			(int64_t)v.d :
+			0);
+	}
+	u_int64_t get_uint() {
+		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || tf == tf_time ?
+			v.u :
+		       tf == tf_float ?
+			(u_int64_t)v.d :
+			0);
+	}
+	double get_float() {
+		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || tf == tf_time ?
+			(double)v.i :
+		       tf == tf_float ?
+			v.d :
+			0);
+	}
+	void * get_pointer() {
+		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || tf == tf_time ?
+			v.p :
+			NULL);
+	}
+	const char *get_string() {
+		return(tf == tf_string && v.s ?
+			v.s :
+			"");
 	}
 	string getJson();
+	bool isSet() {
+		return(tf != tf_na);
+	}
 	bool operator == (const RecordArrayField& other) const {
-		return(i == other.i &&
-		       EQ_STR(s, other.s));
+		if(tf == other.tf) {
+			switch(tf) {
+			case tf_na:
+				return(true);
+			case tf_int:
+				return(v.i == other.v.i);
+			case tf_uint:
+			case tf_time:
+				return(v.u == other.v.u);
+			case tf_float:
+				return(v.d == other.v.d);
+			case tf_pointer:
+				return(v.p == other.v.p);
+			case tf_string:
+				return(EQ_STR(v.s, other.v.s));
+			}
+		}
+		return(false);
 	}
 	bool operator < (const RecordArrayField& other) const {
-		return(i < other.i ? 1 : i > other.i ? 0 :
-		       CMP_STR(s, other.s) < 0);
+		if(tf == other.tf) {
+			switch(tf) {
+			case tf_na:
+				return(true);
+			case tf_int:
+				return(v.i < other.v.i);
+			case tf_uint:
+			case tf_time:
+				return(v.u < other.v.u);
+			case tf_float:
+				return(v.d < other.v.d);
+			case tf_pointer:
+				return(v.p < other.v.p);
+			case tf_string:
+				return(CMP_STR(v.s, other.v.s) < 0);
+			}
+		}
+		return(tf < other.tf);
 	}
 	bool operator > (const RecordArrayField& other) const {  
 		return(!(*this < other || *this == other));
 	}
 	eTypeField tf;
-	u_int64_t i;
-	char *s;
+	union {
+		int64_t i;
+		u_int64_t u;
+		double d;
+		void *p;
+		char *s;
+	} v;
 };
 
 struct RecordArrayField2 : public RecordArrayField {
-	RecordArrayField2(RecordArrayField *other) : RecordArrayField() {
+	RecordArrayField2(RecordArrayField *other, bool cloneStr = true) : RecordArrayField() {
 		if(other) {
 			this->tf = other->tf;
-			this->i = other->i;
-			if(other->s && *other->s) {
-				this->s = new FILE_LINE(19002) char[strlen(other->s) + 1];
-				strcpy(this->s, other->s);
+			this->v = other->v;
+			if(other->tf == tf_string && other->v.s && *other->v.s && cloneStr) {
+				this->v.s = new FILE_LINE(19002) char[strlen(other->v.s) + 1];
+				strcpy(this->v.s, other->v.s);
 			}
 		}
 	}
 	RecordArrayField2(const RecordArrayField2 &other) {
 		this->tf = other.tf;
-		this->i = other.i;
-		if(other.s && *other.s) {
-			this->s = new FILE_LINE(19003) char[strlen(other.s) + 1];
-			strcpy(this->s, other.s);
-		} else {
-			this->s = NULL;
+		this->v = other.v;
+		if(other.tf == tf_string && other.v.s && *other.v.s) {
+			this->v.s = new FILE_LINE(19003) char[strlen(other.v.s) + 1];
+			strcpy(this->v.s, other.v.s);
 		}
 	}
 	~RecordArrayField2() {
@@ -92,10 +182,10 @@ struct RecordArrayField2 : public RecordArrayField {
 	RecordArrayField2& operator = (const RecordArrayField2& other) {
 		free();
 		this->tf = other.tf;
-		this->i = other.i;
-		if(other.s && *other.s) {
-			this->s = new FILE_LINE(19004) char[strlen(other.s) + 1];
-			strcpy(this->s, other.s);
+		this->v = other.v;
+		if(other.tf == tf_string && other.v.s && *other.v.s) {
+			this->v.s = new FILE_LINE(19004) char[strlen(other.v.s) + 1];
+			strcpy(this->v.s, other.v.s);
 		}
 		return(*this);
 	}
@@ -104,19 +194,21 @@ struct RecordArrayField2 : public RecordArrayField {
 struct RecordArray {
 	RecordArray(unsigned max_fields);
 	void free();
+	void freeFields();
+	void freeRecord();
 	string getJson();
 	bool operator == (const RecordArray& other) const {  
 		return(fields[sortBy] == other.fields[sortBy] &&
-		       fields[sortBy2] == other.fields[sortBy2]);
+		       (sortBy2 == -1 || fields[sortBy2] == other.fields[sortBy2]));
 	}
 	bool operator < (const RecordArray& other) const {  
 		return(fields[sortBy] < other.fields[sortBy] ? 1 : fields[sortBy] > other.fields[sortBy] ? 0 :
-		       fields[sortBy2] < other.fields[sortBy2]);
+		       (sortBy2 >= 0 && fields[sortBy2] < other.fields[sortBy2]));
 	}
 	unsigned max_fields;
 	RecordArrayField *fields;
-	unsigned sortBy;
-	unsigned sortBy2;
+	int sortBy;
+	int sortBy2;
 };
 
 

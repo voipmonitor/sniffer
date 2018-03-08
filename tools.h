@@ -565,6 +565,8 @@ string intToString(long long i);
 string intToString(u_int16_t i);
 string intToString(u_int32_t i);
 string intToString(u_int64_t i);
+string floatToString(double d);
+string pointerToString(void *p);
 bool isJsonObject(string str);
 
 class CircularBuffer
@@ -1515,23 +1517,110 @@ class CheckString {
 public:
 	CheckString(const char *checkString) {
 		this->checkString = checkString;
+		this->checkString_length = this->checkString.length();
+		interval = false;
+		interval_num_length = -1;
+		interval_from = -1;
+		interval_to = -1;
+		size_t intervalSeparator;
+		if((intervalSeparator = this->checkString.find('-')) != string::npos &&
+		   intervalSeparator > 0 && intervalSeparator < this->checkString.length() - 2) {
+			string from = this->checkString.substr(0, intervalSeparator);
+			string to = this->checkString.substr(intervalSeparator + 1);
+			from = trim(from);
+			to = trim(to);
+			unsigned eqLength = 0;
+			while(eqLength < from.length() && eqLength < to.length() &&
+			      from[eqLength] == to[eqLength]) {
+				++eqLength;
+			}
+			bool okOnlyDigit = true;
+			for(unsigned i = eqLength; i < from.length(); i++) {
+				if(!isdigit(from[i])) {
+					okOnlyDigit = false;
+				}
+			}
+			if(okOnlyDigit) {
+				for(unsigned i = eqLength; i < to.length(); i++) {
+					if(!isdigit(to[i])) {
+						okOnlyDigit = false;
+					}
+				}
+			}
+			if(okOnlyDigit) {
+				boundLeft = true;
+				boundRight = true;
+				interval = true;
+				interval_eq = from.substr(0, eqLength);
+				if(interval_eq.length() && interval_eq[0] == '%') {
+					interval_eq = interval_eq.substr(1);
+					boundLeft = false;
+				}
+				interval_num_length = max(from.length(), to.length()) - eqLength;
+				if(from.length() > eqLength) {
+					interval_from = atoi(from.c_str() + eqLength);
+				}
+				if(to.length() > eqLength) {
+					interval_to = atoi(to.c_str() + eqLength);
+				}
+				return;
+			}
+		}
 		if(this->checkString.length() && this->checkString[0] == '%') {
 			this->checkString = this->checkString.substr(1);
+			--this->checkString_length;
 			this->boundLeft = false;
 		} else {
 			this->boundLeft = true;
 		}
 		if(this->checkString.length() && this->checkString[this->checkString.length() - 1] == '%') {
 			this->checkString = this->checkString.substr(0, this->checkString.length() - 1);
+			--this->checkString_length;
 			this->boundRight = false;
 		} else {
 			this->boundRight = true;
 		}
-		this->checkString_length = this->checkString.length();
 	}
 	bool check(const char *checkString) {
 		if(!this->checkString_length) {
 			return(false);
+		}
+		if(interval) {
+			unsigned checkStringLength = strlen(checkString);
+			if(checkStringLength <= interval_eq.length()) {
+				return(false);
+			}
+			if(interval_eq.length()) {
+				if(boundLeft && interval_num_length > 0) {
+					string strCmp = checkString;
+					strCmp = strCmp.substr(0, strCmp.length() - interval_num_length);
+					strCmp = strCmp.substr(strCmp.length() - interval_eq.length());
+					if(strcasecmp(interval_eq.c_str(), strCmp.c_str())) {
+						return(false);
+					}
+				} else {
+					if(strncasecmp(checkString, interval_eq.c_str(), interval_eq.length())) {
+						return(false);
+					}
+				}
+			}
+			if(boundLeft && interval_num_length > 0) {
+				if(checkStringLength <= (unsigned)interval_num_length) {
+					return(false);
+				}
+				int checkNum = atoi(checkString + checkStringLength - interval_num_length);
+				if(checkNum < interval_from ||
+				   checkNum > interval_to) {
+					return(false);
+				}
+			} else {
+				int checkNum = atoi(string(checkString).substr(interval_eq.length(), interval_num_length).c_str());
+				if((interval_from >= 0 && checkNum < interval_from) ||
+				   (interval_to >= 0 && checkNum > interval_to)) {
+					return(false);
+				}
+			}
+			return(true);
 		}
 		if(this->boundLeft && this->boundRight) {
 			return(!strcasecmp(checkString, this->checkString.c_str()));
@@ -1553,6 +1642,11 @@ public:
 	uint checkString_length;
 	bool boundLeft;
 	bool boundRight;
+	bool interval;
+	std::string interval_eq;
+	int interval_num_length;
+	int interval_from;
+	int interval_to;
 };
 
 class ListIP {
@@ -2378,7 +2472,7 @@ public:
 	}
 	void add(const char *name, string content);
 	void add(const char *name, const char *content);
-	void add(const char *name, u_int64_t content);
+	void add(const char *name, int64_t content);
 	void add(const char *name);
 	JsonExport *addArray(const char *name);
 	JsonExport *addObject(const char *name);

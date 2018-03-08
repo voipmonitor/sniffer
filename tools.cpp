@@ -3459,8 +3459,8 @@ void JsonExport::add(const char *name, const char *content) {
 	items.push_back(item);
 }
 
-void JsonExport::add(const char *name, u_int64_t content) {
-	JsonExport_template<u_int64_t> *item = new FILE_LINE(38011) JsonExport_template<u_int64_t>;
+void JsonExport::add(const char *name, int64_t content) {
+	JsonExport_template<int64_t> *item = new FILE_LINE(0) JsonExport_template<int64_t>;
 	item->setTypeItem(_number);
 	item->setName(name);
 	item->setContent(content);
@@ -4381,6 +4381,19 @@ string intToString(u_int64_t i) {
 	ostringstream outStr;
 	outStr << i;
 	return(outStr.str());
+}
+
+string floatToString(double d) {
+	ostringstream outStr;
+	outStr << d;
+	return(outStr.str());
+}
+
+string pointerToString(void *p) {
+	char buff[100];
+	snprintf(buff, sizeof(buff), "%p", p);
+	buff[sizeof(buff) - 1] = 0;
+	return(buff);
 }
 
 bool isJsonObject(string str) {

@@ -29,6 +29,7 @@
 #include "sql_db.h"
 #include "voipmonitor.h"
 #include "tools_fifo_buffer.h"
+#include "record_array.h"
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
 #define MAX_SSRC_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
@@ -222,6 +223,59 @@ struct raws_t {
 	int codec;
 	struct timeval tv;
 	string filename;
+};
+
+enum eCallField {
+	cf_na,
+	cf_callreference,
+	cf_callid,
+	cf_calldate,
+	cf_calldate_num,
+	cf_lastpackettime,
+	cf_duration,
+	cf_connect_duration,
+	cf_caller,
+	cf_called,
+	cf_caller_country,
+	cf_called_country,
+	cf_caller_international,
+	cf_called_international,
+	cf_callername,
+	cf_callerdomain,
+	cf_calleddomain,
+	cf_calleragent,
+	cf_calledagent,
+	cf_callerip,
+	cf_calledip,
+	cf_callerip_country,
+	cf_calledip_country,
+	cf_sipproxies,
+	cf_lastSIPresponseNum,
+	cf_rtp_src,
+	cf_rtp_dst,
+	cf_rtp_src_country,
+	cf_rtp_dst_country,
+	cf_callercodec,
+	cf_calledcodec,
+	cf_src_mosf1,
+	cf_src_mosf2,
+	cf_src_mosAD,
+	cf_dst_mosf1,
+	cf_dst_mosf2,
+	cf_dst_mosAD,
+	cf_src_jitter,
+	cf_dst_jitter,
+	cf_src_loss,
+	cf_dst_loss,
+	cf_src_loss_last10sec,
+	cf_dst_loss_last10sec,
+	cf_id_sensor,
+	cf__max
+};
+
+struct sCallField {
+	eCallField fieldType;
+	const char *fieldName;
 };
 
 class Call_abstract {
@@ -781,14 +835,10 @@ public:
 	 *
 	 * @return lenght of the call in seconds
 	*/
-	int duration() { return last_packet_time - first_packet_time; };
-	int duration_mgcp() { return last_mgcp_connect_packet_time - first_packet_time; };
-	
+	int duration() { return (type == MGCP ? last_mgcp_connect_packet_time : last_packet_time) - first_packet_time; };
 	int connect_duration() { return(connect_time ? duration() - (connect_time - first_packet_time) : 0); };
-	int connect_duration_mgcp() { return(connect_time ? duration_mgcp() - (connect_time - first_packet_time) : 0); };
 	
 	int duration_active() { return(getGlobalPacketTimeS() - first_packet_time); };
-	
 	int connect_duration_active() { return(connect_time ? duration_active() - (connect_time - first_packet_time) : 0); };
 	
 	/**
@@ -978,6 +1028,7 @@ public:
 	
 	bool is_set_proxies();
 	void proxies_undup(set<unsigned int> *proxies_undup);
+	string get_proxies_str();
 
 	void proxy_add(u_int32_t sipproxyip);
 	
@@ -1118,6 +1169,11 @@ public:
 		}
 		return(0);
 	}
+	
+	void getValue(eCallField field, RecordArrayField *rfield);
+	static string getJsonHeader();
+	void getRecordData(RecordArray *rec);
+	string getJsonData();
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -1627,6 +1683,8 @@ public:
 	void mgcpCleanupTransactions(Call *call);
 	void mgcpCleanupStream(Call *call);
 	
+	string getCallTableJson(char *params, bool *zip = NULL);
+	
 	void lock_calls_hash() {
 		unsigned usleepCounter = 0;
 		while(__sync_lock_test_and_set(&this->_sync_lock_calls_hash, 1)) {
@@ -1793,6 +1851,8 @@ int sip_request_name_to_int(const char *requestName, bool withResponse = false);
 const char *sip_request_int_to_name(int requestCode, bool withResponse = false);
 
 string printCallFlags(unsigned int flags);
+eCallField convCallFieldToFieldId(const char *field);
+int convCallFieldToFieldIndex(eCallField field);
 
 
 #endif

@@ -57,6 +57,7 @@
 #include "manager.h"
 #include "srtp.h"
 #include "dtls.h"
+#include "filter_call.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -198,6 +199,53 @@ extern unsigned int glob_ssl_calls;
 extern bool opt_cdr_partition;
 
 extern cBilling *billing;
+
+
+sCallField callFields[] = {
+	{ cf_callreference, "callreference" },
+	{ cf_callid, "callid" },
+	{ cf_calldate, "calldate" },
+	{ cf_calldate_num, "calldate_num" },
+	{ cf_lastpackettime, "lastpackettime" },
+	{ cf_duration, "duration" },
+	{ cf_connect_duration, "connect_duration" },
+	{ cf_caller, "caller" },
+	{ cf_called, "called" },
+	{ cf_caller_country, "caller_country" },
+	{ cf_called_country, "called_country" },
+	{ cf_caller_international, "caller_international" },
+	{ cf_called_international, "called_international" },
+	{ cf_callername, "callername" },
+	{ cf_callerdomain, "callerdomain" },
+	{ cf_calleddomain, "calleddomain" },
+	{ cf_calleragent, "calleragent" },
+	{ cf_calledagent, "calledagent" },
+	{ cf_callerip, "callerip" },
+	{ cf_calledip, "calledip" },
+	{ cf_callerip_country, "callerip_country" },
+	{ cf_calledip_country, "calledip_country" },
+	{ cf_sipproxies, "sipproxies" },
+	{ cf_lastSIPresponseNum, "lastSIPresponseNum" },
+	{ cf_rtp_src, "rtp_src" },
+	{ cf_rtp_dst, "rtp_dst" },
+	{ cf_rtp_src_country, "rtp_src_country" },
+	{ cf_rtp_dst_country, "rtp_dst_country" },
+	{ cf_callercodec, "callercodec" },
+	{ cf_calledcodec, "calledcodec" },
+	{ cf_src_mosf1, "src_mosf1" },
+	{ cf_src_mosf2, "src_mosf2" },
+	{ cf_src_mosAD, "src_mosAD" },
+	{ cf_dst_mosf1, "dst_mosf1" },
+	{ cf_dst_mosf2, "dst_mosf2" },
+	{ cf_dst_mosAD, "dst_mosAD" },
+	{ cf_src_jitter, "src_jitter" },
+	{ cf_dst_jitter, "dst_jitter" },
+	{ cf_src_loss, "src_loss" },
+	{ cf_dst_loss, "dst_loss" },
+	{ cf_src_loss_last10sec, "src_loss_last10sec" },
+	{ cf_dst_loss_last10sec, "dst_loss_last10sec" },
+	{ cf_id_sensor, "id_sensor" }
+};
 
 
 Call_abstract::Call_abstract(int call_type, time_t time) {
@@ -3064,16 +3112,204 @@ bool Call::existsBothDirectionsInSelectedRtpStream() {
 	return(existsCalllerDirection && existsCallledDirection);
 }
 
-size_t write_data(char *ptr, size_t size, size_t nmemb, void *userdata) {
-	std::ostringstream *stream = (std::ostringstream*)userdata;
-	size_t count = size * nmemb;
-	stream->write(ptr, count);
-	return count;
+void Call::getValue(eCallField field, RecordArrayField *rfield) {
+	switch(field) {
+	case cf_callreference:
+		rfield->set(this);
+		break;
+	case cf_callid:
+		rfield->set(call_id.c_str());
+		break;
+	case cf_calldate:
+		rfield->set(calltime(), RecordArrayField::tf_time);
+		break;
+	case cf_calldate_num:
+		rfield->set(calltime());
+		break;
+	case cf_lastpackettime:
+		rfield->set(get_last_packet_time());
+		break;
+	case cf_duration:
+		rfield->set(duration_active());
+		break;
+	case cf_connect_duration:
+		rfield->set(connect_duration_active());
+		break;
+	case cf_caller:
+		rfield->set(caller);
+		break;
+	case cf_called:
+		rfield->set(called);
+		break;
+	case cf_caller_country:
+		rfield->set(getCountryByPhoneNumber(caller, true).c_str());
+		break;
+	case cf_called_country:
+		rfield->set(getCountryByPhoneNumber(called, true).c_str());
+		break;
+	case cf_caller_international:
+		rfield->set(!isLocalByPhoneNumber(caller));
+		break;
+	case cf_called_international:
+		rfield->set(!isLocalByPhoneNumber(called));
+		break;
+	case cf_callername:
+		rfield->set(callername);
+		break;
+	case cf_callerdomain:
+		rfield->set(caller_domain);
+		break;
+	case cf_calleddomain:
+		rfield->set(called_domain);
+		break;
+	case cf_calleragent:
+		rfield->set(a_ua);
+		break;
+	case cf_calledagent:
+		rfield->set(b_ua);
+		break;
+	case cf_callerip:
+		rfield->set(htonl(getSipcallerip()));
+		break;
+	case cf_calledip:
+		rfield->set(htonl(getSipcalledip()));
+		break;
+	case cf_callerip_country:
+		rfield->set(getCountryByIP(htonl(getSipcallerip()), true).c_str());
+		break;
+	case cf_calledip_country:
+		rfield->set(getCountryByIP(htonl(getSipcalledip()), true).c_str());
+		break;
+	case cf_sipproxies:
+		rfield->set(get_proxies_str().c_str());
+		break;
+	case cf_lastSIPresponseNum:
+		rfield->set(lastSIPresponseNum);
+		break;
+	case cf_callercodec:
+		rfield->set(last_callercodec);
+		break;
+	case cf_calledcodec:
+		rfield->set(last_calledcodec);
+		break;
+	case cf_id_sensor:
+		rfield->set(useSensorId);
+		break;
+	default:
+		break;
+	};
+	if(lastcallerrtp) {
+		switch(field) {
+		case cf_rtp_src:
+			rfield->set(htonl(lastcallerrtp->saddr));
+			break;
+		case cf_rtp_dst:
+			rfield->set(htonl(lastcallerrtp->daddr));
+			break;
+		case cf_rtp_src_country:
+			rfield->set(getCountryByIP(htonl(lastcallerrtp->saddr), true).c_str());
+			break;
+		case cf_rtp_dst_country:
+			rfield->set(getCountryByIP(htonl(lastcallerrtp->daddr), true).c_str());
+			break;
+		case cf_src_mosf1:
+			rfield->set(lastcallerrtp->last_interval_mosf1);
+			break;
+		case cf_src_mosf2:
+			rfield->set(lastcallerrtp->last_interval_mosf2);
+			break;
+		case cf_src_mosAD:
+			rfield->set(lastcallerrtp->last_interval_mosAD);
+			break;
+		case cf_src_jitter:
+			rfield->set(round(lastcallerrtp->jitter));
+			break;
+		case cf_src_loss:
+			if(lastcallerrtp->stats.received + lastcallerrtp->stats.lost) {
+				rfield->set((double)lastcallerrtp->stats.lost / (lastcallerrtp->stats.received + lastcallerrtp->stats.lost) * 100.0);
+			}
+			break;
+		case cf_src_loss_last10sec:
+			rfield->set(lastcallerrtp->last_stat_loss_perc_mult10);
+			break;
+		default:
+			break;
+		}
+	}
+	if(lastcalledrtp) {
+		switch(field) {
+		case cf_dst_mosf1:
+			rfield->set(lastcalledrtp->last_interval_mosf1);
+			break;
+		case cf_dst_mosf2:
+			rfield->set(lastcalledrtp->last_interval_mosf2);
+			break;
+		case cf_dst_mosAD:
+			rfield->set(lastcalledrtp->last_interval_mosAD);
+			break;
+		case cf_dst_jitter:
+			rfield->set(round(lastcalledrtp->jitter));
+			break;
+		case cf_dst_loss:
+			if(lastcalledrtp->stats.received + lastcalledrtp->stats.lost) {
+				rfield->set((double)lastcalledrtp->stats.lost / (lastcalledrtp->stats.received + lastcalledrtp->stats.lost) * 100.0);
+			}
+			break;
+		case cf_dst_loss_last10sec:
+			rfield->set(lastcalledrtp->last_stat_loss_perc_mult10);
+			break;
+		default:
+			break;
+		}
+	}
+	if(!rfield->isSet()) {
+		switch(field) {
+		case cf_src_mosf1:
+		case cf_src_mosf2:
+		case cf_src_mosAD:
+		case cf_dst_mosf1:
+		case cf_dst_mosf2:
+		case cf_dst_mosAD:
+			rfield->set(45);
+		default:
+			break;
+		}
+	}
+}
+
+string Call::getJsonHeader() {
+	string header = "[";
+	for(unsigned i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
+		if(i) {
+			header += ",";
+		}
+		header += '"' + string(callFields[i].fieldName) + '"';
+	}
+	header += "]";
+	return(header);
+}
+
+void Call::getRecordData(RecordArray *rec) {
+	for(unsigned i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
+		getValue(callFields[i].fieldType, &rec->fields[i]);
+	}
+}
+
+string Call::getJsonData() {
+	RecordArray rec(sizeof(callFields) / sizeof(callFields[0]));
+	getRecordData(&rec);
+	string data = rec.getJson();
+	rec.free();
+	return(data);
 }
 
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
+	if(sverb.disable_save_call) {
+		return(0);
+	}
+ 
 	if(lastSIPresponseNum && nocdr_for_last_responses_count) {
 		for(int i = 0; i < nocdr_for_last_responses_count; i++) {
 			int lastSIPresponseNum_left = lastSIPresponseNum;
@@ -3255,17 +3491,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(getSipcallerport(), "sipcallerport");
 		cdr.add(sipcalledport_confirmed ? sipcalledport_confirmed : getSipcalledport(), "sipcalledport");
 	}
-	cdr.add(type == MGCP ? duration_mgcp() : duration(), "duration");
+	cdr.add(duration(), "duration");
 	if(progress_time) {
 		cdr.add(progress_time - first_packet_time, "progress_time");
 	}
 	if(first_rtp_time) {
 		cdr.add(first_rtp_time  - first_packet_time, "first_rtp_time");
 	}
-	unsigned connect_duration = 0;
 	if(connect_time) {
-		connect_duration = (type == MGCP ? duration_mgcp() : duration()) - (connect_time - first_packet_time);
-		cdr.add(connect_duration, "connect_duration");
+		cdr.add(connect_duration(), "connect_duration");
 	}
 	if(existsColumns.cdr_last_rtp_from_end && !use_sdp_sendonly) {
 		if(last_rtp_a_packet_time) {
@@ -3713,7 +3947,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		unsigned customer_currency_id = 0;
 		unsigned operator_id = 0;
 		unsigned customer_id = 0;
-		if(billing->billing(calltime(), connect_duration,
+		if(billing->billing(calltime(), connect_duration(),
 				    htonl(getSipcallerip()), htonl(getSipcalledip()),
 				    caller, called,
 				    &operator_price, &customer_price,
@@ -5192,6 +5426,27 @@ void Call::proxies_undup(set<unsigned int> *proxies_undup) {
 	proxies_unlock();
 }
 
+string Call::get_proxies_str() {
+	string sipproxies;
+	if(is_set_proxies()) {
+		stringstream spp;
+		set<unsigned int> proxies_undup;
+		this->proxies_undup(&proxies_undup);
+		set<unsigned int>::iterator iter_undup;
+		for (iter_undup = proxies_undup.begin(); iter_undup != proxies_undup.end(); ) {
+			if(*iter_undup == getSipcalledip()) { ++iter_undup; continue; };
+			string ipstr = inet_ntostring(htonl(*iter_undup));
+			spp << ipstr;
+			++iter_undup;
+			if (iter_undup != proxies_undup.end()) {
+				spp << ',';
+			}
+		}
+		sipproxies = spp.str();
+	}
+	return(sipproxies);
+}
+
 void Call::proxy_add(u_int32_t sipproxyip) {
 	proxies_lock();
 	proxies.push_back(sipproxyip);
@@ -5985,6 +6240,226 @@ Calltable::mgcpCleanupStream(Call *call) {
 	}
 }
 
+string 
+Calltable::getCallTableJson(char *params, bool *zip) {
+	vector<cCallFilter*> callFilters;
+	int limit = -1;
+	int sortByIndex = convCallFieldToFieldIndex(cf_calldate_num);
+	bool sortDesc = true;
+	bool needSensorMap = false;
+	bool needIpMap = false;
+	if(params && *params) {
+		JsonItem jsonParams;
+		jsonParams.parse(params);
+		if(jsonParams.getItem("limit")) {
+			limit = atol(jsonParams.getValue("limit").c_str());
+		}
+		if(jsonParams.getItem("sort_field")) {
+			string sortBy = jsonParams.getValue("sort_field");
+			int _sortByIndex = convCallFieldToFieldIndex(convCallFieldToFieldId(sortBy.c_str()));
+			if(_sortByIndex >= 0) {
+				sortByIndex = _sortByIndex;
+			}
+		}
+		if(jsonParams.getItem("sort_dir")) {
+			string sortDir = jsonParams.getValue("sort_dir");
+			std::transform(sortDir.begin(), sortDir.end(), sortDir.begin(), ::tolower);
+			sortDesc = sortDir.substr(0, 4) == "desc";
+		}
+		if(zip && jsonParams.getItem("zip")) {
+			string zipParam = jsonParams.getValue("zip");
+			std::transform(zipParam.begin(), zipParam.end(), zipParam.begin(), ::tolower);
+			*zip = zipParam == "yes";
+		}
+		if(jsonParams.getItem("sensor_map")) {
+			string sensor_map = jsonParams.getValue("sensor_map");
+			std::transform(sensor_map.begin(), sensor_map.end(), sensor_map.begin(), ::tolower);
+			needSensorMap = sensor_map == "yes";
+		}
+		if(jsonParams.getItem("ip_map")) {
+			string ip_map = jsonParams.getValue("ip_map");
+			std::transform(ip_map.begin(), ip_map.end(), ip_map.begin(), ::tolower);
+			needIpMap = ip_map == "yes";
+		}
+		string filter = jsonParams.getValue("filter");
+		if(!filter.empty()) {
+			if(filter[0] == '[') {
+				JsonItem jsonFilter;
+				jsonFilter.parse(filter);
+				for(unsigned i = 0; i < jsonFilter.getLocalCount(); i++) {
+					JsonItem *item = jsonFilter.getLocalItem(i);
+					string filter = item->getLocalValue();
+					callFilters.push_back(new cCallFilter(filter.c_str()));
+				}
+			} else {
+				callFilters.push_back(new cCallFilter(filter.c_str()));
+			}
+		}
+	} else {
+		if(zip) {
+			*zip = false;
+		}
+	}
+	list<RecordArray> records;
+	u_int32_t counter = 0;
+	map<int32_t, u_int32_t> sensor_map;
+	map<u_int32_t, u_int32_t> ip_src_map;
+	map<u_int32_t, u_int32_t> ip_dst_map;
+	unsigned int now = time(NULL);
+	calltable->lock_calls_listMAP();
+	map<string, Call*>::iterator callMAPIT1;
+	map<sStreamIds2, Call*>::iterator callMAPIT2;
+	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
+		int typeCall = passTypeCall == 0 ? INVITE : MGCP;
+		if(typeCall == INVITE) {
+			callMAPIT1 = calltable->calls_listMAP.begin();
+		} else {
+			callMAPIT2 = calltable->calls_by_stream_callid_listMAP.begin();
+		}
+		while(typeCall == INVITE ? callMAPIT1 != calltable->calls_listMAP.end() : callMAPIT2 != calltable->calls_by_stream_callid_listMAP.end()) {
+			Call *call;
+			if(typeCall == INVITE) {
+				call = (*callMAPIT1).second;
+			} else {
+				call = (*callMAPIT2).second;
+			}
+			extern int opt_blockcleanupcalls;
+			if(!(call->type == REGISTER or call->type == MESSAGE or 
+			     (call->seenbye and call->seenbyeandok) or
+			     (!opt_blockcleanupcalls &&
+			      ((call->destroy_call_at and call->destroy_call_at < now) or 
+			       (call->destroy_call_at_bye and call->destroy_call_at_bye < now) or 
+			       (call->destroy_call_at_bye_confirmed and call->destroy_call_at_bye_confirmed < now))))) {
+				bool okCallFilters = true;
+				if(callFilters.size()) {
+					for(unsigned i = 0; i < callFilters.size(); i++) {
+						if(!callFilters[i]->check(call)) {
+							okCallFilters = false;
+							break;
+						}
+					}
+				}
+				if(okCallFilters) {
+					if(limit != 0) {
+						RecordArray rec(sizeof(callFields) / sizeof(callFields[0]));
+						call->getRecordData(&rec);
+						rec.sortBy = sortByIndex;
+						rec.sortBy2 = convCallFieldToFieldIndex(cf_calldate_num);
+						records.push_back(rec);
+					} else {
+						++counter;
+					}
+					if(needSensorMap) {
+						if(sensor_map.find(call->useSensorId) == sensor_map.end()) {
+							sensor_map[call->useSensorId] = 1;
+						} else {
+							++sensor_map[call->useSensorId];
+						}
+					}
+					if(needIpMap) {
+						if(ip_src_map.find(call->getSipcallerip()) == ip_src_map.end()) {
+							ip_src_map[call->getSipcallerip()] = 1;
+						} else {
+							++ip_src_map[call->getSipcallerip()];
+						}
+						if(ip_dst_map.find(call->getSipcalledip()) == ip_dst_map.end()) {
+							ip_dst_map[call->getSipcalledip()] = 1;
+						} else {
+							++ip_dst_map[call->getSipcalledip()];
+						}
+						if(call->is_set_proxies()) {
+							set<unsigned int> proxies_undup;
+							call->proxies_undup(&proxies_undup);
+							for(set<unsigned int>::iterator iter_undup = proxies_undup.begin(); iter_undup != proxies_undup.end(); ++iter_undup) {
+								if(*iter_undup == call->getSipcalledip()) { 
+									continue;
+								}
+								if(ip_dst_map.find(*iter_undup) == ip_dst_map.end()) {
+									ip_dst_map[*iter_undup] = 1;
+								} else {
+									++ip_dst_map[*iter_undup];
+								}
+							}
+						}
+					}
+				}
+			}
+			if(typeCall == INVITE) {
+				++callMAPIT1;
+			} else {
+				++callMAPIT2;
+			}
+		}
+	}
+	calltable->unlock_calls_listMAP();
+	string table;
+	JsonExport jsonExport;
+	jsonExport.add("total", limit != 0 ? records.size() : counter);
+	jsonExport.add("is_receiver", is_receiver());
+	jsonExport.add("is_server", is_server());
+	jsonExport.add("id_sensor", opt_id_sensor);
+	if(needSensorMap) {
+		JsonExport *jsonExport_sensor_map = jsonExport.addObject("sensors");
+		for(map<int32_t, u_int32_t>::iterator iter = sensor_map.begin(); iter != sensor_map.end(); iter++) {
+			jsonExport_sensor_map->add(intToString(iter->first).c_str(), iter->second);
+		}
+	}
+	if(needIpMap) {
+		JsonExport *jsonExport_ip_src_map = jsonExport.addObject("ip_src");
+		for(map<u_int32_t, u_int32_t>::iterator iter = ip_src_map.begin(); iter != ip_src_map.end(); iter++) {
+			jsonExport_ip_src_map->add(inet_ntostring(htonl(iter->first)).c_str(), iter->second);
+		}
+		JsonExport *jsonExport_ip_dst_map = jsonExport.addObject("ip_dst");
+		for(map<u_int32_t, u_int32_t>::iterator iter = ip_dst_map.begin(); iter != ip_dst_map.end(); iter++) {
+			jsonExport_ip_dst_map->add(inet_ntostring(htonl(iter->first)).c_str(), iter->second);
+		}
+	}
+	string total = jsonExport.getJson();
+	if(limit != 0) {
+		table = "[" + 
+			Call::getJsonHeader();
+		if(params && *params) {
+			table += ",[" + total + "]";
+		}
+		if(sortByIndex >= 0) {
+			records.sort();
+		}
+		list<RecordArray>::iterator iter_rec = sortDesc ? records.end() : records.begin();
+		if(sortDesc) {
+			iter_rec--;
+		}
+		u_int32_t counter = 0;
+		while(counter < records.size() && iter_rec != records.end()) {
+			table += "," + iter_rec->getJson();
+			if(sortDesc) {
+				if(iter_rec != records.begin()) {
+					iter_rec--;
+				} else {
+					break;
+				}
+			} else {
+				iter_rec++;
+			}
+			++counter;
+			if(limit > 0 && counter >= (unsigned)limit) {
+				break;
+			}
+		}
+		table += "]";
+	} else {
+		table = total;
+	}
+	for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); iter_rec++) {
+		iter_rec->free();
+	}
+	if(callFilters.size()) {
+		for(unsigned i = 0; i < callFilters.size(); i++) {
+			delete callFilters[i];
+		}
+	}
+	return(table);
+}
+
 Call*
 Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
 	       pcap_t *handle, int dlt, int sensorId) {
@@ -6080,6 +6555,11 @@ Calltable::add_mgcp(sMgcpRequest *request, time_t time, u_int32_t saddr, unsigne
 
 int
 Calltable::cleanup_calls( time_t currtime ) {
+ 
+	extern int opt_blockcleanupcalls;
+	if(opt_blockcleanupcalls) {
+		return 0;
+	}
 
 #if HAVE_LIBTCMALLOC    
 	MallocExtension::instance()->ReleaseFreeMemory();
@@ -7499,4 +7979,22 @@ string printCallFlags(unsigned int flags) {
 	if(flags & FLAG_HIDEMESSAGE)		outStr << "hidemessage ";
 	if(flags & FLAG_USE_SPOOL_2)		outStr << "use_spool_2 ";
 	return(outStr.str());
+}
+
+eCallField convCallFieldToFieldId(const char *field) {
+	for(unsigned i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
+		if(!strcmp(field, callFields[i].fieldName)) {
+			return(callFields[i].fieldType);
+		}
+	}
+	return(cf_na);
+}
+
+int convCallFieldToFieldIndex(eCallField field) {
+	for(unsigned i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
+		if(callFields[i].fieldType == field) {
+			return(i);
+		}
+	}
+	return(-1);
 }

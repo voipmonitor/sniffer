@@ -5,6 +5,7 @@
 
 
 extern int opt_id_sensor;
+extern int opt_nocdr;
 
 
 cBillingAssignment::cBillingAssignment(eBilingTypeAssignment typeAssignment) {
@@ -970,7 +971,7 @@ cBilling *billing;
 
 
 void initBilling() {
-	if(!opt_enable_billing) {
+	if(opt_nocdr || !opt_enable_billing) {
 		return;
 	}
 	if(!billing) {

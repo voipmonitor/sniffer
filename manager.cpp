@@ -98,6 +98,7 @@ extern volatile bool cloud_activecheck_sshclose;
 int opt_blocktarwrite = 0;
 int opt_blockasyncprocess = 0;
 int opt_blockprocesspacket = 0;
+int opt_blockcleanupcalls = 0;
 int opt_sleepprocesspacket = 0;
 int opt_blockqfile = 0;
 int opt_block_alloc_stack = 0;
@@ -1056,12 +1057,31 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		}
 	} else if(strstr(buf, "listcalls") != NULL) {
 		if(calltable) {
+		 
+		string rslt_data;
+		char *pointer;
+		if((pointer = strchr(buf, '\n')) != NULL) {
+			*pointer = 0;
+		}
+		bool zip = false;
+		char *jsonParams = buf + strlen("listcalls");
+		while(*jsonParams == ' ') {
+			++jsonParams;
+		}
+		rslt_data = calltable->getCallTableJson(jsonParams, &zip);
+		if(sendString(&rslt_data, client, sshchannel, c_client, zip) == -1) {
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		 
+		/* obsolete
+		
 		//list<Call*>::iterator call;
 		map<string, Call*>::iterator callMAPIT;
 		Call *call;
 		char outbuf[2048];
 		string rslt_data;
-		/* headers */
+		// headers
 		snprintf(outbuf, sizeof(outbuf), 
 			 "%s",
 			(string(
@@ -1144,15 +1164,6 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 					}
 					sipproxies = spp.str();
 				}
-				/* 
-				 * caller 
-				 * callername
-				 * called
-				 * calldate
-				 * duration
-				 * callerip htonl(sipcallerip)
-				 * sipcalledip htonl(sipcalledip)
-				*/
 				//XXX: escape " or replace it to '
 				snprintf(outbuf, sizeof(outbuf),
 					 ",[\"%p\", "
@@ -1243,6 +1254,9 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+		
+		*/
+		
 		}
 		return 0;
 	} else if(strstr(buf, "is_register_new") != NULL) {
@@ -2971,6 +2985,10 @@ getwav:
 		opt_blockprocesspacket = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblockprocesspacket") != NULL) {
 		opt_blockprocesspacket = 0;
+	} else if(buf[0] == 'b' and strstr(buf, "blockcleanupcalls") != NULL) {
+		opt_blockcleanupcalls = 1;
+	} else if(buf[0] == 'u' and strstr(buf, "unblockcleanupcalls") != NULL) {
+		opt_blockcleanupcalls = 0;
 	} else if(buf[0] == 's' and strstr(buf, "sleepprocesspacket") != NULL) {
 		opt_sleepprocesspacket = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unsleepprocesspacket") != NULL) {

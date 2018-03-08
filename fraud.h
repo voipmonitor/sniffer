@@ -1079,8 +1079,9 @@ class cRegisterFilterFraud : public cRegisterFilter {
 public:
 	cRegisterFilterFraud(char *filter) 
 	 : cRegisterFilter(filter) {
+		setUseRecordArray(false);
 	}
-	u_int64_t getField_int(void *rec, unsigned registerFieldIndex) {
+	int64_t getField_int(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case rf_sipcallerip:
 			return(htonl(((sFraudRegisterInfo*)rec)->sipcallerip));
@@ -1114,8 +1115,6 @@ public:
 		}
 		return("");
 	}
-public:
-	list<cRegisterFilterItems> fItems;
 };
 
 

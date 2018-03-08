@@ -75,6 +75,7 @@ struct sVerbose {
 	int disable_process_packet_in_packetbuffer;
 	int disable_push_to_t2_in_packetbuffer;
 	int disable_save_packet;
+	int disable_save_call;
 	int disable_read_rtp;
 	int thread_create;
 	int timezones;
