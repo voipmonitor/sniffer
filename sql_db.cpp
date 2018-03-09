@@ -975,6 +975,10 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				int arg = 0;
 				mysql_options(this->hMysql, MYSQL_SECURE_AUTH, &arg);
 			}
+			extern unsigned int opt_mysql_connect_timeout;
+			if(opt_mysql_connect_timeout) {
+				mysql_options(this->hMysql, MYSQL_OPT_CONNECT_TIMEOUT, &opt_mysql_connect_timeout);
+			}
 			this->hMysqlConn = mysql_real_connect(
 						this->hMysql,
 						conn_server_ip.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,

@@ -345,6 +345,7 @@ char opt_tcpreassembly_ssl_log[1024];
 char opt_tcpreassembly_sip_log[1024];
 int opt_allow_zerossrc = 0;
 int opt_convert_dlt_sll_to_en10 = 0;
+unsigned int opt_mysql_connect_timeout = 60;
 int opt_mysqlcompress = 1;
 int opt_mysql_enable_transactions = 0;
 int opt_mysql_enable_transactions_cdr = 0;
@@ -5648,6 +5649,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42086) cConfigItem_string("mysql_timezone", opt_mysql_timezone, sizeof(opt_mysql_timezone)));
 				addConfigItem(new FILE_LINE(42087) cConfigItem_yesno("autoload_from_sqlvmexport", &opt_autoload_from_sqlvmexport));
 				expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("mysql_connect_timeout", &opt_mysql_connect_timeout));
 					addConfigItem(new FILE_LINE(42088) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
@@ -8587,6 +8589,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sqlcdrsipresptable", NULL)) ||
 	   (value = ini.GetValue("general", "sqlcdr_sipresp_table", NULL))) {
 		strncpy(sql_cdr_sip_response_table, value, sizeof(sql_cdr_sip_response_table));
+	}
+	if((value = ini.GetValue("general", "mysql_connect_timeout", NULL))) {
+		opt_mysql_connect_timeout = atoi(value);
 	}
 	if((value = ini.GetValue("general", "mysqlcompress", NULL))) {
 		opt_mysqlcompress = yesno(value);
