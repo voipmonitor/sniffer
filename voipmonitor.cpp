@@ -907,6 +907,7 @@ const char *anotherInstanceMessage = "another voipmonitor instance with the same
 
 int ownPidStart;
 int ownPidFork;
+char ownPidStart_str[10];
 char ownPidFork_str[10];
 
 
@@ -2151,7 +2152,7 @@ void reload_capture_rules() {
 }
 
 #ifdef BACKTRACE
-void bt_sighandler_simple(int sig, siginfo_t *info, void *secret)
+void bt_sighandler(int sig, siginfo_t *info, void *secret)
 {
 	void *crash_pnt = NULL;
 	if(secret) {
@@ -2202,7 +2203,15 @@ void bt_sighandler_simple(int sig, siginfo_t *info, void *secret)
 			}
 		#endif
 		write(fh, " ", 1);
-		write(fh, ownPidFork_str, strlen(ownPidFork_str));
+		if(ownPidFork) {
+			write(fh, ownPidFork_str, strlen(ownPidFork_str));
+		} else {
+			write(fh, ownPidStart_str, strlen(ownPidStart_str));
+		}
+		extern bool notEnoughFreeMemory;
+		if(notEnoughFreeMemory) {
+			write(fh, " nefm", 5);
+		}
 		write(fh, "\n", 1);
 		if(crash_pnt) {
 			write(fh, "[--] [0x", 8);
@@ -2231,104 +2240,6 @@ void bt_sighandler_simple(int sig, siginfo_t *info, void *secret)
 	signal(sig, SIG_DFL);
 	kill(getpid(), sig);
 }
-#ifndef USE_SIGCONTEXT
-void bt_sighandler(int sig, siginfo_t *info, void *secret)
-#else
-void bt_sighandler(int sig, struct sigcontext ctx)
-#endif
-{
-
-        void *trace[16];
-        char **messages = (char **)NULL;
-        int i, trace_size = 0;
-
-        signal_def *d = NULL;
-        for (i = 0; i < (int)(sizeof(signal_data) / sizeof(signal_def)); i++)
-                if (sig == signal_data[i].id)
-                        { d = &signal_data[i]; break; }
-        if (d) 
-                syslog(LOG_ERR, "Got signal 0x%02X (%s): %s\n", sig, signal_data[i].name, signal_data[i].description);
-        else   
-                syslog(LOG_ERR, "Got signal 0x%02X\n", sig);
-
-        #ifndef USE_SIGCONTEXT
-
-                void *pnt = NULL;
-                #if defined(__x86_64__)
-                        ucontext_t* uc = (ucontext_t*) secret;
-                        pnt = (void*) uc->uc_mcontext.gregs[REG_RIP] ;
-                #elif defined(__hppa__)
-                        ucontext_t* uc = (ucontext_t*) secret;
-                        pnt = (void*) uc->uc_mcontext.sc_iaoq[0] & ~0×3UL ;
-                #elif (defined (__ppc__)) || (defined (__powerpc__))
-                        ucontext_t* uc = (ucontext_t*) secret;
-                        pnt = (void*) uc->uc_mcontext.regs->nip ;
-                #elif defined(__sparc__)
-                struct sigcontext* sc = (struct sigcontext*) secret;
-                        #if __WORDSIZE == 64
-                                pnt = (void*) scp->sigc_regs.tpc ;
-                        #else  
-                                pnt = (void*) scp->si_regs.pc ;
-                        #endif
-                #elif defined(__i386__)
-                        ucontext_t* uc = (ucontext_t*) secret;
-                        pnt = (void*) uc->uc_mcontext.gregs[REG_EIP] ;
-                #endif
-        /* potentially correct for other archs:
-         * alpha: ucp->m_context.sc_pc
-         * arm: ucp->m_context.ctx.arm_pc
-         * ia64: ucp->m_context.sc_ip & ~0×3UL
-         * mips: ucp->m_context.sc_pc
-         * s390: ucp->m_context.sregs->regs.psw.addr
-         */
-
-        if (sig == SIGSEGV)
-                syslog(LOG_ERR,"Faulty address is %p, called from %p\n", info->si_addr, pnt);
-
-        /* The first two entries in the stack frame chain when you
-         * get into the signal handler contain, respectively, a
-         * return address inside your signal handler and one inside
-         * sigaction() in libc. The stack frame of the last function
-         * called before the signal (which, in case of fault signals,
-         * also is the one that supposedly caused the problem) is lost.
-         */
-
-        /* the third parameter to the signal handler points to an
-         * ucontext_t structure that contains the values of the CPU
-         * registers when the signal was raised.
-         */
-        trace_size = backtrace(trace, 16);
-        /* overwrite sigaction with caller's address */
-        trace[1] = pnt;
-
-        #else
-
-        if (sig == SIGSEGV)
-                syslog(LOG_ERR("Faulty address is %p, called from %p\n",
-                        ctx.cr2, ctx.eip);
-
-        /* An undocumented parameter of type sigcontext that is passed
-         * to the signal handler (see the UNDOCUMENTED section in man
-         * sigaction) and contains, among other things, the value of EIP
-         * when the signal was raised. Declared obsolete in adherence
-         * with POSIX.1b since kernel version 2.2
-         */
-
-        trace_size = backtrace(trace, 16);
-        /* overwrite sigaction with caller's address */
-        trace[1] = (void *)ctx.eip;
-        #endif
-
-        messages = backtrace_symbols(trace, trace_size);
-        /* skip first stack frame (points here) */
-        syslog(LOG_ERR, "[bt] Execution path:\n");
-        for (i=1; i<trace_size; ++i)
-                syslog(LOG_ERR, "[bt] %s\n", messages[i]);
-
-	/* those two lines causes core dump generation */
-	signal(sig, SIG_DFL);
-	kill(getpid(), sig);
-}
 #endif
 
 void store_crash_bt_to_db() {
@@ -2343,13 +2254,18 @@ void store_crash_bt_to_db() {
 		int sensor_id;
 		char arch[20];
 		int pid;
+		char flags_str[100] = "";
+		vector<string> flags;
 		bool header_ok = false;
 		vector<string> bt;
 		vector<string> bt_gdb;
 		while(fgets(rowbuff, sizeof(rowbuff), crash_bt_fh)) {
 			if(!countRows) {
-				if(sscanf(rowbuff, "%s sensor %i %s %i", version, &sensor_id, arch, &pid) == 4) {
+				if(sscanf(rowbuff, "%s sensor %i %s %i %s", version, &sensor_id, arch, &pid, flags_str) >= 4) {
 					header_ok = true;
+					if(flags_str[0]) {
+						flags = split(flags_str, ',');
+					}
 				}
 			} else if(!strncmp(rowbuff, "[bt]", 4) ||
 				  !strncmp(rowbuff, "[--]", 4)) {
@@ -2400,6 +2316,8 @@ void store_crash_bt_to_db() {
 								}
 							}
 						}
+					} else {
+						flags.push_back("missing_addr2line");
 					}
 					system((string("which gdb > ") + tmpOut + " 2>/dev/null").c_str());
 					vector<string> gdb_check_rows;
@@ -2416,7 +2334,7 @@ void store_crash_bt_to_db() {
 							       "set pagination off\n"
 							       "set logging file " + string(tmpOut) + "\n"
 							       "set logging on\n"
-							       "p \"*** PID ***\"\np ownPidFork\n"
+							       "p \"*** PID ***\"\np ownPidFork?ownPidFork:ownPidStart\n"
 							       "p \"*** BT ***\"\nbt full\n"
 							       "p \"*** INFO THREADS\"\ninfo threads\n"
 							       "p \"*** ALL THREADS BT ***\"\nthread apply all bt full\n"
@@ -2447,6 +2365,8 @@ void store_crash_bt_to_db() {
 								}
 							}
 						}
+					} else {
+						flags.push_back("missing_gdb");
 					}
 				}
 			}
@@ -2456,6 +2376,19 @@ void store_crash_bt_to_db() {
 				string("voipmonitor version: ") + version + "\n" +
 				"sensor_id: " + intToString(sensor_id) + "\n" +
 				"arch: " + arch + "\n\n";
+			if(flags.size()) {
+				crash_bt_content += "flags:\n";
+				for(unsigned i = 0; i < flags.size(); i++) {
+					if(flags[i] == "nefm") {
+						crash_bt_content += "not enough free memory\n";
+					} else if(flags[i] == "missing_addr2line") {
+						crash_bt_content += "missing addr2line\n";
+					} else if(flags[i] == "missing_gdb") {
+						crash_bt_content += "missing gdb\n";
+					}
+				}
+				crash_bt_content += "\n";
+			}
 			for(unsigned i = 0; i < bt.size(); i++) {
 				crash_bt_content += bt[i] + "\n";
 			}
@@ -2473,9 +2406,13 @@ void store_crash_bt_to_db() {
 								`id` int NOT NULL AUTO_INCREMENT,\
 								`created_at` datetime,\
 								`sent_at` datetime,\
-								`crash_bt` blob,\
+								`crash_bt` mediumblob,\
 							PRIMARY KEY (`id`)\
 						) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+				} else {
+					if(sqlDb->getTypeColumn("crash_bt", "crash_bt") == "blob") {
+						sqlDb->query("ALTER TABLE crash_bt MODIFY COLUMN crash_bt mediumblob");
+					}
 				}
 				SqlDb_row row;
 				row.add(sqlDateTimeString(GetFileCreateTime(opt_crash_bt_filename)), "created_at");
@@ -2714,6 +2651,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	ownPidStart = getpid();
+	strcpy(ownPidStart_str, intToString(ownPidStart).c_str());
 	
 	if(opt_fork && !is_read_from_file() && configfile[0]) {
 		bool _existsAnotherInstance = false;
@@ -2922,33 +2860,17 @@ int main(int argc, char *argv[]) {
 	signal(SIGTERM,sigterm_handler);
 	signal(SIGCHLD,sigchld_handler);
 #ifdef BACKTRACE
-	if(opt_fork && !is_read_from_file() && !is_set_gui_params()) {
-		if(sverb.enable_bt_sighandler) {
-			/* Install our signal handler */
-			struct sigaction sa;
+	if((opt_fork || sverb.enable_bt_sighandler) && !is_read_from_file() && !is_set_gui_params()) {
+		struct sigaction sa;
 
-			sa.sa_sigaction = bt_sighandler;
-			sigemptyset (&sa.sa_mask);
-			sa.sa_flags = SA_RESTART | SA_SIGINFO;
+		sa.sa_sigaction = bt_sighandler;
+		sigemptyset (&sa.sa_mask);
+		sa.sa_flags = SA_RESTART | SA_SIGINFO;
 
-			sigaction(SIGSEGV, &sa, NULL);
-			sigaction(SIGBUS, &sa, NULL);
-			sigaction(SIGILL, &sa, NULL);
-			sigaction(SIGFPE, &sa, NULL);
-			//sigaction(SIGUSR1, &sa, NULL);
-			//sigaction(SIGUSR2, &sa, NULL);
-		} else {
-			struct sigaction sa;
-
-			sa.sa_sigaction = bt_sighandler_simple;
-			sigemptyset (&sa.sa_mask);
-			sa.sa_flags = SA_RESTART | SA_SIGINFO;
-
-			sigaction(SIGSEGV, &sa, NULL);
-			sigaction(SIGBUS, &sa, NULL);
-			sigaction(SIGILL, &sa, NULL);
-			sigaction(SIGFPE, &sa, NULL);
-		}
+		sigaction(SIGSEGV, &sa, NULL);
+		sigaction(SIGBUS, &sa, NULL);
+		sigaction(SIGILL, &sa, NULL);
+		sigaction(SIGFPE, &sa, NULL);
 	}
 #endif
 

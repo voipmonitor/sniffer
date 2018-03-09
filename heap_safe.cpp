@@ -32,6 +32,7 @@ volatile int memoryStat_sync;
 volatile u_int16_t threadRecursion[65536];
 void* threadStack[65536][10];
 u_int16_t threadStackSize[65536];
+bool notEnoughFreeMemory = false;
 
 sFileLine AllocFileLines[] = {
 #include "alloc_file_lines"
@@ -439,6 +440,7 @@ void * operator new(size_t sizeOfObject) {
 			    alloc_memory_stat_quick(sizeOfObject) :
 			    _heapsafe_alloc(sizeOfObject);
 	if(!newPointer) {
+		notEnoughFreeMemory = true;
 		syslog(LOG_ERR, "allocation (operator new) failed - size %lu", sizeOfObject);
 	}
 	return(newPointer);
@@ -456,6 +458,7 @@ void * operator new[](size_t sizeOfObject) {
 			    alloc_memory_stat_quick(sizeOfObject) :
 			    _heapsafe_alloc(sizeOfObject);
 	if(!newPointer) {
+		notEnoughFreeMemory = true;
 		syslog(LOG_ERR, "allocation (operator new[]) failed - size %lu", sizeOfObject);
 	}
 	return(newPointer);
@@ -473,6 +476,7 @@ void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_ty
 			    alloc_memory_stat_quick(sizeOfObject, alloc_number) :
 			    _heapsafe_alloc(sizeOfObject);
 	if(!newPointer) {
+		notEnoughFreeMemory = true;
 		syslog(LOG_ERR, "allocation (operator new) failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
 	}
 	return(newPointer);
@@ -490,6 +494,7 @@ void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_
 			    alloc_memory_stat_quick(sizeOfObject, alloc_number) :
 			    _heapsafe_alloc(sizeOfObject);
 	if(!newPointer) {
+		notEnoughFreeMemory = true;
 		syslog(LOG_ERR, "allocation (operator new[]) failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
 	}
 	return(newPointer);

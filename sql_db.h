@@ -125,6 +125,8 @@ public:
 	bool existsTable(string table) { return(existsTable(table.c_str())); }
 	virtual bool existsColumn(const char *table, const char *column) = 0;
 	bool existsColumn(string table, string column) { return(existsColumn(table.c_str(), column.c_str())); }
+	virtual string getTypeColumn(const char *table, const char *column, bool toLower = true) = 0;
+	string getTypeColumn(string table, string column, bool toLower = true) { return(getTypeColumn(table.c_str(), column.c_str(), toLower)); }
 	virtual bool existsPartition(const char *table, const char *partition, bool useCache = true) = 0;
 	bool existsPartition(string table, string partition, bool useCache) { return(existsPartition(table.c_str(), partition.c_str(), useCache)); }
 	bool existsDayPartition(string table, unsigned addDaysToNow, bool useCache = true);
@@ -315,6 +317,7 @@ public:
 	bool existsDatabase();
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
+	string getTypeColumn(const char *table, const char *column, bool toLower = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table);
 	bool isOldVerPartition(const char *table);
@@ -442,6 +445,7 @@ public:
 	bool existsDatabase();
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
+	string getTypeColumn(const char *table, const char *column, bool toLower = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table);
 	int getIndexField(string fieldName);

@@ -1527,6 +1527,19 @@ bool SqlDb_mysql::existsColumn(const char *table, const char *column) {
 	return(countRow > 0);
 }
 
+string SqlDb_mysql::getTypeColumn(const char *table, const char *column, bool toLower) {
+	this->query(string("show columns from ") + table + " like '" + column + "'");
+	SqlDb_row cdr_struct_row = this->fetchRow();
+	if(cdr_struct_row) {
+		string type = cdr_struct_row["type"];
+		if(toLower) {
+			std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+		}
+		return(type);
+	}
+	return("");
+}
+
 bool SqlDb_mysql::existsPartition(const char *table, const char *partition, bool useCache) {
 	string partitions;
 	if(useCache) {
@@ -1875,6 +1888,11 @@ bool SqlDb_odbc::existsDatabase() {
 bool SqlDb_odbc::existsColumn(const char */*table*/, const char */*column*/) {
 	// TODO
 	return(false);
+}
+
+string SqlDb_odbc::getTypeColumn(const char */*table*/, const char */*column*/, bool /*toLower*/) {
+	// TODO
+	return("");
 }
 
 bool SqlDb_odbc::existsPartition(const char *table, const char *partition, bool useCache) {
