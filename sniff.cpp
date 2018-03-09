@@ -2591,6 +2591,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	int lastSIPresponseNum = 0;
 	bool existInviteSdaddr = false;
 	bool reverseInviteSdaddr = false;
+	bool reverseInviteConfirmSdaddr = false;
 	int iscaller = -1;
 	int iscalled = -1;
 	bool detectCallerd = false;
@@ -3084,6 +3085,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->header_pt->ts);
 						call->onCall_2XX = true;
 					}
+					for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
+						if(packetS->saddr == iter->saddr && packetS->daddr == iter->daddr) {
+							reverseInviteConfirmSdaddr = true;
+						}
+					}
 				} else if(cseq_method == CANCEL &&
 					  call->cancelcseq[0] && strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
 					process_packet__parse_custom_headers(call, packetS);
@@ -3357,7 +3363,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
 	} else if(strcasestr(contenttypestr, "application/sdp")) {
-		process_sdp(call, packetS, iscaller, contenttype_data_ptr, packetS->get_callid());
+		process_sdp(call, packetS, 
+			    (reverseInviteSdaddr || reverseInviteConfirmSdaddr) && iscaller >= 0 ? !iscaller : iscaller, 
+			    contenttype_data_ptr, packetS->get_callid());
 	} else if(strcasestr(contenttypestr, "multipart/mixed")) {
 		s = contenttype_data_ptr;
 		while(1) {
@@ -3367,7 +3375,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(s2 and l > 0) {
 				//Content-Type found try if it is SDP 
 				if(l > 0 && strcasestr(s2, "application/sdp")){
-					process_sdp(call, packetS, iscaller, s2, packetS->get_callid());
+					process_sdp(call, packetS, 
+						    (reverseInviteSdaddr || reverseInviteConfirmSdaddr) && iscaller >= 0 ? !iscaller : iscaller, 
+						    s2, packetS->get_callid());
 					break;	// stop searching
 				} else {
 					// it is not SDP continue searching for another content-type 
