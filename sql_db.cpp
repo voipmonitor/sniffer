@@ -83,6 +83,8 @@ extern char odbc_user[256];
 extern char odbc_password[256];
 extern char odbc_driver[256];
 
+extern int opt_nocdr;
+
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 
@@ -939,7 +941,7 @@ SqlDb_mysql::~SqlDb_mysql() {
 }
 
 bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
-	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
+	if(opt_nocdr || isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		return(true);
 	}
 	this->connecting = true;
@@ -1246,6 +1248,9 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		} else {
 			return(this->queryByRemoteSocket(preparedQuery, callFromStoreProcessWithFixDeadlock, dropProcQuery));
 		}
+	}
+	if(opt_nocdr) {
+		return(true);
 	}
 	u_int32_t startTimeMS = getTimeMS();
 	if(this->hMysqlConn) {
@@ -2224,7 +2229,6 @@ void MySqlStore_process::store() {
 }
 
 void MySqlStore_process::_store(string beginProcedure, string endProcedure, string queries) {
-	extern int opt_nocdr;
 	if(opt_nocdr) {
 		return;
 	}
@@ -7481,7 +7485,6 @@ void cLogSensor::_end() {
 }
 
 void cLogSensor::_save() {
-	extern int opt_nocdr;
 	if(!items.size()) {
 		return;
 	}
