@@ -2209,8 +2209,20 @@ void bt_sighandler(int sig, siginfo_t *info, void *secret)
 			write(fh, ownPidStart_str, strlen(ownPidStart_str));
 		}
 		extern bool notEnoughFreeMemory;
-		if(notEnoughFreeMemory) {
-			write(fh, " nefm", 5);
+		if(notEnoughFreeMemory || terminating) {
+			write(fh, " ", 1);
+			unsigned counterFlags = 0;
+			if(notEnoughFreeMemory) {
+				write(fh, "nefm", 4);
+				++counterFlags;
+			}
+			if(terminating) {
+				if(counterFlags) {
+					write(fh, ",", 1);
+				}
+				write(fh, "term", 4);
+				++counterFlags;
+			}
 		}
 		write(fh, "\n", 1);
 		if(crash_pnt) {
@@ -2337,9 +2349,9 @@ void store_crash_bt_to_db() {
 							       "p \"*** PID ***\"\np ownPidFork?ownPidFork:ownPidStart\n"
 							       "p \"*** BT ***\"\nbt full\n"
 							       "p \"*** INFO THREADS\"\ninfo threads\n"
-							       "p \"*** ALL THREADS BT ***\"\nthread apply all bt full\n"
 							       "p \"*** VARIABLES ***\"\n"
 							       "p \"terminating\"\np terminating\n"
+							       "p \"*** ALL THREADS BT ***\"\nthread apply all bt full\n"
 							       "quit\n"
 							       "' | gdb /usr/local/sbin/voipmonitor " + coredump + " 2>&1 >/dev/null"
 							       ).c_str());
@@ -2381,6 +2393,8 @@ void store_crash_bt_to_db() {
 				for(unsigned i = 0; i < flags.size(); i++) {
 					if(flags[i] == "nefm") {
 						crash_bt_content += "not enough free memory\n";
+					} else if(flags[i] == "term") {
+						crash_bt_content += "terminating\n";
 					} else if(flags[i] == "missing_addr2line") {
 						crash_bt_content += "missing addr2line\n";
 					} else if(flags[i] == "missing_gdb") {
