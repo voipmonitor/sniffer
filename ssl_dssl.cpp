@@ -7,7 +7,7 @@
 #include "ssl_dssl.h"
 
 
-#ifdef HAVE_OPENSSL101
+#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 
 
 extern map<d_u_int32_t, string> ssl_ipport;
@@ -390,42 +390,42 @@ void cSslDsslSessions::term() {
 }
 
 
-#endif //HAVE_OPENSSL101
+#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 
 
 void ssl_dssl_init() {
-	#ifdef HAVE_OPENSSL101
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	SslDsslSessions = new FILE_LINE(0) cSslDsslSessions;
 	extern bool init_lib_gcrypt();
 	init_lib_gcrypt();
-	#endif //HAVE_OPENSSL101
+	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
 
 void ssl_dssl_clean() {
-	#ifdef HAVE_OPENSSL101
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	if(SslDsslSessions) {
 		delete SslDsslSessions;
 		SslDsslSessions = NULL;
 	}
-	#endif //HAVE_OPENSSL101
+	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
 
 
 void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts) {
-	#ifdef HAVE_OPENSSL101
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	SslDsslSessions->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts);
-	#endif //HAVE_OPENSSL101
+	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
 
 void end_decrypt_ssl_dssl(unsigned int saddr, unsigned int daddr, int sport, int dport) {
-	#ifdef HAVE_OPENSSL101
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	SslDsslSessions->destroySession(saddr, daddr, sport, dport);
 	SslDsslSessions->clientRandomCleanup();
-	#endif //HAVE_OPENSSL101
+	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
 
 bool ssl_parse_client_random(u_char *data, unsigned datalen) {
-	#ifdef HAVE_OPENSSL101
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	JsonItem jsonData;
 	jsonData.parse(string((char*)data, datalen).c_str());
 	string sessionid = jsonData.getValue("sessionid");
@@ -438,6 +438,6 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 		hexdecode(master_secret, mastersecret.c_str(), SSL3_MASTER_SECRET_SIZE);
 		SslDsslSessions->clientRandomSet(client_random, master_secret);
 	}
-	#endif //HAVE_OPENSSL101
+	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 	return(false);
 }

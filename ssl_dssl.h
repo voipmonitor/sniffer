@@ -9,7 +9,7 @@
 #include <vector>
 
 
-#ifdef HAVE_OPENSSL101
+#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 
 
 #include <openssl/ssl.h>
@@ -143,7 +143,7 @@ private:
 };
 
 
-#endif //HAVE_OPENSSL101
+#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 
 
 void ssl_dssl_init();

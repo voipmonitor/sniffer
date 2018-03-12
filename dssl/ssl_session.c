@@ -32,6 +32,8 @@
 #include <openssl/evp.h>
 #include <gcrypt.h>
 
+#include "../config.h"
+
 void DSSL_SessionInit( DSSL_Env* env, DSSL_Session* s, DSSL_ServerInfo* si )
 {
 	_ASSERT( s );
@@ -251,6 +253,7 @@ int ssls_decode_master_secret( DSSL_Session* sess )
 		
 		if((sess->flags & (SSF_TLS_SERVER_EXTENDED_MASTER_SECRET|SSF_TLS_CLIENT_EXTENDED_MASTER_SECRET)) == (SSF_TLS_SERVER_EXTENDED_MASTER_SECRET|SSF_TLS_CLIENT_EXTENDED_MASTER_SECRET) &&
 		   sess->handshake_data) {
+			#ifdef HAVE_LIBGNUTLS
 			gcry_md_open(&gcry_h, !strcmp(suite->digest, LN_sha384) ? GCRY_MD_SHA384 : GCRY_MD_SHA256, GCRY_MD_FLAG_SECURE);
 			gcry_md_write(gcry_h, sess->handshake_data, sess->handshake_data_size);
 			gcry_algo = gcry_md_get_algo(gcry_h);
@@ -258,6 +261,7 @@ int ssls_decode_master_secret( DSSL_Session* sess )
 			gcry_data = malloc(gcry_len);
 			memcpy(gcry_data, gcry_md_read(gcry_h,  gcry_algo), gcry_len);
 			gcry_md_close(gcry_h);
+			#endif
 			rc = tls12_PRF( EVP_get_digestbyname( suite->digest ), sess->PMS, SSL_MAX_MASTER_KEY_LENGTH, 
 						"extended " TLS_MD_MASTER_SECRET_CONST,
 						gcry_data, gcry_len, 

@@ -73,12 +73,14 @@ public:
 			#endif
 		}
 		~sDecrypt() {
+			#if HAVE_LIBGNUTLS
 			if(cipher) {
 				gcry_cipher_close(cipher);
 			}
 			if(md) {
 				gcry_md_close(md);
 			}
+			#endif
 			#if HAVE_LIBSRTP
 			if(srtp_ctx) {
 				free(srtp_ctx);

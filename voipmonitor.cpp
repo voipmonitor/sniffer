@@ -10079,6 +10079,7 @@ bool init_lib_gcrypt() {
 		return(_init_lib_gcrypt_rslt);
 	}
 	bool rslt = false;
+	#ifdef HAVE_LIBGNUTLS
 	gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
 	if(gcry_check_version(GCRYPT_VERSION)) {
 		gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
@@ -10089,6 +10090,7 @@ bool init_lib_gcrypt() {
 	} else {
 		syslog(LOG_ERR, "libgcrypt version mismatch");
 	}
+	#endif
 	_init_lib_gcrypt_rslt = rslt;
 	__sync_lock_release(&_init_lib_gcrypt_sync);
 	return(_init_lib_gcrypt_rslt);
