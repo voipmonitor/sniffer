@@ -1,3 +1,14 @@
+22.1 12.03.2018
+===============
+- fix caller/called direction in call process_sdp for reverse invite and respose from reverse invite [VS-764]
+- fix config for advanced register options
+- better description for create_old_partitions_from, create_old_partitions options
+- active calls - add support for filters and groups
+- add configuration parameter mysql_connect_timeout default is 60 [s]
+- remove old bt sighndler, add information 'not enough free memory' to crash log, change field for store crash log from blob to mediumblob, enhance crashlog
+- suppress run SqlDb_mysql::connect and SqlDb_mysql::query if set opt_nocdr
+
+
 22.0.2 06.03.2018
 =================
 - remove empty spool directory in mode 'cleanspool_use_files = no'
