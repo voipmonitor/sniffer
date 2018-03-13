@@ -365,8 +365,6 @@ public:
 				      const char *masterCalldateColumn, const char *slaveCalldateColumn,
 				      u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
 				      unsigned long limit, bool descDir = false);
-	void copyFromSourceGuiTables(SqlDb_mysql *sqlDbSrc);
-	void copyFromSourceGuiTable(SqlDb_mysql *sqlDbSrc, const char *tableName);
 	vector<string> getSourceTables(int typeTables = tt_all, int typeTables2 = tt2_na);
 	string getTypeDb() {
 		return("mysql");

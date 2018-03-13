@@ -4924,28 +4924,8 @@ void test() {
 			save_packet(param[0].c_str(), param[1].c_str(), atoi(param[2].c_str()),
 				    atoi(param[3].c_str()), atoi(param[4].c_str()));
 		}
-	} break;
-	case 10:
-		{
-		SqlDb *sqlDb = createSqlObject();
-		if(!sqlDb->connect()) {
-			delete sqlDb;
-		}
-		SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
-		SqlDb *sqlDbSrc = new FILE_LINE(42057) SqlDb_mysql();
-		sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
-					       opt_database_backup_from_mysql_user,
-					       opt_database_backup_from_mysql_password,
-					       opt_database_backup_from_mysql_database,
-					       opt_database_backup_from_mysql_port);
-		if(sqlDbSrc->connect()) {
-			SqlDb_mysql *sqlDbSrc_mysql = dynamic_cast<SqlDb_mysql*>(sqlDbSrc);
-			sqlDb_mysql->copyFromSourceGuiTables(sqlDbSrc_mysql);
-		}
-		delete sqlDbSrc;
-		delete sqlDb;
-		}
-		return;
+		} 
+		break;
 	case 88:
 		setAllocNumb();
 		return;
