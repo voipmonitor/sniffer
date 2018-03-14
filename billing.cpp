@@ -550,6 +550,7 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 	cPeakDefinition peak_definition = this->peak_definition;
 	if(numbers.size()) {
 		bool findNumber = false;
+		unsigned useNumberPrefixLength = 0;
 		for(unsigned pass = 0; pass < 2 && !findNumber; pass++) {
 			for(list<cBillingRuleNumber>::iterator iter = numbers.begin(); iter != numbers.end(); iter++) {
 				if(pass == 0 ?
@@ -558,7 +559,8 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 				     (number_normalized && iter->number_fixed == number_normalized)) :
 				    iter->number_prefix.length() &&
 				    (iter->number_prefix == string(number, iter->number_prefix.length()) ||
-				     (number_normalized && iter->number_prefix == string(number_normalized, iter->number_prefix.length())))) {
+				     (number_normalized && iter->number_prefix == string(number_normalized, iter->number_prefix.length()))) &&
+				    (!useNumberPrefixLength || iter->number_prefix.length() > useNumberPrefixLength)) {
 					price = iter->price;
 					price_peak = iter->price_peak;
 					t1 = iter->t1;
@@ -567,7 +569,11 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 						peak_definition = iter->peak_definition;
 					}
 					findNumber = true;
-					break;
+					if(pass == 0) {
+						break;
+					} else {
+						useNumberPrefixLength = iter->number_prefix.length();
+					}
 				}
 			}
 		}
