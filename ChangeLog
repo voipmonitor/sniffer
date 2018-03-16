@@ -1,3 +1,9 @@
+22.1.1 14.03.2018
+=================
+- fix billing rules for substring prefixes - if there were rules like 234, 2345 and number 23456 - the 2345 never matched in favor of 234 [VS-765]
+- fix compilation without gnutls lib
+
+
 22.1 12.03.2018
 ===============
 - fix caller/called direction in call process_sdp for reverse invite and respose from reverse invite [VS-764]
