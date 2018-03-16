@@ -5097,6 +5097,19 @@ void test() {
 		}
 		}
 		break;
+	case 322:
+		{
+		CountryDetectInit();
+		vector<string> ips = split(opt_test_arg, ';');
+		for(unsigned i = 0; i < ips.size(); i++) {
+			in_addr ip;
+			inet_aton(ips[i].c_str(), &ip);
+			cout << "ip:      " << ips[i] << endl;
+			cout << "country: " << getCountryByIP(htonl(ip.s_addr)) << endl;
+			cout << "---" << endl;
+		}
+		}
+		break;
 	case 320:
 		{
 		cBilling billing;
@@ -6527,6 +6540,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"create-udptl-streams", 0, 0, 309},
 	    {"conv-raw-info", 1, 0, 310},
 	    {"find-country-for-number", 1, 0, 311},
+	    {"find-country-for-ip", 1, 0, 322},
 	    {"test-billing", 1, 0, 320},
 	    {"watchdog", 1, 0, 316},
 	    {"cloud-db", 0, 0, 318},
@@ -6950,6 +6964,7 @@ void get_command_line_arguments() {
 			case 310:
 			case 311:
 			case 320:
+			case 322:
 				opt_test = c;
 				if(optarg) {
 					strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
