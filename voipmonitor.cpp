@@ -824,7 +824,7 @@ char opt_bogus_dumper_path[1204];
 BogusDumper *bogusDumper;
 
 char opt_syslog_string[256];
-int opt_cpu_limit_warning_t0 = 60;
+int opt_cpu_limit_warning_t0 = 80;
 int opt_cpu_limit_new_thread = 50;
 int opt_cpu_limit_delete_thread = 5;
 int opt_cpu_limit_delete_t2sip_thread = 17;
