@@ -692,6 +692,27 @@ bool GeoIP_country::load() {
 			row["country"].c_str()));
 	}
 	std::sort(data.begin(), data.end());
+	if(sqlDb->existsTable("geoip_customer_type") &&
+	   sqlDb->existsColumn("geoip_customer_type", "country_code") &&
+	   !sqlDb->emptyTable("geoip_customer_type") &&
+	   sqlDb->existsTable("geoip_customer") &&
+	   sqlDb->existsColumn("geoip_customer", "country_code") &&
+	   !sqlDb->emptyTable("geoip_customer")) {
+		sqlDb->query("select ip, mask, \
+				     coalesce(geoip_customer.country_code, geoip_customer_type.country_code) as country \
+			      from geoip_customer \
+			      join geoip_customer_type on (geoip_customer_type.id = geoip_customer.type_id) \
+			      where (geoip_customer.country_code is not null and geoip_customer.country_code <> '') or \
+				    (geoip_customer_type.country_code is not null and geoip_customer_type.country_code <> '')");
+		SqlDb_row row;
+		while((row = sqlDb->fetchRow())) {
+			customer_data.push_back(GeoIP_country_rec(
+				row["ip"].c_str(),
+				atoi(row["mask"].c_str()),
+				row["country"].c_str()));
+		}
+		std::sort(customer_data.begin(), customer_data.end());
+	}
 	delete sqlDb;
 	return(true);
 }

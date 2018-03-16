@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <math.h>
 
 #include "sql_db.h"
 
@@ -225,6 +226,14 @@ public:
 				this->country_code = country_code;
 			}
 		}
+		GeoIP_country_rec(const char *ip, unsigned int mask, const char *country_code) {
+			u_int32_t ipn = inet_strington(ip);
+			this->ip_from = (ipn & (((u_int32_t)-1 << (32 - mask)) & (u_int32_t)(pow(2, 32) - 1)));
+			this->ip_to = (ipn | (u_int32_t)(pow(2,32 - mask) - 1));
+			if(country_code) {
+				this->country_code = country_code;
+			}
+		}
 		bool operator < (const GeoIP_country_rec& other) const { 
 			return(this->ip_from < other.ip_from); 
 		}
@@ -236,20 +245,23 @@ public:
 	GeoIP_country();
 	bool load();
 	string getCountry(unsigned int ip) {
-		if(data.size()) {
-			vector<GeoIP_country_rec>::iterator findRecIt;
-			findRecIt = std::lower_bound(data.begin(), data.end(), ip);
-			if(findRecIt == data.end()) {
-				--findRecIt;
-			}
-			for(int i = 0; i < 2; i++) {
-				if(findRecIt->ip_from <= ip && findRecIt->ip_to >= ip) {
-					return(findRecIt->country_code);
+		for(unsigned pass = 0; pass < 2; pass++) {
+			vector<GeoIP_country_rec> *data = pass == 0 ? &this->customer_data : &this->data;
+			if(data->size()) {
+				vector<GeoIP_country_rec>::iterator findRecIt;
+				findRecIt = std::lower_bound(data->begin(), data->end(), ip);
+				if(findRecIt == data->end()) {
+					--findRecIt;
 				}
-				if(findRecIt == data.begin()) {
-					break;
+				for(int i = 0; i < 2; i++) {
+					if(findRecIt->ip_from <= ip && findRecIt->ip_to >= ip) {
+						return(findRecIt->country_code);
+					}
+					if(findRecIt == data->begin()) {
+						break;
+					}
+					--findRecIt;
 				}
-				--findRecIt;
 			}
 		}
 		return("");
@@ -272,6 +284,7 @@ public:
 	}
 private:
 	vector<GeoIP_country_rec> data;
+	vector<GeoIP_country_rec> customer_data;
 };
 
 
