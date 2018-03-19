@@ -561,10 +561,18 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 				    (iter->number_prefix == string(number, iter->number_prefix.length()) ||
 				     (number_normalized && iter->number_prefix == string(number_normalized, iter->number_prefix.length()))) &&
 				    (!useNumberPrefixLength || iter->number_prefix.length() > useNumberPrefixLength)) {
-					price = iter->price;
-					price_peak = iter->price_peak;
-					t1 = iter->t1;
-					t2 = iter->t2;
+					if(iter->price) {
+						price = iter->price;
+					}
+					if(iter->price_peak) {
+						price_peak = iter->price_peak;
+					}
+					if(iter->t1) {
+						t1 = iter->t1;
+					}
+					if(iter->t2) {
+						t2 = iter->t2;
+					}
 					if(iter->peak_definition.enable) {
 						peak_definition = iter->peak_definition;
 					}
