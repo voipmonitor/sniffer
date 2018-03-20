@@ -428,10 +428,14 @@ bool CheckInternational::skipPrefixes(const char *number, vector<string> *prefix
 }
 
 string CheckInternational::numberNormalized(const char *number, CountryPrefixes *countryPrefixes) {
-	string numberNormalized;
-	countryPrefixes->getCountry(number, NULL, NULL,
-				    this, &numberNormalized);
-	return(numberNormalized);
+	if(countryPrefixes->loadOK) {
+		string numberNormalized;
+		countryPrefixes->getCountry(number, NULL, NULL,
+					    this, &numberNormalized);
+		return(numberNormalized);
+	} else {
+		return(number);
+	}
 }
 
 
@@ -613,8 +617,8 @@ string CountryPrefixes::_getCountry(const char *number, vector<string> *countrie
 	}
 	vector<CountryPrefix_rec>::iterator findRecIt;
 	for(int pass = 0; pass < 2; pass++) {
-		if(pass == 1 || !customer_data_simple.empty()) {
-			vector<CountryPrefix_rec> *data = pass == 0 ? &this->customer_data_simple : &this->data;
+		vector<CountryPrefix_rec> *data = pass == 0 ? &this->customer_data_simple : &this->data;
+		if(data->size()) {
 			findRecIt = std::lower_bound(data->begin(), data->end(), number);
 			if(findRecIt == data->end()) {
 				--findRecIt;
