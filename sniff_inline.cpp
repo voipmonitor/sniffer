@@ -217,7 +217,13 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 					_protocol = htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset + 2));
 					header_ip_offset += 4;
 				} while(_protocol == 0x8100);
-				protocol = _protocol;
+				if(_protocol == 0x8864 && // PPPoE
+				   htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset + 6)) == 0x0021) { // Point To Point protocol IPv4
+					header_ip_offset += 8;
+					protocol = ETHERTYPE_IP;
+				} else {
+					protocol = _protocol;
+				}
 			}
 			header_ip_offset += sizeof(ether_header);
 			break;
