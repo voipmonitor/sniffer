@@ -14,6 +14,7 @@
 #include <sys/syscall.h>
 #include <vector>
 #include <dirent.h>
+#include <sys/poll.h>
 
 #include <snappy-c.h>
 #ifdef HAVE_LIBLZ4
@@ -138,6 +139,7 @@ unsigned long long lastcachedirtransfered = 0;
 extern char opt_cachedir[1024];
 extern int opt_pcap_dump_tar;
 extern volatile unsigned int glob_tar_queued_files;
+extern bool opt_socket_use_poll;
 
 extern sSnifferClientOptions snifferClientOptions;
 extern sSnifferServerClientOptions snifferServerClientOptions;
@@ -6441,13 +6443,28 @@ bool PcapQueue_readFromFifo::socketAwaitConnection(int *socketClient, sockaddr_i
 	*socketClient = -1;
 	socklen_t addrlen = sizeof(sockaddr_in);
 	while(*socketClient < 0 && !TERMINATING) {
-		fd_set rfds;
-		FD_ZERO(&rfds);
-		FD_SET(this->socketHandle, &rfds);
-		struct timeval tv;
-		tv.tv_sec = 1;
-		tv.tv_usec = 0;
-		if(select(this->socketHandle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
+		bool doAccept = false;
+		int timeout = 1;
+		if(opt_socket_use_poll) {
+			pollfd fds[2];
+			memset(fds, 0 , sizeof(fds));
+			fds[0].fd = this->socketHandle;
+			fds[0].events = POLLIN;
+			if(poll(fds, 1, timeout * 1000) > 0) {
+				doAccept = true;
+			}
+		} else {
+			fd_set rfds;
+			FD_ZERO(&rfds);
+			FD_SET(this->socketHandle, &rfds);
+			struct timeval tv;
+			tv.tv_sec = timeout;
+			tv.tv_usec = 0;
+			if(select(this->socketHandle + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
+				doAccept = true;
+			}
+		}
+		if(doAccept) {
 			*socketClient = accept(this->socketHandle, (sockaddr*)socketClientInfo, &addrlen);
 			if(opt_pcap_queues_mirror_nonblock_mode) {
 				int flags = fcntl(*socketClient, F_GETFL, 0);
@@ -6506,17 +6523,35 @@ bool PcapQueue_readFromFifo::socketWrite(u_char *data, size_t dataLen, bool disa
 
 bool PcapQueue_readFromFifo::_socketWrite(int socket, u_char *data, size_t *dataLen, int timeout) {
 	if(opt_pcap_queues_mirror_nonblock_mode) {
-		fd_set wfds;
-		FD_ZERO(&wfds);
-		FD_SET(socket, &wfds);
-		struct timeval tv;
-		tv.tv_sec = timeout;
-		tv.tv_usec = 0;
-		int rsltSelect = select(socket + 1, (fd_set *) 0, &wfds, (fd_set *) 0, &tv);
-		if(rsltSelect < 0) {
-			return(false);
+		bool doWrite = false;
+		if(opt_socket_use_poll) {
+			pollfd fds[2];
+			memset(fds, 0 , sizeof(fds));
+			fds[0].fd = socket;
+			fds[0].events = POLLOUT;
+			int rsltPool = poll(fds, 1, timeout * 1000);
+			if(rsltPool < 0) {
+				return(false);
+			}
+			if(rsltPool > 0 && fds[0].revents) {
+				doWrite = true;
+			}
+		} else {
+			fd_set wfds;
+			FD_ZERO(&wfds);
+			FD_SET(socket, &wfds);
+			struct timeval tv;
+			tv.tv_sec = timeout;
+			tv.tv_usec = 0;
+			int rsltSelect = select(socket + 1, (fd_set *) 0, &wfds, (fd_set *) 0, &tv);
+			if(rsltSelect < 0) {
+				return(false);
+			}
+			if(rsltSelect > 0 && FD_ISSET(socket, &wfds)) {
+				doWrite = true;
+			}
 		}
-		if(rsltSelect > 0 && FD_ISSET(socket, &wfds)) {
+		if(doWrite) {
 			ssize_t writeLen = send(socket, data, *dataLen, 0);
 			if(writeLen <= 0) {
 				return(false);
@@ -6542,17 +6577,35 @@ bool PcapQueue_readFromFifo::_socketRead(int socket, u_char *data, size_t *dataL
 	size_t maxDataLen = *dataLen;
 	*dataLen = 0;
 	if(opt_pcap_queues_mirror_nonblock_mode) {
-		fd_set rfds;
-		FD_ZERO(&rfds);
-		FD_SET(socket, &rfds);
-		struct timeval tv;
-		tv.tv_sec = timeout;
-		tv.tv_usec = 0;
-		int rsltSelect = select(socket + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
-		if(rsltSelect < 0) {
-			return(false);
+		bool doRead = false;
+		if(opt_socket_use_poll) {
+			pollfd fds[2];
+			memset(fds, 0 , sizeof(fds));
+			fds[0].fd = socket;
+			fds[0].events = POLLIN;
+			int rsltPool = poll(fds, 1, timeout * 1000);
+			if(rsltPool < 0) {
+				return(false);
+			}
+			if(rsltPool > 0 && fds[0].revents) {
+				doRead = true;
+			}
+		} else {
+			fd_set rfds;
+			FD_ZERO(&rfds);
+			FD_SET(socket, &rfds);
+			struct timeval tv;
+			tv.tv_sec = timeout;
+			tv.tv_usec = 0;
+			int rsltSelect = select(socket + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
+			if(rsltSelect < 0) {
+				return(false);
+			}
+			if(rsltSelect > 0 && FD_ISSET(socket, &rfds)) {
+				doRead = true;
+			}
 		}
-		if(rsltSelect > 0 && FD_ISSET(socket, &rfds)) {
+		if(doRead) {
 			ssize_t recvLen = recv(socket, data, maxDataLen, 0);
 			if(recvLen <= 0) {
 				return(false);

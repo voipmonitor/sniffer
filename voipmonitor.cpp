@@ -544,6 +544,7 @@ NoHashMessageRules *no_hash_message_rules;
 bool opt_callernum_numberonly = true;
 int opt_custom_headers_last_value = 1;
 bool opt_sql_time_utc = false;
+bool opt_socket_use_poll = true;
 
 char configfile[1024] = "";	// config file name
 
@@ -6265,6 +6266,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42465) cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_l2tp",  &opt_udp_port_l2tp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("socket_use_poll",  &opt_socket_use_poll));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -9552,6 +9554,10 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "udp_port_tzsp", NULL))) {
 		opt_udp_port_tzsp = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "socket_use_poll", NULL))) {
+		opt_socket_use_poll = yesno(value);
 	}
 	
 	/*

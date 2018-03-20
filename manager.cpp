@@ -90,6 +90,7 @@ extern char ssh_remote_listenhost[1024];
 extern unsigned int ssh_remote_listenport;
 extern int enable_bad_packet_order_warning;
 extern ip_port opt_pcap_queue_send_to_ip_port;
+extern bool opt_socket_use_poll;
 
 extern cConfig CONFIG;
 extern bool useNewCONFIG;
@@ -3277,23 +3278,46 @@ void *manager_read_thread(void * arg) {
 	} else {
 		buf[size] = '\0';
 		buf_long = buf;
-		////cout << "DATA: " << buf << endl;
+		bool debugRecv = verbosity >= 2;
+		if(debugRecv) {
+			cout << "DATA: " << buf << endl;
+		}
 		if(!strstr(buf, "\r\n\r\n")) {
 			char buf_next[BUFSIZE];
-			////cout << "NEXT_RECV start" << endl;
+			if(debugRecv) {
+				cout << "NEXT_RECV start" << endl;
+			}
 			while(true) {
-				fd_set rfds;
-				struct timeval tv;
-				FD_ZERO(&rfds);
-				FD_SET(client, &rfds);
-				tv.tv_sec = 0;
-				tv.tv_usec = 250000;
-				if(select(client + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0 &&
+				bool doRead = false;
+				int timeout_ms = 500;
+				if(opt_socket_use_poll) {
+					pollfd fds[2];
+					memset(fds, 0 , sizeof(fds));
+					fds[0].fd = client;
+					fds[0].events = POLLIN;
+					int rsltPool = poll(fds, 1, timeout_ms);
+					if(rsltPool > 0 && fds[0].revents) {
+						doRead = true;
+					}
+				} else {
+					fd_set rfds;
+					struct timeval tv;
+					FD_ZERO(&rfds);
+					FD_SET(client, &rfds);
+					tv.tv_sec = 0;
+					tv.tv_usec = timeout_ms * 1000;
+					int rsltSelect = select(client + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
+					if(rsltSelect > 0 && FD_ISSET(client, &rfds)) {
+						doRead = true;
+					}
+				}
+				if(doRead &&
 				   (size = recv(client, buf_next, BUFSIZE - 1, 0)) > 0) {
 					buf_next[size] = '\0';
 					buf_long += buf_next;
-					////cout << "NEXT DATA: " << buf_next << endl;
-					////cout << "NEXT_RECV read" << endl;
+					if(debugRecv) {
+						cout << "NEXT DATA: " << buf_next << endl;
+					}
 					if(buf_long.find("\r\n\r\n") != string::npos) {
 						break;
 					}
@@ -3301,7 +3325,9 @@ void *manager_read_thread(void * arg) {
 					break;
 				}
 			}
-			////cout << "NEXT_RECV stop" << endl;
+			if(debugRecv) {
+				cout << "NEXT_RECV stop" << endl;
+			}
 			size_t posEnd;
 			if((posEnd = buf_long.find("\r\n\r\n")) != string::npos) {
 				buf_long.resize(posEnd);
@@ -3485,12 +3511,30 @@ tryagain:
 	fd_set rfds;
 	struct timeval tv;
 	while(!is_terminating_without_error()) {
-		FD_ZERO(&rfds);
-		FD_SET(manager_socket_server, &rfds);
-		tv.tv_sec = 10;
-		tv.tv_usec = 0;
-		if(!opt_manager_nonblock_mode ||
-		   select(manager_socket_server + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
+		bool doAccept = false;
+		int timeout = 10;
+		if(!opt_manager_nonblock_mode) {
+			doAccept = true;
+		} else {
+			if(opt_socket_use_poll) {
+				pollfd fds[2];
+				memset(fds, 0 , sizeof(fds));
+				fds[0].fd = manager_socket_server;
+				fds[0].events = POLLIN;
+				if(poll(fds, 1, timeout * 1000) > 0) {
+					doAccept = true;
+				}
+			} else {
+				FD_ZERO(&rfds);
+				FD_SET(manager_socket_server, &rfds);
+				tv.tv_sec = timeout;
+				tv.tv_usec = 0;
+				if(select(manager_socket_server + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
+					doAccept = true;
+				}
+			}
+		}
+		if(doAccept) {
 			addrlen = sizeof(clientInfo);
 			int client = accept(manager_socket_server, (sockaddr*)&clientInfo, &addrlen);
 			if(is_terminating_without_error()) {

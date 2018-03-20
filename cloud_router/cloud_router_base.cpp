@@ -16,9 +16,7 @@ extern cResolver *CR_RESOLVER();
 extern bool CR_TERMINATE();
 extern void CR_SET_TERMINATE();
 extern sCloudRouterVerbose CR_VERBOSE();
-
-
-static bool use_pool = true;
+extern bool opt_socket_use_poll;
 
 
 cResolver::cResolver() {
@@ -503,7 +501,7 @@ bool cSocket::await(cSocket **clientSocket) {
 	socklen_t clientInfoLen = sizeof(sockaddr_in);
 	while(clientHandle < 0 && !terminate) {
 		bool doAccept = false;
-		if(use_pool) {
+		if(opt_socket_use_poll) {
 			pollfd fds[2];
 			memset(fds, 0 , sizeof(fds));
 			fds[0].fd = handle;
@@ -580,7 +578,7 @@ bool cSocket::_write(u_char *data, size_t *dataLen) {
 		return(false);
 	}
 	bool doWrite = false;
-	if(use_pool) {
+	if(opt_socket_use_poll) {
 		pollfd fds[2];
 		memset(fds, 0 , sizeof(fds));
 		fds[0].fd = handle;
@@ -634,7 +632,7 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
 		return(false);
 	}
 	bool doRead = false;
-	if(use_pool) {
+	if(opt_socket_use_poll) {
 		pollfd fds[2];
 		memset(fds, 0 , sizeof(fds));
 		fds[0].fd = handle;
@@ -743,7 +741,7 @@ bool cSocket::checkHandleRead() {
 		return(false);
 	}
 	bool doRead = false;
-	if(use_pool) {
+	if(opt_socket_use_poll) {
 		pollfd fds[2];
 		memset(fds, 0 , sizeof(fds));
 		fds[0].fd = handle;
