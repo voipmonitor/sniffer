@@ -1526,6 +1526,7 @@ public:
 	Call *find_by_mergecall_id(char *call_id, unsigned long call_id_len, time_t time) {
 		Call *rslt_call = NULL;
 		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
+		lock_calls_listMAP();
 		lock_calls_mergeMAP();
 		map<string, Call*>::iterator mergeMAPIT = calls_mergeMAP.find(call_idS);
 		if(mergeMAPIT != calls_mergeMAP.end()) {
@@ -1537,6 +1538,7 @@ public:
 			}
 		}
 		unlock_calls_mergeMAP();
+		unlock_calls_listMAP();
 		return(rslt_call);
 	}
 	Call *find_by_register_id(char *register_id, unsigned long register_id_len) {
