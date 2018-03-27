@@ -6775,19 +6775,19 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
-		_process_packet__cleanup_calls(packetS->header_pt);
-		if(packetS->_findCall && packetS->call) {
-			__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
-		}
-		if(packetS->_createCall && packetS->call_created) {
-			__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
-		}
 		if(opt_detect_alone_bye &&
 		   ((packetS->_findCall && packetS->call && packetS->call->type == BYE) ||
 		    (packetS->_createCall && packetS->call_created && packetS->call_created->type == BYE))) {
 			process_packet_sip_alone_bye(packetS);
 		} else {
 			process_packet_sip_call(packetS);
+		}
+		_process_packet__cleanup_calls(packetS->header_pt);
+		if(packetS->_findCall && packetS->call) {
+			__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
+		}
+		if(packetS->_createCall && packetS->call_created) {
+			__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
 		}
 	} else if(packetS->isSkinny) {
 		if(opt_ipaccount && packetS->block_store) {

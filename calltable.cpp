@@ -802,13 +802,7 @@ Call::removeRTP() {
 
 /* destructor */
 Call::~Call(){
-	if(isSetCallidMergeHeader()) {
-		((Calltable*)calltable)->lock_calls_mergeMAP();
-		for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
-			((Calltable*)calltable)->calls_mergeMAP.erase(it->first);
-		}
-		((Calltable*)calltable)->unlock_calls_mergeMAP();
-	}
+	removeMergeCalls();
 	
 	if(is_ssl) {
 		glob_ssl_calls--;
@@ -3110,6 +3104,16 @@ bool Call::existsBothDirectionsInSelectedRtpStream() {
 		}
 	}
 	return(existsCalllerDirection && existsCallledDirection);
+}
+
+void Call::removeMergeCalls() {
+	if(isSetCallidMergeHeader()) {
+		((Calltable*)calltable)->lock_calls_mergeMAP();
+		for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+			((Calltable*)calltable)->calls_mergeMAP.erase(it->first);
+		}
+		((Calltable*)calltable)->unlock_calls_mergeMAP();
+	}
 }
 
 void Call::getValue(eCallField field, RecordArrayField *rfield) {
@@ -6648,6 +6652,7 @@ Calltable::cleanup_calls( time_t currtime ) {
 				closeCalls[closeCalls_count++] = call;
 				if(typeCall == INVITE) {
 					calls_listMAP.erase(callMAPIT1++);
+					call->removeMergeCalls();
 				} else {
 					calls_by_stream_callid_listMAP.erase(callMAPIT2++);
 					mgcpCleanupTransactions(call);

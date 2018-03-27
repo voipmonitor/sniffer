@@ -1078,6 +1078,7 @@ public:
 		return((type == INVITE || type == MESSAGE) &&
 		       opt_callidmerge_header[0] != '\0');
 	}
+	void removeMergeCalls();
 	
 	void setSipcallerip(u_int32_t ip, u_int16_t port, const char *call_id = NULL) {
 		sipcallerip[0] = ip;
