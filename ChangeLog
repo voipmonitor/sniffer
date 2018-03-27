@@ -1,3 +1,13 @@
+22.2 21.03.2018
+===============
+- added test parameter --find-country-for-ip 1.2.3.4 (which will output country) [VG-1529]
+- use table geoip_customer (in gui menu Settings / Customer GeoIP) to find country by ip [VG-1529]
+- fix override billing rules (apply override number rule only if value > 0) [VG-765]
+- fix crash if gui table country_code_prefix is missing or empty [VS-767]
+- use poll instead of select (as default) in socket operations which solves some stability issues 
+- added support for VLAN and PPPoE combination
+
+
 22.1.1 14.03.2018
 =================
 - fix billing rules for substring prefixes - if there were rules like 234, 2345 and number 23456 - the 2345 never matched in favor of 234 [VS-765]
