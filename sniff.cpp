@@ -3362,30 +3362,54 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->content_length = rsltContentLength;
 		}
 		//printf("msg: contentlen[%d] datalen[%d] len[%d] [%s]\n", contentlen, datalen, strlen(call->message), call->message);
-	} else if(strcasestr(contenttypestr, "application/sdp")) {
-		process_sdp(call, packetS, 
-			    (reverseInviteSdaddr || reverseInviteConfirmSdaddr) && iscaller >= 0 ? !iscaller : iscaller, 
-			    contenttype_data_ptr, packetS->get_callid());
-	} else if(strcasestr(contenttypestr, "multipart/mixed")) {
-		s = contenttype_data_ptr;
-		while(1) {
-			//continue searching  for another content-type
-			char *s2;
-			s2 = gettag_sip_from(packetS, s, "\nContent-Type:", "\nc:", &l);
-			if(s2 and l > 0) {
-				//Content-Type found try if it is SDP 
-				if(l > 0 && strcasestr(s2, "application/sdp")){
-					process_sdp(call, packetS, 
-						    (reverseInviteSdaddr || reverseInviteConfirmSdaddr) && iscaller >= 0 ? !iscaller : iscaller, 
-						    s2, packetS->get_callid());
-					break;	// stop searching
-				} else {
-					// it is not SDP continue searching for another content-type 
-					s = s2;
-					continue;
+	} else {
+		bool is_application_sdp = false;
+		bool is_multipart_mixed = false;
+		if(strcasestr(contenttypestr, "application/sdp")) {
+			is_application_sdp = true;
+		} else if(strcasestr(contenttypestr, "multipart/mixed")) {
+			is_multipart_mixed = true;
+		}
+		if(is_application_sdp || is_multipart_mixed) {
+			int _iscaller_process_sdp = iscaller;
+			if((reverseInviteSdaddr || reverseInviteConfirmSdaddr) && _iscaller_process_sdp >= 0) {
+				char _caller[1024];
+				char _called[1024];
+				get_sip_peername(packetS, "\nFrom:", "\nf:", _caller, sizeof(_caller), ppntt_from, ppndt_caller);
+				get_sip_peername(packetS, "\nTo:", "\nt:", _called, sizeof(_called), ppntt_to, ppndt_called);
+				bool eqCallerMinLength;
+				bool eqCalledMinLength;
+				size_t eqCallerLength = strCaseEqLengthR(_caller, call->caller, &eqCallerMinLength);
+				size_t eqCalledLength = strCaseEqLengthR(_called, call->called, &eqCalledMinLength);
+				if((eqCallerMinLength || eqCalledMinLength ||
+				    eqCallerLength >= 3 || eqCalledLength >= 3) &&
+				   (eqCallerLength != eqCalledLength ||
+				    strcasecmp(_caller + strlen(_caller) - eqCallerLength, _called + strlen(_called) - eqCalledLength))) {
+					_iscaller_process_sdp = !_iscaller_process_sdp;
 				}
-			} else {
-				break;
+			}
+			if(is_application_sdp) {
+				process_sdp(call, packetS, _iscaller_process_sdp, contenttype_data_ptr, packetS->get_callid());
+			} else if(is_multipart_mixed) {
+				s = contenttype_data_ptr;
+				while(1) {
+					//continue searching  for another content-type
+					char *s2;
+					s2 = gettag_sip_from(packetS, s, "\nContent-Type:", "\nc:", &l);
+					if(s2 and l > 0) {
+						//Content-Type found try if it is SDP 
+						if(l > 0 && strcasestr(s2, "application/sdp")){
+							process_sdp(call, packetS, _iscaller_process_sdp, s2, packetS->get_callid());
+							break;	// stop searching
+						} else {
+							// it is not SDP continue searching for another content-type 
+							s = s2;
+							continue;
+						}
+					} else {
+						break;
+					}
+				}
 			}
 		}
 	}

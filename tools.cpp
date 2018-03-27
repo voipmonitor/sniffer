@@ -2320,6 +2320,27 @@ char *strncasechr(const char *haystack, char needle, size_t len)
 }
 
 
+size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength) {
+	if(eqMinLength) {
+		*eqMinLength = false;
+	}
+	size_t str1_len = strlen(str1);
+	size_t str2_len = strlen(str2);
+	if(!str1_len || !str2_len) {
+		return(0);
+	}
+	for(size_t i = 0; i < min(str1_len, str2_len); i++) {
+		if(toupper(str1[str1_len - i - 1]) != toupper(str2[str2_len - i - 1])) {
+			return(i);
+		}
+	}
+	if(eqMinLength) {
+		*eqMinLength = true;
+	}
+	return(min(str1_len, str2_len));
+}
+
+
 std::string &trim(std::string &s, const char *trimChars) {
 	if(!s.length()) {
 		 return(s);
