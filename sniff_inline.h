@@ -30,6 +30,11 @@ inline
 bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 		      sll_header *&header_sll, ether_header *&header_eth, u_int &header_ip_offset, int &protocol, int *vlan = NULL);
 
+#if SNIFFER_INLINE_FUNCTIONS
+inline
+#endif
+int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, unsigned caplen);
+
 enum pcapProcessFlags {
 	ppf_na = 0,
 	ppf_defrag = 1, 

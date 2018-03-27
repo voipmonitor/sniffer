@@ -249,6 +249,75 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 	return(true);
 }
 
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
+int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, unsigned caplen) {
+	extern unsigned opt_udp_port_l2tp;
+	extern unsigned opt_udp_port_tzsp;
+	if(header_ip->protocol == IPPROTO_IPIP) {
+		// ip in ip protocol
+		return(sizeof(iphdr2));
+	} else if(header_ip->protocol == IPPROTO_GRE) {
+		// gre protocol
+		iphdr2 *header_ip_next = convertHeaderIP_GRE(header_ip);
+		if(header_ip_next) {
+			return((u_char*)header_ip_next - (u_char*)header_ip);
+		} else {
+			return(-1);
+		}
+	} else if(header_ip->protocol == IPPROTO_UDP &&
+		  htons(header_ip->tot_len) + header_ip_offset == caplen &&
+		  htons(header_ip->tot_len) > sizeof(iphdr2) + sizeof(udphdr2) &&
+		  IS_RTP((char*)header_ip + sizeof(iphdr2) + sizeof(udphdr2), htons(header_ip->tot_len) - sizeof(iphdr2) - sizeof(udphdr2))) {
+		return(0);
+	} else if(opt_udp_port_l2tp &&
+		  header_ip->protocol == IPPROTO_UDP &&								// Layer 2 Tunelling protocol / UDP
+		  htons(((udphdr2*)((char*)header_ip + sizeof(iphdr2)))->dest) == opt_udp_port_l2tp &&		// check destination port (default 1701)
+		  htons(((udphdr2*)((char*)header_ip + sizeof(iphdr2)))->source) == opt_udp_port_l2tp &&	// check source port (default 1701)
+		  htons(((udphdr2*)((char*)header_ip + sizeof(iphdr2)))->len) > (sizeof(udphdr2) + 10)) {	// check minimal length
+		unsigned int l2tp_length = 6;	// flags (2) + tunel id (2) + session id (2)
+		unsigned int ptp_length = 4;	// address (1) + control (1) + protocol (2)
+		unsigned int l2tp_offset = sizeof(iphdr2) + sizeof(udphdr2);
+		u_int16_t l2tp_flags = htons(*(u_int16_t*)((unsigned char*)header_ip + l2tp_offset));
+		if(l2tp_flags & 0x4000) {	// length bit - length field is present
+			l2tp_length += 2;
+		}
+		unsigned int ptp_offset = l2tp_offset + l2tp_length;
+		unsigned int next_header_ip_offset = 0;
+		if(*((unsigned char*)header_ip + ptp_offset + 1) == 0x03 &&					// check control (0x03)
+		   htons(*(u_int16_t*)((unsigned char*)header_ip + ptp_offset + 2)) == 0x0021) {		// check ptp protocol IPv4 (0x0021)
+			next_header_ip_offset = ptp_offset + ptp_length;
+		}
+		return(next_header_ip_offset);
+	} else if(opt_udp_port_tzsp &&
+		  header_ip->protocol == IPPROTO_UDP &&								// TZSP
+		  (htons(((udphdr2*)((char*)header_ip + sizeof(iphdr2)))->dest) == opt_udp_port_tzsp ||		// check destination port (default 0x9090)
+		   htons(((udphdr2*)((char*)header_ip + sizeof(iphdr2)))->source) == opt_udp_port_tzsp) &&	// check source port (default 0x9090)
+		  htons(((udphdr2*)((char*)header_ip + sizeof(iphdr2)))->len) > 
+							 (sizeof(udphdr2) + 5 + sizeof(ether_header))) {	// check minimal length
+		unsigned int tzsp_length = 5;	// version (1) + type (1) + protocol (2) + ... + end (1)
+		unsigned int tzsp_offset = sizeof(iphdr2) + sizeof(udphdr2);
+		unsigned int next_header_ip_offset = 0;
+		if(*((unsigned char*)header_ip + tzsp_offset) == 1 &&						// check version (1)
+		   htons(*(u_int16_t*)((unsigned char*)header_ip + tzsp_offset + 2)) == 1) {			// check ethernet protocol (1)
+			while(*((unsigned char*)header_ip + tzsp_offset + tzsp_length - 1) != 1 &&		// find end (1)
+			      tzsp_length < 10) {
+				if(header_ip_offset + tzsp_offset + tzsp_length + sizeof(ether_header) < caplen) {
+					++tzsp_length;
+				} else {
+					break;
+				}
+			}
+			if(*((unsigned char*)header_ip + tzsp_offset + tzsp_length - 1) == 1) {			// check find end (1)
+				next_header_ip_offset = tzsp_offset + tzsp_length + sizeof(ether_header);
+			}
+		}
+		return(next_header_ip_offset);
+	}
+	return(0);
+}
+
 enum error_type {
 	_na,
 	bad_datalink,
@@ -407,11 +476,57 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			}
 		}
 	}
-	
-	extern unsigned opt_udp_port_l2tp;
-	extern unsigned opt_udp_port_tzsp;
-	
+
 	if(ppd->header_ip) {
+		unsigned headers_ip_counter = 0;
+		unsigned headers_ip_offset[20];
+		while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
+			headers_ip_offset[headers_ip_counter] = ppd->header_ip_offset;
+			++headers_ip_counter;
+			int next_header_ip_offset = findNextHeaderIp(ppd->header_ip, ppd->header_ip_offset, header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen());
+			if(next_header_ip_offset == 0) {
+				break;
+			} else if(next_header_ip_offset < 0) {
+				if(ppf & ppf_returnZeroInCheckData) {
+					//cout << "pcapProcess exit 004" << endl;
+					if(pcap_header_plus2) {
+						pcap_header_plus2->ignore = true;
+					}
+					return(0);
+				}
+			} else {
+				ppd->header_ip = (iphdr2*)((u_char*)ppd->header_ip + next_header_ip_offset);
+				ppd->header_ip_offset += next_header_ip_offset;
+			}
+			if(ppf & ppf_defrag) {
+				//if UDP defrag is enabled process only UDP packets and only SIP packets
+				if(opt_udpfrag && ppd->header_ip->protocol == IPPROTO_UDP) {
+					int foffset = ntohs(ppd->header_ip->frag_off);
+					if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
+						// packet is fragmented
+						if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
+							ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+							ppd->header_ip->frag_off = 0;
+							for(unsigned i = 0; i < headers_ip_counter; i++) {
+								iphdr2 *header_ip_prev = (iphdr2*)(HPP(*header_packet) + headers_ip_offset[i]);
+								header_ip_prev->tot_len = htons(ntohs(ppd->header_ip->tot_len) + (ppd->header_ip_offset - headers_ip_offset[i]));
+								header_ip_prev->frag_off = 0;
+							}
+							if(sverb.defrag) {
+								defrag_counter++;
+								cout << "*** DEFRAG 2 " << defrag_counter << endl;
+							}
+						} else {
+							//cout << "pcapProcess exit 003" << endl;
+							return(0);
+						}
+					}
+				}
+			}
+		}
+		/* obsolete version
+		extern unsigned opt_udp_port_l2tp;
+		extern unsigned opt_udp_port_tzsp;
 		bool nextPass;
 		do {
 			nextPass = false;
@@ -529,6 +644,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				}
 			}
 		} while(nextPass);
+		*/
 	}
 	
 	if(header_packet) {

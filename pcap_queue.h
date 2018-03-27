@@ -986,6 +986,7 @@ public:
 	void push_batch();
 	void *outThreadFunction();
 	inline void processDefrag(sHeaderPacketPQout *hp);
+	inline void processDedup(sHeaderPacketPQout *hp);
 	string getNameOutputThread() {
 		switch(typeOutputThread) {
 		case defrag:
@@ -1014,6 +1015,7 @@ private:
 	ipfrag_data_s ipfrag_data;
 	unsigned ipfrag_lastprune;
 	unsigned defrag_counter;
+	u_char *dedup_buffer;
 	volatile bool initThreadOk;
 	volatile bool terminatingThread;
 friend inline void *_PcapQueue_outputThread_outThreadFunction(void *arg);

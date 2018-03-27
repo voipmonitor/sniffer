@@ -226,6 +226,7 @@ static double heapTrashPerc = 0;
 extern MySqlStore *sqlStore;
 extern MySqlStore *loadFromQFiles;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
+extern PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
 
 extern unsigned int glob_ssl_calls;
 
@@ -1920,6 +1921,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					outStrStat << "/defrag:" << setprecision(1) << defrag_cpu;
 				}
 			}
+			if(pcapQueueQ_outThread_dedup) {
+				double dedup_cpu = pcapQueueQ_outThread_dedup->getCpuUsagePerc(true);
+				if(dedup_cpu >= 0) {
+					outStrStat << "/dedup:" << setprecision(1) << dedup_cpu;
+				}
+			}
 			if(opt_ipaccount) {
 				double ipacc_cpu = this->getCpuUsagePerc(destroyBlocksThread, true);
 				if(ipacc_cpu >= 0) {
@@ -2625,6 +2632,18 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 	}
  
 	iphdr2 *header_ip = (iphdr2*)(packet + offset);
+	while(true) {
+		int next_header_ip_offset = findNextHeaderIp(header_ip, offset, header->caplen);
+		if(next_header_ip_offset == 0) {
+			break;
+		} else if(next_header_ip_offset < 0) {
+			return;
+		} else {
+			header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
+			offset += next_header_ip_offset;
+		}
+	}
+	/* obsolete version
 	bool nextPass;
 	do {
 		nextPass = false;
@@ -2641,6 +2660,7 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 			}
 		}
 	} while(nextPass);
+	*/
 
 	char *data = NULL;
 	int datalen = 0;
@@ -6687,12 +6707,17 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	}
 	*/
 	
-	if(opt_udpfrag && hp_state == _hppq_out_state_NA && 
-	   hp->block_store && hp->block_store->hm == pcap_block_store::plus2) {
-		if(pcapQueueQ_outThread_defrag) {
-			pcapQueueQ_outThread_defrag->push(hp);
-			return(-1);
-		}
+	if(opt_udpfrag && pcapQueueQ_outThread_defrag &&
+	   hp_state == _hppq_out_state_NA && hp->block_store && hp->block_store->hm == pcap_block_store::plus2) {
+		pcapQueueQ_outThread_defrag->push(hp);
+		return(-1);
+	}
+	
+	if(opt_dup_check && pcapQueueQ_outThread_dedup &&
+	   ((hp_state == _hppq_out_state_NA && hp->block_store && hp->block_store->hm == pcap_block_store::plus2) ||
+	    (hp_state == _hppq_out_state_defrag))) {
+		pcapQueueQ_outThread_dedup->push(hp);
+		return(-1);
 	}
 	
 	/*
@@ -6744,6 +6769,18 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			     (iphdr2*)(hp->packet + hp->header->header_ip_offset);
 
 	if(header_ip) {
+		while(true) {
+			int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, hp->header->get_caplen());
+			if(next_header_ip_offset == 0) {
+				break;
+			} else if(next_header_ip_offset < 0) {
+				return(0);
+			} else {
+				header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
+				hp->header->header_ip_offset += next_header_ip_offset;
+			}
+		}
+		/* obsolete version
 		bool nextPass;
 		do {
 			nextPass = false;
@@ -6760,6 +6797,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 				}
 			}
 		} while(nextPass);
+		*/
 	}
 
 	char *data = NULL;
@@ -6879,6 +6917,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 void PcapQueue_readFromFifo::pushBatchProcessPacket() {
 	if(pcapQueueQ_outThread_defrag) {
 		pcapQueueQ_outThread_defrag->push_batch();
+	} else if(pcapQueueQ_outThread_dedup) {
+		pcapQueueQ_outThread_dedup->push_batch();
 	} else if(preProcessPacket[PreProcessPacket::ppt_detach]) {
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
 	}
@@ -6975,6 +7015,12 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->outThreadId = 0;
 	this->defrag_counter = 0;
 	this->ipfrag_lastprune = 0;
+	if(typeOutputThread == dedup) {
+		this->dedup_buffer = new FILE_LINE(16003) u_char[65536 * MD5_DIGEST_LENGTH]; // 1M
+		memset(this->dedup_buffer, 0, 65536 * MD5_DIGEST_LENGTH * sizeof(u_char));
+	} else {
+		this->dedup_buffer = NULL;
+	}
 	this->initThreadOk = false;
 	this->terminatingThread = false;
 }
@@ -6985,7 +7031,12 @@ PcapQueue_outputThread::~PcapQueue_outputThread() {
 		delete this->qring[i];
 	}
 	delete [] this->qring;
-	ipfrag_prune(0, true, &ipfrag_data, -1, 0);
+	if(typeOutputThread == defrag) {
+		ipfrag_prune(0, true, &ipfrag_data, -1, 0);
+	}
+	if(typeOutputThread == dedup) {
+		delete [] dedup_buffer;
+	}
 }
 
 void PcapQueue_outputThread::start() {
@@ -7073,7 +7124,8 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				case defrag:
 					this->processDefrag(&batch->batch[batch_index]);
 					break;
-				default:
+				case dedup:
+					this->processDedup(&batch->batch[batch_index]);
 					break;
 				}
 			}
@@ -7092,7 +7144,16 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			usleep(usleepTime);
 			++usleepCounter;
 			if(!(usleepCounter % 100)) {
-				preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
+				switch(typeOutputThread) {
+				case defrag:
+					if(pcapQueueQ_outThread_dedup) {
+						pcapQueueQ_outThread_dedup->push_batch();
+						break;
+					}
+				case dedup:
+					preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
+					break;
+				}
 			}
 		}
 	}
@@ -7112,7 +7173,6 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 				syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: bogus ip header length %i, caplen %i", htons(header_ip->tot_len), hp->header->get_caplen());
 				lastTimeLogErrBadIpHeader = actTime;
 			}
-			//cout << "defrag exit 001" << endl;
 			hp->destroy_or_unlock_blockstore();
 			return;
 		}
@@ -7129,10 +7189,51 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 			if(rsltDefrag < 0) {
 				hp->destroy_or_unlock_blockstore();
 			}
-			//cout << "defrag exit 002" << endl;
 			return;
 		}
 	}
+	unsigned headers_ip_counter = 0;
+	unsigned headers_ip_offset[20];
+	while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
+		headers_ip_offset[headers_ip_counter] = hp->header->header_ip_offset;
+		++headers_ip_counter;
+		int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, hp->header->get_caplen());
+		if(next_header_ip_offset == 0) {
+			break;
+		} else if(next_header_ip_offset < 0) {
+			hp->destroy_or_unlock_blockstore();
+			return;
+		} else {
+			header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
+			hp->header->header_ip_offset += next_header_ip_offset;
+		}
+		if(header_ip->protocol == IPPROTO_UDP) {
+			int foffset = ntohs(header_ip->frag_off);
+			if((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
+				// packet is fragmented
+				int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
+				if(rsltDefrag > 0) {
+					header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+					header_ip->frag_off = 0;
+					for(unsigned i = 0; i < headers_ip_counter; i++) {
+						iphdr2 *header_ip_prev = (iphdr2*)(hp->packet + headers_ip_offset[i]);
+						header_ip_prev->tot_len = htons(ntohs(header_ip->tot_len) + (hp->header->header_ip_offset - headers_ip_offset[i]));
+						header_ip_prev->frag_off = 0;
+					}
+					if(sverb.defrag) {
+						defrag_counter++;
+						cout << "*** DEFRAG 2 " << defrag_counter << endl;
+					}
+				} else {
+					if(rsltDefrag < 0) {
+						hp->destroy_or_unlock_blockstore();
+					}
+					return;
+				}
+			}
+		}
+	}
+	/* obsolete version
 	bool nextPass;
 	do {
 		nextPass = false;
@@ -7189,6 +7290,7 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 			}
 		}
 	} while(nextPass);
+	*/
 	
 	if(this->pcapQueue->processPacket(hp, _hppq_out_state_defrag) == 0) {
 		hp->destroy_or_unlock_blockstore();
@@ -7199,6 +7301,53 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 			ipfrag_prune(headerTimeS, false, &this->ipfrag_data, -1, 2);
 		}
 		ipfrag_lastprune = headerTimeS;
+	}
+}
+
+void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
+	uint16_t *_md5 = NULL;
+	uint16_t __md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
+	if(hp->block_store && hp->block_store->hm == pcap_block_store::plus2 && ((pcap_pkthdr_plus2*)hp->header)->md5[0]) {
+		_md5 = ((pcap_pkthdr_plus2*)hp->header)->md5;
+	} else {
+		if(hp->header->header_ip_offset) {
+			iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+			char *data = NULL;
+			int datalen = 0;
+			if(header_ip->protocol == IPPROTO_UDP) {
+				udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
+				datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, hp->header->get_caplen());
+			} else if(header_ip->protocol == IPPROTO_TCP) {
+				tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
+				datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, hp->header->get_caplen());
+			} else if (opt_enable_ss7 && header_ip->protocol == IPPROTO_SCTP) {
+				datalen = get_sctp_data_len(header_ip, &data, hp->packet, hp->header->get_caplen());
+			}
+			if(data && datalen) {
+				MD5_CTX md5_ctx;
+				MD5_Init(&md5_ctx);
+				if(opt_dup_check_ipheader) {
+					MD5_Update(&md5_ctx, header_ip, MIN(datalen + (data - (char*)header_ip), ntohs(header_ip->tot_len)));
+				} else {
+					MD5_Update(&md5_ctx, data, datalen);
+				}
+				MD5_Final((unsigned char*)__md5, &md5_ctx);
+				_md5 = __md5;
+			}
+		}
+	}
+	if(_md5) {
+		if(memcmp(_md5, this->dedup_buffer + (_md5[0] * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
+			if(sverb.dedup) {
+				cout << "*** DEDUP 2" << endl;
+			}
+			hp->destroy_or_unlock_blockstore();
+			return;
+		}
+		memcpy(this->dedup_buffer + (_md5[0] * MD5_DIGEST_LENGTH), _md5, MD5_DIGEST_LENGTH);
+	}
+	if(this->pcapQueue->processPacket(hp, _hppq_out_state_dedup) == 0) {
+		hp->destroy_or_unlock_blockstore();
 	}
 }
 

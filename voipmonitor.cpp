@@ -648,6 +648,7 @@ char user_filter[1024*20] = "";
 eSnifferMode sniffer_mode = snifferMode_read_from_interface;
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
+vector<string> ifnamev;
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
 #ifndef FREEBSD
@@ -2465,6 +2466,7 @@ PcapQueue_readFromFifo *pcapQueueR;
 PcapQueue_readFromInterface *pcapQueueI;
 PcapQueue_readFromFifo *pcapQueueQ;
 PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
+PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
 
 void set_global_vars();
 int main_init_read();
@@ -3629,9 +3631,15 @@ int main_init_read() {
 			pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
 		}
 		
-		if(opt_pcap_queue_use_blocks && opt_udpfrag && !is_sender() && !is_client_packetbuffer_sender()) {
-			pcapQueueQ_outThread_defrag = new PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
-			pcapQueueQ_outThread_defrag->start();
+		if(opt_pcap_queue_use_blocks && !is_sender() && !is_client_packetbuffer_sender()) {
+			if(opt_udpfrag) {
+				pcapQueueQ_outThread_defrag = new PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
+				pcapQueueQ_outThread_defrag->start();
+			}
+			if(opt_dup_check && ifnamev.size() > 1) {
+				pcapQueueQ_outThread_dedup = new PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
+				pcapQueueQ_outThread_dedup->start();
+			}
 		}
 		
 		pcapQueueQ->start();
@@ -4175,6 +4183,9 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ_outThread_defrag) {
 			pcapQueueQ_outThread_defrag->terminate();
 		}
+		if(pcapQueueQ_outThread_dedup) {
+			pcapQueueQ_outThread_dedup->terminate();
+		}
 		sleep(1);
 		
 		terminate_processpacket();
@@ -4186,6 +4197,10 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ_outThread_defrag) {
 			delete pcapQueueQ_outThread_defrag;
 			pcapQueueQ_outThread_defrag = NULL;
+		}
+		if(pcapQueueQ_outThread_dedup) {
+			delete pcapQueueQ_outThread_dedup;
+			pcapQueueQ_outThread_dedup = NULL;
 		}
 		if(pcapQueueQ) {
 			delete pcapQueueQ;
@@ -7265,7 +7280,7 @@ void set_context_config() {
 		opt_pcap_queue_use_blocks = false;
 	}
 	
-	vector<string> ifnamev = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
+	ifnamev = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
 	if(getThreadingMode() < 2 && 
 	   (ifnamev.size() > 1 || opt_pcap_queue_use_blocks)) {
 		setThreadingMode(2);
