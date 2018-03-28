@@ -1,3 +1,12 @@
+22.3 28.03.2018
+===============
+- deduplication now works accross all interfaces 
+- fix parsing l2tp & tzsp in use_block (t2_boost) mode
+- fix race collision in merge calls [VS-769]
+- fix issue with sdp in reverse invite (fixes audio decode also) [VG-1540]
+- fix ua filter in alert 'SIP REGISTER user agent' add missing split by \r, \n add substitute % -> .*
+
+
 22.2 21.03.2018
 ===============
 - added test parameter --find-country-for-ip 1.2.3.4 (which will output country) [VG-1529]
