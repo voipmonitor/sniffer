@@ -581,6 +581,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	
 	vlan = -1;
 	
+	_mergecalls_lock = 0;
+	
 	exists_crypto_suite_key = false;
 	log_srtp_callid = false;
 	error_negative_payload_length = false;
@@ -3109,9 +3111,11 @@ bool Call::existsBothDirectionsInSelectedRtpStream() {
 void Call::removeMergeCalls() {
 	if(isSetCallidMergeHeader()) {
 		((Calltable*)calltable)->lock_calls_mergeMAP();
+		mergecalls_lock();
 		for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
 			((Calltable*)calltable)->calls_mergeMAP.erase(it->first);
 		}
+		mergecalls_unlock();
 		((Calltable*)calltable)->unlock_calls_mergeMAP();
 	}
 }

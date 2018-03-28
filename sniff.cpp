@@ -4606,7 +4606,9 @@ inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, i
 				call->has_second_merged_leg = true;
 				calltable->calls_mergeMAP[callidstr] = call;
 				calltable->unlock_calls_mergeMAP();
+				call->mergecalls_lock();
 				call->mergecalls[callidstr] = Call::sMergeLegInfo();
+				call->mergecalls_unlock();
 			}
 		}
 	} else {

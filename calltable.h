@@ -665,6 +665,7 @@ public:
 	unsigned int lastcalledssrc;
 
 	map<string, sMergeLegInfo> mergecalls;
+	volatile int _mergecalls_lock;
 
 	bool rtp_zeropackets_stored;
 	
@@ -1079,6 +1080,12 @@ public:
 		       opt_callidmerge_header[0] != '\0');
 	}
 	void removeMergeCalls();
+	void mergecalls_lock() {
+		while(__sync_lock_test_and_set(&this->_mergecalls_lock, 1));
+	}
+	void mergecalls_unlock() {
+		__sync_lock_release(&this->_mergecalls_lock);
+	}
 	
 	void setSipcallerip(u_int32_t ip, u_int16_t port, const char *call_id = NULL) {
 		sipcallerip[0] = ip;
@@ -1125,21 +1132,28 @@ public:
 		this->seenbye_time_usec = seenbye_time_usec;
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
-			mergecalls[call_id].seenbye = seenbye;
-			mergecalls[call_id].seenbye_time_usec = seenbye_time_usec;
+			mergecalls_lock();
+			if(mergecalls.find(call_id) != mergecalls.end()) {
+				mergecalls[call_id].seenbye = seenbye;
+				mergecalls[call_id].seenbye_time_usec = seenbye_time_usec;
+			}
+			mergecalls_unlock();
 		}
 	}
 	u_int64_t getSeenbyeTimeUS() {
 		if(isSetCallidMergeHeader()) {
 			u_int64_t seenbye_time_usec = 0;
+			mergecalls_lock();
 			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
 				if(!it->second.seenbye || !it->second.seenbye_time_usec) {
+					mergecalls_unlock();
 					return(0);
 				}
 				if(seenbye_time_usec < it->second.seenbye_time_usec) {
 					seenbye_time_usec = it->second.seenbye_time_usec;
 				}
 			}
+			mergecalls_unlock();
 			return(seenbye_time_usec);
 		}
 		return(seenbye ? seenbye_time_usec : 0);
