@@ -3628,7 +3628,7 @@ _ACEOF
   LIBS="-lsnappy $LIBS"
 
 else
-  as_fn_error $? "Unable to find snappy library. apt-get install libsnappy-dev | or compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz" "$LINENO" 5
+  as_fn_error $? "Unable to find snappy library. apt-get install libsnappy-dev | yum install snappy-devel.x86_64 | or compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz" "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lcurl" >&5
@@ -4347,8 +4347,8 @@ $as_echo "$ac_cv_lib_tcmalloc_minimal_tc_malloc" >&6; }
 if test "x$ac_cv_lib_tcmalloc_minimal_tc_malloc" = xyes; then :
   HAVE_LIBTCMALLOC=1
 else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev or compile from source https://code.google.com/p/gperftools/" >&5
-$as_echo "$as_me: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev or compile from source https://code.google.com/p/gperftools/" >&6;}
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/" >&5
+$as_echo "$as_me: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/" >&6;}
 fi
 
 
