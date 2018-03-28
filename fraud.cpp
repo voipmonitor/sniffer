@@ -839,9 +839,16 @@ bool FraudAlertReg::checkRegisterTimeSecLe(sFraudRegisterInfo *registerInfo) {
 void FraudAlertReg::loadAlertVirt() {
 	intervalLength = atol(dbRow["reg_interval_length_sec"].c_str());
 	intervalLimit = atol(dbRow["reg_interval_limit"].c_str());
-	vector<string> ua_split = split(dbRow["reg_ua"].c_str(), split(",|;", "|"), true);
+	vector<string> ua_split = split(dbRow["reg_ua"].c_str(), split(",|;|\r|\n", "|"), true);
 	for(unsigned i = 0; i < ua_split.size(); i ++) {
-		cRegExp *regExp = new cRegExp(ua_split[i].c_str());
+		string ua = ua_split[i];
+		if(ua[0] == '%') {
+			ua = ".*" + ua.substr(1);
+		}
+		if(ua[ua.length() - 1] == '%') {
+			ua = ua.substr(0, ua.length() - 1) + ".*";
+		}
+		cRegExp *regExp = new cRegExp(ua.c_str());
 		if(regExp->isOK()) {
 			ua_regex.push_back(regExp);
 		} else {
