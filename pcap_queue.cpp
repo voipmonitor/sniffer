@@ -5675,7 +5675,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 						offsetBufferSyncRead = 0;
 					} else {
 						++counterEmptyData;
-						if(counterEmptyData > 100) {
+						if(counterEmptyData > 300) {
 							syslog(LOG_NOTICE, "enforce close connection (too empty data) from %s:%i", this->packetServerConnections[arg2]->socketClientIP.c_str(), this->packetServerConnections[arg2]->socketClientInfo.sin_port);
 							this->packetServerConnections[arg2]->active = false;
 							forceStop = true;
