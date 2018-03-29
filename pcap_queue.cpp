@@ -4741,6 +4741,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			++counter;
 		}
 		if(!this->readThreads[this->readThreadsCount - 1]->isTerminated()) {
+			this->readThreads[this->readThreadsCount - 1]->restoreOneshotBuffer();
 			this->readThreads[this->readThreadsCount - 1]->cancelThread();
 		}
 		delete this->readThreads[this->readThreadsCount - 1];
