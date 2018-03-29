@@ -1266,7 +1266,7 @@ void SipHistorySetting (void) {
 	}
 }
 
-bool SqlInitSchema (void) {
+bool SqlInitSchema(string *rsltConnectErrorString = NULL) {
 	bool connectError = false;
 	string connectErrorString;
 	for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
@@ -1312,15 +1312,10 @@ bool SqlInitSchema (void) {
 		}
 		delete sqlDb;
 	}
-	if(connectError) {
-		if(useNewCONFIG && !is_read_from_file()) {
-			vm_terminate_error(connectErrorString.c_str());
-		} else {
-			syslog(LOG_ERR, "%s", (connectErrorString + " - exit!").c_str());
-			return false;
-		}
+	if(rsltConnectErrorString) {
+		*rsltConnectErrorString = connectError ? connectErrorString : "";
 	}
-	return true;
+	return(!connectError);
 }
 
 /* cycle files_queue and move it to spool dir */
@@ -3025,8 +3020,24 @@ int main(int argc, char *argv[]) {
 
 	//cout << "SQL DRIVER: " << sql_driver << endl;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender() && !is_terminating()) {
-		if (!SqlInitSchema()) {
-			return 1;
+		if(opt_fork) {
+			while(!is_terminating()) {
+				string connectErrorString;
+				if(SqlInitSchema(&connectErrorString)) {
+					break;
+				} else {
+					syslog(LOG_ERR, "%s", (connectErrorString + " - trying again after 10s").c_str());
+					for(int i = 0; i < 10 && !is_terminating(); i++) {
+						sleep(1);
+					}
+				}
+			}
+		} else {
+			string connectErrorString;
+			if(!SqlInitSchema(&connectErrorString)) {
+				syslog(LOG_ERR, "%s", (connectErrorString + " - exit!").c_str());
+				return 1;
+			}
 		}
 	}
 	
