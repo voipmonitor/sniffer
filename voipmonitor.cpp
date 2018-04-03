@@ -7318,7 +7318,7 @@ void set_context_config() {
 	}
 	if(opt_t2_boost) {
 		opt_enable_preprocess_packet = PreProcessPacket::ppt_end;
-		if(!is_sender() && !is_client_packetbuffer_sender() && !is_receiver() && !opt_scanpcapdir[0]) {
+		if(!is_sender() && !is_client_packetbuffer_sender() && !opt_scanpcapdir[0]) {
 			opt_pcap_queue_use_blocks = 1;
 			if(getThreadingMode() < 2) {
 				setThreadingMode(2);
@@ -7340,7 +7340,7 @@ void set_context_config() {
 		}
 	}
 	
-	if(opt_dup_check && (is_receiver() || is_server())) {
+	if(opt_dup_check && opt_pcap_queue_use_blocks && (is_receiver() || is_server())) {
 		opt_receiver_check_id_sensor = false;
 	}
 	
