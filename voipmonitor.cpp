@@ -3647,7 +3647,10 @@ int main_init_read() {
 				pcapQueueQ_outThread_defrag = new PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
 				pcapQueueQ_outThread_defrag->start();
 			}
-			if(opt_dup_check && ifnamev.size() > 1) {
+			if(opt_dup_check && 
+			   (is_receiver() || is_server() ?
+			     !opt_receiver_check_id_sensor :
+			     ifnamev.size() > 1)) {
 				pcapQueueQ_outThread_dedup = new PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
 				pcapQueueQ_outThread_dedup->start();
 			}
@@ -7287,7 +7290,7 @@ void set_context_config() {
 			      opt_database_backup_from_mysql_database[0] != '\0' &&
 			      opt_database_backup_from_mysql_user[0] != '\0';
 	
-	if(is_sender() || is_client_packetbuffer_sender() || is_receiver() || opt_scanpcapdir[0]) {
+	if(opt_scanpcapdir[0]) {
 		opt_pcap_queue_use_blocks = false;
 	}
 	
@@ -7335,6 +7338,10 @@ void set_context_config() {
 			opt_process_rtp_packets_qring_length = 4;
 			opt_process_rtp_packets_qring_item_length = 5000;
 		}
+	}
+	
+	if(opt_dup_check && (is_receiver() || is_server())) {
+		opt_receiver_check_id_sensor = false;
 	}
 	
 	if(isCloud()) {

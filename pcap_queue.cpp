@@ -6709,14 +6709,13 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	*/
 	
 	if(opt_udpfrag && pcapQueueQ_outThread_defrag &&
-	   hp_state == _hppq_out_state_NA && hp->block_store && hp->block_store->hm == pcap_block_store::plus2) {
+	   hp_state == _hppq_out_state_NA) {
 		pcapQueueQ_outThread_defrag->push(hp);
 		return(-1);
 	}
 	
 	if(opt_dup_check && pcapQueueQ_outThread_dedup &&
-	   ((hp_state == _hppq_out_state_NA && hp->block_store && hp->block_store->hm == pcap_block_store::plus2) ||
-	    (hp_state == _hppq_out_state_defrag))) {
+	   (hp_state == _hppq_out_state_NA || hp_state == _hppq_out_state_defrag)) {
 		pcapQueueQ_outThread_dedup->push(hp);
 		return(-1);
 	}
@@ -7163,7 +7162,17 @@ void *PcapQueue_outputThread::outThreadFunction() {
 
 void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 	uint32_t headerTimeS = hp->header->get_tv_sec();
-	hp->header->header_ip_offset = ((pcap_pkthdr_plus2*)hp->header)->header_ip_first_offset;
+	if(hp->block_store && hp->block_store->hm == pcap_block_store::plus2) {
+		hp->header->header_ip_offset = ((pcap_pkthdr_plus2*)hp->header)->header_ip_first_offset;
+	} else {
+		sll_header *header_sll;
+		ether_header *header_eth;
+		u_int header_ip_offset;
+		int protocol;
+		parseEtherHeader(hp->dlt, hp->packet,
+				 header_sll, header_eth, header_ip_offset, protocol);
+		hp->header->header_ip_offset = header_ip_offset;
+	}
 	iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
 	int foffset = ntohs(header_ip->frag_off);
 	if((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
