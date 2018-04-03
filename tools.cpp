@@ -4234,8 +4234,8 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	memset(&tcphdr, 0, sizeof(tcphdr2));
 	tcphdr.source = htons(source);
 	tcphdr.dest = htons(dest);
-	tcphdr.seq = seq;
-	tcphdr.ack_seq = ack_seq;
+	tcphdr.seq = htonl(seq);
+	tcphdr.ack_seq = htonl(ack_seq);
 	tcphdr.ack = 1;
 	tcphdr.doff = tcp_doff;
 	tcphdr.window = htons(0x8000);
