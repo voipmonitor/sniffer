@@ -271,6 +271,15 @@ public:
 		this->prefix = prefix;
 		return(this);
 	}
+	cConfigItem_string *setSuffix(const char *suffix) {
+		this->suffix = suffix;
+		return(this);
+	}
+	cConfigItem_string *setPrefixSuffix(const char *prefix, const char *suffix) {
+		this->prefix = prefix;
+		this->suffix = suffix;
+		return(this);
+	}
 	cConfigItem_string *setExplodeSeparator(const char *explodeSeparator) {
 		this->explodeSeparator = explodeSeparator;
 		return(this);
@@ -300,6 +309,7 @@ protected:
 	}
 	void initOther() {
 		prefix = "";
+		suffix = "";
 		explodeSeparator = ";";
 		password = false;
 	}
@@ -316,6 +326,7 @@ protected:
 	string param_virt;
 	vector<string> *param_vect_str;
 	string prefix;
+	string suffix;
 	string explodeSeparator;
 	bool password;
 };

@@ -762,6 +762,9 @@ bool cConfigItem_string::setParamFromValueStr(string value_str) {
 			if(!prefix.empty() && strncmp(param_str->c_str(), prefix.c_str(), prefix.length())) {
 				*param_str = prefix + *param_str;
 			}
+			if(!suffix.empty() && strncmp(param_str->c_str() + param_str->length() - suffix.length(), suffix.c_str(), suffix.length())) {
+				*param_str = *param_str + suffix;
+			}
 			++ok;
 		}
 		if(param_strchar) {
@@ -769,6 +772,11 @@ bool cConfigItem_string::setParamFromValueStr(string value_str) {
 			param_strchar[param_strchar_length - 1] = 0;
 			if(!prefix.empty() && strncmp(param_strchar, prefix.c_str(), prefix.length())) {
 				strncpy(param_strchar, (prefix + param_strchar).c_str(), param_strchar_length);
+				param_strchar[param_strchar_length - 1] = 0;
+			}
+			if(!suffix.empty() && strncmp(param_strchar + strlen(param_strchar) - suffix.length(), suffix.c_str(), suffix.length())) {
+				strncpy(param_strchar, (param_strchar + suffix).c_str(), param_strchar_length);
+				param_strchar[param_strchar_length - 1] = 0;
 			}
 			++ok;
 		}

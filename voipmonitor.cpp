@@ -5975,13 +5975,13 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42271) cConfigItem_yesno("cdr_sipport", &opt_cdr_sipport));
 			addConfigItem(new FILE_LINE(42272) cConfigItem_yesno("domainport", &opt_domainport));
 			addConfigItem((new FILE_LINE(42273) cConfigItem_string("fbasenameheader", opt_fbasename_header, sizeof(opt_fbasename_header)))
-				->setPrefix("\n")
+				->setPrefixSuffix("\n", ":")
 				->addAlias("fbasename_header"));
 			addConfigItem((new FILE_LINE(42274) cConfigItem_string("matchheader", opt_match_header, sizeof(opt_match_header)))
-				->setPrefix("\n")
+				->setPrefixSuffix("\n", ":")
 				->addAlias("match_header"));
 			addConfigItem((new FILE_LINE(42275) cConfigItem_string("callidmerge_header", opt_callidmerge_header, sizeof(opt_callidmerge_header)))
-				->setPrefix("\n"));
+				->setPrefixSuffix("\n", ":"));
 			addConfigItem(new FILE_LINE(42276) cConfigItem_string("callidmerge_secret", opt_callidmerge_secret, sizeof(opt_callidmerge_secret)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("callernum_numberonly", &opt_callernum_numberonly));
 				advanced();
@@ -6054,7 +6054,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42317) cConfigItem_yesno("norecord-header", &opt_norecord_header));
 			addConfigItem(new FILE_LINE(42318) cConfigItem_yesno("norecord-dtmf", &opt_norecord_dtmf));
 			addConfigItem(new FILE_LINE(42319) cConfigItem_string("pauserecordingdtmf", opt_silencedtmfseq, sizeof(opt_silencedtmfseq)));
-			addConfigItem(new FILE_LINE(42320) cConfigItem_string("pauserecordingheader", opt_silenceheader, sizeof(opt_silenceheader)));
+			addConfigItem((new FILE_LINE(42320) cConfigItem_string("pauserecordingheader", opt_silenceheader, sizeof(opt_silenceheader)))
+				->setPrefixSuffix("\n", ":"));
 			addConfigItem(new FILE_LINE(42321) cConfigItem_integer("pauserecordingdtmf_timeout", &opt_pauserecordingdtmf_timeout));
 			addConfigItem(new FILE_LINE(42322) cConfigItem_yesno("182queuedpauserecording", &opt_182queuedpauserecording));
 			addConfigItem(new FILE_LINE(42323) cConfigItem_yesno("vlan_siprtpsame", &opt_vlan_siprtpsame));
