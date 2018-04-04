@@ -89,7 +89,6 @@ extern char ssh_password[256];
 extern char ssh_remote_listenhost[1024];
 extern unsigned int ssh_remote_listenport;
 extern int enable_bad_packet_order_warning;
-extern ip_port opt_pcap_queue_send_to_ip_port;
 extern bool opt_socket_use_poll;
 
 extern cConfig CONFIG;
@@ -2339,7 +2338,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 
 		return(sendFile((string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename).c_str(), client, sshchannel, c_client, zip));
 	} else if(strstr(buf, "file_exists") != NULL) {
-		if(opt_pcap_queue_send_to_ip_port) {
+		if(is_sender()) {
 			sendvm(client, sshchannel, c_client, "mirror", 6, 0);
 			return 0;
 		}

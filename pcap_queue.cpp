@@ -3725,7 +3725,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 				this->serviceThread->threadInitFailed = true;
 				this->serviceThread->threadDoTerminate = true;
 			}
-			if(!opt_pcap_queue_receive_from_ip_port) {
+			if(!is_receiver()) {
 				vm_terminate_error(error.c_str());
 			}
 			return(NULL);
@@ -4471,7 +4471,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	} else {
 		this->threadTerminated = true;
 		this->threadInitFailed = true;
-		if(opt_pcap_queue_receive_from_ip_port) {
+		if(is_receiver()) {
 			this->initAllReadThreadsFinished = true;
 		} else {
 			vm_terminate_error(error.c_str());
@@ -4800,6 +4800,7 @@ void PcapQueue_readFromInterface::threadFunction_blocks() {
 			++counter;
 		}
 		if(!this->readThreads[this->readThreadsCount - 1]->isTerminated()) {
+			this->readThreads[this->readThreadsCount - 1]->restoreOneshotBuffer();
 			this->readThreads[this->readThreadsCount - 1]->cancelThread();
 		}
 		delete this->readThreads[this->readThreadsCount - 1];

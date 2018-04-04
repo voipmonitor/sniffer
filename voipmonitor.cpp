@@ -925,14 +925,15 @@ char ownPidFork_str[10];
 #define THREAD_ID        pthread_self(  )
 
 
+void set_context_config();
+void dns_lookup_common_hostnames();
+
 static void parse_command_line_arguments(int argc, char *argv[]);
 static void get_command_line_arguments();
-static void set_context_config();
 static void check_context_config();
 static void set_context_config_after_check_db_schema();
 static void create_spool_dirs();
 static bool check_complete_parameters();
-void dns_lookup_common_hostnames();
 static void parse_opt_nocdr_for_last_responses();
  
  
@@ -1579,7 +1580,7 @@ void *storing_cdr( void */*dummy*/ ) {
 	bool firstIter = true;
 	while(1) {
 		if(!opt_nocdr && !opt_disable_partition_operations && 
-		   !snifferClientOptions.isEnable() && 
+		   !is_client() && 
 		   isSqlDriver("mysql")) {
 			bool setEnableFromTo = false;
 			bool timeOk = false;
@@ -2987,7 +2988,7 @@ int main(int argc, char *argv[]) {
 			opt_load_query_from_files = 1;
 			opt_load_query_from_files_inotify = true;
 		}
-	} else if(snifferClientOptions.isEnable()) {
+	} else if(is_client()) {
 		snifferClientStart();
 	}
 	
@@ -3003,7 +3004,7 @@ int main(int argc, char *argv[]) {
 		return 0;
 	}
 	
-	if(!isCloud() && snifferServerOptions.isEnable() && !is_read_from_file_simple()) {
+	if(!isCloud() && is_server() && !is_read_from_file_simple()) {
 		snifferServerStart();
 	}
 
@@ -3636,9 +3637,9 @@ int main_init_read() {
 		}
 		pcapQueueQ->setEnableAutoTerminate(false);
 		
-		if(opt_pcap_queue_receive_from_ip_port) {
+		if(is_receiver()) {
 			pcapQueueQ->setPacketServer(opt_pcap_queue_receive_from_ip_port, PcapQueue_readFromFifo::directionRead);
-		} else if(opt_pcap_queue_send_to_ip_port) {
+		} else if(is_sender()) {
 			pcapQueueQ->setPacketServer(opt_pcap_queue_send_to_ip_port, PcapQueue_readFromFifo::directionWrite);
 		}
 		
@@ -3993,7 +3994,7 @@ void main_term_read() {
 	}
 	
 	if(sqlStore) {
-		if(!isCloud() && snifferServerOptions.isEnable() && !is_read_from_file_simple()) {
+		if(!isCloud() && is_server() && !is_read_from_file_simple()) {
 			snifferServerSetSqlStore(NULL);
 		}
 		sqlStore->setEnableTerminatingIfEmpty(0, true);
@@ -4161,7 +4162,7 @@ void main_init_sqlstore() {
 			}
 		}
 	}
-	if(!isCloud() && snifferServerOptions.isEnable() && !is_read_from_file_simple()) {
+	if(!isCloud() && is_server() && !is_read_from_file_simple()) {
 		snifferServerSetSqlStore(sqlStore);
 	}
 }
@@ -7127,13 +7128,13 @@ void set_context_config() {
 	if(opt_scanpcapdir[0]) {
 		sniffer_mode = snifferMode_read_from_files;
 		opt_use_oneshot_buffer = 0;
-	} else if(opt_pcap_queue_send_to_ip_port) {
+	} else if(is_sender()) {
 		sniffer_mode = snifferMode_sender;
 	} else {
 		sniffer_mode = snifferMode_read_from_interface;
 	}
 
-	if(opt_pcap_queue_receive_from_ip_port || opt_pcap_queue_send_to_ip_port || is_client_packetbuffer_sender()) {
+	if(is_receiver() || is_sender() || is_client_packetbuffer_sender()) {
 		if(opt_pcap_queue_compress == -1) {
 			opt_pcap_queue_compress = 1;
 		}
@@ -7206,7 +7207,7 @@ void set_context_config() {
 		}
 	}
 	
-	if(opt_pcap_queue_receive_from_ip_port && !opt_use_id_sensor_for_receiver_in_files) {
+	if(is_receiver() && !opt_use_id_sensor_for_receiver_in_files) {
 		opt_id_sensor_cleanspool = -1;
 	}
 	
@@ -7295,13 +7296,9 @@ void set_context_config() {
 	}
 	
 	ifnamev = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
-	if(getThreadingMode() < 2 && 
-	   (ifnamev.size() > 1 || opt_pcap_queue_use_blocks)) {
-		setThreadingMode(2);
-	}
 	
 	if(opt_pcap_queue_dequeu_window_length < 0) {
-		if(opt_pcap_queue_receive_from_ip_port || snifferServerOptions.isEnable()) {
+		if(is_receiver() || is_server()) {
 			 opt_pcap_queue_dequeu_window_length = 2000;
 		} else if(ifnamev.size() > 1) {
 			 opt_pcap_queue_dequeu_window_length = 1000;
@@ -7320,9 +7317,6 @@ void set_context_config() {
 		opt_enable_preprocess_packet = PreProcessPacket::ppt_end;
 		if(!is_sender() && !is_client_packetbuffer_sender() && !opt_scanpcapdir[0]) {
 			opt_pcap_queue_use_blocks = 1;
-			if(getThreadingMode() < 2) {
-				setThreadingMode(2);
-			}
 		}
 		if(opt_process_rtp_packets_hash_next_thread < 2) {
 			opt_process_rtp_packets_hash_next_thread = 2;
@@ -7340,8 +7334,36 @@ void set_context_config() {
 		}
 	}
 	
+	if(!opt_scanpcapdir[0] && !opt_pcap_queue_use_blocks) {
+		if(opt_udpfrag) {
+			if(is_receiver() || is_server()) {
+				opt_pcap_queue_use_blocks = 1;
+				syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because set udpfrag in server/receiver mode");
+			} else if(ifnamev.size() > 1) {
+				opt_pcap_queue_use_blocks = 1;
+				syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because set udpfrag in multiple interfaces");
+			}
+		}
+		if(opt_dup_check) {
+			if(is_receiver() || is_server()) {
+				opt_pcap_queue_use_blocks = 1;
+				syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because set deduplicate in server/receiver mode");
+			} else if(ifnamev.size() > 1) {
+				opt_pcap_queue_use_blocks = 1;
+				syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because set deduplicate in multiple interfaces");
+			}
+		}
+	}
+	
 	if(opt_dup_check && opt_pcap_queue_use_blocks && (is_receiver() || is_server())) {
 		opt_receiver_check_id_sensor = false;
+		syslog(LOG_NOTICE, "disabling receiver_check_id_sensor because set deduplicate in server/receiver mode");
+	}
+	
+	if(getThreadingMode() < 2 && 
+	   (ifnamev.size() > 1 || opt_pcap_queue_use_blocks)) {
+		syslog(LOG_NOTICE, "set threading mode 2");
+		setThreadingMode(2);
 	}
 	
 	if(isCloud()) {
@@ -7428,7 +7450,7 @@ void create_spool_dirs() {
 
 bool check_complete_parameters() {
 	if (!is_read_from_file() && ifname[0] == '\0' && opt_scanpcapdir[0] == '\0' && 
-	    !snifferServerOptions.isEnable() &&
+	    !is_server() &&
 	    !is_set_gui_params() &&
 	    !printConfigStruct && !printConfigFile && !is_receiver() &&
 	    !opt_test){
@@ -9787,7 +9809,7 @@ bool is_receiver() {
 }
 
 bool is_sender() {
-	return(!opt_pcap_queue_receive_from_ip_port &&
+	return(!is_receiver() &&
 	       opt_pcap_queue_send_to_ip_port);
 }
 

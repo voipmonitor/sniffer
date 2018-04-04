@@ -350,7 +350,24 @@ void cSnifferServerConnection::cp_service() {
 		return;
 	}
 	bool checkPingResponse = !jsonPasswordAesKeys.getValue("check_ping_response").empty();
-	if(!socket->writeBlock("OK")) {
+	bool autoParameters = !jsonPasswordAesKeys.getValue("auto_parameters").empty();
+	string okAndParameters;
+	if(autoParameters) {
+		JsonExport ok_parameters;
+		ok_parameters.add("result", "OK");
+		extern int opt_pcap_queue_use_blocks;
+		extern int opt_dup_check;
+		if(opt_pcap_queue_use_blocks) {
+			ok_parameters.add("use_blocks_pb", true);
+		}
+		if(opt_dup_check) {
+			ok_parameters.add("deduplicate", true);
+		}
+		okAndParameters = ok_parameters.getJson();
+	} else {
+		okAndParameters = "OK";
+	}
+	if(!socket->writeBlock(okAndParameters)) {
 		socket->setError("failed send ok");
 		delete this;
 		return;
@@ -741,6 +758,7 @@ bool cSnifferClientService::receive_process_loop_begin() {
 		json_keys.add("restore", true);
 	}
 	json_keys.add("check_ping_response", true);
+	json_keys.add("auto_parameters", true);
 	if(!receive_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
 		if(!receive_socket->isError()) {
 			receive_socket->setError("failed send sesnor_id & aes keys");
@@ -749,12 +767,54 @@ bool cSnifferClientService::receive_process_loop_begin() {
 		return(false);
 	}
 	string rsltConnectData;
-	if(!receive_socket->readBlock(&rsltConnectData) || rsltConnectData != "OK") {
+	bool rsltConnectData_okRead = false;
+	if(!receive_socket->readBlock(&rsltConnectData)) {
 		if(!receive_socket->isError()) {
-			receive_socket->setError(rsltConnectData != "OK" ? rsltConnectData.c_str() : "failed read ok");
-			if(rsltConnectData != "OK" && !start_ok) {
-				set_terminating();
+			receive_socket->setError("failed read ok");
+		}
+	} else {
+		if(rsltConnectData == "OK") {
+			rsltConnectData_okRead = true;
+		} else {
+			if(rsltConnectData.empty() || rsltConnectData[0] != '{') {
+				if(!receive_socket->isError()) {
+					receive_socket->setError(rsltConnectData.empty() ? "failed read ok" : rsltConnectData.c_str());
+				}
+			} else {
+				JsonItem rsltConnectData_json;
+				rsltConnectData_json.parse(rsltConnectData);
+				if(rsltConnectData_json.getValue("result") == "OK") {
+					rsltConnectData_okRead = true;
+					extern int opt_pcap_queue_use_blocks;
+					extern int opt_dup_check;
+					bool change_config = false;
+					if(!rsltConnectData_json.getValue("use_blocks_pb").empty() &&
+					   !opt_pcap_queue_use_blocks) {
+						opt_pcap_queue_use_blocks = true;
+						syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because it is enabled on server");
+						change_config = true;
+					}
+					if(!rsltConnectData_json.getValue("deduplicate").empty() &&
+					   !opt_dup_check) {
+						opt_dup_check = true;
+						syslog(LOG_NOTICE, "enabling deduplicate because it is enabled on server");
+						change_config = true;
+					}
+					if(change_config) {
+						extern void set_context_config();
+						set_context_config();
+					}
+				} else {
+					if(!receive_socket->isError()) {
+						receive_socket->setError(rsltConnectData.c_str());
+					}
+				}
 			}
+		}
+	}
+	if(!rsltConnectData_okRead) {
+		if(!start_ok) {
+			set_terminating();
 		}
 		_close();
 		return(false);
