@@ -1,3 +1,13 @@
+22.4 05.04.2018
+===============
+- added support for packet deduplication in all modes (client - server) 
+- automatically enable optimized sniffer parameters in client - server mode if deduplication is enabled
+- modify db timeout [VS-770]
+- fix crash when sniffer is terminating (add call restoreOneshotBuffer before cancel read thread)
+- fix save seq, ack_seq in tcp header (fixes TCP reassembled packet in PCAP)
+- fix configuration options when sniffer is in server mode: fbasenameheader, matchheader, callidmerge_header, pauserecordingheader [VS-775]
+
+
 22.3 28.03.2018
 ===============
 - deduplication now works accross all interfaces 
