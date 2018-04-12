@@ -4200,7 +4200,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			bool save_iscaller = false;
 			bool save_iscalled = false;
 			for(int i = ipport_n - 1; i >= 0; i--) {
-				if(ip_port[i].type_addr == ip_port_call_info::_ta_base &&
+				if(ip_port[i].addr &&
+				   ip_port[i].type_addr == ip_port_call_info::_ta_base &&
 				   (opt_save_sdp_ipport == 2 ||
 				    (ip_port[i].iscaller ? !save_iscaller : !save_iscalled))) {
 					SqlDb_row sdp;
