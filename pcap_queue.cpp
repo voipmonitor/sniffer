@@ -2447,37 +2447,6 @@ bool PcapQueue::createWriteThread() {
 	return(true);
 }
 
-int PcapQueue::pcap_next_ex_queue(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet) {
-	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
-	if(!packet && res != -2) {
-		if(VERBOSE) {
-			u_long actTime = getTimeMS();
-			if(actTime - 1000 > this->lastTimeLogErrPcapNextExNullPacket) {
-				syslog(LOG_NOTICE,"packetbuffer %s: NULL PACKET, pcap response is %d", this->nameQueue.c_str(), res);
-				this->lastTimeLogErrPcapNextExNullPacket = actTime;
-			}
-		}
-		return(0);
-	} else if(res == -1) {
-		if(VERBOSE) {
-			u_long actTime = getTimeMS();
-			if(actTime - 1000 > this->lastTimeLogErrPcapNextExErrorReading) {
-				syslog(LOG_NOTICE,"packetbuffer %s: error reading packets", this->nameQueue.c_str());
-				this->lastTimeLogErrPcapNextExErrorReading = actTime;
-			}
-		}
-		return(0);
-	} else if(res == -2) {
-		if(VERBOSE && opt_pb_read_from_file[0]) {
-			syslog(LOG_NOTICE,"packetbuffer %s: end of pcap file, exiting", this->nameQueue.c_str());
-		}
-		return(-1);
-	} else if(res == 0) {
-		return(0);
-	}
-	return(1);
-}
-
 bool PcapQueue::initThread(void *arg, unsigned int arg2, string */*error*/) {
 	return(!this->enableMainThread || this->openFifoForRead(arg, arg2));
 }
@@ -2893,7 +2862,8 @@ failed:
 	return(false);
 }
 
-inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet) {
+inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet,
+								bool checkProtocol, sCheckProtocolData *checkProtocolData) {
 	if(!pcapHandle) {
 		*header = NULL;
 		*packet = NULL;
@@ -3063,6 +3033,19 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 				libpcap_buffer_old = *packet;
 			}
 			syslog(LOG_NOTICE, "find oneshot libpcap buffer : %s", libpcap_buffer ? "success" : "failed");
+		}
+	}
+	if(checkProtocol) {
+		sCheckProtocolData _checkProtocolData;
+		if(!checkProtocolData) {
+			checkProtocolData = &_checkProtocolData;
+		}
+		if(!parseEtherHeader(pcapLinklayerHeaderType, *packet,
+				     checkProtocolData->header_sll, checkProtocolData->header_eth, checkProtocolData->header_ip_offset, checkProtocolData->protocol) ||
+		   checkProtocolData->protocol != ETHERTYPE_IP ||
+		   ((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->version != 4 ||
+		   htons(((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->tot_len) + checkProtocolData->header_ip_offset > (*header)->len) {
+			return(-11);
 		}
 	}
 	return(1);
@@ -3811,9 +3794,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 				}
 				res = this->pcap_next_ex_iface(this->pcapHandle, &pcap_next_ex_header, &pcap_next_ex_packet);
 				if(res == -1) {
-					forcePushDetachBufferWrite = true;;
-				} else if(res == 0) {
-					usleep(100);
+					forcePushDetachBufferWrite = true;
+				} else if(res <= 0) {
+					if(res == 0) {
+						usleep(100);
+					}
 					if(getTimeMS_rdtsc() > startDetachBufferWrite_ms + 500 &&
 					   this->detachBufferWritePos > 1) {
 						//cout << "FORCE DETACH 1 " << this->interfaceName << endl;
@@ -3911,11 +3896,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 						terminatingAtEndOfReadPcap();
 					}
 					break;
-				} else if(res == 0) {
+				} else if(res <= 0) {
 					if(this->force_push) {
 						this->tryForcePush();
 					}
-					usleep(100);
+					if(res == 0) {
+						usleep(100);
+					}
 					continue;
 				}
 				sumPacketsSize[0] += pcap_next_ex_header->caplen;
@@ -4164,11 +4151,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 	u_char *pcap_packet = NULL;
 	bool _useOneshotBuffer = false;
 	pcap_block_store *block = NULL;
-	
-	sll_header *header_sll;
-	ether_header *header_eth;
-	u_int header_ip_offset;
-	int protocol;
+	sCheckProtocolData checkProtocolData;
 	
 	while(!(is_terminating() || this->threadDoTerminate)) {
 		switch(this->typeThread) {
@@ -4191,7 +4174,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 					setOneshotBuffer(pcap_packet);
 				}
 			}
-			res = this->pcap_next_ex_iface(this->pcapHandle, &pcap_next_ex_header, &pcap_next_ex_packet);
+			res = this->pcap_next_ex_iface(this->pcapHandle, &pcap_next_ex_header, &pcap_next_ex_packet,
+						       opt_pcap_queue_use_blocks_read_check, &checkProtocolData);
 			if(res == -1) {
 				if(opt_pb_read_from_file[0]) {
 					this->push_block(block);
@@ -4200,16 +4184,10 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 					break;
 				}
 				break;
-			} else if(res == 0) {
-				usleep(100);
-				continue;
-			}
-			if(opt_pcap_queue_use_blocks_read_check &&
-			   (!parseEtherHeader(pcapLinklayerHeaderType, pcap_next_ex_packet,
-					      header_sll, header_eth, header_ip_offset, protocol) ||
-			    protocol != ETHERTYPE_IP ||
-			    ((iphdr2*)(pcap_next_ex_packet + header_ip_offset))->version != 4 ||
-			    htons(((iphdr2*)(pcap_next_ex_packet + header_ip_offset))->tot_len) + header_ip_offset > pcap_next_ex_header->len)) {
+			} else if(res <= 0) {
+				if(res == 0) {
+					usleep(100);
+				}
 				continue;
 			}
 			#if TRACE_INVITE_BYE
@@ -4223,8 +4201,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			pcap_header_plus2->clear();
 			if(opt_pcap_queue_use_blocks_read_check) {
 				pcap_header_plus2->detect_headers = 0x01;
-				pcap_header_plus2->header_ip_first_offset = header_ip_offset;
-				pcap_header_plus2->eth_protocol = protocol;
+				pcap_header_plus2->header_ip_first_offset = checkProtocolData.header_ip_offset;
+				pcap_header_plus2->eth_protocol = checkProtocolData.protocol;
 			}
 			pcap_header_plus2->convertFromStdHeader(pcap_next_ex_header);
 			pcap_header_plus2->header_ip_offset = 0;
@@ -4619,7 +4597,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				}
 			} else if(res == 0) {
 				usleep(100);
-			} else {
+			} else if(res > 0) {
 				if(pcap_next_ex_header->caplen > SNAPLEN) {
 					pcap_next_ex_header->caplen = SNAPLEN;
 				}

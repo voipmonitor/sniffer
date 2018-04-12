@@ -266,7 +266,6 @@ protected:
 	virtual bool createThread();
 	virtual bool createMainThread();
 	virtual bool createWriteThread();
-	inline int pcap_next_ex_queue(pcap_t* pcapHandle, pcap_pkthdr** header, u_char** packet);
 	virtual bool init() { return(true); };
 	virtual bool initThread(void *arg, unsigned int arg2, string *error);
 	virtual bool initWriteThread(void *arg, unsigned int arg2);
@@ -397,12 +396,20 @@ struct pcapProcessData {
 
 class PcapQueue_readFromInterface_base {
 public:
+	struct sCheckProtocolData {
+		sll_header *header_sll;
+		ether_header *header_eth;
+		u_int header_ip_offset;
+		int protocol;
+	};
+public:
 	PcapQueue_readFromInterface_base(const char *interfaceName = NULL);
 	virtual ~PcapQueue_readFromInterface_base();
 	void setInterfaceName(const char *interfaceName);
 protected:
 	virtual bool startCapture(string *error);
-	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet);
+	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet,
+				      bool checkProtocol = false, sCheckProtocolData *checkProtocolData = NULL);
 	void restoreOneshotBuffer();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
 	inline int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
