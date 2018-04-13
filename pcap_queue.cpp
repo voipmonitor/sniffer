@@ -2702,10 +2702,19 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	libpcap_buffer = NULL;
 	libpcap_buffer_old = NULL;
 	packets_counter = 0;
-}
-
-void PcapQueue_readFromInterface_base::setInterfaceName(const char *interfaceName) {
-	this->interfaceName = interfaceName;
+	extern vector<u_int32_t> if_filter_ip;
+	extern vector<d_u_int32_t> if_filter_net;
+	if(if_filter_ip.size() || if_filter_net.size()) {
+		filter_ip = new FILE_LINE(0) ListIP;
+		if(if_filter_ip.size()) {
+			filter_ip->add(&if_filter_ip);
+		}
+		if(if_filter_net.size()) {
+			filter_ip->add(&if_filter_net);
+		}
+	} else {
+		filter_ip = NULL;
+	}
 }
 
 PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
@@ -2717,6 +2726,13 @@ PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
 		pcap_dump_close(this->pcapDumpHandle);
 		syslog(LOG_NOTICE, "packetbuffer terminating: pcap_close pcapDumpHandle (%s)", interfaceName.c_str());
 	}
+	if(filter_ip) {
+		delete filter_ip;
+	}
+}
+
+void PcapQueue_readFromInterface_base::setInterfaceName(const char *interfaceName) {
+	this->interfaceName = interfaceName;
 }
 
 bool PcapQueue_readFromInterface_base::startCapture(string *error) {
@@ -3035,7 +3051,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			syslog(LOG_NOTICE, "find oneshot libpcap buffer : %s", libpcap_buffer ? "success" : "failed");
 		}
 	}
-	if(checkProtocol) {
+	if(checkProtocol || filter_ip) {
 		sCheckProtocolData _checkProtocolData;
 		if(!checkProtocolData) {
 			checkProtocolData = &_checkProtocolData;
@@ -3046,6 +3062,12 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		   ((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->version != 4 ||
 		   htons(((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->tot_len) + checkProtocolData->header_ip_offset > (*header)->len) {
 			return(-11);
+		}
+		if(filter_ip) {
+			iphdr2 *iphdr = (iphdr2*)(*packet + checkProtocolData->header_ip_offset);
+			if(!filter_ip->checkIP(htonl(iphdr->saddr)) && !filter_ip->checkIP(htonl(iphdr->daddr))) {
+				return(-11);
+			}
 		}
 	}
 	return(1);

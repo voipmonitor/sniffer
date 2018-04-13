@@ -457,6 +457,7 @@ private:
 	u_char **libpcap_buffer;
 	u_char *libpcap_buffer_old;
 	u_int64_t packets_counter;
+	ListIP *filter_ip;
 };
 
 

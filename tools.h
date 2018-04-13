@@ -1680,6 +1680,8 @@ public:
 	}
 	void addComb(string &ip, ListIP *negList = NULL);
 	void addComb(const char *ip, ListIP *negList = NULL);
+	void add(vector<u_int32_t> *ip);
+	void add(vector<d_u_int32_t> *net);
 	bool checkIP(uint check_ip) {
 		bool rslt =  false;
 		if(autoLock) lock();

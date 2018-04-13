@@ -649,6 +649,8 @@ eSnifferMode sniffer_mode = snifferMode_read_from_interface;
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
 vector<string> ifnamev;
+vector<u_int32_t> if_filter_ip;
+vector<d_u_int32_t> if_filter_net;
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
 #ifndef FREEBSD
@@ -5689,6 +5691,7 @@ void cConfig::addConfigItems() {
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem(new FILE_LINE(42132) cConfigItem_string("interface", ifname, sizeof(ifname)));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_hosts("interface_ip_filter", &if_filter_ip, &if_filter_net));
 				addConfigItem(new FILE_LINE(42133) cConfigItem_yesno("use_oneshot_buffer", &opt_use_oneshot_buffer));
 				addConfigItem(new FILE_LINE(42134) cConfigItem_integer("snaplen", &opt_snaplen));
 			normal();
@@ -7914,6 +7917,31 @@ int eval_config(string inistr) {
 
 	if((value = ini.GetValue("general", "interface", NULL))) {
 		strncpy(ifname, value, sizeof(ifname));
+	}
+	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			u_int32_t ip;
+			int lengthMask = 32;
+			char *pointToSeparatorLengthMask = strchr((char*)i->pItem, '/');
+			if(pointToSeparatorLengthMask) {
+				*pointToSeparatorLengthMask = 0;
+				ip = htonl(inet_addr(i->pItem));
+				lengthMask = atoi(pointToSeparatorLengthMask + 1);
+			} else {
+				ip = htonl(inet_addr(i->pItem));
+			}
+			if(lengthMask < 32) {
+				ip = ip >> (32 - lengthMask) << (32 - lengthMask);
+			}
+			if(ip) {
+				if(lengthMask < 32) {
+					if_filter_net.push_back(d_u_int32_t(ip, lengthMask));
+				} else {
+					if_filter_ip.push_back(ip);
+				}
+			}
+		}
 	}
 	if((value = ini.GetValue("general", "cleandatabase", NULL))) {
 		opt_cleandatabase_cdr =

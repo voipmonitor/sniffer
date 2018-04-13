@@ -1722,12 +1722,44 @@ bool RestartUpgrade::runUpgrade() {
 		if(verbosity > 0) {
 			syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
 		}
-		if(get_url_file(_url.c_str(), binaryGzFilepathName.c_str(), &error)) {
+		bool get_url_file_rslt = get_url_file(_url.c_str(), binaryGzFilepathName.c_str(), &error);
+		long long int get_url_file_size = 0;
+		if(get_url_file_rslt) {
+			get_url_file_size = GetFileSize(binaryGzFilepathName);
+			if(get_url_file_size <= 0) {
+				get_url_file_rslt = false;
+			} else if(get_url_file_size < 10000) {
+				FILE *check_file_handle = fopen(binaryGzFilepathName.c_str(), "r");
+				if(check_file_handle) {
+					char *check_file_buffer = new FILE_LINE(0) char[get_url_file_size + 1];
+					if(fread(check_file_buffer, 1, get_url_file_size, check_file_handle) == (unsigned)get_url_file_size) {
+						check_file_buffer[get_url_file_size] = 0;
+						vector<string> matches;
+						if(reg_match(check_file_buffer, "<title>(.*)</title>", &matches, true) ||
+						   reg_match(check_file_buffer, "<h1>(.*)</h1>", &matches, true)) {
+							error = matches[1];
+							get_url_file_rslt = false;
+						}
+					} else {
+						get_url_file_rslt = false;
+					}
+					delete [] check_file_buffer;
+					fclose(check_file_handle);
+				} else {
+					error = "failed check of the download file";
+					get_url_file_rslt = false;
+				}
+			}
+		}
+		if(get_url_file_rslt) {
 			syslog(LOG_NOTICE, "download file '%s' finished (size: %lli)", _url.c_str(), GetFileSize(binaryGzFilepathName));
 			this->errorString = "";
 			break;
 		} else {
-			this->errorString = "failed download upgrade: " + error;
+			this->errorString = "failed download upgrade";
+			if(!error.empty()) {
+				this->errorString += ": " + error;
+			}
 			if(pass || !opt_upgrade_try_http_if_https_fail) {
 				rmdir_r(this->upgradeTempFileName.c_str());
 				if(verbosity > 0) {
@@ -2667,6 +2699,18 @@ void ListIP::addComb(const char *ip, ListIP *negList) {
 		} else {
 			add(ip_elems[i].c_str());
 		}
+	}
+}
+
+void ListIP::add(vector<u_int32_t> *ip) {
+	for(unsigned i = 0; i < ip->size(); i++) {
+		add((*ip)[i]);
+	}
+}
+
+void ListIP::add(vector<d_u_int32_t> *net) {
+	for(unsigned i = 0; i < net->size(); i++) {
+		add((*net)[i][0], (*net)[i][0]);
 	}
 }
 
