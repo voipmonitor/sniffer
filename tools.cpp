@@ -2710,7 +2710,7 @@ void ListIP::add(vector<u_int32_t> *ip) {
 
 void ListIP::add(vector<d_u_int32_t> *net) {
 	for(unsigned i = 0; i < net->size(); i++) {
-		add((*net)[i][0], (*net)[i][0]);
+		add((*net)[i][0], (*net)[i][1]);
 	}
 }
 
