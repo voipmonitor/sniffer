@@ -642,6 +642,7 @@ public:
 	volatile int _proxies_lock;
 	list<unsigned int> proxies;
 	
+	bool onInvite;
 	bool onCall_2XX;
 	bool onCall_18X;
 	bool updateDstnumOnAnswer;

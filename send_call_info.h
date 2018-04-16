@@ -9,7 +9,8 @@
 struct sSciInfo {
 	enum eTypeSci {
 		sci_18X,
-		sci_200
+		sci_200,
+		sci_invite
 	};
 	sSciInfo() {
 		typeSci = (eTypeSci)0;
@@ -31,7 +32,8 @@ public:
 	enum eInfoOn {
 		infoOn_183_180,
 		infoOn_200, 
-		infoOn_183_180_200
+		infoOn_183_180_200,
+		infoOn_invite
 	};
 	enum eRequestType {
 		rt_get,

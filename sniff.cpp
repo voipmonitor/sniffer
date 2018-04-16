@@ -2886,13 +2886,16 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				}
 			}
 		}
-
 		//check and save CSeq for later to compare with OK 
 		if(cseq && cseqlen < 32) {
 			memcpy(call->invitecseq, cseq, cseqlen);
 			call->invitecseq[cseqlen] = '\0';
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %s\n", call->invitecseq);
+		}
+		if(!call->onInvite) {
+			sendCallInfoEvCall(call, sSciInfo::sci_invite, packetS->header_pt->ts);
+			call->onInvite = true;
 		}
 	} else if(packetS->sip_method == MESSAGE && call->type == MESSAGE) {
 		call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;

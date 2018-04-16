@@ -7,7 +7,6 @@ extern int opt_nocdr;
 SendCallInfo *sendCallInfo = NULL;
 volatile int _sendCallInfo_ready = 0;
 volatile int _sendCallInfo_lock = 0;
-int sendCallInfoDebug = 1;
 
 
 static void sendCallInfo_lock() {
@@ -69,9 +68,12 @@ bool SendCallInfoItem::load() {
 		delete sqlDb;
 		return(false);
 	}
-	name = dbRow["descr"];
+	name = dbRow["descr"].empty() ? dbRow["name"] : dbRow["descr"];
 	infoOn = dbRow["info_on"] == "183/180" ? infoOn_183_180 :
-		 dbRow["info_on"] == "200" ? infoOn_200 : infoOn_183_180_200;
+		 dbRow["info_on"] == "200" ? infoOn_200 : 
+		 dbRow["info_on"] == "183/180_200" ? infoOn_183_180_200 :
+		 dbRow["info_on"] == "INVITE" ? infoOn_invite : 
+		 (eInfoOn)-1;
 	requestUrl = dbRow["request_url"];
 	requestType = dbRow["request_type"] == "get" ? rt_get : rt_post;
 	phoneNumberCallerFilter.addWhite(dbRow["whitelist_number_caller"].c_str());
@@ -95,16 +97,20 @@ bool SendCallInfoItem::load() {
 }
 
 void SendCallInfoItem::evSci(sSciInfo *sci) {
-	if((infoOn == infoOn_183_180_200 ||
+	if(((infoOn == infoOn_183_180_200 && (sci->typeSci == sSciInfo::sci_18X || sci->typeSci == sSciInfo::sci_200)) ||
 	    (infoOn == infoOn_183_180 && sci->typeSci == sSciInfo::sci_18X) ||
-	    (infoOn == infoOn_200 && sci->typeSci == sSciInfo::sci_200)) &&
+	    (infoOn == infoOn_200 && sci->typeSci == sSciInfo::sci_200) ||
+	    (infoOn == infoOn_invite && sci->typeSci == sSciInfo::sci_invite)) &&
 	   phoneNumberCallerFilter.checkNumber(sci->caller_number.c_str()) &&
 	   phoneNumberCalledFilter.checkNumber(sci->called_number.c_str()) &&
 	   ipCallerFilter.checkIP(sci->caller_ip) &&
 	   ipCalledFilter.checkIP(sci->called_ip)) {
 		vector<dstring> postData;
 		postData.push_back(dstring("rule", name));
-		postData.push_back(dstring("type", sci->typeSci == sSciInfo::sci_18X ? "18X" : "200"));
+		postData.push_back(dstring("type", sci->typeSci == sSciInfo::sci_18X ? "18X" : 
+						   sci->typeSci == sSciInfo::sci_200 ? "200" :
+						   sci->typeSci == sSciInfo::sci_invite ? "INVITE" : 
+						   ""));
 		postData.push_back(dstring("caller", sci->caller_number));
 		postData.push_back(dstring("called", sci->called_number));
 		postData.push_back(dstring("ip_src", inet_ntostring(sci->caller_ip)));
@@ -123,7 +129,7 @@ void SendCallInfoItem::evSci(sSciInfo *sci) {
 		string error;
 		get_url_response((requestUrl + getParams).c_str(), &responseBuffer, requestType == rt_get ? NULL : &postData, &error);
 		if(error.empty()) {
-			if(sendCallInfoDebug) {
+			if(sverb.send_call_info) {
 				cout << "send call info response: " << (char*)responseBuffer << endl;
 			}
 		}
@@ -149,7 +155,7 @@ void SendCallInfo::load(bool lock) {
 	sqlDb->query("select id, name from send_call_info");
 	SqlDb_row row;
 	while((row = sqlDb->fetchRow())) {
-		if(sendCallInfoDebug) {
+		if(sverb.send_call_info) {
 			syslog(LOG_NOTICE, "load send_call_info %s", row["name"].c_str());
 		}
 		SendCallInfoItem *sci = new FILE_LINE(25001) SendCallInfoItem(atol(row["id"].c_str()));

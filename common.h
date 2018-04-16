@@ -92,6 +92,7 @@ struct sVerbose {
 	int force_log_sqlq;
 	int dump_call_flags;
 	int log_srtp_callid;
+	int send_call_info;
 	int _debug1;
 	int _debug2;
 	int _debug3;
