@@ -2967,7 +2967,7 @@ int main(int argc, char *argv[]) {
 		atexit(exit_handler_fork_mode);
 	}
 
-	if(!is_read_from_file_simple() && !is_set_gui_params() && command_line_data.size()) {
+	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size()) {
 		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", RTPSENSOR_VERSION);
 	}
 

@@ -685,7 +685,8 @@ void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirt
 		header = new FILE_LINE(26001) pcap_pkthdr;
 		memcpy(header, packetS->header_pt, sizeof(pcap_pkthdr));
 		allocHeader = true;
-		packet = new FILE_LINE(26002) u_char[header->caplen];
+		packet = new FILE_LINE(26002) u_char[max(packetLen, header->caplen)];
+		memset(packet, 0, max(packetLen, header->caplen));
 		allocPacket = true;
 		if(packetLen != packetS->header_pt->caplen) {
 			if(type == TYPE_SIP && packetS->isSip) {
