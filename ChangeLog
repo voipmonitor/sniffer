@@ -1,3 +1,10 @@
+22.5 16.04.2018
+===============
+- fix store cdr_sdp if skip ip == 0.0.0.0
+- added support for send call info after first invite (with and without reply) (GUI:Settings->send call information) [VS-778]
+- new option interface_ip_filter speeds up filter = host ip or host ip2 or host ip3 ... (details in voipmonitor.conf) [VS-776]
+
+
 22.4 05.04.2018
 ===============
 - added support for packet deduplication in all modes (client - server) 
