@@ -5505,9 +5505,13 @@ void Call::disableListeningBuffers() {
 	pthread_mutex_lock(&listening_worker_run_lock);
 	if(audiobuffer1) {
 		audiobuffer1->clean_and_disable();
+		last_seq_audiobuffer1 = 0;
+		last_ssrc_audiobuffer1 = 0;
 	}
 	if(audiobuffer2) { 
 		audiobuffer2->clean_and_disable();
+		last_seq_audiobuffer2 = 0;
+		last_ssrc_audiobuffer2 = 0;
 	}
 	pthread_mutex_unlock(&listening_worker_run_lock);
 }

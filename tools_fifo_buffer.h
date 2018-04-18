@@ -224,6 +224,9 @@ public:
 		this->disable = false;
 		unlock();
 	}
+	bool is_enable() {
+		return(!this->disable);
+	}
 	u_int32_t size_all(bool useLock = true) {
 		return(this->_size(useLock));
 	}

@@ -749,9 +749,9 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		Call *owner = (Call*)call_owner;
 		if(iscaller) {
 			owner->codec_caller = codec;
-			if(owner->audiobuffer1 &&
+			if(owner->audiobuffer1 && owner->audiobuffer1->is_enable() &&
 			   (!owner->last_seq_audiobuffer1 ||
-			    owner->last_seq_audiobuffer1 < frame->seqno ||
+			    (owner->last_seq_audiobuffer1 < frame->seqno || (owner->last_seq_audiobuffer1 - frame->seqno) > 30000) ||
 			    owner->last_ssrc_audiobuffer1 != this->ssrc)) {
 				channel->audiobuf = owner->audiobuffer1;
 				owner->last_seq_audiobuffer1 = frame->seqno;
@@ -759,9 +759,9 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			}
 		} else {
 			owner->codec_called = codec;
-			if(owner->audiobuffer2 &&
+			if(owner->audiobuffer2 && owner->audiobuffer2->is_enable() &&
 			   (!owner->last_seq_audiobuffer2 ||
-			    owner->last_seq_audiobuffer2 < frame->seqno ||
+			    (owner->last_seq_audiobuffer2 < frame->seqno || (owner->last_seq_audiobuffer2 - frame->seqno) > 30000) ||
 			    owner->last_ssrc_audiobuffer2 != this->ssrc)) {
 				channel->audiobuf = owner->audiobuffer2;
 				owner->last_seq_audiobuffer2 = frame->seqno;
