@@ -440,44 +440,46 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		}
 	}
 	
-	if(ppf & ppf_defrag) {
-		//if UDP defrag is enabled process only UDP packets and only SIP packets
-		if(opt_udpfrag && ppd->header_ip) {
-			int foffset = ntohs(ppd->header_ip->frag_off);
-			if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
-				if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > HPH(*header_packet)->caplen) {
-					if(interfaceName) {
-						extern BogusDumper *bogusDumper;
-						static u_long lastTimeLogErrBadIpHeader = 0;
-						if(bogusDumper) {
-							bogusDumper->dump(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName);
+	int is_ip_frag = 0;
+	if(ppd->header_ip) {
+		int foffset = ntohs(ppd->header_ip->frag_off);
+		if((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
+			is_ip_frag = 1;
+			if((ppf & ppf_defrag) && opt_udpfrag) {
+				int foffset = ntohs(ppd->header_ip->frag_off);
+				if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
+					if(htons(ppd->header_ip->tot_len) + ppd->header_ip_offset > HPH(*header_packet)->caplen) {
+						if(interfaceName) {
+							extern BogusDumper *bogusDumper;
+							static u_long lastTimeLogErrBadIpHeader = 0;
+							if(bogusDumper) {
+								bogusDumper->dump(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName);
+							}
+							u_long actTime = getTimeMS(HPH(*header_packet));
+							if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
+								syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: %s: bogus ip header length %i, caplen %i", interfaceName, htons(ppd->header_ip->tot_len), HPH(*header_packet)->caplen);
+								lastTimeLogErrBadIpHeader = actTime;
+							}
 						}
-						u_long actTime = getTimeMS(HPH(*header_packet));
-						if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-							syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: %s: bogus ip header length %i, caplen %i", interfaceName, htons(ppd->header_ip->tot_len), HPH(*header_packet)->caplen);
-							lastTimeLogErrBadIpHeader = actTime;
+						//cout << "pcapProcess exit 001" << endl;
+						return(0);
+					}
+					// packet is fragmented
+					if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
+						// packets are reassembled
+						ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+						if(sverb.defrag) {
+							defrag_counter++;
+							cout << "*** DEFRAG 1 " << defrag_counter << endl;
 						}
+						is_ip_frag = 2;
+					} else {
+						//cout << "pcapProcess exit 002" << endl;
+						return(0);
 					}
-					//cout << "pcapProcess exit 001" << endl;
-					return(0);
-				}
-				// packet is fragmented
-				if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
-					// packets are reassembled
-					ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
-					if(sverb.defrag) {
-						defrag_counter++;
-						cout << "*** DEFRAG 1 " << defrag_counter << endl;
-					}
-				} else {
-					//cout << "pcapProcess exit 002" << endl;
-					return(0);
 				}
 			}
 		}
-	}
-
-	if(ppd->header_ip) {
 		unsigned headers_ip_counter = 0;
 		unsigned headers_ip_offset[20];
 		while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
@@ -498,12 +500,11 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->header_ip = (iphdr2*)((u_char*)ppd->header_ip + next_header_ip_offset);
 				ppd->header_ip_offset += next_header_ip_offset;
 			}
-			if(ppf & ppf_defrag) {
-				//if UDP defrag is enabled process only UDP packets and only SIP packets
-				if(opt_udpfrag && ppd->header_ip->protocol == IPPROTO_UDP) {
-					int foffset = ntohs(ppd->header_ip->frag_off);
-					if ((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
-						// packet is fragmented
+			if(ppd->header_ip->protocol == IPPROTO_UDP) {
+				int foffset = ntohs(ppd->header_ip->frag_off);
+				if((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
+					is_ip_frag = 1;
+					if((ppf & ppf_defrag) && opt_udpfrag) {
 						if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
 							ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 							ppd->header_ip->frag_off = 0;
@@ -516,6 +517,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 								defrag_counter++;
 								cout << "*** DEFRAG 2 " << defrag_counter << endl;
 							}
+							is_ip_frag = 2;
 						} else {
 							//cout << "pcapProcess exit 003" << endl;
 							return(0);
@@ -662,7 +664,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		}
 	}
 	
-	if(!(ppf & ppf_defragInPQout)) {
+	if(!((ppf & ppf_defragInPQout) && is_ip_frag == 1)) {
 		u_int32_t caplen;
 		if(header_packet) {
 			caplen = HPH(*header_packet)->caplen;
@@ -747,7 +749,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		// check for duplicate packets (md5 is expensive operation - enable only if you really need it
 		if(opt_dup_check && 
 		   ppd->prevmd5s != NULL && 
-		   ((ppf & ppf_defragInPQout) ||
+		   (((ppf & ppf_defragInPQout) && is_ip_frag == 1) ||
 		    (ppd->datalen > 0 && (opt_dup_check_ipheader || ppd->traillen < ppd->datalen))) &&
 		   !(ppd->istcp && opt_enable_http && (httpportmatrix[htons(ppd->header_tcp->source)] || httpportmatrix[htons(ppd->header_tcp->dest)])) &&
 		   !(ppd->istcp && opt_enable_webrtc && (webrtcportmatrix[htons(ppd->header_tcp->source)] || webrtcportmatrix[htons(ppd->header_tcp->dest)])) &&
@@ -755,7 +757,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			uint16_t *_md5 = header_packet ? (*header_packet)->md5 : pcap_header_plus2->md5;
 			if(ppf & ppf_calcMD5) {
 				MD5_Init(&ppd->ctx);
-				if(ppf & ppf_defragInPQout) {
+				if((ppf & ppf_defragInPQout) && is_ip_frag == 1) {
 					u_int32_t caplen = header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen();
 					MD5_Update(&ppd->ctx, ppd->header_ip, MIN(caplen - ppd->header_ip_offset, ntohs(ppd->header_ip->tot_len)));
 				} else if(opt_dup_check_ipheader) {
