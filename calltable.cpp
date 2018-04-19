@@ -3681,18 +3681,24 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		for(int pass_rtpab = 0; pass_rtpab < (pass_rtpab_simple ? 1 : 2); pass_rtpab++) {
 			for(int k = 0; k < ssrc_n; k++) {
 				if(pass_rtpab == 0) {
-					if(sverb.process_rtp || sverb.read_rtp) {
+					if(k == 0 && sverb.rtp_streams) {
+						cout << "call " << call_id << endl;
+					}
+					if(sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams) {
 						cout << "RTP - final stream: " 
 						     << hex << rtp[indexes[k]]->ssrc << dec << " : "
 						     << inet_ntostring(htonl(rtp[indexes[k]]->saddr)) << " -> "
 						     << inet_ntostring(htonl(rtp[indexes[k]]->daddr)) << " / "
 						     << (rtp[indexes[k]]->iscaller ? "caller" : "called") 
 						     << " packets received: " << rtp[indexes[k]]->s->received << " "
+						     << " packets lost: " << rtp[indexes[k]]->s->lost << " "
 						     << " ssrc index: " << rtp[indexes[k]]->ssrc_index << " "
+						     << " ok_other_ip_side_by_sip: " << rtp[indexes[k]]->ok_other_ip_side_by_sip << " " 
 						     << endl;
 					}
 				}
-				if(pass_rtpab_simple || rtp[indexes[k]]->ok_other_ip_side_by_sip || pass_rtpab == 1) {
+				if(rtp[indexes[k]]->stats.received &&
+				   (pass_rtpab_simple || rtp[indexes[k]]->ok_other_ip_side_by_sip || pass_rtpab == 1)) {
 					if(!rtpab_ok[0] &&
 					   rtp[indexes[k]]->iscaller && 
 					   (!rtpab[0] || rtp[indexes[k]]->stats.received > rtpab[0]->stats.received)) {
@@ -3714,6 +3720,23 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 				if(rtpab_ok[0] && rtpab_ok[1]) {
 					break;
+				}
+			}
+		}
+		
+		if(sverb.rtp_streams) {
+			for(int k = 0; k < 2; k++) {
+				if(rtpab[k]) {
+					cout << "RTP - select stream: " 
+					     << hex << rtpab[k]->ssrc << dec << " : "
+					     << inet_ntostring(htonl(rtpab[k]->saddr)) << " -> "
+					     << inet_ntostring(htonl(rtpab[k]->daddr)) << " / "
+					     << (rtpab[k]->iscaller ? "caller" : "called") 
+					     << " packets received: " << rtpab[k]->s->received << " "
+					     << " packets lost: " << rtpab[k]->s->lost << " "
+					     << " ssrc index: " << rtpab[k]->ssrc_index << " "
+					     << " ok_other_ip_side_by_sip: " << rtpab[k]->ok_other_ip_side_by_sip << " " 
+					     << endl;
 				}
 			}
 		}
