@@ -2170,7 +2170,7 @@ Call::convertRawToWav() {
 			this->setSkipConcurenceStreams(-1);
 		}
 	
-		if(sverb.read_rtp) {
+		if(sverb.read_rtp || sverb.rtp_streams) {
 			this->printSelectedRtpStreams(-1, false);
 		}
 	} else {
@@ -3688,8 +3688,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						cout << "RTP - final stream: " 
 						     << hex << rtp[indexes[k]]->ssrc << dec << " : "
 						     << inet_ntostring(htonl(rtp[indexes[k]]->saddr)) << " -> "
-						     << inet_ntostring(htonl(rtp[indexes[k]]->daddr)) << " / "
-						     << (rtp[indexes[k]]->iscaller ? "caller" : "called") 
+						     << inet_ntostring(htonl(rtp[indexes[k]]->daddr)) << " /"
+						     << " iscaller: " << rtp[indexes[k]]->iscaller << " " 
 						     << " packets received: " << rtp[indexes[k]]->s->received << " "
 						     << " packets lost: " << rtp[indexes[k]]->s->lost << " "
 						     << " ssrc index: " << rtp[indexes[k]]->ssrc_index << " "
@@ -3730,8 +3730,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					cout << "RTP - select stream: " 
 					     << hex << rtpab[k]->ssrc << dec << " : "
 					     << inet_ntostring(htonl(rtpab[k]->saddr)) << " -> "
-					     << inet_ntostring(htonl(rtpab[k]->daddr)) << " / "
-					     << (rtpab[k]->iscaller ? "caller" : "called") 
+					     << inet_ntostring(htonl(rtpab[k]->daddr)) << " /"
+					     << " iscaller: " << rtpab[k]->iscaller << " "
 					     << " packets received: " << rtpab[k]->s->received << " "
 					     << " packets lost: " << rtpab[k]->s->lost << " "
 					     << " ssrc index: " << rtpab[k]->ssrc_index << " "

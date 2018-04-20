@@ -739,6 +739,7 @@ vector<u_int32_t> ssl_client_random_ip;
 vector<d_u_int32_t> ssl_client_random_net;
 
 int opt_sdp_reverse_ipport = 0;
+bool opt_sdp_check_direction_ext = true;
 
 volatile unsigned int pcap_readit = 0;
 volatile unsigned int pcap_writeit = 0;
@@ -6068,6 +6069,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42325) cConfigItem_yesno("rtpmap_by_callerd", &opt_rtpmap_by_callerd));
 				addConfigItem(new FILE_LINE(42326) cConfigItem_yesno("rtpmap_combination", &opt_rtpmap_combination));
 				addConfigItem(new FILE_LINE(42327) cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sdp_check_direction_ext", &opt_sdp_check_direction_ext));
 		subgroup("NAT");
 			addConfigItem(new FILE_LINE(42328) cConfigItem_nat_aliases("natalias", &nat_aliases));
 			addConfigItem(new FILE_LINE(42329) cConfigItem_yesno("sdp_reverse_ipport", &opt_sdp_reverse_ipport));
@@ -6896,6 +6899,7 @@ void get_command_line_arguments() {
 						else if(verbparams[i] == "dump_sip")			sverb.dump_sip = 1;
 						else if(verbparams[i] == "dump_sip_line")		{ sverb.dump_sip = 1; sverb.dump_sip_line = 1; }
 						else if(verbparams[i] == "dump_sip_without_counter")	{ sverb.dump_sip = 1; sverb.dump_sip_without_counter = 1; }
+						else if(verbparams[i] == "reverse_invite")		sverb.reverse_invite = 1;
 						else if(verbparams[i] == "mgcp")			sverb.mgcp = 1;
 						else if(verbparams[i] == "mgcp_sdp")			sverb.mgcp_sdp = 1;
 						else if(verbparams[i] == "manager")			sverb.manager = 1;
@@ -8964,6 +8968,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "disable_rtp_warning", NULL))) {
 		opt_disable_rtp_warning = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sdp_check_direction_ext", NULL))) {
+		opt_sdp_check_direction_ext = yesno(value);
 	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strncpy(opt_keycheck, value, 1024);

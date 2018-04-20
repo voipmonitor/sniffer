@@ -372,6 +372,9 @@ public:
 		bool confirmed;
 		unsigned counter;
 		unsigned counter_reverse;
+		string caller;
+		string called;
+		string called_invite;
 	};
 	struct sSipResponse {
 		sSipResponse(const char *SIPresponse = NULL, int SIPresponseNum = 0) {
@@ -567,6 +570,7 @@ public:
 	bool sipcallerdip_reverse;
 	
 	list<sInviteSD_Addr> invite_sdaddr;
+	list<sInviteSD_Addr> rinvite_sdaddr;
 
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;

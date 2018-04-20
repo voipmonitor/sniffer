@@ -195,6 +195,7 @@ extern TcpReassembly *tcpReassemblyWebrtc;
 extern TcpReassembly *tcpReassemblySsl;
 extern char ifname[1024];
 extern int opt_sdp_reverse_ipport;
+extern bool opt_sdp_check_direction_ext;
 extern int opt_fork;
 extern regcache *regfailedcache;
 extern ManagerClientThreads ClientThreads;
@@ -446,11 +447,14 @@ enum eParsePeernameDestType {
 	ppndt_caller_name
 };
 
-int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
-		     char *peername, unsigned int peername_len, 
-		     eParsePeernameTagType tagType, eParsePeernameDestType destType);
-int get_sip_headerstr(packet_s_process *packetS, const char *tag, const char *tag2, 
-		      char *headerstr, unsigned int headerstr_len);
+inline int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
+			    string *peername, 
+			    eParsePeernameTagType tagType, eParsePeernameDestType destType);
+inline int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
+			    char *peername, unsigned int peername_len, 
+			    eParsePeernameTagType tagType, eParsePeernameDestType destType);
+inline int get_sip_headerstr(packet_s_process *packetS, const char *tag, const char *tag2, 
+			     char *headerstr, unsigned int headerstr_len);
 
 inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned char sip_type,
 			     pcap_pkthdr *header, u_char *packet) {
@@ -1174,9 +1178,20 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 	return(false);
 }
 
-int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
-		     char *peername, unsigned int peername_len, 
-		     eParsePeernameTagType tagType, eParsePeernameDestType destType) {
+inline int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
+			    string *peername, 
+			    eParsePeernameTagType tagType, eParsePeernameDestType destType) {
+	char _peername[1024];
+	int rslt = get_sip_peername(packetS, tag, tag2,  _peername, sizeof(_peername), tagType, destType);
+	if(!rslt) {
+		*peername = _peername;
+	}
+	return(rslt);
+}
+
+inline int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
+			    char *peername, unsigned int peername_len, 
+			    eParsePeernameTagType tagType, eParsePeernameDestType destType) {
 	unsigned long peername_tag_len;
 	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
 	if(!peername_tag_len) {
@@ -1189,9 +1204,9 @@ int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag
 			      tagType, destType) ? 0 : 1);
 } 
 
-int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag2, 
-		     char *peername, unsigned int peername_len,
-		     eParsePeernameTagType tagType, eParsePeernameDestType destType) {
+inline int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag2, 
+			    char *peername, unsigned int peername_len,
+			    eParsePeernameTagType tagType, eParsePeernameDestType destType) {
 	unsigned long peername_tag_len;
 	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
 	if(!peername_tag_len) {
@@ -1204,9 +1219,9 @@ int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag
 			      tagType, destType) ? 0 : 1);
 }
 
-int get_sip_domain(packet_s_process *packetS, const char *tag, const char *tag2,
-		   char *domain, unsigned int domain_len,
-		   eParsePeernameTagType tagType, eParsePeernameDestType destType) {
+inline int get_sip_domain(packet_s_process *packetS, const char *tag, const char *tag2,
+			  char *domain, unsigned int domain_len,
+			  eParsePeernameTagType tagType, eParsePeernameDestType destType) {
 	unsigned long peername_tag_len;
 	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
 	if(!peername_tag_len) {
@@ -2578,6 +2593,7 @@ static inline void parse_packet__message_content(char *message, unsigned int mes
 						 unsigned int *rsltDcs, Call::eVoicemail *rsltVoicemail,
 						 bool maskMessage = false);
 static inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, int *merged, bool preprocess);
+static inline bool checkEqNumbers(Call::sInviteSD_Addr *item1, Call::sInviteSD_Addr *item2);
 
 void process_packet_sip_call(packet_s_process *packetS) {
 	
@@ -2593,6 +2609,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	bool existInviteSdaddr = false;
 	bool reverseInviteSdaddr = false;
 	bool reverseInviteConfirmSdaddr = false;
+	Call::sInviteSD_Addr *mainInviteForReverse = NULL;
+	Call::sInviteSD_Addr *reverseInvite = NULL;
 	int iscaller = -1;
 	int iscalled = -1;
 	bool detectCallerd = false;
@@ -2743,19 +2761,59 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(packetS->saddr == iter->saddr && packetS->daddr == iter->daddr) {
 				existInviteSdaddr = true;
 				++iter->counter;
+				break;
 			} else if(packetS->daddr == iter->saddr && packetS->saddr == iter->daddr) {
 				reverseInviteSdaddr = true;
+				if(opt_sdp_check_direction_ext) {
+					mainInviteForReverse = &(*iter);
+				}
 				++iter->counter_reverse;
+				if(sverb.reverse_invite) {
+					cout << "reverse invite: invite / " << call->call_id << endl;
+				}
+				break;
 			}
 		}
-		if(!existInviteSdaddr && !reverseInviteSdaddr) {
-			Call::sInviteSD_Addr invite_sd;
-			invite_sd.saddr = packetS->saddr;
-			invite_sd.daddr = packetS->daddr;
-			invite_sd.sport = packetS->source;
-			invite_sd.dport = packetS->dest;
-			invite_sd.counter = 1;
-			call->invite_sdaddr.push_back(invite_sd);
+		if(!existInviteSdaddr) {
+		        if(!reverseInviteSdaddr) {
+				Call::sInviteSD_Addr invite_sd;
+				invite_sd.saddr = packetS->saddr;
+				invite_sd.daddr = packetS->daddr;
+				invite_sd.sport = packetS->source;
+				invite_sd.dport = packetS->dest;
+				invite_sd.counter = 1;
+				if(opt_sdp_check_direction_ext) {
+					get_sip_peername(packetS, "\nFrom:", "\nf:", &invite_sd.caller, ppntt_to, ppndt_called);
+					get_sip_peername(packetS, "\nTo:", "\nt:", &invite_sd.called, ppntt_to, ppndt_called);
+					get_sip_peername(packetS, "INVITE ", NULL, &invite_sd.called_invite, ppntt_invite, ppndt_called);
+				}
+				call->invite_sdaddr.push_back(invite_sd);
+			} else if(opt_sdp_check_direction_ext) {
+				bool existRInviteSdaddr = false;
+				for(list<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.begin(); riter != call->rinvite_sdaddr.end(); riter++) {
+					if(packetS->saddr == riter->saddr && packetS->daddr == riter->daddr) {
+						existRInviteSdaddr = true;
+						reverseInvite = &(*riter);
+						++riter->counter;
+						break;
+					}
+				}
+				if(!existRInviteSdaddr) {
+					Call::sInviteSD_Addr rinvite_sd;
+					rinvite_sd.saddr = packetS->saddr;
+					rinvite_sd.daddr = packetS->daddr;
+					rinvite_sd.sport = packetS->source;
+					rinvite_sd.dport = packetS->dest;
+					rinvite_sd.counter = 1;
+					get_sip_peername(packetS, "\nFrom:", "\nf:", &rinvite_sd.caller, ppntt_to, ppndt_called);
+					get_sip_peername(packetS, "\nTo:", "\nt:", &rinvite_sd.called, ppntt_to, ppndt_called);
+					get_sip_peername(packetS, "INVITE ", NULL, &rinvite_sd.called_invite, ppntt_invite, ppndt_called);
+					call->rinvite_sdaddr.push_back(rinvite_sd);
+					list<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.end();
+					--riter;
+					reverseInvite = &(*riter);
+				}
+			}
 		}
 	}
 	
@@ -2875,7 +2933,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->new_invite_after_lsr487 = true;
 		}
 		//update called number for each invite due to overlap-dialling
-		if ((opt_sipoverlap && packetS->saddr == call->getSipcallerip()) || opt_last_dest_number) {
+		if ((opt_sipoverlap && packetS->saddr == call->getSipcallerip()) || (opt_last_dest_number && !reverseInviteSdaddr)) {
 			get_sip_peername(packetS, "\nTo:", "\nt:",
 					 call->called, sizeof(call->called), ppntt_to, ppndt_called);
 			if(opt_destination_number_mode == 2) {
@@ -3089,9 +3147,31 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->header_pt->ts);
 						call->onCall_2XX = true;
 					}
-					for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
-						if(packetS->saddr == iter->saddr && packetS->daddr == iter->daddr) {
-							reverseInviteConfirmSdaddr = true;
+					if(opt_sdp_check_direction_ext) {
+						for(list<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.begin(); riter != call->rinvite_sdaddr.end(); riter++) {
+							if(packetS->saddr == riter->daddr && packetS->daddr == riter->saddr) {
+								reverseInviteConfirmSdaddr = true;
+								reverseInvite = &(*riter);
+								if(sverb.reverse_invite) {
+									cout << "reverse invite: confirm / " << call->call_id << endl;
+								}
+								for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
+									if(packetS->saddr == iter->saddr && packetS->daddr == iter->daddr) {
+										mainInviteForReverse = &(*iter);
+										break;
+									}
+								}
+								break;
+							}
+						}
+					} else {
+						for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
+							if(packetS->saddr == iter->saddr && packetS->daddr == iter->daddr) {
+								reverseInviteConfirmSdaddr = true;
+								if(sverb.reverse_invite) {
+									cout << "reverse invite: confirm / " << call->call_id << endl;
+								}
+							}
 						}
 					}
 				} else if(cseq_method == CANCEL &&
@@ -3377,19 +3457,42 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		if(is_application_sdp || is_multipart_mixed) {
 			int _iscaller_process_sdp = iscaller;
 			if((reverseInviteSdaddr || reverseInviteConfirmSdaddr) && _iscaller_process_sdp >= 0) {
-				char _caller[1024];
-				char _called[1024];
-				get_sip_peername(packetS, "\nFrom:", "\nf:", _caller, sizeof(_caller), ppntt_from, ppndt_caller);
-				get_sip_peername(packetS, "\nTo:", "\nt:", _called, sizeof(_called), ppntt_to, ppndt_called);
-				bool eqCallerMinLength;
-				bool eqCalledMinLength;
-				size_t eqCallerLength = strCaseEqLengthR(_caller, call->caller, &eqCallerMinLength);
-				size_t eqCalledLength = strCaseEqLengthR(_called, call->called, &eqCalledMinLength);
-				if((eqCallerMinLength || eqCalledMinLength ||
-				    eqCallerLength >= 3 || eqCalledLength >= 3) &&
-				   (eqCallerLength != eqCalledLength ||
-				    strcasecmp(_caller + strlen(_caller) - eqCallerLength, _called + strlen(_called) - eqCalledLength))) {
-					_iscaller_process_sdp = !_iscaller_process_sdp;
+				if(opt_sdp_check_direction_ext) {
+					if(sverb.reverse_invite) {
+						cout << "reverse invite: check sdp direction / " << call->call_id << endl;
+						if(mainInviteForReverse) {
+							cout << " main invite: " << mainInviteForReverse->caller << " / " << mainInviteForReverse->called << " / " << mainInviteForReverse->called_invite << endl;
+						}
+						if(reverseInvite) {
+							cout << " reverse invite: " << reverseInvite->caller << " / " << reverseInvite->called << " / " << reverseInvite->called_invite << endl;
+						}
+					}
+					if(mainInviteForReverse && reverseInvite) {
+						if(checkEqNumbers(mainInviteForReverse, reverseInvite)) {
+							_iscaller_process_sdp = !_iscaller_process_sdp;
+							if(sverb.reverse_invite) {
+								cout << "reverse invite: CHANGE SDP DIRECTION / " << call->call_id << endl;
+							}
+						}
+					}
+				} else {
+					char _caller[1024];
+					char _called[1024];
+					get_sip_peername(packetS, "\nFrom:", "\nf:", _caller, sizeof(_caller), ppntt_from, ppndt_caller);
+					get_sip_peername(packetS, "\nTo:", "\nt:", _called, sizeof(_called), ppntt_to, ppndt_called);
+					bool eqCallerMinLength;
+					bool eqCalledMinLength;
+					size_t eqCallerLength = strCaseEqLengthR(_caller, call->caller, &eqCallerMinLength);
+					size_t eqCalledLength = strCaseEqLengthR(_called, call->called, &eqCalledMinLength);
+					if((eqCallerMinLength || eqCalledMinLength ||
+					    eqCallerLength >= 3 || eqCalledLength >= 3) &&
+					   (eqCallerLength != eqCalledLength ||
+					    strcasecmp(_caller + strlen(_caller) - eqCallerLength, _called + strlen(_called) - eqCalledLength))) {
+						_iscaller_process_sdp = !_iscaller_process_sdp;
+						if(sverb.reverse_invite) {
+							cout << "reverse invite: CHANGE SDP DIRECTION / " << call->call_id << endl;
+						}
+					}
 				}
 			}
 			if(is_application_sdp) {
@@ -5066,6 +5169,20 @@ void parse_packet__message_content(char *message, unsigned int messageLength,
 			}
 		}
 	}
+}
+
+bool checkEqNumbers(Call::sInviteSD_Addr *item1, Call::sInviteSD_Addr *item2) {
+	bool eqCallerMinLength;
+	bool eqCalledMinLength;
+	bool eqCalledInviteMinLength;
+	size_t eqCallerLength = strCaseEqLengthR(item1->caller.c_str(), item2->caller.c_str(), &eqCallerMinLength);
+	size_t eqCalledLength = strCaseEqLengthR(item1->called.c_str(), item2->called.c_str(), &eqCalledMinLength);
+	size_t eqCalledInviteLength = strCaseEqLengthR(item1->called_invite.c_str(), item2->called_invite.c_str(), &eqCalledInviteMinLength);
+	return((eqCallerMinLength || eqCallerLength >= 3) &&
+	       (eqCalledMinLength || eqCalledLength >= 3) &&
+	       (eqCalledInviteMinLength || eqCalledInviteLength >= 3) &&
+	       (eqCallerLength != eqCalledLength ||
+		strcasecmp(item1->caller.c_str() + item1->caller.length() - eqCallerLength, item1->called.c_str() + item1->called.length() - eqCalledLength)));
 }
 
 
