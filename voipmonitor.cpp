@@ -497,6 +497,7 @@ extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_need_blocks;
 extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_queue_use_blocks;
+extern int opt_pcap_queue_use_blocks_auto_enable;
 extern int opt_pcap_queue_suppress_t1_thread;
 extern int opt_pcap_queue_block_timeout;
 extern bool opt_pcap_queue_pcap_stat_per_one_interface;
@@ -5777,7 +5778,9 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42172) cConfigItem_integer("pcap_queue_iface_qring_size", &opt_pcap_queue_iface_qring_size));
 					expert();
 					addConfigItem(new FILE_LINE(42173) cConfigItem_integer("pcap_queue_dequeu_method", &opt_pcap_queue_dequeu_method));
-					addConfigItem(new FILE_LINE(42174) cConfigItem_yesno("pcap_queue_use_blocks", &opt_pcap_queue_use_blocks));
+					addConfigItem((new FILE_LINE(42174) cConfigItem_yesno("pcap_queue_use_blocks", &opt_pcap_queue_use_blocks))
+						->addAlias("use_blocks"));					
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("auto_enable_use_blocks", &opt_pcap_queue_use_blocks_auto_enable));
 					addConfigItem((new FILE_LINE(42175) cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
 						->setMultiple(1024));
 					addConfigItem(new FILE_LINE(42176) cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
@@ -7344,7 +7347,7 @@ void set_context_config() {
 		}
 	}
 	
-	if(!opt_scanpcapdir[0] && !opt_pcap_queue_use_blocks) {
+	if(!opt_scanpcapdir[0] && !opt_pcap_queue_use_blocks && opt_pcap_queue_use_blocks_auto_enable) {
 		if(opt_udpfrag) {
 			if(is_receiver() || is_server()) {
 				opt_pcap_queue_use_blocks = 1;
@@ -9163,8 +9166,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "pcap_queue_dequeu_method", NULL))) {
 		opt_pcap_queue_dequeu_method = atoi(value);
 	}
-	if((value = ini.GetValue("general", "pcap_queue_use_blocks", NULL))) {
+	if((value = ini.GetValue("general", "pcap_queue_use_blocks", NULL)) ||
+	   (value = ini.GetValue("general", "use_blocks", NULL))) {
 		opt_pcap_queue_use_blocks = yesno(value);
+	}
+	if((value = ini.GetValue("general", "auto_enable_use_blocks", NULL))) {
+		opt_pcap_queue_use_blocks_auto_enable = yesno(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dispatch", NULL))) {
 		opt_pcap_dispatch = yesno(value);

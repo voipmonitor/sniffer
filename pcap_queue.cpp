@@ -193,6 +193,7 @@ int opt_pcap_queue_dequeu_window_length			= -1;
 int opt_pcap_queue_dequeu_need_blocks			= 0;
 int opt_pcap_queue_dequeu_method			= 2;
 int opt_pcap_queue_use_blocks				= 0;
+int opt_pcap_queue_use_blocks_auto_enable		= 0;
 int opt_pcap_queue_use_blocks_read_check		= 1;
 int opt_pcap_dispatch					= 0;
 int opt_pcap_queue_suppress_t1_thread			= 0;
