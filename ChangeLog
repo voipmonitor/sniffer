@@ -1,3 +1,12 @@
+22.5.1 25.04.2018
+=================
+- fix realtime audio listening (fix rtp-seqno rotation) 
+- fix selection of rtp stream for audio play (fixes some audio issues) 
+- do not modify called number from reverse INVITE when last_dest_number option is enabled. 
+- deduplication accross all interfaces must be now explicitely enabled with new option auto_enable_use_blocks = yes
+- fix deduplication for fragmented packets
+
+
 22.5 16.04.2018
 ===============
 - fix store cdr_sdp if skip ip == 0.0.0.0
