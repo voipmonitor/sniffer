@@ -100,6 +100,12 @@ struct d_u_int32_t
 		return(this->val[0] < other.val[0] ||
 		       (this->val[0] == other.val[0] && this->val[1] < other.val[1])); 
 	}
+	bool isSet() {
+		return(val[0] || val[1]);
+	}
+	bool isIn(u_int32_t val) {
+		return(val >= this->val[0] && val <= this->val[1]);
+	}
 	u_int32_t val[2];
 };
 

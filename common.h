@@ -23,6 +23,7 @@ struct sVerbose {
 	int hash_rtp;
 	int rtp_set_base_seq;
 	int rtp_streams;
+	int wavmix;
 	int check_is_caller_called;
 	int disable_threads_rtp;
 	int packet_lost;

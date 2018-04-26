@@ -1896,6 +1896,31 @@ public:
 		u_int32_t length_data_samples() {
 			return(length_samples - end_silence_samples);
 		}
+		bool is_silence_sample(u_int32_t i) {
+			for(unsigned j = 0; j < bytes_per_sample; j++) {
+				if(wav_buffer[i + j]) {
+					return(false);
+				}
+			}
+			return(true);
+		}
+		d_u_int32_t is_in_silence_interval(u_int32_t i) {
+			for(unsigned j = 0; j < silence_samples_intervals.size(); j++) {
+				if(i >= silence_samples_intervals[j][0] &&
+				   i <= silence_samples_intervals[j][1]) {
+					return(silence_samples_intervals[j]);
+				}
+			}
+			return(d_u_int32_t());
+		}
+		d_u_int32_t get_next_silence_interval(u_int32_t i) {
+			for(unsigned j = 0; j < silence_samples_intervals.size(); j++) {
+				if(i < silence_samples_intervals[j][0]) {
+					return(silence_samples_intervals[j]);
+				}
+			}
+			return(d_u_int32_t());
+		}
 	private:
 		u_int64_t start;
 		unsigned bytes_per_sample;
@@ -1904,6 +1929,7 @@ public:
 		u_int32_t length_samples;
 		u_int32_t end_silence_samples;
 		bool use_in_mix;
+		vector<d_u_int32_t> silence_samples_intervals;
 	friend class cWavMix;
 	};
 public:
@@ -1989,6 +2015,34 @@ bool cWavMix::cWav::load(const char *wavFileName) {
 			break;
 		}
 	}
+	for(u_int32_t i = 0; i < length_data_samples(); i++) {
+		if(is_silence_sample(i)) {
+			u_int32_t j = i;
+			while(j < length_data_samples() - 1 && is_silence_sample(j + 1)) {
+				++j;
+			}
+			if(j > i) {
+				if(j - i > samplerate) {
+					silence_samples_intervals.push_back(d_u_int32_t(i, j));
+				}
+				i = j;
+			}
+		}
+	}
+	if(sverb.wavmix) {
+		cout << "load wav"
+		     << " " << wavFileName
+		     << " start " << start
+		     << " length_samples " << length_samples << " " << ((float)length_samples/samplerate)
+		     << " end_silence_samples " << end_silence_samples << " " << ((float)end_silence_samples/samplerate)
+		     << endl;
+		for(unsigned i = 0; i < silence_samples_intervals.size(); i++) {
+			cout << "si "
+			     << silence_samples_intervals[i][0] << " " << ((float)silence_samples_intervals[i][0]/samplerate)
+			     << " - " << silence_samples_intervals[i][1] << " " << ((float)silence_samples_intervals[i][1]/samplerate)
+			     << endl;
+		}
+	}
 	return(true);
 }
 
@@ -2060,6 +2114,9 @@ void cWavMix::mix(bool withoutEndSilence, bool withoutEndSilenceInRslt) {
 }
 
 void cWavMix::mix(cWav *wav, bool withoutEndSilence) {
+	if(sverb.wavmix) {
+		cout << "mix " << wav->silence_samples_intervals.size() << endl;
+	}
 	u_int64_t startTime = getMinStartTime();
 	u_int32_t startSamples = 0;
 	int32_t offsetSamples = 0;
@@ -2070,10 +2127,25 @@ void cWavMix::mix(cWav *wav, bool withoutEndSilence) {
 		offsetSamples = (wav->start - startTime) * samplerate / 1000000ull;
 	}
 	u_int32_t lengthSamples = wav->get_length_samples(withoutEndSilence);
+	d_u_int32_t silence_interval = wav->is_in_silence_interval(startSamples);
+	if(!silence_interval.isSet()) {
+		silence_interval = wav->get_next_silence_interval(startSamples);
+	}
+	if(sverb.wavmix && silence_interval.isSet()) {
+		 cout << "first si " << silence_interval[0] << " - " << silence_interval[1] << endl;
+	}
 	for(u_int32_t i = startSamples; i < lengthSamples; i++) {
 		if(i + offsetSamples < mix_buffer_length_samples) {
-			for(unsigned j = 0; j < bytes_per_sample; j++) {
-				mix_buffer[(i + offsetSamples) * bytes_per_sample + j] = wav->wav_buffer[i * bytes_per_sample + j];
+			if(silence_interval.isSet() && silence_interval.isIn(i)) {
+				i = silence_interval[1];
+				silence_interval = wav->get_next_silence_interval(i + 1);
+				if(sverb.wavmix && silence_interval.isSet()) {
+					cout << "next si " << silence_interval[0] << " - " << silence_interval[1] << endl;
+				}
+			} else {
+				for(unsigned j = 0; j < bytes_per_sample; j++) {
+					mix_buffer[(i + offsetSamples) * bytes_per_sample + j] = wav->wav_buffer[i * bytes_per_sample + j];
+				}
 			}
 		}
 	}
