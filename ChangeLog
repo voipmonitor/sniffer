@@ -1,3 +1,8 @@
+22.5.2 26.04.2018
+=================
+- wavmix: skip silent intervals (if greater than 1s) in mix
+
+
 22.5.1 25.04.2018
 =================
 - fix realtime audio listening (fix rtp-seqno rotation) 
