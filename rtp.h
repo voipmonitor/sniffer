@@ -539,7 +539,6 @@ private:
 	*/
 
 	struct timeval header_ts;
-	struct timeval ts;
 	bool first;
 	int nintervals;
 

@@ -161,6 +161,7 @@ extern bool opt_rtpmap_combination;
 extern int opt_register_timeout_disable_save_failed;
 extern int opt_rtpfromsdp_onlysip;
 extern int opt_rtpfromsdp_onlysip_skinny;
+extern int opt_rtp_check_both_sides_by_sdp;
 
 volatile int calls_counter = 0;
 volatile int registers_counter = 0;
@@ -1236,7 +1237,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 			iscaller = 0;
 		}
 	}
- 
+	
 	extern int opt_vlan_siprtpsame;
 	bool rtp_read_rslt = false;
 	int curpayload;
@@ -1391,6 +1392,26 @@ read:
 	}
 	// adding new RTP source
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
+		
+		int index_call_ip_port_find_side = this->get_index_by_ip_port(find_by_dest ? packetS->daddr : packetS->saddr,
+									      find_by_dest ? packetS->dest : packetS->source);
+		if(opt_rtp_check_both_sides_by_sdp && index_call_ip_port_find_side >= 0 && iscaller >= 0) {
+			int index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr,
+										       find_by_dest ? packetS->source : packetS->dest);
+			if(index_call_ip_port_other_side < 0) {
+				index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr,
+											   find_by_dest ? packetS->source : packetS->dest,
+											   true);
+			}
+			if(this->ip_port[index_call_ip_port_find_side].callerd_confirm_sdp[iscaller ? 1 : 0]) {
+				if(index_call_ip_port_other_side < 0) {
+					return(false);
+				}
+			} else if(index_call_ip_port_other_side >= 0) {
+				this->ip_port[index_call_ip_port_find_side].callerd_confirm_sdp[iscaller ? 1 : 0] = true;
+			}
+		}
+		
 		// if previouse RTP streams are present it should be filled by silence to keep it in sync
 		if(iscaller) {
 			last_seq_audiobuffer1 = 0;
@@ -1406,6 +1427,24 @@ read:
 		while(__sync_lock_test_and_set(&rtplock, 1)) {
 			usleep(100);
 		}
+		
+		/*
+		if(index_call_ip_port_find_side >= 0) {
+			unsigned counter_active_streams_with_eq_sdp_node = 0;
+			for(int i = 0; i < ssrc_n; i++) {
+				if(curSSRC != rtp[i]->ssrc &&
+				   getTimeUS(rtp[i]->header_ts) > getTimeUS(packetS->header_pt->ts) - 1000000 &&
+				   rtp[i]->iscaller == iscaller &&
+				   rtp[i]->index_call_ip_port == index_call_ip_port_find_side) {
+					++counter_active_streams_with_eq_sdp_node;
+					cout << "multiple streams with eq sdp node" << endl
+					     << " - new stream " << hex << curSSRC << dec << endl
+					     << " - old stream " << hex << rtp[i]->ssrc << dec << endl;
+				}
+			}
+		}
+		*/
+		
 		rtp[ssrc_n] = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
 		if(exists_crypto_suite_key && 
 		   (opt_srtp_rtp_decrypt || 
@@ -1469,7 +1508,7 @@ read:
 		strncpy(rtp[ssrc_n]->basefilename, ird_pathfilename.c_str(), 1023);
 		rtp[ssrc_n]->basefilename[1023] = 0;
 
-		rtp[ssrc_n]->index_call_ip_port = get_index_by_ip_port(find_by_dest ? packetS->daddr : packetS->saddr, find_by_dest ? packetS->dest : packetS->source);
+		rtp[ssrc_n]->index_call_ip_port = index_call_ip_port_find_side;
 		if(rtp[ssrc_n]->index_call_ip_port >= 0) {
 			rtp[ssrc_n]->index_call_ip_port_by_dest = find_by_dest;
 			evProcessRtpStream(rtp[ssrc_n]->index_call_ip_port, rtp[ssrc_n]->index_call_ip_port_by_dest, 

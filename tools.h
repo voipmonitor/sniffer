@@ -745,6 +745,10 @@ inline unsigned long long getTimeUS(pcap_pkthdr *pkthdr) {
     return(pkthdr->ts.tv_sec * 1000000ull + pkthdr->ts.tv_usec);
 }
 
+inline unsigned long long getTimeUS(timeval &ts) {
+    return(ts.tv_sec * 1000000ull + ts.tv_usec);
+}
+
 class FileZipHandler : public CompressStream_baseEv {
 public:
 	enum eMode {
