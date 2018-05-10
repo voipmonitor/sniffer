@@ -1003,14 +1003,18 @@ ChunkBuffer::~ChunkBuffer() {
 	if(this->compressStream) {
 		delete this->compressStream;
 	}
-	if(this->name) {
-		delete this->name;
-	}
 	if(call &&
 	   (typeContent == FileZipHandler::pcap_sip ? opt_pcap_dump_tar_sip_use_pos :
 	    typeContent == FileZipHandler::pcap_rtp ? opt_pcap_dump_tar_rtp_use_pos :
 	    typeContent == FileZipHandler::graph_rtp ? opt_pcap_dump_tar_graph_use_pos : 0)) {
-		call->decChunkBuffers();
+		if(call->isAllocFlagOK()) {
+			call->decChunkBuffers();
+		} else {
+			syslog(LOG_NOTICE, "access to deallocated call in ChunkBuffer::~ChunkBuffer (%s)", this->getName().c_str());
+		}
+	}
+	if(this->name) {
+		delete this->name;
 	}
 }
 
@@ -1473,6 +1477,10 @@ void ChunkBuffer::addTarPosInCall(u_int64_t pos) {
 	if(call) {
 		call->addTarPos(pos, typeContent);
 	}
+}
+
+bool ChunkBuffer::isCallAllocFlagOK() {
+	return(call->isAllocFlagOK());
 }
 
 volatile u_int64_t ChunkBuffer::chunk_buffers_sumsize = 0;

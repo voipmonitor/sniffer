@@ -285,6 +285,9 @@ struct sCallField {
 class Call_abstract {
 public:
 	Call_abstract(int call_type, time_t time);
+	~Call_abstract() {
+		alloc_flag = 0;
+	}
 	int calltime() { return first_packet_time; };
 	string get_sensordir();
 	string get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpoolDir = NULL);
@@ -313,7 +316,11 @@ public:
 		__sync_sub_and_fetch(&chunkBuffersCount, 1);
 	}
 	void addTarPos(u_int64_t pos, int type);
+	bool isAllocFlagOK() {
+		return(alloc_flag);
+	}
 public:
+	uint16_t alloc_flag;
 	int type;
 	time_t first_packet_time;
 	char fbasename[MAX_FNAME];

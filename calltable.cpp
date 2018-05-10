@@ -250,6 +250,7 @@ sCallField callFields[] = {
 
 
 Call_abstract::Call_abstract(int call_type, time_t time) {
+	alloc_flag = 1;
 	type = call_type;
 	first_packet_time = time;
 	fbasename[0] = 0;
@@ -806,6 +807,9 @@ Call::removeRTP() {
 
 /* destructor */
 Call::~Call(){
+ 
+	alloc_flag = 0;
+ 
 	removeMergeCalls();
 	
 	if(is_ssl) {
