@@ -558,8 +558,8 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 				    (iter->number_fixed == number ||
 				     (number_normalized && iter->number_fixed == number_normalized)) :
 				    iter->number_prefix.length() &&
-				    (iter->number_prefix == string(number, iter->number_prefix.length()) ||
-				     (number_normalized && iter->number_prefix == string(number_normalized, iter->number_prefix.length()))) &&
+				    (iter->number_prefix == string(number, min(strlen(number), iter->number_prefix.length())) ||
+				     (number_normalized && iter->number_prefix == string(number_normalized, min(strlen(number_normalized), iter->number_prefix.length())))) &&
 				    (!useNumberPrefixLength || iter->number_prefix.length() > useNumberPrefixLength)) {
 					if(iter->price) {
 						price = iter->price;

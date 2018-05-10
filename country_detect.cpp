@@ -631,7 +631,7 @@ string CountryPrefixes::_getCountry(const char *number, vector<string> *countrie
 					break;
 				}
 				if((!_redukSizeFindNumber || _redukSizeFindNumber > 1) &&
-				   atol(findRecIt->number.c_str()) < atol(string(number, findRecIt->number.length()).c_str())) {
+				   atol(findRecIt->number.c_str()) < atol(string(number, min(strlen(number), findRecIt->number.length())).c_str())) {
 					if(_redukSizeFindNumber) {
 						--_redukSizeFindNumber;
 					} else {
