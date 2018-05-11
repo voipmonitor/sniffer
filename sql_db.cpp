@@ -4493,6 +4493,29 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		""));
 	
 	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_flags` (\
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` datetime NOT NULL," :
+				"") + 
+			"`deleted` smallint unsigned DEFAULT NULL,\
+		KEY (`cdr_ID`)" + 
+		(opt_cdr_partition ? 
+			",KEY (`calldate`)" :
+			"") +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_flags_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `rtp_stat` (\
 			`id_sensor` smallint unsigned NOT NULL,\
 			`time` datetime NOT NULL,\
@@ -4718,6 +4741,29 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 	""));
+	
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `message_flags` (\
+			`message_ID` " + messageIdType + " unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` datetime NOT NULL," :
+				"") + 
+			"`deleted` smallint unsigned DEFAULT NULL,\
+		KEY (`message_ID`)" + 
+		(opt_cdr_partition ? 
+			",KEY (`calldate`)" :
+			"") +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `message_flags_ibfk_1` FOREIGN KEY (`message_ID`) REFERENCES `message` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
 	
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `register` (\
@@ -5662,7 +5708,7 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFa
 		     database_name,\
 		     '\\' and table_name = \\'',\
 		     table_name,\
-		     '\\' and partition_name = \\'',\
+		     '\\' and partition_name >= \\'',\
 		     part_name,\
 		     '\\')');\
 		  set @_test_exists_part_query = test_exists_part_query;\
@@ -6717,6 +6763,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 				tables.push_back("cdr_tar_part");
 				tables.push_back("cdr_country_code");
 				tables.push_back("cdr_sdp");
+				tables.push_back("cdr_flags");
 			}
 		}
 		if(opt_enable_http_enum_tables && 
@@ -6756,6 +6803,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 			if(typeTables & tt_child) {
 				tables.push_back("message_proxy");
 				tables.push_back("message_country_code");
+				tables.push_back("message_flags");
 			}
 		}
 		if(typeTables2 == tt2_na || typeTables2 & tt2_register) {
@@ -6991,9 +7039,11 @@ void dropMysqlPartitionsCdr() {
 	_dropMysqlPartitions("cdr_country_code", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_sdp", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("cdr_flags", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("message", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("message_proxy", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("message_country_code", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("message_flags", opt_cleandatabase_cdr, 0, sqlDb);
 	if(custom_headers_cdr) {
 		list<string> nextTables = custom_headers_cdr->getAllNextTables();
 		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
