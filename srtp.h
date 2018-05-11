@@ -3,7 +3,10 @@
 
 #include <string>
 #include <vector>
+
+#if HAVE_LIBGNUTLS
 #include <gcrypt.h>
+#endif
 
 #if HAVE_LIBSRTP
 #include <srtp/srtp.h>
@@ -60,8 +63,10 @@ public:
 	};
 	struct sDecrypt {
 		sDecrypt() {
+			#if HAVE_LIBGNUTLS
 			cipher = NULL;
 			md = NULL;
+			#endif
 			window = 0;
 			for(unsigned i = 0; i < sizeof(salt) / sizeof(salt[0]); i++) {
 				salt[i] = 0;
@@ -87,8 +92,10 @@ public:
 			}
 			#endif
 		}
+		#if HAVE_LIBGNUTLS
 		gcry_cipher_hd_t cipher;
 		gcry_md_hd_t md;
+		#endif
 		uint64_t window;
 		uint32_t salt[4];
 		uint64_t counter_packets;
@@ -126,8 +133,10 @@ private:
 	uint32_t compute_rtp_roc(uint16_t seq);
 	u_char *rtp_digest(u_char *data, size_t data_len, uint32_t roc);
 	u_char *rtcp_digest(u_char *data, size_t data_len);
+	#if HAVE_LIBGNUTLS
 	int do_derive(gcry_cipher_hd_t cipher, u_char *r, unsigned rlen, uint8_t label, u_char *out, unsigned outlen);
 	int do_ctr_crypt (gcry_cipher_hd_t cipher, u_char *ctr, u_char *data, unsigned len);
+	#endif
 	uint16_t get_seq_rtp(u_char *data) {
 		return(htons(*(uint16_t*)(data + 2)));
 	}

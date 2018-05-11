@@ -9,13 +9,14 @@
 
 
 bool RTPsecure::sCryptoConfig::init() {
+	#if HAVE_LIBGNUTLS
 	static struct {
 		string crypro_suite;
 		int key_len;
 		int tag_len;
 		int cipher;
 		int md;
-	} srtp_crypto_suites[] = {
+	} srtp_crypto_suites[]= {
 		{ "AES_CM_128_HMAC_SHA1_32", 128, 4, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
 		{ "AES_CM_128_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1 }
 	};
@@ -26,17 +27,16 @@ bool RTPsecure::sCryptoConfig::init() {
 				key_len = srtp_crypto_suites[i].key_len;
 				cipher = srtp_crypto_suites[i].cipher;
 				md = srtp_crypto_suites[i].md;
-				#if HAVE_LIBGNUTLS
 				if(tag_len > gcry_md_get_algo_dlen(md)) {
 					error = err_bad_tag_len;
 					return(false);
 				}
-				#endif
 				return(true);
 			}
 		}
 	}
 	error = err_unsupported_suite;
+	#endif
 	return(false);
 }
 
@@ -488,9 +488,11 @@ bool RTPsecure::rtpDecrypt(u_char *payload, unsigned payload_len, uint16_t seq, 
 		}
 		rtp->window |= 1 << diff;
 	}
+	#if HAVE_LIBGNUTLS
 	if(rtp_decrypt(payload, payload_len, ssrc, roc, seq)) {
 		return(false);
 	}
+	#endif
 	return(true);
 }
 
@@ -514,9 +516,11 @@ bool RTPsecure::rtcpDecrypt(u_char *data, unsigned data_len) {
 		}
 		rtcp->window |= 1 << diff;
 	}
+	#if HAVE_LIBGNUTLS
 	if(rtcp_decrypt(data + rtcp_unencrypt_header_len, data_len - rtcp_unencrypt_header_len - rtcp_unencrypt_footer_len, get_ssrc_rtcp(data), index)) {
 		return(false);
 	}
+	#endif
 	return(true);
 }
 
@@ -557,6 +561,7 @@ u_char *RTPsecure::rtcp_digest(u_char *data, size_t data_len) {
 	#endif
 }
 
+#if HAVE_LIBGNUTLS
 int RTPsecure::rtp_decrypt(u_char *data, unsigned data_len, uint32_t ssrc, uint32_t roc, uint16_t seq) {
 	// Determines cryptographic counter (IV)
 	uint32_t counter[4];
@@ -591,7 +596,6 @@ int RTPsecure::do_derive(gcry_cipher_hd_t cipher, u_char *r, unsigned rlen, uint
 }
 
 int RTPsecure::do_ctr_crypt (gcry_cipher_hd_t cipher, u_char *ctr, u_char *data, unsigned len) {
-	#if HAVE_LIBGNUTLS
 	unsigned ctrlen = 16;
 	div_t d = div((int)len, (int)ctrlen);
 	if(gcry_cipher_setctr(cipher, ctr, ctrlen) ||
@@ -610,7 +614,5 @@ int RTPsecure::do_ctr_crypt (gcry_cipher_hd_t cipher, u_char *ctr, u_char *data,
 		memcpy (data, dummy, d.rem);
 	}
 	return(0);
-	#else
-	return(-1);
-	#endif
 }
+#endif

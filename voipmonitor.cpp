@@ -10172,10 +10172,12 @@ cResolver *CR_RESOLVER() {
 }
 
 
+#ifdef HAVE_LIBGNUTLS
 #include <gcrypt.h>
+GCRY_THREAD_OPTION_PTHREAD_IMPL;
+#endif
 volatile int _init_lib_gcrypt_rslt = -1;
 volatile int _init_lib_gcrypt_sync = 0;
-GCRY_THREAD_OPTION_PTHREAD_IMPL;
 bool init_lib_gcrypt() {
 	if(_init_lib_gcrypt_rslt >= 0) {
 		return(_init_lib_gcrypt_rslt);
