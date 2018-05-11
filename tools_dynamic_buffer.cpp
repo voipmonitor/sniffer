@@ -983,10 +983,7 @@ ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
 	this->last_add_time_tar = 0;
 	this->last_tar_time = 0;
 	this->chunk_buffer_size = 0;
-	if(call &&
-	   (typeContent == FileZipHandler::pcap_sip ? opt_pcap_dump_tar_sip_use_pos :
-	    typeContent == FileZipHandler::pcap_rtp ? opt_pcap_dump_tar_rtp_use_pos :
-	    typeContent == FileZipHandler::graph_rtp ? opt_pcap_dump_tar_graph_use_pos : 0)) {
+	if(call) {
 		call->incChunkBuffers();
 	}
 }
@@ -1003,10 +1000,7 @@ ChunkBuffer::~ChunkBuffer() {
 	if(this->compressStream) {
 		delete this->compressStream;
 	}
-	if(call &&
-	   (typeContent == FileZipHandler::pcap_sip ? opt_pcap_dump_tar_sip_use_pos :
-	    typeContent == FileZipHandler::pcap_rtp ? opt_pcap_dump_tar_rtp_use_pos :
-	    typeContent == FileZipHandler::graph_rtp ? opt_pcap_dump_tar_graph_use_pos : 0)) {
+	if(call) {
 		if(call->isAllocFlagOK()) {
 			call->decChunkBuffers();
 		} else {
@@ -1475,12 +1469,12 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 
 void ChunkBuffer::addTarPosInCall(u_int64_t pos) {
 	if(call) {
-		call->addTarPos(pos, typeContent);
+		if(call->isAllocFlagOK()) {
+			call->addTarPos(pos, typeContent);
+		} else {
+			syslog(LOG_NOTICE, "access to deallocated call in ChunkBuffer::addTarPosInCall (%s)", this->getName().c_str());
+		}
 	}
-}
-
-bool ChunkBuffer::isCallAllocFlagOK() {
-	return(call->isAllocFlagOK());
 }
 
 volatile u_int64_t ChunkBuffer::chunk_buffers_sumsize = 0;

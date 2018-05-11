@@ -294,7 +294,6 @@ public:
 	static u_int64_t getChunkBuffersSumsize() {
 		return(chunk_buffers_sumsize);
 	}
-	bool isCallAllocFlagOK();
 private:
 	int time;
 	data_tar_time tar_time;

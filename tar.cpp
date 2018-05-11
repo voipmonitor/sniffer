@@ -1391,11 +1391,7 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
 		tar->tarlock();
 		if(lenForProceedSafe) {
 			tar->writing = 1;
-			if(data->buffer->isCallAllocFlagOK()) {
-				data->buffer->addTarPosInCall(tar->tarLength);
-			} else {
-				syslog(LOG_NOTICE, "access to deallocated call in tarthreads_t::processData (%s)", data->buffer->getName().c_str());
-			}
+			data->buffer->addTarPosInCall(tar->tarLength);
 		 
 			//reset and set header
 			memset(&(tar->tar.th_buf), 0, sizeof(struct Tar::tar_header));
