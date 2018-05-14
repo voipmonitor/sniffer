@@ -944,11 +944,7 @@ string GetStringSHA256(std::string str) {
 u_int32_t checksum32buf(char *buf, size_t len) {
 	register u_int16_t cheksum32 = 0;
 	for(size_t i = 0; i < len; i++, buf++) {
-		#if __BYTE_ORDER == __LITTLE_ENDIAN
-		cheksum32 += *buf;
-		#else
-		cheksum32 += htons(*buf);
-		#endif
+		cheksum32 += (signed char)*buf;
 	}
 	return(cheksum32);
 }
