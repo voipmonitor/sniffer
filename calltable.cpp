@@ -1235,7 +1235,9 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
  
 	if(iscaller < 0) {
 		if(this->is_sipcaller(packetS->saddr, packetS->source, packetS->daddr, packetS->dest) || 
-		   this->is_sipcalled(packetS->daddr, packetS->dest, packetS->saddr, packetS->source)) {
+		   this->is_sipcalled(packetS->daddr, packetS->dest, packetS->saddr, packetS->source) ||
+		   this->is_sipcaller(packetS->saddr, packetS->source, 0, 0) || 
+		   this->is_sipcalled(packetS->daddr, packetS->dest, 0, 0)) {
 			iscaller = 1;
 		} else {
 			iscaller = 0;
@@ -7217,7 +7219,7 @@ Call::check_is_caller_called(const char *call_id, int sip_method,
 								 inet_ntostring(htonl(saddr)) + ':' + intToString(sport) + " -> " +
 								 inet_ntostring(htonl(daddr)) + ':' + intToString(dport);
 					}
-				} else if(IS_SIP_RES18X(sip_method))  {
+				} else if(IS_SIP_RES18X(sip_method) || sip_method == RES2XX_INVITE)  {
 					sipcallerip[i] = daddr;
 					sipcalledip[i] = saddr;
 					sipcallerport[i] = dport;
@@ -7337,12 +7339,12 @@ Call::is_sipcaller(unsigned int saddr, unsigned int sport, unsigned int daddr, u
 		sipcalledport = this->sipcalledport;
 	}
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
-		if((use_both_side_for_check_direction() ?
+		if((use_both_side_for_check_direction() && daddr ?
 		     saddr == sipcallerip[i] && daddr == sipcalledip[i] :
 		     saddr == sipcallerip[i]) &&
 		   (sipcallerip[i] != sipcalledip[i] ||
 		    !use_port_for_check_direction(saddr) || 
-		    (use_both_side_for_check_direction() ?
+		    (use_both_side_for_check_direction() && dport ?
 		      sport == sipcallerport[i] && dport == sipcalledport[i] :
 		      sport == sipcallerport[i]))) {
 			return(true);
@@ -7369,12 +7371,12 @@ Call::is_sipcalled(unsigned int daddr, unsigned int dport, unsigned int saddr, u
 		sipcalledport = this->sipcalledport;
 	}
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
-		if((use_both_side_for_check_direction() ?
+		if((use_both_side_for_check_direction() && saddr ?
 		     daddr == sipcalledip[i] && saddr == sipcallerip[i] :
 		     daddr == sipcalledip[i]) &&
 		   (sipcallerip[i] != sipcalledip[i] ||
 		    !use_port_for_check_direction(daddr) || 
-		    (use_both_side_for_check_direction() ?
+		    (use_both_side_for_check_direction() && sport ?
 		      dport == sipcalledport[i] && sport == sipcallerport[i] :
 		      dport == sipcalledport[i]))) {
 			return(true);

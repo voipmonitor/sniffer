@@ -2619,6 +2619,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	char *cseq = NULL;
 	long unsigned int cseqlen = 0;
 	bool cseq_contain_invite = false;
+	int cseq_method = 0;
 	
 	s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
 	if(s && l <= 1023) {
@@ -2817,15 +2818,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 	}
 	
-	detectCallerd = call->check_is_caller_called(packetS->get_callid(), packetS->sip_method, 
-						     packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
-						     &iscaller, &iscalled, 
-						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) || 
-						     IS_SIP_RES18X(packetS->sip_method));
-	if(detectCallerd) {
-		call->handle_dscp(packetS->header_ip, iscaller > 0);
-	}
-
 	call->check_reset_oneway(packetS->saddr, packetS->source);
 
 	cseq = gettag_sip(packetS, "\nCSeq:", &cseqlen);
@@ -2843,8 +2835,32 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		   memmem(cseq, cseqlen, (call->type == MESSAGE ? "MESSAGE" : "INVITE"), (call->type == MESSAGE ? 7 : 6))) {
 			cseq_contain_invite = true;
 		}
+		if(IS_SIP_RESXXX(packetS->sip_method)) {
+			unsigned cseq_pos = 0;
+			while(cseq_pos < cseqlen && (isdigit(cseq[cseq_pos]) || cseq[cseq_pos] == ' ')) {
+				++cseq_pos;
+			}
+			if(cseq_pos < cseqlen) {
+				cseq_method = process_packet__parse_sip_method(cseq + cseq_pos, cseqlen - cseq_pos, NULL);
+			}
+		}
 	}
 
+	detectCallerd = call->check_is_caller_called(packetS->get_callid(), packetS->sip_method, 
+						     packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
+						     &iscaller, &iscalled, 
+						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) || 
+						     IS_SIP_RES18X(packetS->sip_method));
+	if(!detectCallerd && packetS->sip_method == RES2XX && cseq_method == INVITE) {
+		detectCallerd = call->check_is_caller_called(packetS->get_callid(), RES2XX_INVITE,
+							     packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
+							     &iscaller, &iscalled, 
+							     true);
+	}
+	if(detectCallerd) {
+		call->handle_dscp(packetS->header_ip, iscaller > 0);
+	}
+	
 	if(opt_norecord_header) {
 		s = gettag_sip(packetS, "\nX-VoipMonitor-norecord:", &l);
 		if(s) {
@@ -3058,16 +3074,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->cancelcseq[cseqlen] = '\0';
 		}
 	} else if(IS_SIP_RESXXX(packetS->sip_method)) {
-		int cseq_method = 0;
-		if(cseq && cseqlen < 32) {
-			unsigned cseq_pos = 0;
-			while(cseq_pos < cseqlen && (isdigit(cseq[cseq_pos]) || cseq[cseq_pos] == ' ')) {
-				++cseq_pos;
-			}
-			if(cseq_pos < cseqlen) {
-				cseq_method = process_packet__parse_sip_method(cseq + cseq_pos, cseqlen - cseq_pos, NULL);
-			}
-		}
 		if(packetS->sip_method == RES2XX) {
 			call->seenRES2XX = true;
 			// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present

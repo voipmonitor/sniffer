@@ -46,6 +46,7 @@
 #define RES18X 180
 #define RES182 182
 #define RES2XX 200
+#define RES2XX_INVITE 200001
 #define RES300 300
 #define RES3XX 399
 #define RES401 401
