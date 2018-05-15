@@ -471,12 +471,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 		rtp[i] = NULL;
 	}
 	rtplock = 0;
-	audiobuffer1 = NULL;
-	last_seq_audiobuffer1 = 0;
-	last_ssrc_audiobuffer1 = 0;
-	audiobuffer2 = NULL;
-	last_seq_audiobuffer2 = 0;
-	last_ssrc_audiobuffer2 = 0;
 	listening_worker_run = NULL;
 	tmprtp.call_owner = this;
 	lastcallerrtp = NULL;
@@ -1415,17 +1409,22 @@ read:
 				}
 			} else if(index_call_ip_port_other_side >= 0) {
 				this->ip_port[index_call_ip_port_find_side].callerd_confirm_sdp[iscaller ? 1 : 0] = true;
+				for(int i = 0; i < ssrc_n; i++) {
+					if(rtp[i]->iscaller == iscaller) {
+						rtp[i]->stopReadProcessing = true;
+					}
+				}
 			}
 		}
 		
 		// if previouse RTP streams are present it should be filled by silence to keep it in sync
 		if(iscaller) {
-			last_seq_audiobuffer1 = 0;
+			audioBufferData[0].clearLast();
 			if(lastcallerrtp) {
 				lastcallerrtp->jt_tail(packetS->header_pt);
 			}
 		} else { 
-			last_seq_audiobuffer2 = 0;
+			audioBufferData[1].clearLast();
 			if(lastcalledrtp) {
 				lastcalledrtp->jt_tail(packetS->header_pt);
 			}
@@ -5605,24 +5604,16 @@ void Call::proxy_add(u_int32_t sipproxyip) {
 
 void Call::createListeningBuffers() {
 	pthread_mutex_lock(&listening_worker_run_lock);
-	if(audiobuffer1) {
-		audiobuffer1->enable();
-	} else {
-		audiobuffer1 = new FILE_LINE(1005) FifoBuffer((string("audiobuffer1 for call ") + call_id).c_str());
-		audiobuffer1->setMinItemBufferLength(1000);
-		audiobuffer1->setMaxSize(1000000);
-		if(sverb.call_listening) {
-			audiobuffer1->setDebugOut("/tmp/audiobuffer1");
-		}
-	}
-	if(audiobuffer2) {
-		audiobuffer2->enable();
-	} else {
-		audiobuffer2 = new FILE_LINE(1006) FifoBuffer((string("audiobuffer2 for call ") + call_id).c_str());
-		audiobuffer2->setMinItemBufferLength(1000);
-		audiobuffer2->setMaxSize(1000000);
-		if(sverb.call_listening) {
-			audiobuffer2->setDebugOut("/tmp/audiobuffer2");
+	for(int i = 0; i < 2; i++) {
+		if(audioBufferData[i].audiobuffer) {
+			audioBufferData[i].audiobuffer->enable();
+		} else {
+			audioBufferData[i].audiobuffer = new FILE_LINE(1005) FifoBuffer((string("audiobuffer") + intToString(i+1) + " for call " + call_id).c_str());
+			audioBufferData[i].audiobuffer->setMinItemBufferLength(1000);
+			audioBufferData[i].audiobuffer->setMaxSize(1000000);
+			if(sverb.call_listening) {
+			       audioBufferData[i].audiobuffer->setDebugOut((string("/tmp/audiobuffer") + intToString(i+1)).c_str());
+			}
 		}
 	}
 	pthread_mutex_unlock(&listening_worker_run_lock);
@@ -5630,28 +5621,23 @@ void Call::createListeningBuffers() {
 
 void Call::destroyListeningBuffers() {
 	pthread_mutex_lock(&listening_worker_run_lock);
-	if(audiobuffer1) {
-		delete audiobuffer1;
-		audiobuffer1 = NULL;
-	}
-	if(audiobuffer2) { 
-		delete audiobuffer2;
-		audiobuffer2 = NULL;
+	for(int i = 0; i < 2; i++) {
+		if(audioBufferData[i].audiobuffer) {
+			delete audioBufferData[i].audiobuffer;
+			audioBufferData[i].audiobuffer = NULL;
+			audioBufferData[i].clearLast();
+		}
 	}
 	pthread_mutex_unlock(&listening_worker_run_lock);
 }
 
 void Call::disableListeningBuffers() {
 	pthread_mutex_lock(&listening_worker_run_lock);
-	if(audiobuffer1) {
-		audiobuffer1->clean_and_disable();
-		last_seq_audiobuffer1 = 0;
-		last_ssrc_audiobuffer1 = 0;
-	}
-	if(audiobuffer2) { 
-		audiobuffer2->clean_and_disable();
-		last_seq_audiobuffer2 = 0;
-		last_ssrc_audiobuffer2 = 0;
+	for(int i = 0; i < 2; i++) {
+		if(audioBufferData[i].audiobuffer) {
+			audioBufferData[i].audiobuffer->clean_and_disable();
+			audioBufferData[i].clearLast();
+		}
 	}
 	pthread_mutex_unlock(&listening_worker_run_lock);
 }

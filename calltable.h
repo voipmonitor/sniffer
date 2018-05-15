@@ -453,6 +453,35 @@ public:
 		voicemail_active,
 		voicemail_inactive
 	};
+	struct sAudioBufferData {
+		sAudioBufferData() {
+			audiobuffer = NULL;
+			clearLast();
+		}
+		void set(void **destBuffer, int seqno, u_int32_t ssrc) {
+			if(audiobuffer && audiobuffer->is_enable()) {
+				u_long actTimeMS = getTimeMS();
+				if(!last_seq || !last_ssrc ||
+				   (last_ssrc == ssrc ?
+				     (last_seq < seqno || (last_seq - seqno) > 30000) :
+				     last_ssrc_time_ms < actTimeMS - 200)) {
+					*destBuffer = audiobuffer;
+					last_seq = seqno;
+					last_ssrc = ssrc;
+					last_ssrc_time_ms = actTimeMS;
+				}
+			}
+		}
+		void clearLast() {
+			last_seq = 0;
+			last_ssrc = 0;
+			last_ssrc_time_ms = 0;
+		}
+		FifoBuffer *audiobuffer;
+		int last_seq;
+		u_int32_t last_ssrc;
+		u_long last_ssrc_time_ms;
+	};
 public:
 	bool is_ssl;			//!< call was decrypted
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
@@ -613,12 +642,7 @@ public:
 	unsigned max_length_sip_data;
 	unsigned max_length_sip_packet;
 
-	FifoBuffer *audiobuffer1;
-	int last_seq_audiobuffer1;
-	u_int32_t last_ssrc_audiobuffer1;
-	FifoBuffer *audiobuffer2;
-	int last_seq_audiobuffer2;
-	u_int32_t last_ssrc_audiobuffer2;
+	sAudioBufferData audioBufferData[2];
 
 	unsigned int skinny_partyid;
 

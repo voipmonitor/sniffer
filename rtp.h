@@ -560,6 +560,8 @@ private:
 	
 	u_long lastTimeSyslog;
 	
+	bool stopReadProcessing;
+	
 	class RTPsecure *srtp_decrypt;
 friend class Call;
 };

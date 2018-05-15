@@ -457,8 +457,8 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 
 		begin_time_us = getTimeUS();
 		
-		len1 = call->audiobuffer1->size_get();
-		len2 = call->audiobuffer2->size_get();
+		len1 = call->audioBufferData[0].audiobuffer->size_get();
+		len2 = call->audioBufferData[1].audiobuffer->size_get();
 
 		/*
 		printf("codec_caller[%d] codec_called[%d] len1[%d] len2[%d]\n", 
@@ -471,8 +471,8 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 			if(len1 >= period_samples && len2 >= period_samples) {
 				len1 = period_samples;
 				len2 = period_samples;
-				unsigned char *read1 = call->audiobuffer1->pop(&len1);
-				unsigned char *read2 = call->audiobuffer2->pop(&len2);
+				unsigned char *read1 = call->audioBufferData[0].audiobuffer->pop(&len1);
+				unsigned char *read2 = call->audioBufferData[1].audiobuffer->pop(&len2);
 				for(unsigned int i = 0; i < len1; i++) {
 					switch(call->codec_caller) {
 					case 0:
@@ -502,7 +502,7 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 				delete [] read2;
 			} else if(len2 >= period_samples) {
 				len2 = period_samples;
-				unsigned char *read2 = call->audiobuffer2->pop(&len2);
+				unsigned char *read2 = call->audioBufferData[1].audiobuffer->pop(&len2);
 				for(unsigned int i = 0; i < len2; i++) {
 					switch(call->codec_caller) {
 					case 0:
@@ -522,7 +522,7 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 				delete [] read2;
 			} else if(len1 >= period_samples) {
 				len1 = period_samples;
-				unsigned char *read1 = call->audiobuffer1->pop(&len1);
+				unsigned char *read1 = call->audioBufferData[0].audiobuffer->pop(&len1);
 				for(unsigned int i = 0; i < len1; i++) {
 					switch(call->codec_caller) {
 					case 0:

@@ -350,6 +350,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	last_markbit = 0;
 
 	skip = false;
+	stopReadProcessing = false;
 
 	defer_codec_change = false;
 	stream_in_multiple_calls = false;
@@ -749,24 +750,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		Call *owner = (Call*)call_owner;
 		if(iscaller) {
 			owner->codec_caller = codec;
-			if(owner->audiobuffer1 && owner->audiobuffer1->is_enable() &&
-			   (!owner->last_seq_audiobuffer1 ||
-			    (owner->last_seq_audiobuffer1 < frame->seqno || (owner->last_seq_audiobuffer1 - frame->seqno) > 30000) ||
-			    owner->last_ssrc_audiobuffer1 != this->ssrc)) {
-				channel->audiobuf = owner->audiobuffer1;
-				owner->last_seq_audiobuffer1 = frame->seqno;
-				owner->last_ssrc_audiobuffer1 = this->ssrc;
-			}
+			owner->audioBufferData[0].set(&channel->audiobuf, frame->seqno, this->ssrc);
 		} else {
 			owner->codec_called = codec;
-			if(owner->audiobuffer2 && owner->audiobuffer2->is_enable() &&
-			   (!owner->last_seq_audiobuffer2 ||
-			    (owner->last_seq_audiobuffer2 < frame->seqno || (owner->last_seq_audiobuffer2 - frame->seqno) > 30000) ||
-			    owner->last_ssrc_audiobuffer2 != this->ssrc)) {
-				channel->audiobuf = owner->audiobuffer2;
-				owner->last_seq_audiobuffer2 = frame->seqno;
-				owner->last_ssrc_audiobuffer2 = this->ssrc;
-			}
+			owner->audioBufferData[1].set(&channel->audiobuf, frame->seqno, this->ssrc);
 		}
 		if(payload_len > 0) {
 			channel->last_datalen = frame->datalen;
@@ -913,6 +900,11 @@ RTP::process_dtmf_rfc2833() {
 bool
 RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport,
 	  int sensor_id, u_int32_t sensor_ip, char *ifname) {
+ 
+	if(this->stopReadProcessing) {
+		return(false);
+	}
+ 
 	this->data = data; 
 	this->len = *len;
 	this->header_ts = header->ts;
@@ -1052,7 +1044,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		opt_saveRAW || opt_savewav_force || 
 		(owner && 
 		 ((owner->flags & FLAG_SAVEAUDIO) ||
-		  owner->audiobuffer1 || owner->audiobuffer2));
+		  owner->audioBufferData[0].audiobuffer || owner->audioBufferData[1].audiobuffer));
 	
 	if(srtp_decrypt && (opt_srtp_rtp_decrypt || recordingRequested)) {
 		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header)); 
@@ -2406,11 +2398,11 @@ RTP::dump() {
 
 void RTP::clearAudioBuff(Call *call, ast_channel *channel) {
 	if(iscaller) {
-		if(call->audiobuffer1) {
+		if(call->audioBufferData[0].audiobuffer) {
 			channel->audiobuf = NULL;
 		}
 	} else {
-		if(call->audiobuffer2) {
+		if(call->audioBufferData[1].audiobuffer) {
 			channel->audiobuf = NULL;
 		}
 	}
