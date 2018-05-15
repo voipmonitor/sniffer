@@ -458,9 +458,9 @@ public:
 			audiobuffer = NULL;
 			clearLast();
 		}
-		void set(void **destBuffer, int seqno, u_int32_t ssrc) {
+		void set(void **destBuffer, int seqno, u_int32_t ssrc, struct timeval *ts) {
 			if(audiobuffer && audiobuffer->is_enable()) {
-				u_long actTimeMS = getTimeMS();
+				u_long actTimeMS = getTimeMS(ts);
 				if(!last_seq || !last_ssrc ||
 				   (last_ssrc == ssrc ?
 				     (last_seq < seqno || (last_seq - seqno) > 30000) :

@@ -750,10 +750,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		Call *owner = (Call*)call_owner;
 		if(iscaller) {
 			owner->codec_caller = codec;
-			owner->audioBufferData[0].set(&channel->audiobuf, frame->seqno, this->ssrc);
+			owner->audioBufferData[0].set(&channel->audiobuf, frame->seqno, this->ssrc, &this->header_ts);
 		} else {
 			owner->codec_called = codec;
-			owner->audioBufferData[1].set(&channel->audiobuf, frame->seqno, this->ssrc);
+			owner->audioBufferData[1].set(&channel->audiobuf, frame->seqno, this->ssrc, &this->header_ts);
 		}
 		if(payload_len > 0) {
 			channel->last_datalen = frame->datalen;

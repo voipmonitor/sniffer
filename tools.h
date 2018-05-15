@@ -693,6 +693,10 @@ inline u_long getTimeMS(pcap_pkthdr* header = NULL) {
     return(time.tv_sec * 1000ul + time.tv_nsec / 1000000);
 }
 
+inline u_long getTimeMS(struct timeval *ts) {
+    return(ts->tv_sec * 1000ul + ts->tv_usec / 1000);
+}
+
 extern u_int64_t rdtsc_by_100ms;
 inline u_long getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
     if(header) {
