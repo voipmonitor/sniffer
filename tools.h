@@ -647,6 +647,12 @@ struct ipn_port
 	void set_ip(u_int32_t ip) {
 		this->ip = ip;
 	}
+	void set_ip(const char *ip) {
+		this->ip = inet_strington(ip);
+	}
+	void set_ip(string ip) {
+		this->ip = inet_strington(ip.c_str());
+	}
 	void set_port(u_int16_t port) {
 		this->port = port;
 	}

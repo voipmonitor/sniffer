@@ -196,6 +196,7 @@ extern TcpReassembly *tcpReassemblySsl;
 extern char ifname[1024];
 extern int opt_sdp_reverse_ipport;
 extern bool opt_sdp_check_direction_ext;
+extern vector<ipn_port> opt_sdp_ignore_ip_port;
 extern int opt_fork;
 extern regcache *regfailedcache;
 extern ManagerClientThreads ClientThreads;
@@ -2527,48 +2528,59 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 	if (!get_ip_port_from_sdp(call, sdp, sdplen,
 				  &tmp_addr, &tmp_port, &sdp_flags.is_fax, 
 				  sessid, &rtp_crypto_config_list, &sdp_flags.rtcp_mux, packetS->sip_method)){
-		if(sdp_flags.is_fax) { 
-			if(verbosity >= 2){
-				syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
-			}
-			call->isfax = 1;
-			call->flags1 |= T38FAX;
-		} else {
-			if(call->isfax) {
-				call->flags1 |= T38FAXRESET;
-				call->isfax = 0;
+		bool ok_ip_port = true;
+		if(opt_sdp_ignore_ip_port.size()) {
+			for(vector<ipn_port>::iterator iter = opt_sdp_ignore_ip_port.begin(); iter != opt_sdp_ignore_ip_port.end(); iter++) {
+				if(iter->ip == ntohl(tmp_addr) && iter->port == tmp_port) {
+					ok_ip_port = false;
+					break;
+				}
 			}
 		}
-		// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg
-		if(opt_rtp_firstleg == 0 || 
-		   (opt_rtp_firstleg &&
-		    ((call->saddr == packetS->saddr && call->sport == packetS->source) || 
-		     (call->saddr == packetS->daddr && call->sport == packetS->dest)))) {
-
-			//printf("sdp [%u] port[%u]\n", tmp_addr, tmp_port);
-
-			// store RTP stream
-			get_rtpmap_from_sdp(sdp, sdplen, rtpmap);
-
-			char to[1024];
-			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to), ppntt_to, ppndt_called);
-			char branch[100];
-			get_sip_branch(packetS, "via:", branch, sizeof(branch));
-			call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base, tmp_port, packetS->header_pt, 
-					       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
-			// check if the IP address is listed in nat_aliases
-			in_addr_t alias = 0;
-			if((alias = match_nat_aliases(tmp_addr)) != 0) {
-				call->add_ip_port_hash(packetS->saddr, alias, ip_port_call_info::_ta_natalias, tmp_port, packetS->header_pt, 
-						       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
+		if(ok_ip_port) {
+			if(sdp_flags.is_fax) { 
+				if(verbosity >= 2){
+					syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
+				}
+				call->isfax = 1;
+				call->flags1 |= T38FAX;
+			} else {
+				if(call->isfax) {
+					call->flags1 |= T38FAXRESET;
+					call->isfax = 0;
+				}
 			}
-			if(opt_sdp_reverse_ipport) {
-				call->add_ip_port_hash(packetS->saddr, packetS->saddr, ip_port_call_info::_ta_sdp_reverse_ipport, tmp_port, packetS->header_pt, 
+			// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg
+			if(opt_rtp_firstleg == 0 || 
+			   (opt_rtp_firstleg &&
+			    ((call->saddr == packetS->saddr && call->sport == packetS->source) || 
+			     (call->saddr == packetS->daddr && call->sport == packetS->dest)))) {
+
+				//printf("sdp [%u] port[%u]\n", tmp_addr, tmp_port);
+
+				// store RTP stream
+				get_rtpmap_from_sdp(sdp, sdplen, rtpmap);
+
+				char to[1024];
+				get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to), ppntt_to, ppndt_called);
+				char branch[100];
+				get_sip_branch(packetS, "via:", branch, sizeof(branch));
+				call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base, tmp_port, packetS->header_pt, 
 						       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
+				// check if the IP address is listed in nat_aliases
+				in_addr_t alias = 0;
+				if((alias = match_nat_aliases(tmp_addr)) != 0) {
+					call->add_ip_port_hash(packetS->saddr, alias, ip_port_call_info::_ta_natalias, tmp_port, packetS->header_pt, 
+							       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
+				}
+				if(opt_sdp_reverse_ipport) {
+					call->add_ip_port_hash(packetS->saddr, packetS->saddr, ip_port_call_info::_ta_sdp_reverse_ipport, tmp_port, packetS->header_pt, 
+							       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
+				}
 			}
-		}
-		if(rtp_crypto_config_list) {
-			delete rtp_crypto_config_list;
+			if(rtp_crypto_config_list) {
+				delete rtp_crypto_config_list;
+			}
 		}
 	} else {
 		if(verbosity >= 2){

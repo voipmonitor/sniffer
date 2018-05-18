@@ -413,6 +413,30 @@ protected:
 	ip_port *param_ip_port;
 };
 
+class cConfigItem_ip_ports : public cConfigItem {
+public:
+	cConfigItem_ip_ports(const char* name, vector<ip_port> *param);
+	cConfigItem_ip_ports(const char* name, vector<ipn_port> *param);
+	string getValueStr(bool configFile = false);
+	list<string> getValueListStr();
+	bool enableMultiValues() { return(true); }
+protected:
+	bool setParamFromConfigFile(CSimpleIniA *ini);
+	bool setParamFromValueStr(string value_str);
+	bool setParamFromValuesStr(vector<string> list_value_str);
+	void initBeforeSet();
+	void initParamPointers() {
+		param_ip_ports = NULL;
+		param_ipn_ports = NULL;
+	}
+	string getTypeName() {
+		return("ip_ports");
+	}
+protected:
+	vector<ip_port> *param_ip_ports;
+	vector<ipn_port> *param_ipn_ports;
+};
+
 class cConfigItem_ip_port_str_map : public cConfigItem {
 public:
 	cConfigItem_ip_port_str_map(const char* name, map<d_u_int32_t, string> *ip_port_string_map);

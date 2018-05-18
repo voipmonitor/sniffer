@@ -465,6 +465,7 @@ int opt_pcap_ifdrop_limit = 20;
 
 int opt_sdp_multiplication = 3;
 bool opt_both_side_for_check_direction = true;
+vector<ipn_port> opt_sdp_ignore_ip_port;
 string opt_save_sip_history;
 bool _save_sip_history;
 bool _save_sip_history_request_types[1000];
@@ -6006,6 +6007,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42286) cConfigItem_yesno("update_dstnum_onanswer", &opt_update_dstnum_onanswer));
 				addConfigItem(new FILE_LINE(42287) cConfigItem_integer("sdp_multiplication", &opt_sdp_multiplication));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("both_side_for_check_direction", &opt_both_side_for_check_direction));
+				addConfigItem(new FILE_LINE(0) cConfigItem_ip_ports("sdp_ignore_ip_port", &opt_sdp_ignore_ip_port));
 				addConfigItem(new FILE_LINE(42288) cConfigItem_yesno("save_sip_responses", &opt_cdr_sipresp));
 				addConfigItem((new FILE_LINE(42289) cConfigItem_string("save_sip_history", &opt_save_sip_history))
 					->addStringItems("invite|bye|cancel|register|message|info|subscribe|options|notify|ack|prack|publish|refer|update|REQUESTS|RESPONSES|ALL"));
@@ -9504,6 +9506,22 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "both_side_for_check_direction", NULL))) {
 		opt_both_side_for_check_direction = yesno(value);
+	}
+	if(ini.GetAllValues("general", "sdp_ignore_ip_port", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			char *pointToPortSeparator = (char*)strchr((char*)i->pItem, ':');
+			if(pointToPortSeparator) {
+				*pointToPortSeparator = 0;
+				int port = atoi(pointToPortSeparator + 1);
+				if(port) {
+					ipn_port ipp;
+					ipp.set_ip(trim_str((char*)i->pItem));
+					ipp.set_port(port);
+					opt_sdp_ignore_ip_port.push_back(ipp);
+				}
+			}
+		}
 	}
 	if((value = ini.GetValue("general", "save_sip_responses", NULL))) {
 		opt_cdr_sipresp = value;
