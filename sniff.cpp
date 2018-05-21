@@ -197,6 +197,8 @@ extern char ifname[1024];
 extern int opt_sdp_reverse_ipport;
 extern bool opt_sdp_check_direction_ext;
 extern vector<ipn_port> opt_sdp_ignore_ip_port;
+extern vector<u_int32_t> opt_sdp_ignore_ip;
+extern vector<d_u_int32_t> opt_sdp_ignore_net;
 extern int opt_fork;
 extern regcache *regfailedcache;
 extern ManagerClientThreads ClientThreads;
@@ -2531,11 +2533,15 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 		bool ok_ip_port = true;
 		if(opt_sdp_ignore_ip_port.size()) {
 			for(vector<ipn_port>::iterator iter = opt_sdp_ignore_ip_port.begin(); iter != opt_sdp_ignore_ip_port.end(); iter++) {
-				if(iter->ip == ntohl(tmp_addr) && iter->port == tmp_port) {
+				if(iter->ip == htonl(tmp_addr) && iter->port == tmp_port) {
 					ok_ip_port = false;
 					break;
 				}
 			}
+		}
+		if((opt_sdp_ignore_ip.size() || opt_sdp_ignore_net.size()) &&
+		   check_ip_in(htonl(tmp_addr), &opt_sdp_ignore_ip, &opt_sdp_ignore_net, false)) {
+			ok_ip_port = false;
 		}
 		if(ok_ip_port) {
 			if(sdp_flags.is_fax) { 
