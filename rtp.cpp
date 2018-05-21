@@ -2172,19 +2172,18 @@ RTP::update_stats() {
 					nintervals -= 20;
 				}
 			}
-		} else {
-			if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
-				if(this->graph.isOpenOrEnableAutoOpen()) {
-					if(nintervals > 20) {
-						/* after 20 packets, send new line */
-						this->graph.write((char*)&graph_delimiter, 4);
-						nintervals -= 20;
-					}
-					float tmp = s->fdelay;
-					if(tmp == graph_delimiter) tmp = graph_delimiter - 1;
-					this->graph.write((char*)&tmp, 4);
-					nintervals++;
+		}
+		if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
+			if(this->graph.isOpenOrEnableAutoOpen()) {
+				if(nintervals > 20) {
+					/* after 20 packets, send new line */
+					this->graph.write((char*)&graph_delimiter, 4);
+					nintervals -= 20;
 				}
+				float tmp = s->fdelay;
+				if(tmp == graph_delimiter) tmp = graph_delimiter - 1;
+				this->graph.write((char*)&tmp, 4);
+				nintervals++;
 			}
 		}
 		stats.last_lost = lost;
