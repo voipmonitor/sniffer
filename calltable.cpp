@@ -1942,7 +1942,7 @@ public:
 		}
 		bool is_silence_sample(u_int32_t i) {
 			for(unsigned j = 0; j < bytes_per_sample; j++) {
-				if(wav_buffer[i + j]) {
+				if(wav_buffer[i * bytes_per_sample + j]) {
 					return(false);
 				}
 			}
