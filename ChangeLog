@@ -1,3 +1,21 @@
+22.6.1 22.05.2018
+=================
+- new options sdp_ignore_ip and sdp_ignore_ip_port which will ignore IP addresses (or IP and port) in SDP 
+- fix RTP lenght report in SIP history flow (in GUI) [VG-1589]
+- fix audio sync (for silence frames) - broken since 22.5.2 [VG-1588]
+
+
+22.6 16.05.2018
+===============
+- support for custom auto cleaning [VG-1557]
+- fix checksum calculation when mirroring in client/server mode (when 32bit sends to 64bit sniffer) [VS-783]
+- fix RTP detection in case INVITE is sent from A -> B but responses are coming from C -> A [VS-784]
+- fix relatime audio listening [VG-1579]
+- fix crash if pcap_dump_zip_graph = lzo 
+- fix crashes in some scenarios 
+- fix compilation without gcrypt
+
+
 22.5.2 26.04.2018
 =================
 - wavmix: skip silent intervals (if greater than 1s) in mix
