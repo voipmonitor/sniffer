@@ -5307,11 +5307,17 @@ PcapQueue_readFromFifo::~PcapQueue_readFromFifo() {
 		}
 		syslog(LOG_NOTICE, "packetbuffer terminating (%s): socketClose", nameQueue.c_str());
 	}
-	if(this->clientSocket) {
-		delete this->clientSocket;
-	}
 	if(this->destroyBlocksThreadHandle) {
 		pthread_join(this->destroyBlocksThreadHandle, NULL);
+	}
+	if(this->threadHandle) {
+		pthread_join(this->threadHandle, NULL);
+	}
+	if(this->writeThreadHandle) {
+		pthread_join(this->writeThreadHandle, NULL);
+	}
+	if(this->clientSocket) {
+		delete this->clientSocket;
 	}
 	this->cleanupBlockStoreTrash(true);
 	syslog(LOG_NOTICE, "packetbuffer terminating (%s): cleanupBlockStoreTrash", nameQueue.c_str());

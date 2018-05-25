@@ -1894,11 +1894,21 @@ void cloud_initial_register( void ) {
 }
 
 void start_cloud_receiver() {
+	if(cloud_receiver) {
+		delete cloud_receiver;
+	}
 	cloud_receiver = new FILE_LINE(0) cCR_Receiver_service(cloud_token, opt_id_sensor > 0 ? opt_id_sensor : 0);
 	cloud_receiver->setErrorTypeString(cSocket::_se_loss_connection, "connection to the cloud server has been lost - trying again");
 	cloud_receiver->start(cloud_host, cloud_router_port);
 	while(!cloud_receiver->isStartOk() && !is_terminating()) {
 		usleep(100000);
+	}
+}
+
+void stop_cloud_receiver() {
+	if(cloud_receiver) {
+		delete cloud_receiver;
+		cloud_receiver = NULL;
 	}
 }
 
@@ -2117,7 +2127,7 @@ void reload_config(const char *jsonConfig) {
 	if(useNewCONFIG) {
 		CONFIG.clearToDefaultValues();
 		if(configfile[0]) {
-			CONFIG.loadFromConfigFileOrDirectory(configfile);
+			CONFIG.loadFromConfigFileOrDirectory(configfile[0] == '/' ? configfile : (rundir + '/' + configfile).c_str());
 			CONFIG.loadFromConfigFileOrDirectory("/etc/voipmonitor/conf.d/");
 		}
 	} else {
@@ -2452,6 +2462,7 @@ void *store_crash_bt_to_db_thread_fce(void *) {
 
 void resetTerminating() {
 	clear_terminating();
+	clear_readend();
 	terminating_moving_cache = 0;
 	terminating_storing_cdr = 0;
 	terminating_storing_registers = 0;
@@ -2973,11 +2984,11 @@ int main(int argc, char *argv[]) {
 		atexit(exit_handler_fork_mode);
 	}
 
-	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size()) {
+	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size() && reloadLoopCounter == 0) {
 		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", RTPSENSOR_VERSION);
 	}
 
-	if(!is_read_from_file() && opt_fork && enable_wdt) {
+	if(!is_read_from_file() && opt_fork && enable_wdt && reloadLoopCounter == 0) {
 		wdt = new FILE_LINE(0) WDT;
 	}
 
@@ -2998,8 +3009,10 @@ int main(int argc, char *argv[]) {
 		}
 	} else if(is_client()) {
 		snifferClientStart();
+	} else if(is_server() && !is_read_from_file_simple()) {
+		snifferServerStart();
 	}
-	
+
 	if(opt_generator) {
 		opt_generator_channels = 2;
 		pthread_t *genthreads = new FILE_LINE(42009) pthread_t[opt_generator_channels];		// ID of worker storing CDR thread 
@@ -3012,10 +3025,6 @@ int main(int argc, char *argv[]) {
 		return 0;
 	}
 	
-	if(!isCloud() && is_server() && !is_read_from_file_simple()) {
-		snifferServerStart();
-	}
-
 	// start manager thread 	
 	if(opt_manager_port > 0 && !is_read_from_file_simple()) {
 		vm_pthread_create("manager server",
@@ -3126,6 +3135,14 @@ int main(int argc, char *argv[]) {
 	
 	}
 	
+	if(isCloud()) {
+		stop_cloud_receiver();
+	} else if(is_client()) {
+		snifferClientStop();
+	} else if(is_server() && !is_read_from_file_simple()) {
+		snifferServerStop();
+	}
+	
 	bool _break = false;
 	
 	if(useNewCONFIG && !is_read_from_file()) {
@@ -3135,6 +3152,7 @@ int main(int argc, char *argv[]) {
 		}
 		if(!_terminating_error.empty()) {
 			clear_terminating();
+			clear_readend();
 			manager_parse_command_enable();
 			while(!is_terminating()) {
 				syslog(LOG_NOTICE, "%s - wait for terminating or hot restarting", _terminating_error.c_str());
@@ -3714,7 +3732,7 @@ int main_init_read() {
 			++_counter;
 		}
 		
-		if(wdt) {
+		if(wdt && !hot_restarting) {
 			delete wdt;
 			wdt = NULL;
 		}

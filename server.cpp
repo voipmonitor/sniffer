@@ -867,8 +867,19 @@ void cSnifferClientResponse::client_process() {
 
 
 void snifferServerStart() {
+	if(snifferServer) {
+		delete snifferServer;
+	}
 	snifferServer =  new FILE_LINE(0) cSnifferServer;
 	snifferServer->listen_start("sniffer_server", snifferServerOptions.host, snifferServerOptions.port);
+}
+
+
+void snifferServerStop() {
+	if(snifferServer) {
+		delete snifferServer;
+		snifferServer = NULL;
+	}
 }
 
 
@@ -880,10 +891,21 @@ void snifferServerSetSqlStore(MySqlStore *sqlStore) {
 
 
 void snifferClientStart() {
+	if(snifferClientService) {
+		delete snifferClientService;
+	}
 	snifferClientService = new FILE_LINE(0) cSnifferClientService(opt_id_sensor > 0 ? opt_id_sensor : 0);
 	snifferClientService->setErrorTypeString(cSocket::_se_loss_connection, "connection to the server has been lost - trying again");
 	snifferClientService->start(snifferClientOptions.host, snifferClientOptions.port);
 	while(!snifferClientService->isStartOk() && !is_terminating()) {
 		usleep(100000);
+	}
+}
+
+
+void snifferClientStop() {
+	if(snifferClientService) {
+		delete snifferClientService;
+		snifferClientService = NULL;
 	}
 }

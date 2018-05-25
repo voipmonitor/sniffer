@@ -241,6 +241,9 @@ public:
 	int getHandle() {
 		return(handle);
 	}
+	void setTerminate() {
+		terminate = true;
+	}
 	bool isTerminate() {
 		return(terminate);
 	}
@@ -408,6 +411,7 @@ public:
 	 cServer();
 	 virtual ~cServer();
 	 bool listen_start(const char *name, string host, u_int16_t port);
+	 void listen_stop();
 	 static void *listen_process(void *arg);
 	 void listen_process();
 	 virtual void createConnection(cSocket *socket);
@@ -436,6 +440,7 @@ public:
 	cReceiver();
 	virtual ~cReceiver();
 	bool receive_start(string host, u_int16_t port);
+	void receive_stop();
 	bool _connect(string host, u_int16_t port, unsigned loopSleepS);
 	void _close();
 	void _receive_start();

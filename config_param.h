@@ -430,7 +430,7 @@ protected:
 		param_ipn_ports = NULL;
 	}
 	string getTypeName() {
-		return("ip_ports");
+		return("ip_port_list");
 	}
 protected:
 	vector<ip_port> *param_ip_ports;

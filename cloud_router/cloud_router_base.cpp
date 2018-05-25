@@ -1125,14 +1125,11 @@ u_int32_t cSocketBlock::dataSum(u_char *data, size_t dataLen) {
 
 cServer::cServer() {
 	listen_socket = NULL;
+	listen_thread = 0;
 }
 
 cServer::~cServer() {
-	if(listen_socket) {
-		listen_socket->close();
-		delete listen_socket;
-		listen_socket = NULL;
-	}
+	listen_stop();
 }
 
 bool cServer::listen_start(const char *name, string host, u_int16_t port) {
@@ -1143,8 +1140,21 @@ bool cServer::listen_start(const char *name, string host, u_int16_t port) {
 		listen_socket = NULL;
 		return(false);
 	}
-	vm_pthread_create_autodestroy("cServer::listen_start", &listen_thread, NULL, cServer::listen_process, this, __FILE__, __LINE__);
+	vm_pthread_create("cServer::listen_start", &listen_thread, NULL, cServer::listen_process, this, __FILE__, __LINE__);
 	return(true);
+}
+
+void cServer::listen_stop() {
+	if(listen_socket) {
+		listen_socket->close();
+		listen_socket->setTerminate();
+		if(listen_thread) {
+			pthread_join(listen_thread, NULL);
+			listen_thread = 0;
+		}
+		delete listen_socket;
+		listen_socket = NULL;
+	}
 }
 
 void *cServer::listen_process(void *arg) {
@@ -1222,15 +1232,12 @@ void cServerConnection::evData(u_char *data, size_t dataLen) {
 
 cReceiver::cReceiver() {
 	receive_socket = NULL;
+	receive_thread = 0;
 	start_ok = false;
 }
 
 cReceiver::~cReceiver() {
-	if(receive_socket) {
-		receive_socket->close();
-		delete receive_socket;
-		receive_socket = NULL;
-	}
+	receive_stop();
 }
 
 bool cReceiver::receive_start(string host, u_int16_t port) {
@@ -1239,6 +1246,18 @@ bool cReceiver::receive_start(string host, u_int16_t port) {
 	}
 	_receive_start();
 	return(true);
+}
+
+void cReceiver::receive_stop() {
+	if(receive_socket) {
+		receive_socket->close();
+		receive_socket->setTerminate();
+		if(receive_thread) {
+			pthread_join(receive_thread, NULL);
+			receive_thread = 0;
+		}
+		receive_socket = NULL;
+	}
 }
 
 bool cReceiver::_connect(string host, u_int16_t port, unsigned loopSleepS) {
@@ -1264,7 +1283,7 @@ void cReceiver::_close() {
 }
 
 void cReceiver::_receive_start() {
-	vm_pthread_create_autodestroy("cReceiver::receive_start", &receive_thread, NULL, cReceiver::receive_process, this, __FILE__, __LINE__);
+	vm_pthread_create("cReceiver::receive_start", &receive_thread, NULL, cReceiver::receive_process, this, __FILE__, __LINE__);
 }
 
 void *cReceiver::receive_process(void *arg) {

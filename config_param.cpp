@@ -212,8 +212,8 @@ string cConfigItem::getJson() {
 		json.add("help", help);
 	}
 	json.add("set", set);
-	json.add("value", json_encode(getValueStr()));
-	json.add("default", json_encode(defaultValueStr));
+	json.add("value", getValueStr());
+	json.add("default", defaultValueStr);
 	json.add("group", group_name);
 	json.add("subgroup", subgroup_name);
 	json.add("level", level);
@@ -256,7 +256,7 @@ string cConfigItem::getJson() {
 			}
 			++counter;
 		}
-		json.add("menu", json_encode(outStr.str()));
+		json.add("menu", outStr.str());
 	}
 	return(json.getJson());
 }
@@ -789,8 +789,11 @@ bool cConfigItem_string::setParamFromValueStr(string value_str) {
 }
 
 bool cConfigItem_string::setParamFromValuesStr(vector<string> list_values_str) {
-	if(!param_vect_str ||
-	   list_values_str.empty()) {
+	if(!param_vect_str) {
+		return(false);
+	}
+	if(list_values_str.empty()) {
+		initBeforeSet();
 		return(false);
 	}
 	int ok = 0;
@@ -907,8 +910,11 @@ bool cConfigItem_ports::setParamFromValueStr(string value_str) {
 }
 
 bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str) {
-	if(!param_port_matrix ||
-	   list_values_str.empty()) {
+	if(!param_port_matrix) {
+		return(false);
+	}
+	if(list_values_str.empty()) {
+		initBeforeSet();
 		return(false);
 	}
 	int ok = 0;
@@ -995,8 +1001,11 @@ bool cConfigItem_hosts::setParamFromValueStr(string value_str) {
 }
 
 bool cConfigItem_hosts::setParamFromValuesStr(vector<string> list_values_str) {
-	if((!param_adresses && !param_nets) ||
-	   list_values_str.empty()) {
+	if(!param_adresses && !param_nets) {
+		return(false);
+	}
+	if(list_values_str.empty()) {
+		initBeforeSet();
 		return(false);
 	}
 	int ok = 0;
@@ -1159,8 +1168,11 @@ bool cConfigItem_ip_ports::setParamFromValueStr(string value_str) {
 }
 
 bool cConfigItem_ip_ports::setParamFromValuesStr(vector<string> list_values_str) {
-	if((!param_ip_ports && !param_ipn_ports) ||
-	   list_values_str.empty()) {
+	if(!param_ip_ports && !param_ipn_ports) {
+		return(false);
+	}
+	if(list_values_str.empty()) {
+		initBeforeSet();
 		return(false);
 	}
 	int ok = 0;
@@ -1184,6 +1196,7 @@ bool cConfigItem_ip_ports::setParamFromValuesStr(vector<string> list_values_str)
 					ipp.set_port(port);
 					param_ipn_ports->push_back(ipp);
 				}
+				++ok;
 			}
 		}
 	}
@@ -1255,8 +1268,11 @@ bool cConfigItem_ip_port_str_map::setParamFromValueStr(string value_str) {
 }
 
 bool cConfigItem_ip_port_str_map::setParamFromValuesStr(vector<string> list_values_str) {
-	if(!param_ip_port_string_map ||
-	   list_values_str.empty()) {
+	if(!param_ip_port_string_map) {
+		return(false);
+	}
+	if(list_values_str.empty()) {
+		initBeforeSet();
 		return(false);
 	}
 	int ok = 0;
@@ -1345,8 +1361,11 @@ bool cConfigItem_nat_aliases::setParamFromValueStr(string value_str) {
 }
 
 bool cConfigItem_nat_aliases::setParamFromValuesStr(vector<string> list_values_str) {
-	if(!param_nat_aliases || 
-	   list_values_str.empty()) {
+	if(!param_nat_aliases) {
+		return(false);
+	}
+	if(list_values_str.empty()) {
+		initBeforeSet();
 		return(false);
 	}
 	int ok = 0;

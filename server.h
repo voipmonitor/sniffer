@@ -273,8 +273,10 @@ protected:
 
 
 void snifferServerStart();
+void snifferServerStop();
 void snifferServerSetSqlStore(MySqlStore *sqlStore);
 void snifferClientStart();
+void snifferClientStop();
 
 
 #endif //SERVER_H
