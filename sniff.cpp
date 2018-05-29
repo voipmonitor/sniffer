@@ -6974,7 +6974,7 @@ void PreProcessPacket::process_OTHER(packet_s_stack *packetS) {
 	if(packetS->isother) {
 		process_packet_other(packetS);
 	}
-	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
+	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
 }
 
 void PreProcessPacket::process_parseSipDataExt(packet_s_process **packetS_ref) {
@@ -7507,7 +7507,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					if(packetS->call_info_length > 0) {
 						this->hash_find_flag[batch_index] = 1;
 					} else {
-						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
+						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 4);
 						this->hash_find_flag[batch_index] = -1;
 					}
 				}
@@ -7529,7 +7529,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				if(packetS->call_info_length > 0) {
 					this->hash_find_flag[batch_index] = 1;
 				} else {
-					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
+					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 4);
 					this->hash_find_flag[batch_index] = -1;
 				}
 			}
