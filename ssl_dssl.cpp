@@ -437,6 +437,7 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 		hexdecode(client_random, sessionid.c_str(), SSL3_RANDOM_SIZE);
 		hexdecode(master_secret, mastersecret.c_str(), SSL3_MASTER_SECRET_SIZE);
 		SslDsslSessions->clientRandomSet(client_random, master_secret);
+		return(true);
 	}
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 	return(false);
