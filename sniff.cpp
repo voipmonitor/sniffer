@@ -1842,6 +1842,12 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 			       packetS->source, packetS->dest);
 			lastTimeSyslog = actTime;
 		}
+		if(preSyncRtp) {
+			__sync_sub_and_fetch(&call->rtppacketsinqueue, 1);
+		}
+		if(opt_t2_boost) {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
 		return;
 	}
 	if(!preSyncRtp) {
