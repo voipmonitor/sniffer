@@ -85,6 +85,7 @@
 #include "send_call_info.h"
 #include "config_param.h"
 #include "register.h"
+#include "options.h"
 #include "tools_fifo_buffer.h"
 #include "country_detect.h"
 #include "ssl_dssl.h"
@@ -231,6 +232,7 @@ int opt_jitterbuffer_f2 = 1;		// turns off/on jitterbuffer simulator to compute 
 int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_adapt
 int opt_ringbuffer = 10;	// ring buffer in MB 
 int opt_sip_register = 0;	// if == 1 save REGISTER messages, if == 2, use old registers
+int opt_sip_options = 0;
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 int opt_manager_port = 5029;	// manager api TCP port
 char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
@@ -3440,6 +3442,9 @@ int main_init_read() {
 			initBilling();
 		}
 		
+		extern cOptionsRelations optionsRelations;
+		optionsRelations.loadParams();
+		
 		initSendCallInfo();
 	}
 	
@@ -3877,6 +3882,10 @@ void main_term_read() {
 	if(opt_sip_register == 1) {
 		extern Registers registers;
 		registers.clean_all();
+	}
+	if(opt_sip_options) {
+		extern cOptionsRelations optionsRelations;
+		optionsRelations.clear();
 	}
 	
 	terminate_processpacket();
@@ -6050,6 +6059,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_ua", &opt_sip_register_state_compare_ua));
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
+		subgroup("OPTIONS");
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-options", &opt_sip_options));
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE(42296) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
 			addConfigItem(new FILE_LINE(42297) cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));
@@ -8191,6 +8202,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-save-all", NULL))) {
 		opt_sip_register_save_all = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-options", NULL))) {
+		opt_sip_options = yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate", NULL))) {
 		opt_dup_check = yesno(value);

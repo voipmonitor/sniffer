@@ -77,6 +77,7 @@ and insert them into Call class.
 #include "send_call_info.h"
 #include "ssl_dssl.h"
 #include "websocket.h"
+#include "options.h"
 
 extern MirrorIP *mirrorip;
 
@@ -120,6 +121,7 @@ extern int verbosity;
 extern int verbosityE;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
+extern int opt_sip_options;
 extern int opt_norecord_header;
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
@@ -1842,6 +1844,12 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 			       packetS->source, packetS->dest);
 			lastTimeSyslog = actTime;
 		}
+		if(preSyncRtp) {
+			__sync_sub_and_fetch(&call->rtppacketsinqueue, 1);
+		}
+		if(opt_t2_boost) {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
 		return;
 	}
 	if(!preSyncRtp) {
@@ -2123,8 +2131,23 @@ string get_rtp_threads_cpu_usage(bool callPstat) {
 	}
 }
 
-inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr){
- 
+struct s_detect_callerd {
+	s_detect_callerd() {
+		caller[0] = 0;
+		called[0] = 0;
+		caller_domain[0] = 0;
+		called_domain[0] = 0;
+		callername[0] = 0;
+	}
+	char caller[1024];
+	char called[1024];
+	char caller_domain[1024];
+	char called_domain[1024];
+	char callername[256];
+};
+
+inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_callerd *data) {
+	
 	bool anonymous_useRemotePartyID = false;
 	bool anonymous_usePPreferredIdentity = false;
 	bool anonymous_usePAssertedIdentity = false;
@@ -2133,52 +2156,45 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	bool caller_usePPreferredIdentity = false;
 	bool caller_usePAssertedIdentity = false;
 	bool caller_useFrom = false;
-
-	if(opt_callslimit != 0 and opt_callslimit < (calls_counter + registers_counter)) {
-		if(verbosity > 0)
-			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter + registers_counter);
-		return NULL;
-	}
-
-	//caller and called number has to be checked before flags due to skip filter
-	char tcaller[1024] = "", tcalled[1024] = "";
-
+	
+	// caller number
+	
 	if (opt_ppreferredidentity || opt_remotepartyid || opt_passertedidentity) {
 		if (opt_remotepartypriority && opt_remotepartyid) {
 			//Caller number is taken from headers (in this order) Remote-Party-ID,P-Asserted-Identity,P-Preferred-Identity,From,F
-			if(!get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller, sizeof(tcaller), ppntt_remote_party, ppndt_caller) &&
-			  tcaller[0] != '\0') {
+			if(!get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, data->caller, sizeof(data->caller), ppntt_remote_party, ppndt_caller) &&
+			  data->caller[0] != '\0') {
 				caller_useRemotePartyID = true;
 			} else {
-				if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Assserted-Identity:", NULL, tcaller, sizeof(tcaller), ppntt_asserted_identity, ppndt_caller) &&
-				  tcaller[0] != '\0') {
+				if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Assserted-Identity:", NULL, data->caller, sizeof(data->caller), ppntt_asserted_identity, ppndt_caller) &&
+				  data->caller[0] != '\0') {
 					caller_usePAssertedIdentity = true;
 				} else {
-					if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, tcaller, sizeof(tcaller), ppntt_preferred_identity, ppndt_caller) &&
-					  tcaller[0] != '\0') {
+					if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, data->caller, sizeof(data->caller), ppntt_preferred_identity, ppndt_caller) &&
+					  data->caller[0] != '\0') {
 						caller_usePPreferredIdentity = true;
 					} else {
 						caller_useFrom = true;
-						get_sip_peername(packetS, "\nFrom:", "\nf:", tcaller, sizeof(tcaller), ppntt_from, ppndt_caller);
+						get_sip_peername(packetS, "\nFrom:", "\nf:", data->caller, sizeof(data->caller), ppntt_from, ppndt_caller);
 					}
 				}
 			}
 		} else {
 			//Caller number is taken from headers (in this order) P-Asserted-Identity, P-Preferred-Identity, Remote-Party-ID,From, F
-			if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Asserted-Identity:", NULL, tcaller, sizeof(tcaller), ppntt_asserted_identity, ppndt_caller) &&
-			  tcaller[0] != '\0') {
+			if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Asserted-Identity:", NULL, data->caller, sizeof(data->caller), ppntt_asserted_identity, ppndt_caller) &&
+			  data->caller[0] != '\0') {
 				caller_usePAssertedIdentity = true;
 			} else {
-				if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, tcaller, sizeof(tcaller), ppntt_preferred_identity, ppndt_caller) &&
-				  tcaller[0] != '\0') {
+				if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, data->caller, sizeof(data->caller), ppntt_preferred_identity, ppndt_caller) &&
+				  data->caller[0] != '\0') {
 					caller_usePPreferredIdentity = true;
 				} else {
-					if(opt_remotepartyid && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller, sizeof(tcaller), ppntt_remote_party, ppndt_caller) &&
-					  tcaller[0] != '\0') {
+					if(opt_remotepartyid && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, data->caller, sizeof(data->caller), ppntt_remote_party, ppndt_caller) &&
+					  data->caller[0] != '\0') {
 						caller_useRemotePartyID = true;
 					} else {
 						caller_useFrom =  true;
-						get_sip_peername(packetS, "\nFrom:", "\nf:", tcaller, sizeof(tcaller), ppntt_from, ppndt_caller);
+						get_sip_peername(packetS, "\nFrom:", "\nf:", data->caller, sizeof(data->caller), ppntt_from, ppndt_caller);
 					}
 				}
 			}
@@ -2186,30 +2202,30 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	} else {
 		//Caller is taken from header From , F
 		caller_useFrom =  true;
-		get_sip_peername(packetS, "\nFrom:", "\nf:", tcaller, sizeof(tcaller), ppntt_from, ppndt_caller);
+		get_sip_peername(packetS, "\nFrom:", "\nf:", data->caller, sizeof(data->caller), ppntt_from, ppndt_caller);
 	}
 
-	if (caller_useFrom && !strcasecmp(tcaller, "anonymous")) {
+	if (caller_useFrom && !strcasecmp(data->caller, "anonymous")) {
 		//if caller is anonymous
-		char tcaller2[1024];
-		if(opt_remotepartypriority && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller2, sizeof(tcaller2), ppntt_remote_party, ppndt_caller) &&
-		   tcaller2[0] != '\0') {
-			strncpy(tcaller, tcaller2, sizeof(tcaller));
+		char _caller[1024];
+		if(opt_remotepartypriority && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, _caller, sizeof(_caller), ppntt_remote_party, ppndt_caller) &&
+		   _caller[0] != '\0') {
+			strncpy(data->caller, _caller, sizeof(data->caller));
 			anonymous_useRemotePartyID = true;
 		} else {
-			if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Asserted-Identity:", NULL, tcaller2, sizeof(tcaller2), ppntt_asserted_identity, ppndt_caller) &&
-			   tcaller2[0] != '\0') {
-				strncpy(tcaller, tcaller2, sizeof(tcaller));
+			if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Asserted-Identity:", NULL, _caller, sizeof(_caller), ppntt_asserted_identity, ppndt_caller) &&
+			   _caller[0] != '\0') {
+				strncpy(data->caller, _caller, sizeof(data->caller));
 				anonymous_usePAssertedIdentity = true;
 			} else {
-				if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, tcaller2, sizeof(tcaller2), ppntt_preferred_identity, ppndt_caller) &&
-				   tcaller2[0] != '\0') {
-					strncpy(tcaller, tcaller2, sizeof(tcaller));
+				if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, _caller, sizeof(_caller), ppntt_preferred_identity, ppndt_caller) &&
+				   _caller[0] != '\0') {
+					strncpy(data->caller, _caller, sizeof(data->caller));
 					anonymous_usePPreferredIdentity = true;
 				} else {
-					if(!opt_remotepartypriority && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, tcaller2, sizeof(tcaller2), ppntt_remote_party, ppndt_caller) &&
-					   tcaller2[0] != '\0') {
-						strncpy(tcaller, tcaller2, sizeof(tcaller));
+					if(!opt_remotepartypriority && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, _caller, sizeof(_caller), ppntt_remote_party, ppndt_caller) &&
+					   _caller[0] != '\0') {
+						strncpy(data->caller, _caller, sizeof(data->caller));
 						anonymous_useRemotePartyID = true;
 					} else {
 						anonymous_useFrom = true;
@@ -2220,44 +2236,83 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	}
 
 	// called number
-	get_sip_peername(packetS, "\nTo:", "\nt:", tcalled, sizeof(tcalled), ppntt_to, ppndt_called);
+	
+	get_sip_peername(packetS, "\nTo:", "\nt:", data->called, sizeof(data->called), ppntt_to, ppndt_called);
 	if(sip_method == INVITE && opt_destination_number_mode == 2) {
-		char tcalled_invite[1024] = "";
-		if(!get_sip_peername(packetS, "INVITE ", NULL, tcalled_invite, sizeof(tcalled_invite), ppntt_invite, ppndt_called) &&
-		   tcalled_invite[0] != '\0') {
-			strncpy(tcalled, tcalled_invite, sizeof(tcalled));
+		char _called[1024] = "";
+		if(!get_sip_peername(packetS, "INVITE ", NULL, _called, sizeof(_called), ppntt_invite, ppndt_called) &&
+		   _called[0] != '\0') {
+			strncpy(data->called, _called, sizeof(data->called));
 		}
 	}
 	
-	//caller and called domain has to be checked before flags due to skip filter 
-	char tcaller_domain[1024] = "", tcalled_domain[1024] = "";
 	// caller domain 
+	
 	if(anonymous_useFrom || caller_useFrom) {
-		get_sip_domain(packetS, "\nFrom:", "\nf:", tcaller_domain, sizeof(tcaller_domain), ppntt_from, ppndt_caller_domain);
+		get_sip_domain(packetS, "\nFrom:", "\nf:", data->caller_domain, sizeof(data->caller_domain), ppntt_from, ppndt_caller_domain);
 	} else {
 		if(anonymous_useRemotePartyID || caller_useRemotePartyID) {
-			get_sip_domain(packetS, "\nRemote-Party-ID:", NULL, tcaller_domain, sizeof(tcaller_domain), ppntt_remote_party, ppndt_caller_domain);
+			get_sip_domain(packetS, "\nRemote-Party-ID:", NULL, data->caller_domain, sizeof(data->caller_domain), ppntt_remote_party, ppndt_caller_domain);
 		} else {
 			if (anonymous_usePPreferredIdentity || caller_usePPreferredIdentity) {
-				get_sip_domain(packetS, "\nP-Preferred-Identity:", NULL, tcaller_domain, sizeof(tcaller_domain), ppntt_preferred_identity, ppndt_caller_domain);
+				get_sip_domain(packetS, "\nP-Preferred-Identity:", NULL, data->caller_domain, sizeof(data->caller_domain), ppntt_preferred_identity, ppndt_caller_domain);
 			} else {
 				if (anonymous_usePAssertedIdentity || caller_usePAssertedIdentity) {
-					get_sip_domain(packetS, "\nP-Asserted-Identity:", NULL, tcaller_domain, sizeof(tcaller_domain), ppntt_asserted_identity, ppndt_caller_domain);
+					get_sip_domain(packetS, "\nP-Asserted-Identity:", NULL, data->caller_domain, sizeof(data->caller_domain), ppntt_asserted_identity, ppndt_caller_domain);
 				}
 			}
 		}
 	}
 
 	// called domain 
-	get_sip_domain(packetS, "\nTo:", "\nt:", tcalled_domain, sizeof(tcalled_domain), ppntt_to, ppndt_called_domain);
+	
+	get_sip_domain(packetS, "\nTo:", "\nt:", data->called_domain, sizeof(data->called_domain), ppntt_to, ppndt_called_domain);
 	if(sip_method == INVITE && opt_destination_number_mode == 2) {
-		char tcalled_domain_invite[256] = "";
-		get_sip_domain(packetS, "INVITE ", NULL, tcalled_domain_invite, sizeof(tcalled_domain_invite), ppntt_invite, ppndt_called_domain);
-		if(tcalled_domain_invite[0] != '\0') {
-			strncpy(tcalled_domain, tcalled_domain_invite, sizeof(tcalled_domain));
+		char _called_domain[256] = "";
+		get_sip_domain(packetS, "INVITE ", NULL, _called_domain, sizeof(_called_domain), ppntt_invite, ppndt_called_domain);
+		if(_called_domain[0] != '\0') {
+			strncpy(data->called_domain, _called_domain, sizeof(data->called_domain));
 		}
 	}
+	
+	// callername
+	
+	if (caller_useFrom) {
+		//try from header
+		get_sip_peercnam(packetS, "\nFrom:", "\nf:", data->callername, sizeof(data->callername), ppntt_from, ppndt_caller_name);
+	} else {
+		if (caller_useRemotePartyID) {
+			//try Remote-Party-ID
+			get_sip_peercnam(packetS, "\nRemote-Party-ID:", NULL, data->callername, sizeof(data->callername), ppntt_remote_party, ppndt_caller_name);
+		} else {
+			if (caller_usePPreferredIdentity) {
+				//try P-Preferred-Identity
+				get_sip_peercnam(packetS, "\nP-Preferred-Identity:", NULL, data->callername, sizeof(data->callername), ppntt_preferred_identity, ppndt_caller_name);
+			} else {
+				if (caller_usePAssertedIdentity) {
+					//try P-Asserted-Identity
+					get_sip_peercnam(packetS,  "\nP-Asserted-Identity:", NULL, data->callername, sizeof(data->callername), ppntt_asserted_identity, ppndt_caller_name);
+				} else {
+					if(anonymous_useRemotePartyID || anonymous_usePPreferredIdentity || anonymous_usePAssertedIdentity) {
+						strcpy(data->callername, "anonymous");
+					}
+				}
+			}
+		}
+	}
+}
 
+inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr){
+ 
+	if(opt_callslimit != 0 and opt_callslimit < (calls_counter + registers_counter)) {
+		if(verbosity > 0)
+			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter + registers_counter);
+		return NULL;
+	}
+
+	s_detect_callerd data_callerd;
+	detect_callerd(packetS, sip_method, &data_callerd);
+ 
 	//flags
 	unsigned int flags = 0;
 	unsigned int flags_old = 0;
@@ -2271,14 +2326,14 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		cout << "set flags for ip " << inet_ntostring(htonl(packetS->saddr)) << " -> " << inet_ntostring(htonl(packetS->daddr)) << " : " << printCallFlags(flags) << endl;
 		flags_old = flags;
 	}
-	TELNUMfilter::add_call_flags(&flags, tcaller, tcalled, true);
+	TELNUMfilter::add_call_flags(&flags, data_callerd.caller, data_callerd.called, true);
 	if(sverb.dump_call_flags && flags != flags_old) {
-		cout << "set flags for number " << tcaller << " -> " << tcalled << " : " << printCallFlags(flags) << endl;
+		cout << "set flags for number " << data_callerd.caller << " -> " << data_callerd.called << " : " << printCallFlags(flags) << endl;
 		flags_old = flags;
 	}
-	DOMAINfilter::add_call_flags(&flags, tcaller_domain, tcalled_domain, true);
+	DOMAINfilter::add_call_flags(&flags, data_callerd.caller_domain, data_callerd.called_domain, true);
 	if(sverb.dump_call_flags && flags != flags_old) {
-		cout << "set flags for domain " << tcaller_domain << " -> " << tcalled_domain << " : " << printCallFlags(flags) << endl;
+		cout << "set flags for domain " << data_callerd.caller_domain << " -> " << data_callerd.called_domain << " : " << printCallFlags(flags) << endl;
 		flags_old = flags;
 	}
 	SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags, true);
@@ -2340,42 +2395,20 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 			call->geoposition = buf;
 		}
 
-		// callername
-		if (caller_useFrom) {
-			//try from header
-			get_sip_peercnam(packetS, "\nFrom:", "\nf:", call->callername, sizeof(call->callername), ppntt_from, ppndt_caller_name);
-		} else {
-			if (caller_useRemotePartyID) {
-				//try Remote-Party-ID
-				get_sip_peercnam(packetS, "\nRemote-Party-ID:", NULL, call->callername, sizeof(call->callername), ppntt_remote_party, ppndt_caller_name);
-			} else {
-				if (caller_usePPreferredIdentity) {
-					//try P-Preferred-Identity
-					get_sip_peercnam(packetS, "\nP-Preferred-Identity:", NULL, call->callername, sizeof(call->callername), ppntt_preferred_identity, ppndt_caller_name);
-				} else {
-					if (caller_usePAssertedIdentity) {
-						//try P-Asserted-Identity
-						get_sip_peercnam(packetS,  "\nP-Asserted-Identity:", NULL, call->callername, sizeof(call->callername), ppntt_asserted_identity, ppndt_caller_name);
-					} else {
-						if(anonymous_useRemotePartyID || anonymous_usePPreferredIdentity || anonymous_usePAssertedIdentity) {
-							strcpy(call->callername, "anonymous");
-						}
-					}
-				}
-			}
-		}
-
 		// caller number
-		strncpy(call->caller, tcaller, sizeof(call->caller));
+		strncpy(call->caller, data_callerd.caller, sizeof(call->caller));
 
 		// called number
-		strncpy(call->called, tcalled, sizeof(call->called));
+		strncpy(call->called, data_callerd.called, sizeof(call->called));
 
 		// caller domain 
-		strncpy(call->caller_domain, tcaller_domain, sizeof(call->caller_domain));
+		strncpy(call->caller_domain, data_callerd.caller_domain, sizeof(call->caller_domain));
 
 		// called domain 
-		strncpy(call->called_domain, tcalled_domain, sizeof(call->called_domain));
+		strncpy(call->called_domain, data_callerd.called_domain, sizeof(call->called_domain));
+		
+		// callername
+		strncpy(call->callername, data_callerd.callername, sizeof(call->callername));
 
 		if(sip_method == REGISTER) {	
 			// destroy all REGISTER from memory within 30 seconds 
@@ -3958,6 +3991,81 @@ endsip:
 			, packetS->sip_method, packetS->lastSIPresponseNum, packetS->header_pt, 
 			packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 			call, logPacketSipMethodCallDescr);
+	}
+}
+
+void process_packet_sip_other_options(packet_s_process *packetS, u_int32_t cseq_number) {
+	extern cOptionsRelations optionsRelations;
+	if(!optionsRelations.isSetParams()) {
+		return;
+	}
+	if(sverb.dump_sip) {
+		string dump_data(packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
+		if(sverb.dump_sip_line) {
+			find_and_replace(dump_data, "\r", "\\r");
+			find_and_replace(dump_data, "\n", "\\n");
+		}
+		if(!sverb.dump_sip_without_counter) {
+			#if USE_PACKET_NUMBER
+			cout << packetS->packet_number << endl
+			#else
+			cout << (++glob_packet_number) << endl;
+			#endif
+		}
+		cout << dump_data << endl;
+	}
+	s_detect_callerd data_callerd;
+	detect_callerd(packetS, packetS->sip_method, &data_callerd);
+	cOptionsItem *options = new FILE_LINE(0) cOptionsItem;
+	options->time_us = getTimeUS(packetS->header_pt);
+	options->callid = packetS->get_callid();
+	options->cseq_number = cseq_number;
+	if(packetS->sip_method == OPTIONS) {
+		options->ip_src = packetS->saddr;
+		options->ip_dst = packetS->daddr;
+		options->port_src = packetS->source;
+		options->port_dst = packetS->dest;
+	} else {
+		options->ip_src = packetS->daddr;
+		options->ip_dst = packetS->saddr;
+		options->port_src = packetS->dest;
+		options->port_dst = packetS->source;
+	}
+	options->number_src = data_callerd.caller;
+	options->number_dst = data_callerd.called;
+	options->domain_src = data_callerd.caller_domain;
+	options->domain_dst = data_callerd.called_domain;
+	options->callername = data_callerd.callername;
+	long unsigned int ua_len;
+	char *ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
+	if(ua) {
+		options->ua = string(ua, ua_len);
+	}
+	if(packetS->sip_method != OPTIONS) {
+		options->response = true;
+		options->response_number = packetS->lastSIPresponseNum;
+		options->response_string = packetS->lastSIPresponse;
+	}
+	options->id_sensor = packetS->sensor_id_();
+	optionsRelations.addOptions(options);
+}
+
+void process_packet_sip_other(packet_s_process *packetS) {
+	long unsigned int cseqlen = 0;
+	char *cseq = gettag_sip(packetS, "\nCSeq:", &cseqlen);
+	int cseq_method = 0;
+	if(cseq && cseqlen < 32) {
+		unsigned cseq_pos = 0;
+		while(cseq_pos < cseqlen && (isdigit(cseq[cseq_pos]) || cseq[cseq_pos] == ' ')) {
+			++cseq_pos;
+		}
+		if(cseq_pos < cseqlen) {
+			cseq_method = process_packet__parse_sip_method(cseq + cseq_pos, cseqlen - cseq_pos, NULL);
+		}
+	}
+	if((packetS->sip_method == OPTIONS || IS_SIP_RESXXX(packetS->sip_method)) &&
+	   cseq_method == OPTIONS) {
+		process_packet_sip_other_options(packetS, atol(cseq));
 	}
 }
 
@@ -6559,6 +6667,7 @@ void *PreProcessPacket::outThreadFunction() {
 							   batch_index == count - 1) {
 								preProcessPacket[ppt_pp_call]->push_batch();
 								preProcessPacket[ppt_pp_register]->push_batch();
+								preProcessPacket[ppt_pp_sip_other]->push_batch();
 								if(!opt_t2_boost) {
 									preProcessPacket[ppt_pp_rtp]->push_batch();
 								}
@@ -6569,6 +6678,9 @@ void *PreProcessPacket::outThreadFunction() {
 							break;
 						case ppt_pp_register:
 							this->process_REGISTER(packetS);
+							break;
+						case ppt_pp_sip_other:
+							this->process_SIP_OTHER(packetS);
 							break;
 						case ppt_pp_rtp:
 							this->process_RTP(packetS);
@@ -6628,6 +6740,7 @@ void *PreProcessPacket::outThreadFunction() {
 				case ppt_extend:
 					preProcessPacket[ppt_pp_call]->push_batch();
 					preProcessPacket[ppt_pp_register]->push_batch();
+					preProcessPacket[ppt_pp_sip_other]->push_batch();
 					if(!opt_t2_boost) {
 						preProcessPacket[ppt_pp_rtp]->push_batch();
 					}
@@ -6637,6 +6750,8 @@ void *PreProcessPacket::outThreadFunction() {
 					break;
 				case ppt_pp_register:
 					_process_packet__cleanup_registers();
+					break;
+				case ppt_pp_sip_other:
 					break;
 				case ppt_pp_rtp:
 					if(processRtpPacketHash) {
@@ -6713,6 +6828,9 @@ void PreProcessPacket::push_batch_nothread() {
 		if(!preProcessPacket[ppt_pp_register]->outThreadState) {
 			preProcessPacket[ppt_pp_register]->push_batch();
 		}
+		if(!preProcessPacket[ppt_pp_sip_other]->outThreadState) {
+			preProcessPacket[ppt_pp_sip_other]->push_batch();
+		}
 		if(!opt_t2_boost) {
 			if(!preProcessPacket[ppt_pp_rtp]->outThreadState) {
 				preProcessPacket[ppt_pp_rtp]->push_batch();
@@ -6724,6 +6842,8 @@ void PreProcessPacket::push_batch_nothread() {
 		break;
 	case ppt_pp_register:
 		_process_packet__cleanup_registers();
+		break;
+	case ppt_pp_sip_other:
 		break;
 	case ppt_pp_rtp:
 		if(processRtpPacketHash) {
@@ -6901,9 +7021,19 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 		if(!packetS->is_register) {
 			this->process_findCall(&packetS);
 			this->process_createCall(&packetS);
+			if(!((packetS->_findCall && packetS->call) ||
+			     (packetS->_createCall && packetS->call_created))) {
+				if(opt_sip_options) {
+					packetS->is_sip_other = true;
+				} else {
+					PACKET_S_PROCESS_DESTROY(&packetS);
+					return;
+				}
+			}
 		}
 		if(packetS) {
-			preProcessPacket[packetS->is_register ? ppt_pp_register : ppt_pp_call]->push_packet(packetS);
+			preProcessPacket[packetS->is_sip_other ? ppt_pp_sip_other :
+					 packetS->is_register ? ppt_pp_register : ppt_pp_call]->push_packet(packetS);
 		}
 	} else if(packetS->isSkinny) {
 		packetS->blockstore_addflag(102 /*pb lock flag*/);
@@ -6964,9 +7094,19 @@ void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 1);
 }
 
+void PreProcessPacket::process_SIP_OTHER(packet_s_process *packetS) {
+	if(packetS->isSip) {
+		if(opt_ipaccount && packetS->block_store) {
+			packetS->block_store->setVoipPacket(packetS->block_store_index);
+		}
+		process_packet_sip_other(packetS);
+	}
+	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
+}
+
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
 	if(!process_packet_rtp(packetS)) {
-		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
+		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
 	}
 }
 
@@ -6974,7 +7114,7 @@ void PreProcessPacket::process_OTHER(packet_s_stack *packetS) {
 	if(packetS->isother) {
 		process_packet_other(packetS);
 	}
-	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
+	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 4);
 }
 
 void PreProcessPacket::process_parseSipDataExt(packet_s_process **packetS_ref) {
@@ -7202,6 +7342,9 @@ void PreProcessPacket::autoStartNextLevelPreProcessPacket() {
 	int i = 0;
 	for(; i < PreProcessPacket::ppt_end && preProcessPacket[i]->isActiveOutThread(); i++);
 	if(!opt_sip_register && preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::PreProcessPacket::ppt_pp_register) {
+		++i;
+	}
+	if(!opt_sip_options && preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::PreProcessPacket::ppt_pp_sip_other) {
 		++i;
 	}
 	if(i < PreProcessPacket::ppt_end) {
@@ -7507,7 +7650,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					if(packetS->call_info_length > 0) {
 						this->hash_find_flag[batch_index] = 1;
 					} else {
-						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 4);
+						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 5);
 						this->hash_find_flag[batch_index] = -1;
 					}
 				}
@@ -7529,7 +7672,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				if(packetS->call_info_length > 0) {
 					this->hash_find_flag[batch_index] = 1;
 				} else {
-					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 4);
+					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 5);
 					this->hash_find_flag[batch_index] = -1;
 				}
 			}

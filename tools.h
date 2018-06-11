@@ -1750,7 +1750,7 @@ public:
 		listNet.clear();
 		if(autoLock) unlock();
 	}
-	size_t is_empty() {
+	bool is_empty() {
 		return(!listIP.size() && !listNet.size());
 	}
 	void lock() {
@@ -1876,7 +1876,7 @@ public:
 		listPrefixes.clear();
 		if(autoLock) unlock();
 	}
-	size_t is_empty() {
+	bool is_empty() {
 		return(!listPhoneNumber.size() && !listPrefixes.size());
 	}
 	void lock() {
@@ -1927,6 +1927,9 @@ public:
 	size_t size() {
 		return(listUA.size());
 	}
+	bool is_empty() {
+		return(!listUA.size());
+	}
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
 	}
@@ -1971,6 +1974,9 @@ public:
 	}
 	size_t size() {
 		return(listCheckString.size());
+	}
+	bool is_empty() {
+		return(!listCheckString.size());
 	}
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
@@ -3662,6 +3668,43 @@ inline void hexdump(const char *data, unsigned size) {
 unsigned file_get_rows(const char *filename, vector<string> *rows);
 
 vector<string> findCoredumps(int pid);
+
+
+class cStringCache {
+public:
+	class cItem {
+	public:
+		bool operator == (const cItem& other) const {
+			return(*str == *other.str);
+		}
+		bool operator < (const cItem& other) const {
+			return(*str < *other.str);
+		}
+	public:
+		string *str;
+	};
+public:
+	cStringCache();
+	~cStringCache();
+	u_int32_t getId(const char *str);
+	const char *getStr(u_int32_t id);
+	string getString(u_int32_t id) {
+		const char *str = getStr(id);
+		return(str ? str : "");
+	}
+	void clear();
+private:
+	void lock() {
+		while(__sync_lock_test_and_set(&_sync, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&_sync);
+	}
+private:
+	map<cItem, u_int32_t> map_items;
+	map<u_int32_t, cItem> map_ids;
+	volatile int _sync;
+};
 
 
 #endif

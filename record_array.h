@@ -24,14 +24,15 @@ struct RecordArrayField {
 		tf_float,
 		tf_pointer,
 		tf_time,
-		tf_string
+		tf_string,
+		tf_json
 	};
 	RecordArrayField() {
 		tf = tf_na;
 		v.i = 0;
 	}
 	void free() {
-		if(tf == tf_string && v.s) {
+		if((tf == tf_string || tf == tf_json) && v.s) {
 			delete [] v.s;
 			v.s = NULL;
 		}
@@ -68,10 +69,10 @@ struct RecordArrayField {
 		this->tf = tf;
 		this->v.p = p;
 	}
-	void set(const char *s) {
-		tf = tf_string;
+	void set(const char *s, eTypeField tf = tf_string) {
+		this->tf = tf;
 		if(s && *s) {
-			this->v.s = new FILE_LINE(19001) char[strlen(s) + 1];
+			this->v.s = new FILE_LINE(0) char[strlen(s) + 1];
 			strcpy(this->v.s, s);
 		} else {
 			this->v.s = NULL;
@@ -127,6 +128,7 @@ struct RecordArrayField {
 			case tf_pointer:
 				return(v.p == other.v.p);
 			case tf_string:
+			case tf_json:
 				return(EQ_STR(v.s, other.v.s));
 			}
 		}
@@ -147,6 +149,7 @@ struct RecordArrayField {
 			case tf_pointer:
 				return(v.p < other.v.p);
 			case tf_string:
+			case tf_json:
 				return(CMP_STR(v.s, other.v.s) < 0);
 			}
 		}

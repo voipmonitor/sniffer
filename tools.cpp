@@ -6495,3 +6495,61 @@ vector<string> findCoredumps(int pid) {
 	}
 	return(coredumps);
 }
+
+
+cStringCache::cStringCache() {
+	_sync = 0;
+}
+
+cStringCache::~cStringCache() {
+	clear();
+}
+
+u_int32_t cStringCache::getId(const char *str) {
+	if(!str || !*str) {
+		return(0);
+	}
+	u_int32_t rslt = 0;
+	cItem str_item;
+	str_item.str = new string(str);
+	lock();
+	map<cItem, u_int32_t>::iterator iter = map_items.find(str_item);
+	if(iter != map_items.end()) {
+		rslt = iter->second;
+	} else {
+		rslt = map_items.size() + 1;
+		map_items[str_item] = rslt;
+		map_ids[rslt] = str_item;
+		str_item.str = NULL;
+	}
+	unlock();
+	if(str_item.str) {
+		delete str_item.str;
+	}
+	return(rslt);
+}
+
+const char *cStringCache::getStr(u_int32_t id) {
+	if(!id) {
+		return(NULL);
+	}
+	const char *rslt = NULL;
+	lock();
+	map<u_int32_t, cItem>::iterator iter = map_ids.find(id);
+	if(iter != map_ids.end()) {
+		rslt = iter->second.str->c_str();
+	}
+	unlock();
+	return(rslt);
+}
+
+void cStringCache::clear() {
+	lock();
+	map<u_int32_t, cItem>::iterator iter;
+	for(iter = map_ids.begin(); iter != map_ids.end(); iter++) {
+		delete iter->second.str;
+	}
+	map_items.clear();
+	map_ids.clear();
+	unlock();
+}

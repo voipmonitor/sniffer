@@ -208,6 +208,7 @@ public:
 		ppt_extend,
 		ppt_pp_call,
 		ppt_pp_register,
+		ppt_pp_sip_other,
 		ppt_pp_rtp,
 		ppt_pp_other,
 		ppt_end
@@ -449,6 +450,9 @@ public:
 					case ppt_pp_register:
 						this->process_REGISTER(_packetS);
 						break;
+					case ppt_pp_sip_other:
+						this->process_SIP_OTHER(_packetS);
+						break;
 					case ppt_pp_rtp:
 						this->process_RTP(_packetS);
 						break;
@@ -479,6 +483,9 @@ public:
 				break;
 			case ppt_pp_register:
 				this->process_REGISTER(packetS);
+				break;
+			case ppt_pp_sip_other:
+				this->process_SIP_OTHER(packetS);
 				break;
 			case ppt_pp_rtp:
 				this->process_RTP(packetS);
@@ -744,6 +751,8 @@ public:
 			return("call");
 		case ppt_pp_register:
 			return("register");
+		case ppt_pp_sip_other:
+			return("sip other");
 		case ppt_pp_rtp:
 			return("rtp");
 		case ppt_pp_other:
@@ -769,6 +778,8 @@ public:
 			return("c");
 		case ppt_pp_register:
 			return("g");
+		case ppt_pp_sip_other:
+			return("so");
 		case ppt_pp_rtp:
 			return("r");
 		case ppt_pp_other:
@@ -786,6 +797,7 @@ private:
 	void process_SIP_EXTEND(packet_s_process *packetS);
 	void process_CALL(packet_s_process *packetS);
 	void process_REGISTER(packet_s_process *packetS);
+	void process_SIP_OTHER(packet_s_process *packetS);
 	void process_RTP(packet_s_process_0 *packetS);
 	void process_OTHER(packet_s_stack *packetS);
 	void process_parseSipDataExt(packet_s_process **packetS_ref);

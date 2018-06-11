@@ -51,6 +51,7 @@
 #include "config_param.h"
 #include "sniff_proc_class.h"
 #include "register.h"
+#include "options.h"
 #include "server.h"
 #include "filter_mysql.h"
 
@@ -1279,6 +1280,32 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
+	} else if(strstr(buf, "listoptions") != NULL) {
+		string rslt_data;
+		char *pointer;
+		if((pointer = strchr(buf, '\n')) != NULL) {
+			*pointer = 0;
+		}
+		bool zip = false;
+		extern cOptionsRelations optionsRelations;
+		rslt_data = optionsRelations.getDataTableJson(buf + strlen("listoptions") + 1, &zip);
+		if(sendString(&rslt_data, client, sshchannel, c_client, zip) == -1) {
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	} else if(strstr(buf, "list_history_options") != NULL) {
+		string rslt_data;
+		char *pointer;
+		if((pointer = strchr(buf, '\n')) != NULL) {
+			*pointer = 0;
+		}
+		bool zip = false;
+		extern cOptionsRelations optionsRelations;
+		rslt_data = optionsRelations.getHistoryDataJson(buf + strlen("list_history_options") + 1, &zip);
+		if(sendString(&rslt_data, client, sshchannel, c_client, zip) == -1) {
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
 	} else if(strstr(buf, "cleanupregisters") != NULL) {
 		string rslt_data;
 		char *pointer;
@@ -2219,6 +2246,14 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		return 0;
 	} else if(strstr(buf, "send_call_info_refresh") != NULL) {
 		refreshSendCallInfo();
+		if ((size = sendvm(client, sshchannel, c_client, "reload ok", 9, 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		return 0;
+	} else if(strstr(buf, "options_qualify_refresh") != NULL) {
+		extern cOptionsRelations optionsRelations;
+		optionsRelations.loadParamsInBackground();
 		if ((size = sendvm(client, sshchannel, c_client, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;

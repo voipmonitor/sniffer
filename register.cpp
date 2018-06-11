@@ -505,9 +505,7 @@ bool Register::getDataRow(RecordArray *rec) {
 	rec->fields[rf_contact_num].set(contact_num);
 	rec->fields[rf_contact_domain].set(contact_domain);
 	rec->fields[rf_digestusername].set(digest_username);
-	if(state->id_sensor >= 0) {
-		rec->fields[rf_id_sensor].set(state->id_sensor);
-	}
+	rec->fields[rf_id_sensor].set(state->id_sensor);
 	rec->fields[rf_fname].set(state->fname);
 	rec->fields[rf_calldate].set(state->state_to, RecordArrayField::tf_time);
 	rec->fields[rf_from_num].set(state->from_num == EQ_REG ? from_num : state->from_num);

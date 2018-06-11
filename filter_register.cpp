@@ -187,7 +187,7 @@ void cRegisterFilter::setFilter(const char *filter) {
 	}
 	if(!filterData["sensor_id"].empty()) {
 		cRecordFilterItem_numList *filter = new cRecordFilterItem_numList(this, rf_id_sensor);
-		filter->addNum(atol(filterData["sensor_id"].c_str()));
+		filter->addNum(atoi(filterData["sensor_id"].c_str()) >= 0 ? atoi(filterData["sensor_id"].c_str()) : -1);
 		addFilter(filter);
 	}
 }

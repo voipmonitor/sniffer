@@ -20,6 +20,11 @@ string RecordArrayField::getJson() {
 			return('"' + json_encode(v.s) + '"');
 		}
 		break;
+	case tf_json:
+		if(v.s) {
+			return(v.s);
+		}
+		break;
 	default:
 		break;
 	}
