@@ -3525,11 +3525,15 @@ int main_init_read() {
 		}
 		
 		for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
-			preProcessPacket[i] = new FILE_LINE(42022) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
+			preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 		}
 		if(!is_read_from_file_simple()) {
 			for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end)); i++) {
-				preProcessPacket[i]->startOutThread();
+				if((i != PreProcessPacket::PreProcessPacket::ppt_pp_register && i != PreProcessPacket::PreProcessPacket::ppt_pp_sip_other) ||
+				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_register && opt_sip_register) ||
+				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_sip_other && opt_sip_options)) {
+					preProcessPacket[i]->startOutThread();
+				}
 			}
 		}
 		
