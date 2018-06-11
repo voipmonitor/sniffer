@@ -224,7 +224,7 @@ void cOptionsRelation::addOptions(cOptionsItem *item, cOptionsRelations *relatio
 	cleanup_history_by_max_items(opt_cleanup_history_by_max_items);
 }
 
-bool cOptionsRelation::getDataRow(RecordArray *rec, u_long limit_options_time_us, cOptionsRelations *relations) {
+bool cOptionsRelation::getDataRow(RecordArray *rec, u_int64_t limit_options_time_us, cOptionsRelations *relations) {
 	lock();
 	rec->fields[of_id].set(id);
 	rec->fields[of_id_sensor].set(id_sensor);
