@@ -367,9 +367,13 @@ public:
 		sMergeLegInfo() {
 			seenbye = false;
 			seenbye_time_usec = 0;
+			seenbyeandok = false;
+			seenbyeandok_time_usec = 0;
 		}
 		bool seenbye;
 		u_int64_t seenbye_time_usec;
+		bool seenbyeandok;
+		u_int64_t seenbyeandok_time_usec;
 	};
 	struct sInviteSD_Addr {
 		sInviteSD_Addr() {
@@ -1181,6 +1185,19 @@ public:
 			mergecalls_unlock();
 		}
 	}
+	void setSeenbyeAndOk(bool seenbyeandok, u_int64_t seenbyeandok_time_usec, const char *call_id) {
+		this->seenbyeandok = seenbyeandok;
+		this->seenbyeandok_time_usec = seenbyeandok_time_usec;
+		if(isSetCallidMergeHeader() &&
+		   call_id && *call_id) {
+			mergecalls_lock();
+			if(mergecalls.find(call_id) != mergecalls.end()) {
+				mergecalls[call_id].seenbyeandok = seenbyeandok;
+				mergecalls[call_id].seenbyeandok_time_usec = seenbyeandok_time_usec;
+			}
+			mergecalls_unlock();
+		}
+	}
 	u_int64_t getSeenbyeTimeUS() {
 		if(isSetCallidMergeHeader()) {
 			u_int64_t seenbye_time_usec = 0;
@@ -1198,6 +1215,24 @@ public:
 			return(seenbye_time_usec);
 		}
 		return(seenbye ? seenbye_time_usec : 0);
+	}
+	u_int64_t getSeenbyeAndOkTimeUS() {
+		if(isSetCallidMergeHeader()) {
+			u_int64_t seenbyeandok_time_usec = 0;
+			mergecalls_lock();
+			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+				if(!it->second.seenbyeandok || !it->second.seenbyeandok_time_usec) {
+					mergecalls_unlock();
+					return(0);
+				}
+				if(seenbyeandok_time_usec < it->second.seenbyeandok_time_usec) {
+					seenbyeandok_time_usec = it->second.seenbyeandok_time_usec;
+				}
+			}
+			mergecalls_unlock();
+			return(seenbyeandok_time_usec);
+		}
+		return(seenbyeandok ? seenbyeandok_time_usec : 0);
 	}
 	int setByeCseq(const char *cseq, unsigned cseqlen) {
 		unsigned index;

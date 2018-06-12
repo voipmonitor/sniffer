@@ -1113,10 +1113,10 @@ Call::get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr, ip_
 bool 
 Call::is_multiple_to_branch() {
 	for(int i = 0; i < ipport_n; i++) {
-		if(sipcallerip[0] && this->ip_port[i].sip_src_addr) {
+		if(sipcallerip[0] == this->ip_port[i].sip_src_addr) {
 			for(int j = 0; j < ipport_n; j++) {
 				if(j != i &&
-				   sipcallerip[0] && this->ip_port[j].sip_src_addr &&
+				   sipcallerip[0] == this->ip_port[j].sip_src_addr &&
 				   this->ip_port[i].to.length() && this->ip_port[j].to.length() &&
 				   this->ip_port[i].to != this->ip_port[j].to &&
 				   this->ip_port[i].branch.length() && this->ip_port[j].branch.length() &&
@@ -1132,7 +1132,7 @@ Call::is_multiple_to_branch() {
 bool 
 Call::to_is_canceled(char *to) {
 	for(int i = 0; i < ipport_n; i++) {
-		if(sipcallerip[0] && this->ip_port[i].sip_src_addr &&
+		if(sipcallerip[0] == this->ip_port[i].sip_src_addr &&
 		   !strcmp(this->ip_port[i].to.c_str(), to) &&
 		   this->ip_port[i].canceled) {
 			return(true);
@@ -1144,7 +1144,7 @@ Call::to_is_canceled(char *to) {
 string
 Call::get_to_not_canceled() {
 	for(int i = 0; i < ipport_n; i++) {
-		if(sipcallerip[0] && this->ip_port[i].sip_src_addr &&
+		if(sipcallerip[0] == this->ip_port[i].sip_src_addr &&
 		   this->ip_port[i].to.length() &&
 		   !this->ip_port[i].canceled) {
 			return(this->ip_port[i].to);

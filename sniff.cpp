@@ -2993,6 +2993,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		// festr - 14.03.2015 - this prevents some type of call to process call in case of call merging
 		// if(!call->seenbye) {
 		call->setSeenbye(false, 0, packetS->get_callid());
+		call->setSeenbyeAndOk(false, 0, packetS->get_callid());
 		call->destroy_call_at = 0;
 		call->destroy_call_at_bye = 0;
 		call->destroy_call_at_bye_confirmed = 0;
@@ -3147,24 +3148,32 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				if(cseq_method == BYE &&
 				   call->existsByeCseq(cseq, cseqlen)) {
 					// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
-
-					call->seenbyeandok = true;
-					call->seenbyeandok_time_usec = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
-					call->unconfirmed_bye = false;
-					
-					// update who hanged up 
-					if(call->getSipcallerip() == packetS->daddr) {
-						call->whohanged = 0;
-					} else if(call->sipcalledip[0] == packetS->daddr || call->getSipcalledip() == packetS->daddr) {
-						call->whohanged = 1;
+					bool okByeRes2xx = true;
+					if(call->is_multiple_to_branch()) {
+						char to[1024];
+						get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to), ppntt_to, ppndt_called);
+						if(call->to_is_canceled(to)) {
+							okByeRes2xx = false;
+						}
 					}
+					if(okByeRes2xx) {
+						call->setSeenbyeAndOk(true, getTimeUS(packetS->header_pt), packetS->get_callid());
+						call->unconfirmed_bye = false;
+						
+						// update who hanged up 
+						if(call->getSipcallerip() == packetS->daddr) {
+							call->whohanged = 0;
+						} else if(call->sipcalledip[0] == packetS->daddr || call->getSipcalledip() == packetS->daddr) {
+							call->whohanged = 1;
+						}
 
-					// Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
-					// first 200 OK will not save the second 200 OK. So rather wait for 5 seconds for some more messages instead of closing the call. 
+						// Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
+						// first 200 OK will not save the second 200 OK. So rather wait for 5 seconds for some more messages instead of closing the call. 
 
-					// destroy call after 5 seonds from now 
-					call->destroy_call_at = packetS->header_pt->ts.tv_sec + 5;
-					call->destroy_call_at_bye_confirmed = packetS->header_pt->ts.tv_sec + opt_bye_confirmed_timeout;
+						// destroy call after 5 seonds from now 
+						call->destroy_call_at = packetS->header_pt->ts.tv_sec + 5;
+						call->destroy_call_at_bye_confirmed = packetS->header_pt->ts.tv_sec + opt_bye_confirmed_timeout;
+					}
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
 				} else if((cseq_method == INVITE || cseq_method == MESSAGE) &&

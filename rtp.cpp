@@ -989,8 +989,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 
 	if(owner && 
 	   !opt_pb_read_from_file[0] && !is_read_from_file()) {
-		u_int64_t seenbye_time_usec = owner->getSeenbyeTimeUS();
-		if(seenbye_time_usec && getTimeUS(header) > seenbye_time_usec) {
+		u_int64_t seenbyeandok_time_usec = owner->getSeenbyeAndOkTimeUS();
+		if(seenbyeandok_time_usec && getTimeUS(header) > seenbyeandok_time_usec) {
 			return(false);
 		}
 	}
