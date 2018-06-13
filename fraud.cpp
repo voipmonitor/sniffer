@@ -87,7 +87,7 @@ CacheNumber_location::~CacheNumber_location() {
 	delete sqlDb;
 }
 
-bool CacheNumber_location::checkNumber(const char *number, u_int32_t number_ip,
+bool CacheNumber_location::checkNumber(const char *number, u_int32_t number_ip, const char *domain,
 				       u_int32_t ip, u_int64_t at,
 				       bool *diffCountry, bool *diffContinent,
 				       u_int32_t *oldIp, string *oldCountry, string *oldContinent,
@@ -118,7 +118,7 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t number_ip,
 	   !strcasecmp(number, "unknown")) {
 		return(true);
 	}
-	sNumber numberIp(number, number_ip);
+	sNumber numberIp(number, number_ip, domain);
 	map<sNumber, sIpRec>::iterator iterCache;
 	for(int pass = 0; pass < 2; pass++) {
 		iterCache = cache.find(numberIp);
@@ -126,7 +126,7 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t number_ip,
 			break;
 		}
 		if(pass == 0) {
-			if(!this->loadNumber(number, number_ip, at)) {
+			if(!this->loadNumber(number, number_ip, domain, at)) {
 				break;
 			}
 		}
@@ -141,40 +141,11 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t number_ip,
 		ipRec.at = at;
 		ipRec.fresh_at = at;
 		cache[numberIp] = ipRec;
-		this->saveNumber(number, number_ip, &ipRec);
+		this->saveNumber(number, number_ip, domain, &ipRec);
 		return(true);
 	}
-	iterCache = cache.find(numberIp);
-	if(iterCache->second.old_at &&
-	   iterCache->second.old_at <= at &&
-	   iterCache->second.at >= at &&
-	   iterCache->second.country_code == country_code) {
-		if(iterCache->second.country_code != iterCache->second.old_country_code) {
-			if(diffCountry) {
-				*diffCountry = true;
-			}
-			if(oldIp) {
-				*oldIp = iterCache->second.old_ip;
-			}
-			if(oldCountry) {
-				*oldCountry = iterCache->second.old_country_code;
-			}
-		}
-		if(iterCache->second.continent_code != iterCache->second.old_continent_code) {
-			if(diffContinent) {
-				*diffContinent = true;
-			}
-			if(oldIp) {
-				*oldIp = iterCache->second.old_ip;
-			}
-			if(oldContinent) {
-				*oldContinent = iterCache->second.old_continent_code;
-			}
-		}
-		iterCache->second.fresh_at = at;
-		return(false);
-	}
-	if(iterCache->second.country_code != country_code) {
+	if(iterCache->second.country_code != country_code &&
+	   at > iterCache->second.at) {
 		if(country_code != iterCache->second.country_code) {
 			if(diffCountry) {
 				*diffCountry = true;
@@ -206,23 +177,50 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t number_ip,
 		iterCache->second.continent_code = continent_code;
 		iterCache->second.at = at;
 		iterCache->second.fresh_at = at;
-		this->saveNumber(number, number_ip, &cache[numberIp], true);
+		this->saveNumber(number, number_ip, domain, &cache[numberIp], true);
 		return(false);
-	} else if(at > iterCache->second.at &&
-		  at - iterCache->second.at > 300 * 1000000ull) {
-		this->updateAt(number, number_ip, at);
 	}
 	iterCache->second.fresh_at = at;
+	if(iterCache->second.country_code == country_code &&
+	   at <= iterCache->second.at &&
+	   iterCache->second.old_at &&
+	   at >= iterCache->second.old_at) {
+		if(iterCache->second.country_code != iterCache->second.old_country_code) {
+			if(diffCountry) {
+				*diffCountry = true;
+			}
+			if(oldIp) {
+				*oldIp = iterCache->second.old_ip;
+			}
+			if(oldCountry) {
+				*oldCountry = iterCache->second.old_country_code;
+			}
+		}
+		if(iterCache->second.continent_code != iterCache->second.old_continent_code) {
+			if(diffContinent) {
+				*diffContinent = true;
+			}
+			if(oldIp) {
+				*oldIp = iterCache->second.old_ip;
+			}
+			if(oldContinent) {
+				*oldContinent = iterCache->second.old_continent_code;
+			}
+		}
+		return(false);
+	}
 	return(true);
 }
 
-bool CacheNumber_location::loadNumber(const char *number, u_int32_t number_ip, u_int64_t at) {
-	char number_ip_string[20];
-	sprintf(number_ip_string, "%u", number_ip);
-	sqlDb->query(string("select * from cache_number_location where number=") +
-		     sqlEscapeStringBorder(number) +
-		     " and number_ip=" +
-		     number_ip_string);
+bool CacheNumber_location::loadNumber(const char *number, u_int32_t number_ip, const char *domain, u_int64_t at) {
+	SqlDb_row cond;
+	cond.add(string_size(number, 30), "number");
+	cond.add(number_ip, "number_ip");
+	if(domain && *domain) {
+		cond.add(string_size(domain, 100), "domain");
+	}
+	sqlDb->query("select * from " + getTable(domain) + " where " +
+		     cond.implodeFieldContent(" and ", "`", "\"", false, true));
 	SqlDb_row row = sqlDb->fetchRow();
 	if(row) {
 		sIpRec ipRec;
@@ -235,63 +233,40 @@ bool CacheNumber_location::loadNumber(const char *number, u_int32_t number_ip, u
 		ipRec.old_continent_code = row["old_continent_code"];
 		ipRec.old_at = atoll(row["old_at"].c_str());
 		ipRec.fresh_at = at;
-		cache[sNumber(number, number_ip)] = ipRec;
+		cache[sNumber(number, number_ip, domain)] = ipRec;
 		return(true);
 	}
 	return(false);
 }
 
-void CacheNumber_location::saveNumber(const char *number, u_int32_t number_ip, sIpRec *ipRec, bool update) {
+void CacheNumber_location::saveNumber(const char *number, u_int32_t number_ip, const char *domain, sIpRec *ipRec, bool update) {
+	SqlDb_row row;
+	row.add(ipRec->ip, "ip");
+	row.add(ipRec->country_code, "country_code");
+	row.add(ipRec->continent_code, "continent_code");
+	row.add(ipRec->at, "at");
+	row.add(ipRec->old_ip, "old_ip");
+	row.add(ipRec->old_country_code, "old_country_code");
+	row.add(ipRec->old_continent_code, "old_continent_code");
+	row.add(ipRec->old_at, "old_at");
 	if(update) {
-		ostringstream outStr;
-		outStr << "update cache_number_location set "
-		       << "ip = "
-		       << ipRec->ip << ","
-		       << "country_code = "
-		       << sqlEscapeStringBorder(ipRec->country_code) << ","
-		       << "continent_code = "
-		       << sqlEscapeStringBorder(ipRec->continent_code) << ","
-		       << "at = "
-		       << ipRec->at << ","
-		       << "old_ip = "
-		       << ipRec->old_ip << ","
-		       << "old_country_code = "
-		       << sqlEscapeStringBorder(ipRec->old_country_code) << ","
-		       << "old_continent_code = "
-		       << sqlEscapeStringBorder(ipRec->old_continent_code) << ","
-		       << "old_at = "
-		       << ipRec->old_at 
-		       << " where number = "
-		       << sqlEscapeStringBorder(number) 
-		       << " and number_ip = "
-		       << number_ip;
-		sqlStore->query_lock(outStr.str().c_str(), STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
+		SqlDb_row cond;
+		cond.add(string_size(number, 30), "number");
+		cond.add(number_ip, "number_ip");
+		if(domain && *domain) {
+			cond.add(string_size(domain, 100), "domain");
+		}
+		sqlStore->query_lock(sqlDb->updateQuery(getTable(domain), row, cond, false, true).c_str(),
+				     STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
 	} else {
-		SqlDb_row row;
-		row.add(number, "number");
+		row.add(string_size(number, 30), "number");
 		row.add(number_ip, "number_ip");
-		row.add(ipRec->ip, "ip");
-		row.add(ipRec->country_code, "country_code");
-		row.add(ipRec->continent_code, "continent_code");
-		row.add(ipRec->at, "at");
-		row.add(ipRec->old_ip, "old_ip");
-		row.add(ipRec->old_country_code, "old_country_code");
-		row.add(ipRec->old_continent_code, "old_continent_code");
-		row.add(ipRec->old_at, "old_at");
-		sqlStore->query_lock(sqlDb->insertQuery("cache_number_location", row, false, false, true).c_str(), STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
+		if(domain && *domain) {
+			row.add(string_size(domain, 100), "domain");
+		}
+		sqlStore->query_lock(sqlDb->insertQuery(getTable(domain), row, false, true, true).c_str(),
+				     STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
 	}
-}
-
-void CacheNumber_location::updateAt(const char *number, u_int32_t number_ip, u_int64_t at) {
-	ostringstream outStr;
-	outStr << "update cache_number_location\
-		   set at = "
-	       << at
-	       << " where number = "
-	       << sqlEscapeStringBorder(number)
-	       << " and number_ip = "
-	       << number_ip;
-	sqlStore->query_lock(outStr.str().c_str(), STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
 }
 
 void CacheNumber_location::cleanup(u_int64_t at) {
@@ -304,6 +279,10 @@ void CacheNumber_location::cleanup(u_int64_t at) {
 		}
 	}
 	last_cleanup_at = at;
+}
+
+string CacheNumber_location::getTable(const char *domain) {
+	return(domain && *domain ? "cache_number_domain_location" : "cache_number_location");
 }
 
 
@@ -333,6 +312,7 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	this->dbId = dbId;
 	ipFilterCondition12 = _cond12_and;
 	phoneNumberFilterCondition12 = _cond12_and;
+	useDomain = false;
 	concurentCallsLimitLocal = 0;
 	concurentCallsLimitInternational = 0;
 	concurentCallsLimitBoth = 0;
@@ -466,6 +446,12 @@ bool FraudAlert::loadAlert() {
 	if(defFilterUA()) {
 		uaFilter.addWhite(dbRow["fraud_whitelist_ua"].c_str());
 		uaFilter.addWhite(dbRow["fraud_whitelist_ua_g"].c_str());
+	}
+	if(defUseDomain()) {
+		useDomain = atoi(dbRow["fraud_use_domain"].c_str());
+	}
+	if(defFilterDomain()) {
+		domainFilter.addComb(dbRow["fraud_whitelist_domain"].c_str());
 	}
 	if(defFraudDef()) {
 		loadFraudDef();
@@ -642,11 +628,21 @@ bool FraudAlert::okFilterPhoneNumber(const char *numb, const char *numb2) {
 	return(false);
 }
 
+bool FraudAlert::okFilterDomain(const char *domain) {
+	if(!this->defFilterDomain() || this->domainFilter.is_empty()) {
+		return(true);
+	}
+	return(this->domainFilter.check(domain));
+}
+
 bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
 	if(!this->okFilterIp(callInfo->caller_ip, callInfo->called_ip)) {
 		return(false);
 	}
 	if(!this->okFilterPhoneNumber(callInfo->caller_number.c_str(), callInfo->called_number.c_str())) {
+		return(false);
+	}
+	if(!this->okFilterDomain(callInfo->caller_domain.c_str())) {
 		return(false);
 	}
 	if(this->defDestPrefixes() && this->destPrefixes.size()) {
@@ -1485,8 +1481,8 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 		u_int32_t oldIp;
 		string oldCountry;
 		string oldContinent;
-		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->called_ip,
-						      callInfo->caller_ip, callInfo->at_begin,
+		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->called_ip, NULL,
+						      callInfo->caller_ip, this->onlyConnected ? callInfo->at_connect : callInfo->at_begin,
 						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
 						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
 			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
@@ -1539,8 +1535,9 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 		u_int32_t oldIp;
 		string oldCountry;
 		string oldContinent;
-		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->called_ip,
-						      callInfo->caller_ip, callInfo->at_begin,
+		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->called_ip, 
+						      useDomain ? callInfo->caller_domain.c_str() : NULL,
+						      callInfo->caller_ip, callInfo->at_connect,
 						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
 						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
 			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
@@ -1618,7 +1615,7 @@ void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 		   (countryCodes->isLocationIn(callInfo->country_code_called_number.c_str(), &this->destLocation) ||
 		    countryCodes->isLocationIn(callInfo->continent_code_called_number.c_str(), &this->destLocation, true)) &&
 		   this->checkOkAlert(callInfo->caller_number.c_str(), callInfo->called_number.c_str(),
-				      callInfo->country_code_called_number.c_str(), callInfo->at_begin)) {
+				      callInfo->country_code_called_number.c_str(), this->onlyConnected ? callInfo->at_connect : callInfo->at_begin)) {
 			FraudAlertInfo_d *alertInfo = new FILE_LINE(7013) FraudAlertInfo_d(this);
 			alertInfo->set(callInfo->caller_number.c_str(),
 				       callInfo->called_number.c_str(),
@@ -2306,6 +2303,8 @@ void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call,
 	callInfo->called_number = call->called;
 	callInfo->caller_ip = htonl(call->sipcallerip[0]);
 	callInfo->called_ip = htonl(call->sipcalledip[0]);
+	callInfo->caller_domain = call->caller_domain;
+	callInfo->called_domain = call->called_domain;
 	switch(typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_beginCall:
 		callInfo->at_begin = at;

@@ -117,22 +117,27 @@ private:
 class CacheNumber_location {
 public:
 	struct sNumber {
-		sNumber(const char *number = NULL, u_int32_t ip = 0) {
+		sNumber(const char *number = NULL, u_int32_t ip = 0, const char *domain = NULL) {
 			if(number) {
 				this->number = number;
 			}
 			this->ip = ip;
+			if(domain) {
+				this->domain = domain;
+			}
 		}
 		string number;
 		u_int32_t ip;
+		string domain;
 		bool operator == (const sNumber& other) const { 
 			return(this->number == other.number &&
-			       this->ip == other.ip); 
+			       this->ip == other.ip &&
+			       this->domain == other.domain); 
 		}
 		bool operator < (const sNumber& other) const { 
-			return(this->number < other.number ||
-			       (this->number == other.number &&
-				this->ip < other.ip)); 
+			return(this->number < other.number ? 1 : this->number > other.number ? 0 :
+			       this->ip < other.ip ? 1 : this->ip > other.ip ? 0 :
+			       this->domain < other.domain); 
 		}
 	};
 	struct sIpRec {
@@ -155,15 +160,16 @@ public:
 	};
 	CacheNumber_location();
 	~CacheNumber_location();
-	bool checkNumber(const char *number, u_int32_t number_ip,
+	bool checkNumber(const char *number, u_int32_t number_ip, const char *domain,
 			 u_int32_t ip, u_int64_t at,
 			 bool *diffCountry = NULL, bool *diffContinent = NULL,
 			 u_int32_t *oldIp = NULL, string *oldCountry = NULL, string *oldContinent = NULL,
 			 const char *ip_country = NULL, const char *ip_continent = NULL);
-	bool loadNumber(const char *number, u_int32_t number_ip, u_int64_t at);
-	void saveNumber(const char *number, u_int32_t number_ip, sIpRec *ipRec, bool update = false);
-	void updateAt(const char *number, u_int32_t number_ip, u_int64_t at);
+	bool loadNumber(const char *number, u_int32_t number_ip, const char *domain, u_int64_t at);
+	void saveNumber(const char *number, u_int32_t number_ip, const char *domain, sIpRec *ipRec, bool update = false);
 	void cleanup(u_int64_t at);
+private:
+	string getTable(const char *domain);
 private:
 	SqlDb *sqlDb;
 	map<sNumber, sIpRec> cache;
@@ -218,6 +224,8 @@ struct sFraudCallInfo : public sFraudNumberInfo {
 	string continent_code_caller_ip;
 	string continent_code_called_ip;
 	bool local_called_ip;
+	string caller_domain;
+	string called_domain;
 	u_int64_t at_begin;
 	u_int64_t at_connect;
 	u_int64_t at_seen_bye;
@@ -399,6 +407,7 @@ public:
 	virtual void evRegister(sFraudRegisterInfo */*registerInfo*/) {}
 	virtual bool okFilterIp(u_int32_t ip, u_int32_t ip2);
 	virtual bool okFilterPhoneNumber(const char *numb, const char *numb2);
+	virtual bool okFilterDomain(const char *domain);
 	virtual bool okFilter(sFraudCallInfo *callInfo);
 	virtual bool okFilter(sFraudRtpStreamInfo *rtpStreamInfo);
 	virtual bool okFilter(sFraudEventInfo *eventInfo);
@@ -433,6 +442,8 @@ protected:
 	virtual bool defFilterNumber2() { return(false); }
 	virtual bool defFilterNumberCondition12() { return(false); }
 	virtual bool defFilterUA() { return(false); }
+	virtual bool defUseDomain() { return(false); }
+	virtual bool defFilterDomain() { return(false); }
 	virtual bool defFraudDef() { return(false); }
 	virtual bool defConcuretCallsLimit() { return(false); }
 	virtual bool defTypeBy() { return(false); }
@@ -458,6 +469,8 @@ protected:
 	ListPhoneNumber_wb phoneNumberFilter2;
 	eCondition12 phoneNumberFilterCondition12;
 	ListUA_wb uaFilter;
+	bool useDomain;
+	ListCheckString domainFilter;
 	unsigned int concurentCallsLimitLocal;
 	unsigned int concurentCallsLimitInternational;
 	unsigned int concurentCallsLimitBoth;
@@ -790,6 +803,8 @@ protected:
 	bool defFilterIp() { return(true); }
 	bool defFilterIp2() { return(true); }
 	bool defFilterNumber() { return(true); }
+	bool defUseDomain() { return(true); }
+	bool defFilterDomain() { return(true); }
 	bool defTypeChangeLocation() { return(true); }
 	bool defChangeLocationOk() { return(true); }
 };

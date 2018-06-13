@@ -729,6 +729,12 @@ string SqlDb::updateQuery(string table, SqlDb_row row, const char *whereCond, bo
 	return(query);
 }
 
+string SqlDb::updateQuery(string table, SqlDb_row row, SqlDb_row whereCond, bool enableSqlStringInContent, bool escapeAll) {
+	string cond = 
+		whereCond.implodeFieldContent(" and ", this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll);
+	return(updateQuery(table, row, cond.c_str(), enableSqlStringInContent, escapeAll));
+}
+
 int64_t SqlDb::insert(string table, SqlDb_row row) {
 	string query = this->insertQuery(table, row);
 	if(this->query(query)) {
@@ -4958,6 +4964,21 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`old_continent_code` char(5),\
 			`old_at` bigint unsigned,\
 		PRIMARY KEY (`number`, `number_ip`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `cache_number_domain_location` (\
+			`number` varchar(30) NOT NULL,\
+			`domain` varchar(100) NOT NULL,\
+			`number_ip` int unsigned NOT NULL,\
+			`ip` int unsigned,\
+			`country_code` char(5),\
+			`continent_code` char(5),\
+			`at` bigint unsigned,\
+			`old_ip` int unsigned,\
+			`old_country_code` char(5),\
+			`old_continent_code` char(5),\
+			`old_at` bigint unsigned,\
+		PRIMARY KEY (`number`, `domain`, `number_ip`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	this->createTable("fraud_alert_info");
 	}

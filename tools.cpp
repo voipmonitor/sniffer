@@ -2453,6 +2453,15 @@ std::vector<std::string> split(const char *s, std::vector<std::string> delim, bo
 }
 
 
+std::string string_size(const char *s, unsigned size) {
+	std::string str(s);
+	if(str.length() > size) {
+		str.resize(size);
+	}
+	return(str);
+}
+
+
 bool check_regexp(const char *pattern) {
 	regex_t re;
 	if(regcomp(&re, pattern, REG_EXTENDED | REG_ICASE) != 0) {

@@ -516,6 +516,7 @@ std::vector<std::string> &split(const std::string &s, char delim, std::vector<st
 std::vector<std::string> split(const std::string &s, char delim);
 std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false, bool useEmptyItems = false);
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false, bool useEmptyItems = false);
+std::string string_size(const char *s, unsigned size);
 
 bool check_regexp(const char *pattern);
 int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);
