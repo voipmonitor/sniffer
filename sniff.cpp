@@ -1457,8 +1457,8 @@ fail_exit:
 }
 
 int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
-			 in_addr_t *addr, unsigned short *port, int16_t *fax, 
-			 char *sessid, list<rtp_crypto_config> **rtp_crypto_config_list, int16_t *rtcp_mux, int sip_method){
+			 in_addr_t *addr, unsigned short *port, int8_t *protocol, int8_t *fax, 
+			 char *sessid, list<rtp_crypto_config> **rtp_crypto_config_list, int8_t *rtcp_mux, int sip_method){
 	unsigned long l;
 	char *s;
 	char s1[20];
@@ -1468,6 +1468,7 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
 		sdp_text_len = strlen(sdp_text);
 	}
 	
+	*protocol = 0;
 	*fax = 0;
 	*rtcp_mux = 0;
 	s = gettag(sdp_text,sdp_text_len, NULL,
@@ -1509,6 +1510,36 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
 			return 1;
 		} else {
 			*fax = 1;
+		}
+	}
+	if(s && l && *port) {
+		char *pointToBeginProtocol = strnchr(s, ' ', l);
+		if(pointToBeginProtocol) {
+			++pointToBeginProtocol;
+			char *pointToEndProtocol = strnchr(pointToBeginProtocol, ' ', l - (pointToBeginProtocol - s));
+			unsigned lengthProtocol = pointToEndProtocol ? pointToEndProtocol - pointToBeginProtocol : l - (pointToBeginProtocol - s);
+			if(lengthProtocol > 0 && lengthProtocol < 100) {
+				struct {
+					const char *protocol_str;
+					e_sdp_protocol protocol;
+				} sdp_protocols[] = {
+					 { "RTP/AVP", sdp_proto_rtp }, // RFC 4566
+					 { "UDPTL", sdp_proto_t38 }, // Note: IANA registry contains lower case
+					 { "RTP/AVPF", sdp_proto_rtp }, // RFC 4585
+					 { "RTP/SAVP", sdp_proto_srtp }, // RFC 3711
+					 { "RTP/SAVPF", sdp_proto_srtp }, // RFC 5124
+					 { "UDP/TLS/RTP/SAVP", sdp_proto_srtp }, // RFC 5764
+					 { "UDP/TLS/RTP/SAVPF", sdp_proto_srtp }, // RFC 5764
+					 { "msrp/tcp", sdp_proto_msrp }, // Not in IANA, where is this from?
+					 { "UDPSPRT", sdp_proto_sprt }, // Not in IANA, but draft-rajeshkumar-avt-v150-registration-00
+				};
+				for(unsigned i = 0; i < sizeof(sdp_protocols) / sizeof(sdp_protocols[0]); i++) {
+					if(!strncasecmp(pointToBeginProtocol, sdp_protocols[i].protocol_str, lengthProtocol) &&
+					   lengthProtocol == strlen(sdp_protocols[i].protocol_str)) {
+						*protocol = sdp_protocols[i].protocol;
+					}
+				}
+			}
 		}
 	}
 	s = gettag(sdp_text, sdp_text_len, NULL,
@@ -2561,7 +2592,7 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 	char sessid[MAXLEN_SDP_SESSID];
 	list<rtp_crypto_config> *rtp_crypto_config_list = NULL;
 	if (!get_ip_port_from_sdp(call, sdp, sdplen,
-				  &tmp_addr, &tmp_port, &sdp_flags.is_fax, 
+				  &tmp_addr, &tmp_port, &sdp_flags.protocol, &sdp_flags.is_fax, 
 				  sessid, &rtp_crypto_config_list, &sdp_flags.rtcp_mux, packetS->sip_method)){
 		bool ok_ip_port = true;
 		if(opt_sdp_ignore_ip_port.size()) {

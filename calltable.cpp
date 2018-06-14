@@ -3527,6 +3527,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			a_ua_id = 0,
 			b_ua_id = 0;
 	u_int64_t cdr_flags = this->unconfirmed_bye ? CDR_UNCONFIRMED_BYE : 0;
+	for(unsigned i = 0; i < ipport_n; i++) {
+		if(ip_port[i].sdp_flags.protocol == sdp_proto_srtp &&
+		   !ip_port[i].rtp_crypto_config_list) {
+			cdr_flags |= CDR_SRTP_WITHOUT_KEY;
+		}
+	}
 
 	string query_str_cdrproxy;
 	if(opt_cdrproxy) {

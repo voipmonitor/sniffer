@@ -99,6 +99,7 @@
 #define CDR_CHANGE_SRC_PORT_CALLED	(1 << 1)
 #define CDR_UNCONFIRMED_BYE		(1 << 2)
 #define CDR_ALONE_UNCONFIRMED_BYE	(1 << 3)
+#define CDR_SRTP_WITHOUT_KEY		(1 << 4)
 
 #define SS7_IAM 1
 #define SS7_ACM 6
@@ -121,17 +122,28 @@ struct s_dtmf {
 	unsigned int daddr;
 };
 
+enum e_sdp_protocol {
+	sdp_proto_na,
+	sdp_proto_rtp,
+	sdp_proto_srtp,
+	sdp_proto_t38,
+	sdp_proto_msrp,
+	sdp_proto_sprt
+};
+
 struct s_sdp_flags {
 	s_sdp_flags() {
 		is_fax = 0;
 		rtcp_mux = 0;
+		protocol = sdp_proto_na;
 	}
 	int operator != (const s_sdp_flags &other) {
 		return(is_fax != other.is_fax ||
 		       rtcp_mux != other.rtcp_mux);
 	}
-	int16_t is_fax;
-	int16_t rtcp_mux;
+	int8_t is_fax;
+	int8_t rtcp_mux;
+	int8_t protocol;
 };
 
 struct hash_node_call {
