@@ -51,6 +51,7 @@ bool opt_sip_options_compare_number_dst = true;
 bool opt_sip_options_compare_domain_src = true;
 bool opt_sip_options_compare_domain_dst = true;
 
+unsigned opt_default_qualify_limit = 2000;
 unsigned opt_cleanup_item_response_by_max_items = 5;
 unsigned opt_cleanup_history_by_max_items = 500;
 unsigned opt_cleanup_relations_limit_time = 3600;
@@ -720,6 +721,8 @@ bool cOptionsRelations::loadParams(sParams *params) {
 				}
 			}
 		}
+	} else {
+		params->defaultParams.qualifyLimit = opt_default_qualify_limit;
 	}
 	sqlDb->query("select options_qualify.*, \
 		      (select group_concat(ip_group_id) from options_qualify_groups \
