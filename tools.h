@@ -3708,4 +3708,51 @@ private:
 };
 
 
+class cResolver {
+public:
+	enum eTypeResolve {
+		_typeResolve_default,
+		_typeResolve_std,
+		_typeResolve_system_host
+	};
+private:
+	struct sIP_time {
+		u_int32_t ipl;
+		time_t at;
+		unsigned timeout;
+	};
+public:
+	cResolver();
+	u_int32_t resolve(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
+	u_int32_t resolve(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
+		return(resolve(host.c_str(), timeout, typeResolve));
+	}
+	static u_int32_t resolve_n(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
+	static u_int32_t resolve_n(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
+		return(resolve_n(host.c_str(), timeout, typeResolve));
+	}
+	static string resolve_str(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
+	static string resolve_str(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
+		return(resolve_str(host.c_str(), timeout, typeResolve));
+	}
+private:
+	u_int32_t resolve_std(const char *host);
+	u_int32_t resolve_by_system_host(const char *host);
+private:
+	void lock() {
+		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
+			usleep(100);
+		}
+	}
+	void unlock() {
+		__sync_lock_release(&_sync_lock);
+	}
+private:
+	bool use_lock;
+	bool res_timeout;
+	map<string, sIP_time> res_table;
+	volatile int _sync_lock;
+};
+
+
 #endif

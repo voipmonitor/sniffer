@@ -954,18 +954,12 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	pthread_mutex_lock(&mysqlconnect_lock);
 	this->hMysql = mysql_init(NULL);
 	if(this->hMysql) {
-		string conn_server_ip;
-		if(reg_match(this->conn_server.c_str(), "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
-			conn_server_ip = this->conn_server;
-		} else {
-			u_int32_t conn_server_ipl = gethostbyname_lock(this->conn_server.c_str());
-			if(!conn_server_ipl) {
-				this->setLastErrorString("mysql connect failed - " + this->conn_server + " is unavailable", true);
-				pthread_mutex_unlock(&mysqlconnect_lock);
-				this->connecting = false;
-				return(false);
-			}
-			conn_server_ip = inet_ntostring(htonl(conn_server_ipl));
+		string conn_server_ip = cResolver::resolve_str(this->conn_server);
+		if(conn_server_ip.empty()) {
+			this->setLastErrorString("mysql connect failed - " + this->conn_server + " is unavailable", true);
+			pthread_mutex_unlock(&mysqlconnect_lock);
+			this->connecting = false;
+			return(false);
 		}
 		my_bool reconnect = 1;
 		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);

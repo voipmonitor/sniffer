@@ -820,8 +820,6 @@ int opt_enable_fraud = 1;
 int opt_enable_billing = 1;
 char opt_local_country_code[10] = "local";
 
-map<string, string> hosts;
-
 ip_port sipSendSocket_ip_port;
 SocketSimpleBufferWrite *sipSendSocket = NULL;
 int opt_sip_send_udp;
@@ -921,6 +919,8 @@ int ownPidStart;
 int ownPidFork;
 char ownPidStart_str[10];
 char ownPidFork_str[10];
+
+cResolver resolver;
 
 
 #include <stdio.h>
@@ -2943,23 +2943,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	checkRrdVersion();
-
-	
-/* resolve is disabled since 27.3.2015 
-	if(!opt_nocdr && isSqlDriver("mysql") && mysql_host[0]) {
-		strcpy(mysql_host_orig, mysql_host);
-		if(!reg_match(mysql_host, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
-			hostent *conn_server_record = gethostbyname_lock(mysql_host);
-			if(conn_server_record == NULL) {
-				syslog(LOG_ERR, "mysql host [%s] failed to resolve to IP address", mysql_host);
-				exit(1);
-			}
-			in_addr *conn_server_address = (in_addr*)conn_server_record->h_addr;
-			strcpy(mysql_host, inet_ntoa(*conn_server_address));
-			syslog(LOG_NOTICE, "mysql host [%s] resolved to [%s]", mysql_host_orig, mysql_host);
-		}
-	}
-*/
 
 	if(opt_fork && !is_read_from_file() && reloadLoopCounter == 0) {
 		daemonize();
@@ -9977,42 +9960,11 @@ void dns_lookup_common_hostnames() {
 		"cloud3.voipmonitor.org"
 	};
 	for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]) && !terminating; i++) {
-		u_int32_t ipl = gethostbyname_lock(hostnames[i]);
-		if(!ipl) {
-			syslog(LOG_ERR, "host [%s] failed to resolve to IP address", hostnames[i]);
-			continue;
-		}
-		hosts[hostnames[i]] = inet_ntostring(htonl(ipl));
+		resolver.resolve(hostnames[i]);
 	}
-}
-
-struct s_gethostbyname_lock_rslt_time {
-	u_int32_t ipl;
-	time_t at;
-};
-u_int32_t gethostbyname_lock(const char *name) {
-	static map<string, s_gethostbyname_lock_rslt_time> rslts;
-	pthread_mutex_lock(&hostbyname_lock);
-	u_int32_t ipl = 0;
-	time_t now = time(NULL);
-	map<string, s_gethostbyname_lock_rslt_time>::iterator iter_find = rslts.find(name);
-	if(iter_find != rslts.end() &&
-	   iter_find->second.at + 120 > now) {
-		ipl = iter_find->second.ipl;
+	if(!terminating && !snifferClientOptions.host.empty()) {
+		resolver.resolve(snifferClientOptions.host.c_str());
 	}
-	if(!ipl) {
-		hostent *rslt_hostent = gethostbyname(name);
-		if(rslt_hostent) {
-			ipl = ((in_addr*)rslt_hostent->h_addr)->s_addr;
-			if(ipl) {
-				rslts[name].ipl = ipl;
-				rslts[name].at = now;
-				syslog(LOG_NOTICE, "resolve host %s to %s", name, inet_ntostring(htonl(ipl)).c_str());
-			}
-		}
-	}
-	pthread_mutex_unlock(&hostbyname_lock);
-	return(ipl);
 }
 
 bool _use_mysql_2() {
@@ -10246,14 +10198,6 @@ bool CR_TERMINATE() {
 
 void CR_SET_TERMINATE() {
 	return(set_terminating());
-}
-
-cResolver *CR_RESOLVER() {
-	static cResolver *resolver;
-	if(!resolver) {
-		resolver = new FILE_LINE(0) cResolver;
-	}
-	return(resolver);
 }
 
 

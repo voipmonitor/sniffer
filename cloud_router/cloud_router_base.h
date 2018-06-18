@@ -46,37 +46,6 @@ struct sCloudRouterVerbose {
 };
 
 
-class cResolver {
-private:
-	struct sIP_time {
-		u_int32_t ipl;
-		time_t at;
-	};
-public:
-	cResolver();
-	u_int32_t resolve(const char *host);
-	u_int32_t resolve(string &host) {
-		return(resolve(host.c_str()));
-	}
-private:
-	void lock() {
-		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
-			if(SYNC_LOCK_USLEEP) {
-				usleep(SYNC_LOCK_USLEEP);
-			}
-		}
-	}
-	void unlock() {
-		__sync_lock_release(&_sync_lock);
-	}
-private:
-	bool use_lock;
-	bool res_timeout;
-	map<string, sIP_time> res_table;
-	volatile int _sync_lock;
-};
-
-
 class cRsa {
 public:
 	enum eTypeKey {

@@ -6360,7 +6360,7 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 bool PcapQueue_readFromFifo::socketGetHost() {
 	this->socketHostIPl = 0;
 	while(!this->socketHostIPl) {
-		this->socketHostIPl = gethostbyname_lock(this->packetServerIpPort.get_ip().c_str());
+		this->socketHostIPl = cResolver::resolve_n(this->packetServerIpPort.get_ip().c_str());
 		if(!this->socketHostIPl) {
 			syslog(LOG_ERR, "packetbuffer %s: cannot resolv: %s: host [%s] - trying again", this->nameQueue.c_str(), hstrerror(h_errno), this->packetServerIpPort.get_ip().c_str());  
 			sleep(1);

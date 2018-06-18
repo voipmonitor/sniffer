@@ -12,51 +12,11 @@
 #include <sys/poll.h>
 
 
-extern cResolver *CR_RESOLVER();
 extern bool CR_TERMINATE();
 extern void CR_SET_TERMINATE();
 extern sCloudRouterVerbose CR_VERBOSE();
 extern bool opt_socket_use_poll;
-
-
-cResolver::cResolver() {
-	use_lock = true;
-	res_timeout = 120;
-	_sync_lock = 0;
-}
-
-u_int32_t cResolver::resolve(const char *host) {
-	if(use_lock) {
-		lock();
-	}
-	u_int32_t ipl = 0;
-	time_t now = time(NULL);
-	map<string, sIP_time>::iterator iter_find = res_table.find(host);
-	if(iter_find != res_table.end() &&
-	   iter_find->second.at + 120 > now) {
-		ipl = iter_find->second.ipl;
-	}
-	if(!ipl) {
-		if(reg_match(host, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
-			in_addr ips;
-			inet_aton(host, &ips);
-			ipl = ips.s_addr;
-		} else {
-			hostent *rslt_hostent = gethostbyname(host);
-			if(rslt_hostent) {
-				ipl = ((in_addr*)rslt_hostent->h_addr)->s_addr;
-				if(ipl) {
-					res_table[host].ipl = ipl;
-					res_table[host].at = now;
-				}
-			}
-		}
-	}
-	if(use_lock) {
-		unlock();
-	}
-	return(ipl);
-}
+extern cResolver resolver;
 
 
 cRsa::cRsa() {
@@ -386,7 +346,7 @@ bool cSocket::connect(unsigned loopSleepS) {
 		}
 		rslt = true;
 		clearError();
-		ipl = CR_RESOLVER()->resolve(host);
+		ipl = resolver.resolve(host);
 		if(!ipl) {
 			setError("failed resolve host name %s", host.c_str());
 			rslt = false;
@@ -435,7 +395,7 @@ bool cSocket::connect(unsigned loopSleepS) {
 
 bool cSocket::listen() {
 	if(!ipl && !host.empty()) {
-		ipl = CR_RESOLVER()->resolve(host);
+		ipl = resolver.resolve(host);
 		if(!ipl && host != "0.0.0.0") {
 			setError("failed resolve host name %s", host.c_str());
 			return(false);

@@ -516,10 +516,8 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 				hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
 				host = host.substr(posEndHostProtPrefix + 1);
 			}
-			extern map<string, string> hosts;
-			map<string, string>::iterator iter = hosts.find(host.c_str());
-			if(iter != hosts.end()) {
-				string hostIP = iter->second;
+			string hostIP = cResolver::resolve_str(host, 0, cResolver::_typeResolve_system_host); 
+			if(!hostIP.empty()) {
 				headers = curl_slist_append(headers, ("Host: " + host).c_str());
 				curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 				curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
@@ -590,10 +588,8 @@ bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer
 			hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
 			host = host.substr(posEndHostProtPrefix + 1);
 		}
-		extern map<string, string> hosts;
-		map<string, string>::iterator iter = hosts.find(host.c_str());
-		if(iter != hosts.end()) {
-			string hostIP = iter->second;
+		string hostIP = cResolver::resolve_str(host, 0, cResolver::_typeResolve_system_host); 
+		if(!hostIP.empty()) {
 			headers = curl_slist_append(headers, ("Host: " + host).c_str());
 			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 			curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
@@ -665,10 +661,8 @@ bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *
 			hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
 			host = host.substr(posEndHostProtPrefix + 1);
 		}
-		extern map<string, string> hosts;
-		map<string, string>::iterator iter = hosts.find(host.c_str());
-		if(iter != hosts.end()) {
-			string hostIP = iter->second;
+		string hostIP = cResolver::resolve_str(host, 0, cResolver::_typeResolve_system_host); 
+		if(!hostIP.empty()) {
 			headers = curl_slist_append(headers, ("Host: " + host).c_str());
 			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 			curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
@@ -4794,7 +4788,7 @@ void SocketSimpleBufferWrite::write() {
 bool SocketSimpleBufferWrite::socketGetHost() {
 	socketHostIPl = 0;
 	while(!socketHostIPl) {
-		socketHostIPl = gethostbyname_lock(ipPort.get_ip().c_str());
+		socketHostIPl = cResolver::resolve_n(ipPort.get_ip().c_str());
 		if(!socketHostIPl) {
 			syslog(LOG_ERR, "socketwrite %s: cannot resolv: %s: host [%s] - trying again", name.c_str(), hstrerror(h_errno), ipPort.get_ip().c_str());  
 			sleep(1);
@@ -6561,4 +6555,101 @@ void cStringCache::clear() {
 	map_items.clear();
 	map_ids.clear();
 	unlock();
+}
+
+
+cResolver::cResolver() {
+	use_lock = true;
+	res_timeout = 120;
+	_sync_lock = 0;
+}
+
+u_int32_t cResolver::resolve(const char *host, unsigned timeout, eTypeResolve typeResolve) {
+	if(use_lock) {
+		lock();
+	}
+	u_int32_t ipl = 0;
+	time_t now = time(NULL);
+	map<string, sIP_time>::iterator iter_find = res_table.find(host);
+	if(iter_find != res_table.end() &&
+	   (iter_find->second.timeout == UINT_MAX ||
+	    iter_find->second.at + iter_find->second.timeout > now)) {
+		ipl = iter_find->second.ipl;
+	}
+	if(!ipl) {
+		if(reg_match(host, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
+			in_addr ips;
+			inet_aton(host, &ips);
+			ipl = ips.s_addr;
+			res_table[host].ipl = ipl;
+			res_table[host].at = now;
+			res_table[host].timeout = UINT_MAX;
+		} else {
+			if(typeResolve == _typeResolve_default) {
+				#if defined(__arm__)
+					typeResolve = _typeResolve_system_host;
+				#else
+					typeResolve = _typeResolve_std;
+				#endif
+			}
+			if(typeResolve == _typeResolve_std) {
+				ipl = resolve_std(host);
+			} else if(typeResolve == _typeResolve_system_host) {
+				ipl = resolve_by_system_host(host);
+			}
+			if(ipl) {
+				res_table[host].ipl = ipl;
+				res_table[host].at = now;
+				res_table[host].timeout = timeout ? timeout : 120;
+				syslog(LOG_NOTICE, "resolve host %s to %s", host, inet_ntostring(htonl(ipl)).c_str());
+			}
+		}
+	}
+	if(use_lock) {
+		unlock();
+	}
+	return(ipl);
+}
+
+u_int32_t cResolver::resolve_n(const char *host, unsigned timeout, eTypeResolve typeResolve) {
+	extern cResolver resolver;
+	return(resolver.resolve(host, timeout, typeResolve));
+}
+
+string cResolver::resolve_str(const char *host, unsigned timeout, eTypeResolve typeResolve) {
+	extern cResolver resolver;
+	u_int32_t ipl = resolver.resolve(host, timeout, typeResolve);
+	if(ipl) {
+		return(inet_ntostring(htonl(ipl)));
+	}
+	return("");
+}
+
+u_int32_t cResolver::resolve_std(const char *host) {
+	u_int32_t ipl = 0;
+	hostent *rslt_hostent = gethostbyname(host);
+	if(rslt_hostent) {
+		ipl = ((in_addr*)rslt_hostent->h_addr)->s_addr;
+	}
+	return(ipl);
+}
+
+u_int32_t cResolver::resolve_by_system_host(const char *host) {
+	u_int32_t ipl = 0;
+	char tmpOut[L_tmpnam+1];
+	if(tmpnam(tmpOut)) {
+		system((string("host -t A ") + host + " > " + tmpOut + " 2>/dev/null").c_str());
+		vector<string> host_rslt;
+		if(file_get_rows(tmpOut, &host_rslt)) {
+			string ipl_str = reg_replace(host_rslt[0].c_str(), "([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)", "$1", __FILE__, __LINE__);
+			if(!ipl_str.empty()) {
+				ipl = inet_strington(ipl_str.c_str());
+				if(ipl) {
+					ipl = ntohl(ipl);
+				}
+			}
+		}
+		unlink(tmpOut);
+	}
+	return(ipl);
 }

@@ -3131,7 +3131,7 @@ void *manager_client(void */*dummy*/) {
 	
 
 	while(1) {
-		host_ipl = gethostbyname_lock(opt_clientmanager);
+		host_ipl = cResolver::resolve_n(opt_clientmanager);
 		if (!host_ipl) { //Report lookup failure  
 			syslog(LOG_ERR, "Cannot resolv: %s: host [%s] trying again...\n",  hstrerror(h_errno),  opt_clientmanager);  
 			sleep(1);
