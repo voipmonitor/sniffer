@@ -96,7 +96,7 @@ public:
 	inline void update(Call *call);
 	inline void addState(Call *call);
 	inline void shiftStates();
-	inline void expire(bool need_lock_states = true);
+	inline void expire(bool need_lock_states = true, bool use_state_prev_last = false);
 	inline void updateLastState(Call *call);
 	inline bool eqLastState(Call *call);
 	inline void clean_all();

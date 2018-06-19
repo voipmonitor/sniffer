@@ -570,7 +570,7 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 		numberNormalized = numberNormalized.substr(1);
 	}
 	bool isInternational = internationalPrefix.length() ||
-			       checkInternational->inInternationalViaLength(&numberNormalized);
+			       checkInternational->isInternationalViaLength(&numberNormalized);
 	if(!isInternational) {
 		string local_country = checkInternational->getLocalCountry();
 		if(checkInternational->enableCheckNapaWithoutPrefix && countryIsNapa(local_country)) {

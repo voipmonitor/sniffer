@@ -314,11 +314,11 @@ void Register::shiftStates() {
 	}
 }
 
-void Register::expire(bool need_lock_states) {
+void Register::expire(bool need_lock_states, bool use_state_prev_last) {
 	if(need_lock_states) {
 		lock_states();
 	}
-	RegisterState *lastState = states_last();
+	RegisterState *lastState = use_state_prev_last ? states_prev_last() : states_last();
 	if(lastState && (lastState->state == rs_OK || lastState->state == rs_UnknownMessageOK)) {
 		shiftStates();
 		RegisterState *newState = new FILE_LINE(20003) RegisterState(NULL, NULL);
@@ -582,7 +582,7 @@ void Registers::add(Call *call, time_t currtime, int expires_add) {
 			   (regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) &&
 			   regstate->expires &&
 			   regstate->state_to + regstate->expires + expires_add < currtime) {
-					existsReg->expire(false);
+				existsReg->expire(false);
 			}
 			existsReg->unlock_states();
 		}
@@ -633,6 +633,14 @@ void Registers::cleanup(u_int32_t act_time, bool force, int expires_add) {
 				} else {
 					if(regstate->state == rs_Failed) {
 						iter->second->saveFailedToDb(regstate, force);
+						RegisterState *regstate_prev = reg->states_prev_last();
+						if(regstate_prev &&
+						   (regstate_prev->state == rs_OK || regstate_prev->state == rs_UnknownMessageOK) &&
+						   regstate_prev->expires &&
+						   regstate_prev->state_to + regstate_prev->expires + expires_add < act_time) {
+							reg->expire(false, true);
+							// cout << "expire prev state" << endl;
+						}
 					}
 					if(!_sync_registers_erase) {
 						if(regstate->state == rs_Failed && reg->countStates == 1 &&

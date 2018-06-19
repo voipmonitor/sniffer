@@ -89,7 +89,7 @@ public:
 	void clearInternationalPrefixes();
 	void clearSkipPrefixes();
 	void clearCustomerPrefixAdv();
-	bool inInternationalViaLength(string *numberNormalized) {
+	bool isInternationalViaLength(string *numberNormalized) {
 		return((!internationalMinLengthPrefixesStrict ||
 			(!internationalPrefixes_string.size() && !internationalPrefixes_regexp.size())) &&
 		       internationalMinLength &&
