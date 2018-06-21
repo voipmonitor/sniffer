@@ -2297,7 +2297,7 @@ void FraudAlerts::popCallInfoThread() {
 void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call, 
 				   sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at) {
 	callInfo->typeCallInfo = typeCallInfo;
-	callInfo->call_type = call->type;
+	callInfo->call_type = call->getTypeBase();
 	callInfo->callid = call->call_id;
 	callInfo->caller_number = call->caller;
 	callInfo->called_number = call->called;

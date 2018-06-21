@@ -251,7 +251,8 @@ sCallField callFields[] = {
 
 Call_abstract::Call_abstract(int call_type, time_t time) {
 	alloc_flag = 1;
-	type = call_type;
+	type_base = call_type;
+	type_next = 0;
 	first_packet_time = time;
 	fbasename[0] = 0;
 	fbasename_safe[0] = 0;
@@ -261,6 +262,18 @@ Call_abstract::Call_abstract(int call_type, time_t time) {
 	useHandle = global_pcap_handle;
 	flags = 0;
 	chunkBuffersCount = 0;
+}
+
+bool 
+Call_abstract::addNextType(int type) {
+	if(!type_next &&
+	   ((type_base == INVITE && type == MESSAGE) ||
+	    (type_base == MESSAGE && type == INVITE))) {
+		type_next = type;
+		((Call*)this)->setRtpThreadNum();
+		return(true);
+	}
+	return(false);
 }
 
 string
@@ -317,7 +330,7 @@ Call_abstract::get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpool
 string 
 Call_abstract::get_filename(eTypeSpoolFile typeSpoolFile, const char *fileExtension) {
 	string extension = fileExtension ? fileExtension : getFileTypeExtension(typeSpoolFile);
-	return((type == REGISTER ?
+	return((typeIs(REGISTER) ?
 		 intToString(fname_register) :
 		 get_fbasename_safe()) + 
 	       (extension.length() ? "." : "") + extension);
@@ -401,6 +414,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	whohanged = -1;
 	seeninvite = false;
 	seeninviteok = false;
+	seenmessage = false;
+	seenmessageok = false;
 	seenbye = false;
 	seenbye_time_usec = 0;
 	seenbyeandok = false;
@@ -423,6 +438,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 		byecseq[i][0] = '\0';
 	}
 	invitecseq[0] = '\0';
+	messagecseq[0] = '\0';
+	registercseq[0] = '\0';
 	cancelcseq[0] = '\0';
 	updatecseq[0] = '\0';
 	sighup = false;
@@ -484,23 +501,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	destroy_call_at_bye_confirmed = 0;
 	custom_header1[0] = '\0';
 	match_header[0] = '\0';
-	if(type == INVITE && is_enable_rtp_threads() && num_threads_active > 0) {
-		thread_num = get_index_rtp_read_thread_min_calls();
-		if(thread_num < 0) {
-			extern void lock_add_remove_rtp_threads();
-			extern void unlock_add_remove_rtp_threads();
-			lock_add_remove_rtp_threads();
-			thread_num = gthread_num % num_threads_active;
-			__sync_add_and_fetch(&rtp_threads[thread_num].calls, 1);
-			unlock_add_remove_rtp_threads();
-		}
-		gthread_num++;
-		extern int process_rtp_packets_distribute_threads_use;
-		thread_num_rd = process_rtp_packets_distribute_threads_use ? gthread_num % process_rtp_packets_distribute_threads_use : 0;
-	} else {
-		thread_num = 0;
-		thread_num_rd = 0;
-	}
+	thread_num = 0;
+	thread_num_rd = 0;
+	setRtpThreadNum();
 	recordstopped = 0;
 	dtmfflag = 0;
 	for(unsigned int i = 0; i < sizeof(dtmfflag2) / sizeof(dtmfflag2[0]); i++) {
@@ -521,7 +524,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	voicemail = voicemail_na;
 	max_length_sip_data = 0;
 	max_length_sip_packet = 0;
+	#if USE_UNREPLIED_INVITE_MESSAGE
 	unrepliedinvite = 0;
+	unrepliedmessage = 0;
+	#endif
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
 		 sipcallerip[i] = 0;
 		 sipcalledip[i] = 0;
@@ -836,7 +842,7 @@ Call::~Call(){
 	//printf("caller s[%u] n[%u] ls[%u]  called s[%u] n[%u] ls[%u]\n", caller_silence, caller_noise, caller_lastsilence, called_silence, called_noise, called_lastsilence);
 	//printf("caller_clipping_8k [%u] [%u]\n", caller_clipping_8k, called_clipping_8k);
 	
-	if(type == INVITE && is_enable_rtp_threads() && num_threads_active > 0 && rtp_threads) {
+	if(typeIs(INVITE) && is_enable_rtp_threads() && num_threads_active > 0 && rtp_threads) {
 		extern void lock_add_remove_rtp_threads();
 		extern void unlock_add_remove_rtp_threads();
 		lock_add_remove_rtp_threads();
@@ -1478,8 +1484,8 @@ read:
 		rtp[ssrc_n]->ssrc_index = ssrc_n; 
 		rtp[ssrc_n]->iscaller = iscaller; 
 		rtp[ssrc_n]->find_by_dest = find_by_dest;
-		rtp[ssrc_n]->ok_other_ip_side_by_sip = type == MGCP || 
-						       (type == SKINNY_NEW ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
+		rtp[ssrc_n]->ok_other_ip_side_by_sip = typeIs(MGCP) || 
+						       (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
 						       this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr : packetS->daddr) ||
 						       (this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr, find_by_dest ? packetS->source : packetS->dest) >= 0 &&
 							this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr : packetS->saddr));
@@ -3428,6 +3434,23 @@ string Call::getJsonData() {
 	return(data);
 }
 
+void Call::setRtpThreadNum() {
+	if(typeIs(INVITE) && is_enable_rtp_threads() && num_threads_active > 0) {
+		thread_num = get_index_rtp_read_thread_min_calls();
+		if(thread_num < 0) {
+			extern void lock_add_remove_rtp_threads();
+			extern void unlock_add_remove_rtp_threads();
+			lock_add_remove_rtp_threads();
+			thread_num = gthread_num % num_threads_active;
+			__sync_add_and_fetch(&rtp_threads[thread_num].calls, 1);
+			unlock_add_remove_rtp_threads();
+		}
+		gthread_num++;
+		extern int process_rtp_packets_distribute_threads_use;
+		thread_num_rd = process_rtp_packets_distribute_threads_use ? gthread_num % process_rtp_packets_distribute_threads_use : 0;
+	}
+}
+
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
@@ -3634,10 +3657,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	if(existsColumns.cdr_last_rtp_from_end && !use_sdp_sendonly) {
 		if(last_rtp_a_packet_time) {
-			cdr.add((type == MGCP ? last_mgcp_connect_packet_time : last_packet_time) - last_rtp_a_packet_time, "a_last_rtp_from_end");
+			cdr.add((typeIs(MGCP) ? last_mgcp_connect_packet_time : last_packet_time) - last_rtp_a_packet_time, "a_last_rtp_from_end");
 		}
 		if(last_rtp_b_packet_time) {
-			cdr.add((type == MGCP ? last_mgcp_connect_packet_time : last_packet_time) - last_rtp_b_packet_time, "b_last_rtp_from_end");
+			cdr.add((typeIs(MGCP) ? last_mgcp_connect_packet_time : last_packet_time) - last_rtp_b_packet_time, "b_last_rtp_from_end");
 		}
 	}
 	cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -3687,7 +3710,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bye = 107;
 	} else if(sipwithoutrtp_timeout_exceeded) {
 		bye = 108;
-	} else if(oneway && type != SKINNY_NEW && type != MGCP) {
+	} else if(oneway && typeIsNot(SKINNY_NEW) && typeIsNot(MGCP)) {
 		bye = 101;
 	} else if(pcap_drop) {
 		bye = 100;
@@ -3714,7 +3737,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	if(custom_headers_cdr) {
-		custom_headers_cdr->prepareSaveRows_cdr(this, &cdr_next, cdr_next_ch, cdr_next_ch_name);
+		custom_headers_cdr->prepareSaveRows(this, INVITE, &cdr_next, cdr_next_ch, cdr_next_ch_name);
 	}
 
 	if(whohanged == 0 || whohanged == 1) {
@@ -3772,9 +3795,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		// find first caller and first called
 		bool rtpab_ok[2] = {false, false};
-		bool pass_rtpab_simple = type == MGCP ||
-					 (type == SKINNY_NEW ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
-		if(!pass_rtpab_simple && type == INVITE && ssrc_n >= 2 &&
+		bool pass_rtpab_simple = typeIs(MGCP) ||
+					 (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
+		if(!pass_rtpab_simple && typeIs(INVITE) && ssrc_n >= 2 &&
 		   (rtp[indexes[0]]->iscaller + rtp[indexes[1]]->iscaller) == 1) {
 			if(ssrc_n == 2) {
 				pass_rtpab_simple = true;
@@ -4265,7 +4288,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		if(existsNextCh && custom_headers_cdr) {
-			string queryForSaveUseInfo = custom_headers_cdr->getQueryForSaveUseInfo(this);
+			string queryForSaveUseInfo = custom_headers_cdr->getQueryForSaveUseInfo(this, INVITE);
 			if(!queryForSaveUseInfo.empty()) {
 				query_str += queryForSaveUseInfo + ";\n";
 			}
@@ -5290,7 +5313,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 
 	if(custom_headers_message) {
-		custom_headers_message->prepareSaveRows_message(this, &msg, msg_next_ch, msg_next_ch_name);
+		custom_headers_message->prepareSaveRows(this, MESSAGE, &msg, msg_next_ch, msg_next_ch_name);
 	}
 
 	CountryDetectApplyReload();
@@ -5350,7 +5373,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			}
 		}
 		if(existsNextCh && custom_headers_message) {
-			string queryForSaveUseInfo = custom_headers_message->getQueryForSaveUseInfo(this);
+			string queryForSaveUseInfo = custom_headers_message->getQueryForSaveUseInfo(this, MESSAGE);
 			if(!queryForSaveUseInfo.empty()) {
 				query_str += queryForSaveUseInfo + ";\n";
 			}
@@ -5459,7 +5482,7 @@ Call::dump(){
 	} else {
 		printf("no IP:port assigned\n");
 	}
-	if(seeninvite) {
+	if(seeninvite || seenmessage) {
 		printf("From:%s\n", caller);
 		printf("To:%s\n", called);
 	}
@@ -5475,7 +5498,7 @@ Call::dump(){
 }
 
 void Call::atFinish() {
-	if(this->type != INVITE && type != MESSAGE) {
+	if(!(typeIs(INVITE) || typeIs(MESSAGE))) {
 		return;
 	}
 	extern char pcapcommand[4092];
@@ -6470,7 +6493,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				call = (*callMAPIT2).second;
 			}
 			extern int opt_blockcleanupcalls;
-			if(!(call->type == REGISTER or call->type == MESSAGE or 
+			if(!(call->typeIs(REGISTER) or call->typeIsOnly(MESSAGE) or 
 			     (call->seenbye and call->seenbyeandok) or
 			     (!opt_blockcleanupcalls &&
 			      ((call->destroy_call_at and call->destroy_call_at < now) or 
@@ -6747,8 +6770,8 @@ Calltable::cleanup_calls( time_t currtime ) {
 				if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
 					call->force_terminate = true;
 				}
-			} else if(call->type == SKINNY_NEW ||
-				  call->type == MGCP ||
+			} else if(call->typeIs(SKINNY_NEW) ||
+				  call->typeIs(MGCP) ||
 				  call->in_preprocess_queue_before_process_packet <= 0 ||
 				  (!is_read_from_file() &&
 				   (call->in_preprocess_queue_before_process_packet_at[0] && call->in_preprocess_queue_before_process_packet_at[0] < currtime - 300 &&
@@ -6835,7 +6858,7 @@ Calltable::cleanup_calls( time_t currtime ) {
 		/* move call to queue for mysql processing */
 		lock_calls_queue();
 		if(call->push_call_to_calls_queue) {
-			syslog(LOG_WARNING,"try to duplicity push call %s / %i to calls_queue", call->call_id.c_str(), call->type);
+			syslog(LOG_WARNING,"try to duplicity push call %s / %i to calls_queue", call->call_id.c_str(), call->getTypeBase());
 		} else {
 			call->push_call_to_calls_queue = 1;
 			calls_queue.push_back(call);
@@ -7024,7 +7047,7 @@ void Call::saveregister(time_t currtime) {
 	this->pcapSip.close();
 	/* move call to queue for mysql processing */
 	if(push_register_to_registers_queue) {
-		syslog(LOG_WARNING,"try to duplicity push call %s / %i to registers_queue", call_id.c_str(), type);
+		syslog(LOG_WARNING,"try to duplicity push call %s / %i to registers_queue", call_id.c_str(), getTypeBase());
 	} else {
 		push_register_to_registers_queue = 1;
 		if(opt_sip_register == 1) {
@@ -7146,14 +7169,14 @@ Call::handle_dscp(struct iphdr2 *header_ip, bool iscaller) {
 }
 
 bool 
-Call::check_is_caller_called(const char *call_id, int sip_method, 
+Call::check_is_caller_called(const char *call_id, int sip_method, int cseq_method,
 			     unsigned int saddr, unsigned int daddr, unsigned int sport, unsigned int dport,
 			     int *iscaller, int *iscalled, bool enableSetSipcallerdip) {
 	*iscaller = 0;
 	bool _iscalled = 0;
 	string debug_str_set;
 	string debug_str_cmp;
-	if(this->type == MESSAGE) {
+	if(this->typeIsOnly(MESSAGE) || sip_method == MESSAGE || cseq_method == MESSAGE) {
 		if(sip_method == MESSAGE) {
 			_iscalled = 1;
 			debug_str_cmp = string(" / == MSG");
@@ -7161,7 +7184,7 @@ Call::check_is_caller_called(const char *call_id, int sip_method,
 			*iscaller = 1;
 			debug_str_cmp = string(" / != MSG");
 		}
-	} else if(this->type == REGISTER) {
+	} else if(this->typeIsOnly(REGISTER)) {
 		if(sip_method == REGISTER) {
 			_iscalled = 1;
 			debug_str_cmp = string(" / == REGISTER");
@@ -7518,7 +7541,7 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 
 extern char * gettag_ext(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents, 
 			 const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
-void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket::ppContentsX *parseContents) {
+void CustomHeaders::parse(Call *call, int type, char *data, int datalen, ParsePacket::ppContentsX *parseContents) {
 	lock_custom_headers();
 	unsigned long gettagLimitLen = 0;
 	map<int, map<int, sCustomHeaderData> >::iterator iter;
@@ -7567,7 +7590,7 @@ void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket::ppCo
 					break;
 				}
 				dstring ds_content(iter2->second.header, content);
-				this->setCustomHeaderContent(call, iter->first, iter2->first, &ds_content, true);
+				this->setCustomHeaderContent(call, type, iter->first, iter2->first, &ds_content, true);
 			} else {
 				string findHeader = iter2->second.header;
 				if(findHeader[findHeader.length() - 1] != ':' &&
@@ -7604,11 +7627,11 @@ void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket::ppCo
 							continue;
 						} else {
 							dstring content(iter2->second.header, customHeader);
-							this->setCustomHeaderContent(call, iter->first, iter2->first, &content);
+							this->setCustomHeaderContent(call, type, iter->first, iter2->first, &content);
 						}
 					} else {
 						dstring content(iter2->second.header, customHeaderBegin);
-						this->setCustomHeaderContent(call, iter->first, iter2->first, &content);
+						this->setCustomHeaderContent(call, type, iter->first, iter2->first, &content);
 					}
 				}
 			}
@@ -7617,11 +7640,12 @@ void CustomHeaders::parse(Call *call, char *data, int datalen, ParsePacket::ppCo
 	unlock_custom_headers();
 }
 
-void CustomHeaders::setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content, bool useLastValue) {
+void CustomHeaders::setCustomHeaderContent(Call *call, int type, int pos1, int pos2, dstring *content, bool useLastValue) {
+	map<int, map<int, dstring> > *custom_headers_content = type == MESSAGE ? &call->custom_headers_content_message : &call->custom_headers_content_cdr;
 	bool exists = false;
 	if(!opt_custom_headers_last_value && !useLastValue) {
-		map<int, map<int, dstring> >::iterator iter = call->custom_headers.find(pos1);
-		if(iter != call->custom_headers.end()) {
+		map<int, map<int, dstring> >::iterator iter = custom_headers_content->find(pos1);
+		if(iter != custom_headers_content->end()) {
 			map<int, dstring>::iterator iter2 = iter->second.find(pos2);
 			if(iter2 != iter->second.end()) {
 				exists = true;
@@ -7629,13 +7653,14 @@ void CustomHeaders::setCustomHeaderContent(Call *call, int pos1, int pos2, dstri
 		}
 	}
 	if(!exists || opt_custom_headers_last_value || useLastValue) {
-		call->custom_headers[pos1][pos2] = *content;
+		(*custom_headers_content)[pos1][pos2] = *content;
 	}
 }
 
-void CustomHeaders::prepareSaveRows_cdr(Call *call, SqlDb_row *cdr_next, SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]) {
+void CustomHeaders::prepareSaveRows(Call *call, int type, SqlDb_row *cdr_next, SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]) {
+	map<int, map<int, dstring> > *custom_headers_content = type == MESSAGE ? &call->custom_headers_content_message : &call->custom_headers_content_cdr;
 	map<int, map<int, dstring> >::iterator iter;
-	for(iter = call->custom_headers.begin(); iter != call->custom_headers.end(); iter++) {
+	for(iter = custom_headers_content->begin(); iter != custom_headers_content->end(); iter++) {
 		if(iter->first > CDR_NEXT_MAX) {
 			break;
 		}
@@ -7661,28 +7686,27 @@ void CustomHeaders::prepareSaveRows_cdr(Call *call, SqlDb_row *cdr_next, SqlDb_r
 	}
 }
 
-void CustomHeaders::prepareSaveRows_message(Call *call, class SqlDb_row *message, class SqlDb_row message_next_ch[], char *message_next_ch_name[]) {
-	this->prepareSaveRows_cdr(call, message, message_next_ch, message_next_ch_name);
-}
-
 string CustomHeaders::getScreenPopupFieldsString(Call *call) {
 	string fields;
-	map<int, map<int, dstring> >::iterator iter;
-	for(iter = call->custom_headers.begin(); iter != call->custom_headers.end(); iter++) {
-		map<int, dstring>::iterator iter2;
-		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			if(!this->custom_headers[iter->first][iter2->first].screenPopupField ||
-			   iter2->second[1].empty()) {
-				continue;
+	for(unsigned i = 0; i < 2; i++) {
+		map<int, map<int, dstring> > *custom_headers_content = i == 0 ? &call->custom_headers_content_cdr : &call->custom_headers_content_message;
+		map<int, map<int, dstring> >::iterator iter;
+		for(iter = custom_headers_content->begin(); iter != custom_headers_content->end(); iter++) {
+			map<int, dstring>::iterator iter2;
+			for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+				if(!this->custom_headers[iter->first][iter2->first].screenPopupField ||
+				   iter2->second[1].empty()) {
+					continue;
+				}
+				if(!fields.empty()) {
+					fields += "||";
+				}
+				string name = iter2->second[0];
+				std::transform(name.begin(), name.end(), name.begin(), ::toupper);
+				fields += name;
+				fields += "::";
+				fields += iter2->second[1];
 			}
-			if(!fields.empty()) {
-				fields += "||";
-			}
-			string name = iter2->second[0];
-			std::transform(name.begin(), name.end(), name.begin(), ::toupper);
-			fields += name;
-			fields += "::";
-			fields += iter2->second[1];
 		}
 	}
 	return(fields);
@@ -7728,11 +7752,12 @@ void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb) {
 	}
 }
 
-string CustomHeaders::getQueryForSaveUseInfo(Call* call) {
+string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type) {
+	map<int, map<int, dstring> > *custom_headers_content = type == MESSAGE ? &call->custom_headers_content_message : &call->custom_headers_content_cdr;
 	string query = "";
 	if((unsigned)call->calltime() > this->lastTimeSaveUseInfo + 60) {
 		map<int, map<int, dstring> >::iterator iter;
-		for(iter = call->custom_headers.begin(); iter != call->custom_headers.end(); iter++) {
+		for(iter = custom_headers_content->begin(); iter != custom_headers_content->end(); iter++) {
 			if(iter->first > CDR_NEXT_MAX) {
 				break;
 			}
@@ -7895,7 +7920,7 @@ bool NoHashMessageRule::checkNoHash(Call *call) {
 	}
 	bool noHashByHeader = false;
 	if(this->customHeader_ok) {
-		string header = call->custom_headers[this->customHeader_pos[0]][this->customHeader_pos[1]][1];
+		string header = call->custom_headers_content_message[this->customHeader_pos[0]][this->customHeader_pos[1]][1];
 		if(header.length()) {
 			if(this->header_regexp.size()) {
 				list<cRegExp*>::iterator iter_header_regexp;

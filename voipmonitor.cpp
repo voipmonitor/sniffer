@@ -604,7 +604,7 @@ volatile bool cloud_activecheck_sshclose = false;		//is forced close/re-open of 
 timeval cloud_last_activecheck;					//Time of a last check request sent
 
 char cloud_host[256] = "cloud.voipmonitor.org";
-char cloud_url[1024] = "";
+char cloud_url[256] = "";
 char cloud_token[256] = "";
 bool cloud_router = true;
 unsigned cloud_router_port = 60023;
@@ -1714,7 +1714,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				
 					bool needConvertToWavInThread = false;
 					call->closeRawFiles();
-					if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->type == INVITE || call->type == SKINNY_NEW || call->type == MGCP) &&
+					if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
 					    call->getAllReceivedRtpPackets()) {
 						if(is_read_from_file()) {
 							if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
@@ -1726,11 +1726,13 @@ void *storing_cdr( void */*dummy*/ ) {
 
 					regfailedcache->prunecheck(call->first_packet_time);
 					if(!opt_nocdr) {
-						if(call->type == INVITE or call->type == SKINNY_NEW or call->type == MGCP) {
+						if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
 							call->saveToDb(!is_read_from_file_simple());
-						} else if(call->type == MESSAGE){
+						}
+						if(call->typeIs(MESSAGE)) {
 							call->saveMessageToDb();
-						} else if(call->type == BYE){
+						}
+						if(call->typeIs(BYE)) {
 							call->saveAloneByeToDb();
 						}
 					}
@@ -1841,7 +1843,7 @@ void *storing_registers( void */*dummy*/ ) {
 				
 					regfailedcache->prunecheck(call->first_packet_time);
 					if(!opt_nocdr) {
-						if(call->type == REGISTER){
+						if(call->typeIs(REGISTER)) {
 							call->saveRegisterToDb();
 						}
 					}
@@ -5132,7 +5134,7 @@ void test() {
 	case 310:
 		{
 		Call *call = new Call(0, (char*)"conv-raw-info", 0, 0);
-		call->type = INVITE;
+		call->type_base = INVITE;
 		call->force_spool_path = opt_test_arg;
 		sverb.noaudiounlink = true;
 		call->convertRawToWav();

@@ -108,6 +108,8 @@
 #define SS7_REL 12
 #define SS7_RLC 16
 
+#define USE_UNREPLIED_INVITE_MESSAGE 0
+
 
 struct s_dtmf {
 	enum e_type {
@@ -301,6 +303,11 @@ public:
 	~Call_abstract() {
 		alloc_flag = 0;
 	}
+	int getTypeBase() { return(type_base); }
+	bool typeIs(int type) { return(type_base == type || (type_next && type_next == type)); }
+	bool typeIsOnly(int type) { return(type_base == type && type_next == 0); }
+	bool typeIsNot(int type) { return(!typeIs(type)); }
+	bool addNextType(int type);
 	int calltime() { return first_packet_time; };
 	string get_sensordir();
 	string get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpoolDir = NULL);
@@ -314,8 +321,8 @@ public:
 	int getSpoolIndex() {
 		extern sExistsColumns existsColumns;
 		return((flags & FLAG_USE_SPOOL_2) && isSetSpoolDir2() &&
-			((type == INVITE && existsColumns.cdr_next_spool_index) ||
-			 (type == MESSAGE && existsColumns.message_spool_index)) ?
+			((typeIs(INVITE) && existsColumns.cdr_next_spool_index) ||
+			 (typeIs(MESSAGE) && existsColumns.message_spool_index)) ?
 			1 : 
 			0);
 	}
@@ -334,7 +341,8 @@ public:
 	}
 public:
 	uint16_t alloc_flag;
-	int type;
+	int type_base;
+	int type_next;
 	time_t first_packet_time;
 	char fbasename[MAX_FNAME];
 	char fbasename_safe[MAX_FNAME];
@@ -518,12 +526,16 @@ public:
 	int register_expires;	
 	char byecseq[2][32];		
 	char invitecseq[32];		
+	char messagecseq[32];
+	char registercseq[32];
 	char cancelcseq[32];		
 	char updatecseq[32];		
 	char custom_header1[256];	//!< Custom SIP header
 	char match_header[128];	//!< Custom SIP header
 	bool seeninvite;		//!< true if we see SIP INVITE within the Call
 	bool seeninviteok;			//!< true if we see SIP INVITE within the Call
+	bool seenmessage;
+	bool seenmessageok;
 	bool seenbye;			//!< true if we see SIP BYE within the Call
 	u_int64_t seenbye_time_usec;
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANEL within the Call
@@ -573,7 +585,10 @@ public:
 	volatile int end_call_rtp;
 	volatile int push_call_to_calls_queue;
 	volatile int push_register_to_registers_queue;
+	#if USE_UNREPLIED_INVITE_MESSAGE
 	unsigned int unrepliedinvite;
+	unsigned int unrepliedmessage;
+	#endif
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
 	char forcemark[2];
@@ -693,7 +708,8 @@ public:
 	/* obsolete
 	map<string, string> custom_headers;
 	*/
-	map<int, map<int, dstring> > custom_headers;
+	map<int, map<int, dstring> > custom_headers_content_cdr;
+	map<int, map<int, dstring> > custom_headers_content_message;
 
 	volatile int _proxies_lock;
 	list<unsigned int> proxies;
@@ -893,7 +909,7 @@ public:
 	 *
 	 * @return lenght of the call in seconds
 	*/
-	int duration() { return (type == MGCP ? last_mgcp_connect_packet_time : last_packet_time) - first_packet_time; };
+	int duration() { return (typeIs(MGCP) ? last_mgcp_connect_packet_time : last_packet_time) - first_packet_time; };
 	int connect_duration() { return(connect_time ? duration() - (connect_time - first_packet_time) : 0); };
 	
 	int duration_active() { return(getGlobalPacketTimeS() - first_packet_time); };
@@ -985,7 +1001,7 @@ public:
 	
 	void handle_dscp(struct iphdr2 *header_ip, bool iscaller);
 	
-	bool check_is_caller_called(const char *call_id, int sip_method, 
+	bool check_is_caller_called(const char *call_id, int sip_method, int cseq_method,
 				    unsigned int saddr, unsigned int daddr, unsigned int sport, unsigned int dport,  
 				    int *iscaller, int *iscalled = NULL, bool enableSetSipcallerdip = false);
 	bool is_sipcaller(unsigned int saddr, unsigned int sport, unsigned int daddr, unsigned int dport);
@@ -1067,7 +1083,7 @@ public:
 		if(this->destroy_call_at > 0) {
 			extern int opt_register_timeout;
 			time_t new_destroy_call_at = 
-				this->type == REGISTER ?
+				typeIs(REGISTER) ?
 					header->ts.tv_sec + opt_register_timeout :
 					(this->seenbyeandok ?
 						header->ts.tv_sec + 5 :
@@ -1109,13 +1125,13 @@ public:
 	
 	void calls_counter_inc() {
 		extern volatile int calls_counter;
-		if(type == INVITE || type == MESSAGE || type == MGCP) {
+		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP)) {
 			++calls_counter;
 		}
 	}
 	void calls_counter_dec() {
 		extern volatile int calls_counter;
-		if(type == INVITE || type == MESSAGE || type == MGCP) {
+		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP)) {
 			--calls_counter;
 		}
 	}
@@ -1133,7 +1149,7 @@ public:
 	
 	bool isSetCallidMergeHeader() {
 		extern char opt_callidmerge_header[128];
-		return((type == INVITE || type == MESSAGE) &&
+		return((typeIs(INVITE) || typeIs(MESSAGE)) &&
 		       opt_callidmerge_header[0] != '\0');
 	}
 	void removeMergeCalls();
@@ -1277,6 +1293,7 @@ public:
 	static string getJsonHeader();
 	void getRecordData(RecordArray *rec);
 	string getJsonData();
+	void setRtpThreadNum();
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -1870,10 +1887,9 @@ public:
 	void clear(bool lock = true);
 	void refresh(SqlDb *sqlDb = NULL);
 	void addToStdParse(ParsePacket *parsePacket);
-	void parse(Call *call, char *data, int datalen, ParsePacket::ppContentsX *parseContents);
-	void setCustomHeaderContent(Call *call, int pos1, int pos2, dstring *content, bool useLastValue = false);
-	void prepareSaveRows_cdr(Call *call, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
-	void prepareSaveRows_message(Call *call, class SqlDb_row *message, class SqlDb_row message_next_ch[], char *message_next_ch_name[]);
+	void parse(Call *call, int type, char *data, int datalen, ParsePacket::ppContentsX *parseContents);
+	void setCustomHeaderContent(Call *call, int type, int pos1, int pos2, dstring *content, bool useLastValue = false);
+	void prepareSaveRows(Call *call, int type, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
 	string getScreenPopupFieldsString(Call *call);
 	string getDeleteQuery(const char *id, const char *prefix, const char *suffix);
 	list<string> getAllNextTables() {
@@ -1886,7 +1902,7 @@ public:
 	unsigned long getLoadTime() {
 		return(loadTime);
 	}
-	string getQueryForSaveUseInfo(Call *call);
+	string getQueryForSaveUseInfo(Call *call, int type);
 	void createTablesIfNotExists(SqlDb *sqlDb = NULL);
 	void createTableIfNotExists(const char *tableName, SqlDb *sqlDb = NULL);
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);

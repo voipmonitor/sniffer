@@ -283,7 +283,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 				cout << "SDP: " << endl << string((char*)sdp + sdp_separator_length, packetS->datalen - mgcp_header_len - sdp_separator_length) << endl;
 			}
 			int iscaller;
-			call->check_is_caller_called(NULL, MGCP, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, &iscaller, NULL);
+			call->check_is_caller_called(NULL, MGCP, 0, packetS->saddr, packetS->daddr, packetS->source, packetS->dest, &iscaller, NULL);
 			process_sdp(call, packetS, iscaller, (char*)(sdp + sdp_separator_length), (char*)call->call_id.c_str());
 		}
 		if(!call->connect_time && is_request) {

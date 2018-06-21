@@ -1335,7 +1335,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			calltable->lock_calls_queue();
 			for(size_t i = 0; i < calltable->calls_queue.size(); ++i) {
 				call = calltable->calls_queue[i];
-				if(call->type != REGISTER && call->destroy_call_at) {
+				if(call->typeIsNot(REGISTER) && call->destroy_call_at) {
 					vectCall.push_back(call);
 				}
 			}
@@ -1379,7 +1379,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		calltable->lock_calls_listMAP();
 		for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = (*callMAPIT).second;
-			if(call->type != REGISTER && call->seenbye) {
+			if(call->typeIsNot(REGISTER) && call->seenbye) {
 				vectCall.push_back(call);
 			}
 		}
