@@ -1,3 +1,17 @@
+22.7 19.06.2018
+===============
+- fix client/server/cloud configuration loading from DB [VG-1572]
+- fix rare racecondition crash
+- fix parsing client-random key [VG-1494]
+- fix memory leak if SIP MESSAGE contains RTP stream [VS-791]
+- implement SIP OPTION parser [VS-614]
+- do not set seenbyeandok flag for CANCELED SIP branch [VS-788]
+- added support for sip domains filter in CHANGE REGISTER COUNTRY alerts [VG-1598]
+- do not try to decrypt SRTP if there is no key for decryption (DH key exchange) [VG-786]
+- fix crashing on ARM when statically linked [VS-787]
+- fix REGISTER expire state for failed REGISTER packets in expire time [VS-798] 
+
+
 22.6.1 22.05.2018
 =================
 - new options sdp_ignore_ip and sdp_ignore_ip_port which will ignore IP addresses (or IP and port) in SDP 
