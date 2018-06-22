@@ -1078,7 +1078,7 @@ bool existsPidProcess(int pid) {
 }
 
 void vm_terminate() {
-	set_terminating();
+	inc_terminating();
 }
 
 void vm_terminate_error(const char *terminate_error) {

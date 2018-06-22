@@ -533,6 +533,7 @@ private:
 	u_long lastQueryTime;
 	u_long queryCounter;
 	cSocketBlock *remote_socket;
+	u_long last_store_iteration_time;
 };
 
 class MySqlStore {

@@ -102,6 +102,10 @@ void vm_terminate();
 void vm_terminate_error(const char *terminate_error);
 inline void set_terminating() {
 	extern int terminating;
+	terminating = 1;
+}
+inline void inc_terminating() {
+	extern int terminating;
 	++terminating;
 }
 inline void clear_terminating() {

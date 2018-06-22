@@ -1988,6 +1988,7 @@ MySqlStore_process::MySqlStore_process(int id, const char *host, const char *use
 	this->lastThreadRunningCounterCheck = 0;
 	this->lastThreadRunningTimeCheck = 0;
 	this->remote_socket = NULL;
+	this->last_store_iteration_time = 0;
 }
 
 MySqlStore_process::~MySqlStore_process() {
@@ -2210,6 +2211,7 @@ void MySqlStore_process::store() {
 				if(is_terminating() && this->sqlDb->getLastError() && this->enableTerminatingIfSqlError) {
 					break;
 				}
+				this->last_store_iteration_time = getTimeMS_rdtsc() / 1000;
 			}
 		}
 		if(is_terminating() && 
@@ -2364,6 +2366,12 @@ void MySqlStore_process::setEnableFixDeadlock(bool enableFixDeadlock) {
 void MySqlStore_process::waitForTerminate() {
 	if(this->thread) {
 		while(!this->terminated) {
+			if(is_terminating() > 1 &&
+			   getTimeS() > (this->last_store_iteration_time + 60)) {
+				syslog(LOG_NOTICE, "cancel store thread id (%i)", id);
+				pthread_cancel(this->thread);
+				break;
+			}
 			usleep(100000);
 		}
 		this->thread = (pthread_t)NULL;
