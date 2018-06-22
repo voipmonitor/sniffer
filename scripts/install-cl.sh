@@ -1,6 +1,6 @@
 #!/bin/bash
 #cloudToken=
-__VERSION=1.0k
+__VERSION=1.0m
 
 #__COLORS=1	#automagicaly set by checkTput function
 			#0 for disable colors output
@@ -486,6 +486,7 @@ function installFromFile {
 	#cmd "cp" "usr/local/share/voipmonitor/audio/*" "/usr/local/share/voipmonitor/audio/"
 
 	echo "Installing voipmonitor $(printp "binary")$(printn " to ")$(printp "/usr/local/sbin/voipmonitor")"
+	cmdu "mkdir" "-p" "/usr/local/sbin"
 	cmd "cp" "usr/local/sbin/voipmonitor" "/usr/local/sbin/voipmonitor"
 	
 
