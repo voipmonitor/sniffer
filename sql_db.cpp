@@ -1025,6 +1025,10 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 					}
 					break;
 				}
+			} else {
+				sql_disable_next_attempt_if_error = 0;
+				sql_noerror = 0;
+				break;
 			}
 		}
 		if(this->hMysqlConn) {
