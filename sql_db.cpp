@@ -105,7 +105,7 @@ bool opt_log_sensor_partition_oldver = false;
 sExistsColumns existsColumns;
 SqlDb::eSupportPartitions supportPartitions = SqlDb::_supportPartitions_ok;
 
-#define CONV_ID(id) (id < STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS  || id >= STORE_PROC_ID_IPACC_1 ?  (id / 10) * 10 : id)
+#define CONV_ID(id) (id < STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS || id >= STORE_PROC_ID_IPACC_1 ?  (id / 10) * 10 : id)
 #define CONV_ID_FOR_QFILE(id) CONV_ID(id)
 #define CONV_ID_FOR_REMOTE_STORE(id) CONV_ID(id)
 
@@ -3225,7 +3225,7 @@ string MySqlStore::getSqlVmExportDirectory() {
 }
 
 int MySqlStore::convStoreId(int id) {
-	int threadId = id;
+	int threadId = id + (id % 10 ? 0 : 1);
 	int maxThreads = getMaxThreadsForStoreId(id);
 	if(maxThreads > 1) {
 		ssize_t queryThreadMinSize = -1;

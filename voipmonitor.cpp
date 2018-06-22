@@ -533,7 +533,7 @@ bool opt_cdr_partition = 1;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
 bool opt_cdr_rtpsrcport  = 0;
-bool opt_cdr_check_exists_callid = 0;
+int opt_cdr_check_exists_callid = 0;
 bool opt_cdr_check_duplicity_callid_in_next_pass_insert = 0;
 bool opt_message_check_duplicity_callid_in_next_pass_insert = 0;
 int opt_create_old_partitions = 0;
@@ -5989,7 +5989,8 @@ void cConfig::addConfigItems() {
 				->addAlias("nocdr_for_last_responses"));
 			addConfigItem(new FILE_LINE(42263) cConfigItem_yesno("skipdefault", &opt_skipdefault));
 			addConfigItem(new FILE_LINE(42264) cConfigItem_yesno("cdronlyanswered", &opt_cdronlyanswered));
-			addConfigItem(new FILE_LINE(42265) cConfigItem_yesno("cdr_check_exists_callid", &opt_cdr_check_exists_callid));
+			addConfigItem((new FILE_LINE(42265) cConfigItem_yesno("cdr_check_exists_callid", &opt_cdr_check_exists_callid))
+				->addValues("lock:2"));
 			addConfigItem(new FILE_LINE(42266) cConfigItem_yesno("cdronlyrtp", &opt_cdronlyrtp));
 			addConfigItem(new FILE_LINE(42267) cConfigItem_integer("callslimit", &opt_callslimit));
 			addConfigItem(new FILE_LINE(42268) cConfigItem_yesno("cdrproxy", &opt_cdrproxy));
@@ -8282,7 +8283,7 @@ int eval_config(string inistr) {
 		opt_cdr_rtpsrcport  = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_check_exists_callid", NULL))) {
-		opt_cdr_check_exists_callid = yesno(value);
+		opt_cdr_check_exists_callid = !strcasecmp(value, "lock") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "check_duplicity_callid_in_next_pass_insert", NULL))) {
 		opt_cdr_check_duplicity_callid_in_next_pass_insert = 

@@ -4210,12 +4210,18 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		extern bool opt_cdr_check_exists_callid;
+		extern int opt_cdr_check_exists_callid;
 		extern bool opt_cdr_check_duplicity_callid_in_next_pass_insert;
+		string cdr_callid_lock_name;
 		if(opt_cdr_check_exists_callid ||
 		   opt_cdr_check_duplicity_callid_in_next_pass_insert) {
 			// check if exists call-id & rtp records - begin if
 			if(opt_cdr_check_exists_callid) {
+				if(opt_cdr_check_exists_callid == 2) {
+					cdr_callid_lock_name = "vm_cdr_callid_" + GetStringMD5(fbasename);
+					query_str +=
+						"do get_lock('" + cdr_callid_lock_name + "', 60);\n";
+				}
 				query_str += string(
 					"set @exists_call_id = coalesce(\n") +
 					"(select cdr.ID from cdr\n" +
@@ -4278,6 +4284,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		cdr_next.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 		query_str += sqlDbSaveCall->insertQuery(sql_cdr_next_table, cdr_next) + ";\n";
+		
+		if(opt_cdr_check_exists_callid == 2) {
+			query_str +=
+				"do release_lock('" + cdr_callid_lock_name + "');\n";
+		}
 		
 		bool existsNextCh = false;
 		for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
@@ -4489,6 +4500,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			// check if exists call-id & rtp records - end if
 			if(opt_cdr_check_exists_callid) {
 				query_str += ";\nend if";
+				if(opt_cdr_check_exists_callid == 2) {
+					query_str +=
+						";\ndo release_lock('" + cdr_callid_lock_name + "')";
+				}
 			} else if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
 				query_str += "__NEXT_PASS_QUERY_BEGIN__";
 				query_str += ";\nend if";
