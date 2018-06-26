@@ -698,7 +698,7 @@ string SqlDb::prepareQuery(string query, bool nextPass) {
 
 string SqlDb::insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent, bool escapeAll, bool insertIgnore) {
 	string query = 
-		string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO " + table + " ( " + row.implodeFields(this->getFieldSeparator(), this->getFieldBorder()) + 
+		string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO `" + table + "` ( " + row.implodeFields(this->getFieldSeparator(), this->getFieldBorder()) +
 		" ) VALUES ( " + row.implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll) + " )";
 	return(query);
 }
@@ -715,14 +715,14 @@ string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlS
 		}
 	}
 	string query = 
-		string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO " + table + " ( " + (*rows)[0].implodeFields(this->getFieldSeparator(), this->getFieldBorder()) + 
+		string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO `" + table + "` ( " + (*rows)[0].implodeFields(this->getFieldSeparator(), this->getFieldBorder()) +
 		" ) VALUES " + values;
 	return(query);
 }
 
 string SqlDb::updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent, bool escapeAll) {
 	string query = 
-		string("UPDATE ") + table + " set " + row.implodeFieldContent(this->getFieldSeparator(), this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll);
+		string("UPDATE `") + table + "` set " + row.implodeFieldContent(this->getFieldSeparator(), this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll);
 	if(whereCond) {
 		query += string(" WHERE ") + whereCond;
 	}
@@ -761,7 +761,7 @@ bool SqlDb::update(string table, SqlDb_row row, const char *whereCond) {
 
 int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2) {
 	string query = 
-		"SELECT * FROM " + table + " WHERE " + uniqueField + " = " + 
+		"SELECT * FROM `" + table + "` WHERE " + uniqueField + " = " +
 		this->getContentBorder() + row[uniqueField] + this->getContentBorder();
 	if(uniqueField2) {
 		query = query + " AND " + uniqueField2 + " = " +
@@ -1057,6 +1057,9 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				if(!this->query(tmp)) {
 					rslt = false;
 				}
+			}
+			if(this->getDbMajorVersion() >= 8 and this->getDbName() == "mysql") {
+				this->explainPartitionString = "";
 			}
 			sprintf(tmp, "USE `%s`", this->conn_database.c_str());
 			if(!this->existsDatabase() || !this->query(tmp)) {
@@ -1527,8 +1530,8 @@ bool SqlDb_mysql::existsDatabase() {
 }
 
 bool SqlDb_mysql::existsColumn(const char *table, const char *column) {
-	this->query(string("show columns from ") + table + 
-		    " where Field='" + column + "'");
+	this->query(string("show columns from `") + table +
+		    "` where Field='" + column + "'");
 	int countRow = 0;
 	while(this->fetchRow()) {
 		++countRow;
@@ -1537,7 +1540,7 @@ bool SqlDb_mysql::existsColumn(const char *table, const char *column) {
 }
 
 string SqlDb_mysql::getTypeColumn(const char *table, const char *column, bool toLower) {
-	this->query(string("show columns from ") + table + " like '" + column + "'");
+	this->query(string("show columns from `") + table + "` like '" + column + "'");
 	SqlDb_row cdr_struct_row = this->fetchRow();
 	if(cdr_struct_row) {
 		string type = cdr_struct_row["type"];
@@ -1559,7 +1562,7 @@ bool SqlDb_mysql::existsPartition(const char *table, const char *partition, bool
 		__sync_lock_release(&exists_partition_cache_sync);
 	}
 	if(!partitions.length()) {
-		this->query(string("explain partitions select * from ") + table);
+		this->query(string("explain") + this->explainPartitionString + " select * from `" + table + "`");
 		SqlDb_row row;
 		if((row = this->fetchRow())) {
 			partitions = row["partitions"];
@@ -1582,7 +1585,7 @@ bool SqlDb_mysql::existsPartition(const char *table, const char *partition, bool
 }
 
 bool SqlDb_mysql::emptyTable(const char *table) {
-	this->query(string("select count(*) as cnt from ") + table);
+	this->query(string("select count(*) as cnt from `") + table + "`");
 	SqlDb_row row = this->fetchRow();
 	return(!row || !atol(row["cnt"].c_str()));
 }
@@ -3764,7 +3767,7 @@ bool SqlDb_mysql::createSchema(int connectId) {
 		this->query("show tables like 'system'");
 		if(this->fetchRow()) {
 			existsTableSystem = true;
-			this->query("select content from system where type = 'sniffer_db_version'");
+			this->query("select content from `system` where type = 'sniffer_db_version'");
 			SqlDb_row rslt = this->fetchRow();
 			if(rslt) {
 				sniffer_version_num_save = atol(rslt[0].c_str());
@@ -4215,7 +4218,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		for(size_t i = 0; i < cdrMainTables.size(); i++) {
 			this->query("show tables like '" + cdrMainTables[i] + "'");
 			if(this->fetchRow()) {
-				this->query(string("EXPLAIN PARTITIONS SELECT * from ") + cdrMainTables[i] + " limit 1");
+				this->query(string("EXPLAIN") + this->explainPartitionString + " SELECT * from " + cdrMainTables[i] + " limit 1");
 				SqlDb_row row;
 				if((row = this->fetchRow())) {
 					okExplainPartition = true;
@@ -5825,11 +5828,11 @@ void SqlDb_mysql::saveTimezoneInformation() {
 		if(!this->fetchRow()) {
 			return;
 		}
-		this->query("show columns from system where Field='content'");
+		this->query("show columns from `system` where Field='content'");
 		if(!this->fetchRow()) {
 			return;
 		}
-		this->query("show columns from system where Field='type'");
+		this->query("show columns from `system` where Field='type'");
 		if(!this->fetchRow()) {
 			return;
 		}
@@ -5880,7 +5883,7 @@ void SqlDb_mysql::checkDbMode() {
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
 		this->query("show tables like 'cdr'");
 		if(this->fetchRow()) {
-			this->query("EXPLAIN PARTITIONS SELECT * from cdr limit 1");
+			this->query(string("EXPLAIN") + this->explainPartitionString + " SELECT * from cdr limit 1");
 			SqlDb_row row;
 			if((row = this->fetchRow())) {
 				if(row["partitions"] != "") {
@@ -5971,7 +5974,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 	if(!opt_cdr_partition &&
 	   (isCloud() ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
-		this->query("EXPLAIN PARTITIONS SELECT * from cdr limit 1");
+		this->query(string("EXPLAIN") + this->explainPartitionString + " SELECT * from cdr limit 1");
 		SqlDb_row row;
 		if((row = this->fetchRow())) {
 			if(row["partitions"] != "") {
@@ -6383,7 +6386,7 @@ bool SqlDb_mysql::isExtPrecissionBilling() {
 		string table = string("billing") + (i ? "_rule" : "");
 		this->query("show tables like '" + table + "'");
 		if(this->fetchRow()) {
-			this->query("select * from " + table);
+			this->query("select * from `" + table + "`");
 			SqlDb_row row;
 			while((row = this->fetchRow())) {
 				for(int j = 0; j < 2 && !existsExtPrecisionBilling; j++) {
@@ -6443,20 +6446,20 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 				    (string(tableName) == "register_state" || string(tableName) == "register_failed") ? "created_at" :
 				    "";
 		if(!timeColumn.empty()) {
-			sqlDbSrc->query(string("select min(id) as min_id from ") + tableName +
-					" where " + timeColumn + " = " + 
-					"(select min(" + timeColumn + ") from " + tableName + " where " + timeColumn + " > '" + opt_database_backup_from_date + "')");
+			sqlDbSrc->query(string("select min(id) as min_id from `") + tableName +
+					"` where " + timeColumn + " = " +
+					"(select min(" + timeColumn + ") from `" + tableName + "` where " + timeColumn + " > '" + opt_database_backup_from_date + "')");
 			minIdSrc = atoll(sqlDbSrc->fetchRow()["min_id"].c_str());
 		}
 	} else {
-		sqlDbSrc->query(string("select min(id) as min_id from ") + tableName);
+		sqlDbSrc->query(string("select min(id) as min_id from `") + tableName + "`");
 		SqlDb_row row = sqlDbSrc->fetchRow();
 		if(row) {
 			minIdSrc = atoll(row["min_id"].c_str());
 		}
 	}
 	u_int64_t maxIdSrc = 0;
-	sqlDbSrc->query(string("select max(id) as max_id from ") + tableName);
+	sqlDbSrc->query(string("select max(id) as max_id from `") + tableName + "`");
 	SqlDb_row row = sqlDbSrc->fetchRow();
 	if(row) {
 		maxIdSrc = atoll(row["max_id"].c_str());
@@ -6471,7 +6474,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 	u_int64_t startIdSrc = 0;
 	bool okStartIdSrc = false;
 	if(!descDir) {
-		this->query(string("select max(id) as max_id from ") + tableName);
+		this->query(string("select max(id) as max_id from `") + tableName + "`");
 		row = this->fetchRow();
 		if(row) {
 			maxIdDst = atoll(row["max_id"].c_str());
@@ -6479,7 +6482,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		startIdSrc = max(minIdSrc, maxIdDst + 1);
 		okStartIdSrc = startIdSrc <= maxIdSrc;
 	} else {
-		this->query(string("select min(id) as min_id from ") + tableName);
+		this->query(string("select min(id) as min_id from `") + tableName + "`");
 		row = this->fetchRow();
 		if(row) {
 			minIdDst = atoll(row["min_id"].c_str());
@@ -6489,7 +6492,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 	}
 	if(okStartIdSrc) {
 		map<string, int> columnsDest;
-		this->query(string("show columns from ") + tableName);
+		this->query(string("show columns from `") + tableName + "`");
 		size_t i = 0;
 		while((row = this->fetchRow())) {
 			columnsDest[row["Field"]] = ++i;
@@ -6508,7 +6511,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		string orderSrc = "id";
 		stringstream queryStr;
 		queryStr << "select " << tableName << ".*"
-			 << " from " << tableName;
+			 << " from `" << tableName << "`";
 		if(condSrc.size()) {
 			queryStr << " where ";
 			for(size_t i = 0; i < condSrc.size(); i++) {
@@ -7187,7 +7190,7 @@ void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPar
 	}
 	SqlDb_row row;
 	if(isCloud()) {
-		sqlDb->query(string("explain partitions select * from ") + table);
+		sqlDb->query(string("explain") + sqlDb->explainPartitionString + " select * from `" + table + "`");
 		row = sqlDb->fetchRow();
 		if(row) {
 			vector<string> exists_partitions = split(row["partitions"], ',');
@@ -7230,7 +7233,7 @@ void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPar
 	}
 	for(map<string, int>::iterator iter = partitions.begin(); iter != partitions.end(); iter++) {
 		syslog(LOG_NOTICE, "DROP PARTITION %s : %s", table, iter->first.c_str());
-		sqlDb->query(string("ALTER TABLE ") + table + " DROP PARTITION " + iter->first);
+		sqlDb->query(string("ALTER TABLE `") + table + "` DROP PARTITION " + iter->first);
 	}
 }
 

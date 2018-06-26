@@ -241,7 +241,8 @@ public:
 	static u_int32_t getAvgDelayQuery();
 	static void resetDelayQuery();
 	void logNeedAlter(string table, string reason, string alter,
-			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
+	bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
+	string explainPartitionString = " PARTITIONS";
 protected:
 	string conn_server;
 	string conn_user;
