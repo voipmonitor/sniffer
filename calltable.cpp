@@ -4228,9 +4228,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					" join cdr_next on (cdr_next.cdr_ID = cdr.ID and cdr_next.calldate = cdr.calldate)\n" +
 					" where cdr.calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
 					"       cdr.calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
-					"       " + (useSensorId > -1 ? 
-						      "id_sensor = " + intToString(useSensorId) : 
-						      "id_sensor is null") + " and\n" +
+					"       " + (opt_cdr_check_exists_callid != 2 ? 
+						      ((useSensorId > -1 ? 
+							 "id_sensor = " + intToString(useSensorId) : 
+							 "id_sensor is null") + " and\n") :
+						      "") +
 					"       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
 				query_str += string(
 					"set @exists_rtp =\n") +
