@@ -734,6 +734,13 @@ string cConfigItem_string::normalizeStringValueForCmp(string value) {
 			rslt += *iter;
 		}
 		return(rslt);
+	} else {
+		if(!prefix.empty() && strncmp(value.c_str(), prefix.c_str(), prefix.length())) {
+			value = prefix + value;
+		}
+		if(!suffix.empty() && strncmp(value.c_str() + value.length() - suffix.length(), suffix.c_str(), suffix.length())) {
+			value = value + suffix;
+		}
 	}
 	return(value);
 }

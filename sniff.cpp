@@ -3201,10 +3201,14 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 		}
 		// save who hanged up 
-		if(call->getSipcallerip() == packetS->saddr) {
-			call->whohanged = 0;
-		} else if(call->sipcalledip[0] == packetS->saddr || call->getSipcalledip() == packetS->saddr) {
-			call->whohanged = 1;
+		if(detectCallerd) {
+			call->whohanged = iscaller ? 1 : 0;
+		} else {
+			if(call->getSipcallerip() == packetS->saddr) {
+				call->whohanged = 0;
+			} else if(call->sipcalledip[0] == packetS->saddr || call->getSipcalledip() == packetS->saddr) {
+				call->whohanged = 1;
+			}
 		}
 	} else if(packetS->sip_method == CANCEL) {
 		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
@@ -3262,10 +3266,14 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						call->unconfirmed_bye = false;
 						
 						// update who hanged up 
-						if(call->getSipcallerip() == packetS->daddr) {
-							call->whohanged = 0;
-						} else if(call->sipcalledip[0] == packetS->daddr || call->getSipcalledip() == packetS->daddr) {
-							call->whohanged = 1;
+						if(detectCallerd) {
+							call->whohanged = iscaller ? 0 : 1;
+						} else {
+							if(call->getSipcallerip() == packetS->daddr) {
+								call->whohanged = 0;
+							} else if(call->sipcalledip[0] == packetS->daddr || call->getSipcalledip() == packetS->daddr) {
+								call->whohanged = 1;
+							}
 						}
 
 						// Whan voipmonitor listens for both SIP legs (with the same Call-ID it sees both BYE and should save both 200 OK after BYE so closing call after the 
