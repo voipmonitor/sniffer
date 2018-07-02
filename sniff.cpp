@@ -4086,6 +4086,10 @@ void process_packet_sip_other_options(packet_s_process *packetS, u_int32_t cseq_
 		}
 		cout << dump_data << endl;
 	}
+	if(livesnifferfilterUseSipTypes.u_options) {
+		save_live_packet(NULL, packetS, OPTIONS,
+				 NULL, NULL);
+	}
 	s_detect_callerd data_callerd;
 	detect_callerd(packetS, packetS->sip_method, &data_callerd);
 	cOptionsItem *options = new FILE_LINE(0) cOptionsItem;
