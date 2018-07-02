@@ -2558,7 +2558,9 @@ Call::convertRawToWav() {
 				if(iter > 0) {
 					if(!force_convert_raw_to_wav &&
 					   (rtp[ssrc_index]->ssrc == rtp[last_ssrc_index]->ssrc and
+					    rtp[ssrc_index]->codec == rtp[last_ssrc_index]->codec and
 					    abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
+					    abs((long)rtp[ssrc_index]->stats.received - (long)rtp[last_ssrc_index]->stats.received) < max(rtp[ssrc_index]->stats.received, rtp[last_ssrc_index]->stats.received) * 0.02 and
 					    last_size > 10000)) {
 						// ignore this raw file it is duplicate 
 						if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
