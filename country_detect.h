@@ -80,7 +80,7 @@ public:
 	void setInternationalPrefixes(const char *prefixes, vector<string> *separators = NULL);
 	void setSkipPrefixes(const char *prefixes, vector<string> *separators = NULL);
 	void setInternationalMinLength(int internationalMinLength, bool internationalMinLengthPrefixesStrict);
-	void setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWithoutPrefix);
+	void setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWithoutPrefix, int minLengthNapaWithoutPrefix);
 	bool isSet(SqlDb_row *dbRow);
 	bool load(SqlDb_row *dbRow);
 	bool load();
@@ -133,6 +133,7 @@ private:
 	bool internationalMinLengthPrefixesStrict;
 	string countryCodeForLocalNumbers;
 	bool enableCheckNapaWithoutPrefix;
+	int minLengthNapaWithoutPrefix;
 	vector<string> skipPrefixes_string;
 	vector<cRegExp*> skipPrefixes_regexp;
 	vector<CountryPrefix_recAdv*> customer_data_advanced;

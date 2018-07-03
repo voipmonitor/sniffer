@@ -131,6 +131,7 @@ CheckInternational::CheckInternational() {
 	internationalMinLength = 0;
 	internationalMinLengthPrefixesStrict = false;
 	enableCheckNapaWithoutPrefix = false;
+	minLengthNapaWithoutPrefix = 0;
 }
 
 CheckInternational::~CheckInternational() {
@@ -176,8 +177,9 @@ void CheckInternational::setInternationalMinLength(int internationalMinLength, b
 	this->internationalMinLengthPrefixesStrict = internationalMinLengthPrefixesStrict;
 }
 
-void CheckInternational::setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWithoutPrefix) {
+void CheckInternational::setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWithoutPrefix, int minLengthNapaWithoutPrefix) {
 	this->enableCheckNapaWithoutPrefix = enableCheckNapaWithoutPrefix;
+	this->minLengthNapaWithoutPrefix = minLengthNapaWithoutPrefix;
 }
 
 bool CheckInternational::isSet(SqlDb_row *dbRow) {
@@ -228,6 +230,7 @@ void CheckInternational::_load(SqlDb_row *dbRow) {
 	internationalMinLengthPrefixesStrict = atoi((*dbRow)["international_number_min_length_prefixes_strict"].c_str());
 	countryCodeForLocalNumbers = (*dbRow)["country_code_for_local_numbers"];
 	enableCheckNapaWithoutPrefix = atoi((*dbRow)["enable_check_napa_without_prefix"].c_str());
+	minLengthNapaWithoutPrefix = atoi((*dbRow)["min_length_napa_without_prefix"].c_str());
 	setSkipPrefixes((*dbRow)["skip_prefixes"].c_str(), &prefixesSeparators);
 }
 
@@ -576,13 +579,17 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 		if(checkInternational->enableCheckNapaWithoutPrefix && countryIsNapa(local_country)) {
 			bool okLengthForUS_CA = (numberNormalized.length() == 10 && numberNormalized[0] != '1') ||
 						(numberNormalized.length() == 11 && numberNormalized[0] == '1');
+			bool okLengthForOther = checkInternational->minLengthNapaWithoutPrefix > 0 ?
+						 ((numberNormalized.length() >= checkInternational->minLengthNapaWithoutPrefix && numberNormalized[0] != '1') ||
+						  (numberNormalized.length() >= (checkInternational->minLengthNapaWithoutPrefix + 1) && numberNormalized[0] == '1')) :
+						 true;
 			string numberNormalizedNapa = numberNormalized;
 			if(numberNormalizedNapa[0] != '1') {
 				numberNormalizedNapa = "1" + numberNormalizedNapa;
 			}
 			string country = this->_getCountry(numberNormalizedNapa.c_str(), countries, country_prefix);
 			if((!countries || countries->size() == 1) && countryIsNapa(country) &&
-			   (country == "US" || country == "CA" ? okLengthForUS_CA : true)) {
+			   (country == "US" || country == "CA" ? okLengthForUS_CA : okLengthForOther)) {
 				if(rsltNumberNormalized) {
 					*rsltNumberNormalized = numberNormalizedNapa;
 				}
