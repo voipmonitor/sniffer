@@ -3456,6 +3456,7 @@ void Call::setRtpThreadNum() {
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
+ 
 	if(sverb.disable_save_call) {
 		return(0);
 	}
@@ -3518,21 +3519,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 
 	SqlDb_row cdr,
-			cdr_next,
-			cdr_next_ch[CDR_NEXT_MAX],
-			cdr_country_code,
-			/*
-			cdr_phone_number_caller,
-			cdr_phone_number_called,
-			cdr_name,
-			cdr_domain_caller,
-			cdr_domain_called,
-			*/
-			cdr_sip_response,
-			cdr_reason_sip,
-			cdr_reason_q850,
-			cdr_ua_a,
-			cdr_ua_b;
+		  cdr_next,
+		  cdr_next_ch[CDR_NEXT_MAX],
+		  cdr_country_code;
 	char _cdr_next_ch_name[CDR_NEXT_MAX][100];
 	char *cdr_next_ch_name[CDR_NEXT_MAX];
 	for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
@@ -3620,18 +3609,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr_name.add(sqlEscapeString(reverseString(callername).c_str()), "name_reverse");
 	*/
 	
-	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
-	if(existsColumns.cdr_reason) {
-		if(reason_sip_text.length()) {
-			cdr_reason_sip.add(1, "type");
-			cdr_reason_sip.add(sqlEscapeString(reason_sip_text.c_str()), "reason");
-		}
-		if(reason_q850_text.length()) {
-			cdr_reason_q850.add(2, "type");
-			cdr_reason_q850.add(sqlEscapeString(reason_q850_text.c_str()), "reason");
-		}
-	}
-
 	unsigned int dscp_a = caller_sipdscp,
 		     dscp_b = called_sipdscp,
 		     dscp_c = 0,
@@ -4184,31 +4161,56 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
-		query_str += string("set @lSresp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ");\n";
-		cdr.add("_\\_'SQL'_\\_:@lSresp_id", "lastSIPresponse_id");
-		//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+		unsigned _cb_id = calltable->cb_sip_response_getId(lastSIPresponse, false, true);
+		if(_cb_id) {
+			cdr.add(_cb_id, "lastSIPresponse_id");
+		} else {
+			query_str += string("set @lSresp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ");\n";
+			cdr.add("_\\_'SQL'_\\_:@lSresp_id", "lastSIPresponse_id");
+			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+		}
 		if(existsColumns.cdr_reason) {
 			if(reason_sip_text.length()) {
-				query_str += string("set @r_sip_tid = ") + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ");\n";
-				cdr.add("_\\_'SQL'_\\_:@r_sip_tid", "reason_sip_text_id");
-				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ")", "reason_sip_text_id");
+				_cb_id = calltable->cb_reason_sip_getId(reason_sip_text.c_str(), false, true);
+				if(_cb_id) {
+					cdr.add(_cb_id, "reason_sip_text_id");
+				} else {
+					query_str += string("set @r_sip_tid = ") + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ");\n";
+					cdr.add("_\\_'SQL'_\\_:@r_sip_tid", "reason_sip_text_id");
+					//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ")", "reason_sip_text_id");
+				}
 			}
 			if(reason_q850_text.length()) {
-				query_str += string("set @r_q850_tid = ") + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_q850_text.c_str()) + ");\n";
-				cdr.add("_\\_'SQL'_\\_:@r_q850_tid", "reason_q850_text_id");
-				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertREASON(2," + sqlEscapeStringBorder(reason_q850_text.c_str()) + ")", "reason_q850_text_id");
+				_cb_id = calltable->cb_reason_q850_getId(reason_q850_text.c_str(), false, true);
+				if(_cb_id) {
+					cdr.add(_cb_id, "reason_q850_text_id");
+				} else {
+					query_str += string("set @r_q850_tid = ") + "getIdOrInsertREASON(2," + sqlEscapeStringBorder(reason_q850_text.c_str()) + ");\n";
+					cdr.add("_\\_'SQL'_\\_:@r_q850_tid", "reason_q850_text_id");
+					//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertREASON(2," + sqlEscapeStringBorder(reason_q850_text.c_str()) + ")", "reason_q850_text_id");
+				}
 			}
 		}
 		if(opt_cdr_ua_enable) {
 			if(a_ua[0]) {
-				query_str += string("set @uaA_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
-				cdr.add("_\\_'SQL'_\\_:@uaA_id", "a_ua_id");
-				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+				_cb_id = calltable->cb_ua_getId(a_ua, false, true);
+				if(_cb_id) {
+					cdr.add(_cb_id, "a_ua_id");
+				} else {
+					query_str += string("set @uaA_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
+					cdr.add("_\\_'SQL'_\\_:@uaA_id", "a_ua_id");
+					//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+				}
 			}
 			if(b_ua[0]) {
-				query_str += string("set @uaB_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ");\n";
-				cdr.add("_\\_'SQL'_\\_:@uaB_id", "b_ua_id");
-				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+				_cb_id = calltable->cb_ua_getId(b_ua, false, true);
+				if(_cb_id) {
+					cdr.add(_cb_id, "b_ua_id");
+				} else {
+					query_str += string("set @uaB_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ");\n";
+					cdr.add("_\\_'SQL'_\\_:@uaB_id", "b_ua_id");
+					//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+				}
 			}
 		}
 		
@@ -4440,7 +4442,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
 				SqlDb_row sipresp;
 				sipresp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-				sipresp.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
+				_cb_id = calltable->cb_sip_response_getId(iterSiprespUnique->SIPresponse.c_str(), false, true);
+				if(_cb_id) {
+					sipresp.add(_cb_id, "SIPresponse_id");
+				} else {
+					query_str += string("set @sip_resp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ");\n";
+					sipresp.add("_\\_'SQL'_\\_:@sip_resp_id", "SIPresponse_id");
+					//sipresp.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
+				}
 				sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
 				if(existsColumns.cdr_sipresp_calldate) {
 					sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -4455,11 +4464,25 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				siphist.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 				siphist.add((u_int64_t)(iterSiphistory->time - (first_packet_time * 1000000ull + first_packet_usec)), "time");
 				if(iterSiphistory->SIPrequest.length()) {
-					 siphist.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPREQUEST(" + sqlEscapeStringBorder(iterSiphistory->SIPrequest.c_str()) + ")", "SIPrequest_id");
+					_cb_id = calltable->cb_sip_request_getId(iterSiphistory->SIPrequest.c_str(), false, true);
+					if(_cb_id) {
+						siphist.add(_cb_id, "SIPrequest_id");
+					} else {
+						query_str += string("set @sip_req_id = ") + "getIdOrInsertSIPREQUEST(" + sqlEscapeStringBorder(iterSiphistory->SIPrequest.c_str()) + ");\n";
+						siphist.add("_\\_'SQL'_\\_:@sip_req_id", "SIPrequest_id");
+						//siphist.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPREQUEST(" + sqlEscapeStringBorder(iterSiphistory->SIPrequest.c_str()) + ")", "SIPrequest_id");
+					}
 				}
 				if(iterSiphistory->SIPresponseNum && iterSiphistory->SIPresponse.length()) {
-					 siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
-					 siphist.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiphistory->SIPresponse.c_str()) + ")", "SIPresponse_id");
+					siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
+					_cb_id = calltable->cb_sip_response_getId(iterSiphistory->SIPresponse.c_str(), false, true);
+					if(_cb_id) {
+						siphist.add(_cb_id, "SIPresponse_id");
+					} else {
+						query_str += string("set @sip_resp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiphistory->SIPresponse.c_str()) + ");\n";
+						siphist.add("_\\_'SQL'_\\_:@sip_resp_id", "SIPresponse_id");
+						//siphist.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiphistory->SIPresponse.c_str()) + ")", "SIPresponse_id");
+					}
 				}
 				if(existsColumns.cdr_siphistory_calldate) {
 					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -4528,29 +4551,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		return(0);
 	}
 
-	/*
-	caller_id = sqlDb->getIdOrInsert("cdr_phone_number", "id", "number", cdr_phone_number_caller);
-	called_id = sqlDb->getIdOrInsert("cdr_phone_number", "id", "number", cdr_phone_number_called);
-	callername_id = sqlDb->getIdOrInsert("cdr_name", "id", "name", cdr_name);
-	caller_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_caller);
-	called_domain_id = sqlDb->getIdOrInsert("cdr_domain", "id", "domain", cdr_domain_called);
-	*/
-	lastSIPresponse_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
+	lastSIPresponse_id = calltable->cb_sip_response_getId(lastSIPresponse, true);
 	if(existsColumns.cdr_reason) {
 		if(reason_sip_text.length()) {
-			reason_sip_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_reason_table, "id", "reason", cdr_reason_sip, "type");
+			reason_sip_id = calltable->cb_reason_sip_getId(reason_sip_text.c_str(), true);
 		}
 		if(reason_q850_text.length()) {
-			reason_q850_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_reason_table, "id", "reason", cdr_reason_q850, "type");
+			reason_q850_id = calltable->cb_reason_q850_getId(reason_q850_text.c_str(), true);
 		}
 	}
 	if(a_ua[0]) {
-		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
-		a_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
+		a_ua_id = calltable->cb_ua_getId(a_ua, true);
 	}
 	if(b_ua[0]) {
-		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
-		b_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
+		b_ua_id = calltable->cb_ua_getId(b_ua, true);
 	}
 
 	/*
@@ -4707,9 +4721,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
 			SqlDb_row sipresp;
 			sipresp.add(cdrID, "cdr_ID");
-			SqlDb_row _resp;
-			_resp.add(iterSiprespUnique->SIPresponse, "lastSIPresponse");
-			sipresp.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", _resp), "SIPresponse_id");
+			sipresp.add(calltable->cb_sip_response_getId(iterSiprespUnique->SIPresponse.c_str(), true), "SIPresponse_id");
 			sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
 			if(existsColumns.cdr_sipresp_calldate) {
 				sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -4723,15 +4735,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				siphist.add(cdrID, "cdr_ID");
 				siphist.add((u_int64_t)(iterSiphistory->time - (first_packet_time * 1000000ull + first_packet_usec)), "time");
 				if(iterSiphistory->SIPrequest.length()) {
-					 SqlDb_row _req;
-					 _req.add(iterSiphistory->SIPrequest, "request");
-					 siphist.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_request_table, "id", "request", _req), "SIPrequest_id");
+					 siphist.add(calltable->cb_sip_request_getId(iterSiphistory->SIPrequest.c_str(), true), "SIPrequest_id");
 				}
 				if(iterSiphistory->SIPresponseNum && iterSiphistory->SIPresponse.length()) {
 					 siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
-					 SqlDb_row _resp;
-					 _resp.add(iterSiphistory->SIPresponse, "lastSIPresponse");
-					 siphist.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", _resp), "SIPresponse_id");
+					 siphist.add(calltable->cb_sip_response_getId(iterSiphistory->SIPresponse.c_str(), true), "SIPresponse_id");
 				}
 				if(existsColumns.cdr_siphistory_calldate) {
 					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -4851,11 +4859,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 	const char *register_table = "register";
 	
 	string query;
-
-	SqlDb_row cdr_ua;
-	if(a_ua[0]) {
-		cdr_ua.add(sqlEscapeString(a_ua), "ua");
-	}
 
 	unsigned int now = time(NULL);
 
@@ -5042,7 +5045,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(5, "state");
 						reg.add(intToString(fname_register), "fname");
 						reg.add(useSensorId, "id_sensor");
-						reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+						if(a_ua[0]) {
+							reg.add(calltable->cb_ua_getId(a_ua, true), "ua_id");
+						}
 						sqlDbSaveCall->insert("register_state", reg);
 					}
 
@@ -5060,7 +5065,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(sqlEscapeString(digest_username), "digestusername");
 						reg.add(register_expires, "expires");
 						reg.add(regstate, "state");
-						reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+						if(a_ua[0]) {
+							reg.add(calltable->cb_ua_getId(a_ua, true), "ua_id");
+						}
 						reg.add(intToString(fname_register), "fname");
 						reg.add(useSensorId, "id_sensor");
 						sqlDbSaveCall->insert("register_state", reg);
@@ -5079,7 +5086,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(digest_username), "digestusername");
 					reg.add(register_expires, "expires");
 					reg.add(regstate, "state");
-					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					if(a_ua[0]) {
+						reg.add(calltable->cb_ua_getId(a_ua, true), "ua_id");
+					}
 					reg.add(intToString(fname_register), "fname");
 					reg.add(useSensorId, "id_sensor");
 					sqlDbSaveCall->insert("register_state", reg);
@@ -5103,7 +5112,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(digest_username), "digestusername");
 					reg.add(sqlEscapeString(digest_realm), "digestrealm");
-					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					if(a_ua[0]) {
+						reg.add(calltable->cb_ua_getId(a_ua, true), "ua_id");
+					}
 					reg.add(register_expires, "expires");
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
 					reg.add(intToString(fname_register), "fname");
@@ -5211,7 +5222,9 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(contact_num), "contact_num");
 					reg.add(sqlEscapeString(contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(digest_username), "digestusername");
-					reg.add(sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+					if(a_ua[0]) {
+						reg.add(calltable->cb_ua_getId(a_ua, true), "ua_id");
+					}
 					reg.add(intToString(fname_register), "fname");
 					if(useSensorId > -1) {
 						reg.add(useSensorId, "id_sensor");
@@ -5237,12 +5250,8 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	adjustUA();
 
 	SqlDb_row msg,
-			msg_next_ch[CDR_NEXT_MAX],
-			msg_country_code,
-			m_contenttype,
-			cdr_sip_response,
-			cdr_ua_a,
-			cdr_ua_b;
+		  msg_next_ch[CDR_NEXT_MAX],
+		  msg_country_code;
 	char _msg_next_ch_name[CDR_NEXT_MAX][100];
 	char *msg_next_ch_name[CDR_NEXT_MAX];
 	for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
@@ -5278,9 +5287,6 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	msg.add(sqlEscapeString(called_domain), "called_domain");
 	msg.add(sqlEscapeString(callername), "callername");
 	msg.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
-
-	cdr_sip_response.add(sqlEscapeString(lastSIPresponse), "lastSIPresponse");
-
 	msg.add(htonl(getSipcallerip()), "sipcallerip");
 	msg.add(htonl(getSipcalledip()), "sipcalledip");
 	msg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -5345,21 +5351,43 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
-		msg.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+		unsigned _cb_id = calltable->cb_sip_response_getId(lastSIPresponse, false, true);
+		if(_cb_id) {
+			msg.add(_cb_id, "lastSIPresponse_id");
+		} else {
+			query_str += string("set @lSresp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ");\n";
+			msg.add("_\\_'SQL'_\\_:@lSresp_id", "lastSIPresponse_id");
+			//msg.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
+		}
 		if(a_ua[0]) {
-			query_str += string("set @uaA_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
-			msg.add("_\\_'SQL'_\\_:@uaA_id", "a_ua_id");
-			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+			_cb_id = calltable->cb_ua_getId(a_ua, false, true);
+			if(_cb_id) {
+				msg.add(_cb_id, "a_ua_id");
+			} else {
+				query_str += string("set @uaA_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
+				msg.add("_\\_'SQL'_\\_:@uaA_id", "a_ua_id");
+				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
+			}
 		}
 		if(b_ua[0]) {
-			query_str += string("set @uaB_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ");\n";
-			msg.add("_\\_'SQL'_\\_:@uaB_id", "b_ua_id");
-			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+			_cb_id = calltable->cb_ua_getId(b_ua, false, true);
+			if(_cb_id) {
+				msg.add(_cb_id, "b_ua_id");
+			} else {
+				query_str += string("set @uaB_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ");\n";
+				msg.add("_\\_'SQL'_\\_:@uaB_id", "b_ua_id");
+				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
+			}
 		}
-		if(contenttype) {
-			query_str += string("set @cntt_id = ") +  "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ");\n";
-			msg.add("_\\_'SQL'_\\_:@cntt_id", "id_contenttype");
-			//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ")", "id_contenttype");
+		if(contenttype && contenttype[0]) {
+			_cb_id = calltable->cb_contenttype_getId(contenttype, false, true);
+			if(_cb_id) {
+				msg.add(_cb_id, "id_contenttype");
+			} else {
+				query_str += string("set @cntt_id = ") +  "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ");\n";
+				msg.add("_\\_'SQL'_\\_:@cntt_id", "id_contenttype");
+				//cdr.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(contenttype) + ")", "id_contenttype");
+			}
 		}
 		
 		extern bool opt_message_check_duplicity_callid_in_next_pass_insert;
@@ -5430,19 +5458,15 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			a_ua_id = 0,
 			b_ua_id = 0;
 
-	lastSIPresponse_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_sip_response_table, "id", "lastSIPresponse", cdr_sip_response);
+	lastSIPresponse_id = calltable->cb_sip_response_getId(lastSIPresponse, true);
 	if(a_ua[0]) {
-		cdr_ua_a.add(sqlEscapeString(a_ua), "ua");
-		a_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_a);
+		a_ua_id = calltable->cb_ua_getId(a_ua, true);
 	}
 	if(b_ua[0]) {
-		cdr_ua_b.add(sqlEscapeString(b_ua), "ua");
-		b_ua_id = sqlDbSaveCall->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua_b);
+		b_ua_id = calltable->cb_ua_getId(b_ua, true);
 	}
 	if(contenttype && contenttype[0]) {
-		m_contenttype.add(sqlEscapeString(contenttype), "contenttype");
-		unsigned int id_contenttype = sqlDbSaveCall->getIdOrInsert("contenttype", "id", "contenttype", m_contenttype);
-		msg.add(id_contenttype, "id_contenttype");
+		msg.add(calltable->cb_contenttype_getId(contenttype, true), "id_contenttype");
 	}
 
 	msg.add(lastSIPresponse_id, "lastSIPresponse_id", true);
@@ -6065,6 +6089,9 @@ Calltable::Calltable() {
 	extern int opt_audioqueue_threads_max;
 	audioQueueThreadsMax = min(max(2l, sysconf( _SC_NPROCESSORS_ONLN ) - 1), (long)opt_audioqueue_threads_max);
 	audioQueueTerminating = 0;
+	
+	cbInit();
+	
 };
 
 /* destructor */
@@ -6078,6 +6105,9 @@ Calltable::~Calltable() {
 	pthread_mutex_destroy(&calls_mergeMAPlock);
 	pthread_mutex_destroy(&registers_listMAPlock);
 	*/
+	
+	cbTerm();
+	
 };
 
 /* add node to hash. collisions are linked list of nodes*/
@@ -7045,6 +7075,69 @@ int Calltable::cleanup_ss7( time_t currtime ) {
 	}
 	unlock_process_ss7_queue();
 	return(0);
+}
+
+void Calltable::cbInit() {
+	cb_ua = new FILE_LINE(0) cSqlDbCodebook("cdr_ua", "id", "ua", 500000);
+	cb_sip_response = new FILE_LINE(0) cSqlDbCodebook("cdr_sip_response", "id", "lastSIPresponse");
+	cb_sip_request = new FILE_LINE(0) cSqlDbCodebook("cdr_sip_request", "id", "request");
+	cb_reason_sip = new FILE_LINE(0) cSqlDbCodebook("cdr_reason", "id", "reason");
+	cb_reason_sip->addCond("type", "1");
+	cb_reason_q850 = new FILE_LINE(0) cSqlDbCodebook("cdr_reason", "id", "reason");
+	cb_reason_q850->addCond("type", "2");
+	cb_contenttype = new FILE_LINE(0) cSqlDbCodebook("contenttype", "id", "contenttype");
+	if(!isCloud() && !is_client() && !is_sender() &&
+	   !is_read_from_file_simple()) {
+		cb_ua->setAutoLoadPeriod(6 * 3600);
+		cb_sip_response->setAutoLoadPeriod(6 * 3600);
+		cb_sip_request->setAutoLoadPeriod(6 * 3600);
+		cb_reason_sip->setAutoLoadPeriod(6 * 3600);
+		cb_reason_q850->setAutoLoadPeriod(6 * 3600);
+		cb_contenttype->setAutoLoadPeriod(6 * 3600);
+		cbLoad();
+	}
+}
+
+void Calltable::cbLoad() {
+	cb_ua->load();
+	cb_sip_response->load();
+	cb_sip_request->load();
+	cb_reason_sip->load();
+	cb_reason_q850->load();
+	cb_contenttype->load();
+}
+
+void Calltable::cbTerm() {
+	delete cb_ua;
+	delete cb_sip_response;
+	delete cb_sip_request;
+	delete cb_reason_sip;
+	delete cb_reason_q850;
+	delete cb_contenttype;
+}
+
+unsigned Calltable::cb_ua_getId(const char *ua, bool enableInsert, bool enableAutoLoad) {
+	return(cb_ua->getId(ua, enableInsert, enableAutoLoad));
+}
+
+unsigned Calltable::cb_sip_response_getId(const char *response, bool enableInsert, bool enableAutoLoad) {
+	return(cb_sip_response->getId(response, enableInsert, enableAutoLoad));
+}
+
+unsigned Calltable::cb_sip_request_getId(const char *request, bool enableInsert, bool enableAutoLoad) {
+	return(cb_sip_request->getId(request, enableInsert, enableAutoLoad));
+}
+
+unsigned Calltable::cb_reason_sip_getId(const char *reason, bool enableInsert, bool enableAutoLoad) {
+	return(cb_reason_sip->getId(reason, enableInsert, enableAutoLoad));
+}
+
+unsigned Calltable::cb_reason_q850_getId(const char *reason, bool enableInsert, bool enableAutoLoad) {
+	return(cb_reason_q850->getId(reason, enableInsert, enableAutoLoad));
+}
+
+unsigned Calltable::cb_contenttype_getId(const char *content, bool enableInsert, bool enableAutoLoad) {
+	 return(cb_contenttype->getId(content, enableInsert, enableAutoLoad));
 }
 
 void Call::saveregister(time_t currtime) {

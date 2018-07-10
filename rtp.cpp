@@ -468,7 +468,9 @@ RTP::save_mos_graph(bool delimiter) {
 
 	last_stat_loss_perc_mult10 = (double)lost / ((double)received + (double)lost) * 100.0;
 
-	rtp_stat.update(saddr, header_ts.tv_sec, last_interval_mosf1, last_interval_mosf2, last_interval_mosAD, jitter, last_stat_loss_perc_mult10);
+	if(!is_read_from_file_simple()) {
+		rtp_stat.update(saddr, header_ts.tv_sec, last_interval_mosf1, last_interval_mosf2, last_interval_mosAD, jitter, last_stat_loss_perc_mult10);
+	}
 }
 
 /* destructor */

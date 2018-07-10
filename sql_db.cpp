@@ -696,6 +696,54 @@ string SqlDb::prepareQuery(string query, bool nextPass) {
 	return(query);
 }
 
+string SqlDb::getFieldsStr(list<SqlDb_field> *fields) {
+	string fieldsStr;
+	for(list<SqlDb_field>::iterator iter = fields->begin(); iter != fields->end(); iter++) {
+		if(!fieldsStr.empty()) {
+			fieldsStr += ", ";
+		}
+		fieldsStr += iter->needEscapeField ?
+			      getFieldBorder() + iter->field + getFieldBorder() :
+			      iter->field;
+		if(!iter->alias.empty()) {
+			fieldsStr += " as ";
+			fieldsStr += getFieldBorder() + iter->alias + getFieldBorder();
+		}
+	}
+	return(fieldsStr);
+}
+
+string SqlDb::getCondStr(list<SqlDb_condField> *cond) {
+	string condStr;
+	for(list<SqlDb_condField>::iterator iter = cond->begin(); iter != cond->end(); iter++) {
+		if(!condStr.empty()) {
+			condStr += " and ";
+		}
+		condStr += iter->needEscapeField ?
+			    getFieldBorder() + iter->field + getFieldBorder() :
+			    iter->field;
+		condStr += " = ";
+		condStr += iter->needEscapeValue ?
+			    getContentBorder() + escape(iter->value.c_str()) + getContentBorder() :
+			    iter->value;
+	}
+	return(condStr);
+}
+
+string SqlDb::selectQuery(string table, list<SqlDb_field> *fields, list<SqlDb_condField> *cond, unsigned limit) {
+	string query = 
+		"select " +
+		(fields && fields->size() ? getFieldsStr(fields) : "*") + 
+		" from " + table;
+	if(cond && cond->size()) {
+		query += " where " + getCondStr(cond);
+	}
+	if(limit) {
+		query += " limit " + intToString(limit);
+	}
+	return(query);
+}
+
 string SqlDb::insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent, bool escapeAll, bool insertIgnore) {
 	string query = 
 		string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO " + table + " ( " + row.implodeFields(this->getFieldSeparator(), this->getFieldBorder()) + 
@@ -733,6 +781,11 @@ string SqlDb::updateQuery(string table, SqlDb_row row, SqlDb_row whereCond, bool
 	string cond = 
 		whereCond.implodeFieldContent(" and ", this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll);
 	return(updateQuery(table, row, cond.c_str(), enableSqlStringInContent, escapeAll));
+}
+
+bool SqlDb::select(string table, list<SqlDb_field> *fields, list<SqlDb_condField> *cond, unsigned limit) {
+	string query = this->selectQuery(table, fields, cond, limit);
+	return(this->query(query));
 }
 
 int64_t SqlDb::insert(string table, SqlDb_row row) {
@@ -1582,9 +1635,15 @@ bool SqlDb_mysql::existsPartition(const char *table, const char *partition, bool
 }
 
 bool SqlDb_mysql::emptyTable(const char *table) {
-	this->query(string("select count(*) as cnt from ") + table);
+	return(rowsInTable(table) <= 0);
+}
+
+int64_t SqlDb_mysql::rowsInTable(const char *table) {
+	list<SqlDb_field> fields;
+	fields.push_back(SqlDb_field("count(*)", "cnt", false));
+	this->select(table, &fields);
 	SqlDb_row row = this->fetchRow();
-	return(!row || !atol(row["cnt"].c_str()));
+	return(row ? atol(row["cnt"].c_str()) : -1);
 }
 
 bool SqlDb_mysql::isOldVerPartition(const char *table) {
@@ -1909,9 +1968,13 @@ bool SqlDb_odbc::existsPartition(const char *table, const char *partition, bool 
 	return(false);
 }
 
-bool SqlDb_odbc::emptyTable(const char */*table*/) {
+bool SqlDb_odbc::emptyTable(const char *table) {
+	return(rowsInTable(table));
+}
+
+int64_t SqlDb_odbc::rowsInTable(const char */*table*/) {
 	// TODO
-	return(false);
+	return(-1);
 }
 
 int SqlDb_odbc::getIndexField(string fieldName) {
@@ -7547,3 +7610,122 @@ void cLogSensor::_save() {
 
 string cLogSensor::last_subject_db = "";
 u_int32_t cLogSensor::last_subject_db_at = 0;
+
+
+cSqlDbCodebook::cSqlDbCodebook(const char *table, const char *columnId, const char *columnStringValue, 
+			       unsigned limitTableRows) {
+	this->table = table;
+	this->columnId = columnId;
+	this->columnStringValue = columnStringValue;
+	this->limitTableRows = limitTableRows;
+	autoLoadPeriod = 0;
+	data_overflow = false;
+	_sync_data = 0;
+	_sync_load = 0;
+	lastBeginLoadTime = 0;
+	lastEndLoadTime = 0;
+}
+
+void cSqlDbCodebook::addCond(const char *field, const char *value) {
+	cond.push_back(SqlDb_condField(field, value));
+}
+
+void cSqlDbCodebook::setAutoLoadPeriod(unsigned autoLoadPeriod) {
+	this->autoLoadPeriod = autoLoadPeriod;
+}
+
+unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool enableAutoLoad) {
+	if(data_overflow) {
+		return(0);
+	}
+	unsigned rslt = 0;
+	lock_data();
+	if(data.size()) {
+		map<string, unsigned>::iterator iter = data.find(stringValue);
+		if(iter != data.end()) {
+			rslt = iter->second;
+		}
+	}
+	if(!rslt && enableInsert) {
+		SqlDb *sqlDb = createSqlObject();
+		list<SqlDb_condField> cond = this->cond;
+		cond.push_back(SqlDb_condField(columnStringValue, stringValue));
+		if(sqlDb->select(table, NULL, &cond, 1)) {
+			SqlDb_row row;
+			if((row = sqlDb->fetchRow())) {
+				rslt = atol(row[columnId].c_str());
+			}
+		}
+		if(!rslt) {
+			SqlDb_row row;
+			row.add(stringValue, columnStringValue);
+			for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
+				row.add(iter->value, iter->field);
+			}
+			int64_t rsltInsert = sqlDb->insert(table, row);
+			if(rsltInsert > 0) {
+				rslt = rsltInsert;
+			}
+		}
+		delete sqlDb;
+	}
+	unlock_data();
+	if(!rslt && enableAutoLoad && this->autoLoadPeriod && !_sync_load) {
+		u_long actTime = getTimeS();
+		if(lastBeginLoadTime + this->autoLoadPeriod < actTime &&
+		   lastEndLoadTime + this->autoLoadPeriod < actTime) {
+			loadInBackground();
+		}
+	}
+	return(rslt);
+}
+
+void cSqlDbCodebook::load() {
+	if(lock_load(1000000)) {
+		_load(&data, &data_overflow);
+		unlock_load();
+	}
+}
+
+void cSqlDbCodebook::loadInBackground() {
+	if(lock_load(1000000)) {
+		pthread_t thread;
+		vm_pthread_create_autodestroy("cSqlDbCodebook::loadInBackground",
+					      &thread, NULL, cSqlDbCodebook::_loadInBackground, this, __FILE__, __LINE__);
+	}
+}
+
+void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow) {
+	lastBeginLoadTime = getTimeS();
+	data->clear();
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->setMaxQueryPass(2);
+	if(sqlDb->rowsInTable(table) > this->limitTableRows) {
+		*overflow = true;
+	} else {
+		if(sqlDb->select(table, NULL, &cond)) {
+			SqlDb_row row;
+			while((row = sqlDb->fetchRow())) {
+				(*data)[row[columnStringValue]] = atol(row[columnId].c_str());
+			}
+		}
+		*overflow = false;
+	}
+	delete sqlDb;
+	lastEndLoadTime = getTimeS();
+}
+
+void *cSqlDbCodebook::_loadInBackground(void *arg) {
+	cSqlDbCodebook *me = (cSqlDbCodebook*)arg;
+	map<string, unsigned> data;
+	bool data_overflow;
+	me->_load(&data, &data_overflow);
+	if(data.size() || data_overflow) {
+		me->lock_data();
+		me->data = data;
+		me->data_overflow = data_overflow;
+		me->unlock_data();
+	}
+	me->unlock_load();
+	return(NULL);
+}

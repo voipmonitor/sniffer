@@ -28,6 +28,8 @@ extern bool opt_sip_register_state_compare_from_domain;
 extern bool opt_sip_register_state_compare_digest_realm;
 extern bool opt_sip_register_state_compare_ua;
 
+extern Calltable *calltable;
+
 Registers registers;
 
 
@@ -379,10 +381,6 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	}
 	string adj_ua = REG_CONV_STR(state->ua == EQ_REG ? ua : state->ua);
 	adjustUA((char*)adj_ua.c_str());
-	SqlDb_row cdr_ua;
-	if(adj_ua[0]) {
-		cdr_ua.add(sqlEscapeString(adj_ua), "ua");
-	}
 	SqlDb_row reg;
 	reg.add(sqlEscapeString(sqlDateTimeString(state->state_from).c_str()), "created_at");
 	reg.add(htonl(sipcallerip), "sipcallerip");
@@ -408,9 +406,14 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	string register_table = state->state == rs_Failed ? "register_failed" : "register_state";
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
-		if(adj_ua[0]) {
-			query_str += string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ");\n";
-			reg.add("_\\_'SQL'_\\_:@ua_id", "ua_id");
+		if(!adj_ua.empty()) {
+			unsigned _cb_id = calltable->cb_ua_getId(adj_ua.c_str(), false, true);
+			if(_cb_id) {
+				reg.add(_cb_id, "ua_id");
+			} else {
+				query_str += string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ");\n";
+				reg.add("_\\_'SQL'_\\_:@ua_id", "ua_id");
+			}
 		}
 		query_str += sqlDbSaveRegister->insertQuery(register_table, reg, false, false, state->state == rs_Failed) + ";\n";
 		static unsigned int counterSqlStore = 0;
@@ -422,7 +425,9 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		++counterSqlStore;
 		sqlStore->query_lock(query_str.c_str(), storeId);
 	} else {
-		reg.add(sqlDbSaveRegister->getIdOrInsert(sql_cdr_ua_table, "id", "ua", cdr_ua), "ua_id");
+		if(!adj_ua.empty()) {
+			reg.add(calltable->cb_ua_getId(adj_ua.c_str(), true), "ua_id");
+		}
 		sqlDbSaveRegister->insert(register_table, reg);
 	}
 }

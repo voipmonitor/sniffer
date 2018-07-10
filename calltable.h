@@ -1820,6 +1820,17 @@ public:
 	void unlock_calls_hash() {
 		__sync_lock_release(&this->_sync_lock_calls_hash);
 	}
+	
+	void cbInit();
+	void cbLoad();
+	void cbTerm();
+	unsigned cb_ua_getId(const char *ua, bool enableInsert, bool enableAutoLoad = false);
+	unsigned cb_sip_response_getId(const char *response, bool enableInsert, bool enableAutoLoad = false);
+	unsigned cb_sip_request_getId(const char *request, bool enableInsert, bool enableAutoLoad = false);
+	unsigned cb_reason_sip_getId(const char *reason, bool enableInsert, bool enableAutoLoad = false);
+	unsigned cb_reason_q850_getId(const char *reason, bool enableInsert, bool enableAutoLoad = false);
+	unsigned cb_contenttype_getId(const char *content, bool enableInsert, bool enableAutoLoad = false);
+	
 private:
 	/*
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
@@ -1850,6 +1861,14 @@ private:
 	list<sAudioQueueThread*> audioQueueThreads;
 	unsigned int audioQueueThreadsMax;
 	int audioQueueTerminating;
+	
+	cSqlDbCodebook *cb_ua;
+	cSqlDbCodebook *cb_sip_response;
+	cSqlDbCodebook *cb_sip_request;
+	cSqlDbCodebook *cb_reason_sip;
+	cSqlDbCodebook *cb_reason_q850;
+	cSqlDbCodebook *cb_contenttype;
+	
 };
 
 

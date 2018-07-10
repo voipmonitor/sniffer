@@ -22,6 +22,55 @@ using namespace std;
 
 class SqlDb;
 
+class SqlDb_field {
+public:
+	SqlDb_field(const char *field, const char *alias = NULL, bool needEscapeField = true) {
+		this->field = field;
+		if(alias) {
+			this->alias = alias;
+		}
+		this->needEscapeField = needEscapeField;
+	}
+	SqlDb_field(string field, string alias, bool needEscapeField = true) {
+		this->field = field;
+		this->alias = alias;
+		this->needEscapeField = needEscapeField;
+	}
+	SqlDb_field(const char *field, bool needEscapeField = true) {
+		this->field = field;
+		this->needEscapeField = needEscapeField;
+	}
+	SqlDb_field(string field, bool needEscapeField = true) {
+		this->field = field;
+		this->needEscapeField = needEscapeField;
+	}
+public:
+	string field;
+	string alias;
+	bool needEscapeField;
+};
+
+class SqlDb_condField {
+public:
+	SqlDb_condField(const char *field, const char *value, bool needEscapeField = true, bool needEscapeValue = true) {
+		this->field = field;
+		this->value = value;
+		this->needEscapeField = needEscapeField;
+		this->needEscapeValue = needEscapeValue;
+	}
+	SqlDb_condField(string field, string value, bool needEscapeField = true, bool needEscapeValue = true) {
+		this->field = field;
+		this->value = value;
+		this->needEscapeField = needEscapeField;
+		this->needEscapeValue = needEscapeValue;
+	}
+public:
+	string field;
+	string value;
+	bool needEscapeField;
+	bool needEscapeValue;
+};
+
 class SqlDb_row {
 public:
 	struct SqlDb_rowField {
@@ -111,10 +160,14 @@ public:
 	virtual SqlDb_row fetchRow(bool assoc = false) = 0;
 	virtual string getJsonResult() { return(""); }
 	virtual string getJsonError() { return(""); }
+	virtual string getFieldsStr(list<SqlDb_field> *fields);
+	virtual string getCondStr(list<SqlDb_condField> *cond);
+	virtual string selectQuery(string table, list<SqlDb_field> *fields = NULL, list<SqlDb_condField> *cond = NULL, unsigned limit = 0);
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
 	virtual string updateQuery(string table, SqlDb_row row, SqlDb_row whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
+	virtual bool select(string table, list<SqlDb_field> *fields = NULL, list<SqlDb_condField> *cond = NULL, unsigned limit = 0);
 	virtual int64_t insert(string table, SqlDb_row row);
 	virtual int64_t insert(string table, vector<SqlDb_row> *rows);
 	virtual bool update(string table, SqlDb_row row, const char *whereCond);
@@ -133,6 +186,8 @@ public:
 	bool existsDayPartition(string table, unsigned addDaysToNow, bool useCache = true);
 	virtual bool emptyTable(const char *table) = 0;
 	bool emptyTable(string table) { return(emptyTable(table.c_str())); }
+	virtual int64_t rowsInTable(const char *table) = 0;
+	int64_t rowsInTable(string table) { return(rowsInTable(table.c_str())); }
 	virtual bool isOldVerPartition(const char *table) { return(false); }
 	bool isOldVerPartition(string table) { return(isOldVerPartition(table.c_str())); }
 	virtual int getIndexField(string fieldName);
@@ -321,6 +376,7 @@ public:
 	string getTypeColumn(const char *table, const char *column, bool toLower = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table);
+	int64_t rowsInTable(const char *table);
 	bool isOldVerPartition(const char *table);
 	string escape(const char *inputString, int length = 0);
 	string getFieldBorder() {
@@ -447,6 +503,7 @@ public:
 	string getTypeColumn(const char *table, const char *column, bool toLower = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table);
+	int64_t rowsInTable(const char *table);
 	int getIndexField(string fieldName);
 	string escape(const char *inputString, int length = 0);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
@@ -883,6 +940,56 @@ private:
 	list<sItem> items;
 	static string last_subject_db;
 	static u_int32_t last_subject_db_at;
+};
+
+
+class cSqlDbCodebook {
+public:
+	cSqlDbCodebook(const char *table, const char *columnId, const char *columnStringValue, 
+		       unsigned limitTableRows = 100000);
+	void addCond(const char *field, const char *value);
+	void setAutoLoadPeriod(unsigned autoLoadPeriod);
+	unsigned getId(const char *stringValue, bool enableInsert = false, bool enableAutoLoad = false);
+	void load();
+	void loadInBackground();
+private:
+	void _load(map<string, unsigned> *data, bool *overflow);
+	static void *_loadInBackground(void *arg);
+	void lock_data() {
+		while(__sync_lock_test_and_set(&_sync_data, 1));
+	}
+	void unlock_data() {
+		__sync_lock_release(&_sync_data);
+	}
+	void lock_load() {
+		while(__sync_lock_test_and_set(&_sync_load, 1));
+	}
+	bool lock_load(int timeout_us) {
+		while(__sync_lock_test_and_set(&_sync_load, 1)) {
+			timeout_us -= 100;
+			if(timeout_us < 0) {
+				return(false);
+			}
+			usleep(100);
+		}
+		return(true);
+	}
+	void unlock_load() {
+		__sync_lock_release(&_sync_load);
+	}
+private:
+	string table;
+	string columnId;
+	string columnStringValue;
+	unsigned limitTableRows;
+	list<SqlDb_condField> cond;
+	unsigned autoLoadPeriod;
+	map<string, unsigned> data;
+	bool data_overflow;
+	volatile int _sync_data;
+	volatile int _sync_load;
+	u_long lastBeginLoadTime;
+	u_long lastEndLoadTime;
 };
 
 
