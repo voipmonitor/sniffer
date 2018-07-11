@@ -4962,7 +4962,7 @@ string getGuiTimezone(SqlDb *sqlDb) {
 	}
 	string gui_timezone;
 	if(sqlDb->existsTable("system") && sqlDb->existsColumn("system", "content")) {
-		sqlDb->query("select content from system where type = 'gui_timezone'");
+		sqlDb->select("system", "content", "type", "gui_timezone");
 		SqlDb_row row = sqlDb->fetchRow();
 		if(row) {
 			gui_timezone = row["content"];

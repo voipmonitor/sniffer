@@ -3065,6 +3065,14 @@ getwav:
 		if(new_pcap_stat_period > 0 && new_pcap_stat_period < 600) {
 			sverb.pcap_stat_period = new_pcap_stat_period;
 		}
+	} else if(strstr(buf, "setverbparam") != NULL) {
+		extern void parse_verb_param(string verbParam);
+		string verbparam = buf + 13;
+		size_t posEndLine = verbparam.find("\n");
+		if(posEndLine != string::npos) {
+			verbparam.resize(posEndLine);
+		}
+		parse_verb_param(verbparam);
 	} else if (strstr(buf, "unpausecall") != NULL) {
 		long long callref = 0;
 		sscanf(buf, "unpausecall 0x%llx", &callref);

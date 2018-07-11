@@ -580,8 +580,8 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 			bool okLengthForUS_CA = (numberNormalized.length() == 10 && numberNormalized[0] != '1') ||
 						(numberNormalized.length() == 11 && numberNormalized[0] == '1');
 			bool okLengthForOther = checkInternational->minLengthNapaWithoutPrefix > 0 ?
-						 ((numberNormalized.length() >= checkInternational->minLengthNapaWithoutPrefix && numberNormalized[0] != '1') ||
-						  (numberNormalized.length() >= (checkInternational->minLengthNapaWithoutPrefix + 1) && numberNormalized[0] == '1')) :
+						 (((int)numberNormalized.length() >= checkInternational->minLengthNapaWithoutPrefix && numberNormalized[0] != '1') ||
+						  ((int)numberNormalized.length() >= (checkInternational->minLengthNapaWithoutPrefix + 1) && numberNormalized[0] == '1')) :
 						 true;
 			string numberNormalizedNapa = numberNormalized;
 			if(numberNormalizedNapa[0] != '1') {

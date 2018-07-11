@@ -96,6 +96,7 @@ struct sVerbose {
 	int dump_call_flags;
 	int log_srtp_callid;
 	int send_call_info;
+	int disable_cb_cache;
 	int _debug1;
 	int _debug2;
 	int _debug3;

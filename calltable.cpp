@@ -7911,8 +7911,7 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb) 
 		_createSqlObject = true;
 	}
 	
-	sqlDb->query(string("show tables like '") + tableName + "'");
-	if(sqlDb->fetchRow()) {
+	if(sqlDb->existsTable(tableName)) {
 		if(_createSqlObject) {
 			delete sqlDb;
 		}

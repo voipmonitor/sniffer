@@ -6647,6 +6647,108 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	}
 }
 
+void parse_verb_param(string verbParam) {
+	if(verbParam == "process_rtp")				sverb.process_rtp = 1;
+	else if(verbParam == "graph")				sverb.graph = 1;
+	else if(verbParam == "read_rtp")			sverb.read_rtp = 1;
+	else if(verbParam == "hash_rtp")			sverb.hash_rtp = 1;
+	else if(verbParam == "rtp_set_base_seq")		sverb.rtp_set_base_seq = 1;
+	else if(verbParam == "rtp_streams")			sverb.rtp_streams = 1;
+	else if(verbParam == "wavmix")				sverb.wavmix = 1;
+	else if(verbParam == "check_is_caller_called")		sverb.check_is_caller_called = 1;
+	else if(verbParam == "disable_threads_rtp")		sverb.disable_threads_rtp = 1;
+	else if(verbParam == "packet_lost")			sverb.packet_lost = 1;
+	else if(verbParam == "rrd_info")			sverb.rrd_info = 1;
+	else if(verbParam == "http")				sverb.http = 1;
+	else if(verbParam == "webrtc")				sverb.webrtc = 1;
+	else if(verbParam == "ssl")				sverb.ssl = 1;
+	else if(verbParam == "sip")				sverb.sip = 1;
+	else if(verbParam.substr(0, 25) == "tcpreassembly_debug_file=")
+								{ sverb.tcpreassembly_debug_file = new char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbParam.c_str() + 25); }
+	else if(verbParam == "ssldecode")			sverb.ssldecode = 1;
+	else if(verbParam == "ssldecode_debug")			sverb.ssldecode_debug = 1;
+	else if(verbParam == "sip_packets")			sverb.sip_packets = 1;
+	else if(verbParam == "set_ua")				sverb.set_ua = 1;
+	else if(verbParam == "dscp")				sverb.dscp = 1;
+	else if(verbParam == "store_process_query")		sverb.store_process_query = 1;
+	else if(verbParam == "call_listening")			sverb.call_listening = 1;
+	else if(verbParam == "skinny")				sverb.skinny = 1;
+	else if(verbParam == "fraud")				sverb.fraud = 1;
+	else if(verbParam == "fraud_file_log")			sverb.fraud_file_log = 1;
+	else if(verbParam == "enable_bt_sighandler")		sverb.enable_bt_sighandler = 1;
+	else if(verbParam.substr(0, 4) == "tar=")
+								sverb.tar = atoi(verbParam.c_str() + 4);
+	else if(verbParam == "tar")				sverb.tar = 1;
+	else if(verbParam.substr(0, 13) == "chunk_buffer=")
+								sverb.chunk_buffer = atoi(verbParam.c_str() + 13);
+	else if(verbParam == "chunk_buffer")			sverb.chunk_buffer = 1;
+	else if(verbParam.substr(0, 15) == "tcp_debug_port=")
+								sverb.tcp_debug_port = atoi(verbParam.c_str() + 15);
+	else if(verbParam.substr(0, 13) == "tcp_debug_ip=")	{ in_addr ips; inet_aton(verbParam.c_str() + 13, &ips); sverb.tcp_debug_ip = ips.s_addr; }
+	else if(verbParam.substr(0, 5) == "ssrc=")          	sverb.ssrc = strtol(verbParam.c_str() + 5, NULL, 16);
+	else if(verbParam == "jitter")				sverb.jitter = 1;
+	else if(verbParam == "jitter_na")			opt_jitterbuffer_adapt = 0;
+	else if(verbParam == "jitter_nf1")			opt_jitterbuffer_f1 = 0;
+	else if(verbParam == "jitter_nf2")			opt_jitterbuffer_f2 = 0;
+	else if(verbParam == "noaudiounlink")			sverb.noaudiounlink = 1;
+	else if(verbParam == "capture_filter")			sverb.capture_filter = 1;
+	else if(verbParam.substr(0, 17) == "pcap_stat_period=")	sverb.pcap_stat_period = atoi(verbParam.c_str() + 17);
+	else if(verbParam == "memory_stat" ||
+		verbParam == "memory_stat_ex")			sverb.memory_stat = 1;
+	else if(verbParam == "memory_stat_log" ||
+		verbParam == "memory_stat_ex_log")		{ sverb.memory_stat = 1; sverb.memory_stat_log = 1; }
+	else if(verbParam.substr(0, 25) == "memory_stat_ignore_limit=")
+								sverb.memory_stat_ignore_limit = atoi(verbParam.c_str() + 25);
+	else if(verbParam == "qring_stat")			sverb.qring_stat = 1;
+	else if(verbParam == "alloc_stat")			sverb.alloc_stat = 1;
+	else if(verbParam == "qfiles")				sverb.qfiles = 1;
+	else if(verbParam == "query_error")			sverb.query_error = 1;
+	else if(verbParam == "dump_sip")			sverb.dump_sip = 1;
+	else if(verbParam == "dump_sip_line")			{ sverb.dump_sip = 1; sverb.dump_sip_line = 1; }
+	else if(verbParam == "dump_sip_without_counter")	{ sverb.dump_sip = 1; sverb.dump_sip_without_counter = 1; }
+	else if(verbParam == "reverse_invite")			sverb.reverse_invite = 1;
+	else if(verbParam == "mgcp")				sverb.mgcp = 1;
+	else if(verbParam == "mgcp_sdp")			sverb.mgcp_sdp = 1;
+	else if(verbParam == "manager")				sverb.manager = 1;
+	else if(verbParam == "scanpcapdir")			sverb.scanpcapdir = 1;
+	else if(verbParam == "debug_rtcp")			sverb.debug_rtcp = 1;
+	else if(verbParam == "defrag")				sverb.defrag = 1;
+	else if(verbParam == "dedup")				sverb.dedup = 1;
+	else if(verbParam == "reassembly_sip")			sverb.reassembly_sip = 1;
+	else if(verbParam == "reassembly_sip_output")		sverb.reassembly_sip_output = 1;
+	else if(verbParam == "log_manager_cmd")			sverb.log_manager_cmd = 1;
+	else if(verbParam == "rtp_extend_stat")			sverb.rtp_extend_stat = 1;
+	else if(verbParam == "disable_process_packet_in_packetbuffer")
+								sverb.disable_process_packet_in_packetbuffer = 1;
+	else if(verbParam == "disable_push_to_t2_in_packetbuffer")
+								sverb.disable_push_to_t2_in_packetbuffer = 1;
+	else if(verbParam == "disable_save_packet")		sverb.disable_save_packet = 1;
+	else if(verbParam == "disable_save_call")		sverb.disable_save_call = 1;
+	else if(verbParam == "disable_read_rtp")		sverb.disable_read_rtp = 1;
+	else if(verbParam == "thread_create")			sverb.thread_create = 1;
+	else if(verbParam == "timezones")			sverb.timezones = 1;
+	else if(verbParam == "tcpreplay")			sverb.tcpreplay = 1;
+	else if(verbParam == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;
+	else if(verbParam == "heap_use_time")			sverb.heap_use_time = 1;
+	else if(verbParam == "dtmf")				sverb.dtmf = 1;
+	else if(verbParam == "dtls")				sverb.dtls = 1;
+	else if(verbParam == "cleanspool")			sverb.cleanspool = 1;
+	else if(verbParam == "cleanspool_disable_rm")		sverb.cleanspool_disable_rm = 1;
+	else if(verbParam == "t2_destroy_all")			sverb.t2_destroy_all = 1;
+	else if(verbParam == "log_profiler")			sverb.log_profiler = 1;
+	else if(verbParam == "dump_packets_via_wireshark")	sverb.dump_packets_via_wireshark = 1;
+	else if(verbParam == "force_log_sqlq")			sverb.force_log_sqlq = 1;
+	else if(verbParam == "dump_call_flags")			sverb.dump_call_flags = 1;
+	else if(verbParam == "log_srtp_callid")			sverb.log_srtp_callid = 1;
+	else if(verbParam == "send_call_info")			sverb.send_call_info = 1;
+	else if(verbParam == "disable_cb_cache")		sverb.disable_cb_cache = 1;
+	else if(verbParam == "enable_cb_cache")			sverb.disable_cb_cache = 0;
+	//
+	else if(verbParam == "debug1")				sverb._debug1 = 1;
+	else if(verbParam == "debug2")				sverb._debug2 = 1;
+	else if(verbParam == "debug2")				sverb._debug3 = 1;
+}
+
 void get_command_line_arguments() {
 	for(map<int, string>::iterator iter = command_line_data.begin(); iter != command_line_data.end(); iter++) {
 		int c = iter->first;
@@ -6870,104 +6972,7 @@ void get_command_line_arguments() {
 							verbosityE = atoi(pointToSeparator + 1);
 						} 
 					} else {
-						if(verbparams[i] == "process_rtp")			sverb.process_rtp = 1;
-						else if(verbparams[i] == "graph")			sverb.graph = 1;
-						else if(verbparams[i] == "read_rtp")			sverb.read_rtp = 1;
-						else if(verbparams[i] == "hash_rtp")			sverb.hash_rtp = 1;
-						else if(verbparams[i] == "rtp_set_base_seq")		sverb.rtp_set_base_seq = 1;
-						else if(verbparams[i] == "rtp_streams")			sverb.rtp_streams = 1;
-						else if(verbparams[i] == "wavmix")			sverb.wavmix = 1;
-						else if(verbparams[i] == "check_is_caller_called")	sverb.check_is_caller_called = 1;
-						else if(verbparams[i] == "disable_threads_rtp")		sverb.disable_threads_rtp = 1;
-						else if(verbparams[i] == "packet_lost")			sverb.packet_lost = 1;
-						else if(verbparams[i] == "rrd_info")			sverb.rrd_info = 1;
-						else if(verbparams[i] == "http")			sverb.http = 1;
-						else if(verbparams[i] == "webrtc")			sverb.webrtc = 1;
-						else if(verbparams[i] == "ssl")				sverb.ssl = 1;
-						else if(verbparams[i] == "sip")				sverb.sip = 1;
-						else if(verbparams[i].substr(0, 25) == "tcpreassembly_debug_file=")
-													{ sverb.tcpreassembly_debug_file = new char[strlen(verbparams[i].c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbparams[i].c_str() + 25); }
-						else if(verbparams[i] == "ssldecode")			sverb.ssldecode = 1;
-						else if(verbparams[i] == "ssldecode_debug")		sverb.ssldecode_debug = 1;
-						else if(verbparams[i] == "sip_packets")			sverb.sip_packets = 1;
-						else if(verbparams[i] == "set_ua")			sverb.set_ua = 1;
-						else if(verbparams[i] == "dscp")			sverb.dscp = 1;
-						else if(verbparams[i] == "store_process_query")		sverb.store_process_query = 1;
-						else if(verbparams[i] == "call_listening")		sverb.call_listening = 1;
-						else if(verbparams[i] == "skinny")			sverb.skinny = 1;
-						else if(verbparams[i] == "fraud")			sverb.fraud = 1;
-						else if(verbparams[i] == "fraud_file_log")		sverb.fraud_file_log = 1;
-						else if(verbparams[i] == "enable_bt_sighandler")	sverb.enable_bt_sighandler = 1;
-						else if(verbparams[i].substr(0, 4) == "tar=")
-													sverb.tar = atoi(verbparams[i].c_str() + 4);
-						else if(verbparams[i] == "tar")				sverb.tar = 1;
-						else if(verbparams[i].substr(0, 13) == "chunk_buffer=")
-													sverb.chunk_buffer = atoi(verbparams[i].c_str() + 13);
-						else if(verbparams[i] == "chunk_buffer")		sverb.chunk_buffer = 1;
-						else if(verbparams[i].substr(0, 15) == "tcp_debug_port=")
-													sverb.tcp_debug_port = atoi(verbparams[i].c_str() + 15);
-						else if(verbparams[i].substr(0, 13) == "tcp_debug_ip=") { in_addr ips; inet_aton(verbparams[i].c_str() + 13, &ips); sverb.tcp_debug_ip = ips.s_addr; }
-						else if(verbparams[i].substr(0, 5) == "ssrc=")          sverb.ssrc = strtol(verbparams[i].c_str() + 5, NULL, 16);
-						else if(verbparams[i] == "jitter")			sverb.jitter = 1;
-						else if(verbparams[i] == "jitter_na")			opt_jitterbuffer_adapt = 0;
-						else if(verbparams[i] == "jitter_nf1")			opt_jitterbuffer_f1 = 0;
-						else if(verbparams[i] == "jitter_nf2")			opt_jitterbuffer_f2 = 0;
-						else if(verbparams[i] == "noaudiounlink")		sverb.noaudiounlink = 1;
-						else if(verbparams[i] == "capture_filter")		sverb.capture_filter = 1;
-						else if(verbparams[i].substr(0, 17) == "pcap_stat_period=")
-													sverb.pcap_stat_period = atoi(verbparams[i].c_str() + 17);
-						else if(verbparams[i] == "memory_stat" ||
-							verbparams[i] == "memory_stat_ex")		sverb.memory_stat = 1;
-						else if(verbparams[i] == "memory_stat_log" ||
-							verbparams[i] == "memory_stat_ex_log")		{sverb.memory_stat = 1; sverb.memory_stat_log = 1;}
-						else if(verbparams[i].substr(0, 25) == "memory_stat_ignore_limit=")
-													sverb.memory_stat_ignore_limit = atoi(verbparams[i].c_str() + 25);
-						else if(verbparams[i] == "qring_stat")			sverb.qring_stat = 1;
-						else if(verbparams[i] == "alloc_stat")			sverb.alloc_stat = 1;
-						else if(verbparams[i] == "qfiles")			sverb.qfiles = 1;
-						else if(verbparams[i] == "query_error")			sverb.query_error = 1;
-						else if(verbparams[i] == "dump_sip")			sverb.dump_sip = 1;
-						else if(verbparams[i] == "dump_sip_line")		{ sverb.dump_sip = 1; sverb.dump_sip_line = 1; }
-						else if(verbparams[i] == "dump_sip_without_counter")	{ sverb.dump_sip = 1; sverb.dump_sip_without_counter = 1; }
-						else if(verbparams[i] == "reverse_invite")		sverb.reverse_invite = 1;
-						else if(verbparams[i] == "mgcp")			sverb.mgcp = 1;
-						else if(verbparams[i] == "mgcp_sdp")			sverb.mgcp_sdp = 1;
-						else if(verbparams[i] == "manager")			sverb.manager = 1;
-						else if(verbparams[i] == "scanpcapdir")			sverb.scanpcapdir = 1;
-						else if(verbparams[i] == "debug_rtcp")			sverb.debug_rtcp = 1;
-						else if(verbparams[i] == "defrag")			sverb.defrag = 1;
-						else if(verbparams[i] == "dedup")			sverb.dedup = 1;
-						else if(verbparams[i] == "reassembly_sip")		sverb.reassembly_sip = 1;
-						else if(verbparams[i] == "reassembly_sip_output")	sverb.reassembly_sip_output = 1;
-						else if(verbparams[i] == "log_manager_cmd")		sverb.log_manager_cmd = 1;
-						else if(verbparams[i] == "rtp_extend_stat")		sverb.rtp_extend_stat = 1;
-						else if(verbparams[i] == "disable_process_packet_in_packetbuffer")
-													sverb.disable_process_packet_in_packetbuffer = 1;
-						else if(verbparams[i] == "disable_push_to_t2_in_packetbuffer")
-													sverb.disable_push_to_t2_in_packetbuffer = 1;
-						else if(verbparams[i] == "disable_save_packet")		sverb.disable_save_packet = 1;
-						else if(verbparams[i] == "disable_save_call")		sverb.disable_save_call = 1;
-						else if(verbparams[i] == "disable_read_rtp")		sverb.disable_read_rtp = 1;
-						else if(verbparams[i] == "thread_create")		sverb.thread_create = 1;
-						else if(verbparams[i] == "timezones")			sverb.timezones = 1;
-						else if(verbparams[i] == "tcpreplay")			sverb.tcpreplay = 1;
-						else if(verbparams[i] == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;
-						else if(verbparams[i] == "heap_use_time")		sverb.heap_use_time = 1;
-						else if(verbparams[i] == "dtmf")			sverb.dtmf = 1;
-						else if(verbparams[i] == "dtls")			sverb.dtls = 1;
-						else if(verbparams[i] == "cleanspool")			sverb.cleanspool = 1;
-						else if(verbparams[i] == "cleanspool_disable_rm")	sverb.cleanspool_disable_rm = 1;
-						else if(verbparams[i] == "t2_destroy_all")		sverb.t2_destroy_all = 1;
-						else if(verbparams[i] == "log_profiler")		sverb.log_profiler = 1;
-						else if(verbparams[i] == "dump_packets_via_wireshark")	sverb.dump_packets_via_wireshark = 1;
-						else if(verbparams[i] == "force_log_sqlq")		sverb.force_log_sqlq = 1;
-						else if(verbparams[i] == "dump_call_flags")		sverb.dump_call_flags = 1;
-						else if(verbparams[i] == "log_srtp_callid")		sverb.log_srtp_callid = 1;
-						else if(verbparams[i] == "send_call_info")		sverb.send_call_info = 1;
-						//
-						else if(verbparams[i] == "debug1")			sverb._debug1 = 1;
-						else if(verbparams[i] == "debug2")			sverb._debug2 = 1;
-						else if(verbparams[i] == "debug2")			sverb._debug3 = 1;
+						parse_verb_param(verbparams[i]);
 					}
 				} }
 				break;

@@ -36,14 +36,6 @@ public:
 		this->alias = alias;
 		this->needEscapeField = needEscapeField;
 	}
-	SqlDb_field(const char *field, bool needEscapeField = true) {
-		this->field = field;
-		this->needEscapeField = needEscapeField;
-	}
-	SqlDb_field(string field, bool needEscapeField = true) {
-		this->field = field;
-		this->needEscapeField = needEscapeField;
-	}
 public:
 	string field;
 	string alias;
@@ -163,11 +155,13 @@ public:
 	virtual string getFieldsStr(list<SqlDb_field> *fields);
 	virtual string getCondStr(list<SqlDb_condField> *cond);
 	virtual string selectQuery(string table, list<SqlDb_field> *fields = NULL, list<SqlDb_condField> *cond = NULL, unsigned limit = 0);
+	virtual string selectQuery(string table, const char *field, const char *condField = NULL, const char *condValue = NULL, unsigned limit = 0);
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
 	virtual string updateQuery(string table, SqlDb_row row, SqlDb_row whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
 	virtual bool select(string table, list<SqlDb_field> *fields = NULL, list<SqlDb_condField> *cond = NULL, unsigned limit = 0);
+	virtual bool select(string table, const char *field, const char *condField = NULL, const char *condValue = NULL, unsigned limit = 0);
 	virtual int64_t insert(string table, SqlDb_row row);
 	virtual int64_t insert(string table, vector<SqlDb_row> *rows);
 	virtual bool update(string table, SqlDb_row row, const char *whereCond);
@@ -181,6 +175,10 @@ public:
 	bool existsColumn(string table, string column) { return(existsColumn(table.c_str(), column.c_str())); }
 	virtual string getTypeColumn(const char *table, const char *column, bool toLower = true) = 0;
 	string getTypeColumn(string table, string column, bool toLower = true) { return(getTypeColumn(table.c_str(), column.c_str(), toLower)); }
+	virtual int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true) = 0;
+	int getPartitions(string table, list<string> *partitions, bool useCache) { return(getPartitions(table.c_str(), partitions, useCache)); }
+	int getPartitions(const char *table, vector<string> *partitions, bool useCache = true);
+	int getPartitions(string table, vector<string> *partitions, bool useCache) { return(getPartitions(table.c_str(), partitions, useCache)); }
 	virtual bool existsPartition(const char *table, const char *partition, bool useCache = true) = 0;
 	bool existsPartition(string table, string partition, bool useCache) { return(existsPartition(table.c_str(), partition.c_str(), useCache)); }
 	bool existsDayPartition(string table, unsigned addDaysToNow, bool useCache = true);
@@ -205,6 +203,9 @@ public:
 	virtual string getContentSeparator() {
 		return(",");
 	} 
+	virtual string escapeTableName(string tableName) {
+		return(tableName);
+	}
 	virtual bool checkLastError(string /*prefixError*/, bool /*sysLog*/ = false, bool /*clearLastError*/ = false) {
 		return(false);
 	}
@@ -372,8 +373,10 @@ public:
 	int64_t getInsertId();
 	bool existsDatabase();
 	bool existsTable(const char *table);
+	bool existsTable(string table) { return(existsTable(table.c_str())); }
 	bool existsColumn(const char *table, const char *column);
 	string getTypeColumn(const char *table, const char *column, bool toLower = true);
+	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table);
 	int64_t rowsInTable(const char *table);
@@ -382,6 +385,8 @@ public:
 	string getFieldBorder() {
 		return("`");
 	}
+	string escapeTableName(string tableName);
+	bool isReservedWord(string word);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
 	void clean();
 	bool createSchema(int connectId = 0);
@@ -452,8 +457,8 @@ private:
 	MYSQL_RES *hMysqlRes;
 	string dbVersion;
 	unsigned long mysqlThreadId;
-	map<string, string> exists_partition_cache;
-	volatile int exists_partition_cache_sync;
+	map<string, list<string> > partitions_cache;
+	volatile int partitions_cache_sync;
 };
 
 class SqlDb_odbc_bindBufferItem {
@@ -501,6 +506,7 @@ public:
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
 	string getTypeColumn(const char *table, const char *column, bool toLower = true);
+	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table);
 	int64_t rowsInTable(const char *table);
