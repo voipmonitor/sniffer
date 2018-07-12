@@ -1724,7 +1724,8 @@ string SqlDb_mysql::escapeTableName(string tableName) {
 bool SqlDb_mysql::isReservedWord(string word) {
 	const char* reservedWords[] = {
 		"system",
-		"group"
+		"group",
+		"groups"
 	};
 	for(unsigned i = 0; i < sizeof(reservedWords) / sizeof(reservedWords[0]); i++) {
 		if(!strcasecmp(reservedWords[i], word.c_str())) {
