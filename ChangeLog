@@ -1,8 +1,18 @@
+22.9 12.07.2018
+===============
+- add parameter to international rules - minimum legth for apply nanpa rules [VG-1578]
+- optimize SQL (cache selects internally which should lower CPU on mysql)
+- add support for mysql 8
+- fix crash in ssl - stop / reinit ssl session after ssl error [VS-801]
+- add manager command setverbparam (for debug purpose only)
+- fix one way audio when decrypting SRTP [VS-808]
+
+
 22.8.1 02.07.2018
 =================
-add support for SIP OPTIONS in live sniffer [VS-806]
-fix audio decoding when multiple streams present in call for some cases [VG-1607]
-fix whohanged flag which can be assigned to another side [VS-807]
+- add support for SIP OPTIONS in live sniffer [VS-806]
+- fix audio decoding when multiple streams present in call for some cases [VG-1607]
+- fix whohanged flag which can be assigned to another side [VS-807]
 
 
 22.8 28.06.2018
