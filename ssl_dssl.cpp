@@ -133,6 +133,15 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 			}
 			NM_ERROR_ENABLE_LOG;
 		}
+		if(this->process_error) {
+			if(maybeNextClientHello) {
+				term();
+				init();
+				this->process_error = false;
+			} else {
+				return;
+			}
+		}
 		for(unsigned pass = 1; pass <= (maybeNextClientHello ? 2 : 1); pass++) {
 			if(pass == 2) {
 				term();
