@@ -1116,6 +1116,18 @@ Call::get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr, ip_
 	return -1;
 }
 
+int 
+Call::get_index_by_iscaller(int iscaller) {
+	for(int i = 0; i < ipport_n; i++) {
+		if(this->ip_port[i].iscaller == iscaller) {
+			// we have found it
+			return i;
+		}
+	}
+	// not found
+	return -1;
+}
+
 bool 
 Call::is_multiple_to_branch() {
 	for(int i = 0; i < ipport_n; i++) {
@@ -1161,7 +1173,7 @@ Call::get_to_not_canceled() {
 
 /* analyze rtcp packet */
 bool
-Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
+Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 
 	extern int opt_vlan_siprtpsame;
 	if(opt_vlan_siprtpsame && this->vlan >= 0) {
@@ -1182,6 +1194,9 @@ Call::read_rtcp(packet_s *packetS, int /*iscaller*/, char enable_save_packet) {
 		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source - 1);
 		if(index_call_ip_port_by_src < 0) {
 			index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source - 1, true);
+		}
+		if(index_call_ip_port_by_src < 0 && iscaller >= 0) {
+			index_call_ip_port_by_src = get_index_by_iscaller(iscaller ? 0 : 1);
 		}
 		if(index_call_ip_port_by_src >= 0 && 
 		   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list &&
@@ -1464,6 +1479,9 @@ read:
 			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source);
 			if(index_call_ip_port_by_src < 0) {
 				index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source, true);
+			}
+			if(index_call_ip_port_by_src < 0 && iscaller >= 0) {
+				index_call_ip_port_by_src = get_index_by_iscaller(iscaller ? 0 : 1);
 			}
 			if(index_call_ip_port_by_src >= 0 && 
 			   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list &&
