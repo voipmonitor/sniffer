@@ -1658,7 +1658,7 @@ int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool
 		partitions = &_partitions;
 	}
 	string query = 
-		string("explain") + (getDbMajorVersion() >= 8 ? "" : " partitions") + " " +
+		string("explain") + (getDbName() == "mysql" && getDbMajorVersion() >= 8 ? "" : " partitions") + " " +
 		selectQuery(table);
 	if(this->query(query)) {
 		SqlDb_row row;
