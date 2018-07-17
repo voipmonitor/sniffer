@@ -864,55 +864,55 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 
 			char sendcommand[2048];			//buffer for send command string;
 			if (!strncmp(manager_args[1], "PSA",4 )) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSA_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PSR", 4)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSR_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PSSR", 5)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSSR_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PSSM", 5)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSSM_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PSS", 4)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PSC", 4)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PSC_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "PS", 3)) {
-				sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLq", 5)) {
-				sprintf(filename, "%s/rrd/2db-SQL.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-SQL.rrd", getRrdDir());
 				rrd_vm_create_graph_SQLq_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLf", 5)) {
-				sprintf(filename, "%s/rrd/2db-SQL.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-SQL.rrd", getRrdDir());
 				rrd_vm_create_graph_SQLf_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tCPU", 5)) {
-				sprintf(filename, "%s/rrd/2db-tCPU.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-tCPU.rrd", getRrdDir());
 				rrd_vm_create_graph_tCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "drop", 5)) {
-				sprintf(filename, "%s/rrd/2db-drop.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-drop.rrd", getRrdDir());
 				rrd_vm_create_graph_drop_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "speed", 5)) {
-				sprintf(filename, "%s/rrd/2db-speedmbs.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-speedmbs.rrd", getRrdDir());
 				rrd_vm_create_graph_speed_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "heap", 5)) {
-				sprintf(filename, "%s/rrd/2db-heap.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-heap.rrd", getRrdDir());
 				rrd_vm_create_graph_heap_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "calls", 6)) {
-				sprintf(filename, "%s/rrd/3db-callscounter.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/3db-callscounter.rrd", getRrdDir());
 				rrd_vm_create_graph_calls_command(filename, fromat, toat, color, resx ,resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tacCPU", 7)) {
-				sprintf(filename, "%s/rrd/2db-tacCPU.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/2db-tacCPU.rrd", getRrdDir());
 				rrd_vm_create_graph_tacCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "memusage", 7)) {
-				sprintf(filename, "%s/rrd/db-memusage.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/db-memusage.rrd", getRrdDir());
 				rrd_vm_create_graph_memusage_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "loadavg", 7)) {
-				sprintf(filename, "%s/rrd/db-LA.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/db-LA.rrd", getRrdDir());
 				rrd_vm_create_graph_LA_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else {
 				snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage\n", manager_args[1]);	
@@ -1557,7 +1557,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				filter = it->second;
 			} else {
 				filter = new FILE_LINE(13007) octects_live_t;
-				memset(filter, 0, sizeof(octects_live_t));
+				memset(CAST_OBJ_TO_VOID(filter), 0, sizeof(octects_live_t));
 				filter->all = 1;
 				filter->fetch_timestamp = time(NULL);
 				ipacc_live[id] = filter;
@@ -1569,7 +1569,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		} else {
 			octects_live_t* filter;
 			filter = new FILE_LINE(13008) octects_live_t;
-			memset(filter, 0, sizeof(octects_live_t));
+			memset(CAST_OBJ_TO_VOID(filter), 0, sizeof(octects_live_t));
 			filter->setFilter(ipfilter.c_str());
 			filter->fetch_timestamp = time(NULL);
 			ipacc_live[id] = filter;
@@ -1625,7 +1625,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				jsonResult += ",";
 			}
 			char uid_str[10];
-			sprintf(uid_str, "%i", usersnifferIT->first);
+			snprintf(uid_str, sizeof(uid_str), "%i", usersnifferIT->first);
 			jsonResult += "{\"uid\": \"" + string(uid_str) + "\"," +
 					"\"state\":\"" + usersnifferIT->second->getStringState() + "\"}";
 			++counter;
@@ -1684,7 +1684,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			filter = usersnifferIT->second;
 		} else {
 			filter = new FILE_LINE(0) livesnifferfilter_t;
-			memset(filter, 0, sizeof(livesnifferfilter_t));
+			memset(CAST_OBJ_TO_VOID(filter), 0, sizeof(livesnifferfilter_t));
 			filter->parameters.add(parameters);
 			usersniffer[uid] = filter;
 		}
@@ -1716,8 +1716,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		if(filter_number.length()) {
 			vector<string> number = split(filter_number.c_str(), split(",|;| ", "|"), true);
 			for(unsigned i = 0; i < number.size() && i < MAXLIVEFILTERS; i++) {
-				strncpy(filter->lv_bothnum[i], number[i].c_str(), sizeof(filter->lv_bothnum[i]));
-				filter->lv_bothnum[i][sizeof(filter->lv_bothnum[i]) - 1] = 0;
+				strcpy_null_term(filter->lv_bothnum[i], number[i].c_str());
 			}
 		}
 		string filter_vlan = jsonParameters.getValue("filter_vlan");
@@ -1745,14 +1744,11 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				vector<string> header = split(filter_header.c_str(), split(",|;| ", "|"), true);
 				for(unsigned i = 0; i < header.size() && i < MAXLIVEFILTERS; i++) {
 					if(from && to) {
-						strncpy(filter->lv_bothhstr[i], header[i].c_str(), sizeof(filter->lv_bothhstr[i]));
-						filter->lv_bothhstr[i][sizeof(filter->lv_bothhstr[i]) - 1] = 0;
+						strcpy_null_term(filter->lv_bothhstr[i], header[i].c_str());
 					} else if(from) {
-						strncpy(filter->lv_fromhstr[i], header[i].c_str(), sizeof(filter->lv_fromhstr[i]));
-						filter->lv_fromhstr[i][sizeof(filter->lv_fromhstr[i]) - 1] = 0;
+						strcpy_null_term(filter->lv_fromhstr[i], header[i].c_str());
 					} else if(to) {
-						strncpy(filter->lv_tohstr[i], header[i].c_str(), sizeof(filter->lv_tohstr[i]));
-						filter->lv_tohstr[i][sizeof(filter->lv_tohstr[i]) - 1] = 0;
+						strcpy_null_term(filter->lv_tohstr[i], header[i].c_str());
 					}
 				}
 			}
@@ -1796,7 +1792,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				filter = usersnifferIT->second;
 			} else {
 				filter = new FILE_LINE(13009) livesnifferfilter_t;
-				memset(filter, 0, sizeof(livesnifferfilter_t));
+				memset(CAST_OBJ_TO_VOID(filter), 0, sizeof(livesnifferfilter_t));
 				usersniffer[uid] = filter;
 			}
 			updateLivesnifferfilters();
@@ -1810,7 +1806,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			filter = usersnifferIT->second;
 		} else {
 			filter = new FILE_LINE(13010) livesnifferfilter_t;
-			memset(filter, 0, sizeof(livesnifferfilter_t));
+			memset(CAST_OBJ_TO_VOID(filter), 0, sizeof(livesnifferfilter_t));
 			usersniffer[uid] = filter;
 		}
 		
@@ -2435,8 +2431,8 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 
 		sscanf(buf, "genwav %s", filename);
 
-		sprintf(pcapfile, "%s.pcap", filename);
-		sprintf(wavfile, "%s.wav", filename);
+		snprintf(pcapfile, sizeof(pcapfile), "%s.pcap", filename);
+		snprintf(wavfile, sizeof(wavfile), "%s.wav", filename);
 
 getwav2:
 		size = file_size(wavfile);
@@ -2457,7 +2453,7 @@ getwav2:
 			sendvm(client, sshchannel, c_client, "0", 1, 0);
 			return -1;
 		}
-		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y -d %s 2>/dev/null >/dev/null", filename, getSpoolDir(tsf_main, 0));
+		snprintf(cmd, sizeof(cmd), "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y -d %s 2>/dev/null >/dev/null", filename, getSpoolDir(tsf_main, 0));
 		system(cmd);
 		secondrun = 1;
 		goto getwav2;
@@ -2475,8 +2471,8 @@ getwav2:
 
 		sscanf(buf, "getwav %s", filename);
 
-		sprintf(pcapfile, "%s.pcap", filename);
-		sprintf(wavfile, "%s.wav", filename);
+		snprintf(pcapfile, sizeof(pcapfile), "%s.pcap", filename);
+		snprintf(wavfile, sizeof(wavfile), "%s.wav", filename);
 
 getwav:
 		size = file_size(wavfile);
@@ -2516,7 +2512,7 @@ getwav:
 			sendvm(client, sshchannel, c_client, "0", 1, 0);
 			return -1;
 		}
-		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y 2>/dev/null >/dev/null", filename);
+		snprintf(cmd, sizeof(cmd), "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y 2>/dev/null >/dev/null", filename);
 		system(cmd);
 		secondrun = 1;
 		goto getwav;
@@ -2533,8 +2529,8 @@ getwav:
 
 		sscanf(buf, "getsiptshark %s", filename);
 
-		sprintf(tsharkfile, "%s.pcap2txt", filename);
-		sprintf(pcapfile, "%s.pcap", filename);
+		snprintf(tsharkfile, sizeof(tsharkfile), "%s.pcap2txt", filename);
+		snprintf(pcapfile, sizeof(pcapfile), "%s.pcap", filename);
 
 
 		size = file_size(tsharkfile);
@@ -2569,11 +2565,11 @@ getwav:
 			return -1;
 		}
 	
-		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin tshark -r \"%s.pcap\" -R sip > \"%s.pcap2txt\" 2>/dev/null", filename, filename);
+		snprintf(cmd, sizeof(cmd), "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin tshark -r \"%s.pcap\" -R sip > \"%s.pcap2txt\" 2>/dev/null", filename, filename);
 		system(cmd);
-		sprintf(cmd, "echo ==== >> \"%s.pcap2txt\"", filename);
+		snprintf(cmd, sizeof(cmd), "echo ==== >> \"%s.pcap2txt\"", filename);
 		system(cmd);
-		sprintf(cmd, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin tshark -r \"%s.pcap\" -V -R sip >> \"%s.pcap2txt\" 2>/dev/null", filename, filename);
+		snprintf(cmd, sizeof(cmd), "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin tshark -r \"%s.pcap\" -V -R sip >> \"%s.pcap2txt\" 2>/dev/null", filename, filename);
 		system(cmd);
 
 		size = file_size(tsharkfile);
@@ -3951,7 +3947,7 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 			callerNumStr = temp;
 		}
 	}
-	sprintf(rsltString,
+	snprintf(rsltString, sizeof(rsltString),
 		"call_data: "
 		"sipresponse:[[%i]] "
 		"callername:[[%s]] "
@@ -4057,7 +4053,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 							rslt = false;
 							strcpy(rsltString, "login_failed error:[[Maximum connection limit reached.]]\n");
 						} else {
-							sprintf(rsltString, 
+							snprintf(rsltString, sizeof(rsltString),
 								"login_ok "
 								"auto_popup:[[%i]] "
 								"popup_on_200:[[%i]] "
@@ -4155,7 +4151,7 @@ int sendFile(const char *fileName, int client, ssh_channel sshchannel, cClient *
 	int fd = open(fileName, O_RDONLY);
 	if(fd < 0) {
 		char buf[1000];
-		sprintf(buf, "error: cannot open file [%s]", fileName);
+		snprintf(buf, sizeof(buf), "error: cannot open file [%s]", fileName);
 		if(sendvm(client, sshchannel, c_client, buf, strlen(buf), 0) == -1){
 			cerr << "Error sending data to client" << endl;
 		}

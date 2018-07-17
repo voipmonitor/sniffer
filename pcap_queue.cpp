@@ -496,7 +496,7 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	this->count = header->count;
 	this->dlink = header->dlink;
 	this->sensor_id = header->sensor_id;
-	strncpy(this->ifname, header->ifname, sizeof(header->ifname));
+	strcpy_null_term(this->ifname, header->ifname);
 	this->block_counter = header->counter;
 	this->require_confirmation = header->require_confirmation;
 	if(this->offsets) {
@@ -973,7 +973,7 @@ pcap_store_queue::pcap_store_queue(const char *fileStoreFolder) {
 	this->cleanupFileStoreCounter = 0;
 	this->lastTimeLogErrDiskIsFull = 0;
 	this->lastTimeLogErrMemoryIsFull = 0;
-	if(access(fileStoreFolder, F_OK ) == -1) {
+	if(fileStoreFolder && fileStoreFolder[0] && access(fileStoreFolder, F_OK ) == -1) {
 		mkdir_r(fileStoreFolder, 0700);
 	}
 }
@@ -2289,27 +2289,27 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if (opt_rrd == 1) {
 			//CREATE rrd files:
 			char filename[1000];
-			sprintf(filename, "%s/rrd/" , getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/" , getRrdDir());
 			spooldir_mkdir(filename);
-			sprintf(filename, "%s/rrd/2db-drop.rrd", getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/2db-drop.rrd", getRrdDir());
 			vm_rrd_create_rrddrop(filename);
-			sprintf(filename, "%s/rrd/2db-heap.rrd", getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/2db-heap.rrd", getRrdDir());
 			vm_rrd_create_rrdheap(filename);
-			sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
 			vm_rrd_create_rrdPS(filename);
-			sprintf(filename, "%s/rrd/2db-SQL.rrd", getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/2db-SQL.rrd", getRrdDir());
 			vm_rrd_create_rrdSQL(filename);
-			sprintf(filename, "%s/rrd/2db-tCPU.rrd", getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/2db-tCPU.rrd", getRrdDir());
 			vm_rrd_create_rrdtCPU(filename);
-			sprintf(filename, "%s/rrd/2db-tacCPU.rrd", getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/2db-tacCPU.rrd", getRrdDir());
 			vm_rrd_create_rrdtacCPU(filename);
-			sprintf(filename, "%s/rrd/db-memusage.rrd", getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/db-memusage.rrd", getRrdDir());
 			vm_rrd_create_rrdmemusage(filename);
-			sprintf(filename, "%s/rrd/2db-speedmbs.rrd", getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/2db-speedmbs.rrd", getRrdDir());
 			vm_rrd_create_rrdspeedmbs(filename);
-			sprintf(filename, "%s/rrd/3db-callscounter.rrd", getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/3db-callscounter.rrd", getRrdDir());
 			vm_rrd_create_rrdcallscounter(filename);
-			sprintf(filename, "%s/rrd/db-LA.rrd", getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/db-LA.rrd", getRrdDir());
 			vm_rrd_create_rrdloadaverages(filename);
 			opt_rrd ++;
 		}
@@ -2319,14 +2319,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		//update rrddrop
 		cmdUpdate << "N:" << rrddrop_exceeded;
 		cmdUpdate <<  ":" << rrddrop_packets;
-		sprintf(filename, "%s/rrd/2db-drop.rrd", getRrdDir());
+		snprintf(filename, sizeof(filename), "%s/rrd/2db-drop.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdheap;
 		cmdUpdate.str(std::string());
 		cmdUpdate << "N:" << rrdheap_buffer;
 		cmdUpdate <<  ":" << rrdheap_ratio;
-		sprintf(filename, "%s/rrd/2db-heap.rrd", getRrdDir());
+		snprintf(filename, sizeof(filename), "%s/rrd/2db-heap.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdPS;
@@ -2338,7 +2338,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		cmdUpdate <<  ":" << rrdPS_SM;
 		cmdUpdate <<  ":" << rrdPS_R;
 		cmdUpdate <<  ":" << rrdPS_A;
-		sprintf(filename, "%s/rrd/2db-PS.rrd", getRrdDir());
+		snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdSQL;
@@ -2355,7 +2355,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		 else cmdUpdate <<  ":" << rrdSQLq_Cl;
 		if (rrdSQLq_H < 0) cmdUpdate <<  ":U";
 		 else cmdUpdate <<  ":" << rrdSQLq_H;
-		sprintf(filename, "%s/rrd/2db-SQL.rrd", getRrdDir());
+		snprintf(filename, sizeof(filename), "%s/rrd/2db-SQL.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdtCPU;
@@ -2363,33 +2363,33 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		cmdUpdate << "N:" << rrdtCPU_t0;
 		cmdUpdate <<  ":" << rrdtCPU_t1;
 		cmdUpdate <<  ":" << rrdtCPU_t2;
-		sprintf(filename, "%s/rrd/2db-tCPU.rrd", getRrdDir());
+		snprintf(filename, sizeof(filename), "%s/rrd/2db-tCPU.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdtacCPU;
 		cmdUpdate.str(std::string());
 		cmdUpdate << "N:" << rrdtacCPU_zip;
 		cmdUpdate <<  ":" << rrdtacCPU_tar;
-		sprintf(filename, "%s/rrd/2db-tacCPU.rrd", getRrdDir());
+		snprintf(filename, sizeof(filename), "%s/rrd/2db-tacCPU.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdmem;
 		cmdUpdate.str(std::string());
 		cmdUpdate << "N:" << rrdmem_rss;
-		sprintf(filename, "%s/rrd/db-memusage.rrd", getRrdDir());
+		snprintf(filename, sizeof(filename), "%s/rrd/db-memusage.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdspeedmbs;
 		cmdUpdate.str(std::string());
 		cmdUpdate << "N:" << rrdspeedmbs;
-		sprintf(filename, "%s/rrd/2db-speedmbs.rrd", getRrdDir());
+		snprintf(filename, sizeof(filename), "%s/rrd/2db-speedmbs.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdcallscounter;
 		cmdUpdate.str(std::string());
 		cmdUpdate << "N:" << rrdcalls_inv_counter;
 		cmdUpdate << ":" << rrdcalls_reg_counter;
-		sprintf(filename, "%s/rrd/3db-callscounter.rrd", getRrdDir());
+		snprintf(filename, sizeof(filename), "%s/rrd/3db-callscounter.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdLA;
@@ -2397,7 +2397,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		cmdUpdate << "N:" << rrdLA_1;
 		cmdUpdate <<  ":" << rrdLA_5;
 		cmdUpdate <<  ":" << rrdLA_15;
-		sprintf(filename, "%s/rrd/db-LA.rrd", getRrdDir());
+		snprintf(filename, sizeof(filename), "%s/rrd/db-LA.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 	}
 }
@@ -2754,7 +2754,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 			this->pcapHandle = pcap_open_offline_zip(opt_pb_read_from_file, errbuf);
 		}
 		if(!this->pcapHandle) {
-			sprintf(errorstr, "pcap_open_offline %s failed: %s", opt_pb_read_from_file, errbuf); 
+			snprintf(errorstr, sizeof(errorstr), "pcap_open_offline %s failed: %s", opt_pb_read_from_file, errbuf); 
 			syslog(LOG_ERR, "%s", errorstr);
 			*error = errorstr;
 			__sync_lock_release(&_sync_start_capture);
@@ -2775,7 +2775,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 		this->interfaceMask = PCAP_NETMASK_UNKNOWN;
 	}
 	if((this->pcapHandle = pcap_create(this->interfaceName.c_str(), errbuf)) == NULL) {
-		sprintf(errorstr, "packetbuffer - %s: pcap_create failed: %s", this->getInterfaceName().c_str(), errbuf); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_create failed: %s", this->getInterfaceName().c_str(), errbuf); 
 		goto failed;
 	}
 	this->pcapHandleIndex = register_pcap_handle(this->pcapHandle);
@@ -2783,24 +2783,24 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 	global_pcap_handle_index = this->pcapHandleIndex;
 	int status;
 	if((status = pcap_set_snaplen(this->pcapHandle, this->pcap_snaplen)) != 0) {
-		sprintf(errorstr, "packetbuffer - %s: pcap_snaplen failed", this->getInterfaceName().c_str()); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_snaplen failed", this->getInterfaceName().c_str()); 
 		goto failed;
 	}
 	if((status = pcap_set_promisc(this->pcapHandle, this->pcap_promisc)) != 0) {
-		sprintf(errorstr, "packetbuffer - %s: pcap_set_promisc failed", this->getInterfaceName().c_str()); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_promisc failed", this->getInterfaceName().c_str()); 
 		goto failed;
 	}
 	if((status = pcap_set_timeout(this->pcapHandle, this->pcap_timeout)) != 0) {
-		sprintf(errorstr, "packetbuffer - %s: pcap_set_timeout failed", this->getInterfaceName().c_str()); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_timeout failed", this->getInterfaceName().c_str()); 
 		goto failed;
 	}
 	if((status = pcap_set_buffer_size(this->pcapHandle, this->pcap_buffer_size)) != 0) {
-		sprintf(errorstr, "packetbuffer - %s: pcap_set_buffer_size failed", this->getInterfaceName().c_str()); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_set_buffer_size failed", this->getInterfaceName().c_str()); 
 		goto failed;
 	}
 	rssBeforeActivate = getRss() / 1024 / 1024;
 	if((status = pcap_activate(this->pcapHandle)) != 0) {
-		sprintf(errorstr, "packetbuffer - %s: libpcap error: %s", this->getInterfaceName().c_str(), pcap_geterr(this->pcapHandle)); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: libpcap error: %s", this->getInterfaceName().c_str(), pcap_geterr(this->pcapHandle)); 
 		if(opt_fork) {
 			ostringstream outStr;
 			outStr << this->getInterfaceName() << ": libpcap error: " << pcap_geterr(this->pcapHandle);
@@ -2842,7 +2842,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 		// Compile and apply the filter
 		struct bpf_program fp;
 		if (pcap_compile(this->pcapHandle, &fp, filter_exp, 0, this->interfaceMask) == -1) {
-			sprintf(errorstr, "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
 			if(opt_fork) {
 				ostringstream outStr;
 				outStr << this->getInterfaceName() << ": can not parse filter " << filter_exp << ": " << pcap_geterr(this->pcapHandle);
@@ -2851,7 +2851,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 			goto failed;
 		}
 		if (pcap_setfilter(this->pcapHandle, &fp) == -1) {
-			sprintf(errorstr, "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
 			if(opt_fork) {
 				ostringstream outStr;
 				outStr << this->getInterfaceName() << ": can not install filter " << filter_exp << ": " << pcap_geterr(this->pcapHandle);
@@ -2862,14 +2862,14 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 	}
 	this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
 	if(!this->pcapLinklayerHeaderType) {
-		sprintf(errorstr, "packetbuffer - %s: pcap_datalink failed", this->getInterfaceName().c_str()); 
+		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: pcap_datalink failed", this->getInterfaceName().c_str()); 
 		goto failed;
 	}
 	global_pcap_dlink = this->pcapLinklayerHeaderType;
 //	syslog(LOG_NOTICE, "DLT - %s: %i", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
 	if(opt_pcapdump) {
 		char pname[1024];
-		sprintf(pname, "/var/spool/voipmonitor/voipmonitordump-%s-%u.pcap", this->interfaceName.c_str(), (unsigned int)time(NULL));
+		snprintf(pname, sizeof(pname), "/var/spool/voipmonitor/voipmonitordump-%s-%u.pcap", this->interfaceName.c_str(), (unsigned int)time(NULL));
 		this->pcapDumpHandle = pcap_dump_open(this->pcapHandle, pname);
 	}
 	__sync_lock_release(&_sync_start_capture);
@@ -4052,10 +4052,10 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 				}
 				if(!this->pcapDumpHandle) {
 					char pname[1024];
-					sprintf(pname, "%s/voipmonitordump-%s-%s.pcap", 
-						opt_pcapdump_all_path[0] ? opt_pcapdump_all_path : getPcapdumpDir(),
-						this->interfaceName.c_str(), 
-						sqlDateTimeString(time(NULL)).c_str());
+					snprintf(pname, sizeof(pname ), "%s/voipmonitordump-%s-%s.pcap", 
+						 opt_pcapdump_all_path[0] ? opt_pcapdump_all_path : getPcapdumpDir(),
+						 this->interfaceName.c_str(), 
+						 sqlDateTimeString(time(NULL)).c_str());
 					this->pcapDumpHandle = pcap_dump_open(global_pcap_handle, pname);
 				}
 				pcap_dump((u_char*)this->pcapDumpHandle, HPH(hpii.header_packet), HPP(hpii.header_packet));

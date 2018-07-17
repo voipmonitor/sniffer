@@ -389,7 +389,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 
 	// construct query and push it to mysqlquery queue
 	char query_buff[20000];
-	sprintf(query_buff,
+	snprintf(query_buff, sizeof(query_buff),
 		"INSERT INTO livepacket_%i"
 		" SET sipcallerip = %u"
 		", sipcalledip = %u"
@@ -526,10 +526,8 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 	}
         //If call is established get caller/called num from packet - else gather it from packet and save to caller called
 	if(call) {
-		strncpy(caller, call->caller, sizeof(caller));
-		caller[sizeof(caller) - 1] = 0;
-		strncpy(called, call->called, sizeof(called));
-		called[sizeof(called) - 1] = 0;
+		strcpy_null_term(caller, call->caller);
+		strcpy_null_term(called, call->called);
 	} else {
 		bool needcaller = false;
 		bool needcalled = false;
@@ -712,7 +710,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirt
 							int contentLengthNew = packetLen - (pointToBeginContLength - (char*)packet) - 4;
 							if(contentLengthNew > 0 && contentLengthOrig != contentLengthNew) {
 								char contLengthStr[10];
-								sprintf(contLengthStr, "%i", contentLengthNew);
+								snprintf(contLengthStr, sizeof(contLengthStr), "%i", contentLengthNew);
 								strncpy(pointToModifyContLength, contLengthStr, strlen(contLengthStr));
 								char *pointToEndModifyContLength = pointToModifyContLength + strlen(contLengthStr);
 								while(*pointToEndModifyContLength != '\r') {
@@ -2241,22 +2239,22 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 		char _caller[1024];
 		if(opt_remotepartypriority && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, _caller, sizeof(_caller), ppntt_remote_party, ppndt_caller) &&
 		   _caller[0] != '\0') {
-			strncpy(data->caller, _caller, sizeof(data->caller));
+			strcpy_null_term(data->caller, _caller);
 			anonymous_useRemotePartyID = true;
 		} else {
 			if(opt_passertedidentity && !get_sip_peername(packetS, "\nP-Asserted-Identity:", NULL, _caller, sizeof(_caller), ppntt_asserted_identity, ppndt_caller) &&
 			   _caller[0] != '\0') {
-				strncpy(data->caller, _caller, sizeof(data->caller));
+				strcpy_null_term(data->caller, _caller);
 				anonymous_usePAssertedIdentity = true;
 			} else {
 				if(opt_ppreferredidentity && !get_sip_peername(packetS, "\nP-Preferred-Identity:", NULL, _caller, sizeof(_caller), ppntt_preferred_identity, ppndt_caller) &&
 				   _caller[0] != '\0') {
-					strncpy(data->caller, _caller, sizeof(data->caller));
+					strcpy_null_term(data->caller, _caller);
 					anonymous_usePPreferredIdentity = true;
 				} else {
 					if(!opt_remotepartypriority && !get_sip_peername(packetS, "\nRemote-Party-ID:", NULL, _caller, sizeof(_caller), ppntt_remote_party, ppndt_caller) &&
 					   _caller[0] != '\0') {
-						strncpy(data->caller, _caller, sizeof(data->caller));
+						strcpy_null_term(data->caller, _caller);
 						anonymous_useRemotePartyID = true;
 					} else {
 						anonymous_useFrom = true;
@@ -2273,7 +2271,7 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 		char _called[1024] = "";
 		if(!get_sip_peername(packetS, "INVITE ", NULL, _called, sizeof(_called), ppntt_invite, ppndt_called) &&
 		   _called[0] != '\0') {
-			strncpy(data->called, _called, sizeof(data->called));
+			strcpy_null_term(data->called, _called);
 		}
 	}
 	
@@ -2302,7 +2300,7 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 		char _called_domain[256] = "";
 		get_sip_domain(packetS, "INVITE ", NULL, _called_domain, sizeof(_called_domain), ppntt_invite, ppndt_called_domain);
 		if(_called_domain[0] != '\0') {
-			strncpy(data->called_domain, _called_domain, sizeof(data->called_domain));
+			strcpy_null_term(data->called_domain, _called_domain);
 		}
 	}
 	
@@ -2409,8 +2407,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		}
 	}
 	if(!use_fbasename_header) {
-		strncpy(call->fbasename, callidstr, MAX_FNAME - 1);
-		call->fbasename[MIN(strlen(callidstr), MAX_FNAME - 1)] = '\0';
+		strcpy_null_term(call->fbasename, callidstr);
 	}
 
 	/* this logic updates call on the first INVITES */
@@ -2427,19 +2424,19 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		}
 
 		// caller number
-		strncpy(call->caller, data_callerd.caller, sizeof(call->caller));
+		strcpy_null_term(call->caller, data_callerd.caller);
 
 		// called number
-		strncpy(call->called, data_callerd.called, sizeof(call->called));
+		strcpy_null_term(call->called, data_callerd.called);
 
 		// caller domain 
-		strncpy(call->caller_domain, data_callerd.caller_domain, sizeof(call->caller_domain));
+		strcpy_null_term(call->caller_domain, data_callerd.caller_domain);
 
 		// called domain 
-		strncpy(call->called_domain, data_callerd.called_domain, sizeof(call->called_domain));
+		strcpy_null_term(call->called_domain, data_callerd.called_domain);
 		
 		// callername
-		strncpy(call->callername, data_callerd.callername, sizeof(call->callername));
+		strcpy_null_term(call->callername, data_callerd.callername);
 
 		if(sip_method == REGISTER) {	
 			// destroy all REGISTER from memory within 30 seconds 
@@ -2786,8 +2783,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 	
 	lastSIPresponseNum = packetS->lastSIPresponseNum;
-	strncpy(lastSIPresponse, packetS->lastSIPresponse, sizeof(lastSIPresponse));
-	lastSIPresponse[sizeof(lastSIPresponse) - 1] = 0;
+	strcpy_null_term(lastSIPresponse, packetS->lastSIPresponse);
 
 	// find call
 	call = packetS->call;
@@ -3071,7 +3067,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						text[lengthText] = 0;
 					}
 				} else {
-					sprintf(text, "%i (text missing)", cause);
+					snprintf(text, sizeof(text), "%i (text missing)", cause);
 				}
 				if(!strcasecmp(type, "SIP")) {
 					call->reason_sip_cause = cause;
@@ -3105,7 +3101,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				char called[1024] = "";
 				if(!get_sip_peername(packetS, "INVITE ", NULL, called, sizeof(called), ppntt_invite, ppndt_called) &&
 				   called[0] != '\0') {
-					strncpy(call->called, called, sizeof(call->called));
+					strcpy_null_term(call->called, called);
 				}
 			}
 		}
@@ -3174,11 +3170,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		if(rslt_parse_packet__message != -1) {
 			if(rsltDestNumber.length()) {
-				strncpy(call->called, rsltDestNumber.c_str(), sizeof(call->called));
+				strcpy_null_term(call->called, rsltDestNumber.c_str());
 				call->updateDstnumFromMessage = true;
 			}
 			if(rsltSrcNumber.length()) {
-				strncpy(call->caller, rsltSrcNumber.c_str(), sizeof(call->caller));
+				strcpy_null_term(call->caller, rsltSrcNumber.c_str());
 			}
 			if(rsltContentLength != (unsigned int)-1) {
 				call->content_length = rsltContentLength;
@@ -3312,7 +3308,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						   branch[0] != '\0') {
 							map<string, string>::iterator iter = call->called_invite_branch_map.find(branch);
 							if(iter != call->called_invite_branch_map.end()) {
-								strncpy(call->called, iter->second.c_str(), sizeof(call->called));
+								strcpy_null_term(call->called, iter->second.c_str());
 								call->updateDstnumOnAnswer = true;
 							}
 						}
@@ -3669,8 +3665,7 @@ endsip:
 			if(save_request) {
 				const char *sip_request_name = sip_request_int_to_name(packetS->sip_method, false);
 				if(sip_request_name) {
-					strncpy(_request, sip_request_name, sizeof(_request) - 1);
-					_request[sizeof(_request) - 1] = 0;
+					strcpy_null_term(_request, sip_request_name);
 				}
 			}
 			if(save_response) {
@@ -4320,7 +4315,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	call->setSipcallerip(saddr, source);
 	call->setSipcalledip(daddr, dest);
 	call->flags = flags;
-	strncpy(call->fbasename, s, MAX_FNAME - 1);
+	strcpy_null_term(call->fbasename, s);
 	call->seeninvite = true;
 	strcpy(call->callername, "RTP");
 	strcpy(call->caller, "RTP");
@@ -5563,7 +5558,7 @@ inline int _ipfrag_dequeue(ip_frag_queue_t *queue,
 	if(!queue->size()) return 1;
 
 	// prepare newpacket structure and header structure
-	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->header_ip_offset;
+	u_int32_t totallen = min(queue->begin()->second->totallen + queue->begin()->second->header_ip_offset, 0xFFFFu);
 	
 	unsigned int additionallen = 0;
 	iphdr2 *iphdr = NULL;
@@ -5588,16 +5583,14 @@ inline int _ipfrag_dequeue(ip_frag_queue_t *queue,
 						node->len);
 				len += node->len;
 			} else {
-				// for rest of a packets append only data 
-				if(len > totallen) {
-					syslog(LOG_ERR, "%s.%d: Error - bug in voipmonitor len[%d] > totallen[%d]", __FILE__, __LINE__, len, totallen);
-					abort();
+				if(len < totallen) {
+					unsigned cpy_len = min((unsigned)(node->len - sizeof(iphdr2)), totallen - len);
+					memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
+							HPP(node->header_packet) + node->header_ip_offset + sizeof(iphdr2), node->header_packet,
+							cpy_len);
+					len += cpy_len;
+					additionallen += cpy_len;
 				}
-				memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
-						HPP(node->header_packet) + node->header_ip_offset + sizeof(iphdr2), node->header_packet,
-						node->len - sizeof(iphdr2));
-				len += node->len - sizeof(iphdr2);
-				additionallen += node->len - sizeof(iphdr2);
 			}
 			if(i == queue->size() - 1) {
 				memcpy_heapsafe(HPH(*header_packet), *header_packet, 
@@ -5901,7 +5894,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 	char pname[1024];
 
 	if(opt_pcapdump) {
-		sprintf(pname, "/var/spool/voipmonitor/voipmonitordump-%u.pcap", (unsigned int)time(NULL));
+		snprintf(pname, sizeof(pname), "/var/spool/voipmonitor/voipmonitordump-%u.pcap", (unsigned int)time(NULL));
 		tmppcap = pcap_dump_open(handle, pname);
 	}
 

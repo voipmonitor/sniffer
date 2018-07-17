@@ -418,10 +418,10 @@ public:
 			extern bool opt_t2_boost;
 			if(!opt_t2_boost) {
 				batch.c = new FILE_LINE(27003) rtp_packet_pcap_queue[max_count];
-				memset(batch.c, 0, sizeof(rtp_packet_pcap_queue) * max_count);
+				memset(CAST_OBJ_TO_VOID(batch.c), 0, sizeof(rtp_packet_pcap_queue) * max_count);
 			} else {
 				batch.pt = new FILE_LINE(27004) rtp_packet_pt_pcap_queue[max_count];
-				memset(batch.pt, 0, sizeof(rtp_packet_pt_pcap_queue) * max_count);
+				memset(CAST_OBJ_TO_VOID(batch.pt), 0, sizeof(rtp_packet_pt_pcap_queue) * max_count);
 			}
 			this->max_count = max_count;
 		}

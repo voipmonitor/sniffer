@@ -510,6 +510,13 @@ char *strnchr(const char *haystack, char needle, size_t len);
 char *strncasechr(const char *haystack, char needle, size_t len);
 size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength);
 
+inline char* strncpy_null_term(char *dst, const char *src, size_t size) {
+	strncpy(dst, src, size);
+	dst[size - 1] = 0;
+	return(dst);
+}
+#define strcpy_null_term(dst, src) strncpy_null_term(dst, src, sizeof(dst))
+
 std::string &trim(std::string &s, const char *trimChars = NULL);
 std::string trim_str(std::string s, const char *trimChars = NULL);
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
@@ -2677,7 +2684,7 @@ struct sLocalTimeHourCacheItems {
 	void setTimezone(bool gmt, const char *timezone) {
 		this->gmt = gmt;
 		if(timezone && timezone[0]) {
-			strncpy(this->timezone, timezone, sizeof(this->timezone));
+			strcpy_null_term(this->timezone, timezone);
 		} else {
 			this->timezone[0] = 0;
 		}
@@ -2703,7 +2710,7 @@ struct sLocalTimeHourCacheItems {
 			if(timezone[0]) {
 				const char *_oldTZ = getenv("TZ");
 				if(_oldTZ) {
-					strncpy(oldTZ, _oldTZ, sizeof(oldTZ));
+					strcpy_null_term(oldTZ, _oldTZ);
 				} else {
 					oldTZ[0] = 0;
 				}
@@ -2744,7 +2751,7 @@ struct sLocalTimeHourCacheItems {
 		if(timezone[0]) {
 			const char *_oldTZ = getenv("TZ");
 			if(_oldTZ) {
-				strncpy(oldTZ, _oldTZ, sizeof(oldTZ));
+				strcpy_null_term(oldTZ, _oldTZ);
 			} else {
 				oldTZ[0] = 0;
 			}

@@ -214,7 +214,7 @@ void Ipacc::save(int indexIpaccBuffer, unsigned int interval_time_limit) {
 			   src_ip_next || dst_ip_next) {
 				if(!opt_ipacc_only_agregation) {
 					if(isTypeDb("mysql")) {
-						sprintf(insertQueryBuff,
+						snprintf(insertQueryBuff, sizeof(insertQueryBuff),
 							"insert into ipacc ("
 								"interval_time, saddr, src_id_customer, daddr, dst_id_customer, proto, port, "
 								"octects, numpackets, voip, do_agr_trigger"
@@ -313,7 +313,7 @@ inline void Ipacc::add_octets(time_t timestamp, unsigned int saddr, unsigned int
 	unsigned int cur_interval_time = timestamp / opt_ipacc_interval * opt_ipacc_interval;
 	int indexIpaccBuffer = (cur_interval_time / opt_ipacc_interval) % 2;
 	
-	sprintf(buf, "%uD%uE%dP%d", htonl(saddr), htonl(daddr), port, proto);
+	snprintf(buf, sizeof(buf), "%uD%uE%dP%d", htonl(saddr), htonl(daddr), port, proto);
 	key = buf;
 
 	if(last_flush_interval_time != cur_interval_time &&
@@ -647,7 +647,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 		i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
 		(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
 	for(iter1 = this->map1.begin(); iter1 != this->map1.end(); iter1++) {
-		sprintf(insertQueryBuff,
+		snprintf(insertQueryBuff, sizeof(insertQueryBuff),
 			"set @i = 0; "
 			"while @i < 2 do "
 				"update %s set "
@@ -743,7 +743,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 	}
 	int _counter = 0;
 	for(iter2 = this->map2.begin(); iter2 != this->map2.end(); iter2++) {
-		sprintf(insertQueryBuff,
+		snprintf(insertQueryBuff, sizeof(insertQueryBuff),
 			"set @i = 0; "
 			"while @i < 2 do "
 				"update %s set "
@@ -1062,7 +1062,7 @@ string CustIpCache::printVect() {
 		in_addr ips;
 		ips.s_addr = this->custCacheVect[i].ip;
 		char rsltRec[100];
-		sprintf(rsltRec, "%s -> %u\n", inet_ntoa(ips), this->custCacheVect[i].cust_id);
+		snprintf(rsltRec, sizeof(rsltRec), "%s -> %u\n", inet_ntoa(ips), this->custCacheVect[i].cust_id);
 		rslt += rsltRec;
 	}
 	return(rslt);

@@ -54,10 +54,6 @@ void cSslDsslSession::term() {
 }
 
 bool cSslDsslSession::initServer() {
-	this->ip = ip;
-	this->port = port;
-	this->keyfile = keyfile;
-	this->password = password;
 	EVP_PKEY *pkey = NULL;
 	if(keyfile.length()) {
 		FILE* file_keyfile = fopen(keyfile.c_str(), "r");

@@ -549,7 +549,7 @@ void Registers::add(Call *call, time_t currtime, int expires_add) {
 	/*
 	string digest_username_orig = call->digest_username;
 	for(int q = 1; q <= 3; q++) {
-	sprintf(call->digest_username, "%s-%i", digest_username_orig.c_str(), q);
+	snprintf(call->digest_username, sizeof(call->digest_username), "%s-%i", digest_username_orig.c_str(), q);
 	*/
 	
 	if(!convRegisterState(call)) {

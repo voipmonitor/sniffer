@@ -857,8 +857,8 @@ bool CompressStream::compress_ev(char *data, u_int32_t len, u_int32_t /*decompre
 }
 
 CompressStream::eTypeCompress CompressStream::convTypeCompress(const char *typeCompress) {
-	char _compress_method[10];
-	strncpy(_compress_method, typeCompress, sizeof(_compress_method));
+	char _compress_method[20];
+	strcpy_null_term(_compress_method, typeCompress);
 	strlwr(_compress_method, sizeof(_compress_method));
 	if(!strcmp(_compress_method, "zip") ||
 	   !strcmp(_compress_method, "gzip")) {

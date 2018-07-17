@@ -57,7 +57,7 @@ public:
 			}
 		}
 		if(binaryBuffer) {
-			memcpy(&buffer[writeit], item, sizeof(typeItem));
+			memcpy(CAST_OBJ_TO_VOID(&buffer[writeit]), item, sizeof(typeItem));
 		} else {
 			buffer[writeit] = *item;
 		}
@@ -90,7 +90,7 @@ public:
 			}
 		}
 		if(binaryBuffer) {
-			memcpy(item, &buffer[readit], sizeof(typeItem));
+			memcpy(CAST_OBJ_TO_VOID(item), &buffer[readit], sizeof(typeItem));
 		} else {
 			*item = buffer[readit];
 		}

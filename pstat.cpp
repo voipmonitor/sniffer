@@ -13,12 +13,12 @@ bool pstat_quietly_errors = false;
 
 bool pstat_get_data(const int pid, pstat_data* result) {
 	char stat_filepath[100]; 
-	//sprintf(stat_filepath, "/proc/%u/stat", pid);
+	//snprintf(stat_filepath, sizeof(stat_filepath), "/proc/%u/stat", pid);
 	
 	if(pid) {
-		sprintf(stat_filepath, "/proc/%u/task/%u/stat", getpid(), pid);
+		snprintf(stat_filepath, sizeof(stat_filepath), "/proc/%u/task/%u/stat", getpid(), pid);
 	} else {
-		sprintf(stat_filepath, "/proc/%u/stat", getpid());
+		snprintf(stat_filepath, sizeof(stat_filepath), "/proc/%u/stat", getpid());
 	}
 	
 	FILE *fpstat = fopen(stat_filepath, "r");

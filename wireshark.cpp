@@ -561,10 +561,10 @@ tvbuff_t *frame_tvbuff_new(const frame_data *fd, const guint8 *buf)
 
 using namespace std;
 
-void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt) {
+void ws_dissect_packet(pcap_pkthdr* /*header*/, const u_char* /*packet*/, int /*dlt*/, string *rslt) {
 	rslt->resize(0);
 }
-void ws_test(const char *pcapFile) {
+void ws_test(const char */*pcapFile*/) {
 }
 
 #endif //HAVE_LIBWIRESHARK

@@ -48,7 +48,7 @@ regcache::check(unsigned int saddr, unsigned int daddr, unsigned int timestamp, 
 	lock();
 
 	char buf[32];
-	sprintf(buf, "%uD%u", saddr, daddr);
+	snprintf(buf, sizeof(buf), "%uD%u", saddr, daddr);
 	string key = buf;
 	
 	t_regcache_buffer::iterator iter;

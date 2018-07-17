@@ -386,10 +386,10 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 			sqlDb->setMaxQueryPass(2);
 			SqlDb_row row;
 			char queryBuff[1000];
-			sprintf(queryBuff, "SELECT calldate FROM cdr where id = %u", recordId);
+			snprintf(queryBuff, sizeof(queryBuff), "SELECT calldate FROM cdr where id = %u", recordId);
 			sqlDb->query(queryBuff);
 			if((row = sqlDb->fetchRow())) {
-				sprintf(queryBuff, 
+				snprintf(queryBuff, sizeof(queryBuff),
 					"SELECT pos FROM cdr_tar_part where cdr_id = %u and calldate = '%s' and type = %i", 
 					recordId, row["calldate"].c_str(),
 					strstr(this->pathname.c_str(), "/SIP/") ? 1 :

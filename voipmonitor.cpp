@@ -1364,8 +1364,8 @@ void *moving_cache( void */*dummy*/ ) {
 			dst.append("/");
 			dst.append(file);
 
-			strncpy(src_c, (char*)src.c_str(), sizeof(src_c));
-			strncpy(dst_c, (char*)dst.c_str(), sizeof(dst_c));
+			strcpy_null_term(src_c, (char*)src.c_str());
+			strcpy_null_term(dst_c, (char*)dst.c_str());
 
 			if(verbosity > 2) syslog(LOG_ERR, "rename([%s] -> [%s])\n", src_c, dst_c);
 			cachedirtransfered += move_file(src_c, dst_c, true);
@@ -1403,7 +1403,7 @@ void *moving_cache( void */*dummy*/ ) {
 								dirdatehour_t.tm_hour = hour; 
 								if(difftime(mktime(&mindatehour_t), mktime(&dirdatehour_t)) > 8 * 60 * 60) {
 									char hour_str[10];
-									sprintf(hour_str, "%02i", hour);
+									snprintf(hour_str, sizeof(hour_str), "%02i", hour);
 									if(file_exists((char*)(string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str())) {
 										spooldir_mkdir(string(opt_spooldir_main) + "/" + de->d_name + "/" + hour_str);
 										mv_r((string(opt_cachedir) + "/" + de->d_name + "/" + hour_str).c_str(), (string(opt_spooldir_main) + "/" + de->d_name + "/" + hour_str).c_str());
@@ -2018,7 +2018,7 @@ void *scanpcapdir( void */*dummy*/ ) {
 			}
 		}
 		// grab the next file in line to be processed
-		strncpy(filename, fileList.front().c_str(), sizeof(filename));
+		strcpy_null_term(filename, fileList.front().c_str());
 		fileList.pop();
 
 		//printf("File [%s]\n", filename);
@@ -2172,7 +2172,7 @@ void reload_capture_rules() {
 }
 
 #ifdef BACKTRACE
-void bt_sighandler(int sig, siginfo_t *info, void *secret)
+void bt_sighandler(int sig, siginfo_t */*info*/, void *secret)
 {
 	void *crash_pnt = NULL;
 	if(secret) {
@@ -3213,7 +3213,7 @@ bool cloud_register() {
 	vector<dstring> postData;
 	postData.push_back(dstring("securitytoken", cloud_token));
 	char id_sensor_str[10];
-	sprintf(id_sensor_str, "%i", opt_id_sensor);
+	snprintf(id_sensor_str, sizeof(id_sensor_str), "%i", opt_id_sensor);
 	postData.push_back(dstring("id_sensor", id_sensor_str));
 	SimpleBuffer responseBuffer;
 	string error;
@@ -3255,7 +3255,7 @@ bool cloud_activecheck_send() {
 	vector<dstring> postData;
 	postData.push_back(dstring("ssh_rhost", ssh_remote_listenhost));
 	char str_port[10];
-	sprintf(str_port, "%i", ssh_remote_listenport);
+	snprintf(str_port, sizeof(str_port), "%i", ssh_remote_listenport);
 	postData.push_back(dstring("ssh_rport", str_port));
 	SimpleBuffer responseBuffer;
 	string error;
@@ -4294,7 +4294,7 @@ void test_filebuffer() {
 	
 	for(int i = 0; i < maxFiles; i++) {
 		char filename[100];
-		sprintf(filename, "/dev/shm/test/%i", i);
+		snprintf(filename, sizeof(filename), "/dev/shm/test/%i", i);
 		file[i] = fopen(filename, "w");
 		
 		setbuf(file[i], NULL);
@@ -4312,7 +4312,7 @@ void test_filebuffer() {
 		fwrite(writebuffer, 1000, 1, file[i]);
 		fclose(file[i]);
 		char filename[100];
-		sprintf(filename, "/dev/shm/test/%i", i);
+		snprintf(filename, sizeof(filename), "/dev/shm/test/%i", i);
 		file[i] = fopen(filename, "a");
 		
 		fflush(file[i]);
@@ -4632,7 +4632,7 @@ void test_filezip_handler() {
 	fzh->open(tsf_na, "/home/jumbox/Plocha/test.gz");
 	for(int i = 0; i < 1000; i++) {
 		char buff[1000];
-		sprintf(buff, "abcd %80s %i\n", "x", i + 1);
+		snprintf(buff, sizeof(buff), "abcd %80s %i\n", "x", i + 1);
 		fzh->write(buff, strlen(buff));
 	}
 	fzh->write((char*)"eof", 3);
@@ -4762,7 +4762,6 @@ void test() {
 			cout << str2 << endl;
 		}
 		break;
-		*/
 		
 		cBilling billing;
 		billing.load();
@@ -4783,11 +4782,9 @@ void test() {
 		
 		time_t calldate_time = stringToTime(calldate.c_str());
 		
-		/*
 		tm calldate_tm = time_r(&calldate_time);
 		tm next1 = getNextBeginDate(calldate_tm);
 		tm next2 = dateTimeAdd(next1, 24 * 60 * 60);
-		*/
 		
 		billing.billing(calldate_time , duration,
 				inet_strington(ip_src.c_str()), inet_strington(ip_dst.c_str()),
@@ -4903,6 +4900,8 @@ void test() {
 	 
 		test_geoip();
 		cout << "---------" << endl;
+		*/
+		
 	} break;
 	case 2: {
 	 
@@ -5286,7 +5285,7 @@ void test() {
 	
 	/*
 	char filePathName[100];
-	sprintf(filePathName, "/__test/store_%010u", 1);
+	snprintf(filePathName, sizeof(filePathName), "/__test/store_%010u", 1);
 	cout << filePathName << endl;
 	remove(filePathName);
 	int fileHandleWrite = open(filePathName, O_WRONLY | O_CREAT, 0666);
@@ -5542,11 +5541,8 @@ void __cyg_profile_func_exit(void *this_fn, void */*call_site*/) {
 
 #ifdef HAVE_LIBJEMALLOC
 #include <jemalloc/jemalloc.h>
-#endif //HAVE_LIBJEMALLOC
-
 string jeMallocStat(bool full) {
 	string rslt;
-#ifdef HAVE_LIBJEMALLOC
 	char tempFileName[L_tmpnam+1];
 	tmpnam(tempFileName);
 	char *tempFileNamePointer = tempFileName;
@@ -5578,11 +5574,13 @@ string jeMallocStat(bool full) {
 		fclose(jeout);
 	}
 	unlink(tempFileName);
-#else
-	rslt = "voipmonitor build without library jemalloc\n";
-#endif //HAVE_LIBJEMALLOC
 	return(rslt);
 }
+#else
+string jeMallocStat(bool /*full*/) {
+	return("");
+}
+#endif //HAVE_LIBJEMALLOC
 
 
 // CONFIGURATION
@@ -6258,7 +6256,7 @@ void cConfig::addConfigItems() {
 		subgroup("scanpcapdir");
 				advanced();
 				char scanpcapmethod_values[100];
-				sprintf(scanpcapmethod_values, "newfile:%i|close:%i|moved:%i|r:%i", IN_CLOSE_WRITE, IN_CLOSE_WRITE, IN_MOVED_TO, IN_MOVED_TO);
+				snprintf(scanpcapmethod_values, sizeof(scanpcapmethod_values), "newfile:%i|close:%i|moved:%i|r:%i", IN_CLOSE_WRITE, IN_CLOSE_WRITE, IN_MOVED_TO, IN_MOVED_TO);
 				addConfigItem((new FILE_LINE(42431) cConfigItem_yesno("scanpcapmethod", &opt_scanpcapmethod))
 					->disableYes()
 					->disableNo()
@@ -6897,10 +6895,10 @@ void get_command_line_arguments() {
 				opt_id_sensor = atoi(optarg);
 				break;
 			case 'Z':
-				strncpy(opt_keycheck, optarg, sizeof(opt_keycheck));
+				strcpy_null_term(opt_keycheck, optarg);
 				break;
 			case '0':
-				strncpy(opt_scanpcapdir, optarg, sizeof(opt_scanpcapdir));
+				strcpy_null_term(opt_scanpcapdir, optarg);
 				break;
 #ifndef FREEBSD
 			case 900: // pcapscan-method
@@ -6908,7 +6906,7 @@ void get_command_line_arguments() {
 				break;
 #endif
 			case 'a':
-				strncpy(pcapcommand, optarg, sizeof(pcapcommand));
+				strcpy_null_term(pcapcommand, optarg);
 				break;
 			case 'I':
 				opt_rtpnosip = 1;
@@ -6948,19 +6946,19 @@ void get_command_line_arguments() {
 				opt_ringbuffer = MIN(atoi(optarg), 2000);
 				break;
 			case '7':
-				strncpy(configfile, optarg, sizeof(configfile));
+				strcpy_null_term(configfile, optarg);
 				break;
 			case '8':
 				opt_manager_port = atoi(optarg);
 				if(char *pointToSeparator = strchr(optarg,'/')) {
-					strncpy(opt_manager_ip, pointToSeparator+1, sizeof(opt_manager_ip));
+					strcpy_null_term(opt_manager_ip, pointToSeparator+1);
 				}
 				break;
 			case '9':
 				opt_saveRTCP = 1;
 				break;
 			case 'i':
-				strncpy(ifname, optarg, sizeof(ifname));
+				strcpy_null_term(ifname, optarg);
 				break;
 			case 'v':
 				{
@@ -7021,13 +7019,13 @@ void get_command_line_arguments() {
 				if(is_enable_cleanspool(true)) {
 					opt_test = c;
 					if(c == 312 || c == 317) {
-						strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
+						strcpy_null_term(opt_test_arg, optarg);
 					}
 				}
 				break;
 			case 313:
 				opt_test = c;
-				strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
+				strcpy_null_term(opt_test_arg, optarg);
 				break;
 			case 307:
 				opt_check_db = true;
@@ -7044,7 +7042,7 @@ void get_command_line_arguments() {
 			case 322:
 				opt_test = c;
 				if(optarg) {
-					strncpy(opt_test_arg, optarg, sizeof(opt_test_arg));
+					strcpy_null_term(opt_test_arg, optarg);
 				}
 				break;
 			case 316:
@@ -7060,10 +7058,10 @@ void get_command_line_arguments() {
 				opt_nocdr = 1;
 				break;
 			case 'C':
-				strncpy(opt_cachedir, optarg, sizeof(opt_cachedir));
+				strcpy_null_term(opt_cachedir, optarg);
 				break;
 			case 'd':
-				strncpy(opt_spooldir_main, optarg, sizeof(opt_spooldir_main));
+				strcpy_null_term(opt_spooldir_main, optarg);
 				spooldir_mkdir(opt_spooldir_main);
 				break;
 			case 'k':
@@ -7076,25 +7074,25 @@ void get_command_line_arguments() {
 				opt_packetbuffered=1;
 				break;
 			case 'h':
-				strncpy(mysql_host, optarg, sizeof(mysql_host));
+				strcpy_null_term(mysql_host, optarg);
 				break;
 			case 'O':
 				opt_mysql_port = atoi(optarg);
 				break;
 			case 'b':
-				strncpy(mysql_database, optarg, sizeof(mysql_database));
+				strcpy_null_term(mysql_database, optarg);
 				break;
 			case 'u':
-				strncpy(mysql_user, optarg, sizeof(mysql_user));
+				strcpy_null_term(mysql_user, optarg);
 				break;
 			case 'p':
-				strncpy(mysql_password, optarg, sizeof(mysql_password));
+				strcpy_null_term(mysql_password, optarg);
 				break;
 			case 'P':
-				strncpy(opt_pidfile, optarg, sizeof(opt_pidfile));
+				strcpy_null_term(opt_pidfile, optarg);
 				break;
 			case 'f':
-				strncpy(user_filter, optarg, sizeof(user_filter));
+				strcpy_null_term(user_filter, optarg);
 				break;
 			case 'S':
 				opt_saveSIP = 1;
@@ -7957,7 +7955,7 @@ int eval_config(string inistr) {
 	}
 
 	if((value = ini.GetValue("general", "interface", NULL))) {
-		strncpy(ifname, value, sizeof(ifname));
+		strcpy_null_term(ifname, value);
 	}
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
@@ -8118,13 +8116,13 @@ int eval_config(string inistr) {
 		opt_use_id_sensor_for_receiver_in_files = yesno(value);
 	}
 	if((value = ini.GetValue("general", "name_sensor", NULL))) {
-		strncpy(opt_name_sensor, value, sizeof(opt_name_sensor));
+		strcpy_null_term(opt_name_sensor, value);
 	}
 	if((value = ini.GetValue("general", "pcapcommand", NULL))) {
-		strncpy(pcapcommand, value, sizeof(pcapcommand));
+		strcpy_null_term(pcapcommand, value);
 	}
 	if((value = ini.GetValue("general", "filtercommand", NULL))) {
-		strncpy(filtercommand, value, sizeof(filtercommand));
+		strcpy_null_term(filtercommand, value);
 	}
 	if((value = ini.GetValue("general", "ringbuffer", NULL))) {
 		opt_ringbuffer = MIN(atoi(value), 2000);
@@ -8226,7 +8224,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cdr_ignore_response", NULL)) ||
 	   (value = ini.GetValue("general", "nocdr_for_last_responses", NULL))) {
-		strncpy(opt_nocdr_for_last_responses, value, sizeof(opt_nocdr_for_last_responses));
+		strcpy_null_term(opt_nocdr_for_last_responses, value);
 		parse_opt_nocdr_for_last_responses();
 	}
 	if((value = ini.GetValue("general", "disable_dbupgradecheck", NULL))) {
@@ -8308,7 +8306,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "database_backup_from_date", NULL))) {
 		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(value));
-		strncpy(opt_database_backup_from_date, value, sizeof(opt_database_backup_from_date));
+		strcpy_null_term(opt_database_backup_from_date, value);
 	}
 	if((value = ini.GetValue("general", "disable_partition_operations", NULL))) {
 		opt_disable_partition_operations = yesno(value);
@@ -8483,7 +8481,7 @@ int eval_config(string inistr) {
 		snprintf(opt_callidmerge_header, sizeof(opt_callidmerge_header), "\n%s:", value);
 	}
 	if((value = ini.GetValue("general", "callidmerge_secret", NULL))) {
-		strncpy(opt_callidmerge_secret, value, sizeof(opt_callidmerge_secret));
+		strcpy_null_term(opt_callidmerge_secret, value);
 	}
 	if((value = ini.GetValue("general", "domainport", NULL))) {
 		opt_domainport = yesno(value);
@@ -8492,13 +8490,13 @@ int eval_config(string inistr) {
 		opt_manager_port = atoi(value);
 	}
 	if((value = ini.GetValue("general", "managerip", NULL))) {
-		strncpy(opt_manager_ip, value, sizeof(opt_manager_ip));
+		strcpy_null_term(opt_manager_ip, value);
 	}
 	if((value = ini.GetValue("general", "manager_nonblock_mode", NULL))) {
 		opt_manager_nonblock_mode = yesno(value);
 	}
 	if((value = ini.GetValue("general", "managerclient", NULL))) {
-		strncpy(opt_clientmanager, value, sizeof(opt_clientmanager) - 1);
+		strcpy_null_term(opt_clientmanager, value);
 	}
 	if((value = ini.GetValue("general", "managerclientport", NULL))) {
 		opt_clientmanagerport = atoi(value);
@@ -8550,47 +8548,47 @@ int eval_config(string inistr) {
 		}
 	}
 	if((value = ini.GetValue("general", "filter", NULL))) {
-		strncpy(user_filter, value, sizeof(user_filter));
+		strcpy_null_term(user_filter, value);
 	}
 	if((value = ini.GetValue("general", "cachedir", NULL))) {
-		strncpy(opt_cachedir, value, sizeof(opt_cachedir));
+		strcpy_null_term(opt_cachedir, value);
 		spooldir_mkdir(opt_cachedir);
 	}
 	if((value = ini.GetValue("general", "spooldir", NULL))) {
-		strncpy(opt_spooldir_main, value, sizeof(opt_spooldir_main));
+		strcpy_null_term(opt_spooldir_main, value);
 	}
 	if((value = ini.GetValue("general", "spooldir_rtp", NULL))) {
-		strncpy(opt_spooldir_rtp, value, sizeof(opt_spooldir_rtp));
+		strcpy_null_term(opt_spooldir_rtp, value);
 	}
 	if((value = ini.GetValue("general", "spooldir_graph", NULL))) {
-		strncpy(opt_spooldir_graph, value, sizeof(opt_spooldir_graph));
+		strcpy_null_term(opt_spooldir_graph, value);
 	}
 	if((value = ini.GetValue("general", "spooldir_audio", NULL))) {
-		strncpy(opt_spooldir_audio, value, sizeof(opt_spooldir_audio));
+		strcpy_null_term(opt_spooldir_audio, value);
 	}
 	if((value = ini.GetValue("general", "spooldir_2", NULL))) {
-		strncpy(opt_spooldir_2_main, value, sizeof(opt_spooldir_2_main));
+		strcpy_null_term(opt_spooldir_2_main, value);
 	}
 	if((value = ini.GetValue("general", "spooldir_2_rtp", NULL))) {
-		strncpy(opt_spooldir_2_rtp, value, sizeof(opt_spooldir_2_rtp));
+		strcpy_null_term(opt_spooldir_2_rtp, value);
 	}
 	if((value = ini.GetValue("general", "spooldir_2_graph", NULL))) {
-		strncpy(opt_spooldir_2_graph, value, sizeof(opt_spooldir_2_graph));
+		strcpy_null_term(opt_spooldir_2_graph, value);
 	}
 	if((value = ini.GetValue("general", "spooldir_2_audio", NULL))) {
-		strncpy(opt_spooldir_2_audio, value, sizeof(opt_spooldir_2_audio));
+		strcpy_null_term(opt_spooldir_2_audio, value);
 	}
 	if((value = ini.GetValue("general", "spooldir_file_permission", NULL))) {
-		strncpy(opt_spooldir_file_permission, value, sizeof(opt_spooldir_file_permission));
+		strcpy_null_term(opt_spooldir_file_permission, value);
 	}
 	if((value = ini.GetValue("general", "spooldir_dir_permission", NULL))) {
-		strncpy(opt_spooldir_dir_permission, value, sizeof(opt_spooldir_dir_permission));
+		strcpy_null_term(opt_spooldir_dir_permission, value);
 	}
 	if((value = ini.GetValue("general", "spooldir_owner", NULL))) {
-		strncpy(opt_spooldir_owner, value, sizeof(opt_spooldir_owner));
+		strcpy_null_term(opt_spooldir_owner, value);
 	}
 	if((value = ini.GetValue("general", "spooldir_group", NULL))) {
-		strncpy(opt_spooldir_group, value, sizeof(opt_spooldir_group));
+		strcpy_null_term(opt_spooldir_group, value);
 	}
 	if((value = ini.GetValue("general", "spooldiroldschema", NULL))) {
 		opt_newdir = !yesno(value);
@@ -8605,7 +8603,7 @@ int eval_config(string inistr) {
 		opt_pcap_split = yesno(value);
 	}
 	if((value = ini.GetValue("general", "scanpcapdir", NULL))) {
-		strncpy(opt_scanpcapdir, value, sizeof(opt_scanpcapdir));
+		strcpy_null_term(opt_scanpcapdir, value);
 	}
 	if((value = ini.GetValue("general", "scanpcapdir_disable_inotify", NULL))) {
 		      opt_scanpcapdir_disable_inotify = yesno(value);
@@ -8625,31 +8623,31 @@ int eval_config(string inistr) {
 		opt_promisc = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sqldriver", NULL))) {
-		strncpy(sql_driver, value, sizeof(sql_driver));
+		strcpy_null_term(sql_driver, value);
 	}
 	if((value = ini.GetValue("general", "sqlcdrtable", NULL))) {
-		strncpy(sql_cdr_table, value, sizeof(sql_cdr_table));
+		strcpy_null_term(sql_cdr_table, value);
 	}
 	if((value = ini.GetValue("general", "sqlcdrtable_last30d", NULL))) {
-		strncpy(sql_cdr_table_last30d, value, sizeof(sql_cdr_table_last30d));
+		strcpy_null_term(sql_cdr_table_last30d, value);
 	}
 	if((value = ini.GetValue("general", "sqlcdrtable_last7d", NULL))) {
-		strncpy(sql_cdr_table_last7d, value, sizeof(sql_cdr_table_last1d));
+		strcpy_null_term(sql_cdr_table_last7d, value);
 	}
 	if((value = ini.GetValue("general", "sqlcdrtable_last1d", NULL))) {
-		strncpy(sql_cdr_table_last7d, value, sizeof(sql_cdr_table_last1d));
+		strcpy_null_term(sql_cdr_table_last7d, value);
 	}
 	if((value = ini.GetValue("general", "sqlcdrnexttable", NULL)) ||
 	   (value = ini.GetValue("general", "sqlcdr_next_table", NULL))) {
-		strncpy(sql_cdr_next_table, value, sizeof(sql_cdr_next_table));
+		strcpy_null_term(sql_cdr_next_table, value);
 	}
 	if((value = ini.GetValue("general", "sqlcdruatable", NULL)) ||
 	   (value = ini.GetValue("general", "sqlcdr_ua_table", NULL))) {
-		strncpy(sql_cdr_ua_table, value, sizeof(sql_cdr_ua_table));
+		strcpy_null_term(sql_cdr_ua_table, value);
 	}
 	if((value = ini.GetValue("general", "sqlcdrsipresptable", NULL)) ||
 	   (value = ini.GetValue("general", "sqlcdr_sipresp_table", NULL))) {
-		strncpy(sql_cdr_sip_response_table, value, sizeof(sql_cdr_sip_response_table));
+		strcpy_null_term(sql_cdr_sip_response_table, value);
 	}
 	if((value = ini.GetValue("general", "mysql_connect_timeout", NULL))) {
 		opt_mysql_connect_timeout = atoi(value);
@@ -8676,19 +8674,19 @@ int eval_config(string inistr) {
 		opt_mysql_enable_transactions_webrtc = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
-		strncpy(mysql_host, value, sizeof(mysql_host));
+		strcpy_null_term(mysql_host, value);
 	}
 	if((value = ini.GetValue("general", "mysqlport", NULL))) {
 		opt_mysql_port = atoi(value);
 	}
 	if((value = ini.GetValue("general", "mysqlhost_2", NULL))) {
-		strncpy(mysql_2_host, value, sizeof(mysql_2_host));
+		strcpy_null_term(mysql_2_host, value);
 	}
 	if((value = ini.GetValue("general", "mysqlport_2", NULL))) {
 		opt_mysql_2_port = atoi(value);
 	}
 	if((value = ini.GetValue("general", "mysql_timezone", NULL))) {
-		strncpy(opt_mysql_timezone, value, sizeof(opt_mysql_timezone));
+		strcpy_null_term(opt_mysql_timezone, value);
 	}
 	if((value = ini.GetValue("general", "timezone", NULL))) {
 		setenv("TZ", value, 1);
@@ -8699,22 +8697,22 @@ int eval_config(string inistr) {
 		exit(1);
 	}
 	if((value = ini.GetValue("general", "mysqldb", NULL))) {
-		strncpy(mysql_database, value, sizeof(mysql_database));
+		strcpy_null_term(mysql_database, value);
 	}
 	if((value = ini.GetValue("general", "mysqlusername", NULL))) {
-		strncpy(mysql_user, value, sizeof(mysql_user));
+		strcpy_null_term(mysql_user, value);
 	}
 	if((value = ini.GetValue("general", "mysqlpassword", NULL))) {
-		strncpy(mysql_password, value, sizeof(mysql_password));
+		strcpy_null_term(mysql_password, value);
 	}
 	if((value = ini.GetValue("general", "mysqldb_2", NULL))) {
-		strncpy(mysql_2_database, value, sizeof(mysql_2_database));
+		strcpy_null_term(mysql_2_database, value);
 	}
 	if((value = ini.GetValue("general", "mysqlusername_2", NULL))) {
-		strncpy(mysql_2_user, value, sizeof(mysql_2_user));
+		strcpy_null_term(mysql_2_user, value);
 	}
 	if((value = ini.GetValue("general", "mysqlpassword_2", NULL))) {
-		strncpy(mysql_2_password, value, sizeof(mysql_2_password));
+		strcpy_null_term(mysql_2_password, value);
 	}
 	if((value = ini.GetValue("general", "mysql_2_http", NULL))) {
 		opt_mysql_2_http = yesno(value);
@@ -8723,28 +8721,28 @@ int eval_config(string inistr) {
 		opt_mysql_client_compress = yesno(value);
 	}
 	if((value = ini.GetValue("general", "odbcdsn", NULL))) {
-		strncpy(odbc_dsn, value, sizeof(odbc_dsn));
+		strcpy_null_term(odbc_dsn, value);
 	}
 	if((value = ini.GetValue("general", "odbcuser", NULL))) {
-		strncpy(odbc_user, value, sizeof(odbc_user));
+		strcpy_null_term(odbc_user, value);
 	}
 	if((value = ini.GetValue("general", "odbcpass", NULL))) {
-		strncpy(odbc_password, value, sizeof(odbc_password));
+		strcpy_null_term(odbc_password, value);
 	}
 	if((value = ini.GetValue("general", "odbcdriver", NULL))) {
-		strncpy(odbc_driver, value, sizeof(odbc_driver));
+		strcpy_null_term(odbc_driver, value);
 	}
 	if((value = ini.GetValue("general", "cloud_host", NULL))) {
-		strncpy(cloud_host, value, sizeof(cloud_host));
+		strcpy_null_term(cloud_host, value);
 	}
 	if((value = ini.GetValue("general", "cloud_url", NULL))) {
-		strncpy(cloud_url, value, sizeof(cloud_url));
+		strcpy_null_term(cloud_url, value);
 	}
 	if((value = ini.GetValue("general", "cloud_url_activecheck", NULL))) {
-		strncpy(cloud_url_activecheck, value, sizeof(cloud_url_activecheck));
+		strcpy_null_term(cloud_url_activecheck, value);
 	}
 	if((value = ini.GetValue("general", "cloud_token", NULL))) {
-		strncpy(cloud_token, value, sizeof(cloud_token));
+		strcpy_null_term(cloud_token, value);
 	}
 	if((value = ini.GetValue("general", "cloud_router", NULL))) {
 		cloud_router = yesno(value);
@@ -8756,16 +8754,16 @@ int eval_config(string inistr) {
 		opt_cloud_activecheck_period = atoi(value);
 	}
 	if((value = ini.GetValue("general", "database_backup_from_mysqlhost", NULL))) {
-		strncpy(opt_database_backup_from_mysql_host, value, sizeof(opt_database_backup_from_mysql_host));
+		strcpy_null_term(opt_database_backup_from_mysql_host, value);
 	}
 	if((value = ini.GetValue("general", "database_backup_from_mysqldb", NULL))) {
-		strncpy(opt_database_backup_from_mysql_database, value, sizeof(opt_database_backup_from_mysql_database));
+		strcpy_null_term(opt_database_backup_from_mysql_database, value);
 	}
 	if((value = ini.GetValue("general", "database_backup_from_mysqlusername", NULL))) {
-		strncpy(opt_database_backup_from_mysql_user, value, sizeof(opt_database_backup_from_mysql_user));
+		strcpy_null_term(opt_database_backup_from_mysql_user, value);
 	}
 	if((value = ini.GetValue("general", "database_backup_from_mysqlpassword", NULL))) {
-		strncpy(opt_database_backup_from_mysql_password, value, sizeof(opt_database_backup_from_mysql_password));
+		strcpy_null_term(opt_database_backup_from_mysql_password, value);
 	}
 	if((value = ini.GetValue("general", "database_backup_from_mysqlport", NULL))) {
 		opt_database_backup_from_mysql_port = atol(value);
@@ -8786,46 +8784,46 @@ int eval_config(string inistr) {
 		opt_database_backup_skip_register = yesno(value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_sql_driver", NULL))) {
-		strncpy(get_customer_by_ip_sql_driver, value, sizeof(get_customer_by_ip_sql_driver));
+		strcpy_null_term(get_customer_by_ip_sql_driver, value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_odbc_dsn", NULL))) {
-		strncpy(get_customer_by_ip_odbc_dsn, value, sizeof(get_customer_by_ip_odbc_dsn));
+		strcpy_null_term(get_customer_by_ip_odbc_dsn, value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_odbc_user", NULL))) {
-		strncpy(get_customer_by_ip_odbc_user, value, sizeof(get_customer_by_ip_odbc_user));
+		strcpy_null_term(get_customer_by_ip_odbc_user, value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_odbc_password", NULL))) {
-		strncpy(get_customer_by_ip_odbc_password, value, sizeof(get_customer_by_ip_odbc_password));
+		strcpy_null_term(get_customer_by_ip_odbc_password, value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_odbc_driver", NULL))) {
-		strncpy(get_customer_by_ip_odbc_driver, value, sizeof(get_customer_by_ip_odbc_driver));
+		strcpy_null_term(get_customer_by_ip_odbc_driver, value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_query", NULL))) {
-		strncpy(get_customer_by_ip_query, value, sizeof(get_customer_by_ip_query));
+		strcpy_null_term(get_customer_by_ip_query, value);
 	}
 	if((value = ini.GetValue("general", "get_customers_ip_query", NULL))) {
-		strncpy(get_customers_ip_query, value, sizeof(get_customers_ip_query));
+		strcpy_null_term(get_customers_ip_query, value);
 	}
 	if((value = ini.GetValue("general", "get_customers_radius_name_query", NULL))) {
-		strncpy(get_customers_radius_name_query, value, sizeof(get_customers_radius_name_query));
+		strcpy_null_term(get_customers_radius_name_query, value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_pn_sql_driver", NULL))) {
-		strncpy(get_customer_by_pn_sql_driver, value, sizeof(get_customer_by_pn_sql_driver));
+		strcpy_null_term(get_customer_by_pn_sql_driver, value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_pn_odbc_dsn", NULL))) {
-		strncpy(get_customer_by_pn_odbc_dsn, value, sizeof(get_customer_by_pn_odbc_dsn));
+		strcpy_null_term(get_customer_by_pn_odbc_dsn, value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_pn_odbc_user", NULL))) {
-		strncpy(get_customer_by_pn_odbc_user, value, sizeof(get_customer_by_pn_odbc_user));
+		strcpy_null_term(get_customer_by_pn_odbc_user, value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_pn_odbc_password", NULL))) {
-		strncpy(get_customer_by_pn_odbc_password, value, sizeof(get_customer_by_pn_odbc_password));
+		strcpy_null_term(get_customer_by_pn_odbc_password, value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_pn_odbc_driver", NULL))) {
-		strncpy(get_customer_by_pn_odbc_driver, value, sizeof(get_customer_by_pn_odbc_driver));
+		strcpy_null_term(get_customer_by_pn_odbc_driver, value);
 	}
 	if((value = ini.GetValue("general", "get_customers_pn_query", NULL))) {
-		strncpy(get_customers_pn_query, value, sizeof(get_customers_pn_query));
+		strcpy_null_term(get_customers_pn_query, value);
 	}
 	if((value = ini.GetValue("general", "national_prefix", NULL))) {
 		char *pos = (char*)value;
@@ -8839,28 +8837,28 @@ int eval_config(string inistr) {
 		}
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_driver", NULL))) {
-		strncpy(get_radius_ip_driver, value, sizeof(get_radius_ip_driver));
+		strcpy_null_term(get_radius_ip_driver, value);
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_host", NULL))) {
-		strncpy(get_radius_ip_host, value, sizeof(get_radius_ip_host));
+		strcpy_null_term(get_radius_ip_host, value);
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_db", NULL))) {
-		strncpy(get_radius_ip_db, value, sizeof(get_radius_ip_db));
+		strcpy_null_term(get_radius_ip_db, value);
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_user", NULL))) {
-		strncpy(get_radius_ip_user, value, sizeof(get_radius_ip_user));
+		strcpy_null_term(get_radius_ip_user, value);
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_password", NULL))) {
-		strncpy(get_radius_ip_password, value, sizeof(get_radius_ip_password));
+		strcpy_null_term(get_radius_ip_password, value);
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_disable_secure_auth", NULL))) {
 		get_radius_ip_disable_secure_auth = yesno(value);
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_query", NULL))) {
-		strncpy(get_radius_ip_query, value, sizeof(get_radius_ip_query));
+		strcpy_null_term(get_radius_ip_query, value);
 	}
 	if((value = ini.GetValue("general", "get_radius_ip_query_where", NULL))) {
-		strncpy(get_radius_ip_query_where, value, sizeof(get_radius_ip_query_where));
+		strcpy_null_term(get_radius_ip_query_where, value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_flush_period", NULL))) {
 		get_customer_by_ip_flush_period = atoi(value);
@@ -8879,7 +8877,7 @@ int eval_config(string inistr) {
 				   yesno(value) ? 1000 : 0;
 	}
 	if((value = ini.GetValue("general", "dumpallallpackets_path", NULL))) {
-		strncpy(opt_pcapdump_all_path, value, sizeof(opt_pcapdump_all_path));
+		strcpy_null_term(opt_pcapdump_all_path, value);
 	}
 	if((value = ini.GetValue("general", "jitterbuffer_f1", NULL))) {
 		switch(value[0]) {
@@ -8939,10 +8937,10 @@ int eval_config(string inistr) {
 		opt_mirroronly = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mirroripsrc", NULL))) {
-		strncpy(opt_mirrorip_src, value, sizeof(opt_mirrorip_src));
+		strcpy_null_term(opt_mirrorip_src, value);
 	}
 	if((value = ini.GetValue("general", "mirroripdst", NULL))) {
-		strncpy(opt_mirrorip_dst, value, sizeof(opt_mirrorip_dst));
+		strcpy_null_term(opt_mirrorip_dst, value);
 	}
 	if((value = ini.GetValue("general", "watchdog", NULL))) {
 		enable_wdt = yesno(value);
@@ -8978,7 +8976,7 @@ int eval_config(string inistr) {
 		opt_callslimit = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pauserecordingdtmf", NULL))) {
-		strncpy(opt_silencedtmfseq, value, 15);
+		strcpy_null_term(opt_silencedtmfseq, value);
 	}
 	if((value = ini.GetValue("general", "pauserecordingheader", NULL))) {
 		snprintf(opt_silenceheader, sizeof(opt_silenceheader), "\n%s:", value);
@@ -9014,10 +9012,10 @@ int eval_config(string inistr) {
 		opt_sdp_check_direction_ext = yesno(value);
 	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
-		strncpy(opt_keycheck, value, 1024);
+		strcpy_null_term(opt_keycheck, value);
 	}
 	if((value = ini.GetValue("general", "convertchar", NULL))) {
-		strncpy(opt_convert_char, value, sizeof(opt_convert_char));
+		strcpy_null_term(opt_convert_char, value);
 	}
 	if((value = ini.GetValue("general", "openfile_max", NULL))) {
                 opt_openfile_max = atoi(value);
@@ -9067,7 +9065,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "packetbuffer_compress_method", NULL))) {
 		char _opt_pcap_queue_compress_method[10];
-		strncpy(_opt_pcap_queue_compress_method, value, sizeof(_opt_pcap_queue_compress_method));
+		strcpy_null_term(_opt_pcap_queue_compress_method, value);
 		strlwr(_opt_pcap_queue_compress_method, sizeof(_opt_pcap_queue_compress_method));
 		if(!strcmp(_opt_pcap_queue_compress_method, "snappy")) {
 			opt_pcap_queue_compress_method = pcap_block_store::snappy;
@@ -9125,7 +9123,7 @@ int eval_config(string inistr) {
 		opt_pcap_queues_mirror_use_checksum = yesno(value);
 	}
 	if((value = ini.GetValue("general", "capture_rules_telnum_file", NULL))) {
-		strncpy(opt_capture_rules_telnum_file, value, sizeof(opt_capture_rules_telnum_file));
+		strcpy_null_term(opt_capture_rules_telnum_file, value);
 	}
 	if((value = ini.GetValue("general", "detect_alone_bye", NULL))) {
 		opt_detect_alone_bye = yesno(value);
@@ -9174,16 +9172,16 @@ int eval_config(string inistr) {
 		opt_ssl_log_errors = yesno(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
-		strncpy(opt_tcpreassembly_http_log, value, sizeof(opt_tcpreassembly_http_log));
+		strcpy_null_term(opt_tcpreassembly_http_log, value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_webrtc_log", NULL))) {
-		strncpy(opt_tcpreassembly_webrtc_log, value, sizeof(opt_tcpreassembly_webrtc_log));
+		strcpy_null_term(opt_tcpreassembly_webrtc_log, value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_ssl_log", NULL))) {
-		strncpy(opt_tcpreassembly_ssl_log, value, sizeof(opt_tcpreassembly_ssl_log));
+		strcpy_null_term(opt_tcpreassembly_ssl_log, value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_sip_log", NULL))) {
-		strncpy(opt_tcpreassembly_sip_log, value, sizeof(opt_tcpreassembly_sip_log));
+		strcpy_null_term(opt_tcpreassembly_sip_log, value);
 	}
 	
 	if((value = ini.GetValue("general", "convert_dlt_sll2en10", NULL))) {
@@ -9227,16 +9225,16 @@ int eval_config(string inistr) {
 		opt_mos_lqo = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mos_lqo_bin", NULL))) {
-		strncpy(opt_mos_lqo_bin, value, sizeof(opt_mos_lqo_bin));
+		strcpy_null_term(opt_mos_lqo_bin, value);
 	}
 	if((value = ini.GetValue("general", "mos_lqo_ref", NULL))) {
-		strncpy(opt_mos_lqo_ref, value, sizeof(opt_mos_lqo_ref));
+		strcpy_null_term(opt_mos_lqo_ref, value);
 	}
 	if((value = ini.GetValue("general", "mos_lqo_ref16", NULL))) {
-		strncpy(opt_mos_lqo_ref16, value, sizeof(opt_mos_lqo_ref16));
+		strcpy_null_term(opt_mos_lqo_ref16, value);
 	}
 	if((value = ini.GetValue("general", "php_path", NULL))) {
-		strncpy(opt_php_path, value, sizeof(opt_php_path));
+		strcpy_null_term(opt_php_path, value);
 	}
 	if((value = ini.GetValue("general", "onewaytimeout", NULL))) {
 		opt_onewaytimeout = atoi(value);
@@ -9333,7 +9331,7 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "curlproxy", NULL))) {
-		strncpy(opt_curlproxy, value, sizeof(opt_curlproxy));
+		strcpy_null_term(opt_curlproxy, value);
 	}
 	
 	if((value = ini.GetValue("general", "enable_fraud", NULL))) {
@@ -9343,7 +9341,7 @@ int eval_config(string inistr) {
 		opt_enable_billing = yesno(value);
 	}
 	if((value = ini.GetValue("general", "local_country_code", NULL))) {
-		strncpy(opt_local_country_code, value, sizeof(opt_local_country_code));
+		strcpy_null_term(opt_local_country_code, value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_bufflength", NULL))) {
 		opt_pcap_dump_bufflength = atoi(value);
@@ -9514,19 +9512,19 @@ int eval_config(string inistr) {
 		opt_sip_send_before_packetbuffer = yesno(value);
 	}
 	if((value = ini.GetValue("general", "manager_sshhost", NULL))) {
-		strncpy(ssh_host, value, sizeof(ssh_host));
+		strcpy_null_term(ssh_host, value);
 	}
 	if((value = ini.GetValue("general", "manager_sshport", NULL))) {
 		ssh_port = atoi(value);
 	}
 	if((value = ini.GetValue("general", "manager_sshusername", NULL))) {
-		strncpy(ssh_username, value, sizeof(ssh_username));
+		strcpy_null_term(ssh_username, value);
 	}
 	if((value = ini.GetValue("general", "manager_sshpassword", NULL))) {
-		strncpy(ssh_password, value, sizeof(ssh_password));
+		strcpy_null_term(ssh_password, value);
 	}
 	if((value = ini.GetValue("general", "manager_sshremoteip", NULL))) {
-		strncpy(ssh_remote_listenhost, value, sizeof(ssh_remote_listenhost));
+		strcpy_null_term(ssh_remote_listenhost, value);
 	}
 	if((value = ini.GetValue("general", "manager_sshremoteport", NULL))) {
 		ssh_remote_listenport = atoi(value);
@@ -9596,7 +9594,7 @@ int eval_config(string inistr) {
 		opt_hide_message_content = yesno(value);
 	}
 	if((value = ini.GetValue("general", "hide_message_content_secret", NULL))) {
-		strncpy(opt_hide_message_content_secret, value, sizeof(opt_hide_message_content_secret));
+		strcpy_null_term(opt_hide_message_content_secret, value);
 	}
 	if (ini.GetAllValues("general", "message_body_url_reg", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
@@ -9610,11 +9608,11 @@ int eval_config(string inistr) {
 	}
 
 	if((value = ini.GetValue("general", "bogus_dumper_path", NULL))) {
-		strncpy(opt_bogus_dumper_path, value, sizeof(opt_bogus_dumper_path));
+		strcpy_null_term(opt_bogus_dumper_path, value);
 	}
 
 	if((value = ini.GetValue("general", "syslog_string", NULL))) {
-		strncpy(opt_syslog_string, value, sizeof(opt_syslog_string));
+		strcpy_null_term(opt_syslog_string, value);
 	}
 	
 	if((value = ini.GetValue("general", "cpu_limit_new_thread", NULL))) {
@@ -9673,7 +9671,7 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "git_folder", NULL))) {
-		strncpy(opt_git_folder, value, sizeof(opt_git_folder));
+		strcpy_null_term(opt_git_folder, value);
 	}
 	if((value = ini.GetValue("general", "upgrade_by_git", NULL))) {
 		opt_upgrade_by_git = yesno(value);
@@ -9696,7 +9694,7 @@ int eval_config(string inistr) {
 		opt_save_query_to_files = yesno(value);
 	}
 	if((value = ini.GetValue("general", "save_query_to_files_directory", NULL))) {
-		strncpy(opt_save_query_to_files_directory, value, sizeof(opt_save_query_to_files_directory));
+		strcpy_null_term(opt_save_query_to_files_directory, value);
 	}
 	if((value = ini.GetValue("general", "save_query_to_files_period", NULL))) {
 		opt_save_query_to_files_period = atoi(value);
@@ -9706,7 +9704,7 @@ int eval_config(string inistr) {
 		opt_load_query_from_files = !strcmp(value, "only") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "load_query_from_files_directory", NULL))) {
-		strncpy(opt_load_query_from_files_directory, value, sizeof(opt_load_query_from_files_directory));
+		strcpy_null_term(opt_load_query_from_files_directory, value);
 	}
 	if((value = ini.GetValue("general", "load_query_from_files_period", NULL))) {
 		opt_load_query_from_files_period = atoi(value);

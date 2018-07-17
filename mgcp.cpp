@@ -196,12 +196,11 @@ void *handle_mgcp(packet_s_process *packetS) {
 				call = calltable->add_mgcp(&request, packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, packetS->daddr, packetS->dest,
 							   get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 				call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
-				strncpy(call->called, request.endpoint.c_str(), sizeof(call->called));
-				call->called[sizeof(call->called) - 1] = 0;
+				strcpy_null_term(call->called, request.endpoint.c_str());
 				call->setSipcallerip(packetS->saddr, packetS->source);
 				call->setSipcalledip(packetS->daddr, packetS->dest);
 				call->flags = flags;
-				strncpy(call->fbasename, request.call_id().c_str(), MAX_FNAME - 1);
+				strcpy_null_term(call->fbasename, request.call_id().c_str());
 				if(enable_save_sip_rtp_audio(call)) {
 					if(enable_pcap_split) {
 						if(enable_save_sip(call)) {
@@ -274,8 +273,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 		if(is_response) {
 			if(call->lastSIPresponseNum == 0 || call->lastSIPresponseNum < 300) {
 				call->lastSIPresponseNum = response_code;
-				strncpy(call->lastSIPresponse, response.response.c_str(), sizeof(call->lastSIPresponse));
-				call->lastSIPresponse[sizeof(call->lastSIPresponse) - 1] = 0;
+				strcpy_null_term(call->lastSIPresponse, response.response.c_str());
 			}
 		}
 		if(sdp) {

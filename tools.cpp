@@ -272,7 +272,7 @@ set_mac() {
 	ioctl(s, SIOCGIFHWADDR, &buffer);
 	close(s);
 
-	sprintf(mac, "%02x:%02x:%02x:%02x:%02x:%02x",
+	snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
 		0xff & buffer.ifr_hwaddr.sa_data[0],
 		0xff & buffer.ifr_hwaddr.sa_data[1],
 		0xff & buffer.ifr_hwaddr.sa_data[2],
@@ -2557,7 +2557,7 @@ string reg_replace(const char *str, const char *pattern, const char *replace, co
 		for(int i = match_count - 1; i > 0; i--) {
 			for(int j = 0; j < 2; j++) {
 				char findStr[10];
-				sprintf(findStr, j ? "{$%i}" : "$%i", i);
+				snprintf(findStr, sizeof(findStr), j ? "{$%i}" : "$%i", i);
 				size_t findPos;
 				while((findPos = rslt.find(findStr)) != string::npos) {
 					rslt.replace(findPos, strlen(findStr), string(str).substr(match[i].rm_so, match[i].rm_eo - match[i].rm_so));
@@ -3979,8 +3979,8 @@ void FileZipHandler::setError(const char *error) {
 }
 
 FileZipHandler::eTypeCompress FileZipHandler::convTypeCompress(const char *typeCompress) {
-	char _compress_method[10];
-	strncpy(_compress_method, typeCompress, sizeof(_compress_method));
+	char _compress_method[20];
+	strcpy_null_term(_compress_method, typeCompress);
 	strlwr(_compress_method, sizeof(_compress_method));
 	if(yesno(_compress_method)) {
 		return(FileZipHandler::compress_default);
@@ -5014,7 +5014,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 		close(pipe_stderr[1]);
 		if(execvp(exec_args[0], exec_args) == -1) {
 			char errmessage[1000];
-			sprintf(errmessage, "exec failed: %s", exec_args[0]);
+			snprintf(errmessage, sizeof(errmessage), "exec failed: %s", exec_args[0]);
 			write(2, errmessage, strlen(errmessage));
 			kill(getpid(), SIGKILL);
 		}

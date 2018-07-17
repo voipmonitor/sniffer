@@ -349,15 +349,13 @@ string
 Call_abstract::dirnamesqlfiles() {
 	char sdirname[11];
 	struct tm t = time_r(&first_packet_time);
-	snprintf(sdirname, 11, "%04d%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
-	sdirname[10] = 0;
-	string s(sdirname);
-	return s;
+	snprintf(sdirname, sizeof(sdirname), "%04d%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
+	return(sdirname);
 }
 
 char *
 Call_abstract::get_fbasename_safe() {
-	strncpy(fbasename_safe, fbasename, MAX_FNAME * sizeof(char));
+	strcpy_null_term(fbasename_safe, fbasename);
 	prepare_string_to_filename(fbasename_safe);
 	return fbasename_safe;
 }
@@ -2323,7 +2321,7 @@ Call::convertRawToWav() {
 					   strstr(de->d_name, ".i1.rawInfo")) {
 						this->call_id = de->d_name;
 						this->call_id.resize(this->call_id.length() - 11);
-						strncpy(this->fbasename, this->call_id.c_str(), sizeof(this->fbasename));
+						strcpy_null_term(this->fbasename, this->call_id.c_str());
 						this->fbasename[sizeof(this->fbasename) - 1] = 0;
 						break;
 					}
@@ -2334,15 +2332,13 @@ Call::convertRawToWav() {
 	}
 
 	if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-		strncpy(out, get_pathfilename(tsf_audio, "wav").c_str(), sizeof(out));
+		strcpy_null_term(out, get_pathfilename(tsf_audio, "wav").c_str());
 	} else {
-		strncpy(out, get_pathfilename(tsf_audio, "ogg").c_str(), sizeof(out));
+		strcpy_null_term(out, get_pathfilename(tsf_audio, "ogg").c_str());
 	}
-	out[sizeof(out) - 1] = 0;
 
 	/* caller direction */
-	strncpy(rawInfo, get_pathfilename(tsf_audio, "i0.rawInfo").c_str(), sizeof(rawInfo));
-	rawInfo[sizeof(rawInfo) - 1] = 0;
+	strcpy_null_term(rawInfo, get_pathfilename(tsf_audio, "i0.rawInfo").c_str());
 	pl = fopen(rawInfo, "r");
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
@@ -2352,16 +2348,14 @@ Call::convertRawToWav() {
 				continue;
 			}
 			adir = 1;
-			strncpy(wav0, get_pathfilename(tsf_audio, "i0.wav").c_str(), sizeof(wav0));
-			wav0[sizeof(wav0) - 1] = 0;
+			strcpy_null_term(wav0, get_pathfilename(tsf_audio, "i0.wav").c_str());
 			break;
 		}
 		fclose(pl);
 	}
 
 	/* called direction */
-	strncpy(rawInfo, get_pathfilename(tsf_audio, "i1.rawInfo").c_str(), sizeof(rawInfo));
-	rawInfo[sizeof(rawInfo) - 1] = 0;
+	strcpy_null_term(rawInfo, get_pathfilename(tsf_audio, "i1.rawInfo").c_str());
 	pl = fopen(rawInfo, "r");
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
@@ -2371,8 +2365,7 @@ Call::convertRawToWav() {
 				continue;
 			}
 			bdir = 1;
-			strncpy(wav1, get_pathfilename(tsf_audio, "i1.wav").c_str(), sizeof(wav1));
-			wav1[sizeof(wav1) - 1] = 0;
+			strcpy_null_term(wav1, get_pathfilename(tsf_audio, "i1.wav").c_str());
 			break;
 		}
 		fclose(pl);
@@ -2504,8 +2497,7 @@ Call::convertRawToWav() {
 		/* open playlist */
 		char rawinfo_extension[100];
 		snprintf(rawinfo_extension, sizeof(rawinfo_extension), "i%d.rawInfo", i);
-		strncpy(rawInfo, get_pathfilename(tsf_audio, rawinfo_extension).c_str(), sizeof(rawInfo));
-		rawInfo[sizeof(rawInfo) - 1] = 0;
+		strcpy_null_term(rawInfo, get_pathfilename(tsf_audio, rawinfo_extension).c_str());
 		pl = fopen(rawInfo, "r");
 		while(fgets(line, 256, pl)) {
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
@@ -2529,8 +2521,7 @@ Call::convertRawToWav() {
 		/* open playlist */
 		char rawinfo_extension[100];
 		snprintf(rawinfo_extension, sizeof(rawinfo_extension), "i%d.rawInfo", i);
-		strncpy(rawInfo, get_pathfilename(tsf_audio, rawinfo_extension).c_str(), sizeof(rawInfo));
-		rawInfo[sizeof(rawInfo) - 1] = 0;
+		strcpy_null_term(rawInfo, get_pathfilename(tsf_audio, rawinfo_extension).c_str());
 		pl = fopen(rawInfo, "r");
 		if(!pl) {
 			syslog(LOG_ERR, "Cannot open %s\n", rawInfo);
@@ -3606,8 +3597,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(is_multiple_to_branch() && to_is_canceled(called)) {
 		string called_not_canceled = get_to_not_canceled();
 		if(called_not_canceled.length()) {
-			strncpy(called, called_not_canceled.c_str(), sizeof(called));
-			called[sizeof(called) - 1] = 0;
+			strcpy_null_term(called, called_not_canceled.c_str());
 		}
 	}
 	cdr.add(sqlEscapeString(called), "called");
@@ -3941,7 +3931,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			// build a_sl1 - b_sl10 fields
 			for(int j = 1; j < 11; j++) {
 				char str_j[3];
-				sprintf(str_j, "%d", j);
+				snprintf(str_j, sizeof(str_j), "%d", j);
 				cdr.add(rtpab[i]->stats.slost[j], c+"_sl"+str_j);
 			}
 			// build a_d50 - b_d300 fileds
@@ -5143,10 +5133,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					if (existsColumns.register_rrd_count) {
 						char rrdavg[12];
 						char rrdcount[4];
-						snprintf(rrdavg, 11, "%d", rrd_avg);
-						snprintf(rrdcount, 3, "%d", rrd_count);
-						rrdavg[11] = 0;
-						rrdcount[3] = 0;
+						snprintf(rrdavg, sizeof(rrdavg), "%d", rrd_avg);
+						snprintf(rrdcount, sizeof(rrdcount), "%d", rrd_count);
 						reg.add(rrdavg,"rrd_avg");
 						reg.add(rrdcount,"rrd_count");
 					}
@@ -5781,7 +5769,7 @@ void adjustUA(char *ua) {
 					char *str_pos = strstr(ua, matches[j].c_str());
 					if(str_pos) {
 						char ua_temp[1024];
-						strncpy(ua_temp, str_pos + matches[j].size(), sizeof(ua_temp));
+						strcpy_null_term(ua_temp, str_pos + matches[j].size());
 						strcpy(str_pos, ua_temp);
 						adjust = true;
 					}
@@ -5800,7 +5788,7 @@ void adjustUA(char *ua) {
 			}
 			if(start) {
 				char ua_temp[1024];
-				strncpy(ua_temp, ua + start, sizeof(ua_temp));
+				strcpy_null_term(ua_temp, ua + start);
 				strcpy(ua, ua_temp);
 			}
 		}
@@ -5878,7 +5866,7 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 		iam_src_ip = packetS->saddr;
 		iam_dst_ip = packetS->daddr;
 		iam_time_us = getTimeUS(packetS->header_pt);
-		strncpy(fbasename, filename().c_str(), MAX_FNAME);
+		strcpy_null_term(fbasename, filename().c_str());
 		break;
 	case SS7_ACM:
 		last_message_type = acm;
@@ -7596,7 +7584,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 			for(iter = custom_headers.begin(); iter != custom_headers.end();) {
 				if(iter->first) {
 					char nextTable[100];
-					sprintf(nextTable, "%s%i", this->nextTablePrefix.c_str(), iter->first);
+					snprintf(nextTable, sizeof(nextTable), "%s%i", this->nextTablePrefix.c_str(), iter->first);
 					allNextTables.push_back(nextTable);
 				}
 				iter++;
@@ -7659,11 +7647,13 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 		map<int, sCustomHeaderData>::iterator iter2;
 		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
 			string findHeader = iter2->second.header;
-			if(findHeader[findHeader.length() - 1] != ':' &&
-			   findHeader[findHeader.length() - 1] != '=') {
-				findHeader.append(":");
+			if(findHeader.length()) {
+				if(findHeader[findHeader.length() - 1] != ':' &&
+				   findHeader[findHeader.length() - 1] != '=') {
+					findHeader.append(":");
+				}
+				parsePacket->addNode(findHeader.c_str(), ParsePacket::typeNode_custom);
 			}
-			parsePacket->addNode(findHeader.c_str(), ParsePacket::typeNode_custom);
 		}
 	}
 	unlock_custom_headers();
@@ -7809,7 +7799,7 @@ void CustomHeaders::prepareSaveRows(Call *call, int type, SqlDb_row *cdr_next, S
 					}
 				}
 				char fieldName[20];
-				sprintf(fieldName, "custom_header_%i", iter2->first);
+				snprintf(fieldName, sizeof(fieldName), "custom_header_%i", iter2->first);
 				cdr_next_ch[iter->first - 1].add(sqlEscapeString(iter2->second[1]), fieldName);
 			}
 		}
@@ -7899,12 +7889,12 @@ string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type) {
 							query += ";";
 						}
 						char queryBuff[200];
-						sprintf(queryBuff, 
-							"update %s set use_at = '%s' where dynamic_table=%i and dynamic_column=%i",
-							this->configTable.c_str(),
-							sqlDateTimeString(call->calltime()).c_str(),
-							iter->first,
-							iter2->first);
+						snprintf(queryBuff, sizeof(queryBuff),
+							 "update %s set use_at = '%s' where dynamic_table=%i and dynamic_column=%i",
+							 this->configTable.c_str(),
+							 sqlDateTimeString(call->calltime()).c_str(),
+							 iter->first,
+							 iter2->first);
 						query += queryBuff;
 					}
 				}

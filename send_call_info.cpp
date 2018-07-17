@@ -26,7 +26,7 @@ SendCallInfoItem::SendCallInfoItem(unsigned int dbId) {
 bool SendCallInfoItem::load() {
 	SqlDb *sqlDb = createSqlObject();
 	char dbIdStr[10];
-	sprintf(dbIdStr, "%u", dbId);
+	snprintf(dbIdStr, sizeof(dbIdStr), "%u", dbId);
 	sqlDb->query(string(
 		"select send_call_info.*,\
 		 (select group_concat(number) \

@@ -387,7 +387,7 @@ void TELNUMfilter::load() {
 	while((row = sqlDb->fetchRow())) {
 		count++;
 		db_row* filterRow = new(db_row);
-		strncpy(filterRow->prefix, trim_str(row["prefix"]).c_str(), MAX_PREFIX);
+		strcpy_null_term(filterRow->prefix, trim_str(row["prefix"]).c_str());
 		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
@@ -397,7 +397,7 @@ void TELNUMfilter::load() {
 		t_payload *np = new(t_payload);
 		np->direction = vectDbRow[i].direction;
 		np->flags = this->getFlagsFromBaseData(&vectDbRow[i]);;
-		strncpy(np->prefix, vectDbRow[i].prefix, MAX_PREFIX);
+		strcpy_null_term(np->prefix, vectDbRow[i].prefix);
 		add_payload(np);
 	}
 };
@@ -417,7 +417,7 @@ void TELNUMfilter::loadFile() {
 		csv.getRow(i, &row);
 		count++;
 		db_row* filterRow = new(db_row);
-		strncpy(filterRow->prefix, trim_str(row["prefix"]).c_str(), MAX_PREFIX);
+		strcpy_null_term(filterRow->prefix, trim_str(row["prefix"]).c_str());
 		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
@@ -425,8 +425,8 @@ void TELNUMfilter::loadFile() {
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		t_payload *np = new(t_payload);
 		np->direction = vectDbRow[i].direction;
-		np->flags = this->getFlagsFromBaseData(&vectDbRow[i]);;
-		strncpy(np->prefix, vectDbRow[i].prefix, MAX_PREFIX);
+		np->flags = this->getFlagsFromBaseData(&vectDbRow[i]);
+		strcpy_null_term(np->prefix, vectDbRow[i].prefix);
 		add_payload(np);
 	}
 }

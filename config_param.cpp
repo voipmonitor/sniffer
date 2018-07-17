@@ -1530,7 +1530,7 @@ string cConfigMap::getFirstItem(const char *name, bool toLower) {
 	return("");
 }
 
-string cConfigMap::getItems(const char *name, const char *separator, bool toLower) {
+string cConfigMap::getItems(const char *name, const char */*separator*/, bool toLower) {
 	map<string, cItem>::iterator iter = config_map.find(name);
 	if(iter != config_map.end() && iter->second.values.size()) {
 		string rslt;
@@ -2081,7 +2081,7 @@ void cConfig::putToMysql() {
 	}
 	if(row_get) {
 		char id_cond[20];
-		sprintf(id_cond, "ID = %i", atoi(row_get["id"].c_str()));
+		snprintf(id_cond, sizeof(id_cond), "ID = %i", atoi(row_get["id"].c_str()));
 		sqlDb->update("sensor_config", row_save, id_cond);
 	} else {
 		sqlDb->insert("sensor_config", row_save);

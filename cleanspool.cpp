@@ -401,7 +401,7 @@ void CleanSpool::check_filesindex() {
 void CleanSpool::check_index_date(string date, SqlDb *sqlDb) {
 	for(int h = 0; h < 24 && !is_terminating(); h++) {
 		char hour[8];
-		sprintf(hour, "%02d", h);
+		snprintf(hour, sizeof(hour), "%02d", h);
 		string ymdh = string(date.substr(0,4)) + date.substr(5,2) + date.substr(8,2) + hour;
 		map<string, long long> typeSize;
 		reindex_date_hour(date, h, true, &typeSize, true);
@@ -470,7 +470,7 @@ string CleanSpool::getMaxSpoolDate() {
 	}
 	if(maxDate) {
 		char maxDate_str[20];
-		sprintf(maxDate_str, "%4i-%02i-%02i", maxDate / 10000, maxDate % 10000 / 100, maxDate % 100);
+		snprintf(maxDate_str, sizeof(maxDate_str), "%4i-%02i-%02i", maxDate / 10000, maxDate % 10000 / 100, maxDate % 100);
 		return(maxDate_str);
 	} else {
 		return("");
@@ -1244,8 +1244,8 @@ bool CleanSpool::check_exists_act_files_in_filesindex() {
 		strftime(date, 20, "%Y%m%d", &checkTimeInfo);
 		for(int j = 0; j < 24; j++) {
 			char datehour[20];
-			strcpy(datehour, date);
-			sprintf(datehour + strlen(datehour), "%02i", j);
+			strcpy_null_term(datehour, date);
+			snprintf(datehour + strlen(datehour), sizeof(datehour) - strlen(datehour), "%02i", j);
 			if(file_exists(getSpoolDir_string(tsf_main) + "/filesindex/sipsize/" + datehour)) {
 				ok = true;
 				break;
@@ -2369,7 +2369,7 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 			for(int h = 0; h < 24; h++) {
 				long long sumSizeMissingFilesInIndex[2] = {0, 0};
 				char hour[8];
-				sprintf(hour, "%02d", h);
+				snprintf(hour, sizeof(hour), "%02d", h);
 				syslog(LOG_NOTICE, "cleanspool[%i]: - hour %s", spoolIndex, hour);
 				string ymd = dateDir;
 				string ymdh = string(ymd.substr(0,4)) + ymd.substr(5,2) + ymd.substr(8,2) + hour;
@@ -2431,7 +2431,7 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 					vector<string> filesInFolder;
 					for(int m = 0; m < 60; m++) {
 						char min[8];
-						sprintf(min, "%02d", m);
+						snprintf(min, sizeof(min), "%02d", m);
 						string timetypedir = dateDir + '/' + hour + '/' + min + '/' + getSpoolTypeDir((eTypeSpoolFile)typeSpoolFile);
 						DIR* dp = opendir(this->findExistsSpoolDirFile((eTypeSpoolFile)typeSpoolFile, timetypedir).c_str());
 						if(!dp) {

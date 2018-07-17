@@ -60,5 +60,7 @@
 
 #define USE_PACKET_NUMBER false
 
+#define CAST_OBJ_TO_VOID(obj) ((void*)(obj))
+
 
 #endif //VOIPMONITOR_DEFINE_H

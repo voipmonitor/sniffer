@@ -159,7 +159,7 @@ void SqlDb_row::add(int content, string fieldName, bool null) {
 		this->add((const char*)NULL, fieldName);
 	} else {
 		char str_content[100];
-		sprintf(str_content, "%i", content);
+		snprintf(str_content, sizeof(str_content), "%i", content);
 		this->add(str_content, fieldName);
 	}
 }
@@ -169,7 +169,7 @@ void SqlDb_row::add(unsigned int content, string fieldName, bool null) {
 		this->add((const char*)NULL, fieldName);
 	} else {
 		char str_content[100];
-		sprintf(str_content, "%u", content);
+		snprintf(str_content, sizeof(str_content), "%u", content);
 		this->add(str_content, fieldName);
 	}
 }
@@ -179,7 +179,7 @@ void SqlDb_row::add(long int content,  string fieldName, bool null) {
 		this->add((const char*)NULL, fieldName);
 	} else {
 		char str_content[100];
-		sprintf(str_content, "%li", content);
+		snprintf(str_content, sizeof(str_content), "%li", content);
 		this->add(str_content, fieldName);
 	}
 }
@@ -189,7 +189,7 @@ void SqlDb_row::add(unsigned long int content,  string fieldName, bool null) {
 		this->add((const char*)NULL, fieldName);
 	} else {
 		char str_content[100];
-		sprintf(str_content, "%lu", content);
+		snprintf(str_content, sizeof(str_content), "%lu", content);
 		this->add(str_content, fieldName);
 	}
 }
@@ -199,7 +199,7 @@ void SqlDb_row::add(long long int content,  string fieldName, bool null) {
 		this->add((const char*)NULL, fieldName);
 	} else {
 		char str_content[100];
-		sprintf(str_content, "%lli", content);
+		snprintf(str_content, sizeof(str_content), "%lli", content);
 		this->add(str_content, fieldName);
 	}
 }
@@ -209,7 +209,7 @@ void SqlDb_row::add(unsigned long long int content,  string fieldName, bool null
 		this->add((const char*)NULL, fieldName);
 	} else {
 		char str_content[100];
-		sprintf(str_content, "%llu", content);
+		snprintf(str_content, sizeof(str_content), "%llu", content);
 		this->add(str_content, fieldName);
 	}
 }
@@ -219,7 +219,7 @@ void SqlDb_row::add(double content,  string fieldName, bool null) {
 		this->add((const char*)NULL, fieldName);
 	} else {
 		char str_content[100];
-		sprintf(str_content, "%lf", content);
+		snprintf(str_content, sizeof(str_content), "%lf", content);
 		this->add(str_content, fieldName);
 	}
 }
@@ -1137,12 +1137,12 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 					!(this->getDbMajorVersion() == 5 and this->getDbMinorVersion() <= 1)) {
 					this->query("SET GLOBAL innodb_file_per_table=1;");
 				}
-				sprintf(tmp, "CREATE DATABASE IF NOT EXISTS `%s`", this->conn_database.c_str());
+				snprintf(tmp, sizeof(tmp), "CREATE DATABASE IF NOT EXISTS `%s`", this->conn_database.c_str());
 				if(!this->query(tmp)) {
 					rslt = false;
 				}
 			}
-			sprintf(tmp, "USE `%s`", this->conn_database.c_str());
+			snprintf(tmp, sizeof(tmp), "USE `%s`", this->conn_database.c_str());
 			if(!this->existsDatabase() || !this->query(tmp)) {
 				rslt = false;
 			}
@@ -1658,7 +1658,7 @@ int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool
 		partitions = &_partitions;
 	}
 	string query = 
-		string("explain") + (getDbMajorVersion() >= 8 ? "" : " partitions") + " " +
+		string("explain") + (getDbName() == "mysql" && getDbMajorVersion() >= 8 ? "" : " partitions") + " " +
 		selectQuery(table);
 	if(this->query(query)) {
 		SqlDb_row row;
@@ -1740,7 +1740,7 @@ bool SqlDb_mysql::checkLastError(string prefixError, bool sysLog, bool clearLast
 		unsigned int errnoMysql = mysql_errno(this->hMysql);
 		if(errnoMysql) {
 			char errnoMysqlString[20];
-			sprintf(errnoMysqlString, "%u", errnoMysql);
+			snprintf(errnoMysqlString, sizeof(errnoMysqlString), "%u", errnoMysql);
 			this->setLastError(errnoMysql, (prefixError + ":  " + errnoMysqlString + " - " + mysql_error(this->hMysql)).c_str(), sysLog);
 			return(true);
 		} else if(clearLastError) {
@@ -2042,12 +2042,12 @@ string SqlDb_odbc::getTypeColumn(const char */*table*/, const char */*column*/, 
 	return("");
 }
 
-int SqlDb_odbc::getPartitions(const char *table, list<string> *partitions, bool useCache) {
+int SqlDb_odbc::getPartitions(const char */*table*/, list<string> */*partitions*/, bool /*useCache*/) {
 	// TODO
 	return(-1);
 }
 
-bool SqlDb_odbc::existsPartition(const char *table, const char *partition, bool useCache) {
+bool SqlDb_odbc::existsPartition(const char */*table*/, const char */*partition*/, bool /*useCache*/) {
 	// TODO
 	return(false);
 }
@@ -2531,9 +2531,9 @@ void MySqlStore_process::waitForTerminate() {
 
 string MySqlStore_process::getInsertFuncName() {
 	char insert_funcname[20];
-	sprintf(insert_funcname, "__insert_%i", this->id);
+	snprintf(insert_funcname, sizeof(insert_funcname), "__insert_%i", this->id);
 	if(opt_id_sensor > -1) {
-		sprintf(insert_funcname + strlen(insert_funcname), "S%i", opt_id_sensor);
+		snprintf(insert_funcname + strlen(insert_funcname), sizeof(insert_funcname) - strlen(insert_funcname), "S%i", opt_id_sensor);
 	}
 	return(insert_funcname);
 }
@@ -2752,7 +2752,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 		unsigned int query_length = query.length();
 		query.append("\n");
 		char buffIdLength[100];
-		sprintf(buffIdLength, "%i/%u:", id, query_length);
+		snprintf(buffIdLength, sizeof(buffIdLength), "%i/%u:", id, query_length);
 		qfile->fileZipHandler->write(buffIdLength, strlen(buffIdLength));
 		qfile->fileZipHandler->write((char*)query.c_str(), query.length());
 		u_long actTimeMS = getTimeMS();
@@ -2768,7 +2768,7 @@ string MySqlStore::getQFilename(int idc, u_long actTime) {
 	char fileName[100];
 	string dateTime = sqlDateTimeString(actTime / 1000).c_str();
 	find_and_replace(dateTime, " ", "T");
-	sprintf(fileName, "%s-%i-%lu-%s", QFILE_PREFIX, idc, actTime, dateTime.c_str());
+	snprintf(fileName, sizeof(fileName), "%s-%i-%lu-%s", QFILE_PREFIX, idc, actTime, dateTime.c_str());
 	return(qfileConfig.getDirectory() + "/" + fileName);
 }
 
@@ -2858,7 +2858,7 @@ bool MySqlStore::fillQFiles(int id) {
 		return(false);
 	}
 	char prefix[10];
-	sprintf(prefix, "%s-%i-", QFILE_PREFIX, id);
+	snprintf(prefix, sizeof(prefix), "%s-%i-", QFILE_PREFIX, id);
 	dirent* de;
 	while((de = readdir(dp)) != NULL) {
 		if(strncmp(de->d_name, prefix, strlen(prefix))) continue;
@@ -2893,7 +2893,7 @@ string MySqlStore::getMinQFile(int id) {
 		u_long minTime = 0;
 		string minTimeFileName;
 		char prefix[10];
-		sprintf(prefix, "%s-%i-", QFILE_PREFIX, id);
+		snprintf(prefix, sizeof(prefix), "%s-%i-", QFILE_PREFIX, id);
 		dirent* de;
 		while((de = readdir(dp)) != NULL) {
 			if(strncmp(de->d_name, prefix, strlen(prefix))) continue;
@@ -2918,7 +2918,7 @@ int MySqlStore::getCountQFiles(int id) {
 		return(-1);
 	}
 	char prefix[10];
-	sprintf(prefix, "%s-%i-", QFILE_PREFIX, id);
+	snprintf(prefix, sizeof(prefix), "%s-%i-", QFILE_PREFIX, id);
 	dirent* de;
 	int counter = 0;
 	while((de = readdir(dp)) != NULL) {
@@ -5368,9 +5368,9 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 	}
 	
 	char alter_funcname[20];
-	sprintf(alter_funcname, "__alter");
+	snprintf(alter_funcname, sizeof(alter_funcname), "__alter");
 	if(opt_id_sensor > -1) {
-		sprintf(alter_funcname + strlen(alter_funcname), "_S%i", opt_id_sensor);
+		snprintf(alter_funcname + strlen(alter_funcname), sizeof(alter_funcname) - strlen(alter_funcname),"_S%i", opt_id_sensor);
 	}
 	this->query(string("drop procedure if exists ") + alter_funcname);
 	ostringstream outStrAlter;
@@ -5517,9 +5517,9 @@ bool SqlDb_mysql::createSchema_alter_http_jj(int connectId) {
 	}
 	
 	char alter_funcname[20];
-	sprintf(alter_funcname, "__alter");
+	snprintf(alter_funcname, sizeof(alter_funcname), "__alter");
 	if(opt_id_sensor > -1) {
-		sprintf(alter_funcname + strlen(alter_funcname), "_S%i", opt_id_sensor);
+		snprintf(alter_funcname + strlen(alter_funcname), sizeof(alter_funcname) - strlen(alter_funcname), "_S%i", opt_id_sensor);
 	}
 	this->query(string("drop procedure if exists ") + alter_funcname);
 	ostringstream outStrAlter;

@@ -1400,7 +1400,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 				/* open file for raw codec */
 				unsigned long unique = getTimestamp();
 				char tmp[1024+16];
-				sprintf(tmp, "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
+				snprintf(tmp, sizeof(tmp), "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
 				if(gfileRAW)  {
 					jitterbuffer_fixed_flush(channel_record);
 					ast_jb_empty_and_reset(channel_record);
@@ -1454,7 +1454,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 				}
 
 				/* write file info to "playlist" */
-				sprintf(tmp, "%s.rawInfo", basefilename);
+				snprintf(tmp, sizeof(tmp), "%s.rawInfo", basefilename);
 				owner->iscaller_consecutive[iscaller] = 0;
 				bool gfileRAWInfo_exists = file_exists(tmp);
 				FILE *gfileRAWInfo = fopen(tmp, "a");

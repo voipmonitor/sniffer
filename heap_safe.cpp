@@ -131,7 +131,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 				std::string memory_type = memory_type1;
 				if(memory_type2) {
 					char memory_type2_str[20];
-					sprintf(memory_type2_str, " %i", memory_type2);
+					snprintf(memory_type2_str, sizeof(memory_type2_str), " %i", memory_type2);
 					memory_type.append(memory_type2_str);
 				}
 				while(__sync_lock_test_and_set(&memoryStat_sync, 1));
@@ -729,7 +729,7 @@ std::string getMemoryStatQuick(bool all) {
 
 std::string addThousandSeparators(u_int64_t num) {
 	char length_str[20];
-	sprintf(length_str, "%lu", num);
+	snprintf(length_str, sizeof(length_str), "%lu", num);
 	std::string length;
 	while(strlen(length_str) > 3) {
 		length = std::string(length_str + strlen(length_str) - 3) + " " + length;

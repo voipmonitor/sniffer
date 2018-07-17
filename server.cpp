@@ -237,7 +237,7 @@ void cSnifferServerConnection::connection_process() {
 	}
 }
 
-void cSnifferServerConnection::evData(u_char *data, size_t dataLen) {
+void cSnifferServerConnection::evData(u_char */*data*/, size_t /*dataLen*/) {
 }
 
 void cSnifferServerConnection::addTask(sSnifferServerGuiTask task) {
