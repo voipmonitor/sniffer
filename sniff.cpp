@@ -5563,7 +5563,7 @@ inline int _ipfrag_dequeue(ip_frag_queue_t *queue,
 	if(!queue->size()) return 1;
 
 	// prepare newpacket structure and header structure
-	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->header_ip_offset;
+	u_int32_t totallen = MIN(queue->begin()->second->totallen + queue->begin()->second->header_ip_offset, 0xFFFF);
 	
 	unsigned int additionallen = 0;
 	iphdr2 *iphdr = NULL;
@@ -5588,16 +5588,14 @@ inline int _ipfrag_dequeue(ip_frag_queue_t *queue,
 						node->len);
 				len += node->len;
 			} else {
-				// for rest of a packets append only data 
-				if(len > totallen) {
-					syslog(LOG_ERR, "%s.%d: Error - bug in voipmonitor len[%d] > totallen[%d]", __FILE__, __LINE__, len, totallen);
-					abort();
+				if(len < totallen) {
+					unsigned cpy_len = MIN(node->len - sizeof(iphdr2), totallen - len);
+					memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
+							HPP(node->header_packet) + node->header_ip_offset + sizeof(iphdr2), node->header_packet,
+							cpy_len);
+					len += cpy_len;
+					additionallen += cpy_len;
 				}
-				memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
-						HPP(node->header_packet) + node->header_ip_offset + sizeof(iphdr2), node->header_packet,
-						node->len - sizeof(iphdr2));
-				len += node->len - sizeof(iphdr2);
-				additionallen += node->len - sizeof(iphdr2);
 			}
 			if(i == queue->size() - 1) {
 				memcpy_heapsafe(HPH(*header_packet), *header_packet, 
