@@ -1,3 +1,8 @@
+22.9.1 16.07.2018
+=================
+- fix MariaDB partition creation (broken since 22.9
+
+
 22.9 12.07.2018
 ===============
 - add parameter to international rules - minimum legth for apply nanpa rules [VG-1578]
