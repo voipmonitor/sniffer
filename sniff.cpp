@@ -5558,7 +5558,18 @@ inline int _ipfrag_dequeue(ip_frag_queue_t *queue,
 	if(!queue->size()) return 1;
 
 	// prepare newpacket structure and header structure
-	u_int32_t totallen = min(queue->begin()->second->totallen + queue->begin()->second->header_ip_offset, 0xFFFFu);
+	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->header_ip_offset;
+	if(totallen > 0xFFFF) {
+		if(sverb.defrag_overflow) {
+			ip_frag_queue_it_t it = queue->begin();
+			if(it != queue->end()) {
+				ip_frag_s *node = it->second;
+				iphdr2 *iph = (iphdr2*)((u_char*)HPP(node->header_packet) + node->header_ip_offset);
+				syslog(LOG_NOTICE, "ipfrag overflow: %i src ip: %s dst ip: %s", totallen, inet_ntostring(htonl(iph->saddr)).c_str(), inet_ntostring(htonl(iph->daddr)).c_str());
+			}
+		}
+		totallen = 0xFFFF;
+	}
 	
 	unsigned int additionallen = 0;
 	iphdr2 *iphdr = NULL;

@@ -6711,6 +6711,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "scanpcapdir")			sverb.scanpcapdir = 1;
 	else if(verbParam == "debug_rtcp")			sverb.debug_rtcp = 1;
 	else if(verbParam == "defrag")				sverb.defrag = 1;
+	else if(verbParam == "defrag_overflow")			sverb.defrag_overflow = 1;
 	else if(verbParam == "dedup")				sverb.dedup = 1;
 	else if(verbParam == "reassembly_sip")			sverb.reassembly_sip = 1;
 	else if(verbParam == "reassembly_sip_output")		sverb.reassembly_sip_output = 1;

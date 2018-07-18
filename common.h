@@ -70,6 +70,7 @@ struct sVerbose {
 	int scanpcapdir;
 	int debug_rtcp;
 	int defrag;
+	int defrag_overflow;
 	int dedup;
 	int reassembly_sip;
 	int reassembly_sip_output;
