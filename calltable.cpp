@@ -87,9 +87,7 @@ extern int opt_savewav_force;
 extern int opt_save_sdp_ipport;
 extern int opt_mos_g729;
 extern int opt_nocdr;
-extern int nocdr_for_last_responses[100];
-extern int nocdr_for_last_responses_length[100];
-extern int nocdr_for_last_responses_count;
+extern NoStoreCdrRules nocdr_rules;
 extern int opt_only_cdr_next;
 extern char opt_cachedir[1024];
 extern char sql_cdr_table[256];
@@ -3469,19 +3467,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(sverb.disable_save_call) {
 		return(0);
 	}
- 
-	if(lastSIPresponseNum && nocdr_for_last_responses_count) {
-		for(int i = 0; i < nocdr_for_last_responses_count; i++) {
-			int lastSIPresponseNum_left = lastSIPresponseNum;
-			int lastSIPresponseNum_length = log10(lastSIPresponseNum) + 1;
-			while(lastSIPresponseNum_length > nocdr_for_last_responses_length[i]) {
-				lastSIPresponseNum_left /= 10;
-				--lastSIPresponseNum_length;
-			}
-			if(lastSIPresponseNum_left == nocdr_for_last_responses[i]) {
-				return(0);
-			}
-		}
+	
+	if(lastSIPresponseNum && nocdr_rules.isSet() && nocdr_rules.check(this)) {
+		return(0);
 	}
  
 	if(!sqlDbSaveCall) {
@@ -8185,6 +8173,171 @@ void NoHashMessageRules::refresh(SqlDb *sqlDb) {
 	clear(false);
 	load(sqlDb, false);
 	unlock_no_hash();
+}
+
+
+NoStoreCdrRule::NoStoreCdrRule() {
+	lastResponseNum = 0;
+	lastResponseNumLength = 0;
+	ip = 0;
+	ip_mask_length = 0;
+	number_check = NULL;
+	number_regexp = NULL;
+	name_check = NULL;
+	name_regexp = NULL;
+}
+
+NoStoreCdrRule::~NoStoreCdrRule() {
+	if(number_check) {
+		delete number_check;
+	}
+	if(number_regexp) {
+		delete number_regexp;
+	}
+	if(name_check) {
+		delete name_check;
+	}
+	if(name_regexp) {
+		delete name_regexp;
+	}
+}
+
+bool NoStoreCdrRule::check(Call *call) {
+	bool ok = false;
+	if(call->lastSIPresponseNum) {
+		int lrn = call->lastSIPresponseNum;
+		while(lrn && (int)(log10(lrn) + 1) > lastResponseNumLength) {
+			lrn /= 10;
+		}
+		if(lrn == lastResponseNum) {
+			ok = true;
+		}
+ 	}
+ 	if(ok && ip) {
+		u_int16_t sipcalledport_confirmed;
+		if(!check_ip(htonl(call->getSipcallerip()), ip, ip_mask_length) &&
+		   !check_ip(htonl(call->getSipcalledip()), ip, ip_mask_length) &&
+		   !check_ip(htonl(call->getSipcalledipConfirmed(&sipcalledport_confirmed)), ip, ip_mask_length)) {
+			ok = false;
+		}
+	}
+	if(ok && number.length()) {
+		if(!check_number(call->caller) &&
+		   !check_number(call->called)) {
+			ok = false;
+		}
+	}
+	if(ok && name.length()) {
+		if(!check_name(call->callername)) {
+			ok = false;
+		}
+	}
+	return(ok);
+}
+
+void NoStoreCdrRule::set(const char *pattern) {
+	while(*pattern == ' ') {
+		++pattern;
+	}
+	lastResponseNum = atoi(pattern);
+	if(lastResponseNum > 0) {
+		lastResponseNumLength = log10(lastResponseNum) + 1;
+	} else {
+		return;
+	}
+	//cout << "* " << lastResponseNum << "/" << lastResponseNumLength << endl;
+	const char *cond_prefix[] = {
+		"ip",
+		"number",
+		"name"
+	};
+	for(unsigned i = 0; i < sizeof(cond_prefix) / sizeof(cond_prefix[0]); i++) {
+		const char *cond_prefix_pos = strcasestr(pattern, cond_prefix[i]);
+		if(cond_prefix_pos) {
+			const char *cond_data_pos = cond_prefix_pos + strlen(cond_prefix[i]);
+			if(*cond_data_pos == ' ' || *cond_data_pos == ':' || *cond_data_pos == '=') {
+				bool ok_cond_data_sep = false;
+				while(*cond_data_pos == ' ' || *cond_data_pos == ':' || *cond_data_pos == '=') {
+					if(*cond_data_pos == ':' || *cond_data_pos == '=') {
+						ok_cond_data_sep = true;
+					}
+					++cond_data_pos;
+				}
+				if(*cond_data_pos && ok_cond_data_sep) {
+					const char *cond_data_pos_end = cond_data_pos;
+					while(*(cond_data_pos_end + 1) && *(cond_data_pos_end + 1) != ' ') {
+						++cond_data_pos_end;
+					}
+					string cond_data = string(cond_data_pos, cond_data_pos_end - cond_data_pos + 1);
+					//cout << "* " << cond_prefix[i] << " : " << cond_data << endl;
+					if(i == 0) {
+						size_t posMaskSep = cond_data.find('/');
+						if(posMaskSep != string::npos) {
+							ip = htonl(inet_addr(cond_data.substr(0, posMaskSep).c_str()));
+							ip_mask_length = atoi(cond_data.substr(posMaskSep + 1).c_str());
+						} else {
+							ip = htonl(inet_addr(cond_data.c_str()));
+						}
+					} else if(i == 1) {
+						number = cond_data;
+						number_check = new FILE_LINE(0) CheckString(number.c_str());
+						if(!string_is_alphanumeric(number.c_str()) && check_regexp(number.c_str())) {
+							number_regexp = new FILE_LINE(0) cRegExp(number.c_str());
+						}
+					} else if(i == 2) {
+						name = cond_data;
+						name_check = new FILE_LINE(0) CheckString(name.c_str());
+						if(!string_is_alphanumeric(name.c_str()) && check_regexp(name.c_str())) {
+							name_regexp = new FILE_LINE(0) cRegExp(name.c_str());
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+bool NoStoreCdrRule::isSet() {
+	return(lastResponseNumLength > 0);
+}
+
+bool NoStoreCdrRule::check_number(const char *number) {
+	return((number_check && number_check->check(number)) ||
+	       (number_regexp && number_regexp->match(number)));
+}
+
+bool NoStoreCdrRule::check_name(const char *name) {
+	return((name_check && name_check->check(name)) ||
+	       (name_regexp && name_regexp->match(name)));
+}
+
+NoStoreCdrRules::~NoStoreCdrRules() {
+	for(list<NoStoreCdrRule*>::iterator iter = rules.begin(); iter != rules.end(); iter++) {
+		delete (*iter);
+	}
+}
+
+bool NoStoreCdrRules::check(Call *call) {
+	for(list<NoStoreCdrRule*>::iterator iter = rules.begin(); iter != rules.end(); iter++) {
+		if((*iter)->check(call)) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+void NoStoreCdrRules::set(const char *pattern) {
+	NoStoreCdrRule *rule = new FILE_LINE(0) NoStoreCdrRule; 
+	rule->set(pattern);
+	if(rule->isSet()) {
+		rules.push_back(rule);
+	} else {
+		delete rule;
+	}
+}
+
+bool NoStoreCdrRules::isSet() {
+	return(rules.size() > 0);
 }
 
 

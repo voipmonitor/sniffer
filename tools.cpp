@@ -2446,7 +2446,6 @@ std::vector<std::string> split(const char *s, std::vector<std::string> delim, bo
 	return(elems);
 }
 
-
 std::string string_size(const char *s, unsigned size) {
 	std::string str(s);
 	if(str.length() > size) {
@@ -2455,6 +2454,18 @@ std::string string_size(const char *s, unsigned size) {
 	return(str);
 }
 
+bool string_is_alphanumeric(const char *s) {
+	if(!*s) {
+		return(false);
+	}
+	while(*s) {
+		if(!isdigit(*s) && !isalpha(*s)) {
+			return(false);
+		}
+		++s;
+	}
+	return(true);
+}
 
 bool check_regexp(const char *pattern) {
 	regex_t re;
@@ -2663,6 +2674,12 @@ bool check_ip_in(u_int32_t ip, vector<u_int32_t> *vect_ip, vector<d_u_int32_t> *
 		}
 	}
 	return(false);
+}
+
+bool check_ip(u_int32_t ip, u_int32_t net, unsigned mask_length) {
+	return(mask_length == 0 || mask_length == 32 ?
+		ip == net :
+		net == ip >> (32 - mask_length) << (32 - mask_length));
 }
 
 string inet_ntostring(u_int32_t ip) {

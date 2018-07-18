@@ -524,6 +524,7 @@ std::vector<std::string> split(const std::string &s, char delim);
 std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false, bool useEmptyItems = false);
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false, bool useEmptyItems = false);
 std::string string_size(const char *s, unsigned size);
+bool string_is_alphanumeric(const char *s);
 
 bool check_regexp(const char *pattern);
 int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);
@@ -564,6 +565,7 @@ private:
 };
 
 bool check_ip_in(u_int32_t ip, vector<u_int32_t> *vect_ip, vector<d_u_int32_t> *vect_net, bool trueIfVectEmpty);
+bool check_ip(u_int32_t ip, u_int32_t net, unsigned mask_length);
 string inet_ntostring(u_int32_t ip);
 u_int32_t inet_strington(const char *ip);
 bool ip_is_localhost(u_int32_t ip) { return((ip >> 8) == 0x7F0000); }

@@ -1987,6 +1987,41 @@ private:
 };
 
 
+class NoStoreCdrRule {
+public:
+	NoStoreCdrRule();
+	~NoStoreCdrRule();
+	bool check(Call *call);
+	void set(const char*);
+	bool isSet();
+private:
+	bool check_number(const char *number);
+	bool check_name(const char *name);
+private:
+	int lastResponseNum;
+	int lastResponseNumLength;
+	u_int32_t ip;
+	unsigned ip_mask_length;
+	string number;
+	CheckString *number_check;
+	cRegExp *number_regexp;
+	string name;
+	CheckString *name_check;
+	cRegExp *name_regexp;
+ 
+};
+
+class NoStoreCdrRules {
+public:
+	~NoStoreCdrRules();
+	bool check(Call *call);
+	void set(const char*);
+	bool isSet();
+private:
+	list<NoStoreCdrRule*> rules;
+};
+
+
 int sip_request_name_to_int(const char *requestName, bool withResponse = false);
 const char *sip_request_int_to_name(int requestCode, bool withResponse = false);
 

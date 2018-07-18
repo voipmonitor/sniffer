@@ -216,9 +216,7 @@ int opt_inbanddtmf = 0;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
 char opt_nocdr_for_last_responses[1024];
-int nocdr_for_last_responses[100];
-int nocdr_for_last_responses_length[100];
-int nocdr_for_last_responses_count;
+NoStoreCdrRules nocdr_rules;
 int opt_only_cdr_next = 0;
 int opt_gzipPCAP = 0;		// compress PCAP data ? 
 int opt_mos_g729 = 0;		// calculate MOS for G729 codec
@@ -9996,14 +9994,9 @@ void* sqlStore_http() {
 }
 
 void parse_opt_nocdr_for_last_responses() {
-	nocdr_for_last_responses_count = 0;
 	vector<string> responses = split(opt_nocdr_for_last_responses, split(",|;", "|"), true);
-	for(unsigned i = 0; i < min(responses.size(), sizeof(nocdr_for_last_responses) / sizeof(nocdr_for_last_responses[0])); i++) {
-		nocdr_for_last_responses[nocdr_for_last_responses_count] = atoi(responses[i].c_str());
-		if(nocdr_for_last_responses[nocdr_for_last_responses_count]) {
-			nocdr_for_last_responses_length[nocdr_for_last_responses_count] = log10(nocdr_for_last_responses[nocdr_for_last_responses_count]) + 1;
-			nocdr_for_last_responses_count++;
-		}
+	for(unsigned i = 0; i < responses.size(); i++) {
+		nocdr_rules.set(responses[i].c_str());
 	}
 }
 
