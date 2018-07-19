@@ -5558,8 +5558,16 @@ inline int _ipfrag_dequeue(ip_frag_queue_t *queue,
 	if(!queue->size()) return 1;
 
 	// prepare newpacket structure and header structure
-	u_int32_t totallen = queue->begin()->second->totallen + queue->begin()->second->header_ip_offset;
-	if(totallen > 0xFFFF) {
+	u_int32_t totallen = queue->begin()->second->header_ip_offset;
+	unsigned i = 0;
+	for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
+		totallen += it->second->len;
+		if(i) {
+			totallen -= sizeof(iphdr2);
+		}
+		i++;
+	}
+	if(totallen > 0xFFFF + queue->begin()->second->header_ip_offset) {
 		if(sverb.defrag_overflow) {
 			ip_frag_queue_it_t it = queue->begin();
 			if(it != queue->end()) {
@@ -5568,12 +5576,12 @@ inline int _ipfrag_dequeue(ip_frag_queue_t *queue,
 				syslog(LOG_NOTICE, "ipfrag overflow: %i src ip: %s dst ip: %s", totallen, inet_ntostring(htonl(iph->saddr)).c_str(), inet_ntostring(htonl(iph->daddr)).c_str());
 			}
 		}
-		totallen = 0xFFFF;
+		totallen = 0xFFFF + queue->begin()->second->header_ip_offset;
 	}
 	
 	unsigned int additionallen = 0;
 	iphdr2 *iphdr = NULL;
-	unsigned i = 0;
+	i = 0;
 	unsigned int len = 0;
 	
 	if(header_packet) {
@@ -5642,18 +5650,17 @@ inline int _ipfrag_dequeue(ip_frag_queue_t *queue,
 				len += node->len;
 			} else {
 				// for rest of a packets append only data 
-				if(len > totallen) {
-					syslog(LOG_ERR, "%s.%d: Error - bug in voipmonitor len[%d] > totallen[%d]", __FILE__, __LINE__, len, totallen);
-					abort();
+				if(len < totallen) {
+					unsigned cpy_len = min((unsigned)(node->len - sizeof(iphdr2)), totallen - len);
+					memcpy_heapsafe(header_packet_pqout->packet + len, header_packet_pqout->packet,
+							((sHeaderPacketPQout*)node->header_packet_pqout)->packet + node->header_ip_offset + sizeof(iphdr2), 
+							((sHeaderPacketPQout*)node->header_packet_pqout)->block_store ?
+							 ((sHeaderPacketPQout*)node->header_packet_pqout)->block_store->block :
+							 ((sHeaderPacketPQout*)node->header_packet_pqout)->packet,
+							cpy_len);
+					len += cpy_len;
+					additionallen += cpy_len;
 				}
-				memcpy_heapsafe(header_packet_pqout->packet + len, header_packet_pqout->packet,
-						((sHeaderPacketPQout*)node->header_packet_pqout)->packet + node->header_ip_offset + sizeof(iphdr2), 
-						((sHeaderPacketPQout*)node->header_packet_pqout)->block_store ?
-						 ((sHeaderPacketPQout*)node->header_packet_pqout)->block_store->block :
-						 ((sHeaderPacketPQout*)node->header_packet_pqout)->packet,
-						node->len - sizeof(iphdr2));
-				len += node->len - sizeof(iphdr2);
-				additionallen += node->len - sizeof(iphdr2);
 			}
 			if(i == queue->size() - 1) {
 				memcpy_heapsafe(header_packet_pqout->header, header_packet_pqout->header,
@@ -5727,12 +5734,9 @@ inline int _ipfrag_add(ip_frag_queue_t *queue,
 		if(queue->size()) {
 			// update totallen for the first node 
 			ip_frag_s *first = queue->begin()->second;
-			first->totallen += len - sizeof(iphdr2); 
-			node->totallen = first->totallen;
 			node->has_last = first->has_last;
 		} else {
 			// queue is empty
-			node->totallen = len;
 			node->has_last = is_last;
 		}
 

@@ -12,7 +12,6 @@ struct ip_frag_s {
 	time_t ts;
 	u_int32_t offset;
 	u_int32_t len;
-	u_int32_t totallen;
 	char has_last;
 };
 
