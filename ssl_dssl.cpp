@@ -235,6 +235,10 @@ void cSslDsslClientRandomItems::set(u_char *client_random, u_char *master_secret
 }
 
 bool cSslDsslClientRandomItems::get(u_char *client_random, u_char *master_secret) {
+	if(sverb.ssl_sessionkey) {
+		cout << "find clientrandom" << endl;
+		hexdump(client_random, 32);
+	}
 	bool rslt = false;
 	cSslDsslClientRandomIndex index(client_random);
 	lock_map();
@@ -431,6 +435,9 @@ void end_decrypt_ssl_dssl(unsigned int saddr, unsigned int daddr, int sport, int
 
 bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(!SslDsslSessions) {
+		return(false);
+	}
 	JsonItem jsonData;
 	jsonData.parse(string((char*)data, datalen).c_str());
 	string sessionid = jsonData.getValue("sessionid");
@@ -442,6 +449,10 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 		hexdecode(client_random, sessionid.c_str(), SSL3_RANDOM_SIZE);
 		hexdecode(master_secret, mastersecret.c_str(), SSL3_MASTER_SECRET_SIZE);
 		SslDsslSessions->clientRandomSet(client_random, master_secret);
+		if(sverb.ssl_sessionkey) {
+			cout << "set clientrandom" << endl;
+			hexdump(client_random, 32);
+		}
 		return(true);
 	}
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS

@@ -6658,6 +6658,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "http")				sverb.http = 1;
 	else if(verbParam == "webrtc")				sverb.webrtc = 1;
 	else if(verbParam == "ssl")				sverb.ssl = 1;
+	else if(verbParam == "ssl_sessionkey")			sverb.ssl_sessionkey = 1;
 	else if(verbParam == "sip")				sverb.sip = 1;
 	else if(verbParam.substr(0, 25) == "tcpreassembly_debug_file=")
 								{ sverb.tcpreassembly_debug_file = new char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbParam.c_str() + 25); }
