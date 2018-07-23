@@ -833,6 +833,9 @@ public:
 	}
 	bool addBlockStoreToPcapStoreQueue(u_char *buffer, size_t bufferLen, string *error, string *warning, u_int32_t *block_counter);
 	inline void addBlockStoreToPcapStoreQueue(pcap_block_store *blockStore);
+	inline unsigned long long getLastUS() {
+		return(getTimeUS(_last_ts));
+	}
 protected:
 	bool createThread();
 	bool createDestroyBlocksThread();
@@ -954,7 +957,7 @@ private:
 	map<unsigned int, sPacketServerConnection*> packetServerConnections;
 	volatile int _sync_packetServerConnections;
 	u_long lastCheckFreeSizeCachedir_timeMS;
-	timeval _last_ts;
+	volatile timeval _last_ts;
 	u_int32_t block_counter;
 friend void *_PcapQueue_readFromFifo_destroyBlocksThreadFunction(void *arg);
 friend void *_PcapQueue_readFromFifo_socketServerThreadFunction(void *arg);

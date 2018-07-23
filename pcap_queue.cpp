@@ -6759,7 +6759,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	}
 	
 	if(!this->_last_ts.tv_sec) {
-		this->_last_ts = header->ts;
+		this->_last_ts.tv_sec = header->ts.tv_sec;
+		this->_last_ts.tv_usec = header->ts.tv_usec;
 	} else if(this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec > header->ts.tv_sec * 1000000ull + header->ts.tv_usec + 1000) {
 		if(verbosity > 1 || enable_bad_packet_order_warning) {
 			static u_long lastTimeSyslog = 0;
@@ -6771,7 +6772,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			}
 		}
 	} else {
-		this->_last_ts = header->ts;
+		this->_last_ts.tv_sec = header->ts.tv_sec;
+		this->_last_ts.tv_usec = header->ts.tv_usec;
 	}
 	
 	iphdr2 *header_ip = hp->header->header_ip_offset == (u_int16_t)0xFFFFFFFF ?

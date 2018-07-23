@@ -742,6 +742,7 @@ char *ssl_client_random_portmatrix;
 bool ssl_client_random_portmatrix_set = false;
 vector<u_int32_t> ssl_client_random_ip;
 vector<d_u_int32_t> ssl_client_random_net;
+int ssl_client_random_maxwait_ms = 0;
 
 int opt_sdp_reverse_ipport = 0;
 bool opt_sdp_check_direction_ext = true;
@@ -3586,6 +3587,9 @@ int main_init_read() {
 		sslData = new FILE_LINE(42030) SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
+		if(ssl_client_random_maxwait_ms > 0) {
+			tcpReassemblySsl->setEnablePacketThread();
+		}
 		if(opt_ssl_ignore_tcp_handshake) {
 			tcpReassemblySsl->setEnableWildLink();
 			tcpReassemblySsl->setIgnoreTcpHandshake();
@@ -5951,6 +5955,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_sessionkey_udp", &ssl_client_random_enable));
 			addConfigItem(new FILE_LINE(0) cConfigItem_ports("ssl_sessionkey_udp_port", ssl_client_random_portmatrix));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hosts("ssl_sessionkey_udp_ip", &ssl_client_random_ip, &ssl_client_random_net));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_udp_maxwait_ms", &ssl_client_random_maxwait_ms));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 		setDisableIfEnd();
@@ -6986,9 +6991,10 @@ void get_command_line_arguments() {
 					opt_pb_read_from_file_acttime = acttime;
 					opt_scanpcapdir[0] = '\0';
 				} else if((!strncmp(optarg, "pbs", 3) ||
-					   !strncmp(optarg, "pbsa", 4)) &&
+					   !strncmp(optarg, "pbsa", 4) ||
+					   !strncmp(optarg, "pbas", 4)) &&
 					  strchr(optarg, ':')) {
-					bool acttime = !strncmp(optarg, "pbsa", 4);
+					bool acttime = !strncmp(optarg, "pbsa", 4) || !strncmp(optarg, "pbas", 4);
 					opt_pb_read_from_file_speed = atof(optarg + (acttime ? 4 : 3));
 					strcpy(opt_pb_read_from_file, strchr(optarg, ':') + 1);
 					opt_pb_read_from_file_acttime = acttime;
@@ -7849,6 +7855,9 @@ int eval_config(string inistr) {
 		if(ssl_client_random_ip.size() > 1) {
 			std::sort(ssl_client_random_ip.begin(), ssl_client_random_ip.end());
 		}
+	}
+	if((value = ini.GetValue("general", "ssl_sessionkey_udp_maxwait_ms", NULL))) {
+		ssl_client_random_maxwait_ms = atoi(value);
 	}
 	
 	// http ip

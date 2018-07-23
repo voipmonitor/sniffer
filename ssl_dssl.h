@@ -97,7 +97,7 @@ public:
 	cSslDsslClientRandomItems();
 	~cSslDsslClientRandomItems();
 	void set(u_char *client_random, u_char *master_secret);
-	bool get(u_char *client_random, u_char *master_secret);
+	bool get(u_char *client_random, u_char *master_secret, struct timeval ts);
 	void erase(u_char *client_random);
 	void cleanup();
 	void clear();
@@ -122,7 +122,7 @@ public:
 	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts);
 	void destroySession(unsigned int saddr, unsigned int daddr, int sport, int dport);
 	void clientRandomSet(u_char *client_random, u_char *master_secret);
-	bool clientRandomGet(u_char *client_random, u_char *master_secret);
+	bool clientRandomGet(u_char *client_random, u_char *master_secret, struct timeval ts);
 	void clientRandomErase(u_char *client_random);
 	void clientRandomCleanup();
 private:
