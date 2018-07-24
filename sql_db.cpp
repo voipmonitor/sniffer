@@ -7415,7 +7415,7 @@ u_int64_t _checkMysqlIdCdrChildTables_getAutoIncrement(string table, SqlDb *sqlD
 }
 
 u_int64_t _checkMysqlIdCdrChildTables_getAutoIncrement_v2(string table, SqlDb *sqlDb) {
-	if(!sqlDb->existsTable(table + "_auto_increment'")) {
+	if(!sqlDb->existsTable(table + "_auto_increment")) {
 		return((u_int64_t)-1);
 	}
 	SqlDb_row row;
