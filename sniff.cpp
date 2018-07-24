@@ -738,14 +738,10 @@ void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirt
 		if(ENABLE_CONVERT_DLT_SLL_TO_EN10(packetS->dlt)) {
 			memset(packet, 0, 6);
 			((ether_header*)packet)->ether_type = ((sll_header*)packetS->packet)->sll_protocol;
-			#ifdef __SANITIZE_ADDRESS__
 			u_char *tmp = new FILE_LINE(0) u_char[max(packetLen, header->caplen)];
 			memcpy(tmp, packet + 16, header->caplen - 16);
 			memcpy(packet + 14, tmp, header->caplen - 16);
 			delete [] tmp;
-			#else
-			memcpy(packet + 14, packet + 16, header->caplen - 16);
-			#endif
 			header->caplen -= 2;
 			header->len -= 2;
 		}
