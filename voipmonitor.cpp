@@ -3590,7 +3590,7 @@ int main_init_read() {
 		sslData = new FILE_LINE(42030) SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
-		if(ssl_client_random_maxwait_ms > 0) {
+		if(ssl_client_random_enable && ssl_client_random_maxwait_ms > 0) {
 			tcpReassemblySsl->setEnablePacketThread();
 		}
 		if(opt_ssl_ignore_tcp_handshake) {
@@ -7435,6 +7435,9 @@ void set_context_config() {
 			if(ssl_client_random_portmatrix[i]) {
 				ssl_client_random_portmatrix_set = true;
 			}
+		}
+		if(!ssl_client_random_maxwait_ms) {
+			ssl_client_random_maxwait_ms = 2000;
 		}
 	}
 	
