@@ -651,7 +651,10 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 
 void save_live_packet(packet_s_process *packetS) {
 	if(global_livesniffer) {
-		if(packetS->is_register() && livesnifferfilterUseSipTypes.u_register) {
+		if(packetS->is_message() && livesnifferfilterUseSipTypes.u_message) {
+			save_live_packet(NULL, packetS, MESSAGE,
+					 NULL, NULL);
+		} else if(packetS->is_register() && livesnifferfilterUseSipTypes.u_register) {
 			save_live_packet(NULL, packetS, REGISTER,
 					 NULL, NULL);
 		} else if(packetS->is_subscribe() && livesnifferfilterUseSipTypes.u_subscribe) {
@@ -767,8 +770,12 @@ void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirt
  
 	// check if it should be stored to mysql 
 	if(type == TYPE_SIP && global_livesniffer) {
-		save_live_packet(call, packetS, call->getTypeBase(),
-				 header, packet);
+		if(call->typeIs(INVITE) && livesnifferfilterUseSipTypes.u_invite) {
+			save_live_packet(call, packetS, INVITE,
+					 header, packet);
+		} else {
+			save_live_packet(packetS);
+		}
 	}
 
 	if(!sverb.disable_save_packet) {
@@ -7003,7 +7010,13 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 			pushed = true;
 		}
 		if(!pushed) {
-			preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
+			if((packetS->is_options() && !opt_sip_options && !livesnifferfilterUseSipTypes.u_options) ||
+			   (packetS->is_subscribe() && !livesnifferfilterUseSipTypes.u_subscribe) ||
+			   (packetS->is_notify() && !livesnifferfilterUseSipTypes.u_notify)) {
+				PACKET_S_PROCESS_DESTROY(&packetS);
+			} else {
+				preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
+			}
 		}
 	} else if(packetS->isSkinny) {
 		packetS->blockstore_addflag(102 /*pb lock flag*/);
@@ -7183,10 +7196,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 		return;
 	}
 	this->process_getSipMethod(&packetS);
-	if((packetS->is_register() && !opt_sip_register && !livesnifferfilterUseSipTypes.u_register) ||
-	   (packetS->is_options() && !opt_sip_options && !livesnifferfilterUseSipTypes.u_options) ||
-	   (packetS->is_subscribe() && !livesnifferfilterUseSipTypes.u_subscribe) ||
-	   (packetS->is_notify() && !livesnifferfilterUseSipTypes.u_notify)) {
+	if(packetS->is_register() && !opt_sip_register && !livesnifferfilterUseSipTypes.u_register) {
 		PACKET_S_PROCESS_DESTROY(&packetS);
 		return;
 	}
