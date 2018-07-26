@@ -649,6 +649,24 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 	__sync_lock_release(&usersniffer_sync);
 }
 
+void save_live_packet(packet_s_process *packetS) {
+	if(global_livesniffer) {
+		if(packetS->is_register() && livesnifferfilterUseSipTypes.u_register) {
+			save_live_packet(NULL, packetS, REGISTER,
+					 NULL, NULL);
+		} else if(packetS->is_subscribe() && livesnifferfilterUseSipTypes.u_subscribe) {
+			save_live_packet(NULL, packetS, SUBSCRIBE,
+					 NULL, NULL);
+		} else if(packetS->is_options() && livesnifferfilterUseSipTypes.u_options) {
+			save_live_packet(NULL, packetS, OPTIONS,
+					 NULL, NULL);
+		} else if(packetS->is_notify() && livesnifferfilterUseSipTypes.u_notify) {
+			save_live_packet(NULL, packetS, NOTIFY,
+					 NULL, NULL);
+		}
+	}
+}
+
 static int parse_packet__message(packet_s_process *packetS, bool strictCheckLength,
 				 char **rsltMessage, char **rsltMessageInfo, string *rsltDestNumber, string *rsltSrcNumber, unsigned int *rsltContentLength,
 				 unsigned int *rsltDcs, Call::eVoicemail *rsltVoicemail,
@@ -748,8 +766,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirt
 	}
  
 	// check if it should be stored to mysql 
-	if(type == TYPE_SIP && global_livesniffer && 
-	   (sipportmatrix[packetS->source] || sipportmatrix[packetS->dest] || packetS->is_ssl)) {
+	if(type == TYPE_SIP && global_livesniffer) {
 		save_live_packet(call, packetS, call->getTypeBase(),
 				 header, packet);
 	}
@@ -2553,33 +2570,23 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	}
 
 	//check and save CSeq for later to compare with OK 
-	s = gettag_sip(packetS, "\nCSeq:", &l);
-	if(s && l < 32) {
+	if(packetS->cseq.is_set()) {
 		if(sip_method == INVITE) {
-			memcpy(call->invitecseq, s, l);
-			call->invitecseq[l] = '\0';
-			#if USE_UNREPLIED_INVITE_MESSAGE
-			call->unrepliedinvite++;
-			#endif
+			call->invitecseq = packetS->cseq;
 			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %s\n", call->invitecseq);
+				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %u\n", call->invitecseq.number);
 		} else if(sip_method == MESSAGE) {
-			memcpy(call->messagecseq, s, l);
-			call->messagecseq[l] = '\0';
-			#if USE_UNREPLIED_INVITE_MESSAGE
-			call->unrepliedmessage++;
-			#endif
+			call->messagecseq = packetS->cseq;
 			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen MESSAGE, CSeq: %s\n", call->messagecseq);
+				syslog(LOG_NOTICE, "Seen MESSAGE, CSeq: %u\n", call->messagecseq.number);
 		} else if(sip_method == REGISTER) {
-			memcpy(call->registercseq, s, l);
-			call->registercseq[l] = '\0';
+			call->registercseq = packetS->cseq;
 			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen REGISTER, CSeq: %s\n", call->registercseq);
+				syslog(LOG_NOTICE, "Seen REGISTER, CSeq: %u\n", call->registercseq.number);
 		} else if(sip_method == BYE) {
-			unsigned indexSetByeCseq = call->setByeCseq(s, l);
+			unsigned indexSetByeCseq = call->setByeCseq(&packetS->cseq);
 			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen BYE, CSeq: %s\n", call->byecseq[indexSetByeCseq]);
+				syslog(LOG_NOTICE, "Seen BYE, CSeq: %u\n", call->byecseq[indexSetByeCseq].number);
 		}
 	}
 	
@@ -2686,6 +2693,8 @@ static inline void process_packet__cleanup_registers(pcap_pkthdr *header, u_long
 static inline void process_packet__cleanup_ss7(pcap_pkthdr *header, u_long timeS = 0);
 static inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
 static inline int process_packet__parse_sip_method(packet_s_process *packetS, bool *sip_response);
+static inline bool process_packet__parse_cseq(sCseq *cseq, char *cseqstr, unsigned int cseqlen);
+static inline bool process_packet__parse_cseq(sCseq *cseq, packet_s_process *packetS);
 static inline int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
 						  char *lastSIPresponse, bool *call_cancel_lsr487);
 static inline int parse_packet__last_sip_response(packet_s_process *packetS, int sip_method, bool sip_response,
@@ -2718,11 +2727,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	bool detectCallerd = false;
 	const char *logPacketSipMethodCallDescr = NULL;
 	int merged;
-	char *cseq = NULL;
-	long unsigned int cseqlen = 0;
-	bool cseq_contain_invite = false;
-	bool cseq_contain_message = false;
-	int cseq_method = 0;
 	
 	s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
 	if(s && l <= 1023) {
@@ -2763,28 +2767,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		cout << dump_data << endl;
 	}
 
-	switch(packetS->sip_method) {
-	case MESSAGE:
+	if(packetS->is_message()) {
 		counter_sip_message_packets++;
-		break;
-	case OPTIONS:
-		if(livesnifferfilterUseSipTypes.u_options) {
-			save_live_packet(NULL, packetS, OPTIONS,
-					 NULL, NULL);
-		}
-		break;
-	case SUBSCRIBE:
-		if(livesnifferfilterUseSipTypes.u_subscribe) {
-			save_live_packet(NULL, packetS, SUBSCRIBE,
-					 NULL, NULL);
-		}
-		break;
-	case NOTIFY:
-		if(livesnifferfilterUseSipTypes.u_notify) {
-			save_live_packet(NULL, packetS, NOTIFY,
-					 NULL, NULL);
-		}
-		break;
 	}
 	
 	lastSIPresponseNum = packetS->lastSIPresponseNum;
@@ -2818,21 +2802,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 	
 	if(!call) {
-		if(IS_SIP_RESXXX(packetS->sip_method)) {
-			s = gettag_sip(packetS, "\nCSeq:", &l);
-			if(s && l < 32) {
-				if(livesnifferfilterUseSipTypes.u_subscribe && memmem(s, l, "SUBSCRIBE", 9)) {
-					save_live_packet(NULL, packetS, SUBSCRIBE,
-							 NULL, NULL);
-				} else if(livesnifferfilterUseSipTypes.u_options && memmem(s, l, "OPTIONS", 7)) {
-					save_live_packet(NULL, packetS, OPTIONS,
-							 NULL, NULL);
-				} else if(livesnifferfilterUseSipTypes.u_notify && memmem(s, l, "NOTIFY", 6)) {
-					save_live_packet(NULL, packetS, NOTIFY,
-							 NULL, NULL);
-				}
-			}
-		}
+		save_live_packet(packetS);
 		if(logPacketSipMethodCall_enable) {
 			logPacketSipMethodCallDescr = "SIP packet does not belong to any call and it is not INVITE";
 		}
@@ -2932,75 +2902,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	
 	call->check_reset_oneway(packetS->saddr, packetS->source);
 
-	cseq = gettag_sip(packetS, "\nCSeq:", &cseqlen);
-	if(cseq && cseqlen < 32) {
-		unsigned cseq_pos = 0;
-		while(cseq_pos < cseqlen && (isdigit(cseq[cseq_pos]) || cseq[cseq_pos] == ' ')) {
-			++cseq_pos;
-		}
-		if(cseq_pos < cseqlen) {
-			cseq_method = process_packet__parse_sip_method(cseq + cseq_pos, cseqlen - cseq_pos, NULL);
-		}
-		if(call->typeIs(INVITE) && cseq_method == INVITE) {
-			if(call->invitecseq[0]) {
-				if(memmem(call->invitecseq, strlen(call->invitecseq), cseq, cseqlen)) {
-					cseq_contain_invite = true;
-					#if USE_UNREPLIED_INVITE_MESSAGE
-					if(packetS->sip_method == INVITE) {
-						call->unrepliedinvite++;
-					} else if(call->unrepliedinvite > 0){
-						call->unrepliedinvite--;
-					}
-					//syslog(LOG_NOTICE, "[%s] unreplied invite--\n", call->call_id);
-					#endif
-				}
-				if(!cseq_contain_invite &&
-				   memmem(cseq, cseqlen, "INVITE", 6)) {
-					cseq_contain_invite = true;
-				}
-			} else if(packetS->sip_method == INVITE) {
-				memcpy(call->invitecseq, cseq, cseqlen);
-				call->invitecseq[cseqlen] = '\0';
-				#if USE_UNREPLIED_INVITE_MESSAGE
-				call->unrepliedinvite++;
-				#endif
-				cseq_contain_invite = true;
-			}
-		}
-		if(call->typeIs(MESSAGE) && cseq_method == MESSAGE) {
-			if(call->messagecseq[0]) {
-				if(memmem(call->messagecseq, strlen(call->messagecseq), cseq, cseqlen)) {
-					cseq_contain_message = true;
-					#if USE_UNREPLIED_INVITE_MESSAGE
-					if(packetS->sip_method == MESSAGE) {
-						call->unrepliedmessage++;
-					} else if(call->unrepliedmessage > 0){
-						call->unrepliedmessage--;
-					}
-					//syslog(LOG_NOTICE, "[%s] unreplied message--\n", call->call_id);
-					#endif
-				}
-				if(!cseq_contain_message &&
-				   memmem(cseq, cseqlen, "MESSAGE", 7)) {
-					cseq_contain_message = true;
-				}
-			} else if(packetS->sip_method == MESSAGE) {
-				memcpy(call->messagecseq, cseq, cseqlen);
-				call->messagecseq[cseqlen] = '\0';
-				#if USE_UNREPLIED_INVITE_MESSAGE
-				call->unrepliedmessage++;
-				#endif
-				cseq_contain_message = true;
-			}
-		}
-	}
-
-	detectCallerd = call->check_is_caller_called(packetS->get_callid(), packetS->sip_method, cseq_method,
+	detectCallerd = call->check_is_caller_called(packetS->get_callid(), packetS->sip_method, packetS->cseq.method,
 						     packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
 						     &iscaller, &iscalled, 
 						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) || 
 						     IS_SIP_RES18X(packetS->sip_method));
-	if(!detectCallerd && packetS->sip_method == RES2XX && cseq_method == INVITE) {
+	if(!detectCallerd && packetS->sip_method == RES2XX && packetS->cseq.method == INVITE) {
 		detectCallerd = call->check_is_caller_called(packetS->get_callid(), RES2XX_INVITE, 0,
 							     packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
 							     &iscaller, &iscalled, 
@@ -3031,8 +2938,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		 (call->cancel_lsr487 && lastSIPresponseNum/10 == 48)) &&
 		!call->seeninviteok &&
 		!(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5)) &&
-	   (lastSIPresponseNum != 200 || cseq_contain_invite || cseq_contain_message) &&
-	   !(call->cancelcseq[0] && cseq && cseqlen < 32 && strncmp(cseq, call->cancelcseq, cseqlen) == 0)) {
+	   (lastSIPresponseNum != 200 || packetS->cseq.method == INVITE || packetS->cseq.method == MESSAGE) &&
+	   !(call->cancelcseq.is_set() && packetS->cseq.is_set() && packetS->cseq == call->cancelcseq)) {
 		strncpy(call->lastSIPresponse, lastSIPresponse, 128);
 		call->lastSIPresponseNum = lastSIPresponseNum;
 	}
@@ -3111,11 +3018,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 		}
 		//check and save CSeq for later to compare with OK 
-		if(cseq && cseqlen < 32) {
-			memcpy(call->invitecseq, cseq, cseqlen);
-			call->invitecseq[cseqlen] = '\0';
+		if(packetS->cseq.is_set()) {
+			call->invitecseq = packetS->cseq;
 			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %s\n", call->invitecseq);
+				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %u\n", call->invitecseq.number);
 		}
 		if(!call->onInvite) {
 			sendCallInfoEvCall(call, sSciInfo::sci_invite, packetS->header_pt->ts);
@@ -3126,11 +3032,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		call->seenmessageok = false;
 
 		//check and save CSeq for later to compare with OK 
-		if(cseq && cseqlen < 32) {
-			memcpy(call->messagecseq, cseq, cseqlen);
-			call->messagecseq[cseqlen] = '\0';
+		if(packetS->cseq.is_set()) {
+			call->messagecseq = packetS->cseq;
 			if(verbosity > 2)
-				syslog(LOG_NOTICE, "Seen MEESAGE, CSeq: %s\n", call->messagecseq);
+				syslog(LOG_NOTICE, "Seen MESSAGE, CSeq: %u\n", call->messagecseq.number);
 		}
 
 		if(call->contenttype) delete [] call->contenttype;
@@ -3192,8 +3097,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->destroy_call_at_bye = packetS->header_pt->ts.tv_sec + opt_bye_timeout;
 		}
 		//check and save CSeq for later to compare with OK 
-		if(cseq && cseqlen < 32) {
-			call->setByeCseq(cseq, cseqlen);
+		if(packetS->cseq.is_set()) {
+			call->setByeCseq(&packetS->cseq);
 			call->setSeenbye(true, getTimeUS(packetS->header_pt), packetS->get_callid());
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen bye\n");
@@ -3227,16 +3132,15 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		
 		//check and save CSeq for later to compare with OK 
-		if(cseq && cseqlen < 32) {
-			memcpy(call->cancelcseq, cseq, cseqlen);
-			call->cancelcseq[cseqlen] = '\0';
+		if(packetS->cseq.is_set()) {
+			call->cancelcseq = packetS->cseq;
 		}
 	} else if(IS_SIP_RESXXX(packetS->sip_method)) {
 		if(packetS->sip_method == RES2XX) {
 			call->seenRES2XX = true;
 			// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
-			if(cseq_method != BYE ||
-			   !call->existsByeCseq(cseq, cseqlen)) {
+			if(packetS->cseq.method != BYE ||
+			   !call->existsByeCseq(&packetS->cseq)) {
 				call->seenRES2XX_no_BYE = true;
 				if(!call->progress_time) {
 					call->progress_time = packetS->header_pt->ts.tv_sec;
@@ -3244,15 +3148,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 
 			// if it is OK check for BYE
-			if(cseq_method) {
+			if(packetS->cseq.is_set()) {
 				if(verbosity > 2) {
-					char a = cseq[cseqlen];
-					cseq[cseqlen] = '\0';
-					syslog(LOG_NOTICE, "Cseq: %s\n", cseq);
-					cseq[cseqlen] = a;
+					syslog(LOG_NOTICE, "Cseq: %i / %u\n", packetS->cseq.method, packetS->cseq.number);
 				}
-				if(cseq_method == BYE &&
-				   call->existsByeCseq(cseq, cseqlen)) {
+				if(packetS->cseq.method == BYE &&
+				   call->existsByeCseq(&packetS->cseq)) {
 					// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
 					bool okByeRes2xx = true;
 					if(call->is_multiple_to_branch()) {
@@ -3286,14 +3187,14 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					}
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
-				} else if((cseq_method == INVITE && strncmp(cseq, call->invitecseq, cseqlen) == 0) ||
-					  (cseq_method == MESSAGE && strncmp(cseq, call->messagecseq, cseqlen) == 0)) {
+				} else if((packetS->cseq.method == INVITE && packetS->cseq == call->invitecseq) ||
+					  (packetS->cseq.method == MESSAGE && packetS->cseq == call->messagecseq)) {
 					for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
 						if(packetS->daddr == iter->saddr && packetS->saddr == iter->daddr) {
 							iter->confirmed = true;
 						}
 					}
-					if(cseq_method == INVITE) {
+					if(packetS->cseq.method == INVITE) {
 						call->seeninviteok = true;
 					} else {
 						call->seenmessageok = true;
@@ -3321,9 +3222,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Call answered\n");
 					if(!call->onCall_2XX) {
-						ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-								     call->getSipcallerip(), call->getSipcalledip(),
-								     custom_headers_cdr->getScreenPopupFieldsString(call).c_str());
+						if(call->typeIs(INVITE)) {
+							ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
+									     call->getSipcallerip(), call->getSipcalledip(),
+									     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
+						}
 						sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->header_pt->ts);
 						call->onCall_2XX = true;
 					}
@@ -3354,8 +3257,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 							}
 						}
 					}
-				} else if(cseq_method == CANCEL &&
-					  call->cancelcseq[0] && strncmp(cseq, call->cancelcseq, cseqlen) == 0) {
+				} else if(packetS->cseq.method == CANCEL &&
+					  call->cancelcseq.is_set() && packetS->cseq == call->cancelcseq) {
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
 				}
@@ -3366,16 +3269,18 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				call->progress_time = packetS->header_pt->ts.tv_sec;
 			}
 			if(!call->onCall_18X) {
-				ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
-						     call->getSipcallerip(), call->getSipcalledip(),
-						     custom_headers_cdr->getScreenPopupFieldsString(call).c_str());
+				if(call->typeIs(INVITE)) {
+					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
+							     call->getSipcallerip(), call->getSipcalledip(),
+							     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
+				}
 				sendCallInfoEvCall(call, sSciInfo::sci_18X, packetS->header_pt->ts);
 				call->onCall_18X = true;
 			}
 			call->destroy_call_at = 0;
 			call->destroy_call_at_bye = 0;
 			call->destroy_call_at_bye_confirmed = 0;
-		} else if((cseq_method == INVITE || cseq_method == MESSAGE) &&
+		} else if((packetS->cseq.method == INVITE || packetS->cseq.method == MESSAGE) &&
 			  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
 			if(lastSIPresponseNum == 481) {
 				// 481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
@@ -3404,10 +3309,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;
 				}
 			}
-		} else if(cseq_method == BYE &&
+		} else if(packetS->cseq.method == BYE &&
 			  !call->seenbyeandok &&
 			  IS_SIP_RES4XX(packetS->sip_method) &&
-			  call->existsByeCseq(cseq, cseqlen) &&
+			  call->existsByeCseq(&packetS->cseq) &&
 			  lastSIPresponseNum == 481) {
 			call->unconfirmed_bye = true;
 		}
@@ -3490,11 +3395,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			break;
 		case UPDATE:
 			if (call->recordingpausedby182) {
-				char *cseq = gettag_sip(packetS, "\nCSeq:", &l);
-				if(cseq && l < 32) {
+				if(packetS->cseq.is_set()) {
 					if (logPacketSipMethodCall_enable) 
 						 syslog(LOG_DEBUG, "opt_182queuedpauserecording UPDATE preparing unpausing recording, waiting for OK with same CSeq");
-					memcpy(call->updatecseq, cseq, l);
+					call->updatecseq = packetS->cseq;
 					call->recordingpausedby182 = 2;
 				} else {
 					if (logPacketSipMethodCall_enable) 
@@ -3504,9 +3408,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			break;
 		case RES2XX:
 			if (call->recordingpausedby182 == 2) {
-				char *cseq = gettag_sip(packetS, "\nCSeq:", &l);
-				if(cseq && l < 32) {
-					if(cseq && call->updatecseq[0] && strncmp(cseq, call->updatecseq, l) == 0) {
+				if(packetS->cseq.is_set()) {
+					if(call->updatecseq.is_set() && packetS->cseq == call->updatecseq) {
 						if (logPacketSipMethodCall_enable) 
 							 syslog(LOG_DEBUG, "opt_182queuedpauserecording OK on UPDATE unpausing recording");
 						call->recordingpausedby182 = 0;
@@ -3753,23 +3656,10 @@ void process_packet_sip_alone_bye(packet_s_process *packetS) {
 		return;
 	}
 	call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;
-	if(IS_SIP_RESXXX(packetS->sip_method)) {
-		long unsigned int cseqlen = 0;
-		char *cseq = gettag_sip(packetS, "\nCSeq:", &cseqlen);
-		if(cseq && cseqlen < 32) {
-			int cseq_method = 0;
-			unsigned cseq_pos = 0;
-			while(cseq_pos < cseqlen && (isdigit(cseq[cseq_pos]) || cseq[cseq_pos] == ' ')) {
-				++cseq_pos;
-			}
-			if(cseq_pos < cseqlen) {
-				cseq_method = process_packet__parse_sip_method(cseq + cseq_pos, cseqlen - cseq_pos, NULL);
-			}
-			if(cseq_method == BYE && 
-			   call->existsByeCseq(cseq, cseqlen)) {
-				call->lastSIPresponseNum = packetS->lastSIPresponseNum;
-			}
-		}
+	if(IS_SIP_RESXXX(packetS->sip_method) && packetS->cseq.is_set() &&
+	   packetS->cseq.method == BYE && 
+	   call->existsByeCseq(&packetS->cseq)) {
+		call->lastSIPresponseNum = packetS->lastSIPresponseNum;
 	}
 }
 
@@ -3864,10 +3754,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			}
 			goto endsip_save_packet;
 		}
-		s = gettag_sip(packetS, "\nCSeq:", &l);
-		if(l && l < 32) {
-			memcpy(call->registercseq, s, l);
-			call->registercseq[l] = '\0';
+		if(packetS->cseq.is_set()) {
+			call->registercseq = packetS->cseq;
 		}
 
 
@@ -3891,8 +3779,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			fraudConnectCall(call, packetS->header_pt->ts);
 		}
 		if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER OK Call-ID[%s]", call->call_id.c_str());
-		s = gettag_sip(packetS, "\nCSeq:", &l);
-		if(s && strncmp(s, call->registercseq, l) == 0) {
+		if(packetS->cseq.is_set() && packetS->cseq == call->registercseq) {
 			call->reg200count++;
 			// registration OK 
 			call->regstate = 1;
@@ -4066,36 +3953,17 @@ endsip:
 	}
 }
 
-void process_packet_sip_other_options(packet_s_process *packetS, u_int32_t cseq_number) {
+void process_packet_sip_other_options(packet_s_process *packetS) {
 	extern cOptionsRelations optionsRelations;
 	if(!optionsRelations.isSetParams()) {
 		return;
-	}
-	if(sverb.dump_sip) {
-		string dump_data(packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
-		if(sverb.dump_sip_line) {
-			find_and_replace(dump_data, "\r", "\\r");
-			find_and_replace(dump_data, "\n", "\\n");
-		}
-		if(!sverb.dump_sip_without_counter) {
-			#if USE_PACKET_NUMBER
-			cout << packetS->packet_number << endl
-			#else
-			cout << (++glob_packet_number) << endl;
-			#endif
-		}
-		cout << dump_data << endl;
-	}
-	if(livesnifferfilterUseSipTypes.u_options) {
-		save_live_packet(NULL, packetS, OPTIONS,
-				 NULL, NULL);
 	}
 	s_detect_callerd data_callerd;
 	detect_callerd(packetS, packetS->sip_method, &data_callerd);
 	cOptionsItem *options = new FILE_LINE(0) cOptionsItem;
 	options->time_us = getTimeUS(packetS->header_pt);
 	options->callid = packetS->get_callid();
-	options->cseq_number = cseq_number;
+	options->cseq_number = packetS->cseq.number;
 	if(packetS->sip_method == OPTIONS) {
 		options->ip_src = packetS->saddr;
 		options->ip_dst = packetS->daddr;
@@ -4127,22 +3995,26 @@ void process_packet_sip_other_options(packet_s_process *packetS, u_int32_t cseq_
 }
 
 void process_packet_sip_other(packet_s_process *packetS) {
-	long unsigned int cseqlen = 0;
-	char *cseq = gettag_sip(packetS, "\nCSeq:", &cseqlen);
-	int cseq_method = 0;
-	if(cseq && cseqlen < 32) {
-		unsigned cseq_pos = 0;
-		while(cseq_pos < cseqlen && (isdigit(cseq[cseq_pos]) || cseq[cseq_pos] == ' ')) {
-			++cseq_pos;
+	if(sverb.dump_sip) {
+		string dump_data(packetS->data + packetS->sipDataOffset, packetS->sipDataLen);
+		if(sverb.dump_sip_line) {
+			find_and_replace(dump_data, "\r", "\\r");
+			find_and_replace(dump_data, "\n", "\\n");
 		}
-		if(cseq_pos < cseqlen) {
-			cseq_method = process_packet__parse_sip_method(cseq + cseq_pos, cseqlen - cseq_pos, NULL);
+		if(!sverb.dump_sip_without_counter) {
+			#if USE_PACKET_NUMBER
+			cout << packetS->packet_number << endl
+			#else
+			cout << (++glob_packet_number) << endl;
+			#endif
 		}
+		cout << dump_data << endl;
 	}
 	if((packetS->sip_method == OPTIONS || IS_SIP_RESXXX(packetS->sip_method)) &&
-	   cseq_method == OPTIONS) {
-		process_packet_sip_other_options(packetS, atol(cseq));
+	   packetS->cseq.method == OPTIONS) {
+		process_packet_sip_other_options(packetS);
 	}
+	save_live_packet(packetS);
 }
 
 inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_info,size_t call_info_length, packet_s_process_0 *packetS,
@@ -4777,6 +4649,28 @@ inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bo
 
 inline int process_packet__parse_sip_method(packet_s_process *packetS, bool *sip_response) {
 	return(process_packet__parse_sip_method(packetS->data + packetS->sipDataOffset, packetS->sipDataLen, sip_response));
+}
+
+inline bool process_packet__parse_cseq(sCseq *cseq, char *cseqstr, unsigned int cseqlen) {
+	unsigned cseq_pos_method = 0;
+	while(cseq_pos_method < cseqlen && (isdigit(cseqstr[cseq_pos_method]) || cseqstr[cseq_pos_method] == ' ')) {
+		++cseq_pos_method;
+	}
+	if(cseq_pos_method < cseqlen) {
+		cseq->method = process_packet__parse_sip_method(cseqstr + cseq_pos_method, cseqlen - cseq_pos_method, NULL);
+		cseq->number = atol(cseqstr);
+		return(true);
+	}
+	return(false);
+}
+
+inline bool process_packet__parse_cseq(sCseq *cseq, packet_s_process *packetS) {
+	unsigned long cseqlen;
+	char *cseqstr = gettag_sip(packetS, "\nCSeq:", &cseqlen);
+	if(cseq && cseqlen < 32) {
+		return(process_packet__parse_cseq(cseq, cseqstr, cseqlen));
+	}
+	return(false);
 }
 
 inline int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
@@ -7095,22 +6989,21 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	glob_last_packet_time = packetS->header_pt->ts.tv_sec;
 	if(packetS->isSip) {
 		packetS->blockstore_addflag(101 /*pb lock flag*/);
-		if(!packetS->is_register) {
+		bool pushed = false;
+		if(!packetS->is_register()) {
 			this->process_findCall(&packetS);
 			this->process_createCall(&packetS);
-			if(!((packetS->_findCall && packetS->call) ||
-			     (packetS->_createCall && packetS->call_created))) {
-				if(opt_sip_options) {
-					packetS->is_sip_other = true;
-				} else {
-					PACKET_S_PROCESS_DESTROY(&packetS);
-					return;
-				}
+			if((packetS->_findCall && packetS->call) ||
+			   (packetS->_createCall && packetS->call_created)) {
+				preProcessPacket[ppt_pp_call]->push_packet(packetS);
+				pushed = true;
 			}
+		} else if(opt_sip_register) {
+			preProcessPacket[ppt_pp_register]->push_packet(packetS);
+			pushed = true;
 		}
-		if(packetS) {
-			preProcessPacket[packetS->is_sip_other ? ppt_pp_sip_other :
-					 packetS->is_register ? ppt_pp_register : ppt_pp_call]->push_packet(packetS);
+		if(!pushed) {
+			preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
 		}
 	} else if(packetS->isSkinny) {
 		packetS->blockstore_addflag(102 /*pb lock flag*/);
@@ -7125,7 +7018,7 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_CALL(packet_s_process *packetS) {
-	if(packetS->isSip && !packetS->is_register) {
+	if(packetS->isSip && !packetS->is_register()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
@@ -7162,7 +7055,7 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
-	if(packetS->isSip && packetS->is_register) {
+	if(packetS->isSip && packetS->is_register()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
@@ -7290,8 +7183,10 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 		return;
 	}
 	this->process_getSipMethod(&packetS);
-	if(!opt_sip_register &&
-	   packetS->is_register) {
+	if((packetS->is_register() && !opt_sip_register && !livesnifferfilterUseSipTypes.u_register) ||
+	   (packetS->is_options() && !opt_sip_options && !livesnifferfilterUseSipTypes.u_options) ||
+	   (packetS->is_subscribe() && !livesnifferfilterUseSipTypes.u_subscribe) ||
+	   (packetS->is_notify() && !livesnifferfilterUseSipTypes.u_notify)) {
 		PACKET_S_PROCESS_DESTROY(&packetS);
 		return;
 	}
@@ -7369,16 +7264,7 @@ bool PreProcessPacket::process_getCallID_publish(packet_s_process **packetS_ref)
 void PreProcessPacket::process_getSipMethod(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	packetS->sip_method = process_packet__parse_sip_method(packetS, &packetS->sip_response);
-	if(packetS->sip_method == REGISTER) {
-		packetS->is_register = true;
-	} else if(IS_SIP_RESXXX(packetS->sip_method)) {
-		unsigned long l;
-		char *cseq = gettag_sip(packetS, "\nCSeq:", &l);
-		if(cseq && l <= 1023 && 
-		   strncasestr(cseq, "REGISTER", l)) {
-			packetS->is_register = true;
-		}
-	}
+	process_packet__parse_cseq(&packetS->cseq, packetS);
 	packetS->_getSipMethod = true;
 }
 
@@ -7419,9 +7305,6 @@ void PreProcessPacket::autoStartNextLevelPreProcessPacket() {
 	int i = 0;
 	for(; i < PreProcessPacket::ppt_end && preProcessPacket[i]->isActiveOutThread(); i++);
 	if(!opt_sip_register && preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::PreProcessPacket::ppt_pp_register) {
-		++i;
-	}
-	if(!opt_sip_options && preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::PreProcessPacket::ppt_pp_sip_other) {
 		++i;
 	}
 	if(i < PreProcessPacket::ppt_end) {
