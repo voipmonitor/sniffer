@@ -85,6 +85,8 @@ bool cSslDsslSession::initSession() {
 	session->gener_master_secret = this->gener_master_secret;
 	session->gener_master_secret_data[0] = this;
 	session->gener_master_secret_data[1] = SslDsslSessions;
+	extern bool opt_ssl_ignore_error_invalid_mac;
+	session->ignore_error_invalid_mac = opt_ssl_ignore_error_invalid_mac;
 	memset(session->last_packet, 0, sizeof(*session->last_packet));
 	DSSL_SessionSetCallback(session, cSslDsslSession::dataCallback, cSslDsslSession::errorCallback, this);
 	return(true);

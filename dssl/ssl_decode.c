@@ -311,7 +311,8 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 		}
 
 		/* AEAD ciphers have no mac */
-		if ( EVP_CIPH_CBC_MODE == stack->sess->cipher_mode || EVP_CIPH_STREAM_CIPHER == stack->sess->cipher_mode )
+		if ( !stack->sess->ignore_error_invalid_mac &&
+		     (EVP_CIPH_CBC_MODE == stack->sess->cipher_mode || EVP_CIPH_STREAM_CIPHER == stack->sess->cipher_mode) )
 		{
 			rc = stack->sess->caclulate_mac_proc( stack, record_type, data, recLen, mac );
 
