@@ -42,6 +42,7 @@ extern unsigned opt_tcp_port_mgcp_callagent;
 extern unsigned opt_udp_port_mgcp_callagent;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
+extern int opt_dup_check_ipheader_ignore_ttl;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
 extern char *webrtcportmatrix;
@@ -756,6 +757,18 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		   !(ppd->istcp && opt_enable_ssl && (isSslIpPort(htonl(ppd->header_ip->saddr), htons(ppd->header_tcp->source)) || isSslIpPort(htonl(ppd->header_ip->daddr), htons(ppd->header_tcp->dest))))) {
 			uint16_t *_md5 = header_packet ? (*header_packet)->md5 : pcap_header_plus2->md5;
 			if(ppf & ppf_calcMD5) {
+				bool header_ip_set_orig = false;
+				u_int8_t header_ip_ttl_orig;
+				u_int8_t header_ip_check_orig;
+				if(opt_dup_check_ipheader_ignore_ttl &&
+				   (((ppf & ppf_defragInPQout) && is_ip_frag == 1) ||
+				    opt_dup_check_ipheader)) {
+					header_ip_ttl_orig = ppd->header_ip->ttl;
+					header_ip_check_orig = ppd->header_ip->check;
+					ppd->header_ip->ttl = 0;
+					ppd->header_ip->check = 0;
+					header_ip_set_orig = true;
+				}
 				MD5_Init(&ppd->ctx);
 				if((ppf & ppf_defragInPQout) && is_ip_frag == 1) {
 					u_int32_t caplen = header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen();
@@ -768,6 +781,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					MD5_Update(&ppd->ctx, ppd->data, MAX(0, (unsigned long)ppd->datalen - ppd->traillen));
 				}
 				MD5_Final((unsigned char*)_md5, &ppd->ctx);
+				if(header_ip_set_orig) {
+					ppd->header_ip->ttl = header_ip_ttl_orig;
+					ppd->header_ip->check = header_ip_check_orig;
+				}
 				#ifdef DEDUP_DEBUG
 				cout << " " << MD5_String((unsigned char*)_md5);
 				#endif

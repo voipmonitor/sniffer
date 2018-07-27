@@ -306,6 +306,10 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	lastframetype = AST_FRAME_VOICE;
 	//frame->src = "DUMMY";
 	last_seq = 0;
+	for(unsigned i = 0; i < sizeof(channel_record_seq_ringbuffer) / sizeof(channel_record_seq_ringbuffer[0]); i++) {
+		channel_record_seq_ringbuffer[i] = 0;
+	}
+	channel_record_seq_ringbuffer_pos = 0;
 	last_ts = 0;
 	last_pcap_header_ts = 0;
 	pcap_header_ts_bad_time = false;
@@ -1642,7 +1646,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 					packetization = channel_record->packetization = default_packetization;
 				}
 			}
-			if(recordingRequested_use_jitterbuffer_channel_record) {
+			if(recordingRequested_use_jitterbuffer_channel_record &&
+			   checkDuplChannelRecordSeq(seq)) {
 				jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
 			}
 		}
@@ -1686,7 +1691,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 				/* for recording, we cannot loose any packet */
 				if(recordingRequested) {
 					packetization = channel_record->packetization = default_packetization;
-					if(recordingRequested_use_jitterbuffer_channel_record) {
+					if(recordingRequested_use_jitterbuffer_channel_record &&
+					   checkDuplChannelRecordSeq(seq)) {
 						jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
 					}
 				}
@@ -1702,7 +1708,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 				if(opt_jitterbuffer_adapt)
 					jitterbuffer(channel_adapt, 0);
 				if(recordingRequested) {
-					if(recordingRequested_use_jitterbuffer_channel_record) {
+					if(recordingRequested_use_jitterbuffer_channel_record &&
+					   checkDuplChannelRecordSeq(seq)) {
 						jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
 					}
 				}
@@ -1746,7 +1753,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 					packetization = channel_record->packetization = default_packetization;
 				}
 
-				if(recordingRequested_use_jitterbuffer_channel_record) {
+				if(recordingRequested_use_jitterbuffer_channel_record &&
+				   checkDuplChannelRecordSeq(seq)) {
 					jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
 				}
 			}
@@ -1851,7 +1859,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		if(opt_jitterbuffer_adapt)
 			jitterbuffer(channel_adapt, 0);
 		if(recordingRequested) {
-			if(recordingRequested_use_jitterbuffer_channel_record) {
+			if(recordingRequested_use_jitterbuffer_channel_record &&
+			   checkDuplChannelRecordSeq(seq)) {
 				jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
 			}
 		}

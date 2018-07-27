@@ -7394,7 +7394,19 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 				MD5_CTX md5_ctx;
 				MD5_Init(&md5_ctx);
 				if(opt_dup_check_ipheader) {
+					u_int8_t header_ip_ttl_orig;
+					u_int8_t header_ip_check_orig;
+					if(opt_dup_check_ipheader_ignore_ttl) {
+						header_ip_ttl_orig = header_ip->ttl;
+						header_ip_check_orig = header_ip->check;
+						header_ip->ttl = 0;
+						header_ip->check = 0;
+					}
 					MD5_Update(&md5_ctx, header_ip, MIN(datalen + (data - (char*)header_ip), ntohs(header_ip->tot_len)));
+					if(opt_dup_check_ipheader_ignore_ttl) {
+						header_ip->ttl = header_ip_ttl_orig;
+						header_ip->check = header_ip_check_orig;
+					}
 				} else {
 					MD5_Update(&md5_ctx, data, datalen);
 				}
