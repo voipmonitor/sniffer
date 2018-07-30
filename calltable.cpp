@@ -431,13 +431,13 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	digest_realm[0] = '\0';
 	register_expires = -1;
 	for(unsigned i = 0; i < (sizeof(byecseq) / sizeof(byecseq[0])); i++) {
-		byecseq[i][0] = '\0';
+		byecseq[i].null();
 	}
-	invitecseq[0] = '\0';
-	messagecseq[0] = '\0';
-	registercseq[0] = '\0';
-	cancelcseq[0] = '\0';
-	updatecseq[0] = '\0';
+	invitecseq.null();
+	messagecseq.null();
+	registercseq.null();
+	cancelcseq.null();
+	updatecseq.null();
 	sighup = false;
 	progress_time = 0;
 	first_rtp_time = 0;
@@ -520,10 +520,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	voicemail = voicemail_na;
 	max_length_sip_data = 0;
 	max_length_sip_packet = 0;
-	#if USE_UNREPLIED_INVITE_MESSAGE
-	unrepliedinvite = 0;
-	unrepliedmessage = 0;
-	#endif
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
 		 sipcallerip[i] = 0;
 		 sipcalledip[i] = 0;
@@ -7701,45 +7697,47 @@ void CustomHeaders::parse(Call *call, int type, char *data, int datalen, ParsePa
 				this->setCustomHeaderContent(call, type, iter->first, iter2->first, &ds_content, true);
 			} else {
 				string findHeader = iter2->second.header;
-				if(findHeader[findHeader.length() - 1] != ':' &&
-				   findHeader[findHeader.length() - 1] != '=') {
-					findHeader.append(":");
-				}
-				unsigned long l;
-				char *s = gettag_ext(data, datalen, parseContents,
-						     findHeader.c_str(), &l, &gettagLimitLen);
-				if(l) {
-					char customHeaderContent[256];
-					memcpy(customHeaderContent, s, min(l, 255lu));
-					customHeaderContent[min(l, 255lu)] = '\0';
-					char *customHeaderBegin = customHeaderContent;
-					if(!iter2->second.leftBorder.empty()) {
-						customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
-						if(customHeaderBegin) {
-							customHeaderBegin += iter2->second.leftBorder.length();
-						} else {
-							continue;
-						}
+				if(findHeader.length()) {
+					if(findHeader[findHeader.length() - 1] != ':' &&
+					   findHeader[findHeader.length() - 1] != '=') {
+						findHeader.append(":");
 					}
-					if(!iter2->second.rightBorder.empty()) {
-						char *customHeaderEnd = strcasestr(customHeaderBegin, iter2->second.rightBorder.c_str());
-						if(customHeaderEnd) {
-							*customHeaderEnd = 0;
-						} else {
-							continue;
+					unsigned long l;
+					char *s = gettag_ext(data, datalen, parseContents,
+							     findHeader.c_str(), &l, &gettagLimitLen);
+					if(l) {
+						char customHeaderContent[256];
+						memcpy(customHeaderContent, s, min(l, 255lu));
+						customHeaderContent[min(l, 255lu)] = '\0';
+						char *customHeaderBegin = customHeaderContent;
+						if(!iter2->second.leftBorder.empty()) {
+							customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
+							if(customHeaderBegin) {
+								customHeaderBegin += iter2->second.leftBorder.length();
+							} else {
+								continue;
+							}
 						}
-					}
-					if(!iter2->second.regularExpression.empty()) {
-						string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
-						if(customHeader.empty()) {
-							continue;
+						if(!iter2->second.rightBorder.empty()) {
+							char *customHeaderEnd = strcasestr(customHeaderBegin, iter2->second.rightBorder.c_str());
+							if(customHeaderEnd) {
+								*customHeaderEnd = 0;
+							} else {
+								continue;
+							}
+						}
+						if(!iter2->second.regularExpression.empty()) {
+							string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
+							if(customHeader.empty()) {
+								continue;
+							} else {
+								dstring content(iter2->second.header, customHeader);
+								this->setCustomHeaderContent(call, type, iter->first, iter2->first, &content);
+							}
 						} else {
-							dstring content(iter2->second.header, customHeader);
+							dstring content(iter2->second.header, customHeaderBegin);
 							this->setCustomHeaderContent(call, type, iter->first, iter2->first, &content);
 						}
-					} else {
-						dstring content(iter2->second.header, customHeaderBegin);
-						this->setCustomHeaderContent(call, type, iter->first, iter2->first, &content);
 					}
 				}
 			}
@@ -7794,27 +7792,25 @@ void CustomHeaders::prepareSaveRows(Call *call, int type, SqlDb_row *cdr_next, S
 	}
 }
 
-string CustomHeaders::getScreenPopupFieldsString(Call *call) {
+string CustomHeaders::getScreenPopupFieldsString(Call *call, int type) {
 	string fields;
-	for(unsigned i = 0; i < 2; i++) {
-		map<int, map<int, dstring> > *custom_headers_content = i == 0 ? &call->custom_headers_content_cdr : &call->custom_headers_content_message;
-		map<int, map<int, dstring> >::iterator iter;
-		for(iter = custom_headers_content->begin(); iter != custom_headers_content->end(); iter++) {
-			map<int, dstring>::iterator iter2;
-			for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-				if(!this->custom_headers[iter->first][iter2->first].screenPopupField ||
-				   iter2->second[1].empty()) {
-					continue;
-				}
-				if(!fields.empty()) {
-					fields += "||";
-				}
-				string name = iter2->second[0];
-				std::transform(name.begin(), name.end(), name.begin(), ::toupper);
-				fields += name;
-				fields += "::";
-				fields += iter2->second[1];
+	map<int, map<int, dstring> > *custom_headers_content = type == MESSAGE ? &call->custom_headers_content_message : &call->custom_headers_content_cdr;
+	map<int, map<int, dstring> >::iterator iter;
+	for(iter = custom_headers_content->begin(); iter != custom_headers_content->end(); iter++) {
+		map<int, dstring>::iterator iter2;
+		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			if(!this->custom_headers[iter->first][iter2->first].screenPopupField ||
+			   iter2->second[1].empty()) {
+				continue;
 			}
+			if(!fields.empty()) {
+				fields += "||";
+			}
+			string name = iter2->second[0];
+			std::transform(name.begin(), name.end(), name.begin(), ::toupper);
+			fields += name;
+			fields += "::";
+			fields += iter2->second[1];
 		}
 	}
 	return(fields);

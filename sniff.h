@@ -309,7 +309,7 @@ struct packet_s_process : public packet_s_process_0 {
 	char callid[128];
 	char *callid_long;
 	int sip_method;
-	bool is_register;
+	sCseq cseq;
 	bool sip_response;
 	int lastSIPresponseNum;
 	char lastSIPresponse[128];
@@ -317,7 +317,6 @@ struct packet_s_process : public packet_s_process_0 {
 	Call *call;
 	int merged;
 	Call *call_created;
-	bool is_sip_other;
 	bool _getCallID;
 	bool _getSipMethod;
 	bool _getLastSipResponse;
@@ -338,7 +337,7 @@ struct packet_s_process : public packet_s_process_0 {
 		callid[0] = 0;
 		callid_long = NULL;
 		sip_method = -1;
-		is_register = false;
+		cseq.null();
 		sip_response = false;
 		lastSIPresponseNum = -1;
 		lastSIPresponse[0] = 0;
@@ -346,7 +345,6 @@ struct packet_s_process : public packet_s_process_0 {
 		call = NULL;
 		merged = 0;
 		call_created = NULL;
-		is_sip_other = false;
 		_getCallID = false;
 		_getSipMethod = false;
 		_getLastSipResponse = false;
@@ -374,6 +372,21 @@ struct packet_s_process : public packet_s_process_0 {
 	}
 	inline char *get_callid() {
 		return(callid_long ? callid_long : callid);
+	}
+	inline bool is_message() {
+		return(sip_method == MESSAGE || cseq.method == MESSAGE);
+	}
+	inline bool is_register() {
+		return(sip_method == REGISTER || cseq.method == REGISTER);
+	}
+	inline bool is_options() {
+		return(sip_method == OPTIONS || cseq.method == OPTIONS);
+	}
+	inline bool is_notify() {
+		return(sip_method == NOTIFY || cseq.method == NOTIFY);
+	}
+	inline bool is_subscribe() {
+		return(sip_method == SUBSCRIBE || cseq.method == SUBSCRIBE);
 	}
 };
 

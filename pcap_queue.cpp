@@ -73,6 +73,7 @@
 		(opt_enable_http || opt_enable_webrtc || opt_enable_ssl ? 6000 : 3200))
 
 #define TRACE_INVITE_BYE 0
+#define TRACE_MASTER_SECRET 0
 
 
 using namespace std;
@@ -3443,6 +3444,11 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 		cout << "push BYE " << typeThread << endl;
 	}
 	#endif
+	#if TRACE_MASTER_SECRET
+	if(memmem(HPP(*header_packet), HPH(*header_packet)->caplen, "mastersecret", 12)) {
+		cout << "push MASTERSECRET " << typeThread << endl;
+	}
+	#endif
 	unsigned int _writeIndex;
 	if(writeIndex) {
 		_writeIndex = writeIndex - 1;
@@ -3571,6 +3577,11 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 		cout << "pop INVITE " << typeThread << endl;
 	} else if(memmem(HPP(rslt_hpi.header_packet), HPH(rslt_hpi.header_packet)->caplen, "BYE sip", 7)) {
 		cout << "pop BYE " << typeThread << endl;
+	}
+	#endif
+	#if TRACE_MASTER_SECRET
+	if(memmem(HPP(rslt_hpi.header_packet), HPH(rslt_hpi.header_packet)->caplen, "mastersecret", 12)) {
+		cout << "pop MASTERSECRET " << typeThread << endl;
 	}
 	#endif
 	++readIndexPos;
@@ -3835,9 +3846,14 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 					sumPacketsSize[0] += pcap_next_ex_header->caplen;
 					#if TRACE_INVITE_BYE
 					if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "INVITE sip", 10)) {
-						cout << "get INVITE " << typeThread << endl;
+						cout << "get INVITE (1) " << typeThread << endl;
 					} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
-						cout << "get BYE " << typeThread << endl;
+						cout << "get BYE (1) " << typeThread << endl;
+					}
+					#endif
+					#if TRACE_MASTER_SECRET
+					if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "mastersecret", 12)) {
+						cout << "get MASTERSECRET (1) " << typeThread << endl;
 					}
 					#endif
 					memcpy((u_char*)this->activeDetachBuffer + this->detachBufferWritePos,
@@ -3911,9 +3927,14 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 				res = this->pcap_next_ex_iface(this->pcapHandle, &pcap_next_ex_header, &pcap_next_ex_packet);
 				#if TRACE_INVITE_BYE
 				if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "INVITE sip", 10)) {
-					cout << "get INVITE " << typeThread << endl;
+					cout << "get INVITE (2) " << typeThread << endl;
 				} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
-					cout << "get BYE " << typeThread << endl;
+					cout << "get BYE (2) " << typeThread << endl;
+				}
+				#endif
+				#if TRACE_MASTER_SECRET
+				if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "mastersecret", 12)) {
+					cout << "get MASTERSECRET (2) " << typeThread << endl;
 				}
 				#endif
 				if(res == -1) {
@@ -4024,6 +4045,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 						cout << "detach INVITE " << typeThread << endl;
 					} else if(memmem(HPP(header_packet_read), detach_buffer_header->caplen, "BYE sip", 7)) {
 						cout << "detach BYE " << typeThread << endl;
+					}
+					#endif
+					#if TRACE_MASTER_SECRET
+					if(memmem(HPP(header_packet_read), detach_buffer_header->caplen, "mastersecret", 12)) {
+						cout << "detach MASTERSECRET " << typeThread << endl;
 					}
 					#endif
 					this->push(&header_packet_read);
@@ -4217,9 +4243,14 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			}
 			#if TRACE_INVITE_BYE
 			if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "INVITE sip", 10)) {
-				cout << "get INVITE " << typeThread << endl;
+				cout << "get INVITE (3) " << typeThread << endl;
 			} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
-				cout << "get BYE " << typeThread << endl;
+				cout << "get BYE (3) " << typeThread << endl;
+			}
+			#endif
+			#if TRACE_MASTER_SECRET
+			if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "mastersecret", 12)) {
+				cout << "get MASTERSECRET (3) " << typeThread << endl;
 			}
 			#endif
 			sumPacketsSize[0] += pcap_next_ex_header->caplen;
@@ -4276,6 +4307,11 @@ void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 			cout << "process INVITE " << typeThread << endl;
 		} else if(memmem(block->get_packet(i), block->get_header(i)->header_fix_size.caplen, "BYE sip", 7)) {
 			cout << "process BYE " << typeThread << endl;
+		}
+		#endif
+		#if TRACE_MASTER_SECRET
+		if(memmem(block->get_packet(i), block->get_header(i)->header_fix_size.caplen, "mastersecret", 12)) {
+			cout << "process MASTERSECRET " << typeThread << endl;
 		}
 		#endif
 		switch(this->typeThread) {
@@ -4532,9 +4568,10 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				this->getInterfaceName(true).c_str(), 
 			sizeof(blockStore[i]->ifname) - 1);
 	}
-	unsigned int counter_pop_usleep = 0;
+	unsigned int counter_pop = 0;
 	unsigned long counter = 0;
 	pcap_pkthdr_plus pcap_header_plus;
+	u_char existsThreadTimeFlags[1000];
 	while(!TERMINATING) {
 		bool fetchPacketOk = false;
 		int minThreadTimeIndex = -1;
@@ -4552,6 +4589,9 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 							minThreadTimeIndex = i;
 							minThreadTime = threadTime;
 						}
+					}
+					if(i < (int)sizeof(existsThreadTimeFlags)) {
+						existsThreadTimeFlags[i] = threadTime > 0;
 					}
 				}
 			}
@@ -4571,13 +4611,13 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					fetchPacketOk = true;
 				}
 			}
-			if(fetchPacketOk) {
-				counter_pop_usleep = 0;
-			} else {
+			if(!fetchPacketOk) {
 				usleep(100);
-				++counter_pop_usleep;
-				if(!(counter_pop_usleep % 2000)) {
-					for(int i = 0; i < this->readThreadsCount; i++) {
+			}
+			if(!(++counter_pop % 1000)) {
+				int checkReadThreadsCount = min(this->readThreadsCount, (int)sizeof(existsThreadTimeFlags));
+				for(int i = 0; i < checkReadThreadsCount; i++) {
+					if(!existsThreadTimeFlags[i]) {
 						this->readThreads[i]->setForcePUSH();
 					}
 				}
@@ -4676,6 +4716,11 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				cout << "add INVITE" << endl;
 			} else if(memmem(HPP(*header_packet_fetch), HPH(*header_packet_fetch)->caplen, "BYE sip", 7)) {
 				cout << "add BYE " << endl;
+			}
+			#endif
+			#if TRACE_MASTER_SECRET
+			if(memmem(HPP(*header_packet_fetch), HPH(*header_packet_fetch)->caplen, "mastersecret", 12)) {
+				cout << "add MASTERSECRET" << endl;
 			}
 			#endif
 			++sumPacketsCounterIn[0];
@@ -6759,7 +6804,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	}
 	
 	if(!this->_last_ts.tv_sec) {
-		this->_last_ts = header->ts;
+		this->_last_ts.tv_sec = header->ts.tv_sec;
+		this->_last_ts.tv_usec = header->ts.tv_usec;
 	} else if(this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec > header->ts.tv_sec * 1000000ull + header->ts.tv_usec + 1000) {
 		if(verbosity > 1 || enable_bad_packet_order_warning) {
 			static u_long lastTimeSyslog = 0;
@@ -6771,7 +6817,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			}
 		}
 	} else {
-		this->_last_ts = header->ts;
+		this->_last_ts.tv_sec = header->ts.tv_sec;
+		this->_last_ts.tv_usec = header->ts.tv_usec;
 	}
 	
 	iphdr2 *header_ip = hp->header->header_ip_offset == (u_int16_t)0xFFFFFFFF ?
@@ -7347,7 +7394,19 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 				MD5_CTX md5_ctx;
 				MD5_Init(&md5_ctx);
 				if(opt_dup_check_ipheader) {
+					u_int8_t header_ip_ttl_orig;
+					u_int8_t header_ip_check_orig;
+					if(opt_dup_check_ipheader_ignore_ttl) {
+						header_ip_ttl_orig = header_ip->ttl;
+						header_ip_check_orig = header_ip->check;
+						header_ip->ttl = 0;
+						header_ip->check = 0;
+					}
 					MD5_Update(&md5_ctx, header_ip, MIN(datalen + (data - (char*)header_ip), ntohs(header_ip->tot_len)));
+					if(opt_dup_check_ipheader_ignore_ttl) {
+						header_ip->ttl = header_ip_ttl_orig;
+						header_ip->check = header_ip_check_orig;
+					}
 				} else {
 					MD5_Update(&md5_ctx, data, datalen);
 				}

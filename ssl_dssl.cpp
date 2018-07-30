@@ -1,4 +1,5 @@
 #include "voipmonitor.h"
+#include "pcap_queue.h"
 
 #if defined HAVE_OPENSSL101 and defined HAVE_LIBGNUTLS
 #include <gcrypt.h>
@@ -84,6 +85,8 @@ bool cSslDsslSession::initSession() {
 	session->gener_master_secret = this->gener_master_secret;
 	session->gener_master_secret_data[0] = this;
 	session->gener_master_secret_data[1] = SslDsslSessions;
+	extern bool opt_ssl_ignore_error_invalid_mac;
+	session->ignore_error_invalid_mac = opt_ssl_ignore_error_invalid_mac;
 	memset(session->last_packet, 0, sizeof(*session->last_packet));
 	DSSL_SessionSetCallback(session, cSslDsslSession::dataCallback, cSslDsslSession::errorCallback, this);
 	return(true);
@@ -193,7 +196,7 @@ int cSslDsslSession::password_calback_direct(char *buf, int size, int /*rwflag*/
 }
 
 int cSslDsslSession::gener_master_secret(u_char *client_random, u_char *master_secret, DSSL_Session *session) {
-	if(((cSslDsslSessions*)session->gener_master_secret_data[1])->clientRandomGet(client_random, master_secret)) {
+	if(((cSslDsslSessions*)session->gener_master_secret_data[1])->clientRandomGet(client_random, master_secret, session->last_packet->pcap_header.ts)) {
 		((cSslDsslSession*)session->gener_master_secret_data[0])->client_random_master_secret = true;
 		return(1);
 	}
@@ -234,16 +237,38 @@ void cSslDsslClientRandomItems::set(u_char *client_random, u_char *master_secret
 	unlock_map();
 }
 
-bool cSslDsslClientRandomItems::get(u_char *client_random, u_char *master_secret) {
+bool cSslDsslClientRandomItems::get(u_char *client_random, u_char *master_secret, struct timeval ts) {
+	if(sverb.ssl_sessionkey) {
+		cout << "find clientrandom" << endl;
+		hexdump(client_random, 32);
+	}
 	bool rslt = false;
 	cSslDsslClientRandomIndex index(client_random);
-	lock_map();
-	map<cSslDsslClientRandomIndex, cSslDsslClientRandomItem*>::iterator iter = map_client_random.find(index);
-	if(iter != map_client_random.end()) {
-		memcpy(master_secret, iter->second->master_secret, SSL3_MASTER_SECRET_SIZE);
-		rslt = true;
+	int64_t waitUS = -1;
+	extern int ssl_client_random_maxwait_ms;
+	if(ssl_client_random_maxwait_ms > 0) {
+		extern PcapQueue_readFromFifo *pcapQueueQ;
+		if(pcapQueueQ) {
+			waitUS = pcapQueueQ->getLastUS() - getTimeUS(ts);
+		}
 	}
-	unlock_map();
+	do {
+		lock_map();
+		map<cSslDsslClientRandomIndex, cSslDsslClientRandomItem*>::iterator iter = map_client_random.find(index);
+		if(iter != map_client_random.end()) {
+			memcpy(master_secret, iter->second->master_secret, SSL3_MASTER_SECRET_SIZE);
+			rslt = true;
+		}
+		unlock_map();
+		if(!rslt) {
+			if(waitUS >= 0 && waitUS < ssl_client_random_maxwait_ms * 1000ll) {
+				usleep(1000);
+				waitUS += 1000;
+			} else {
+				break;
+			}
+		}
+	} while(!rslt && waitUS >= 0);
 	return(rslt);
 }
 
@@ -350,8 +375,8 @@ void cSslDsslSessions::clientRandomSet(u_char *client_random, u_char *master_sec
 	this->client_random.set(client_random, master_secret);
 }
 
-bool cSslDsslSessions::clientRandomGet(u_char *client_random, u_char *master_secret) {
-	return(this->client_random.get(client_random, master_secret));
+bool cSslDsslSessions::clientRandomGet(u_char *client_random, u_char *master_secret, struct timeval ts) {
+	return(this->client_random.get(client_random, master_secret, ts));
 }
 
 void cSslDsslSessions::clientRandomErase(u_char *client_random) {
@@ -431,6 +456,9 @@ void end_decrypt_ssl_dssl(unsigned int saddr, unsigned int daddr, int sport, int
 
 bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(!SslDsslSessions) {
+		return(false);
+	}
 	JsonItem jsonData;
 	jsonData.parse(string((char*)data, datalen).c_str());
 	string sessionid = jsonData.getValue("sessionid");
@@ -442,6 +470,10 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 		hexdecode(client_random, sessionid.c_str(), SSL3_RANDOM_SIZE);
 		hexdecode(master_secret, mastersecret.c_str(), SSL3_MASTER_SECRET_SIZE);
 		SslDsslSessions->clientRandomSet(client_random, master_secret);
+		if(sverb.ssl_sessionkey) {
+			cout << "set clientrandom" << endl;
+			hexdump(client_random, 32);
+		}
 		return(true);
 	}
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS

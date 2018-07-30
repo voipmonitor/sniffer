@@ -3132,10 +3132,12 @@ void ParsePacket::setStdParse() {
 		vector<dstring> *_customHeaders = i == 0 ? &opt_custom_headers_cdr : &opt_custom_headers_message;
 		for(size_t iCustHeaders = 0; iCustHeaders < _customHeaders->size(); iCustHeaders++) {
 			string findHeader = (*_customHeaders)[iCustHeaders][0];
-			if(findHeader[findHeader.length() - 1] != ':') {
-				findHeader.append(":");
+			if(findHeader.length()) {
+				if(findHeader[findHeader.length() - 1] != ':') {
+					findHeader.append(":");
+				}
+				addNode(findHeader.c_str());
 			}
-			addNode(findHeader.c_str());
 		}
 	}
 	*/

@@ -2561,13 +2561,15 @@ string CleanSpool::print_spool() {
 unsigned int CleanSpool::get_reduk_maxpoolsize(unsigned int maxpoolsize) {
 	unsigned int reduk_maxpoolsize = maxpoolsize_set ? maxpoolsize_set : 
 					 maxpoolsize ? maxpoolsize : opt_max.maxpoolsize;
-	extern TarQueue *tarQueue[2];
-	if(tarQueue[spoolIndex]) {
-		unsigned int open_tars_size = tarQueue[spoolIndex]->sumSizeOpenTars() / (1204 * 1024);
-		if(open_tars_size < reduk_maxpoolsize) {
-			reduk_maxpoolsize -= open_tars_size;
-		} else {
-			return(0);
+	if(opt_cleanspool_use_files) {
+		extern TarQueue *tarQueue[2];
+		if(tarQueue[spoolIndex]) {
+			unsigned int open_tars_size = tarQueue[spoolIndex]->sumSizeOpenTars() / (1204 * 1024);
+			if(open_tars_size < reduk_maxpoolsize) {
+				reduk_maxpoolsize -= open_tars_size;
+			} else {
+				return(0);
+			}
 		}
 	}
 	return(reduk_maxpoolsize);

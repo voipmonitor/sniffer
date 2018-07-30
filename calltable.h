@@ -108,8 +108,6 @@
 #define SS7_REL 12
 #define SS7_RLC 16
 
-#define USE_UNREPLIED_INVITE_MESSAGE 0
-
 
 struct s_dtmf {
 	enum e_type {
@@ -295,6 +293,26 @@ enum eCallField {
 struct sCallField {
 	eCallField fieldType;
 	const char *fieldName;
+};
+
+struct sCseq {
+	inline void null() {
+		method = -1;
+		number = 0;
+	}
+	inline bool is_set() {
+		return(method > 0);
+	}
+	inline const bool operator == (const sCseq &cseq_other) {
+		return(this->method == cseq_other.method &&
+		       this->number == cseq_other.number);
+	}
+	inline const bool operator != (const sCseq &cseq_other) {
+		return(this->method != cseq_other.method ||
+		       this->number != cseq_other.number);
+	}
+	int method;
+	u_int32_t number;
 };
 
 class Call_abstract {
@@ -524,12 +542,12 @@ public:
 	char digest_username[64];	//!< 
 	char digest_realm[64];		//!< 
 	int register_expires;	
-	char byecseq[2][32];		
-	char invitecseq[32];		
-	char messagecseq[32];
-	char registercseq[32];
-	char cancelcseq[32];		
-	char updatecseq[32];		
+	sCseq byecseq[2];		
+	sCseq invitecseq;		
+	sCseq messagecseq;
+	sCseq registercseq;
+	sCseq cancelcseq;		
+	sCseq updatecseq;		
 	char custom_header1[256];	//!< Custom SIP header
 	char match_header[128];	//!< Custom SIP header
 	bool seeninvite;		//!< true if we see SIP INVITE within the Call
@@ -585,10 +603,6 @@ public:
 	volatile int end_call_rtp;
 	volatile int push_call_to_calls_queue;
 	volatile int push_register_to_registers_queue;
-	#if USE_UNREPLIED_INVITE_MESSAGE
-	unsigned int unrepliedinvite;
-	unsigned int unrepliedmessage;
-	#endif
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
 	char forcemark[2];
@@ -1010,7 +1024,7 @@ public:
 		extern bool opt_both_side_for_check_direction;
 		return(opt_both_side_for_check_direction);
 	}
-	bool use_port_for_check_direction(unsigned int addr) {
+	bool use_port_for_check_direction(unsigned int /*addr*/) {
 		return(true /*ip_is_localhost(htonl(addr))*/);
 	}
 	void check_reset_oneway(unsigned int saddr, unsigned int source) {
@@ -1262,27 +1276,26 @@ public:
 		}
 		return(seenbyeandok ? seenbyeandok_time_usec : 0);
 	}
-	int setByeCseq(const char *cseq, unsigned cseqlen) {
+	int setByeCseq(sCseq *cseq) {
 		unsigned index;
 		unsigned size_byecseq = sizeof(byecseq) / sizeof(byecseq[0]);
 		for(index = 0; index < size_byecseq; index++) {
-			if(!byecseq[index][0]) {
+			if(!byecseq[index].is_set()) {
 				break;
-			} else if(!strncmp(byecseq[index], cseq, cseqlen) && !byecseq[index][cseqlen]) {
+			} else if(byecseq[index] == *cseq) {
 				return(index);
 			}
 		}
 		if(index == size_byecseq) {
 			index = size_byecseq - 1;
 		}
-		strncpy(byecseq[index], cseq, cseqlen);
-		byecseq[index][cseqlen] = 0;
+		byecseq[index] = *cseq;
 		return(index);
 	}
-	int existsByeCseq(const char *cseq, unsigned cseqlen) {
+	int existsByeCseq(sCseq *cseq) {
 		for(unsigned index = 0; index < (sizeof(byecseq) / sizeof(byecseq[0])); index++) {
-			if(byecseq[index][0] &&
-			   !strncmp(byecseq[index], cseq, cseqlen) && !byecseq[index][cseqlen]) {
+			if(byecseq[index].is_set() &&
+			   byecseq[index] == *cseq) {
 				return(index + 1);
 			}
 		}
@@ -1909,7 +1922,7 @@ public:
 	void parse(Call *call, int type, char *data, int datalen, ParsePacket::ppContentsX *parseContents);
 	void setCustomHeaderContent(Call *call, int type, int pos1, int pos2, dstring *content, bool useLastValue = false);
 	void prepareSaveRows(Call *call, int type, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
-	string getScreenPopupFieldsString(Call *call);
+	string getScreenPopupFieldsString(Call *call, int type);
 	string getDeleteQuery(const char *id, const char *prefix, const char *suffix);
 	list<string> getAllNextTables() {
 		return(allNextTables);

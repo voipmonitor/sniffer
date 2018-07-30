@@ -8,7 +8,7 @@
 
 struct sHeaderPacket {
 	void *stack;
-	u_int16_t packet_alloc_size;
+	u_int32_t packet_alloc_size;
 	u_int8_t detect_headers;
 	u_int16_t header_ip_first_offset;
 	u_int16_t header_ip_offset;
@@ -32,7 +32,7 @@ private:
 		sHeaderPacket *pool[HEADER_PACKET_STACK_POOL_SIZE];
 	};
 public:
-	cHeaderPacketStack(u_int32_t size_max, u_int16_t packet_alloc_size) {
+	cHeaderPacketStack(u_int32_t size_max, u_int32_t packet_alloc_size) {
 		this->packet_alloc_size = packet_alloc_size;
 		pop_queue_size = 0;
 		for(int i = 0; i < HEADER_PACKET_STACK_PUSH_QUEUE_MAX; i++) {
@@ -153,7 +153,7 @@ public:
 		return(1);
 	}
 public:
-	u_int16_t packet_alloc_size;
+	u_int32_t packet_alloc_size;
 	sHeaderPacketPool pop_queue;
 	uint16_t pop_queue_size;
 	sHeaderPacketPool push_queues[HEADER_PACKET_STACK_PUSH_QUEUE_MAX];
@@ -164,7 +164,7 @@ public:
 	volatile int _sync_prepare;
 };
 
-inline sHeaderPacket *CREATE_HP(u_int16_t packet_alloc_size) {
+inline sHeaderPacket *CREATE_HP(u_int32_t packet_alloc_size) {
 	sHeaderPacket *header_packet = (sHeaderPacket*)new FILE_LINE(9004) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
 	header_packet->stack = NULL;
 	header_packet->packet_alloc_size = packet_alloc_size;

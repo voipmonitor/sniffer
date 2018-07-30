@@ -12,17 +12,22 @@ struct ip_frag_s {
 	time_t ts;
 	u_int32_t offset;
 	u_int32_t len;
-	u_int32_t totallen;
-	char has_last;
 };
 
 typedef map<unsigned int, ip_frag_s*> ip_frag_queue_t;
 typedef map<unsigned int, ip_frag_s*>::iterator ip_frag_queue_it_t;
 
+struct ip_frag_queue : ip_frag_queue_t {
+	ip_frag_queue() {
+		has_last = false;
+	}
+	bool has_last;
+};
+
 struct ipfrag_data_s {
-	map<unsigned int, map<unsigned int, ip_frag_queue_t*> > ip_frag_stream;
-	map<unsigned int, map<unsigned int, ip_frag_queue_t*> >::iterator ip_frag_streamIT;
-	map<unsigned int, ip_frag_queue_t*>::iterator ip_frag_streamITinner;
+	map<unsigned int, map<unsigned int, ip_frag_queue*> > ip_frag_stream;
+	map<unsigned int, map<unsigned int, ip_frag_queue*> >::iterator ip_frag_streamIT;
+	map<unsigned int, ip_frag_queue*>::iterator ip_frag_streamITinner;
 };
 
 void ipfrag_prune(unsigned int tv_sec, bool all, ipfrag_data_s *ipfrag_data,

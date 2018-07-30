@@ -250,6 +250,7 @@ char opt_name_sensor[256] = "";
 int readend = 0;
 int opt_dup_check = 0;
 int opt_dup_check_ipheader = 1;
+int opt_dup_check_ipheader_ignore_ttl = 1;
 int opt_fax_dup_seq_check = 0;
 int opt_fax_create_udptl_streams = 0;
 int rtptimeout = 300;
@@ -339,6 +340,7 @@ int opt_enable_ssl = 0;
 unsigned int opt_ssl_link_timeout = 5 * 60;
 bool opt_ssl_ignore_tcp_handshake = true;
 bool opt_ssl_log_errors = false;
+bool opt_ssl_ignore_error_invalid_mac = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
@@ -389,6 +391,7 @@ bool opt_saveaudio_wav_mix = true;
 bool opt_saveaudio_from_first_invite = true;
 bool opt_saveaudio_afterconnect = false;
 int opt_saveaudio_stereo = 1;
+int opt_saveaudio_dedup_seq = 0;
 int opt_register_timeout = 5;
 int opt_register_timeout_disable_save_failed = 0;
 int opt_register_ignore_res_401 = 0;
@@ -742,6 +745,7 @@ char *ssl_client_random_portmatrix;
 bool ssl_client_random_portmatrix_set = false;
 vector<u_int32_t> ssl_client_random_ip;
 vector<d_u_int32_t> ssl_client_random_net;
+int ssl_client_random_maxwait_ms = 0;
 
 int opt_sdp_reverse_ipport = 0;
 bool opt_sdp_check_direction_ext = true;
@@ -753,7 +757,6 @@ int global_livesniffer = 0;
 pcap_t *global_pcap_handle = NULL;		// pcap handler 
 u_int16_t global_pcap_handle_index = 0;
 pcap_t *global_pcap_handle_dead_EN10MB = NULL;
-u_int16_t global_pcap_handle_dead_EN10MB_index = 0;
 
 rtp_read_thread *rtp_threads;
 
@@ -3340,6 +3343,10 @@ int main_init_read() {
 		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
 	}
 	
+	if(opt_convert_dlt_sll_to_en10) {
+		global_pcap_handle_dead_EN10MB = pcap_open_dead(DLT_EN10MB, 65535);
+	}
+
 	vmChdir();
 
 	// set maximum open files 
@@ -3586,6 +3593,9 @@ int main_init_read() {
 		sslData = new FILE_LINE(42030) SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
+		if(ssl_client_random_enable && ssl_client_random_maxwait_ms > 0) {
+			tcpReassemblySsl->setEnablePacketThread();
+		}
 		if(opt_ssl_ignore_tcp_handshake) {
 			tcpReassemblySsl->setEnableWildLink();
 			tcpReassemblySsl->setIgnoreTcpHandshake();
@@ -5903,6 +5913,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42228) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
 				addConfigItem(new FILE_LINE(42229) cConfigItem_integer("audioqueue_threads_max", &opt_audioqueue_threads_max));
 					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_dedup_seq", &opt_saveaudio_dedup_seq));
 					addConfigItem(new FILE_LINE(42230) cConfigItem_yesno("plcdisable", &opt_disableplc));
 		setDisableIfEnd();
 	group("data spool directory cleaning");
@@ -5937,6 +5948,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42248) cConfigItem_yesno("udpfrag", &opt_udpfrag));
 		addConfigItem(new FILE_LINE(42249) cConfigItem_yesno("dscp", &opt_dscp));
 				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("deduplicate_ipheader_ignore_ttl", &opt_dup_check_ipheader_ignore_ttl));
 				addConfigItem(new FILE_LINE(42250) cConfigItem_string("tcpreassembly_http_log", opt_tcpreassembly_http_log, sizeof(opt_tcpreassembly_http_log)));
 				addConfigItem(new FILE_LINE(42251) cConfigItem_string("tcpreassembly_webrtc_log", opt_tcpreassembly_webrtc_log, sizeof(opt_tcpreassembly_webrtc_log)));
 				addConfigItem(new FILE_LINE(42252) cConfigItem_string("tcpreassembly_ssl_log", opt_tcpreassembly_ssl_log, sizeof(opt_tcpreassembly_ssl_log)));
@@ -5951,8 +5963,10 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_sessionkey_udp", &ssl_client_random_enable));
 			addConfigItem(new FILE_LINE(0) cConfigItem_ports("ssl_sessionkey_udp_port", ssl_client_random_portmatrix));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hosts("ssl_sessionkey_udp_ip", &ssl_client_random_ip, &ssl_client_random_net));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_udp_maxwait_ms", &ssl_client_random_maxwait_ms));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -6658,6 +6672,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "http")				sverb.http = 1;
 	else if(verbParam == "webrtc")				sverb.webrtc = 1;
 	else if(verbParam == "ssl")				sverb.ssl = 1;
+	else if(verbParam == "ssl_sessionkey")			sverb.ssl_sessionkey = 1;
 	else if(verbParam == "sip")				sverb.sip = 1;
 	else if(verbParam.substr(0, 25) == "tcpreassembly_debug_file=")
 								{ sverb.tcpreassembly_debug_file = new char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbParam.c_str() + 25); }
@@ -6985,9 +7000,10 @@ void get_command_line_arguments() {
 					opt_pb_read_from_file_acttime = acttime;
 					opt_scanpcapdir[0] = '\0';
 				} else if((!strncmp(optarg, "pbs", 3) ||
-					   !strncmp(optarg, "pbsa", 4)) &&
+					   !strncmp(optarg, "pbsa", 4) ||
+					   !strncmp(optarg, "pbas", 4)) &&
 					  strchr(optarg, ':')) {
-					bool acttime = !strncmp(optarg, "pbsa", 4);
+					bool acttime = !strncmp(optarg, "pbsa", 4) || !strncmp(optarg, "pbas", 4);
 					opt_pb_read_from_file_speed = atof(optarg + (acttime ? 4 : 3));
 					strcpy(opt_pb_read_from_file, strchr(optarg, ':') + 1);
 					opt_pb_read_from_file_acttime = acttime;
@@ -7426,6 +7442,9 @@ void set_context_config() {
 				ssl_client_random_portmatrix_set = true;
 			}
 		}
+		if(!ssl_client_random_maxwait_ms) {
+			ssl_client_random_maxwait_ms = 2000;
+		}
 	}
 	
 	set_spool_permission();
@@ -7849,6 +7868,9 @@ int eval_config(string inistr) {
 			std::sort(ssl_client_random_ip.begin(), ssl_client_random_ip.end());
 		}
 	}
+	if((value = ini.GetValue("general", "ssl_sessionkey_udp_maxwait_ms", NULL))) {
+		ssl_client_random_maxwait_ms = atoi(value);
+	}
 	
 	// http ip
 	if (ini.GetAllValues("general", "httpip", values)) {
@@ -8203,6 +8225,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "deduplicate_ipheader", NULL))) {
 		opt_dup_check_ipheader = yesno(value);
+	}
+	if((value = ini.GetValue("general", "deduplicate_ipheader_ignore_ttl", NULL))) {
+		opt_dup_check_ipheader_ignore_ttl = yesno(value);
 	}
 	if((value = ini.GetValue("general", "dscp", NULL))) {
 		opt_dscp = yesno(value);
@@ -9170,6 +9195,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl_log_errors", NULL))) {
 		opt_ssl_log_errors = yesno(value);
 	}
+	if((value = ini.GetValue("general", "ssl_ignore_error_invalid_mac", NULL))) {
+		opt_ssl_ignore_error_invalid_mac = yesno(value);
+	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
 		strcpy_null_term(opt_tcpreassembly_http_log, value);
 	}
@@ -9277,6 +9305,10 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "audioqueue_threads_max", NULL))) {
 		opt_audioqueue_threads_max = atoi(value);
 	}
+	if((value = ini.GetValue("general", "saveaudio_dedup_seq", NULL))) {
+		opt_saveaudio_dedup_seq = yesno(value);
+	}
+	
 	if((value = ini.GetValue("general", "mysqlloadconfig", NULL))) {
 		opt_mysqlloadconfig = yesno(value);
 	}
