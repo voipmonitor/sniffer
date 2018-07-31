@@ -45,6 +45,7 @@ AC_CHECK_LIB([vorbisenc], [main], ,AC_MSG_ERROR([Unable to find VORBISENC librar
 # FIXME: Replace `main' with a function in `-lz':
 AC_CHECK_LIB([snappy], [main], ,AC_MSG_ERROR([Unable to find snappy library. apt-get install libsnappy-dev | yum install snappy-devel.x86_64 | or compile from source: https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz]))
 AC_CHECK_LIB([curl], [main], , AC_MSG_ERROR([Unable to find curl library. apt-get install libcurl4-openssl-dev | yum install libcurl-devel]))
+AC_CHECK_LIB([icuuc], [main], , AC_MSG_ERROR([Unable to find libicuuc library. apt-get install libicu-dev | yum install libicu-devel]))
 
 CURL_CFG='curl-config'
 CURL_VER_MAJOR=`$CURL_CFG --version | cut -d" " -f2 | cut -d"." -f1`
