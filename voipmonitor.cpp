@@ -260,6 +260,7 @@ int opt_destination_number_mode = 1;
 int opt_update_dstnum_onanswer = 0;
 bool opt_cleanspool = true;
 bool opt_cleanspool_use_files = true;
+bool opt_cleanspool_use_files_set = false;
 int opt_cleanspool_interval = 0; // number of seconds between cleaning spool directory. 0 = disabled
 int opt_cleanspool_sizeMB = 0; // number of MB to keep in spooldir
 int opt_domainport = 0;
@@ -7341,6 +7342,11 @@ void set_context_config() {
 	opt_pcap_dump_tar_rtp_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_rtp;
 	opt_pcap_dump_tar_graph_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_graph;
 	
+	if(opt_pcap_dump_tar &&
+	   !(useNewCONFIG ? CONFIG.isSet("cleanspool_use_files") : opt_cleanspool_use_files_set)) {
+		opt_cleanspool_use_files = false;
+	}
+	
 	if(opt_save_query_to_files || opt_load_query_from_files) {
 		opt_autoload_from_sqlvmexport = false;
 	}
@@ -8061,6 +8067,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleanspool_use_files", NULL))) {
 		opt_cleanspool_use_files = yesno(value);
+		opt_cleanspool_use_files_set = true;
 	}
 	if((value = ini.GetValue("general", "cleanspool_interval", NULL))) {
 		opt_cleanspool_interval = atoi(value);

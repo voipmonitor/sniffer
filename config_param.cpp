@@ -2131,6 +2131,19 @@ string cConfig::getMainItemName(const char *name) {
 	return(name);
 }
 
+cConfigItem *cConfig::getItem(const char *itemName) {
+	string mainItemName = getMainItemName(itemName);
+	if(config_map.find(mainItemName) != config_map.end()) {
+		return(config_map[mainItemName]);
+	}
+	return(NULL);
+}
+
+bool cConfig::isSet(const char *itemName) {
+	cConfigItem *item = getItem(itemName);
+	return(item ? item->set : false);
+}
+
 bool cConfig::testEqValues(const char *itemName, const char *value1, const char *value2) {
 	string value1_str = value1;
 	string value2_str = value2;

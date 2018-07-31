@@ -580,6 +580,8 @@ public:
 	string getMainItemName(const char *name);
 	bool testEqValues(const char *itemName, const char *value1, const char *value2);
 	bool testEqValues(string itemName, list<string> values1, list<string> values2);
+	cConfigItem *getItem(const char *itemName);
+	bool isSet(const char *itemName);
 private:
 	void loadFromConfigFileError(const char *errorString, const char *filename, string *error = NULL);
 private:
