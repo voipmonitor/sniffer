@@ -603,6 +603,9 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 		if(countries) {
 			countries->push_back(local_country);
 		}
+		if(country_prefix) {
+			*country_prefix = this->getPrefixNumber(local_country.c_str());
+		}
 		if(rsltNumberNormalized) {
 			*rsltNumberNormalized = this->getPrefixNumber(local_country.c_str()) + numberNormalized;
 		}
