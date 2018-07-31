@@ -3730,6 +3730,10 @@ string _sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
 			rsltString += inputStr[posInputString];
 		}
 	}
+	extern cUtfConverter utfConverter;
+	if(!utfConverter.check(rsltString.c_str())) {
+		rsltString = utfConverter.remove_no_ascii(rsltString.c_str());
+	}
 	return(rsltString);
 }
 
@@ -3769,6 +3773,10 @@ void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const c
 		}
 	}
 	outputStr[posOutputString] = 0;
+	extern cUtfConverter utfConverter;
+	if(!utfConverter.check(outputStr)) {
+		utfConverter._remove_no_ascii(outputStr);
+	}
 }
 
 string sqlEscapeStringBorder(string inputStr, char borderChar, const char *typeDb, SqlDb_mysql *sqlDbMysql) {
@@ -3812,14 +3820,8 @@ bool cmpStringIgnoreCase(const char* str1, const char* str2) {
 }
 
 string reverseString(const char *str) {
-	string rslt;
-	if(str) {
-		int length = strlen(str);
-		for(int i = length - 1; i >= 0; i--) {
-			rslt += str[i];
-		}
-	}
-	return rslt;
+	extern cUtfConverter utfConverter;
+	return(utfConverter.reverse(str));
 }
 
 string prepareQueryForPrintf(const char *query) {

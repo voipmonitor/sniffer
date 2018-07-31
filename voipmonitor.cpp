@@ -922,6 +922,7 @@ char ownPidStart_str[10];
 char ownPidFork_str[10];
 
 cResolver resolver;
+cUtfConverter utfConverter;
 
 
 #include <stdio.h>

@@ -1,6 +1,8 @@
 #ifndef TOOLS_H
 #define TOOLS_H
 
+#include "config.h"
+
 #include <pthread.h>
 #include <string>
 #include <vector>
@@ -25,6 +27,7 @@
 #include <map>
 #include <time.h>
 #include <regex.h>
+#include <unicode/ucnv.h> 
 
 #include "pstat.h"
 #include "tools_dynamic_buffer.h"
@@ -3764,6 +3767,33 @@ private:
 	bool use_lock;
 	bool res_timeout;
 	map<string, sIP_time> res_table;
+	volatile int _sync_lock;
+};
+
+
+class cUtfConverter {
+public:
+	cUtfConverter();
+	~cUtfConverter();
+	bool check(const char *str);
+	string reverse(const char *str);
+	bool is_ascii(const char *str);
+	string remove_no_ascii(const char *str, const char subst = '_');
+	void _remove_no_ascii(const char *str, const char subst = '_');
+private:
+	bool init();
+	void term();
+	void lock() {
+		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
+			usleep(100);
+		}
+	}
+	void unlock() {
+		__sync_lock_release(&_sync_lock);
+	}
+private:
+	UConverter *cnv_utf8;
+	bool init_ok;
 	volatile int _sync_lock;
 };
 
