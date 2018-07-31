@@ -6672,3 +6672,148 @@ u_int32_t cResolver::resolve_by_system_host(const char *host) {
 	}
 	return(ipl);
 }
+
+
+cUtfConverter::cUtfConverter() {
+	cnv_utf8 = NULL;
+	init_ok = false;
+	_sync_lock = 0;
+	init();
+}
+
+cUtfConverter::~cUtfConverter() {
+	term();
+}
+
+bool cUtfConverter::check(const char *str) {
+	if(!str || !*str || is_ascii(str)) {
+		return(true);
+	}
+	bool okUtf = false;
+	if(init_ok) {
+		unsigned strLen = strlen(str);
+		unsigned strLimit = strLen * 2 + 10;
+		unsigned strUtfLimit = strLen * 2 + 10;
+		UChar *strUtf = new UChar[strUtfLimit + 1];
+		UErrorCode status = U_ZERO_ERROR;
+		lock();
+		ucnv_toUChars(cnv_utf8, strUtf, strUtfLimit, str, -1, &status);
+		unlock();
+		if(status == U_ZERO_ERROR) {
+			char *str_check = new char[strLimit + 1];
+			lock();
+			ucnv_fromUChars(cnv_utf8, str_check, strLimit, strUtf, -1, &status);
+			unlock();
+			if(status == U_ZERO_ERROR && !strcmp(str, str_check)) {
+				okUtf = true;
+			}
+			delete [] str_check;
+		}
+		delete [] strUtf;
+	}
+	return(okUtf);
+}
+
+string cUtfConverter::reverse(const char *str) {
+	if(!str || !*str) {
+		return("");
+	}
+	string rslt;
+	bool okReverseUtf = false;
+	if(init_ok && !is_ascii(str)) {
+		unsigned strLen = strlen(str);
+		unsigned strLimit = strLen * 2 + 10;
+		unsigned strUtfLimit = strLen * 2 + 10;
+		UChar *strUtf = new UChar[strUtfLimit + 1];
+		UErrorCode status = U_ZERO_ERROR;
+		lock();
+		ucnv_toUChars(cnv_utf8, strUtf, strUtfLimit, str, -1, &status);
+		unlock();
+		if(status == U_ZERO_ERROR) {
+			unsigned len = 0;
+			for(unsigned i = 0; i < strUtfLimit && strUtf[i]; i++) {
+				len++;
+			}
+			UChar *strUtf_r = new UChar[strUtfLimit + 1];
+			for(unsigned i = 0; i < len; i++) {
+				strUtf_r[len - i - 1] = strUtf[i];
+			}
+			strUtf_r[len] = 0;
+			char *str_r = new char[strLimit + 1];
+			lock();
+			ucnv_fromUChars(cnv_utf8, str_r, strLimit, strUtf_r, -1, &status);
+			unlock();
+			if(status == U_ZERO_ERROR && strlen(str_r) == strLen) {
+				rslt = str_r;
+				okReverseUtf = true;
+			}
+			delete [] str_r;
+			delete [] strUtf_r;
+		}
+		delete [] strUtf;
+	}
+	if(!okReverseUtf) {
+		int length = strlen(str);
+		for(int i = length - 1; i >= 0; i--) {
+			rslt += str[i];
+		}
+	}
+	return rslt;
+}
+
+bool cUtfConverter::is_ascii(const char *str) {
+	if(!str) {
+		return(true);
+	}
+	while(*str) {
+		if((unsigned)*str > 127) {
+			return(false);
+		}
+		++str;
+	}
+	return(true);
+}
+
+string cUtfConverter::remove_no_ascii(const char *str, const char subst) {
+	if(!str || !*str) {
+		return("");
+	}
+	string rslt;
+	while(*str) {
+		rslt += (unsigned)*str > 127 ? subst : *str;
+		++str;
+	}
+	return(rslt);
+}
+
+void cUtfConverter::_remove_no_ascii(const char *str, const char subst) {
+	if(!str) {
+		return;
+	}
+	while(*str) {
+		if((unsigned)*str > 127) {
+			*(char*)str = subst;
+		}
+		++str;
+	}
+}
+
+bool cUtfConverter::init() {
+	UErrorCode status = U_ZERO_ERROR;
+	cnv_utf8 = ucnv_open("utf-8", &status);
+	if(status == U_ZERO_ERROR) {
+		init_ok = true;
+	} else {
+		if(cnv_utf8) {
+			ucnv_close(cnv_utf8);
+		}
+	}
+	return(init_ok);
+}
+
+void cUtfConverter::term() {
+	if(cnv_utf8) {
+		ucnv_close(cnv_utf8);
+	}
+	init_ok = false;
+}
