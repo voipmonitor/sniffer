@@ -123,29 +123,25 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 	}
 	NM_PacketDir dir = this->getDirection(saddr, sport, daddr, dport);
 	if(dir != ePacketDirInvalid) {
-		bool maybeNextClientHello = false;
-		if(process_counter && dir == ePacketDirFromClient) {
-			NM_ERROR_DISABLE_LOG;
-			uint16_t ver = 0;
-			if(!ssl_detect_client_hello_version((u_char*)data, datalen, &ver) && ver) {
-				maybeNextClientHello = true;
-			}
-			NM_ERROR_ENABLE_LOG;
-		}
+		bool reinit = false;
 		if(this->process_error) {
-			if(maybeNextClientHello) {
+			if(process_counter && this->isClientHello(data, datalen, dir)) {
 				term();
 				init();
-				this->process_error = false;
+				reinit = true;
 			} else {
 				return;
 			}
 		}
-		for(unsigned pass = 1; pass <= (maybeNextClientHello ? 2 : 1); pass++) {
+		for(unsigned pass = 1; pass <= (reinit ? 1 : 2); pass++) {
 			if(pass == 2) {
-				term();
-				init();
-				rslt_decrypt->clear();
+				if(process_counter && this->isClientHello(data, datalen, dir)) {
+					term();
+					init();
+					rslt_decrypt->clear();
+				} else {
+					break;
+				}
 			}
 			session->last_packet->pcap_header.ts = ts;
 			this->decrypted_data = rslt_decrypt;
@@ -156,6 +152,19 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 		}
 		++process_counter;
 	}
+}
+
+bool cSslDsslSession::isClientHello(char *data, unsigned int datalen, NM_PacketDir dir) {
+	bool isClientHello = false;
+	if(dir == ePacketDirFromClient) {
+		NM_ERROR_DISABLE_LOG;
+		uint16_t ver = 0;
+		if(!ssl_detect_client_hello_version((u_char*)data, datalen, &ver) && ver) {
+			isClientHello = true;
+		}
+		NM_ERROR_ENABLE_LOG;
+	}
+	return(isClientHello);
 }
 
 NM_PacketDir cSslDsslSession::getDirection(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport) {
@@ -338,9 +347,18 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 		session = iter_session->second;
 	}
 	if(!session && dir == ePacketDirFromClient) {
-		session = addSession(daddr, dport);
-		session->setClientIpPort(saddr, sport);
-		sessions[sid] = session;
+		NM_ERROR_DISABLE_LOG;
+		uint16_t ver = 0;
+		bool isClientHello = false;
+		if(!ssl_detect_client_hello_version((u_char*)data, datalen, &ver) && ver) {
+			isClientHello = true;
+		}
+		NM_ERROR_ENABLE_LOG;
+		if(isClientHello) {
+			session = addSession(daddr, dport);
+			session->setClientIpPort(saddr, sport);
+			sessions[sid] = session;
+		}
 	}
 	if(session) {
 		session->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts);

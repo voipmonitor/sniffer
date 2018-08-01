@@ -807,6 +807,9 @@ public:
 	void setEnableValidateDataViaCheckData(bool enableValidateDataViaCheckData = true) {
 		this->enableValidateDataViaCheckData = enableValidateDataViaCheckData;
 	}
+	void setEnableValidateLastQueueDataViaCheckData(bool enableValidateLastQueueDataViaCheckData = true) {
+		this->enableValidateLastQueueDataViaCheckData = enableValidateLastQueueDataViaCheckData;
+	}
 	void setEnableStrictValidateDataViaCheckData(bool enableStrictValidateDataViaCheckData = true) {
 		this->enableStrictValidateDataViaCheckData = enableStrictValidateDataViaCheckData;
 	}
@@ -944,6 +947,7 @@ private:
 	bool enableDestroyStreamsInComplete;
 	bool enableAllCompleteAfterZerodataAck;
 	bool enableValidateDataViaCheckData;
+	bool enableValidateLastQueueDataViaCheckData;
 	bool enableStrictValidateDataViaCheckData;
 	bool needValidateDataViaCheckData;
 	bool simpleByAck;

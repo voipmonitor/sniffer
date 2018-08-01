@@ -970,4 +970,15 @@ void ssls_handshake_data_free(DSSL_Session* sess)
 		sess->handshake_data = NULL;
 	}
 	sess->handshake_data_size = 0;
+	
+	if(sess->handshake_queue) {
+		DSSL_handshake_buffer *q = NULL, *next;
+		for (q = sess->handshake_queue; q != NULL; q = next)
+		{
+			next = q->next;
+			free ( q->data );
+			free ( q );
+		}
+	}
+	
 }

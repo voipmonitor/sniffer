@@ -2766,10 +2766,15 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		if(!sverb.dump_sip_without_counter) {
 			#if USE_PACKET_NUMBER
-			cout << packetS->packet_number << endl
+			cout << packetS->packet_number
 			#else
-			cout << (++glob_packet_number) << endl;
+			cout << (++glob_packet_number)
 			#endif
+			<< " "
+			<< inet_ntostring(htonl(packetS->saddr)) << ':' << packetS->source 
+			<< " -> "
+			<< inet_ntostring(htonl(packetS->daddr)) << ':' << packetS->dest 
+			<< endl;
 		}
 		cout << dump_data << endl;
 	}
@@ -3651,10 +3656,15 @@ void process_packet_sip_alone_bye(packet_s_process *packetS) {
 		}
 		if(!sverb.dump_sip_without_counter) {
 			#if USE_PACKET_NUMBER
-			cout << packetS->packet_number << endl
+			cout << packetS->packet_number
 			#else
-			cout << (++glob_packet_number) << endl;
+			cout << (++glob_packet_number)
 			#endif
+			<< " "
+			<< inet_ntostring(htonl(packetS->saddr)) << ':' << packetS->source 
+			<< " -> "
+			<< inet_ntostring(htonl(packetS->daddr)) << ':' << packetS->dest 
+			<< endl;
 		}
 		cout << dump_data << endl;
 	}
@@ -3702,10 +3712,15 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		}
 		if(!sverb.dump_sip_without_counter) {
 			#if USE_PACKET_NUMBER
-			cout << packetS->packet_number << endl
+			cout << packetS->packet_number
 			#else
-			cout << (++glob_packet_number) << endl;
+			cout << (++glob_packet_number)
 			#endif
+			<< " "
+			<< inet_ntostring(htonl(packetS->saddr)) << ':' << packetS->source 
+			<< " -> "
+			<< inet_ntostring(htonl(packetS->daddr)) << ':' << packetS->dest 
+			<< endl;
 		}
 		cout << dump_data << endl;
 	}
@@ -4010,10 +4025,15 @@ void process_packet_sip_other(packet_s_process *packetS) {
 		}
 		if(!sverb.dump_sip_without_counter) {
 			#if USE_PACKET_NUMBER
-			cout << packetS->packet_number << endl
+			cout << packetS->packet_number
 			#else
-			cout << (++glob_packet_number) << endl;
+			cout << (++glob_packet_number)
 			#endif
+			<< " "
+			<< inet_ntostring(htonl(packetS->saddr)) << ':' << packetS->source 
+			<< " -> "
+			<< inet_ntostring(htonl(packetS->daddr)) << ':' << packetS->dest 
+			<< endl;
 		}
 		cout << dump_data << endl;
 	}
@@ -5913,6 +5933,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 						ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_offset),
 						NULL, 0, global_pcap_dlink, opt_id_sensor,
 						false);
+				} else {
+					delete header;
+					delete [] packet;
 				}
 			}
 		}

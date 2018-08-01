@@ -46,6 +46,7 @@ public:
 	void termServer();
 	void termSession();
 	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts);
+	bool isClientHello(char *data, unsigned int datalen, NM_PacketDir dir);
 private:
 	NM_PacketDir getDirection(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport);
 	static void dataCallback(NM_PacketDir dir, void* user_data, u_char* data, uint32_t len, DSSL_Pkt* pkt);

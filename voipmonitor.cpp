@@ -342,6 +342,8 @@ unsigned int opt_ssl_link_timeout = 5 * 60;
 bool opt_ssl_ignore_tcp_handshake = true;
 bool opt_ssl_log_errors = false;
 bool opt_ssl_ignore_error_invalid_mac = false;
+bool opt_ssl_destroy_tcp_link_on_rst = false;
+bool opt_ssl_destroy_ssl_session_on_rst = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
@@ -3592,10 +3594,12 @@ int main_init_read() {
 		tcpReassemblySsl->setEnableDestroyStreamsInComplete();
 		tcpReassemblySsl->setEnableAllCompleteAfterZerodataAck();
 		tcpReassemblySsl->setIgnorePshInCheckOkData();
+		tcpReassemblySsl->setEnableValidateLastQueueDataViaCheckData();
 		sslData = new FILE_LINE(42030) SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
-		if(ssl_client_random_enable && ssl_client_random_maxwait_ms > 0) {
+		if(!is_read_from_file_simple() &&
+		   ssl_client_random_enable && ssl_client_random_maxwait_ms > 0) {
 			tcpReassemblySsl->setEnablePacketThread();
 		}
 		if(opt_ssl_ignore_tcp_handshake) {
@@ -5969,6 +5973,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_tcp_link_on_rst", &opt_ssl_destroy_tcp_link_on_rst));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_ssl_session_on_rst", &opt_ssl_destroy_ssl_session_on_rst));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -7449,7 +7455,9 @@ void set_context_config() {
 				ssl_client_random_portmatrix_set = true;
 			}
 		}
-		if(!ssl_client_random_maxwait_ms) {
+		if(is_read_from_file_simple()) {
+			ssl_client_random_maxwait_ms = 0;
+		} else if(!ssl_client_random_maxwait_ms) {
 			ssl_client_random_maxwait_ms = 2000;
 		}
 	}
@@ -9205,6 +9213,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_ignore_error_invalid_mac", NULL))) {
 		opt_ssl_ignore_error_invalid_mac = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_destroy_tcp_link_on_rst", NULL))) {
+		opt_ssl_destroy_tcp_link_on_rst = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_destroy_ssl_session_on_rst", NULL))) {
+		opt_ssl_destroy_ssl_session_on_rst = yesno(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
 		strcpy_null_term(opt_tcpreassembly_http_log, value);

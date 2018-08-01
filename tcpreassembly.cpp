@@ -826,6 +826,18 @@ bool TcpReassemblyLink::push_normal(
 		if(header_tcp.rst) {
 			this->rst = true;
 			this->state = STATE_RESET;
+			if(reassembly->getType() == TcpReassembly::ssl) {
+				extern bool opt_ssl_destroy_ssl_session_on_rst;
+				if(opt_ssl_destroy_ssl_session_on_rst) {
+					if(opt_enable_ssl == 10) {
+						#ifdef HAVE_LIBGNUTLS
+						end_decrypt_ssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
+						#endif
+					} else {
+						end_decrypt_ssl_dssl(htonl(ip_src), htonl(ip_dst), port_src, port_dst);
+					}
+				}
+			}
 			rslt = true;
 		}
 	case STATE_RESET:
@@ -1319,8 +1331,9 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
 		return(-1);
 	}
 	bool finOrRst = this->fin_to_dest || this->fin_to_source || this->rst;
+	bool allQueueStreams = finOrRst || final == 2 || reassembly->enableValidateLastQueueDataViaCheckData || reassembly->enableStrictValidateDataViaCheckData;
 	int countIter = 0;
-	for(size_t i = 0; i < (finOrRst || final == 2 || reassembly->enableStrictValidateDataViaCheckData ? size : size - 1); i++) {
+	for(size_t i = 0; i < (allQueueStreams ? size : size - 1); i++) {
 		++countIter;
 		if(enableDebug && _debug_stream) {
 			(*_debug_stream) << "|";
@@ -1328,7 +1341,10 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
 		int rslt = this->queueStreams[i]->ok(false, 
 						     i == size - 1 && (finOrRst || final == 2), 
 						     i == size - 1 ? 0 : this->queueStreams[i]->max_next_seq,
-						     -1, -1, NULL, enableDebug,
+						     reassembly->enableValidateLastQueueDataViaCheckData && i == size - 1 ? 1 : -1, 
+						     -1,
+						     NULL,
+						     enableDebug,
 						     this->forceOk && i == 0 ? this->queueStreams[0]->min_seq : 0);
 		if(rslt <= 0) {
 			if(i == 0 && this->forceOk) {
@@ -2212,6 +2228,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enableDestroyStreamsInComplete = false;
 	this->enableAllCompleteAfterZerodataAck = false;
 	this->enableValidateDataViaCheckData = false;
+	this->enableValidateLastQueueDataViaCheckData = false;
 	this->enableStrictValidateDataViaCheckData = false;
 	this->needValidateDataViaCheckData = false;
 	this->simpleByAck = false;
@@ -2731,6 +2748,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 		}
 	}
 	bool queue_locked = false;
+	bool create_new_link = false;
 	if(link) {
 		if(this->enableCleanupThread) {
 			link->lock_queue();
@@ -2771,6 +2789,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 								       handle_index, dlt, sensor_id, sensor_ip,
 								       uData);
 				this->links[id] = link;
+				create_new_link = true;
 			}
 		} else if(!this->enableCrazySequence && this->enableWildLink) {
 			if(!(type == sip && !isSip) &&
@@ -2791,6 +2810,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 								       handle_index, dlt, sensor_id, sensor_ip,
 								       uData);
 				this->links[id] = link;
+				create_new_link = true;
 				link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;
 				link->forceOk = true;
 			}
@@ -2814,6 +2834,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 							       handle_index, dlt, sensor_id, sensor_ip,
 							       uData);
 			this->links[id] = link;
+			create_new_link = true;
 			if(this->enableCrazySequence) {
 				link->state = TcpReassemblyLink::STATE_CRAZY;
 			} else {
@@ -2835,6 +2856,21 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 			   block_store, block_store_index);
 		if(this->enableCleanupThread) {
 			link->unlock_queue();
+		} else {
+			if(this->getType() == TcpReassembly::ssl &&
+			   (link->state == TcpReassemblyLink::STATE_RESET || 
+			    link->state == TcpReassemblyLink::STATE_CLOSE || 
+			    link->state == TcpReassemblyLink::STATE_CLOSED)) {
+				extern bool opt_ssl_destroy_tcp_link_on_rst;
+				if(opt_ssl_destroy_tcp_link_on_rst) {
+					delete link;
+					if(create_new_link) {
+						this->links.erase(id);
+					} else {
+						this->links.erase(iter);
+					}
+				}
+			}
 		}
 	} else if(this->enableCleanupThread) {
 		this->unlock_links();
