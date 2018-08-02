@@ -1,3 +1,15 @@
+22.10 19.07.2018
+=================
+- clean spooldir without need to connect to the mysql database. Cleaning is now more reliable if there is slow or temporary lost connection to mysql. 
+- fix crashes in IP defragmentation [VS-810]
+- fix ssl decode (fixes problem when some calls stopped working over TLS and phone had to be restarted to show in voipmonitor again)
+- fix merging packets when sniffingn on different interface types 
+- fix live sniffing for OPTIONS / SUBCRIBER / REGISTER [VG-1630]
+- fix deduplication if only ttl changes in IP header (fixes some audio decode issues) [VS-812]
+- fix set country prefix if nanpa check fails [VG-1629]
+- fix utf strings in voipmonitor (fixes problem with mysql 8 compatibility)
+
+
 22.9.3 19.07.2018
 =================
 - cdr_ignore_response can now filter also by other parameters: cdr_ignore_response = 403 name=abc ip=1.2.3.4, 404 number=%123%, 405 number=.*123.* ip=1.2.3.0/24
