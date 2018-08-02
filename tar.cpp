@@ -974,20 +974,27 @@ TarQueue::add(data_tar *tar_data, ChunkBuffer *buffer, unsigned int time){
 	data.buffer = buffer;
 	data.time = time;
 	lock();
+	int queue_data_index = -1;
 	switch(data.typeSpoolFile) {
 	case tsf_sip:
 	case tsf_reg:
 	case tsf_skinny:
 	case tsf_mgcp:
 	case tsf_ss7:
-		queue_data[1][data].push_back(data);
+		queue_data_index = 1;
 		break;
 	case tsf_rtp:
-		queue_data[2][data].push_back(data);
+		queue_data_index = 2;
 		break;
 	case tsf_graph:
-		queue_data[3][data].push_back(data);
+		queue_data_index = 3;
 		break;
+	}
+	if(queue_data_index >= 0) {
+		if(queue_data[queue_data_index].find(data) == queue_data[queue_data_index].end()) {
+			queue_data[queue_data_index][data] = new FILE_LINE(0) vector<data_t>;
+		}
+		queue_data[queue_data_index][data]->push_back(data);
 	}
 	//if(sverb.tar) syslog(LOG_NOTICE, "adding tar %s len:%u\n", filename.c_str(), buffer->len);
 	unlock();
@@ -1109,7 +1116,10 @@ TarQueue::write(int qtype, data_t data) {
 	data.tar = tar;
 	tarthreads[tar->thread_id].qlock();
 //	printf("push id:%u\n", tar->thread_id);
-	tarthreads[tar->thread_id].queue_data[tar_name.str()].push_back(data);
+	if(tarthreads[tar->thread_id].queue_data.find(tar_name.str()) == tarthreads[tar->thread_id].queue_data.end()) {
+		tarthreads[tar->thread_id].queue_data[tar_name.str()] = new FILE_LINE(0) tarthreads_tq;
+	}
+	tarthreads[tar->thread_id].queue_data[tar_name.str()]->push_back(data);
 	tarthreads[tar->thread_id].qunlock();
 	return 0;
 }
@@ -1169,7 +1179,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 				
 				tarthread->qlock();
 				list<string> listTars;
-				std::map<string, tarthreads_tq>::iterator it = tarthread->queue_data.begin();
+				std::map<string, tarthreads_tq*>::iterator it = tarthread->queue_data.begin();
 				while(it != tarthread->queue_data.end()) {
 					listTars.push_back(it->first);
 					++it;
@@ -1177,7 +1187,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 				tarthread->qunlock();
 				for(list<string>::iterator itTars = listTars.begin();  itTars != listTars.end(); itTars++) {
 					string processTarName = *itTars;
-					tarthreads_tq *processTarQueue = &tarthread->queue_data[*itTars];
+					tarthreads_tq *processTarQueue = tarthread->queue_data[*itTars];
 					bool doProcessDataTar = false;
 					size_t index_list = 0;
 					size_t length_list = processTarQueue->size();
@@ -1286,6 +1296,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 					if(processTarQueue->size() == count_empty) {
 						pthread_mutex_lock(&this2->tarslock);
 						if(this2->tars.find(processTarName) == this2->tars.end()) {
+							delete tarthread->queue_data[processTarName];
 							tarthread->queue_data.erase(processTarName);
 							eraseTarQueueItem = true;
 						}
@@ -1514,21 +1525,22 @@ TarQueue::flushQueue() {
 	// get candidate vector which has the biggest datalen in all files 
 	int winner_qtype = 0;
 	
-	vector<data_t> winner;
+	vector<data_t> *winner;
 	data_tar_time winnertime;
 	size_t maxlen = 0;
-	map<data_tar_time, vector<data_t> >::iterator it;
+	map<data_tar_time, vector<data_t>* >::iterator it;
 	// walk all maps
 
 	while(1) {
 		lock();
+		winner = NULL;
 		maxlen = 0;
 		for(int i = 0; i < 4; i++) {
 			//walk map
 			for(it = queue_data[i].begin(); it != queue_data[i].end(); it++) {
 				vector<data_t>::iterator itv;
 				size_t sum = 0;
-				for(itv = it->second.begin(); itv != it->second.end(); itv++) {
+				for(itv = it->second->begin(); itv != it->second->end(); itv++) {
 					sum += itv->buffer->getLen();
 				}       
 				if(sum > maxlen) {
@@ -1540,14 +1552,14 @@ TarQueue::flushQueue() {
 			}       
 		}       
 
-		if(maxlen > 0) {
-			queue_data[winner_qtype][winnertime].clear();
+		if(winner) {
 			queue_data[winner_qtype].erase(winnertime);
 			unlock();
 			vector<data_t>::iterator itv;
-			for(itv = winner.begin(); itv != winner.end(); itv++) {
+			for(itv = winner->begin(); itv != winner->end(); itv++) {
 				this->write(winner_qtype, *itv);
 			}
+			delete winner;
 			cleanTars();
 			continue;
 		} else {
@@ -1584,6 +1596,13 @@ TarQueue::~TarQueue() {
 	// destroy all tars
 	for(map<string, Tar*>::iterator it = tars.begin(); it != tars.end(); it++) {
 		delete(it->second);
+	}
+	
+	// destroy all queue_data
+	for(unsigned i = 0; i < sizeof(queue_data) / sizeof(queue_data[0]); i++) {
+		for(map<data_tar_time, vector<data_t>* >::iterator it = queue_data[i].begin(); it != queue_data[i].end(); it++) {
+			delete(it->second);
+		}
 	}
 
 	pthread_mutex_destroy(&tartimemaplock);

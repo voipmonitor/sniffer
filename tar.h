@@ -351,8 +351,15 @@ public:
 		}
 	};
 	struct tarthreads_t {
+		~tarthreads_t() {
+			std::map<string, tarthreads_tq*>::iterator it = queue_data.begin();
+			while(it != queue_data.end()) {
+				delete it->second;
+				++it;
+			}
+		}
 		TarQueue *tarQueue;
-		std::map<string, tarthreads_tq> queue_data;
+		std::map<string, tarthreads_tq*> queue_data;
 		pthread_t thread;
 		int threadId;
 		int thread_id;
@@ -364,9 +371,9 @@ public:
 		size_t getLen(int forProceed = false, bool lock = true) {
 			if(lock) qlock();
 			size_t size = 0;
-			std::map<string, tarthreads_tq>::iterator it = queue_data.begin();
+			std::map<string, tarthreads_tq*>::iterator it = queue_data.begin();
 			while(it != queue_data.end()) {
-				size += it->second.getLen(forProceed);
+				size += it->second->getLen(forProceed);
 				++it;
 			}
 			if(lock) qunlock();
@@ -376,9 +383,9 @@ public:
 			if(lock) qlock();
 			size_t maxSize = 0;
 			string maxTarName;
-			std::map<string, tarthreads_tq>::iterator it = queue_data.begin();
+			std::map<string, tarthreads_tq*>::iterator it = queue_data.begin();
 			while(it != queue_data.end()) {
-				size_t size = it->second.getLen(forProceed);
+				size_t size = it->second->getLen(forProceed);
 				if(size > maxSize) {
 					maxSize = size;
 					maxTarName = it->first;
@@ -433,7 +440,7 @@ public:
 	}
 private:
 	int spoolIndex;
-	map<data_tar_time, vector<data_t> > queue_data[4]; //queue for all, sip, rtp, graph
+	map<data_tar_time, vector<data_t>* > queue_data[4]; //queue for all, sip, rtp, graph
 	unsigned long tarThreadCounter[4];
 	pthread_mutex_t mutexlock;
 	pthread_mutex_t flushlock;
