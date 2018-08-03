@@ -3737,7 +3737,7 @@ string _sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
 	return(rsltString);
 }
 
-void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const char *typeDb) {
+void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const char *typeDb, bool checkUtf) {
 	bool mysql = false;
 	unsigned char (*escTable)[2] = NULL;
 	if(!typeDb || isTypeDb("mysql", typeDb)) {
@@ -3774,7 +3774,7 @@ void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const c
 	}
 	outputStr[posOutputString] = 0;
 	extern cUtfConverter utfConverter;
-	if(!utfConverter.check(outputStr)) {
+	if(checkUtf && !utfConverter.check(outputStr)) {
 		utfConverter._remove_no_ascii(outputStr);
 	}
 }

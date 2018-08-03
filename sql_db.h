@@ -826,7 +826,7 @@ string sqlEscapeString(string inputStr, const char *typeDb = NULL, SqlDb_mysql *
 string sqlEscapeString(const char *inputStr, int length = 0, const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
 void fillEscTables();
 string _sqlEscapeString(const char *inputString, int length, const char *typeDb);
-void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const char *typeDb);
+void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const char *typeDb, bool checkUtf = false);
 string sqlEscapeStringBorder(string inputStr, char borderChar = '\'', const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
 string sqlEscapeStringBorder(const char *inputStr, char borderChar = '\'', const char *typeDb = NULL, SqlDb_mysql *sqlDbMysql = NULL);
 bool isSqlDriver(const char *sqlDriver, const char *checkSqlDriver = NULL);
