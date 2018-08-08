@@ -2994,6 +2994,12 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 				/*if(sverb.qfiles) {
 					cout << " ** send query id: " << id << " to thread: " << queryThreadId << " / " << getSize(queryThreadId) << endl;
 				}*/
+				
+				extern cUtfConverter utfConverter;
+				if(!utfConverter.check(query.c_str())) {
+					utfConverter.remove_no_ascii(query.c_str());
+				}
+				
 				query_lock(query.c_str(), queryThreadId);
 			}
 			++counter;
