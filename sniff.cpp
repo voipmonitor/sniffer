@@ -3208,15 +3208,15 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					}
 					if(packetS->cseq.method == INVITE) {
 						call->seeninviteok = true;
+						if(!call->connect_time) {
+							call->connect_time = packetS->header_pt->ts.tv_sec;
+							call->connect_time_usec = packetS->header_pt->ts.tv_usec;
+							if(opt_enable_fraud && isFraudReady()) {
+								fraudConnectCall(call, packetS->header_pt->ts);
+							}
+						}
 					} else {
 						call->seenmessageok = true;
-					}
-					if(!call->connect_time) {
-						call->connect_time = packetS->header_pt->ts.tv_sec;
-						call->connect_time_usec = packetS->header_pt->ts.tv_usec;
-						if(opt_enable_fraud && isFraudReady()) {
-							fraudConnectCall(call, packetS->header_pt->ts);
-						}
 					}
 					if(opt_update_dstnum_onanswer &&
 					   !call->updateDstnumOnAnswer && !call->updateDstnumFromMessage &&

@@ -1391,7 +1391,7 @@ FraudAlert_rcc::FraudAlert_rcc(unsigned int dbId)
 }
 
 void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
-	if(callInfo->call_type == REGISTER ||
+	if(callInfo->call_type != INVITE ||
 	   !this->okFilter(callInfo) ||
 	   !this->okDayHour(callInfo)) {
 		return;
@@ -2297,7 +2297,7 @@ void FraudAlerts::popCallInfoThread() {
 void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call, 
 				   sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at) {
 	callInfo->typeCallInfo = typeCallInfo;
-	callInfo->call_type = call->getTypeBase();
+	callInfo->call_type = call->typeIs(INVITE) ? INVITE : call->getTypeBase();
 	callInfo->callid = call->call_id;
 	callInfo->caller_number = call->caller;
 	callInfo->called_number = call->called;
