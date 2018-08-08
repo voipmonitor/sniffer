@@ -2997,7 +2997,7 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 				
 				extern cUtfConverter utfConverter;
 				if(!utfConverter.check(query.c_str())) {
-					utfConverter.remove_no_ascii(query.c_str());
+					utfConverter._remove_no_ascii(query.c_str());
 				}
 				
 				query_lock(query.c_str(), queryThreadId);
