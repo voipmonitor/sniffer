@@ -1,3 +1,9 @@
+22.10.1 08.08.2018
+==================
+- fix live sniffer packet store (broken since 22.10) [VS-817]
+- optimize pcap store to disk (less memory allocations) 
+
+
 22.10 19.07.2018
 =================
 - clean spooldir without need to connect to the mysql database. Cleaning is now more reliable if there is slow or temporary lost connection to mysql. 
