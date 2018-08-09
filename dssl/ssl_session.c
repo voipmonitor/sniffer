@@ -979,6 +979,7 @@ void ssls_handshake_data_free(DSSL_Session* sess)
 			free ( q->data );
 			free ( q );
 		}
+		sess->handshake_queue = NULL;
 	}
 	
 }
