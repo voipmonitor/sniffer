@@ -122,6 +122,8 @@ extern int opt_dbdtmf;
 extern int opt_dscp;
 extern int opt_cdrproxy;
 extern int opt_messageproxy;
+extern int opt_cdr_country_code;
+extern int opt_message_country_code;
 extern int opt_pcap_dump_tar;
 extern struct pcap_stat pcapstat;
 extern int opt_filesclean;
@@ -4141,13 +4143,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_next.add(getSpoolIndex(), "spool_index");
 	}
 	
-	CountryDetectApplyReload();
-	cdr_country_code.add(getCountryByIP(htonl(getSipcallerip()), true), "sipcallerip_country_code");
-	cdr_country_code.add(getCountryByIP(htonl(getSipcalledip()), true), "sipcalledip_country_code");
-	cdr_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-	cdr_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
-	if(existsColumns.cdr_country_code_calldate) {
-		cdr_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+	if(opt_cdr_country_code) {
+		CountryDetectApplyReload();
+		cdr_country_code.add(getCountryByIP(htonl(getSipcallerip()), true), "sipcallerip_country_code");
+		cdr_country_code.add(getCountryByIP(htonl(getSipcalledip()), true), "sipcalledip_country_code");
+		cdr_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
+		cdr_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
+		if(existsColumns.cdr_country_code_calldate) {
+			cdr_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+		}
 	}
 	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
@@ -4249,8 +4253,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(custom_headers_cdr) {
 					query_str += custom_headers_cdr->getDeleteQuery("@exists_call_id", "  ", ";\n");
 				}
-				query_str += string(
-					"  delete from cdr_country_code where cdr_id = @exists_call_id;\n") +
+				query_str += string("") +
+					(opt_cdr_country_code ? "  delete from cdr_country_code where cdr_id = @exists_call_id;\n" : "") +
 					"  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
 					(opt_dbdtmf ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
 					"  delete from cdr_sipresp where cdr_id = @exists_call_id;\n" +
@@ -4303,8 +4307,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		cdr_country_code.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-		query_str += sqlDbSaveCall->insertQuery("cdr_country_code", cdr_country_code) + ";\n";
+		if(opt_cdr_country_code) {
+			cdr_country_code.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+			query_str += sqlDbSaveCall->insertQuery("cdr_country_code", cdr_country_code) + ";\n";
+		}
 
 		if(sql_cdr_table_last30d[0] ||
 		   sql_cdr_table_last7d[0] ||
@@ -4760,8 +4766,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		cdr_country_code.add(cdrID, "cdr_ID");
-		sqlDbSaveCall->insert("cdr_country_code", cdr_country_code);
+		if(opt_cdr_country_code) {
+			cdr_country_code.add(cdrID, "cdr_ID");
+			sqlDbSaveCall->insert("cdr_country_code", cdr_country_code);
+		}
 		
 		if(sql_cdr_table_last30d[0] ||
 		   sql_cdr_table_last7d[0] ||
@@ -5331,12 +5339,14 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		custom_headers_message->prepareSaveRows(this, MESSAGE, &msg, msg_next_ch, msg_next_ch_name);
 	}
 
-	CountryDetectApplyReload();
-	msg_country_code.add(getCountryByIP(htonl(getSipcallerip()), true), "sipcallerip_country_code");
-	msg_country_code.add(getCountryByIP(htonl(getSipcalledip()), true), "sipcalledip_country_code");
-	msg_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-	msg_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
-	msg_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+	if(opt_message_country_code) {
+		CountryDetectApplyReload();
+		msg_country_code.add(getCountryByIP(htonl(getSipcallerip()), true), "sipcallerip_country_code");
+		msg_country_code.add(getCountryByIP(htonl(getSipcalledip()), true), "sipcalledip_country_code");
+		msg_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
+		msg_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
+		msg_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+	}
 	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
@@ -5416,8 +5426,10 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		msg_country_code.add("_\\_'SQL'_\\_:@msg_id", "message_ID");
-		query_str += sqlDbSaveCall->insertQuery("message_country_code", msg_country_code) + ";\n";
+		if(opt_message_country_code) {
+			msg_country_code.add("_\\_'SQL'_\\_:@msg_id", "message_ID");
+			query_str += sqlDbSaveCall->insertQuery("message_country_code", msg_country_code) + ";\n";
+		}
 		
 		query_str += query_str_messageproxy;
 		
@@ -5488,8 +5500,10 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			}
 		}
 	
-		msg_country_code.add(msgID, "message_ID");
-		sqlDbSaveCall->insert("message_country_code", msg_country_code);
+		if(opt_message_country_code) {
+			msg_country_code.add(msgID, "message_ID");
+			sqlDbSaveCall->insert("message_country_code", msg_country_code);
+		}
 		
 	}
 
