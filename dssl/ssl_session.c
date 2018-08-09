@@ -76,6 +76,7 @@ void DSSL_SessionDeInit( DSSL_Session* s )
 	EVP_MD_CTX_destroy( s->handshake_digest );
 	
 	ssls_handshake_data_free(s);
+	ssls_handshake_queue_free(s);
 }
 
 
@@ -970,7 +971,10 @@ void ssls_handshake_data_free(DSSL_Session* sess)
 		sess->handshake_data = NULL;
 	}
 	sess->handshake_data_size = 0;
-	
+}
+
+void ssls_handshake_queue_free(DSSL_Session* sess)
+{
 	if(sess->handshake_queue) {
 		DSSL_handshake_buffer *q = NULL, *next;
 		for (q = sess->handshake_queue; q != NULL; q = next)

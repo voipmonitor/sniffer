@@ -176,6 +176,7 @@ int ssls_store_new_ticket(DSSL_Session* sess, u_char* ticket, uint32_t len);
 
 void ssls_handshake_data_append(DSSL_Session* sess, u_char* data, uint32_t len);
 void ssls_handshake_data_free(DSSL_Session* sess);
+void ssls_handshake_queue_free(DSSL_Session* sess);
 
 #ifdef  __cplusplus
 }
