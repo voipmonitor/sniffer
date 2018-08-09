@@ -862,6 +862,7 @@ bool opt_save_query_to_files;
 char opt_save_query_to_files_directory[1024];
 int opt_save_query_to_files_period;
 int opt_query_cache_speed;
+int opt_query_cache_check_utf;
 
 int opt_load_query_from_files;
 char opt_load_query_from_files_directory[1024];
@@ -5615,7 +5616,7 @@ void cConfig::addConfigItems() {
 				->setPassword()
 				->setReadOnly()
 				->setMinor());
-			advanced();
+				advanced();
 				addConfigItem((new FILE_LINE(42073) cConfigItem_string("mysqlhost_2", mysql_2_host, sizeof(mysql_2_host)))
 					->setReadOnly());
 				addConfigItem((new FILE_LINE(42074) cConfigItem_integer("mysqlport_2",  &opt_mysql_2_port))
@@ -5631,12 +5632,13 @@ void cConfig::addConfigItems() {
 		subgroup("main");
 			addConfigItem((new FILE_LINE(42078) cConfigItem_yesno("query_cache"))
 				->setDefaultValueStr("no"));
-			advanced();
+				advanced();
 				addConfigItem(new FILE_LINE(42079) cConfigItem_yesno("query_cache_speed", &opt_query_cache_speed));
-				normal();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("query_cache_check_utf", &opt_query_cache_check_utf));
+			normal();
 			addConfigItem((new FILE_LINE(42080) cConfigItem_yesno("utc", &opt_sql_time_utc))
 				->addAlias("sql_time_utc"));
-			advanced();
+				advanced();
 				addConfigItem(new FILE_LINE(42081) cConfigItem_yesno("disable_dbupgradecheck", &opt_disable_dbupgradecheck));
 				addConfigItem(new FILE_LINE(42082) cConfigItem_yesno("only_cdr_next", &opt_only_cdr_next));
 				addConfigItem(new FILE_LINE(42083) cConfigItem_yesno("check_duplicity_callid_in_next_pass_insert", &opt_cdr_check_duplicity_callid_in_next_pass_insert));
@@ -5652,9 +5654,9 @@ void cConfig::addConfigItems() {
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
-			advanced();
+				advanced();
 				addConfigItem(new FILE_LINE(42092) cConfigItem_yesno("partition_operations_in_thread", &opt_partition_operations_in_thread));
-				expert();
+					expert();
 					addConfigItem(new FILE_LINE(42093) cConfigItem_integer("create_old_partitions"));
 					addConfigItem(new FILE_LINE(42094) cConfigItem_string("create_old_partitions_from", opt_create_old_partitions_from, sizeof(opt_create_old_partitions_from)));
 		subgroup("scale");
@@ -9737,6 +9739,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "query_cache_speed", NULL))) {
 		opt_query_cache_speed = yesno(value);
+	}
+	if((value = ini.GetValue("general", "query_cache_check_utf", NULL))) {
+		opt_query_cache_check_utf = yesno(value);
 	}
 	if((value = ini.GetValue("general", "utc", NULL)) ||
 	   (value = ini.GetValue("general", "sql_time_utc", NULL))) {

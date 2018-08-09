@@ -2994,12 +2994,14 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 				/*if(sverb.qfiles) {
 					cout << " ** send query id: " << id << " to thread: " << queryThreadId << " / " << getSize(queryThreadId) << endl;
 				}*/
-				
-				extern cUtfConverter utfConverter;
-				if(!utfConverter.check(query.c_str())) {
-					utfConverter._remove_no_ascii(query.c_str());
+				extern int opt_query_cache_check_utf;
+				if(opt_query_cache_check_utf) {
+					extern cUtfConverter utfConverter;
+					if(!utfConverter.check(query.c_str())) {
+						utfConverter._remove_no_ascii(query.c_str());
+						cout << "bad utf" << endl;
+					}
 				}
-				
 				query_lock(query.c_str(), queryThreadId);
 			}
 			++counter;
