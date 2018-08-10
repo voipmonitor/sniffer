@@ -1,3 +1,9 @@
+22.10.2 10.08.2018
+==================
+- exclude SIP MESSAGES type from realtime concurrent calls [VG-1624]
+- fix crash in SSL/TLS 
+
+
 22.10.1 08.08.2018
 ==================
 - fix live sniffer packet store (broken since 22.10) [VS-817]
