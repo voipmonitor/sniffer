@@ -402,7 +402,7 @@ void rrd_vm_create_graph_SQLf_command(char *filename, char *fromatstyle, char *t
 	cmdCreate << "--title \"SQL cache files\" ";
 	cmdCreate << "--watermark \"`date`\" ";
 	if (vm_rrd_version >= 10400) { cmdCreate << "--disable-rrdtool-tag "; }
-	cmdCreate << "--vertical-label \"ms\" ";
+	cmdCreate << "--vertical-label \"sec,count\" ";
 	cmdCreate << "--lower-limit 0 ";
 	//cmdCreate << "--x-grid MINUTE:10:HOUR:1:MINUTE:120:0:%R ";
 	cmdCreate << "--units-exponent 0 ";
@@ -410,24 +410,38 @@ void rrd_vm_create_graph_SQLf_command(char *filename, char *fromatstyle, char *t
 	if (slope) cmdCreate << "--slope-mode ";
 	if (icon) cmdCreate << "--only-graph ";
 	if (color != NULL) cmdCreate << "-c BACK#" << color << " -c SHADEA#" << color << " -c SHADEB#" << color << " ";
-	cmdCreate << "DEF:SQLfD=" << filename << ":SQLf-D:MAX ";
+	cmdCreate << "DEF:tmpSQLfD=" << filename << ":SQLf-D:MAX ";
+	cmdCreate << "CDEF:SQLfD=tmpSQLfD,1000,/ ";  //Create seconds from ms
+	cmdCreate << "DEF:SQLfC=" << filename << ":SQLf-C:MAX ";
 	if (vm_rrd_version < 10403) {
-		cmdCreate << "LINE1:SQLfD#0000FF:\"SQL delay in ms\\t\\t\" ";
-		cmdCreate << "GPRINT:SQLfD:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "LINE1:SQLfD#0000FF:\"SQL delay in s\\t\\t\" ";
+		cmdCreate << "GPRINT:SQLfD:LAST:\"Cur\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:SQLfD:AVERAGE:\"Avg\\: %5.2lf\" ";
-		cmdCreate << "GPRINT:SQLfD:MAX:\"Max\\: %5.0lf\" ";
-		cmdCreate << "GPRINT:SQLfD:MIN:\"Min\\: %5.0lf\\l\" ";
+		cmdCreate << "GPRINT:SQLfD:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLfD:MIN:\"Min\\: %5.2lf\\l\" ";
+		cmdCreate << "LINE1:SQLfC#FF0000:\"SQL queries count\\t\\t\" ";
+		cmdCreate << "GPRINT:SQLfC:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLfC:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLfC:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLfC:MIN:\"Min\\: %5.0lf\\l\" ";
 	} else {
-		cmdCreate << "LINE1:SQLfD#0000FF:\"SQL delay in ms\\l\" ";
+		cmdCreate << "LINE1:SQLfD#0000FF:\"SQL delay in s\\l\" ";
 		cmdCreate << "COMMENT:\"\\u\" ";
-		cmdCreate << "GPRINT:SQLfD:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLfD:LAST:\"Cur\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:SQLfD:AVERAGE:\"Avg\\: %5.2lf\" ";
-		cmdCreate << "GPRINT:SQLfD:MAX:\"Max\\: %5.0lf\" ";
-		cmdCreate << "GPRINT:SQLfD:MIN:\"Min\\: %5.0lf\\r\" ";
+		cmdCreate << "GPRINT:SQLfD:MAX:\"Max\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLfD:MIN:\"Min\\: %5.2lf\\r\" ";
+		cmdCreate << "LINE1:SQLfC#FF0000:\"SQL queries count\\l\" ";
+		cmdCreate << "COMMENT:\"\\u\" ";
+		cmdCreate << "GPRINT:SQLfC:LAST:\"Cur\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLfC:AVERAGE:\"Avg\\: %5.2lf\" ";
+		cmdCreate << "GPRINT:SQLfC:MAX:\"Max\\: %5.0lf\" ";
+		cmdCreate << "GPRINT:SQLfC:MIN:\"Min\\: %5.0lf\\r\" ";
 	}
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
 }
+
 void rrd_vm_create_graph_SQLq_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
@@ -1030,6 +1044,7 @@ int vm_rrd_create_rrdSQL(const char *filename) {
 	cmdCreate << "create " << filename << " ";
 	cmdCreate << "--start N --step 10 ";
 	cmdCreate << "DS:SQLf-D:GAUGE:20:0:100000 ";
+	cmdCreate << "DS:SQLf-C:GAUGE:20:0:100000 ";
 	cmdCreate << "DS:SQLq-C:GAUGE:20:0:100000 ";
 	cmdCreate << "DS:SQLq-M:GAUGE:20:0:100000 ";
 	cmdCreate << "DS:SQLq-R:GAUGE:20:0:100000 ";
@@ -1194,7 +1209,7 @@ int vm_rrd_create(const char *filename, const char *cmdline)
 	int res;
 	if(access(filename, 0) != -1) 
 	{			
-		if (verbosity > 0) syslog(LOG_NOTICE, "RRD file %s already exist. Creating Skipped.\n", filename);
+		if (sverb.rrd_info) syslog(LOG_NOTICE, "RRD file %s already exist. Creating Skipped.\n", filename);
 		res = -1;
 	} else {
 		//syslog(LOG_NOTICE, "Creating RRD Database file: %s\n", filename);

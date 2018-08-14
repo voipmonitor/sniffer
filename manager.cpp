@@ -885,10 +885,10 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 				snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
 				rrd_vm_create_graph_PS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLq", 5)) {
-				snprintf(filename, sizeof(filename), "%s/rrd/2db-SQL.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/3db-SQL.rrd", getRrdDir());
 				rrd_vm_create_graph_SQLq_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "SQLf", 5)) {
-				snprintf(filename, sizeof(filename), "%s/rrd/2db-SQL.rrd", getRrdDir());
+				snprintf(filename, sizeof(filename), "%s/rrd/3db-SQL.rrd", getRrdDir());
 				rrd_vm_create_graph_SQLf_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 			} else if (!strncmp(manager_args[1], "tCPU", 5)) {
 				snprintf(filename, sizeof(filename), "%s/rrd/2db-tCPU.rrd", getRrdDir());
