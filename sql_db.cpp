@@ -59,6 +59,7 @@ extern int opt_enable_fraud;
 extern bool _save_sip_history;
 extern bool opt_sql_time_utc;
 extern int opt_enable_ss7;
+extern bool opt_ssl_store_sessions;
 
 extern char sql_driver[256];
 
@@ -722,7 +723,7 @@ string SqlDb::getCondStr(list<SqlDb_condField> *cond) {
 		condStr += iter->needEscapeField ?
 			    getFieldBorder() + iter->field + getFieldBorder() :
 			    iter->field;
-		condStr += " = ";
+		condStr += iter->oper.empty() ? " = " : " " + iter->oper + " ";
 		condStr += iter->needEscapeValue ?
 			    getContentBorder() + escape(iter->value.c_str()) + getContentBorder() :
 			    iter->value;
@@ -760,11 +761,20 @@ string SqlDb::selectQuery(string table, const char *field, const char *condField
 	return(selectQuery(table, &fields, &cond, limit));
 }
 
-string SqlDb::insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent, bool escapeAll, bool insertIgnore) {
+string SqlDb::insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent, bool escapeAll, bool insertIgnore, SqlDb_row *row_on_duplicate) {
 	string query = 
 		string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO " + escapeTableName(table) + " ( " + row.implodeFields(this->getFieldSeparator(), this->getFieldBorder()) + 
 		" ) VALUES ( " + row.implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll) + " )";
+	if(row_on_duplicate) {
+		query += 
+			" ON DUPLICATE KEY UPDATE " +
+			row_on_duplicate->implodeFieldContent(this->getFieldSeparator(), this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll);
+	}
 	return(query);
+}
+
+string SqlDb::insertOrUpdateQuery(string table, SqlDb_row row, SqlDb_row row_on_duplicate, bool enableSqlStringInContent, bool escapeAll, bool insertIgnore) {
+	return(insertQuery(table, row, enableSqlStringInContent, escapeAll, insertIgnore, &row_on_duplicate));
 }
 
 string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent, bool escapeAll, bool insertIgnore) {
@@ -4601,10 +4611,10 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
-			"`sipcallerip_country_code` char(5),\
-			`sipcalledip_country_code` char(5),\
-			`caller_number_country_code` char(5),\
-			`called_number_country_code` char(5),\
+			"`sipcallerip_country_code` varchar(5),\
+			`sipcalledip_country_code` varchar(5),\
+			`caller_number_country_code` varchar(5),\
+			`called_number_country_code` varchar(5),\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -4881,10 +4891,10 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `message_country_code` (\
 			`message_ID` " + messageIdType + " unsigned NOT NULL,\
 			`calldate` datetime NOT NULL,\
-			`sipcallerip_country_code` char(5),\
-			`sipcalledip_country_code` char(5),\
-			`caller_number_country_code` char(5),\
-			`called_number_country_code` char(5),\
+			`sipcallerip_country_code` varchar(5),\
+			`sipcalledip_country_code` varchar(5),\
+			`caller_number_country_code` varchar(5),\
+			`called_number_country_code` varchar(5),\
 		KEY (`message_ID`),\
 		KEY (`calldate`),\
 		KEY(`sipcallerip_country_code`),\
@@ -5162,6 +5172,20 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(`time`)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+	
+	if(opt_ssl_store_sessions) {
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `ssl_sessions` (\
+			`id_sensor` smallint unsigned,\
+			`serverip` int unsigned,\
+			`serverport` smallint unsigned,\
+			`clientip` int unsigned,\
+			`clientport` smallint unsigned,\
+			`stored_at` datetime,\
+			`session` text,\
+		PRIMARY KEY (`id_sensor`, `clientip`, `clientport`, `serverip`, `serverport`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	}
 	
 	checkColumns_other(true);
 

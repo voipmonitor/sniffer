@@ -575,6 +575,7 @@ bool ip_is_localhost(u_int32_t ip) { return((ip >> 8) == 0x7F0000); }
 void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos);
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
+string hexencode(unsigned char *src, int src_length);
 int hexdecode(unsigned char *dst, const char *src, int max);
 void find_and_replace(string &source, const string find, string replace);
 string find_and_replace(const char *source, const char *find, const char *replace);
@@ -2921,6 +2922,12 @@ inline long int mktime(tm* time, const char *timezone) {
 	} else {
 		return(mktime(time));
 	}
+}
+inline long int mktime(const char *str_time, const char *timezone) {
+	struct tm time;
+	memset(&time, 0, sizeof(struct tm));
+	strptime(str_time, "%Y-%m-%d %H:%M:%S", &time);
+	return(mktime(&time, timezone));
 }
 
 string getGuiTimezone(class SqlDb *sqlDb = NULL);

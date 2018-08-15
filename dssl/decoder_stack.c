@@ -84,6 +84,7 @@ int dssl_decoder_stack_set( dssl_decoder_stack* d, DSSL_Session* sess, uint16_t 
 	int rc = DSSL_RC_OK;
 
 	d->sess = NULL;
+	d->version = version;
 
 	switch( version )
 	{

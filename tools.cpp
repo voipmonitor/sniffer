@@ -4384,6 +4384,18 @@ int hexdecode(unsigned char *dst, const char *src, int max)
 	return cnt;
 }
 
+string hexencode(unsigned char *src, int src_length)
+{
+	string rslt;
+	for(unsigned i = 0; i < src_length; i++) {
+		for(unsigned j = 0; j < 2; j++) {
+			unsigned char x = j == 0 ? src[i] >> 4 : src[i]  & 15;
+			rslt += x < 10 ? '0' + x : 'A' + x - 10;
+		}
+	}
+	return(rslt);
+}
+
 void find_and_replace(string &source, const string find, string replace) {
  	size_t j;
 	for ( ; (j = source.find( find )) != string::npos ; ) {

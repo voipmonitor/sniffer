@@ -65,6 +65,8 @@ struct dssl_decoder_stack_
 	void*			compression_data_new;
 
 	DSSL_Session*	sess;
+	
+	uint16_t	version;
 };
 
 

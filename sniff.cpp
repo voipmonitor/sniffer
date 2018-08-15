@@ -2582,6 +2582,34 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 			call->invitecseq = packetS->cseq;
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %u\n", call->invitecseq.number);
+			if(sverb.new_invite) {
+				ostringstream outStr;
+				outStr << "time: "
+				       << setw(10)
+				       << sqlDateTimeString(packetS->header_pt->ts.tv_sec) << " "
+				       << packetS->header_pt->ts.tv_sec << "."
+				       << setw(6)
+				       << packetS->header_pt->ts.tv_usec << "  ";
+				outStr << "ip / port: "
+				       << setw(15) << inet_ntostring(htonl(packetS->saddr))
+				       << " / "
+				       << setw(5) << packetS->source
+				       << " -> "
+				       << setw(15) << inet_ntostring(htonl(packetS->daddr))
+				       << " / "
+				       << setw(5) << packetS->dest << "  ";
+				outStr << "caller: "
+				       << setw(15)
+				       << call->caller << "  ";
+				outStr << "called: "
+				       << setw(15)
+				       << call->called << "  ";
+				if(is_read_from_file()) {
+					cout << outStr.str() << endl;
+				} else {
+					syslog(LOG_NOTICE, "%s", outStr.str().c_str());
+				}
+			}
 		} else if(sip_method == MESSAGE) {
 			call->messagecseq = packetS->cseq;
 			if(verbosity > 2)

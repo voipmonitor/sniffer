@@ -56,9 +56,14 @@ public:
 		this->needEscapeField = needEscapeField;
 		this->needEscapeValue = needEscapeValue;
 	}
+	SqlDb_condField &setOper(const char *oper) {
+		this->oper = oper;
+		return(*this);
+	}
 public:
 	string field;
 	string value;
+	string oper;
 	bool needEscapeField;
 	bool needEscapeValue;
 };
@@ -156,7 +161,8 @@ public:
 	virtual string getCondStr(list<SqlDb_condField> *cond);
 	virtual string selectQuery(string table, list<SqlDb_field> *fields = NULL, list<SqlDb_condField> *cond = NULL, unsigned limit = 0);
 	virtual string selectQuery(string table, const char *field, const char *condField = NULL, const char *condValue = NULL, unsigned limit = 0);
-	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
+	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false, SqlDb_row *row_on_duplicate = NULL);
+	virtual string insertOrUpdateQuery(string table, SqlDb_row row, SqlDb_row row_on_duplicate, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
 	virtual string updateQuery(string table, SqlDb_row row, SqlDb_row whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);

@@ -346,6 +346,7 @@ bool opt_ssl_log_errors = false;
 bool opt_ssl_ignore_error_invalid_mac = false;
 bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
+bool opt_ssl_store_sessions = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
@@ -5979,6 +5980,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_tcp_link_on_rst", &opt_ssl_destroy_tcp_link_on_rst));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_ssl_session_on_rst", &opt_ssl_destroy_ssl_session_on_rst));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_store_sessions", &opt_ssl_store_sessions));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -6728,6 +6730,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "alloc_stat")			sverb.alloc_stat = 1;
 	else if(verbParam == "qfiles")				sverb.qfiles = 1;
 	else if(verbParam == "query_error")			sverb.query_error = 1;
+	else if(verbParam == "new_invite")			sverb.new_invite = 1;
 	else if(verbParam == "dump_sip")			sverb.dump_sip = 1;
 	else if(verbParam == "dump_sip_line")			{ sverb.dump_sip = 1; sverb.dump_sip_line = 1; }
 	else if(verbParam == "dump_sip_without_counter")	{ sverb.dump_sip = 1; sverb.dump_sip_without_counter = 1; }
@@ -9231,6 +9234,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_destroy_ssl_session_on_rst", NULL))) {
 		opt_ssl_destroy_ssl_session_on_rst = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_store_sessions", NULL))) {
+		opt_ssl_store_sessions = yesno(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
 		strcpy_null_term(opt_tcpreassembly_http_log, value);

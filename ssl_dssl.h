@@ -3,6 +3,7 @@
 
 
 #include "config.h"
+#include "sql_db.h"
 
 #include <map>
 #include <string>
@@ -45,7 +46,9 @@ public:
 	bool initSession();
 	void termServer();
 	void termSession();
-	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts);
+	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, 
+			 unsigned int saddr, unsigned int daddr, int sport, int dport, 
+			 struct timeval ts, bool init, class cSslDsslSessions *sessions);
 	bool isClientHello(char *data, unsigned int datalen, NM_PacketDir dir);
 private:
 	NM_PacketDir getDirection(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport);
@@ -53,6 +56,9 @@ private:
 	static void errorCallback(void* user_data, int error_code);
 	static int password_calback_direct(char *buf, int size, int rwflag, void *userdata);
 	static int gener_master_secret(u_char *client_random, u_char *master_secret, DSSL_Session *session);
+	string get_session_data(struct timeval ts);
+	bool restore_session_data(const char *data);
+	void store_session(class cSslDsslSessions *sessions, struct timeval ts);
 private:
 	u_int32_t ip;
 	u_int16_t port;
@@ -64,11 +70,13 @@ private:
 	DSSL_ServerInfo* server_info;
 	DSSL_Session* session;
 	eServerErrors server_error;
+	unsigned process_data_counter;
 	bool process_error;
 	int process_error_code;
 	vector<string> *decrypted_data;
-	unsigned process_counter;
 	bool client_random_master_secret;
+	u_long stored_at;
+	bool restored;
 friend class cSslDsslSessions;
 };
 
@@ -117,6 +125,10 @@ private:
 
 class cSslDsslSessions {
 public:
+	struct sSessionData {
+		string data;
+	};
+public:
 	cSslDsslSessions();
 	~cSslDsslSessions();
 public:
@@ -131,16 +143,29 @@ private:
 	NM_PacketDir checkIpPort(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport);
 	void init();
 	void term();
+	void loadSessions();
+	void deleteOldSessions(struct timeval ts);
 	void lock_sessions() {
 		while(__sync_lock_test_and_set(&this->_sync_sessions, 1));
 	}
 	void unlock_sessions() {
 		__sync_lock_release(&this->_sync_sessions);
 	}
+	void lock_sessions_db() {
+		while(__sync_lock_test_and_set(&this->_sync_sessions_db, 1));
+	}
+	void unlock_sessions_db() {
+		__sync_lock_release(&this->_sync_sessions_db);
+	}
 private:
 	map<sStreamId, cSslDsslSession*> sessions;
+	map<sStreamId, sSessionData> sessions_db;
 	volatile int _sync_sessions;
+	volatile int _sync_sessions_db;
 	cSslDsslClientRandomItems client_random;
+	SqlDb *sqlDb;
+	u_long last_delete_old_sessions_at;
+friend class cSslDsslSession;
 };
 
 
