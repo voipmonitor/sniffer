@@ -506,7 +506,7 @@ void cSnifferServerConnection::cp_query() {
 				   queryStr.find("(") != string::npos) {
 					string procedureName = queryStr.substr(17, queryStr.find("(") - 17);
 					sqlDb->query("repair table mysql.proc");
-					sqlDb->query("drop procedure " + procedureName);
+					sqlDb->query("drop procedure if exists " + procedureName);
 				}
 				string rsltError = sqlDb->getJsonError();
 				socket->writeBlock(rsltError, cSocket::_te_aes);
