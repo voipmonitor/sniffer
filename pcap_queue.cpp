@@ -1313,7 +1313,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	uint64_t rrdPS_R = 0;
 	uint64_t rrdPS_A = 0;
 //rrd SQL file 2db-SQL.rrd
-	signed int rrdSQLf_D = 0;	//here is zero alowed
+	signed int rrdSQLf_D = 0;	//avg query duration 
+	signed int rrdSQLf_C = 0;	//count queue files
 	signed int rrdSQLq_C = -1;
 	signed int rrdSQLq_M = -1;
 	signed int rrdSQLq_R = -1;
@@ -1567,6 +1568,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				string stat = loadFromQFiles->getLoadFromQFilesStat();
 				string stat_proc = sverb.qfiles ? loadFromQFiles->getLoadFromQFilesStat(true) : "";
 				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery();
+				u_int32_t countFilesQuery = loadFromQFiles->getLoadFromQFilesCount();
 				SqlDb::resetDelayQuery();
 				if(!stat.empty() || avgDelayQuery || !stat_proc.empty()) {
 					outStr << "SQLf[";
@@ -1582,6 +1584,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					outStr << setprecision(3) << (double)avgDelayQuery / 1000 << "s";
 					fill = true;
 					if (opt_rrd) rrdSQLf_D = (signed int)avgDelayQuery;
+					if (opt_rrd) rrdSQLf_C = (signed int)countFilesQuery;
 				}
 				if(!stat_proc.empty()) {
 					if(fill) {
@@ -2298,7 +2301,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			vm_rrd_create_rrdheap(filename);
 			snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
 			vm_rrd_create_rrdPS(filename);
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-SQL.rrd", getRrdDir());
+			snprintf(filename, sizeof(filename), "%s/rrd/3db-SQL.rrd", getRrdDir());
 			vm_rrd_create_rrdSQL(filename);
 			snprintf(filename, sizeof(filename), "%s/rrd/2db-tCPU.rrd", getRrdDir());
 			vm_rrd_create_rrdtCPU(filename);
@@ -2346,6 +2349,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		cmdUpdate.str(std::string());
 		if (rrdSQLf_D < 0) cmdUpdate << "N:0";
 		 else cmdUpdate << "N:" << rrdSQLf_D;
+		if (rrdSQLf_C < 0) cmdUpdate << ":0";
+		 else cmdUpdate << ":" << rrdSQLf_C;
 		if (rrdSQLq_C < 0) cmdUpdate <<  ":U";
 		 else cmdUpdate <<  ":" << rrdSQLq_C;
 		if (rrdSQLq_M < 0) cmdUpdate <<  ":U";
@@ -2356,7 +2361,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		 else cmdUpdate <<  ":" << rrdSQLq_Cl;
 		if (rrdSQLq_H < 0) cmdUpdate <<  ":U";
 		 else cmdUpdate <<  ":" << rrdSQLq_H;
-		snprintf(filename, sizeof(filename), "%s/rrd/2db-SQL.rrd", getRrdDir());
+		snprintf(filename, sizeof(filename), "%s/rrd/3db-SQL.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 
 		//update rrdtCPU;

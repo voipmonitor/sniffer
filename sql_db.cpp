@@ -3091,6 +3091,14 @@ string MySqlStore::getLoadFromQFilesStat(bool processes) {
 	return(outStr.str());
 }
 
+unsigned MySqlStore::getLoadFromQFilesCount() {
+	unsigned count = 0;
+	for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
+		count += getCountQFiles(iter->second.id);
+	}
+	return(count);
+}
+
 void MySqlStore::lock(int id) {
 	if(qfileConfig.enable) {
 		return;
