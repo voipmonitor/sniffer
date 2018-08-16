@@ -6036,8 +6036,10 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42267) cConfigItem_integer("callslimit", &opt_callslimit));
 			addConfigItem(new FILE_LINE(42268) cConfigItem_yesno("cdrproxy", &opt_cdrproxy));
 			addConfigItem(new FILE_LINE(42269) cConfigItem_yesno("messageproxy", &opt_messageproxy));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_country_code", &opt_cdr_country_code));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("message_country_code", &opt_message_country_code));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("cdr_country_code", &opt_cdr_country_code))
+				->addValues("id:2"));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("message_country_code", &opt_message_country_code))
+				->addValues("id:2"));
 		setDisableIfEnd();
 	group("SIP protocol / headers");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -8281,10 +8283,10 @@ int eval_config(string inistr) {
 		opt_messageproxy = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_country_code", NULL))) {
-		opt_cdr_country_code = yesno(value);
+		opt_cdr_country_code = !strcasecmp(value, "id") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "message_country_code", NULL))) {
-		opt_message_country_code = yesno(value);
+		opt_message_country_code = !strcasecmp(value, "id") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "mos_g729", NULL))) {
 		opt_mos_g729 = yesno(value);

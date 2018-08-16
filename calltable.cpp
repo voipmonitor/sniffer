@@ -4145,10 +4145,17 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	if(opt_cdr_country_code) {
 		CountryDetectApplyReload();
-		cdr_country_code.add(getCountryByIP(htonl(getSipcallerip()), true), "sipcallerip_country_code");
-		cdr_country_code.add(getCountryByIP(htonl(getSipcalledip()), true), "sipcalledip_country_code");
-		cdr_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-		cdr_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
+		if(opt_cdr_country_code == 2) {
+			cdr_country_code.add(getCountryIdByIP(htonl(getSipcallerip())), "sipcallerip_country_code");
+			cdr_country_code.add(getCountryIdByIP(htonl(getSipcalledip())), "sipcalledip_country_code");
+			cdr_country_code.add(getCountryIdByPhoneNumber(caller), "caller_number_country_code");
+			cdr_country_code.add(getCountryIdByPhoneNumber(called), "called_number_country_code");
+		} else {
+			cdr_country_code.add(getCountryByIP(htonl(getSipcallerip()), true), "sipcallerip_country_code");
+			cdr_country_code.add(getCountryByIP(htonl(getSipcalledip()), true), "sipcalledip_country_code");
+			cdr_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
+			cdr_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
+		}
 		if(existsColumns.cdr_country_code_calldate) {
 			cdr_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 		}
@@ -5341,10 +5348,17 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 
 	if(opt_message_country_code) {
 		CountryDetectApplyReload();
-		msg_country_code.add(getCountryByIP(htonl(getSipcallerip()), true), "sipcallerip_country_code");
-		msg_country_code.add(getCountryByIP(htonl(getSipcalledip()), true), "sipcalledip_country_code");
-		msg_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-		msg_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
+		if(opt_message_country_code == 2) {
+			msg_country_code.add(getCountryIdByIP(htonl(getSipcallerip())), "sipcallerip_country_code");
+			msg_country_code.add(getCountryIdByIP(htonl(getSipcalledip())), "sipcalledip_country_code");
+			msg_country_code.add(getCountryIdByPhoneNumber(caller), "caller_number_country_code");
+			msg_country_code.add(getCountryIdByPhoneNumber(called), "called_number_country_code");
+		} else {
+			msg_country_code.add(getCountryByIP(htonl(getSipcallerip()), true), "sipcallerip_country_code");
+			msg_country_code.add(getCountryByIP(htonl(getSipcalledip()), true), "sipcalledip_country_code");
+			msg_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
+			msg_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
+		}
 		msg_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 	}
 	

@@ -4387,7 +4387,7 @@ int hexdecode(unsigned char *dst, const char *src, int max)
 string hexencode(unsigned char *src, int src_length)
 {
 	string rslt;
-	for(unsigned i = 0; i < src_length; i++) {
+	for(int i = 0; i < src_length; i++) {
 		for(unsigned j = 0; j < 2; j++) {
 			unsigned char x = j == 0 ? src[i] >> 4 : src[i]  & 15;
 			rslt += x < 10 ? '0' + x : 'A' + x - 10;

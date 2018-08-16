@@ -35,13 +35,15 @@ public:
 	bool load();
 	bool isCountry(const char *code);
 	string getNameCountry(const char *code);
+	unsigned getIdCountry(const char *code);
 	string getNameContinent(const char *code);
+	unsigned getIdContinent(const char *code);
 	string getName(const char *code);
 	string getContinent(const char *code);
 	bool isLocationIn(const char *location, vector<string> *in, bool continent = false);
 private:
-	map<string, string> continents;
-	map<string, string> countries;
+	map<string, d_item2<string, unsigned> > continents;
+	map<string, d_item2<string, unsigned> > countries;
 	map<string, vector<string> > continentCountry;
 	map<string, string> countryContinent;
 };
@@ -295,8 +297,10 @@ public:
 	~CountryDetect();
 	void load();
 	string getCountryByPhoneNumber(const char *phoneNumber);
+	unsigned getCountryIdByPhoneNumber(const char *phoneNumber);
 	bool isLocalByPhoneNumber(const char *phoneNumber);
 	string getCountryByIP(u_int32_t ip);
+	unsigned getCountryIdByIP(u_int32_t ip);
 	string getContinentByCountry(const char *country);
 	void prepareReload();
 	void applyReload();
@@ -330,8 +334,10 @@ private:
 void CountryDetectInit();
 void CountryDetectTerm();
 string getCountryByPhoneNumber(const char *phoneNumber, bool suppressStringLocal = false);
+unsigned getCountryIdByPhoneNumber(const char *phoneNumber);
 bool isLocalByPhoneNumber(const char *phoneNumber);
 string getCountryByIP(u_int32_t ip, bool suppressStringLocal = false);
+unsigned getCountryIdByIP(u_int32_t ip);
 string getContinentByCountry(const char *country);
 void CountryDetectPrepareReload();
 void CountryDetectApplyReload();

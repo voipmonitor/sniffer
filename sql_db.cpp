@@ -60,6 +60,8 @@ extern bool _save_sip_history;
 extern bool opt_sql_time_utc;
 extern int opt_enable_ss7;
 extern bool opt_ssl_store_sessions;
+extern int opt_cdr_country_code;
+extern int opt_message_country_code;
 
 extern char sql_driver[256];
 
@@ -4619,11 +4621,16 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
-			"`sipcallerip_country_code` varchar(5),\
-			`sipcalledip_country_code` varchar(5),\
-			`caller_number_country_code` varchar(5),\
-			`called_number_country_code` varchar(5),\
-		KEY (`cdr_ID`)" + 
+			(opt_cdr_country_code == 2 ?
+				"`sipcallerip_country_code` smallint,\
+				`sipcalledip_country_code` smallint,\
+				`caller_number_country_code` smallint,\
+				`called_number_country_code` smallint," :
+				"`sipcallerip_country_code` varchar(5),\
+				`sipcalledip_country_code` varchar(5),\
+				`caller_number_country_code` varchar(5),\
+				`called_number_country_code` varchar(5),") +
+		"KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
 			"") +
@@ -4897,18 +4904,27 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `message_country_code` (\
-			`message_ID` " + messageIdType + " unsigned NOT NULL,\
-			`calldate` datetime NOT NULL,\
-			`sipcallerip_country_code` varchar(5),\
-			`sipcalledip_country_code` varchar(5),\
-			`caller_number_country_code` varchar(5),\
-			`called_number_country_code` varchar(5),\
-		KEY (`message_ID`),\
-		KEY (`calldate`),\
-		KEY(`sipcallerip_country_code`),\
+			`message_ID` " + messageIdType + " unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` datetime NOT NULL," :
+				"") + 
+			(opt_message_country_code == 2 ?
+				"`sipcallerip_country_code` smallint,\
+				`sipcalledip_country_code` smallint,\
+				`caller_number_country_code` smallint,\
+				`called_number_country_code` smallint," :
+				"`sipcallerip_country_code` varchar(5),\
+				`sipcalledip_country_code` varchar(5),\
+				`caller_number_country_code` varchar(5),\
+				`called_number_country_code` varchar(5),") +
+		"KEY (`message_ID`)" +
+		(opt_cdr_partition ? 
+			",KEY (`calldate`)" :
+			"") +
+		",KEY(`sipcallerip_country_code`),\
 		KEY(`sipcalledip_country_code`),\
 		KEY(`caller_number_country_code`),\
-		KEY(`called_number_country_code`)") +
+		KEY(`called_number_country_code`)" +
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `message_country_code_ibfk_1` FOREIGN KEY (`message_ID`) REFERENCES `message` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +

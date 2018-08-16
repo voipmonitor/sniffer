@@ -70,14 +70,14 @@ bool CountryCodes::load() {
 		      where parent_id is null");
 	SqlDb_row row;
 	while((row = sqlDb->fetchRow())) {
-		continents[row["code"]] = row["name"];
+		continents[row["code"]] = d_item2<string, unsigned>(row["name"], atoi(row["id"].c_str()));
 	}
 	sqlDb->query("select country.*, continent.code as continent \
 		      from " + tableName + " country \
 		      join " + tableName + " continent on (continent.id = country.parent_id) \
 		      where country.parent_id is not null");
 	while((row = sqlDb->fetchRow())) {
-		countries[row["code"]] = row["name"];
+		countries[row["code"]] = d_item2<string, unsigned>(row["name"], atoi(row["id"].c_str()));
 		countryContinent[row["code"]] = row["continent"];
 		continentCountry[row["continent"]].push_back(row["code"]);
 	}
@@ -86,21 +86,33 @@ bool CountryCodes::load() {
 }
 
 bool CountryCodes::isCountry(const char *code) {
-	map<string, string>::iterator iter;
+	map<string, d_item2<string, unsigned> >::iterator iter;
 	iter = countries.find(code);
 	return(iter != countries.end());
 }
 
 string CountryCodes::getNameCountry(const char *code) {
-	map<string, string>::iterator iter;
+	map<string, d_item2<string, unsigned> >::iterator iter;
 	iter = countries.find(code);
-	return(iter != countries.end() ? iter->second : "");
+	return(iter != countries.end() ? iter->second.item1 : "");
+}
+
+unsigned CountryCodes::getIdCountry(const char *code) {
+	map<string, d_item2<string, unsigned> >::iterator iter;
+	iter = countries.find(code);
+	return(iter != countries.end() ? iter->second.item2 : 0);
 }
 
 string CountryCodes::getNameContinent(const char *code) {
-	map<string, string>::iterator iter;
+	map<string, d_item2<string, unsigned> >::iterator iter;
 	iter = continents.find(code);
-	return(iter != continents.end() ? iter->second : "");
+	return(iter != continents.end() ? iter->second.item1 : "");
+}
+
+unsigned CountryCodes::getIdContinent(const char *code) {
+	map<string, d_item2<string, unsigned> >::iterator iter;
+	iter = continents.find(code);
+	return(iter != continents.end() ? iter->second.item2 : 0);
 }
 
 string CountryCodes::getName(const char *code) {
@@ -770,6 +782,19 @@ string CountryDetect::getCountryByPhoneNumber(const char *phoneNumber) {
 	return(rslt);
 }
 
+unsigned CountryDetect::getCountryIdByPhoneNumber(const char *phoneNumber) {
+	unsigned rslt = 0;
+	lock();
+	if(countryPrefixes->loadOK) {
+		string rslt_str = countryPrefixes->getCountry(phoneNumber, NULL, NULL, checkInternational);
+		if(!rslt_str.empty()) {
+			rslt = countryCodes->getIdCountry(rslt_str.c_str());
+		}
+	}
+	unlock();
+	return(rslt);
+}
+
 bool CountryDetect::isLocalByPhoneNumber(const char *phoneNumber) {
 	bool rslt = false;
 	lock();
@@ -785,6 +810,19 @@ string CountryDetect::getCountryByIP(u_int32_t ip) {
 	lock();
 	if(geoIP_country->loadOK) {
 		rslt = geoIP_country->getCountry(ip);
+	}
+	unlock();
+	return(rslt);
+}
+
+unsigned CountryDetect::getCountryIdByIP(u_int32_t ip) {
+	unsigned rslt = 0;
+	lock();
+	if(geoIP_country->loadOK) {
+		string rslt_str = geoIP_country->getCountry(ip);
+		if(!rslt_str.empty()) {
+			rslt = countryCodes->getIdCountry(rslt_str.c_str());
+		}
 	}
 	unlock();
 	return(rslt);
@@ -879,6 +917,13 @@ string getCountryByPhoneNumber(const char *phoneNumber, bool suppressStringLocal
 	return("");
 }
 
+unsigned getCountryIdByPhoneNumber(const char *phoneNumber) {
+	if(countryDetect) {
+		return(countryDetect->getCountryIdByPhoneNumber(phoneNumber));
+	}
+	return(0);
+}
+
 bool isLocalByPhoneNumber(const char *phoneNumber) {
 	if(countryDetect) {
 		return(countryDetect->isLocalByPhoneNumber(phoneNumber));
@@ -895,6 +940,13 @@ string getCountryByIP(u_int32_t ip, bool suppressStringLocal) {
 		return(country);
 	}
 	return("");
+}
+
+unsigned getCountryIdByIP(u_int32_t ip) {
+	if(countryDetect) {
+		return(countryDetect->getCountryIdByIP(ip));
+	}
+	return(0);
 }
 
 string getContinentByCountry(const char *country) {
