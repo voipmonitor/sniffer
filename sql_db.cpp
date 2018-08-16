@@ -59,7 +59,7 @@ extern int opt_enable_fraud;
 extern bool _save_sip_history;
 extern bool opt_sql_time_utc;
 extern int opt_enable_ss7;
-extern bool opt_ssl_store_sessions;
+extern int opt_ssl_store_sessions;
 extern int opt_cdr_country_code;
 extern int opt_message_country_code;
 
@@ -1413,6 +1413,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 					cout << endl << "ERROR IN QUERY: " << endl
 					     << preparedQuery << endl;
 				}
+				this->evError(pass);
 				if(this->connecting) {
 					break;
 				} else {
@@ -1762,6 +1763,19 @@ bool SqlDb_mysql::checkLastError(string prefixError, bool sysLog, bool clearLast
 	return(false);
 }
 
+void SqlDb_mysql::evError(int pass) {
+	unsigned _errno = mysql_errno(this->hMysql);
+	string _error = mysql_error(this->hMysql);
+	switch(_errno) {
+	case 1146:
+		if(pass == 0) {
+			string table = reg_replace(_error.c_str(), "'.+\\.([^']+)'", "$1", __FILE__, __LINE__);
+			this->createTable(table.c_str());
+		}
+		break;
+	}
+}
+
 void SqlDb_mysql::clean() {
 	this->disconnect();
 	this->cleanFields();
@@ -2106,6 +2120,9 @@ bool SqlDb_odbc::checkLastError(string prefixError, bool sysLog, bool /*clearLas
 		}
 	}
 	return(false);
+}
+
+void SqlDb_odbc::evError(int /*pass*/) {
 }
 
 void SqlDb_odbc::cleanFields() {
@@ -5198,17 +5215,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		""));
 	
 	if(opt_ssl_store_sessions) {
-	this->query(
-	"CREATE TABLE IF NOT EXISTS `ssl_sessions` (\
-			`id_sensor` smallint unsigned,\
-			`serverip` int unsigned,\
-			`serverport` smallint unsigned,\
-			`clientip` int unsigned,\
-			`clientport` smallint unsigned,\
-			`stored_at` datetime,\
-			`session` text,\
-		PRIMARY KEY (`id_sensor`, `clientip`, `clientport`, `serverip`, `serverport`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+		this->createTable("ssl_sessions:auto");
 	}
 	
 	checkColumns_other(true);
@@ -6124,6 +6131,23 @@ void SqlDb_mysql::createTable(const char *tableName) {
 					CONSTRAINT `fraud_alert_info_ibfk_1` FOREIGN KEY (`alert_id`) REFERENCES `alerts` (`id`) ON UPDATE CASCADE ON DELETE CASCADE\
 			) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 		}
+	}
+	if(!strcmp(tableName, "ssl_sessions:auto") ||
+	   !strcmp(tableName, "ssl_sessions") ||
+	   !strcmp(tableName, "ssl_sessions_mem")) {
+		bool mem = (!strcmp(tableName, "ssl_sessions:auto") && opt_ssl_store_sessions == 2) ||
+			   !strcmp(tableName, "ssl_sessions_mem");
+		this->query(string(
+		"CREATE TABLE IF NOT EXISTS `ssl_sessions") + (mem ? "_mem" : "") + "` (\
+				`id_sensor` smallint unsigned,\
+				`serverip` int unsigned,\
+				`serverport` smallint unsigned,\
+				`clientip` int unsigned,\
+				`clientport` smallint unsigned,\
+				`stored_at` datetime,\
+				`session` varchar(1024),\
+			PRIMARY KEY (`id_sensor`, `clientip`, `clientport`, `serverip`, `serverport`)\
+		) ENGINE=" + (mem ? "MEMORY" : "InnoDB") + " DEFAULT CHARSET=latin1;");
 	}
 }
 

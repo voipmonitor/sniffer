@@ -145,6 +145,7 @@ private:
 	void term();
 	void loadSessions();
 	void deleteOldSessions(struct timeval ts);
+	string storeSessionsTableName();
 	void lock_sessions() {
 		while(__sync_lock_test_and_set(&this->_sync_sessions, 1));
 	}

@@ -346,7 +346,7 @@ bool opt_ssl_log_errors = false;
 bool opt_ssl_ignore_error_invalid_mac = false;
 bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
-bool opt_ssl_store_sessions = false;
+int opt_ssl_store_sessions = 0;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
@@ -5997,7 +5997,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_tcp_link_on_rst", &opt_ssl_destroy_tcp_link_on_rst));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_ssl_session_on_rst", &opt_ssl_destroy_ssl_session_on_rst));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_store_sessions", &opt_ssl_store_sessions));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_store_sessions", &opt_ssl_store_sessions))
+				->addValues("memory:2"));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -9255,7 +9256,7 @@ int eval_config(string inistr) {
 		opt_ssl_destroy_ssl_session_on_rst = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_store_sessions", NULL))) {
-		opt_ssl_store_sessions = yesno(value);
+		opt_ssl_store_sessions = !strcasecmp(value, "memory") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
 		strcpy_null_term(opt_tcpreassembly_http_log, value);

@@ -12,7 +12,7 @@
 
 
 extern map<d_u_int32_t, string> ssl_ipport;
-extern bool opt_ssl_store_sessions;
+extern int opt_ssl_store_sessions;
 extern MySqlStore *sqlStore;
 extern int opt_id_sensor;
 extern int opt_nocdr;
@@ -285,7 +285,7 @@ void cSslDsslSession::store_session(cSslDsslSessions *sessions, struct timeval t
 		if(!sessions->sqlDb) {
 			sessions->sqlDb = createSqlObject();
 		}
-		sqlStore->query_lock(sessions->sqlDb->insertOrUpdateQuery("ssl_sessions", session_row_insert, session_row_update, false, true).c_str(),
+		sqlStore->query_lock(sessions->sqlDb->insertOrUpdateQuery(sessions->storeSessionsTableName(), session_row_insert, session_row_update, false, true).c_str(),
 				     STORE_PROC_ID_OTHER);
 		this->stored_at = ts.tv_sec;
 		sessions->deleteOldSessions(ts);
@@ -573,13 +573,13 @@ void cSslDsslSessions::loadSessions() {
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 	}
-	if(!sqlDb->existsTable("ssl_sessions")) {
+	if(!sqlDb->existsTable(storeSessionsTableName())) {
 		return;
 	}
 	list<SqlDb_condField> cond;
 	cond.push_back(SqlDb_condField("id_sensor", intToString(opt_id_sensor)));
 	cond.push_back(SqlDb_condField("stored_at", sqlDateTimeString(getTimeS() - 12 * 3600)).setOper(">"));
-	sqlDb->select("ssl_sessions", NULL, &cond);
+	sqlDb->select(storeSessionsTableName(), NULL, &cond);
 	SqlDb_row row;
 	while((row = sqlDb->fetchRow())) {
 		sStreamId sid(atol(row["serverip"].c_str()), atoi(row["serverport"].c_str()), 
@@ -600,16 +600,21 @@ void cSslDsslSessions::deleteOldSessions(struct timeval ts) {
 		if(!sqlDb) {
 			sqlDb = createSqlObject();
 		}
-		if(!sqlDb->existsTable("ssl_sessions")) {
+		if(!sqlDb->existsTable(storeSessionsTableName())) {
 			return;
 		}
 		list<SqlDb_condField> cond;
 		cond.push_back(SqlDb_condField("id_sensor", intToString(opt_id_sensor)));
 		cond.push_back(SqlDb_condField("stored_at", sqlDateTimeString(ts.tv_sec - 12 * 3600)).setOper("<"));
-		sqlStore->query_lock("delete from ssl_sessions where " + sqlDb->getCondStr(&cond),
+		sqlStore->query_lock("delete from " + storeSessionsTableName() + " where " + sqlDb->getCondStr(&cond),
 				     STORE_PROC_ID_OTHER);
 		last_delete_old_sessions_at = ts.tv_sec;
 	}
+}
+
+string cSslDsslSessions::storeSessionsTableName() {
+	return(opt_ssl_store_sessions == 2 ? "ssl_sessions_mem" :
+	       opt_ssl_store_sessions == 1 ? "ssl_sessions" : "");
 }
 
 

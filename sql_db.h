@@ -215,6 +215,8 @@ public:
 	virtual bool checkLastError(string /*prefixError*/, bool /*sysLog*/ = false, bool /*clearLastError*/ = false) {
 		return(false);
 	}
+	virtual void evError(int pass) {
+	}
 	void setLastError(unsigned int lastError, const char *lastErrorString, bool sysLog = false) {
 		this->lastError = lastError;
 		if(lastErrorString) {
@@ -394,6 +396,7 @@ public:
 	string escapeTableName(string tableName);
 	bool isReservedWord(string word);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
+	void evError(int pass);
 	void clean();
 	bool createSchema(int connectId = 0);
 	bool createSchema_tables_other(int connectId);
@@ -519,6 +522,7 @@ public:
 	int getIndexField(string fieldName);
 	string escape(const char *inputString, int length = 0);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
+	void evError(int pass);
 	void cleanFields();
 	void clean();
 	bool createSchema(int connectId = 0);
