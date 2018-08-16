@@ -946,6 +946,7 @@ cUtfConverter utfConverter;
 
 void set_context_config();
 void dns_lookup_common_hostnames();
+void daemonizeOutput(string error);
 
 static void parse_command_line_arguments(int argc, char *argv[]);
 static void get_command_line_arguments();
@@ -1286,8 +1287,8 @@ void SipHistorySetting (void) {
 	}
 }
 
-bool SqlInitSchema(string *rsltConnectErrorString = NULL) {
-	bool connectError = false;
+int SqlInitSchema(string *rsltConnectErrorString = NULL) {
+	int connectOk = 1;
 	string connectErrorString;
 	for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
 		SqlDb *sqlDb = createSqlObject(connectId);
@@ -1299,43 +1300,55 @@ bool SqlInitSchema(string *rsltConnectErrorString = NULL) {
 			sleep(1);
 		}
 		if(rsltConnect && sqlDb->connected()) {
-			if(isSqlDriver("mysql")) {
-				sql_noerror = 1;
-				sqlDb->query("repair table mysql.proc");
-				sql_noerror = 0;
-			}
-			sqlDb->checkDbMode();
-			if(!opt_database_backup) {
-				if (!opt_disable_dbupgradecheck && !is_read_from_file_simple()) {
-					if(sqlDb->createSchema(connectId)) {
-						sqlDb->checkSchema(connectId);
-					} else {
-						connectError = true;
-						connectErrorString = sqlDb->getLastErrorString();
-					}
+			if(!is_read_from_file() &&
+			   sqlDb->getDbName() == "mysql" &&
+			   sqlDb->getDbMajorVersion() >= 8) {
+				if(!sqlDb->existsDatabase() || !sqlDb->existsTable("cdr") || sqlDb->emptyTable("cdr")) {
+					connectErrorString = "! mysql version 8 is not supported because it contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023)";
+					connectOk = -1;
 				} else {
-					sqlDb->checkSchema(connectId, true);
-					if(is_read_from_file_simple()) {
-						SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
-						if(sqlDb_mysql) {
-							sqlDb_mysql->createSchema_procedure_partition(connectId);
+					cLogSensor::log(cLogSensor::critical, "Mysql version 8 contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023). Please downgrade to version 5.7 or contact support.");
+				}
+			}
+			if(connectOk > 0) {
+				if(isSqlDriver("mysql")) {
+					sql_noerror = 1;
+					sqlDb->query("repair table mysql.proc");
+					sql_noerror = 0;
+				}
+				sqlDb->checkDbMode();
+				if(!opt_database_backup) {
+					if (!opt_disable_dbupgradecheck && !is_read_from_file_simple()) {
+						if(sqlDb->createSchema(connectId)) {
+							sqlDb->checkSchema(connectId);
+						} else {
+							connectOk = 0;
+							connectErrorString = sqlDb->getLastErrorString();
+						}
+					} else {
+						sqlDb->checkSchema(connectId, true);
+						if(is_read_from_file_simple()) {
+							SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+							if(sqlDb_mysql) {
+								sqlDb_mysql->createSchema_procedure_partition(connectId);
+							}
 						}
 					}
+					sqlDb->updateSensorState();
+					set_context_config_after_check_db_schema();
 				}
-				sqlDb->updateSensorState();
-				set_context_config_after_check_db_schema();
+				sensorsMap.fillSensors();
 			}
-			sensorsMap.fillSensors();
 		} else {
-			connectError = true;
+			connectOk = 0;
 			connectErrorString = sqlDb->getLastErrorString();
 		}
 		delete sqlDb;
 	}
 	if(rsltConnectErrorString) {
-		*rsltConnectErrorString = connectError ? connectErrorString : "";
+		*rsltConnectErrorString = connectOk < 1 ? connectErrorString : "";
 	}
-	return(!connectError);
+	return(connectOk);
 }
 
 /* cycle files_queue and move it to spool dir */
@@ -2775,11 +2788,7 @@ int main(int argc, char *argv[]) {
 
 	if(updateSchema) {
 		SipHistorySetting();
-
-		if (!SqlInitSchema()) {
-			return 1;
-		}
-		return 0;
+		return(SqlInitSchema() > 0 ? 0 : 1);
 	}
 
 	set_context_config();
@@ -3037,8 +3046,16 @@ int main(int argc, char *argv[]) {
 		if(opt_fork) {
 			while(!is_terminating()) {
 				string connectErrorString;
-				if(SqlInitSchema(&connectErrorString)) {
+				int rsltSqlInitSchema = SqlInitSchema(&connectErrorString);
+				if(rsltSqlInitSchema > 0) {
 					break;
+				} else if(rsltSqlInitSchema < 0) {
+					syslog(LOG_ERR, "%s", (connectErrorString + " - exit!").c_str());
+					daemonizeOutput(connectErrorString + " - exit !");
+					if(wdt) {
+						delete wdt;
+					}
+					return 1;
 				} else {
 					syslog(LOG_ERR, "%s", (connectErrorString + " - trying again after 10s").c_str());
 					for(int i = 0; i < 10 && !is_terminating(); i++) {
@@ -3048,7 +3065,7 @@ int main(int argc, char *argv[]) {
 			}
 		} else {
 			string connectErrorString;
-			if(!SqlInitSchema(&connectErrorString)) {
+			if(SqlInitSchema(&connectErrorString) <= 0) {
 				syslog(LOG_ERR, "%s", (connectErrorString + " - exit!").c_str());
 				return 1;
 			}
