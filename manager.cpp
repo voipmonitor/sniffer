@@ -106,6 +106,25 @@ int opt_block_alloc_stack = 0;
 
 using namespace std;
 
+typedef struct {
+	int (*MgmtFunc) (char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
+	string helpText;
+} MgmtCmd;
+
+int Mgmt_getversion(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
+int Mgmt_reindexfiles(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
+int Mgmt_listcalls(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
+int Mgmt_help(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
+
+std::map<string, MgmtCmd> MgmtCmdsTable = {
+	{"help", {Mgmt_help, "prints command's help."}},
+	{"getversion", {Mgmt_getversion, "returns the version of the sniffer."}},
+	{"reindexfiles", {Mgmt_reindexfiles, "starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex.\r\n"
+					     "\t'reindexfiles_date DATE' runs reindex for DATE.\r\n"
+					     "\t'reindexfiles_date DATE HOUR' runs reindex for entered DATE HOUR. "}},
+	{"listcalls", {Mgmt_listcalls, "lists active calls."}},
+};
+
 struct listening_worker_arg {
 	Call *call;
 };
@@ -757,6 +776,18 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 	if(!enable_parse_command) {
 		return(0);
 	}
+
+	char *endOfCmd = strpbrk(buf, " _\r\n\t");
+	if (!endOfCmd) {
+		syslog(LOG_ERR, "Can't determine the command's end.");
+		cerr << "Can't determine the command's end." << endl;
+		return(-1);
+	}
+	string cmdStr (buf, endOfCmd);
+	std::map<string, MgmtCmd>::iterator MgmtItem = MgmtCmdsTable.find(cmdStr);
+	if (MgmtItem != MgmtCmdsTable.end()) {
+		return(MgmtItem->second.MgmtFunc(buf, size, client, sshchannel, c_client, managerClientThread));
+	}
  
 	char buf_output[1024];
  
@@ -771,12 +802,12 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;
 
-	if(strstr(buf, "getversion") != NULL) {
+/*	if(strstr(buf, "getversion") != NULL) {
 		if ((size = sendvm(client, sshchannel, c_client, RTPSENSOR_VERSION, strlen(RTPSENSOR_VERSION), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-	} else if(strstr(buf, "creategraph") != NULL) {
+	} else*/ if(strstr(buf, "creategraph") != NULL) {
 		checkRrdVersion(true);
 		extern int vm_rrd_version;
 		if(!vm_rrd_version) {
@@ -952,7 +983,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		pthread_mutex_unlock(&vm_rrd_lock);
 		return res;
 
-	} else if(strstr(buf, "reindexfiles") != NULL) {
+/*	} else if(strstr(buf, "reindexfiles") != NULL) {
 		if(is_enable_cleanspool()) {
 			char date[21];
 			int hour;
@@ -992,7 +1023,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		if ((size = sendvm(client, sshchannel, c_client, sendbuf, strlen(sendbuf), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
-		}
+		}*/
 	} else if(strstr(buf, "check_filesindex") != NULL) {
 		if(is_enable_cleanspool()) {
 			snprintf(sendbuf, BUFSIZE, "starting checking indexing please wait...");
@@ -1056,7 +1087,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-	} else if(strstr(buf, "listcalls") != NULL) {
+/*	} else if(strstr(buf, "listcalls") != NULL) {
 		if(calltable) {
 		 
 		string rslt_data;
@@ -1073,7 +1104,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		if(sendString(&rslt_data, client, sshchannel, c_client, zip) == -1) {
 			cerr << "Error sending data to client" << endl;
 			return -1;
-		}
+		}*/
 		 
 		/* obsolete
 		
@@ -1258,8 +1289,8 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		
 		*/
 		
-		}
-		return 0;
+//		}
+//		return 0;
 	} else if(strstr(buf, "is_register_new") != NULL) {
 		extern int opt_sip_register;
 		if ((size = sendvm(client, sshchannel, c_client, opt_sip_register == 2 ? "no" : "ok", 2, 0)) == -1){
@@ -4232,4 +4263,110 @@ int sendString(string *str, int client, ssh_channel sshchannel, cClient *c_clien
 	}
 	
 	return(0);
+}
+
+int Mgmt_getversion(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread) {
+	if ((size = sendvm(client, sshchannel, c_client, RTPSENSOR_VERSION, strlen(RTPSENSOR_VERSION), 0)) == -1){
+		cerr << "Error sending data to client" << endl;
+		return -1;
+	}
+	return 0;
+}
+
+int Mgmt_reindexfiles(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread) {
+	char sendbuf[BUFSIZE];
+	if(is_enable_cleanspool()) {
+		char date[21];
+		int hour;
+		bool badParams = false;
+		if(strstr(buf, "reindexfiles_datehour")) {
+			if(sscanf(buf + strlen("reindexfiles_datehour") + 1, "%20s %i", date, &hour) != 2) {
+				badParams = true;
+			}
+		} else if(strstr(buf, "reindexfiles_date")) {
+			if(sscanf(buf + strlen("reindexfiles_date") + 1, "%20s", date) != 1) {
+				badParams = true;
+			}
+		}
+		if(badParams) {
+			snprintf(sendbuf, BUFSIZE, "bad parameters");
+			if ((size = sendvm(client, sshchannel, c_client, sendbuf, strlen(sendbuf), 0)) == -1){
+				cerr << "Error sending data to client" << endl;
+			}
+			return -1;
+		}
+		snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
+		if ((size = sendvm(client, sshchannel, c_client, sendbuf, strlen(sendbuf), 0)) == -1){
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+		if(strstr(buf, "reindexfiles_datehour")) {
+			CleanSpool::run_reindex_date_hour(date, hour);
+		} else if(strstr(buf, "reindexfiles_date")) {
+			CleanSpool::run_reindex_date(date);
+		} else {
+			CleanSpool::run_reindex_all("call from manager");
+		}
+		snprintf(sendbuf, BUFSIZE, "done\r\n");
+	} else {
+		strcpy(sendbuf, "cleanspool is disable\r\n");
+	}
+	if ((size = sendvm(client, sshchannel, c_client, sendbuf, strlen(sendbuf), 0)) == -1){
+		cerr << "Error sending data to client" << endl;
+		return -1;
+	}
+	return 0;
+}
+
+int Mgmt_listcalls(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread) {
+	if(calltable) {
+		string rslt_data;
+		char *pointer;
+		if((pointer = strchr(buf, '\n')) != NULL) {
+			*pointer = 0;
+		}
+		bool zip = false;
+		char *jsonParams = buf + strlen("listcalls");
+		while(*jsonParams == ' ') {
+			++jsonParams;
+		}
+		rslt_data = calltable->getCallTableJson(jsonParams, &zip);
+		if(sendString(&rslt_data, client, sshchannel, c_client, zip) == -1) {
+			cerr << "Error sending data to client" << endl;
+			return -1;
+		}
+	}
+	return 0;
+}
+int Mgmt_help(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread) {
+	std::stringstream sendBuff;
+	std::map<string, MgmtCmd>::iterator MgmtItem;
+	char *startOfParam = strpbrk(buf, " ");
+	if (startOfParam) {
+		startOfParam++;
+		char *endOfParam = strpbrk(startOfParam, " \r\n\t");
+		if (!endOfParam) {
+			syslog(LOG_ERR, "Can't determine the param's end.");
+			cerr << "Can't determine the param's end." << endl;
+			return(-1);
+		}
+		string cmdStr (startOfParam, endOfParam);
+		MgmtItem = MgmtCmdsTable.find(cmdStr);
+		if (MgmtItem != MgmtCmdsTable.end()) {
+			sendBuff << MgmtItem->first << " ... " << MgmtItem->second.helpText << endl << endl;
+		} else {
+			sendBuff << "Command " << cmdStr << " not found." << endl << endl;
+		}
+	} else {
+		sendBuff << "List of commands:" << endl << endl;
+		for (MgmtItem = MgmtCmdsTable.begin(); MgmtItem != MgmtCmdsTable.end(); MgmtItem++) {
+			sendBuff << MgmtItem->first << " ... " << MgmtItem->second.helpText << endl << endl;
+		}
+	}
+	string sendbuff = sendBuff.str();
+	if ((size = sendvm(client, sshchannel, c_client, sendbuff.c_str(), sendbuff.length(), 0)) == -1){
+		cerr << "Error sending data to client" << endl;
+		return -1;
+	}
+	return 0;
 }
