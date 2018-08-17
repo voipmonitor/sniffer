@@ -2078,40 +2078,45 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		if(!calltable) {
 			return(-1);
 		}
-		long long callreference = 0;
-		char listen_id[20] = "";
-		string error;
 		int rslt = 0;
-		sscanf(buf, "listen %llu %s", &callreference, listen_id);
-		if(!callreference) {
-			listen_id[0] = 0;
-			sscanf(buf, "listen %llx %s", &callreference, listen_id);
-		}
-		listening_master_lock();
-		Call *call = calltable->find_by_reference(callreference, false);
-		if(call) {
-			bool newWorker = false;
-			string rslt = "success";
-			c_listening_workers::s_worker *l_worker = listening_workers.get(call);
-			if(l_worker) {
-				rslt = "call already listening";
+		string error;
+		extern int opt_liveaudio;
+		if(opt_liveaudio) {
+			long long callreference = 0;
+			char listen_id[20] = "";
+			sscanf(buf, "listen %llu %s", &callreference, listen_id);
+			if(!callreference) {
+				listen_id[0] = 0;
+				sscanf(buf, "listen %llx %s", &callreference, listen_id);
+			}
+			listening_master_lock();
+			Call *call = calltable->find_by_reference(callreference, false);
+			if(call) {
+				bool newWorker = false;
+				string rslt_str = "success";
+				c_listening_workers::s_worker *l_worker = listening_workers.get(call);
+				if(l_worker) {
+					rslt_str = "call already listening";
+				} else {
+					l_worker = listening_workers.add(call);
+					listening_workers.run(l_worker);
+					newWorker = true;
+				}
+				c_listening_clients::s_client *l_client = listening_clients.add(listen_id, call);
+				if(!newWorker) {
+					l_client->spybuffer_start_pos = l_worker->spybuffer->size_all_with_freed_pos();
+				}
+				if((size = sendvm(client, sshchannel, c_client, rslt_str.c_str(), rslt_str.length(), 0)) == -1) {
+					cerr << "Error sending data to client" << endl;
+					rslt = -1;
+				}
 			} else {
-				l_worker = listening_workers.add(call);
-				listening_workers.run(l_worker);
-				newWorker = true;
+				error = "call not found";
 			}
-			c_listening_clients::s_client *l_client = listening_clients.add(listen_id, call);
-			if(!newWorker) {
-				l_client->spybuffer_start_pos = l_worker->spybuffer->size_all_with_freed_pos();
-			}
-			if((size = sendvm(client, sshchannel, c_client, rslt.c_str(), rslt.length(), 0)) == -1) {
-				cerr << "Error sending data to client" << endl;
-				rslt = -1;
-			}
+			listening_master_unlock();
 		} else {
-			error = "call not found";
+			error = "liveaudio is disabled";
 		}
-		listening_master_unlock();
 		if(!error.empty()) {
 			if((size = sendvm(client, sshchannel, c_client, error.c_str(), error.length(), 0)) == -1) {
 				cerr << "Error sending data to client" << endl;

@@ -398,6 +398,7 @@ bool opt_saveaudio_from_first_invite = true;
 bool opt_saveaudio_afterconnect = false;
 int opt_saveaudio_stereo = 1;
 int opt_saveaudio_dedup_seq = 0;
+int opt_liveaudio = 1;
 int opt_register_timeout = 5;
 int opt_register_timeout_disable_save_failed = 0;
 int opt_register_ignore_res_401 = 0;
@@ -5929,6 +5930,7 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(42225) cConfigItem_yesno("saveaudio"))
 				->addValues("wav:1|w:1|ogg:2|o:2")
 				->setDefaultValueStr("no"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("liveaudio", &opt_liveaudio));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_answeronly", &opt_saveaudio_answeronly));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_filteripbysipip", &opt_saveaudio_filteripbysipip));
@@ -8601,6 +8603,9 @@ int eval_config(string inistr) {
 			opt_audio_format = 0;
 			break;
 		}
+	}
+	if((value = ini.GetValue("general", "liveaudio", NULL))) {
+		opt_liveaudio = yesno(value);
 	}
 	if((value = ini.GetValue("general", "savegraph", NULL))) {
 		switch(value[0]) {
