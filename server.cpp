@@ -785,24 +785,26 @@ bool cSnifferClientService::receive_process_loop_begin() {
 				rsltConnectData_json.parse(rsltConnectData);
 				if(rsltConnectData_json.getValue("result") == "OK") {
 					rsltConnectData_okRead = true;
-					extern int opt_pcap_queue_use_blocks;
-					extern int opt_dup_check;
-					bool change_config = false;
-					if(!rsltConnectData_json.getValue("use_blocks_pb").empty() &&
-					   !opt_pcap_queue_use_blocks) {
-						opt_pcap_queue_use_blocks = true;
-						syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because it is enabled on server");
-						change_config = true;
-					}
-					if(!rsltConnectData_json.getValue("deduplicate").empty() &&
-					   !opt_dup_check) {
-						opt_dup_check = true;
-						syslog(LOG_NOTICE, "enabling deduplicate because it is enabled on server");
-						change_config = true;
-					}
-					if(change_config) {
-						extern void set_context_config();
-						set_context_config();
+					if(is_client_packetbuffer_sender()) {
+						extern int opt_pcap_queue_use_blocks;
+						extern int opt_dup_check;
+						bool change_config = false;
+						if(!rsltConnectData_json.getValue("use_blocks_pb").empty() &&
+						   !opt_pcap_queue_use_blocks) {
+							opt_pcap_queue_use_blocks = true;
+							syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because it is enabled on server");
+							change_config = true;
+						}
+						if(!rsltConnectData_json.getValue("deduplicate").empty() &&
+						   !opt_dup_check) {
+							opt_dup_check = true;
+							syslog(LOG_NOTICE, "enabling deduplicate because it is enabled on server");
+							change_config = true;
+						}
+						if(change_config) {
+							extern void set_context_config();
+							set_context_config();
+						}
 					}
 				} else {
 					if(!receive_socket->isError()) {
