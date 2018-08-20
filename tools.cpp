@@ -256,9 +256,9 @@ bool is_dir(const char * fileName) {
 	return(false);
 }
 
-bool is_dir(dirent *de) {
+bool is_dir(dirent *de, const char *path) {
 	return(de->d_type == DT_DIR ||
-	       (de->d_type == DT_UNKNOWN && is_dir(de->d_name)));
+	       (de->d_type == DT_UNKNOWN && is_dir(string(path) + '/' + de->d_name)));
 }
 
 void

@@ -778,7 +778,7 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 		dirent* de;
 		while((de = readdir(dp)) != NULL && !is_terminating()) {
 			if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-			if(is_dir(de)) {
+			if(is_dir(de, path.c_str())) {
 				de_dirs.push_back(de->d_name);
 			} else {
 				de_files.push_back(de->d_name);
@@ -1658,7 +1658,7 @@ void CleanSpool::erase_dir(string dir, sSpoolDataDirIndex index, string callFrom
 		dirent* de;
 		while((de = readdir(dp)) != NULL) {
 			if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-			if(!is_dir(de)) {
+			if(!is_dir(de, dir.c_str())) {
 				if(!sverb.cleanspool_disable_rm) {
 					unlink((string(dir) + "/" + de->d_name).c_str());
 				}
@@ -2433,13 +2433,14 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 						char min[8];
 						snprintf(min, sizeof(min), "%02d", m);
 						string timetypedir = dateDir + '/' + hour + '/' + min + '/' + getSpoolTypeDir((eTypeSpoolFile)typeSpoolFile);
-						DIR* dp = opendir(this->findExistsSpoolDirFile((eTypeSpoolFile)typeSpoolFile, timetypedir).c_str());
+						string dir = this->findExistsSpoolDirFile((eTypeSpoolFile)typeSpoolFile, timetypedir).c_str();
+						DIR* dp = opendir(dir.c_str());
 						if(!dp) {
 							continue;
 						}
 						dirent* de2;
 						while((de2 = readdir(dp)) != NULL) {
-							if(!is_dir(de2) && string(de2->d_name) != ".." && string(de2->d_name) != ".") {
+							if(!is_dir(de2, dir.c_str()) && string(de2->d_name) != ".." && string(de2->d_name) != ".") {
 								filesInFolder.push_back(timetypedir + '/' + de2->d_name);
 							}
 						}
