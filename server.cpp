@@ -161,6 +161,19 @@ string sSnifferServerServices::listJsonServices() {
 
 cSnifferServer::cSnifferServer() {
 	sqlStore = NULL;
+	terminate = false;
+	connection_threads_sync = 0;
+}
+
+cSnifferServer::~cSnifferServer() {
+	terminate = true;
+	terminateSocketInConnectionThreads();
+	unsigned counter = 0;
+	while(existConnectionThread() && counter < 100 && is_terminating() < 2) {
+		usleep(100000);
+		++counter;
+	}
+	cancelConnectionThreads();
 }
 
 void cSnifferServer::setSqlStore(MySqlStore *sqlStore) {
@@ -178,8 +191,51 @@ void cSnifferServer::sql_query_lock(const char *query_str, int id) {
 }
  
 void cSnifferServer::createConnection(cSocket *socket) {
+	if(is_terminating() || terminate) {
+		return;
+	}
 	cSnifferServerConnection *connection = new cSnifferServerConnection(socket, this);
 	connection->connection_start();
+}
+
+void cSnifferServer::registerConnectionThread(class cSnifferServerConnection *connectionThread) {
+	lock_connection_threads();
+	connection_threads[connectionThread] = true;
+	unlock_connection_threads();
+}
+
+void cSnifferServer::unregisterConnectionThread(class cSnifferServerConnection *connectionThread) {
+	lock_connection_threads();
+	if(connection_threads.find(connectionThread) != connection_threads.end()) {
+		connection_threads.erase(connectionThread);
+	}
+	unlock_connection_threads();
+}
+
+bool cSnifferServer::existConnectionThread() {
+	bool exists = false;
+	lock_connection_threads();
+	if(connection_threads.size() > 0) {
+		exists = true;
+	}
+	unlock_connection_threads();
+	return(exists);
+}
+
+void cSnifferServer::cancelConnectionThreads() {
+	lock_connection_threads();
+	for(map<cSnifferServerConnection*, bool>::iterator iter = connection_threads.begin(); iter != connection_threads.end(); iter++) {
+		pthread_cancel(iter->first->getThread());
+	}
+	unlock_connection_threads();
+}
+
+void cSnifferServer::terminateSocketInConnectionThreads() {
+	lock_connection_threads();
+	for(map<cSnifferServerConnection*, bool>::iterator iter = connection_threads.begin(); iter != connection_threads.end(); iter++) {
+		iter->first->setTerminateSocket();
+	}
+	unlock_connection_threads();
 }
 
 
@@ -192,7 +248,15 @@ cSnifferServerConnection::cSnifferServerConnection(cSocket *socket, cSnifferServ
 	this->server = server;
 }
 
+cSnifferServerConnection::~cSnifferServerConnection() {
+	server->unregisterConnectionThread(this);
+	syslog(LOG_NOTICE, "close connection from %s:%i, socket: %i, type connection: %s", 
+	       socket->getIP().c_str(), socket->getPort(), socket->getHandle(),
+	       getTypeConnectionStr().c_str());
+}
+
 void cSnifferServerConnection::connection_process() {
+	server->registerConnectionThread(this);
 	JsonItem jsonData;
 	u_char *remainder = NULL;
 	size_t remainder_length = 0;
@@ -388,7 +452,8 @@ void cSnifferServerConnection::cp_service() {
 	service.aes_ivec = aes_ivec;
 	snifferServerServices.add(&service);
 	u_int64_t lastWriteTimeUS = 0;
-	while(!terminate) {
+	while(!server->isTerminate() &&
+	      !terminate) {
 		u_int64_t time_us = getTimeUS();
 		if(!socket->checkHandleRead()) {
 			if(SS_VERBOSE().connect_info) {
@@ -477,7 +542,8 @@ void cSnifferServerConnection::cp_query() {
 	u_char *query;
 	size_t queryLength;
 	unsigned counter = 0;
-	while((query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
+	while(!server->isTerminate() &&
+	      (query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
 		string queryStr;
 		cGzip gzipDecompressQuery;
 		if(gzipDecompressQuery.isCompress(query, queryLength)) {
@@ -526,7 +592,8 @@ void cSnifferServerConnection::cp_store() {
 	u_char *query;
 	size_t queryLength;
 	unsigned counter = 0;
-	while((query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
+	while(!server->isTerminate() &&
+	      (query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
 		string queryStr;
 		cGzip gzipDecompressQuery;
 		if(gzipDecompressQuery.isCompress(query, queryLength)) {
@@ -562,7 +629,8 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 	size_t blockLength;
 	unsigned counter = 0;
 	u_int32_t block_counter = 0;
-	while((block = socket->readBlock(&blockLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
+	while(!server->isTerminate() &&
+	      (block = socket->readBlock(&blockLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
 		if(is_readend() || !pcapQueueQ) {
 			break;
 		}
@@ -581,8 +649,6 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 			       socket->getIP().c_str(), socket->getPort(), socket->getHandle());
 		}
 	}
-	syslog(LOG_NOTICE, "close connection from %s:%i, socket: %i", 
-	       socket->getIP().c_str(), socket->getPort(), socket->getHandle());
 	delete this;
 }
 
@@ -694,6 +760,20 @@ void cSnifferServerConnection::updateSensorState(int32_t sensor_id) {
 		sqlDb->insert("sensors", rowI);
 	}
 	delete sqlDb;
+}
+
+string cSnifferServerConnection::getTypeConnectionStr() {
+	switch(typeConnection) {
+	case _tc_na: return("na");
+	case _tc_gui_command: return("gui_command");
+	case _tc_service: return("service");
+	case _tc_response: return("response");
+	case _tc_query: return("query");
+	case _tc_store: return("store");
+	case _tc_packetbuffer_block: return("packetbuffer_block");
+	case _tc_manager_command: return("manager_command");
+	}
+	return("");
 }
 
 

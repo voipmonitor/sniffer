@@ -482,16 +482,18 @@ bool cSocket::await(cSocket **clientSocket) {
 		}
 		if(doAccept) {
 			clientHandle = accept(handle, (sockaddr*)&clientInfo, &clientInfoLen);
-			int flags = fcntl(clientHandle, F_GETFL, 0);
-			if(flags >= 0) {
-				fcntl(clientHandle, F_SETFL, flags | O_NONBLOCK);
-			}
-			if(clientSocket) {
-				*clientSocket = new cSocket("client/await");
-				(*clientSocket)->host = inet_ntoa(clientInfo.sin_addr);
-				(*clientSocket)->port = htons(clientInfo.sin_port);
-				(*clientSocket)->ipl = clientInfo.sin_addr.s_addr;
-				(*clientSocket)->handle = clientHandle;
+			if(clientHandle >= 0) {
+				int flags = fcntl(clientHandle, F_GETFL, 0);
+				if(flags >= 0) {
+					fcntl(clientHandle, F_SETFL, flags | O_NONBLOCK);
+				}
+				if(clientSocket) {
+					*clientSocket = new cSocket("client/await");
+					(*clientSocket)->host = inet_ntoa(clientInfo.sin_addr);
+					(*clientSocket)->port = htons(clientInfo.sin_port);
+					(*clientSocket)->ipl = clientInfo.sin_addr.s_addr;
+					(*clientSocket)->handle = clientHandle;
+				}
 			}
 		}
 	}
@@ -935,7 +937,7 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 			}
 		} else {
 			usleep(1000);
-			if(timeout && getTimeUS() > startTime + timeout * 1000000ull) {
+			if((timeout && getTimeUS() > startTime + timeout * 1000000ull) || terminate) {
 				rsltRead = false;
 				break;
 			}
@@ -1131,14 +1133,16 @@ void cServer::listen_process() {
 	cSocket *clientSocket;
 	while(!((listen_socket && listen_socket->isTerminate()) || CR_TERMINATE())) {
 		if(listen_socket->await(&clientSocket)) {
-			if(CR_VERBOSE().connect_info) {
-				ostringstream verbstr;
-				verbstr << "NEW CONNECTION FROM: " 
-					<< clientSocket->getIP() << " : " << clientSocket->getPort();
-				syslog(LOG_INFO, "%s", verbstr.str().c_str());
-			}
 			if(!CR_TERMINATE()) {
+				if(CR_VERBOSE().connect_info) {
+					ostringstream verbstr;
+					verbstr << "NEW CONNECTION FROM: " 
+						<< clientSocket->getIP() << " : " << clientSocket->getPort();
+					syslog(LOG_INFO, "%s", verbstr.str().c_str());
+				}
 				createConnection(clientSocket);
+			} else {
+				delete clientSocket;
 			}
 		}
 	}
@@ -1189,6 +1193,12 @@ void cServerConnection::connection_process() {
 void cServerConnection::evData(u_char *data, size_t dataLen) {
 }
 
+void cServerConnection::setTerminateSocket() {
+	if(socket) {
+		socket->setTerminate();
+	}
+}
+
 
 cReceiver::cReceiver() {
 	receive_socket = NULL;
@@ -1216,6 +1226,7 @@ void cReceiver::receive_stop() {
 			pthread_join(receive_thread, NULL);
 			receive_thread = 0;
 		}
+		delete receive_socket;
 		receive_socket = NULL;
 	}
 }

@@ -177,14 +177,32 @@ public:
 class cSnifferServer : public cServer {
 public:
 	cSnifferServer();
+	~cSnifferServer();
 	void setSqlStore(class MySqlStore *sqlStore);
 	void sql_query_lock(const char *query_str, int id);
 	bool isSetSqlStore() {
 		return(sqlStore != NULL);
 	}
 	virtual void createConnection(cSocket *socket);
+	void registerConnectionThread(class cSnifferServerConnection *connectionThread);
+	void unregisterConnectionThread(class cSnifferServerConnection *connectionThread);
+	bool existConnectionThread();
+	void terminateSocketInConnectionThreads();
+	void cancelConnectionThreads();
+	bool isTerminate() {
+		return(terminate);
+	}
+	void lock_connection_threads() {
+		while(__sync_lock_test_and_set(&connection_threads_sync, 1));
+	}
+	void unlock_connection_threads() {
+		__sync_lock_release(&connection_threads_sync);
+	}
 private:
 	MySqlStore *sqlStore;
+	volatile bool terminate;
+	map<class cSnifferServerConnection*, bool> connection_threads;
+	volatile int connection_threads_sync;
 };
 
 
@@ -202,6 +220,7 @@ public:
 	};
 public:
 	cSnifferServerConnection(cSocket *socket, cSnifferServer *server);
+	~cSnifferServerConnection();
 	virtual void connection_process();
 	virtual void evData(u_char *data, size_t dataLen);
 	void addTask(sSnifferServerGuiTask task);
@@ -235,6 +254,7 @@ private:
 	void unlock_tasks() {
 		__sync_lock_release(&_sync_tasks);
 	}
+	string getTypeConnectionStr();
 protected: 
 	queue<sSnifferServerGuiTask> tasks;
 	volatile int _sync_tasks;

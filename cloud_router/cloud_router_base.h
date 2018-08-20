@@ -398,6 +398,10 @@ public:
 	static void *connection_process(void *arg);
 	virtual void connection_process();
 	virtual void evData(u_char *data, size_t dataLen);
+	void setTerminateSocket();
+	pthread_t getThread() {
+		return(thread);
+	}
 protected:
 	cSocketBlock *socket;
 	pthread_t thread;
