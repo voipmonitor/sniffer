@@ -119,7 +119,7 @@ bool cOptionsRelationId:: operator < (const cOptionsRelationId& other) const {
 	       (opt_sip_options_compare_number_src && this->options->number_src < other.options->number_src) ? 1 : (opt_sip_options_compare_number_src && this->options->number_src > other.options->number_src) ? 0 :
 	       (opt_sip_options_compare_number_dst && this->options->number_dst < other.options->number_dst) ? 1 : (opt_sip_options_compare_number_dst && this->options->number_dst > other.options->number_dst) ? 0 :
 	       (opt_sip_options_compare_domain_src && this->options->domain_src < other.options->domain_src) ? 1 : (opt_sip_options_compare_domain_src && this->options->domain_src < other.options->domain_src) ? 0 :
-	       (opt_sip_options_compare_domain_dst && this->options->domain_dst < other.options->domain_dst) ? 1 : (opt_sip_options_compare_domain_src && this->options->domain_src < other.options->domain_src) ? 0 : 0);
+	       (opt_sip_options_compare_domain_dst && this->options->domain_dst < other.options->domain_dst) ? 1 : (opt_sip_options_compare_domain_dst && this->options->domain_dst < other.options->domain_dst) ? 0 : 0);
 }
 
 
