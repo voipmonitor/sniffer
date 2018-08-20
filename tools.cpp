@@ -256,6 +256,11 @@ bool is_dir(const char * fileName) {
 	return(false);
 }
 
+bool is_dir(dirent *de) {
+	return(de->d_type == DT_DIR ||
+	       (de->d_type == DT_UNKNOWN && is_dir(de->d_name)));
+}
+
 void
 set_mac() {   
 #ifndef FREEBSD

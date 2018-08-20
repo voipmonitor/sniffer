@@ -778,7 +778,7 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 		dirent* de;
 		while((de = readdir(dp)) != NULL && !is_terminating()) {
 			if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-			if(de->d_type == DT_DIR) {
+			if(is_dir(de)) {
 				de_dirs.push_back(de->d_name);
 			} else {
 				de_files.push_back(de->d_name);
@@ -1658,7 +1658,7 @@ void CleanSpool::erase_dir(string dir, sSpoolDataDirIndex index, string callFrom
 		dirent* de;
 		while((de = readdir(dp)) != NULL) {
 			if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-			if(de->d_type != DT_DIR) {
+			if(!is_dir(de)) {
 				if(!sverb.cleanspool_disable_rm) {
 					unlink((string(dir) + "/" + de->d_name).c_str());
 				}
@@ -2439,7 +2439,7 @@ void CleanSpool::check_spooldir_filesindex(const char *dirfilter) {
 						}
 						dirent* de2;
 						while((de2 = readdir(dp)) != NULL) {
-							if(de2->d_type != 4 && string(de2->d_name) != ".." && string(de2->d_name) != ".") {
+							if(!is_dir(de2) && string(de2->d_name) != ".." && string(de2->d_name) != ".") {
 								filesInFolder.push_back(timetypedir + '/' + de2->d_name);
 							}
 						}

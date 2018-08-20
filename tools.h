@@ -28,6 +28,7 @@
 #include <time.h>
 #include <regex.h>
 #include <unicode/ucnv.h> 
+#include <dirent.h>
 
 #include "pstat.h"
 #include "tools_dynamic_buffer.h"
@@ -329,6 +330,7 @@ u_int64_t file_size(string fileName) { return(file_size(fileName.c_str())); }
 bool is_dir(const char * fileName);
 bool is_dir(char * fileName) { return(is_dir((const char*)fileName)); }
 bool is_dir(string fileName) { return(is_dir(fileName.c_str())); }
+bool is_dir(dirent *de);
 void set_mac();
 int mkdir_r(std::string, mode_t, unsigned uid = 0, unsigned gid = 0);
 int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
