@@ -1,3 +1,13 @@
+22.11 20.08.2018
+================
+- preserve SSL/TLS keys between sniffer restarts - new options ssl_store_sessions (default NO)
+- add query cache files (SQLf) counter to RRD [VG-1619]
+- change country_code char(5) -> varchar(5) (no automatic conversion, only if table is created again) 
+- if SQL procedure does not exists drop the current one [VS-820]
+- client / server mode - use server parameters 'deduplicate' and 'use_blocks' in client only if client run in packetbuffer_sender mode [VS-819]
+- new option liveaudio (default yes) - it is possible to disable realtime audio listening globally [VS-811]
+
+
 22.10.2 10.08.2018
 ==================
 - exclude SIP MESSAGES type from realtime concurrent calls [VG-1624]
