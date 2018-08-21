@@ -1,3 +1,12 @@
+22.11.1 21.08.2018
+==================
+- fix small memory leak for cloud / client - server 
+- fix file size counting on XFS filesystem (cliening spool) [VS-822]
+- storing ssl sessions key to DB is enabled now by default [VS-594]
+- fix issue with dynamic custom headers in database backup [VS-823]
+- set group_concat_max_len to 100000000
+
+
 22.11 20.08.2018
 ================
 - preserve SSL/TLS keys between sniffer restarts - new options ssl_store_sessions (default NO)
