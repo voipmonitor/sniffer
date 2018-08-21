@@ -1140,7 +1140,8 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				this->query(string("SET time_zone = '") + opt_mysql_timezone + "'");
 			}
 			sql_noerror = 0;
-			if(!this->query("SET sql_mode = ''")) {
+			if(!this->query("SET sql_mode = ''") ||
+			   !this->query("SET group_concat_max_len = 100000000")) {
 				rslt = false;
 			}
 			char tmp[1024];
