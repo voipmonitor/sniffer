@@ -613,8 +613,8 @@ void cSslDsslSessions::deleteOldSessions(struct timeval ts) {
 }
 
 string cSslDsslSessions::storeSessionsTableName() {
-	return(opt_ssl_store_sessions == 2 ? "ssl_sessions_mem" :
-	       opt_ssl_store_sessions == 1 ? "ssl_sessions" : "");
+	return(opt_ssl_store_sessions == 1 ? "ssl_sessions_mem" :
+	       opt_ssl_store_sessions == 2 ? "ssl_sessions" : "");
 }
 
 

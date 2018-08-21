@@ -6135,7 +6135,7 @@ void SqlDb_mysql::createTable(const char *tableName) {
 	if(!strcmp(tableName, "ssl_sessions:auto") ||
 	   !strcmp(tableName, "ssl_sessions") ||
 	   !strcmp(tableName, "ssl_sessions_mem")) {
-		bool mem = (!strcmp(tableName, "ssl_sessions:auto") && opt_ssl_store_sessions == 2) ||
+		bool mem = (!strcmp(tableName, "ssl_sessions:auto") && opt_ssl_store_sessions == 1) ||
 			   !strcmp(tableName, "ssl_sessions_mem");
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `ssl_sessions") + (mem ? "_mem" : "") + "` (\
