@@ -1915,9 +1915,9 @@ public:
 	};
 public:
 	CustomHeaders(eType type);
-	void load(class SqlDb *sqlDb = NULL, bool lock = true);
+	void load(class SqlDb *sqlDb = NULL, bool enableCreatePartitions = true, bool lock = true);
 	void clear(bool lock = true);
-	void refresh(SqlDb *sqlDb = NULL);
+	void refresh(SqlDb *sqlDb = NULL, bool enableCreatePartitions = true);
 	void addToStdParse(ParsePacket *parsePacket);
 	void parse(Call *call, int type, char *data, int datalen, ParsePacket::ppContentsX *parseContents);
 	void setCustomHeaderContent(Call *call, int type, int pos1, int pos2, dstring *content, bool useLastValue = false);
@@ -1931,12 +1931,13 @@ public:
 		return(&allNextTables);
 	}
 	void createMysqlPartitions(class SqlDb *sqlDb);
+	void createMysqlPartitions(class SqlDb *sqlDb, int day);
 	unsigned long getLoadTime() {
 		return(loadTime);
 	}
 	string getQueryForSaveUseInfo(Call *call, int type);
-	void createTablesIfNotExists(SqlDb *sqlDb = NULL);
-	void createTableIfNotExists(const char *tableName, SqlDb *sqlDb = NULL);
+	void createTablesIfNotExists(SqlDb *sqlDb = NULL, bool enableOldPartition = false);
+	void createTableIfNotExists(const char *tableName, SqlDb *sqlDb = NULL, bool enableOldPartition = false);
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
 	bool getPosForDbId(unsigned db_id, d_u_int32_t *pos);
 private:

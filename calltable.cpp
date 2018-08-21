@@ -7542,7 +7542,7 @@ CustomHeaders::CustomHeaders(eType type) {
 	this->load();
 }
 
-void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
+void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 	if(lock) lock_custom_headers();
 	custom_headers.clear();
 	allNextTables.clear();
@@ -7630,7 +7630,9 @@ void CustomHeaders::load(SqlDb *sqlDb, bool lock) {
 			}
 		}
 	}
-	this->createMysqlPartitions(sqlDb);
+	if(enableCreatePartitions) {
+		this->createMysqlPartitions(sqlDb);
+	}
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
@@ -7645,10 +7647,10 @@ void CustomHeaders::clear(bool lock) {
 	if(lock) unlock_custom_headers();
 }
 
-void CustomHeaders::refresh(SqlDb *sqlDb) {
+void CustomHeaders::refresh(SqlDb *sqlDb, bool enableCreatePartitions) {
 	lock_custom_headers();
 	clear(false);
-	load(sqlDb, false);
+	load(sqlDb, enableCreatePartitions, false);
 	unlock_custom_headers();
 }
 
@@ -7858,29 +7860,34 @@ string CustomHeaders::getDeleteQuery(const char *id, const char *prefix, const c
 
 void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb) {
 	extern bool cloud_db;
-	extern char mysql_database[256];
-	extern bool opt_cdr_partition_oldver;
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
 	for(int day = 0; day < 3; day++) {
 		if(!day ||
 		   isCloud() || cloud_db) {
 			sqlDb->setMaxQueryPass(1);
 		}
-		list<string>::iterator iter;
-		for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
-			if((isCloud() || cloud_db) &&
-			   sqlDb->existsDayPartition(*iter, day)) {
-				continue;
-			}
-			sqlDb->query(
-				string("call ") + (isCloud() ? "" : "`" + string(mysql_database) + "`.") + "create_partition_v3(" + 
-				(isCloud() || cloud_db ? "NULL" : "'" + string(mysql_database) + "'") + ", " +
-				"'" + *iter + "', " +
-				"'day', " +
-				intToString(day) + ", " +
-				(opt_cdr_partition_oldver ? "true" : "false") + ");");
-		}
+		this->createMysqlPartitions(sqlDb, day);
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
+	}
+}
+
+void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, int day) {
+	extern bool cloud_db;
+	extern char mysql_database[256];
+	extern bool opt_cdr_partition_oldver;
+	list<string>::iterator iter;
+	for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
+		if((isCloud() || cloud_db) &&
+		   sqlDb->existsDayPartition(*iter, day)) {
+			continue;
+		}
+		sqlDb->query(
+			string("call ") + (isCloud() ? "" : "`" + string(mysql_database) + "`.") + "create_partition_v3(" + 
+			(isCloud() || cloud_db ? "NULL" : "'" + string(mysql_database) + "'") + ", " +
+			"'" + *iter + "', " +
+			"'day', " +
+			intToString(day) + ", " +
+			(opt_cdr_partition_oldver ? "true" : "false") + ");");
 	}
 }
 
@@ -7917,14 +7924,14 @@ string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type) {
 	return(query);
 }
 
-void CustomHeaders::createTablesIfNotExists(SqlDb *sqlDb) {
+void CustomHeaders::createTablesIfNotExists(SqlDb *sqlDb, bool enableOldPartition) {
 	list<string> tables = getAllNextTables();
 	for(list<string>::iterator it = tables.begin(); it != tables.end(); it++) {
-		createTableIfNotExists(it->c_str(), sqlDb);
+		createTableIfNotExists(it->c_str(), sqlDb, enableOldPartition);
 	}
 }
 
-void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb) {
+void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, bool enableOldPartition) {
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
@@ -7940,18 +7947,16 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb) 
 	
 	extern bool opt_cdr_partition;
 	extern bool opt_cdr_partition_oldver;
+	extern int opt_create_old_partitions;
 	extern int opt_mysqlcompress;
 	
-	char partDayName[20] = "";
-	char limitDay[20] = "";
+	string limitDay;
+	string partDayName;
+	
 	if(opt_cdr_partition) {
-		time_t act_time = time(NULL);
-		struct tm actTime = time_r(&act_time);
-		strftime(partDayName, sizeof(partDayName), "p%y%m%d", &actTime);
-		time_t next_day_time = act_time + 24 * 60 * 60;
-		struct tm nextDayTime = time_r(&next_day_time);
-		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", &nextDayTime);
+		partDayName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartDayName(limitDay, enableOldPartition);
 	}
+	
 	string compress = "";
 	if(opt_mysqlcompress) {
 		compress = "ROW_FORMAT=COMPRESSED";
@@ -7989,6 +7994,13 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb) 
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+	
+	if(enableOldPartition && opt_cdr_partition && opt_create_old_partitions > 0) {
+		for(int i = opt_create_old_partitions - 1; i > 0; i--) {
+			this->createMysqlPartitions(sqlDb, -i);
+		}
+		this->createMysqlPartitions(sqlDb, 0);
+	}
 	
 	if(_createSqlObject) {
 		delete sqlDb;

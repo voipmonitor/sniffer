@@ -1201,14 +1201,14 @@ void *database_backup(void */*dummy*/) {
 				sqlDb_mysql->copyFromSourceTablesMinor(sqlDbSrc_mysql);
 			
 				if(custom_headers_cdr) {
-					custom_headers_cdr->refresh(sqlDbSrc);
+					custom_headers_cdr->refresh(sqlDbSrc, false);
 					custom_headers_cdr->createColumnsForFixedHeaders(sqlDb);
-					custom_headers_cdr->createTablesIfNotExists(sqlDb);
+					custom_headers_cdr->createTablesIfNotExists(sqlDb, true);
 				}
 				if(custom_headers_message) {
-					custom_headers_message->refresh(sqlDbSrc);
+					custom_headers_message->refresh(sqlDbSrc, false);
 					custom_headers_message->createColumnsForFixedHeaders(sqlDb);
-					custom_headers_message->createTablesIfNotExists(sqlDb);
+					custom_headers_message->createTablesIfNotExists(sqlDb, true);
 				}
 			
 				time_t actTime = time(NULL);

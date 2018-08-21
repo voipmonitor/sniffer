@@ -5993,12 +5993,12 @@ bool SqlDb_mysql::createSchema_init_cdr_partitions(int connectId) {
 	return(true);
 }
 
-string SqlDb_mysql::getPartDayName(string &limitDay_str) {
+string SqlDb_mysql::getPartDayName(string &limitDay_str, bool enableOldPartition) {
 	char partDayName[20] = "";
 	char limitDay[20] = "";
 	if(supportPartitions != _supportPartitions_na) {
 		time_t act_time = time(NULL);
-		if(opt_create_old_partitions > 0) {
+		if(enableOldPartition && opt_create_old_partitions > 0) {
 			act_time -= opt_create_old_partitions * 24 * 60 * 60;
 		}
 		struct tm actTime = time_r(&act_time);

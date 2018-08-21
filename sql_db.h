@@ -408,7 +408,7 @@ public:
 	bool createSchema_procedures_other(int connectId);
 	bool createSchema_procedure_partition(int connectId, bool abortIfFailed = true);
 	bool createSchema_init_cdr_partitions(int connectId);
-	string getPartDayName(string &limitDay_str);
+	string getPartDayName(string &limitDay_str, bool enableOldPartition = true);
 	void saveTimezoneInformation();
 	void createTable(const char *tableName);
 	void checkDbMode();
