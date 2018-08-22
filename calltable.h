@@ -1844,6 +1844,8 @@ public:
 	unsigned cb_reason_q850_getId(const char *reason, bool enableInsert, bool enableAutoLoad = false);
 	unsigned cb_contenttype_getId(const char *content, bool enableInsert, bool enableAutoLoad = false);
 	
+	void addSystemCommand(const char *command);
+	
 private:
 	/*
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
@@ -1881,6 +1883,8 @@ private:
 	cSqlDbCodebook *cb_reason_sip;
 	cSqlDbCodebook *cb_reason_q850;
 	cSqlDbCodebook *cb_contenttype;
+	
+	class AsyncSystemCommand *asyncSystemCommand;
 	
 };
 
@@ -2033,6 +2037,23 @@ public:
 	bool isSet();
 private:
 	list<NoStoreCdrRule*> rules;
+};
+
+
+class AsyncSystemCommand {
+public:
+	AsyncSystemCommand();
+	~AsyncSystemCommand();
+	void stopPopSystemCommandThread();
+	void addSystemCommand(const char *command);
+private:
+	void initPopSystemCommandThread();
+	void popSystemCommandThread();
+	static void *popSystemCommandThread(void *arg);
+private:
+	SafeAsyncQueue<string> systemCommandQueue;
+	pthread_t threadPopSystemCommand;
+	volatile bool termPopSystemCommand;
 };
 
 

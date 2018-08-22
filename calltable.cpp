@@ -5572,7 +5572,7 @@ void Call::atFinish() {
 		find_and_replace(source, find2, escapeShellArgument(this->fbasename));
 		find_and_replace(source, find3, escapeShellArgument(this->get_pathname(tsf_sip)));
 		if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
-		system(source.c_str());
+		calltable->addSystemCommand(source.c_str());
 	};
 	extern char filtercommand[4092];
 	if(filtercommand[0] && this->flags & FLAG_RUNSCRIPT) {
@@ -5583,7 +5583,7 @@ void Call::atFinish() {
 		find_and_replace(source, string("%caller%"), escapeShellArgument(this->caller));
 		find_and_replace(source, string("%called%"), escapeShellArgument(this->called));
 		if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
-		system(source.c_str());
+		calltable->addSystemCommand(source.c_str());
 	}
 }
 
@@ -6110,6 +6110,14 @@ Calltable::Calltable() {
 	
 	cbInit();
 	
+	extern char pcapcommand[4092];
+	extern char filtercommand[4092];
+	if(pcapcommand[0] || filtercommand[0]) {
+		asyncSystemCommand = new FILE_LINE(0) AsyncSystemCommand;
+	} else {
+		asyncSystemCommand = NULL;
+	}
+	
 };
 
 /* destructor */
@@ -6125,6 +6133,10 @@ Calltable::~Calltable() {
 	*/
 	
 	cbTerm();
+	
+	if(asyncSystemCommand) {
+		delete asyncSystemCommand;
+	}
 	
 };
 
@@ -7157,6 +7169,13 @@ unsigned Calltable::cb_reason_q850_getId(const char *reason, bool enableInsert, 
 unsigned Calltable::cb_contenttype_getId(const char *content, bool enableInsert, bool enableAutoLoad) {
 	 return(cb_contenttype->getId(content, enableInsert, enableAutoLoad));
 }
+
+void Calltable::addSystemCommand(const char *command) {
+	if(asyncSystemCommand) {
+		asyncSystemCommand->addSystemCommand(command);
+	}
+}
+
 
 void Call::saveregister(time_t currtime) {
 	((Calltable*)calltable)->lock_registers_listMAP();
@@ -8374,6 +8393,54 @@ void NoStoreCdrRules::set(const char *pattern) {
 
 bool NoStoreCdrRules::isSet() {
 	return(rules.size() > 0);
+}
+
+
+AsyncSystemCommand::AsyncSystemCommand() {
+	threadPopSystemCommand = 0;
+	termPopSystemCommand = false;
+	initPopSystemCommandThread();
+}
+
+AsyncSystemCommand::~AsyncSystemCommand() {
+	stopPopSystemCommandThread();
+}
+
+void AsyncSystemCommand::stopPopSystemCommandThread() {
+	termPopSystemCommand = true;
+	pthread_join(this->threadPopSystemCommand, NULL);
+}
+
+void AsyncSystemCommand::addSystemCommand(const char *command) {
+	string command_str = command;
+	systemCommandQueue.push(command_str);
+}
+
+void AsyncSystemCommand::initPopSystemCommandThread() {
+	vm_pthread_create("async system command",
+			  &this->threadPopSystemCommand, NULL, AsyncSystemCommand::popSystemCommandThread, this, __FILE__, __LINE__);
+}
+
+void AsyncSystemCommand::popSystemCommandThread() {
+	while(!is_terminating() && !termPopSystemCommand) {
+		bool okPop = false;
+		string command;
+		if(systemCommandQueue.pop(&command)) {
+			if(sverb.system_command) {
+				syslog(LOG_NOTICE, "call system command: %s", command.c_str());
+			}
+			system(command.c_str());
+			okPop = true;
+		}
+		if(!okPop) {
+			usleep(1000);
+		}
+	}
+}
+
+void *AsyncSystemCommand::popSystemCommandThread(void *arg) {
+	((AsyncSystemCommand*)arg)->popSystemCommandThread();
+	return(NULL);
 }
 
 

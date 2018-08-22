@@ -6794,6 +6794,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "send_call_info")			sverb.send_call_info = 1;
 	else if(verbParam == "disable_cb_cache")		sverb.disable_cb_cache = 1;
 	else if(verbParam == "enable_cb_cache")			sverb.disable_cb_cache = 0;
+	else if(verbParam == "system_command")			sverb.system_command = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
