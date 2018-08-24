@@ -582,6 +582,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	
 	exists_crypto_suite_key = false;
 	log_srtp_callid = false;
+	
+	sdp_0_0_flag[0] = false;
+	sdp_0_0_flag[1] = false;
+	
 	error_negative_payload_length = false;
 	use_removeRtp = false;
 	hash_counter = 0;
@@ -4414,6 +4418,19 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							break;
 						}
 					}
+				}
+			}
+			for(int i = 0; i < 2; i++) {
+				if(sdp_0_0_flag[i]) {
+					SqlDb_row sdp;
+					sdp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+					sdp.add(0, "ip");
+					sdp.add(0, "port");
+					sdp.add(i == 0, "is_caller");
+					if(existsColumns.cdr_sdp_calldate) {
+						sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					}
+					query_str += sqlDbSaveCall->insertQuery("cdr_sdp", sdp) + ";\n";
 				}
 			}
 		}

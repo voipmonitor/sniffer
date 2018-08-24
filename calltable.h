@@ -1317,6 +1317,7 @@ private:
 	PcapDumper pcapRtp;
 	map<sStreamId, sUdptlDumper*> udptlDumpers;
 public:
+	bool sdp_0_0_flag[2];
 	bool error_negative_payload_length;
 	bool use_removeRtp;
 	volatile int hash_counter;
