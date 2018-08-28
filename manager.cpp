@@ -106,10 +106,83 @@ int opt_block_alloc_stack = 0;
 
 using namespace std;
 
+int sendvm(int socket, ssh_channel channel, cClient *c_client, const char *buf, size_t len, int /*mode*/);
 typedef struct {
 	int (*MgmtFunc) (char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
 	string helpText;
 } MgmtCmd;
+
+class Mgmt_params {
+	public:
+		char *buf;
+		int size;
+		int client;
+		ssh_channel sshchannel;
+		cClient *c_client;
+		ManagerClientThread **managerClientThread;
+		bool getHelp = false;
+		bool zip = false;
+		std::stringstream sendBuff;
+		Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
+		int sendString(const char *);
+		int sendString(string *);
+};
+
+int Mgmt_params::sendString(const char *str) {
+	string tstr = str;
+	return(sendString(&tstr));
+}
+
+int Mgmt_params::sendString(string *str) {
+	if(str->empty()) {
+		return(0);
+	}
+	CompressStream *compressStream = NULL;
+	if(zip &&
+	   ((*str)[0] != 0x1f || (str->length() > 1 && (unsigned char)(*str)[1] != 0x8b))) {
+		compressStream = new FILE_LINE(13021) CompressStream(CompressStream::gzip, 1024, 0);
+		compressStream->setSendParameters(client, sshchannel, c_client);
+	}
+	unsigned chunkLength = 4096;
+	unsigned processedLength = 0;
+	while(processedLength < str->length()) {
+		unsigned processLength = MIN(chunkLength, str->length() - processedLength);
+		if(compressStream) {
+			compressStream->compress((char*)str->c_str() + processedLength, processLength, false, compressStream);
+			if(compressStream->isError()) {
+				cerr << "Error compress stream" << endl;
+			return -1;
+			}
+		} else {
+			if(sendvm(client, sshchannel, c_client, (char*)str->c_str() + processedLength, processLength, 0) == -1){
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
+		}
+		processedLength += processLength;
+	}
+	if(compressStream) {
+		compressStream->compress(NULL, 0, true, compressStream);
+		delete compressStream;
+	}
+	return(0);
+}
+
+Mgmt_params::Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread) {
+	buf = ibuf;
+	size = isize;
+	client = iclient;
+	sshchannel = isshchannel;
+	c_client = ic_client;
+	managerClientThread = imanagerClientThread;
+}
+
+typedef int (*MgmtFunc) (Mgmt_params *params);
+
+int Mgmt_getversion(Mgmt_params *params);
+int Mgmt_help(Mgmt_params *params);
+int Mgmt_listcalls(Mgmt_params *params);
+int Mgmt_reindexfiles(Mgmt_params *params);
 
 int Mgmt_getversion(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
 int Mgmt_reindexfiles(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
@@ -117,12 +190,19 @@ int Mgmt_listcalls(char *buf, int size, int client, ssh_channel sshchannel, cCli
 int Mgmt_help(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
 
 std::map<string, MgmtCmd> MgmtCmdsTable = {
-	{"help", {Mgmt_help, "prints command's help."}},
-	{"getversion", {Mgmt_getversion, "returns the version of the sniffer."}},
-	{"reindexfiles", {Mgmt_reindexfiles, "starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex.\r\n"
-					     "\t'reindexfiles_date DATE' runs reindex for DATE.\r\n"
-					     "\t'reindexfiles_date DATE HOUR' runs reindex for entered DATE HOUR. "}},
-	{"listcalls", {Mgmt_listcalls, "lists active calls."}},
+//	{"help", {Mgmt_help, "prints command's help."}},
+//	{"getversion", {Mgmt_getversion, "returns the version of the sniffer."}},
+//	{"reindexfiles", {Mgmt_reindexfiles, "starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex.\r\n"
+//					     "\t'reindexfiles_date DATE' runs reindex for DATE.\r\n"
+//					     "\t'reindexfiles_date DATE HOUR' runs reindex for entered DATE HOUR. "}},
+//	{"listcalls", {Mgmt_listcalls, "lists active calls."}},
+};
+
+std::map<string, MgmtFunc> MgmtCmdsTable2 = {
+	{"help", Mgmt_help},
+	{"getversion", Mgmt_getversion},
+	{"reindexfiles", Mgmt_reindexfiles},
+	{"listcalls", Mgmt_listcalls},
 };
 
 struct listening_worker_arg {
@@ -784,6 +864,14 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		return(-1);
 	}
 	string cmdStr (buf, endOfCmd);
+
+	std::map<string, MgmtFunc>::iterator MgmtItem2 = MgmtCmdsTable2.find(cmdStr);
+	if (MgmtItem2 != MgmtCmdsTable2.end()) {
+		Mgmt_params* mparams = new Mgmt_params(buf, size, client, sshchannel, c_client, managerClientThread);
+		int ret = (MgmtItem2->second(mparams));
+		delete mparams;
+		return(ret);
+	}
 	std::map<string, MgmtCmd>::iterator MgmtItem = MgmtCmdsTable.find(cmdStr);
 	if (MgmtItem != MgmtCmdsTable.end()) {
 		return(MgmtItem->second.MgmtFunc(buf, size, client, sshchannel, c_client, managerClientThread));
@@ -4367,6 +4455,113 @@ int Mgmt_help(char *buf, int size, int client, ssh_channel sshchannel, cClient *
 	if ((size = sendvm(client, sshchannel, c_client, sendbuff.c_str(), sendbuff.length(), 0)) == -1){
 		cerr << "Error sending data to client" << endl;
 		return -1;
+	}
+	return 0;
+}
+
+int Mgmt_getversion(Mgmt_params* params) {
+	if (params->getHelp) {
+		params->sendBuff << "returns the version of the sniffer." << endl << endl;
+		return(0);
+	}
+	return(params->sendString(RTPSENSOR_VERSION));
+}
+
+int Mgmt_help(Mgmt_params* params) {
+	if (params->getHelp) {
+		params->sendBuff << "prints command's help." << endl << endl;
+		return(0);
+	}
+	std::map<string, MgmtFunc>::iterator MgmtItem2;
+	params->getHelp = true;
+	char *startOfParam = strpbrk(params->buf, " ");
+	if (startOfParam) {
+		startOfParam++;
+		char *endOfParam = strpbrk(startOfParam, " \r\n\t");
+		if (!endOfParam) {
+			syslog(LOG_ERR, "Can't determine the param's end.");
+			cerr << "Can't determine the param's end." << endl;
+			return(-1);
+		}
+		string cmdStr (startOfParam, endOfParam);
+		MgmtItem2 = MgmtCmdsTable2.find(cmdStr);
+		if (MgmtItem2 != MgmtCmdsTable2.end()) {
+			params->sendBuff << MgmtItem2->first << " ... ";
+			MgmtItem2->second(params);
+		} else {
+			params->sendBuff << "Command " << cmdStr << " not found." << endl << endl;
+		}
+	} else {
+		params->sendBuff << "List of commands:" << endl << endl;
+		for (MgmtItem2 = MgmtCmdsTable2.begin(); MgmtItem2 != MgmtCmdsTable2.end(); MgmtItem2++) {
+			params->sendBuff << MgmtItem2->first << " ... ";
+			MgmtItem2->second(params);
+		}
+	}
+	string sendbuff = params->sendBuff.str();
+	return(params->sendString(&sendbuff));
+}
+
+int Mgmt_reindexfiles(Mgmt_params *params) {
+	if (params->getHelp) {
+		params->sendBuff << "starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex.\r\n"
+				    "\t'reindexfiles_date DATE' runs reindex for DATE.\r\n"
+				    "\t'reindexfiles_date DATE HOUR' runs reindex for entered DATE HOUR. " << endl << endl;
+		return(0);
+	}
+	char sendbuf[BUFSIZE];
+	if(is_enable_cleanspool()) {
+		char date[21];
+		int hour;
+		bool badParams = false;
+		if(strstr(params->buf, "reindexfiles_datehour")) {
+			if(sscanf(params->buf + strlen("reindexfiles_datehour") + 1, "%20s %i", date, &hour) != 2) {
+				badParams = true;
+			}
+		} else if(strstr(params->buf, "reindexfiles_date")) {
+			if(sscanf(params->buf + strlen("reindexfiles_date") + 1, "%20s", date) != 1) {
+				badParams = true;
+			}
+		}
+		if(badParams) {
+			snprintf(sendbuf, BUFSIZE, "bad parameters");
+			params->sendString(sendbuf);
+			return -1;
+		}
+		snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
+		params->sendString(sendbuf);
+		if(strstr(params->buf, "reindexfiles_datehour")) {
+			CleanSpool::run_reindex_date_hour(date, hour);
+		} else if(strstr(params->buf, "reindexfiles_date")) {
+			CleanSpool::run_reindex_date(date);
+		} else {
+			CleanSpool::run_reindex_all("call from manager");
+		}
+		snprintf(sendbuf, BUFSIZE, "done\r\n");
+	} else {
+		strcpy(sendbuf, "cleanspool is disable\r\n");
+	}
+	return(params->sendString(sendbuf));
+}
+
+int Mgmt_listcalls(Mgmt_params *params) {
+	if (params->getHelp) {
+		params->sendBuff << "lists active calls." << endl << endl;
+		return(0);
+	}
+	if(calltable) {
+		string rslt_data;
+		char *pointer;
+		if((pointer = strchr(params->buf, '\n')) != NULL) {
+			*pointer = 0;
+		}
+		params->zip = false;
+		char *jsonParams = params->buf + strlen("listcalls");
+		while(*jsonParams == ' ') {
+			++jsonParams;
+		}
+		rslt_data = calltable->getCallTableJson(jsonParams, &params->zip);
+		return(params->sendString(&rslt_data));
 	}
 	return 0;
 }
