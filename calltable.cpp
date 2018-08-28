@@ -3470,7 +3470,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		return(0);
 	}
 	
-	if(lastSIPresponseNum && nocdr_rules.isSet() && nocdr_rules.check(this)) {
+	if(lastSIPresponseNum >= 0 && nocdr_rules.isSet() && nocdr_rules.check(this)) {
 		return(0);
 	}
  
@@ -8276,7 +8276,7 @@ NoStoreCdrRule::~NoStoreCdrRule() {
 
 bool NoStoreCdrRule::check(Call *call) {
 	bool ok = false;
-	if(call->lastSIPresponseNum) {
+	if(call->lastSIPresponseNum > 0) {
 		int lrn = call->lastSIPresponseNum;
 		while(lrn && (int)(log10(lrn) + 1) > lastResponseNumLength) {
 			lrn /= 10;
@@ -8284,7 +8284,9 @@ bool NoStoreCdrRule::check(Call *call) {
 		if(lrn == lastResponseNum) {
 			ok = true;
 		}
- 	}
+ 	} else if(call->lastSIPresponseNum == 0 && lastResponseNum == 0) {
+		ok = true;
+	}
  	if(ok && ip) {
 		u_int16_t sipcalledport_confirmed;
 		if(!check_ip(htonl(call->getSipcallerip()), ip, ip_mask_length) &&
@@ -8314,6 +8316,8 @@ void NoStoreCdrRule::set(const char *pattern) {
 	lastResponseNum = atoi(pattern);
 	if(lastResponseNum > 0) {
 		lastResponseNumLength = log10(lastResponseNum) + 1;
+	} else if(lastResponseNum == 0) {
+		lastResponseNumLength = 1;
 	} else {
 		return;
 	}
