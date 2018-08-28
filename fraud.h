@@ -789,6 +789,8 @@ public:
 	FraudAlert_chc(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
 protected:
+	bool defFilterIp() { return(true); }
+	bool defFilterIp2() { return(true); }
 	bool defFilterNumber() { return(true); }
 	bool defTypeChangeLocation() { return(true); }
 	bool defChangeLocationOk() { return(true); }
