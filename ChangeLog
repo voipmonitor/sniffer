@@ -1,3 +1,11 @@
+22.12 28.08.2018
+================
+- pcapcommand / filtercommand are now not blocking the sniffer [VS-744]
+- store ip 0.0.0.0 in SDP to the database [VG-1628]
+- add ip filter in fraud "change cdr country" [VG-1648]
+- allos set cdr_ignore_response = 0 (or cdr_ignore_response = 000) 
+
+
 22.11.1 21.08.2018
 ==================
 - fix small memory leak for cloud / client - server 
