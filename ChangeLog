@@ -1,3 +1,9 @@
+22.12.1 28.08.2018
+==================
+- fix cleaning spooldir if maxpoolsize is not set 
+- process more blocks in the RTCP-XR message (fixes 0 in MOS-XR)
+
+
 22.12 28.08.2018
 ================
 - pcapcommand / filtercommand are now not blocking the sniffer [VS-744]
