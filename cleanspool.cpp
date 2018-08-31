@@ -82,6 +82,18 @@ long long CleanSpool::cSpoolData::getSumSize() {
 
 long long CleanSpool::cSpoolData::getSplitSumSize(long long *sip, long long *rtp, long long *graph, long long *audio) {
 	long long size = 0;
+	if(sip) {
+		*sip = 0;
+	}
+	if(rtp) {
+		*rtp = 0;
+	}
+	if(graph) {
+		*graph = 0;
+	}
+	if(audio) {
+		*audio = 0;
+	}
 	for(map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = data.begin(); iter != data.end(); iter++) {
 		switch(iter->first._type) {
 		case tsf_rtp:
