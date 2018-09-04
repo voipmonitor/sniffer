@@ -107,26 +107,33 @@ int opt_block_alloc_stack = 0;
 using namespace std;
 
 int sendvm(int socket, ssh_channel channel, cClient *c_client, const char *buf, size_t len, int /*mode*/);
-typedef struct {
-	int (*MgmtFunc) (char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
-	string helpText;
-} MgmtCmd;
+
+std::map<string, int> MgmtCmdsRegTable;
 
 class Mgmt_params {
 	public:
 		char *buf;
 		int size;
 		int client;
+		int index;
 		ssh_channel sshchannel;
 		cClient *c_client;
 		ManagerClientThread **managerClientThread;
 		bool getHelp = false;
 		bool zip = false;
+		bool doInit = false;
+		string helpSubcmd;
 		std::stringstream sendBuff;
 		Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
 		int sendString(const char *);
 		int sendString(string *);
+		int registerCommand(string *, int);
 };
+
+int Mgmt_params::registerCommand(string *str, int index) {
+	MgmtCmdsRegTable[*str] = index;
+	return(0);
+}
 
 int Mgmt_params::sendString(const char *str) {
 	string tstr = str;
@@ -177,32 +184,19 @@ Mgmt_params::Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshcha
 	managerClientThread = imanagerClientThread;
 }
 
-typedef int (*MgmtFunc) (Mgmt_params *params);
-
 int Mgmt_getversion(Mgmt_params *params);
 int Mgmt_help(Mgmt_params *params);
 int Mgmt_listcalls(Mgmt_params *params);
 int Mgmt_reindexfiles(Mgmt_params *params);
+int Mgmt_offon(Mgmt_params *params);
 
-int Mgmt_getversion(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
-int Mgmt_reindexfiles(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
-int Mgmt_listcalls(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
-int Mgmt_help(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
-
-std::map<string, MgmtCmd> MgmtCmdsTable = {
-//	{"help", {Mgmt_help, "prints command's help."}},
-//	{"getversion", {Mgmt_getversion, "returns the version of the sniffer."}},
-//	{"reindexfiles", {Mgmt_reindexfiles, "starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex.\r\n"
-//					     "\t'reindexfiles_date DATE' runs reindex for DATE.\r\n"
-//					     "\t'reindexfiles_date DATE HOUR' runs reindex for entered DATE HOUR. "}},
-//	{"listcalls", {Mgmt_listcalls, "lists active calls."}},
-};
-
-std::map<string, MgmtFunc> MgmtCmdsTable2 = {
-	{"help", Mgmt_help},
-	{"getversion", Mgmt_getversion},
-	{"reindexfiles", Mgmt_reindexfiles},
-	{"listcalls", Mgmt_listcalls},
+int (* MgmtFuncArray[])(Mgmt_params *params) = {
+	Mgmt_help,
+	Mgmt_getversion,
+	Mgmt_reindexfiles,
+	Mgmt_listcalls,
+	Mgmt_offon,
+	NULL
 };
 
 struct listening_worker_arg {
@@ -865,16 +859,12 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 	}
 	string cmdStr (buf, endOfCmd);
 
-	std::map<string, MgmtFunc>::iterator MgmtItem2 = MgmtCmdsTable2.find(cmdStr);
-	if (MgmtItem2 != MgmtCmdsTable2.end()) {
+	std::map<string, int>::iterator MgmtItem = MgmtCmdsRegTable.find(cmdStr);
+	if (MgmtItem != MgmtCmdsRegTable.end()) {
 		Mgmt_params* mparams = new Mgmt_params(buf, size, client, sshchannel, c_client, managerClientThread);
-		int ret = (MgmtItem2->second(mparams));
+		int ret = MgmtFuncArray[MgmtItem->second](mparams);
 		delete mparams;
 		return(ret);
-	}
-	std::map<string, MgmtCmd>::iterator MgmtItem = MgmtCmdsTable.find(cmdStr);
-	if (MgmtItem != MgmtCmdsTable.end()) {
-		return(MgmtItem->second.MgmtFunc(buf, size, client, sshchannel, c_client, managerClientThread));
 	}
  
 	char buf_output[1024];
@@ -3135,7 +3125,7 @@ getwav:
 		}
 	} else if(strstr(buf, "cloud_activecheck") != NULL) {
 		cloud_activecheck_success();
-	} else if(buf[0] == 'b' and strstr(buf, "blocktar") != NULL) {
+	/*} else if(buf[0] == 'b' and strstr(buf, "blocktar") != NULL) {
 		opt_blocktarwrite = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblocktar") != NULL) {
 		opt_blocktarwrite = 0;
@@ -3162,7 +3152,7 @@ getwav:
 	} else if(buf[0] == 'b' and strstr(buf, "block_alloc_stack") != NULL) {
 		opt_block_alloc_stack = 1;
 	} else if(buf[0] == 'u' and strstr(buf, "unblock_alloc_stack") != NULL) {
-		opt_block_alloc_stack = 0;
+		opt_block_alloc_stack = 0;*/
 #ifndef FREEBSD
 	} else if(strstr(buf, "malloc_trim") != NULL) {
 		malloc_trim(0);
@@ -4353,126 +4343,30 @@ int sendString(string *str, int client, ssh_channel sshchannel, cClient *c_clien
 	return(0);
 }
 
-int Mgmt_getversion(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread) {
-	if ((size = sendvm(client, sshchannel, c_client, RTPSENSOR_VERSION, strlen(RTPSENSOR_VERSION), 0)) == -1){
-		cerr << "Error sending data to client" << endl;
-		return -1;
-	}
-	return 0;
-}
-
-int Mgmt_reindexfiles(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread) {
-	char sendbuf[BUFSIZE];
-	if(is_enable_cleanspool()) {
-		char date[21];
-		int hour;
-		bool badParams = false;
-		if(strstr(buf, "reindexfiles_datehour")) {
-			if(sscanf(buf + strlen("reindexfiles_datehour") + 1, "%20s %i", date, &hour) != 2) {
-				badParams = true;
-			}
-		} else if(strstr(buf, "reindexfiles_date")) {
-			if(sscanf(buf + strlen("reindexfiles_date") + 1, "%20s", date) != 1) {
-				badParams = true;
-			}
-		}
-		if(badParams) {
-			snprintf(sendbuf, BUFSIZE, "bad parameters");
-			if ((size = sendvm(client, sshchannel, c_client, sendbuf, strlen(sendbuf), 0)) == -1){
-				cerr << "Error sending data to client" << endl;
-			}
-			return -1;
-		}
-		snprintf(sendbuf, BUFSIZE, "starting reindexing please wait...");
-		if ((size = sendvm(client, sshchannel, c_client, sendbuf, strlen(sendbuf), 0)) == -1){
-			cerr << "Error sending data to client" << endl;
-			return -1;
-		}
-		if(strstr(buf, "reindexfiles_datehour")) {
-			CleanSpool::run_reindex_date_hour(date, hour);
-		} else if(strstr(buf, "reindexfiles_date")) {
-			CleanSpool::run_reindex_date(date);
-		} else {
-			CleanSpool::run_reindex_all("call from manager");
-		}
-		snprintf(sendbuf, BUFSIZE, "done\r\n");
-	} else {
-		strcpy(sendbuf, "cleanspool is disable\r\n");
-	}
-	if ((size = sendvm(client, sshchannel, c_client, sendbuf, strlen(sendbuf), 0)) == -1){
-		cerr << "Error sending data to client" << endl;
-		return -1;
-	}
-	return 0;
-}
-
-int Mgmt_listcalls(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread) {
-	if(calltable) {
-		string rslt_data;
-		char *pointer;
-		if((pointer = strchr(buf, '\n')) != NULL) {
-			*pointer = 0;
-		}
-		bool zip = false;
-		char *jsonParams = buf + strlen("listcalls");
-		while(*jsonParams == ' ') {
-			++jsonParams;
-		}
-		rslt_data = calltable->getCallTableJson(jsonParams, &zip);
-		if(sendString(&rslt_data, client, sshchannel, c_client, zip) == -1) {
-			cerr << "Error sending data to client" << endl;
-			return -1;
-		}
-	}
-	return 0;
-}
-int Mgmt_help(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread) {
-	std::stringstream sendBuff;
-	std::map<string, MgmtCmd>::iterator MgmtItem;
-	char *startOfParam = strpbrk(buf, " ");
-	if (startOfParam) {
-		startOfParam++;
-		char *endOfParam = strpbrk(startOfParam, " \r\n\t");
-		if (!endOfParam) {
-			syslog(LOG_ERR, "Can't determine the param's end.");
-			cerr << "Can't determine the param's end." << endl;
-			return(-1);
-		}
-		string cmdStr (startOfParam, endOfParam);
-		MgmtItem = MgmtCmdsTable.find(cmdStr);
-		if (MgmtItem != MgmtCmdsTable.end()) {
-			sendBuff << MgmtItem->first << " ... " << MgmtItem->second.helpText << endl << endl;
-		} else {
-			sendBuff << "Command " << cmdStr << " not found." << endl << endl;
-		}
-	} else {
-		sendBuff << "List of commands:" << endl << endl;
-		for (MgmtItem = MgmtCmdsTable.begin(); MgmtItem != MgmtCmdsTable.end(); MgmtItem++) {
-			sendBuff << MgmtItem->first << " ... " << MgmtItem->second.helpText << endl << endl;
-		}
-	}
-	string sendbuff = sendBuff.str();
-	if ((size = sendvm(client, sshchannel, c_client, sendbuff.c_str(), sendbuff.length(), 0)) == -1){
-		cerr << "Error sending data to client" << endl;
-		return -1;
-	}
-	return 0;
-}
-
 int Mgmt_getversion(Mgmt_params* params) {
+	if (params->doInit) {
+		string str = "getversion";
+		params->registerCommand(&str, params->index);
+		return(0);
+	}
 	if (params->getHelp) {
-		params->sendBuff << "returns the version of the sniffer." << endl << endl;
+		params->sendBuff << "getversion ... returns the version of the sniffer." << endl << endl;
 		return(0);
 	}
 	return(params->sendString(RTPSENSOR_VERSION));
 }
 
 int Mgmt_help(Mgmt_params* params) {
-	if (params->getHelp) {
-		params->sendBuff << "prints command's help." << endl << endl;
+	if (params->doInit) {
+		string str = "help";
+		params->registerCommand(&str, params->index);
 		return(0);
 	}
-	std::map<string, MgmtFunc>::iterator MgmtItem2;
+	if (params->getHelp) {
+		params->sendBuff << "help ... prints command's help." << endl << endl;
+		return(0);
+	}
+	std::map<string, int>::iterator MgmtItem;
 	params->getHelp = true;
 	char *startOfParam = strpbrk(params->buf, " ");
 	if (startOfParam) {
@@ -4484,18 +4378,18 @@ int Mgmt_help(Mgmt_params* params) {
 			return(-1);
 		}
 		string cmdStr (startOfParam, endOfParam);
-		MgmtItem2 = MgmtCmdsTable2.find(cmdStr);
-		if (MgmtItem2 != MgmtCmdsTable2.end()) {
-			params->sendBuff << MgmtItem2->first << " ... ";
-			MgmtItem2->second(params);
+		MgmtItem = MgmtCmdsRegTable.find(cmdStr);
+		if (MgmtItem != MgmtCmdsRegTable.end()) {
+			params->helpSubcmd = cmdStr;
+			MgmtFuncArray[MgmtItem->second](params);
 		} else {
 			params->sendBuff << "Command " << cmdStr << " not found." << endl << endl;
 		}
 	} else {
 		params->sendBuff << "List of commands:" << endl << endl;
-		for (MgmtItem2 = MgmtCmdsTable2.begin(); MgmtItem2 != MgmtCmdsTable2.end(); MgmtItem2++) {
-			params->sendBuff << MgmtItem2->first << " ... ";
-			MgmtItem2->second(params);
+		params->helpSubcmd = "";
+		for (MgmtItem = MgmtCmdsRegTable.begin(); MgmtItem != MgmtCmdsRegTable.end(); MgmtItem++) {
+			MgmtFuncArray[MgmtItem->second](params);
 		}
 	}
 	string sendbuff = params->sendBuff.str();
@@ -4503,8 +4397,13 @@ int Mgmt_help(Mgmt_params* params) {
 }
 
 int Mgmt_reindexfiles(Mgmt_params *params) {
+	if (params->doInit) {
+		string str = "reindexfiles";
+		params->registerCommand(&str, params->index);
+		return(0);
+	}
 	if (params->getHelp) {
-		params->sendBuff << "starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex.\r\n"
+		params->sendBuff << "reindexfiles ... starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex.\r\n"
 				    "\t'reindexfiles_date DATE' runs reindex for DATE.\r\n"
 				    "\t'reindexfiles_date DATE HOUR' runs reindex for entered DATE HOUR. " << endl << endl;
 		return(0);
@@ -4545,8 +4444,13 @@ int Mgmt_reindexfiles(Mgmt_params *params) {
 }
 
 int Mgmt_listcalls(Mgmt_params *params) {
+	if (params->doInit) {
+		string str = "listcalls";
+		params->registerCommand(&str, params->index);
+		return(0);
+	}
 	if (params->getHelp) {
-		params->sendBuff << "lists active calls." << endl << endl;
+		params->sendBuff << "listcalls ... lists active calls." << endl << endl;
 		return(0);
 	}
 	if(calltable) {
@@ -4564,4 +4468,108 @@ int Mgmt_listcalls(Mgmt_params *params) {
 		return(params->sendString(&rslt_data));
 	}
 	return 0;
+}
+
+int Mgmt_offon(Mgmt_params *params) {
+	if (params->doInit) {
+		string cmds[] = {"blocktar", "unblocktar", "blockasync", "unblockasync", "blockprocesspacket",
+			"unblockprocesspacket", "blockcleanupcalls", "unblockcleanupcalls", "sleepprocesspacket",
+			"unsleepprocesspacket", "blockqfile", "unblockqfile", "block_alloc_stack", "unblock_alloc_stack"};
+
+		for (string &str : cmds) {
+			params->registerCommand(&str, params->index);
+		}
+		return(0);
+	}
+	if (params->getHelp) {
+		int helpSize = params->helpSubcmd.length();
+		if(!helpSize || params->helpSubcmd == "unblocktar") {
+			params->sendBuff << "unblocktar ... unblock tar files." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "blocktar") {
+			params->sendBuff << "blocktar ... block tar files." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "unblockasync") {
+			params->sendBuff << "unblockasync ... unblock async processing." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "blockasync") {
+			params->sendBuff << "blockasync ... block async processing." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "unblockprocesspacket") {
+			params->sendBuff << "unblockprocesspacket ... unblock packet processing." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "blockprocesspacket") {
+			params->sendBuff << "blockprocesspacket ... block packet processing." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "unblockcleanupcalls") {
+			params->sendBuff << "unblockcleanupcalls ... unblock cleanup calls." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "blockcleanupcalls") {
+			params->sendBuff << "blockcleanupcalls ... block cleanup calls." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "unsleepprocesspacket") {
+			params->sendBuff << "unsleepprocesspacket ... unsleep packet processing." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "sleepprocesspacket") {
+			params->sendBuff << "sleepprocesspacket ... sleep packet processing." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "unblockqfile") {
+			params->sendBuff << "unblockqfile ... unblock qfiles." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "blockqfile") {
+			params->sendBuff << "blockqfile ... block qfiles." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "unblock_alloc_stack") {
+			params->sendBuff << "unblock_alloc_stack ... unblock stack allocation." << endl << endl;
+		}
+		if(!helpSize || params->helpSubcmd == "block_alloc_stack") {
+			params->sendBuff << "block_alloc_stack ... block stack allocation." << endl << endl;
+		}
+		return(0);
+	}
+
+	if(strstr(params->buf, "unblocktar") != NULL) {
+		opt_blocktarwrite = 0;
+	} else if(strstr(params->buf, "blocktar") != NULL) {
+		opt_blocktarwrite = 1;
+	} else if(strstr(params->buf, "unblockasync") != NULL) {
+		opt_blockasyncprocess = 0;
+	} else if(strstr(params->buf, "blockasync") != NULL) {
+		opt_blockasyncprocess = 1;
+	} else if(strstr(params->buf, "unblockprocesspacket") != NULL) {
+		opt_blockprocesspacket = 0;
+	} else if(strstr(params->buf, "blockprocesspacket") != NULL) {
+		opt_blockprocesspacket = 1;
+	} else if(strstr(params->buf, "unblockcleanupcalls") != NULL) {
+		opt_blockcleanupcalls = 0;
+	} else if(strstr(params->buf, "blockcleanupcalls") != NULL) {
+		opt_blockcleanupcalls = 1;
+	} else if(strstr(params->buf, "unsleepprocesspacket") != NULL) {
+		opt_sleepprocesspacket = 0;
+	} else if(strstr(params->buf, "sleepprocesspacket") != NULL) {
+		opt_sleepprocesspacket = 1;
+	} else if(strstr(params->buf, "unblockqfile") != NULL) {
+		opt_blockqfile = 0;
+	} else if(strstr(params->buf, "blockqfile") != NULL) {
+		opt_blockqfile = 1;
+	} else if(strstr(params->buf, "unblock_alloc_stack") != NULL) {
+		opt_block_alloc_stack = 0;
+	} else if(strstr(params->buf, "block_alloc_stack") != NULL) {
+		opt_block_alloc_stack = 1;
+	}
+	return(0);
+}
+
+void init_management_functions(void) {
+	int i;
+	Mgmt_params params(NULL, 0, 0, NULL, NULL, NULL);
+	params.doInit = true;
+
+	for (i = 0;; i++) {
+		params.index = i;
+		if (!MgmtFuncArray[i])
+			break;
+
+		MgmtFuncArray[i](&params);
+	}
 }
