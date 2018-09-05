@@ -4470,92 +4470,55 @@ int Mgmt_listcalls(Mgmt_params *params) {
 	return 0;
 }
 
-int Mgmt_offon(Mgmt_params *params) {
-	if (params->doInit) {
-		string cmds[] = {"blocktar", "unblocktar", "blockasync", "unblockasync", "blockprocesspacket",
-			"unblockprocesspacket", "blockcleanupcalls", "unblockcleanupcalls", "sleepprocesspacket",
-			"unsleepprocesspacket", "blockqfile", "unblockqfile", "block_alloc_stack", "unblock_alloc_stack"};
+typedef struct {
+	int *setVar;
+	int setValue;
+	string helpText;
+} cmdData;
 
-		for (string &str : cmds) {
+int Mgmt_offon(Mgmt_params *params) {
+	static std::map<string, cmdData> cmdsDataTable = {
+		{"unblocktar", {&opt_blocktarwrite, 0, "unblock tar files"}},
+		{"blocktar", {&opt_blocktarwrite, 1, "block tar files"}},
+		{"unblockasync", {&opt_blockasyncprocess, 0, "unblock async processing"}},
+		{"blockasync", {&opt_blockasyncprocess, 1, "block async processing"}},
+		{"unblockprocesspacket", {&opt_blockprocesspacket, 0, "unblock packet processing"}},
+		{"blockprocesspacket", {&opt_blockprocesspacket, 1, "block packet processing"}},
+		{"unblockcleanupcalls", {&opt_blockcleanupcalls, 0, "unblock cleanup calls"}},
+		{"blockcleanupcalls", {&opt_blockcleanupcalls, 1, "block cleanup calls"}},
+		{"unsleepprocesspacket", {&opt_sleepprocesspacket, 0, "unsleep packet processing"}},
+		{"sleepprocesspacket", {&opt_sleepprocesspacket, 1, "sleep packet processing"}},
+		{"unblockqfile", {&opt_blockqfile, 0, "unblock qfiles"}},
+		{"blockqfile", {&opt_blockqfile, 1, "block qfiles"}},
+		{"unblockallocstack", {&opt_block_alloc_stack, 0, "unblock stack allocation"}},
+		{"blockallocstack", {&opt_block_alloc_stack, 1, "block stack allocation"}},
+	};
+	if (params->doInit) {
+		std::map<string, cmdData>::iterator cmdItem;
+		for (cmdItem = cmdsDataTable.begin(); cmdItem != cmdsDataTable.end(); cmdItem++) {
+			string str = cmdItem->first;
 			params->registerCommand(&str, params->index);
 		}
 		return(0);
 	}
 	if (params->getHelp) {
 		int helpSize = params->helpSubcmd.length();
-		if(!helpSize || params->helpSubcmd == "unblocktar") {
-			params->sendBuff << "unblocktar ... unblock tar files." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "blocktar") {
-			params->sendBuff << "blocktar ... block tar files." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "unblockasync") {
-			params->sendBuff << "unblockasync ... unblock async processing." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "blockasync") {
-			params->sendBuff << "blockasync ... block async processing." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "unblockprocesspacket") {
-			params->sendBuff << "unblockprocesspacket ... unblock packet processing." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "blockprocesspacket") {
-			params->sendBuff << "blockprocesspacket ... block packet processing." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "unblockcleanupcalls") {
-			params->sendBuff << "unblockcleanupcalls ... unblock cleanup calls." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "blockcleanupcalls") {
-			params->sendBuff << "blockcleanupcalls ... block cleanup calls." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "unsleepprocesspacket") {
-			params->sendBuff << "unsleepprocesspacket ... unsleep packet processing." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "sleepprocesspacket") {
-			params->sendBuff << "sleepprocesspacket ... sleep packet processing." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "unblockqfile") {
-			params->sendBuff << "unblockqfile ... unblock qfiles." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "blockqfile") {
-			params->sendBuff << "blockqfile ... block qfiles." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "unblock_alloc_stack") {
-			params->sendBuff << "unblock_alloc_stack ... unblock stack allocation." << endl << endl;
-		}
-		if(!helpSize || params->helpSubcmd == "block_alloc_stack") {
-			params->sendBuff << "block_alloc_stack ... block stack allocation." << endl << endl;
+		if (!helpSize) {
+			std::map<string, cmdData>::iterator cmdItem;
+			for (cmdItem = cmdsDataTable.begin(); cmdItem != cmdsDataTable.end(); cmdItem++) {
+				params->sendBuff << cmdItem->first << " ... " << cmdItem->second.helpText << endl << endl;
+			}
 		}
 		return(0);
 	}
-
-	if(strstr(params->buf, "unblocktar") != NULL) {
-		opt_blocktarwrite = 0;
-	} else if(strstr(params->buf, "blocktar") != NULL) {
-		opt_blocktarwrite = 1;
-	} else if(strstr(params->buf, "unblockasync") != NULL) {
-		opt_blockasyncprocess = 0;
-	} else if(strstr(params->buf, "blockasync") != NULL) {
-		opt_blockasyncprocess = 1;
-	} else if(strstr(params->buf, "unblockprocesspacket") != NULL) {
-		opt_blockprocesspacket = 0;
-	} else if(strstr(params->buf, "blockprocesspacket") != NULL) {
-		opt_blockprocesspacket = 1;
-	} else if(strstr(params->buf, "unblockcleanupcalls") != NULL) {
-		opt_blockcleanupcalls = 0;
-	} else if(strstr(params->buf, "blockcleanupcalls") != NULL) {
-		opt_blockcleanupcalls = 1;
-	} else if(strstr(params->buf, "unsleepprocesspacket") != NULL) {
-		opt_sleepprocesspacket = 0;
-	} else if(strstr(params->buf, "sleepprocesspacket") != NULL) {
-		opt_sleepprocesspacket = 1;
-	} else if(strstr(params->buf, "unblockqfile") != NULL) {
-		opt_blockqfile = 0;
-	} else if(strstr(params->buf, "blockqfile") != NULL) {
-		opt_blockqfile = 1;
-	} else if(strstr(params->buf, "unblock_alloc_stack") != NULL) {
-		opt_block_alloc_stack = 0;
-	} else if(strstr(params->buf, "block_alloc_stack") != NULL) {
-		opt_block_alloc_stack = 1;
+	char *endOfCmd = strpbrk(params->buf, " _\r\n\t");
+	if (!endOfCmd) {
+		return(-1);
+	}
+	string cmdStr (params->buf, endOfCmd);
+	std::map<string, cmdData>::iterator cmdItem = cmdsDataTable.find(cmdStr);
+	if (cmdItem != cmdsDataTable.end()) {
+		* cmdItem->second.setVar = cmdItem->second.setValue;
 	}
 	return(0);
 }
