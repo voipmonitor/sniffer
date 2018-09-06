@@ -119,9 +119,9 @@ class Mgmt_params {
 		ssh_channel sshchannel;
 		cClient *c_client;
 		ManagerClientThread **managerClientThread;
-		bool getHelp = false;
-		bool zip = false;
-		bool doInit = false;
+		bool getHelp;
+		bool zip;
+		bool doInit;
 		string helpText;
 		Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
 		int sendString(const char *);
@@ -181,6 +181,9 @@ Mgmt_params::Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshcha
 	sshchannel = isshchannel;
 	c_client = ic_client;
 	managerClientThread = imanagerClientThread;
+	getHelp = false;
+	zip = false;
+	doInit = false;
 }
 
 int Mgmt_getversion(Mgmt_params *params);
@@ -4471,7 +4474,6 @@ int Mgmt_listcalls(Mgmt_params *params) {
 	}
 	return 0;
 }
-
 
 int Mgmt_offon(Mgmt_params *params) {
 	struct cmdData {
