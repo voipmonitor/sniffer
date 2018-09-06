@@ -3017,8 +3017,15 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				char text[1024];
 				char *pointerToText = strcasestr(pointerToCause, ";text=\"");
 				if(pointerToText && (pointerToText - pointerToCause - 7) < 5) {
-					unsigned int lengthText = MIN(l - (pointerToText - reason + 7), sizeof(text) - 1);
-					memcpy(text, pointerToText + 7, lengthText);
+					pointerToText += 7;
+					char *pointerToQmark = strchr(pointerToText, '"');
+					unsigned int lengthText;
+					if (pointerToQmark)
+						lengthText = pointerToQmark - pointerToText;
+					else
+						lengthText = MIN(l - (pointerToText - reason), sizeof(text) - 1);
+
+					memcpy(text, pointerToText, lengthText);
 					text[lengthText] = 0;
 					if(lengthText > 0 && text[lengthText - 1] == '"') {
 						--lengthText;
