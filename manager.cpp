@@ -122,8 +122,7 @@ class Mgmt_params {
 		bool getHelp = false;
 		bool zip = false;
 		bool doInit = false;
-		string helpSubcmd;
-		std::stringstream sendBuff;
+		string helpText;
 		Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
 		int sendString(const char *);
 		int sendString(string *);
@@ -4350,7 +4349,7 @@ int Mgmt_getversion(Mgmt_params* params) {
 		return(0);
 	}
 	if (params->getHelp) {
-		params->sendBuff << "getversion ... returns the version of the sniffer." << endl << endl;
+		params->helpText = "returns the version of the sniffer";
 		return(0);
 	}
 	return(params->sendString(RTPSENSOR_VERSION));
@@ -4363,12 +4362,13 @@ int Mgmt_help(Mgmt_params* params) {
 		return(0);
 	}
 	if (params->getHelp) {
-		params->sendBuff << "help ... prints command's help." << endl << endl;
+		params->helpText = "prints command's help";
 		return(0);
 	}
 	std::map<string, int>::iterator MgmtItem;
 	params->getHelp = true;
 	char *startOfParam = strpbrk(params->buf, " ");
+	stringstream sendBuff;
 	if (startOfParam) {
 		startOfParam++;
 		char *endOfParam = strpbrk(startOfParam, " \r\n\t");
@@ -4380,19 +4380,21 @@ int Mgmt_help(Mgmt_params* params) {
 		string cmdStr (startOfParam, endOfParam);
 		MgmtItem = MgmtCmdsRegTable.find(cmdStr);
 		if (MgmtItem != MgmtCmdsRegTable.end()) {
-			params->helpSubcmd = cmdStr;
+			params->helpText = cmdStr;
 			MgmtFuncArray[MgmtItem->second](params);
+			sendBuff << MgmtItem->first << " ... " << params->helpText << "." << endl << endl;
 		} else {
-			params->sendBuff << "Command " << cmdStr << " not found." << endl << endl;
+			sendBuff << "Command " << cmdStr << " not found." << endl << endl;
 		}
 	} else {
-		params->sendBuff << "List of commands:" << endl << endl;
-		params->helpSubcmd = "";
+		sendBuff << "List of commands:" << endl << endl;
 		for (MgmtItem = MgmtCmdsRegTable.begin(); MgmtItem != MgmtCmdsRegTable.end(); MgmtItem++) {
+			params->helpText = MgmtItem->first;
 			MgmtFuncArray[MgmtItem->second](params);
+			sendBuff << MgmtItem->first << " ... " << params->helpText << "." << endl << endl;
 		}
 	}
-	string sendbuff = params->sendBuff.str();
+	string sendbuff = sendBuff.str();
 	return(params->sendString(&sendbuff));
 }
 
@@ -4403,9 +4405,9 @@ int Mgmt_reindexfiles(Mgmt_params *params) {
 		return(0);
 	}
 	if (params->getHelp) {
-		params->sendBuff << "reindexfiles ... starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex.\r\n"
+		params->helpText = "starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex.\r\n"
 				    "\t'reindexfiles_date DATE' runs reindex for DATE.\r\n"
-				    "\t'reindexfiles_date DATE HOUR' runs reindex for entered DATE HOUR. " << endl << endl;
+				    "\t'reindexfiles_date DATE HOUR' runs reindex for entered DATE HOUR";
 		return(0);
 	}
 	char sendbuf[BUFSIZE];
@@ -4450,7 +4452,7 @@ int Mgmt_listcalls(Mgmt_params *params) {
 		return(0);
 	}
 	if (params->getHelp) {
-		params->sendBuff << "listcalls ... lists active calls." << endl << endl;
+		params->helpText = "lists active calls";
 		return(0);
 	}
 	if(calltable) {
@@ -4470,13 +4472,13 @@ int Mgmt_listcalls(Mgmt_params *params) {
 	return 0;
 }
 
-typedef struct {
-	int *setVar;
-	int setValue;
-	string helpText;
-} cmdData;
 
 int Mgmt_offon(Mgmt_params *params) {
+	struct cmdData {
+		int *setVar;
+		int setValue;
+		string helpText;
+	};
 	static std::map<string, cmdData> cmdsDataTable = {
 		{"unblocktar", {&opt_blocktarwrite, 0, "unblock tar files"}},
 		{"blocktar", {&opt_blocktarwrite, 1, "block tar files"}},
@@ -4502,12 +4504,9 @@ int Mgmt_offon(Mgmt_params *params) {
 		return(0);
 	}
 	if (params->getHelp) {
-		int helpSize = params->helpSubcmd.length();
-		if (!helpSize) {
-			std::map<string, cmdData>::iterator cmdItem;
-			for (cmdItem = cmdsDataTable.begin(); cmdItem != cmdsDataTable.end(); cmdItem++) {
-				params->sendBuff << cmdItem->first << " ... " << cmdItem->second.helpText << endl << endl;
-			}
+		std::map<string, cmdData>::iterator cmdItem = cmdsDataTable.find(params->helpText);
+		if (cmdItem != cmdsDataTable.end()) {
+			params->helpText = cmdItem->second.helpText;
 		}
 		return(0);
 	}
