@@ -1,3 +1,9 @@
+22.12.2 07.09.2018
+==================
+- fix crash in dssl (ssl_store_sessions)
+- fix parsing text element in SIP reason header [VS-826]
+
+
 22.12.1 28.08.2018
 ==================
 - fix cleaning spooldir if maxpoolsize is not set 
