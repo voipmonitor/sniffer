@@ -4475,13 +4475,19 @@ int Mgmt_listcalls(Mgmt_params *params) {
 	return 0;
 }
 
+typedef struct {
+	int *setVar;
+	int setValue;
+	string helpText;
+} cmdData;
+
 int Mgmt_offon(Mgmt_params *params) {
-	struct cmdData {
+/*	struct cmdData {
 		int *setVar;
 		int setValue;
 		string helpText;
-	};
-	static std::map<string, cmdData> cmdsDataTable = {
+	};*/
+	static std::map<string, cmdData> cmdsDataTable/* = {
 		{"unblocktar", {&opt_blocktarwrite, 0, "unblock tar files"}},
 		{"blocktar", {&opt_blocktarwrite, 1, "block tar files"}},
 		{"unblockasync", {&opt_blockasyncprocess, 0, "unblock async processing"}},
@@ -4496,7 +4502,8 @@ int Mgmt_offon(Mgmt_params *params) {
 		{"blockqfile", {&opt_blockqfile, 1, "block qfiles"}},
 		{"unblockallocstack", {&opt_block_alloc_stack, 0, "unblock stack allocation"}},
 		{"blockallocstack", {&opt_block_alloc_stack, 1, "block stack allocation"}},
-	};
+	}*/;
+	cmdsDataTable["unblocktar"] = {&opt_blocktarwrite, 0, "unblock tar files"};
 	if (params->doInit) {
 		std::map<string, cmdData>::iterator cmdItem;
 		for (cmdItem = cmdsDataTable.begin(); cmdItem != cmdsDataTable.end(); cmdItem++) {
