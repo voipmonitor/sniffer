@@ -4482,29 +4482,23 @@ typedef struct {
 } cmdData;
 
 int Mgmt_offon(Mgmt_params *params) {
-/*	struct cmdData {
-		int *setVar;
-		int setValue;
-		string helpText;
-	};*/
-	static std::map<string, cmdData> cmdsDataTable/* = {
-		{"unblocktar", {&opt_blocktarwrite, 0, "unblock tar files"}},
-		{"blocktar", {&opt_blocktarwrite, 1, "block tar files"}},
-		{"unblockasync", {&opt_blockasyncprocess, 0, "unblock async processing"}},
-		{"blockasync", {&opt_blockasyncprocess, 1, "block async processing"}},
-		{"unblockprocesspacket", {&opt_blockprocesspacket, 0, "unblock packet processing"}},
-		{"blockprocesspacket", {&opt_blockprocesspacket, 1, "block packet processing"}},
-		{"unblockcleanupcalls", {&opt_blockcleanupcalls, 0, "unblock cleanup calls"}},
-		{"blockcleanupcalls", {&opt_blockcleanupcalls, 1, "block cleanup calls"}},
-		{"unsleepprocesspacket", {&opt_sleepprocesspacket, 0, "unsleep packet processing"}},
-		{"sleepprocesspacket", {&opt_sleepprocesspacket, 1, "sleep packet processing"}},
-		{"unblockqfile", {&opt_blockqfile, 0, "unblock qfiles"}},
-		{"blockqfile", {&opt_blockqfile, 1, "block qfiles"}},
-		{"unblockallocstack", {&opt_block_alloc_stack, 0, "unblock stack allocation"}},
-		{"blockallocstack", {&opt_block_alloc_stack, 1, "block stack allocation"}},
-	}*/;
-	cmdsDataTable["unblocktar"] = {&opt_blocktarwrite, 0, "unblock tar files"};
+	static std::map<string, cmdData> cmdsDataTable;
 	if (params->doInit) {
+		cmdsDataTable["unblocktar"] = {&opt_blocktarwrite, 0, "unblock tar files"};
+		cmdsDataTable["blocktar"] = {&opt_blocktarwrite, 1, "block tar files"};
+		cmdsDataTable["unblockasync"] = {&opt_blockasyncprocess, 0, "unblock async processing"};
+		cmdsDataTable["blockasync"] = {&opt_blockasyncprocess, 1, "block async processing"};
+		cmdsDataTable["unblockprocesspacket"] = {&opt_blockprocesspacket, 0, "unblock packet processing"};
+		cmdsDataTable["blockprocesspacket"] = {&opt_blockprocesspacket, 1, "block packet processing"};
+		cmdsDataTable["unblockcleanupcalls"] = {&opt_blockcleanupcalls, 0, "unblock cleanup calls"};
+		cmdsDataTable["blockcleanupcalls"] = {&opt_blockcleanupcalls, 1, "block cleanup calls"};
+		cmdsDataTable["unsleepprocesspacket"] = {&opt_sleepprocesspacket, 0, "unsleep packet processing"};
+		cmdsDataTable["sleepprocesspacket"] = {&opt_sleepprocesspacket, 1, "sleep packet processing"};
+		cmdsDataTable["unblockqfile"] = {&opt_blockqfile, 0, "unblock qfiles"};
+		cmdsDataTable["blockqfile"] = {&opt_blockqfile, 1, "block qfiles"};
+		cmdsDataTable["unblockallocstack"] = {&opt_block_alloc_stack, 0, "unblock stack allocation"};
+		cmdsDataTable["blockallocstack"] = {&opt_block_alloc_stack, 1, "block stack allocation"};
+
 		std::map<string, cmdData>::iterator cmdItem;
 		for (cmdItem = cmdsDataTable.begin(); cmdItem != cmdsDataTable.end(); cmdItem++) {
 			string str = cmdItem->first;
