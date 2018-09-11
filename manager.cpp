@@ -111,22 +111,28 @@ int sendvm(int socket, ssh_channel channel, cClient *c_client, const char *buf, 
 std::map<string, int> MgmtCmdsRegTable;
 
 class Mgmt_params {
-	public:
-		char *buf;
-		int size;
-		int client;
-		int index;
-		ssh_channel sshchannel;
-		cClient *c_client;
-		ManagerClientThread **managerClientThread;
-		bool getHelp;
-		bool zip;
-		bool doInit;
-		string helpText;
-		Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
-		int sendString(const char *);
-		int sendString(string *);
-		int registerCommand(string *, int);
+public:
+	Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
+	int sendString(const char *);
+	int sendString(string *);
+	int registerCommand(string *, int);
+
+	enum eTask {
+		mgmt_task_na = 0,
+		mgmt_task_getHelp = 1 << 0,
+		mgmt_task_DoInit = 1 << 1
+	};
+	eTask task;
+	string helpText;
+	int index;
+	bool zip;
+// vars for sendvm
+	char *buf;
+	int size;
+	int client;
+	ssh_channel sshchannel;
+	cClient *c_client;
+	ManagerClientThread **managerClientThread;
 };
 
 int Mgmt_params::registerCommand(string *str, int index) {
@@ -181,9 +187,8 @@ Mgmt_params::Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshcha
 	sshchannel = isshchannel;
 	c_client = ic_client;
 	managerClientThread = imanagerClientThread;
-	getHelp = false;
 	zip = false;
-	doInit = false;
+	task = mgmt_task_na;
 }
 
 int Mgmt_getversion(Mgmt_params *params);
@@ -4346,12 +4351,12 @@ int sendString(string *str, int client, ssh_channel sshchannel, cClient *c_clien
 }
 
 int Mgmt_getversion(Mgmt_params* params) {
-	if (params->doInit) {
+	if (params->task == params->mgmt_task_DoInit) {
 		string str = "getversion";
 		params->registerCommand(&str, params->index);
 		return(0);
 	}
-	if (params->getHelp) {
+	if (params->task == params->mgmt_task_getHelp) {
 		params->helpText = "returns the version of the sniffer";
 		return(0);
 	}
@@ -4359,17 +4364,17 @@ int Mgmt_getversion(Mgmt_params* params) {
 }
 
 int Mgmt_help(Mgmt_params* params) {
-	if (params->doInit) {
+	if (params->task == params->mgmt_task_DoInit) {
 		string str = "help";
 		params->registerCommand(&str, params->index);
 		return(0);
 	}
-	if (params->getHelp) {
+	if (params->task == params->mgmt_task_getHelp) {
 		params->helpText = "prints command's help";
 		return(0);
 	}
 	std::map<string, int>::iterator MgmtItem;
-	params->getHelp = true;
+	params->task = params->mgmt_task_getHelp;
 	char *startOfParam = strpbrk(params->buf, " ");
 	stringstream sendBuff;
 	if (startOfParam) {
@@ -4402,12 +4407,12 @@ int Mgmt_help(Mgmt_params* params) {
 }
 
 int Mgmt_reindexfiles(Mgmt_params *params) {
-	if (params->doInit) {
+	if (params->task == params->mgmt_task_DoInit) {
 		string str = "reindexfiles";
 		params->registerCommand(&str, params->index);
 		return(0);
 	}
-	if (params->getHelp) {
+	if (params->task == params->mgmt_task_getHelp) {
 		params->helpText = "starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex.\r\n"
 				    "\t'reindexfiles_date DATE' runs reindex for DATE.\r\n"
 				    "\t'reindexfiles_date DATE HOUR' runs reindex for entered DATE HOUR";
@@ -4449,12 +4454,12 @@ int Mgmt_reindexfiles(Mgmt_params *params) {
 }
 
 int Mgmt_listcalls(Mgmt_params *params) {
-	if (params->doInit) {
+	if (params->task == params->mgmt_task_DoInit) {
 		string str = "listcalls";
 		params->registerCommand(&str, params->index);
 		return(0);
 	}
-	if (params->getHelp) {
+	if (params->task == params->mgmt_task_getHelp) {
 		params->helpText = "lists active calls";
 		return(0);
 	}
@@ -4483,7 +4488,7 @@ typedef struct {
 
 int Mgmt_offon(Mgmt_params *params) {
 	static std::map<string, cmdData> cmdsDataTable;
-	if (params->doInit) {
+	if (params->task == params->mgmt_task_DoInit) {
 		cmdsDataTable["unblocktar"] = {&opt_blocktarwrite, 0, "unblock tar files"};
 		cmdsDataTable["blocktar"] = {&opt_blocktarwrite, 1, "block tar files"};
 		cmdsDataTable["unblockasync"] = {&opt_blockasyncprocess, 0, "unblock async processing"};
@@ -4506,7 +4511,7 @@ int Mgmt_offon(Mgmt_params *params) {
 		}
 		return(0);
 	}
-	if (params->getHelp) {
+	if (params->task == params->mgmt_task_getHelp) {
 		std::map<string, cmdData>::iterator cmdItem = cmdsDataTable.find(params->helpText);
 		if (cmdItem != cmdsDataTable.end()) {
 			params->helpText = cmdItem->second.helpText;
@@ -4528,7 +4533,7 @@ int Mgmt_offon(Mgmt_params *params) {
 void init_management_functions(void) {
 	int i;
 	Mgmt_params params(NULL, 0, 0, NULL, NULL, NULL);
-	params.doInit = true;
+	params.task = params.mgmt_task_DoInit;
 
 	for (i = 0;; i++) {
 		params.index = i;
