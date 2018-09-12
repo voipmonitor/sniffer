@@ -1,0 +1,11 @@
+{
+    "linters": {
+        "server-lint": {
+            "type": "pylint",
+            "include": "(\\.py$)",
+            "severity": {
+                "W0403": "disabled"
+            }
+        }
+    }
+}
