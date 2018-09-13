@@ -3250,6 +3250,24 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 				} else if(packetS->sip_method == RES2XX) {
 					call->televent_exists_response = true;
 				}
+				//m=video support
+				if (tmp_port2)
+				{
+					call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base, tmp_port2, packetS->header_pt,
+										   sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
+					// check if the IP address is listed in nat_aliases
+					in_addr_t alias = 0;
+					if ((alias = match_nat_aliases(tmp_addr)) != 0)
+					{
+						call->add_ip_port_hash(packetS->saddr, alias, ip_port_call_info::_ta_natalias, tmp_port2, packetS->header_pt,
+											   sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
+					}
+					if (opt_sdp_reverse_ipport)
+					{
+						call->add_ip_port_hash(packetS->saddr, packetS->saddr, ip_port_call_info::_ta_sdp_reverse_ipport, tmp_port2, packetS->header_pt,
+											   sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
+					}
+				}
 			}
 			if(sdp_media_data_item->srtp_crypto_config_list) {
 				delete sdp_media_data_item->srtp_crypto_config_list;
@@ -9906,6 +9924,7 @@ void rtp_read_thread::term_thread_buffer() {
 
 size_t rtp_read_thread::qring_size() {
 	return(writeit >= readit ? writeit - readit : writeit + this->qring_length - readit);
+
 }
 
 
