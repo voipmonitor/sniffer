@@ -354,17 +354,25 @@ public:
 		tt_all   = 7
 	};
 	enum eTypeTables2 {
-		tt2_na = 0,
-		tt2_cdr_static = 1,
-		tt2_cdr_dynamic = 2,
-		tt2_cdr = 3,
-		tt2_message_static = 4,
-		tt2_message_dynamic = 8,
-		tt2_message = 12,
-		tt2_register = 16,
-		tt2_http_enum = 32,
-		tt2_webrtc = 64,
-		tt2_static = tt2_cdr_static | tt2_message_static | tt2_register | tt2_http_enum | tt2_webrtc
+		tt2_na			= 0,
+		tt2_cdr_static		= 1 << 0,
+		tt2_cdr_dynamic		= 1 << 1,
+		tt2_cdr			= (1 << 0) | (1 << 1),
+		tt2_message_static	= 1 << 2,
+		tt2_message_dynamic	= 1 << 3,
+		tt2_message		= (1 << 2) | (1 << 3),
+		tt2_register		= 1 << 4,
+		tt2_sip_msg_static	= 1 << 5,
+		tt2_sip_msg_dynamic	= 1 << 6,
+		tt2_sip_msg		= (1 << 5) | (1 << 6),
+		tt2_http_enum		= (1 << 7),
+		tt2_webrtc		= (1 << 8),
+		tt2_static = tt2_cdr_static | 
+			     tt2_message_static | 
+			     tt2_register | 
+			     tt2_sip_msg_static |
+			     tt2_http_enum | 
+			     tt2_webrtc
 	};
 public:
 	SqlDb_mysql();

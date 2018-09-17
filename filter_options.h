@@ -5,9 +5,9 @@
 #include "filter_record.h"
 
 
-class cOptionsFilter : public cRecordFilter {
+class cSipMsgFilter : public cRecordFilter {
 public:
-	cOptionsFilter(const char *filter);
+	cSipMsgFilter(const char *filter);
 	void setFilter(const char *filter);
 };
 

@@ -151,8 +151,8 @@ class Registers {
 public: 
 	Registers();
 	~Registers();
-	void add(Call *call, time_t currtime, int expires_add = 0);
-	void cleanup(u_int32_t act_time, bool force = false, int expires_add = 0);
+	void add(Call *call, struct timeval *currtime, int expires_add = 0);
+	void cleanup(struct timeval *act_time, bool force = false, int expires_add = 0);
 	void clean_all();
 	inline u_int64_t getNewRegisterFailedId(int sensorId);
 	string getDataTableJson(char *params, bool *zip = NULL);

@@ -419,7 +419,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		static unsigned int counterSqlStore = 0;
 		int storeId = STORE_PROC_ID_REGISTER_1 + 
 			      (opt_mysqlstore_max_threads_register > 1 &&
-			       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
+			       sqlStore->getSize(STORE_PROC_ID_REGISTER_1) > 1000 ? 
 				counterSqlStore % opt_mysqlstore_max_threads_register : 
 				0);
 		++counterSqlStore;
@@ -460,7 +460,7 @@ void Register::saveFailedToDb(RegisterState *state, bool force, bool enableBatch
 					static unsigned int counterSqlStore = 0;
 					int storeId = STORE_PROC_ID_REGISTER_1 + 
 						      (opt_mysqlstore_max_threads_register > 1 &&
-						       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
+						       sqlStore->getSize(STORE_PROC_ID_REGISTER_1) > 1000 ? 
 							counterSqlStore % opt_mysqlstore_max_threads_register : 
 							0);
 					++counterSqlStore;
@@ -544,7 +544,7 @@ Registers::~Registers() {
 	clean_all();
 }
 
-void Registers::add(Call *call, time_t currtime, int expires_add) {
+void Registers::add(Call *call, struct timeval *currtime, int expires_add) {
  
 	/*
 	string digest_username_orig = call->digest_username;
@@ -586,7 +586,7 @@ void Registers::add(Call *call, time_t currtime, int expires_add) {
 			if(regstate &&
 			   (regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) &&
 			   regstate->expires &&
-			   regstate->state_to + regstate->expires + expires_add < currtime) {
+			   regstate->state_to + regstate->expires + expires_add < currtime->tv_sec) {
 				existsReg->expire(false);
 			}
 			existsReg->unlock_states();
@@ -602,7 +602,8 @@ void Registers::add(Call *call, time_t currtime, int expires_add) {
 	strcpy(call->digest_username, digest_username_orig.c_str());
 	*/
 	
-	cleanup(call->calltime());
+	struct timeval cleanup_time;
+	cleanup(call->get_calltime(&cleanup_time));
 	
 	/*
 	eRegisterState states[] = {
@@ -614,12 +615,12 @@ void Registers::add(Call *call, time_t currtime, int expires_add) {
 	*/
 }
 
-void Registers::cleanup(u_int32_t act_time, bool force, int expires_add) {
+void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
 	if(!last_cleanup_time) {
-		last_cleanup_time = act_time;
+		last_cleanup_time = act_time->tv_sec;
 		return;
 	}
-	if(act_time > last_cleanup_time + NEW_REGISTER_CLEAN_PERIOD || force) {
+	if((act_time && act_time->tv_sec > last_cleanup_time + NEW_REGISTER_CLEAN_PERIOD) || force) {
 		lock_registers();
 		map<RegisterId, Register*>::iterator iter;
 		for(iter = registers.begin(); iter != registers.end(); ) {
@@ -630,8 +631,9 @@ void Registers::cleanup(u_int32_t act_time, bool force, int expires_add) {
 			bool eraseRegisterFailed = false;
 			if(regstate) {
 				if(regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) {
-					if(regstate->expires &&
-					   regstate->state_to + regstate->expires + expires_add < act_time) {
+					if(act_time &&
+					   regstate->expires &&
+					   regstate->state_to + regstate->expires + expires_add < act_time->tv_sec) {
 						reg->expire(false);
 						// cout << "expire" << endl;
 					}
@@ -639,20 +641,23 @@ void Registers::cleanup(u_int32_t act_time, bool force, int expires_add) {
 					if(regstate->state == rs_Failed) {
 						iter->second->saveFailedToDb(regstate, force);
 						RegisterState *regstate_prev = reg->states_prev_last();
-						if(regstate_prev &&
+						if(act_time &&
+						   regstate_prev &&
 						   (regstate_prev->state == rs_OK || regstate_prev->state == rs_UnknownMessageOK) &&
 						   regstate_prev->expires &&
-						   regstate_prev->state_to + regstate_prev->expires + expires_add < act_time) {
+						   regstate_prev->state_to + regstate_prev->expires + expires_add < act_time->tv_sec) {
 							reg->expire(false, true);
 							// cout << "expire prev state" << endl;
 						}
 					}
 					if(!_sync_registers_erase) {
-						if(regstate->state == rs_Failed && reg->countStates == 1 &&
-						   regstate->state_to + NEW_REGISTER_ERASE_FAILED_TIMEOUT < act_time) {
+						if(act_time &&
+						   regstate->state == rs_Failed && reg->countStates == 1 &&
+						   regstate->state_to + NEW_REGISTER_ERASE_FAILED_TIMEOUT < act_time->tv_sec) {
 							eraseRegisterFailed = true;
 							// cout << "erase failed" << endl;
-						} else if(regstate->state_to + NEW_REGISTER_ERASE_TIMEOUT < act_time) {
+						} else if(act_time &&
+							  regstate->state_to + NEW_REGISTER_ERASE_TIMEOUT < act_time->tv_sec) {
 							eraseRegister = true;
 							// cout << "erase" << endl;
 						}
@@ -670,7 +675,9 @@ void Registers::cleanup(u_int32_t act_time, bool force, int expires_add) {
 			}
 		}
 		unlock_registers();
-		last_cleanup_time = act_time;
+		if(act_time) {
+			last_cleanup_time = act_time->tv_sec;
+		}
 	}
 }
 

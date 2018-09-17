@@ -90,6 +90,7 @@ extern int opt_nocdr;
 
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
+extern CustomHeaders *custom_headers_sip_msg;
 
 extern int opt_ptime;
 
@@ -4788,15 +4789,15 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`caller_number` varchar(255),\
 				`called_number_reverse` varchar(255),\
 				`caller_number_reverse` varchar(255),\
-				`called_number_country_code` char(5),\
-				`caller_number_country_code` char(5),\
+				`called_number_country_code` varchar(5),\
+				`caller_number_country_code` varchar(5),\
 				`rel_cause_indicator` int unsigned,\
 				`state` enum('call_setup','in_call','completed','rejected','canceled'),\
 				`last_message_type` enum('iam','acm','cpg','anm','rel','rlc'),\
 				`src_ip` int unsigned,\
 				`dst_ip` int unsigned,\
-				`src_ip_country_code` char(5),\
-				`dst_ip_country_code` char(5),\
+				`src_ip_country_code` varchar(5),\
+				`dst_ip_country_code` varchar(5),\
 				`ss7_id` varchar(255),\
 				`pcap_filename` varchar(255),\
 				`id_sensor` smallint unsigned,") +
@@ -5076,6 +5077,80 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	""));
 
 	checkColumns_register(true);
+	
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `sip_msg` (\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
+			`time` datetime NOT NULL,\
+			`type` tinyint unsigned NOT NULL,\
+			`ip_src` int unsigned DEFAULT NULL,\
+			`ip_dst` int unsigned DEFAULT NULL,\
+			`ip_src_country_code` varchar(5),\
+			`ip_dst_country_code` varchar(5),\
+			`port_src` smallint unsigned DEFAULT NULL,\
+			`port_dst` smallint unsigned DEFAULT NULL,\
+			`number_src` varchar(255) DEFAULT NULL,\
+			`number_dst` varchar(255) DEFAULT NULL,\
+			`number_src_country_code` varchar(5),\
+			`number_dst_country_code` varchar(5),\
+			`domain_src` varchar(255) DEFAULT NULL,\
+			`domain_dst` varchar(255) DEFAULT NULL,\
+			`ua_src_id` int unsigned DEFAULT NULL,\
+			`ua_dst_id` int unsigned DEFAULT NULL,\
+			`callername` varchar(255),\
+			`callid` varchar(255),\
+			`cseq` int unsigned DEFAULT NULL,\
+			`request_id_content_type` mediumint unsigned DEFAULT NULL,\
+			`request_content_length` mediumint unsigned DEFAULT NULL,\
+			`request_content` mediumtext DEFAULT NULL,\
+			`response_id_content_type` mediumint unsigned DEFAULT NULL,\
+			`response_content_length` mediumint DEFAULT NULL,\
+			`response_content` mediumtext DEFAULT NULL,\
+			`response_number` smallint unsigned DEFAULT NULL,\
+			`response_id` mediumint unsigned DEFAULT NULL,\
+			`time_us` bigint unsigned DEFAULT NULL,\
+			`request_repetition` smallint unsigned DEFAULT NULL,\
+			`request_time` datetime DEFAULT NULL,\
+			`request_time_us` int unsigned DEFAULT NULL,\
+			`response_time` datetime DEFAULT NULL,\
+			`response_time_us` int unsigned DEFAULT NULL,\
+			`response_duration_ms` int unsigned DEFAULT NULL,\
+			`qualify_ok` tinyint unsigned DEFAULT NULL,\
+			`id_sensor` smallint unsigned DEFAULT NULL,\
+			`spool_index` tinyint unsigned DEFAULT NULL,\
+			`flags` bigint unsigned DEFAULT NULL,") +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `time`)," :
+			"PRIMARY KEY (`ID`),") + 
+		"KEY `type` (`type`),\
+		KEY `time` (`time`),\
+		KEY `ip_src` (`ip_src`),\
+		KEY `ip_dst` (`ip_dst`),\
+		KEY `number_src` (`number_src`),\
+		KEY `number_dst` (`number_dst`),\
+		KEY `domain_src` (`number_src`),\
+		KEY `domain_dst` (`number_dst`),\
+		KEY `ua_src_id` (`ua_src_id`),\
+		KEY `ua_dst_id` (`ua_dst_id`),\
+		KEY `callername` (`callername`),\
+		KEY `callid` (`callid`),\
+		KEY `cseq` (`cseq`),\
+		KEY `response_number` (`response_number`),\
+		KEY `response_id` (`response_id`),\
+		KEY `id_sensor` (`id_sensor`)" +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `sip_msg_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
+			CONSTRAINT `sip_msg_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
+			CONSTRAINT `sip_msg_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + 
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(time))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(time)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
 
 	this->query("CREATE TABLE IF NOT EXISTS `sensors` (\
 			`id_sensor` int unsigned NOT NULL,\
@@ -5163,12 +5238,12 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`number` varchar(30) NOT NULL,\
 			`number_ip` int unsigned NOT NULL,\
 			`ip` int unsigned,\
-			`country_code` char(5),\
-			`continent_code` char(5),\
+			`country_code` varchar(5),\
+			`continent_code` varchar(5),\
 			`at` bigint unsigned,\
 			`old_ip` int unsigned,\
-			`old_country_code` char(5),\
-			`old_continent_code` char(5),\
+			`old_country_code` varchar(5),\
+			`old_continent_code` varchar(5),\
 			`old_at` bigint unsigned,\
 		PRIMARY KEY (`number`, `number_ip`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
@@ -5178,12 +5253,12 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`domain` varchar(100) NOT NULL,\
 			`number_ip` int unsigned NOT NULL,\
 			`ip` int unsigned,\
-			`country_code` char(5),\
-			`continent_code` char(5),\
+			`country_code` varchar(5),\
+			`continent_code` varchar(5),\
 			`at` bigint unsigned,\
 			`old_ip` int unsigned,\
-			`old_country_code` char(5),\
-			`old_continent_code` char(5),\
+			`old_country_code` varchar(5),\
+			`old_continent_code` varchar(5),\
 			`old_at` bigint unsigned,\
 		PRIMARY KEY (`number`, `domain`, `number_ip`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
@@ -7036,6 +7111,21 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 				tables.push_back("register_state");
 			}
 		}
+		if(typeTables2 == tt2_na || typeTables2 & tt2_sip_msg_static) {
+			if(typeTables & tt_main) {
+				tables.push_back("sip_msg");
+			}
+		}
+		if(typeTables2 == tt2_na || typeTables2 & tt2_sip_msg_dynamic) {
+			if(typeTables & tt_child) {
+				if(custom_headers_sip_msg) {
+					list<string> nextTables = custom_headers_sip_msg->getAllNextTables();
+					for(list<string>::iterator it = nextTables.begin(); it != nextTables.end(); it++) {
+						tables.push_back(it->c_str());
+					}
+				}
+			}
+		}
 	}
 	return(tables);
 }
@@ -7083,6 +7173,9 @@ void createMysqlPartitionsCdr() {
 			}
 			if(custom_headers_message) {
 				custom_headers_message->createMysqlPartitions(sqlDb);
+			}
+			if(custom_headers_sip_msg) {
+				custom_headers_sip_msg->createMysqlPartitions(sqlDb);
 			}
 		}
 		delete sqlDb;
@@ -7300,6 +7393,13 @@ void dropMysqlPartitionsCdr() {
 	}
 	_dropMysqlPartitions("register_state", opt_cleandatabase_register_state, 0, sqlDb);
 	_dropMysqlPartitions("register_failed", opt_cleandatabase_register_failed, 0, sqlDb);
+	_dropMysqlPartitions("sip_msg", opt_cleandatabase_cdr, 0, sqlDb);
+	if(custom_headers_sip_msg) {
+		list<string> nextTables = custom_headers_sip_msg->getAllNextTables();
+		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
+			_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, 0, sqlDb);
+		}
+	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "drop cdr old partitions - end");
 }

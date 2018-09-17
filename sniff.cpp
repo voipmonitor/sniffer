@@ -122,6 +122,8 @@ extern int verbosityE;
 extern int opt_rtp_firstleg;
 extern int opt_sip_register;
 extern int opt_sip_options;
+extern int opt_sip_subscribe;
+extern int opt_sip_notify;
 extern int opt_norecord_header;
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
@@ -223,6 +225,7 @@ extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
+extern CustomHeaders *custom_headers_sip_msg;
 extern bool _save_sip_history;
 extern bool _save_sip_history_request_types[1000];
 extern bool _save_sip_history_all_requests;
@@ -235,6 +238,7 @@ extern int opt_bye_timeout;
 extern int opt_bye_confirmed_timeout;
 extern bool opt_ignore_rtp_after_bye_confirmed;
 extern bool opt_detect_alone_bye;
+extern int opt_hash_modify_queue_length_ms;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
@@ -295,13 +299,13 @@ volatile int usersniffer_sync;
 
 
 unsigned long process_packet__last_cleanup_calls = 0;
-long process_packet__last_cleanup_calls_diff = 0;
+int64_t process_packet__last_cleanup_calls_diff = 0;
 unsigned long process_packet__last_destroy_calls = 0;
 unsigned long process_packet__last_cleanup_registers = 0;
-long process_packet__last_cleanup_registers_diff = 0;
+int64_t process_packet__last_cleanup_registers_diff = 0;
 unsigned long process_packet__last_destroy_registers = 0;
 unsigned long process_packet__last_cleanup_ss7 = 0;
-long process_packet__last_cleanup_ss7_diff = 0;
+int64_t process_packet__last_cleanup_ss7_diff = 0;
 
 
 // return IP from nat_aliases[ip] or 0 if not found
@@ -1066,10 +1070,20 @@ inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContents
 	return rc;
 }
 
+char * gettag_sip_ext(packet_s_process *packetS,
+		      const char *tag, unsigned long *gettaglen) {
+	return(gettag_sip(packetS, tag, gettaglen));
+}
+
 inline char * gettag_sip(packet_s_process *packetS,
 			 const char *tag, unsigned long *gettaglen) {
 	return(gettag(packetS->data + packetS->sipDataOffset, packetS->sipDataLen, &packetS->parseContents,
 		      tag, gettaglen));
+}
+
+char * gettag_sip_ext(packet_s_process *packetS,
+		      const char *tag, const char *tag2, unsigned long *gettaglen) {
+	return(gettag_sip(packetS, tag, tag2, gettaglen));
 }
 
 inline char * gettag_sip(packet_s_process *packetS,
@@ -2729,9 +2743,9 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 
 static inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS);
 static inline void process_packet__parse_rtcpxr(Call *call, packet_s_process *packetS, timeval tv);
-static inline void process_packet__cleanup_calls(pcap_pkthdr *header, u_long timeS = 0);
-static inline void process_packet__cleanup_registers(pcap_pkthdr *header, u_long timeS = 0);
-static inline void process_packet__cleanup_ss7(pcap_pkthdr *header, u_long timeS = 0);
+static inline void process_packet__cleanup_calls(pcap_pkthdr *header);
+static inline void process_packet__cleanup_registers(pcap_pkthdr *header);
+static inline void process_packet__cleanup_ss7(pcap_pkthdr *header);
 static inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
 static inline int process_packet__parse_sip_method(packet_s_process *packetS, bool *sip_response);
 static inline bool process_packet__parse_cseq(sCseq *cseq, char *cseqstr, unsigned int cseqlen);
@@ -3174,7 +3188,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to), ppntt_to, ppndt_called);
 			char branch[100];
 			get_sip_branch(packetS, "via:", branch, sizeof(branch));
-			call->cancel_ip_port_hash(packetS->saddr, to, branch);
+			call->cancel_ip_port_hash(packetS->saddr, to, branch, &packetS->header_pt->ts);
 		}
 		
 		//check and save CSeq for later to compare with OK 
@@ -3344,7 +3358,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					call->not_acceptable = true;
 				} else if(IS_SIP_RES3XX(packetS->sip_method)) {
 					// remove all RTP  
-					call->removeFindTables();
+					call->removeFindTables(&packetS->header_pt->ts);
 					call->removeRTP();
 					call->ipport_n = 0;
 				}
@@ -3800,7 +3814,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		if(call->regcount > 4) {
 			// to much register attempts without OK or 401 responses
 			call->regstate = 4;
-			call->saveregister(packetS->header_pt->ts.tv_sec);
+			call->saveregister(&packetS->header_pt->ts);
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 			if(call == NULL) {
 				goto endsip;
@@ -3851,7 +3865,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		   call->reg200count < call->regcount) {
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + opt_register_timeout;
 		} else {
-			call->saveregister(packetS->header_pt->ts.tv_sec);
+			call->saveregister(&packetS->header_pt->ts);
 		}
 		if(logPacketSipMethodCall_enable) {
 			logPacketSipMethodCallDescr = "update expires header from all REGISTER dialog messages (from 200 OK which can override the expire)";
@@ -3931,7 +3945,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			// registration failed
 			call->regstate = 2;
 			save_packet(call, packetS, TYPE_SIP);
-			call->saveregister(packetS->header_pt->ts.tv_sec);
+			call->saveregister(&packetS->header_pt->ts);
 			if(logPacketSipMethodCall_enable) {
 				logPacketSipMethodCallDescr =
 					packetS->sip_method == RES401 ? "REGISTER 401 count > 1" :
@@ -3955,7 +3969,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		// too many REGISTER messages within the same callid
 		call->regstate = 4;
 		save_packet(call, packetS, TYPE_SIP);
-		call->saveregister(packetS->header_pt->ts.tv_sec);
+		call->saveregister(&packetS->header_pt->ts);
 		if(logPacketSipMethodCall_enable) {
 			logPacketSipMethodCallDescr = "too many REGISTER messages within the same callid";
 		}
@@ -4009,45 +4023,52 @@ endsip:
 	}
 }
 
-void process_packet_sip_other_options(packet_s_process *packetS) {
-	extern cOptionsRelations optionsRelations;
-	if(!optionsRelations.isSetParams()) {
+void process_packet_sip_other_sip_msg(packet_s_process *packetS) {
+	extern cSipMsgRelations *sipMsgRelations;
+	if(!sipMsgRelations) {
+		return;
+	}
+	int sipMsgType = packetS->is_options() ? smt_options :
+			 packetS->is_subscribe() ? smt_subscribe :
+			 packetS->is_notify() ? smt_notify : 0;
+	if(!sipMsgType) {
 		return;
 	}
 	s_detect_callerd data_callerd;
 	detect_callerd(packetS, packetS->sip_method, &data_callerd);
-	cOptionsItem *options = new FILE_LINE(0) cOptionsItem;
-	options->time_us = getTimeUS(packetS->header_pt);
-	options->callid = packetS->get_callid();
-	options->cseq_number = packetS->cseq.number;
-	if(packetS->sip_method == OPTIONS) {
-		options->ip_src = packetS->saddr;
-		options->ip_dst = packetS->daddr;
-		options->port_src = packetS->source;
-		options->port_dst = packetS->dest;
+	cSipMsgItem *sipMsg = new FILE_LINE(0) cSipMsgItem;
+	sipMsg->type = sipMsgType;
+	sipMsg->time_us = getTimeUS(packetS->header_pt);
+	sipMsg->callid = packetS->get_callid();
+	sipMsg->cseq_number = packetS->cseq.number;
+	if(!IS_SIP_RESXXX(packetS->sip_method)) {
+		sipMsg->ip_src = packetS->saddr;
+		sipMsg->ip_dst = packetS->daddr;
+		sipMsg->port_src = packetS->source;
+		sipMsg->port_dst = packetS->dest;
 	} else {
-		options->ip_src = packetS->daddr;
-		options->ip_dst = packetS->saddr;
-		options->port_src = packetS->dest;
-		options->port_dst = packetS->source;
+		sipMsg->ip_src = packetS->daddr;
+		sipMsg->ip_dst = packetS->saddr;
+		sipMsg->port_src = packetS->dest;
+		sipMsg->port_dst = packetS->source;
 	}
-	options->number_src = data_callerd.caller;
-	options->number_dst = data_callerd.called;
-	options->domain_src = data_callerd.caller_domain;
-	options->domain_dst = data_callerd.called_domain;
-	options->callername = data_callerd.callername;
+	sipMsg->number_src = data_callerd.caller;
+	sipMsg->number_dst = data_callerd.called;
+	sipMsg->domain_src = data_callerd.caller_domain;
+	sipMsg->domain_dst = data_callerd.called_domain;
+	sipMsg->callername = data_callerd.callername;
 	long unsigned int ua_len;
 	char *ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
 	if(ua) {
-		options->ua = string(ua, ua_len);
+		sipMsg->ua = string(ua, ua_len);
 	}
-	if(packetS->sip_method != OPTIONS) {
-		options->response = true;
-		options->response_number = packetS->lastSIPresponseNum;
-		options->response_string = packetS->lastSIPresponse;
+	if(IS_SIP_RESXXX(packetS->sip_method)) {
+		sipMsg->response = true;
+		sipMsg->response_number = packetS->lastSIPresponseNum;
+		sipMsg->response_string = packetS->lastSIPresponse;
 	}
-	options->id_sensor = packetS->sensor_id_();
-	optionsRelations.addOptions(options);
+	sipMsg->id_sensor = packetS->sensor_id_();
+	sipMsgRelations->addSipMsg(sipMsg, packetS);
 }
 
 void process_packet_sip_other(packet_s_process *packetS) {
@@ -4071,9 +4092,10 @@ void process_packet_sip_other(packet_s_process *packetS) {
 		}
 		cout << dump_data << endl;
 	}
-	if((packetS->sip_method == OPTIONS || IS_SIP_RESXXX(packetS->sip_method)) &&
-	   packetS->cseq.method == OPTIONS) {
-		process_packet_sip_other_options(packetS);
+	if((packetS->is_options() && opt_sip_options) ||
+	   (packetS->is_subscribe() && opt_sip_subscribe) ||
+	   (packetS->is_notify() && opt_sip_notify)) {
+		process_packet_sip_other_sip_msg(packetS);
 	}
 	save_live_packet(packetS);
 }
@@ -4413,10 +4435,10 @@ void process_packet_other(packet_s_stack *packetS) {
 
 inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS) {
 	if(call->typeIs(INVITE) && custom_headers_cdr) {
-		custom_headers_cdr->parse(call, INVITE, packetS->data + packetS->sipDataOffset , packetS->sipDataLen, &packetS->parseContents);
+		custom_headers_cdr->parse(call, INVITE, NULL, packetS->data + packetS->sipDataOffset , packetS->sipDataLen, &packetS->parseContents);
 	}
 	if(call->typeIs(MESSAGE) && custom_headers_message) {
-		custom_headers_message->parse(call, MESSAGE, packetS->data + packetS->sipDataOffset , packetS->sipDataLen, &packetS->parseContents);
+		custom_headers_message->parse(call, MESSAGE, NULL, packetS->data + packetS->sipDataOffset , packetS->sipDataLen, &packetS->parseContents);
 	}
 }
 
@@ -4476,19 +4498,23 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 	call->rtcpXrData.add(ssrc_int, tv, moslq, nlr);
 }
 
-inline void process_packet__cleanup_calls(pcap_pkthdr* header, u_long timeS) {
-	u_long actTimeS = getTimeS();
-	if(timeS) {
-		process_packet__last_cleanup_calls_diff = timeS - actTimeS;
-	} else {
-		if(header) {
-			timeS = header->ts.tv_sec;
-			process_packet__last_cleanup_calls_diff = timeS - actTimeS;
-		} else {
-			timeS = actTimeS + process_packet__last_cleanup_calls_diff;
+inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
+	u_long actTimeMS = getTimeMS_rdtsc();
+	if(header) {
+		process_packet__last_cleanup_calls_diff = getTimeMS(header) - actTimeMS;
+		if(getTimeS(header) - process_packet__last_cleanup_calls < 10) {
+			return;
 		}
 	}
-	if(timeS - process_packet__last_cleanup_calls < 10) {
+	struct timeval ts;
+	if(header) {
+		ts = header->ts;
+	} else {
+		u_long corTimeMS = actTimeMS + process_packet__last_cleanup_calls_diff;
+		ts.tv_sec = corTimeMS / 1000;
+		ts.tv_usec = corTimeMS % 1000 * 1000;
+	}
+	if(ts.tv_sec - process_packet__last_cleanup_calls < 10) {
 		return;
 	}
 	if(verbosity > 0 && is_read_from_file_simple()) {
@@ -4500,9 +4526,9 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, u_long timeS) {
 				(int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size());
 		}
 	}
-	calltable->cleanup_calls(timeS);
+	calltable->cleanup_calls(&ts);
 	listening_cleanup();
-	process_packet__last_cleanup_calls = timeS;
+	process_packet__last_cleanup_calls = ts.tv_sec;
 
 	/* You may encounter that voipmonitor process does not have a reduced memory usage although you freed the calls. 
 	This is because it allocates memory in a number of small chunks. When freeing one of those chunks, the OS may decide 
@@ -4516,48 +4542,56 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, u_long timeS) {
 #endif
 }
 
-inline void process_packet__cleanup_registers(pcap_pkthdr* header, u_long timeS) {
-	u_long actTimeS = getTimeS();
-	int expires_add = 0;
-	if(timeS) {
-		process_packet__last_cleanup_registers_diff = timeS - actTimeS;
-	} else {
-		if(header) {
-			timeS = header->ts.tv_sec;
-			process_packet__last_cleanup_registers_diff = timeS - actTimeS;
-		} else {
-			timeS = actTimeS + process_packet__last_cleanup_registers_diff;
-			expires_add = 30;
+inline void process_packet__cleanup_registers(pcap_pkthdr* header) {
+	u_long actTimeMS = getTimeMS_rdtsc();
+	if(header) {
+		process_packet__last_cleanup_registers_diff = getTimeMS(header) - actTimeMS;
+		if(getTimeS(header) - process_packet__last_cleanup_registers < 10) {
+			return;
 		}
 	}
-	if(timeS - process_packet__last_cleanup_registers < 10) {
+	struct timeval ts;
+	int expires_add = 0;
+	if(header) {
+		ts = header->ts;
+	} else {
+		u_long corTimeMS = actTimeMS + process_packet__last_cleanup_registers_diff;
+		ts.tv_sec = corTimeMS / 1000;
+		ts.tv_usec = corTimeMS % 1000 * 1000;
+		expires_add = 30;
+	}
+	if(ts.tv_sec - process_packet__last_cleanup_registers < 10) {
 		return;
 	}
 	if(opt_sip_register == 1) {
 		extern Registers registers;
-		registers.cleanup(timeS, false, expires_add);
+		registers.cleanup(&ts, false, expires_add);
 	}
-	calltable->cleanup_registers(timeS, expires_add);
-	process_packet__last_cleanup_registers = timeS;
+	calltable->cleanup_registers(&ts, expires_add);
+	process_packet__last_cleanup_registers = ts.tv_sec;
 }
 
-inline void process_packet__cleanup_ss7(pcap_pkthdr* header, u_long timeS) {
-	u_long actTimeS = getTimeS();
-	if(timeS) {
-		process_packet__last_cleanup_ss7_diff = timeS - actTimeS;
-	} else {
-		if(header) {
-			timeS = header->ts.tv_sec;
-			process_packet__last_cleanup_ss7_diff = timeS - actTimeS;
-		} else {
-			timeS = actTimeS + process_packet__last_cleanup_ss7_diff;
+inline void process_packet__cleanup_ss7(pcap_pkthdr* header) {
+	u_long actTimeMS = getTimeMS_rdtsc();
+	if(header) {
+		process_packet__last_cleanup_ss7_diff = getTimeMS(header) - actTimeMS;
+		if(getTimeS(header) - process_packet__last_cleanup_ss7 < 10) {
+			return;
 		}
 	}
-	if(timeS - process_packet__last_cleanup_ss7 < 2) {
+	struct timeval ts;
+	if(header) {
+		ts = header->ts;
+	} else {
+		u_long corTimeMS = actTimeMS + process_packet__last_cleanup_ss7_diff;
+		ts.tv_sec = corTimeMS / 1000;
+		ts.tv_usec = corTimeMS % 1000 * 1000;
+	}
+	if(ts.tv_sec - process_packet__last_cleanup_ss7 < 10) {
 		return;
 	}
-	calltable->cleanup_ss7(timeS);
-	process_packet__last_cleanup_ss7 = timeS;
+	calltable->cleanup_ss7(&ts);
+	process_packet__last_cleanup_ss7 = ts.tv_sec;
 }
 
 inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response) {
@@ -7068,8 +7102,8 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 		}
 		if(!pushed) {
 			if((packetS->is_options() && !opt_sip_options && !livesnifferfilterUseSipTypes.u_options) ||
-			   (packetS->is_subscribe() && !livesnifferfilterUseSipTypes.u_subscribe) ||
-			   (packetS->is_notify() && !livesnifferfilterUseSipTypes.u_notify)) {
+			   (packetS->is_subscribe() && !opt_sip_subscribe && !livesnifferfilterUseSipTypes.u_subscribe) ||
+			   (packetS->is_notify() && !opt_sip_notify && !livesnifferfilterUseSipTypes.u_notify)) {
 				PACKET_S_PROCESS_DESTROY(&packetS);
 			} else {
 				preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
@@ -7810,7 +7844,8 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) &&
 			   !(opt_ignore_rtp_after_bye_confirmed &&
 			     node_call->call->seenbyeandok && node_call->call->seenbyeandok_time_usec &&
-			     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seenbyeandok_time_usec)) {
+			     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seenbyeandok_time_usec) &&
+			   !(opt_hash_modify_queue_length_ms && node_call->call->end_call_rtp)) {
 				packetS->blockstore_addflag(34 /*pb lock flag*/);
 				packetS->call_info[packetS->call_info_length].call = node_call->call;
 				packetS->call_info[packetS->call_info_length].iscaller = node_call->iscaller;

@@ -327,6 +327,11 @@ public:
 	bool typeIsNot(int type) { return(!typeIs(type)); }
 	bool addNextType(int type);
 	int calltime() { return first_packet_time; };
+	struct timeval *get_calltime(struct timeval *ts) {
+		ts->tv_sec = first_packet_time;
+		ts->tv_usec = 0;
+		return(ts);
+	}
 	string get_sensordir();
 	string get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpoolDir = NULL);
 	string get_filename(eTypeSpoolFile typeSpoolFile, const char *fileExtension = NULL);
@@ -370,6 +375,8 @@ public:
 	pcap_t *useHandle;
 	string force_spool_path;
 	volatile unsigned int flags;
+	void *user_data;
+	int user_data_type;
 protected:
 	list<u_int64_t> tarPosSip;
 	list<u_int64_t> tarPosRtp;
@@ -601,6 +608,7 @@ public:
 	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
 	volatile unsigned int rtppacketsinqueue;
 	volatile int end_call_rtp;
+	volatile int end_call_hash_removed;
 	volatile int push_call_to_calls_queue;
 	volatile int push_register_to_registers_queue;
 	unsigned int ps_drop;
@@ -839,7 +847,7 @@ public:
 	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
 			      char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 
-	void cancel_ip_port_hash(in_addr_t sip_src_addr, char *to, char *branch);
+	void cancel_ip_port_hash(in_addr_t sip_src_addr, char *to, char *branch, struct timeval *ts);
 	
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
@@ -933,11 +941,11 @@ public:
 	 * @brief remove call from hash table
 	 *
 	*/
-	void hashRemove();
+	void hashRemove(struct timeval *ts, bool useHashQueueCounter = false);
 	
 	void skinnyTablesRemove();
 	
-	void removeFindTables(bool set_end_call = false);
+	void removeFindTables(struct timeval *ts, bool set_end_call = false, bool destroy = false);
 
 	/**
 	 * @brief remove all RTP 
@@ -955,7 +963,7 @@ public:
 	 * @brief save call to register tables and remove from calltable 
 	 *
 	*/
-	void saveregister(time_t currtime);
+	void saveregister(struct timeval *currtime);
 
 	/**
 	 * @brief print debug information for the call to stdout
@@ -1307,6 +1315,13 @@ public:
 	void getRecordData(RecordArray *rec);
 	string getJsonData();
 	void setRtpThreadNum();
+	
+	void hash_add_lock() {
+		while(__sync_lock_test_and_set(&this->_hash_add_lock, 1));
+	}
+	void hash_add_unlock() {
+		__sync_lock_release(&this->_hash_add_lock);
+	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -1316,11 +1331,14 @@ private:
 	PcapDumper pcapSip;
 	PcapDumper pcapRtp;
 	map<sStreamId, sUdptlDumper*> udptlDumpers;
+	volatile int _hash_add_lock;
 public:
 	bool sdp_0_0_flag[2];
 	bool error_negative_payload_length;
 	bool use_removeRtp;
 	volatile int hash_counter;
+	volatile int hash_queue_counter;
+	int attemptsClose;
 	bool use_rtcp_mux;
 	bool use_sdp_sendonly;
 	bool rtp_from_multiple_sensors;
@@ -1513,6 +1531,22 @@ private:
 		pthread_t thread_handle;
 		int thread_id;
 	};
+	enum eHashModifyOper {
+		hmo_add,
+		hmo_remove,
+		hmo_remove_call
+	};
+	struct sHashModifyData {
+		eHashModifyOper oper;
+		u_int32_t addr;
+		u_int16_t port;
+		u_int32_t time_s;
+		Call* call;
+		int8_t iscaller;
+		int8_t is_rtcp;
+		s_sdp_flags sdp_flags;
+		bool use_hash_queue_counter;
+	};
 public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	deque<Call*> audio_queue; //!< this queue is used for asynchronous audio convert by the worker thread
@@ -1569,6 +1603,7 @@ public:
 	void lock_ss7_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_ss7_listMAP, 1)) usleep(10); }
 	void lock_process_ss7_listmap() { while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_listmap, 1)) usleep(10); }
 	void lock_process_ss7_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_queue, 1)) usleep(10); }
+	void lock_hash_modify_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_hash_modify_queue, 1)) usleep(10); }
 
 	/**
 	 * @brief unlock calls_queue structure 
@@ -1587,6 +1622,7 @@ public:
 	void unlock_ss7_listMAP() { __sync_lock_release(&this->_sync_lock_ss7_listMAP); };
 	void unlock_process_ss7_listmap() { __sync_lock_release(&this->_sync_lock_process_ss7_listmap); };
 	void unlock_process_ss7_queue() { __sync_lock_release(&this->_sync_lock_process_ss7_queue); };
+	void unlock_hash_modify_queue() { __sync_lock_release(&this->_sync_lock_hash_modify_queue); };
 
 	/**
 	 * @brief add Call to Calltable
@@ -1745,16 +1781,16 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	int cleanup_calls( time_t currtime );
-	int cleanup_registers( time_t currtime, int expires_add = 0 );
-	int cleanup_ss7( time_t currtime );
+	int cleanup_calls( struct timeval *currtime );
+	int cleanup_registers( struct timeval *currtime, int expires_add = 0 );
+	int cleanup_ss7( struct timeval *currtime );
 
 	/**
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags);
-
+	void hashAdd(in_addr_t addr, unsigned short port, struct timeval *ts, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags);
+	inline void _hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, bool use_lock = true);
 
 	/**
 	 * @brief find call
@@ -1801,8 +1837,13 @@ public:
 	 * @brief remove call from hash
 	 *
 	*/
-	void hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp = false);
-	int hashRemove(Call *call);
+	void hashRemove(Call *call, in_addr_t addr, unsigned short port, struct timeval *ts, bool rtcp = false, bool useHashQueueCounter = true);
+	inline void _hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp = false, bool use_lock = true);
+	int hashRemove(Call *call, struct timeval *ts, bool useHashQueueCounter = true);
+	int hashRemoveForce(Call *call);
+	inline int _hashRemove(Call *call, bool use_lock = true);
+	void applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash = true);
+	inline void _applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash = true);
 	
 	void processCallsInAudioQueue(bool lock = true);
 	static void *processAudioQueueThread(void *);
@@ -1887,6 +1928,10 @@ private:
 	
 	class AsyncSystemCommand *asyncSystemCommand;
 	
+	list<sHashModifyData> hash_modify_queue;
+	u_int64_t hash_modify_queue_begin_ms;
+	volatile int _sync_lock_hash_modify_queue;
+	
 };
 
 
@@ -1894,7 +1939,8 @@ class CustomHeaders {
 public:
 	enum eType {
 		cdr,
-		message
+		message,
+		sip_msg
 	};
 	enum eSpecialType {
 		st_na,
@@ -1904,6 +1950,12 @@ public:
 		gsm_voicemail,
 		max_retransmission_invite
 	};
+	enum eReqRespDirection {
+		dir_na,
+		dir_request  = 1,
+		dir_response = 2,
+		dir_both     = 3
+	};
 	struct sCustomHeaderData {
 		eSpecialType specialType;
 		string header;
@@ -1912,21 +1964,23 @@ public:
 		string rightBorder;
 		string regularExpression;
 		bool screenPopupField;
+		eReqRespDirection reqRespDirection;
 	};
 	struct sCustomHeaderDataPlus : public sCustomHeaderData {
 		string type;
 		int dynamic_table;
 		int dynamic_column;
 	};
+	typedef map<int, map<int, dstring> > tCH_Content;
 public:
 	CustomHeaders(eType type);
 	void load(class SqlDb *sqlDb = NULL, bool enableCreatePartitions = true, bool lock = true);
 	void clear(bool lock = true);
 	void refresh(SqlDb *sqlDb = NULL, bool enableCreatePartitions = true);
 	void addToStdParse(ParsePacket *parsePacket);
-	void parse(Call *call, int type, char *data, int datalen, ParsePacket::ppContentsX *parseContents);
-	void setCustomHeaderContent(Call *call, int type, int pos1, int pos2, dstring *content, bool useLastValue = false);
-	void prepareSaveRows(Call *call, int type, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
+	void parse(Call *call, int type, tCH_Content *ch_content, char *data, int datalen, ParsePacket::ppContentsX *parseContents, eReqRespDirection reqRespDirection = dir_na);
+	void setCustomHeaderContent(Call *call, int type, tCH_Content *ch_content, int pos1, int pos2, dstring *content, bool useLastValue = false);
+	void prepareSaveRows(Call *call, int type, tCH_Content *ch_content, unsigned time_s, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
 	string getScreenPopupFieldsString(Call *call, int type);
 	string getDeleteQuery(const char *id, const char *prefix, const char *suffix);
 	list<string> getAllNextTables() {
@@ -1940,11 +1994,13 @@ public:
 	unsigned long getLoadTime() {
 		return(loadTime);
 	}
-	string getQueryForSaveUseInfo(Call *call, int type);
+	string getQueryForSaveUseInfo(Call *call, int type, tCH_Content *ch_content);
+	string getQueryForSaveUseInfo(unsigned time, tCH_Content *ch_content);
 	void createTablesIfNotExists(SqlDb *sqlDb = NULL, bool enableOldPartition = false);
 	void createTableIfNotExists(const char *tableName, SqlDb *sqlDb = NULL, bool enableOldPartition = false);
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
 	bool getPosForDbId(unsigned db_id, d_u_int32_t *pos);
+	static tCH_Content *getCustomHeadersCallContent(Call *call, int type);
 private:
 	void lock_custom_headers() {
 		while(__sync_lock_test_and_set(&this->_sync_custom_headers, 1));
@@ -1955,8 +2011,11 @@ private:
 private:
 	eType type;
 	string configTable;
+	string mainTable;
 	string nextTablePrefix;
 	string fixedTable;
+	string relIdColumn;
+	string relTimeColumn;
 	map<int, map<int, sCustomHeaderData> > custom_headers;
 	list<string> allNextTables;
 	unsigned loadTime;

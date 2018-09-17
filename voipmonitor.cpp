@@ -231,6 +231,11 @@ int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compu
 int opt_ringbuffer = 10;	// ring buffer in MB 
 int opt_sip_register = 0;	// if == 1 save REGISTER messages, if == 2, use old registers
 int opt_sip_options = 0;
+int opt_sip_subscribe = 0;
+int opt_sip_notify = 0;
+int opt_save_sip_options = 0;
+int opt_save_sip_subscribe = 0;
+int opt_save_sip_notify = 0;
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 int opt_manager_port = 5029;	// manager api TCP port
 char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
@@ -487,6 +492,7 @@ bool opt_cdr_sipresp = false;
 bool opt_rtpmap_by_callerd = false;
 bool opt_rtpmap_combination = true;
 bool opt_disable_rtp_warning = false;
+int opt_hash_modify_queue_length_ms = 0;
 
 char opt_php_path[1024];
 
@@ -553,8 +559,10 @@ bool opt_partition_operations_in_thread = 1;
 bool opt_autoload_from_sqlvmexport = 0;
 vector<dstring> opt_custom_headers_cdr;
 vector<dstring> opt_custom_headers_message;
+vector<dstring> opt_custom_headers_sip_msg;
 CustomHeaders *custom_headers_cdr;
 CustomHeaders *custom_headers_message;
+CustomHeaders *custom_headers_sip_msg;
 NoHashMessageRules *no_hash_message_rules;
 bool opt_callernum_numberonly = true;
 int opt_custom_headers_last_value = 1;
@@ -1209,6 +1217,11 @@ void *database_backup(void */*dummy*/) {
 					custom_headers_message->refresh(sqlDbSrc, false);
 					custom_headers_message->createColumnsForFixedHeaders(sqlDb);
 					custom_headers_message->createTablesIfNotExists(sqlDb, true);
+				}
+				if(custom_headers_sip_msg) {
+					custom_headers_sip_msg->refresh(sqlDbSrc, false);
+					custom_headers_sip_msg->createColumnsForFixedHeaders(sqlDb);
+					custom_headers_sip_msg->createTablesIfNotExists(sqlDb, true);
 				}
 			
 				time_t actTime = time(NULL);
@@ -3104,6 +3117,7 @@ int main(int argc, char *argv[]) {
 									   isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
 				custom_headers_cdr = new FILE_LINE(42011) CustomHeaders(CustomHeaders::cdr);
 				custom_headers_message = new FILE_LINE(42012) CustomHeaders(CustomHeaders::message);
+				custom_headers_sip_msg = new FILE_LINE(0) CustomHeaders(CustomHeaders::sip_msg);
 				vm_pthread_create("database backup",
 						  &database_backup_thread, NULL, database_backup, NULL, __FILE__, __LINE__);
 				pthread_join(database_backup_thread, NULL);
@@ -3140,6 +3154,10 @@ int main(int argc, char *argv[]) {
 			if(custom_headers_message) {
 				delete custom_headers_message;
 				custom_headers_message = NULL;
+			}
+			if(custom_headers_sip_msg) {
+				delete custom_headers_sip_msg;
+				custom_headers_sip_msg = NULL;
 			}
 			if(no_hash_message_rules) {
 				delete no_hash_message_rules;
@@ -3395,6 +3413,8 @@ int main_init_read() {
 		custom_headers_cdr->createTablesIfNotExists();
 		custom_headers_message = new FILE_LINE(42015) CustomHeaders(CustomHeaders::message);
 		custom_headers_message->createTablesIfNotExists();
+		custom_headers_sip_msg = new FILE_LINE(0) CustomHeaders(CustomHeaders::sip_msg);
+		custom_headers_sip_msg->createTablesIfNotExists();
 		no_hash_message_rules = new FILE_LINE(42016) NoHashMessageRules;
 	}
 
@@ -3405,6 +3425,10 @@ int main_init_read() {
 
 	_parse_packet_global_process_packet.setStdParse();
 
+	if(is_enable_sip_msg()) {
+		initSipMsg();
+	}
+		
 	if(opt_ipaccount && !opt_test) {
 		initIpacc();
 	}
@@ -3457,9 +3481,6 @@ int main_init_read() {
 		if(opt_enable_billing) {
 			initBilling();
 		}
-		
-		extern cOptionsRelations optionsRelations;
-		optionsRelations.loadParams();
 		
 		initSendCallInfo();
 	}
@@ -3547,7 +3568,7 @@ int main_init_read() {
 			for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end)); i++) {
 				if((i != PreProcessPacket::PreProcessPacket::ppt_pp_register && i != PreProcessPacket::PreProcessPacket::ppt_pp_sip_other) ||
 				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_register && opt_sip_register) ||
-				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_sip_other && opt_sip_options)) {
+				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_sip_other && is_enable_sip_msg())) {
 					preProcessPacket[i]->startOutThread();
 				}
 			}
@@ -3897,9 +3918,9 @@ void main_term_read() {
 
 	Call *call;
 	Ss7 *ss7;
-	calltable->cleanup_calls(0);
-	calltable->cleanup_registers(0);
-	calltable->cleanup_ss7(0);
+	calltable->cleanup_calls(NULL);
+	calltable->cleanup_registers(NULL);
+	calltable->cleanup_ss7(NULL);
 
 	set_terminating();
 
@@ -3908,9 +3929,9 @@ void main_term_read() {
 		extern Registers registers;
 		registers.clean_all();
 	}
-	if(opt_sip_options) {
-		extern cOptionsRelations optionsRelations;
-		optionsRelations.clear();
+	
+	if(is_enable_sip_msg()) {
+		termSipMsg();
 	}
 	
 	terminate_processpacket();
@@ -4081,6 +4102,10 @@ void main_term_read() {
 	if(custom_headers_message) {
 		delete custom_headers_message;
 		custom_headers_message = NULL;
+	}
+	if(custom_headers_sip_msg) {
+		delete custom_headers_sip_msg;
+		custom_headers_sip_msg = NULL;
 	}
 	if(no_hash_message_rules) {
 		delete no_hash_message_rules;
@@ -6079,6 +6104,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42288) cConfigItem_yesno("save_sip_responses", &opt_cdr_sipresp));
 				addConfigItem((new FILE_LINE(42289) cConfigItem_string("save_sip_history", &opt_save_sip_history))
 					->addStringItems("invite|bye|cancel|register|message|info|subscribe|options|notify|ack|prack|publish|refer|update|REQUESTS|RESPONSES|ALL"));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hash_queue_length_ms", &opt_hash_modify_queue_length_ms));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2"));
@@ -6097,8 +6124,13 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_ua", &opt_sip_register_state_compare_ua));
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
-		subgroup("OPTIONS");
+		subgroup("OPTIONS / SUBSCRIBE / NOTIFY");
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-options", &opt_sip_options));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-subscribe", &opt_sip_subscribe));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-notify", &opt_sip_notify));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-options", &opt_save_sip_options));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-subscribe", &opt_save_sip_subscribe));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-notify", &opt_save_sip_notify));
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE(42296) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
 			addConfigItem(new FILE_LINE(42297) cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));
@@ -8268,6 +8300,21 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sip-options", NULL))) {
 		opt_sip_options = yesno(value);
 	}
+	if((value = ini.GetValue("general", "sip-subscribe", NULL))) {
+		opt_sip_subscribe = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-notify", NULL))) {
+		opt_sip_notify = yesno(value);
+	}
+	if((value = ini.GetValue("general", "save-sip-options", NULL))) {
+		opt_save_sip_options = yesno(value);
+	}
+	if((value = ini.GetValue("general", "save-sip-subscribe", NULL))) {
+		opt_save_sip_subscribe = yesno(value);
+	}
+	if((value = ini.GetValue("general", "save-sip-notify", NULL))) {
+		opt_save_sip_notify = yesno(value);
+	}
 	if((value = ini.GetValue("general", "deduplicate", NULL))) {
 		opt_dup_check = yesno(value);
 	}
@@ -9683,6 +9730,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "save_sip_history", NULL))) {
 		opt_save_sip_history = value;
 	}
+	if((value = ini.GetValue("general", "hash_queue_length_ms", NULL))) {
+		opt_hash_modify_queue_length_ms = atoi(value);
+	}
 	
 	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {
 		opt_enable_jitterbuffer_asserts = yesno(value);
@@ -9992,6 +10042,10 @@ int load_config(char *fname) {
 }
 
 
+bool is_enable_sip_msg() {
+	return(opt_sip_options || opt_sip_subscribe || opt_sip_notify);
+}
+
 bool is_read_from_file() {
        return(is_read_from_file_simple() ||
 	      is_read_from_file_by_pb());
@@ -10003,6 +10057,10 @@ bool is_read_from_file_simple() {
 
 bool is_read_from_file_by_pb() {
        return(opt_pb_read_from_file[0]);
+}
+
+bool is_read_from_file_by_pb_acttime() {
+       return(opt_pb_read_from_file[0] && opt_pb_read_from_file_acttime);
 }
 
 bool is_enable_packetbuffer() {

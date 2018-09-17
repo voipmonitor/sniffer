@@ -936,6 +936,9 @@ public:
 	void setStateClose() {
 		this->state = state_close;
 	}
+	string getFileName() {
+		return(fileName);
+	}
 private:
 	eTypeSpoolFile typeSpoolFile;
 	string fileName;
@@ -2316,6 +2319,7 @@ private:
 	unsigned long timeSync_SIP_HEADERfilter;
 	unsigned long timeSync_custom_headers_cdr;
 	unsigned long timeSync_custom_headers_message;
+	unsigned long timeSync_custom_headers_sip_msg;
 };
 
 class SafeAsyncQueue_base {

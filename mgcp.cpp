@@ -175,13 +175,13 @@ void *handle_mgcp(packet_s_process *packetS) {
 							break;
 						}
 					}
-					call->removeFindTables(true);
+					call->removeFindTables(0, true);
 					calltable->unlock_calls_listMAP();
 				} else {
 					calltable->lock_calls_listMAP();
 					map<sStreamId, Call*>::iterator callMAPIT = calltable->calls_by_stream_listMAP.find(sStreamId(packetS->saddr, packetS->source, packetS->daddr, packetS->dest, true));
 					if(callMAPIT != calltable->calls_by_stream_listMAP.end()) {
-						callMAPIT->second->removeFindTables(true);
+						callMAPIT->second->removeFindTables(0, true);
 					}
 					calltable->unlock_calls_listMAP();
 				}

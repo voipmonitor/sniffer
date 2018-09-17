@@ -3216,9 +3216,9 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 		while(!is_terminating()) {
 			this->tryForcePush();
 			if(sleepCounter > 10 && sleepCounter <= 15) {
-				calltable->cleanup_calls(0);
-				calltable->cleanup_registers(0);
-				calltable->cleanup_ss7(0);
+				calltable->cleanup_calls(NULL);
+				calltable->cleanup_registers(NULL);
+				calltable->cleanup_ss7(NULL);
 				extern int opt_sip_register;
 				if(opt_sip_register == 1) {
 					extern Registers registers;
@@ -3252,9 +3252,9 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 			if(sleepTimeBeforeCleanup) {
 				--sleepTimeBeforeCleanup;
 				if(!sleepTimeBeforeCleanup) {
-					calltable->cleanup_calls(0);
-					calltable->cleanup_registers(0);
-					calltable->cleanup_ss7(0);
+					calltable->cleanup_calls(NULL);
+					calltable->cleanup_registers(NULL);
+					calltable->cleanup_ss7(NULL);
 					extern int opt_sip_register;
 					if(opt_sip_register == 1) {
 						extern Registers registers;

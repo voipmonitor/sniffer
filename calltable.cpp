@@ -58,6 +58,7 @@
 #include "srtp.h"
 #include "dtls.h"
 #include "filter_call.h"
+#include "options.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -162,6 +163,7 @@ extern int opt_register_timeout_disable_save_failed;
 extern int opt_rtpfromsdp_onlysip;
 extern int opt_rtpfromsdp_onlysip_skinny;
 extern int opt_rtp_check_both_sides_by_sdp;
+extern int opt_hash_modify_queue_length_ms;
 
 volatile int calls_counter = 0;
 volatile int registers_counter = 0;
@@ -261,6 +263,8 @@ Call_abstract::Call_abstract(int call_type, time_t time) {
 	useDlt = global_pcap_dlink;
 	useHandle = global_pcap_handle;
 	flags = 0;
+	user_data = NULL;
+	user_data_type = 0;
 	chunkBuffersCount = 0;
 }
 
@@ -330,6 +334,14 @@ Call_abstract::get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpool
 string 
 Call_abstract::get_filename(eTypeSpoolFile typeSpoolFile, const char *fileExtension) {
 	string extension = fileExtension ? fileExtension : getFileTypeExtension(typeSpoolFile);
+	if(((typeIs(OPTIONS) && user_data_type == OPTIONS) ||
+	    (typeIs(SUBSCRIBE) && user_data_type == SUBSCRIBE) ||
+	    (typeIs(NOTIFY) && user_data_type == NOTIFY)) && 
+	   user_data) {
+		 cSipMsgRequestResponse *sipMsgRequestResponse = (cSipMsgRequestResponse*)user_data;
+		 return(sipMsgRequestResponse->getPcapFileName() +
+			(extension.length() ? "." : "") + extension);
+	}
 	return((typeIs(REGISTER) ?
 		 intToString(fname_register) :
 		 get_fbasename_safe()) + 
@@ -512,6 +524,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	flags1 = 0;
 	rtppacketsinqueue = 0;
 	end_call_rtp = 0;
+	end_call_hash_removed = 0;
 	push_call_to_calls_queue = 0;
 	push_register_to_registers_queue = 0;
 	message = NULL;
@@ -589,6 +602,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	error_negative_payload_length = false;
 	use_removeRtp = false;
 	hash_counter = 0;
+	hash_queue_counter = 0;
+	attemptsClose = 0;
 	use_rtcp_mux = false;
 	use_sdp_sendonly = false;
 	rtp_from_multiple_sensors = false;
@@ -606,25 +621,24 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	iscaller_consecutive[1] = 0;
 	
 	last_mgcp_connect_packet_time = 0;
+	
+	_hash_add_lock = 0;
 }
 
 void
-Call::hashRemove() {
-	int i;
-	Calltable *ct = (Calltable *)calltable;
-
-	for(i = 0; i < ipport_n; i++) {
-		ct->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port);
+Call::hashRemove(struct timeval *ts, bool useHashQueueCounter) {
+	for(int i = 0; i < ipport_n; i++) {
+		calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port, ts, false, useHashQueueCounter);
 		if(opt_rtcp) {
-			ct->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port + 1, true);
+			calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port + 1, ts, true, useHashQueueCounter);
 		}
 		this->evDestroyIpPortRtpStream(i);
 	}
 	
-	if(this->hash_counter) {
+	if(!opt_hash_modify_queue_length_ms && this->hash_counter) {
 		syslog(LOG_WARNING, "WARNING: rest before hash cleanup for callid: %s: %i", this->fbasename, this->hash_counter);
 		if(this->hash_counter > 0) {
-			ct->hashRemove(this);
+			calltable->hashRemove(this, ts, useHashQueueCounter);
 			if(this->hash_counter) {
 				syslog(LOG_WARNING, "WARNING: rest after hash cleanup for callid: %s: %i", this->fbasename, this->hash_counter);
 			}
@@ -635,28 +649,40 @@ Call::hashRemove() {
 void
 Call::skinnyTablesRemove() {
 	if(opt_skinny) {
-		((Calltable *)calltable)->lock_skinny_maps();
+		calltable->lock_skinny_maps();
 		if(skinny_partyid) {
-			((Calltable *)calltable)->skinny_partyID.erase(skinny_partyid);
+			calltable->skinny_partyID.erase(skinny_partyid);
 			skinny_partyid = 0;
 		}
-		for (map<string, Call*>::iterator skinny_ipTuplesIT = ((Calltable *)calltable)->skinny_ipTuples.begin(); skinny_ipTuplesIT != ((Calltable *)calltable)->skinny_ipTuples.end();) {
+		for (map<string, Call*>::iterator skinny_ipTuplesIT = calltable->skinny_ipTuples.begin(); skinny_ipTuplesIT != calltable->skinny_ipTuples.end();) {
 			if(skinny_ipTuplesIT->second == this) {
-				((Calltable *)calltable)->skinny_ipTuples.erase(skinny_ipTuplesIT++);
+				calltable->skinny_ipTuples.erase(skinny_ipTuplesIT++);
 			} else {
 				++skinny_ipTuplesIT;
 			}
 		}
-		((Calltable *)calltable)->unlock_skinny_maps();
+		calltable->unlock_skinny_maps();
 	}
 }
 
 void
-Call::removeFindTables(bool set_end_call) {
+Call::removeFindTables(struct timeval *ts, bool set_end_call, bool destroy) {
 	if(set_end_call) {
+		hash_add_lock();
 		this->end_call_rtp = 1;
+		if(!(opt_hash_modify_queue_length_ms && this->end_call_hash_removed)) {
+			this->hashRemove(ts, true);
+			this->end_call_hash_removed = 1;
+		}
+		hash_add_unlock();
+	} else if(destroy) {
+		if(opt_hash_modify_queue_length_ms && this->hash_counter) {
+			calltable->hashRemoveForce(this);
+		}
+		this->hashRemove(ts);
+	} else {
+		this->hashRemove(ts, true);
 	}
-	this->hashRemove();
 	this->skinnyTablesRemove();
 }
 
@@ -1038,12 +1064,12 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info
 			   (this->ip_port[sessidIndex].addr != addr ||
 			    this->ip_port[sessidIndex].port != port ||
 			    this->ip_port[sessidIndex].iscaller != iscaller)) {
-				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
-				((Calltable*)calltable)->hashAdd(addr, port, header->ts.tv_sec, this, iscaller, 0, sdp_flags);
+				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port, &header->ts);
+				((Calltable*)calltable)->hashAdd(addr, port, &header->ts, this, iscaller, 0, sdp_flags);
 				if(opt_rtcp) {
-					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port + 1, true);
+					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port + 1, &header->ts, true);
 					if(!sdp_flags.rtcp_mux) {
-						((Calltable*)calltable)->hashAdd(addr, port + 1, header->ts.tv_sec, this, iscaller, 1, sdp_flags);
+						((Calltable*)calltable)->hashAdd(addr, port + 1, &header->ts, this, iscaller, 1, sdp_flags);
 					}
 				}
 				//cout << "change ip/port for sessid " << sessid << " ip:" << inet_ntostring(htonl(addr)) << "/" << inet_ntostring(htonl(this->ip_port[sessidIndex].addr)) << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
@@ -1062,23 +1088,23 @@ Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info
 	}
 	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, header, 
 			     sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags) != -1) {
-		((Calltable*)calltable)->hashAdd(addr, port, header->ts.tv_sec, this, iscaller, 0, sdp_flags);
+		((Calltable*)calltable)->hashAdd(addr, port, &header->ts, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
-			((Calltable*)calltable)->hashAdd(addr, port + 1, header->ts.tv_sec, this, iscaller, 1, sdp_flags);
+			((Calltable*)calltable)->hashAdd(addr, port + 1, &header->ts, this, iscaller, 1, sdp_flags);
 		}
 	}
 }
 
 void 
-Call::cancel_ip_port_hash(in_addr_t sip_src_addr, char *to, char *branch) {
+Call::cancel_ip_port_hash(in_addr_t sip_src_addr, char *to, char *branch, struct timeval *ts) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].sip_src_addr == sip_src_addr &&
 		   !strcmp(this->ip_port[i].branch.c_str(), branch) &&
 		   !strcmp(this->ip_port[i].to.c_str(), to)) {
 			this->ip_port[i].canceled = true;
-			((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port);
+			((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port, ts);
 			if(opt_rtcp) {
-				((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port + 1, true);
+				((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port + 1, ts, true);
 			}
 		}
 	}
@@ -3714,7 +3740,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	if(custom_headers_cdr) {
-		custom_headers_cdr->prepareSaveRows(this, INVITE, &cdr_next, cdr_next_ch, cdr_next_ch_name);
+		custom_headers_cdr->prepareSaveRows(this, INVITE, NULL, 0, &cdr_next, cdr_next_ch, cdr_next_ch_name);
 	}
 
 	if(whohanged == 0 || whohanged == 1) {
@@ -4312,7 +4338,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		if(existsNextCh && custom_headers_cdr) {
-			string queryForSaveUseInfo = custom_headers_cdr->getQueryForSaveUseInfo(this, INVITE);
+			string queryForSaveUseInfo = custom_headers_cdr->getQueryForSaveUseInfo(this, INVITE, NULL);
 			if(!queryForSaveUseInfo.empty()) {
 				query_str += queryForSaveUseInfo + ";\n";
 			}
@@ -5360,7 +5386,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 
 	if(custom_headers_message) {
-		custom_headers_message->prepareSaveRows(this, MESSAGE, &msg, msg_next_ch, msg_next_ch_name);
+		custom_headers_message->prepareSaveRows(this, MESSAGE, NULL, 0, &msg, msg_next_ch, msg_next_ch_name);
 	}
 
 	if(opt_message_country_code) {
@@ -5451,7 +5477,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			}
 		}
 		if(existsNextCh && custom_headers_message) {
-			string queryForSaveUseInfo = custom_headers_message->getQueryForSaveUseInfo(this, MESSAGE);
+			string queryForSaveUseInfo = custom_headers_message->getQueryForSaveUseInfo(this, MESSAGE, NULL);
 			if(!queryForSaveUseInfo.empty()) {
 				query_str += queryForSaveUseInfo + ";\n";
 			}
@@ -6134,6 +6160,9 @@ Calltable::Calltable() {
 	} else {
 		asyncSystemCommand = NULL;
 	}
+
+	hash_modify_queue_begin_ms = 0;
+	_sync_lock_hash_modify_queue = 0;
 	
 };
 
@@ -6159,12 +6188,14 @@ Calltable::~Calltable() {
 
 /* add node to hash. collisions are linked list of nodes*/
 void
-Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags) {
+Calltable::hashAdd(in_addr_t addr, unsigned short port, struct timeval *ts, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags) {
  
+	call->hash_add_lock();
 	if(call->end_call_rtp) {
+		call->hash_add_unlock();
 		return;
 	}
-
+	
 	if(sverb.hash_rtp) {
 		cout << "hashAdd: " 
 		     << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << " " 
@@ -6172,13 +6203,46 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* c
 		     << (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "undefined")) << " "
 		     << endl;
 	}
+	
+	if(opt_hash_modify_queue_length_ms) {
+		sHashModifyData hmd;
+		hmd.oper = hmo_add;
+		hmd.addr = addr;
+		hmd.port = port;
+		hmd.time_s = ts ? ts->tv_sec : 0;
+		hmd.call = call;
+		hmd.iscaller = iscaller;
+		hmd.is_rtcp = is_rtcp;
+		hmd.sdp_flags = sdp_flags;
+		hmd.use_hash_queue_counter = true;
+		lock_hash_modify_queue();
+		hash_modify_queue.push_back(hmd);
+		++call->hash_queue_counter;
+		if(ts) {
+			_applyHashModifyQueue(ts, true);
+		}
+		unlock_hash_modify_queue();
+	} else {
+		_hashAdd(addr, port, ts ? ts->tv_sec : 0, call, iscaller, is_rtcp, sdp_flags);
+	}
+	
+	call->hash_add_unlock();
+	
+}
+ 
+void
+Calltable::_hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, bool useLock) {
+ 
+	if(call->end_call_rtp) {
+		return;
+	}
  
 	u_int32_t h;
 	hash_node *node = NULL;
 	hash_node_call *node_call = NULL;
 
 	h = tuplehash(addr, port);
-	lock_calls_hash();
+	if (useLock) lock_calls_hash();
 	// check if there is not already call in hash 
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if ((node->addr == addr) && (node->port == port)) {
@@ -6240,7 +6304,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* c
 					*/
 					lastcall = call;
 				}
-				unlock_calls_hash();
+				if (useLock) unlock_calls_hash();
 				return;
 			}
 			if(!found) {
@@ -6257,7 +6321,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* c
 				++call->hash_counter;
 				
 			}
-			unlock_calls_hash();
+			if (useLock) unlock_calls_hash();
 			return;
 		}
 	}
@@ -6279,12 +6343,12 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* c
 	node->calls = node_call;
 	calls_hash[h] = node;
 	++call->hash_counter;
-	unlock_calls_hash();
+	if (useLock) unlock_calls_hash();
 }
 
 /* remove node from hash */
 void
-Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp) {
+Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, struct timeval *ts, bool rtcp, bool useHashQueueCounter) {
  
 	if(sverb.hash_rtp) {
 		cout << "hashRemove: " 
@@ -6293,13 +6357,39 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp
 		     << (rtcp ? "rtcp" : "") << " "
 		     << endl;
 	}
+
+	if(opt_hash_modify_queue_length_ms) {
+		sHashModifyData hmd;
+		hmd.oper = hmo_remove;
+		hmd.addr = addr;
+		hmd.port = port;
+		hmd.call = call;
+		hmd.is_rtcp = rtcp;
+		hmd.use_hash_queue_counter = useHashQueueCounter;
+		lock_hash_modify_queue();
+		hash_modify_queue.push_back(hmd);
+		if(useHashQueueCounter) {
+			++call->hash_queue_counter;
+		}
+		if(ts) {
+			_applyHashModifyQueue(ts, true);
+		}
+		unlock_hash_modify_queue();
+	} else {
+		_hashRemove(call, addr, port, rtcp);
+	}
 	
+}
+
+void
+Calltable::_hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp, bool use_lock) {
+ 
 	hash_node *node = NULL, *prev = NULL;
 	hash_node_call *node_call = NULL, *prev_call = NULL;
 	int h;
-
+	
 	h = tuplehash(addr, port);
-	lock_calls_hash();
+	if (use_lock) lock_calls_hash();
 	for (node = (hash_node *)calls_hash[h]; node != NULL; node = node->next) {
 		if (node->addr == addr && node->port == port) {
 			for (node_call = (hash_node_call *)node->calls; node_call != NULL; node_call = node_call->next) {
@@ -6326,28 +6416,58 @@ Calltable::hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp
 				if (prev == NULL) {
 					calls_hash[h] = node->next;
 					delete node;
-					unlock_calls_hash();
+					if (use_lock) unlock_calls_hash();
 					return;
 				} else {
 					prev->next = node->next;
 					delete node;
-					unlock_calls_hash();
+					if (use_lock) unlock_calls_hash();
 					return;
 				}
 			}
 		}
 		prev = node;
 	}
-	unlock_calls_hash();
+	if (use_lock) unlock_calls_hash();
 }
 
 int
-Calltable::hashRemove(Call *call) {
+Calltable::hashRemove(Call *call, struct timeval *ts, bool useHashQueueCounter) {
+
+	if(opt_hash_modify_queue_length_ms) {
+		sHashModifyData hmd;
+		hmd.oper = hmo_remove_call;
+		hmd.call = call;
+		hmd.use_hash_queue_counter = useHashQueueCounter;
+		lock_hash_modify_queue();
+		hash_modify_queue.push_back(hmd);
+		if(useHashQueueCounter) {
+			++call->hash_queue_counter;
+		}
+		if(ts) {
+			_applyHashModifyQueue(ts, true);
+		}
+		unlock_hash_modify_queue();
+		return(-1);
+	} else {
+		return(_hashRemove(call));
+	}
+
+}
+
+int
+Calltable::hashRemoveForce(Call *call) {
+	return(_hashRemove(call));
+}
+  
+int
+Calltable::_hashRemove(Call *call, bool use_lock) {
+
 	int removeCounter = 0;
 	hash_node *node = NULL, *prev_node = NULL;
 	hash_node_call *node_call = NULL, *prev_node_call = NULL;
 
-	lock_calls_hash();
+	if (use_lock) lock_calls_hash();
 	for(int h = 0; h < MAXNODE; h++) {
 		prev_node = NULL;
 		for(node = (hash_node*)calls_hash[h]; node != NULL;) {
@@ -6387,8 +6507,45 @@ Calltable::hashRemove(Call *call) {
 			}
 		}
 	}
-	unlock_calls_hash();
+	if (use_lock) unlock_calls_hash();
 	return(removeCounter);
+}
+
+void 
+Calltable::applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash) {
+	_applyHashModifyQueue(ts, setBegin, use_lock_calls_hash);
+}
+
+void 
+Calltable::_applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash) {
+	if(hash_modify_queue_begin_ms) {
+		if(getTimeMS(ts) >= hash_modify_queue_begin_ms + opt_hash_modify_queue_length_ms) {
+			if (use_lock_calls_hash) lock_calls_hash();
+			for(list<sHashModifyData>::iterator iter = hash_modify_queue.begin(); iter != hash_modify_queue.end(); iter++) {
+				switch(iter->oper) {
+				case hmo_add:
+					_hashAdd(iter->addr, iter->port, iter->time_s, iter->call, iter->iscaller, iter->is_rtcp, iter->sdp_flags, false);
+					break;
+				case hmo_remove:
+					_hashRemove(iter->call, iter->addr, iter->port, iter->is_rtcp, false);
+					break;
+				case hmo_remove_call:
+					_hashRemove(iter->call, false);
+					break;
+				}
+				if(iter->use_hash_queue_counter) {
+					--iter->call->hash_queue_counter;
+				}
+			}
+			if (use_lock_calls_hash) unlock_calls_hash();
+			hash_modify_queue.clear();
+			hash_modify_queue_begin_ms = 0;
+		}
+	} else {
+		if(setBegin) {
+			hash_modify_queue_begin_ms = getTimeMS(ts);
+		}
+	}
 }
 
 void Calltable::processCallsInAudioQueue(bool lock) {
@@ -6450,7 +6607,7 @@ Calltable::destroyCallsIfPcapsClosed() {
 		for(size_t i = 0; i < size;) {
 			Call *call = this->calls_deletequeue[i];
 			if(call->isPcapsClose() && call->isEmptyChunkBuffersCount()) {
-				call->removeFindTables();
+				call->removeFindTables(NULL, false, true);
 				call->atFinish();
 				call->calls_counter_dec();
 				delete call;
@@ -6819,7 +6976,7 @@ Calltable::add_mgcp(sMgcpRequest *request, time_t time, u_int32_t saddr, unsigne
 */
 
 int
-Calltable::cleanup_calls( time_t currtime ) {
+Calltable::cleanup_calls( struct timeval *currtime ) {
  
 	extern int opt_blockcleanupcalls;
 	if(opt_blockcleanupcalls) {
@@ -6861,7 +7018,7 @@ Calltable::cleanup_calls( time_t currtime ) {
 			}
 			// rtptimeout seconds of inactivity will save this call and remove from call table
 			bool closeCall = false;
-			if(currtime == 0 || call->force_close) {
+			if(!currtime || call->force_close) {
 				closeCall = true;
 				if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
 					call->force_terminate = true;
@@ -6870,39 +7027,42 @@ Calltable::cleanup_calls( time_t currtime ) {
 				  call->typeIs(MGCP) ||
 				  call->in_preprocess_queue_before_process_packet <= 0 ||
 				  (!is_read_from_file() &&
-				   (call->in_preprocess_queue_before_process_packet_at[0] && call->in_preprocess_queue_before_process_packet_at[0] < currtime - 300 &&
+				   (call->in_preprocess_queue_before_process_packet_at[0] && call->in_preprocess_queue_before_process_packet_at[0] < currtime->tv_sec - 300 &&
 				    call->in_preprocess_queue_before_process_packet_at[1] && call->in_preprocess_queue_before_process_packet_at[1] < (getTimeMS_rdtsc() / 1000) - 300))) {
-				if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime) {
+				if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime->tv_sec) {
 					closeCall = true;
-				} else if((call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime) ||
-					  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currtime)) {
+				} else if((call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime->tv_sec) ||
+					  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currtime->tv_sec)) {
 					closeCall = true;
 					call->bye_timeout_exceeded = true;
 				} else if(call->first_rtp_time &&
-					  currtime - call->get_last_packet_time() > rtptimeout) {
+					  currtime->tv_sec - call->get_last_packet_time() > rtptimeout) {
 					closeCall = true;
 					call->rtp_timeout_exceeded = true;
 				} else if(!call->first_rtp_time &&
-					  currtime - call->first_packet_time > sipwithoutrtptimeout) {
+					  currtime->tv_sec - call->first_packet_time > sipwithoutrtptimeout) {
 					closeCall = true;
 					call->sipwithoutrtp_timeout_exceeded = true;
-				} else if(currtime - call->first_packet_time > absolute_timeout) {
+				} else if(currtime->tv_sec - call->first_packet_time > absolute_timeout) {
 					closeCall = true;
 					call->absolute_timeout_exceeded = true;
-				} else if(currtime - call->first_packet_time > 300 &&
+				} else if(currtime->tv_sec - call->first_packet_time > 300 &&
 					  !call->seenRES18X && !call->seenRES2XX && !call->first_rtp_time) {
 					closeCall = true;
 					call->zombie_timeout_exceeded = true;
 				}
 				if(!closeCall &&
-				   (call->oneway == 1 && (currtime - call->get_last_packet_time() > opt_onewaytimeout))) {
+				   (call->oneway == 1 && (currtime->tv_sec - call->get_last_packet_time() > opt_onewaytimeout))) {
 					closeCall = true;
 					call->oneway_timeout_exceeded = true;
 				}
 			}
 			if(closeCall) {
-				call->removeFindTables(true);
-				if(currtime && call->rtppacketsinqueue != 0) {
+				++call->attemptsClose;
+				call->removeFindTables(currtime, true);
+				if(currtime  &&
+				   ((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
+				    call->rtppacketsinqueue != 0)) {
 					closeCall = false;
 				}
 			}
@@ -6935,13 +7095,13 @@ Calltable::cleanup_calls( time_t currtime ) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 		}
 		// Close RTP dump file ASAP to save file handles
-		if(currtime == 0 && is_terminating()) {
+		if(!currtime && is_terminating()) {
 			call->getPcap()->close();
 			call->getPcapSip()->close();
 		}
 		call->getPcapRtp()->close();
 
-		if(currtime == 0) {
+		if(!currtime) {
 			/* we are saving calls because of terminating SIGTERM and we dont know 
 			 * if the call ends successfully or not. So we dont want to confuse monitoring
 			 * applications which reports unterminated calls so mark this call as sighup */
@@ -6962,17 +7122,14 @@ Calltable::cleanup_calls( time_t currtime ) {
 		unlock_calls_queue();
 		
 		if(opt_enable_fraud && currtime) {
-			struct timeval tv_currtime;
-			tv_currtime.tv_sec = currtime;
-			tv_currtime.tv_usec = 0;
-			fraudEndCall(call, tv_currtime);
+			fraudEndCall(call, *currtime);
 		}
 		extern u_int64_t counter_calls_clean;
 		++counter_calls_clean;
 	}
 	delete [] closeCalls;
 	
-	if(currtime == 0 && is_terminating()) {
+	if(!currtime && is_terminating()) {
 		extern int terminated_call_cleanup;
 		terminated_call_cleanup = 1;
 		syslog(LOG_NOTICE, "terminated - cleanup calls");
@@ -6982,7 +7139,7 @@ Calltable::cleanup_calls( time_t currtime ) {
 }
 
 int
-Calltable::cleanup_registers( time_t currtime, int expires_add ) {
+Calltable::cleanup_registers( struct timeval *currtime, int expires_add ) {
 
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
@@ -6999,24 +7156,24 @@ Calltable::cleanup_registers( time_t currtime, int expires_add ) {
 		}
 		// rtptimeout seconds of inactivity will save this call and remove from call table
 		bool closeReg = false;
-		if(currtime == 0 || reg->force_close) {
+		if(!currtime || reg->force_close) {
 			closeReg = true;
 			if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
 				reg->force_terminate = true;
 			}
 		} else {
-			if(reg->destroy_call_at != 0 && reg->destroy_call_at <= currtime) {
+			if(reg->destroy_call_at != 0 && reg->destroy_call_at <= currtime->tv_sec) {
 				closeReg = true;
-			} else if(currtime - reg->first_packet_time > absolute_timeout) {
+			} else if(currtime->tv_sec - reg->first_packet_time > absolute_timeout) {
 				closeReg = true;
 				reg->absolute_timeout_exceeded = true;
-			} else if(currtime - reg->first_packet_time > 300 &&
+			} else if(currtime->tv_sec - reg->first_packet_time > 300 &&
 				  !reg->seenRES18X && !reg->seenRES2XX) {
 				closeReg = true;
 				reg->zombie_timeout_exceeded = true;
 			}
 			if(!closeReg &&
-			   (reg->oneway == 1 && (currtime - reg->get_last_packet_time() > opt_onewaytimeout))) {
+			   (reg->oneway == 1 && (currtime->tv_sec - reg->get_last_packet_time() > opt_onewaytimeout))) {
 				closeReg = true;
 				reg->oneway_timeout_exceeded = true;
 			}
@@ -7026,12 +7183,12 @@ Calltable::cleanup_registers( time_t currtime, int expires_add ) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", reg->call_id.c_str());
 			}
 			// Close RTP dump file ASAP to save file handles
-			if(currtime == 0 && is_terminating()) {
+			if(!currtime && is_terminating()) {
 				reg->getPcap()->close();
 				reg->getPcapSip()->close();
 			}
 
-			if(currtime == 0) {
+			if(!currtime) {
 				/* we are saving calls because of terminating SIGTERM and we dont know 
 				 * if the call ends successfully or not. So we dont want to confuse monitoring
 				 * applications which reports unterminated calls so mark this call as sighup */
@@ -7067,10 +7224,7 @@ Calltable::cleanup_registers( time_t currtime, int expires_add ) {
 			}
 			registers_listMAP.erase(registerMAPIT++);
 			if(opt_enable_fraud && currtime) {
-				struct timeval tv_currtime;
-				tv_currtime.tv_sec = currtime;
-				tv_currtime.tv_usec = 0;
-				fraudEndCall(reg, tv_currtime);
+				fraudEndCall(reg, *currtime);
 			}
 			extern u_int64_t counter_registers_clean;
 			++counter_registers_clean;
@@ -7080,7 +7234,7 @@ Calltable::cleanup_registers( time_t currtime, int expires_add ) {
 	}
 	unlock_registers_listMAP();
 	
-	if(currtime == 0 && is_terminating()) {
+	if(!currtime && is_terminating()) {
 		extern int terminated_call_cleanup;
 		terminated_call_cleanup = 1;
 		syslog(LOG_NOTICE, "terminated - call cleanup");
@@ -7089,14 +7243,14 @@ Calltable::cleanup_registers( time_t currtime, int expires_add ) {
 	return 0;
 }
 
-int Calltable::cleanup_ss7( time_t currtime ) {
+int Calltable::cleanup_ss7( struct timeval *currtime ) {
 	lock_process_ss7_listmap();
 	lock_ss7_listMAP();
 	map<string, Ss7*>::iterator iter;
 	for(iter = ss7_listMAP.begin(); iter != ss7_listMAP.end(); ) {
 		if(iter->second->last_message_type == Ss7::rlc || 
 		   !currtime ||
-		   (currtime - (long int)(iter->second->last_time_us / 1000000ull)) > absolute_timeout) {
+		   (currtime->tv_sec - (long int)(iter->second->last_time_us / 1000000ull)) > absolute_timeout) {
 			iter->second->pushToQueue();
 			ss7_listMAP.erase(iter++);
 			continue;
@@ -7194,7 +7348,7 @@ void Calltable::addSystemCommand(const char *command) {
 }
 
 
-void Call::saveregister(time_t currtime) {
+void Call::saveregister(struct timeval *currtime) {
 	((Calltable*)calltable)->lock_registers_listMAP();
         map<string, Call*>::iterator registerMAPIT = ((Calltable*)calltable)->registers_listMAP.find(call_id);
 	if(registerMAPIT == ((Calltable*)calltable)->registers_listMAP.end()) {
@@ -7208,7 +7362,7 @@ void Call::saveregister(time_t currtime) {
 	extern u_int64_t counter_registers_clean;
 	++counter_registers_clean;
 	
-	removeFindTables();
+	removeFindTables(currtime);
 	this->pcap.close();
 	this->pcapSip.close();
 	/* move call to queue for mysql processing */
@@ -7569,9 +7723,32 @@ Call::is_sipcalled(unsigned int daddr, unsigned int dport, unsigned int saddr, u
 
 CustomHeaders::CustomHeaders(eType type) {
 	this->type = type;
-	this->configTable = type == cdr ? "cdr_custom_headers" : "message_custom_headers";
-	this->nextTablePrefix = type == cdr ? "cdr_next_" : "message_next_";
-	this->fixedTable = type == cdr ? "cdr_next" : "message";
+	switch(type) {
+	case cdr:
+		this->configTable = "cdr_custom_headers"; 
+		this->mainTable = "cdr";
+		this->nextTablePrefix = "cdr_next_";
+		this->fixedTable = "cdr_next";
+		this->relIdColumn = "cdr_ID";
+		this->relTimeColumn = "calldate";
+		break;
+	case message:
+		this->configTable = "message_custom_headers"; 
+		this->mainTable = "message";
+		this->nextTablePrefix = "message_next_";
+		this->fixedTable = "message";
+		this->relIdColumn = "message_ID";
+		this->relTimeColumn = "calldate";
+		break;
+	case sip_msg:
+		this->configTable = "sip_msg_custom_headers";
+		this->mainTable = "sip_msg";
+		this->nextTablePrefix = "sip_msg_next_";
+		this->fixedTable = "";
+		this->relIdColumn = "sip_msg_ID";
+		this->relTimeColumn = "time";
+		break;
+	}
 	this->loadTime = 0;
 	this->lastTimeSaveUseInfo = 0;
 	this->_sync_custom_headers = 0;
@@ -7612,17 +7789,26 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				ch_data.rightBorder = row["right_border"];
 				ch_data.regularExpression = row["regular_expression"];
 				ch_data.screenPopupField = atoi(row["screen_popup_field"].c_str());
+				if(type == sip_msg) {
+					ch_data.reqRespDirection = row["direction"] == "request" ? dir_request :
+								   row["direction"] == "response" ? dir_response :
+								   row["direction"] == "both" ? dir_both : dir_na;
+				} else {
+					ch_data.reqRespDirection = dir_na;
+				}
 				ch_data.dynamic_table = atoi(row["dynamic_table"].c_str());
 				ch_data.dynamic_column = atoi(row["dynamic_column"].c_str());
 				customHeaderData.push_back(ch_data);
 			}
 			for(list<sCustomHeaderDataPlus>::iterator iter = customHeaderData.begin(); iter != customHeaderData.end(); iter++) {
 				if(iter->type == "fixed") {
-					if(_createSqlObject) {
-						sqlDb->query("show columns from " + this->fixedTable + " where Field='custom_header__" + iter->header + "'");
-					}
-					if(!_createSqlObject || sqlDb->fetchRow()) {
-						custom_headers[0][custom_headers[0].size()] = *iter;
+					if(!this->fixedTable.empty()) {
+						if(_createSqlObject) {
+							sqlDb->query("show columns from " + this->fixedTable + " where Field='custom_header__" + iter->header + "'");
+						}
+						if(!_createSqlObject || sqlDb->fetchRow()) {
+							custom_headers[0][custom_headers[0].size()] = *iter;
+						}
 					}
 				} else {
 					custom_headers[iter->dynamic_table][iter->dynamic_column] = *iter;
@@ -7641,7 +7827,10 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 	}
 	extern vector<dstring> opt_custom_headers_cdr;
 	extern vector<dstring> opt_custom_headers_message;
-	vector<dstring> *_customHeaders = type == cdr ? &opt_custom_headers_cdr : &opt_custom_headers_message;
+	extern vector<dstring> opt_custom_headers_sip_msg;
+	vector<dstring> *_customHeaders = type == cdr ? &opt_custom_headers_cdr : 
+					  type == message ? &opt_custom_headers_message :
+					  type == sip_msg ? &opt_custom_headers_sip_msg : NULL;
 	for(vector<dstring>::iterator iter = _customHeaders->begin(); iter != _customHeaders->end(); iter++) {
 		SqlDb_row row;
 		if(existsConfigTable) {
@@ -7711,7 +7900,7 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 
 extern char * gettag_ext(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents, 
 			 const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
-void CustomHeaders::parse(Call *call, int type, char *data, int datalen, ParsePacket::ppContentsX *parseContents) {
+void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, char *data, int datalen, ParsePacket::ppContentsX *parseContents, eReqRespDirection reqRespDirection) {
 	lock_custom_headers();
 	unsigned long gettagLimitLen = 0;
 	map<int, map<int, sCustomHeaderData> >::iterator iter;
@@ -7722,46 +7911,53 @@ void CustomHeaders::parse(Call *call, int type, char *data, int datalen, ParsePa
 				string content;
 				switch(iter2->second.specialType) {
 				case max_length_sip_data:
-					if(call->max_length_sip_data) {
+					if(call && call->max_length_sip_data) {
 						content = intToString(call->max_length_sip_data);
 					}
 					break;
 				case max_length_sip_packet:
-					if(call->max_length_sip_packet) {
+					if(call && call->max_length_sip_packet) {
 						content = intToString(call->max_length_sip_packet);
 					}
 					break;
 				case gsm_dcs:
-					if(call->dcs) {
+					if(call && call->dcs) {
 						content = intToString(call->dcs);
 					}
 					break;
 				case gsm_voicemail:
-					switch(call->voicemail) {
-					case Call::voicemail_active:
-						content = "active";
-						break;
-					case Call::voicemail_inactive:
-						content = "inactive";
-						break;
-					case Call::voicemail_na:
-						break;
+					if(call) {
+						switch(call->voicemail) {
+						case Call::voicemail_active:
+							content = "active";
+							break;
+						case Call::voicemail_inactive:
+							content = "inactive";
+							break;
+						case Call::voicemail_na:
+							break;
+						}
 					}
 					break;
 				case max_retransmission_invite:
-					{
-					unsigned max_retrans = call->getMaxRetransmissionInvite();
-					if(max_retrans > 0) {
-						content = intToString(max_retrans);
-					}
+					if(call) {
+						unsigned max_retrans = call->getMaxRetransmissionInvite();
+						if(max_retrans > 0) {
+							content = intToString(max_retrans);
+						}
 					}
 					break;
 				case st_na:
 					break;
 				}
 				dstring ds_content(iter2->second.header, content);
-				this->setCustomHeaderContent(call, type, iter->first, iter2->first, &ds_content, true);
+				this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &ds_content, true);
 			} else {
+				if(this->type == sip_msg &&
+				   reqRespDirection != dir_na &&
+				   !(reqRespDirection & iter2->second.reqRespDirection)) {
+					continue;
+				}
 				string findHeader = iter2->second.header;
 				if(findHeader.length()) {
 					if(findHeader[findHeader.length() - 1] != ':' &&
@@ -7798,11 +7994,11 @@ void CustomHeaders::parse(Call *call, int type, char *data, int datalen, ParsePa
 								continue;
 							} else {
 								dstring content(iter2->second.header, customHeader);
-								this->setCustomHeaderContent(call, type, iter->first, iter2->first, &content);
+								this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content);
 							}
 						} else {
 							dstring content(iter2->second.header, customHeaderBegin);
-							this->setCustomHeaderContent(call, type, iter->first, iter2->first, &content);
+							this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content);
 						}
 					}
 				}
@@ -7812,12 +8008,19 @@ void CustomHeaders::parse(Call *call, int type, char *data, int datalen, ParsePa
 	unlock_custom_headers();
 }
 
-void CustomHeaders::setCustomHeaderContent(Call *call, int type, int pos1, int pos2, dstring *content, bool useLastValue) {
-	map<int, map<int, dstring> > *custom_headers_content = type == MESSAGE ? &call->custom_headers_content_message : &call->custom_headers_content_cdr;
+void CustomHeaders::setCustomHeaderContent(Call *call, int type, tCH_Content *ch_content, int pos1, int pos2, dstring *content, bool useLastValue) {
+	if(!ch_content) {
+		if(call) {
+			ch_content = getCustomHeadersCallContent(call, type);
+		}
+		if(!ch_content) {
+			return;
+		}
+	}
 	bool exists = false;
 	if(!opt_custom_headers_last_value && !useLastValue) {
-		map<int, map<int, dstring> >::iterator iter = custom_headers_content->find(pos1);
-		if(iter != custom_headers_content->end()) {
+		tCH_Content::iterator iter = ch_content->find(pos1);
+		if(iter != ch_content->end()) {
 			map<int, dstring>::iterator iter2 = iter->second.find(pos2);
 			if(iter2 != iter->second.end()) {
 				exists = true;
@@ -7825,14 +8028,21 @@ void CustomHeaders::setCustomHeaderContent(Call *call, int type, int pos1, int p
 		}
 	}
 	if(!exists || opt_custom_headers_last_value || useLastValue) {
-		(*custom_headers_content)[pos1][pos2] = *content;
+		(*ch_content)[pos1][pos2] = *content;
 	}
 }
 
-void CustomHeaders::prepareSaveRows(Call *call, int type, SqlDb_row *cdr_next, SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]) {
-	map<int, map<int, dstring> > *custom_headers_content = type == MESSAGE ? &call->custom_headers_content_message : &call->custom_headers_content_cdr;
-	map<int, map<int, dstring> >::iterator iter;
-	for(iter = custom_headers_content->begin(); iter != custom_headers_content->end(); iter++) {
+void CustomHeaders::prepareSaveRows(Call *call, int type, tCH_Content *ch_content, unsigned time_s, SqlDb_row *cdr_next, SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]) {
+	if(!ch_content) {
+		if(call) {
+			ch_content = getCustomHeadersCallContent(call, type);
+		}
+		if(!ch_content) {
+			return;
+		}
+	}
+	tCH_Content::iterator iter;
+	for(iter = ch_content->begin(); iter != ch_content->end(); iter++) {
 		if(iter->first > CDR_NEXT_MAX) {
 			break;
 		}
@@ -7847,7 +8057,7 @@ void CustomHeaders::prepareSaveRows(Call *call, int type, SqlDb_row *cdr_next, S
 				if(!cdr_next_ch_name[iter->first - 1][0]) {
 					sprintf(cdr_next_ch_name[iter->first - 1], "%s%i", this->nextTablePrefix.c_str(), iter->first);
 					if(opt_cdr_partition) {
-						cdr_next_ch[iter->first - 1].add(sqlEscapeString(sqlDateTimeString(call->calltime()).c_str()), "calldate");
+						cdr_next_ch[iter->first - 1].add(sqlEscapeString(sqlDateTimeString(call ? call->calltime() : time_s).c_str()), this->relTimeColumn);
 					}
 				}
 				char fieldName[20];
@@ -7859,10 +8069,10 @@ void CustomHeaders::prepareSaveRows(Call *call, int type, SqlDb_row *cdr_next, S
 }
 
 string CustomHeaders::getScreenPopupFieldsString(Call *call, int type) {
+	tCH_Content *ch_content = getCustomHeadersCallContent(call, type);
 	string fields;
-	map<int, map<int, dstring> > *custom_headers_content = type == MESSAGE ? &call->custom_headers_content_message : &call->custom_headers_content_cdr;
-	map<int, map<int, dstring> >::iterator iter;
-	for(iter = custom_headers_content->begin(); iter != custom_headers_content->end(); iter++) {
+	tCH_Content::iterator iter;
+	for(iter = ch_content->begin(); iter != ch_content->end(); iter++) {
 		map<int, dstring>::iterator iter2;
 		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
 			if(!this->custom_headers[iter->first][iter2->first].screenPopupField ||
@@ -7888,7 +8098,7 @@ string CustomHeaders::getDeleteQuery(const char *id, const char *prefix, const c
 	for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
 		 deleteQuery += string(prefix ? prefix : "") + 
 				"delete from " + *iter + 
-				(this->type == cdr ? " where cdr_id = " : " where message_id = ") + id + 
+				" where " + this->relIdColumn + " = " + id + 
 				(suffix ? suffix : "");
 	}
 	return(deleteQuery);
@@ -7927,12 +8137,23 @@ void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, int day) {
 	}
 }
 
-string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type) {
-	map<int, map<int, dstring> > *custom_headers_content = type == MESSAGE ? &call->custom_headers_content_message : &call->custom_headers_content_cdr;
+string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type, tCH_Content *ch_content) {
+	if(!ch_content) {
+		if(call) {
+			ch_content = getCustomHeadersCallContent(call, type);
+		}
+		if(!ch_content) {
+			return("");
+		}
+	}
+	return(getQueryForSaveUseInfo(call->calltime(), ch_content));
+}
+
+string CustomHeaders::getQueryForSaveUseInfo(unsigned time_s, tCH_Content *ch_content) {
 	string query = "";
-	if((unsigned)call->calltime() > this->lastTimeSaveUseInfo + 60) {
-		map<int, map<int, dstring> >::iterator iter;
-		for(iter = custom_headers_content->begin(); iter != custom_headers_content->end(); iter++) {
+	if(time_s > this->lastTimeSaveUseInfo + 60) {
+		tCH_Content::iterator iter;
+		for(iter = ch_content->begin(); iter != ch_content->end(); iter++) {
 			if(iter->first > CDR_NEXT_MAX) {
 				break;
 			}
@@ -7947,7 +8168,7 @@ string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type) {
 						snprintf(queryBuff, sizeof(queryBuff),
 							 "update %s set use_at = '%s' where dynamic_table=%i and dynamic_column=%i",
 							 this->configTable.c_str(),
-							 sqlDateTimeString(call->calltime()).c_str(),
+							 sqlDateTimeString(time_s).c_str(),
 							 iter->first,
 							 iter2->first);
 						query += queryBuff;
@@ -7955,7 +8176,7 @@ string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type) {
 				}
 			}
 		}
-		this->lastTimeSaveUseInfo = call->calltime();
+		this->lastTimeSaveUseInfo = time_s;
 	}
 	return(query);
 }
@@ -7998,13 +8219,11 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 		compress = "ROW_FORMAT=COMPRESSED";
 	}
 	
-	string idColumn = type == cdr ? "cdr_ID" : "message_ID";
-	
 	sqlDb->query(string(
 	"CREATE TABLE IF NOT EXISTS `") + tableName + "` (\
-			`" + idColumn + "` bigint unsigned NOT NULL," +
+			`" + this->relIdColumn + "` bigint unsigned NOT NULL," +
 			(opt_cdr_partition ?
-				"`calldate` datetime NOT NULL," :
+				"`" + this->relTimeColumn + "` datetime NOT NULL," :
 				"") + 
 			"`custom_header_1` varchar(255) DEFAULT NULL,\
 			`custom_header_2` varchar(255) DEFAULT NULL,\
@@ -8017,17 +8236,17 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 			`custom_header_9` varchar(255) DEFAULT NULL,\
 			`custom_header_10` varchar(255) DEFAULT NULL," +
 		(opt_cdr_partition ? 
-			"PRIMARY KEY (`" + idColumn + "`, `calldate`)" :
-			"PRIMARY KEY (`" + idColumn + "`)") +
+			"PRIMARY KEY (`" + this->relIdColumn + "`, `" + this->relTimeColumn + "`)" :
+			"PRIMARY KEY (`" + this->relIdColumn + "`)") +
 		(opt_cdr_partition ?
 			"" :
-			(string(",CONSTRAINT `") + tableName + "_ibfk_1` FOREIGN KEY (`" + idColumn + "`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE").c_str()) +
+			(string(",CONSTRAINT `") + tableName + "_ibfk_1` FOREIGN KEY (`" + this->relIdColumn + "`) REFERENCES `" + this->mainTable + "` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE").c_str()) +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
 		(opt_cdr_partition_oldver ? 
-			string(" PARTITION BY RANGE (to_days(calldate))(\
+			string(" PARTITION BY RANGE (to_days(" + this->relTimeColumn + "))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
-			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+			string(" PARTITION BY RANGE COLUMNS(" + this->relTimeColumn + ")(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 	
@@ -8044,6 +8263,9 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 }
 
 void CustomHeaders::createColumnsForFixedHeaders(SqlDb *sqlDb) {
+	if(this->fixedTable.empty()) {
+		return;
+	}
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
@@ -8080,6 +8302,14 @@ bool CustomHeaders::getPosForDbId(unsigned db_id, d_u_int32_t *pos) {
 		pos->val[1] = 0;
 	}
 	return(find);
+}
+
+CustomHeaders::tCH_Content *CustomHeaders::getCustomHeadersCallContent(Call *call, int type) {
+	return(type == INVITE ?
+		&call->custom_headers_content_cdr :
+	       type == MESSAGE ? 
+		&call->custom_headers_content_message :
+		NULL);
 }
 
 

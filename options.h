@@ -12,45 +12,63 @@
 
 #include "record_array.h"
 #include "tools.h"
+#include "calltable.h"
+#include "sniff.h"
 
 
-enum eOptionsField {
-	of_id = 0,
-	of_id_sensor,
-	of_ip_src,
-	of_ip_dst,
-	of_port_src,
-	of_port_dst,
-	of_number_src,
-	of_number_dst,
-	of_domain_src,
-	of_domain_dst,
-	of_ua_src,
-	of_ua_dst,
-	of_last_options_time,
-	of_last_options_time_us,
-	of_last_response_time,
-	of_last_response_time_us,
-	of_response_time_ms,
-	of_last_response_number,
-	of_last_response_string,
-	of_qualify_ok,
-	of_history,
-	of__max
+enum eSipMsgType {
+	smt_options = OPTIONS,
+	smt_subscribe = SUBSCRIBE,
+	smt_notify = NOTIFY
+};
+
+enum eSipMsgField {
+	smf_id = 0,
+	smf_id_sensor,
+	smf_type,
+	smf_ip_src,
+	smf_ip_dst,
+	smf_port_src,
+	smf_port_dst,
+	smf_number_src,
+	smf_number_dst,
+	smf_domain_src,
+	smf_domain_dst,
+	smf_callername,
+	smf_callid,
+	smf_cseq,
+	smf_ua_src,
+	smf_ua_dst,
+	smf_request_time,
+	smf_request_time_us,
+	smf_request_first_time,
+	smf_request_first_time_us_compl,
+	smf_response_time,
+	smf_response_time_us,
+	smf_response_duration_ms,
+	smf_response_number,
+	smf_response_string,
+	smf_qualify_ok,
+	smf_exists_pcap,
+	smf__max
 };
 
 
-class cOptionsItem_base {
+class cSipMsgItem_base {
 public:
-	cOptionsItem_base() {
+	cSipMsgItem_base() {
+		type = 0;
+		id_sensor = 0;
 		ip_src = 0;
 		ip_dst = 0;
 		port_src = 0;
 		port_dst = 0;
 	}
-	bool operator == (const cOptionsItem_base& other) const;
+	bool operator == (const cSipMsgItem_base& other) const;
 	void debug_out();
 public:
+	int16_t type;
+	int16_t id_sensor;
 	u_int32_t ip_src;
 	u_int32_t ip_dst;
 	u_int16_t port_src;
@@ -62,20 +80,20 @@ public:
 };
 
 
-class cOptionsItem : public cOptionsItem_base {
+class cSipMsgItem : public cSipMsgItem_base {
 public:
-	cOptionsItem() {
+	cSipMsgItem() {
 		time_us = 0;
-		id_sensor = 0;
 		response = false;
 		cseq_number = 0;
 		response_number = 0;
+		content_length = 0;
 	}
-	bool operator == (const cOptionsItem& other) const;
+	bool operator == (const cSipMsgItem& other) const;
+	void parseContent(packet_s_process *packetS);
 	void debug_out();
 public:
 	u_int64_t time_us;
-	int id_sensor;
 	bool response;
 	string callid;
 	u_int32_t cseq_number;
@@ -83,95 +101,178 @@ public:
 	string ua;
 	int response_number;
 	string response_string;
+	string content_type;
+	unsigned content_length;
+	string content;
 };
 
 
-class cOptionsRelationId : public cOptionsItem_base {
+class cSipMsgRelationId : public cSipMsgItem_base {
 public:
-	cOptionsRelationId(cOptionsItem_base *options);
-	inline bool operator == (const cOptionsRelationId& other) const;
-	inline bool operator < (const cOptionsRelationId& other) const;
+	cSipMsgRelationId(cSipMsgItem_base *sipMsg);
+	inline bool operator == (const cSipMsgRelationId& other) const;
+	inline bool operator < (const cSipMsgRelationId& other) const;
 public:
-	cOptionsItem_base *options;
+	cSipMsgItem_base *sipMsg;
 };
 
 
-class cOptionsItemResponse {
-public:
-	cOptionsItemResponse() {
-		item = NULL;
-		response = NULL;
+struct sCallDataPcap {
+	sCallDataPcap() {
+		call_data = NULL;
+		pcap = NULL;
+		pcap_closed = false;
 	}
-	~cOptionsItemResponse();
-	u_int64_t getLastOptionsTime();
+	inline bool isSet() {
+		return(call_data || pcap);
+	}
+	inline bool isOpenPcap() {
+		return(pcap && pcap->isOpen());
+	}
+	inline bool isClosePcap() {
+		return(pcap && pcap->isClose());
+	}
+	inline void _closePcap() {
+		if(isOpenPcap()) {
+			pcap->close();
+			pcap_closed = true;
+		}
+	}
+	inline void destroy() {
+		if(call_data) {
+			delete call_data;
+			call_data = NULL;
+		}
+		if(pcap) {
+			delete pcap;
+			pcap = NULL;
+		}
+	}
+	inline bool pcapIsSave() {
+		return(isSet() || pcap_save);
+	}
+	inline bool pcapIsSaved() {
+		return(isClosePcap() && pcap_closed &&
+		       call_data->isEmptyChunkBuffersCount());
+	}
+	Call_abstract *call_data;
+	PcapDumper *pcap;
+	volatile bool pcap_save;
+	volatile bool pcap_closed;
+};
+
+
+class cSipMsgRequestResponse {
+public:
+	cSipMsgRequestResponse(u_int64_t time_us);
+	~cSipMsgRequestResponse();
+	void openPcap(packet_s_process *packetS, int type);
+	void closePcap(class cSipMsgRelations *relations);
+	bool isOpenPcap() {
+		return(cdp.isOpenPcap());
+	}
+	bool isSetCdp() {
+		return(cdp.isSet());
+	}
+	bool pcapIsSave() {
+		return(cdp.pcapIsSave());
+	}
+	bool pcapIsSaved() {
+		return(cdp.pcapIsSaved());
+	}
+	bool isSavedToDb() {
+		return(saved_to_db);
+	}
+	void destroyCdp() {
+		cdp.destroy();
+	}
+	void savePacket(packet_s_process *packetS);
+	void saveToDb(cSipMsgRelations *relations);
+	bool needSavePcap(cSipMsgRelations *relations);
+	bool needSaveToDb(cSipMsgRelations *relations);
+	u_int64_t getFirstRequestTime();
+	u_int64_t getLastRequestTime();
 	u_int64_t getLastResponseTime();
 	u_int64_t getLastTime();
+	string getPcapFileName();
+	void destroy(cSipMsgRelations *relations);
+	void parseCustomHeaders(packet_s_process *packetS, CustomHeaders::eReqRespDirection reqRespDirection);
 public:
-	cOptionsItem *item;
-	cOptionsItem *response;
-	list<u_int64_t> prev_time_us;
+	u_int64_t time_us;
+	cSipMsgItem *request;
+	cSipMsgItem *response;
+	list<u_int64_t> next_requests_time_us;
+	sCallDataPcap cdp;
+	volatile bool saved_to_db;
+	CustomHeaders::tCH_Content custom_headers_content;
 };
 
 
-class cOptionsRelation : public cOptionsItem_base {
+class cSipMsgRelation : public cSipMsgItem_base {
 public:
 	struct sHistoryData {
 		inline sHistoryData() {
 			clear();
 		}
 		inline void clear() {
-			options_time_us = 0;
+			request_time_us = 0;
+			cseq_number = 0;
+			ua_src_id = 0;
+			exists_pcap = false;
 			clearResponse();
 		}
 		inline void clearResponse() {
 			response_time_us = 0;
 			response_number = 0;
 			response_string_id = 0;
+			ua_dst_id = 0;
 		}
-		inline u_int64_t getResponseTime() {
-			return(response_time_us ? response_time_us - options_time_us : -1);
+		inline u_int64_t getResponseDuration() {
+			return(response_time_us ? response_time_us - request_time_us : -1);
 		}
+		u_int64_t getFirstRequestTime();
+		u_int64_t getLastRequestTime();
+		u_int64_t getLastResponseTime();
+		u_int64_t getLastTime();
 		string getJson(cStringCache *responseStringCache, int qualifyOk);
-		u_int64_t options_time_us;
+		u_int64_t request_time_us;
+		list<u_int64_t> next_requests_time_us;
 		u_int64_t response_time_us;
 		int response_number;
 		u_int32_t response_string_id;
+		string callid;
+		u_int32_t cseq_number;
+		string callername;
+		u_int32_t ua_src_id;
+		u_int32_t ua_dst_id;
+		bool exists_pcap;
 	};
 public:
-	cOptionsRelation(cOptionsItem *item);
-	~cOptionsRelation();
-	void addOptions(cOptionsItem *item, 
-			class cOptionsRelations *relations);
-	bool getDataRow(RecordArray *rec, u_int64_t limit_options_time_us, 
-			cOptionsRelations *relations);
-	u_int64_t getLastOptionsTime();
-	u_int64_t getLastResponseTime();
+	cSipMsgRelation(cSipMsgItem *item);
+	~cSipMsgRelation();
+	void addSipMsg(cSipMsgItem *item, packet_s_process *packetS,
+		       cSipMsgRelations *relations);
+	bool getDataRow(RecordArray *rec, u_int64_t limit_time_us, 
+			cSipMsgRelations *relations);
 	u_int64_t getLastTime();
-	bool getLastHistoryData(sHistoryData *data, u_int64_t limit_options_time_us, 
-				cOptionsRelations *relations,
+	bool getLastHistoryData(u_int64_t limit_time_us, 
+				cSipMsgRequestResponse **reqResp, sHistoryData **historyData,
 				bool useLock = true);
-	int32_t getLastResponseTime(u_int64_t limit_options_time_us, 
-				    u_int64_t *options_time_us, u_int64_t *response_time_us,
-				    int *response_number, string *response_string,
-				    cOptionsRelations *relations,
-				    bool useLock = true);
-	bool getHistoryData(list<sHistoryData> *historyData, u_int64_t limit_options_time_us, unsigned maxItems,
-			    cOptionsRelations *relations,
+	bool getHistoryData(list<sHistoryData> *historyData, u_int64_t limit_time_us, unsigned maxItems,
+			    cSipMsgRelations *relations,
 			    bool useLock = true);
-	bool getHistoryDataJson(string *historyData, u_int64_t limit_options_time_us, bool withResponseString, unsigned maxItems,
-				cOptionsRelations *relations,
-				bool useLock = true);
-	void debug_out(cOptionsRelations *relations);
+	void debug_out(cSipMsgRelations *relations);
 private:
-	void convItemResponseToHistoryData(cOptionsItemResponse *itemResponse, sHistoryData *historyData, 
-					   cOptionsRelations *relations,
-					   bool useLock = true);
-	cOptionsItemResponse *findItemForResponse(cOptionsItem *item);
+	void convRequestResponseToHistoryData(cSipMsgRequestResponse *itemResponse, sHistoryData *historyData, bool useResponse,
+					      cSipMsgRelations *relations,
+					      bool useLock = true);
+	cSipMsgRequestResponse *findItemForResponse(cSipMsgItem *item);
 	void clear();
-	void cleanup_item_response_by_limit_time(u_int64_t limit_time_us, cOptionsRelations *relations);
-	void cleanup_item_response_by_max_items(unsigned max_items, cOptionsRelations *relations);
+	void cleanup_item_response_by_limit_time(u_int64_t limit_time_us, cSipMsgRelations *relations);
+	void cleanup_item_response_by_max_items(unsigned max_items, cSipMsgRelations *relations);
 	void cleanup_history_by_limit_time(u_int64_t limit_time_us);
 	void cleanup_history_by_max_items(unsigned max_items);
+	void close_pcaps_by_limit_time(u_int64_t limit_time_us, cSipMsgRelations *relations);
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
 	}
@@ -186,20 +287,21 @@ private:
 	}
 private:
 	u_int64_t id;
-	deque<cOptionsItemResponse*> queue_items;
+	deque<cSipMsgRequestResponse*> queue_req_resp;
 	deque<sHistoryData> history;
 	int id_sensor;
-	string ua_src;
-	string ua_dst;
 	volatile int _sync;
 	static volatile u_int64_t _id;
 	static volatile int _sync_id;
-friend class cOptionsRelations;
+friend class cSipMsgRelations;
 };
 
 
-class cOptionsRelations {
+class cSipMsgRelations {
 public:
+	enum eDbFlags {
+		dbf_pcap_save = 1
+	};
 	struct sParamsBase {
 		inline sParamsBase() {
 			qualifyLimit = 0;
@@ -211,8 +313,8 @@ public:
 			qualifyLimit = 0;
 			okResponses.clear();
 		}
-		inline bool isQualifyOk(int response_time, int response_number) {
-			if(response_time > qualifyLimit * 1000) {
+		inline bool isQualifyOk(int64_t response_duration_us, int response_number) {
+			if(response_duration_us > qualifyLimit * 1000) {
 				return(false);
 			}
 			if(response_number == 200) {
@@ -233,14 +335,20 @@ public:
 				 domain_src.is_empty() &&
 				 domain_dst.is_empty()));
 		}
-		inline bool okCond(cOptionsItem_base *item) {
-			return((ip_src.is_empty() || ip_src.checkIP(ntohl(item->ip_src))) &&
+		inline bool okCond(cSipMsgItem_base *item) {
+			return(((options && item->type == smt_options) ||
+				(subscribe && item->type == smt_subscribe) ||
+				(notify && item->type == smt_notify)) &&
+			       (ip_src.is_empty() || ip_src.checkIP(ntohl(item->ip_src))) &&
 			       (ip_dst.is_empty() || ip_dst.checkIP(ntohl(item->ip_src))) &&
 			       (number_src.is_empty() || number_src.checkNumber(item->number_src.c_str())) &&
 			       (number_dst.is_empty() || number_dst.checkNumber(item->number_dst.c_str())) &&
 			       (domain_src.is_empty() || domain_src.check(item->domain_src.c_str())) &&
 			       (domain_dst.is_empty() || domain_dst.check(item->domain_dst.c_str())));
 		}
+		bool options;
+		bool subscribe;
+		bool notify;
 		ListIP ip_src;
 		ListIP ip_dst;
 		ListPhoneNumber number_src;
@@ -256,27 +364,18 @@ public:
 			defaultParams.clear();
 			recordsParams.clear();
 		}
-		inline bool isSet() {
-			return(defaultParams.isSet() ||
-			       recordsParams.size() > 0);
-		}
-		inline bool checkProcess(cOptionsItem_base *item) {
-			if(defaultParams.isSet()) {
-				return(true);
-			}
-			return(findRecordByCond(item));
-		}
-		inline sParamsBase *findParamsBase(cOptionsItem_base *item) {
-			sParamsRecord *paramRecord = findRecordByCond(item);
-			if(paramRecord) {
-				return(paramRecord);
-			}
-			if(defaultParams.isSet()) {
+		inline sParamsBase *findParamsBase(cSipMsgItem_base *item) {
+			if(recordsParams.size() > 0) {
+				sParamsRecord *paramRecord = findRecordByCond(item);
+				if(paramRecord) {
+					return(paramRecord);
+				}
+			} else if(defaultParams.isSet()) {
 				return(&defaultParams);
 			}
 			return(NULL);
 		}
-		inline sParamsRecord *findRecordByCond(cOptionsItem_base *item) {
+		inline sParamsRecord *findRecordByCond(cSipMsgItem_base *item) {
 			for(list<sParamsRecord>::iterator iter = recordsParams.begin(); iter != recordsParams.end(); iter++) {
 				if(iter->okCond(item)) {
 					return(&(*iter));
@@ -284,13 +383,13 @@ public:
 			}
 			return(NULL);
 		}
-		inline int isQualifyOk(cOptionsItem_base *item, int response_time, int response_number) {
-			if(response_time <= 0 || !response_number) {
+		inline int isQualifyOk(cSipMsgItem_base *item, int64_t response_duration_us, int response_number) {
+			if(response_duration_us <= 0 || !response_number) {
 				return(-1);
 			}
 			sParamsBase *paramsBase = findParamsBase(item);
 			if(paramsBase) {
-				return(paramsBase->isQualifyOk(response_time, response_number));
+				return(paramsBase->isQualifyOk(response_duration_us, response_number));
 			}
 			return(-1);
 		}
@@ -298,9 +397,9 @@ public:
 		list<sParamsRecord> recordsParams;
 	};
 public:
-	cOptionsRelations();
-	~cOptionsRelations();
-	void addOptions(cOptionsItem *item);
+	cSipMsgRelations();
+	~cSipMsgRelations();
+	void addSipMsg(cSipMsgItem *item, packet_s_process *packetS);
 	string getDataTableJson(char *params, bool *zip);
 	string getHistoryDataJson(char *params, bool *zip);
 	string getHistoryDataJson(u_int64_t id);
@@ -308,31 +407,32 @@ public:
 	void clear();
 	void loadParams();
 	void loadParamsInBackground();
-	bool isSetParams() {
+	int isQualifyOk(cSipMsgItem_base *item, int64_t response_duration_us, int response_number) {
 		lock_params();
-		bool rslt = params.isSet();
+		int rslt = params.isQualifyOk(item, response_duration_us, response_number);
 		unlock_params();
 		return(rslt);
 	}
-	bool checkProcess(cOptionsItem_base *item) {
-		lock_params();
-		bool rslt = params.checkProcess(item);
-		unlock_params();
-		return(rslt);
-	}
-	int isQualifyOk(cOptionsItem_base *item, int response_time, int response_number) {
-		lock_params();
-		int rslt = params.isQualifyOk(item, response_time, response_number);
-		unlock_params();
-		return(rslt);
-	}
+	void closePcap(sCallDataPcap *cdp);
+	void saveToDb(cSipMsgRequestResponse *itemResponse);
+	void _saveToDb(cSipMsgRequestResponse *itemResponse, bool enableBatchIfPossible = true);
+	bool needSavePcap(cSipMsgRequestResponse *itemResponse);
+	bool needSaveToDb(cSipMsgRequestResponse *itemResponse);
+	void pushToCdpQueue(sCallDataPcap *cdp);
+	void runInternalThread();
 private:
 	void cleanup_item_response_by_limit_time(u_int64_t limit_time_us);
 	void cleanup_history_by_limit_time(u_int64_t limit_time_us);
 	void cleanup_relations(u_int64_t limit_time_us);
+	void close_pcaps_by_limit_time(u_int64_t limit_time_us);
+	void do_cleanup_relations(u_int64_t act_time_ms, bool force = false);
+	void do_close_pcaps_by_limit_time(u_int64_t act_time_ms, bool force = false, bool all = false);
+	void do_cleanup_cdq();
 	bool existsParamsTables();
-	bool loadParams(sParams *params);
+	void loadParams(sParams *params);
 	static void *_loadParamsInBackground(void *arg);
+	void internalThread();
+	static void *internalThread(void *arg);
 	void lock_relations() {
 		while(__sync_lock_test_and_set(&_sync_relations, 1));
 	}
@@ -357,21 +457,51 @@ private:
 	void unlock_params_load() {
 		__sync_lock_release(&_sync_params_load);
 	}
+	void lock_cdp_queue() {
+		while(__sync_lock_test_and_set(&_sync_cdp_queue, 1));
+	}
+	void unlock_cdp_queue() {
+		__sync_lock_release(&_sync_cdp_queue);
+	}
+	void lock_close_pcap() {
+		while(__sync_lock_test_and_set(&_sync_close_pcap, 1));
+	}
+	void unlock_close_pcap() {
+		__sync_lock_release(&_sync_close_pcap);
+	}
+	void lock_save_to_db() {
+		while(__sync_lock_test_and_set(&_sync_save_to_db, 1));
+	}
+	void unlock_save_to_db() {
+		__sync_lock_release(&_sync_save_to_db);
+	}
 public:
-	map<cOptionsRelationId, cOptionsRelation*> relations;
+	map<cSipMsgRelationId, cSipMsgRelation*> relations;
 private:
 	cStringCache responseStringCache;
+	cStringCache uaStringCache;
 	sParams params;
+	deque<sCallDataPcap> cdpQueue;
 	volatile int _sync_relations;
 	volatile int _sync_delete_relation;
 	volatile int _sync_params;
 	volatile int _sync_params_load;
-	u_long lastCleanupRelations;
-friend class cOptionsRelation;
+	volatile int _sync_cdp_queue;
+	volatile int _sync_close_pcap;
+	volatile int _sync_save_to_db;
+	u_long lastCleanupRelations_ms;
+	u_long lastClosePcaps_ms;
+	pthread_t internalThread_id;
+	volatile bool terminate;
+friend class cSipMsgRelation;
 };
 
 
-eOptionsField convOptionsFieldToFieldId(const char *field);
+eSipMsgField convSipMsgFieldToFieldId(const char *field);
+
+
+void initSipMsg();
+void termSipMsg();
 
 
 #endif //OPTIONS_H

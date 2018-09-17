@@ -3019,6 +3019,7 @@ ParsePacket::ParsePacket() {
 	timeSync_SIP_HEADERfilter = 0;
 	timeSync_custom_headers_cdr = 0;
 	timeSync_custom_headers_message = 0;
+	timeSync_custom_headers_sip_msg = 0;
 }
 
 ParsePacket::~ParsePacket() {
@@ -3121,6 +3122,7 @@ void ParsePacket::setStdParse() {
 
 	extern CustomHeaders *custom_headers_cdr;
 	extern CustomHeaders *custom_headers_message;
+	extern CustomHeaders *custom_headers_sip_msg;
 	if(custom_headers_cdr) {
 		custom_headers_cdr->addToStdParse(this);
 		this->timeSync_custom_headers_cdr = custom_headers_cdr->getLoadTime();
@@ -3128,6 +3130,10 @@ void ParsePacket::setStdParse() {
 	if(custom_headers_message) {
 		custom_headers_message->addToStdParse(this);
 		this->timeSync_custom_headers_message = custom_headers_message->getLoadTime();
+	}
+	if(custom_headers_sip_msg) {
+		custom_headers_sip_msg->addToStdParse(this);
+		this->timeSync_custom_headers_sip_msg = custom_headers_sip_msg->getLoadTime();
 	}
 	
 	/* obsolete
@@ -3204,12 +3210,14 @@ void ParsePacket::addNodeCheckSip(const char *nodeName) {
 u_int32_t ParsePacket::parseData(char *data, unsigned long datalen, ppContentsX *contents) {
 	extern CustomHeaders *custom_headers_cdr;
 	extern CustomHeaders *custom_headers_message;
+	extern CustomHeaders *custom_headers_sip_msg;
 	if(!this->timeSync_SIP_HEADERfilter) {
 		this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
 	}
 	bool reload_for_sipheaderfilter = false;
 	bool reload_for_custom_headers_cdr = false;
 	bool reload_for_custom_headers_message = false;
+	bool reload_for_custom_headers_sip_msg = false;
 	if(SIP_HEADERfilter::getLoadTime() > this->timeSync_SIP_HEADERfilter) {
 		reload_for_sipheaderfilter = true;
 	}
@@ -3219,9 +3227,13 @@ u_int32_t ParsePacket::parseData(char *data, unsigned long datalen, ppContentsX 
 	if(custom_headers_message && custom_headers_message->getLoadTime() > this->timeSync_custom_headers_message) {
 		reload_for_custom_headers_message = true;
 	}
+	if(custom_headers_sip_msg && custom_headers_sip_msg->getLoadTime() > this->timeSync_custom_headers_sip_msg) {
+		reload_for_custom_headers_sip_msg = true;
+	}
 	if(reload_for_sipheaderfilter ||
 	   reload_for_custom_headers_cdr ||
-	   reload_for_custom_headers_message) {
+	   reload_for_custom_headers_message ||
+	   reload_for_custom_headers_sip_msg) {
 		this->setStdParse();
 		if(reload_for_sipheaderfilter) {
 			this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
@@ -3232,8 +3244,8 @@ u_int32_t ParsePacket::parseData(char *data, unsigned long datalen, ppContentsX 
 		if(reload_for_custom_headers_cdr) {
 			 this->timeSync_custom_headers_cdr = custom_headers_cdr->getLoadTime();
 		}
-		if(reload_for_custom_headers_message) {
-			 this->timeSync_custom_headers_message = custom_headers_message->getLoadTime();
+		if(reload_for_custom_headers_sip_msg) {
+			 this->timeSync_custom_headers_sip_msg = custom_headers_sip_msg->getLoadTime();
 		}
 	}
 	unsigned long rsltDataLen = datalen;
@@ -3559,7 +3571,7 @@ void JsonExport::add(const char *name) {
 	JsonExport_template<string> *item = new FILE_LINE(38011) JsonExport_template<string>;
 	item->setTypeItem(_null);
 	item->setName(name);
-	item->setContent("NULL");
+	item->setContent("null");
 	items.push_back(item);
 }
 
@@ -3598,7 +3610,7 @@ string JsonExport_template<type_item>::getJson(JsonExport *parent) {
 		outStr << '\"' << name << "\":";
 	}
 	if(typeItem == _null) {
-		outStr << "NULL";
+		outStr << "null";
 	} else {
 		if(typeItem == _string) {
 			outStr << '\"';

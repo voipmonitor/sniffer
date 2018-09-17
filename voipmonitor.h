@@ -131,9 +131,12 @@ inline bool is_readend() {
 	return(readend);
 }
 
+bool is_enable_sip_msg();
+
 bool is_read_from_file();
 bool is_read_from_file_simple();
 bool is_read_from_file_by_pb();
+bool is_read_from_file_by_pb_acttime();
 inline bool no_sip_reassembly() { 
 	extern bool opt_read_from_file_no_sip_reassembly;
 	return(opt_read_from_file_no_sip_reassembly);

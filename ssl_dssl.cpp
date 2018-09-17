@@ -250,6 +250,7 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 	hexdecode(session->server_random, jsonData.getValue("server_random").c_str(), sizeof(session->server_random));
 	hexdecode(session->master_secret, jsonData.getValue("master_secret").c_str(), sizeof(session->master_secret));
 	if(ssls_generate_keys(session) != DSSL_RC_OK ||
+	   ssls_set_session_version(session, session->version) != DSSL_RC_OK ||
 	   dssl_decoder_stack_flip_cipher(&session->c_dec) != DSSL_RC_OK ||
 	   dssl_decoder_stack_flip_cipher(&session->s_dec) != DSSL_RC_OK) {
 		return(false);
@@ -421,6 +422,9 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 		return;
 	}
 	if(ts.tv_sec < 1533040717) {
+		return;
+	}
+	if(getTimeUS(ts) < 1487014991237727ull) {
 		return;
 	}
 	*/

@@ -1280,31 +1280,35 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-	} else if(strstr(buf, "listoptions") != NULL) {
+	} else if(strstr(buf, "list_sip_msg") != NULL) {
 		string rslt_data;
 		char *pointer;
 		if((pointer = strchr(buf, '\n')) != NULL) {
 			*pointer = 0;
 		}
 		bool zip = false;
-		extern cOptionsRelations optionsRelations;
-		rslt_data = optionsRelations.getDataTableJson(buf + strlen("listoptions") + 1, &zip);
-		if(sendString(&rslt_data, client, sshchannel, c_client, zip) == -1) {
-			cerr << "Error sending data to client" << endl;
-			return -1;
+		extern cSipMsgRelations *sipMsgRelations;
+		if(sipMsgRelations) {
+			rslt_data = sipMsgRelations->getDataTableJson(buf + strlen("list_sip_msg") + 1, &zip);
+			if(sendString(&rslt_data, client, sshchannel, c_client, zip) == -1) {
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
 		}
-	} else if(strstr(buf, "list_history_options") != NULL) {
+	} else if(strstr(buf, "list_history_sip_msg") != NULL) {
 		string rslt_data;
 		char *pointer;
 		if((pointer = strchr(buf, '\n')) != NULL) {
 			*pointer = 0;
 		}
 		bool zip = false;
-		extern cOptionsRelations optionsRelations;
-		rslt_data = optionsRelations.getHistoryDataJson(buf + strlen("list_history_options") + 1, &zip);
-		if(sendString(&rslt_data, client, sshchannel, c_client, zip) == -1) {
-			cerr << "Error sending data to client" << endl;
-			return -1;
+		extern cSipMsgRelations *sipMsgRelations;
+		if(sipMsgRelations) {
+			rslt_data = sipMsgRelations->getHistoryDataJson(buf + strlen("list_history_sip_msg") + 1, &zip);
+			if(sendString(&rslt_data, client, sshchannel, c_client, zip) == -1) {
+				cerr << "Error sending data to client" << endl;
+				return -1;
+			}
 		}
 	} else if(strstr(buf, "cleanupregisters") != NULL) {
 		string rslt_data;
@@ -1491,14 +1495,14 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		}
 		return 0;
 	} else if(strstr(buf, "cleanup_calls") != NULL) {
-		calltable->cleanup_calls(0);
+		calltable->cleanup_calls(NULL);
 		if ((size = sendvm(client, sshchannel, c_client, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
 		return 0;
 	} else if(strstr(buf, "cleanup_registers") != NULL) {
-		calltable->cleanup_registers(0);
+		calltable->cleanup_registers(NULL);
 		if ((size = sendvm(client, sshchannel, c_client, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
@@ -1508,7 +1512,10 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		extern int opt_sip_register;
 		if(opt_sip_register == 1) {
 			extern Registers registers;
-			registers.cleanup(time(NULL), true);
+			struct timeval act_ts;
+			act_ts.tv_sec = time(NULL);
+			act_ts.tv_usec = 0;
+			registers.cleanup(&act_ts, true);
 		}
 		if ((size = sendvm(client, sshchannel, c_client, "ok", 2, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
@@ -2253,8 +2260,8 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		}
 		return 0;
 	} else if(strstr(buf, "options_qualify_refresh") != NULL) {
-		extern cOptionsRelations optionsRelations;
-		optionsRelations.loadParamsInBackground();
+		extern cSipMsgRelations *sipMsgRelations;
+		sipMsgRelations->loadParamsInBackground();
 		if ((size = sendvm(client, sshchannel, c_client, "reload ok", 9, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
