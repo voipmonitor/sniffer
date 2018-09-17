@@ -508,8 +508,8 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
 		rtcp_xr_gen_t *block = (rtcp_xr_gen_t*)pkt;
 
 		if((rtcp_xr_report_type_t_)block->bt != RTCP_XR_VOIP_METRICS) {
-			pkt += ntohs(block->length) * 4;
-			break;
+			pkt += sizeof(rtcp_xr_gen_t) + ntohs(block->length) * 4;
+			continue;
 		}
 
 		pkt += sizeof(rtcp_xr_gen_t);

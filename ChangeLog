@@ -1,3 +1,23 @@
+22.12.2 07.09.2018
+==================
+- fix crash in dssl (ssl_store_sessions)
+- fix parsing text element in SIP reason header [VS-826]
+
+
+22.12.1 28.08.2018
+==================
+- fix cleaning spooldir if maxpoolsize is not set 
+- process more blocks in the RTCP-XR message (fixes 0 in MOS-XR)
+
+
+22.12 28.08.2018
+================
+- pcapcommand / filtercommand are now not blocking the sniffer [VS-744]
+- store ip 0.0.0.0 in SDP to the database [VG-1628]
+- add ip filter in fraud "change cdr country" [VG-1648]
+- allos set cdr_ignore_response = 0 (or cdr_ignore_response = 000) 
+
+
 22.11.1 21.08.2018
 ==================
 - fix small memory leak for cloud / client - server 
