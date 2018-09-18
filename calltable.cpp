@@ -3603,6 +3603,39 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			SIPresponseUnique.push_back(*iterSipresp);
 		}
 	}
+	
+	list<ipn_port> SDP_ip_portUnique[2];
+	if(opt_save_sdp_ipport) {
+		bool save_iscaller = false;
+		bool save_iscalled = false;
+		for(int i = ipport_n - 1; i >= 0; i--) {
+			if(ip_port[i].addr &&
+			   ip_port[i].type_addr == ip_port_call_info::_ta_base &&
+			   (opt_save_sdp_ipport == 2 ||
+			    (ip_port[i].iscaller ? !save_iscaller : !save_iscalled))) {
+				ipn_port ipPort(ip_port[i].addr, ip_port[i].port);
+				int indexUnique = ip_port[i].iscaller ? 0 : 1;
+				if(std::find(SDP_ip_portUnique[indexUnique].begin(), SDP_ip_portUnique[indexUnique].end(), ipPort) == SDP_ip_portUnique[indexUnique].end()) {
+					SDP_ip_portUnique[indexUnique].push_back(ipPort);
+					if(opt_save_sdp_ipport == 1) {
+						if(ip_port[i].iscaller) {
+							save_iscaller = true;
+						} else {
+							save_iscalled = true;
+						}
+						if(save_iscaller && save_iscalled) {
+							break;
+						}
+					}
+				}
+			}
+		}
+		for(int i = 0; i < 2; i++) {
+			if(sdp_0_0_flag[i]) {
+				SDP_ip_portUnique[i].push_back(ipn_port(0, 0));
+			}
+		}
+	}
 
 	if(useSensorId > -1) {
 		cdr.add(useSensorId, "id_sensor");
@@ -4418,45 +4451,19 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		
 		if(opt_save_sdp_ipport) {
-			bool save_iscaller = false;
-			bool save_iscalled = false;
-			for(int i = ipport_n - 1; i >= 0; i--) {
-				if(ip_port[i].addr &&
-				   ip_port[i].type_addr == ip_port_call_info::_ta_base &&
-				   (opt_save_sdp_ipport == 2 ||
-				    (ip_port[i].iscaller ? !save_iscaller : !save_iscalled))) {
-					SqlDb_row sdp;
-					sdp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-					sdp.add(htonl(ip_port[i].addr), "ip");
-					sdp.add(ip_port[i].port, "port");
-					sdp.add(ip_port[i].iscaller, "is_caller");
-					if(existsColumns.cdr_sdp_calldate) {
-						sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-					}
-					query_str += sqlDbSaveCall->insertQuery("cdr_sdp", sdp) + ";\n";
-					if(opt_save_sdp_ipport == 1) {
-						if(ip_port[i].iscaller) {
-							save_iscaller = true;
-						} else {
-							save_iscalled = true;
-						}
-						if(save_iscaller && save_iscalled) {
-							break;
-						}
-					}
-				}
-			}
 			for(int i = 0; i < 2; i++) {
-				if(sdp_0_0_flag[i]) {
-					SqlDb_row sdp;
-					sdp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
-					sdp.add(0, "ip");
-					sdp.add(0, "port");
-					sdp.add(i == 0, "is_caller");
-					if(existsColumns.cdr_sdp_calldate) {
-						sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				if(SDP_ip_portUnique[i].size()) {
+					for(list<ipn_port>::iterator iter = SDP_ip_portUnique[i].begin(); iter != SDP_ip_portUnique[i].end(); iter++) {
+						SqlDb_row sdp;
+						sdp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
+						sdp.add(htonl(iter->ip), "ip");
+						sdp.add(iter->port, "port");
+						sdp.add(i == 0, "is_caller");
+						if(existsColumns.cdr_sdp_calldate) {
+							sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+						}
+						query_str += sqlDbSaveCall->insertQuery("cdr_sdp", sdp) + ";\n";
 					}
-					query_str += sqlDbSaveCall->insertQuery("cdr_sdp", sdp) + ";\n";
 				}
 			}
 		}
@@ -4713,30 +4720,18 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 
 		if(opt_save_sdp_ipport) {
-			bool save_iscaller = false;
-			bool save_iscalled = false;
-			for(int i = ipport_n - 1; i >= 0; i--) {
-				if(ip_port[i].type_addr == ip_port_call_info::_ta_base &&
-				   (opt_save_sdp_ipport == 2 ||
-				    (ip_port[i].iscaller ? !save_iscaller : !save_iscalled))) {
-					SqlDb_row sdp;
-					sdp.add(cdrID, "cdr_ID");
-					sdp.add(htonl(ip_port[i].addr), "ip");
-					sdp.add(ip_port[i].port, "port");
-					sdp.add(ip_port[i].iscaller, "is_caller");
-					if(existsColumns.cdr_sdp_calldate) {
-						sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
-					}
-					sqlDbSaveCall->insert("cdr_sdp", sdp);
-					if(opt_save_sdp_ipport == 1) {
-						if(ip_port[i].iscaller) {
-							save_iscaller = true;
-						} else {
-							save_iscalled = true;
+			for(int i = 0; i < 2; i++) {
+				if(SDP_ip_portUnique[i].size()) {
+					for(list<ipn_port>::iterator iter = SDP_ip_portUnique[i].begin(); iter != SDP_ip_portUnique[i].end(); iter++) {
+						SqlDb_row sdp;
+						sdp.add(cdrID, "cdr_ID");
+						sdp.add(htonl(iter->ip), "ip");
+						sdp.add(iter->port, "port");
+						sdp.add(i == 0, "is_caller");
+						if(existsColumns.cdr_sdp_calldate) {
+							sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 						}
-						if(save_iscaller && save_iscalled) {
-							break;
-						}
+						sqlDbSaveCall->insert("cdr_sdp", sdp);
 					}
 				}
 			}
