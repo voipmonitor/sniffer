@@ -48,6 +48,7 @@ enum eRegisterField {
 	rf_state,
 	rf_ua,
 	rf_rrd_avg,
+	rf_spool_index,
 	rf__max
 };
 
@@ -80,6 +81,7 @@ public:
 	char *from_domain;
 	char *digest_realm;
 	char *ua;
+	int8_t spool_index;
 	u_int64_t fname;
 	u_int32_t expires;
 	int id_sensor;

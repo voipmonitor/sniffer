@@ -914,6 +914,8 @@ struct sExistsColumns {
 	bool message_response_time;
 	bool message_spool_index;
 	bool register_rrd_count;
+	bool register_state_spool_index;
+	bool register_failed_spool_index;
 };
 
 

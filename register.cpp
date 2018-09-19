@@ -30,6 +30,8 @@ extern bool opt_sip_register_state_compare_ua;
 
 extern Calltable *calltable;
 
+extern sExistsColumns existsColumns;
+
 Registers registers;
 
 
@@ -56,7 +58,8 @@ struct RegisterFields {
 	{ rf_expires_at, "expires_at" },
 	{ rf_state, "state" },
 	{ rf_ua, "ua" },
-	{ rf_rrd_avg, "rrd_avg" }
+	{ rf_rrd_avg, "rrd_avg" },
+	{ rf_spool_index, "spool_index" }
 };
 
 SqlDb *sqlDbSaveRegister = NULL;
@@ -119,6 +122,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		ua = reg->ua && REG_EQ_STR(call->a_ua, reg->ua) ?
 		      EQ_REG :
 		      REG_NEW_STR(call->a_ua);
+		spool_index = call->getSpoolIndex();
 		fname = call->fname_register;
 		expires = call->register_expires;
 		id_sensor = call->useSensorId;
@@ -159,6 +163,7 @@ void RegisterState::copyFrom(const RegisterState *src) {
 	from_domain = REG_NEW_STR(src->from_domain);
 	digest_realm = REG_NEW_STR(src->digest_realm);
 	ua = REG_NEW_STR(src->ua);
+	spool_index = src->spool_index;
 }
 
 bool RegisterState::isEq(Call *call, Register *reg) {
@@ -403,6 +408,10 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	if(state->id_sensor > -1) {
 		reg.add(state->id_sensor, "id_sensor");
 	}
+	if(state->spool_index && 
+	   (state->state == rs_Failed ? existsColumns.register_failed_spool_index : existsColumns.register_state_spool_index)) {
+		reg.add(state->spool_index, "spool_index");
+	}
 	string register_table = state->state == rs_Failed ? "register_failed" : "register_state";
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
@@ -524,6 +533,7 @@ bool Register::getDataRow(RecordArray *rec) {
 	if(rrd_count) {
 		rec->fields[rf_rrd_avg].set(rrd_sum / rrd_count);
 	}
+	rec->fields[rf_spool_index].set(state->spool_index);
 	unlock_states();
 	return(true);
 }

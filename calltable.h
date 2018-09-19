@@ -345,7 +345,8 @@ public:
 		extern sExistsColumns existsColumns;
 		return((flags & FLAG_USE_SPOOL_2) && isSetSpoolDir2() &&
 			((typeIs(INVITE) && existsColumns.cdr_next_spool_index) ||
-			 (typeIs(MESSAGE) && existsColumns.message_spool_index)) ?
+			 (typeIs(MESSAGE) && existsColumns.message_spool_index) ||
+			 (typeIs(REGISTER) && existsColumns.register_state_spool_index && existsColumns.register_failed_spool_index)) ?
 			1 : 
 			0);
 	}

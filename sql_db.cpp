@@ -5029,7 +5029,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`expires` mediumint NULL DEFAULT NULL,\
 			`state` tinyint unsigned NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
-			`to_domain` varchar(255) NULL DEFAULT NULL,") +
+			`to_domain` varchar(255) NULL DEFAULT NULL,\
+			`spool_index` tinyint unsigned DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `created_at`)," :
 			"PRIMARY KEY (`ID`),") +
@@ -5060,7 +5061,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`contact_domain` varchar(255) NULL DEFAULT NULL,\
 			`digestusername` varchar(255) NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
-			`to_domain` varchar(255) NULL DEFAULT NULL,") +
+			`to_domain` varchar(255) NULL DEFAULT NULL,\
+			`spool_index` tinyint unsigned DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `created_at`)," :
 			"PRIMARY KEY (`ID`),") +
@@ -6514,7 +6516,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 void SqlDb_mysql::checkColumns_cdr_next(bool log) {
 	map<string, u_int64_t> tableSize;
 	existsColumns.cdr_next_spool_index= this->existsColumn("cdr_next", "spool_index");
-	if(!existsColumns.cdr_next_spool_index && CleanSpool::isSetCleanspoolParameters(1)) {
+	if(!existsColumns.cdr_next_spool_index) {
 		this->logNeedAlter("cdr_next",
 				   "cdr spool index",
 				   "ALTER TABLE cdr_next "
@@ -6592,7 +6594,7 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 				   log, &tableSize, &existsColumns.message_response_time);
 	}
 	existsColumns.message_spool_index= this->existsColumn("message", "spool_index");
-	if(!existsColumns.message_spool_index && CleanSpool::isSetCleanspoolParameters(1)) {
+	if(!existsColumns.message_spool_index) {
 		this->logNeedAlter("message",
 				   "message spool index",
 				   "ALTER TABLE message "
@@ -6622,6 +6624,22 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL;",
 					   log, &tableSize, NULL);
 		}
+	}
+	existsColumns.register_state_spool_index= this->existsColumn("register_state", "spool_index");
+	if(!existsColumns.register_state_spool_index) {
+		this->logNeedAlter("register_state",
+				   "register_state spool index",
+				   "ALTER TABLE register_state "
+				   "ADD COLUMN `spool_index` tinyint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.register_state_spool_index);
+	}
+	existsColumns.register_failed_spool_index= this->existsColumn("register_failed", "spool_index");
+	if(!existsColumns.register_failed_spool_index) {
+		this->logNeedAlter("register_failed",
+				   "register_failed spool index",
+				   "ALTER TABLE register_failed "
+				   "ADD COLUMN `spool_index` tinyint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.register_failed_spool_index);
 	}
 }
 
