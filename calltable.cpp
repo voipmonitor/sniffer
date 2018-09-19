@@ -156,6 +156,7 @@ extern CustomHeaders *custom_headers_message;
 extern int opt_custom_headers_last_value;
 extern bool _save_sip_history;
 extern int opt_saveudptl;
+extern int opt_rtpip_find_endpoints;
 extern rtp_read_thread *rtp_threads;
 extern bool opt_rtpmap_by_callerd;
 extern bool opt_rtpmap_combination;
@@ -3811,16 +3812,59 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(ssrc_n > 0) {
 	 
 		this->applyRtcpXrDataToRtp();
+		
+		if(sverb.rtp_streams) {
+			cout << "call " << call_id << endl;
+		}
+		
+		bool is_stream_over_proxy[MAX_SSRC_PER_CALL];
+		if(opt_rtpip_find_endpoints) {
+			for(unsigned i = 0; i < MAX_SSRC_PER_CALL; i++) {
+				is_stream_over_proxy[i] = false;
+			}
+			for(int i = 0; i < 2; i++) {
+				bool _iscaller = i == 0 ? 1 : 0;
+				for(int j = 0; j < ssrc_n; j++) {
+					if(rtp[j]->iscaller == _iscaller &&
+					   rtp[j]->saddr != rtp[j]->daddr) {
+						for(int k = 0; k < ssrc_n; k++) {
+							if(k != j &&
+							   rtp[k]->iscaller == _iscaller &&
+							   rtp[k]->saddr != rtp[k]->daddr &&
+							   rtp[k]->daddr == rtp[j]->saddr) {
+								is_stream_over_proxy[j] = true;
+								if(sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams) {
+									cout << "RTP - stream over proxy: " 
+									     << hex << rtp[j]->ssrc << dec << " : "
+									     << inet_ntostring(htonl(rtp[j]->saddr)) << " -> "
+									     << inet_ntostring(htonl(rtp[j]->daddr)) << " /"
+									     << " iscaller: " << rtp[j]->iscaller << " " 
+									     << " packets received: " << rtp[j]->s->received << " "
+									     << " packets lost: " << rtp[j]->s->lost << " "
+									     << " ssrc index: " << rtp[j]->ssrc_index << " "
+									     << " ok_other_ip_side_by_sip: " << rtp[j]->ok_other_ip_side_by_sip << " " 
+									     << endl;
+								}
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
 	 
 		// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
 		int indexes[MAX_SSRC_PER_CALL];
+		int ssrc_indexes_n = 0;
 		// init indexex
-		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-			indexes[i] = i;
+		for(int i = 0; i < ssrc_n; i++) {
+			if(!opt_rtpip_find_endpoints || !is_stream_over_proxy[i]) {
+				indexes[ssrc_indexes_n++] = i;
+			}
 		}
 		// bubble sort
-		for(int k = 0; k < ssrc_n; k++) {
-			for(int j = 0; j < ssrc_n; j++) {
+		for(int k = 0; k < ssrc_indexes_n; k++) {
+			for(int j = 0; j < ssrc_indexes_n; j++) {
 				if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
 					int kTmp = indexes[k];
 					indexes[k] = indexes[j];
@@ -3833,9 +3877,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bool rtpab_ok[2] = {false, false};
 		bool pass_rtpab_simple = typeIs(MGCP) ||
 					 (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
-		if(!pass_rtpab_simple && typeIs(INVITE) && ssrc_n >= 2 &&
+		if(!pass_rtpab_simple && typeIs(INVITE) && ssrc_indexes_n >= 2 &&
 		   (rtp[indexes[0]]->iscaller + rtp[indexes[1]]->iscaller) == 1) {
-			if(ssrc_n == 2) {
+			if(ssrc_indexes_n == 2) {
 				pass_rtpab_simple = true;
 			} else {
 				unsigned callerStreams = 0;
@@ -3846,7 +3890,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					callerReceivedPackets[i] = 0;
 					calledReceivedPackets[i] = 0;
 				}
-				for(int k = 0; k < ssrc_n; k++) {
+				for(int k = 0; k < ssrc_indexes_n; k++) {
 					if(rtp[indexes[k]]->iscaller) {
 						callerReceivedPackets[callerStreams++] = rtp[indexes[k]]->s->received;
 					} else {
@@ -3860,11 +3904,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		for(int pass_rtpab = 0; pass_rtpab < (pass_rtpab_simple ? 1 : 2); pass_rtpab++) {
-			for(int k = 0; k < ssrc_n; k++) {
+			for(int k = 0; k < ssrc_indexes_n; k++) {
 				if(pass_rtpab == 0) {
-					if(k == 0 && sverb.rtp_streams) {
-						cout << "call " << call_id << endl;
-					}
 					if(sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams) {
 						cout << "RTP - final stream: " 
 						     << hex << rtp[indexes[k]]->ssrc << dec << " : "

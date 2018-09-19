@@ -197,6 +197,7 @@ bool opt_srtp_rtcp_decrypt = true;
 int opt_use_libsrtp = 0;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
+int opt_rtpip_find_endpoints = 0;
 int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
@@ -5926,11 +5927,12 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtpip_find_endpoints", &opt_rtpip_find_endpoints));
 				advanced();
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
 					expert();
 					addConfigItem(new FILE_LINE(42212) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
 					addConfigItem(new FILE_LINE(42213) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_ziplevel_rtp));
@@ -8570,6 +8572,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "saveudptl", NULL))) {
 		opt_saveudptl = yesno(value);
+	}
+	if((value = ini.GetValue("general", "rtpip_find_endpoints", NULL))) {
+		opt_rtpip_find_endpoints = yesno(value);
 	}
 	if((value = ini.GetValue("general", "savertp-threaded", NULL))) {
 		opt_rtpsave_threaded = yesno(value);
