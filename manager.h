@@ -8,6 +8,9 @@
 
 #ifndef HAVE_LIBSSH
 typedef void* ssh_channel;
+#else
+#include <libssh/libssh.h>
+#include <libssh/callbacks.h>
 #endif
 
 void *manager_client(void *dummy);
@@ -100,6 +103,35 @@ private:
 	volatile int _sync_client_threads;
 };
 
+class Mgmt_params {
+public:
+	Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
+	int sendString(const char *);
+	int sendString(const char *, ssize_t);
+	int sendString(string *);
+	int sendString(ostringstream *);
+	int sendString(int);
+	int sendFile(const char *fileName);
+	int registerCommand(string *, int);
+
+	enum eTask {
+		mgmt_task_na = 0,
+		mgmt_task_getHelp = 1 << 0,
+		mgmt_task_DoInit = 1 << 1
+	};
+	eTask task;
+	string helpText;
+	int index;
+	bool zip;
+// vars for sendvm
+	char *buf;
+	int size;
+	int client;
+	ssh_channel sshchannel;
+	cClient *c_client;
+	ManagerClientThread **managerClientThread;
+};
+
 void listening_master_lock();
 void listening_master_unlock();
 void listening_cleanup();
@@ -107,6 +139,5 @@ void listening_remove_worker(class Call *call);
 
 void manager_parse_command_enable();
 void manager_parse_command_disable();
-
 
 #endif
