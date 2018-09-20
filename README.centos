@@ -17,6 +17,10 @@ Pre-Build
 yum groupinstall 'Development Tools'
 yum install subversion unixODBC-devel mysql-devel libogg libogg-devel vorbis-tools libvorbis libvorbis-devel libpcap-devel zlib-devel
 
+for CentOS >= 7.4:
+
+yum install snappy-devel libcurl-devel libssh-devel libpng-devel fftw-devel openssl-devel json-c-devel rrdtool-devel glib2-devel libxml2-devel lzo-devel gnutls-devel libgcrypt-devel gperftools-devel
+
 Snappy library
 ==============
 wget https://snappy.googlecode.com/files/snappy-1.1.0.tar.gz
