@@ -79,6 +79,15 @@ and insert them into Call class.
 #include "websocket.h"
 #include "options.h"
 
+#if HAVE_LIBTCMALLOC    
+#include <gperftools/malloc_extension.h>
+#endif
+
+#if HAVE_LIBJEMALLOC
+#include <jemalloc/jemalloc.h>
+#endif
+
+
 extern MirrorIP *mirrorip;
 
 #define MAXLIVEFILTERS 10
@@ -306,6 +315,7 @@ int64_t process_packet__last_cleanup_registers_diff = 0;
 unsigned long process_packet__last_destroy_registers = 0;
 unsigned long process_packet__last_cleanup_ss7 = 0;
 int64_t process_packet__last_cleanup_ss7_diff = 0;
+unsigned long __last_memory_purge = 0;
 
 
 // return IP from nat_aliases[ip] or 0 if not found
@@ -4544,9 +4554,35 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
 	"malloc_trim" from malloc.h which does this missing operation (note that it is allowed to fail). If your OS does not provide 
 	malloc_trim, try searching for a similar function.
 	*/
-#ifndef FREEBSD
-	malloc_trim(0);
-#endif
+	
+	extern int opt_memory_purge_interval;
+        if(ts.tv_sec - __last_memory_purge >= opt_memory_purge_interval) {
+                bool firstRun = __last_memory_purge == 0;
+                __last_memory_purge = ts.tv_sec;
+                if(!firstRun) {
+			
+			#ifndef FREEBSD
+				malloc_trim(0);
+				syslog(LOG_NOTICE, "malloc trim");
+			#endif
+				
+			#if HAVE_LIBTCMALLOC
+				MallocExtension::instance()->ReleaseFreeMemory();
+				syslog(LOG_NOTICE, "tcmalloc release free memory");
+			#endif
+				
+			#if HAVE_LIBJEMALLOC
+				size_t mib[3];
+				size_t miblen = sizeof(mib)/sizeof(size_t);
+				mallctlnametomib("arena.0.purge", mib, &miblen);
+				mib[1] = MALLCTL_ARENAS_ALL; //(size_t)arena_ind
+				mallctlbymib(mib, miblen, NULL, NULL, NULL, 0);
+				syslog(LOG_NOTICE, "jemalloc purge memory");
+			#endif
+			
+                }
+        }
+
 }
 
 inline void process_packet__cleanup_registers(pcap_pkthdr* header) {

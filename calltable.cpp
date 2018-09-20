@@ -60,10 +60,6 @@
 #include "filter_call.h"
 #include "options.h"
 
-#if HAVE_LIBTCMALLOC    
-#include <gperftools/malloc_extension.h>
-#endif
-
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
@@ -7018,10 +7014,6 @@ Calltable::cleanup_calls( struct timeval *currtime ) {
 	if(opt_blockcleanupcalls) {
 		return 0;
 	}
-
-#if HAVE_LIBTCMALLOC    
-	MallocExtension::instance()->ReleaseFreeMemory();
-#endif
 
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_calls");
