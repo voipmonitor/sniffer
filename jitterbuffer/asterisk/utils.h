@@ -77,6 +77,11 @@ extern "C++" unsigned int HeapSafeCheck;
 #endif
 
 
+#ifdef __clang__
+#define typeof __typeof__
+#endif
+
+
 #define ast_test_flag(p,flag) 		({ \
 					typeof ((p)->flags) __p = (p)->flags; \
 					typeof (__unsigned_int_flags_dummy) __x = 0; \
