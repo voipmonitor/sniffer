@@ -238,8 +238,8 @@ int Mgmt_totalregisters(Mgmt_params *params);
 int Mgmt_creategraph(Mgmt_params *params);
 int Mgmt_is_register_new(Mgmt_params *params);
 int Mgmt_listregisters(Mgmt_params *params);
-int Mgmt_listoptions(Mgmt_params *params);
-int Mgmt_list_history_options(Mgmt_params *params);
+int Mgmt_list_sip_msg(Mgmt_params *params);
+int Mgmt_list_history_sip_msg(Mgmt_params *params);
 int Mgmt_cleanupregisters(Mgmt_params *params);
 int Mgmt_d_close_call(Mgmt_params *params);
 int Mgmt_d_pointer_to_call(Mgmt_params *params);
@@ -339,8 +339,8 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_creategraph,
 	Mgmt_is_register_new,
 	Mgmt_listregisters,
-	Mgmt_listoptions,
-	Mgmt_list_history_options,
+	Mgmt_list_sip_msg,
+	Mgmt_list_history_sip_msg,
 	Mgmt_cleanupregisters,
 	Mgmt_d_close_call,
 	Mgmt_d_pointer_to_call,
@@ -4512,7 +4512,7 @@ int Mgmt_cleanup_calls(Mgmt_params* params) {
 		params->helpText = "cleans calls";
 		return(0);
 	}
-	calltable->cleanup_calls(0);
+	calltable->cleanup_calls(NULL);
 	return(params->sendString("ok"));
 }
 
@@ -4526,7 +4526,7 @@ int Mgmt_cleanup_registers(Mgmt_params* params) {
 		params->helpText = "cleans registers";
 		return(0);
 	}
-	calltable->cleanup_registers(0);
+	calltable->cleanup_registers(NULL);
 	return(params->sendString("ok"));
 }
 
@@ -4543,7 +4543,10 @@ int Mgmt_expire_registers(Mgmt_params* params) {
 	extern int opt_sip_register;
 	if(opt_sip_register == 1) {
 		extern Registers registers;
-		registers.cleanup(time(NULL), true);
+		struct timeval act_ts;
+		act_ts.tv_sec = time(NULL);
+		act_ts.tv_usec = 0;
+		registers.cleanup(&act_ts, true);
 	}
 	return(params->sendString("ok"));
 }
@@ -4639,9 +4642,9 @@ int Mgmt_listregisters(Mgmt_params* params) {
 	return(params->sendString(&rslt_data));
 }
 
-int Mgmt_listoptions(Mgmt_params* params) {
+int Mgmt_list_sip_msg(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "listoptions";
+		string str = "list_sip_msg";
 		params->registerCommand(&str, params->index);
 		return(0);
 	}
@@ -4656,19 +4659,23 @@ int Mgmt_listoptions(Mgmt_params* params) {
 		*pointer = 0;
 	}
 	bool zip = false;
-	extern cOptionsRelations optionsRelations;
-	rslt_data = optionsRelations.getDataTableJson(params->buf + strlen("listoptions") + 1, &zip);
-	return(params->sendString(&rslt_data));
+
+	extern cSipMsgRelations *sipMsgRelations;
+	if(sipMsgRelations) {
+		rslt_data = sipMsgRelations->getDataTableJson(params->buf + strlen("list_sip_msg") + 1, &zip);
+		return(params->sendString(&rslt_data));
+	}
+	return(0);
 }
 
-int Mgmt_list_history_options(Mgmt_params* params) {
+int Mgmt_list_history_sip_msg(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "list_history_options";
+		string str = "list_history_sip_msg";
 		params->registerCommand(&str, params->index);
 		return(0);
 	}
 	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "returns the list of histoy options. Possible params:";
+		params->helpText = "returns the list of history options. Possible params:";
 		return(0);
 	}
 
@@ -4678,9 +4685,13 @@ int Mgmt_list_history_options(Mgmt_params* params) {
 		*pointer = 0;
 	}
 	bool zip = false;
-	extern cOptionsRelations optionsRelations;
-	rslt_data = optionsRelations.getHistoryDataJson(params->buf + strlen("list_history_options") + 1, &zip);
-	return(params->sendString(&rslt_data));
+
+	extern cSipMsgRelations *sipMsgRelations;
+	if(sipMsgRelations) {
+		rslt_data = sipMsgRelations->getHistoryDataJson(params->buf + strlen("list_history_sip_msg") + 1, &zip);
+		return(params->sendString(&rslt_data));
+	}
+	return(0);
 }
 
 int Mgmt_cleanupregisters(Mgmt_params* params) {
@@ -6239,8 +6250,8 @@ int Mgmt_options_qualify_refresh(Mgmt_params *params) {
 		return(0);
 	}
 
-	extern cOptionsRelations optionsRelations;
-	optionsRelations.loadParamsInBackground();
+	extern cSipMsgRelations *sipMsgRelations;
+	sipMsgRelations->loadParamsInBackground();
 	return(params->sendString("reload ok"));
 }
 
