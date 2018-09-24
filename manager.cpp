@@ -109,9 +109,21 @@ using namespace std;
 int sendvm(int socket, ssh_channel channel, cClient *c_client, const char *buf, size_t len, int /*mode*/);
 
 std::map<string, int> MgmtCmdsRegTable;
+std::map<string, string> MgmtHelpTable;
 
-int Mgmt_params::registerCommand(string *str, int index) {
-	MgmtCmdsRegTable[*str] = index;
+int Mgmt_params::registerCommand(const char *str, const char *help) {
+	string h(help, strlen(help));
+	string s(str, strlen(str));
+	MgmtCmdsRegTable[s] = index;
+	MgmtHelpTable[s] = h;
+	return(0);
+}
+
+int Mgmt_params::registerCommand(commandAndHelp *cmdHelp) {
+	while (cmdHelp->command) {
+		registerCommand(cmdHelp->command, cmdHelp->help);
+		cmdHelp++;
+	}
 	return(0);
 }
 
@@ -4491,12 +4503,7 @@ int ManagerClientThreads::getCount() {
 
 int Mgmt_getversion(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "getversion";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "returns the version of the sniffer";
+		params->registerCommand("getversion", "return the version of the sniffer");
 		return(0);
 	}
 	return(params->sendString(RTPSENSOR_VERSION));
@@ -4504,12 +4511,7 @@ int Mgmt_getversion(Mgmt_params* params) {
 
 int Mgmt_cleanup_calls(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "cleanup_calls";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "cleans calls";
+		params->registerCommand("cleanup_calls", "clean calls");
 		return(0);
 	}
 	calltable->cleanup_calls(NULL);
@@ -4518,12 +4520,7 @@ int Mgmt_cleanup_calls(Mgmt_params* params) {
 
 int Mgmt_cleanup_registers(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "cleanup_registers";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "cleans registers";
+		params->registerCommand("cleanup_registers", "clean registers");
 		return(0);
 	}
 	calltable->cleanup_registers(NULL);
@@ -4532,12 +4529,7 @@ int Mgmt_cleanup_registers(Mgmt_params* params) {
 
 int Mgmt_expire_registers(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "expire_registers";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "expires registers";
+		params->registerCommand("expire_registers", "expire registers");
 		return(0);
 	}
 	extern int opt_sip_register;
@@ -4553,12 +4545,7 @@ int Mgmt_expire_registers(Mgmt_params* params) {
 
 int Mgmt_cleanup_tcpreassembly(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "cleanup_tcpreassembly";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "cleans tcpreassembly";
+		params->registerCommand("cleanup_tcpreassembly", "clean tcpreassembly");
 		return(0);
 	}
 	extern TcpReassemblySip tcpReassemblySip;
@@ -4568,12 +4555,7 @@ int Mgmt_cleanup_tcpreassembly(Mgmt_params* params) {
 
 int Mgmt_destroy_close_calls(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "destroy_close_calls";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "destroys close calls";
+		params->registerCommand("destroy_close_calls", "destroy close calls");
 		return(0);
 	}
 	calltable->destroyCallsIfPcapsClosed();
@@ -4582,12 +4564,7 @@ int Mgmt_destroy_close_calls(Mgmt_params* params) {
 
 int Mgmt_is_register_new(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "is_register_new";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "returns status of the sip registration";
+		params->registerCommand("is_register_new", "return status of the sip registration");
 		return(0);
 	}
 	extern int opt_sip_register;
@@ -4596,12 +4573,7 @@ int Mgmt_is_register_new(Mgmt_params* params) {
 
 int Mgmt_totalcalls(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "totalcalls";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "returns the number of total calls";
+		params->registerCommand("totalcalls", "return the number of total calls");
 		return(0);
 	}
 	return(params->sendString(calls_counter));
@@ -4609,12 +4581,7 @@ int Mgmt_totalcalls(Mgmt_params* params) {
 
 int Mgmt_totalregisters(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "totalregisters";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "returns the number of total registers";
+		params->registerCommand("totalregisters", "return the number of total registers");
 		return(0);
 	}
 	return(params->sendString(registers_counter));
@@ -4622,15 +4589,9 @@ int Mgmt_totalregisters(Mgmt_params* params) {
 
 int Mgmt_listregisters(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "listregisters";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("listregisters", "return the list of registers. Possible params:");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "returns the list of registers. Possible params:";
-		return(0);
-	}
-
 	string rslt_data;
 	char *pointer;
 	if((pointer = strchr(params->buf, '\n')) != NULL) {
@@ -4644,15 +4605,9 @@ int Mgmt_listregisters(Mgmt_params* params) {
 
 int Mgmt_list_sip_msg(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "list_sip_msg";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("list_sip_msg", "return the list of options. Possible params:");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "returns the list of options. Possible params:";
-		return(0);
-	}
-
 	string rslt_data;
 	char *pointer;
 	if((pointer = strchr(params->buf, '\n')) != NULL) {
@@ -4670,15 +4625,9 @@ int Mgmt_list_sip_msg(Mgmt_params* params) {
 
 int Mgmt_list_history_sip_msg(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "list_history_sip_msg";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("list_history_sip_msg", "return the list of history options. Possible params:");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "returns the list of history options. Possible params:";
-		return(0);
-	}
-
 	string rslt_data;
 	char *pointer;
 	if((pointer = strchr(params->buf, '\n')) != NULL) {
@@ -4696,15 +4645,9 @@ int Mgmt_list_history_sip_msg(Mgmt_params* params) {
 
 int Mgmt_cleanupregisters(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "cleanupregisters";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("cleanupregisters", "clean registers. Possible params:");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "cleans registers. Possible params:";
-		return(0);
-	}
-
 	char *pointer;
 	if((pointer = strchr(params->buf, '\n')) != NULL) {
 		*pointer = 0;
@@ -4716,16 +4659,10 @@ int Mgmt_cleanupregisters(Mgmt_params* params) {
 
 int Mgmt_help(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "help";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("help", "print command's help");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "prints command's help";
-		return(0);
-	}
-	std::map<string, int>::iterator MgmtItem;
-	params->task = params->mgmt_task_getHelp;
+	std::map<string, string>::iterator MgmtItem;
 	char *startOfParam = strpbrk(params->buf, " ");
 	stringstream sendBuff;
 	if (startOfParam) {
@@ -4737,23 +4674,19 @@ int Mgmt_help(Mgmt_params* params) {
 			return(-1);
 		}
 		string cmdStr (startOfParam, endOfParam);
-		MgmtItem = MgmtCmdsRegTable.find(cmdStr);
-		if (MgmtItem != MgmtCmdsRegTable.end()) {
-			params->helpText = cmdStr;
-			MgmtFuncArray[MgmtItem->second](params);
-			if (params->helpText.length()) {
-				sendBuff << MgmtItem->first << " ... " << params->helpText << "." << endl << endl;
+		MgmtItem = MgmtHelpTable.find(cmdStr);
+		if (MgmtItem != MgmtHelpTable.end()) {
+			if (MgmtItem->second.length()) {
+				sendBuff << MgmtItem->first << " ... " << MgmtItem->second << "." << endl << endl;
 			}
 		} else {
 			sendBuff << "Command " << cmdStr << " not found." << endl << endl;
 		}
 	} else {
 		sendBuff << "List of commands:" << endl << endl;
-		for (MgmtItem = MgmtCmdsRegTable.begin(); MgmtItem != MgmtCmdsRegTable.end(); MgmtItem++) {
-			params->helpText = MgmtItem->first;
-			MgmtFuncArray[MgmtItem->second](params);
-			if (params->helpText.length()) {
-				sendBuff << MgmtItem->first << " ... " << params->helpText << "." << endl << endl;
+		for (MgmtItem = MgmtHelpTable.begin(); MgmtItem != MgmtHelpTable.end(); MgmtItem++) {
+			if (MgmtItem->second.length()) {
+				sendBuff << MgmtItem->first << " ... " << MgmtItem->second << "." << endl << endl;
 			}
 		}
 	}
@@ -4763,12 +4696,7 @@ int Mgmt_help(Mgmt_params* params) {
 
 int Mgmt_check_filesindex(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "check_filesindex";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "checks files indexing";
+		params->registerCommand("check_filesindex", "check files indexing");
 		return(0);
 	}
 	char sendbuf[BUFSIZE];
@@ -4785,12 +4713,7 @@ int Mgmt_check_filesindex(Mgmt_params *params) {
 
 int Mgmt_reindexspool(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "reindexspool";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "reindex spool directory";
+		params->registerCommand("reindexspool", "reindex spool directory");
 		return(0);
 	}
 	string rslt;
@@ -4805,12 +4728,7 @@ int Mgmt_reindexspool(Mgmt_params *params) {
 
 int Mgmt_printspool(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "printspool";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "print info about spool directory";
+		params->registerCommand("printspool", "print info about spool directory");
 		return(0);
 	}
 	string rslt;
@@ -4824,22 +4742,13 @@ int Mgmt_printspool(Mgmt_params *params) {
 
 int Mgmt_reindexfiles(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "reindexfiles";
-		params->registerCommand(&str, params->index);
-		str = "reindexfiles_date";
-		params->registerCommand(&str, params->index);
-		str = "reindexfiles_datehour";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		if (params->helpText == "reindexfiles_datehour") {
-			params->helpText = "runs reindex for entered DATE HOUR";
-		} else if (params->helpText == "reindexfiles_date") {
-			params->helpText = "runs reindex for entered DATE";
-		} else if (params->helpText == "reindexfiles") {
-			params->helpText = "starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex";
-		}
+		commandAndHelp ch[] = {
+			{"reindexfiles", "starts the reindexing of the spool's files. 'reindexfiles' runs standard reindex"},
+			{"reindexfiles_date", "runs reindex for entered DATE"},
+			{"reindexfiles_datehour", "runs reindex for entered DATE HOUR"},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
 		return(0);
 	}
 	char sendbuf[BUFSIZE];
@@ -4879,12 +4788,7 @@ int Mgmt_reindexfiles(Mgmt_params *params) {
 
 int Mgmt_listcalls(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "listcalls";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "lists active calls";
+		params->registerCommand("listcalls", "lists active calls");
 		return(0);
 	}
 	if(calltable) {
@@ -4907,7 +4811,7 @@ int Mgmt_listcalls(Mgmt_params *params) {
 typedef struct {
 	int *setVar;
 	int setValue;
-	string helpText;
+	const char *helpText;
 } cmdData;
 
 int Mgmt_offon(Mgmt_params *params) {
@@ -4932,15 +4836,7 @@ int Mgmt_offon(Mgmt_params *params) {
 
 		std::map<string, cmdData>::iterator cmdItem;
 		for (cmdItem = cmdsDataTable.begin(); cmdItem != cmdsDataTable.end(); cmdItem++) {
-			string str = cmdItem->first;
-			params->registerCommand(&str, params->index);
-		}
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		std::map<string, cmdData>::iterator cmdItem = cmdsDataTable.find(params->helpText);
-		if (cmdItem != cmdsDataTable.end()) {
-			params->helpText = cmdItem->second.helpText;
+			params->registerCommand(cmdItem->first.c_str(), cmdItem->second.helpText);
 		}
 		return(0);
 	}
@@ -4958,12 +4854,7 @@ int Mgmt_offon(Mgmt_params *params) {
 
 int Mgmt_creategraph(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "creategraph";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "creates graphs";
+		params->registerCommand("creategraph", "creates graphs");
 		return(0);
 	}
 
@@ -5141,12 +5032,7 @@ int Mgmt_creategraph(Mgmt_params *params) {
 
 int Mgmt_d_lc_for_destroy(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "d_lc_for_destroy";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "d_lc_for_destroy";
+		params->registerCommand("d_lc_for_destroy", "d_lc_for_destroy");
 		return(0);
 	}
 
@@ -5188,12 +5074,7 @@ int Mgmt_d_lc_for_destroy(Mgmt_params *params) {
 }
 int Mgmt_d_lc_bye(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "d_lc_bye";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "d_lc_bye";
+		params->registerCommand("d_lc_bye", "d_lc_bye");
 		return(0);
 	}
 
@@ -5235,12 +5116,7 @@ int Mgmt_d_lc_bye(Mgmt_params *params) {
 
 int Mgmt_d_lc_all(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "d_lc_all";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "d_lc_all";
+		params->registerCommand("d_lc_all", "d_lc_all");
 		return(0);
 	}
 
@@ -5281,15 +5157,9 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 
 int Mgmt_d_pointer_to_call(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "d_pointer_to_call";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("d_pointer_to_call", "d_pointer_to_call");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "d_pointer_to_call";
-		return(0);
-	}
-
 	char fbasename[256];
 	sscanf(params->buf, "d_pointer_to_call %s", fbasename);
 	ostringstream outStr;
@@ -5312,15 +5182,9 @@ int Mgmt_d_pointer_to_call(Mgmt_params *params) {
 
 int Mgmt_d_close_call(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "d_close_call";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("d_close_call", "d_close_call");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "d_close_call";
-		return(0);
-	}
-
 	char fbasename[100];
 	sscanf(params->buf, "d_close_call %s", fbasename);
 	string rslt = fbasename + string(" missing");
@@ -5340,15 +5204,9 @@ int Mgmt_d_close_call(Mgmt_params *params) {
 
 int Mgmt_getipaccount(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "getipaccount";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("getipaccount", "getipaccount");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "getipaccount";
-		return(0);
-	}
-
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;
 	sscanf(params->buf, "getipaccount %u", &uid);
@@ -5363,12 +5221,7 @@ int Mgmt_getipaccount(Mgmt_params *params) {
 
 int Mgmt_ipaccountfilter(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "ipaccountfilter";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "ipaccountfilter set";
+		params->registerCommand("ipaccountfilter", "ipaccountfilter set");
 		return(0);
 	}
 
@@ -5410,15 +5263,9 @@ int Mgmt_ipaccountfilter(Mgmt_params *params) {
 
 int Mgmt_stopipaccount(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "stopipaccount";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("stopipaccount", "stopipaccount");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "stopipaccount";
-		return(0);
-	}
-
 	u_int32_t id = 0;
 	sscanf(params->buf, "stopipaccount %u", &id);
 	map<unsigned int, octects_live_t*>::iterator it = ipacc_live.find(id);
@@ -5434,15 +5281,9 @@ int Mgmt_stopipaccount(Mgmt_params *params) {
 
 int Mgmt_fetchipaccount(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "fetchipaccount";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("fetchipaccount", "fetchipaccount");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "fetchipaccount";
-		return(0);
-	}
-
 	u_int32_t id = 0;
 	sscanf(params->buf, "fetchipaccount %u", &id);
 	map<unsigned int, octects_live_t*>::iterator it = ipacc_live.find(id);
@@ -5466,15 +5307,9 @@ int Mgmt_fetchipaccount(Mgmt_params *params) {
 
 int Mgmt_getactivesniffers(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "getactivesniffers";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("getactivesniffers", "returns active sniffers");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "returns active sniffers";
-		return(0);
-	}
-
 	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 	string jsonResult = "[";
 	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
@@ -5496,15 +5331,9 @@ int Mgmt_getactivesniffers(Mgmt_params *params) {
 
 int Mgmt_stoplivesniffer(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "stoplivesniffer";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("stoplivesniffer", "stop live sniffer");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "stop live sniffer";
-		return(0);
-	}
-
 	u_int32_t uid = 0;
 	sscanf(params->buf, "stoplivesniffer %u", &uid);
 	while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
@@ -5526,15 +5355,9 @@ int Mgmt_stoplivesniffer(Mgmt_params *params) {
 
 int Mgmt_getlivesniffer(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "getlivesniffer";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("getlivesniffer", "returns running live sniffers");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "returns running live sniffers";
-		return(0);
-	}
-
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;
 	sscanf(params->buf, "getlivesniffer %u", &uid);
@@ -5551,12 +5374,7 @@ int Mgmt_getlivesniffer(Mgmt_params *params) {
 
 int Mgmt_startlivesniffer(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "startlivesniffer";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "starts live sniffing";
+		params->registerCommand("startlivesniffer", "starts live sniffing");
 		return(0);
 	}
 
@@ -5668,12 +5486,7 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 
 int Mgmt_livefilter(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "livefilter";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "set live filter. Syntax livefilter set PARAMS";
+		params->registerCommand("livefilter", "set live filter. Syntax livefilter set PARAMS");
 		return(0);
 	}
 
@@ -5949,12 +5762,7 @@ int Mgmt_livefilter(Mgmt_params *params) {
 
 int Mgmt_listen_stop(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "listen_stop";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "stop listen";
+		params->registerCommand("listen_stop", "stop listen");
 		return(0);
 	}
 
@@ -5988,12 +5796,7 @@ int Mgmt_listen_stop(Mgmt_params *params) {
 
 int Mgmt_listen(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "listen";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "start listen";
+		params->registerCommand("listen", "start listen");
 		return(0);
 	}
 
@@ -6048,12 +5851,7 @@ int Mgmt_listen(Mgmt_params *params) {
 
 int Mgmt_readaudio(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "readaudio";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "start read audio";
+		params->registerCommand("readaudio", "start read audio");
 		return(0);
 	}
 
@@ -6122,30 +5920,18 @@ int Mgmt_readaudio(Mgmt_params *params) {
 
 int Mgmt_reload(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "reload";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("reload", "voipmonitor reload");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "voipmonitor reload";
-		return(0);
-	}
-
 	reload_capture_rules();
 	return(params->sendString("reload ok"));
 }
 
 int Mgmt_crules_print(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "crules_print";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("crules_print", "debug print of the capture rules");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "debug print of the capture rules";
-		return(0);
-	}
-
 	ostringstream oss;
 	oss << "IPfilter" << endl;
 	IPfilter::dump2man(oss);
@@ -6161,42 +5947,25 @@ int Mgmt_crules_print(Mgmt_params *params) {
 
 int Mgmt_hot_restart(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "hot_restart";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("hot_restart", "do hot restart");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "do hot restart";
-		return(0);
-	}
-
 	hot_restart();
 	return(params->sendString("hot restart ok"));
 }
 
 int Mgmt_get_json_config(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "get_json_config";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("get_json_config", "export JSON config");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "export JSON config";
-		return(0);
-	}
-
 	string rslt = useNewCONFIG ? CONFIG.getJson() : "not supported";
 	return(params->sendString(&rslt));
 }
 
 int Mgmt_set_json_config(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "set_json_config";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "set JSON config";
+		params->registerCommand("set_json_config", "set JSON config");
 		return(0);
 	}
 	string rslt;
@@ -6211,45 +5980,27 @@ int Mgmt_set_json_config(Mgmt_params *params) {
 
 int Mgmt_fraud_refresh(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "fraud_refresh";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("fraud_refresh", "refresh fraud");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "refresh fraud";
-		return(0);
-	}
-
 	refreshFraud();
 	return(params->sendString("reload ok"));
 }
 
 int Mgmt_send_call_info_refresh(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "send_call_info_refresh";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("send_call_info_refresh", "send call info refresh");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "send call info refresh";
-		return(0);
-	}
-
 	refreshSendCallInfo();
 	return(params->sendString("reload ok"));
 }
 
 int Mgmt_options_qualify_refresh(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "options_qualify_refresh";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("options_qualify_refresh", "refresh options qualify");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "refresh options qualify";
-		return(0);
-	}
-
 	extern cSipMsgRelations *sipMsgRelations;
 	sipMsgRelations->loadParamsInBackground();
 	return(params->sendString("reload ok"));
@@ -6257,15 +6008,9 @@ int Mgmt_options_qualify_refresh(Mgmt_params *params) {
 
 int Mgmt_custom_headers_refresh(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "custom_headers_refresh";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("custom_headers_refresh", "refresh custom headers");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "refresh custom headers";
-		return(0);
-	}
-
 	extern CustomHeaders *custom_headers_cdr;
 	extern CustomHeaders *custom_headers_message;
 	extern NoHashMessageRules *no_hash_message_rules;
@@ -6283,15 +6028,9 @@ int Mgmt_custom_headers_refresh(Mgmt_params *params) {
 
 int Mgmt_no_hash_message_rules_refresh(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "no_hash_message_rules_refresh";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("no_hash_message_rules_refresh", "refresh no hash message rules");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "refresh no hash message rules";
-		return(0);
-	}
-
 	extern NoHashMessageRules *no_hash_message_rules;
 	if(no_hash_message_rules) {
 		no_hash_message_rules->refresh();
@@ -6301,30 +6040,18 @@ int Mgmt_no_hash_message_rules_refresh(Mgmt_params *params) {
 
 int Mgmt_billing_refresh(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "billing_refresh";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("billing_refresh", "refresh billing");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "refresh billing";
-		return(0);
-	}
-
 	refreshBilling();
 	return(params->sendString("reload ok"));
 }
 
 int Mgmt_country_detect_refresh(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "country_detect_refresh";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("country_detect_refresh", "refresh country detect");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "refresh country detect";
-		return(0);
-	}
-
 	refreshBilling();
 	CountryDetectPrepareReload();
 	return(params->sendString("reload ok"));
@@ -6332,12 +6059,7 @@ int Mgmt_country_detect_refresh(Mgmt_params *params) {
 
 int Mgmt_getfile_is_zip_support(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "getfile_is_zip_support";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "check getfile zip support";
+		params->registerCommand("getfile_is_zip_support", "check getfile zip support");
 		return(0);
 	}
 	return(params->sendString("OK"));
@@ -6345,15 +6067,9 @@ int Mgmt_getfile_is_zip_support(Mgmt_params *params) {
 
 int Mgmt_getfile_in_tar_check_complete(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "getfile_in_tar_check_complete";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("getfile_in_tar_check_complete", "getfile in tar check complete");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "getfile in tar check complete";
-		return(0);
-	}
-
 	char tar_filename[2048];
 	char filename[2048];
 	char dateTimeKey[2048];
@@ -6367,18 +6083,12 @@ int Mgmt_getfile_in_tar_check_complete(Mgmt_params *params) {
 
 int Mgmt_getfile_in_tar(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "getfile_in_tar";
-		params->registerCommand(&str, params->index);
-		str = "getfile_in_tar_zip";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		if (params->helpText == "getfile_in_tar") {
-			params->helpText = "get file(s) in tar";
-		} else if (params->helpText == "getfile_in_tar_zip") {
-			params->helpText = "get file(s) in zipped tar";
-		}
+		commandAndHelp ch[] = {
+			{"getfile_in_tar", "get file(s) in tar"},
+			{"getfile_in_tar_zip", "get file(s) in zipped tar"},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
 		return(0);
 	}
 
@@ -6421,21 +6131,14 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 
 int Mgmt_getfile(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "getfile";
-		params->registerCommand(&str, params->index);
-		str = "getfile_zip";
-		params->registerCommand(&str, params->index);
+		commandAndHelp ch[] = {
+			{"getfile", "get file"},
+			{"getfile_zip", "get zipped file"},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		if (params->helpText == "getfile") {
-			params->helpText = "get file";
-		} else if (params->helpText == "getfile_zip") {
-			params->helpText = "get zipped file";
-		}
-		return(0);
-	}
-
 	params->zip = strstr(params->buf, "getfile_zip");
 
 	char filename[2048];
@@ -6451,12 +6154,7 @@ int Mgmt_getfile(Mgmt_params *params) {
 
 int Mgmt_file_exists(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "file_exists";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "file exists";
+		params->registerCommand("file_exists", "file exists");
 		return(0);
 	}
 
@@ -6499,15 +6197,9 @@ int Mgmt_file_exists(Mgmt_params *params) {
 
 int Mgmt_fileexists(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "fileexists";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("fileexists", "file exists 2");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "file exists 2";
-		return(0);
-	}
-
 	char filename[2048];
 	unsigned int size;
 	char buf_output[1024];
@@ -6520,15 +6212,9 @@ int Mgmt_fileexists(Mgmt_params *params) {
 
 int Mgmt_flush_tar(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "flush_tar";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("flush_tar", "flush_tar");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "flush tar";
-		return(0);
-	}
-
 	char filename[2048];
 	sscanf(params->buf, "flush_tar %s", filename);
 	flushTar(filename);
@@ -6537,12 +6223,7 @@ int Mgmt_flush_tar(Mgmt_params *params) {
 
 int Mgmt_genwav(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "genwav";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "generates wav";
+		params->registerCommand("genwav", "generates wav");
 		return(0);
 	}
 
@@ -6586,12 +6267,7 @@ getwav2:
 
 int Mgmt_getwav(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "getwav";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "gets wav";
+		params->registerCommand("getwav", "gets wav");
 		return(0);
 	}
 
@@ -6655,12 +6331,7 @@ getwav:
 
 int Mgmt_getsiptshark(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "getsiptshark";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "get sip tshark";
+		params->registerCommand("getsiptshark", "get sip tshark");
 		return(0);
 	}
 
@@ -6743,12 +6414,7 @@ int Mgmt_getsiptshark(Mgmt_params *params) {
 
 int Mgmt_genhttppcap(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "genhttppcap";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "get http pcap";
+		params->registerCommand("genhttppcap", "get http pcap");
 		return(0);
 	}
 
@@ -6779,12 +6445,7 @@ int Mgmt_genhttppcap(Mgmt_params *params) {
 
 int Mgmt_quit(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "quit";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "quit";
+		params->registerCommand("quit", "quit");
 		return(0);
 	}
 	return(0);
@@ -6792,12 +6453,7 @@ int Mgmt_quit(Mgmt_params *params) {
 
 int Mgmt_terminating(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "terminating";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "terminates sensor";
+		params->registerCommand("terminating", "terminates sensor");
 		return(0);
 	}
 	vm_terminate();
@@ -6806,12 +6462,7 @@ int Mgmt_terminating(Mgmt_params *params) {
 
 int Mgmt_coutstr(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "coutstr";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "echo string to the standart output";
+		params->registerCommand("coutstr", "echo string to the standart output");
 		return(0);
 	}
 	char *pointToSpaceSeparator = strchr(params->buf, ' ');
@@ -6823,12 +6474,7 @@ int Mgmt_coutstr(Mgmt_params *params) {
 
 int Mgmt_syslogstr(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "syslogstr";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "sends string to the syslog";
+		params->registerCommand("syslogstr", "sends string to the syslog");
 		return(0);
 	}
 	char *pointToSpaceSeparator = strchr(params->buf, ' ');
@@ -6840,12 +6486,7 @@ int Mgmt_syslogstr(Mgmt_params *params) {
 
 int Mgmt_custipcache_get_cust_id(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "custipcache_get_cust_id";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "custipcache_get_cust_id";
+		params->registerCommand("custipcache_get_cust_id", "custipcache_get_cust_id");
 		return(0);
 	}
 	char ip[20];
@@ -6862,12 +6503,7 @@ int Mgmt_custipcache_get_cust_id(Mgmt_params *params) {
 
 int Mgmt_custipcache_refresh(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "custipcache_refresh";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "custipcache_refresh";
+		params->registerCommand("custipcache_refresh", "custipcache_refresh");
 		return(0);
 	}
 	char sendbuf[BUFSIZE];
@@ -6878,12 +6514,7 @@ int Mgmt_custipcache_refresh(Mgmt_params *params) {
 
 int Mgmt_custipcache_vect_print(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "custipcache_vect_print";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "custipcache_vect_print";
+		params->registerCommand("custipcache_vect_print", "custipcache_vect_print");
 		return(0);
 	}
 	CustIpCache *custIpCache = getCustIpCache();
@@ -6896,18 +6527,12 @@ int Mgmt_custipcache_vect_print(Mgmt_params *params) {
 
 int Mgmt_upgrade_restart(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "upgrade";
-		params->registerCommand(&str, params->index);
-		str = "restart";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		if (params->helpText == "upgrade") {
-			params->helpText = "upgrades sensor";
-		} else if (params->helpText == "restart") {
-			params->helpText = "restarts sensor";
-		}
+		commandAndHelp ch[] = {
+			{"upgrade", "upgrades senso"},
+			{"restart", "restarts sensor"},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
 		return(0);
 	}
 
@@ -7006,15 +6631,9 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 
 int Mgmt_gitUpgrade(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "gitUpgrade";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("gitUpgrade", "do upgrade from git");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "do upgrade from git";
-		return(0);
-	}
-
 	char cmd[100];
 	sscanf(params->buf, "gitUpgrade %s", cmd);
 	RestartUpgrade upgrade;
@@ -7031,12 +6650,7 @@ int Mgmt_gitUpgrade(Mgmt_params *params) {
 
 int Mgmt_sniffer_stat(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "sniffer_stat";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "return sniffer's statistics";
+		params->registerCommand("sniffer_stat", "return sniffer's statistics");
 		return(0);
 	}
 
@@ -7073,15 +6687,9 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 
 int Mgmt_sniffer_threads(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "sniffer_threads";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("sniffer_threads", "return sniffer's thread statistics");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "return sniffer's thread statistics";
-		return(0);
-	}
-
 	extern cThreadMonitor threadMonitor;
 	string threads = threadMonitor.output();
 	return(params->sendString(&threads));
@@ -7089,15 +6697,9 @@ int Mgmt_sniffer_threads(Mgmt_params *params) {
 
 int Mgmt_pcapstat(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "pcapstat";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("pcapstat", "return pcap's statistics");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "return pcap's statistics";
-		return(0);
-	}
-
 	extern PcapQueue *pcapQueueStatInterface;
 	string rslt;
 	if(pcapQueueStatInterface) {
@@ -7113,12 +6715,7 @@ int Mgmt_pcapstat(Mgmt_params *params) {
 
 int Mgmt_login_screen_popup(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "login_screen_popup";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "login_screen_popup";
+		params->registerCommand("login_screen_popup", "login_screen_popup");
 		return(0);
 	}
 	*params->managerClientThread =  new FILE_LINE(13013) ManagerClientThread_screen_popup(params->client, params->buf);
@@ -7127,12 +6724,7 @@ int Mgmt_login_screen_popup(Mgmt_params *params) {
 
 int Mgmt_ac_add_thread(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "ac_add_thread";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "ac_add_thread";
+		params->registerCommand("ac_add_thread", "ac_add_thread");
 		return(0);
 	}
 	extern AsyncClose *asyncClose;
@@ -7142,12 +6734,7 @@ int Mgmt_ac_add_thread(Mgmt_params *params) {
 
 int Mgmt_ac_remove_thread(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "ac_remove_thread";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "ac_remove_thread";
+		params->registerCommand("ac_remove_thread", "ac_remove_thread");
 		return(0);
 	}
 	extern AsyncClose *asyncClose;
@@ -7157,12 +6744,7 @@ int Mgmt_ac_remove_thread(Mgmt_params *params) {
 
 int Mgmt_t2sip_add_thread(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "t2sip_add_thread";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "t2sip_add_thread";
+		params->registerCommand("t2sip_add_thread", "t2sip_add_thread");
 		return(0);
 	}
 	PreProcessPacket::autoStartNextLevelPreProcessPacket();
@@ -7171,12 +6753,7 @@ int Mgmt_t2sip_add_thread(Mgmt_params *params) {
 
 int Mgmt_t2sip_remove_thread(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "t2sip_remove_thread";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "t2sip_remove_thread";
+		params->registerCommand("t2sip_remove_thread", "t2sip_remove_thread");
 		return(0);
 	}
 	PreProcessPacket::autoStopLastLevelPreProcessPacket(true);
@@ -7185,12 +6762,7 @@ int Mgmt_t2sip_remove_thread(Mgmt_params *params) {
 
 int Mgmt_rtpread_add_thread(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "rtpread_add_thread";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "rtpread_add_thread";
+		params->registerCommand("rtpread_add_thread", "rtpread_add_thread");
 		return(0);
 	}
 	add_rtp_read_thread();
@@ -7199,12 +6771,7 @@ int Mgmt_rtpread_add_thread(Mgmt_params *params) {
 
 int Mgmt_rtpread_remove_thread(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "rtpread_remove_thread";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "rtpread_remove_thread";
+		params->registerCommand("rtpread_remove_thread", "rtpread_remove_thread");
 		return(0);
 	}
 	set_remove_rtp_read_thread();
@@ -7213,12 +6780,7 @@ int Mgmt_rtpread_remove_thread(Mgmt_params *params) {
 
 int Mgmt_enable_bad_packet_order_warning(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "enable_bad_packet_order_warning";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "enable_bad_packet_order_warning";
+		params->registerCommand("enable_bad_packet_order_warning", "enable_bad_packet_order_warning");
 		return(0);
 	}
 	enable_bad_packet_order_warning = 1;
@@ -7227,15 +6789,9 @@ int Mgmt_enable_bad_packet_order_warning(Mgmt_params *params) {
 
 int Mgmt_sipports(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "sipports";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("sipports", "return list of used sip ports");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "return list of used sip ports";
-		return(0);
-	}
-
 	ostringstream outStrSipPorts;
 	extern char *sipportmatrix;
 	for(int i = 0; i < 65537; i++) {
@@ -7250,12 +6806,7 @@ int Mgmt_sipports(Mgmt_params *params) {
 
 int Mgmt_skinnyports(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "skinnyports";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "return list of used skinny ports";
+		params->registerCommand("skinnyports", "return list of used skinny ports");
 		return(0);
 	}
 
@@ -7276,15 +6827,9 @@ int Mgmt_skinnyports(Mgmt_params *params) {
 
 int Mgmt_ignore_rtcp_jitter(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "ignore_rtcp_jitter";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("ignore_rtcp_jitter", "return ignore rtcp jitter value");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "return ignore rtcp jitter value";
-		return(0);
-	}
-
 	extern unsigned int opt_ignoreRTCPjitter;
 	ostringstream outStrIgnoreJitter;
 	outStrIgnoreJitter << opt_ignoreRTCPjitter << endl;
@@ -7294,15 +6839,9 @@ int Mgmt_ignore_rtcp_jitter(Mgmt_params *params) {
 
 int Mgmt_convertchars(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "convertchars";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("convertchars", "convertchars");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "convertchars";
-		return(0);
-	}
-
 	ostringstream outStrConvertchar;
 	extern char opt_convert_char[64];
 	for(unsigned int i = 0; i < sizeof(opt_convert_char) && opt_convert_char[i]; i++) {
@@ -7315,15 +6854,9 @@ int Mgmt_convertchars(Mgmt_params *params) {
 
 int Mgmt_natalias(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "natalias";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("natalias", "natalias");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "natalias";
-		return(0);
-	}
-
 	extern nat_aliases_t nat_aliases;
 	string strNatAliases;
 	if(nat_aliases.size()) {
@@ -7340,12 +6873,7 @@ int Mgmt_natalias(Mgmt_params *params) {
 
 int Mgmt_sql_time_information(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "sql_time_information";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "sql_time_information";
+		params->registerCommand("sql_time_information", "sql_time_information");
 		return(0);
 	}
 
@@ -7372,21 +6900,14 @@ int Mgmt_sql_time_information(Mgmt_params *params) {
 
 int Mgmt_sqlexport(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "sqlexport";
-		params->registerCommand(&str, params->index);
-		str = "sqlvmexport";
-		params->registerCommand(&str, params->index);
+		commandAndHelp ch[] = {
+			{"sqlexport", "sqlexport"},
+			{"sqlvmexport", "sqlvmexport"},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		if (params->helpText == "sqlexport") {
-			params->helpText = "sqlexport";
-		} else if (params->helpText == "sqlvmexport") {
-			params->helpText = "sqlvmexport";
-		}
-		return(0);
-	}
-
 	bool sqlFormat = strstr(params->buf, "sqlexport") != NULL;
 	extern MySqlStore *sqlStore;
 	string rslt = sqlStore->exportToFile(NULL, "auto", sqlFormat, strstr(params->buf, "clean") != NULL);
@@ -7395,12 +6916,7 @@ int Mgmt_sqlexport(Mgmt_params *params) {
 
 int Mgmt_memory_stat(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "memory_stat";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "return a memory statistics";
+		params->registerCommand("memory_stat", "return a memory statistics");
 		return(0);
 	}
 	string rsltMemoryStat = getMemoryStat();
@@ -7409,15 +6925,9 @@ int Mgmt_memory_stat(Mgmt_params *params) {
 
 int Mgmt_list_active_clients(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "list_active_clients";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("list_active_clients", "list of active clients");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "list of active clients";
-		return(0);
-	}
-
 	extern sSnifferServerServices snifferServerServices;
 	string rslt = snifferServerServices.listJsonServices();
 	return(params->sendString(&rslt));
@@ -7425,15 +6935,9 @@ int Mgmt_list_active_clients(Mgmt_params *params) {
 
 int Mgmt_jemalloc_stat(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "jemalloc_stat";
-		params->registerCommand(&str, params->index);
+		params->registerCommand("jemalloc_stat", "return jemalloc statistics");
 		return(0);
 	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "return jemalloc statistics";
-		return(0);
-	}
-
 	string jeMallocStat(bool full);
 	string rsltMemoryStat = jeMallocStat(strstr(params->buf, "full"));
 	return(params->sendString(&rsltMemoryStat));
@@ -7441,12 +6945,7 @@ int Mgmt_jemalloc_stat(Mgmt_params *params) {
 
 int Mgmt_cloud_activecheck(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "cloud_activecheck";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "cloud_activecheck";
+		params->registerCommand("cloud_activecheck", "cloud_activecheck");
 		return(0);
 	}
 	cloud_activecheck_success();
@@ -7456,12 +6955,7 @@ int Mgmt_cloud_activecheck(Mgmt_params *params) {
 #ifndef FREEBSD
 int Mgmt_malloc_trim(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "malloc_trim";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "malloc_trim";
+		params->registerCommand("malloc_trim", "malloc_trim");
 		return(0);
 	}
 	malloc_trim(0);
@@ -7471,20 +6965,15 @@ int Mgmt_malloc_trim(Mgmt_params *params) {
 
 int Mgmt_memcrash_test(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "memcrash_test_1";
-		params->registerCommand(&str, params->index);
-		str = "memcrash_test_2";
-		params->registerCommand(&str, params->index);
-		str = "memcrash_test_3";
-		params->registerCommand(&str, params->index);
-		str = "memcrash_test_4";
-		params->registerCommand(&str, params->index);
-		str = "memcrash_test_5";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "";
+		commandAndHelp ch[] = {
+			{"memcrash_test_1", ""},
+			{"memcrash_test_2", ""},
+			{"memcrash_test_3", ""},
+			{"memcrash_test_4", ""},
+			{"memcrash_test_5", ""},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
 		return(0);
 	}
 
@@ -7514,12 +7003,7 @@ int Mgmt_memcrash_test(Mgmt_params *params) {
 
 int Mgmt_set_pcap_stat_period(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "set_pcap_stat_period";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "set_pcap_stat_period";
+		params->registerCommand("set_pcap_stat_period", "set_pcap_stat_period");
 		return(0);
 	}
 	int new_pcap_stat_period = atoi(params->buf + 21);
@@ -7531,12 +7015,7 @@ int Mgmt_set_pcap_stat_period(Mgmt_params *params) {
 
 int Mgmt_setverbparam(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "setverbparam";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "setverbparam";
+		params->registerCommand("setverbparam", "setverbparam");
 		return(0);
 	}
 
@@ -7552,12 +7031,7 @@ int Mgmt_setverbparam(Mgmt_params *params) {
 
 int Mgmt_unpausecall(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "unpausecall";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "unpause call's processing";
+		params->registerCommand("unpausecall", "unpause call's processing");
 		return(0);
 	}
 
@@ -7573,12 +7047,7 @@ int Mgmt_unpausecall(Mgmt_params *params) {
 
 int Mgmt_pausecall(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		string str = "pausecall";
-		params->registerCommand(&str, params->index);
-		return(0);
-	}
-	if (params->task == params->mgmt_task_getHelp) {
-		params->helpText = "pause call's processing";
+		params->registerCommand("pausecall", "pause call's processing");
 		return(0);
 	}
 

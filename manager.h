@@ -103,6 +103,11 @@ private:
 	volatile int _sync_client_threads;
 };
 
+struct commandAndHelp {
+	const char *command;
+	const char *help;
+};
+
 class Mgmt_params {
 public:
 	Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
@@ -112,15 +117,14 @@ public:
 	int sendString(ostringstream *);
 	int sendString(int);
 	int sendFile(const char *fileName);
-	int registerCommand(string *, int);
+	int registerCommand(const char *, const char *);
+	int registerCommand(struct commandAndHelp *);
 
 	enum eTask {
 		mgmt_task_na = 0,
-		mgmt_task_getHelp = 1 << 0,
-		mgmt_task_DoInit = 1 << 1
+		mgmt_task_DoInit = 1 << 0
 	};
 	eTask task;
-	string helpText;
 	int index;
 	bool zip;
 // vars for sendvm
