@@ -3336,6 +3336,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					}
 				} else if(packetS->cseq.method == CANCEL &&
 					  call->cancelcseq.is_set() && packetS->cseq == call->cancelcseq) {
+					call->setSeenbyeAndOk(true, getTimeUS(packetS->header_pt), packetS->get_callid());
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
 				}

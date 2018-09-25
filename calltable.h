@@ -564,7 +564,7 @@ public:
 	bool seenmessageok;
 	bool seenbye;			//!< true if we see SIP BYE within the Call
 	u_int64_t seenbye_time_usec;
-	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANEL within the Call
+	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANCEL within the Call
 	u_int64_t seenbyeandok_time_usec;
 	bool unconfirmed_bye;
 	bool seenRES2XX;
