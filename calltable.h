@@ -415,11 +415,15 @@ public:
 			seenbye_time_usec = 0;
 			seenbyeandok = false;
 			seenbyeandok_time_usec = 0;
+			seencancelandok = false;
+			seencancelandok_time_usec = 0;
 		}
 		bool seenbye;
 		u_int64_t seenbye_time_usec;
 		bool seenbyeandok;
 		u_int64_t seenbyeandok_time_usec;
+		bool seencancelandok;
+		u_int64_t seencancelandok_time_usec;
 	};
 	struct sInviteSD_Addr {
 		sInviteSD_Addr() {
@@ -564,8 +568,10 @@ public:
 	bool seenmessageok;
 	bool seenbye;			//!< true if we see SIP BYE within the Call
 	u_int64_t seenbye_time_usec;
-	bool seenbyeandok;		//!< true if we see SIP OK TO BYE OR TO CANCEL within the Call
+	bool seenbyeandok;		//!< true if we see SIP OK TO BYE within the Call
 	u_int64_t seenbyeandok_time_usec;
+	bool seencancelandok;		//!< true if we see SIP OK TO CANCEL within the Call
+	u_int64_t seencancelandok_time_usec;
 	bool unconfirmed_bye;
 	bool seenRES2XX;
 	bool seenRES2XX_no_BYE;
@@ -1245,6 +1251,19 @@ public:
 			if(mergecalls.find(call_id) != mergecalls.end()) {
 				mergecalls[call_id].seenbyeandok = seenbyeandok;
 				mergecalls[call_id].seenbyeandok_time_usec = seenbyeandok_time_usec;
+			}
+			mergecalls_unlock();
+		}
+	}
+	void setSeencancelAndOk(bool seencancelandok, u_int64_t seencancelandok_time_usec, const char *call_id) {
+		this->seencancelandok = seencancelandok;
+		this->seencancelandok_time_usec = seencancelandok_time_usec;
+		if(isSetCallidMergeHeader() &&
+		   call_id && *call_id) {
+			mergecalls_lock();
+			if(mergecalls.find(call_id) != mergecalls.end()) {
+				mergecalls[call_id].seencancelandok = seencancelandok;
+				mergecalls[call_id].seencancelandok_time_usec = seencancelandok_time_usec;
 			}
 			mergecalls_unlock();
 		}
