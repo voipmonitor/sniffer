@@ -967,6 +967,7 @@ static void set_context_config_after_check_db_schema();
 static void create_spool_dirs();
 static bool check_complete_parameters();
 static void parse_opt_nocdr_for_last_responses();
+void init_management_functions(void);
  
  
 void handle_error(const char *file, int lineno, const char *msg){
@@ -3049,6 +3050,7 @@ int main(int argc, char *argv[]) {
 	
 	// start manager thread 	
 	if(opt_manager_port > 0 && !is_read_from_file_simple()) {
+		init_management_functions();
 		vm_pthread_create("manager server",
 				  &manager_thread, NULL, manager_server, NULL, __FILE__, __LINE__);
 		// start reversed manager thread
