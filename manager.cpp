@@ -233,6 +233,7 @@ Mgmt_params::Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshcha
 	sshchannel = isshchannel;
 	c_client = ic_client;
 	managerClientThread = imanagerClientThread;
+	index = 0;
 	zip = false;
 	task = mgmt_task_na;
 }
@@ -1108,6 +1109,7 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 	std::map<string, int>::iterator MgmtItem = MgmtCmdsRegTable.find(cmdStr);
 	if (MgmtItem != MgmtCmdsRegTable.end()) {
 		Mgmt_params* mparams = new Mgmt_params(buf, size, client, sshchannel, c_client, managerClientThread);
+		mparams->command = cmdStr;
 		int ret = MgmtFuncArray[MgmtItem->second](mparams);
 		delete mparams;
 		return(ret);
@@ -4597,9 +4599,8 @@ int Mgmt_listregisters(Mgmt_params* params) {
 	if((pointer = strchr(params->buf, '\n')) != NULL) {
 		*pointer = 0;
 	}
-	bool zip = false;
 	extern Registers registers;
-	rslt_data = registers.getDataTableJson(params->buf + strlen("listregisters") + 1, &zip);
+	rslt_data = registers.getDataTableJson(params->buf + params->command.length() + 1, &params->zip);
 	return(params->sendString(&rslt_data));
 }
 
@@ -4613,11 +4614,9 @@ int Mgmt_list_sip_msg(Mgmt_params* params) {
 	if((pointer = strchr(params->buf, '\n')) != NULL) {
 		*pointer = 0;
 	}
-	bool zip = false;
-
 	extern cSipMsgRelations *sipMsgRelations;
 	if(sipMsgRelations) {
-		rslt_data = sipMsgRelations->getDataTableJson(params->buf + strlen("list_sip_msg") + 1, &zip);
+		rslt_data = sipMsgRelations->getDataTableJson(params->buf + params->command.length() + 1, &params->zip);
 		return(params->sendString(&rslt_data));
 	}
 	return(0);
@@ -4633,11 +4632,9 @@ int Mgmt_list_history_sip_msg(Mgmt_params* params) {
 	if((pointer = strchr(params->buf, '\n')) != NULL) {
 		*pointer = 0;
 	}
-	bool zip = false;
-
 	extern cSipMsgRelations *sipMsgRelations;
 	if(sipMsgRelations) {
-		rslt_data = sipMsgRelations->getHistoryDataJson(params->buf + strlen("list_history_sip_msg") + 1, &zip);
+		rslt_data = sipMsgRelations->getHistoryDataJson(params->buf + params->command.length() + 1, &params->zip);
 		return(params->sendString(&rslt_data));
 	}
 	return(0);

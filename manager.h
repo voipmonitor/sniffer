@@ -127,6 +127,7 @@ public:
 	eTask task;
 	int index;
 	bool zip;
+	string command;
 // vars for sendvm
 	char *buf;
 	int size;
