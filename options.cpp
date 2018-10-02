@@ -129,15 +129,21 @@ void cSipMsgItem::parseContent(packet_s_process *packetS) {
 		char *endHeader = strstr(data, "\r\n\r\n");;
 		data[datalen - 1] = endCharData;
 		if(endHeader) {
+			int tryDecContentLength = 0;
 			char *contentBegin = endHeader + 4;
 			char *contentEnd = strcasestr(contentBegin, "\n\nContent-Length:");
 			if(!contentEnd) {
 				contentEnd = strstr(contentBegin, "\r\n");
+				if(contentEnd) {
+					tryDecContentLength = data + datalen - contentEnd;
+				}
 			}
 			if(!contentEnd) {
 				contentEnd = data + datalen;
 			}
-			if(!strictCheckLength || (contentEnd - contentBegin) == content_length) {
+			if(!strictCheckLength || 
+			   (contentEnd - contentBegin) == content_length ||
+			   (tryDecContentLength > 0 && (contentEnd - contentBegin) == content_length - tryDecContentLength)) {
 				content = string(contentBegin, contentEnd - contentBegin);
 			}
 		}
