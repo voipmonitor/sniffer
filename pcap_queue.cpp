@@ -1945,7 +1945,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu;
 			last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu;
 			for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
-				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true);
+				double percFullQring;
+				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true, &percFullQring);
 				if(t2cpu_preprocess_packet_out_thread >= 0) {
 					outStrStat << "/" 
 						   << preProcessPacket[i]->getShortcatTypeThread()
@@ -1955,6 +1956,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						if(qringFillingPerc > 0) {
 							outStrStat << "r" << qringFillingPerc;
 						}
+					}
+					if(sverb.qring_full && percFullQring > sverb.qring_full) {
+						outStrStat << "#" << percFullQring;
 					}
 					if(i == 0 && sverb.alloc_stat) {
 						if(preProcessPacket[i]->getAllocCounter(1) || preProcessPacket[i]->getAllocStackCounter(1)) {

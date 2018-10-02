@@ -393,6 +393,7 @@ public:
 			return;
 		}
 		if(this->outThreadState == 2) {
+			++qringPushCounter;
 			if(!qring_push_index) {
 				unsigned usleepCounter = 0;
 				while(this->qring[this->writeit]->used != 0) {
@@ -400,6 +401,9 @@ public:
 					       (usleepCounter > 10 ? 50 :
 						usleepCounter > 5 ? 10 :
 						usleepCounter > 2 ? 5 : 1));
+					if(usleepCounter == 0) {
+						++qringPushCounter_full;
+					}
 					++usleepCounter;
 				}
 				qring_push_index = this->writeit + 1;
@@ -542,7 +546,7 @@ public:
 	}
 	void push_batch_nothread();
 	void preparePstatData();
-	double getCpuUsagePerc(bool preparePstatData);
+	double getCpuUsagePerc(bool preparePstatData, double *percFullQring = NULL);
 	void terminate();
 	static void autoStartNextLevelPreProcessPacket();
 	static void autoStopLastLevelPreProcessPacket(bool force = false);
@@ -837,6 +841,8 @@ private:
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2];
+	u_int64_t qringPushCounter;
+	u_int64_t qringPushCounter_full;
 	int outThreadId;
 	volatile int _sync_push;
 	volatile int _sync_count;

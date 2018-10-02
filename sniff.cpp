@@ -4562,10 +4562,10 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
 	*/
 	
 	extern int opt_memory_purge_interval;
-        if(ts.tv_sec - __last_memory_purge >= opt_memory_purge_interval) {
-                bool firstRun = __last_memory_purge == 0;
-                __last_memory_purge = ts.tv_sec;
-                if(!firstRun) {
+	if(ts.tv_sec - __last_memory_purge >= (unsigned)opt_memory_purge_interval) {
+		bool firstRun = __last_memory_purge == 0;
+		__last_memory_purge = ts.tv_sec;
+		if(!firstRun) {
 			
 			#ifndef FREEBSD
 				malloc_trim(0);
@@ -6635,6 +6635,8 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	this->qringPushCounter = 0;
+	this->qringPushCounter_full = 0;
 	this->outThreadId = 0;
 	this->_sync_push = 0;
 	this->_sync_count = 0;
@@ -6993,7 +6995,7 @@ void PreProcessPacket::preparePstatData() {
 	}
 }
 
-double PreProcessPacket::getCpuUsagePerc(bool preparePstatData) {
+double PreProcessPacket::getCpuUsagePerc(bool preparePstatData, double *percFullQring) {
 	++getCpuUsagePerc_counter;
 	if(this->isActiveOutThread()) {
 		if(preparePstatData) {
@@ -7005,10 +7007,20 @@ double PreProcessPacket::getCpuUsagePerc(bool preparePstatData) {
 				pstat_calc_cpu_usage_pct(
 					&this->threadPstatData[0], &this->threadPstatData[1],
 					&ucpu_usage, &scpu_usage);
+				if(percFullQring) {
+					*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
+				}
+				qringPushCounter = 0;
+				qringPushCounter_full = 0;
 				return(ucpu_usage + scpu_usage);
 			}
 		}
 	}
+	if(percFullQring) {
+		*percFullQring = -1;
+	}
+	qringPushCounter = 0;
+	qringPushCounter_full = 0;
 	return(-1);
 }
 
