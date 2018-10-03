@@ -7009,18 +7009,18 @@ double PreProcessPacket::getCpuUsagePerc(bool preparePstatData, double *percFull
 					&ucpu_usage, &scpu_usage);
 				if(percFullQring) {
 					*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
+					qringPushCounter = 0;
+					qringPushCounter_full = 0;
 				}
-				qringPushCounter = 0;
-				qringPushCounter_full = 0;
 				return(ucpu_usage + scpu_usage);
 			}
 		}
 	}
 	if(percFullQring) {
 		*percFullQring = -1;
+		qringPushCounter = 0;
+		qringPushCounter_full = 0;
 	}
-	qringPushCounter = 0;
-	qringPushCounter_full = 0;
 	return(-1);
 }
 
@@ -7546,6 +7546,8 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	this->qring_push_index_count = 0;
 	this->qring_active_push_item = NULL;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	this->qringPushCounter = 0;
+	this->qringPushCounter_full = 0;
 	this->outThreadId = 0;
 	this->term_processRtp = false;
 	for(int i = 0; i < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
@@ -7944,7 +7946,7 @@ void ProcessRtpPacket::preparePstatData(int nextThreadIndexPlus) {
 	}
 }
 
-double ProcessRtpPacket::getCpuUsagePerc(bool preparePstatData, int nextThreadIndexPlus) {
+double ProcessRtpPacket::getCpuUsagePerc(bool preparePstatData, int nextThreadIndexPlus, double *percFullQring) {
 	if(preparePstatData) {
 		this->preparePstatData(nextThreadIndexPlus);
 	}
@@ -7954,8 +7956,18 @@ double ProcessRtpPacket::getCpuUsagePerc(bool preparePstatData, int nextThreadIn
 			pstat_calc_cpu_usage_pct(
 				&this->threadPstatData[nextThreadIndexPlus][0], &this->threadPstatData[nextThreadIndexPlus][1],
 				&ucpu_usage, &scpu_usage);
+			if(percFullQring) {
+				*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
+				qringPushCounter = 0;
+				qringPushCounter_full = 0;
+			}
 			return(ucpu_usage + scpu_usage);
 		}
+	}
+	if(percFullQring) {
+		*percFullQring = -1;
+		qringPushCounter = 0;
+		qringPushCounter_full = 0;
 	}
 	return(-1);
 }

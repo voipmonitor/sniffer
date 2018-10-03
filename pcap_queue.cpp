@@ -1999,7 +1999,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(processRtpPacketHash) {
 				for(int i = 0; i < 1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
 					if(i == 0 || processRtpPacketHash->existsNextThread(i - 1)) {
-						double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(true, i);
+						double percFullQring;
+						double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(true, i, i == 0 ? &percFullQring : NULL);
 						if(t2cpu_process_rtp_packet_out_thread >= 0) {
 							outStrStat << "/" << (i == 0 ? "rm:" : "rh:")
 								   << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
@@ -2008,6 +2009,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 								if(qringFillingPerc > 0) {
 									outStrStat << "r" << qringFillingPerc;
 								}
+							}
+							if(i == 0 && sverb.qring_full && percFullQring > sverb.qring_full) {
+								outStrStat << "#" << percFullQring;
 							}
 							++count_t2cpu;
 							sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
@@ -2022,7 +2026,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 				for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
 					if(processRtpPacketDistribute[i]) {
-						double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(true);
+						double percFullQring;
+						double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(true,0, &percFullQring);
 						if(t2cpu_process_rtp_packet_out_thread >= 0) {
 							outStrStat << "/" << "rd:" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
 							if(sverb.qring_stat) {
@@ -2030,6 +2035,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 								if(qringFillingPerc > 0) {
 									outStrStat << "r" << qringFillingPerc;
 								}
+							}
+							if(sverb.qring_full && percFullQring > sverb.qring_full) {
+								outStrStat << "#" << percFullQring;
 							}
 						}
 						++countRtpRdThreads;

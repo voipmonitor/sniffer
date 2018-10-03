@@ -1015,12 +1015,16 @@ public:
 			return;
 		}
 		if(!qring_push_index) {
+			++qringPushCounter;
 			unsigned usleepCounter = 0;
 			while(this->qring[this->writeit]->used != 0) {
 				usleep(20 *
 				       (usleepCounter > 10 ? 50 :
 					usleepCounter > 5 ? 10 :
 					usleepCounter > 2 ? 5 : 1));
+				if(usleepCounter == 0) {
+					++qringPushCounter_full;
+				}
 				++usleepCounter;
 			}
 			qring_push_index = this->writeit + 1;
@@ -1067,7 +1071,7 @@ public:
 		}
 	}
 	void preparePstatData(int nextThreadId = 0);
-	double getCpuUsagePerc(bool preparePstatData, int nextThreadId = 0);
+	double getCpuUsagePerc(bool preparePstatData, int nextThreadId = 0, double *percFullQring = NULL);
 	void terminate();
 	static void autoStartProcessRtpPacket();
 	void addRtpRhThread();
@@ -1115,6 +1119,8 @@ private:
 	pthread_t out_thread_handle;
 	pthread_t next_thread_handle[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 	pstat_data threadPstatData[1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
+	u_int64_t qringPushCounter;
+	u_int64_t qringPushCounter_full;
 	bool term_processRtp;
 	s_hash_thread_data hash_thread_data[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 	volatile int *hash_find_flag;
