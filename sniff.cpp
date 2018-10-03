@@ -2743,7 +2743,7 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 				}
 			}
 		} else if(!tmp_addr && !tmp_port) {
-			call->sdp_0_0_flag[iscaller ? 0 : 1] = true;
+			call->sdp_0_0_flag[iscaller_inv_index(iscaller)] = true;
 		}
 	} else {
 		if(verbosity >= 2){
@@ -4147,8 +4147,8 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 		is_rtcp = call_info[call_info_index].is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen > 1 && (u_char)packetS->data_()[1] == 0xC8);
 		stream_in_multiple_calls = call_info[call_info_index].multiple_calls;
 		
-		if(!find_by_dest && iscaller >= 0) {
-			iscaller = iscaller > 0 ? 0 : 1;
+		if(!find_by_dest && iscaller_is_set(iscaller)) {
+			iscaller = iscaller_inv_index(iscaller);
 		}
 		
 		if(sverb.process_rtp) {
@@ -4157,7 +4157,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			     << " callid: " << call->call_id
 			     << (find_by_dest ? " src: " : " SRC: ") << inet_ntostring(htonl(packetS->saddr)) << " : " << packetS->source
 			     << (find_by_dest ? " DST: " : " dst: ") << inet_ntostring(htonl(packetS->daddr)) << " : " << packetS->dest
-			     << " iscaller: " << (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "undefined")) 
+			     << " direction: " << iscaller_description(iscaller) 
 			     << " find_by_dest: " << find_by_dest
 			     << " counter: " << process_rtp_counter
 			     << endl;

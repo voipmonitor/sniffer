@@ -108,6 +108,12 @@
 #define SS7_REL 12
 #define SS7_RLC 16
 
+#define iscaller_is_set(iscaller) (iscaller >= 0)
+#define iscaller_index(iscaller) (iscaller > 0 ? 1 : 0)
+#define iscaller_inv_index(iscaller) (iscaller > 0 ? 0 : 1)
+#define iscaller_description(iscaller) (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "unknown"))
+#define iscaller_inv_description(iscaller) (iscaller > 0 ? "called" : (iscaller == 0 ? "caller" : "unknown"))
+
 
 struct s_dtmf {
 	enum e_type {
@@ -621,7 +627,7 @@ public:
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
 	char forcemark[2];
-	queue<u_int64_t> forcemark_time[2];
+	vector<u_int64_t> forcemark_time[2];
 	volatile int _forcemark_lock;
 	int first_codec;
 	bool	has_second_merged_leg;

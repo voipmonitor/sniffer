@@ -930,7 +930,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 	}
 	
 	if(sverb.process_rtp) {
-		cout << "RTP - add_ip_port: " << inet_ntostring(htonl(addr)) << " / " << port << " " << (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "undefined")) << endl;
+		cout << "RTP - add_ip_port: " << inet_ntostring(htonl(addr)) << " / " << port << " " << iscaller_description(iscaller) << endl;
 	}
 
 	if(ipport_n == MAX_IP_PER_CALL){
@@ -966,7 +966,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 	}
 	nullIpPortInfoRtpStream(ipport_n);
 	
-	if(!opt_rtpmap_by_callerd || iscaller >= 0) {
+	if(!opt_rtpmap_by_callerd || iscaller_is_set(iscaller)) {
 		memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
 	}
 	
@@ -980,7 +980,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// reinit rtpmap
-			if(!opt_rtpmap_by_callerd || iscaller >= 0) {
+			if(!opt_rtpmap_by_callerd || iscaller_is_set(iscaller)) {
 				if(opt_rtpmap_combination) {
 					int *rtpmap_src = rtpmap;
 					int *rtpmap_dst = this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i];
@@ -1016,11 +1016,12 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 			// force mark bit for reinvite for both direction
 			u_int64_t _forcemark_time = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
 			forcemark_lock();
-			for(int j = 0; j < 2; j++) {
-				forcemark_time[j].push(_forcemark_time);
-				/*
-				cout << "add forcemark " << _forcemark_time << " forcemarks size " << forcemark_time[j].size() << endl;
-				*/
+			forcemark_time[iscaller_inv_index(iscaller)].push_back(_forcemark_time);
+			if(sverb.forcemark) {
+				cout << "add forcemark: " << _forcemark_time 
+				     << " forcemarks size: " << forcemark_time[iscaller_inv_index(iscaller)].size() 
+				     << " direction: " << iscaller_inv_description(iscaller)
+				     << endl;
 			}
 			forcemark_unlock();
 			if(sdp_flags != this->ip_port[i].sdp_flags) {
@@ -1216,8 +1217,8 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 		if(index_call_ip_port_by_src < 0) {
 			index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source - 1, true);
 		}
-		if(index_call_ip_port_by_src < 0 && iscaller >= 0) {
-			index_call_ip_port_by_src = get_index_by_iscaller(iscaller ? 0 : 1);
+		if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
+			index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
 		}
 		if(index_call_ip_port_by_src >= 0 && 
 		   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list &&
@@ -1437,7 +1438,7 @@ read:
 		
 		int index_call_ip_port_find_side = this->get_index_by_ip_port(find_by_dest ? packetS->daddr : packetS->saddr,
 									      find_by_dest ? packetS->dest : packetS->source);
-		if(opt_rtp_check_both_sides_by_sdp && index_call_ip_port_find_side >= 0 && iscaller >= 0) {
+		if(opt_rtp_check_both_sides_by_sdp && index_call_ip_port_find_side >= 0 && iscaller_is_set(iscaller)) {
 			int index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr,
 										       find_by_dest ? packetS->source : packetS->dest);
 			if(index_call_ip_port_other_side < 0) {
@@ -1445,12 +1446,12 @@ read:
 											   find_by_dest ? packetS->source : packetS->dest,
 											   true);
 			}
-			if(this->ip_port[index_call_ip_port_find_side].callerd_confirm_sdp[iscaller ? 1 : 0]) {
+			if(this->ip_port[index_call_ip_port_find_side].callerd_confirm_sdp[iscaller_index(iscaller)]) {
 				if(index_call_ip_port_other_side < 0) {
 					return(false);
 				}
 			} else if(index_call_ip_port_other_side >= 0) {
-				this->ip_port[index_call_ip_port_find_side].callerd_confirm_sdp[iscaller ? 1 : 0] = true;
+				this->ip_port[index_call_ip_port_find_side].callerd_confirm_sdp[iscaller_index(iscaller)] = true;
 				for(int i = 0; i < ssrc_n; i++) {
 					if(rtp[i]->iscaller == iscaller) {
 						rtp[i]->stopReadProcessing = true;
@@ -1501,8 +1502,8 @@ read:
 			if(index_call_ip_port_by_src < 0) {
 				index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source, true);
 			}
-			if(index_call_ip_port_by_src < 0 && iscaller >= 0) {
-				index_call_ip_port_by_src = get_index_by_iscaller(iscaller ? 0 : 1);
+			if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
+				index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
 			}
 			if(index_call_ip_port_by_src >= 0 && 
 			   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list &&
@@ -3213,7 +3214,7 @@ void Call::printSelectedRtpStreams(int caller, bool selected) {
 				u_int64_t start = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec - firstTime;
 				u_int64_t stop = rtp[i]->last_pcap_header_ts - firstTime;
 				cout << hex << setw(10) << rtp[i]->ssrc << dec << "   "
-				     << (rtp[i]->iscaller ? "caller" : "called") << "   "
+				     << iscaller_description(rtp[i]->iscaller) << "   "
 				     << setw(10) << (start / 1000000.) << " - "
 				     << setw(10) << (stop / 1000000.) <<  "   "
 				     << setw(15) << inet_ntostring(htonl(rtp[i]->saddr)) << " -> " << setw(15) << inet_ntostring(htonl(rtp[i]->daddr)) << "   "
@@ -3611,7 +3612,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			   (opt_save_sdp_ipport == 2 ||
 			    (ip_port[i].iscaller ? !save_iscaller : !save_iscalled))) {
 				ipn_port ipPort(ip_port[i].addr, ip_port[i].port);
-				int indexUnique = ip_port[i].iscaller ? 0 : 1;
+				int indexUnique = iscaller_inv_index(ip_port[i].iscaller);
 				if(std::find(SDP_ip_portUnique[indexUnique].begin(), SDP_ip_portUnique[indexUnique].end(), ipPort) == SDP_ip_portUnique[indexUnique].end()) {
 					SDP_ip_portUnique[indexUnique].push_back(ipPort);
 					if(opt_save_sdp_ipport == 1) {
@@ -6232,7 +6233,7 @@ Calltable::hashAdd(in_addr_t addr, unsigned short port, struct timeval *ts, Call
 		cout << "hashAdd: " 
 		     << call->call_id << " " << inet_ntostring(htonl(addr)) << ":" << port << " " 
 		     << (is_rtcp ? "rtcp " : "")
-		     << (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "undefined")) << " "
+		     << iscaller_description(iscaller) << " "
 		     << endl;
 	}
 	

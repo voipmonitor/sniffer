@@ -1573,10 +1573,13 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			u_int64_t _forcemark_time = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
 			call->forcemark_lock();
 			for(int j = 0; j < 2; j++) {
-				call->forcemark_time[j].push(_forcemark_time);
-				/*
-				cout << "add forcemark " << _forcemark_time << " forcemarks size " << forcemark_time[j].size() << endl;
-				*/
+				call->forcemark_time[j].push_back(_forcemark_time);
+				if(sverb.forcemark) {
+					cout << "add forcemark (skinny): " << _forcemark_time 
+					     << " forcemarks size: " << call->forcemark_time[j].size()
+					     << " direction: " << iscaller_description(j)
+					     << endl;
+				}
 			}
 			call->forcemark_unlock();
 		}

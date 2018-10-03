@@ -333,6 +333,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	lastdtmf = 0;
 	forcemark = 0;
 	forcemark2 = 0;
+	forcemark_owner_used = 0;
 	ignore = 0;
 	lastcng = 0;
 	dscp = 0;
@@ -938,7 +939,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
 		     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
 		     << " seq: " << getSeqNum() << " "
-		     << " iscaller: " << (iscaller ? "caller" : "called") 
+		     << " direction: " << iscaller_description(iscaller) 
 		     << " packets_received: " << this->stats.received
 		     << " counter: " << read_rtp_counter
 		     << endl;
@@ -1003,31 +1004,34 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 
 	if(owner) {
 		owner->forcemark_lock();
-		bool nextcycle = false;
+		bool checkNextForcemark = false;
 		do {
-			nextcycle = false;
-			for(int i = 0; i < 2; i++) {
-				size_t _forcemark_size = owner->forcemark_time[i].size();
-				if(_forcemark_size) {
-					u_int64_t _forcemark_time = owner->forcemark_time[i].front();
-					u_int64_t _header_time = header->ts.tv_sec  * 1000000ull + header->ts.tv_usec;
-					if(_forcemark_time < _header_time) {
-					/*
-						cout << "set forcemark " << _forcemark_time 
-						     << " header time " << _header_time 
-						     << " forcemarks size " << _forcemark_size
-						     << " seq " << seq << endl;
-					*/
-						owner->forcemark[i] = 1;
-						owner->forcemark_time[i].pop();
-						nextcycle = true;
-					}
+			checkNextForcemark = false;
+			int forcemark_index = iscaller_index(iscaller);
+			size_t _forcemark_size = owner->forcemark_time[forcemark_index].size();
+			if(_forcemark_size > forcemark_owner_used) {
+				u_int64_t _forcemark_time = owner->forcemark_time[forcemark_index][forcemark_owner_used];
+				u_int64_t _header_time = getTimeUS(header);
+				if(_forcemark_time < _header_time) {
+					if(_forcemark_time > (first_packet_time * 1000000ull + first_packet_usec)) {
+						if(sverb.forcemark) {
+							cout << "set forcemark: " << _forcemark_time 
+							     << " header time: " << _header_time 
+							     << " forcemarks size: " << (_forcemark_size - forcemark_owner_used)
+							     << " ssrc: " << hex << getSSRC() << dec
+							     << " seq: " << seq 
+							     << " direction: " << iscaller_description(iscaller)
+							     << endl;
+						}
+						owner->forcemark[forcemark_index] = 1;
+					} 
+					++forcemark_owner_used;
+					checkNextForcemark = true;
 				}
 			}
-		} while(nextcycle);
+		} while(checkNextForcemark);
 		owner->forcemark_unlock();
 	}	       
-
 
 	payload_len = get_payload_len();
 	if(payload_len < 0) {
@@ -1979,7 +1983,6 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 	resetgraph = false;
 
 	if(owner->forcemark[iscaller] or owner->forcemark[!iscaller]) {
-		owner->forcemark[!iscaller] = 0;
 		forcemark2 = 1; // set this flag and keep it until next update_stats call
 	}
 
