@@ -19,7 +19,7 @@ yum install subversion unixODBC-devel mysql-devel libogg libogg-devel vorbis-too
 
 for CentOS >= 7.4:
 
-yum install snappy-devel libcurl-devel libssh-devel libpng-devel fftw-devel openssl-devel json-c-devel rrdtool-devel glib2-devel libxml2-devel lzo-devel gnutls-devel libgcrypt-devel gperftools-devel
+yum install libicu-devel snappy-devel libcurl-devel libssh-devel libpng-devel fftw-devel openssl-devel json-c-devel rrdtool-devel glib2-devel libxml2-devel lzo-devel gnutls-devel libgcrypt-devel gperftools-devel
 
 Snappy library
 ==============
