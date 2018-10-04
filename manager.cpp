@@ -5902,7 +5902,7 @@ int Mgmt_readaudio(Mgmt_params *params) {
 						l_worker->spybuffer->free_pos(min_use_spybuffer_sample);
 					}
 					l_worker->spybuffer->unlock_master();
-					if(params->sendString((char*)buff) == -1) {
+					if(params->sendString((char*)buff, bsize) == -1) {
 						rslt = -1;
 					}
 					delete [] buff;
