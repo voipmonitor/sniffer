@@ -1222,6 +1222,10 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 					break;
 				}
 			}
+			if(!ok && begin < end) {
+				--end;
+				ok = true;
+			}
 		}
 	}
 	if(ok) {
