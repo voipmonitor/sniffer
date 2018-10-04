@@ -1580,7 +1580,7 @@ static struct dsp *__dsp_new(unsigned int sample_rate)
 
 	if (dsp_new) {
 		dsp_new->threshold = opt_silencethreshold;
-		dsp_new->features = DSP_FEATURE_DIGIT_DETECT | DSP_FEATURE_FAX_DETECT | DSP_FEATURE_SILENCE_SUPPRESS | DSP_FEATURE_CALL_PROGRESS;
+		dsp_new->features = DSP_FEATURE_DIGIT_DETECT | DSP_FEATURE_FAX_DETECT | DSP_FEATURE_SILENCE_SUPPRESS;
 		dsp_new->busycount = DSP_HISTORY;
 		dsp_new->digitmode = DSP_DIGITMODE_DTMF;
 		dsp_new->faxmode = DSP_FAXMODE_DETECT_ALL;
@@ -1612,6 +1612,16 @@ void dsp_set_features(struct dsp *dsp, int features)
 	if (!(features & DSP_FEATURE_DIGIT_DETECT)) {
 		dsp->display_inband_dtmf_warning = 0;
 	}
+}
+
+void dsp_set_feature(struct dsp *dsp, int feature)
+{
+	dsp->features |= feature;
+}
+
+void dsp_clear_feature(struct dsp *dsp, int feature)
+{
+	dsp->features &= ~feature;
 }
 
 void dsp_free(struct dsp *dsp)

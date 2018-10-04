@@ -1883,6 +1883,13 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 
 		int res;
 		if(!DSP) DSP = dsp_new();
+		if (DSP) {
+			if (do_fasdetect)
+				dsp_set_feature(DSP, DSP_FEATURE_CALL_PROGRESS);
+			else
+				dsp_clear_feature(DSP, DSP_FEATURE_CALL_PROGRESS);
+		}
+
 		char event_digit;
 		int event_len;
 		short int *sdata = new FILE_LINE(24008) short int[payload_len];
@@ -1949,6 +1956,9 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		}
 
 		delete [] sdata;
+	} else if (DSP) {
+		dsp_free(DSP);
+		DSP = NULL;
 	}
 
 	if(getMarker()) {
