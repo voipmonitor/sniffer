@@ -474,6 +474,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	reason_sip_cause = 0;
 	reason_q850_cause = 0;
 	hold_status = false;
+	is_fas_detected = false;
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;
@@ -3564,6 +3565,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			a_ua_id = 0,
 			b_ua_id = 0;
 	u_int64_t cdr_flags = this->unconfirmed_bye ? CDR_UNCONFIRMED_BYE : 0;
+	if (is_fas_detected)
+		cdr_flags |= CDR_FAS_DETECTED;
 	for(int i = 0; i < ipport_n; i++) {
 		if(ip_port[i].sdp_flags.protocol == sdp_proto_srtp &&
 		   !ip_port[i].rtp_crypto_config_list) {

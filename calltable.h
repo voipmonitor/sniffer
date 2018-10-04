@@ -100,6 +100,7 @@
 #define CDR_UNCONFIRMED_BYE		(1 << 2)
 #define CDR_ALONE_UNCONFIRMED_BYE	(1 << 3)
 #define CDR_SRTP_WITHOUT_KEY		(1 << 4)
+#define CDR_FAS_DETECTED		(1 << 5)
 
 #define SS7_IAM 1
 #define SS7_ACM 6
@@ -601,6 +602,7 @@ public:
 
 	string hold_times;		//!< used for record hold times
 	bool hold_status;		//!< hold status var
+	bool is_fas_detected;		//!< detected FAS (False Answer Supervision)
 
 	int silencerecording;
 	int recordingpausedby182;
