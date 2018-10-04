@@ -1090,14 +1090,6 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 		return(0);
 	}
 
-	char *endOfCmd = strpbrk(buf, " \r\n\t");
-	if (!endOfCmd) {
-		syslog(LOG_ERR, "Can't determine the command's end.");
-		cerr << "Can't determine the command's end." << endl;
-		return(-1);
-	}
-	string cmdStr (buf, endOfCmd);
-
 	char *pointerToEndSeparator = strstr(buf, "\r\n");
 	if(pointerToEndSeparator) {
 		*pointerToEndSeparator = 0;
@@ -1105,17 +1097,41 @@ int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cCli
 	if(sverb.manager) {
 		cout << "manager command: " << buf << "|END" << endl;
 	}
-
-	std::map<string, int>::iterator MgmtItem = MgmtCmdsRegTable.find(cmdStr);
+	
+	int MgmtFuncIndex = -1;
+	string MgmtCommand;
+	char *pointerToSeparatorInCmd = strpbrk(buf, " \r\n\t");
+	std::map<string, int>::iterator MgmtItem = MgmtCmdsRegTable.find(pointerToSeparatorInCmd ? string(buf, pointerToSeparatorInCmd) : buf);
 	if (MgmtItem != MgmtCmdsRegTable.end()) {
-		Mgmt_params* mparams = new Mgmt_params(buf, size, client, sshchannel, c_client, managerClientThread);
-		mparams->command = cmdStr;
-		int ret = MgmtFuncArray[MgmtItem->second](mparams);
+		MgmtFuncIndex = MgmtItem->second;
+		MgmtCommand = MgmtItem->first;
+	}
+	if(MgmtFuncIndex < 0) {
+		std::map<string, int>::iterator MgmtItem;
+		for(MgmtItem = MgmtCmdsRegTable.begin(); MgmtItem != MgmtCmdsRegTable.end(); MgmtItem++) {
+			if(strstr(buf, MgmtItem->first.c_str())) {
+				MgmtFuncIndex = MgmtItem->second;
+				MgmtCommand = MgmtItem->first;
+				break;
+			}
+		}
+	}
+	Mgmt_params* mparams = new FILE_LINE(0) Mgmt_params(buf, size, client, sshchannel, c_client, managerClientThread);
+	if(MgmtFuncIndex >= 0) {
+		mparams->command = MgmtCommand;
+		int ret = MgmtFuncArray[MgmtFuncIndex](mparams);
 		delete mparams;
 		return(ret);
+	} else {
+		mparams->sendString("command not found\n");
+		delete mparams;
+		string error = string("Can't determine the command '") + buf + "'";
+		syslog(LOG_ERR, "%s", error.c_str());
+		return(-1);
 	}
 
-/*	if(strstr(buf, "getversion") != NULL) {
+	/* obsolete
+	if(strstr(buf, "getversion") != NULL) {
 		if ((size = sendvm(client, sshchannel, c_client, RTPSENSOR_VERSION, strlen(RTPSENSOR_VERSION), 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
@@ -3454,13 +3470,14 @@ getwav:
 				return -1;
 			}
 		}
-	} else {*/
+	} else {
 		if ((size = sendvm(client, sshchannel, c_client, "command not found\n", 18, 0)) == -1){
 			cerr << "Error sending data to client" << endl;
 			return -1;
 		}
-//	}
+	}
 	return 1;
+	*/
 }
 
 int Handle_pause_call(long long callref, int val ) {
