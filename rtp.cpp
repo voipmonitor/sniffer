@@ -63,6 +63,7 @@ extern int opt_faxt30detect;
 extern int opt_inbanddtmf;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
+extern int opt_fasdetect;
 extern char opt_pb_read_from_file[256];
 extern int opt_read_from_file;
 extern SqlDb *sqlDbSaveCall;
@@ -1876,7 +1877,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 	prev_sid = sid;
 
 	// DSP processing
-	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or opt_clippingdetect) 
+	bool do_fasdetect = opt_fasdetect && !this->iscaller &&  owner->connect_time && (this->header_ts.tv_sec - owner->connect_time < 10);
+	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or opt_clippingdetect or do_fasdetect)
 		and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
 
 		int res;
@@ -1911,7 +1913,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 				}
 			}
 		}
-		if(opt_inbanddtmf or opt_faxt30detect or opt_silencedetect) {
+		if(opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or do_fasdetect) {
 			int silence0 = 0;
 			int totalsilence = 0;
 			int totalnoise = 0;
@@ -1941,6 +1943,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 				} else if(opt_inbanddtmf and res == 5) {
 					owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr, s_dtmf::inband);
 				}
+				if (do_fasdetect)
+					owner->is_fas_detected = (res == AST_CONTROL_RINGING) ? true : false;
 			}
 		}
 

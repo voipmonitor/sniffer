@@ -214,6 +214,7 @@ int opt_silencedetect = 0;
 int opt_clippingdetect = 0;
 int opt_dbdtmf = 0;
 int opt_inbanddtmf = 0;
+int opt_fasdetect = 0;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
 char opt_nocdr_for_last_responses[1024];
@@ -6169,6 +6170,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42312) cConfigItem_yesno("dtmf2db", &opt_dbdtmf));
 			addConfigItem(new FILE_LINE(42313) cConfigItem_yesno("inbanddtmf", &opt_inbanddtmf));
 			addConfigItem(new FILE_LINE(42314) cConfigItem_integer("silencethreshold", &opt_silencethreshold));
+			addConfigItem(new FILE_LINE(42315) cConfigItem_yesno("fasdetect", &opt_fasdetect));
 			addConfigItem(new FILE_LINE(42315) cConfigItem_yesno("silencedetect", &opt_silencedetect));
 			addConfigItem(new FILE_LINE(42316) cConfigItem_yesno("clippingdetect", &opt_clippingdetect));
 			addConfigItem(new FILE_LINE(42317) cConfigItem_yesno("norecord-header", &opt_norecord_header));
@@ -8563,6 +8565,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "silencedetect", NULL))) {
 		opt_silencedetect = yesno(value);
+	}
+	if((value = ini.GetValue("general", "fasdetect", NULL))) {
+		opt_fasdetect = yesno(value);
 	}
 	if((value = ini.GetValue("general", "clippingdetect", NULL))) {
 		opt_clippingdetect = yesno(value);
