@@ -1882,12 +1882,29 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
 
 		int res;
-		if(!DSP) DSP = dsp_new();
+		if (!DSP) {
+			DSP = dsp_new();
+			if (DSP) {
+				int features = 0;
+				if (opt_inbanddtmf) {
+					features |= DSP_FEATURE_DIGIT_DETECT;
+				}
+				if (opt_faxt30detect) {
+					features |= DSP_FEATURE_FAX_DETECT;
+				}
+				if (opt_silencedetect) {
+					features |= DSP_FEATURE_SILENCE_SUPPRESS;
+				}
+				dsp_set_features(DSP, features);
+			}
+		}
+
 		if (DSP) {
-			if (do_fasdetect)
+			if (do_fasdetect) {
 				dsp_set_feature(DSP, DSP_FEATURE_CALL_PROGRESS);
-			else
+			} else {
 				dsp_clear_feature(DSP, DSP_FEATURE_CALL_PROGRESS);
+			}
 		}
 
 		char event_digit;
