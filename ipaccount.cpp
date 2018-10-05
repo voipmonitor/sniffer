@@ -28,7 +28,6 @@ and insert them into Call class.
 #include <iomanip>
 
 #include "ipaccount.h"
-#include "flags.h"
 #include "codecs.h"
 #include "calltable.h"
 #include "sniff.h"

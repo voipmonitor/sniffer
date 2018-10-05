@@ -400,7 +400,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
  pcapRtp(PcapDumper::rtp, this) {
 	//increaseTartimemap(time);
 	has_second_merged_leg = false;
-	isfax = 0;
+	isfax = NOFAX;
 	seenudptl = 0;
 	exists_udptl_data = false;
 	not_acceptable = false;
@@ -519,7 +519,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	}
 	silencerecording = 0;
 	recordingpausedby182 = 0;
-	flags1 = 0;
 	rtppacketsinqueue = 0;
 	end_call_rtp = 0;
 	end_call_hash_removed = 0;
@@ -4120,7 +4119,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(seenudptl && (exists_udptl_data || !not_acceptable)) {
 			// T.38
 			cdr.add(1000, "payload");
-		} else if(isfax == 2 && !not_acceptable) {
+		} else if(isfax == T30FAX && !not_acceptable) {
 			// T.30
 			cdr.add(1001, "payload");
 		} else if(payload[0] >= 0 || payload[1] >= 0) {

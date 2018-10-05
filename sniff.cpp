@@ -51,7 +51,6 @@ and insert them into Call class.
 #include <nids.h>
 #endif
 
-#include "flags.h"
 #include "codecs.h"
 #include "calltable.h"
 #include "sniff.h"
@@ -2758,12 +2757,10 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 					if(verbosity >= 2){
 						syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
 					}
-					call->isfax = 1;
-					call->flags1 |= T38FAX;
+					call->isfax = T38FAX;
 				} else {
 					if(call->isfax) {
-						call->flags1 |= T38FAXRESET;
-						call->isfax = 0;
+						call->isfax = NOFAX;
 					}
 				}
 				// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg

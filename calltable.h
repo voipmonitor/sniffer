@@ -109,6 +109,10 @@
 #define SS7_REL 12
 #define SS7_RLC 16
 
+#define NOFAX	0
+#define T38FAX	1
+#define T30FAX	2
+
 #define iscaller_is_set(iscaller) (iscaller >= 0)
 #define iscaller_index(iscaller) (iscaller > 0 ? 1 : 0)
 #define iscaller_inv_index(iscaller) (iscaller > 0 ? 0 : 1)
@@ -622,7 +626,6 @@ public:
 	timeval regrrdstart;		// time of first REGISTER
 	int regrrddiff;			// RRD diff time REGISTER<->OK in [ms]- RFC6076
 	uint64_t regsrcmac;		// mac if ether layer present in REGISTER
-	unsigned long long flags1;	//!< bit flags used to store max 64 flags 
 	volatile unsigned int rtppacketsinqueue;
 	volatile int end_call_rtp;
 	volatile int end_call_hash_removed;
