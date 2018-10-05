@@ -464,7 +464,8 @@ enum eParsePeernameDestType {
 	ppndt_caller_domain,
 	ppndt_called_domain,
 	ppndt_contact_domain,
-	ppndt_caller_name
+	ppndt_caller_name,
+	ppndt_called_tag
 };
 
 inline int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
@@ -1227,6 +1228,30 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 				ok = true;
 			}
 		}
+	} else if(parse_type == 4 && peername_sip_tags[peer_sip_tags_index].type == 0) { // tag
+		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
+		while(begin < peername_tag + peername_tag_len - 4) {
+			if(*begin == ';' && strncasestr(begin + 1, "tag=", 4)) {
+				begin+=5;
+				ok = true;
+				break;
+			}
+			++begin;
+		}
+		if(ok) {
+			ok = false;
+			for(end = begin; end < peername_tag + peername_tag_len; end++) {
+				if(*end == ';' || *end == ':') {
+					--end;
+					ok = true;
+					break;
+				}
+			}
+			if(!ok && begin < end) {
+				--end;
+				ok = true;
+			}
+		}
 	}
 	if(ok) {
 		if(end >= begin && end - begin + 1 <= peername_tag_len) {
@@ -1295,6 +1320,21 @@ inline int get_sip_domain(packet_s_process *packetS, const char *tag, const char
 			      tagType, destType) ? 0 : 1);
 }
 
+inline int get_sip_peertag(packet_s_process *packetS, const char *tag, const char *tag2,
+			   char *tag_content, unsigned int tag_content_len,
+			   eParsePeernameTagType tagType, eParsePeernameDestType destType) {
+	unsigned long peername_tag_len;
+	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
+	if(!peername_tag_len) {
+		*tag_content = 0;
+		return(1);
+	}
+	return(parse_peername(peername_tag, peername_tag_len,
+			      4,
+			      tag_content, tag_content_len,
+			      tagType, destType) ? 0 : 1);
+}
+
 void testPN() {
 	const char *e[] = {
 		"<sip:706912@sip.odorik.cz>;tag=1645803335",
@@ -1330,6 +1370,11 @@ void testPN() {
 			       rslt, rslt_len,
 			       ppntt_undefined, ppndt_undefined);
 		cout << "domain: " << rslt << endl;
+		parse_peername(e[i], strlen(e[i]),
+			       4,
+			       rslt, rslt_len,
+			       ppntt_undefined, ppndt_undefined);
+		cout << "tag: " << rslt << endl;
 		
 		
 	}
@@ -2943,7 +2988,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				invite_sd.dport = packetS->dest;
 				invite_sd.counter = 1;
 				if(opt_sdp_check_direction_ext) {
-					get_sip_peername(packetS, "\nFrom:", "\nf:", &invite_sd.caller, ppntt_to, ppndt_called);
+					get_sip_peername(packetS, "\nFrom:", "\nf:", &invite_sd.caller, ppntt_from, ppndt_caller);
 					get_sip_peername(packetS, "\nTo:", "\nt:", &invite_sd.called, ppntt_to, ppndt_called);
 					get_sip_peername(packetS, "INVITE ", NULL, &invite_sd.called_invite, ppntt_invite, ppndt_called);
 				}
@@ -2965,7 +3010,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					rinvite_sd.sport = packetS->source;
 					rinvite_sd.dport = packetS->dest;
 					rinvite_sd.counter = 1;
-					get_sip_peername(packetS, "\nFrom:", "\nf:", &rinvite_sd.caller, ppntt_to, ppndt_called);
+					get_sip_peername(packetS, "\nFrom:", "\nf:", &rinvite_sd.caller, ppntt_from, ppndt_caller);
 					get_sip_peername(packetS, "\nTo:", "\nt:", &rinvite_sd.called, ppntt_to, ppndt_called);
 					get_sip_peername(packetS, "INVITE ", NULL, &rinvite_sd.called_invite, ppntt_invite, ppndt_called);
 					call->rinvite_sdaddr.push_back(rinvite_sd);
@@ -3104,7 +3149,17 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		//check and save CSeq for later to compare with OK 
 		if(packetS->cseq.is_set()) {
-			call->invitecseq = packetS->cseq;
+			if(!call->invitecseq.is_set()) {
+				call->invitecseq = packetS->cseq;
+			} else if(packetS->cseq != call->invitecseq) {
+				char tag_content_to[1024];
+				get_sip_peertag(packetS, "\nTo:", "\nt:", tag_content_to, sizeof(tag_content_to), ppntt_to, ppndt_called_tag);
+				if(tag_content_to[0]) {
+					call->invitecseq_in_dialog.push_back(packetS->cseq);
+				} else {
+					call->invitecseq_next.push_back(packetS->cseq);
+				}
+			}
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %u\n", call->invitecseq.number);
 		}
@@ -3176,7 +3231,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 		}
 	} else if(packetS->sip_method == BYE) {
-		if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
+		if(call->is_enable_set_destroy_call_at_for_call(NULL, merged)) {
 			//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header 
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;
 			call->destroy_call_at_bye = packetS->header_pt->ts.tv_sec + opt_bye_timeout;
@@ -3203,7 +3258,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 	} else if(packetS->sip_method == CANCEL) {
 		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
-		if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
+		if(call->is_enable_set_destroy_call_at_for_call(NULL, merged)) {
 			//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 10;
 		}
@@ -3267,12 +3322,17 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						// first 200 OK will not save the second 200 OK. So rather wait for 5 seconds for some more messages instead of closing the call. 
 
 						// destroy call after 5 seonds from now 
-						call->destroy_call_at = packetS->header_pt->ts.tv_sec + 5;
-						call->destroy_call_at_bye_confirmed = packetS->header_pt->ts.tv_sec + opt_bye_confirmed_timeout;
+						if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {
+							call->destroy_call_at = packetS->header_pt->ts.tv_sec + 5;
+							call->destroy_call_at_bye_confirmed = packetS->header_pt->ts.tv_sec + opt_bye_confirmed_timeout;
+						}
 					}
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
-				} else if((packetS->cseq.method == INVITE && packetS->cseq == call->invitecseq) ||
+				} else if((packetS->cseq.method == INVITE && 
+					   (packetS->cseq == call->invitecseq || 
+					    (call->invitecseq_next.size() && find(call->invitecseq_next.begin(), call->invitecseq_next.end(), packetS->cseq) != call->invitecseq_next.end()) ||
+					    (call->invitecseq_in_dialog.size() && find(call->invitecseq_in_dialog.begin(), call->invitecseq_in_dialog.end(), packetS->cseq) != call->invitecseq_in_dialog.end()))) ||
 					  (packetS->cseq.method == MESSAGE && packetS->cseq == call->messagecseq)) {
 					for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
 						if(packetS->daddr == iter->saddr && packetS->saddr == iter->daddr) {
@@ -3370,14 +3430,14 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
 			if(lastSIPresponseNum == 481) {
 				// 481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
-				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
+				if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {
 					call->destroy_call_at = packetS->header_pt->ts.tv_sec + 180;
 				}
 			} else if(lastSIPresponseNum == 491) {
 				// do not set timeout for 491
 			} else if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
 				// save packet 
-				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
+				if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {
 					call->destroy_call_at = packetS->header_pt->ts.tv_sec + (packetS->sip_method == RES300 ? 300 : 5);
 				}
 				if(lastSIPresponseNum == 488 || lastSIPresponseNum == 606) {
@@ -3391,7 +3451,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				process_packet__parse_custom_headers(call, packetS);
 				goto endsip_save_packet;
 			} else if(!call->destroy_call_at) {
-				if(!call->has_second_merged_leg or (call->has_second_merged_leg and merged)) {
+				if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {
 					call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;
 				}
 			}

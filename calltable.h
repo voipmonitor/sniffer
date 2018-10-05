@@ -563,6 +563,8 @@ public:
 	int register_expires;	
 	sCseq byecseq[2];		
 	sCseq invitecseq;		
+	list<sCseq> invitecseq_next;
+	list<sCseq> invitecseq_in_dialog;
 	sCseq messagecseq;
 	sCseq registercseq;
 	sCseq cancelcseq;		
@@ -1114,6 +1116,11 @@ public:
 	}
 	void proxies_unlock() {
 		__sync_lock_release(&this->_proxies_lock);
+	}
+	
+	bool is_enable_set_destroy_call_at_for_call(sCseq *cseq, int merged) {
+		return((!cseq || !this->invitecseq_in_dialog.size() || find(this->invitecseq_in_dialog.begin(),this->invitecseq_in_dialog.end(), *cseq) == this->invitecseq_in_dialog.end()) &&
+		       (!this->has_second_merged_leg || (this->has_second_merged_leg && merged)));
 	}
 	
 	void shift_destroy_call_at(pcap_pkthdr *header, int lastSIPresponseNum = 0) {
