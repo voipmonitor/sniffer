@@ -1303,6 +1303,8 @@ void testPN() {
 		"sip:+12125551212@server.phone2net.com;tag=887s",
 		"\"Call Manager\" <sip:10.45.55.17>;tag=486739~121a78c0-1834-4f45-9aef-960da02c9618-29204586",
 		"sip:*@10.99.1.6:5060",
+		"sip:1234@Abc",
+		"<urn:service:sos>",
 		"sip:kljahfkjlahld",
 		"ů§jk§ůjsip:kljahfkjlahld",
 		"klhkjlh"
