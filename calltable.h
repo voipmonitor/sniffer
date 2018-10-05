@@ -1368,7 +1368,7 @@ private:
 	map<sStreamId, sUdptlDumper*> udptlDumpers;
 	volatile int _hash_add_lock;
 public:
-	bool sdp_0_0_flag[2];
+	list<u_int16_t> sdp_ip0_ports[2];
 	bool error_negative_payload_length;
 	bool use_removeRtp;
 	volatile int hash_counter;

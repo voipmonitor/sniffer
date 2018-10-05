@@ -1560,7 +1560,7 @@ fail_exit:
 }
 
 int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
-			 in_addr_t *addr, unsigned short *port, int8_t *protocol, int8_t *fax, 
+			 in_addr_t *addr, unsigned short *port, int8_t *protocol, int8_t *fax, int8_t *inactive_ip0, 
 			 char *sessid, list<rtp_crypto_config> **rtp_crypto_config_list, int8_t *rtcp_mux, int sip_method){
 	unsigned long l;
 	char *s;
@@ -1574,6 +1574,7 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
 	*protocol = 0;
 	*fax = 0;
 	*rtcp_mux = 0;
+	*inactive_ip0 = 0;
 	s = gettag(sdp_text,sdp_text_len, NULL,
 		   "o=", &l, &gettagLimitLen);
 	if(l == 0) return 1;
@@ -1710,6 +1711,9 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
 			sdp_sendrecv = true;
 
 		call->HandleHold(sdp_sendonly, sdp_sendrecv);
+	}
+	if(!*addr && memmem(sdp_text, sdp_text_len, "a=inactive", 10)) {
+		*inactive_ip0 = true;
 	}
 
 	return 0;
@@ -2726,15 +2730,16 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 
 	in_addr_t tmp_addr;
 	unsigned short tmp_port;
+	int8_t inactive_ip0;
 	int rtpmap[MAX_RTPMAP];
 	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
 	s_sdp_flags sdp_flags;
 	char sessid[MAXLEN_SDP_SESSID];
 	list<rtp_crypto_config> *rtp_crypto_config_list = NULL;
 	if (!get_ip_port_from_sdp(call, sdp, sdplen,
-				  &tmp_addr, &tmp_port, &sdp_flags.protocol, &sdp_flags.is_fax, 
+				  &tmp_addr, &tmp_port, &sdp_flags.protocol, &sdp_flags.is_fax, &inactive_ip0, 
 				  sessid, &rtp_crypto_config_list, &sdp_flags.rtcp_mux, packetS->sip_method)){
-		if(tmp_port > 0) {
+		if(tmp_addr > 0 && tmp_port > 0) {
 			bool ok_ip_port = true;
 			if(opt_sdp_ignore_ip_port.size()) {
 				for(vector<ipn_port>::iterator iter = opt_sdp_ignore_ip_port.begin(); iter != opt_sdp_ignore_ip_port.end(); iter++) {
@@ -2793,8 +2798,24 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 					delete rtp_crypto_config_list;
 				}
 			}
-		} else if(!tmp_addr && !tmp_port) {
-			call->sdp_0_0_flag[iscaller_inv_index(iscaller)] = true;
+		} else if(!tmp_addr) {
+			int iscaller_index = iscaller_inv_index(iscaller);
+			if(inactive_ip0) {
+				u_int64_t _forcemark_time = getTimeUS(packetS->header_pt);
+				call->forcemark_lock();
+				call->forcemark_time[iscaller_index].push_back(_forcemark_time);
+				if(sverb.forcemark) {
+					cout << "add forcemark (inactive): " << _forcemark_time 
+					     << " forcemarks size: " << call->forcemark_time[iscaller_index].size() 
+					     << " direction: " << iscaller_inv_description(iscaller)
+					     << endl;
+				}
+				call->forcemark_unlock();
+			}
+			if(!call->sdp_ip0_ports[iscaller_index].size() ||
+			   find(call->sdp_ip0_ports[iscaller_index].begin(), call->sdp_ip0_ports[iscaller_index].end(), tmp_port) == call->sdp_ip0_ports[iscaller_index].end()) {
+				call->sdp_ip0_ports[iscaller_index].push_back(tmp_port);
+			}
 		}
 	} else {
 		if(verbosity >= 2){

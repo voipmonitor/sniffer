@@ -594,9 +594,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	exists_crypto_suite_key = false;
 	log_srtp_callid = false;
 	
-	sdp_0_0_flag[0] = false;
-	sdp_0_0_flag[1] = false;
-	
 	error_negative_payload_length = false;
 	use_removeRtp = false;
 	hash_counter = 0;
@@ -3632,8 +3629,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		for(int i = 0; i < 2; i++) {
-			if(sdp_0_0_flag[i]) {
-				SDP_ip_portUnique[i].push_back(ipn_port(0, 0));
+			for(list<u_int16_t>::iterator iter = sdp_ip0_ports[i].begin(); iter != sdp_ip0_ports[i].end(); iter++) {
+				SDP_ip_portUnique[i].push_back(ipn_port(0, *iter));
 			}
 		}
 	}
