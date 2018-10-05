@@ -15,7 +15,6 @@
 #include <sys/param.h>
 #include <string.h>
 
-#include "flags.h"
 #include "codecs.h"
 #include "calltable.h"
 #include "sniff.h"

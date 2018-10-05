@@ -29,7 +29,6 @@ Each Call class contains two RTP classes.
 #include "format_slinear.h"
 #include "codec_alaw.h"
 #include "codec_ulaw.h"
-#include "flags.h"
 #include "mos_g729.h"   
 #include "sql_db.h"   
 #include "srtp.h"
@@ -1962,8 +1961,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 			if(res) {
 				if(opt_faxt30detect and (event_digit == 'f' or event_digit == 'e')) {
 					//printf("dsp_process: digit[%c] len[%u]\n", event_digit, event_len);
-					owner->isfax = 2;
-					owner->flags1 |= T30FAX;
+					owner->isfax = T30FAX;
 				} else if(opt_inbanddtmf and res == 5) {
 					owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr, s_dtmf::inband);
 				}
