@@ -138,6 +138,12 @@ void dsp_digitreset(struct dsp *dsp);
 /*! \brief Select feature set */
 void dsp_set_features(struct dsp *dsp, int features);
 
+/*! \brief Set feature */
+void dsp_set_feature(struct dsp *dsp, int feature);
+
+/*! \brief Clear feature */
+void dsp_clear_feature(struct dsp *dsp, int feature);
+
 /*! \brief Get pending DTMF/MF digits */
 int dsp_getdigits(struct dsp *dsp, char *buf, int max);
 
