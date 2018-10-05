@@ -198,6 +198,7 @@ int opt_use_libsrtp = 0;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
 int opt_rtpip_find_endpoints = 0;
+bool opt_rtpip_find_endpoints_set = false;
 int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
@@ -7539,6 +7540,11 @@ void set_context_config() {
 		}
 	}
 	
+	if(opt_callidmerge_header[0] &&
+	   !(useNewCONFIG ? CONFIG.isSet("rtpip_find_endpoints") : opt_rtpip_find_endpoints_set)) {
+		opt_rtpip_find_endpoints = 1;
+	}
+	
 	set_spool_permission();
 	
 	strcpy(opt_id_sensor_str, intToString(opt_id_sensor).c_str());
@@ -8589,6 +8595,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "rtpip_find_endpoints", NULL))) {
 		opt_rtpip_find_endpoints = yesno(value);
+		opt_rtpip_find_endpoints_set = true;
 	}
 	if((value = ini.GetValue("general", "savertp-threaded", NULL))) {
 		opt_rtpsave_threaded = yesno(value);
