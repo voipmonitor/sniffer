@@ -521,6 +521,7 @@ inline char* strncpy_null_term(char *dst, const char *src, size_t size) {
 	return(dst);
 }
 #define strcpy_null_term(dst, src) strncpy_null_term(dst, src, sizeof(dst))
+#define strncpy_null_term(dst, src, size) strncpy_null_term(dst, src, size)
 
 std::string &trim(std::string &s, const char *trimChars = NULL);
 std::string trim_str(std::string s, const char *trimChars = NULL);

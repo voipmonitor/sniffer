@@ -303,7 +303,6 @@ Call_abstract::get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpool
 	}
 	string spoolDir;
 	string sensorDir;
-	string timeDir;
 	string typeDir;
 	spoolDir = substSpoolDir ?
 		    substSpoolDir :
@@ -312,19 +311,39 @@ Call_abstract::get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpool
 	struct tm t = time_r(&first_packet_time);
 	char timeDir_buffer[100];
 	if(opt_newdir) {
-		snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
-			 "%04d-%02d-%02d/%02d/%02d", 
-			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
+		static volatile int timeDirCache_sync = 0;
+		static volatile u_int32_t timeDirCache_index[60];
+		static volatile char timeDirCache_buffer[60][100];
+		timeDir_buffer[0] = 0;
+		u_int8_t _time_index_arr[4];
+		_time_index_arr[0] = t.tm_mon;
+		_time_index_arr[1] = t.tm_mday;
+		_time_index_arr[2] = t.tm_hour;
+		_time_index_arr[3] = t.tm_min;
+		u_int32_t *_time_index = (u_int32_t*)_time_index_arr;
+		while(__sync_lock_test_and_set(&timeDirCache_sync, 1));
+		if(*_time_index == timeDirCache_index[t.tm_min]) {
+			strcpy_null_term(timeDir_buffer, (const char*)timeDirCache_buffer[t.tm_min]);
+		}
+		__sync_lock_release(&timeDirCache_sync);
+		if(!timeDir_buffer[0]) {
+			snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
+				 "%04d-%02d-%02d/%02d/%02d", 
+				 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
+			while(__sync_lock_test_and_set(&timeDirCache_sync, 1));
+			timeDirCache_index[t.tm_min] = *_time_index;
+			strncpy_null_term((char*)timeDirCache_buffer[t.tm_min], timeDir_buffer, sizeof(timeDir_buffer));
+			__sync_lock_release(&timeDirCache_sync);
+		}
 	} else {
 		snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
 			 "%04d-%02d-%02d", 
 			 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
 	}
-	timeDir = timeDir_buffer;
 	typeDir = opt_newdir ? getSpoolTypeDir(typeSpoolFile) : "";
 	return(spoolDir + (spoolDir.length() ? "/" : "") +
 	       sensorDir + (sensorDir.length() ? "/" : "") +
-	       timeDir + (timeDir.length() ? "/" : "") +
+	       timeDir_buffer + "/" +
 	       typeDir + (typeDir.length() ? "/" : ""));
 }
 
