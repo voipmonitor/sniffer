@@ -580,6 +580,7 @@ public:
 	bool seenmessage;
 	bool seenmessageok;
 	bool seenbye;			//!< true if we see SIP BYE within the Call
+	bool all_canceled;
 	u_int64_t seenbye_time_usec;
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE within the Call
 	u_int64_t seenbyeandok_time_usec;
@@ -868,6 +869,7 @@ public:
 			      char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, int *rtpmap, s_sdp_flags sdp_flags);
 
 	void cancel_ip_port_hash(in_addr_t sip_src_addr, char *to, char *branch, struct timeval *ts);
+	void set_all_canceled(void);
 	
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  

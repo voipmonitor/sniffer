@@ -446,6 +446,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	seenbye_time_usec = 0;
 	seenbyeandok = false;
 	seenbyeandok_time_usec = 0;
+	all_canceled = false;
 	unconfirmed_bye = false;
 	seenRES2XX = false;
 	seenRES2XX_no_BYE = false;
@@ -1117,11 +1118,22 @@ Call::cancel_ip_port_hash(in_addr_t sip_src_addr, char *to, char *branch, struct
 		   !strcmp(this->ip_port[i].to.c_str(), to)) {
 			this->ip_port[i].canceled = true;
 			((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port, ts);
+			this->set_all_canceled();
 			if(opt_rtcp) {
 				((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port + 1, ts, true);
 			}
 		}
 	}
+}
+
+void
+Call::set_all_canceled(void) {
+	for(int i = 0; i < ipport_n; i++) {
+		if (!this->ip_port[i].canceled) {
+			return;
+		}
+	}
+	this->all_canceled = true;
 }
 
 int

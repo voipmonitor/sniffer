@@ -3422,7 +3422,17 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					}
 				} else if(packetS->cseq.method == CANCEL &&
 					  call->cancelcseq.is_set() && packetS->cseq == call->cancelcseq) {
-					call->setSeencancelAndOk(true, getTimeUS(packetS->header_pt), packetS->get_callid());
+					bool do_seen_cancel = false;
+					if (call->is_multiple_to_branch()) {
+						if (call->all_canceled) {
+							do_seen_cancel = true;
+						}
+					} else {
+						do_seen_cancel = true;
+					}
+					if (do_seen_cancel) {
+						call->setSeencancelAndOk(true, getTimeUS(packetS->header_pt), packetS->get_callid());
+					}
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
 				}
