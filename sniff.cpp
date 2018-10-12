@@ -3281,13 +3281,13 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 10;
 		}
 		
-		if(call->is_multiple_to_branch()) {
+//		if(call->is_multiple_to_branch()) {
 			char to[1024];
 			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to), ppntt_to, ppndt_called);
 			char branch[100];
 			get_sip_branch(packetS, "via:", branch, sizeof(branch));
 			call->cancel_ip_port_hash(packetS->saddr, to, branch, &packetS->header_pt->ts);
-		}
+//		}
 		
 		//check and save CSeq for later to compare with OK 
 		if(packetS->cseq.is_set()) {
@@ -3422,7 +3422,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					}
 				} else if(packetS->cseq.method == CANCEL &&
 					  call->cancelcseq.is_set() && packetS->cseq == call->cancelcseq) {
-					bool do_seen_cancel = false;
+/*					bool do_seen_cancel = false;
 					if (call->is_multiple_to_branch()) {
 						if (call->all_canceled) {
 							do_seen_cancel = true;
@@ -3432,7 +3432,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					}
 					if (do_seen_cancel) {
 						call->setSeencancelAndOk(true, getTimeUS(packetS->header_pt), packetS->get_callid());
-					}
+					}*/
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
 				}
@@ -4461,10 +4461,10 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr))) &&
 				   !(opt_ignore_rtp_after_bye_confirmed &&
 				     node_call->call->seenbyeandok && node_call->call->seenbyeandok_time_usec &&
-				     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seenbyeandok_time_usec) &&
+				     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seenbyeandok_time_usec) /*&&
 				   !(opt_ignore_rtp_after_cancel_confirmed &&
 				     node_call->call->seencancelandok && node_call->call->seencancelandok_time_usec &&
-				     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seencancelandok_time_usec)) {
+				     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seencancelandok_time_usec)*/) {
 					packetS->blockstore_addflag(27 /*pb lock flag*/);
 					call_info[call_info_length].call = node_call->call;
 					call_info[call_info_length].iscaller = node_call->iscaller;
@@ -8002,9 +8002,9 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			   !(opt_ignore_rtp_after_bye_confirmed &&
 			     node_call->call->seenbyeandok && node_call->call->seenbyeandok_time_usec &&
 			     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seenbyeandok_time_usec) &&
-			   !(opt_ignore_rtp_after_cancel_confirmed &&
+/*			   !(opt_ignore_rtp_after_cancel_confirmed &&
 			     node_call->call->seencancelandok && node_call->call->seencancelandok_time_usec &&
-			     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seencancelandok_time_usec) &&
+			     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seencancelandok_time_usec) &&*/
 			   !(opt_hash_modify_queue_length_ms && node_call->call->end_call_rtp)) {
 				packetS->blockstore_addflag(34 /*pb lock flag*/);
 				packetS->call_info[packetS->call_info_length].call = node_call->call;
