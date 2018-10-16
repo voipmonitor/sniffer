@@ -236,6 +236,8 @@ public:
 	char lastdtmf;
 	bool forcemark;
 	bool forcemark2;
+	bool forcemark_by_owner;
+	bool forcemark_by_owner_set;
 	unsigned forcemark_owner_used;
 	char ignore;
 	uint8_t dscp;

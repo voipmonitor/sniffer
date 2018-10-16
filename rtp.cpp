@@ -333,6 +333,8 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	lastdtmf = 0;
 	forcemark = 0;
 	forcemark2 = 0;
+	forcemark_by_owner = 0;
+	forcemark_by_owner_set = 0;
 	forcemark_owner_used = 0;
 	ignore = 0;
 	lastcng = 0;
@@ -1007,10 +1009,9 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		bool checkNextForcemark = false;
 		do {
 			checkNextForcemark = false;
-			int forcemark_index = iscaller_index(iscaller);
-			size_t _forcemark_size = owner->forcemark_time[forcemark_index].size();
+			size_t _forcemark_size = owner->forcemark_time.size();
 			if(_forcemark_size > forcemark_owner_used) {
-				u_int64_t _forcemark_time = owner->forcemark_time[forcemark_index][forcemark_owner_used];
+				u_int64_t _forcemark_time = owner->forcemark_time[forcemark_owner_used];
 				u_int64_t _header_time = getTimeUS(header);
 				if(_forcemark_time < _header_time) {
 					if(_forcemark_time > (first_packet_time * 1000000ull + first_packet_usec)) {
@@ -1023,7 +1024,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 							     << " direction: " << iscaller_description(iscaller)
 							     << endl;
 						}
-						owner->forcemark[forcemark_index] = 1;
+						forcemark_by_owner = true;
+						forcemark_by_owner_set = true;
 					} 
 					++forcemark_owner_used;
 					checkNextForcemark = true;
@@ -1282,8 +1284,9 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		}
 	}
 */
-	if(owner->forcemark[iscaller]) {
-		// on reinvite (which indicates forcemark[iscaller] completely reset rtp jitterbuffer simulator and 
+	
+	if(forcemark_by_owner) {
+		// on reinvite (which indicates forcemark_by_owner completely reset rtp jitterbuffer simulator and 
 		// there are cases where on reinvite rtp stream stops and there is gap in rtp sequence and timestamp but 
 		// since it was reinvite the stream just continues as expected
 		if(opt_jitterbuffer_adapt) {
@@ -1299,7 +1302,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 			ast_jb_destroy(channel_fix2);
 		}
 
-		owner->forcemark[iscaller] = 0;
+		forcemark_by_owner = false;
 		forcemark  = 1;
 
 		// this fixes jumps in .graph in case of pcaket loss 	
@@ -2011,7 +2014,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 	}
 	resetgraph = false;
 
-	if(owner->forcemark[iscaller] or owner->forcemark[!iscaller]) {
+	if(forcemark_by_owner_set) {
+		forcemark_by_owner_set = false;
 		forcemark2 = 1; // set this flag and keep it until next update_stats call
 	}
 

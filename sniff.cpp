@@ -2796,19 +2796,18 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 				}
 			}
 		} else if(!tmp_addr) {
-			int iscaller_index = iscaller_inv_index(iscaller);
 			if(inactive_ip0) {
 				u_int64_t _forcemark_time = getTimeUS(packetS->header_pt);
 				call->forcemark_lock();
-				call->forcemark_time[iscaller_index].push_back(_forcemark_time);
+				call->forcemark_time.push_back(_forcemark_time);
 				if(sverb.forcemark) {
 					cout << "add forcemark (inactive): " << _forcemark_time 
-					     << " forcemarks size: " << call->forcemark_time[iscaller_index].size() 
-					     << " direction: " << iscaller_inv_description(iscaller)
+					     << " forcemarks size: " << call->forcemark_time.size() 
 					     << endl;
 				}
 				call->forcemark_unlock();
 			}
+			int iscaller_index = iscaller_inv_index(iscaller);
 			if(!call->sdp_ip0_ports[iscaller_index].size() ||
 			   find(call->sdp_ip0_ports[iscaller_index].begin(), call->sdp_ip0_ports[iscaller_index].end(), tmp_port) == call->sdp_ip0_ports[iscaller_index].end()) {
 				call->sdp_ip0_ports[iscaller_index].push_back(tmp_port);

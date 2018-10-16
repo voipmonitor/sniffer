@@ -570,7 +570,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "CREATE CALL %s", this->call_id.c_str());
 	}
-	forcemark[0] = forcemark[1] = 0;
 	_forcemark_lock = 0;
 	_proxies_lock = 0;
 	a_mos_lqo = -1;
@@ -1032,11 +1031,10 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 			// force mark bit for reinvite for both direction
 			u_int64_t _forcemark_time = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
 			forcemark_lock();
-			forcemark_time[iscaller_inv_index(iscaller)].push_back(_forcemark_time);
+			forcemark_time.push_back(_forcemark_time);
 			if(sverb.forcemark) {
 				cout << "add forcemark: " << _forcemark_time 
-				     << " forcemarks size: " << forcemark_time[iscaller_inv_index(iscaller)].size() 
-				     << " direction: " << iscaller_inv_description(iscaller)
+				     << " forcemarks size: " << forcemark_time.size() 
 				     << endl;
 			}
 			forcemark_unlock();
