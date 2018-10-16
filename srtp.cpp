@@ -27,10 +27,6 @@ bool RTPsecure::sCryptoConfig::init() {
 				key_len = srtp_crypto_suites[i].key_len;
 				cipher = srtp_crypto_suites[i].cipher;
 				md = srtp_crypto_suites[i].md;
-				if(tag_len > gcry_md_get_algo_dlen(md)) {
-					error = err_bad_tag_len;
-					return(false);
-				}
 				return(true);
 			}
 		}
@@ -386,6 +382,11 @@ bool RTPsecure::init_native() {
 	extern bool init_lib_gcrypt();
 	if(!init_lib_gcrypt()) {
 		setError(err_gcrypt_init);
+		return(false);
+	}
+	if(cryptoConfigVector.size() && cryptoConfigActiveIndex < cryptoConfigVector.size() &&
+	   cryptoConfigVector[cryptoConfigActiveIndex].tag_len > gcry_md_get_algo_dlen(cryptoConfigVector[cryptoConfigActiveIndex].md)) {
+		setError(err_bad_tag_len);
 		return(false);
 	}
 	if(gcry_cipher_open(&rtp->cipher, cipher(), GCRY_CIPHER_MODE_CTR, 0)) {
