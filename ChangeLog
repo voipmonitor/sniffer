@@ -2,15 +2,18 @@
 ===============
 - FAS (False Answer Supervision) detection - new option =
 - implement sip options, subscribe, notify parser. New voipmonitor.conf options: sip-options, sip-subscribe, sip-notify, save-sip-options, save-sip-subscribe, save-sip-notify [VG-45]
-- new option rtpip_find_endpoints when enabled (default no) elimites RTP stream coming from RTP proxies (useful only when there are >=4 RTP streams in one SIP session) [VS-828]
+- new option rtpip_find_endpoints when if enabled (default no and set to yes if callidmerge_header is set to yes) elimites RTP stream coming from RTP proxies (useful only when there are >=4 RTP streams in one SIP session) [VS-828]
 - added support for storing SIP REGISTER pcaps to secondary spool [VS-821]
 - added help command to manager interface [VS-222]
 - optimize sniffer for high calls per second throughput (when t2_boost option is enabled) 
+- detect in-dialog invite cseq which fixes end of RTP when reINVITE negotiated codec which was refused (typical for T.38 reinvites) [VS-833]
 - fix store SDP to cdr_sdp table (for IP 0.0.0.0 and remove duplicity if set save_sdp_ipport=all) [VG-1628]
 - new memory_purge_interval and set it to 60 seconds instead of 1 second which caused frequent TLB shootdown which caused overhead on extreme traffic) 
 - do not process RTP packets after receiving CANCEL (it can be turned off by option ignore_rtp_after_cancel_confirmed) VS-830
 - added qring_full debug parameter example: -v1,qring_full>5 will check buffers between threads
 - fix low MOS and false packet loss in case RTP is interleaved with another SSRC RTP stream [VS-838]
+- fix parsing domain from tag To: sip:123@Domain
+- fix MOS score when in SDP is a=inactive (HOLD) [VS-842]
 
 
 22.12.2 07.09.2018
