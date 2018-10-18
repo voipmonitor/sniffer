@@ -3275,12 +3275,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 		}
 	} else if(packetS->sip_method == CANCEL) {
-		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
-		if(call->is_enable_set_destroy_call_at_for_call(NULL, merged)) {
-			//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
-			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 10;
-		}
-		
 //		if(call->is_multiple_to_branch()) {
 			char to[1024];
 			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to), ppntt_to, ppndt_called);
@@ -3289,6 +3283,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->cancel_ip_port_hash(packetS->saddr, to, branch, &packetS->header_pt->ts);
 //		}
 		
+		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
+		if(call->all_canceled && call->is_enable_set_destroy_call_at_for_call(NULL, merged)) {
+			//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
+			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 10;
+		}
+
 		//check and save CSeq for later to compare with OK 
 		if(packetS->cseq.is_set()) {
 			call->cancelcseq = packetS->cseq;
