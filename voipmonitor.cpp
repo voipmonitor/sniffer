@@ -550,7 +550,7 @@ bool opt_detect_alone_bye = false;
 bool opt_cdr_partition = 1;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
-bool opt_cdr_rtpsrcport  = 0;
+bool opt_cdr_rtpsrcport = 0;
 int opt_cdr_check_exists_callid = 0;
 bool opt_cdr_check_duplicity_callid_in_next_pass_insert = 0;
 bool opt_message_check_duplicity_callid_in_next_pass_insert = 0;
@@ -6162,7 +6162,7 @@ void cConfig::addConfigItems() {
 		subgroup("main");
 			addConfigItem(new FILE_LINE(42304) cConfigItem_integer("rtptimeout", &rtptimeout));
 			addConfigItem(new FILE_LINE(42305) cConfigItem_yesno("cdr_rtpport", &opt_cdr_rtpport));
-			addConfigItem(new FILE_LINE(42306) cConfigItem_yesno("cdr_rtpsrcport ", &opt_cdr_rtpsrcport ));
+			addConfigItem(new FILE_LINE(42306) cConfigItem_yesno("cdr_rtpsrcport", &opt_cdr_rtpsrcport));
 			addConfigItem(new FILE_LINE(42307) cConfigItem_integer("sipwithoutrtptimeout", &sipwithoutrtptimeout));
 			addConfigItem(new FILE_LINE(42308) cConfigItem_yesno("allow-zerossrc", &opt_allow_zerossrc));
 			addConfigItem(new FILE_LINE(42309) cConfigItem_yesno("rtp-check-timestamp", &opt_rtp_check_timestamp));
