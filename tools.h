@@ -488,7 +488,7 @@ string GetDataMD5(u_char *data, u_int32_t datalen,
 		  u_char *data3 = NULL, u_int32_t data3len = 0);
 string GetStringSHA256(std::string str);
 u_int32_t checksum32buf(char *buf, size_t len);
-u_int32_t checksum32buf(u_char *buf, size_t len) {
+inline u_int32_t checksum32buf(u_char *buf, size_t len) {
 	return(checksum32buf((char*)buf, len));
 }
 void ntoa(char *res, unsigned int addr);

@@ -572,9 +572,11 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	if(offset) {
 		*offset = size - (this->restoreBufferSize - sizeRestoreBuffer);
 	}
-	if(((pcap_block_store_header*)this->restoreBuffer)->checksum &&
-	   ((pcap_block_store_header*)this->restoreBuffer)->checksum != max(checksum32buf(this->restoreBuffer + sizeof(pcap_block_store_header), sizeRestoreBuffer - sizeof(pcap_block_store_header)), (u_int32_t)1)) {
-		return(-5);
+	if(((pcap_block_store_header*)this->restoreBuffer)->checksum) {
+		u_int32_t checksum = checksum32buf(this->restoreBuffer + sizeof(pcap_block_store_header), sizeRestoreBuffer - sizeof(pcap_block_store_header));
+		if(((pcap_block_store_header*)this->restoreBuffer)->checksum != max(checksum, (u_int32_t)1)) {
+			return(-5);
+		}
 	}
 	if(autoRestore) {
 		this->restoreFromSaveBuffer(this->restoreBuffer);

@@ -940,6 +940,8 @@ string GetStringSHA256(std::string str) {
 	return(outputBuffer);
 }
 
+#pragma GCC push_options
+#pragma GCC optimize ("-O3")
 u_int32_t checksum32buf(char *buf, size_t len) {
 	register u_int16_t cheksum32 = 0;
 	for(size_t i = 0; i < len; i++, buf++) {
@@ -947,6 +949,7 @@ u_int32_t checksum32buf(char *buf, size_t len) {
 	}
 	return(cheksum32);
 }
+#pragma GCC pop_options
 
 void ntoa(char *res, unsigned int addr) {
 	struct in_addr in;                                
