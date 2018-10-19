@@ -1,3 +1,9 @@
+23.0.1 17.10.2018
+=================
+- fix crash in SRTP [VS-845]
+- properly fix MOS score when in SDP is a=inactive (HOLD) [VS-842]
+
+
 23.0 04.10.2018
 ===============
 - FAS (False Answer Supervision) detection - new option =
