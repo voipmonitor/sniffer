@@ -70,6 +70,7 @@ extern int opt_mysqlstore_max_threads_cdr;
 extern MySqlStore *sqlStore;
 extern int opt_id_sensor;
 extern bool opt_saveaudio_answeronly;
+extern bool opt_saveaudio_big_jitter_resync_threshold;
 
 RTPstat rtp_stat;
 
@@ -286,7 +287,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	memset(channel_record, 0, sizeof(ast_channel));
 	channel_record->jitter_impl = 0; // fixed
 	channel_record->jitter_max = 60; 
-	channel_record->jitter_resync_threshold = 1000; 
+	channel_record->jitter_resync_threshold = opt_saveaudio_big_jitter_resync_threshold ? 5000 : 1000; 
 	channel_record->last_datalen = 0;
 	channel_record->lastbuflen = 0;
 	channel_record->resync = 0;

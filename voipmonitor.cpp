@@ -406,6 +406,7 @@ bool opt_saveaudio_wav_mix = true;
 bool opt_saveaudio_from_first_invite = true;
 bool opt_saveaudio_afterconnect = false;
 int opt_saveaudio_stereo = 1;
+bool opt_saveaudio_big_jitter_resync_threshold = false;
 int opt_saveaudio_dedup_seq = 0;
 int opt_liveaudio = 1;
 int opt_register_timeout = 5;
@@ -6674,6 +6675,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"ignorertcpjitter", 1, 0, 198},
 	    {"natalias", 1, 0, 315},
 	    {"mono", 0, 0, 201},
+	    {"big-jitter-resync-threshold", 0, 0, 213},
 	    {"untar-gui", 1, 0, 202},
 	    {"unlzo-gui", 1, 0, 205},
 	    {"waveform-gui", 1, 0, 206},
@@ -6899,6 +6901,9 @@ void get_command_line_arguments() {
 				break;
 			case 201:
 				opt_saveaudio_stereo = 0;
+				break;
+			case 213:
+				opt_saveaudio_big_jitter_resync_threshold = true;
 				break;
 			case 314:
 				opt_mgcp = 1;
