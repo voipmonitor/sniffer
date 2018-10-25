@@ -1,3 +1,11 @@
+23.0.2 25.10.2018
+=================
+- fix cdr_rtpsrcport option which was ignored [VS-848]
+- fix performance in mirror mode when compiled as -O0
+- add command line parameter --big-jitter-resync-threshold which sets jitter_resync_threshold to 5000 (used by GUI to generate audio)
+- options, notify, subscribe - fix cleanup time limit
+
+
 23.0.1 17.10.2018
 =================
 - fix crash in SRTP [VS-845]
