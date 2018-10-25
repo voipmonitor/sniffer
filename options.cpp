@@ -1242,9 +1242,9 @@ void *cSipMsgRelations::_loadParamsInBackground(void *arg) {
 
 void cSipMsgRelations::internalThread() {
 	while(!terminate) {
-		do_close_pcaps_by_limit_time(getTimeMS_rdtsc() * 1000);
+		do_close_pcaps_by_limit_time(getTimeMS_rdtsc());
 		if(!is_read_from_file()) {
-			do_cleanup_relations(getTimeMS_rdtsc() * 1000);
+			do_cleanup_relations(getTimeMS_rdtsc());
 		}
 		do_cleanup_cdq();
 		for(int i = 0; i < 5 * 100 && !terminate; i++) {
