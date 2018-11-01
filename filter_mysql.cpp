@@ -32,6 +32,7 @@ void filter_base::loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow
 	baseRow->rtcp = sqlRow->isNull("rtcp") ? -1 : atoi((*sqlRow)["rtcp"].c_str());
 	baseRow->sip = sqlRow->isNull("sip") ? -1 : atoi((*sqlRow)["sip"].c_str());
 	baseRow->reg = sqlRow->isNull("register") ? -1 : atoi((*sqlRow)["register"].c_str());
+	baseRow->dtmf = sqlRow->isNull("dtmf") ? -1 : atoi((*sqlRow)["dtmf"].c_str());
 	baseRow->graph = sqlRow->isNull("graph") ? -1 : atoi((*sqlRow)["graph"].c_str());
 	baseRow->wav = sqlRow->isNull("wav") ? -1 : atoi((*sqlRow)["wav"].c_str());
 	baseRow->skip = sqlRow->isNull("skip") ? -1 : atoi((*sqlRow)["skip"].c_str());
@@ -47,6 +48,7 @@ void filter_base::loadBaseDataRow(map<string, string> *row, filter_db_row_base *
 	baseRow->rtcp = isStringNull((*row)["rtcp"]) ? -1 : atoi((*row)["rtcp"].c_str());
 	baseRow->sip = isStringNull((*row)["sip"]) ? -1 : atoi((*row)["sip"].c_str());
 	baseRow->reg = isStringNull((*row)["register"]) ? -1 : atoi((*row)["register"].c_str());
+	baseRow->dtmf = isStringNull((*row)["dtmf"]) ? -1 : atoi((*row)["dtmf"].c_str());
 	baseRow->graph = isStringNull((*row)["graph"]) ? -1 : atoi((*row)["graph"].c_str());
 	baseRow->wav = isStringNull((*row)["wav"]) ? -1 : atoi((*row)["wav"].c_str());
 	baseRow->skip = isStringNull((*row)["skip"]) ? -1 : atoi((*row)["skip"].c_str());
@@ -71,6 +73,9 @@ unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 	
 	if(baseRow->reg == 1)			flags |= FLAG_REGISTER;
 	else if(baseRow->reg == 0)		flags |= FLAG_NOREGISTER;
+
+	if(baseRow->dtmf == 1)			flags |= FLAG_DTMF;
+	else if(baseRow->dtmf == 0)		flags |= FLAG_NODTMF;
 	
 	if(baseRow->graph == 1)			flags |= FLAG_GRAPH;
 	else if(baseRow->graph == 0)		flags |= FLAG_NOGRAPH;
@@ -112,6 +117,9 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned int *callFlags, 
 	
 	if(filterFlags & FLAG_REGISTER)					*callFlags |= FLAG_SAVEREGISTER;
 	if(filterFlags & FLAG_NOREGISTER)				*callFlags &= ~FLAG_SAVEREGISTER;
+
+	if(filterFlags & FLAG_DTMF)					*callFlags |= FLAG_SAVEDTMF;
+	if(filterFlags & FLAG_NODTMF)					*callFlags &= ~FLAG_SAVEDTMF;
 	
 	if(filterFlags & FLAG_AUDIO)					*callFlags |= FLAG_SAVEAUDIO;
 	if(filterFlags & FLAG_AUDIO_WAV)				{*callFlags |= FLAG_SAVEAUDIO_WAV; *callFlags &= ~FLAG_FORMATAUDIO_OGG;}

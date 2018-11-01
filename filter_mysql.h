@@ -39,6 +39,8 @@
 #define FLAG_HIDEMSG	(1 << 23)
 #define FLAG_SHOWMSG	(1 << 24)
 #define FLAG_SPOOL_2	(1 << 25)
+#define FLAG_DTMF	(1 << 26)
+#define FLAG_NODTMF	(1 << 27)
 
 #define MAX_PREFIX 64
 
@@ -56,6 +58,7 @@ struct filter_db_row_base {
 		script = 0;
 		hide_message = 0;
 		spool_2 = 0;
+		dtmf = 0;
 	}
 	int direction;
 	int rtp;
@@ -69,6 +72,7 @@ struct filter_db_row_base {
 	int script;
 	int hide_message;
 	int spool_2;
+	int dtmf;
 };
 
 class filter_base {
@@ -302,6 +306,7 @@ inline void set_global_flags(volatile unsigned int &flags) {
 	extern int opt_saveGRAPH;
 	extern int opt_skipdefault;
 	extern int opt_hide_message_content;
+	extern int opt_dbdtmf;
 	extern bool opt_sip_register_save_all;
 	
 	if(opt_saveSIP) {
@@ -330,6 +335,9 @@ inline void set_global_flags(volatile unsigned int &flags) {
 	}
 	if(opt_sip_register_save_all) {
 		flags |= FLAG_SAVEREGISTER;
+	}
+	if (opt_dbdtmf) {
+		flags |= FLAG_SAVEDTMF;
 	}
 }
 
