@@ -44,3 +44,9 @@ Thumbs.db
 .lastclean
 Makefile
 voipmonitor
+Makefile.deps
+autom4te.cache/*
+config.h
+config.status
+cscope.*
+tags
