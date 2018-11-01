@@ -146,7 +146,8 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 								}
 								cout << "------" << endl;
 							}
-						} else if(check_websocket(data, dataLength, false)) {
+						} else if(check_websocket(data, dataLength, false) || 
+							  (dataLength < websocket_header_length((char*)data, dataLength) && check_websocket_first_byte(data, dataLength))) {
 							reassemblyWebsocketBuffer.processPacket(_ip_src, _ip_dst, _port_src, _port_dst,
 												data, dataLength, true, NULL);
 							data = NULL;
