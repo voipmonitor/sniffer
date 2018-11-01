@@ -115,7 +115,6 @@ extern char opt_silencedtmfseq[16];
 extern int opt_pauserecordingdtmf_timeout;
 extern char get_customers_pn_query[1024];
 extern int opt_saverfc2833;
-extern int opt_dbdtmf;
 extern int opt_dscp;
 extern int opt_cdrproxy;
 extern int opt_messageproxy;
@@ -4380,7 +4379,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += string("") +
 					(opt_cdr_country_code ? "  delete from cdr_country_code where cdr_id = @exists_call_id;\n" : "") +
 					"  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
-					(opt_dbdtmf ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
+					(enable_save_dtmf ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
 					"  delete from cdr_sipresp where cdr_id = @exists_call_id;\n" +
 					(opt_pcap_dump_tar ? "  delete from cdr_tar_part where cdr_id = @exists_call_id;\n" : "") +
 					"  set @exists_call_id = 0;\n" +
@@ -4522,7 +4521,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 
-		if(opt_dbdtmf) {
+		if(enable_save_dtmf) {
 			while(dtmf_history.size()) {
 				s_dtmf q;
 				q = dtmf_history.front();
@@ -4791,7 +4790,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		if(opt_dbdtmf) {
+		if(enable_save_dtmf) {
 			while(dtmf_history.size()) {
 				s_dtmf q;
 				q = dtmf_history.front();
@@ -7432,7 +7431,7 @@ void Call::saveregister(struct timeval *currtime) {
 void
 Call::handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr, s_dtmf::e_type dtmf_type) {
 
-	if(opt_dbdtmf) {
+	if(enable_save_dtmf) {
 		s_dtmf q;
 		q.dtmf = dtmf;
 		q.ts = dtmf_time - ts2double(first_packet_time, first_packet_usec);
@@ -8821,6 +8820,7 @@ string printCallFlags(unsigned int flags) {
 	if(flags & FLAG_RUNBMOSLQO)		outStr << "runbmoslqo ";
 	if(flags & FLAG_HIDEMESSAGE)		outStr << "hidemessage ";
 	if(flags & FLAG_USE_SPOOL_2)		outStr << "use_spool_2 ";
+	if(flags & FLAG_SAVEDTMF)		outStr << "savedtmf ";
 	return(outStr.str());
 }
 

@@ -4046,6 +4046,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`rtcp` tinyint default NULL,\
 			`sip` tinyint DEFAULT NULL,\
 			`register` tinyint DEFAULT NULL,\
+			`dtmf` tinyint DEFAULT NULL,\
 			`graph` tinyint DEFAULT NULL,\
 			`wav` tinyint DEFAULT NULL,\
 			`skip` tinyint DEFAULT NULL,\
@@ -4067,6 +4068,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`rtcp` tinyint default NULL,\
 			`sip` tinyint DEFAULT NULL,\
 			`register` tinyint DEFAULT NULL,\
+			`dtmf` tinyint DEFAULT NULL,\
 			`graph` tinyint DEFAULT NULL,\
 			`wav` tinyint DEFAULT NULL,\
 			`skip` tinyint DEFAULT NULL,\
@@ -4087,6 +4089,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`rtcp` tinyint default NULL,\
 			`sip` tinyint DEFAULT NULL,\
 			`register` tinyint DEFAULT NULL,\
+			`dtmf` tinyint DEFAULT NULL,\
 			`graph` tinyint DEFAULT NULL,\
 			`wav` tinyint DEFAULT NULL,\
 			`skip` tinyint DEFAULT NULL,\
@@ -4109,6 +4112,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`rtcp` tinyint default NULL,\
 			`sip` tinyint DEFAULT NULL,\
 			`register` tinyint DEFAULT NULL,\
+			`dtmf` tinyint DEFAULT NULL,\
 			`graph` tinyint DEFAULT NULL,\
 			`wav` tinyint DEFAULT NULL,\
 			`skip` tinyint DEFAULT NULL,\
