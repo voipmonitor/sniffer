@@ -4652,12 +4652,16 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
 			
 			#ifndef FREEBSD
 				malloc_trim(0);
-				syslog(LOG_NOTICE, "malloc trim");
+				if(sverb.malloc_trim) {
+					syslog(LOG_NOTICE, "malloc trim");
+				}
 			#endif
 				
 			#if HAVE_LIBTCMALLOC
 				MallocExtension::instance()->ReleaseFreeMemory();
-				syslog(LOG_NOTICE, "tcmalloc release free memory");
+				if(sverb.malloc_trim) {
+					syslog(LOG_NOTICE, "tcmalloc release free memory");
+				}
 			#endif
 				
 			#if HAVE_LIBJEMALLOC
@@ -4666,7 +4670,9 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
 				mallctlnametomib("arena.0.purge", mib, &miblen);
 				mib[1] = MALLCTL_ARENAS_ALL; //(size_t)arena_ind
 				mallctlbymib(mib, miblen, NULL, NULL, NULL, 0);
-				syslog(LOG_NOTICE, "jemalloc purge memory");
+				if(sverb.malloc_trim) {
+					syslog(LOG_NOTICE, "jemalloc purge memory");
+				}
 			#endif
 			
                 }
