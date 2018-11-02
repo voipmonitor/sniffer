@@ -292,8 +292,6 @@ int opt_pcap_split = 1;
 int opt_newdir = 1;
 int opt_spooldir_by_sensor = 0;
 int opt_spooldir_by_sensorname = 0;
-char opt_clientmanager[1024] = "";
-int opt_clientmanagerport = 9999;
 int opt_callslimit = 0;
 char opt_silencedtmfseq[16] = "";
 char opt_silenceheader[128] = "";
@@ -734,7 +732,6 @@ pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
 //pthread_t destroy_calls_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
-pthread_t manager_client_thread;	// ID of worker manager thread 
 pthread_t manager_ssh_thread;	
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
 pthread_t database_backup_thread;	// ID of worker backup thread 
@@ -3058,10 +3055,6 @@ int main(int argc, char *argv[]) {
 		vm_pthread_create("manager server",
 				  &manager_thread, NULL, manager_server, NULL, __FILE__, __LINE__);
 		// start reversed manager thread
-		if(opt_clientmanager[0] != '\0') {
-			vm_pthread_create("manager client",
-					  &manager_client_thread, NULL, manager_client, NULL, __FILE__, __LINE__);
-		}
 	};
 
 	//cout << "SQL DRIVER: " << sql_driver << endl;
@@ -6360,8 +6353,6 @@ void cConfig::addConfigItems() {
 		#endif
 		subgroup("manager");
 				advanced();
-				addConfigItem(new FILE_LINE(42433) cConfigItem_string("managerclient", opt_clientmanager, sizeof(opt_clientmanager)));
-				addConfigItem(new FILE_LINE(42434) cConfigItem_integer("managerclientport", &opt_clientmanagerport));
 				addConfigItem(new FILE_LINE(42435) cConfigItem_yesno("manager_nonblock_mode", &opt_manager_nonblock_mode));
 					expert();
 					addConfigItem(new FILE_LINE(42436) cConfigItem_string("manager_sshhost", ssh_host, sizeof(ssh_host)));
@@ -8650,12 +8641,6 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "manager_nonblock_mode", NULL))) {
 		opt_manager_nonblock_mode = yesno(value);
-	}
-	if((value = ini.GetValue("general", "managerclient", NULL))) {
-		strcpy_null_term(opt_clientmanager, value);
-	}
-	if((value = ini.GetValue("general", "managerclientport", NULL))) {
-		opt_clientmanagerport = atoi(value);
 	}
 	if((value = ini.GetValue("general", "savertcp", NULL))) {
 		opt_saveRTCP = yesno(value);
