@@ -61,27 +61,6 @@ case "$1" in
   	if [ -f $PIDFILE ]; then
 		PID=`cat $PIDFILE`
 		NAME=`ps -o comm= $PID`
-		if [ "$NAME" = "voipmonitor" ]; then
-			echo -n "Sending kill signal to voipmonitor and waiting to terminate."
-			kill $PID
-			while [ -f $PIDFILE ]
-			do
-				sleep 1
-				echo -n .
-			done
-			echo  " terminated."
-		else
-			echo "voipmonitor is not running";
-			rm $PIDFILE
-		fi
-	else
-		echo "voipmonitor is not running";
-	fi
-	;;
-  force-stop)
-  	if [ -f $PIDFILE ]; then
-		PID=`cat $PIDFILE`
-		NAME=`ps -o comm= $PID`
 		if [ "$NAME" -eq "voipmonitor" ]; then
 			echo "Force terminating voipmonitor (kill -9)."
 			kill -9 $PID
@@ -103,7 +82,7 @@ case "$1" in
 	$0 start
 	;;
   *)
-  	echo "Usage: /etc/init.d/voipmonitor {start|stop|force-stop|restart}"
+  	echo "Usage: /etc/init.d/voipmonitor {start|stop|restart|force-reload}"
 	;;
 esac
 
