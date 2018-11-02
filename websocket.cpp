@@ -28,13 +28,13 @@ u_char *cWebSocketHeader::decodeData(bool *allocData, unsigned dataLength) {
 }
 
 
-int check_websocket_header(char *data, unsigned len, bool checkDataSize) {
+bool check_websocket_header(char *data, unsigned len, bool checkDataSize) {
 	cWebSocketHeader ws_header((u_char*)data, len);
 	return(ws_header.isHeaderSizeOk() &&
 	       (!checkDataSize || ws_header.isDataSizeOk()));
 }
 
-int websocket_header_length(char *data, unsigned len) {
+unsigned websocket_header_length(char *data, unsigned len) {
 	cWebSocketHeader ws_header((u_char*)data, len);
 	return(len < sizeof(cWebSocketHeader::sFixHeader) ?
 		sizeof(cWebSocketHeader::sFixHeader) :
