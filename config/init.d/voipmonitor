@@ -61,7 +61,7 @@ case "$1" in
   	if [ -f $PIDFILE ]; then
 		PID=`cat $PIDFILE`
 		NAME=`ps -o comm= $PID`
-		if [ "$NAME" -eq "voipmonitor" ]; then
+		if [ "$NAME" = "voipmonitor" ]; then
 			echo "Force terminating voipmonitor (kill -9)."
 			kill -9 $PID
 		else
