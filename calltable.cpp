@@ -493,6 +493,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	reason_q850_cause = 0;
 	hold_status = false;
 	is_fas_detected = false;
+	is_zerossrc_detected = false;
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;
@@ -1338,6 +1339,9 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	}
 	
 	curSSRC = tmprtp.getSSRC();
+	if (curSSRC == 0) {
+		is_zerossrc_detected = true;
+	}
 	okRTP = (curSSRC != 0 || opt_allow_zerossrc) && tmprtp.getVersion() == 2;
 	if(okRTP || this->seenudptl || this->isfax) {
 		if(iscaller) {
@@ -3579,6 +3583,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	u_int64_t cdr_flags = this->unconfirmed_bye ? CDR_UNCONFIRMED_BYE : 0;
 	if (is_fas_detected)
 		cdr_flags |= CDR_FAS_DETECTED;
+	if (is_zerossrc_detected)
+		cdr_flags |= CDR_ZEROSSRC_DETECTED;
 	for(int i = 0; i < ipport_n; i++) {
 		if(ip_port[i].sdp_flags.protocol == sdp_proto_srtp &&
 		   !ip_port[i].rtp_crypto_config_list) {
