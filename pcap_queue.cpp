@@ -3461,6 +3461,8 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 		cout << "push INVITE " << typeThread << endl;
 	} else if(memmem(HPP(*header_packet), HPH(*header_packet)->caplen, "BYE sip", 7)) {
 		cout << "push BYE " << typeThread << endl;
+	} else if(memmem(HPP(*header_packet), HPH(*header_packet)->caplen, "REGISTER sip", 12)) {
+		cout << "push REGISTER " << typeThread << endl;
 	}
 	#endif
 	#if TRACE_MASTER_SECRET
@@ -3596,6 +3598,8 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 		cout << "pop INVITE " << typeThread << endl;
 	} else if(memmem(HPP(rslt_hpi.header_packet), HPH(rslt_hpi.header_packet)->caplen, "BYE sip", 7)) {
 		cout << "pop BYE " << typeThread << endl;
+	} else if(memmem(HPP(rslt_hpi.header_packet), HPH(rslt_hpi.header_packet)->caplen, "REGISTER sip", 12)) {
+		cout << "pop REGISTER " << typeThread << endl;
 	}
 	#endif
 	#if TRACE_MASTER_SECRET
@@ -3868,6 +3872,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 						cout << "get INVITE (1) " << typeThread << endl;
 					} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
 						cout << "get BYE (1) " << typeThread << endl;
+					} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "REGISTER sip", 12)) {
+						cout << "get REGISTER (1) " << typeThread << endl;
 					}
 					#endif
 					#if TRACE_MASTER_SECRET
@@ -3949,6 +3955,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 					cout << "get INVITE (2) " << typeThread << endl;
 				} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
 					cout << "get BYE (2) " << typeThread << endl;
+				} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "REGISTER sip", 12)) {
+					cout << "get REGISTER (2) " << typeThread << endl;
 				}
 				#endif
 				#if TRACE_MASTER_SECRET
@@ -4064,6 +4072,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 						cout << "detach INVITE " << typeThread << endl;
 					} else if(memmem(HPP(header_packet_read), detach_buffer_header->caplen, "BYE sip", 7)) {
 						cout << "detach BYE " << typeThread << endl;
+					} else if(memmem(HPP(header_packet_read), detach_buffer_header->caplen, "REGISTER sip", 12)) {
+						cout << "detach REGISTER " << typeThread << endl;
 					}
 					#endif
 					#if TRACE_MASTER_SECRET
@@ -4265,6 +4275,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				cout << "get INVITE (3) " << typeThread << endl;
 			} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "BYE sip", 7)) {
 				cout << "get BYE (3) " << typeThread << endl;
+			} else if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "REGISTER sip", 12)) {
+				cout << "get REGISTER (3) " << typeThread << endl;
 			}
 			#endif
 			#if TRACE_MASTER_SECRET
@@ -4326,6 +4338,8 @@ void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 			cout << "process INVITE " << typeThread << endl;
 		} else if(memmem(block->get_packet(i), block->get_header(i)->header_fix_size.caplen, "BYE sip", 7)) {
 			cout << "process BYE " << typeThread << endl;
+		} else if(memmem(block->get_packet(i), block->get_header(i)->header_fix_size.caplen, "REGISTER sip", 12)) {
+			cout << "process REGISTER " << typeThread << endl;
 		}
 		#endif
 		#if TRACE_MASTER_SECRET
@@ -4735,6 +4749,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				cout << "add INVITE" << endl;
 			} else if(memmem(HPP(*header_packet_fetch), HPH(*header_packet_fetch)->caplen, "BYE sip", 7)) {
 				cout << "add BYE " << endl;
+			} else if(memmem(HPP(*header_packet_fetch), HPH(*header_packet_fetch)->caplen, "REGISTER sip", 12)) {
+				cout << "add REGISTER " << endl;
 			}
 			#endif
 			#if TRACE_MASTER_SECRET
