@@ -1,3 +1,10 @@
+23.1 02.11.2018
+===============
+- added support for disabling / enabling DTMF capture in capture rules [VS-796]
+- fix issue with separated firts byte in ssl encoding  [VS-855] [VS-857]
+- suppress logs "malloc trim, release, purge"
+
+
 23.0.2 25.10.2018
 =================
 - fix cdr_rtpsrcport option which was ignored [VS-848]

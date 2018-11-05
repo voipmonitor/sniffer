@@ -70,8 +70,6 @@ extern char opt_manager_ip[32];
 extern int opt_manager_nonblock_mode;
 extern volatile int calls_counter;
 extern volatile int registers_counter;
-extern char opt_clientmanager[1024];
-extern int opt_clientmanagerport;
 extern char mac[32];
 extern int verbosity;
 extern char opt_php_path[1024];
@@ -3497,97 +3495,6 @@ int Handle_pause_call(long long callref, int val ) {
 	return(retval);
 }
 
-void *manager_client(void */*dummy*/) {
-	u_int32_t host_ipl;
-	struct sockaddr_in addr;
-	int res;
-	int client = 0;
-	char buf[BUFSIZE];
-	char sendbuf[BUFSIZE];
-	int size;
-	
-
-	while(1) {
-		host_ipl = cResolver::resolve_n(opt_clientmanager);
-		if (!host_ipl) { //Report lookup failure  
-			syslog(LOG_ERR, "Cannot resolv: %s: host [%s] trying again...\n",  hstrerror(h_errno),  opt_clientmanager);  
-			sleep(1);
-			continue;  
-		} 
-		break;
-	}
-connect:
-	client = socket(PF_INET, SOCK_STREAM, 0); /* create socket */
-	memset(&addr, 0, sizeof(addr));    /* create & zero struct */
-	addr.sin_family = AF_INET;    /* select internet protocol */
-	addr.sin_port = htons(opt_clientmanagerport);         /* set the port # */
-	addr.sin_addr.s_addr = host_ipl; /* set the addr */
-	syslog(LOG_NOTICE, "Connecting to manager server [%s]\n", inet_ntostring(htonl(host_ipl)).c_str());
-	while(1) {
-		res = connect(client, (struct sockaddr *)&addr, sizeof(addr));         /* connect! */
-		if(res == -1) {
-			syslog(LOG_NOTICE, "Failed to connect to server [%s] error:[%s] trying again...\n", inet_ntostring(htonl(host_ipl)).c_str(), strerror(errno));
-			sleep(1);
-			continue;
-		}
-		break;
-	}
-
-	// send login
-	snprintf(sendbuf, BUFSIZE, "login %s", mac);
-	if ((size = send(client, sendbuf, strlen(sendbuf), 0)) == -1){
-		perror("send()");
-		sleep(1);
-		goto connect;
-	}
-
-	// catch the reply
-	size = recv(client, buf, BUFSIZE - 1, 0);
-	buf[size] = '\0';
-
-	while(1) {
-
-		string buf_long;
-		//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;
-		size = recv(client, buf, BUFSIZE - 1, 0);
-		if (size == -1 or size == 0) {
-			//cerr << "Error in receiving data" << endl;
-			perror("recv()");
-			close(client);
-			sleep(1);
-			goto connect;
-		}
-		buf[size] = '\0';
-//		if(verbosity > 0) syslog(LOG_NOTICE, "recv[%s]\n", buf);
-		//res = parse_command(buf, size, client, 1, buf_long.c_str());
-		res = _parse_command(buf, size, client, NULL, NULL, NULL);
-	
-#if 0	
-		//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;
-		size = recv(client, buf, BUFSIZE - 1, 0);
-		if (size == -1 or size == 0) {
-			//cerr << "Error in receiving data" << endl;
-			perror("recv()");
-			close(client);
-			sleep(1);
-			goto connect;
-		} else {
-			buf[size] = '\0';
-			buf_long = buf;
-			char buf_next[BUFSIZE];
-			while((size = recv(client, buf_next, BUFSIZE - 1, 0)) > 0) {
-				buf_next[size] = '\0';
-				buf_long += buf_next;
-			}
-		}
-		buf[size] = '\0';
-		if(verbosity > 0) syslog(LOG_NOTICE, "recv[%s]\n", buf);
-		res = parse_command(buf, size, client, 1, buf_long.c_str());
-#endif
-	}
-
-	return 0;
-}
 
 /*
 struct svi {
