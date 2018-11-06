@@ -266,6 +266,7 @@ int sipwithoutrtptimeout = 3600;
 int absolute_timeout = 4 * 3600;
 int opt_destination_number_mode = 1;
 int opt_update_dstnum_onanswer = 0;
+bool opt_get_reason_from_bye_cancel = true;
 bool opt_cleanspool = true;
 bool opt_cleanspool_use_files = true;
 bool opt_cleanspool_use_files_set = false;
@@ -5979,6 +5980,7 @@ void cConfig::addConfigItems() {
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleanspool", &opt_cleanspool));
 			advanced();
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("get_reason_from_bye_cancel", &opt_get_reason_from_bye_cancel));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleanspool_use_files", &opt_cleanspool_use_files));
 			addConfigItem(new FILE_LINE(42231) cConfigItem_integer("cleanspool_interval", &opt_cleanspool_interval));
 		normal();
@@ -8161,6 +8163,9 @@ int eval_config(string inistr) {
 		opt_cleandatabase_log_sensor = atoi(value);
 	}
 	
+	if((value = ini.GetValue("general", "get_reason_from_bye_cancel", NULL))) {
+		opt_get_reason_from_bye_cancel = yesno(value);
+	}
 	if((value = ini.GetValue("general", "cleanspool", NULL))) {
 		opt_cleanspool = yesno(value);
 	}
