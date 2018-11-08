@@ -266,6 +266,7 @@ int sipwithoutrtptimeout = 3600;
 int absolute_timeout = 4 * 3600;
 int opt_destination_number_mode = 1;
 int opt_update_dstnum_onanswer = 0;
+bool opt_get_reason_from_bye_cancel = true;
 bool opt_cleanspool = true;
 bool opt_cleanspool_use_files = true;
 bool opt_cleanspool_use_files_set = false;
@@ -370,6 +371,7 @@ int opt_mysql_enable_transactions_http = 0;
 int opt_mysql_enable_transactions_webrtc = 0;
 int opt_cdr_ua_enable = 1;
 vector<string> opt_cdr_ua_reg_remove;
+vector<string> opt_cdr_ua_reg_whitelist;
 unsigned long long cachedirtransfered = 0;
 unsigned int opt_maxpcapsize_mb = 0;
 int opt_mosmin_f2 = 1;
@@ -5978,6 +5980,7 @@ void cConfig::addConfigItems() {
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleanspool", &opt_cleanspool));
 			advanced();
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("get_reason_from_bye_cancel", &opt_get_reason_from_bye_cancel));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleanspool_use_files", &opt_cleanspool_use_files));
 			addConfigItem(new FILE_LINE(42231) cConfigItem_integer("cleanspool_interval", &opt_cleanspool_interval));
 		normal();
@@ -6098,6 +6101,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42282) cConfigItem_integer("destination_number_mode", &opt_destination_number_mode));
 				addConfigItem(new FILE_LINE(42283) cConfigItem_yesno("cdr_ua_enable", &opt_cdr_ua_enable));
 				addConfigItem(new FILE_LINE(42284) cConfigItem_string("cdr_ua_reg_remove", &opt_cdr_ua_reg_remove));
+				addConfigItem(new FILE_LINE(42284) cConfigItem_string("cdr_ua_reg_whitelist", &opt_cdr_ua_reg_whitelist));
 				addConfigItem(new FILE_LINE(42285) cConfigItem_yesno("sipoverlap", &opt_sipoverlap));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("last_dest_number", &opt_last_dest_number));
 				addConfigItem(new FILE_LINE(42286) cConfigItem_yesno("update_dstnum_onanswer", &opt_update_dstnum_onanswer));
@@ -6590,6 +6594,15 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			if(!check_regexp(opt_cdr_ua_reg_remove[i].c_str())) {
 				syslog(LOG_WARNING, "invalid regexp %s for cdr_ua_reg_remove", opt_cdr_ua_reg_remove[i].c_str());
 				opt_cdr_ua_reg_remove.erase(opt_cdr_ua_reg_remove.begin() + i);
+				--i;
+			}
+		}
+	}
+	if(configItem->config_name == "cdr_ua_reg_whitelist") {
+		for(unsigned i = 0; i < opt_cdr_ua_reg_whitelist.size(); i++) {
+			if(!check_regexp(opt_cdr_ua_reg_whitelist[i].c_str())) {
+				syslog(LOG_WARNING, "invalid regexp %s for cdr_ua_reg_whitelist", opt_cdr_ua_reg_whitelist[i].c_str());
+				opt_cdr_ua_reg_whitelist.erase(opt_cdr_ua_reg_whitelist.begin() + i);
 				--i;
 			}
 		}
@@ -8150,6 +8163,9 @@ int eval_config(string inistr) {
 		opt_cleandatabase_log_sensor = atoi(value);
 	}
 	
+	if((value = ini.GetValue("general", "get_reason_from_bye_cancel", NULL))) {
+		opt_get_reason_from_bye_cancel = yesno(value);
+	}
 	if((value = ini.GetValue("general", "cleanspool", NULL))) {
 		opt_cleanspool = yesno(value);
 	}
@@ -8487,6 +8503,16 @@ int eval_config(string inistr) {
 				syslog(LOG_WARNING, "invalid regexp %s for cdr_ua_reg_remove", i->pItem);
 			} else {
 				opt_cdr_ua_reg_remove.push_back(i->pItem);
+			}
+		}
+	}
+	if (ini.GetAllValues("general", "cdr_ua_reg_whitelist", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			if(!check_regexp(i->pItem)) {
+				syslog(LOG_WARNING, "invalid regexp %s for cdr_ua_reg_whitelist", i->pItem);
+			} else {
+				opt_cdr_ua_reg_whitelist.push_back(i->pItem);
 			}
 		}
 	}

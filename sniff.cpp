@@ -247,6 +247,7 @@ extern int opt_bye_confirmed_timeout;
 extern bool opt_ignore_rtp_after_bye_confirmed;
 extern bool opt_ignore_rtp_after_cancel_confirmed;
 extern bool opt_detect_alone_bye;
+extern bool opt_get_reason_from_bye_cancel;
 extern int opt_hash_modify_queue_length_ms;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
@@ -3089,6 +3090,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 	
 	if(existsColumns.cdr_reason &&
+	   (!opt_get_reason_from_bye_cancel || (opt_get_reason_from_bye_cancel && (packetS->sip_method == BYE || packetS->sip_method == CANCEL))) &&
 	   !(packetS->sip_method == CANCEL && call->seeninviteok && 
 	     (call->called_invite_branch_map.size() > 1 || call->is_multiple_to_branch()))) {
 		char *reason = gettag_sip(packetS, "reason:", &l);

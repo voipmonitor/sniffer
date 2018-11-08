@@ -126,6 +126,7 @@ extern int opt_filesclean;
 extern int opt_allow_zerossrc;
 extern int opt_cdr_ua_enable;
 extern vector<string> opt_cdr_ua_reg_remove;
+extern vector<string> opt_cdr_ua_reg_whitelist;
 extern unsigned int graph_delimiter;
 extern int opt_mosmin_f2;
 extern char opt_mos_lqo_bin[1024];
@@ -5736,7 +5737,7 @@ Call::applyRtcpXrDataToRtp() {
 }
 
 void Call::adjustUA() {
-	if(opt_cdr_ua_reg_remove.size()) {
+	if(opt_cdr_ua_reg_remove.size() || opt_cdr_ua_reg_whitelist.size()) {
 		if(a_ua[0]) {
 			::adjustUA(a_ua);
 		}
@@ -5904,6 +5905,18 @@ void adjustUA(char *ua) {
 				strcpy_null_term(ua_temp, ua + start);
 				strcpy(ua, ua_temp);
 			}
+		}
+	}
+	if(opt_cdr_ua_reg_whitelist.size()) {
+		bool match = false;
+		for(unsigned i = 0; i < opt_cdr_ua_reg_whitelist.size(); i++) {
+			if(reg_match(ua, opt_cdr_ua_reg_whitelist[i].c_str(),  __FILE__, __LINE__)) {
+				match = true;
+				break;
+			}
+		}
+		if (!match) {
+			strcpy(ua, "banned UA");
 		}
 	}
 }
