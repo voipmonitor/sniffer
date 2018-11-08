@@ -535,7 +535,8 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 			u_int header_ip_offset;
 			int protocol;
 			parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
-					 header_sll, header_eth, header_ip_offset, protocol, &vlan);
+					 header_sll, header_eth, NULL,
+					 header_ip_offset, protocol, &vlan);
 			//syslog (LOG_NOTICE,"PAKET obsahuje VLAN: %d '%s'",vlan, vlanstr);
 		}
 	}
@@ -2565,7 +2566,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 					int protocol;
 					int vlan;
 					parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
-							 header_sll, header_eth, header_ip_offset, protocol, &vlan);
+							 header_sll, header_eth, NULL,
+							 header_ip_offset, protocol, &vlan);
 					call->regsrcmac = (convert_srcmac_ll(header_eth));
 					//syslog(LOG_NOTICE,"srcmac from first register: [%llu]\n", call->regsrcmac);
 				}

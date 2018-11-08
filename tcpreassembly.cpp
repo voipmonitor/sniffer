@@ -2087,7 +2087,8 @@ void TcpReassemblyLink::createEthHeader(u_char *packet, int dlt) {
 	u_int header_ip_offset;
 	int protocol;
 	if(parseEtherHeader(dlt, packet,
-			    header_sll, header_eth, header_ip_offset, protocol)) {
+			    header_sll, header_eth, NULL,
+			    header_ip_offset, protocol)) {
 		this->ethHeaderLength = header_ip_offset;
 		if(this->ethHeaderLength > 0 && this->ethHeaderLength < 50) {
 			this->ethHeader = new FILE_LINE(36009) u_char[this->ethHeaderLength];

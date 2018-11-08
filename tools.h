@@ -974,7 +974,7 @@ void createSimpleTcpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_c
 			       u_char *source_packet, u_char *data, unsigned int datalen,
 			       unsigned int saddr, unsigned int daddr, int source, int dest,
 			       u_int32_t seq, u_int32_t ack_seq, 
-			       u_int32_t time_sec, u_int32_t time_usec);
+			       u_int32_t time_sec, u_int32_t time_usec, int dlt);
 
 class RtpGraphSaver {
 public:

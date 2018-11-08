@@ -244,7 +244,7 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 								  ethHeader, data, dataLength,
 								  _ip_src, _ip_dst, _port_src, _port_dst,
 								  dataItem->getSeq(), dataItem->getAck(), 
-								  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec);
+								  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec, dlt);
 					unsigned dataOffset = ethHeaderLength + sizeof(iphdr2) + ((tcphdr2*)(tcpPacket + ethHeaderLength + sizeof(iphdr2)))->doff * 4;
 					preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 						true, 

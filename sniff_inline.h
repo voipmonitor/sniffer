@@ -28,7 +28,8 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip);
 inline
 #endif
 bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
-		      sll_header *&header_sll, ether_header *&header_eth, u_int &header_ip_offset, int &protocol, int *vlan = NULL);
+		      sll_header *&header_sll, ether_header *&header_eth, u_char **header_ppp_o_e,
+		      u_int &header_ip_offset, int &protocol, int *vlan = NULL);
 
 #if SNIFFER_INLINE_FUNCTIONS
 inline

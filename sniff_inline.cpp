@@ -136,7 +136,8 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 inline 
 #endif
 bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
-		      sll_header *&header_sll, ether_header *&header_eth, u_int &header_ip_offset, int &protocol, int *vlan) {
+		      sll_header *&header_sll, ether_header *&header_eth, u_char **header_ppp_o_e,
+		      u_int &header_ip_offset, int &protocol, int *vlan) {
 	if(vlan) {
 		*vlan = -1;
 	}
@@ -188,6 +189,9 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 			case 0x8864:
 				// PPPoE
 				if(htons(*(u_int16_t*)(packet + sizeof(ether_header) + 6)) == 0x0021) { // Point To Point protocol IPv4
+					if(header_ppp_o_e) {
+						*header_ppp_o_e = packet + sizeof(ether_header);
+					}
 					header_ip_offset = 8;
 					protocol = ETHERTYPE_IP;
 				} else {
@@ -220,6 +224,9 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 				} while(_protocol == 0x8100);
 				if(_protocol == 0x8864 && // PPPoE
 				   htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset + 6)) == 0x0021) { // Point To Point protocol IPv4
+					if(header_ppp_o_e) {
+						*header_ppp_o_e = packet + header_ip_offset + sizeof(ether_header);
+					}
 					header_ip_offset += 8;
 					protocol = ETHERTYPE_IP;
 				} else {
@@ -348,7 +355,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			ppd->protocol = (*header_packet)->eth_protocol;
 			ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 		} else if(parseEtherHeader(pcapLinklayerHeaderType, HPP(*header_packet),
-					   ppd->header_sll, ppd->header_eth, ppd->header_ip_offset, ppd->protocol)) {
+					   ppd->header_sll, ppd->header_eth, NULL,
+					   ppd->header_ip_offset, ppd->protocol)) {
 			(*header_packet)->detect_headers |= 0x01;
 			(*header_packet)->header_ip_first_offset = ppd->header_ip_offset;
 			(*header_packet)->eth_protocol = ppd->protocol;
@@ -395,7 +403,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			ppd->protocol = pcap_header_plus2->eth_protocol;
 			ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
 		} else if(parseEtherHeader(pcapLinklayerHeaderType, packet,
-					   ppd->header_sll, ppd->header_eth, ppd->header_ip_offset, ppd->protocol)) {
+					   ppd->header_sll, ppd->header_eth, NULL,
+					   ppd->header_ip_offset, ppd->protocol)) {
 			pcap_header_plus2->detect_headers |= 0x01;
 			pcap_header_plus2->header_ip_first_offset = ppd->header_ip_offset;
 			pcap_header_plus2->eth_protocol = ppd->protocol;

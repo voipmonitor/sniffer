@@ -1251,7 +1251,9 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 					ether_header *header_eth = NULL;
 					u_int header_ip_offset = 0;
 					int protocol = 0;
-					if(parseEtherHeader(dlt, (u_char*)packet, header_sll, header_eth, header_ip_offset, protocol) &&
+					if(parseEtherHeader(dlt, (u_char*)packet, 
+							    header_sll, header_eth, NULL,
+							    header_ip_offset, protocol) &&
 					   (header_ip_offset + sizeof(iphdr2) + (istcp ? ((tcphdr2*)(packet + header_ip_offset + sizeof(iphdr2)))->doff * 4 : sizeof(udphdr2)) + datalen) != header->caplen) {
 						pcap_pkthdr *_header;
 						u_char *_packet;
@@ -4296,7 +4298,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 			       u_char *source_packet, u_char *data, unsigned int datalen,
 			       unsigned int saddr, unsigned int daddr, int source, int dest,
 			       u_int32_t seq, u_int32_t ack_seq, 
-			       u_int32_t time_sec, u_int32_t time_usec) {
+			       u_int32_t time_sec, u_int32_t time_usec, int dlt) {
 	unsigned tcp_options_length = 12;
 	unsigned tcp_doff = (sizeof(tcphdr2) + tcp_options_length) / 4 + ((sizeof(tcphdr2) + tcp_options_length) % 4 ? 1 : 0);
 	u_int32_t packet_length = ether_header_length + sizeof(iphdr2) + tcp_doff * 4 + datalen;
@@ -4334,6 +4336,19 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	(*header)->ts.tv_usec = time_usec;
 	(*header)->caplen = packet_length;
 	(*header)->len = packet_length;
+	if(ether_header_length > sizeof(ether_header)) {
+		sll_header *header_sll;
+		ether_header *header_eth;
+		u_char *header_ppp_o_e = NULL;
+		u_int header_ip_offset;
+		int protocol;
+		if(parseEtherHeader(dlt, (u_char*)*packet, 
+				    header_sll, header_eth, &header_ppp_o_e,
+				    header_ip_offset, protocol) &&
+		   header_ppp_o_e) {
+			*(u_int16_t*)(header_ppp_o_e + 4) = htons(sizeof(iphdr2) + tcp_doff * 4 + datalen + 2);
+		}
+	}
 }
 
 void base64_init(void)

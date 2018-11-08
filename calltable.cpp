@@ -1219,7 +1219,8 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 		int protocol;
 		int vlan;
 		parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
-				 header_sll, header_eth, header_ip_offset, protocol, &vlan);
+				 header_sll, header_eth, NULL,
+				 header_ip_offset, protocol, &vlan);
 		if(vlan != this->vlan) {
 			return(false);
 		}
@@ -1317,7 +1318,8 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 		int protocol;
 		int vlan;
 		parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
-				 header_sll, header_eth, header_ip_offset, protocol, &vlan);
+				 header_sll, header_eth, NULL,
+				 header_ip_offset, protocol, &vlan);
 		if(vlan != this->vlan) {
 			*disable_save = true;
 			return(false);
@@ -1709,7 +1711,9 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 				ether_header *header_eth = NULL;
 				u_int header_ip_offset = 0;
 				int protocol = 0;
-				if(parseEtherHeader(packetS->dlt, (u_char*)packetS->packet, header_sll, header_eth, header_ip_offset, protocol)) {
+				if(parseEtherHeader(packetS->dlt, (u_char*)packetS->packet, 
+						    header_sll, header_eth, NULL,
+						    header_ip_offset, protocol)) {
 					pcap_pkthdr *header = NULL;
 					u_char *packet = NULL;
 					u_int16_t old_ether_type = 0;

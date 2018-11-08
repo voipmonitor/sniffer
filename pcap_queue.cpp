@@ -3080,7 +3080,8 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			checkProtocolData = &_checkProtocolData;
 		}
 		if(!parseEtherHeader(pcapLinklayerHeaderType, *packet,
-				     checkProtocolData->header_sll, checkProtocolData->header_eth, checkProtocolData->header_ip_offset, checkProtocolData->protocol) ||
+				     checkProtocolData->header_sll, checkProtocolData->header_eth, NULL,
+				     checkProtocolData->header_ip_offset, checkProtocolData->protocol) ||
 		   checkProtocolData->protocol != ETHERTYPE_IP ||
 		   ((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->version != 4 ||
 		   htons(((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->tot_len) + checkProtocolData->header_ip_offset > (*header)->len) {
@@ -7262,7 +7263,8 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 		u_int header_ip_offset;
 		int protocol;
 		parseEtherHeader(hp->dlt, hp->packet,
-				 header_sll, header_eth, header_ip_offset, protocol);
+				 header_sll, header_eth, NULL,
+				 header_ip_offset, protocol);
 		hp->header->header_ip_offset = header_ip_offset;
 	}
 	iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
