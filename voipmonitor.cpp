@@ -5980,7 +5980,6 @@ void cConfig::addConfigItems() {
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleanspool", &opt_cleanspool));
 			advanced();
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("get_reason_from_bye_cancel", &opt_get_reason_from_bye_cancel));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleanspool_use_files", &opt_cleanspool_use_files));
 			addConfigItem(new FILE_LINE(42231) cConfigItem_integer("cleanspool_interval", &opt_cleanspool_interval));
 		normal();
@@ -6060,6 +6059,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_confirmed_timeout", &opt_bye_confirmed_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye_confirmed", &opt_ignore_rtp_after_bye_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_cancel_confirmed", &opt_ignore_rtp_after_cancel_confirmed));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("get_reason_from_bye_cancel", &opt_get_reason_from_bye_cancel));
 			addConfigItem(new FILE_LINE(42261) cConfigItem_yesno("nocdr", &opt_nocdr));
 			addConfigItem((new FILE_LINE(42262) cConfigItem_string("cdr_ignore_response", opt_nocdr_for_last_responses, sizeof(opt_nocdr_for_last_responses)))
 				->addAlias("nocdr_for_last_responses"));
