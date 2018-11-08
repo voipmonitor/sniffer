@@ -76,7 +76,7 @@ bool RegisterId:: operator == (const RegisterId& other) const {
 	       (!opt_sip_register_compare_to_domain || REG_EQ_STR(this->reg->to_domain, other.reg->to_domain)) &&
 	       //REG_EQ_STR(this->reg->contact_num, other.reg->contact_num) &&
 	       //REG_EQ_STR(this->reg->contact_domain, other.reg->contact_domain) &&
-	       REG_EQ_STR(this->reg->digest_username, other.reg->digest_username));
+	       REG_EQ0_STR(this->reg->digest_username, other.reg->digest_username));
 }
 
 bool RegisterId:: operator < (const RegisterId& other) const { 
@@ -91,7 +91,7 @@ bool RegisterId:: operator < (const RegisterId& other) const {
 	       (opt_sip_register_compare_to_domain && (rslt_cmp_to_domain = REG_CMP_STR(this->reg->to_domain, other.reg->to_domain)) < 0) ? 1 : (opt_sip_register_compare_to_domain && rslt_cmp_to_domain > 0) ? 0 :
 	       //((rslt_cmp_contact_num = REG_CMP_STR(this->reg->contact_num, other.reg->contact_num)) < 0) ? 1 : (rslt_cmp_contact_num > 0) ? 0 :
 	       //((rslt_cmp_contact_domain = REG_CMP_STR(this->reg->contact_domain, other.reg->contact_domain)) < 0) ? 1 : (rslt_cmp_contact_domain > 0) ? 0 :
-	       ((rslt_cmp_digest_username = REG_CMP_STR(this->reg->digest_username, other.reg->digest_username)) < 0));
+	       ((rslt_cmp_digest_username = REG_CMP0_STR(this->reg->digest_username, other.reg->digest_username)) < 0));
 }
 
 
@@ -242,6 +242,13 @@ void Register::update(Call *call) {
 	if(!contact_domain && call->contact_domain[0]) {
 		contact_domain = REG_NEW_STR(call->contact_domain);
 	}
+	if(!digest_username && call->digest_username[0]) {
+		digest_username = REG_NEW_STR(call->digest_username);
+	}
+	if(!opt_sip_register_state_compare_digest_realm &&
+	   !digest_realm && call->digest_realm[0]) {
+		digest_realm = REG_NEW_STR(call->digest_realm);
+	}
 	sipcallerip = call->sipcallerip[0];
 	sipcalledip = call->sipcalledip[0];
 }
@@ -352,6 +359,10 @@ void Register::updateLastState(Call *call) {
 		state->state_to = call->calltime();
 		state->fname = call->fname_register;
 		state->expires = call->register_expires;
+		if(!opt_sip_register_state_compare_digest_realm && 
+		   !state->digest_realm && call->digest_realm[0] && this->digest_realm) {
+			state->digest_realm = EQ_REG;
+		}
 		++state->counter;
 	}
 }
