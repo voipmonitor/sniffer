@@ -217,6 +217,7 @@ public:
 	int first_codec;
 	int codec;
 	int rtpmap[MAX_RTPMAP];
+	int rtpmap_other_side[MAX_RTPMAP];
 	unsigned char* data;    //!< pointer to UDP payload
 	int len;		//!< lenght of UDP payload
 	unsigned char* payload_data;    //!< pointer to RTP payload

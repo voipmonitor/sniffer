@@ -1306,7 +1306,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	*record_dtmf = false;
 	*disable_save = false;
 	
-	if(packetS->datalen <= 12) {
+	if(packetS->datalen <= 12 && !sverb.process_rtp_header) {
 		//Ignoring RTP packets without data
 		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen);
 		return(false);
@@ -1389,12 +1389,15 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 				} else {
 					// check if the stream started with DTMF
 					if(rtp[i]->payload2 >= 96 && rtp[i]->payload2 <= 127) {
-						for(int j = 0; j < MAX_RTPMAP; j++) {
-							if(rtp[i]->rtpmap[j] != 0 && rtp[i]->payload2 == rtp[i]->rtpmap[j] / 1000) {
-								if((rtp[i]->rtpmap[j] - rtp[i]->payload2 * 1000) == PAYLOAD_TELEVENT) {
-									//it is DTMF 
-									rtp[i]->payload2 = curpayload;
-									goto read;
+						for(int pass_find_rtpmap = 0; pass_find_rtpmap < 2; pass_find_rtpmap++) {
+							int *rtpmap = pass_find_rtpmap ? rtp[i]->rtpmap_other_side : rtp[i]->rtpmap;
+							for(int j = 0; j < MAX_RTPMAP; j++) {
+								if(rtpmap[j] != 0 && rtp[i]->payload2 == rtpmap[j] / 1000) {
+									if((rtpmap[j] - rtp[i]->payload2 * 1000) == PAYLOAD_TELEVENT) {
+										//it is DTMF 
+										rtp[i]->payload2 = curpayload;
+										goto read;
+									}
 								}
 							}
 						}
@@ -1403,10 +1406,13 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 					//codec changed, check if it is not DTMF 
 					if(curpayload >= 96 && curpayload <= 127) {
 						bool found = false;
-						for(int j = 0; j < MAX_RTPMAP; j++) {
-							if(rtp[i]->rtpmap[j] != 0 && curpayload == rtp[i]->rtpmap[j] / 1000) {
-								rtp[i]->codec = rtp[i]->rtpmap[j] - curpayload * 1000;
-								found = true;
+						for(int pass_find_rtpmap = 0; pass_find_rtpmap < 2 && !found; pass_find_rtpmap++) {
+							int *rtpmap = pass_find_rtpmap ? rtp[i]->rtpmap_other_side : rtp[i]->rtpmap;
+							for(int j = 0; j < MAX_RTPMAP; j++) {
+								if(rtpmap[j] != 0 && curpayload == rtpmap[j] / 1000) {
+									rtp[i]->codec = rtpmap[j] - curpayload * 1000;
+									found = true;
+								}
 							}
 						}
 						if(!found) {
@@ -1458,9 +1464,9 @@ read:
 		
 		int index_call_ip_port_find_side = this->get_index_by_ip_port(find_by_dest ? packetS->daddr : packetS->saddr,
 									      find_by_dest ? packetS->dest : packetS->source);
+		int index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr,
+									       find_by_dest ? packetS->source : packetS->dest);
 		if(opt_rtp_check_both_sides_by_sdp && index_call_ip_port_find_side >= 0 && iscaller_is_set(iscaller)) {
-			int index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr,
-										       find_by_dest ? packetS->source : packetS->dest);
 			if(index_call_ip_port_other_side < 0) {
 				index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr,
 											   find_by_dest ? packetS->source : packetS->dest,
@@ -1590,6 +1596,9 @@ read:
 		} else {
 			if(rtp[ssrc_n]->index_call_ip_port >= 0 && isFillRtpMap(rtp[ssrc_n]->index_call_ip_port)) {
 				memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[rtp[ssrc_n]->index_call_ip_port], MAX_RTPMAP * sizeof(int));
+				if(index_call_ip_port_other_side >= 0 && isFillRtpMap(index_call_ip_port_other_side)) {
+					memcpy(this->rtp[ssrc_n]->rtpmap_other_side, rtpmap[index_call_ip_port_other_side], MAX_RTPMAP * sizeof(int));
+				}
 			} else {
 				for(int j = 0; j < 2; j++) {
 					int index_ip_port_first_for_callerd = getFillRtpMapByCallerd(j ? !iscaller : iscaller);

@@ -324,6 +324,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	codec = -1;
 	for(int i = 0; i < MAX_RTPMAP; i++) {
 		rtpmap[i] = 0;
+		rtpmap_other_side[i] = 0;
 	}
 	gfileRAW_buffer = NULL;
 	sid = false;

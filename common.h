@@ -80,6 +80,7 @@ struct sVerbose {
 	int reassembly_sip_output;
 	int log_manager_cmd;
 	int rtp_extend_stat;
+	int process_rtp_header;
 	int disable_process_packet_in_packetbuffer;
 	int disable_push_to_t2_in_packetbuffer;
 	int disable_save_packet;

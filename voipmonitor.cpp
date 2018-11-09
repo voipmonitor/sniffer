@@ -6821,6 +6821,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "reassembly_sip_output")		sverb.reassembly_sip_output = 1;
 	else if(verbParam == "log_manager_cmd")			sverb.log_manager_cmd = 1;
 	else if(verbParam == "rtp_extend_stat")			sverb.rtp_extend_stat = 1;
+	else if(verbParam == "process_rtp_header")		sverb.process_rtp_header = 1;
 	else if(verbParam == "disable_process_packet_in_packetbuffer")
 								sverb.disable_process_packet_in_packetbuffer = 1;
 	else if(verbParam == "disable_push_to_t2_in_packetbuffer")
