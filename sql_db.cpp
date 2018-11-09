@@ -7371,7 +7371,7 @@ void dropMysqlPartitionsCdr() {
 	_dropMysqlPartitions("cdr_rtp", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_dtmf", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_sipresp", opt_cleandatabase_cdr, 0, sqlDb);
-	if(_save_sip_history) {
+	if(_save_sip_history || sqlDb->existsTable("cdr_siphistory")) {
 		_dropMysqlPartitions("cdr_siphistory", opt_cleandatabase_cdr, 0, sqlDb);
 	}
 	_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, 0, sqlDb);
