@@ -249,6 +249,7 @@ extern bool opt_ignore_rtp_after_cancel_confirmed;
 extern bool opt_detect_alone_bye;
 extern bool opt_get_reason_from_bye_cancel;
 extern int opt_hash_modify_queue_length_ms;
+extern int opt_sipalg_detect;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
@@ -965,7 +966,6 @@ inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContents
 			return(NULL);
 		}
 	}
- 
 	unsigned long register r, l, tl;
 	char *rc = NULL;
 	char *tmp;
@@ -1533,6 +1533,30 @@ int get_sip_headerstr(packet_s_process *packetS, const char *tag, const char *ta
         return 0;
 fail_exit:
 	strcpy(headerstr, "");
+	return 1;
+}
+
+int get_sip_via_ip_hostname(packet_s_process *packetS, char *ip_hostname, unsigned int ip_hostname_len){
+	unsigned long via_tag_len;
+	char *p1, *p2;
+	int len;
+	char *via_tag = gettag_sip(packetS, "via:", "v:", &via_tag_len);
+	if (!via_tag) {
+		goto fail_exit;
+	}
+	if (!(p1 = (char*)memmem(via_tag, via_tag_len, " ", 1))) {
+		goto fail_exit;
+	}
+	p1++;
+	if (!(p2 = (char*)memmem(p1, (via_tag_len - (p1 - via_tag)), ":", 1))) {
+		goto fail_exit;
+	}
+	len = (p2 - p1 > ip_hostname_len) ? ip_hostname_len : p2 - p1;
+	memcpy(ip_hostname, p1, len);
+	*(ip_hostname + len) = '\0';
+	return 0;
+fail_exit:
+	strcpy(ip_hostname, "");
 	return 1;
 }
 
@@ -2550,6 +2574,15 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		// callername
 		strcpy_null_term(call->callername, data_callerd.callername);
 
+		if (opt_sipalg_detect) {
+			char via_ip_hostname[100];
+			if (!get_sip_via_ip_hostname(packetS, via_ip_hostname, sizeof(via_ip_hostname))) {
+				u_int32_t via_ip = ntohl(inet_strington(via_ip_hostname));
+				if (via_ip == call->sipcallerip[0]) {
+					call->is_sipalg_detected = true;
+				}
+			}
+		}
 		if(sip_method == REGISTER) {	
 			// destroy all REGISTER from memory within 30 seconds 
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + opt_register_timeout;

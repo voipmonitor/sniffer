@@ -4510,7 +4510,8 @@ int Mgmt_totalregisters(Mgmt_params* params) {
 		params->registerCommand("totalregisters", "return the number of total registers");
 		return(0);
 	}
-	return(params->sendString(registers_counter));
+	extern Registers registers;
+	return(params->sendString(registers.getCount()));
 }
 
 int Mgmt_listregisters(Mgmt_params* params) {

@@ -25,6 +25,8 @@ string RecordArrayField::getJson() {
 			return(v.s);
 		}
 		break;
+	case tf_bool:
+		return(boolToString(v.b));
 	default:
 		break;
 	}

@@ -163,6 +163,7 @@ extern int opt_rtp_check_both_sides_by_sdp;
 extern int opt_hash_modify_queue_length_ms;
 
 volatile int calls_counter = 0;
+/* probably not used any more */
 volatile int registers_counter = 0;
 
 extern char mac[32];
@@ -495,6 +496,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	hold_status = false;
 	is_fas_detected = false;
 	is_zerossrc_detected = false;
+	is_sipalg_detected = false;
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;
@@ -3599,6 +3601,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_FAS_DETECTED;
 	if (is_zerossrc_detected)
 		cdr_flags |= CDR_ZEROSSRC_DETECTED;
+	if (is_sipalg_detected)
+		cdr_flags |= CDR_SIPALG_DETECTED;
 	for(int i = 0; i < ipport_n; i++) {
 		if(ip_port[i].sdp_flags.protocol == sdp_proto_srtp &&
 		   !ip_port[i].rtp_crypto_config_list) {
