@@ -13,6 +13,7 @@
 
 #define NEW_REGISTER_MAX_STATES 3
 
+#define REG_SIPALG_DETECTED	(1 << 0)
 
 using namespace std;
 
@@ -49,6 +50,7 @@ enum eRegisterField {
 	rf_ua,
 	rf_rrd_avg,
 	rf_spool_index,
+	rf_flags,
 	rf__max
 };
 
@@ -88,6 +90,7 @@ public:
 	u_int64_t db_id;
 	u_int32_t save_at;
 	u_int32_t save_at_counter;
+	u_int64_t flags;
 };
 
 
@@ -146,6 +149,7 @@ public:
 	volatile int _sync_states;
 	static volatile u_int64_t _id;
 	static volatile int _sync_id;
+	u_int64_t flags;
 };
 
 

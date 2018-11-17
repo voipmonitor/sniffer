@@ -3073,6 +3073,7 @@ void ParsePacket::setStdParse() {
 	addNode("supported:", typeNode_std);
 	addNode("proxy-authenticate:", typeNode_std);
 	addNode("via:", typeNode_std);
+	addNode("v:", typeNode_std);
 	extern sExistsColumns existsColumns;
 	if(existsColumns.cdr_reason) {
 		addNode("reason:", typeNode_std);

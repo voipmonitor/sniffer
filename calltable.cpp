@@ -495,6 +495,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	hold_status = false;
 	is_fas_detected = false;
 	is_zerossrc_detected = false;
+	is_sipalg_detected = false;
 	msgcount = 0;
 	regcount = 0;
 	reg401count = 0;
@@ -3599,6 +3600,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_FAS_DETECTED;
 	if (is_zerossrc_detected)
 		cdr_flags |= CDR_ZEROSSRC_DETECTED;
+	if (is_sipalg_detected)
+		cdr_flags |= CDR_SIPALG_DETECTED;
 	for(int i = 0; i < ipport_n; i++) {
 		if(ip_port[i].sdp_flags.protocol == sdp_proto_srtp &&
 		   !ip_port[i].rtp_crypto_config_list) {

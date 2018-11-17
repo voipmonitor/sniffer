@@ -59,7 +59,8 @@ struct RegisterFields {
 	{ rf_state, "state" },
 	{ rf_ua, "ua" },
 	{ rf_rrd_avg, "rrd_avg" },
-	{ rf_spool_index, "spool_index" }
+	{ rf_spool_index, "spool_index" },
+	{ rf_flags, "flags" }
 };
 
 SqlDb *sqlDbSaveRegister = NULL;
@@ -126,6 +127,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		fname = call->fname_register;
 		expires = call->register_expires;
 		id_sensor = call->useSensorId;
+		flags = reg->flags;
 	} else {
 		state_from = state_to = 0;
 		counter = 0;
@@ -137,6 +139,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		from_domain = NULL;
 		digest_realm = NULL;
 		ua = NULL;
+		flags = 0;
 	}
 	db_id = 0;
 	save_at = 0;
@@ -164,6 +167,7 @@ void RegisterState::copyFrom(const RegisterState *src) {
 	digest_realm = REG_NEW_STR(src->digest_realm);
 	ua = REG_NEW_STR(src->ua);
 	spool_index = src->spool_index;
+	flags = src->flags;
 }
 
 bool RegisterState::isEq(Call *call, Register *reg) {
@@ -218,6 +222,10 @@ Register::Register(Call *call) {
 	rrd_sum = 0;
 	rrd_count = 0;
 	_sync_states = 0;
+	flags = 0;
+	if (call->is_sipalg_detected) {
+		flags |= REG_SIPALG_DETECTED;
+	}
 }
 
 Register::~Register() {
@@ -415,6 +423,9 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	} else {
 		reg.add(state->expires, "expires");
 		reg.add(state->state <= rs_Expired ? state->state : rs_OK, "state");
+		if (existsColumns.register_state_flags) {
+			reg.add(state->flags, "flags");
+		}
 	}
 	if(state->id_sensor > -1) {
 		reg.add(state->id_sensor, "id_sensor");
@@ -545,6 +556,7 @@ bool Register::getDataRow(RecordArray *rec) {
 		rec->fields[rf_rrd_avg].set(rrd_sum / rrd_count);
 	}
 	rec->fields[rf_spool_index].set(state->spool_index);
+	rec->fields[rf_flags].set(state->flags);
 	unlock_states();
 	return(true);
 }

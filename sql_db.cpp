@@ -5034,6 +5034,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`state` tinyint unsigned NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
 			`to_domain` varchar(255) NULL DEFAULT NULL,\
+			`flags` bigint unsigned DEFAULT NULL,\
 			`spool_index` tinyint unsigned DEFAULT NULL,") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `created_at`)," :
@@ -6636,6 +6637,14 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 				   "ALTER TABLE register_state "
 				   "ADD COLUMN `spool_index` tinyint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.register_state_spool_index);
+	}
+	existsColumns.register_state_flags= this->existsColumn("register_state", "flags");
+	if(!existsColumns.register_state_flags) {
+		this->logNeedAlter("register_state",
+				   "register_state flags",
+				   "ALTER TABLE register_state "
+				   "ADD COLUMN `flags` bigint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.register_state_flags);
 	}
 	existsColumns.register_failed_spool_index= this->existsColumn("register_failed", "spool_index");
 	if(!existsColumns.register_failed_spool_index) {
