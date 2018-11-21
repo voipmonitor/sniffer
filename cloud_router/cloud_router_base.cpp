@@ -14,7 +14,7 @@
 
 extern bool CR_TERMINATE();
 extern void CR_SET_TERMINATE();
-extern sCloudRouterVerbose CR_VERBOSE();
+extern sCloudRouterVerbose& CR_VERBOSE();
 extern bool opt_socket_use_poll;
 extern cResolver resolver;
 
@@ -1016,6 +1016,7 @@ string cSocketBlock::readLine(u_char **remainder, size_t *remainder_length) {
 }
 
 void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder, size_t remainder_length, u_int16_t timeout) {
+	string verb_str;
 	if(!timeout) {
 		timeout = timeouts.readblock;
 	}
@@ -1029,6 +1030,9 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 		}
 		if(data_dec) {
 			delete [] data_dec;
+		}
+		if(CR_VERBOSE().socket_decode) {
+			verb_str += "header: " + intToString(remainder_length) + "/d:" + intToString(data_dec_len) + "; ";
 		}
 	}
 	size_t bufferLen = 1000;
@@ -1047,6 +1051,9 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 				if(data_dec) {
 					delete [] data_dec;
 				}
+				if(CR_VERBOSE().socket_decode) {
+					verb_str += "data: " + intToString(len) + "/d:" + intToString(data_dec_len) + "; ";
+				}
 			}
 		} else {
 			u_char *data_dec;
@@ -1058,6 +1065,9 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 			if(data_dec) {
 				delete [] data_dec;
 			}
+			if(CR_VERBOSE().socket_decode) {
+				verb_str += "rest: d:" + intToString(data_dec_len) + "; ";
+			}
 			break;
 		}
 		++counter;
@@ -1068,6 +1078,9 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 	delete [] buffer;
 	if(remainder) {
 		delete [] remainder;
+	}
+	if(CR_VERBOSE().socket_decode) {
+		syslog(LOG_INFO, "decode %s", verb_str.c_str());
 	}
 }
 

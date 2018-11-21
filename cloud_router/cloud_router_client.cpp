@@ -7,7 +7,7 @@
 #include <math.h>
 
 
-extern sCloudRouterVerbose CR_VERBOSE();
+extern sCloudRouterVerbose& CR_VERBOSE();
 extern void CR_SET_TERMINATE();
 
 

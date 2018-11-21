@@ -105,6 +105,7 @@ struct sVerbose {
 	int disable_cb_cache;
 	int system_command;
 	int malloc_trim;
+	int socket_decode;
 	int _debug1;
 	int _debug2;
 	int _debug3;

@@ -6849,6 +6849,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "enable_cb_cache")			sverb.disable_cb_cache = 0;
 	else if(verbParam == "system_command")			sverb.system_command = 1;
 	else if(verbParam == "malloc_trim")			sverb.malloc_trim = 1;
+	else if(verbParam == "socket_decode")			{ sverb.socket_decode = 1; extern sCloudRouterVerbose& CR_VERBOSE(); CR_VERBOSE().socket_decode = true; }
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -10398,9 +10399,9 @@ eTypeSpoolFile findTypeSpoolFile(unsigned int spool_index, const char *filePathN
 }
 
 
-sCloudRouterVerbose CR_VERBOSE() {
-	sCloudRouterVerbose v;
-	return(v);
+sCloudRouterVerbose& CR_VERBOSE() {
+	static sCloudRouterVerbose cr_verbose;
+	return(cr_verbose);
 }
 
 bool CR_TERMINATE() {
