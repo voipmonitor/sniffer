@@ -422,6 +422,7 @@ bool opt_sip_register_state_compare_from_name = false;
 bool opt_sip_register_state_compare_from_domain = false;
 bool opt_sip_register_state_compare_digest_realm = false;
 bool opt_sip_register_state_compare_ua = false;
+bool opt_sip_register_state_compare_flags = false;
 bool opt_sip_register_save_all = false;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -6131,6 +6132,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_domain", &opt_sip_register_state_compare_from_domain));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_realm", &opt_sip_register_state_compare_digest_realm));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_ua", &opt_sip_register_state_compare_ua));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-flags", &opt_sip_register_state_compare_flags));
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
 		subgroup("OPTIONS / SUBSCRIBE / NOTIFY");
@@ -8328,6 +8330,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-state-compare-ua", NULL))) {
 		opt_sip_register_state_compare_ua = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-compare-flags", NULL))) {
+		opt_sip_register_state_compare_flags = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-save-all", NULL))) {
 		opt_sip_register_save_all = yesno(value);

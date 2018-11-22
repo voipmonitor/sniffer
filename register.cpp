@@ -27,6 +27,8 @@ extern bool opt_sip_register_state_compare_from_name;
 extern bool opt_sip_register_state_compare_from_domain;
 extern bool opt_sip_register_state_compare_digest_realm;
 extern bool opt_sip_register_state_compare_ua;
+extern bool opt_sip_register_state_compare_flags;
+extern bool opt_sipalg_detect;
 
 extern Calltable *calltable;
 
@@ -60,7 +62,7 @@ struct RegisterFields {
 	{ rf_ua, "ua" },
 	{ rf_rrd_avg, "rrd_avg" },
 	{ rf_spool_index, "spool_index" },
-	{ rf_flags, "flags" }
+	{ rf_is_sipalg_detected, "is_sipalg_detected" }
 };
 
 SqlDb *sqlDbSaveRegister = NULL;
@@ -127,7 +129,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		fname = call->fname_register;
 		expires = call->register_expires;
 		id_sensor = call->useSensorId;
-		flags = reg->flags;
+		is_sipalg_detected = call->is_sipalg_detected;
 	} else {
 		state_from = state_to = 0;
 		counter = 0;
@@ -139,7 +141,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		from_domain = NULL;
 		digest_realm = NULL;
 		ua = NULL;
-		flags = 0;
+		is_sipalg_detected = false;
 	}
 	db_id = 0;
 	save_at = 0;
@@ -167,7 +169,7 @@ void RegisterState::copyFrom(const RegisterState *src) {
 	digest_realm = REG_NEW_STR(src->digest_realm);
 	ua = REG_NEW_STR(src->ua);
 	spool_index = src->spool_index;
-	flags = src->flags;
+	is_sipalg_detected = src->is_sipalg_detected;
 }
 
 bool RegisterState::isEq(Call *call, Register *reg) {
@@ -194,6 +196,7 @@ bool RegisterState::isEq(Call *call, Register *reg) {
 	       (!opt_sip_register_state_compare_from_domain || REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, call->caller_domain)) &&
 	       (!opt_sip_register_state_compare_digest_realm || REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, call->digest_realm)) &&
 	       (!opt_sip_register_state_compare_ua || REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua)) &&
+	       (!opt_sip_register_state_compare_flags || (!opt_sipalg_detect || is_sipalg_detected == call->is_sipalg_detected)) &&
 	       id_sensor == call->useSensorId);
 }
 
@@ -222,10 +225,6 @@ Register::Register(Call *call) {
 	rrd_sum = 0;
 	rrd_count = 0;
 	_sync_states = 0;
-	flags = 0;
-	if (call->is_sipalg_detected) {
-		flags |= REG_SIPALG_DETECTED;
-	}
 }
 
 Register::~Register() {
@@ -424,7 +423,11 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		reg.add(state->expires, "expires");
 		reg.add(state->state <= rs_Expired ? state->state : rs_OK, "state");
 		if (existsColumns.register_state_flags) {
-			reg.add(state->flags, "flags");
+			u_int64_t flags = 0;
+			if (state->is_sipalg_detected) {
+				flags |= REG_SIPALG_DETECTED;
+			}
+			reg.add(flags, "flags");
 		}
 	}
 	if(state->id_sensor > -1) {
@@ -556,7 +559,7 @@ bool Register::getDataRow(RecordArray *rec) {
 		rec->fields[rf_rrd_avg].set(rrd_sum / rrd_count);
 	}
 	rec->fields[rf_spool_index].set(state->spool_index);
-	rec->fields[rf_flags].set(state->flags);
+	rec->fields[rf_is_sipalg_detected].set(state->is_sipalg_detected);
 	unlock_states();
 	return(true);
 }

@@ -50,7 +50,7 @@ enum eRegisterField {
 	rf_ua,
 	rf_rrd_avg,
 	rf_spool_index,
-	rf_flags,
+	rf_is_sipalg_detected,
 	rf__max
 };
 
@@ -90,7 +90,7 @@ public:
 	u_int64_t db_id;
 	u_int32_t save_at;
 	u_int32_t save_at_counter;
-	u_int64_t flags;
+	bool is_sipalg_detected;
 };
 
 
@@ -149,7 +149,6 @@ public:
 	volatile int _sync_states;
 	static volatile u_int64_t _id;
 	static volatile int _sync_id;
-	u_int64_t flags;
 };
 
 

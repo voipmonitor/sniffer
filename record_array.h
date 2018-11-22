@@ -25,7 +25,8 @@ struct RecordArrayField {
 		tf_pointer,
 		tf_time,
 		tf_string,
-		tf_json
+		tf_json,
+		tf_bool
 	};
 	RecordArrayField() {
 		tf = tf_na;
@@ -92,6 +93,9 @@ struct RecordArrayField {
 			(u_int64_t)v.d :
 			0);
 	}
+	bool get_bool() {
+		return(tf == tf_bool ? (bool)v.b : false);
+	}
 	double get_float() {
 		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || tf == tf_time ?
 			(double)v.i :
@@ -130,6 +134,8 @@ struct RecordArrayField {
 			case tf_string:
 			case tf_json:
 				return(EQ_STR(v.s, other.v.s));
+			case tf_bool:
+				return(v.b == other.v.b);
 			}
 		}
 		return(false);
@@ -151,6 +157,8 @@ struct RecordArrayField {
 			case tf_string:
 			case tf_json:
 				return(CMP_STR(v.s, other.v.s) < 0);
+			case tf_bool:
+				return(false);
 			}
 		}
 		return(tf < other.tf);
@@ -165,6 +173,7 @@ struct RecordArrayField {
 		double d;
 		void *p;
 		char *s;
+		bool b;
 	} v;
 };
 
