@@ -580,6 +580,10 @@ Registers::~Registers() {
 	clean_all();
 }
 
+int Registers::getCount() {
+	return(registers.size());
+}
+
 void Registers::add(Call *call, struct timeval *currtime, int expires_add) {
  
 	/*

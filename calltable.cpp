@@ -163,6 +163,7 @@ extern int opt_rtp_check_both_sides_by_sdp;
 extern int opt_hash_modify_queue_length_ms;
 
 volatile int calls_counter = 0;
+/* probably not used any more */
 volatile int registers_counter = 0;
 
 extern char mac[32];
