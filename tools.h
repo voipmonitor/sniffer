@@ -591,6 +591,7 @@ string intToString(u_int32_t i);
 string intToString(u_int64_t i);
 string floatToString(double d);
 string pointerToString(void *p);
+string boolToString(bool b);
 bool isJsonObject(string str);
 
 class CircularBuffer

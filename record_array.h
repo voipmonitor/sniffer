@@ -70,6 +70,10 @@ struct RecordArrayField {
 		this->tf = tf;
 		this->v.p = p;
 	}
+	void set(bool b, eTypeField tf = tf_bool) {
+		this->tf = tf;
+		this->v.b = b;
+	}
 	void set(const char *s, eTypeField tf = tf_string) {
 		this->tf = tf;
 		if(s && *s) {

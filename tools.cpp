@@ -4527,6 +4527,14 @@ string pointerToString(void *p) {
 	return(buff);
 }
 
+string boolToString(bool b) {
+	if (b) {
+		return("true");
+	} else  {
+		return("false");
+	}
+}
+
 bool isJsonObject(string str) {
 	return(!str.empty() && str[0] == '{' && str[str.length() - 1] == '}');
 }
