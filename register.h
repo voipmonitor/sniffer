@@ -128,6 +128,14 @@ public:
 	void unlock_id() {
 		__sync_lock_release(&_sync_id);
 	}
+	inline bool getSipAlgState () {
+		for (int i = 0; i < countStates; i++) {
+			if (states[i]->is_sipalg_detected) {
+				return(true);
+			}
+		}
+		return(false);
+	}
 public:
 	u_int64_t id;
 	u_int32_t sipcallerip;
