@@ -2062,11 +2062,15 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
 				ProcessRtpPacket::autoStartProcessRtpPacket();
 			}
+			extern int opt_process_rtp_packets_hash_next_thread_max;
 			if(countRtpRhThreads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
+			   (opt_process_rtp_packets_hash_next_thread_max <= 0 || countRtpRhThreads < opt_process_rtp_packets_hash_next_thread_max) &&
 			   needAddRtpRhThreads) {
 				processRtpPacketHash->addRtpRhThread();
 			}
+			extern int opt_enable_process_rtp_packet_max;
 			if(countRtpRdThreads < MAX_PROCESS_RTP_PACKET_THREADS &&
+			   (opt_enable_process_rtp_packet_max <= 0 || countRtpRdThreads < opt_enable_process_rtp_packet_max) &&
 			   needAddRtpRdThreads) {
 				ProcessRtpPacket::addRtpRdThread();
 			}
