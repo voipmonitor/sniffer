@@ -927,7 +927,7 @@ Call::closeRawFiles() {
 /* add ip adress and port to this call */
 int
 Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		  char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		  char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return(-1);
 	}
@@ -983,7 +983,7 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 	nullIpPortInfoRtpStream(ipport_n);
 	
 	if(!opt_rtpmap_by_callerd || iscaller_is_set(iscaller)) {
-		memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : ipport_n], rtpmap, MAX_RTPMAP * sizeof(int));
+		memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : ipport_n], rtpmap, MAX_RTPMAP * sizeof(RTPMAP));
 	}
 	
 	ipport_n++;
@@ -992,41 +992,41 @@ Call::add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTy
 
 bool 
 Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, 
-			   list<rtp_crypto_config> *rtp_crypto_config_list, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+			   list<rtp_crypto_config> *rtp_crypto_config_list, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// reinit rtpmap
 			if(!opt_rtpmap_by_callerd || iscaller_is_set(iscaller)) {
 				if(opt_rtpmap_combination) {
-					int *rtpmap_src = rtpmap;
-					int *rtpmap_dst = this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i];
+					RTPMAP *rtpmap_src = rtpmap;
+					RTPMAP *rtpmap_dst = this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i];
 					for(int i_src = 0; i_src < MAX_RTPMAP - 1; i_src++) {
-						if(rtpmap_src[i_src]) {
-							int indexEqCodec = -1;
+						if(rtpmap_src[i_src].is_set()) {
+							int indexEqPayload = -1;
 							int indexZero = -1;
 							for(int i_dst = 0; i_dst < MAX_RTPMAP - 2; i_dst++) {
-								if(!rtpmap_dst[i_dst]) {
+								if(!rtpmap_dst[i_dst].is_set()) {
 									if(indexZero == -1) {
 										indexZero = i_dst;
 										break;
 									}
-								} else if(rtpmap_dst[i_dst] / 1000 == rtpmap_src[i_src] / 1000) {
-									if(indexEqCodec == -1) {
-										indexEqCodec = i_dst;
+								} else if(rtpmap_dst[i_dst].payload == rtpmap_src[i_src].payload) {
+									if(indexEqPayload == -1) {
+										indexEqPayload = i_dst;
 										break;
 									}
 								}
 							}
-							if(indexEqCodec >= 0) {
-								rtpmap_dst[indexEqCodec] = rtpmap_src[i_src];
+							if(indexEqPayload >= 0) {
+								rtpmap_dst[indexEqPayload] = rtpmap_src[i_src];
 							} else if(indexZero >= 0) {
 								rtpmap_dst[indexZero] = rtpmap_src[i_src];
-								rtpmap_dst[indexZero + 1] = 0;
+								rtpmap_dst[indexZero + 1].clear();
 							}
 						}
 					}
 				} else {
-					memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(int));
+					memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(RTPMAP));
 				}
 			}
 			// force mark bit for reinvite for both direction
@@ -1065,7 +1065,7 @@ Call::refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *hea
 
 void
 Call::add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
-		       char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, int *rtpmap, s_sdp_flags sdp_flags) {
+		       char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return;
 	}
@@ -1390,10 +1390,10 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 					// check if the stream started with DTMF
 					if(rtp[i]->payload2 >= 96 && rtp[i]->payload2 <= 127) {
 						for(int pass_find_rtpmap = 0; pass_find_rtpmap < 2; pass_find_rtpmap++) {
-							int *rtpmap = pass_find_rtpmap ? rtp[i]->rtpmap_other_side : rtp[i]->rtpmap;
+							RTPMAP *rtpmap = pass_find_rtpmap ? rtp[i]->rtpmap_other_side : rtp[i]->rtpmap;
 							for(int j = 0; j < MAX_RTPMAP; j++) {
-								if(rtpmap[j] != 0 && rtp[i]->payload2 == rtpmap[j] / 1000) {
-									if((rtpmap[j] - rtp[i]->payload2 * 1000) == PAYLOAD_TELEVENT) {
+								if(rtpmap[j].is_set() && rtp[i]->payload2 == rtpmap[j].payload) {
+									if(rtpmap[j].codec == PAYLOAD_TELEVENT) {
 										//it is DTMF 
 										rtp[i]->payload2 = curpayload;
 										goto read;
@@ -1407,10 +1407,10 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 					if(curpayload >= 96 && curpayload <= 127) {
 						bool found = false;
 						for(int pass_find_rtpmap = 0; pass_find_rtpmap < 2 && !found; pass_find_rtpmap++) {
-							int *rtpmap = pass_find_rtpmap ? rtp[i]->rtpmap_other_side : rtp[i]->rtpmap;
+							RTPMAP *rtpmap = pass_find_rtpmap ? rtp[i]->rtpmap_other_side : rtp[i]->rtpmap;
 							for(int j = 0; j < MAX_RTPMAP; j++) {
-								if(rtpmap[j] != 0 && curpayload == rtpmap[j] / 1000) {
-									rtp[i]->codec = rtpmap[j] - curpayload * 1000;
+								if(rtpmap[j].is_set() && curpayload == rtpmap[j].payload) {
+									rtp[i]->codec = rtpmap[j].codec;
 									found = true;
 								}
 							}
@@ -1592,18 +1592,18 @@ read:
 					   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header_pt->ts.tv_sec);
 		}
 		if(opt_rtpmap_by_callerd) {
-			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[isFillRtpMap(iscaller) ? iscaller : !iscaller], MAX_RTPMAP * sizeof(int));
+			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[isFillRtpMap(iscaller) ? iscaller : !iscaller], MAX_RTPMAP * sizeof(RTPMAP));
 		} else {
 			if(rtp[ssrc_n]->index_call_ip_port >= 0 && isFillRtpMap(rtp[ssrc_n]->index_call_ip_port)) {
-				memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[rtp[ssrc_n]->index_call_ip_port], MAX_RTPMAP * sizeof(int));
+				memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[rtp[ssrc_n]->index_call_ip_port], MAX_RTPMAP * sizeof(RTPMAP));
 				if(index_call_ip_port_other_side >= 0 && isFillRtpMap(index_call_ip_port_other_side)) {
-					memcpy(this->rtp[ssrc_n]->rtpmap_other_side, rtpmap[index_call_ip_port_other_side], MAX_RTPMAP * sizeof(int));
+					memcpy(this->rtp[ssrc_n]->rtpmap_other_side, rtpmap[index_call_ip_port_other_side], MAX_RTPMAP * sizeof(RTPMAP));
 				}
 			} else {
 				for(int j = 0; j < 2; j++) {
 					int index_ip_port_first_for_callerd = getFillRtpMapByCallerd(j ? !iscaller : iscaller);
 					if(index_ip_port_first_for_callerd >= 0) {
-						memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[index_ip_port_first_for_callerd], MAX_RTPMAP * sizeof(int));
+						memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[index_ip_port_first_for_callerd], MAX_RTPMAP * sizeof(RTPMAP));
 						break;
 					}
 				}
@@ -1624,14 +1624,22 @@ read:
 		this->rtp[ssrc_n]->payload2 = curpayload;
 
 		//set codec
-                if(curpayload >= 96 && curpayload <= 127) {
-                        for(int i = 0; i < MAX_RTPMAP; i++) {
-                                if(this->rtp[ssrc_n]->rtpmap[i] != 0 && curpayload == this->rtp[ssrc_n]->rtpmap[i] / 1000) {
-                                        this->rtp[ssrc_n]->codec = this->rtp[ssrc_n]->rtpmap[i] - curpayload * 1000;
-                                }      
-                        }      
-                } else {
-                        this->rtp[ssrc_n]->codec = curpayload;
+		if(curpayload >= 96 && curpayload <= 127) {
+			for(int i = 0; i < MAX_RTPMAP; i++) {
+				if(this->rtp[ssrc_n]->rtpmap[i].is_set() && curpayload == this->rtp[ssrc_n]->rtpmap[i].payload) {
+					this->rtp[ssrc_n]->codec = this->rtp[ssrc_n]->rtpmap[i].codec;
+					this->rtp[ssrc_n]->frame_size = this->rtp[ssrc_n]->rtpmap[i].frame_size;
+				}
+			}
+		} else {
+			this->rtp[ssrc_n]->codec = curpayload;
+			if(curpayload == PAYLOAD_ILBC) {
+				for(int i = 0; i < MAX_RTPMAP; i++) {
+					if(this->rtp[ssrc_n]->rtpmap[i].is_set() && curpayload == this->rtp[ssrc_n]->rtpmap[i].payload) {
+						this->rtp[ssrc_n]->frame_size = this->rtp[ssrc_n]->rtpmap[i].frame_size;
+					}
+				}
+			}
                 }
 		
 		if(iscaller) {
@@ -2332,7 +2340,7 @@ Call::convertRawToWav() {
 	char line[1024];
 	struct timeval tv0, tv1;
 	FILE *pl;
-	int ssrc_index, codec;
+	int ssrc_index, codec, frame_size;
 	unsigned long int rawiterator;
 	FILE *wav = NULL;
 	int adir = 0;
@@ -2397,7 +2405,7 @@ Call::convertRawToWav() {
 	pl = fopen(rawInfo, "r");
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
-			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+			sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
 			if(!force_convert_raw_to_wav &&
 			   (ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip)) {
 				continue;
@@ -2414,7 +2422,7 @@ Call::convertRawToWav() {
 	pl = fopen(rawInfo, "r");
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
-			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv1.tv_sec, &tv1.tv_usec);
+			sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv1.tv_sec, &tv1.tv_usec);
 			if(!force_convert_raw_to_wav &&
 			   (ssrc_index >= ssrc_n || !rtp[ssrc_index] || rtp[ssrc_index]->skip)) {
 				continue;
@@ -2556,7 +2564,7 @@ Call::convertRawToWav() {
 		pl = fopen(rawInfo, "r");
 		while(fgets(line, 256, pl)) {
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
-			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+			sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
 			samplerate = 1000 * get_ticks_bycodec(codec);
 			if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
 			if(maxsamplerate < samplerate) {
@@ -2596,7 +2604,7 @@ Call::convertRawToWav() {
 		*/
 		while(fgets(line, 256, pl)) {
 			line[strlen(line)] = '\0'; // remove '\n' which is last character
-			sscanf(line, "%d:%lu:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &tv0.tv_sec, &tv0.tv_usec);
+			sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
 			char raw_extension[1024];
 			snprintf(raw_extension, sizeof(raw_extension), "i%d.%d.%lu.%d.%ld.%ld.raw", i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
 			string raw_pathfilename = this->get_pathfilename(tsf_audio, raw_extension);
@@ -2618,6 +2626,7 @@ Call::convertRawToWav() {
 				rawl.tv.tv_sec = tv0.tv_sec;
 				rawl.tv.tv_usec = tv0.tv_usec;
 				rawl.codec = codec;
+				rawl.frame_size = frame_size;
 				rawl.filename = raw_pathfilename.c_str();
 				if(iter > 0) {
 					if(!force_convert_raw_to_wav &&
@@ -2764,9 +2773,9 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_ILBC:
 				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s ilbc \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
+					snprintf(cmd, cmd_len, "vmcodecs %s ilbc \"%s\" \"%s\" %d", opt_keycheck, rawf->filename.c_str(), wav, frame_size ? frame_size : 30);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-ilbc \"%s\" \"%s\"", rawf->filename.c_str(), wav);
+					snprintf(cmd, cmd_len, "voipmonitor-ilbc \"%s\" \"%s\" %d", rawf->filename.c_str(), wav, frame_size ? frame_size : 30);
 				}
 				cmd[cmd_len] = 0;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting iLBC to WAV.\n");

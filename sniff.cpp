@@ -1826,9 +1826,10 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return 0;
 }
 
-int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
+int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, RTPMAP *rtpmap){
 	unsigned long l = 0;
 	char *s, *z;
+	int payload;
 	int codec;
 	char mimeSubtype[255];
 	int i = 0;
@@ -1853,118 +1854,129 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, int *rtpmap){
 		} else {
 			break;
 		}
-		if (sscanf(s, "%30u %254[^/]/%d", &codec, mimeSubtype, &rate) == 3) {
+		payload = 0;
+		codec = 0;
+		if (sscanf(s, "%30u %254[^/]/%d", &payload, mimeSubtype, &rate) == 3) {
 			// store payload type and its codec into one integer with 1000 offset
-			int mtype = mimeSubtypeToInt(mimeSubtype);
-			if(mtype == PAYLOAD_G7221) {
+			codec = mimeSubtypeToInt(mimeSubtype);
+			if(codec == PAYLOAD_G7221) {
 				switch(rate) {
 					case 8000:
-						mtype = PAYLOAD_G72218;
+						codec = PAYLOAD_G72218;
 						break;
 					case 12000:
-						mtype = PAYLOAD_G722112;
+						codec = PAYLOAD_G722112;
 						break;
 					case 16000:
-						mtype = PAYLOAD_G722116;
+						codec = PAYLOAD_G722116;
 						break;
 					case 24000:
-						mtype = PAYLOAD_G722124;
+						codec = PAYLOAD_G722124;
 						break;
 					case 32000:
-						mtype = PAYLOAD_G722132;
+						codec = PAYLOAD_G722132;
 						break;
 					case 48000:
-						mtype = PAYLOAD_G722148;
+						codec = PAYLOAD_G722148;
 						break;
 				}
-			} else if(mtype == PAYLOAD_SILK) {
+			} else if(codec == PAYLOAD_SILK) {
 				switch(rate) {
 					case 8000:
-						mtype = PAYLOAD_SILK8;
+						codec = PAYLOAD_SILK8;
 						break;
 					case 12000:
-						mtype = PAYLOAD_SILK12;
+						codec = PAYLOAD_SILK12;
 						break;
 					case 16000:
-						mtype = PAYLOAD_SILK16;
+						codec = PAYLOAD_SILK16;
 						break;
 					case 24000:
-						mtype = PAYLOAD_SILK24;
+						codec = PAYLOAD_SILK24;
 						break;
 				}
-			} else if(mtype == PAYLOAD_ISAC) {
+			} else if(codec == PAYLOAD_ISAC) {
 				switch(rate) {
 					case 16000:
-						mtype = PAYLOAD_ISAC16;
+						codec = PAYLOAD_ISAC16;
 						break;
 					case 32000:
-						mtype = PAYLOAD_ISAC32;
+						codec = PAYLOAD_ISAC32;
 						break;
 				}
-			} else if(mtype == PAYLOAD_OPUS) {
+			} else if(codec == PAYLOAD_OPUS) {
 				switch(rate) {
 					case 8000:
-						mtype = PAYLOAD_OPUS8;
+						codec = PAYLOAD_OPUS8;
 						break;
 					case 12000:
-						mtype = PAYLOAD_OPUS12;
+						codec = PAYLOAD_OPUS12;
 						break;
 					case 16000:
-						mtype = PAYLOAD_OPUS16;
+						codec = PAYLOAD_OPUS16;
 						break;
 					case 24000:
-						mtype = PAYLOAD_OPUS24;
+						codec = PAYLOAD_OPUS24;
 						break;
 					case 48000:
-						mtype = PAYLOAD_OPUS48;
+						codec = PAYLOAD_OPUS48;
 						break;
 				}
-			} else if(mtype == PAYLOAD_XOPUS) {
+			} else if(codec == PAYLOAD_XOPUS) {
 				switch(rate) {
 					case 8000:
-						mtype = PAYLOAD_XOPUS8;
+						codec = PAYLOAD_XOPUS8;
 						break;
 					case 12000:
-						mtype = PAYLOAD_XOPUS12;
+						codec = PAYLOAD_XOPUS12;
 						break;
 					case 16000:
-						mtype = PAYLOAD_XOPUS16;
+						codec = PAYLOAD_XOPUS16;
 						break;
 					case 24000:
-						mtype = PAYLOAD_XOPUS24;
+						codec = PAYLOAD_XOPUS24;
 						break;
 					case 48000:
-						mtype = PAYLOAD_XOPUS48;
+						codec = PAYLOAD_XOPUS48;
 						break;
 				}
-			} else if(mtype == PAYLOAD_VXOPUS) {
+			} else if(codec == PAYLOAD_VXOPUS) {
 				switch(rate) {
 					case 8000:
-						mtype = PAYLOAD_VXOPUS8;
+						codec = PAYLOAD_VXOPUS8;
 						break;
 					case 12000:
-						mtype = PAYLOAD_VXOPUS12;
+						codec = PAYLOAD_VXOPUS12;
 						break;
 					case 16000:
-						mtype = PAYLOAD_VXOPUS16;
+						codec = PAYLOAD_VXOPUS16;
 						break;
 					case 24000:
-						mtype = PAYLOAD_VXOPUS24;
+						codec = PAYLOAD_VXOPUS24;
 						break;
 					case 48000:
-						mtype = PAYLOAD_VXOPUS48;
+						codec = PAYLOAD_VXOPUS48;
 						break;
 				}
-			}
-			if(mtype || codec) {
-				rtpmap[i++] = mtype + 1000 * codec;
-				//printf("PAYLOAD: rtpmap[%d]:%d codec:%d, mimeSubtype [%d] [%s]\n", i, rtpmap[i], codec, mtype, mimeSubtype);
 			}
 		}
 		// return '\r' into sdp_text
 		*z = zchr;
+		if(codec || payload) {
+			rtpmap[i].codec = codec;
+			rtpmap[i].payload = payload;
+			if(codec == PAYLOAD_ILBC) {
+				char tagFmtpWithPayload[100];
+				snprintf(tagFmtpWithPayload, sizeof(tagFmtpWithPayload), "a=fmtp:%i", payload);
+				char *s = gettag(sdp_text, len, NULL,
+						 tagFmtpWithPayload , &l, &gettagLimitLen);
+				rtpmap[i].frame_size = s && strncasestr(s, "mode=20", l) ? 20 : 30;
+			}
+			i++;
+			//printf("PAYLOAD: rtpmap[%d]:%d payload:%d, mimeSubtype [%d] [%s]\n", i, rtpmap[i], payload, codec, mimeSubtype);
+		}
 	 } while(l && i < (MAX_RTPMAP - 2));
-	 rtpmap[i] = 0; //terminate rtpmap field
+	 rtpmap[i].clear(); //terminate rtpmap field
 	 return 0;
 }
 
@@ -2733,8 +2745,7 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 	in_addr_t tmp_addr;
 	unsigned short tmp_port;
 	int8_t inactive_ip0;
-	int rtpmap[MAX_RTPMAP];
-	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+	RTPMAP rtpmap[MAX_RTPMAP];
 	s_sdp_flags sdp_flags;
 	char sessid[MAXLEN_SDP_SESSID];
 	list<rtp_crypto_config> *rtp_crypto_config_list = NULL;
@@ -4364,8 +4375,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	// decoding RTP without SIP signaling is enabled. Check if it is port >= 1024 and if RTP version is == 2
 	char s[256];
 	RTP rtp(sensor_id, sensor_ip);
-	int rtpmap[MAX_RTPMAP];
-	memset(rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+	RTPMAP rtpmap[MAX_RTPMAP];
 
 	rtp.read((unsigned char*)data, &datalen, header, saddr, daddr, source, dest, sensor_id, sensor_ip);
 

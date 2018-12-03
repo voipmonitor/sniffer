@@ -1769,12 +1769,12 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		snprintf(callid, sizeof(callid), "%u", ref);
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received START_MEDIA_TRANSMISSION_MESSAGE partyId [%u] ipAddr[%x] port[%u] callid[%s]", ref, ipaddr, port, callid);
 		if((call = calltable->find_by_call_id(callid, strlen(callid), 0)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
-			int rtpmap[MAX_RTPMAP];
-			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+			RTPMAP rtpmap[MAX_RTPMAP];
 			if(dynamicPayload) {
 				int codec = convSkinnyPayloadToCodec(payloadType);
 				if(codec >= 0) {
-					rtpmap[0] = dynamicPayload * 1000 + codec;
+					rtpmap[0].payload = dynamicPayload;
+					rtpmap[0].codec = codec;
 				}
 			}
 			call->add_ip_port_hash(saddr, ipaddr, ip_port_call_info::_ta_base, port, header, 
@@ -1979,8 +1979,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		}
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received OPEN_RECEIVE_CHANNEL_MESSAGE partyId [%u] ipAddr[%u] port[%u]", pid, ipaddr, port);
 		if((call = calltable->find_by_skinny_partyid(pid)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
-			int rtpmap[MAX_RTPMAP];
-			memset(&rtpmap, 0, sizeof(int) * MAX_RTPMAP);
+			RTPMAP rtpmap[MAX_RTPMAP];
 			call->add_ip_port_hash(saddr, ipaddr, ip_port_call_info::_ta_base, port, header, 
 					       NULL, NULL, NULL, NULL, (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
 		}

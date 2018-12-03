@@ -165,6 +165,24 @@ struct UDPTLFixedHeader {
 #endif
 
 
+struct RTPMAP {
+	inline RTPMAP() {
+		clear();
+	}
+	inline bool is_set() {
+		return(payload || codec);
+	}
+	inline void clear() {
+		payload = 0;
+		codec = 0;
+		frame_size = 0;
+	}
+	u_int16_t payload;
+	u_int16_t codec;
+	u_int16_t frame_size;
+};
+
+
 /**
  * This class implements operations on RTP strem
  */
@@ -216,8 +234,9 @@ public:
 	int payload2;
 	int first_codec;
 	int codec;
-	int rtpmap[MAX_RTPMAP];
-	int rtpmap_other_side[MAX_RTPMAP];
+	int frame_size;
+	RTPMAP rtpmap[MAX_RTPMAP];
+	RTPMAP rtpmap_other_side[MAX_RTPMAP];
 	unsigned char* data;    //!< pointer to UDP payload
 	int len;		//!< lenght of UDP payload
 	unsigned char* payload_data;    //!< pointer to RTP payload

@@ -322,10 +322,7 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	prev_codec = -1;
 	payload2 = -1;
 	codec = -1;
-	for(int i = 0; i < MAX_RTPMAP; i++) {
-		rtpmap[i] = 0;
-		rtpmap_other_side[i] = 0;
-	}
+	frame_size = 0;
 	gfileRAW_buffer = NULL;
 	sid = false;
 	prev_sid = false;
@@ -1110,8 +1107,9 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 			/* for dynamic payload we look into rtpmap */
 			int found = 0;
 			for(int i = 0; i < MAX_RTPMAP; i++) {
-				if(rtpmap[i] != 0 && curpayload == rtpmap[i] / 1000) {
-					codec = rtpmap[i] - curpayload * 1000;
+				if(rtpmap[i].is_set() && curpayload == rtpmap[i].payload) {
+					codec = rtpmap[i].codec;
+					frame_size = rtpmap[i].frame_size;
 					found = 1;
 				}
 			}
@@ -1121,6 +1119,13 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 			}
 		} else {
 			codec = curpayload;
+			if(codec == PAYLOAD_ILBC) {
+				for(int i = 0; i < MAX_RTPMAP; i++) {
+					if(rtpmap[i].is_set() && curpayload == rtpmap[i].payload) {
+						frame_size = rtpmap[i].frame_size;
+					}
+				}
+			}
 		}
 		if(codec == -1) {
 			// codec cannot be determinad - ignore it
@@ -1475,7 +1480,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 					if(!gfileRAWInfo_exists) {
 						spooldir_file_chmod_own(tmp);
 					}
-					fprintf(gfileRAWInfo, "%d:%lu:%d:%ld:%ld\n", ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
+					fprintf(gfileRAWInfo, "%d:%lu:%d:%d:%ld:%ld\n", ssrc_index, unique, codec, frame_size, header->ts.tv_sec, header->ts.tv_usec);
 					fclose(gfileRAWInfo);
 				} else {
 					syslog(LOG_ERR, "Cannot open file %s.rawInfo for writing\n", basefilename);
