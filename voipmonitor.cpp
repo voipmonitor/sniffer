@@ -216,6 +216,7 @@ int opt_clippingdetect = 0;
 int opt_dbdtmf = 0;
 int opt_inbanddtmf = 0;
 int opt_fasdetect = 0;
+int opt_sipalg_detect = 0;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
 char opt_nocdr_for_last_responses[1024];
@@ -423,6 +424,7 @@ bool opt_sip_register_state_compare_from_name = false;
 bool opt_sip_register_state_compare_from_domain = false;
 bool opt_sip_register_state_compare_digest_realm = false;
 bool opt_sip_register_state_compare_ua = false;
+bool opt_sip_register_state_compare_sipalg = false;
 bool opt_sip_register_save_all = false;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -6136,6 +6138,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_domain", &opt_sip_register_state_compare_from_domain));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_realm", &opt_sip_register_state_compare_digest_realm));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_ua", &opt_sip_register_state_compare_ua));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-sipalg", &opt_sip_register_state_compare_sipalg));
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
 		subgroup("OPTIONS / SUBSCRIBE / NOTIFY");
@@ -6175,6 +6178,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42312) cConfigItem_yesno("dtmf2db", &opt_dbdtmf));
 			addConfigItem(new FILE_LINE(42313) cConfigItem_yesno("inbanddtmf", &opt_inbanddtmf));
 			addConfigItem(new FILE_LINE(42314) cConfigItem_integer("silencethreshold", &opt_silencethreshold));
+			addConfigItem(new FILE_LINE(42315) cConfigItem_yesno("sipalg_detect", &opt_sipalg_detect));
 			addConfigItem(new FILE_LINE(42315) cConfigItem_yesno("fasdetect", &opt_fasdetect));
 			addConfigItem(new FILE_LINE(42315) cConfigItem_yesno("silencedetect", &opt_silencedetect));
 			addConfigItem(new FILE_LINE(42316) cConfigItem_yesno("clippingdetect", &opt_clippingdetect));
@@ -8334,6 +8338,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sip-register-state-compare-ua", NULL))) {
 		opt_sip_register_state_compare_ua = yesno(value);
 	}
+	if((value = ini.GetValue("general", "sip-register-state-compare-sipalg", NULL))) {
+		opt_sip_register_state_compare_sipalg = yesno(value);
+	}
 	if((value = ini.GetValue("general", "sip-register-save-all", NULL))) {
 		opt_sip_register_save_all = yesno(value);
 	}
@@ -8605,6 +8612,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "fasdetect", NULL))) {
 		opt_fasdetect = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sipalg_detect", NULL))) {
+		opt_sipalg_detect = yesno(value);
 	}
 	if((value = ini.GetValue("general", "clippingdetect", NULL))) {
 		opt_clippingdetect = yesno(value);

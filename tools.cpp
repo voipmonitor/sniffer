@@ -3073,6 +3073,7 @@ void ParsePacket::setStdParse() {
 	addNode("supported:", typeNode_std);
 	addNode("proxy-authenticate:", typeNode_std);
 	addNode("via:", typeNode_std);
+	addNode("v:", typeNode_std);
 	extern sExistsColumns existsColumns;
 	if(existsColumns.cdr_reason) {
 		addNode("reason:", typeNode_std);
@@ -4524,6 +4525,14 @@ string pointerToString(void *p) {
 	snprintf(buff, sizeof(buff), "%p", p);
 	buff[sizeof(buff) - 1] = 0;
 	return(buff);
+}
+
+string boolToString(bool b) {
+	if (b) {
+		return("true");
+	} else  {
+		return("false");
+	}
 }
 
 bool isJsonObject(string str) {

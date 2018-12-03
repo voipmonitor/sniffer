@@ -13,6 +13,7 @@
 
 #define NEW_REGISTER_MAX_STATES 3
 
+#define REG_SIPALG_DETECTED	(1 << 0)
 
 using namespace std;
 
@@ -49,6 +50,7 @@ enum eRegisterField {
 	rf_ua,
 	rf_rrd_avg,
 	rf_spool_index,
+	rf_is_sipalg_detected,
 	rf__max
 };
 
@@ -88,6 +90,7 @@ public:
 	u_int64_t db_id;
 	u_int32_t save_at;
 	u_int32_t save_at_counter;
+	bool is_sipalg_detected;
 };
 
 
@@ -125,6 +128,14 @@ public:
 	void unlock_id() {
 		__sync_lock_release(&_sync_id);
 	}
+	inline bool getSipAlgState () {
+		for (int i = 0; i < countStates; i++) {
+			if (states[i]->is_sipalg_detected) {
+				return(true);
+			}
+		}
+		return(false);
+	}
 public:
 	u_int64_t id;
 	u_int32_t sipcallerip;
@@ -158,6 +169,7 @@ public:
 	void clean_all();
 	inline u_int64_t getNewRegisterFailedId(int sensorId);
 	string getDataTableJson(char *params, bool *zip = NULL);
+	int getCount();
 	void cleanupByJson(char *params);
 	void lock_registers() {
 		while(__sync_lock_test_and_set(&_sync_registers, 1));

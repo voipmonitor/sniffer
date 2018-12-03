@@ -103,6 +103,7 @@
 #define CDR_SRTP_WITHOUT_KEY		(1 << 4)
 #define CDR_FAS_DETECTED		(1 << 5)
 #define CDR_ZEROSSRC_DETECTED		(1 << 6)
+#define CDR_SIPALG_DETECTED		(1 << 7)
 
 #define SS7_IAM 1
 #define SS7_ACM 6
@@ -614,6 +615,7 @@ public:
 	bool hold_status;		//!< hold status var
 	bool is_fas_detected;		//!< detected FAS (False Answer Supervision)
 	bool is_zerossrc_detected;	//!< detected zero SSRC
+	bool is_sipalg_detected;	//!< detected sip-alg
 
 	int silencerecording;
 	int recordingpausedby182;

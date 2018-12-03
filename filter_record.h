@@ -27,6 +27,7 @@ public:
 	virtual int64_t getField_int(void *rec);
 	virtual double getField_float(void *rec);
 	virtual const char *getField_string(void *rec);
+	virtual bool getField_bool(void *rec);
 public:
 	cRecordFilter *parent;
 	unsigned recordFieldIndex;
@@ -117,6 +118,22 @@ public:
 	}
 private:
 	ListCheckString_wb checkStringData;
+};
+
+class cRecordFilterItem_bool : public cRecordFilterItem_base {
+public:
+	cRecordFilterItem_bool(cRecordFilter *parent, unsigned recordFieldIndex, const char *boolString)
+	 : cRecordFilterItem_base(parent, recordFieldIndex) {
+		this->boolData = !strncasecmp(boolString, "true", 4) ||
+				 !strncasecmp(boolString, "yes", 3) ||
+				 atoi(boolString) > 0;
+	}
+	bool check(void *rec, bool */*findInBlackList*/ = NULL) {
+		return(getField_bool(rec) == boolData);
+	}
+
+private:
+	bool boolData;
 };
 
 class cRecordFilterItem_numInterval : public cRecordFilterItem_base {
@@ -291,6 +308,11 @@ public:
 			((RecordArray*)rec)->fields[recordFieldIndex].get_string() :
 			"");
 	}
+	virtual bool getField_bool(void *rec, unsigned recordFieldIndex) {
+		return(useRecordArray ?
+			((RecordArray*)rec)->fields[recordFieldIndex].get_bool() :
+			0);
+	}
 public:
 	eCond cond;
 	bool useRecordArray;
@@ -302,6 +324,9 @@ int64_t cRecordFilterItem_base::getField_int(void *rec) {
 }
 double cRecordFilterItem_base::getField_float(void *rec) {
 	return(parent->getField_float(rec, recordFieldIndex));
+}
+bool cRecordFilterItem_base::getField_bool(void *rec) {
+	return(parent->getField_bool(rec, recordFieldIndex));
 }
 const char *cRecordFilterItem_base::getField_string(void *rec) {
 	return(parent->getField_string(rec, recordFieldIndex));

@@ -190,4 +190,8 @@ void cRegisterFilter::setFilter(const char *filter) {
 		filter->addNum(atoi(filterData["sensor_id"].c_str()) >= 0 ? atoi(filterData["sensor_id"].c_str()) : -1);
 		addFilter(filter);
 	}
+	if(!filterData["is_sipalg_detected"].empty()) {
+		cRecordFilterItem_bool *filter = new cRecordFilterItem_bool(this, rf_is_sipalg_detected, filterData["is_sipalg_detected"].c_str());
+		addFilter(filter);
+	}
 }
