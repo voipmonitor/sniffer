@@ -5761,10 +5761,10 @@ Call::applyRtcpXrDataToRtp() {
 void Call::adjustUA() {
 	if(opt_cdr_ua_reg_remove.size() || opt_cdr_ua_reg_whitelist.size()) {
 		if(a_ua[0]) {
-			::adjustUA(a_ua);
+			::adjustUA(a_ua, sizeof(a_ua));
 		}
 		if(b_ua[0]) {
-			::adjustUA(b_ua);
+			::adjustUA(b_ua, sizeof(b_ua));
 		}
 	}
 }
@@ -5895,7 +5895,14 @@ unsigned Call::getMaxRetransmissionInvite() {
 	return(max_retrans);
 }
 
-void adjustUA(char *ua) {
+void adjustUA(string *ua) {
+	const char *new_ua = adjustUA((char*)ua->c_str(), 0);
+	if(new_ua) {
+		*ua = new_ua;
+	}
+}
+
+const char *adjustUA(char *ua, unsigned ua_size) {
 	if(opt_cdr_ua_reg_remove.size()) {
 		bool adjust = false;
 		for(unsigned i = 0; i < opt_cdr_ua_reg_remove.size(); i++) {
@@ -5937,10 +5944,16 @@ void adjustUA(char *ua) {
 				break;
 			}
 		}
-		if (!match) {
-			strcpy(ua, "banned UA");
+		if(!match) {
+			const char *banned_ua_str = "banned UA";
+			if(ua_size) {
+				strncpy_null_term(ua, banned_ua_str, ua_size);
+			} else {
+				return(banned_ua_str);
+			}
 		}
 	}
+	return(NULL);
 }
 
 

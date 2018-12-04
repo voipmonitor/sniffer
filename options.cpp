@@ -867,12 +867,12 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 	string adj_ua_src, adj_ua_dst;
 	adj_ua_src = requestResponse->request->ua;
 	if(!adj_ua_src.empty()) {
-		adjustUA((char*)adj_ua_src.c_str());
+		adjustUA(&adj_ua_src);
 	}
 	if(requestResponse->response) {
 		adj_ua_dst = requestResponse->response->ua;
 		if(!adj_ua_dst.empty()) {
-			adjustUA((char*)adj_ua_dst.c_str());
+			adjustUA(&adj_ua_dst);
 		}
 	}
 	SqlDb_row rec,

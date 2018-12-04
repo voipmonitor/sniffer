@@ -1392,7 +1392,8 @@ friend class RTPsecure;
 };
 
 
-void adjustUA(char *ua);
+void adjustUA(string *ua);
+const char *adjustUA(char *ua, unsigned ua_size);
 
 inline unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
 	unsigned int key;

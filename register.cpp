@@ -406,7 +406,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		sqlDbSaveRegister->setEnableSqlStringInContent(true);
 	}
 	string adj_ua = REG_CONV_STR(state->ua == EQ_REG ? ua : state->ua);
-	adjustUA((char*)adj_ua.c_str());
+	adjustUA(&adj_ua);
 	SqlDb_row reg;
 	reg.add(sqlEscapeString(sqlDateTimeString(state->state_from).c_str()), "created_at");
 	reg.add(htonl(sipcallerip), "sipcallerip");
