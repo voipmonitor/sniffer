@@ -1,3 +1,17 @@
+23.2 05.12.2018
+===============
+- add cdr flag for zero SSRC detection [VS-844]
+- add a whitelists option (cdr_ua_reg_whitelist) for allowed User Agents names. User agent string not matching regexp will be replaced with string 'banned UA' [VS-840]
+- parse the "Reason:" header only from BYE or CANCEL. It can be disabled by get_reason_from_bye_cancel option. [VS-858]
+- SIP RE-REGISTER without digest string should not be treated as new registration. This should fix SIP REGISTER expirations [VS-849]
+- SIP ALG detection for calls and registers [VG-1140]
+- add support for 20ms iLBC frame size [VS-862]
+- properly remove cdr_siphistory partitions even if they are disabled [VS-861]
+- fix crash in call adjustUA from registers / options
+- fix saverfc2833 for some cases [VS-859]
+- fix ppoe tcp reassembly [VS-860]
+
+
 23.1 02.11.2018
 ===============
 - added support for disabling / enabling DTMF capture in capture rules [VS-796]
