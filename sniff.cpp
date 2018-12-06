@@ -1137,7 +1137,8 @@ static struct {
 } peername_sip_tags[] = {
 	{ "sip:", 4, 4, 0 },
 	{ "sips:", 5, 5, 0 },
-	{ "urn:", 4, 0, 1 }
+	{ "urn:", 4, 0, 1 },
+	{ "tel:", 4, 4, 1 }
 };
 
 inline const char* get_peername_begin_sip_tag(const char *peername_tag, unsigned int peername_tag_len, int *peer_sip_tags_index) {
