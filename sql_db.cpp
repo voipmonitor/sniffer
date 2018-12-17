@@ -1512,13 +1512,6 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 			this->connect();
 		}
 		if(this->connected()) {
-			/*
-			static unsigned q_counter;
-			cout << "*** q " << (++q_counter) << " : " << preparedQuery << endl;
-			int rslt_mysql_query = mysql_query(this->hMysqlConn, preparedQuery.c_str());
-			//usleep(50000);
-			if(rslt_mysql_query) {
-			*/
 			if(mysql_query(this->hMysqlConn, preparedQuery.c_str())) {
 				if(verbosity > 1) {
 					syslog(LOG_NOTICE, "query error - query: %s", prepareQueryForPrintf(preparedQuery).c_str());
