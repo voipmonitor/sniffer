@@ -12,14 +12,18 @@ CountryDetect_base_table::CountryDetect_base_table() {
 	loadOK = false;
 }
 
-bool CountryDetect_base_table::checkTable(eTableType tableType, string &tableName) {
+bool CountryDetect_base_table::checkTable(eTableType tableType, string &tableName, SqlDb *sqlDb) {
 	tableName = getTableName(tableType);
 	if(tableName.empty()) {
 		loadOK = false;
 		return(false);
 	}
 	bool rslt = true;
-	SqlDb *sqlDb = createSqlObject();
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	if(!sqlDb->existsTable(tableName)) {
 		syslog(LOG_WARNING, "missing table %s - table is created from gui", tableName.c_str());
 		rslt = false;
@@ -27,7 +31,9 @@ bool CountryDetect_base_table::checkTable(eTableType tableType, string &tableNam
 		syslog(LOG_WARNING, "table %s is empty - table is filled from gui", tableName.c_str());
 		rslt = false;
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	loadOK = rslt;
 	return(rslt);
 }
@@ -59,29 +65,38 @@ string CountryDetect_base_table::getTableName(eTableType tableType) {
 CountryCodes::CountryCodes() {
 }
 
-bool CountryCodes::load() {
+bool CountryCodes::load(SqlDb *sqlDb) {
 	string tableName;
-	if(!checkTable(_country_code, tableName)) {
+	if(!checkTable(_country_code, tableName, sqlDb)) {
 		return(false);
 	}
-	SqlDb *sqlDb = createSqlObject();
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query("select * \
 		      from " + tableName + " \
 		      where parent_id is null");
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
-	while((row = sqlDb->fetchRow())) {
+	while((row = rows.fetchRow())) {
 		continents[row["code"]] = d_item2<string, unsigned>(row["name"], atoi(row["id"].c_str()));
 	}
 	sqlDb->query("select country.*, continent.code as continent \
 		      from " + tableName + " country \
 		      join " + tableName + " continent on (continent.id = country.parent_id) \
 		      where country.parent_id is not null");
-	while((row = sqlDb->fetchRow())) {
+	sqlDb->fetchRows(&rows);
+	while((row = rows.fetchRow())) {
 		countries[row["code"]] = d_item2<string, unsigned>(row["name"], atoi(row["id"].c_str()));
 		countryContinent[row["code"]] = row["continent"];
 		continentCountry[row["continent"]].push_back(row["code"]);
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	return(true);
 }
 
@@ -200,18 +215,22 @@ bool CheckInternational::isSet(SqlDb_row *dbRow) {
 	       (*dbRow)["country_code_for_local_numbers"].length());
 }
 
-bool CheckInternational::load(SqlDb_row *dbRow) {
+bool CheckInternational::load(SqlDb_row *dbRow, SqlDb *sqlDb) {
 	if(isSet(dbRow)) {
 		_load(dbRow);
-		loadCustomerPrefixAdv();
+		loadCustomerPrefixAdv(sqlDb);
 		return(true);
 	} else {
-		return(load());
+		return(load(sqlDb));
 	}
 }
 
-bool CheckInternational::load() {
-	SqlDb *sqlDb = createSqlObject();
+bool CheckInternational::load(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	bool loadFromSensors = false;
 	if(opt_id_sensor > 0) {
 		sqlDb->query("select * from sensors where id_sensor = " + intToString(opt_id_sensor));
@@ -230,8 +249,10 @@ bool CheckInternational::load() {
 			this->_load(&row);
 		}
 	}
-	delete sqlDb;
-	loadCustomerPrefixAdv();
+	loadCustomerPrefixAdv(sqlDb);
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	return(true);
 }
 
@@ -246,10 +267,14 @@ void CheckInternational::_load(SqlDb_row *dbRow) {
 	setSkipPrefixes((*dbRow)["skip_prefixes"].c_str(), &prefixesSeparators);
 }
 
-bool CheckInternational::loadCustomerPrefixAdv() {
+bool CheckInternational::loadCustomerPrefixAdv(SqlDb *sqlDb) {
 	unsigned countRecords = 0;
 	clearCustomerPrefixAdv();
-	SqlDb *sqlDb = createSqlObject();
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	for(int pass = 0; pass < 2; pass++) {
 		bool okTable = false;
 		if(pass == 0) {
@@ -278,8 +303,10 @@ bool CheckInternational::loadCustomerPrefixAdv() {
 			}
 		}
 		if(okTable) {
+			SqlDb_rows rows;
+			sqlDb->fetchRows(&rows);
 			SqlDb_row row;
-			while((row = sqlDb->fetchRow())) {
+			while((row = rows.fetchRow())) {
 				CountryPrefix_recAdv *recAdv = new FILE_LINE(0) CountryPrefix_recAdv;
 				if(row["number_regexp_cond"].length()) {
 					recAdv->number_regexp_cond = new FILE_LINE(0) cRegExp(row["number_regexp_cond"].c_str());
@@ -312,7 +339,9 @@ bool CheckInternational::loadCustomerPrefixAdv() {
 			break;
 		}
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	return(countRecords > 0);
 }
 
@@ -461,18 +490,24 @@ CountryPrefixes::~CountryPrefixes() {
 	clear();
 }
 
-bool CountryPrefixes::load() {
+bool CountryPrefixes::load(SqlDb *sqlDb) {
 	clear();
 	string tableName;
-	if(!checkTable(_country_code_prefix, tableName)) {
+	if(!checkTable(_country_code_prefix, tableName, sqlDb)) {
 		return(false);
 	}
-	SqlDb *sqlDb = createSqlObject();
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query("select * \
 		      from " + tableName + " \
 		      order by prefix");
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
-	while((row = sqlDb->fetchRow())) {
+	while((row = rows.fetchRow())) {
 		data.push_back(CountryPrefix_rec(
 			row["prefix"].c_str(),
 			row["country_code"].c_str(),
@@ -513,8 +548,10 @@ bool CountryPrefixes::load() {
 			}
 		}
 		if(okTable) {
+			SqlDb_rows rows;
+			sqlDb->fetchRows(&rows);
 			SqlDb_row row;
-			while((row = sqlDb->fetchRow())) {
+			while((row = rows.fetchRow())) {
 				customer_data_simple.push_back(CountryPrefix_rec(
 					row["prefix"].c_str(),
 					row["country_code"].c_str(),
@@ -524,7 +561,9 @@ bool CountryPrefixes::load() {
 			break;
 		}
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	return(true);
 }
 
@@ -701,17 +740,23 @@ string CountryPrefixes::_getCountry(const char *number, vector<string> *countrie
 GeoIP_country::GeoIP_country() {
 }
 
-bool GeoIP_country::load() {
+bool GeoIP_country::load(SqlDb *sqlDb) {
 	string tableName;
-	if(!checkTable(_geoip_country, tableName)) {
+	if(!checkTable(_geoip_country, tableName, sqlDb)) {
 		return(false);
 	}
-	SqlDb *sqlDb = createSqlObject();
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query("select * \
 		      from " + tableName + " \
 		      order by ip_from");
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
-	while((row = sqlDb->fetchRow())) {
+	while((row = rows.fetchRow())) {
 		data.push_back(GeoIP_country_rec(
 			atol(row["ip_from"].c_str()),
 			atol(row["ip_to"].c_str()),
@@ -730,8 +775,10 @@ bool GeoIP_country::load() {
 			      join geoip_customer_type on (geoip_customer_type.id = geoip_customer.type_id) \
 			      where (geoip_customer.country_code is not null and geoip_customer.country_code <> '') or \
 				    (geoip_customer_type.country_code is not null and geoip_customer_type.country_code <> '')");
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			customer_data.push_back(GeoIP_country_rec(
 				row["ip"].c_str(),
 				atoi(row["mask"].c_str()),
@@ -739,7 +786,9 @@ bool GeoIP_country::load() {
 		}
 		std::sort(customer_data.begin(), customer_data.end());
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	return(true);
 }
 
@@ -765,11 +814,11 @@ CountryDetect::~CountryDetect() {
 	delete checkInternational;
 }
 
-void CountryDetect::load() {
-	countryCodes->load();
-	countryPrefixes->load();
-	geoIP_country->load();
-	checkInternational->load();
+void CountryDetect::load(SqlDb *sqlDb) {
+	countryCodes->load(sqlDb);
+	countryPrefixes->load(sqlDb);
+	geoIP_country->load(sqlDb);
+	checkInternational->load(sqlDb);
 }
 
 string CountryDetect::getCountryByPhoneNumber(const char *phoneNumber) {
@@ -823,6 +872,16 @@ unsigned CountryDetect::getCountryIdByIP(u_int32_t ip) {
 		if(!rslt_str.empty()) {
 			rslt = countryCodes->getIdCountry(rslt_str.c_str());
 		}
+	}
+	unlock();
+	return(rslt);
+}
+
+bool CountryDetect::isLocalByIP(u_int32_t ip) {
+	bool rslt = false;
+	lock();
+	if(geoIP_country->loadOK) {
+		rslt = geoIP_country->isLocal(ip, checkInternational);
 	}
 	unlock();
 	return(rslt);
@@ -893,10 +952,10 @@ void CountryDetect::applyReload() {
 }
 
 
-void CountryDetectInit() {
+void CountryDetectInit(SqlDb *sqlDb) {
 	if(!opt_nocdr) {
 		countryDetect = new FILE_LINE(0) CountryDetect;
-		countryDetect->load();
+		countryDetect->load(sqlDb);
 	}
 }
 

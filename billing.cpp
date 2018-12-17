@@ -12,22 +12,22 @@ cBillingAssignment::cBillingAssignment(eBilingTypeAssignment typeAssignment) {
 	this->typeAssignment = typeAssignment;
 }
 
-void cBillingAssignment::load(SqlDb_row *row) {
+void cBillingAssignment::load(SqlDb_row *row, SqlDb *sqlDb) {
 	id = atol((*row)["id"].c_str());
 	billing_rule_id = atol((*row)["id_billing"].c_str());
 	name = (*row)["name"];
 	limitation_for_sensors = atol((*row)["limitation_for_sensors"].c_str());
-	checkInternational.load(row);
+	checkInternational.load(row, sqlDb);
 }
 
 bool cBillingAssignment::isSensorOk(SqlDb *sqlDb) {
 	if(!limitation_for_sensors || opt_id_sensor <= 0) {
 		return(true);
 	}
-	bool initSqlDb = false;
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
-		initSqlDb = true;
+		_createSqlObject = true;
 	}
 	bool rslt = false;
 	if(sqlDb->existsTable(typeAssignment == _billing_ta_operator ? 
@@ -42,25 +42,27 @@ bool cBillingAssignment::isSensorOk(SqlDb *sqlDb) {
 				from billing_customer_assignment_sensors \
 				join sensors on (sensors.id = billing_customer_assignment_sensors.id_sensor) \
 				where id_customer_assignment = ") + intToString(id));
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			if(atoi(row["id_sensor"].c_str()) == opt_id_sensor) {
 				rslt = true;
 				break;
 			}
 		}
 	}
-	if(initSqlDb) {
+	if(_createSqlObject) {
 		delete sqlDb;
 	}
 	return(rslt);
 }
 
 void cBillingAssignment::loadCond(SqlDb *sqlDb) {
-	bool initSqlDb = false;
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
-		initSqlDb = true;
+		_createSqlObject = true;
 	}
 	if(sqlDb->existsTable(typeAssignment == _billing_ta_operator ? 
 			       "billing_operator_assignment_addresses" :
@@ -72,8 +74,10 @@ void cBillingAssignment::loadCond(SqlDb *sqlDb) {
 			       "select * \
 				from billing_customer_assignment_addresses \
 				where id_customer_assignment = ") + intToString(id));
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			list_ip.add(atol(row["ip"].c_str()), atoi(row["mask"].c_str()));
 		}
 	}
@@ -87,12 +91,14 @@ void cBillingAssignment::loadCond(SqlDb *sqlDb) {
 			       "select * \
 				from billing_customer_assignment_numbers \
 				where id_customer_assignment = ") + intToString(id));
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			list_number.add(row["number"].c_str(), !atoi(row["fixed"].c_str()));
 		}
 	}
-	if(initSqlDb) {
+	if(_createSqlObject) {
 		delete sqlDb;
 	}
 }
@@ -117,28 +123,32 @@ cBillingAssignments::~cBillingAssignments() {
 void cBillingAssignments::load(SqlDb *sqlDb) {
 	lock();
 	clear(false);
-	bool initSqlDb = false;
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
-		initSqlDb = true;
+		_createSqlObject = true;
 	}
 	if(sqlDb->existsTable("billing_operator_assignment")) {
 		sqlDb->query("select * \
 			      from billing_operator_assignment");
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			cBillingAssignment *assignment = new FILE_LINE(0) cBillingAssignment(_billing_ta_operator);
-			assignment->load(&row);
+			assignment->load(&row, sqlDb);
 			operators[assignment->id] = assignment;
 		}
 	}
 	if(sqlDb->existsTable("billing_customer_assignment")) {
 		sqlDb->query("select * \
 			      from billing_customer_assignment");
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			cBillingAssignment *assignment = new FILE_LINE(0) cBillingAssignment(_billing_ta_customer);
-			assignment->load(&row);
+			assignment->load(&row, sqlDb);
 			customers[assignment->id] = assignment;
 		}
 	}
@@ -160,7 +170,7 @@ void cBillingAssignments::load(SqlDb *sqlDb) {
 			customers.erase(iter++);
 		}
 	}
-	if(initSqlDb) {
+	if(_createSqlObject) {
 		delete sqlDb;
 	}
 	unlock();
@@ -238,17 +248,19 @@ void cBillingExclude::load(SqlDb *sqlDb) {
 	list_ip_dst.clear();
 	list_number_src.clear();
 	list_number_dst.clear();
-	bool initSqlDb = false;
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
-		initSqlDb = true;
+		_createSqlObject = true;
 	}
 	if(sqlDb->existsTable(agregation ? "billing_agregation_exclude_addresses" : "billing_exclude_addresses")) {
 		sqlDb->query(string(
 			     "select * \
 			      from ") + (agregation ? "billing_agregation_exclude_addresses" : "billing_exclude_addresses"));
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			if(row["side"] == "src" || row["side"] == "both") {
 				list_ip_src.add(atol(row["ip"].c_str()), atoi(row["mask"].c_str()));
 			}
@@ -261,8 +273,10 @@ void cBillingExclude::load(SqlDb *sqlDb) {
 		sqlDb->query(string(
 			     "select * \
 			      from ") + (agregation ? "billing_agregation_exclude_numbers" : "billing_exclude_numbers"));
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			if(row["side"] == "src" || row["side"] == "both") {
 				list_number_src.add(row["number"].c_str(), !atoi(row["fixed"].c_str()));
 			}
@@ -271,7 +285,7 @@ void cBillingExclude::load(SqlDb *sqlDb) {
 			}
 		}
 	}
-	if(initSqlDb) {
+	if(_createSqlObject) {
 		delete sqlDb;
 	}
 	unlock();
@@ -351,23 +365,25 @@ void cStateHolidays::load(SqlDb_row *row) {
 }
 
 void cStateHolidays::loadHolidays(SqlDb *sqlDb) {
-	bool initSqlDb = false;
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
-		initSqlDb = true;
+		_createSqlObject = true;
 	}
 	if(sqlDb->existsTable("holiday_state_date")) {
 		sqlDb->query("select * \
 			      from holiday_state_date \
 			      where id_holiday_state = " + intToString(id));
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			sHoliday holiday;
 			holiday.load(&row);
 			holidays.push_back(holiday);
 		}
 	}
-	if(initSqlDb) {
+	if(_createSqlObject) {
 		delete sqlDb;
 	}
 }
@@ -389,16 +405,18 @@ cStatesHolidays::cStatesHolidays() {
 void cStatesHolidays::load(SqlDb *sqlDb) {
 	lock();
 	holidays.clear();
-	bool initSqlDb = false;
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
-		initSqlDb = true;
+		_createSqlObject = true;
 	}
 	if(sqlDb->existsTable("holiday_state")) {
 		sqlDb->query("select * \
 			      from holiday_state");
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			cStateHolidays stateHolidays;
 			stateHolidays.load(&row);
 			holidays[stateHolidays.id] = stateHolidays;
@@ -407,7 +425,7 @@ void cStatesHolidays::load(SqlDb *sqlDb) {
 	for(map<unsigned, cStateHolidays>::iterator iter = holidays.begin(); iter != holidays.end(); iter++) {
 		iter->second.loadHolidays(sqlDb);
 	}
-	if(initSqlDb) {
+	if(_createSqlObject) {
 		delete sqlDb;
 	}
 	unlock();
@@ -516,23 +534,25 @@ void cBillingRule::load(SqlDb_row *row) {
 }
 
 void cBillingRule::loadNumbers(SqlDb *sqlDb) {
-	bool initSqlDb = false;
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
-		initSqlDb = true;
+		_createSqlObject = true;
 	}
 	if(sqlDb->existsTable("billing_rule")) {
 		sqlDb->query("select * \
 			      from billing_rule \
 			      where id_billing = " + intToString(id));
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			cBillingRuleNumber number;
 			number.load(&row);
 			numbers.push_back(number);
 		}
 	}
-	if(initSqlDb) {
+	if(_createSqlObject) {
 		delete sqlDb;
 	}
 }
@@ -631,10 +651,10 @@ cBillingRules::~cBillingRules() {
 void cBillingRules::load(SqlDb *sqlDb) {
 	lock();
 	clear(false);
-	bool initSqlDb = false;
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
-		initSqlDb = true;
+		_createSqlObject = true;
 	}
 	if(sqlDb->existsTable("billing")) {
 		sqlDb->query(sqlDb->existsTable("currency") ?
@@ -644,8 +664,10 @@ void cBillingRules::load(SqlDb *sqlDb) {
 			       left join currency on (currency.code = billing.currency_code)" :
 			      "select * \
 			       from billing");
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			cBillingRule *rule = new FILE_LINE(0) cBillingRule;
 			rule->load(&row);
 			rules[rule->id] = rule;
@@ -654,7 +676,7 @@ void cBillingRules::load(SqlDb *sqlDb) {
 	for(map<unsigned, cBillingRule*>::iterator iter = rules.begin(); iter != rules.end(); iter++) {
 		iter->second->loadNumbers(sqlDb);
 	}
-	if(initSqlDb) {
+	if(_createSqlObject) {
 		delete sqlDb;
 	}
 	unlock();
@@ -689,16 +711,18 @@ cBillingAgregationSettings::cBillingAgregationSettings() {
 
 void cBillingAgregationSettings::load(SqlDb *sqlDb) {
 	clear();
-	bool initSqlDb = false;
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
-		initSqlDb = true;
+		_createSqlObject = true;
 	}
 	if(sqlDb->existsTable("billing_agregation_settings")) {
 		sqlDb->query("select * \
 			      from billing_agregation_settings");
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		if((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			settings.enable_by_ip = atoi(row["enable_by_ip"].c_str());
 			settings.enable_by_number = atoi(row["enable_by_number"].c_str());
 			settings.week_start = atoi(row["week_start"].c_str());
@@ -708,7 +732,7 @@ void cBillingAgregationSettings::load(SqlDb *sqlDb) {
 			settings.months_history_in_years = atoi(row["months_history_in_years"].c_str());
 		}
 	}
-	if(initSqlDb) {
+	if(_createSqlObject) {
 		delete sqlDb;
 	}
 }
@@ -731,16 +755,18 @@ cCurrency::cCurrency() {
 void cCurrency::load(SqlDb *sqlDb) {
 	lock();
 	clear(false);
-	bool initSqlDb = false;
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
-		initSqlDb = true;
+		_createSqlObject = true;
 	}
 	if(sqlDb->existsTable("currency")) {
 		sqlDb->query("select * \
 			      from currency");
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			sCurrencyItem item;
 			item.id = atoi(row["id"].c_str());
 			item.code = row["code"];
@@ -751,7 +777,7 @@ void cCurrency::load(SqlDb *sqlDb) {
 			items.push_back(item);
 		}
 	}
-	if(initSqlDb) {
+	if(_createSqlObject) {
 		delete sqlDb;
 	}
 	unlock();
@@ -806,20 +832,20 @@ cBilling::~cBilling() {
 	delete currency;
 }
 
-void cBilling::load() {
+void cBilling::load(SqlDb *sqlDb) {
 	lock();
-	rules->load();
-	assignments->load();
-	exclude->load();
-	holidays->load();
-	countryPrefixes->load();
-	checkInternational->load();
-	agreg_exclude->load();
-	agreg_settings->load();
-	currency->load();
-	gui_timezone = getGuiTimezone();
+	rules->load(sqlDb);
+	assignments->load(sqlDb);
+	exclude->load(sqlDb);
+	holidays->load(sqlDb);
+	countryPrefixes->load(sqlDb);
+	checkInternational->load(sqlDb);
+	agreg_exclude->load(sqlDb);
+	agreg_settings->load(sqlDb);
+	currency->load(sqlDb);
+	gui_timezone = getGuiTimezone(sqlDb);
 	unlock();
-	createMysqlPartitionsBillingAgregation();
+	createMysqlPartitionsBillingAgregation(sqlDb);
 }
 
 bool cBilling::billing(time_t time, unsigned duration,
@@ -984,14 +1010,14 @@ extern int opt_enable_billing;
 cBilling *billing;
 
 
-void initBilling() {
+void initBilling(SqlDb *sqlDb) {
 	if(opt_nocdr || !opt_enable_billing) {
 		return;
 	}
 	if(!billing) {
 		cBilling *_billing = new FILE_LINE(0) cBilling();
 		billing = _billing;
-		billing->load();
+		billing->load(sqlDb);
 	}
 }
 

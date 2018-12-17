@@ -164,15 +164,21 @@ IPfilter::~IPfilter() {
 	}
 };
 
-void IPfilter::load() {
+void IPfilter::load(SqlDb *sqlDb) {
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
 	vector<db_row> vectDbRow;
-	SqlDb *sqlDb = createSqlObject();
-	SqlDb_row row;
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query("SELECT * FROM filter_ip");
-	while((row = sqlDb->fetchRow())) {
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
+	SqlDb_row row;
+	while((row = rows.fetchRow())) {
 		count++;
 		db_row* filterRow = new FILE_LINE(4001) db_row;
 		filterRow->ip = (unsigned int)strtoul(row["ip"].c_str(), NULL, 0);
@@ -181,7 +187,9 @@ void IPfilter::load() {
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	t_node *node;
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		node = new(t_node);
@@ -268,10 +276,10 @@ int IPfilter::add_call_flags(volatile unsigned int *flags, unsigned int saddr, u
 	return(rslt);
 }
 
-void IPfilter::loadActive() {
+void IPfilter::loadActive(SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4002) IPfilter();
-	filter_active->load();
+	filter_active->load(sqlDb);
 	unlock();
 }
 
@@ -383,16 +391,22 @@ void TELNUMfilter::add_payload(t_payload *payload) {
 };
 
 
-void TELNUMfilter::load() {
+void TELNUMfilter::load(SqlDb *sqlDb) {
 	this->loadFile();
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
 	vector<db_row> vectDbRow;
-	SqlDb *sqlDb = createSqlObject();
-	SqlDb_row row;
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query("SELECT * FROM filter_telnum");
-	while((row = sqlDb->fetchRow())) {
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
+	SqlDb_row row;
+	while((row = rows.fetchRow())) {
 		count++;
 		db_row* filterRow = new(db_row);
 		strcpy_null_term(filterRow->prefix, trim_str(row["prefix"]).c_str());
@@ -400,7 +414,9 @@ void TELNUMfilter::load() {
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		t_payload *np = new(t_payload);
 		np->direction = vectDbRow[i].direction;
@@ -547,10 +563,10 @@ int TELNUMfilter::add_call_flags(volatile unsigned int *flags, char *telnum_src,
 	return(rslt);
 }
 
-void TELNUMfilter::loadActive() {
+void TELNUMfilter::loadActive(SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4004) TELNUMfilter();
-	filter_active->load();
+	filter_active->load(sqlDb);
 	unlock();
 }
 
@@ -614,15 +630,21 @@ DOMAINfilter::~DOMAINfilter() {
 	}
 };
 
-void DOMAINfilter::load() {
+void DOMAINfilter::load(SqlDb *sqlDb) {
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
 	vector<db_row> vectDbRow;
-	SqlDb *sqlDb = createSqlObject();
-	SqlDb_row row;
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query("SELECT * FROM filter_domain");
-	while((row = sqlDb->fetchRow())) {
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
+	SqlDb_row row;
+	while((row = rows.fetchRow())) {
 		count++;
 		db_row* filterRow = new FILE_LINE(4006) db_row;
 		filterRow->domain = trim_str(row["domain"]);
@@ -630,7 +652,9 @@ void DOMAINfilter::load() {
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	t_node *node;
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		node = new(t_node);
@@ -695,10 +719,10 @@ int DOMAINfilter::add_call_flags(volatile unsigned int *flags, char *domain_src,
 	return(rslt);
 }
 
-void DOMAINfilter::loadActive() {
+void DOMAINfilter::loadActive(SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4007) DOMAINfilter();
-	filter_active->load();
+	filter_active->load(sqlDb);
 	unlock();
 }
 
@@ -756,15 +780,21 @@ SIP_HEADERfilter::SIP_HEADERfilter() {
 SIP_HEADERfilter::~SIP_HEADERfilter() {
 }
 
-void SIP_HEADERfilter::load() {
+void SIP_HEADERfilter::load(SqlDb *sqlDb) {
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
 	vector<db_row> vectDbRow;
-	SqlDb *sqlDb = createSqlObject();
-	SqlDb_row row;
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query("SELECT * FROM filter_sip_header");
-	while((row = sqlDb->fetchRow())) {
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
+	SqlDb_row row;
+	while((row = rows.fetchRow())) {
 		count++;
 		db_row* filterRow = new FILE_LINE(4009) db_row;
 		filterRow->header = trim_str(row["header"]);
@@ -775,7 +805,9 @@ void SIP_HEADERfilter::load() {
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		item_data item;
 		item.direction = 0;
@@ -903,10 +935,10 @@ void SIP_HEADERfilter::addNodes(ParsePacket *parsePacket) {
 	unlock();
 }
 
-void SIP_HEADERfilter::loadActive() {
+void SIP_HEADERfilter::loadActive(SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4010) SIP_HEADERfilter();
-	filter_active->load();
+	filter_active->load(sqlDb);
 	unlock();
 }
 

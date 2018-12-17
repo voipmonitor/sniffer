@@ -2759,19 +2759,27 @@ GroupsIP::~GroupsIP() {
 	}
 }
 
-void GroupsIP::load() {
+void GroupsIP::load(SqlDb *sqlDb) {
 	groups.clear();
 	listIP.clear();
 	listNet.clear();
-	SqlDb *sqlDb = createSqlObject();
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query("select * from cb_ip_groups");
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
-	while((row = sqlDb->fetchRow())) {
+	while((row = rows.fetchRow())) {
 		unsigned id = atoi(row["id"].c_str());
 		GroupIP *group = new FILE_LINE(38004) GroupIP(id, row["descr"].c_str(), row["ip"].c_str());
 		groups[id] = group;
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	for(map<unsigned, GroupIP*>::iterator it = groups.begin(); it != groups.end(); it++) {
 		std::vector<IP> *src_IP = &it->second->white.listIP;
 		std::vector<IP>::iterator it_src_IP = src_IP->begin();
@@ -5030,10 +5038,10 @@ void _base64_encode(const unsigned char *data, size_t input_length, char *encode
 volatile int _tz_sync;
 
 string getGuiTimezone(SqlDb *sqlDb) {
-	bool initSqlDb = false;
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
-		initSqlDb = true;
+		_createSqlObject = true;
 	}
 	string gui_timezone;
 	if(sqlDb->existsTable("system") && sqlDb->existsColumn("system", "content")) {
@@ -5043,7 +5051,7 @@ string getGuiTimezone(SqlDb *sqlDb) {
 			gui_timezone = row["content"];
 		}
 	}
-	if(initSqlDb) {
+	if(_createSqlObject) {
 		delete sqlDb;
 	}
 	return(gui_timezone);
@@ -5257,25 +5265,23 @@ void SensorsMap::fillSensors(SqlDb *sqlDb) {
 		}
 		_createSqlObject = true;
 	}
-	sqlDb->query("show tables like 'sensors'");
-	if(sqlDb->fetchRow()) {
-		sqlDb->query("show columns from sensors where Field='id'");
-		if(sqlDb->fetchRow()) {
-			sqlDb->query("select id_sensor, id, name from sensors");
-			SqlDb_row row;
-			lock();
-			sensors.clear();
-			while((row = sqlDb->fetchRow())) {
-				int idSensor = atoi(row["id_sensor"].c_str());
-				sSensorData data;
-				data.table_id = atoi(row["id"].c_str());
-				data.name = row["name"];
-				data.name_file = row["name"];
-				prepare_string_to_filename((char*)data.name_file.c_str(), data.name_file.length());
-				sensors[idSensor] = data;
-			}
-			unlock();
+	if(sqlDb->existsTable("sensors") && sqlDb->existsColumn("sensors", "id")) {
+		sqlDb->query("select id_sensor, id, name from sensors");
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
+		SqlDb_row row;
+		lock();
+		sensors.clear();
+		while((row = rows.fetchRow())) {
+			int idSensor = atoi(row["id_sensor"].c_str());
+			sSensorData data;
+			data.table_id = atoi(row["id"].c_str());
+			data.name = row["name"];
+			data.name_file = row["name"];
+			prepare_string_to_filename((char*)data.name_file.c_str(), data.name_file.length());
+			sensors[idSensor] = data;
 		}
+		unlock();
 	}
 	if(_createSqlObject) {
 		delete sqlDb;

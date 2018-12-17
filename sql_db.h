@@ -113,9 +113,25 @@ public:
 	string keyvalList(string separator);
 	size_t getCountFields();
 	void removeFieldsIfNotContainIn(map<string, int> *fields);
+	void clearSqlDb();
 private:
 	SqlDb *sqlDb;
 	vector<SqlDb_rowField> row;
+};
+
+class SqlDb_rows {
+public:
+	SqlDb_rows();
+	~SqlDb_rows();
+	SqlDb_row &fetchRow();
+	void initFetch();
+	unsigned countRow();
+	operator unsigned();
+	void clear();
+private:
+	list<SqlDb_row> rows;
+	list<SqlDb_row>::iterator *iter_rows;
+friend class SqlDb;
 };
 
 class SqlDb {
@@ -154,7 +170,8 @@ public:
 	int _queryByRemoteSocket(string query, unsigned int pass);
 	int processResponseFromQueryBy(const char *response, unsigned pass);
 	virtual string prepareQuery(string query, bool nextPass);
-	virtual SqlDb_row fetchRow(bool assoc = false) = 0;
+	virtual SqlDb_row fetchRow() = 0;
+	unsigned fetchRows(SqlDb_rows *rows);
 	virtual string getJsonResult() { return(""); }
 	virtual string getJsonError() { return(""); }
 	virtual string getFieldsStr(list<SqlDb_field> *fields);
@@ -179,6 +196,13 @@ public:
 	bool existsTable(string table) { return(existsTable(table.c_str())); }
 	virtual bool existsColumn(const char *table, const char *column) = 0;
 	bool existsColumn(string table, string column) { return(existsColumn(table.c_str(), column.c_str())); }
+	void startExistsColumnCache();
+	void stopExistsColumnCache();
+	void suspendExistsColumnCache();
+	void resumeExistsColumnCache();
+	bool isEnableExistColumnCache();
+	int existsColumnInCache(const char *table, const char *column);
+	void addColumnToCache(const char *table, const char *column);
 	virtual string getTypeColumn(const char *table, const char *column, bool toLower = true) = 0;
 	string getTypeColumn(string table, string column, bool toLower = true) { return(getTypeColumn(table.c_str(), column.c_str(), toLower)); }
 	virtual int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true) = 0;
@@ -338,6 +362,9 @@ private:
 	static volatile u_int64_t delayQuery_sum_ms;
 	static volatile u_int32_t delayQuery_count;
 	cSocketBlock *remote_socket;
+	map<string, list<string> > existsColumnCache;
+	bool existsColumnCache_enable;
+	bool existsColumnCache_suspend;
 friend class MySqlStore_process;
 };
 
@@ -381,7 +408,7 @@ public:
 	void disconnect();
 	bool connected();
 	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
-	SqlDb_row fetchRow(bool assoc = false);
+	SqlDb_row fetchRow();
 	bool fetchQueryResult(vector<string> *fields, vector<map<string, string_null> > *rows);
 	string getJsonResult(vector<string> *fields, vector<map<string, string_null> > *rows);
 	string getJsonResult();
@@ -517,7 +544,7 @@ public:
 	void disconnect();
 	bool connected();
 	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
-	SqlDb_row fetchRow(bool assoc = false);
+	SqlDb_row fetchRow();
 	int64_t getInsertId();
 	bool existsDatabase();
 	bool existsTable(const char *table);
@@ -861,7 +888,7 @@ void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb);
 void createMysqlPartitionsSs7();
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsLogSensor();
-void createMysqlPartitionsBillingAgregation();
+void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb = NULL);
 void createMysqlPartitionsTable(const char* table, bool partition_oldver);
 void createMysqlPartitionsIpacc();
 void dropMysqlPartitionsCdr();
@@ -978,10 +1005,10 @@ public:
 	void addCond(const char *field, const char *value);
 	void setAutoLoadPeriod(unsigned autoLoadPeriod);
 	unsigned getId(const char *stringValue, bool enableInsert = false, bool enableAutoLoad = false);
-	void load();
+	void load(SqlDb *sqlDb = NULL);
 	void loadInBackground();
 private:
-	void _load(map<string, unsigned> *data, bool *overflow);
+	void _load(map<string, unsigned> *data, bool *overflow, SqlDb *sqlDb = NULL);
 	static void *_loadInBackground(void *arg);
 	void lock_data() {
 		while(__sync_lock_test_and_set(&_sync_data, 1));

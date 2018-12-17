@@ -1615,7 +1615,7 @@ public:
 	 * @brief constructor
 	 *
 	*/
-	Calltable();
+	Calltable(SqlDb *sqlDb = NULL);
 	/*
 	Calltable() { 
 		pthread_mutex_init(&qlock, NULL); 
@@ -1921,8 +1921,8 @@ public:
 		__sync_lock_release(&this->_sync_lock_calls_hash);
 	}
 	
-	void cbInit();
-	void cbLoad();
+	void cbInit(SqlDb *sqlDb = NULL);
+	void cbLoad(SqlDb *sqlDb = NULL);
 	void cbTerm();
 	unsigned cb_ua_getId(const char *ua, bool enableInsert, bool enableAutoLoad = false);
 	unsigned cb_sip_response_getId(const char *response, bool enableInsert, bool enableAutoLoad = false);
@@ -2018,8 +2018,8 @@ public:
 	};
 	typedef map<int, map<int, dstring> > tCH_Content;
 public:
-	CustomHeaders(eType type);
-	void load(class SqlDb *sqlDb = NULL, bool enableCreatePartitions = true, bool lock = true);
+	CustomHeaders(eType type, SqlDb *sqlDb = NULL);
+	void load(SqlDb *sqlDb = NULL, bool enableCreatePartitions = true, bool lock = true);
 	void clear(bool lock = true);
 	void refresh(SqlDb *sqlDb = NULL, bool enableCreatePartitions = true);
 	void addToStdParse(ParsePacket *parsePacket);
@@ -2090,10 +2090,10 @@ private:
 
 class NoHashMessageRules {
 public:
-	NoHashMessageRules();
+	NoHashMessageRules(SqlDb *sqlDb = NULL);
 	~NoHashMessageRules();
 	bool checkNoHash(Call *call);
-	void load(class SqlDb *sqlDb = NULL, bool lock = true);
+	void load(SqlDb *sqlDb = NULL, bool lock = true);
 	void clear(bool lock = true);
 	void refresh(SqlDb *sqlDb = NULL);
 private:

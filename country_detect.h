@@ -23,7 +23,7 @@ public:
 	};
 public:
 	CountryDetect_base_table();
-	bool checkTable(eTableType tableType, string &tableName);
+	bool checkTable(eTableType tableType, string &tableName, SqlDb *sqlDb = NULL);
 	string getTableName(eTableType tableType);
 public:
 	bool loadOK;
@@ -32,7 +32,7 @@ public:
 class CountryCodes : public CountryDetect_base_table {
 public:
 	CountryCodes();
-	bool load();
+	bool load(SqlDb *sqlDb = NULL);
 	bool isCountry(const char *code);
 	string getNameCountry(const char *code);
 	unsigned getIdCountry(const char *code);
@@ -84,10 +84,10 @@ public:
 	void setInternationalMinLength(int internationalMinLength, bool internationalMinLengthPrefixesStrict);
 	void setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWithoutPrefix, int minLengthNapaWithoutPrefix);
 	bool isSet(SqlDb_row *dbRow);
-	bool load(SqlDb_row *dbRow);
-	bool load();
+	bool load(SqlDb_row *dbRow, SqlDb *sqlDb = NULL);
+	bool load(SqlDb *sqlDb = NULL);
 	void _load(SqlDb_row *dbRow);
-	bool loadCustomerPrefixAdv();
+	bool loadCustomerPrefixAdv(SqlDb *sqlDb = NULL);
 	void clearInternationalPrefixes();
 	void clearSkipPrefixes();
 	void clearCustomerPrefixAdv();
@@ -166,7 +166,7 @@ public:
 public:
 	CountryPrefixes();
 	~CountryPrefixes();
-	bool load();
+	bool load(SqlDb *sqlDb = NULL);
 	void clear();
 	string getCountry(const char *number, vector<string> *countries, string *country_prefix,
 			  CheckInternational *checkInternational, string *rsltNumberNormalized = NULL);
@@ -246,7 +246,7 @@ public:
 	};
 public:
 	GeoIP_country();
-	bool load();
+	bool load(SqlDb *sqlDb = NULL);
 	string getCountry(unsigned int ip) {
 		for(unsigned pass = 0; pass < 2; pass++) {
 			vector<GeoIP_country_rec> *data = pass == 0 ? &this->customer_data : &this->data;
@@ -295,12 +295,13 @@ class CountryDetect {
 public:
 	CountryDetect();
 	~CountryDetect();
-	void load();
+	void load(SqlDb *sqlDb = NULL);
 	string getCountryByPhoneNumber(const char *phoneNumber);
 	unsigned getCountryIdByPhoneNumber(const char *phoneNumber);
 	bool isLocalByPhoneNumber(const char *phoneNumber);
 	string getCountryByIP(u_int32_t ip);
 	unsigned getCountryIdByIP(u_int32_t ip);
+	bool isLocalByIP(u_int32_t ip);
 	string getContinentByCountry(const char *country);
 	void prepareReload();
 	void applyReload();
@@ -331,7 +332,7 @@ private:
 };
 
 
-void CountryDetectInit();
+void CountryDetectInit(SqlDb *sqlDb = NULL);
 void CountryDetectTerm();
 string getCountryByPhoneNumber(const char *phoneNumber, bool suppressStringLocal = false);
 unsigned getCountryIdByPhoneNumber(const char *phoneNumber);

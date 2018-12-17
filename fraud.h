@@ -388,8 +388,8 @@ public:
 	FraudAlert(eFraudAlertType type, unsigned int dbId);
 	virtual ~FraudAlert();
 	bool isReg();
-	bool loadAlert();
-	void loadFraudDef();
+	bool loadAlert(SqlDb *sqlDb = NULL);
+	void loadFraudDef(SqlDb *sqlDb = NULL);
 	eFraudAlertType getType() {
 		return(type);
 	}
@@ -433,8 +433,8 @@ public:
 	virtual bool okDayHour(time_t at);
 	virtual void evAlert(FraudAlertInfo *alertInfo);
 protected:
-	virtual void loadAlertVirt() {}
-	virtual void addFraudDef(SqlDb_row */*row*/) {}
+	virtual void loadAlertVirt(SqlDb */*sqlDb*/ = NULL) {}
+	virtual void addFraudDef(SqlDb_row */*row*/, SqlDb */*sqlDb*/ = NULL) {}
 	virtual bool defFilterIp() { return(false); }
 	virtual bool defFilterIp2() { return(false); }
 	virtual bool defFilterIpCondition12() { return(false); }
@@ -526,8 +526,8 @@ protected:
 	bool checkUA(const char *ua);
 	bool checkRegisterTimeSecLe(sFraudRegisterInfo *registerInfo);
 private:
-	void loadAlertVirt();
-	void loadFilters();
+	void loadAlertVirt(SqlDb *sqlDb = NULL);
+	void loadFilters(SqlDb *sqlDb = NULL);
 protected:
 	map<u_int32_t, FraudAlertReg_filter*> filters;
 	u_int32_t intervalLength;
@@ -685,8 +685,9 @@ public:
 				   int concurentCallsLimitInternational, 
 				   int concurentCallsLimitBoth,
 				   unsigned int dbId,
-				   class FraudAlert_rcc *parent);
-	void loadTimePeriods();
+				   class FraudAlert_rcc *parent,
+				   SqlDb *sqlDb = NULL);
+	void loadTimePeriods(SqlDb *sqlDb = NULL);
 protected: 
 	bool checkTime(u_int64_t time) {
 		vector<TimePeriod>::iterator iter = timePeriods.begin();
@@ -746,7 +747,7 @@ public:
 	void evCall(sFraudCallInfo *callInfo);
 	void evRtpStream(sFraudRtpStreamInfo *rtpStreamInfo);
 protected:
-	void addFraudDef(SqlDb_row *row);
+	void addFraudDef(SqlDb_row *row, SqlDb *sqlDb = NULL);
 	bool defFilterIp() { return(true); }
 	bool defFilterIp2() { return(true); }
 	bool defFilterIpCondition12() { return(true); }
@@ -925,7 +926,7 @@ protected:
 	bool defStorePcaps() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:
-	void loadAlertVirt();
+	void loadAlertVirt(SqlDb *sqlDb = NULL);
 	bool checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at);
 	string getDumpName(u_int32_t ip, u_int64_t at);
 private:
@@ -1031,8 +1032,8 @@ class FraudAlerts {
 public:
 	FraudAlerts();
 	~FraudAlerts();
-	void loadAlerts(bool lock = true);
-	void loadData(bool lock = true);
+	void loadAlerts(bool lock = true, SqlDb *sqlDb = NULL);
+	void loadData(bool lock = true, SqlDb *sqlDb = NULL);
 	void clear(bool lock = true);
 	void beginCall(Call *call, u_int64_t at);
 	void connectCall(Call *call, u_int64_t at);
@@ -1135,8 +1136,8 @@ public:
 };
 
 
-void initFraud();
-bool checkFraudTables();
+void initFraud(SqlDb *sqlDb = NULL);
+bool checkFraudTables(SqlDb *sqlDb = NULL);
 void termFraud();
 void refreshFraud();
 void fraudBeginCall(Call *call, struct timeval tv);
@@ -1154,7 +1155,7 @@ void fraudRegisterResponse(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, con
 void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 void fraudRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 string whereCondFraudAlerts();
-bool isExistsFraudAlerts(bool *storePcaps = NULL);
+bool isExistsFraudAlerts(bool *storePcaps = NULL, SqlDb *sqlDb = NULL);
 bool selectSensorsContainSensorId(string select_sensors);
 
 inline bool isFraudReady() {

@@ -1195,7 +1195,9 @@ void cSipMsgRelations::loadParams(sParams *params) {
 		      (select group_concat(domain_group_id) from options_qualify_groups \
 		       where options_qualify_id = options_qualify.id and type = 'domain_dst') as domain_dst_group \
 		      from options_qualify");
-	while((dbRow = sqlDb->fetchRow())) {
+	SqlDb_rows dbRows;
+	sqlDb->fetchRows(&dbRows);
+	while((dbRow = dbRows.fetchRow())) {
 		int qualifyLimit = atoi(dbRow["ok_qualify_limit"].c_str());
 		if(qualifyLimit > 0) {
 			sParamsRecord recordParams;

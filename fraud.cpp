@@ -11,6 +11,7 @@ extern int opt_id_sensor;
 extern int opt_enable_fraud;
 extern int opt_nocdr;
 extern MySqlStore *sqlStore;
+extern CountryDetect *countryDetect;
 
 FraudAlerts *fraudAlerts = NULL;
 volatile int _fraudAlerts_ready = 0;
@@ -75,7 +76,7 @@ CacheNumber_location::CacheNumber_location() {
 		countryCodes = new FILE_LINE(7001) CountryCodes();
 		countryCodes->load();
 	}
-	if(!geoIP_country) {
+	if(!geoIP_country && !countryDetect) {
 		geoIP_country = new FILE_LINE(7002) GeoIP_country();
 		geoIP_country->load();
 	}
@@ -131,7 +132,11 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t number_ip, 
 			}
 		}
 	}
-	string country_code = ip_country ? ip_country : geoIP_country->getCountry(ip);
+	string country_code = ip_country ? 
+			       ip_country : 
+			       (countryDetect ? 
+				 countryDetect->getCountryByIP(ip) : 
+				 geoIP_country->getCountry(ip));
 	string continent_code = ip_continent ? ip_continent : countryCodes->getContinent(country_code.c_str());
 	if(iterCache == cache.end()) {
 		sIpRec ipRec;
@@ -346,8 +351,12 @@ bool FraudAlert::isReg() {
 	       type == _reg_expire);
 }
 
-bool FraudAlert::loadAlert() {
-	SqlDb *sqlDb = createSqlObject();
+bool FraudAlert::loadAlert(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query(string(
 		"select alerts.*,\
 		 (select group_concat(number) \
@@ -389,8 +398,11 @@ bool FraudAlert::loadAlert() {
 		 from alerts\
 		 where id = ") + intToString(dbId));
 	dbRow = sqlDb->fetchRow();
+	dbRow.clearSqlDb();
 	if(!dbRow) {
-		delete sqlDb;
+		if(_createSqlObject) {
+			delete sqlDb;
+		}
 		return(false);
 	}
 	descr = dbRow["descr"];
@@ -454,7 +466,7 @@ bool FraudAlert::loadAlert() {
 		domainFilter.addComb(dbRow["fraud_whitelist_domain"].c_str());
 	}
 	if(defFraudDef()) {
-		loadFraudDef();
+		loadFraudDef(sqlDb);
 	}
 	if(defConcuretCallsLimit()) {
 		concurentCallsLimitLocal = atoi(dbRow["fraud_concurent_calls_limit_local"].c_str());
@@ -497,7 +509,7 @@ bool FraudAlert::loadAlert() {
 			alertOncePerHours = atoi(dbRow["fraud_alert_once_per_hours"].c_str());
 		}
 	}
-	checkInternational.load(&dbRow);
+	checkInternational.load(&dbRow, sqlDb);
 	hour_from = -1;
 	hour_to = -1;
 	for(int i = 0; i < 7; i++) {
@@ -535,24 +547,35 @@ bool FraudAlert::loadAlert() {
 		storePcapsToPaths = dbRow["fraud_store_pcaps_to_path"];
 	}
 	loadAlertVirt();
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	return(true);
 }
 
-void FraudAlert::loadFraudDef() {
-	SqlDb *sqlDb = createSqlObject();
+void FraudAlert::loadFraudDef(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query(string(
 		"select *\
 		 from alerts_fraud\
 		 where alerts_id = ") + intToString(dbId));
+	
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
-	while((row = sqlDb->fetchRow())) {
+	while((row = rows.fetchRow())) {
 		if(fraudDebug) {
 			syslog(LOG_NOTICE, "add fraud def %s", row["descr"].c_str());
 		}
-		addFraudDef(&row);
+		addFraudDef(&row, sqlDb);
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 }
 
 string FraudAlert::getTypeString() {
@@ -832,7 +855,7 @@ bool FraudAlertReg::checkRegisterTimeSecLe(sFraudRegisterInfo *registerInfo) {
 	       registerInfo->at - registerInfo->prev_state_at <= registerTimeSecLe * 1000000ull);
 }
 
-void FraudAlertReg::loadAlertVirt() {
+void FraudAlertReg::loadAlertVirt(SqlDb *sqlDb) {
 	intervalLength = atol(dbRow["reg_interval_length_sec"].c_str());
 	intervalLimit = atol(dbRow["reg_interval_limit"].c_str());
 	vector<string> ua_split = split(dbRow["reg_ua"].c_str(), split(",|;|\r|\n", "|"), true);
@@ -853,27 +876,35 @@ void FraudAlertReg::loadAlertVirt() {
 	}
 	ua_reg_neg = atoi(dbRow["reg_ua_neg"].c_str());
 	registerTimeSecLe = atol(dbRow["reg_register_time_sec_le"].c_str());
-	loadFilters();
+	loadFilters(sqlDb);
 }
 
-void FraudAlertReg::loadFilters() {
-	SqlDb *sqlDb = createSqlObject();
+void FraudAlertReg::loadFilters(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query(string(
 		"select *\
 		 from alerts_reg_filters\
 		 where alerts_id = ") + intToString(dbId));
-	SqlDb_row dbRowFilters;
-	while((dbRowFilters = sqlDb->fetchRow())) {
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
+	SqlDb_row row;
+	while((row = rows.fetchRow())) {
 		FraudAlertReg_filter *filter = new FraudAlertReg_filter(this);
-		filter->setFilter(dbRowFilters["descr"].c_str(), dbRowFilters["config_filter_register"].c_str());
-		filters[atoi(dbRowFilters["id"].c_str())] = filter;
+		filter->setFilter(row["descr"].c_str(), row["config_filter_register"].c_str());
+		filters[atoi(row["id"].c_str())] = filter;
 	}
 	if(filters.size() == 0) {
 		FraudAlertReg_filter *filter = new FraudAlertReg_filter(this);
 		filter->setFilter("main", dbRow["config_filter_register"].c_str());
 		filters[0] = filter;
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 }
 
 FraudAlert_rcc_callInfo::FraudAlert_rcc_callInfo() {
@@ -893,7 +924,8 @@ FraudAlert_rcc_timePeriods::FraudAlert_rcc_timePeriods(const char *descr,
 						       int concurentCallsLimitInternational, 
 						       int concurentCallsLimitBoth, 
 						       unsigned int dbId,
-						       FraudAlert_rcc *parent)
+						       FraudAlert_rcc *parent,
+						       SqlDb *sqlDb)
  : FraudAlert_rcc_base(parent) {
 	this->descr = descr;
 	this->concurentCallsLimitLocal_tp = concurentCallsLimitLocal;
@@ -901,21 +933,29 @@ FraudAlert_rcc_timePeriods::FraudAlert_rcc_timePeriods(const char *descr,
 	this->concurentCallsLimitBoth_tp = concurentCallsLimitBoth;
 	this->dbId = dbId;
 	this->parent = parent;
-	this->loadTimePeriods();
+	this->loadTimePeriods(sqlDb);
 }
 
-void FraudAlert_rcc_timePeriods::loadTimePeriods() {
-	SqlDb *sqlDb = createSqlObject();
+void FraudAlert_rcc_timePeriods::loadTimePeriods(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->query(string(
 		"select *\
 		 from alerts_fraud_timeperiod\
 		 join cb_timeperiod on (cb_timeperiod.id = alerts_fraud_timeperiod.timeperiod_id)\
 		 where alerts_fraud_id = ") + intToString(dbId));
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
-	while((row = sqlDb->fetchRow())) {
+	while((row = rows.fetchRow())) {
 		timePeriods.push_back(TimePeriod(&row));
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 }
 
 FraudAlert_rcc_base::FraudAlert_rcc_base(FraudAlert_rcc *parent) {
@@ -1376,14 +1416,15 @@ string FraudAlertInfo_rcc::getJson() {
 	return(json.getJson());
 }
 
-void FraudAlert_rcc::addFraudDef(SqlDb_row *row) {
+void FraudAlert_rcc::addFraudDef(SqlDb_row *row, SqlDb *sqlDb) {
 	timePeriods.push_back(FraudAlert_rcc_timePeriods(
 				(*row)["descr"].c_str(),
 				atoi((*row)["concurent_calls_limit_local"].c_str()),
 				atoi((*row)["concurent_calls_limit_international"].c_str()),
 				atoi((*row)["concurent_calls_limit"].c_str()),
 				atol((*row)["id"].c_str()),
-				this));
+				this,
+				sqlDb));
 }
 
 FraudAlert_rcc::FraudAlert_rcc(unsigned int dbId)
@@ -1671,7 +1712,9 @@ string FraudAlertInfo_spc::getJson() {
 	json.add("count_invite", count_invite);
 	json.add("count_message", count_message);
 	json.add("count_register", count_register);
-	string country_code = geoIP_country->getCountry(ip);
+	string country_code = countryDetect ?
+			       countryDetect->getCountryByIP(ip) :
+			       geoIP_country->getCountry(ip);
 	if(!country_code.empty()) {
 		json.add("country_code", country_code);
 		json.add("country_name", countryCodes->getNameCountry(country_code.c_str()));
@@ -1831,7 +1874,7 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 	}
 }
 
-void FraudAlert_rc::loadAlertVirt() {
+void FraudAlert_rc::loadAlertVirt(SqlDb */*sqlDb*/) {
 	withResponse = atoi(dbRow["fraud_register_only_with_response"].c_str());
 }
 
@@ -2032,28 +2075,33 @@ FraudAlerts::~FraudAlerts() {
 	clear();
 }
 
-void FraudAlerts::loadAlerts(bool lock) {
+void FraudAlerts::loadAlerts(bool lock, SqlDb *sqlDb) {
 	if(lock) lock_alerts();
-	SqlDb *sqlDb = createSqlObject();
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	this->gui_timezone = ::getGuiTimezone(sqlDb);
-	sqlDb->query("show columns from alerts where Field='select_sensors'");
-	bool existsColumnSelectSensors = sqlDb->fetchRow();
+	bool existsColumnSelectSensors = sqlDb->existsColumn("alerts", "select_sensors");
 	sqlDb->query(string("select id, alert_type, descr") + 
 		     (existsColumnSelectSensors ? ", select_sensors" : "") + 
 		     "\
 		      from alerts\
 		      where " + whereCondFraudAlerts());
-	SqlDb_row row;
-	while((row = sqlDb->fetchRow())) {
-		if(!selectSensorsContainSensorId(row["select_sensors"])) {
+	SqlDb_rows alert_rows;
+	sqlDb->fetchRows(&alert_rows);
+	SqlDb_row alert_row;
+	while((alert_row = alert_rows.fetchRow())) {
+		if(!selectSensorsContainSensorId(alert_row["select_sensors"])) {
 			continue;
 		}
 		if(fraudDebug) {
-			syslog(LOG_NOTICE, "load fraud alert %s", row["descr"].c_str());
+			syslog(LOG_NOTICE, "load fraud alert %s", alert_row["descr"].c_str());
 		}
 		FraudAlert *alert = NULL;
-		unsigned int dbId = atol(row["id"].c_str());
-		switch(atoi(row["alert_type"].c_str())) {
+		unsigned int dbId = atol(alert_row["id"].c_str());
+		switch(atoi(alert_row["alert_type"].c_str())) {
 		case FraudAlert::_rcc:
 			alert = new FILE_LINE(7018) FraudAlert_rcc(dbId);
 			break;
@@ -2085,20 +2133,22 @@ void FraudAlerts::loadAlerts(bool lock) {
 			alert = new FILE_LINE(7027) FraudAlert_reg_expire(dbId);
 			break;
 		}
-		if(alert && alert->loadAlert()) {
+		if(alert && alert->loadAlert(sqlDb)) {
 			if(sverb.fraud_file_log  && alert->supportVerbLog()) {
 				alert->openVerbLog();
 			}
 			alerts.push_back(alert);
 		}
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	if(lock) unlock_alerts();
 }
 
-void FraudAlerts::loadData(bool lock) {
+void FraudAlerts::loadData(bool lock, SqlDb *sqlDb) {
 	if(lock) lock_alerts();
-	this->groupsIP.load();
+	this->groupsIP.load(sqlDb);
 	if(lock) unlock_alerts();
 }
 
@@ -2356,13 +2406,17 @@ void FraudAlerts::completeCallInfoAfterPop(sFraudCallInfo *callInfo, CheckIntern
 		u_int32_t *ip = i == 0 ? &callInfo->caller_ip : &callInfo->called_ip;
 		string *rslt_country_code = i == 0 ? &callInfo->country_code_caller_ip : &callInfo->country_code_called_ip;
 		string *rslt_continent_code = i == 0 ? &callInfo->continent_code_caller_ip : &callInfo->continent_code_called_ip;
-		string country = geoIP_country->getCountry(*ip);
+		string country = countryDetect ?
+				  countryDetect->getCountryByIP(*ip) :
+				  geoIP_country->getCountry(*ip);
 		if(country != "") {
 			*rslt_country_code = country;
 			*rslt_continent_code = countryCodes->getContinent(country.c_str());
 		}
 	}
-	callInfo->local_called_ip = geoIP_country->isLocal(callInfo->called_ip, checkInternational);
+	callInfo->local_called_ip = countryDetect ?
+				     countryDetect->isLocalByIP(callInfo->called_ip) :
+				     geoIP_country->isLocal(callInfo->called_ip, checkInternational);
 }
 
 void FraudAlerts::completeRtpStreamInfoAfterPop(sFraudRtpStreamInfo *rtpStreamInfo, CheckInternational *checkInternational) {
@@ -2412,7 +2466,7 @@ void FraudAlerts::refresh() {
 }
 
 
-void initFraud() {
+void initFraud(SqlDb *sqlDb) {
 	if(!opt_enable_fraud) {
 		return;
 	}
@@ -2420,19 +2474,19 @@ void initFraud() {
 		opt_enable_fraud = false;
 		return;
 	}
-	if(!isExistsFraudAlerts(&opt_enable_fraud_store_pcaps) ||
-	   !checkFraudTables()) {
+	if(!isExistsFraudAlerts(&opt_enable_fraud_store_pcaps, sqlDb) ||
+	   !checkFraudTables(sqlDb)) {
 		return;
 	}
 	if(!countryCodes) {
 		countryCodes = new FILE_LINE(7028) CountryCodes();
-		countryCodes->load();
+		countryCodes->load(sqlDb);
 	}
 	if(!countryPrefixes) {
 		countryPrefixes = new FILE_LINE(7029) CountryPrefixes();
-		countryPrefixes->load();
+		countryPrefixes->load(sqlDb);
 	}
-	if(!geoIP_country) {
+	if(!geoIP_country && !countryDetect) {
 		geoIP_country = new FILE_LINE(7030) GeoIP_country();
 		geoIP_country->load();
 	}
@@ -2444,8 +2498,8 @@ void initFraud() {
 	}
 	fraudAlerts_lock();
 	fraudAlerts = new FILE_LINE(7032) FraudAlerts();
-	fraudAlerts->loadData();
-	fraudAlerts->loadAlerts();
+	fraudAlerts->loadData(true, sqlDb);
+	fraudAlerts->loadAlerts(true, sqlDb);
 	fraudAlerts_unlock();
 	_fraudAlerts_ready = 1;
 }
@@ -2481,8 +2535,12 @@ void termFraud() {
 	}
 }
 
-bool checkFraudTables() {
-	SqlDb *sqlDb = createSqlObject();
+bool checkFraudTables(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	struct checkTable {
 		const char *table;
 		const char *help;
@@ -2498,13 +2556,14 @@ bool checkFraudTables() {
 		{isCloud()?"cloudshare.geoip_country":"geoip_country", help_gui_loginAdmin, help_gui_loginAdmin}
 	};
 	for(size_t i = 0; i < sizeof(checkTables) / sizeof(checkTables[0]); i++) {
-		sqlDb->query((string("show tables like '") + checkTables[i].table + "'").c_str());
-		if(!sqlDb->fetchRow()) {
+		if(!sqlDb->existsTable(checkTables[i].table)) {
 			syslog(LOG_ERR, "missing table %s - fraud disabled", checkTables[i].table);
 			if(checkTables[i].help) {
 				syslog(LOG_NOTICE, "try: %s", checkTables[i].help);
 			}
-			delete sqlDb;
+			if(_createSqlObject) {
+				delete sqlDb;
+			}
 			return(false);
 		} else if(checkTables[i].emptyHelp) {
 			sqlDb->query((string("select count(*) as cnt from ") + checkTables[i].table).c_str());
@@ -2514,12 +2573,16 @@ bool checkFraudTables() {
 				if(checkTables[i].emptyHelp) {
 					syslog(LOG_NOTICE, "try: %s", checkTables[i].emptyHelp);
 				}
-				delete sqlDb;
+				if(_createSqlObject) {
+					delete sqlDb;
+				}
 				return(false);
 			}
 		}
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	return(true);
 }
 
@@ -2639,7 +2702,7 @@ string whereCondFraudAlerts() {
 		(disable is null or not disable)");
 }
 
-bool isExistsFraudAlerts(bool *storePcaps) {
+bool isExistsFraudAlerts(bool *storePcaps, SqlDb *sqlDb) {
 	if(storePcaps) {
 		*storePcaps = false;
 	}
@@ -2647,22 +2710,25 @@ bool isExistsFraudAlerts(bool *storePcaps) {
 		return(false);
 	}
 	bool rslt = false;
-	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("show tables like 'alerts'");
-	if(sqlDb->fetchRow()) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	if(sqlDb->existsTable("alerts")) {
 		sqlDb->createTable("fraud_alert_info");
-		sqlDb->query("show columns from alerts where Field='select_sensors'");
-		bool existsColumnSelectSensors = sqlDb->fetchRow();
-		sqlDb->query("show columns from alerts where Field='fraud_store_pcaps'");
-		bool existsColumnFraudStorePcaps = sqlDb->fetchRow();
+		bool existsColumnSelectSensors = sqlDb->existsColumn("alerts", "select_sensors");
+		bool existsColumnFraudStorePcaps = sqlDb->existsColumn("alerts", "fraud_store_pcaps");
 		sqlDb->query(string("select id, alert_type, descr") +
 			     (existsColumnSelectSensors ? ", select_sensors" : "") + 
 			     (existsColumnFraudStorePcaps ? ", fraud_store_pcaps" : "") + 
 			     "\
 			      from alerts\
 			      where " + whereCondFraudAlerts());
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			if(selectSensorsContainSensorId(row["select_sensors"])) {
 				rslt = true;
 				if(storePcaps) {
@@ -2675,7 +2741,9 @@ bool isExistsFraudAlerts(bool *storePcaps) {
 			}
 		}
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	return(rslt);
 }
 

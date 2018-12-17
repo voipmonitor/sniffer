@@ -1362,7 +1362,7 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 					sqlDb->updateSensorState();
 					set_context_config_after_check_db_schema();
 				}
-				sensorsMap.fillSensors();
+				sensorsMap.fillSensors(sqlDb);
 			}
 		} else {
 			connectOk = 0;
@@ -3344,7 +3344,13 @@ void set_global_vars() {
 }
 
 int main_init_read() {
-	calltable = new FILE_LINE(42013) Calltable;
+ 
+	SqlDb *sqlDbInit = NULL;
+	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
+		sqlDbInit = createSqlObject();
+	}
+
+	calltable = new FILE_LINE(42013) Calltable(sqlDbInit);
 	
 	// if the system has more than one CPU enable threading
 	if(opt_rtpsave_threaded) {
@@ -3415,21 +3421,21 @@ int main_init_read() {
 	rlp.rlim_max = RLIM_INFINITY;
 	if (setrlimit(RLIMIT_CORE, &rlp) < 0)
 		fprintf(stderr, "setrlimit: %s\nWarning: core dumps may be truncated or non-existant\n", strerror(errno));
-
+	
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
-		custom_headers_cdr = new FILE_LINE(42014) CustomHeaders(CustomHeaders::cdr);
-		custom_headers_cdr->createTablesIfNotExists();
-		custom_headers_message = new FILE_LINE(42015) CustomHeaders(CustomHeaders::message);
-		custom_headers_message->createTablesIfNotExists();
-		custom_headers_sip_msg = new FILE_LINE(0) CustomHeaders(CustomHeaders::sip_msg);
-		custom_headers_sip_msg->createTablesIfNotExists();
-		no_hash_message_rules = new FILE_LINE(42016) NoHashMessageRules;
+		custom_headers_cdr = new FILE_LINE(42014) CustomHeaders(CustomHeaders::cdr, sqlDbInit);
+		custom_headers_cdr->createTablesIfNotExists(sqlDbInit);
+		custom_headers_message = new FILE_LINE(42015) CustomHeaders(CustomHeaders::message, sqlDbInit);
+		custom_headers_message->createTablesIfNotExists(sqlDbInit);
+		custom_headers_sip_msg = new FILE_LINE(0) CustomHeaders(CustomHeaders::sip_msg, sqlDbInit);
+		custom_headers_sip_msg->createTablesIfNotExists(sqlDbInit);
+		no_hash_message_rules = new FILE_LINE(42016) NoHashMessageRules(sqlDbInit);
 	}
 
-	IPfilter::loadActive();
-	TELNUMfilter::loadActive();
-	DOMAINfilter::loadActive();
-	SIP_HEADERfilter::loadActive();
+	IPfilter::loadActive(sqlDbInit);
+	TELNUMfilter::loadActive(sqlDbInit);
+	DOMAINfilter::loadActive(sqlDbInit);
+	SIP_HEADERfilter::loadActive(sqlDbInit);
 
 	_parse_packet_global_process_packet.setStdParse();
 
@@ -3480,17 +3486,21 @@ int main_init_read() {
 	}
 	
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
-		CountryDetectInit();
+		CountryDetectInit(sqlDbInit);
 		
 		if(opt_enable_fraud) {
-			initFraud();
+			initFraud(sqlDbInit);
 		}
 		
 		if(opt_enable_billing) {
-			initBilling();
+			initBilling(sqlDbInit);
 		}
 		
-		initSendCallInfo();
+		initSendCallInfo(sqlDbInit);
+	}
+	
+	if(sqlDbInit) {
+		delete sqlDbInit;
 	}
 	
 	if(opt_ipaccount) {

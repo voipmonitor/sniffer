@@ -1816,7 +1816,7 @@ class GroupsIP {
 public:
 	GroupsIP();
 	~GroupsIP();
-	void load();
+	void load(class SqlDb *sqlDb = NULL);
 	GroupIP *getGroup(uint ip);
 	GroupIP *getGroup(const char *ip) {
 		in_addr ips;

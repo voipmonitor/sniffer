@@ -6226,7 +6226,7 @@ void Ss7::init() {
 
 
 /* constructor */
-Calltable::Calltable() {
+Calltable::Calltable(SqlDb *sqlDb) {
 	/*
 	pthread_mutex_init(&qlock, NULL);
 	pthread_mutex_init(&qaudiolock, NULL);
@@ -6257,7 +6257,7 @@ Calltable::Calltable() {
 	audioQueueThreadsMax = min(max(2l, sysconf( _SC_NPROCESSORS_ONLN ) - 1), (long)opt_audioqueue_threads_max);
 	audioQueueTerminating = 0;
 	
-	cbInit();
+	cbInit(sqlDb);
 	
 	extern char pcapcommand[4092];
 	extern char filtercommand[4092];
@@ -7380,7 +7380,7 @@ int Calltable::cleanup_ss7( struct timeval *currtime ) {
 	return(0);
 }
 
-void Calltable::cbInit() {
+void Calltable::cbInit(SqlDb *sqlDb) {
 	cb_ua = new FILE_LINE(0) cSqlDbCodebook("cdr_ua", "id", "ua", 500000);
 	cb_sip_response = new FILE_LINE(0) cSqlDbCodebook("cdr_sip_response", "id", "lastSIPresponse");
 	cb_sip_request = new FILE_LINE(0) cSqlDbCodebook("cdr_sip_request", "id", "request");
@@ -7397,17 +7397,25 @@ void Calltable::cbInit() {
 		cb_reason_sip->setAutoLoadPeriod(6 * 3600);
 		cb_reason_q850->setAutoLoadPeriod(6 * 3600);
 		cb_contenttype->setAutoLoadPeriod(6 * 3600);
-		cbLoad();
+		cbLoad(sqlDb);
 	}
 }
 
-void Calltable::cbLoad() {
-	cb_ua->load();
-	cb_sip_response->load();
-	cb_sip_request->load();
-	cb_reason_sip->load();
-	cb_reason_q850->load();
-	cb_contenttype->load();
+void Calltable::cbLoad(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	cb_ua->load(sqlDb);
+	cb_sip_response->load(sqlDb);
+	cb_sip_request->load(sqlDb);
+	cb_reason_sip->load(sqlDb);
+	cb_reason_q850->load(sqlDb);
+	cb_contenttype->load(sqlDb);
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 }
 
 void Calltable::cbTerm() {
@@ -7823,7 +7831,7 @@ Call::is_sipcalled(unsigned int daddr, unsigned int dport, unsigned int saddr, u
 }
 
 
-CustomHeaders::CustomHeaders(eType type) {
+CustomHeaders::CustomHeaders(eType type, SqlDb *sqlDb) {
 	this->type = type;
 	switch(type) {
 	case cdr:
@@ -7854,7 +7862,7 @@ CustomHeaders::CustomHeaders(eType type) {
 	this->loadTime = 0;
 	this->lastTimeSaveUseInfo = 0;
 	this->_sync_custom_headers = 0;
-	this->load();
+	this->load(sqlDb);
 }
 
 void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
@@ -7867,16 +7875,16 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 		_createSqlObject = true;
 	}
 	bool existsConfigTable = false;
-	sqlDb->query("show tables like '" + this->configTable + "'");
-	if(sqlDb->fetchRow()) {
+	if(sqlDb->existsTable(this->configTable)) {
 		existsConfigTable = true;
-		sqlDb->query("show columns from " + this->configTable + " where Field='state'");
-		if(sqlDb->fetchRow()) {
+		if(sqlDb->existsColumn(this->configTable, "state")) {
 			sqlDb->query("SELECT * FROM " + this->configTable + " \
 				      where state is null or state='active'");
 			list<sCustomHeaderDataPlus> customHeaderData;
+			SqlDb_rows rows;
+			sqlDb->fetchRows(&rows);
 			SqlDb_row row;
-			while((row = sqlDb->fetchRow())) {
+			while((row = rows.fetchRow())) {
 				sCustomHeaderDataPlus ch_data;
 				string specialType = row["special_type"];
 				ch_data.specialType = specialType == "max_length_sip_data" ? max_length_sip_data :
@@ -7905,10 +7913,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 			for(list<sCustomHeaderDataPlus>::iterator iter = customHeaderData.begin(); iter != customHeaderData.end(); iter++) {
 				if(iter->type == "fixed") {
 					if(!this->fixedTable.empty()) {
-						if(_createSqlObject) {
-							sqlDb->query("show columns from " + this->fixedTable + " where Field='custom_header__" + iter->header + "'");
-						}
-						if(!_createSqlObject || sqlDb->fetchRow()) {
+						if(sqlDb->existsColumn(this->fixedTable, "custom_header__" + iter->header)) {
 							custom_headers[0][custom_headers[0].size()] = *iter;
 						}
 					}
@@ -8374,8 +8379,7 @@ void CustomHeaders::createColumnsForFixedHeaders(SqlDb *sqlDb) {
 		_createSqlObject = true;
 	}
 	for(unsigned i = 0; i < custom_headers[0].size(); i++) {
-		sqlDb->query("show columns from " + this->fixedTable + " where Field='custom_header__" + custom_headers[0][i].header + "'");
-		if(!sqlDb->fetchRow()) {
+		if(!sqlDb->existsColumn(this->fixedTable, "custom_header__" + custom_headers[0][i].header)) {
 			sqlDb->query(string("ALTER TABLE `") + this->fixedTable + "` ADD COLUMN `custom_header__" + custom_headers[0][i].header + "` VARCHAR(255);");
 		}
 	}
@@ -8506,10 +8510,10 @@ void NoHashMessageRule::clean_list_regexp() {
 	}
 }
 
-NoHashMessageRules::NoHashMessageRules() {
+NoHashMessageRules::NoHashMessageRules(SqlDb *sqlDb) {
 	loadTime = 0;
 	_sync_no_hash = 0;
-	load();
+	load(sqlDb);
 }
 
 NoHashMessageRules::~NoHashMessageRules() {
@@ -8530,7 +8534,7 @@ bool NoHashMessageRules::checkNoHash(Call *call) {
 	return(noHash);
 }
 
-void NoHashMessageRules::load(class SqlDb *sqlDb, bool lock) {
+void NoHashMessageRules::load(SqlDb *sqlDb, bool lock) {
 	if(lock) lock_no_hash();
 	clear(false);
 	bool _createSqlObject = false;
@@ -8538,14 +8542,15 @@ void NoHashMessageRules::load(class SqlDb *sqlDb, bool lock) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	sqlDb->query("show tables like 'message_no_hash_rules'");
-	if(sqlDb->fetchRow()) {
+	if(sqlDb->existsTable("message_no_hash_rules")) {
 		sqlDb->query("SELECT nhr.*, \
 				     ch.name as msg_custom_headers_name \
 			      FROM message_no_hash_rules nhr \
 			      JOIN message_custom_headers ch on (ch.id = nhr.msg_custom_headers_id)");
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
+		while((row = rows.fetchRow())) {
 			NoHashMessageRule *rule = new FILE_LINE(1015) NoHashMessageRule;
 			rule->load(row["name"].c_str(), 
 				   atoi(row["msg_custom_headers_id"].c_str()),

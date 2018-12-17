@@ -41,7 +41,7 @@ public:
 	};
 public:
 	SendCallInfoItem(unsigned int dbId);
-	bool load();
+	bool load(SqlDb *sqlDb = NULL);
 	void evSci(sSciInfo *sci);
 private:
 	unsigned int dbId;
@@ -87,11 +87,11 @@ friend void *_SendCallInfo_popCallInfoThread(void *arg);
 };
 
 
-void initSendCallInfo();
+void initSendCallInfo(SqlDb *sqlDb = NULL);
 void termSendCallInfo();
 void refreshSendCallInfo();
 void sendCallInfoEvCall(Call *call, sSciInfo::eTypeSci typeSci, struct timeval tv);
-bool isExistsSendCallInfo();
+bool isExistsSendCallInfo(SqlDb *sqlDb = NULL);
 
 
 #endif

@@ -333,6 +333,62 @@ void SqlDb_row::removeFieldsIfNotContainIn(map<string, int> *fields) {
 	}
 }
 
+void SqlDb_row::clearSqlDb() {
+	this->sqlDb = NULL;
+}
+
+
+SqlDb_rows::SqlDb_rows() {
+	iter_rows = NULL;
+}
+
+SqlDb_rows::~SqlDb_rows() {
+	if(iter_rows) {
+		delete iter_rows;
+	}
+}
+
+SqlDb_row& SqlDb_rows::fetchRow() {
+	static SqlDb_row row_empty;
+	if(!rows.size()) {
+		return(row_empty);
+	}
+	if(!iter_rows) {
+		iter_rows = new list<SqlDb_row>::iterator;
+		*iter_rows = rows.begin();
+	} else {
+		(*iter_rows)++;
+	}
+	if(*iter_rows == rows.end()) {
+		delete iter_rows;
+		iter_rows = NULL;
+	} else {
+		return(*(*iter_rows));
+	}
+	return(row_empty);
+}
+
+void SqlDb_rows::initFetch() {
+	if(iter_rows) {
+		delete iter_rows;
+	}
+}
+
+unsigned SqlDb_rows::countRow() {
+	return(rows.size());
+}
+
+SqlDb_rows::operator unsigned() {
+	return(rows.size());
+}
+
+void SqlDb_rows::clear() {
+	if(iter_rows) {
+		delete iter_rows;
+	}
+	rows.clear();
+}
+
 
 SqlDb::SqlDb() {
 	this->clearLastError();
@@ -350,6 +406,8 @@ SqlDb::SqlDb() {
 	this->maxAllowedPacket = 1024*1024*100;
 	this->lastError = 0;
 	this->remote_socket = NULL;
+	this->existsColumnCache_enable = false;
+	this->existsColumnCache_suspend = false;
 }
 
 SqlDb::~SqlDb() {
@@ -700,6 +758,16 @@ string SqlDb::prepareQuery(string query, bool nextPass) {
 	return(query);
 }
 
+unsigned SqlDb::fetchRows(SqlDb_rows *rows) {
+	rows->clear();
+	SqlDb_row row;
+	while((row = fetchRow())) {
+		row.clearSqlDb();
+		rows->rows.push_back(row);
+	}
+	return(*rows);
+}
+
 string SqlDb::getFieldsStr(list<SqlDb_field> *fields) {
 	string fieldsStr;
 	for(list<SqlDb_field>::iterator iter = fields->begin(); iter != fields->end(); iter++) {
@@ -871,6 +939,45 @@ int64_t SqlDb::getQueryRsltIntValue(string query, int indexRslt, int64_t failedR
 		}
 	}
 	return(failedResult);
+}
+
+void SqlDb::startExistsColumnCache() {
+	this->existsColumnCache.clear();
+	this->existsColumnCache_enable = true;
+	this->existsColumnCache_suspend = false;
+}
+
+void SqlDb::stopExistsColumnCache() {
+	this->existsColumnCache.clear();
+	this->existsColumnCache_enable = false;
+	this->existsColumnCache_suspend = false;
+}
+
+void SqlDb::suspendExistsColumnCache() {
+	if(this->existsColumnCache_enable) {
+		this->existsColumnCache_suspend = true;
+	}
+}
+
+void SqlDb::resumeExistsColumnCache() {
+	this->existsColumnCache_suspend = false;
+}
+
+bool SqlDb::isEnableExistColumnCache() {
+	return(this->existsColumnCache_enable &&
+	       !this->existsColumnCache_suspend);
+}
+
+int SqlDb::existsColumnInCache(const char *table, const char *column) {
+	map<string, list<string> >::iterator iter = this->existsColumnCache.find(table);
+	if(iter != this->existsColumnCache.end()) {
+		return(find(iter->second.begin(), iter->second.end(), column) != iter->second.end());
+	}
+	return(-1);
+}
+
+void SqlDb::addColumnToCache(const char *table, const char *column) {
+	this->existsColumnCache[table].push_back(column);
 }
 
 int SqlDb::getPartitions(const char *table, vector<string> *partitions, bool useCache) {
@@ -1405,6 +1512,13 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 			this->connect();
 		}
 		if(this->connected()) {
+			/*
+			static unsigned q_counter;
+			cout << "*** q " << (++q_counter) << " : " << preparedQuery << endl;
+			int rslt_mysql_query = mysql_query(this->hMysqlConn, preparedQuery.c_str());
+			//usleep(50000);
+			if(rslt_mysql_query) {
+			*/
 			if(mysql_query(this->hMysqlConn, preparedQuery.c_str())) {
 				if(verbosity > 1) {
 					syslog(LOG_NOTICE, "query error - query: %s", prepareQueryForPrintf(preparedQuery).c_str());
@@ -1485,13 +1599,13 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 	return(rslt);
 }
 
-SqlDb_row SqlDb_mysql::fetchRow(bool assoc) {
+SqlDb_row SqlDb_mysql::fetchRow() {
 	SqlDb_row row(this);
 	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		if(response_data_index < response_data_rows &&
 		   response_data_index < response_data.size()) {
 			for(size_t i = 0; i < min(response_data[response_data_index].size(), response_data_columns.size()); i++) {
-				row.add(response_data[response_data_index][i].str, assoc ? response_data_columns[i] : "", response_data[response_data_index][i].null);
+				row.add(response_data[response_data_index][i].str, response_data_columns[i], response_data[response_data_index][i].null);
 			}
 			++response_data_index;
 		}
@@ -1512,7 +1626,7 @@ SqlDb_row SqlDb_mysql::fetchRow(bool assoc) {
 			if(mysqlRow) {
 				unsigned int numFields = mysql_num_fields(this->hMysqlRes);
 				for(unsigned int i = 0; i < numFields; i++) {
-					row.add(mysqlRow[i], assoc ? this->fields[i] : "");
+					row.add(mysqlRow[i], this->fields[i]);
 				}
 			} else {
 				this->checkLastError("fetch row error", true);
@@ -1626,13 +1740,30 @@ bool SqlDb_mysql::existsDatabase() {
 }
 
 bool SqlDb_mysql::existsColumn(const char *table, const char *column) {
-	this->query(string("show columns from ") + escapeTableName(table) + 
-		    " where Field='" + column + "'");
-	int countRow = 0;
-	while(this->fetchRow()) {
-		++countRow;
+	if(isEnableExistColumnCache()) {
+		int exists = this->existsColumnInCache(table, column);
+		if(exists < 0) {
+			this->query(string("show columns from ") + escapeTableName(table));
+			SqlDb_row cdr_struct_row;
+			while((cdr_struct_row = this->fetchRow())) {
+				this->addColumnToCache(table, cdr_struct_row["field"].c_str());
+				if(cdr_struct_row["field"] == column) {
+					exists = true;
+				}
+			}
+			return(exists > 0);
+		} else {
+			return(exists);
+		}
+	} else {
+		this->query(string("show columns from ") + escapeTableName(table) + 
+			    " where Field='" + column + "'");
+		int countRow = 0;
+		while(this->fetchRow()) {
+			++countRow;
+		}
+		return(countRow > 0);
 	}
-	return(countRow > 0);
 }
 
 string SqlDb_mysql::getTypeColumn(const char *table, const char *column, bool toLower) {
@@ -2020,7 +2151,7 @@ bool SqlDb_odbc::query(string query, bool /*callFromStoreProcessWithFixDeadlock*
 	return(this->okRslt(rslt) || rslt == SQL_NO_DATA);
 }
 
-SqlDb_row SqlDb_odbc::fetchRow(bool assoc) {
+SqlDb_row SqlDb_odbc::fetchRow() {
 	SqlDb_row row(this);
 	if(this->hConnection && this->hStatement) {
 		if(!this->bindBuffer.size()) {
@@ -2030,8 +2161,7 @@ SqlDb_row SqlDb_odbc::fetchRow(bool assoc) {
 		if(this->okRslt(rslt) || rslt == SQL_NO_DATA) {
 			if(rslt != SQL_NO_DATA) {
 				for(unsigned int i = 0; i < this->bindBuffer.size(); i++) {
-					row.add(this->bindBuffer.getColBuffer(i),
-						assoc ? this->bindBuffer[i]->fieldName : "");
+					row.add(this->bindBuffer.getColBuffer(i), this->bindBuffer[i]->fieldName);
 				}
 			}
 		} else {
@@ -3941,8 +4071,7 @@ bool SqlDb_mysql::createSchema(int connectId) {
 
 	bool existsCdrTable = false;
 	if(connectId == 0) {
-		this->query("show tables like 'cdr'");
-		existsCdrTable = this->fetchRow();
+		existsCdrTable = this->existsTable("cdr");
 	}
 
 	unsigned sniffer_version_num = 0;
@@ -4013,8 +4142,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	string partDayName = this->getPartDayName(limitDay);
 	
 	bool okTableSensorConfig = false;
-	this->query("show tables like 'filter_ip'");
-	if(this->fetchRow()) {
+	if(this->existsTable("filter_ip")) {
 		if(this->query("select * from filter_ip")) {
 			okTableSensorConfig = true;
 		} else {
@@ -4173,8 +4301,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 					       opt_database_backup_from_mysql_password,
 					       opt_database_backup_from_mysql_database,
 					       opt_database_backup_from_mysql_port);
-		sqlDbSrc->query("show columns from cdr where Field='price_customer_mult1000000'");
-		if(sqlDbSrc->fetchRow()) {
+		if(sqlDbSrc->existsColumn("cdr", "price_customer_mult1000000")) {
 			existsExtPrecisionBilling = true;
 		}
 	} else {
@@ -5359,8 +5486,7 @@ bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 	string partDayName = this->getPartDayName(limitDay);
 
 	bool okTableHttpJj = false;
-	this->query("show tables like 'http_jj'");
-	if(this->fetchRow()) {
+	if(this->existsTable("http_jj")) {
 		if(this->query("select * from http_jj limit 1")) {
 			okTableHttpJj = true;
 		} else {
@@ -5461,8 +5587,7 @@ bool SqlDb_mysql::createSchema_table_webrtc(int connectId) {
 	string partDayName = this->getPartDayName(limitDay);
 
 	bool okTableWebrtc = false;
-	this->query("show tables like 'webrtc'");
-	if(this->fetchRow()) {
+	if(this->existsTable("webrtc")) {
 		if(this->query("select * from webrtc limit 1")) {
 			okTableWebrtc = true;
 		} else {
@@ -5627,8 +5752,7 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 	
 	//17
 	if(opt_enable_fraud) {
-		this->query("show tables like 'fraud_alert_info'");
-		if(this->fetchRow()) {
+		if(this->existsTable("fraud_alert_info")) {
 			outStrAlter << "ALTER TABLE fraud_alert_info\
 					ADD `id_sensor` smallint unsigned;" << endl;
 		}
@@ -6201,8 +6325,7 @@ void SqlDb_mysql::checkDbMode() {
 
 void SqlDb_mysql::createTable(const char *tableName) {
 	if(!strcmp(tableName, "fraud_alert_info")) {
-		this->query("show tables like 'alerts'");
-		if(this->fetchRow()) {
+		if(this->existsTable("alerts")) {
 			this->query(
 			"CREATE TABLE IF NOT EXISTS `fraud_alert_info` (\
 					`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\
@@ -6241,6 +6364,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 	}
 	
 	sql_disable_next_attempt_if_error = 1;
+	startExistsColumnCache();
 	
 	existsColumns.cdr_next_calldate = this->existsColumn("cdr_next", "calldate");
 	existsColumns.cdr_rtp_calldate = this->existsColumn("cdr_rtp", "calldate");
@@ -6273,6 +6397,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 	}
 	
 	sql_disable_next_attempt_if_error = 0;
+	stopExistsColumnCache();
 }
 
 void SqlDb_mysql::updateSensorState() {
@@ -6834,7 +6959,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 			unsigned int counterInsert = 0;
 			extern int opt_database_backup_insert_threads;
 			unsigned int insertThreads = opt_database_backup_insert_threads > 1 ? opt_database_backup_insert_threads : 1;
-			while(!is_terminating() && (row = sqlDbSrc->fetchRow(true))) {
+			while(!is_terminating() && (row = sqlDbSrc->fetchRow())) {
 				row.removeFieldsIfNotContainIn(&columnsDest);
 				if(!descDir) {
 					useMaxIdInSrc = atoll(row["id"].c_str());
@@ -6942,12 +7067,10 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 	bool existsCalldateInSlaveTableSrc = false;
 	bool existsCalldateInSlaveTableDst = false;
 	if(slaveCalldateColumn) {
-		sqlDbSrc->query(string("show columns from ") + slaveTableName + " where Field='" + slaveCalldateColumn + "'");
-		if(sqlDbSrc->fetchRow()) {
+		if(sqlDbSrc->existsColumn(slaveTableName, slaveCalldateColumn)) {
 			existsCalldateInSlaveTableSrc = true;
 		}
-		this->query(string("show columns from ") + slaveTableName + " where Field='" + slaveCalldateColumn + "'");
-		if(this->fetchRow()) {
+		if(this->existsColumn(slaveTableName, slaveCalldateColumn)) {
 			existsCalldateInSlaveTableDst = true;
 		}
 	}
@@ -7006,7 +7129,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 		extern int opt_database_backup_insert_threads;
 		unsigned int insertThreads = opt_database_backup_insert_threads > 1 ? opt_database_backup_insert_threads : 1;
 		unsigned long counterRows = 0;
-		while(!is_terminating() && (row = sqlDbSrc->fetchRow(true))) {
+		while(!is_terminating() && (row = sqlDbSrc->fetchRow())) {
 			++counterRows;
 			row.removeFieldsIfNotContainIn(&columnsDest);
 			u_int64_t readMasterId = atoll(row[slaveIdToMasterColumn].c_str());
@@ -7258,15 +7381,19 @@ void createMysqlPartitionsLogSensor() {
 	createMysqlPartitionsTable("log_sensor", opt_log_sensor_partition_oldver);
 }
 
-void createMysqlPartitionsBillingAgregation() {
+void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
 	cBillingAgregationSettings agregSettingsInst;
-	agregSettingsInst.load();
+	agregSettingsInst.load(sqlDb);
 	sBillingAgregationSettings agregSettings = agregSettingsInst.getAgregSettings();
 	if(!agregSettings.enable_by_ip &&
 	   !agregSettings.enable_by_number) {
 		return;
 	}
-	SqlDb *sqlDb = createSqlObject();
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	syslog(LOG_NOTICE, "%s", "create billing partitions - begin");
 	vector<cBilling::sAgregationTypePart> typeParts = cBilling::getAgregTypeParts(&agregSettings);
 	bool tablesExists = true;
@@ -7316,7 +7443,9 @@ void createMysqlPartitionsBillingAgregation() {
 		}
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	syslog(LOG_NOTICE, "%s", "create billing partitions - end");
 }
 
@@ -7550,8 +7679,7 @@ void checkMysqlIdCdrChildTables() {
 	}
 	vector<string> cdrTables = sqlDbMysql->getSourceTables(SqlDb_mysql::tt_main | SqlDb_mysql::tt_child, SqlDb_mysql::tt2_cdr);
 	for(size_t i = 0; i < cdrTables.size(); i++) {
-		sqlDb->query("show tables like '" + cdrTables[i] + "'");
-		if(!sqlDb->fetchRow()) {
+		if(!sqlDb->existsTable(cdrTables[i])) {
 			continue;
 		}
 		// check id is bigint
@@ -7588,8 +7716,7 @@ void checkMysqlIdCdrChildTables() {
 			continue;
 		}
 		// check if exists calldate
-		sqlDb->query("show columns from " + cdrTables[i] + " like 'calldate'");
-		if(!sqlDb->fetchRow()) {
+		if(!sqlDb->existsColumn(cdrTables[i], "calldate")) {
 			continue;
 		}
 		// check min id
@@ -7654,8 +7781,7 @@ bool _checkMysqlIdCdrChildTables_setAutoIncrement(string table, u_int64_t autoIn
 
 bool _checkMysqlIdCdrChildTables_setAutoIncrement_v2(string table, u_int64_t autoIncrement, SqlDb *sqlDb) {
 	string lockName = table + "_auto_increment_lock";
-	sqlDb->query("show tables like '" + table + "_auto_increment'");
-	if(!sqlDb->fetchRow()) {
+	if(!sqlDb->existsTable(table + "_auto_increment")) {
 		return(sqlDb->query("CREATE TABLE `" + table + "_auto_increment` (`auto_increment` BIGINT UNSIGNED NULL) ENGINE=InnoDB") &&
 		       sqlDb->query("INSERT INTO `" + table + "_auto_increment` (`auto_increment`) VALUES (" + intToString(autoIncrement) + ");") &&
 		       sqlDb->query("DROP TRIGGER IF EXISTS " + table + "_auto_increment_tr") &&
@@ -7917,9 +8043,9 @@ unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool 
 	return(rslt);
 }
 
-void cSqlDbCodebook::load() {
+void cSqlDbCodebook::load(SqlDb *sqlDb) {
 	if(lock_load(1000000)) {
-		_load(&data, &data_overflow);
+		_load(&data, &data_overflow, sqlDb);
 		unlock_load();
 	}
 }
@@ -7932,23 +8058,31 @@ void cSqlDbCodebook::loadInBackground() {
 	}
 }
 
-void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow) {
+void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *sqlDb) {
 	lastBeginLoadTime = getTimeS();
 	data->clear();
-	SqlDb *sqlDb = createSqlObject();
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	sqlDb->setMaxQueryPass(2);
 	if(sqlDb->rowsInTable(table) > this->limitTableRows) {
 		*overflow = true;
 	} else {
 		if(sqlDb->select(table, NULL, &cond)) {
+			SqlDb_rows rows;
+			sqlDb->fetchRows(&rows);
 			SqlDb_row row;
-			while((row = sqlDb->fetchRow())) {
+			while((row = rows.fetchRow())) {
 				(*data)[row[columnStringValue]] = atol(row[columnId].c_str());
 			}
 		}
 		*overflow = false;
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	lastEndLoadTime = getTimeS();
 }
 

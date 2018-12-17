@@ -23,8 +23,12 @@ SendCallInfoItem::SendCallInfoItem(unsigned int dbId) {
 	requestType = rt_get;
 }
 
-bool SendCallInfoItem::load() {
-	SqlDb *sqlDb = createSqlObject();
+bool SendCallInfoItem::load(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
 	char dbIdStr[10];
 	snprintf(dbIdStr, sizeof(dbIdStr), "%u", dbId);
 	sqlDb->query(string(
@@ -65,9 +69,12 @@ bool SendCallInfoItem::load() {
 		 where id = ") + dbIdStr);
 	dbRow = sqlDb->fetchRow();
 	if(!dbRow) {
-		delete sqlDb;
+		if(_createSqlObject) {
+			delete sqlDb;
+		}
 		return(false);
 	}
+	dbRow.clearSqlDb();
 	name = dbRow["descr"].empty() ? dbRow["name"] : dbRow["descr"];
 	infoOn = dbRow["info_on"] == "183/180" ? infoOn_183_180 :
 		 dbRow["info_on"] == "200" ? infoOn_200 : 
@@ -92,7 +99,9 @@ bool SendCallInfoItem::load() {
 	ipCalledFilter.addWhite(dbRow["whitelist_ip_called_group"].c_str());
 	ipCalledFilter.addBlack(dbRow["blacklist_ip_called"].c_str());
 	ipCalledFilter.addBlack(dbRow["blacklist_ip_called_group"].c_str());
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	return(true);
 }
 
@@ -153,8 +162,10 @@ void SendCallInfo::load(bool lock) {
 	if(lock) this->lock();
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->query("select id, name from send_call_info");
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
-	while((row = sqlDb->fetchRow())) {
+	while((row = rows.fetchRow())) {
 		if(sverb.send_call_info) {
 			syslog(LOG_NOTICE, "load send_call_info %s", row["name"].c_str());
 		}
@@ -237,8 +248,8 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, Call *call,
 }
 
 
-void initSendCallInfo() {
-	if(!isExistsSendCallInfo()) {
+void initSendCallInfo(SqlDb *sqlDb) {
+	if(!isExistsSendCallInfo(sqlDb)) {
 		return;
 	}
 	if(sendCallInfo) {
@@ -246,7 +257,7 @@ void initSendCallInfo() {
 	}
 	sendCallInfo_lock();
 	sendCallInfo = new FILE_LINE(25002) SendCallInfo();
-	sendCallInfo->load();
+	sendCallInfo->load(sqlDb);
 	sendCallInfo_unlock();
 	_sendCallInfo_ready = 1;
 }
@@ -284,17 +295,22 @@ void sendCallInfoEvCall(Call *call, sSciInfo::eTypeSci typeSci, struct timeval t
 	}
 }
 
-bool isExistsSendCallInfo() {
+bool isExistsSendCallInfo(SqlDb *sqlDb) {
 	if(opt_nocdr) {
 		return(false);
 	}
 	bool rslt = false;
-	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("show tables like 'send_call_info'");
-	if(sqlDb->fetchRow()) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	if(sqlDb->existsTable("send_call_info")) {
 		sqlDb->query("select * from send_call_info limit 1");
 		rslt = sqlDb->fetchRow();
 	}
-	delete sqlDb;
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 	return(rslt);
 }

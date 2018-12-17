@@ -29,7 +29,7 @@ enum eBillingHolidayType {
 class cBillingAssignment {
 public:
 	cBillingAssignment(eBilingTypeAssignment typeAssignment);
-	void load(SqlDb_row *row);
+	void load(SqlDb_row *row, SqlDb *sqlDb = NULL);
 	bool isSensorOk(SqlDb *sqlDb = NULL);
 	void loadCond(SqlDb *sqlDb = NULL);
 	bool checkIP(u_int32_t ip);
@@ -273,7 +273,7 @@ public:
 public:
 	cBilling();
 	~cBilling();
-	void load();
+	void load(SqlDb *sqlDb = NULL);
 	bool billing(time_t time, unsigned duration,
 		     u_int32_t ip_src, u_int32_t ip_dst,
 		     const char *number_src, const char *number_dst,
@@ -311,7 +311,7 @@ private:
 };
 
 
-void initBilling();
+void initBilling(SqlDb *sqlDb);
 void termBilling();
 void refreshBilling();
 

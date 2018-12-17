@@ -2042,8 +2042,10 @@ void cConfig::putToMysql() {
 	SqlDb *sqlDb = createSqlObject();
 	list<string> sensor_config_columns;
 	sqlDb->query("show columns from sensor_config");
+	SqlDb_rows rows;
+	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
-	while((row = sqlDb->fetchRow())) {
+	while((row = rows.fetchRow())) {
 		sensor_config_columns.push_back(row[0]);
 	}
 	ostringstream q;
