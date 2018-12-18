@@ -1,3 +1,8 @@
+23.3.1 18.12.2018
+=================
+- fix mysql connection broken in 22.3
+
+
 23.3 18.12.2018
 ===============
 - add the 'tel:' string into allowed prefixes in the From, To headers [VS-864]
