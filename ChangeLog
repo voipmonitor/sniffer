@@ -1,3 +1,9 @@
+23.3 18.12.2018
+===============
+- add the 'tel:' string into allowed prefixes in the From, To headers [VS-864]
+- significantly speed up sniffer start on slow MySQL TCP connections (lower number of mysql queries) [VS-867]
+
+
 23.2 05.12.2018
 ===============
 - add cdr flag for zero SSRC detection [VS-844]
