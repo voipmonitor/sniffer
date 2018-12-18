@@ -350,10 +350,10 @@ SqlDb_rows::~SqlDb_rows() {
 
 SqlDb_row& SqlDb_rows::fetchRow() {
 	static SqlDb_row row_empty;
-	if(!rows.size()) {
-		return(row_empty);
-	}
 	if(!iter_rows) {
+		if(!rows.size()) {
+			return(row_empty);
+		}
 		iter_rows = new list<SqlDb_row>::iterator;
 		*iter_rows = rows.begin();
 	} else {
