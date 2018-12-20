@@ -2010,6 +2010,9 @@ public:
 		string regularExpression;
 		bool screenPopupField;
 		eReqRespDirection reqRespDirection;
+		int firstOccurrence;
+		int cseqMethod;
+		int sipResponseCode;
 	};
 	struct sCustomHeaderDataPlus : public sCustomHeaderData {
 		string type;
@@ -2023,8 +2026,8 @@ public:
 	void clear(bool lock = true);
 	void refresh(SqlDb *sqlDb = NULL, bool enableCreatePartitions = true);
 	void addToStdParse(ParsePacket *parsePacket);
-	void parse(Call *call, int type, tCH_Content *ch_content, char *data, int datalen, ParsePacket::ppContentsX *parseContents, eReqRespDirection reqRespDirection = dir_na);
-	void setCustomHeaderContent(Call *call, int type, tCH_Content *ch_content, int pos1, int pos2, dstring *content, bool useLastValue = false);
+	void parse(Call *call, int type, tCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection = dir_na);
+	void setCustomHeaderContent(Call *call, int type, tCH_Content *ch_content, int pos1, int pos2, dstring *content, bool useLastValue = false, bool useFirstValue = false);
 	void prepareSaveRows(Call *call, int type, tCH_Content *ch_content, unsigned time_s, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
 	string getScreenPopupFieldsString(Call *call, int type);
 	string getDeleteQuery(const char *id, const char *prefix, const char *suffix);

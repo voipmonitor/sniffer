@@ -288,7 +288,7 @@ void cSipMsgRequestResponse::destroy(cSipMsgRelations *relations) {
 
 void cSipMsgRequestResponse::parseCustomHeaders(packet_s_process *packetS, CustomHeaders::eReqRespDirection reqRespDirection) {
 	if(custom_headers_sip_msg) {
-		custom_headers_sip_msg->parse(NULL, 0, &custom_headers_content, packetS->data + packetS->sipDataOffset , packetS->sipDataLen, &packetS->parseContents, reqRespDirection);
+		custom_headers_sip_msg->parse(NULL, 0, &custom_headers_content, packetS, reqRespDirection);
 	}
 }
 

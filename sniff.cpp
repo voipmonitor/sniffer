@@ -4589,10 +4589,10 @@ void process_packet_other(packet_s_stack *packetS) {
 
 inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS) {
 	if(call->typeIs(INVITE) && custom_headers_cdr) {
-		custom_headers_cdr->parse(call, INVITE, NULL, packetS->data + packetS->sipDataOffset , packetS->sipDataLen, &packetS->parseContents);
+		custom_headers_cdr->parse(call, INVITE, NULL, packetS);
 	}
 	if(call->typeIs(MESSAGE) && custom_headers_message) {
-		custom_headers_message->parse(call, MESSAGE, NULL, packetS->data + packetS->sipDataOffset , packetS->sipDataLen, &packetS->parseContents);
+		custom_headers_message->parse(call, MESSAGE, NULL, packetS);
 	}
 }
 
