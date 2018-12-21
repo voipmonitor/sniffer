@@ -2456,6 +2456,16 @@ std::vector<std::string> split(const char *s, std::vector<std::string> delim, bo
 	return(elems);
 }
 
+std::vector<int> split2int(const std::string &s, char delim) {
+    std::vector<std::string> tmpelems;
+    split(s, delim, tmpelems);
+    std::vector<int> elems;
+    for (uint i = 0; i < tmpelems.size(); i++) {
+	elems.push_back(atoi(tmpelems.at(i).c_str()));
+    }
+    return elems;
+}
+
 std::string string_size(const char *s, unsigned size) {
 	std::string str(s);
 	if(str.length() > size) {

@@ -7906,9 +7906,9 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				} else {
 					ch_data.reqRespDirection = dir_na;
 				}
-				ch_data.firstOccurrence = atoi(row["first_occurrence"].c_str());
-				ch_data.cseqMethod = atoi(row["cseq_method"].c_str());
-				ch_data.sipResponseCode = atoi(row["sip_response_code"].c_str());
+				ch_data.selectOccurrence = atoi(row["select_occurrence"].c_str());
+				ch_data.cseqMethod = split2int(row["cseq_method"], ',');
+				ch_data.sipResponseCode = split2int(row["sip_response_code"], ',');
 				ch_data.dynamic_table = atoi(row["dynamic_table"].c_str());
 				ch_data.dynamic_column = atoi(row["dynamic_column"].c_str());
 				customHeaderData.push_back(ch_data);
@@ -8014,7 +8014,6 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 	char *data = packetS->data + packetS->sipDataOffset;
 	int datalen = packetS->sipDataLen;
 	ParsePacket::ppContentsX *parseContents = &packetS->parseContents;
-	int currentSIPresponseNum = packetS->lastSIPresponseNum;
 
 	lock_custom_headers();
 	unsigned long gettagLimitLen = 0;
@@ -8073,10 +8072,12 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 				   !(reqRespDirection & iter2->second.reqRespDirection)) {
 					continue;
 				}
-				if (iter2->second.sipResponseCode && currentSIPresponseNum != iter2->second.sipResponseCode) {
+				if (!iter2->second.sipResponseCode.empty() &&
+				    std::find(iter2->second.sipResponseCode.begin(), iter2->second.sipResponseCode.end(), packetS->lastSIPresponseNum) == iter2->second.sipResponseCode.end()){
 					continue;
 				}
-				if (iter2->second.cseqMethod && packetS->cseq.method != iter2->second.cseqMethod) {
+				if (!iter2->second.cseqMethod.empty() &&
+				    std::find(iter2->second.cseqMethod.begin(), iter2->second.cseqMethod.end(), packetS->cseq.method) == iter2->second.cseqMethod.end()) {
 					continue;
 				}
 				string findHeader = iter2->second.header;
@@ -8109,18 +8110,25 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 								continue;
 							}
 						}
-						bool firstOccurrence = (bool) iter2->second.firstOccurrence;
+						bool lastOccurrence = true;
+						if (iter2->second.selectOccurrence) {
+							if (iter2->second.selectOccurrence == 1) {
+								lastOccurrence = false;
+							}
+						} else {
+							lastOccurrence = (bool) opt_custom_headers_last_value;
+						}
 						if(!iter2->second.regularExpression.empty()) {
 							string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
 							if(customHeader.empty()) {
 								continue;
 							} else {
 								dstring content(iter2->second.header, customHeader);
-								this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, false, firstOccurrence);
+								this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, lastOccurrence);
 							}
 						} else {
 							dstring content(iter2->second.header, customHeaderBegin);
-							this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, false, firstOccurrence);
+							this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, lastOccurrence);
 						}
 					}
 				}
@@ -8130,7 +8138,7 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 	unlock_custom_headers();
 }
 
-void CustomHeaders::setCustomHeaderContent(Call *call, int type, tCH_Content *ch_content, int pos1, int pos2, dstring *content, bool useLastValue, bool useFirstValue) {
+void CustomHeaders::setCustomHeaderContent(Call *call, int type, tCH_Content *ch_content, int pos1, int pos2, dstring *content, bool useLastValue) {
 	if(!ch_content) {
 		if(call) {
 			ch_content = getCustomHeadersCallContent(call, type);
@@ -8140,7 +8148,7 @@ void CustomHeaders::setCustomHeaderContent(Call *call, int type, tCH_Content *ch
 		}
 	}
 	bool exists = false;
-	if(!opt_custom_headers_last_value && !useLastValue || useFirstValue) {
+	if(!useLastValue) {
 		tCH_Content::iterator iter = ch_content->find(pos1);
 		if(iter != ch_content->end()) {
 			map<int, dstring>::iterator iter2 = iter->second.find(pos2);
@@ -8149,7 +8157,7 @@ void CustomHeaders::setCustomHeaderContent(Call *call, int type, tCH_Content *ch
 			}
 		}
 	}
-	if(!exists || (opt_custom_headers_last_value || useLastValue) && !useFirstValue) {
+	if(!exists || useLastValue) {
 		(*ch_content)[pos1][pos2] = *content;
 	}
 }

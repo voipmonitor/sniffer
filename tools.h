@@ -529,6 +529,7 @@ std::vector<std::string> &split(const std::string &s, char delim, std::vector<st
 std::vector<std::string> split(const std::string &s, char delim);
 std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false, bool useEmptyItems = false);
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false, bool useEmptyItems = false);
+std::vector<int> split2int(const std::string &s, char delim);
 std::string string_size(const char *s, unsigned size);
 bool string_is_alphanumeric(const char *s);
 
