@@ -7906,7 +7906,16 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				} else {
 					ch_data.reqRespDirection = dir_na;
 				}
-				ch_data.selectOccurrence = atoi(row["select_occurrence"].c_str());
+				int tmpOcc = atoi(row["select_occurrence"].c_str());
+				if (tmpOcc) {
+					if (tmpOcc == 1) {
+						ch_data.selectOccurrence = false;
+					} else {
+						ch_data.selectOccurrence = true;
+					}
+				} else {
+					ch_data.selectOccurrence = (bool) opt_custom_headers_last_value;
+				}
 				ch_data.cseqMethod = split2int(row["cseq_method"], ',');
 				ch_data.sipResponseCode = split2int(row["sip_response_code"], ',');
 				ch_data.dynamic_table = atoi(row["dynamic_table"].c_str());
@@ -8110,25 +8119,17 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 								continue;
 							}
 						}
-						bool lastOccurrence = true;
-						if (iter2->second.selectOccurrence) {
-							if (iter2->second.selectOccurrence == 1) {
-								lastOccurrence = false;
-							}
-						} else {
-							lastOccurrence = (bool) opt_custom_headers_last_value;
-						}
 						if(!iter2->second.regularExpression.empty()) {
 							string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
 							if(customHeader.empty()) {
 								continue;
 							} else {
 								dstring content(iter2->second.header, customHeader);
-								this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, lastOccurrence);
+								this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.selectOccurrence);
 							}
 						} else {
 							dstring content(iter2->second.header, customHeaderBegin);
-							this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, lastOccurrence);
+							this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.selectOccurrence);
 						}
 					}
 				}

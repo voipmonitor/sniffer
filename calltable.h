@@ -2010,7 +2010,7 @@ public:
 		string regularExpression;
 		bool screenPopupField;
 		eReqRespDirection reqRespDirection;
-		int selectOccurrence;
+		bool selectOccurrence;
 		std::vector<int> cseqMethod;
 		std::vector<int> sipResponseCode;
 	};
