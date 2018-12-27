@@ -71,6 +71,8 @@ extern MySqlStore *sqlStore;
 extern int opt_id_sensor;
 extern bool opt_saveaudio_answeronly;
 extern bool opt_saveaudio_big_jitter_resync_threshold;
+extern int opt_mysql_enable_multiple_rows_insert;
+extern int opt_mysql_max_multiple_rows_insert;
 
 RTPstat rtp_stat;
 
@@ -2648,26 +2650,34 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap, bool needLock) {
 			sqlDbSaveCall->setEnableSqlStringInContent(true);
 		}
 
+		vector<SqlDb_row> rtp_stat_rows;
 		for(it = cmap->begin(); it != cmap->end(); it++) {
 			node_t *node = &it->second;
-			SqlDb_row cdr_stat;
+			SqlDb_row rtp_stat;
 			// create queries 
-			cdr_stat.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor");
-			cdr_stat.add(sqlDateTimeString(node->time), "time");
-			cdr_stat.add(sqlDateTimeString(node->time), "time");
-			cdr_stat.add(htonl(it->first), "saddr");
-			cdr_stat.add(node->mosf1_min, "mosf1_min");
-			cdr_stat.add((int)(node->mosf1_avg), "mosf1_avg");
-			cdr_stat.add(node->mosf2_min, "mosf2_min");
-			cdr_stat.add((int)(node->mosf2_avg), "mosf2_avg");
-			cdr_stat.add(node->mosAD_min, "mosAD_min");
-			cdr_stat.add((int)(node->mosAD_avg), "mosAD_avg");
-			cdr_stat.add(node->jitter_max, "jitter_max");
-			cdr_stat.add((int)(node->jitter_avg), "jitter_avg");
-			cdr_stat.add((int)round(node->loss_max * 10), "loss_max_mult10");
-			cdr_stat.add((int)round(node->loss_avg * 10), "loss_avg_mult10");
-			cdr_stat.add(node->counter, "counter");
-			query_str += sqlDbSaveCall->insertQuery("rtp_stat", cdr_stat, false, false, true) + ";";
+			rtp_stat.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor");
+			rtp_stat.add(sqlDateTimeString(node->time), "time");
+			rtp_stat.add(sqlDateTimeString(node->time), "time");
+			rtp_stat.add(htonl(it->first), "saddr");
+			rtp_stat.add(node->mosf1_min, "mosf1_min");
+			rtp_stat.add((int)(node->mosf1_avg), "mosf1_avg");
+			rtp_stat.add(node->mosf2_min, "mosf2_min");
+			rtp_stat.add((int)(node->mosf2_avg), "mosf2_avg");
+			rtp_stat.add(node->mosAD_min, "mosAD_min");
+			rtp_stat.add((int)(node->mosAD_avg), "mosAD_avg");
+			rtp_stat.add(node->jitter_max, "jitter_max");
+			rtp_stat.add((int)(node->jitter_avg), "jitter_avg");
+			rtp_stat.add((int)round(node->loss_max * 10), "loss_max_mult10");
+			rtp_stat.add((int)round(node->loss_avg * 10), "loss_avg_mult10");
+			rtp_stat.add(node->counter, "counter");
+			if(opt_mysql_enable_multiple_rows_insert) {
+				rtp_stat_rows.push_back(rtp_stat);
+			} else {
+				query_str += sqlDbSaveCall->insertQuery("rtp_stat", rtp_stat, false, false, true) + ";";
+			}
+		}
+		if(opt_mysql_enable_multiple_rows_insert && rtp_stat_rows.size()) {
+			query_str += sqlDbSaveCall->insertQueryWithLimitMultiInsert("rtp_stat", &rtp_stat_rows, opt_mysql_max_multiple_rows_insert, NULL, false, false, true) + ";";
 		}
 	}
 

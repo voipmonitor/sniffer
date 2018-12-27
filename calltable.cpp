@@ -161,6 +161,8 @@ extern int opt_rtpfromsdp_onlysip;
 extern int opt_rtpfromsdp_onlysip_skinny;
 extern int opt_rtp_check_both_sides_by_sdp;
 extern int opt_hash_modify_queue_length_ms;
+extern int opt_mysql_enable_multiple_rows_insert;
+extern int opt_mysql_max_multiple_rows_insert;
 
 volatile int calls_counter = 0;
 /* probably not used any more */
@@ -3621,6 +3623,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	string query_str_cdrproxy;
 	if(opt_cdrproxy) {
+		vector<SqlDb_row> cdrproxy_rows;
 		set<unsigned int> proxies_undup;
 		this->proxies_undup(&proxies_undup);
 		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
@@ -3630,8 +3633,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdrproxy.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 			cdrproxy.add(htonl(*iter_undup), "dst");
-			query_str_cdrproxy += sqlDbSaveCall->insertQuery("cdr_proxy", cdrproxy) + ";\n";
+			if(opt_mysql_enable_multiple_rows_insert) {
+				cdrproxy_rows.push_back(cdrproxy);
+			} else {
+				query_str_cdrproxy += sqlDbSaveCall->insertQuery("cdr_proxy", cdrproxy) + ";\n";
+			}
 			++iter_undup;
+		}
+		if(opt_mysql_enable_multiple_rows_insert && cdrproxy_rows.size()) {
+			query_str_cdrproxy += sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_proxy", &cdrproxy_rows, opt_mysql_max_multiple_rows_insert) + ";\n";
 		}
 	}
 
@@ -4485,6 +4495,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		query_str += query_str_cdrproxy;
 
+		vector<SqlDb_row> rtp_rows;
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 			// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
 			if(rtp[i] and (rtp[i]->s->received or !existsColumns.cdr_rtp_index or (rtp[i]->s->received == 0 and rtp_zeropackets_stored == false))) {
@@ -4532,11 +4543,19 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
-				query_str += sqlDbSaveCall->insertQuery("cdr_rtp", rtps) + ";\n";
+				if(opt_mysql_enable_multiple_rows_insert) {
+					rtp_rows.push_back(rtps);
+				} else {
+					query_str += sqlDbSaveCall->insertQuery("cdr_rtp", rtps) + ";\n";
+				}
 			}
+		}
+		if(opt_mysql_enable_multiple_rows_insert && rtp_rows.size()) {
+			query_str += sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_rtp", &rtp_rows, opt_mysql_max_multiple_rows_insert) + ";\n";
 		}
 		
 		if(opt_save_sdp_ipport) {
+			vector<SqlDb_row> sdp_rows;
 			for(int i = 0; i < 2; i++) {
 				if(SDP_ip_portUnique[i].size()) {
 					for(list<ipn_port>::iterator iter = SDP_ip_portUnique[i].begin(); iter != SDP_ip_portUnique[i].end(); iter++) {
@@ -4548,18 +4567,25 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						if(existsColumns.cdr_sdp_calldate) {
 							sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 						}
-						query_str += sqlDbSaveCall->insertQuery("cdr_sdp", sdp) + ";\n";
+						if(opt_mysql_enable_multiple_rows_insert) {
+							sdp_rows.push_back(sdp);
+						} else {
+							query_str += sqlDbSaveCall->insertQuery("cdr_sdp", sdp) + ";\n";
+						}
 					}
 				}
+			}
+			if(opt_mysql_enable_multiple_rows_insert && sdp_rows.size()) {
+				query_str += sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_sdp", &sdp_rows, opt_mysql_max_multiple_rows_insert) + ";\n";
 			}
 		}
 
 		if(enable_save_dtmf) {
+			vector<SqlDb_row> dtmf_rows;
 			while(dtmf_history.size()) {
 				s_dtmf q;
 				q = dtmf_history.front();
 				dtmf_history.pop();
-
 				SqlDb_row dtmf;
 				string tmp;
 				tmp = q.dtmf;
@@ -4574,13 +4600,22 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(existsColumns.cdr_dtmf_calldate) {
 					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
-				query_str += sqlDbSaveCall->insertQuery("cdr_dtmf", dtmf) + ";\n";
+				if(opt_mysql_enable_multiple_rows_insert) {
+					dtmf_rows.push_back(dtmf);
+				} else {
+					query_str += sqlDbSaveCall->insertQuery("cdr_dtmf", dtmf) + ";\n";
+				}
+			}
+			if(opt_mysql_enable_multiple_rows_insert && dtmf_rows.size()) {
+				query_str += sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_dtmf", &dtmf_rows, opt_mysql_max_multiple_rows_insert) + ";\n";
 			}
 		}
 
 		extern bool opt_cdr_sipresp;	
-		if(opt_cdr_sipresp) {	
+		if(opt_cdr_sipresp) {
+			vector<SqlDb_row> sipresp_rows;
 			for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
+				bool enableMultiInsert = true;
 				SqlDb_row sipresp;
 				sipresp.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 				_cb_id = calltable->cb_sip_response_getId(iterSiprespUnique->SIPresponse.c_str(), false, true);
@@ -4590,17 +4625,28 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					query_str += string("set @sip_resp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ");\n";
 					sipresp.add("_\\_'SQL'_\\_:@sip_resp_id", "SIPresponse_id");
 					//sipresp.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiprespUnique->SIPresponse.c_str()) + ")", "SIPresponse_id");
+					enableMultiInsert = false;
 				}
 				sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
 				if(existsColumns.cdr_sipresp_calldate) {
 					sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
-				query_str += sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp) + ";\n";
+				if(opt_mysql_enable_multiple_rows_insert && enableMultiInsert) {
+					sipresp_rows.push_back(sipresp);
+				} else {
+					query_str += sqlDbSaveCall->insertQuery("cdr_sipresp", sipresp) + ";\n";
+				}
+			}
+			if(opt_mysql_enable_multiple_rows_insert && sipresp_rows.size()) {
+				query_str += sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_sipresp", &sipresp_rows, opt_mysql_max_multiple_rows_insert) + ";\n";
 			}
 		}
 		
 		if(_save_sip_history) {
+			vector<SqlDb_row> siphist_rows[3];
 			for(list<sSipHistory>::iterator iterSiphistory = SIPhistory.begin(); iterSiphistory != SIPhistory.end(); iterSiphistory++) {
+				bool enableMultiInsert = true;
+				int indexMultiInsert = 0;
 				SqlDb_row siphist;
 				siphist.add("_\\_'SQL'_\\_:@cdr_id", "cdr_ID");
 				siphist.add((u_int64_t)(iterSiphistory->time - (first_packet_time * 1000000ull + first_packet_usec)), "time");
@@ -4608,10 +4654,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					_cb_id = calltable->cb_sip_request_getId(iterSiphistory->SIPrequest.c_str(), false, true);
 					if(_cb_id) {
 						siphist.add(_cb_id, "SIPrequest_id");
+						indexMultiInsert += 1;
 					} else {
 						query_str += string("set @sip_req_id = ") + "getIdOrInsertSIPREQUEST(" + sqlEscapeStringBorder(iterSiphistory->SIPrequest.c_str()) + ");\n";
 						siphist.add("_\\_'SQL'_\\_:@sip_req_id", "SIPrequest_id");
 						//siphist.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPREQUEST(" + sqlEscapeStringBorder(iterSiphistory->SIPrequest.c_str()) + ")", "SIPrequest_id");
+						enableMultiInsert = false;
 					}
 				}
 				if(iterSiphistory->SIPresponseNum && iterSiphistory->SIPresponse.length()) {
@@ -4619,20 +4667,34 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					_cb_id = calltable->cb_sip_response_getId(iterSiphistory->SIPresponse.c_str(), false, true);
 					if(_cb_id) {
 						siphist.add(_cb_id, "SIPresponse_id");
+						indexMultiInsert += 2;
 					} else {
 						query_str += string("set @sip_resp_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiphistory->SIPresponse.c_str()) + ");\n";
 						siphist.add("_\\_'SQL'_\\_:@sip_resp_id", "SIPresponse_id");
 						//siphist.add(string("_\\_'SQL'_\\_:") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiphistory->SIPresponse.c_str()) + ")", "SIPresponse_id");
+						enableMultiInsert = false;
 					}
 				}
 				if(existsColumns.cdr_siphistory_calldate) {
 					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 				}
-				query_str += sqlDbSaveCall->insertQuery("cdr_siphistory", siphist) + ";\n";
+				if(opt_mysql_enable_multiple_rows_insert && enableMultiInsert && indexMultiInsert) {
+					siphist_rows[indexMultiInsert - 1].push_back(siphist);
+				} else {
+					query_str += sqlDbSaveCall->insertQuery("cdr_siphistory", siphist) + ";\n";
+				}
+			}
+			if(opt_mysql_enable_multiple_rows_insert) {
+				for(unsigned i = 0; i < sizeof(siphist_rows) / sizeof(siphist_rows[0]); i++) {
+					if(siphist_rows[i].size()) {
+						query_str += sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_siphistory", &siphist_rows[i], opt_mysql_max_multiple_rows_insert) + ";\n";
+					}
+				}
 			}
 		}
 		
 		if(opt_pcap_dump_tar) {
+			vector<SqlDb_row> tar_part_rows;
 			for(int i = 1; i <= 3; i++) {
 				if(!(i == 1 ? opt_pcap_dump_tar_sip_use_pos :
 				     i == 2 ? opt_pcap_dump_tar_rtp_use_pos :
@@ -4650,8 +4712,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(existsColumns.cdr_tar_part_calldate) {
 						tar_part.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
 					}
-					query_str += sqlDbSaveCall->insertQuery("cdr_tar_part", tar_part) + ";\n";
+					if(opt_mysql_enable_multiple_rows_insert) {
+						tar_part_rows.push_back(tar_part);
+					} else {
+						query_str += sqlDbSaveCall->insertQuery("cdr_tar_part", tar_part) + ";\n";
+					}
 				}
+			}
+			if(opt_mysql_enable_multiple_rows_insert && tar_part_rows.size()) {
+				query_str += sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_tar_part", &tar_part_rows, opt_mysql_max_multiple_rows_insert) + ";\n";
 			}
 		}
 		

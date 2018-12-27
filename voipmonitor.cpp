@@ -372,6 +372,8 @@ int opt_mysql_enable_transactions_message = 0;
 int opt_mysql_enable_transactions_register = 0;
 int opt_mysql_enable_transactions_http = 0;
 int opt_mysql_enable_transactions_webrtc = 0;
+int opt_mysql_enable_multiple_rows_insert = 0;
+int opt_mysql_max_multiple_rows_insert = 20;
 int opt_cdr_ua_enable = 1;
 vector<string> opt_cdr_ua_reg_remove;
 vector<string> opt_cdr_ua_reg_whitelist;
@@ -5753,6 +5755,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42113) cConfigItem_yesno("mysqltransactions_register", &opt_mysql_enable_transactions_register));
 				addConfigItem(new FILE_LINE(42114) cConfigItem_yesno("mysqltransactions_http", &opt_mysql_enable_transactions_http));
 				addConfigItem(new FILE_LINE(42115) cConfigItem_yesno("mysqltransactions_webrtc", &opt_mysql_enable_transactions_webrtc));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_multiple_rows_insert", &opt_mysql_enable_multiple_rows_insert));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("mysql_max_multiple_rows_insert", &opt_mysql_max_multiple_rows_insert));
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
@@ -6488,7 +6492,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	if(configItem->config_name == "database_backup_from_date") {
 		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(opt_database_backup_from_date));
 	}
-	if(configItem->config_name == "cachedir") {
+	if(configItem->config_name == "cachedir" && opt_cachedir[0]) {
 		spooldir_mkdir(opt_cachedir);
 	}
 	if(configItem->config_name == "timezone") {
@@ -8871,6 +8875,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysqltransactions_webrtc", NULL))) {
 		opt_mysql_enable_transactions_webrtc = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mysql_enable_multiple_rows_insert"))) {
+		opt_mysql_enable_multiple_rows_insert = yesno(value);
+	}
+	if((value = ini.GetValue("general", "mysql_max_multiple_rows_insert"))) {
+		opt_mysql_max_multiple_rows_insert = atoi(value);
 	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strcpy_null_term(mysql_host, value);

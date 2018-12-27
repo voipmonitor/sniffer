@@ -865,6 +865,30 @@ string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlS
 	return(query);
 }
 
+string SqlDb::insertQueryWithLimitMultiInsert(string table, vector<SqlDb_row> *rows, unsigned limitMultiInsert, const char *queriesSeparator,
+					      bool enableSqlStringInContent, bool escapeAll, bool insertIgnore) {
+	if(!rows->size()) {
+		return("");
+	}
+	string query = "";
+	string values = "";
+	for(size_t i = 0; i < rows->size(); i++) {
+		values += "( " + (*rows)[i].implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll) + " )";
+		if(i && ((limitMultiInsert && !((i + 1) % limitMultiInsert)) || i == (rows->size() - 1))) {
+			if(!query.empty()) {
+				query += queriesSeparator ? queriesSeparator : "; ";
+			}
+			query +=
+				string("INSERT ") + (insertIgnore ? "IGNORE " : "") + "INTO " + escapeTableName(table) + " ( " + (*rows)[0].implodeFields(this->getFieldSeparator(), this->getFieldBorder()) + 
+				" ) VALUES " + values;
+			values = "";
+		} else {
+			values += ",";
+		}
+	}
+	return(query);
+}
+
 string SqlDb::updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent, bool escapeAll) {
 	string query = 
 		string("UPDATE ") + escapeTableName(table) + " set " + row.implodeFieldContent(this->getFieldSeparator(), this->getFieldBorder(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll);
