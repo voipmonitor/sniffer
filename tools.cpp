@@ -6889,3 +6889,39 @@ void cUtfConverter::term() {
 	}
 	init_ok = false;
 }
+
+bool matchResponseCode(int code, int size, int testCode) {
+	if(testCode > 0) {
+		int lrn = testCode;
+		while(lrn && (int)(log10(lrn) + 1) > size) {
+			lrn /= 10;
+		}
+		if(lrn == code) {
+			return(true);
+		}
+	} else if(testCode == 0 && code == 0) {
+		return(true);
+	}
+	return(false);
+}
+
+bool matchResponseCodes(std::vector<int> Codes, std::vector<int> CodesSizes, int testCode) {
+	for (uint i = 0; i < Codes.size(); i++) {
+		if (matchResponseCode(Codes.at(i), CodesSizes.at(i), testCode)) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+std::vector<int> getResponseCodeSizes(std::vector<int> Codes) {
+	std::vector<int> elems;
+	for (uint i = 0; i < Codes.size(); i++) {
+		if (Codes.at(i) > 0) {
+			elems.push_back(log10(Codes.at(i)) + 1);
+		} else {
+			elems.push_back(1);
+		}
+	}
+	return(elems);
+}

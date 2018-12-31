@@ -7987,6 +7987,9 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				}
 				ch_data.cseqMethod = split2int(row["cseq_method"], ',');
 				ch_data.sipResponseCode = split2int(row["sip_response_code"], ',');
+				if (!ch_data.sipResponseCode.empty()) {
+					ch_data.sipResponseCodeNumLen = getResponseCodeSizes(ch_data.sipResponseCode);
+				}
 				ch_data.dynamic_table = atoi(row["dynamic_table"].c_str());
 				ch_data.dynamic_column = atoi(row["dynamic_column"].c_str());
 				customHeaderData.push_back(ch_data);
@@ -8151,7 +8154,7 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 					continue;
 				}
 				if (!iter2->second.sipResponseCode.empty() &&
-				    std::find(iter2->second.sipResponseCode.begin(), iter2->second.sipResponseCode.end(), packetS->lastSIPresponseNum) == iter2->second.sipResponseCode.end()){
+				    !matchResponseCodes(iter2->second.sipResponseCode, iter2->second.sipResponseCodeNumLen, packetS->lastSIPresponseNum)) {
 					continue;
 				}
 				if (!iter2->second.cseqMethod.empty() &&

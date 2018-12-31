@@ -2013,6 +2013,7 @@ public:
 		bool selectOccurrence;
 		std::vector<int> cseqMethod;
 		std::vector<int> sipResponseCode;
+		std::vector<int> sipResponseCodeNumLen;
 	};
 	struct sCustomHeaderDataPlus : public sCustomHeaderData {
 		string type;

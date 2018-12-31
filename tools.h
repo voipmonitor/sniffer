@@ -533,6 +533,10 @@ std::vector<int> split2int(const std::string &s, char delim);
 std::string string_size(const char *s, unsigned size);
 bool string_is_alphanumeric(const char *s);
 
+bool matchResponseCodes(std::vector<int> Codes, std::vector<int> CodesSizes, int testCode);
+bool matchResponseCode(int code, int size, int testCode);
+std::vector<int> getResponseCodeSizes(std::vector<int> Codes);
+
 bool check_regexp(const char *pattern);
 int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);
 int reg_match(const char *str, const char *pattern, vector<string> *matches, bool ignoreCase, const char *file = NULL, int line = 0);
