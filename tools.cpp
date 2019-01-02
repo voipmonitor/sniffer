@@ -6893,7 +6893,7 @@ void cUtfConverter::term() {
 bool matchResponseCode(int code, int size, int testCode) {
 	if(testCode > 0) {
 		int lrn = testCode;
-		while(lrn && (int)(log10(lrn) + 1) > size) {
+		while(lrn && (log10int(lrn) + 1) > size) {
 			lrn /= 10;
 		}
 		if(lrn == code) {
@@ -6918,10 +6918,29 @@ std::vector<int> getResponseCodeSizes(std::vector<int> Codes) {
 	std::vector<int> elems;
 	for (uint i = 0; i < Codes.size(); i++) {
 		if (Codes.at(i) > 0) {
-			elems.push_back(log10(Codes.at(i)) + 1);
+			elems.push_back(log10int(Codes.at(i)) + 1);
 		} else {
 			elems.push_back(1);
 		}
 	}
 	return(elems);
+}
+
+int log10int(int v) {
+    return (v >= 1000000000) ? 9 : (v >= 100000000) ? 8 :
+        (v >= 10000000) ? 7 : (v >= 1000000) ? 6 :
+        (v >= 100000) ? 5 : (v >= 10000) ? 4 :
+        (v >= 1000) ? 3 : (v >= 100) ? 2 : (v >= 10) ? 1 : 0;
+}
+
+int log10int(long int v) {
+	if (v <= 0) {
+		return(0);
+	}
+	int l = 0;
+	while(v > 0) {
+		v /= 10;
+		++l;
+	}
+	return(l - 1);
 }
