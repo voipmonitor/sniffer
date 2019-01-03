@@ -874,7 +874,7 @@ string SqlDb::insertQueryWithLimitMultiInsert(string table, vector<SqlDb_row> *r
 	string values = "";
 	for(size_t i = 0; i < rows->size(); i++) {
 		values += "( " + (*rows)[i].implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll) + " )";
-		if(i && ((limitMultiInsert && !((i + 1) % limitMultiInsert)) || i == (rows->size() - 1))) {
+		if((limitMultiInsert && !((i + 1) % limitMultiInsert)) || i == (rows->size() - 1)) {
 			if(!query.empty()) {
 				query += queriesSeparator ? queriesSeparator : "; ";
 			}

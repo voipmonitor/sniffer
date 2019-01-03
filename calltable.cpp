@@ -4536,9 +4536,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if (rtp[i] == rtpab[0] or rtp[i] == rtpab[1])
 						flags |= 2;
 
-					if(flags) {
-						rtps.add(flags, "flags");
-					}
+					rtps.add(flags, "flags", !flags);
 				}
 				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
