@@ -243,6 +243,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 			header_ip_offset = 52;
 			protocol = ETHERTYPE_IP;
 			break;
+		case DLT_MTP2_WITH_PHDR:
 		case DLT_MTP2:
 			header_ip_offset = 0xFFFFFFFF;
 			protocol = 0;
