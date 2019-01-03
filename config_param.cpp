@@ -23,6 +23,9 @@ cConfigItem::cConfigItem(const char *name) {
 	config_file_section = "general";
 	level = levelNormal;
 	set = false;
+	set_in_config = false;
+	set_in_db = false;
+	set_in_json = false;
 	defaultValueStr_set = false;
 	naDefaultValueStr = false;
 	minor = false;
@@ -212,6 +215,25 @@ string cConfigItem::getJson() {
 		json.add("help", help);
 	}
 	json.add("set", set);
+	if(set_in_config) {
+		json.add("set_in_config", set_in_config);
+		if(!value_in_config.empty()) {
+			json.add("value_in_config", value_in_config);
+		}
+	}
+	if(set_in_db) {
+		json.add("set_in_db", set_in_db);
+		if(!value_in_db.empty()) {
+			json.add("value_in_db", value_in_db);
+		}
+	}
+	if(set_in_json &&
+	   (!set_in_db || value_in_json != value_in_db)) {
+		json.add("set_in_json", set_in_json);
+		if(!value_in_json.empty()) {
+			json.add("value_in_json", value_in_json);
+		}
+	}
 	json.add("value", getValueStr());
 	json.add("default", defaultValueStr);
 	json.add("group", group_name);
@@ -273,6 +295,12 @@ void cConfigItem::clearToDefaultValue() {
 		 setParamFromValueStr(defaultValueStr);
 	}
 	set = false;
+	set_in_config = false;
+	set_in_db = false;
+	set_in_json = false;
+	value_in_config.clear();
+	value_in_db.clear();
+	value_in_json.clear();
 }
 
 cConfigItem_yesno::cConfigItem_yesno(const char *name, bool *param) 
@@ -1600,6 +1628,7 @@ cConfig::cConfig() {
 	defaultLevel = cConfigItem::levelNormal;
 	defaultMinor = false;
 	defaultMinorGroupIfNotSet = false;
+	setFromMysqlOk = false;
 }
 
 cConfig::~cConfig() {
@@ -1792,6 +1821,8 @@ bool cConfig::loadFromConfigFile(const char *filename, string *error, bool silen
 	for(map<string, cConfigItem*>::iterator iter = config_map.begin(); iter != config_map.end(); iter++) {
 		if(iter->second->setParamFromConfigFile(&ini)) {
 			iter->second->set = true;
+			iter->second->set_in_config = true;
+			iter->second->value_in_config = iter->second->getValueFromConfigFile(&ini);
 			evSetConfigItem(iter->second);
 		}
 	}
@@ -1966,6 +1997,9 @@ string cConfig::getJson(bool onlyIfSet) {
 			}
 		}
 	}
+	JsonExport nextData;
+	nextData.add("setFromMysqlOk", setFromMysqlOk);
+	json.addJson("nextData", nextData.getJson());
 	return(json.getJson());
 }
 
@@ -1983,6 +2017,8 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 				if(set) {
 					if(iter_map->second->setParamFromValueStr(value)) {
 						iter_map->second->set = true;
+						iter_map->second->set_in_json = true;
+						iter_map->second->value_in_json = value;
 						evSetConfigItem(iter_map->second);
 					}
 				} else {
@@ -1994,7 +2030,8 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 	}
 }
 
-void cConfig::setFromMysql(bool checkConnect) {
+void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
+	setFromMysqlOk = false;
 	SqlDb *sqlDb = createSqlObject();
 	if(checkConnect) {
 		sqlDb->setSilentConnect();
@@ -2024,9 +2061,11 @@ void cConfig::setFromMysql(bool checkConnect) {
 						if(!row.isNull(column)) {
 							if(iter_map->second->setParamFromValueStr(row[column])) {
 								iter_map->second->set = true;
+								iter_map->second->set_in_db = true;
+								iter_map->second->value_in_db = row[column];
 								evSetConfigItem(iter_map->second);
 							}
-						} else {
+						} else if(!onlyIfSet) {
 							iter_map->second->clearToDefaultValue();
 							evSetConfigItem(iter_map->second);
 						}
@@ -2034,6 +2073,7 @@ void cConfig::setFromMysql(bool checkConnect) {
 				}
 			}
 		}
+		setFromMysqlOk = true;
 	}
 	delete sqlDb;
 }
