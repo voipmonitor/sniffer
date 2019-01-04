@@ -116,7 +116,7 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 	#else
 	wtap_pkthdr whdr;
 	#endif
-	memset(&whdr, 0, sizeof(wtap_rec));
+	memset(&whdr, 0, sizeof(whdr));
 	whdr.ts.secs = header->ts.tv_sec;
 	whdr.ts.nsecs = header->ts.tv_usec * 1000;
 	whdr.presence_flags = 3;
