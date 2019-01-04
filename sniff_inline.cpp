@@ -744,6 +744,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			}
 			ppd->traillen = (int)(caplen - ((u_char*)ppd->header_ip - packet)) - ntohs(ppd->header_ip->tot_len);
 		} else if(opt_enable_ss7) {
+			ppd->istcp = 0;
+			ppd->isother = 1;
 			ppd->data = (char*)packet;
 			ppd->datalen = caplen;
 		}
