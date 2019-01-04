@@ -7984,9 +7984,9 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 					ch_data.selectOccurrence = (bool) opt_custom_headers_last_value;
 				}
 				ch_data.cseqMethod = split2int(row["cseq_method"], ',');
-				ch_data.sipResponseCode = split2int(row["sip_response_code"], ',');
-				if (!ch_data.sipResponseCode.empty()) {
-					ch_data.sipResponseCodeNumLen = getResponseCodeSizes(ch_data.sipResponseCode);
+				std::vector<int> tmpvect = split2int(row["sip_response_code"], split(",|;| |", "|"), true);
+				if (!tmpvect.empty()) {
+					ch_data.sipResponseCodeInfo = getResponseCodeSizes(tmpvect);
 				}
 				ch_data.dynamic_table = atoi(row["dynamic_table"].c_str());
 				ch_data.dynamic_column = atoi(row["dynamic_column"].c_str());
@@ -8151,8 +8151,8 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 				   !(reqRespDirection & iter2->second.reqRespDirection)) {
 					continue;
 				}
-				if (!iter2->second.sipResponseCode.empty() &&
-				    !matchResponseCodes(iter2->second.sipResponseCode, iter2->second.sipResponseCodeNumLen, packetS->lastSIPresponseNum)) {
+				if (!iter2->second.sipResponseCodeInfo.empty() &&
+				    !matchResponseCodes(iter2->second.sipResponseCodeInfo, packetS->lastSIPresponseNum)) {
 					continue;
 				}
 				if (!iter2->second.cseqMethod.empty() &&

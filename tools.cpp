@@ -2456,6 +2456,15 @@ std::vector<std::string> split(const char *s, std::vector<std::string> delim, bo
 	return(elems);
 }
 
+std::vector<int> split2int(const std::string &s, std::vector<std::string> delim, bool enableTrim) {
+    std::vector<std::string> tmpelems = split(s.c_str(), delim, enableTrim);
+    std::vector<int> elems;
+    for (uint i = 0; i < tmpelems.size(); i++) {
+	elems.push_back(atoi(tmpelems.at(i).c_str()));
+    }
+    return elems;
+}
+
 std::vector<int> split2int(const std::string &s, char delim) {
     std::vector<std::string> tmpelems;
     split(s, delim, tmpelems);
@@ -6905,22 +6914,22 @@ bool matchResponseCode(int code, int size, int testCode) {
 	return(false);
 }
 
-bool matchResponseCodes(std::vector<int> Codes, std::vector<int> CodesSizes, int testCode) {
-	for (uint i = 0; i < Codes.size(); i++) {
-		if (matchResponseCode(Codes.at(i), CodesSizes.at(i), testCode)) {
+bool matchResponseCodes(std::vector<pair<int, int> > & sipInfoCodes, int testCode) {
+	for (uint i = 0; i < sipInfoCodes.size(); i++) {
+		if (matchResponseCode(sipInfoCodes.at(i).first, sipInfoCodes.at(i).second, testCode)) {
 			return(true);
 		}
 	}
 	return(false);
 }
 
-std::vector<int> getResponseCodeSizes(std::vector<int> Codes) {
-	std::vector<int> elems;
+std::vector<pair<int,int> > getResponseCodeSizes(std::vector<int> & Codes) {
+	std::vector<pair<int, int> > elems;
 	for (uint i = 0; i < Codes.size(); i++) {
 		if (Codes.at(i) > 0) {
-			elems.push_back(log10int(Codes.at(i)) + 1);
+			elems.push_back(make_pair(Codes.at(i), log10int(Codes.at(i)) + 1));
 		} else {
-			elems.push_back(1);
+			elems.push_back(make_pair(Codes.at(i),1));
 		}
 	}
 	return(elems);
