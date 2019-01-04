@@ -2012,7 +2012,7 @@ public:
 		eReqRespDirection reqRespDirection;
 		bool selectOccurrence;
 		std::vector<int> cseqMethod;
-		std::vector<pair<int, int>> sipResponseCodeInfo;
+		std::vector<pair<int, int> > sipResponseCodeInfo;
 	};
 	struct sCustomHeaderDataPlus : public sCustomHeaderData {
 		string type;

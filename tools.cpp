@@ -6914,7 +6914,7 @@ bool matchResponseCode(int code, int size, int testCode) {
 	return(false);
 }
 
-bool matchResponseCodes(std::vector<pair<int, int>> & sipInfoCodes, int testCode) {
+bool matchResponseCodes(std::vector<pair<int, int> > & sipInfoCodes, int testCode) {
 	for (uint i = 0; i < sipInfoCodes.size(); i++) {
 		if (matchResponseCode(sipInfoCodes.at(i).first, sipInfoCodes.at(i).second, testCode)) {
 			return(true);
@@ -6923,8 +6923,8 @@ bool matchResponseCodes(std::vector<pair<int, int>> & sipInfoCodes, int testCode
 	return(false);
 }
 
-std::vector<pair<int,int>> getResponseCodeSizes(std::vector<int> & Codes) {
-	std::vector<pair<int, int>> elems;
+std::vector<pair<int,int> > getResponseCodeSizes(std::vector<int> & Codes) {
+	std::vector<pair<int, int> > elems;
 	for (uint i = 0; i < Codes.size(); i++) {
 		if (Codes.at(i) > 0) {
 			elems.push_back(make_pair(Codes.at(i), log10int(Codes.at(i)) + 1));

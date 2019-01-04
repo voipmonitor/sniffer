@@ -534,9 +534,9 @@ std::vector<int> split2int(const std::string &s, std::vector<std::string> delim,
 std::string string_size(const char *s, unsigned size);
 bool string_is_alphanumeric(const char *s);
 
-bool matchResponseCodes(std::vector<pair<int, int>> & sipInfoCodes, int testCode);
+bool matchResponseCodes(std::vector<pair<int, int> > & sipInfoCodes, int testCode);
 bool matchResponseCode(int code, int size, int testCode);
-std::vector<pair<int,int>> getResponseCodeSizes(std::vector<int> & Codes);
+std::vector<pair<int,int> > getResponseCodeSizes(std::vector<int> & Codes);
 int log10int(int v);
 int log10int(long int v);
 
