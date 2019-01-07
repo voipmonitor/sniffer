@@ -68,6 +68,10 @@ public:
 			return(((Call*)rec)->caller_domain);
 		case cf_calleddomain:
 			return(((Call*)rec)->called_domain);
+		case cf_calleragent:
+			return(((Call*)rec)->a_ua);
+		case cf_calledagent:
+			return(((Call*)rec)->b_ua);
 		case cf_callid:
 			return(((Call*)rec)->fbasename);
 		}

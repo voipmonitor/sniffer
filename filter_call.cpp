@@ -95,6 +95,29 @@ void cCallFilter::setFilter(const char *filter) {
 			addFilter(&gItems);
 		}
 	}
+	if(!filterData["caller_agent"].empty() &&
+	   filterData["callerd_agent_type"] == "0") {
+		cRecordFilterItem_CheckString *filter1 =  new cRecordFilterItem_CheckString(this, cf_calleragent);
+		filter1->addWhite(filterData["caller_agent"].c_str());
+		cRecordFilterItem_CheckString *filter2 = new cRecordFilterItem_CheckString(this, cf_calledagent);
+		filter2->addWhite(filterData["caller_agent"].c_str());
+		addFilter(filter1, filter2);
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["caller_agent"].empty()) {
+			cRecordFilterItem_CheckString *filter = new cRecordFilterItem_CheckString(this, cf_calleragent);
+			filter->addWhite(filterData["caller_agent"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(!filterData["called_agent"].empty()) {
+			cRecordFilterItem_CheckString *filter = new cRecordFilterItem_CheckString(this, cf_calledagent);
+			filter->addWhite(filterData["called_agent"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
 	if(!filterData["callid"].empty()) {
 		cRecordFilterItem_CheckString *filter = new cRecordFilterItem_CheckString(this, cf_callid);
 		filter->addWhite(filterData["callid"].c_str());
