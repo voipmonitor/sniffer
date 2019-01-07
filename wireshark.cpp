@@ -16,8 +16,16 @@
 #include <wireshark/register.h>
 #include <wireshark/epan/epan.h>
 #include <wireshark/cfile.h>
-#include <wireshark/file.h>
 #include <wireshark/wiretap/wtap.h>
+
+#if not defined(LIBWIRESHARK_VERSION) or LIBWIRESHARK_VERSION < 20403
+#include <wireshark/file.h>
+#endif
+
+#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
+#include <wireshark/epan/prefs-int.h>
+#include <wireshark/epan/print.h>
+#endif
 
 
 using namespace std;
@@ -33,7 +41,11 @@ static epan_t *ws_epan;
 void ws_init() {
 	if(!ws_init_ok) {
 		init_process_policies();
+		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
+		wtap_init(true);
+		#else
 		wtap_init();
+		#endif
 		epan_init(register_all_protocols, register_all_protocol_handoffs, NULL, NULL);
 		ws_init_ok = true;
 	}
@@ -52,35 +64,6 @@ void ws_epan_term() {
 	}
 }
 
-capture_file *ws_open_pcap(const char *fileName) {
-	wtap_opttypes_initialize();
-	capture_file *cfile = new capture_file;
-	cap_file_init(cfile);
-	int err = 0;
-	if(cf_open(cfile, fileName, 0, FALSE, &err) != CF_OK) {
-		cerr << "cf_open failed" << endl;
-		delete cfile;
-		return(NULL);
-	}
-	return(cfile);
-}
-
-bool ws_read_packet(capture_file *cfile, wtap_pkthdr **whdr, const guchar **pd, gint64 *data_offset) {
-	gchar *err_info = NULL;
-	int err;
-	if(wtap_read(cfile->wth, &err, &err_info, data_offset)) {
-		cfile->count++;
-		*whdr = wtap_phdr(cfile->wth);
-		*pd = wtap_buf_ptr(cfile->wth);
-		return(true);
-	} else {
-		*whdr = NULL;
-		*pd = NULL;
-		*data_offset = 0;
-		return(false);
-	}
-}
-
 void ws_gener_json(epan_dissect_t *edt, string *rslt) {
 	rslt->resize(0);
 	unsigned buff_size = 1000000;
@@ -88,81 +71,26 @@ void ws_gener_json(epan_dissect_t *edt, string *rslt) {
 	FILE *file = fmemopen(buff, buff_size, "w");
 	if(file) {
 		output_fields_t* output_fields  = NULL;
-		print_args_t print_args;
-		memset(&print_args, 0, sizeof(print_args));
-		print_args.print_dissections = print_dissections_expanded;
 		gchar **protocolfilter = NULL;
-		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20403
+		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
+		write_json_proto_tree(output_fields, print_dissections_expanded, false, protocolfilter, PF_NONE, edt, NULL, proto_node_group_children_by_unique, file);
+		#elif defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20403
 		write_json_proto_tree(output_fields, print_dissections_expanded, false, protocolfilter, PF_NONE, edt, file);
-		#elif defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20208
-		write_json_proto_tree(output_fields, &print_args, protocolfilter, edt, file);
 		#else
-		pf_flags protocolfilter_flags = PF_NONE;
-		write_json_proto_tree(output_fields, &print_args, protocolfilter, protocolfilter_flags, edt, file);
+			print_args_t print_args;
+			memset(&print_args, 0, sizeof(print_args));
+			print_args.print_dissections = print_dissections_expanded;
+			#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20208
+			write_json_proto_tree(output_fields, &print_args, protocolfilter, edt, file);
+			#else
+			pf_flags protocolfilter_flags = PF_NONE;
+			write_json_proto_tree(output_fields, &print_args, protocolfilter, protocolfilter_flags, edt, file);
+			#endif
 		#endif
 		fclose(file);
 		*rslt = buff;
 	}
 	delete [] buff;
-}
-
-void ws_gener_pdml(epan_dissect_t *edt, string *rslt) {
-	rslt->resize(0);
-	unsigned buff_size = 1000000;
-	char *buff = new char[buff_size];
-	FILE *file = fmemopen(buff, buff_size, "w");
-	if(file) {
-		output_fields_t* output_fields  = NULL;
-		gchar **protocolfilter = NULL;
-		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20403
-		write_pdml_proto_tree(output_fields, protocolfilter, PF_NONE, edt, file);
-		#elif defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20208
-		write_pdml_proto_tree(output_fields, protocolfilter, edt, file);
-		#else
-		pf_flags protocolfilter_flags = PF_NONE;
-		write_pdml_proto_tree(output_fields, protocolfilter, protocolfilter_flags, edt, file);
-		#endif
-		fclose(file);
-		*rslt = buff;
-	}
-	delete [] buff;
-}
-
-void ws_dissect_packet(wtap_pkthdr *whdr, const guchar *pd, capture_file *cfile, gint64 data_offset, string *rslt) {
-
-	frame_data fdlocal;
-	guint32 cum_bytes = 0;
-	
-	frame_data_init(&fdlocal, 
-			cfile->count, 
-			whdr, 
-			data_offset, 
-			cum_bytes);
-
-	epan_dissect_t *edt = epan_dissect_new(cfile->epan, 
-					       TRUE, 
-					       TRUE);
-
-	frame_data_set_before_dissect(&fdlocal, 
-				      &cfile->elapsed_time, 
-				      &cfile->ref, 
-				      cfile->prev_dis);
-	cfile->ref = &fdlocal;
-
-	tvbuff_t *tvb = frame_tvbuff_new(&fdlocal, pd);
-
-	epan_dissect_run(edt, 
-			 cfile->cd_t, 
-			 whdr, 
-			 tvb, 
-			 &fdlocal, 
-			 NULL);
-
-	frame_data_set_after_dissect(&fdlocal, 
-				     &cum_bytes);
-
-	ws_gener_json(edt, rslt);
- 
 }
 
 void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt) {
@@ -170,18 +98,41 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 	ws_init();
 	ws_epan_init();
 	
+	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
+	module_t *pref_module_ip = prefs_find_module("ip");
+	if(pref_module_ip) {
+		pref_t *pref_use_geoip = prefs_find_preference(pref_module_ip, "use_geoip");
+		if(pref_use_geoip) {
+			prefs_set_bool_value(pref_use_geoip, false, pref_current);
+		}
+	}
+	#endif
+	
 	frame_data fdlocal;
 	guint32 cum_bytes = 0;
 	
+	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
+	wtap_rec whdr;
+	#else
 	wtap_pkthdr whdr;
-	memset(&whdr, 0, sizeof(wtap_pkthdr));
+	#endif
+	memset(&whdr, 0, sizeof(whdr));
 	whdr.ts.secs = header->ts.tv_sec;
 	whdr.ts.nsecs = header->ts.tv_usec * 1000;
-	whdr.caplen = header->caplen;
-	whdr.len = header->len;
-	whdr.pkt_encap = dlt == DLT_MTP2 ? WTAP_ENCAP_MTP2 :
-			 WTAP_ENCAP_ETHERNET;
 	whdr.presence_flags = 3;
+	unsigned ws_dlt = dlt == DLT_MTP2 ? WTAP_ENCAP_MTP2 :
+			  dlt == DLT_MTP2_WITH_PHDR ? WTAP_ENCAP_MTP2_WITH_PHDR :
+			  WTAP_ENCAP_ETHERNET;
+	unsigned skip_hdr = dlt == DLT_MTP2_WITH_PHDR ? 4 : 0;
+	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
+	whdr.rec_header.packet_header.caplen = header->caplen - skip_hdr;
+	whdr.rec_header.packet_header.len = header->len - skip_hdr;
+	whdr.rec_header.packet_header.pkt_encap = ws_dlt;
+	#else
+	whdr.caplen = header->caplen - skip_hdr;
+	whdr.len = header->len - skip_hdr;
+	whdr.pkt_encap = ws_dlt;
+	#endif
 	
 	frame_data_init(&fdlocal, 
 			1, // cfile->count, 
@@ -201,7 +152,7 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 				      NULL); //cfile->prev_dis);
 	// cfile->ref = &fdlocal;
 
-	tvbuff_t *tvb = frame_tvbuff_new(&fdlocal, packet);
+	tvbuff_t *tvb = frame_tvbuff_new(&fdlocal, packet + skip_hdr);
 
 	epan_dissect_run_with_taps(edt, 
 			 1, // cfile->cd_t, 
@@ -226,26 +177,6 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 		ws_epan_term();
 	}
 	
-}
-
-void ws_test(const char *pcapFile) {
- 
-	ws_init();
-	
-	capture_file *cfile = ws_open_pcap(pcapFile);
-	if(!cfile) {
-		return;
-	}
-
-	struct wtap_pkthdr *whdr;
-	const guchar *pd;
-	gint64 data_offset = 0;
-	while(ws_read_packet(cfile, &whdr, &pd, &data_offset)) {
-		string rslt;
-		ws_dissect_packet(whdr, pd, cfile, data_offset, &rslt);
-		cout << rslt << endl;
-	}
-
 }
 
 
@@ -319,7 +250,14 @@ struct epan_session {
 // file.c
 static epan_t *ws_epan_new(capture_file *cf)
 {
+
+  #if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
+  packet_provider_funcs ppf;
+  memset(&ppf, 0, sizeof(ppf));
+  epan_t *epan = epan_new(NULL, &ppf);
+  #else
   epan_t *epan = epan_new();
+  #endif
 
   epan->data = cf;
   epan->get_frame_ts = NULL; //ws_get_frame_ts;
@@ -337,106 +275,6 @@ void cap_file_init(capture_file *cf)
   #if not defined(LIBWIRESHARK_VERSION) or LIBWIRESHARK_VERSION < 20403
   cf->snap            = WTAP_MAX_PACKET_SIZE;
   #endif
-}
-
-// file.c
-cf_status_t cf_open(capture_file *cf, const char *fname, unsigned int type, gboolean is_tempfile, int *err)
-{
-  wtap  *wth;
-  gchar *err_info;
-
-  wth = wtap_open_offline(fname, type, err, &err_info, TRUE);
-  if (wth == NULL)
-    goto fail;
-
-  /* The open succeeded.  Close whatever capture file we had open,
-     and fill in the information for this file. */
-  #if 0
-  cf_close(cf);
-  #endif
-
-  /* Initialize the packet header. */
-  wtap_phdr_init(&cf->phdr);
-
-  /* XXX - we really want to initialize this after we've read all
-     the packets, so we know how much we'll ultimately need. */
-  ws_buffer_init(&cf->buf, 1500);
-
-  /* Create new epan session for dissection.
-   * (The old one was freed in cf_close().)
-   */
-  cf->epan = ws_epan_new(cf);
-
-  /* We're about to start reading the file. */
-  cf->state = FILE_READ_IN_PROGRESS;
-
-  cf->wth = wth;
-  cf->f_datalen = 0;
-
-  /* Set the file name because we need it to set the follow stream filter.
-     XXX - is that still true?  We need it for other reasons, though,
-     in any case. */
-  cf->filename = g_strdup(fname);
-
-  /* Indicate whether it's a permanent or temporary file. */
-  cf->is_tempfile = is_tempfile;
-
-  /* No user changes yet. */
-  cf->unsaved_changes = FALSE;
-
-  cf->computed_elapsed = 0;
-
-  cf->cd_t        = wtap_file_type_subtype(cf->wth);
-  cf->open_type   = type;
-  cf->linktypes = g_array_sized_new(FALSE, FALSE, (guint) sizeof(int), 1);
-  cf->count     = 0;
-  cf->packet_comment_count = 0;
-  cf->displayed_count = 0;
-  cf->marked_count = 0;
-  cf->ignored_count = 0;
-  cf->ref_time_count = 0;
-  cf->drops_known = FALSE;
-  cf->drops     = 0;
-  cf->snap      = wtap_snapshot_length(cf->wth);
-  
-  #if not defined(LIBWIRESHARK_VERSION) or LIBWIRESHARK_VERSION < 20403
-  if (cf->snap == 0) {
-    /* Snapshot length not known. */
-    cf->has_snap = FALSE;
-    cf->snap = WTAP_MAX_PACKET_SIZE;
-  } else
-    cf->has_snap = TRUE;
-  #endif
-
-  /* Allocate a frame_data_sequence for the frames in this file */
-  cf->frames = new_frame_data_sequence();
-
-  nstime_set_zero(&cf->elapsed_time);
-  cf->ref = NULL;
-  cf->prev_dis = NULL;
-  cf->prev_cap = NULL;
-  cf->cum_bytes = 0;
-
-  #if 0
-  packet_list_queue_draw();
-  cf_callback_invoke(cf_cb_file_opened, cf);
-
-  if (cf->cd_t == WTAP_FILE_TYPE_SUBTYPE_BER) {
-    /* tell the BER dissector the file name */
-    ber_set_filename(cf->filename);
-  }
-
-  wtap_set_cb_new_ipv4(cf->wth, add_ipv4_name);
-  wtap_set_cb_new_ipv6(cf->wth, (wtap_new_ipv6_callback_t) add_ipv6_name);
-  #endif
-
-  return CF_OK;
-
-fail:
-  #if 0
-  cf_open_failure_alert_box(fname, *err, err_info, FALSE, 0);
-  #endif
-  return CF_ERROR;
 }
 
 // epan/tvbuff.c
@@ -533,28 +371,7 @@ tvbuff_t *frame_tvbuff_new(const frame_data *fd, const guint8 *buf)
 	 */
 	tvb->ds_tvb = tvb;
 	
-#if 0
-
-	frame_tvb = (struct tvb_frame *) tvb;
-
-	/* XXX, wtap_can_seek() */
-	if (cfile.wth && cfile.wth->random_fh
-#ifdef WANT_PACKET_EDITOR
-		&& fd->file_off != -1 /* generic clone for modified packets */
-#endif
-	) {
-		frame_tvb->wth = cfile.wth;
-		frame_tvb->file_off = fd->file_off;
-		frame_tvb->offset = 0;
-	} else
-		frame_tvb->wth = NULL;
-
-	frame_tvb->buf = NULL;
-	
-#endif
-
 	return tvb;
-	
 }
 
 #else
@@ -563,8 +380,6 @@ using namespace std;
 
 void ws_dissect_packet(pcap_pkthdr* /*header*/, const u_char* /*packet*/, int /*dlt*/, string *rslt) {
 	rslt->resize(0);
-}
-void ws_test(const char */*pcapFile*/) {
 }
 
 #endif //HAVE_LIBWIRESHARK

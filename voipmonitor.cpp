@@ -4893,10 +4893,6 @@ void test() {
 		test_thread();
 		break;
 	 
-		extern void ws_test(const char *pcapFile);
-		ws_test("/home/jumbox/Plocha/jira/VG-1191/isdn.pcap");
-		break;
-	 
 		extern void testPN();
 		testPN();
 		break;

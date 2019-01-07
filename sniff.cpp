@@ -6181,7 +6181,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 						#if USE_PACKET_NUMBER
 						packet_counter,
 						#endif
-						ppd.header_ip->saddr, htons(ppd.header_udp->source), ppd.header_ip->daddr, htons(ppd.header_udp->dest), 
+						ppd.header_ip ? ppd.header_ip->saddr : 0, ppd.header_ip ? htons(ppd.header_udp->source) : 0, ppd.header_ip ? ppd.header_ip->daddr : 0, ppd.header_ip ? htons(ppd.header_udp->dest) : 0, 
 						ppd.datalen, dataoffset, 
 						handle_index, header, packet, true,
 						ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_offset),
