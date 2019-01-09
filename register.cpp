@@ -252,9 +252,25 @@ void Register::update(Call *call) {
 	if(!digest_username && call->digest_username[0]) {
 		digest_username = REG_NEW_STR(call->digest_username);
 	}
+	if(!opt_sip_register_state_compare_from_num &&
+	   !from_num && call->caller[0]) {
+		from_num = REG_NEW_STR(call->caller);
+	}
+	if(!opt_sip_register_state_compare_from_name &&
+	   !from_name && call->callername[0]) {
+		from_name = REG_NEW_STR(call->callername);
+	}
+	if(!opt_sip_register_state_compare_from_domain &&
+	   !from_domain && call->caller_domain[0]) {
+		from_domain = REG_NEW_STR(call->caller_domain);
+	}
 	if(!opt_sip_register_state_compare_digest_realm &&
 	   !digest_realm && call->digest_realm[0]) {
 		digest_realm = REG_NEW_STR(call->digest_realm);
+	}
+	if(!opt_sip_register_state_compare_ua &&
+	   !ua && call->a_ua[0]) {
+		ua = REG_NEW_STR(call->a_ua);
 	}
 	sipcallerip = call->sipcallerip[0];
 	sipcalledip = call->sipcalledip[0];
@@ -370,10 +386,40 @@ void Register::updateLastState(Call *call) {
 		   !state->digest_realm && call->digest_realm[0] && this->digest_realm) {
 			state->digest_realm = EQ_REG;
 		}
+		if(!opt_sip_register_state_compare_from_num) {
+			this->updateLastStateItem(call->caller, this->from_num, &state->from_num);
+		}
+		if(!opt_sip_register_state_compare_from_name) {
+			this->updateLastStateItem(call->callername, this->from_name, &state->from_name);
+		}
+		if(!opt_sip_register_state_compare_from_domain) {
+			this->updateLastStateItem(call->caller_domain, this->from_domain, &state->from_domain);
+		}
+		if(!opt_sip_register_state_compare_digest_realm) {
+			this->updateLastStateItem(call->digest_realm, this->digest_realm, &state->digest_realm);
+		}
+		if(!opt_sip_register_state_compare_ua) {
+			this->updateLastStateItem(call->a_ua, this->ua, &state->ua);
+		}
 		if(call->is_sipalg_detected) {
 			state->is_sipalg_detected = true;
 		}
 		++state->counter;
+	}
+}
+
+void Register::updateLastStateItem(char *callItem, char *registerItem, char **stateItem) {
+	if(callItem && callItem[0] && registerItem && registerItem[0] &&
+	   !REG_EQ_STR(*stateItem == EQ_REG ? registerItem : *stateItem, callItem)) {
+		char *tmp_str;
+		if(*stateItem && *stateItem != EQ_REG) {
+			REG_FREE_STR(*stateItem);
+		}
+		if(!strcmp(registerItem, callItem)) {
+			*stateItem = EQ_REG;
+		} else {
+			*stateItem = REG_NEW_STR(callItem);
+		}
 	}
 }
 

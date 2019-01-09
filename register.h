@@ -103,6 +103,7 @@ public:
 	inline void shiftStates();
 	inline void expire(bool need_lock_states = true, bool use_state_prev_last = false);
 	inline void updateLastState(Call *call);
+	inline void updateLastStateItem(char *callItem, char *registerItem, char **stateItem);
 	inline bool eqLastState(Call *call);
 	inline void clean_all();
 	inline void saveStateToDb(RegisterState *state, bool enableBatchIfPossible = true);
