@@ -1,3 +1,12 @@
+23.4 08.01.2019
+===============
+- add more conditions in custom's headers [VS-856]
+- support for multiple inserts fore some cdr_tables (mysql_enable_multiple_rows_insert, mysql_max_multiple_rows_insert) 
+- accept character X or shorter syntax in SIP response codes. E.g. 3,3XX,48,48X,483 [VS-856]
+- support for DLT_MTP2_WITH_PHDR (SS7 pcap from sangoma wanpipemon), fix load ss7-pcap via -r
+- add filters for useragent,domain into active calls [VG-1647]
+
+
 23.3.1 18.12.2018
 =================
 - fix mysql connection broken in 23.3
