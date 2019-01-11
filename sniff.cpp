@@ -4963,10 +4963,11 @@ inline int parse_packet__last_sip_response(char *data, unsigned int datalen, int
 		char a = data[datalen - 1];
 		data[datalen - 1] = 0;
 		char *tmp = strstr(data, "\r");
-		if(tmp) {
+		if(tmp && tmp > data + 8) {
 			// 8 is len of [SIP/2.0 ], 128 is max buffer size
-			strncpy(lastSIPresponse, data + 8, (datalen > 128) ? 128 : datalen);
-			lastSIPresponse[tmp - data - 8] = '\0';
+			int lastSIPresponseLength = min((int)(tmp - (data + 8)), 127);
+			strncpy(lastSIPresponse, data + 8, lastSIPresponseLength);
+			lastSIPresponse[lastSIPresponseLength] = '\0';
 			char num[4];
 			strncpy(num, data + 8, 3);
 			num[3] = '\0';
