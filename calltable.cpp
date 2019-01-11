@@ -7308,7 +7308,7 @@ Calltable::cleanup_calls( struct timeval *currtime ) {
 }
 
 int
-Calltable::cleanup_registers( struct timeval *currtime, int expires_add ) {
+Calltable::cleanup_registers(struct timeval *currtime) {
 
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
@@ -7378,7 +7378,7 @@ Calltable::cleanup_registers( struct timeval *currtime, int expires_add ) {
 					}
 					if(reg->regstate != 2 ||
 					   !opt_register_timeout_disable_save_failed) {
-						registers.add(reg, currtime, expires_add);
+						registers.add(reg);
 					}
 					reg->getPcap()->close();
 					reg->getPcapSip()->close();
@@ -7549,7 +7549,7 @@ void Call::saveregister(struct timeval *currtime) {
 		push_register_to_registers_queue = 1;
 		if(opt_sip_register == 1) {
 			extern Registers registers;
-			registers.add(this, currtime);
+			registers.add(this);
 			((Calltable*)calltable)->lock_registers_deletequeue();
 			((Calltable*)calltable)->registers_deletequeue.push_back(this);
 			((Calltable*)calltable)->unlock_registers_deletequeue();

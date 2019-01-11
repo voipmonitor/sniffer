@@ -633,7 +633,7 @@ int Registers::getCount() {
 	return(registers.size());
 }
 
-void Registers::add(Call *call, struct timeval *currtime, int expires_add) {
+void Registers::add(Call *call) {
  
 	/*
 	string digest_username_orig = call->digest_username;
@@ -669,17 +669,15 @@ void Registers::add(Call *call, struct timeval *currtime, int expires_add) {
 		unlock_registers();
 	} else {
 		Register *existsReg = iter->second;
-		if(currtime) {
-			existsReg->lock_states();
-			RegisterState *regstate = existsReg->states_last();
-			if(regstate &&
-			   (regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) &&
-			   regstate->expires &&
-			   regstate->state_to + regstate->expires + expires_add < currtime->tv_sec) {
-				existsReg->expire(false);
-			}
-			existsReg->unlock_states();
+		existsReg->lock_states();
+		RegisterState *regstate = existsReg->states_last();
+		if(regstate &&
+		   (regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) &&
+		   regstate->expires &&
+		   regstate->state_to + regstate->expires < call->calltime()) {
+			existsReg->expire(false);
 		}
+		existsReg->unlock_states();
 		existsReg->update(call);
 		unlock_registers();
 		existsReg->addState(call);
@@ -692,7 +690,7 @@ void Registers::add(Call *call, struct timeval *currtime, int expires_add) {
 	*/
 	
 	struct timeval cleanup_time;
-	cleanup(call->get_calltime(&cleanup_time));
+	cleanup(call->get_calltime(&cleanup_time), false, 30);
 	
 	/*
 	eRegisterState states[] = {

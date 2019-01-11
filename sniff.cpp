@@ -4737,23 +4737,21 @@ inline void process_packet__cleanup_registers(pcap_pkthdr* header) {
 		}
 	}
 	struct timeval ts;
-	int expires_add = 0;
 	if(header) {
 		ts = header->ts;
 	} else {
 		u_long corTimeMS = actTimeMS + process_packet__last_cleanup_registers_diff;
 		ts.tv_sec = corTimeMS / 1000;
 		ts.tv_usec = corTimeMS % 1000 * 1000;
-		expires_add = 30;
 	}
 	if(ts.tv_sec - process_packet__last_cleanup_registers < 10) {
 		return;
 	}
+	calltable->cleanup_registers(&ts);
 	if(opt_sip_register == 1) {
 		extern Registers registers;
-		registers.cleanup(&ts, false, expires_add);
+		registers.cleanup(&ts, false, 30);
 	}
-	calltable->cleanup_registers(&ts, expires_add);
 	process_packet__last_cleanup_registers = ts.tv_sec;
 }
 
