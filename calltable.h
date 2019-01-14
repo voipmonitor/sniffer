@@ -1826,7 +1826,7 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	int cleanup_calls( struct timeval *currtime );
+	int cleanup_calls( struct timeval *currtime, bool forceClose = false );
 	int cleanup_registers( struct timeval *currtime);
 	int cleanup_ss7( struct timeval *currtime );
 

@@ -318,6 +318,7 @@ int opt_pb_read_from_file_acttime = 0;
 int opt_pb_read_from_file_acttime_diff_days = 0;
 unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
+int opt_time_to_terminate = 0;
 bool opt_receiver_check_id_sensor = true;
 int opt_dscp = 0;
 int opt_cdrproxy = 1;
@@ -6713,6 +6714,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"test-regexp", 1, 0, 321},
 	    {"read-pcap", 1, 0, 210},
 	    {"max-packets", 1, 0, 301},
+	    {"time-to-terminate", 1, 0, 323},
 	    {"continue-after-read", 0, 0, 302},
 	    {"diff-days", 1, 0, 303},
 	    {"reindex-all", 0, 0, 304},
@@ -6847,6 +6849,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "disable_push_to_t2_in_packetbuffer")
 								sverb.disable_push_to_t2_in_packetbuffer = 1;
 	else if(verbParam == "disable_save_packet")		sverb.disable_save_packet = 1;
+	else if(verbParam == "disable_save_graph")		sverb.disable_save_graph = 1;
 	else if(verbParam == "disable_save_call")		sverb.disable_save_call = 1;
 	else if(verbParam == "disable_read_rtp")		sverb.disable_read_rtp = 1;
 	else if(verbParam == "thread_create")			sverb.thread_create = 1;
@@ -7140,6 +7143,9 @@ void get_command_line_arguments() {
 				break;
 			case 302:
 				opt_continue_after_read = true;
+				break;
+			case 323:
+				opt_time_to_terminate = atoi(optarg);
 				break;
 			case 303:
 				opt_pb_read_from_file_acttime_diff_days = atoi(optarg);

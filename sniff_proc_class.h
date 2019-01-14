@@ -329,6 +329,9 @@ public:
 				packetS.blockstore_setlock();
 			}
 			this->push_packet_detach(&packetS);
+		} else if(packetDelete) {
+			delete header;
+			delete [] packet;
 		}
 		if(opt_enable_ssl) {
 			this->unlock_push();

@@ -397,16 +397,6 @@ void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirt
 
 typedef struct {
 	Call *call;
-	packet_s packet;
-	int8_t iscaller;
-	char find_by_dest;
-	char is_rtcp;
-	char stream_in_multiple_calls;
-	char is_fax;
-	char save_packet;
-} rtp_packet_pcap_queue;
-typedef struct {
-	Call *call;
 	packet_s_process_0 *packet;
 	int8_t iscaller;
 	char find_by_dest;
@@ -414,7 +404,7 @@ typedef struct {
 	char stream_in_multiple_calls;
 	char is_fax;
 	char save_packet;
-} rtp_packet_pt_pcap_queue;
+} rtp_packet_pcap_queue;
 
 class rtp_read_thread {
 public:
@@ -428,31 +418,17 @@ public:
 	#endif
 	struct batch_packet_rtp_base {
 		batch_packet_rtp_base(unsigned max_count) {
-			extern bool opt_t2_boost;
-			if(!opt_t2_boost) {
-				batch.c = new FILE_LINE(27003) rtp_packet_pcap_queue[max_count];
-				memset(CAST_OBJ_TO_VOID(batch.c), 0, sizeof(rtp_packet_pcap_queue) * max_count);
-			} else {
-				batch.pt = new FILE_LINE(27004) rtp_packet_pt_pcap_queue[max_count];
-				memset(CAST_OBJ_TO_VOID(batch.pt), 0, sizeof(rtp_packet_pt_pcap_queue) * max_count);
-			}
+			batch = new FILE_LINE(0) rtp_packet_pcap_queue[max_count];
+			memset(CAST_OBJ_TO_VOID(batch), 0, sizeof(rtp_packet_pcap_queue) * max_count);
 			this->max_count = max_count;
 		}
 		virtual ~batch_packet_rtp_base() {
 			for(unsigned i = 0; i < max_count; i++) {
 				// unlock item
 			}
-			extern bool opt_t2_boost;
-			if(!opt_t2_boost) {
-				delete [] batch.c;
-			} else {
-				delete [] batch.pt;
-			}
+			delete [] batch;
 		}
-		union batch_u {
-			rtp_packet_pcap_queue *c;
-			rtp_packet_pt_pcap_queue *pt;
-		} batch;
+		rtp_packet_pcap_queue *batch;
 		unsigned max_count;
 	};
 	struct batch_packet_rtp : public batch_packet_rtp_base {
@@ -528,7 +504,7 @@ public:
 						usleepCounter > 2 ? 5 : 1));
 					++usleepCounter;
 				}
-				memcpy(current_batch->batch.pt, thread_buffer->batch.pt, sizeof(rtp_packet_pt_pcap_queue) * thread_buffer->count);
+				memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
 				#if RQUEUE_SAFE
 					__SYNC_SET_TO_LOCK(current_batch->count, thread_buffer->count, this->count_lock_sync);
 					__SYNC_SET(current_batch->used);
@@ -552,7 +528,7 @@ public:
 				thread_buffer->count = 0;
 				__sync_lock_release(&this->push_lock_sync);
 			}
-			rtp_packet_pt_pcap_queue *rtpp_pq = &thread_buffer->batch.pt[thread_buffer->count];
+			rtp_packet_pcap_queue *rtpp_pq = &thread_buffer->batch[thread_buffer->count];
 			rtpp_pq->call = call;
 			rtpp_pq->packet = packet;
 			rtpp_pq->iscaller = iscaller;
@@ -592,9 +568,9 @@ public:
 				qring_push_index_count = 0;
 				qring_active_push_item = this->qring[qring_push_index - 1];
 			}
-			rtp_packet_pcap_queue *rtpp_pq = &qring_active_push_item->batch.c[qring_push_index_count];
+			rtp_packet_pcap_queue *rtpp_pq = &qring_active_push_item->batch[qring_push_index_count];
 			rtpp_pq->call = call;
-			rtpp_pq->packet = *packet;
+			rtpp_pq->packet = packet;
 			rtpp_pq->iscaller = iscaller;
 			rtpp_pq->find_by_dest = find_by_dest;
 			rtpp_pq->is_rtcp = is_rtcp;
@@ -687,7 +663,7 @@ public:
 					usleepCounter > 2 ? 5 : 1));
 				++usleepCounter;
 			}
-			memcpy(current_batch->batch.pt, thread_buffer->batch.pt, sizeof(rtp_packet_pt_pcap_queue) * thread_buffer->count);
+			memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
 			#if RQUEUE_SAFE
 				__SYNC_SET_TO_LOCK(current_batch->count, thread_buffer->count, this->count_lock_sync);
 				__SYNC_SET(current_batch->used);

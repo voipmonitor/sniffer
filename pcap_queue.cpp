@@ -132,6 +132,7 @@ extern int opt_pb_read_from_file_acttime;
 extern int opt_pb_read_from_file_acttime_diff_days;
 extern unsigned int opt_pb_read_from_file_max_packets;
 extern bool opt_continue_after_read;
+extern int opt_time_to_terminate;
 extern char opt_scanpcapdir[2048];
 extern int global_pcap_dlink;
 extern char opt_cachedir[1024];
@@ -3261,9 +3262,11 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 			syslog(LOG_NOTICE, "wait for processing packetbuffer (%.1lf%%)", buffersControl.getPercUsePBwithouttrash());
 			sleep(1);
 		}
-		int sleepTimeBeforeCleanup = opt_enable_ssl ? 10 :
+		int sleepTimeBeforeCleanup = opt_time_to_terminate > 0 ? (opt_time_to_terminate / 2) :
+					     opt_enable_ssl ? 10 :
 					     sverb.chunk_buffer ? 20 : 5;
-		int sleepTimeAfterCleanup = 4;
+		int sleepTimeAfterCleanup = opt_time_to_terminate > 0 ? (opt_time_to_terminate / 2) :
+					    4;
 		while((sleepTimeBeforeCleanup + sleepTimeAfterCleanup) && !is_terminating()) {
 			syslog(LOG_NOTICE, "time to terminating: %u", sleepTimeBeforeCleanup + sleepTimeAfterCleanup);
 			this->tryForcePush();
@@ -3271,7 +3274,10 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 			if(sleepTimeBeforeCleanup) {
 				--sleepTimeBeforeCleanup;
 				if(!sleepTimeBeforeCleanup) {
-					calltable->cleanup_calls(NULL);
+					if(calltable->cleanup_calls(NULL)) {
+						syslog(LOG_NOTICE, "add time to cleanup calls");
+						++sleepTimeBeforeCleanup;
+					}
 					calltable->cleanup_registers(NULL);
 					calltable->cleanup_ss7(NULL);
 					extern int opt_sip_register;

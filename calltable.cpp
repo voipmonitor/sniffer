@@ -1575,7 +1575,7 @@ read:
 		snprintf(graph_extension, sizeof(graph_extension), "%d.graph%s", ssrc_n, opt_gzipGRAPH == FileZipHandler::gzip ? ".gz" : "");
 		string graph_pathfilename = get_pathfilename(tsf_graph, graph_extension);
 		strcpy(rtp[ssrc_n]->gfilename, graph_pathfilename.c_str());
-		if(flags & FLAG_SAVEGRAPH) {
+		if((flags & FLAG_SAVEGRAPH) && !sverb.disable_save_graph) {
 			rtp[ssrc_n]->graph.auto_open(tsf_graph, graph_pathfilename.c_str());
 		}
 		if(rtp[ssrc_n]->gfileRAW) {
@@ -7149,7 +7149,7 @@ Calltable::add_mgcp(sMgcpRequest *request, time_t time, u_int32_t saddr, unsigne
 */
 
 int
-Calltable::cleanup_calls( struct timeval *currtime ) {
+Calltable::cleanup_calls( struct timeval *currtime, bool forceClose ) {
  
 	extern int opt_blockcleanupcalls;
 	if(opt_blockcleanupcalls) {
@@ -7163,6 +7163,7 @@ Calltable::cleanup_calls( struct timeval *currtime ) {
 	lock_calls_listMAP();
 	Call **closeCalls = new FILE_LINE(1012) Call*[calls_listMAP.size() + calls_by_stream_callid_listMAP.size()];
 	unsigned int closeCalls_count = 0;
+	int rejectedCalls_count = 0;
 	
 	map<string, Call*>::iterator callMAPIT1;
 	map<sStreamIds2, Call*>::iterator callMAPIT2;
@@ -7229,10 +7230,11 @@ Calltable::cleanup_calls( struct timeval *currtime ) {
 			if(closeCall) {
 				++call->attemptsClose;
 				call->removeFindTables(currtime, true);
-				if(currtime  &&
+				if((currtime || !forceClose) &&
 				   ((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
 				    call->rtppacketsinqueue != 0)) {
 					closeCall = false;
+					++rejectedCalls_count;
 				}
 			}
 			if(closeCall) {
@@ -7304,7 +7306,7 @@ Calltable::cleanup_calls( struct timeval *currtime ) {
 		syslog(LOG_NOTICE, "terminated - cleanup calls");
 	}
 	
-	return 0;
+	return rejectedCalls_count;
 }
 
 int
