@@ -807,11 +807,13 @@ void cSipMsgRelations::clear() {
 	debug_out();
 	*/
  
+	lock_relations();
 	map<cSipMsgRelationId, cSipMsgRelation*>::iterator iter;
 	for(iter = relations.begin(); iter != relations.end(); iter++) {
 		delete iter->second;
 	}
 	relations.clear();
+	unlock_relations();
 }
 
 void cSipMsgRelations::loadParams() {
