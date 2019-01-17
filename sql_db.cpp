@@ -1476,6 +1476,9 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		if(verbosity > 1) {
 			syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
 		}
+		if(sverb.query_regex[0] && reg_match(prepareQueryForPrintf(preparedQuery).c_str(), sverb.query_regex)) {
+			cout << prepareQueryForPrintf(preparedQuery) << endl;
+		}
 		if(isCloudSsh()) {
 			return(this->queryByCurl(preparedQuery, callFromStoreProcessWithFixDeadlock));
 		} else {
@@ -1521,8 +1524,13 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 	unsigned int attempt = 1;
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++) {
 		string preparedQuery = this->prepareQuery(query, !callFromStoreProcessWithFixDeadlock && attempt > 1);
-		if(attempt == 1 && verbosity > 1) {
-			syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
+		if(attempt == 1) {
+			if(verbosity > 1) {
+				syslog(LOG_INFO, "%s", prepareQueryForPrintf(preparedQuery).c_str());
+			}
+			if(sverb.query_regex[0] && reg_match(prepareQueryForPrintf(preparedQuery).c_str(), sverb.query_regex)) {
+				cout << prepareQueryForPrintf(preparedQuery) << endl;
+			}
 		}
 		if(pass > 0) {
 			if(is_terminating()) {
