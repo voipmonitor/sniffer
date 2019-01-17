@@ -4316,6 +4316,8 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 		
 		if(packetS) {
 			call->shift_destroy_call_at(packetS->header_pt);
+		} else {
+			break;
 		}
 		++count_use;
 	}
@@ -4328,11 +4330,13 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			if(preSyncRtp) {
 				__sync_sub_and_fetch(&call_info[call_info_index].call->rtppacketsinqueue, 1);
 			}
-			packetS->blockstore_addflag(58 /*pb lock flag*/);
-			if(opt_t2_boost ? threadIndex : threadIndex2) {
-				PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 20 + (opt_t2_boost ? threadIndex : threadIndex2) - 1);
-			} else {
-				PACKET_S_PROCESS_DESTROY(&packetS);
+			if(packetS) {
+				packetS->blockstore_addflag(58 /*pb lock flag*/);
+				if(opt_t2_boost ? threadIndex : threadIndex2) {
+					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 20 + (opt_t2_boost ? threadIndex : threadIndex2) - 1);
+				} else {
+					PACKET_S_PROCESS_DESTROY(&packetS);
+				}
 			}
 		}
 	}
