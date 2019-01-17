@@ -1,3 +1,11 @@
+23.5 17.01.2019
+===============
+- new option quick_save_cdr = NO/yes/quick when 10 seconds timeout when call ends between database write is too long (default is disabled which is recommended) [VS-879]
+- fix rare crashes for certain configurations 
+- fix SIP REGISTER expiration when expire is short (like 30 seconds) and is renewing it 5 seconds before it timeouts [VS-869]
+- update SIP REGISTER UA and other information with every other SIP REGISTER packets [VG-1747]
+
+
 23.4 08.01.2019
 ===============
 - add more conditions in custom's headers [VS-856]
