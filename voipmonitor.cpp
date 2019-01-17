@@ -325,6 +325,7 @@ int opt_cdrproxy = 1;
 int opt_messageproxy = 1;
 int opt_cdr_country_code = 1;
 int opt_message_country_code = 1;
+int opt_quick_save_cdr = 0;
 int opt_enable_http_enum_tables = 0;
 int opt_enable_webrtc_table = 0;
 int opt_generator = 0;
@@ -6094,6 +6095,8 @@ void cConfig::addConfigItems() {
 				->addValues("id:2"));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("message_country_code", &opt_message_country_code))
 				->addValues("id:2"));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("quick_save_cdr", &opt_quick_save_cdr))
+				->addValues("quick:2"));
 		setDisableIfEnd();
 	group("SIP protocol / headers");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -8401,6 +8404,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "message_country_code", NULL))) {
 		opt_message_country_code = !strcasecmp(value, "id") ? 2 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "quick_save_cdr", NULL))) {
+		opt_quick_save_cdr = !strcasecmp(value, "quick") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "mos_g729", NULL))) {
 		opt_mos_g729 = yesno(value);

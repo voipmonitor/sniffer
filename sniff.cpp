@@ -250,6 +250,7 @@ extern bool opt_detect_alone_bye;
 extern bool opt_get_reason_from_bye_cancel;
 extern int opt_hash_modify_queue_length_ms;
 extern int opt_sipalg_detect;
+extern int opt_quick_save_cdr;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
@@ -318,6 +319,15 @@ unsigned long process_packet__last_destroy_registers = 0;
 unsigned long process_packet__last_cleanup_ss7 = 0;
 int64_t process_packet__last_cleanup_ss7_diff = 0;
 unsigned long __last_memory_purge = 0;
+
+volatile unsigned long count_sip_bye;
+volatile unsigned long count_sip_bye_confirmed;
+volatile unsigned long count_sip_cancel;
+volatile unsigned long count_sip_cancel_confirmed;
+unsigned long process_packet__last_cleanup_calls__count_sip_bye;
+unsigned long process_packet__last_cleanup_calls__count_sip_bye_confirmed;
+unsigned long process_packet__last_cleanup_calls__count_sip_cancel;
+unsigned long process_packet__last_cleanup_calls__count_sip_cancel_confirmed;
 
 
 // return IP from nat_aliases[ip] or 0 if not found
@@ -3273,6 +3283,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 		}
 	} else if(packetS->sip_method == BYE) {
+		++count_sip_bye;
 		if(call->is_enable_set_destroy_call_at_for_call(NULL, merged)) {
 			//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header 
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 60;
@@ -3299,10 +3310,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 		}
 	} else if(packetS->sip_method == CANCEL) {
+		++count_sip_cancel;
 		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
 		if(call->is_enable_set_destroy_call_at_for_call(NULL, merged)) {
 			//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
-			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 10;
+			call->destroy_call_at = packetS->header_pt->ts.tv_sec + (opt_quick_save_cdr == 2 ? 0 :
+										(opt_quick_save_cdr ? 1 : 10));
 		}
 		
 		if(call->is_multiple_to_branch()) {
@@ -3336,6 +3349,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				}
 				if(packetS->cseq.method == BYE &&
 				   call->existsByeCseq(&packetS->cseq)) {
+					++count_sip_bye_confirmed;
 					// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
 					bool okByeRes2xx = true;
 					if(call->is_multiple_to_branch()) {
@@ -3365,7 +3379,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 
 						// destroy call after 5 seonds from now 
 						if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {
-							call->destroy_call_at = packetS->header_pt->ts.tv_sec + 5;
+							call->destroy_call_at = packetS->header_pt->ts.tv_sec + (opt_quick_save_cdr == 2 ? 0 :
+														(opt_quick_save_cdr ? 1 : 5));
 							call->destroy_call_at_bye_confirmed = packetS->header_pt->ts.tv_sec + opt_bye_confirmed_timeout;
 						}
 					}
@@ -3446,6 +3461,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					}
 				} else if(packetS->cseq.method == CANCEL &&
 					  call->cancelcseq.is_set() && packetS->cseq == call->cancelcseq) {
+					++count_sip_cancel_confirmed;
 					call->setSeencancelAndOk(true, getTimeUS(packetS->header_pt), packetS->get_callid());
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
@@ -4316,6 +4332,8 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 		
 		if(packetS) {
 			call->shift_destroy_call_at(packetS->header_pt);
+		} else {
+			break;
 		}
 		++count_use;
 	}
@@ -4328,11 +4346,13 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			if(preSyncRtp) {
 				__sync_sub_and_fetch(&call_info[call_info_index].call->rtppacketsinqueue, 1);
 			}
-			packetS->blockstore_addflag(58 /*pb lock flag*/);
-			if(opt_t2_boost ? threadIndex : threadIndex2) {
-				PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 20 + (opt_t2_boost ? threadIndex : threadIndex2) - 1);
-			} else {
-				PACKET_S_PROCESS_DESTROY(&packetS);
+			if(packetS) {
+				packetS->blockstore_addflag(58 /*pb lock flag*/);
+				if(opt_t2_boost ? threadIndex : threadIndex2) {
+					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 20 + (opt_t2_boost ? threadIndex : threadIndex2) - 1);
+				} else {
+					PACKET_S_PROCESS_DESTROY(&packetS);
+				}
 			}
 		}
 	}
@@ -4627,10 +4647,19 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 }
 
 inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
+	bool doQuickCleanup = false;
+	if(opt_quick_save_cdr &&
+	   (count_sip_bye != process_packet__last_cleanup_calls__count_sip_bye ||
+	    count_sip_bye_confirmed != process_packet__last_cleanup_calls__count_sip_bye_confirmed ||
+	    count_sip_cancel != process_packet__last_cleanup_calls__count_sip_cancel ||
+	    count_sip_cancel_confirmed != process_packet__last_cleanup_calls__count_sip_cancel_confirmed)) {
+		doQuickCleanup = true;
+	}
 	u_long actTimeMS = getTimeMS_rdtsc();
 	if(header) {
 		process_packet__last_cleanup_calls_diff = getTimeMS(header) - actTimeMS;
-		if(getTimeS(header) - process_packet__last_cleanup_calls < 10) {
+		if(!doQuickCleanup &&
+		   getTimeS(header) - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : 10)) {
 			return;
 		}
 	}
@@ -4642,7 +4671,8 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
 		ts.tv_sec = corTimeMS / 1000;
 		ts.tv_usec = corTimeMS % 1000 * 1000;
 	}
-	if(ts.tv_sec - process_packet__last_cleanup_calls < 10) {
+	if(!doQuickCleanup &&
+	   ts.tv_sec - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : 10)) {
 		return;
 	}
 	if(verbosity > 0 && is_read_from_file_simple()) {
@@ -4657,6 +4687,11 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
 	calltable->cleanup_calls(&ts);
 	listening_cleanup();
 	process_packet__last_cleanup_calls = ts.tv_sec;
+	
+	process_packet__last_cleanup_calls__count_sip_bye = count_sip_bye;
+	process_packet__last_cleanup_calls__count_sip_bye_confirmed = count_sip_bye_confirmed;
+	process_packet__last_cleanup_calls__count_sip_cancel = count_sip_cancel;
+	process_packet__last_cleanup_calls__count_sip_cancel_confirmed = count_sip_cancel_confirmed;
 
 	/* You may encounter that voipmonitor process does not have a reduced memory usage although you freed the calls. 
 	This is because it allocates memory in a number of small chunks. When freeing one of those chunks, the OS may decide 
@@ -7304,12 +7339,17 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		} else {
 			process_packet_sip_call(packetS);
 		}
-		_process_packet__cleanup_calls(packetS->header_pt);
+		if(opt_quick_save_cdr != 2) {
+			_process_packet__cleanup_calls(packetS->header_pt);
+		}
 		if(packetS->_findCall && packetS->call) {
 			__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
 		}
 		if(packetS->_createCall && packetS->call_created) {
 			__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
+		}
+		if(opt_quick_save_cdr == 2) {
+			_process_packet__cleanup_calls(packetS->header_pt);
 		}
 	} else if(packetS->isSkinny) {
 		if(opt_ipaccount && packetS->block_store) {
