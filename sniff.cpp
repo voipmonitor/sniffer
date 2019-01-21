@@ -3126,7 +3126,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	return call;
 }
 
-void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from_data, unsigned sdplen, 
+void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from_data, unsigned sdplen,
 		 char *callidstr, char *to, char *branch) {
  
 	extern bool opt_disable_process_sdp;
@@ -3264,8 +3264,18 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 					}
 					if (opt_sdp_reverse_ipport)
 					{
-						call->add_ip_port_hash(packetS->saddr, packetS->saddr, ip_port_call_info::_ta_sdp_reverse_ipport, tmp_port2, packetS->header_pt,
+						call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base_video, tmp_port2, packetS->header_pt,
 											   sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
+						// check if the IP address is listed in nat_aliases
+						in_addr_t alias = 0;
+						if ((alias = match_nat_aliases(tmp_addr)) != 0)
+						{
+							syslog(LOG_ERR, "[%s] nat_aliases is not supported for video", call->fbasename);
+						}
+						if (opt_sdp_reverse_ipport)
+						{
+							syslog(LOG_ERR, "[%s] sdp_reverse_ipport is not supported for video", call->fbasename);
+						}
 					}
 				}
 			}
