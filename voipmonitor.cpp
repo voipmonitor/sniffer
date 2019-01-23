@@ -5833,7 +5833,7 @@ void cConfig::addConfigItems() {
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem((new FILE_LINE(42149) cConfigItem_yesno("threading_mod"))
 				->disableNo()
-				->addValues("1:1|2:2|3:3|4:4|5:5")
+				->addValues("1:1|2:2|3:3|4:4|5:5|6:6")
 				->setDefaultValueStr("4"));
 				advanced();
 				addConfigItem((new FILE_LINE(42150) cConfigItem_integer("preprocess_rtp_threads", &opt_enable_process_rtp_packet))
