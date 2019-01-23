@@ -5734,7 +5734,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42100) cConfigItem_integer("mysqlstore_concat_limit_webrtc", &opt_mysqlstore_concat_limit_webrtc));
 				addConfigItem(new FILE_LINE(42101) cConfigItem_integer("mysqlstore_concat_limit_ipacc", &opt_mysqlstore_concat_limit_ipacc));
 				addConfigItem((new FILE_LINE(42102) cConfigItem_integer("mysqlstore_max_threads_cdr", &opt_mysqlstore_max_threads_cdr))
-					->setMaximum(9)->setMinimum(1));
+					->setMaximum(30)->setMinimum(1));
 				addConfigItem((new FILE_LINE(42103) cConfigItem_integer("mysqlstore_max_threads_message", &opt_mysqlstore_max_threads_message))
 					->setMaximum(9)->setMinimum(1));
 				addConfigItem((new FILE_LINE(42104) cConfigItem_integer("mysqlstore_max_threads_register", &opt_mysqlstore_max_threads_register))
@@ -9554,7 +9554,7 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_cdr", NULL))) {
-		opt_mysqlstore_max_threads_cdr = max(min(atoi(value), 9), 1);
+		opt_mysqlstore_max_threads_cdr = max(min(atoi(value), 30), 1);
 	}
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_message", NULL))) {
 		opt_mysqlstore_max_threads_message = max(min(atoi(value), 9), 1);
