@@ -2807,11 +2807,14 @@ int main(int argc, char *argv[]) {
 			load_config((char*)"/etc/voipmonitor/conf.d/");
 		}
 	}
+	list<cConfig::sDiffValue> diffValuesMysqlLoadConfig;
 	if(!opt_nocdr && !is_set_gui_params() && 
 	   !printConfigStruct && !printConfigFile &&
 	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
+			CONFIG.beginTrackDiffValues();
 			CONFIG.setFromMysql(true);
+			CONFIG.endTrackDiffValues(&diffValuesMysqlLoadConfig);
 		}
 	}
 	get_command_line_arguments();
@@ -3021,6 +3024,13 @@ int main(int argc, char *argv[]) {
 
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size() && reloadLoopCounter == 0) {
 		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", RTPSENSOR_VERSION);
+		if(diffValuesMysqlLoadConfig.size()) {
+			cLogSensor *log = cLogSensor::begin(cLogSensor::notice, "Configuration values in mysql have a higher weight than the values in the text configuration file. (name : text config / mysql config).");
+			for(list<cConfig::sDiffValue>::iterator iter = diffValuesMysqlLoadConfig.begin(); iter != diffValuesMysqlLoadConfig.end(); iter++) {
+				cLogSensor::log(log, iter->format().c_str());
+			}
+			cLogSensor::end(log);
+		}
 	}
 
 	if(!is_read_from_file() && opt_fork && enable_wdt && reloadLoopCounter == 0) {

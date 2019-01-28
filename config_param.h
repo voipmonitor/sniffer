@@ -552,6 +552,15 @@ public:
 
 class cConfig {
 public:
+	struct sDiffValue {
+		string config_name;
+		string old_value;
+		string new_value;
+		string format() {
+			return(config_name + " : " + old_value + " / " + new_value);
+		}
+	};
+public:
 	cConfig();
 	~cConfig();
 	void addConfigItems();
@@ -588,6 +597,8 @@ public:
 	bool testEqValues(string itemName, list<string> values1, list<string> values2);
 	cConfigItem *getItem(const char *itemName);
 	bool isSet(const char *itemName);
+	void beginTrackDiffValues();
+	void endTrackDiffValues(list<sDiffValue> *diffValues);
 private:
 	void loadFromConfigFileError(const char *errorString, const char *filename, string *error = NULL);
 private:
@@ -600,6 +611,8 @@ private:
 	bool defaultMinorGroupIfNotSet;
 	string defaultDisableIf;
 	bool setFromMysqlOk;
+	list<sDiffValue> diffValues;
+	bool diffValuesTrack;
 };
 
 
