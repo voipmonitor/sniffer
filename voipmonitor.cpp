@@ -375,7 +375,7 @@ int opt_mysql_enable_transactions_message = 0;
 int opt_mysql_enable_transactions_register = 0;
 int opt_mysql_enable_transactions_http = 0;
 int opt_mysql_enable_transactions_webrtc = 0;
-int opt_mysql_enable_multiple_rows_insert = 0;
+int opt_mysql_enable_multiple_rows_insert = 1;
 int opt_mysql_max_multiple_rows_insert = 20;
 int opt_cdr_ua_enable = 1;
 vector<string> opt_cdr_ua_reg_remove;
