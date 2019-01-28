@@ -1863,16 +1863,22 @@ bool SqlDb_mysql::existsPartition(const char *table, const char *partition, bool
 	return(false);
 }
 
-bool SqlDb_mysql::emptyTable(const char *table) {
-	return(rowsInTable(table) <= 0);
+bool SqlDb_mysql::emptyTable(const char *table, bool viaTableStatus) {
+	return(rowsInTable(table, viaTableStatus) <= 0);
 }
 
-int64_t SqlDb_mysql::rowsInTable(const char *table) {
+int64_t SqlDb_mysql::rowsInTable(const char *table, bool viaTableStatus) {
 	list<SqlDb_field> fields;
-	fields.push_back(SqlDb_field("count(*)", "cnt", false));
-	this->select(table, &fields);
-	SqlDb_row row = this->fetchRow();
-	return(row ? atol(row["cnt"].c_str()) : -1);
+	if(viaTableStatus) {
+		this->query(string("show table status like '") + table + "'");
+		SqlDb_row row = this->fetchRow();
+		return(row ? atol(row["Rows"].c_str()) : -1);
+	} else {
+		fields.push_back(SqlDb_field("count(*)", "cnt", false));
+		this->select(table, &fields);
+		SqlDb_row row = this->fetchRow();
+		return(row ? atol(row["cnt"].c_str()) : -1);
+	}
 }
 
 bool SqlDb_mysql::isOldVerPartition(const char *table) {
@@ -2235,11 +2241,11 @@ bool SqlDb_odbc::existsPartition(const char */*table*/, const char */*partition*
 	return(false);
 }
 
-bool SqlDb_odbc::emptyTable(const char *table) {
-	return(rowsInTable(table));
+bool SqlDb_odbc::emptyTable(const char *table, bool viaTableStatus) {
+	return(rowsInTable(table, viaTableStatus));
 }
 
-int64_t SqlDb_odbc::rowsInTable(const char */*table*/) {
+int64_t SqlDb_odbc::rowsInTable(const char */*table*/, bool /*viaTableStatus*/) {
 	// TODO
 	return(-1);
 }
@@ -8092,7 +8098,7 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 		_createSqlObject = true;
 	}
 	sqlDb->setMaxQueryPass(2);
-	if(sqlDb->rowsInTable(table) > this->limitTableRows) {
+	if(sqlDb->rowsInTable(table, true) > this->limitTableRows) {
 		*overflow = true;
 	} else {
 		if(sqlDb->select(table, NULL, &cond)) {
