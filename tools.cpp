@@ -6764,20 +6764,20 @@ u_int32_t cResolver::resolve_std(const char *host) {
 
 u_int32_t cResolver::resolve_by_system_host(const char *host) {
 	u_int32_t ipl = 0;
-	char tmpOut[L_tmpnam+1];
-	if(tmpnam(tmpOut)) {
-		system((string("host -t A ") + host + " > " + tmpOut + " 2>/dev/null").c_str());
-		vector<string> host_rslt;
-		if(file_get_rows(tmpOut, &host_rslt)) {
-			string ipl_str = reg_replace(host_rslt[0].c_str(), "([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)", "$1", __FILE__, __LINE__);
+	FILE *cmd_pipe = popen((string("host -t A ") + host + " 2>/dev/null").c_str(), "r");
+	if(cmd_pipe) {
+		char bufRslt[512];
+		while(fgets(bufRslt, sizeof(bufRslt), cmd_pipe)) {
+			string ipl_str = reg_replace(bufRslt, "([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)", "$1", __FILE__, __LINE__);
 			if(!ipl_str.empty()) {
 				ipl = inet_strington(ipl_str.c_str());
 				if(ipl) {
 					ipl = ntohl(ipl);
+					break;
 				}
 			}
 		}
-		unlink(tmpOut);
+		pclose(cmd_pipe);
 	}
 	return(ipl);
 }
