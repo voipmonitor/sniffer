@@ -214,10 +214,10 @@ public:
 	virtual bool existsPartition(const char *table, const char *partition, bool useCache = true) = 0;
 	bool existsPartition(string table, string partition, bool useCache) { return(existsPartition(table.c_str(), partition.c_str(), useCache)); }
 	bool existsDayPartition(string table, unsigned addDaysToNow, bool useCache = true);
-	virtual bool emptyTable(const char *table) = 0;
-	bool emptyTable(string table) { return(emptyTable(table.c_str())); }
-	virtual int64_t rowsInTable(const char *table) = 0;
-	int64_t rowsInTable(string table) { return(rowsInTable(table.c_str())); }
+	virtual bool emptyTable(const char *table, bool viaTableStatus = false) = 0;
+	bool emptyTable(string table, bool viaTableStatus = false) { return(emptyTable(table.c_str(), viaTableStatus)); }
+	virtual int64_t rowsInTable(const char *table, bool viaTableStatus = false) = 0;
+	int64_t rowsInTable(string table, bool viaTableStatus = false) { return(rowsInTable(table.c_str(), viaTableStatus)); }
 	virtual bool isOldVerPartition(const char *table) { return(false); }
 	bool isOldVerPartition(string table) { return(isOldVerPartition(table.c_str())); }
 	virtual int getIndexField(string fieldName);
@@ -423,8 +423,8 @@ public:
 	string getTypeColumn(const char *table, const char *column, bool toLower = true);
 	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
-	bool emptyTable(const char *table);
-	int64_t rowsInTable(const char *table);
+	bool emptyTable(const char *table, bool viaTableStatus = false);
+	int64_t rowsInTable(const char *table, bool viaTableStatus = false);
 	bool isOldVerPartition(const char *table);
 	string escape(const char *inputString, int length = 0);
 	string getFieldBorder() {
@@ -554,8 +554,8 @@ public:
 	string getTypeColumn(const char *table, const char *column, bool toLower = true);
 	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
-	bool emptyTable(const char *table);
-	int64_t rowsInTable(const char *table);
+	bool emptyTable(const char *table, bool viaTableStatus = false);
+	int64_t rowsInTable(const char *table, bool viaTableStatus = false);
 	int getIndexField(string fieldName);
 	string escape(const char *inputString, int length = 0);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);

@@ -1629,6 +1629,7 @@ cConfig::cConfig() {
 	defaultMinor = false;
 	defaultMinorGroupIfNotSet = false;
 	setFromMysqlOk = false;
+	diffValuesTrack = true;
 }
 
 cConfig::~cConfig() {
@@ -2059,7 +2060,15 @@ void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
 					map<string, cConfigItem*>::iterator iter_map = config_map.find(column);
 					if(iter_map != config_map.end()) {
 						if(!row.isNull(column)) {
+							string oldValueStr = iter_map->second->getValueStr();
 							if(iter_map->second->setParamFromValueStr(row[column])) {
+								if(oldValueStr != row[column] && diffValuesTrack) {
+									sDiffValue diffValue;
+									diffValue.config_name = iter_map->second->config_name;
+									diffValue.old_value = oldValueStr;
+									diffValue.new_value = row[column];
+									diffValues.push_back(diffValue);
+								}
 								iter_map->second->set = true;
 								iter_map->second->set_in_db = true;
 								iter_map->second->value_in_db = row[column];
@@ -2184,6 +2193,24 @@ cConfigItem *cConfig::getItem(const char *itemName) {
 bool cConfig::isSet(const char *itemName) {
 	cConfigItem *item = getItem(itemName);
 	return(item ? item->set : false);
+}
+
+void cConfig::beginTrackDiffValues() {
+	diffValuesTrack = true;
+	diffValues.clear();
+}
+
+void cConfig::endTrackDiffValues(list<sDiffValue> *diffValues) {
+	if(diffValues) {
+		diffValues->clear();
+		if(this->diffValues.size()) {
+			for(list<sDiffValue>::iterator iter = this->diffValues.begin(); iter != this->diffValues.end(); iter++) {
+				diffValues->push_back(*iter);
+			}
+		}
+	}
+	diffValuesTrack = false;
+	this->diffValues.clear();
 }
 
 bool cConfig::testEqValues(const char *itemName, const char *value1, const char *value2) {

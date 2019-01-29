@@ -13,6 +13,7 @@
 
 extern map<d_u_int32_t, string> ssl_ipport;
 extern int opt_ssl_store_sessions;
+extern int opt_ssl_store_sessions_expiration_hours;
 extern MySqlStore *sqlStore;
 extern int opt_id_sensor;
 extern int opt_nocdr;
@@ -582,7 +583,7 @@ void cSslDsslSessions::loadSessions() {
 	}
 	list<SqlDb_condField> cond;
 	cond.push_back(SqlDb_condField("id_sensor", intToString(opt_id_sensor)));
-	cond.push_back(SqlDb_condField("stored_at", sqlDateTimeString(getTimeS() - 12 * 3600)).setOper(">"));
+	cond.push_back(SqlDb_condField("stored_at", sqlDateTimeString(getTimeS() - opt_ssl_store_sessions_expiration_hours * 3600)).setOper(">"));
 	sqlDb->select(storeSessionsTableName(), NULL, &cond);
 	SqlDb_row row;
 	while((row = sqlDb->fetchRow())) {
@@ -609,7 +610,7 @@ void cSslDsslSessions::deleteOldSessions(struct timeval ts) {
 		}
 		list<SqlDb_condField> cond;
 		cond.push_back(SqlDb_condField("id_sensor", intToString(opt_id_sensor)));
-		cond.push_back(SqlDb_condField("stored_at", sqlDateTimeString(ts.tv_sec - 12 * 3600)).setOper("<"));
+		cond.push_back(SqlDb_condField("stored_at", sqlDateTimeString(ts.tv_sec - opt_ssl_store_sessions_expiration_hours * 3600)).setOper("<"));
 		sqlStore->query_lock("delete from " + storeSessionsTableName() + " where " + sqlDb->getCondStr(&cond),
 				     STORE_PROC_ID_OTHER);
 		last_delete_old_sessions_at = ts.tv_sec;

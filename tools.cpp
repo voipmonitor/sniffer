@@ -5127,33 +5127,61 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 		close(pipe_stdout[1]);
 		close(pipe_stderr[1]);
 		while(true) {
-			fd_set readfds;
-			FD_ZERO(&readfds);
-			FD_SET(pipe_stdout[0], &readfds);
-			FD_SET(pipe_stderr[0], &readfds);
-			timeval *timeout = NULL;
-			timeval _timeout;
-			if(timout_select_sec) {
-				_timeout.tv_sec = timout_select_sec;
-				_timeout.tv_usec = 0;
-				timeout = &_timeout;
-			}
-			if(select(max(pipe_stdout[0], pipe_stderr[0]) + 1, &readfds, NULL, NULL, timeout) == -1) {
-				break;
-			}
-			char buffer[1024];
-			unsigned readStdoutLength = 0;
-			unsigned readStderrLength = 0;
-			if(FD_ISSET(pipe_stdout[0], &readfds)) {
-				if((readStdoutLength = read(pipe_stdout[0], buffer, sizeof(buffer))) > 0) {
-					bufferStdout.add(buffer, readStdoutLength);
+			#if 0 //suppress select & FD_SET
+				fd_set readfds;
+				FD_ZERO(&readfds);
+				FD_SET(pipe_stdout[0], &readfds);
+				FD_SET(pipe_stderr[0], &readfds);
+				timeval *timeout = NULL;
+				timeval _timeout;
+				if(timout_select_sec) {
+					_timeout.tv_sec = timout_select_sec;
+					_timeout.tv_usec = 0;
+					timeout = &_timeout;
 				}
-			}
-			if(FD_ISSET(pipe_stderr[0], &readfds)) {
-				if((readStderrLength = read(pipe_stderr[0], buffer, sizeof(buffer))) > 0) {
-					bufferStderr.add(buffer, readStderrLength);
+				if(select(max(pipe_stdout[0], pipe_stderr[0]) + 1, &readfds, NULL, NULL, timeout) == -1) {
+					break;
 				}
-			}
+				char buffer[1024];
+				unsigned readStdoutLength = 0;
+				unsigned readStderrLength = 0;
+				if(FD_ISSET(pipe_stdout[0], &readfds)) {
+					if((readStdoutLength = read(pipe_stdout[0], buffer, sizeof(buffer))) > 0) {
+						bufferStdout.add(buffer, readStdoutLength);
+					}
+				}
+				if(FD_ISSET(pipe_stderr[0], &readfds)) {
+					if((readStderrLength = read(pipe_stderr[0], buffer, sizeof(buffer))) > 0) {
+						bufferStderr.add(buffer, readStderrLength);
+					}
+				}
+			#else
+				pollfd fds[3];
+				memset(fds, 0 , sizeof(fds));
+				fds[0].fd = pipe_stdout[0];
+				fds[0].events = POLLIN;
+				fds[1].fd = pipe_stderr[0];
+				fds[1].events = POLLIN;
+				int rsltPool = poll(fds, 2, timout_select_sec * 1000);
+				if(rsltPool < 0) {
+					break;
+				}
+				char buffer[1024];
+				unsigned readStdoutLength = 0;
+				unsigned readStderrLength = 0;
+				if(rsltPool > 0) {
+					if(fds[0].revents) {
+						if((readStdoutLength = read(pipe_stdout[0], buffer, sizeof(buffer))) > 0) {
+							bufferStdout.add(buffer, readStdoutLength);
+						}
+					}
+					if(fds[1].revents) {
+						if((readStderrLength = read(pipe_stderr[0], buffer, sizeof(buffer))) > 0) {
+							bufferStderr.add(buffer, readStderrLength);
+						}
+					}
+				}
+			#endif
 			if(readStderrLength) {
 				if(bufferStderr.size() && reg_match((char*)bufferStderr, "^exec failed", __FILE__, __LINE__)) {
 					break;

@@ -359,6 +359,7 @@ bool opt_ssl_ignore_error_invalid_mac = false;
 bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
 int opt_ssl_store_sessions = 1;
+int opt_ssl_store_sessions_expiration_hours = 12;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
@@ -374,7 +375,7 @@ int opt_mysql_enable_transactions_message = 0;
 int opt_mysql_enable_transactions_register = 0;
 int opt_mysql_enable_transactions_http = 0;
 int opt_mysql_enable_transactions_webrtc = 0;
-int opt_mysql_enable_multiple_rows_insert = 0;
+int opt_mysql_enable_multiple_rows_insert = 1;
 int opt_mysql_max_multiple_rows_insert = 20;
 int opt_cdr_ua_enable = 1;
 vector<string> opt_cdr_ua_reg_remove;
@@ -2806,11 +2807,14 @@ int main(int argc, char *argv[]) {
 			load_config((char*)"/etc/voipmonitor/conf.d/");
 		}
 	}
+	list<cConfig::sDiffValue> diffValuesMysqlLoadConfig;
 	if(!opt_nocdr && !is_set_gui_params() && 
 	   !printConfigStruct && !printConfigFile &&
 	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
+			CONFIG.beginTrackDiffValues();
 			CONFIG.setFromMysql(true);
+			CONFIG.endTrackDiffValues(&diffValuesMysqlLoadConfig);
 		}
 	}
 	get_command_line_arguments();
@@ -3020,6 +3024,13 @@ int main(int argc, char *argv[]) {
 
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size() && reloadLoopCounter == 0) {
 		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", RTPSENSOR_VERSION);
+		if(diffValuesMysqlLoadConfig.size()) {
+			cLogSensor *log = cLogSensor::begin(cLogSensor::notice, "Configuration values in mysql have a higher weight than the values in the text configuration file. (name : text config / mysql config).");
+			for(list<cConfig::sDiffValue>::iterator iter = diffValuesMysqlLoadConfig.begin(); iter != diffValuesMysqlLoadConfig.end(); iter++) {
+				cLogSensor::log(log, iter->format().c_str());
+			}
+			cLogSensor::end(log);
+		}
 	}
 
 	if(!is_read_from_file() && opt_fork && enable_wdt && reloadLoopCounter == 0) {
@@ -5733,7 +5744,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42100) cConfigItem_integer("mysqlstore_concat_limit_webrtc", &opt_mysqlstore_concat_limit_webrtc));
 				addConfigItem(new FILE_LINE(42101) cConfigItem_integer("mysqlstore_concat_limit_ipacc", &opt_mysqlstore_concat_limit_ipacc));
 				addConfigItem((new FILE_LINE(42102) cConfigItem_integer("mysqlstore_max_threads_cdr", &opt_mysqlstore_max_threads_cdr))
-					->setMaximum(9)->setMinimum(1));
+					->setMaximum(30)->setMinimum(1));
 				addConfigItem((new FILE_LINE(42103) cConfigItem_integer("mysqlstore_max_threads_message", &opt_mysqlstore_max_threads_message))
 					->setMaximum(9)->setMinimum(1));
 				addConfigItem((new FILE_LINE(42104) cConfigItem_integer("mysqlstore_max_threads_register", &opt_mysqlstore_max_threads_register))
@@ -5832,7 +5843,7 @@ void cConfig::addConfigItems() {
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem((new FILE_LINE(42149) cConfigItem_yesno("threading_mod"))
 				->disableNo()
-				->addValues("1:1|2:2|3:3|4:4")
+				->addValues("1:1|2:2|3:3|4:4|5:5|6:6")
 				->setDefaultValueStr("4"));
 				advanced();
 				addConfigItem((new FILE_LINE(42150) cConfigItem_integer("preprocess_rtp_threads", &opt_enable_process_rtp_packet))
@@ -6051,6 +6062,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_ssl_session_on_rst", &opt_ssl_destroy_ssl_session_on_rst));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_store_sessions", &opt_ssl_store_sessions))
 				->addValues("memory:1|persistent:2"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_store_sessions_expiration_hours", &opt_ssl_store_sessions_expiration_hours));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -6829,6 +6841,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "alloc_stat")			sverb.alloc_stat = 1;
 	else if(verbParam == "qfiles")				sverb.qfiles = 1;
 	else if(verbParam == "query_error")			sverb.query_error = 1;
+	else if(verbParam.substr(0, 12) == "query_regex=")      strcpy_null_term(sverb.query_regex, verbParam.c_str() + 12);
 	else if(verbParam == "new_invite")			sverb.new_invite = 1;
 	else if(verbParam == "dump_sip")			sverb.dump_sip = 1;
 	else if(verbParam == "dump_sip_line")			{ sverb.dump_sip = 1; sverb.dump_sip_line = 1; }
@@ -9407,6 +9420,9 @@ int eval_config(string inistr) {
 		opt_ssl_store_sessions = !strcasecmp(value, "persistent") ? 2 : 
 					 !strcasecmp(value, "memory") ? 1 : yesno(value);
 	}
+	if((value = ini.GetValue("general", "ssl_store_sessions_expiration_hours", NULL))) {
+		opt_ssl_store_sessions_expiration_hours = atoi(value);
+	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
 		strcpy_null_term(opt_tcpreassembly_http_log, value);
 	}
@@ -9548,7 +9564,7 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_cdr", NULL))) {
-		opt_mysqlstore_max_threads_cdr = max(min(atoi(value), 9), 1);
+		opt_mysqlstore_max_threads_cdr = max(min(atoi(value), 30), 1);
 	}
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_message", NULL))) {
 		opt_mysqlstore_max_threads_message = max(min(atoi(value), 9), 1);
