@@ -21,6 +21,10 @@ ifeq ($(findstring arm,$(GCCARCH)),arm)
   GCCARCH = armv6k
 endif
 
+ifeq ($(GCCARCH),aarch64)
+  GCCARCH = native
+endif
+
 #GCCVERSION = $(shell gcc --version | grep ^gcc | sed 's/^.* //g' | cut -f1,2 -d.)  
 #ifeq "$(GCCVERSION)" "4.1"
 #  GCCARCH = core2
