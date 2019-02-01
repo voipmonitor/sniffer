@@ -6,6 +6,9 @@ AC_INIT([voipmonitor], [VERSION], [support@voipmonitor.org])
 AC_CONFIG_SRCDIR([voipmonitor.cpp])
 AC_CONFIG_HEADERS([config.h])
 
+# test platform
+PLATFORM=`uname`
+
 # Checks for programs.
 AC_PROG_CXX
 AC_PROG_CC
@@ -148,7 +151,11 @@ fi
 HAVE_LIBSSH_T=no
 if test "x$HAVE_LIBSSH" = "x1"; then 
 	AC_DEFINE([HAVE_LIBSSH], [1], [Define if using libss])
-	AC_SUBST([LIBSSH],["-lssh -lssh_threads"])
+	if test "x$PLATFORM" = "xFreeBSD"; then
+		AC_SUBST([LIBSSH],["-lssh"])
+	else
+		AC_SUBST([LIBSSH],["-lssh -lssh_threads"])
+	fi
 	HAVE_LIBSSH_T=yes
 fi
 

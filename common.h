@@ -2,7 +2,7 @@
 #define COMMON_H
 
 
-#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
+#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) || defined ( __vm_FREEBSD__ ))
 # ifndef FREEBSD
 #  define FREEBSD
 # endif

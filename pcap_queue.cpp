@@ -6545,7 +6545,7 @@ bool PcapQueue_readFromFifo::socketListen() {
 	setsockopt(this->socketHandle, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	int rsltListen;
 	do {
-		while(bind(this->socketHandle, (sockaddr*)&addr, sizeof(addr)) == -1 && !TERMINATING) {
+		while(::bind(this->socketHandle, (sockaddr*)&addr, sizeof(addr)) == -1 && !TERMINATING) {
 			syslog(LOG_ERR, "packetbuffer %s: cannot bind to port [%d] - trying again after 5 seconds intervals", this->nameQueue.c_str(), this->packetServerIpPort.get_port());
 			sleep(5);
 		}

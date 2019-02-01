@@ -45,9 +45,11 @@
 #include <sys/uio.h>
 #include <sys/thr.h>
 #include <sys/sysctl.h>
+#define SCRIPT_SHELL "#!/usr/local/bin/bash\n"
 #else
 #include <sys/sendfile.h>
 #include <sys/sysinfo.h>
+#define SCRIPT_SHELL "#!/bin/bash\n"
 #endif
 
 #include <algorithm> // for std::min
@@ -80,6 +82,10 @@ extern int opt_cloud_activecheck_period;
 extern int cloud_activecheck_timeout;
 extern volatile bool cloud_activecheck_inprogress;
 extern timeval cloud_last_activecheck;
+extern string appname;
+extern char configfile[1024];
+extern int ownPidStart;
+extern int ownPidFork;
 
 static char b2a[256];
 static char base64[64];
@@ -1856,7 +1862,7 @@ bool RestartUpgrade::createRestartScript() {
 	}
 	FILE *fileHandle = fopen(this->restartTempScriptFileName.c_str(), "wt");
 	if(fileHandle) {
-		fputs("#!/bin/bash\n", fileHandle);
+		fputs(SCRIPT_SHELL, fileHandle);
 		fprintf(fileHandle, "cd '%s'\n%s\n", getRunDir().c_str(), getCmdLine().c_str());
 		fprintf(fileHandle, "rm %s\n", this->restartTempScriptFileName.c_str());
 		fclose(fileHandle);
@@ -1886,7 +1892,7 @@ bool RestartUpgrade::createSafeRunScript() {
 	}
 	FILE *fileHandle = fopen(this->safeRunTempScriptFileName.c_str(), "wt");
 	if(fileHandle) {
-		fputs("#!/bin/bash\n", fileHandle);
+		fputs(SCRIPT_SHELL, fileHandle);
 		fputs("sleep 60\n", fileHandle);
 		fprintf(fileHandle, "if [[ \"`ps -A -o comm,pid | grep %i`\" == \"voipmonitor\"* ]]; then kill -9 %i; sleep 1; fi\n", getpid(), getpid());
 		fprintf(fileHandle, "cd '%s'\n%s\n", getRunDir().c_str(), getCmdLine().c_str());
@@ -2114,6 +2120,57 @@ string RestartUpgrade::getRunDir() {
 	return(rundir);
 }
 
+int findPIDinPSline (char *line) {
+	while(*line && !isdigit(*line)) {
+		++line;
+	}
+	return(atoi(line));
+}
+
+list<int> getPids(string app, string grep_search) {
+	string cmd;
+	list<int> pids;
+	char buffRslt[512];
+#ifdef FREEBSD
+	cmd = "ps -a -w -x -o pid,comm,args | grep -E '^ {0,}[[:digit:]]+ " + app + " ' | grep '" + grep_search + "'";
+#else
+	cmd = "ps -C '" + app + "' -o pid,args | grep '" + grep_search + "'";
+#endif
+	FILE *cmd_pipe = popen(cmd.c_str(), "r");
+	while(fgets(buffRslt, 512, cmd_pipe)) {
+		int pid = findPIDinPSline(buffRslt);
+		pids.push_back(pid);
+	}
+	pclose(cmd_pipe);
+	return(pids);
+}
+
+bool existsPidProcess(int pid) {
+	string cmd = "ps -p " + intToString(pid) + " -o pid";
+	char buffRslt[512];
+	bool exists = false;
+	FILE *cmd_pipe = popen(cmd.c_str(), "r");
+	while(fgets(buffRslt, 512, cmd_pipe)) {
+		if(findPIDinPSline(buffRslt) == pid) {
+			exists = true;
+			break;
+		}
+	}
+	pclose(cmd_pipe);
+	return(exists);
+}
+
+bool existsAnotherInstance() {
+	bool exists = false;
+	list<int> pids = getPids(appname, configfile);
+	for (list<int>::iterator checkPid = pids.begin(); checkPid != pids.end(); checkPid++) {
+		if(*checkPid != ownPidStart && *checkPid != ownPidFork) {
+			exists = true;
+			break;
+		}
+	}
+	return(exists);
+}
 
 WDT::WDT() {
 	pid = 0;
@@ -2169,26 +2226,18 @@ void WDT::killScript() {
 
 void WDT::killOtherScript() {
 	for(int pass = 0; pass < 2; pass++) {
-		FILE *cmd_pipe = popen(pass == 0 ?
-					("ps -C '" + getScriptName() + "' -o pid,args | grep '" + getScriptName() +  "$'").c_str() :
-					("ps -C 'bash' -o pid,args | grep '" + getScriptFileName() +  "$'").c_str(), 
-				       "r");
-		char bufRslt[512];
-		while(fgets(bufRslt, 512, cmd_pipe)) {
-			pid_t pidOther = atol(bufRslt);
-			if(pidOther) {
-				syslog(LOG_NOTICE, "kill old watchdog script (pid %i)", pidOther);
-				kill(pidOther, 9);
-			}
+		list<int> pids = getPids(pass == 0 ? getScriptName() : "bash", pass == 0 ? getScriptName() +  "$" : getScriptFileName() + "$");
+		for (list<int>::iterator pidOther = pids.begin(); pidOther != pids.end(); pidOther++) {
+			syslog(LOG_NOTICE, "kill old watchdog script (pid %i)", *pidOther);
+			kill(*pidOther, 9);
 		}
-		pclose(cmd_pipe);
 	}
 }
 
 bool WDT::createScript() {
 	FILE *fileHandle = fopen(getScriptFileName().c_str(), "wt");
 	if(fileHandle) {
-		fputs("#!/bin/bash\n", fileHandle);
+		fputs(SCRIPT_SHELL, fileHandle);
 		fputs("while [ true ]\n", fileHandle);
 		fputs("do\n", fileHandle);
 		fputs("sleep 5\n", fileHandle);

@@ -1076,44 +1076,6 @@ void semaphoreClose(int index = -1, bool force = false) {
 	}
 }
 
-bool existsAnotherInstance() {
-	bool exists = false;
-	FILE *cmd_pipe = popen(("ps -C '" + appname + "' -o pid,args").c_str(), "r");
-	char buffRslt[512];
-	while(fgets(buffRslt, 512, cmd_pipe)) {
-		if(strstr(buffRslt, configfile)) {
-			char *checkPidPointer = buffRslt;
-			if(*checkPidPointer && !isdigit(*checkPidPointer)) {
-				++checkPidPointer;
-			}
-			int checkPid = atoi(checkPidPointer);
-			if(checkPid != ownPidStart && checkPid != ownPidFork) {
-				exists = true;
-			}
-		}
-	}
-	pclose(cmd_pipe);
-	return(exists);
-}
-
-bool existsPidProcess(int pid) {
-	bool exists = false;
-	FILE *cmd_pipe = popen(("ps -p " + intToString(pid) + " -o pid").c_str(), "r");
-	char buffRslt[512];
-	while(fgets(buffRslt, 512, cmd_pipe)) {
-		char *checkPidPointer = buffRslt;
-		if(*checkPidPointer && !isdigit(*checkPidPointer)) {
-			++checkPidPointer;
-		}
-		int checkPid = atoi(checkPidPointer);
-		if(checkPid == pid) {
-			exists = true;
-		}
-	}
-	pclose(cmd_pipe);
-	return(exists);
-}
-
 void vm_terminate() {
 	inc_terminating();
 }
@@ -3232,7 +3194,11 @@ int main(int argc, char *argv[]) {
 	}
 	
 	//wait for manager to properly terminate 
+#ifdef FREEBSD
+	if(opt_manager_port && manager_thread != NULL) {
+#else
 	if(opt_manager_port && manager_thread > 0) {
+#endif
 		int res;
 		res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
 		if(res == -1) {

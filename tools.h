@@ -332,6 +332,8 @@ bool is_dir(char * fileName) { return(is_dir((const char*)fileName)); }
 bool is_dir(string fileName) { return(is_dir(fileName.c_str())); }
 bool is_dir(dirent *de, const char *path);
 void set_mac();
+bool existsAnotherInstance();
+bool existsPidProcess(int pid);
 int mkdir_r(std::string, mode_t, unsigned uid = 0, unsigned gid = 0);
 int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
 int rmdir_r(std::string dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
@@ -2667,7 +2669,7 @@ struct sLocalTimeHourCacheItem {
 		time->tm_min = min15 * 15 + min15sec / 60;
 		time->tm_sec = min15sec % 60;
 		time->tm_isdst = isdst;
-		time->tm_zone = zone;
+		time->tm_zone = (char *)zone;
 	}
 	time_t getTimestamp(struct tm *time) {
 		return(timestamp_ymdhm15 * (15 * 60) +
