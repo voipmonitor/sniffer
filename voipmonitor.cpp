@@ -5210,11 +5210,11 @@ void test() {
 		break;
 	case 313:
 		if(atoi(opt_test_arg) > 0) {
-			opt_cleandatabase_cdr = atoi(opt_test_arg);
-			opt_cleandatabase_http_enum = 0;
-			opt_cleandatabase_webrtc = 0;
-			opt_cleandatabase_register_state = 0;
-			opt_cleandatabase_register_failed = 0;
+			opt_cleandatabase_cdr =
+			opt_cleandatabase_http_enum =
+			opt_cleandatabase_webrtc =
+			opt_cleandatabase_register_state =
+			opt_cleandatabase_register_failed = atoi(opt_test_arg);
 		} else {
 			return;
 		}
