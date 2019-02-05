@@ -64,6 +64,7 @@ struct sVerbose {
 	int alloc_stat;
 	int qfiles;
 	int query_error;
+	char query_error_log[100];
 	char query_regex[100];
 	int new_invite;
 	int dump_sip;

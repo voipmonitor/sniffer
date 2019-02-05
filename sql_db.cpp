@@ -1554,9 +1554,19 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
 				}
 				this->checkLastError("query error in [" + preparedQuery.substr(0,200) + (preparedQuery.size() > 200 ? "..." : "") + "]", !sql_noerror && !this->disableLogError);
-				if(!sql_noerror && !this->disableLogError && (verbosity > 1 || sverb.query_error)) {
-					cout << endl << "ERROR IN QUERY: " << endl
-					     << preparedQuery << endl;
+				if(!sql_noerror && !this->disableLogError) {
+					if(verbosity > 1 || sverb.query_error) {
+						cout << endl << "ERROR IN QUERY:" << endl
+						     << preparedQuery << endl;
+					}
+					if(sverb.query_error_log[0]) {
+						FILE *error_log = fopen(sverb.query_error_log, "a");
+						if(error_log) {
+							string dateTime = sqlDateTimeString(time(NULL));
+							fprintf(error_log, "ERROR IN QUERY at %s:\n%s\n\n", dateTime.c_str(), preparedQuery.c_str());
+							fclose(error_log);
+						}
+					}
 				}
 				this->evError(pass);
 				if(this->connecting) {

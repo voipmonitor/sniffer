@@ -6849,6 +6849,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "alloc_stat")			sverb.alloc_stat = 1;
 	else if(verbParam == "qfiles")				sverb.qfiles = 1;
 	else if(verbParam == "query_error")			sverb.query_error = 1;
+	else if(verbParam.substr(0, 16) == "query_error_log=")  strcpy_null_term(sverb.query_error_log, verbParam.c_str() + 16);
 	else if(verbParam.substr(0, 12) == "query_regex=")      strcpy_null_term(sverb.query_regex, verbParam.c_str() + 12);
 	else if(verbParam == "new_invite")			sverb.new_invite = 1;
 	else if(verbParam == "dump_sip")			sverb.dump_sip = 1;
