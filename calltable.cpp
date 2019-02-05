@@ -3651,7 +3651,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		if(opt_mysql_enable_multiple_rows_insert && cdrproxy_rows.size()) {
 			query_str_cdrproxy += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					      sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_proxy", &cdrproxy_rows, opt_mysql_max_multiple_rows_insert));
+					      sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_proxy", &cdrproxy_rows, opt_mysql_max_multiple_rows_insert, MYSQL_QUERY_END.c_str()));
 		}
 	}
 
@@ -4583,7 +4583,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		if(opt_mysql_enable_multiple_rows_insert && rtp_rows.size()) {
 			query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-				     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_rtp", &rtp_rows, opt_mysql_max_multiple_rows_insert));
+				     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_rtp", &rtp_rows, opt_mysql_max_multiple_rows_insert, MYSQL_QUERY_END.c_str()));
 		}
 		
 		if(opt_save_sdp_ipport) {
@@ -4610,7 +4610,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(opt_mysql_enable_multiple_rows_insert && sdp_rows.size()) {
 				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_sdp", &sdp_rows, opt_mysql_max_multiple_rows_insert));
+					     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_sdp", &sdp_rows, opt_mysql_max_multiple_rows_insert, MYSQL_QUERY_END.c_str()));
 			}
 		}
 
@@ -4643,7 +4643,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(opt_mysql_enable_multiple_rows_insert && dtmf_rows.size()) {
 				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_dtmf", &dtmf_rows, opt_mysql_max_multiple_rows_insert));
+					     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_dtmf", &dtmf_rows, opt_mysql_max_multiple_rows_insert, MYSQL_QUERY_END.c_str()));
 			}
 		}
 
@@ -4677,7 +4677,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(opt_mysql_enable_multiple_rows_insert && sipresp_rows.size()) {
 				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_sipresp", &sipresp_rows, opt_mysql_max_multiple_rows_insert));
+					     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_sipresp", &sipresp_rows, opt_mysql_max_multiple_rows_insert, MYSQL_QUERY_END.c_str()));
 			}
 		}
 		
@@ -4730,7 +4730,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				for(unsigned i = 0; i < sizeof(siphist_rows) / sizeof(siphist_rows[0]); i++) {
 					if(siphist_rows[i].size()) {
 						query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-							     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_siphistory", &siphist_rows[i], opt_mysql_max_multiple_rows_insert));
+							     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_siphistory", &siphist_rows[i], opt_mysql_max_multiple_rows_insert, MYSQL_QUERY_END.c_str()));
 					}
 				}
 			}
@@ -4765,7 +4765,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(opt_mysql_enable_multiple_rows_insert && tar_part_rows.size()) {
 				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_tar_part", &tar_part_rows, opt_mysql_max_multiple_rows_insert));
+					     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_tar_part", &tar_part_rows, opt_mysql_max_multiple_rows_insert, MYSQL_QUERY_END.c_str()));
 			}
 		}
 		

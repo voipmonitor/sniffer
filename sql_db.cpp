@@ -2694,7 +2694,7 @@ void MySqlStore_process::__store(list<string> *queries) {
 					query_vect[i] = query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length);
 				}
 			}
-			queries_str += query_vect[i] + _MYSQL_QUERY_END_new;
+			queries_str += sqlEscapeString(query_vect[i]) + _MYSQL_QUERY_END_new;
 		}
 		iter++;
 	}
@@ -2709,7 +2709,7 @@ void MySqlStore_process::__store(list<string> *queries) {
 				string values = iter->substr(sepValues + 12, endSep - sepValues - 12);
 				nig_map[tableColumns].push_back(values);
 			} else {
-				queries_str += *iter + _MYSQL_QUERY_END_new;
+				queries_str += sqlEscapeString(*iter) + _MYSQL_QUERY_END_new;
 			}
 		}
 		for(map<string, list<string> >::iterator iter = nig_map.begin(); iter != nig_map.end(); iter++) {
@@ -2717,7 +2717,7 @@ void MySqlStore_process::__store(list<string> *queries) {
 			string values_str;
 			for(list<string>::iterator iter_values = values->begin(); iter_values != values->end(); iter_values++) {
 				if(values_str.length() *1.1 > this->sqlDb->maxAllowedPacket) {
-					queries_str += iter->first + " ) VALUES ( " + values_str + " )" + _MYSQL_QUERY_END_new;
+					queries_str += iter->first + " ) VALUES ( " + sqlEscapeString(values_str) + " )" + _MYSQL_QUERY_END_new;
 					values_str = "";
 				}
 				if(!values_str.empty()) {
@@ -2725,13 +2725,13 @@ void MySqlStore_process::__store(list<string> *queries) {
 				}
 				values_str += *iter_values;
 			}
-			queries_str += iter->first + " ) VALUES ( " + values_str + " )" + _MYSQL_QUERY_END_new;
+			queries_str += iter->first + " ) VALUES ( " + sqlEscapeString(values_str) + " )" + _MYSQL_QUERY_END_new;
 		}
 	}
 	#else
 	if(ig.size()) {
 		for(list<string>::iterator iter = ig.begin(); iter != ig.end(); iter++) {
-			queries_str += *iter + _MYSQL_QUERY_END_new;
+			queries_str += sqlEscapeString(*iter) + _MYSQL_QUERY_END_new;
 		}
 	}
 	#endif

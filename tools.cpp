@@ -4463,9 +4463,10 @@ string &find_and_replace(string &source, const string find, string replace, unsi
 	if(counter_replace) {
 		*counter_replace = 0;
 	}
- 	size_t j;
-	for ( ; (j = source.find( find )) != string::npos ; ) {
+ 	size_t j = 0;
+	for ( ; (j = source.find( find, j )) != string::npos ; ) {
 		source.replace( j, find.length(), replace );
+		j += replace.length();
 		if(counter_replace) {
 			++*counter_replace;
 		}
