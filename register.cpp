@@ -494,11 +494,13 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 			if(_cb_id) {
 				reg.add(_cb_id, "ua_id");
 			} else {
-				query_str += string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ");\n";
-				reg.add("_\\_'SQL'_\\_:@ua_id", "ua_id");
+				query_str += MYSQL_ADD_QUERY_END(string("set @ua_id = ") + 
+					     "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ")");
+				reg.add(MYSQL_VAR_PREFIX + "@ua_id", "ua_id");
 			}
 		}
-		query_str += sqlDbSaveRegister->insertQuery(register_table, reg, false, false, state->state == rs_Failed) + ";\n";
+		query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
+			     sqlDbSaveRegister->insertQuery(register_table, reg, false, false, state->state == rs_Failed));
 		static unsigned int counterSqlStore = 0;
 		int storeId = STORE_PROC_ID_REGISTER_1 + 
 			      (opt_mysqlstore_max_threads_register > 1 &&
@@ -547,7 +549,7 @@ void Register::saveFailedToDb(RegisterState *state, bool force, bool enableBatch
 							counterSqlStore % opt_mysqlstore_max_threads_register : 
 							0);
 					++counterSqlStore;
-					sqlStore->query_lock(query_str.c_str(), storeId);
+					sqlStore->query_lock(MYSQL_ADD_QUERY_END(query_str), storeId);
 				} else {
 					sqlDbSaveRegister->update("register_failed", row, 
 								  ("ID = " + intToString(state->db_id)).c_str());
@@ -674,7 +676,7 @@ void Registers::add(Call *call) {
 		if(regstate &&
 		   (regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) &&
 		   regstate->expires &&
-		   regstate->state_to + regstate->expires < call->calltime()) {
+		   regstate->state_to + regstate->expires < (unsigned)call->calltime()) {
 			existsReg->expire(false);
 		}
 		existsReg->unlock_states();

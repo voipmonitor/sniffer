@@ -439,7 +439,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		packetS->header_pt->ts.tv_usec,
 		sqlEscapeStringBorder(call ? call->call_id : callidstr).c_str(),
 		sqlEscapeStringBorder(description).c_str());
-	if(isCloud()) {
+	if(isCloud() || opt_mysql_enable_new_store) {
 		strcat(query_buff, "concat('#', from_base64('");
 		_base64_encode((unsigned char*)mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff));
 		strcat(query_buff, "'), '#')");
@@ -448,7 +448,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		_sqlEscapeString(mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff), NULL);
 		strcat(query_buff, "#'");
 	}
-	sqlStore->query_lock(query_buff, STORE_PROC_ID_SAVE_PACKET_SQL);
+	sqlStore->query_lock(MYSQL_ADD_QUERY_END(string(query_buff)), STORE_PROC_ID_SAVE_PACKET_SQL);
 }
 
 

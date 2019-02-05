@@ -907,7 +907,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 			}
 			if(!item->content.empty()) {
 				string field_content = i == 0 ? "request_content" : "response_content";
-				rec.add(item->content, field_content);
+				rec.add(sqlEscapeString(item->content), field_content);
 			}
 		}
 	}
@@ -947,8 +947,9 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 				if(_cb_id) {
 					rec.add(_cb_id, field);
 				} else {
-					query_str += string("set @" + field + " = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ");\n";
-					rec.add("_\\_'SQL'_\\_:@" + field, field);
+					query_str += MYSQL_ADD_QUERY_END(string("set @" + field + " = ") +  
+						     "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ")");
+					rec.add(MYSQL_VAR_PREFIX + "@" + field, field);
 				}
 			}
 		}
@@ -957,8 +958,9 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 			if(_cb_id) {
 				rec.add(_cb_id, "response_id");
 			} else {
-				query_str += string("set @response_id = ") + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(requestResponse->response->response_string) + ");\n";
-				rec.add("_\\_'SQL'_\\_:@response_id", "response_id");
+				query_str += MYSQL_ADD_QUERY_END(string("set @response_id = ") + 
+					     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(requestResponse->response->response_string) + ")");
+				rec.add(MYSQL_VAR_PREFIX + "@response_id", "response_id");
 			}
 		}
 		for(int i = 0; i < 2; i++) {
@@ -969,29 +971,49 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 				if(_cb_id) {
 					rec.add(_cb_id, field_content_type);
 				} else {
-					query_str += string("set @" + field_content_type + " = ") +  "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(item->content_type) + ");\n";
-					rec.add("_\\_'SQL'_\\_:@" + field_content_type, field_content_type);
+					query_str += MYSQL_ADD_QUERY_END(string("set @" + field_content_type + " = ") + 
+						     "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(item->content_type) + ")");
+					rec.add(MYSQL_VAR_PREFIX + "@" + field_content_type, field_content_type);
 				}
 			}
 		}
-		query_str += sqlDbSaveSipMsg->insertQuery(table.c_str(), rec, false, false) + ";\n";
-		query_str += "set @sip_msg_id = last_insert_id();\n";
+		if(opt_mysql_enable_new_store) {
+			query_str += MYSQL_GET_MAIN_INSERT_ID_OLD;
+		}
+		query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT + 
+			     sqlDbSaveSipMsg->insertQuery(table.c_str(), rec, false, false));
+		if(opt_mysql_enable_new_store) {
+			query_str += MYSQL_GET_MAIN_INSERT_ID + 
+				     MYSQL_IF_MAIN_INSERT_ID;
+		} else {
+			query_str += "if row_count() > 0 then\n" +
+				     MYSQL_GET_MAIN_INSERT_ID;
+		}
 		if(custom_headers_sip_msg) {
 			custom_headers_sip_msg->prepareSaveRows(NULL, 0, &requestResponse->custom_headers_content, requestResponse->time_us / 1000000, NULL, next_ch, next_ch_name);
 			bool existsNextCh = false;
 			for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
 				if(next_ch_name[i][0]) {
-					next_ch[i].add("_\\_'SQL'_\\_:@sip_msg_id", "sip_msg_ID");
-					query_str += sqlDbSaveSipMsg->insertQuery(next_ch_name[i], next_ch[i]) + ";\n";
+					next_ch[i].add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "sip_msg_ID");
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveSipMsg->insertQuery(next_ch_name[i], next_ch[i]));
 					existsNextCh = true;
 				}
 			}
 			if(existsNextCh) {
 				string queryForSaveUseInfo = custom_headers_sip_msg->getQueryForSaveUseInfo(requestResponse->time_us / 1000000, &requestResponse->custom_headers_content);
 				if(!queryForSaveUseInfo.empty()) {
-					query_str += queryForSaveUseInfo + ";\n";
+					vector<string> queryForSaveUseInfo_vect = split(queryForSaveUseInfo.c_str(), ";");
+					for(unsigned i = 0; i < queryForSaveUseInfo_vect.size(); i++) {
+						query_str += MYSQL_ADD_QUERY_END(queryForSaveUseInfo_vect[i]);
+					}
 				}
 			}
+		}
+		if(opt_mysql_enable_new_store) {
+			query_str += MYSQL_ENDIF_QE;
+		} else {
+			query_str += "end if";
 		}
 		static unsigned int counterSqlStore = 0;
 		int storeId = STORE_PROC_ID_MESSAGE_1 + 

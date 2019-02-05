@@ -150,6 +150,7 @@ bool is_server();
 bool is_client();
 bool is_client_packetbuffer_sender();
 int check_set_rtp_threads(int num_rtp_threads);
+bool is_support_for_mysql_new_store();
 
 bool use_mysql_2();
 bool use_mysql_2_http();

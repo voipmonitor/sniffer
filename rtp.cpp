@@ -2673,11 +2673,13 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap, bool needLock) {
 			if(opt_mysql_enable_multiple_rows_insert) {
 				rtp_stat_rows.push_back(rtp_stat);
 			} else {
-				query_str += sqlDbSaveCall->insertQuery("rtp_stat", rtp_stat, false, false, true) + ";";
+				query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
+					     sqlDbSaveCall->insertQuery("rtp_stat", rtp_stat, false, false, true));
 			}
 		}
 		if(opt_mysql_enable_multiple_rows_insert && rtp_stat_rows.size()) {
-			query_str += sqlDbSaveCall->insertQueryWithLimitMultiInsert("rtp_stat", &rtp_stat_rows, opt_mysql_max_multiple_rows_insert, NULL, false, false, true) + ";";
+			query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
+				     sqlDbSaveCall->insertQueryWithLimitMultiInsert("rtp_stat", &rtp_stat_rows, opt_mysql_max_multiple_rows_insert, NULL, false, false, true));
 		}
 	}
 

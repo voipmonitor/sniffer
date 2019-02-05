@@ -62,6 +62,8 @@ extern int opt_enable_ss7;
 extern int opt_ssl_store_sessions;
 extern int opt_cdr_country_code;
 extern int opt_message_country_code;
+extern int opt_mysql_enable_multiple_rows_insert;
+extern bool opt_mysql_enable_new_store;
 
 extern char sql_driver[256];
 
@@ -98,6 +100,8 @@ extern bool cloud_db;
 
 extern sSnifferClientOptions snifferClientOptions;
 extern sSnifferServerClientOptions snifferServerClientOptions;
+
+extern int opt_load_query_from_files;
 
 
 int sql_noerror = 0;
@@ -279,7 +283,7 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 		if(i) { rslt += separator; }
 		if(this->row[i].null) {
 			rslt += "NULL";
-		} else if(enableSqlString && this->row[i].content.substr(0, 12) == "_\\_'SQL'_\\_:") {
+		} else if(enableSqlString && this->row[i].content.substr(0, 12) == MYSQL_VAR_PREFIX) {
 			rslt += this->row[i].content.substr(12);
 		} else {
 			rslt += border + 
@@ -298,7 +302,7 @@ string SqlDb_row::implodeFieldContent(string separator, string fieldBorder, stri
 		rslt += " = ";
 		if(this->row[i].null) {
 			rslt += "NULL";
-		} else if(enableSqlString && this->row[i].content.substr(0, 12) == "_\\_'SQL'_\\_:") {
+		} else if(enableSqlString && this->row[i].content.substr(0, 12) == MYSQL_VAR_PREFIX) {
 			rslt += this->row[i].content.substr(12);
 		} else {
 			rslt += contentBorder + 
@@ -2362,7 +2366,8 @@ bool MySqlStore_process::connected() {
 
 void MySqlStore_process::query(const char *query_str) {
 	if(sverb.store_process_query) {
-		cout << "store_process_query_" << this->id << ": " << query_str << endl;
+		cout << "store_process_query_" << this->id << endl
+		     << query_str << endl;
 	}
 	bool needCreateThread = false;
 	if(!this->thread) {
@@ -2492,8 +2497,8 @@ void MySqlStore_process::store() {
 	string beginTransaction = "\nDECLARE EXIT HANDLER FOR SQLEXCEPTION\nBEGIN\nROLLBACK;\nEND;\nSTART TRANSACTION;\n";
 	string endTransaction = "\nCOMMIT;\n";
 	while(1) {
-		int size = 0;
-		string queryqueue = "";
+		list<string> queryqueue;
+		unsigned queryqueue_length = 0;
 		while(1) {
 			++this->threadRunningCounter;
 			if(snifferClientOptions.isEnableRemoteStore()) {
@@ -2512,10 +2517,11 @@ void MySqlStore_process::store() {
 				this->lock();
 				if(this->query_buff.size() == 0) {
 					this->unlock();
-					if(queryqueue != "") {
-						this->_store(beginProcedure, endProcedure, queryqueue);
+					if(queryqueue.size()) {
+						this->_store(beginProcedure, endProcedure, &queryqueue);
 						lastQueryTime = getTimeS();
-						queryqueue = "";
+						queryqueue.clear();
+						queryqueue_length = 0;
 						if(verbosity > 1) {
 							syslog(LOG_INFO, "STORE id: %i", this->id);
 						}
@@ -2523,30 +2529,31 @@ void MySqlStore_process::store() {
 					break;
 				}
 				string query = this->query_buff.front();
+				size_t query_len = query.length();
+				while(query_len && query[query_len - 1] == ' ') {
+					--query_len;
+				}
+				if(query_len < query.length()) {
+					query.resize(query_len);
+				}
+				if(!((query_len && query[query_len - 1] == ';') ||
+				     (query_len > 1 && query[query_len - 1] == '\n' && query[query_len - 2] == ';'))) {
+					query.append("; ");
+				}
 				bool maxAllowedPacketIsFull = false;
-				if(size > 0 && queryqueue.size() + query.size() + 100 > this->sqlDb->maxAllowedPacket) {
+				if(queryqueue.size() > 0 && queryqueue_length * 1.1 + query.length() > this->sqlDb->maxAllowedPacket) {
 					maxAllowedPacketIsFull = true;
 					this->unlock();
 				} else {
 					this->query_buff.pop_front();
 					this->unlock();
-					queryqueue.append(query);
-					size_t query_len = query.length();
-					while(query_len && query[query_len - 1] == ' ') {
-						--query_len;
-					}
-					if(!((query_len && query[query_len - 1] == ';') ||
-					     (query_len > 1 && query[query_len - 1] == '\n' && query[query_len - 2] == ';'))) {
-						queryqueue.append("; ");
-					}
+					queryqueue.push_back(query);
 				}
-				if(size < this->concatLimit && !maxAllowedPacketIsFull) {
-					size++;
-				} else {
-					this->_store(beginProcedure, endProcedure, queryqueue);
+				if((int)queryqueue.size() >= this->concatLimit || maxAllowedPacketIsFull) {
+					this->_store(beginProcedure, endProcedure, &queryqueue);
 					lastQueryTime = getTimeS();
-					queryqueue = "";
-					size = 0;
+					queryqueue.clear();
+					queryqueue_length = 0;
 					if(verbosity > 1) {
 						syslog(LOG_INFO, "STORE id: %i", this->id);
 					}
@@ -2573,10 +2580,183 @@ void MySqlStore_process::store() {
 	syslog(LOG_NOTICE, "terminated - sql store %u", this->id);
 }
 
-void MySqlStore_process::_store(string beginProcedure, string endProcedure, string queries) {
+void MySqlStore_process::_store(string beginProcedure, string endProcedure, list<string> *queries) {
 	if(opt_nocdr) {
 		return;
 	}
+	if(opt_mysql_enable_new_store || opt_load_query_from_files) {
+		string queries_str_old_store;
+		for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
+			if(iter->find(_MYSQL_QUERY_END_new) == string::npos) {
+				queries_str_old_store += *iter;
+				queries->erase(iter++);
+			} else {
+				iter++;
+			}
+		}
+		if(!queries_str_old_store.empty()) {
+			__store(beginProcedure, endProcedure, queries_str_old_store);
+		}
+		if(queries->size()) {
+			__store(queries);
+		}
+	} else {
+		string queries_str;
+		for(list<string>::iterator iter = queries->begin(); iter != queries->end(); iter++) {
+			queries_str += *iter;
+		}
+		__store(beginProcedure, endProcedure, queries_str);
+	}
+}
+
+void MySqlStore_process::__store(list<string> *queries) {
+	list<string> ig;
+	string queries_str;
+	unsigned counterQueriesWithNextInsertGroup = 0;
+	for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
+		vector<string> query_vect = split(iter->c_str(), _MYSQL_QUERY_END_new);
+		if(opt_mysql_enable_multiple_rows_insert) {
+			if(MYSQL_EXISTS_PREFIX_L(query_vect[0], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
+				bool allItemsIsMIG = true;
+				for(unsigned i = 1; i < query_vect.size(); i++) {
+					if(!MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
+						allItemsIsMIG = false;
+						break;
+					}
+				}
+				if(allItemsIsMIG) {
+					for(unsigned i = 0; i < query_vect.size(); i++) {
+						ig.push_back(query_vect[i].substr(_MYSQL_MAIN_INSERT_GROUP_new_length));
+					}
+					queries->erase(iter++);
+					continue;
+				}
+			}
+			bool existsNIG = false;
+			for(unsigned i = 1; i < query_vect.size(); i++) {
+				if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
+					existsNIG = true;
+					break;
+				}
+			}
+			if(existsNIG) {
+				++counterQueriesWithNextInsertGroup;
+				unsigned counterMI_ID_old = 0;
+				for(unsigned i = 0; i < query_vect.size(); ) {
+					find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID, MYSQL_MAIN_INSERT_ID2 + "_" + intToString(counterQueriesWithNextInsertGroup));
+					unsigned counter_replace_MI_ID_old;
+					find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID_OLD, MYSQL_MAIN_INSERT_ID_OLD2 + "_" + intToString(counterQueriesWithNextInsertGroup), &counter_replace_MI_ID_old);
+					if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
+						ig.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length));
+						query_vect.erase(query_vect.begin() + i);
+					} else {
+						if(counter_replace_MI_ID_old) {
+							++counterMI_ID_old;
+						}
+						i++;
+					}
+				}
+				for(unsigned i = 0; i < query_vect.size(); ) {
+					if(i < query_vect.size() - 1 &&
+					   MYSQL_EXISTS_PREFIX_S(query_vect[i], MYSQL_IF) &&
+					   MYSQL_EXISTS_PREFIX_S(query_vect[i + 1], MYSQL_ENDIF)) {
+						if(counterMI_ID_old > 0 &&
+						   query_vect[i].find(MYSQL_MAIN_INSERT_ID_OLD2) != string::npos) {
+							--counterMI_ID_old;
+						}
+						query_vect.erase(query_vect.begin() + i);
+						query_vect.erase(query_vect.begin() + i);
+					} else {
+						i++;
+					}
+				}
+				if(counterMI_ID_old == 1) {
+					for(unsigned i = 0; i < query_vect.size(); ) {
+						if(MYSQL_EXISTS_PREFIX_S(query_vect[i], ("set " + MYSQL_MAIN_INSERT_ID_OLD2))) {
+							query_vect.erase(query_vect.begin() + i);
+							break;
+						} else {
+							i++;
+						}
+					}
+				}
+			}
+		}
+		for(unsigned i = 0; i < query_vect.size(); i++) {
+			if(query_vect[i][0] == ':') {
+				if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length)) {
+					query_vect[i] = query_vect[i].substr(_MYSQL_MAIN_INSERT_new_length);
+				} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
+					query_vect[i] = query_vect[i].substr(_MYSQL_MAIN_INSERT_GROUP_new_length);
+				} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_new, _MYSQL_NEXT_INSERT_new_length)) {
+					query_vect[i] = query_vect[i].substr(_MYSQL_NEXT_INSERT_new_length);
+				} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
+					query_vect[i] = query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length);
+				}
+			}
+			queries_str += query_vect[i] + _MYSQL_QUERY_END_new;
+		}
+		iter++;
+	}
+	#if 1
+	if(ig.size()) {
+		map<string, list<string> > nig_map;
+		for(list<string>::iterator iter = ig.begin(); iter != ig.end(); iter++) {
+			size_t sepValues = iter->find(" ) VALUES ( ");
+			size_t endSep = iter->rfind(" )");
+			if(sepValues != string::npos && endSep != string::npos && endSep > sepValues) {
+				string tableColumns = iter->substr(0, sepValues);
+				string values = iter->substr(sepValues + 12, endSep - sepValues - 12);
+				nig_map[tableColumns].push_back(values);
+			} else {
+				queries_str += *iter + _MYSQL_QUERY_END_new;
+			}
+		}
+		for(map<string, list<string> >::iterator iter = nig_map.begin(); iter != nig_map.end(); iter++) {
+			list<string> *values = &iter->second;
+			string values_str;
+			for(list<string>::iterator iter_values = values->begin(); iter_values != values->end(); iter_values++) {
+				if(values_str.length() *1.1 > this->sqlDb->maxAllowedPacket) {
+					queries_str += iter->first + " ) VALUES ( " + values_str + " )" + _MYSQL_QUERY_END_new;
+					values_str = "";
+				}
+				if(!values_str.empty()) {
+					values_str += " ),( ";
+				}
+				values_str += *iter_values;
+			}
+			queries_str += iter->first + " ) VALUES ( " + values_str + " )" + _MYSQL_QUERY_END_new;
+		}
+	}
+	#else
+	if(ig.size()) {
+		for(list<string>::iterator iter = ig.begin(); iter != ig.end(); iter++) {
+			queries_str += *iter + _MYSQL_QUERY_END_new;
+		}
+	}
+	#endif
+	static unsigned counter;
+	static unsigned sum;
+	unsigned long start;
+	if(sverb.store_process_query_compl) {
+		start = getTimeMS();
+	}
+	this->sqlDb->query(string("call store_001(\"") + 
+			   queries_str + "\",\"" + 
+			   _MYSQL_QUERY_END_new + "\"," + 
+			   (opt_mysql_enable_transactions || this->enableTransaction ? "true" : "false") +
+			   ")");
+	if(sverb.store_process_query_compl) {
+		unsigned long end = getTimeMS();
+		sum += (end -start);
+		cout << "store_process_query_compl_" << this->id << endl
+		     << " * " << (++counter) << " / " << (end-start)/1000. << " / " << sum/1000. << endl
+		     << queries_str << endl;
+	}
+	
+}
+
+void MySqlStore_process::__store(string beginProcedure, string endProcedure, string &queries) {
 	string procedureName = this->getInsertFuncName();
 	int maxPassComplete = this->enableFixDeadlock ? 10 : 1;
 	for(int passComplete = 0; passComplete < maxPassComplete; passComplete++) {
@@ -2591,7 +2771,8 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, stri
 				       false,
 				       dropProcQuery.c_str())) {
 			if(sverb.store_process_query) {
-				cout << "store_process_query_" << this->id << ": " << "ERROR " << this->sqlDb->getLastErrorString() << endl;
+				cout << "store_process_query_" << this->id << ": " << "ERROR" << endl
+				     << this->sqlDb->getLastErrorString() << endl;
 			}
 		}
 		bool rsltQuery = this->sqlDb->query(string("call ") + procedureName + "();", this->enableFixDeadlock);
@@ -2608,7 +2789,8 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, stri
 			}
 		} else {
 			if(sverb.store_process_query) {
-				cout << "store_process_query_" << this->id << ": " << "ERROR " << this->sqlDb->getLastErrorString() << endl;
+				cout << "store_process_query_" << this->id << ": " << "ERROR" << endl 
+				     << this->sqlDb->getLastErrorString() << endl;
 			}
 			break;
 		}
@@ -2893,7 +3075,9 @@ void MySqlStore::query_lock(const char *query_str, int id) {
 	} else {
 		MySqlStore_process* process = this->find(id);
 		process->lock();
-		process->query(query_str);
+		for(int i = 0; i < max(sverb.multiple_store, 1); i++) {
+			process->query(query_str);
+		}
 		process->unlock();
 	}
 }
@@ -3735,10 +3919,10 @@ void *MySqlStore::threadINotifyQFiles(void *arg) {
 		me->loadFromQFileConfig.inotify = false;
 		return(NULL);
 	}
-	const char *directory = me->loadFromQFileConfig.getDirectory().c_str();
-	int watchDescriptor = inotify_add_watch(inotifyDescriptor, directory, IN_CLOSE_WRITE);
+	string directory = me->loadFromQFileConfig.getDirectory();
+	int watchDescriptor = inotify_add_watch(inotifyDescriptor, directory.c_str(), IN_CLOSE_WRITE);
 	if(watchDescriptor < 0) {
-		syslog(LOG_ERR, "inotify watch %s failed", directory);
+		syslog(LOG_ERR, "inotify watch %s failed", directory.c_str());
 		close(inotifyDescriptor);
 		me->loadFromQFileConfig.inotify = false;
 		return(NULL);
@@ -6095,6 +6279,59 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 	  IN fname BIGINT, \
 	  IN id_sensor INT, \
 	  IN regrrddiff MEDIUMINT)",true);
+	this->createProcedure(
+	"begin \
+		declare str_sep_pos_length integer default 0; \
+		declare str_sep_pos integer default 0; \
+		declare str_sep_pos_next integer default 0; \
+		declare str_sub longtext; \
+		declare level integer default 1; \
+		declare skip_levels_gt integer default 0; \
+		declare colonAtBegin bool default false; \
+		declare exit handler for sqlexception \
+			begin \
+				if(use_transaction) then \
+					rollback; \
+				end if; \
+				resignal; \
+			end; \
+		if(use_transaction) then \
+			start transaction; \
+		end if; \
+		set str_sep_pos_length = length(str_sep); \
+		while (str_sep_pos >= 0) do \
+			set str_sep_pos_next = locate(str_sep, str, str_sep_pos + 1); \
+			set str_sub = substr(str, str_sep_pos + 1, if(str_sep_pos_next > 0, str_sep_pos_next - str_sep_pos - 1, 1e9)); \
+			if(left(str_sub, 6) = ':ENDIF') then \
+				set level = level - 1; \
+			else \
+				if(not(skip_levels_gt and level > skip_levels_gt)) then \
+					if(left(str_sub, 3) = ':IF') then \
+						set @query_str = concat('set @rslt_if = (', substr(str_sub, locate(':IF', str_sub) + 3), ')'); \
+						PREPARE if_stmt FROM @query_str; \
+						EXECUTE if_stmt; \
+						DEALLOCATE PREPARE if_stmt; \
+						if(@rslt_if is null or not(@rslt_if)) then \
+							set skip_levels_gt = level; \
+						end if; \
+						set level = level + 1; \
+					else \
+						if(length(str_sub) > 0) then \
+							set @query_str = str_sub; \
+							PREPARE query_stmt FROM @query_str; \
+							EXECUTE query_stmt; \
+							DEALLOCATE PREPARE query_stmt; \
+						end if; \
+					end if; \
+				end if; \
+			end if; \
+			set str_sep_pos = if(str_sep_pos_next > 0, str_sep_pos_next + str_sep_pos_length - 1, -1); \
+		end while; \
+		if(use_transaction) then \
+			commit; \
+		end if; \
+	end",
+	"store_001", "(str longtext, str_sep text, use_transaction bool)", true);
 	
 	return(true);
 }
@@ -7966,11 +8203,11 @@ void cLogSensor::_save() {
 			logRow.add(sqlEscapeString(iter->message), "message");
 			if(sqlStore) {
 				if(counter > 0) {
-					logRow.add("_\\_'SQL'_\\_:@group_id", "ID_parent");
+					logRow.add(MYSQL_VAR_PREFIX + "@group_id", "ID_parent");
 				}
-				query_str += sqlDb->insertQuery("log_sensor", logRow) + ";\n";
+				query_str += MYSQL_ADD_QUERY_END(sqlDb->insertQuery("log_sensor", logRow));
 				if(counter == 0 && items.size() > 1) {
-					query_str += "set @group_id = last_insert_id();\n";
+					query_str += MYSQL_ADD_QUERY_END(string("set @group_id = last_insert_id()"));
 				}
 			} else if(existsOkLogSensorTable) {
 				if(counter > 0) {
@@ -8130,4 +8367,23 @@ void *cSqlDbCodebook::_loadInBackground(void *arg) {
 	}
 	me->unlock_load();
 	return(NULL);
+}
+
+
+string MYSQL_ADD_QUERY_END(string query) {
+	unsigned query_length = query.length();
+	while(query_length && 
+	      (query[query_length - 1] == '\n' ||
+	       query[query_length - 1] == ';' ||
+	       query[query_length - 1] == ' ')) {
+		--query_length;
+	}
+	if(query_length < query.length()) {
+		query.resize(query_length);
+	}
+	if(opt_mysql_enable_new_store || opt_load_query_from_files) {
+		find_and_replace(query, _MYSQL_QUERY_END_new, _MYSQL_QUERY_END_SUBST_new);
+	}
+	query += MYSQL_QUERY_END;
+	return(query);
 }

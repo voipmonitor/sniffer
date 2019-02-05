@@ -41,6 +41,7 @@ struct sVerbose {
 	int set_ua;
 	int dscp;
 	int store_process_query;
+	int store_process_query_compl;
 	int call_listening;
 	int skinny;
 	int fraud;
@@ -108,6 +109,8 @@ struct sVerbose {
 	int system_command;
 	int malloc_trim;
 	int socket_decode;
+	int disable_load_codebooks;
+	int multiple_store;
 	int _debug1;
 	int _debug2;
 	int _debug3;

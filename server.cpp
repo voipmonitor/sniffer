@@ -187,6 +187,7 @@ void cSnifferServer::sql_query_lock(const char *query_str, int id) {
 		}
 		usleep(1000);
 	}
+	// TODO NEW STORE
 	sqlStore->query_lock(query_str, sqlStore->convStoreId(id));
 }
  

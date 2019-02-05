@@ -500,13 +500,15 @@ void HttpDataCache_link::writeDataToDb(bool response, u_int64_t timestamp, const
 		rowRequest.add(sqlEscapeString(data->sessionid).c_str(), "sessid");
 		rowRequest.add(sqlEscapeString(data->external_transaction_id).c_str(), "external_transaction_id");
 		rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-		queryInsert += sqlDbSaveHttp->insertQuery("http_jj", rowRequest) + ";\n";
-		queryInsert += "set @http_jj_request_id = last_insert_id();\n";
+		queryInsert += MYSQL_ADD_QUERY_END(
+			       sqlDbSaveHttp->insertQuery("http_jj", rowRequest));
+		queryInsert += MYSQL_ADD_QUERY_END(string(
+			       "set @http_jj_request_id = last_insert_id()"));
 		lastRequest_http_md5 = data->http_md5;
 		lastRequest_body_md5 = data->body_md5;
 	} else {
 		SqlDb_row rowResponse;
-		rowResponse.add("_\\_'SQL'_\\_:@http_jj_request_id", "master_id");
+		rowResponse.add(MYSQL_VAR_PREFIX + "@http_jj_request_id", "master_id");
 		rowResponse.add(sqlDateTimeString(timestamp / 1000000ull), "timestamp");
 		rowResponse.add((u_int32_t)(timestamp % 1000000ull), "usec");
 		rowResponse.add(id->ip_dst, "srcip"); 
@@ -521,7 +523,8 @@ void HttpDataCache_link::writeDataToDb(bool response, u_int64_t timestamp, const
 		rowResponse.add("", "sessid");
 		rowResponse.add("", "external_transaction_id");
 		rowResponse.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-		queryInsert += sqlDbSaveHttp->insertQuery("http_jj", rowResponse, true) + ";\n";
+		queryInsert += MYSQL_ADD_QUERY_END(
+			       sqlDbSaveHttp->insertQuery("http_jj", rowResponse, true));
 	}
 }
 

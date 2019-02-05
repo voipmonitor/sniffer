@@ -598,7 +598,9 @@ public:
 	void query(const char *query_str);
 	void queryByRemoteSocket(const char *query_str);
 	void store();
-	void _store(string beginProcedure, string endProcedure, string queries);
+	void _store(string beginProcedure, string endProcedure, list<string> *queries);
+	void __store(list<string> *queries);
+	void __store(string beginProcedure, string endProcedure, string &queries);
 	void exportToFile(FILE *file, bool sqlFormat, bool cleanAfterExport);
 	void _exportToFileSqlFormat(FILE *file, string queries);
 	void lock();
@@ -1048,6 +1050,43 @@ private:
 	u_long lastBeginLoadTime;
 	u_long lastEndLoadTime;
 };
+
+
+extern bool opt_mysql_enable_new_store;
+
+#define _MYSQL_QUERY_END_new "_\\_'QE'_\\_;\n"
+#define _MYSQL_QUERY_END_old ";\n"
+#define MYSQL_QUERY_END string(opt_mysql_enable_new_store ? _MYSQL_QUERY_END_new : _MYSQL_QUERY_END_old)
+#define _MYSQL_QUERY_END_SUBST_new "_\\_'Qe'_\\_;\n"
+#define _MYSQL_QUERY_END_SUBST_old ";\n"
+#define MYSQL_QUERY_END_SUBST string(opt_mysql_enable_new_store ? _MYSQL_QUERY_END_SUBST_new : _MYSQL_QUERY_END_SUBST_old)
+#define MYSQL_IF string(":IF ")
+#define MYSQL_ENDIF string(":ENDIF")
+#define MYSQL_ENDIF_QE (string(":ENDIF") + MYSQL_QUERY_END)
+#define _MYSQL_MAIN_INSERT_new ":MI:"
+#define _MYSQL_MAIN_INSERT_new_length 4
+#define _MYSQL_MAIN_INSERT_GROUP_new ":MIG:"
+#define _MYSQL_MAIN_INSERT_GROUP_new_length 5
+#define _MYSQL_NEXT_INSERT_new ":NI:"
+#define _MYSQL_NEXT_INSERT_new_length 4
+#define _MYSQL_NEXT_INSERT_GROUP_new ":NIG:"
+#define _MYSQL_NEXT_INSERT_GROUP_new_length 5
+#define MYSQL_MAIN_INSERT string(opt_mysql_enable_new_store ? _MYSQL_MAIN_INSERT_new : "")
+#define MYSQL_MAIN_INSERT_GROUP string(opt_mysql_enable_new_store ? _MYSQL_MAIN_INSERT_GROUP_new : "")
+#define MYSQL_NEXT_INSERT string(opt_mysql_enable_new_store ? _MYSQL_NEXT_INSERT_new : "")
+#define MYSQL_NEXT_INSERT_GROUP string(opt_mysql_enable_new_store ? _MYSQL_NEXT_INSERT_GROUP_new : "")
+#define MYSQL_MAIN_INSERT_ID string("@MI_NEW_ID")
+#define MYSQL_MAIN_INSERT_ID_OLD string("@MI_OLD_ID")
+#define MYSQL_MAIN_INSERT_ID2 string("@MI_new_ID")
+#define MYSQL_MAIN_INSERT_ID_OLD2 string("@MI_old_ID")
+#define MYSQL_GET_MAIN_INSERT_ID (string("set ") + MYSQL_MAIN_INSERT_ID + " = last_insert_id()" + MYSQL_QUERY_END)
+#define MYSQL_GET_MAIN_INSERT_ID_OLD (string("set ") + MYSQL_MAIN_INSERT_ID_OLD + " = last_insert_id()" + MYSQL_QUERY_END)
+#define MYSQL_IF_MAIN_INSERT_ID (MYSQL_IF + " " + MYSQL_MAIN_INSERT_ID + " > 0 and coalesce(" + MYSQL_MAIN_INSERT_ID_OLD + ", 0) <> " + MYSQL_MAIN_INSERT_ID + MYSQL_QUERY_END)
+#define MYSQL_VAR_PREFIX string("_\\_'SQL'_\\_:")
+
+#define MYSQL_EXISTS_PREFIX_L(str, prefix, length) (!strncmp((str).c_str(), prefix, length))
+#define MYSQL_EXISTS_PREFIX_S(str, prefix) MYSQL_EXISTS_PREFIX_L(str, prefix.c_str(), prefix.length())
+string MYSQL_ADD_QUERY_END(string query);
 
 
 #endif

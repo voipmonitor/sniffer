@@ -157,7 +157,7 @@ void WebrtcData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 								 webrtcDD.commCorrelationId).c_str(), 
 					       "external_transaction_id");
 				rowRequest.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-				string queryInsert = sqlDbSaveWebrtc->insertQuery("webrtc", rowRequest);
+				string queryInsert = MYSQL_ADD_QUERY_END(sqlDbSaveWebrtc->insertQuery("webrtc", rowRequest));
 				int storeId = STORE_PROC_ID_WEBRTC_1 + 
 					      (opt_mysqlstore_max_threads_webrtc > 1 &&
 					       sqlStore->getSize(STORE_PROC_ID_WEBRTC_1) > 1000 ? 

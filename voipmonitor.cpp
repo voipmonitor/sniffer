@@ -377,6 +377,7 @@ int opt_mysql_enable_transactions_http = 0;
 int opt_mysql_enable_transactions_webrtc = 0;
 int opt_mysql_enable_multiple_rows_insert = 1;
 int opt_mysql_max_multiple_rows_insert = 20;
+bool opt_mysql_enable_new_store = false;
 int opt_cdr_ua_enable = 1;
 vector<string> opt_cdr_ua_reg_remove;
 vector<string> opt_cdr_ua_reg_whitelist;
@@ -1333,11 +1334,16 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 			if(!is_read_from_file() &&
 			   sqlDb->getDbName() == "mysql" &&
 			   sqlDb->getDbMajorVersion() >= 8) {
-				if(!sqlDb->existsDatabase() || !sqlDb->existsTable("cdr") || sqlDb->emptyTable("cdr")) {
-					connectErrorString = "! mysql version 8 is not supported because it contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023)";
-					connectOk = -1;
+				if(is_support_for_mysql_new_store()) {
+					opt_mysql_enable_new_store = true;
 				} else {
-					cLogSensor::log(cLogSensor::critical, "Mysql version 8 contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023). Please downgrade to version 5.7 or contact support.");
+					if(!sqlDb->existsDatabase() || !sqlDb->existsTable("cdr") || sqlDb->emptyTable("cdr")) {
+						connectErrorString = "! mysql version 8 is not supported because it contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023)";
+						connectOk = -1;
+					} else {
+						cLogSensor::log(cLogSensor::critical, "Mysql version 8 contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023). Please downgrade to version 5.7 or contact support.");
+						opt_mysql_enable_new_store = false;
+					}
 				}
 			}
 			if(connectOk > 0) {
@@ -5210,11 +5216,11 @@ void test() {
 		break;
 	case 313:
 		if(atoi(opt_test_arg) > 0) {
-			opt_cleandatabase_cdr = atoi(opt_test_arg);
-			opt_cleandatabase_http_enum = 0;
-			opt_cleandatabase_webrtc = 0;
-			opt_cleandatabase_register_state = 0;
-			opt_cleandatabase_register_failed = 0;
+			opt_cleandatabase_cdr =
+			opt_cleandatabase_http_enum =
+			opt_cleandatabase_webrtc =
+			opt_cleandatabase_register_state =
+			opt_cleandatabase_register_failed = atoi(opt_test_arg);
 		} else {
 			return;
 		}
@@ -5766,6 +5772,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42115) cConfigItem_yesno("mysqltransactions_webrtc", &opt_mysql_enable_transactions_webrtc));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_multiple_rows_insert", &opt_mysql_enable_multiple_rows_insert));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("mysql_max_multiple_rows_insert", &opt_mysql_max_multiple_rows_insert));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_new_store", &opt_mysql_enable_new_store));
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
@@ -6808,6 +6815,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "set_ua")				sverb.set_ua = 1;
 	else if(verbParam == "dscp")				sverb.dscp = 1;
 	else if(verbParam == "store_process_query")		sverb.store_process_query = 1;
+	else if(verbParam == "store_process_query_compl")	sverb.store_process_query_compl = 1;
 	else if(verbParam == "call_listening")			sverb.call_listening = 1;
 	else if(verbParam == "skinny")				sverb.skinny = 1;
 	else if(verbParam == "fraud")				sverb.fraud = 1;
@@ -6889,6 +6897,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "system_command")			sverb.system_command = 1;
 	else if(verbParam == "malloc_trim")			sverb.malloc_trim = 1;
 	else if(verbParam == "socket_decode")			{ sverb.socket_decode = 1; extern sCloudRouterVerbose& CR_VERBOSE(); CR_VERBOSE().socket_decode = true; }
+	else if(verbParam == "disable_load_codebooks")		sverb.disable_load_codebooks = 1;
+	else if(verbParam.substr(0, 15) == "multiple_store=")	sverb.multiple_store = atoi(verbParam.c_str() + 15);
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -7322,6 +7332,11 @@ void set_spool_permission() {
 }
 
 void set_context_config() {
+ 
+	if(opt_mysql_enable_new_store && !is_support_for_mysql_new_store()) {
+		opt_mysql_enable_new_store = false;
+		syslog(LOG_ERR, "option mysql_enable_new_store is not suported in your configuration");
+	}
  
 	if(opt_scanpcapdir[0]) {
 		sniffer_mode = snifferMode_read_from_files;
@@ -8903,6 +8918,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mysql_max_multiple_rows_insert"))) {
 		opt_mysql_max_multiple_rows_insert = atoi(value);
 	}
+	if((value = ini.GetValue("general", "mysql_enable_new_store"))) {
+		opt_mysql_enable_new_store = yesno(value);
+	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strcpy_null_term(mysql_host, value);
 	}
@@ -10231,6 +10249,14 @@ int check_set_rtp_threads(int num_rtp_threads) {
 	if(num_rtp_threads <= 0) num_rtp_threads = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
 	if(num_rtp_threads <= 0) num_rtp_threads = 1;
 	return(num_rtp_threads);
+}
+
+bool is_support_for_mysql_new_store() {
+	return(!(opt_cdr_check_exists_callid ||
+		 opt_cdr_check_duplicity_callid_in_next_pass_insert ||
+		 opt_message_check_duplicity_callid_in_next_pass_insert ||
+		 isCloud() ||
+		 (is_client() && !is_client_packetbuffer_sender())));
 }
 
 void dns_lookup_common_hostnames() {

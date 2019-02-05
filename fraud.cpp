@@ -261,7 +261,8 @@ void CacheNumber_location::saveNumber(const char *number, u_int32_t number_ip, c
 		if(domain && *domain) {
 			cond.add(string_size(domain, 100), "domain");
 		}
-		sqlStore->query_lock(sqlDb->updateQuery(getTable(domain), row, cond, false, true).c_str(),
+		sqlStore->query_lock(MYSQL_ADD_QUERY_END(
+				     sqlDb->updateQuery(getTable(domain), row, cond, false, true)),
 				     STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
 	} else {
 		row.add(string_size(number, 30), "number");
@@ -269,7 +270,8 @@ void CacheNumber_location::saveNumber(const char *number, u_int32_t number_ip, c
 		if(domain && *domain) {
 			row.add(string_size(domain, 100), "domain");
 		}
-		sqlStore->query_lock(sqlDb->insertQuery(getTable(domain), row, false, true, true).c_str(),
+		sqlStore->query_lock(MYSQL_ADD_QUERY_END(
+				     sqlDb->insertQuery(getTable(domain), row, false, true, true)),
 				     STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
 	}
 }
@@ -753,7 +755,9 @@ void FraudAlert::evAlert(FraudAlertInfo *alertInfo) {
 	row.add(sqlDateTimeString(now), "at");
 	row.add(sqlEscapeString(alertInfo->getJson()), "alert_info");
 	row.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
-	sqlStore->query_lock(sqlDbFraud->insertQuery("fraud_alert_info", row).c_str(), STORE_PROC_ID_FRAUD_ALERT_INFO);
+	sqlStore->query_lock(MYSQL_ADD_QUERY_END(
+			     sqlDbFraud->insertQuery("fraud_alert_info", row)), 
+			     STORE_PROC_ID_FRAUD_ALERT_INFO);
 	delete alertInfo;
 }
 

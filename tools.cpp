@@ -4459,16 +4459,23 @@ string hexencode(unsigned char *src, int src_length)
 	return(rslt);
 }
 
-void find_and_replace(string &source, const string find, string replace) {
+string &find_and_replace(string &source, const string find, string replace, unsigned *counter_replace) {
+	if(counter_replace) {
+		*counter_replace = 0;
+	}
  	size_t j;
 	for ( ; (j = source.find( find )) != string::npos ; ) {
 		source.replace( j, find.length(), replace );
+		if(counter_replace) {
+			++*counter_replace;
+		}
 	}
+	return(source);
 }
 
-string find_and_replace(const char *source, const char *find, const char *replace) {
+string find_and_replace(const char *source, const char *find, const char *replace, unsigned *counter_replace) {
 	string s_source = source;
-	find_and_replace(s_source, find, replace);
+	find_and_replace(s_source, find, replace, counter_replace);
 	return(s_source);
 }
 

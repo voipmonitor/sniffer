@@ -347,14 +347,14 @@ void CleanSpool::addFile(const char *ymdh, eTypeSpoolFile typeSpoolFile, const c
 	}
 	string column = string(getSpoolTypeFilesIndex(typeSpoolFile, true)) + "size";
 	sqlStore->lock(STORE_PROC_ID_CLEANSPOOL + spoolIndex);
-	sqlStore->query( 
+	sqlStore->query(MYSQL_ADD_QUERY_END(
 	       "INSERT INTO files \
 		SET datehour = " + string(ymdh) + ", \
 		    spool_index = " + getSpoolIndex_string() + ", \
 		    id_sensor = " + getIdSensor_string() + ", \
 		    " + column + " = " + intToString(size) + " \
 		ON DUPLICATE KEY UPDATE \
-		    " + column + " = " + column + " + " + intToString(size),
+		    " + column + " = " + column + " + " + intToString(size)),
 		STORE_PROC_ID_CLEANSPOOL + spoolIndex);
 	string fname = getSpoolDir_string(tsf_main) + "/filesindex/" + column + '/' + ymdh;
 	ofstream fname_stream;
@@ -1286,10 +1286,10 @@ void CleanSpool::reindex_all(const char *reason) {
 		return;
 	}
 	syslog(LOG_NOTICE, "cleanspool[%i]: reindex_all start%s%s", spoolIndex, reason ? " - " : "", reason ? reason : "");
-	sqlStore->query_lock(
+	sqlStore->query_lock(MYSQL_ADD_QUERY_END(
 	       "DELETE FROM files \
 		WHERE spool_index = " + getSpoolIndex_string() + " and \
-		      id_sensor = " + getIdSensor_string(),
+		      id_sensor = " + getIdSensor_string()),
 		STORE_PROC_ID_CLEANSPOOL_SERVICE + spoolIndex);
 	rmdir_r(getSpoolDir_string(tsf_main) + "/filesindex", true, true);
 	for(list<string>::iterator iter_date_dir = date_dirs.begin(); iter_date_dir != date_dirs.end(); iter_date_dir++) {
@@ -1365,7 +1365,7 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 		}
 		string ymdh = string(date.substr(0,4)) + date.substr(5,2) + date.substr(8,2) + hour;
 		if(sipsize + regsize + skinnysize + mgcpsize + ss7size + rtpsize + graphsize + audiosize) {
-			sqlStore->query_lock(
+			sqlStore->query_lock(MYSQL_ADD_QUERY_END(
 			       "INSERT INTO files \
 				SET datehour = " + ymdh + ", \
 				    spool_index = " + getSpoolIndex_string() + ", \
@@ -1386,14 +1386,14 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 				    ss7size = " + intToString(ss7size) + ", \
 				    rtpsize = " + intToString(rtpsize) + ", \
 				    graphsize = " + intToString(graphsize) + ", \
-				    audiosize = " + intToString(audiosize),
+				    audiosize = " + intToString(audiosize)),
 				STORE_PROC_ID_CLEANSPOOL_SERVICE + spoolIndex);
 		} else {
-			sqlStore->query_lock(
+			sqlStore->query_lock(MYSQL_ADD_QUERY_END(
 			       "DELETE FROM files \
 				WHERE datehour = " + ymdh + " and \
 				      spool_index = " + getSpoolIndex_string() + " and \
-				      id_sensor = " + getIdSensor_string(),
+				      id_sensor = " + getIdSensor_string()),
 				STORE_PROC_ID_CLEANSPOOL_SERVICE + spoolIndex);
 			for(int typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; ++typeSpoolFile) {
 				rmdir_r(getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + date + '/' + hour);
