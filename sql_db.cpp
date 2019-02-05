@@ -2594,6 +2594,14 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 	if(opt_nocdr) {
 		return;
 	}
+	static unsigned counter;
+	static unsigned sum;
+	unsigned long start;
+	size_t queries_size;
+	if(sverb.store_process_query_compl_time) {
+		start = getTimeMS();
+		queries_size = queries->size();
+	}
 	if(opt_mysql_enable_new_store || opt_load_query_from_files) {
 		string queries_str_old_store;
 		for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
@@ -2616,6 +2624,12 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 			queries_str += *iter;
 		}
 		__store(beginProcedure, endProcedure, queries_str);
+	}
+	if(sverb.store_process_query_compl_time) {
+		unsigned long end = getTimeMS();
+		sum += (end -start);
+		cout << "store_process_query_compl_" << this->id << endl
+		     << " * time " << (++counter) << " / " << (end-start)/1000. << " / " << sum/1000. << " size: " << queries_size << endl;
 	}
 }
 
@@ -2745,22 +2759,13 @@ void MySqlStore_process::__store(list<string> *queries) {
 		}
 	}
 	#endif
-	static unsigned counter;
-	static unsigned sum;
-	unsigned long start;
-	if(sverb.store_process_query_compl) {
-		start = getTimeMS();
-	}
 	this->sqlDb->query(string("call store_001(\"") + 
 			   queries_str + "\",\"" + 
 			   _MYSQL_QUERY_END_new + "\"," + 
 			   (opt_mysql_enable_transactions || this->enableTransaction ? "true" : "false") +
 			   ")");
 	if(sverb.store_process_query_compl) {
-		unsigned long end = getTimeMS();
-		sum += (end -start);
 		cout << "store_process_query_compl_" << this->id << endl
-		     << " * " << (++counter) << " / " << (end-start)/1000. << " / " << sum/1000. << endl
 		     << queries_str << endl;
 	}
 	

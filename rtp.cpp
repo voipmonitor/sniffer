@@ -2642,7 +2642,7 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap, bool needLock) {
 
 	extern int opt_nocdr;
 	string query_str;
-	if(!opt_nocdr) {
+	if(!opt_nocdr && !sverb.disable_store_rtp_stat) {
 		map<uint32_t, node_t>::iterator it;
 
 		if(!sqlDbSaveCall) {

@@ -6816,6 +6816,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "dscp")				sverb.dscp = 1;
 	else if(verbParam == "store_process_query")		sverb.store_process_query = 1;
 	else if(verbParam == "store_process_query_compl")	sverb.store_process_query_compl = 1;
+	else if(verbParam == "store_process_query_compl_time")	sverb.store_process_query_compl_time = 1;
 	else if(verbParam == "call_listening")			sverb.call_listening = 1;
 	else if(verbParam == "skinny")				sverb.skinny = 1;
 	else if(verbParam == "fraud")				sverb.fraud = 1;
@@ -6900,6 +6901,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "socket_decode")			{ sverb.socket_decode = 1; extern sCloudRouterVerbose& CR_VERBOSE(); CR_VERBOSE().socket_decode = true; }
 	else if(verbParam == "disable_load_codebooks")		sverb.disable_load_codebooks = 1;
 	else if(verbParam.substr(0, 15) == "multiple_store=")	sverb.multiple_store = atoi(verbParam.c_str() + 15);
+	else if(verbParam == "disable_store_rtp_stat")		sverb.disable_store_rtp_stat = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
