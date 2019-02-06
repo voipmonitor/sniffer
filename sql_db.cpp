@@ -1109,20 +1109,30 @@ void SqlDb::cleanFields() {
 	this->fields.clear();
 }
 
-void SqlDb::addDelayQuery(u_int32_t delay_ms) {
-	delayQuery_sum_ms += delay_ms;
-	++delayQuery_count;
+void SqlDb::addDelayQuery(u_int32_t delay_ms, bool store) {
+	if(store) {
+		delayQueryStore_sum_ms += delay_ms;
+		++delayQueryStore_count;
+	} else {
+		delayQuery_sum_ms += delay_ms;
+		++delayQuery_count;
+	}
 }
 
-u_int32_t SqlDb::getAvgDelayQuery() {
-	u_int64_t _delayQuery_sum_ms = delayQuery_sum_ms;
-	u_int32_t _delayQuery_count = delayQuery_count;
+u_int32_t SqlDb::getAvgDelayQuery(bool store) {
+	u_int64_t _delayQuery_sum_ms = store ? delayQueryStore_sum_ms : delayQuery_sum_ms;
+	u_int32_t _delayQuery_count = store ? delayQueryStore_count : delayQuery_count;
 	return(_delayQuery_count ? _delayQuery_sum_ms / _delayQuery_count : 0);
 }
 
-void SqlDb::resetDelayQuery() {
-	delayQuery_sum_ms = 0;
-	delayQuery_count = 0;
+void SqlDb::resetDelayQuery(bool store) {
+	if(store) {
+		delayQueryStore_sum_ms = 0;
+		delayQueryStore_count = 0;
+	} else {
+		delayQuery_sum_ms = 0;
+		delayQuery_count = 0;
+	}
 }
 
 void SqlDb::logNeedAlter(string table, string reason, string alter,
@@ -1164,6 +1174,8 @@ void SqlDb::logNeedAlter(string table, string reason, string alter,
 
 volatile u_int64_t SqlDb::delayQuery_sum_ms = 0;
 volatile u_int32_t SqlDb::delayQuery_count = 0;
+volatile u_int64_t SqlDb::delayQueryStore_sum_ms = 0;
+volatile u_int32_t SqlDb::delayQueryStore_count = 0;
 
 
 SqlDb_mysql::SqlDb_mysql() {
@@ -2595,11 +2607,10 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 		return;
 	}
 	static unsigned counter;
-	static unsigned sum;
-	unsigned long start;
+	static unsigned sumTimeMS;
+	unsigned long startTimeMS = getTimeMS();
 	size_t queries_size;
 	if(sverb.store_process_query_compl_time) {
-		start = getTimeMS();
 		queries_size = queries->size();
 	}
 	if(opt_mysql_enable_new_store || opt_load_query_from_files) {
@@ -2625,11 +2636,12 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 		}
 		__store(beginProcedure, endProcedure, queries_str);
 	}
+	unsigned long endTimeMS = getTimeMS();
+	SqlDb::addDelayQuery(endTimeMS - startTimeMS, true);
 	if(sverb.store_process_query_compl_time) {
-		unsigned long end = getTimeMS();
-		sum += (end -start);
+		sumTimeMS += (endTimeMS -startTimeMS);
 		cout << "store_process_query_compl_" << this->id << endl
-		     << " * time " << (++counter) << " / " << (end-start)/1000. << " / " << sum/1000. << " size: " << queries_size << endl;
+		     << " * time " << (++counter) << " / " << (endTimeMS-startTimeMS)/1000. << " / " << sumTimeMS/1000. << " size: " << queries_size << endl;
 	}
 }
 
@@ -2638,7 +2650,8 @@ void MySqlStore_process::__store(list<string> *queries) {
 	string queries_str;
 	unsigned counterQueriesWithNextInsertGroup = 0;
 	for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
-		vector<string> query_vect = split(iter->c_str(), _MYSQL_QUERY_END_new);
+		vector<string> query_vect;
+		split(iter->c_str(), _MYSQL_QUERY_END_new, query_vect);
 		if(opt_mysql_enable_multiple_rows_insert) {
 			if(MYSQL_EXISTS_PREFIX_L(query_vect[0], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
 				bool allItemsIsMIG = true;

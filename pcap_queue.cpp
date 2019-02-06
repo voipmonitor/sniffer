@@ -1570,9 +1570,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				bool fill = false;
 				string stat = loadFromQFiles->getLoadFromQFilesStat();
 				string stat_proc = sverb.qfiles ? loadFromQFiles->getLoadFromQFilesStat(true) : "";
-				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery();
+				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(true);
 				u_int32_t countFilesQuery = loadFromQFiles->getLoadFromQFilesCount();
-				SqlDb::resetDelayQuery();
+				SqlDb::resetDelayQuery(true);
 				if(!stat.empty() || avgDelayQuery || !stat_proc.empty()) {
 					outStr << "SQLf[";
 				}
@@ -1731,8 +1731,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						*/
 					}
 				}
-				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery();
-				SqlDb::resetDelayQuery();
+				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(true);
+				SqlDb::resetDelayQuery(true);
 				if(avgDelayQuery) {
 					outStr << " / " << setprecision(3) << (double)avgDelayQuery / 1000 << "s";
 				}

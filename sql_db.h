@@ -327,9 +327,9 @@ public:
 	bool isCloudSsh() {
 		return(cloud_host[0] && cloud_token[0] && !cloud_router);
 	}
-	static void addDelayQuery(u_int32_t delay_ms);
-	static u_int32_t getAvgDelayQuery();
-	static void resetDelayQuery();
+	static void addDelayQuery(u_int32_t delay_ms, bool store = false);
+	static u_int32_t getAvgDelayQuery(bool store = false);
+	static void resetDelayQuery(bool store = false);
 	void logNeedAlter(string table, string reason, string alter,
 			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
 protected:
@@ -363,6 +363,8 @@ private:
 	string lastErrorString;
 	static volatile u_int64_t delayQuery_sum_ms;
 	static volatile u_int32_t delayQuery_count;
+	static volatile u_int64_t delayQueryStore_sum_ms;
+	static volatile u_int32_t delayQueryStore_count;
 	cSocketBlock *remote_socket;
 	map<string, list<string> > existsColumnCache;
 	bool existsColumnCache_enable;

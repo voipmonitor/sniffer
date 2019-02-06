@@ -2418,8 +2418,7 @@ std::vector<std::string> split(const std::string &s, char delim) {
     return elems;
 }
 
-std::vector<std::string> split(const char *s, const char *delim, bool enableTrim, bool useEmptyItems) {
-	std::vector<std::string> elems;
+std::vector<std::string> &split(const char *s, const char *delim, std::vector<std::string> &elems, bool enableTrim, bool useEmptyItems) {
 	char *p = (char*)s;
 	int delim_length = strlen(delim);
 	while(p) {
@@ -2435,6 +2434,12 @@ std::vector<std::string> split(const char *s, const char *delim, bool enableTrim
 		}
 		p = next_delim ? next_delim + delim_length : NULL;
 	}
+	return elems;
+}
+
+std::vector<std::string> split(const char *s, const char *delim, bool enableTrim, bool useEmptyItems) {
+	std::vector<std::string> elems;
+	split(s, delim, elems, enableTrim, useEmptyItems);
 	return elems;
 }
 
