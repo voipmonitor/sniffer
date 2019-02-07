@@ -4,16 +4,7 @@ What is required
 ================
 
 apt-get install build-essential
-apt-get install unixodbc-dev
-apt-get install libvorbis-dev
-apt-get install libsnappy-dev
-apt-get install libcurl4-openssl-dev 
-apt-get install libssh-dev libpng12-dev libfftw3-dev
-apt-get install librrd-dev
-apt-get install libmysqlclient-dev 
-apt-get install liblzma-dev libgnutls-dev
-apt-get install libgoogle-perftools-dev
-apt-get install libgcrypt11-dev
+apt-get install unixodbc-dev libvorbis-dev libsnappy-dev libcurl4-openssl-dev libssh-dev libpng12-dev libfftw3-dev librrd-dev liblzma-dev libgoogle-perftools-dev libgcrypt11-dev libpcap-dev libicu-dev libjson-c-dev libglib2.0-dev libxml2-dev default-libmysqlclient-dev liblzo2-dev gnutls-dev
 
 
 What is recommmended

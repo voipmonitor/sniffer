@@ -1770,7 +1770,14 @@ int64_t SqlDb_mysql::getInsertId() {
 }
 
 bool SqlDb_mysql::existsTable(const char *table) {
-	this->query(string("show tables like '") + table + "'");
+	const char *db_table_separator;
+	if(isCloud() &&
+	   (db_table_separator = strchr(table, '.')) != NULL) {
+		string db = string(table, db_table_separator - table);
+		this->query(string("select table_name from information_schema.tables  where table_schema = '") + db + "' and table_name = '" + (db_table_separator + 1) + "'");
+	} else {
+		this->query(string("show tables like '") + table + "'");
+	}
 	int countRow = 0;
 	while(this->fetchRow()) {
 		++countRow;
