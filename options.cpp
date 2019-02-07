@@ -1415,6 +1415,7 @@ string cSipMsgRelations::getHistoryDataJson(u_int64_t id) {
 	}
 	unlock_relations();
 	if(!relation) {
+		unlock_delete_relation();
 		return("");
 	}
 	list<cSipMsgRelation::sHistoryData> historyData;
