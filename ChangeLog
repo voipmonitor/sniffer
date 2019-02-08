@@ -1,3 +1,14 @@
+23.6 08.02.2019
+===============
+- fix deadlock when OPTIONS/NOTIFY/SUBSCRIBE feature is enabled 
+- ssl sessions will now expire after 12 hours which fixes  [call __insert_99();]: 1114 - The table 'ssl_sessions_mem' is full. There is new option ssl_store_sessions_expiration_hours to change it [VS-872]
+- fix set threading mode 5 a 6 in server mode / new config
+- fix crash when using RRD and custom libpcap [VS-881]
+- mysql_enable_multiple_rows_insert is enabled by default now
+- fix slow start when cdr_ua has millions records [VS-883]
+- fix dns resolve for static builds on arm [VS-884]
+
+
 23.5 17.01.2019
 ===============
 - new option quick_save_cdr = NO/yes/quick when 10 seconds timeout when call ends between database write is too long (default is disabled which is recommended) [VS-879]
