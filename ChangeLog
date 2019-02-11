@@ -1,4 +1,9 @@
-23.6 08.02.2019
+23.6.1 11.02.2019
+=================
+- fix 23.6 regression sql store_001 error
+
+
+-23.6 08.02.2019
 ===============
 - fix deadlock when OPTIONS/NOTIFY/SUBSCRIBE feature is enabled 
 - ssl sessions will now expire after 12 hours which fixes  [call __insert_99();]: 1114 - The table 'ssl_sessions_mem' is full. There is new option ssl_store_sessions_expiration_hours to change it [VS-872]
