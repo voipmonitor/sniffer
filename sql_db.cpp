@@ -6317,6 +6317,7 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 	  IN fname BIGINT, \
 	  IN id_sensor INT, \
 	  IN regrrddiff MEDIUMINT)",true);
+	if(opt_mysql_enable_new_store) {
 	this->createProcedure(
 	"begin \
 		declare str_sep_pos_length integer default 0; \
@@ -6331,7 +6332,9 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 				if(use_transaction) then \
 					rollback; \
 				end if; \
-				resignal; \
+				" + string((getDbName() == "mariadb" ? 
+					     (getDbVersion() > 50500) :
+					     (getDbVersion() > 50500)) ? "resignal;" : "") + " \
 			end; \
 		if(use_transaction) then \
 			start transaction; \
@@ -6370,6 +6373,7 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 		end if; \
 	end",
 	"store_001", "(str longtext, str_sep text, use_transaction bool)", true);
+	}
 	
 	return(true);
 }
