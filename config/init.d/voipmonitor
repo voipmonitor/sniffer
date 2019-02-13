@@ -1,5 +1,7 @@
 #!/bin/sh
-
+# Convince systemd to set RemainAfterExit=no. This must be an absolute path
+# with no environment variables for this to work.
+# pidfile: /var/run/voipmonitorinitscript.pid
 ### BEGIN INIT INFO
 # Provides:             voipmonitor
 # Required-Start:       $network $remote_fs $syslog $mysql $all
@@ -30,6 +32,9 @@ PIDFILE=/var/run/voipmonitorinitscript.pid
 CONFIGFILE=/etc/voipmonitor.conf
 
 RUN="yes"
+
+# Allow systemd to intercept the behavior of this script.
+. /lib/lsb/init-functions
 
 if [ -f /etc/default/$BASE ]; then
         . /etc/default/$BASE
