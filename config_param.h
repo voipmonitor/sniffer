@@ -363,6 +363,10 @@ public:
 	string getValueStr(bool configFile = false);
 	list<string> getValueListStr();
 	bool enableMultiValues() { return(true); }
+	cConfigItem_ports *setDefaultPortIfNoPortSet(int portNum) {
+		this->defaultPort = portNum;
+		return(this);
+	}
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
@@ -376,6 +380,7 @@ protected:
 	}
 protected:
 	char *param_port_matrix;
+	int defaultPort;
 };
 
 class cConfigItem_hosts : public cConfigItem {
