@@ -2603,6 +2603,7 @@ Call::convertRawToWav() {
 		int iter = 0;
 		unsigned int last_ssrc_index = 0;
 		long long last_size = 0;
+		unsigned int unknown_codec_counter = 0;
 		/* 
 			read rawInfo file where there are stored raw files (rtp streams) 
 			if any of such stream has same SSRC as previous stream and it starts at the same time with 500ms tolerance that stream is eliminated (it is probably duplicate stream)
@@ -2933,7 +2934,9 @@ Call::convertRawToWav() {
 				system(cmd);
 				break;
 			default:
-				syslog(LOG_ERR, "Call [%s] cannot be converted to WAV because the codec [%s][%d] is not supported.\n", rawf->filename.c_str(), codec2text(rawf->codec), rawf->codec);
+				if (++unknown_codec_counter > 2) {
+					syslog(LOG_ERR, "Call [%s] has more than 2 parts with the unsupported codec [%s][%d].\n", rawf->filename.c_str(), codec2text(rawf->codec), rawf->codec);
+				}
 			}
 			if(!sverb.noaudiounlink) unlink(rawf->filename.c_str());
 			
