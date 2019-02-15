@@ -6701,50 +6701,124 @@ bool ReassemblyWebsocket::existsStream(packet_s_process **packetS_ref) {
 */
 
 
-ReassemblyWebsocketBuffer::~ReassemblyWebsocketBuffer() {
-	for(map<sStreamId, SimpleBuffer*>::iterator iter = streams.begin(); iter != streams.end(); iter++) {
-		delete iter->second;
+ReassemblyBuffer::ReassemblyBuffer() {
+	minTimeInStreams = 0;
+}
+
+ReassemblyBuffer::~ReassemblyBuffer() {
+	for(map<sStreamId, sData>::iterator iter = streams.begin(); iter != streams.end(); iter++) {
+		delete iter->second.ethHeader;
+		delete iter->second.buffer;
 	}
 }
 
-u_char *ReassemblyWebsocketBuffer::processPacket(u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, 
-						 u_char *data, unsigned length,bool createStream,
-						 unsigned *completed_length) {
-	SimpleBuffer *buffer = NULL;
+void ReassemblyBuffer::processPacket(u_char *ethHeader, unsigned ethHeaderLength,
+				     u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, 
+				     ReassemblyBuffer::eType type, u_char *data, unsigned length, bool createStream,
+				     timeval time, u_int32_t ack, u_int32_t seq,
+				     u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+				     list<sDataRslt> *dataRslt) {
 	sStreamId id(saddr, sport, daddr, dport);
-	map<sStreamId, SimpleBuffer*>::iterator iter = streams.find(id);
+	map<sStreamId, sData>::iterator iter = streams.find(id);
+	sData *b_data;
+	bool b_data_update = false;
 	if(iter == streams.end()) {
 		if(!createStream) {
-			return(NULL);
+			return;
 		}
-		buffer = new FILE_LINE(0) SimpleBuffer;
-		streams[id] = buffer;
+		b_data = &streams[id];
+		b_data->ethHeader = new FILE_LINE(0) SimpleBuffer;
+		b_data->ethHeader->add(ethHeader, ethHeaderLength);
+		b_data->buffer = new FILE_LINE(0) SimpleBuffer;
+		b_data->type = (eType)(type & _type_mask);
+		b_data_update = true;
 	} else {
-		buffer = iter->second;
-		if(createStream) {
-			buffer->clear();
+		b_data = &iter->second;
+		if(createStream || 
+		   (b_data->type == _sip && ack != b_data->ack)) {
+			if(b_data->buffer->size() && b_data->time.tv_sec > time.tv_sec - 10) {
+				dataRslt->push_back(complete(&id, b_data));
+			}
+			b_data->ethHeader->clear();
+			b_data->ethHeader->add(ethHeader, ethHeaderLength);
+			b_data->buffer->clear();
+			if(type & _type_mask) {
+				b_data->type = (eType)(type & _type_mask);
+			}
+			b_data_update = true;
 		}
 	}
-	buffer->add(data, length);
-	if(!createStream) {
-		if(check_websocket(buffer->data(), buffer->size())) {
-			*completed_length = buffer->size();
-			u_char *completed_buffer = new FILE_LINE(0) u_char[*completed_length];
-			memcpy(completed_buffer, buffer->data(), *completed_length);
-			delete buffer;
-			streams.erase(iter);
-			return(completed_buffer);
+	if(b_data_update) {
+		b_data->time = time;
+		b_data->ack = ack;
+		b_data->seq = seq;
+		b_data->handle_index = handle_index;
+		b_data->dlt = dlt;
+		b_data->sensor_id = sensor_id;
+		b_data->sensor_ip = sensor_ip;
+	}
+	b_data->buffer->add(data, length);
+	if(!createStream &&
+	   ((b_data->type == _websocket && check_websocket(b_data->buffer->data(), b_data->buffer->size())) ||
+	    (b_data->type == _sip && TcpReassemblySip::_checkSip(b_data->buffer->data(), b_data->buffer->size(), false)))) {
+		dataRslt->push_back(complete(&id, b_data));
+		delete b_data->buffer;
+		delete b_data->ethHeader;
+		streams.erase(iter);
+	} else {
+		if(!minTimeInStreams ||
+		   getTimeUS(time) < minTimeInStreams) {
+			minTimeInStreams = getTimeUS(time);
 		}
 	}
-	return(NULL);
 }
 
-bool ReassemblyWebsocketBuffer::existsStream(u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport) {
-	if(!streams.size()) {
-		return(false);
+bool ReassemblyBuffer::existsStream(u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport) {
+	if(streams.size()) {
+		sStreamId id(saddr, sport, daddr, dport);
+		if(streams.find(id) != streams.end()) {
+			return(true);
+		}
 	}
-	sStreamId id(saddr, sport, daddr, dport);
-	return(streams.find(id) != streams.end());
+	return(false);
+}
+
+void ReassemblyBuffer::cleanup(timeval time, list<sDataRslt> *dataRslt) {
+	if(minTimeInStreams && minTimeInStreams < getTimeUS(time) - 500000ull) {
+		minTimeInStreams = 0;
+		for(map<sStreamId, sData>::iterator iter = streams.begin(); iter != streams.end(); ) {
+			if(getTimeUS(iter->second.time) < getTimeUS(time) - 500000ull) {
+				dataRslt->push_back(complete((sStreamId*)&iter->first, &iter->second));
+				delete iter->second.ethHeader;
+				delete iter->second.buffer;
+				streams.erase(iter++);
+			} else {
+				if(!minTimeInStreams ||
+				   getTimeUS(iter->second.time) < minTimeInStreams) {
+					minTimeInStreams = getTimeUS(iter->second.time);
+				}
+				iter++;
+			}
+		}
+	}
+}
+
+ReassemblyBuffer::sDataRslt ReassemblyBuffer::complete(sStreamId *streamId, sData *b_data) {
+	sDataRslt dataRslt;
+	*(sData_base*)&dataRslt = *(sData_base*)(b_data);
+	dataRslt.ethHeaderLength = b_data->ethHeader->size();
+	dataRslt.ethHeader = new FILE_LINE(0) u_char[dataRslt.ethHeaderLength];
+	memcpy(dataRslt.ethHeader, b_data->ethHeader->data(), dataRslt.ethHeaderLength);
+	dataRslt.ethHeaderAlloc = true;
+	dataRslt.dataLength = b_data->buffer->size();
+	dataRslt.data = new FILE_LINE(0) u_char[dataRslt.dataLength];
+	memcpy(dataRslt.data, b_data->buffer->data(), dataRslt.dataLength);
+	dataRslt.dataAlloc = true;
+	dataRslt.saddr = streamId->s[0];
+	dataRslt.sport = streamId->s[1];
+	dataRslt.daddr = streamId->c[0];
+	dataRslt.dport = streamId->c[1];
+	return(dataRslt);
 }
 
 

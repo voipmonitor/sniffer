@@ -69,8 +69,21 @@ public:
 			 std::ostream *debugStream);
 	void printContentSummary();
 private:
+	void processPacket(ReassemblyBuffer::sDataRslt *dataRslt) {
+		processPacket(dataRslt->ethHeader, dataRslt->ethHeaderLength, dataRslt->ethHeaderAlloc,
+			      dataRslt->data, dataRslt->dataLength, dataRslt->type, dataRslt->dataAlloc,
+			      dataRslt->saddr, dataRslt->daddr, dataRslt->sport, dataRslt->dport,
+			      dataRslt->time, dataRslt->ack, dataRslt->seq,
+			      dataRslt->handle_index, dataRslt->dlt, dataRslt->sensor_id, dataRslt->sensor_ip);
+	}
+	void processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool ethHeaderAlloc,
+			   u_char *data, unsigned dataLength, ReassemblyBuffer::eType dataType, bool dataAlloc,
+			   u_int32_t ip_src, u_int32_t ip_dst, u_int16_t port_src, u_int16_t port_dst,
+			   timeval time, u_int32_t ack, u_int32_t seq,
+			   u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip);
+private:
 	unsigned int counterProcessData;
-	ReassemblyWebsocketBuffer reassemblyWebsocketBuffer;
+	ReassemblyBuffer reassemblyBuffer;
 };
 
 

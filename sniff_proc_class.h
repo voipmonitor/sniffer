@@ -109,11 +109,15 @@ public:
 			return(rslt);
 		}
 		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
-		u_int32_t offset = 0;
 		if(!data || data_len < 10 ||
 		   !check_sip20((char*)data, data_len, NULL, true)) {
 			return(false);
 		}
+		return(_checkSip(data, data_len, strict, offsets));
+	}
+	static bool _checkSip(u_char *data, int data_len, bool strict, list<d_u_int32_t> *offsets = NULL) {
+		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
+		u_int32_t offset = 0;
 		while(data_len > 0) {
 			unsigned int contentLength = 0;
 			u_char *endHeaderSepPos = (u_char*)memmem(data, min(data_len, 5000), "\r\n\r\n", 4);
@@ -183,15 +187,59 @@ private:
 };
 */
 
-class ReassemblyWebsocketBuffer {
+class ReassemblyBuffer {
 public:
-	~ReassemblyWebsocketBuffer();
-	u_char *processPacket(u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, 
-			      u_char *data, unsigned length, bool createStream,
-			      unsigned *completed_length);
+	enum eType {
+		_na                   = 0x00,
+		_websocket            = 0x01,
+		_sip                  = 0x02,
+		_type_mask            = 0x0F,
+		_incomplete_flag      = 0x10,
+		_websocket_incomplete = _incomplete_flag | _websocket,
+		_sip_incomplete       = _incomplete_flag | _sip
+	};
+	struct sData_base {
+		eType type;
+		timeval time;
+		u_int32_t ack;
+		u_int32_t seq;
+		u_int16_t handle_index;
+		int dlt;
+		int sensor_id;
+		u_int32_t sensor_ip;
+	};
+	struct sData : sData_base {
+		SimpleBuffer *ethHeader;
+		SimpleBuffer *buffer;
+	};
+	struct sDataRslt : sData_base {
+		u_char *ethHeader;
+		unsigned ethHeaderLength;
+		bool ethHeaderAlloc;
+		u_char *data;
+		unsigned dataLength;
+		bool dataAlloc;
+		u_int32_t saddr;
+		u_int16_t sport;
+		u_int32_t daddr;
+		u_int16_t dport;
+	};
+public:
+	ReassemblyBuffer();
+	~ReassemblyBuffer();
+	void processPacket(u_char *ethHeader, unsigned ethHeaderLength,
+			   u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, 
+			   eType type, u_char *data, unsigned length, bool createStream,
+			   timeval time, u_int32_t ack, u_int32_t seq,
+			   u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+			   list<sDataRslt> *dataRslt);
 	bool existsStream(u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport);
+	void cleanup(timeval time, list<sDataRslt> *dataRslt);
 private:
-	map<sStreamId, SimpleBuffer*> streams;
+	sDataRslt complete(sStreamId *streamId, sData *b_data);
+private:
+	map<sStreamId, sData> streams;
+	u_int64_t minTimeInStreams;
 };
 
 
