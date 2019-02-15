@@ -902,7 +902,6 @@ cConfigItem_ports::cConfigItem_ports(const char* name, char *port_matrix)
  : cConfigItem(name) {
 	init();
 	param_port_matrix = port_matrix;
-	defaultPort = 0;
 }
 
 string cConfigItem_ports::getValueStr(bool configFile) {
@@ -950,10 +949,6 @@ bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str) {
 		return(false);
 	}
 	if(list_values_str.empty()) {
-		initBeforeSet();
-		if (defaultPort) {
-			param_port_matrix[defaultPort] = 1;
-		}
 		return(false);
 	}
 	int ok = 0;
@@ -963,14 +958,6 @@ bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str) {
 		++ok;
 	}
 	return(ok > 0);
-}
-
-void cConfigItem_ports::initBeforeSet() {
-	if(param_port_matrix) {
-		for(unsigned i = 0; i < 65535; i++) {
-			param_port_matrix[i] = 0;
-		}
-	}
 }
 
 cConfigItem_hosts::cConfigItem_hosts(const char* name, vector<u_int32_t> *adresses, vector<d_u_int32_t> *nets)

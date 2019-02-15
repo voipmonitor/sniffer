@@ -177,6 +177,11 @@ enum eTypeSpoolFile {
 	tsf_all
 };
 
+struct portMatrixDefaultPort {
+	char *portMatrix;
+	int defaultPort;
+};
+
 #define MAX_TYPE_SPOOL_FILE (int)tsf_all
 #define MAX_SPOOL_INDEX 1
 #define MAX_COUNT_TYPE_SPOOL_FILE (MAX_TYPE_SPOOL_FILE + 1)
