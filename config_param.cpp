@@ -902,6 +902,7 @@ cConfigItem_ports::cConfigItem_ports(const char* name, char *port_matrix)
  : cConfigItem(name) {
 	init();
 	param_port_matrix = port_matrix;
+	defaultPort = 0;
 }
 
 string cConfigItem_ports::getValueStr(bool configFile) {
@@ -950,6 +951,9 @@ bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str) {
 	}
 	if(list_values_str.empty()) {
 		initBeforeSet();
+		if (defaultPort) {
+			param_port_matrix[defaultPort] = 1;
+		}
 		return(false);
 	}
 	int ok = 0;

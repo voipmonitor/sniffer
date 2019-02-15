@@ -6120,7 +6120,8 @@ void cConfig::addConfigItems() {
 	group("SIP protocol / headers");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		subgroup("main");
-			addConfigItem(new FILE_LINE(42270) cConfigItem_ports("sipport", sipportmatrix));
+			addConfigItem((new FILE_LINE(42270) cConfigItem_ports("sipport", sipportmatrix))
+				->setDefaultPortIfNoPortSet(5060));
 			addConfigItem(new FILE_LINE(42271) cConfigItem_yesno("cdr_sipport", &opt_cdr_sipport));
 			addConfigItem(new FILE_LINE(42272) cConfigItem_yesno("domainport", &opt_domainport));
 			addConfigItem((new FILE_LINE(42273) cConfigItem_string("fbasenameheader", opt_fbasename_header, sizeof(opt_fbasename_header)))
