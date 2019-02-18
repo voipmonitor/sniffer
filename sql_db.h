@@ -590,7 +590,8 @@ private:
 
 class MySqlStore_process {
 public:
-	MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database, u_int16_t port,
+	MySqlStore_process(int id, class MySqlStore *parentStore,
+			   const char *host, const char *user, const char *password, const char *database, u_int16_t port,
 			   const char *cloud_host, const char *cloud_token, bool cloud_router,
 			   int concatLimit);
 	~MySqlStore_process();
@@ -625,10 +626,12 @@ public:
 		return(this->id < other.id); 
 	}
 	void waitForTerminate();
+	u_int64_t getAutoIncrementID(const char *table, const char *idColumn = NULL);
 private:
 	string getInsertFuncName();
 private:
 	int id;
+	MySqlStore *parentStore;
 	int concatLimit;
 	bool enableTransaction;
 	bool enableFixDeadlock;
@@ -829,6 +832,8 @@ public:
 	int convStoreId(int id);
 	int getMaxThreadsForStoreId(int id);
 	int getConcatLimitForStoreId(int id);
+	static void setAutoIncrement(const char *table, const char *idColumn = NULL);
+	static u_int64_t getAutoIncrementID(const char *table, const char *idColumn = NULL);
 private:
 	static void *threadQFilesCheckPeriod(void *arg);
 	static void *threadLoadFromQFiles(void *arg);
@@ -867,6 +872,7 @@ private:
 	pthread_t qfilesCheckperiodThread;
 	map<int, LoadFromQFilesThreadData> loadFromQFilesThreadData;
 	pthread_t qfilesINotifyThread;
+	static class cSqlDbAutoIncrement *autoIncrement;
 };
 
 SqlDb *createSqlObject(int connectId = 0);
@@ -1054,7 +1060,26 @@ private:
 };
 
 
-extern bool opt_mysql_enable_new_store;
+class cSqlDbAutoIncrement {
+public:
+	cSqlDbAutoIncrement();
+	void set(const char *table, const char *idColumn = NULL, SqlDb *sqlDb = NULL);
+	u_int64_t getID(const char *table, const char *idColumn = NULL);
+private:
+	u_int64_t get_last_id(const char *table, const char *idColumn = NULL, SqlDb *sqlDb = NULL);
+	void lock_autoinc() {
+		while(__sync_lock_test_and_set(&_sync_autoinc, 1));
+	}
+	void unlock_autoinc() {
+		__sync_lock_release(&_sync_autoinc);
+	}
+private:
+	map<string, int64_t> autoinc;
+	volatile int _sync_autoinc;
+};
+
+
+extern int opt_mysql_enable_new_store;
 
 #define _MYSQL_QUERY_END_new "_\\_'QE'_\\_;\n"
 #define _MYSQL_QUERY_END_old ";\n"

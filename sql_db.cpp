@@ -63,7 +63,8 @@ extern int opt_ssl_store_sessions;
 extern int opt_cdr_country_code;
 extern int opt_message_country_code;
 extern int opt_mysql_enable_multiple_rows_insert;
-extern bool opt_mysql_enable_new_store;
+extern int opt_mysql_enable_new_store;
+extern bool opt_mysql_enable_set_id;
 
 extern char sql_driver[256];
 
@@ -2342,10 +2343,12 @@ void *MySqlStore_process_storing(void *storeProcess_addr) {
 	return(NULL);
 }
 	
-MySqlStore_process::MySqlStore_process(int id, const char *host, const char *user, const char *password, const char *database, u_int16_t port,
+MySqlStore_process::MySqlStore_process(int id, MySqlStore *parentStore,
+				       const char *host, const char *user, const char *password, const char *database, u_int16_t port,
 				       const char *cloud_host, const char *cloud_token, bool cloud_router,
 				       int concatLimit) {
 	this->id = id;
+	this->parentStore = parentStore;
 	this->terminated = false;
 	this->enableTerminatingDirectly = false;
 	this->enableTerminatingIfEmpty = false;
@@ -2658,72 +2661,109 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 void MySqlStore_process::__store(list<string> *queries) {
 	list<string> ig;
 	string queries_str;
+	list<string> queries_list;
 	unsigned counterQueriesWithNextInsertGroup = 0;
 	for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
 		vector<string> query_vect;
 		split(iter->c_str(), _MYSQL_QUERY_END_new, query_vect);
-		if(opt_mysql_enable_multiple_rows_insert) {
-			if(MYSQL_EXISTS_PREFIX_L(query_vect[0], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
-				bool allItemsIsMIG = true;
-				for(unsigned i = 1; i < query_vect.size(); i++) {
-					if(!MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
-						allItemsIsMIG = false;
+		bool setIdMainRecord = false;
+		u_int64_t idMainRecord = 0;
+		if(opt_mysql_enable_set_id) {
+			string tableMainRecord;
+			for(unsigned i = 0; i < query_vect.size(); i++) {
+				if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length) &&
+				   query_vect[i].find(MYSQL_MAIN_INSERT_ID) != string::npos) {
+					size_t sepTable = query_vect[i].find("INTO");
+					size_t endSepTable = query_vect[i].find("(");
+					if(sepTable != string::npos && endSepTable != string::npos && endSepTable > sepTable) {
+						tableMainRecord = query_vect[i].substr(sepTable + 4, endSepTable - sepTable - 4);
+						trim(tableMainRecord);
+						setIdMainRecord = true;
 						break;
 					}
 				}
-				if(allItemsIsMIG) {
-					for(unsigned i = 0; i < query_vect.size(); i++) {
-						ig.push_back(query_vect[i].substr(_MYSQL_MAIN_INSERT_GROUP_new_length));
-					}
-					queries->erase(iter++);
-					continue;
-				}
 			}
-			bool existsNIG = false;
-			for(unsigned i = 1; i < query_vect.size(); i++) {
-				if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
-					existsNIG = true;
-					break;
-				}
+			if(setIdMainRecord) {
+				idMainRecord = this->getAutoIncrementID(tableMainRecord.c_str());
 			}
-			if(existsNIG) {
-				++counterQueriesWithNextInsertGroup;
-				unsigned counterMI_ID_old = 0;
+		}
+		if(opt_mysql_enable_multiple_rows_insert) {
+			if(setIdMainRecord) {
 				for(unsigned i = 0; i < query_vect.size(); ) {
-					find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID, MYSQL_MAIN_INSERT_ID2 + "_" + intToString(counterQueriesWithNextInsertGroup));
-					unsigned counter_replace_MI_ID_old;
-					find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID_OLD, MYSQL_MAIN_INSERT_ID_OLD2 + "_" + intToString(counterQueriesWithNextInsertGroup), &counter_replace_MI_ID_old);
-					if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
+					find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID, intToString(idMainRecord));
+					if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length)) {
+						ig.push_back(query_vect[i].substr(_MYSQL_MAIN_INSERT_new_length));
+						query_vect.erase(query_vect.begin() + i);
+					} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
 						ig.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length));
 						query_vect.erase(query_vect.begin() + i);
 					} else {
-						if(counter_replace_MI_ID_old) {
-							++counterMI_ID_old;
-						}
 						i++;
 					}
 				}
-				for(unsigned i = 0; i < query_vect.size(); ) {
-					if(i < query_vect.size() - 1 &&
-					   MYSQL_EXISTS_PREFIX_S(query_vect[i], MYSQL_IF) &&
-					   MYSQL_EXISTS_PREFIX_S(query_vect[i + 1], MYSQL_ENDIF)) {
-						if(counterMI_ID_old > 0 &&
-						   query_vect[i].find(MYSQL_MAIN_INSERT_ID_OLD2) != string::npos) {
-							--counterMI_ID_old;
-						}
-						query_vect.erase(query_vect.begin() + i);
-						query_vect.erase(query_vect.begin() + i);
-					} else {
-						i++;
-					}
-				}
-				if(counterMI_ID_old == 1) {
-					for(unsigned i = 0; i < query_vect.size(); ) {
-						if(MYSQL_EXISTS_PREFIX_S(query_vect[i], ("set " + MYSQL_MAIN_INSERT_ID_OLD2))) {
-							query_vect.erase(query_vect.begin() + i);
+			} else {
+				if(MYSQL_EXISTS_PREFIX_L(query_vect[0], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
+					bool allItemsIsMIG = true;
+					for(unsigned i = 1; i < query_vect.size(); i++) {
+						if(!MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
+							allItemsIsMIG = false;
 							break;
+						}
+					}
+					if(allItemsIsMIG) {
+						for(unsigned i = 0; i < query_vect.size(); i++) {
+							ig.push_back(query_vect[i].substr(_MYSQL_MAIN_INSERT_GROUP_new_length));
+						}
+						queries->erase(iter++);
+						continue;
+					}
+				}
+				bool existsNIG = false;
+				for(unsigned i = 1; i < query_vect.size(); i++) {
+					if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
+						existsNIG = true;
+						break;
+					}
+				}
+				if(existsNIG) {
+					++counterQueriesWithNextInsertGroup;
+					unsigned counterMI_ID_old = 0;
+					for(unsigned i = 0; i < query_vect.size(); ) {
+						find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID, MYSQL_MAIN_INSERT_ID2 + "_" + intToString(counterQueriesWithNextInsertGroup));
+						unsigned counter_replace_MI_ID_old;
+						find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID_OLD, MYSQL_MAIN_INSERT_ID_OLD2 + "_" + intToString(counterQueriesWithNextInsertGroup), &counter_replace_MI_ID_old);
+						if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
+							ig.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length));
+							query_vect.erase(query_vect.begin() + i);
+						} else {
+							if(counter_replace_MI_ID_old) {
+								++counterMI_ID_old;
+							}
+							i++;
+						}
+					}
+					for(unsigned i = 0; i < query_vect.size(); ) {
+						if(i < query_vect.size() - 1 &&
+						   MYSQL_EXISTS_PREFIX_S(query_vect[i], MYSQL_IF) &&
+						   MYSQL_EXISTS_PREFIX_S(query_vect[i + 1], MYSQL_ENDIF)) {
+							if(counterMI_ID_old > 0 &&
+							   query_vect[i].find(MYSQL_MAIN_INSERT_ID_OLD2) != string::npos) {
+								--counterMI_ID_old;
+							}
+							query_vect.erase(query_vect.begin() + i);
+							query_vect.erase(query_vect.begin() + i);
 						} else {
 							i++;
+						}
+					}
+					if(counterMI_ID_old == 1) {
+						for(unsigned i = 0; i < query_vect.size(); ) {
+							if(MYSQL_EXISTS_PREFIX_S(query_vect[i], ("set " + MYSQL_MAIN_INSERT_ID_OLD2))) {
+								query_vect.erase(query_vect.begin() + i);
+								break;
+							} else {
+								i++;
+							}
 						}
 					}
 				}
@@ -2741,7 +2781,11 @@ void MySqlStore_process::__store(list<string> *queries) {
 					query_vect[i] = query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length);
 				}
 			}
-			queries_str += sqlEscapeString(query_vect[i]) + _MYSQL_QUERY_END_new;
+			if(opt_mysql_enable_new_store == 2) {
+				queries_list.push_back(query_vect[i]);
+			} else {
+				queries_str += sqlEscapeString(query_vect[i]) + _MYSQL_QUERY_END_new;
+			}
 		}
 		iter++;
 	}
@@ -2756,7 +2800,11 @@ void MySqlStore_process::__store(list<string> *queries) {
 				string values = iter->substr(sepValues + 12, endSep - sepValues - 12);
 				nig_map[tableColumns].push_back(values);
 			} else {
-				queries_str += sqlEscapeString(*iter) + _MYSQL_QUERY_END_new;
+				if(opt_mysql_enable_new_store == 2) {
+					queries_list.push_back(*iter);
+				} else {
+					queries_str += sqlEscapeString(*iter) + _MYSQL_QUERY_END_new;
+				}
 			}
 		}
 		for(map<string, list<string> >::iterator iter = nig_map.begin(); iter != nig_map.end(); iter++) {
@@ -2764,7 +2812,11 @@ void MySqlStore_process::__store(list<string> *queries) {
 			string values_str;
 			for(list<string>::iterator iter_values = values->begin(); iter_values != values->end(); iter_values++) {
 				if(values_str.length() *1.1 > this->sqlDb->maxAllowedPacket) {
-					queries_str += iter->first + " ) VALUES ( " + sqlEscapeString(values_str) + " )" + _MYSQL_QUERY_END_new;
+					if(opt_mysql_enable_new_store == 2) {
+						queries_list.push_back(iter->first + " ) VALUES ( " + values_str + " )");
+					} else {
+						queries_str += iter->first + " ) VALUES ( " + sqlEscapeString(values_str) + " )" + _MYSQL_QUERY_END_new;
+					}
 					values_str = "";
 				}
 				if(!values_str.empty()) {
@@ -2772,7 +2824,11 @@ void MySqlStore_process::__store(list<string> *queries) {
 				}
 				values_str += *iter_values;
 			}
-			queries_str += iter->first + " ) VALUES ( " + sqlEscapeString(values_str) + " )" + _MYSQL_QUERY_END_new;
+			if(opt_mysql_enable_new_store == 2) {
+				queries_list.push_back(iter->first + " ) VALUES ( " + values_str + " )");
+			} else {
+				queries_str += iter->first + " ) VALUES ( " + sqlEscapeString(values_str) + " )" + _MYSQL_QUERY_END_new;
+			}
 		}
 	}
 	#else
@@ -2782,16 +2838,25 @@ void MySqlStore_process::__store(list<string> *queries) {
 		}
 	}
 	#endif
-	this->sqlDb->query(string("call store_001(\"") + 
-			   queries_str + "\",\"" + 
-			   _MYSQL_QUERY_END_new + "\"," + 
-			   (opt_mysql_enable_transactions || this->enableTransaction ? "true" : "false") +
-			   ")");
-	if(sverb.store_process_query_compl) {
-		cout << "store_process_query_compl_" << this->id << endl
-		     << queries_str << endl;
+	if(opt_mysql_enable_new_store == 2) {
+		cout << "store_process_query_compl_" << this->id << endl;
+		for(list<string>::iterator iter = queries_list.begin(); iter != queries_list.end(); iter++) {
+			if(sverb.store_process_query_compl) {
+				cout << *iter << endl;
+			}
+			this->sqlDb->query(*iter);
+		}
+	} else {
+		if(sverb.store_process_query_compl) {
+			cout << "store_process_query_compl_" << this->id << endl
+			     << queries_str << endl;
+		}
+		this->sqlDb->query(string("call store_001(\"") + 
+				   queries_str + "\",\"" + 
+				   _MYSQL_QUERY_END_new + "\"," + 
+				   (opt_mysql_enable_transactions || this->enableTransaction ? "true" : "false") +
+				   ")");
 	}
-	
 }
 
 void MySqlStore_process::__store(string beginProcedure, string endProcedure, string &queries) {
@@ -2941,6 +3006,10 @@ void MySqlStore_process::waitForTerminate() {
 	}
 }
 
+u_int64_t MySqlStore_process::getAutoIncrementID(const char *table, const char *idColumn) {
+	return(parentStore->getAutoIncrementID(table, idColumn));
+}
+
 string MySqlStore_process::getInsertFuncName() {
 	char insert_funcname[20];
 	snprintf(insert_funcname, sizeof(insert_funcname), "__insert_%i", this->id);
@@ -3007,6 +3076,9 @@ MySqlStore::~MySqlStore() {
 		for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
 			pthread_join(iter->second.thread, NULL);
 		}
+	}
+	if(this->autoIncrement) {
+		delete this->autoIncrement;
 	}
 }
 
@@ -3113,7 +3185,7 @@ void MySqlStore::query_lock(const char *query_str, int id) {
 	} else {
 		MySqlStore_process* process = this->find(id);
 		process->lock();
-		for(int i = 0; i < max(sverb.multiple_store, 1); i++) {
+		for(int i = 0; i < max(sverb.multiple_store && id == 11 ? sverb.multiple_store : 0, 1); i++) {
 			process->query(query_str);
 		}
 		process->unlock();
@@ -3618,14 +3690,15 @@ MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
 		this->unlock_processes();
 		return(process);
 	}
-	process = new FILE_LINE(29007) MySqlStore_process(id, 
-						   store ? store->host.c_str() : this->host.c_str(), 
-						   store ? store->user.c_str() : this->user.c_str(), 
-						   store ? store->password.c_str() : this->password.c_str(), 
-						   store ? store->database.c_str() : this->database.c_str(),
-						   store ? store->port : this->port,
-						   this->isCloud() ? this->cloud_host.c_str() : NULL, this->cloud_token.c_str(), this->cloud_router,
-						   this->defaultConcatLimit);
+	process = new FILE_LINE(29007) MySqlStore_process(
+						id, store ? store : this,
+						store ? store->host.c_str() : this->host.c_str(), 
+						store ? store->user.c_str() : this->user.c_str(), 
+						store ? store->password.c_str() : this->password.c_str(), 
+						store ? store->database.c_str() : this->database.c_str(),
+						store ? store->port : this->port,
+						this->isCloud() ? this->cloud_host.c_str() : NULL, this->cloud_token.c_str(), this->cloud_router,
+						this->defaultConcatLimit);
 	process->setEnableTerminatingDirectly(this->enableTerminatingDirectly);
 	process->setEnableTerminatingIfEmpty(this->enableTerminatingIfEmpty);
 	process->setEnableTerminatingIfSqlError(this->enableTerminatingIfSqlError);
@@ -3888,6 +3961,17 @@ int MySqlStore::getConcatLimitForStoreId(int id) {
 	return(concatLimit);
 }
 
+void MySqlStore::setAutoIncrement(const char *table, const char *idColumn) {
+	if(!autoIncrement) {
+		autoIncrement = new FILE_LINE(0) cSqlDbAutoIncrement;
+	}
+	autoIncrement->set(table, idColumn);
+}
+
+u_int64_t MySqlStore::getAutoIncrementID(const char *table, const char *idColumn) {
+	return(autoIncrement->getID(table, idColumn));
+}
+
 void *MySqlStore::threadQFilesCheckPeriod(void *arg) {
 	MySqlStore *me = (MySqlStore*)arg;
 	while(!is_terminating()) {
@@ -3986,6 +4070,9 @@ void *MySqlStore::threadINotifyQFiles(void *arg) {
 #endif
 	return(NULL);
 }
+
+
+cSqlDbAutoIncrement *MySqlStore::autoIncrement = NULL;
 
 
 SqlDb *createSqlObject(int connectId) {
@@ -8297,6 +8384,9 @@ cSqlDbCodebook::cSqlDbCodebook(const char *table, const char *columnId, const ch
 	_sync_load = 0;
 	lastBeginLoadTime = 0;
 	lastEndLoadTime = 0;
+	if(opt_mysql_enable_set_id) {
+		MySqlStore::setAutoIncrement(table, columnId);
+	}
 }
 
 void cSqlDbCodebook::addCond(const char *field, const char *value) {
@@ -8319,28 +8409,43 @@ unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool 
 			rslt = iter->second;
 		}
 	}
-	if(!rslt && enableInsert) {
-		SqlDb *sqlDb = createSqlObject();
-		list<SqlDb_condField> cond = this->cond;
-		cond.push_back(SqlDb_condField(columnStringValue, stringValue));
-		if(sqlDb->select(table, NULL, &cond, 1)) {
+	if(!rslt) {
+		if(opt_mysql_enable_set_id) {
+			rslt = MySqlStore::getAutoIncrementID(this->table.c_str());
+			SqlDb *sqlDb = createSqlObject();
 			SqlDb_row row;
-			if((row = sqlDb->fetchRow())) {
-				rslt = atol(row[columnId].c_str());
-			}
-		}
-		if(!rslt) {
-			SqlDb_row row;
+			row.add(rslt, columnId);
 			row.add(stringValue, columnStringValue);
 			for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
 				row.add(iter->value, iter->field);
 			}
-			int64_t rsltInsert = sqlDb->insert(table, row);
-			if(rsltInsert > 0) {
-				rslt = rsltInsert;
+			extern MySqlStore *sqlStore;
+			sqlStore->query_lock(MYSQL_ADD_QUERY_END(sqlDb->insertQuery(this->table, row)).c_str(), STORE_PROC_ID_OTHER);
+			delete sqlDb;
+			data[stringValue] = rslt;
+		} else if(enableInsert) {
+			SqlDb *sqlDb = createSqlObject();
+			list<SqlDb_condField> cond = this->cond;
+			cond.push_back(SqlDb_condField(columnStringValue, stringValue));
+			if(sqlDb->select(table, NULL, &cond, 1)) {
+				SqlDb_row row;
+				if((row = sqlDb->fetchRow())) {
+					rslt = atol(row[columnId].c_str());
+				}
 			}
+			if(!rslt) {
+				SqlDb_row row;
+				row.add(stringValue, columnStringValue);
+				for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
+					row.add(iter->value, iter->field);
+				}
+				int64_t rsltInsert = sqlDb->insert(table, row);
+				if(rsltInsert > 0) {
+					rslt = rsltInsert;
+				}
+			}
+			delete sqlDb;
 		}
-		delete sqlDb;
 	}
 	unlock_data();
 	if(!rslt && enableAutoLoad && this->autoLoadPeriod && !_sync_load) {
@@ -8409,6 +8514,61 @@ void *cSqlDbCodebook::_loadInBackground(void *arg) {
 	}
 	me->unlock_load();
 	return(NULL);
+}
+
+
+cSqlDbAutoIncrement::cSqlDbAutoIncrement() {
+	_sync_autoinc = 0;
+}
+
+void cSqlDbAutoIncrement::set(const char *table, const char *idColumn, SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	u_int64_t last_id = get_last_id(table, idColumn ? idColumn : "id", sqlDb);
+	lock_autoinc();
+	autoinc[table] = last_id;
+	unlock_autoinc();
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+}
+
+u_int64_t cSqlDbAutoIncrement::getID(const char *table, const char *idColumn) {
+	u_int64_t id = 0;
+	lock_autoinc();
+	for(int pass = 0; pass < 2; pass++) {
+		if(pass == 1) {
+			set(table, idColumn);
+		}
+		map<string, int64_t>::iterator iter = autoinc.find(table);
+		if(iter != autoinc.end()) {
+			id = ++iter->second;
+			break;
+		}
+	}
+	unlock_autoinc();
+	return(id);
+}
+
+u_int64_t cSqlDbAutoIncrement::get_last_id(const char *table, const char *idColumn, SqlDb *sqlDb) {
+	u_int64_t last_id = 0;
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	sqlDb->query(string("select ") + idColumn + " from " + sqlDb->escapeTableName(table) + " order by id desc limit 1");
+	SqlDb_row row;
+	if((row = sqlDb->fetchRow())) {
+		last_id = atoll(row[0].c_str());
+	}
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+	return(last_id);
 }
 
 

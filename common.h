@@ -114,6 +114,8 @@ struct sVerbose {
 	int disable_load_codebooks;
 	int multiple_store;
 	int disable_store_rtp_stat;
+	int disable_billing;
+	int disable_custom_headers;
 	int _debug1;
 	int _debug2;
 	int _debug3;

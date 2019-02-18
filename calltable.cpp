@@ -163,7 +163,8 @@ extern int opt_rtp_check_both_sides_by_sdp;
 extern int opt_hash_modify_queue_length_ms;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
-extern bool opt_mysql_enable_new_store;
+extern int opt_mysql_enable_new_store;
+extern bool opt_mysql_enable_set_id;
 
 volatile int calls_counter = 0;
 /* probably not used any more */
@@ -3705,7 +3706,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 	}
-
+	
 	if(useSensorId > -1) {
 		cdr.add(useSensorId, "id_sensor");
 	}
@@ -4465,13 +4466,19 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		
 		if(opt_mysql_enable_new_store) {
-			query_str += MYSQL_GET_MAIN_INSERT_ID_OLD;
+			if(opt_mysql_enable_set_id) {
+				cdr.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "ID");
+			} else {
+				query_str += MYSQL_GET_MAIN_INSERT_ID_OLD;
+			}
 		}
 		query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT + 
 			     sqlDbSaveCall->insertQuery(sql_cdr_table, cdr));
 		if(opt_mysql_enable_new_store) {
-			query_str += MYSQL_GET_MAIN_INSERT_ID + 
-				     MYSQL_IF_MAIN_INSERT_ID;
+			if(!opt_mysql_enable_set_id) {
+				query_str += MYSQL_GET_MAIN_INSERT_ID + 
+					     MYSQL_IF_MAIN_INSERT_ID;
+			}
 		} else {
 			query_str += "if row_count() > 0 then\n" +
 				     MYSQL_GET_MAIN_INSERT_ID;
@@ -4779,7 +4786,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		
 		if(opt_mysql_enable_new_store) {
-			query_str += MYSQL_ENDIF_QE;
+			if(!opt_mysql_enable_set_id) {
+				query_str += MYSQL_ENDIF_QE;
+			}
 		} else {
 			query_str += "end if";
 		}
@@ -8032,6 +8041,9 @@ CustomHeaders::CustomHeaders(eType type, SqlDb *sqlDb) {
 }
 
 void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
+	if(sverb.disable_custom_headers) {
+		return;
+	}
 	if(lock) lock_custom_headers();
 	custom_headers.clear();
 	allNextTables.clear();

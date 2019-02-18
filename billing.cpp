@@ -833,6 +833,9 @@ cBilling::~cBilling() {
 }
 
 void cBilling::load(SqlDb *sqlDb) {
+	if(sverb.disable_billing) {
+		return;
+	}
 	lock();
 	rules->load(sqlDb);
 	assignments->load(sqlDb);

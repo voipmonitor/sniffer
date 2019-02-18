@@ -377,7 +377,8 @@ int opt_mysql_enable_transactions_http = 0;
 int opt_mysql_enable_transactions_webrtc = 0;
 int opt_mysql_enable_multiple_rows_insert = 1;
 int opt_mysql_max_multiple_rows_insert = 20;
-bool opt_mysql_enable_new_store = false;
+int opt_mysql_enable_new_store = 0;
+bool opt_mysql_enable_set_id = false;
 int opt_cdr_ua_enable = 1;
 vector<string> opt_cdr_ua_reg_remove;
 vector<string> opt_cdr_ua_reg_whitelist;
@@ -4179,6 +4180,9 @@ void main_init_sqlstore() {
 		if(opt_load_query_from_files != 2) {
 			sqlStore = new FILE_LINE(42037) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
 								   isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
+			if(opt_mysql_enable_set_id) {
+				sqlStore->setAutoIncrement("cdr");
+			}
 			if(opt_save_query_to_files) {
 				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 			}
@@ -5772,7 +5776,10 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42115) cConfigItem_yesno("mysqltransactions_webrtc", &opt_mysql_enable_transactions_webrtc));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_multiple_rows_insert", &opt_mysql_enable_multiple_rows_insert));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("mysql_max_multiple_rows_insert", &opt_mysql_max_multiple_rows_insert));
-				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_new_store", &opt_mysql_enable_new_store));
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("mysql_enable_new_store", &opt_mysql_enable_new_store))
+					->addValues("per_query:2"));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_set_id", &opt_mysql_enable_set_id));
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
@@ -6903,6 +6910,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "disable_load_codebooks")		sverb.disable_load_codebooks = 1;
 	else if(verbParam.substr(0, 15) == "multiple_store=")	sverb.multiple_store = atoi(verbParam.c_str() + 15);
 	else if(verbParam == "disable_store_rtp_stat")		sverb.disable_store_rtp_stat = 1;
+	else if(verbParam == "disable_billing")			sverb.disable_billing = 1;
+	else if(verbParam == "disable_custom_headers")		sverb.disable_custom_headers = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -8923,7 +8932,10 @@ int eval_config(string inistr) {
 		opt_mysql_max_multiple_rows_insert = atoi(value);
 	}
 	if((value = ini.GetValue("general", "mysql_enable_new_store"))) {
-		opt_mysql_enable_new_store = yesno(value);
+		opt_mysql_enable_new_store = strcmp(value, "per_query") ? yesno(value) : 2;
+	}
+	if((value = ini.GetValue("general", "mysql_enable_set_id"))) {
+		opt_mysql_enable_set_id = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strcpy_null_term(mysql_host, value);
