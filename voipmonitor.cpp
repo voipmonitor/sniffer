@@ -969,13 +969,13 @@ cUtfConverter utfConverter;
 #define MUTEX_UNLOCK(x)  pthread_mutex_unlock(&(x))
 #define THREAD_ID        pthread_self(  )
 
-
 void set_context_config();
 void dns_lookup_common_hostnames();
 void daemonizeOutput(string error);
 
 static void parse_command_line_arguments(int argc, char *argv[]);
 static void get_command_line_arguments();
+static void set_default_values();
 static void check_context_config();
 static void set_context_config_after_check_db_schema();
 static void create_spool_dirs();
@@ -2207,6 +2207,7 @@ void reload_config(const char *jsonConfig) {
 		CONFIG.setFromJson(jsonConfig);
 	}
 	get_command_line_arguments();
+	set_default_values();
 	set_context_config();
 	create_spool_dirs();
 	reload_capture_rules();
@@ -2684,15 +2685,12 @@ int main(int argc, char *argv[]) {
 	strcpy(opt_cachedir, "");
 	sipportmatrix = new FILE_LINE(42006) char[65537];
 	memset(sipportmatrix, 0, 65537);
-	// set default SIP port to 5060
-	sipportmatrix[5060] = 1;
 	httpportmatrix = new FILE_LINE(42007) char[65537];
 	memset(httpportmatrix, 0, 65537);
 	webrtcportmatrix = new FILE_LINE(42008) char[65537];
 	memset(webrtcportmatrix, 0, 65537);
 	skinnyportmatrix = new FILE_LINE(0) char[65537];
 	memset(skinnyportmatrix, 0, 65537);
-	skinnyportmatrix[2000] = 1;
 	ipaccountportmatrix = new FILE_LINE(42017) char[65537];
 	memset(ipaccountportmatrix, 0, 65537);
 	ssl_client_random_portmatrix = new FILE_LINE(0) char[65537];
@@ -2831,6 +2829,7 @@ int main(int argc, char *argv[]) {
 		return(SqlInitSchema() > 0 ? 0 : 1);
 	}
 
+	set_default_values();
 	set_context_config();
 	create_spool_dirs();
 
@@ -6127,8 +6126,7 @@ void cConfig::addConfigItems() {
 	group("SIP protocol / headers");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		subgroup("main");
-			addConfigItem((new FILE_LINE(42270) cConfigItem_ports("sipport", sipportmatrix))
-				->setDefaultPortIfNoPortSet(5060));
+			addConfigItem((new FILE_LINE(42270) cConfigItem_ports("sipport", sipportmatrix)));
 			addConfigItem(new FILE_LINE(42271) cConfigItem_yesno("cdr_sipport", &opt_cdr_sipport));
 			addConfigItem(new FILE_LINE(42272) cConfigItem_yesno("domainport", &opt_domainport));
 			addConfigItem((new FILE_LINE(42273) cConfigItem_string("fbasenameheader", opt_fbasename_header, sizeof(opt_fbasename_header)))
@@ -6937,7 +6935,6 @@ void get_command_line_arguments() {
 				break;
 			case 199:
 				{
-					skinnyportmatrix[2000] = 0;
 					vector<string> result = explode(optarg, ',');
 					for (size_t iter = 0; iter < result.size(); iter++) {
 						skinnyportmatrix[atoi(result[iter].c_str())] = 1;
@@ -7661,6 +7658,30 @@ void set_context_config_after_check_db_schema() {
 	}
 }
 
+/* set default values after config and command line parrams processing if nothing is set
+   - port matrixes only now */
+void set_default_values() {
+	portMatrixDefaultPort matrixDefaultPorts[] = {
+		{sipportmatrix, 5060},
+		{skinnyportmatrix, 2000},
+		{NULL, 0}
+	};
+	portMatrixDefaultPort *p = matrixDefaultPorts;
+	while (p->portMatrix) {
+		bool found = false;
+		for (int i = 0; i < 65537; i++) {
+			if (p->portMatrix[i]) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			p->portMatrix[p->defaultPort] = 1;
+		}
+		p++;
+        }
+}
+
 void create_spool_dirs() {
 	if(opt_spooldir_main[0]) {
 		spooldir_mkdir(opt_spooldir_main);
@@ -7954,8 +7975,6 @@ int eval_config(string inistr) {
 	// sip ports
 	if (ini.GetAllValues("general", "sipport", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
-		// reset default port 
-		sipportmatrix[5060] = 0;
 		for (; i != values.end(); ++i) {
 			sipportmatrix[atoi(i->pItem)] = 1;
 		}
@@ -8485,8 +8504,6 @@ int eval_config(string inistr) {
 	// skinny ports
 	if (ini.GetAllValues("general", "skinny_port", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
-		// reset default port
-		skinnyportmatrix[2000] = 0;
 		for (; i != values.end(); ++i) {
 			skinnyportmatrix[atoi(i->pItem)] = 1;
 		}
@@ -10060,6 +10077,7 @@ int eval_config(string inistr) {
 	#mirror_source_port		=
 	*/
 	
+	set_default_values();
 	set_context_config();
 	create_spool_dirs();
 
