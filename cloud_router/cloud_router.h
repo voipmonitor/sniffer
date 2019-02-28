@@ -1,0 +1,8 @@
+#ifndef CLOUD_ROUTER_H
+#define CLOUD_ROUTER_H
+
+
+#define CLOUD_ROUTER_CLIENT 1
+
+
+#endif //CLOUD_ROUTER_H
