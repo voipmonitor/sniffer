@@ -2,6 +2,7 @@
 #define CLOUD_ROUTER_BASE_H
 
 
+#include <netinet/in.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>

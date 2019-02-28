@@ -21,6 +21,7 @@
 #ifndef __DSSL_STDINC_H__
 #define __DSSL_STDINC_H__
 
+#include "../common.h"
 //#define _DEBUG true
 
 #ifdef _WIN32
@@ -53,10 +54,16 @@
   #define DSSL_STRDUP(x) strdup(x)
 #endif
 
-#ifndef WIN32
-#include <alloca.h>
+#ifdef FREEBSD
+  #include <stdlib.h>
+/* workaround, I don't how to fix better */
+  #define s6_addr32 __u6_addr.__u6_addr32
 #else
-#include <malloc.h>
+  #ifndef WIN32
+    #include <alloca.h>
+  #else
+    #include <malloc.h>
+  #endif
 #endif
 
 #include "ptypes.h"

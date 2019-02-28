@@ -332,8 +332,9 @@ int Mgmt_unpausecall(Mgmt_params *params);
 int Mgmt_setverbparam(Mgmt_params *params);
 int Mgmt_set_pcap_stat_period(Mgmt_params *params);
 int Mgmt_memcrash_test(Mgmt_params *params);
+#ifndef FREEBSD
 int Mgmt_malloc_trim(Mgmt_params *params);
-
+#endif
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -432,7 +433,9 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_setverbparam,
 	Mgmt_set_pcap_stat_period,
 	Mgmt_memcrash_test,
+#ifndef FREEBSD
 	Mgmt_malloc_trim,
+#endif
 	NULL
 };
 
@@ -1463,7 +1466,7 @@ void *manager_server(void */*dummy*/) {
 		}
 	}
 tryagain:
-	if (bind(manager_socket_server, (sockaddr *)&sockName, sizeof(sockName)) == -1) {
+	if (::bind(manager_socket_server, (sockaddr *)&sockName, sizeof(sockName)) == -1) {
 		syslog(LOG_ERR, "Cannot bind to port [%d] trying again after 5 seconds intervals\n", opt_manager_port);
 		sleep(5);
 		goto tryagain;

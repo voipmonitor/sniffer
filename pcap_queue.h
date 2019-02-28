@@ -9,6 +9,7 @@
 #include <deque>
 #include <queue>
 #include <string>
+#include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <sys/syscall.h>

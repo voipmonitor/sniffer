@@ -1892,6 +1892,9 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 ac_config_headers="$ac_config_headers config.h"
 
 
+# test platform
+PLATFORM=`uname`
+
 # Checks for programs.
 ac_ext=cpp
 ac_cpp='$CXXCPP $CPPFLAGS'
@@ -4438,8 +4441,11 @@ if test "x$HAVE_LIBSSH" = "x1"; then
 
 $as_echo "#define HAVE_LIBSSH 1" >>confdefs.h
 
-	LIBSSH="-lssh -lssh_threads"
-
+	if test "x$PLATFORM" = "xFreeBSD"; then
+		LIBSSH="-lssh"
+	else
+		LIBSSH="-lssh -lssh_threads"
+	fi
 	HAVE_LIBSSH_T=yes
 fi
 

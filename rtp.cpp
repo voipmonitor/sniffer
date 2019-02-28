@@ -1888,7 +1888,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 	prev_sid = sid;
 
 	// DSP processing
-	bool do_fasdetect = opt_fasdetect && !this->iscaller &&  owner->connect_time && (this->header_ts.tv_sec - owner->connect_time < 10);
+	bool do_fasdetect = opt_fasdetect && !this->iscaller &&  owner->connect_time && (this->header_ts.tv_sec - owner->connect_time < 10) &&
+			    (this->header_ts.tv_sec - owner->connect_time > 0);
 	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or opt_clippingdetect or do_fasdetect)
 		and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
 

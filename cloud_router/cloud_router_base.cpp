@@ -418,7 +418,7 @@ bool cSocket::listen() {
 	setsockopt(handle, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	int rsltListen;
 	do {
-		while(bind(handle, (sockaddr*)&addr, sizeof(addr)) == -1 && !terminate) {
+		while(::bind(handle, (sockaddr*)&addr, sizeof(addr)) == -1 && !terminate) {
 			setError("cannot bind to port [%d] - trying again after 5 seconds", port);
 			sleep(5);
 		}

@@ -47,7 +47,7 @@ MirrorIP::MirrorIP(const char *src, const char *dst) {
 	dest_addr.sin_port = htons(9095);
 	memset(&dest_addr.sin_zero, '\0', 8);
     
-	if(bind(sockraw, (struct sockaddr *)&src_addr, sizeof(struct sockaddr)) == -1) {
+	if(::bind(sockraw, (struct sockaddr *)&src_addr, sizeof(struct sockaddr)) == -1) {
 		perror("bind");
 		//return -1;
 	}
