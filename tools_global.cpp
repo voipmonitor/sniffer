@@ -1,5 +1,5 @@
 #include <netdb.h>
-#include <json-c/json.h>
+#include <json.h>
 #include <sstream>
 #include <syslog.h>
 #include <netinet/in.h>
