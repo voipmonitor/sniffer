@@ -774,7 +774,7 @@ bool pcap_block_store::uncompress_lz4() {
 
 
 pcap_block_store_queue::pcap_block_store_queue() {
-	extern int terminating;
+	extern volatile int terminating;
 	this->queueBlock = new FILE_LINE(15019) rqueue_quick<pcap_block_store*>(
 				100000,
 				100, 100,
@@ -4478,7 +4478,7 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
 	   !opt_pcap_queue_suppress_t1_thread &&
 	   !opt_pcap_queue_use_blocks) {
 		this->setEnableWriteThread();
-		extern int terminating;
+		extern volatile int terminating;
 		this->block_qring = new FILE_LINE(15046) rqueue_quick<pcap_block_store*>(
 			100,
 			100, 100,

@@ -20,7 +20,7 @@ class rqueue_quick {
 public:
 	rqueue_quick(size_t length,
 		     unsigned int pushUsleep, unsigned int popUsleep,
-		     int *term_rqueue,
+		     volatile int *term_rqueue,
 		     bool binaryBuffer) {
 		this->length = length;
 		this->pushUsleep = pushUsleep;
@@ -166,7 +166,7 @@ private:
 	bool binaryBuffer;
 	unsigned int pushUsleep;
 	unsigned int popUsleep;
-	int *term_rqueue;
+	volatile int *term_rqueue;
 	typeItem *buffer;
 	v_int *free;
 	v_u_int32_t readit;

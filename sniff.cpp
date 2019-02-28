@@ -439,7 +439,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		packetS->header_pt->ts.tv_usec,
 		sqlEscapeStringBorder(call ? call->call_id : callidstr).c_str(),
 		sqlEscapeStringBorder(description).c_str());
-	if(isCloud() || opt_mysql_enable_new_store) {
+	if(isCloud() || useNewStore()) {
 		strcat(query_buff, "concat('#', from_base64('");
 		_base64_encode((unsigned char*)mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff));
 		strcat(query_buff, "'), '#')");

@@ -11,11 +11,14 @@ extern sCloudRouterVerbose& CR_VERBOSE();
 extern void CR_SET_TERMINATE();
 
 
-cCR_Receiver_service::cCR_Receiver_service(const char *token, int32_t sensor_id) {
+cCR_Receiver_service::cCR_Receiver_service(const char *token, int32_t sensor_id, const char *sensor_string, unsigned sensor_version) {
 	this->token = token;
 	this->sensor_id = sensor_id;
+	this->sensor_string = sensor_string ? sensor_string : "";
+	this->sensor_version = sensor_version;
 	port = 0;
 	connection_ok = false;
+	use_mysql_set_id = false;
 }
 
 bool cCR_Receiver_service::start(string host, u_int16_t port) {
@@ -65,10 +68,14 @@ bool cCR_Receiver_service::receive_process_loop_begin() {
 	JsonExport json_keys;
 	json_keys.add("token", token);
 	json_keys.add("sensor_id", sensor_id);
+	if(!sensor_string.empty()) {
+		json_keys.add("sensor_string", sensor_string);
+	}
 	string aes_ckey, aes_ivec;
 	receive_socket->get_aes_keys(&aes_ckey, &aes_ivec);
 	json_keys.add("aes_ckey", aes_ckey);
 	json_keys.add("aes_ivec", aes_ivec);
+	json_keys.add("sensor_version", sensor_version);
 	if(start_ok) {
 		json_keys.add("restore", true);
 	}
@@ -81,12 +88,35 @@ bool cCR_Receiver_service::receive_process_loop_begin() {
 		return(false);
 	}
 	string rsltConnectData;
-	if(!receive_socket->readBlock(&rsltConnectData) || rsltConnectData != "OK") {
-		if(!receive_socket->isError()) {
-			receive_socket->setError(rsltConnectData != "OK" ? rsltConnectData.c_str() : "failed read ok");
-			if(rsltConnectData != "OK" && !start_ok) {
-				CR_SET_TERMINATE();
+	if(!receive_socket->readBlock(&rsltConnectData) || receive_socket->isError()) {
+		_close();
+		return(false);
+	}
+	bool rsltIsOK = false;
+	string rsltError;
+	if(!rsltConnectData.empty()) {
+		if(rsltConnectData[0] == '{' && rsltConnectData[rsltConnectData.length() - 1] == '}') {
+			JsonItem jsonResult;
+			jsonResult.parse(rsltConnectData);
+			if(jsonResult.getValue("result") == "OK") {
+				rsltIsOK = true;
+				use_mysql_set_id = atoi(jsonResult.getValue("use_mysql_set_id").c_str());
+			} else {
+				rsltError = jsonResult.getValue("error");
 			}
+		} else if(rsltConnectData == "OK") {
+			rsltIsOK = true;
+		} else {
+			rsltError = rsltConnectData;
+		}
+	}
+	if(!rsltIsOK) {
+		if(rsltError.empty()) {
+			rsltError = "failed read ok";
+		}
+		receive_socket->setError(rsltError.c_str());
+		if(!start_ok) {
+			CR_SET_TERMINATE();
 		}
 		_close();
 		return(false);

@@ -634,7 +634,7 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
 		} else {
 			*dataLen = 0;
 			if(errno != EWOULDBLOCK) {
-				if(!quietEwouldblock) {
+				if(!quietEwouldblock && !(isTerminate() || CR_TERMINATE())) {
 					setError(_se_loss_connection, "failed read()");
 				}
 				return(false);
@@ -1121,8 +1121,8 @@ bool cServer::listen_start(const char *name, string host, u_int16_t port) {
 
 void cServer::listen_stop() {
 	if(listen_socket) {
-		listen_socket->close();
 		listen_socket->setTerminate();
+		listen_socket->close();
 		if(listen_thread) {
 			pthread_join(listen_thread, NULL);
 			listen_thread = 0;
@@ -1233,8 +1233,8 @@ bool cReceiver::receive_start(string host, u_int16_t port) {
 
 void cReceiver::receive_stop() {
 	if(receive_socket) {
-		receive_socket->close();
 		receive_socket->setTerminate();
+		receive_socket->close();
 		if(receive_thread) {
 			pthread_join(receive_thread, NULL);
 			receive_thread = 0;
@@ -1288,7 +1288,7 @@ void cReceiver::receive_process() {
 				} else {
 					receive_socket->writeBlock("pong");
 				}
-			} else {
+			} else if(!((receive_socket && receive_socket->isTerminate()) || CR_TERMINATE())) {
 				receive_socket->setError("timeout");
 			}
 		} else {

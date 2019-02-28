@@ -63,8 +63,6 @@ extern int opt_ssl_store_sessions;
 extern int opt_cdr_country_code;
 extern int opt_message_country_code;
 extern int opt_mysql_enable_multiple_rows_insert;
-extern int opt_mysql_enable_new_store;
-extern bool opt_mysql_enable_set_id;
 
 extern char sql_driver[256];
 
@@ -113,6 +111,8 @@ bool opt_rtp_stat_partition_oldver = false;
 bool opt_log_sensor_partition_oldver = false;
 sExistsColumns existsColumns;
 SqlDb::eSupportPartitions supportPartitions = SqlDb::_supportPartitions_ok;
+
+cSqlDbData *dbData;
 
 #define CONV_ID(id) (id < STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS || id >= STORE_PROC_ID_IPACC_1 ?  (id / 10) * 10 : id)
 #define CONV_ID_FOR_QFILE(id) CONV_ID(id)
@@ -286,6 +286,8 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 			rslt += "NULL";
 		} else if(enableSqlString && this->row[i].content.substr(0, 12) == MYSQL_VAR_PREFIX) {
 			rslt += this->row[i].content.substr(12);
+		} else if(this->row[i].content.substr(0, 14) == MYSQL_CODEBOOK_ID_PREFIX) {
+			rslt += this->row[i].content;
 		} else {
 			rslt += border + 
 				(escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content) + 
@@ -305,6 +307,8 @@ string SqlDb_row::implodeFieldContent(string separator, string fieldBorder, stri
 			rslt += "NULL";
 		} else if(enableSqlString && this->row[i].content.substr(0, 12) == MYSQL_VAR_PREFIX) {
 			rslt += this->row[i].content.substr(12);
+		} else if(this->row[i].content.substr(0, 14) == MYSQL_CODEBOOK_ID_PREFIX) {
+			rslt += this->row[i].content;
 		} else {
 			rslt += contentBorder + 
 				(escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content) + 
@@ -527,8 +531,10 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 	bool ok = false;
 	unsigned int attempt = 0;
 	unsigned int send_query_counter = 0;
+	u_long startTimeMS = getTimeMS();
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
-		if(is_terminating() > 1 && attempt > 2) {
+		if((is_terminating() > 1 && attempt > 2) ||
+		   (isCloud() && is_read_from_file_simple() && getTimeMS() > startTimeMS + 5 * 1000)) {
 			break;
 		}
 		string preparedQuery = this->prepareQuery(query, !callFromStoreProcessWithFixDeadlock && send_query_counter > 1);
@@ -761,6 +767,46 @@ int SqlDb::processResponseFromQueryBy(const char *response, unsigned pass) {
 string SqlDb::prepareQuery(string query, bool nextPass) {
 	::prepareQuery(this->getSubtypeDb(), query, true, nextPass ? 2 : 1);
 	return(query);
+}
+
+string SqlDb::fetchValue(int indexField) {
+	SqlDb_row row = fetchRow();
+	if(row) {
+		return(row[indexField]);
+	}
+	return("");
+}
+
+string SqlDb::fetchValue(const char *nameField) {
+	SqlDb_row row = fetchRow();
+	if(row) {
+		return(row[nameField]);
+	}
+	return("");
+}
+
+bool SqlDb::fetchValues(vector<string> *values, list<int> *indexFields) {
+	values->clear();
+	SqlDb_row row = fetchRow();
+	if(row) {
+		for(list<int>::iterator iter = indexFields->begin(); iter != indexFields->end(); iter++) {
+			values->push_back(row[*iter]);
+		}
+		return(true);
+	}
+	return(false);
+}
+
+bool SqlDb::fetchValues(vector<string> *values, list<string> *nameFields) {
+	values->clear();
+	SqlDb_row row = fetchRow();
+	if(row) {
+		for(list<string>::iterator iter = nameFields->begin(); iter != nameFields->end(); iter++) {
+			values->push_back(row[*iter]);
+		}
+		return(true);
+	}
+	return(false);
 }
 
 unsigned SqlDb::fetchRows(SqlDb_rows *rows) {
@@ -1925,7 +1971,7 @@ bool SqlDb_mysql::isOldVerPartition(const char *table) {
 }
 
 string SqlDb_mysql::escape(const char *inputString, int length) {
-	return sqlEscapeString(inputString, length, this->getTypeDb().c_str(), this);
+	return sqlEscapeString(inputString, length, this->getTypeDb().c_str());
 }
 
 string SqlDb_mysql::escapeTableName(string tableName) {
@@ -2626,7 +2672,7 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 	if(sverb.store_process_query_compl_time) {
 		queries_size = queries->size();
 	}
-	if(opt_mysql_enable_new_store || opt_load_query_from_files) {
+	if(useNewStore() || opt_load_query_from_files || is_server()) {
 		string queries_str_old_store;
 		for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
 			if(iter->find(_MYSQL_QUERY_END_new) == string::npos) {
@@ -2659,186 +2705,23 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 }
 
 void MySqlStore_process::__store(list<string> *queries) {
-	list<string> ig;
+	if(this->parentStore->isCloud() && useNewStore()) {
+		string queries_str;
+		for(list<string>::iterator iter = queries->begin(); iter != queries->end(); iter++) {
+			queries_str += ":" + intToString(iter->length()) + ":";
+			queries_str += *iter;
+		}
+		this->sqlDb->query("store"  + queries_str);
+		return;
+	}
 	string queries_str;
 	list<string> queries_list;
-	unsigned counterQueriesWithNextInsertGroup = 0;
-	for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
-		vector<string> query_vect;
-		split(iter->c_str(), _MYSQL_QUERY_END_new, query_vect);
-		bool setIdMainRecord = false;
-		u_int64_t idMainRecord = 0;
-		if(opt_mysql_enable_set_id) {
-			string tableMainRecord;
-			for(unsigned i = 0; i < query_vect.size(); i++) {
-				if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length) &&
-				   query_vect[i].find(MYSQL_MAIN_INSERT_ID) != string::npos) {
-					size_t sepTable = query_vect[i].find("INTO");
-					size_t endSepTable = query_vect[i].find("(");
-					if(sepTable != string::npos && endSepTable != string::npos && endSepTable > sepTable) {
-						tableMainRecord = query_vect[i].substr(sepTable + 4, endSepTable - sepTable - 4);
-						trim(tableMainRecord);
-						setIdMainRecord = true;
-						break;
-					}
-				}
-			}
-			if(setIdMainRecord) {
-				idMainRecord = this->getAutoIncrementID(tableMainRecord.c_str());
-			}
-		}
-		if(opt_mysql_enable_multiple_rows_insert) {
-			if(setIdMainRecord) {
-				for(unsigned i = 0; i < query_vect.size(); ) {
-					find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID, intToString(idMainRecord));
-					if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length)) {
-						ig.push_back(query_vect[i].substr(_MYSQL_MAIN_INSERT_new_length));
-						query_vect.erase(query_vect.begin() + i);
-					} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
-						ig.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length));
-						query_vect.erase(query_vect.begin() + i);
-					} else {
-						i++;
-					}
-				}
-			} else {
-				if(MYSQL_EXISTS_PREFIX_L(query_vect[0], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
-					bool allItemsIsMIG = true;
-					for(unsigned i = 1; i < query_vect.size(); i++) {
-						if(!MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
-							allItemsIsMIG = false;
-							break;
-						}
-					}
-					if(allItemsIsMIG) {
-						for(unsigned i = 0; i < query_vect.size(); i++) {
-							ig.push_back(query_vect[i].substr(_MYSQL_MAIN_INSERT_GROUP_new_length));
-						}
-						queries->erase(iter++);
-						continue;
-					}
-				}
-				bool existsNIG = false;
-				for(unsigned i = 1; i < query_vect.size(); i++) {
-					if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
-						existsNIG = true;
-						break;
-					}
-				}
-				if(existsNIG) {
-					++counterQueriesWithNextInsertGroup;
-					unsigned counterMI_ID_old = 0;
-					for(unsigned i = 0; i < query_vect.size(); ) {
-						find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID, MYSQL_MAIN_INSERT_ID2 + "_" + intToString(counterQueriesWithNextInsertGroup));
-						unsigned counter_replace_MI_ID_old;
-						find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID_OLD, MYSQL_MAIN_INSERT_ID_OLD2 + "_" + intToString(counterQueriesWithNextInsertGroup), &counter_replace_MI_ID_old);
-						if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
-							ig.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length));
-							query_vect.erase(query_vect.begin() + i);
-						} else {
-							if(counter_replace_MI_ID_old) {
-								++counterMI_ID_old;
-							}
-							i++;
-						}
-					}
-					for(unsigned i = 0; i < query_vect.size(); ) {
-						if(i < query_vect.size() - 1 &&
-						   MYSQL_EXISTS_PREFIX_S(query_vect[i], MYSQL_IF) &&
-						   MYSQL_EXISTS_PREFIX_S(query_vect[i + 1], MYSQL_ENDIF)) {
-							if(counterMI_ID_old > 0 &&
-							   query_vect[i].find(MYSQL_MAIN_INSERT_ID_OLD2) != string::npos) {
-								--counterMI_ID_old;
-							}
-							query_vect.erase(query_vect.begin() + i);
-							query_vect.erase(query_vect.begin() + i);
-						} else {
-							i++;
-						}
-					}
-					if(counterMI_ID_old == 1) {
-						for(unsigned i = 0; i < query_vect.size(); ) {
-							if(MYSQL_EXISTS_PREFIX_S(query_vect[i], ("set " + MYSQL_MAIN_INSERT_ID_OLD2))) {
-								query_vect.erase(query_vect.begin() + i);
-								break;
-							} else {
-								i++;
-							}
-						}
-					}
-				}
-			}
-		}
-		for(unsigned i = 0; i < query_vect.size(); i++) {
-			if(query_vect[i][0] == ':') {
-				if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length)) {
-					query_vect[i] = query_vect[i].substr(_MYSQL_MAIN_INSERT_new_length);
-				} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
-					query_vect[i] = query_vect[i].substr(_MYSQL_MAIN_INSERT_GROUP_new_length);
-				} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_new, _MYSQL_NEXT_INSERT_new_length)) {
-					query_vect[i] = query_vect[i].substr(_MYSQL_NEXT_INSERT_new_length);
-				} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
-					query_vect[i] = query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length);
-				}
-			}
-			if(opt_mysql_enable_new_store == 2) {
-				queries_list.push_back(query_vect[i]);
-			} else {
-				queries_str += sqlEscapeString(query_vect[i]) + _MYSQL_QUERY_END_new;
-			}
-		}
-		iter++;
-	}
-	#if 1
-	if(ig.size()) {
-		map<string, list<string> > nig_map;
-		for(list<string>::iterator iter = ig.begin(); iter != ig.end(); iter++) {
-			size_t sepValues = iter->find(" ) VALUES ( ");
-			size_t endSep = iter->rfind(" )");
-			if(sepValues != string::npos && endSep != string::npos && endSep > sepValues) {
-				string tableColumns = iter->substr(0, sepValues);
-				string values = iter->substr(sepValues + 12, endSep - sepValues - 12);
-				nig_map[tableColumns].push_back(values);
-			} else {
-				if(opt_mysql_enable_new_store == 2) {
-					queries_list.push_back(*iter);
-				} else {
-					queries_str += sqlEscapeString(*iter) + _MYSQL_QUERY_END_new;
-				}
-			}
-		}
-		for(map<string, list<string> >::iterator iter = nig_map.begin(); iter != nig_map.end(); iter++) {
-			list<string> *values = &iter->second;
-			string values_str;
-			for(list<string>::iterator iter_values = values->begin(); iter_values != values->end(); iter_values++) {
-				if(values_str.length() *1.1 > this->sqlDb->maxAllowedPacket) {
-					if(opt_mysql_enable_new_store == 2) {
-						queries_list.push_back(iter->first + " ) VALUES ( " + values_str + " )");
-					} else {
-						queries_str += iter->first + " ) VALUES ( " + sqlEscapeString(values_str) + " )" + _MYSQL_QUERY_END_new;
-					}
-					values_str = "";
-				}
-				if(!values_str.empty()) {
-					values_str += " ),( ";
-				}
-				values_str += *iter_values;
-			}
-			if(opt_mysql_enable_new_store == 2) {
-				queries_list.push_back(iter->first + " ) VALUES ( " + values_str + " )");
-			} else {
-				queries_str += iter->first + " ) VALUES ( " + sqlEscapeString(values_str) + " )" + _MYSQL_QUERY_END_new;
-			}
-		}
-	}
-	#else
-	if(ig.size()) {
-		for(list<string>::iterator iter = ig.begin(); iter != ig.end(); iter++) {
-			queries_str += sqlEscapeString(*iter) + _MYSQL_QUERY_END_new;
-		}
-	}
-	#endif
-	if(opt_mysql_enable_new_store == 2) {
+	list<string> ig;
+	__store_prepare_queries(queries, dbData->cb(), dbData->ai(), NULL,
+				&queries_str, &queries_list, NULL,
+				useNewStore(), useSetId(), opt_mysql_enable_multiple_rows_insert,
+				this->sqlDb->maxAllowedPacket);
+	if(useNewStore() == 2) {
 		cout << "store_process_query_compl_" << this->id << endl;
 		for(list<string>::iterator iter = queries_list.begin(); iter != queries_list.end(); iter++) {
 			if(sverb.store_process_query_compl) {
@@ -3006,10 +2889,6 @@ void MySqlStore_process::waitForTerminate() {
 	}
 }
 
-u_int64_t MySqlStore_process::getAutoIncrementID(const char *table, const char *idColumn) {
-	return(parentStore->getAutoIncrementID(table, idColumn));
-}
-
 string MySqlStore_process::getInsertFuncName() {
 	char insert_funcname[20];
 	snprintf(insert_funcname, sizeof(insert_funcname), "__insert_%i", this->id);
@@ -3076,9 +2955,6 @@ MySqlStore::~MySqlStore() {
 		for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
 			pthread_join(iter->second.thread, NULL);
 		}
-	}
-	if(this->autoIncrement) {
-		delete this->autoIncrement;
 	}
 }
 
@@ -3185,7 +3061,7 @@ void MySqlStore::query_lock(const char *query_str, int id) {
 	} else {
 		MySqlStore_process* process = this->find(id);
 		process->lock();
-		for(int i = 0; i < max(sverb.multiple_store && id == 11 ? sverb.multiple_store : 0, 1); i++) {
+		for(int i = 0; i < max(sverb.multiple_store && id != 99 ? sverb.multiple_store : 0, 1); i++) {
 			process->query(query_str);
 		}
 		process->unlock();
@@ -3961,17 +3837,6 @@ int MySqlStore::getConcatLimitForStoreId(int id) {
 	return(concatLimit);
 }
 
-void MySqlStore::setAutoIncrement(const char *table, const char *idColumn) {
-	if(!autoIncrement) {
-		autoIncrement = new FILE_LINE(0) cSqlDbAutoIncrement;
-	}
-	autoIncrement->set(table, idColumn);
-}
-
-u_int64_t MySqlStore::getAutoIncrementID(const char *table, const char *idColumn) {
-	return(autoIncrement->getID(table, idColumn));
-}
-
 void *MySqlStore::threadQFilesCheckPeriod(void *arg) {
 	MySqlStore *me = (MySqlStore*)arg;
 	while(!is_terminating()) {
@@ -4072,9 +3937,6 @@ void *MySqlStore::threadINotifyQFiles(void *arg) {
 }
 
 
-cSqlDbAutoIncrement *MySqlStore::autoIncrement = NULL;
-
-
 SqlDb *createSqlObject(int connectId) {
 	SqlDb *sqlDb = NULL;
 	if(isSqlDriver("mysql")) {
@@ -4129,210 +3991,6 @@ string sqlDateString(tm &time) {
 	char dateBuffer[50];
 	strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &time);
 	return string(dateBuffer);
-}
-
-string sqlEscapeString(string inputStr, const char *typeDb, SqlDb_mysql *sqlDbMysql) {
-	return sqlEscapeString(inputStr.c_str(), 0, typeDb, sqlDbMysql);
-}
-
-SqlDb_mysql *sqlDbEscape = NULL; 
-
-string sqlEscapeString(const char *inputStr, int length, const char *typeDb, SqlDb_mysql *sqlDbMysql) {
-	if(!length) {
-		length = strlen(inputStr);
-	}
-	/* disabled - use only offline varint - online variant can cause problems in connect to db
-	if(isTypeDb("mysql", sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb) && !isCloud()) {
-		bool okEscape = false;
-		int sizeBuffer = length * 2 + 10;
-		char *buffer = new FILE_LINE(29012) char[sizeBuffer];
-		if(sqlDbMysql && sqlDbMysql->getH_Mysql()) {
-			if(mysql_real_escape_string(sqlDbMysql->getH_Mysql(), buffer, inputStr, length) >= 0) {
-				okEscape = true;
-			}
-		} else {
-			if(!sqlDbEscape) {
-				sqlDbEscape = (SqlDb_mysql*)createSqlObject();
-				sqlDbEscape->connect();
-			}
-			if(sqlDbEscape->connected() &&
-			   mysql_real_escape_string(sqlDbEscape->getH_Mysql(), buffer, inputStr, length) >= 0) {
-				okEscape = true;
-			}
-		}
-		string rslt = buffer;
-		delete [] buffer;
-		if(okEscape) {
-			return(rslt);
-		}
-	}
-	*/
-	return _sqlEscapeString(inputStr, length, sqlDbMysql ? sqlDbMysql->getTypeDb().c_str() : typeDb);
-}
-
-struct escChar {
-	char ch;
-	char escCh;
-};
-static escChar escCharsMysql[] = {
-	{ '\'', '\'' },
-	{ '"' , '"' },
-	{ '\\', '\\' },
-	{ '\n', '\n' },		// new line feed
-	{ '\r', '\r' },		// cariage return
-	// remove after create function test_escape
-	//{ '\t', '\t' }, 	// tab
-	//{ '\v', '\v' }, 	// vertical tab
-	//{ '\b', '\b' }, 	// backspace
-	//{ '\f', '\f' }, 	// form feed
-	//{ '\a', '\a' }, 	// alert (bell)
-	//{ '\e', 0 }, 		// escape
-	// add after create function test_escape
-	{    0, '0' },
-	{   26, 'Z' }
-};
-static unsigned char escTableMysql[256][2];
-static escChar escCharsOdbc[] = { 
-	{ '\'', 2 },
-	{ '\v', 0 }, 		// vertical tab
-	{ '\b', 0 }, 		// backspace
-	{ '\f', 0 }, 		// form feed
-	{ '\a', 0 }, 		// alert (bell)
-	{ '\e', 0 }, 		// escape
-};
-static unsigned char escTableOdbc[256][2];
-
-void fillEscTables() {
-	for(unsigned i = 0; i < sizeof(escCharsMysql) / sizeof(escCharsMysql[0]); i++) {
-		escTableMysql[(unsigned char)escCharsMysql[i].ch][0] = 1;
-		escTableMysql[(unsigned char)escCharsMysql[i].ch][1] = (unsigned char)escCharsMysql[i].escCh;
-	}
-	for(unsigned i = 0; i < sizeof(escCharsOdbc) / sizeof(escCharsOdbc[0]); i++) {
-		escTableOdbc[(unsigned char)escCharsOdbc[i].ch][0] = 1;
-		escTableOdbc[(unsigned char)escCharsOdbc[i].ch][1] = (unsigned char)escCharsOdbc[i].escCh;
-	}
-}
-
-string _sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
-	bool mysql = false;
-	unsigned char (*escTable)[2] = NULL;
-	if(!typeDb || isTypeDb("mysql", typeDb)) {
-		mysql = true;
-		escTable = escTableMysql;
-	} else if(isTypeDb("odbc", typeDb)) {
-		escTable = escTableOdbc;
-	}
-	if(!length) {
-		length = strlen(inputStr);
-	}
-	if(!escTable) {
-		return(string(inputStr, length));
-	}
-	string rsltString;
-	for(int posInputString = 0; posInputString < length; posInputString++) {
-		if(escTable[(unsigned char)inputStr[posInputString]][0]) {
-			if(mysql) {
-				if(escTable[(unsigned char)inputStr[posInputString]][1]) {
-					rsltString += '\\';
-					rsltString += (char)escTable[(unsigned char)inputStr[posInputString]][1];
-				}
-			} else {
-				if(escTable[(unsigned char)inputStr[posInputString]][1] == 2) {
-					rsltString += inputStr[posInputString];
-					rsltString += inputStr[posInputString];
-				}
-			}
-		} else {
-			rsltString += inputStr[posInputString];
-		}
-	}
-	extern cUtfConverter utfConverter;
-	if(!utfConverter.check(rsltString.c_str())) {
-		rsltString = utfConverter.remove_no_ascii(rsltString.c_str());
-	}
-	return(rsltString);
-}
-
-void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const char *typeDb, bool checkUtf) {
-	bool mysql = false;
-	unsigned char (*escTable)[2] = NULL;
-	if(!typeDb || isTypeDb("mysql", typeDb)) {
-		mysql = true;
-		escTable = escTableMysql;
-	} else if(isTypeDb("odbc", typeDb)) {
-		escTable = escTableOdbc;
-	}
-	if(!length) {
-		length = strlen(inputStr);
-	}
-	if(!escTable) {
-		strncpy(outputStr, inputStr, length);
-		outputStr[length] = 0;
-		return;
-	}
-	unsigned posOutputString = 0;
-	for(int posInputString = 0; posInputString < length; posInputString++) {
-		if(escTable[(unsigned char)inputStr[posInputString]][0]) {
-			if(mysql) {
-				if(escTable[(unsigned char)inputStr[posInputString]][1]) {
-					outputStr[posOutputString++] = '\\';
-					outputStr[posOutputString++] = (char)escTable[(unsigned char)inputStr[posInputString]][1];
-				}
-			} else {
-				if(escTable[(unsigned char)inputStr[posInputString]][1] == 2) {
-					outputStr[posOutputString++] = inputStr[posInputString];
-					outputStr[posOutputString++] = inputStr[posInputString];
-				}
-			}
-		} else {
-			outputStr[posOutputString++] = inputStr[posInputString];
-		}
-	}
-	outputStr[posOutputString] = 0;
-	extern cUtfConverter utfConverter;
-	if(checkUtf && !utfConverter.check(outputStr)) {
-		utfConverter._remove_no_ascii(outputStr);
-	}
-}
-
-string sqlEscapeStringBorder(string inputStr, char borderChar, const char *typeDb, SqlDb_mysql *sqlDbMysql) {
-	return sqlEscapeStringBorder(inputStr.c_str(), borderChar, typeDb, sqlDbMysql);
-}
-
-string sqlEscapeStringBorder(const char *inputStr, char borderChar, const char *typeDb, SqlDb_mysql *sqlDbMysql) {
-	string rsltString = sqlEscapeString(inputStr, 0, typeDb, sqlDbMysql);
-	if(borderChar) {
-		rsltString = borderChar + rsltString + borderChar;
-	}
-	return rsltString;
-}
-
-bool isSqlDriver(const char *sqlDriver, const char *checkSqlDriver) {
-	return cmpStringIgnoreCase(checkSqlDriver ? checkSqlDriver : sql_driver, sqlDriver);
-}
-
-bool isTypeDb(const char *typeDb, const char *checkSqlDriver, const char *checkOdbcDriver) {
-	return cmpStringIgnoreCase(checkSqlDriver ? checkSqlDriver : sql_driver, typeDb) ||
-	       (cmpStringIgnoreCase(checkSqlDriver ? checkSqlDriver : sql_driver, "odbc") && 
-	        cmpStringIgnoreCase(checkOdbcDriver ? checkOdbcDriver : odbc_driver, typeDb));
-}
-
-bool cmpStringIgnoreCase(const char* str1, const char* str2) {
-	if(str1 == str2) {
-		return true;
-	}
-	if(((str1 || str2) && !(str1 && str2)) ||
-	   ((*str1 || *str2) && !(*str1 && *str2)) ||
-	   strlen(str1) != strlen(str2)) {
-		return false;
-	}
-	int length = strlen(str1);
-	for(int i = 0; i < length; i++) {
-		if(tolower(str1[i]) != tolower(str2[i])) {
-			return false;
-		}
-	}
-	return true;
 }
 
 string reverseString(const char *str) {
@@ -4419,12 +4077,7 @@ bool SqlDb_mysql::createSchema(int connectId) {
 	bool okSaveVersion = false;
 	bool existsTableSystem = false;
 	if(connectId == 0) {
-		vector<string> sniffer_version_split = split(string(RTPSENSOR_VERSION), '.');
-		if(sniffer_version_split.size()) {
-			for(unsigned i = 0; i < min((unsigned)sniffer_version_split.size(), 3u); i++) {
-				sniffer_version_num += atoi(sniffer_version_split[i].c_str()) * (i == 0 ? 1000000 : i == 1 ? 1000 : 1);
-			}
-		}
+		sniffer_version_num = RTPSENSOR_VERSION_INT();
 		if(this->existsTable("system")) {
 			existsTableSystem = true;
 			this->select("system", "content", "type", "sniffer_db_version");
@@ -6404,7 +6057,7 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 	  IN fname BIGINT, \
 	  IN id_sensor INT, \
 	  IN regrrddiff MEDIUMINT)",true);
-	if(opt_mysql_enable_new_store) {
+	if(useNewStore()) {
 	this->createProcedure(
 	"begin \
 		declare str_sep_pos_length integer default 0; \
@@ -8372,205 +8025,10 @@ string cLogSensor::last_subject_db = "";
 u_int32_t cLogSensor::last_subject_db_at = 0;
 
 
-cSqlDbCodebook::cSqlDbCodebook(const char *table, const char *columnId, const char *columnStringValue, 
-			       unsigned limitTableRows) {
-	this->table = table;
-	this->columnId = columnId;
-	this->columnStringValue = columnStringValue;
-	this->limitTableRows = limitTableRows;
-	autoLoadPeriod = 0;
-	data_overflow = false;
-	_sync_data = 0;
-	_sync_load = 0;
-	lastBeginLoadTime = 0;
-	lastEndLoadTime = 0;
-	if(opt_mysql_enable_set_id) {
-		MySqlStore::setAutoIncrement(table, columnId);
-	}
+string MYSQL_CODEBOOK_ID(int type, string value) {
+	string nameValue = dbData->cb()->getNameForType((cSqlDbCodebook::eTypeCodebook)type) + ";" + value;
+	return(MYSQL_CODEBOOK_ID_PREFIX + intToString(nameValue.length()) + ":" + nameValue);
 }
-
-void cSqlDbCodebook::addCond(const char *field, const char *value) {
-	cond.push_back(SqlDb_condField(field, value));
-}
-
-void cSqlDbCodebook::setAutoLoadPeriod(unsigned autoLoadPeriod) {
-	this->autoLoadPeriod = autoLoadPeriod;
-}
-
-unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool enableAutoLoad) {
-	if(data_overflow || sverb.disable_cb_cache) {
-		return(0);
-	}
-	unsigned rslt = 0;
-	lock_data();
-	if(data.size()) {
-		map<string, unsigned>::iterator iter = data.find(stringValue);
-		if(iter != data.end()) {
-			rslt = iter->second;
-		}
-	}
-	if(!rslt) {
-		if(opt_mysql_enable_set_id) {
-			rslt = MySqlStore::getAutoIncrementID(this->table.c_str());
-			SqlDb *sqlDb = createSqlObject();
-			SqlDb_row row;
-			row.add(rslt, columnId);
-			row.add(stringValue, columnStringValue);
-			for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
-				row.add(iter->value, iter->field);
-			}
-			extern MySqlStore *sqlStore;
-			sqlStore->query_lock(MYSQL_ADD_QUERY_END(sqlDb->insertQuery(this->table, row)).c_str(), STORE_PROC_ID_OTHER);
-			delete sqlDb;
-			data[stringValue] = rslt;
-		} else if(enableInsert) {
-			SqlDb *sqlDb = createSqlObject();
-			list<SqlDb_condField> cond = this->cond;
-			cond.push_back(SqlDb_condField(columnStringValue, stringValue));
-			if(sqlDb->select(table, NULL, &cond, 1)) {
-				SqlDb_row row;
-				if((row = sqlDb->fetchRow())) {
-					rslt = atol(row[columnId].c_str());
-				}
-			}
-			if(!rslt) {
-				SqlDb_row row;
-				row.add(stringValue, columnStringValue);
-				for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
-					row.add(iter->value, iter->field);
-				}
-				int64_t rsltInsert = sqlDb->insert(table, row);
-				if(rsltInsert > 0) {
-					rslt = rsltInsert;
-				}
-			}
-			delete sqlDb;
-		}
-	}
-	unlock_data();
-	if(!rslt && enableAutoLoad && this->autoLoadPeriod && !_sync_load) {
-		u_long actTime = getTimeS();
-		if(lastBeginLoadTime + this->autoLoadPeriod < actTime &&
-		   lastEndLoadTime + this->autoLoadPeriod < actTime) {
-			loadInBackground();
-		}
-	}
-	return(rslt);
-}
-
-void cSqlDbCodebook::load(SqlDb *sqlDb) {
-	if(lock_load(1000000)) {
-		_load(&data, &data_overflow, sqlDb);
-		unlock_load();
-	}
-}
-
-void cSqlDbCodebook::loadInBackground() {
-	if(lock_load(1000000)) {
-		pthread_t thread;
-		vm_pthread_create_autodestroy("cSqlDbCodebook::loadInBackground",
-					      &thread, NULL, cSqlDbCodebook::_loadInBackground, this, __FILE__, __LINE__);
-	}
-}
-
-void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *sqlDb) {
-	lastBeginLoadTime = getTimeS();
-	data->clear();
-	bool _createSqlObject = false;
-	if(!sqlDb) {
-		sqlDb = createSqlObject();
-		_createSqlObject = true;
-	}
-	sqlDb->setMaxQueryPass(2);
-	if(sqlDb->rowsInTable(table, true) > this->limitTableRows) {
-		*overflow = true;
-	} else {
-		if(sqlDb->select(table, NULL, &cond)) {
-			SqlDb_rows rows;
-			sqlDb->fetchRows(&rows);
-			SqlDb_row row;
-			while((row = rows.fetchRow())) {
-				(*data)[row[columnStringValue]] = atol(row[columnId].c_str());
-			}
-		}
-		*overflow = false;
-	}
-	if(_createSqlObject) {
-		delete sqlDb;
-	}
-	lastEndLoadTime = getTimeS();
-}
-
-void *cSqlDbCodebook::_loadInBackground(void *arg) {
-	cSqlDbCodebook *me = (cSqlDbCodebook*)arg;
-	map<string, unsigned> data;
-	bool data_overflow;
-	me->_load(&data, &data_overflow);
-	if(data.size() || data_overflow) {
-		me->lock_data();
-		me->data = data;
-		me->data_overflow = data_overflow;
-		me->unlock_data();
-	}
-	me->unlock_load();
-	return(NULL);
-}
-
-
-cSqlDbAutoIncrement::cSqlDbAutoIncrement() {
-	_sync_autoinc = 0;
-}
-
-void cSqlDbAutoIncrement::set(const char *table, const char *idColumn, SqlDb *sqlDb) {
-	bool _createSqlObject = false;
-	if(!sqlDb) {
-		sqlDb = createSqlObject();
-		_createSqlObject = true;
-	}
-	u_int64_t last_id = get_last_id(table, idColumn ? idColumn : "id", sqlDb);
-	lock_autoinc();
-	autoinc[table] = last_id;
-	unlock_autoinc();
-	if(_createSqlObject) {
-		delete sqlDb;
-	}
-}
-
-u_int64_t cSqlDbAutoIncrement::getID(const char *table, const char *idColumn) {
-	u_int64_t id = 0;
-	lock_autoinc();
-	for(int pass = 0; pass < 2; pass++) {
-		if(pass == 1) {
-			set(table, idColumn);
-		}
-		map<string, int64_t>::iterator iter = autoinc.find(table);
-		if(iter != autoinc.end()) {
-			id = ++iter->second;
-			break;
-		}
-	}
-	unlock_autoinc();
-	return(id);
-}
-
-u_int64_t cSqlDbAutoIncrement::get_last_id(const char *table, const char *idColumn, SqlDb *sqlDb) {
-	u_int64_t last_id = 0;
-	bool _createSqlObject = false;
-	if(!sqlDb) {
-		sqlDb = createSqlObject();
-		_createSqlObject = true;
-	}
-	sqlDb->query(string("select ") + idColumn + " from " + sqlDb->escapeTableName(table) + " order by id desc limit 1");
-	SqlDb_row row;
-	if((row = sqlDb->fetchRow())) {
-		last_id = atoll(row[0].c_str());
-	}
-	if(_createSqlObject) {
-		delete sqlDb;
-	}
-	return(last_id);
-}
-
 
 string MYSQL_ADD_QUERY_END(string query) {
 	unsigned query_length = query.length();
@@ -8583,9 +8041,21 @@ string MYSQL_ADD_QUERY_END(string query) {
 	if(query_length < query.length()) {
 		query.resize(query_length);
 	}
-	if(opt_mysql_enable_new_store || opt_load_query_from_files) {
+	if(useNewStore() || opt_load_query_from_files || is_server()) {
 		find_and_replace(query, _MYSQL_QUERY_END_new, _MYSQL_QUERY_END_SUBST_new);
 	}
 	query += MYSQL_QUERY_END;
 	return(query);
+}
+
+
+void dbDataInit(SqlDb *sqlDb) {
+	dbData = new cSqlDbData();
+	if(!opt_nocdr) {
+		dbData->init(true, 500000, sqlDb);
+	}
+}
+
+void dbDataTerm() {
+	delete dbData;
 }

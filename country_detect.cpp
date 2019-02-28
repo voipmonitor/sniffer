@@ -55,7 +55,7 @@ string CountryDetect_base_table::getTableName(eTableType tableType) {
 		useCloudShare = true;
 		break;
 	}
-	if(!tableName.empty() && isCloud() && useCloudShare) {
+	if(!tableName.empty() && isCloud() && useCloudShare && !sverb.disable_cloudshare) {
 		tableName =  "cloudshare." + tableName;
 	}
 	return(tableName);

@@ -23,6 +23,7 @@ extern CustomHeaders *custom_headers_sip_msg;
 extern int opt_save_sip_options;
 extern int opt_save_sip_subscribe;
 extern int opt_save_sip_notify;
+extern cSqlDbData *dbData;
 
 cSipMsgRelations *sipMsgRelations;
 
@@ -943,46 +944,58 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 			string &adj_ua = i == 0 ? adj_ua_src : adj_ua_dst;
 			if(!adj_ua.empty()) {
 				string field = i == 0 ? "ua_src_id" : "ua_dst_id";
-				unsigned _cb_id = calltable->cb_ua_getId(adj_ua.c_str(), false, true);
-				if(_cb_id) {
-					rec.add(_cb_id, field);
+				if(useSetId()) {
+					rec.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, adj_ua), field);
 				} else {
-					query_str += MYSQL_ADD_QUERY_END(string("set @" + field + " = ") +  
-						     "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ")");
-					rec.add(MYSQL_VAR_PREFIX + "@" + field, field);
+					unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), false, true);
+					if(_cb_id) {
+						rec.add(_cb_id, field);
+					} else {
+						query_str += MYSQL_ADD_QUERY_END(string("set @" + field + " = ") +  
+							     "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ")");
+						rec.add(MYSQL_VAR_PREFIX + "@" + field, field);
+					}
 				}
 			}
 		}
 		if(requestResponse->response && !requestResponse->response->response_string.empty()) {
-			unsigned _cb_id = calltable->cb_sip_response_getId(requestResponse->response->response_string.c_str(), false, true);
-			if(_cb_id) {
-				rec.add(_cb_id, "response_id");
+			if(useSetId()) {
+				rec.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, requestResponse->response->response_string), "response_id");
 			} else {
-				query_str += MYSQL_ADD_QUERY_END(string("set @response_id = ") + 
-					     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(requestResponse->response->response_string) + ")");
-				rec.add(MYSQL_VAR_PREFIX + "@response_id", "response_id");
+				unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, requestResponse->response->response_string.c_str(), false, true);
+				if(_cb_id) {
+					rec.add(_cb_id, "response_id");
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(string("set @response_id = ") + 
+						     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(requestResponse->response->response_string) + ")");
+					rec.add(MYSQL_VAR_PREFIX + "@response_id", "response_id");
+				}
 			}
 		}
 		for(int i = 0; i < 2; i++) {
 			cSipMsgItem *item = i == 0 ? requestResponse->request : requestResponse->response;
 			if(item && !item->content_type.empty()) {
 				string field_content_type = i == 0 ? "request_id_content_type" : "response_id_content_type";
-				unsigned _cb_id = calltable->cb_contenttype_getId(item->content_type.c_str(), false, true);
-				if(_cb_id) {
-					rec.add(_cb_id, field_content_type);
+				if(useSetId()) {
+					rec.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_contenttype, item->content_type), field_content_type);
 				} else {
-					query_str += MYSQL_ADD_QUERY_END(string("set @" + field_content_type + " = ") + 
-						     "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(item->content_type) + ")");
-					rec.add(MYSQL_VAR_PREFIX + "@" + field_content_type, field_content_type);
+					unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_contenttype, item->content_type.c_str(), false, true);
+					if(_cb_id) {
+						rec.add(_cb_id, field_content_type);
+					} else {
+						query_str += MYSQL_ADD_QUERY_END(string("set @" + field_content_type + " = ") + 
+							     "getIdOrInsertCONTENTTYPE(" + sqlEscapeStringBorder(item->content_type) + ")");
+						rec.add(MYSQL_VAR_PREFIX + "@" + field_content_type, field_content_type);
+					}
 				}
 			}
 		}
-		if(opt_mysql_enable_new_store) {
+		if(useNewStore()) {
 			query_str += MYSQL_GET_MAIN_INSERT_ID_OLD;
 		}
 		query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT + 
 			     sqlDbSaveSipMsg->insertQuery(table.c_str(), rec, false, false));
-		if(opt_mysql_enable_new_store) {
+		if(useNewStore()) {
 			query_str += MYSQL_GET_MAIN_INSERT_ID + 
 				     MYSQL_IF_MAIN_INSERT_ID;
 		} else {
@@ -1010,7 +1023,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 				}
 			}
 		}
-		if(opt_mysql_enable_new_store) {
+		if(useNewStore()) {
 			query_str += MYSQL_ENDIF_QE;
 		} else {
 			query_str += "end if";
@@ -1028,17 +1041,17 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 			string &adj_ua = i == 0 ? adj_ua_src : adj_ua_dst;
 			if(!adj_ua.empty()) {
 				string field = i == 0 ? "ua_src_id" : "ua_dst_id";
-				rec.add(calltable->cb_ua_getId(adj_ua.c_str(), true), field);
+				rec.add(dbData->cb()->getId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), true), field);
 			}
 		}
 		if(requestResponse->response && !requestResponse->response->response_string.empty()) {
-			rec.add(calltable->cb_sip_response_getId(requestResponse->response->response_string.c_str(), true), "response_id");
+			rec.add(dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, requestResponse->response->response_string.c_str(), true), "response_id");
 		}
 		for(int i = 0; i < 2; i++) {
 			cSipMsgItem *item = i == 0 ? requestResponse->request : requestResponse->response;
 			if(item && !item->content_type.empty()) {
 				string field_content_type = i == 0 ? "request_id_content_type" : "response_id_content_type";
-				rec.add(calltable->cb_contenttype_getId(item->content_type.c_str(), true), field_content_type);
+				rec.add(dbData->cb()->getId(cSqlDbCodebook::_cb_contenttype, item->content_type.c_str(), true), field_content_type);
 			}
 		}
 		int64_t sipMsgID = sqlDbSaveSipMsg->insert(table, rec);

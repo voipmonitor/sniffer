@@ -5,8 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#include <string>
 
-#include "tools_inline.h"
 #include "voipmonitor_define.h"
 
 

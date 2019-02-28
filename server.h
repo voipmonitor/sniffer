@@ -3,6 +3,7 @@
 
 
 #include <string.h>
+#include <queue>
 
 #include "cloud_router/cloud_router_base.h"
 
@@ -45,6 +46,8 @@ struct sSnifferClientOptions {
 		remote_query = true;
 		remote_store = true;
 		packetbuffer_sender = false;
+		mysql_new_store = 0;
+		mysql_set_id = false;
 	}
 	bool isEnable() {
 		return(!host.empty() && port);
@@ -63,6 +66,8 @@ struct sSnifferClientOptions {
 	bool remote_query;
 	bool remote_store;
 	bool packetbuffer_sender;
+	int mysql_new_store;
+	bool mysql_set_id;
 };
 
 

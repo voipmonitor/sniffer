@@ -1,0 +1,535 @@
+#ifndef TOOLS_GLOBAL_H
+#define TOOLS_GLOBAL_H
+
+
+#include <pcap.h>
+#include <time.h>
+#include <string>
+#include <vector>
+#include <map>
+#include <regex.h>
+#include <zlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/syscall.h>
+#include <unicode/ucnv.h> 
+
+#include "tools_define.h"
+#include "tools_local.h"
+
+#ifdef FREEBSD
+#include <sys/thr.h>
+#endif
+
+
+using namespace std;
+
+
+inline unsigned int get_unix_tid(void) {
+#if defined(__arm__) 
+	int tid = 0;
+#else
+	static __thread int tid = 0;
+	if(tid) {
+		return tid;
+	}
+#endif
+#ifdef HAVE_PTHREAD_GETTHREADID_NP
+	tid = pthread_getthreadid_np();
+#elif defined(linux)
+	tid = syscall(SYS_gettid);
+#elif defined(__sun)
+	tid = pthread_self();
+#elif defined(__APPLE__)
+	tid = mach_thread_self();
+	mach_port_deallocate(mach_task_self(), tid);
+#elif defined(__NetBSD__)
+	tid = _lwp_self();
+#elif defined(__FreeBSD__)
+	long lwpid;
+	thr_self( &lwpid );
+	tid = lwpid;
+#elif defined(__DragonFly__)
+	tid = lwp_gettid();
+#endif
+	return tid;
+}
+
+
+#if defined(__i386__)
+__inline__ unsigned long long rdtsc(void)
+{
+    unsigned long long int x;
+    __asm__ volatile (".byte 0x0f, 0x31" : "=A" (x));
+    return x;
+}
+#elif defined(__x86_64__)
+__inline__ unsigned long long rdtsc(void)
+{
+    unsigned hi, lo;
+    __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+    return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
+}
+#endif
+
+
+inline u_long getTimeS(pcap_pkthdr* header = NULL) {
+    if(header) {
+         return(header->ts.tv_sec);
+    }
+    timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    return(time.tv_sec);
+}
+
+inline u_long getTimeMS(pcap_pkthdr* header = NULL) {
+    if(header) {
+         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec / 1000);
+    }
+    timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    return(time.tv_sec * 1000ul + time.tv_nsec / 1000000);
+}
+
+inline u_long getTimeMS(struct timeval *ts) {
+    return(ts->tv_sec * 1000ul + ts->tv_usec / 1000);
+}
+
+extern u_int64_t rdtsc_by_100ms;
+inline u_long getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
+    if(header) {
+         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec / 1000);
+    }
+    static u_long last_time;
+    #if defined(__i386__) or defined(__x86_64__)
+    static u_int32_t counter = 0;
+    static u_int64_t last_rdtsc = 0;
+    ++counter;
+    if(rdtsc_by_100ms) {
+         u_int64_t act_rdtsc = rdtsc();
+         if(counter % 100 && last_rdtsc && last_time) {
+             u_int64_t diff_rdtsc = act_rdtsc - last_rdtsc;
+             if(diff_rdtsc < rdtsc_by_100ms / 10) {
+                  last_rdtsc = act_rdtsc;
+                  last_time = last_time + diff_rdtsc * 100 / rdtsc_by_100ms;
+                  return(last_time);
+             }
+         }
+         last_rdtsc = act_rdtsc;
+    }
+    #endif
+    timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    last_time = time.tv_sec * 1000ul + time.tv_nsec / 1000000;
+    return(last_time);
+}
+
+inline unsigned long long getTimeUS() {
+    timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    return(time.tv_sec * 1000000ull + time.tv_nsec / 1000);
+}
+
+inline unsigned long long getTimeNS() {
+    timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    return(time.tv_sec * 1000000000ull + time.tv_nsec);
+}
+
+
+int vm_pthread_create(const char *thread_description,
+		      pthread_t *thread, pthread_attr_t *attr,
+		      void *(*start_routine) (void *), void *arg, 
+		      const char *src_file, int src_file_line,
+		      bool autodestroy = false);
+inline int vm_pthread_create_autodestroy(const char *thread_description,
+					 pthread_t *thread, pthread_attr_t *attr,
+					 void *(*start_routine) (void *), void *arg, 
+					 const char *src_file, int src_file_line) {
+	return(vm_pthread_create(thread_description,
+				 thread, attr,
+				 start_routine, arg, 
+				 src_file, src_file_line,
+				 true));
+}
+
+
+struct string_null {
+	string_null(const char *str = NULL) {
+		if(str) {
+			this->str = str;
+			is_null = false;
+		} else {
+			is_null = true;
+		}
+	}
+	string str;
+	bool is_null;
+};
+
+
+class JsonItem {
+public:
+	JsonItem(string name = "", string value = "", bool null = false);
+	void parse(string valStr);
+	JsonItem *getItem(string path, int index = -1);
+	string getValue(string path, int index = -1);
+	int getCount(string path);
+	string getLocalName() { return(this->name); }
+	string getLocalValue() { return(this->value); }
+	bool localValueIsNull() { return(this->null); }
+	JsonItem *getLocalItem(int index = -1) { return(index == -1 ? this : &this->items[index]); }
+	size_t getLocalCount() { return(this->items.size()); }
+private:
+	JsonItem *getPathItem(string path);
+	string getPathItemName(string path);
+	string name;
+	string value;
+	bool null;
+	vector<JsonItem> items;
+};
+
+class JsonExport {
+public:
+	enum eTypeItem {
+		_object,
+		_array,
+		_number,
+		_string,
+		_null,
+		_json
+	};
+public:
+	JsonExport();
+	virtual ~JsonExport();
+	void setTypeItem(eTypeItem typeItem) {
+		this->typeItem = typeItem;
+	}
+	eTypeItem getTypeItem() {
+		return(typeItem);
+	}
+	void setName(const char *name) {
+		if(name) {
+			this->name = name;
+		}
+	}
+	void add(const char *name, string content);
+	void add(const char *name, const char *content);
+	void add(const char *name, int64_t content);
+	void add(const char *name);
+	JsonExport *addArray(const char *name);
+	JsonExport *addObject(const char *name);
+	void addJson(const char *name, const string &content);
+	void addJson(const char *name, const char *content);
+	virtual string getJson(JsonExport *parent = NULL);
+protected:
+	eTypeItem typeItem;
+	string name;
+	vector<JsonExport*> items;
+};
+
+template <class type_item>
+class JsonExport_template : public JsonExport {
+public:
+	void setContent(type_item content) {
+		this->content = content;
+	}
+	string getJson(JsonExport *parent = NULL);
+private:
+	type_item content;
+};
+
+
+string intToString(int i);
+string intToString(long long i);
+string intToString(u_int16_t i);
+string intToString(u_int32_t i);
+string intToString(u_int64_t i);
+string floatToString(double d);
+string pointerToString(void *p);
+string boolToString(bool b);
+
+string inet_ntostring(u_int32_t ip);
+u_int32_t inet_strington(const char *ip);
+
+
+void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos);
+
+
+string &find_and_replace(string &source, const string find, string replace, unsigned *counter_replace = NULL);
+string find_and_replace(const char *source, const char *find, const char *replace, unsigned *counter_replace = NULL);
+
+std::string &trim(std::string &s, const char *trimChars = NULL);
+std::string trim_str(std::string s, const char *trimChars = NULL);
+std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems);
+std::vector<std::string> split(const std::string &s, char delim);
+std::vector<std::string> &split(const char *s, const char *delim, std::vector<std::string> &elems, bool enableTrim = false, bool useEmptyItems = false);
+std::vector<std::string> split(const char *s, const char *delim, bool enableTrim = false, bool useEmptyItems = false);
+std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false, bool useEmptyItems = false);
+std::vector<int> split2int(const std::string &s, char delim);
+std::vector<int> split2int(const std::string &s, std::vector<std::string> delim, bool enableTrim);
+
+bool check_regexp(const char *pattern);
+int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);
+int reg_match(const char *str, const char *pattern, vector<string> *matches, bool ignoreCase, const char *file = NULL, int line = 0);
+string reg_replace(const char *string, const char *pattern, const char *replace, const char *file = NULL, int line = 0);
+
+class cRegExp {
+public:
+	enum eFlags {
+		_regexp_icase = 1,
+		_regexp_sub = 2,
+		_regexp_matches = 2,
+		_regexp_icase_mathes = 3
+	};
+public:
+	cRegExp(const char *pattern, eFlags flags = _regexp_icase,
+		const char *file = NULL, int line = 0);
+	~cRegExp();
+	bool regex_create();
+	void regex_delete();
+	int match(const char *subject, vector<string> *matches = NULL);
+	string replace(const char *subject, const char *replace);
+	bool isOK() {
+		return(regex_init);
+	}
+	bool isError() {
+		return(regex_error);
+	}
+	const char *getPattern() {
+		return(pattern.c_str());
+	}
+private:
+	string pattern;
+	eFlags flags;
+	regex_t regex;
+	bool regex_init;
+	bool regex_error;
+};
+
+
+class SimpleBuffer {
+public:
+	SimpleBuffer(u_int32_t capacityReserve = 0) {
+		buffer = NULL;
+		bufferLength = 0;
+		bufferCapacity = 0;
+		this->capacityReserve = capacityReserve;
+	}
+	SimpleBuffer(void *data, u_int32_t dataLength, u_int32_t capacityReserve = 0) {
+		buffer = NULL;
+		bufferLength = 0;
+		bufferCapacity = 0;
+		this->capacityReserve = capacityReserve;
+		add(data, dataLength);
+	}
+	SimpleBuffer(const SimpleBuffer &other) {
+		this->bufferLength = other.bufferLength;
+		this->bufferCapacity = other.bufferCapacity;
+		this->capacityReserve = other.capacityReserve;
+		if(this->bufferLength) {
+			this->buffer = new FILE_LINE(39001) u_char[this->bufferCapacity];
+			memcpy(this->buffer, other.buffer, this->bufferLength);
+		} else { 
+			this->buffer = NULL;
+		}
+	}
+	~SimpleBuffer() {
+		destroy();
+	}
+	void add(const char *data) {
+		add((void*)data, strlen(data));
+	}
+	void add(void *data, u_int32_t dataLength) {
+		if(!data || !dataLength) {
+			return;
+		}
+		if(!buffer) {
+			buffer = new FILE_LINE(39002) u_char[dataLength + capacityReserve + 1];
+			bufferCapacity = dataLength + capacityReserve + 1;
+		} else if(bufferLength + dataLength + 1 > capacityReserve) {
+			u_char *bufferNew = new FILE_LINE(39003) u_char[bufferLength + dataLength + capacityReserve + 1];
+			memcpy(bufferNew, buffer, bufferLength);
+			delete [] buffer;
+			buffer = bufferNew;
+			bufferCapacity = bufferLength + dataLength + capacityReserve + 1;
+		}
+		memcpy(buffer + bufferLength, data, dataLength);
+		bufferLength += dataLength;
+	}
+	u_char *data() {
+		return(buffer);
+	}
+	u_int32_t size() {
+		return(bufferLength);
+	}
+	void clear() {
+		bufferLength = 0;
+	}
+	void destroy() {
+		if(buffer) {
+			delete [] buffer;
+			buffer = NULL;
+		}
+		bufferLength = 0;
+		bufferCapacity = 0;
+	}
+	bool empty() {
+		return(bufferLength == 0);
+	}
+	bool removeDataFromLeft(u_int32_t removeSize) {
+		if(removeSize > bufferLength) {
+			return(false);
+		} else if(removeSize == bufferLength) {
+			destroy();
+		} else {
+			u_char *bufferNew = new FILE_LINE(39004) u_char[bufferCapacity];
+			bufferLength -= removeSize;
+			memcpy(bufferNew, buffer + removeSize, bufferLength);
+			delete [] buffer;
+			buffer = bufferNew;
+		}
+		return(true);
+	}
+	SimpleBuffer& operator = (const SimpleBuffer &other) {
+		destroy();
+		this->bufferLength = other.bufferLength;
+		this->bufferCapacity = other.bufferCapacity;
+		this->capacityReserve = other.capacityReserve;
+		if(this->bufferLength) {
+			this->buffer = new FILE_LINE(39005) u_char[this->bufferCapacity];
+			memcpy(this->buffer, other.buffer, this->bufferLength);
+		} else { 
+			this->buffer = NULL;
+		}
+		return(*this);
+	}
+	operator char*() {
+		if(bufferLength == 0) {
+			return((char*)"");
+		} else {
+			if(bufferCapacity <= bufferLength) {
+				u_char *newBuffer = new FILE_LINE(39006) u_char[bufferLength + 1];
+				memcpy(newBuffer, buffer, bufferLength);
+				delete [] buffer;
+				buffer = newBuffer;
+				bufferCapacity = bufferLength + 1;
+			}
+			buffer[bufferLength] = 0;
+			return((char*)buffer);
+		}
+		return((char*)"");
+	}
+	bool isJsonObject() {
+		return(bufferLength && buffer[0] == '{' && buffer[bufferLength - 1] == '}');
+	}
+private:
+	u_char *buffer;
+	u_int32_t bufferLength;
+	u_int32_t bufferCapacity;
+	u_int32_t capacityReserve;
+};
+
+
+class cGzip {
+public:
+	enum eOperation {
+		_na,
+		_compress,
+		_decompress
+	};
+public:
+	cGzip();
+	~cGzip();
+public:
+	bool compress(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_t *cbufferLength);
+	bool compressString(string &str, u_char **cbuffer, size_t *cbufferLength);
+	bool decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, size_t *dbufferLength);
+	string decompressString(u_char *buffer, size_t bufferLength);
+	bool isCompress(u_char *buffer, size_t bufferLength);
+private:
+	void initCompress();
+	void initDecompress();
+	void term();
+private:
+	eOperation operation;
+	z_stream *zipStream;
+	SimpleBuffer *destBuffer;
+};
+
+
+class cResolver {
+public:
+	enum eTypeResolve {
+		_typeResolve_default,
+		_typeResolve_std,
+		_typeResolve_system_host
+	};
+private:
+	struct sIP_time {
+		u_int32_t ipl;
+		time_t at;
+		unsigned timeout;
+	};
+public:
+	cResolver();
+	u_int32_t resolve(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
+	u_int32_t resolve(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
+		return(resolve(host.c_str(), timeout, typeResolve));
+	}
+	static u_int32_t resolve_n(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
+	static u_int32_t resolve_n(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
+		return(resolve_n(host.c_str(), timeout, typeResolve));
+	}
+	static string resolve_str(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
+	static string resolve_str(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
+		return(resolve_str(host.c_str(), timeout, typeResolve));
+	}
+private:
+	u_int32_t resolve_std(const char *host);
+	u_int32_t resolve_by_system_host(const char *host);
+private:
+	void lock() {
+		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
+			usleep(100);
+		}
+	}
+	void unlock() {
+		__sync_lock_release(&_sync_lock);
+	}
+private:
+	bool use_lock;
+	bool res_timeout;
+	map<string, sIP_time> res_table;
+	volatile int _sync_lock;
+};
+
+
+class cUtfConverter {
+public:
+	cUtfConverter();
+	~cUtfConverter();
+	bool check(const char *str);
+	string reverse(const char *str);
+	bool is_ascii(const char *str);
+	string remove_no_ascii(const char *str, const char subst = '_');
+	void _remove_no_ascii(const char *str, const char subst = '_');
+private:
+	bool init();
+	void term();
+	void lock() {
+		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
+			usleep(100);
+		}
+	}
+	void unlock() {
+		__sync_lock_release(&_sync_lock);
+	}
+private:
+	UConverter *cnv_utf8;
+	bool init_ok;
+	volatile int _sync_lock;
+};
+
+
+#endif

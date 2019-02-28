@@ -15,11 +15,10 @@
 #include <openssl/err.h>
 
 #include "cloud_router.h"
-
 #ifdef CLOUD_ROUTER_CLIENT
-#include "../tools.h"
+#include "../tools_global.h"
 #else
-#include "tools.h"
+#include "tools_global.h"
 #endif
 
 
@@ -251,7 +250,7 @@ protected:
 	sTimeouts timeouts;
 	int handle;
 	bool enableWriteReconnect;
-	bool terminate;
+	volatile bool terminate;
 	eSocketError error;
 	string error_str;
 	string error_descr;

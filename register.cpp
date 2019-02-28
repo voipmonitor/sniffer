@@ -34,6 +34,8 @@ extern Calltable *calltable;
 
 extern sExistsColumns existsColumns;
 
+extern cSqlDbData *dbData;
+
 Registers registers;
 
 
@@ -490,13 +492,17 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		if(!adj_ua.empty()) {
-			unsigned _cb_id = calltable->cb_ua_getId(adj_ua.c_str(), false, true);
-			if(_cb_id) {
-				reg.add(_cb_id, "ua_id");
+			if(useSetId()) {
+				reg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, adj_ua), "ua_id");
 			} else {
-				query_str += MYSQL_ADD_QUERY_END(string("set @ua_id = ") + 
-					     "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ")");
-				reg.add(MYSQL_VAR_PREFIX + "@ua_id", "ua_id");
+				unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), false, true);
+				if(_cb_id) {
+					reg.add(_cb_id, "ua_id");
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(string("set @ua_id = ") + 
+						     "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ")");
+					reg.add(MYSQL_VAR_PREFIX + "@ua_id", "ua_id");
+				}
 			}
 		}
 		query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
@@ -511,7 +517,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		sqlStore->query_lock(query_str.c_str(), storeId);
 	} else {
 		if(!adj_ua.empty()) {
-			reg.add(calltable->cb_ua_getId(adj_ua.c_str(), true), "ua_id");
+			reg.add(dbData->cb()->getId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), true), "ua_id");
 		}
 		sqlDbSaveRegister->insert(register_table, reg);
 	}

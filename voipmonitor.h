@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <string>
 #include <netdb.h>
+#include <unistd.h>
 #include "config.h"
 #include "common.h"
 #include "heap_safe.h"
@@ -101,33 +102,33 @@ sVerbose sverb;
 void vm_terminate();
 void vm_terminate_error(const char *terminate_error);
 inline void set_terminating() {
-	extern int terminating;
+	extern volatile int terminating;
 	terminating = 1;
 }
 inline void inc_terminating() {
-	extern int terminating;
+	extern volatile int terminating;
 	++terminating;
 }
 inline void clear_terminating() {
-	extern int terminating;
+	extern volatile int terminating;
 	terminating = 0;
 }
 inline int is_terminating() {
-	extern int terminating;
+	extern volatile int terminating;
 	return(terminating);
 }
 bool is_terminating_without_error();
 
 inline void set_readend() {
-	extern int readend;
+	extern volatile int readend;
 	readend = 1;
 }
 inline void clear_readend() {
-	extern int readend;
+	extern volatile int readend;
 	readend = 0;
 }
 inline bool is_readend() {
-	extern int readend;
+	extern volatile int readend;
 	return(readend);
 }
 
@@ -387,5 +388,9 @@ inline bool isCloudSsh() {
 inline bool isCloud() {
 	return(isCloudRouter() || isCloudSsh());
 }
+
+int useNewStore();
+bool useSetId();
+
 
 #endif //VOIPMONITOR_H

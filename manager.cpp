@@ -322,7 +322,6 @@ int Mgmt_skinnyports(Mgmt_params *params);
 int Mgmt_ignore_rtcp_jitter(Mgmt_params *params);
 int Mgmt_convertchars(Mgmt_params *params);
 int Mgmt_natalias(Mgmt_params *params);
-int Mgmt_cloud_activecheck(Mgmt_params *params);
 int Mgmt_jemalloc_stat(Mgmt_params *params);
 int Mgmt_list_active_clients(Mgmt_params *params);
 int Mgmt_memory_stat(Mgmt_params *params);
@@ -423,7 +422,6 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_ignore_rtcp_jitter,
 	Mgmt_convertchars,
 	Mgmt_natalias,
-	Mgmt_cloud_activecheck,
 	Mgmt_jemalloc_stat,
 	Mgmt_list_active_clients,
 	Mgmt_memory_stat,
@@ -4516,6 +4514,7 @@ int Mgmt_jemalloc_stat(Mgmt_params *params) {
 	return(params->sendString(&rsltMemoryStat));
 }
 
+/* obsolete
 int Mgmt_cloud_activecheck(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
 		params->registerCommand("cloud_activecheck", "cloud_activecheck");
@@ -4524,6 +4523,7 @@ int Mgmt_cloud_activecheck(Mgmt_params *params) {
 	cloud_activecheck_success();
 	return(0);
 }
+*/
 
 #ifndef FREEBSD
 int Mgmt_malloc_trim(Mgmt_params *params) {

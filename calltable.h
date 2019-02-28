@@ -1923,16 +1923,6 @@ public:
 		__sync_lock_release(&this->_sync_lock_calls_hash);
 	}
 	
-	void cbInit(SqlDb *sqlDb = NULL);
-	void cbLoad(SqlDb *sqlDb = NULL);
-	void cbTerm();
-	unsigned cb_ua_getId(const char *ua, bool enableInsert, bool enableAutoLoad = false);
-	unsigned cb_sip_response_getId(const char *response, bool enableInsert, bool enableAutoLoad = false);
-	unsigned cb_sip_request_getId(const char *request, bool enableInsert, bool enableAutoLoad = false);
-	unsigned cb_reason_sip_getId(const char *reason, bool enableInsert, bool enableAutoLoad = false);
-	unsigned cb_reason_q850_getId(const char *reason, bool enableInsert, bool enableAutoLoad = false);
-	unsigned cb_contenttype_getId(const char *content, bool enableInsert, bool enableAutoLoad = false);
-	
 	void addSystemCommand(const char *command);
 	
 private:
@@ -1972,6 +1962,7 @@ private:
 	cSqlDbCodebook *cb_reason_sip;
 	cSqlDbCodebook *cb_reason_q850;
 	cSqlDbCodebook *cb_contenttype;
+	cSqlDbCodebooks *cb;
 	
 	class AsyncSystemCommand *asyncSystemCommand;
 	

@@ -428,6 +428,12 @@ void cSnifferServerConnection::cp_service() {
 		if(opt_dup_check) {
 			ok_parameters.add("deduplicate", true);
 		}
+		if(useNewStore()) {
+			ok_parameters.add("mysql_new_store", useNewStore());
+		}
+		if(useSetId()) {
+			ok_parameters.add("mysql_set_id", useSetId());
+		}
 		okAndParameters = ok_parameters.getJson();
 	} else {
 		okAndParameters = "OK";
@@ -886,6 +892,12 @@ bool cSnifferClientService::receive_process_loop_begin() {
 							extern void set_context_config();
 							set_context_config();
 						}
+					} else {
+						snifferClientOptions.mysql_new_store = !rsltConnectData_json.getValue("mysql_new_store").empty() ?
+											atoi(rsltConnectData_json.getValue("mysql_new_store").c_str()) :
+											0;
+						snifferClientOptions.mysql_set_id = !rsltConnectData_json.getValue("mysql_set_id").empty() &&
+										    atoi(rsltConnectData_json.getValue("mysql_set_id").c_str());
 					}
 				} else {
 					if(!receive_socket->isError()) {

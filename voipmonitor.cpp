@@ -253,10 +253,11 @@ int opt_sipoverlap = 1;
 int opt_last_dest_number = 0;
 int opt_id_sensor = -1;		
 char opt_id_sensor_str[10];
+char opt_sensor_string[128];
 int opt_id_sensor_cleanspool = -1;	
 bool opt_use_id_sensor_for_receiver_in_files = false;
 char opt_name_sensor[256] = "";
-int readend = 0;
+volatile int readend = 0;
 int opt_dup_check = 0;
 int opt_dup_check_ipheader = 1;
 int opt_dup_check_ipheader_ignore_ttl = 1;
@@ -740,7 +741,6 @@ int opt_upgrade_try_http_if_https_fail = 0;
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 pthread_t storing_registers_thread;	// ID of worker storing CDR thread 
-pthread_t activechecking_cloud_thread; 
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
 //pthread_t destroy_calls_thread;
@@ -749,7 +749,7 @@ pthread_t manager_ssh_thread;
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
 pthread_t database_backup_thread;	// ID of worker backup thread 
 pthread_t tarqueuethread[2];	// ID of worker manager thread 
-int terminating;		// if set to 1, sniffer will terminate
+volatile int terminating;	// if set to 1, sniffer will terminate
 int terminating_moving_cache;	// if set to 1, worker thread will terminate
 int terminating_storing_cdr;	// if set to 1, worker thread will terminate
 int terminating_storing_registers;
@@ -1786,7 +1786,7 @@ void *storing_cdr( void */*dummy*/ ) {
 					regfailedcache->prunecheck(call->first_packet_time);
 					if(!opt_nocdr) {
 						if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
-							call->saveToDb(!is_read_from_file_simple());
+							call->saveToDb(!is_read_from_file_simple() || (isCloudRouter() && useNewStore() && useSetId()));
 						}
 						if(call->typeIs(MESSAGE)) {
 							call->saveMessageToDb();
@@ -1960,10 +1960,15 @@ void start_cloud_receiver() {
 	if(cloud_receiver) {
 		delete cloud_receiver;
 	}
-	cloud_receiver = new FILE_LINE(0) cCR_Receiver_service(cloud_token, opt_id_sensor > 0 ? opt_id_sensor : 0);
+	cloud_receiver = new FILE_LINE(0) cCR_Receiver_service(cloud_token, opt_id_sensor > 0 ? opt_id_sensor : 0, opt_sensor_string, RTPSENSOR_VERSION_INT());
 	cloud_receiver->setErrorTypeString(cSocket::_se_loss_connection, "connection to the cloud server has been lost - trying again");
 	cloud_receiver->start(cloud_host, cloud_router_port);
+	u_long startTime = getTimeMS();
 	while(!cloud_receiver->isStartOk() && !is_terminating()) {
+		if(is_read_from_file_simple() && getTimeMS() > startTime + 3 * 1000) {
+			vm_terminate();
+			break;
+		}
 		usleep(100000);
 	}
 }
@@ -1975,7 +1980,8 @@ void stop_cloud_receiver() {
 	}
 }
 
-void *activechecking_cloud( void */*dummy*/ ) {
+/* obsolete
+void *activechecking_cloud( void *dummy ) {
 	if (verbosity) syslog(LOG_NOTICE, "start - activechecking cloud thread");
 	cloud_activecheck_set();
 
@@ -2018,6 +2024,7 @@ void *activechecking_cloud( void */*dummy*/ ) {
 	if(verbosity) syslog(LOG_NOTICE, "terminated - cloud activecheck thread");
 	return NULL;
 }
+*/
 
 void *scanpcapdir( void */*dummy*/ ) {
  
@@ -3045,7 +3052,6 @@ int main(int argc, char *argv[]) {
 
 	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
 	if(isCloud()) {
-		//vm_pthread_create(&activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
 		if(isCloudRouter()) {
 			start_cloud_receiver();
 		} else {
@@ -3370,6 +3376,8 @@ int main_init_read() {
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
 		sqlDbInit = createSqlObject();
 	}
+	
+	dbDataInit(sqlDbInit);
 
 	calltable = new FILE_LINE(42013) Calltable(sqlDbInit);
 	
@@ -3551,6 +3559,7 @@ int main_init_read() {
 	}
 
 	// start activechecking cloud thread if in cloud mode and no zero activecheck_period
+	/* obsolete
 	if(isCloudSsh()) {
 		if (!opt_cloud_activecheck_period) {
 			if(verbosity) syslog(LOG_NOTICE, "notice - activechecking is disabled by config");
@@ -3559,6 +3568,7 @@ int main_init_read() {
 					  &activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
 		}
 	}
+	*/
 
 	if(opt_cachedir[0] != '\0') {
 		mv_r(opt_cachedir, opt_spooldir_main);
@@ -4083,6 +4093,8 @@ void main_term_read() {
 	delete calltable;
 	calltable = NULL;
 	
+	dbDataTerm();
+	
 	extern RTPstat rtp_stat;
 	rtp_stat.flush();
 	
@@ -4106,11 +4118,6 @@ void main_term_read() {
 	if(sqlDbSaveWebrtc) {
 		delete sqlDbSaveWebrtc;
 		sqlDbSaveWebrtc = NULL;
-	}
-	extern SqlDb_mysql *sqlDbEscape;
-	if(sqlDbEscape) {
-		delete sqlDbEscape;
-		sqlDbEscape = NULL;
 	}
 	
 	if(sqlStore) {
@@ -4179,9 +4186,6 @@ void main_init_sqlstore() {
 		if(opt_load_query_from_files != 2) {
 			sqlStore = new FILE_LINE(42037) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
 								   isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
-			if(opt_mysql_enable_set_id) {
-				sqlStore->setAutoIncrement("cdr");
-			}
 			if(opt_save_query_to_files) {
 				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 			}
@@ -6706,6 +6710,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"rtp-nosig", 0, 0, 'I'},
 	    {"cachedir", 1, 0, 'C'},
 	    {"id-sensor", 1, 0, 's'},
+	    {"sensor-string", 1, 0, 324},
 	    {"ipaccount", 0, 0, 'x'},
 	    {"pcapscan-dir", 1, 0, '0'},
 	    {"pcapscan-method", 1, 0, 900},
@@ -6760,6 +6765,9 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"test-billing", 1, 0, 320},
 	    {"watchdog", 1, 0, 316},
 	    {"cloud-db", 0, 0, 318},
+	    {"cloud-host", 1, 0, 325},
+	    {"cloud-token", 1, 0, 326},
+	    {"cloud-port", 1, 0, 327},
 	    {"disable-dbupgradecheck", 0, 0, 319},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
@@ -6910,6 +6918,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "disable_store_rtp_stat")		sverb.disable_store_rtp_stat = 1;
 	else if(verbParam == "disable_billing")			sverb.disable_billing = 1;
 	else if(verbParam == "disable_custom_headers")		sverb.disable_custom_headers = 1;
+	else if(verbParam == "disable_cloudshare")		sverb.disable_cloudshare = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -7064,6 +7073,9 @@ void get_command_line_arguments() {
 				break;
 			case 's':
 				opt_id_sensor = atoi(optarg);
+				break;
+			case 324:
+				strcpy_null_term(opt_sensor_string, optarg);
 				break;
 			case 'Z':
 				strcpy_null_term(opt_keycheck, optarg);
@@ -7226,6 +7238,15 @@ void get_command_line_arguments() {
 			case 318:
 				cloud_db = true;
 				break;
+			case 325:
+				strcpy_null_term(cloud_host, optarg);
+				break;
+			case 326:
+				strcpy_null_term(cloud_token, optarg);
+				break;
+			case 327:
+				cloud_router_port = atoi(optarg);
+				break;
 			case 319:
 				opt_disable_dbupgradecheck = true;
 				break;
@@ -7346,6 +7367,9 @@ void set_context_config() {
 	if(opt_mysql_enable_new_store && !is_support_for_mysql_new_store()) {
 		opt_mysql_enable_new_store = false;
 		syslog(LOG_ERR, "option mysql_enable_new_store is not suported in your configuration");
+	}
+	if(!opt_mysql_enable_new_store) {
+		opt_mysql_enable_set_id = false;
 	}
  
 	if(opt_scanpcapdir[0]) {
@@ -10288,9 +10312,7 @@ int check_set_rtp_threads(int num_rtp_threads) {
 bool is_support_for_mysql_new_store() {
 	return(!(opt_cdr_check_exists_callid ||
 		 opt_cdr_check_duplicity_callid_in_next_pass_insert ||
-		 opt_message_check_duplicity_callid_in_next_pass_insert ||
-		 isCloud() ||
-		 (is_client() && !is_client_packetbuffer_sender())));
+		 opt_message_check_duplicity_callid_in_next_pass_insert));
 }
 
 void dns_lookup_common_hostnames() {
@@ -10536,6 +10558,30 @@ bool CR_TERMINATE() {
 
 void CR_SET_TERMINATE() {
 	return(set_terminating());
+}
+
+
+int useNewStore() {
+	if(isCloudRouter() && cloud_receiver) {
+		return(cloud_receiver->get_use_mysql_set_id());
+	} else if(is_client()) {
+		return(snifferClientOptions.mysql_new_store);
+	}
+	extern int opt_mysql_enable_new_store;
+	extern bool opt_mysql_enable_set_id;
+	return(opt_mysql_enable_new_store ? 
+		opt_mysql_enable_new_store : 
+		opt_mysql_enable_set_id);
+}
+
+bool useSetId() {
+	if(isCloudRouter() && cloud_receiver) {
+		return(cloud_receiver->get_use_mysql_set_id());
+	} else if(is_client()) {
+		return(snifferClientOptions.mysql_set_id);
+	}
+	extern bool opt_mysql_enable_set_id;
+	return(opt_mysql_enable_set_id);
 }
 
 

@@ -2,16 +2,7 @@
 #define COMMON_H
 
 
-#if ( defined( __FreeBSD__ ) || defined ( __NetBSD__ ) )
-# ifndef FREEBSD
-#  define FREEBSD
-# endif
-#else
-# ifndef NO_FREEBSD
-#  define NO_FREEBSD
-# endif
-#endif
-
+#include "tools_define.h"
 
 #include <sys/types.h>
 
@@ -116,6 +107,7 @@ struct sVerbose {
 	int disable_store_rtp_stat;
 	int disable_billing;
 	int disable_custom_headers;
+	int disable_cloudshare;
 	int _debug1;
 	int _debug2;
 	int _debug3;
