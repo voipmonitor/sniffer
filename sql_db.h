@@ -120,11 +120,13 @@ public:
 	virtual void disconnect() = 0;
 	virtual bool connected() = 0;
 	bool reconnect();
+	bool setCsvInRemoteResult(bool useCsvInRemoteResult = true);
 	virtual bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL) = 0;
 	bool queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock = false);
 	bool queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	int _queryByRemoteSocket(string query, unsigned int pass);
 	int processResponseFromQueryBy(const char *response, unsigned pass);
+	int processResponseFromCsv(const char *response);
 	virtual string prepareQuery(string query, bool nextPass);
 	virtual SqlDb_row fetchRow() = 0;
 	string fetchValue(int indexField = 0);
@@ -133,6 +135,7 @@ public:
 	bool fetchValues(vector<string> *values, list<string> *nameFields);
 	unsigned fetchRows(SqlDb_rows *rows);
 	virtual string getJsonResult() { return(""); }
+	virtual string getCsvResult() { return(""); }
 	virtual string getJsonError() { return(""); }
 	virtual string getFieldsStr(list<SqlDb_field> *fields);
 	virtual string getCondStr(list<SqlDb_condField> *cond);
@@ -318,6 +321,7 @@ protected:
 	size_t response_data_index;
 	unsigned long maxAllowedPacket;
 	string prevQuery;
+	bool useCsvInRemoteResult;
 private:
 	unsigned int lastError;
 	string lastErrorString;
@@ -376,6 +380,7 @@ public:
 	bool fetchQueryResult(vector<string> *fields, vector<map<string, string_null> > *rows);
 	string getJsonResult(vector<string> *fields, vector<map<string, string_null> > *rows);
 	string getJsonResult();
+	string getCsvResult();
 	string getJsonError();
 	int64_t getInsertId();
 	bool existsDatabase();

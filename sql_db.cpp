@@ -417,6 +417,7 @@ SqlDb::SqlDb() {
 	this->remote_socket = NULL;
 	this->existsColumnCache_enable = false;
 	this->existsColumnCache_suspend = false;
+	this->useCsvInRemoteResult = false;
 }
 
 SqlDb::~SqlDb() {
@@ -464,6 +465,10 @@ bool SqlDb::reconnect() {
 		syslog(LOG_INFO, "reconnect rslt: %s", rslt ? "OK" : "FAIL");
 	}
 	return(rslt);
+}
+
+bool SqlDb::setCsvInRemoteResult(bool useCsvInRemoteResult) {
+	this->useCsvInRemoteResult = useCsvInRemoteResult;
 }
 
 bool SqlDb::queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock) {
@@ -611,6 +616,9 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 				}
 			}
 		}
+		if(this->useCsvInRemoteResult) {
+			preparedQuery = "CSV:" + preparedQuery;
+		}
 		int rsltProcessResponse = _queryByRemoteSocket(preparedQuery, pass);
 		send_query_counter++;
 		if(rsltProcessResponse == 1) {
@@ -638,6 +646,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 			}
 		}
 	}
+	this->useCsvInRemoteResult = false;
 	return(ok);
 }
 
@@ -684,11 +693,12 @@ int SqlDb::_queryByRemoteSocket(string query, unsigned int pass) {
 		setLastError(0, "response is empty", true);
 		return(0);
 	}
-	if(!isJsonObject(queryResponseStr)) {
-		setLastError(0, "response is not json", true);
-		return(0);
+	if(isJsonObject(queryResponseStr)) {
+		return(processResponseFromQueryBy(queryResponseStr.c_str(), pass));
+	} else if(queryResponseStr.substr(0, 3) == "CSV") {
+		return(processResponseFromCsv(queryResponseStr.c_str()));
 	}
-	return(processResponseFromQueryBy(queryResponseStr.c_str(), pass));
+	return(0);
 }
 
 int SqlDb::processResponseFromQueryBy(const char *response, unsigned pass) {
@@ -762,6 +772,64 @@ int SqlDb::processResponseFromQueryBy(const char *response, unsigned pass) {
 		return(1);
 	}
 	return(0);
+}
+
+int SqlDb::processResponseFromCsv(const char *response) {
+	response_data_columns.clear();
+	response_data.clear();
+	response_data_rows = 0;
+	response_data_index = 0;
+	unsigned row_counter = 0;
+	size_t pos = 4;
+	while(true) {
+		size_t posEndLine = 0;
+		const char *pointEndLine = strchr(response + pos, '\n');
+		if(pointEndLine) {
+			posEndLine = pointEndLine - response;
+			((char*)response)[posEndLine] = 0;
+		}
+		++row_counter;
+		const char *line = response + pos;
+		if(*line) {
+			//cout << line << endl;
+			unsigned column_counter = 0;
+			size_t posLine = 0;
+			while(true) {
+				size_t posCommaInLine = 0;
+				const char *pointCommaInLine = strchr(line + posLine, ',');
+				if(pointCommaInLine) {
+					posCommaInLine = pointCommaInLine - line;
+					((char*)line)[posCommaInLine] = 0;
+				}
+				++column_counter;
+				const char *column = line + posLine;
+				//cout << column << endl;
+				if(row_counter == 1) {
+					response_data_columns.push_back(column);
+				} else {
+					if(column_counter == 1) {
+						vector<sCloudDataItem> row;
+						response_data.push_back(row);
+					}
+					response_data[row_counter - 2].push_back(sCloudDataItem(column, false));
+				}
+				if(posCommaInLine) {
+					((char*)line)[posCommaInLine] = ',';
+					posLine = posCommaInLine + 1;
+				} else {
+					break;
+				}
+			}
+		}
+		if(posEndLine) {
+			((char*)response)[posEndLine] = '\n';
+			pos = posEndLine + 1;
+		} else {
+			break;
+		}
+	}
+	response_data_rows = row_counter > 1 ? row_counter - 1 : 0;
+	return(1);
 }
 
 string SqlDb::prepareQuery(string query, bool nextPass) {
@@ -1800,6 +1868,29 @@ string SqlDb_mysql::getJsonResult() {
 	vector<map<string, string_null> > rslt_rows;
 	this->fetchQueryResult(&rslt_fields, &rslt_rows);
 	return(this->getJsonResult(&rslt_fields, &rslt_rows));
+}
+
+string SqlDb_mysql::getCsvResult() {
+	vector<string> rslt_fields;
+	vector<map<string, string_null> > rslt_rows;
+	this->fetchQueryResult(&rslt_fields, &rslt_rows);
+	string rslt_csv = "CSV\n";
+	for(size_t i = 0; i < rslt_fields.size(); i++) {
+		if(i) {
+			rslt_csv += ",";
+		}
+		rslt_csv += rslt_fields[i];
+	}
+	for(size_t i = 0; i < rslt_rows.size(); i++) {
+		rslt_csv += "\n";
+		for(size_t j = 0; j < min(rslt_rows[i].size(), rslt_fields.size()); j++) {
+			if(j) {
+				rslt_csv += ",";
+			}
+			rslt_csv += rslt_rows[i][rslt_fields[j]].str;
+		}
+	}
+	return(rslt_csv);
 }
 
 string SqlDb_mysql::getJsonError() {

@@ -750,9 +750,11 @@ bool GeoIP_country::load(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
+	sqlDb->setCsvInRemoteResult(true);
 	sqlDb->query("select * \
 		      from " + tableName + " \
 		      order by ip_from");
+	sqlDb->setCsvInRemoteResult(false);
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;

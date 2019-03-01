@@ -591,8 +591,13 @@ void cSnifferServerConnection::cp_query() {
 		}
 		if(!queryStr.empty()) {
 			sqlDb->setMaxQueryPass(1);
+			bool useCsvRslt = false;
+			if(queryStr.substr(0, 4) == "CSV:") {
+				queryStr = queryStr.substr(4);
+				useCsvRslt = true;
+			}
 			if(sqlDb->query(queryStr)) {
-				string rsltQuery = sqlDb->getJsonResult();
+				string rsltQuery = useCsvRslt ? sqlDb->getCsvResult() : sqlDb->getJsonResult();
 				if(rsltQuery.length() > 100) {
 					u_char *rsltQueryGzip;
 					size_t rsltQueryGzipLength;
