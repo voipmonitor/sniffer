@@ -87,36 +87,45 @@ sSnifferServerServices::sSnifferServerServices() {
 
 void sSnifferServerServices::add(sSnifferServerService *service) {
 	lock();
-	map<int32_t, sSnifferServerService>::iterator iter = services.find(service->sensor_id);
+	string id = getIdService(service->sensor_id, service->sensor_string.c_str());
+	map<string, sSnifferServerService>::iterator iter = services.find(id);
 	if(iter != services.end()) {
 		iter->second.service_connection->setOrphan();
 		iter->second.service_connection->doTerminate();
 	}
-	services[service->sensor_id] = *service;
+	services[id] = *service;
 	unlock();
 }
 
 void sSnifferServerServices::remove(sSnifferServerService *service) {
 	lock();
-	map<int32_t, sSnifferServerService>::iterator iter = services.find(service->sensor_id);
+	string id = getIdService(service->sensor_id, service->sensor_string.c_str());
+	map<string, sSnifferServerService>::iterator iter = services.find(id);
 	if(iter != services.end()) {
 		services.erase(iter);
 	}
 	unlock();
 }
 
-bool sSnifferServerServices::existsService(int32_t sensor_id) {
+string sSnifferServerServices::getIdService(int32_t sensor_id, const char *sensor_string) {
+	return(intToString(sensor_id) + 
+	       (sensor_string && *sensor_string ? string("/") + sensor_string : ""));
+}
+
+bool sSnifferServerServices::existsService(int32_t sensor_id, const char *sensor_string) {
 	lock();
-	map<int32_t, sSnifferServerService>::iterator iter = services.find(sensor_id);
+	string id = getIdService(sensor_id, sensor_string);
+	map<string, sSnifferServerService>::iterator iter = services.find(id);
 	bool exists = iter != services.end();
 	unlock();
 	return(exists);
 }
 
-sSnifferServerService sSnifferServerServices::getService(int32_t sensor_id) {
+sSnifferServerService sSnifferServerServices::getService(int32_t sensor_id, const char *sensor_string) {
 	sSnifferServerService service;
 	lock();
-	map<int32_t, sSnifferServerService>::iterator iter = services.find(sensor_id);
+	string id = getIdService(sensor_id, sensor_string);
+	map<string, sSnifferServerService>::iterator iter = services.find(id);
 	if(iter != services.end()) {
 		service = iter->second;
 	}
@@ -124,12 +133,12 @@ sSnifferServerService sSnifferServerServices::getService(int32_t sensor_id) {
 	return(service);
 }
 
-cSnifferServerConnection *sSnifferServerServices::getServiceConnection(int32_t sensor_id) {
-	return(getService(sensor_id).service_connection);
+cSnifferServerConnection *sSnifferServerServices::getServiceConnection(int32_t sensor_id, const char *sensor_string) {
+	return(getService(sensor_id, sensor_string).service_connection);
 }
 
-bool sSnifferServerServices::getAesKeys(int32_t sensor_id, string *ckey, string *ivec) {
-	sSnifferServerService service = getService(sensor_id);
+bool sSnifferServerServices::getAesKeys(int32_t sensor_id, const char *sensor_string, string *ckey, string *ivec) {
+	sSnifferServerService service = getService(sensor_id, sensor_string);
 	if(!service.aes_ckey.empty() && !service.aes_ivec.empty()) {
 		*ckey = service.aes_ckey;
 		*ivec = service.aes_ivec;
@@ -147,7 +156,7 @@ string sSnifferServerServices::listJsonServices() {
 	if(services.size()) {
 		expAr = expServices.addArray("services");
 	}
-	for(map<int32_t, sSnifferServerService>::iterator iter = services.begin(); iter != services.end(); iter++) {
+	for(map<string, sSnifferServerService>::iterator iter = services.begin(); iter != services.end(); iter++) {
 		sSnifferServerService *service = &(iter->second);
 		JsonExport *expSer = expAr->addObject(NULL);
 		expSer->add("ip", inet_ntostring(htonl(service->connect_ipl)));
@@ -340,7 +349,7 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command)
 			<< "command: " << command;
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
-	cSnifferServerConnection *service_connection = snifferServerServices.getServiceConnection(sensor_id);
+	cSnifferServerConnection *service_connection = snifferServerServices.getServiceConnection(sensor_id, NULL);
 	if(!service_connection) {
 		socket->write("missing sniffer service - connect sensor?");
 		delete this;
@@ -390,8 +399,18 @@ void cSnifferServerConnection::cp_service() {
 	jsonPasswordAesKeys.parse(rsltPasswordAesKeys);
 	string password = jsonPasswordAesKeys.getValue("password");
 	int32_t sensor_id = atol(jsonPasswordAesKeys.getValue("sensor_id").c_str());
+	string sensor_string = jsonPasswordAesKeys.getValue("sensor_string");
 	string aes_ckey = jsonPasswordAesKeys.getValue("aes_ckey");
 	string aes_ivec = jsonPasswordAesKeys.getValue("aes_ivec");
+	unsigned int sensor_version = atol(jsonPasswordAesKeys.getValue("sensor_version").c_str());
+	if((useNewStore() || useSetId()) &&
+	   sensor_version < 23007000) {
+		string error = "need upgrade sensor!!!";
+		socket->writeBlock(error);
+		socket->setError(error.c_str());
+		delete this;
+		return;
+	}
 	string checkPasswordRsltStr;
 	if(!checkPassword(password, &checkPasswordRsltStr)) {
 		socket->writeBlock(checkPasswordRsltStr);
@@ -399,7 +418,7 @@ void cSnifferServerConnection::cp_service() {
 		delete this;
 		return;
 	}
-	if(sensor_id == max(opt_id_sensor, 0)) {
+	if(sensor_id == max(opt_id_sensor, 0) && sensor_string.empty()) {
 		string error = "client sensor_id must be different from receiver sensor_id";
 		socket->writeBlock(error);
 		socket->setError(error.c_str());
@@ -407,7 +426,7 @@ void cSnifferServerConnection::cp_service() {
 		return;
 	}
 	if(jsonPasswordAesKeys.getValue("restore").empty() &&
-	   snifferServerServices.existsService(sensor_id)) {
+	   snifferServerServices.existsService(sensor_id, sensor_string.c_str())) {
 		string error = "client with sensor_id " + intToString(sensor_id) + " is already connected, refusing connection";
 		socket->writeBlock(error);
 		socket->setError(error.c_str());
@@ -447,13 +466,19 @@ void cSnifferServerConnection::cp_service() {
 		ostringstream verbstr;
 		verbstr << "SERVER SERVICE START: "
 			<< "sensor_id: " << sensor_id;
+		if(!sensor_string.empty()) {
+			verbstr << ", " << "sensor_string: " << sensor_string;
+		}
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
-	updateSensorState(sensor_id);
+	if(!is_read_from_file_simple()) {
+		updateSensorState(sensor_id);
+	}
 	sSnifferServerService service;
 	service.connect_ipl = socket->getIPL();
 	service.connect_port = socket->getPort();
 	service.sensor_id = sensor_id;
+	service.sensor_string = sensor_string;
 	service.service_connection = this;
 	service.aes_ckey = aes_ckey;
 	service.aes_ivec = aes_ivec;
@@ -467,6 +492,9 @@ void cSnifferServerConnection::cp_service() {
 				ostringstream verbstr;
 				verbstr << "SNIFFER SERVICE STOP: "
 					<< "sensor_id: " << sensor_id;
+				if(!sensor_string.empty()) {
+					verbstr << ", " << "sensor_string: " << sensor_string;
+				}
 				syslog(LOG_INFO, "%s", verbstr.str().c_str());
 			}
 			break;
@@ -487,6 +515,9 @@ void cSnifferServerConnection::cp_service() {
 							ostringstream verbstr;
 							verbstr << "SNIFFER SERVICE DISCONNECT: "
 								<< "sensor_id: " << sensor_id;
+							if(!sensor_string.empty()) {
+								verbstr << ", " << "sensor_string: " << sensor_string;
+							}
 							syslog(LOG_INFO, "%s", verbstr.str().c_str());
 						}
 						break;
@@ -521,7 +552,7 @@ void cSnifferServerConnection::cp_respone(string gui_task_id, u_char *remainder,
 	}
 	int32_t sensor_id = snifferServerGuiTasks.getSensorId(gui_task_id);
 	string aes_ckey, aes_ivec;
-	snifferServerServices.getAesKeys(sensor_id, &aes_ckey, &aes_ivec);
+	snifferServerServices.getAesKeys(sensor_id, NULL, &aes_ckey, &aes_ivec);
 	if(aes_ckey.empty() || aes_ivec.empty()) {
 		if(remainder) {
 			delete [] remainder;
@@ -784,8 +815,10 @@ string cSnifferServerConnection::getTypeConnectionStr() {
 }
 
 
-cSnifferClientService::cSnifferClientService(int32_t sensor_id) {
+cSnifferClientService::cSnifferClientService(int32_t sensor_id, const char *sensor_string, unsigned sensor_version) {
 	this->sensor_id = sensor_id;
+	this->sensor_string = sensor_string ? sensor_string : "";
+	this->sensor_version = sensor_version;
 	port = 0;
 	connection_ok = false;
 }
@@ -836,11 +869,15 @@ bool cSnifferClientService::receive_process_loop_begin() {
 	receive_socket->generate_aes_keys();
 	JsonExport json_keys;
 	json_keys.add("sensor_id", sensor_id);
+	if(!sensor_string.empty()) {
+		json_keys.add("sensor_string", sensor_string);
+	}
 	json_keys.add("password", snifferServerClientOptions.password);
 	string aes_ckey, aes_ivec;
 	receive_socket->get_aes_keys(&aes_ckey, &aes_ivec);
 	json_keys.add("aes_ckey", aes_ckey);
 	json_keys.add("aes_ivec", aes_ivec);
+	json_keys.add("sensor_version", sensor_version);
 	if(start_ok) {
 		json_keys.add("restore", true);
 	}
@@ -989,7 +1026,8 @@ void snifferClientStart() {
 	if(snifferClientService) {
 		delete snifferClientService;
 	}
-	snifferClientService = new FILE_LINE(0) cSnifferClientService(opt_id_sensor > 0 ? opt_id_sensor : 0);
+	extern char opt_sensor_string[128];
+	snifferClientService = new FILE_LINE(0) cSnifferClientService(opt_id_sensor > 0 ? opt_id_sensor : 0, opt_sensor_string, RTPSENSOR_VERSION_INT());
 	snifferClientService->setErrorTypeString(cSocket::_se_loss_connection, "connection to the server has been lost - trying again");
 	snifferClientService->start(snifferClientOptions.host, snifferClientOptions.port);
 	while(!snifferClientService->isStartOk() && !is_terminating()) {

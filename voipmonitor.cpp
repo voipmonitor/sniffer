@@ -1748,7 +1748,7 @@ void *storing_cdr( void */*dummy*/ ) {
 					regfailedcache->prunecheck(call->first_packet_time);
 					if(!opt_nocdr) {
 						if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
-							call->saveToDb(!is_read_from_file_simple() || (isCloudRouter() && useNewStore() && useSetId()));
+							call->saveToDb(!is_read_from_file_simple() || isCloudRouter() || is_client());
 						}
 						if(call->typeIs(MESSAGE)) {
 							call->saveMessageToDb();
@@ -6734,6 +6734,9 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"cloud-host", 1, 0, 325},
 	    {"cloud-token", 1, 0, 326},
 	    {"cloud-port", 1, 0, 327},
+	    {"server-host", 1, 0, 328},
+	    {"server-port", 1, 0, 329},
+	    {"server-pass", 1, 0, 330},
 	    {"disable-dbupgradecheck", 0, 0, 319},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
@@ -7212,6 +7215,17 @@ void get_command_line_arguments() {
 				break;
 			case 327:
 				cloud_router_port = atoi(optarg);
+				break;
+			case 328:
+				snifferClientOptions.host = optarg;
+				break;
+			case 329:
+				snifferClientOptions.port = atoi(optarg);
+				break;
+			case 330:
+				if(optarg) {
+					snifferServerClientOptions.password = optarg;
+				}
 				break;
 			case 319:
 				opt_disable_dbupgradecheck = true;

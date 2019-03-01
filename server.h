@@ -146,6 +146,7 @@ struct sSnifferServerService {
 	u_int32_t connect_ipl;
 	u_int16_t connect_port;
 	int32_t sensor_id;
+	string sensor_string;
 	class cSnifferServerConnection *service_connection;
 	string aes_ckey;
 	string aes_ivec;
@@ -157,10 +158,11 @@ public:
 	sSnifferServerServices();
 	void add(sSnifferServerService *service);
 	void remove(sSnifferServerService *service);
-	bool existsService(int32_t sensor_id);
-	sSnifferServerService getService(int32_t sensor_id);
-	class cSnifferServerConnection *getServiceConnection(int32_t sensor_id);
-	bool getAesKeys(int32_t sensor_id, string *ckey, string *ivec);
+	string getIdService(int32_t sensor_id, const char *sensor_string);
+	bool existsService(int32_t sensor_id, const char *sensor_string);
+	sSnifferServerService getService(int32_t sensor_id, const char *sensor_string);
+	class cSnifferServerConnection *getServiceConnection(int32_t sensor_id, const char *sensor_string);
+	bool getAesKeys(int32_t sensor_id, const char *sensor_string, string *ckey, string *ivec);
 	string listJsonServices();
 private:
 	void lock() {
@@ -174,7 +176,7 @@ private:
 		__sync_lock_release(&_sync_lock);
 	}
 public:
-	map<int32_t, sSnifferServerService> services;
+	map<string, sSnifferServerService> services;
 	volatile int _sync_lock;
 };
 
@@ -273,12 +275,14 @@ private:
 
 class cSnifferClientService : public cReceiver {
 public:
-	cSnifferClientService(int32_t sensor_id);
+	cSnifferClientService(int32_t sensor_id, const char *sensor_string, unsigned sensor_version);
 	bool start(string host, u_int16_t port);
 	virtual bool receive_process_loop_begin();
 	virtual void evData(u_char *data, size_t dataLen);
 protected:
 	int32_t sensor_id;
+	string sensor_string;
+	unsigned sensor_version;
 	string host;
 	u_int16_t port;
 	bool connection_ok;
