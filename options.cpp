@@ -991,13 +991,19 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 			}
 		}
 		if(useNewStore()) {
-			query_str += MYSQL_GET_MAIN_INSERT_ID_OLD;
+			if(useSetId()) {
+				rec.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "ID");
+			} else {
+				query_str += MYSQL_GET_MAIN_INSERT_ID_OLD;
+			}
 		}
 		query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT + 
 			     sqlDbSaveSipMsg->insertQuery(table.c_str(), rec, false, false));
 		if(useNewStore()) {
-			query_str += MYSQL_GET_MAIN_INSERT_ID + 
-				     MYSQL_IF_MAIN_INSERT_ID;
+			if(!useSetId()) {
+				query_str += MYSQL_GET_MAIN_INSERT_ID + 
+					     MYSQL_IF_MAIN_INSERT_ID;
+			}
 		} else {
 			query_str += "if row_count() > 0 then\n" +
 				     MYSQL_GET_MAIN_INSERT_ID;
@@ -1024,7 +1030,9 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 			}
 		}
 		if(useNewStore()) {
-			query_str += MYSQL_ENDIF_QE;
+			if(!useSetId()) {
+				query_str += MYSQL_ENDIF_QE;
+			}
 		} else {
 			query_str += "end if";
 		}
