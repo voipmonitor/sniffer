@@ -641,7 +641,7 @@ void __store_prepare_queries(list<string> *queries, cSqlDbCodebooks *codebooks, 
 				      (cbIdValueSeparatorPos = query_vect[i].find(";", cbIdLengthSeparatorPos + 1)) != string::npos) {
 					unsigned nameValueLength = atoi(query_vect[i].c_str() + cbIdPrefixPos + MYSQL_CODEBOOK_ID_PREFIX.length());
 					unsigned endPos = cbIdLengthSeparatorPos + nameValueLength;
-					if(endPos < query_vect[i].length() - 3 &&
+					if(endPos < query_vect[i].length() - 2 &&
 					   (query_vect[i][endPos + 1] == ',' ||
 					    query_vect[i][endPos + 1] == ')' ||
 					    (query_vect[i][endPos + 1] == ' ' && query_vect[i][endPos + 2] == ')'))) {
