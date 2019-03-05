@@ -120,7 +120,7 @@ public:
 	virtual void disconnect() = 0;
 	virtual bool connected() = 0;
 	bool reconnect();
-	bool setCsvInRemoteResult(bool useCsvInRemoteResult = true);
+	void setCsvInRemoteResult(bool useCsvInRemoteResult = true);
 	virtual bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL) = 0;
 	bool queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock = false);
 	bool queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);

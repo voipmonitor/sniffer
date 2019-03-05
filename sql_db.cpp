@@ -467,7 +467,7 @@ bool SqlDb::reconnect() {
 	return(rslt);
 }
 
-bool SqlDb::setCsvInRemoteResult(bool useCsvInRemoteResult) {
+void SqlDb::setCsvInRemoteResult(bool useCsvInRemoteResult) {
 	this->useCsvInRemoteResult = useCsvInRemoteResult;
 }
 
