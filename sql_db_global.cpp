@@ -101,6 +101,7 @@ cSqlDbCodebook::cSqlDbCodebook(eTypeCodebook type, const char *name,
 	this->limitTableRows = limitTableRows;
 	this->u_data = NULL;
 	autoLoadPeriod = 0;
+	loaded = false;
 	data_overflow = false;
 	_sync_data = 0;
 	_sync_load = 0;
@@ -125,7 +126,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool 
 	if(data_overflow) {
 		return(0);
 	}
-	#ifdef CLOUD_ROUTER_CLIENT
+	#ifndef CLOUD_ROUTER_SERVER
 	if(sverb.disable_cb_cache) {
 		return(0);
 	}
@@ -139,7 +140,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool 
 		}
 	} else {
 		#ifdef CLOUD_ROUTER_SERVER
-		if(sqlDb) {
+		if(sqlDb && !loaded) {
 			lock_load();
 			this->_load(&data, NULL, sqlDb);
 			unlock_load();
@@ -153,7 +154,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool 
 		#endif
 	}
 	if(!rslt) {
-		#ifdef CLOUD_ROUTER_CLIENT
+		#ifndef CLOUD_ROUTER_SERVER
 			if(useSetId()) {
 				rslt = autoincrement->getId(this->table.c_str());
 				SqlDb *sqlDb = createSqlObject();
@@ -190,8 +191,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool 
 				}
 				delete sqlDb;
 			}
-		#endif
-		#ifdef CLOUD_ROUTER_SERVER
+		#else
 			rslt = autoincrement->getId(this->table.c_str());
 			string columns = columnId + "," + columnStringValue;
 			string values = intToString(rslt) + "," + sqlEscapeStringBorder(stringValue);
@@ -204,6 +204,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool 
 		#endif
 	}
 	unlock_data();
+	#ifndef CLOUD_ROUTER_SERVER
 	if(!rslt && enableAutoLoad && this->autoLoadPeriod && !_sync_load) {
 		u_long actTime = getTimeS();
 		if(lastBeginLoadTime + this->autoLoadPeriod < actTime &&
@@ -211,6 +212,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool 
 			loadInBackground();
 		}
 	}
+	#endif
 	return(rslt);
 }
 
@@ -225,6 +227,7 @@ void cSqlDbCodebook::load(SqlDb *sqlDb) {
 			this->data_overflow = data_overflow;
 			unlock_data();
 		}
+		loaded = true;
 		unlock_load();
 	}
 }
@@ -249,7 +252,7 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	#ifdef CLOUD_ROUTER_CLIENT
+	#ifndef CLOUD_ROUTER_SERVER
 		sqlDb->setMaxQueryPass(2);
 		if(sqlDb->rowsInTable(table, true) > this->limitTableRows) {
 			*overflow = true;
@@ -392,8 +395,18 @@ cSqlDbData::~cSqlDbData() {
 	}
 }
 
-void cSqlDbData::init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb) {
+void cSqlDbData::init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb, bool reload) {
 	lock_init();
+	if(reload) {
+		if(codebooks) {
+			delete codebooks;
+			codebooks = NULL;
+		}
+		if(autoincrement) {
+			delete autoincrement;
+			autoincrement = NULL;
+		}
+	}
 	bool _initCodebooks = false;
 	bool _initAutoincrement = false;
 	if(!codebooks) {
@@ -429,7 +442,9 @@ void cSqlDbData::initCodebooks(bool loadAll, unsigned limitTableRows, SqlDb *sql
 	codebooks->registerCodebook(cb_reason_q850);
 	codebooks->registerCodebook(cb_contenttype);
 	if(loadAll) {
+		#ifndef CLOUD_ROUTER_SERVER
 		codebooks->setAutoLoadPeriodForAll(6 * 3600);
+		#endif
 		codebooks->loadAll(sqlDb);
 	}
 }

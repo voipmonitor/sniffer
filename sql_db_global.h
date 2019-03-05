@@ -139,6 +139,7 @@ private:
 	list<SqlDb_condField> cond;
 	unsigned autoLoadPeriod;
 	map<string, unsigned> data;
+	bool loaded;
 	bool data_overflow;
 	volatile int _sync_data;
 	volatile int _sync_load;
@@ -172,7 +173,7 @@ class cSqlDbData {
 public:
 	cSqlDbData();
 	~cSqlDbData();
-	void init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb);
+	void init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb, bool reload = false);
 	cSqlDbCodebooks *cb() { return(codebooks); }
 	cSqlDbAutoIncrement *ai() { return(autoincrement); }
 private:

@@ -16,7 +16,7 @@
 #include <openssl/err.h>
 
 #include "cloud_router.h"
-#ifdef CLOUD_ROUTER_CLIENT
+#ifndef CLOUD_ROUTER_SERVER
 #include "../tools_global.h"
 #else
 #include "tools_global.h"

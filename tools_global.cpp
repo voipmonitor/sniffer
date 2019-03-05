@@ -7,7 +7,7 @@
 
 #include "tools_global.h"
 
-#ifdef CLOUD_ROUTER_CLIENT
+#ifndef CLOUD_ROUTER_SERVER
 #include "tools.h"
 #include "common.h"
 cThreadMonitor threadMonitor;
@@ -22,7 +22,7 @@ struct vm_pthread_struct {
 void *vm_pthread_create_start_routine(void *arg) {
 	vm_pthread_struct thread_data = *(vm_pthread_struct*)arg;
 	delete (vm_pthread_struct*)arg;
-	#ifdef CLOUD_ROUTER_CLIENT
+	#ifndef CLOUD_ROUTER_SERVER
 	threadMonitor.registerThread(thread_data.description.c_str());
 	#endif
 	return(thread_data.start_routine(thread_data.arg));
@@ -31,7 +31,7 @@ int vm_pthread_create(const char *thread_description,
 		      pthread_t *thread, pthread_attr_t *attr,
 		      void *(*start_routine) (void *), void *arg,
 		      const char *src_file, int src_file_line, bool autodestroy) {
-	#ifdef CLOUD_ROUTER_CLIENT
+	#ifndef CLOUD_ROUTER_SERVER
 	if(sverb.thread_create && src_file && src_file_line) {
 		syslog(LOG_NOTICE, "create thread %sfrom %s : %i", 
 		       autodestroy ? "(autodestroy) " : "", src_file, src_file_line);
