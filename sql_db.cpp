@@ -609,7 +609,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 					setLastError(0, "failed response from cloud router - " + connectResponse, true);
 					delete this->remote_socket;
 					this->remote_socket = NULL;
-					break;
+					continue;
 				} else {
 					setLastError(0, "failed read ok", true);
 					continue;
