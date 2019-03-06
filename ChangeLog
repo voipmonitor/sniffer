@@ -5,6 +5,7 @@
 - do not log cannot be converted to WAV because the codec to syslog [VS-873]
 - implement reassemble of decrypted SIP packets [VS-890]
 
+
 23.6.1 11.02.2019
 =================
 - fix 23.6 regression sql store_001 error
