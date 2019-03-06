@@ -8141,7 +8141,7 @@ string MYSQL_ADD_QUERY_END(string query) {
 
 
 void dbDataInit(SqlDb *sqlDb) {
-	dbData = new cSqlDbData();
+	dbData = new FILE_LINE(0) cSqlDbData();
 	if(!opt_nocdr) {
 		dbData->init(true, 500000, sqlDb);
 	}

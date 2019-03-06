@@ -3740,14 +3740,14 @@ int main_init_read() {
 		
 		if(opt_pcap_queue_use_blocks && !is_sender() && !is_client_packetbuffer_sender()) {
 			if(opt_udpfrag) {
-				pcapQueueQ_outThread_defrag = new PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
+				pcapQueueQ_outThread_defrag = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
 				pcapQueueQ_outThread_defrag->start();
 			}
 			if(opt_dup_check && 
 			   (is_receiver() || is_server() ?
 			     !opt_receiver_check_id_sensor :
 			     ifnamev.size() > 1)) {
-				pcapQueueQ_outThread_dedup = new PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
+				pcapQueueQ_outThread_dedup = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
 				pcapQueueQ_outThread_dedup->start();
 			}
 		}
@@ -5204,7 +5204,7 @@ void test() {
 		break;
 	case 310:
 		{
-		Call *call = new Call(0, (char*)"conv-raw-info", 0, 0);
+		Call *call = new FILE_LINE(0) Call(0, (char*)"conv-raw-info", 0, 0);
 		call->type_base = INVITE;
 		call->force_spool_path = opt_test_arg;
 		sverb.noaudiounlink = true;
@@ -6794,7 +6794,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "ssl_sessionkey")			sverb.ssl_sessionkey = 1;
 	else if(verbParam == "sip")				sverb.sip = 1;
 	else if(verbParam.substr(0, 25) == "tcpreassembly_debug_file=")
-								{ sverb.tcpreassembly_debug_file = new char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbParam.c_str() + 25); }
+								{ sverb.tcpreassembly_debug_file = new FILE_LINE(0) char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbParam.c_str() + 25); }
 	else if(verbParam == "ssldecode")			sverb.ssldecode = 1;
 	else if(verbParam == "ssldecode_debug")			sverb.ssldecode_debug = 1;
 	else if(verbParam == "sip_packets")			sverb.sip_packets = 1;

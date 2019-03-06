@@ -1366,7 +1366,7 @@ string cSipMsgRelations::getDataTableJson(char *params, bool *zip) {
 		string filter = jsonParams.getValue("filter");
 		if(!filter.empty()) {
 			//cout << "FILTER: " << filter << endl;
-			cSipMsgFilter *optFilter = new cSipMsgFilter(filter.c_str());
+			cSipMsgFilter *optFilter = new FILE_LINE(0) cSipMsgFilter(filter.c_str());
 			for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); ) {
 				if(!optFilter->check(&(*iter_rec))) {
 					iter_rec->free();

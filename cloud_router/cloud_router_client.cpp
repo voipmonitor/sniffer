@@ -140,7 +140,7 @@ void cCR_Receiver_service::evData(u_char *data, size_t dataLen) {
 	string idCommand = string((char*)data, dataLen);
 	size_t idCommandSeparatorPos = idCommand.find('/'); 
 	if(idCommandSeparatorPos != string::npos) {
-		cCR_Client_response *response = new cCR_Client_response(idCommand.substr(0, idCommandSeparatorPos), idCommand.substr(idCommandSeparatorPos + 1));
+		cCR_Client_response *response = new FILE_LINE(0) cCR_Client_response(idCommand.substr(0, idCommandSeparatorPos), idCommand.substr(idCommandSeparatorPos + 1));
 		response->start(receive_socket->getHost(), receive_socket->getPort());
 	}
 }

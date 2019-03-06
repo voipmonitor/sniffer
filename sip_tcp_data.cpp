@@ -58,7 +58,7 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 					cache_data->data[md5_data] = cache_time;
 				}
 			} else {
-				Cache_data *cache_data = new Cache_data;
+				Cache_data *cache_data = new FILE_LINE(0) Cache_data;
 				cache_data->data[md5_data] = cache_time;
 				cache[cache_id] = cache_data;
 			}

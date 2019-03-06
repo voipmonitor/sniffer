@@ -5904,7 +5904,7 @@ u_int32_t cStringCache::getId(const char *str) {
 	}
 	u_int32_t rslt = 0;
 	cItem str_item;
-	str_item.str = new string(str);
+	str_item.str = new FILE_LINE(0) string(str);
 	lock();
 	map<cItem, u_int32_t>::iterator iter = map_items.find(str_item);
 	if(iter != map_items.end()) {

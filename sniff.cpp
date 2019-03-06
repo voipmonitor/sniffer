@@ -7717,7 +7717,7 @@ packet_s_process *PreProcessPacket::clonePacketS(u_char *newData, unsigned newDa
 	*newPacketS = *packetS;
 	newPacketS->blockstore_clear();
 	long newLen = newDataLength + newPacketS->dataoffset;
-	pcap_pkthdr *new_header = new pcap_pkthdr;
+	pcap_pkthdr *new_header = new FILE_LINE(0) pcap_pkthdr;
 	*new_header = *newPacketS->header_pt;
 	new_header->caplen = newLen;
 	new_header->len = newLen;

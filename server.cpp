@@ -204,7 +204,7 @@ void cSnifferServer::createConnection(cSocket *socket) {
 	if(is_terminating() || terminate) {
 		return;
 	}
-	cSnifferServerConnection *connection = new cSnifferServerConnection(socket, this);
+	cSnifferServerConnection *connection = new FILE_LINE(0) cSnifferServerConnection(socket, this);
 	connection->connection_start();
 }
 
@@ -970,7 +970,7 @@ void cSnifferClientService::evData(u_char *data, size_t dataLen) {
 	string idCommand = string((char*)data, dataLen);
 	size_t idCommandSeparatorPos = idCommand.find('/'); 
 	if(idCommandSeparatorPos != string::npos) {
-		cSnifferClientResponse *response = new cSnifferClientResponse(idCommand.substr(0, idCommandSeparatorPos), idCommand.substr(idCommandSeparatorPos + 1));
+		cSnifferClientResponse *response = new FILE_LINE(0) cSnifferClientResponse(idCommand.substr(0, idCommandSeparatorPos), idCommand.substr(idCommandSeparatorPos + 1));
 		response->start(receive_socket->getHost(), receive_socket->getPort());
 	}
 }

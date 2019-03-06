@@ -912,7 +912,7 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 		string filter = jsonParams.getValue("filter");
 		if(!filter.empty()) {
 			//cout << "FILTER: " << filter << endl;
-			cRegisterFilter *regFilter = new cRegisterFilter(filter.c_str());
+			cRegisterFilter *regFilter = new FILE_LINE(0) cRegisterFilter(filter.c_str());
 			for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); ) {
 				if(!regFilter->check(&(*iter_rec))) {
 					iter_rec->free();

@@ -27,6 +27,8 @@
 #include <wireshark/epan/print.h>
 #endif
 
+#include "heap_safe.h"
+
 
 using namespace std;
  
@@ -67,7 +69,7 @@ void ws_epan_term() {
 void ws_gener_json(epan_dissect_t *edt, string *rslt) {
 	rslt->resize(0);
 	unsigned buff_size = 1000000;
-	char *buff = new char[buff_size];
+	char *buff = new FILE_LINE(0) char[buff_size];
 	FILE *file = fmemopen(buff, buff_size, "w");
 	if(file) {
 		output_fields_t* output_fields  = NULL;

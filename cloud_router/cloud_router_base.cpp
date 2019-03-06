@@ -40,7 +40,7 @@ void cRsa::generate_keys() {
 	BIO *priv_key_bio = BIO_new(BIO_s_mem());
 	PEM_write_bio_RSAPrivateKey(priv_key_bio, rsa, NULL, NULL, 0, NULL, NULL);
 	int priv_key_length = BIO_pending(priv_key_bio);
-	char *priv_key_buffer = new char[priv_key_length];
+	char *priv_key_buffer = new FILE_LINE(0) char[priv_key_length];
 	BIO_read(priv_key_bio, priv_key_buffer, priv_key_length);
 	priv_key = string(priv_key_buffer, priv_key_length);
 	delete [] priv_key_buffer;
@@ -49,7 +49,7 @@ void cRsa::generate_keys() {
 	BIO *pub_key_bio = BIO_new(BIO_s_mem());
 	PEM_write_bio_RSA_PUBKEY(pub_key_bio, rsa);
 	int pub_key_length = BIO_pending(pub_key_bio);
-	char *pub_key_buffer = new char[pub_key_length];
+	char *pub_key_buffer = new FILE_LINE(0) char[pub_key_length];
 	BIO_read(pub_key_bio, pub_key_buffer, pub_key_length);
 	pub_key_gener = string(pub_key_buffer, pub_key_length);
 	pub_key = pub_key_gener;
@@ -92,7 +92,7 @@ bool cRsa::public_encrypt(u_char **data, size_t *datalen, bool destroyOldData) {
 			return(false);
 		}
 	}
-	u_char *data_enc = new u_char[*datalen * 2 + 1000];
+	u_char *data_enc = new FILE_LINE(0) u_char[*datalen * 2 + 1000];
 	int data_enc_len = RSA_public_encrypt(*datalen, *data, data_enc, pub_rsa, padding);
 	if(data_enc_len <= 0) {
 		return(false);
@@ -111,7 +111,7 @@ bool cRsa::private_decrypt(u_char **data, size_t *datalen, bool destroyOldData) 
 			return(false);
 		}
 	}
-	u_char *data_dec = new u_char[*datalen * 2 + 1000];
+	u_char *data_dec = new FILE_LINE(0) u_char[*datalen * 2 + 1000];
 	int data_dec_len = RSA_private_decrypt(*datalen, *data, data_dec, priv_rsa, padding);
 	if(data_dec_len <= 0) {
 		return(false);
@@ -130,7 +130,7 @@ bool cRsa::private_encrypt(u_char **data, size_t *datalen, bool destroyOldData) 
 			return(false);
 		}
 	}
-	u_char *data_enc = new u_char[*datalen * 2 + 1000];
+	u_char *data_enc = new FILE_LINE(0) u_char[*datalen * 2 + 1000];
 	int data_enc_len = RSA_private_encrypt(*datalen, *data, data_enc, priv_rsa, padding);
 	if(data_enc_len <= 0) {
 		return(false);
@@ -149,7 +149,7 @@ bool cRsa::public_decrypt(u_char **data, size_t *datalen, bool destroyOldData) {
 			return(false);
 		}
 	}
-	u_char *data_dec = new u_char[*datalen * 2 + 1000];
+	u_char *data_dec = new FILE_LINE(0) u_char[*datalen * 2 + 1000];
 	int data_dec_len = RSA_public_decrypt(*datalen, *data, data_dec, pub_rsa, padding);
 	if(data_dec_len <= 0) {
 		return(false);
@@ -163,7 +163,7 @@ bool cRsa::public_decrypt(u_char **data, size_t *datalen, bool destroyOldData) {
 }
 
 string cRsa::getError() {
-	char *error_buffer = new char[1000];;
+	char *error_buffer = new FILE_LINE(0) char[1000];;
 	ERR_load_crypto_strings();
 	ERR_error_string(ERR_get_error(), error_buffer);
 	string error = error_buffer;
@@ -210,7 +210,7 @@ bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *data
 			return(false);
 		}
 	}
-	*data_enc = new u_char[datalen * 2 + 1000];
+	*data_enc = new FILE_LINE(0) u_char[datalen * 2 + 1000];
 	int datalen_enc_part1 = 0;
 	int datalen_enc_part2 = 0;
 	if(datalen) {
@@ -248,7 +248,7 @@ bool cAes::decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *data
 			return(false);
 		}
 	}
-	*data_dec = new u_char[datalen + 1000];
+	*data_dec = new FILE_LINE(0) u_char[datalen + 1000];
 	int datalen_dec_part1 = 0;
 	int datalen_dec_part2 = 0;
 	if(datalen) {
@@ -273,7 +273,7 @@ bool cAes::decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *data
 }
 
 string cAes::getError() {
-	char *error_buffer = new char[1000];;
+	char *error_buffer = new FILE_LINE(0) char[1000];
 	ERR_load_crypto_strings();
 	ERR_error_string(ERR_get_error(), error_buffer);
 	string error = error_buffer;
@@ -488,7 +488,7 @@ bool cSocket::await(cSocket **clientSocket) {
 					fcntl(clientHandle, F_SETFL, flags | O_NONBLOCK);
 				}
 				if(clientSocket) {
-					*clientSocket = new cSocket("client/await");
+					*clientSocket = new FILE_LINE(0) cSocket("client/await");
 					(*clientSocket)->host = inet_ntoa(clientInfo.sin_addr);
 					(*clientSocket)->port = htons(clientInfo.sin_port);
 					(*clientSocket)->ipl = clientInfo.sin_addr.s_addr;
@@ -648,7 +648,7 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
 }
 
 bool cSocket::writeXorKeyEnc(u_char *data, size_t dataLen) {
-	u_char *dataEnc = new u_char[dataLen];
+	u_char *dataEnc = new FILE_LINE(0) u_char[dataLen];
 	memcpy(dataEnc, data, dataLen);
 	encodeXorKeyWriteBuffer(dataEnc, dataLen);
 	bool rsltWrite = write(dataEnc, dataLen);
@@ -774,7 +774,7 @@ void cSocket::setError(const char *formatError, ...) {
 	}
 	error = _se_error_str;
 	unsigned error_buffer_length = 1024*1024;
-	char *error_buffer = new char[error_buffer_length];
+	char *error_buffer = new FILE_LINE(0) char[error_buffer_length];
 	va_list args;
 	va_start(args, formatError);
 	vsnprintf(error_buffer, error_buffer_length, formatError, args);
@@ -827,7 +827,7 @@ bool cSocketBlock::writeBlock(u_char *data, size_t dataLen, eTypeEncode typeEnco
 	u_char *rsa_data = NULL;
 	u_char *aes_data = NULL;
 	if(typeEncode == _te_xor && !xor_key.empty()) {
-		xor_key_data = new u_char[dataLen];
+		xor_key_data = new FILE_LINE(0) u_char[dataLen];
 		memcpy(xor_key_data, data, dataLen);
 		xorData(xor_key_data, dataLen, xor_key.c_str(), xor_key.length(), 0);
 		data = xor_key_data;
@@ -849,7 +849,7 @@ bool cSocketBlock::writeBlock(u_char *data, size_t dataLen, eTypeEncode typeEnco
 			return(false);
 		}
 	}
-	u_char *block = new u_char[sizeof(sBlockHeader) + dataLen];
+	u_char *block = new FILE_LINE(0) u_char[sizeof(sBlockHeader) + dataLen];
 	((sBlockHeader*)block)->init();
 	((sBlockHeader*)block)->length = dataLen;
 	((sBlockHeader*)block)->sum = data_sum;
@@ -877,7 +877,7 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 		timeout = timeouts.readblock;
 	}
 	size_t bufferLength = 10 * 1024;
-	u_char *buffer = new u_char[bufferLength];
+	u_char *buffer = new FILE_LINE(0) u_char[bufferLength];
 	bool rsltRead = true;
 	readBuffer.clear();
 	size_t readLength = sizeof(sBlockHeader);
@@ -905,7 +905,7 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 						size_t rsa_data_len = readBuffer.lengthBlockHeader();
 						if(rsa.private_decrypt(&rsa_data, &rsa_data_len, false)) {
 							size_t new_buffer_length = rsa_data_len + sizeof(sBlockHeader);
-							u_char *new_buffer = new u_char[new_buffer_length];
+							u_char *new_buffer = new FILE_LINE(0) u_char[new_buffer_length];
 							memcpy(new_buffer, readBuffer.buffer, sizeof(sBlockHeader));
 							((sBlockHeader*)new_buffer)->length = rsa_data_len;
 							memcpy(new_buffer + sizeof(sBlockHeader), rsa_data, rsa_data_len);
@@ -919,7 +919,7 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 						size_t aes_data_len;
 						if(aes.decrypt(readBuffer.buffer + sizeof(sBlockHeader), readBuffer.lengthBlockHeader(), &aes_data, &aes_data_len, true)) {
 							size_t new_buffer_length = aes_data_len + sizeof(sBlockHeader);
-							u_char *new_buffer = new u_char[new_buffer_length];
+							u_char *new_buffer = new FILE_LINE(0) u_char[new_buffer_length];
 							memcpy(new_buffer, readBuffer.buffer, sizeof(sBlockHeader));
 							((sBlockHeader*)new_buffer)->length = aes_data_len;
 							memcpy(new_buffer + sizeof(sBlockHeader), aes_data, aes_data_len);
@@ -971,7 +971,7 @@ bool cSocketBlock::readBlock(string *str, eTypeEncode typeEncode, string xor_key
 string cSocketBlock::readLine(u_char **remainder, size_t *remainder_length) {
 	string line;
 	size_t bufferLength = 10 * 1024;
-	u_char *buffer = new u_char[bufferLength];
+	u_char *buffer = new FILE_LINE(0) u_char[bufferLength];
 	bool rsltRead = true;
 	readBuffer.clear();
 	size_t readLength = bufferLength;
@@ -993,7 +993,7 @@ string cSocketBlock::readLine(u_char **remainder, size_t *remainder_length) {
 					}
 					if(pos < readLength) {
 						size_t _remainder_length = readLength - pos;
-						*remainder = new u_char[_remainder_length];
+						*remainder = new FILE_LINE(0) u_char[_remainder_length];
 						memcpy(*remainder, buffer + pos, _remainder_length);
 						if(remainder_length) {
 							*remainder_length = _remainder_length;
@@ -1036,7 +1036,7 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 		}
 	}
 	size_t bufferLen = 1000;
-	u_char *buffer = new u_char[bufferLen];
+	u_char *buffer = new FILE_LINE(0) u_char[bufferLen];
 	unsigned counter = 0;
 	while(!CR_TERMINATE()) {
 		size_t len = bufferLen;
@@ -1108,7 +1108,7 @@ cServer::~cServer() {
 }
 
 bool cServer::listen_start(const char *name, string host, u_int16_t port) {
-	listen_socket = new cSocketBlock(name);
+	listen_socket = new FILE_LINE(0) cSocketBlock(name);
 	listen_socket->setHostPort(host, port);
 	if(!listen_socket->listen()) {
 		delete listen_socket;
@@ -1162,13 +1162,13 @@ void cServer::listen_process() {
 }
 
 void cServer::createConnection(cSocket *socket) {
-	cServerConnection *connection = new cServerConnection(socket);
+	cServerConnection *connection = new FILE_LINE(0) cServerConnection(socket);
 	connection->connection_start();
 }
 
 
 cServerConnection::cServerConnection(cSocket *socket) {
-	this->socket = new cSocketBlock(NULL);
+	this->socket = new FILE_LINE(0) cSocketBlock(NULL);
 	*(cSocket*)this->socket = *socket;
 	delete socket;
 }
@@ -1246,7 +1246,7 @@ void cReceiver::receive_stop() {
 
 bool cReceiver::_connect(string host, u_int16_t port, unsigned loopSleepS) {
 	if(!receive_socket) {
-		receive_socket = new cSocketBlock("receiver");
+		receive_socket = new FILE_LINE(0) cSocketBlock("receiver");
 		for(map<cSocket::eSocketError, string>::iterator iter = errorTypeStrings.begin(); iter != errorTypeStrings.end(); iter++) {
 			receive_socket->setErrorTypeString(iter->first, iter->second.c_str());
 		}
@@ -1327,7 +1327,7 @@ bool cClient::client_start(string host, u_int16_t port) {
 
 bool cClient::_connect(string host, u_int16_t port) {
 	if(!client_socket) {
-		client_socket = new cSocketBlock("client");
+		client_socket = new FILE_LINE(0) cSocketBlock("client");
 		client_socket->setHostPort(host, port);
 		if(!client_socket->connect()) {
 			delete client_socket;

@@ -422,11 +422,11 @@ void cSqlDbData::init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb, bool 
 	bool _initCodebooks = false;
 	bool _initAutoincrement = false;
 	if(!codebooks) {
-		codebooks = new cSqlDbCodebooks;
+		codebooks = new FILE_LINE(0) cSqlDbCodebooks;
 		_initCodebooks = true;
 	}
 	if(!autoincrement) {
-		autoincrement = new cSqlDbAutoIncrement;
+		autoincrement = new FILE_LINE(0) cSqlDbAutoIncrement;
 		_initAutoincrement = true;
 	}
 	if(_initCodebooks) {
@@ -439,14 +439,14 @@ void cSqlDbData::init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb, bool 
 }
 
 void cSqlDbData::initCodebooks(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb) {
-	cSqlDbCodebook *cb_ua = new cSqlDbCodebook(cSqlDbCodebook::_cb_ua, "ua", "cdr_ua", "id", "ua", limitTableRows);
-	cSqlDbCodebook *cb_sip_response = new cSqlDbCodebook(cSqlDbCodebook::_cb_sip_response, "sip_response", "cdr_sip_response", "id", "lastSIPresponse", limitTableRows);
-	cSqlDbCodebook *cb_sip_request = new cSqlDbCodebook(cSqlDbCodebook::_cb_sip_request, "sip_request", "cdr_sip_request", "id", "request", limitTableRows);
-	cSqlDbCodebook *cb_reason_sip = new cSqlDbCodebook(cSqlDbCodebook::_cb_reason_sip, "reason_sip", "cdr_reason", "id", "reason", limitTableRows);
+	cSqlDbCodebook *cb_ua = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_ua, "ua", "cdr_ua", "id", "ua", limitTableRows);
+	cSqlDbCodebook *cb_sip_response = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_sip_response, "sip_response", "cdr_sip_response", "id", "lastSIPresponse", limitTableRows);
+	cSqlDbCodebook *cb_sip_request = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_sip_request, "sip_request", "cdr_sip_request", "id", "request", limitTableRows);
+	cSqlDbCodebook *cb_reason_sip = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_reason_sip, "reason_sip", "cdr_reason", "id", "reason", limitTableRows);
 	cb_reason_sip->addCond("type", "1");
-	cSqlDbCodebook *cb_reason_q850 = new cSqlDbCodebook(cSqlDbCodebook::_cb_reason_q850, "reason_q850", "cdr_reason", "id", "reason", limitTableRows);
+	cSqlDbCodebook *cb_reason_q850 = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_reason_q850, "reason_q850", "cdr_reason", "id", "reason", limitTableRows);
 	cb_reason_q850->addCond("type", "2");
-	cSqlDbCodebook *cb_contenttype = new cSqlDbCodebook(cSqlDbCodebook::_cb_contenttype, "contenttype", "contenttype", "id", "contenttype", limitTableRows);
+	cSqlDbCodebook *cb_contenttype = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_contenttype, "contenttype", "contenttype", "id", "contenttype", limitTableRows);
 	codebooks->registerCodebook(cb_ua);
 	codebooks->registerCodebook(cb_sip_response);
 	codebooks->registerCodebook(cb_sip_request);

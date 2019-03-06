@@ -7043,10 +7043,10 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				for(unsigned i = 0; i < jsonFilter.getLocalCount(); i++) {
 					JsonItem *item = jsonFilter.getLocalItem(i);
 					string filter = item->getLocalValue();
-					callFilters.push_back(new cCallFilter(filter.c_str()));
+					callFilters.push_back(new FILE_LINE(0) cCallFilter(filter.c_str()));
 				}
 			} else {
-				callFilters.push_back(new cCallFilter(filter.c_str()));
+				callFilters.push_back(new FILE_LINE(0) cCallFilter(filter.c_str()));
 			}
 		}
 	} else {

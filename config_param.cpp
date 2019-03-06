@@ -1869,7 +1869,7 @@ bool cConfig::loadConfigMapFromConfigFile(cConfigMap *configMap, const char *fil
 		return(false);
 	}
 	unsigned lineBufferSize = 100000;
-	char *lineBuffer = new char[lineBufferSize];
+	char *lineBuffer = new FILE_LINE(0) char[lineBufferSize];
 	while(fgets(lineBuffer, lineBufferSize, fp)) {
 		char *pointerToBegin = lineBuffer;
 		while(*pointerToBegin == ' ' || *pointerToBegin == '\t') {

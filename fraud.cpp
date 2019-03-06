@@ -813,7 +813,7 @@ void FraudAlertReg_filter::setFilter(const char *description, const char *filter
 	this->description = description;
 	this->filter_str = filter_str;
 	if(!this->filter_str.empty()) {
-		filter = new cRegisterFilterFraud((char*)this->filter_str.c_str());
+		filter = new FILE_LINE(0) cRegisterFilterFraud((char*)this->filter_str.c_str());
 	}
 }
 
@@ -871,7 +871,7 @@ void FraudAlertReg::loadAlertVirt(SqlDb *sqlDb) {
 		if(ua[ua.length() - 1] == '%') {
 			ua = ua.substr(0, ua.length() - 1) + ".*";
 		}
-		cRegExp *regExp = new cRegExp(ua.c_str());
+		cRegExp *regExp = new FILE_LINE(0) cRegExp(ua.c_str());
 		if(regExp->isOK()) {
 			ua_regex.push_back(regExp);
 		} else {

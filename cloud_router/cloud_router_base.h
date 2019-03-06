@@ -296,10 +296,10 @@ public:
 			if(!buffer || capacity < length + dataLen) {
 				if(!buffer) {
 					capacity = dataLen * 2;
-					buffer = new u_char[capacity];
+					buffer = new FILE_LINE(0) u_char[capacity];
 				} else {
 					capacity = length + dataLen * 2;
-					u_char *buffer_new = new u_char[capacity];
+					u_char *buffer_new = new FILE_LINE(0) u_char[capacity];
 					memcpy(buffer_new, buffer, length);
 					delete [] buffer;
 					buffer = buffer_new;

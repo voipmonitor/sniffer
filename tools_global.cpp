@@ -45,7 +45,7 @@ int vm_pthread_create(const char *thread_description,
 		create_attr = true;
 		attr = &_attr;
 	}
-	vm_pthread_struct *thread_data = new vm_pthread_struct;
+	vm_pthread_struct *thread_data = new FILE_LINE(0) vm_pthread_struct;
 	thread_data->start_routine = start_routine;
 	thread_data->arg = arg;
 	thread_data->description = thread_description;
@@ -945,13 +945,13 @@ bool cUtfConverter::check(const char *str) {
 		unsigned strLen = strlen(str);
 		unsigned strLimit = strLen * 2 + 10;
 		unsigned strUtfLimit = strLen * 2 + 10;
-		UChar *strUtf = new UChar[strUtfLimit + 1];
+		UChar *strUtf = new FILE_LINE(0) UChar[strUtfLimit + 1];
 		UErrorCode status = U_ZERO_ERROR;
 		lock();
 		ucnv_toUChars(cnv_utf8, strUtf, strUtfLimit, str, -1, &status);
 		unlock();
 		if(status == U_ZERO_ERROR) {
-			char *str_check = new char[strLimit + 1];
+			char *str_check = new FILE_LINE(0) char[strLimit + 1];
 			lock();
 			ucnv_fromUChars(cnv_utf8, str_check, strLimit, strUtf, -1, &status);
 			unlock();
@@ -975,7 +975,7 @@ string cUtfConverter::reverse(const char *str) {
 		unsigned strLen = strlen(str);
 		unsigned strLimit = strLen * 2 + 10;
 		unsigned strUtfLimit = strLen * 2 + 10;
-		UChar *strUtf = new UChar[strUtfLimit + 1];
+		UChar *strUtf = new FILE_LINE(0) UChar[strUtfLimit + 1];
 		UErrorCode status = U_ZERO_ERROR;
 		lock();
 		ucnv_toUChars(cnv_utf8, strUtf, strUtfLimit, str, -1, &status);
@@ -985,12 +985,12 @@ string cUtfConverter::reverse(const char *str) {
 			for(unsigned i = 0; i < strUtfLimit && strUtf[i]; i++) {
 				len++;
 			}
-			UChar *strUtf_r = new UChar[strUtfLimit + 1];
+			UChar *strUtf_r = new FILE_LINE(0) UChar[strUtfLimit + 1];
 			for(unsigned i = 0; i < len; i++) {
 				strUtf_r[len - i - 1] = strUtf[i];
 			}
 			strUtf_r[len] = 0;
-			char *str_r = new char[strLimit + 1];
+			char *str_r = new FILE_LINE(0) char[strLimit + 1];
 			lock();
 			ucnv_fromUChars(cnv_utf8, str_r, strLimit, strUtf_r, -1, &status);
 			unlock();
