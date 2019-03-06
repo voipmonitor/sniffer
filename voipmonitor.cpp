@@ -1924,6 +1924,9 @@ void start_cloud_receiver() {
 	}
 	cloud_receiver = new FILE_LINE(0) cCR_Receiver_service(cloud_token, opt_id_sensor > 0 ? opt_id_sensor : 0, opt_sensor_string, RTPSENSOR_VERSION_INT());
 	cloud_receiver->setErrorTypeString(cSocket::_se_loss_connection, "connection to the cloud server has been lost - trying again");
+	if(is_read_from_file()) {
+		cloud_receiver->setEnableTermninateIfConnectFailed();
+	}
 	cloud_receiver->start(cloud_host, cloud_router_port);
 	u_long startTime = getTimeMS();
 	while(!cloud_receiver->isStartOk() && !is_terminating()) {

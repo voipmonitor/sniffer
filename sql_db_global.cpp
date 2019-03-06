@@ -78,7 +78,20 @@ u_int64_t cSqlDbAutoIncrement::get_last_id(const char *table, const char *idColu
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
+	#ifndef CLOUD_ROUTER_SERVER
 	sqlDb->query(string("select ") + idColumn + " from " + sqlDb->escapeTableName(table) + " order by id desc limit 1");
+	#else
+	unsigned tryCounter = 0;
+	while(true) {
+		if(tryCounter) {
+			sleep(1);
+		}
+		++tryCounter;
+		if(sqlDb->query(string("select ") + idColumn + " from " + sqlDb->escapeTableName(table) + " order by id desc limit 1")) {
+			break;
+		}
+	}
+	#endif
 	string last_id_str = sqlDb->fetchValue();
 	if(!last_id_str.empty()) {
 		last_id = atoll(last_id_str.c_str());
@@ -253,7 +266,6 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 		_createSqlObject = true;
 	}
 	#ifndef CLOUD_ROUTER_SERVER
-		sqlDb->setMaxQueryPass(2);
 		if(sqlDb->rowsInTable(table, true) > this->limitTableRows) {
 			*overflow = true;
 		} else {

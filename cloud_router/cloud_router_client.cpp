@@ -16,9 +16,14 @@ cCR_Receiver_service::cCR_Receiver_service(const char *token, int32_t sensor_id,
 	this->sensor_id = sensor_id;
 	this->sensor_string = sensor_string ? sensor_string : "";
 	this->sensor_version = sensor_version;
+	enableTermninateIfConnectFailed = false;
 	port = 0;
 	connection_ok = false;
 	use_mysql_set_id = false;
+}
+
+void cCR_Receiver_service::setEnableTermninateIfConnectFailed(bool enableTermninateIfConnectFailed) {
+	this->enableTermninateIfConnectFailed = enableTermninateIfConnectFailed;
 }
 
 bool cCR_Receiver_service::start(string host, u_int16_t port) {
@@ -115,7 +120,7 @@ bool cCR_Receiver_service::receive_process_loop_begin() {
 			rsltError = "failed read ok";
 		}
 		receive_socket->setError(rsltError.c_str());
-		if(!start_ok) {
+		if(!start_ok && enableTermninateIfConnectFailed) {
 			CR_SET_TERMINATE();
 		}
 		_close();
