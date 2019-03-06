@@ -2973,7 +2973,9 @@ int main(int argc, char *argv[]) {
 		opt_rrd = 0;
 	}
 
-	checkRrdVersion();
+	if(!opt_test) {
+		checkRrdVersion();
+	}
 
 	if(opt_fork && !is_read_from_file() && reloadLoopCounter == 0) {
 		daemonize();
@@ -10351,6 +10353,7 @@ void fifobuff_add(void *fifo_buff, const char *data, unsigned int datalen) {
 }
 
 void setAllocNumb() {
+	// ./voipmonitor -k -v1 -c -X88
 	vector<sFileLine> fileLines;
 	DIR* dp = opendir(".");
 	if(!dp) {
