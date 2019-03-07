@@ -8142,7 +8142,9 @@ string MYSQL_ADD_QUERY_END(string query) {
 
 void dbDataInit(SqlDb *sqlDb) {
 	dbData = new FILE_LINE(0) cSqlDbData();
-	if(!opt_nocdr) {
+	if(!opt_nocdr &&
+	   !isCloud() && !is_client() && !is_sender() &&
+	   !is_read_from_file_simple()) {
 		dbData->init(true, 500000, sqlDb);
 	}
 }

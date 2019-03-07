@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "tools_local.h"
 
 #include "sql_db_global.h"
@@ -105,13 +107,14 @@ u_int64_t cSqlDbAutoIncrement::get_last_id(const char *table, const char *idColu
 
 cSqlDbCodebook::cSqlDbCodebook(eTypeCodebook type, const char *name, 
 			       const char *table, const char *columnId, const char *columnStringValue, 
-			       unsigned limitTableRows) {
+			       unsigned limitTableRows, bool caseSensitive) {
 	this->type = type;
 	this->name = name;
 	this->table = table;
 	this->columnId = columnId;
 	this->columnStringValue = columnStringValue;
 	this->limitTableRows = limitTableRows;
+	this->caseSensitive = caseSensitive;
 	this->u_data = NULL;
 	autoLoadPeriod = 0;
 	loaded = false;
@@ -134,8 +137,12 @@ void cSqlDbCodebook::setAutoLoadPeriod(unsigned autoLoadPeriod) {
 	this->autoLoadPeriod = autoLoadPeriod;
 }
 
-unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool enableAutoLoad,
+unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, bool enableAutoLoad,
 			       cSqlDbAutoIncrement *autoincrement, string *insertQuery, SqlDb *sqlDb) {
+	string stringValue = stringValueInput;
+	if(!caseSensitive) {
+		std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), ::toupper);
+	}
 	if(data_overflow) {
 		return(0);
 	}
@@ -173,7 +180,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool 
 				SqlDb *sqlDb = createSqlObject();
 				SqlDb_row row;
 				row.add(rslt, columnId);
-				row.add(stringValue, columnStringValue);
+				row.add(stringValueInput, columnStringValue);
 				for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
 					row.add(iter->value, iter->field);
 				}
@@ -193,7 +200,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool 
 				}
 				if(!rslt) {
 					SqlDb_row row;
-					row.add(stringValue, columnStringValue);
+					row.add(stringValueInput, columnStringValue);
 					for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
 						row.add(iter->value, iter->field);
 					}
@@ -207,7 +214,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValue, bool enableInsert, bool 
 		#else
 			rslt = autoincrement->getId(this->table.c_str());
 			string columns = columnId + "," + columnStringValue;
-			string values = intToString(rslt) + "," + sqlEscapeStringBorder(stringValue);
+			string values = intToString(rslt) + "," + sqlEscapeStringBorder(stringValueInput);
 			for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
 				columns += "," + iter->field;
 				values += "," + sqlEscapeStringBorder(iter->value);
@@ -297,7 +304,12 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 		vector<map<string, string_null> > *rows = sqlDb->get_rslt();
 		if(rows->size()) {
 			for(unsigned i = 0; i < rows->size(); i++) {
-				(*data)[(*rows)[i][columnStringValue].str] = atol((*rows)[i][columnId].str.c_str());
+				string stringValue = (*rows)[i][columnStringValue].str;
+				unsigned id = atol((*rows)[i][columnId].str.c_str());
+				if(!caseSensitive) {
+					std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), ::toupper);
+				}
+				(*data)[stringValue] = id;
 			}
 		}
 	#endif
