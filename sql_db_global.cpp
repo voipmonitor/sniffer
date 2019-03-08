@@ -663,11 +663,13 @@ void __store_prepare_queries(list<string> *queries, cSqlDbCodebooks *codebooks, 
 			     string *queries_str, list<string> *queries_list, list<string> *cb_inserts,
 			     int enable_new_store, bool enable_set_id, bool enable_multiple_rows_insert,
 			     long unsigned maxAllowedPacket) {
+	vector<string> q_delim;
+	q_delim.push_back(_MYSQL_QUERY_END_new);
+	q_delim.push_back(_MYSQL_QUERY_END_SUBST_new);
 	list<string> ig;
 	unsigned counterQueriesWithNextInsertGroup = 0;
 	for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
-		vector<string> query_vect;
-		split(iter->c_str(), _MYSQL_QUERY_END_new, query_vect);
+		vector<string> query_vect = split(iter->c_str(), q_delim, false, false, false);
 		bool setIdMainRecord = false;
 		u_int64_t idMainRecord = 0;
 		if(enable_set_id) {
