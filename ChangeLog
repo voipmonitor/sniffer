@@ -1,4 +1,9 @@
-23.7 06.03.2019
+23.7.1 10.04.2019
+=================
+- fix broken mirroring in 23.7 (indefinite query: select * from cdr_sip_response)
+
+
+23.7 08.04.2019
 ===============
 - new SQL mode for cloud mode 
 - set default sipport to 5060 
