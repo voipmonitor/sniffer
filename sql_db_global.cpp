@@ -444,7 +444,7 @@ void cSqlDbData::init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb, bool 
 	if(_initCodebooks) {
 		initCodebooks(loadAll, limitTableRows, sqlDb);
 	}
-	if(_initAutoincrement) {
+	if(_initAutoincrement && loadAll) {
 		initAutoIncrement(sqlDb);
 	}
 	unlock_init();
@@ -474,7 +474,7 @@ void cSqlDbData::initCodebooks(bool loadAll, unsigned limitTableRows, SqlDb *sql
 }
 
 void cSqlDbData::initAutoIncrement(SqlDb *sqlDb) {
-	//autoincrement->set("cdr", "id", sqlDb);
+	autoincrement->set("cdr", "id", sqlDb);
 	autoincrement->set("message", "id", sqlDb);
 	codebooks->setAutoincrementForAll(autoincrement, sqlDb);
 }
