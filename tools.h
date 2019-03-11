@@ -2232,8 +2232,8 @@ private:
 	vector<string> files;
 };
 
-pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff);
-string gunzipToTemp(const char *zipFilename, string *error, bool autoDeleteAtExit);
+pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff, string *tempFileName = NULL);
+string gunzipToTemp(const char *zipFilename, string *error, bool autoDeleteAtExit, string *tempFileName = NULL);
 string _gunzip_s(const char *zipFilename, const char *unzipFilename);
 string __gunzip_s(FILE *zip, FILE *unzip);
 int __gunzip(FILE *zip, FILE *unzip);

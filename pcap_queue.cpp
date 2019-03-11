@@ -4973,13 +4973,13 @@ bool PcapQueue_readFromInterface::startCapture(string *error) {
 	return(this->PcapQueue_readFromInterface_base::startCapture(error));
 }
 
-bool PcapQueue_readFromInterface::openPcap(const char *filename) {
+bool PcapQueue_readFromInterface::openPcap(const char *filename, string *tempFileName) {
 	while(this->pcapHandlesLapsed.size() > 3) {
 		pcap_close(this->pcapHandlesLapsed.front());
 		this->pcapHandlesLapsed.pop();
 	}
 	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t *pcapHandle = pcap_open_offline_zip(filename, errbuf);
+	pcap_t *pcapHandle = pcap_open_offline_zip(filename, errbuf, tempFileName);
 	if(!pcapHandle) {
 		syslog(LOG_ERR, "pcap_open_offline %s failed: %s", filename, errbuf); 
 		return(false);

@@ -4014,10 +4014,10 @@ AutoDeleteAtExit::~AutoDeleteAtExit() {
 	}
 }
 
-pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff) {
+pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff, string *tempFileName) {
 	if(isGunzip(filename)) {
 		string error;
-		string unzip = gunzipToTemp(filename, &error, true);
+		string unzip = gunzipToTemp(filename, &error, !tempFileName, tempFileName);
 		if(!unzip.empty()) {
 			return(pcap_open_offline(unzip.c_str(), errbuff));
 		} else {
@@ -4029,11 +4029,14 @@ pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff) {
 	}
 }
 
-string gunzipToTemp(const char *zipFilename, string *error, bool autoDeleteAtExit) {
+string gunzipToTemp(const char *zipFilename, string *error, bool autoDeleteAtExit, string *tempFileName) {
 	char unzipTempFileName[L_tmpnam+1];
 	if(tmpnam(unzipTempFileName)) {
 		if(autoDeleteAtExit) {
 			GlobalAutoDeleteAtExit.add(unzipTempFileName);
+		}
+		if(tempFileName) {
+			*tempFileName = unzipTempFileName;
 		}
 		string _error = _gunzip_s(zipFilename, unzipTempFileName);
 		if(error) {
