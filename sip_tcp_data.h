@@ -8,21 +8,28 @@ class SipTcpData : public TcpReassemblyProcessData {
 public:
 	struct Cache_id {
 		Cache_id(u_int32_t ip_src, u_int32_t ip_dst,
-			 u_int16_t port_src, u_int16_t port_dst) {
+			 u_int16_t port_src, u_int16_t port_dst,
+			 u_int32_t ack, u_int32_t seq) {
 			this->ip_src = ip_src;
 			this->ip_dst = ip_dst;
 			this->port_src = port_src; 
 			this->port_dst = port_dst;
+			this->ack = ack;
+			this->seq = seq;
 		}
 		u_int32_t ip_src;
 		u_int32_t ip_dst;
 		u_int16_t port_src;
 		u_int16_t port_dst;
+		u_int32_t ack;
+		u_int32_t seq;
 		bool operator < (const Cache_id& other) const {
 			return((this->ip_src < other.ip_src) ? 1 : (this->ip_src > other.ip_src) ? 0 :
 			       (this->ip_dst < other.ip_dst) ? 1 : (this->ip_dst > other.ip_dst) ? 0 :
 			       (this->port_src < other.port_src) ? 1 : (this->port_src > other.port_src) ? 0 :
-			       this->port_dst < other.port_dst);
+			       (this->port_dst < other.port_dst) ? 1 : (this->port_dst > other.port_dst) ? 0 :
+			       (this->ack < other.ack) ? 1 : (this->ack > other.ack) ? 0 :
+			       this->seq < other.seq);
 		}
 	};
 	struct Cache_data {
