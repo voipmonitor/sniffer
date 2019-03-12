@@ -2061,13 +2061,17 @@ void *scanpcapdir( void */*dummy*/ ) {
 			syslog(LOG_NOTICE, "scanpcapdir: %s", filename);
 		}
 		
-		if(!pcapQueueInterface->openPcap(filename)) {
+		string tempFileName;
+		if(!pcapQueueInterface->openPcap(filename, &tempFileName)) {
 			continue;
 		}
 		while(!is_terminating() && !pcapQueueInterface->isPcapEnd()) {
 			usleep(10000);
 		}
 		
+		if(!tempFileName.empty()) {
+			unlink(tempFileName.c_str());
+		}
 		if(!is_terminating()) {
 			unlink(filename);
 		}
