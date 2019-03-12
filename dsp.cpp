@@ -1178,28 +1178,37 @@ int dsp_noise(struct dsp *dsp, short *data, int len, int *totalnoise)
 }
 
 
-int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, int *event_len, int *silence, int *totalsilence, int *totalnoise)
+int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, int *event_len, int *silence, int *totalsilence, int *totalnoise, int *res_call_progress)
 {
-	int res;
+	int res = 0;
 	int digit = 0, fax_digit = 0;
 
+	if(event_len) {
+		*event_len = 0;
+	}
+	if(event_digit) {
+		*event_digit = 0;
+	}
+	if(res_call_progress) {
+		*res_call_progress = 0;
+	}
+	
 	/* Initially we do not want to mute anything */
 	dsp->mute_fragments = 0;
 
 	/* Need to run the silence detection stuff for silence suppression and busy detection */
 	if ((dsp->features & DSP_FEATURE_SILENCE_SUPPRESS) || (dsp->features & DSP_FEATURE_BUSY_DETECT)) {
-		res = __dsp_silence_noise(dsp, shortdata, len, totalsilence, totalnoise, NULL);
-		*silence = res;
+		*silence = __dsp_silence_noise(dsp, shortdata, len, totalsilence, totalnoise, NULL);
 		if(dspdebug) syslog(1, "silence [%u] noise [%u]\n", *totalsilence, *totalnoise);
 	}
 
 	if ((dsp->features & DSP_FEATURE_SILENCE_SUPPRESS) && silence) {
-		//return 1; //silnce
+		res |= DSP_PROCESS_RES_SILENCE; //silence
 	}
 
 	if ((dsp->features & DSP_FEATURE_BUSY_DETECT) && dsp_busydetect(dsp)) {
 		if(dspdebug) syslog(1, "busy tone was detected");
-		return 2; // busy detected
+		res |= DSP_PROCESS_RES_BUSY; // busy detected
 	}
 
 	if ((dsp->features & DSP_FEATURE_FAX_DETECT)) {
@@ -1255,7 +1264,7 @@ int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, i
 
 			if (event == AST_FRAME_DTMF_END) {
 				if(dspdebug) syslog(LOG_DEBUG, "[%p] event[%u] digit[%c] len[%u]\n", dsp, event, *event_digit, *event_len);
-				return 5;
+				res |= DSP_PROCESS_RES_DTMF;
 			}
 		}
 	}
@@ -1263,28 +1272,39 @@ int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, i
 	if (fax_digit) {
 		/* Fax was detected - digit is either 'f' or 'e' */
 		*event_digit = fax_digit;
-		return 4; // fax
+		res |= DSP_PROCESS_RES_FAX; // fax
 	}
 
 	if ((dsp->features & DSP_FEATURE_CALL_PROGRESS)) {
-		res = __dsp_call_progress(dsp, shortdata, len);
-		if (res) {
-			switch (res) {
+		int _res_call_progress = __dsp_call_progress(dsp, shortdata, len);
+		if (_res_call_progress) {
+			switch (_res_call_progress) {
 			case AST_CONTROL_ANSWER:
 			case AST_CONTROL_BUSY:
 			case AST_CONTROL_RINGING:
 			case AST_CONTROL_CONGESTION:
 			case AST_CONTROL_HANGUP:
-				return res;
+				*res_call_progress = _res_call_progress;
+				break;
 			default:
+				*res_call_progress = _res_call_progress;
 				syslog(LOG_WARNING, "Don't know how to represent call progress message %d\n", res);
-				return res;
 			}
+			res |= DSP_PROCESS_RES_CALL_PROGRESSS;
 		}
-	} else if ((dsp->features & DSP_FEATURE_WAITDIALTONE)) {
-		res = __dsp_call_progress(dsp, shortdata, len);
 	}
-	return 0;
+	
+	if ((dsp->features & DSP_FEATURE_WAITDIALTONE)) {
+		int _res_call_progress = __dsp_call_progress(dsp, shortdata, len);
+		if(_res_call_progress) {
+			if(!*res_call_progress) {
+				*res_call_progress = _res_call_progress;
+			}
+			res |= DSP_PROCESS_RES_WAITDIALTONE;
+		}
+	}
+	
+	return res;
 }
 
 static void dsp_prog_reset(struct dsp *dsp)

@@ -328,6 +328,15 @@ enum threshold {
 	THRESHOLD_MAX = 1,
 };
 
+enum dsp_process_res {
+	DSP_PROCESS_RES_SILENCE        = 1 << 0,
+	DSP_PROCESS_RES_BUSY           = 1 << 1,
+	DSP_PROCESS_RES_DTMF           = 1 << 2,
+	DSP_PROCESS_RES_FAX            = 1 << 3,
+	DSP_PROCESS_RES_CALL_PROGRESSS = 1 << 4,
+	DSP_PROCESS_RES_WAITDIALTONE   = 1 << 5,
+};
+
 /*! \brief Allocates a new dsp with a specific internal sample rate used
  * during processing. */
 struct dsp *dsp_new_with_rate(unsigned int sample_rate);
@@ -358,7 +367,7 @@ int dsp_set_call_progress_zone(struct dsp *dsp, char *zone);
 
 /*! \brief Return AST_FRAME_NULL frames when there is silence, AST_FRAME_BUSY on
    busies, and call progress, all dependent upon which features are enabled */
-int dsp_process(struct dsp *dsp, short *data, int len, char *event_digit, int *event_len, int *silence, int *totalsilence, int *totalnoise);
+int dsp_process(struct dsp *dsp, short *data, int len, char *event_digit, int *event_len, int *silence, int *totalsilence, int *totalnoise, int *res_call_progress);
 
 /*! \brief Return non-zero if this is silence.  Updates "totalsilence" with the total
    number of seconds of silence  */

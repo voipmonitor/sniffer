@@ -1953,7 +1953,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 			int silence0 = 0;
 			int totalsilence = 0;
 			int totalnoise = 0;
-			res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len, &silence0, &totalsilence, &totalnoise);
+			int res_call_progress = 0;
+			res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len, &silence0, &totalsilence, &totalnoise, &res_call_progress);
 			if(silence0) {
 				if(iscaller) {
 					owner->caller_lastsilence += payload_len / 8;
@@ -1975,11 +1976,12 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 				if(opt_faxt30detect and (event_digit == 'f' or event_digit == 'e')) {
 					//printf("dsp_process: digit[%c] len[%u]\n", event_digit, event_len);
 					owner->isfax = T30FAX;
-				} else if(opt_inbanddtmf and res == 5) {
+				} else if(opt_inbanddtmf and (res & DSP_PROCESS_RES_DTMF) and event_digit >= 20 and event_digit <= 127) {
 					owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr, s_dtmf::inband);
 				}
-				if (do_fasdetect)
-					owner->is_fas_detected = (res == AST_CONTROL_RINGING) ? true : false;
+				if (do_fasdetect) {
+					owner->is_fas_detected = (res_call_progress == AST_CONTROL_RINGING) ? true : false;
+				}
 			}
 		}
 

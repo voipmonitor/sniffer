@@ -4659,7 +4659,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				dtmf.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 				dtmf.add(q.saddr, "saddr");
 				dtmf.add(q.daddr, "daddr");
-				dtmf.add(tmp, "dtmf");
+				dtmf.add(sqlEscapeString(tmp), "dtmf");
 				dtmf.add(q.ts, "firsttime");
 				if(existsColumns.cdr_dtmf_type) {
 					dtmf.add(q.type, "type");
