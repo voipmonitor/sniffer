@@ -6415,11 +6415,10 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 					syslog(LOG_ERR, "send packetbuffer block error: %s", ("failed response from cloud router - " + connectResponse).c_str());
 					delete this->clientSocket;
 					this->clientSocket = NULL;
-					break;
 				} else {
 					syslog(LOG_ERR, "send packetbuffer block error: %s", "failed read ok");
-					continue;
 				}
+				continue;
 			}
 		}
 		bool okSendBlock = true;

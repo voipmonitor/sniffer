@@ -4061,15 +4061,15 @@ SqlDb *createSqlObject(int connectId) {
 	return(sqlDb);
 }
 
-string sqlDateTimeString(time_t unixTime) {
-	struct tm localTime = time_r(&unixTime);
+string sqlDateTimeString(time_t unixTime, bool useGlobalTimeCache) {
+	struct tm localTime = time_r(&unixTime, NULL, useGlobalTimeCache);
 	char dateTimeBuffer[50];
 	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &localTime);
 	return string(dateTimeBuffer);
 }
 
-string sqlDateString(time_t unixTime) {
-	struct tm localTime = time_r(&unixTime);
+string sqlDateString(time_t unixTime, bool useGlobalTimeCache) {
+	struct tm localTime = time_r(&unixTime, NULL, useGlobalTimeCache);
 	char dateBuffer[50];
 	strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &localTime);
 	return string(dateBuffer);

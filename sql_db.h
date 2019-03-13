@@ -837,8 +837,8 @@ private:
 };
 
 SqlDb *createSqlObject(int connectId = 0);
-string sqlDateTimeString(time_t unixTime);
-string sqlDateString(time_t unixTime);
+string sqlDateTimeString(time_t unixTime, bool useGlobalTimeCache = false);
+string sqlDateString(time_t unixTime, bool useGlobalTimeCache = false);
 string sqlDateTimeString(tm &time);
 string sqlDateString(tm &time);
 string reverseString(const char *str);

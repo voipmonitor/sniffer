@@ -347,7 +347,7 @@ inline u_int32_t checksum32buf(u_char *buf, size_t len) {
 void ntoa(char *res, unsigned int addr);
 string escapeShellArgument(string str);
 tm stringToTm(const char *timeStr);
-time_t stringToTime(const char *timeStr);
+time_t stringToTime(const char *timeStr, bool useGlobalTimeCache = false);
 struct tm getDateTime(u_int64_t us);
 struct tm getDateTime(time_t time);
 struct tm getDateTime(const char *timeStr);
@@ -2537,26 +2537,37 @@ struct sLocalTimeHourCache {
 	u_int16_t local_timezones_count;
 };
 
-inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = NULL) {
-#if defined(__arm__)
-	static map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
-	static volatile int timeCacheMap_sync = 0;
-	unsigned int tid = get_unix_tid();
+inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = NULL, bool useGlobalTimeCache = false) {
 	sLocalTimeHourCache *timeCache = NULL;
-	while(__sync_lock_test_and_set(&timeCacheMap_sync, 1));
-	if(!timeCacheMap[tid]) {
-		timeCache = new FILE_LINE(39014) sLocalTimeHourCache();
-		timeCacheMap[tid] = timeCache;
+	static volatile int timeCache_global_sync = 0;
+	static sLocalTimeHourCache *timeCache_global = NULL;
+	if(useGlobalTimeCache) {
+		while(__sync_lock_test_and_set(&timeCache_global_sync, 1));
+		if(!timeCache_global) {
+			timeCache_global = new FILE_LINE(39014) sLocalTimeHourCache();
+		}
+		timeCache = timeCache_global;
 	} else {
-		timeCache = timeCacheMap[tid];
+		#if defined(__arm__)
+			static map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
+			static volatile int timeCacheMap_sync = 0;
+			unsigned int tid = get_unix_tid();
+			while(__sync_lock_test_and_set(&timeCacheMap_sync, 1));
+			if(!timeCacheMap[tid]) {
+				timeCache = new FILE_LINE(39014) sLocalTimeHourCache();
+				timeCacheMap[tid] = timeCache;
+			} else {
+				timeCache = timeCacheMap[tid];
+			}
+			__sync_lock_release(&timeCacheMap_sync);
+		#else
+			static __thread sLocalTimeHourCache *timeCache_thread = NULL;
+			if(!timeCache_thread) {
+				timeCache_thread = new FILE_LINE(39014) sLocalTimeHourCache();
+			}
+			timeCache = timeCache_thread;
+		#endif
 	}
-	__sync_lock_release(&timeCacheMap_sync);
-#else
-	static __thread sLocalTimeHourCache *timeCache = NULL;
-	if(!timeCache) {
-		timeCache = new FILE_LINE(39014) sLocalTimeHourCache();
-	}
-#endif
 	bool force_gmt = false;
 	bool force_local = false;
 	if(timezone && timezone[0]) {
@@ -2582,10 +2593,13 @@ inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = N
 			*timestamp = timeCache->getTimestamp(time, (opt_sql_time_utc || isCloud() || force_gmt) && !force_local, NULL);
 		}
 	}
+	if(useGlobalTimeCache) {
+		__sync_lock_release(&timeCache_global_sync);
+	}
 }
-inline struct tm time_r(time_t *timestamp, const char *timezone = NULL) {
+inline struct tm time_r(time_t *timestamp, const char *timezone = NULL, bool useGlobalTimeCache = false) {
 	struct tm time;
-	conv_tz(timestamp, &time, timezone);
+	conv_tz(timestamp, &time, timezone, useGlobalTimeCache);
 	return(time);
 }
 inline string time_r_str(time_t *timestamp, const char *timezone = NULL) {
