@@ -6781,7 +6781,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	existsColumns.cdr_mos_xr = this->existsColumn("cdr", "a_mos_xr_min_mult10");
 	if(!existsColumns.cdr_mos_xr) {
 		this->logNeedAlter("cdr",
-				   "MOS RTPC XR",
+				   "MOS RTCP XR",
 				   "ALTER TABLE cdr "
 					"ADD COLUMN a_mos_xr_min_mult10 tinyint unsigned DEFAULT NULL, "
 					"ADD COLUMN b_mos_xr_min_mult10 tinyint unsigned DEFAULT NULL, "
@@ -6793,7 +6793,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	existsColumns.cdr_mos_silence = this->existsColumn("cdr", "a_mos_silence_min_mult10");
 	if(!existsColumns.cdr_mos_silence) {
 		this->logNeedAlter("cdr",
-				   "MOS RTPC XR",
+				   "MOS RTCP XR",
 				   "ALTER TABLE cdr "
 					"ADD COLUMN a_mos_silence_min_mult10 tinyint unsigned DEFAULT NULL, "
 					"ADD COLUMN b_mos_silence_min_mult10 tinyint unsigned DEFAULT NULL, "
