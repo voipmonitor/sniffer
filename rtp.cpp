@@ -73,6 +73,7 @@ extern bool opt_saveaudio_answeronly;
 extern bool opt_saveaudio_big_jitter_resync_threshold;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
+int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP);
 
 RTPstat rtp_stat;
 
@@ -240,12 +241,15 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	last_interval_mosf1 = 45;
 	last_interval_mosf2 = 45;
 	last_interval_mosAD = 45;
+	last_interval_mosSilence = 45;
 	mosf1_min = 45;
 	mosf2_min = 45;
 	mosAD_min = 45;
+	mosSilence_min = 45;
 	mosf1_avg = 0;
 	mosf2_avg = 0;
 	mosAD_avg = 0;
+	mosSilence_avg = 0;
 	mos_counter = 0;
 	resetgraph = false;
 	jitter = 0;
@@ -365,9 +369,12 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	prev_payload_len = 0;
 	padding_len = 0;
 	tailedframes = 0;
+	last_was_silence = false;
+	sum_silence_changes = 0;
 
 	change_packetization_iterator = 0;
 	srtp_decrypt = NULL;
+
 }
 
 
@@ -448,6 +455,32 @@ RTP::save_mos_graph(bool delimiter) {
 			this->graph.write((char*)&last_interval_mosAD, 1);
 		}
 	}
+
+	if(opt_silencedetect and DSP) {
+		last_interval_mosSilence = calculate_mos_fromdsp(this, DSP);
+		//if(verbosity > 1) printf("mosSilence[%d]\n", last_interval_mosSilence);
+		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+			this->graph.write((char*)&last_interval_mosSilence, 1);
+		}
+		// reset 10 second MOS stats
+		memcpy(DSP->last_interval_loss_hist, DSP->loss_hist, sizeof(unsigned short int) * 32);
+		DSP->received = 0;
+		if(mosSilence_min > last_interval_mosSilence) {
+			mosSilence_min = last_interval_mosSilence;
+			//printf("[%p] min[%u] %p DSP[%p]\n", this, mosSilence_min, &mosSilence_min, DSP);
+		}
+		mosSilence_avg = ((mosSilence_avg * mos_counter) + last_interval_mosSilence) / (mos_counter + 1);
+//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosSilence_avg[%f] mosSilence[%u]\n", this, inet_ntostring(htonl(saddr)).c_str(), header->ts.tv_sec, ssrc, mosSilence_avg, last_interval_mosSilence);
+	} else {
+		last_interval_mosSilence = 45;
+		mosSilence_min = 45;
+		mosSilence_avg = 45;
+		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+			this->graph.write((char*)&last_interval_mosSilence, 1);
+		}
+	}
+
+
 	// align to 4 byte
 	char zero = 0;
 	if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
@@ -1955,6 +1988,9 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 			int totalnoise = 0;
 			res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len, &silence0, &totalsilence, &totalnoise);
 			if(silence0) {
+				if(!last_was_silence) {
+					sum_silence_changes++;
+				}
 				if(iscaller) {
 					owner->caller_lastsilence += payload_len / 8;
 					owner->caller_silence += payload_len / 8;
@@ -1962,6 +1998,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 					owner->called_lastsilence += payload_len / 8;
 					owner->called_silence += payload_len / 8;
 				}
+				last_was_silence = true;
 			} else {
 				if(iscaller) {
 					owner->caller_lastsilence = 0;
@@ -1970,6 +2007,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 					owner->called_lastsilence = 0;
 					owner->called_noise += payload_len / 8;
 				}
+				last_was_silence = false;
 			}
 			if(res) {
 				if(opt_faxt30detect and (event_digit == 'f' or event_digit == 'e')) {
@@ -2387,6 +2425,7 @@ void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burs
 	if(lost < 5) {
 		// ignore such small packet loss 
 		*lossr = *burstr = 0;
+		chan->last_received = received;
 		return;
 	}
 
@@ -2514,6 +2553,45 @@ double calculate_mos(double ppl, double burstr, int codec, unsigned int received
 		return calculate_mos_g711(ppl, burstr, 2); 
 	}       
 }		
+
+int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP) {
+	double burstr, lossr;
+	int lost = 0;
+	int bursts = 0;
+
+	for(int i = 0; i < 32; i++) {
+		lost += i * (DSP->loss_hist[i] - DSP->last_interval_loss_hist[i]);
+		bursts += DSP->loss_hist[i] - DSP->last_interval_loss_hist[i];
+	}
+	//if((verbosity > 4 or sverb.jitter) and chan->loss[i] > 0) printf("bc loss[%d]: %d\t", i, chan->loss[i]);
+
+	if(lost < 5) {
+		// ignore such small packet loss 
+		lossr = burstr = 0;
+		return 45;
+	}
+
+	if(DSP->received > 0 && bursts > 0) {
+		burstr = (double)((double)lost / (double)bursts) / (double)(1.0 / ( 1.0 - (double)lost / (double)DSP->received ));
+		//if(sverb.jitter) printf("SilenceMOS: burstr[%f] = (lost[%u] / bursts[%u]) / (1 / ( 1 - lost[%u] / received[%u]\n", burstr, lost, bursts, lost, DSP->received);
+		if(burstr < 0) {
+			burstr = - burstr;
+		} else if(burstr < 1) {
+			burstr = 1;
+		}
+	} else {
+		burstr = 0;
+	}
+	//printf("total loss: %d\n", lost);
+	if(DSP->received > 0) {
+		lossr = (double)((double)lost / (double)DSP->received);
+	} else {
+		lossr = 0;
+	}
+	int mos = (int)round(calculate_mos(lossr, burstr, rtp->first_codec, rtp->stats.received) * 10);
+	if(0) printf("[%p] SilenceMOS - burstr: %f lossr: %f lost[%d]/received[%d] mos[%u]\n", rtp, burstr, lossr, lost, DSP->received, mos);
+	return mos;
+}
 
 int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval) {
 	double burstr, lossr;

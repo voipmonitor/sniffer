@@ -959,9 +959,35 @@ static int __dsp_silence_noise(struct dsp *dsp, short *s, int len, int *totalsil
 	if (!len) {
 		return 0;
 	}
+
+	dsp->received += len/160;
+
 	accum = 0;
 	for (x = 0; x < len; x++) {
+		if(s[x] == 0) {
+			if(dsp->last_zero == true) {
+				dsp->counter++;
+			}
+			dsp->last_zero = true;
+		} else {
+			dsp->last_zero = false;
+		}
 		accum += abs(s[x]);
+	}
+	if(dsp->counter >= 159) {
+		// 20ms (8khz) silence - count loss and reset counter;
+		dsp->counter = 0;
+		dsp->loss++;
+	} else {
+		if(dsp->loss) {
+			if(dsp->loss < 32) {
+				dsp->loss_hist[dsp->loss]++;
+			} else {
+				// any consecutive loss >32 resets to 0
+				dsp->loss = 0;
+			}
+		}
+		dsp->loss = 0;
 	}
 	accum /= len;
 	if (accum < dsp->threshold) {

@@ -266,9 +266,11 @@ public:
 	uint8_t	mosf1_min;
 	uint8_t	mosf2_min;
 	uint8_t	mosAD_min;
+	uint8_t	mosSilence_min;
 	float	mosf1_avg;
 	float	mosf2_avg;
 	float	mosAD_avg;
+	float	mosSilence_avg;
 	uint32_t	mos_counter;
 	char save_mos_graph_wait;
 	timeval _last_ts;
@@ -287,6 +289,8 @@ public:
 	bool stream_in_multiple_calls;
 	uint32_t tailedframes;
 	uint8_t change_packetization_iterator;
+	bool last_was_silence;
+	uint32_t sum_silence_changes;
 
 	/* RTCP data */
 	struct rtcp_t {
@@ -357,6 +361,7 @@ public:
 	unsigned char last_interval_mosf1;
 	unsigned char last_interval_mosf2;
 	unsigned char last_interval_mosAD;
+	unsigned char last_interval_mosSilence;
 
 	struct dsp *DSP;
 

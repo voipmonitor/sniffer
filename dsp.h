@@ -319,6 +319,12 @@ struct dsp {
 	digit_detect_state_t digit_state;
 	tone_detect_state_t cng_tone_state;
 	tone_detect_state_t ced_tone_state;
+	unsigned int counter;
+	bool last_zero;
+	unsigned int loss;
+	unsigned short int loss_hist[32];
+	unsigned short int last_interval_loss_hist[32];
+	unsigned int received;
 };
 
 enum threshold {
