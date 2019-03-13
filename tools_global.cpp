@@ -462,10 +462,12 @@ std::vector<std::string> split(const char *s, const char *delim, bool enableTrim
 	return elems;
 }
 
-std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim, bool useEmptyItems) {
+std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim, bool useEmptyItems, bool enableTrimString) {
 	vector<std::string> elems;
 	string elem = s;
-	trim(elem);
+	if(enableTrimString) {
+		trim(elem);
+	}
 	elems.push_back(elem);
 	for(size_t i = 0; i < delim.size(); i++) {
 		vector<std::string> _elems;

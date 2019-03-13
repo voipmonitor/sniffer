@@ -733,7 +733,7 @@ public:
 	virtual ~PcapQueue_readFromInterface();
 	void setInterfaceName(const char *interfaceName);
 	void terminate();
-	bool openPcap(const char *filename);
+	bool openPcap(const char *filename, string *tempFileName = NULL);
 	bool isPcapEnd() {
 		return(this->pcapEnd);
 	}

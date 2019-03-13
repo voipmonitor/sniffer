@@ -748,15 +748,16 @@ bool cSnifferServerConnection::rsaAesInit() {
 		if(sensorTime.length()) {
 			syslog(LOG_NOTICE, "reported sensor time: %s for sensor id: %i", sensorTime.c_str(), sensorId);
 			time_t actualTimeSec = time(NULL);
-			time_t sensorTimeSec = stringToTime(sensorTime.c_str());
+			time_t sensorTimeSec = stringToTime(sensorTime.c_str(), true);
 			if(abs(actualTimeSec % 3600 - sensorTimeSec % 3600) > 2) {
 				cLogSensor::log(cLogSensor::error,  
 						"sensor is not allowed to connect because of different time",
 						"between receiver (%s) and sensor %i (%s) - please synchronize clocks on both server ",
-						sqlDateTimeString(actualTimeSec).c_str(),
+						sqlDateTimeString(actualTimeSec, true).c_str(),
 						sensorId,
 						sensorTime.c_str());
 				socket->writeBlock("bad time");
+				return(false);
 			}
 		}
 	}

@@ -144,7 +144,7 @@ public:
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false, SqlDb_row *row_on_duplicate = NULL);
 	virtual string insertOrUpdateQuery(string table, SqlDb_row row, SqlDb_row row_on_duplicate, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
-	virtual string insertQueryWithLimitMultiInsert(string table, vector<SqlDb_row> *rows, unsigned limitMultiInsert, const char *queriesSeparator = NULL,
+	virtual string insertQueryWithLimitMultiInsert(string table, vector<SqlDb_row> *rows, unsigned limitMultiInsert, const char *queriesSeparator = NULL, const char *queriesSeparatorSubst = NULL,
 						       bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
 	virtual string updateQuery(string table, SqlDb_row row, SqlDb_row whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
@@ -837,8 +837,8 @@ private:
 };
 
 SqlDb *createSqlObject(int connectId = 0);
-string sqlDateTimeString(time_t unixTime);
-string sqlDateString(time_t unixTime);
+string sqlDateTimeString(time_t unixTime, bool useGlobalTimeCache = false);
+string sqlDateString(time_t unixTime, bool useGlobalTimeCache = false);
 string sqlDateTimeString(tm &time);
 string sqlDateString(tm &time);
 string reverseString(const char *str);

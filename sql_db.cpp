@@ -984,7 +984,7 @@ string SqlDb::insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlS
 	return(query);
 }
 
-string SqlDb::insertQueryWithLimitMultiInsert(string table, vector<SqlDb_row> *rows, unsigned limitMultiInsert, const char *queriesSeparator,
+string SqlDb::insertQueryWithLimitMultiInsert(string table, vector<SqlDb_row> *rows, unsigned limitMultiInsert, const char *queriesSeparator, const char *queriesSeparatorSubst,
 					      bool enableSqlStringInContent, bool escapeAll, bool insertIgnore) {
 	if(!rows->size()) {
 		return("");
@@ -993,6 +993,9 @@ string SqlDb::insertQueryWithLimitMultiInsert(string table, vector<SqlDb_row> *r
 	string values = "";
 	for(size_t i = 0; i < rows->size(); i++) {
 		values += "( " + (*rows)[i].implodeContent(this->getContentSeparator(), this->getContentBorder(), enableSqlStringInContent || this->enableSqlStringInContent, escapeAll) + " )";
+		if(queriesSeparator && queriesSeparatorSubst && queriesSeparator != queriesSeparatorSubst) {
+			values = find_and_replace(values, queriesSeparator, queriesSeparatorSubst);
+		}
 		if((limitMultiInsert && !((i + 1) % limitMultiInsert)) || i == (rows->size() - 1)) {
 			if(!query.empty()) {
 				query += queriesSeparator ? queriesSeparator : "; ";
@@ -4058,15 +4061,15 @@ SqlDb *createSqlObject(int connectId) {
 	return(sqlDb);
 }
 
-string sqlDateTimeString(time_t unixTime) {
-	struct tm localTime = time_r(&unixTime);
+string sqlDateTimeString(time_t unixTime, bool useGlobalTimeCache) {
+	struct tm localTime = time_r(&unixTime, NULL, useGlobalTimeCache);
 	char dateTimeBuffer[50];
 	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &localTime);
 	return string(dateTimeBuffer);
 }
 
-string sqlDateString(time_t unixTime) {
-	struct tm localTime = time_r(&unixTime);
+string sqlDateString(time_t unixTime, bool useGlobalTimeCache) {
+	struct tm localTime = time_r(&unixTime, NULL, useGlobalTimeCache);
 	char dateBuffer[50];
 	strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &localTime);
 	return string(dateBuffer);
@@ -8121,7 +8124,7 @@ string MYSQL_CODEBOOK_ID(int type, string value) {
 	return(MYSQL_CODEBOOK_ID_PREFIX + intToString(nameValue.length()) + ":" + nameValue);
 }
 
-string MYSQL_ADD_QUERY_END(string query) {
+string MYSQL_ADD_QUERY_END(string query, bool enableSubstQueryEnd) {
 	unsigned query_length = query.length();
 	while(query_length && 
 	      (query[query_length - 1] == '\n' ||
@@ -8132,7 +8135,7 @@ string MYSQL_ADD_QUERY_END(string query) {
 	if(query_length < query.length()) {
 		query.resize(query_length);
 	}
-	if(useNewStore() || opt_load_query_from_files || is_server()) {
+	if(enableSubstQueryEnd && (useNewStore() || opt_load_query_from_files || is_server())) {
 		find_and_replace(query, _MYSQL_QUERY_END_new, _MYSQL_QUERY_END_SUBST_new);
 	}
 	query += MYSQL_QUERY_END;

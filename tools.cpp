@@ -994,13 +994,13 @@ tm stringToTm(const char *timeStr) {
 	return(dateTime);
 }
 
-time_t stringToTime(const char *timeStr) {
+time_t stringToTime(const char *timeStr, bool useGlobalTimeCache) {
 	int year, month, day, hour, min, sec;
 	hour = min = sec = 0;
 	sscanf(timeStr, "%d-%d-%d %d:%d:%d", &year, &month, &day, &hour, &min, &sec);
 	time_t now;
 	time(&now);
-	struct tm dateTime = time_r(&now);
+	struct tm dateTime = time_r(&now, NULL, useGlobalTimeCache);
 	dateTime.tm_year = year - 1900;
 	dateTime.tm_mon = month - 1;  
 	dateTime.tm_mday = day;
@@ -4014,10 +4014,10 @@ AutoDeleteAtExit::~AutoDeleteAtExit() {
 	}
 }
 
-pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff) {
+pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff, string *tempFileName) {
 	if(isGunzip(filename)) {
 		string error;
-		string unzip = gunzipToTemp(filename, &error, true);
+		string unzip = gunzipToTemp(filename, &error, !tempFileName, tempFileName);
 		if(!unzip.empty()) {
 			return(pcap_open_offline(unzip.c_str(), errbuff));
 		} else {
@@ -4029,11 +4029,14 @@ pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff) {
 	}
 }
 
-string gunzipToTemp(const char *zipFilename, string *error, bool autoDeleteAtExit) {
+string gunzipToTemp(const char *zipFilename, string *error, bool autoDeleteAtExit, string *tempFileName) {
 	char unzipTempFileName[L_tmpnam+1];
 	if(tmpnam(unzipTempFileName)) {
 		if(autoDeleteAtExit) {
 			GlobalAutoDeleteAtExit.add(unzipTempFileName);
+		}
+		if(tempFileName) {
+			*tempFileName = unzipTempFileName;
 		}
 		string _error = _gunzip_s(zipFilename, unzipTempFileName);
 		if(error) {

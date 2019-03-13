@@ -241,7 +241,7 @@ string MYSQL_CODEBOOK_ID(int type, string value);
 
 #define MYSQL_EXISTS_PREFIX_L(str, prefix, length) (!strncmp((str).c_str(), prefix, length))
 #define MYSQL_EXISTS_PREFIX_S(str, prefix) MYSQL_EXISTS_PREFIX_L(str, prefix.c_str(), prefix.length())
-string MYSQL_ADD_QUERY_END(string query);
+string MYSQL_ADD_QUERY_END(string query, bool enableSubstQueryEnd = true);
 
 
 void __store_prepare_queries(list<string> *queries, cSqlDbCodebooks *codebooks, cSqlDbAutoIncrement *autoincerement, SqlDb *sqlDb,

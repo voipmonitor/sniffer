@@ -359,10 +359,12 @@ inline void heapsafe_free(void *pointerToObject) {
 	}
 }
 
-inline void free_memory_stat_quick(void *pointerToObject) { 
-	sMemoryStatQuickBlock *memoryStatQuickBlock = (sMemoryStatQuickBlock *)((unsigned char*)pointerToObject - sizeof(sMemoryStatQuickBlock));
-	__sync_sub_and_fetch(&memoryStat[memoryStatQuickBlock->alloc_number], memoryStatQuickBlock->size);
-	free(memoryStatQuickBlock);
+inline void free_memory_stat_quick(void *pointerToObject) {
+	if(pointerToObject) {
+		sMemoryStatQuickBlock *memoryStatQuickBlock = (sMemoryStatQuickBlock *)((unsigned char*)pointerToObject - sizeof(sMemoryStatQuickBlock));
+		__sync_sub_and_fetch(&memoryStat[memoryStatQuickBlock->alloc_number], memoryStatQuickBlock->size);
+		free(memoryStatQuickBlock);
+	}
 }
 
 inline void *heapsafe_safe_realloc(void *pointerToObject, size_t sizeOfObject) {
