@@ -1138,7 +1138,7 @@ void NextIpCache::fetch() {
 		if(this->nextCache.size()) {
 			std::sort(this->nextCache.begin(), this->nextCache.end());
 		}
-		if(verbosity > 0) {
+		if(verbosity > 1) {
 			cout << "IPACC load next IP" << endl;
 		}
 	}

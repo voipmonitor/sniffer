@@ -874,6 +874,7 @@ struct sExistsColumns {
 	bool cdr_rtp_ptime;
 	bool cdr_mos_min;
 	bool cdr_mos_xr;
+	bool cdr_mos_silence;
 	bool cdr_dscp;
 	bool cdr_mos_lqo;
 	bool cdr_max_retransmission_invite;

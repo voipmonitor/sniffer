@@ -4484,18 +4484,22 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`a_mos_f2_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_adapt_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_xr_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`a_mos_silence_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_f1_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_f2_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_adapt_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_xr_min_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_silence_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_f1_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_f2_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_adapt_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_xr_mult10` tinyint unsigned DEFAULT NULL,\
+			`a_mos_silence_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_f1_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_f2_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_adapt_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_xr_mult10` tinyint unsigned DEFAULT NULL,\
+			`b_mos_silence_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_rtcp_loss` smallint unsigned DEFAULT NULL,\
 			`a_rtcp_maxfr` smallint unsigned DEFAULT NULL,\
 			`a_rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
@@ -6784,6 +6788,18 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 					"ADD COLUMN a_mos_xr_mult10 tinyint unsigned DEFAULT NULL, "
 					"ADD COLUMN b_mos_xr_mult10 tinyint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.cdr_mos_xr);
+	}
+	//23.7
+	existsColumns.cdr_mos_silence = this->existsColumn("cdr", "a_mos_silence_min_mult10");
+	if(!existsColumns.cdr_mos_silence) {
+		this->logNeedAlter("cdr",
+				   "MOS RTPC XR",
+				   "ALTER TABLE cdr "
+					"ADD COLUMN a_mos_silence_min_mult10 tinyint unsigned DEFAULT NULL, "
+					"ADD COLUMN b_mos_silence_min_mult10 tinyint unsigned DEFAULT NULL, "
+					"ADD COLUMN a_mos_silence_mult10 tinyint unsigned DEFAULT NULL, "
+					"ADD COLUMN b_mos_silence_mult10 tinyint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.cdr_mos_silence);
 	}
 }
 

@@ -4125,8 +4125,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(htonl(rtpab[i]->saddr), c+"_saddr");
 
 			// calculate MOS score for fixed 50ms 
-			double burstr, lossr;
-			burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr, 0);
+			//double burstr, lossr;
+			//burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr, 0);
 			//int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
 			int mos_f1_mult10 = (int)rtpab[i]->mosf1_avg;
 			cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
@@ -4143,7 +4143,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 			// calculate MOS score for fixed 200ms 
-			burstr_calculate(rtpab[i]->channel_fix2, rtpab[i]->stats.received, &burstr, &lossr, 0);
+			//burstr_calculate(rtpab[i]->channel_fix2, rtpab[i]->stats.received, &burstr, &lossr, 0);
 			//int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
 			int mos_f2_mult10 = (int)round(rtpab[i]->mosf2_avg);
 			cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
@@ -4155,7 +4155,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 			// calculate MOS score for adaptive 500ms 
-			burstr_calculate(rtpab[i]->channel_adapt, rtpab[i]->stats.received, &burstr, &lossr, 0);
+			//burstr_calculate(rtpab[i]->channel_adapt, rtpab[i]->stats.received, &burstr, &lossr, 0);
 			//int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
 			int mos_adapt_mult10 = (int)round(rtpab[i]->mosAD_avg);
 			cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
@@ -4164,6 +4164,19 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(existsColumns.cdr_mos_min and rtpab[i]->mosAD_min != (uint8_t)-1) {
 				cdr.add(rtpab[i]->mosAD_min, c+"_mos_adapt_min_mult10");
+			}
+
+			// silence MOS 
+			int mos_silence_mult10 = (int)rtpab[i]->mosSilence_avg;
+			if(existsColumns.cdr_mos_silence and rtpab[i]->mosSilence_min != (uint8_t)-1) {
+				cdr.add(mos_silence_mult10, c+"_mos_silence_mult10");
+				cdr.add(rtpab[i]->mosSilence_min, c+"_mos_silence_min_mult10");
+			}
+
+			// XR MOS 
+			if(existsColumns.cdr_mos_xr and rtpab[i]->rtcp_xr.counter > 0) {
+				cdr.add(rtpab[i]->rtcp_xr.minmos, c+"_mos_xr_min_mult10");
+				cdr.add(rtpab[i]->rtcp_xr.avgmos, c+"_mos_xr_mult10");
 			}
 
 			if(mos_f2_mult10 && opt_mosmin_f2) {
