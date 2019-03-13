@@ -2409,7 +2409,7 @@ RTP::update_seq(u_int16_t seq) {
 void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr, int lastinterval) {
 	int lost = 0;
 	int bursts = 0;
-	unsigned int received2 = 0 and lastinterval ? received - chan->last_received : received;
+	unsigned int received2 = lastinterval ? received - chan->last_received : received;
 	for(int i = 0; i < 128; i++) {
 		if(lastinterval) {
 			lost += i * (chan->loss[i] - chan->last_interval_loss[i]);
