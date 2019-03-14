@@ -1,3 +1,8 @@
+24.0.0 14.04.2019
+=================
+- fix 24.0 MOS silence (properly reset counter)
+
+
 24.0 14.04.2019
 ===============
 - fix MOS score for calls longer than 10 seconds - within the lenght of the call the MOS score (calculated every 10 seconds intervals) gradually increases to 4.5 (MOS score was wrongly delimited by total number of packets instead of last 10 second interval). Broken since 2016 (>= 17.0.1) 
