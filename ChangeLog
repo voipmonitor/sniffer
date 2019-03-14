@@ -1,9 +1,19 @@
-23.7.1 10.04.2019
+24.0 14.04.2019
+===============
+- fix MOS score for calls longer than 10 seconds - within the lenght of the call the MOS score (calculated every 10 seconds intervals) gradually increases to 4.5 (MOS score was wrongly delimited by total number of packets instead of last 10 second interval). Broken since 2016 (>= 17.0.1) 
+- new silence frame detection for G711a/u codec which treats absolute silence 20ms frames as packet loss providing new MOS score values (mos_silence_min and mos_silence_avg) - this enables detection of dropped frames behind SIP providers where there is no RTP issues. silencedetect must be set to yes in /etc/voipmonitor.conf (default is disabled) and cdr table must be upgraded (altered). More information http://www.voipmonitor.org/doc/Silence_detection
+- fix unlink temp files from unzip in load pcaps via scanpcapdir [VS-897]
+- fix SQL error when FAS and DTMF detection was enabled (sniffer were losing batch of CDR inserts) 
+- fix SIP history in GUI for TCP packets (enhanced duplicity check in sip reassembly) [VS-900]
+- fix memory leak in client/server mode when time is desynced [VS-901]
+
+
+23.7.1 10.03.2019
 =================
 - fix broken mirroring in 23.7 (indefinite query: select * from cdr_sip_response)
 
 
-23.7 08.04.2019
+23.7 08.03.2019
 ===============
 - new SQL mode for cloud mode 
 - set default sipport to 5060 
