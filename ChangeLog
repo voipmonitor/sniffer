@@ -1,3 +1,8 @@
+24.0.2 14.04.2019
+=================
+- fix new silence MOS around DTMF frames
+
+
 24.0.1 14.04.2019
 =================
 - fix 24.0 MOS silence (properly reset counter)
