@@ -2560,11 +2560,14 @@ int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP) {
 	double burstr, lossr;
 	int lost = 0;
 	int bursts = 0;
+	int mos = 0;
 
 	for(int i = 0; i < 32; i++) {
+		//printf("loss_hist[%d] = %d \n", i, DSP->loss_hist[i] - DSP->last_interval_loss_hist[i]);
 		lost += i * (DSP->loss_hist[i] - DSP->last_interval_loss_hist[i]);
 		bursts += DSP->loss_hist[i] - DSP->last_interval_loss_hist[i];
 	}
+	//printf("[%p] ------- \n", rtp);
 	//if((verbosity > 4 or sverb.jitter) and chan->loss[i] > 0) printf("bc loss[%d]: %d\t", i, chan->loss[i]);
 
 	if(lost < 5) {
@@ -2590,7 +2593,7 @@ int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP) {
 	} else {
 		lossr = 0;
 	}
-	int mos = (int)round(calculate_mos(lossr, burstr, rtp->first_codec, rtp->stats.received) * 10);
+	mos = (int)round(calculate_mos(lossr, burstr, rtp->first_codec, rtp->stats.received) * 10);
 	if(0) printf("[%p] SilenceMOS - burstr: %f lossr: %f lost[%d]/received[%d] mos[%u]\n", rtp, burstr, lossr, lost, DSP->received, mos);
 	return mos;
 }
