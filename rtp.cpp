@@ -1252,7 +1252,10 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 				ast_jb_destroy(channel_fix2);
 			}
 		}
-
+		//reset silence DSP
+		if(DSP) {
+			memcpy(DSP->last_interval_loss_hist, DSP->loss_hist, sizeof(unsigned short int) * 32);
+		}
 	}
 
 	if(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) {
@@ -1268,6 +1271,10 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		if(opt_jitterbuffer_f2) {
 			ast_jb_empty_and_reset(channel_fix2);
 			ast_jb_destroy(channel_fix2);
+		}
+		//reset silence DSP
+		if(DSP) {
+			memcpy(DSP->last_interval_loss_hist, DSP->loss_hist, sizeof(unsigned short int) * 32);
 		}
 	}
 
