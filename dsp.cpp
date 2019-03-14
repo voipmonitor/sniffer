@@ -970,6 +970,7 @@ static int __dsp_silence_noise(struct dsp *dsp, short *s, int len, int *totalsil
 			}
 			dsp->last_zero = true;
 		} else {
+			dsp->counter = 0;
 			dsp->last_zero = false;
 		}
 		accum += abs(s[x]);
