@@ -1,14 +1,19 @@
-24.0.2 14.04.2019
+24.0.3 19.03.2019
+=================
+- add new manager command: get_oldest_spooldir_date
+
+
+24.0.2 14.03.2019
 =================
 - fix new silence MOS around DTMF frames
 
 
-24.0.1 14.04.2019
+24.0.1 14.03.2019
 =================
 - fix 24.0 MOS silence (properly reset counter)
 
 
-24.0 14.04.2019
+24.0 14.03.2019
 ===============
 - fix MOS score for calls longer than 10 seconds - within the lenght of the call the MOS score (calculated every 10 seconds intervals) gradually increases to 4.5 (MOS score was wrongly delimited by total number of packets instead of last 10 second interval). Broken since 2016 (>= 17.0.1) 
 - new silence frame detection for G711a/u codec which treats absolute silence 20ms frames as packet loss providing new MOS score values (mos_silence_min and mos_silence_avg) - this enables detection of dropped frames behind SIP providers where there is no RTP issues. silencedetect must be set to yes in /etc/voipmonitor.conf (default is disabled) and cdr table must be upgraded (altered). More information http://www.voipmonitor.org/doc/Silence_detection
