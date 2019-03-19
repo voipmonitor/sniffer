@@ -200,6 +200,7 @@ public:
 	string getMaxSpoolDate();
 	void getSumSizeByDate(map<string, long long> *sizeByDate);
 	string printSumSizeByDate();
+	string getOldestDate();
 	static void run_cleanProcess(int spoolIndex = -1);
 	static void run_clean_obsolete(int spoolIndex = -1);
 	static void run_test_load(string type, int spoolIndex = -1);
@@ -210,6 +211,7 @@ public:
 	static void run_check_spooldir_filesindex(const char *dirfilter = NULL, int spoolIndex = -1);
 	static void run_reindex_spool(int spoolIndex = -1);
 	static string run_print_spool(int spoolIndex = -1);
+	static string get_oldest_date(int spoolIndex = -1);
 	static bool suspend(int spoolIndex = -1);
 	static bool resume(int spoolIndex = -1);
 	static bool isSetCleanspoolParameters(int spoolIndex);

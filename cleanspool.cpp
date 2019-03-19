@@ -503,6 +503,30 @@ string CleanSpool::printSumSizeByDate() {
 	return(outStr.str());
 }
 
+string CleanSpool::getOldestDate() {
+	string oldestDate;
+	list<string> spool_dirs;
+	this->getSpoolDirs(&spool_dirs);
+	for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
+		DIR* dp = opendir(iter_sd->c_str());
+		if(dp) {
+			dirent* de;
+			while((de = readdir(dp)) != NULL) {
+				if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
+				if(is_dir(de, iter_sd->c_str()) &&
+				   check_date_dir(de->d_name)) {
+					if(oldestDate.empty() ||
+					   oldestDate > de->d_name) {
+						oldestDate = de->d_name;
+					}
+				}
+			}
+			closedir(dp);
+		}
+	}
+	return(oldestDate);
+}
+
 void CleanSpool::run_cleanProcess(int spoolIndex) {
 	for(int i = 0; i < 2; i++) {
 		if(cleanSpool[i] &&
@@ -625,6 +649,23 @@ string CleanSpool::run_print_spool(int spoolIndex) {
 		}
 	}
 	return(rslt);
+}
+
+string CleanSpool::get_oldest_date(int spoolIndex) {
+	string oldestDate;
+	for(int i = 0; i < 2; i++) {
+		if(isSetSpoolDir(i)) {
+			CleanSpool cs(i);
+			list<string> spool_dirs;
+			string _oldestDate = cs.getOldestDate();
+			if(!_oldestDate.empty() &&
+			    (oldestDate.empty() ||
+			     oldestDate > _oldestDate)) {
+				oldestDate = _oldestDate;
+			}
+		}
+	}
+	return(oldestDate);
 }
 
 bool CleanSpool::isSetCleanspoolParameters(int spoolIndex) {

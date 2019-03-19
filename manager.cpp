@@ -332,6 +332,7 @@ int Mgmt_unpausecall(Mgmt_params *params);
 int Mgmt_setverbparam(Mgmt_params *params);
 int Mgmt_set_pcap_stat_period(Mgmt_params *params);
 int Mgmt_memcrash_test(Mgmt_params *params);
+int Mgmt_get_oldest_spooldir_date(Mgmt_params *params);
 #ifndef FREEBSD
 int Mgmt_malloc_trim(Mgmt_params *params);
 #endif
@@ -433,6 +434,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_setverbparam,
 	Mgmt_set_pcap_stat_period,
 	Mgmt_memcrash_test,
+	Mgmt_get_oldest_spooldir_date,
 #ifndef FREEBSD
 	Mgmt_malloc_trim,
 #endif
@@ -4575,6 +4577,18 @@ int Mgmt_memcrash_test(Mgmt_params *params) {
 		*test = 0;
 	}
 	return(0);
+}
+
+int Mgmt_get_oldest_spooldir_date(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("get_oldest_spooldir_date", "return oldest date from spool");
+		return(0);
+	}
+	string rslt = CleanSpool::get_oldest_date();
+	if(rslt.empty()) {
+		rslt = "empty";
+	}
+	return(params->sendString(rslt.c_str()));
 }
 
 int Mgmt_set_pcap_stat_period(Mgmt_params *params) {
