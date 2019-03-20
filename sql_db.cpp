@@ -1323,7 +1323,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			this->connecting = false;
 			return(false);
 		}
-		my_bool reconnect = 1;
+		bool reconnect = 1;
 		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
 		for(int connectPass = 0; connectPass < 2; connectPass++) {
 			if(connectPass) {
