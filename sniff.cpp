@@ -3632,18 +3632,22 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		s = gettag_sip(packetS, "\nSignal:", &l);
 		if(s && l < 33) {
 			char *tmp = s + 1;
+			char tmp2 = tmp[l - 1];
 			tmp[l - 1] = '\0';
 			if(verbosity >= 2)
 				syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
 			call->handle_dtmf(*tmp, ts2double(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec), packetS->saddr, packetS->daddr, s_dtmf::sip_info);
+			tmp[l - 1] = tmp2;
 		}
 		s = gettag_sip(packetS, "Signal=", &l);
 		if(s && l < 33) {
 			char *tmp = s;
+			char tmp2 = tmp[l];
 			tmp[l] = '\0';
 			if(verbosity >= 2)
 				syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
 			call->handle_dtmf(*tmp, ts2double(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec), packetS->saddr, packetS->daddr, s_dtmf::sip_info);
+			tmp[l] = tmp2;
 		}
 	}
 	
