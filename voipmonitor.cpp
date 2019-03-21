@@ -914,6 +914,7 @@ char *opt_spectrogram_gui_params = NULL;
 char *opt_check_regexp_gui_params = NULL;
 char *opt_test_regexp_gui_params = NULL;
 char *opt_read_pcap_gui_params = NULL;
+bool is_gui_param = false;
 char opt_test_str[1024];
 
 map<int, string> command_line_data;
@@ -2535,7 +2536,8 @@ bool is_set_gui_params() {
 	       opt_spectrogram_gui_params ||
 	       opt_check_regexp_gui_params ||
 	       opt_test_regexp_gui_params ||
-	       opt_read_pcap_gui_params);
+	       opt_read_pcap_gui_params ||
+	       is_gui_param);
 }
 
 int main(int argc, char *argv[]) {
@@ -7191,6 +7193,7 @@ void get_command_line_arguments() {
 			case 313:
 				opt_test = c;
 				strcpy_null_term(opt_test_arg, optarg);
+				is_gui_param = true;
 				break;
 			case 307:
 				opt_check_db = true;
