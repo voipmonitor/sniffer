@@ -1,3 +1,10 @@
+24.0.4 22.03.2019
+=================
+- fix SIP INFO (DTMF) corrupted packet in pcap file 
+- fix compilation with mysqlclient librray v.8
+- do not insert log to log_sensor when parameter --run-droppartitions-maxdays is used
+
+
 24.0.3 19.03.2019
 =================
 - add new manager command: get_oldest_spooldir_date
