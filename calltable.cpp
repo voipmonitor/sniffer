@@ -184,6 +184,7 @@ extern bool opt_saveaudio_from_first_invite;
 extern bool opt_saveaudio_afterconnect;
 extern int opt_skinny;
 extern int opt_enable_fraud;
+extern char opt_call_id_alternative[256];
 extern char opt_callidmerge_header[128];
 extern int opt_sdp_multiplication;
 extern int opt_hide_message_content;
@@ -416,7 +417,7 @@ Call_abstract::addTarPos(u_int64_t pos, int type) {
 
 
 /* constructor */
-Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time) :
+Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative, time_t time) :
  Call_abstract(call_type, time),
  tmprtp(-1, 0),
  pcap(PcapDumper::na, this),
@@ -441,6 +442,16 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, time_t time)
 	} else {
 		this->call_id = string(call_id);
 		this->call_id_len = this->call_id.length();
+	}
+	if(opt_call_id_alternative[0]) {
+		this->call_id_alternative = new FILE_LINE(0) map<string, bool>;
+		if(call_id_alternative) {
+			for(unsigned i = 0; i < call_id_alternative->size(); i++) {
+				(*this->call_id_alternative)[(*call_id_alternative)[i]] = true;
+			}
+		}
+	} else {
+		this->call_id_alternative = NULL;
 	}
 	whohanged = -1;
 	seeninvite = false;
@@ -852,6 +863,10 @@ Call::removeRTP() {
 Call::~Call(){
  
 	alloc_flag = 0;
+	
+	if(opt_call_id_alternative[0] && call_id_alternative) {
+		delete call_id_alternative;
+	}
  
 	removeMergeCalls();
 	
@@ -3313,6 +3328,24 @@ bool Call::existsBothDirectionsInSelectedRtpStream() {
 		}
 	}
 	return(existsCalllerDirection && existsCallledDirection);
+}
+
+void Call::removeCallIdMap() {
+	if(opt_call_id_alternative[0]) {
+		map<string, Call*>::iterator callMAPIT;
+		callMAPIT = ((Calltable*)calltable)->calls_listMAP.find(call_id);
+		if(callMAPIT != ((Calltable*)calltable)->calls_listMAP.end()) {
+			((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
+		}
+		if(call_id_alternative) {
+			for(map<string, bool>::iterator iter = call_id_alternative->begin(); iter != call_id_alternative->end(); iter++) {
+				callMAPIT = ((Calltable*)calltable)->calls_listMAP.find(iter->first);
+				if(callMAPIT != ((Calltable*)calltable)->calls_listMAP.end()) {
+					((Calltable*)calltable)->calls_listMAP.erase(callMAPIT);
+				}
+			}
+		}
+	}
 }
 
 void Call::removeMergeCalls() {
@@ -7081,19 +7114,28 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 	map<u_int32_t, u_int32_t> ip_dst_map;
 	unsigned int now = time(NULL);
 	calltable->lock_calls_listMAP();
+	list<Call*>::iterator callIT1;
 	map<string, Call*>::iterator callMAPIT1;
 	map<sStreamIds2, Call*>::iterator callMAPIT2;
 	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
 		int typeCall = passTypeCall == 0 ? INVITE : MGCP;
 		if(typeCall == INVITE) {
-			callMAPIT1 = calltable->calls_listMAP.begin();
+			if(opt_call_id_alternative[0]) {
+				callIT1 = calltable->calls_list.begin();
+			} else {
+				callMAPIT1 = calltable->calls_listMAP.begin();
+			}
 		} else {
 			callMAPIT2 = calltable->calls_by_stream_callid_listMAP.begin();
 		}
-		while(typeCall == INVITE ? callMAPIT1 != calltable->calls_listMAP.end() : callMAPIT2 != calltable->calls_by_stream_callid_listMAP.end()) {
+		while(typeCall == INVITE ? 
+		       (opt_call_id_alternative[0] ?
+			 callIT1 != calltable->calls_list.end() :
+			 callMAPIT1 != calltable->calls_listMAP.end()) : 
+		       callMAPIT2 != calltable->calls_by_stream_callid_listMAP.end()) {
 			Call *call;
 			if(typeCall == INVITE) {
-				call = (*callMAPIT1).second;
+				call = opt_call_id_alternative[0] ? *callIT1 : callMAPIT1->second;
 			} else {
 				call = (*callMAPIT2).second;
 			}
@@ -7159,7 +7201,11 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				}
 			}
 			if(typeCall == INVITE) {
-				++callMAPIT1;
+				if(opt_call_id_alternative[0]) {
+					++callIT1;
+				} else {
+					++callMAPIT1;
+				}
 			} else {
 				++callMAPIT2;
 			}
@@ -7235,9 +7281,10 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 }
 
 Call*
-Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port,
+Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative,
+	       time_t time, u_int32_t saddr, unsigned short port,
 	       pcap_t *handle, int dlt, int sensorId) {
-	Call *newcall = new FILE_LINE(1011) Call(call_type, call_id, call_id_len, time);
+	Call *newcall = new FILE_LINE(1011) Call(call_type, call_id, call_id_len, call_id_alternative, time);
 	newcall->in_preprocess_queue_before_process_packet = 1;
 	newcall->in_preprocess_queue_before_process_packet_at[0] = time;
 	newcall->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
@@ -7266,6 +7313,14 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, time_t t
 	} else {
 		lock_calls_listMAP();
 		calls_listMAP[call_idS] = newcall;
+		if(opt_call_id_alternative[0]) {
+			calls_list.push_back(newcall);
+			if(call_id_alternative) {
+				for(unsigned i = 0; i < call_id_alternative->size(); i++) {
+					calls_listMAP[(*call_id_alternative)[i]] = newcall;
+				}
+			}
+		}
 		newcall->calls_counter_inc();
 		unlock_calls_listMAP();
 	}
@@ -7289,7 +7344,7 @@ Call *
 Calltable::add_mgcp(sMgcpRequest *request, time_t time, u_int32_t saddr, unsigned short sport, u_int32_t daddr, unsigned short dport,
 		    pcap_t *handle, int dlt, int sensorId) {
 	string call_id = request->call_id();
-	Call *newcall = new FILE_LINE(0) Call(MGCP, (char*)call_id.c_str(), call_id.length(), time);
+	Call *newcall = new FILE_LINE(0) Call(MGCP, (char*)call_id.c_str(), call_id.length(), NULL, time);
 
 	if(handle) {
 		newcall->useHandle = handle;
@@ -7311,7 +7366,6 @@ Calltable::add_mgcp(sMgcpRequest *request, time_t time, u_int32_t saddr, unsigne
 	set_global_flags(newcall->flags);
 	
 	lock_calls_listMAP();
-	//calls_listMAP[call_id] = newcall;
 	calls_by_stream_callid_listMAP[sStreamIds2(saddr, sport, daddr, dport, request->parameters.call_id.c_str(), true)] = newcall;
 	calls_by_stream_id2_listMAP[sStreamId2(saddr, sport, daddr, dport, request->transaction_id, true)] = newcall;
 	calls_by_stream_listMAP[sStreamId(saddr, sport, daddr, dport, true)] = newcall;
@@ -7340,22 +7394,31 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose ) {
 	}
 	Call* call;
 	lock_calls_listMAP();
-	Call **closeCalls = new FILE_LINE(1012) Call*[calls_listMAP.size() + calls_by_stream_callid_listMAP.size()];
+	Call **closeCalls = new FILE_LINE(1012) Call*[calls_list_count() + calls_by_stream_callid_listMAP.size()];
 	unsigned int closeCalls_count = 0;
 	int rejectedCalls_count = 0;
 	
+	list<Call*>::iterator callIT1;
 	map<string, Call*>::iterator callMAPIT1;
 	map<sStreamIds2, Call*>::iterator callMAPIT2;
 	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
 		int typeCall = passTypeCall == 0 ? INVITE : MGCP;
 		if(typeCall == INVITE) {
-			callMAPIT1 = calls_listMAP.begin();
+			if(opt_call_id_alternative[0]) {
+				callIT1 = calls_list.begin();
+			} else {
+				callMAPIT1 = calls_listMAP.begin();
+			}
 		} else {
 			callMAPIT2 = calls_by_stream_callid_listMAP.begin();
 		}
-		while(typeCall == INVITE ? callMAPIT1 != calls_listMAP.end() : callMAPIT2 != calls_by_stream_callid_listMAP.end()) {
+		while(typeCall == INVITE ? 
+		       (opt_call_id_alternative[0] ?
+			 callIT1 != calltable->calls_list.end() :
+			 callMAPIT1 != calltable->calls_listMAP.end()) : 
+		       callMAPIT2 != calltable->calls_by_stream_callid_listMAP.end()) {
 			if(typeCall == INVITE) {
-				call = (*callMAPIT1).second;
+				call = opt_call_id_alternative[0] ? *callIT1 : callMAPIT1->second;
 			} else {
 				call = (*callMAPIT2).second;
 			}
@@ -7422,7 +7485,12 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose ) {
 				}
 				closeCalls[closeCalls_count++] = call;
 				if(typeCall == INVITE) {
-					calls_listMAP.erase(callMAPIT1++);
+					if(opt_call_id_alternative[0]) {
+						calls_list.erase(callIT1++);
+						call->removeCallIdMap();
+					} else {
+						calls_listMAP.erase(callMAPIT1++);
+					}
 					call->removeMergeCalls();
 				} else {
 					calls_by_stream_callid_listMAP.erase(callMAPIT2++);
@@ -7431,7 +7499,11 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose ) {
 				}
 			} else {
 				if(typeCall == INVITE) {
-					++callMAPIT1;
+					if(opt_call_id_alternative[0]) {
+						++callIT1;
+					} else {
+						++callMAPIT1;
+					}
 				} else {
 					++callMAPIT2;
 				}

@@ -619,6 +619,8 @@ int opt_mysql_client_compress = 0;
 char opt_timezone[256] = "";
 int opt_skiprtpdata = 0;
 
+char opt_call_id_alternative[256] = "";
+vector<string> opt_call_id_alternative_v;
 char opt_fbasename_header[128] = "";
 char opt_match_header[128] = "";
 char opt_callidmerge_header[128] = "";
@@ -5212,7 +5214,7 @@ void test() {
 		break;
 	case 310:
 		{
-		Call *call = new FILE_LINE(0) Call(0, (char*)"conv-raw-info", 0, 0);
+		Call *call = new FILE_LINE(0) Call(0, (char*)"conv-raw-info", 0, NULL, 0);
 		call->type_base = INVITE;
 		call->force_spool_path = opt_test_arg;
 		sverb.noaudiounlink = true;
@@ -6110,6 +6112,7 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(42270) cConfigItem_ports("sipport", sipportmatrix)));
 			addConfigItem(new FILE_LINE(42271) cConfigItem_yesno("cdr_sipport", &opt_cdr_sipport));
 			addConfigItem(new FILE_LINE(42272) cConfigItem_yesno("domainport", &opt_domainport));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("call_id_alternative", opt_call_id_alternative, sizeof(opt_call_id_alternative)));
 			addConfigItem((new FILE_LINE(42273) cConfigItem_string("fbasenameheader", opt_fbasename_header, sizeof(opt_fbasename_header)))
 				->setPrefixSuffix("\n", ":")
 				->addAlias("fbasename_header"));
@@ -7650,6 +7653,17 @@ void set_context_config() {
 	}
 	snprintf(opt_crash_bt_filename, sizeof(opt_crash_bt_filename), "%s/voipmonitor_crash_bt", tmpPath);
 	
+	if(opt_call_id_alternative[0]) {
+		opt_call_id_alternative_v = split(opt_call_id_alternative, split(",|;", '|'), true);
+		for(unsigned i = 0; i < opt_call_id_alternative_v.size(); i++) {
+			if(opt_call_id_alternative_v[i][opt_call_id_alternative_v[i].length() - 1] != ':') {
+				opt_call_id_alternative_v[i] += ":";
+			}
+		}
+	} else {
+		opt_call_id_alternative_v.clear();
+	}
+	
 }
 
 void check_context_config() {
@@ -8754,6 +8768,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "norecord-dtmf", NULL))) {
 		opt_norecord_dtmf = yesno(value);
+	}
+	if((value = ini.GetValue("general", "call_id_alternative", NULL))) {
+		strcpy_null_term(opt_call_id_alternative, value);
 	}
 	if((value = ini.GetValue("general", "fbasenameheader", NULL))) {
 		snprintf(opt_fbasename_header, sizeof(opt_fbasename_header), "\n%s:", value);

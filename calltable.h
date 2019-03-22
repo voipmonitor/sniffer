@@ -559,6 +559,7 @@ public:
 	volatile int rtplock;
 	unsigned long call_id_len;	//!< length of call-id 	
 	string call_id;	//!< call-id from SIP session
+	map<string, bool> *call_id_alternative;
 	char callername[256];		//!< callerid name from SIP header
 	char caller[256];		//!< From: xxx 
 	char caller_domain[256];	//!< From: xxx 
@@ -810,7 +811,7 @@ public:
 	 * @param time time of the first packet
 	 * 
 	*/
-	Call(int call_type, char *call_id, unsigned long call_id_len, time_t time);
+	Call(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative, time_t time);
 
 	/**
 	 * destructor
@@ -1207,6 +1208,7 @@ public:
 		return((typeIs(INVITE) || typeIs(MESSAGE)) &&
 		       opt_callidmerge_header[0] != '\0');
 	}
+	void removeCallIdMap();
 	void removeMergeCalls();
 	void mergecalls_lock() {
 		while(__sync_lock_test_and_set(&this->_mergecalls_lock, 1));
@@ -1603,6 +1605,7 @@ public:
 	deque<Ss7*> ss7_queue;
 	queue<string> files_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
+	list<Call*> calls_list;
 	map<string, Call*> calls_listMAP;
 	map<sStreamIds2, Call*> calls_by_stream_callid_listMAP;
 	map<sStreamId2, Call*> calls_by_stream_id2_listMAP;
@@ -1680,11 +1683,17 @@ public:
 	 *
 	 * @return reference of the new Call class
 	*/
-	Call *add(int call_type, char *call_id, unsigned long call_id_len, time_t time, u_int32_t saddr, unsigned short port, 
+	Call *add(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative,
+		  time_t time, u_int32_t saddr, unsigned short port, 
 		  pcap_t *handle, int dlt, int sensorId);
 	Ss7 *add_ss7(packet_s_stack *packetS, Ss7::sParseData *data);
 	Call *add_mgcp(sMgcpRequest *request, time_t time, u_int32_t saddr, unsigned short sport, u_int32_t daddr, unsigned short dport,
 		       pcap_t *handle, int dlt, int sensorId);
+	
+	size_t calls_list_count() {
+		extern char opt_call_id_alternative[256];
+		return(opt_call_id_alternative[0] ? calls_list.size() : calls_listMAP.size());
+	}
 
 	/**
 	 * @brief find Call by call_id
@@ -1694,13 +1703,38 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	Call *find_by_call_id(char *call_id, unsigned long call_id_len, time_t time) {
+	Call *find_by_call_id(char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative, time_t time) {
+		extern char opt_call_id_alternative[256];
 		Call *rslt_call = NULL;
 		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
 		lock_calls_listMAP();
 		map<string, Call*>::iterator callMAPIT = calls_listMAP.find(call_idS);
+		if(opt_call_id_alternative[0]) {
+			if(callMAPIT == calls_listMAP.end() && call_id_alternative) {
+				for(unsigned i = 0; i < call_id_alternative->size(); i++) {
+					callMAPIT = calls_listMAP.find((*call_id_alternative)[i]);
+					if(callMAPIT != calls_listMAP.end()) {
+						break;
+					}
+				}
+			}
+		}
 		if(callMAPIT != calls_listMAP.end()) {
 			rslt_call = callMAPIT->second;
+			if(opt_call_id_alternative[0]) {
+				if(call_idS != rslt_call->call_id) {
+					calls_listMAP[call_idS] = rslt_call;
+					(*rslt_call->call_id_alternative)[call_idS] = true;
+				}
+				if(call_id_alternative) {
+					for(unsigned i = 0; i < call_id_alternative->size(); i++) {
+						if((*call_id_alternative)[i] != rslt_call->call_id) {
+							calls_listMAP[(*call_id_alternative)[i]] = rslt_call;
+							(*rslt_call->call_id_alternative)[(*call_id_alternative)[i]] = true;
+						}
+					}
+				}
+			}
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
@@ -1772,10 +1806,20 @@ public:
 	Call *find_by_reference(long long callreference, bool lock) {
 		Call *rslt_call = NULL;
 		if(lock) lock_calls_listMAP();
-		for(map<string, Call*>::iterator iter = calls_listMAP.begin(); iter != calls_listMAP.end(); iter++) {
-			if((long long)(iter->second) == callreference) {
-				rslt_call = iter->second;
-				break;
+		extern char opt_call_id_alternative[256];
+		if(opt_call_id_alternative[0]) {
+			for(list<Call*>::iterator iter = calls_list.begin(); iter != calls_list.end(); iter++) {
+				if((long long)*iter == callreference) {
+					rslt_call = *iter;
+					break;
+				}
+			}
+		} else {
+			for(map<string, Call*>::iterator iter = calls_listMAP.begin(); iter != calls_listMAP.end(); iter++) {
+				if((long long)(iter->second) == callreference) {
+					rslt_call = iter->second;
+					break;
+				}
 			}
 		}
 		if(lock) unlock_calls_listMAP();

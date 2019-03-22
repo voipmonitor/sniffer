@@ -308,6 +308,7 @@ struct packet_s_process : public packet_s_process_0 {
 	u_int32_t sipDataLen;
 	char callid[128];
 	char *callid_long;
+	vector<string> *callid_alternative;
 	int sip_method;
 	sCseq cseq;
 	bool sip_response;
@@ -336,6 +337,7 @@ struct packet_s_process : public packet_s_process_0 {
 		sipDataLen = 0;
 		callid[0] = 0;
 		callid_long = NULL;
+		callid_alternative = NULL;
 		sip_method = -1;
 		cseq.null();
 		sip_response = false;
@@ -356,6 +358,10 @@ struct packet_s_process : public packet_s_process_0 {
 			delete [] callid_long;
 			callid_long = NULL;
 		}
+		if(callid_alternative) {
+			delete callid_alternative;
+			callid_alternative = NULL;
+		}
 	}
 	void set_callid(char *callid_input, unsigned callid_length = 0) {
 		if(!callid_length) {
@@ -368,6 +374,26 @@ struct packet_s_process : public packet_s_process_0 {
 		} else {
 			strncpy(callid, callid_input, callid_length);
 			callid[callid_length] = 0;
+		}
+	}
+	void set_callid_alternative(char *callid, unsigned callid_length) {
+		if(!callid_alternative) {
+			callid_alternative = new FILE_LINE(0) vector<string>;
+		}
+		char *separator = strnchr(callid, ';', callid_length);
+		if(separator) {
+			callid_length = separator - callid;
+		}
+		if(callid_length) {
+			bool ok = false;
+			for(unsigned i = 0; i < callid_length; i++) {
+				if(callid[i] != '0') {
+					ok = true;
+				}
+			}
+			if(ok) {
+				callid_alternative->push_back(string(callid, callid_length));
+			}
 		}
 	}
 	inline char *get_callid() {

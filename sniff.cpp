@@ -149,6 +149,8 @@ extern int opt_sipoverlap;
 extern int opt_last_dest_number;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
+extern char opt_call_id_alternative[256];
+extern vector<string> opt_call_id_alternative_v;
 extern char opt_fbasename_header[128];
 extern char opt_match_header[128];
 extern char opt_callidmerge_header[128];
@@ -2516,7 +2518,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		glob_ssl_calls++;
 	}
 	// store this call only if it starts with invite
-	Call *call = calltable->add(sip_method, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, 
+	Call *call = calltable->add(sip_method, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->callid_alternative,
+				    packetS->header_pt->ts.tv_sec, packetS->saddr, packetS->source, 
 				    get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 	call->is_ssl = packetS->is_ssl;
 	call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
@@ -4416,7 +4419,8 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 
 	//printf("ssrc [%x] ver[%d] src[%u] dst[%u]\n", rtp.getSSRC(), rtp.getVersion(), source, dest);
 
-	Call *call = calltable->add(INVITE, s, strlen(s), header->ts.tv_sec, saddr, source, 
+	Call *call = calltable->add(INVITE, s, strlen(s), NULL,
+				    header->ts.tv_sec, saddr, source, 
 				    handle, dlt, sensor_id);
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 	call->setSipcallerip(saddr, source);
@@ -4682,10 +4686,10 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
 	if(verbosity > 0 && is_read_from_file_simple()) {
 		if(opt_dup_check) {
 			syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] skipped dupe pkts [%u]\n", 
-				(int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size(), duplicate_counter);
+				(int)calltable->calls_list_count(), (int)calltable->calls_queue.size(), duplicate_counter);
 		} else {
 			syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d]\n", 
-				(int)calltable->calls_listMAP.size(), (int)calltable->calls_queue.size());
+				(int)calltable->calls_list_count(), (int)calltable->calls_queue.size());
 		}
 	}
 	calltable->cleanup_calls(&ts);
@@ -5101,7 +5105,7 @@ inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, i
 				l2 = enclen;
 			}
 			// check if the sniffer know about this call-id in mergeheader 
-			call = calltable->find_by_call_id(s2, l2, preprocess ? packetS->header_pt->ts.tv_sec : 0);
+			call = calltable->find_by_call_id(s2, l2, NULL, preprocess ? packetS->header_pt->ts.tv_sec : 0);
 			if(!call) {
 				// there is no call with the call-id in merge header - this call will be created as new
 			} else {
@@ -7622,14 +7626,24 @@ void PreProcessPacket::process_websocket(packet_s_process **packetS_ref) {
 
 bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
+	bool exists_callid = false;
 	char *s;
 	unsigned long l;
 	s = gettag_sip(packetS, "\nCall-ID:", "\ni:", &l);
 	if(s && l <= 1023) {
 		packetS->set_callid(s, l);
-		return(true);
+		exists_callid = true;
 	}
-	return(false);
+	if(opt_call_id_alternative[0]) {
+		for(unsigned i = 0; i < opt_call_id_alternative_v.size(); i++) {
+			s = gettag_sip(packetS, ("\n" + opt_call_id_alternative_v[i]).c_str(), &l);
+			if(s && l <= 1023) {
+				packetS->set_callid_alternative(s, l);
+				exists_callid = true;
+			}
+		}
+	}
+	return(exists_callid);
 }
 
 bool PreProcessPacket::process_getCallID_publish(packet_s_process **packetS_ref) {
@@ -7667,7 +7681,7 @@ void PreProcessPacket::process_getLastSipResponse(packet_s_process **packetS_ref
 
 void PreProcessPacket::process_findCall(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
-	packetS->call = calltable->find_by_call_id(packetS->get_callid(), 0, packetS->header_pt->ts.tv_sec);
+	packetS->call = calltable->find_by_call_id(packetS->get_callid(), 0, packetS->callid_alternative, packetS->header_pt->ts.tv_sec);
 	if(packetS->call) {
 		if(pcap_drop_flag) {
 			packetS->call->pcap_drop = pcap_drop_flag;

@@ -2858,6 +2858,14 @@ void ParsePacket::setStdParse() {
 	addNode("QualityEst:", typeNode_std);
 	addNode("PacketLoss:", typeNode_std);
 	
+	extern char opt_call_id_alternative[256];
+	extern vector<string> opt_call_id_alternative_v;
+	if(opt_call_id_alternative[0] && opt_call_id_alternative_v.size()) {
+		for(unsigned i = 0; i < opt_call_id_alternative_v.size(); i++) {
+			addNode(opt_call_id_alternative_v[i].c_str(), typeNode_std);
+		}
+	}
+	
 	extern char opt_fbasename_header[128];
 	if(opt_fbasename_header[0] != '\0') {
 		string findHeader = opt_fbasename_header;

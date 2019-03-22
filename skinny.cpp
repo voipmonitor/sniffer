@@ -1342,7 +1342,8 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	}       
 
 	// store this call only if it starts with invite
-	Call *call = calltable->add(state, s, l, header->ts.tv_sec, saddr, source, 
+	Call *call = calltable->add(state, s, l, NULL,
+				    header->ts.tv_sec, saddr, source, 
 				    handle, dlt, sensor_id);
 	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
 	call->setSipcallerip(saddr, source);
@@ -1461,7 +1462,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		// new call - find or create
 		char callid[16];
 		snprintf(callid, sizeof(callid), "%u", ref);
-		if ( ! (call = calltable->find_by_call_id(callid, strlen(callid), 0))){
+		if ( ! (call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0))){
 			// packet does not belongs to any call yet 
 			if(state == SKINNY_RINGIN or state == SKINNY_OFFHOOK) {
 				SKINNY_DEBUG(DEBUG_PACKET, 3, "New SKINNY %s\n", callid);
@@ -1546,7 +1547,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		char callid[16];
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received START_TONE_MESSAGE ref %d\n", ref);
 		snprintf(callid, sizeof(callid), "%u", ref);
-		call = calltable->find_by_call_id(callid, strlen(callid), 0);
+		call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0);
 		}
 		break;
 	case STOP_TONE_MESSAGE:
@@ -1555,7 +1556,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		char callid[16];
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received STOP_TONE_MESSAGE ref %d\n", ref);
 		snprintf(callid, sizeof(callid), "%u", ref);
-		call = calltable->find_by_call_id(callid, strlen(callid), 0);
+		call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0);
 		}
 		break;
 	case CALL_INFO_MESSAGE:
@@ -1564,7 +1565,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		char callid[16];
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received CALL_INFO_MESSAGE ref %d\n", ref);
 		snprintf(callid, sizeof(callid), "%u", ref);
-		if ((call = calltable->find_by_call_id(callid, strlen(callid), 0))){
+		if ((call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0))){
 			memcpy(call->callername, req.data.callinfo.callingPartyName, sizeof(req.data.callinfo.callingPartyName));
 			memcpy(call->caller, req.data.callinfo.callingParty, sizeof(req.data.callinfo.callingParty));
 			memcpy(call->called, req.data.callinfo.calledParty, sizeof(req.data.callinfo.calledParty));
@@ -1587,7 +1588,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		char callid[16];
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received CM5CALL_INFO_MESSAGE ref %d\n", ref);
 		snprintf(callid, sizeof(callid), "%u", ref);
-		if ((call = calltable->find_by_call_id(callid, strlen(callid), 0))){
+		if ((call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0))){
 
 
 
@@ -1704,7 +1705,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		char callid[16];
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received OPEN_RECEIVE_CHANNEL_MESSAGE ref %d partyId [%d]", ref, pid);
 		snprintf(callid, sizeof(callid), "%u", ref);
-		if ((call = calltable->find_by_call_id(callid, strlen(callid), 0))){
+		if ((call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0))){
 			calltable->lock_skinny_maps();
 			calltable->skinny_partyID[pid] = call;
 			calltable->unlock_skinny_maps();
@@ -1718,7 +1719,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		char callid[16];
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received DIALED_NUMBER_MESSAGE ref %d num:[%s]\n", ref, req.data.dialednumber.dialedNumber);
 		snprintf(callid, sizeof(callid), "%u", ref);
-		if((call = calltable->find_by_call_id(callid, strlen(callid), 0))){
+		if((call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0))){
 			strcpy_null_term(call->called, req.data.dialednumber.dialedNumber);
 		}
 		}
@@ -1768,7 +1769,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		char callid[16];
 		snprintf(callid, sizeof(callid), "%u", ref);
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received START_MEDIA_TRANSMISSION_MESSAGE partyId [%u] ipAddr[%x] port[%u] callid[%s]", ref, ipaddr, port, callid);
-		if((call = calltable->find_by_call_id(callid, strlen(callid), 0)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
+		if((call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			RTPMAP rtpmap[MAX_RTPMAP];
 			if(dynamicPayload) {
 				int codec = convSkinnyPayloadToCodec(payloadType);
@@ -1801,7 +1802,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		unsigned int ref = letohl(req.data.selectsoftkey.reference);
 		char callid[16];
 		snprintf(callid, sizeof(callid), "%u", ref);
-		call = calltable->find_by_call_id(callid, strlen(callid), 0);
+		call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0);
 		}
 		break;
 	case DISPLAY_PROMPT_STATUS_MESSAGE:
@@ -1810,7 +1811,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 		char callid[16];
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received DISPLAY_PROMPT_STATUS_MESSAGE ref %u\n", ref);
 		snprintf(callid, sizeof(callid), "%u", ref);
-		call = calltable->find_by_call_id(callid, strlen(callid), 0);
+		call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0);
 		}
 		break;
 	case ACTIVATE_CALL_PLANE_MESSAGE:

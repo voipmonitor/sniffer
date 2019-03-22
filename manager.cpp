@@ -94,6 +94,8 @@ extern cConfig CONFIG;
 extern bool useNewCONFIG;
 extern volatile bool cloud_activecheck_sshclose;
 
+extern char opt_call_id_alternative[256];
+
 int opt_blocktarwrite = 0;
 int opt_blockasyncprocess = 0;
 int opt_blockprocesspacket = 0;
@@ -2659,14 +2661,22 @@ int Mgmt_d_lc_bye(Mgmt_params *params) {
 		outStr << "sniffer not initialized yet" << endl;
 		return(params->sendString(&outStr));
 	}
-	map<string, Call*>::iterator callMAPIT;
 	Call *call;
 	vector<Call*> vectCall;
 	calltable->lock_calls_listMAP();
-	for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
-		call = (*callMAPIT).second;
-		if(call->typeIsNot(REGISTER) && call->seenbye) {
-			vectCall.push_back(call);
+	if(opt_call_id_alternative[0]) {
+		for(list<Call*>::iterator callIT = calltable->calls_list.begin(); callIT != calltable->calls_list.end(); ++callIT) {
+			call = *callIT;
+			if(call->typeIsNot(REGISTER) && call->seenbye) {
+				vectCall.push_back(call);
+			}
+		}
+	} else {
+		for(map<string, Call*>::iterator callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
+			call = callMAPIT->second;
+			if(call->typeIsNot(REGISTER) && call->seenbye) {
+				vectCall.push_back(call);
+			}
 		}
 	}
 	if(vectCall.size()) {
@@ -2701,12 +2711,17 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 		outStr << "sniffer not initialized yet" << endl;
 		return(params->sendString(&outStr));
 	}
-	map<string, Call*>::iterator callMAPIT;
 	Call *call;
 	vector<Call*> vectCall;
 	calltable->lock_calls_listMAP();
-	for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
-		vectCall.push_back((*callMAPIT).second);
+	if(opt_call_id_alternative[0]) {
+		for(list<Call*>::iterator callIT = calltable->calls_list.begin(); callIT != calltable->calls_list.end(); ++callIT) {
+			vectCall.push_back(*callIT);
+		}
+	} else {
+		for(map<string, Call*>::iterator callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
+			vectCall.push_back(callMAPIT->second);
+		}
 	}
 	if(vectCall.size()) {
 		std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_first_packet_time);
@@ -2740,9 +2755,17 @@ int Mgmt_d_pointer_to_call(Mgmt_params *params) {
 	sscanf(params->buf, "d_pointer_to_call %s", fbasename);
 	ostringstream outStr;
 	calltable->lock_calls_listMAP();
-	for(map<string, Call*>::iterator callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
-		if(!strcmp((*callMAPIT).second->fbasename, fbasename)) {
-			outStr << "find in calltable->calls_listMAP " << hex << (*callMAPIT).second << endl;
+	if(opt_call_id_alternative[0]) {
+		for(list<Call*>::iterator callIT = calltable->calls_list.begin(); callIT != calltable->calls_list.end(); ++callIT) {
+			if(!strcmp((*callIT)->fbasename, fbasename)) {
+				outStr << "find in calltable->calls_list " << hex << (*callIT) << endl;
+			}
+		}
+	} else {
+		for(map<string, Call*>::iterator callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
+			if(!strcmp((callMAPIT->second)->fbasename, fbasename)) {
+				outStr << "find in calltable->calls_list " << hex << (callMAPIT->second) << endl;
+			}
 		}
 	}
 	calltable->unlock_calls_listMAP();
@@ -2764,13 +2787,22 @@ int Mgmt_d_close_call(Mgmt_params *params) {
 	char fbasename[100];
 	sscanf(params->buf, "d_close_call %s", fbasename);
 	string rslt = fbasename + string(" missing");
-	map<string, Call*>::iterator callMAPIT;
 	calltable->lock_calls_listMAP();
-	for (callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
-		if(!strcmp((*callMAPIT).second->fbasename, fbasename)) {
-			(*callMAPIT).second->force_close = true;
-			rslt = fbasename + string(" close");
-			break;
+	if(opt_call_id_alternative[0]) {
+		for(list<Call*>::iterator callIT = calltable->calls_list.begin(); callIT != calltable->calls_list.end(); ++callIT) {
+			if(!strcmp((*callIT)->fbasename, fbasename)) {
+				(*callIT)->force_close = true;
+				rslt = fbasename + string(" close");
+				break;
+			}
+		}
+	} else {
+		for(map<string, Call*>::iterator callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
+			if(!strcmp((callMAPIT->second)->fbasename, fbasename)) {
+				(callMAPIT->second)->force_close = true;
+				rslt = fbasename + string(" close");
+				break;
+			}
 		}
 	}
 	calltable->unlock_calls_listMAP();
