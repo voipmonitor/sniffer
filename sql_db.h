@@ -947,6 +947,7 @@ public:
 	static void log(cLogSensor *log, const char *subject, const char *formatMessage = NULL, ...);
 	void log(const char *subject, const char *formatMessage = NULL, ...);
 	static void end(cLogSensor *log);
+	static void end(list<cLogSensor*> logs);
 	void end() {
 		end(this);
 	}

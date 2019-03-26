@@ -1312,6 +1312,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	if(opt_nocdr || isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
 		return(true);
 	}
+	list<cLogSensor*> logs;
 	this->connecting = true;
 	pthread_mutex_lock(&mysqlconnect_lock);
 	this->hMysql = mysql_init(NULL);
@@ -1366,15 +1367,21 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 							break;
 						} else if(connectPass) {
 							if(mainInit) {
-								syslog(LOG_WARNING, "Max allowed packet size is only %lu. Concat query size is limited. "
-										    "Please set max_allowed_packet to 100MB manually in your mysql configuration file.", 
-								       this->maxAllowedPacket);
+								logs.push_back(
+								cLogSensor::begin(cLogSensor::error, 
+										  "set max_allowed_packet failed",
+										  "Max allowed packet size is only %lu. Concat query size is limited. "
+										  "Please set max_allowed_packet to 100MB manually in your mysql configuration file.", 
+										  this->maxAllowedPacket));
 							}
 						}
 					} else {
 						if(mainInit) {
-							syslog(LOG_WARNING, "Unknown max allowed packet size. Concat query size is limited. "
-									    "Please set max_allowed_packet to 100MB manually in your mysql configuration file.");
+							logs.push_back(
+							cLogSensor::begin(cLogSensor::error, 
+									  "set max_allowed_packet failed",
+									  "Unknown max allowed packet size. Concat query size is limited. "
+									  "Please set max_allowed_packet to 100MB manually in your mysql configuration file."));
 						}
 						break;
 					}
@@ -1382,8 +1389,11 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 					sql_disable_next_attempt_if_error = 0;
 					sql_noerror = 0;
 					if(mainInit) {
-						syslog(LOG_WARNING, "Query for set / get max allowed packet size failed. Concat query size is limited. "
-								    "Please set max_allowed_packet to 100MB manually in your mysql configuration file.");
+						logs.push_back(
+						cLogSensor::begin(cLogSensor::error, 
+								  "set max_allowed_packet failed",
+								  "Query for set / get max allowed packet size failed. Concat query size is limited. "
+								  "Please set max_allowed_packet to 100MB manually in your mysql configuration file."));
 					}
 					break;
 				}
@@ -1445,6 +1455,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				this->cleanFields();
 			}
 			this->connecting = false;
+			cLogSensor::end(logs);
 			return(rslt);
 		} else {
 			if(!this->silentConnect) {
@@ -1456,6 +1467,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 	}
 	pthread_mutex_unlock(&mysqlconnect_lock);
 	this->connecting = false;
+	cLogSensor::end(logs);
 	return(false);
 }
 
@@ -1563,11 +1575,12 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 		bool rslt = this->query(string("create ") + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + " " +
 					routineName + routineParamsAndReturn + " " + routine);
 		if(!rslt && abortIfFailed) {
-			string errorString = 
-				string("create routine ") + routineName + " failed\n" +
-				"tip: SET GLOBAL log_bin_trust_function_creators = 1  or put it in my.cnf configuration or grant SUPER privileges to your voipmonitor mysql user.";
-			syslog(LOG_ERR, "%s", errorString.c_str());
-			vm_terminate_error(errorString.c_str());
+			string errorString1 = string("create routine ") + routineName + " failed";
+			string errorString2 = "tip: SET GLOBAL log_bin_trust_function_creators = 1  or put it in my.cnf configuration or grant SUPER privileges to your voipmonitor mysql user.";
+			cLogSensor::log(cLogSensor::error,
+					errorString1.c_str(),
+					errorString2.c_str());
+			vm_terminate_error((errorString1 + "\n" + errorString2).c_str());
 		}
 		return(rslt);
 	} else {
@@ -8043,6 +8056,12 @@ void cLogSensor::log(const char *subject, const char *formatMessage, ...) {
 void cLogSensor::end(cLogSensor *log) {
 	log->_end();
 	delete log;
+}
+
+void cLogSensor::end(list<cLogSensor*> logs) {
+	for(list<cLogSensor*>::iterator iter = logs.begin(); iter != logs.end(); iter++) {
+		cLogSensor::end(*iter);
+	}
 }
 
 void cLogSensor::_log(eType type, const char *subject, const char *message, bool enableSaveToDb) {
