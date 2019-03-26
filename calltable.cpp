@@ -3576,7 +3576,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		return(0);
 	}
 	
-	if(lastSIPresponseNum >= 0 && nocdr_rules.isSet() && nocdr_rules.check(this)) {
+	if((flags & FLAG_SKIPCDR) ||
+	   (lastSIPresponseNum >= 0 && nocdr_rules.isSet() && nocdr_rules.check(this))) {
 		return(0);
 	}
 	

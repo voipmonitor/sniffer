@@ -711,6 +711,9 @@ static int parse_packet__message(packet_s_process *packetS, bool strictCheckLeng
 
 */
 void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirtualUdp) {
+	if(call->flags & FLAG_SKIPCDR) {
+		return;
+	}
 	if(packetS->header_pt->caplen > 1000000) {
 		static u_long lastTimeSyslog = 0;
 		u_long actTime = getTimeMS();
@@ -3542,7 +3545,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				}
 			}
 		}
+		unsigned int flags_old = call->flags;
 		IPfilter::add_call_flags(&(call->flags), ntohl(packetS->saddr), ntohl(packetS->daddr));
+		if(sverb.dump_call_flags && call->flags != flags_old) {
+			cout << "set flags for ip " << inet_ntostring(htonl(packetS->saddr)) << " -> " << inet_ntostring(htonl(packetS->daddr)) << " : " << printCallFlags(call->flags) << endl;
+		}
 		if(!reverseInviteSdaddr) {
 			bool updateDest = false;
 			if(call->getSipcalledip() != packetS->daddr && call->getSipcallerip() != packetS->daddr && 
@@ -8155,7 +8162,8 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			   !(opt_ignore_rtp_after_cancel_confirmed &&
 			     node_call->call->seencancelandok && node_call->call->seencancelandok_time_usec &&
 			     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seencancelandok_time_usec) &&
-			   !(opt_hash_modify_queue_length_ms && node_call->call->end_call_rtp)) {
+			   !(opt_hash_modify_queue_length_ms && node_call->call->end_call_rtp) &&
+			   !(node_call->call->flags & FLAG_SKIPCDR)) {
 				packetS->blockstore_addflag(34 /*pb lock flag*/);
 				packetS->call_info[packetS->call_info_length].call = node_call->call;
 				packetS->call_info[packetS->call_info_length].iscaller = node_call->iscaller;
