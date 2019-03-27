@@ -381,6 +381,7 @@ inline char* strncpy_null_term(char *dst, const char *src, size_t size) {
 #define strncpy_null_term(dst, src, size) strncpy_null_term(dst, src, size)
 
 std::string string_size(const char *s, unsigned size);
+bool string_is_numeric(const char *s);
 bool string_is_alphanumeric(const char *s);
 
 bool matchResponseCodes(std::vector<pair<int, int> > & sipInfoCodes, int testCode);

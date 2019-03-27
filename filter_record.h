@@ -102,6 +102,9 @@ public:
 	void addWhite(const char *checkString) {
 		checkStringData.addWhite(checkString);
 	}
+	void addBlack(const char *checkString) {
+		checkStringData.addBlack(checkString);
+	}
 	void addWhite(const char *table, const char *column, const char * id) {
 		addWhite(table, column, atol(id));
 	}
@@ -179,10 +182,24 @@ public:
 	cRecordFilterItem_numList(cRecordFilter *parent, unsigned recordFieldIndex)
 	 : cRecordFilterItem_base(parent, recordFieldIndex) {
 	}
-	void addNum(int64_t num) {
-		nums.push_back(num);
+	void addNum(int64_t num, bool _not = false) {
+		if(_not) {
+			nums_not.push_back(num);
+		} else {
+			nums.push_back(num);
+		}
 	}
-	bool check(void *rec, bool */*findInBlackList*/ = NULL) {
+	bool check(void *rec, bool *findInBlackList = NULL) {
+		if(nums_not.size()) {
+			for(list<int64_t>::iterator iter = nums_not.begin(); iter != nums_not.end(); iter++) {
+				if(*iter == getField_int(rec)) {
+					if(findInBlackList) {
+						*findInBlackList = true;
+					}
+					return(false);
+				}
+			}
+		}
 		if(nums.size()) {
 			for(list<int64_t>::iterator iter = nums.begin(); iter != nums.end(); iter++) {
 				if(*iter == getField_int(rec)) {
@@ -195,6 +212,7 @@ public:
 	}
 private:
 	list<int64_t> nums;
+	list<int64_t> nums_not;
 };
 
 class cRecordFilterItems {

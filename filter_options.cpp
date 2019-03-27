@@ -165,20 +165,60 @@ void cSipMsgFilter::setFilter(const char *filter) {
 		addFilter(filter2);
 	}
 	if(!filterData["response_number"].empty()) {
-		vector<string> response_numbers_str = split(filterData["response_number"].c_str(), split(",|;| |", "|"), true);
-		vector<int> response_numbers;
+		cRecordFilterItem_numList *filterNum = NULL;
+		cRecordFilterItem_CheckString *filterStr = NULL;
+		vector<string> response_numbers_str = split(filterData["response_number"].c_str(), split(",|;| ", "|"), true);
+		bool onlyNums = true;
 		for(unsigned i = 0; i < response_numbers_str.size(); i++) {
-			int response_number = atoi(response_numbers_str[i].c_str());
-			if(response_number > 0) {
-				response_numbers.push_back(response_number);
+			if(!(string_is_numeric(response_numbers_str[i].c_str()) ||
+			     (response_numbers_str[i][0] == '!' && string_is_numeric(response_numbers_str[i].c_str() + 1)))) {
+				onlyNums = false;
+				break;
 			}
 		}
-		if(response_numbers.size()) {
-			cRecordFilterItem_numList *filter = new FILE_LINE(0) cRecordFilterItem_numList(this, smf_response_number);
-			for(unsigned i = 0; i < response_numbers.size(); i++) {
-				filter->addNum(response_numbers[i]);
+		if(onlyNums) {
+			for(unsigned i = 0; i < response_numbers_str.size(); i++) {
+				if(string_is_numeric(response_numbers_str[i].c_str()) ||
+				   (response_numbers_str[i][0] == '!' && string_is_numeric(response_numbers_str[i].c_str() + 1))) {
+					bool _not = response_numbers_str[i][0] == '!';
+					if(!filterNum) {
+						filterNum = new FILE_LINE(0) cRecordFilterItem_numList(this, smf_response_number);
+					}
+					filterNum->addNum(atoi(response_numbers_str[i].c_str() + (_not ? 1 : 0)), _not);
+				}
 			}
-			addFilter(filter);
+		} else {
+			response_numbers_str = split(filterData["response_number"].c_str(), split(",|;", "|"), true);
+			for(unsigned i = 0; i < response_numbers_str.size(); i++) {
+				if(string_is_numeric(response_numbers_str[i].c_str()) ||
+				   (response_numbers_str[i][0] == '!' && string_is_numeric(response_numbers_str[i].c_str() + 1))) {
+					bool _not = response_numbers_str[i][0] == '!';
+					if(!filterNum) {
+						filterNum = new FILE_LINE(0) cRecordFilterItem_numList(this, smf_response_number);
+					}
+					filterNum->addNum(atoi(response_numbers_str[i].c_str() + (_not ? 1 : 0)), _not);
+				} else {
+					bool _not = response_numbers_str[i][0] == '!';
+					if(!filterStr) {
+						filterStr = new FILE_LINE(0) cRecordFilterItem_CheckString(this, smf_response_string);
+					}
+					if(_not) {
+						filterStr->addBlack(response_numbers_str[i].c_str() + 1);
+					} else {
+						filterStr->addWhite(response_numbers_str[i].c_str());
+					}
+				}
+			}
+		}
+		if(filterNum && filterStr) {
+			addFilter(filterNum, filterStr);
+		} else {
+			if(filterNum) {
+				addFilter(filterNum);
+			}
+			if(filterStr) {
+				addFilter(filterStr);
+			}
 		}
 	}
 	if(!filterData["sensor_id"].empty()) {

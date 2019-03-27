@@ -2428,6 +2428,19 @@ std::string string_size(const char *s, unsigned size) {
 	return(str);
 }
 
+bool string_is_numeric(const char *s) {
+	if(!*s) {
+		return(false);
+	}
+	while(*s) {
+		if(!isdigit(*s)) {
+			return(false);
+		}
+		++s;
+	}
+	return(true);
+}
+
 bool string_is_alphanumeric(const char *s) {
 	if(!*s) {
 		return(false);
