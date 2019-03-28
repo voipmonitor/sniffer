@@ -432,7 +432,7 @@ bool FraudAlert::loadAlert(SqlDb *sqlDb) {
 	if(defFilterIpCondition12()) {
 		ipFilterCondition12 = dbRow["fraud_ip_condition_12"] == "and" ? _cond12_and :
 				      dbRow["fraud_ip_condition_12"] == "or" ? _cond12_or :
-				      dbRow["fraud_ip_condition_12"] == "both_direction" ? _cond12_both_directions :
+				      dbRow["fraud_ip_condition_12"] == "both_directions" ? _cond12_both_directions :
 				      typeBy == _typeBy_rtp_stream_ip || typeBy == _typeBy_rtp_stream_ip_group ? 
 				       _cond12_both_directions : 
 				       _cond12_and;
@@ -452,7 +452,7 @@ bool FraudAlert::loadAlert(SqlDb *sqlDb) {
 	if(defFilterNumberCondition12()) {
 		phoneNumberFilterCondition12 = dbRow["fraud_number_condition_12"] == "and" ? _cond12_and :
 					       dbRow["fraud_number_condition_12"] == "or" ? _cond12_or :
-					       dbRow["fraud_number_condition_12"] == "both_direction" ? _cond12_both_directions :
+					       dbRow["fraud_number_condition_12"] == "both_directions" ? _cond12_both_directions :
 					       typeBy == _typeBy_rtp_stream_ip || typeBy == _typeBy_rtp_stream_ip_group ? 
 						_cond12_both_directions :
 						_cond12_and;
