@@ -337,6 +337,7 @@ int opt_cdronlyanswered = 0;
 int opt_cdronlyrtp = 0;
 int opt_pcap_split = 1;
 int opt_newdir = 1;
+int opt_video_recording = 0;
 int opt_spooldir_by_sensor = 0;
 int opt_spooldir_by_sensorname = 0;
 int opt_callslimit = 0;
@@ -11108,6 +11109,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "pauserecordingheader", NULL))) {
 		snprintf(opt_silenceheader, sizeof(opt_silenceheader), "\n%s:", value);
+	}
+	if((value = ini.GetValue("general", "record_video_payload", NULL))) {
+		opt_video_recording = yesno(value);
 	}
 	if((value = ini.GetValue("general", "pauserecordingdtmf_timeout", NULL))) {
 		opt_pauserecordingdtmf_timeout = atoi(value);

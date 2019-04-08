@@ -122,6 +122,8 @@ inline const char *codec2text(int codec) {
 	case PAYLOAD_VXOPUS24:
 	case PAYLOAD_VXOPUS48:
 		return "VXOPUS";
+	case PAYLOAD_VP8:
+		return "VP8";
 	case PAYLOAD_TELEVENT:
 		return "TELEPHONE EVENT";
 	case PAYLOAD_MP4ALATM128:
