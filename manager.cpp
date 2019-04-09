@@ -152,6 +152,10 @@ int Mgmt_params::sendString(int value) {
 	return(sendString(&tstr));
 }
 
+int Mgmt_params::sendString(string str) {
+	return(sendString(&str));
+}
+
 int Mgmt_params::sendString(string *str) {
 	if(str->empty()) {
 		return(0);
@@ -187,12 +191,22 @@ int Mgmt_params::sendString(string *str) {
 	return(0);
 }
 
-int Mgmt_params::sendFile(const char *fileName) {
+int Mgmt_params::sendFile(const char *fileName, u_int64_t tailMaxSize) {
 	int fd = open(fileName, O_RDONLY);
 	if(fd < 0) {
 		string str = "error: cannot open file " + string(fileName);
 		sendString(&str);
 		return -1;
+	}
+	u_int64_t startPos = 0;
+	if(tailMaxSize) {
+		u_int64_t fileSize = GetFileSize(fileName);
+		if(fileSize > tailMaxSize) {
+			startPos = fileSize - tailMaxSize;
+		}
+	}
+	if(startPos) {
+		lseek(fd, startPos);
 	}
 	RecompressStream *recompressStream = new FILE_LINE(0) RecompressStream(RecompressStream::compress_na, zip ? RecompressStream::gzip : RecompressStream::compress_na);
 	recompressStream->setSendParameters(client, sshchannel, c_client);
@@ -225,6 +239,75 @@ int Mgmt_params::sendFile(const char *fileName) {
 	return(0);
 }
 
+int Mgmt_params::sendConfigurationFile(const char *fileName, list<string> *hidePasswordForOptions) {
+	FILE *file = fopen(fileName, "r");
+	if(!file) {
+		string str = "error: cannot open file " + string(fileName);
+		sendString(&str);
+		return -1;
+	}
+	RecompressStream *recompressStream = new FILE_LINE(0) RecompressStream(RecompressStream::compress_na, zip ? RecompressStream::gzip : RecompressStream::compress_na);
+	recompressStream->setSendParameters(client, sshchannel, c_client);
+	char lineBuffer[10000];
+	while(fgets(lineBuffer, sizeof(lineBuffer), file)) {
+		string lineBufferSubst;
+		if(hidePasswordForOptions) {
+			char *optionSeparatorPos = strchr(lineBuffer, '=');
+			if(optionSeparatorPos) {
+				string option = trim_str(string(lineBuffer, optionSeparatorPos - lineBuffer));
+				string value = trim_str(string(optionSeparatorPos + 1));
+				for(list<string>::iterator iter = hidePasswordForOptions->begin(); iter != hidePasswordForOptions->end(); iter++) {
+					if(option == *iter) {
+						lineBufferSubst = option + " = ****\n";
+						break;
+					}
+				}
+			}
+		}
+		if(lineBufferSubst.empty()) {
+			recompressStream->processData(lineBuffer, strlen(lineBuffer));
+		} else {
+			recompressStream->processData((char*)lineBufferSubst.c_str(), lineBufferSubst.length());
+		}
+		if(recompressStream->isError()) {
+			fclose(file);
+			return -1;
+		}
+	}
+	fclose(file);
+	delete recompressStream;
+	return(0);
+}
+
+int Mgmt_params::sendPexecOutput(const char *cmd) {
+	int exitCode;
+	string result_out;
+	string result_err;
+        #if true
+		SimpleBuffer out;
+		SimpleBuffer err;
+		vm_pexec(cmd, &out, &err, &exitCode);
+		result_out = (char*)out;
+		result_err = (char*)err;
+	#else
+		result_out = pexec((char*)cmd, &exitCode);
+		if(!result_out.empty()) {
+			exitCide = 0;
+		}
+	#endif
+	if(exitCode == 0 && !result_out.empty()) {
+		return(sendString(result_out));
+	} else {
+		string failed_str = string("failed ") + cmd;
+		if(result_err.size()) {
+			if(result_err[result_err.length() - 1] == '\n') {
+				result_err.resize(result_err.length() - 1);
+			}
+			failed_str += result_err;
+		}
+		return(sendString(failed_str));
+	}
+}
 
 Mgmt_params::Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread) {
 	buf = ibuf;
@@ -335,6 +418,7 @@ int Mgmt_setverbparam(Mgmt_params *params);
 int Mgmt_set_pcap_stat_period(Mgmt_params *params);
 int Mgmt_memcrash_test(Mgmt_params *params);
 int Mgmt_get_oldest_spooldir_date(Mgmt_params *params);
+int Mgmt_get_sensor_information(Mgmt_params *params);
 #ifndef FREEBSD
 int Mgmt_malloc_trim(Mgmt_params *params);
 #endif
@@ -437,6 +521,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_set_pcap_stat_period,
 	Mgmt_memcrash_test,
 	Mgmt_get_oldest_spooldir_date,
+	Mgmt_get_sensor_information,
 #ifndef FREEBSD
 	Mgmt_malloc_trim,
 #endif
@@ -4620,7 +4705,243 @@ int Mgmt_get_oldest_spooldir_date(Mgmt_params *params) {
 	if(rslt.empty()) {
 		rslt = "empty";
 	}
-	return(params->sendString(rslt.c_str()));
+	return(params->sendString(rslt));
+}
+
+int Mgmt_get_sensor_information(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("get_sensor_information", "return sensor information");
+		return(0);
+	}
+	const char *_hidePasswordForOptions[] = {
+		"mysqlpassword",
+		"mysqlpassword_2",
+		"database_backup_from_mysqlpassword",
+		"get_customer_by_ip_odbc_password",
+		"get_customer_by_pn_odbc_password",
+		"get_radius_ip_password",
+		"odbcpass",
+		"manager_sshpassword",
+		"server_password"
+	};
+	list<string> hidePasswordForOptions;
+	for(unsigned i = 0; i < sizeof(_hidePasswordForOptions) / sizeof(_hidePasswordForOptions[0]); i++) {
+		hidePasswordForOptions.push_back(_hidePasswordForOptions[i]);
+	}
+	char type_information[256] = "";
+	char next_params[5][256];
+	for(unsigned i = 0; i < sizeof(next_params) / sizeof(next_params[0]); i++) {
+		next_params[i][0] = 0;
+	}
+	sscanf(params->buf + params->command.length() + 1, "%s %s %s %s", type_information, next_params[0], next_params[1], next_params[2]);
+	if(string(next_params[0]) == "zip") {
+		params->zip = true;
+	}
+	if(string(type_information) == "configuration_files_list" ||
+	   string(type_information) == "configuration_file") {
+		string config_dir = "/etc/voipmonitor/conf.d/";
+		list<string> configurations;
+		extern string rundir;
+		extern char configfile[1024];
+		string configfilepath = configfile[0] == '/' ? string(configfile) : (rundir + "/" + configfile);
+		if(file_exists(configfilepath)) {
+			configurations.push_back(configfilepath);
+		}
+		DIR* dp = opendir(config_dir.c_str());
+		if(dp) {
+			dirent *de;
+			while((de = readdir(dp)) != NULL) {
+				if(string(de->d_name) != ".." && string(de->d_name) != ".") {
+					configurations.push_back(config_dir + "/" + de->d_name);
+				}
+			}
+			closedir(dp);
+		}
+		if(configurations.size()) {
+			if(string(type_information) == "configuration_file") {
+				for(list<string>::iterator iter = configurations.begin(); iter != configurations.end(); iter++) {
+					if(next_params[1] == *iter) {
+						return(params->sendConfigurationFile(next_params[1], &hidePasswordForOptions));
+					}
+				}
+				return(params->sendString("failed - access denied"));
+			} else {
+				string configurations_str;
+				for(list<string>::iterator iter = configurations.begin(); iter != configurations.end(); iter++) {
+					if(!configurations_str.empty()) {
+						configurations_str += "\n";
+					}
+					configurations_str += *iter + ":" + intToString(GetFileSize(*iter));
+				}
+				return(params->sendString(configurations_str));
+			}
+		} else {
+			return(params->sendString("failed search configurations"));
+		}
+	} else if(string(type_information) == "configuration_db") {
+		extern bool useNewCONFIG;
+		extern int opt_mysqlloadconfig;
+		if(useNewCONFIG && opt_mysqlloadconfig) {
+			SqlDb *sqlDb = createSqlObject();
+			sqlDb->setMaxQueryPass(1);
+			sqlDb->setDisableLogError();
+			extern int opt_id_sensor;
+			if(sqlDb->query("SELECT * FROM sensor_config WHERE id_sensor " + 
+					(opt_id_sensor > 0 ? intToString(opt_id_sensor) : "IS NULL"))) {
+				SqlDb_row row = sqlDb->fetchRow();
+				delete sqlDb;
+				if(row) {
+					string result;
+					for(size_t i = 0; i < row.getCountFields(); i++) {
+						string column = row.getNameField(i);
+						if(column != "id" && column != "id_sensor" && !row.isNull(column)) {
+							if(!result.empty()) {
+								result += "\n";
+							}
+							result += column + " = ";
+							bool hidePassword = false;
+							for(list<string>::iterator iter = hidePasswordForOptions.begin(); iter != hidePasswordForOptions.end(); iter++) {
+								if(column == *iter) {
+									hidePassword = true;
+									break;
+								}
+							}
+							if(hidePassword) {
+								result += "****";
+							} else {
+								result += row[column];
+							}
+						}
+					}
+					return(params->sendString(result));
+				} else {
+					return(params->sendString("failed - not exists data in table sensor_config for sensor"));
+				}
+			} else {
+				delete sqlDb;
+				return(params->sendString("failed load data from table sensor_config"));
+			}
+		} else {
+			return(params->sendString("failed - need active new config and enable mysqlloadconfig"));
+		}
+	} else if(string(type_information) == "configuration_active") {
+		extern bool useNewCONFIG;
+		if(useNewCONFIG) {
+			extern cConfig CONFIG;
+			string contentConfig = CONFIG.getContentConfig(true, false);
+			vector<string> contentConfigSplit = split(contentConfig, '\n');
+			for(unsigned i = 0; i < contentConfigSplit.size(); i++) {
+				size_t optionSeparatorPos = contentConfigSplit[i].find('=');
+				if(optionSeparatorPos != string::npos) {
+					string option = trim_str(contentConfigSplit[i].substr(0, optionSeparatorPos));
+					string value = trim_str(contentConfigSplit[i].substr(optionSeparatorPos + 1));
+					for(list<string>::iterator iter = hidePasswordForOptions.begin(); iter != hidePasswordForOptions.end(); iter++) {
+						if(option == *iter) {
+							contentConfigSplit[i] = option + " = ****";
+							break;
+						}
+					}
+				}
+			}
+			contentConfig = "";
+			for(unsigned i = 0; i < contentConfigSplit.size(); i++) {
+				if(i) {
+					contentConfig += '\n';
+				}
+				contentConfig += contentConfigSplit[i];
+			}
+			return(params->sendString(contentConfig));
+		} else {
+			return(params->sendString("failed - need active new config"));
+		}
+	} else if(string(type_information) == "syslog_files_list" ||
+		  string(type_information) == "syslog_file") {
+		string syslog_dir = "/var/log";
+		list<string> syslogs;
+		DIR* dp = opendir(syslog_dir.c_str());
+		if(dp) {
+			dirent *de;
+			while((de = readdir(dp)) != NULL) {
+				if(string(de->d_name) != ".." && string(de->d_name) != "." &&
+				   (strstr(de->d_name, "messages") ||
+				    strstr(de->d_name, "syslog"))) {
+					syslogs.push_back(syslog_dir + "/" + de->d_name);
+				}
+			}
+			closedir(dp);
+		}
+		if(syslogs.size()) {
+			if(string(type_information) == "syslog_file") {
+				for(list<string>::iterator iter = syslogs.begin(); iter != syslogs.end(); iter++) {
+					if(next_params[1] == *iter) {
+						return(params->sendFile(next_params[1], next_params[2][0] ? atoll(next_params[2]) : 0));
+					}
+				}
+				return(params->sendString("failed - access denied"));
+			} else {
+				string syslogs_str;
+				for(list<string>::iterator iter = syslogs.begin(); iter != syslogs.end(); iter++) {
+					if(!syslogs_str.empty()) {
+						syslogs_str += "\n";
+					}
+					syslogs_str += *iter + ":" + intToString(GetFileSize(*iter));
+				}
+				return(params->sendString(syslogs_str));
+			}
+		} else {
+			return(params->sendString("failed search syslogs"));
+		}
+	} else if(string(type_information) == "interfaces") {
+		extern char ifname[1024];
+		vector<string> interfaces = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
+		if(interfaces.size()) {
+			string interfaces_str;
+			for(unsigned i = 0; i < interfaces.size(); i ++) {
+				if(!interfaces_str.empty()) {
+					interfaces_str += "\n";
+				}
+				interfaces_str += interfaces[i] + "\n";
+				SimpleBuffer out;
+				SimpleBuffer err;
+				string cmd = "ethtool -i " + interfaces[i];
+				int exitCode;
+				vm_pexec(cmd.c_str(), &out, &err, &exitCode);
+				if(exitCode == 0 && out.size()) {
+					interfaces_str += (char*)out;
+				} else {
+					interfaces_str += "failed " + cmd + "\n";
+					if(err.size()) {
+						interfaces_str += (char*)err;
+						if(interfaces_str[interfaces_str.length() - 1] != '\n') {
+							interfaces_str += "\n";
+						}
+					}
+				}
+			}
+			return(params->sendString(interfaces_str));
+		} else {
+			return(params->sendString("no interfaces"));
+		}
+	} else if(string(type_information) == "proc_cpuinfo") {
+		return(params->sendFile("/proc/cpuinfo"));
+	} else if(string(type_information) == "proc_meminfo") {
+		return(params->sendFile("/proc/meminfo"));
+	} else if(string(type_information) == "cmd_df") {
+		return(params->sendPexecOutput("df -h"));
+	} else if(string(type_information) == "cmd_mount") {
+		return(params->sendPexecOutput("mount"));
+	} else if(string(type_information) == "cmd_dmesg") {
+		return(params->sendPexecOutput("dmesg -t"));
+	} else if(string(type_information) == "cmd_file") {
+		extern string rundir;
+		extern string appname;
+		return(params->sendPexecOutput(("file " + rundir + "/" + appname).c_str()));
+	} else if(string(type_information) == "cmd_ldd") {
+		extern string rundir;
+		extern string appname;
+		return(params->sendPexecOutput(("ldd " + rundir + "/" + appname).c_str()));
+	}
+	return(0);
 }
 
 int Mgmt_set_pcap_stat_period(Mgmt_params *params) {

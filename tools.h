@@ -333,6 +333,7 @@ long long GetDirSizeDU(unsigned countFiles);
 long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
 long long GetFreeDiskSpace(const char* absoluteFilePath, bool percent_mult_100 = false);
 long long GetTotalDiskSpace(const char* absoluteFilePath);
+bool lseek(int fd, u_int64_t seekPos);
 string GetStringMD5(std::string str);
 string GetFileMD5(std::string filename);
 string GetDataMD5(u_char *data, u_int32_t datalen);

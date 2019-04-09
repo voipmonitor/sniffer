@@ -2829,7 +2829,9 @@ void MySqlStore_process::__store(list<string> *queries) {
 				useNewStore(), useSetId(), opt_mysql_enable_multiple_rows_insert,
 				this->sqlDb->maxAllowedPacket);
 	if(useNewStore() == 2) {
-		cout << "store_process_query_compl_" << this->id << endl;
+		if(sverb.store_process_query_compl) {
+			cout << "store_process_query_compl_" << this->id << endl;
+		}
 		for(list<string>::iterator iter = queries_list.begin(); iter != queries_list.end(); iter++) {
 			if(sverb.store_process_query_compl) {
 				cout << *iter << endl;

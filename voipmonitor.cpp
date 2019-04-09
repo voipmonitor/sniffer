@@ -3293,7 +3293,10 @@ bool cloud_register() {
 				//ssh
 				strcpy(ssh_host, jsonData.getValue("ssh_host").c_str());
 				ssh_port = atol(jsonData.getValue("ssh_port").c_str());
-				strcpy(ssh_username, jsonData.getValue("ssh_user").c_str());                                                                                                                                                                                 strcpy(ssh_password, jsonData.getValue("ssh_password").c_str());                                                                                                                                                                             strcpy(ssh_remote_listenhost, jsonData.getValue("ssh_rhost").c_str());                                                                                                                                                                       ssh_remote_listenport = atol(jsonData.getValue("ssh_rport").c_str());
+				strcpy(ssh_username, jsonData.getValue("ssh_user").c_str());
+				strcpy(ssh_password, jsonData.getValue("ssh_password").c_str());
+				strcpy(ssh_remote_listenhost, jsonData.getValue("ssh_rhost").c_str());
+				ssh_remote_listenport = atol(jsonData.getValue("ssh_rport").c_str());
 
 				//sqlurl
 				strcpy(cloud_host, jsonData.getValue("sqlurl").c_str());

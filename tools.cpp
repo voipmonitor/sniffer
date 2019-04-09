@@ -875,6 +875,25 @@ long long GetTotalDiskSpace(const char* absoluteFilePath) {
 	}
 }
 
+bool lseek(int fd, u_int64_t seekPos) {
+	if(sizeof(int) == 4) {
+		int counterSeek = 0;
+		while(seekPos) {
+			u_int64_t _seek = min((unsigned long long)seekPos, 2000000000ull);
+			if(lseek(fd, _seek, counterSeek ? SEEK_CUR : SEEK_SET) == -1) {
+				return(false);
+			}
+			seekPos -= _seek;
+			++counterSeek;
+		}
+	} else {
+		if(lseek(fd, seekPos, SEEK_SET) == -1) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
 string GetStringMD5(std::string str) {
 	MD5_CTX ctx;
 	MD5_Init(&ctx);

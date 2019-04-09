@@ -406,22 +406,8 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 	}
 	if(tarPos.size()) {
 		for(list<u_int64_t>::iterator it = tarPos.begin(); it != tarPos.end(); it++) {
-			if(sizeof(int) == 4) {
-				int counterSeek = 0;
-				u_int64_t seekPos = *it;
-				while(seekPos) {
-					u_int64_t _seek = min((unsigned long long)seekPos, 2000000000ull);
-					if(lseek(tar.fd, _seek, counterSeek ? SEEK_CUR : SEEK_SET) == -1) {
-						this->readData.error = true;
-						break;
-					}
-					seekPos -= _seek;
-					++counterSeek;
-				}
-			} else {
-				if(lseek(tar.fd, *it, SEEK_SET) == -1) {
-					this->readData.error = true;
-				}
+			if(!lseek(tar.fd, *it)) {
+				this->readData.error = true;
 			}
 			if(this->readData.error) {
 				break;

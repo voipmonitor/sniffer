@@ -113,13 +113,15 @@ public:
 	Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
 	int sendString(const char *);
 	int sendString(const char *, ssize_t);
+	int sendString(string);
 	int sendString(string *);
 	int sendString(ostringstream *);
 	int sendString(int);
-	int sendFile(const char *fileName);
+	int sendFile(const char *fileName, u_int64_t tailMaxSize = 0);
+	int sendConfigurationFile(const char *fileName, list<string> *hidePasswordForOptions = NULL);
+	int sendPexecOutput(const char *cmd);
 	int registerCommand(const char *, const char *);
 	int registerCommand(struct commandAndHelp *);
-
 	enum eTask {
 		mgmt_task_na = 0,
 		mgmt_task_DoInit = 1 << 0
