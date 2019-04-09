@@ -11,6 +11,8 @@
 #define PAYLOAD_ILBC 97
 #define PAYLOAD_SPEEX 98
 #define PAYLOAD_CLEARMODE 100
+#define PAYLOAD_MP4ALATM128 107
+#define PAYLOAD_MP4ALATM64 108
 #define PAYLOAD_SILK 301
 #define PAYLOAD_SILK8 302
 #define PAYLOAD_SILK12 303
@@ -112,6 +114,9 @@ inline const char *codec2text(int codec) {
 		return "VXOPUS";
 	case PAYLOAD_TELEVENT:
 		return "TELEPHONE EVENT";
+	case PAYLOAD_MP4ALATM128:
+	case PAYLOAD_MP4ALATM64:
+		return "MP4A-LATM";
 	default:
 		return "UNKNOWN CODEC NUMBER";
 	}
