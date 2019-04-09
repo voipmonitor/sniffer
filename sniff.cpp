@@ -1862,6 +1862,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_AMRWB;
        else if(strcasecmp(mimeSubtype,"telephone-event") == 0)
 	       return PAYLOAD_TELEVENT;
+       else if(strcasecmp(mimeSubtype,"MP4A-LATM") == 0)
+	       return PAYLOAD_MP4ALATM128;
        else
 	       return 0;
 }
@@ -1996,6 +1998,15 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, RTPMAP *rtpmap){
 						break;
 					case 48000:
 						codec = PAYLOAD_VXOPUS48;
+						break;
+				}
+			} else if (codec == PAYLOAD_MP4ALATM128) {
+				switch(rate) {
+					case 128000:
+						codec = PAYLOAD_MP4ALATM128;
+						break;
+					case 64000:
+						codec = PAYLOAD_MP4ALATM64;
 						break;
 				}
 			}

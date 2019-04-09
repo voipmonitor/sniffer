@@ -46,6 +46,8 @@
 #define PAYLOAD_VXOPUS16 346
 #define PAYLOAD_VXOPUS24 347
 #define PAYLOAD_VXOPUS48 348
+#define PAYLOAD_MP4ALATM128 349
+#define PAYLOAD_MP4ALATM64 350
 #define PAYLOAD_TELEVENT 400
 
 inline const char *codec2text(int codec) {
@@ -112,6 +114,9 @@ inline const char *codec2text(int codec) {
 		return "VXOPUS";
 	case PAYLOAD_TELEVENT:
 		return "TELEPHONE EVENT";
+	case PAYLOAD_MP4ALATM128:
+	case PAYLOAD_MP4ALATM64:
+		return "MP4A-LATM";
 	default:
 		return "UNKNOWN CODEC NUMBER";
 	}
