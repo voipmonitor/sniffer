@@ -560,6 +560,7 @@ public:
 	unsigned long call_id_len;	//!< length of call-id 	
 	string call_id;	//!< call-id from SIP session
 	map<string, bool> *call_id_alternative;
+	volatile int _call_id_alternative_lock;
 	char callername[256];		//!< callerid name from SIP header
 	char caller[256];		//!< From: xxx 
 	char caller_domain[256];	//!< From: xxx 
@@ -1113,6 +1114,13 @@ public:
 	}
 	
 	u_int32_t getAllReceivedRtpPackets();
+	
+	void call_id_alternative_lock() {
+		while(__sync_lock_test_and_set(&this->_call_id_alternative_lock, 1));
+	}
+	void call_id_alternative_unlock() {
+		__sync_lock_release(&this->_call_id_alternative_lock);
+	}
 	
 	void forcemark_lock() {
 		while(__sync_lock_test_and_set(&this->_forcemark_lock, 1));
@@ -1722,6 +1730,7 @@ public:
 		if(callMAPIT != calls_listMAP.end()) {
 			rslt_call = callMAPIT->second;
 			if(opt_call_id_alternative[0]) {
+				rslt_call->call_id_alternative_lock();
 				if(call_idS != rslt_call->call_id) {
 					calls_listMAP[call_idS] = rslt_call;
 					(*rslt_call->call_id_alternative)[call_idS] = true;
@@ -1734,6 +1743,7 @@ public:
 						}
 					}
 				}
+				rslt_call->call_id_alternative_unlock();
 			}
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);

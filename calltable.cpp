@@ -453,6 +453,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	} else {
 		this->call_id_alternative = NULL;
 	}
+	_call_id_alternative_lock = 0;
 	whohanged = -1;
 	seeninvite = false;
 	seeninviteok = false;

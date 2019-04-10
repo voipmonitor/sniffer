@@ -3130,7 +3130,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		!(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5)) &&
 	   (lastSIPresponseNum != 200 || packetS->cseq.method == INVITE || packetS->cseq.method == MESSAGE) &&
 	   !(call->cancelcseq.is_set() && packetS->cseq.is_set() && packetS->cseq == call->cancelcseq)) {
-		strncpy(call->lastSIPresponse, lastSIPresponse, 128);
+		strcpy_null_term(call->lastSIPresponse, lastSIPresponse);
 		call->lastSIPresponseNum = lastSIPresponseNum;
 	}
 	if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0') {
@@ -3475,6 +3475,15 @@ void process_packet_sip_call(packet_s_process *packetS) {
 								}
 							}
 						}
+					}
+					if(opt_call_id_alternative[0] &&
+					   call->lastSIPresponseNum == 487) {
+						call->call_id_alternative_lock();
+						if(call->call_id_alternative && call->call_id_alternative->size()) {
+							strcpy_null_term(call->lastSIPresponse, packetS->lastSIPresponse);
+							call->lastSIPresponseNum = packetS->lastSIPresponseNum;
+						}
+						call->call_id_alternative_unlock();
 					}
 				} else if(packetS->cseq.method == CANCEL &&
 					  call->cancelcseq.is_set() && packetS->cseq == call->cancelcseq) {
