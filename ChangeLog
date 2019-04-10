@@ -1,3 +1,13 @@
+24.1 10.04.2019
+===============
+- new legs merging option (call_id_alternative = Session-ID,Join) developed mainly for merging Cisco CUCM legs / bridges [VS-906]
+- fix SKIP flag in capture rules for IP / both [VS-909]
+- warn if max_allowed_packet is low [VG-1812] [VS-903]
+- increase limit for mysqlstore_max_threads_message (9 -> 30)
+- added support for codec MP4A-LATM [VS-907]
+- support for generating logs [VG-1808]
+
+
 24.0.4 22.03.2019
 =================
 - fix SIP INFO (DTMF) corrupted packet in pcap file 
