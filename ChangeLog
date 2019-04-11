@@ -1,3 +1,8 @@
+24.1.1 10.04.2019
+===============
+- fix issue with set lastSIPresponse if any of legs is canceled [VG-1808]
+
+
 24.1 10.04.2019
 ===============
 - new legs merging option (call_id_alternative = Session-ID,Join) developed mainly for merging Cisco CUCM legs / bridges [VS-906]
