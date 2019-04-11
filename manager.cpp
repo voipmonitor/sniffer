@@ -4900,14 +4900,40 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 				if(!interfaces_str.empty()) {
 					interfaces_str += "\n";
 				}
-				interfaces_str += interfaces[i] + "\n";
+				for(unsigned j = 0; j < interfaces[i].length() + 2; j++) {
+					interfaces_str += '-';
+				}
+				interfaces_str += "\n|" + interfaces[i] + "|\n";
+				for(unsigned j = 0; j < interfaces[i].length() + 2; j++) {
+					interfaces_str += '-';
+				}
+				interfaces_str += "\n\n";
+				string cmd = "ip addr show " + interfaces[i];
+				int exitCode;
 				SimpleBuffer out;
 				SimpleBuffer err;
-				string cmd = "ethtool -i " + interfaces[i];
-				int exitCode;
 				vm_pexec(cmd.c_str(), &out, &err, &exitCode);
 				if(exitCode == 0 && out.size()) {
 					interfaces_str += (char*)out;
+					const char *nextCommands[] = {
+						"ethtool -i",
+						"ethtool -g",
+						"ethtool -c",
+						"ethtool -S",
+						"ip -s -s l l"
+					};
+					for(unsigned j = 0; j < sizeof(nextCommands) / sizeof(nextCommands[0]); j++) {
+						string cmd = nextCommands[j] + string(" ") + interfaces[i];
+						int exitCode;
+						SimpleBuffer out;
+						SimpleBuffer err;
+						vm_pexec(cmd.c_str(), &out, &err, &exitCode);
+						if(exitCode == 0 && out.size()) {
+							interfaces_str += "\n" + string((char*)out);
+						} else if(err.size()) {
+							interfaces_str += "\n" + string((char*)err);
+						}
+					}
 				} else {
 					interfaces_str += "failed " + cmd + "\n";
 					if(err.size()) {
