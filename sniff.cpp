@@ -3358,7 +3358,16 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					call->progress_time = packetS->header_pt->ts.tv_sec;
 				}
 			}
-
+			if(opt_call_id_alternative[0] &&
+			   (packetS->cseq.method == INVITE || packetS->cseq.method == BYE) &&
+			   call->lastSIPresponseNum == 487) {
+				call->call_id_alternative_lock();
+				if(call->call_id_alternative && call->call_id_alternative->size()) {
+					strcpy_null_term(call->lastSIPresponse, packetS->lastSIPresponse);
+					call->lastSIPresponseNum = packetS->lastSIPresponseNum;
+				}
+				call->call_id_alternative_unlock();
+			}
 			// if it is OK check for BYE
 			if(packetS->cseq.is_set()) {
 				if(verbosity > 2) {
@@ -3475,15 +3484,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 								}
 							}
 						}
-					}
-					if(opt_call_id_alternative[0] &&
-					   call->lastSIPresponseNum == 487) {
-						call->call_id_alternative_lock();
-						if(call->call_id_alternative && call->call_id_alternative->size()) {
-							strcpy_null_term(call->lastSIPresponse, packetS->lastSIPresponse);
-							call->lastSIPresponseNum = packetS->lastSIPresponseNum;
-						}
-						call->call_id_alternative_unlock();
 					}
 				} else if(packetS->cseq.method == CANCEL &&
 					  call->cancelcseq.is_set() && packetS->cseq == call->cancelcseq) {
