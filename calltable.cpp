@@ -3668,6 +3668,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 
+	u_int32_t sipcalledip_confirmed;
+	u_int16_t sipcalledport_confirmed;
+	sipcalledip_confirmed = getSipcalledipConfirmed(&sipcalledport_confirmed);
+	u_int32_t sipcalledip_rslt = sipcalledip_confirmed ? sipcalledip_confirmed : getSipcalledip();
+	u_int16_t sipcalledport_rslt = sipcalledport_confirmed ? sipcalledport_confirmed : getSipcalledport();
+	
 	string query_str_cdrproxy;
 	if(opt_cdrproxy) {
 		vector<SqlDb_row> cdrproxy_rows;
@@ -3675,7 +3681,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		this->proxies_undup(&proxies_undup);
 		set<unsigned int>::iterator iter_undup = proxies_undup.begin();
 		while(iter_undup != proxies_undup.end()) {
-			if(*iter_undup == getSipcalledip()) { ++iter_undup; continue; };
+			if(*iter_undup == sipcalledip_rslt) { ++iter_undup; continue; }
 			SqlDb_row cdrproxy;
 			cdrproxy.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
@@ -3777,15 +3783,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		     dscp_c = 0,
 		     dscp_d = 0;
 	
-	u_int32_t sipcalledip_confirmed;
-	u_int16_t sipcalledport_confirmed;
-	sipcalledip_confirmed = getSipcalledipConfirmed(&sipcalledport_confirmed);
-	
 	cdr.add(htonl(getSipcallerip()), "sipcallerip");
-	cdr.add(htonl(sipcalledip_confirmed ? sipcalledip_confirmed : getSipcalledip()), "sipcalledip");
+	cdr.add(htonl(sipcalledip_rslt), "sipcalledip");
 	if(existsColumns.cdr_sipport) {
 		cdr.add(getSipcallerport(), "sipcallerport");
-		cdr.add(sipcalledport_confirmed ? sipcalledport_confirmed : getSipcalledport(), "sipcalledport");
+		cdr.add(sipcalledport_rslt, "sipcalledport");
 	}
 	cdr.add(duration(), "duration");
 	if(progress_time) {
@@ -4966,6 +4968,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			this->proxies_undup(&proxies_undup);
 			set<unsigned int>::iterator iter_undup = proxies_undup.begin();
 			while(iter_undup != proxies_undup.end()) {
+				if(*iter_undup == sipcalledip_rslt) { ++iter_undup; continue; }
 				SqlDb_row cdrproxy;
 				cdrproxy.add(cdrID, "cdr_ID");
 				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
