@@ -1146,6 +1146,13 @@ void cServer::listen_process() {
 	cSocket *clientSocket;
 	while(!((listen_socket && listen_socket->isTerminate()) || CR_TERMINATE())) {
 		if(listen_socket->await(&clientSocket)) {
+			#ifdef CLOUD_ROUTER_SERVER
+			extern cBlockIP blockIP;
+			if(blockIP.isBlocked(clientSocket->getIPL())) {
+				clientSocket->close();
+				delete clientSocket;
+			} else 
+			#endif
 			if(!CR_TERMINATE()) {
 				if(CR_VERBOSE().connect_info) {
 					ostringstream verbstr;

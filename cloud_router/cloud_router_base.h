@@ -128,6 +128,21 @@ private:
 };
 
 
+class cBlockIP {
+public:
+	void setBlock(u_int32_t ip, unsigned expirationS) {
+		block_ip_time[ip] = getTimeMS_rdtsc() + expirationS * 1000;
+	}
+	bool isBlocked(u_int32_t ip) {
+		map<u_int32_t, u_long>::iterator iter = block_ip_time.find(ip);
+		return(iter != block_ip_time.end() &&
+		       block_ip_time[ip] > getTimeMS_rdtsc());
+	}
+private:
+	map<u_int32_t, u_long> block_ip_time;
+};
+
+
 class cSocket {
 public:
 	enum eTypeEncode {

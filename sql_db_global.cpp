@@ -312,6 +312,7 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 				(*data)[stringValue] = id;
 			}
 		}
+		*overflow = false;
 	#endif
 	if(_createSqlObject) {
 		delete sqlDb;
