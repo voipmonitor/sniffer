@@ -4148,7 +4148,7 @@ _ACEOF
   LIBS="-lmysqlclient $LIBS"
 
 else
-  as_fn_error $? "Unable to find libmysqlclient. apt-get install libmysqlclient-dev | yum install mysql-devel | pkg install mysql56-client" "$LINENO" 5
+  as_fn_error $? "Unable to find libmysqlclient. apt-get install libmysqlclient-dev | yum install mysql-devel or yum install mysql-community-devel | pkg install mysql56-client" "$LINENO" 5
 fi
 
 

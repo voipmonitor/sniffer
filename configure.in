@@ -111,7 +111,7 @@ else
     AC_SUBST([MYSQLINCLUDE],[`$MYSQL_CONFIG --include`])
     AC_MSG_RESULT($MYSQL_CONFIG)
 fi
-AC_CHECK_LIB([mysqlclient], [main], , AC_MSG_ERROR([Unable to find libmysqlclient. apt-get install libmysqlclient-dev | yum install mysql-devel | pkg install mysql56-client]))
+AC_CHECK_LIB([mysqlclient], [main], , AC_MSG_ERROR([Unable to find libmysqlclient. apt-get install libmysqlclient-dev | yum install mysql-devel or yum install mysql-community-devel| pkg install mysql56-client]))
 
 AC_CHECK_LIB([z], [main], , AC_MSG_ERROR([Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel]))
 AC_CHECK_LIB([lzma], [main], HAVE_LIBLZMA=1, AC_MSG_NOTICE([Unable to find lzma. apt-get install liblzma-dev | yum install xz-devel]))
