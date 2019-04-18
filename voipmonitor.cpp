@@ -549,6 +549,7 @@ int opt_cleandatabase_http_enum = 0;
 int opt_cleandatabase_webrtc = 0;
 int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
+int opt_cleandatabase_sip_msg = 0;
 int opt_cleandatabase_rtp_stat = 2;
 int opt_cleandatabase_log_sensor = 30;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
@@ -5287,6 +5288,7 @@ void test() {
 			opt_cleandatabase_http_enum =
 			opt_cleandatabase_webrtc =
 			opt_cleandatabase_register_state =
+			opt_cleandatabase_sip_msg =
 			opt_cleandatabase_register_failed = atoi(opt_test_arg);
 		} else {
 			return;
@@ -5853,6 +5855,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42119) cConfigItem_integer("cleandatabase_webrtc", &opt_cleandatabase_webrtc));
 			addConfigItem(new FILE_LINE(42120) cConfigItem_integer("cleandatabase_register_state", &opt_cleandatabase_register_state));
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_register_failed", &opt_cleandatabase_register_failed));
+			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_sip_msg", &opt_cleandatabase_sip_msg));
 			addConfigItem(new FILE_LINE(42122) cConfigItem_integer("cleandatabase_rtp_stat", &opt_cleandatabase_rtp_stat));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor", &opt_cleandatabase_log_sensor));
 		subgroup("backup");
@@ -6563,6 +6566,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc =
 		opt_cleandatabase_register_state =
+		opt_cleandatabase_sip_msg =
 		opt_cleandatabase_register_failed = configItem->getValueInt();
 	}
 	if(configItem->config_name == "cleandatabase_cdr") {
@@ -8320,6 +8324,7 @@ int eval_config(string inistr) {
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc =
 		opt_cleandatabase_register_state =
+		opt_cleandatabase_sip_msg =
 		opt_cleandatabase_register_failed = atoi(value);
 	}
 	if((value = ini.GetValue("general", "plcdisable", NULL))) {
@@ -8359,6 +8364,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleandatabase_register_failed", NULL))) {
 		opt_cleandatabase_register_failed = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleandatabase_sip_msg", NULL))) {
+		opt_cleandatabase_sip_msg = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_rtp_stat", NULL))) {
 		opt_cleandatabase_rtp_stat = atoi(value);

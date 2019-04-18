@@ -7675,6 +7675,7 @@ void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_webrtc;
 	extern int opt_cleandatabase_register_state;
 	extern int opt_cleandatabase_register_failed;
+	extern int opt_cleandatabase_sip_msg;
 	syslog(LOG_NOTICE, "drop cdr old partitions - begin");
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->setDisableLogError();
@@ -7728,11 +7729,11 @@ void dropMysqlPartitionsCdr() {
 	}
 	_dropMysqlPartitions("register_state", opt_cleandatabase_register_state, 0, sqlDb);
 	_dropMysqlPartitions("register_failed", opt_cleandatabase_register_failed, 0, sqlDb);
-	_dropMysqlPartitions("sip_msg", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("sip_msg", opt_cleandatabase_sip_msg, 0, sqlDb);
 	if(custom_headers_sip_msg) {
 		list<string> nextTables = custom_headers_sip_msg->getAllNextTables();
 		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
-			_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_cdr, 0, sqlDb);
+			_dropMysqlPartitions((*iter).c_str(), opt_cleandatabase_sip_msg, 0, sqlDb);
 		}
 	}
 	delete sqlDb;
