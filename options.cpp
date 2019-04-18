@@ -75,8 +75,8 @@ bool opt_sip_msg_compare_domain_dst = true;
 
 unsigned opt_default_qualify_limit = 2000;
 unsigned opt_cleanup_item_response_by_max_items = 5;
-unsigned opt_cleanup_history_by_max_items = 500;
-unsigned opt_cleanup_relations_limit_time = 3600;
+unsigned opt_cleanup_history_by_max_items = 50;
+unsigned opt_cleanup_relations_limit_time = 300;
 unsigned opt_cleanup_relations_period = 60;
 unsigned opt_close_pcap_limit_time = 5;
 unsigned opt_close_pcaps_period = 10;
@@ -132,9 +132,9 @@ void cSipMsgItem::parseContent(packet_s_process *packetS) {
 		if(endHeader) {
 			int tryDecContentLength = 0;
 			char *contentBegin = endHeader + 4;
-			char *contentEnd = strcasestr(contentBegin, "\n\nContent-Length:");
+			char *contentEnd = strncasestr(contentBegin, "\n\nContent-Length:", datalen - (contentBegin - data));
 			if(!contentEnd) {
-				contentEnd = strstr(contentBegin, "\r\n");
+				contentEnd = strnstr(contentBegin, "\r\n", datalen - (contentBegin - data));
 				if(contentEnd) {
 					tryDecContentLength = data + datalen - contentEnd;
 				}
