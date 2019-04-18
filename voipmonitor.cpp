@@ -742,6 +742,10 @@ char opt_cachedir[1024];
 int opt_upgrade_try_http_if_https_fail = 0;
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
+pthread_t storing_cdr_next_threads[2];	// ID of worker storing CDR next threads
+sem_t storing_cdr_next_threads_sem[2][2];
+list<Call*> *storing_cdr_next_threads_calls[2];
+int storing_cdr_next_threads_count = 0;
 pthread_t storing_registers_thread;	// ID of worker storing CDR thread 
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
@@ -1598,7 +1602,6 @@ void *defered_service_fork(void *) {
 
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void */*dummy*/ ) {
-	Call *call;
 	time_t createPartitionCdrAt = 0;
 	time_t dropPartitionCdrAt = 0;
 	time_t createPartitionSs7At = 0;
@@ -1717,25 +1720,49 @@ void *storing_cdr( void */*dummy*/ ) {
 		}
 		
 		size_t calls_queue_size = 0;
-		
+	
 		for(int pass  = 0; pass < 10; pass++) {
-		
 			calltable->lock_calls_queue();
 			calls_queue_size = calltable->calls_queue.size();
 			size_t calls_queue_position = 0;
-			
+			list<Call*> calls_for_store;
+			unsigned calls_for_store_count = 0;
 			while(calls_queue_position < calls_queue_size) {
-
-				call = calltable->calls_queue[calls_queue_position];
-				
+				Call *call = calltable->calls_queue[calls_queue_position];
 				calltable->unlock_calls_queue();
-				
 				// Close SIP and SIP+RTP dump files ASAP to save file handles
 				call->getPcap()->close();
 				call->getPcapSip()->close();
-				
 				if(call->isReadyForWriteCdr()) {
-				
+					if(storing_cdr_next_threads_count) {
+						int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
+						if(!mod) {
+							calls_for_store.push_back(call);
+						} else {
+							storing_cdr_next_threads_calls[mod - 1]->push_back(call);
+						}
+					} else {
+						calls_for_store.push_back(call);
+					}
+					++calls_for_store_count;
+					calltable->lock_calls_queue();
+					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
+					--calls_queue_size;
+				} else {
+					calltable->lock_calls_queue();
+				}
+				++calls_queue_position;
+			}
+			calltable->unlock_calls_queue();
+			if(calls_for_store_count) {
+				//cout << "*** " << calls_for_store_count << endl;
+				if(storing_cdr_next_threads_count) {
+					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+						sem_post(&storing_cdr_next_threads_sem[i][0]);
+					}
+				}
+				for(list<Call*>::iterator iter_call = calls_for_store.begin(); iter_call != calls_for_store.end(); iter_call++) {
+					Call *call = *iter_call;
 					bool needConvertToWavInThread = false;
 					call->closeRawFiles();
 					if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
@@ -1747,7 +1774,6 @@ void *storing_cdr( void */*dummy*/ ) {
 							needConvertToWavInThread = true;
 						}
 					}
-
 					regfailedcache->prunecheck(call->first_packet_time);
 					if(!opt_nocdr) {
 						if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
@@ -1760,17 +1786,6 @@ void *storing_cdr( void */*dummy*/ ) {
 							call->saveAloneByeToDb();
 						}
 					}
-
-					/* if we delete call here directly, destructors and another cleaning functions can be
-					 * called in the middle of working with call or another structures inside main thread
-					 * so put it in deletequeue and delete it in the main thread. Another way can be locking
-					 * call structure for every case in main thread but it can slow down thinks for each 
-					 * processing packet.
-					*/
-					calltable->lock_calls_queue();
-					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
-					--calls_queue_size;
-					
 					if(needConvertToWavInThread) {
 						calltable->lock_calls_audioqueue();
 						calltable->audio_queue.push_back(call);
@@ -1781,21 +1796,17 @@ void *storing_cdr( void */*dummy*/ ) {
 						calltable->calls_deletequeue.push_back(call);
 						calltable->unlock_calls_deletequeue();
 					}
-					storingCdrLastWriteAt = getActDateTimeF();
-				} else {
-					calltable->lock_calls_queue();
 				}
-				
-				++calls_queue_position;
-				
+				if(storing_cdr_next_threads_count) {
+					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+						sem_wait(&storing_cdr_next_threads_sem[i][1]);
+					}
+				}
+				storingCdrLastWriteAt = getActDateTimeF();
 			}
-			
-			calltable->unlock_calls_queue();
-
 			if(terminating_storing_cdr && (!calls_queue_size || terminating > 1)) {
 				break;
 			}
-		
 			usleep(100000);
 		}
 		
@@ -1838,6 +1849,57 @@ void *storing_cdr( void */*dummy*/ ) {
 		usleep(100000);
 	}
 	
+	terminating_storing_cdr = 2;
+	
+	return NULL;
+}
+
+void *storing_cdr_next_thread( void *_indexNextThread ) {
+	int indexNextThread = (int)(long)_indexNextThread;
+	while(terminating_storing_cdr < 2) {
+		sem_wait(&storing_cdr_next_threads_sem[indexNextThread][0]);
+		if(terminating_storing_cdr == 2) {
+			break;
+		}
+		for(list<Call*>::iterator iter_call = storing_cdr_next_threads_calls[indexNextThread]->begin(); iter_call != storing_cdr_next_threads_calls[indexNextThread]->end(); iter_call++) {
+			Call *call = *iter_call;
+			bool needConvertToWavInThread = false;
+			call->closeRawFiles();
+			if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
+			    call->getAllReceivedRtpPackets()) {
+				if(is_read_from_file()) {
+					if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
+					call->convertRawToWav();
+				} else {
+					needConvertToWavInThread = true;
+				}
+			}
+			regfailedcache->prunecheck(call->first_packet_time);
+			if(!opt_nocdr) {
+				if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
+					call->saveToDb(!is_read_from_file_simple() || isCloudRouter() || is_client());
+				}
+				if(call->typeIs(MESSAGE)) {
+					call->saveMessageToDb();
+				}
+				if(call->typeIs(BYE)) {
+					call->saveAloneByeToDb();
+				}
+			}
+			if(needConvertToWavInThread) {
+				calltable->lock_calls_audioqueue();
+				calltable->audio_queue.push_back(call);
+				calltable->processCallsInAudioQueue(false);
+				calltable->unlock_calls_audioqueue();
+			} else {
+				calltable->lock_calls_deletequeue();
+				calltable->calls_deletequeue.push_back(call);
+				calltable->unlock_calls_deletequeue();
+			}
+		}
+		storing_cdr_next_threads_calls[indexNextThread]->clear();
+		sem_post(&storing_cdr_next_threads_sem[indexNextThread][1]);
+	}
 	return NULL;
 }
 
@@ -3531,6 +3593,14 @@ int main_init_read() {
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
+		for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+			storing_cdr_next_threads_calls[i] = new FILE_LINE(0) list<Call*>;
+			for(int j = 0; j < 2; j++) {
+				sem_init(&storing_cdr_next_threads_sem[i][j], 0, 0);
+			}
+			vm_pthread_create(("storing cdr - next thread " + intToString(i + 1)).c_str(),
+					  &storing_cdr_next_threads[i], NULL, storing_cdr_next_thread, (void*)(long)i, __FILE__, __LINE__);
+		}
 		vm_pthread_create("storing cdr",
 				  &storing_cdr_thread, NULL, storing_cdr, NULL, __FILE__, __LINE__);
 		vm_pthread_create("storing register",
@@ -4030,6 +4100,14 @@ void main_term_read() {
 	if(storing_cdr_thread) {
 		terminating_storing_cdr = 1;
 		pthread_join(storing_cdr_thread, NULL);
+		for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+			sem_post(&storing_cdr_next_threads_sem[i][0]);
+			pthread_join(storing_cdr_next_threads[i], NULL);
+			for(int j = 0; j < 2; j++) {
+				sem_destroy(&storing_cdr_next_threads_sem[i][j]);
+			}
+			delete storing_cdr_next_threads_calls[i];
+		}
 	}
 	if(storing_registers_thread) {
 		terminating_storing_registers = 1;
@@ -5765,6 +5843,8 @@ void cConfig::addConfigItems() {
 					->addValues("per_query:2"));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_set_id", &opt_mysql_enable_set_id));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("storing_cdr_next_threads", &storing_cdr_next_threads_count))
+						->setMaximum(2));
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
@@ -8989,6 +9069,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysql_enable_set_id"))) {
 		opt_mysql_enable_set_id = yesno(value);
+	}
+	if((value = ini.GetValue("general", "storing_cdr_next_threads", NULL))) {
+		storing_cdr_next_threads_count = min(atoi(value), 2);
 	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strcpy_null_term(mysql_host, value);
