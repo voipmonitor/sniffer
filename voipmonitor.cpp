@@ -186,6 +186,10 @@ int opt_passertedidentity = 0;	//Rewrite caller? If sip invite contain P-Asserte
 int opt_ppreferredidentity = 0;	//Rewrite caller? If sip invite contain P-Preferred-Identity, caller num/name is overwritten by its values.
 int opt_remotepartyid = 0;	//Rewrite caller? If sip invite contain header Remote-Party-ID, caller num/name is overwritten by its values.
 int opt_remotepartypriority = 0;//Defines rewrite caller order. If both headers are set/found and activated ( P-Preferred-Identity,Remote-Party-ID ), rewrite caller primary from Remote-Party-ID header (if set to 1). 
+char opt_remoteparty_caller[1024];
+char opt_remoteparty_called[1024];
+vector<string> opt_remoteparty_caller_v;
+vector<string> opt_remoteparty_called_v;
 int opt_fork = 1;		// fork or run foreground 
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
@@ -6215,6 +6219,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42279) cConfigItem_yesno("passertedidentity", &opt_passertedidentity));
 				addConfigItem(new FILE_LINE(42280) cConfigItem_yesno("ppreferredidentity", &opt_ppreferredidentity));
 				addConfigItem(new FILE_LINE(42281) cConfigItem_yesno("remotepartypriority", &opt_remotepartypriority));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("remoteparty_caller", opt_remoteparty_caller, sizeof(opt_remoteparty_caller)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("remoteparty_called", opt_remoteparty_called, sizeof(opt_remoteparty_called)));
 				addConfigItem(new FILE_LINE(42282) cConfigItem_integer("destination_number_mode", &opt_destination_number_mode));
 				addConfigItem(new FILE_LINE(42283) cConfigItem_yesno("cdr_ua_enable", &opt_cdr_ua_enable));
 				addConfigItem(new FILE_LINE(42284) cConfigItem_string("cdr_ua_reg_remove", &opt_cdr_ua_reg_remove));
@@ -7751,6 +7757,17 @@ void set_context_config() {
 		opt_call_id_alternative_v.clear();
 	}
 	
+	if(opt_remoteparty_caller[0]) {
+		opt_remoteparty_caller_v = split(opt_remoteparty_caller, split(",|;", '|'), true);
+	} else {
+		opt_remoteparty_caller_v.clear();
+	}
+	
+	if(opt_remoteparty_called[0]) {
+		opt_remoteparty_called_v = split(opt_remoteparty_called, split(",|;", '|'), true);
+	} else {
+		opt_remoteparty_called_v.clear();
+	}
 }
 
 void check_context_config() {
@@ -8344,6 +8361,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "passertedidentity", NULL))) {
 		opt_passertedidentity = yesno(value);
+	}
+	if((value = ini.GetValue("general", "remoteparty_caller", NULL))) {
+		strcpy_null_term(opt_remoteparty_caller, value);
+	}
+	if((value = ini.GetValue("general", "remoteparty_called", NULL))) {
+		strcpy_null_term(opt_remoteparty_called, value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
 		opt_cleandatabase_cdr =

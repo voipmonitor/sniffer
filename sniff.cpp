@@ -227,6 +227,10 @@ extern int opt_remotepartyid;
 extern int opt_remotepartypriority;
 extern int opt_ppreferredidentity;
 extern int opt_passertedidentity;
+extern char opt_remoteparty_caller[1024];
+extern char opt_remoteparty_called[1024];
+extern vector<string> opt_remoteparty_caller_v;
+extern vector<string> opt_remoteparty_called_v;
 extern int opt_182queuedpauserecording;
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
@@ -3188,6 +3192,55 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				}
 			}
 			reason[l] = oldEndChar;
+		}
+	}
+	
+	if(opt_remoteparty_caller[0] || opt_remoteparty_called[0]) {
+		unsigned long remotePartyLen = 0;
+		char *remoteParty = gettag_sip(packetS, "\nRemote-Party-ID:", &remotePartyLen);
+		map<string, string> partyNumber;
+		if(remoteParty && remotePartyLen) {
+			do {
+				char number[1024] = "";
+				char party[1024] = "";
+				parse_peername(remoteParty, remotePartyLen,
+					       1,
+					       number, sizeof(number), 
+					       ppntt_undefined, ppndt_undefined);
+				char *partyBegin = strncasestr(remoteParty, "party=", remotePartyLen);
+				if(partyBegin) {
+					partyBegin += 6;
+					char *partyEnd = partyBegin;
+					while(*partyEnd != ';' && (partyEnd - remoteParty) < (int)remotePartyLen) {
+						++partyEnd;
+					}
+					unsigned partyLen = MIN(partyEnd - partyBegin, sizeof(party) - 1);
+					strncpy(party, partyBegin, partyLen);
+					party[partyLen] = 0;
+				}
+				if(party[0] && number[0]) {
+					partyNumber[party] = number;
+				}
+				remoteParty = gettag(remoteParty , packetS->sipDataLen - (remoteParty - (packetS->data + packetS->sipDataOffset)), NULL,
+						     "\nRemote-Party-ID:", &remotePartyLen);
+			}
+			while(remoteParty && remotePartyLen);
+			if(partyNumber.size()) {
+				if(opt_remoteparty_caller[0]) {
+					for(unsigned i = 0; i < opt_remoteparty_caller_v.size(); i++) {
+						if(partyNumber.find(opt_remoteparty_caller_v[i]) != partyNumber.end()) {
+							strcpy_null_term(call->caller, partyNumber[opt_remoteparty_caller_v[i]].c_str());
+						}
+					}
+				}
+				if(opt_remoteparty_called[0]) {
+					for(unsigned i = 0; i < opt_remoteparty_called_v.size(); i++) {
+						if(partyNumber.find(opt_remoteparty_called_v[i]) != partyNumber.end()) {
+							strcpy_null_term(call->called, partyNumber[opt_remoteparty_called_v[i]].c_str());
+						}
+					}
+				}
+			}
 		}
 	}
 
