@@ -896,6 +896,7 @@ cBuffersControl buffersControl;
 u_int64_t rdtsc_by_100ms;
 
 char opt_git_folder[1024];
+char opt_configure_param[1024];
 bool opt_upgrade_by_git;
 
 bool opt_save_query_to_files;
@@ -6347,6 +6348,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42350) cConfigItem_string("curlproxy", opt_curlproxy, sizeof(opt_curlproxy)));
 		addConfigItem(new FILE_LINE(42351) cConfigItem_yesno("upgrade_by_git", &opt_upgrade_by_git));
 		addConfigItem(new FILE_LINE(42352) cConfigItem_string("git_folder", opt_git_folder, sizeof(opt_git_folder)));
+		addConfigItem(new FILE_LINE(42352) cConfigItem_string("configure_param", opt_configure_param, sizeof(opt_configure_param)));
 	group("locale");
 		addConfigItem(new FILE_LINE(42353) cConfigItem_string("local_country_code", opt_local_country_code, sizeof(opt_local_country_code)));
 		addConfigItem(new FILE_LINE(42354) cConfigItem_string("timezone", opt_timezone, sizeof(opt_timezone)));
@@ -10139,6 +10141,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "git_folder", NULL))) {
 		strcpy_null_term(opt_git_folder, value);
+	}
+	if((value = ini.GetValue("general", "configure_param", NULL))) {
+		strcpy_null_term(opt_configure_param, value);
 	}
 	if((value = ini.GetValue("general", "upgrade_by_git", NULL))) {
 		opt_upgrade_by_git = yesno(value);
