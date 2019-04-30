@@ -79,6 +79,7 @@ private:
 	ListIP_wb src_ip;
 	string app_launch;
 	string app_launch_args_or_url;
+	string status_line;
 	string popup_title;
 };
 

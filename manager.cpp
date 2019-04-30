@@ -1931,6 +1931,7 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 	cout << "** - src ip : " << inet_ntoa(_in) << endl;
 	cout << "** - reg_match : " << reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) << endl;
 	cout << "** - check ip : " << this->src_ip.checkIP(htonl(sipSaddr)) << endl;
+	cout << "** - screenPopupFieldsString : " << screenPopupFieldsString << endl;
 	*/
 	if(!(reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) &&
 	     (this->non_numeric_caller_id ||
@@ -2012,6 +2013,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 			p.src_ip_blacklist,\
 			p.app_launch,\
 			p.app_launch_args_or_url,\
+			p.status_line,\
 			p.popup_title\
 		 from screen_popup_users u\
 		 join screen_popup_profile p on (p.id=u.profile_id)\
@@ -2048,6 +2050,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		src_ip.addBlack(row["src_ip_blacklist"].c_str());
 		app_launch = row["app_launch"];
 		app_launch_args_or_url = row["app_launch_args_or_url"];
+		status_line = row["status_line"];
 		popup_title = row["popup_title"];
 		if(!opt_php_path[0]) {
 			rslt = false;
@@ -2082,6 +2085,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 								"show_ip:[[%i]] "
 								"app_launch:[[%s]] "
 								"args_or_url:[[%s]] "
+								"status_line:[[%s]] "
 								"key:[[%s]] "
 								"allow_change_settings:[[%i]] "
 								"popup_title:[[%s]]\n", 
@@ -2091,6 +2095,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 								show_ip, 
 								app_launch.c_str(), 
 								app_launch_args_or_url.c_str(), 
+								status_line.c_str(),
 								key, 
 								allow_change_settings,
 								popup_title.c_str());
