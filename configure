@@ -598,6 +598,8 @@ LIBPNG
 MYSQLINCLUDE
 MYSQLLIB
 MYSQLCFLAGS
+DPDKLIBRARY
+DPDKINCLUDE
 LIBJSON_NAME
 LIBLD
 SET_MAKE
@@ -655,6 +657,8 @@ SHELL'
 ac_subst_files=''
 ac_user_opts='
 enable_option_checking
+with_dpdk_include
+with_dpdk_lib
 with_mysql
 '
       ac_precious_vars='build_alias
@@ -1276,6 +1280,8 @@ if test -n "$ac_init_help"; then
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
+  --with-dpdk-include=PATH path to explicit include files
+  --with-dpdk-lib=PATH path to explicit lib files
   --with-mysql=PATH path to mysql_config binary or mysql prefix dir
 
 Some influential environment variables:
@@ -4062,6 +4068,26 @@ else
   as_fn_error $? "Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel" "$LINENO" 5
 fi
 
+
+
+# Check whether --with-dpdk-include was given.
+if test "${with_dpdk_include+set}" = set; then :
+  withval=$with_dpdk_include;
+	TMPDPDK=-I$withval
+	DPDKINCLUDE=$TMPDPDK
+
+
+fi
+
+
+# Check whether --with-dpdk-lib was given.
+if test "${with_dpdk_lib+set}" = set; then :
+  withval=$with_dpdk_lib;
+	TMPDPDKLIB=-L$withval
+	DPDKLIBRARY=$TMPDPDKLIB
+
+
+fi
 
 # Check for MySQL libraries (or MariaDB)
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for mysql_config executable" >&5
