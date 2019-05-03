@@ -1923,16 +1923,16 @@ bool ManagerClientThread_screen_popup::parseCommand() {
 void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
 					      unsigned int sipSaddr, unsigned int sipDaddr,
 					      const char *screenPopupFieldsString) {
-	/*
-	cout << "** call 01" << endl;
-	cout << "** - called num : " << calledNum << endl;
-	struct in_addr _in;
-	_in.s_addr = sipSaddr;
-	cout << "** - src ip : " << inet_ntoa(_in) << endl;
-	cout << "** - reg_match : " << reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) << endl;
-	cout << "** - check ip : " << this->src_ip.checkIP(htonl(sipSaddr)) << endl;
-	cout << "** - screenPopupFieldsString : " << screenPopupFieldsString << endl;
-	*/
+	if(sverb.screen_popup) {
+		cout << "** - sip response : " << sipResponseNum << endl;
+		cout << "** - called num : " << calledNum << endl;
+		struct in_addr _in;
+		_in.s_addr = sipSaddr;
+		cout << "** - src ip : " << inet_ntoa(_in) << endl;
+		cout << "** - reg_match : " << reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) << endl;
+		cout << "** - check ip : " << this->src_ip.checkIP(htonl(sipSaddr)) << endl;
+		cout << "** - screenPopupFieldsString : " << screenPopupFieldsString << endl;
+	}
 	if(!(reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) &&
 	     (this->non_numeric_caller_id ||
 	      this->isNumericId(calledNum)) &&

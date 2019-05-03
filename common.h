@@ -108,6 +108,7 @@ struct sVerbose {
 	int disable_billing;
 	int disable_custom_headers;
 	int disable_cloudshare;
+	int screen_popup;
 	int _debug1;
 	int _debug2;
 	int _debug3;
