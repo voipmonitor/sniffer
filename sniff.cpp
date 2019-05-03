@@ -2916,6 +2916,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	bool detectCallerd = false;
 	const char *logPacketSipMethodCallDescr = NULL;
 	int merged;
+	bool process_packet__parse_custom_headers_done = false;
 	
 	s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
 	if(s && l <= 1023) {
@@ -3504,6 +3505,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						syslog(LOG_NOTICE, "Call answered\n");
 					if(!call->onCall_2XX) {
 						if(call->typeIs(INVITE)) {
+							process_packet__parse_custom_headers(call, packetS);
+							process_packet__parse_custom_headers_done = true;
 							ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
 									     call->getSipcallerip(), call->getSipcalledip(),
 									     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
@@ -3553,6 +3556,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 			if(!call->onCall_18X) {
 				if(call->typeIs(INVITE)) {
+					process_packet__parse_custom_headers(call, packetS);
+					process_packet__parse_custom_headers_done = true;
 					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
 							     call->getSipcallerip(), call->getSipcalledip(),
 							     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
@@ -3755,7 +3760,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 
 	// check if we have custom headers
-	process_packet__parse_custom_headers(call, packetS);
+	if(!process_packet__parse_custom_headers_done) {
+		process_packet__parse_custom_headers(call, packetS);
+		process_packet__parse_custom_headers_done = true;
+	}
 	
 	// we have packet, extend pending destroy requests
 	call->shift_destroy_call_at(packetS->header_pt, lastSIPresponseNum);
