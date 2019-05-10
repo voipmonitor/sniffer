@@ -1,3 +1,17 @@
+24.2.1 10.05.2019
+=================
+- add build options (--with-dpdk-include, --with-dpdk-lib) for including the headers and libraries.
+- change sip-register-compare-to_domain to yes as default
+
+
+24.2 23.04.2019
+===============
+- fix issue with sipcalledip vs proxy ip [VS-911]
+- add cleandatabase_sip_msg option for the cleaning of the OPTIONS/SUBSCRIBE/NOTIFY
+- new option storing_cdr_next_threads (dfault 0) 
+- new options remoteparty_caller, remoteparty_called (see voipmonitor.conf) 
+
+
 24.1.1 10.04.2019
 ===============
 - fix issue with set lastSIPresponse if any of legs is canceled [VG-1808]
