@@ -3062,7 +3062,9 @@ MySqlStore::~MySqlStore() {
 	}
 	if(loadFromQFileConfig.enable) {
 		for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
-			pthread_join(iter->second.thread, NULL);
+			if(iter->second.thread) {
+				pthread_join(iter->second.thread, NULL);
+			}
 		}
 	}
 }
@@ -3122,6 +3124,8 @@ void MySqlStore::loadFromQFiles_start() {
 			this->addLoadFromQFile(STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS, "cache_numbers");
 			this->addLoadFromQFile(STORE_PROC_ID_FRAUD_ALERT_INFO, "fraud_alert_info");
 			this->addLoadFromQFile(STORE_PROC_ID_LOG_SENSOR, "log_sensor");
+			this->addLoadFromQFile(STORE_PROC_ID_SS7, "ss7");
+			this->addLoadFromQFile(STORE_PROC_ID_OTHER, "other");
 			if(opt_ipaccount) {
 				this->addLoadFromQFile((STORE_PROC_ID_IPACC_1 / 10) * 10, "ipacc");
 				this->addLoadFromQFile((STORE_PROC_ID_IPACC_AGR_INTERVAL / 10) * 10, "ipacc_agreg");
