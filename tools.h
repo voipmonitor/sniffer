@@ -3386,6 +3386,8 @@ private:
 
 
 unsigned RTPSENSOR_VERSION_INT();
+void checkCpuCount(bool silent = false);
+void checkCpuHT(bool silent = false);
 
 
 #endif

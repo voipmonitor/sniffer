@@ -2222,7 +2222,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		lapTimeDescr.push_back("rss_vsz");
 	}
 	outStrStat << "]MB ";
-	outStrStat << "LA[" << getLoadAvgStr() << "] ";
+
+	{
+		extern int vm_cpu_count;
+		extern bool vm_cpu_ht;
+		if (vm_cpu_ht) outStrStat << "LA[" << getLoadAvgStr() << "/" << vm_cpu_count << "h] ";
+			else outStrStat << "LA[" << getLoadAvgStr() << "/" << vm_cpu_count << "] ";
+	}
 	outStrStat << "v" << RTPSENSOR_VERSION << " ";
 	//outStrStat << pcapStatCounter << " ";
 	if (opt_rrd) {

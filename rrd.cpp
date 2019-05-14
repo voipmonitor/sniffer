@@ -21,7 +21,6 @@
 
 int vm_rrd_version;
 
-
 void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
 
@@ -923,13 +922,20 @@ void rrd_vm_create_graph_LA_command(char *filename, char *fromatstyle, char *toa
 	cmdCreate << "DEF:t0=" << filename << ":LA-m1:MAX ";
 	cmdCreate << "DEF:t1=" << filename << ":LA-m5:MAX ";
 	cmdCreate << "DEF:t2=" << filename << ":LA-m15:MAX ";
+	extern int vm_cpu_count;
+	extern bool vm_cpu_ht;
+	if (vm_cpu_ht) cmdCreate << "LINE1:" << vm_cpu_count << "#880022:\"" << vm_cpu_count << " HT CPUs   \\t" << setw(63) << "\\r\" ";
+		 else cmdCreate << "LINE1:" << vm_cpu_count << "#880022:\"" << vm_cpu_count << " CPUs      \\t" << setw(63) << "\\r\" ";
+
+
+	//cmdCreate << "COMMENT:\"\\u\" ";
 	if (vm_rrd_version < 10403) {
-		cmdCreate << "LINE1:t0#0000FF:\"1 minute avg\\t\" ";
+		cmdCreate << "LINE1:t0#00AA00:\"1 minute avg\\t\" ";
 		cmdCreate << "GPRINT:t0:LAST:\"Cur\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t0:MAX:\"Max\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t0:MIN:\"Min\\: %5.2lf\\l\" ";
-		cmdCreate << "LINE1:t1#00FF00:\"5 minutes avg\\t\" ";
+		cmdCreate << "LINE1:t1#FF8800:\"5 minutes avg\\t\" ";
 		cmdCreate << "GPRINT:t1:LAST:\"Cur\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t1:MAX:\"Max\\: %5.2lf\" ";
@@ -940,13 +946,13 @@ void rrd_vm_create_graph_LA_command(char *filename, char *fromatstyle, char *toa
 		cmdCreate << "GPRINT:t2:MAX:\"Max\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t2:MIN:\"Min\\: %5.2lf\\l\" ";
 	} else {
-		cmdCreate << "LINE1:t0#0000FF:\"1 minute avg\\l\" ";
+		cmdCreate << "LINE1:t0#00AA00:\"1 minute avg\\l\" ";
 		cmdCreate << "COMMENT:\"\\u\" ";
 		cmdCreate << "GPRINT:t0:LAST:\"Cur\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t0:MAX:\"Max\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t0:MIN:\"Min\\: %5.2lf\\r\" ";
-		cmdCreate << "LINE1:t1#00FF00:\"5 minutes avg\\l\" ";
+		cmdCreate << "LINE1:t1#FF8800:\"5 minutes avg\\l\" ";
 		cmdCreate << "COMMENT:\"\\u\" ";
 		cmdCreate << "GPRINT:t1:LAST:\"Cur\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" ";
@@ -958,6 +964,7 @@ void rrd_vm_create_graph_LA_command(char *filename, char *fromatstyle, char *toa
 		cmdCreate << "GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t2:MAX:\"Max\\: %5.2lf\" ";
 		cmdCreate << "GPRINT:t2:MIN:\"Min\\: %5.2lf\\r\" ";
+
 	}
 	std::size_t length = cmdCreate.str().copy(buffer, maxsize, 0);
 	buffer[length]='\0';
