@@ -6187,6 +6187,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 	sHeaderPacket *header_packet = NULL;
 	if(!is_read_from_file()) {
 		manager_parse_command_enable();
+		if(!sverb.pcap_stat_period) {
+			sverb.pcap_stat_period = verbosityE > 0 ? 1 : 10;
+		}
 	}
 	while (!is_terminating()) {
 		pcap_pkthdr *pcap_next_ex_header;
