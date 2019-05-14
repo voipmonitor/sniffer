@@ -6183,6 +6183,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		tmppcap = pcap_dump_open(handle, pname);
 	}
 
+	unsigned long lastStatTimeMS = 0;
 	sHeaderPacket *header_packet = NULL;
 	while (!is_terminating()) {
 		pcap_pkthdr *pcap_next_ex_header;
@@ -6237,6 +6238,33 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 				pcap_next_ex_header->caplen);
 		
 		++packet_counter;
+		
+		if(!is_read_from_file()) {
+			unsigned long timeMS = getTimeMS(HPH(header_packet));
+			if(lastStatTimeMS) {
+				if(timeMS > lastStatTimeMS &&
+				   timeMS - lastStatTimeMS > (unsigned)(sverb.pcap_stat_period * 1000)) {
+					if(rtp_threads) {
+						extern int num_threads_max;
+						for(int i = 0; i < num_threads_max; i++) {
+							if(rtp_threads[i].threadId) {
+								rtp_threads[i].push_batch();
+							}
+						}
+					}
+					void _process_packet__cleanup_calls(pcap_pkthdr *header);
+					_process_packet__cleanup_calls(HPH(header_packet));
+					ostringstream outStr;
+					outStr << fixed;
+					outStr << "calls[" << (calltable->calls_list_count() + calltable->calls_by_stream_callid_listMAP.size()) << ",r:" << calltable->registers_listMAP.size() << "]"
+					       << "[" << calls_counter << ",r:" << registers_counter << "]";
+					syslog(LOG_NOTICE, "%s", outStr.str().c_str());
+					lastStatTimeMS = timeMS;
+				}
+			} else {
+				lastStatTimeMS = timeMS;
+			}
+		}
 
 		if(!pcapProcess(&header_packet, -1,
 				NULL, 0,

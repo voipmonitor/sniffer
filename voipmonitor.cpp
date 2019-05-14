@@ -519,6 +519,7 @@ char opt_php_path[1024];
 
 struct pcap_stat pcapstat;
 
+extern bool opt_pcap_queue_disable;
 extern u_int opt_pcap_queue_block_max_time_ms;
 extern size_t opt_pcap_queue_block_max_size;
 extern u_int opt_pcap_queue_file_store_max_time_ms;
@@ -3478,6 +3479,53 @@ int main_init_read() {
 			return(2);
 		}
 		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
+	} else if(opt_pcap_queue_disable) {
+		char errbuf[PCAP_ERRBUF_SIZE];
+		bpf_u_int32 interfaceNet;
+		bpf_u_int32 interfaceMask;
+		if(pcap_lookupnet(ifname, &interfaceNet, &interfaceMask, errbuf) == -1) {
+			interfaceMask = PCAP_NETMASK_UNKNOWN;
+		}
+		global_pcap_handle = pcap_create(ifname, errbuf);
+		if(global_pcap_handle == NULL) {
+			fprintf(stderr, "pcap_create(%s) failed: '%s'\n", ifname, errbuf);
+			return(2);
+		}
+		if(pcap_set_snaplen(global_pcap_handle, opt_snaplen ? opt_snaplen : 3200) != 0) {
+			fprintf(stderr, "pcap_snaplen failed: %s", pcap_geterr(global_pcap_handle)); 
+			return(2);
+		}
+		if(pcap_set_promisc(global_pcap_handle, opt_promisc) != 0) {
+			fprintf(stderr, "pcap_set_promisc failed: %s", pcap_geterr(global_pcap_handle)); 
+			return(2);
+		}
+		if(pcap_set_timeout(global_pcap_handle, 1000) != 0) {
+			fprintf(stderr, "pcap_set_timeout failed: %s", pcap_geterr(global_pcap_handle)); 
+			return(2);
+		}
+		if(pcap_set_buffer_size(global_pcap_handle, opt_ringbuffer * 1024 * 1024) != 0) {
+			fprintf(stderr, "pcap_set_buffer_size failed: %s", pcap_geterr(global_pcap_handle)); 
+			return(2);
+		}
+		if(pcap_activate(global_pcap_handle) != 0) {
+			fprintf(stderr, "pcap_activate failed: %s", pcap_geterr(global_pcap_handle)); 
+			return(2);
+		}
+		if(*user_filter != '\0') {
+			char filter_exp[2048] = "";
+			snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
+			// Compile and apply the filter
+			struct bpf_program fp;
+			if (pcap_compile(global_pcap_handle, &fp, filter_exp, 0, interfaceMask) == -1) {
+				fprintf(stderr, "can not parse filter %s: %s", filter_exp, pcap_geterr(global_pcap_handle));
+				return(2);
+			}
+			if (pcap_setfilter(global_pcap_handle, &fp) == -1) {
+				fprintf(stderr, "can not install filter %s: %s", filter_exp, pcap_geterr(global_pcap_handle));
+				return(2);
+			}
+		}
+		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
 	}
 	
 	if(opt_convert_dlt_sll_to_en10) {
@@ -3671,7 +3719,7 @@ int main_init_read() {
 		for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
 			preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 		}
-		if(!is_read_from_file_simple()) {
+		if(is_enable_packetbuffer()) {
 			for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end)); i++) {
 				if((i != PreProcessPacket::PreProcessPacket::ppt_pp_register && i != PreProcessPacket::PreProcessPacket::ppt_pp_sip_other) ||
 				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_register && opt_sip_register) ||
@@ -3684,7 +3732,7 @@ int main_init_read() {
 		//autostart for fork mode if t2cpu > 50%
 		if((!opt_fork || opt_t2_boost) &&
 		   opt_enable_process_rtp_packet && enable_pcap_split &&
-		   !is_read_from_file_simple()) {
+		   is_enable_packetbuffer()) {
 			process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
 			for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 				processRtpPacketDistribute[i] = new FILE_LINE(42023) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
@@ -5988,6 +6036,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42176) cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
 					addConfigItem(new FILE_LINE(42177) cConfigItem_integer("packetbuffer_block_timeout", &opt_pcap_queue_block_timeout));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("packetbuffer_pcap_stat_per_one_interface", &opt_pcap_queue_pcap_stat_per_one_interface));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("packetbuffer_disable", &opt_pcap_queue_disable));
 		subgroup("file cache");
 					expert();
 					addConfigItem((new FILE_LINE(42178) cConfigItem_integer("packetbuffer_file_totalmaxsize", &opt_pcap_queue_store_queue_max_disk_size))
@@ -9475,6 +9524,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "packetbuffer_pcap_stat_per_one_interface", NULL))) {
 		opt_pcap_queue_pcap_stat_per_one_interface = yesno(value);
 	}
+	if((value = ini.GetValue("general", "packetbuffer_disable", NULL))) {
+		opt_pcap_queue_disable = yesno(value);
+	}
 	//
 	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {
 		opt_pcap_queue_store_queue_max_memory_size = atol(value) * 1024ull *1024ull;
@@ -10390,11 +10442,11 @@ bool is_read_from_file_by_pb_acttime() {
 }
 
 bool is_enable_packetbuffer() {
-	return(!is_read_from_file_simple());
+	return(!is_read_from_file_simple() && !opt_pcap_queue_disable);
 }
 
 bool is_enable_rtp_threads() {
-	return(is_enable_packetbuffer() &&
+	return(!is_read_from_file_simple() &&
 	       rtp_threaded &&
 	       !is_sender() && !is_client_packetbuffer_sender());
 }
