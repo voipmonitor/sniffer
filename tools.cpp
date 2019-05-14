@@ -89,8 +89,12 @@ extern int ownPidFork;
 static char b2a[256];
 static char base64[64];
 
+
 extern TarQueue *tarQueue[2];
 using namespace std;
+
+bool vm_cpu_ht;
+int vm_cpu_count;
 
 AsyncClose *asyncClose;
 
@@ -6057,4 +6061,29 @@ unsigned RTPSENSOR_VERSION_INT() {
 		}
 	}
 	return(version_num);
+}
+
+void checkCpuHT(bool silent) {
+        if(vm_cpu_ht) {
+                return;
+        }
+        SimpleBuffer out;
+        if(vm_pexec((char*)"grep 'flags.* ht' /proc/cpuinfo > /dev/null", &out) && out.size()) {
+                vm_cpu_ht=1;
+        } else {
+                vm_cpu_ht=0;
+        }
+}
+
+void checkCpuCount(bool silent) {
+        if(vm_cpu_count) {
+                return;
+        }
+        SimpleBuffer out;
+        if(vm_pexec((char*)"grep -c 'processor' /proc/cpuinfo", &out) && out.size()) {
+                string countString=(char*)out;
+                sscanf((char*)countString.c_str(), "%i",&vm_cpu_count);
+        } else {
+                vm_cpu_count=0;
+        }
 }

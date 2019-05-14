@@ -20,9 +20,6 @@
 #define MAX_LENGTH	10000
 
 int vm_rrd_version;
-int vm_cpu_count;
-bool vm_cpu_ht;
-
 
 void rrd_vm_create_graph_tCPU_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize) {
     std::ostringstream cmdCreate;
@@ -925,6 +922,8 @@ void rrd_vm_create_graph_LA_command(char *filename, char *fromatstyle, char *toa
 	cmdCreate << "DEF:t0=" << filename << ":LA-m1:MAX ";
 	cmdCreate << "DEF:t1=" << filename << ":LA-m5:MAX ";
 	cmdCreate << "DEF:t2=" << filename << ":LA-m15:MAX ";
+	extern int vm_cpu_count;
+	extern bool vm_cpu_ht;
 	if (vm_cpu_ht) cmdCreate << "LINE1:" << vm_cpu_count << "#880022:\"" << vm_cpu_count << " HT CPUs   \\t" << setw(63) << "\\r\" ";
 		 else cmdCreate << "LINE1:" << vm_cpu_count << "#880022:\"" << vm_cpu_count << " CPUs      \\t" << setw(63) << "\\r\" ";
 
@@ -1566,35 +1565,6 @@ int rrd_call(
 		return -1;
 	}
 }
-
-
-void checkCpuHT(bool silent) {
-	extern int opt_rrd;
-	if(vm_cpu_ht || !opt_rrd) {
-		return;
-	}
-	SimpleBuffer out;
-	if(vm_pexec((char*)"grep 'flags.* ht' /proc/cpuinfo > /dev/null", &out) && out.size()) {
-		vm_cpu_ht=1;
-	} else {
-		vm_cpu_ht=0;
-	}
-}
-
-void checkCpuCount(bool silent) {
-	extern int opt_rrd;
-	if(vm_cpu_count || !opt_rrd) {
-		return;
-	}
-	SimpleBuffer out;
-	if(vm_pexec((char*)"grep -c 'processor' /proc/cpuinfo", &out) && out.size()) {
-		string countString=(char*)out;
-		sscanf((char*)countString.c_str(), "%i",&vm_cpu_count);
-	} else {
-		vm_cpu_count=0;
-	}
-}
-
 
 void checkRrdVersion(bool silent) {
 	extern int opt_rrd;

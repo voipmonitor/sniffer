@@ -41,10 +41,6 @@ void rrd_vm_create_graph_tacCPU_command(char *filename, char *fromatstyle, char 
 void rrd_vm_create_graph_memusage_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 void rrd_vm_create_graph_LA_command(char *filename, char *fromatstyle, char *toatstyle, char *color, int resx, int resy, short slope, short icon, char *dstfile, char *buffer, int maxsize);
 
-
-
-void checkCpuCount(bool silent = false);
-void checkCpuHT(bool silent = false);
 void checkRrdVersion(bool silent = false);
 
 extern int verbosity;
