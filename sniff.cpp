@@ -6185,6 +6185,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 
 	unsigned long lastStatTimeMS = 0;
 	sHeaderPacket *header_packet = NULL;
+	if(!is_read_from_file()) {
+		manager_parse_command_enable();
+	}
 	while (!is_terminating()) {
 		pcap_pkthdr *pcap_next_ex_header;
 		const u_char *pcap_next_ex_packet;
@@ -6328,6 +6331,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 	}
 	if(header_packet) {
 		DESTROY_HP(&header_packet);
+	}
+	if(!is_read_from_file()) {
+		manager_parse_command_disable();
 	}
 
 	if(opt_pcapdump) {

@@ -4501,6 +4501,11 @@ int Mgmt_sipports(Mgmt_params *params) {
 			outStrSipPorts << i << ',';
 		}
 	}
+	extern map<d_u_int32_t, string> ssl_ipport;
+	for(map<d_u_int32_t, string>::iterator it = ssl_ipport.begin(); it != ssl_ipport.end(); it++) {
+		d_u_int32_t ipport = it->first;
+		outStrSipPorts << ipport[1] << ',';
+	}
 	outStrSipPorts << endl;
 	string strSipPorts = outStrSipPorts.str();
 	return(params->sendString(&strSipPorts));
