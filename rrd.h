@@ -43,7 +43,8 @@ void rrd_vm_create_graph_LA_command(char *filename, char *fromatstyle, char *toa
 
 
 
-
+void checkCpuCount(bool silent = false);
+void checkCpuHT(bool silent = false);
 void checkRrdVersion(bool silent = false);
 
 extern int verbosity;
