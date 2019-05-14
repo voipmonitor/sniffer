@@ -93,10 +93,9 @@ static char base64[64];
 extern TarQueue *tarQueue[2];
 using namespace std;
 
-bool vm_cpu_ht;
-int vm_cpu_count;
-
 AsyncClose *asyncClose;
+signed short vm_cpu_ht=-1;
+unsigned short vm_cpu_count=0;
 
 
 //Sort files in given directory using mtime from oldest (files not already openned for write).
@@ -896,6 +895,34 @@ bool lseek(int fd, u_int64_t seekPos) {
 		}
 	}
 	return(true);
+}
+
+void get_cpu_ht(bool silent) {
+        std::ifstream input("/proc/cpuinfo");
+        std::string line;
+        std::string needle("ht");
+        if ( vm_cpu_ht != -1 ) return;
+        while( std::getline( input, line ))
+                if (!line.compare( 0, 5, "flags" )) {
+                        std::size_t found = line.find(needle);
+                        if(found == std::string::npos) continue;
+                        vm_cpu_ht=1;
+                        return;
+                }
+        vm_cpu_ht=0;
+        return;
+}
+
+void get_cpu_count(bool silent) {
+        std::ifstream input("/proc/cpuinfo");
+        std::string line;
+        unsigned short counter=0;
+
+        if ( vm_cpu_count != 0 ) return;
+        while( std::getline( input, line ))
+                if (!line.compare( 0, 9, "processor" ))
+                        counter++;
+        vm_cpu_count=counter;
 }
 
 string GetStringMD5(std::string str) {
@@ -6061,29 +6088,4 @@ unsigned RTPSENSOR_VERSION_INT() {
 		}
 	}
 	return(version_num);
-}
-
-void checkCpuHT(bool silent) {
-        if(vm_cpu_ht) {
-                return;
-        }
-        SimpleBuffer out;
-        if(vm_pexec((char*)"grep 'flags.* ht' /proc/cpuinfo > /dev/null", &out) && out.size()) {
-                vm_cpu_ht=1;
-        } else {
-                vm_cpu_ht=0;
-        }
-}
-
-void checkCpuCount(bool silent) {
-        if(vm_cpu_count) {
-                return;
-        }
-        SimpleBuffer out;
-        if(vm_pexec((char*)"grep -c 'processor' /proc/cpuinfo", &out) && out.size()) {
-                string countString=(char*)out;
-                sscanf((char*)countString.c_str(), "%i",&vm_cpu_count);
-        } else {
-                vm_cpu_count=0;
-        }
 }

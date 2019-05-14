@@ -401,6 +401,8 @@ int hexdecode(unsigned char *dst, const char *src, int max);
 bool isLocalIP(u_int32_t ip);
 char *strlwr(char *string, u_int32_t maxLength = 0);
 bool isJsonObject(string str);
+void get_cpu_ht(bool silent=false);
+void get_cpu_count(bool silent=false);
 
 class CircularBuffer
 {
@@ -3386,8 +3388,5 @@ private:
 
 
 unsigned RTPSENSOR_VERSION_INT();
-void checkCpuCount(bool silent = false);
-void checkCpuHT(bool silent = false);
-
 
 #endif

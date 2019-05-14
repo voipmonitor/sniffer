@@ -3052,8 +3052,8 @@ int main(int argc, char *argv[]) {
 
 	if(!opt_test) {
 		checkRrdVersion();
-		checkCpuHT();
-		checkCpuCount();
+		get_cpu_ht();
+		get_cpu_count();
 	}
 
 	if(opt_fork && !is_read_from_file() && reloadLoopCounter == 0) {
