@@ -3129,12 +3129,13 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// start manager thread 	
-	if(opt_manager_port > 0 && !is_read_from_file_simple()) {
+	if((opt_manager_port > 0 || is_client()) && !is_read_from_file_simple()) {
 		init_management_functions();
-		vm_pthread_create("manager server",
-				  &manager_thread, NULL, manager_server, NULL, __FILE__, __LINE__);
-		// start reversed manager thread
-	};
+		if(opt_manager_port > 0) {
+			vm_pthread_create("manager server",
+					  &manager_thread, NULL, manager_server, NULL, __FILE__, __LINE__);
+		}
+	}
 
 	//cout << "SQL DRIVER: " << sql_driver << endl;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender() && !is_terminating()) {
