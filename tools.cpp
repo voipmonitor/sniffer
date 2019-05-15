@@ -94,9 +94,6 @@ extern TarQueue *tarQueue[2];
 using namespace std;
 
 AsyncClose *asyncClose;
-signed short vm_cpu_ht=-1;
-unsigned short vm_cpu_count=0;
-
 
 //Sort files in given directory using mtime from oldest (files not already openned for write).
 queue<string> listFilesDir (char * dir) {
@@ -895,34 +892,6 @@ bool lseek(int fd, u_int64_t seekPos) {
 		}
 	}
 	return(true);
-}
-
-void get_cpu_ht(bool silent) {
-        std::ifstream input("/proc/cpuinfo");
-        std::string line;
-        std::string needle("ht");
-        if ( vm_cpu_ht != -1 ) return;
-        while( std::getline( input, line ))
-                if (!line.compare( 0, 5, "flags" )) {
-                        std::size_t found = line.find(needle);
-                        if(found == std::string::npos) continue;
-                        vm_cpu_ht=1;
-                        return;
-                }
-        vm_cpu_ht=0;
-        return;
-}
-
-void get_cpu_count(bool silent) {
-        std::ifstream input("/proc/cpuinfo");
-        std::string line;
-        unsigned short counter=0;
-
-        if ( vm_cpu_count != 0 ) return;
-        while( std::getline( input, line ))
-                if (!line.compare( 0, 9, "processor" ))
-                        counter++;
-        vm_cpu_count=counter;
 }
 
 string GetStringMD5(std::string str) {
