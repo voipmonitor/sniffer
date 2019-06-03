@@ -13,6 +13,7 @@ struct sHeaderPacket {
 	u_int16_t header_ip_first_offset;
 	u_int16_t header_ip_offset;
 	u_int16_t eth_protocol;
+	u_int16_t vlan;
 	uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 	pcap_pkthdr header;
 	u_char packet[1];

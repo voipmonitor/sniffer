@@ -431,12 +431,14 @@ int opt_register_ignore_res_401_nonce_has_changed = 0;
 bool opt_sip_register_compare_sipcallerip = false;
 bool opt_sip_register_compare_sipcalledip = false;
 bool opt_sip_register_compare_to_domain = true;
+bool opt_sip_register_compare_vlan = false;
 bool opt_sip_register_state_compare_from_num = false;
 bool opt_sip_register_state_compare_from_name = false;
 bool opt_sip_register_state_compare_from_domain = false;
 bool opt_sip_register_state_compare_digest_realm = false;
 bool opt_sip_register_state_compare_ua = false;
 bool opt_sip_register_state_compare_sipalg = false;
+bool opt_sip_register_state_compare_vlan = false;
 bool opt_sip_register_save_all = false;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -6384,12 +6386,14 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerip", &opt_sip_register_compare_sipcallerip));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcalledip", &opt_sip_register_compare_sipcalledip));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-to_domain", &opt_sip_register_compare_to_domain));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-vlan", &opt_sip_register_compare_vlan));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_num", &opt_sip_register_state_compare_from_num));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_name", &opt_sip_register_state_compare_from_name));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_domain", &opt_sip_register_state_compare_from_domain));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_realm", &opt_sip_register_state_compare_digest_realm));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_ua", &opt_sip_register_state_compare_ua));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-sipalg", &opt_sip_register_state_compare_sipalg));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-vlan", &opt_sip_register_state_compare_vlan));
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
 		subgroup("OPTIONS / SUBSCRIBE / NOTIFY");
@@ -8615,6 +8619,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sip-register-compare-to_domain", NULL))) {
 		opt_sip_register_compare_to_domain = yesno(value);
 	}
+	if((value = ini.GetValue("general", "sip-register-compare-vlan", NULL))) {
+		opt_sip_register_compare_vlan = yesno(value);
+	}
 	if((value = ini.GetValue("general", "sip-register-state-compare-from_num", NULL))) {
 		opt_sip_register_state_compare_from_num = yesno(value);
 	}
@@ -8632,6 +8639,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-state-compare-sipalg", NULL))) {
 		opt_sip_register_state_compare_sipalg = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-compare-vlan", NULL))) {
+		opt_sip_register_state_compare_vlan = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-save-all", NULL))) {
 		opt_sip_register_save_all = yesno(value);

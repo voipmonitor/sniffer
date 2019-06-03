@@ -142,10 +142,8 @@ inline
 #endif
 bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 		      sll_header *&header_sll, ether_header *&header_eth, u_char **header_ppp_o_e,
-		      u_int &header_ip_offset, int &protocol, int *vlan) {
-	if(vlan) {
-		*vlan = -1;
-	}
+		      u_int &header_ip_offset, int &protocol, u_int16_t &vlan) {
+	vlan = VLAN_NOSET;
 	bool exists_vlan = false;
 	u_int16_t ether_type;
 	switch(pcapLinklayerHeaderType) {
@@ -162,9 +160,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 			if(exists_vlan) {
 				u_int16_t _protocol;
 				do {
-					if(vlan) {
-						*vlan = htons(*(u_int16_t*)(packet + sizeof(sll_header) + header_ip_offset)) & 0xFFF;
-					}
+					vlan = htons(*(u_int16_t*)(packet + sizeof(sll_header) + header_ip_offset)) & 0xFFF;
 					_protocol = htons(*(u_int16_t*)(packet + sizeof(sll_header) + header_ip_offset + 2));
 					header_ip_offset += 4;
 				} while(_protocol == 0x8100);
@@ -221,9 +217,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 			if(exists_vlan) {
 				u_int16_t _protocol;
 				do {
-					if(vlan) {
-						*vlan = htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset)) & 0xFFF;
-					}
+					vlan = htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset)) & 0xFFF;
 					_protocol = htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset + 2));
 					header_ip_offset += 4;
 				} while(_protocol == 0x8100);
@@ -361,10 +355,11 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 		} else if(parseEtherHeader(pcapLinklayerHeaderType, HPP(*header_packet),
 					   ppd->header_sll, ppd->header_eth, NULL,
-					   ppd->header_ip_offset, ppd->protocol)) {
+					   ppd->header_ip_offset, ppd->protocol, ppd->vlan)) {
 			(*header_packet)->detect_headers |= 0x01;
 			(*header_packet)->header_ip_first_offset = ppd->header_ip_offset;
 			(*header_packet)->eth_protocol = ppd->protocol;
+			(*header_packet)->vlan = ppd->vlan;
 			if(!(ppd->protocol == ETHERTYPE_IP ||
 			     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
 			     ppd->header_ip_offset == 0xFFFFFFFF)) {
@@ -408,13 +403,15 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		if(pcap_header_plus2->detect_headers & 0x01) {
 			ppd->header_ip_offset = pcap_header_plus2->header_ip_first_offset;
 			ppd->protocol = pcap_header_plus2->eth_protocol;
+			ppd->vlan = pcap_header_plus2->vlan;
 			ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
 		} else if(parseEtherHeader(pcapLinklayerHeaderType, packet,
 					   ppd->header_sll, ppd->header_eth, NULL,
-					   ppd->header_ip_offset, ppd->protocol)) {
+					   ppd->header_ip_offset, ppd->protocol, ppd->vlan)) {
 			pcap_header_plus2->detect_headers |= 0x01;
 			pcap_header_plus2->header_ip_first_offset = ppd->header_ip_offset;
 			pcap_header_plus2->eth_protocol = ppd->protocol;
+			pcap_header_plus2->vlan = ppd->vlan;
 			if(!(ppd->protocol == ETHERTYPE_IP ||
 			     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
 			     ppd->header_ip_offset == 0xFFFFFFFF)) {

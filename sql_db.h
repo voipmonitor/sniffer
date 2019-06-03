@@ -483,6 +483,7 @@ public:
 	void checkColumns_cdr_dtmf(bool log = false);
 	void checkColumns_message(bool log = false);
 	void checkColumns_register(bool log = false);
+	void checkColumns_sip_msg(bool log = false);
 	void checkColumns_other(bool log = false);
 	bool isExtPrecissionBilling();
 	bool checkSourceTables();
@@ -959,13 +960,18 @@ struct sExistsColumns {
 	bool cdr_country_code_calldate;
 	bool cdr_sdp_calldate;
 	bool cdr_rtcp_loss_is_smallint_type;
+	bool cdr_vlan;
 	bool message_content_length;
 	bool message_response_time;
 	bool message_spool_index;
+	bool message_vlan;
 	bool register_rrd_count;
 	bool register_state_spool_index;
 	bool register_failed_spool_index;
 	bool register_state_flags;
+	bool register_state_vlan;
+	bool register_failed_vlan;
+	bool sip_msg_vlan;
 };
 
 

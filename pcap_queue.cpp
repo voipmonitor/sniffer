@@ -3070,7 +3070,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		}
 		if(!parseEtherHeader(pcapLinklayerHeaderType, *packet,
 				     checkProtocolData->header_sll, checkProtocolData->header_eth, NULL,
-				     checkProtocolData->header_ip_offset, checkProtocolData->protocol) ||
+				     checkProtocolData->header_ip_offset, checkProtocolData->protocol, checkProtocolData->vlan) ||
 		   checkProtocolData->protocol != ETHERTYPE_IP ||
 		   !(((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->version == 4 ||
 		     (VM_IPV6_B && ((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->version == 6)) ||
@@ -4288,6 +4288,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				pcap_header_plus2->detect_headers = 0x01;
 				pcap_header_plus2->header_ip_first_offset = checkProtocolData.header_ip_offset;
 				pcap_header_plus2->eth_protocol = checkProtocolData.protocol;
+				pcap_header_plus2->vlan = checkProtocolData.vlan;
 			}
 			pcap_header_plus2->convertFromStdHeader(pcap_next_ex_header);
 			pcap_header_plus2->header_ip_offset = 0;
@@ -4556,6 +4557,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	sHeaderPacket **header_packet_fetch = NULL;
 	int res;
 	u_int header_ip_offset = 0;
+	u_int16_t vlan = VLAN_UNSET;
 	u_int dlink = global_pcap_dlink;
 
 	if(this->readThreadsCount) {
@@ -4637,6 +4639,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 							      &ppd, this->readThreads[minThreadTimeIndex]->pcapLinklayerHeaderType, NULL, NULL);
 					}
 					header_ip_offset = hpi.header_packet->header_ip_offset;
+					vlan = hpi.header_packet->vlan;
 					dlink = this->readThreads[minThreadTimeIndex]->pcapLinklayerHeaderType;
 					blockStoreIndex = minThreadTimeIndex;
 					fetchPacketOk = true;
@@ -4721,6 +4724,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				if(fetchPacketOk) {
 					header_packet_fetch = &header_packet_read;
 					header_ip_offset = this->ppd.header_ip_offset;
+					vlan = this->ppd.vlan;
 					/* check change packet content - disabled
 					if(ip_tot_len && ip_tot_len != ((iphdr2*)(packet_pcap + 14))->tot_len) {
 						static u_long lastTimeLogErrBuggyKernel = 0;
@@ -4764,6 +4768,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				pcap_header_plus.convertFromStdHeader(HPH(*header_packet_fetch));
 				pcap_header_plus.header_ip_offset = header_ip_offset;
 				pcap_header_plus.dlink = dlink;
+				pcap_header_plus.vlan = vlan;
 				if(this->block_qring) {
 					if(blockStore[blockStoreIndex]->add_hp(&pcap_header_plus, (u_char*)header_packet_fetch, sizeof(sHeaderPacket*))) {
 						okAddPacket = true;
@@ -6966,7 +6971,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			datalen, data - (char*)hp->packet,
 			this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
 			istcp, isother, header_ip,
-			hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip,
+			hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->vlan,
 			hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);
 		return(1);
 	}
@@ -7229,9 +7234,10 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 		ether_header *header_eth;
 		u_int header_ip_offset;
 		int protocol;
+		u_int16_t vlan;
 		parseEtherHeader(hp->dlt, hp->packet,
 				 header_sll, header_eth, NULL,
-				 header_ip_offset, protocol);
+				 header_ip_offset, protocol, vlan);
 		hp->header->header_ip_offset = header_ip_offset;
 	}
 	iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);

@@ -510,12 +510,10 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 	
 	char caller[1024] = "", called[1024] = "";
 	char fromhstr[1024] = "", tohstr[1024] = "";
-	int vlan = -1;
         //Check if we use from/to header for filtering, if yes gather info from packet to fromhstr tohstr
         {
 		bool needfromhstr = false;
 		bool needtohstr = false;
-		bool needvlan=false;
 		for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
 			if(!usersnifferIT->second->state.all_all && !usersnifferIT->second->state.all_hstr) {
 				for(int i = 0; i < MAXLIVEFILTERS; i++) {
@@ -531,29 +529,12 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 					}
 				}
 			}
-			if(!usersnifferIT->second->state.all_all && !usersnifferIT->second->state.all_vlan) {
-				for(int i = 0; i < MAXLIVEFILTERS; i++) {
-					if(!usersnifferIT->second->state.all_vlan && usersnifferIT->second->lv_vlan_set[i]) {
-						needvlan = true;
-					}
-				}
-			}
 		}
 		if(needfromhstr) {
 			get_sip_headerstr(packetS, "\nFrom:", "\nf:", fromhstr, sizeof(fromhstr));
 		}
 		if(needtohstr) {
 			get_sip_headerstr(packetS, "\nTo:", "\nt:", tohstr, sizeof(tohstr));
-		}
-		if(needvlan) {
-			sll_header *header_sll;
-			ether_header *header_eth;
-			u_int header_ip_offset;
-			int protocol;
-			parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
-					 header_sll, header_eth, NULL,
-					 header_ip_offset, protocol, &vlan);
-			//syslog (LOG_NOTICE,"PAKET obsahuje VLAN: %d '%s'",vlan, vlanstr);
 		}
 	}
         //If call is established get caller/called num from packet - else gather it from packet and save to caller called
@@ -654,7 +635,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 			if(!okVlan) {
 				for(int i = 0; i < MAXLIVEFILTERS && !okVlan; i++) {
 					if(filter->state.all_vlan || 
-					   (filter->lv_vlan_set[i] && vlan == filter->lv_vlan[i])) {
+					   (filter->lv_vlan_set[i] && packetS->vlan == filter->lv_vlan[i])) {
 						okVlan = true;
 					}
 				}
@@ -2588,7 +2569,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	call->lastsrcip = packetS->saddr;
 	call->lastdstip = packetS->daddr;
 	call->lastsrcport = packetS->source;
-	
+	call->vlan = packetS->vlan;
+
 	char *s;
 	unsigned long l;
 	bool use_fbasename_header = false;
@@ -2660,10 +2642,10 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 					ether_header *header_eth;
 					u_int header_ip_offset;
 					int protocol;
-					int vlan;
+					u_int16_t vlan;
 					parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
 							 header_sll, header_eth, NULL,
-							 header_ip_offset, protocol, &vlan);
+							 header_ip_offset, protocol, vlan);
 					call->regsrcmac = (convert_srcmac_ll(header_eth));
 					//syslog(LOG_NOTICE,"srcmac from first register: [%llu]\n", call->regsrcmac);
 				}
@@ -4171,25 +4153,17 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			}
 			
 			{
-			int vlan = -1;
-			sll_header *header_sll;
-			ether_header *header_eth;
-			u_int header_ip_offset;
-			int protocol;
-			parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
-					 header_sll, header_eth, NULL,
-					 header_ip_offset, protocol, &vlan);
 			++call->reg401count;
 			bool find = false;
-			for(list<d_item2<vmIP, int> >::iterator iter = call->reg401count_sipcallerip_vlan.begin(); iter != call->reg401count_sipcallerip_vlan.end(); iter++) {
+			for(list<d_item2<vmIP, u_int16_t> >::iterator iter = call->reg401count_sipcallerip_vlan.begin(); iter != call->reg401count_sipcallerip_vlan.end(); iter++) {
 				if(iter->item1 == packetS->saddr &&
-				   iter->item2 == vlan) {
+				   iter->item2 == packetS->vlan) {
 					find = true;
 					break;
 				}
 			}
 			if(!find) {
-				call->reg401count_sipcallerip_vlan.push_back(d_item2<vmIP, int>(packetS->saddr, vlan));
+				call->reg401count_sipcallerip_vlan.push_back(d_item2<vmIP, u_int16_t>(packetS->saddr, packetS->vlan));
 			}
 			}
 			if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d] reg401count_distinct[%lu]", 
@@ -4309,6 +4283,7 @@ void process_packet_sip_other_sip_msg(packet_s_process *packetS) {
 		sipMsg->port_src = packetS->dest;
 		sipMsg->port_dst = packetS->source;
 	}
+	sipMsg->vlan = packetS->vlan;
 	sipMsg->number_src = data_callerd.caller;
 	sipMsg->number_dst = data_callerd.called;
 	sipMsg->domain_src = data_callerd.caller_domain;
@@ -6364,7 +6339,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 						ppd.datalen, dataoffset, 
 						handle_index, header, packet, true,
 						ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_offset),
-						NULL, 0, global_pcap_dlink, opt_id_sensor, 0);
+						NULL, 0, global_pcap_dlink, opt_id_sensor, 0, ppd.vlan);
 				} else {
 					delete header;
 					delete [] packet;
@@ -6889,7 +6864,7 @@ void ReassemblyBuffer::processPacket(u_char *ethHeader, unsigned ethHeaderLength
 				     vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, 
 				     ReassemblyBuffer::eType type, u_char *data, unsigned length, bool createStream,
 				     timeval time, u_int32_t ack, u_int32_t seq,
-				     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
+				     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan,
 				     list<sDataRslt> *dataRslt) {
 	sStreamId id(saddr, sport, daddr, dport);
 	map<sStreamId, sData>::iterator iter = streams.find(id);
@@ -6929,6 +6904,7 @@ void ReassemblyBuffer::processPacket(u_char *ethHeader, unsigned ethHeaderLength
 		b_data->dlt = dlt;
 		b_data->sensor_id = sensor_id;
 		b_data->sensor_ip = sensor_ip;
+		b_data->vlan = vlan;
 	}
 	b_data->buffer->add(data, length);
 	if(!createStream &&

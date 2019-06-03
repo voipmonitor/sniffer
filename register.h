@@ -51,6 +51,7 @@ enum eRegisterField {
 	rf_rrd_avg,
 	rf_spool_index,
 	rf_is_sipalg_detected,
+	rf_vlan,
 	rf__max
 };
 
@@ -87,6 +88,7 @@ public:
 	u_int64_t fname;
 	u_int32_t expires;
 	int id_sensor;
+	u_int16_t vlan;
 	u_int64_t db_id;
 	u_int32_t save_at;
 	u_int32_t save_at_counter;
@@ -151,6 +153,7 @@ public:
 	char *from_domain;
 	char *digest_realm;
 	char *ua;
+	u_int16_t vlan;
 	RegisterState *states[NEW_REGISTER_MAX_STATES];
 	u_int16_t countStates;
 	u_int64_t rrd_sum;

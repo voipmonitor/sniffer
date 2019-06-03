@@ -1265,9 +1265,10 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 					ether_header *header_eth = NULL;
 					u_int header_ip_offset = 0;
 					int protocol = 0;
+					u_int16_t vlan = VLAN_UNSET;
 					if(parseEtherHeader(dlt, (u_char*)packet, 
 							    header_sll, header_eth, NULL,
-							    header_ip_offset, protocol)) {
+							    header_ip_offset, protocol, vlan)) {
 						unsigned iphdrSize = ((iphdr2*)(packet + header_ip_offset))->get_hdr_size();
 						if((header_ip_offset +
 						    iphdrSize +
@@ -3965,11 +3966,12 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		sll_header *header_sll;
 		ether_header *header_eth;
 		u_char *header_ppp_o_e = NULL;
-		u_int header_ip_offset;
-		int protocol;
+		u_int header_ip_offset = 0;
+		int protocol = 0;
+		u_int16_t vlan = VLAN_UNSET;
 		if(parseEtherHeader(dlt, (u_char*)*packet, 
 				    header_sll, header_eth, &header_ppp_o_e,
-				    header_ip_offset, protocol) &&
+				    header_ip_offset, protocol, vlan) &&
 		   header_ppp_o_e) {
 			*(u_int16_t*)(header_ppp_o_e + 4) = htons(iphdr_size + tcp_doff * 4 + datalen + 2);
 		}

@@ -36,7 +36,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			  vmPort port_src, vmPort port_dst,
 			  TcpReassemblyData *data,
 			  u_char *ethHeader, u_int32_t ethHeaderLength,
-			  u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
+			  u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan,
 			  void */*uData*/, TcpReassemblyLink *reassemblyLink,
 			  std::ostream *debugStream) {
 	++this->counterProcessData;
@@ -215,7 +215,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 							       _ip_src, _port_src, _ip_dst, _port_dst,
 							       dataType, data, dataLength, createStream, 
 							       dataItem->getTime(), dataItem->getAck(), dataItem->getSeq(),
-							       handle_index, dlt, sensor_id, sensor_ip,
+							       handle_index, dlt, sensor_id, sensor_ip, vlan,
 							       &dataRslt);
 			}
 			if(dataRslt.size()) {
@@ -228,7 +228,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 					      data, dataLength, dataType, false,
 					      _ip_src, _ip_dst, _port_src, _port_dst,
 					      dataItem->getTime(), dataItem->getAck(), dataItem->getSeq(),
-					      handle_index, dlt, sensor_id, sensor_ip);
+					      handle_index, dlt, sensor_id, sensor_ip, vlan);
 			}
 		}
 	}
@@ -242,7 +242,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			    u_char *data, unsigned dataLength, ReassemblyBuffer::eType dataType, bool dataAlloc,
 			    vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst,
 			    timeval time, u_int32_t ack, u_int32_t seq,
-			    u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip) {
+			    u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan) {
 	if(sverb.ssldecode) {
 		hexdump(data, dataLength);
 		cout << "---" << endl;
@@ -280,7 +280,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			dataLength, dataOffset,
 			handle_index, tcpHeader, tcpPacket, true, 
 			2, false, (iphdr2*)(tcpPacket + ethHeaderLength),
-			NULL, 0, dlt, sensor_id, sensor_ip,
+			NULL, 0, dlt, sensor_id, sensor_ip, vlan,
 			false);
 	} else {
 		pcap_pkthdr *udpHeader;
@@ -302,7 +302,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			dataLength, dataOffset,
 			handle_index, udpHeader, udpPacket, true, 
 			false, false, (iphdr2*)(udpPacket + ethHeaderLength),
-			NULL, 0, dlt, sensor_id, sensor_ip,
+			NULL, 0, dlt, sensor_id, sensor_ip, vlan,
 			false);
 	}
 	if(ethHeaderAlloc) {

@@ -85,6 +85,7 @@ struct packet_s {
 	u_int16_t dataoffset;
 	u_int16_t header_ip_offset;
 	unsigned int istcp : 2;
+	u_int16_t vlan;
 	bool isother: 1;
 	bool is_ssl : 1;
 	bool is_skinny : 1;
@@ -825,6 +826,11 @@ void _process_packet__cleanup_registers();
 #define enable_save_audio(call)		((call->flags & FLAG_SAVEAUDIO) || opt_savewav_force)
 #define enable_save_sip_rtp_audio(call)	(enable_save_sip_rtp(call) || enable_save_audio(call))
 #define enable_save_any(call)		(enable_save_packet(call) || enable_save_audio(call))
+
+
+#define VLAN_UNSET 0xFFFF
+#define VLAN_NOSET 0xFFFE
+#define VLAN_IS_SET(vlan) ((vlan & 0xFFF) == vlan)
 
 
 #endif

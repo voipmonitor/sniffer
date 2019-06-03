@@ -4666,7 +4666,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`response_time_xxx` smallint unsigned DEFAULT NULL,\
 			`max_retransmission_invite` tinyint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
-			`id_sensor` smallint unsigned DEFAULT NULL," + 
+			`vlan` smallint DEFAULT NULL,\
+			`id_sensor` smallint unsigned DEFAULT NULL," +
 			(get_customers_pn_query[0] ?
 				"`caller_customer_id` int DEFAULT NULL,\
 				`caller_reseller_id` char(10) DEFAULT NULL,\
@@ -4720,6 +4721,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `reason_sip_text_id` (`reason_sip_text_id`),\
 		KEY `reason_q850_text_id` (`reason_q850_text_id`),\
 		KEY `payload` (`payload`),\
+		KEY `vlan` (`vlan`),\
 		KEY `id_sensor` (`id_sensor`)" + 
 		(get_customers_pn_query[0] ?
 				",KEY `caller_customer_id` (`caller_customer_id`),\
@@ -5184,6 +5186,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`lastSIPresponse_id` mediumint unsigned DEFAULT NULL,\
 			`lastSIPresponseNum` smallint unsigned DEFAULT NULL,\
 			`id_sensor` smallint unsigned DEFAULT NULL,\
+			`vlan` smallint DEFAULT NULL,\
 			`a_ua_id` int unsigned DEFAULT NULL,\
 			`b_ua_id` int unsigned DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
@@ -5209,6 +5212,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `bye` (`bye`),\
 		KEY `lastSIPresponse_id` (`lastSIPresponse_id`),\
 		KEY `id_sensor` (`id_sensor`),\
+		KEY `vlan` (`vlan`),\
 		KEY `a_ua_id` (`a_ua_id`),\
 		KEY `b_ua_id` (`b_ua_id`),\
 		KEY `fbasename` (`fbasename`)" +
@@ -5379,12 +5383,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`ua_id` int unsigned DEFAULT NULL,\
 			`to_domain` varchar(255) NULL DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
+			`vlan` smallint DEFAULT NULL,\
 			`spool_index` tinyint unsigned DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `created_at`)," :
 			"PRIMARY KEY (`ID`),") +
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
+		KEY `vlan` (`vlan`),\
 		KEY `sipcalledip` (`sipcalledip`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
@@ -5411,12 +5417,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`digestusername` varchar(255) NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
 			`to_domain` varchar(255) NULL DEFAULT NULL,\
+			`vlan` smallint DEFAULT NULL,\
 			`spool_index` tinyint unsigned DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `created_at`)," :
 			"PRIMARY KEY (`ID`),") +
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
+		KEY `vlan` (`vlan`),\
 		KEY `sipcalledip` (`sipcalledip`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
@@ -5468,6 +5476,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`response_duration_ms` int unsigned DEFAULT NULL,\
 			`qualify_ok` tinyint unsigned DEFAULT NULL,\
 			`id_sensor` smallint unsigned DEFAULT NULL,\
+			`vlan` smallint DEFAULT NULL,\
 			`spool_index` tinyint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL," +
 		(opt_cdr_partition ? 
@@ -5488,6 +5497,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `cseq` (`cseq`),\
 		KEY `response_number` (`response_number`),\
 		KEY `response_id` (`response_id`),\
+		KEY `vlan` (`vlan`),\
 		KEY `id_sensor` (`id_sensor`)" +
 		(opt_cdr_partition ?
 			"" :
@@ -5502,6 +5512,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(time)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+
+	checkColumns_sip_msg(true);
 
 	this->query("CREATE TABLE IF NOT EXISTS `sensors` (\
 			`id_sensor` int unsigned NOT NULL,\
@@ -6667,6 +6679,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 		this->checkColumns_cdr_dtmf();
 		this->checkColumns_message();
 		this->checkColumns_register();
+		this->checkColumns_sip_msg();
 		this->checkColumns_other();
 	}
 	
@@ -6947,6 +6960,15 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 					"ADD COLUMN b_mos_silence_mult10 tinyint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.cdr_mos_silence);
 	}
+	existsColumns.cdr_vlan = this->existsColumn("cdr", "vlan");
+	if(!existsColumns.cdr_vlan) {
+		this->logNeedAlter("cdr",
+				   "Vlan",
+				   "ALTER TABLE cdr "
+					"ADD COLUMN `vlan` smallint DEFAULT NULL,"
+					"ADD KEY `vlan` (`vlan`);",
+				   log, &tableSize, &existsColumns.cdr_vlan);
+	}
 }
 
 void SqlDb_mysql::checkColumns_cdr_next(bool log) {
@@ -7037,6 +7059,15 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 				   "ADD COLUMN `spool_index` tinyint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.message_spool_index);
 	}
+	existsColumns.message_vlan = this->existsColumn("message", "vlan");
+	if(!existsColumns.message_vlan) {
+		this->logNeedAlter("message",
+				   "Vlan",
+				   "ALTER TABLE message "
+					"ADD COLUMN `vlan` smallint DEFAULT NULL,"
+					"ADD KEY `vlan` (`vlan`);",
+				   log, &tableSize, &existsColumns.message_vlan);
+	}
 }
 
 void SqlDb_mysql::checkColumns_register(bool log) {
@@ -7077,6 +7108,15 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 				   "ADD COLUMN `flags` bigint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.register_state_flags);
 	}
+	existsColumns.register_state_vlan = this->existsColumn("register_state", "vlan");
+	if(!existsColumns.register_state_vlan) {
+		this->logNeedAlter("register_state",
+				   "register_state vlan",
+				   "ALTER TABLE register_state "
+				   "ADD COLUMN `vlan` smallint DEFAULT NULL, "
+				   "ADD KEY `vlan` (`vlan`);",
+				   log, &tableSize, &existsColumns.register_state_vlan);
+	}
 	existsColumns.register_failed_spool_index= this->existsColumn("register_failed", "spool_index");
 	if(!existsColumns.register_failed_spool_index) {
 		this->logNeedAlter("register_failed",
@@ -7084,6 +7124,28 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 				   "ALTER TABLE register_failed "
 				   "ADD COLUMN `spool_index` tinyint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.register_failed_spool_index);
+	}
+	existsColumns.register_failed_vlan = this->existsColumn("register_failed", "vlan");
+	if(!existsColumns.register_failed_vlan) {
+		this->logNeedAlter("register_failed",
+				   "register_failed vlan",
+				   "ALTER TABLE register_failed "
+				   "ADD COLUMN `vlan` smallint DEFAULT NULL, "
+				   "ADD KEY `vlan` (`vlan`);",
+				   log, &tableSize, &existsColumns.register_failed_vlan);
+	}
+}
+
+void SqlDb_mysql::checkColumns_sip_msg(bool log) {
+	map<string, u_int64_t> tableSize;
+	existsColumns.sip_msg_vlan = this->existsColumn("sip_msg", "vlan");
+	if(!existsColumns.sip_msg_vlan) {
+		this->logNeedAlter("sip_msg",
+				   "sip_msg vlan",
+				   "ALTER TABLE sip_msg "
+				   "ADD COLUMN `vlan` smallint DEFAULT NULL, "
+				   "ADD KEY `vlan` (`vlan`);",
+				   log, &tableSize, &existsColumns.sip_msg_vlan);
 	}
 }
 

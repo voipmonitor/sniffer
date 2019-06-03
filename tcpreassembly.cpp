@@ -1716,7 +1716,7 @@ void TcpReassemblyLink::complete_normal(bool final) {
 					this->port_src, this->port_dst,
 					reassemblyData,
 					this->ethHeader, this->ethHeaderLength,
-					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip,
+					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip, this->vlan,
 					this->uData, this,
 					ENABLE_DEBUG(reassembly->getType(), _debug_save) ? _debug_stream : NULL);
 				reassemblyData = NULL;
@@ -1775,7 +1775,7 @@ void TcpReassemblyLink::complete_simple_by_ack() {
 					this->port_src, this->port_dst,
 					reassemblyData,
 					this->ethHeader, this->ethHeaderLength,
-					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip,
+					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip, this->vlan,
 					this->uData, this,
 					ENABLE_DEBUG(reassembly->getType(), _debug_save) ? _debug_stream : NULL);
 	while(this->ok_streams.size()) {
@@ -2008,7 +2008,7 @@ void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams) {
 					this->port_src, this->port_dst,
 					reassemblyData,
 					this->ethHeader, this->ethHeaderLength,
-					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip,
+					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip, this->vlan,
 					this->uData, this,
 					ENABLE_DEBUG(reassembly->getType(), _debug_save) ? _debug_stream : NULL);
 				reassemblyData = NULL;
@@ -2068,7 +2068,7 @@ void TcpReassemblyLink::createEthHeader(u_char *packet, int dlt) {
 	int protocol;
 	if(parseEtherHeader(dlt, packet,
 			    header_sll, header_eth, NULL,
-			    header_ip_offset, protocol)) {
+			    header_ip_offset, protocol, this->vlan)) {
 		this->ethHeaderLength = header_ip_offset;
 		if(this->ethHeaderLength > 0 && this->ethHeaderLength < 50) {
 			this->ethHeader = new FILE_LINE(36009) u_char[this->ethHeaderLength];

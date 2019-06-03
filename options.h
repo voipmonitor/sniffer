@@ -50,6 +50,7 @@ enum eSipMsgField {
 	smf_response_string,
 	smf_qualify_ok,
 	smf_exists_pcap,
+	smf_vlan,
 	smf__max
 };
 
@@ -63,6 +64,7 @@ public:
 		ip_dst.clear();
 		port_src.clear();
 		port_dst.clear();
+		vlan = VLAN_UNSET;
 	}
 	bool operator == (const cSipMsgItem_base& other) const;
 	void debug_out();
@@ -73,6 +75,7 @@ public:
 	vmIP ip_dst;
 	vmPort port_src;
 	vmPort port_dst;
+	u_int16_t vlan;
 	string number_src;
 	string number_dst;
 	string domain_src;

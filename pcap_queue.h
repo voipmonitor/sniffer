@@ -388,6 +388,7 @@ struct pcapProcessData {
 	int traillen;
 	int istcp;
 	int isother;
+	u_int16_t vlan;
 	unsigned char *prevmd5s;
 	MD5_CTX ctx;
 	u_int ipfrag_lastprune;
@@ -402,6 +403,7 @@ public:
 		ether_header *header_eth;
 		u_int header_ip_offset;
 		int protocol;
+		u_int16_t vlan;
 	};
 public:
 	PcapQueue_readFromInterface_base(const char *interfaceName = NULL);
