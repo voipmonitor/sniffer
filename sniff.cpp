@@ -225,6 +225,10 @@ extern int opt_remotepartyid;
 extern int opt_remotepartypriority;
 extern int opt_ppreferredidentity;
 extern int opt_passertedidentity;
+extern char opt_remoteparty_caller[1024];
+extern char opt_remoteparty_called[1024];
+extern vector<string> opt_remoteparty_caller_v;
+extern vector<string> opt_remoteparty_called_v;
 extern int opt_182queuedpauserecording;
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
@@ -2911,6 +2915,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	bool detectCallerd = false;
 	const char *logPacketSipMethodCallDescr = NULL;
 	int merged;
+	bool process_packet__parse_custom_headers_done = false;
 	
 	s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
 	if(s && l <= 1023) {
@@ -3189,6 +3194,55 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			reason[l] = oldEndChar;
 		}
 	}
+	
+	if(opt_remoteparty_caller[0] || opt_remoteparty_called[0]) {
+		unsigned long remotePartyLen = 0;
+		char *remoteParty = gettag_sip(packetS, "\nRemote-Party-ID:", &remotePartyLen);
+		map<string, string> partyNumber;
+		if(remoteParty && remotePartyLen) {
+			do {
+				char number[1024] = "";
+				char party[1024] = "";
+				parse_peername(remoteParty, remotePartyLen,
+					       1,
+					       number, sizeof(number), 
+					       ppntt_undefined, ppndt_undefined);
+				char *partyBegin = strncasestr(remoteParty, "party=", remotePartyLen);
+				if(partyBegin) {
+					partyBegin += 6;
+					char *partyEnd = partyBegin;
+					while(*partyEnd != ';' && (partyEnd - remoteParty) < (int)remotePartyLen) {
+						++partyEnd;
+					}
+					unsigned partyLen = MIN(partyEnd - partyBegin, sizeof(party) - 1);
+					strncpy(party, partyBegin, partyLen);
+					party[partyLen] = 0;
+				}
+				if(party[0] && number[0]) {
+					partyNumber[party] = number;
+				}
+				remoteParty = gettag(remoteParty , packetS->sipDataLen - (remoteParty - (packetS->data + packetS->sipDataOffset)), NULL,
+						     "\nRemote-Party-ID:", &remotePartyLen);
+			}
+			while(remoteParty && remotePartyLen);
+			if(partyNumber.size()) {
+				if(opt_remoteparty_caller[0]) {
+					for(unsigned i = 0; i < opt_remoteparty_caller_v.size(); i++) {
+						if(partyNumber.find(opt_remoteparty_caller_v[i]) != partyNumber.end()) {
+							strcpy_null_term(call->caller, partyNumber[opt_remoteparty_caller_v[i]].c_str());
+						}
+					}
+				}
+				if(opt_remoteparty_called[0]) {
+					for(unsigned i = 0; i < opt_remoteparty_called_v.size(); i++) {
+						if(partyNumber.find(opt_remoteparty_called_v[i]) != partyNumber.end()) {
+							strcpy_null_term(call->called, partyNumber[opt_remoteparty_called_v[i]].c_str());
+						}
+					}
+				}
+			}
+		}
+	}
 
 	// check if it is BYE or OK(RES2XX)
 	if(packetS->sip_method == INVITE) {
@@ -3450,6 +3504,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						syslog(LOG_NOTICE, "Call answered\n");
 					if(!call->onCall_2XX) {
 						if(call->typeIs(INVITE)) {
+							process_packet__parse_custom_headers(call, packetS);
+							process_packet__parse_custom_headers_done = true;
 							ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
 									     call->getSipcallerip(), call->getSipcalledip(),
 									     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
@@ -3499,6 +3555,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 			if(!call->onCall_18X) {
 				if(call->typeIs(INVITE)) {
+					process_packet__parse_custom_headers(call, packetS);
+					process_packet__parse_custom_headers_done = true;
 					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
 							     call->getSipcallerip(), call->getSipcalledip(),
 							     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
@@ -3701,7 +3759,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 
 	// check if we have custom headers
-	process_packet__parse_custom_headers(call, packetS);
+	if(!process_packet__parse_custom_headers_done) {
+		process_packet__parse_custom_headers(call, packetS);
+		process_packet__parse_custom_headers_done = true;
+	}
 	
 	// we have packet, extend pending destroy requests
 	call->shift_destroy_call_at(packetS->header_pt, lastSIPresponseNum);
@@ -6124,7 +6185,14 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		tmppcap = pcap_dump_open(handle, pname);
 	}
 
+	unsigned long lastStatTimeMS = 0;
 	sHeaderPacket *header_packet = NULL;
+	if(!is_read_from_file()) {
+		manager_parse_command_enable();
+		if(!sverb.pcap_stat_period) {
+			sverb.pcap_stat_period = verbosityE > 0 ? 1 : 10;
+		}
+	}
 	while (!is_terminating()) {
 		pcap_pkthdr *pcap_next_ex_header;
 		const u_char *pcap_next_ex_packet;
@@ -6178,6 +6246,33 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 				pcap_next_ex_header->caplen);
 		
 		++packet_counter;
+		
+		if(!is_read_from_file()) {
+			unsigned long timeMS = getTimeMS(HPH(header_packet));
+			if(lastStatTimeMS) {
+				if(timeMS > lastStatTimeMS &&
+				   timeMS - lastStatTimeMS > (unsigned)(sverb.pcap_stat_period * 1000)) {
+					if(rtp_threads) {
+						extern int num_threads_max;
+						for(int i = 0; i < num_threads_max; i++) {
+							if(rtp_threads[i].threadId) {
+								rtp_threads[i].push_batch();
+							}
+						}
+					}
+					void _process_packet__cleanup_calls(pcap_pkthdr *header);
+					_process_packet__cleanup_calls(HPH(header_packet));
+					ostringstream outStr;
+					outStr << fixed;
+					outStr << "calls[" << (calltable->calls_list_count() + calltable->calls_by_stream_callid_listMAP.size()) << ",r:" << calltable->registers_listMAP.size() << "]"
+					       << "[" << calls_counter << ",r:" << registers_counter << "]";
+					syslog(LOG_NOTICE, "%s", outStr.str().c_str());
+					lastStatTimeMS = timeMS;
+				}
+			} else {
+				lastStatTimeMS = timeMS;
+			}
+		}
 
 		if(!pcapProcess(&header_packet, -1,
 				NULL, 0,
@@ -6243,6 +6338,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 	}
 	if(header_packet) {
 		DESTROY_HP(&header_packet);
+	}
+	if(!is_read_from_file()) {
+		manager_parse_command_disable();
 	}
 
 	if(opt_pcapdump) {

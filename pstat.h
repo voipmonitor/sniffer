@@ -27,6 +27,8 @@ void pstat_calc_cpu_usage(const pstat_data* cur_usage,
 long unsigned int getRss();
 void getLoadAvg(double *la_1, double *la_5, double *la_15);
 std::string getLoadAvgStr();
+void get_cpu_ht(bool silent=false);
+void get_cpu_count(bool silent=false);
 
 
 #endif

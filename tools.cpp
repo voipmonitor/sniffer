@@ -91,7 +91,6 @@ using namespace std;
 
 AsyncClose *asyncClose;
 
-
 //Sort files in given directory using mtime from oldest (files not already openned for write).
 queue<string> listFilesDir (char * dir) {
 	struct privListDir {          //sort by mtime asc. function
@@ -2031,6 +2030,7 @@ bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 bool RestartUpgrade::runGitUpgrade(const char *cmd) {
 	syslog(LOG_NOTICE, "call runGitUpgrade command %s", cmd);
 	extern char opt_git_folder[1024];
+	extern char opt_configure_param[1024];
 	extern bool opt_upgrade_by_git;
 	SimpleBuffer out;
 	SimpleBuffer err;
@@ -2061,7 +2061,7 @@ bool RestartUpgrade::runGitUpgrade(const char *cmd) {
 		if(cmd == string("git_pull")) {
 			pexecCmd += "git pull";
 		} else if(cmd == string("configure")) {
-			pexecCmd += "./configure";
+			pexecCmd += "./configure " + string(opt_configure_param);
 		} else if(cmd == string("make_clean")) {
 			pexecCmd += "make clean";
 		} else if(cmd == string("make")) {

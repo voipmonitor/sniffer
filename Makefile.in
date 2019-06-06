@@ -61,6 +61,8 @@ JSONCFLAGS =-lgcrypt -lgpg-error $(shell pkg-config --cflags @LIBJSON_NAME@)
 
 MYSQLLIB=@MYSQLLIB@
 MYSQLINC=@MYSQLINCLUDE@
+DPDKINC=@DPDKINCLUDE@
+DPDKLIB=@DPDKLIBRARY@
 
 GLIBCFLAGS =$(shell pkg-config --cflags glib-2.0)
 GLIBLIB =$(shell pkg-config --libs glib-2.0)
@@ -74,8 +76,8 @@ LIBGNUTLS=@LIBGNUTLS@
 LIBGNUTLSSTATIC=-lgcrypt -lgpg-error $(shell pkg-config gnutls --libs --static)
 SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} ${LIBSSH} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} -llzo2 ${LIBPNG} ${LIBFFT}
 STATIC_LIBS = -static @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl ${LIBLD} -lrt -lz ${LIBSSH} -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lpcre -lz -ldbi -llzma ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBFFT} -lpthread ${SS7}
-INCLUDES =  -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS}
-LIBS_PATH = -L/usr/local/lib/ 
+INCLUDES = ${DPDKINC} -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS}
+LIBS_PATH = ${DPDKLIB} -L/usr/local/lib/
 CXXFLAGS +=  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) ${MTUNE} ${INCLUDES} ${FBSDDEF}
 CFLAGS += ${CXXFLAGS}
 LIBS = ${SHARED_LIBS} 

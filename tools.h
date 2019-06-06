@@ -3321,5 +3321,4 @@ private:
 
 unsigned RTPSENSOR_VERSION_INT();
 
-
 #endif

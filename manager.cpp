@@ -1913,13 +1913,14 @@ bool ManagerClientThread_screen_popup::parseCommand() {
 void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
 					      vmIP sipSaddr, vmIP sipDaddr,
 					      const char *screenPopupFieldsString) {
-	/*
-	cout << "** call 01" << endl;
-	cout << "** - called num : " << calledNum << endl;
-	cout << "** - src ip : " << sipSaddr.getString() << endl;
-	cout << "** - reg_match : " << reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) << endl;
-	cout << "** - check ip : " << this->src_ip.checkIP(sipSaddr) << endl;
-	*/
+	if(sverb.screen_popup) {
+		cout << "** - sip response : " << sipResponseNum << endl;
+		cout << "** - called num : " << calledNum << endl;
+		cout << "** - src ip : " << sipSaddr.getString() << endl;
+		cout << "** - reg_match : " << reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) << endl;
+		cout << "** - check ip : " << this->src_ip.checkIP(sipSaddr) << endl;
+		cout << "** - screenPopupFieldsString : " << screenPopupFieldsString << endl;
+	}
 	if(!(reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) &&
 	     (this->non_numeric_caller_id ||
 	      this->isNumericId(calledNum)) &&
@@ -1993,6 +1994,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 			p.src_ip_blacklist,\
 			p.app_launch,\
 			p.app_launch_args_or_url,\
+			p.status_line,\
 			p.popup_title\
 		 from screen_popup_users u\
 		 join screen_popup_profile p on (p.id=u.profile_id)\
@@ -2029,6 +2031,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		src_ip.addBlack(row["src_ip_blacklist"].c_str());
 		app_launch = row["app_launch"];
 		app_launch_args_or_url = row["app_launch_args_or_url"];
+		status_line = row["status_line"];
 		popup_title = row["popup_title"];
 		if(!opt_php_path[0]) {
 			rslt = false;
@@ -2063,6 +2066,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 								"show_ip:[[%i]] "
 								"app_launch:[[%s]] "
 								"args_or_url:[[%s]] "
+								"status_line:[[%s]] "
 								"key:[[%s]] "
 								"allow_change_settings:[[%i]] "
 								"popup_title:[[%s]]\n", 
@@ -2072,6 +2076,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 								show_ip, 
 								app_launch.c_str(), 
 								app_launch_args_or_url.c_str(), 
+								status_line.c_str(),
 								key, 
 								allow_change_settings,
 								popup_title.c_str());
@@ -2633,6 +2638,10 @@ int Mgmt_creategraph(Mgmt_params *params) {
 			snprintf(filename, sizeof(filename), "%s/rrd/db-memusage.rrd", getRrdDir());
 			rrd_vm_create_graph_memusage_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 		} else if (!strncmp(manager_args[1], "loadavg", 7)) {
+			get_cpu_ht(true);
+			extern signed short vm_cpu_ht;
+			get_cpu_count(true);
+			extern unsigned short vm_cpu_count;
 			snprintf(filename, sizeof(filename), "%s/rrd/db-LA.rrd", getRrdDir());
 			rrd_vm_create_graph_LA_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 		} else {

@@ -186,6 +186,10 @@ int opt_passertedidentity = 0;	//Rewrite caller? If sip invite contain P-Asserte
 int opt_ppreferredidentity = 0;	//Rewrite caller? If sip invite contain P-Preferred-Identity, caller num/name is overwritten by its values.
 int opt_remotepartyid = 0;	//Rewrite caller? If sip invite contain header Remote-Party-ID, caller num/name is overwritten by its values.
 int opt_remotepartypriority = 0;//Defines rewrite caller order. If both headers are set/found and activated ( P-Preferred-Identity,Remote-Party-ID ), rewrite caller primary from Remote-Party-ID header (if set to 1). 
+char opt_remoteparty_caller[1024];
+char opt_remoteparty_called[1024];
+vector<string> opt_remoteparty_caller_v;
+vector<string> opt_remoteparty_called_v;
 int opt_fork = 1;		// fork or run foreground 
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
@@ -426,7 +430,7 @@ int opt_register_ignore_res_401 = 0;
 int opt_register_ignore_res_401_nonce_has_changed = 0;
 bool opt_sip_register_compare_sipcallerip = false;
 bool opt_sip_register_compare_sipcalledip = false;
-bool opt_sip_register_compare_to_domain = false;
+bool opt_sip_register_compare_to_domain = true;
 bool opt_sip_register_state_compare_from_num = false;
 bool opt_sip_register_state_compare_from_name = false;
 bool opt_sip_register_state_compare_from_domain = false;
@@ -515,6 +519,7 @@ char opt_php_path[1024];
 
 struct pcap_stat pcapstat;
 
+extern bool opt_pcap_queue_disable;
 extern u_int opt_pcap_queue_block_max_time_ms;
 extern size_t opt_pcap_queue_block_max_size;
 extern u_int opt_pcap_queue_file_store_max_time_ms;
@@ -549,6 +554,7 @@ int opt_cleandatabase_http_enum = 0;
 int opt_cleandatabase_webrtc = 0;
 int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
+int opt_cleandatabase_sip_msg = 0;
 int opt_cleandatabase_rtp_stat = 2;
 int opt_cleandatabase_log_sensor = 30;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
@@ -742,6 +748,10 @@ char opt_cachedir[1024];
 int opt_upgrade_try_http_if_https_fail = 0;
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
+pthread_t storing_cdr_next_threads[2];	// ID of worker storing CDR next threads
+sem_t storing_cdr_next_threads_sem[2][2];
+list<Call*> *storing_cdr_next_threads_calls[2];
+int storing_cdr_next_threads_count = 0;
 pthread_t storing_registers_thread;	// ID of worker storing CDR thread 
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
@@ -887,6 +897,7 @@ cBuffersControl buffersControl;
 u_int64_t rdtsc_by_100ms;
 
 char opt_git_folder[1024];
+char opt_configure_param[1024];
 bool opt_upgrade_by_git;
 
 bool opt_save_query_to_files;
@@ -1600,7 +1611,6 @@ void *defered_service_fork(void *) {
 
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void */*dummy*/ ) {
-	Call *call;
 	time_t createPartitionCdrAt = 0;
 	time_t dropPartitionCdrAt = 0;
 	time_t createPartitionSs7At = 0;
@@ -1719,25 +1729,49 @@ void *storing_cdr( void */*dummy*/ ) {
 		}
 		
 		size_t calls_queue_size = 0;
-		
+	
 		for(int pass  = 0; pass < 10; pass++) {
-		
 			calltable->lock_calls_queue();
 			calls_queue_size = calltable->calls_queue.size();
 			size_t calls_queue_position = 0;
-			
+			list<Call*> calls_for_store;
+			unsigned calls_for_store_count = 0;
 			while(calls_queue_position < calls_queue_size) {
-
-				call = calltable->calls_queue[calls_queue_position];
-				
+				Call *call = calltable->calls_queue[calls_queue_position];
 				calltable->unlock_calls_queue();
-				
 				// Close SIP and SIP+RTP dump files ASAP to save file handles
 				call->getPcap()->close();
 				call->getPcapSip()->close();
-				
 				if(call->isReadyForWriteCdr()) {
-				
+					if(storing_cdr_next_threads_count) {
+						int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
+						if(!mod) {
+							calls_for_store.push_back(call);
+						} else {
+							storing_cdr_next_threads_calls[mod - 1]->push_back(call);
+						}
+					} else {
+						calls_for_store.push_back(call);
+					}
+					++calls_for_store_count;
+					calltable->lock_calls_queue();
+					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
+					--calls_queue_size;
+				} else {
+					calltable->lock_calls_queue();
+				}
+				++calls_queue_position;
+			}
+			calltable->unlock_calls_queue();
+			if(calls_for_store_count) {
+				//cout << "*** " << calls_for_store_count << endl;
+				if(storing_cdr_next_threads_count) {
+					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+						sem_post(&storing_cdr_next_threads_sem[i][0]);
+					}
+				}
+				for(list<Call*>::iterator iter_call = calls_for_store.begin(); iter_call != calls_for_store.end(); iter_call++) {
+					Call *call = *iter_call;
 					bool needConvertToWavInThread = false;
 					call->closeRawFiles();
 					if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
@@ -1749,7 +1783,6 @@ void *storing_cdr( void */*dummy*/ ) {
 							needConvertToWavInThread = true;
 						}
 					}
-
 					regfailedcache->prunecheck(call->first_packet_time);
 					if(!opt_nocdr) {
 						if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
@@ -1762,17 +1795,6 @@ void *storing_cdr( void */*dummy*/ ) {
 							call->saveAloneByeToDb();
 						}
 					}
-
-					/* if we delete call here directly, destructors and another cleaning functions can be
-					 * called in the middle of working with call or another structures inside main thread
-					 * so put it in deletequeue and delete it in the main thread. Another way can be locking
-					 * call structure for every case in main thread but it can slow down thinks for each 
-					 * processing packet.
-					*/
-					calltable->lock_calls_queue();
-					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
-					--calls_queue_size;
-					
 					if(needConvertToWavInThread) {
 						calltable->lock_calls_audioqueue();
 						calltable->audio_queue.push_back(call);
@@ -1783,21 +1805,17 @@ void *storing_cdr( void */*dummy*/ ) {
 						calltable->calls_deletequeue.push_back(call);
 						calltable->unlock_calls_deletequeue();
 					}
-					storingCdrLastWriteAt = getActDateTimeF();
-				} else {
-					calltable->lock_calls_queue();
 				}
-				
-				++calls_queue_position;
-				
+				if(storing_cdr_next_threads_count) {
+					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+						sem_wait(&storing_cdr_next_threads_sem[i][1]);
+					}
+				}
+				storingCdrLastWriteAt = getActDateTimeF();
 			}
-			
-			calltable->unlock_calls_queue();
-
 			if(terminating_storing_cdr && (!calls_queue_size || terminating > 1)) {
 				break;
 			}
-		
 			usleep(100000);
 		}
 		
@@ -1840,6 +1858,57 @@ void *storing_cdr( void */*dummy*/ ) {
 		usleep(100000);
 	}
 	
+	terminating_storing_cdr = 2;
+	
+	return NULL;
+}
+
+void *storing_cdr_next_thread( void *_indexNextThread ) {
+	int indexNextThread = (int)(long)_indexNextThread;
+	while(terminating_storing_cdr < 2) {
+		sem_wait(&storing_cdr_next_threads_sem[indexNextThread][0]);
+		if(terminating_storing_cdr == 2) {
+			break;
+		}
+		for(list<Call*>::iterator iter_call = storing_cdr_next_threads_calls[indexNextThread]->begin(); iter_call != storing_cdr_next_threads_calls[indexNextThread]->end(); iter_call++) {
+			Call *call = *iter_call;
+			bool needConvertToWavInThread = false;
+			call->closeRawFiles();
+			if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
+			    call->getAllReceivedRtpPackets()) {
+				if(is_read_from_file()) {
+					if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
+					call->convertRawToWav();
+				} else {
+					needConvertToWavInThread = true;
+				}
+			}
+			regfailedcache->prunecheck(call->first_packet_time);
+			if(!opt_nocdr) {
+				if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
+					call->saveToDb(!is_read_from_file_simple() || isCloudRouter() || is_client());
+				}
+				if(call->typeIs(MESSAGE)) {
+					call->saveMessageToDb();
+				}
+				if(call->typeIs(BYE)) {
+					call->saveAloneByeToDb();
+				}
+			}
+			if(needConvertToWavInThread) {
+				calltable->lock_calls_audioqueue();
+				calltable->audio_queue.push_back(call);
+				calltable->processCallsInAudioQueue(false);
+				calltable->unlock_calls_audioqueue();
+			} else {
+				calltable->lock_calls_deletequeue();
+				calltable->calls_deletequeue.push_back(call);
+				calltable->unlock_calls_deletequeue();
+			}
+		}
+		storing_cdr_next_threads_calls[indexNextThread]->clear();
+		sem_post(&storing_cdr_next_threads_sem[indexNextThread][1]);
+	}
 	return NULL;
 }
 
@@ -2992,6 +3061,8 @@ int main(int argc, char *argv[]) {
 
 	if(!opt_test) {
 		checkRrdVersion();
+		get_cpu_ht();
+		get_cpu_count();
 	}
 
 	if(opt_fork && !is_read_from_file() && reloadLoopCounter == 0) {
@@ -3422,6 +3493,53 @@ int main_init_read() {
 			return(2);
 		}
 		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
+	} else if(opt_pcap_queue_disable) {
+		char errbuf[PCAP_ERRBUF_SIZE];
+		bpf_u_int32 interfaceNet;
+		bpf_u_int32 interfaceMask;
+		if(pcap_lookupnet(ifname, &interfaceNet, &interfaceMask, errbuf) == -1) {
+			interfaceMask = PCAP_NETMASK_UNKNOWN;
+		}
+		global_pcap_handle = pcap_create(ifname, errbuf);
+		if(global_pcap_handle == NULL) {
+			fprintf(stderr, "pcap_create(%s) failed: '%s'\n", ifname, errbuf);
+			return(2);
+		}
+		if(pcap_set_snaplen(global_pcap_handle, opt_snaplen ? opt_snaplen : 3200) != 0) {
+			fprintf(stderr, "pcap_snaplen failed: %s", pcap_geterr(global_pcap_handle)); 
+			return(2);
+		}
+		if(pcap_set_promisc(global_pcap_handle, opt_promisc) != 0) {
+			fprintf(stderr, "pcap_set_promisc failed: %s", pcap_geterr(global_pcap_handle)); 
+			return(2);
+		}
+		if(pcap_set_timeout(global_pcap_handle, 1000) != 0) {
+			fprintf(stderr, "pcap_set_timeout failed: %s", pcap_geterr(global_pcap_handle)); 
+			return(2);
+		}
+		if(pcap_set_buffer_size(global_pcap_handle, opt_ringbuffer * 1024 * 1024) != 0) {
+			fprintf(stderr, "pcap_set_buffer_size failed: %s", pcap_geterr(global_pcap_handle)); 
+			return(2);
+		}
+		if(pcap_activate(global_pcap_handle) != 0) {
+			fprintf(stderr, "pcap_activate failed: %s", pcap_geterr(global_pcap_handle)); 
+			return(2);
+		}
+		if(*user_filter != '\0') {
+			char filter_exp[2048] = "";
+			snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
+			// Compile and apply the filter
+			struct bpf_program fp;
+			if (pcap_compile(global_pcap_handle, &fp, filter_exp, 0, interfaceMask) == -1) {
+				fprintf(stderr, "can not parse filter %s: %s", filter_exp, pcap_geterr(global_pcap_handle));
+				return(2);
+			}
+			if (pcap_setfilter(global_pcap_handle, &fp) == -1) {
+				fprintf(stderr, "can not install filter %s: %s", filter_exp, pcap_geterr(global_pcap_handle));
+				return(2);
+			}
+		}
+		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
 	}
 	
 	if(opt_convert_dlt_sll_to_en10) {
@@ -3543,6 +3661,14 @@ int main_init_read() {
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
+		for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+			storing_cdr_next_threads_calls[i] = new FILE_LINE(0) list<Call*>;
+			for(int j = 0; j < 2; j++) {
+				sem_init(&storing_cdr_next_threads_sem[i][j], 0, 0);
+			}
+			vm_pthread_create(("storing cdr - next thread " + intToString(i + 1)).c_str(),
+					  &storing_cdr_next_threads[i], NULL, storing_cdr_next_thread, (void*)(long)i, __FILE__, __LINE__);
+		}
 		vm_pthread_create("storing cdr",
 				  &storing_cdr_thread, NULL, storing_cdr, NULL, __FILE__, __LINE__);
 		vm_pthread_create("storing register",
@@ -3607,7 +3733,7 @@ int main_init_read() {
 		for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
 			preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 		}
-		if(!is_read_from_file_simple()) {
+		if(is_enable_packetbuffer()) {
 			for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end)); i++) {
 				if((i != PreProcessPacket::PreProcessPacket::ppt_pp_register && i != PreProcessPacket::PreProcessPacket::ppt_pp_sip_other) ||
 				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_register && opt_sip_register) ||
@@ -3620,7 +3746,7 @@ int main_init_read() {
 		//autostart for fork mode if t2cpu > 50%
 		if((!opt_fork || opt_t2_boost) &&
 		   opt_enable_process_rtp_packet && enable_pcap_split &&
-		   !is_read_from_file_simple()) {
+		   is_enable_packetbuffer()) {
 			process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
 			for(int i = 0; i < opt_enable_process_rtp_packet; i++) {
 				processRtpPacketDistribute[i] = new FILE_LINE(42023) ProcessRtpPacket(ProcessRtpPacket::distribute, i);
@@ -4042,6 +4168,14 @@ void main_term_read() {
 	if(storing_cdr_thread) {
 		terminating_storing_cdr = 1;
 		pthread_join(storing_cdr_thread, NULL);
+		for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+			sem_post(&storing_cdr_next_threads_sem[i][0]);
+			pthread_join(storing_cdr_next_threads[i], NULL);
+			for(int j = 0; j < 2; j++) {
+				sem_destroy(&storing_cdr_next_threads_sem[i][j]);
+			}
+			delete storing_cdr_next_threads_calls[i];
+		}
 	}
 	if(storing_registers_thread) {
 		terminating_storing_registers = 1;
@@ -5274,6 +5408,7 @@ void test() {
 			opt_cleandatabase_http_enum =
 			opt_cleandatabase_webrtc =
 			opt_cleandatabase_register_state =
+			opt_cleandatabase_sip_msg =
 			opt_cleandatabase_register_failed = atoi(opt_test_arg);
 		} else {
 			return;
@@ -5828,6 +5963,8 @@ void cConfig::addConfigItems() {
 					->addValues("per_query:2"));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_set_id", &opt_mysql_enable_set_id));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("storing_cdr_next_threads", &storing_cdr_next_threads_count))
+						->setMaximum(2));
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
@@ -5836,6 +5973,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42119) cConfigItem_integer("cleandatabase_webrtc", &opt_cleandatabase_webrtc));
 			addConfigItem(new FILE_LINE(42120) cConfigItem_integer("cleandatabase_register_state", &opt_cleandatabase_register_state));
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_register_failed", &opt_cleandatabase_register_failed));
+			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_sip_msg", &opt_cleandatabase_sip_msg));
 			addConfigItem(new FILE_LINE(42122) cConfigItem_integer("cleandatabase_rtp_stat", &opt_cleandatabase_rtp_stat));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor", &opt_cleandatabase_log_sensor));
 		subgroup("backup");
@@ -5963,6 +6101,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42176) cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
 					addConfigItem(new FILE_LINE(42177) cConfigItem_integer("packetbuffer_block_timeout", &opt_pcap_queue_block_timeout));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("packetbuffer_pcap_stat_per_one_interface", &opt_pcap_queue_pcap_stat_per_one_interface));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("packetbuffer_disable", &opt_pcap_queue_disable));
 		subgroup("file cache");
 					expert();
 					addConfigItem((new FILE_LINE(42178) cConfigItem_integer("packetbuffer_file_totalmaxsize", &opt_pcap_queue_store_queue_max_disk_size))
@@ -6194,6 +6333,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42279) cConfigItem_yesno("passertedidentity", &opt_passertedidentity));
 				addConfigItem(new FILE_LINE(42280) cConfigItem_yesno("ppreferredidentity", &opt_ppreferredidentity));
 				addConfigItem(new FILE_LINE(42281) cConfigItem_yesno("remotepartypriority", &opt_remotepartypriority));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("remoteparty_caller", opt_remoteparty_caller, sizeof(opt_remoteparty_caller)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("remoteparty_called", opt_remoteparty_called, sizeof(opt_remoteparty_called)));
 				addConfigItem(new FILE_LINE(42282) cConfigItem_integer("destination_number_mode", &opt_destination_number_mode));
 				addConfigItem(new FILE_LINE(42283) cConfigItem_yesno("cdr_ua_enable", &opt_cdr_ua_enable));
 				addConfigItem(new FILE_LINE(42284) cConfigItem_string("cdr_ua_reg_remove", &opt_cdr_ua_reg_remove));
@@ -6320,6 +6461,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42350) cConfigItem_string("curlproxy", opt_curlproxy, sizeof(opt_curlproxy)));
 		addConfigItem(new FILE_LINE(42351) cConfigItem_yesno("upgrade_by_git", &opt_upgrade_by_git));
 		addConfigItem(new FILE_LINE(42352) cConfigItem_string("git_folder", opt_git_folder, sizeof(opt_git_folder)));
+		addConfigItem(new FILE_LINE(42352) cConfigItem_string("configure_param", opt_configure_param, sizeof(opt_configure_param)));
 	group("locale");
 		addConfigItem(new FILE_LINE(42353) cConfigItem_string("local_country_code", opt_local_country_code, sizeof(opt_local_country_code)));
 		addConfigItem(new FILE_LINE(42354) cConfigItem_string("timezone", opt_timezone, sizeof(opt_timezone)));
@@ -6547,6 +6689,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc =
 		opt_cleandatabase_register_state =
+		opt_cleandatabase_sip_msg =
 		opt_cleandatabase_register_failed = configItem->getValueInt();
 	}
 	if(configItem->config_name == "cleandatabase_cdr") {
@@ -6969,6 +7112,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "disable_billing")			sverb.disable_billing = 1;
 	else if(verbParam == "disable_custom_headers")		sverb.disable_custom_headers = 1;
 	else if(verbParam == "disable_cloudshare")		sverb.disable_cloudshare = 1;
+	else if(verbParam == "screen_popup")			sverb.screen_popup = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -7723,6 +7867,17 @@ void set_context_config() {
 		opt_call_id_alternative_v.clear();
 	}
 	
+	if(opt_remoteparty_caller[0]) {
+		opt_remoteparty_caller_v = split(opt_remoteparty_caller, split(",|;", '|'), true);
+	} else {
+		opt_remoteparty_caller_v.clear();
+	}
+	
+	if(opt_remoteparty_called[0]) {
+		opt_remoteparty_called_v = split(opt_remoteparty_called, split(",|;", '|'), true);
+	} else {
+		opt_remoteparty_called_v.clear();
+	}
 }
 
 void check_context_config() {
@@ -8232,6 +8387,7 @@ int eval_config(string inistr) {
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc =
 		opt_cleandatabase_register_state =
+		opt_cleandatabase_sip_msg =
 		opt_cleandatabase_register_failed = atoi(value);
 	}
 	if((value = ini.GetValue("general", "plcdisable", NULL))) {
@@ -8252,6 +8408,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "passertedidentity", NULL))) {
 		opt_passertedidentity = yesno(value);
 	}
+	if((value = ini.GetValue("general", "remoteparty_caller", NULL))) {
+		strcpy_null_term(opt_remoteparty_caller, value);
+	}
+	if((value = ini.GetValue("general", "remoteparty_called", NULL))) {
+		strcpy_null_term(opt_remoteparty_called, value);
+	}
 	if((value = ini.GetValue("general", "cleandatabase_cdr", NULL))) {
 		opt_cleandatabase_cdr =
 		opt_cleandatabase_http_enum =
@@ -8271,6 +8433,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleandatabase_register_failed", NULL))) {
 		opt_cleandatabase_register_failed = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleandatabase_sip_msg", NULL))) {
+		opt_cleandatabase_sip_msg = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_rtp_stat", NULL))) {
 		opt_cleandatabase_rtp_stat = atoi(value);
@@ -8980,6 +9145,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mysql_enable_set_id"))) {
 		opt_mysql_enable_set_id = yesno(value);
 	}
+	if((value = ini.GetValue("general", "storing_cdr_next_threads", NULL))) {
+		storing_cdr_next_threads_count = min(atoi(value), 2);
+	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strcpy_null_term(mysql_host, value);
 	}
@@ -9347,6 +9515,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "packetbuffer_pcap_stat_per_one_interface", NULL))) {
 		opt_pcap_queue_pcap_stat_per_one_interface = yesno(value);
+	}
+	if((value = ini.GetValue("general", "packetbuffer_disable", NULL))) {
+		opt_pcap_queue_disable = yesno(value);
 	}
 	//
 	if((value = ini.GetValue("general", "packetbuffer_total_maxheap", NULL))) {
@@ -9987,6 +10158,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "git_folder", NULL))) {
 		strcpy_null_term(opt_git_folder, value);
 	}
+	if((value = ini.GetValue("general", "configure_param", NULL))) {
+		strcpy_null_term(opt_configure_param, value);
+	}
 	if((value = ini.GetValue("general", "upgrade_by_git", NULL))) {
 		opt_upgrade_by_git = yesno(value);
 	}
@@ -10231,11 +10405,11 @@ bool is_read_from_file_by_pb_acttime() {
 }
 
 bool is_enable_packetbuffer() {
-	return(!is_read_from_file_simple());
+	return(!is_read_from_file_simple() && !opt_pcap_queue_disable);
 }
 
 bool is_enable_rtp_threads() {
-	return(is_enable_packetbuffer() &&
+	return(!is_read_from_file_simple() &&
 	       rtp_threaded &&
 	       !is_sender() && !is_client_packetbuffer_sender());
 }

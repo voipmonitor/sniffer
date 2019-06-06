@@ -160,6 +160,7 @@ void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 
 static bool __config_ENABLE_TOGETHER_READ_WRITE_FILE	= false;
 
+bool opt_pcap_queue_disable = false;
 #if TEST_DEBUG_PARAMS > 0
 	u_int opt_pcap_queue_block_max_time_ms 			= 500;
 	size_t opt_pcap_queue_block_max_size   			= OPT_PCAP_BLOCK_STORE_MAX_ITEMS * AVG_PACKET_SIZE;
@@ -2221,7 +2222,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		lapTimeDescr.push_back("rss_vsz");
 	}
 	outStrStat << "]MB ";
-	outStrStat << "LA[" << getLoadAvgStr() << "] ";
+	//Get load average string
+	outStrStat << getLoadAvgStr();
 	outStrStat << "v" << RTPSENSOR_VERSION << " ";
 	//outStrStat << pcapStatCounter << " ";
 	if (opt_rrd) {

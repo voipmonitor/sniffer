@@ -7268,7 +7268,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 	       time_t time, vmIP saddr, vmPort port,
 	       pcap_t *handle, int dlt, int sensorId) {
 	Call *newcall = new FILE_LINE(1011) Call(call_type, call_id, call_id_len, call_id_alternative, time);
-	newcall->in_preprocess_queue_before_process_packet = 1;
+	newcall->in_preprocess_queue_before_process_packet = is_enable_packetbuffer() ? 1 : 0;
 	newcall->in_preprocess_queue_before_process_packet_at[0] = time;
 	newcall->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 

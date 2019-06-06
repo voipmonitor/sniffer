@@ -1776,7 +1776,9 @@ void *TarQueueThread(void *_tarQueue) {
 		} else {
 			int do_terminated_tar_flush_queue = terminated_async;
 			tarQueue->flushQueue();
-			if(do_terminated_tar_flush_queue) {
+			extern int opt_pcap_dump_asyncwrite;
+			if(do_terminated_tar_flush_queue || 
+			   (!opt_pcap_dump_asyncwrite && is_terminating())) {
 				 terminated_tar_flush_queue[tarQueue->getSpoolIndex()] = 1;
 				 syslog(LOG_NOTICE, "terminated - tar - flush queue");
 			}
