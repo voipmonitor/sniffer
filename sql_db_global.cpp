@@ -281,7 +281,12 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 				sqlDb->fetchRows(&rows);
 				SqlDb_row row;
 				while((row = rows.fetchRow())) {
-					(*data)[row[columnStringValue]] = atol(row[columnId].c_str());
+					string stringValue = row[columnStringValue];
+					unsigned id = atol(row[columnId].c_str());
+					if(!caseSensitive) {
+						std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), ::toupper);
+					}
+					(*data)[stringValue] = id;
 				}
 			}
 			*overflow = false;

@@ -117,7 +117,7 @@ private:
 class CacheNumber_location {
 public:
 	struct sNumber {
-		sNumber(const char *number = NULL, u_int32_t ip = 0, const char *domain = NULL) {
+		sNumber(const char *number = NULL, vmIP ip = 0, const char *domain = NULL) {
 			if(number) {
 				this->number = number;
 			}
@@ -127,7 +127,7 @@ public:
 			}
 		}
 		string number;
-		u_int32_t ip;
+		vmIP ip;
 		string domain;
 		bool operator == (const sNumber& other) const { 
 			return(this->number == other.number &&
@@ -142,17 +142,17 @@ public:
 	};
 	struct sIpRec {
 		sIpRec() {
-			ip = 0;
+			ip.clear();
 			at = 0;
-			old_ip = 0;
+			old_ip.clear();
 			old_at = 0;
 			fresh_at = 0;
 		}
-		u_int32_t ip;
+		vmIP ip;
 		string country_code;
 		string continent_code;
 		u_int64_t at;
-		u_int32_t old_ip;
+		vmIP old_ip;
 		string old_country_code;
 		string old_continent_code;
 		u_int64_t old_at;
@@ -160,13 +160,13 @@ public:
 	};
 	CacheNumber_location();
 	~CacheNumber_location();
-	bool checkNumber(const char *number, u_int32_t number_ip, const char *domain,
-			 u_int32_t ip, u_int64_t at,
+	bool checkNumber(const char *number, vmIP number_ip, const char *domain,
+			 vmIP ip, u_int64_t at,
 			 bool *diffCountry = NULL, bool *diffContinent = NULL,
-			 u_int32_t *oldIp = NULL, string *oldCountry = NULL, string *oldContinent = NULL,
+			 vmIP *oldIp = NULL, string *oldCountry = NULL, string *oldContinent = NULL,
 			 const char *ip_country = NULL, const char *ip_continent = NULL);
-	bool loadNumber(const char *number, u_int32_t number_ip, const char *domain, u_int64_t at);
-	void saveNumber(const char *number, u_int32_t number_ip, const char *domain, sIpRec *ipRec, bool update = false);
+	bool loadNumber(const char *number, vmIP number_ip, const char *domain, u_int64_t at);
+	void saveNumber(const char *number, vmIP number_ip, const char *domain, sIpRec *ipRec, bool update = false);
 	void cleanup(u_int64_t at);
 private:
 	string getTable(const char *domain);
@@ -205,8 +205,8 @@ struct sFraudCallInfo : public sFraudNumberInfo {
 	sFraudCallInfo() {
 		typeCallInfo = (eTypeCallInfo)0;
 		call_type = 0;
-		caller_ip = 0;
-		called_ip = 0;
+		caller_ip.clear();
+		called_ip.clear();
 		at_begin = 0;
 		at_connect = 0;
 		at_seen_bye = 0;
@@ -217,8 +217,8 @@ struct sFraudCallInfo : public sFraudNumberInfo {
 	eTypeCallInfo typeCallInfo;
 	int call_type;
 	string callid;
-	u_int32_t caller_ip;
-	u_int32_t called_ip;
+	vmIP caller_ip;
+	vmIP called_ip;
 	string country_code_caller_ip;
 	string country_code_called_ip;
 	string continent_code_caller_ip;
@@ -239,23 +239,23 @@ struct sFraudRtpStreamInfo : public sFraudNumberInfo {
 		typeRtpStreamInfo_endStream
 	};
 	sFraudRtpStreamInfo() {
-		rtp_src_ip = 0;
+		rtp_src_ip.clear();
 		rtp_src_ip_group = 0;
-		rtp_src_port = 0;
-		rtp_dst_ip = 0;
+		rtp_src_port.clear();
+		rtp_dst_ip.clear();
 		rtp_dst_ip_group = 0;
-		rtp_dst_port = 0;
+		rtp_dst_port.clear();
 		local_called_number = true;
 		at = 0;
 	}
 	eTypeRtpStreamInfo typeRtpStreamInfo;
 	string callid;
-	u_int32_t rtp_src_ip;
+	vmIP rtp_src_ip;
 	u_int32_t rtp_src_ip_group;
-	u_int16_t rtp_src_port;
-	u_int32_t rtp_dst_ip;
+	vmPort rtp_src_port;
+	vmIP rtp_dst_ip;
 	u_int32_t rtp_dst_ip_group;
-	u_int16_t rtp_dst_port;
+	vmPort rtp_dst_port;
 	string country_code_rtp_src_ip;
 	string country_code_rtp_dst_ip;
 	string continent_code_rtp_src_ip;
@@ -271,8 +271,8 @@ struct sFraudEventInfo {
 	};
 	sFraudEventInfo() {
 		typeEventInfo = (eTypeEventInfo)0;
-		src_ip = 0;
-		dst_ip = 0;
+		src_ip.clear();
+		dst_ip.clear();
 		sip_method = 0;
 		at = 0;
 		block_store = NULL;
@@ -280,8 +280,8 @@ struct sFraudEventInfo {
 		dlt = 0;
 	}
 	eTypeEventInfo typeEventInfo;
-	u_int32_t src_ip;
-	u_int32_t dst_ip;
+	vmIP src_ip;
+	vmIP dst_ip;
 	unsigned sip_method;
 	u_int64_t at;
 	string ua;
@@ -291,8 +291,8 @@ struct sFraudEventInfo {
 };
 
 struct sFraudRegisterInfo_id {
-	u_int32_t sipcallerip;
-	u_int32_t sipcalledip;
+	vmIP sipcallerip;
+	vmIP sipcalledip;
 	string to_num;
 	string to_domain;
 	string digest_username;
@@ -405,7 +405,7 @@ public:
 	virtual void evRtpStream(sFraudRtpStreamInfo */*rtpStreamInfo*/) {}
 	virtual void evEvent(sFraudEventInfo */*eventInfo*/) {}
 	virtual void evRegister(sFraudRegisterInfo */*registerInfo*/) {}
-	virtual bool okFilterIp(u_int32_t ip, u_int32_t ip2);
+	virtual bool okFilterIp(vmIP ip, vmIP ip2);
 	virtual bool okFilterPhoneNumber(const char *numb, const char *numb2);
 	virtual bool okFilterDomain(const char *domain);
 	virtual bool okFilter(sFraudCallInfo *callInfo);
@@ -559,9 +559,9 @@ friend class FraudAlert_rcc_base;
 class FraudAlert_rcc_rtpStreamInfo {
 public: 
 	struct str_dipn_port {
-		str_dipn_port(string str, u_int32_t ip1, u_int16_t port1, u_int32_t ip2, u_int16_t port2) {
+		str_dipn_port(string str, vmIP ip1, vmPort port1, vmIP ip2, vmPort port2) {
 			this->str = str;
-			this->dipn_port = d_item<ipn_port>(ipn_port(ip1, port1), ipn_port(ip2, port2));
+			this->dipn_port = d_item<vmIPport>(vmIPport(ip1, port1), vmIPport(ip2, port2));
 		}
 		bool operator == (const str_dipn_port& other) const { 
 			return(this->str == other.str &&
@@ -572,20 +572,20 @@ public:
 			       (this->str == other.str && this->dipn_port < other.dipn_port)); 
 		}
 		string str;
-		d_item<ipn_port> dipn_port;
+		d_item<vmIPport> dipn_port;
 	};
 public:
 	FraudAlert_rcc_rtpStreamInfo();
-	void addLocal(const char *callid, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, u_int64_t at) {
+	void addLocal(const char *callid, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, u_int64_t at) {
 		calls_local[str_dipn_port(callid, saddr, sport, daddr, dport)] = at;
 	}
-	void removeLocal(const char *callid, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport) {
+	void removeLocal(const char *callid, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
 		calls_local.erase(str_dipn_port(callid, saddr, sport, daddr, dport));
 	}
-	void addInternational(const char *callid, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, u_int64_t at) {
+	void addInternational(const char *callid, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, u_int64_t at) {
 		calls_international[str_dipn_port(callid, saddr, sport, daddr, dport)] = at;
 	}
-	void removeInternational(const char *callid, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport) {
+	void removeInternational(const char *callid, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
 		calls_international.erase(str_dipn_port(callid, saddr, sport, daddr, dport));
 	}
 private:
@@ -608,34 +608,52 @@ private:
 		u_int64_t at;
 	};
 	struct sIdAlert {
-		sIdAlert(u_int32_t ip = 0) {
+		sIdAlert(vmIP ip = 0) {
+			clear();
 			this->ip = ip;
 		}
 		sIdAlert(const char *number) {
+			clear();
 			this->number = number;
-			this->ip = 0;
 		}
-		sIdAlert(d_u_int32_t rtp_stream) {
-			this->rtp_stream = rtp_stream;
-			this->ip = 0;
+		sIdAlert(d_item<vmIP> rtp_stream_ip) {
+			clear();
+			this->rtp_stream_ip = rtp_stream_ip;
+		}
+		sIdAlert(d_u_int32_t rtp_stream_id) {
+			clear();
+			this->rtp_stream_id = rtp_stream_id;
+		}
+		void clear() {
+			ip.clear();
+			number.clear();
+			rtp_stream_ip.items[0].clear();
+			rtp_stream_ip.items[1].clear();
+			rtp_stream_id.val[0] = 0;
+			rtp_stream_id.val[1] = 0;
 		}
 		bool operator == (const sIdAlert& other) const { 
-			return(this->ip ?
+			return(this->ip.isSet() ?
 				this->ip == other.ip :
 			       !this->number.empty() ?
 				this->number == other.number : 
-				this->rtp_stream == other.rtp_stream); 
+			       this->rtp_stream_ip.items[0].isSet() ?
+				this->rtp_stream_ip == other.rtp_stream_ip :
+				this->rtp_stream_id == other.rtp_stream_id); 
 		}
 		bool operator < (const sIdAlert& other) const { 
-			return(this->ip ?
+			return(this->ip.isSet() ?
 				this->ip < other.ip :
 			       !this->number.empty() ?
 				this->number < other.number : 
-				this->rtp_stream < other.rtp_stream); 
+			       this->rtp_stream_ip.items[0].isSet() ?
+				this->rtp_stream_ip < other.rtp_stream_ip :
+				this->rtp_stream_id < other.rtp_stream_id); 
 		}
-		u_int32_t ip;
+		vmIP ip;
 		string number;
-		d_u_int32_t rtp_stream;
+		d_item<vmIP> rtp_stream_ip;
+		d_u_int32_t rtp_stream_id;
 	};
 public:
 	FraudAlert_rcc_base(class FraudAlert_rcc *parent);
@@ -655,9 +673,10 @@ protected:
 	unsigned int concurentCallsLimitInternational_tp;
 	unsigned int concurentCallsLimitBoth_tp;
 	FraudAlert_rcc_callInfo calls_summary;
-	map<u_int32_t, FraudAlert_rcc_callInfo*> calls_by_ip;
+	map<vmIP, FraudAlert_rcc_callInfo*> calls_by_ip;
 	map<string, FraudAlert_rcc_callInfo*> calls_by_number;
-	map<d_u_int32_t, FraudAlert_rcc_rtpStreamInfo*> calls_by_rtp_stream;
+	map<d_item<vmIP>, FraudAlert_rcc_rtpStreamInfo*> calls_by_rtp_stream_ip;
+	map<d_u_int32_t, FraudAlert_rcc_rtpStreamInfo*> calls_by_rtp_stream_id;
 private:
 	map<sIdAlert, sAlertInfo> alerts_local;
 	map<sIdAlert, sAlertInfo> alerts_international;
@@ -715,7 +734,7 @@ public:
 	FraudAlertInfo_rcc(FraudAlert *alert);
 	void set_ip(FraudAlert::eLocalInternational localInternational,
 		    const char *timeperiod_name,
-		    u_int32_t ip, const char *ip_location_code,
+		    vmIP ip, const char *ip_location_code,
 		    unsigned int concurentCalls);
 	void set_number(FraudAlert::eLocalInternational localInternational,
 			const char *timeperiod_name,
@@ -723,7 +742,11 @@ public:
 			unsigned int concurentCalls);
 	void set_rtp_stream(FraudAlert::eLocalInternational localInternational,
 			    const char *timeperiod_name,
-			    FraudAlert::eTypeBy type_by, d_u_int32_t rtp_stream,
+			    FraudAlert::eTypeBy type_by, d_item<vmIP> rtp_stream_ip,
+			    unsigned int concurentCalls);
+	void set_rtp_stream(FraudAlert::eLocalInternational localInternational,
+			    const char *timeperiod_name,
+			    FraudAlert::eTypeBy type_by, d_u_int32_t rtp_stream_id,
 			    unsigned int concurentCalls);
 	void set_summary(FraudAlert::eLocalInternational localInternational,
 			 const char *timeperiod_name,
@@ -733,11 +756,12 @@ private:
 	FraudAlert::eLocalInternational localInternational;
 	string timeperiod_name;
 	FraudAlert::eTypeBy type_by;
-	u_int32_t ip;
+	vmIP ip;
 	string ip_location_code;
 	string number;
 	string number_location_code;
-	d_u_int32_t rtp_stream;
+	d_item<vmIP> rtp_stream_ip;
+	d_u_int32_t rtp_stream_id;
 	unsigned int concurentCalls;
 };
 
@@ -769,18 +793,18 @@ public:
 	FraudAlertInfo_chc(FraudAlert *alert);
 	void set(const char *number,
 		 FraudAlert::eTypeLocation typeLocation,
-		 u_int32_t ip,
+		 vmIP ip,
 		 const char *location_code,
-		 u_int32_t ip_old,
+		 vmIP ip_old,
 		 const char *location_code_old,
-		 u_int32_t ip_dst);
+		 vmIP ip_dst);
 	string getJson();
 private:
 	string number;
 	FraudAlert::eTypeLocation typeLocation;
-	u_int32_t ip;
-	u_int32_t ip_old;
-	u_int32_t ip_dst;
+	vmIP ip;
+	vmIP ip_old;
+	vmIP ip_dst;
 	string location_code;
 	string location_code_old;
 };
@@ -858,14 +882,14 @@ private:
 class FraudAlertInfo_spc : public FraudAlertInfo {
 public:
 	FraudAlertInfo_spc(FraudAlert *alert);
-	void set(unsigned int ip, 
+	void set(vmIP ip, 
 		 unsigned int count,
 		 unsigned int count_invite = 0,
 		 unsigned int count_message = 0,
 		 unsigned int count_register = 0);
 	string getJson();
 private:
-	unsigned int ip;
+	vmIP ip;
 	unsigned int count;
 	unsigned int count_invite;
 	unsigned int count_message;
@@ -897,11 +921,11 @@ protected:
 	bool defInterval() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:
-	bool checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at);
+	bool checkOkAlert(vmIP ip, u_int64_t count, u_int64_t at);
 private:
-	map<u_int32_t, sCounts> count;
+	map<vmIP, sCounts> count;
 	u_int64_t start_interval;
-	map<u_int32_t, sAlertInfo> alerts;
+	map<vmIP, sAlertInfo> alerts;
 };
 
 class FraudAlert_rc : public FraudAlert {
@@ -927,27 +951,27 @@ protected:
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:
 	void loadAlertVirt(SqlDb *sqlDb = NULL);
-	bool checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at);
-	string getDumpName(u_int32_t ip, u_int64_t at);
+	bool checkOkAlert(vmIP ip, u_int64_t count, u_int64_t at);
+	string getDumpName(vmIP ip, u_int64_t at);
 private:
 	bool withResponse;
-	map<u_int32_t, u_int64_t> count;
-	map<u_int32_t, PcapDumper*> dumpers;
+	map<vmIP, u_int64_t> count;
+	map<vmIP, PcapDumper*> dumpers;
 	u_int64_t start_interval;
-	map<u_int32_t, sAlertInfo> alerts;
+	map<vmIP, sAlertInfo> alerts;
 };
 
 class FraudAlertInfo_seq : public FraudAlertInfo {
 public:
 	FraudAlertInfo_seq(FraudAlert *alert);
-	void set(unsigned int ip,
+	void set(vmIP ip,
 		 const char *number,
 		 unsigned int count,
 		 const char *country_code_ip,
 		 const char *country_code_number);
 	string getJson();
 private:
-	unsigned int ip;
+	vmIP ip;
 	string number;
 	unsigned int count;
 	string country_code_ip;
@@ -957,7 +981,7 @@ private:
 class FraudAlert_seq : public FraudAlert {
 private:
 	struct sIpNumber {
-		sIpNumber(u_int32_t ip = 0, const char *number = NULL) {
+		sIpNumber(vmIP ip = 0, const char *number = NULL) {
 			this->ip = ip;
 			this->number = number ? number : "";
 		}
@@ -965,7 +989,7 @@ private:
 			return(this->ip != other.ip ? this->ip < other.ip :
 			       this->number < other.number); 
 		}
-		u_int32_t ip;
+		vmIP ip;
 		string number;
 	};
 	struct sAlertInfo {
@@ -1039,14 +1063,14 @@ public:
 	void connectCall(Call *call, u_int64_t at);
 	void seenByeCall(Call *call, u_int64_t at);
 	void endCall(Call *call, u_int64_t at);
-	void beginRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+	void beginRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 			    Call *call, u_int64_t at);
-	void endRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+	void endRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 			  Call *call, u_int64_t at);
-	void evSipPacket(u_int32_t ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len);
-	void evRegister(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len,
+	void evSipPacket(vmIP ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len);
+	void evRegister(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len,
 			pcap_block_store *block_store, u_int32_t block_store_index, u_int16_t dlt);
-	void evRegisterResponse(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len);
+	void evRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len);
 	void evRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 	void evRegister(class Register *reg, class RegisterState *regState, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 	void stopPopCallInfoThread(bool wait = false);
@@ -1099,12 +1123,12 @@ public:
 	 : cRegisterFilter(filter) {
 		setUseRecordArray(false);
 	}
-	int64_t getField_int(void *rec, unsigned registerFieldIndex) {
+	vmIP getField_ip(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case rf_sipcallerip:
-			return(htonl(((sFraudRegisterInfo*)rec)->sipcallerip));
+			return(((sFraudRegisterInfo*)rec)->sipcallerip);
 		case rf_sipcalledip:
-			return(htonl(((sFraudRegisterInfo*)rec)->sipcalledip));
+			return(((sFraudRegisterInfo*)rec)->sipcalledip);
 		}
 		return(0);
 	}
@@ -1144,14 +1168,14 @@ void fraudBeginCall(Call *call, struct timeval tv);
 void fraudConnectCall(Call *call, struct timeval tv);
 void fraudSeenByeCall(Call *call, struct timeval tv);
 void fraudEndCall(Call *call, struct timeval tv);
-void fraudBeginRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+void fraudBeginRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 			 Call *call, time_t time);
-void fraudEndRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+void fraudEndRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 		       Call *call, time_t time);
-void fraudSipPacket(u_int32_t ip, unsigned sip_method, timeval tv, const char *ua, int ua_len);
-void fraudRegister(u_int32_t src_ip, u_int32_t dst_ip, timeval tv, const char *ua, int ua_len,
+void fraudSipPacket(vmIP ip, unsigned sip_method, timeval tv, const char *ua, int ua_len);
+void fraudRegister(vmIP src_ip, vmIP dst_ip, timeval tv, const char *ua, int ua_len,
 		   struct packet_s *packetS);
-void fraudRegisterResponse(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len);
+void fraudRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len);
 void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 void fraudRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
 string whereCondFraudAlerts();

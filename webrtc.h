@@ -6,8 +6,8 @@
 
 
 struct WebrtcDataCache_id {
-	WebrtcDataCache_id(u_int32_t ip_src, u_int32_t ip_dst,
-			   u_int16_t port_src, u_int16_t port_dst,
+	WebrtcDataCache_id(vmIP ip_src, vmIP ip_dst,
+			   vmPort port_src, vmPort port_dst,
 			   string data_md5) {
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
@@ -15,10 +15,10 @@ struct WebrtcDataCache_id {
 		this->port_dst = port_dst;
 		this->data_md5 = data_md5;
 	}
-	u_int32_t ip_src;
-	u_int32_t ip_dst;
-	u_int16_t port_src;
-	u_int16_t port_dst;
+	vmIP ip_src;
+	vmIP ip_dst;
+	vmPort port_src;
+	vmPort port_dst;
 	string data_md5;
 	bool operator < (const WebrtcDataCache_id& other) const {
 		return((this->ip_src < other.ip_src) ? 1 : (this->ip_src > other.ip_src) ? 0 :
@@ -41,11 +41,11 @@ struct WebrtcDataCache {
 class WebrtcCache {
 public:
 	WebrtcCache();
-	WebrtcDataCache get(u_int32_t ip_src, u_int32_t ip_dst,
-			    u_int16_t port_src, u_int16_t port_dst,
+	WebrtcDataCache get(vmIP ip_src, vmIP ip_dst,
+			    vmPort port_src, vmPort port_dst,
 			    string data_md5);
-	void add(u_int32_t ip_src, u_int32_t ip_dst,
-		 u_int16_t port_src, u_int16_t port_dst,
+	void add(vmIP ip_src, vmIP ip_dst,
+		 vmPort port_src, vmPort port_dst,
 		 string data_md5,
 		 u_int64_t timestamp);
 	void cleanup(bool force = false);
@@ -114,11 +114,11 @@ public:
 public:
 	WebrtcData();
 	virtual ~WebrtcData();
-	void processData(u_int32_t ip_src, u_int32_t ip_dst,
-			 u_int16_t port_src, u_int16_t port_dst,
+	void processData(vmIP ip_src, vmIP ip_dst,
+			 vmPort port_src, vmPort port_dst,
 			 TcpReassemblyData *data,
  			 u_char *ethHeader, u_int32_t ethHeaderLength,
-			 u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+			 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
 			 void *uData, TcpReassemblyLink *reassemblyLink,
 			 std::ostream *debugStream);
 	void printContentSummary();

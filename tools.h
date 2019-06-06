@@ -140,11 +140,11 @@ struct d_item2
 };
 
 struct sStreamId {
-	sStreamId(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport, bool sortSc = false) {
-		s = d_u_int32_t(sip, sport);
-		c = d_u_int32_t(cip, cport);
+	sStreamId(vmIP sip, vmPort sport, vmIP cip, vmPort cport, bool sortSc = false) {
+		s = vmIPport(sip, sport);
+		c = vmIPport(cip, cport);
 		if(sortSc && c < s) {
-			d_u_int32_t t = s;
+			vmIPport t = s;
 			s = c;
 			c = t;
 		}
@@ -157,16 +157,16 @@ struct sStreamId {
 		return(this->s < other.s ||
 		       (this->s == other.s && this->c < other.c)); 
 	}
-	d_u_int32_t s;
-	d_u_int32_t c;
+	vmIPport s;
+	vmIPport c;
 };
 
 struct sStreamId2 {
-	sStreamId2(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport, u_int64_t id, bool sortSc = false) {
-		s = d_u_int32_t(sip, sport);
-		c = d_u_int32_t(cip, cport);
+	sStreamId2(vmIP sip, vmPort sport, vmIP cip, vmPort cport, u_int64_t id, bool sortSc = false) {
+		s = vmIPport(sip, sport);
+		c = vmIPport(cip, cport);
 		if(sortSc && c < s) {
-			d_u_int32_t t = s;
+			vmIPport t = s;
 			s = c;
 			c = t;
 		}
@@ -182,27 +182,27 @@ struct sStreamId2 {
 		       (this->c < other.c) ? true : !(this->c == other.c) ? false :
 		       (this->id < other.id)); 
 	}
-	d_u_int32_t s;
-	d_u_int32_t c;
+	vmIPport s;
+	vmIPport c;
 	u_int64_t id;
 };
 
 struct sStreamIds2 {
-	sStreamIds2(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport, const char *ids, bool sortSc = false) {
-		s = d_u_int32_t(sip, sport);
-		c = d_u_int32_t(cip, cport);
+	sStreamIds2(vmIP sip, vmPort sport, vmIP cip, vmPort cport, const char *ids, bool sortSc = false) {
+		s = vmIPport(sip, sport);
+		c = vmIPport(cip, cport);
 		if(sortSc && c < s) {
-			d_u_int32_t t = s;
+			vmIPport t = s;
 			s = c;
 			c = t;
 		}
 		this->ids = ids;
 	}
-	sStreamIds2(u_int32_t sip, u_int16_t sport, u_int32_t cip, u_int16_t cport, u_int64_t id, bool sortSc = false) {
-		s = d_u_int32_t(sip, sport);
-		c = d_u_int32_t(cip, cport);
+	sStreamIds2(vmIP sip, vmPort sport, vmIP cip, vmPort cport, u_int64_t id, bool sortSc = false) {
+		s = vmIPport(sip, sport);
+		c = vmIPport(cip, cport);
 		if(sortSc && c < s) {
-			d_u_int32_t t = s;
+			vmIPport t = s;
 			s = c;
 			c = t;
 		}
@@ -218,8 +218,8 @@ struct sStreamIds2 {
 		       (this->c < other.c) ? true : !(this->c == other.c) ? false :
 		       (this->ids < other.ids)); 
 	}
-	d_u_int32_t s;
-	d_u_int32_t c;
+	vmIPport s;
+	vmIPport c;
 	string ids;
 };
 
@@ -345,7 +345,6 @@ u_int32_t checksum32buf(char *buf, size_t len);
 inline u_int32_t checksum32buf(u_char *buf, size_t len) {
 	return(checksum32buf((char*)buf, len));
 }
-void ntoa(char *res, unsigned int addr);
 string escapeShellArgument(string str);
 tm stringToTm(const char *timeStr);
 time_t stringToTime(const char *timeStr, bool useGlobalTimeCache = false);
@@ -391,14 +390,11 @@ std::vector<pair<int,int> > getResponseCodeSizes(std::vector<int> & Codes);
 int log10int(int v);
 int log10int(long int v);
 
-bool check_ip_in(u_int32_t ip, vector<u_int32_t> *vect_ip, vector<d_u_int32_t> *vect_net, bool trueIfVectEmpty);
-bool check_ip(u_int32_t ip, u_int32_t net, unsigned mask_length);
-bool ip_is_localhost(u_int32_t ip) { return((ip >> 8) == 0x7F0000); }
-void base64_init(void);
-int base64decode(unsigned char *dst, const char *src, int max);
+bool check_ip_in(vmIP ip, vector<vmIP> *vect_ip, vector<vmIPmask> *vect_net, bool trueIfVectEmpty);
+bool check_ip(vmIP ip, vmIP net, unsigned mask_length);
+inline bool ip_is_localhost(vmIP ip) { return(ip.isLocalhost()); }
 string hexencode(unsigned char *src, int src_length);
 int hexdecode(unsigned char *dst, const char *src, int max);
-bool isLocalIP(u_int32_t ip);
 char *strlwr(char *string, u_int32_t maxLength = 0);
 bool isJsonObject(string str);
 
@@ -458,53 +454,6 @@ struct ip_port
 	}
 	std::string ip;
 	int port;
-};
-
-struct ipn_port
-{
-	ipn_port() {
-		ip = 0;
-		port = 0;
-	}
-	ipn_port(u_int32_t ip, u_int16_t port) {
-		this->ip = ip;
-		this->port = port;
-	}
-	void set_ip(u_int32_t ip) {
-		this->ip = ip;
-	}
-	void set_ip(const char *ip) {
-		this->ip = inet_strington(ip);
-	}
-	void set_ip(string ip) {
-		this->ip = inet_strington(ip.c_str());
-	}
-	void set_port(u_int16_t port) {
-		this->port = port;
-	}
-	u_int32_t get_ip() {
-		return(ip);
-	}
-	u_int16_t get_port() {
-		return(port);
-	}
-	void clear() {
-		ip = 0;
-		port = 0;
-	}
-	operator int() {
-		return(ip && port);
-	}
-	bool operator == (const ipn_port& other) const { 
-		return(this->ip == other.ip &&
-		       this->port == other.port); 
-	}
-	bool operator < (const ipn_port& other) const { 
-		return(this->ip < other.ip ||
-		       (this->ip == other.ip && this->port < other.port)); 
-	}
-	u_int32_t ip;
-	u_int16_t port;
 };
 
 inline u_long getGlobalPacketTimeS() {
@@ -666,7 +615,7 @@ public:
 	}
 	void dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets = false, 
 		  u_char *data = NULL, unsigned int datalen = 0,
-		  unsigned int saddr = 0, unsigned int daddr = 0, int source = 0, int dest = 0,
+		  vmIP saddr = 0, vmIP daddr = 0, vmPort source = 0, vmPort dest = 0,
 		  bool istcp = false, bool forceVirtualUdp = false);
 	void close(bool updateFilesQueue = true);
 	void flush();
@@ -714,11 +663,11 @@ void __pcap_dump_flush(pcap_dumper_t *p);
 char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd = NULL);
 void createSimpleUdpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_char **packet,
 			       u_char *source_packet, u_char *data, unsigned int datalen,
-			       unsigned int saddr, unsigned int daddr, int source, int dest,
+			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 			       u_int32_t time_sec, u_int32_t time_usec);
 void createSimpleTcpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_char **packet,
 			       u_char *source_packet, u_char *data, unsigned int datalen,
-			       unsigned int saddr, unsigned int daddr, int source, int dest,
+			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 			       u_int32_t seq, u_int32_t ack_seq, 
 			       u_int32_t time_sec, u_int32_t time_usec, int dlt);
 
@@ -1176,11 +1125,11 @@ std::string pexec(char*, int *exitCode = NULL);
 
 class IP {
 public:
-	IP(uint ip, uint mask_length = 32) {
+	IP(vmIP ip, uint mask_length = 0) {
 		this->ip = ip;
 		this->mask_length = mask_length;
-		if(mask_length > 0 && mask_length < 32) {
-			this->ip = this->ip & (0xFFFFFFFF << (32 - mask_length));
+		if(mask_length > 0 && mask_length < ip.bits()) {
+			this->ip = this->ip.network(mask_length);
 		}
 	}
 	IP(const char *ip) {
@@ -1188,45 +1137,41 @@ public:
 		if(maskSeparator) {
 			mask_length = atoi(maskSeparator + 1);
 			*maskSeparator = 0;
-			in_addr ips;
-			inet_aton(ip, &ips);
-			this->ip = htonl(ips.s_addr);
-			if(mask_length > 0 && mask_length < 32) {
-				 this->ip = this->ip & (0xFFFFFFFF << (32 - mask_length));
+			this->ip.setFromString(ip);
+			if(mask_length > 0 && mask_length < this->ip.bits()) {
+				 this->ip = this->ip.network(mask_length);
 			}
 			*maskSeparator = '/';
 		} else {
-			in_addr ips;
-			inet_aton(ip, &ips);
-			this->ip = htonl(ips.s_addr);
-			mask_length = 32;
-			for(int i = 8; i <= 24; i += 8) {
-				if(this->ip == (this->ip & (0xFFFFFFFF << i))) {
-					mask_length = 32 - i;
+			this->ip.setFromString(ip);
+			mask_length = 0;
+			for(int i = 8; i <= this->ip.bits() - 8; i += 8) {
+				if(this->ip == this->ip.network(i)) {
+					mask_length = i;
+					break;
 				}
 			}
 		}
 	}
-	bool checkIP(uint check_ip) {
-		if(!mask_length || mask_length == 32) {
+	bool checkIP(vmIP check_ip) {
+		if(!mask_length || mask_length == this->ip.bits()) {
 			return(check_ip == ip);
 		} else {
-			return(ip == check_ip >> (32 - mask_length) << (32 - mask_length));
+			return(ip == check_ip.network(mask_length));
 		}
+		return(false);
 	}
 	bool checkIP(const char *check_ip) {
-		in_addr ips;
-		inet_aton(check_ip, &ips);
-		return(checkIP(htonl(ips.s_addr)));
+		return(checkIP(str_2_vmIP(check_ip)));
 	}
 	bool isNet() {
-		return(mask_length > 0 && mask_length < 32);
+		return(this->ip.is_net_mask(mask_length));
 	}
 	bool operator < (const IP &ip) const {
 		return(this->ip < ip.ip);
 	}
 public:
-	u_int32_t ip;
+	vmIP ip;
 	u_int16_t mask_length;
 };
 
@@ -1448,7 +1393,7 @@ public:
 		_listIP_sorted = 0;
 		_listNet_sorted = 0;
 	}
-	void add(uint ip, uint mask_length = 32) {
+	void add(vmIP ip, uint mask_length = 32) {
 		if(autoLock) lock();
 		IP _ip(ip, mask_length);
 		if(!_ip.isNet()) {
@@ -1470,9 +1415,9 @@ public:
 	}
 	void addComb(string &ip, ListIP *negList = NULL);
 	void addComb(const char *ip, ListIP *negList = NULL);
-	void add(vector<u_int32_t> *ip);
-	void add(vector<d_u_int32_t> *net);
-	bool checkIP(uint check_ip) {
+	void add(vector<vmIP> *ip);
+	void add(vector<vmIPmask> *net);
+	bool checkIP(vmIP check_ip) {
 		bool rslt =  false;
 		if(autoLock) lock();
 		if(listIP.size()) {
@@ -1496,7 +1441,7 @@ public:
 			} else {
 				while(it_net != listNet.begin()) {
 					--it_net;
-					if(!(it_net->ip & check_ip)) {
+					if(!it_net->ip.mask(check_ip).isSet()) {
 						break;
 					}
 					if(it_net->checkIP(check_ip)) {
@@ -1510,9 +1455,7 @@ public:
 		return(rslt);
 	}
 	bool checkIP(const char *check_ip) {
-		in_addr ips;
-		inet_aton(check_ip, &ips);
-		return(checkIP(htonl(ips.s_addr)));
+		return(checkIP(str_2_vmIP(check_ip)));
 	}
 	void clear() {
 		if(autoLock) lock();
@@ -1562,20 +1505,16 @@ public:
 	GroupsIP();
 	~GroupsIP();
 	void load(class SqlDb *sqlDb = NULL);
-	GroupIP *getGroup(uint ip);
+	GroupIP *getGroup(vmIP ip);
 	GroupIP *getGroup(const char *ip) {
-		in_addr ips;
-		inet_aton(ip, &ips);
-		return(getGroup(htonl(ips.s_addr)));
+		return(getGroup(str_2_vmIP(ip)));
 	}
-	unsigned getGroupId(uint ip) {
+	unsigned getGroupId(vmIP ip) {
 		GroupIP *group = getGroup(ip);
 		return(group ? group->id : 0);
 	}
 	unsigned getGroupId(const char *ip) {
-		in_addr ips;
-		inet_aton(ip, &ips);
-		return(getGroupId(htonl(ips.s_addr)));
+		return(getGroupId(str_2_vmIP(ip)));
 	}
 	string getGroupName(uint id) {
 		map<unsigned, GroupIP*>::iterator it = groups.find(id);
@@ -1767,7 +1706,7 @@ public:
 	void addWhite(const char *ip);
 	void addBlack(string &ip);
 	void addBlack(const char *ip);
-	bool checkIP(uint check_ip, bool *findInBlackList = NULL) {
+	bool checkIP(vmIP check_ip, bool *findInBlackList = NULL) {
 		if(findInBlackList) {
 			*findInBlackList = false;
 		}
@@ -1783,9 +1722,7 @@ public:
 		return(true);
 	}
 	bool checkIP(const char *check_ip) {
-		in_addr ips;
-		inet_aton(check_ip, &ips);
-		return(checkIP(htonl(ips.s_addr)));
+		return(checkIP(str_2_vmIP(check_ip)));
 	}
 	bool is_empty() {
 		return(white.is_empty() && black.is_empty());
@@ -2282,7 +2219,7 @@ private:
 	bool udp;
 	u_int64_t maxSize;
 	queue<SimpleBuffer*> data;
-	u_int32_t socketHostIPl;
+	vmIP socketHostIP;
 	int socketHandle;
 	pthread_t writeThreadHandle;
 	volatile int _sync_data;
@@ -2310,9 +2247,6 @@ private:
 	volatile int _sync;
 };
 
-string base64_encode(const unsigned char *data, size_t input_length);
-char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length);
-void _base64_encode(const unsigned char *data, size_t input_length, char *encoded_data, size_t output_length = 0);
 
 #define LOCALTIME_MINCACHE_LENGTH 6
 #define LOCALTIME_TIMEZONE_LENGTH 10

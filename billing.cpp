@@ -78,7 +78,7 @@ void cBillingAssignment::loadCond(SqlDb *sqlDb) {
 		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
 		while((row = rows.fetchRow())) {
-			list_ip.add(atol(row["ip"].c_str()), atoi(row["mask"].c_str()));
+			list_ip.add(mysql_ip_2_vmIP(&row, "ip"), atoi(row["mask"].c_str()));
 		}
 	}
 	if(sqlDb->existsTable(typeAssignment == _billing_ta_operator ?
@@ -103,7 +103,7 @@ void cBillingAssignment::loadCond(SqlDb *sqlDb) {
 	}
 }
 
-bool cBillingAssignment::checkIP(u_int32_t ip) {
+bool cBillingAssignment::checkIP(vmIP ip) {
 	return(list_ip.checkIP(ip));
 }
 
@@ -193,7 +193,7 @@ void cBillingAssignments::clear(bool useLock) {
 	}
 }
 
-unsigned cBillingAssignments::findBillingRuleIdForIP(u_int32_t ip, eBilingTypeAssignment typeAssignment,
+unsigned cBillingAssignments::findBillingRuleIdForIP(vmIP ip, eBilingTypeAssignment typeAssignment,
 						     unsigned *assignment_id) {
 	unsigned rslt = 0;
 	*assignment_id = 0;
@@ -262,10 +262,10 @@ void cBillingExclude::load(SqlDb *sqlDb) {
 		SqlDb_row row;
 		while((row = rows.fetchRow())) {
 			if(row["side"] == "src" || row["side"] == "both") {
-				list_ip_src.add(atol(row["ip"].c_str()), atoi(row["mask"].c_str()));
+				list_ip_src.add(mysql_ip_2_vmIP(&row, "ip"), atoi(row["mask"].c_str()));
 			}
 			if(row["side"] == "dst" || row["side"] == "both") {
-				list_ip_dst.add(atol(row["ip"].c_str()), atoi(row["mask"].c_str()));
+				list_ip_dst.add(mysql_ip_2_vmIP(&row, "ip"), atoi(row["mask"].c_str()));
 			}
 		}
 	}
@@ -291,7 +291,7 @@ void cBillingExclude::load(SqlDb *sqlDb) {
 	unlock();
 }
 
-bool cBillingExclude::checkIP(u_int32_t ip, eBilingSide side) {
+bool cBillingExclude::checkIP(vmIP ip, eBilingSide side) {
 	lock();
 	bool rslt = side == _billing_side_src ? 
 		     list_ip_src.checkIP(ip) :
@@ -852,7 +852,7 @@ void cBilling::load(SqlDb *sqlDb) {
 }
 
 bool cBilling::billing(time_t time, unsigned duration,
-		       u_int32_t ip_src, u_int32_t ip_dst,
+		       vmIP ip_src, vmIP ip_dst,
 		       const char *number_src, const char *number_dst,
 		       double *operator_price, double *customer_price,
 		       unsigned *operator_currency_id, unsigned *customer_currency_id,
@@ -916,7 +916,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 }
 
 list<string> cBilling::saveAgregation(time_t time,
-				      u_int32_t ip_src, u_int32_t ip_dst,
+				      vmIP ip_src, vmIP ip_dst,
 				      const char *number_src, const char *number_dst,
 				      double operator_price, double customer_price,
 				      unsigned operator_currency_id, unsigned customer_currency_id) {
@@ -963,7 +963,7 @@ list<string> cBilling::saveAgregation(time_t time,
 			strftime(partTime, sizeof(partName), "%Y%m", &time_tm);
 		}
 		for(unsigned j = 0; j < 2; j++) {
-			if(!((j == 0 && agregSettings.enable_by_ip && ip_src) ||
+			if(!((j == 0 && agregSettings.enable_by_ip && ip_src.isSet()) ||
 			     (j == 1 && agregSettings.enable_by_number && *number_src))) {
 				continue;
 			}
@@ -979,7 +979,7 @@ list<string> cBilling::saveAgregation(time_t time,
 				"values(" + partName + ", " + 
 					    partTime + ", " +
 					    (j == 0 ? 
-					      intToString(ip_src) : 
+					      ip_src.getStringForMysqlIpColumn(table.c_str(), "ip") : 
 					      sqlEscapeStringBorder(string(number_src, min((int)strlen(number_src), 20)))) + ", " +
 					    operator_price_str + ", " +
 					    customer_price_str + ") " + 

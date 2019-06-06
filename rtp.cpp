@@ -210,7 +210,7 @@ int get_ticks_bycodec(int codec) {
 }
 
 /* constructor */
-RTP::RTP(int sensor_id, u_int32_t sensor_ip) 
+RTP::RTP(int sensor_id, vmIP sensor_ip) 
  : graph(this) {
 	counter = 0;
 	DSP = NULL;
@@ -225,12 +225,12 @@ RTP::RTP(int sensor_id, u_int32_t sensor_ip)
 	memset(&rtcp_xr, 0, sizeof(rtcp_xr));
 	rtcp_xr.minmos = 45;
 	nintervals = 1;
-	saddr = 0;
-	daddr = 0;
-	sport = 0;
-	dport = 0;
-	prev_sport = 0;
-	prev_dport = 0;
+	saddr.clear();
+	daddr.clear();
+	sport.clear();
+	dport.clear();
+	prev_sport.clear();
+	prev_dport.clear();
 	change_src_port = false;
 	find_by_dest = false;
 	ok_other_ip_side_by_sip = false;
@@ -404,7 +404,7 @@ RTP::save_mos_graph(bool delimiter) {
 			mosf1_min = last_interval_mosf1;
 		}
 		mosf1_avg = ((mosf1_avg * mos_counter) + last_interval_mosf1) / (mos_counter + 1);
-//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf1_avg[%f] mosf1[%u]\n", this, inet_ntostring(htonl(saddr)).c_str(), header->ts.tv_sec, ssrc, mosf1_avg, last_interval_mosf1);
+//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf1_avg[%f] mosf1[%u]\n", this, saddr.getString().c_str(), header->ts.tv_sec, ssrc, mosf1_avg, last_interval_mosf1);
 	} else {
 		last_interval_mosf1 = 45;
 		mosf1_min = 45;
@@ -425,7 +425,7 @@ RTP::save_mos_graph(bool delimiter) {
 			mosf2_min = last_interval_mosf2;
 		}
 		mosf2_avg = ((mosf2_avg * mos_counter) + last_interval_mosf2) / (mos_counter + 1);
-//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf2_avg[%f] mosf2[%u]\n", this, inet_ntostring(htonl(saddr)).c_str(), header->ts.tv_sec, ssrc, mosf2_avg, last_interval_mosf2);
+//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf2_avg[%f] mosf2[%u]\n", this, saddr.getString().c_str(), header->ts.tv_sec, ssrc, mosf2_avg, last_interval_mosf2);
 	} else {
 		last_interval_mosf2 = 45;
 		mosf2_min = 45;
@@ -446,7 +446,7 @@ RTP::save_mos_graph(bool delimiter) {
 			mosAD_min = last_interval_mosAD;
 		}
 		mosAD_avg = ((mosAD_avg * mos_counter) + last_interval_mosAD) / (mos_counter + 1);
-//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosAD_avg[%f] mosAD[%u]\n", this, inet_ntostring(htonl(saddr)).c_str(), header->ts.tv_sec, ssrc, mosAD_avg, last_interval_mosAD);
+//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosAD_avg[%f] mosAD[%u]\n", this, saddr.getString().c_str(), header->ts.tv_sec, ssrc, mosAD_avg, last_interval_mosAD);
 	} else {
 		last_interval_mosAD = 45;
 		mosAD_min = 45;
@@ -470,7 +470,7 @@ RTP::save_mos_graph(bool delimiter) {
 			//printf("[%p] min[%u] %p DSP[%p]\n", this, mosSilence_min, &mosSilence_min, DSP);
 		}
 		mosSilence_avg = ((mosSilence_avg * mos_counter) + last_interval_mosSilence) / (mos_counter + 1);
-//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosSilence_avg[%f] mosSilence[%u]\n", this, inet_ntostring(htonl(saddr)).c_str(), header->ts.tv_sec, ssrc, mosSilence_avg, last_interval_mosSilence);
+//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosSilence_avg[%f] mosSilence[%u]\n", this, saddr.getString().c_str(), header->ts.tv_sec, ssrc, mosSilence_avg, last_interval_mosSilence);
 	} else {
 		last_interval_mosSilence = 45;
 		mosSilence_min = 45;
@@ -494,12 +494,13 @@ RTP::save_mos_graph(bool delimiter) {
 	}
 	mos_counter++;
 
-	if(sverb.graph) printf("rtp[%p] saddr[%s] ssrc[%x] time[%u] seq[%u] \nMOS F1 cur[%d] min[%d] avg[%f]\nMOS F2 cur[%d] min[%d] avg[%f]\nMOS AD cur[%d] min[%d] avg[%f]\n ------\n", this, inet_ntostring(htonl(saddr)).c_str(), ssrc, (unsigned int)header_ts.tv_sec, seq, 
-		last_interval_mosf1, mosf1_min, mosf1_avg,
-		last_interval_mosf2, mosf2_min, mosf2_avg,
-		last_interval_mosAD, mosAD_min, mosAD_avg
-	);
-
+	if(sverb.graph) {
+		printf("rtp[%p] saddr[%s] ssrc[%x] time[%u] seq[%u] \nMOS F1 cur[%d] min[%d] avg[%f]\nMOS F2 cur[%d] min[%d] avg[%f]\nMOS AD cur[%d] min[%d] avg[%f]\n ------\n", 
+		       this, saddr.getString().c_str(), ssrc, (unsigned int)header_ts.tv_sec, seq, 
+		       last_interval_mosf1, mosf1_min, mosf1_avg,
+		       last_interval_mosf2, mosf2_min, mosf2_avg,
+		       last_interval_mosAD, mosAD_min, mosAD_avg);
+	}
 
 	uint32_t lost = stats.lost2 - last_stat_lost;
 	uint32_t received = stats.received - last_stat_received;
@@ -714,9 +715,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		pinformed = 0;
 	}
 
-	struct iphdr2 *header_ip = (struct iphdr2 *)(data - sizeof(struct iphdr2) - sizeof(udphdr2));
-	int mylen = MIN((unsigned int)len, ntohs(header_ip->tot_len) - header_ip->ihl * 4 - sizeof(udphdr2));
-
+	int mylen = MIN((unsigned int)len, header_ip->get_tot_len() - header_ip->get_ihl() * 4 - sizeof(udphdr2));
 
 	if(savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723 or codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB)) {
 		/* get RTP payload header and datalen */
@@ -941,14 +940,15 @@ RTP::process_dtmf_rfc2833() {
 
 /* read rtp packet */
 bool
-RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport,
-	  int sensor_id, u_int32_t sensor_ip, char *ifname) {
+RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header,  vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
+	  int sensor_id, vmIP sensor_ip, char *ifname) {
  
 	if(this->stopReadProcessing) {
 		return(false);
 	}
  
 	this->data = data; 
+	this->header_ip = header_ip;
 	this->len = *len;
 	this->header_ts = header->ts;
 	this->saddr =  saddr;
@@ -972,8 +972,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		++read_rtp_counter;
 		cout << "RTP - read [" << this << "]-" 
 		     << " ssrc: " << hex << this->ssrc << dec << " "
-		     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
-		     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+		     << " src: " << saddr.getString() << " : " << sport
+		     << " dst: " << daddr.getString() << " : " << dport
 		     << " seq: " << getSeqNum() << " "
 		     << " direction: " << iscaller_description(iscaller) 
 		     << " packets_received: " << this->stats.received
@@ -985,15 +985,15 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 
 	extern bool opt_receiver_check_id_sensor;
 	if(opt_receiver_check_id_sensor && ((this->sensor_id >= 0 && this->sensor_id != sensor_id) ||
-	   (this->sensor_ip > 0 && this->sensor_ip != sensor_ip))) {
+	   (this->sensor_ip.isSet() && this->sensor_ip != sensor_ip))) {
 		if(!owner || !owner->rtp_from_multiple_sensors) {
 			extern bool opt_disable_rtp_warning;
 			if(!opt_disable_rtp_warning) {
 				u_long actTime = getTimeMS();
 				if(actTime - 1000 > lastTimeSyslog) {
 					syslog(LOG_NOTICE, "warning - packet from sensor (%i/%s) in RTP created for sensor (%i/%s) - call %s", 
-					       sensor_id, sensor_ip ? inet_ntostring(htonl(sensor_ip)).c_str() : "-", 
-					       this->sensor_id, this->sensor_ip ? inet_ntostring(htonl(this->sensor_ip)).c_str() : "-",
+					       sensor_id, sensor_ip.isSet() ? sensor_ip.getString().c_str() : "-", 
+					       this->sensor_id, this->sensor_ip.isSet() ? this->sensor_ip.getString().c_str() : "-",
 					       owner->fbasename);
 					lastTimeSyslog = actTime;
 				}
@@ -1232,8 +1232,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		if(sverb.rtp_set_base_seq) {
 			cout << "RTP - packet_lost - set base_seq #1" 
 			     << " ssrc: " << hex << this->ssrc << dec << " "
-			     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
-			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+			     << " src: " << saddr.getString() << " : " << sport
+			     << " dst: " << daddr.getString() << " : " << dport
 			     << endl;
 		}
 
@@ -1368,8 +1368,8 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 		if(sverb.rtp_set_base_seq) {
 			cout << "RTP - packet_lost - set base_seq #2" 
 			     << " ssrc: " << hex << this->ssrc << dec << " "
-			     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
-			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+			     << " src: " << saddr.getString() << " : " << sport
+			     << " dst: " << daddr.getString() << " : " << dport
 			     << " seq: " << seq
 			     << endl;
 		}
@@ -1475,6 +1475,7 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 					if(prevrtp && prevrtp != this) {
 						prevrtp->ignore = 1; 
 						prevrtp->data = data; 
+						prevrtp->header_ip = header_ip; 
 						prevrtp->len = *len;
 						prevrtp->header_ts = header_ts;
 						prevrtp->codec = prevrtp->prev_codec;
@@ -2081,8 +2082,9 @@ RTP::read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header,  u_int
 
 /* fill internal structures by the input RTP packet */
 void
-RTP::fill(unsigned char* data, int len, struct pcap_pkthdr *header,  u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport) {
+RTP::fill(unsigned char* data, iphdr2 *header_ip, int len, struct pcap_pkthdr *header,  vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
 	this->data = data; 
+	this->header_ip = header_ip; 
 	this->len = len;
 	this->header_ts = header->ts;
 	this->saddr = saddr;
@@ -2149,7 +2151,7 @@ RTP::update_stats() {
 			uint32_t diff = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
 			this->graph.write((char*)&graph_event, 4);
 			this->graph.write((char*)&diff, 4);
-			if(verbosity > 1) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms ip[%u] DTMF\n", this, getSSRC(), seq, diff, saddr);
+			if(verbosity > 1) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms ip[%s] DTMF\n", this, getSSRC(), seq, diff, saddr.getString().c_str());
 
 
 			//s->fdelay = s->avgdelay;
@@ -2252,8 +2254,8 @@ RTP::update_stats() {
 			if(sverb.packet_lost) {
 				cout << this << " RTP - packet_lost -" 
 				     << " ssrc: " << hex << this->ssrc << dec << " "
-				     << " src: " << inet_ntostring(htonl(saddr))
-				     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+				     << " src: " << saddr.getString()
+				     << " dst: " << daddr.getString() << " : " << dport
 				     << " forcemark: " << forcemark2 << " "
 				     << " seq: " << getSeqNum() << " "
 				     << " lost - last_lost: " << (lost - stats.last_lost) << " " 
@@ -2346,8 +2348,8 @@ RTP::update_seq(u_int16_t seq) {
 		if(sverb.rtp_set_base_seq) {
 			cout << "RTP - packet_lost - set base_seq #1" 
 			     << " ssrc: " << hex << this->ssrc << dec << " "
-			     << " src: " << inet_ntostring(htonl(saddr)) << " : " << sport
-			     << " dst: " << inet_ntostring(htonl(daddr)) << " : " << dport
+			     << " src: " << saddr.getString() << " : " << sport
+			     << " dst: " << daddr.getString() << " : " << dport
 			     << endl;
 		}
 	}
@@ -2467,9 +2469,9 @@ RTP::dump() {
 	int i;
 	printf("SSRC:%x %u ssrc_index[%d]\n", ssrc, ssrc, ssrc_index);
 	printf("codec:%d\n", first_codec);
-	printf("src ip:%u\n", saddr);
-	printf("dst ip:%u\n", daddr);
-	printf("dst port:%u\n", dport);
+	printf("src ip:%s\n", saddr.getString().c_str());
+	printf("dst ip:%s\n", daddr.getString().c_str());
+	printf("dst port:%u\n", dport.getPort());
 	printf("Packetization:%u\n", packetization);
 	printf("s->received: %d\n", s->received);
 	printf("total loss:%u\n", stats.lost);
@@ -2635,7 +2637,7 @@ int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval) {
 }       
 
 void
-RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, double loss) {
+RTPstat::update(vmIP saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, double loss) {
 
 	uint32_t curtime = time / mod;
 
@@ -2651,7 +2653,7 @@ RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uin
 	
 	lock();
 	
-	map<uint32_t, node_t> *cmap;
+	map<vmIP, node_t> *cmap;
 	if(curtime < lasttime2) {
 		// update time belongs to previous interval
 		cmap = maps[0];
@@ -2664,13 +2666,13 @@ RTPstat::update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uin
 		lasttime2 = curtime;
 		flush_and_clean(maps[0], false);
 		// swap maps 
-		map<uint32_t, node_t> *saddr_map_tmp =maps[0];
+		map<vmIP, node_t> *saddr_map_tmp =maps[0];
 		maps[0] = maps[1];
 		maps[1] = saddr_map_tmp;
 		cmap = maps[1];
 	}
 
-	map<uint32_t, node_t>::iterator saddr_map_it = cmap->find(saddr);
+	map<vmIP, node_t>::iterator saddr_map_it = cmap->find(saddr);
 
 	if(saddr_map_it == cmap->end()){
 		// not found
@@ -2728,19 +2730,20 @@ walk through saddr_map (all RTP source IPs) and store result to the datbase
 
 */
 void
-RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap, bool needLock) {
+RTPstat::flush_and_clean(map<vmIP, node_t> *cmap, bool needLock) {
 	if(needLock) lock();
 
 	extern int opt_nocdr;
 	string query_str;
 	if(!opt_nocdr && !sverb.disable_store_rtp_stat) {
-		map<uint32_t, node_t>::iterator it;
+		map<vmIP, node_t>::iterator it;
 
 		if(!sqlDbSaveCall) {
 			sqlDbSaveCall = createSqlObject();
 			sqlDbSaveCall->setEnableSqlStringInContent(true);
 		}
 
+		string rtp_stat_table = "rtp_stat";
 		vector<SqlDb_row> rtp_stat_rows;
 		for(it = cmap->begin(); it != cmap->end(); it++) {
 			node_t *node = &it->second;
@@ -2749,7 +2752,7 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap, bool needLock) {
 			rtp_stat.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor");
 			rtp_stat.add(sqlDateTimeString(node->time), "time");
 			rtp_stat.add(sqlDateTimeString(node->time), "time");
-			rtp_stat.add(htonl(it->first), "saddr");
+			rtp_stat.add(it->first, "saddr", NULL, sqlDbSaveCall, rtp_stat_table.c_str());
 			rtp_stat.add(node->mosf1_min, "mosf1_min");
 			rtp_stat.add((int)(node->mosf1_avg), "mosf1_avg");
 			rtp_stat.add(node->mosf2_min, "mosf2_min");
@@ -2765,12 +2768,12 @@ RTPstat::flush_and_clean(map<uint32_t, node_t> *cmap, bool needLock) {
 				rtp_stat_rows.push_back(rtp_stat);
 			} else {
 				query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
-					     sqlDbSaveCall->insertQuery("rtp_stat", rtp_stat, false, false, true));
+					     sqlDbSaveCall->insertQuery(rtp_stat_table, rtp_stat, false, false, true));
 			}
 		}
 		if(opt_mysql_enable_multiple_rows_insert && rtp_stat_rows.size()) {
 			query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
-				     sqlDbSaveCall->insertQueryWithLimitMultiInsert("rtp_stat", &rtp_stat_rows, opt_mysql_max_multiple_rows_insert, 
+				     sqlDbSaveCall->insertQueryWithLimitMultiInsert(rtp_stat_table, &rtp_stat_rows, opt_mysql_max_multiple_rows_insert, 
 										    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str(), false, false, true), false);
 		}
 	}

@@ -7,8 +7,8 @@
 class SipTcpData : public TcpReassemblyProcessData {
 public:
 	struct Cache_id {
-		Cache_id(u_int32_t ip_src, u_int32_t ip_dst,
-			 u_int16_t port_src, u_int16_t port_dst,
+		Cache_id(vmIP ip_src, vmIP ip_dst,
+			 vmPort port_src, vmPort port_dst,
 			 u_int32_t ack, u_int32_t seq) {
 			this->ip_src = ip_src;
 			this->ip_dst = ip_dst;
@@ -17,10 +17,10 @@ public:
 			this->ack = ack;
 			this->seq = seq;
 		}
-		u_int32_t ip_src;
-		u_int32_t ip_dst;
-		u_int16_t port_src;
-		u_int16_t port_dst;
+		vmIP ip_src;
+		vmIP ip_dst;
+		vmPort port_src;
+		vmPort port_dst;
 		u_int32_t ack;
 		u_int32_t seq;
 		bool operator < (const Cache_id& other) const {
@@ -38,11 +38,11 @@ public:
 public:
 	SipTcpData();
 	virtual ~SipTcpData();
-	void processData(u_int32_t ip_src, u_int32_t ip_dst,
-			 u_int16_t port_src, u_int16_t port_dst,
+	void processData(vmIP ip_src, vmIP ip_dst,
+			 vmPort port_src, vmPort port_dst,
 			 TcpReassemblyData *data,
 			 u_char *ethHeader, u_int32_t ethHeaderLength,
-			 u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+			 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
 			 void *uData, TcpReassemblyLink *reassemblyLink,
 			 std::ostream *debugStream);
 	void cleanupCache(u_int64_t cache_time);

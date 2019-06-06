@@ -195,12 +195,12 @@ class RTP {
 public: 
 	u_int32_t ssrc;		//!< ssrc of this RTP class
 	u_int32_t ssrc2;	//!< ssrc of this RTP class
-	u_int32_t saddr;	//!< last source IP adress 
-	u_int32_t daddr;	//!< last source IP adress 
-	u_int16_t sport;
-	u_int16_t dport;
-	u_int16_t prev_sport;
-	u_int16_t prev_dport;
+	vmIP saddr;	//!< last source IP adress 
+	vmIP daddr;	//!< last source IP adress 
+	vmPort sport;
+	vmPort dport;
+	vmPort prev_sport;
+	vmPort prev_dport;
 	bool change_src_port;
 	bool find_by_dest;
 	bool ok_other_ip_side_by_sip;
@@ -238,6 +238,7 @@ public:
 	RTPMAP rtpmap[MAX_RTPMAP];
 	RTPMAP rtpmap_other_side[MAX_RTPMAP];
 	unsigned char* data;    //!< pointer to UDP payload
+	iphdr2 *header_ip;
 	int len;		//!< lenght of UDP payload
 	unsigned char* payload_data;    //!< pointer to RTP payload
 	int payload_len;	//!< lenght of RTP payload
@@ -371,7 +372,7 @@ public:
 	* constructor which allocates and zeroing stats structure
 	*
 	*/
-	RTP(int sensor_id, u_int32_t sensor_ip);
+	RTP(int sensor_id, vmIP sensor_ip);
 
 	/**
 	* destructor
@@ -403,8 +404,8 @@ public:
 	 * @param saddr source IP adress of the packet
 	 *
 	*/
-	bool read(unsigned char* data, unsigned *len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport,
-		  int sensor_id, u_int32_t sensor_ip, char *ifname = NULL);
+	bool read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
+		  int sensor_id, vmIP sensor_ip, char *ifname = NULL);
 
 
 	/**
@@ -417,7 +418,7 @@ public:
 	 * @param saddr source IP adress of the packet
 	 *
 	*/
-	void fill(unsigned char* data, int len, struct pcap_pkthdr *header, u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport);
+	void fill(unsigned char* data, iphdr2 *header_ip, int len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
 
 	/**
 	 * @brief get version
@@ -555,7 +556,7 @@ public:
 	
 	inline void clearAudioBuff(class Call *call, ast_channel *channel);
 	
-	bool eqAddrPort(u_int32_t saddr, u_int32_t daddr, u_int16_t sport, u_int16_t dport) {
+	bool eqAddrPort(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
 		return(this->saddr == saddr && this->daddr == daddr &&
 		       this->sport == sport && this->dport == dport);
 	}
@@ -599,7 +600,7 @@ private:
 	int update_seq(u_int16_t seq);
 
 	int sensor_id;
-	u_int32_t sensor_ip;
+	vmIP sensor_ip;
 	int index_call_ip_port;
 	bool index_call_ip_port_by_dest;
 	
@@ -648,13 +649,13 @@ public:
 	void unlock() {
 		pthread_mutex_unlock(&mlock);
 	}
-	void update(uint32_t saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, double loss);
-	void flush_and_clean(map<uint32_t, node_t> *map, bool needLock = true);
+	void update(vmIP saddr, uint32_t time, uint8_t mosf1, uint8_t mosf2, uint8_t mosAD, uint16_t jitter, double loss);
+	void flush_and_clean(map<vmIP, node_t> *map, bool needLock = true);
 	void flush();
 
 private:
-	map<uint32_t, node_t>	saddr_map[2];
-	map<uint32_t, node_t>	*maps[2];
+	map<vmIP, node_t> saddr_map[2];
+	map<vmIP, node_t> *maps[2];
 	int mod;
 	pthread_mutex_t mlock;
 	uint32_t lasttime1;

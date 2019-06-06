@@ -96,7 +96,7 @@ bool cSipMsgItem_base:: operator == (const cSipMsgItem_base& other) const {
 }
 
 void cSipMsgItem_base::debug_out() {
-	cout << inet_ntostring(ip_src) << ':' << port_src << " -> " << inet_ntostring(ip_dst) << ':' << port_dst <<  endl
+	cout << ip_src.getString() << ':' << port_src << " -> " << ip_dst.getString() << ':' << port_dst <<  endl
 	     << number_src << '@' << domain_src << " -> " << number_dst << '@' << domain_dst << endl;
 }
 
@@ -435,10 +435,10 @@ bool cSipMsgRelation::getDataRow(RecordArray *rec, u_int64_t limit_time_us, cSip
 	rec->fields[smf_id].set(id);
 	rec->fields[smf_id_sensor].set(id_sensor);
 	rec->fields[smf_type].set(type);
-	rec->fields[smf_ip_src].set(htonl(ip_src));
-	rec->fields[smf_ip_dst].set(htonl(ip_dst));
-	rec->fields[smf_port_src].set(port_src);
-	rec->fields[smf_port_dst].set(port_dst);
+	rec->fields[smf_ip_src].set(ip_src);
+	rec->fields[smf_ip_dst].set(ip_dst);
+	rec->fields[smf_port_src].set(port_src.getPort());
+	rec->fields[smf_port_dst].set(port_dst.getPort());
 	rec->fields[smf_number_src].set(number_src.c_str());
 	rec->fields[smf_number_dst].set(number_dst.c_str());
 	rec->fields[smf_domain_src].set(domain_src.c_str());
@@ -886,12 +886,13 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 		_next_ch_name[i][0] = 0;
 		next_ch_name[i] = _next_ch_name[i];
 	}
+	string table = "sip_msg";
 	rec.add(sqlEscapeString(sqlDateTimeString(requestResponse->time_us / 1000000).c_str()), "time");
 	rec.add(requestResponse->request->type, "type");
-	rec.add(htonl(requestResponse->request->ip_src), "ip_src");
-	rec.add(htonl(requestResponse->request->ip_dst), "ip_dst");
-	rec.add(requestResponse->request->port_src, "port_src");
-	rec.add(requestResponse->request->port_dst, "port_dst");
+	rec.add(requestResponse->request->ip_src, "ip_src", false, sqlDbSaveSipMsg, table.c_str());
+	rec.add(requestResponse->request->ip_dst, "ip_dst", false, sqlDbSaveSipMsg, table.c_str());
+	rec.add(requestResponse->request->port_src.getPort(), "port_src");
+	rec.add(requestResponse->request->port_dst.getPort(), "port_dst");
 	rec.add(sqlEscapeString(requestResponse->request->number_src), "number_src");
 	rec.add(sqlEscapeString(requestResponse->request->number_dst), "number_dst");
 	rec.add(sqlEscapeString(requestResponse->request->domain_src), "domain_src");
@@ -937,7 +938,6 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 	if(flags) {
 		rec.add(flags, "flags");
 	}
-	string table = "sip_msg";
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		for(int i = 0; i < 2; i++) {

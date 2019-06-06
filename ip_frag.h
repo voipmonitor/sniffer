@@ -12,6 +12,7 @@ struct ip_frag_s {
 	time_t ts;
 	u_int32_t offset;
 	u_int32_t len;
+	u_int16_t iphdr_len;
 };
 
 typedef map<unsigned int, ip_frag_s*> ip_frag_queue_t;
@@ -25,8 +26,8 @@ struct ip_frag_queue : ip_frag_queue_t {
 };
 
 struct ipfrag_data_s {
-	map<unsigned int, map<unsigned int, ip_frag_queue*> > ip_frag_stream;
-	map<unsigned int, map<unsigned int, ip_frag_queue*> >::iterator ip_frag_streamIT;
+	map<vmIP, map<unsigned int, ip_frag_queue*> > ip_frag_stream;
+	map<vmIP, map<unsigned int, ip_frag_queue*> >::iterator ip_frag_streamIT;
 	map<unsigned int, ip_frag_queue*>::iterator ip_frag_streamITinner;
 };
 

@@ -37,9 +37,9 @@ public:
 		_se_load_key_failed
 	};
 public:
-	cSslDsslSession(u_int32_t ip, u_int16_t port, string keyfile, string password = "");
+	cSslDsslSession(vmIP ip, vmPort port, string keyfile, string password = "");
 	~cSslDsslSession();
-	void setClientIpPort(u_int32_t ipc, u_int16_t portc);
+	void setClientIpPort(vmIP ipc, vmPort portc);
 	void init();
 	void term();
 	bool initServer();
@@ -47,11 +47,11 @@ public:
 	void termServer();
 	void termSession();
 	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, 
-			 unsigned int saddr, unsigned int daddr, int sport, int dport, 
+			 vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, 
 			 struct timeval ts, bool init, class cSslDsslSessions *sessions);
 	bool isClientHello(char *data, unsigned int datalen, NM_PacketDir dir);
 private:
-	NM_PacketDir getDirection(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport);
+	NM_PacketDir getDirection(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
 	static void dataCallback(NM_PacketDir dir, void* user_data, u_char* data, uint32_t len, DSSL_Pkt* pkt);
 	static void errorCallback(void* user_data, int error_code);
 	static int password_calback_direct(char *buf, int size, int rwflag, void *userdata);
@@ -60,12 +60,12 @@ private:
 	bool restore_session_data(const char *data);
 	void store_session(class cSslDsslSessions *sessions, struct timeval ts);
 private:
-	u_int32_t ip;
-	u_int16_t port;
+	vmIP ip;
+	vmPort port;
 	string keyfile;
 	string password;
-	u_int32_t ipc;
-	u_int16_t portc;
+	vmIP ipc;
+	vmPort portc;
 	EVP_PKEY *pkey;
 	DSSL_ServerInfo* server_info;
 	DSSL_Session* session;
@@ -132,15 +132,15 @@ public:
 	cSslDsslSessions();
 	~cSslDsslSessions();
 public:
-	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts);
-	void destroySession(unsigned int saddr, unsigned int daddr, int sport, int dport);
+	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts);
+	void destroySession(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
 	void clientRandomSet(u_char *client_random, u_char *master_secret);
 	bool clientRandomGet(u_char *client_random, u_char *master_secret, struct timeval ts);
 	void clientRandomErase(u_char *client_random);
 	void clientRandomCleanup();
 private:
-	cSslDsslSession *addSession(u_int32_t ip, u_int16_t port);
-	NM_PacketDir checkIpPort(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport);
+	cSslDsslSession *addSession(vmIP ip, vmPort port);
+	NM_PacketDir checkIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
 	void init();
 	void term();
 	void loadSessions();
@@ -175,8 +175,8 @@ friend class cSslDsslSession;
 
 void ssl_dssl_init();
 void ssl_dssl_clean();
-void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts);
-void end_decrypt_ssl_dssl(unsigned int saddr, unsigned int daddr, int sport, int dport);
+void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts);
+void end_decrypt_ssl_dssl(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
 bool ssl_parse_client_random(u_char *data, unsigned datalen);
 
 

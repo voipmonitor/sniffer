@@ -10,9 +10,9 @@ void
 	Generator *gen = new FILE_LINE(8001) Generator("1.1.1.1", "2.2.2.2");
 	//send test data 
 	struct udphdr2 udph;
-	udph.dest = 5060;
+	udph.set_dest(5060);
 	udph.len = 8;
-	udph.source = 5060;
+	udph.set_source(5060);
 	udph.check = 0;
 
 	//char buf[4092];
@@ -47,29 +47,20 @@ Generator::socket_iphdrincl(int sd)
 }
  
 Generator::Generator(const char *src, const char *dst) {
- 
+
 	sockraw = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
 	 
 	socket_broadcast(sockraw);
-	/* set SO_IPHDRINCL option */
+	// set SO_IPHDRINCL option
 	socket_iphdrincl(sockraw);
 
  
-	src_addr.sin_family = AF_INET;
-	src_addr.sin_addr.s_addr = inet_addr(src);
-	src_addr.sin_port = htons(9095);
-	memset(&src_addr.sin_zero, '\0', 8);
- 
-	dest_addr.sin_family = AF_INET;
-	dest_addr.sin_addr.s_addr = inet_addr(dst);
-	dest_addr.sin_port = htons(9095);
-	memset(&dest_addr.sin_zero, '\0', 8);
-   /* 
+	socket_set_saddr(&src_addr, str_2_vmIP(src), 9095);
+	socket_set_saddr(&dest_addr, str_2_vmIP(dst), 9095);
 	if(bind(sockraw, (struct sockaddr *)&src_addr, sizeof(struct sockaddr)) == -1) {
 		perror("bind");
 		//return -1;
 	}
-*/
 	//return 0;
 }
 
@@ -77,27 +68,24 @@ int
 Generator::send(char *data, int datalen) {
 
 	struct iphdr2 *iphdr;
+	unsigned ip_hdr_size = sizeof(iphdr2);
 
-	iphdr = (struct iphdr2 *)generator_packet;
-	memset(iphdr, 0, sizeof(iphdr2));
+	iphdr = (iphdr2*)generator_packet;
+	memset(iphdr, 0, ip_hdr_size);
 	iphdr->version = 4;
-	iphdr->tos = 0;
-	iphdr->id = htons(100);
-	iphdr->frag_off = 0;
-	iphdr->ttl = 120;
-	iphdr->protocol = 17;
-	iphdr->check = 0;
-	iphdr->tot_len = htons(sizeof(struct iphdr2) + datalen);
-	iphdr->ihl = 5;
-	iphdr->check = 0;
-	iphdr->saddr = src_addr.sin_addr.s_addr;
-	iphdr->daddr = dest_addr.sin_addr.s_addr;
-	memcpy(generator_packet + sizeof(struct iphdr2), data, datalen);
+	iphdr->_id = htons(100);
+	iphdr->_ttl = 120;
+	iphdr->_protocol = 17;
+	iphdr->set_tot_len(ip_hdr_size + datalen);
+	iphdr->_ihl = 5;
+	iphdr->_set_saddr(src_addr.sin_addr.s_addr);
+	iphdr->_set_daddr(dest_addr.sin_addr.s_addr);
+	memcpy(generator_packet + ip_hdr_size, data, datalen);
 
 	int res;
-	if((res = sendto(sockraw, generator_packet, datalen + sizeof(struct iphdr2), 0, (struct sockaddr *)&dest_addr, sizeof(struct sockaddr))) == -1)
+	if((res = sendto(sockraw, generator_packet, datalen + ip_hdr_size, 0, (struct sockaddr *)&dest_addr, sizeof(struct sockaddr))) == -1)
 	{
-		printf("msglen[%lu]\n", datalen + sizeof(struct iphdr2));
+		printf("msglen[%u]\n", datalen + ip_hdr_size);
 		perror("sendto");
 	}
 	return res;

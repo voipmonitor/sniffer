@@ -122,8 +122,8 @@ void SendCallInfoItem::evSci(sSciInfo *sci) {
 						   ""));
 		postData.push_back(dstring("caller", sci->caller_number));
 		postData.push_back(dstring("called", sci->called_number));
-		postData.push_back(dstring("ip_src", inet_ntostring(sci->caller_ip)));
-		postData.push_back(dstring("ip_dst", inet_ntostring(sci->called_ip)));
+		postData.push_back(dstring("ip_src", sci->caller_ip.getString()));
+		postData.push_back(dstring("ip_dst", sci->called_ip.getString()));
 		postData.push_back(dstring("callid", sci->callid));
 		string getParams;
 		if(requestType == rt_get && postData.size()) {
@@ -241,8 +241,8 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, Call *call,
 	sci->callid = call->call_id;
 	sci->caller_number = call->caller;
 	sci->called_number = call->called;
-	sci->caller_ip = htonl(call->getSipcallerip());
-	sci->called_ip = htonl(call->getSipcalledip());
+	sci->caller_ip = call->getSipcallerip();
+	sci->called_ip = call->getSipcalledip();
 	sci->typeSci = typeSci;
 	sci->at = at;
 }

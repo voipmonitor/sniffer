@@ -2,7 +2,7 @@
 #define SSL_H
 
 
-#ifdef HAVE_LIBGNUTLS
+#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 
 #include <stdint.h>
 #include <arpa/inet.h>

@@ -40,7 +40,7 @@ struct sVerbose {
 	int fraud_file_log;
 	int enable_bt_sighandler;
 	int tcp_debug_port;
-	u_int32_t tcp_debug_ip;
+	u_char tcp_debug_ip[20];
 	int tar;
 	int chunk_buffer;
 	unsigned long int ssrc;

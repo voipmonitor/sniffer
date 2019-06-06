@@ -31,68 +31,16 @@ void reload_capture_rules();
 
 void terminate_packetbuffer();
 
-/* For compatibility with Linux definitions... */
 
-#ifdef FREEBSD
-# include <sys/endian.h>
-# define __BYTE_ORDER _BYTE_ORDER
-# define __BIG_ENDIAN _BIG_ENDIAN
-# define __LITTLE_ENDIAN _LITTLE_ENDIAN
-#else
-# include <endian.h>
-#endif
-
-#if __BYTE_ORDER == __BIG_ENDIAN
-# ifndef __BIG_ENDIAN_BITFIELD
-#  define __BIG_ENDIAN_BITFIELD
-# endif
-#else
-# ifndef __LITTLE_ENDIAN_BITFIELD
-#  define __LITTLE_ENDIAN_BITFIELD
-# endif
-#endif
-#if defined(__BIG_ENDIAN_BITFIELD) && defined(__LITTLE_ENDIAN_BITFIELD)
-# error Cannot define both __BIG_ENDIAN_BITFIELD and __LITTLE_ENDIAN_BITFIELD
-#endif
+#include "endian.h"
+#include "ip.h"
 
 
 #ifndef ulong 
 #define ulong unsigned long 
 #endif
 
-struct tcphdr2
-  {
-    u_int16_t source;
-    u_int16_t dest;
-    u_int32_t seq;
-    u_int32_t ack_seq;
-#  if __BYTE_ORDER == __LITTLE_ENDIAN
-    u_int16_t res1:4;
-    u_int16_t doff:4;
-    u_int16_t fin:1;
-    u_int16_t syn:1;
-    u_int16_t rst:1;
-    u_int16_t psh:1;
-    u_int16_t ack:1;
-    u_int16_t urg:1;
-    u_int16_t res2:2;
-#  elif __BYTE_ORDER == __BIG_ENDIAN
-    u_int16_t doff:4;
-    u_int16_t res1:4;
-    u_int16_t res2:2;
-    u_int16_t urg:1;
-    u_int16_t ack:1;
-    u_int16_t psh:1;
-    u_int16_t rst:1;
-    u_int16_t syn:1;
-    u_int16_t fin:1;
-#  else
-#   error "Adjust your <bits/endian.h> defines"
-#  endif
-    u_int16_t window;
-    u_int16_t check;
-    u_int16_t urg_ptr;
-};
+
 
 #ifndef GLOBAL_DECLARATION
 extern 

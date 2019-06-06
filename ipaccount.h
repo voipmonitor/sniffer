@@ -45,10 +45,10 @@ struct octects_live_t {
 	unsigned long long int voipall_octects;
 	unsigned int all_numpackets;
 	unsigned int voipall_numpackets;
-	vector<unsigned int> ipfilter;
+	vector<vmIP> ipfilter;
 	unsigned int fetch_timestamp;
-	bool isIpInFilter(unsigned int ip) {
-		vector<unsigned int>::iterator findIp;
+	bool isIpInFilter(vmIP ip) {
+		vector<vmIP>::iterator findIp;
 		findIp = std::lower_bound(ipfilter.begin(), ipfilter.end(), ip);
 		return(findIp != ipfilter.end() && (*findIp) == ip);
   	}
@@ -66,15 +66,15 @@ struct cust_cache_item {
 
 struct cust_cache_rec {
 	cust_cache_rec() {
-		ip = 0;
+		ip.clear();
 		cust_id = 0;
 	}
-	unsigned int ip;
+	vmIP ip;
 	unsigned int cust_id;
 	bool operator < (const cust_cache_rec& other) const { 
 		return(this->ip < other.ip); 
 	}
-	bool operator < (const unsigned int& _ip) const { 
+	bool operator < (const vmIP& _ip) const { 
 		return(this->ip < _ip); 
 	}
 };
@@ -97,10 +97,10 @@ struct cust_pn_cache_rec {
 
 struct next_cache_rec {
 	next_cache_rec() {
-		ip = 0;
+		ip.clear();
 		mask = 0;
 	}
-	unsigned int ip;
+	vmIP ip;
 	unsigned int mask;
 	bool operator < (const next_cache_rec& other) const {
 		return((this->ip < other.ip) ? 1 : (this->ip > other.ip) ? 0 :
@@ -116,15 +116,34 @@ struct cust_reseller {
 	string reseller_id;
 };
 
-typedef map<string, octects_t*> t_ipacc_buffer; 
+struct t_ipacc_buffer_key {
+	vmIP saddr;
+	vmIP daddr;
+	vmPort port; 
+	int proto;
+	inline bool operator == (const t_ipacc_buffer_key& other) const {
+		return(this->saddr == other.saddr &&
+		       this->daddr == other.daddr &&
+		       this->port == other.port &&
+		       this->proto == other.proto);
+	}
+	inline bool operator < (const t_ipacc_buffer_key& other) const { 
+		return(this->saddr < other.saddr ? 1 : this->saddr > other.saddr ? 0 :
+		       this->daddr < other.daddr ? 1 : this->daddr > other.daddr ? 0 :
+		       this->port < other.port ? 1 : this->port > other.port ? 0 :
+		       this->proto < other.proto);
+	}
+};
+
+typedef map<t_ipacc_buffer_key, octects_t*> t_ipacc_buffer; 
 
 class Ipacc {
 public:
 	struct packet {
 		time_t timestamp;
-		unsigned int saddr;
-		unsigned int daddr;
-		int port; 
+		vmIP saddr;
+		vmIP daddr;
+		vmPort port; 
 		int proto;
 		int packetlen;
 		int voippacket;
@@ -133,12 +152,12 @@ public:
 public:
 	Ipacc();
 	~Ipacc();
-	inline void push(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket);
+	inline void push(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, int proto, int packetlen, int voippacket);
 	void init();
 	void term();
 	int refreshCustIpCache();
 	void save(int indexIpaccBuffer, unsigned int interval_time_limit = 0);
-	inline void add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket);
+	inline void add_octets(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, int proto, int packetlen, int voippacket);
 	unsigned int lengthBuffer() {
 		return(ipacc_buffer[0].size() + ipacc_buffer[1].size());
 	}
@@ -214,14 +233,14 @@ public:
 		unsigned long packets_voip_out;
 	};
 	struct AgregIP {
-		AgregIP(unsigned int ip, unsigned int proto, unsigned int port) {
+		AgregIP(vmIP ip, unsigned int proto, vmPort port) {
 			this->ip = ip;
 			this->proto = proto;
 			this->port = port;
 		}
-		unsigned int ip;
+		vmIP ip;
 		unsigned int proto;
-		unsigned int port;
+		vmPort port;
 		bool operator < (const AgregIP& other) const { 
 			return((this->ip < other.ip) ? 1 : (this->ip > other.ip) ? 0 :
 			       (this->proto < other.proto) ? 1 : (this->proto > other.proto) ? 0 :
@@ -229,16 +248,16 @@ public:
 		}
 	};
 	struct AgregIP2 {
-		AgregIP2(unsigned int ip1, unsigned int ip2, unsigned int proto, unsigned int port) {
+		AgregIP2(vmIP ip1, vmIP ip2, unsigned int proto, vmPort port) {
 			this->ip1 = ip1;
 			this->ip2 = ip2;
 			this->proto = proto;
 			this->port = port;
 		}
-		unsigned int ip1;
-		unsigned int ip2;
+		vmIP ip1;
+		vmIP ip2;
 		unsigned int proto;
-		unsigned int port;
+		vmPort port;
 		bool operator < (const AgregIP2& other) const { 
 			return((this->ip1 < other.ip1) ? 1 : (this->ip1 > other.ip1) ? 0 :
 			       (this->ip2 < other.ip2) ? 1 : (this->ip2 > other.ip2) ? 0 :
@@ -247,10 +266,10 @@ public:
 		}
 	};
 	~IpaccAgreg();
-	void add(unsigned int src, unsigned int dst,
+	void add(vmIP src, vmIP dst,
 		 unsigned int src_id_customer, unsigned int dst_id_customer,
 		 bool src_ip_next, bool dst_ip_next,
-		 unsigned int proto, unsigned int port,
+		 unsigned int proto, vmPort port,
 		 unsigned int traffic, unsigned int packets, bool voip);
 	void save(unsigned int time_interval);
 private:
@@ -268,11 +287,11 @@ public:
 	void setQueryesRadius(const char *fetchAllRadiusNames, const char *fetchAllRadiusIp, const char *fetchAllRadiusIpWhere);
 	int connect();
 	bool okParams();
-	int getCustByIp(unsigned int ip);
-	int getCustByIpFromDb(unsigned int ip, bool saveToCache = false);
+	int getCustByIp(vmIP ip);
+	int getCustByIpFromDb(vmIP ip, bool saveToCache = false);
 	int fetchAllIpQueryFromDb();
-	int getCustByIpFromCacheMap(unsigned int ip);
-	int getCustByIpFromCacheVect(unsigned int ip);
+	int getCustByIpFromCacheMap(vmIP ip);
+	int getCustByIpFromCacheVect(vmIP ip);
 	void flush();
 	void clear();
 	string printVect();
@@ -287,7 +306,7 @@ public:
 private:
 	SqlDb *sqlDb;
 	SqlDb *sqlDbRadius;
-	map<unsigned int, cust_cache_item> custCacheMap;
+	map<vmIP, cust_cache_item> custCacheMap;
 	vector<cust_cache_rec> custCacheVect;
 	string sqlDriver;
 	string odbcDsn;
@@ -314,7 +333,7 @@ public:
 	NextIpCache();
 	~NextIpCache();
 	int connect();
-	bool isIn(unsigned int ip);
+	bool isIn(vmIP ip);
 	void fetch();
 	void flush();
 	void setMaxQueryPass(unsigned int maxQueryPass) {

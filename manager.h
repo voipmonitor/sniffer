@@ -26,7 +26,7 @@ public:
 	bool isFinished() { return(finished); }
 	virtual bool parseCommand() = 0;
 	virtual void onCall(int /*sipResponseNum*/, const char */*callerName*/, const char */*callerNum*/, const char */*calledNum*/,
-			    unsigned int /*sipSaddr*/, unsigned int /*sipDaddr*/,
+			    vmIP /*sipSaddr*/, vmIP /*sipDaddr*/,
 			    const char */*screenPopupFieldsString*/) {}
 protected:
 	void lock_responses() {
@@ -59,7 +59,7 @@ public:
 	ManagerClientThread_screen_popup(int client, const char *command, int commandLength = 0);
 	bool parseCommand();
 	void onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
-		    unsigned int sipSaddr, unsigned int sipDaddr,
+		    vmIP sipSaddr, vmIP sipDaddr,
 		    const char *screenPopupFieldsString);
 private:
 	bool parseUserPassword();
@@ -87,7 +87,7 @@ public:
 	ManagerClientThreads();
 	void add(ManagerClientThread *clientThread);
 	void onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
-		    unsigned int sipSaddr, unsigned int sipDaddr,
+		    vmIP sipSaddr, vmIP sipDaddr,
 		    const char *screenPopupFieldsString);
 	void cleanup();
 	int getCount();

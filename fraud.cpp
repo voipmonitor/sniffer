@@ -88,10 +88,10 @@ CacheNumber_location::~CacheNumber_location() {
 	delete sqlDb;
 }
 
-bool CacheNumber_location::checkNumber(const char *number, u_int32_t number_ip, const char *domain,
-				       u_int32_t ip, u_int64_t at,
+bool CacheNumber_location::checkNumber(const char *number, vmIP number_ip, const char *domain,
+				       vmIP ip, u_int64_t at,
 				       bool *diffCountry, bool *diffContinent,
-				       u_int32_t *oldIp, string *oldCountry, string *oldContinent,
+				       vmIP *oldIp, string *oldCountry, string *oldContinent,
 				       const char *ip_country, const char *ip_continent) {
 	if(!last_cleanup_at) {
 		last_cleanup_at = at;
@@ -106,7 +106,7 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t number_ip, 
 		*diffContinent = false;
 	}
 	if(oldIp) {
-		*oldIp = 0;
+		oldIp->clear();
 	}
 	if(oldCountry) {
 		*oldCountry = "";
@@ -217,10 +217,10 @@ bool CacheNumber_location::checkNumber(const char *number, u_int32_t number_ip, 
 	return(true);
 }
 
-bool CacheNumber_location::loadNumber(const char *number, u_int32_t number_ip, const char *domain, u_int64_t at) {
+bool CacheNumber_location::loadNumber(const char *number, vmIP number_ip, const char *domain, u_int64_t at) {
 	SqlDb_row cond;
 	cond.add(string_size(number, 30), "number");
-	cond.add(number_ip, "number_ip");
+	cond.add(number_ip, "number_ip", false, sqlDb, getTable(domain).c_str());
 	if(domain && *domain) {
 		cond.add(string_size(domain, 100), "domain");
 	}
@@ -229,11 +229,11 @@ bool CacheNumber_location::loadNumber(const char *number, u_int32_t number_ip, c
 	SqlDb_row row = sqlDb->fetchRow();
 	if(row) {
 		sIpRec ipRec;
-		ipRec.ip = atoll(row["ip"].c_str());
+		ipRec.ip.setIP(&row, "ip");
 		ipRec.country_code = row["country_code"];
 		ipRec.continent_code = row["continent_code"];
 		ipRec.at = atoll(row["at"].c_str());
-		ipRec.old_ip = atoll(row["old_ip"].c_str());
+		ipRec.old_ip.setIP(&row, "old_ip");
 		ipRec.old_country_code = row["old_country_code"];
 		ipRec.old_continent_code = row["old_continent_code"];
 		ipRec.old_at = atoll(row["old_at"].c_str());
@@ -244,20 +244,20 @@ bool CacheNumber_location::loadNumber(const char *number, u_int32_t number_ip, c
 	return(false);
 }
 
-void CacheNumber_location::saveNumber(const char *number, u_int32_t number_ip, const char *domain, sIpRec *ipRec, bool update) {
+void CacheNumber_location::saveNumber(const char *number, vmIP number_ip, const char *domain, sIpRec *ipRec, bool update) {
 	SqlDb_row row;
-	row.add(ipRec->ip, "ip");
+	row.add(ipRec->ip, "ip", false, sqlDb, getTable(domain).c_str());
 	row.add(ipRec->country_code, "country_code");
 	row.add(ipRec->continent_code, "continent_code");
 	row.add(ipRec->at, "at");
-	row.add(ipRec->old_ip, "old_ip");
+	row.add(ipRec->old_ip, "old_ip", false, sqlDb, getTable(domain).c_str());
 	row.add(ipRec->old_country_code, "old_country_code");
 	row.add(ipRec->old_continent_code, "old_continent_code");
 	row.add(ipRec->old_at, "old_at");
 	if(update) {
 		SqlDb_row cond;
 		cond.add(string_size(number, 30), "number");
-		cond.add(number_ip, "number_ip");
+		cond.add(number_ip, "number_ip", false, sqlDb, getTable(domain).c_str());
 		if(domain && *domain) {
 			cond.add(string_size(domain, 100), "domain");
 		}
@@ -266,7 +266,7 @@ void CacheNumber_location::saveNumber(const char *number, u_int32_t number_ip, c
 				     STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
 	} else {
 		row.add(string_size(number, 30), "number");
-		row.add(number_ip, "number_ip");
+		row.add(number_ip, "number_ip", false, sqlDb, getTable(domain).c_str());
 		if(domain && *domain) {
 			row.add(string_size(domain, 100), "domain");
 		}
@@ -607,7 +607,7 @@ bool FraudAlert::openVerbLog() {
 	return(false);
 }
 
-bool FraudAlert::okFilterIp(u_int32_t ip, u_int32_t ip2) {
+bool FraudAlert::okFilterIp(vmIP ip, vmIP ip2) {
 	if((!this->defFilterIp() || this->ipFilter.is_empty()) && 
 	   (!this->defFilterIp2() || this->ipFilter2.is_empty())) {
 		return(true);
@@ -967,7 +967,7 @@ FraudAlert_rcc_base::FraudAlert_rcc_base(FraudAlert_rcc *parent) {
 }
 
 FraudAlert_rcc_base::~FraudAlert_rcc_base() {
-	map<u_int32_t, FraudAlert_rcc_callInfo*>::iterator callsIter_by_ip;
+	map<vmIP, FraudAlert_rcc_callInfo*>::iterator callsIter_by_ip;
 	for(callsIter_by_ip = calls_by_ip.begin(); callsIter_by_ip != calls_by_ip.end(); ++callsIter_by_ip) {
 		delete callsIter_by_ip->second;
 	}
@@ -975,9 +975,13 @@ FraudAlert_rcc_base::~FraudAlert_rcc_base() {
 	for(callsIter_by_number = calls_by_number.begin(); callsIter_by_number != calls_by_number.end(); ++callsIter_by_number) {
 		delete callsIter_by_number->second;
 	}
-	map<d_u_int32_t, FraudAlert_rcc_rtpStreamInfo*>::iterator callsIter_by_rtp_stream;
-	for(callsIter_by_rtp_stream = calls_by_rtp_stream.begin(); callsIter_by_rtp_stream != calls_by_rtp_stream.end(); ++callsIter_by_rtp_stream) {
-		delete callsIter_by_rtp_stream->second;
+	map<d_item<vmIP>, FraudAlert_rcc_rtpStreamInfo*>::iterator callsIter_by_rtp_stream_ip;
+	for(callsIter_by_rtp_stream_ip = calls_by_rtp_stream_ip.begin(); callsIter_by_rtp_stream_ip != calls_by_rtp_stream_ip.end(); ++callsIter_by_rtp_stream_ip) {
+		delete callsIter_by_rtp_stream_ip->second;
+	}
+	map<d_u_int32_t, FraudAlert_rcc_rtpStreamInfo*>::iterator callsIter_by_rtp_stream_id;
+	for(callsIter_by_rtp_stream_id = calls_by_rtp_stream_id.begin(); callsIter_by_rtp_stream_id != calls_by_rtp_stream_id.end(); ++callsIter_by_rtp_stream_id) {
+		delete callsIter_by_rtp_stream_id->second;
 	}
 }
 
@@ -987,7 +991,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 		return;
 	}
 	FraudAlert_rcc_callInfo *call = NULL;
-	map<u_int32_t, FraudAlert_rcc_callInfo*>::iterator callsIter_by_ip;
+	map<vmIP, FraudAlert_rcc_callInfo*>::iterator callsIter_by_ip;
 	map<string, FraudAlert_rcc_callInfo*>::iterator callsIter_by_number;
 	switch(callInfo->typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_connectCall:
@@ -1030,7 +1034,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 					syslog(LOG_NOTICE, "fraud %s / %s rcc ++ %s / %s / %lu", 
 					       alert->FraudAlert::getDescr().c_str(),
 					       callInfo->local_called_number ? "local" : "international",
-					       parent->typeBy == FraudAlert::_typeBy_source_ip ? inet_ntostring(callInfo->caller_ip).c_str() :
+					       parent->typeBy == FraudAlert::_typeBy_source_ip ? callInfo->caller_ip.getString().c_str() :
 					       parent->typeBy == FraudAlert::_typeBy_source_number ? callInfo->caller_number.c_str() : "",
 					       callInfo->callid.c_str(),
 					       callInfo->local_called_number ? call->calls_local.size() : call->calls_international.size());
@@ -1041,7 +1045,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 						sqlDateTimeString(time(NULL)).c_str(),
 						callInfo->typeCallInfo,
 						callInfo->local_called_number ? "local" : "international",
-						parent->typeBy == FraudAlert::_typeBy_source_ip ? inet_ntostring(callInfo->caller_ip).c_str() :
+						parent->typeBy == FraudAlert::_typeBy_source_ip ? callInfo->caller_ip.getString().c_str() :
 						parent->typeBy == FraudAlert::_typeBy_source_number ? callInfo->caller_number.c_str() : "",
 						callInfo->callid.c_str(),
 						callInfo->local_called_number ? call->calls_local.size() : call->calls_international.size());
@@ -1125,7 +1129,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 				syslog(LOG_NOTICE, "fraud %s / %s rcc -- %s / %s / %lu", 
 				       alert->FraudAlert::getDescr().c_str(),
 				       callInfo->local_called_number ? "local" : "international",
-				       parent->typeBy == FraudAlert::_typeBy_source_ip ? inet_ntostring(callInfo->caller_ip).c_str() :
+				       parent->typeBy == FraudAlert::_typeBy_source_ip ? callInfo->caller_ip.getString().c_str() :
 				       parent->typeBy == FraudAlert::_typeBy_source_number ? callInfo->caller_number.c_str() : "", 
 				       callInfo->callid.c_str(),
 				       callInfo->local_called_number ? call->calls_local.size() : call->calls_international.size());
@@ -1136,7 +1140,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 					sqlDateTimeString(time(NULL)).c_str(),
 					callInfo->typeCallInfo,
 					callInfo->local_called_number ? "local" : "international",
-					parent->typeBy == FraudAlert::_typeBy_source_ip ? inet_ntostring(callInfo->caller_ip).c_str() :
+					parent->typeBy == FraudAlert::_typeBy_source_ip ? callInfo->caller_ip.getString().c_str() :
 					parent->typeBy == FraudAlert::_typeBy_source_number ? callInfo->caller_number.c_str() : "",
 					callInfo->callid.c_str(),
 					callInfo->local_called_number ? call->calls_local.size() : call->calls_international.size());
@@ -1153,39 +1157,54 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 	   parent->typeBy == FraudAlert::_typeBy_source_number) {
 		return;
 	}
+	vmIP rtpStreamIP[2];
 	u_int32_t rtpStreamId[2] = { 0, 0 };
 	switch(parent->typeBy) {
 	case FraudAlert::_typeBy_rtp_stream_ip:
-		rtpStreamId[0] = rtpStreamInfo->rtp_src_ip;
-		rtpStreamId[1] = rtpStreamInfo->rtp_dst_ip;
+		rtpStreamIP[0] = rtpStreamInfo->rtp_src_ip;
+		rtpStreamIP[1] = rtpStreamInfo->rtp_dst_ip;
+		if(!rtpStreamIP[0].isSet() || !rtpStreamIP[1].isSet()) {
+			return;
+		}
 		break;
 	case FraudAlert::_typeBy_rtp_stream_ip_group:
 		rtpStreamId[0] = rtpStreamInfo->rtp_src_ip_group;
 		rtpStreamId[1] = rtpStreamInfo->rtp_dst_ip_group;
+		if(!rtpStreamId[0] || !rtpStreamId[1]) {
+			return;
+		}
 		break;
 	default:
 		break;
 	}
-	if(!rtpStreamId[0] || !rtpStreamId[1]) {
-		return;
-	}
+	d_item<vmIP> rtp_stream_ip(min(rtpStreamIP[0], rtpStreamIP[1]), max(rtpStreamIP[0], rtpStreamIP[1]));
 	d_u_int32_t rtp_stream_id(min(rtpStreamId[0], rtpStreamId[1]), max(rtpStreamId[0], rtpStreamId[1]));
 	FraudAlert_rcc_rtpStreamInfo *call = NULL;
-	map<d_u_int32_t, FraudAlert_rcc_rtpStreamInfo*>::iterator callsIter_by_rtp_stream;
+	map<d_item<vmIP>, FraudAlert_rcc_rtpStreamInfo*>::iterator callsIter_by_rtp_stream_ip;
+	map<d_u_int32_t, FraudAlert_rcc_rtpStreamInfo*>::iterator callsIter_by_rtp_stream_id;
+	sIdAlert idAlert;
 	switch(rtpStreamInfo->typeRtpStreamInfo) {
 	case sFraudRtpStreamInfo::typeRtpStreamInfo_beginStream:
 		if(this->checkTime(rtpStreamInfo->at)) {
-			sIdAlert idAlert;
-			idAlert.rtp_stream = rtp_stream_id;
 			switch(parent->typeBy) {
 			case FraudAlert::_typeBy_rtp_stream_ip:
-			case FraudAlert::_typeBy_rtp_stream_ip_group:
-				callsIter_by_rtp_stream = calls_by_rtp_stream.find(rtp_stream_id);
-				if(callsIter_by_rtp_stream != calls_by_rtp_stream.end()) {
-					call = callsIter_by_rtp_stream->second;
+				idAlert.rtp_stream_ip = rtp_stream_ip;
+				callsIter_by_rtp_stream_ip = calls_by_rtp_stream_ip.find(rtp_stream_ip);
+				if(callsIter_by_rtp_stream_ip != calls_by_rtp_stream_ip.end()) {
+					call = callsIter_by_rtp_stream_ip->second;
 				} else {
-					call = new FILE_LINE(7007) FraudAlert_rcc_rtpStreamInfo;
-					calls_by_rtp_stream[rtp_stream_id] = call;
+					call = new FILE_LINE(0) FraudAlert_rcc_rtpStreamInfo;
+					calls_by_rtp_stream_ip[rtp_stream_ip] = call;
+				}
+				break;
+			case FraudAlert::_typeBy_rtp_stream_ip_group:
+				idAlert.rtp_stream_id = rtp_stream_id;
+				callsIter_by_rtp_stream_id = calls_by_rtp_stream_id.find(rtp_stream_id);
+				if(callsIter_by_rtp_stream_id != calls_by_rtp_stream_id.end()) {
+					call = callsIter_by_rtp_stream_id->second;
+				} else {
+					call = new FILE_LINE(0) FraudAlert_rcc_rtpStreamInfo;
+					calls_by_rtp_stream_id[rtp_stream_id] = call;
 				}
 				break;
 			default:
@@ -1206,13 +1225,13 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 					       alert->FraudAlert::getDescr().c_str(),
 					       rtpStreamInfo->local_called_number ? "local" : "international",
 					       parent->typeBy == FraudAlert::_typeBy_rtp_stream_ip ?
-						inet_ntostring(rtpStreamInfo->rtp_src_ip).c_str() :
+						rtpStreamInfo->rtp_src_ip.getString().c_str() :
 						fraudAlerts->getGroupName(rtpStreamInfo->rtp_src_ip_group).c_str(),
-					       rtpStreamInfo->rtp_src_port,
+					       rtpStreamInfo->rtp_src_port.getPort(),
 					       parent->typeBy == FraudAlert::_typeBy_rtp_stream_ip ?
-						inet_ntostring(rtpStreamInfo->rtp_dst_ip).c_str() :
+						rtpStreamInfo->rtp_dst_ip.getString().c_str() :
 						fraudAlerts->getGroupName(rtpStreamInfo->rtp_dst_ip_group).c_str(),
-					       rtpStreamInfo->rtp_dst_port,
+					       rtpStreamInfo->rtp_dst_port.getPort(),
 					       rtpStreamInfo->callid.c_str(),
 					       rtpStreamInfo->local_called_number ? call->calls_local.size() : call->calls_international.size());
 				}
@@ -1235,9 +1254,20 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 					   this->checkOkAlert(idAlert, _actCalls, rtpStreamInfo->at,
 							      FraudAlert::_li_local, alert)) {
 						FraudAlertInfo_rcc *alertInfo = new FILE_LINE(7008) FraudAlertInfo_rcc(alert);
-						alertInfo->set_rtp_stream(_li, this->getDescr().c_str(), 
-									  parent->typeBy, rtp_stream_id,
-									  _actCalls);
+						switch(parent->typeBy) {
+						case FraudAlert::_typeBy_rtp_stream_ip:
+							alertInfo->set_rtp_stream(_li, this->getDescr().c_str(), 
+										  parent->typeBy, rtp_stream_ip,
+										  _actCalls);
+							break;
+						case FraudAlert::_typeBy_rtp_stream_ip_group:
+							alertInfo->set_rtp_stream(_li, this->getDescr().c_str(), 
+										  parent->typeBy, rtp_stream_id,
+										  _actCalls);
+							break;
+						default:
+							break;
+						}
 						alert->evAlert(alertInfo);
 						switch(_li) {
 						case FraudAlert::_li_local:
@@ -1256,14 +1286,17 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 		}
 		break;
 	case sFraudRtpStreamInfo::typeRtpStreamInfo_endStream:
-		sIdAlert idAlert;
-		idAlert.rtp_stream = rtp_stream_id;
 		switch(parent->typeBy) {
 		case FraudAlert::_typeBy_rtp_stream_ip:
+			callsIter_by_rtp_stream_ip = calls_by_rtp_stream_ip.find(rtp_stream_ip);
+			if(callsIter_by_rtp_stream_ip != calls_by_rtp_stream_ip.end()) {
+				call = callsIter_by_rtp_stream_ip->second;
+			}
+			break;
 		case FraudAlert::_typeBy_rtp_stream_ip_group:
-			callsIter_by_rtp_stream = calls_by_rtp_stream.find(rtp_stream_id);
-			if(callsIter_by_rtp_stream != calls_by_rtp_stream.end()) {
-				call = callsIter_by_rtp_stream->second;
+			callsIter_by_rtp_stream_id = calls_by_rtp_stream_id.find(rtp_stream_id);
+			if(callsIter_by_rtp_stream_id != calls_by_rtp_stream_id.end()) {
+				call = callsIter_by_rtp_stream_id->second;
 			}
 			break;
 		default:
@@ -1282,13 +1315,13 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 				       alert->FraudAlert::getDescr().c_str(),
 				       rtpStreamInfo->local_called_number ? "local" : "international",
 				       parent->typeBy == FraudAlert::_typeBy_rtp_stream_ip ?
-					inet_ntostring(rtpStreamInfo->rtp_src_ip).c_str() :
+					rtpStreamInfo->rtp_src_ip.getString().c_str() :
 					fraudAlerts->getGroupName(rtpStreamInfo->rtp_src_ip_group).c_str(),
-				       rtpStreamInfo->rtp_src_port,
+				       rtpStreamInfo->rtp_src_port.getPort(),
 				       parent->typeBy == FraudAlert::_typeBy_rtp_stream_ip ?
-					inet_ntostring(rtpStreamInfo->rtp_dst_ip).c_str() :
+					rtpStreamInfo->rtp_dst_ip.getString().c_str() :
 					fraudAlerts->getGroupName(rtpStreamInfo->rtp_dst_ip_group).c_str(),
-				       rtpStreamInfo->rtp_dst_port,
+				       rtpStreamInfo->rtp_dst_port.getPort(),
 				       rtpStreamInfo->callid.c_str(),
 				       rtpStreamInfo->local_called_number ? call->calls_local.size() : call->calls_international.size());
 			}
@@ -1333,7 +1366,7 @@ FraudAlertInfo_rcc::FraudAlertInfo_rcc(FraudAlert *alert)
 
 void FraudAlertInfo_rcc::set_ip(FraudAlert::eLocalInternational localInternational,
 				const char *timeperiod_name,
-				u_int32_t ip, const char *ip_location_code,
+				vmIP ip, const char *ip_location_code,
 				unsigned int concurentCalls) {
 	this->localInternational = localInternational;
 	if(timeperiod_name) {
@@ -1361,14 +1394,27 @@ void FraudAlertInfo_rcc::set_number(FraudAlert::eLocalInternational localInterna
 
 void FraudAlertInfo_rcc::set_rtp_stream(FraudAlert::eLocalInternational localInternational,
 					const char *timeperiod_name,
-					FraudAlert::eTypeBy type_by, d_u_int32_t rtp_stream,
+					FraudAlert::eTypeBy type_by, d_item<vmIP> rtp_stream_ip,
 					unsigned int concurentCalls) {
 	this->localInternational = localInternational;
 	if(timeperiod_name) {
 		this->timeperiod_name = timeperiod_name;
 	}
 	this->type_by = type_by;
-	this->rtp_stream = rtp_stream;
+	this->rtp_stream_ip = rtp_stream_ip;
+	this->concurentCalls = concurentCalls;
+}
+
+void FraudAlertInfo_rcc::set_rtp_stream(FraudAlert::eLocalInternational localInternational,
+					const char *timeperiod_name,
+					FraudAlert::eTypeBy type_by, d_u_int32_t rtp_stream_id,
+					unsigned int concurentCalls) {
+	this->localInternational = localInternational;
+	if(timeperiod_name) {
+		this->timeperiod_name = timeperiod_name;
+	}
+	this->type_by = type_by;
+	this->rtp_stream_id = rtp_stream_id;
 	this->concurentCalls = concurentCalls;
 }
 
@@ -1394,7 +1440,7 @@ string FraudAlertInfo_rcc::getJson() {
 	}
 	switch(type_by) {
 	case FraudAlert::_typeBy_source_ip:
-		json.add("ip", inet_ntostring(ip));
+		json.add("ip", ip.getString());
 		json.add("ip_location_code", ip_location_code);
 		json.add("ip_country", countryCodes->getNameCountry(ip_location_code.c_str()));
 		json.add("ip_continent", countryCodes->getNameContinent(ip_location_code.c_str()));
@@ -1406,12 +1452,12 @@ string FraudAlertInfo_rcc::getJson() {
 		json.add("number_continent", countryCodes->getNameContinent(number_location_code.c_str()));
 		break;
 	case FraudAlert::_typeBy_rtp_stream_ip:
-		json.add("rtp_stream_ip1", inet_ntostring(rtp_stream[0]));
-		json.add("rtp_stream_ip2", inet_ntostring(rtp_stream[1]));
+		json.add("rtp_stream_ip1", rtp_stream_ip.items[0].getString());
+		json.add("rtp_stream_ip2", rtp_stream_ip.items[1].getString());
 		break;
 	case FraudAlert::_typeBy_rtp_stream_ip_group:
-		json.add("rtp_stream_ip_group1", rtp_stream[0]);
-		json.add("rtp_stream_ip_group2", rtp_stream[1]);
+		json.add("rtp_stream_ip_group1", rtp_stream_id[0]);
+		json.add("rtp_stream_ip_group2", rtp_stream_id[1]);
 		break;
 	default:
 		break;
@@ -1464,11 +1510,11 @@ FraudAlertInfo_chc::FraudAlertInfo_chc(FraudAlert *alert)
 
 void FraudAlertInfo_chc::set(const char *number,
 			     FraudAlert::eTypeLocation typeLocation,
-			     u_int32_t ip,
+			     vmIP ip,
 			     const char *location_code,
-			     u_int32_t ip_old,
+			     vmIP ip_old,
 			     const char *location_code_old,
-			     u_int32_t ip_dst) {
+			     vmIP ip_dst) {
 	this->number = number;
 	this->typeLocation = typeLocation;
 	this->ip = ip;
@@ -1486,20 +1532,20 @@ string FraudAlertInfo_chc::getJson() {
 		 typeLocation == FraudAlert::_typeLocation_country ? 
 		  "country" : 
 		  "continent");
-	json.add("ip", inet_ntostring(ip));
+	json.add("ip", ip.getString());
 	json.add("location_code", location_code);
 	json.add("location_name",
 		 typeLocation == FraudAlert::_typeLocation_country ?
 		  countryCodes->getNameCountry(location_code.c_str()) :
 		  countryCodes->getNameContinent(location_code.c_str()));
-	json.add("ip_old", inet_ntostring(ip_old));
+	json.add("ip_old", ip_old.getString());
 	json.add("location_code_old", location_code_old);
 	json.add("location_name_old",
 		 typeLocation == FraudAlert::_typeLocation_country ?
 		  countryCodes->getNameCountry(location_code_old.c_str()) :
 		  countryCodes->getNameContinent(location_code_old.c_str()));
-	if(ip_dst) {
-		json.add("ip_dst", inet_ntostring(ip_dst));
+	if(ip_dst.isSet()) {
+		json.add("ip_dst", ip_dst.getString());
 	}
 	return(json.getJson());
 }
@@ -1515,7 +1561,7 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 		return;
 	}
 	if(callInfo->typeCallInfo == (this->onlyConnected ? sFraudCallInfo::typeCallInfo_connectCall : sFraudCallInfo::typeCallInfo_beginCall)) {
-		if(isLocalIP(callInfo->caller_ip) ||
+		if(callInfo->caller_ip.isLocalIP() ||
 		   (this->changeLocationOk.size() &&
 		    (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
 		     countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true)))) {
@@ -1523,7 +1569,7 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 		}
 		bool diffCountry = false;
 		bool diffContinent = false;
-		u_int32_t oldIp;
+		vmIP oldIp;
 		string oldCountry;
 		string oldContinent;
 		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->called_ip, NULL,
@@ -1569,7 +1615,7 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 	switch(callInfo->typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_connectCall:
 		{
-		if(isLocalIP(callInfo->caller_ip) ||
+		if(callInfo->caller_ip.isLocalIP() ||
 		   (this->changeLocationOk.size() &&
 		    (countryCodes->isLocationIn(callInfo->country_code_caller_ip.c_str(), &this->changeLocationOk) ||
 		     countryCodes->isLocationIn(callInfo->continent_code_caller_ip.c_str(), &this->changeLocationOk, true)))) {
@@ -1577,7 +1623,7 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 		}
 		bool diffCountry = false;
 		bool diffContinent = false;
-		u_int32_t oldIp;
+		vmIP oldIp;
 		string oldCountry;
 		string oldContinent;
 		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->called_ip, 
@@ -1696,7 +1742,7 @@ FraudAlertInfo_spc::FraudAlertInfo_spc(FraudAlert *alert)
  : FraudAlertInfo(alert) {
 }
 
-void FraudAlertInfo_spc::set(unsigned int ip, 
+void FraudAlertInfo_spc::set(vmIP ip, 
 			     unsigned int count,
 			     unsigned int count_invite,
 			     unsigned int count_message,
@@ -1711,7 +1757,7 @@ void FraudAlertInfo_spc::set(unsigned int ip,
 string FraudAlertInfo_spc::getJson() {
 	JsonExport json;
 	this->setAlertJsonBase(&json);
-	json.add("ip", inet_ntostring(ip));
+	json.add("ip", ip.getString());
 	json.add("count", count);
 	json.add("count_invite", count_invite);
 	json.add("count_message", count_message);
@@ -1735,7 +1781,7 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 	if(eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_sipPacket &&
 	   this->okFilter(eventInfo) &&
 	   this->okDayHour(eventInfo)) {
-		map<u_int32_t, sCounts>::iterator iter = count.find(eventInfo->src_ip);
+		map<vmIP, sCounts>::iterator iter = count.find(eventInfo->src_ip);
 		if(iter == count.end()) {
 			count[eventInfo->src_ip].count = 1;
 		} else {
@@ -1756,7 +1802,7 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 	if(!start_interval) {
 		start_interval = eventInfo->at;
 	} else if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
-		map<u_int32_t, sCounts>::iterator iter;
+		map<vmIP, sCounts>::iterator iter;
 		for(iter = count.begin(); iter != count.end(); iter++) {
 			if(iter->second.count >= intervalLimit &&
 			   this->checkOkAlert(iter->first, iter->second.count, eventInfo->at)) {
@@ -1774,11 +1820,11 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 	}
 }
 
-bool FraudAlert_spc::checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at) {
+bool FraudAlert_spc::checkOkAlert(vmIP ip, u_int64_t count, u_int64_t at) {
 	if(!this->alertOncePerHours) {
 		return(true);
 	}
-	map<u_int32_t, sAlertInfo>::iterator iter = alerts.find(ip);
+	map<vmIP, sAlertInfo>::iterator iter = alerts.find(ip);
 	if(iter == alerts.end()) {
 		alerts[ip] = sAlertInfo(count, at);
 		return(true);
@@ -1801,7 +1847,7 @@ FraudAlert_rc::FraudAlert_rc(unsigned int dbId)
 
 FraudAlert_rc::~FraudAlert_rc() {
 	while(this->dumpers.size()) {
-		map<u_int32_t, PcapDumper*>::iterator iter_dumper = this->dumpers.begin();
+		map<vmIP, PcapDumper*>::iterator iter_dumper = this->dumpers.begin();
 		if(iter_dumper->second && iter_dumper->second != (PcapDumper*)1) {
 			delete iter_dumper->second;
 		}
@@ -1810,13 +1856,13 @@ FraudAlert_rc::~FraudAlert_rc() {
 }
 
 void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
-	u_int32_t ip = typeBy == _typeBy_source_ip ? eventInfo->src_ip : eventInfo->dst_ip;
+	vmIP ip = typeBy == _typeBy_source_ip ? eventInfo->src_ip : eventInfo->dst_ip;
 	if((withResponse ?
 	     eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_registerResponse :
 	     eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_register) &&
 	   this->okFilter(eventInfo) &&
 	   this->okDayHour(eventInfo)) {
-		map<u_int32_t, u_int64_t>::iterator iter = count.find(ip);
+		map<vmIP, u_int64_t>::iterator iter = count.find(ip);
 		if(iter == count.end()) {
 			count[ip] = 1;
 		} else {
@@ -1828,7 +1874,7 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 	if(!start_interval) {
 		start_interval = eventInfo->at;
 	} else if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
-		map<u_int32_t, u_int64_t>::iterator iter;
+		map<vmIP, u_int64_t>::iterator iter;
 		for(iter = count.begin(); iter != count.end(); iter++) {
 			if(iter->second >= intervalLimit) {
 				if(this->checkOkAlert(iter->first, iter->second, eventInfo->at)) {
@@ -1838,13 +1884,13 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 					this->evAlert(alertInfo);
 				}
 				if(enable_store_pcap) {
-					map<u_int32_t, PcapDumper*>::iterator iter_dumper = this->dumpers.find(iter->first);
+					map<vmIP, PcapDumper*>::iterator iter_dumper = this->dumpers.find(iter->first);
 					if(iter_dumper == this->dumpers.end()) {
 						this->dumpers[iter->first] = (PcapDumper*)1;
 					}
 				}
 			} else if(enable_store_pcap) {
-				map<u_int32_t, PcapDumper*>::iterator iter_dumper = this->dumpers.find(iter->first);
+				map<vmIP, PcapDumper*>::iterator iter_dumper = this->dumpers.find(iter->first);
 				if(iter_dumper != this->dumpers.end()) {
 					if(iter_dumper->second && iter_dumper->second != (PcapDumper*)1) {
 						delete iter_dumper->second;
@@ -1857,7 +1903,7 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 		start_interval = eventInfo->at;
 	}
 	if(enable_store_pcap && enable_dump) {
-		map<u_int32_t, PcapDumper*>::iterator iter_dumper = this->dumpers.find(ip);
+		map<vmIP, PcapDumper*>::iterator iter_dumper = this->dumpers.find(ip);
 		if(iter_dumper != this->dumpers.end()) {
 			if(iter_dumper->second == (PcapDumper*)1) {
 				PcapDumper *dumper = new FILE_LINE(7016) PcapDumper(PcapDumper::na, NULL);
@@ -1882,11 +1928,11 @@ void FraudAlert_rc::loadAlertVirt(SqlDb */*sqlDb*/) {
 	withResponse = atoi(dbRow["fraud_register_only_with_response"].c_str());
 }
 
-bool FraudAlert_rc::checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at) {
+bool FraudAlert_rc::checkOkAlert(vmIP ip, u_int64_t count, u_int64_t at) {
 	if(!this->alertOncePerHours) {
 		return(true);
 	}
-	map<u_int32_t, sAlertInfo>::iterator iter = alerts.find(ip);
+	map<vmIP, sAlertInfo>::iterator iter = alerts.find(ip);
 	if(iter == alerts.end()) {
 		alerts[ip] = sAlertInfo(count, at);
 		return(true);
@@ -1901,9 +1947,9 @@ bool FraudAlert_rc::checkOkAlert(u_int32_t ip, u_int64_t count, u_int64_t at) {
 	return(true);
 }
 
-string FraudAlert_rc::getDumpName(u_int32_t ip, u_int64_t at) {
+string FraudAlert_rc::getDumpName(vmIP ip, u_int64_t at) {
 	string path = storePcapsToPaths.empty() ? getStorePcaps() : storePcapsToPaths;
-	string name = this->descr + '_' + inet_ntostring(ip) + '_' + sqlDateTimeString(at / 1000000ull) + ".pcap";
+	string name = this->descr + '_' + ip.getString() + '_' + sqlDateTimeString(at / 1000000ull) + ".pcap";
 	prepare_string_to_filename(&name);
 	string path_name = path + '/' + name;
 	return(path_name);
@@ -1913,7 +1959,7 @@ FraudAlertInfo_seq::FraudAlertInfo_seq(FraudAlert *alert)
  : FraudAlertInfo(alert) {
 }
 
-void FraudAlertInfo_seq::set(unsigned int ip, 
+void FraudAlertInfo_seq::set(vmIP ip, 
 			     const char *number,
 			     unsigned int count,
 			     const char *country_code_ip,
@@ -1928,7 +1974,7 @@ void FraudAlertInfo_seq::set(unsigned int ip,
 string FraudAlertInfo_seq::getJson() {
 	JsonExport json;
 	this->setAlertJsonBase(&json);
-	json.add("ip", inet_ntostring(ip));
+	json.add("ip", ip.getString());
 	json.add("number", number);
 	json.add("count", count);
 	if(!country_code_ip.empty()) {
@@ -2021,8 +2067,8 @@ string FraudAlertInfo_reg::getJson() {
 	map<sFraudRegisterInfo_id, sFraudRegisterInfo_data>::iterator iter;
 	for(iter = reg_map->begin(); iter != reg_map->end(); iter++) {
 		JsonExport *incident = incidents->addObject("");
-		incident->add("sipcallerip", inet_ntostring(htonl(iter->first.sipcallerip)));
-		incident->add("sipcalledip", inet_ntostring(htonl(iter->first.sipcalledip)));
+		incident->add("sipcallerip", iter->first.sipcallerip.getString());
+		incident->add("sipcalledip", iter->first.sipcalledip.getString());
 		incident->add("to_num", iter->first.to_num);
 		incident->add("to_domain", iter->first.to_domain);
 		incident->add("contact_num", iter->second.contact_num);
@@ -2189,36 +2235,36 @@ void FraudAlerts::endCall(Call *call, u_int64_t at) {
 	callQueue.push(callInfo);
 }
 
-void FraudAlerts::beginRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+void FraudAlerts::beginRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 				 Call *call, u_int64_t at) {
 	sFraudRtpStreamInfo rtpStreamInfo;
 	rtpStreamInfo.typeRtpStreamInfo = sFraudRtpStreamInfo::typeRtpStreamInfo_beginStream;
-	rtpStreamInfo.rtp_src_ip = htonl(src_ip);
+	rtpStreamInfo.rtp_src_ip = src_ip;
 	rtpStreamInfo.rtp_src_port = src_port;
-	rtpStreamInfo.rtp_dst_ip = htonl(dst_ip);
+	rtpStreamInfo.rtp_dst_ip = dst_ip;
 	rtpStreamInfo.rtp_dst_port = dst_port;
 	rtpStreamInfo.at = at;
 	this->completeRtpStreamInfo(&rtpStreamInfo, call);
 	rtpStreamQueue.push(rtpStreamInfo);
 }
 
-void FraudAlerts::endRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+void FraudAlerts::endRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 			       Call *call, u_int64_t at) {
 	sFraudRtpStreamInfo rtpStreamInfo;
 	rtpStreamInfo.typeRtpStreamInfo = sFraudRtpStreamInfo::typeRtpStreamInfo_endStream;
-	rtpStreamInfo.rtp_src_ip = htonl(src_ip);
+	rtpStreamInfo.rtp_src_ip = src_ip;
 	rtpStreamInfo.rtp_src_port = src_port;
-	rtpStreamInfo.rtp_dst_ip = htonl(dst_ip);
+	rtpStreamInfo.rtp_dst_ip = dst_ip;
 	rtpStreamInfo.rtp_dst_port = dst_port;
 	rtpStreamInfo.at = at;
 	this->completeRtpStreamInfo(&rtpStreamInfo, call);
 	rtpStreamQueue.push(rtpStreamInfo);
 }
 
-void FraudAlerts::evSipPacket(u_int32_t ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len) {
+void FraudAlerts::evSipPacket(vmIP ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len) {
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_sipPacket;
-	eventInfo.src_ip = htonl(ip);
+	eventInfo.src_ip = ip;
 	eventInfo.sip_method = sip_method;
 	eventInfo.at = at;
 	if(ua && ua_len) {
@@ -2227,15 +2273,15 @@ void FraudAlerts::evSipPacket(u_int32_t ip, unsigned sip_method, u_int64_t at, c
 	eventQueue.push(eventInfo);
 }
 
-void FraudAlerts::evRegister(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len,
+void FraudAlerts::evRegister(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len,
 			     pcap_block_store *block_store, u_int32_t block_store_index, u_int16_t dlt) {
 	if(opt_enable_fraud_store_pcaps && block_store) {
 		block_store->lock_packet(block_store_index, 0);
 	}
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_register;
-	eventInfo.src_ip = htonl(src_ip);
-	eventInfo.src_ip = htonl(dst_ip);
+	eventInfo.src_ip = src_ip;
+	eventInfo.src_ip = dst_ip;
 	eventInfo.at = at;
 	eventInfo.block_store = block_store;
 	eventInfo.block_store_index = block_store_index;
@@ -2246,11 +2292,11 @@ void FraudAlerts::evRegister(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, c
 	eventQueue.push(eventInfo);
 }
 
-void FraudAlerts::evRegisterResponse(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len) {
+void FraudAlerts::evRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len) {
 	sFraudEventInfo eventInfo;
 	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_registerResponse;
-	eventInfo.src_ip = htonl(src_ip);
-	eventInfo.dst_ip = htonl(dst_ip);
+	eventInfo.src_ip = src_ip;
+	eventInfo.dst_ip = dst_ip;
 	eventInfo.at = at;
 	if(ua && ua_len) {
 		eventInfo.ua = ua_len == -1 ? ua : string(ua, ua_len);
@@ -2355,8 +2401,8 @@ void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call,
 	callInfo->callid = call->call_id;
 	callInfo->caller_number = call->caller;
 	callInfo->called_number = call->called;
-	callInfo->caller_ip = htonl(call->sipcallerip[0]);
-	callInfo->called_ip = htonl(call->sipcalledip[0]);
+	callInfo->caller_ip = call->sipcallerip[0];
+	callInfo->called_ip = call->sipcalledip[0];
 	callInfo->caller_domain = call->caller_domain;
 	callInfo->called_domain = call->called_domain;
 	switch(typeCallInfo) {
@@ -2407,7 +2453,7 @@ void FraudAlerts::completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, 
 void FraudAlerts::completeCallInfoAfterPop(sFraudCallInfo *callInfo, CheckInternational *checkInternational) {
 	this->completeNumberInfo_country_code(callInfo, checkInternational);
 	for(int i = 0; i < 2; i++) {
-		u_int32_t *ip = i == 0 ? &callInfo->caller_ip : &callInfo->called_ip;
+		vmIP *ip = i == 0 ? &callInfo->caller_ip : &callInfo->called_ip;
 		string *rslt_country_code = i == 0 ? &callInfo->country_code_caller_ip : &callInfo->country_code_called_ip;
 		string *rslt_continent_code = i == 0 ? &callInfo->continent_code_caller_ip : &callInfo->continent_code_called_ip;
 		string country = countryDetect ?
@@ -2638,7 +2684,7 @@ void fraudEndCall(Call *call, timeval tv) {
 	}
 }
 
-void fraudBeginRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+void fraudBeginRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 			 Call *call, time_t time) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
@@ -2648,7 +2694,7 @@ void fraudBeginRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, ui
 	}
 }
 
-void fraudEndRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint16_t dst_port,
+void fraudEndRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 		       Call *call, time_t time) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
@@ -2658,7 +2704,7 @@ void fraudEndRtpStream(uint32_t src_ip, uint16_t src_port, uint32_t dst_ip, uint
 	}
 }
 
-void fraudSipPacket(u_int32_t ip, unsigned sip_method, timeval tv, const char *ua, int ua_len) {
+void fraudSipPacket(vmIP ip, unsigned sip_method, timeval tv, const char *ua, int ua_len) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->evSipPacket(ip, sip_method, tv.tv_sec * 1000000ull + tv.tv_usec, ua, ua_len);
@@ -2666,7 +2712,7 @@ void fraudSipPacket(u_int32_t ip, unsigned sip_method, timeval tv, const char *u
 	}
 }
 
-void fraudRegister(u_int32_t src_ip, u_int32_t dst_ip, timeval tv, const char *ua, int ua_len,
+void fraudRegister(vmIP src_ip, vmIP dst_ip, timeval tv, const char *ua, int ua_len,
 		   packet_s *packetS) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
@@ -2676,7 +2722,7 @@ void fraudRegister(u_int32_t src_ip, u_int32_t dst_ip, timeval tv, const char *u
 	}
 }
 
-void fraudRegisterResponse(u_int32_t src_ip, u_int32_t dst_ip, u_int64_t at, const char *ua, int ua_len) {
+void fraudRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->evRegisterResponse(src_ip, dst_ip, at, ua, ua_len);

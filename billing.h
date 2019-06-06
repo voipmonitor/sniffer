@@ -32,7 +32,7 @@ public:
 	void load(SqlDb_row *row, SqlDb *sqlDb = NULL);
 	bool isSensorOk(SqlDb *sqlDb = NULL);
 	void loadCond(SqlDb *sqlDb = NULL);
-	bool checkIP(u_int32_t ip);
+	bool checkIP(vmIP ip);
 	bool checkNumber(const char *number);
 private:
 	eBilingTypeAssignment typeAssignment;
@@ -53,7 +53,7 @@ public:
 	~cBillingAssignments();
 	void load(SqlDb *sqlDb = NULL);
 	void clear(bool useLock = true);
-	unsigned findBillingRuleIdForIP(u_int32_t ip, eBilingTypeAssignment typeAssignment,
+	unsigned findBillingRuleIdForIP(vmIP ip, eBilingTypeAssignment typeAssignment,
 					unsigned *assignment_id);
 	unsigned findBillingRuleIdForNumber(const char *number, eBilingTypeAssignment typeAssignment, 
 					    unsigned *assignment_id, CountryPrefixes *countryPrefixes);
@@ -76,7 +76,7 @@ class cBillingExclude {
 public:
 	cBillingExclude(bool agregation = false);
 	void load(SqlDb *sqlDb = NULL);
-	bool checkIP(u_int32_t ip, eBilingSide side);
+	bool checkIP(vmIP ip, eBilingSide side);
 	bool checkNumber(const char *number, eBilingSide side);
 private:
 	void lock() {
@@ -275,13 +275,13 @@ public:
 	~cBilling();
 	void load(SqlDb *sqlDb = NULL);
 	bool billing(time_t time, unsigned duration,
-		     u_int32_t ip_src, u_int32_t ip_dst,
+		     vmIP ip_src, vmIP ip_dst,
 		     const char *number_src, const char *number_dst,
 		     double *operator_price, double *customer_price,
 		     unsigned *operator_currency_id, unsigned *customer_currency_id,
 		     unsigned *operator_id, unsigned *customer_id);
 	list<string> saveAgregation(time_t time,
-				    u_int32_t ip_src, u_int32_t ip_dst,
+				    vmIP ip_src, vmIP ip_dst,
 				    const char *number_src, const char *number_dst,
 				    double operator_price, double customer_price,
 				    unsigned operator_currency_id, unsigned customer_currency_id);

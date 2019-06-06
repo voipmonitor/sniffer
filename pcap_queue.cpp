@@ -1436,7 +1436,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				lapTime.push_back(getTimeMS_rdtsc());
 				lapTimeDescr.push_back("calls");
 			}
-#ifdef HAVE_LIBGNUTLS
+#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 			extern string getSslStat();
 			string sslStat = getSslStat();
 			if(!sslStat.empty()) {
@@ -2640,47 +2640,29 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 			offset += next_header_ip_offset;
 		}
 	}
-	/* obsolete version
-	bool nextPass;
-	do {
-		nextPass = false;
-		if(header_ip->protocol == IPPROTO_IPIP) {
-			// ip in ip protocol
-			header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
-		} else if(header_ip->protocol == IPPROTO_GRE) {
-			// gre protocol
-			header_ip = convertHeaderIP_GRE(header_ip);
-			if(header_ip) {
-				nextPass = true;
-			} else {
-				return;
-			}
-		}
-	} while(nextPass);
-	*/
 
 	char *data = NULL;
 	int datalen = 0;
-	uint16_t sport = 0;
-	uint16_t dport = 0;
+	vmPort sport;
+	vmPort dport;
 	bool isTcp = false;
-	if (header_ip->protocol == IPPROTO_UDP) {
-		udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
+	if (header_ip->get_protocol() == IPPROTO_UDP) {
+		udphdr2 *header_udp = (udphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
 		datalen = get_udp_data_len(header_ip, header_udp, &data, packet, header->caplen);
-		sport = header_udp->source;
-		dport = header_udp->dest;
-	} else if (header_ip->protocol == IPPROTO_TCP) {
-		tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
+		sport = header_udp->get_source();
+		dport = header_udp->get_dest();
+	} else if (header_ip->get_protocol() == IPPROTO_TCP) {
+		tcphdr2 *header_tcp = (tcphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
 		datalen = get_tcp_data_len(header_ip, header_tcp, &data, packet, header->caplen);
-		sport = header_tcp->source;
-		dport = header_tcp->dest;
+		sport = header_tcp->get_source();
+		dport = header_tcp->get_dest();
 		isTcp = true;
 	} else {
 		return;
 	}
 	
-	if(sipSendSocket && sport && dport &&
-	   (sipportmatrix[htons(sport)] || sipportmatrix[htons(dport)]) &&
+	if(sipSendSocket && sport.isSet() && dport.isSet() &&
+	   (sipportmatrix[sport] || sipportmatrix[dport]) &&
 	   check_sip20(data, datalen, NULL, isTcp)) {
 		u_int16_t header_length = datalen;
 		sipSendSocket->addData(&header_length, 2,
@@ -2730,8 +2712,8 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	libpcap_buffer = NULL;
 	libpcap_buffer_old = NULL;
 	packets_counter = 0;
-	extern vector<u_int32_t> if_filter_ip;
-	extern vector<d_u_int32_t> if_filter_net;
+	extern vector<vmIP> if_filter_ip;
+	extern vector<vmIPmask> if_filter_net;
 	if(if_filter_ip.size() || if_filter_net.size()) {
 		filter_ip = new FILE_LINE(0) ListIP;
 		if(if_filter_ip.size()) {
@@ -3089,12 +3071,12 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 				     checkProtocolData->header_ip_offset, checkProtocolData->protocol) ||
 		   checkProtocolData->protocol != ETHERTYPE_IP ||
 		   ((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->version != 4 ||
-		   htons(((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->tot_len) + checkProtocolData->header_ip_offset > (*header)->len) {
+		   ((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->get_tot_len() + checkProtocolData->header_ip_offset > (*header)->len) {
 			return(-11);
 		}
 		if(filter_ip) {
 			iphdr2 *iphdr = (iphdr2*)(*packet + checkProtocolData->header_ip_offset);
-			if(!filter_ip->checkIP(htonl(iphdr->saddr)) && !filter_ip->checkIP(htonl(iphdr->daddr))) {
+			if(!filter_ip->checkIP(iphdr->get_saddr()) && !filter_ip->checkIP(iphdr->get_daddr())) {
 				return(-11);
 			}
 		}
@@ -3235,23 +3217,25 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 		unsigned sleepCounter = 0;
 		while(!is_terminating()) {
 			this->tryForcePush();
-			if(sleepCounter > 10 && sleepCounter <= 15) {
-				calltable->cleanup_calls(NULL);
-				calltable->cleanup_registers(NULL);
-				calltable->cleanup_ss7(NULL);
-				extern int opt_sip_register;
-				if(opt_sip_register == 1) {
-					extern Registers registers;
-					registers.cleanup(0, true);
+			if(!opt_pb_read_from_file_max_packets) {
+				if(sleepCounter > 10 && sleepCounter <= 15) {
+					calltable->cleanup_calls(NULL);
+					calltable->cleanup_registers(NULL);
+					calltable->cleanup_ss7(NULL);
+					extern int opt_sip_register;
+					if(opt_sip_register == 1) {
+						extern Registers registers;
+						registers.cleanup(0, true);
+					}
 				}
-			}
-			if(sleepCounter > 15) {
-				calltable->destroyCallsIfPcapsClosed();
-				calltable->destroyRegistersIfPcapsClosed();
-			}
-			if(sleepCounter > 20) {
-				if(flushAllTars()) {
-					 syslog(LOG_NOTICE, "tars flushed");
+				if(sleepCounter > 15) {
+					calltable->destroyCallsIfPcapsClosed();
+					calltable->destroyRegistersIfPcapsClosed();
+				}
+				if(sleepCounter > 20) {
+					if(flushAllTars()) {
+						 syslog(LOG_NOTICE, "tars flushed");
+					}
 				}
 			}
 			sleep(1);
@@ -4683,13 +4667,6 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			pcap_pkthdr *pcap_next_ex_header;
 			u_char *pcap_next_ex_packet;
 			res = this->pcap_next_ex_iface(this->pcapHandle, &pcap_next_ex_header, &pcap_next_ex_packet);
-			/* check change packet content - disabled
-			u_char *packet_pcap = packet;
-			unsigned int ip_tot_len = 0;
-			if(header->caplen >= 14 + sizeof(iphdr2)) {
-				ip_tot_len = ((iphdr2*)(packet + 14))->tot_len;
-			}
-			*/
 			if(res == -1) {
 				if(opt_scanpcapdir[0]) {
 					this->pcapEnd = true;
@@ -5366,7 +5343,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->socketServerThreadHandle = 0;
 	this->cleanupBlockStoreTrash_counter = 0;
 	this->blockStoreTrash_sync = 0;
-	this->socketHostIPl = 0;
+	this->socketHostIP.clear();
 	this->socketHandle = 0;
 	this->clientSocket = NULL;
 	this->_sync_packetServerConnections = 0;
@@ -5529,7 +5506,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 			if(arg2 == (unsigned int)-1) {
 				outStr << " socket server";
 			} else {
-				outStr << " " << this->packetServerConnections[arg2]->socketClientIP << ":" << this->packetServerConnections[arg2]->socketClientInfo.sin_port;
+				outStr << " " << this->packetServerConnections[arg2]->socketClientIP.getString() << ":" << this->packetServerConnections[arg2]->socketClientPort.getPort();
 			}
 		}
 		outStr << ") - pid: " << tid << endl;
@@ -5562,12 +5539,13 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		while(!TERMINATING && !forceStop) {
 			if(arg2 == (unsigned int)-1) {
 				int socketClient;
-				sockaddr_in socketClientInfo;
-				if(this->socketAwaitConnection(&socketClient, &socketClientInfo)) {
+				vmIP socketClientIP;
+				vmPort socketClientPort;
+				if(this->socketAwaitConnection(&socketClient, &socketClientIP, &socketClientPort)) {
 					if(!TERMINATING && !forceStop) {
 						syslog(LOG_NOTICE, "accept new connection from %s:%i, socket: %i", 
-						       inet_ntoa(socketClientInfo.sin_addr), socketClientInfo.sin_port, socketClient);
-						this->createConnection(socketClient, &socketClientInfo);
+						       socketClientIP.getString().c_str(), socketClientPort.getPort(), socketClient);
+						this->createConnection(socketClient, socketClientIP, socketClientPort);
 					}
 				}
 			} else {
@@ -5583,7 +5561,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				while(!TERMINATING && !forceStop) {
 					readLen = bufferSize;
 					if(!this->socketRead(buffer + offsetBufferSyncRead, &readLen, arg2)) {
-						syslog(LOG_NOTICE, "close connection from %s:%i", this->packetServerConnections[arg2]->socketClientIP.c_str(), this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+						syslog(LOG_NOTICE, "close connection from %s:%i", 
+						       this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
+						       this->packetServerConnections[arg2]->socketClientPort.getPort());
 						this->packetServerConnections[arg2]->active = false;
 						forceStop = true;
 						break;
@@ -5684,8 +5664,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									cout << "SYNCED" << endl;
 								}
 								syslog(LOG_INFO, "synchronize ok in connection %s - %i",
-								       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
-								       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+								       this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
+								       this->packetServerConnections[arg2]->socketClientPort.getPort());
 							} else {
 								if(offsetBufferSyncRead) {
 									u_char *buffer2 = new FILE_LINE(15054) u_char[bufferSize * 2];
@@ -5724,11 +5704,11 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 											if(this->packetServerConnections[arg2]->block_counter &&
 											   this->packetServerConnections[arg2]->block_counter + 1 != blockStore->block_counter) {
 												syslog(LOG_ERR, "loss packetbuffer block in conection %s - %i",
-												       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
-												       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+												       this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
+												       this->packetServerConnections[arg2]->socketClientPort.getPort());
 											}
 											this->packetServerConnections[arg2]->block_counter = blockStore->block_counter;
-											blockStore->sensor_ip = this->packetServerConnections[arg2]->socketClientIPN;
+											blockStore->sensor_ip = this->packetServerConnections[arg2]->socketClientIP;
 											while(!this->pcapStoreQueue.push(blockStore, false)) {
 												if(TERMINATING || forceStop) {
 													break;
@@ -5758,13 +5738,15 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								   actTimeMS > lastTimeErrorLogMS + 1000) {
 									syslog(LOG_ERR, "receive bad packetbuffer block (%s) in conection %s - %i",
 									       error.c_str(),
-									       this->packetServerConnections[arg2]->socketClientIP.c_str(), 
-									       this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+									       this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
+									       this->packetServerConnections[arg2]->socketClientPort.getPort());
 									lastTimeErrorLogMS = actTimeMS;
 								}
 								++countErrors;
 								if(countErrors > 20) {
-									syslog(LOG_NOTICE, "enforce close connection (too errors) from %s:%i", this->packetServerConnections[arg2]->socketClientIP.c_str(), this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+									syslog(LOG_NOTICE, "enforce close connection (too errors) from %s:%i", 
+									       this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
+									       this->packetServerConnections[arg2]->socketClientPort.getPort());
 									this->packetServerConnections[arg2]->active = false;
 									forceStop = true;
 								}
@@ -5778,7 +5760,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 					} else {
 						++counterEmptyData;
 						if(counterEmptyData > 300) {
-							syslog(LOG_NOTICE, "enforce close connection (too empty data) from %s:%i", this->packetServerConnections[arg2]->socketClientIP.c_str(), this->packetServerConnections[arg2]->socketClientInfo.sin_port);
+							syslog(LOG_NOTICE, "enforce close connection (too empty data) from %s:%i", 
+							       this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
+							       this->packetServerConnections[arg2]->socketClientPort.getPort());
 							this->packetServerConnections[arg2]->active = false;
 							forceStop = true;
 						} else {
@@ -6448,10 +6432,10 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 }
 
 bool PcapQueue_readFromFifo::socketGetHost() {
-	this->socketHostIPl = 0;
-	while(!this->socketHostIPl) {
-		this->socketHostIPl = cResolver::resolve_n(this->packetServerIpPort.get_ip().c_str());
-		if(!this->socketHostIPl) {
+	this->socketHostIP.clear();
+	while(!this->socketHostIP.isSet()) {
+		this->socketHostIP = cResolver::resolve_n(this->packetServerIpPort.get_ip().c_str());
+		if(!this->socketHostIP.isSet()) {
 			syslog(LOG_ERR, "packetbuffer %s: cannot resolv: %s: host [%s] - trying again", this->nameQueue.c_str(), hstrerror(h_errno), this->packetServerIpPort.get_ip().c_str());  
 			sleep(1);
 		}
@@ -6467,19 +6451,15 @@ bool PcapQueue_readFromFifo::socketReadyForConnect() {
 }
 
 bool PcapQueue_readFromFifo::socketConnect() {
-	if(!this->socketHostIPl) {
+	if(!this->socketHostIP.isSet()) {
 		this->socketGetHost();
 	}
-	if((this->socketHandle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+	if((this->socketHandle = socket_create(this->socketHostIP, SOCK_STREAM, IPPROTO_TCP)) == -1) {
 		syslog(LOG_ERR, "packetbuffer %s: cannot create socket - trying again", this->nameQueue.c_str());
 		return(false);
 	}
-	sockaddr_in addr;
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(this->packetServerIpPort.get_port());
-	addr.sin_addr.s_addr = this->socketHostIPl;
-	if(connect(this->socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		syslog(LOG_ERR, "packetbuffer %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), inet_ntostring(htonl(this->socketHostIPl)).c_str(), strerror(errno));
+	if(socket_connect(this->socketHandle, this->socketHostIP, this->packetServerIpPort.get_port()) == -1) {
+		syslog(LOG_ERR, "packetbuffer %s: failed to connect to server [%s] error:[%s] - trying again", this->nameQueue.c_str(), this->socketHostIP.getString().c_str(), strerror(errno));
 		this->socketClose();
 		return(false);
 	}
@@ -6526,7 +6506,7 @@ bool PcapQueue_readFromFifo::socketConnect() {
 }
 
 bool PcapQueue_readFromFifo::socketListen() {
-	if((this->socketHandle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+	if((this->socketHandle = socket_create(str_2_vmIP(this->packetServerIpPort.get_ip().c_str()), SOCK_STREAM, IPPROTO_TCP)) == -1) {
 		syslog(LOG_NOTICE, "packetbuffer %s: cannot create socket", this->nameQueue.c_str());
 		return(false);
 	}
@@ -6536,15 +6516,11 @@ bool PcapQueue_readFromFifo::socketListen() {
 			fcntl(this->socketHandle, F_SETFL, flags | O_NONBLOCK);
 		}
 	}
-	sockaddr_in addr;
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(this->packetServerIpPort.get_port());
-	addr.sin_addr.s_addr = inet_addr(this->packetServerIpPort.get_ip().c_str());
 	int on = 1;
 	setsockopt(this->socketHandle, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	int rsltListen;
 	do {
-		while(::bind(this->socketHandle, (sockaddr*)&addr, sizeof(addr)) == -1 && !TERMINATING) {
+		while(socket_bind(this->socketHandle, str_2_vmIP(this->packetServerIpPort.get_ip().c_str()), this->packetServerIpPort.get_port()) == -1 && !TERMINATING) {
 			syslog(LOG_ERR, "packetbuffer %s: cannot bind to port [%d] - trying again after 5 seconds intervals", this->nameQueue.c_str(), this->packetServerIpPort.get_port());
 			sleep(5);
 		}
@@ -6560,9 +6536,8 @@ bool PcapQueue_readFromFifo::socketListen() {
 	return(true);
 }
 
-bool PcapQueue_readFromFifo::socketAwaitConnection(int *socketClient, sockaddr_in *socketClientInfo) {
+bool PcapQueue_readFromFifo::socketAwaitConnection(int *socketClient, vmIP *socketClientIP, vmPort *socketClientPort) {
 	*socketClient = -1;
-	socklen_t addrlen = sizeof(sockaddr_in);
 	while(*socketClient < 0 && !TERMINATING) {
 		bool doAccept = false;
 		int timeout = 1;
@@ -6586,7 +6561,7 @@ bool PcapQueue_readFromFifo::socketAwaitConnection(int *socketClient, sockaddr_i
 			}
 		}
 		if(doAccept) {
-			*socketClient = accept(this->socketHandle, (sockaddr*)socketClientInfo, &addrlen);
+			*socketClient = socket_accept(this->socketHandle, socketClientIP, socketClientPort);
 			if(opt_pcap_queues_mirror_nonblock_mode) {
 				int flags = fcntl(*socketClient, F_GETFL, 0);
 				if(flags >= 0) {
@@ -6743,7 +6718,7 @@ bool PcapQueue_readFromFifo::_socketRead(int socket, u_char *data, size_t *dataL
 	return(true);
 }
 
-void PcapQueue_readFromFifo::createConnection(int socketClient, sockaddr_in *socketClientInfo) {
+void PcapQueue_readFromFifo::createConnection(int socketClient, vmIP socketClientIP, vmPort socketClientPort) {
 	this->cleanupConnections();
 	this->lock_packetServerConnections();
 	unsigned int id = 1;
@@ -6753,13 +6728,11 @@ void PcapQueue_readFromFifo::createConnection(int socketClient, sockaddr_in *soc
 			id = iter->first + 1; 
 		}
 	}
-	sPacketServerConnection *connection = new FILE_LINE(15058) sPacketServerConnection(socketClient, *socketClientInfo, this, id);
-	connection->socketClientIPN = socketClientInfo->sin_addr.s_addr;
-	connection->socketClientIP = inet_ntoa(socketClientInfo->sin_addr);
+	sPacketServerConnection *connection = new FILE_LINE(15058) sPacketServerConnection(socketClient, socketClientIP, socketClientPort, this, id);
 	connection->active = true;
 	this->packetServerConnections[id] = connection;
 	this->unlock_packetServerConnections();
-	vm_pthread_create_autodestroy(("pb - client " + connection->socketClientIP).c_str(), 
+	vm_pthread_create_autodestroy(("pb - client " + connection->socketClientIP.getString()).c_str(), 
 				      &connection->threadHandle, NULL, _PcapQueue_readFromFifo_connectionThreadFunction, connection, __FILE__, __LINE__);
 }
 
@@ -6882,45 +6855,27 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 				hp->header->header_ip_offset += next_header_ip_offset;
 			}
 		}
-		/* obsolete version
-		bool nextPass;
-		do {
-			nextPass = false;
-			if(header_ip->protocol == IPPROTO_IPIP) {
-				// ip in ip protocol
-				header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
-			} else if(header_ip->protocol == IPPROTO_GRE) {
-				// gre protocol
-				header_ip = convertHeaderIP_GRE(header_ip);
-				if(header_ip) {
-					nextPass = true;
-				} else {
-					return(0);
-				}
-			}
-		} while(nextPass);
-		*/
 	}
 
 	char *data = NULL;
 	int datalen = 0;
 	int istcp = 0;
 	int isother = 0;
-	u_int16_t sport = 0;
-	u_int16_t dport = 0;
+	vmPort sport;
+	vmPort dport;
 	if(header_ip) {
-		if (header_ip->protocol == IPPROTO_UDP) {
-			udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
+		if (header_ip->get_protocol() == IPPROTO_UDP) {
+			udphdr2 *header_udp = (udphdr2*)((char*) header_ip + header_ip->get_hdr_size());
 			datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, header->caplen);
-			sport = header_udp->source;
-			dport = header_udp->dest;
-		} else if (header_ip->protocol == IPPROTO_TCP) {
-			tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
+			sport = header_udp->get_source();
+			dport = header_udp->get_dest();
+		} else if (header_ip->get_protocol() == IPPROTO_TCP) {
+			tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 			datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, header->caplen);
 			istcp = 1;
-			sport = header_tcp->source;
-			dport = header_tcp->dest;
-		} else if (opt_enable_ss7 && header_ip->protocol == IPPROTO_SCTP) {
+			sport = header_tcp->get_source();
+			dport = header_tcp->get_dest();
+		} else if (opt_enable_ss7 && header_ip->get_protocol() == IPPROTO_SCTP) {
 			isother = 1;
 			datalen = get_sctp_data_len(header_ip, &data, hp->packet, header->caplen);
 		} else {
@@ -6950,32 +6905,32 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		return(0);
 	}
 
-	if(opt_mirrorip && (sipportmatrix[htons(sport)] || sipportmatrix[htons(dport)])) {
+	if(opt_mirrorip && (sipportmatrix[sport] || sipportmatrix[dport])) {
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - hp->packet)));
 	}
 
-	if(header_ip && header_ip->protocol == IPPROTO_TCP) {
-		if(opt_enable_http && (httpportmatrix[htons(sport)] || httpportmatrix[htons(dport)]) && 
-		   (tcpReassemblyHttp->check_ip(htonl(header_ip->saddr)) || tcpReassemblyHttp->check_ip(htonl(header_ip->daddr)))) {
+	if(header_ip && header_ip->get_protocol() == IPPROTO_TCP) {
+		if(opt_enable_http && (httpportmatrix[sport] || httpportmatrix[dport]) && 
+		   (tcpReassemblyHttp->check_ip(header_ip->get_saddr()) || tcpReassemblyHttp->check_ip(header_ip->get_daddr()))) {
 			tcpReassemblyHttp->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						    hp->block_store, hp->block_store_index, hp->block_store_locked,
 						    this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);
 			return(1);
-		} else if(opt_enable_webrtc && (webrtcportmatrix[htons(sport)] || webrtcportmatrix[htons(dport)]) &&
-			  (tcpReassemblyWebrtc->check_ip(htonl(header_ip->saddr)) || tcpReassemblyWebrtc->check_ip(htonl(header_ip->daddr)))) {
+		} else if(opt_enable_webrtc && (webrtcportmatrix[sport] || webrtcportmatrix[dport]) &&
+			  (tcpReassemblyWebrtc->check_ip(header_ip->get_saddr()) || tcpReassemblyWebrtc->check_ip(header_ip->get_daddr()))) {
 			tcpReassemblyWebrtc->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						      hp->block_store, hp->block_store_index, hp->block_store_locked,
 						      this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);
 			return(1);
 		} else if(opt_enable_ssl && 
-			  (isSslIpPort(htonl(header_ip->saddr), htons(sport)) ||
-			   isSslIpPort(htonl(header_ip->daddr), htons(dport)))) {
+			  (isSslIpPort(header_ip->get_saddr(), sport) ||
+			   isSslIpPort(header_ip->get_daddr(), dport))) {
 			tcpReassemblySsl->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						   hp->block_store, hp->block_store_index, hp->block_store_locked,
 						   this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);
 			return(1);
 		} else if(opt_ipaccount &&
-			  !(sipportmatrix[htons(sport)] || sipportmatrix[htons(dport)])) {
+			  !(sipportmatrix[sport] || sipportmatrix[dport])) {
 			return(0);
 		}
 	}
@@ -6986,14 +6941,14 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		extern bool ssl_client_random_enable;
 		extern char *ssl_client_random_portmatrix;
 		extern bool ssl_client_random_portmatrix_set;
-		extern vector<u_int32_t> ssl_client_random_ip;
-		extern vector<d_u_int32_t> ssl_client_random_net;
-		if(header_ip && header_ip->protocol == IPPROTO_UDP &&
+		extern vector<vmIP> ssl_client_random_ip;
+		extern vector<vmIPmask> ssl_client_random_net;
+		if(header_ip && header_ip->get_protocol() == IPPROTO_UDP &&
 		   ssl_client_random_enable &&
 		   (!ssl_client_random_portmatrix_set || 
-		    ssl_client_random_portmatrix[htons(dport)]) &&
+		    ssl_client_random_portmatrix[dport]) &&
 		   ((!ssl_client_random_ip.size() && !ssl_client_random_net.size()) ||
-		    check_ip_in(htonl(header_ip->daddr), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
+		    check_ip_in(header_ip->get_daddr(), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
 		   datalen && data[0] == '{' && data[datalen - 1] == '}') {
 			if(ssl_parse_client_random((u_char*)data, datalen)) {
 				return(0);
@@ -7004,7 +6959,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			#if USE_PACKET_NUMBER
 			packet_counter_all,
 			#endif
-			header_ip ? header_ip->saddr : 0, header_ip ? htons(sport) : 0, header_ip ? header_ip->daddr : 0, header_ip ? htons(dport) : 0,
+			header_ip ? header_ip->get_saddr() : 0, header_ip ? sport.getPort() : 0, header_ip ? header_ip->get_daddr() : 0, header_ip ? dport.getPort() : 0,
 			datalen, data - (char*)hp->packet,
 			this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
 			istcp, isother, header_ip,
@@ -7277,13 +7232,13 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 		hp->header->header_ip_offset = header_ip_offset;
 	}
 	iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
-	int foffset = ntohs(header_ip->frag_off);
-	if((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
-		if(htons(header_ip->tot_len) + hp->header->header_ip_offset > hp->header->get_caplen()) {
+	u_int16_t frag_data = header_ip->get_frag_data();
+	if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
+		if(header_ip->get_tot_len() + hp->header->header_ip_offset > hp->header->get_caplen()) {
 			static u_long lastTimeLogErrBadIpHeader = 0;
 			u_long actTime = hp->header->get_time_ms();
 			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-				syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: bogus ip header length %i, caplen %i", htons(header_ip->tot_len), hp->header->get_caplen());
+				syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: bogus ip header length %i, caplen %i", header_ip->get_tot_len(), hp->header->get_caplen());
 				lastTimeLogErrBadIpHeader = actTime;
 			}
 			hp->destroy_or_unlock_blockstore();
@@ -7320,18 +7275,18 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 			header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
 			hp->header->header_ip_offset += next_header_ip_offset;
 		}
-		if(header_ip->protocol == IPPROTO_UDP) {
-			int foffset = ntohs(header_ip->frag_off);
-			if((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
+		if(header_ip->get_protocol() == IPPROTO_UDP) {
+			int frag_data = header_ip->get_frag_data();
+			if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
 				// packet is fragmented
 				int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
 				if(rsltDefrag > 0) {
 					header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
-					header_ip->frag_off = 0;
+					header_ip->clear_frag_data();
 					for(unsigned i = 0; i < headers_ip_counter; i++) {
 						iphdr2 *header_ip_prev = (iphdr2*)(hp->packet + headers_ip_offset[i]);
-						header_ip_prev->tot_len = htons(ntohs(header_ip->tot_len) + (hp->header->header_ip_offset - headers_ip_offset[i]));
-						header_ip_prev->frag_off = 0;
+						header_ip_prev->set_tot_len(header_ip->get_tot_len() + (hp->header->header_ip_offset - headers_ip_offset[i]));
+						header_ip_prev->clear_frag_data();
 					}
 					if(sverb.defrag) {
 						defrag_counter++;
@@ -7346,64 +7301,6 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 			}
 		}
 	}
-	/* obsolete version
-	bool nextPass;
-	do {
-		nextPass = false;
-		u_int first_header_ip_offset = hp->header->header_ip_offset;
-		if(header_ip->protocol == IPPROTO_IPIP) {
-			// ip in ip protocol
-			header_ip = (iphdr2*)((char*)header_ip + sizeof(iphdr2));
-			hp->header->header_ip_offset += sizeof(iphdr2);
-		} else if(header_ip->protocol == IPPROTO_GRE) {
-			// gre protocol
-			iphdr2 *header_ip_next = convertHeaderIP_GRE(header_ip);
-			if(header_ip_next) {
-				hp->header->header_ip_offset += (char*)header_ip_next - (char*)header_ip;
-				header_ip = header_ip_next;
-				nextPass = true;
-			} else {
-				//cout << "defrag exit 003" << endl;
-				hp->destroy_or_unlock_blockstore();
-				return;
-			}
-		} else {
-			break;
-		}
-		if(header_ip->protocol == IPPROTO_UDP) {
-			int foffset = ntohs(header_ip->frag_off);
-			if((foffset & IP_MF) || ((foffset & IP_OFFSET) > 0)) {
-				// packet is fragmented
-				int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
-				if(rsltDefrag > 0) {
-					// packets are reassembled
-					iphdr2 *first_header_ip = (iphdr2*)(hp->packet + first_header_ip_offset);
-
-					// turn off frag flag in the first IP header
-					first_header_ip->frag_off = 0;
-
-					// turn off frag flag in the second IP header
-					header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
-					header_ip->frag_off = 0;
-
-					// update lenght of the first ip header to the len of the second IP header since it can be changed due to reassemble
-					first_header_ip->tot_len = htons(ntohs(header_ip->tot_len) + (hp->header->header_ip_offset - first_header_ip_offset));
-
-					if(sverb.defrag) {
-						defrag_counter++;
-						cout << "*** DEFRAG 2 " << defrag_counter << endl;
-					}
-				} else {
-					if(rsltDefrag < 0) {
-						hp->destroy_or_unlock_blockstore();
-					}
-					//cout << "defrag exit 004" << endl;
-					return;
-				}
-			}
-		}
-	} while(nextPass);
-	*/
 	
 	if(this->pcapQueue->processPacket(hp, _hppq_out_state_defrag) == 0) {
 		hp->destroy_or_unlock_blockstore();
@@ -7427,13 +7324,13 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 			iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
 			char *data = NULL;
 			int datalen = 0;
-			if(header_ip->protocol == IPPROTO_UDP) {
-				udphdr2 *header_udp = (udphdr2*) ((char *) header_ip + sizeof(*header_ip));
+			if(header_ip->get_protocol() == IPPROTO_UDP) {
+				udphdr2 *header_udp = (udphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 				datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, hp->header->get_caplen());
-			} else if(header_ip->protocol == IPPROTO_TCP) {
-				tcphdr2 *header_tcp = (tcphdr2*) ((char *) header_ip + sizeof(*header_ip));
+			} else if(header_ip->get_protocol() == IPPROTO_TCP) {
+				tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 				datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, hp->header->get_caplen());
-			} else if (opt_enable_ss7 && header_ip->protocol == IPPROTO_SCTP) {
+			} else if (opt_enable_ss7 && header_ip->get_protocol() == IPPROTO_SCTP) {
 				datalen = get_sctp_data_len(header_ip, &data, hp->packet, hp->header->get_caplen());
 			}
 			if(data && datalen) {
@@ -7443,15 +7340,15 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 					u_int8_t header_ip_ttl_orig;
 					u_int8_t header_ip_check_orig;
 					if(opt_dup_check_ipheader_ignore_ttl) {
-						header_ip_ttl_orig = header_ip->ttl;
-						header_ip_check_orig = header_ip->check;
-						header_ip->ttl = 0;
-						header_ip->check = 0;
+						header_ip_ttl_orig = header_ip->get_ttl();
+						header_ip_check_orig = header_ip->get_check();
+						header_ip->set_ttl(0);
+						header_ip->set_check(0);
 					}
-					MD5_Update(&md5_ctx, header_ip, MIN(datalen + (data - (char*)header_ip), ntohs(header_ip->tot_len)));
+					MD5_Update(&md5_ctx, header_ip, MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len()));
 					if(opt_dup_check_ipheader_ignore_ttl) {
-						header_ip->ttl = header_ip_ttl_orig;
-						header_ip->check = header_ip_check_orig;
+						header_ip->set_ttl(header_ip_ttl_orig);
+						header_ip->set_check(header_ip_check_orig);
 					}
 				} else {
 					MD5_Update(&md5_ctx, data, datalen);

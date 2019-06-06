@@ -19,7 +19,8 @@ public:
 	enum eTableType {
 		_country_code,
 		_country_code_prefix,
-		_geoip_country
+		_geoip_country,
+		_geoipv6_country
 	};
 public:
 	CountryDetect_base_table();
@@ -222,7 +223,7 @@ private:
 class GeoIP_country : public CountryDetect_base_table {
 public:
 	struct GeoIP_country_rec {
-		GeoIP_country_rec(unsigned int ip_from = 0, unsigned int ip_to = 0, const char *country_code = NULL) {
+		GeoIP_country_rec(vmIP ip_from = 0, vmIP ip_to = 0, const char *country_code = NULL) {
 			this->ip_from = ip_from;
 			this->ip_to = ip_to;
 			if(country_code) {
@@ -230,9 +231,10 @@ public:
 			}
 		}
 		GeoIP_country_rec(const char *ip, unsigned int mask, const char *country_code) {
-			u_int32_t ipn = inet_strington(ip);
-			this->ip_from = (ipn & (((u_int32_t)-1 << (32 - mask)) & (u_int32_t)(pow(2, 32) - 1)));
-			this->ip_to = (ipn | (u_int32_t)(pow(2,32 - mask) - 1));
+			vmIP vm_ip;
+			vm_ip.setFromString(ip);
+			this->ip_from = vm_ip.network(mask);
+			this->ip_to = vm_ip.broadcast(mask);
 			if(country_code) {
 				this->country_code = country_code;
 			}
@@ -240,16 +242,18 @@ public:
 		bool operator < (const GeoIP_country_rec& other) const { 
 			return(this->ip_from < other.ip_from); 
 		}
-		unsigned int ip_from;
-		unsigned int ip_to;
+		vmIP ip_from;
+		vmIP ip_to;
 		string country_code;
 	};
 public:
 	GeoIP_country();
 	bool load(SqlDb *sqlDb = NULL);
-	string getCountry(unsigned int ip) {
+	string getCountry(vmIP ip) {
 		for(unsigned pass = 0; pass < 2; pass++) {
-			vector<GeoIP_country_rec> *data = pass == 0 ? &this->customer_data : &this->data;
+			vector<GeoIP_country_rec> *data = pass == 0 ? 
+							   &this->customer_data : 
+							   (VM_IPV6_B && ip.is_v6() ? &this->data_v6 : &this->data);
 			if(data->size()) {
 				vector<GeoIP_country_rec>::iterator findRecIt;
 				findRecIt = std::lower_bound(data->begin(), data->end(), ip);
@@ -270,23 +274,20 @@ public:
 		return("");
 	}
 	string getCountry(const char *ip) {
-		in_addr ips;
-		inet_aton(ip, &ips);
-		return(getCountry(htonl(ips.s_addr)));
+		return(getCountry(str_2_vmIP(ip)));
 	}
-	bool isLocal(unsigned int ip,
+	bool isLocal(vmIP ip,
 		     CheckInternational *checkInternational) {
 		string countryCode = getCountry(ip);
 		return(checkInternational->countryCodeIsLocal(countryCode.c_str()));
 	}
 	bool isLocal(const char *ip,
 		     CheckInternational *checkInternational) {
-		in_addr ips;
-		inet_aton(ip, &ips);
-		return(isLocal(htonl(ips.s_addr), checkInternational));
+		return(isLocal(str_2_vmIP(ip), checkInternational));
 	}
 private:
 	vector<GeoIP_country_rec> data;
+	vector<GeoIP_country_rec> data_v6;
 	vector<GeoIP_country_rec> customer_data;
 };
 
@@ -299,9 +300,9 @@ public:
 	string getCountryByPhoneNumber(const char *phoneNumber);
 	unsigned getCountryIdByPhoneNumber(const char *phoneNumber);
 	bool isLocalByPhoneNumber(const char *phoneNumber);
-	string getCountryByIP(u_int32_t ip);
-	unsigned getCountryIdByIP(u_int32_t ip);
-	bool isLocalByIP(u_int32_t ip);
+	string getCountryByIP(vmIP ip);
+	unsigned getCountryIdByIP(vmIP ip);
+	bool isLocalByIP(vmIP ip);
 	string getContinentByCountry(const char *country);
 	void prepareReload();
 	void applyReload();
@@ -337,8 +338,8 @@ void CountryDetectTerm();
 string getCountryByPhoneNumber(const char *phoneNumber, bool suppressStringLocal = false);
 unsigned getCountryIdByPhoneNumber(const char *phoneNumber);
 bool isLocalByPhoneNumber(const char *phoneNumber);
-string getCountryByIP(u_int32_t ip, bool suppressStringLocal = false);
-unsigned getCountryIdByIP(u_int32_t ip);
+string getCountryByIP(vmIP ip, bool suppressStringLocal = false);
+unsigned getCountryIdByIP(vmIP ip);
 string getContinentByCountry(const char *country);
 void CountryDetectPrepareReload();
 void CountryDetectApplyReload();

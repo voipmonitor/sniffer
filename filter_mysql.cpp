@@ -181,7 +181,7 @@ void IPfilter::load(SqlDb *sqlDb) {
 	while((row = rows.fetchRow())) {
 		count++;
 		db_row* filterRow = new FILE_LINE(4001) db_row;
-		filterRow->ip = (unsigned int)strtoul(row["ip"].c_str(), NULL, 0);
+		filterRow->ip.setIP(&row, "ip");
 		filterRow->mask = atoi(row["mask"].c_str());
 		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
@@ -205,7 +205,7 @@ void IPfilter::load(SqlDb *sqlDb) {
 	}
 };
 
-int IPfilter::_add_call_flags(volatile unsigned int *flags, unsigned int saddr, unsigned int daddr) {
+int IPfilter::_add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP daddr) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -223,8 +223,8 @@ int IPfilter::_add_call_flags(volatile unsigned int *flags, unsigned int saddr, 
 
 		unsigned int origflags = *flags;
 
-		if(((node->direction == 0 or node->direction == 2) and ((daddr & (unsigned int)mask) == (node->ip & (unsigned int)mask))) || 
-			((node->direction == 0 or node->direction == 1) and ((saddr & (unsigned int)mask) == (node->ip & (unsigned int)mask)))) {
+		if(((node->direction == 0 or node->direction == 2) and (daddr.network(mask) == node->ip.network(mask))) || 
+		   ((node->direction == 0 or node->direction == 1) and (saddr.network(mask) == node->ip.network(mask)))) {
 
 			*flags = origflags;
 		
@@ -248,22 +248,20 @@ int IPfilter::_add_call_flags(volatile unsigned int *flags, unsigned int saddr, 
 void IPfilter::dump() {
 	t_node *node;
 	for(node = first_node; node != NULL; node = node->next) {
-		printf("ip[%u] mask[%d] flags[%u]\n", node->ip, node->mask, node->flags);
+		printf("ip[%s] mask[%d] flags[%u]\n", node->ip.getString().c_str(), node->mask, node->flags);
 	}
 }
 
 void IPfilter::dump2man(ostringstream &oss) {
 	t_node *node;
-	char ip[16];
 	lock();
 	for(node = filter_active->first_node; node != NULL; node = node->next) {
-		ntoa(ip, ntohl(node->ip));
-		oss << "ip[" << ip << "/" << node->mask << "] direction[" << node->direction << "] flags[0x" << hex << node->flags << "]" << endl;
+		oss << "ip[" << node->ip.getString() << "/" << node->mask << "] direction[" << node->direction << "] flags[0x" << hex << node->flags << "]" << endl;
 	}
 	unlock();
 }
 
-int IPfilter::add_call_flags(volatile unsigned int *flags, unsigned int saddr, unsigned int daddr, bool enableReload) {
+int IPfilter::add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP daddr, bool enableReload) {
 	int rslt = 0;
 	if(enableReload && reload_do) {
 		applyReload();

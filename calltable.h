@@ -133,8 +133,8 @@ struct s_dtmf {
 	e_type type;
 	double ts;
 	char dtmf;
-	unsigned int saddr;
-	unsigned int daddr;
+	vmIP saddr;
+	vmIP daddr;
 };
 
 enum e_sdp_protocol {
@@ -172,16 +172,16 @@ struct hash_node_call {
 struct hash_node {
 	hash_node *next;
 	hash_node_call *calls;
-	u_int32_t addr;
-	u_int16_t port;
+	vmIP addr;
+	vmPort port;
 };
 
 struct ip_port_call_info_rtp {
-	volatile u_int32_t saddr;
-	volatile u_int16_t sport;
-	volatile u_int32_t daddr;
-	volatile u_int16_t dport;
-	volatile time_t last_packet_time;
+	vmIP saddr;
+	vmPort sport;
+	vmIP daddr;
+	vmPort dport;
+	time_t last_packet_time;
 };
 
 struct rtp_crypto_config {
@@ -234,15 +234,15 @@ struct ip_port_call_info {
 		_ta_natalias,
 		_ta_sdp_reverse_ipport
 	};
-	u_int32_t addr;
+	vmIP addr;
 	u_int8_t type_addr;
-	u_int16_t port;
+	vmPort port;
 	int8_t iscaller;
 	string sessid;
 	list<rtp_crypto_config> *rtp_crypto_config_list;
 	string to;
 	string branch;
-	u_int32_t sip_src_addr;
+	vmIP sip_src_addr;
 	s_sdp_flags sdp_flags;
 	ip_port_call_info_rtp rtp[2];
 	bool canceled;
@@ -410,20 +410,20 @@ public:
 	struct sSipcalleRD_IP {
 		sSipcalleRD_IP() {
 			for(unsigned i = 0; i < MAX_SIPCALLERDIP; i++) {
-				sipcallerip[i] = 0;
-				sipcalledip[i] = 0;
-				sipcalledip_mod = 0;
-				sipcallerport[i] = 0;
-				sipcalledport[i] = 0;
-				sipcalledport_mod = 0;
+				sipcallerip[i].clear();
+				sipcalledip[i].clear();
+				sipcalledip_mod.clear();
+				sipcallerport[i].clear();
+				sipcalledport[i].clear();
+				sipcalledport_mod.clear();
 			}
 		}
-		u_int32_t sipcallerip[MAX_SIPCALLERDIP];
-		u_int32_t sipcalledip[MAX_SIPCALLERDIP];
-		u_int32_t sipcalledip_mod;
-		u_int16_t sipcallerport[MAX_SIPCALLERDIP];
-		u_int16_t sipcalledport[MAX_SIPCALLERDIP];
-		u_int16_t sipcalledport_mod;
+		vmIP sipcallerip[MAX_SIPCALLERDIP];
+		vmIP sipcalledip[MAX_SIPCALLERDIP];
+		vmIP sipcalledip_mod;
+		vmPort sipcallerport[MAX_SIPCALLERDIP];
+		vmPort sipcalledport[MAX_SIPCALLERDIP];
+		vmPort sipcalledport_mod;
 	};
 	struct sMergeLegInfo {
 		sMergeLegInfo() {
@@ -447,10 +447,10 @@ public:
 			counter = 0;
 			counter_reverse = 0;
 		}
-		u_int32_t saddr;
-		u_int32_t daddr;
-		u_int16_t sport;
-		u_int16_t dport;
+		vmIP saddr;
+		vmIP daddr;
+		vmPort sport;
+		vmPort dport;
 		bool confirmed;
 		unsigned counter;
 		unsigned counter_reverse;
@@ -603,10 +603,10 @@ public:
 	RTP tmprtp;			//!< temporary structure used to decode information from frame
 	RTP *lastcallerrtp;		//!< last RTP stream from caller
 	RTP *lastcalledrtp;		//!< last RTP stream from called
-	u_int32_t saddr;		//!< source IP address of first INVITE
-	unsigned short sport;		//!< source port of first INVITE
-	u_int32_t daddr;
-	unsigned short dport;
+	vmIP saddr;		//!< source IP address of first INVITE
+	vmPort sport;		//!< source port of first INVITE
+	vmIP daddr;
+	vmPort dport;
 	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
 	int recordstopped;		//!< flag holding if call was stopped to avoid double free
 	int dtmfflag;			//!< used for holding dtmf states 
@@ -625,10 +625,10 @@ public:
 	int regcount;
 	int reg401count;
 	int reg401count_distinct;
-	u_int32_t reg401count_sipcallerip[MAX_SIPCALLERDIP];
+	vmIP reg401count_sipcallerip[MAX_SIPCALLERDIP];
 	int reg403count;
 	int reg403count_distinct;
-	u_int32_t reg403count_sipcallerip[MAX_SIPCALLERDIP];
+	vmIP reg403count_sipcallerip[MAX_SIPCALLERDIP];
 	int reg200count;
 	int regstate;
 	bool regresponse;
@@ -681,14 +681,14 @@ public:
 	void *rtp_cur[2];		//!< last RTP structure in direction 0 and 1 (iscaller = 1)
 	void *rtp_prev[2];		//!< previouse RTP structure in direction 0 and 1 (iscaller = 1)
 
-	u_int32_t sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
-	u_int32_t sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
-	u_int32_t sipcalledip_mod;
-	u_int16_t sipcallerport[MAX_SIPCALLERDIP];
-	u_int16_t sipcalledport[MAX_SIPCALLERDIP];
-	u_int16_t sipcalledport_mod;
+	vmIP sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
+	vmIP sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
+	vmIP sipcalledip_mod;
+	vmPort sipcallerport[MAX_SIPCALLERDIP];
+	vmPort sipcalledport[MAX_SIPCALLERDIP];
+	vmPort sipcalledport_mod;
 	map<string, sSipcalleRD_IP> map_sipcallerdip;
-	u_int32_t lastsipcallerip;
+	vmIP lastsipcallerip;
 	bool sipcallerdip_reverse;
 	
 	list<sInviteSD_Addr> invite_sdaddr;
@@ -742,9 +742,9 @@ public:
 	char oneway_timeout_exceeded;
 	char force_terminate;
 	char pcap_drop;
-	unsigned int lastsrcip;
-	unsigned int lastdstip;
-	unsigned int lastsrcport;
+	vmIP lastsrcip;
+	vmIP lastdstip;
+	vmPort lastsrcport;
 
 	void *listening_worker_args;
 	
@@ -762,7 +762,7 @@ public:
 	map<int, map<int, dstring> > custom_headers_content_message;
 
 	volatile int _proxies_lock;
-	list<unsigned int> proxies;
+	list<vmIP> proxies;
 	
 	bool onInvite;
 	bool onCall_2XX;
@@ -820,8 +820,8 @@ public:
 	*/
 	~Call();
 
-	int get_index_by_ip_port(in_addr_t addr, unsigned short port, bool use_sip_src_addr = false);
-	int get_index_by_sessid_to(char *sessid, char *to, in_addr_t sip_src_addr, ip_port_call_info::eTypeAddr type_addr);
+	int get_index_by_ip_port(vmIP addr, vmPort port, bool use_sip_src_addr = false);
+	int get_index_by_sessid_to(char *sessid, char *to, vmIP sip_src_addr, ip_port_call_info::eTypeAddr type_addr);
 	int get_index_by_iscaller(int iscaller);
 	
 	bool is_multiple_to_branch();
@@ -866,16 +866,16 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
+	int add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, pcap_pkthdr *header, 
 			char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 	
-	bool refresh_data_ip_port(in_addr_t addr, unsigned short port, pcap_pkthdr *header, 
+	bool refresh_data_ip_port(vmIP addr, vmPort port, pcap_pkthdr *header, 
 				  list<rtp_crypto_config> *rtp_crypto_config_list, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 	
-	void add_ip_port_hash(in_addr_t sip_src_addr, in_addr_t addr, ip_port_call_info::eTypeAddr type_addr, unsigned short port, pcap_pkthdr *header, 
+	void add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, pcap_pkthdr *header, 
 			      char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 
-	void cancel_ip_port_hash(in_addr_t sip_src_addr, char *to, char *branch, struct timeval *ts);
+	void cancel_ip_port_hash(vmIP sip_src_addr, char *to, char *branch, struct timeval *ts);
 	
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
@@ -998,9 +998,9 @@ public:
 	 *
 	*/
 
-	void evProcessRtpStream(int index_ip_port, bool by_dest, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time) {
+	void evProcessRtpStream(int index_ip_port, bool by_dest, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time) {
 		if(index_ip_port < ipport_n) {
-			if(!ip_port[index_ip_port].rtp[by_dest].saddr) {
+			if(!ip_port[index_ip_port].rtp[by_dest].saddr.isSet()) {
 				ip_port[index_ip_port].rtp[by_dest].saddr = saddr;
 				ip_port[index_ip_port].rtp[by_dest].sport = sport;
 				ip_port[index_ip_port].rtp[by_dest].daddr = daddr;
@@ -1013,7 +1013,7 @@ public:
 	void evDestroyIpPortRtpStream(int index_ip_port) {
 		if(index_ip_port < ipport_n) {
 			for(int i = 0; i < 2; i++) {
-				if(ip_port[index_ip_port].rtp[i].saddr) {
+				if(ip_port[index_ip_port].rtp[i].saddr.isSet()) {
 					this->evEndRtpStream(index_ip_port, 
 							     ip_port[index_ip_port].rtp[i].saddr,
 							     ip_port[index_ip_port].rtp[i].sport,
@@ -1028,16 +1028,16 @@ public:
 	void nullIpPortInfoRtpStream(int index_ip_port) {
 		if(index_ip_port < ipport_n) {
 			for(int i = 0; i < 2; i++) {
-				ip_port[index_ip_port].rtp[i].saddr = 0;
-				ip_port[index_ip_port].rtp[i].sport = 0;
-				ip_port[index_ip_port].rtp[i].daddr = 0;
-				ip_port[index_ip_port].rtp[i].dport = 0;
+				ip_port[index_ip_port].rtp[i].saddr.clear();
+				ip_port[index_ip_port].rtp[i].sport.clear();
+				ip_port[index_ip_port].rtp[i].daddr.clear();
+				ip_port[index_ip_port].rtp[i].dport.clear();
 				ip_port[index_ip_port].rtp[i].last_packet_time = 0;
 			}
 		}
 	}
-	void evStartRtpStream(int index_ip_port, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time);
-	void evEndRtpStream(int index_ip_port, u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, time_t time);
+	void evStartRtpStream(int index_ip_port, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time);
+	void evEndRtpStream(int index_ip_port, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time);
 	
 	void addtocachequeue(string file);
 	static void _addtocachequeue(string file);
@@ -1047,23 +1047,23 @@ public:
 
 	float mos_lqo(char *deg, int samplerate);
 
-	void handle_dtmf(char dtmf, double dtmf_time, unsigned int saddr, unsigned int daddr, s_dtmf::e_type dtmf_type);
+	void handle_dtmf(char dtmf, double dtmf_time, vmIP saddr, vmIP daddr, s_dtmf::e_type dtmf_type);
 	
 	void handle_dscp(struct iphdr2 *header_ip, bool iscaller);
 	
 	bool check_is_caller_called(const char *call_id, int sip_method, int cseq_method,
-				    unsigned int saddr, unsigned int daddr, unsigned int sport, unsigned int dport,  
+				    vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,  
 				    int *iscaller, int *iscalled = NULL, bool enableSetSipcallerdip = false);
-	bool is_sipcaller(unsigned int saddr, unsigned int sport, unsigned int daddr, unsigned int dport);
-	bool is_sipcalled(unsigned int daddr, unsigned int dport, unsigned int saddr, unsigned int sport);
+	bool is_sipcaller(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport);
+	bool is_sipcalled(vmIP daddr, vmPort dport, vmIP saddr, vmPort sport);
 	bool use_both_side_for_check_direction() {
 		extern bool opt_both_side_for_check_direction;
 		return(opt_both_side_for_check_direction);
 	}
-	bool use_port_for_check_direction(unsigned int /*addr*/) {
-		return(true /*ip_is_localhost(htonl(addr))*/);
+	bool use_port_for_check_direction(vmIP /*addr*/) {
+		return(true /*ip_is_localhost(addr)*/);
 	}
-	void check_reset_oneway(unsigned int saddr, unsigned int source) {
+	void check_reset_oneway(vmIP saddr, vmPort source) {
 		if(lastsrcip != saddr ||
 		   (lastsrcip == lastdstip &&
 		    use_port_for_check_direction(saddr) && 
@@ -1165,16 +1165,16 @@ public:
 	void adjustUA();
 	
 	bool is_set_proxies();
-	void proxies_undup(set<unsigned int> *proxies_undup);
+	void proxies_undup(set<vmIP> *proxies_undup);
 	string get_proxies_str();
 
-	void proxy_add(u_int32_t sipproxyip);
+	void proxy_add(vmIP sipproxyip);
 	
 	void createListeningBuffers();
 	void destroyListeningBuffers();
 	void disableListeningBuffers();
 	
-	bool checkKnownIP_inSipCallerdIP(u_int32_t ip) {
+	bool checkKnownIP_inSipCallerdIP(vmIP ip) {
 		for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
 			if(ip == sipcallerip[i] ||
 			   ip == sipcalledip[i]) {
@@ -1184,7 +1184,7 @@ public:
 		return(false);
 	}
 	
-	u_int32_t getSipcalledipConfirmed(u_int16_t *dport);
+	vmIP getSipcalledipConfirmed(vmPort *dport);
 	unsigned getMaxRetransmissionInvite();
 	
 	void calls_counter_inc() {
@@ -1225,7 +1225,7 @@ public:
 		__sync_lock_release(&this->_mergecalls_lock);
 	}
 	
-	void setSipcallerip(u_int32_t ip, u_int16_t port, const char *call_id = NULL) {
+	void setSipcallerip(vmIP ip, vmPort port, const char *call_id = NULL) {
 		sipcallerip[0] = ip;
 		sipcallerport[0] = port;
 		if(isSetCallidMergeHeader() &&
@@ -1234,8 +1234,8 @@ public:
 			map_sipcallerdip[call_id].sipcallerport[0] = port;
 		}
 	}
-	void setSipcalledip(u_int32_t ip, u_int16_t port, const char *call_id = NULL) {
-		if(sipcalledip[0]) {
+	void setSipcalledip(vmIP ip, vmPort port, const char *call_id = NULL) {
+		if(sipcalledip[0].isSet()) {
 			sipcalledip_mod = ip;
 			sipcalledport_mod = port;
 		} else {
@@ -1244,7 +1244,7 @@ public:
 		}
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
-			if(map_sipcallerdip[call_id].sipcalledip[0]) {
+			if(map_sipcallerdip[call_id].sipcalledip[0].isSet()) {
 				map_sipcallerdip[call_id].sipcalledip_mod = ip;
 				map_sipcallerdip[call_id].sipcalledport_mod = port;
 			} else {
@@ -1253,17 +1253,17 @@ public:
 			}
 		}
 	}
-	u_int32_t getSipcallerip() {
+	vmIP getSipcallerip() {
 		return(sipcallerip[0]);
 	}
-	u_int32_t getSipcalledip() {
-		return(sipcalledip_mod ? sipcalledip_mod : sipcalledip[0]);
+	vmIP getSipcalledip() {
+		return(sipcalledip_mod.isSet() ? sipcalledip_mod : sipcalledip[0]);
 	}
-	u_int16_t getSipcallerport() {
+	vmPort getSipcallerport() {
 		return(sipcallerport[0]);
 	}
-	u_int16_t getSipcalledport() {
-		return(sipcalledport_mod ? sipcalledport_mod : sipcalledport[0]);
+	vmPort getSipcalledport() {
+		return(sipcalledport_mod.isSet() ? sipcalledport_mod : sipcalledport[0]);
 	}
 	void setSeenbye(bool seenbye, u_int64_t seenbye_time_usec, const char *call_id) {
 		this->seenbye = seenbye;
@@ -1389,7 +1389,7 @@ private:
 	map<sStreamId, sUdptlDumper*> udptlDumpers;
 	volatile int _hash_add_lock;
 public:
-	list<u_int16_t> sdp_ip0_ports[2];
+	list<vmPort> sdp_ip0_ports[2];
 	bool error_negative_payload_length;
 	bool use_removeRtp;
 	volatile int hash_counter;
@@ -1554,8 +1554,8 @@ public:
 	eMessageType last_message_type;
 	// IAM (Initial Address)
 	sParseData iam_data;
-	u_int32_t iam_src_ip;
-	u_int32_t iam_dst_ip;
+	vmIP iam_src_ip;
+	vmIP iam_dst_ip;
 	u_int64_t iam_time_us;
 	// ACM (Address Complete)
 	u_int64_t acm_time_us;
@@ -1595,8 +1595,8 @@ private:
 	};
 	struct sHashModifyData {
 		eHashModifyOper oper;
-		u_int32_t addr;
-		u_int16_t port;
+		vmIP addr;
+		vmPort port;
 		u_int32_t time_s;
 		Call* call;
 		int8_t iscaller;
@@ -1620,7 +1620,7 @@ public:
 	map<sStreamId, Call*> calls_by_stream_listMAP;
 	map<string, Call*> calls_mergeMAP;
 	map<string, Call*> registers_listMAP;
-	map<string, Call*> skinny_ipTuples;
+	map<d_item<vmIP>, Call*> skinny_ipTuples;
 	map<unsigned int, Call*> skinny_partyID;
 	map<string, Ss7*> ss7_listMAP;
 
@@ -1692,10 +1692,10 @@ public:
 	 * @return reference of the new Call class
 	*/
 	Call *add(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative,
-		  time_t time, u_int32_t saddr, unsigned short port, 
+		  time_t time, vmIP saddr, vmPort port, 
 		  pcap_t *handle, int dlt, int sensorId);
 	Ss7 *add_ss7(packet_s_stack *packetS, Ss7::sParseData *data);
-	Call *add_mgcp(sMgcpRequest *request, time_t time, u_int32_t saddr, unsigned short sport, u_int32_t daddr, unsigned short dport,
+	Call *add_mgcp(sMgcpRequest *request, time_t time, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport,
 		       pcap_t *handle, int dlt, int sensorId);
 	
 	size_t calls_list_count() {
@@ -1754,7 +1754,7 @@ public:
 		unlock_calls_listMAP();
 		return(rslt_call);
 	}
-	Call *find_by_stream_callid(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport, const char *callid) {
+	Call *find_by_stream_callid(vmIP sip, vmPort sport, vmIP dip, vmPort dport, const char *callid) {
 		Call *rslt_call = NULL;
 		lock_calls_listMAP();
 		map<sStreamIds2, Call*>::iterator callMAPIT = calls_by_stream_callid_listMAP.find(sStreamIds2(sip, sport, dip, dport, callid, true));
@@ -1764,7 +1764,7 @@ public:
 		unlock_calls_listMAP();
 		return(rslt_call);
 	}
-	Call *find_by_stream_id2(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport, u_int64_t id) {
+	Call *find_by_stream_id2(vmIP sip, vmPort sport, vmIP dip, vmPort dport, u_int64_t id) {
 		Call *rslt_call = NULL;
 		lock_calls_listMAP();
 		map<sStreamId2, Call*>::iterator callMAPIT = calls_by_stream_id2_listMAP.find(sStreamId2(sip, sport, dip, dport, id, true));
@@ -1774,7 +1774,7 @@ public:
 		unlock_calls_listMAP();
 		return(rslt_call);
 	}
-	Call *find_by_stream(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport) {
+	Call *find_by_stream(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
 		Call *rslt_call = NULL;
 		lock_calls_listMAP();
 		map<sStreamId, Call*>::iterator callMAPIT = calls_by_stream_listMAP.find(sStreamId(sip, sport, dip, dport, true));
@@ -1847,12 +1847,14 @@ public:
 		unlock_calls_listMAP();
 		return(rslt_call);
 	}
-	Call *find_by_skinny_ipTuples(unsigned int saddr, unsigned int daddr) {
+	Call *find_by_skinny_ipTuples(vmIP saddr, vmIP daddr) {
 		Call *rslt_call = NULL;
 		lock_calls_listMAP();
 		lock_skinny_maps();
-		string ip2 = intToString(min(saddr, daddr)) + '|' + intToString(max(saddr, daddr));
-		map<string, Call*>::iterator skinny_ipTuplesIT = skinny_ipTuples.find(ip2);
+		d_item<vmIP> ip2;
+		ip2.items[0] = min(saddr, daddr);
+		ip2.items[1] = max(saddr, daddr);
+		map<d_item<vmIP>, Call*>::iterator skinny_ipTuplesIT = skinny_ipTuples.find(ip2);
 		if(skinny_ipTuplesIT != skinny_ipTuples.end()) {
 			rslt_call = skinny_ipTuplesIT->second;
 		}
@@ -1890,16 +1892,16 @@ public:
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(in_addr_t addr, unsigned short port, struct timeval *ts, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags);
-	inline void _hashAdd(in_addr_t addr, unsigned short port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, bool use_lock = true);
+	void hashAdd(vmIP addr, vmPort port, struct timeval *ts, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags);
+	inline void _hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, bool use_lock = true);
 
 	/**
 	 * @brief find call
 	 *
 	*/
-	inline hash_node_call *hashfind_by_ip_port(in_addr_t addr, unsigned short port, bool lock = true) {
+	inline hash_node_call *hashfind_by_ip_port(vmIP addr, vmPort port, bool lock = true) {
 		hash_node *node = NULL;
-		u_int32_t h = tuplehash(addr, port);
+		u_int32_t h = tuplehash(addr.getHashNumber(), port);
 		if(lock) {
 			lock_calls_hash();
 		}
@@ -1914,7 +1916,7 @@ public:
 		}
 		return rslt;
 	}
-	inline bool check_call_in_hashfind_by_ip_port(Call *call, in_addr_t addr, unsigned short port, bool lock = true) {
+	inline bool check_call_in_hashfind_by_ip_port(Call *call, vmIP addr, vmPort port, bool lock = true) {
 		bool rslt = false;
 		if(lock) {
 			lock_calls_hash();
@@ -1938,8 +1940,8 @@ public:
 	 * @brief remove call from hash
 	 *
 	*/
-	void hashRemove(Call *call, in_addr_t addr, unsigned short port, struct timeval *ts, bool rtcp = false, bool useHashQueueCounter = true);
-	inline void _hashRemove(Call *call, in_addr_t addr, unsigned short port, bool rtcp = false, bool use_lock = true);
+	void hashRemove(Call *call, vmIP addr, vmPort port, struct timeval *ts, bool rtcp = false, bool useHashQueueCounter = true);
+	inline void _hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool use_lock = true);
 	int hashRemove(Call *call, struct timeval *ts, bool useHashQueueCounter = true);
 	int hashRemoveForce(Call *call);
 	inline int _hashRemove(Call *call, bool use_lock = true);
@@ -2173,7 +2175,7 @@ private:
 private:
 	int lastResponseNum;
 	int lastResponseNumLength;
-	u_int32_t ip;
+	vmIP ip;
 	unsigned ip_mask_length;
 	string number;
 	CheckString *number_check;

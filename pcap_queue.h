@@ -192,7 +192,7 @@ struct sHeaderPacketPQout {
 	int block_store_index;
 	int dlt; 
 	int sensor_id; 
-	u_int32_t sensor_ip;
+	vmIP sensor_ip;
 	bool block_store_locked;
 	void destroy_or_unlock_blockstore() {
 		if(block_store) {
@@ -782,9 +782,10 @@ public:
 		directionWrite
 	};
 	struct sPacketServerConnection {
-		sPacketServerConnection(int socketClient, sockaddr_in &socketClientInfo, PcapQueue_readFromFifo *parent, unsigned int id) {
+		sPacketServerConnection(int socketClient, vmIP socketClientIP, vmPort socketClientPort,  PcapQueue_readFromFifo *parent, unsigned int id) {
 			this->socketClient = socketClient;
-			this->socketClientInfo = socketClientInfo;
+			this->socketClientIP = socketClientIP;
+			this->socketClientPort = socketClientPort;
 			this->parent = parent;
 			this->id = id;
 			this->active = false;
@@ -799,9 +800,8 @@ public:
 			}
 		}
 		int socketClient;
-		sockaddr_in socketClientInfo;
-		string socketClientIP;
-		u_int32_t socketClientIPN;
+		vmIP socketClientIP;
+		vmPort socketClientPort;
 		PcapQueue_readFromFifo *parent;
 		unsigned int id;
 		bool active;
@@ -902,7 +902,7 @@ protected:
 	bool socketReadyForConnect();
 	bool socketConnect();
 	bool socketListen();
-	bool socketAwaitConnection(int *socketClient, sockaddr_in *socketClientInfo);
+	bool socketAwaitConnection(int *socketClient, vmIP *socketClientIP, vmPort *socketClientPort);
 	bool socketClose();
 	bool socketWrite(u_char *data, size_t dataLen, bool disableAutoConnect = false);
 	bool _socketWrite(int socket, u_char *data, size_t *dataLen, int timeout = 1);
@@ -915,7 +915,7 @@ protected:
 		return(this->packetServerDirection == directionRead);
 	}
 private:
-	void createConnection(int socketClient, sockaddr_in *socketClientInfo);
+	void createConnection(int socketClient, vmIP socketClientIP, vmPort socketClientPort);
 	void cleanupConnections(bool all = false);
 	inline int processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state);
 	void pushBatchProcessPacket();
@@ -952,7 +952,7 @@ private:
 	deque<pcap_block_store*> blockStoreTrash;
 	u_int cleanupBlockStoreTrash_counter;
 	volatile int blockStoreTrash_sync;
-	u_int32_t socketHostIPl;
+	vmIP socketHostIP;
 	int socketHandle;
 	cSocketBlock *clientSocket;
 	map<unsigned int, sPacketServerConnection*> packetServerConnections;

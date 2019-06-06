@@ -86,9 +86,6 @@ extern char configfile[1024];
 extern int ownPidStart;
 extern int ownPidFork;
 
-static char b2a[256];
-static char base64[64];
-
 extern TarQueue *tarQueue[2];
 using namespace std;
 
@@ -975,12 +972,6 @@ u_int32_t checksum32buf(char *buf, size_t len) {
 }
 #pragma GCC pop_options
 
-void ntoa(char *res, unsigned int addr) {
-	struct in_addr in;                                
-	in.s_addr = addr;
-	strcpy(res, inet_ntoa(in));
-}
-
 string escapeShellArgument(string str) {
 	string rslt = "'";
         for(unsigned i = 0; i < str.length(); i++) {
@@ -1248,7 +1239,7 @@ bool incorrectCaplenDetected = false;
 
 void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets,
 		      u_char *data, unsigned int datalen,
-		      unsigned int saddr, unsigned int daddr, int source, int dest,
+		      vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 		      bool istcp, bool forceVirtualUdp) {
 	extern int opt_convert_dlt_sll_to_en10;
 	if((dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : dlt) != this->dlt) {
@@ -1277,17 +1268,24 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 					int protocol = 0;
 					if(parseEtherHeader(dlt, (u_char*)packet, 
 							    header_sll, header_eth, NULL,
-							    header_ip_offset, protocol) &&
-					   (header_ip_offset + sizeof(iphdr2) + (istcp ? ((tcphdr2*)(packet + header_ip_offset + sizeof(iphdr2)))->doff * 4 : sizeof(udphdr2)) + datalen) != header->caplen) {
-						pcap_pkthdr *_header;
-						u_char *_packet;
-						createSimpleUdpDataPacket(header_ip_offset,  &_header, &_packet,
-									  (u_char*)packet, data, datalen,
-									  saddr, daddr, source, dest,
-									  header->ts.tv_sec, header->ts.tv_usec);
-						header = _header;
-						packet = _packet;
-						use_virtualudppacket = true;
+							    header_ip_offset, protocol)) {
+						unsigned iphdrSize = ((iphdr2*)(packet + header_ip_offset))->get_hdr_size();
+						if((header_ip_offset +
+						    iphdrSize +
+						    (istcp ? 
+						      ((tcphdr2*)(packet + header_ip_offset + iphdrSize))->doff * 4 : 
+						      sizeof(udphdr2)) + 
+						    datalen) != header->caplen) {
+							pcap_pkthdr *_header;
+							u_char *_packet;
+							createSimpleUdpDataPacket(header_ip_offset,  &_header, &_packet,
+										  (u_char*)packet, data, datalen,
+										  saddr, daddr, source, dest,
+										  header->ts.tv_sec, header->ts.tv_usec);
+							header = _header;
+							packet = _packet;
+							use_virtualudppacket = true;
+						}
 					}
 				}
 				__pcap_dump((u_char*)this->handle, header, packet, allPackets);
@@ -2474,20 +2472,20 @@ bool string_is_alphanumeric(const char *s) {
 }
 
 
-bool check_ip_in(u_int32_t ip, vector<u_int32_t> *vect_ip, vector<d_u_int32_t> *vect_net, bool trueIfVectEmpty) {
+bool check_ip_in(vmIP ip, vector<vmIP> *vect_ip, vector<vmIPmask> *vect_net, bool trueIfVectEmpty) {
 	if(!vect_ip->size() && !vect_net->size()) {
 		return(trueIfVectEmpty);
 	}
 	if(vect_ip->size()) {
-		vector<u_int32_t>::iterator iterIp;
+		vector<vmIP>::iterator iterIp;
 		iterIp = std::lower_bound(vect_ip->begin(), vect_ip->end(), ip);
-		if(iterIp != vect_ip->end() && ((*iterIp) & ip) == (*iterIp)) {
+		if(iterIp != vect_ip->end() && iterIp->mask(ip) == *iterIp) {
 			return(true);
 		}
 	}
 	if(vect_net->size()) {
 		for(size_t i = 0; i < vect_net->size(); i++) {
-			if((*vect_net)[i][0] == ip >> (32 - (*vect_net)[i][1]) << (32 - (*vect_net)[i][1])) {
+			if((*vect_net)[i].ip.network((*vect_net)[i].mask) == ip.network((*vect_net)[i].mask)) {
 				return(true);
 			}
 		}
@@ -2495,10 +2493,10 @@ bool check_ip_in(u_int32_t ip, vector<u_int32_t> *vect_ip, vector<d_u_int32_t> *
 	return(false);
 }
 
-bool check_ip(u_int32_t ip, u_int32_t net, unsigned mask_length) {
+bool check_ip(vmIP ip, vmIP net, unsigned mask_length) {
 	return(mask_length == 0 || mask_length == 32 ?
 		ip == net :
-		net == ip >> (32 - mask_length) << (32 - mask_length));
+		ip.network(mask_length) == net.network(mask_length));
 }
 
 
@@ -2519,15 +2517,15 @@ void ListIP::addComb(const char *ip, ListIP *negList) {
 	}
 }
 
-void ListIP::add(vector<u_int32_t> *ip) {
+void ListIP::add(vector<vmIP> *ip) {
 	for(unsigned i = 0; i < ip->size(); i++) {
 		add((*ip)[i]);
 	}
 }
 
-void ListIP::add(vector<d_u_int32_t> *net) {
+void ListIP::add(vector<vmIPmask> *net) {
 	for(unsigned i = 0; i < net->size(); i++) {
-		add((*net)[i][0], (*net)[i][1]);
+		add((*net)[i].ip, (*net)[i].mask);
 	}
 }
 
@@ -2589,7 +2587,7 @@ void GroupsIP::load(SqlDb *sqlDb) {
 	}
 }
 
-GroupIP *GroupsIP::getGroup(uint ip) {
+GroupIP *GroupsIP::getGroup(vmIP ip) {
 	if(listIP.size()) {
 		std::map<IP, unsigned>::iterator it_ip = listIP.lower_bound(IP(ip));
 		if(it_ip != listIP.end()) {
@@ -2604,7 +2602,7 @@ GroupIP *GroupsIP::getGroup(uint ip) {
 		while(it_net != listNet.begin()) {
 			--it_net;
 			IP *_net = (IP*)&it_net->first;
-			if(!(_net->ip & ip)) {
+			if(!_net->ip.mask(ip).isSet()) {
 				break;
 			}
 			if(_net->checkIP(ip)) {
@@ -3831,28 +3829,49 @@ char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd) {
 
 void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
 			       u_char *source_packet, u_char *data, unsigned int datalen,
-			       unsigned int saddr, unsigned int daddr, int source, int dest,
+			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 			       u_int32_t time_sec, u_int32_t time_usec) {
-	u_int32_t packet_length = ether_header_length + sizeof(iphdr2) + sizeof(udphdr2) + datalen;
+	unsigned iphdr_size = 
+		#if VM_IPV6
+		saddr.is_v6() ? 
+		 sizeof(ip6hdr2) : 
+		#endif
+		 sizeof(iphdr2);
+	u_int32_t packet_length = ether_header_length + iphdr_size + sizeof(udphdr2) + datalen;
 	*packet = new FILE_LINE(38022) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
-	iphdr2 iphdr;
-	memset(&iphdr, 0, sizeof(iphdr2));
-	iphdr.version = 4;
-	iphdr.ihl = 5;
-	iphdr.protocol = IPPROTO_UDP;
-	iphdr.saddr = saddr;
-	iphdr.daddr = daddr;
-	iphdr.tot_len = htons(sizeof(iphdr2) + sizeof(udphdr2) + datalen);
-	iphdr.ttl = 50;
-	memcpy(*packet + ether_header_length, &iphdr, sizeof(iphdr2));
+	#if VM_IPV6
+	if(saddr.is_v6()) {
+		ip6hdr2 iphdr;
+		memset(&iphdr, 0, iphdr_size);
+		iphdr.version = 6;
+		iphdr.nxt = IPPROTO_UDP;
+		iphdr.set_saddr(saddr);
+		iphdr.set_daddr(daddr);
+		iphdr.set_tot_len(iphdr_size + sizeof(udphdr2) + datalen);
+		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
+	} else  {
+	#endif
+		iphdr2 iphdr;
+		memset(&iphdr, 0, iphdr_size);
+		iphdr.version = 4;
+		iphdr._ihl = 5;
+		iphdr._protocol = IPPROTO_UDP;
+		iphdr.set_saddr(saddr);
+		iphdr.set_daddr(daddr);
+		iphdr.set_tot_len(iphdr_size + sizeof(udphdr2) + datalen);
+		iphdr._ttl = 50;
+		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
+	#if VM_IPV6
+	}
+	#endif
 	udphdr2 udphdr;
 	memset(&udphdr, 0, sizeof(udphdr2));
-	udphdr.source = htons(source);
-	udphdr.dest = htons(dest);
+	udphdr.set_source(source);
+	udphdr.set_dest(dest);
 	udphdr.len = htons(sizeof(udphdr2) + datalen);
-	memcpy(*packet + ether_header_length + sizeof(iphdr2), &udphdr, sizeof(udphdr2));
-	memcpy(*packet + ether_header_length + sizeof(iphdr2) + sizeof(udphdr2), data, datalen);
+	memcpy(*packet + ether_header_length + iphdr_size, &udphdr, sizeof(udphdr2));
+	memcpy(*packet + ether_header_length + iphdr_size + sizeof(udphdr2), data, datalen);
 	*header = new FILE_LINE(38023) pcap_pkthdr;
 	memset(*header, 0, sizeof(pcap_pkthdr));
 	(*header)->ts.tv_sec = time_sec;
@@ -3863,40 +3882,61 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 
 void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
 			       u_char *source_packet, u_char *data, unsigned int datalen,
-			       unsigned int saddr, unsigned int daddr, int source, int dest,
+			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 			       u_int32_t seq, u_int32_t ack_seq, 
 			       u_int32_t time_sec, u_int32_t time_usec, int dlt) {
 	unsigned tcp_options_length = 12;
 	unsigned tcp_doff = (sizeof(tcphdr2) + tcp_options_length) / 4 + ((sizeof(tcphdr2) + tcp_options_length) % 4 ? 1 : 0);
-	u_int32_t packet_length = ether_header_length + sizeof(iphdr2) + tcp_doff * 4 + datalen;
+	unsigned iphdr_size = 
+		#if VM_IPV6
+		saddr.is_v6() ? 
+		 sizeof(ip6hdr2) : 
+		#endif
+		 sizeof(iphdr2);
+	u_int32_t packet_length = ether_header_length + iphdr_size + tcp_doff * 4 + datalen;
 	*packet = new FILE_LINE(38024) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
-	iphdr2 iphdr;
-	memset(&iphdr, 0, sizeof(iphdr2));
-	iphdr.version = 4;
-	iphdr.ihl = 5;
-	iphdr.protocol = IPPROTO_TCP;
-	iphdr.saddr = saddr;
-	iphdr.daddr = daddr;
-	iphdr.tot_len = htons(sizeof(iphdr2) + tcp_doff * 4 + datalen);
-	iphdr.ttl = 50;
-	memcpy(*packet + ether_header_length, &iphdr, sizeof(iphdr2));
+	#if VM_IPV6
+	if(saddr.is_v6()) {
+		ip6hdr2 iphdr;
+		memset(&iphdr, 0, iphdr_size);
+		iphdr.version = 6;
+		iphdr.nxt = IPPROTO_TCP;
+		iphdr.set_saddr(saddr);
+		iphdr.set_daddr(daddr);
+		iphdr.set_tot_len(iphdr_size + tcp_doff * 4 + datalen);
+		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
+	} else {
+	#endif
+		iphdr2 iphdr;
+		memset(&iphdr, 0, iphdr_size);
+		iphdr.version = 4;
+		iphdr._ihl = 5;
+		iphdr._protocol = IPPROTO_TCP;
+		iphdr.set_saddr(saddr);
+		iphdr.set_daddr(daddr);
+		iphdr.set_tot_len(iphdr_size + tcp_doff * 4 + datalen);
+		iphdr._ttl = 50;
+		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
+	#if VM_IPV6
+	}
+	#endif
 	tcphdr2 tcphdr;
 	memset(&tcphdr, 0, sizeof(tcphdr2));
-	tcphdr.source = htons(source);
-	tcphdr.dest = htons(dest);
+	tcphdr.set_source(source);
+	tcphdr.set_dest(dest);
 	tcphdr.seq = htonl(seq);
 	tcphdr.ack_seq = htonl(ack_seq);
 	tcphdr.ack = 1;
 	tcphdr.doff = tcp_doff;
 	tcphdr.window = htons(0x8000);
-	memcpy(*packet + ether_header_length + sizeof(iphdr2), &tcphdr, sizeof(tcphdr2));
-	memset(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2), 0, tcp_options_length);
-	*(u_char*)(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2)) = 1;
-	*(u_char*)(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2) + 1) = 1;
-	*(u_char*)(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2) + 2) = 8;
-	*(u_char*)(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2) + 3) = 10;
-	memcpy(*packet + ether_header_length + sizeof(iphdr2) + sizeof(tcphdr2) + tcp_options_length, data, datalen);
+	memcpy(*packet + ether_header_length + iphdr_size, &tcphdr, sizeof(tcphdr2));
+	memset(*packet + ether_header_length + iphdr_size + sizeof(tcphdr2), 0, tcp_options_length);
+	*(u_char*)(*packet + ether_header_length + iphdr_size + sizeof(tcphdr2)) = 1;
+	*(u_char*)(*packet + ether_header_length + iphdr_size + sizeof(tcphdr2) + 1) = 1;
+	*(u_char*)(*packet + ether_header_length + iphdr_size + sizeof(tcphdr2) + 2) = 8;
+	*(u_char*)(*packet + ether_header_length + iphdr_size + sizeof(tcphdr2) + 3) = 10;
+	memcpy(*packet + ether_header_length + iphdr_size + sizeof(tcphdr2) + tcp_options_length, data, datalen);
 	*header = new FILE_LINE(38025) pcap_pkthdr;
 	memset(*header, 0, sizeof(pcap_pkthdr));
 	(*header)->ts.tv_sec = time_sec;
@@ -3913,60 +3953,9 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 				    header_sll, header_eth, &header_ppp_o_e,
 				    header_ip_offset, protocol) &&
 		   header_ppp_o_e) {
-			*(u_int16_t*)(header_ppp_o_e + 4) = htons(sizeof(iphdr2) + tcp_doff * 4 + datalen + 2);
+			*(u_int16_t*)(header_ppp_o_e + 4) = htons(iphdr_size + tcp_doff * 4 + datalen + 2);
 		}
 	}
-}
-
-void base64_init(void)
-{
-        int x;
-        memset(b2a, -1, sizeof(b2a));
-        /* Initialize base-64 Conversion table */
-        for (x = 0; x < 26; x++) {
-                /* A-Z */
-                base64[x] = 'A' + x;
-                b2a['A' + x] = x;
-                /* a-z */
-                base64[x + 26] = 'a' + x;
-                b2a['a' + x] = x + 26;
-                /* 0-9 */
-                if (x < 10) {
-                        base64[x + 52] = '0' + x;
-                        b2a['0' + x] = x + 52;
-                }      
-        }      
-        base64[62] = '+';
-        base64[63] = '/';
-        b2a[(int)'+'] = 62;
-        b2a[(int)'/'] = 63;
-}      
-
-/*! \brief decode BASE64 encoded text */
-int base64decode(unsigned char *dst, const char *src, int max)
-{
-        int cnt = 0;
-        unsigned int byte = 0;
-        unsigned int bits = 0;
-        int incnt = 0;
-        while(*src && *src != '=' && (cnt < max)) {
-                /* Shift in 6 bits of input */
-                byte <<= 6;
-                byte |= (b2a[(int)(*src)]) & 0x3f;
-                bits += 6;
-                src++;
-                incnt++;
-                /* If we have at least 8 bits left over, take that character 
-                   off the top */
-                if (bits >= 8)  {
-                        bits -= 8;
-                        *dst = (byte >> bits) & 0xff;
-                        dst++;
-                        cnt++;
-                }
-        }
-        /* Dont worry about left over bits, they're extra anyway */
-        return cnt;
 }
 
 int hexdecode(unsigned char *dst, const char *src, int max)
@@ -3996,32 +3985,6 @@ string hexencode(unsigned char *src, int src_length)
 		}
 	}
 	return(rslt);
-}
-
-bool isLocalIP(u_int32_t ip) {
-	const char *net_str[] = {
-		"192.168.0.0/16",
-		"10.0.0.0/8",
-		"172.16.0.0/20"
-	};
-	static u_int32_t net_mask[3] = { 0, 0, 0 };
-	if(!net_mask[0]) {
-		for(int i = 0; i < 3; i++) {
-			vector<string> ip_net = split(net_str[i], '/');
-			in_addr ips;
-			inet_aton(ip_net[0].c_str(), &ips);
-			u_int32_t ip = htonl(ips.s_addr);
-			u_int32_t mask = -1;
-			mask <<= (32 - atoi(ip_net[1].c_str()));
-			net_mask[i] = ip & mask;
-		}
-	}
-	for(int i = 0; i < 3; i++) {
-		if((ip & net_mask[i]) == net_mask[i]) {
-			return(true);
-		}
-	}
-	return(false);
 }
 
 char *strlwr(char *string, u_int32_t maxLength) {
@@ -4292,7 +4255,7 @@ SocketSimpleBufferWrite::SocketSimpleBufferWrite(const char *name, ip_port ipPor
 	this->ipPort = ipPort;
 	this->udp = udp;
 	this->maxSize = maxSize;
-	socketHostIPl = 0;
+	socketHostIP.clear();
 	socketHandle = 0;
 	writeThreadHandle = 0;
 	_sync_data = 0;
@@ -4366,10 +4329,10 @@ void SocketSimpleBufferWrite::write() {
 }
 
 bool SocketSimpleBufferWrite::socketGetHost() {
-	socketHostIPl = 0;
-	while(!socketHostIPl) {
-		socketHostIPl = cResolver::resolve_n(ipPort.get_ip().c_str());
-		if(!socketHostIPl) {
+	socketHostIP.clear();
+	while(!socketHostIP.isSet()) {
+		socketHostIP = cResolver::resolve_n(ipPort.get_ip().c_str());
+		if(!socketHostIP.isSet()) {
 			syslog(LOG_ERR, "socketwrite %s: cannot resolv: %s: host [%s] - trying again", name.c_str(), hstrerror(h_errno), ipPort.get_ip().c_str());  
 			sleep(1);
 		}
@@ -4378,19 +4341,15 @@ bool SocketSimpleBufferWrite::socketGetHost() {
 }
 
 bool SocketSimpleBufferWrite::socketConnect() {
-	if(!socketHostIPl) {
+	if(!socketHostIP.isSet()) {
 		socketGetHost();
 	}
-	if((socketHandle = socket(AF_INET, udp ? SOCK_DGRAM : SOCK_STREAM, udp ? IPPROTO_UDP : IPPROTO_TCP)) == -1) {
+	if((socketHandle = socket_create(socketHostIP, udp ? SOCK_DGRAM : SOCK_STREAM, udp ? IPPROTO_UDP : IPPROTO_TCP)) == -1) {
 		syslog(LOG_NOTICE, "socketwrite %s: cannot create socket", name.c_str());
 		return(false);
 	}
-	sockaddr_in addr;
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(ipPort.get_port());
-	addr.sin_addr.s_addr = socketHostIPl;
-	while(connect(socketHandle, (struct sockaddr *)&addr, sizeof(addr)) == -1 && !is_terminating()) {
-		syslog(LOG_NOTICE, "socketwrite %s: failed to connect to server [%s] error:[%s] - trying again", name.c_str(), inet_ntostring(htonl(socketHostIPl)).c_str(), strerror(errno));
+	while(socket_connect(socketHandle, socketHostIP, ipPort.get_port()) == -1 && !is_terminating()) {
+		syslog(LOG_NOTICE, "socketwrite %s: failed to connect to server [%s] error:[%s] - trying again", name.c_str(), socketHostIP.getString().c_str(), strerror(errno));
 		sleep(1);
 	}
 	return(true);
@@ -4480,57 +4439,6 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 	this->unlock();
 }
 
-
-string base64_encode(const unsigned char *data, size_t input_length) {
-	if(!input_length) {
-		input_length = strlen((char*)data);
-	}
-	size_t output_length;
-	char *encoded_data = base64_encode(data, input_length, &output_length);
-	if(encoded_data) {
-		string encoded_string = encoded_data;
-		delete [] encoded_data;
-		return(encoded_string);
-	} else {
-		return("");
-	}
-}
-
-char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length) {
-	*output_length = 4 * ((input_length + 2) / 3);
-	char *encoded_data = new FILE_LINE(38028) char[*output_length + 1];
-	if(encoded_data == NULL) return NULL;
-	_base64_encode(data, input_length, encoded_data, *output_length);
-	return encoded_data;
-}
-
-void _base64_encode(const unsigned char *data, size_t input_length, char *encoded_data, size_t output_length) {
-	char encoding_table[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
-				 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-				 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-				 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
-				 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
-				 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-				 'w', 'x', 'y', 'z', '0', '1', '2', '3',
-				 '4', '5', '6', '7', '8', '9', '+', '/'};
-	int mod_table[] = {0, 2, 1};
-	for(size_t i = 0, j = 0; i < input_length;) {
-	    uint32_t octet_a = i < input_length ? (unsigned char)data[i++] : 0;
-	    uint32_t octet_b = i < input_length ? (unsigned char)data[i++] : 0;
-	    uint32_t octet_c = i < input_length ? (unsigned char)data[i++] : 0;
-	    uint32_t triple = (octet_a << 0x10) + (octet_b << 0x08) + octet_c;
-	    encoded_data[j++] = encoding_table[(triple >> 3 * 6) & 0x3F];
-	    encoded_data[j++] = encoding_table[(triple >> 2 * 6) & 0x3F];
-	    encoded_data[j++] = encoding_table[(triple >> 1 * 6) & 0x3F];
-	    encoded_data[j++] = encoding_table[(triple >> 0 * 6) & 0x3F];
-	}
-	if(!output_length) {
-		output_length = 4 * ((input_length + 2) / 3);
-	}
-	for(int i = 0; i < mod_table[input_length % 3]; i++)
-		encoded_data[output_length - 1 - i] = '=';
-	encoded_data[output_length] = 0;
-}
 
 volatile int _tz_sync;
 

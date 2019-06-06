@@ -157,10 +157,6 @@ public:
 	cConfigItem_integer(const char *name, unsigned int *param);
 	cConfigItem_integer(const char *name, uint64_t *param);
 	cConfigItem_integer(const char *name, int64_t *param = NULL);
-	cConfigItem_integer *setIp() {
-		ip = true;
-		return(this);
-	}
 	cConfigItem_integer *setMaximum(int maximum) {
 		this->maximum = maximum;
 		return(this);
@@ -215,7 +211,6 @@ protected:
 		param_uint64 = NULL;
 	}
 	void initOther() {
-		ip = false;
 		maximum = 0;
 		minimum = 0;
 		ifZeroOrNegative = 0;
@@ -228,7 +223,7 @@ protected:
 		param_virt = 0;
 	}
 	string getTypeName() {
-		return(ip ? "ip" : "integer");
+		return("integer");
 	}
 protected:
 	int *param_int;
@@ -236,7 +231,6 @@ protected:
 	int64_t *param_int64;
 	uint64_t *param_uint64;
 	int64_t param_virt;
-	bool ip;
 	int maximum;
 	int minimum;
 	int ifZeroOrNegative;
@@ -379,7 +373,7 @@ protected:
 
 class cConfigItem_hosts : public cConfigItem {
 public:
-	cConfigItem_hosts(const char* name, vector<u_int32_t> *adresses, vector<d_u_int32_t> *nets);
+	cConfigItem_hosts(const char* name, vector<vmIP> *adresses, vector<vmIPmask> *nets);
 	string getValueStr(bool configFile = false);
 	list<string> getValueListStr();
 	bool enableMultiValues() { return(true); }
@@ -396,8 +390,26 @@ protected:
 		return("hosts");
 	}
 protected:
-	vector<u_int32_t> *param_adresses;
-	vector<d_u_int32_t> *param_nets;
+	vector<vmIP> *param_adresses;
+	vector<vmIPmask> *param_nets;
+};
+
+class cConfigItem_ip : public cConfigItem {
+public:
+	cConfigItem_ip(const char* name, vmIP *param);
+	vmIP getValue();
+	string getValueStr(bool configFile = false);
+protected:
+	bool setParamFromConfigFile(CSimpleIniA *ini);
+	bool setParamFromValueStr(string value_str);
+	void initParamPointers() {
+		param_ip = NULL;
+	}
+	string getTypeName() {
+		return("ip");
+	}
+protected:
+	vmIP *param_ip;
 };
 
 class cConfigItem_ip_port : public cConfigItem {
@@ -420,8 +432,7 @@ protected:
 
 class cConfigItem_ip_ports : public cConfigItem {
 public:
-	cConfigItem_ip_ports(const char* name, vector<ip_port> *param);
-	cConfigItem_ip_ports(const char* name, vector<ipn_port> *param);
+	cConfigItem_ip_ports(const char* name, vector<vmIPport> *param);
 	string getValueStr(bool configFile = false);
 	list<string> getValueListStr();
 	bool enableMultiValues() { return(true); }
@@ -432,19 +443,17 @@ protected:
 	void initBeforeSet();
 	void initParamPointers() {
 		param_ip_ports = NULL;
-		param_ipn_ports = NULL;
 	}
 	string getTypeName() {
 		return("ip_port_list");
 	}
 protected:
-	vector<ip_port> *param_ip_ports;
-	vector<ipn_port> *param_ipn_ports;
+	vector<vmIPport> *param_ip_ports;
 };
 
 class cConfigItem_ip_port_str_map : public cConfigItem {
 public:
-	cConfigItem_ip_port_str_map(const char* name, map<d_u_int32_t, string> *ip_port_string_map);
+	cConfigItem_ip_port_str_map(const char* name, map<vmIPport, string> *ip_port_string_map);
 	string getValueStr(bool configFile = false);
 	list<string> getValueListStr();
 	string normalizeStringValueForCmp(string value);
@@ -461,7 +470,7 @@ protected:
 		return("ip_port_str_list");
 	}
 protected:
-	map<d_u_int32_t, string> *param_ip_port_string_map;
+	map<vmIPport, string> *param_ip_port_string_map;
 };
 
 class cConfigItem_nat_aliases : public cConfigItem {

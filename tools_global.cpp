@@ -351,22 +351,116 @@ string boolToString(bool b) {
 }
 
 
-string inet_ntostring(u_int32_t ip) {
-	struct in_addr in;
-	in.s_addr = htonl(ip);
-	return(inet_ntoa(in));
-}
-
-u_int32_t inet_strington(const char *ip) {
-	in_addr ips;
-	inet_aton(ip, &ips);
-	return(htonl(ips.s_addr));
-}
-
 void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos) {
 	for(size_t i = 0; i < dataLen; i++) {
 		data[i] = data[i] ^ key[(initPos + i) % keyLength];
 	}
+}
+
+
+static char base64[64];
+static char b2a[256];
+
+void base64_init(void)
+{
+        int x;
+        memset(b2a, -1, sizeof(b2a));
+        /* Initialize base-64 Conversion table */
+        for (x = 0; x < 26; x++) {
+                /* A-Z */
+                base64[x] = 'A' + x;
+                b2a['A' + x] = x;
+                /* a-z */
+                base64[x + 26] = 'a' + x;
+                b2a['a' + x] = x + 26;
+                /* 0-9 */
+                if (x < 10) {
+                        base64[x + 52] = '0' + x;
+                        b2a['0' + x] = x + 52;
+                }      
+        }      
+        base64[62] = '+';
+        base64[63] = '/';
+        b2a[(int)'+'] = 62;
+        b2a[(int)'/'] = 63;
+}      
+
+/*! \brief decode BASE64 encoded text */
+int base64decode(unsigned char *dst, const char *src, int max)
+{
+        int cnt = 0;
+        unsigned int byte = 0;
+        unsigned int bits = 0;
+        int incnt = 0;
+        while(*src && *src != '=' && (cnt < max)) {
+                /* Shift in 6 bits of input */
+                byte <<= 6;
+                byte |= (b2a[(int)(*src)]) & 0x3f;
+                bits += 6;
+                src++;
+                incnt++;
+                /* If we have at least 8 bits left over, take that character 
+                   off the top */
+                if (bits >= 8)  {
+                        bits -= 8;
+                        *dst = (byte >> bits) & 0xff;
+                        dst++;
+                        cnt++;
+                }
+        }
+        /* Dont worry about left over bits, they're extra anyway */
+        return cnt;
+}
+
+string base64_encode(const unsigned char *data, size_t input_length) {
+	if(!input_length) {
+		input_length = strlen((char*)data);
+	}
+	size_t output_length;
+	char *encoded_data = base64_encode(data, input_length, &output_length);
+	if(encoded_data) {
+		string encoded_string = encoded_data;
+		delete [] encoded_data;
+		return(encoded_string);
+	} else {
+		return("");
+	}
+}
+
+char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length) {
+	*output_length = 4 * ((input_length + 2) / 3);
+	char *encoded_data = new FILE_LINE(38028) char[*output_length + 1];
+	if(encoded_data == NULL) return NULL;
+	_base64_encode(data, input_length, encoded_data, *output_length);
+	return encoded_data;
+}
+
+void _base64_encode(const unsigned char *data, size_t input_length, char *encoded_data, size_t output_length) {
+	char encoding_table[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
+				 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
+				 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
+				 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
+				 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
+				 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
+				 'w', 'x', 'y', 'z', '0', '1', '2', '3',
+				 '4', '5', '6', '7', '8', '9', '+', '/'};
+	int mod_table[] = {0, 2, 1};
+	for(size_t i = 0, j = 0; i < input_length;) {
+	    uint32_t octet_a = i < input_length ? (unsigned char)data[i++] : 0;
+	    uint32_t octet_b = i < input_length ? (unsigned char)data[i++] : 0;
+	    uint32_t octet_c = i < input_length ? (unsigned char)data[i++] : 0;
+	    uint32_t triple = (octet_a << 0x10) + (octet_b << 0x08) + octet_c;
+	    encoded_data[j++] = encoding_table[(triple >> 3 * 6) & 0x3F];
+	    encoded_data[j++] = encoding_table[(triple >> 2 * 6) & 0x3F];
+	    encoded_data[j++] = encoding_table[(triple >> 1 * 6) & 0x3F];
+	    encoded_data[j++] = encoding_table[(triple >> 0 * 6) & 0x3F];
+	}
+	if(!output_length) {
+		output_length = 4 * ((input_length + 2) / 3);
+	}
+	for(int i = 0; i < mod_table[input_length % 3]; i++)
+		encoded_data[output_length - 1 - i] = '=';
+	encoded_data[output_length] = 0;
 }
 
 
@@ -836,24 +930,22 @@ cResolver::cResolver() {
 	_sync_lock = 0;
 }
 
-u_int32_t cResolver::resolve(const char *host, unsigned timeout, eTypeResolve typeResolve) {
+vmIP cResolver::resolve(const char *host, unsigned timeout, eTypeResolve typeResolve) {
 	if(use_lock) {
 		lock();
 	}
-	u_int32_t ipl = 0;
+	vmIP ip;
 	time_t now = time(NULL);
 	map<string, sIP_time>::iterator iter_find = res_table.find(host);
 	if(iter_find != res_table.end() &&
 	   (iter_find->second.timeout == UINT_MAX ||
 	    iter_find->second.at + iter_find->second.timeout > now)) {
-		ipl = iter_find->second.ipl;
+		ip = iter_find->second.ip;
 	}
-	if(!ipl) {
-		if(reg_match(host, "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+", __FILE__, __LINE__)) {
-			in_addr ips;
-			inet_aton(host, &ips);
-			ipl = ips.s_addr;
-			res_table[host].ipl = ipl;
+	if(!ip.isSet()) {
+		if(ip_is_valid(host)) {
+			ip.setFromString(host);
+			res_table[host].ip = ip;
 			res_table[host].at = now;
 			res_table[host].timeout = UINT_MAX;
 		} else {
@@ -865,65 +957,81 @@ u_int32_t cResolver::resolve(const char *host, unsigned timeout, eTypeResolve ty
 				#endif
 			}
 			if(typeResolve == _typeResolve_std) {
-				ipl = resolve_std(host);
+				ip = resolve_std(host);
 			} else if(typeResolve == _typeResolve_system_host) {
-				ipl = resolve_by_system_host(host);
+				ip = resolve_by_system_host(host);
 			}
-			if(ipl) {
-				res_table[host].ipl = ipl;
+			if(ip.isSet()) {
+				res_table[host].ip = ip;
 				res_table[host].at = now;
 				res_table[host].timeout = timeout ? timeout : 120;
-				syslog(LOG_NOTICE, "resolve host %s to %s", host, inet_ntostring(htonl(ipl)).c_str());
+				syslog(LOG_NOTICE, "resolve host %s to %s", host, ip.getString().c_str());
 			}
 		}
 	}
 	if(use_lock) {
 		unlock();
 	}
-	return(ipl);
+	return(ip);
 }
 
-u_int32_t cResolver::resolve_n(const char *host, unsigned timeout, eTypeResolve typeResolve) {
+vmIP cResolver::resolve_n(const char *host, unsigned timeout, eTypeResolve typeResolve) {
 	extern cResolver resolver;
 	return(resolver.resolve(host, timeout, typeResolve));
 }
 
 string cResolver::resolve_str(const char *host, unsigned timeout, eTypeResolve typeResolve) {
 	extern cResolver resolver;
-	u_int32_t ipl = resolver.resolve(host, timeout, typeResolve);
-	if(ipl) {
-		return(inet_ntostring(htonl(ipl)));
+	vmIP ip = resolver.resolve(host, timeout, typeResolve);
+	if(ip.isSet()) {
+		return(ip.getString());
 	}
 	return("");
 }
 
-u_int32_t cResolver::resolve_std(const char *host) {
-	u_int32_t ipl = 0;
-	hostent *rslt_hostent = gethostbyname(host);
-	if(rslt_hostent) {
-		ipl = ((in_addr*)rslt_hostent->h_addr)->s_addr;
+vmIP cResolver::resolve_std(const char *host) {
+	vmIP ip;
+	struct addrinfo req, *res;
+	memset(&req, 0, sizeof(req));
+	req.ai_family = AF_UNSPEC;
+	req.ai_socktype = SOCK_STREAM;
+	if(getaddrinfo(host, NULL, &req, &res) == 0) {
+		while(res) {
+			if(res->ai_family == AF_INET) {
+				ip.setIPv4(((sockaddr_in*)res->ai_addr)->sin_addr.s_addr, true);
+				break;
+			} 
+			#if VM_IPV6
+			else if(VM_IPV6_B && res->ai_family == AF_INET6) {
+				ip.setIPv6(((sockaddr_in6*)res->ai_addr)->sin6_addr, true);
+				break;
+			}
+			#endif
+			res = res->ai_next;
+		}
 	}
-	return(ipl);
+	return(ip);
 }
 
-u_int32_t cResolver::resolve_by_system_host(const char *host) {
-	u_int32_t ipl = 0;
+vmIP cResolver::resolve_by_system_host(const char *host) {
+	vmIP ip;
 	FILE *cmd_pipe = popen((string("host -t A ") + host + " 2>/dev/null").c_str(), "r");
 	if(cmd_pipe) {
 		char bufRslt[512];
-		while(fgets(bufRslt, sizeof(bufRslt), cmd_pipe)) {
-			string ipl_str = reg_replace(bufRslt, "([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)", "$1", __FILE__, __LINE__);
-			if(!ipl_str.empty()) {
-				ipl = inet_strington(ipl_str.c_str());
-				if(ipl) {
-					ipl = ntohl(ipl);
-					break;
+		bool okIP = false;
+		while(!okIP && fgets(bufRslt, sizeof(bufRslt), cmd_pipe)) {
+			vector<string> try_ip = split(bufRslt, split(",|;|\t| |\n", '|'), true);
+			for(unsigned i = 0; !okIP && i < try_ip.size(); i++) {
+				if(ip_is_valid(try_ip[i].c_str())) {
+					if(ip.setFromString(try_ip[i].c_str())) {
+						okIP = true;
+					}
 				}
 			}
 		}
 		pclose(cmd_pipe);
 	}
-	return(ipl);
+	return(ip);
 }
 
 

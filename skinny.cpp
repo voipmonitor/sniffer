@@ -83,7 +83,7 @@ extern int opt_skiprtpdata;
 extern int opt_skinny_call_info_message_decode_type;
 extern char opt_silencedtmfseq[16];
 extern int opt_skinny;
-extern unsigned int opt_skinny_ignore_rtpip;
+extern vmIP opt_skinny_ignore_rtpip;
 extern int opt_saverfc2833;
 
 /* Skinny debugging only available if asterisk configured with --enable-dev-mode */
@@ -1303,9 +1303,9 @@ struct skinny_container {
 
 
 static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet,
-			       unsigned int saddr, int source, unsigned int daddr, int dest, 
+			       vmIP saddr, vmPort source, vmIP daddr, vmPort dest, 
 			       int istcp, iphdr2 *header_ip, char */*data*/, unsigned int datalen, unsigned int dataoffset, int type, 
-			       int dlt, int sensor_id, u_int32_t sensor_ip) {
+			       int dlt, int sensor_id, vmIP sensor_ip) {
 	packet_s packetS;
 	packetS.header_pt = header;
 	packetS.packet = packet;
@@ -1325,7 +1325,7 @@ static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_c
 }
 
 
-Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap_pkthdr *header, char *callidstr, u_int32_t saddr, u_int32_t daddr, int source, int dest, char *s, long unsigned int l,
+Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap_pkthdr *header, char *callidstr, vmIP saddr, vmIP daddr, vmPort source, vmPort dest, char *s, long unsigned int l,
 			 pcap_t *handle, int dlt, int sensor_id){
 	if(opt_callslimit != 0 and opt_callslimit > (calls_counter + registers_counter)) {
 		if(verbosity > 0)
@@ -1334,7 +1334,7 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 
 	unsigned int flags = 0;
 	set_global_flags(flags);
-	IPfilter::add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
+	IPfilter::add_call_flags(&flags, saddr, daddr);
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
@@ -1351,11 +1351,12 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	call->flags = flags;
 	strcpy_null_term(call->fbasename, callidstr);
 	
-
 	// add saddr|daddr into map
-	string tmp = intToString(min(call->sipcallerip[0], call->sipcalledip[0])) + '|' + intToString(max(call->sipcallerip[0], call->sipcalledip[0]));
+	d_item<vmIP> ip2;
+	ip2.items[0] = min(call->sipcallerip[0], call->sipcalledip[0]);
+	ip2.items[1] = max(call->sipcallerip[0], call->sipcalledip[0]);
 	calltable->lock_skinny_maps();
-	calltable->skinny_ipTuples[tmp] = call;
+	calltable->skinny_ipTuples[ip2] = call;
 	calltable->unlock_skinny_maps();
 
 	if(enable_save_sip_rtp_audio(call)) {
@@ -1393,14 +1394,14 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	return call;
 }
 
-void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
-		     pcap_t *handle, int dlt, int sensor_id, u_int32_t sensor_ip);
+void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPort source, vmIP daddr, vmPort dest, char *data, int datalen, int dataoffset,
+		     pcap_t *handle, int dlt, int sensor_id, vmIP sensor_ip);
 
 
 u_int64_t _handle_skinny_counter_all;
 u_int64_t _handle_skinny_counter_next_iterate;
-void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
-		    pcap_t *handle, int dlt, int sensor_id, u_int32_t sensor_ip) {
+void *handle_skinny(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPort source, vmIP daddr, vmPort dest, char *data, int datalen, int dataoffset,
+		    pcap_t *handle, int dlt, int sensor_id, vmIP sensor_ip) {
 	
 	++_handle_skinny_counter_all;
 	int remain = datalen;
@@ -1429,8 +1430,8 @@ void *handle_skinny(pcap_pkthdr *header, const u_char *packet, unsigned int sadd
 	return NULL;
 }
 
-void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int saddr, int source, unsigned int daddr, int dest, char *data, int datalen, int dataoffset,
-		     pcap_t *handle, int dlt, int sensor_id, u_int32_t sensor_ip) {
+void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPort source, vmIP daddr, vmPort dest, char *data, int datalen, int dataoffset,
+		     pcap_t *handle, int dlt, int sensor_id, vmIP sensor_ip) {
 
 	// printf("counter[%lu]\n", _handle_skinny_counter_all);
 
@@ -1761,7 +1762,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			break;
 		}
 
-		if(opt_skinny_ignore_rtpip > 0 && opt_skinny_ignore_rtpip == ipaddr) {
+		if(opt_skinny_ignore_rtpip.isSet() && opt_skinny_ignore_rtpip.getIPv4(true) == ipaddr) {
 			//ignore_rtpip is enabled and it matches to it - skip tracking this IP RTP 
 			break;
 		}
@@ -1778,7 +1779,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 					rtpmap[0].codec = codec;
 				}
 			}
-			call->add_ip_port_hash(saddr, ipaddr, ip_port_call_info::_ta_base, port, header, 
+			call->add_ip_port_hash(saddr, ipv4_2_vmIP(ipaddr), ip_port_call_info::_ta_base, port, header, 
 					       NULL, NULL, NULL, NULL, (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
 		}
 		}
@@ -1974,14 +1975,14 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, unsigned int sad
 			port = letohl(req.data.openreceivechannelack_ip4.port);
 		}
 
-		if(opt_skinny_ignore_rtpip > 0 && opt_skinny_ignore_rtpip == ipaddr) {
+		if(opt_skinny_ignore_rtpip.isSet() && opt_skinny_ignore_rtpip.getIPv4(true) == ipaddr) {
 			//ignore_rtpip is enabled and it matches to it - skip tracking this IP RTP 
 			break;
 		}
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received OPEN_RECEIVE_CHANNEL_MESSAGE partyId [%u] ipAddr[%u] port[%u]", pid, ipaddr, port);
 		if((call = calltable->find_by_skinny_partyid(pid)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			RTPMAP rtpmap[MAX_RTPMAP];
-			call->add_ip_port_hash(saddr, ipaddr, ip_port_call_info::_ta_base, port, header, 
+			call->add_ip_port_hash(saddr, ipv4_2_vmIP(ipaddr), ip_port_call_info::_ta_base, port, header, 
 					       NULL, NULL, NULL, NULL, (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
 		}
 		}

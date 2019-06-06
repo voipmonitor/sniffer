@@ -130,16 +130,16 @@ private:
 
 class cBlockIP {
 public:
-	void setBlock(u_int32_t ip, unsigned expirationS) {
+	void setBlock(vmIP ip, unsigned expirationS) {
 		block_ip_time[ip] = getTimeMS_rdtsc() + expirationS * 1000;
 	}
-	bool isBlocked(u_int32_t ip) {
-		map<u_int32_t, u_long>::iterator iter = block_ip_time.find(ip);
+	bool isBlocked(vmIP ip) {
+		map<vmIP, u_long>::iterator iter = block_ip_time.find(ip);
 		return(iter != block_ip_time.end() &&
 		       block_ip_time[ip] > getTimeMS_rdtsc());
 	}
 private:
-	map<u_int32_t, u_long> block_ip_time;
+	map<vmIP, u_long> block_ip_time;
 };
 
 
@@ -213,10 +213,10 @@ public:
 		return(host.empty() ? getIP() : host);
 	}
 	string getIP() {
-		return(inet_ntostring(htonl(ipl)));
+		return(ip.getString());
 	}
-	u_int32_t getIPL() {
-		return(ipl);
+	vmIP getIPL() {
+		return(ip);
 	}
 	u_int16_t getPort() {
 		return(port);
@@ -262,7 +262,7 @@ protected:
 	bool autoClose;
 	string host;
 	u_int16_t port;
-	u_int32_t ipl;
+	vmIP ip;
 	sTimeouts timeouts;
 	int handle;
 	bool enableWriteReconnect;

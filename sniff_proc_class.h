@@ -35,17 +35,17 @@ public:
 		u_int64_t last_time_us;
 	};
 	struct tcp_stream_id {
-		tcp_stream_id(u_int32_t saddr = 0, u_int16_t source = 0, 
-			      u_int32_t daddr = 0, u_int16_t dest = 0) {
+		tcp_stream_id(vmIP saddr = 0, vmPort source = 0, 
+			      vmIP daddr = 0, vmPort dest = 0) {
 			this->saddr = saddr;
 			this->source = source;
 			this->daddr = daddr; 
 			this->dest = dest;
 		}
-		u_int32_t saddr;
-		u_int16_t source;
-		u_int32_t daddr;
-		u_int16_t dest;
+		vmIP saddr;
+		vmPort source;
+		vmIP daddr;
+		vmPort dest;
 		bool operator < (const tcp_stream_id& other) const {
 			return((this->saddr < other.saddr) ? 1 : (this->saddr > other.saddr) ? 0 :
 			       (this->source < other.source) ? 1 : (this->source > other.source) ? 0 :
@@ -206,7 +206,7 @@ public:
 		u_int16_t handle_index;
 		int dlt;
 		int sensor_id;
-		u_int32_t sensor_ip;
+		vmIP sensor_ip;
 	};
 	struct sData : sData_base {
 		SimpleBuffer *ethHeader;
@@ -219,21 +219,21 @@ public:
 		u_char *data;
 		unsigned dataLength;
 		bool dataAlloc;
-		u_int32_t saddr;
-		u_int16_t sport;
-		u_int32_t daddr;
-		u_int16_t dport;
+		vmIP saddr;
+		vmPort sport;
+		vmIP daddr;
+		vmPort dport;
 	};
 public:
 	ReassemblyBuffer();
 	~ReassemblyBuffer();
 	void processPacket(u_char *ethHeader, unsigned ethHeaderLength,
-			   u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, 
+			   vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, 
 			   eType type, u_char *data, unsigned length, bool createStream,
 			   timeval time, u_int32_t ack, u_int32_t seq,
-			   u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+			   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
 			   list<sDataRslt> *dataRslt);
-	bool existsStream(u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport);
+	bool existsStream(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport);
 	void cleanup(timeval time, list<sDataRslt> *dataRslt);
 private:
 	sDataRslt complete(sStreamId *streamId, sData *b_data);
@@ -314,11 +314,11 @@ public:
 				#if USE_PACKET_NUMBER
 				u_int64_t packet_number,
 				#endif
-				unsigned int saddr, int source, unsigned int daddr, int dest, 
+				vmIP saddr, vmPort source, vmIP daddr, vmPort dest, 
 				int datalen, int dataoffset,
 				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
 				int istcp, int isother, struct iphdr2 *header_ip,
-				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, vmIP sensor_ip,
 				int blockstore_lock = 1) {
 		if(opt_enable_ssl) {
 			this->lock_push();

@@ -16,6 +16,7 @@
 
 #include "tools_define.h"
 #include "tools_local.h"
+#include "ip.h"
 
 #ifdef FREEBSD
 #include <sys/thr.h>
@@ -154,10 +155,69 @@ inline int vm_pthread_create_autodestroy(const char *thread_description,
 }
 
 
+void base64_init(void);
+int base64decode(unsigned char *dst, const char *src, int max);
+string base64_encode(const unsigned char *data, size_t input_length);
+char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length);
+void _base64_encode(const unsigned char *data, size_t input_length, char *encoded_data, size_t output_length = 0);
+
+
 struct string_null {
-	string_null(const char *str = NULL) {
+	string_null() {
+		is_null = true;
+	}
+	string_null(const char *str, unsigned length, bool null) {
 		if(str) {
-			this->str = str;
+			if(length) {
+				this->str = string(str, length);
+			} else {
+				this->str = str;
+			}
+			is_null = null;
+		} else {
+			is_null = true;
+		}
+	}
+	bool isprint() {
+		if(is_null) {
+			return(false);
+		}
+		for(unsigned i = 0; i < str.length(); i++) {
+			if(!::isprint(str[i])) {
+				return(false);
+			}
+		}
+		return(true);
+	}
+	string out() {
+		if(isprint()) {
+			 return(str);
+		}
+		if(is_null) {
+			 return("_NULL_");
+		}
+		return("_B64_" + base64_encode((u_char*)str.c_str(), str.length()));
+	}
+	void in(const char *in) {
+		if(in && *in == '_') {
+			if(in[1] == 'N' && !strcmp(in, "_NULL_")) {
+				is_null = true;
+				str = "";
+				return;
+			} else if(!strncmp(in, "_B64_", 5)) {
+				unsigned l = strlen(in);
+				if(!strcmp(in + l - 2, "==")) {
+					char *buff = new char[l];
+					int length = base64decode((u_char*)buff, in + 5, l);
+					str = string(buff, length);
+					delete [] buff;
+					is_null = false;
+					return;
+				}
+			} 
+		}
+		if(in) {
+			str = in;
 			is_null = false;
 		} else {
 			is_null = true;
@@ -248,9 +308,6 @@ string intToString(u_int64_t i);
 string floatToString(double d);
 string pointerToString(void *p);
 string boolToString(bool b);
-
-string inet_ntostring(u_int32_t ip);
-u_int32_t inet_strington(const char *ip);
 
 
 void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos);
@@ -467,18 +524,18 @@ public:
 	};
 private:
 	struct sIP_time {
-		u_int32_t ipl;
+		vmIP ip;
 		time_t at;
 		unsigned timeout;
 	};
 public:
 	cResolver();
-	u_int32_t resolve(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
-	u_int32_t resolve(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
+	vmIP resolve(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
+	vmIP resolve(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
 		return(resolve(host.c_str(), timeout, typeResolve));
 	}
-	static u_int32_t resolve_n(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
-	static u_int32_t resolve_n(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
+	static vmIP resolve_n(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
+	static vmIP resolve_n(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
 		return(resolve_n(host.c_str(), timeout, typeResolve));
 	}
 	static string resolve_str(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
@@ -486,8 +543,8 @@ public:
 		return(resolve_str(host.c_str(), timeout, typeResolve));
 	}
 private:
-	u_int32_t resolve_std(const char *host);
-	u_int32_t resolve_by_system_host(const char *host);
+	vmIP resolve_std(const char *host);
+	vmIP resolve_by_system_host(const char *host);
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync_lock, 1)) {

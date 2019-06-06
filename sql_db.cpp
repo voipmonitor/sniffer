@@ -139,16 +139,16 @@ SqlDb_row::operator int() {
 	return(!this->isEmpty());
 }
 
-void SqlDb_row::add(const char *content, string fieldName) {
+void SqlDb_row::add(const char *content, string fieldName, int type, unsigned long length) {
 	if(fieldName != "") {
 		for(size_t i = 0; i < row.size(); i++) {
 			if(row[i].fieldName == fieldName) {
-				row[i] = SqlDb_rowField(content, fieldName);
+				row[i] = SqlDb_rowField(content, fieldName, type, length);
 				return;
 			}
 		}
 	}
-	this->row.push_back(SqlDb_rowField(content, fieldName));
+	this->row.push_back(SqlDb_rowField(content, fieldName, type, length));
 }
 
 void SqlDb_row::add(string content, string fieldName, bool null) {
@@ -223,7 +223,7 @@ void SqlDb_row::add(unsigned long long int content,  string fieldName, bool null
 	}
 }
 
-void SqlDb_row::add(double content,  string fieldName, bool null) {
+void SqlDb_row::add(double content, string fieldName, bool null) {
 	if(!content && null) {
 		this->add((const char*)NULL, fieldName);
 	} else {
@@ -233,40 +233,28 @@ void SqlDb_row::add(double content,  string fieldName, bool null) {
 	}
 }
 
-int SqlDb_row::getIndexField(string fieldName) {
-	for(size_t i = 0; i < row.size(); i++) {
-		if(!strcasecmp(row[i].fieldName.c_str(), fieldName.c_str())) {
-			return(i);
+void SqlDb_row::add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, const char *table) {
+	if(!content.isSet() && null) {
+		this->add((const char*)NULL, fieldName);
+	} else {
+		if(VM_IPV6_B) {
+			if(sqlDb->isIPv6Column(table, fieldName)) {
+				this->add(string(MYSQL_VAR_PREFIX) + content._getStringForMysqlIpColumn(6), fieldName);
+				return;
+			}
 		}
+		char str_content[100];
+		snprintf(str_content, sizeof(str_content), "%u", content.getIPv4());
+		this->add(str_content, fieldName);
 	}
-	if(this->sqlDb) {
-		return(this->sqlDb->getIndexField(fieldName));
-	}
-	return(-1);
 }
 
-string SqlDb_row::getNameField(int indexField) {
-	if((unsigned)indexField < row.size()) {
-		if(!row[indexField].fieldName.empty()) {
-			return(row[indexField].fieldName);
-		}
-		if(this->sqlDb) {
-			return(this->sqlDb->getNameField(indexField));
-		}
-	}
-	return("");
+int SqlDb_row::_getIndexField(string fieldName) {
+	return(this->sqlDb->getIndexField(fieldName));
 }
 
-bool SqlDb_row::isEmpty() {
-	return(!row.size());
-}
-
-bool SqlDb_row::isNull(string fieldName) {
-	int indexField = this->getIndexField(fieldName);
-	if(indexField >= 0) {
-		return(row[indexField].null);
-	}
-	return(false);
+string SqlDb_row::_getNameField(int indexField) {
+	return(this->sqlDb->getNameField(indexField));
 }
 
 string SqlDb_row::implodeFields(string separator, string border) {
@@ -415,10 +403,15 @@ SqlDb::SqlDb() {
 	this->maxAllowedPacket = 1024*1024*100;
 	this->lastError = 0;
 	this->remote_socket = NULL;
-	this->existsColumnCache_enable = false;
-	this->existsColumnCache_suspend = false;
+	this->existsColumn_cache_enable = false;
+	this->existsColumn_cache_suspend = false;
+	this->existsColumn_cache_sync = 0;
+	this->partitions_cache_sync = 0;
 	this->useCsvInRemoteResult = false;
 }
+
+map<string, map<string, string> > SqlDb::typeColumn_cache;  
+volatile int SqlDb::typeColumn_cache_sync = 0;
 
 SqlDb::~SqlDb() {
 	if(this->remote_socket) {
@@ -758,13 +751,21 @@ int SqlDb::processResponseFromQueryBy(const char *response, unsigned pass) {
 					string dataItem = dataJsonItem->getLocalItem(j)->getLocalValue();
 					bool dataItemIsNull = dataJsonItem->getLocalItem(j)->localValueIsNull();
 					if(i == 0) {
-						response_data_columns.push_back(dataItem);
+						size_t typeSeparator = dataItem.find(':');
+						response_data_columns.push_back(typeSeparator != string::npos ? dataItem.substr(0, typeSeparator) : dataItem);
+						response_data_columns_types.push_back(typeSeparator != string::npos ? atoi(dataItem.c_str() + typeSeparator + 1) : 0);
 					} else {
 						if(response_data.size() < i) {
-							vector<sCloudDataItem> row;
+							vector<string_null> row;
 							response_data.push_back(row);
 						}
-						response_data[i-1].push_back(sCloudDataItem(dataItem.c_str(), dataItemIsNull));
+						if(dataItemIsNull) {
+							response_data[i-1].push_back(string_null(NULL, 0, true));
+						} else {
+							string_null strn;
+							strn.in(dataItem.c_str());
+							response_data[i-1].push_back(strn);
+						}
 					}
 				}
 			}
@@ -776,6 +777,7 @@ int SqlDb::processResponseFromQueryBy(const char *response, unsigned pass) {
 
 int SqlDb::processResponseFromCsv(const char *response) {
 	response_data_columns.clear();
+	response_data_columns_types.clear();
 	response_data.clear();
 	response_data_rows = 0;
 	response_data_index = 0;
@@ -805,13 +807,17 @@ int SqlDb::processResponseFromCsv(const char *response) {
 				const char *column = line + posLine;
 				//cout << column << endl;
 				if(row_counter == 1) {
-					response_data_columns.push_back(column);
+					const char *typeSeparator = strchr(column, ':');
+					response_data_columns.push_back(typeSeparator ? string(column, typeSeparator - column).c_str() : column);
+					response_data_columns_types.push_back(typeSeparator ? atoi(typeSeparator + 1) : 0);
 				} else {
 					if(column_counter == 1) {
-						vector<sCloudDataItem> row;
+						vector<string_null> row;
 						response_data.push_back(row);
 					}
-					response_data[row_counter - 2].push_back(sCloudDataItem(column, false));
+					string_null strn;
+					strn.in(column);
+					response_data[row_counter - 2].push_back(strn);
 				}
 				if(posCommaInLine) {
 					((char*)line)[posCommaInLine] = ',';
@@ -1088,42 +1094,92 @@ int64_t SqlDb::getQueryRsltIntValue(string query, int indexRslt, int64_t failedR
 }
 
 void SqlDb::startExistsColumnCache() {
-	this->existsColumnCache.clear();
-	this->existsColumnCache_enable = true;
-	this->existsColumnCache_suspend = false;
+	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	this->existsColumn_cache.clear();
+	this->existsColumn_cache_enable = true;
+	this->existsColumn_cache_suspend = false;
+	__sync_lock_release(&existsColumn_cache_sync);
 }
 
 void SqlDb::stopExistsColumnCache() {
-	this->existsColumnCache.clear();
-	this->existsColumnCache_enable = false;
-	this->existsColumnCache_suspend = false;
+	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	this->existsColumn_cache.clear();
+	this->existsColumn_cache_enable = false;
+	this->existsColumn_cache_suspend = false;
+	__sync_lock_release(&existsColumn_cache_sync);
 }
 
 void SqlDb::suspendExistsColumnCache() {
-	if(this->existsColumnCache_enable) {
-		this->existsColumnCache_suspend = true;
+	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	if(this->existsColumn_cache_enable) {
+		this->existsColumn_cache_suspend = true;
 	}
+	__sync_lock_release(&existsColumn_cache_sync);
 }
 
 void SqlDb::resumeExistsColumnCache() {
-	this->existsColumnCache_suspend = false;
+	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	this->existsColumn_cache_suspend = false;
+	__sync_lock_release(&existsColumn_cache_sync);
 }
 
 bool SqlDb::isEnableExistColumnCache() {
-	return(this->existsColumnCache_enable &&
-	       !this->existsColumnCache_suspend);
+	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	bool rslt = this->existsColumn_cache_enable &&
+		    !this->existsColumn_cache_suspend;
+	__sync_lock_release(&existsColumn_cache_sync);
+	return(rslt);
 }
 
 int SqlDb::existsColumnInCache(const char *table, const char *column) {
-	map<string, list<string> >::iterator iter = this->existsColumnCache.find(table);
-	if(iter != this->existsColumnCache.end()) {
-		return(find(iter->second.begin(), iter->second.end(), column) != iter->second.end());
+	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	map<string, list<string> >::iterator iter = this->existsColumn_cache.find(table);
+	if(iter != this->existsColumn_cache.end()) {
+		int rslt = find(iter->second.begin(), iter->second.end(), column) != iter->second.end();
+		__sync_lock_release(&existsColumn_cache_sync);
+		return(rslt);
 	}
+	__sync_lock_release(&existsColumn_cache_sync);
 	return(-1);
 }
 
 void SqlDb::addColumnToCache(const char *table, const char *column) {
-	this->existsColumnCache[table].push_back(column);
+	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	this->existsColumn_cache[table].push_back(column);
+	__sync_lock_release(&existsColumn_cache_sync);
+}
+
+bool SqlDb::isIPv6Column(string table, string column, bool useCache) {
+	if(!VM_IPV6_B) {
+		return(false);
+	}
+	string columnType = getTypeColumn(table, column, true, useCache);
+	return(columnType.find("varbinary") != string::npos);
+}
+
+bool SqlDb::_isIPv6Column(string table, string column) {
+	if(!VM_IPV6_B) {
+		return(false);
+	}
+	bool isIPv6 = false;
+	while(__sync_lock_test_and_set(&typeColumn_cache_sync, 1));
+	if(typeColumn_cache.find(table) == typeColumn_cache.end()) {
+		SqlDb *sqlDb = createSqlObject();
+		sqlDb->query(string("show columns from ") + sqlDb->escapeTableName(table));
+		SqlDb_row cdr_struct_row;
+		while((cdr_struct_row = sqlDb->fetchRow())) {
+			typeColumn_cache[table][cdr_struct_row["field"]] = cdr_struct_row["type"];
+		}
+		delete sqlDb;
+	}
+	if(typeColumn_cache.find(table) != typeColumn_cache.end() &&
+	   typeColumn_cache[table].find(column) != typeColumn_cache[table].end()) {
+		string type = typeColumn_cache[table][column];
+		std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+		isIPv6 = type.find("varbinary") != string::npos;
+	}
+	__sync_lock_release(&typeColumn_cache_sync);
+	return(isIPv6);
 }
 
 int SqlDb::getPartitions(const char *table, vector<string> *partitions, bool useCache) {
@@ -1225,6 +1281,7 @@ void SqlDb::setSilentConnect() {
 
 void SqlDb::cleanFields() {
 	this->fields.clear();
+	this->fields_type.clear();
 }
 
 void SqlDb::addDelayQuery(u_int32_t delay_ms, bool store) {
@@ -1301,7 +1358,6 @@ SqlDb_mysql::SqlDb_mysql() {
 	this->hMysqlConn = NULL;
 	this->hMysqlRes = NULL;
 	this->mysqlThreadId = 0;
-	this->partitions_cache_sync = 0;
 }
 
 SqlDb_mysql::~SqlDb_mysql() {
@@ -1790,7 +1846,12 @@ SqlDb_row SqlDb_mysql::fetchRow() {
 		if(response_data_index < response_data_rows &&
 		   response_data_index < response_data.size()) {
 			for(size_t i = 0; i < min(response_data[response_data_index].size(), response_data_columns.size()); i++) {
-				row.add(response_data[response_data_index][i].str, response_data_columns[i], response_data[response_data_index][i].null);
+				row.add(response_data[response_data_index][i].is_null ?
+					 NULL :
+					 response_data[response_data_index][i].str.c_str(), 
+					response_data_columns[i].c_str(), 
+					response_data_columns_types[i],
+					response_data[response_data_index][i].str.length());
 			}
 			++response_data_index;
 		}
@@ -1801,6 +1862,7 @@ SqlDb_row SqlDb_mysql::fetchRow() {
 				MYSQL_FIELD *field;
 				for(int i = 0; (field = mysql_fetch_field(this->hMysqlRes)); i++) {
 					this->fields.push_back(field->name);
+					this->fields_type.push_back(field->type);
 				}
 			} else {
 				this->checkLastError("fetch row error in function mysql_use_result", true);
@@ -1810,8 +1872,9 @@ SqlDb_row SqlDb_mysql::fetchRow() {
 			MYSQL_ROW mysqlRow = mysql_fetch_row(hMysqlRes);
 			if(mysqlRow) {
 				unsigned int numFields = mysql_num_fields(this->hMysqlRes);
+				unsigned long *lengths = mysql_fetch_lengths(this->hMysqlRes);
 				for(unsigned int i = 0; i < numFields; i++) {
-					row.add(mysqlRow[i], this->fields[i]);
+					row.add(mysqlRow[i], this->fields[i], this->fields_type[i], lengths[i]);
 				}
 			} else {
 				this->checkLastError("fetch row error", true);
@@ -1821,21 +1884,24 @@ SqlDb_row SqlDb_mysql::fetchRow() {
 	return(row);
 }
 
-bool SqlDb_mysql::fetchQueryResult(vector<string> *fields, vector<map<string, string_null> > *rows) {
+bool SqlDb_mysql::fetchQueryResult(vector<string> *fields, vector<int> *fields_types, vector<map<string, string_null> > *rows) {
 	fields->clear();
+	fields_types->clear();
 	rows->clear();
 	MYSQL_RES *hMysqlRes = mysql_use_result(this->hMysqlConn);
 	if(hMysqlRes) {
 		MYSQL_FIELD *field;
 		for(int i = 0; (field = mysql_fetch_field(hMysqlRes)); i++) {
 			fields->push_back(field->name);
+			fields_types->push_back(field->type);
 		}
 		MYSQL_ROW mysqlRow;
 		while((mysqlRow = mysql_fetch_row(hMysqlRes))) {
 			map<string, string_null> rslt_row;
 			unsigned int numFields = mysql_num_fields(hMysqlRes);
+			unsigned long *lengths = mysql_fetch_lengths(hMysqlRes);
 			for(unsigned int i = 0; i < numFields; i++) {
-				rslt_row[(*fields)[i]] = string_null(mysqlRow[i]);
+				rslt_row[(*fields)[i]] = string_null(mysqlRow[i], lengths[i], false);
 			}
 			rows->push_back(rslt_row);
 		}
@@ -1845,7 +1911,7 @@ bool SqlDb_mysql::fetchQueryResult(vector<string> *fields, vector<map<string, st
 	
 }
 
-string SqlDb_mysql::getJsonResult(vector<string> *fields, vector<map<string, string_null> > *rows) {
+string SqlDb_mysql::getJsonResult(vector<string> *fields, vector<int> *fields_types, vector<map<string, string_null> > *rows) {
 	JsonExport exp;
 	exp.add("result", "OK");
 	string jsonData;
@@ -1855,7 +1921,7 @@ string SqlDb_mysql::getJsonResult(vector<string> *fields, vector<map<string, str
 		JsonExport expFields;
 		expFields.setTypeItem(JsonExport::_array);
 		for(size_t j = 0; j < fields->size(); j++) {
-			expFields.add(NULL, (*fields)[j]);
+			expFields.add(NULL, (*fields)[j] + ':' + intToString((*fields_types)[j]));
 		}
 		jsonData = expFields.getJson();
 		for(size_t i = 0; i < rows->size(); i++) {
@@ -1865,7 +1931,7 @@ string SqlDb_mysql::getJsonResult(vector<string> *fields, vector<map<string, str
 				if((*rows)[i][(*fields)[j]].is_null) {
 					expRow.add(NULL);
 				} else {
-					expRow.add(NULL, (*rows)[i][(*fields)[j]].str);
+					expRow.add(NULL, (*rows)[i][(*fields)[j]].out());
 				}
 			}
 			jsonData += "," + expRow.getJson();
@@ -1881,21 +1947,23 @@ string SqlDb_mysql::getJsonResult(vector<string> *fields, vector<map<string, str
 
 string SqlDb_mysql::getJsonResult() {
 	vector<string> rslt_fields;
+	vector<int> rslt_fields_types;
 	vector<map<string, string_null> > rslt_rows;
-	this->fetchQueryResult(&rslt_fields, &rslt_rows);
-	return(this->getJsonResult(&rslt_fields, &rslt_rows));
+	this->fetchQueryResult(&rslt_fields, &rslt_fields_types, &rslt_rows);
+	return(this->getJsonResult(&rslt_fields, &rslt_fields_types, &rslt_rows));
 }
 
 string SqlDb_mysql::getCsvResult() {
 	vector<string> rslt_fields;
+	vector<int> rslt_fields_types;
 	vector<map<string, string_null> > rslt_rows;
-	this->fetchQueryResult(&rslt_fields, &rslt_rows);
+	this->fetchQueryResult(&rslt_fields, &rslt_fields_types, &rslt_rows);
 	string rslt_csv = "CSV\n";
 	for(size_t i = 0; i < rslt_fields.size(); i++) {
 		if(i) {
 			rslt_csv += ",";
 		}
-		rslt_csv += rslt_fields[i];
+		rslt_csv += rslt_fields[i] + ':' + intToString(rslt_fields_types[i]);
 	}
 	for(size_t i = 0; i < rslt_rows.size(); i++) {
 		rslt_csv += "\n";
@@ -1903,7 +1971,7 @@ string SqlDb_mysql::getCsvResult() {
 			if(j) {
 				rslt_csv += ",";
 			}
-			rslt_csv += rslt_rows[i][rslt_fields[j]].str;
+			rslt_csv += rslt_rows[i][rslt_fields[j]].out();
 		}
 	}
 	return(rslt_csv);
@@ -1931,7 +1999,7 @@ bool SqlDb_mysql::existsTable(const char *table) {
 	if(isCloud() &&
 	   (db_table_separator = strchr(table, '.')) != NULL) {
 		string db = string(table, db_table_separator - table);
-		this->query(string("select table_name from information_schema.tables  where table_schema = '") + db + "' and table_name = '" + (db_table_separator + 1) + "'");
+		this->query(string("select table_name from information_schema.tables where table_schema = '") + db + "' and table_name = '" + (db_table_separator + 1) + "'");
 	} else {
 		this->query(string("show tables like '") + table + "'");
 	}
@@ -1940,6 +2008,16 @@ bool SqlDb_mysql::existsTable(const char *table) {
 		++countRow;
 	}
 	return(countRow > 0);
+}
+
+list<string> SqlDb_mysql::getAllTables() {
+	list<string> tables;
+	this->query("show tables");
+	SqlDb_row table_row;
+	while((table_row = this->fetchRow())) {
+		tables.push_back(table_row[0]);
+	}
+	return(tables);
 }
 
 bool SqlDb_mysql::existsDatabase() {
@@ -1981,7 +2059,30 @@ bool SqlDb_mysql::existsColumn(const char *table, const char *column) {
 	}
 }
 
-string SqlDb_mysql::getTypeColumn(const char *table, const char *column, bool toLower) {
+string SqlDb_mysql::getTypeColumn(const char *table, const char *column, bool toLower, bool useCache) {
+	if(useCache) {
+		while(__sync_lock_test_and_set(&typeColumn_cache_sync, 1));
+		if(!column ||
+		   typeColumn_cache.find(table) == typeColumn_cache.end()) {
+			this->query(string("show columns from ") + escapeTableName(table));
+			SqlDb_row cdr_struct_row;
+			while((cdr_struct_row = this->fetchRow())) {
+				typeColumn_cache[table][cdr_struct_row["field"]] = cdr_struct_row["type"];
+			}
+		}
+		string type;
+		if(column) {
+			if(typeColumn_cache.find(table) != typeColumn_cache.end() &&
+			   typeColumn_cache[table].find(column) != typeColumn_cache[table].end()) {
+				type = typeColumn_cache[table][column];
+				if(toLower) {
+					std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+				}
+			}
+		}
+		__sync_lock_release(&typeColumn_cache_sync);
+		return(type);
+	}
 	this->query(string("show columns from ") + escapeTableName(table) + " like '" + column + "'");
 	SqlDb_row cdr_struct_row = this->fetchRow();
 	if(cdr_struct_row) {
@@ -2082,7 +2183,7 @@ string SqlDb_mysql::escape(const char *inputString, int length) {
 }
 
 string SqlDb_mysql::escapeTableName(string tableName) {
-	if(isReservedWord(tableName)) {
+	if(isReservedWord(tableName) || tableName.find('-') != string::npos) {
 		return("`" + tableName + "`");
 	}
 	return(tableName);
@@ -2416,7 +2517,7 @@ bool SqlDb_odbc::existsColumn(const char */*table*/, const char */*column*/) {
 	return(false);
 }
 
-string SqlDb_odbc::getTypeColumn(const char */*table*/, const char */*column*/, bool /*toLower*/) {
+string SqlDb_odbc::getTypeColumn(const char */*table*/, const char */*column*/, bool /*toLower*/, bool /*useCache*/) {
 	// TODO
 	return("");
 }
@@ -3062,7 +3163,9 @@ MySqlStore::~MySqlStore() {
 	}
 	if(loadFromQFileConfig.enable) {
 		for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
-			pthread_join(iter->second.thread, NULL);
+			if(iter->second.thread) {
+				pthread_join(iter->second.thread, NULL);
+			}
 		}
 	}
 }
@@ -3122,6 +3225,8 @@ void MySqlStore::loadFromQFiles_start() {
 			this->addLoadFromQFile(STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS, "cache_numbers");
 			this->addLoadFromQFile(STORE_PROC_ID_FRAUD_ALERT_INFO, "fraud_alert_info");
 			this->addLoadFromQFile(STORE_PROC_ID_LOG_SENSOR, "log_sensor");
+			this->addLoadFromQFile(STORE_PROC_ID_SS7, "ss7");
+			this->addLoadFromQFile(STORE_PROC_ID_OTHER, "other");
 			if(opt_ipaccount) {
 				this->addLoadFromQFile((STORE_PROC_ID_IPACC_1 / 10) * 10, "ipacc");
 				this->addLoadFromQFile((STORE_PROC_ID_IPACC_AGR_INTERVAL / 10) * 10, "ipacc_agreg");
@@ -4266,10 +4371,10 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	
-	this->query(
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `filter_ip` (\
 			`id` int NOT NULL AUTO_INCREMENT,\
-			`ip` int unsigned DEFAULT NULL,\
+			`ip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`mask` int DEFAULT NULL,\
 			`direction` tinyint DEFAULT NULL,\
 			`rtp` tinyint DEFAULT NULL,\
@@ -4429,9 +4534,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`called` varchar(255) DEFAULT NULL,\
 			`called_domain` varchar(255) DEFAULT NULL,\
 			`called_reverse` varchar(255) DEFAULT NULL,\
-			`sipcallerip` int unsigned DEFAULT NULL,\
+			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`sipcallerport` smallint unsigned DEFAULT NULL,\
-			`sipcalledip` int unsigned DEFAULT NULL,\
+			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`sipcalledport` smallint unsigned DEFAULT NULL,\
 			`whohanged` enum('caller','callee') DEFAULT NULL,\
 			`bye` tinyint unsigned DEFAULT NULL,\
@@ -4447,8 +4552,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`b_index` tinyint DEFAULT NULL,\
 			`a_payload` int DEFAULT NULL,\
 			`b_payload` int DEFAULT NULL,\
-			`a_saddr` int unsigned DEFAULT NULL,\
-			`b_saddr` int unsigned DEFAULT NULL,\
+			`a_saddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`b_saddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`a_received` mediumint unsigned DEFAULT NULL,\
 			`b_received` mediumint unsigned DEFAULT NULL,\
 			`a_lost` mediumint unsigned DEFAULT NULL,\
@@ -4561,7 +4666,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`response_time_xxx` smallint unsigned DEFAULT NULL,\
 			`max_retransmission_invite` tinyint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
-			`id_sensor` smallint unsigned DEFAULT NULL,") + 
+			`id_sensor` smallint unsigned DEFAULT NULL," + 
 			(get_customers_pn_query[0] ?
 				"`caller_customer_id` int DEFAULT NULL,\
 				`caller_reseller_id` char(10) DEFAULT NULL,\
@@ -4671,6 +4776,16 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			}
 		}
 	}
+	
+	#if VM_IPV6
+	extern bool useIPv6;
+	string cdrIP_type = this->getTypeColumn("cdr", "sipcallerip", true);;
+	bool _useIPv6 = cdrIP_type.find("varbinary") != string::npos;
+	if(useIPv6 && !_useIPv6) {
+		syslog(LOG_NOTICE, "IPv6 support need varbinary columns for IP addresses!");
+	}
+	useIPv6 = _useIPv6;
+	#endif
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_next` (\
@@ -4714,12 +4829,10 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `cdr_proxy` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,\
 			`calldate` datetime NOT NULL,\
-			`src` int unsigned DEFAULT NULL,\
-			`dst` varchar(255) DEFAULT NULL,\
+			`dst` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 		KEY `cdr_ID` (`cdr_ID`),\
 		KEY `calldate` (`calldate`),\
-		KEY `src` (`src`),\
-		KEY `dst` (`dst`)") + 
+		KEY `dst` (`dst`)" + 
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_proxy_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
@@ -4738,8 +4851,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
-			"`saddr` int unsigned DEFAULT NULL,\
-			`daddr` int unsigned DEFAULT NULL,\
+			"`saddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`daddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`ssrc` int unsigned DEFAULT NULL,\
 			`received` mediumint unsigned DEFAULT NULL,\
 			`loss` mediumint unsigned DEFAULT NULL,\
@@ -4772,8 +4885,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
-			"`daddr` int unsigned DEFAULT NULL,\
-			`saddr` int unsigned DEFAULT NULL,\
+			"`daddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`saddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`firsttime` float DEFAULT NULL,\
 			`dtmf` char DEFAULT NULL,\
 			`type` tinyint unsigned DEFAULT NULL,\
@@ -4912,7 +5025,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			(opt_cdr_partition ?
 				"`calldate` datetime NOT NULL," :
 				"") + 
-			"`ip` int unsigned DEFAULT NULL,\
+			"`ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`port` smallint unsigned DEFAULT NULL,\
 			`is_caller` tinyint unsigned DEFAULT NULL,\
 		KEY (`cdr_ID`)" + 
@@ -4961,7 +5074,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `rtp_stat` (\
 			`id_sensor` smallint unsigned NOT NULL,\
 			`time` datetime NOT NULL,\
-			`saddr` int unsigned NOT NULL,\
+			`saddr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`mosf1_min` tinyint unsigned NOT NULL,\
 			`mosf1_avg` tinyint unsigned NOT NULL,\
 			`mosf2_min` tinyint unsigned NOT NULL,\
@@ -4975,7 +5088,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`counter` mediumint unsigned NOT NULL,\
 			PRIMARY KEY (`time`, `saddr`, `id_sensor`),\
 			KEY `time` (`time`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ") + compress +  
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(supportPartitions != _supportPartitions_na ?
 		(opt_rtp_stat_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(`time`))(\
@@ -5031,13 +5144,13 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`rel_cause_indicator` int unsigned,\
 				`state` enum('call_setup','in_call','completed','rejected','canceled'),\
 				`last_message_type` enum('iam','acm','cpg','anm','rel','rlc'),\
-				`src_ip` int unsigned,\
-				`dst_ip` int unsigned,\
+				`src_ip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
+				`dst_ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 				`src_ip_country_code` varchar(5),\
 				`dst_ip_country_code` varchar(5),\
 				`ss7_id` varchar(255),\
 				`pcap_filename` varchar(255),\
-				`id_sensor` smallint unsigned,") +
+				`id_sensor` smallint unsigned," +
 			(supportPartitions != _supportPartitions_na ?
 				"PRIMARY KEY (`ID`, `time_iam`)," :
 				"PRIMARY KEY (`ID`),") + 
@@ -5065,8 +5178,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`called` varchar(255) DEFAULT NULL,\
 			`called_domain` varchar(255) DEFAULT NULL,\
 			`called_reverse` varchar(255) DEFAULT NULL,\
-			`sipcallerip` int unsigned DEFAULT NULL,\
-			`sipcalledip` int unsigned DEFAULT NULL,\
+			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`bye` tinyint unsigned DEFAULT NULL,\
 			`lastSIPresponse_id` mediumint unsigned DEFAULT NULL,\
 			`lastSIPresponseNum` smallint unsigned DEFAULT NULL,\
@@ -5077,7 +5190,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`message` MEDIUMTEXT CHARACTER SET utf8,\
 			`content_length` MEDIUMINT DEFAULT NULL,\
 			`response_time` SMALLINT UNSIGNED DEFAULT NULL,\
-			`spool_index` tinyint unsigned DEFAULT NULL,") +
+			`spool_index` tinyint unsigned DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `calldate`)," :
 			"PRIMARY KEY (`ID`),") + 
@@ -5140,12 +5253,10 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `message_proxy` (\
 			`message_ID` " + messageIdType + " unsigned NOT NULL,\
 			`calldate` datetime NOT NULL,\
-			`src` int unsigned DEFAULT NULL,\
-			`dst` varchar(255) DEFAULT NULL,\
+			`dst` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 		KEY `message_ID` (`message_ID`),\
 		KEY `calldate` (`calldate`),\
-		KEY `src` (`src`),\
-		KEY `dst` (`dst`)") + 
+		KEY `dst` (`dst`)" + 
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `message_proxy_ibfk_1` FOREIGN KEY (`message_ID`) REFERENCES `message` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
@@ -5216,14 +5327,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 	
-	this->query(
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `register` (\
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
 			`calldate` datetime NOT NULL,\
-			`sipcallerip` int unsigned NOT NULL,\
-			`sipcalledip` int unsigned NOT NULL,\
+			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`from_name` varchar(255) NULL DEFAULT NULL,\
 			`from_domain` varchar(255) NULL DEFAULT NULL,\
@@ -5256,8 +5367,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
 			`created_at` datetime NOT NULL,\
-			`sipcallerip` int unsigned NOT NULL,\
-			`sipcalledip` int unsigned NOT NULL,\
+			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`to_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_num` varchar(255) NULL DEFAULT NULL,\
@@ -5268,7 +5379,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`ua_id` int unsigned DEFAULT NULL,\
 			`to_domain` varchar(255) NULL DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
-			`spool_index` tinyint unsigned DEFAULT NULL,") +
+			`spool_index` tinyint unsigned DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `created_at`)," :
 			"PRIMARY KEY (`ID`),") +
@@ -5291,8 +5402,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`fname` BIGINT NULL default NULL,\
 			`counter` int DEFAULT 0,\
 			`created_at` datetime NOT NULL,\
-			`sipcallerip` int unsigned NOT NULL,\
-			`sipcalledip` int unsigned NOT NULL,\
+			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`to_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_num` varchar(255) NULL DEFAULT NULL,\
@@ -5300,7 +5411,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`digestusername` varchar(255) NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
 			`to_domain` varchar(255) NULL DEFAULT NULL,\
-			`spool_index` tinyint unsigned DEFAULT NULL,") +
+			`spool_index` tinyint unsigned DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `created_at`)," :
 			"PRIMARY KEY (`ID`),") +
@@ -5323,8 +5434,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`time` datetime NOT NULL,\
 			`type` tinyint unsigned NOT NULL,\
-			`ip_src` int unsigned DEFAULT NULL,\
-			`ip_dst` int unsigned DEFAULT NULL,\
+			`ip_src` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`ip_dst` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`ip_src_country_code` varchar(5),\
 			`ip_dst_country_code` varchar(5),\
 			`port_src` smallint unsigned DEFAULT NULL,\
@@ -5358,7 +5469,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`qualify_ok` tinyint unsigned DEFAULT NULL,\
 			`id_sensor` smallint unsigned DEFAULT NULL,\
 			`spool_index` tinyint unsigned DEFAULT NULL,\
-			`flags` bigint unsigned DEFAULT NULL,") +
+			`flags` bigint unsigned DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `time`)," :
 			"PRIMARY KEY (`ID`),") + 
@@ -5413,11 +5524,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	
 	if(opt_ipaccount) {
-	this->query(
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `ipacc` (\
-			`saddr` int unsigned NOT NULL,\
+			`saddr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`src_id_customer` int unsigned NOT NULL DEFAULT 0,\
-			`daddr` int unsigned NOT NULL,\
+			`daddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`dst_id_customer` int unsigned NOT NULL DEFAULT 0,\
 			`port` smallint unsigned NOT NULL,\
 			`proto` smallint unsigned NOT NULL,\
@@ -5438,12 +5549,12 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)");
 	}
 
-	this->query(
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `livepacket` (\
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT ,\
 			`id_sensor` INT DEFAULT NULL,\
-			`sipcallerip` INT UNSIGNED NOT NULL ,\
-			`sipcalledip` INT UNSIGNED NOT NULL ,\
+			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL ,\
+			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL ,\
 			`sport` SMALLINT UNSIGNED NOT NULL ,\
 			`dport` SMALLINT UNSIGNED NOT NULL ,\
 			`istcp` TINYINT UNSIGNED NOT NULL ,\
@@ -5473,30 +5584,30 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	
 	if(opt_enable_fraud) {
-	this->query(
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cache_number_location` (\
 			`number` varchar(30) NOT NULL,\
-			`number_ip` int unsigned NOT NULL,\
-			`ip` int unsigned,\
+			`number_ip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 			`country_code` varchar(5),\
 			`continent_code` varchar(5),\
 			`at` bigint unsigned,\
-			`old_ip` int unsigned,\
+			`old_ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 			`old_country_code` varchar(5),\
 			`old_continent_code` varchar(5),\
 			`old_at` bigint unsigned,\
 		PRIMARY KEY (`number`, `number_ip`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
-	this->query(
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cache_number_domain_location` (\
 			`number` varchar(30) NOT NULL,\
 			`domain` varchar(100) NOT NULL,\
-			`number_ip` int unsigned NOT NULL,\
-			`ip` int unsigned,\
+			`number_ip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 			`country_code` varchar(5),\
 			`continent_code` varchar(5),\
 			`at` bigint unsigned,\
-			`old_ip` int unsigned,\
+			`old_ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 			`old_country_code` varchar(5),\
 			`old_continent_code` varchar(5),\
 			`old_at` bigint unsigned,\
@@ -5555,7 +5666,7 @@ bool SqlDb_mysql::createSchema_tables_billing_agregation() {
 			"CREATE TABLE IF NOT EXISTS `billing_agregation_") + typeParts[i].type + "_addresses` (\
 				`part` INT UNSIGNED,\
 				`time` INT UNSIGNED,\
-				`ip` INT UNSIGNED,\
+				`ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 				`price_operator_mult100000` BIGINT UNSIGNED,\
 				`price_customer_mult100000` BIGINT UNSIGNED,\
 				PRIMARY KEY (`part`,`time`,`ip`))\
@@ -5609,8 +5720,8 @@ bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 		`master_id` BIGINT UNSIGNED,\
 		`timestamp` DATETIME NOT NULL,\
 		`usec` INT UNSIGNED NOT NULL,\
-		`srcip` INT UNSIGNED NOT NULL,\
-		`dstip` INT UNSIGNED NOT NULL,\
+		`srcip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+		`dstip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 		`srcport` SMALLINT UNSIGNED DEFAULT NULL,\
 		`dstport` SMALLINT UNSIGNED DEFAULT NULL,\
 		`url` TEXT NOT NULL,\
@@ -5620,7 +5731,7 @@ bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 		`callid` VARCHAR( 255 ) NOT NULL,\
 		`sessid` VARCHAR( 255 ) NOT NULL,\
 		`external_transaction_id` varchar( 255 ) NOT NULL,\
-		`id_sensor` smallint DEFAULT NULL,") +
+		`id_sensor` smallint DEFAULT NULL," +
 	(opt_cdr_partition ? 
 		"PRIMARY KEY (`id`, `timestamp`)," :
 		"PRIMARY KEY (`id`),") + 
@@ -5709,15 +5820,15 @@ bool SqlDb_mysql::createSchema_table_webrtc(int connectId) {
 		`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\
 		`timestamp` DATETIME NOT NULL,\
 		`usec` INT UNSIGNED NOT NULL,\
-		`srcip` INT UNSIGNED NOT NULL,\
-		`dstip` INT UNSIGNED NOT NULL,\
+		`srcip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+		`dstip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 		`srcport` SMALLINT UNSIGNED DEFAULT NULL,\
 		`dstport` SMALLINT UNSIGNED DEFAULT NULL,\
 		`type` ENUM('http', 'http_resp', 'websocket', 'websocket_resp') DEFAULT NULL,\
 		`method` VARCHAR(32) DEFAULT NULL,\
 		`body` TEXT CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,\
 		`external_transaction_id` VARCHAR( 255 ) NOT NULL,\
-		`id_sensor` smallint DEFAULT NULL,") +
+		`id_sensor` smallint DEFAULT NULL," +
 	(opt_cdr_partition ? 
 		"PRIMARY KEY (`id`, `timestamp`)," :
 		"PRIMARY KEY (`id`),") + 
@@ -6509,9 +6620,9 @@ void SqlDb_mysql::createTable(const char *tableName) {
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `ssl_sessions") + (mem ? "_mem" : "") + "` (\
 				`id_sensor` smallint unsigned,\
-				`serverip` int unsigned,\
+				`serverip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 				`serverport` smallint unsigned,\
-				`clientip` int unsigned,\
+				`clientip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 				`clientport` smallint unsigned,\
 				`stored_at` datetime,\
 				`session` varchar(1024),\
@@ -6559,8 +6670,26 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 		this->checkColumns_other();
 	}
 	
-	sql_disable_next_attempt_if_error = 0;
 	stopExistsColumnCache();
+	
+	#if VM_IPV6
+	extern bool useIPv6;
+	string cdrIP_type = this->getTypeColumn("cdr", "sipcallerip", true);;
+	bool _useIPv6 = cdrIP_type.find("varbinary") != string::npos;
+	if(useIPv6 && !_useIPv6) {
+		syslog(LOG_NOTICE, "IPv6 support need varbinary columns for IP addresses!");
+	}
+	useIPv6 = _useIPv6;
+	#endif
+	
+	if(VM_IPV6_B) {
+		list<string> allTables = this->getAllTables();
+		for(list<string>::iterator iter = allTables.begin(); iter != allTables.end(); iter++) {
+			this->getTypeColumn(iter->c_str(), NULL, true, true);
+		}
+	}
+	
+	sql_disable_next_attempt_if_error = 0;
 }
 
 void SqlDb_mysql::updateSensorState() {

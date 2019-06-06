@@ -22,7 +22,7 @@ struct regcachenode_t {
 	unsigned int counter;
 };
 
-typedef map<string, regcachenode_t> t_regcache_buffer;
+typedef map<d_item<vmIP>, regcachenode_t> t_regcache_buffer;
 
 class regcache {
 public:
@@ -30,7 +30,7 @@ public:
 	pthread_mutex_t buf_lock;
 	unsigned int lastprune;
 
-	int check(unsigned int srcip, unsigned int dstip, unsigned int timestamp, unsigned int *count);
+	int check(vmIP srcip, vmIP dstip, unsigned int timestamp, unsigned int *count);
 	
 	void prune(unsigned int timestamp);
 	void prunecheck(unsigned int timestmp);

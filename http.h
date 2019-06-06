@@ -6,17 +6,17 @@
 
 
 struct HttpDataCache_id {
-	HttpDataCache_id(u_int32_t ip_src, u_int32_t ip_dst,
-			 u_int16_t port_src, u_int16_t port_dst) {
+	HttpDataCache_id(vmIP ip_src, vmIP ip_dst,
+			 vmPort port_src, vmPort port_dst) {
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
 		this->port_src = port_src; 
 		this->port_dst = port_dst;
 	}
-	u_int32_t ip_src;
-	u_int32_t ip_dst;
-	u_int16_t port_src;
-	u_int16_t port_dst;
+	vmIP ip_src;
+	vmIP ip_dst;
+	vmPort port_src;
+	vmPort port_dst;
 	bool operator < (const HttpDataCache_id& other) const {
 		return((this->ip_src < other.ip_src) ? 1 : (this->ip_src > other.ip_src) ? 0 :
 		       (this->ip_dst < other.ip_dst) ? 1 : (this->ip_dst > other.ip_dst) ? 0 :
@@ -91,13 +91,13 @@ struct HttpDataCache_link {
 struct HttpDataCache {
 	HttpDataCache();
 	void addRequest(u_int64_t timestamp,
-			u_int32_t ip_src, u_int32_t ip_dst,
-			u_int16_t port_src, u_int16_t port_dst,
+			vmIP ip_src, vmIP ip_dst,
+			vmPort port_src, vmPort port_dst,
 			const char *url, const char *http, const char *body,
 			const char *callid, const char *sessionid, const char *external_transaction_id);
 	void addResponse(u_int64_t timestamp,
-			 u_int32_t ip_src, u_int32_t ip_dst,
-			 u_int16_t port_src, u_int16_t port_dst,
+			 vmIP ip_src, vmIP ip_dst,
+			 vmPort port_src, vmPort port_dst,
 			 const char *http, const char *body,
 			 const char *url_master, const char *http_master, const char *body_master);
 	void writeToDb(bool all = false, bool ifExpiration = false);
@@ -118,11 +118,11 @@ class HttpData : public TcpReassemblyProcessData {
 public:
 	HttpData();
 	virtual ~HttpData();
-	void processData(u_int32_t ip_src, u_int32_t ip_dst,
-			 u_int16_t port_src, u_int16_t port_dst,
+	void processData(vmIP ip_src, vmIP ip_dst,
+			 vmPort port_src, vmPort port_dst,
 			 TcpReassemblyData *data,
 			 u_char *ethHeader, u_int32_t ethHeaderLength,
-			 u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+			 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
 			 void *uData, TcpReassemblyLink *reassemblyLink,
 			 std::ostream *debugStream);
 	void writeToDb(bool all = false);
@@ -146,17 +146,17 @@ public:
 		response
 	};
 	struct HttpLink_id {
-		HttpLink_id(u_int32_t ip1 = 0, u_int32_t ip2 = 0,
-			    u_int16_t port1 = 0, u_int16_t port2 = 0) {
+		HttpLink_id(vmIP ip1 = 0, vmIP ip2 = 0,
+			    vmPort port1 = 0, vmPort port2 = 0) {
 			this->ip1 = ip1 > ip2 ? ip1 : ip2;
 			this->ip2 = ip1 < ip2 ? ip1 : ip2;
 			this->port1 = port1 > port2 ? port1 : port2; 
 			this->port2 = port1 < port2 ? port1 : port2;
 		}
-		u_int32_t ip1;
-		u_int32_t ip2;
-		u_int16_t port1;
-		u_int16_t port2;
+		vmIP ip1;
+		vmIP ip2;
+		vmPort port1;
+		vmPort port2;
 		bool operator < (const HttpLink_id& other) const {
 			return((this->ip1 < other.ip1) ? 1 : (this->ip1 > other.ip1) ? 0 :
 			       (this->ip2 < other.ip2) ? 1 : (this->ip2 > other.ip2) ? 0 :
@@ -166,8 +166,8 @@ public:
 	};
 	class HttpLink {
 	public:
-		HttpLink(u_int32_t ip1 = 0, u_int32_t ip2 = 0,
-			 u_int16_t port1 = 0, u_int16_t port2 = 0) {
+		HttpLink(vmIP ip1 = 0, vmIP ip2 = 0,
+			 vmPort port1 = 0, vmPort port2 = 0) {
 			this->ip1 = ip1;
 			this->ip2 = ip2;
 			this->port1 = port1;
@@ -175,10 +175,10 @@ public:
 			this->seq[0] = 1;
 			this->seq[1] = 1;
 		}
-		u_int32_t ip1;
-		u_int32_t ip2;
-		u_int16_t port1;
-		u_int16_t port2;
+		vmIP ip1;
+		vmIP ip2;
+		vmPort port1;
+		vmPort port2;
 		u_int32_t seq[2];
 	};
 public:
@@ -190,8 +190,8 @@ public:
 	void dumpData(const char *timestamp_from, const char *timestamp_to, const char *ids);
 	void dumpDataItem(eReqResp reqResp, string header, string body,
 			  timeval time,
-			  u_int32_t ip_src, u_int32_t ip_dst,
-			  u_int16_t port_src, u_int16_t port_dst);
+			  vmIP ip_src, vmIP ip_dst,
+			  vmPort port_src, vmPort port_dst);
 	void setUnlinkPcap();
 	string getPcapName();
 	void openPcapDumper();

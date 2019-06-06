@@ -18,11 +18,11 @@ public:
 		}
 		Call *call = (Call*)rec;
 		if(call->is_set_proxies()) {
-			set<unsigned int> proxies;
+			set<vmIP> proxies;
 			call->proxies_undup(&proxies);
-			for(set<unsigned int>::iterator iter = proxies.begin(); iter != proxies.end(); iter++) {
+			for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); iter++) {
 				bool _findInBlackList = false;
-				if(check_ip(htonl(*iter), &_findInBlackList)) {
+				if(check_ip(*iter, &_findInBlackList)) {
 					return(true);
 				} else if(_findInBlackList) {
 					if(findInBlackList) {
@@ -45,16 +45,21 @@ public:
 		switch(registerFieldIndex) {
 		case cf_calldate:
 			return(((Call*)rec)->calltime());
-		case cf_callerip:
-			return(htonl(((Call*)rec)->getSipcallerip()));
-		case cf_calledip:
-			return(htonl(((Call*)rec)->getSipcalledip()));
 		case cf_id_sensor:
 			return(((Call*)rec)->useSensorId);
 		case cf_connect_duration:
 			return(((Call*)rec)->connect_duration_active());
 		case cf_called_international:
 			return(!isLocalByPhoneNumber(((Call*)rec)->called));
+		}
+		return(0);
+	}
+	vmIP getField_ip(void *rec, unsigned registerFieldIndex) {
+		switch(registerFieldIndex) {
+		case cf_callerip:
+			return(((Call*)rec)->getSipcallerip());
+		case cf_calledip:
+			return(((Call*)rec)->getSipcalledip());
 		}
 		return(0);
 	}

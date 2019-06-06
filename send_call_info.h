@@ -14,16 +14,16 @@ struct sSciInfo {
 	};
 	sSciInfo() {
 		typeSci = (eTypeSci)0;
-		caller_ip = 0;
-		called_ip = 0;
+		caller_ip.clear();
+		called_ip.clear();
 		at = 0;
 	}
 	eTypeSci typeSci;
 	string callid;
 	string caller_number;
 	string called_number;
-	u_int32_t caller_ip;
-	u_int32_t called_ip;
+	vmIP caller_ip;
+	vmIP called_ip;
 	u_int64_t at;
 };
 

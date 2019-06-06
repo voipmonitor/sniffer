@@ -54,6 +54,10 @@ string CountryDetect_base_table::getTableName(eTableType tableType) {
 		tableName = "geoip_country";
 		useCloudShare = true;
 		break;
+	case _geoipv6_country:
+		tableName = "geoipv6_country";
+		useCloudShare = true;
+		break;
 	}
 	if(!tableName.empty() && isCloud() && useCloudShare && !sverb.disable_cloudshare) {
 		tableName =  "cloudshare." + tableName;
@@ -742,7 +746,9 @@ GeoIP_country::GeoIP_country() {
 
 bool GeoIP_country::load(SqlDb *sqlDb) {
 	string tableName;
-	if(!checkTable(_geoip_country, tableName, sqlDb)) {
+	string tableNameV6;
+	if(!checkTable(_geoip_country, tableName, sqlDb) ||
+	   (VM_IPV6_B && !checkTable(_geoipv6_country, tableNameV6, sqlDb))) {
 		return(false);
 	}
 	bool _createSqlObject = false;
@@ -750,21 +756,25 @@ bool GeoIP_country::load(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	sqlDb->setCsvInRemoteResult(true);
-	sqlDb->query("select * \
-		      from " + tableName + " \
-		      order by ip_from");
-	sqlDb->setCsvInRemoteResult(false);
-	SqlDb_rows rows;
-	sqlDb->fetchRows(&rows);
-	SqlDb_row row;
-	while((row = rows.fetchRow())) {
-		data.push_back(GeoIP_country_rec(
-			atol(row["ip_from"].c_str()),
-			atol(row["ip_to"].c_str()),
-			row["country"].c_str()));
+	for(int pass = 0; pass < (VM_IPV6_B ? 2 : 1); pass++) {
+		sqlDb->setCsvInRemoteResult(true);
+		sqlDb->query("select * \
+			      from " + (pass ? tableNameV6 : tableName) + " \
+			      order by ip_from");
+		sqlDb->setCsvInRemoteResult(false);
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
+		SqlDb_row row;
+		vector<GeoIP_country_rec> *_data = pass ? &data_v6 : &data;
+		while((row = rows.fetchRow())) {
+			vmIP ip_from;
+			vmIP ip_to;
+			ip_from.setIP(&row, "ip_from");
+			ip_to.setIP(&row, "ip_to");
+			_data->push_back(GeoIP_country_rec(ip_from, ip_to, row["country"].c_str()));
+		}
+		std::sort(_data->begin(), _data->end());
 	}
-	std::sort(data.begin(), data.end());
 	if(sqlDb->existsTable("geoip_customer_type") &&
 	   sqlDb->existsColumn("geoip_customer_type", "country_code") &&
 	   !sqlDb->emptyTable("geoip_customer_type") &&
@@ -856,7 +866,7 @@ bool CountryDetect::isLocalByPhoneNumber(const char *phoneNumber) {
 	return(rslt);
 }
 
-string CountryDetect::getCountryByIP(u_int32_t ip) {
+string CountryDetect::getCountryByIP(vmIP ip) {
 	string rslt;
 	lock();
 	if(geoIP_country->loadOK) {
@@ -866,7 +876,7 @@ string CountryDetect::getCountryByIP(u_int32_t ip) {
 	return(rslt);
 }
 
-unsigned CountryDetect::getCountryIdByIP(u_int32_t ip) {
+unsigned CountryDetect::getCountryIdByIP(vmIP ip) {
 	unsigned rslt = 0;
 	lock();
 	if(geoIP_country->loadOK) {
@@ -879,7 +889,7 @@ unsigned CountryDetect::getCountryIdByIP(u_int32_t ip) {
 	return(rslt);
 }
 
-bool CountryDetect::isLocalByIP(u_int32_t ip) {
+bool CountryDetect::isLocalByIP(vmIP ip) {
 	bool rslt = false;
 	lock();
 	if(geoIP_country->loadOK) {
@@ -992,7 +1002,7 @@ bool isLocalByPhoneNumber(const char *phoneNumber) {
 	return(false);
 }
 
-string getCountryByIP(u_int32_t ip, bool suppressStringLocal) {
+string getCountryByIP(vmIP ip, bool suppressStringLocal) {
 	if(countryDetect) {
 		string country = countryDetect->getCountryByIP(ip);
 		if(suppressStringLocal && country == "local") {
@@ -1003,7 +1013,8 @@ string getCountryByIP(u_int32_t ip, bool suppressStringLocal) {
 	return("");
 }
 
-unsigned getCountryIdByIP(u_int32_t ip) {
+unsigned int getCountryIdByIP(vmIP ip)
+{
 	if(countryDetect) {
 		return(countryDetect->getCountryIdByIP(ip));
 	}

@@ -187,7 +187,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 				}
 				unsigned int flags = 0;
 				set_global_flags(flags);
-				IPfilter::add_call_flags(&flags, ntohl(packetS->saddr), ntohl(packetS->daddr));
+				IPfilter::add_call_flags(&flags, packetS->saddr, packetS->daddr);
 				if(flags & FLAG_SKIPCDR) {
 					if(verbosity > 1)
 						syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");

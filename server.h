@@ -138,12 +138,12 @@ public:
 
 struct sSnifferServerService {
 	sSnifferServerService() {
-		connect_ipl = 0;
+		connect_ip.clear();
 		connect_port = 0;
 		sensor_id = 0;
 		service_connection = NULL;
 	}
-	u_int32_t connect_ipl;
+	vmIP connect_ip;
 	u_int16_t connect_port;
 	int32_t sensor_id;
 	string sensor_string;

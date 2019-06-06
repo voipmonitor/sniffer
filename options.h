@@ -59,20 +59,20 @@ public:
 	cSipMsgItem_base() {
 		type = 0;
 		id_sensor = 0;
-		ip_src = 0;
-		ip_dst = 0;
-		port_src = 0;
-		port_dst = 0;
+		ip_src.clear();
+		ip_dst.clear();
+		port_src.clear();
+		port_dst.clear();
 	}
 	bool operator == (const cSipMsgItem_base& other) const;
 	void debug_out();
 public:
 	int16_t type;
 	int16_t id_sensor;
-	u_int32_t ip_src;
-	u_int32_t ip_dst;
-	u_int16_t port_src;
-	u_int16_t port_dst;
+	vmIP ip_src;
+	vmIP ip_dst;
+	vmPort port_src;
+	vmPort port_dst;
 	string number_src;
 	string number_dst;
 	string domain_src;
@@ -339,8 +339,8 @@ public:
 			return(((options && item->type == smt_options) ||
 				(subscribe && item->type == smt_subscribe) ||
 				(notify && item->type == smt_notify)) &&
-			       (ip_src.is_empty() || ip_src.checkIP(ntohl(item->ip_src))) &&
-			       (ip_dst.is_empty() || ip_dst.checkIP(ntohl(item->ip_src))) &&
+			       (ip_src.is_empty() || ip_src.checkIP(item->ip_src)) &&
+			       (ip_dst.is_empty() || ip_dst.checkIP(item->ip_src)) &&
 			       (number_src.is_empty() || number_src.checkNumber(item->number_src.c_str())) &&
 			       (number_dst.is_empty() || number_dst.checkNumber(item->number_dst.c_str())) &&
 			       (domain_src.is_empty() || domain_src.check(item->domain_src.c_str())) &&

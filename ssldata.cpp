@@ -17,11 +17,11 @@ extern int opt_enable_ssl;
 
 extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
 
-#ifdef HAVE_LIBGNUTLS
+#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 extern void decrypt_ssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport);
 #endif
 
-extern map<d_u_int32_t, string> ssl_ipport;
+extern map<vmIPport, string> ssl_ipport;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
 
 
@@ -32,11 +32,11 @@ SslData::SslData() {
 SslData::~SslData() {
 }
 
-void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
-			  u_int16_t port_src, u_int16_t port_dst,
+void SslData::processData(vmIP ip_src, vmIP ip_dst,
+			  vmPort port_src, vmPort port_dst,
 			  TcpReassemblyData *data,
 			  u_char *ethHeader, u_int32_t ethHeaderLength,
-			  u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+			  u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
 			  void */*uData*/, TcpReassemblyLink *reassemblyLink,
 			  std::ostream *debugStream) {
 	++this->counterProcessData;
@@ -48,10 +48,10 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		if(!dataItem->getData()) {
 			continue;
 		}
-		u_int32_t _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
-		u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
-		u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
-		u_int16_t _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
+		vmIP _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
+		vmIP _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
+		vmPort _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
+		vmPort _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
 		if(reassemblyLink->checkDuplicitySeq(dataItem->getSeq())) {
 			if(debugStream) {
 				(*debugStream) << "SKIP SEQ " << dataItem->getSeq() << endl;
@@ -62,11 +62,11 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			(*debugStream)
 				<< "###"
 				<< fixed
-				<< setw(15) << inet_ntostring(htonl(ip_src))
+				<< setw(15) << ip_src.getString()
 				<< " / "
 				<< setw(5) << port_src
 				<< (dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? " --> " : " <-- ")
-				<< setw(15) << inet_ntostring(htonl(ip_dst))
+				<< setw(15) << ip_dst.getString()
 				<< " / "
 				<< setw(5) << port_dst
 				<< "  len: " << setw(4) << dataItem->getDatalen();
@@ -106,11 +106,11 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 					}
 					vector<string> rslt_decrypt_part;
 					if(opt_enable_ssl == 10) {
-						#ifdef HAVE_LIBGNUTLS
+						#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 						decrypt_ssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
 						#endif
 					} else {
-						decrypt_ssl_dssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst, dataItem->getTime());
+						decrypt_ssl_dssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), _ip_src, _ip_dst, _port_src, _port_dst, dataItem->getTime());
 					}
 					if(rslt_decrypt_part.size()) {
 						for(size_t i = 0; i < rslt_decrypt_part.size(); i++) {
@@ -154,16 +154,10 @@ void SslData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 		for(size_t i = 0; i < rslt_decrypt.size(); i++) {
 			if(debugStream) {
 				string out(rslt_decrypt[i], 0,100);
-				std::replace( out.begin(), out.end(), '\n', ' ');
-				std::replace( out.begin(), out.end(), '\r', ' ');
-				unsigned long s_addr = _ip_src;
-				unsigned long d_addr = _ip_dst;
-				char src[INET_ADDRSTRLEN];
-				char dst[INET_ADDRSTRLEN];
-				inet_ntop(AF_INET, &s_addr, src, INET_ADDRSTRLEN);
-				inet_ntop(AF_INET, &d_addr, dst, INET_ADDRSTRLEN);
+				std::replace(out.begin(), out.end(), '\n', ' ');
+				std::replace(out.begin(), out.end(), '\r', ' ');
 				if(out.length()) {
-					(*debugStream) << "TS: " << dataItem->getTime().tv_sec << "." << dataItem->getTime().tv_usec << " " << src << " -> " << dst << " SIP " << rslt_decrypt[i].length() << " " << out << endl;
+					(*debugStream) << "TS: " << dataItem->getTime().tv_sec << "." << dataItem->getTime().tv_usec << " " << _ip_src.getString() << " -> " << _ip_dst.getString() << " SIP " << rslt_decrypt[i].length() << " " << out << endl;
 				}
 				(*debugStream) << "DECRYPT DATA: " << rslt_decrypt[i] << endl;
 			}
@@ -246,9 +240,9 @@ void SslData::printContentSummary() {
 
 void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool ethHeaderAlloc,
 			    u_char *data, unsigned dataLength, ReassemblyBuffer::eType dataType, bool dataAlloc,
-			    u_int32_t ip_src, u_int32_t ip_dst,u_int16_t port_src, u_int16_t port_dst,
+			    vmIP ip_src, vmIP ip_dst, vmPort port_src, vmPort port_dst,
 			    timeval time, u_int32_t ack, u_int32_t seq,
-			    u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip) {
+			    u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip) {
 	if(sverb.ssldecode) {
 		hexdump(data, dataLength);
 		cout << "---" << endl;
@@ -273,7 +267,10 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 					  ip_src, ip_dst, port_src, port_dst,
 					  seq, ack, 
 					  time.tv_sec, time.tv_usec, dlt);
-		unsigned dataOffset = ethHeaderLength + sizeof(iphdr2) + ((tcphdr2*)(tcpPacket + ethHeaderLength + sizeof(iphdr2)))->doff * 4;
+		unsigned iphdrSize = ((iphdr2*)(tcpPacket + ethHeaderLength))->get_hdr_size();
+		unsigned dataOffset = ethHeaderLength + 
+				      iphdrSize +
+				      ((tcphdr2*)(tcpPacket + ethHeaderLength + iphdrSize))->doff * 4;
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 			true, 
 			#if USE_PACKET_NUMBER
@@ -292,13 +289,17 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 					  ethHeader, data, dataLength,
 					  ip_src, ip_dst, port_src, port_dst,
 					  time.tv_sec, time.tv_usec);
+		unsigned iphdrSize = ((iphdr2*)(udpPacket + ethHeaderLength))->get_hdr_size();
+		unsigned dataOffset = ethHeaderLength + 
+				      iphdrSize + 
+				      sizeof(udphdr2);
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 			true, 
 			#if USE_PACKET_NUMBER
 			0,
 			#endif
 			ip_src, port_src, ip_dst, port_dst, 
-			dataLength, ethHeaderLength + sizeof(iphdr2) + sizeof(udphdr2),
+			dataLength, dataOffset,
 			handle_index, udpHeader, udpPacket, true, 
 			false, false, (iphdr2*)(udpPacket + ethHeaderLength),
 			NULL, 0, dlt, sensor_id, sensor_ip,
@@ -347,7 +348,7 @@ bool checkOkSslHeader(u_char *data, u_int32_t datalen) {
 }
 
 
-bool isSslIpPort(u_int32_t ip, u_int16_t port) {
-	map<d_u_int32_t, string>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));
+bool isSslIpPort(vmIP ip, vmPort port) {
+	map<vmIPport, string>::iterator iter = ssl_ipport.find(vmIPport(ip, port));
 	return(iter != ssl_ipport.end());
 }

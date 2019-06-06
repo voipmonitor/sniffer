@@ -1130,14 +1130,14 @@ int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel
 	*/
 }
 
-void try_ip_mask(uint &addr, uint &mask, string &ipstr) {
-	stringstream data2(ipstr);
-	string prefix, bits;
-	uint tmpmask = ~0;
-	getline(data2, prefix, '/');
-	getline(data2, bits, '/');
-	mask = ~(tmpmask >> atoi(bits.c_str()));
-	addr = ntohl((unsigned int)inet_addr(prefix.c_str())) & mask;
+void try_ip_mask(vmIP &addr, vmIP &mask, string &ipstr) {
+        vector<string> ip_mask = split(ipstr.c_str(), "/", true);
+	if(ip_mask.size() >= 2) {
+		vmIP ip = str_2_vmIP(ip_mask[0].c_str());
+		unsigned mask_length = atoi(ip_mask[1].c_str());
+		addr = ip.network(mask_length);
+		mask = ip.network_mask(mask_length);
+	}
 }
 
 static volatile bool enable_parse_command = false;
@@ -1325,11 +1325,10 @@ void *manager_read_thread(void * arg) {
 	char buf[BUFSIZE];
 	string buf_long;
 	int size;
-	unsigned int    client;
+	unsigned int client;
 	client = *(unsigned int *)arg;
 	delete (unsigned int*)arg;
 
-	//cout << "New manager connect from: " << inet_ntoa((in_addr)clientInfo.sin_addr) << endl;
 	if ((size = recv(client, buf, BUFSIZE - 1, 0)) == -1) {
 		cerr << "Error in receiving data" << endl;
 		close(client);
@@ -1532,20 +1531,12 @@ void *manager_ssh(void */*arg*/) {
 
 
 void *manager_server(void */*dummy*/) {
- 
-	sockaddr_in sockName;
-	sockaddr_in clientInfo;
-	socklen_t addrlen;
 
 	// Vytvorime soket - viz minuly dil
-	if ((manager_socket_server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+	if ((manager_socket_server = socket_create(str_2_vmIP(opt_manager_ip), SOCK_STREAM, IPPROTO_TCP)) == -1) {
 		cerr << "Cannot create manager tcp socket" << endl;
 		return 0;
 	}
-	sockName.sin_family = AF_INET;
-	sockName.sin_port = htons(opt_manager_port);
-	//sockName.sin_addr.s_addr = INADDR_ANY;
-	sockName.sin_addr.s_addr = inet_addr(opt_manager_ip);
 	int on = 1;
 	setsockopt(manager_socket_server, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	if(opt_manager_nonblock_mode) {
@@ -1555,7 +1546,7 @@ void *manager_server(void */*dummy*/) {
 		}
 	}
 tryagain:
-	if (::bind(manager_socket_server, (sockaddr *)&sockName, sizeof(sockName)) == -1) {
+	if (socket_bind(manager_socket_server, str_2_vmIP(opt_manager_ip), opt_manager_port) == -1) {
 		syslog(LOG_ERR, "Cannot bind to port [%d] trying again after 5 seconds intervals\n", opt_manager_port);
 		sleep(5);
 		goto tryagain;
@@ -1594,8 +1585,7 @@ tryagain:
 			}
 		}
 		if(doAccept) {
-			addrlen = sizeof(clientInfo);
-			int client = accept(manager_socket_server, (sockaddr*)&clientInfo, &addrlen);
+			int client = socket_accept(manager_socket_server, NULL, NULL);
 			if(is_terminating_without_error()) {
 				close(client);
 				close(manager_socket_server);
@@ -1641,16 +1631,16 @@ void livesnifferfilter_s::updateState() {
 	new_state.all_vlan = true;
 	new_state.all_siptypes = true;
 	for(int i = 0; i < MAXLIVEFILTERS; i++) {
-		if(this->lv_saddr[i]) {
+		if(this->lv_saddr[i].isSet()) {
 			new_state.all_saddr = false;
 		}
-		if(this->lv_daddr[i]) {
+		if(this->lv_daddr[i].isSet()) {
 			new_state.all_daddr = false;
 		}
-		if(this->lv_bothaddr[i]) {
+		if(this->lv_bothaddr[i].isSet()) {
 			new_state.all_bothaddr = false;
 		}
-		if(this->lv_bothport[i]) {
+		if(this->lv_bothport[i].isSet()) {
 			new_state.all_bothport = false;
 		}
 		if(this->lv_srcnum[i][0]) {
@@ -1712,12 +1702,12 @@ string livesnifferfilter_s::getStringState() {
 		if(!(pass == 1 ? this->state.all_saddr :
 		     pass == 2 ? this->state.all_daddr :
 				 this->state.all_bothaddr)) {
-			unsigned int *addr = pass == 1 ? this->lv_saddr :
-					     pass == 2 ? this->lv_daddr :
-							 this->lv_bothaddr;
+			vmIP *addr = pass == 1 ? this->lv_saddr :
+				     pass == 2 ? this->lv_daddr :
+						 this->lv_bothaddr;
 			int counter = 0;
 			for(int i = 0; i < MAXLIVEFILTERS; i++) {
-				if(addr[i]) {
+				if(addr[i].isSet()) {
 					if(counter) {
 						outStr << ", ";
 					} else {
@@ -1727,7 +1717,7 @@ string livesnifferfilter_s::getStringState() {
 								       "")
 						       << ": ";
 					}
-					outStr << inet_ntostring(addr[i]);
+					outStr << addr[i].getString();
 					++counter;
 				}
 			}
@@ -1921,21 +1911,19 @@ bool ManagerClientThread_screen_popup::parseCommand() {
 }
 
 void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
-					      unsigned int sipSaddr, unsigned int sipDaddr,
+					      vmIP sipSaddr, vmIP sipDaddr,
 					      const char *screenPopupFieldsString) {
 	/*
 	cout << "** call 01" << endl;
 	cout << "** - called num : " << calledNum << endl;
-	struct in_addr _in;
-	_in.s_addr = sipSaddr;
-	cout << "** - src ip : " << inet_ntoa(_in) << endl;
+	cout << "** - src ip : " << sipSaddr.getString() << endl;
 	cout << "** - reg_match : " << reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) << endl;
-	cout << "** - check ip : " << this->src_ip.checkIP(htonl(sipSaddr)) << endl;
+	cout << "** - check ip : " << this->src_ip.checkIP(sipSaddr) << endl;
 	*/
 	if(!(reg_match(calledNum, this->dest_number.empty() ? this->username.c_str() : this->dest_number.c_str(), __FILE__, __LINE__) &&
 	     (this->non_numeric_caller_id ||
 	      this->isNumericId(calledNum)) &&
-	     this->src_ip.checkIP(htonl(sipSaddr)))) {
+	     this->src_ip.checkIP(sipSaddr))) {
 		return;
 	}
 	if(this->regex_check_calling_number.size()) {
@@ -1951,13 +1939,6 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 		}
 	}
 	char rsltString[4096];
-	char sipSaddrIP[18];
-	char sipDaddrIP[18];
-	struct in_addr in;
-	in.s_addr = sipSaddr;
-	strcpy(sipSaddrIP, inet_ntoa(in));
-	in.s_addr = sipDaddr;
-	strcpy(sipDaddrIP, inet_ntoa(in));
 	string callerNumStr = callerNum;
 	for(size_t i = 0; i < this->regex_replace_calling_number.size(); i++) {
 		string temp = reg_replace(callerNumStr.c_str(), 
@@ -1981,8 +1962,8 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 		callerName,
 		callerNumStr.c_str(),
 		calledNum,
-		sipSaddrIP,
-		sipDaddrIP,
+		sipSaddr.getString().c_str(),
+		sipDaddr.getString().c_str(),
 		screenPopupFieldsString);
 	this->lock_responses();
 	this->responses.push(rsltString);
@@ -2136,7 +2117,7 @@ void ManagerClientThreads::add(ManagerClientThread *clientThread) {
 }
 
 void ManagerClientThreads::onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
-				  unsigned int sipSaddr, unsigned int sipDaddr,
+				  vmIP sipSaddr, vmIP sipDaddr,
 				  const char *screenPopupFieldsString) {
 	this->lock_client_threads();
 	vector<ManagerClientThread*>::iterator iter;
@@ -3099,11 +3080,10 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	if(filter_ip.length()) {
 		vector<string> ip = split(filter_ip.c_str(), split(",|;| ", "|"), true);
 		for(unsigned i = 0; i < ip.size() && i < MAXLIVEFILTERS; i++) {
-			filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(ip[i].c_str()));
-			if((int)filter->lv_bothaddr[i] == -1 && strchr(ip[i].c_str(), '/')) {
+			if(!filter->lv_bothaddr[i].setFromString(ip[i].c_str()) && strchr(ip[i].c_str(), '/')) {
 				try_ip_mask(filter->lv_bothaddr[i], filter->lv_bothmask[i], ip[i]);
 			} else {
-				filter->lv_bothmask[i] = ~0;
+				filter->lv_bothmask[i].clear(~0);
 			}
 		}
 	}
@@ -3111,7 +3091,7 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	if(filter_port.length()) {
 		vector<string> port = split(filter_port.c_str(), split(",|;| ", "|"), true);
 		for(unsigned i = 0; i < port.size() && i < MAXLIVEFILTERS; i++) {
-			filter->lv_bothport[i] = ntohs(atoi(port[i].c_str()));
+			filter->lv_bothport[i].setPort(ntohs(atoi(port[i].c_str())));
 		}
 	}
 	string filter_number = jsonParameters.getValue("filter_number");
@@ -3172,6 +3152,9 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 		}
 	}
 	updateLivesnifferfilters();
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->getTypeColumn(("livepacket_" + intToString(uid)).c_str(), NULL, true, true);
+	delete sqlDb;
 	global_livesniffer = 1;
 	__sync_lock_release(&usersniffer_sync);
 	return(0);
@@ -3223,8 +3206,8 @@ int Mgmt_livefilter(Mgmt_params *params) {
 		int i = 0;
 		//reset filters
 		for(i = 0; i < MAXLIVEFILTERS; i++) {
-			filter->lv_saddr[i] = 0;
-			filter->lv_smask[i] = ~0;
+			filter->lv_saddr[i].clear();
+			filter->lv_smask[i].clear(~0);
 		}
 		stringstream  data(value);
 		string val;
@@ -3232,13 +3215,8 @@ int Mgmt_livefilter(Mgmt_params *params) {
 		i = 0;
 		while(i < MAXLIVEFILTERS and getline(data, val,' ')){
 			global_livesniffer = 1;
-			//convert doted ip to unsigned int
-			filter->lv_saddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
-
-			// bad ip (signed -1) -> try prefix
-			if ((int)filter->lv_saddr[i] == -1 && strchr(val.c_str(), '/'))
+			if (!filter->lv_saddr[i].setFromString(val.c_str()) && strchr(val.c_str(), '/'))
 				try_ip_mask(filter->lv_saddr[i], filter->lv_smask[i], val);
-
 			i++;
 		}
 		updateLivesnifferfilters();
@@ -3246,8 +3224,8 @@ int Mgmt_livefilter(Mgmt_params *params) {
 		int i = 0;
 		//reset filters
 		for(i = 0; i < MAXLIVEFILTERS; i++) {
-			filter->lv_daddr[i] = 0;
-			filter->lv_dmask[i] = ~0;
+			filter->lv_daddr[i].clear();
+			filter->lv_dmask[i].clear(~0);
 		}
 		stringstream  data(value);
 		string val;
@@ -3255,13 +3233,8 @@ int Mgmt_livefilter(Mgmt_params *params) {
 		// read all argumens livefilter set daddr 123 345 244
 		while(i < MAXLIVEFILTERS and getline(data, val,' ')){
 			global_livesniffer = 1;
-			//convert doted ip to unsigned int
-			filter->lv_daddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
-
-			// bad ip (signed -1) -> try prefix
-			if ((int)filter->lv_daddr[i] == -1 && strchr(val.c_str(), '/'))
+			if (!filter->lv_daddr[i].setFromString(val.c_str()) && strchr(val.c_str(), '/'))
 				try_ip_mask(filter->lv_daddr[i], filter->lv_dmask[i], val);
-
 			i++;
 		}
 		updateLivesnifferfilters();
@@ -3269,8 +3242,8 @@ int Mgmt_livefilter(Mgmt_params *params) {
 		int i = 0;
 		//reset filters
 		for(i = 0; i < MAXLIVEFILTERS; i++) {
-			filter->lv_bothaddr[i] = 0;
-			filter->lv_bothmask[i] = ~0;
+			filter->lv_bothaddr[i].clear();
+			filter->lv_bothmask[i].clear(~0);
 		}
 		stringstream  data(value);
 		string val;
@@ -3278,13 +3251,8 @@ int Mgmt_livefilter(Mgmt_params *params) {
 		// read all argumens livefilter set bothaddr 123 345 244
 		while(i < MAXLIVEFILTERS and getline(data, val,' ')){
 			global_livesniffer = 1;
-			//convert doted ip to unsigned int
-			filter->lv_bothaddr[i] = ntohl((unsigned int)inet_addr(val.c_str()));
-
-			// bad ip (signed -1) -> try prefix
-			if ((int)filter->lv_bothaddr[i] == -1 && strchr(val.c_str(), '/'))
+			if (!filter->lv_bothaddr[i].setFromString(val.c_str()) && strchr(val.c_str(), '/'))
 				try_ip_mask(filter->lv_bothaddr[i], filter->lv_bothmask[i], val);
-
 			i++;
 		}
 		updateLivesnifferfilters();
@@ -3292,7 +3260,7 @@ int Mgmt_livefilter(Mgmt_params *params) {
 		int i;
 		//reset filters
 		for(i = 0; i < MAXLIVEFILTERS; i++) {
-			filter->lv_bothport[i] = 0;
+			filter->lv_bothport[i].clear();
 		}
 		stringstream  data(value);
 		string val;
@@ -3300,7 +3268,7 @@ int Mgmt_livefilter(Mgmt_params *params) {
 
 		while(i < MAXLIVEFILTERS and getline(data, val,' ')){
 			global_livesniffer = 1;
-			filter->lv_bothport[i] = ntohs(atoi(val.c_str()));
+			filter->lv_bothport[i].setFromString(val.c_str());
 			i++;
 		}
 		updateLivesnifferfilters();
@@ -4182,11 +4150,11 @@ int Mgmt_custipcache_get_cust_id(Mgmt_params *params) {
 		params->registerCommand("custipcache_get_cust_id", "custipcache_get_cust_id");
 		return(0);
 	}
-	char ip[20];
+	char ip[INET6_ADDRSTRLEN];
 	sscanf(params->buf, "custipcache_get_cust_id %s", ip);
 	CustIpCache *custIpCache = getCustIpCache();
 	if(custIpCache) {
-		unsigned int cust_id = custIpCache->getCustByIp(inet_addr(ip));
+		unsigned int cust_id = custIpCache->getCustByIp(str_2_vmIP(ip));
 		char sendbuf[BUFSIZE];
 		snprintf(sendbuf, BUFSIZE, "cust_id: %u\n", cust_id);
 		return(params->sendString(sendbuf));
@@ -4492,6 +4460,10 @@ int Mgmt_sipports(Mgmt_params *params) {
 			outStrSipPorts << i << ',';
 		}
 	}
+	extern map<vmIPport, string> ssl_ipport;
+	for(map<vmIPport, string>::iterator it = ssl_ipport.begin(); it != ssl_ipport.end(); it++) {
+		outStrSipPorts << it->first.port << ',';
+	}
 	outStrSipPorts << endl;
 	string strSipPorts = outStrSipPorts.str();
 	return(params->sendString(&strSipPorts));
@@ -4555,7 +4527,7 @@ int Mgmt_natalias(Mgmt_params *params) {
 	if(nat_aliases.size()) {
 		ostringstream outStrNatAliases;
 		for(nat_aliases_t::iterator iter = nat_aliases.begin(); iter != nat_aliases.end(); iter++) {
-			outStrNatAliases << inet_ntostring(htonl(iter->first)) << ':' << inet_ntostring(htonl(iter->second)) << ',';
+			outStrNatAliases << iter->first.getString() << ':' << iter->second.getString() << ',';
 		}
 		strNatAliases = outStrNatAliases.str();
 	} else {

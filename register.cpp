@@ -456,9 +456,10 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	string adj_ua = REG_CONV_STR(state->ua == EQ_REG ? ua : state->ua);
 	adjustUA(&adj_ua);
 	SqlDb_row reg;
+	string register_table = state->state == rs_Failed ? "register_failed" : "register_state";
 	reg.add(sqlEscapeString(sqlDateTimeString(state->state_from).c_str()), "created_at");
-	reg.add(htonl(sipcallerip), "sipcallerip");
-	reg.add(htonl(sipcalledip), "sipcalledip");
+	reg.add(sipcallerip, "sipcallerip", NULL, sqlDbSaveRegister, register_table.c_str());
+	reg.add(sipcalledip, "sipcalledip", NULL, sqlDbSaveRegister, register_table.c_str());
 	reg.add(sqlEscapeString(REG_CONV_STR(state->from_num == EQ_REG ? from_num : state->from_num)), "from_num");
 	reg.add(sqlEscapeString(REG_CONV_STR(to_num)), "to_num");
 	reg.add(sqlEscapeString(REG_CONV_STR(state->contact_num == EQ_REG ? contact_num : state->contact_num)), "contact_num");
@@ -488,7 +489,6 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	   (state->state == rs_Failed ? existsColumns.register_failed_spool_index : existsColumns.register_state_spool_index)) {
 		reg.add(state->spool_index, "spool_index");
 	}
-	string register_table = state->state == rs_Failed ? "register_failed" : "register_state";
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		if(!adj_ua.empty()) {
@@ -594,8 +594,8 @@ bool Register::getDataRow(RecordArray *rec) {
 		return(false);
 	}
 	rec->fields[rf_id].set(id);
-	rec->fields[rf_sipcallerip].set(htonl(sipcallerip));
-	rec->fields[rf_sipcalledip].set(htonl(sipcalledip));
+	rec->fields[rf_sipcallerip].set(sipcallerip);
+	rec->fields[rf_sipcalledip].set(sipcalledip);
 	rec->fields[rf_to_num].set(to_num);
 	rec->fields[rf_to_domain].set(to_domain);
 	rec->fields[rf_contact_num].set(contact_num);

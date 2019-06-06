@@ -340,7 +340,7 @@ struct pcap_block_store {
 	bool full;
 	uint16_t dlink;
 	int16_t sensor_id;
-	uint32_t sensor_ip;
+	vmIP sensor_ip;
 	char ifname[10];
 	u_int32_t block_counter;
 	bool require_confirmation;

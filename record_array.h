@@ -7,6 +7,7 @@
 #include <string>
 
 #include "heap_safe.h"
+#include "voipmonitor.h"
 
 
 using namespace std;
@@ -21,6 +22,7 @@ struct RecordArrayField {
 		tf_na,
 		tf_int,
 		tf_uint,
+		tf_ip,
 		tf_float,
 		tf_pointer,
 		tf_time,
@@ -62,6 +64,10 @@ struct RecordArrayField {
 		this->tf = tf;
 		this->v.u = u;
 	}
+	void set(vmIP ip, eTypeField tf = tf_ip) {
+		this->tf = tf;
+		this->v_ip = ip;
+	}
 	void set(double d, eTypeField tf = tf_float) {
 		this->tf = tf;
 		this->v.d = d;
@@ -95,6 +101,11 @@ struct RecordArrayField {
 			v.u :
 		       tf == tf_float ?
 			(u_int64_t)v.d :
+			0);
+	}
+	vmIP get_ip() {
+		return(tf == tf_ip ?
+			v_ip :
 			0);
 	}
 	bool get_bool() {
@@ -131,6 +142,8 @@ struct RecordArrayField {
 			case tf_uint:
 			case tf_time:
 				return(v.u == other.v.u);
+			case tf_ip:
+				return(v_ip == other.v_ip);
 			case tf_float:
 				return(v.d == other.v.d);
 			case tf_pointer:
@@ -154,6 +167,8 @@ struct RecordArrayField {
 			case tf_uint:
 			case tf_time:
 				return(v.u < other.v.u);
+			case tf_ip:
+				return(v_ip < other.v_ip);
 			case tf_float:
 				return(v.d < other.v.d);
 			case tf_pointer:
@@ -179,6 +194,7 @@ struct RecordArrayField {
 		char *s;
 		bool b;
 	} v;
+	vmIP v_ip;
 };
 
 struct RecordArrayField2 : public RecordArrayField {

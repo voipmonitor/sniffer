@@ -87,14 +87,14 @@ class IPfilter : public filter_base {
 private:
 	struct db_row : filter_db_row_base {
 		db_row() {
-			ip = 0;
+			ip.clear();
 			mask = 0;
 		}
-		unsigned int ip;
+		vmIP ip;
 		int mask;
 	};
         struct t_node {
-		unsigned int ip;
+		vmIP ip;
 		int mask;
 		int direction;
 		unsigned int flags;
@@ -105,10 +105,10 @@ public:
         IPfilter();
         ~IPfilter();
         void load(SqlDb *sqlDb = NULL);
-	int _add_call_flags(volatile unsigned int *flags, unsigned int saddr, unsigned int daddr);
+	int _add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP daddr);
         void dump();
         static void dump2man(ostringstream &oss);
-	static int add_call_flags(volatile unsigned int *flags, unsigned int saddr, unsigned int daddr, bool enableReload = false);
+	static int add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP daddr, bool enableReload = false);
 	static void loadActive(SqlDb *sqlDb = NULL);
 	static void freeActive();
 	static void prepareReload();

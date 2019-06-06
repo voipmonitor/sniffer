@@ -1,6 +1,6 @@
 #include "config.h"
 
-#ifdef HAVE_LIBGNUTLS
+#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -23,7 +23,7 @@ static StringInfo		  ssl_compressed_data	  = {NULL, 0};
 static GHashTable		 *ssl_key_hash			 = NULL;
 static ssl_master_key_map_t	   ssl_master_key_map = {NULL, NULL, NULL};
 static ssl_common_options_t ssl_options = { NULL, NULL};
-extern map<d_u_int32_t, string> ssl_ipport;
+extern map<vmIPport, string> ssl_ipport;
 map<SslDecryptSessionC*, std::queue<string> > ssl_map_hash;
 map<SslDecryptSessionC*, std::queue<string> >::iterator ssl_map_hash_it;
 

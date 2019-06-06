@@ -25,37 +25,7 @@
 
 #define RTP_FIXED_HEADERLEN 12
 
-#define IP_DF           0x4000          /* Flag: "Don't Fragment"       */
-#define IP_MF           0x2000          /* Flag: "More Fragments"       */
-#define IP_OFFSET       0x1FFF          /* "Fragment Offset" part       */
-
 #define MAX_LENGTH_CALL_INFO 20
-
-struct iphdr2 {
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-	unsigned int ihl:4;
-	unsigned int version:4;
-#elif __BYTE_ORDER == __BIG_ENDIAN
-	unsigned int version:4;
-	unsigned int ihl:4;
-#else
-# error "Please fix <bits/endian.h>"
-#endif 
-	u_int8_t tos;
-	u_int16_t tot_len;
-	u_int16_t id;
-	u_int16_t frag_off;
-	u_int8_t ttl;
-	u_int8_t protocol;
-	u_int16_t check;
-	u_int32_t saddr;
-	u_int32_t daddr;
-	/*The options start here. */
-#ifdef PACKED
-} __attribute__((packed));
-#else
-};
-#endif
 
 void *rtp_read_thread_func(void *arg);
 void add_rtp_read_thread();
@@ -71,7 +41,7 @@ void readdump_libnids(pcap_t *handle);
 void readdump_libpcap(pcap_t *handle, u_int16_t handle_index);
 
 
-typedef std::map<in_addr_t, in_addr_t> nat_aliases_t; //!< 
+typedef std::map<vmIP, vmIP> nat_aliases_t; //!< 
 
 
 /* this is copied from libpcap sll.h header file, which is not included in debian distribution */
@@ -82,13 +52,6 @@ struct sll_header {
 	u_int16_t sll_halen;            /* link-layer address length */
 	u_int8_t sll_addr[SLL_ADDRLEN]; /* link-layer address */
 	u_int16_t sll_protocol;         /* protocol */
-};
-
-struct udphdr2 {
-        uint16_t        source;
-        uint16_t        dest;
-        uint16_t        len;
-        uint16_t        check;
 };
 
 #define IS_RTP(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x8000)
@@ -106,19 +69,19 @@ struct packet_s {
 	#if USE_PACKET_NUMBER
 	u_int64_t packet_number;
 	#endif
-	u_int32_t saddr;
-	u_int32_t daddr; 
+	vmIP saddr;
+	vmIP daddr; 
 	u_int32_t datalen; 
 	pcap_pkthdr *header_pt; 
 	const u_char *packet; 
 	pcap_block_store *block_store; 
 	u_int32_t block_store_index; 
-	u_int32_t sensor_ip;
+	vmIP sensor_ip;
 	u_int16_t handle_index; 
 	u_int16_t dlt; 
 	u_int16_t sensor_id_u;
-	u_int16_t source; 
-	u_int16_t dest;
+	vmPort source; 
+	vmPort dest;
 	u_int16_t dataoffset;
 	u_int16_t header_ip_offset;
 	unsigned int istcp : 2;
@@ -758,13 +721,13 @@ typedef struct livesnifferfilter_s {
 	};
 	int sensor_id;
 	bool sensor_id_set;
-        unsigned int lv_saddr[MAXLIVEFILTERS];
-        unsigned int lv_daddr[MAXLIVEFILTERS];
-	unsigned int lv_bothaddr[MAXLIVEFILTERS];
-        unsigned int lv_smask[MAXLIVEFILTERS];
-        unsigned int lv_dmask[MAXLIVEFILTERS];
-	unsigned int lv_bothmask[MAXLIVEFILTERS];
-	u_int16_t lv_bothport[MAXLIVEFILTERS];
+        vmIP lv_saddr[MAXLIVEFILTERS];
+        vmIP lv_daddr[MAXLIVEFILTERS];
+	vmIP lv_bothaddr[MAXLIVEFILTERS];
+        vmIP lv_smask[MAXLIVEFILTERS];
+        vmIP lv_dmask[MAXLIVEFILTERS];
+	vmIP lv_bothmask[MAXLIVEFILTERS];
+	vmPort lv_bothport[MAXLIVEFILTERS];
         char lv_srcnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
         char lv_dstnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];
 	char lv_bothnum[MAXLIVEFILTERS][MAXLIVEFILTERSCHARS];

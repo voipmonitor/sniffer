@@ -44,8 +44,6 @@ and insert them into Call class.
 #include <pcap.h>
 //#include <pcap/sll.h>
 
-#define int_ntoa(x)     inet_ntoa(*((struct in_addr *)&x))
-
 //#define HAS_NIDS 1
 #ifdef HAS_NIDS
 #include <nids.h>
@@ -210,9 +208,9 @@ extern TcpReassembly *tcpReassemblySsl;
 extern char ifname[1024];
 extern int opt_sdp_reverse_ipport;
 extern bool opt_sdp_check_direction_ext;
-extern vector<ipn_port> opt_sdp_ignore_ip_port;
-extern vector<u_int32_t> opt_sdp_ignore_ip;
-extern vector<d_u_int32_t> opt_sdp_ignore_net;
+extern vector<vmIPport> opt_sdp_ignore_ip_port;
+extern vector<vmIP> opt_sdp_ignore_ip;
+extern vector<vmIPmask> opt_sdp_ignore_net;
 extern int opt_fork;
 extern regcache *regfailedcache;
 extern ManagerClientThreads ClientThreads;
@@ -265,7 +263,7 @@ inline char * gettag_sip_from(packet_s_process *packetS, const char *from,
 inline char * gettag_sip_from(packet_s_process *packetS, const char *from,
 			      const char *tag, const char *tag2, unsigned long *gettaglen);
 static void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, 
-				   unsigned int saddr, int source, unsigned int daddr, int dest,
+				   vmIP saddr, vmPort source, vmIP daddr, vmPort dest,
 				   Call *call, const char *descr = NULL);
 
 #define logPacketSipMethodCall_enable ((opt_read_from_file && verbosity > 2) || verbosityE > 1 || sverb.sip_packets)
@@ -333,16 +331,14 @@ unsigned long process_packet__last_cleanup_calls__count_sip_cancel_confirmed;
 
 
 // return IP from nat_aliases[ip] or 0 if not found
-in_addr_t match_nat_aliases(in_addr_t ip) {
+vmIP match_nat_aliases(vmIP ip) {
 	nat_aliases_t::iterator iter;
         iter = nat_aliases.find(ip);
         if(iter == nat_aliases.end()) {
-                // not found
                 return 0;
         } else {
                 return iter->second;
         }
-	
 }
 
 inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
@@ -417,10 +413,12 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 
 	// construct query and push it to mysqlquery queue
 	char query_buff[20000];
+	char livepacket_table[20];
+	snprintf(livepacket_table, sizeof(livepacket_table), "livepacket_%i", uid);
 	snprintf(query_buff, sizeof(query_buff),
-		"INSERT INTO livepacket_%i"
-		" SET sipcallerip = %u"
-		", sipcalledip = %u"
+		"INSERT INTO %s"
+		" SET sipcallerip = %s"
+		", sipcalledip = %s"
 		", id_sensor = %i"
 		", sport = %i" 
 		", dport = %i" 
@@ -430,12 +428,12 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		", callid = %s"
 		", description = %s"
 		", data = ",
-		uid,
-		htonl(packetS->saddr),
-		htonl(packetS->daddr),
+		livepacket_table,
+		packetS->saddr.getStringForMysqlIpColumn(livepacket_table, "sipcallerip").c_str(),
+		packetS->daddr.getStringForMysqlIpColumn(livepacket_table, "sipcalledip").c_str(),
 		packetS->sensor_id_() > 0 ? packetS->sensor_id_() : 0,
-		packetS->source,
-		packetS->dest,
+		packetS->source.getPort(),
+		packetS->dest.getPort(),
 		packetS->istcp,
 		sqlEscapeStringBorder(sqlDateTimeString(packetS->header_pt->ts.tv_sec).c_str()).c_str(),
 		packetS->header_pt->ts.tv_usec,
@@ -496,11 +494,11 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 		return;
 	}
 	// check saddr and daddr filters
-	unsigned int daddr = htonl(packetS->daddr);
-	unsigned int saddr = htonl(packetS->saddr);
+	vmIP daddr = packetS->daddr;
+	vmIP saddr = packetS->saddr;
 	//ports
-	u_int16_t srcport = htons(packetS->source);
-	u_int16_t dstport = htons(packetS->dest);
+	vmPort srcport = packetS->source;
+	vmPort dstport = packetS->dest;
 
 	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 	
@@ -599,13 +597,13 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 			bool okAddr = filter->state.all_addr;
 			if(!okAddr) {
 				for(int i = 0; i < MAXLIVEFILTERS && !okAddr; i++) {
-					if((filter->state.all_saddr || (filter->lv_saddr[i] && 
-						(saddr & filter->lv_smask[i]) == filter->lv_saddr[i])) &&
-					   (filter->state.all_daddr || (filter->lv_daddr[i] && 
-						(daddr & filter->lv_dmask[i]) == filter->lv_daddr[i])) &&
-					   (filter->state.all_bothaddr || (filter->lv_bothaddr[i] && 
-						((saddr & filter->lv_bothmask[i]) == filter->lv_bothaddr[i] || 
-						 (daddr & filter->lv_bothmask[i]) == filter->lv_bothaddr[i])))) {
+					if((filter->state.all_saddr || (filter->lv_saddr[i].isSet() && 
+						saddr.mask(filter->lv_smask[i]) == filter->lv_saddr[i])) &&
+					   (filter->state.all_daddr || (filter->lv_daddr[i].isSet() && 
+						daddr.mask(filter->lv_dmask[i]) == filter->lv_daddr[i])) &&
+					   (filter->state.all_bothaddr || (filter->lv_bothaddr[i].isSet() && 
+						(saddr.mask(filter->lv_bothmask[i]) == filter->lv_bothaddr[i] || 
+						 daddr.mask(filter->lv_bothmask[i]) == filter->lv_bothaddr[i])))) {
 						okAddr = true;
 					}
 				}
@@ -613,10 +611,9 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 			bool okPort = filter->state.all_bothport;
 			if (!okPort) {
 				for(int i = 0; i < MAXLIVEFILTERS && !okPort; i++) {
-					if (filter->state.all_bothport || (filter->lv_bothport[i] &&
+					if (filter->state.all_bothport || (filter->lv_bothport[i].isSet() &&
 					   (srcport == filter->lv_bothport[i] ||
 					    dstport == filter->lv_bothport[i]))) {
-
 						okPort = true;
 					}
 				}
@@ -780,8 +777,8 @@ void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirt
 			}
 			iphdr2 *header_ip = (iphdr2*)(packet + ((u_char*)packetS->header_ip - packetS->packet));
 			unsigned header_ip_tot_len = packetLen - ((char*)packetS->header_ip - (char*)packetS->packet);
-			if(header_ip_tot_len != htons(header_ip->tot_len)) {
-				header_ip->tot_len = htons(header_ip_tot_len);
+			if(header_ip_tot_len != header_ip->get_tot_len()) {
+				header_ip->set_tot_len(header_ip_tot_len);
 			}
 			unsigned int diffLen = packetS->header_pt->caplen - packetLen;
 			header->caplen -= diffLen;
@@ -1600,12 +1597,12 @@ fail_exit:
 	return 1;
 }
 
-int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
-			 in_addr_t *addr, unsigned short *port, int8_t *protocol, int8_t *fax, int8_t *inactive_ip0, 
+int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, size_t sdp_text_len,
+			 vmIP *addr, vmPort *port, int8_t *protocol, int8_t *fax, int8_t *inactive_ip0, 
 			 char *sessid, list<rtp_crypto_config> **rtp_crypto_config_list, int8_t *rtcp_mux, int sip_method){
 	unsigned long l;
 	char *s;
-	char s1[20];
+	char s1[IP_STR_MAX_LENGTH];
 	unsigned long gettagLimitLen = 0;
 
 	if(!sdp_text_len) {
@@ -1635,31 +1632,32 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
 	memset(sessid, 0, MAXLEN_SDP_SESSID);
 	memcpy(sessid, s, MIN(ispace, MAXLEN_SDP_SESSID - 1));
 	s = gettag(sdp_text,sdp_text_len, NULL, 
-		   "c=IN IP4 ", &l, &gettagLimitLen);
+		   packetS->saddr.is_v6() ? "c=IN IP6 " : "c=IN IP4 ",
+		   &l, &gettagLimitLen);
 	if(l == 0) return 1;
 	memset(s1, '\0', sizeof(s1));
-	memcpy(s1, s, MIN(l, 19));
+	memcpy(s1, s, MIN(l, IP_STR_MAX_LENGTH - 1));
 //	printf("---------- [%s]\n", s1);
-	if ((int32_t)(*addr = inet_addr(s1)) == -1){
-		*addr = 0;
-		*port = 0;
+	if(!addr->setFromString(s1)) {
+		addr->clear();
+		port->clear();
 		return 1;
 	}
 	s = gettag(sdp_text, sdp_text_len, NULL,
 		   "m=audio ", &l, &gettagLimitLen);
-	if (l == 0 || (*port = atoi(s)) == 0){
+	if(l == 0 || !port->setFromString(s).isSet()) {
 		unsigned long l2;
 		s = gettag(sdp_text, sdp_text_len, NULL,
 			   "m=image ", &l2, &gettagLimitLen);
-		if (l2 == 0 || (*port = atoi(s)) == 0){
-			*port = 0;
+		if(l2 == 0 || !port->setFromString(s).isSet()) {
+			port->clear();
 			if(l == 0 && l2 == 0) return 1;
 		} else {
 			*fax = 1;
 			l = l2;
 		}
 	}
-	if(s && l && *port) {
+	if(s && l && port->isSet()) {
 		char *pointToBeginProtocol = strnchr(s, ' ', l);
 		if(pointToBeginProtocol) {
 			++pointToBeginProtocol;
@@ -1753,7 +1751,7 @@ int get_ip_port_from_sdp(Call *call, char *sdp_text, size_t sdp_text_len,
 
 		call->HandleHold(sdp_sendonly, sdp_sendrecv);
 	}
-	if(!*addr && memmem(sdp_text, sdp_text_len, "a=inactive", 10)) {
+	if(!addr->isSet() && memmem(sdp_text, sdp_text_len, "a=inactive", 10)) {
 		*inactive_ip0 = true;
 	}
 
@@ -2044,8 +2042,8 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 		if(actTime - 1000 > lastTimeSyslog) {
 			syslog(LOG_ERR, "incorrect call type in add_to_rtp_thread_queue: %i, saddr %s daddr %s sport %u dport %u",
 			       call->getTypeBase(),
-			       inet_ntostring(packetS->saddr).c_str(), inet_ntostring(packetS->daddr).c_str(),
-			       packetS->source, packetS->dest);
+			       packetS->saddr.getString().c_str(), packetS->daddr.getString().c_str(),
+			       packetS->source.getPort(), packetS->dest.getPort());
 			lastTimeSyslog = actTime;
 		}
 		if(preSyncRtp) {
@@ -2501,9 +2499,9 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		cout << "flags init " << callidstr << " : " << printCallFlags(flags) << endl;
 		flags_old = flags;
 	}
-	IPfilter::add_call_flags(&flags, ntohl(packetS->saddr), ntohl(packetS->daddr), true);
+	IPfilter::add_call_flags(&flags, packetS->saddr, packetS->daddr, true);
 	if(sverb.dump_call_flags && flags != flags_old) {
-		cout << "set flags for ip " << inet_ntostring(htonl(packetS->saddr)) << " -> " << inet_ntostring(htonl(packetS->daddr)) << " : " << printCallFlags(flags) << endl;
+		cout << "set flags for ip " << packetS->saddr.getString() << " -> " << packetS->daddr.getString() << " : " << printCallFlags(flags) << endl;
 		flags_old = flags;
 	}
 	TELNUMfilter::add_call_flags(&flags, data_callerd.caller, data_callerd.called, true);
@@ -2593,7 +2591,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		if (opt_sipalg_detect) {
 			char via_ip_hostname[100];
 			if (!get_sip_via_ip_hostname(packetS, via_ip_hostname, sizeof(via_ip_hostname))) {
-				u_int32_t via_ip = ntohl(inet_strington(via_ip_hostname));
+				vmIP via_ip;
+				via_ip.setFromString(via_ip_hostname);
 				if (via_ip == call->sipcallerip[0]) {
 					call->is_sipalg_detected = true;
 				}
@@ -2724,11 +2723,11 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				       << setw(6)
 				       << packetS->header_pt->ts.tv_usec << "  ";
 				outStr << "ip / port: "
-				       << setw(15) << inet_ntostring(htonl(packetS->saddr))
+				       << setw(15) << packetS->saddr.getString()
 				       << " / "
 				       << setw(5) << packetS->source
 				       << " -> "
-				       << setw(15) << inet_ntostring(htonl(packetS->daddr))
+				       << setw(15) << packetS->daddr.getString()
 				       << " / "
 				       << setw(5) << packetS->dest << "  ";
 				outStr << "caller: "
@@ -2779,28 +2778,28 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 		sdplen = datalen - (sdp - from);
 	}
 
-	in_addr_t tmp_addr;
-	unsigned short tmp_port;
+	vmIP tmp_addr;
+	vmPort tmp_port;
 	int8_t inactive_ip0;
 	RTPMAP rtpmap[MAX_RTPMAP];
 	s_sdp_flags sdp_flags;
 	char sessid[MAXLEN_SDP_SESSID];
 	list<rtp_crypto_config> *rtp_crypto_config_list = NULL;
-	if (!get_ip_port_from_sdp(call, sdp, sdplen,
+	if (!get_ip_port_from_sdp(call, packetS, sdp, sdplen,
 				  &tmp_addr, &tmp_port, &sdp_flags.protocol, &sdp_flags.is_fax, &inactive_ip0, 
 				  sessid, &rtp_crypto_config_list, &sdp_flags.rtcp_mux, packetS->sip_method)){
-		if(tmp_addr > 0 && tmp_port > 0) {
+		if(tmp_addr.isSet() && tmp_port.isSet()) {
 			bool ok_ip_port = true;
 			if(opt_sdp_ignore_ip_port.size()) {
-				for(vector<ipn_port>::iterator iter = opt_sdp_ignore_ip_port.begin(); iter != opt_sdp_ignore_ip_port.end(); iter++) {
-					if(iter->ip == htonl(tmp_addr) && iter->port == tmp_port) {
+				for(vector<vmIPport>::iterator iter = opt_sdp_ignore_ip_port.begin(); iter != opt_sdp_ignore_ip_port.end(); iter++) {
+					if(iter->ip == tmp_addr && iter->port == tmp_port) {
 						ok_ip_port = false;
 						break;
 					}
 				}
 			}
 			if((opt_sdp_ignore_ip.size() || opt_sdp_ignore_net.size()) &&
-			   check_ip_in(htonl(tmp_addr), &opt_sdp_ignore_ip, &opt_sdp_ignore_net, false)) {
+			   check_ip_in(tmp_addr, &opt_sdp_ignore_ip, &opt_sdp_ignore_net, false)) {
 				ok_ip_port = false;
 			}
 			if(ok_ip_port) {
@@ -2832,8 +2831,8 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 					call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base, tmp_port, packetS->header_pt, 
 							       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
 					// check if the IP address is listed in nat_aliases
-					in_addr_t alias = 0;
-					if((alias = match_nat_aliases(tmp_addr)) != 0) {
+					vmIP alias = match_nat_aliases(tmp_addr);
+					if(alias.isSet()) {
 						call->add_ip_port_hash(packetS->saddr, alias, ip_port_call_info::_ta_natalias, tmp_port, packetS->header_pt, 
 								       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
 					}
@@ -2846,7 +2845,7 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 					delete rtp_crypto_config_list;
 				}
 			}
-		} else if(!tmp_addr) {
+		} else if(!tmp_addr.isSet()) {
 			if(inactive_ip0) {
 				u_int64_t _forcemark_time = getTimeUS(packetS->header_pt);
 				call->forcemark_lock();
@@ -2949,9 +2948,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			cout << (++glob_packet_number)
 			#endif
 			<< " "
-			<< inet_ntostring(htonl(packetS->saddr)) << ':' << packetS->source 
+			<< packetS->saddr.getString() << ':' << packetS->source 
 			<< " -> "
-			<< inet_ntostring(htonl(packetS->daddr)) << ':' << packetS->dest 
+			<< packetS->daddr.getString() << ':' << packetS->dest 
 			<< endl;
 		}
 		cout << dump_data << endl;
@@ -3566,9 +3565,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 		}
 		unsigned int flags_old = call->flags;
-		IPfilter::add_call_flags(&(call->flags), ntohl(packetS->saddr), ntohl(packetS->daddr));
+		IPfilter::add_call_flags(&(call->flags), packetS->saddr, packetS->daddr);
 		if(sverb.dump_call_flags && call->flags != flags_old) {
-			cout << "set flags for ip " << inet_ntostring(htonl(packetS->saddr)) << " -> " << inet_ntostring(htonl(packetS->daddr)) << " : " << printCallFlags(call->flags) << endl;
+			cout << "set flags for ip " << packetS->saddr.getString() << " -> " << packetS->daddr.getString() << " : " << printCallFlags(call->flags) << endl;
 		}
 		if(!reverseInviteSdaddr) {
 			bool updateDest = false;
@@ -3576,7 +3575,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			   call->lastsipcallerip != packetS->saddr) {
 				if(((packetS->sip_method == INVITE && opt_cdrproxy) ||
 				    (packetS->sip_method == MESSAGE && opt_messageproxy)) &&
-				   packetS->daddr != 0) {
+				   packetS->daddr.isSet()) {
 					// daddr is already set, store previous daddr as sipproxy
 					call->proxy_add(call->getSipcalledip());
 				}
@@ -3887,9 +3886,9 @@ void process_packet_sip_alone_bye(packet_s_process *packetS) {
 			cout << (++glob_packet_number)
 			#endif
 			<< " "
-			<< inet_ntostring(htonl(packetS->saddr)) << ':' << packetS->source 
+			<< packetS->saddr.getString() << ':' << packetS->source 
 			<< " -> "
-			<< inet_ntostring(htonl(packetS->daddr)) << ':' << packetS->dest 
+			<< packetS->daddr.getString() << ':' << packetS->dest 
 			<< endl;
 		}
 		cout << dump_data << endl;
@@ -3943,9 +3942,9 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			cout << (++glob_packet_number)
 			#endif
 			<< " "
-			<< inet_ntostring(htonl(packetS->saddr)) << ':' << packetS->source 
+			<< packetS->saddr.getString() << ':' << packetS->source 
 			<< " -> "
-			<< inet_ntostring(htonl(packetS->daddr)) << ':' << packetS->dest 
+			<< packetS->daddr.getString() << ':' << packetS->dest 
 			<< endl;
 		}
 		cout << dump_data << endl;
@@ -4263,9 +4262,9 @@ void process_packet_sip_other(packet_s_process *packetS) {
 			cout << (++glob_packet_number)
 			#endif
 			<< " "
-			<< inet_ntostring(htonl(packetS->saddr)) << ':' << packetS->source 
+			<< packetS->saddr.getString() << ':' << packetS->source 
 			<< " -> "
-			<< inet_ntostring(htonl(packetS->daddr)) << ':' << packetS->dest 
+			<< packetS->daddr.getString() << ':' << packetS->dest 
 			<< endl;
 		}
 		cout << dump_data << endl;
@@ -4313,8 +4312,8 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			++process_rtp_counter;
 			cout << "RTP - process_packet -"
 			     << " callid: " << call->call_id
-			     << (find_by_dest ? " src: " : " SRC: ") << inet_ntostring(htonl(packetS->saddr)) << " : " << packetS->source
-			     << (find_by_dest ? " DST: " : " dst: ") << inet_ntostring(htonl(packetS->daddr)) << " : " << packetS->dest
+			     << (find_by_dest ? " src: " : " SRC: ") << packetS->saddr.getString() << " : " << packetS->source
+			     << (find_by_dest ? " DST: " : " dst: ") << packetS->daddr.getString() << " : " << packetS->dest
 			     << " direction: " << iscaller_description(iscaller) 
 			     << " find_by_dest: " << find_by_dest
 			     << " counter: " << process_rtp_counter
@@ -4416,16 +4415,16 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 	return(count_use);
 }
 
-Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int daddr, int dest, 
+Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort dest, 
 				char *data, unsigned datalen, int /*dataoffset*/,
-				pcap_pkthdr *header, const u_char */*packet*/, int /*istcp*/, struct iphdr2 */*header_ip*/,
-				pcap_block_store */*block_store*/, int /*block_store_index*/, int dlt, int sensor_id, u_int32_t sensor_ip,
+				pcap_pkthdr *header, const u_char */*packet*/, int /*istcp*/, struct iphdr2 *header_ip,
+				pcap_block_store */*block_store*/, int /*block_store_index*/, int dlt, int sensor_id, vmIP sensor_ip,
 				pcap_t *handle) {
 	++counter_rtp_packets;
 	
 	unsigned int flags = 0;
 	set_global_flags(flags);
-	IPfilter::add_call_flags(&flags, ntohl(saddr), ntohl(daddr));
+	IPfilter::add_call_flags(&flags, saddr, daddr);
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
@@ -4437,7 +4436,7 @@ Call *process_packet__rtp_nosip(unsigned int saddr, int source, unsigned int dad
 	RTP rtp(sensor_id, sensor_ip);
 	RTPMAP rtpmap[MAX_RTPMAP];
 
-	rtp.read((unsigned char*)data, &datalen, header, saddr, daddr, source, dest, sensor_id, sensor_ip);
+	rtp.read((unsigned char*)data, header_ip, &datalen, header, saddr, daddr, source, dest, sensor_id, sensor_ip);
 
 	if(rtp.getVersion() != 2 && rtp.getPayload() > 18) {
 		return NULL;
@@ -5786,7 +5785,7 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 	for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
 		totallen += it->second->len;
 		if(i) {
-			totallen -= sizeof(iphdr2);
+			totallen -= it->second->iphdr_len;
 		}
 		i++;
 	}
@@ -5796,7 +5795,7 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 			if(it != queue->end()) {
 				ip_frag_s *node = it->second;
 				iphdr2 *iph = (iphdr2*)((u_char*)HPP(node->header_packet) + node->header_ip_offset);
-				syslog(LOG_NOTICE, "ipfrag overflow: %i src ip: %s dst ip: %s", totallen, inet_ntostring(htonl(iph->saddr)).c_str(), inet_ntostring(htonl(iph->daddr)).c_str());
+				syslog(LOG_NOTICE, "ipfrag overflow: %i src ip: %s dst ip: %s", totallen, iph->get_saddr().getString().c_str(), iph->get_daddr().getString().c_str());
 			}
 		}
 		totallen = 0xFFFF + queue->begin()->second->header_ip_offset;
@@ -5826,9 +5825,9 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 				len += node->len;
 			} else {
 				if(len < totallen) {
-					unsigned cpy_len = min((unsigned)(node->len - sizeof(iphdr2)), totallen - len);
+					unsigned cpy_len = min((unsigned)(node->len - node->iphdr_len), totallen - len);
 					memcpy_heapsafe(HPP(*header_packet) + len, *header_packet,
-							HPP(node->header_packet) + node->header_ip_offset + sizeof(iphdr2), node->header_packet,
+							HPP(node->header_packet) + node->header_ip_offset + node->iphdr_len, node->header_packet,
 							cpy_len);
 					len += cpy_len;
 					additionallen += cpy_len;
@@ -5874,9 +5873,9 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 			} else {
 				// for rest of a packets append only data 
 				if(len < totallen) {
-					unsigned cpy_len = min((unsigned)(node->len - sizeof(iphdr2)), totallen - len);
+					unsigned cpy_len = min((unsigned)(node->len - node->iphdr_len), totallen - len);
 					memcpy_heapsafe(header_packet_pqout->packet + len, header_packet_pqout->packet,
-							((sHeaderPacketPQout*)node->header_packet_pqout)->packet + node->header_ip_offset + sizeof(iphdr2), 
+							((sHeaderPacketPQout*)node->header_packet_pqout)->packet + node->header_ip_offset + node->iphdr_len, 
 							((sHeaderPacketPQout*)node->header_packet_pqout)->block_store ?
 							 ((sHeaderPacketPQout*)node->header_packet_pqout)->block_store->block :
 							 ((sHeaderPacketPQout*)node->header_packet_pqout)->packet,
@@ -5901,11 +5900,11 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 	}
 	if(iphdr) {
 		//increase IP header length 
-		iphdr->tot_len = htons((ntohs(iphdr->tot_len)) + additionallen);
+		iphdr->set_tot_len(iphdr->get_tot_len() + additionallen);
 		// reset checksum
-		iphdr->check = 0;
+		iphdr->set_check(0);
 		// reset fragment flag to 0
-		iphdr->frag_off = 0;
+		iphdr->clear_frag_data();
 	}
 	
 	return 1;
@@ -5935,10 +5934,10 @@ inline int _ipfrag_add(ip_frag_queue *queue,
 			     (iphdr2*)((HPP(*header_packet)) + header_ip_offset) :
 			     (iphdr2*)(header_packet_pqout->packet + header_ip_offset);
 
-	unsigned int offset = ntohs(header_ip->frag_off);
-	unsigned int offset_d = (offset & IP_OFFSET) << 3;
+	u_int16_t frag_data = header_ip->get_frag_data();
+	unsigned int offset_d = header_ip->get_frag_offset(frag_data);
 
-	if (((offset & IP_MF) == 0) && ((offset & IP_OFFSET) != 0)) {
+	if(!header_ip->is_more_frag(frag_data) && offset_d) {
 		// this packet do not set more fragment indicator but contains offset which means that it is the last packet
 		queue->has_last = true;
 	}
@@ -5965,6 +5964,7 @@ inline int _ipfrag_add(ip_frag_queue *queue,
 		node->header_ip_offset = header_ip_offset;
 		node->len = len;
 		node->offset = offset_d;
+		node->iphdr_len = header_ip->get_hdr_size();
 
 		// add to queue (which will sort it automatically
 		(*queue)[offset_d] = node;
@@ -5984,7 +5984,7 @@ inline int _ipfrag_add(ip_frag_queue *queue,
 				ok = false;
 				break;
 			}
-			lastoffset += node->len - sizeof(iphdr2);
+			lastoffset += node->len - node->iphdr_len;
 		}
 	} else {
 		// queue does not contain a last packet and does not contain a first packet
@@ -6036,29 +6036,31 @@ inline int _handle_defrag(iphdr2 *header_ip,
  
 	//copy header ip to tmp beacuse it can happen that during exectuion of this function the header_ip can be 
 	//overwriten in kernel ringbuffer if the ringbuffer is small and thus header_ip->saddr can have different value 
-	iphdr2 header_ip_orig;
-	memcpy(&header_ip_orig, header_ip, sizeof(iphdr2));
+	iphdr2 *header_ip_orig = (iphdr2*)new FILE_LINE(0) u_char[header_ip->get_hdr_size()];
+	memcpy(header_ip_orig, header_ip, header_ip->get_hdr_size());
 
 	// get queue from ip_frag_stream based on source ip address and ip->id identificator (2-dimensional map array)
-	ip_frag_queue *queue = ipfrag_data->ip_frag_stream[header_ip_orig.saddr][header_ip_orig.id];
+	ip_frag_queue *queue = ipfrag_data->ip_frag_stream[header_ip_orig->get_saddr()][header_ip_orig->get_frag_id()];
 	if(!queue) {
 		// queue does not exists yet - create it and assign to map 
 		queue = new FILE_LINE(26016) ip_frag_queue;
-		ipfrag_data->ip_frag_stream[header_ip_orig.saddr][header_ip_orig.id] = queue;
+		ipfrag_data->ip_frag_stream[header_ip_orig->get_saddr()][header_ip_orig->get_frag_id()] = queue;
 	}
 	int res = header_packet ?
 		   ipfrag_add(queue,
 			      header_packet, 
-			      (u_char*)header_ip - HPP(*header_packet), ntohs(header_ip_orig.tot_len),
+			      (u_char*)header_ip - HPP(*header_packet), header_ip_orig->get_tot_len(),
 			      pushToStack_queue_index) :
 		   ipfrag_add(queue,
 			      header_packet_pqout, 
-			      (u_char*)header_ip - header_packet_pqout->packet, ntohs(header_ip_orig.tot_len));
+			      (u_char*)header_ip - header_packet_pqout->packet, header_ip_orig->get_tot_len());
 	if(res > 0) {
 		// packet was created from all pieces - delete queue and remove it from map
-		ipfrag_data->ip_frag_stream[header_ip_orig.saddr].erase(header_ip_orig.id);
+		ipfrag_data->ip_frag_stream[header_ip_orig->get_saddr()].erase(header_ip_orig->get_frag_id());
 		delete queue;
 	};
+	
+	delete header_ip_orig;
 	
 	return res;
 }
@@ -6184,7 +6186,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 			continue;
 		}
 
-		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[htons(ppd.header_udp->source)] || sipportmatrix[htons(ppd.header_udp->dest)]))) {
+		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[ppd.header_udp->get_source()] || sipportmatrix[ppd.header_udp->get_dest()]))) {
 			mirrorip->send((char *)ppd.header_ip, (int)(HPH(header_packet)->caplen - ((u_char*)ppd.header_ip - HPP(header_packet))));
 		}
 		if(!opt_mirroronly) {
@@ -6194,9 +6196,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 			memcpy(packet, HPP(header_packet), header->caplen);
 			unsigned dataoffset = (u_char*)ppd.data - HPP(header_packet);
 			if(opt_enable_ssl && 
-			   ppd.header_ip && ppd.header_ip->protocol == IPPROTO_TCP &&
-			   (isSslIpPort(htonl(ppd.header_ip->saddr), htons(ppd.header_udp->source)) ||
-			    isSslIpPort(htonl(ppd.header_ip->daddr), htons(ppd.header_udp->dest)))) {
+			   ppd.header_ip && ppd.header_ip->get_protocol() == IPPROTO_TCP &&
+			   (isSslIpPort(ppd.header_ip->get_saddr(), ppd.header_udp->get_source()) ||
+			    isSslIpPort(ppd.header_ip->get_daddr(), ppd.header_udp->get_dest()))) {
 				tcpReassemblySsl->push_tcp(header, (iphdr2*)(packet + ppd.header_ip_offset), packet, true,
 							   NULL, 0, false,
 							   0, global_pcap_dlink, opt_id_sensor);
@@ -6205,14 +6207,14 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 				extern bool ssl_client_random_enable;
 				extern char *ssl_client_random_portmatrix;
 				extern bool ssl_client_random_portmatrix_set;
-				extern vector<u_int32_t> ssl_client_random_ip;
-				extern vector<d_u_int32_t> ssl_client_random_net;
-				if(ppd.header_ip && ppd.header_ip->protocol == IPPROTO_UDP &&
+				extern vector<vmIP> ssl_client_random_ip;
+				extern vector<vmIPmask> ssl_client_random_net;
+				if(ppd.header_ip && ppd.header_ip->get_protocol() == IPPROTO_UDP &&
 				   ssl_client_random_enable &&
 				   (!ssl_client_random_portmatrix_set || 
-				    ssl_client_random_portmatrix[htons(ppd.header_udp->dest)]) &&
+				    ssl_client_random_portmatrix[ppd.header_udp->get_dest()]) &&
 				   ((!ssl_client_random_ip.size() && !ssl_client_random_net.size()) ||
-				    check_ip_in(htonl(ppd.header_ip->daddr), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
+				    check_ip_in(ppd.header_ip->get_daddr(), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
 				   ppd.datalen && ppd.data[0] == '{' && ppd.data[ppd.datalen - 1] == '}') {
 					if(ssl_parse_client_random((u_char*)ppd.data, ppd.datalen)) {
 						ssl_client_random = true;
@@ -6224,12 +6226,14 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 						#if USE_PACKET_NUMBER
 						packet_counter,
 						#endif
-						ppd.header_ip ? ppd.header_ip->saddr : 0, ppd.header_ip ? htons(ppd.header_udp->source) : 0, ppd.header_ip ? ppd.header_ip->daddr : 0, ppd.header_ip ? htons(ppd.header_udp->dest) : 0, 
+						ppd.header_ip ? ppd.header_ip->get_saddr() : 0, 
+						ppd.header_ip ? ppd.header_udp->get_source() : vmPort(), 
+						ppd.header_ip ? ppd.header_ip->get_daddr() : 0, 
+						ppd.header_ip ? ppd.header_udp->get_dest() : vmPort(), 
 						ppd.datalen, dataoffset, 
 						handle_index, header, packet, true,
 						ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_offset),
-						NULL, 0, global_pcap_dlink, opt_id_sensor,
-						false);
+						NULL, 0, global_pcap_dlink, opt_id_sensor, 0);
 				} else {
 					delete header;
 					delete [] packet;
@@ -6247,7 +6251,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 }
 
 void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, 
-			    unsigned int saddr, int source, unsigned int daddr, int dest,
+			    vmIP saddr, vmPort source, vmIP daddr, vmPort dest,
 			    Call *call, const char *descr) {
 	static timeval firstPacketTime;
 	if(!firstPacketTime.tv_sec) {
@@ -6281,11 +6285,11 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 	       << "  ";
 	// ip / port
 	outStr << "ip / port: "
-	       << setw(15) << inet_ntostring(htonl(saddr))
+	       << setw(15) << saddr.getString()
 	       << " / "
 	       << setw(5) << source
 	       << " -> "
-	       << setw(15) << inet_ntostring(htonl(daddr))
+	       << setw(15) << daddr.getString()
 	       << " / "
 	       << setw(5) << dest;
 	// sip metod
@@ -6400,16 +6404,16 @@ void TcpReassemblySip::processPacket(packet_s_process **packetS_ref, bool isSip,
 	}
  
 	/*
-	if(!((inet_ntostring(htonl(saddr)) == "31.47.138.44" &&
-	      inet_ntostring(htonl(daddr)) == "81.88.86.11") ||
-	     (inet_ntostring(htonl(daddr)) == "31.47.138.44" &&
-	      inet_ntostring(htonl(saddr)) == "81.88.86.11"))) {
+	if(!((saddr.getString() == "31.47.138.44" &&
+	      daddr.getString() == "81.88.86.11") ||
+	     (daddr.getString() == "31.47.138.44" &&
+	      saddr.getString() == "81.88.86.11"))) {
 		 return;
 	}
 	*/
  
 	bool usePacketS = false;
-	tcphdr2 *header_tcp = (tcphdr2*)((char*)packetS->header_ip + sizeof(*packetS->header_ip));
+	tcphdr2 *header_tcp = (tcphdr2*)((char*)packetS->header_ip + packetS->header_ip->get_hdr_size());
 	u_int32_t seq = htonl(header_tcp->seq);
 	u_int32_t ack_seq = htonl(header_tcp->ack_seq);
 	tcp_stream_id rev_id(packetS->daddr, packetS->dest, packetS->saddr, packetS->source);
@@ -6531,7 +6535,7 @@ bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_
 		     << setw(6) << setfill('0') << packetS->header_pt->ts.tv_usec << setfill(' ') << " / "
 		     << string(packetS->data, MIN(string(packetS->data, packetS->datalen).find("\r"), MIN(packetS->datalen, 100))) << endl;
 	}
-	tcphdr2 *header_tcp = (tcphdr2*)((char*)packetS->header_ip + sizeof(*packetS->header_ip));
+	tcphdr2 *header_tcp = (tcphdr2*)((char*)packetS->header_ip + packetS->header_ip->get_hdr_size());
 	u_int32_t seq = htonl(header_tcp->seq);
 	u_int32_t ack_seq = htonl(header_tcp->ack_seq);
 	if(stream->packets) {
@@ -6609,9 +6613,9 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id /*id*/, PrePro
 		}
 		cout << sqlDateTimeString(completePacketS->header_pt->ts.tv_sec) << " "
 		     << setw(6) << setfill('0') << completePacketS->header_pt->ts.tv_usec << setfill(' ') << " / "
-		     << setw(15) << inet_ntostring(htonl(completePacketS->saddr)) << " : "
+		     << setw(15) << completePacketS->saddr.getString() << " : "
 		     << setw(5) << completePacketS->source << " / "
-		     << setw(15) << inet_ntostring(htonl(completePacketS->daddr)) << " : "
+		     << setw(15) << completePacketS->daddr.getString() << " : "
 		     << setw(5) << completePacketS->dest << " / "
 		     << setw(9) << stream->last_ack_seq << " / "
 		     << string((char*)completePacketS->data, MIN(string((char*)completePacketS->data, completePacketS->datalen).find("\r"), MIN(completePacketS->datalen, 100))) << endl;
@@ -6748,10 +6752,10 @@ ReassemblyBuffer::~ReassemblyBuffer() {
 }
 
 void ReassemblyBuffer::processPacket(u_char *ethHeader, unsigned ethHeaderLength,
-				     u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport, 
+				     vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, 
 				     ReassemblyBuffer::eType type, u_char *data, unsigned length, bool createStream,
 				     timeval time, u_int32_t ack, u_int32_t seq,
-				     u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+				     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
 				     list<sDataRslt> *dataRslt) {
 	sStreamId id(saddr, sport, daddr, dport);
 	map<sStreamId, sData>::iterator iter = streams.find(id);
@@ -6808,7 +6812,7 @@ void ReassemblyBuffer::processPacket(u_char *ethHeader, unsigned ethHeaderLength
 	}
 }
 
-bool ReassemblyBuffer::existsStream(u_int32_t saddr, u_int16_t sport, u_int32_t daddr, u_int16_t dport) {
+bool ReassemblyBuffer::existsStream(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
 	if(streams.size()) {
 		sStreamId id(saddr, sport, daddr, dport);
 		if(streams.find(id) != streams.end()) {
@@ -6849,10 +6853,10 @@ ReassemblyBuffer::sDataRslt ReassemblyBuffer::complete(sStreamId *streamId, sDat
 	dataRslt.data = new FILE_LINE(0) u_char[dataRslt.dataLength];
 	memcpy(dataRslt.data, b_data->buffer->data(), dataRslt.dataLength);
 	dataRslt.dataAlloc = true;
-	dataRslt.saddr = streamId->s[0];
-	dataRslt.sport = streamId->s[1];
-	dataRslt.daddr = streamId->c[0];
-	dataRslt.dport = streamId->c[1];
+	dataRslt.saddr = streamId->s.ip;
+	dataRslt.sport = streamId->s.port;
+	dataRslt.daddr = streamId->c.ip;
+	dataRslt.dport = streamId->c.port;
 	return(dataRslt);
 }
 
@@ -7771,7 +7775,7 @@ packet_s_process *PreProcessPacket::clonePacketS(u_char *newData, unsigned newDa
 	memcpy(new_packet + newPacketS->dataoffset, newData, newDataLength);
 	u_char *newDataInNewPacket = new_packet + newPacketS->dataoffset;
 	iphdr2 *newHeaderIpInNewPacket = (iphdr2*)(new_packet + newPacketS->header_ip_offset);
-	newHeaderIpInNewPacket->tot_len = htons(newLen - newPacketS->header_ip_offset);
+	newHeaderIpInNewPacket->set_tot_len(newLen - newPacketS->header_ip_offset);
 	newPacketS->data = (char*)newDataInNewPacket;
 	newPacketS->datalen = newDataLength;
 	newPacketS->header_pt = new_header;
@@ -8142,7 +8146,7 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 			packetS->reuse_counter_inc_sync(packetS->call_info_length);
 		}
 		ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
-						       processRtpPacketDistribute[min(packetS->source, packetS->dest) / 2 % _process_rtp_packets_distribute_threads_use] :
+						       processRtpPacketDistribute[min(packetS->source.getPort(), packetS->dest.getPort()) / 2 % _process_rtp_packets_distribute_threads_use] :
 						       processRtpPacketDistribute[0];
 		_processRtpPacket->push_packet(packetS);
 	}

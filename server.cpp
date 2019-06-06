@@ -159,7 +159,7 @@ string sSnifferServerServices::listJsonServices() {
 	for(map<string, sSnifferServerService>::iterator iter = services.begin(); iter != services.end(); iter++) {
 		sSnifferServerService *service = &(iter->second);
 		JsonExport *expSer = expAr->addObject(NULL);
-		expSer->add("ip", inet_ntostring(htonl(service->connect_ipl)));
+		expSer->add("ip", service->connect_ip.getString());
 		expSer->add("port", service->connect_port);
 		expSer->add("sensor_id", service->sensor_id);
 	}
@@ -475,7 +475,7 @@ void cSnifferServerConnection::cp_service() {
 		updateSensorState(sensor_id);
 	}
 	sSnifferServerService service;
-	service.connect_ipl = socket->getIPL();
+	service.connect_ip = socket->getIPL();
 	service.connect_port = socket->getPort();
 	service.sensor_id = sensor_id;
 	service.sensor_string = sensor_string;

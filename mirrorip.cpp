@@ -34,18 +34,11 @@ MirrorIP::MirrorIP(const char *src, const char *dst) {
 	sockraw = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
 	 
 	socket_broadcast(sockraw);
-	/* set SO_IPHDRINCL option */
+	// set SO_IPHDRINCL option
 	socket_iphdrincl(sockraw);
  
-	src_addr.sin_family = AF_INET;
-	src_addr.sin_addr.s_addr = inet_addr(src);
-	src_addr.sin_port = htons(9095);
-	memset(&src_addr.sin_zero, '\0', 8);
- 
-	dest_addr.sin_family = AF_INET;
-	dest_addr.sin_addr.s_addr = inet_addr(dst);
-	dest_addr.sin_port = htons(9095);
-	memset(&dest_addr.sin_zero, '\0', 8);
+	socket_set_saddr(&src_addr, str_2_vmIP(src), 9095);
+	socket_set_saddr(&dest_addr, str_2_vmIP(dst), 9095);
     
 	if(::bind(sockraw, (struct sockaddr *)&src_addr, sizeof(struct sockaddr)) == -1) {
 		perror("bind");
@@ -57,28 +50,25 @@ MirrorIP::MirrorIP(const char *src, const char *dst) {
 int
 MirrorIP::send(char *data, int datalen) {
 
-	struct iphdr2 *ip_hdr;
+	iphdr2 *ip_hdr;
+	unsigned ip_hdr_size = sizeof(iphdr2);
 
-	ip_hdr = (struct iphdr2 *)mirror_packet;
-	memset(ip_hdr, 0, sizeof(struct iphdr2));
+	ip_hdr = (iphdr2*)mirror_packet;
+	memset(ip_hdr, 0, ip_hdr_size);
 	ip_hdr->version = 4;
-	ip_hdr->tos = 0;
-	ip_hdr->id = htons(100);
-	ip_hdr->frag_off = 0;
-	ip_hdr->ttl = 120;
-	ip_hdr->protocol = 4;
-	ip_hdr->check = 0;
-	ip_hdr->tot_len = htons(sizeof(struct iphdr2) + datalen);
-	ip_hdr->ihl = 5;
-	ip_hdr->check = 0;
-	ip_hdr->saddr = src_addr.sin_addr.s_addr;
-	ip_hdr->daddr = dest_addr.sin_addr.s_addr;
-	memcpy(mirror_packet + sizeof(struct iphdr2), data, datalen);
+	ip_hdr->_id = htons(100);
+	ip_hdr->_ttl = 120;
+	ip_hdr->_protocol = 4;
+	ip_hdr->set_tot_len(ip_hdr_size + datalen);
+	ip_hdr->_ihl = 5;
+	ip_hdr->_set_saddr(src_addr.sin_addr.s_addr);
+	ip_hdr->_set_daddr(dest_addr.sin_addr.s_addr);
+	memcpy(mirror_packet + ip_hdr_size, data, datalen);
 
 	int res;
-	if((res = sendto(sockraw, mirror_packet, datalen + sizeof(struct iphdr2), 0, (struct sockaddr *)&dest_addr, sizeof(struct sockaddr))) == -1)
+	if((res = sendto(sockraw, mirror_packet, datalen + ip_hdr_size, 0, (struct sockaddr *)&dest_addr, sizeof(struct sockaddr))) == -1)
 	{
-		printf("msglen[%lu]\n", datalen + sizeof(struct iphdr2));
+		printf("msglen[%u]\n", datalen + ip_hdr_size);
 		perror("sendto");
 	}
 	return res;

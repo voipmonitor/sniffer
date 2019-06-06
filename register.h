@@ -139,8 +139,8 @@ public:
 	}
 public:
 	u_int64_t id;
-	u_int32_t sipcallerip;
-	u_int32_t sipcalledip;
+	vmIP sipcallerip;
+	vmIP sipcalledip;
 	char *to_num;
 	char *to_domain;
 	char *contact_num;

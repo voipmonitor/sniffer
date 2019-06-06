@@ -27,21 +27,31 @@ class SqlDb;
 class SqlDb_row {
 public:
 	struct SqlDb_rowField {
-		SqlDb_rowField(const char *content, string fieldName = "") {
+		SqlDb_rowField(const char *content, string fieldName = "", int type = 0, unsigned long length = 0) {
 			if(content) {
-				this->content = content;
+				if(type == MYSQL_TYPE_VAR_STRING) {
+					this->content = string(content, length);
+				} else {
+					this->content = content;
+				}
 			}
 			this->fieldName = fieldName;
 			this->null = !content;
+			this->type = type;
+			this->length = length;
 		}
-		SqlDb_rowField(string content, string fieldName = "", bool null = false) {
+		SqlDb_rowField(string content, string fieldName = "", bool null = false, int type = 0, unsigned long length = 0) {
 			this->content = content;
 			this->fieldName = fieldName;
 			this->null = null;
+			this->type = type;
+			this->length = length;
 		}
 		string content;
 		string fieldName;
 		bool null;
+		int type;
+		unsigned long length;
 	};
 	SqlDb_row(SqlDb *sqlDb = NULL) {
 		this->sqlDb = sqlDb;
@@ -50,7 +60,7 @@ public:
 	string operator [] (string fieldName);
 	string operator [] (int indexField);
 	operator int();
-	void add(const char *content, string fieldName = "");
+	void add(const char *content, string fieldName = "", int type = 0, unsigned long length = 0);
 	void add(string content, string fieldName = "", bool null = false);
 	void add(int content, string fieldName, bool null = false);
 	void add(unsigned int content, string fieldName, bool null = false);
@@ -58,11 +68,56 @@ public:
 	void add(unsigned long int content, string fieldName, bool null = false);
 	void add(long long int content, string fieldName, bool null = false);
 	void add(unsigned long long int content, string fieldName, bool null = false);
-	void add(double content,  string fieldName, bool null = false);
-	int getIndexField(string fieldName);
-	string getNameField(int indexField);
-	bool isEmpty();
-	bool isNull(string fieldName);
+	void add(double content, string fieldName, bool null = false);
+	void add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, const char *table);
+	int getIndexField(string fieldName) {
+		for(size_t i = 0; i < row.size(); i++) {
+			if(!strcasecmp(row[i].fieldName.c_str(), fieldName.c_str())) {
+				return(i);
+			}
+		}
+		if(this->sqlDb) {
+			return(_getIndexField(fieldName));
+		}
+		return(-1);
+	}
+	int _getIndexField(string fieldName);
+	string getNameField(int indexField) {
+		if((unsigned)indexField < row.size()) {
+			if(!row[indexField].fieldName.empty()) {
+				return(row[indexField].fieldName);
+			}
+			if(this->sqlDb) {
+				return(_getNameField(indexField));
+			}
+		}
+		return("");
+	}
+	string _getNameField(int indexField);
+	unsigned long getLengthField(string fieldName) {
+		int indexField = this->getIndexField(fieldName);
+		if(indexField >= 0) {
+			return(row[indexField].length);
+		}
+		return(0);
+	}
+	int getTypeField(string fieldName) {
+		int indexField = this->getIndexField(fieldName);
+		if(indexField >= 0) {
+			return(row[indexField].type);
+		}
+		return(0);
+	}
+	bool isEmpty() {
+		return(!row.size());
+	}
+	bool isNull(string fieldName) {
+		int indexField = this->getIndexField(fieldName);
+		if(indexField >= 0) {
+			return(row[indexField].null);
+		}
+		return(false);
+	}
 	string implodeFields(string separator = ",", string border = "");
 	string implodeContent(string separator = ",", string border = "'", bool enableSqlString = false, bool escapeAll = false);
 	string implodeFieldContent(string separator = ",", string fieldBorder = "`", string contentBorder = "'", bool enableSqlString = false, bool escapeAll = false);
@@ -96,18 +151,6 @@ public:
 		_supportPartitions_na,
 		_supportPartitions_ok,
 		_supportPartitions_oldver
-	};
-	struct sCloudDataItem {
-		sCloudDataItem(const char *str, bool null) {
-			if(str) {
-				this->str = str;
-				this->null = null;
-			} else {
-				this->null = true;
-			}
-		}
-		string str;
-		bool null;
 	};
 public:
 	SqlDb();
@@ -168,8 +211,16 @@ public:
 	bool isEnableExistColumnCache();
 	int existsColumnInCache(const char *table, const char *column);
 	void addColumnToCache(const char *table, const char *column);
-	virtual string getTypeColumn(const char *table, const char *column, bool toLower = true) = 0;
-	string getTypeColumn(string table, string column, bool toLower = true) { return(getTypeColumn(table.c_str(), column.c_str(), toLower)); }
+	virtual string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false) = 0;
+	string getTypeColumn(string table, string column, bool toLower = true, bool useCache = false) { return(getTypeColumn(table.c_str(), column.c_str(), toLower, useCache)); }
+	bool isIPv6Column(string table, string column, bool useCache = true);
+	bool isIPv4Column(string table, string column, bool useCache = true) {
+		return(!isIPv6Column(table, column, useCache));
+	}
+	static bool _isIPv6Column(string table, string column);
+	static bool _isIPv4Column(string table, string column) {
+		return(!_isIPv6Column(table, column));
+	}
 	virtual int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true) = 0;
 	int getPartitions(string table, list<string> *partitions, bool useCache) { return(getPartitions(table.c_str(), partitions, useCache)); }
 	int getPartitions(const char *table, vector<string> *partitions, bool useCache = true);
@@ -310,18 +361,28 @@ protected:
 	ulong loginTimeout;
 	unsigned int maxQueryPass;
 	vector<string> fields;
+	vector<int> fields_type;
 	bool enableSqlStringInContent;
 	bool disableNextAttemptIfError;
 	bool disableLogError;
 	bool silentConnect;
 	bool connecting;
 	vector<string> response_data_columns;
-	vector<vector<sCloudDataItem> > response_data;
+	vector<int> response_data_columns_types;
+	vector<vector<string_null> > response_data;
 	size_t response_data_rows;
 	size_t response_data_index;
 	unsigned long maxAllowedPacket;
 	string prevQuery;
 	bool useCsvInRemoteResult;
+	map<string, list<string> > existsColumn_cache;
+	bool existsColumn_cache_enable;
+	bool existsColumn_cache_suspend;
+	volatile int existsColumn_cache_sync;
+	static map<string, map<string, string> > typeColumn_cache;  
+	static volatile int typeColumn_cache_sync;
+	map<string, list<string> > partitions_cache;
+	volatile int partitions_cache_sync;
 private:
 	unsigned int lastError;
 	string lastErrorString;
@@ -330,9 +391,6 @@ private:
 	static volatile u_int64_t delayQueryStore_sum_ms;
 	static volatile u_int32_t delayQueryStore_count;
 	cSocketBlock *remote_socket;
-	map<string, list<string> > existsColumnCache;
-	bool existsColumnCache_enable;
-	bool existsColumnCache_suspend;
 friend class MySqlStore_process;
 };
 
@@ -377,17 +435,18 @@ public:
 	bool connected();
 	bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	SqlDb_row fetchRow();
-	bool fetchQueryResult(vector<string> *fields, vector<map<string, string_null> > *rows);
-	string getJsonResult(vector<string> *fields, vector<map<string, string_null> > *rows);
+	bool fetchQueryResult(vector<string> *fields, vector<int> *fields_types, vector<map<string, string_null> > *rows);
+	string getJsonResult(vector<string> *fields, vector<int> *fields_types, vector<map<string, string_null> > *rows);
 	string getJsonResult();
 	string getCsvResult();
 	string getJsonError();
 	int64_t getInsertId();
 	bool existsDatabase();
 	bool existsTable(const char *table);
+	list<string> getAllTables();
 	bool existsTable(string table) { return(existsTable(table.c_str())); }
 	bool existsColumn(const char *table, const char *column);
-	string getTypeColumn(const char *table, const char *column, bool toLower = true);
+	string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false);
 	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);
@@ -470,8 +529,6 @@ private:
 	MYSQL_RES *hMysqlRes;
 	string dbVersion;
 	unsigned long mysqlThreadId;
-	map<string, list<string> > partitions_cache;
-	volatile int partitions_cache_sync;
 };
 
 class SqlDb_odbc_bindBufferItem {
@@ -518,7 +575,7 @@ public:
 	bool existsDatabase();
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
-	string getTypeColumn(const char *table, const char *column, bool toLower = true);
+	string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false);
 	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);

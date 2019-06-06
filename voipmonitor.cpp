@@ -308,7 +308,7 @@ char opt_keycheck[1024] = "";
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
 int opt_mgcp = 0;
-unsigned int opt_skinny_ignore_rtpip = 0;
+vmIP opt_skinny_ignore_rtpip;
 unsigned int opt_skinny_call_info_message_decode_type = 2;
 int opt_read_from_file = 0;
 char opt_read_from_file_fname[1024] = "";
@@ -497,9 +497,9 @@ int opt_pcap_ifdrop_limit = 20;
 
 int opt_sdp_multiplication = 3;
 bool opt_both_side_for_check_direction = true;
-vector<ipn_port> opt_sdp_ignore_ip_port;
-vector<u_int32_t> opt_sdp_ignore_ip;
-vector<d_u_int32_t> opt_sdp_ignore_net;
+vector<vmIPport> opt_sdp_ignore_ip_port;
+vector<vmIP> opt_sdp_ignore_ip;
+vector<vmIPmask> opt_sdp_ignore_net;
 string opt_save_sip_history;
 bool _save_sip_history;
 bool _save_sip_history_request_types[1000];
@@ -691,8 +691,8 @@ eSnifferMode sniffer_mode = snifferMode_read_from_interface;
 char ifname[1024];	// Specifies the name of the network device to use for 
 			// the network lookup, for example, eth0
 vector<string> ifnamev;
-vector<u_int32_t> if_filter_ip;
-vector<d_u_int32_t> if_filter_net;
+vector<vmIP> if_filter_ip;
+vector<vmIPmask> if_filter_net;
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
 #ifndef FREEBSD
@@ -767,16 +767,16 @@ char *httpportmatrix;		// matrix of http ports to monitor
 char *webrtcportmatrix;		// matrix of webrtc ports to monitor
 char *skinnyportmatrix;		// matrix of skinny ports to monitor
 char *ipaccountportmatrix;
-vector<u_int32_t> httpip;
-vector<d_u_int32_t> httpnet;
-vector<u_int32_t> webrtcip;
-vector<d_u_int32_t> webrtcnet;
-map<d_u_int32_t, string> ssl_ipport;
+vector<vmIP> httpip;
+vector<vmIPmask> httpnet;
+vector<vmIP> webrtcip;
+vector<vmIPmask> webrtcnet;
+map<vmIPport, string> ssl_ipport;
 bool ssl_client_random_enable = false;
 char *ssl_client_random_portmatrix;
 bool ssl_client_random_portmatrix_set = false;
-vector<u_int32_t> ssl_client_random_ip;
-vector<d_u_int32_t> ssl_client_random_net;
+vector<vmIP> ssl_client_random_ip;
+vector<vmIPmask> ssl_client_random_net;
 int ssl_client_random_maxwait_ms = 0;
 
 int opt_sdp_reverse_ipport = 0;
@@ -959,6 +959,8 @@ char ownPidFork_str[10];
 
 cResolver resolver;
 cUtfConverter utfConverter;
+
+bool useIPv6 = false;
 
 
 #include <stdio.h>
@@ -2718,6 +2720,13 @@ int main(int argc, char *argv[]) {
 	   !configMap.getFirstItem("server_destination").empty()) {
 		useNewCONFIG = true;
 	}
+	
+	#if VM_IPV6
+	if(configMap.getFirstItem("ipv6", true) == "yes") {
+		useIPv6 = true;
+	}
+	#endif
+	
 	if(opt_fork &&
 	   configMap.getFirstItem("semaphore-lock", true) == "yes") {
 		useSemaphoreLock = true;
@@ -3058,12 +3067,13 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// start manager thread 	
-	if(opt_manager_port > 0 && !is_read_from_file_simple()) {
+	if((opt_manager_port > 0 || is_client()) && !is_read_from_file_simple()) {
 		init_management_functions();
-		vm_pthread_create("manager server",
-				  &manager_thread, NULL, manager_server, NULL, __FILE__, __LINE__);
-		// start reversed manager thread
-	};
+		if(opt_manager_port > 0) {
+			vm_pthread_create("manager server",
+					  &manager_thread, NULL, manager_server, NULL, __FILE__, __LINE__);
+		}
+	}
 
 	//cout << "SQL DRIVER: " << sql_driver << endl;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender() && !is_terminating()) {
@@ -3094,6 +3104,8 @@ int main(int argc, char *argv[]) {
 				return 1;
 			}
 		}
+	} else if(!configfile[0]) {
+		useIPv6 = true;
 	}
 	
 	if(!is_terminating()) {
@@ -3657,7 +3669,7 @@ int main_init_read() {
 	}
 	if(opt_enable_ssl && ssl_ipport.size()) {
 		if(opt_enable_ssl == 10) {
-			#ifdef HAVE_LIBGNUTLS
+			#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 			ssl_init();
 			#endif
 		} else {
@@ -3863,7 +3875,7 @@ void terminate_processpacket() {
 	}
 	if(opt_enable_ssl && ssl_ipport.size()) {
 		if(opt_enable_ssl == 10) {
-			#ifdef HAVE_LIBGNUTLS
+			#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 			ssl_clean();
 			#endif
 		} else {
@@ -4369,9 +4381,7 @@ void test_search_country_by_number() {
 void test_geoip() {
 	GeoIP_country *ipc = new FILE_LINE(42042) GeoIP_country();
 	ipc->load();
-	in_addr ips;
-	inet_aton("152.251.11.109", &ips);
-	cout << ipc->getCountry(htonl(ips.s_addr)) << endl;
+	cout << ipc->getCountry(str_2_vmIP("152.251.11.109")) << endl;
 	delete ipc;
 }
 
@@ -4837,6 +4847,61 @@ void test() {
 	 
 	case 1: {
 	 
+		IP ipt("192.168.0.0");
+	 
+		SqlDb *sqlDb0 = createSqlObject();
+		sqlDb0->query("select ip from test_ip");
+		SqlDb_row row0;
+		while((row0 = sqlDb0->fetchRow())) {
+			vmIP ip;
+			ip.setIP(&row0, "ip");
+			cout << ip.getString() << endl;
+		}
+		delete sqlDb0;
+	 
+		cResolver res;
+		vmIP ip = res.resolve("www.seznam.cz", 300/*, cResolver::_typeResolve_system_host*/);
+		cout << ip.getString() << endl;
+		break;
+	 
+		SqlDb *sqlDb = createSqlObject();
+		sqlDb->query("select * from geoipv6_country limit 10");
+		#if 0
+		string rslt = sqlDb->getCsvResult();
+		cout << rslt <<  endl;
+		sqlDb->processResponseFromCsv(rslt.c_str());
+		#else
+		string rslt = sqlDb->getJsonResult();
+		cout << rslt <<  endl;
+		sqlDb->processResponseFromQueryBy(rslt.c_str(), 0);
+		#endif
+		sqlDb->setCloudParameters("c", "c", "c");
+		
+		cout << "---" << endl;
+		
+		SqlDb_row row;
+		while((row = sqlDb->fetchRow())) {
+			vmIP ip_from;
+			ip_from.setIP(&row, "ip_from");
+			vmIP ip_to;
+			ip_to.setIP(&row, "ip_to");
+			cout << ip_from.getString() << " / "
+			     << ip_to.getString() << " / "
+			     << row["country"] << endl;
+		}
+		
+		cout << "---" << endl;
+		
+		//cout << sqlDb->getJsonResult() <<  endl;
+		delete sqlDb;
+		break;
+	 
+		dns_lookup_common_hostnames();
+
+		cout << str_2_vmIP("192.168.0.0").broadcast(16).getString() << endl;
+		cout << str_2_vmIP("192.168.1.1").isLocalIP() << endl;
+		cout << str_2_vmIP("127.0.0.1").isLocalhost() << endl;
+	 
 		/*
 		cGzip gzip;
 		u_char *cbuffer;
@@ -4876,7 +4941,7 @@ void test() {
 		tm next2 = dateTimeAdd(next1, 24 * 60 * 60);
 		
 		billing.billing(calldate_time , duration,
-				inet_strington(ip_src.c_str()), inet_strington(ip_dst.c_str()),
+				str_2_vmIP(ip_src.c_str()), str_2_vmIP(ip_dst.c_str()),
 				number_src.c_str(), number_dst.c_str(),
 				&operator_price, &customer_price,
 				&operator_currency_id, &customer_currency_id,
@@ -5241,10 +5306,8 @@ void test() {
 		CountryDetectInit();
 		vector<string> ips = split(opt_test_arg, ';');
 		for(unsigned i = 0; i < ips.size(); i++) {
-			in_addr ip;
-			inet_aton(ips[i].c_str(), &ip);
 			cout << "ip:      " << ips[i] << endl;
-			cout << "country: " << getCountryByIP(htonl(ip.s_addr)) << endl;
+			cout << "country: " << getCountryByIP(str_2_vmIP(ips[i].c_str())) << endl;
 			cout << "---" << endl;
 		}
 		}
@@ -5286,7 +5349,7 @@ void test() {
 				unsigned operator_id;
 				unsigned customer_id;
 				billing.billing(calldate_time , atoi(call[1].c_str()),
-						inet_strington(call[4].c_str()), inet_strington(call[5].c_str()),
+						str_2_vmIP(call[4].c_str()), str_2_vmIP(call[5].c_str()),
 						call[2].c_str(), call[3].c_str(),
 						&operator_price, &customer_price,
 						&operator_currency_id, &customer_currency_id,
@@ -6067,8 +6130,7 @@ void cConfig::addConfigItems() {
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem(new FILE_LINE(42257) cConfigItem_yesno("skinny", &opt_skinny));
 		addConfigItem(new FILE_LINE(0) cConfigItem_ports("skinny_port", skinnyportmatrix));
-		addConfigItem((new FILE_LINE(42258) cConfigItem_integer("skinny_ignore_rtpip", &opt_skinny_ignore_rtpip))
-			->setIp());
+		addConfigItem(new FILE_LINE(42258) cConfigItem_ip("skinny_ignore_rtpip", &opt_skinny_ignore_rtpip));
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("skinny_call_info_message_decode_type", &opt_skinny_call_info_message_decode_type));
 		setDisableIfEnd();
@@ -6457,6 +6519,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_l2tp",  &opt_udp_port_l2tp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("socket_use_poll",  &opt_socket_use_poll));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("new-config", &useNewCONFIG));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipv6", &useIPv6));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -6830,7 +6894,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "chunk_buffer")			sverb.chunk_buffer = 1;
 	else if(verbParam.substr(0, 15) == "tcp_debug_port=")
 								sverb.tcp_debug_port = atoi(verbParam.c_str() + 15);
-	else if(verbParam.substr(0, 13) == "tcp_debug_ip=")	{ in_addr ips; inet_aton(verbParam.c_str() + 13, &ips); sverb.tcp_debug_ip = ips.s_addr; }
+	else if(verbParam.substr(0, 13) == "tcp_debug_ip=")	((vmIP*)sverb.tcp_debug_ip)->setFromString(verbParam.c_str() + 13);
 	else if(verbParam.substr(0, 5) == "ssrc=")          	sverb.ssrc = strtol(verbParam.c_str() + 5, NULL, 16);
 	else if(verbParam == "jitter")				sverb.jitter = 1;
 	else if(verbParam == "jitter_na")			opt_jitterbuffer_adapt = 0;
@@ -6940,20 +7004,12 @@ void get_command_line_arguments() {
 				{
 					vector<string> nataliases = explode(optarg, ',');
 					for (size_t iter = 0; iter < nataliases.size(); iter++) {
-						string local_ip;
-						string extern_ip;
-						string *ip = &local_ip;
-						for(unsigned i = 0; i < nataliases[iter].length(); i++) {
-							if(nataliases[iter][i] == ' ' || nataliases[iter][i] == ':' || nataliases[iter][i] == '=') {
-								ip = &extern_ip;
-								continue;
+						vector<string> ip_nat = split(nataliases[iter].c_str(), split(" |:|=", "|"), true);
+						if(ip_nat.size() >= 2) {
+							vmIP _ip_nat[2];
+							if(_ip_nat[0].setFromString(ip_nat[0].c_str()) && _ip_nat[1].setFromString(ip_nat[1].c_str())) {
+								nat_aliases[_ip_nat[0]] = _ip_nat[1];
 							}
-							*ip = *ip + nataliases[iter][i];
-						}
-						u_int32_t nlocal_ip = inet_addr(local_ip.c_str());
-						u_int32_t nextern_ip = inet_addr(extern_ip.c_str());
-						if(nlocal_ip && nextern_ip) {
-							nat_aliases[nlocal_ip] = nextern_ip;
 						}
 					}
 				}
@@ -7988,6 +8044,63 @@ bool check_complete_parameters() {
 
 // OBSOLETE
 
+void parse_config_item(const char *config, map<vmIPport, string> *item) {
+	vector<string> ip_port = split(config, ":", true);
+	if(ip_port.size() >= 2) {
+		vmIP ip = str_2_vmIP(ip_port[0].c_str());
+		vector<string> port_str = split(ip_port[1].c_str(), " ", true);
+		if(port_str.size() >= 1) {
+			unsigned port = atoi(port_str[0].c_str());
+			string key;
+			if(port_str.size() >= 2) {
+				key = port_str[1];
+			}
+			if(ip.isSet() && port) {
+				(*item)[vmIPport(ip, port)] = key;
+			}
+		}
+	}
+}
+
+void parse_config_item(const char *config, vector<vmIPport> *item) {
+	vector<string> ip_port = split(config, ":", true);
+	if(ip_port.size() >= 2) {
+		vmIP ip = str_2_vmIP(ip_port[0].c_str());
+		unsigned port = atoi(ip_port[1].c_str());
+		if(ip.isSet() && port) {
+			item->push_back(vmIPport(ip, port));
+		}
+	}
+}
+
+void parse_config_item(const char *config, vector<vmIP> *item_ip, vector<vmIPmask> *item_net) {
+	vector<string> ip_mask = split(config, "/", true);
+	if(ip_mask.size() >= 1) {
+		vmIP ip = str_2_vmIP(ip_mask[0].c_str());
+		unsigned lengthMask = ip_mask.size() >= 2 ? atoi(ip_mask[1].c_str()) : 0;
+		if(ip.isSet()) {
+			if(ip.is_net_mask(lengthMask)) {
+				item_net->push_back(vmIPmask(ip.network(lengthMask), lengthMask));
+			} else {
+				item_ip->push_back(ip);
+			}
+		}
+	}
+}
+
+void parse_config_item(const char *config, nat_aliases_t *item) {
+	vector<string> ip_nat = split(config, split(" |:|=", "|"), true);
+	if(ip_nat.size() >= 2) {
+		vmIP _ip_nat[2];
+		if(_ip_nat[0].setFromString(ip_nat[0].c_str()) && _ip_nat[1].setFromString(ip_nat[1].c_str())) {
+			(*item)[_ip_nat[0]] = _ip_nat[1];
+			if(verbosity > 3) {
+				printf("adding local_ip[%s] = extern_ip[%s]\n", _ip_nat[0].getString().c_str(), _ip_nat[1].getString().c_str());
+			}
+		}
+	}
+}
+
 int eval_config(string inistr) {
  
 	if(opt_test == 11) {
@@ -8036,29 +8149,7 @@ int eval_config(string inistr) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		// reset default port 
 		for (; i != values.end(); ++i) {
-			u_int32_t ip = 0;
-			u_int32_t port = 0;
-			string key;
-			char *pointToSeparator = strchr((char*)i->pItem, ':');
-			if(pointToSeparator) {
-				*pointToSeparator = 0;
-				ip = htonl(inet_addr(i->pItem));
-				++pointToSeparator;
-				while(*pointToSeparator && *pointToSeparator == ' ') {
-					++pointToSeparator;
-				}
-				port = atoi(pointToSeparator);
-				while(*pointToSeparator && *pointToSeparator != ' ') {
-					++pointToSeparator;
-				}
-				while(*pointToSeparator && *pointToSeparator == ' ') {
-					++pointToSeparator;
-				}
-				key = pointToSeparator;
-			}
-			if(ip && port) {
-				ssl_ipport[d_u_int32_t(ip, port)] = key;
-			}
+			parse_config_item(i->pItem, &ssl_ipport);
 		}
 	}
 	
@@ -8075,26 +8166,7 @@ int eval_config(string inistr) {
 	if (ini.GetAllValues("general", "ssl_sessionkey_udp_ip", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
-			u_int32_t ip;
-			int lengthMask = 32;
-			char *pointToSeparatorLengthMask = strchr((char*)i->pItem, '/');
-			if(pointToSeparatorLengthMask) {
-				*pointToSeparatorLengthMask = 0;
-				ip = htonl(inet_addr(i->pItem));
-				lengthMask = atoi(pointToSeparatorLengthMask + 1);
-			} else {
-				ip = htonl(inet_addr(i->pItem));
-			}
-			if(lengthMask < 32) {
-				ip = ip >> (32 - lengthMask) << (32 - lengthMask);
-			}
-			if(ip) {
-				if(lengthMask < 32) {
-					ssl_client_random_net.push_back(d_u_int32_t(ip, lengthMask));
-				} else {
-					ssl_client_random_ip.push_back(ip);
-				}
-			}
+			parse_config_item(i->pItem, &ssl_client_random_ip, &ssl_client_random_net);
 		}
 		if(ssl_client_random_ip.size() > 1) {
 			std::sort(ssl_client_random_ip.begin(), ssl_client_random_ip.end());
@@ -8108,26 +8180,7 @@ int eval_config(string inistr) {
 	if (ini.GetAllValues("general", "httpip", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
-			u_int32_t ip;
-			int lengthMask = 32;
-			char *pointToSeparatorLengthMask = strchr((char*)i->pItem, '/');
-			if(pointToSeparatorLengthMask) {
-				*pointToSeparatorLengthMask = 0;
-				ip = htonl(inet_addr(i->pItem));
-				lengthMask = atoi(pointToSeparatorLengthMask + 1);
-			} else {
-				ip = htonl(inet_addr(i->pItem));
-			}
-			if(lengthMask < 32) {
-				ip = ip >> (32 - lengthMask) << (32 - lengthMask);
-			}
-			if(ip) {
-				if(lengthMask < 32) {
-					httpnet.push_back(d_u_int32_t(ip, lengthMask));
-				} else {
-					httpip.push_back(ip);
-				}
-			}
+			parse_config_item(i->pItem, &httpip, &httpnet);
 		}
 		if(httpip.size() > 1) {
 			std::sort(httpip.begin(), httpip.end());
@@ -8138,26 +8191,7 @@ int eval_config(string inistr) {
 	if (ini.GetAllValues("general", "webrtcip", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
-			u_int32_t ip;
-			int lengthMask = 32;
-			char *pointToSeparatorLengthMask = strchr((char*)i->pItem, '/');
-			if(pointToSeparatorLengthMask) {
-				*pointToSeparatorLengthMask = 0;
-				ip = htonl(inet_addr(i->pItem));
-				lengthMask = atoi(pointToSeparatorLengthMask + 1);
-			} else {
-				ip = htonl(inet_addr(i->pItem));
-			}
-			if(lengthMask < 32) {
-				ip = ip >> (32 - lengthMask) << (32 - lengthMask);
-			}
-			if(ip) {
-				if(lengthMask < 32) {
-					webrtcnet.push_back(d_u_int32_t(ip, lengthMask));
-				} else {
-					webrtcip.push_back(ip);
-				}
-			}
+			parse_config_item(i->pItem, &webrtcip, &webrtcnet);
 		}
 		if(webrtcip.size() > 1) {
 			std::sort(webrtcip.begin(), webrtcip.end());
@@ -8175,35 +8209,9 @@ int eval_config(string inistr) {
 
 	// nat aliases
 	if (ini.GetAllValues("general", "natalias", values)) {
-		char local_ip[30], extern_ip[30];
-		in_addr_t nlocal_ip, nextern_ip;
-		int len, j = 0, i;
-		char *s = local_ip;
 		CSimpleIni::TNamesDepend::const_iterator it = values.begin();
-
 		for (; it != values.end(); ++it) {
-			s = local_ip;
-			j = 0;
-			for(i = 0; i < 30; i++) {
-				local_ip[i] = '\0';
-				extern_ip[i] = '\0';
-			}
-
-			len = strlen(it->pItem);
-			for(int i = 0; i < len; i++) {
-				if(it->pItem[i] == ' ' or it->pItem[i] == ':' or it->pItem[i] == '=' or it->pItem[i] == ' ') {
-					// moving s to b pointer (write to b ip
-					s = extern_ip;
-					j = 0;
-				} else {
-					s[j] = it->pItem[i];
-					j++;
-				}
-			}
-			if ((int32_t)(nlocal_ip = inet_addr(local_ip)) != -1 && (int32_t)(nextern_ip = inet_addr(extern_ip)) != -1 ){
-				nat_aliases[nlocal_ip] = nextern_ip;
-				if(verbosity > 3) printf("adding local_ip[%s][%u] = extern_ip[%s][%u]\n", local_ip, nlocal_ip, extern_ip, nextern_ip);
-			}
+			parse_config_item(it->pItem, &nat_aliases);
 		}
 	}
 
@@ -8213,26 +8221,10 @@ int eval_config(string inistr) {
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
-			u_int32_t ip;
-			int lengthMask = 32;
-			char *pointToSeparatorLengthMask = strchr((char*)i->pItem, '/');
-			if(pointToSeparatorLengthMask) {
-				*pointToSeparatorLengthMask = 0;
-				ip = htonl(inet_addr(i->pItem));
-				lengthMask = atoi(pointToSeparatorLengthMask + 1);
-			} else {
-				ip = htonl(inet_addr(i->pItem));
-			}
-			if(lengthMask < 32) {
-				ip = ip >> (32 - lengthMask) << (32 - lengthMask);
-			}
-			if(ip) {
-				if(lengthMask < 32) {
-					if_filter_net.push_back(d_u_int32_t(ip, lengthMask));
-				} else {
-					if_filter_ip.push_back(ip);
-				}
-			}
+			parse_config_item(i->pItem, &if_filter_ip, &if_filter_net);
+		}
+		if(if_filter_ip.size() > 1) {
+			std::sort(if_filter_ip.begin(), if_filter_ip.end());
 		}
 	}
 	if((value = ini.GetValue("general", "cleandatabase", NULL))) {
@@ -8527,9 +8519,7 @@ int eval_config(string inistr) {
 		opt_skinny = yesno(value);
 	}
 	if((value = ini.GetValue("general", "skinny_ignore_rtpip", NULL))) {
-		struct sockaddr_in sa;
-		inet_pton(AF_INET, value, &(sa.sin_addr));
-		opt_skinny_ignore_rtpip = (unsigned int)(sa.sin_addr.s_addr);
+		opt_skinny_ignore_rtpip.setFromString(value);
 	}
 	if((value = ini.GetValue("general", "skinny_call_info_message_decode_type", NULL))) {
 		opt_skinny_call_info_message_decode_type = atoi(value);
@@ -9884,42 +9874,13 @@ int eval_config(string inistr) {
 	if(ini.GetAllValues("general", "sdp_ignore_ip_port", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
-			char *pointToPortSeparator = (char*)strchr((char*)i->pItem, ':');
-			if(pointToPortSeparator) {
-				*pointToPortSeparator = 0;
-				int port = atoi(pointToPortSeparator + 1);
-				if(port) {
-					ipn_port ipp;
-					ipp.set_ip(trim_str((char*)i->pItem));
-					ipp.set_port(port);
-					opt_sdp_ignore_ip_port.push_back(ipp);
-				}
-			}
+			parse_config_item(i->pItem, &opt_sdp_ignore_ip_port);
 		}
 	}
 	if(ini.GetAllValues("general", "sdp_ignore_ip", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
-			u_int32_t ip;
-			int lengthMask = 32;
-			char *pointToSeparatorLengthMask = strchr((char*)i->pItem, '/');
-			if(pointToSeparatorLengthMask) {
-				*pointToSeparatorLengthMask = 0;
-				ip = htonl(inet_addr(i->pItem));
-				lengthMask = atoi(pointToSeparatorLengthMask + 1);
-			} else {
-				ip = htonl(inet_addr(i->pItem));
-			}
-			if(lengthMask < 32) {
-				ip = ip >> (32 - lengthMask) << (32 - lengthMask);
-			}
-			if(ip) {
-				if(lengthMask < 32) {
-					opt_sdp_ignore_net.push_back(d_u_int32_t(ip, lengthMask));
-				} else {
-					opt_sdp_ignore_ip.push_back(ip);
-				}
-			}
+			parse_config_item(i->pItem, &opt_sdp_ignore_ip, &opt_sdp_ignore_net);
 		}
 		if(opt_sdp_ignore_ip.size() > 1) {
 			std::sort(opt_sdp_ignore_ip.begin(), opt_sdp_ignore_ip.end());
@@ -10334,7 +10295,8 @@ void dns_lookup_common_hostnames() {
 		"download.voipmonitor.org",
 		"cloud.voipmonitor.org",
 		"cloud2.voipmonitor.org",
-		"cloud3.voipmonitor.org"
+		"cloud3.voipmonitor.org",
+		"1.2.3.4"
 	};
 	for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]) && !terminating; i++) {
 		resolver.resolve(hostnames[i]);

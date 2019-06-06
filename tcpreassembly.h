@@ -200,11 +200,11 @@ public:
 
 class TcpReassemblyProcessData {
 public:
-	virtual void processData(u_int32_t ip_src, u_int32_t ip_dst,
-				 u_int16_t port_src, u_int16_t port_dst,
+	virtual void processData(vmIP ip_src, vmIP ip_dst,
+				 vmPort port_src, vmPort port_dst,
 				 TcpReassemblyData *data,
 				 u_char *ethHeader, u_int32_t ethHeaderLength,
-				 u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+				 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
 				 void *uData,
 				 class TcpReassemblyLink *reassemblyLink,
 				 std::ostream *debugStream) = 0;
@@ -213,25 +213,25 @@ public:
 };
 
 struct TcpReassemblyLink_id {
-	TcpReassemblyLink_id(u_int32_t ip_src = 0, u_int32_t ip_dst = 0, 
-			     u_int16_t port_src = 0, u_int16_t port_dst = 0) {
+	TcpReassemblyLink_id(vmIP ip_src = 0, vmIP ip_dst = 0, 
+			     vmPort port_src = 0, vmPort port_dst = 0) {
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
 		this->port_src = port_src; 
 		this->port_dst = port_dst;
 	}
 	void reverse() {
-		u_int32_t tmp = this->ip_src;
+		vmIP tmp_ip = this->ip_src;
 		this->ip_src = this->ip_dst;
-		this->ip_dst = tmp;
-		tmp = this->port_src;
+		this->ip_dst = tmp_ip;
+		vmPort tmp_port = this->port_src;
 		this->port_src = this->port_dst;
-		this->port_dst = tmp;
+		this->port_dst = tmp_port;
 	}
-	u_int32_t ip_src;
-	u_int32_t ip_dst;
-	u_int16_t port_src;
-	u_int16_t port_dst;
+	vmIP ip_src;
+	vmIP ip_dst;
+	vmPort port_src;
+	vmPort port_dst;
 	bool operator < (const TcpReassemblyLink_id& other) const {
 		return((this->ip_src < other.ip_src) ? 1 : (this->ip_src > other.ip_src) ? 0 :
 		       (this->ip_dst < other.ip_dst) ? 1 : (this->ip_dst > other.ip_dst) ? 0 :
@@ -517,10 +517,10 @@ public:
 			TcpReassemblyLink *link;
 	};
 	TcpReassemblyLink(class TcpReassembly *reassembly,
-			  u_int32_t ip_src = 0, u_int32_t ip_dst = 0, 
-			  u_int16_t port_src = 0, u_int16_t port_dst = 0,
+			  vmIP ip_src = 0, vmIP ip_dst = 0, 
+			  vmPort port_src = 0, vmPort port_dst = 0,
 			  u_char *packet = NULL, iphdr2 *header_ip = NULL,
-			  u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, u_int32_t sensor_ip = 0,
+			  u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, vmIP sensor_ip = 0,
 			  void *uData = NULL) {
 		this->reassembly = reassembly;
 		this->ip_src = ip_src;
@@ -708,10 +708,10 @@ private:
 	void extCleanup(int id, bool all);
 private:
 	TcpReassembly *reassembly;
-	u_int32_t ip_src;
-	u_int32_t ip_dst;
-	u_int16_t port_src;
-	u_int16_t port_dst;
+	vmIP ip_src;
+	vmIP ip_dst;
+	vmPort port_src;
+	vmPort port_dst;
 	eState state;
 	bool forceOk;
 	u_int32_t first_seq_to_dest;
@@ -741,7 +741,7 @@ private:
 	u_int16_t handle_index;
 	int dlt; 
 	int sensor_id;
-	u_int32_t sensor_ip;
+	vmIP sensor_ip;
 	void *uData;
 	u_char *remainData[2];
 	u_int32_t remainDataLength[2];
@@ -770,7 +770,7 @@ public:
 		u_int16_t handle_index; 
 		int dlt; 
 		int sensor_id;
-		u_int32_t sensor_ip;
+		vmIP sensor_ip;
 		void *uData;
 		bool isSip;
 	};
@@ -779,7 +779,7 @@ public:
 	~TcpReassembly();
 	void push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet, bool alloc_packet,
 		      pcap_block_store *block_store, int block_store_index, bool block_store_locked,
-		      u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, u_int32_t sensor_ip = 0,
+		      u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, vmIP sensor_ip = 0,
 		      void *uData = NULL, bool isSip = false);
 	void cleanup(bool all = false);
 	void cleanup_simple(bool all = false);
@@ -870,28 +870,28 @@ public:
 	void preparePacketPstatData();
 	double getPacketCpuUsagePerc(bool preparePstatData = false);
 	string getCpuUsagePerc();
-	bool check_ip(u_int32_t ip, u_int16_t port = 0) {
+	bool check_ip(vmIP ip, vmPort port = 0) {
 		if(type == http || type == webrtc) {
-			extern vector<u_int32_t> httpip;
-			extern vector<d_u_int32_t> httpnet;
-			extern vector<u_int32_t> webrtcip;
-			extern vector<d_u_int32_t> webrtcnet;
+			extern vector<vmIP> httpip;
+			extern vector<vmIPmask> httpnet;
+			extern vector<vmIP> webrtcip;
+			extern vector<vmIPmask> webrtcnet;
 			return(check_ip_in(ip, (type == http ? &httpip : &webrtcip), (type == http ? &httpnet : &webrtcnet), true));
 		} else if(type == ssl) {
-			extern map<d_u_int32_t, string> ssl_ipport;
-			map<d_u_int32_t, string>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));
+			extern map<vmIPport, string> ssl_ipport;
+			map<vmIPport, string>::iterator iter = ssl_ipport.find(vmIPport(ip, port));
 			return(iter != ssl_ipport.end());
 		}
 		return(false);
 	}
-	bool check_port(u_int16_t port, u_int32_t ip = 0) {
+	bool check_port(vmPort port, vmIP ip = 0) {
 		if(type == http || type == webrtc) {
 			extern char *httpportmatrix;
 			extern char *webrtcportmatrix;
 			return(type == http ? httpportmatrix[port] : webrtcportmatrix[port]);
 		} else if(type == ssl) {
-			extern map<d_u_int32_t, string> ssl_ipport;
-			map<d_u_int32_t, string>::iterator iter = ssl_ipport.find(d_u_int32_t(ip, port));
+			extern map<vmIPport, string> ssl_ipport;
+			map<vmIPport, string>::iterator iter = ssl_ipport.find(vmIPport(ip, port));
 			return(iter != ssl_ipport.end());
 		}
 		return(false);
@@ -916,7 +916,7 @@ public:
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
-		   u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+		   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
 		   void *uData, bool isSip);
 	void createCleanupThread();
 	void createPacketThread();

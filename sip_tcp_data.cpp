@@ -23,11 +23,11 @@ SipTcpData::~SipTcpData() {
 	}
 }
 
-void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
-			     u_int16_t port_src, u_int16_t port_dst,
+void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
+			     vmPort port_src, vmPort port_dst,
 			     TcpReassemblyData *data,
 			     u_char *ethHeader, u_int32_t ethHeaderLength,
-			     u_int16_t handle_index, int dlt, int sensor_id, u_int32_t sensor_ip,
+			     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
 			     void *uData, TcpReassemblyLink *reassemblyLink,
 			     std::ostream *debugStream) {
 	++this->counterProcessData;
@@ -66,11 +66,11 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 				(*debugStream)
 					<< "###"
 					<< fixed
-					<< setw(15) << inet_ntostring(htonl(ip_src))
+					<< setw(15) << ip_src.getString()
 					<< " / "
 					<< setw(5) << port_src
 					<< (dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? " --> " : " <-- ")
-					<< setw(15) << inet_ntostring(htonl(ip_dst))
+					<< setw(15) << ip_dst.getString()
 					<< " / "
 					<< setw(5) << port_dst
 					<< "  len: " << setw(4) << (*iter_sip_offset)[1];
@@ -82,10 +82,10 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 			}
 			pcap_pkthdr *tcpHeader;
 			u_char *tcpPacket;
-			u_int32_t _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
-			u_int32_t _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
-			u_int16_t _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
-			u_int16_t _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
+			vmIP _ip_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_src : ip_dst;
+			vmIP _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
+			vmPort _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
+			vmPort _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
 			u_char *_data = dataItem->getData() + (*iter_sip_offset)[0];
 			unsigned int _datalen = (*iter_sip_offset)[1];
 			while(_datalen >= 2 && _data[0] == '\r' && _data[1] == '\n') {
@@ -98,7 +98,10 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 							  _ip_src, _ip_dst, _port_src, _port_dst,
 							  dataItem->getSeq(), dataItem->getAck(), 
 							  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec, dlt);
-				unsigned dataOffset = ethHeaderLength + sizeof(iphdr2) + ((tcphdr2*)(tcpPacket + ethHeaderLength + sizeof(iphdr2)))->doff * 4;
+				unsigned iphdrSize = ((iphdr2*)(tcpPacket + ethHeaderLength))->get_hdr_size();
+				unsigned dataOffset = ethHeaderLength + 
+						      iphdrSize +
+						      ((tcphdr2*)(tcpPacket + ethHeaderLength + iphdrSize))->doff * 4;
 				if(uData) {
 					packet_s_process *packetS = PACKET_S_PROCESS_SIP_CREATE();
 					#if USE_PACKET_NUMBER
@@ -130,8 +133,8 @@ void SipTcpData::processData(u_int32_t ip_src, u_int32_t ip_dst,
 					extern int opt_mgcp;
 					extern unsigned opt_tcp_port_mgcp_gateway;
 					extern unsigned opt_tcp_port_mgcp_callagent;
-					packetS->is_mgcp = opt_mgcp && (_port_src == opt_tcp_port_mgcp_gateway || _port_dst == opt_tcp_port_mgcp_gateway ||
-									_port_src == opt_tcp_port_mgcp_callagent || _port_dst == opt_tcp_port_mgcp_callagent);
+					packetS->is_mgcp = opt_mgcp && ((unsigned)_port_src == opt_tcp_port_mgcp_gateway || (unsigned)_port_dst == opt_tcp_port_mgcp_gateway ||
+									(unsigned)_port_src == opt_tcp_port_mgcp_callagent || (unsigned)_port_dst == opt_tcp_port_mgcp_callagent);
 					packetS->is_need_sip_process = !packetS->isother &&
 								       (sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
 									packetS->is_skinny ||

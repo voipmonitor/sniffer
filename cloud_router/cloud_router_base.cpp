@@ -304,7 +304,7 @@ cSocket::cSocket(const char *name, bool autoClose) {
 	}
 	this->autoClose = autoClose;
 	port = 0;
-	ipl = 0;
+	ip.clear();
 	handle = -1;
 	enableWriteReconnect = false;
 	terminate = false;
@@ -346,15 +346,15 @@ bool cSocket::connect(unsigned loopSleepS) {
 		}
 		rslt = true;
 		clearError();
-		ipl = resolver.resolve(host);
-		if(!ipl) {
+		ip = resolver.resolve(host);
+		if(!ip.isSet()) {
 			setError("failed resolve host name %s", host.c_str());
 			rslt = false;
 			continue;
 		}
 		int pass_call_socket = 0;
 		do {
-			handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			handle = socket_create(ip, SOCK_STREAM, IPPROTO_TCP);
 			++pass_call_socket;
 		} while(handle == 0 && pass_call_socket < 5);
 		if(handle == -1) {
@@ -362,12 +362,7 @@ bool cSocket::connect(unsigned loopSleepS) {
 			rslt = false;
 			continue;
 		}
-		sockaddr_in addr;
-		memset(&addr, 0, sizeof(addr));
-		addr.sin_family = AF_INET;
-		addr.sin_port = htons(port);
-		addr.sin_addr.s_addr = ipl;
-		if(::connect(handle, (sockaddr*)&addr, sizeof(addr)) == -1) {
+		if(socket_connect(handle, ip, port) == -1) {
 			setError("failed to connect to server [%s] error:[%s]", host.c_str(), strerror(errno));
 			close();
 			rslt = false;
@@ -394,14 +389,14 @@ bool cSocket::connect(unsigned loopSleepS) {
 }
 
 bool cSocket::listen() {
-	if(!ipl && !host.empty()) {
-		ipl = resolver.resolve(host);
-		if(!ipl && host != "0.0.0.0") {
+	if(!ip.isSet() && !host.empty()) {
+		ip = resolver.resolve(host);
+		if(!ip.isSet() && host != "0.0.0.0") {
 			setError("failed resolve host name %s", host.c_str());
 			return(false);
 		}
 	}
-	if((handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+	if((handle = socket_create(ip, SOCK_STREAM, IPPROTO_TCP)) == -1) {
 		setError("cannot create socket");
 		return(false);
 	}
@@ -409,16 +404,11 @@ bool cSocket::listen() {
 	if(flags >= 0) {
 		fcntl(handle, F_SETFL, flags | O_NONBLOCK);
 	}
-	sockaddr_in addr;
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port);
-	addr.sin_addr.s_addr = ipl;
 	int on = 1;
 	setsockopt(handle, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	int rsltListen;
 	do {
-		while(::bind(handle, (sockaddr*)&addr, sizeof(addr)) == -1 && !terminate) {
+		while(socket_bind(handle, ip, port) == -1 && !terminate) {
 			setError("cannot bind to port [%d] - trying again after 5 seconds", port);
 			sleep(5);
 		}
@@ -457,8 +447,6 @@ bool cSocket::await(cSocket **clientSocket) {
 	if(clientSocket) {
 		*clientSocket = NULL;
 	}
-	sockaddr_in clientInfo;
-	socklen_t clientInfoLen = sizeof(sockaddr_in);
 	while(clientHandle < 0 && !terminate) {
 		bool doAccept = false;
 		if(opt_socket_use_poll) {
@@ -481,7 +469,9 @@ bool cSocket::await(cSocket **clientSocket) {
 			}
 		}
 		if(doAccept) {
-			clientHandle = accept(handle, (sockaddr*)&clientInfo, &clientInfoLen);
+			vmIP clientIP;
+			vmPort clientPort;
+			clientHandle = socket_accept(handle, &clientIP, &clientPort);
 			if(clientHandle >= 0) {
 				int flags = fcntl(clientHandle, F_GETFL, 0);
 				if(flags >= 0) {
@@ -489,9 +479,9 @@ bool cSocket::await(cSocket **clientSocket) {
 				}
 				if(clientSocket) {
 					*clientSocket = new FILE_LINE(0) cSocket("client/await");
-					(*clientSocket)->host = inet_ntoa(clientInfo.sin_addr);
-					(*clientSocket)->port = htons(clientInfo.sin_port);
-					(*clientSocket)->ipl = clientInfo.sin_addr.s_addr;
+					(*clientSocket)->host = clientIP.getString();
+					(*clientSocket)->port = clientPort;
+					(*clientSocket)->ip = clientIP;
 					(*clientSocket)->handle = clientHandle;
 				}
 			}

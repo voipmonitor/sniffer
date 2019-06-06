@@ -11,7 +11,7 @@
 #if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 
 
-extern map<d_u_int32_t, string> ssl_ipport;
+extern map<vmIPport, string> ssl_ipport;
 extern int opt_ssl_store_sessions;
 extern int opt_ssl_store_sessions_expiration_hours;
 extern MySqlStore *sqlStore;
@@ -21,13 +21,13 @@ extern int opt_nocdr;
 static cSslDsslSessions *SslDsslSessions;
 
 
-cSslDsslSession::cSslDsslSession(u_int32_t ip, u_int16_t port, string keyfile, string password) {
+cSslDsslSession::cSslDsslSession(vmIP ip, vmPort port, string keyfile, string password) {
 	this->ip = ip;
 	this->port = port;
 	this->keyfile = keyfile;
 	this->password = password;
-	ipc = 0;
-	portc = 0;
+	ipc.clear();
+	portc.clear();
 	pkey = NULL;
 	server_info = NULL;
 	session = NULL;
@@ -45,7 +45,7 @@ cSslDsslSession::~cSslDsslSession() {
 	term();
 }
 
-void cSslDsslSession::setClientIpPort(u_int32_t ipc, u_int16_t portc) {
+void cSslDsslSession::setClientIpPort(vmIP ipc, vmPort portc) {
 	this->ipc = ipc;
 	this->portc = portc;
 }
@@ -78,7 +78,7 @@ bool cSslDsslSession::initServer() {
 	}
 	this->server_info = new FILE_LINE(0) DSSL_ServerInfo;
 	this->server_info->server_ip = *(in_addr*)&ip;
-	this->server_info->port = port;
+	this->server_info->port = port.getPort();
 	this->server_info->pkey = pkey;
 	server_error = _se_ok;
 	return(true);
@@ -127,7 +127,7 @@ void cSslDsslSession::termSession() {
 }
 
 void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, 
-				  unsigned int saddr, unsigned int daddr, int sport, int dport, 
+				  vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, 
 				  struct timeval ts, bool init, class cSslDsslSessions *sessions) {
 	rslt_decrypt->clear();
 	if(!session) {
@@ -181,7 +181,7 @@ bool cSslDsslSession::isClientHello(char *data, unsigned int datalen, NM_PacketD
 	return(isClientHello);
 }
 
-NM_PacketDir cSslDsslSession::getDirection(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport) {
+NM_PacketDir cSslDsslSession::getDirection(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
 	return(dip == ip && dport == port ?
 		ePacketDirFromClient :
 	       sip == ip && sport == port ?
@@ -202,10 +202,10 @@ void cSslDsslSession::errorCallback(void* user_data, int error_code) {
 		if(opt_ssl_log_errors) {
 			syslog(LOG_ERR, "SSL decode failed: err code %i, connection %s:%u -> %s:%u", 
 			       error_code,
-			       inet_ntostring(me->ipc).c_str(),
-			       me->portc,
-			       inet_ntostring(me->ip).c_str(),
-			       me->port);
+			       me->ipc.getString().c_str(),
+			       me->portc.getPort(),
+			       me->ip.getString().c_str(),
+			       me->port.getPort());
 		}
 		me->process_error = true;
 	}
@@ -275,10 +275,10 @@ void cSslDsslSession::store_session(cSslDsslSessions *sessions, struct timeval t
 		string session_data = get_session_data(ts);
 		SqlDb_row session_row_insert;
 		session_row_insert.add(opt_id_sensor, "id_sensor");
-		session_row_insert.add(ip, "serverip");
-		session_row_insert.add(port, "serverport");
-		session_row_insert.add(ipc, "clientip");
-		session_row_insert.add(portc, "clientport");
+		session_row_insert.add(ip, "serverip", false, sessions->sqlDb, sessions->storeSessionsTableName().c_str());
+		session_row_insert.add(port.getPort(), "serverport");
+		session_row_insert.add(ipc, "clientip", false, sessions->sqlDb, sessions->storeSessionsTableName().c_str());
+		session_row_insert.add(portc.getPort(), "clientport");
 		session_row_insert.add(sqlDateTimeString(ts.tv_sec), "stored_at");
 		session_row_insert.add(session_data, "session");
 		SqlDb_row session_row_update;
@@ -418,7 +418,7 @@ cSslDsslSessions::~cSslDsslSessions() {
 	term();
 }
 
-void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts) {
+void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts) {
 	/*
 	if(!(sport == 50404 || dport == 50404)) {
 		return;
@@ -437,8 +437,8 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 		unlock_sessions();
 		return;
 	}
-	unsigned int server_addr, client_addr;
-	int server_port, client_port;
+	vmIP server_addr, client_addr;
+	vmPort server_port, client_port;
 	server_addr = dir == ePacketDirFromClient ? daddr : saddr;
 	server_port = dir == ePacketDirFromClient ? dport : sport;
 	client_addr = dir == ePacketDirFromClient ? saddr : daddr;
@@ -501,7 +501,7 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 	unlock_sessions();
 }
 
-void cSslDsslSessions::destroySession(unsigned int saddr, unsigned int daddr, int sport, int dport) {
+void cSslDsslSessions::destroySession(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
 	lock_sessions();
 	NM_PacketDir dir = checkIpPort(saddr, sport, daddr, dport);
 	if(dir == ePacketDirInvalid) {
@@ -540,18 +540,18 @@ void cSslDsslSessions::clientRandomCleanup() {
 	this->client_random.cleanup();
 }
 
-cSslDsslSession *cSslDsslSessions::addSession(u_int32_t ip, u_int16_t port) {
-	cSslDsslSession *session = new FILE_LINE(0) cSslDsslSession(ip, port, ssl_ipport[d_u_int32_t(ip, port)]);
+cSslDsslSession *cSslDsslSessions::addSession(vmIP ip, vmPort port) {
+	cSslDsslSession *session = new FILE_LINE(0) cSslDsslSession(ip, port, ssl_ipport[vmIPport(ip, port)]);
 	return(session);
 }
 
-NM_PacketDir cSslDsslSessions::checkIpPort(u_int32_t sip, u_int16_t sport, u_int32_t dip, u_int16_t dport) {
-	map<d_u_int32_t, string>::iterator iter_ssl_ipport;
-	iter_ssl_ipport = ssl_ipport.find(d_u_int32_t(dip, dport));
+NM_PacketDir cSslDsslSessions::checkIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
+	map<vmIPport, string>::iterator iter_ssl_ipport;
+	iter_ssl_ipport = ssl_ipport.find(vmIPport(dip, dport));
 	if(iter_ssl_ipport != ssl_ipport.end()) {
 		return(ePacketDirFromClient);
 	}
-	iter_ssl_ipport = ssl_ipport.find(d_u_int32_t(sip, sport));
+	iter_ssl_ipport = ssl_ipport.find(vmIPport(sip, sport));
 	if(iter_ssl_ipport != ssl_ipport.end()) {
 		return(ePacketDirFromServer);
 	}
@@ -588,8 +588,8 @@ void cSslDsslSessions::loadSessions() {
 	sqlDb->select(storeSessionsTableName(), NULL, &cond);
 	SqlDb_row row;
 	while((row = sqlDb->fetchRow())) {
-		sStreamId sid(atol(row["serverip"].c_str()), atoi(row["serverport"].c_str()), 
-			      atol(row["clientip"].c_str()), atoi(row["clientport"].c_str()));
+		sStreamId sid(mysql_ip_2_vmIP(&row, "serverip"), atoi(row["serverport"].c_str()), 
+			      mysql_ip_2_vmIP(&row, "clientip"), atoi(row["clientport"].c_str()));
 		sSessionData session_data;
 		session_data.data = row["session"];
 		lock_sessions_db();
@@ -646,13 +646,13 @@ void ssl_dssl_clean() {
 }
 
 
-void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, unsigned int saddr, unsigned int daddr, int sport, int dport, struct timeval ts) {
+void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts) {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	SslDsslSessions->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts);
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
 
-void end_decrypt_ssl_dssl(unsigned int saddr, unsigned int daddr, int sport, int dport) {
+void end_decrypt_ssl_dssl(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	SslDsslSessions->destroySession(saddr, daddr, sport, dport);
 	SslDsslSessions->clientRandomCleanup();
