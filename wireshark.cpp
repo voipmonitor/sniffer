@@ -11,6 +11,10 @@
 #include <iostream>
 #include <ostream>
 
+#include <gnutls/gnutls.h> 
+#include <gnutls/x509.h> 
+#include <gnutls/pkcs12.h> 
+
 #include <glib.h>
 #include <wireshark/wsutil/privileges.h>
 #include <wireshark/register.h>
@@ -42,6 +46,7 @@ static epan_t *ws_epan;
 
 void ws_init() {
 	if(!ws_init_ok) {
+		gnutls_global_init();
 		init_process_policies();
 		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
 		wtap_init(true);
