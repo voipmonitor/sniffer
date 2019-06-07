@@ -1284,11 +1284,14 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 /* analyze rtp packet */
 bool
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname) {
-	if(packetS->datalen &&
+	/*
+	if(sverb.dtls &&
+	   packetS->datalen &&
 	   (packetS->data_()[0] == 0x16 || packetS->data_()[0] == 0x14)) {
 		read_dtls(packetS);
 		return(true);
 	}
+	*/
 	bool record_dtmf = false;
 	bool disable_save = false;
 	unsigned datalen_orig = packetS->datalen;
@@ -1316,13 +1319,11 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	extern int opt_vlan_siprtpsame;
 	bool rtp_read_rslt = false;
 	int curpayload;
-	unsigned int curSSRC;
-	bool okRTP;
 	
 	*record_dtmf = false;
 	*disable_save = false;
 	
-	if(packetS->datalen <= 12 && !sverb.process_rtp_header) {
+	if(!packetS->isRtpUdptlOkDataLen() && !sverb.process_rtp_header) {
 		//Ignoring RTP packets without data
 		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen);
 		return(false);
@@ -1350,28 +1351,39 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
 	tmprtp.fill((u_char*)packetS->data_(), packetS->header_ip_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest);
-	curpayload = tmprtp.getPayload();
+	
+	unsigned int curSSRC;
+	bool udptl = false;
+	if(packetS->isRtp()) {
+		if(tmprtp.getVersion() == 2) {
+			curSSRC = tmprtp.getSSRC();
+			if(curSSRC == 0) {
+				is_zerossrc_detected = true;
+				if(!opt_allow_zerossrc) {
+					return(false);
+				}
+			}
+			curpayload = tmprtp.getPayload();
+		} else {
+			return(false);
+		}
+	} else if(this->seenudptl || this->isfax) {
+		udptl = true;
+		curSSRC = -1;
+		curpayload = -1;
+	} else {
+		return(false);
+	}
 	
 	// chekc if packet is DTMF and saverfc2833 is enabled 
 	if(opt_saverfc2833 and curpayload == 101) {
 		*record_dtmf = true;
 	}
 	
-	curSSRC = tmprtp.getSSRC();
-	if (curSSRC == 0 && packetS->isRtp()) {
-		is_zerossrc_detected = true;
-	}
-	okRTP = (curSSRC != 0 || opt_allow_zerossrc) && tmprtp.getVersion() == 2;
-	if(okRTP || this->seenudptl || this->isfax) {
-		if(iscaller) {
-			last_rtp_a_packet_time = packetS->header_pt->ts.tv_sec;
-		} else {
-			last_rtp_b_packet_time = packetS->header_pt->ts.tv_sec;
-		}
-	}
-	if(!okRTP) {
-		// invalid ssrc or version
-		return(false);
+	if(iscaller) {
+		last_rtp_a_packet_time = packetS->header_pt->ts.tv_sec;
+	} else {
+		last_rtp_b_packet_time = packetS->header_pt->ts.tv_sec;
 	}
 
 	/* TODO:IPHDR ?
@@ -1398,6 +1410,12 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 					if(sverb.dscp) {
 						cout << "rtpdscp " << (int)(packetS->header_ip_()->get_tos()>>2) << endl;
 					}
+				}
+				
+				if(udptl) {
+					++rtp[i]->s->received;
+					++rtp[i]->stats.received;
+					return(true);
 				}
 				
 				// check if codec did not changed but ignore payload 13 and 19 which is CNG and 101 which is DTMF
@@ -1479,6 +1497,27 @@ read:
 	}
 	// adding new RTP source
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
+	 
+		if(udptl) {
+			while(__sync_lock_test_and_set(&rtplock, 1)) {
+				usleep(100);
+			}
+			rtp[ssrc_n] = new FILE_LINE(0) RTP(packetS->sensor_id_(), packetS->sensor_ip);
+			rtp[ssrc_n]->call_owner = this;
+			rtp[ssrc_n]->ssrc2 = curSSRC;
+			rtp[ssrc_n]->ssrc_index = ssrc_n; 
+			rtp[ssrc_n]->iscaller = iscaller; 
+			rtp[ssrc_n]->find_by_dest = find_by_dest;
+			rtp[ssrc_n]->saddr = packetS->saddr;
+			rtp[ssrc_n]->daddr = packetS->daddr;
+			rtp[ssrc_n]->sport = packetS->source;
+			rtp[ssrc_n]->dport = packetS->dest;
+			++rtp[ssrc_n]->s->received;
+			++rtp[ssrc_n]->stats.received;
+			ssrc_n++;
+			__sync_lock_release(&rtplock);
+			return(true);
+		}
 		
 		int index_call_ip_port_find_side = this->get_index_by_ip_port(find_by_dest ? packetS->daddr : packetS->saddr,
 									      find_by_dest ? packetS->dest : packetS->source);
@@ -1710,7 +1749,7 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 	extern int opt_fax_create_udptl_streams;
 	extern int opt_fax_dup_seq_check;
 	if(opt_fax_create_udptl_streams) {
-		if(is_fax && packetS->datalen > 3) {
+		if(is_fax && packetS->okDataLenForUdptl()) {
 			sUdptlDumper *udptlDumper;
 			sStreamId streamId(packetS->saddr, packetS->source, packetS->daddr, packetS->dest);
 			map<sStreamId, sUdptlDumper*>::iterator iter = udptlDumpers.find(streamId);
@@ -1779,7 +1818,7 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 			}
 		}
 	} else if(opt_fax_dup_seq_check) {
-		if(is_fax && packetS->datalen > 3 && !packetS->isRtp()) {
+		if(is_fax && packetS->isUdptlOkDataLen()) {
 			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
 			if(udptl->data_field) {
 				unsigned seq = htons(udptl->sequence);
@@ -1790,7 +1829,7 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 			}
 		}
 	} else {
-		if(is_fax && packetS->datalen > 3 && !packetS->isRtp()) {
+		if(is_fax && packetS->isUdptlOkDataLen()) {
 			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
 			if(udptl->data_field) {
 				this->exists_udptl_data = true;
@@ -3954,6 +3993,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 									     << " packets lost: " << rtp[j]->s->lost << " "
 									     << " ssrc index: " << rtp[j]->ssrc_index << " "
 									     << " ok_other_ip_side_by_sip: " << rtp[j]->ok_other_ip_side_by_sip << " " 
+									     << " payload: " << rtp[j]->first_codec << " "
 									     << endl;
 								}
 								break;
@@ -3989,7 +4029,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bool pass_rtpab_simple = typeIs(MGCP) ||
 					 (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
 		if(!pass_rtpab_simple && typeIs(INVITE) && ssrc_indexes_n >= 2 &&
-		   (rtp[indexes[0]]->iscaller + rtp[indexes[1]]->iscaller) == 1) {
+		   (rtp[indexes[0]]->iscaller + rtp[indexes[1]]->iscaller) == 1 &&
+		   rtp[indexes[0]]->first_codec >= 0 && rtp[indexes[1]]->first_codec >= 0) {
 			if(ssrc_indexes_n == 2) {
 				pass_rtpab_simple = true;
 			} else {
@@ -4014,7 +4055,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 			}
 		}
-		for(int pass_rtpab = 0; pass_rtpab < (pass_rtpab_simple ? 1 : 2); pass_rtpab++) {
+		for(int pass_rtpab = 0; pass_rtpab < (pass_rtpab_simple ? 1 : 3); pass_rtpab++) {
 			for(int k = 0; k < ssrc_indexes_n; k++) {
 				if(pass_rtpab == 0) {
 					if(sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams) {
@@ -4027,11 +4068,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						     << " packets lost: " << rtp[indexes[k]]->s->lost << " "
 						     << " ssrc index: " << rtp[indexes[k]]->ssrc_index << " "
 						     << " ok_other_ip_side_by_sip: " << rtp[indexes[k]]->ok_other_ip_side_by_sip << " " 
+						     << " payload: " << rtp[indexes[k]]->first_codec << " "
 						     << endl;
 					}
 				}
 				if(rtp[indexes[k]]->stats.received &&
-				   (pass_rtpab_simple || rtp[indexes[k]]->ok_other_ip_side_by_sip || pass_rtpab == 1)) {
+				   (pass_rtpab_simple || rtp[indexes[k]]->ok_other_ip_side_by_sip || 
+				    (pass_rtpab == 1 && rtp[indexes[k]]->first_codec >= 0) ||
+				    pass_rtpab == 2)) {
 					if(!rtpab_ok[0] &&
 					   rtp[indexes[k]]->iscaller && 
 					   (!rtpab[0] || rtp[indexes[k]]->stats.received > rtpab[0]->stats.received)) {
@@ -4069,6 +4113,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					     << " packets lost: " << rtpab[k]->s->lost << " "
 					     << " ssrc index: " << rtpab[k]->ssrc_index << " "
 					     << " ok_other_ip_side_by_sip: " << rtpab[k]->ok_other_ip_side_by_sip << " " 
+					     << " payload: " << rtpab[k]->first_codec << " "
 					     << endl;
 				}
 			}
@@ -4117,7 +4162,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			string c = i == 0 ? "a" : "b";
 			
 			cdr.add(rtpab[i]->ssrc_index, c+"_index");
-			cdr.add(rtpab[i]->stats.received + 2, c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
+			cdr.add(rtpab[i]->stats.received + (rtpab[i]->first_codec ? 2 : 0), c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
 			lost[i] = rtpab[i]->stats.lost;
 			cdr.add(lost[i], c+"_lost");
 			packet_loss_perc_mult1000[i] = (int)round((double)rtpab[i]->stats.lost / 
@@ -4127,7 +4172,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
 			cdr.add(int(ceil(rtpab[i]->stats.maxjitter)), c+"_maxjitter");
 			payload[i] = rtpab[i]->first_codec;
-			cdr.add(payload[i], c+"_payload");
+			if(payload[i] >= 0) {
+				cdr.add(payload[i], c+"_payload");
+			}
 			
 			// build a_sl1 - b_sl10 fields
 			for(int j = 1; j < 11; j++) {

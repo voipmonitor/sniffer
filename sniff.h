@@ -164,6 +164,24 @@ struct packet_s {
 	inline bool isRtp() {
 		return(IS_RTP(data_(), datalen));
 	}
+	inline bool isUdptl() {
+		return(!IS_RTP(data_(), datalen));
+	}
+	inline bool okDataLenForRtp() {
+		return(datalen > 12);
+	}
+	inline bool okDataLenForUdptl() {
+		return(datalen > 3);
+	}
+	inline bool isRtpOkDataLen() {
+		return(isRtp() && okDataLenForRtp());
+	}
+	inline bool isUdptlOkDataLen() {
+		return(isUdptl() && okDataLenForUdptl());
+	}
+	inline bool isRtpUdptlOkDataLen() {
+		return(isRtp() ? okDataLenForRtp() : okDataLenForUdptl());
+	}
 };
 
 struct packet_s_stack : public packet_s {
