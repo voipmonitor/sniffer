@@ -1716,7 +1716,8 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 						pointToParam += 7;
 						lengthParam -= 7;
 					}
-					crypto.key = string(pointToParam, lengthParam);
+					char *lifeTimeSeparator = strnchr(pointToParam, '|', lengthParam);
+					crypto.key = string(pointToParam, lifeTimeSeparator ? (lifeTimeSeparator - pointToParam) : lengthParam);
 					break;
 				}
 				pointToParam = pointToSeparator ? pointToSeparator + 1 : NULL;

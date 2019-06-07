@@ -37,25 +37,14 @@ bool RTPsecure::sCryptoConfig::init() {
 }
 
 bool RTPsecure::sCryptoConfig::keyDecode() {
-	static char *b64chars = (char*)"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 	if(sdes.length() != 40) {
 		error = err_bad_sdes_length;
 		return(false);
 	}
 	u_char sdes_raw[30];
-	for(unsigned i = 0; i*4 < sdes.length(); i++) {
-		u_char shifts[4];
-		for (unsigned j = 0; j < 4; j++) {
-			char *p = strchr(b64chars, sdes[4*i + j]);
-			if(!p) {
-				error = err_bad_sdes_content;
-				return(false);
-			}
-			shifts[j] = p - b64chars;
-		}
-		sdes_raw[3*i + 0] = (shifts[0]<<2)|(shifts[1]>>4);
-		sdes_raw[3*i + 1] = (shifts[1]<<4)|(shifts[2]>>2);
-		sdes_raw[3*i + 2] = (shifts[2]<<6)|shifts[3];
+	if(base64decode(sdes_raw, sdes.c_str(), sizeof(sdes_raw)) != 30) {
+		error = err_bad_sdes_content;
+		return(false);
 	}
 	memcpy(key_salt, sdes_raw, 30);
 	memcpy(key, sdes_raw, 16);
