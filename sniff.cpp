@@ -1235,7 +1235,7 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 		if(ok) {
 			ok = false;
 			for(end = begin; end < peername_tag + peername_tag_len; end++) {
-				if(*end == '>' || *end == ';' || *end == ':') {
+				if(*end == '>' || *end == ';' || *end == ':' || *end == ' ') {
 					--end;
 					ok = true;
 					break;

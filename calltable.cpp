@@ -1358,7 +1358,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	}
 	
 	curSSRC = tmprtp.getSSRC();
-	if (curSSRC == 0) {
+	if (curSSRC == 0 && packetS->isRtp()) {
 		is_zerossrc_detected = true;
 	}
 	okRTP = (curSSRC != 0 || opt_allow_zerossrc) && tmprtp.getVersion() == 2;
