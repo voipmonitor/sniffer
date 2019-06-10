@@ -4637,9 +4637,18 @@ void process_packet_other(packet_s_stack *packetS) {
 	if(!dissect_rslt.empty()) {
 		vector<size_t> sctp_pos;
 		size_t pos = 0;
-		while((pos = dissect_rslt.find("\"sctp\": {", pos + 1)) != string::npos) {
-			sctp_pos.push_back(pos);
-		}
+		do {
+			size_t _pos = pos;
+			for(int i = 0; i < 2; i++) {
+				pos = dissect_rslt.find(i == 0 ? "\"sctp\": {" : "\"sctp\":{", _pos + 1);
+				if(pos != string::npos) {
+					break;
+				}
+			}
+			if(pos != string::npos) {
+				sctp_pos.push_back(pos);
+			}
+		} while(pos != string::npos);
 		vector<string> dissect_rslts;
 		vector<string*> dissect_rslts_pt;
 		if(sctp_pos.size() <= 1) {

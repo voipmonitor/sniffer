@@ -4204,21 +4204,27 @@ string json_encode(const string &value) {
 }
 
 char * gettag_json(const char *data, const char *tag, unsigned *contentlen, char *dest, unsigned destlen) {
-	string _tag = "\"" + string(tag) + "\": \"";
-	const char *ptrToBegin = strcasestr(data, _tag.c_str());
-	if(ptrToBegin) {
+	string _tag = "\"" + string(tag) + "\":";
+	const char *ptrToBegin = data;
+	while((ptrToBegin = strcasestr(ptrToBegin, _tag.c_str()))) {
 		ptrToBegin += _tag.length();
-		const char *ptrToEnd = ptrToBegin;
-		while(*ptrToEnd && *ptrToEnd != '"' && *(ptrToEnd - 1) != '\\') {
-			++ptrToEnd;
+		if(*ptrToBegin == ' ') {
+			++ptrToBegin;
 		}
-		if(ptrToEnd > ptrToBegin) {
-			*contentlen = ptrToEnd - ptrToBegin;
-			if(dest) {
-				strncpy(dest, ptrToBegin, min(*contentlen, destlen - 1));
-				dest[min(*contentlen, destlen - 1)] = 0;
+		if(*ptrToBegin == '"') {
+			++ptrToBegin;
+			const char *ptrToEnd = ptrToBegin;
+			while(*ptrToEnd && *ptrToEnd != '"' && *(ptrToEnd - 1) != '\\') {
+				++ptrToEnd;
 			}
-			return((char*)ptrToBegin);
+			if(ptrToEnd > ptrToBegin) {
+				*contentlen = ptrToEnd - ptrToBegin;
+				if(dest) {
+					strncpy(dest, ptrToBegin, min(*contentlen, destlen - 1));
+					dest[min(*contentlen, destlen - 1)] = 0;
+				}
+				return((char*)ptrToBegin);
+			}
 		}
 	}
 	*contentlen = 0;

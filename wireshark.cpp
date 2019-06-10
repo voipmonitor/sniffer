@@ -53,7 +53,11 @@ void ws_init() {
 		#else
 		wtap_init();
 		#endif
+		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 30000
+		epan_init(NULL, NULL, false);
+		#else
 		epan_init(register_all_protocols, register_all_protocol_handoffs, NULL, NULL);
+		#endif
 		ws_init_ok = true;
 	}
 }
@@ -79,7 +83,12 @@ void ws_gener_json(epan_dissect_t *edt, string *rslt) {
 	if(file) {
 		output_fields_t* output_fields  = NULL;
 		gchar **protocolfilter = NULL;
-		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
+		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 30000
+		json_dumper json_dump;
+		memset(&json_dump, 0, sizeof(json_dump));
+		json_dump.output_file = file;
+		write_json_proto_tree(output_fields, print_dissections_expanded, false, protocolfilter, PF_NONE, edt, NULL, proto_node_group_children_by_unique, &json_dump);
+		#elif defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
 		write_json_proto_tree(output_fields, print_dissections_expanded, false, protocolfilter, PF_NONE, edt, NULL, proto_node_group_children_by_unique, file);
 		#elif defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20403
 		write_json_proto_tree(output_fields, print_dissections_expanded, false, protocolfilter, PF_NONE, edt, file);
@@ -129,6 +138,7 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 	whdr.presence_flags = 3;
 	unsigned ws_dlt = dlt == DLT_MTP2 ? WTAP_ENCAP_MTP2 :
 			  dlt == DLT_MTP2_WITH_PHDR ? WTAP_ENCAP_MTP2_WITH_PHDR :
+			  dlt == DLT_LINUX_SLL ? WTAP_ENCAP_SLL :
 			  WTAP_ENCAP_ETHERNET;
 	unsigned skip_hdr = dlt == DLT_MTP2_WITH_PHDR ? 4 : 0;
 	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605

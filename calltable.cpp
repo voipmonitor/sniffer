@@ -6406,6 +6406,7 @@ void Ss7::pushToQueue(string *ss7_id) {
 int Ss7::saveToDb(bool enableBatchIfPossible) {
 	if(!sqlDbSaveSs7) {
 		sqlDbSaveSs7 = createSqlObject();
+		sqlDbSaveSs7->setEnableSqlStringInContent(true);
 	}
 	string sql_ss7_table = "ss7";
 	SqlDb_row ss7;
