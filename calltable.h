@@ -624,11 +624,7 @@ public:
 	int msgcount;
 	int regcount;
 	int reg401count;
-	int reg401count_distinct;
-	vmIP reg401count_sipcallerip[MAX_SIPCALLERDIP];
-	int reg403count;
-	int reg403count_distinct;
-	vmIP reg403count_sipcallerip[MAX_SIPCALLERDIP];
+	list<d_item2<vmIP, int> > reg401count_sipcallerip_vlan;
 	int reg200count;
 	int regstate;
 	bool regresponse;

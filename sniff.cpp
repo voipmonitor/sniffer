@@ -4071,7 +4071,6 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	} else if(packetS->sip_method == RES2XX) {
 		call->seenRES2XX = true;
 		call->reg401count = 0;
-		call->reg403count = 0;
 		// update expires header from all REGISTER dialog messages (from 200 OK which can override the expire) but not if register_expires == 0
 		if(call->register_expires != 0) {
 			s = gettag_sip(packetS, "\nExpires:", &l);
@@ -4132,53 +4131,34 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			if(!okres401) {
 				break;
 			}
+			
+			{
+			int vlan = -1;
+			sll_header *header_sll;
+			ether_header *header_eth;
+			u_int header_ip_offset;
+			int protocol;
+			parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
+					 header_sll, header_eth, NULL,
+					 header_ip_offset, protocol, &vlan);
 			++call->reg401count;
-			if(!call->reg401count_distinct) {
-				call->reg401count_sipcallerip[0] = packetS->saddr;
-				call->reg401count_distinct++;
-			} else {
-				bool find = false;
-				for(int i = 0; i < call->reg401count_distinct; i++) {
-					if(call->reg401count_sipcallerip[i] == packetS->saddr) {
-						find = true;
-					}
-				}
-				if(!find) {
-					if(call->reg401count_distinct < MAX_SIPCALLERDIP) {
-						call->reg401count_sipcallerip[call->reg401count_distinct] = packetS->saddr;
-					}
-					call->reg401count_distinct++;
+			bool find = false;
+			for(list<d_item2<vmIP, int> >::iterator iter = call->reg401count_sipcallerip_vlan.begin(); iter != call->reg401count_sipcallerip_vlan.end(); iter++) {
+				if(iter->item1 == packetS->saddr &&
+				   iter->item2 == vlan) {
+					find = true;
+					break;
 				}
 			}
-			if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d] reg401count_distinct[%d]", 
-						 call->call_id.c_str(), call->reg401count, call->reg401count_distinct);
-			break;
-		case RES403:
-			call->reg403count++;
-			if(!call->reg403count_distinct) {
-				call->reg403count_sipcallerip[0] = packetS->saddr;
-				call->reg403count_distinct++;
-			} else {
-				bool find = false;
-				for(int i = 0; i < call->reg403count_distinct; i++) {
-					if(call->reg403count_sipcallerip[i] == packetS->saddr) {
-						find = true;
-					}
-				}
-				if(!find) {
-					if(call->reg403count_distinct < MAX_SIPCALLERDIP) {
-						call->reg403count_sipcallerip[call->reg403count_distinct] = packetS->saddr;
-					}
-					call->reg403count_distinct++;
-				}
+			if(!find) {
+				call->reg401count_sipcallerip_vlan.push_back(d_item2<vmIP, int>(packetS->saddr, vlan));
 			}
-			if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 403 Call-ID[%s] reg403count[%d] reg403count_distinct[%d]", 
-						 call->call_id.c_str(), call->reg403count, call->reg403count_distinct);
+			}
+			if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d] reg401count_distinct[%lu]", 
+						 call->call_id.c_str(), call->reg401count, call->reg401count_sipcallerip_vlan.size());
 			break;
 		}
-		if((packetS->sip_method == RES401 && okres401 && call->reg401count > call->reg401count_distinct) || 
-		   // suppress use reg403count - from 2016-12-29
-		   // (packetS->sip_method == RES403 && call->reg403count > call->reg403count_distinct) || 
+		if((packetS->sip_method == RES401 && okres401 && call->reg401count > (int)call->reg401count_sipcallerip_vlan.size()) || 
 		   packetS->sip_method == RES403 ||
 		   packetS->sip_method == RES404) {
 			// registration failed
