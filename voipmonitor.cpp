@@ -5226,6 +5226,12 @@ void test() {
 		cout << astr2 << endl;
 		
 	} break;
+	case 5:
+		{
+		extern void testPN();
+		testPN();
+		}
+		break;
 	case 51:
 		test_alloc_speed();
 		break;

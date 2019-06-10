@@ -1232,6 +1232,10 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 			}
 			++begin;
 		}
+		if(begin == peername_tag + peername_tag_len) {
+			begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
+			ok = true;
+		}
 		if(ok) {
 			ok = false;
 			for(end = begin; end < peername_tag + peername_tag_len; end++) {
@@ -1363,7 +1367,8 @@ void testPN() {
 		"sip:*@10.99.1.6:5060",
 		"sip:1234@Abc",
 		"<urn:service:sos>",
-		"sip:kljahfkjlahld",
+		"sip:ravsgc01.ims.opt.nc",
+		"<sip:ravsgc01.ims.opt.nc>",
 		"ů§jk§ůjsip:kljahfkjlahld",
 		"klhkjlh"
 	};
