@@ -2784,7 +2784,10 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 						<< setw(15) << header_ip->get_daddr().getString() << "/" << setw(6) << header_tcp.get_dest()
 						<< endl;
 				}
-				link = new FILE_LINE(36012) TcpReassemblyLink(this, header_ip->get_saddr(), header_ip->get_daddr(), header_tcp.get_source(), header_tcp.get_dest());
+				link = new FILE_LINE(36012) TcpReassemblyLink(this, header_ip->get_saddr(), header_ip->get_daddr(), header_tcp.get_source(), header_tcp.get_dest(),
+									      packet, header_ip,
+									      handle_index, dlt, sensor_id, sensor_ip,
+									      uData);
 				this->links[id] = link;
 				create_new_link = true;
 				link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;

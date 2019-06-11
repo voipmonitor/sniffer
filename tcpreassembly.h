@@ -517,11 +517,11 @@ public:
 			TcpReassemblyLink *link;
 	};
 	TcpReassemblyLink(class TcpReassembly *reassembly,
-			  vmIP ip_src = 0, vmIP ip_dst = 0, 
-			  vmPort port_src = 0, vmPort port_dst = 0,
-			  u_char *packet = NULL, iphdr2 *header_ip = NULL,
-			  u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, vmIP sensor_ip = 0,
-			  void *uData = NULL) {
+			  vmIP ip_src, vmIP ip_dst, 
+			  vmPort port_src, vmPort port_dst,
+			  u_char *packet, iphdr2 *header_ip,
+			  u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
+			  void *uData) {
 		this->reassembly = reassembly;
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
