@@ -1396,6 +1396,12 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 			if(rtp[i]->eqAddrPort(packetS->saddr, packetS->daddr, packetS->source, packetS->dest)) {
 				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), packetS->saddr, packetS->dest);
 				// found 
+			 
+				if(rtp[i]->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 2) {
+					*disable_save = true;
+					return(false);
+				}
+			 
 				if(opt_dscp) {
 					rtp[i]->dscp = packetS->header_ip_()->get_tos() >> 2;
 					if(sverb.dscp) {
@@ -1529,6 +1535,10 @@ read:
 				for(int i = 0; i < ssrc_n; i++) {
 					if(rtp[i]->iscaller == iscaller) {
 						rtp[i]->stopReadProcessing = true;
+						if(opt_rtp_check_both_sides_by_sdp == 2) {
+							*disable_save = true;
+							return(false);
+						}
 					}
 				}
 			}
@@ -4653,7 +4663,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		vector<SqlDb_row> rtp_rows;
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 			// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
-			if(rtp[i] and (rtp[i]->s->received or !existsColumns.cdr_rtp_index or (rtp[i]->s->received == 0 and rtp_zeropackets_stored == false))) {
+			if(rtp[i] and 
+			   !(rtp[i]->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 2) and
+			   (rtp[i]->s->received or !existsColumns.cdr_rtp_index or (rtp[i]->s->received == 0 and rtp_zeropackets_stored == false))) {
 				if(rtp[i]->s->received == 0 and rtp_zeropackets_stored == false) rtp_zeropackets_stored = true;
 				double stime = this->first_packet_time + this->first_packet_usec / 1000000.0;
 				double rtime = rtp[i]->first_packet_time + rtp[i]->first_packet_usec / 1000000.0;
@@ -5022,7 +5034,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 			// lets check whole array as there can be holes due rtp[0] <=> rtp[1] swaps in mysql rutine
-			if(rtp[i] and (rtp[i]->s->received or (rtp[i]->s->received == 0 and rtp_zeropackets_stored == false))) {
+			if(rtp[i] and 
+			   !(rtp[i]->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 2) and
+			   (rtp[i]->s->received or (rtp[i]->s->received == 0 and rtp_zeropackets_stored == false))) {
 				if(rtp[i]->s->received == 0 and rtp_zeropackets_stored == false) rtp_zeropackets_stored = true;
 				double fpart = this->first_packet_usec;
 				while(fpart > 1) fpart /= 10;
