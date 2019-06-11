@@ -127,14 +127,21 @@ void getLoadAvg(double *la_1, double *la_5, double *la_15) {
 
 std::string getLoadAvgStr() {
 	int vm_cpu_count = get_cpu_count();
-	double la_1, la_5, la_15;
-	getLoadAvg(&la_1, &la_5, &la_15);
+	bool vm_cpu_ht = get_cpu_ht();
+	double la[3];
+	getLoadAvg(&la[0], &la[1], &la[2]);
+	bool overload = false;
+	for(int i = 0; i < 3; i++) {
+		if(la[i] > ((double)vm_cpu_count * (vm_cpu_ht ? 3./4 : 1))) {
+			overload = true;
+		}
+	}
 	char buff_rslt[100];
 	snprintf(buff_rslt, sizeof(buff_rslt), 
 		 "%sLA[%.2lf %.2lf %.2lf|%d%s]", 
-		 ((la_1 > (double)vm_cpu_count) or (la_5 > (double)vm_cpu_count) or (la_15 > (double)vm_cpu_count)) ? "*" : "",
-		 la_1, la_5, la_15, vm_cpu_count,
-		 get_cpu_ht() ? "h" : "");
+		 overload ? "*" : "",
+		 la[0], la[1], la[2], vm_cpu_count,
+		 vm_cpu_ht ? "h" : "");
 	return(buff_rslt);
 }
 
