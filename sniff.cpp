@@ -2490,6 +2490,43 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 	}
 }
 
+inline void detect_called_invite(packet_s_process *packetS, char *called_invite, unsigned called_invite_length, bool *detected) {
+	if(!detected || !*detected) {
+		get_sip_peername(packetS, packetS->sip_method == MESSAGE ? "MESSAGE " : "INVITE ", NULL,
+				 called_invite, called_invite_length,
+				 packetS->sip_method == MESSAGE ? ppntt_message : ppntt_invite, ppndt_called);
+		if(detected) {
+			*detected = true;
+		}
+	}
+}
+
+inline void detect_to(packet_s_process *packetS, char *to, unsigned to_length, bool *detected) {
+	if(!detected || !*detected) {
+		get_sip_peername(packetS, "\nTo:", "\nt:", to, to_length, ppntt_to, ppndt_called);
+		if(detected) {
+			*detected = true;
+		}
+	}
+}
+
+void detect_to_extern(packet_s_process *packetS, char *to, unsigned to_length, bool *detected) {
+	detect_to(packetS, to, to_length, detected);
+}
+
+inline void detect_branch(packet_s_process *packetS, char *branch, unsigned branch_length, bool *detected) {
+	if(!detected || !*detected) {
+		get_sip_branch(packetS, "via:", branch, branch_length);
+		if(detected) {
+			*detected = true;
+		}
+	}
+}
+
+void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned branch_length, bool *detected) {
+	detect_branch(packetS, branch, branch_length, detected);
+}
+
 inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr){
  
 	if(opt_callslimit != 0 and opt_callslimit < (calls_counter + registers_counter)) {
@@ -2770,22 +2807,22 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	return call;
 }
 
-void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from, char *callidstr) {
+void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from_data, char *callidstr, char *to, char *branch) {
  
 	unsigned int datalen;
 	char *sdp;
 	unsigned int sdplen;
 	
 	if(call->typeIs(MGCP)) {
-		datalen = packetS->datalen - (from - packetS->data);
-		sdp = from;
+		datalen = packetS->datalen - (from_data - packetS->data);
+		sdp = from_data;
 		sdplen = datalen;
 	} else {
-		datalen = packetS->sipDataLen - (from - (packetS->data + packetS->sipDataOffset));
-		sdp = strstr(from, "\r\n\r\n");
+		datalen = packetS->sipDataLen - (from_data - (packetS->data + packetS->sipDataOffset));
+		sdp = strstr(from_data, "\r\n\r\n");
 		if(!sdp) return;
 		sdp += 4;
-		sdplen = datalen - (sdp - from);
+		sdplen = datalen - (sdp - from_data);
 	}
 
 	vmIP tmp_addr;
@@ -2834,10 +2871,6 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 					// store RTP stream
 					get_rtpmap_from_sdp(sdp, sdplen, rtpmap);
 
-					char to[1024];
-					get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to), ppntt_to, ppndt_called);
-					char branch[100];
-					get_sip_branch(packetS, "via:", branch, sizeof(branch));
 					call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base, tmp_port, packetS->header_pt, 
 							       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
 					// check if the IP address is listed in nat_aliases
@@ -2922,6 +2955,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	const char *logPacketSipMethodCallDescr = NULL;
 	int merged;
 	bool process_packet__parse_custom_headers_done = false;
+	char branch[100] = "";
+	bool branch_detected = false;
+	char called_invite[1024] = "";
+	bool called_invite_detected = false;
+	char to[1024] = "";
+	bool to_detected = false;
 	
 	s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
 	if(s && l <= 1023) {
@@ -3395,10 +3434,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		
 		if(call->is_multiple_to_branch()) {
-			char to[1024];
-			get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to), ppntt_to, ppndt_called);
-			char branch[100];
-			get_sip_branch(packetS, "via:", branch, sizeof(branch));
+			detect_to(packetS, to, sizeof(to), &to_detected);
+			detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 			call->cancel_ip_port_hash(packetS->saddr, to, branch, &packetS->header_pt->ts);
 		}
 		
@@ -3438,8 +3475,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					// terminate successfully acked call, put it into mysql CDR queue and remove it from calltable 
 					bool okByeRes2xx = true;
 					if(call->is_multiple_to_branch()) {
-						char to[1024];
-						get_sip_peername(packetS, "\nTo:", "\nt:", to, sizeof(to), ppntt_to, ppndt_called);
+						detect_to(packetS, to, sizeof(to), &to_detected);
 						if(call->to_is_canceled(to)) {
 							okByeRes2xx = false;
 						}
@@ -3496,9 +3532,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					if(opt_update_dstnum_onanswer &&
 					   !call->updateDstnumOnAnswer && !call->updateDstnumFromMessage &&
 					   call->called_invite_branch_map.size()) {
-						char branch[100];
-						if(!get_sip_branch(packetS, "via:", branch, sizeof(branch)) &&
-						   branch[0] != '\0') {
+						detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+						if(branch[0] != '\0') {
 							map<string, string>::iterator iter = call->called_invite_branch_map.find(branch);
 							if(iter != call->called_invite_branch_map.end()) {
 								strcpy_null_term(call->called, iter->second.c_str());
@@ -3615,17 +3650,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		if(call->getSipcallerip() == packetS->saddr) {
 			call->setSipcalledip(packetS->daddr, packetS->dest, packetS->get_callid());
 		}
-		if(opt_update_dstnum_onanswer) {
-			char branch[100];
-			if(!get_sip_branch(packetS, "via:", branch, sizeof(branch)) &&
-			   branch[0] != '\0') {
-				char called_invite[1024] = "";
-				if(!get_sip_peername(packetS, packetS->sip_method == MESSAGE ? "MESSAGE " : "INVITE ", NULL,
-						     called_invite, sizeof(called_invite),
-						     packetS->sip_method == MESSAGE ? ppntt_message : ppntt_invite, ppndt_called) &&
-				   called_invite[0] != '\0') {
-					call->called_invite_branch_map[branch] = called_invite;
-				}
+		detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+		if(branch[0] != '\0') {
+			detect_called_invite(packetS, called_invite, sizeof(called_invite), &called_invite_detected);
+			if(called_invite[0] != '\0') {
+				call->called_invite_branch_map[branch] = called_invite;
 			}
 		}
 		unsigned int flags_old = call->flags;
@@ -3833,7 +3862,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				}
 			}
 			if(is_application_sdp) {
-				process_sdp(call, packetS, _iscaller_process_sdp, contenttype_data_ptr, packetS->get_callid());
+				detect_to(packetS, to, sizeof(to), &to_detected);
+				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+				process_sdp(call, packetS, _iscaller_process_sdp, contenttype_data_ptr, packetS->get_callid(), to, branch);
 			} else if(is_multipart_mixed) {
 				s = contenttype_data_ptr;
 				while(1) {
@@ -3843,7 +3874,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					if(s2 and l > 0) {
 						//Content-Type found try if it is SDP 
 						if(l > 0 && strcasestr(s2, "application/sdp")){
-							process_sdp(call, packetS, _iscaller_process_sdp, s2, packetS->get_callid());
+							detect_to(packetS, to, sizeof(to), &to_detected);
+							detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+							process_sdp(call, packetS, _iscaller_process_sdp, s2, packetS->get_callid(), to, branch);
 							break;	// stop searching
 						} else {
 							// it is not SDP continue searching for another content-type 
