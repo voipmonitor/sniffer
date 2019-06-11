@@ -23,6 +23,7 @@ struct RecordArrayField {
 		tf_int,
 		tf_uint,
 		tf_ip,
+		tf_ip_n4,
 		tf_float,
 		tf_pointer,
 		tf_time,
@@ -104,7 +105,7 @@ struct RecordArrayField {
 			0);
 	}
 	vmIP get_ip() {
-		return(tf == tf_ip ?
+		return(tf == tf_ip || tf == tf_ip_n4 ?
 			v_ip :
 			0);
 	}
@@ -143,6 +144,7 @@ struct RecordArrayField {
 			case tf_time:
 				return(v.u == other.v.u);
 			case tf_ip:
+			case tf_ip_n4:
 				return(v_ip == other.v_ip);
 			case tf_float:
 				return(v.d == other.v.d);
@@ -168,6 +170,7 @@ struct RecordArrayField {
 			case tf_time:
 				return(v.u < other.v.u);
 			case tf_ip:
+			case tf_ip_n4:
 				return(v_ip < other.v_ip);
 			case tf_float:
 				return(v.d < other.v.d);

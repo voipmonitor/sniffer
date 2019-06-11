@@ -11,6 +11,10 @@ string RecordArrayField::getJson() {
 		return(intToString((u_int64_t)v.u));
 	case tf_ip:
 		return("\"" + v_ip.getString() + "\"");
+	case tf_ip_n4:
+		return(v_ip.is_v6() ?
+			"\"" + v_ip.getString() + "\"" :
+			intToString(v_ip.getIPv4()));
 	case tf_float:
 		return(floatToString(v.d));
 	case tf_pointer:

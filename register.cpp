@@ -594,8 +594,8 @@ bool Register::getDataRow(RecordArray *rec) {
 		return(false);
 	}
 	rec->fields[rf_id].set(id);
-	rec->fields[rf_sipcallerip].set(sipcallerip);
-	rec->fields[rf_sipcalledip].set(sipcalledip);
+	rec->fields[rf_sipcallerip].set(sipcallerip, RecordArrayField::tf_ip_n4);
+	rec->fields[rf_sipcalledip].set(sipcalledip, RecordArrayField::tf_ip_n4);
 	rec->fields[rf_to_num].set(to_num);
 	rec->fields[rf_to_domain].set(to_domain);
 	rec->fields[rf_contact_num].set(contact_num);

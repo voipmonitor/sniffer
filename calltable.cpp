@@ -3447,10 +3447,10 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(b_ua);
 		break;
 	case cf_callerip:
-		rfield->set(getSipcallerip());
+		rfield->set(getSipcallerip(), RecordArrayField::tf_ip_n4);
 		break;
 	case cf_calledip:
-		rfield->set(getSipcalledip());
+		rfield->set(getSipcalledip(), RecordArrayField::tf_ip_n4);
 		break;
 	case cf_callerip_country:
 		rfield->set(getCountryByIP(getSipcallerip(), true).c_str());
@@ -3479,10 +3479,10 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 	if(lastcallerrtp) {
 		switch(field) {
 		case cf_rtp_src:
-			rfield->set(lastcallerrtp->saddr);
+			rfield->set(lastcallerrtp->saddr, RecordArrayField::tf_ip_n4);
 			break;
 		case cf_rtp_dst:
-			rfield->set(lastcallerrtp->daddr);
+			rfield->set(lastcallerrtp->daddr, RecordArrayField::tf_ip_n4);
 			break;
 		case cf_rtp_src_country:
 			rfield->set(getCountryByIP(lastcallerrtp->saddr, true).c_str());
