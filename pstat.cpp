@@ -12,9 +12,6 @@
 
 bool pstat_quietly_errors = false;
 
-signed short vm_cpu_ht=-1;
-unsigned short vm_cpu_count=0;
-
 
 bool pstat_get_data(const int pid, pstat_data* result) {
 	char stat_filepath[100]; 
@@ -129,49 +126,40 @@ void getLoadAvg(double *la_1, double *la_5, double *la_15) {
 }
 
 std::string getLoadAvgStr() {
+	int vm_cpu_count = get_cpu_count();
 	double la_1, la_5, la_15;
-	double compare =(double) vm_cpu_count;
-	bool overloaded =0;
 	getLoadAvg(&la_1, &la_5, &la_15);
-	char buff_rslt[30];
-
-	if ((la_1 > compare) or (la_5>compare) or (la_15 > compare)) overloaded=1;
-
-	if (vm_cpu_ht) {
-		if (overloaded) snprintf(buff_rslt, sizeof(buff_rslt), "*LA[%.2lf %.2lf %.2lf|%huh]", la_1, la_5, la_15, vm_cpu_count);
-		  else snprintf(buff_rslt, sizeof(buff_rslt), "LA[%.2lf %.2lf %.2lf|%huh]", la_1, la_5, la_15, vm_cpu_count);
-	} else {
-		if (overloaded) snprintf(buff_rslt, sizeof(buff_rslt), "*LA[%.2lf %.2lf %.2lf|%hu]", la_1, la_5, la_15, vm_cpu_count);
-		  else snprintf(buff_rslt, sizeof(buff_rslt), "LA[%.2lf %.2lf %.2lf|%hu]", la_1, la_5, la_15, vm_cpu_count);
-	}
+	char buff_rslt[100];
+	snprintf(buff_rslt, sizeof(buff_rslt), 
+		 "%sLA[%.2lf %.2lf %.2lf|%d%s]", 
+		 ((la_1 > (double)vm_cpu_count) or (la_5 > (double)vm_cpu_count) or (la_15 > (double)vm_cpu_count)) ? "*" : "",
+		 la_1, la_5, la_15, vm_cpu_count,
+		 get_cpu_ht() ? "h" : "");
 	return(buff_rslt);
 }
 
-void get_cpu_ht(bool silent) {
-        std::ifstream input("/proc/cpuinfo");
-        std::string line;
-        std::string needle("ht");
-        if ( vm_cpu_ht != -1 ) return;
-        while( std::getline( input, line ))
-                if (!line.compare( 0, 5, "flags" )) {
-                        std::size_t found = line.find(needle);
-                        if(found == std::string::npos) continue;
-                        vm_cpu_ht=1;
-                        return;
-                }
-        vm_cpu_ht=0;
-        return;
+bool get_cpu_ht() {
+	static int vm_cpu_ht = -1;
+        if(vm_cpu_ht < 0) {
+		vm_cpu_ht=0;
+		std::ifstream input("/proc/cpuinfo");
+		std::string line;
+		std::string needle("ht");
+		while( std::getline( input, line ))
+			if (!line.compare( 0, 5, "flags" )) {
+				std::size_t found = line.find(needle);
+				if(found == std::string::npos) continue;
+				vm_cpu_ht=1;
+			}
+	}
+        return(vm_cpu_ht);
 }
 
-void get_cpu_count(bool silent) {
-        std::ifstream input("/proc/cpuinfo");
-        std::string line;
-        unsigned short counter=0;
-
-        if ( vm_cpu_count != 0 ) return;
-        while( std::getline( input, line ))
-                if (!line.compare( 0, 9, "processor" ))
-                        counter++;
-        vm_cpu_count=counter;
+int get_cpu_count() {
+	static int vm_cpu_count = -1;
+	if(vm_cpu_count < 0) {
+		vm_cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+	}
+	return(vm_cpu_count);
+	
 }
-

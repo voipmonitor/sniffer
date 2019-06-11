@@ -922,10 +922,8 @@ void rrd_vm_create_graph_LA_command(char *filename, char *fromatstyle, char *toa
 	cmdCreate << "DEF:t0=" << filename << ":LA-m1:MAX ";
 	cmdCreate << "DEF:t1=" << filename << ":LA-m5:MAX ";
 	cmdCreate << "DEF:t2=" << filename << ":LA-m15:MAX ";
-	extern unsigned short vm_cpu_count;
-	extern bool vm_cpu_ht;
-	if (vm_cpu_ht) cmdCreate << "LINE1:" << vm_cpu_count << "#880022:\"" << vm_cpu_count << " HT CPUs   \\t" << setw(63) << "\\r\" ";
-		 else cmdCreate << "LINE1:" << vm_cpu_count << "#880022:\"" << vm_cpu_count << " CPUs      \\t" << setw(63) << "\\r\" ";
+	if (get_cpu_ht()) cmdCreate << "LINE1:" << get_cpu_count() << "#880022:\"" << get_cpu_count() << " HT CPUs   \\t" << setw(63) << "\\r\" ";
+		 else cmdCreate << "LINE1:" << get_cpu_count() << "#880022:\"" << get_cpu_count() << " CPUs      \\t" << setw(63) << "\\r\" ";
 
 
 	//cmdCreate << "COMMENT:\"\\u\" ";

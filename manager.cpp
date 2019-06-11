@@ -2638,10 +2638,6 @@ int Mgmt_creategraph(Mgmt_params *params) {
 			snprintf(filename, sizeof(filename), "%s/rrd/db-memusage.rrd", getRrdDir());
 			rrd_vm_create_graph_memusage_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 		} else if (!strncmp(manager_args[1], "loadavg", 7)) {
-			get_cpu_ht(true);
-			extern signed short vm_cpu_ht;
-			get_cpu_count(true);
-			extern unsigned short vm_cpu_count;
 			snprintf(filename, sizeof(filename), "%s/rrd/db-LA.rrd", getRrdDir());
 			rrd_vm_create_graph_LA_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
 		} else {
