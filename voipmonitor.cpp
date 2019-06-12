@@ -6429,7 +6429,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42324) cConfigItem_yesno("rtpfromsdp_onlysip_skinny", &opt_rtpfromsdp_onlysip_skinny));
 				advanced();
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("rtp_check_both_sides_by_sdp", &opt_rtp_check_both_sides_by_sdp))
-					->addValues("strict:2"));
+					->addValues("keep_rtp_packets:2"));
 				addConfigItem(new FILE_LINE(42325) cConfigItem_yesno("rtpmap_by_callerd", &opt_rtpmap_by_callerd));
 				addConfigItem(new FILE_LINE(42326) cConfigItem_yesno("rtpmap_combination", &opt_rtpmap_combination));
 				addConfigItem(new FILE_LINE(42327) cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
@@ -9479,7 +9479,7 @@ int eval_config(string inistr) {
 		opt_rtpfromsdp_onlysip_skinny = yesno(value);
 	}
 	if((value = ini.GetValue("general", "rtp_check_both_sides_by_sdp", NULL))) {
-		opt_rtp_check_both_sides_by_sdp = strcmp(value, "strict") ? yesno(value) : 2;
+		opt_rtp_check_both_sides_by_sdp = strcmp(value, "keep_rtp_packets") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "rtpmap_by_callerd", NULL))) {
 		opt_rtpmap_by_callerd = yesno(value);
