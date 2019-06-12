@@ -1,3 +1,18 @@
+25.0 12.06.2019
+===============
+- ipv6 support! [VG-1350]
+- fix storing ssl_sessions if query_cache is enabled
+- added CPU count + hyperthread flag to the syslog output 
+- add option packetbuffer_disable (for testing purpose) 
+- remove lifetime from srtp key [VS-925]
+- suppress set flag zerossrc_detected for not-rtp packets, allow space (' ') terminator in domain detect [VS-928]
+- fix udptl packets shorter than 12 bytes (fixes T.38 FAXes) [VS-927]
+- fix vlan tag handling for SIP register failed [VS-926]
+- fix parse domain from: "To: sip:domain" [VS-914]
+- fix sip reason for multi INVITE (check branch in CANCEL packets) [VS-921]
+- new option strict for rtp_check_both_sides_by_sdp [VS-929]
+
+
 24.2.1 10.05.2019
 =================
 - add build options (--with-dpdk-include, --with-dpdk-lib) for including the headers and libraries.
