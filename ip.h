@@ -376,8 +376,11 @@ struct ip6hdr2 {
 		       header_id == IPPROTO_FRAGMENT ||
 		       header_id == IPPROTO_ICMPV6 ||
 		       header_id == IPPROTO_NONE ||
-		       header_id == IPPROTO_DSTOPTS ||
-		       header_id == IPPROTO_MH);
+		       header_id == IPPROTO_DSTOPTS
+		       #ifdef IPPROTO_MH
+		       || header_id == IPPROTO_MH
+		       #endif
+		       );
 	}
 	static inline u_int16_t get_ext_header_size(u_char *header, u_int8_t header_id) {
 		return(header_id == IPPROTO_HOPOPTS ? ((ip6_hbh*)header)->ip6h_len :
@@ -386,7 +389,9 @@ struct ip6hdr2 {
 		       header_id == IPPROTO_ICMPV6 ? ((ip6_ext*)header)->ip6e_len :
 		       header_id == IPPROTO_NONE ? ((ip6_ext*)header)->ip6e_len :
 		       header_id == IPPROTO_DSTOPTS ? ((ip6_dest*)header)->ip6d_len :
+		       #ifdef IPPROTO_MH
 		       header_id == IPPROTO_MH ? ((ip6_ext*)header)->ip6e_len :
+		       #endif
 		       0);
 	}
 	static inline u_int16_t get_ext_header_nxt(u_char *header, u_int8_t header_id) {
@@ -396,7 +401,9 @@ struct ip6hdr2 {
 		       header_id == IPPROTO_ICMPV6 ? ((ip6_ext*)header)->ip6e_nxt :
 		       header_id == IPPROTO_NONE ? ((ip6_ext*)header)->ip6e_nxt :
 		       header_id == IPPROTO_DSTOPTS ? ((ip6_dest*)header)->ip6d_nxt :
+		       #ifdef IPPROTO_MH
 		       header_id == IPPROTO_MH ? ((ip6_ext*)header)->ip6e_nxt :
+		       #endif
 		       0);
 	}
 	inline u_int32_t get_tot_len() {
