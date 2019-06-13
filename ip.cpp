@@ -182,7 +182,12 @@ void socket_set_saddr(sockaddr_in6 *addr, vmIP ip, vmPort port) {
 #endif
 
 int socket_create(vmIP ip, int type, int protocol) {
-	return(socket(VM_IPV6_B && ip.is_v6() ? AF_INET6 : AF_INET, type, protocol));
+	return(socket(
+		      #if VM_IPV6
+		      ip.is_v6() ? AF_INET6 :
+		      #endif
+		      AF_INET, 
+		      type, protocol));
 }
 
 int socket_connect(int socket, vmIP ip, vmPort port) {
