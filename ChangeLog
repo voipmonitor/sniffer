@@ -1,3 +1,8 @@
+25.0.1 13.06.2019
+=================
+-  IPv6 - fix issue with ip type in socket create
+
+
 25.0 12.06.2019
 ===============
 - ipv6 support! [VG-1350]
