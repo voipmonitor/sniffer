@@ -1,3 +1,8 @@
+25.0.3 14.06.2019
+=================
+- properly fix version number
+
+
 25.0.2 14.06.2019
 =================
 - add missing scripts/ipv6_alter.sql
