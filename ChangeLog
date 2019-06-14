@@ -1,3 +1,8 @@
+25.0.2 14.06.2019
+=================
+- fix version number
+
+
 25.0.1 13.06.2019
 =================
 -  IPv6 - fix issue with ip type in socket create
