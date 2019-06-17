@@ -1472,6 +1472,9 @@ public:
 	void unlock() {
 		__sync_lock_release(&this->_sync);
 	}
+	std::vector<IP> *get_list_ip() {
+		return(&listIP);
+	}
 private:
 	std::vector<IP> listIP;
 	std::vector<IP> listNet;

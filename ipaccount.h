@@ -13,6 +13,7 @@
 
 #include "sniff.h"
 #include "sql_db.h"
+#include "tools.h"
 
 void ipaccount(time_t, struct iphdr2 *, int, int);
 
@@ -179,6 +180,7 @@ private:
 	class CustIpCache *custIpCache;
 	class NextIpCache *nextIpCache;
 	class CustPhoneNumberCache *custPnCache;
+	class CustIpCustomerCache *custIpCustomerCache;
 	SqlDb *sqlDbSave;
 	packet *qring;
 	unsigned int qringmax;
@@ -375,6 +377,39 @@ private:
 	string query_fetchPhoneNumbers;
 	unsigned int flushCounter;
 	bool doFlush;
+};
+
+class CustIpCustomerCache {
+public: 
+	struct customer {
+		ListIP list_ip;
+		u_int32_t id;
+	};
+public:
+	CustIpCustomerCache();
+	u_int32_t getCustomerId(vmIP ip);
+	int load(bool useLock = false, bool exitIfLock = false);
+	void _load(map<vmIP, u_int32_t> *custCacheMap, list<customer> *custCache);
+	void flush();
+private:
+	void lock_cache() {
+		while(__sync_lock_test_and_set(&this->cache_sync, 1));
+	}
+	void unlock_cache() {
+		__sync_lock_release(&this->cache_sync);
+	}
+	void lock_load() {
+		while(__sync_lock_test_and_set(&this->load_sync, 1));
+	}
+	void unlock_load() {
+		__sync_lock_release(&this->load_sync);
+	}
+private:
+	map<vmIP, u_int32_t> custCacheMap;
+	list<customer> custCache;
+	unsigned int flushCounter;
+	volatile int cache_sync;
+	volatile int load_sync;
 };
 
 CustIpCache *getCustIpCache();

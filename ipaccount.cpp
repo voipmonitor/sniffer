@@ -103,6 +103,7 @@ Ipacc::Ipacc() {
 	custIpCache = NULL;
 	nextIpCache = NULL;
 	custPnCache = NULL;
+	custIpCustomerCache = NULL;
 	sqlDbSave = NULL;
 	
 	qringmax = 10000;
@@ -149,8 +150,11 @@ void Ipacc::save(int indexIpaccBuffer, unsigned int interval_time_limit) {
 	if(nextIpCache) {
 		nextIpCache->flush();
 	}
-	if(custIpCache) {
-		custIpCache->flush();
+	if(custPnCache) {
+		custPnCache->flush();
+	}
+	if(custIpCustomerCache) {
+		custIpCustomerCache->flush();
 	}
 	
 	octects_t *ipacc_data;
@@ -176,9 +180,11 @@ void Ipacc::save(int indexIpaccBuffer, unsigned int interval_time_limit) {
 		if(ipacc_data->octects == 0) {
 			ipacc_data->erase = true;
 		} else if(!interval_time_limit ||  ipacc_data->interval_time <= interval_time_limit) {
-			src_id_customer = custIpCache ? custIpCache->getCustByIp(iter->first.saddr) : 0;
+			src_id_customer = custIpCache ? custIpCache->getCustByIp(iter->first.saddr) : 
+					  custIpCustomerCache ? custIpCustomerCache->getCustomerId(iter->first.saddr) : 0;
 			src_ip_next = nextIpCache ? nextIpCache->isIn(iter->first.saddr) : false;
-			dst_id_customer = custIpCache ? custIpCache->getCustByIp(iter->first.daddr) : 0;
+			dst_id_customer = custIpCache ? custIpCache->getCustByIp(iter->first.daddr) : 
+					  custIpCustomerCache ? custIpCustomerCache->getCustomerId(iter->first.daddr) : 0;
 			dst_ip_next = nextIpCache ? nextIpCache->isIn(iter->first.daddr) : false;
 			if(!custIpCache || 
 			   !opt_ipacc_agregate_only_customers_on_any_side ||
@@ -348,6 +354,8 @@ void Ipacc::init() {
 			custIpCache->fetchAllIpQueryFromDb();
 			custIpCache->setMaxQueryPass(2);
 		}
+	} else {
+		custIpCustomerCache = new FILE_LINE(0) CustIpCustomerCache();
 	}
 	if(isSqlDriver("mysql")) {
 		nextIpCache = new FILE_LINE(12005) NextIpCache();
@@ -382,6 +390,9 @@ void Ipacc::term() {
 	if(custPnCache) {
 		delete custPnCache;
 	}
+	if(custIpCustomerCache) {
+		delete custIpCustomerCache;
+	}
 	t_ipacc_buffer::iterator iter;
 	for(int i = 0; i < 2; i++) {
 		for(iter = ipacc_buffer[i].begin(); iter != ipacc_buffer[i].end(); ++iter) {
@@ -392,11 +403,14 @@ void Ipacc::term() {
 }
 
 int Ipacc::refreshCustIpCache() {
-	if(!custIpCache) {
-		return(0);
+	if(custIpCache) {
+		custIpCache->clear();
+		return(custIpCache->fetchAllIpQueryFromDb());
 	}
-	custIpCache->clear();
-	return(custIpCache->fetchAllIpQueryFromDb());
+	if(custIpCustomerCache) {
+		return(custIpCustomerCache->load(true, true));
+	}
+	return(0);
 }
 
 void Ipacc::preparePstatData() {
@@ -1234,6 +1248,108 @@ void CustPhoneNumberCache::flush() {
 	   (get_customer_by_ip_flush_period == 1 ||
 	    !(this->flushCounter % get_customer_by_ip_flush_period))) {
 		this->doFlush = true;
+	}
+	++this->flushCounter;
+}
+
+CustIpCustomerCache::CustIpCustomerCache() {
+	flushCounter = 0;
+	cache_sync = 0;
+	load_sync = 0;
+}
+
+u_int32_t CustIpCustomerCache::getCustomerId(vmIP ip) {
+	u_int32_t rslt = 0;
+	lock_cache();
+	if(custCacheMap.size()) {
+		map<vmIP, u_int32_t>::iterator iter = custCacheMap.find(ip);
+		if(iter != custCacheMap.end()) {
+			rslt = iter->second;
+		}
+	}
+	if(!rslt && custCache.size()) {
+		for(list<customer>::iterator iter = custCache.begin(); iter != custCache.end(); iter++) {
+			if(iter->list_ip.checkIP(ip)) {
+				rslt = iter->id;
+				break;
+			}
+		}
+	}
+	unlock_cache();
+	return(rslt);
+}
+
+int CustIpCustomerCache::load(bool useLock, bool exitIfLock) {
+	if(useLock) {
+		if(exitIfLock && load_sync) {
+			return(-1);
+		}
+		lock_load();
+	}
+	map<vmIP, u_int32_t> custCacheMap;
+	list<customer> custCache;
+	_load(&custCacheMap, &custCache);
+	lock_cache();
+	this->custCacheMap = custCacheMap;
+	this->custCache = custCache;
+	unlock_cache();
+	if(useLock) {
+		unlock_load();
+	}
+	return(custCache.size());
+}
+
+void CustIpCustomerCache::_load(map<vmIP, u_int32_t> *custCacheMap, list<customer> *custCache) {
+	SqlDb *sqlDb = createSqlObject();
+	for(int pass = 0; pass < 2; pass++) {
+		string customers_table = "cust_customers";
+		string users_table = "users";
+		string table;
+		if(pass == 0) {
+			if(sqlDb->existsTable(customers_table) && !sqlDb->emptyTable(customers_table)) {
+				table = customers_table;
+			}
+		} else {
+			if(sqlDb->existsTable(users_table) && !sqlDb->emptyTable(users_table) &&
+			   sqlDb->existsColumn(users_table, "customer_id")) {
+				table = users_table;
+			}
+		}
+		if(table.empty()) {
+			continue;
+		}
+		custCacheMap->clear();
+		custCache->clear();
+		sqlDb->query("select ip, customer_id, id from " + table + " where ip is not null and trim(ip) <> ''");
+		SqlDb_row row;
+		while((row = sqlDb->fetchRow())) {
+			u_int32_t customer_id = atol(row["customer_id"].c_str());
+			if(!customer_id) {
+				customer_id = atol(row["id"].c_str());;
+			}
+			ListIP list_ip;
+			list_ip.add(row["ip"].c_str());
+			customer cust;
+			cust.list_ip = list_ip;
+			cust.id = customer_id;
+			custCache->push_back(cust);
+			vector<IP> *vect_ip = list_ip.get_list_ip();
+			for(vector<IP>::iterator iter = vect_ip->begin(); iter != vect_ip->end(); iter++) {
+				(*custCacheMap)[iter->ip] = customer_id;
+			}
+		}
+		if(custCache->size()) {
+			break;
+		}
+	}
+	delete sqlDb;
+}
+
+void CustIpCustomerCache::flush() {
+	if(get_customer_by_ip_flush_period > 0 && this->flushCounter > 0 &&
+	   (get_customer_by_ip_flush_period == 1 ||
+	    !(this->flushCounter % get_customer_by_ip_flush_period))) {
+		this->load(true, true);
 	}
 	++this->flushCounter;
 }
