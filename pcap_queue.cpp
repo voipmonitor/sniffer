@@ -3072,7 +3072,8 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 				     checkProtocolData->header_sll, checkProtocolData->header_eth, NULL,
 				     checkProtocolData->header_ip_offset, checkProtocolData->protocol) ||
 		   checkProtocolData->protocol != ETHERTYPE_IP ||
-		   ((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->version != 4 ||
+		   !(((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->version == 4 ||
+		     (VM_IPV6_B && ((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->version == 6)) ||
 		   ((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->get_tot_len() + checkProtocolData->header_ip_offset > (*header)->len) {
 			return(-11);
 		}

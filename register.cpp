@@ -458,8 +458,8 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	SqlDb_row reg;
 	string register_table = state->state == rs_Failed ? "register_failed" : "register_state";
 	reg.add(sqlEscapeString(sqlDateTimeString(state->state_from).c_str()), "created_at");
-	reg.add(sipcallerip, "sipcallerip", NULL, sqlDbSaveRegister, register_table.c_str());
-	reg.add(sipcalledip, "sipcalledip", NULL, sqlDbSaveRegister, register_table.c_str());
+	reg.add(sipcallerip, "sipcallerip", false, sqlDbSaveRegister, register_table.c_str());
+	reg.add(sipcalledip, "sipcalledip", false, sqlDbSaveRegister, register_table.c_str());
 	reg.add(sqlEscapeString(REG_CONV_STR(state->from_num == EQ_REG ? from_num : state->from_num)), "from_num");
 	reg.add(sqlEscapeString(REG_CONV_STR(to_num)), "to_num");
 	reg.add(sqlEscapeString(REG_CONV_STR(state->contact_num == EQ_REG ? contact_num : state->contact_num)), "contact_num");
