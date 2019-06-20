@@ -220,7 +220,8 @@ int IPfilter::_add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP dad
 
 		unsigned int origflags = *flags;
 
-		if(((node->direction == 0 or node->direction == 2) and (daddr.network(node->mask) == node->network)) || 
+		if((!node->network.isSet() && !node->mask) ||
+		   ((node->direction == 0 or node->direction == 2) and (daddr.network(node->mask) == node->network)) || 
 		   ((node->direction == 0 or node->direction == 1) and (saddr.network(node->mask) == node->network))) {
 
 			*flags = origflags;
