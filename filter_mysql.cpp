@@ -196,7 +196,7 @@ void IPfilter::load(SqlDb *sqlDb) {
 		node->direction = vectDbRow[i].direction;
 		node->flags = this->getFlagsFromBaseData(&vectDbRow[i]);
 		node->next = NULL;
-		node->ip = vectDbRow[i].ip;
+		node->network = vectDbRow[i].ip.network(vectDbRow[i].mask);
 		node->mask = vectDbRow[i].mask;
 
 		// add node to the first position
@@ -216,15 +216,12 @@ int IPfilter::_add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP dad
 	char found = 0;
 
 	t_node *node;
-	long double mask;
 	for(node = first_node; node != NULL; node = node->next) {
-
-		mask = (pow(2, (long double)(node->mask)) - 1) * pow(2, (long double)(32 - node->mask));
 
 		unsigned int origflags = *flags;
 
-		if(((node->direction == 0 or node->direction == 2) and (daddr.network(mask) == node->ip.network(mask))) || 
-		   ((node->direction == 0 or node->direction == 1) and (saddr.network(mask) == node->ip.network(mask)))) {
+		if(((node->direction == 0 or node->direction == 2) and (daddr.network(node->mask) == node->network)) || 
+		   ((node->direction == 0 or node->direction == 1) and (saddr.network(node->mask) == node->network))) {
 
 			*flags = origflags;
 		
@@ -248,7 +245,7 @@ int IPfilter::_add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP dad
 void IPfilter::dump() {
 	t_node *node;
 	for(node = first_node; node != NULL; node = node->next) {
-		printf("ip[%s] mask[%d] flags[%u]\n", node->ip.getString().c_str(), node->mask, node->flags);
+		printf("ip[%s] mask[%d] flags[%u]\n", node->network.getString().c_str(), node->mask, node->flags);
 	}
 }
 
@@ -256,7 +253,7 @@ void IPfilter::dump2man(ostringstream &oss) {
 	t_node *node;
 	lock();
 	for(node = filter_active->first_node; node != NULL; node = node->next) {
-		oss << "ip[" << node->ip.getString() << "/" << node->mask << "] direction[" << node->direction << "] flags[0x" << hex << node->flags << "]" << endl;
+		oss << "ip[" << node->network.getString() << "/" << node->mask << "] direction[" << node->direction << "] flags[0x" << hex << node->flags << "]" << endl;
 	}
 	unlock();
 }

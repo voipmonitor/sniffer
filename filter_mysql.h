@@ -94,7 +94,7 @@ private:
 		int mask;
 	};
         struct t_node {
-		vmIP ip;
+		vmIP network;
 		int mask;
 		int direction;
 		unsigned int flags;
