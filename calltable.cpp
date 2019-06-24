@@ -4277,8 +4277,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 			if(rtpab[i]->rtcp.counter) {
-				if ((rtpab[i]->rtcp.loss > 0xFFFF || rtpab[i]->rtcp.loss < 0) &&
-				    sqlDbSaveCall->getTypeColumn("cdr", c+"_rtcp_loss", true) == "smallint(5) unsigned") {
+				if ((rtpab[i]->rtcp.loss > 0xFFFF || rtpab[i]->rtcp.loss < 0) && existsColumns.cdr_rtcp_loss_is_smallint_type) {
 					cdr.add(0xFFFF, c+"_rtcp_loss");
 				} else {
 					cdr.add(rtpab[i]->rtcp.loss, c+"_rtcp_loss");

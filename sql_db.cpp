@@ -6688,7 +6688,9 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 			this->getTypeColumn(iter->c_str(), NULL, true, true);
 		}
 	}
-	
+
+	existsColumns.cdr_rtcp_loss_is_smallint_type = this->getTypeColumn("cdr", "a_rtcp_loss", true) == "smallint(5) unsigned" ? true : false;
+
 	sql_disable_next_attempt_if_error = 0;
 }
 

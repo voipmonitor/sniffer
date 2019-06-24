@@ -958,6 +958,7 @@ struct sExistsColumns {
 	bool cdr_tar_part_calldate;
 	bool cdr_country_code_calldate;
 	bool cdr_sdp_calldate;
+	bool cdr_rtcp_loss_is_smallint_type;
 	bool message_content_length;
 	bool message_response_time;
 	bool message_spool_index;
