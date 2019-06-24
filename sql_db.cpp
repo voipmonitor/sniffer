@@ -4620,12 +4620,12 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`b_mos_adapt_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_xr_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_silence_mult10` tinyint unsigned DEFAULT NULL,\
-			`a_rtcp_loss` mediumint unsigned DEFAULT NULL,\
+			`a_rtcp_loss` mediumint DEFAULT NULL,\
 			`a_rtcp_maxfr` smallint unsigned DEFAULT NULL,\
 			`a_rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`a_rtcp_maxjitter` smallint unsigned DEFAULT NULL,\
 			`a_rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
-			`b_rtcp_loss` mediumint unsigned DEFAULT NULL,\
+			`b_rtcp_loss` mediumint DEFAULT NULL,\
 			`b_rtcp_maxfr` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_maxjitter` smallint unsigned DEFAULT NULL,\

@@ -259,10 +259,10 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 			}
 		}
 	
-	
-		int loss = ((int)reportblock.packets_lost[2]) << 16;
-		loss |= ((int)reportblock.packets_lost[1]) << 8;
-		loss |= (int)reportblock.packets_lost[0];
+		int32_t loss = ((int32_t)reportblock.packets_lost[2]) << 16;
+		loss |= ((int32_t)reportblock.packets_lost[1]) << 8;
+		loss |= (int32_t)reportblock.packets_lost[0];
+		loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 
 		if(rtp) {
 			rtp->rtcp.counter++;
@@ -352,9 +352,10 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 		}
 	
 
-		int loss = ((int)reportblock.packets_lost[2]) << 16;
-		loss |= ((int)reportblock.packets_lost[1]) << 8;
-		loss |= (int)reportblock.packets_lost[0];
+		int32_t loss = ((int32_t)reportblock.packets_lost[2]) << 16;
+		loss |= ((int32_t)reportblock.packets_lost[1]) << 8;
+		loss |= (int32_t)reportblock.packets_lost[0];
+		loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 
 		if(rtp) {
 			rtp->rtcp.counter++;

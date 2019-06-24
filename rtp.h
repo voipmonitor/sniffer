@@ -295,7 +295,7 @@ public:
 
 	/* RTCP data */
 	struct rtcp_t {
-		unsigned int loss;
+		int loss;
 		unsigned int maxfr;
 		double avgfr;
 		unsigned int maxjitter;

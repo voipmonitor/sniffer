@@ -4277,7 +4277,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 			if(rtpab[i]->rtcp.counter) {
-				cdr.add(rtpab[i]->rtcp.loss, c+"_rtcp_loss");
+				if ((rtpab[i]->rtcp.loss > 0xFFFF || rtpab[i]->rtcp.loss < 0) &&
+				    sqlDbSaveCall->getTypeColumn("cdr", c+"_rtcp_loss", true) == "smallint(5) unsigned") {
+					cdr.add(0xFFFF, c+"_rtcp_loss");
+				} else {
+					cdr.add(rtpab[i]->rtcp.loss, c+"_rtcp_loss");
+				}
 				cdr.add(rtpab[i]->rtcp.maxfr, c+"_rtcp_maxfr");
 				rtcp_avgfr_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
 				cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
