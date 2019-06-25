@@ -519,6 +519,9 @@ char opt_php_path[1024];
 
 struct pcap_stat pcapstat;
 
+bool rightPSversion = true;
+bool bashPresent = true;
+
 extern bool opt_pcap_queue_disable;
 extern u_int opt_pcap_queue_block_max_time_ms;
 extern size_t opt_pcap_queue_block_max_size;
@@ -2759,6 +2762,16 @@ int main(int argc, char *argv[]) {
 
 	openlog("voipmonitor", LOG_CONS | LOG_PERROR | LOG_PID, LOG_DAEMON);
 
+#ifndef FREEBSD
+	rightPSversion = isPSrightVersion();
+	if (!rightPSversion) {
+		syslog(LOG_NOTICE, "Incompatible ps binary version (e.g. busybox). Please install correct version. Disabling watchdog option now.");
+	}
+#endif
+	bashPresent = isBashPresent();
+	if (!bashPresent) {
+		syslog(LOG_NOTICE, "Missing bash binary. Please install. Disabling watchdog option now.");
+	}
 	/*
 	string args;
 	for(int i = 0; i < argc; i++) {
@@ -3101,7 +3114,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if(!is_read_from_file() && opt_fork && enable_wdt && reloadLoopCounter == 0) {
+	if(!is_read_from_file() && opt_fork && enable_wdt && reloadLoopCounter == 0 && rightPSversion && bashPresent) {
 		wdt = new FILE_LINE(0) WDT;
 	}
 
@@ -3921,7 +3934,7 @@ int main_init_read() {
 		}
 		manager_parse_command_enable();
 		
-		if(!wdt && !is_read_from_file() && opt_fork && enable_wdt) {
+		if(!wdt && !is_read_from_file() && opt_fork && enable_wdt && rightPSversion && bashPresent) {
 			wdt = new FILE_LINE(0) WDT;
 		}
 		

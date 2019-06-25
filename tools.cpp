@@ -2143,6 +2143,24 @@ int findPIDinPSline (char *line) {
 	return(atoi(line));
 }
 
+bool isBashPresent(void) {
+	FILE *cmd_pipe = popen("bash --version 2>&1", "r");
+	char buffRslt[512];
+
+	fgets(buffRslt, 512, cmd_pipe);
+	pclose(cmd_pipe);
+	return(strstr(buffRslt, " bash:") ? false : true);
+}
+
+bool isPSrightVersion(void) {
+	FILE *cmd_pipe = popen("ps -V 2>&1", "r");
+	char buffRslt[512];
+
+	fgets(buffRslt, 512, cmd_pipe);
+	pclose(cmd_pipe);
+	return(strstr(buffRslt, "ps:") ? false : true);
+}
+
 list<int> getPids(string app, string grep_search) {
 	string cmd;
 	list<int> pids;
