@@ -1,3 +1,11 @@
+25.0.5 27.06.2019
+=================
+- fix capture rules for 0.0.0.0/0
+- limit maximal value of the interarrival jitter (X_rtcp_maxjitter columns)
+- The RTCP 'cumulative number of packets lost' can be signed value (X_rtcp_loss in the db)
+- check ps binary version (missing or busybox ps is incompatible with voipmonitor watchdog) [VS-936]
+
+
 25.0.4 20.06.2019
 =================
 - fix capture rules by IP (broken since ipv6)
