@@ -2762,16 +2762,6 @@ int main(int argc, char *argv[]) {
 
 	openlog("voipmonitor", LOG_CONS | LOG_PERROR | LOG_PID, LOG_DAEMON);
 
-#ifndef FREEBSD
-	rightPSversion = isPSrightVersion();
-	if (!rightPSversion) {
-		syslog(LOG_NOTICE, "Incompatible ps binary version (e.g. busybox). Please install correct version. Disabling watchdog option now.");
-	}
-#endif
-	bashPresent = isBashPresent();
-	if (!bashPresent) {
-		syslog(LOG_NOTICE, "Missing bash binary. Please install. Disabling watchdog option now.");
-	}
 	/*
 	string args;
 	for(int i = 0; i < argc; i++) {
@@ -2782,6 +2772,19 @@ int main(int argc, char *argv[]) {
 	
 	parse_command_line_arguments(argc, argv);
 	get_command_line_arguments();
+	
+	if(!is_read_from_file()) {
+#ifndef FREEBSD
+		rightPSversion = isPSrightVersion();
+		if (!rightPSversion) {
+			syslog(LOG_NOTICE, "Incompatible ps binary version (e.g. busybox). Please install correct version. Disabling watchdog option now.");
+		}
+#endif
+		bashPresent = isBashPresent();
+		if (!bashPresent) {
+			syslog(LOG_NOTICE, "Missing bash binary. Please install. Disabling watchdog option now.");
+		}
+	}
 	
 	if(configfile[0]) {
 		char *_configfilename = strrchr(configfile, '/');
