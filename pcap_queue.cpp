@@ -150,6 +150,7 @@ extern cBuffersControl buffersControl;
 vm_atomic<string> pbStatString;
 vm_atomic<u_long> pbCountPacketDrop;
 
+extern PcapQueue_readFromFifo *pcapQueueQ;
 
 void *_PcapQueue_threadFunction(void *arg);
 void *_PcapQueue_writeThreadFunction(void *arg);
@@ -2229,7 +2230,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if (opt_rrd) {
 		getLoadAvg(&rrdLA_1, &rrdLA_5, &rrdLA_15);
 	}
-	pbStatString = outStr.str() + outStrStat.str();
+	pbStatString = outStr.str() + outStrStat.str() + externalError;
+	externalError.erase();
 	pbCountPacketDrop = this->instancePcapHandle ?
 				this->instancePcapHandle->getCountPacketDrop() :
 				this->getCountPacketDrop();
@@ -6371,16 +6373,19 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			this->clientSocket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
 			if(!this->clientSocket->connect()) {
 				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed connect to cloud router");
+				pcapQueueQ->externalError = "send packetbuffer block error: failed connect to cloud router";
 				continue;
 			}
 			string cmd = "{\"type_connection\":\"packetbuffer block\"}\r\n";
 			if(!this->clientSocket->write(cmd)) {
 				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed send command");
+				pcapQueueQ->externalError = "send packetbuffer block error: failed send command";
 				continue;
 			}
 			string rsltRsaKey;
 			if(!this->clientSocket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
 				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed read rsa key");
+				pcapQueueQ->externalError = "send packetbuffer block error: failed read rsa key";
 				continue;
 			}
 			JsonItem jsonRsaKey;
@@ -6399,16 +6404,19 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			json_keys.add("sensor_name", opt_name_sensor);
 			if(!this->clientSocket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
 				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed send token & aes keys");
+				pcapQueueQ->externalError = "";
 				continue;
 			}
 			string connectResponse;
 			if(!this->clientSocket->readBlock(&connectResponse) || connectResponse != "OK") {
 				if(!this->clientSocket->isError() && connectResponse != "OK") {
 					syslog(LOG_ERR, "send packetbuffer block error: %s", ("failed response from cloud router - " + connectResponse).c_str());
+					pcapQueueQ->externalError = "send packetbuffer block error: failed response from cloud router - " + connectResponse;
 					delete this->clientSocket;
 					this->clientSocket = NULL;
 				} else {
 					syslog(LOG_ERR, "send packetbuffer block error: %s", "failed read ok");
+					pcapQueueQ->externalError = "send packetbuffer block error: failed read ok";
 				}
 				continue;
 			}
@@ -6422,11 +6430,13 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 		delete [] saveBuffer;
 		if(!okSendBlock) {
 			syslog(LOG_ERR, "send packetbuffer block error: %s", "failed send");
+			pcapQueueQ->externalError = "send packetbuffer block error: failed send";
 			continue;
 		}
 		string response;
 		if(!this->clientSocket->readBlock(&response, cSocket::_te_aes)) {
 			syslog(LOG_ERR, "send packetbuffer block error: %s", "failed read response");
+			pcapQueueQ->externalError = "send packetbuffer block error: failed read response";
 			continue;
 		}
 		if(response == "OK") {
@@ -6434,6 +6444,7 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			break;
 		} else {
 			syslog(LOG_ERR, "send packetbuffer block error: %s", response.empty() ? "response is empty" : ("bad response - " + response).c_str());
+			pcapQueueQ->externalError = "send packetbuffer block error: " + (response.empty() ? "response is empty" : ("bad response - " + response));
 		}
 	}
 	return(ok);

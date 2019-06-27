@@ -260,6 +260,7 @@ public:
 	inline u_int16_t getPcapHandleIndex(int dlt);
 	void pcapStat(int statPeriod = 1, bool statCalls = true);
 	string pcapDropCountStat();
+	string externalError;
 	void initStat();
 	void getThreadCpuUsage(bool writeThread = false);
 	bool threadInitIsOk() { return(threadInitOk); }
