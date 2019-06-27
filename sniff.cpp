@@ -4613,6 +4613,14 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 					call_info[call_info_length].iscaller = node_call->iscaller;
 					call_info[call_info_length].is_rtcp = node_call->is_rtcp;
 					call_info[call_info_length].sdp_flags = node_call->sdp_flags;
+					if(node_call->call->use_rtcp_mux && !call_info[call_info_length].sdp_flags.rtcp_mux) {
+						s_sdp_flags *sdp_flags_other_side = call_info_find_by_dest ?
+										     calltable->get_sdp_flags_in_hashfind_by_ip_port(node_call->call, packetS->saddr, packetS->source, false) :
+										     calltable->get_sdp_flags_in_hashfind_by_ip_port(node_call->call, packetS->daddr, packetS->dest, false);
+						if(sdp_flags_other_side && sdp_flags_other_side->rtcp_mux) {
+							call_info[call_info_length].sdp_flags.rtcp_mux = true;
+						}
+					}
 					call_info[call_info_length].use_sync = false;
 					call_info[call_info_length].multiple_calls = false;
 					++call_info_length;
@@ -8319,6 +8327,14 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 				packetS->call_info[packetS->call_info_length].iscaller = node_call->iscaller;
 				packetS->call_info[packetS->call_info_length].is_rtcp = node_call->is_rtcp;
 				packetS->call_info[packetS->call_info_length].sdp_flags = node_call->sdp_flags;
+				if(node_call->call->use_rtcp_mux && !packetS->call_info[packetS->call_info_length].sdp_flags.rtcp_mux) {
+					s_sdp_flags *sdp_flags_other_side = packetS->call_info_find_by_dest ?
+									     calltable->get_sdp_flags_in_hashfind_by_ip_port(node_call->call, packetS->saddr, packetS->source, false) :
+									     calltable->get_sdp_flags_in_hashfind_by_ip_port(node_call->call, packetS->daddr, packetS->dest, false);
+					if(sdp_flags_other_side && sdp_flags_other_side->rtcp_mux) {
+						packetS->call_info[packetS->call_info_length].sdp_flags.rtcp_mux = true;
+					}
+				}
 				packetS->call_info[packetS->call_info_length].use_sync = false;
 				packetS->call_info[packetS->call_info_length].multiple_calls = false;
 				__sync_add_and_fetch(&node_call->call->rtppacketsinqueue, 1);
