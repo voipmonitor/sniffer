@@ -260,6 +260,7 @@ public:
 	inline u_int16_t getPcapHandleIndex(int dlt);
 	void pcapStat(int statPeriod = 1, bool statCalls = true);
 	string pcapDropCountStat();
+	string externalError;
 	void initStat();
 	void getThreadCpuUsage(bool writeThread = false);
 	bool threadInitIsOk() { return(threadInitOk); }
@@ -388,6 +389,7 @@ struct pcapProcessData {
 	int traillen;
 	int istcp;
 	int isother;
+	u_int16_t vlan;
 	unsigned char *prevmd5s;
 	MD5_CTX ctx;
 	u_int ipfrag_lastprune;
@@ -402,6 +404,7 @@ public:
 		ether_header *header_eth;
 		u_int header_ip_offset;
 		int protocol;
+		u_int16_t vlan;
 	};
 public:
 	PcapQueue_readFromInterface_base(const char *interfaceName = NULL);

@@ -29,7 +29,7 @@ inline
 #endif
 bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 		      sll_header *&header_sll, ether_header *&header_eth, u_char **header_ppp_o_e,
-		      u_int &header_ip_offset, int &protocol, int *vlan = NULL);
+		      u_int &header_ip_offset, int &protocol, u_int16_t &vlan);
 
 #if SNIFFER_INLINE_FUNCTIONS
 inline

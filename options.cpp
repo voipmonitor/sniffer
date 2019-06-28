@@ -29,6 +29,7 @@ cSipMsgRelations *sipMsgRelations;
 
 SqlDb *sqlDbSaveSipMsg = NULL;
 
+extern sExistsColumns existsColumns;
 
 struct SipMsgFields {
 	eSipMsgField filedType;
@@ -60,7 +61,8 @@ struct SipMsgFields {
 	{ smf_response_number, "response_number" },
 	{ smf_response_string, "response_string" },
 	{ smf_qualify_ok, "qualify_ok" },
-	{ smf_exists_pcap, "exists_pcap" }
+	{ smf_exists_pcap, "exists_pcap" },
+	{ smf_vlan, "vlan" }
 };
 
 
@@ -72,6 +74,7 @@ bool opt_sip_msg_compare_number_src = true;
 bool opt_sip_msg_compare_number_dst = true;
 bool opt_sip_msg_compare_domain_src = true;
 bool opt_sip_msg_compare_domain_dst = true;
+bool opt_sip_msg_compare_vlan = true;
 
 unsigned opt_default_qualify_limit = 2000;
 unsigned opt_cleanup_item_response_by_max_items = 5;
@@ -92,7 +95,8 @@ bool cSipMsgItem_base:: operator == (const cSipMsgItem_base& other) const {
 	       this->number_src == other.number_src &&
 	       this->number_dst == other.number_dst &&
 	       this->domain_src == other.domain_src &&
-	       this->domain_dst == other.domain_dst);
+	       this->domain_dst == other.domain_dst &&
+	       this->vlan == other.vlan);
 }
 
 void cSipMsgItem_base::debug_out() {
@@ -173,7 +177,8 @@ bool cSipMsgRelationId:: operator == (const cSipMsgRelationId& other) const {
 	       (!opt_sip_msg_compare_number_src || this->sipMsg->number_src == other.sipMsg->number_src) &&
 	       (!opt_sip_msg_compare_number_dst || this->sipMsg->number_dst == other.sipMsg->number_dst) &&
 	       (!opt_sip_msg_compare_domain_src || this->sipMsg->domain_src == other.sipMsg->domain_src) &&
-	       (!opt_sip_msg_compare_domain_dst || this->sipMsg->domain_dst == other.sipMsg->domain_dst));
+	       (!opt_sip_msg_compare_domain_dst || this->sipMsg->domain_dst == other.sipMsg->domain_dst) &&
+	       (!opt_sip_msg_compare_vlan || this->sipMsg->vlan == other.sipMsg->vlan));
 }
 
 bool cSipMsgRelationId:: operator < (const cSipMsgRelationId& other) const { 
@@ -181,6 +186,7 @@ bool cSipMsgRelationId:: operator < (const cSipMsgRelationId& other) const {
 	       (opt_sip_msg_compare_ip_dst && this->sipMsg->ip_dst < other.sipMsg->ip_dst) ? 1 : (opt_sip_msg_compare_ip_dst && this->sipMsg->ip_dst > other.sipMsg->ip_dst) ? 0 :
 	       (opt_sip_msg_compare_port_src && this->sipMsg->port_src < other.sipMsg->port_src) ? 1 : (opt_sip_msg_compare_port_src && this->sipMsg->port_src > other.sipMsg->port_src) ? 0 :
 	       (opt_sip_msg_compare_port_dst && this->sipMsg->port_dst < other.sipMsg->port_dst) ? 1 : (opt_sip_msg_compare_port_dst && this->sipMsg->port_dst > other.sipMsg->port_dst) ? 0 :
+	       (opt_sip_msg_compare_vlan && this->sipMsg->vlan < other.sipMsg->vlan) ? 1 : (opt_sip_msg_compare_vlan && this->sipMsg->vlan > other.sipMsg->vlan) ? 0 :
 	       (opt_sip_msg_compare_number_src && this->sipMsg->number_src < other.sipMsg->number_src) ? 1 : (opt_sip_msg_compare_number_src && this->sipMsg->number_src > other.sipMsg->number_src) ? 0 :
 	       (opt_sip_msg_compare_number_dst && this->sipMsg->number_dst < other.sipMsg->number_dst) ? 1 : (opt_sip_msg_compare_number_dst && this->sipMsg->number_dst > other.sipMsg->number_dst) ? 0 :
 	       (opt_sip_msg_compare_domain_src && this->sipMsg->domain_src < other.sipMsg->domain_src) ? 1 : (opt_sip_msg_compare_domain_src && this->sipMsg->domain_src < other.sipMsg->domain_src) ? 0 :
@@ -443,6 +449,7 @@ bool cSipMsgRelation::getDataRow(RecordArray *rec, u_int64_t limit_time_us, cSip
 	rec->fields[smf_number_dst].set(number_dst.c_str());
 	rec->fields[smf_domain_src].set(domain_src.c_str());
 	rec->fields[smf_domain_dst].set(domain_dst.c_str());
+	rec->fields[smf_vlan].set(vlan);
 	if(reqResp) {
 		if(reqResp->request) {
 			rec->fields[smf_callername].set(reqResp->request->callername.c_str());
@@ -893,6 +900,9 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 	rec.add(requestResponse->request->ip_dst, "ip_dst", false, sqlDbSaveSipMsg, table.c_str());
 	rec.add(requestResponse->request->port_src.getPort(), "port_src");
 	rec.add(requestResponse->request->port_dst.getPort(), "port_dst");
+	if(existsColumns.sip_msg_vlan && VLAN_IS_SET(requestResponse->request->vlan)) {
+		rec.add(requestResponse->request->vlan, "vlan");
+	}
 	rec.add(sqlEscapeString(requestResponse->request->number_src), "number_src");
 	rec.add(sqlEscapeString(requestResponse->request->number_dst), "number_dst");
 	rec.add(sqlEscapeString(requestResponse->request->domain_src), "domain_src");

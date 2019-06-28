@@ -3,6 +3,7 @@
 #include "sql_db.h"
 #include "record_array.h"
 #include "fraud.h"
+#include "sniff.h"
 
 
 #define NEW_REGISTER_CLEAN_PERIOD 30
@@ -21,6 +22,7 @@ extern int opt_enable_fraud;
 extern bool opt_sip_register_compare_sipcallerip;
 extern bool opt_sip_register_compare_sipcalledip;
 extern bool opt_sip_register_compare_to_domain;
+extern bool opt_sip_register_compare_vlan;
 
 extern bool opt_sip_register_state_compare_from_num;
 extern bool opt_sip_register_state_compare_from_name;
@@ -28,6 +30,7 @@ extern bool opt_sip_register_state_compare_from_domain;
 extern bool opt_sip_register_state_compare_digest_realm;
 extern bool opt_sip_register_state_compare_ua;
 extern bool opt_sip_register_state_compare_sipalg;
+extern bool opt_sip_register_state_compare_vlan;
 extern bool opt_sipalg_detect;
 
 extern Calltable *calltable;
@@ -64,7 +67,8 @@ struct RegisterFields {
 	{ rf_ua, "ua" },
 	{ rf_rrd_avg, "rrd_avg" },
 	{ rf_spool_index, "spool_index" },
-	{ rf_is_sipalg_detected, "is_sipalg_detected" }
+	{ rf_is_sipalg_detected, "is_sipalg_detected" },
+	{ rf_vlan, "vlan" }
 };
 
 SqlDb *sqlDbSaveRegister = NULL;
@@ -77,6 +81,7 @@ RegisterId::RegisterId(Register *reg) {
 bool RegisterId:: operator == (const RegisterId& other) const {
 	return((!opt_sip_register_compare_sipcallerip || this->reg->sipcallerip == other.reg->sipcallerip) &&
 	       (!opt_sip_register_compare_sipcalledip || this->reg->sipcalledip == other.reg->sipcalledip) &&
+	       (!opt_sip_register_compare_vlan || this->reg->vlan == other.reg->vlan) &&
 	       REG_EQ_STR(this->reg->to_num, other.reg->to_num) &&
 	       (!opt_sip_register_compare_to_domain || REG_EQ_STR(this->reg->to_domain, other.reg->to_domain)) &&
 	       //REG_EQ_STR(this->reg->contact_num, other.reg->contact_num) &&
@@ -92,6 +97,7 @@ bool RegisterId:: operator < (const RegisterId& other) const {
 	int rslt_cmp_digest_username;
 	return((opt_sip_register_compare_sipcallerip && this->reg->sipcallerip < other.reg->sipcallerip) ? 1 : (opt_sip_register_compare_sipcallerip && this->reg->sipcallerip > other.reg->sipcallerip) ? 0 :
 	       (opt_sip_register_compare_sipcalledip && this->reg->sipcalledip < other.reg->sipcalledip) ? 1 : (opt_sip_register_compare_sipcalledip && this->reg->sipcalledip > other.reg->sipcalledip) ? 0 :
+	       (opt_sip_register_compare_vlan && this->reg->vlan < other.reg->vlan) ? 1 : (opt_sip_register_compare_vlan && this->reg->vlan > other.reg->vlan) ? 0 :
 	       ((rslt_cmp_to_num = REG_CMP_STR(this->reg->to_num, other.reg->to_num)) < 0) ? 1 : (rslt_cmp_to_num > 0) ? 0 :
 	       (opt_sip_register_compare_to_domain && (rslt_cmp_to_domain = REG_CMP_STR(this->reg->to_domain, other.reg->to_domain)) < 0) ? 1 : (opt_sip_register_compare_to_domain && rslt_cmp_to_domain > 0) ? 0 :
 	       //((rslt_cmp_contact_num = REG_CMP_STR(this->reg->contact_num, other.reg->contact_num)) < 0) ? 1 : (rslt_cmp_contact_num > 0) ? 0 :
@@ -132,6 +138,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		expires = call->register_expires;
 		id_sensor = call->useSensorId;
 		is_sipalg_detected = call->is_sipalg_detected;
+		vlan = call->vlan;
 	} else {
 		state_from = state_to = 0;
 		counter = 0;
@@ -144,6 +151,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		digest_realm = NULL;
 		ua = NULL;
 		is_sipalg_detected = false;
+		vlan = VLAN_UNSET;
 	}
 	db_id = 0;
 	save_at = 0;
@@ -172,6 +180,7 @@ void RegisterState::copyFrom(const RegisterState *src) {
 	ua = REG_NEW_STR(src->ua);
 	spool_index = src->spool_index;
 	is_sipalg_detected = src->is_sipalg_detected;
+	vlan = src->vlan;
 }
 
 bool RegisterState::isEq(Call *call, Register *reg) {
@@ -199,6 +208,7 @@ bool RegisterState::isEq(Call *call, Register *reg) {
 	       (!opt_sip_register_state_compare_digest_realm || REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, call->digest_realm)) &&
 	       (!opt_sip_register_state_compare_ua || REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua)) &&
 	       (!opt_sip_register_state_compare_sipalg || (!opt_sipalg_detect || is_sipalg_detected == call->is_sipalg_detected)) &&
+	       (!opt_sip_register_state_compare_vlan || (vlan == call->vlan)) &&
 	       id_sensor == call->useSensorId);
 }
 
@@ -220,6 +230,7 @@ Register::Register(Call *call) {
 	from_domain = REG_NEW_STR(call->caller_domain);
 	digest_realm = REG_NEW_STR(call->digest_realm);
 	ua = REG_NEW_STR(call->a_ua);
+	vlan = call->vlan;
 	for(unsigned i = 0; i < NEW_REGISTER_MAX_STATES; i++) {
 		states[i] = 0;
 	}
@@ -276,6 +287,7 @@ void Register::update(Call *call) {
 	}
 	sipcallerip = call->sipcallerip[0];
 	sipcalledip = call->sipcalledip[0];
+	vlan = call->vlan;
 }
 
 void Register::addState(Call *call) {
@@ -471,6 +483,9 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		reg.add(state->counter, "counter");
 		state->db_id = registers.getNewRegisterFailedId(state->id_sensor);
 		reg.add(state->db_id, "ID");
+		if(existsColumns.register_failed_vlan && VLAN_IS_SET(vlan)) {
+			reg.add(vlan, "vlan");
+		}
 	} else {
 		reg.add(state->expires, "expires");
 		reg.add(state->state <= rs_Expired ? state->state : rs_OK, "state");
@@ -480,6 +495,9 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 				flags |= REG_SIPALG_DETECTED;
 			}
 			reg.add(flags, "flags");
+		}
+		if(existsColumns.register_state_vlan && VLAN_IS_SET(vlan)) {
+			reg.add(vlan, "vlan");
 		}
 	}
 	if(state->id_sensor > -1) {
@@ -616,6 +634,7 @@ bool Register::getDataRow(RecordArray *rec) {
 		rec->fields[rf_rrd_avg].set(rrd_sum / rrd_count);
 	}
 	rec->fields[rf_spool_index].set(state->spool_index);
+	rec->fields[rf_vlan].set(state->vlan);
 	rec->fields[rf_is_sipalg_detected].set(getSipAlgState());
 	unlock_states();
 	return(true);

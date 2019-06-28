@@ -27,7 +27,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			     vmPort port_src, vmPort port_dst,
 			     TcpReassemblyData *data,
 			     u_char *ethHeader, u_int32_t ethHeaderLength,
-			     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
+			     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan,
 			     void *uData, TcpReassemblyLink *reassemblyLink,
 			     std::ostream *debugStream) {
 	++this->counterProcessData;
@@ -125,6 +125,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					packetS->dlt = dlt; 
 					packetS->sensor_id_u = (u_int16_t)sensor_id;
 					packetS->sensor_ip = sensor_ip;
+					packetS->vlan = vlan;
 					packetS->is_ssl = false;
 					extern int opt_skinny;
 					extern char *sipportmatrix;
@@ -151,7 +152,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 							_datalen, dataOffset,
 							handle_index, tcpHeader, tcpPacket, true, 
 							2, false, (iphdr2*)(tcpPacket + ethHeaderLength),
-							NULL, 0, dlt, sensor_id, sensor_ip,
+							NULL, 0, dlt, sensor_id, sensor_ip, vlan,
 							false);
 				}
 			}

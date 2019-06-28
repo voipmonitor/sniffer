@@ -614,7 +614,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	caller_clipping_8k = 0;
 	called_clipping_8k = 0;
 	
-	vlan = -1;
+	vlan = VLAN_UNSET;
 	
 	_mergecalls_lock = 0;
 	
@@ -1220,18 +1220,9 @@ bool
 Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 
 	extern int opt_vlan_siprtpsame;
-	if(opt_vlan_siprtpsame && this->vlan >= 0) {
-		sll_header *header_sll;
-		ether_header *header_eth;
-		u_int header_ip_offset;
-		int protocol;
-		int vlan;
-		parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
-				 header_sll, header_eth, NULL,
-				 header_ip_offset, protocol, &vlan);
-		if(vlan != this->vlan) {
-			return(false);
-		}
+	if(opt_vlan_siprtpsame && VLAN_IS_SET(this->vlan) &&
+	   packetS->vlan != this->vlan) {
+		return(false);
 	}
 
 	RTPsecure *rtp_decrypt = NULL;
@@ -1320,19 +1311,10 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 		return(false);
 	}
 
-	if(opt_vlan_siprtpsame && this->vlan >= 0) {
-		sll_header *header_sll;
-		ether_header *header_eth;
-		u_int header_ip_offset;
-		int protocol;
-		int vlan;
-		parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
-				 header_sll, header_eth, NULL,
-				 header_ip_offset, protocol, &vlan);
-		if(vlan != this->vlan) {
-			*disable_save = true;
-			return(false);
-		}
+	if(opt_vlan_siprtpsame && VLAN_IS_SET(this->vlan) &&
+	   packetS->vlan != this->vlan) {
+		*disable_save = true;
+		return(false);
 	}
 
 	if(first_rtp_time == 0) {
@@ -1787,9 +1769,10 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 				ether_header *header_eth = NULL;
 				u_int header_ip_offset = 0;
 				int protocol = 0;
+				u_int16_t vlan = VLAN_UNSET;
 				if(parseEtherHeader(packetS->dlt, (u_char*)packetS->packet, 
 						    header_sll, header_eth, NULL,
-						    header_ip_offset, protocol)) {
+						    header_ip_offset, protocol, vlan)) {
 					pcap_pkthdr *header = NULL;
 					u_char *packet = NULL;
 					u_int16_t old_ether_type = 0;
@@ -3843,6 +3826,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(connect_time) {
 		cdr.add(connect_duration(), "connect_duration");
 	}
+	if(existsColumns.cdr_vlan && VLAN_IS_SET(vlan)) {
+		cdr.add(vlan, "vlan");
+	}
 	if(existsColumns.cdr_last_rtp_from_end && !use_sdp_sendonly) {
 		if(last_rtp_a_packet_time) {
 			cdr.add((typeIs(MGCP) ? last_mgcp_connect_packet_time : last_packet_time) - last_rtp_a_packet_time, "a_last_rtp_from_end");
@@ -5729,6 +5715,10 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 	if(existsColumns.message_content_length && content_length) {
 		msg.add(content_length, "content_length");
+	}
+
+	if(existsColumns.message_vlan && VLAN_IS_SET(vlan)) {
+		msg.add(vlan, "vlan");
 	}
 
 	msg.add(lastSIPresponseNum, "lastSIPresponseNum");

@@ -204,7 +204,7 @@ public:
 				 vmPort port_src, vmPort port_dst,
 				 TcpReassemblyData *data,
 				 u_char *ethHeader, u_int32_t ethHeaderLength,
-				 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
+				 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan,
 				 void *uData,
 				 class TcpReassemblyLink *reassemblyLink,
 				 std::ostream *debugStream) = 0;
@@ -548,6 +548,7 @@ public:
 		this->direction_confirm = 0;
 		this->ethHeader = NULL;
 		this->ethHeaderLength = 0;
+		this->vlan = VLAN_UNSET;
 		if(packet && header_ip) {
 			this->createEthHeader(packet, dlt);
 		}
@@ -742,6 +743,7 @@ private:
 	int dlt; 
 	int sensor_id;
 	vmIP sensor_ip;
+	u_int16_t vlan;
 	void *uData;
 	u_char *remainData[2];
 	u_int32_t remainDataLength[2];

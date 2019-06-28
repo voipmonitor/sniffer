@@ -207,6 +207,7 @@ public:
 		int dlt;
 		int sensor_id;
 		vmIP sensor_ip;
+		u_int16_t vlan;
 	};
 	struct sData : sData_base {
 		SimpleBuffer *ethHeader;
@@ -231,7 +232,7 @@ public:
 			   vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, 
 			   eType type, u_char *data, unsigned length, bool createStream,
 			   timeval time, u_int32_t ack, u_int32_t seq,
-			   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
+			   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan,
 			   list<sDataRslt> *dataRslt);
 	bool existsStream(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport);
 	void cleanup(timeval time, list<sDataRslt> *dataRslt);
@@ -318,7 +319,7 @@ public:
 				int datalen, int dataoffset,
 				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
 				int istcp, int isother, struct iphdr2 *header_ip,
-				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, vmIP sensor_ip,
+				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan,
 				int blockstore_lock = 1) {
 		if(opt_enable_ssl) {
 			this->lock_push();
@@ -345,6 +346,7 @@ public:
 		packetS.dlt = dlt; 
 		packetS.sensor_id_u = (u_int16_t)sensor_id;
 		packetS.sensor_ip = sensor_ip;
+		packetS.vlan = vlan;
 		packetS.is_ssl = is_ssl;
 		extern int opt_skinny;
 		extern char *sipportmatrix;

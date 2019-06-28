@@ -624,7 +624,7 @@ public:
 	int msgcount;
 	int regcount;
 	int reg401count;
-	list<d_item2<vmIP, int> > reg401count_sipcallerip_vlan;
+	list<d_item2<vmIP, u_int16_t> > reg401count_sipcallerip_vlan;
 	int reg200count;
 	int regstate;
 	bool regresponse;
@@ -779,7 +779,7 @@ public:
 	unsigned int caller_clipping_8k;
 	unsigned int called_clipping_8k;
 	
-	int vlan;
+	u_int16_t vlan;
 
 	unsigned int lastcallerssrc;
 	unsigned int lastcalledssrc;
