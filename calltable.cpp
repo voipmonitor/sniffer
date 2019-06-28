@@ -4226,7 +4226,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(rtpab[i]->mosf1_min, c+"_mos_f1_min_mult10");
 			}
 
-			if(existsColumns.cdr_mos_xr and rtpab[i]->rtcp_xr.counter > 0) {
+			if(existsColumns.cdr_mos_xr and rtpab[i]->rtcp_xr.counter_mos > 0) {
 				cdr.add(rtpab[i]->rtcp_xr.minmos, c+"_mos_xr_min_mult10");
 				cdr.add(rtpab[i]->rtcp_xr.avgmos, c+"_mos_xr_mult10");
 			}
@@ -4263,7 +4263,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 
 			// XR MOS 
-			if(existsColumns.cdr_mos_xr and rtpab[i]->rtcp_xr.counter > 0) {
+			if(existsColumns.cdr_mos_xr and rtpab[i]->rtcp_xr.counter_mos > 0) {
 				cdr.add(rtpab[i]->rtcp_xr.minmos, c+"_mos_xr_min_mult10");
 				cdr.add(rtpab[i]->rtcp_xr.avgmos, c+"_mos_xr_mult10");
 			}
@@ -6054,28 +6054,19 @@ Call::applyRtcpXrDataToRtp() {
 			if(this->rtp[i]->ssrc == iter_ssrc->first) {
 				list<sRtcpXrDataItem>::iterator iter;
 				for(iter = iter_ssrc->second.begin(); iter != iter_ssrc->second.end(); iter++) {
-					if(iter->moslq >= 0 || iter->nlr >= 0) {
-						rtp[i]->rtcp_xr.counter++;
-						if(iter->moslq >= 0) {
-							if(iter->moslq < rtp[i]->rtcp_xr.minmos) {
-								rtp[i]->rtcp_xr.minmos = iter->moslq;
-							}
-							rtp[i]->rtcp_xr.avgmos = (rtp[i]->rtcp_xr.avgmos * (rtp[i]->rtcp_xr.counter - 1) + iter->moslq) / rtp[i]->rtcp_xr.counter;
-						} else {
-							if(rtp[i]->rtcp_xr.counter > 1) {
-								rtp[i]->rtcp_xr.avgmos *= rtp[i]->rtcp_xr.counter / (rtp[i]->rtcp_xr.counter - 1);
-							}
+					if(iter->moslq >= 0) {
+						rtp[i]->rtcp_xr.counter_mos++;
+						if(iter->moslq < rtp[i]->rtcp_xr.minmos) {
+							rtp[i]->rtcp_xr.minmos = iter->moslq;
 						}
-						if(iter->nlr >= 0) {
-							if(iter->nlr > rtp[i]->rtcp_xr.maxfr) {
-								rtp[i]->rtcp_xr.maxfr = iter->nlr;
-							}
-							rtp[i]->rtcp_xr.avgfr = (rtp[i]->rtcp_xr.avgfr * (rtp[i]->rtcp_xr.counter - 1) + iter->nlr) / rtp[i]->rtcp_xr.counter;
-						} else {
-							if(rtp[i]->rtcp_xr.counter > 1) {
-								rtp[i]->rtcp_xr.avgfr *= rtp[i]->rtcp_xr.counter / (rtp[i]->rtcp_xr.counter - 1);
-							}
+						rtp[i]->rtcp_xr.avgmos = (rtp[i]->rtcp_xr.avgmos * (rtp[i]->rtcp_xr.counter_mos - 1) + iter->moslq) / rtp[i]->rtcp_xr.counter_mos;
+					}
+					if(iter->nlr >= 0) {
+						rtp[i]->rtcp_xr.counter_fr++;
+						if(iter->nlr > rtp[i]->rtcp_xr.maxfr) {
+							rtp[i]->rtcp_xr.maxfr = iter->nlr;
 						}
+						rtp[i]->rtcp_xr.avgfr = (rtp[i]->rtcp_xr.avgfr * (rtp[i]->rtcp_xr.counter_fr - 1) + iter->nlr) / rtp[i]->rtcp_xr.counter_fr;
 					}
 				}
 				break;

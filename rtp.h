@@ -310,7 +310,8 @@ public:
 		double 		avgfr;
 		uint8_t		minmos;
 		double 		avgmos;
-		unsigned int counter;
+		unsigned int counter_fr;
+		unsigned int counter_mos;
 	} rtcp_xr;
 
 	unsigned int samplerate;

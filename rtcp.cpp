@@ -539,11 +539,14 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
                 
 
 		if(rtp) {
-			rtp->rtcp_xr.counter++;
+			rtp->rtcp_xr.counter_fr++;
 			rtp->rtcp_xr.maxfr = (rtp->rtcp_xr.maxfr < xr->loss_rate) ? xr->loss_rate : rtp->rtcp_xr.maxfr;
-			rtp->rtcp_xr.avgfr = (rtp->rtcp_xr.avgfr * (rtp->rtcp_xr.counter - 1) + xr->loss_rate) / rtp->rtcp_xr.counter;
-			rtp->rtcp_xr.minmos = (rtp->rtcp_xr.minmos > xr->mos_lq) ? xr->mos_lq : rtp->rtcp_xr.minmos;
-			rtp->rtcp_xr.avgmos = (rtp->rtcp_xr.avgmos * (rtp->rtcp_xr.counter - 1) + xr->mos_lq) / rtp->rtcp_xr.counter;
+			rtp->rtcp_xr.avgfr = (rtp->rtcp_xr.avgfr * (rtp->rtcp_xr.counter_fr - 1) + xr->loss_rate) / rtp->rtcp_xr.counter_fr;
+			if(xr->mos_lq != 0x7F) {
+				rtp->rtcp_xr.counter_mos++;
+				rtp->rtcp_xr.minmos = (rtp->rtcp_xr.minmos > xr->mos_lq) ? xr->mos_lq : rtp->rtcp_xr.minmos;
+				rtp->rtcp_xr.avgmos = (rtp->rtcp_xr.avgmos * (rtp->rtcp_xr.counter_mos - 1) + xr->mos_lq) / rtp->rtcp_xr.counter_mos;
+			}
 		} 
 
 		if(sverb.debug_rtcp) {
