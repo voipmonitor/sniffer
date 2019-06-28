@@ -803,7 +803,7 @@ static int jb_put_fixed(void *jb, struct ast_frame *fin, long now)
 	struct fixed_jb *fixedjb = (struct fixed_jb *) jb;
 	int res;
 	
-	res = fixed_jb_put(fixedjb, fin, fin->len, fin->ts, now);
+	res = fixed_jb_put(fixedjb, fin, fin->len, fin->ts, now, fin->marker);
 	
 	return fixed_to_abstract_code[res];
 }

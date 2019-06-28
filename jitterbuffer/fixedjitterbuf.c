@@ -218,7 +218,7 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 	//jb_fixed_flush_deliver(jb->chan);
 	
 	/* now jb_put() should add the frame at a last position */
-	return fixed_jb_put(jb, data, ms, ts, now);
+	return fixed_jb_put(jb, data, ms, ts, now, 0);
 }
 
 
@@ -237,11 +237,11 @@ int fixed_jb_put_first(struct fixed_jb *jb, void *data, long ms, long ts, long n
 	jb->next_delivery = now + jb->delay;
 	
 	/* put the frame */
-	return fixed_jb_put(jb, data, ms, ts, now);
+	return fixed_jb_put(jb, data, ms, ts, now, 0);
 }
 
 
-int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
+int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, int marker)
 {
 	struct fixed_jb_frame *frame, *next, *newframe;
 	long delivery;
@@ -295,6 +295,10 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now)
 		/* should drop the frame, but let first resynch_jb() check if this is not a jump in ts, or
 		   the force resynch flag was not set. */
 		if(debug) fprintf(stdout, "put: delivery[%lu] > jb->next_delivery[%lu] + jb->delay[%lu] + jb->conf.resync_threshold[%lu]\n", delivery, jb->next_delivery, jb->delay, jb->conf.resync_threshold);
+		return resynch_jb(jb, data, ms, ts, now);
+	} else if(marker) {
+		if(debug) fprintf(stdout, "call resync_jb for marker\n");
+		jb->force_resynch = 1;
 		return resynch_jb(jb, data, ms, ts, now);
 	}
 

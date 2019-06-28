@@ -75,7 +75,7 @@ void fixed_jb_destroy(struct fixed_jb *jb);
 
 int fixed_jb_put_first(struct fixed_jb *jb, void *data, long ms, long ts, long now);
 
-int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now);
+int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, int marker);
 
 int fixed_jb_get(struct fixed_jb *jb, struct fixed_jb_frame *frame, long now, long interpl);
 
