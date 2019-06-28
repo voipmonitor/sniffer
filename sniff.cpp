@@ -2949,6 +2949,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	bool reverseInviteConfirmSdaddr = false;
 	Call::sInviteSD_Addr *mainInviteForReverse = NULL;
 	Call::sInviteSD_Addr *reverseInvite = NULL;
+	int inviteSdaddrIndex = -1;
 	int iscaller = -1;
 	int iscalled = -1;
 	bool detectCallerd = false;
@@ -3079,9 +3080,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 	
 	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
+		int inviteSdaddrCounter = 0;
 		for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
 			if(packetS->saddr == iter->saddr && packetS->daddr == iter->daddr) {
 				existInviteSdaddr = true;
+				inviteSdaddrIndex = inviteSdaddrCounter;
 				++iter->counter;
 				break;
 			} else if(packetS->daddr == iter->saddr && packetS->saddr == iter->daddr) {
@@ -3095,6 +3098,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				}
 				break;
 			}
+			++inviteSdaddrCounter;
 		}
 		if(!existInviteSdaddr) {
 		        if(!reverseInviteSdaddr) {
@@ -3110,6 +3114,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					get_sip_peername(packetS, "INVITE ", NULL, &invite_sd.called_invite, ppntt_invite, ppndt_called);
 				}
 				call->invite_sdaddr.push_back(invite_sd);
+				inviteSdaddrIndex = call->invite_sdaddr.size() - 1;
 			} else if(opt_sdp_check_direction_ext) {
 				bool existRInviteSdaddr = false;
 				for(list<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.begin(); riter != call->rinvite_sdaddr.end(); riter++) {
@@ -3136,6 +3141,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					reverseInvite = &(*riter);
 				}
 			}
+		}
+		if(inviteSdaddrIndex >= 0) {
+			call->invite_sdaddr_order.push_back(inviteSdaddrIndex);
 		}
 	}
 	

@@ -689,6 +689,7 @@ public:
 	
 	list<sInviteSD_Addr> invite_sdaddr;
 	list<sInviteSD_Addr> rinvite_sdaddr;
+	list<unsigned> invite_sdaddr_order;
 
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;

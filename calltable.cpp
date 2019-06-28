@@ -6179,7 +6179,11 @@ vmIP Call::getSipcalledipConfirmed(vmPort *dport) {
 	vmIP saddr, 
 	     daddr, 
 	     lastsaddr;
-	for(list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+	for(list<unsigned>::iterator iter_order = invite_sdaddr_order.begin(); iter_order != invite_sdaddr_order.end(); iter_order++) {
+		list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin();
+		for(unsigned i = 0; i < *iter_order; i++) {
+			iter++;
+		}
 		if(iter->confirmed) {
 			if((daddr != iter->daddr && saddr != iter->daddr && 
 			    lastsaddr != iter->saddr) ||

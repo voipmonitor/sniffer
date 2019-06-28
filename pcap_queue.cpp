@@ -2939,6 +2939,9 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		if((*header)->caplen > this->pcap_snaplen) {
 			(*header)->caplen = this->pcap_snaplen;
 		}
+		if((*header)->caplen > (*header)->len) {
+			(*header)->caplen = (*header)->len;
+		}
 		++packets_counter;
 		if(opt_pb_read_from_file_acttime) {
 			static u_int64_t diffTime;
