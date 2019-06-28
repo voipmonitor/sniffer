@@ -1,3 +1,13 @@
+25.1 28.06.2019
+===============
+- fix audio sync issue in case there is timestamp jump < 5000ms with MARK bit set [VS-937]
+- fix destination IP in DB when there are multiple INVITEs [VS-933]
+- fix parsing rtp->rtcp_xr.avgmos (suppress unavailable mos_lq / 0x7F) [VS-935]
+- check ps and bash only in not read from file mode
+- fix issue with rtpc-mux (RTCP packets were treated as RTP for some rtcp-mux cases) [VS-932]
+- store VLAN tag into DB [VG-1827]
+
+
 25.0.5 27.06.2019
 =================
 - fix capture rules for 0.0.0.0/0
