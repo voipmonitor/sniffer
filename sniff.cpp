@@ -4078,7 +4078,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			get_value_stringkeyval(s, packetS->datalen - (s - packetS->data), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
 		}
 
-		if(call->regcount > 4) {
+		if(call->regcount > 4 && !call->reg200count && !call->reg401count_all) {
 			// to much register attempts without OK or 401 responses
 			call->regstate = 4;
 			call->saveregister(&packetS->header_pt->ts);
@@ -4099,6 +4099,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	} else if(packetS->sip_method == RES2XX) {
 		call->seenRES2XX = true;
 		call->reg401count = 0;
+		call->reg401count_sipcallerip_vlan.clear();
 		// update expires header from all REGISTER dialog messages (from 200 OK which can override the expire) but not if register_expires == 0
 		if(call->register_expires != 0) {
 			s = gettag_sip(packetS, "\nExpires:", &l);
@@ -4128,7 +4129,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		}
 		save_packet(call, packetS, TYPE_SIP);
 		if(call->regstate == 1 &&
-		   call->reg200count < call->regcount) {
+		   call->reg200count + call->reg401count_all < call->regcount) {
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + opt_register_timeout;
 		} else {
 			call->saveregister(&packetS->header_pt->ts);
@@ -4162,6 +4163,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			
 			{
 			++call->reg401count;
+			++call->reg401count_all;
 			bool find = false;
 			for(list<d_item2<vmIP, u_int16_t> >::iterator iter = call->reg401count_sipcallerip_vlan.begin(); iter != call->reg401count_sipcallerip_vlan.end(); iter++) {
 				if(iter->item1 == packetS->saddr &&

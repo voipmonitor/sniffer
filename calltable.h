@@ -624,6 +624,7 @@ public:
 	int msgcount;
 	int regcount;
 	int reg401count;
+	int reg401count_all;
 	list<d_item2<vmIP, u_int16_t> > reg401count_sipcallerip_vlan;
 	int reg200count;
 	int regstate;
