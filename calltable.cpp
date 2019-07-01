@@ -2606,16 +2606,18 @@ Call::convertRawToWav() {
 		snprintf(rawinfo_extension, sizeof(rawinfo_extension), "i%d.rawInfo", i);
 		strcpy_null_term(rawInfo, get_pathfilename(tsf_audio, rawinfo_extension).c_str());
 		pl = fopen(rawInfo, "r");
-		while(fgets(line, 256, pl)) {
-			line[strlen(line)] = '\0'; // remove '\n' which is last character
-			sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
-			samplerate = 1000 * get_ticks_bycodec(codec);
-			if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
-			if(maxsamplerate < samplerate) {
-				maxsamplerate = samplerate;
+		if(pl) {
+			while(fgets(line, 256, pl)) {
+				line[strlen(line)] = '\0'; // remove '\n' which is last character
+				sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
+				samplerate = 1000 * get_ticks_bycodec(codec);
+				if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
+				if(maxsamplerate < samplerate) {
+					maxsamplerate = samplerate;
+				}
 			}
+			fclose(pl);
 		}
-		fclose(pl);
 	}
 
 	/* process all files in playlist for each direction */
