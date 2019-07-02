@@ -715,7 +715,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		pinformed = 0;
 	}
 
-	int mylen = MIN((unsigned int)len, header_ip->get_tot_len() - header_ip->get_ihl() * 4 - sizeof(udphdr2));
+	int mylen = MIN((unsigned int)len, header_ip->get_tot_len() - header_ip->get_hdr_size() - sizeof(udphdr2));
 
 	if(savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723 or codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB)) {
 		/* get RTP payload header and datalen */
