@@ -1,3 +1,9 @@
+25.1.1 04.07.2019
+=================
+- fix potential crash in convertRawToWav
+- fix some 401 failed registration issues [VS-926]
+
+
 25.1 28.06.2019
 ===============
 - fix audio sync issue in case there is timestamp jump < 5000ms with MARK bit set [VS-937]
