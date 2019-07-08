@@ -11,10 +11,13 @@
 #include "tools.h"
 #include "voipmonitor.h"
 #include "md5.h"
+#include "header_packet.h"
 
 #define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_store"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
 #define PCAP_BLOCK_STORE_HEADER_VERSION		4
+
+#define FLAG_AUDIOCODES 1
 
 
 extern int opt_enable_ss7;
@@ -98,7 +101,7 @@ struct pcap_pkthdr_plus {
 	u_int16_t header_ip_offset;
 	int16_t std;
 	u_int16_t dlink;
-	u_int16_t vlan;
+	sPacketInfoData pid;
 };
 
 struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {

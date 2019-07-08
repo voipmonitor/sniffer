@@ -80,8 +80,8 @@ private:
 			data_len = stream->complete_data->size();
 			data = stream->complete_data->data();
 		} else {
-			data_len = stream->packets->packetS->datalen;
-			data = (u_char*)stream->packets->packetS->data;
+			data_len = stream->packets->packetS->datalen_();
+			data = (u_char*)stream->packets->packetS->data_();
 		}
 		return(this->checkSip(data, data_len, false));
 	}
@@ -207,7 +207,7 @@ public:
 		int dlt;
 		int sensor_id;
 		vmIP sensor_ip;
-		u_int16_t vlan;
+		sPacketInfoData pid;
 	};
 	struct sData : sData_base {
 		SimpleBuffer *ethHeader;
@@ -232,7 +232,7 @@ public:
 			   vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, 
 			   eType type, u_char *data, unsigned length, bool createStream,
 			   timeval time, u_int32_t ack, u_int32_t seq,
-			   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan,
+			   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 			   list<sDataRslt> *dataRslt);
 	bool existsStream(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport);
 	void cleanup(timeval time, list<sDataRslt> *dataRslt);
@@ -319,7 +319,7 @@ public:
 				int datalen, int dataoffset,
 				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
 				int istcp, int isother, struct iphdr2 *header_ip,
-				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan,
+				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 				int blockstore_lock = 1) {
 		if(opt_enable_ssl) {
 			this->lock_push();
@@ -328,12 +328,13 @@ public:
 		#if USE_PACKET_NUMBER
 		packetS.packet_number = packet_number;
 		#endif
-		packetS.saddr = saddr;
-		packetS.source = source;
-		packetS.daddr = daddr; 
-		packetS.dest = dest;
-		packetS.datalen = datalen; 
-		packetS.dataoffset = dataoffset;
+		packetS._saddr = saddr;
+		packetS._source = source;
+		packetS._daddr = daddr; 
+		packetS._dest = dest;
+		packetS._datalen = datalen; 
+		packetS._datalen_set = 0; 
+		packetS._dataoffset = dataoffset;
 		packetS.handle_index = handle_index; 
 		packetS.header_pt = header;
 		packetS.packet = packet; 
@@ -346,12 +347,24 @@ public:
 		packetS.dlt = dlt; 
 		packetS.sensor_id_u = (u_int16_t)sensor_id;
 		packetS.sensor_ip = sensor_ip;
-		packetS.vlan = vlan;
+		packetS.pid = pid;
 		packetS.is_ssl = is_ssl;
 		extern int opt_skinny;
 		extern char *sipportmatrix;
 		extern char *skinnyportmatrix;
 		packetS.is_skinny = opt_skinny && istcp && (skinnyportmatrix[source] || skinnyportmatrix[dest]);
+		packetS.audiocodes = NULL;
+		extern bool opt_audiocodes;
+		extern unsigned opt_udp_port_audiocodes;
+		extern unsigned opt_tcp_port_audiocodes;
+		if(opt_audiocodes &&
+		   (istcp ?
+		     (opt_tcp_port_audiocodes && dest.getPort() == opt_tcp_port_audiocodes) : 
+		     (opt_udp_port_audiocodes && dest.getPort() == opt_udp_port_audiocodes))) {
+			packetS.audiocodes = new FILE_LINE(0) sAudiocodes;
+			packetS.audiocodes->parse((u_char*)(packet + dataoffset), datalen);
+			packetS.pid.flags |= FLAG_AUDIOCODES;
+		}
 		extern int opt_mgcp;
 		extern unsigned opt_tcp_port_mgcp_gateway;
 		extern unsigned opt_udp_port_mgcp_gateway;
@@ -363,11 +376,12 @@ public:
 				     (unsigned)source == opt_tcp_port_mgcp_callagent || (unsigned)dest == opt_tcp_port_mgcp_callagent) :
 				    ((unsigned)source == opt_udp_port_mgcp_gateway || (unsigned)dest == opt_udp_port_mgcp_gateway ||
 				     (unsigned)source == opt_udp_port_mgcp_callagent || (unsigned)dest == opt_udp_port_mgcp_callagent));
-		packetS.is_need_sip_process = !packetS.isother &&
-					      (is_ssl ||
-					       sipportmatrix[source] || sipportmatrix[dest] ||
-					       packetS.is_skinny ||
-					       packetS.is_mgcp);
+		packetS.is_need_sip_process = (!packetS.isother &&
+					       (is_ssl ||
+						sipportmatrix[source] || sipportmatrix[dest] ||
+						packetS.is_skinny ||
+						packetS.is_mgcp)) ||
+					      (packetS.audiocodes && packetS.audiocodes->media_type == sAudiocodes::ac_mt_SIP);
 		extern bool opt_t2_boost;
 		if(!opt_t2_boost ||
 		   packetS.is_need_sip_process ||
@@ -692,12 +706,14 @@ public:
 		}
 		(*packetS)->blockstore_unlock();
 		(*packetS)->packetdelete();
+		(*packetS)->term();
 		delete *packetS;
 		*packetS = NULL;
 	}
 	inline void packetS_destroy(packet_s_stack **packetS) {
 		(*packetS)->blockstore_unlock();
 		(*packetS)->packetdelete();
+		(*packetS)->term();
 		delete *packetS;
 		*packetS = NULL;
 	}
@@ -740,6 +756,7 @@ public:
 			delete (*packetS)->header_pt;
 			delete [] (*packetS)->packet;
 		}
+		(*packetS)->term();
 		extern int opt_block_alloc_stack;
 		if(opt_block_alloc_stack ||
 		   !(*packetS)->stack ||
@@ -760,6 +777,7 @@ public:
 			delete (*packetS)->header_pt;
 			delete [] (*packetS)->packet;
 		}
+		(*packetS)->term();
 		extern int opt_block_alloc_stack;
 		if(opt_block_alloc_stack ||
 		   !(*packetS)->stack ||

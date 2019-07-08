@@ -951,6 +951,10 @@ unsigned opt_udp_port_mgcp_gateway = 2427;
 unsigned opt_tcp_port_mgcp_callagent = 2727;
 unsigned opt_udp_port_mgcp_callagent = 2727;
 
+bool opt_audiocodes = false;
+unsigned opt_udp_port_audiocodes = 925;
+unsigned opt_tcp_port_audiocodes = 925;
+
 SensorsMap sensorsMap;
 
 bool cloud_db = false;
@@ -6687,6 +6691,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42465) cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_l2tp",  &opt_udp_port_l2tp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("socket_use_poll",  &opt_socket_use_poll));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("new-config", &useNewCONFIG));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipv6", &useIPv6));
@@ -10258,6 +10265,16 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "udp_port_tzsp", NULL))) {
 		opt_udp_port_tzsp = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "audiocodes", NULL))) {
+		opt_audiocodes = yesno(value);
+	}
+	if((value = ini.GetValue("general", "udp_port_audiocodes", NULL))) {
+		opt_udp_port_audiocodes = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tcp_port_audiocodes", NULL))) {
+		opt_tcp_port_audiocodes = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "socket_use_poll", NULL))) {

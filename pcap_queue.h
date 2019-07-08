@@ -389,7 +389,7 @@ struct pcapProcessData {
 	int traillen;
 	int istcp;
 	int isother;
-	u_int16_t vlan;
+	sPacketInfoData pid;
 	unsigned char *prevmd5s;
 	MD5_CTX ctx;
 	u_int ipfrag_lastprune;

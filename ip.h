@@ -21,6 +21,7 @@
 #include <math.h>
 #include <iostream>
 #include <iomanip>
+#include <string.h>
 
 #include "endian.h"
 

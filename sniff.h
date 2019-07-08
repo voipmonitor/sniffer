@@ -16,6 +16,7 @@
 #include "pcap_queue_block.h"
 #include "fraud.h"
 #include "tools.h"
+#include "audiocodes.h"
 
 #ifdef FREEBSD
 #include <machine/endian.h>
@@ -69,9 +70,10 @@ struct packet_s {
 	#if USE_PACKET_NUMBER
 	u_int64_t packet_number;
 	#endif
-	vmIP saddr;
-	vmIP daddr; 
-	u_int32_t datalen; 
+	vmIP _saddr;
+	vmIP _daddr; 
+	u_int32_t _datalen; 
+	u_int32_t _datalen_set; 
 	pcap_pkthdr *header_pt; 
 	const u_char *packet; 
 	pcap_block_store *block_store; 
@@ -80,12 +82,12 @@ struct packet_s {
 	u_int16_t handle_index; 
 	u_int16_t dlt; 
 	u_int16_t sensor_id_u;
-	vmPort source; 
-	vmPort dest;
-	u_int16_t dataoffset;
+	vmPort _source; 
+	vmPort _dest;
+	u_int16_t _dataoffset;
 	u_int16_t header_ip_offset;
 	unsigned int istcp : 2;
-	u_int16_t vlan;
+	sPacketInfoData pid;
 	bool isother: 1;
 	bool is_ssl : 1;
 	bool is_skinny : 1;
@@ -93,8 +95,54 @@ struct packet_s {
 	bool is_need_sip_process : 1;
 	bool _blockstore_lock : 1;
 	bool _packet_alloc : 1;
+	sAudiocodes *audiocodes;
+	inline vmIP saddr_() {
+		if(audiocodes) {
+			return(audiocodes->packet_source_ip);
+		}
+		return(_saddr);
+	}
+	inline vmIP daddr_() {
+		if(audiocodes) {
+			return(audiocodes->packet_dest_ip);
+		}
+		return(_daddr);
+	}
+	inline vmPort source_() {
+		if(audiocodes) {
+			return(audiocodes->packet_source_port);
+		}
+		return(_source);
+	}
+	inline vmPort dest_() {
+		if(audiocodes) {
+			return(audiocodes->packet_dest_port);
+		}
+		return(_dest);
+	}
 	inline char *data_() {
-		return((char*)(packet + dataoffset));
+		return((char*)(packet + dataoffset_()));
+	}
+	inline u_int32_t datalen_() {
+		if(_datalen_set) {
+			return(_datalen_set);
+		}
+		if(audiocodes) {
+			return(_datalen - audiocodes->get_data_offset((u_char*)(packet + _dataoffset)));
+		}
+		return(_datalen);
+	}
+	inline void set_datalen_(u_int32_t datalen) {
+		if(datalen != datalen_()) {
+			_datalen_set = datalen;
+		}
+	}
+	inline u_int32_t dataoffset_() {
+		if(audiocodes) {
+			return(_dataoffset + 
+			       audiocodes->get_data_offset((u_char*)(packet + _dataoffset)));
+		}
+		return(_dataoffset);
 	}
 	inline iphdr2 *header_ip_() {
 		return((iphdr2*)(packet + header_ip_offset));
@@ -109,6 +157,13 @@ struct packet_s {
 	inline void init() {
 		_blockstore_lock = false;
 		_packet_alloc = false;
+		audiocodes = NULL;
+	}
+	inline void term() {
+		if(audiocodes) {
+			delete audiocodes;
+			audiocodes = NULL;
+		}
 	}
 	inline void blockstore_lock(int lock_flag) {
 		if(!_blockstore_lock && block_store) {
@@ -163,16 +218,16 @@ struct packet_s {
 		}
 	}
 	inline bool isRtp() {
-		return(IS_RTP(data_(), datalen));
+		return(IS_RTP(data_(), datalen_()));
 	}
 	inline bool isUdptl() {
-		return(!IS_RTP(data_(), datalen));
+		return(!IS_RTP(data_(), datalen_()));
 	}
 	inline bool okDataLenForRtp() {
-		return(datalen > 12);
+		return(datalen_() > 12);
 	}
 	inline bool okDataLenForUdptl() {
-		return(datalen > 3);
+		return(datalen_() > 3);
 	}
 	inline bool isRtpOkDataLen() {
 		return(isRtp() && okDataLenForRtp());
@@ -195,6 +250,9 @@ struct packet_s_stack : public packet_s {
 		packet_s::init();
 		stack = NULL;
 	}
+	inline void term() {
+		packet_s::term();
+	}
 };
 
 struct packet_s_plus_pointer : public packet_s {
@@ -214,8 +272,6 @@ struct packet_s_process_rtp_call_info {
 };
 
 struct packet_s_process_0 : public packet_s_stack {
-	char *data;
-	struct iphdr2 *header_ip; 
 	volatile u_int8_t use_reuse_counter;
 	volatile u_int8_t reuse_counter;
 	volatile u_int8_t reuse_counter_sync;
@@ -240,8 +296,6 @@ struct packet_s_process_0 : public packet_s_stack {
 		reuse_counter_sync = 0;
 	}
 	inline void init2() {
-		data = (char*)(packet + dataoffset);
-		header_ip = (iphdr2*)(packet + header_ip_offset);
 		isSip = -1;
 		isSkinny = false;
 		isMgcp = false;
@@ -249,10 +303,11 @@ struct packet_s_process_0 : public packet_s_stack {
 		init_reuse();
 	}
 	inline void init2_rtp() {
-		data = (char*)(packet + dataoffset);
-		header_ip = (iphdr2*)(packet + header_ip_offset);
 		call_info_length = -1;
 		init_reuse();
+	}
+	inline void term() {
+		packet_s_stack::term();
 	}
 	inline void new_alloc_packet_header() {
 		pcap_pkthdr *header_pt_new = new FILE_LINE(27001) pcap_pkthdr;
@@ -261,8 +316,6 @@ struct packet_s_process_0 : public packet_s_stack {
 		memcpy(packet_new, packet, header_pt->caplen);
 		header_pt = header_pt_new;
 		packet = packet_new;
-		data = (char*)(packet + dataoffset);
-		header_ip = (iphdr2*)(packet + header_ip_offset);
 	}
 	inline void set_use_reuse_counter() {
 		use_reuse_counter = 1;
@@ -336,6 +389,7 @@ struct packet_s_process : public packet_s_process_0 {
 		_createCall = false;
 	}
 	inline void term() {
+		packet_s_process_0::term();
 		if(callid_long) {
 			delete [] callid_long;
 			callid_long = NULL;
@@ -826,11 +880,6 @@ void _process_packet__cleanup_registers();
 #define enable_save_audio(call)		((call->flags & FLAG_SAVEAUDIO) || opt_savewav_force)
 #define enable_save_sip_rtp_audio(call)	(enable_save_sip_rtp(call) || enable_save_audio(call))
 #define enable_save_any(call)		(enable_save_packet(call) || enable_save_audio(call))
-
-
-#define VLAN_UNSET 0xFFFF
-#define VLAN_NOSET 0xFFFE
-#define VLAN_IS_SET(vlan) ((vlan & 0xFFF) == vlan)
 
 
 #endif

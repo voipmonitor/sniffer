@@ -42,7 +42,7 @@ public:
 			 vmPort port_src, vmPort port_dst,
 			 TcpReassemblyData *data,
 			 u_char *ethHeader, u_int32_t ethHeaderLength,
-			 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan,
+			 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 			 void *uData, TcpReassemblyLink *reassemblyLink,
 			 std::ostream *debugStream);
 	void cleanupCache(u_int64_t cache_time);

@@ -27,7 +27,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			     vmPort port_src, vmPort port_dst,
 			     TcpReassemblyData *data,
 			     u_char *ethHeader, u_int32_t ethHeaderLength,
-			     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan,
+			     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 			     void *uData, TcpReassemblyLink *reassemblyLink,
 			     std::ostream *debugStream) {
 	++this->counterProcessData;
@@ -107,12 +107,13 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					#if USE_PACKET_NUMBER
 					packetS->packet_number = 0;
 					#endif
-					packetS->saddr = _ip_src;
-					packetS->source = _port_src;
-					packetS->daddr = _ip_dst; 
-					packetS->dest = _port_dst;
-					packetS->datalen = _datalen; 
-					packetS->dataoffset = dataOffset;
+					packetS->_saddr = _ip_src;
+					packetS->_source = _port_src;
+					packetS->_daddr = _ip_dst; 
+					packetS->_dest = _port_dst;
+					packetS->_datalen = _datalen; 
+					packetS->_datalen_set = 0; 
+					packetS->_dataoffset = dataOffset;
 					packetS->handle_index = handle_index; 
 					packetS->header_pt = tcpHeader;
 					packetS->packet = tcpPacket; 
@@ -125,7 +126,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					packetS->dlt = dlt; 
 					packetS->sensor_id_u = (u_int16_t)sensor_id;
 					packetS->sensor_ip = sensor_ip;
-					packetS->vlan = vlan;
+					packetS->pid = pid;
 					packetS->is_ssl = false;
 					extern int opt_skinny;
 					extern char *sipportmatrix;
@@ -152,7 +153,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 							_datalen, dataOffset,
 							handle_index, tcpHeader, tcpPacket, true, 
 							2, false, (iphdr2*)(tcpPacket + ethHeaderLength),
-							NULL, 0, dlt, sensor_id, sensor_ip, vlan,
+							NULL, 0, dlt, sensor_id, sensor_ip, pid,
 							false);
 				}
 			}

@@ -204,7 +204,7 @@ public:
 				 vmPort port_src, vmPort port_dst,
 				 TcpReassemblyData *data,
 				 u_char *ethHeader, u_int32_t ethHeaderLength,
-				 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, u_int16_t vlan,
+				 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 				 void *uData,
 				 class TcpReassemblyLink *reassemblyLink,
 				 std::ostream *debugStream) = 0;
@@ -520,7 +520,7 @@ public:
 			  vmIP ip_src, vmIP ip_dst, 
 			  vmPort port_src, vmPort port_dst,
 			  u_char *packet, iphdr2 *header_ip,
-			  u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
+			  u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 			  void *uData) {
 		this->reassembly = reassembly;
 		this->ip_src = ip_src;
@@ -548,7 +548,6 @@ public:
 		this->direction_confirm = 0;
 		this->ethHeader = NULL;
 		this->ethHeaderLength = 0;
-		this->vlan = VLAN_UNSET;
 		if(packet && header_ip) {
 			this->createEthHeader(packet, dlt);
 		}
@@ -556,6 +555,7 @@ public:
 		this->dlt = dlt;
 		this->sensor_id = sensor_id;
 		this->sensor_ip = sensor_ip;
+		this->pid = pid;
 		this->uData = uData;
 		for(int i = 0; i < 2; i++) {
 			this->remainData[i] = NULL;
@@ -743,7 +743,7 @@ private:
 	int dlt; 
 	int sensor_id;
 	vmIP sensor_ip;
-	u_int16_t vlan;
+	sPacketInfoData pid;
 	void *uData;
 	u_char *remainData[2];
 	u_int32_t remainDataLength[2];
@@ -773,6 +773,7 @@ public:
 		int dlt; 
 		int sensor_id;
 		vmIP sensor_ip;
+		sPacketInfoData pid;
 		void *uData;
 		bool isSip;
 	};
@@ -781,7 +782,7 @@ public:
 	~TcpReassembly();
 	void push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet, bool alloc_packet,
 		      pcap_block_store *block_store, int block_store_index, bool block_store_locked,
-		      u_int16_t handle_index = 0, int dlt = 0, int sensor_id = 0, vmIP sensor_ip = 0,
+		      u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 		      void *uData = NULL, bool isSip = false);
 	void cleanup(bool all = false);
 	void cleanup_simple(bool all = false);
@@ -918,7 +919,7 @@ public:
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
-		   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip,
+		   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 		   void *uData, bool isSip);
 	void createCleanupThread();
 	void createPacketThread();

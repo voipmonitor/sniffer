@@ -1222,15 +1222,15 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 
 	extern int opt_vlan_siprtpsame;
 	if(opt_vlan_siprtpsame && VLAN_IS_SET(this->vlan) &&
-	   packetS->vlan != this->vlan) {
+	   packetS->pid.vlan != this->vlan) {
 		return(false);
 	}
 
 	RTPsecure *rtp_decrypt = NULL;
 	if(exists_crypto_suite_key && opt_srtp_rtcp_decrypt) {
-		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source.dec());
+		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_().dec());
 		if(index_call_ip_port_by_src < 0) {
-			index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source.dec(), true);
+			index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_().dec(), true);
 		}
 		if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
 			index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
@@ -1251,15 +1251,17 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 		}
 	}
 	
-	unsigned datalen_orig = packetS->datalen;
+	unsigned datalen_orig = packetS->datalen_();
 	if(rtp_decrypt && opt_srtp_rtcp_decrypt) {
-		rtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &packetS->datalen, getTimeUS(packetS->header_pt));
+		u_int32_t datalen = packetS->datalen_();
+		rtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &datalen, getTimeUS(packetS->header_pt));
+		packetS->set_datalen_(datalen);
 	}
 
-	parse_rtcp((char*)packetS->data_(), packetS->datalen, this);
+	parse_rtcp((char*)packetS->data_(), packetS->datalen_(), this);
 	
 	if(enable_save_packet) {
-		save_packet(this, packetS, TYPE_RTCP, packetS->datalen != datalen_orig);
+		save_packet(this, packetS, TYPE_RTCP, packetS->datalen_() != datalen_orig);
 	}
 	return(true);
 }
@@ -1269,7 +1271,7 @@ bool
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname) {
 	/*
 	if(sverb.dtls &&
-	   packetS->datalen &&
+	   packetS->datalen_() &&
 	   (packetS->data_()[0] == 0x16 || packetS->data_()[0] == 0x14)) {
 		read_dtls(packetS);
 		return(true);
@@ -1277,10 +1279,10 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 	*/
 	bool record_dtmf = false;
 	bool disable_save = false;
-	unsigned datalen_orig = packetS->datalen;
+	unsigned datalen_orig = packetS->datalen_();
 	bool rtp_read_rslt = _read_rtp(packetS, iscaller, find_by_dest, stream_in_multiple_calls, ifname, &record_dtmf, &disable_save);
 	if(!disable_save) {
-		_save_rtp(packetS, is_fax, enable_save_packet, record_dtmf, packetS->datalen != datalen_orig);
+		_save_rtp(packetS, is_fax, enable_save_packet, record_dtmf, packetS->datalen_() != datalen_orig);
 	}
 	return(rtp_read_rslt);
 }
@@ -1289,10 +1291,10 @@ bool
 Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
  
 	if(iscaller < 0) {
-		if(this->is_sipcaller(packetS->saddr, packetS->source, packetS->daddr, packetS->dest) || 
-		   this->is_sipcalled(packetS->daddr, packetS->dest, packetS->saddr, packetS->source) ||
-		   this->is_sipcaller(packetS->saddr, packetS->source, 0, 0) || 
-		   this->is_sipcalled(packetS->daddr, packetS->dest, 0, 0)) {
+		if(this->is_sipcaller(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()) || 
+		   this->is_sipcalled(packetS->daddr_(), packetS->dest_(), packetS->saddr_(), packetS->source_()) ||
+		   this->is_sipcaller(packetS->saddr_(), packetS->source_(), 0, 0) || 
+		   this->is_sipcalled(packetS->daddr_(), packetS->dest_(), 0, 0)) {
 			iscaller = 1;
 		} else {
 			iscaller = 0;
@@ -1308,12 +1310,12 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	
 	if(!packetS->isRtpUdptlOkDataLen() && !sverb.process_rtp_header) {
 		//Ignoring RTP packets without data
-		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen);
+		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen_());
 		return(false);
 	}
 
 	if(opt_vlan_siprtpsame && VLAN_IS_SET(this->vlan) &&
-	   packetS->vlan != this->vlan) {
+	   packetS->pid.vlan != this->vlan) {
 		*disable_save = true;
 		return(false);
 	}
@@ -1324,7 +1326,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	}
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
-	tmprtp.fill((u_char*)packetS->data_(), packetS->header_ip_(), packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest);
+	tmprtp.fill((u_char*)packetS->data_(), packetS->header_ip_(), packetS->datalen_(), packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_());
 	
 	unsigned int curSSRC;
 	bool udptl = false;
@@ -1371,13 +1373,13 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 /*
 			if(rtp[i]->last_seq == tmprtp.getSeqNum()) {
 				//ignore duplicated RTP with the same sequence
-				//if(verbosity > 1) printf("ignoring lastseq[%u] seq[%u] saddr[%u] dport[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), packetS->saddr, packetS->dest);
+				//if(verbosity > 1) printf("ignoring lastseq[%u] seq[%u] saddr[%u] dport[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), packetS->saddr_(), packetS->dest_());
 				return(false);
 			}
 */
 
-			if(rtp[i]->eqAddrPort(packetS->saddr, packetS->daddr, packetS->source, packetS->dest)) {
-				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), packetS->saddr, packetS->dest);
+			if(rtp[i]->eqAddrPort(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_())) {
+				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), packetS->saddr_(), packetS->dest_());
 				// found 
 			 
 				if(rtp[i]->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) {
@@ -1442,22 +1444,24 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 read:
 						if(rtp[i]->index_call_ip_port >= 0) {
 							evProcessRtpStream(rtp[i]->index_call_ip_port, rtp[i]->index_call_ip_port_by_dest,
-									   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header_pt->ts.tv_sec);
+									   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->header_pt->ts.tv_sec);
 						}
 						if(find_by_dest ?
-						    rtp[i]->prev_sport.isSet() && rtp[i]->prev_sport != packetS->source :
-						    rtp[i]->prev_dport.isSet() && rtp[i]->prev_dport != packetS->dest) {
+						    rtp[i]->prev_sport.isSet() && rtp[i]->prev_sport != packetS->source_() :
+						    rtp[i]->prev_dport.isSet() && rtp[i]->prev_dport != packetS->dest_()) {
 							rtp[i]->change_src_port = true;
 						}
-						if(rtp[i]->read((u_char*)packetS->data_(), packetS->header_ip_(), &packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
+						u_int32_t datalen = packetS->datalen_();
+						if(rtp[i]->read((u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
 								packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
 							rtp_read_rslt = true;
 							if(stream_in_multiple_calls) {
 								rtp[i]->stream_in_multiple_calls = true;
 							}
 						}
-						rtp[i]->prev_sport = packetS->source;
-						rtp[i]->prev_dport = packetS->dest;
+						packetS->set_datalen_(datalen);
+						rtp[i]->prev_sport = packetS->source_();
+						rtp[i]->prev_dport = packetS->dest_();
 						if(rtp[i]->iscaller) {
 							lastcallerrtp = rtp[i];
 						} else {
@@ -1469,7 +1473,7 @@ read:
 						if(verbosity > 1) printf("mchange [%d] [%d]?\n", rtp[i]->codec, oldcodec);
 						rtp[i]->ssrc2 = 0;
 					} else {
-						//if(verbosity > 1) printf("wtf lastseq[%u] seq[%u] saddr[%u] dport[%u] oldcodec[%u] rtp[i]->codec[%u] rtp[i]->payload2[%u] curpayload[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), packetS->saddr, packetS->dest, oldcodec, rtp[i]->codec, rtp[i]->payload2, curpayload);
+						//if(verbosity > 1) printf("wtf lastseq[%u] seq[%u] saddr[%u] dport[%u] oldcodec[%u] rtp[i]->codec[%u] rtp[i]->payload2[%u] curpayload[%u]\n", rtp[i]->last_seq, tmprtp.getSeqNum(), packetS->saddr_(), packetS->dest_(), oldcodec, rtp[i]->codec, rtp[i]->payload2, curpayload);
 					}
 				}
 			}
@@ -1488,10 +1492,10 @@ read:
 			rtp[ssrc_n]->ssrc_index = ssrc_n; 
 			rtp[ssrc_n]->iscaller = iscaller; 
 			rtp[ssrc_n]->find_by_dest = find_by_dest;
-			rtp[ssrc_n]->saddr = packetS->saddr;
-			rtp[ssrc_n]->daddr = packetS->daddr;
-			rtp[ssrc_n]->sport = packetS->source;
-			rtp[ssrc_n]->dport = packetS->dest;
+			rtp[ssrc_n]->saddr = packetS->saddr_();
+			rtp[ssrc_n]->daddr = packetS->daddr_();
+			rtp[ssrc_n]->sport = packetS->source_();
+			rtp[ssrc_n]->dport = packetS->dest_();
 			++rtp[ssrc_n]->s->received;
 			++rtp[ssrc_n]->stats.received;
 			ssrc_n++;
@@ -1499,14 +1503,14 @@ read:
 			return(true);
 		}
 		
-		int index_call_ip_port_find_side = this->get_index_by_ip_port(find_by_dest ? packetS->daddr : packetS->saddr,
-									      find_by_dest ? packetS->dest : packetS->source);
-		int index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr,
-									       find_by_dest ? packetS->source : packetS->dest);
+		int index_call_ip_port_find_side = this->get_index_by_ip_port(find_by_dest ? packetS->daddr_() : packetS->saddr_(),
+									      find_by_dest ? packetS->dest_() : packetS->source_());
+		int index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(),
+									       find_by_dest ? packetS->source_() : packetS->dest_());
 		if(opt_rtp_check_both_sides_by_sdp && index_call_ip_port_find_side >= 0 && iscaller_is_set(iscaller)) {
 			if(index_call_ip_port_other_side < 0) {
-				index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr,
-											   find_by_dest ? packetS->source : packetS->dest,
+				index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(),
+											   find_by_dest ? packetS->source_() : packetS->dest_(),
 											   true);
 			}
 			if(this->ip_port[index_call_ip_port_find_side].callerd_confirm_sdp[iscaller_index(iscaller)]) {
@@ -1565,9 +1569,9 @@ read:
 		   (opt_srtp_rtp_decrypt || 
 		    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 		    opt_saveRAW || opt_savewav_force)) {
-			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source);
+			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_());
 			if(index_call_ip_port_by_src < 0) {
-				index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr, packetS->source, true);
+				index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), true);
 			}
 			if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
 				index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
@@ -1593,9 +1597,9 @@ read:
 		rtp[ssrc_n]->find_by_dest = find_by_dest;
 		rtp[ssrc_n]->ok_other_ip_side_by_sip = typeIs(MGCP) || 
 						       (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
-						       this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr : packetS->daddr) ||
-						       (this->get_index_by_ip_port(find_by_dest ? packetS->saddr : packetS->daddr, find_by_dest ? packetS->source : packetS->dest) >= 0 &&
-							this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr : packetS->saddr));
+						       this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr_() : packetS->daddr_()) ||
+						       (this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(), find_by_dest ? packetS->source_() : packetS->dest_()) >= 0 &&
+							this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr_() : packetS->saddr_()));
 		if(rtp_cur[iscaller]) {
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}
@@ -1630,7 +1634,7 @@ read:
 		if(rtp[ssrc_n]->index_call_ip_port >= 0) {
 			rtp[ssrc_n]->index_call_ip_port_by_dest = find_by_dest;
 			evProcessRtpStream(rtp[ssrc_n]->index_call_ip_port, rtp[ssrc_n]->index_call_ip_port_by_dest, 
-					   packetS->saddr, packetS->source, packetS->daddr, packetS->dest, packetS->header_pt->ts.tv_sec);
+					   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->header_pt->ts.tv_sec);
 		}
 		if(opt_rtpmap_by_callerd) {
 			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[isFillRtpMap(iscaller) ? iscaller : !iscaller], MAX_RTPMAP * sizeof(RTPMAP));
@@ -1651,16 +1655,18 @@ read:
 			}
 		}
 
-		if(rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->header_ip_(), &packetS->datalen, packetS->header_pt, packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
+		u_int32_t datalen = packetS->datalen_();
+		if(rtp[ssrc_n]->read((u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
 				     packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
 			rtp_read_rslt = true;
 			if(stream_in_multiple_calls) {
 				rtp[ssrc_n]->stream_in_multiple_calls = true;
 			}
 		}
-		rtp[ssrc_n]->prev_sport = packetS->source;
-		rtp[ssrc_n]->prev_dport = packetS->dest;
-		if(sverb.check_is_caller_called) printf("new rtp[%p] ssrc[%x] seq[%u] saddr[%s] dport[%u] iscaller[%u]\n", rtp[ssrc_n], curSSRC, rtp[ssrc_n]->seq, packetS->saddr.getString().c_str(), packetS->dest.getPort(), rtp[ssrc_n]->iscaller);
+		packetS->set_datalen_(datalen);
+		rtp[ssrc_n]->prev_sport = packetS->source_();
+		rtp[ssrc_n]->prev_dport = packetS->dest_();
+		if(sverb.check_is_caller_called) printf("new rtp[%p] ssrc[%x] seq[%u] saddr[%s] dport[%u] iscaller[%u]\n", rtp[ssrc_n], curSSRC, rtp[ssrc_n]->seq, packetS->saddr_().getString().c_str(), packetS->dest_().getPort(), rtp[ssrc_n]->iscaller);
 		this->rtp[ssrc_n]->ssrc = this->rtp[ssrc_n]->ssrc2 = curSSRC;
 		this->rtp[ssrc_n]->payload2 = curpayload;
 
@@ -1701,7 +1707,7 @@ Call::read_dtls(struct packet_s *packetS) {
 		return;
 	}
 	u_char *data = (u_char*)packetS->data_();
-	unsigned limitSize = packetS->datalen;
+	unsigned limitSize = packetS->datalen_();
 	unsigned pos = 0;
 	unsigned counter = 0;
 	while(pos < limitSize) {
@@ -1710,8 +1716,8 @@ Call::read_dtls(struct packet_s *packetS) {
 			cDtlsHeader::sFixHeader fixHeader = dtlsHeader.getFixHeader();
 			if(!counter) {
 				cout << "DTLS " 
-				     << packetS->saddr.getString() << ':' << packetS->source << " -> "
-				     << packetS->daddr.getString() << ':' << packetS->dest
+				     << packetS->saddr_().getString() << ':' << packetS->source_() << " -> "
+				     << packetS->daddr_().getString() << ':' << packetS->dest_()
 				     << endl;
 			}
 			cout << "content_type: " << (int)fixHeader.content_type << ", "
@@ -1735,17 +1741,17 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 	if(opt_fax_create_udptl_streams) {
 		if(is_fax && packetS->okDataLenForUdptl()) {
 			sUdptlDumper *udptlDumper;
-			sStreamId streamId(packetS->saddr, packetS->source, packetS->daddr, packetS->dest);
+			sStreamId streamId(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
 			map<sStreamId, sUdptlDumper*>::iterator iter = udptlDumpers.find(streamId);
 			if(iter == udptlDumpers.end()) {
 				udptlDumper = new FILE_LINE(0) sUdptlDumper();
 				udptlDumper->dumper = new FILE_LINE(0) PcapDumper();
 				extern pcap_t *global_pcap_handle;
 				string filename = "udptl_stream_" + 
-						  packetS->saddr.getString() + "_" + 
-						  intToString(packetS->source.getPort()) + "_" + 
-						  packetS->daddr.getString() + "_" + 
-						  intToString(packetS->dest.getPort()) + ".pcap";
+						  packetS->saddr_().getString() + "_" + 
+						  intToString(packetS->source_().getPort()) + "_" + 
+						  packetS->daddr_().getString() + "_" + 
+						  intToString(packetS->dest_().getPort()) + ".pcap";
 				udptlDumper->dumper->open(tsf_na, (get_pathname(tsf_rtp) + "/" + filename).c_str(), global_pcap_handle, DLT_EN10MB);
 				udptlDumpers[streamId] = udptlDumper;
 			} else {
@@ -1790,7 +1796,7 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 						sizeof(udphdr2);
 					createSimpleUdpDataPacket(sizeof(ether_header), &header, &packet,
 								  (u_char*)header_eth, (u_char*)packetS->data_(), dataLen,
-								  packetS->saddr, packetS->daddr, packetS->source, packetS->dest,
+								  packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
 								  packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
 					udptlDumper->dumper->dump(header, packet, DLT_EN10MB);
 					if(packetS->dlt == DLT_EN10MB) {
@@ -1823,10 +1829,10 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 	}
 	if(enable_save_packet) {
 		if((this->silencerecording || (this->flags & FLAG_SAVERTPHEADER)) && !this->isfax && !record_dtmf) {
-			if(packetS->datalen >= RTP_FIXED_HEADERLEN &&
-			   packetS->header_pt->caplen > (unsigned)(packetS->datalen - RTP_FIXED_HEADERLEN)) {
+			if(packetS->datalen_() >= RTP_FIXED_HEADERLEN &&
+			   packetS->header_pt->caplen > (unsigned)(packetS->datalen_() - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = packetS->header_pt->caplen;
-				packetS->header_pt->caplen = packetS->header_pt->caplen - (packetS->datalen - RTP_FIXED_HEADERLEN);
+				packetS->header_pt->caplen = packetS->header_pt->caplen - (packetS->datalen_() - RTP_FIXED_HEADERLEN);
 				save_packet(this, packetS, TYPE_RTP);
 				packetS->header_pt->caplen = tmp_u32;
 			}
@@ -6337,8 +6343,8 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 	case SS7_IAM:
 		last_message_type = iam;
 		iam_data = *data;
-		iam_src_ip = packetS->saddr;
-		iam_dst_ip = packetS->daddr;
+		iam_src_ip = packetS->saddr_();
+		iam_dst_ip = packetS->daddr_();
 		iam_time_us = getTimeUS(packetS->header_pt);
 		strcpy_null_term(fbasename, filename().c_str());
 		break;
@@ -8304,7 +8310,7 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 extern char * gettag_ext(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents, 
 			 const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
 void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection) {
-	char *data = packetS->data + packetS->sipDataOffset;
+	char *data = packetS->data_() + packetS->sipDataOffset;
 	int datalen = packetS->sipDataLen;
 	ParsePacket::ppContentsX *parseContents = &packetS->parseContents;
 

@@ -34,7 +34,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 #if SNIFFER_INLINE_FUNCTIONS
 inline
 #endif
-int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, unsigned caplen);
+int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packet, unsigned caplen, u_int8_t *flags = NULL);
 
 enum pcapProcessFlags {
 	ppf_na = 0,

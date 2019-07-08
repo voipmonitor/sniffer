@@ -127,7 +127,7 @@ void cSipMsgItem::parseContent(packet_s_process *packetS) {
 		content_length = atoi(string(s, l).c_str());
 	}
 	if(content_length > 0 && content_length < packetS->sipDataLen) {
-		char *data = packetS->data + packetS->sipDataOffset;
+		char *data = packetS->data_() + packetS->sipDataOffset;
 		unsigned int datalen = packetS->sipDataLen;
 		char endCharData = data[datalen - 1];
 		data[datalen - 1] = 0;
@@ -236,8 +236,8 @@ void cSipMsgRequestResponse::savePacket(packet_s_process *packetS) {
 		pcap_pkthdr *header = packetS->header_pt;
 		u_char *packet = (u_char*)packetS->packet;
 		cdp.pcap->dump(header, packet, packetS->dlt, false, 
-			       (u_char*)packetS->data + packetS->sipDataOffset, packetS->sipDataLen,
-			       packetS->saddr, packetS->daddr, packetS->source, packetS->dest, packetS->istcp);
+			       (u_char*)packetS->data_() + packetS->sipDataOffset, packetS->sipDataLen,
+			       packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->istcp);
 	}
 }
 

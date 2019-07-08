@@ -2634,7 +2634,7 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
  
 	iphdr2 *header_ip = (iphdr2*)(packet + offset);
 	while(true) {
-		int next_header_ip_offset = findNextHeaderIp(header_ip, offset, header->caplen);
+		int next_header_ip_offset = findNextHeaderIp(header_ip, offset, packet, header->caplen);
 		if(next_header_ip_offset == 0) {
 			break;
 		} else if(next_header_ip_offset < 0) {
@@ -4293,7 +4293,8 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				pcap_header_plus2->detect_headers = 0x01;
 				pcap_header_plus2->header_ip_first_offset = checkProtocolData.header_ip_offset;
 				pcap_header_plus2->eth_protocol = checkProtocolData.protocol;
-				pcap_header_plus2->vlan = checkProtocolData.vlan;
+				pcap_header_plus2->pid.vlan = checkProtocolData.vlan;
+				pcap_header_plus2->pid.flags = 0;
 			}
 			pcap_header_plus2->convertFromStdHeader(pcap_next_ex_header);
 			pcap_header_plus2->header_ip_offset = 0;
@@ -4562,7 +4563,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	sHeaderPacket **header_packet_fetch = NULL;
 	int res;
 	u_int header_ip_offset = 0;
-	u_int16_t vlan = VLAN_UNSET;
+	sPacketInfoData pid;
+	pid.init();
 	u_int dlink = global_pcap_dlink;
 
 	if(this->readThreadsCount) {
@@ -4644,7 +4646,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 							      &ppd, this->readThreads[minThreadTimeIndex]->pcapLinklayerHeaderType, NULL, NULL);
 					}
 					header_ip_offset = hpi.header_packet->header_ip_offset;
-					vlan = hpi.header_packet->vlan;
+					pid = hpi.header_packet->pid;
 					dlink = this->readThreads[minThreadTimeIndex]->pcapLinklayerHeaderType;
 					blockStoreIndex = minThreadTimeIndex;
 					fetchPacketOk = true;
@@ -4729,7 +4731,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				if(fetchPacketOk) {
 					header_packet_fetch = &header_packet_read;
 					header_ip_offset = this->ppd.header_ip_offset;
-					vlan = this->ppd.vlan;
+					pid = this->ppd.pid;
 					/* check change packet content - disabled
 					if(ip_tot_len && ip_tot_len != ((iphdr2*)(packet_pcap + 14))->tot_len) {
 						static u_long lastTimeLogErrBuggyKernel = 0;
@@ -4773,7 +4775,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				pcap_header_plus.convertFromStdHeader(HPH(*header_packet_fetch));
 				pcap_header_plus.header_ip_offset = header_ip_offset;
 				pcap_header_plus.dlink = dlink;
-				pcap_header_plus.vlan = vlan;
+				pcap_header_plus.pid = pid;
 				if(this->block_qring) {
 					if(blockStore[blockStoreIndex]->add_hp(&pcap_header_plus, (u_char*)header_packet_fetch, sizeof(sHeaderPacket*))) {
 						okAddPacket = true;
@@ -6867,7 +6869,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 
 	if(header_ip) {
 		while(true) {
-			int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, hp->header->get_caplen());
+			int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, 
+								     hp->packet, hp->header->get_caplen());
 			if(next_header_ip_offset == 0) {
 				break;
 			} else if(next_header_ip_offset < 0) {
@@ -6936,20 +6939,20 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		   (tcpReassemblyHttp->check_ip(header_ip->get_saddr()) || tcpReassemblyHttp->check_ip(header_ip->get_daddr()))) {
 			tcpReassemblyHttp->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						    hp->block_store, hp->block_store_index, hp->block_store_locked,
-						    this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);
+						    this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
 			return(1);
 		} else if(opt_enable_webrtc && (webrtcportmatrix[sport] || webrtcportmatrix[dport]) &&
 			  (tcpReassemblyWebrtc->check_ip(header_ip->get_saddr()) || tcpReassemblyWebrtc->check_ip(header_ip->get_daddr()))) {
 			tcpReassemblyWebrtc->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						      hp->block_store, hp->block_store_index, hp->block_store_locked,
-						      this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);
+						      this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
 			return(1);
 		} else if(opt_enable_ssl && 
 			  (isSslIpPort(header_ip->get_saddr(), sport) ||
 			   isSslIpPort(header_ip->get_daddr(), dport))) {
 			tcpReassemblySsl->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						   hp->block_store, hp->block_store_index, hp->block_store_locked,
-						   this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id);
+						   this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
 			return(1);
 		} else if(opt_ipaccount &&
 			  !(sipportmatrix[sport] || sipportmatrix[dport])) {
@@ -6985,7 +6988,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			datalen, data - (char*)hp->packet,
 			this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
 			istcp, isother, header_ip,
-			hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->vlan,
+			hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid,
 			hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);
 		return(1);
 	}
@@ -7288,7 +7291,8 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 	while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
 		headers_ip_offset[headers_ip_counter] = hp->header->header_ip_offset;
 		++headers_ip_counter;
-		int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, hp->header->get_caplen());
+		int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, 
+							     hp->packet, hp->header->get_caplen());
 		if(next_header_ip_offset == 0) {
 			break;
 		} else if(next_header_ip_offset < 0) {
