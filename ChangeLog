@@ -1,3 +1,9 @@
+25.2 08.07.2019
+===============
+- add support for audiocodes mirroring. New options audiocodes, udp_port_audiocodes, tcp_port_audiocodes [VS-939]
+- fix crash in packetbuffer / disc buffer (if packetbuffer_file_path and packetbuffer_file_totalmaxsize is set)
+
+
 25.1.1 04.07.2019
 =================
 - fix potential crash in convertRawToWav
