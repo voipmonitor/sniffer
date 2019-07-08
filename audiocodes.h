@@ -108,6 +108,7 @@ struct sAudiocodes {
 		ac_tp_DspOutgoing		=34,
 		ac_tp_AfterSrtpDecoder=35
 	};
+	void init();
 	bool parse(u_char *ac_header, unsigned length);
 	void set_ip(vmIP *ip, u_char *data, bool ipv6 = false);
 	void set_port(vmPort *port, u_char *data);

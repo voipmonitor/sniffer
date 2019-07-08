@@ -67,11 +67,15 @@
 #define MTCE_MASK		0x20
 
 
-bool sAudiocodes::parse(u_char *ac_header, unsigned /*length*/) {
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+void sAudiocodes::init() {
 	memset(this, 0, sizeof(*this));
-	#pragma GCC diagnostic pop
+}
+#pragma GCC diagnostic pop
+
+bool sAudiocodes::parse(u_char *ac_header, unsigned /*length*/) {
+	init();
 	u_int8_t id_length;
 	bool medium_mii = false;
 	bool header_added = false;
