@@ -524,7 +524,7 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	this->full = true;
 }
 
-int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offset, bool autoRestore) {
+int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offset, bool restoreFromStore) {
 	u_char *_buffer = buffer + (offset ? *offset : 0);
 	size_t _size = size - (offset ? *offset : 0);
 	if(_size <= 0) {
@@ -556,7 +556,8 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	   ((pcap_block_store_header*)this->restoreBuffer)->version != PCAP_BLOCK_STORE_HEADER_VERSION) {
 		return(-6);
 	}
-	if(this->restoreBufferSize >= sizeof(pcap_block_store_header) &&
+	if(!restoreFromStore &&
+	   this->restoreBufferSize >= sizeof(pcap_block_store_header) &&
 	   ((pcap_block_store_header*)this->restoreBuffer)->time_s) {
 		if(abs((int)(((pcap_block_store_header*)this->restoreBuffer)->time_s % 3600) - (int)(getTimeS() % 3600)) > 30) {
 			return(-7);
@@ -581,10 +582,8 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 			return(-5);
 		}
 	}
-	if(autoRestore) {
-		this->restoreFromSaveBuffer(this->restoreBuffer);
-		this->destroyRestoreBuffer();
-	}
+	this->restoreFromSaveBuffer(this->restoreBuffer);
+	this->destroyRestoreBuffer();
 	return(1);
 }
 
@@ -868,10 +867,17 @@ bool pcap_file_store::pop(pcap_block_store *blockStore) {
 	size_t readBuffSize = 1000;
 	u_char *readBuff = new FILE_LINE(15020) u_char[readBuffSize];
 	size_t readed;
+	int rsltRestoreChunk = 0;
 	while((readed = fread(readBuff, 1, readBuffSize, this->fileHandlePop)) > 0) {
-		if(blockStore->addRestoreChunk(readBuff, readed) > 0) {
+		rsltRestoreChunk = blockStore->addRestoreChunk(readBuff, readed, NULL, true);
+		if(rsltRestoreChunk != 0) {
 			break;
 		}
+	}
+	if(rsltRestoreChunk < 0) {
+		syslog(LOG_ERR, "packetbuffer: restore block from %s failed - %s", 
+		       this->getFilePathName().c_str(),
+		       blockStore->addRestoreChunk_getErrorString(rsltRestoreChunk).c_str());
 	}
 	delete [] readBuff;
 	++this->countPop;
@@ -879,7 +885,7 @@ bool pcap_file_store::pop(pcap_block_store *blockStore) {
 	if(this->countPop == this->countPush && this->isFull()) {
 		this->close(typeHandlePop);
 	}
-	return(true);
+	return(rsltRestoreChunk > 0);
 }
 
 bool pcap_file_store::open(eTypeHandle typeHandle) {
