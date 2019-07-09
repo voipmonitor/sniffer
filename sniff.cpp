@@ -4072,6 +4072,10 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	call->msgcount++;
 	if(packetS->sip_method == REGISTER) {
 		call->regcount++;
+		if(IS_SIP_RES4XX(call->last_sip_method)) {
+			call->regcount_after_4xx = 0;
+		}
+		call->regcount_after_4xx++;
 		if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER Call-ID[%s] regcount[%d]", call->call_id.c_str(), call->regcount);
 
 		// update Authorization
@@ -4081,6 +4085,18 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
 		}
 
+		if(call->regstate == 2 &&
+		   (call->last_sip_method == RES403 || call->last_sip_method == RES404)) {
+			call->saveregister(&packetS->header_pt->ts);
+			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
+			if(call == NULL) {
+				goto endsip;
+			}
+			if(packetS->cseq.is_set()) {
+				call->registercseq = packetS->cseq;
+			}
+			goto endsip_save_packet;
+		}
 		if(call->regcount > 4 && !call->reg200count && !call->reg401count_all) {
 			// to much register attempts without OK or 401 responses
 			call->regstate = 4;
@@ -4088,6 +4104,9 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 			if(call == NULL) {
 				goto endsip;
+			}
+			if(packetS->cseq.is_set()) {
+				call->registercseq = packetS->cseq;
 			}
 			if(logPacketSipMethodCall_enable) {
 				logPacketSipMethodCallDescr = "to much register attempts without OK or 401 responses";
@@ -4103,6 +4122,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		call->seenRES2XX = true;
 		call->reg401count = 0;
 		call->reg401count_sipcallerip_vlan.clear();
+		call->reg403count = 0;
+		call->reg404count = 0;
 		// update expires header from all REGISTER dialog messages (from 200 OK which can override the expire) but not if register_expires == 0
 		if(call->register_expires != 0) {
 			s = gettag_sip(packetS, "\nExpires:", &l);
@@ -4182,6 +4203,12 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d] reg401count_distinct[%lu]", 
 						 call->call_id.c_str(), call->reg401count, call->reg401count_sipcallerip_vlan.size());
 			break;
+		case RES403:
+			++call->reg403count;
+			break;
+		case RES404:
+			++call->reg404count;
+			break;
 		}
 		if((packetS->sip_method == RES401 && okres401 && call->reg401count > (int)call->reg401count_sipcallerip_vlan.size()) || 
 		   packetS->sip_method == RES403 ||
@@ -4189,7 +4216,13 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			// registration failed
 			call->regstate = 2;
 			save_packet(call, packetS, TYPE_SIP);
-			call->saveregister(&packetS->header_pt->ts);
+			if(packetS->sip_method == RES401 ||
+			   (packetS->sip_method == RES403 && call->reg403count >= call->regcount_after_4xx) ||
+			   (packetS->sip_method == RES404 && call->reg404count >= call->regcount_after_4xx)) {
+				call->saveregister(&packetS->header_pt->ts);
+			} else {
+				call->destroy_call_at = packetS->header_pt->ts.tv_sec + 1;
+			}
 			if(logPacketSipMethodCall_enable) {
 				logPacketSipMethodCallDescr =
 					packetS->sip_method == RES401 ? "REGISTER 401 count > 1" :
@@ -4252,6 +4285,10 @@ endsip:
 				cout << "set b_ua " << call->b_ua << endl;
 			}
 		}
+	}
+	
+	if(call) {
+		call->last_sip_method = packetS->sip_method;
 	}
 	
 	if(logPacketSipMethodCall_enable) {

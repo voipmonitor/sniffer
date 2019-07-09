@@ -623,15 +623,19 @@ public:
 	int recordingpausedby182;
 	int msgcount;
 	int regcount;
+	int regcount_after_4xx;
 	int reg401count;
 	int reg401count_all;
 	list<d_item2<vmIP, u_int16_t> > reg401count_sipcallerip_vlan;
+	int reg403count;
+	int reg404count;
 	int reg200count;
 	int regstate;
 	bool regresponse;
 	timeval regrrdstart;		// time of first REGISTER
 	int regrrddiff;			// RRD diff time REGISTER<->OK in [ms]- RFC6076
 	uint64_t regsrcmac;		// mac if ether layer present in REGISTER
+	int last_sip_method;
 	volatile unsigned int rtppacketsinqueue;
 	volatile int end_call_rtp;
 	volatile int end_call_hash_removed;

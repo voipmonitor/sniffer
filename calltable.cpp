@@ -515,13 +515,17 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	is_sipalg_detected = false;
 	msgcount = 0;
 	regcount = 0;
+	regcount_after_4xx = 0;
 	reg401count = 0;
 	reg401count_all = 0;
+	reg403count = 0;
+	reg404count = 0;
 	reg200count = 0;
 	regstate = 0;
 	regresponse = false;
 	regrrddiff = -1;
 	//regsrcmac = 0;
+	last_sip_method = 0;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
 	}
