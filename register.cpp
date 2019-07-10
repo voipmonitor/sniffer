@@ -21,6 +21,7 @@ extern int opt_enable_fraud;
 
 extern bool opt_sip_register_compare_sipcallerip;
 extern bool opt_sip_register_compare_sipcalledip;
+extern bool opt_sip_register_compare_sipcalledport;
 extern bool opt_sip_register_compare_to_domain;
 extern bool opt_sip_register_compare_vlan;
 
@@ -52,6 +53,8 @@ struct RegisterFields {
 	{ rf_calldate, "calldate" },
 	{ rf_sipcallerip, "sipcallerip" },
 	{ rf_sipcalledip, "sipcalledip" },
+	{ rf_sipcallerport, "sipcallerport" },
+	{ rf_sipcalledport, "sipcalledport" },
 	{ rf_from_num, "from_num" },
 	{ rf_from_name, "from_name" },
 	{ rf_from_domain, "from_domain" },
@@ -81,6 +84,7 @@ RegisterId::RegisterId(Register *reg) {
 bool RegisterId:: operator == (const RegisterId& other) const {
 	return((!opt_sip_register_compare_sipcallerip || this->reg->sipcallerip == other.reg->sipcallerip) &&
 	       (!opt_sip_register_compare_sipcalledip || this->reg->sipcalledip == other.reg->sipcalledip) &&
+	       (!opt_sip_register_compare_sipcalledport || this->reg->sipcalledport == other.reg->sipcalledport) &&
 	       (!opt_sip_register_compare_vlan || this->reg->vlan == other.reg->vlan) &&
 	       REG_EQ_STR(this->reg->to_num, other.reg->to_num) &&
 	       (!opt_sip_register_compare_to_domain || REG_EQ_STR(this->reg->to_domain, other.reg->to_domain)) &&
@@ -97,6 +101,7 @@ bool RegisterId:: operator < (const RegisterId& other) const {
 	int rslt_cmp_digest_username;
 	return((opt_sip_register_compare_sipcallerip && this->reg->sipcallerip < other.reg->sipcallerip) ? 1 : (opt_sip_register_compare_sipcallerip && this->reg->sipcallerip > other.reg->sipcallerip) ? 0 :
 	       (opt_sip_register_compare_sipcalledip && this->reg->sipcalledip < other.reg->sipcalledip) ? 1 : (opt_sip_register_compare_sipcalledip && this->reg->sipcalledip > other.reg->sipcalledip) ? 0 :
+	       (opt_sip_register_compare_sipcalledport && this->reg->sipcalledport < other.reg->sipcalledport) ? 1 : (opt_sip_register_compare_sipcalledport && this->reg->sipcalledport > other.reg->sipcalledport) ? 0 :
 	       (opt_sip_register_compare_vlan && this->reg->vlan < other.reg->vlan) ? 1 : (opt_sip_register_compare_vlan && this->reg->vlan > other.reg->vlan) ? 0 :
 	       ((rslt_cmp_to_num = REG_CMP_STR(this->reg->to_num, other.reg->to_num)) < 0) ? 1 : (rslt_cmp_to_num > 0) ? 0 :
 	       (opt_sip_register_compare_to_domain && (rslt_cmp_to_domain = REG_CMP_STR(this->reg->to_domain, other.reg->to_domain)) < 0) ? 1 : (opt_sip_register_compare_to_domain && rslt_cmp_to_domain > 0) ? 0 :
@@ -219,6 +224,8 @@ Register::Register(Call *call) {
 	unlock_id();
 	sipcallerip = call->sipcallerip[0];
 	sipcalledip = call->sipcalledip[0];
+	sipcallerport = call->sipcallerport[0];
+	sipcalledport = call->sipcalledport[0];
 	char *tmp_str;
 	to_num = REG_NEW_STR(call->called);
 	to_domain = REG_NEW_STR(call->called_domain);
@@ -614,6 +621,8 @@ bool Register::getDataRow(RecordArray *rec) {
 	rec->fields[rf_id].set(id);
 	rec->fields[rf_sipcallerip].set(sipcallerip, RecordArrayField::tf_ip_n4);
 	rec->fields[rf_sipcalledip].set(sipcalledip, RecordArrayField::tf_ip_n4);
+	rec->fields[rf_sipcallerport].set(sipcallerport, RecordArrayField::tf_port);
+	rec->fields[rf_sipcalledport].set(sipcalledport, RecordArrayField::tf_port);
 	rec->fields[rf_to_num].set(to_num);
 	rec->fields[rf_to_domain].set(to_domain);
 	rec->fields[rf_contact_num].set(contact_num);

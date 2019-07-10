@@ -24,6 +24,7 @@ struct RecordArrayField {
 		tf_uint,
 		tf_ip,
 		tf_ip_n4,
+		tf_port,
 		tf_float,
 		tf_pointer,
 		tf_time,
@@ -69,6 +70,10 @@ struct RecordArrayField {
 		this->tf = tf;
 		this->v_ip = ip;
 	}
+	void set(vmPort port, eTypeField tf = tf_port) {
+		this->tf = tf;
+		this->v_port = port;
+	}
 	void set(double d, eTypeField tf = tf_float) {
 		this->tf = tf;
 		this->v.d = d;
@@ -109,6 +114,11 @@ struct RecordArrayField {
 			v_ip :
 			0);
 	}
+	vmPort get_port() {
+		return(tf == tf_port ?
+			v_port :
+			vmPort(0));
+	}
 	bool get_bool() {
 		return(tf == tf_bool ? (bool)v.b : false);
 	}
@@ -146,6 +156,8 @@ struct RecordArrayField {
 			case tf_ip:
 			case tf_ip_n4:
 				return(v_ip == other.v_ip);
+			case tf_port:
+				return(v_port == other.v_port);
 			case tf_float:
 				return(v.d == other.v.d);
 			case tf_pointer:
@@ -172,6 +184,8 @@ struct RecordArrayField {
 			case tf_ip:
 			case tf_ip_n4:
 				return(v_ip < other.v_ip);
+			case tf_port:
+				return(v_port < other.v_port);
 			case tf_float:
 				return(v.d < other.v.d);
 			case tf_pointer:
@@ -198,6 +212,7 @@ struct RecordArrayField {
 		bool b;
 	} v;
 	vmIP v_ip;
+	vmPort v_port;
 };
 
 struct RecordArrayField2 : public RecordArrayField {
