@@ -790,18 +790,17 @@ void cSipMsgRelations::addSipMsg(cSipMsgItem *item, packet_s_process *packetS) {
 	if(iter != relations.end()) {
 		relation = iter->second;
 	}
-	unlock_relations();
 	if(!relation) {
 		if(item->response) {
 			delete item;
+			unlock_relations();
 			return;
 		}
 		relation = new FILE_LINE(0) cSipMsgRelation(item);
-		lock_relations();
 		relations[relation] = relation;
-		unlock_relations();
 	}
 	relation->addSipMsg(item, packetS, this);
+	unlock_relations();
 	do_cleanup_relations(getTimeMS(&packetS->header_pt->ts));
 	do_close_pcaps_by_limit_time(getTimeMS(&packetS->header_pt->ts));
 }
@@ -1135,10 +1134,8 @@ void cSipMsgRelations::cleanup_relations(u_int64_t limit_time_us) {
 	map<cSipMsgRelationId, cSipMsgRelation*>::iterator iter;
 	for(iter = relations.begin(); iter != relations.end(); ) {
 		if(iter->second->getLastTime() < limit_time_us) {
-			lock_delete_relation();
 			delete iter->second;
 			relations.erase(iter++);
-			unlock_delete_relation();
 		} else {
 			iter++;
 		}
@@ -1334,7 +1331,6 @@ string cSipMsgRelations::getDataTableJson(char *params, bool *zip) {
 		*zip = zipParam == "yes";
 	}
 	
-	lock_delete_relation();
 	lock_relations();
 	
 	u_int32_t list_sip_msg_size = relations.size();
@@ -1344,8 +1340,6 @@ string cSipMsgRelations::getDataTableJson(char *params, bool *zip) {
 	for(map<cSipMsgRelationId, cSipMsgRelation*>::iterator iter_opt = relations.begin(); iter_opt != relations.end(); iter_opt++) {
 		list_sip_msg[list_sip_msg_count++] = iter_opt->second;
 	}
-	
-	unlock_relations();
 	
 	list<RecordArray> records;
 	for(unsigned i = 0; i < list_sip_msg_count; i++) {
@@ -1360,7 +1354,7 @@ string cSipMsgRelations::getDataTableJson(char *params, bool *zip) {
 	}
 	delete [] list_sip_msg;
 	
-	unlock_delete_relation();
+	unlock_relations();
 
 	string table;
 	string header = "[";
@@ -1436,7 +1430,6 @@ string cSipMsgRelations::getHistoryDataJson(char *params, bool *zip) {
 
 string cSipMsgRelations::getHistoryDataJson(u_int64_t id) {
 	cSipMsgRelation *relation = NULL;
-	lock_delete_relation();
 	lock_relations();
 	for(map<cSipMsgRelationId, cSipMsgRelation*>::iterator iter = relations.begin(); iter != relations.end(); iter++) {
 		if(iter->second->id == id) {
@@ -1444,14 +1437,13 @@ string cSipMsgRelations::getHistoryDataJson(u_int64_t id) {
 			break;
 		}
 	}
-	unlock_relations();
 	if(!relation) {
-		unlock_delete_relation();
+		unlock_relations();
 		return("");
 	}
 	list<cSipMsgRelation::sHistoryData> historyData;
 	relation->getHistoryData(&historyData, ((u_int64_t)getTimeMS_rdtsc() - opt_datarow_limit_time * 1000) * 1000, 0, this);
-	unlock_delete_relation();
+	unlock_relations();
 	string historyDataJson;
 	if(historyData.size()) {
 		historyDataJson += '[';

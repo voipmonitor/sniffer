@@ -442,12 +442,6 @@ private:
 	void unlock_relations() {
 		__sync_lock_release(&_sync_relations);
 	}
-	void lock_delete_relation() {
-		while(__sync_lock_test_and_set(&_sync_delete_relation, 1));
-	}
-	void unlock_delete_relation() {
-		__sync_lock_release(&_sync_delete_relation);
-	}
 	void lock_params() {
 		while(__sync_lock_test_and_set(&_sync_params, 1));
 	}
