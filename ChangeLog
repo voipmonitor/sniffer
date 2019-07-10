@@ -1,3 +1,9 @@
+25.2.1 10.07.2019
+=================
+- close REGISTER after 403, 404 [VS-926]
+- fix possible race condition leading to crash when SIP Opt.,Subsc.,Notify is enabled 
+
+
 25.2 08.07.2019
 ===============
 - add support for audiocodes mirroring. New options audiocodes, udp_port_audiocodes, tcp_port_audiocodes [VS-939]
