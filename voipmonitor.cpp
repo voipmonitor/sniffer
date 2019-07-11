@@ -2905,6 +2905,11 @@ int main(int argc, char *argv[]) {
 	}
 	get_command_line_arguments();
 
+	if(is_read_from_file_simple() && is_client()) {
+		puts("Client mode does not support reading from a file.\n");
+		return(0);
+	}
+	
 	if(updateSchema) {
 		SipHistorySetting();
 		return(SqlInitSchema() > 0 ? 0 : 1);
