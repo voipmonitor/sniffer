@@ -3613,6 +3613,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			} else if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
 				// save packet 
 				if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {
+					if(packetS->lastSIPresponseNum == 404) {
+						detect_to(packetS, to, sizeof(to), &to_detected);
+						detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+						call->cancel_ip_port_hash(packetS->daddr_(), to, branch, &packetS->header_pt->ts);
+					}
 					call->destroy_call_at = packetS->header_pt->ts.tv_sec + (packetS->sip_method == RES300 ? 300 : 5);
 				}
 				if(lastSIPresponseNum == 488 || lastSIPresponseNum == 606) {
