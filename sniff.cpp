@@ -5023,14 +5023,21 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 	int count_use = 0;
 	packet_s_process_rtp_call_info call_info_temp[packet_s_process_calls_info::max_calls()];
 	size_t call_info_temp_length = 0;
+
+	// Both RTP and RTCP packets should have version=2
+	if(!(u_char)packetS->data_()[0] & 0x80) {
+		syslog(LOG_DEBUG, "Invalid RTP/RTCP\n");
+		return 0;
+	}
+
 	for(call_info_index = 0; call_info_index < call_info->length; call_info_index++) {
 		if(threadIndex &&
 		   call_info->calls[call_info_index].call->thread_num_rd != (threadIndex - 1)) {
 			continue;
 		}
-		
+
 		packetS->blockstore_addflag(52 /*pb lock flag*/);
-		
+
 		call = call_info->calls[call_info_index].call;
 		iscaller = call_info->calls[call_info_index].iscaller;
 		sdp_flags = call_info->calls[call_info_index].sdp_flags;
