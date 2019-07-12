@@ -4094,6 +4094,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		   (call->last_sip_method == RES403 || call->last_sip_method == RES404)) {
 			call->saveregister(&packetS->header_pt->ts);
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
+			call->msgcount = 1;
+			call->regcount = 1;
 			if(call == NULL) {
 				goto endsip;
 			}
@@ -4107,6 +4109,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			call->regstate = 4;
 			call->saveregister(&packetS->header_pt->ts);
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
+			call->msgcount = 1;
+			call->regcount = 1;
 			if(call == NULL) {
 				goto endsip;
 			}
