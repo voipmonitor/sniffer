@@ -430,6 +430,7 @@ int opt_register_ignore_res_401 = 0;
 int opt_register_ignore_res_401_nonce_has_changed = 0;
 bool opt_sip_register_compare_sipcallerip = false;
 bool opt_sip_register_compare_sipcalledip = false;
+bool opt_sip_register_compare_sipcallerport = false;
 bool opt_sip_register_compare_sipcalledport = false;
 bool opt_sip_register_compare_to_domain = true;
 bool opt_sip_register_compare_vlan = false;
@@ -6395,6 +6396,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42294) cConfigItem_yesno("sip-register-ignore-res401-nonce-has-changed", &opt_register_ignore_res_401_nonce_has_changed));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerip", &opt_sip_register_compare_sipcallerip));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcalledip", &opt_sip_register_compare_sipcalledip));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerport", &opt_sip_register_compare_sipcallerport));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcalledport", &opt_sip_register_compare_sipcalledport));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-to_domain", &opt_sip_register_compare_to_domain));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-vlan", &opt_sip_register_compare_vlan));
@@ -8629,6 +8631,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-compare-sipcalledip", NULL))) {
 		opt_sip_register_compare_sipcalledip = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-compare-sipcallerport", NULL))) {
+		opt_sip_register_compare_sipcallerport = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-compare-sipcalledport", NULL))) {
 		opt_sip_register_compare_sipcalledport = yesno(value);

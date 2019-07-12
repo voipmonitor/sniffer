@@ -21,6 +21,7 @@ extern int opt_enable_fraud;
 
 extern bool opt_sip_register_compare_sipcallerip;
 extern bool opt_sip_register_compare_sipcalledip;
+extern bool opt_sip_register_compare_sipcallerport;
 extern bool opt_sip_register_compare_sipcalledport;
 extern bool opt_sip_register_compare_to_domain;
 extern bool opt_sip_register_compare_vlan;
@@ -84,6 +85,7 @@ RegisterId::RegisterId(Register *reg) {
 bool RegisterId:: operator == (const RegisterId& other) const {
 	return((!opt_sip_register_compare_sipcallerip || this->reg->sipcallerip == other.reg->sipcallerip) &&
 	       (!opt_sip_register_compare_sipcalledip || this->reg->sipcalledip == other.reg->sipcalledip) &&
+	       (!opt_sip_register_compare_sipcallerport || this->reg->sipcallerport == other.reg->sipcallerport) &&
 	       (!opt_sip_register_compare_sipcalledport || this->reg->sipcalledport == other.reg->sipcalledport) &&
 	       (!opt_sip_register_compare_vlan || this->reg->vlan == other.reg->vlan) &&
 	       REG_EQ_STR(this->reg->to_num, other.reg->to_num) &&
@@ -101,6 +103,7 @@ bool RegisterId:: operator < (const RegisterId& other) const {
 	int rslt_cmp_digest_username;
 	return((opt_sip_register_compare_sipcallerip && this->reg->sipcallerip < other.reg->sipcallerip) ? 1 : (opt_sip_register_compare_sipcallerip && this->reg->sipcallerip > other.reg->sipcallerip) ? 0 :
 	       (opt_sip_register_compare_sipcalledip && this->reg->sipcalledip < other.reg->sipcalledip) ? 1 : (opt_sip_register_compare_sipcalledip && this->reg->sipcalledip > other.reg->sipcalledip) ? 0 :
+	       (opt_sip_register_compare_sipcallerport && this->reg->sipcallerport < other.reg->sipcallerport) ? 1 : (opt_sip_register_compare_sipcallerport && this->reg->sipcallerport > other.reg->sipcallerport) ? 0 :
 	       (opt_sip_register_compare_sipcalledport && this->reg->sipcalledport < other.reg->sipcalledport) ? 1 : (opt_sip_register_compare_sipcalledport && this->reg->sipcalledport > other.reg->sipcalledport) ? 0 :
 	       (opt_sip_register_compare_vlan && this->reg->vlan < other.reg->vlan) ? 1 : (opt_sip_register_compare_vlan && this->reg->vlan > other.reg->vlan) ? 0 :
 	       ((rslt_cmp_to_num = REG_CMP_STR(this->reg->to_num, other.reg->to_num)) < 0) ? 1 : (rslt_cmp_to_num > 0) ? 0 :
