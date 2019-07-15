@@ -48,6 +48,8 @@
 
 static int debug = 0;
 
+#define RESYNCH_V1 1
+
 /*! \brief private fixed_jb structure */
 struct fixed_jb
 {
@@ -184,7 +186,8 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 	//if(debug) fprintf(stdout, "resync_jb: offset %ld, threshold %d force:%d\n", offset, jb->conf.resync_threshold, jb->force_resynch);
 
 
-#if 1
+#if RESYNCH_V0
+
 	if ( !jb->force_resynch && (offset < jb->conf.resync_threshold && offset > -jb->conf.resync_threshold)) {
 		if(debug) fprintf(stdout, "resynch_jb - dropping offset [%ld] < jb->conf.resync_threshold [%ld] && offset [%lu] > -jb->conf.resync_threshol [%ld] | ts[%lu] jb->tail->ts[%lu] jb->tail->ms[%lu]\n", 
 			offset, jb->conf.resync_threshold, offset, -jb->conf.resync_threshold, ts, jb->tail->ts, jb->tail->ms);
@@ -194,14 +197,32 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 		return fixed_jb_put_first(jb, data, ms, ts, now);
 		return FIXED_JB_DROP;
 	}
-#endif
-
 	if(jb->force_resynch) {
 		jb->force_resynch = 0;
 		jb_fixed_flush_deliver(jb->chan);
 		return fixed_jb_put_first(jb, data, ms, ts, now);
 	}
 	
+#elif RESYNCH_V1
+	
+	if (offset < jb->conf.resync_threshold && offset > -jb->conf.resync_threshold) {
+		if(debug) fprintf(stdout, "resynch_jb - dropping offset [%ld] < jb->conf.resync_threshold [%ld] && offset [%lu] > -jb->conf.resync_threshol [%ld] | ts[%lu] jb->tail->ts[%lu] jb->tail->ms[%lu]\n", 
+			offset, jb->conf.resync_threshold, offset, -jb->conf.resync_threshold, ts, jb->tail->ts, jb->tail->ms);
+		if (!jb->force_resynch) {
+			return FIXED_JB_DROP;
+		} else {
+			jb->force_resynch = 0;
+			if(offset > 0) {
+				jb_fixed_flush_deliver(jb->chan);
+				return fixed_jb_put_first(jb, data, ms, ts, now);
+			} else {
+				return FIXED_JB_DROP;
+			}
+		}
+	}
+	
+#endif
+
 	/* Reset the force resynch flag */
 	jb->force_resynch = 0;
 
@@ -290,6 +311,9 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, in
 	   However, allow more resync_threshold ms in advance */
 	/* festr 5.5.2014 - be more tolerant for future frame (bursts) and add 200ms more) */
 	/* festr 30.6.2014 - adding more tolerace is not good idea because it ignores 50ms fixed jitter len. add it only for audio decoder */
+	
+#if RESYNCH_V0
+	
 	int tolerance = jb->conf.resync_threshold == 1000 ? 200 : 0; // if threshold is 1000 it is jitterbuffer for audio decode - add 200ms more
 	if (delivery > jb->next_delivery + jb->delay + jb->conf.resync_threshold + tolerance) {
 		/* should drop the frame, but let first resynch_jb() check if this is not a jump in ts, or
@@ -301,6 +325,24 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, in
 		jb->force_resynch = 1;
 		return resynch_jb(jb, data, ms, ts, now);
 	}
+	
+#elif RESYNCH_V1
+
+	if(marker) {
+		if(debug) fprintf(stdout, "call resync_jb for marker\n");
+		jb->force_resynch = 1;
+		return resynch_jb(jb, data, ms, ts, now);
+	} else {
+		int tolerance = jb->conf.resync_threshold >= 1000 ? 200 : 0; // if threshold is 1000 it is jitterbuffer for audio decode - add 200ms more
+		if (delivery > jb->next_delivery + jb->delay + jb->conf.resync_threshold + tolerance) {
+			/* should drop the frame, but let first resynch_jb() check if this is not a jump in ts, or
+			   the force resynch flag was not set. */
+			if(debug) fprintf(stdout, "put: delivery[%lu] > jb->next_delivery[%lu] + jb->delay[%lu] + jb->conf.resync_threshold[%lu]\n", delivery, jb->next_delivery, jb->delay, jb->conf.resync_threshold);
+			return resynch_jb(jb, data, ms, ts, now);
+		}
+	}
+
+#endif
 
 	/* find the right place in the frames list, sorted by delivery time */
 	frame = jb->tail;
