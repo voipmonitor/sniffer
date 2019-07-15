@@ -426,6 +426,8 @@ int opt_saveaudio_dedup_seq = 0;
 int opt_liveaudio = 1;
 int opt_register_timeout = 5;
 int opt_register_timeout_disable_save_failed = 0;
+int opt_register_max_registers = 4;
+int opt_register_max_messages = 20;
 int opt_register_ignore_res_401 = 0;
 int opt_register_ignore_res_401_nonce_has_changed = 0;
 bool opt_sip_register_compare_sipcallerip = false;
@@ -6392,6 +6394,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42291) cConfigItem_integer("sip-register-timeout", &opt_register_timeout));
 			addConfigItem(new FILE_LINE(42292) cConfigItem_yesno("sip-register-timeout-disable_save_failed", &opt_register_timeout_disable_save_failed));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip-register-max-registers", &opt_register_max_registers));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip-register-max-messages", &opt_register_max_messages));
 				addConfigItem(new FILE_LINE(42293) cConfigItem_yesno("sip-register-ignore-res401", &opt_register_ignore_res_401));
 				addConfigItem(new FILE_LINE(42294) cConfigItem_yesno("sip-register-ignore-res401-nonce-has-changed", &opt_register_ignore_res_401_nonce_has_changed));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerip", &opt_sip_register_compare_sipcallerip));
@@ -8619,6 +8623,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-timeout-disable_save_failed", NULL))) {
 		opt_register_timeout_disable_save_failed = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-max-registers", NULL))) {
+		opt_register_max_registers = atoi(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-max-messages", NULL))) {
+		opt_register_max_messages = atoi(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-ignore-res401", NULL))) {
 		opt_register_ignore_res_401 = yesno(value);

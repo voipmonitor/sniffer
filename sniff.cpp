@@ -217,6 +217,8 @@ extern ManagerClientThreads ClientThreads;
 extern int opt_register_timeout;
 extern int opt_register_ignore_res_401;
 extern int opt_register_ignore_res_401_nonce_has_changed;
+extern int opt_register_max_registers;
+extern int opt_register_max_messages;
 extern int opt_nocdr;
 extern int opt_enable_fraud;
 extern int pcap_drop_flag;
@@ -4104,7 +4106,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			}
 			goto endsip_save_packet;
 		}
-		if(call->regcount > 4 && !call->reg200count && !call->reg401count_all) {
+		if(call->regcount > opt_register_max_registers && !call->reg200count && !call->reg401count_all) {
 			// to much register attempts without OK or 401 responses
 			call->regstate = 4;
 			call->saveregister(&packetS->header_pt->ts);
@@ -4251,7 +4253,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	if(goto_endsip) {
 		goto endsip;
 	}
-	if(call->msgcount > 20) {
+	if(call->msgcount > opt_register_max_messages) {
 		// too many REGISTER messages within the same callid
 		call->regstate = 4;
 		save_packet(call, packetS, TYPE_SIP);
@@ -4649,6 +4651,11 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 				   !(opt_ignore_rtp_after_cancel_confirmed &&
 				     node_call->call->seencancelandok && node_call->call->seencancelandok_time_usec &&
 				     packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec > node_call->call->seencancelandok_time_usec)) {
+					/*
+					if(getTimeUS(packetS->header_pt) < (node_call->call->first_packet_time * 1000000ull + node_call->call->first_packet_usec) + (0 * 60 + 0) * 1000000ull) {
+						continue;
+					}
+					*/
 					packetS->blockstore_addflag(27 /*pb lock flag*/);
 					call_info[call_info_length].call = node_call->call;
 					call_info[call_info_length].iscaller = node_call->iscaller;
