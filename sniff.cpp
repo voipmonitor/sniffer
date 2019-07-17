@@ -433,6 +433,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		", microseconds = %li"
 		", callid = %s"
 		", description = %s"
+		", vlan = %i"
 		", data = ",
 		livepacket_table,
 		packetS->saddr_().getStringForMysqlIpColumn(livepacket_table, "sipcallerip").c_str(),
@@ -444,7 +445,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		sqlEscapeStringBorder(sqlDateTimeString(packetS->header_pt->ts.tv_sec).c_str()).c_str(),
 		packetS->header_pt->ts.tv_usec,
 		sqlEscapeStringBorder(call ? call->call_id : callidstr).c_str(),
-		sqlEscapeStringBorder(description).c_str());
+		sqlEscapeStringBorder(description).c_str(), packetS->pid.vlan);
 	if(isCloud() || useNewStore()) {
 		strcat(query_buff, "concat('#', from_base64('");
 		_base64_encode((unsigned char*)mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff));
