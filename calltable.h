@@ -303,6 +303,7 @@ enum eCallField {
 	cf_src_loss_last10sec,
 	cf_dst_loss_last10sec,
 	cf_id_sensor,
+	cf_vlan,
 	cf__max
 };
 

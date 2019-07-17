@@ -128,6 +128,11 @@ void cCallFilter::setFilter(const char *filter) {
 		filter->addNum(atol(filterData["sensor_id"].c_str()));
 		addFilter(filter);
 	}
+	if(!filterData["vlan"].empty()) {
+		cRecordFilterItem_numList *filter = new FILE_LINE(0) cRecordFilterItem_numList(this, cf_vlan);
+		filter->addNum(atoi(filterData["vlan"].c_str()));
+		addFilter(filter);
+	}
 	if(!filterData["connected"].empty() && atoi(filterData["connected"].c_str())) {
 		cRecordFilterItem_numInterval *filter = new FILE_LINE(0) cRecordFilterItem_numInterval(this, cf_connect_duration, 0, cRecordFilterItem_base::_gt);
 		addFilter(filter);
