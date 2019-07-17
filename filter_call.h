@@ -51,6 +51,8 @@ public:
 			return(((Call*)rec)->connect_duration_active());
 		case cf_called_international:
 			return(!isLocalByPhoneNumber(((Call*)rec)->called));
+		case cf_vlan:
+			return(((Call*)rec)->vlan);
 		}
 		return(0);
 	}

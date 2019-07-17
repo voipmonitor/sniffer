@@ -250,7 +250,8 @@ sCallField callFields[] = {
 	{ cf_dst_loss, "dst_loss" },
 	{ cf_src_loss_last10sec, "src_loss_last10sec" },
 	{ cf_dst_loss_last10sec, "dst_loss_last10sec" },
-	{ cf_id_sensor, "id_sensor" }
+	{ cf_id_sensor, "id_sensor" },
+	{ cf_vlan, "vlan" }
 };
 
 
@@ -3478,6 +3479,9 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		break;
 	case cf_id_sensor:
 		rfield->set(useSensorId);
+		break;
+	case cf_vlan:
+		rfield->set(vlan);
 		break;
 	default:
 		break;
