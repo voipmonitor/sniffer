@@ -4771,6 +4771,8 @@ inline void process_packet__parse_custom_headers(Call *call, packet_s_process *p
 
 inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, timeval tv) {
 	string ssrc;
+	vmIP ipLocal;
+	vmIP ipRemote;
 	unsigned long localAddrLen;
 	char *localAddrPtr = gettag_sip(packetS, "\nLocalAddr:", &localAddrLen);
 	if(localAddrPtr && localAddrLen) {
@@ -4787,10 +4789,39 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 				ssrc = string(ssrcPtr, ssrcLen);
 			}
 		}
+		char *ipPtr = strcasestr(localAddrPtr, "IP=");
+		if(ipPtr) {
+			ipPtr += 3;
+			int ipLen = 0;
+			while(ipPtr[ipLen] && ipPtr[ipLen] != ' ' && ipPtr[ipLen] != '\r') {
+				++ipLen;
+			}
+			if(ipLen) {
+				ipLocal.setFromString(string(ipPtr, ipLen).c_str());
+			}
+		}
 		localAddrPtr[localAddrLen] = endChar;
 	}
 	if(ssrc.empty()) {
 		return;
+	}
+	unsigned long remoteAddrLen;
+	char *remoteAddrPtr = gettag_sip(packetS, "\nRemoteAddr:", &remoteAddrLen);
+	if(remoteAddrPtr && remoteAddrLen) {
+		char endChar = remoteAddrPtr[remoteAddrLen];
+		remoteAddrPtr[localAddrLen] = 0;
+		char *ipPtr = strcasestr(remoteAddrPtr, "IP=");
+		if(ipPtr) {
+			ipPtr += 3;
+			int ipLen = 0;
+			while(ipPtr[ipLen] && ipPtr[ipLen] != ' ' && ipPtr[ipLen] != '\r') {
+				++ipLen;
+			}
+			if(ipLen) {
+				ipRemote.setFromString(string(ipPtr, ipLen).c_str());
+			}
+		}
+		remoteAddrPtr[remoteAddrLen] = endChar;
 	}
 	int16_t moslq = -1;
 	unsigned long qualityEstLen;
@@ -4820,9 +4851,11 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 	if(ssrc.length() > 2 && ssrc[0] == '0' && ssrc[1] == 'x') {
 		sscanf(ssrc.c_str() + 2, "%x", &ssrc_int);
 	} else {
-		ssrc_int = atoll(ssrc.c_str());
+		ssrc_int = string_is_numeric(ssrc.c_str()) ?
+			    atoll(ssrc.c_str()) :
+			    strtol(ssrc.c_str(), 0, 16);
 	}
-	call->rtcpXrData.add(ssrc_int, tv, moslq, nlr);
+	call->rtcpXrData.add(ssrc_int, tv, moslq, nlr, ipLocal, ipRemote);
 }
 
 inline void process_packet__cleanup_calls(pcap_pkthdr* header) {

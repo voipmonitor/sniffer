@@ -6057,22 +6057,24 @@ Call::applyRtcpXrDataToRtp() {
 			if(this->rtp[i]->ssrc == iter_ssrc->first) {
 				list<sRtcpXrDataItem>::iterator iter;
 				for(iter = iter_ssrc->second.begin(); iter != iter_ssrc->second.end(); iter++) {
-					if(iter->moslq >= 0) {
-						rtp[i]->rtcp_xr.counter_mos++;
-						if(iter->moslq < rtp[i]->rtcp_xr.minmos) {
-							rtp[i]->rtcp_xr.minmos = iter->moslq;
+					if((!iter->ip_local.isSet() || iter->ip_local == this->rtp[i]->saddr || iter->ip_local == this->rtp[i]->daddr) &&
+					   (!iter->ip_remote.isSet() || iter->ip_remote == this->rtp[i]->saddr || iter->ip_remote == this->rtp[i]->daddr)) {
+						if(iter->moslq >= 0) {
+							rtp[i]->rtcp_xr.counter_mos++;
+							if(iter->moslq < rtp[i]->rtcp_xr.minmos) {
+								rtp[i]->rtcp_xr.minmos = iter->moslq;
+							}
+							rtp[i]->rtcp_xr.avgmos = (rtp[i]->rtcp_xr.avgmos * (rtp[i]->rtcp_xr.counter_mos - 1) + iter->moslq) / rtp[i]->rtcp_xr.counter_mos;
 						}
-						rtp[i]->rtcp_xr.avgmos = (rtp[i]->rtcp_xr.avgmos * (rtp[i]->rtcp_xr.counter_mos - 1) + iter->moslq) / rtp[i]->rtcp_xr.counter_mos;
-					}
-					if(iter->nlr >= 0) {
-						rtp[i]->rtcp_xr.counter_fr++;
-						if(iter->nlr > rtp[i]->rtcp_xr.maxfr) {
-							rtp[i]->rtcp_xr.maxfr = iter->nlr;
+						if(iter->nlr >= 0) {
+							rtp[i]->rtcp_xr.counter_fr++;
+							if(iter->nlr > rtp[i]->rtcp_xr.maxfr) {
+								rtp[i]->rtcp_xr.maxfr = iter->nlr;
+							}
+							rtp[i]->rtcp_xr.avgfr = (rtp[i]->rtcp_xr.avgfr * (rtp[i]->rtcp_xr.counter_fr - 1) + iter->nlr) / rtp[i]->rtcp_xr.counter_fr;
 						}
-						rtp[i]->rtcp_xr.avgfr = (rtp[i]->rtcp_xr.avgfr * (rtp[i]->rtcp_xr.counter_fr - 1) + iter->nlr) / rtp[i]->rtcp_xr.counter_fr;
 					}
 				}
-				break;
 			}
 		}
 	}

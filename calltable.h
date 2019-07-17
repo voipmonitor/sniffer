@@ -490,19 +490,23 @@ public:
 		timeval tv;
 		int16_t moslq;
 		int16_t nlr;
+		vmIP ip_local;
+		vmIP ip_remote;
 	};
 	struct sRtcpXrDataSsrc : public list<sRtcpXrDataItem> {
-		void add(timeval tv, int16_t moslq, int16_t nlr) {
+		void add(timeval tv, int16_t moslq, int16_t nlr, vmIP ip_local, vmIP ip_remote) {
 			sRtcpXrDataItem dataItem;
 			dataItem.tv = tv;
 			dataItem.moslq = moslq;
 			dataItem.nlr = nlr;
+			dataItem.ip_local = ip_local;
+			dataItem.ip_remote = ip_remote;
 			this->push_back(dataItem);
 		}
 	};
 	struct sRtcpXrData : public map<u_int32_t, sRtcpXrDataSsrc> {
-		void add(u_int32_t ssrc, timeval tv, int16_t moslq, int16_t nlr) {
-			(*this)[ssrc].add(tv, moslq, nlr);
+		void add(u_int32_t ssrc, timeval tv, int16_t moslq, int16_t nlr, vmIP ip_local, vmIP ip_remote) {
+			(*this)[ssrc].add(tv, moslq, nlr, ip_local, ip_remote);
 		}
 	};
 	struct sUdptlDumper {
