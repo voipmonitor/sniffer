@@ -514,6 +514,13 @@ bool cSipMsgRelation::getLastHistoryData(u_int64_t limit_time_us,
 	}
 	if(queue_req_resp.size()) {
 		for(int i = queue_req_resp.size() - 1; i >= 0; i--) {
+		 
+			cout << "cmp queue_req_resp[i]->getFirstRequestTime() "
+			     << queue_req_resp[i]->getFirstRequestTime()
+			     << " and limit_time_us "
+			     << limit_time_us
+			     << endl;
+		 
 			if(queue_req_resp[i]->getFirstRequestTime() < limit_time_us) {
 				if(reqResp) {
 					*reqResp = queue_req_resp[i];
