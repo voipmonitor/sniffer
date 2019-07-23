@@ -486,8 +486,8 @@ private:
 	volatile int _sync_cdp_queue;
 	volatile int _sync_close_pcap;
 	volatile int _sync_save_to_db;
-	u_long lastCleanupRelations_ms;
-	u_long lastClosePcaps_ms;
+	u_int64_t lastCleanupRelations_ms;
+	u_int64_t lastClosePcaps_ms;
 	pthread_t internalThread_id;
 	volatile bool terminate;
 friend class cSipMsgRelation;

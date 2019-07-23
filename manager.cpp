@@ -555,7 +555,7 @@ public:
 	}
 	bool check(const char *tar, const char *file, const char *key) {
 		lock();
-		map<string, u_long>::iterator iter = data.find(string(tar) + "/" + file + "/" + key);
+		map<string, u_int64_t>::iterator iter = data.find(string(tar) + "/" + file + "/" + key);
 		bool rslt =  iter != data.end();
 		unlock();
 		cleanup();
@@ -563,10 +563,10 @@ public:
 	}
 	void cleanup() {
 		lock();
-		u_long actTime = getTimeMS();
-		map<string, u_long>::iterator iter = data.begin();
+		u_int64_t actTime = getTimeMS();
+		map<string, u_int64_t>::iterator iter = data.begin();
 		while(iter != data.end()) {
-			if(actTime - iter->second > 10000ul) {
+			if(actTime - iter->second > 10000ull) {
 				data.erase(iter++);
 			} else {
 				++iter;
@@ -581,7 +581,7 @@ public:
 		__sync_lock_release(&_sync);
 	}
 private:
-	map<string, u_long> data;
+	map<string, u_int64_t> data;
 	volatile int _sync;
 } getfile_in_tar_completed;
 

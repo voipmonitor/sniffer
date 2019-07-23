@@ -529,7 +529,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 	bool ok = false;
 	unsigned int attempt = 0;
 	unsigned int send_query_counter = 0;
-	u_long startTimeMS = getTimeMS();
+	u_int64_t startTimeMS = getTimeMS();
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
 		if((is_terminating() > 1 && attempt > 2) ||
 		   (isCloud() && is_read_from_file_simple() && getTimeMS() > startTimeMS + 5 * 1000)) {
@@ -3310,7 +3310,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 		qfile->close();
 	}
 	if(!qfile->isOpen()) {
-		u_long actTime = getTimeMS();
+		u_int64_t actTime = getTimeMS();
 		string qfilename = getQFilename(idc, actTime);
 		if(qfile->open(qfilename.c_str(), actTime)) {
 			if(sverb.qfiles) {
@@ -3331,7 +3331,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 		snprintf(buffIdLength, sizeof(buffIdLength), "%i/%u:", id, query_length);
 		qfile->fileZipHandler->write(buffIdLength, strlen(buffIdLength));
 		qfile->fileZipHandler->write((char*)query.c_str(), query.length());
-		u_long actTimeMS = getTimeMS();
+		u_int64_t actTimeMS = getTimeMS();
 		if(max(qfile->flushAt, qfile->createAt) < actTimeMS - 1000) {
 			qfile->fileZipHandler->flushBuffer();
 			qfile->flushAt = actTimeMS;
@@ -3340,7 +3340,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 	qfile->unlock();
 }
 
-string MySqlStore::getQFilename(int idc, u_long actTime) {
+string MySqlStore::getQFilename(int idc, u_int64_t actTime) {
 	char fileName[100];
 	string dateTime = sqlDateTimeString(actTime / 1000).c_str();
 	find_and_replace(dateTime, " ", "T");
@@ -3451,7 +3451,7 @@ string MySqlStore::getMinQFile(int id) {
 	if(loadFromQFileConfig.inotify) {
 		string qfilename;
 		loadFromQFilesThreadData[id].lock();
-		map<u_long, string>::iterator iter = loadFromQFilesThreadData[id].qfiles_load.begin();
+		map<u_int64_t, string>::iterator iter = loadFromQFilesThreadData[id].qfiles_load.begin();
 		if(iter != loadFromQFilesThreadData[id].qfiles_load.end() &&
 		   (getTimeMS() - iter->first) > (unsigned)loadFromQFileConfig.period * 2 * 1000) {
 			qfilename = iter->second;
@@ -3466,14 +3466,14 @@ string MySqlStore::getMinQFile(int id) {
 		if(!dp) {
 			return("");
 		}
-		u_long minTime = 0;
+		u_int64_t minTime = 0;
 		string minTimeFileName;
 		char prefix[10];
 		snprintf(prefix, sizeof(prefix), "%s-%i-", QFILE_PREFIX, id);
 		dirent* de;
 		while((de = readdir(dp)) != NULL) {
 			if(strncmp(de->d_name, prefix, strlen(prefix))) continue;
-			u_long time = atoll(de->d_name + strlen(prefix));
+			u_int64_t time = atoll(de->d_name + strlen(prefix));
 			if(!minTime || time < minTime) {
 				minTime = time;
 				minTimeFileName = de->d_name;
@@ -3617,7 +3617,7 @@ MySqlStore::QFileData MySqlStore::parseQFilename(const char *filename) {
 	qfileData.time = 0;
 	if(!strncmp(filename, QFILE_PREFIX, strlen(QFILE_PREFIX))) {
 		int id;
-		u_long time;
+		u_int64_t time;
 		if(sscanf(filename + strlen(QFILE_PREFIX) , "-%i-%lu", &id, &time) == 2) {
 			qfileData.filename = filename;
 			qfileData.id = id;

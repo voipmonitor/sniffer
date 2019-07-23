@@ -1038,7 +1038,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 			this->lock_fileStore();
 		}
 		if(this->getFileStoreUseSize(false) > opt_pcap_queue_store_queue_max_disk_size) {
-			u_long actTime = getTimeMS();
+			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > this->lastTimeLogErrDiskIsFull) {
 				syslog(LOG_ERR, "packetbuffer: DISK IS FULL");
 				this->lastTimeLogErrDiskIsFull = actTime;
@@ -1072,7 +1072,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 			this->unlock_fileStore();
 		}
 		if(!buffersControl.check__pcap_store_queue__push()) {
-			u_long actTime = getTimeMS();
+			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > this->lastTimeLogErrMemoryIsFull) {
 				syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
 				this->lastTimeLogErrMemoryIsFull = actTime;
@@ -1284,8 +1284,8 @@ void PcapQueue::setInstancePcapFifo(PcapQueue_readFromFifo *pcapQueue) {
 }
 
 void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
-	u_long startTimeMS = getTimeMS_rdtsc();
-	vector<u_long> lapTime;
+	u_int64_t startTimeMS = getTimeMS_rdtsc();
+	vector<u_int64_t> lapTime;
 	vector<string> lapTimeDescr;
 	
 	++pcapStatCounter;
@@ -2269,8 +2269,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		if(sverb.log_profiler) {
 			ostringstream outStrLogProfiler;
-			u_long endTimeMS = getTimeMS_rdtsc();
-			u_long prevTime = startTimeMS;
+			u_int64_t endTimeMS = getTimeMS_rdtsc();
+			u_int64_t prevTime = startTimeMS;
 			for(unsigned i = 0; i < lapTime.size(); i++) {
 				outStrLogProfiler << lapTimeDescr[i] << ":"
 						  << (lapTime[i] > prevTime ? lapTime[i] - prevTime : 0) << ", ";
@@ -2908,7 +2908,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
 	if(!packet && res != -2) {
 		if(VERBOSE) {
-			u_long actTime = getTimeMS();
+			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > this->lastTimeLogErrPcapNextExNullPacket) {
 				syslog(LOG_NOTICE,"packetbuffer - %s: NULL PACKET, pcap response is %d", this->getInterfaceName().c_str(), res);
 				this->lastTimeLogErrPcapNextExNullPacket = actTime;
@@ -2917,7 +2917,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		return(0);
 	} else if(res == -1) {
 		if(VERBOSE) {
-			u_long actTime = getTimeMS();
+			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > this->lastTimeLogErrPcapNextExErrorReading) {
 				syslog(LOG_NOTICE,"packetbuffer - %s: error reading packets", this->getInterfaceName().c_str());
 				this->lastTimeLogErrPcapNextExErrorReading = actTime;
@@ -3830,7 +3830,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 	pcap_pkthdr *pcap_next_ex_header, *detach_buffer_header;
 	u_char *pcap_next_ex_packet, *detach_buffer_packet;
 	bool _useOneshotBuffer = false;
-	u_long startDetachBufferWrite_ms = 0;
+	u_int64_t startDetachBufferWrite_ms = 0;
 	bool forcePushDetachBufferWrite = false;
 	unsigned int read_counter = 0;
 	
@@ -4740,8 +4740,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					pid = this->ppd.pid;
 					/* check change packet content - disabled
 					if(ip_tot_len && ip_tot_len != ((iphdr2*)(packet_pcap + 14))->tot_len) {
-						static u_long lastTimeLogErrBuggyKernel = 0;
-						u_long actTime = getTimeMS(header);
+						static u_int64_t lastTimeLogErrBuggyKernel = 0;
+						u_int64_t actTime = getTimeMS(header);
 						if(actTime - 1000 > lastTimeLogErrBuggyKernel) {
 							syslog(LOG_ERR, "SUSPICIOUS CHANGE PACKET CONTENT: buggy kernel - contact support@voipmonitor.org");
 							lastTimeLogErrBuggyKernel = actTime;
@@ -5302,7 +5302,7 @@ void PcapQueue_readFromInterface::check_bypass_buffer() {
 		if(opt_scanpcapdir[0]) {
 			usleep(100);
 		} else {
-			u_long actTime = getTimeMS();
+			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
 				syslog(LOG_ERR, "packetbuffer %s: THREAD0 BUFFER IS FULL", this->nameQueue.c_str());
 				this->lastTimeLogErrThread0BufferIsFull = actTime;
@@ -5556,7 +5556,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 		bool syncBeginBlock = true;
 		bool forceStop = false;
 		unsigned countErrors = 0;
-		u_long lastTimeErrorLogMS = 0;
+		u_int64_t lastTimeErrorLogMS = 0;
 		while(!TERMINATING && !forceStop) {
 			if(arg2 == (unsigned int)-1) {
 				int socketClient;
@@ -5754,7 +5754,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								send(this->packetServerConnections[arg2]->socketClient, error.c_str(), error.length(), 0);
 								blockStore->destroyRestoreBuffer();
 								syncBeginBlock = true;
-								u_long actTimeMS = getTimeMS();
+								u_int64_t actTimeMS = getTimeMS();
 								if(!lastTimeErrorLogMS ||
 								   actTimeMS > lastTimeErrorLogMS + 1000) {
 									syslog(LOG_ERR, "receive bad packetbuffer block (%s) in conection %s - %i",
@@ -6127,7 +6127,7 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigne
 		pcap_block_store *block = NULL;
 		lock_blockStoreTrash();
 		block = this->blockStoreTrash.front();
-		u_long actTimeMS = getTimeMS_rdtsc();
+		u_int64_t actTimeMS = getTimeMS_rdtsc();
                 if(block->enableDestroy() &&
                    block->timestampMS + 2000 < actTimeMS &&
                    block->getLastPacketHeaderTimeMS() + 2000 < actTimeMS) {
@@ -6841,8 +6841,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			bogusDumper->dump(header, hp->packet, hp->dlt, "process_packet");
 		}
 		if(verbosity) {
-			static u_long lastTimeSyslog = 0;
-			u_long actTime = getTimeMS();
+			static u_int64_t lastTimeSyslog = 0;
+			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
 				syslog(LOG_NOTICE, "warning - incorrect caplen/len (%u/%u) in processPacket", header->caplen, header->len);
 				lastTimeSyslog = actTime;
@@ -6856,8 +6856,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		this->_last_ts.tv_usec = header->ts.tv_usec;
 	} else if(this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec > header->ts.tv_sec * 1000000ull + header->ts.tv_usec + 1000) {
 		if(verbosity > 1 || enable_bad_packet_order_warning) {
-			static u_long lastTimeSyslog = 0;
-			u_long actTime = getTimeMS();
+			static u_int64_t lastTimeSyslog = 0;
+			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
 				syslog(LOG_NOTICE, "warning - bad packet order (%llu us) in processPacket", 
 				       this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec - header->ts.tv_sec * 1000000ull - header->ts.tv_usec);
@@ -6926,8 +6926,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		}
 		if(verbosity &&
 		   !(opt_udpfrag && opt_pcap_queue_use_blocks)) {
-			static u_long lastTimeSyslog = 0;
-			u_long actTime = getTimeMS();
+			static u_int64_t lastTimeSyslog = 0;
+			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
 				syslog(LOG_NOTICE, "warning - incorrect dataoffset/caplen (%li/%u) in processPacket", data - (char*)hp->packet, header->caplen);
 				lastTimeSyslog = actTime;
@@ -7016,7 +7016,7 @@ void PcapQueue_readFromFifo::checkFreeSizeCachedir() {
 	if(!opt_cachedir[0]) {
 		return;
 	}
-	u_long actTimeMS = getTimeMS();
+	u_int64_t actTimeMS = getTimeMS();
 	if(!lastCheckFreeSizeCachedir_timeMS ||
 	   actTimeMS - lastCheckFreeSizeCachedir_timeMS > 2000) {
 		double freeSpacePerc = (double)GetFreeDiskSpace(opt_cachedir, true) / 100;
@@ -7267,8 +7267,8 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 	u_int16_t frag_data = header_ip->get_frag_data();
 	if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
 		if(header_ip->get_tot_len() + hp->header->header_ip_offset > hp->header->get_caplen()) {
-			static u_long lastTimeLogErrBadIpHeader = 0;
-			u_long actTime = hp->header->get_time_ms();
+			static u_int64_t lastTimeLogErrBadIpHeader = 0;
+			u_int64_t actTime = hp->header->get_time_ms();
 			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
 				syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: bogus ip header length %i, caplen %i", header_ip->get_tot_len(), hp->header->get_caplen());
 				lastTimeLogErrBadIpHeader = actTime;

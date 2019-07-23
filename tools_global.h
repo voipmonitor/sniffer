@@ -74,7 +74,7 @@ __inline__ unsigned long long rdtsc(void)
 #endif
 
 
-inline u_long getTimeS(pcap_pkthdr* header = NULL) {
+inline u_int32_t getTimeS(pcap_pkthdr* header = NULL) {
     if(header) {
          return(header->ts.tv_sec);
     }
@@ -83,25 +83,25 @@ inline u_long getTimeS(pcap_pkthdr* header = NULL) {
     return(time.tv_sec);
 }
 
-inline u_long getTimeMS(pcap_pkthdr* header = NULL) {
+inline u_int64_t getTimeMS(pcap_pkthdr* header = NULL) {
     if(header) {
-         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec / 1000);
+         return(header->ts.tv_sec * 1000ull + header->ts.tv_usec / 1000);
     }
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
-    return(time.tv_sec * 1000ul + time.tv_nsec / 1000000);
+    return(time.tv_sec * 1000ull + time.tv_nsec / 1000000);
 }
 
-inline u_long getTimeMS(struct timeval *ts) {
-    return(ts->tv_sec * 1000ul + ts->tv_usec / 1000);
+inline u_int64_t getTimeMS(struct timeval *ts) {
+    return(ts->tv_sec * 1000ull + ts->tv_usec / 1000);
 }
 
 extern u_int64_t rdtsc_by_100ms;
-inline u_long getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
+inline u_int64_t getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
     if(header) {
-         return(header->ts.tv_sec * 1000ul + header->ts.tv_usec / 1000);
+         return(header->ts.tv_sec * 1000ull + header->ts.tv_usec / 1000);
     }
-    static u_long last_time;
+    static u_int64_t last_time;
     #if defined(__i386__) or defined(__x86_64__)
     static u_int32_t counter = 0;
     static u_int64_t last_rdtsc = 0;
@@ -121,7 +121,7 @@ inline u_long getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
     #endif
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
-    last_time = time.tv_sec * 1000ul + time.tv_nsec / 1000000;
+    last_time = time.tv_sec * 1000ull + time.tv_nsec / 1000000;
     return(last_time);
 }
 

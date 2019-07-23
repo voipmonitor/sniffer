@@ -109,8 +109,8 @@ struct HttpDataCache {
 		__sync_lock_release(&this->_sync);
 	}
 	u_int64_t last_timestamp;
-	u_long init_at;
-	u_long last_write_at;
+	u_int64_t init_at;
+	u_int64_t last_write_at;
 	int _sync;
 };
 

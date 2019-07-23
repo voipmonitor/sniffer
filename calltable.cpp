@@ -5266,8 +5266,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 	if(sqlStore->getSizeVect(STORE_PROC_ID_REGISTER_1, 
 				 STORE_PROC_ID_REGISTER_1 + 
 				 (opt_mysqlstore_max_threads_register > 1 ? opt_mysqlstore_max_threads_register - 1 : 0)) > opt_mysqlstore_limit_queue_register) {
-		static u_long lastTimeSyslog = 0;
-		u_long actTime = getTimeMS();
+		static u_int64_t lastTimeSyslog = 0;
+		u_int64_t actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog) {
 			syslog(LOG_NOTICE, "size of register queue exceeded limit - register record ignored");
 			lastTimeSyslog = actTime;

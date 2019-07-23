@@ -1243,7 +1243,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 	extern int opt_convert_dlt_sll_to_en10;
 	if((dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : dlt) != this->dlt) {
 		/*
-		u_long actTime = getTimeMS();
+		u_int64_t actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog) {
 			syslog(LOG_NOTICE, "warning - use dlt (%i) for pcap %s created for dlt (%i)",
 			       dlt, this->fileName.c_str(), this->dlt);
@@ -4320,7 +4320,7 @@ void SocketSimpleBufferWrite::addData(void *data1, u_int32_t dataLength1,
 		return;
 	}
 	if(_size_all + (dataLength1 + dataLength2) > maxSize) {
-		u_long actTime = getTimeMS();
+		u_int64_t actTime = getTimeMS();
 		if(!lastTimeSyslogFullData || actTime > lastTimeSyslogFullData + 1000) {
 			syslog(LOG_NOTICE, "socketwrite %s: data buffer is full", name.c_str());
 			lastTimeSyslogFullData = actTime;
@@ -4534,7 +4534,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 			kill(getpid(), SIGKILL);
 		}
 	} else if(fork_rslt > 0) {
-		u_long start_time = getTimeMS();
+		u_int64_t start_time = getTimeMS();
 		SimpleBuffer bufferStdout;
 		SimpleBuffer bufferStderr;
 		close(pipe_stdout[1]);

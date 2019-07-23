@@ -2237,7 +2237,6 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->ignoreTerminating = false;
 	memset(this->cleanupThreadPstatData, 0, sizeof(this->cleanupThreadPstatData));
 	memset(this->packetThreadPstatData, 0, sizeof(this->packetThreadPstatData));
-	this->lastTimeLogErrExceededMaximumAttempts = 0;
 	this->_cleanupCounter = 0;
 	this->linkTimeout = 2 * 60;
 	this->initCleanupThreadOk = false;

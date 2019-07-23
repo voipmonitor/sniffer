@@ -2015,7 +2015,7 @@ void start_cloud_receiver() {
 		cloud_receiver->setEnableTermninateIfConnectFailed();
 	}
 	cloud_receiver->start(cloud_host, cloud_router_port);
-	u_long startTime = getTimeMS();
+	u_int64_t startTime = getTimeMS();
 	while(!cloud_receiver->isStartOk() && !is_terminating()) {
 		if(is_read_from_file_simple() && getTimeMS() > startTime + 3 * 1000) {
 			vm_terminate();
@@ -3959,7 +3959,7 @@ int main_init_read() {
 		while(!is_terminating()) {
 			long timeProcessStatMS = 0;
 			if(_counter) {
-				u_long startTimeMS = getTimeMS_rdtsc();
+				u_int64_t startTimeMS = getTimeMS_rdtsc();
 				pthread_mutex_lock(&terminate_packetbuffer_lock);
 				pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : sverb.pcap_stat_period);
 				pthread_mutex_unlock(&terminate_packetbuffer_lock);
@@ -3972,7 +3972,7 @@ int main_init_read() {
 				if(tcpReassemblyWebrtc) {
 					tcpReassemblyWebrtc->setDoPrintContent();
 				}
-				u_long endTimeMS = getTimeMS_rdtsc();
+				u_int64_t endTimeMS = getTimeMS_rdtsc();
 				if(endTimeMS > startTimeMS) {
 					timeProcessStatMS = endTimeMS - startTimeMS;
 				}
@@ -4916,9 +4916,9 @@ void test_filezip_handler() {
 
 void *_test_thread(void *) {
 	int threadId = get_unix_tid();
-	u_long time_ms_last = 0;
+	u_int64_t time_ms_last = 0;
 	while(!terminating) {
-		u_long time_ms = getTimeMS_rdtsc();
+		u_int64_t time_ms = getTimeMS_rdtsc();
 		if(time_ms > time_ms_last + 2000) {
 			pstat_data stat[2];
 			if(stat[0].cpu_total_time) {

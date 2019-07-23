@@ -978,7 +978,6 @@ private:
 	FILE *log;
 	pstat_data cleanupThreadPstatData[2];
 	pstat_data packetThreadPstatData[2];
-	u_long lastTimeLogErrExceededMaximumAttempts;
 	u_long _cleanupCounter;
 	u_int32_t linkTimeout;
 	SafeAsyncQueue<sPacket> packetQueue;

@@ -535,7 +535,7 @@ public:
 		}
 		void set(void **destBuffer, int seqno, u_int32_t ssrc, struct timeval *ts) {
 			if(audiobuffer && audiobuffer->is_enable()) {
-				u_long actTimeMS = getTimeMS(ts);
+				u_int64_t actTimeMS = getTimeMS(ts);
 				if(!last_seq || !last_ssrc ||
 				   (last_ssrc == ssrc ?
 				     (last_seq < seqno || (last_seq - seqno) > 30000) :
@@ -555,7 +555,7 @@ public:
 		FifoBuffer *audiobuffer;
 		int last_seq;
 		u_int32_t last_ssrc;
-		u_long last_ssrc_time_ms;
+		u_int64_t last_ssrc_time_ms;
 	};
 public:
 	bool is_ssl;			//!< call was decrypted

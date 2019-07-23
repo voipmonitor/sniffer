@@ -704,8 +704,8 @@ void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirt
 		forceVirtualUdp = true;
 	}
 	if(packetS->header_pt->caplen > 1000000) {
-		static u_long lastTimeSyslog = 0;
-		u_long actTime = getTimeMS();
+		static u_int64_t lastTimeSyslog = 0;
+		u_int64_t actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog) {
 			syslog(LOG_ERR, "too big packet caplen (%u) in call %s - skip save packet", packetS->header_pt->caplen, call->call_id.c_str());
 			lastTimeSyslog = actTime;
@@ -2035,8 +2035,8 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 		return;
 	}
 	if(call->typeIsNot(INVITE) && call->typeIsNot(SKINNY_NEW) && call->typeIsNot(MGCP)) {
-		static u_long lastTimeSyslog = 0;
-		u_long actTime = getTimeMS();
+		static u_int64_t lastTimeSyslog = 0;
+		u_int64_t actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog) {
 			syslog(LOG_ERR, "incorrect call type in add_to_rtp_thread_queue: %i, saddr %s daddr %s sport %u dport %u",
 			       call->getTypeBase(),
@@ -4869,7 +4869,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
 	    count_sip_cancel_confirmed != process_packet__last_cleanup_calls__count_sip_cancel_confirmed)) {
 		doQuickCleanup = true;
 	}
-	u_long actTimeMS = getTimeMS_rdtsc();
+	u_int64_t actTimeMS = getTimeMS_rdtsc();
 	if(header) {
 		process_packet__last_cleanup_calls_diff = getTimeMS(header) - actTimeMS;
 		if(!doQuickCleanup &&
@@ -4881,7 +4881,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
 	if(header) {
 		ts = header->ts;
 	} else {
-		u_long corTimeMS = actTimeMS + process_packet__last_cleanup_calls_diff;
+		u_int64_t corTimeMS = actTimeMS + process_packet__last_cleanup_calls_diff;
 		ts.tv_sec = corTimeMS / 1000;
 		ts.tv_usec = corTimeMS % 1000 * 1000;
 	}
@@ -4952,7 +4952,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
 }
 
 inline void process_packet__cleanup_registers(pcap_pkthdr* header) {
-	u_long actTimeMS = getTimeMS_rdtsc();
+	u_int64_t actTimeMS = getTimeMS_rdtsc();
 	if(header) {
 		process_packet__last_cleanup_registers_diff = getTimeMS(header) - actTimeMS;
 		if(getTimeS(header) - process_packet__last_cleanup_registers < 10) {
@@ -4963,7 +4963,7 @@ inline void process_packet__cleanup_registers(pcap_pkthdr* header) {
 	if(header) {
 		ts = header->ts;
 	} else {
-		u_long corTimeMS = actTimeMS + process_packet__last_cleanup_registers_diff;
+		u_int64_t corTimeMS = actTimeMS + process_packet__last_cleanup_registers_diff;
 		ts.tv_sec = corTimeMS / 1000;
 		ts.tv_usec = corTimeMS % 1000 * 1000;
 	}
@@ -4979,7 +4979,7 @@ inline void process_packet__cleanup_registers(pcap_pkthdr* header) {
 }
 
 inline void process_packet__cleanup_ss7(pcap_pkthdr* header) {
-	u_long actTimeMS = getTimeMS_rdtsc();
+	u_int64_t actTimeMS = getTimeMS_rdtsc();
 	if(header) {
 		process_packet__last_cleanup_ss7_diff = getTimeMS(header) - actTimeMS;
 		if(getTimeS(header) - process_packet__last_cleanup_ss7 < 10) {
@@ -4990,7 +4990,7 @@ inline void process_packet__cleanup_ss7(pcap_pkthdr* header) {
 	if(header) {
 		ts = header->ts;
 	} else {
-		u_long corTimeMS = actTimeMS + process_packet__last_cleanup_ss7_diff;
+		u_int64_t corTimeMS = actTimeMS + process_packet__last_cleanup_ss7_diff;
 		ts.tv_sec = corTimeMS / 1000;
 		ts.tv_usec = corTimeMS % 1000 * 1000;
 	}

@@ -91,8 +91,8 @@ struct pcap_pkthdr_plus {
 	inline uint32_t get_tv_usec() {
 		return(std ? this->header_std.ts.tv_usec : this->header_fix_size.ts_tv_usec);
 	}
-	inline u_long get_time_ms() {
-		return(get_tv_sec() * 1000ul + get_tv_usec() / 1000);
+	inline u_int64_t get_time_ms() {
+		return(get_tv_sec() * 1000ull + get_tv_usec() / 1000);
 	}
 	union {
 		pcap_pkthdr_fix_size header_fix_size;
@@ -329,9 +329,9 @@ struct pcap_block_store {
 			is_voip[index] = 1;
 		}
 	}
-	u_long getLastPacketHeaderTimeMS() {
+	u_int64_t getLastPacketHeaderTimeMS() {
 		pcap_pkthdr_plus *pkthdr = (pcap_pkthdr_plus*)(this->block + this->offsets[this->count - 1]);
-		return(pkthdr->header_fix_size.ts_tv_sec * 1000ul + pkthdr->header_fix_size.ts_tv_usec / 1000);
+		return(pkthdr->header_fix_size.ts_tv_sec * 1000ull + pkthdr->header_fix_size.ts_tv_usec / 1000);
 	}
 	header_mode hm;
 	uint32_t *offsets;
@@ -352,8 +352,8 @@ struct pcap_block_store {
 	size_t restoreBufferSize;
 	size_t restoreBufferAllocSize;
 	u_int idFileStore;
-	u_long filePosition;
-	u_long timestampMS;
+	u_int64_t filePosition;
+	u_int64_t timestampMS;
 	volatile int _sync_packet_lock;
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	volatile int8_t *_sync_packets_lock;

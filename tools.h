@@ -650,7 +650,7 @@ private:
 	eState state;
 	bool existsContent;
 	int dlt;
-	u_long lastTimeSyslog;
+	u_int64_t lastTimeSyslog;
 	int _bufflength;
 	int _asyncwrite;
 	FileZipHandler::eTypeCompress _typeCompress;
@@ -2229,7 +2229,7 @@ private:
 	pthread_t writeThreadHandle;
 	volatile int _sync_data;
 	volatile uint64_t _size_all;
-	u_long lastTimeSyslogFullData;
+	u_int64_t lastTimeSyslogFullData;
 friend void *_SocketSimpleBufferWrite_writeFunction(void *arg);
 };
 

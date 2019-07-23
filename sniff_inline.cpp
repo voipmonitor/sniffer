@@ -502,11 +502,11 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				if(ppd->header_ip->get_tot_len() + ppd->header_ip_offset > HPH(*header_packet)->caplen) {
 					if(interfaceName) {
 						extern BogusDumper *bogusDumper;
-						static u_long lastTimeLogErrBadIpHeader = 0;
+						static u_int64_t lastTimeLogErrBadIpHeader = 0;
 						if(bogusDumper) {
 							bogusDumper->dump(HPH(*header_packet), HPP(*header_packet), pcapLinklayerHeaderType, interfaceName);
 						}
-						u_long actTime = getTimeMS(HPH(*header_packet));
+						u_int64_t actTime = getTimeMS(HPH(*header_packet));
 						if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
 							syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: %s: bogus ip header length %i, caplen %i", interfaceName, ppd->header_ip->get_tot_len(), HPH(*header_packet)->caplen);
 							lastTimeLogErrBadIpHeader = actTime;
@@ -775,11 +775,11 @@ void pcapProcessEvalError(error_type error, pcap_pkthdr header, u_char *packet,
 	case bad_ip_version:
 		if(interfaceName) {
 			extern BogusDumper *bogusDumper;
-			static u_long lastTimeLogErrBadIpHeader = 0;
+			static u_int64_t lastTimeLogErrBadIpHeader = 0;
 			if(bogusDumper) {
 				bogusDumper->dump(&header, packet, pcapLinklayerHeaderType, interfaceName);
 			}
-			u_long actTime = getTimeMS(&header);
+			u_int64_t actTime = getTimeMS(&header);
 			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
 				syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header version %i", interfaceName, ppd->header_ip->version);
 				lastTimeLogErrBadIpHeader = actTime;
@@ -789,11 +789,11 @@ void pcapProcessEvalError(error_type error, pcap_pkthdr header, u_char *packet,
 	case bad_ip_length:
 		if(interfaceName) {
 			extern BogusDumper *bogusDumper;
-			static u_long lastTimeLogErrBadIpHeader = 0;
+			static u_int64_t lastTimeLogErrBadIpHeader = 0;
 			if(bogusDumper) {
 				bogusDumper->dump(&header, packet, pcapLinklayerHeaderType, interfaceName);
 			}
-			u_long actTime = getTimeMS(&header);
+			u_int64_t actTime = getTimeMS(&header);
 			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
 				syslog(LOG_ERR, "BAD HEADER_IP: %s: bogus ip header length %i, len %i", interfaceName, ppd->header_ip->get_tot_len(), header.len);
 				lastTimeLogErrBadIpHeader = actTime;

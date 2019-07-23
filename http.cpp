@@ -457,7 +457,7 @@ bool HttpDataCache_link::checkExistsRequest(const char *url_md5, const char *htt
 }
 
 void HttpDataCache_link::writeToDb(const HttpDataCache_id *id, bool all, u_int64_t time) {
-	u_long actTimeMS = getTimeMS_rdtsc();
+	u_int64_t actTimeMS = getTimeMS_rdtsc();
 	for(map<u_int64_t, HttpDataCache_relation*>::iterator iter_rel = relations.begin(); iter_rel != relations.end(); ) {
 		if(all || 
 		   iter_rel->first < time - 10000000ull ||
@@ -589,7 +589,7 @@ void HttpDataCache::writeToDb(bool all, bool ifExpiration) {
 	if(!last_timestamp) {
 		return;
 	}
-	u_long actTimeMS = getTimeMS_rdtsc();
+	u_int64_t actTimeMS = getTimeMS_rdtsc();
 	if(!all && ifExpiration &&
 	   (last_write_at ? last_write_at : init_at) < actTimeMS - 10000) {
 		return;

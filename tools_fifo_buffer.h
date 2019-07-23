@@ -104,7 +104,7 @@ public:
 		}
 		if(this->max_size &&
 		   this->size_all(false) + size > this->max_size) {
-			u_long actTime = getTimeMS();
+			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > this->lastTimeErrMaxSize) {
 				syslog(LOG_ERR, "buffer '%s' is full", description.size() ? description.c_str() : "noname");
 				this->lastTimeErrMaxSize = actTime;
@@ -306,7 +306,7 @@ private:
 	volatile bool disable;
 	volatile int _sync;
 	volatile int _sync_master;
-	u_long lastTimeErrMaxSize;
+	u_int64_t lastTimeErrMaxSize;
 	std::string debug_out_filename;
 	FILE *debug_out_file;
 friend class FifoBufferItem;

@@ -608,7 +608,7 @@ private:
 	int _last_sensor_id;
 	char _last_ifname[10];
 	
-	u_long lastTimeSyslog;
+	u_int64_t lastTimeSyslog;
 	
 	bool stopReadProcessing;
 	

@@ -127,7 +127,7 @@ private:
 	size_t countPush;
 	size_t countPop;
 	bool full;
-	u_long timestampMS;
+	u_int64_t timestampMS;
 	volatile int _sync_flush_file;
 friend class pcap_store_queue;
 };
@@ -174,8 +174,8 @@ private:
 	volatile int _sync_queue;
 	volatile int _sync_fileStore;
 	int cleanupFileStoreCounter;
-	u_long lastTimeLogErrDiskIsFull;
-	u_long lastTimeLogErrMemoryIsFull;
+	u_int64_t lastTimeLogErrDiskIsFull;
+	u_int64_t lastTimeLogErrMemoryIsFull;
 friend class PcapQueue_readFromFifo;
 };
 
@@ -354,8 +354,8 @@ private:
 	u_int64_t counter_sip_message_packets_old;
 	u_int64_t counter_rtp_packets_old;
 	u_int64_t counter_all_packets_old;
-	u_long lastTimeLogErrPcapNextExNullPacket;
-	u_long lastTimeLogErrPcapNextExErrorReading;
+	u_int64_t lastTimeLogErrPcapNextExNullPacket;
+	u_int64_t lastTimeLogErrPcapNextExErrorReading;
 	u_long pcapStatCounter;
 friend void *_PcapQueue_threadFunction(void *arg);
 friend void *_PcapQueue_writeThreadFunction(void *arg);
@@ -455,8 +455,8 @@ private:
 	pcap_stat last_ps;
 	u_long countPacketDrop;
 	u_int64_t lastPacketTimeUS;
-	u_long lastTimeLogErrPcapNextExNullPacket;
-	u_long lastTimeLogErrPcapNextExErrorReading;
+	u_int64_t lastTimeLogErrPcapNextExNullPacket;
+	u_int64_t lastTimeLogErrPcapNextExErrorReading;
 	int32_t libpcap_buffer_offset;
 	u_char **libpcap_buffer;
 	u_char *libpcap_buffer_old;
@@ -772,7 +772,7 @@ protected:
 	PcapQueue_readFromInterfaceThread *readThreads[READ_THREADS_MAX];
 	int readThreadsCount;
 	int lastReadThreadsIndex_pcapStatString_interface;
-	u_long lastTimeLogErrThread0BufferIsFull;
+	u_int64_t lastTimeLogErrThread0BufferIsFull;
 private:
 	rqueue_quick<pcap_block_store*> *block_qring;
 };
@@ -960,7 +960,7 @@ private:
 	cSocketBlock *clientSocket;
 	map<unsigned int, sPacketServerConnection*> packetServerConnections;
 	volatile int _sync_packetServerConnections;
-	u_long lastCheckFreeSizeCachedir_timeMS;
+	u_int64_t lastCheckFreeSizeCachedir_timeMS;
 	volatile timeval _last_ts;
 	u_int32_t block_counter;
 friend void *_PcapQueue_readFromFifo_destroyBlocksThreadFunction(void *arg);

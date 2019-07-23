@@ -884,7 +884,7 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 					spoolData->add(indexHour, itemHour);
 					continue;
 				}
-				u_long start = getTimeMS();
+				u_int64_t start = getTimeMS();
 				char *fts_path[2] = { (char*)pathHour.c_str(), NULL };
 				FTS *tree = fts_open(fts_path, FTS_NOCHDIR, 0);
 				if(!tree) {
@@ -956,7 +956,7 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 				}
 				fts_close(tree);
 				if(!is_terminating()) {
-					u_long end = getTimeMS();
+					u_int64_t end = getTimeMS();
 					usleep((end - start) * 1000);
 					syslog(LOG_NOTICE, "cleanspool[%i]: load date/hour - %s/%i", spoolIndex, indexHour.date.c_str(), indexHour.hour);
 					if(countFiles) {

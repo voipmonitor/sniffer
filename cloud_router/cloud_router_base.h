@@ -134,12 +134,12 @@ public:
 		block_ip_time[ip] = getTimeMS_rdtsc() + expirationS * 1000;
 	}
 	bool isBlocked(vmIP ip) {
-		map<vmIP, u_long>::iterator iter = block_ip_time.find(ip);
+		map<vmIP, u_int64_t>::iterator iter = block_ip_time.find(ip);
 		return(iter != block_ip_time.end() &&
 		       block_ip_time[ip] > getTimeMS_rdtsc());
 	}
 private:
-	map<vmIP, u_long> block_ip_time;
+	map<vmIP, u_int64_t> block_ip_time;
 };
 
 

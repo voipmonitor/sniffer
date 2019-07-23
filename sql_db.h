@@ -686,7 +686,7 @@ private:
 			is_open = false;
 			_sync = 0;
 		}
-		bool open(const char *filename, u_long createAt) {
+		bool open(const char *filename, u_int64_t createAt) {
 			this->filename = filename;
 			this->createAt = createAt;
 			fileZipHandler =  new FILE_LINE(30001) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
@@ -713,7 +713,7 @@ private:
 		bool isOpen() {
 			return(is_open);
 		}
-		bool isExceedPeriod(int period, u_long time = 0) {
+		bool isExceedPeriod(int period, u_int64_t time = 0) {
 			if(!time) {
 				time = getTimeMS();
 			}
@@ -727,8 +727,8 @@ private:
 		}
 		string filename;
 		FileZipHandler *fileZipHandler;
-		u_long createAt;
-		u_long flushAt;
+		u_int64_t createAt;
+		u_int64_t flushAt;
 		volatile bool is_open;
 		volatile int _sync;
 	};
@@ -757,7 +757,7 @@ private:
 			thread = 0;
 			_sync = 0;
 		}
-		void addFile(u_long time, const char *file) {
+		void addFile(u_int64_t time, const char *file) {
 			lock();
 			qfiles_load[time] = file;
 			unlock();
@@ -774,7 +774,7 @@ private:
 		int storeConcatLimit;
 		MySqlStore *store;
 		pthread_t thread;
-		map<u_long, string> qfiles_load;
+		map<u_int64_t, string> qfiles_load;
 		volatile int _sync;
 	};
 	struct LoadFromQFilesThreadInfo {
@@ -784,7 +784,7 @@ private:
 	struct QFileData {
 		string filename;
 		int id;
-		u_long time;
+		u_int64_t time;
 	};
 public:
 	MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port,
@@ -802,7 +802,7 @@ public:
 	void query_lock(string query_str, int id);
 	// qfiles
 	void query_to_file(const char *query_str, int id);
-	string getQFilename(int idc, u_long actTime);
+	string getQFilename(int idc, u_int64_t actTime);
 	int convIdForQFile(int id);
 	void closeAllQFiles();
 	void clearAllQFiles();
