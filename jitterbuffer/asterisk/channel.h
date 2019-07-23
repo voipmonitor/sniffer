@@ -367,6 +367,8 @@ struct ast_channel {
 	struct ast_jb jb;				/*!< The jitterbuffer state  */
 
 	unsigned int last_received;
+	
+	char audio_decode;
 };
 
 /*! \brief ast_channel_tech Properties */

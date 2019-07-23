@@ -70,9 +70,9 @@ typedef void * (*jb_create_impl)(struct ast_jb_conf *general_config, long resync
 /*! \brief Destroy */
 typedef void (*jb_destroy_impl)(void *jb);
 /*! \brief Put first frame */
-typedef int (*jb_put_first_impl)(void *jb, struct ast_frame *fin, long now);
+typedef int (*jb_put_first_impl)(void *jb, struct ast_frame *fin, long now, char audio_decode);
 /*! \brief Put frame */
-typedef int (*jb_put_impl)(void *jb, struct ast_frame *fin, long now);
+typedef int (*jb_put_impl)(void *jb, struct ast_frame *fin, long now, char audio_decode);
 /*! \brief Get frame for now */
 typedef int (*jb_get_impl)(void *jb, struct ast_frame **fout, long now, long interpl);
 /*! \brief Get next */
@@ -108,8 +108,8 @@ extern void fifobuff_add(void *fifo_buff, const char *data, unsigned int datalen
 /* fixed */
 static void * jb_create_fixed(struct ast_jb_conf *general_config, long resynch_threshold, struct ast_channel *chan);
 static void jb_destroy_fixed(void *jb);
-static int jb_put_first_fixed(void *jb, struct ast_frame *fin, long now);
-static int jb_put_fixed(void *jb, struct ast_frame *fin, long now);
+static int jb_put_first_fixed(void *jb, struct ast_frame *fin, long now, char audio_decode);
+static int jb_put_fixed(void *jb, struct ast_frame *fin, long now, char audio_decode);
 static int jb_get_fixed(void *jb, struct ast_frame **fout, long now, long interpl);
 static long jb_next_fixed(void *jb);
 static int jb_remove_fixed(void *jb, struct ast_frame **fout);
@@ -118,8 +118,8 @@ static void jb_empty_and_reset_fixed(void *jb);
 /* adaptive */
 static void * jb_create_adaptive(struct ast_jb_conf *general_config, long resynch_threshold, struct ast_channel *chan);
 static void jb_destroy_adaptive(void *jb);
-static int jb_put_first_adaptive(void *jb, struct ast_frame *fin, long now);
-static int jb_put_adaptive(void *jb, struct ast_frame *fin, long now);
+static int jb_put_first_adaptive(void *jb, struct ast_frame *fin, long now, char audio_decode);
+static int jb_put_adaptive(void *jb, struct ast_frame *fin, long now, char audio_decode);
 static int jb_get_adaptive(void *jb, struct ast_frame **fout, long now, long interpl);
 static long jb_next_adaptive(void *jb);
 static int jb_remove_adaptive(void *jb, struct ast_frame **fout);
@@ -328,7 +328,7 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
 	} else {
 		//fprintf(stdout, "mynow [%u][%u], tb [%u][%u] tvdiff[%u] seq[%u]\n", mynow->tv_sec, mynow->tv_usec, jb->timebase.tv_sec, jb->timebase.tv_usec, ast_tvdiff_ms(*mynow, jb->timebase), frr->seqno);
 		now = get_now(jb, NULL, mynow);
-		if (jbimpl->put(jbobj, frr, now) != JB_IMPL_OK) {
+		if (jbimpl->put(jbobj, frr, now, chan->audio_decode) != JB_IMPL_OK) {
 			if(sverb.jitter) fprintf(stdout, "JB_PUT[%p] {now=%ld}: Dropped frame with ts=%ld and len=%ld and seq=%d\n", jb, now, frr->ts, frr->len, frr->seqno);
 			ast_frfree(frr);
 			/*return -1;*/
@@ -618,7 +618,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr, struct tim
 	}
 
 	now = get_now(jb, NULL, mynow);
-	res = jbimpl->put_first(jbobj, frr, now);
+	res = jbimpl->put_first(jbobj, frr, now, chan->audio_decode);
 	
 	/* The result of putting the first frame should not differ from OK. However, its possible
 	   some implementations (i.e. adaptive's when resynch_threshold is specified) to drop it. */
@@ -787,23 +787,23 @@ static void jb_destroy_fixed(void *jb)
 }
 
 
-static int jb_put_first_fixed(void *jb, struct ast_frame *fin, long now)
+static int jb_put_first_fixed(void *jb, struct ast_frame *fin, long now, char audio_decode)
 {
 	struct fixed_jb *fixedjb = (struct fixed_jb *) jb;
 	int res;
 	
-	res = fixed_jb_put_first(fixedjb, fin, fin->len, fin->ts, now);
+	res = fixed_jb_put_first(fixedjb, fin, fin->len, fin->ts, now, fin->marker, audio_decode);
 	
 	return fixed_to_abstract_code[res];
 }
 
 
-static int jb_put_fixed(void *jb, struct ast_frame *fin, long now)
+static int jb_put_fixed(void *jb, struct ast_frame *fin, long now, char audio_decode)
 {
 	struct fixed_jb *fixedjb = (struct fixed_jb *) jb;
 	int res;
 	
-	res = fixed_jb_put(fixedjb, fin, fin->len, fin->ts, now, fin->marker);
+	res = fixed_jb_put(fixedjb, fin, fin->len, fin->ts, now, fin->marker, audio_decode);
 	
 	return fixed_to_abstract_code[res];
 }
@@ -891,13 +891,13 @@ static void jb_destroy_adaptive(void *jb)
 }
 
 
-static int jb_put_first_adaptive(void *jb, struct ast_frame *fin, long now)
+static int jb_put_first_adaptive(void *jb, struct ast_frame *fin, long now, char audio_decode)
 {
-	return jb_put_adaptive(jb, fin, now);
+	return jb_put_adaptive(jb, fin, now, audio_decode);
 }
 
 
-static int jb_put_adaptive(void *jb, struct ast_frame *fin, long now)
+static int jb_put_adaptive(void *jb, struct ast_frame *fin, long now, char audio_decode)
 {
 	jitterbuf *adaptivejb = (jitterbuf *) jb;
 	int res;

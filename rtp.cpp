@@ -298,6 +298,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	channel_record->lastbuflen = 0;
 	channel_record->resync = 0;
 	channel_record->audiobuf = NULL;
+	channel_record->audio_decode = true;
 	last_mos_time = 0;
 	mos_processed = false;
 	save_mos_graph_wait = false;
