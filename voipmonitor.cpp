@@ -7160,6 +7160,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "disable_custom_headers")		sverb.disable_custom_headers = 1;
 	else if(verbParam == "disable_cloudshare")		sverb.disable_cloudshare = 1;
 	else if(verbParam == "screen_popup")			sverb.screen_popup = 1;
+	else if(verbParam == "screen_popup_syslog")		sverb.screen_popup_syslog = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;

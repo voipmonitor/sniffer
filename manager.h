@@ -18,9 +18,10 @@ void *manager_server(void *dummy);
 void *manager_ssh(void *dummy);
 int Handle_pause_call(long long callref, int val);
 
+
 class ManagerClientThread {
 public:
-	ManagerClientThread(int client, const char *type, const char *command, int commandLength = 0);
+	ManagerClientThread(sClientInfo client, const char *type, const char *command, int commandLength = 0);
 	virtual ~ManagerClientThread() {}
 	void run();
 	bool isFinished() { return(finished); }
@@ -36,7 +37,7 @@ protected:
 		__sync_lock_release(&this->_sync_responses);
 	}
 protected:
-	int client;
+	sClientInfo client;
 	string type;
 	string command;
 	bool finished;
@@ -56,7 +57,7 @@ public:
 		string replace;
 	};
 public:
-	ManagerClientThread_screen_popup(int client, const char *command, int commandLength = 0);
+	ManagerClientThread_screen_popup(sClientInfo client, const char *command, int commandLength = 0);
 	bool parseCommand();
 	void onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
 		    vmIP sipSaddr, vmIP sipDaddr,
@@ -87,7 +88,8 @@ class ManagerClientThreads {
 public:
 	ManagerClientThreads();
 	void add(ManagerClientThread *clientThread);
-	void onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
+	void onCall(const char *call_id,
+		    int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
 		    vmIP sipSaddr, vmIP sipDaddr,
 		    const char *screenPopupFieldsString);
 	void cleanup();
@@ -111,7 +113,7 @@ struct commandAndHelp {
 
 class Mgmt_params {
 public:
-	Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
+	Mgmt_params(char *ibuf, int isize, sClientInfo iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
 	int sendString(const char *);
 	int sendString(const char *, ssize_t);
 	int sendString(string);
@@ -134,7 +136,7 @@ public:
 // vars for sendvm
 	char *buf;
 	int size;
-	int client;
+	sClientInfo client;
 	ssh_channel sshchannel;
 	cClient *c_client;
 	ManagerClientThread **managerClientThread;

@@ -133,7 +133,7 @@ int Mgmt_params::sendString(const char *str) {
 }
 
 int Mgmt_params::sendString(const char *str, ssize_t size) {
-	if(sendvm(client, sshchannel, c_client, str, size, 0) == -1){
+	if(sendvm(client.handler, sshchannel, c_client, str, size, 0) == -1){
 		cerr << "Error sending data to client" << endl;
 		return -1;
 	}
@@ -164,7 +164,7 @@ int Mgmt_params::sendString(string *str) {
 	if(zip &&
 	   ((*str)[0] != 0x1f || (str->length() > 1 && (unsigned char)(*str)[1] != 0x8b))) {
 		compressStream = new FILE_LINE(13021) CompressStream(CompressStream::gzip, 1024, 0);
-		compressStream->setSendParameters(client, sshchannel, c_client);
+		compressStream->setSendParameters(client.handler, sshchannel, c_client);
 	}
 	unsigned chunkLength = 4096;
 	unsigned processedLength = 0;
@@ -177,7 +177,7 @@ int Mgmt_params::sendString(string *str) {
 			return -1;
 			}
 		} else {
-			if(sendvm(client, sshchannel, c_client, (char*)str->c_str() + processedLength, processLength, 0) == -1){
+			if(sendvm(client.handler, sshchannel, c_client, (char*)str->c_str() + processedLength, processLength, 0) == -1){
 				cerr << "Error sending data to client" << endl;
 				return -1;
 			}
@@ -209,7 +209,7 @@ int Mgmt_params::sendFile(const char *fileName, u_int64_t tailMaxSize) {
 		lseek(fd, startPos);
 	}
 	RecompressStream *recompressStream = new FILE_LINE(0) RecompressStream(RecompressStream::compress_na, zip ? RecompressStream::gzip : RecompressStream::compress_na);
-	recompressStream->setSendParameters(client, sshchannel, c_client);
+	recompressStream->setSendParameters(client.handler, sshchannel, c_client);
 	ssize_t nread;
 	size_t read_size = 0;
 	char rbuf[4096];
@@ -247,7 +247,7 @@ int Mgmt_params::sendConfigurationFile(const char *fileName, list<string> *hideP
 		return -1;
 	}
 	RecompressStream *recompressStream = new FILE_LINE(0) RecompressStream(RecompressStream::compress_na, zip ? RecompressStream::gzip : RecompressStream::compress_na);
-	recompressStream->setSendParameters(client, sshchannel, c_client);
+	recompressStream->setSendParameters(client.handler, sshchannel, c_client);
 	char lineBuffer[10000];
 	while(fgets(lineBuffer, sizeof(lineBuffer), file)) {
 		string lineBufferSubst;
@@ -309,7 +309,7 @@ int Mgmt_params::sendPexecOutput(const char *cmd) {
 	}
 }
 
-Mgmt_params::Mgmt_params(char *ibuf, int isize, int iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread) {
+Mgmt_params::Mgmt_params(char *ibuf, int isize, sClientInfo iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread) {
 	buf = ibuf;
 	size = isize;
 	client = iclient;
@@ -1150,9 +1150,9 @@ void manager_parse_command_disable() {
 	enable_parse_command = false;
 }
 
-static int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
+static int _parse_command(char *buf, int size, sClientInfo client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
 
-int parse_command(string cmd, int client, cClient *c_client) {
+int parse_command(string cmd, sClientInfo client, cClient *c_client) {
 	ManagerClientThread *managerClientThread = NULL;
 	int rslt = _parse_command((char*)cmd.c_str(), cmd.length(), client, NULL, c_client, &managerClientThread);
 	if(managerClientThread) {
@@ -1161,19 +1161,19 @@ int parse_command(string cmd, int client, cClient *c_client) {
 			managerClientThread->run();
 		} else {
 			delete managerClientThread;
-			if(client) {
-				close(client);
+			if(client.handler) {
+				close(client.handler);
 			}
 		}
 	} else {
-		if(client) {
-			close(client);
+		if(client.handler) {
+			close(client.handler);
 		}
 	}
 	return(rslt);
 }
 
-int _parse_command(char *buf, int size, int client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread) {
+int _parse_command(char *buf, int size, sClientInfo client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread) {
 	if(!enable_parse_command) {
 		return(0);
 	}
@@ -1325,13 +1325,12 @@ void *manager_read_thread(void * arg) {
 	char buf[BUFSIZE];
 	string buf_long;
 	int size;
-	unsigned int client;
-	client = *(unsigned int *)arg;
-	delete (unsigned int*)arg;
+	sClientInfo clientInfo = *(sClientInfo*)arg;
+	delete (sClientInfo*)arg;
 
-	if ((size = recv(client, buf, BUFSIZE - 1, 0)) == -1) {
+	if ((size = recv(clientInfo.handler, buf, BUFSIZE - 1, 0)) == -1) {
 		cerr << "Error in receiving data" << endl;
-		close(client);
+		close(clientInfo.handler);
 		return 0;
 	} else {
 		buf[size] = '\0';
@@ -1351,7 +1350,7 @@ void *manager_read_thread(void * arg) {
 				if(opt_socket_use_poll) {
 					pollfd fds[2];
 					memset(fds, 0 , sizeof(fds));
-					fds[0].fd = client;
+					fds[0].fd = clientInfo.handler;
 					fds[0].events = POLLIN;
 					int rsltPool = poll(fds, 1, timeout_ms);
 					if(rsltPool > 0 && fds[0].revents) {
@@ -1361,16 +1360,16 @@ void *manager_read_thread(void * arg) {
 					fd_set rfds;
 					struct timeval tv;
 					FD_ZERO(&rfds);
-					FD_SET(client, &rfds);
+					FD_SET(clientInfo.handler, &rfds);
 					tv.tv_sec = 0;
 					tv.tv_usec = timeout_ms * 1000;
-					int rsltSelect = select(client + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
-					if(rsltSelect > 0 && FD_ISSET(client, &rfds)) {
+					int rsltSelect = select(clientInfo.handler + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv);
+					if(rsltSelect > 0 && FD_ISSET(clientInfo.handler, &rfds)) {
 						doRead = true;
 					}
 				}
 				if(doRead &&
-				   (size = recv(client, buf_next, BUFSIZE - 1, 0)) > 0) {
+				   (size = recv(clientInfo.handler, buf_next, BUFSIZE - 1, 0)) > 0) {
 					buf_next[size] = '\0';
 					buf_long += buf_next;
 					if(debugRecv) {
@@ -1393,7 +1392,7 @@ void *manager_read_thread(void * arg) {
 		}
 	}
 	
-	parse_command(buf_long, client, NULL);
+	parse_command(buf_long, clientInfo, NULL);
 
 	return 0;
 }
@@ -1585,26 +1584,26 @@ tryagain:
 			}
 		}
 		if(doAccept) {
-			int client = socket_accept(manager_socket_server, NULL, NULL);
+			vmIP clientIP;
+			int clientHandler = socket_accept(manager_socket_server, &clientIP, NULL);
 			if(is_terminating_without_error()) {
-				close(client);
+				close(clientHandler);
 				close(manager_socket_server);
 				return 0;
 			}
-			if (client == -1) {
+			if (clientHandler == -1) {
 				//cerr << "Problem with accept client" <<endl;
-				close(client);
+				close(clientHandler);
 				continue;
 			}
 
 			pthread_attr_init(&attr);
-			unsigned int *_ids = new FILE_LINE(13018) unsigned int;
-			*_ids = client;
+			sClientInfo *clientInfo = new FILE_LINE(0) sClientInfo(clientHandler, clientIP);
 			int rslt = pthread_create (		/* Create a child thread        */
 				       &threads,		/* Thread ID (system assigned)  */    
 				       &attr,			/* Default thread attributes    */
 				       manager_read_thread,	/* Thread routine               */
-				       _ids);			/* Arguments to be passed       */
+				       clientInfo);		/* Arguments to be passed       */
 			pthread_detach(threads);
 			pthread_attr_destroy(&attr);
 			if(rslt != 0) {
@@ -1850,7 +1849,7 @@ bool cmpCallBy_first_packet_time(Call* a, Call* b) {
 }
 
 
-ManagerClientThread::ManagerClientThread(int client, const char *type, const char *command, int commandLength) {
+ManagerClientThread::ManagerClientThread(sClientInfo client, const char *type, const char *command, int commandLength) {
 	this->client = client;
 	this->type = type;
 	if(commandLength) {
@@ -1866,7 +1865,7 @@ void ManagerClientThread::run() {
 	unsigned int counter = 0;
 	bool disconnect = false;
 	int flag = 0;
-	setsockopt(client, IPPROTO_TCP, TCP_NODELAY, (char *) &flag, sizeof(int));
+	setsockopt(client.handler, IPPROTO_TCP, TCP_NODELAY, (char *) &flag, sizeof(int));
 	int flushBuffLength = 1000;
 	char *flushBuff = new FILE_LINE(13019) char[flushBuffLength];
 	memset(flushBuff, '_', flushBuffLength - 1);
@@ -1880,26 +1879,31 @@ void ManagerClientThread::run() {
 		}
 		this->unlock_responses();
 		if(!rsltString.empty()) {
-			if(send(client, rsltString.c_str(), rsltString.length(), 0) == -1) {
+			if(send(client.handler, rsltString.c_str(), rsltString.length(), 0) == -1) {
 				disconnect = true;
 			} else {
-				send(client, flushBuff, flushBuffLength, 0);
+				if(sverb.screen_popup_syslog) {
+					syslog(LOG_INFO, "SCREEN_POPUP - ok send string: dest: %s data: %s", 
+					       client.ip.getString().c_str(),
+					       rsltString.c_str());
+				}
+				send(client.handler, flushBuff, flushBuffLength, 0);
 			}
 		}
 		++counter;
 		if((counter % 5) == 0 && !disconnect) {
-			if(send(client, "ping\n", 5, 0) == -1) {
+			if(send(client.handler, "ping\n", 5, 0) == -1) {
 				disconnect = true;
 			}
 		}
 		usleep(100000);
 	}
-	close(client);
+	close(client.handler);
 	finished = true;
 	delete [] flushBuff;
 }
 
-ManagerClientThread_screen_popup::ManagerClientThread_screen_popup(int client, const char *command, int commandLength) 
+ManagerClientThread_screen_popup::ManagerClientThread_screen_popup(sClientInfo client, const char *command, int commandLength) 
  : ManagerClientThread(client, "screen_popup", command, commandLength) {
 	auto_popup = false;
 	non_numeric_caller_id = false;
@@ -1966,6 +1970,12 @@ void ManagerClientThread_screen_popup::onCall(int sipResponseNum, const char *ca
 		sipSaddr.getString().c_str(),
 		sipDaddr.getString().c_str(),
 		screenPopupFieldsString);
+	if(sverb.screen_popup_syslog) {
+		syslog(LOG_INFO, "SCREEN_POPUP - send string: username: %s dest: %s data: %s", 
+		       username.c_str(),
+		       client.ip.getString().c_str(),
+		       rsltString);
+	}
 	this->lock_responses();
 	this->responses.push(rsltString);
 	this->unlock_responses();
@@ -2094,7 +2104,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 		strcpy(rsltString, "login_failed error:[[Invalid user or password.]]\n");
 	}
 	delete sqlDb;
-	send(client, rsltString, strlen(rsltString), 0);
+	send(client.handler, rsltString, strlen(rsltString), 0);
 	return(rslt);
 }
 
@@ -2121,9 +2131,20 @@ void ManagerClientThreads::add(ManagerClientThread *clientThread) {
 	this->cleanup();
 }
 
-void ManagerClientThreads::onCall(int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
+void ManagerClientThreads::onCall(const char *call_id,
+				  int sipResponseNum, const char *callerName, const char *callerNum, const char *calledNum,
 				  vmIP sipSaddr, vmIP sipDaddr,
 				  const char *screenPopupFieldsString) {
+	if(sverb.screen_popup_syslog) {
+		syslog(LOG_INFO, "SCREEN_POPUP - call: call_id: %s response: %i caller: %s called: %s callername: %s from: %s to: %s", 
+		       call_id,
+		       sipResponseNum,
+		       callerNum,
+		       calledNum,
+		       callerName,
+		       sipSaddr.getString().c_str(),
+		       sipDaddr.getString().c_str());
+	}
 	this->lock_client_threads();
 	vector<ManagerClientThread*>::iterator iter;
 	for(iter = this->clientThreads.begin(); iter != this->clientThreads.end(); ++iter) {
@@ -2650,7 +2671,7 @@ int Mgmt_creategraph(Mgmt_params *params) {
 		}
 		if ((dstfile == NULL) && (res == 0)) {		//send from stdout of a command (binary data)
 			if (sverb.rrd_info) syslog(LOG_NOTICE, "COMMAND for system pipe:%s", sendcommand);
-			if (sendvm_from_stdout_of_command(sendcommand, params->client, params->sshchannel, params->c_client, sendbuf, sizeof(sendbuf), 0) == -1 ){
+			if (sendvm_from_stdout_of_command(sendcommand, params->client.handler, params->sshchannel, params->c_client, sendbuf, sizeof(sendbuf), 0) == -1 ){
 				cerr << "Error sending data to client 2" << endl;
 				delete [] manager_cmd_line;
 				delete [] manager_args;
@@ -3780,7 +3801,7 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 	if(!tar.tar_open(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + tar_filename, O_RDONLY)) {
 		string filename_conv = filename;
 		prepare_string_to_filename((char*)filename_conv.c_str());
-		tar.tar_read_send_parameters(params->client, params->sshchannel, params->c_client, zip);
+		tar.tar_read_send_parameters(params->client.handler, params->sshchannel, params->c_client, zip);
 		tar.tar_read((filename_conv + ".*").c_str(), filename, recordId, tableType, tarPosI);
 		if(tar.isReadEnd()) {
 			getfile_in_tar_completed.add(tar_filename, filename, dateTimeKey);
@@ -4290,7 +4311,7 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 		return -1;
 	}
 	if(ok) {
-		restart.runRestart(params->client, manager_socket_server, params->c_client);
+		restart.runRestart(params->client.handler, manager_socket_server, params->c_client);
 	}
 	return 0;
 }

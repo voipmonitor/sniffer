@@ -589,4 +589,14 @@ private:
 };
 
 
+struct sClientInfo {
+	sClientInfo(int handler = 0, vmIP ip = 0) {
+		this->handler = handler;
+		this->ip = ip;
+	}
+	int handler;
+	vmIP ip;
+};
+
+
 #endif

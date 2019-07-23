@@ -3544,7 +3544,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						if(call->typeIs(INVITE)) {
 							process_packet__parse_custom_headers(call, packetS);
 							process_packet__parse_custom_headers_done = true;
-							ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
+							ClientThreads.onCall(call->call_id.c_str(),
+									     lastSIPresponseNum, call->callername, call->caller, call->called,
 									     call->getSipcallerip(), call->getSipcalledip(),
 									     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
 						}
@@ -3595,7 +3596,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				if(call->typeIs(INVITE)) {
 					process_packet__parse_custom_headers(call, packetS);
 					process_packet__parse_custom_headers_done = true;
-					ClientThreads.onCall(lastSIPresponseNum, call->callername, call->caller, call->called,
+					ClientThreads.onCall(call->call_id.c_str(),
+							     lastSIPresponseNum, call->callername, call->caller, call->called,
 							     call->getSipcallerip(), call->getSipcalledip(),
 							     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
 				}

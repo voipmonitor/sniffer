@@ -167,7 +167,7 @@ bool cCR_Client_response::start(string host, u_int16_t port) {
 }
 
 void cCR_Client_response::client_process() {
-	extern int parse_command(string cmd, int client, cClient *c_client);
+	extern int parse_command(string cmd, sClientInfo client, cClient *c_client);
 	parse_command(command, 0, this);
 	client_socket->writeAesEnc(NULL, 0, true);
 	delete this;
