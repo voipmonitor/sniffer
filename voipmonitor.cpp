@@ -2783,7 +2783,7 @@ int main(int argc, char *argv[]) {
 	parse_command_line_arguments(argc, argv);
 	get_command_line_arguments();
 	
-	if(!is_read_from_file()) {
+	if(!is_read_from_file() && opt_fork) {
 #ifndef FREEBSD
 		rightPSversion = isPSrightVersion();
 		if (!rightPSversion) {
