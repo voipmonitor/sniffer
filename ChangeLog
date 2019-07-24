@@ -1,3 +1,15 @@
+25.3 24.07.2019
+===============
+- REGISTER: support for detect sip register ports, new options sip-register-compare-sipcalledport, sip-register-compare-sipcallerport (default no) [VS-938]
+- REGISTER: fix failed counter for multiple registrations, new options sip-register-max-registers, sip-register-max-messages [VS-926]
+- after SIP 404 response remove RTP ports from list to not store wrong calls into pcap [VS-940]
+- fix crash for option -r with enabled packetbuffer_sender = yes [VS-922]
+- fix audio desync when RTP is clockdrifting (also slightly degrade MOS score for this case) [VS-937] 
+- support filtering calls in active calls and live sniffing by vlan id [VG-1827]
+- fix mos_xr from SIP PUBLISH [VS-941]
+- fixes for 32bit platforms (x86, arm) 
+
+
 25.2.1 10.07.2019
 =================
 - close REGISTER after 403, 404 [VS-926]
