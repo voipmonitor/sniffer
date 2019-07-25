@@ -244,6 +244,16 @@ int opt_sip_notify = 0;
 int opt_save_sip_options = 0;
 int opt_save_sip_subscribe = 0;
 int opt_save_sip_notify = 0;
+bool opt_sip_msg_compare_ip_src = true;
+bool opt_sip_msg_compare_ip_dst = true;
+bool opt_sip_msg_compare_port_src = true;
+bool opt_sip_msg_compare_port_dst = false;
+bool opt_sip_msg_compare_number_src = true;
+bool opt_sip_msg_compare_number_dst = true;
+bool opt_sip_msg_compare_domain_src = true;
+bool opt_sip_msg_compare_domain_dst = true;
+bool opt_sip_msg_compare_vlan = false;
+
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 int opt_manager_port = 5029;	// manager api TCP port
 char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
@@ -6420,6 +6430,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-options", &opt_save_sip_options));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-subscribe", &opt_save_sip_subscribe));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-notify", &opt_save_sip_notify));
+				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-vlan", &opt_sip_msg_compare_vlan));
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE(42296) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
 			addConfigItem(new FILE_LINE(42297) cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));
@@ -8696,6 +8708,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "save-sip-notify", NULL))) {
 		opt_save_sip_notify = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-vlan", NULL))) {
+		opt_sip_msg_compare_vlan = yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate", NULL))) {
 		opt_dup_check = yesno(value);

@@ -66,15 +66,15 @@ struct SipMsgFields {
 };
 
 
-bool opt_sip_msg_compare_ip_src = true;
-bool opt_sip_msg_compare_ip_dst = true;
-bool opt_sip_msg_compare_port_src = true;
-bool opt_sip_msg_compare_port_dst = false;
-bool opt_sip_msg_compare_number_src = true;
-bool opt_sip_msg_compare_number_dst = true;
-bool opt_sip_msg_compare_domain_src = true;
-bool opt_sip_msg_compare_domain_dst = true;
-bool opt_sip_msg_compare_vlan = true;
+extern bool opt_sip_msg_compare_ip_src;
+extern bool opt_sip_msg_compare_ip_dst;
+extern bool opt_sip_msg_compare_port_src;
+extern bool opt_sip_msg_compare_port_dst;
+extern bool opt_sip_msg_compare_number_src;
+extern bool opt_sip_msg_compare_number_dst;
+extern bool opt_sip_msg_compare_domain_src;
+extern bool opt_sip_msg_compare_domain_dst;
+extern bool opt_sip_msg_compare_vlan;
 
 unsigned opt_default_qualify_limit = 2000;
 unsigned opt_cleanup_item_response_by_max_items = 5;
