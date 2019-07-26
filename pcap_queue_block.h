@@ -15,7 +15,7 @@
 
 #define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_store"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
-#define PCAP_BLOCK_STORE_HEADER_VERSION		5
+#define PCAP_BLOCK_STORE_HEADER_VERSION		6
 
 #define FLAG_AUDIOCODES 1
 
@@ -97,7 +97,7 @@ struct pcap_pkthdr_plus {
 	union {
 		pcap_pkthdr_fix_size header_fix_size;
 		pcap_pkthdr header_std;
-	};
+	}  __attribute__((packed));
 	u_int16_t header_ip_offset;
 	int16_t std;
 	u_int16_t dlink;
