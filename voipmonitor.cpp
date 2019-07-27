@@ -1864,7 +1864,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			if(!callsInAudioQueue) {
 				break;
 			}
-			syslog(LOG_NOTICE, "wait for convert audio for %lu calls (or next terminating)", callsInAudioQueue);
+			syslog(LOG_NOTICE, "wait for convert audio for %zd calls (or next terminating)", callsInAudioQueue);
 			for(int i = 0; i < 10 && terminating == _terminating; i++) {
 				usleep(100000);
 			}
@@ -7662,7 +7662,7 @@ void set_context_config() {
 				u_int64_t totalMemory = getTotalMemory();
 				if(buffersControl.getMaxBufferMem() > totalMemory / 2) {
 					buffersControl.setMaxBufferMem(totalMemory / 2);
-					syslog(LOG_NOTICE, "set buffer memory limit to %lu", totalMemory / 2);
+					syslog(LOG_NOTICE, "set buffer memory limit to %" __PRI64_PREFIX "u", totalMemory / 2);
 				} else if(pass) {
 					break;
 				}

@@ -4215,7 +4215,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 				call->reg401count_sipcallerip_vlan.push_back(d_item2<vmIP, u_int16_t>(packetS->saddr_(), packetS->pid.vlan));
 			}
 			}
-			if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d] reg401count_distinct[%lu]", 
+			if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER 401 Call-ID[%s] reg401count[%d] reg401count_distinct[%zd]", 
 						 call->call_id.c_str(), call->reg401count, call->reg401count_sipcallerip_vlan.size());
 			break;
 		case RES403:

@@ -1031,7 +1031,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 					call->addInternational(callInfo->callid.c_str(), callInfo->at_connect);
 				}
 				if(sverb.fraud) {
-					syslog(LOG_NOTICE, "fraud %s / %s rcc ++ %s / %s / %lu", 
+					syslog(LOG_NOTICE, "fraud %s / %s rcc ++ %s / %s / %zd", 
 					       alert->FraudAlert::getDescr().c_str(),
 					       callInfo->local_called_number ? "local" : "international",
 					       parent->typeBy == FraudAlert::_typeBy_source_ip ? callInfo->caller_ip.getString().c_str() :
@@ -1041,7 +1041,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 				}
 				if(sverb.fraud_file_log && parent->verbLog) {
 					fprintf(parent->verbLog, 
-						"%s|%i|+|%s|%s|%s|%lu\n",
+						"%s|%i|+|%s|%s|%s|%zd\n",
 						sqlDateTimeString(time(NULL)).c_str(),
 						callInfo->typeCallInfo,
 						callInfo->local_called_number ? "local" : "international",
@@ -1126,7 +1126,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 				call->calls_international.erase(callInfo->callid);
 			}
 			if(sverb.fraud) {
-				syslog(LOG_NOTICE, "fraud %s / %s rcc -- %s / %s / %lu", 
+				syslog(LOG_NOTICE, "fraud %s / %s rcc -- %s / %s / %zd", 
 				       alert->FraudAlert::getDescr().c_str(),
 				       callInfo->local_called_number ? "local" : "international",
 				       parent->typeBy == FraudAlert::_typeBy_source_ip ? callInfo->caller_ip.getString().c_str() :
@@ -1136,7 +1136,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 			}
 			if(sverb.fraud_file_log && parent->verbLog) {
 				fprintf(parent->verbLog, 
-					"%s|%i|-|%s|%s|%s|%lu\n",
+					"%s|%i|-|%s|%s|%s|%zd\n",
 					sqlDateTimeString(time(NULL)).c_str(),
 					callInfo->typeCallInfo,
 					callInfo->local_called_number ? "local" : "international",
@@ -1221,7 +1221,7 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 							       rtpStreamInfo->at);
 				}
 				if(sverb.fraud) {
-					syslog(LOG_NOTICE, "fraud %s / %s rcc rtp stream ++ %s : %u ->  %s : %u / %s / %lu", 
+					syslog(LOG_NOTICE, "fraud %s / %s rcc rtp stream ++ %s : %u ->  %s : %u / %s / %zd", 
 					       alert->FraudAlert::getDescr().c_str(),
 					       rtpStreamInfo->local_called_number ? "local" : "international",
 					       parent->typeBy == FraudAlert::_typeBy_rtp_stream_ip ?
@@ -1311,7 +1311,7 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 							  rtpStreamInfo->rtp_src_ip, rtpStreamInfo->rtp_src_port, rtpStreamInfo->rtp_dst_ip, rtpStreamInfo->rtp_dst_port);
 			}
 			if(sverb.fraud) {
-				syslog(LOG_NOTICE, "fraud %s / %s rcc rtp stream -- %s : %u ->  %s : %u / %s / %lu", 
+				syslog(LOG_NOTICE, "fraud %s / %s rcc rtp stream -- %s : %u ->  %s : %u / %s / %zd", 
 				       alert->FraudAlert::getDescr().c_str(),
 				       rtpStreamInfo->local_called_number ? "local" : "international",
 				       parent->typeBy == FraudAlert::_typeBy_rtp_stream_ip ?

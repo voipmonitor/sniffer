@@ -826,7 +826,7 @@ bool pcap_file_store::push(pcap_block_store *blockStore) {
 	unsigned long long timeAfterWrite = getTimeNS();
 	double diffTimeS = (timeAfterWrite - timeBeforeWrite) / 1e9;
 	if(diffTimeS > 0.1) {
-		syslog(LOG_NOTICE, "packetbuffer: slow write %luB - %.3lfs", sizeSaveBuffer, diffTimeS);
+		syslog(LOG_NOTICE, "packetbuffer: slow write %zdB - %.3lfs", sizeSaveBuffer, diffTimeS);
 	}
 	if(rsltWrite == sizeSaveBuffer) {
 		this->fileSize += rsltWrite;
@@ -6929,7 +6929,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			static u_int64_t lastTimeSyslog = 0;
 			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
-				syslog(LOG_NOTICE, "warning - incorrect dataoffset/caplen (%li/%u) in processPacket", data - (char*)hp->packet, header->caplen);
+				syslog(LOG_NOTICE, "warning - incorrect dataoffset/caplen (%zd/%u) in processPacket", (size_t)(data - (char*)hp->packet), header->caplen);
 				lastTimeSyslog = actTime;
 			}
 		}

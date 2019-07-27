@@ -1015,7 +1015,8 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 					u_long actTime = getTimeMS();
 					static u_long s_lastTimeSyslog;
 					if(actTime - 500 > s_lastTimeSyslog) {
-						syslog(LOG_NOTICE, "warning - packet (seq:%i, ssrc: %x) from sensor (%i) has bad pcap header time (-%luus) - call %s", getSeqNum(), getSSRC(), sensor_id, this->last_pcap_header_ts - pcap_header_ts, owner ? owner->fbasename : "unknown");
+						syslog(LOG_NOTICE, "warning - packet (seq:%i, ssrc: %x) from sensor (%i) has bad pcap header time (-%" __PRI64_PREFIX "uus) - call %s", 
+						       getSeqNum(), getSSRC(), sensor_id, this->last_pcap_header_ts - pcap_header_ts, owner ? owner->fbasename : "unknown");
 						s_lastTimeSyslog = actTime;
 					}
 				}

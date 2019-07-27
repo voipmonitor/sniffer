@@ -192,7 +192,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 								if(i) {
 									strcat(trace_string, " / ");
 								}
-								sprintf(trace_string + strlen(trace_string), "%lx", (u_int64_t)threadStack[tid][i]);
+								sprintf(trace_string + strlen(trace_string), "%" __PRI64_PREFIX "x", (u_int64_t)threadStack[tid][i]);
 							}
 							while(__sync_lock_test_and_set(&memoryStat_sync, 1));
 							memoryStatOtherName[beginEx->memory_type_other] = trace_string;
@@ -232,7 +232,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 									} else if(strstr(messages[i + skip_top_traces], "libc")) {
 										strcat(trace_string, "libc");
 									} else if(strstr(messages[i + skip_top_traces], "voipmonitor()")) {
-										sprintf(trace_string + strlen(trace_string), "%lx", (u_int64_t)stack_addr[i + skip_top_traces]);
+										sprintf(trace_string + strlen(trace_string), "%" __PRI64_PREFIX "x", (u_int64_t)stack_addr[i + skip_top_traces]);
 									} else {
 										strcat(trace_string, messages[i + skip_top_traces]);
 									}
@@ -432,7 +432,7 @@ inline void * realloc_memory_stat_quick(void *pointerToObject, size_t sizeOfObje
 #if HEAPSAFE
 void * operator new(size_t sizeOfObject) { 
 	if(sizeOfObject > 1000000000ull) {
-		syslog(LOG_WARNING, "too big allocated block - %lu", sizeOfObject);
+		syslog(LOG_WARNING, "too big allocated block - %zd", sizeOfObject);
 	}
 	void *newPointer = HeapSafeCheck ?
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
@@ -443,14 +443,14 @@ void * operator new(size_t sizeOfObject) {
 			    _heapsafe_alloc(sizeOfObject);
 	if(!newPointer) {
 		notEnoughFreeMemory = true;
-		syslog(LOG_ERR, "allocation (operator new) failed - size %lu", sizeOfObject);
+		syslog(LOG_ERR, "allocation (operator new) failed - size %zd", sizeOfObject);
 	}
 	return(newPointer);
 }
  
 void * operator new[](size_t sizeOfObject) {
 	if(sizeOfObject > 1000000000ull) {
-		syslog(LOG_WARNING, "too big allocated block - %lu", sizeOfObject);
+		syslog(LOG_WARNING, "too big allocated block - %zd", sizeOfObject);
 	}
 	void *newPointer = HeapSafeCheck ? 
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
@@ -461,14 +461,14 @@ void * operator new[](size_t sizeOfObject) {
 			    _heapsafe_alloc(sizeOfObject);
 	if(!newPointer) {
 		notEnoughFreeMemory = true;
-		syslog(LOG_ERR, "allocation (operator new[]) failed - size %lu", sizeOfObject);
+		syslog(LOG_ERR, "allocation (operator new[]) failed - size %zd", sizeOfObject);
 	}
 	return(newPointer);
 }
 
 void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number) { 
 	if(sizeOfObject > 1000000000ull) {
-		syslog(LOG_WARNING, "too big allocated block - %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+		syslog(LOG_WARNING, "too big allocated block - %zd, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
 	}
 	void *newPointer = HeapSafeCheck ?
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
@@ -479,14 +479,14 @@ void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_ty
 			    _heapsafe_alloc(sizeOfObject);
 	if(!newPointer) {
 		notEnoughFreeMemory = true;
-		syslog(LOG_ERR, "allocation (operator new) failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+		syslog(LOG_ERR, "allocation (operator new) failed - size %zd, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
 	}
 	return(newPointer);
 }
  
 void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number) {
 	if(sizeOfObject > 1000000000ull) {
-		syslog(LOG_WARNING, "too big allocated block - %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+		syslog(LOG_WARNING, "too big allocated block - %zd, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
 	}
 	void *newPointer = HeapSafeCheck ? 
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
@@ -497,7 +497,7 @@ void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_
 			    _heapsafe_alloc(sizeOfObject);
 	if(!newPointer) {
 		notEnoughFreeMemory = true;
-		syslog(LOG_ERR, "allocation (operator new[]) failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+		syslog(LOG_ERR, "allocation (operator new[]) failed - size %zd, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
 	}
 	return(newPointer);
 }
@@ -547,7 +547,7 @@ void *realloc_object(void *pointerToObject, size_t sizeOfObject, const char *mem
 			    realloc_memory_stat_quick(pointerToObject, sizeOfObject, alloc_number) :
 			    _heapsafe_realloc(pointerToObject, sizeOfObject);
 	if(!newPointer) {
-		syslog(LOG_ERR, "reallocation failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+		syslog(LOG_ERR, "reallocation failed - size %zd, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
 	}
 	return(newPointer);
 }
@@ -563,7 +563,7 @@ void * c_heapsafe_alloc(size_t sizeOfObject, const char *memory_type1, int memor
 			    alloc_memory_stat_quick(sizeOfObject, alloc_number) :
 			    _heapsafe_alloc(sizeOfObject);
 	if(!newPointer) {
-		syslog(LOG_ERR, "allocation failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+		syslog(LOG_ERR, "allocation failed - size %zd, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
 	}
 	return(newPointer);
 }
@@ -591,7 +591,7 @@ void * c_heapsafe_realloc(void *pointerToObject, size_t sizeOfObject, const char
 			    realloc_memory_stat_quick(pointerToObject, sizeOfObject, alloc_number) :
 			    _heapsafe_realloc(pointerToObject, sizeOfObject);
 	if(!newPointer) {
-		syslog(LOG_ERR, "reallocation failed - size %lu, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+		syslog(LOG_ERR, "reallocation failed - size %zd, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
 	}
 	return(newPointer);
 }
@@ -731,7 +731,7 @@ std::string getMemoryStatQuick(bool all) {
 
 std::string addThousandSeparators(u_int64_t num) {
 	char length_str[20];
-	snprintf(length_str, sizeof(length_str), "%lu", num);
+	snprintf(length_str, sizeof(length_str), "%" __PRI64_PREFIX "u", num);
 	std::string length;
 	while(strlen(length_str) > 3) {
 		length = std::string(length_str + strlen(length_str) - 3) + " " + length;
