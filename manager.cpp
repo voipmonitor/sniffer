@@ -1404,6 +1404,8 @@ void perror_syslog(const char *msg) {
 }
 
 #ifdef HAVE_LIBSSH
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 void *manager_ssh_(void) {
 	ssh_session session;
 	int rc;
@@ -1507,6 +1509,7 @@ ssh_disconnect:
 	ssh_free(session);
 	return 0;
 }
+#pragma GCC diagnostic pop
 #endif
 
 #ifdef HAVE_LIBSSH

@@ -361,6 +361,8 @@ friend void *_PcapQueue_threadFunction(void *arg);
 friend void *_PcapQueue_writeThreadFunction(void *arg);
 };
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
 struct pcapProcessData {
 	pcapProcessData() {
 		memset(this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
@@ -395,7 +397,7 @@ struct pcapProcessData {
 	u_int ipfrag_lastprune;
 	ipfrag_data_s ipfrag_data;
 };
-
+#pragma GCC diagnostic pop
 
 class PcapQueue_readFromInterface_base {
 public:
