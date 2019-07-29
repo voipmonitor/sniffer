@@ -449,7 +449,9 @@ bool cSipMsgRelation::getDataRow(RecordArray *rec, u_int64_t limit_time_us, cSip
 	rec->fields[smf_number_dst].set(number_dst.c_str());
 	rec->fields[smf_domain_src].set(domain_src.c_str());
 	rec->fields[smf_domain_dst].set(domain_dst.c_str());
-	rec->fields[smf_vlan].set(vlan);
+	if(VLAN_IS_SET(vlan)) {
+		rec->fields[smf_vlan].set(vlan);
+	}
 	if(reqResp) {
 		if(reqResp->request) {
 			rec->fields[smf_callername].set(reqResp->request->callername.c_str());

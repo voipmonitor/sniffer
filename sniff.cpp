@@ -432,9 +432,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		", created_at = %s"
 		", microseconds = %li"
 		", callid = %s"
-		", description = %s"
-		", vlan = %s"
-		", data = ",
+		", description = %s",
 		livepacket_table,
 		packetS->saddr_().getStringForMysqlIpColumn(livepacket_table, "sipcallerip").c_str(),
 		packetS->daddr_().getStringForMysqlIpColumn(livepacket_table, "sipcalledip").c_str(),
@@ -445,8 +443,14 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		sqlEscapeStringBorder(sqlDateTimeString(packetS->header_pt->ts.tv_sec).c_str()).c_str(),
 		packetS->header_pt->ts.tv_usec,
 		sqlEscapeStringBorder(call ? call->call_id : callidstr).c_str(),
-		sqlEscapeStringBorder(description).c_str(), 
-		VLAN_IS_SET(packetS->pid.vlan) ? intToString(packetS->pid.vlan).c_str() : "NULL");
+		sqlEscapeStringBorder(description).c_str());
+	if(SqlDb_mysql::existsColumnInTypeCache_static(livepacket_table, "vlan")) {
+		int query_buff_length = strlen(query_buff);
+		snprintf(query_buff + query_buff_length, sizeof(query_buff) - query_buff_length,
+			 ", vlan = %s",
+			 VLAN_IS_SET(packetS->pid.vlan) ? intToString(packetS->pid.vlan).c_str() : "NULL");
+	}
+	strcat(query_buff, ", data = ");
 	if(isCloud() || useNewStore()) {
 		strcat(query_buff, "concat('#', from_base64('");
 		_base64_encode((unsigned char*)mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff));

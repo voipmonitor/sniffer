@@ -213,6 +213,10 @@ public:
 	void addColumnToCache(const char *table, const char *column);
 	virtual string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false) = 0;
 	string getTypeColumn(string table, string column, bool toLower = true, bool useCache = false) { return(getTypeColumn(table.c_str(), column.c_str(), toLower, useCache)); }
+	virtual bool existsColumnInTypeCache(const char *table, const char *column) = 0;
+	bool existsColumnInTypeCache(string table, string column) {
+		return(existsColumnInCache(table.c_str(), column.c_str()));
+	}
 	bool isIPv6Column(string table, string column, bool useCache = true);
 	bool isIPv4Column(string table, string column, bool useCache = true) {
 		return(!isIPv6Column(table, column, useCache));
@@ -447,6 +451,8 @@ public:
 	bool existsTable(string table) { return(existsTable(table.c_str())); }
 	bool existsColumn(const char *table, const char *column);
 	string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false);
+	bool existsColumnInTypeCache(const char *table, const char *column);
+	static bool existsColumnInTypeCache_static(const char *table, const char *column);
 	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);
@@ -577,6 +583,7 @@ public:
 	bool existsTable(const char *table);
 	bool existsColumn(const char *table, const char *column);
 	string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false);
+	bool existsColumnInTypeCache(const char *table, const char *column);
 	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);

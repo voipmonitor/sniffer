@@ -646,7 +646,9 @@ bool Register::getDataRow(RecordArray *rec) {
 		rec->fields[rf_rrd_avg].set(rrd_sum / rrd_count);
 	}
 	rec->fields[rf_spool_index].set(state->spool_index);
-	rec->fields[rf_vlan].set(state->vlan);
+	if(VLAN_IS_SET(state->vlan)) {
+		rec->fields[rf_vlan].set(state->vlan);
+	}
 	rec->fields[rf_is_sipalg_detected].set(getSipAlgState());
 	unlock_states();
 	return(true);

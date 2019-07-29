@@ -2095,6 +2095,21 @@ string SqlDb_mysql::getTypeColumn(const char *table, const char *column, bool to
 	return("");
 }
 
+bool SqlDb_mysql::existsColumnInTypeCache(const char *table, const char *column) {
+	return(existsColumnInTypeCache_static(table, column));
+}
+
+bool SqlDb_mysql::existsColumnInTypeCache_static(const char *table, const char *column) {
+	bool rslt = false;
+	while(__sync_lock_test_and_set(&typeColumn_cache_sync, 1));
+	if(typeColumn_cache.find(table) != typeColumn_cache.end() &&
+	   typeColumn_cache[table].find(column) != typeColumn_cache[table].end()) {
+		rslt = true;
+	}
+	__sync_lock_release(&typeColumn_cache_sync);
+	return(rslt);
+}
+
 int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool useCache) {
 	if(useCache) {
 		bool existsInCache = false;
@@ -2520,6 +2535,11 @@ bool SqlDb_odbc::existsColumn(const char */*table*/, const char */*column*/) {
 string SqlDb_odbc::getTypeColumn(const char */*table*/, const char */*column*/, bool /*toLower*/, bool /*useCache*/) {
 	// TODO
 	return("");
+}
+
+bool SqlDb_odbc::existsColumnInTypeCache(const char */*table*/, const char */*column*/) {
+	// TODO
+	return(false);
 }
 
 int SqlDb_odbc::getPartitions(const char */*table*/, list<string> */*partitions*/, bool /*useCache*/) {
