@@ -119,7 +119,8 @@ extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
 extern volatile int registers_counter;
-extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+extern PreProcessPacket *preProcessPacketCallX[2];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern TcpReassembly *tcpReassemblyHttp;
@@ -1955,7 +1956,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			double sum_t2cpu = t2cpu;
 			last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu;
 			last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu;
-			for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
+			for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
 				double percFullQring;
 				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true, &percFullQring);
 				if(t2cpu_preprocess_packet_out_thread >= 0) {
@@ -2001,7 +2002,27 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
 					}
 				}
-			} 
+			}
+			if(preProcessPacketCallX[0]) {
+				for(int i = 0; i < 2; i++) {
+					double percFullQring;
+					double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, &percFullQring);
+					if(t2cpu_preprocess_packet_out_thread >= 0) {
+						outStrStat << "/" 
+							   << preProcessPacketCallX[i]->getShortcatTypeThread()
+							   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+						if(sverb.qring_stat) {
+							double qringFillingPerc = preProcessPacketCallX[i]->getQringFillingPerc();
+							if(qringFillingPerc > 0) {
+								outStrStat << "r" << qringFillingPerc;
+							}
+						}
+						if(sverb.qring_full && percFullQring > sverb.qring_full) {
+							outStrStat << "#" << percFullQring;
+						}
+					}
+				}
+			}
 			rrdtCPU_t2 = sum_t2cpu;
 			int countRtpRhThreads = 0;
 			bool needAddRtpRhThreads = false;

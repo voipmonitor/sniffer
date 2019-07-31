@@ -234,7 +234,8 @@ extern vector<string> opt_remoteparty_called_v;
 extern int opt_182queuedpauserecording;
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
-extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+extern PreProcessPacket *preProcessPacketCallX[2];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern CustomHeaders *custom_headers_cdr;
@@ -246,7 +247,7 @@ extern bool _save_sip_history_all_requests;
 extern bool _save_sip_history_all_responses;
 extern int opt_rtpfromsdp_onlysip;
 extern int opt_rtpfromsdp_onlysip_skinny;
-extern bool opt_t2_boost;
+extern int opt_t2_boost;
 unsigned int glob_ssl_calls = 0;
 extern int opt_bye_timeout;
 extern int opt_bye_confirmed_timeout;
@@ -7089,8 +7090,9 @@ inline void *_PreProcessPacket_outThreadFunction(void *arg) {
 	return(((PreProcessPacket*)arg)->outThreadFunction());
 }
 
-PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread) {
+PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, unsigned idPreProcessThread) {
 	this->typePreProcessThread = typePreProcessThread;
+	this->idPreProcessThread = idPreProcessThread;
 	this->qring_batch_item_length = opt_preprocess_packets_qring_item_length ?
 					 opt_preprocess_packets_qring_item_length :
 					 min(opt_preprocess_packets_qring_length / 10, 1000u);
@@ -7278,6 +7280,9 @@ void *PreProcessPacket::outThreadFunction() {
 						case ppt_pp_call:
 							this->process_CALL(packetS);
 							break;
+						case ppt_pp_callx:
+							this->process_CALLX(packetS);
+							break;
 						case ppt_pp_register:
 							this->process_REGISTER(packetS);
 							break;
@@ -7290,7 +7295,7 @@ void *PreProcessPacket::outThreadFunction() {
 						case ppt_pp_other:
 							this->process_OTHER(packetS);
 							break;
-						case ppt_end:
+						case ppt_end_base:
 							break;
 						}
 					}
@@ -7348,6 +7353,15 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					break;
 				case ppt_pp_call:
+					if(opt_t2_boost > 1 && preProcessPacketCallX[0]) {
+						for(int i = 0; i < 2; i++) {
+							preProcessPacketCallX[i]->push_batch();
+						}
+					} else {
+						_process_packet__cleanup_calls();
+					}
+					break;
+				case ppt_pp_callx:
 					_process_packet__cleanup_calls();
 					break;
 				case ppt_pp_register:
@@ -7372,7 +7386,7 @@ void *PreProcessPacket::outThreadFunction() {
 				case ppt_pp_other:
 					_process_packet__cleanup_ss7();
 					break;
-				case ppt_end:
+				case ppt_end_base:
 					break;
 				}
 				usleepSumTimeForPushBatch = 0;
@@ -7440,6 +7454,17 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		break;
 	case ppt_pp_call:
+		if(opt_t2_boost > 1 && preProcessPacketCallX[0]) {
+			for(int i = 0; i < 2; i++) {
+				if(!preProcessPacketCallX[i]->outThreadState) {
+					preProcessPacketCallX[i]->push_batch();
+				}
+			}
+		} else {
+			_process_packet__cleanup_calls();
+		}
+		break;
+	case ppt_pp_callx:
 		_process_packet__cleanup_calls();
 		break;
 	case ppt_pp_register:
@@ -7463,7 +7488,7 @@ void PreProcessPacket::push_batch_nothread() {
 	case ppt_pp_other:
 		_process_packet__cleanup_ss7();
 		break;
-	case ppt_end:
+	case ppt_end_base:
 		break;
 	}
 }
@@ -7674,7 +7699,13 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		    (packetS->_createCall && packetS->call_created && packetS->call_created->typeIs(BYE)))) {
 			process_packet_sip_alone_bye(packetS);
 		} else {
-			process_packet_sip_call(packetS);
+			if(opt_t2_boost > 1 && preProcessPacketCallX[0]) {
+				Call *call = packetS->call ? packetS->call : packetS->call_created;
+				preProcessPacketCallX[call ? call->counter % 2 : 0]->push_packet(packetS);
+				return;
+			} else {
+				process_packet_sip_call(packetS);
+			}
 		}
 		if(opt_quick_save_cdr != 2) {
 			_process_packet__cleanup_calls(packetS->header_pt);
@@ -7706,6 +7737,23 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 0);
 }
 
+void PreProcessPacket::process_CALLX(packet_s_process *packetS) {
+	process_packet_sip_call(packetS);
+	if(opt_quick_save_cdr != 2) {
+		_process_packet__cleanup_calls(packetS->header_pt);
+	}
+	if(packetS->_findCall && packetS->call) {
+		__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
+	}
+	if(packetS->_createCall && packetS->call_created) {
+		__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
+	}
+	if(opt_quick_save_cdr == 2) {
+		_process_packet__cleanup_calls(packetS->header_pt);
+	}
+	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 1 + idPreProcessThread);
+}
+
 void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 	if(packetS->isSip && packetS->is_register()) {
 		if(opt_ipaccount && packetS->block_store) {
@@ -7713,7 +7761,7 @@ void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 		}
 		process_packet_sip_register(packetS);
 	}
-	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 1);
+	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
 }
 
 void PreProcessPacket::process_SIP_OTHER(packet_s_process *packetS) {
@@ -7723,12 +7771,12 @@ void PreProcessPacket::process_SIP_OTHER(packet_s_process *packetS) {
 		}
 		process_packet_sip_other(packetS);
 	}
-	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
+	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 4);
 }
 
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
 	if(!process_packet_rtp(packetS)) {
-		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
+		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 5);
 	}
 }
 
@@ -7736,7 +7784,7 @@ void PreProcessPacket::process_OTHER(packet_s_stack *packetS) {
 	if(packetS->isother) {
 		process_packet_other(packetS);
 	}
-	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 4);
+	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 6);
 }
 
 void PreProcessPacket::process_parseSipDataExt(packet_s_process **packetS_ref) {
@@ -7962,11 +8010,11 @@ void PreProcessPacket::process_createCall(packet_s_process **packetS_ref) {
 
 void PreProcessPacket::autoStartNextLevelPreProcessPacket() {
 	int i = 0;
-	for(; i < PreProcessPacket::ppt_end && preProcessPacket[i]->isActiveOutThread(); i++);
+	for(; i < PreProcessPacket::ppt_end_base && preProcessPacket[i]->isActiveOutThread(); i++);
 	if(!opt_sip_register && preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::PreProcessPacket::ppt_pp_register) {
 		++i;
 	}
-	if(i < PreProcessPacket::ppt_end) {
+	if(i < PreProcessPacket::ppt_end_base) {
 		preProcessPacket[i]->startOutThread();
 		autoStartNextLevelPreProcessPacket_last_time_s = getTimeS();
 	}
@@ -7979,7 +8027,7 @@ void PreProcessPacket::autoStopLastLevelPreProcessPacket(bool force) {
 		return;
 	}
 	int i = 0;
-	for(i = PreProcessPacket::ppt_end - 1; i > 0 && !preProcessPacket[i]->isActiveOutThread(); i--);
+	for(i = PreProcessPacket::ppt_end_base - 1; i > 0 && !preProcessPacket[i]->isActiveOutThread(); i--);
 	if(i > 0 && preProcessPacket[i]->isActiveOutThread()) {
 		preProcessPacket[i]->stopOutThread(force);
 	}
@@ -8272,7 +8320,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					if(packetS->call_info_length > 0) {
 						this->hash_find_flag[batch_index] = 1;
 					} else {
-						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 5);
+						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 7);
 						this->hash_find_flag[batch_index] = -1;
 					}
 				}
@@ -8294,7 +8342,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				if(packetS->call_info_length > 0) {
 					this->hash_find_flag[batch_index] = 1;
 				} else {
-					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 5);
+					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 7);
 					this->hash_find_flag[batch_index] = -1;
 				}
 			}

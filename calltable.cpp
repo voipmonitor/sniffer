@@ -651,7 +651,11 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	last_mgcp_connect_packet_time = 0;
 	
 	_hash_add_lock = 0;
+	
+	counter = ++counter_s;
 }
+
+u_int64_t Call::counter_s = 0;
 
 void
 Call::hashRemove(struct timeval *ts, bool useHashQueueCounter) {
@@ -824,7 +828,7 @@ Call::_addtocachequeue(string file) {
 void
 Call::removeRTP() {
 	while(this->rtppacketsinqueue > 0) {
-		extern bool opt_t2_boost;
+		extern int opt_t2_boost;
 		if(!opt_t2_boost && rtp_threads) {
 			extern int num_threads_max;
 			for(int i = 0; i < num_threads_max; i++) {

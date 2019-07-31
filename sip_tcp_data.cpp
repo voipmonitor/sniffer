@@ -8,7 +8,7 @@
 using namespace std;
 
 
-extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 
 
 SipTcpData::SipTcpData() {

@@ -745,7 +745,7 @@ int opt_pcapdump_all = 0;
 char opt_pcapdump_all_path[1024];
 
 int opt_callend = 1; //if true, cdr.called is saved
-bool opt_t2_boost = false;
+int opt_t2_boost = false;
 char opt_spooldir_main[1024];
 char opt_spooldir_rtp[1024];
 char opt_spooldir_graph[1024];
@@ -841,7 +841,8 @@ char mac[32] = "";
 PcapQueue_readFromInterface *pcapQueueInterface;
 PcapQueue *pcapQueueStatInterface;
 
-PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+PreProcessPacket *preProcessPacketCallX[2];
 ProcessRtpPacket *processRtpPacketHash;
 ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 
@@ -3773,16 +3774,23 @@ int main_init_read() {
 			}
 		}
 		
-		for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
+		for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
 			preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 		}
 		if(is_enable_packetbuffer()) {
-			for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end)); i++) {
+			for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end_base)); i++) {
 				if((i != PreProcessPacket::PreProcessPacket::ppt_pp_register && i != PreProcessPacket::PreProcessPacket::ppt_pp_sip_other) ||
 				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_register && opt_sip_register) ||
 				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_sip_other && is_enable_sip_msg())) {
 					preProcessPacket[i]->startOutThread();
 				}
+			}
+		}
+		
+		if(opt_t2_boost > 1) {
+			for(int i = 0; i < 2; i++) {
+				preProcessPacketCallX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callx, i);
+				preProcessPacketCallX[i]->startOutThread();
 			}
 		}
 		
@@ -4086,7 +4094,17 @@ void terminate_processpacket() {
 	}
 	
 	for(int termPass = 0; termPass < 2; termPass++) {
-		for(int i = 0; i < PreProcessPacket::ppt_end; i++) {
+		for(int i = 0; i < 2; i++) {
+			if(preProcessPacketCallX[i]) {
+				if(termPass == 0) {
+					preProcessPacketCallX[i]->terminate();
+				} else {
+					delete preProcessPacketCallX[i];
+					preProcessPacketCallX[i] = NULL;
+				}
+			}
+		}
+		for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
 			if(preProcessPacket[i]) {
 				if(termPass == 0) {
 					preProcessPacket[i]->terminate();
@@ -5967,7 +5985,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("mysql_connect_timeout", &opt_mysql_connect_timeout));
 					addConfigItem(new FILE_LINE(42088) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));
-					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
+					addConfigItem((new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost))
+						->addValues("extend:2"));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
@@ -6103,7 +6122,7 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("preprocess_rtp_threads_max", &opt_enable_process_rtp_packet_max))
 						->setMaximum(MAX_PROCESS_RTP_PACKET_THREADS));
 					addConfigItem((new FILE_LINE(42151) cConfigItem_yesno("enable_preprocess_packet", &opt_enable_preprocess_packet))
-						->addValues(("sip:2|extend:"+intToString(PreProcessPacket::ppt_end)+"|auto:-1").c_str()));
+						->addValues(("sip:2|extend:"+intToString(PreProcessPacket::ppt_end_base)+"|auto:-1").c_str()));
 					addConfigItem(new FILE_LINE(42152) cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
 					addConfigItem(new FILE_LINE(42153) cConfigItem_integer("preprocess_packets_qring_item_length", &opt_preprocess_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(42154) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
@@ -7826,7 +7845,7 @@ void set_context_config() {
 		opt_enable_process_rtp_packet = 1;
 	}
 	if(opt_t2_boost) {
-		opt_enable_preprocess_packet = PreProcessPacket::ppt_end;
+		opt_enable_preprocess_packet = PreProcessPacket::ppt_end_base;
 		if(!is_sender() && !is_client_packetbuffer_sender() && !opt_scanpcapdir[0]) {
 			opt_pcap_queue_use_blocks = 1;
 		}
@@ -9477,7 +9496,8 @@ int eval_config(string inistr) {
 		opt_callend = yesno(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost", NULL))) {
-		opt_t2_boost = yesno(value);
+		opt_t2_boost = !strcmp(value, "extend") ? 2 :
+			       yesno(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
@@ -9691,7 +9711,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
-					       !strcmp(value, "extend") ? PreProcessPacket::ppt_end :
+					       !strcmp(value, "extend") ? PreProcessPacket::ppt_end_base :
 					       !strcmp(value, "sip") ? 3 : 
 					       yesno(value);
 	}

@@ -811,6 +811,9 @@ public:
 	map<u_int32_t, sMgcpResponse> mgcp_responses;
 	time_t last_mgcp_connect_packet_time;
 	
+	u_int64_t counter;
+	static u_int64_t counter_s;
+	
 	/**
 	 * constructor
 	 *

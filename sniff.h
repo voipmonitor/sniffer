@@ -527,7 +527,7 @@ public:
 		return;
 		*/
 		
-		extern bool opt_t2_boost;
+		extern int opt_t2_boost;
 		if(threadIndex && opt_t2_boost) {
 		 
 			#if DEBUG_QUEUE_RTP_THREAD

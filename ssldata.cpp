@@ -22,7 +22,7 @@ extern void decrypt_ssl(vector<string> *rslt_decrypt, char *data, unsigned int d
 #endif
 
 extern map<vmIPport, string> ssl_ipport;
-extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end];
+extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 
 
 SslData::SslData() {
