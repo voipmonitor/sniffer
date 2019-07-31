@@ -766,10 +766,11 @@ char opt_cachedir[1024];
 
 int opt_upgrade_try_http_if_https_fail = 0;
 
+#define MAXIMUM_STORING_CDR_THREADS 5
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
-pthread_t storing_cdr_next_threads[2];	// ID of worker storing CDR next threads
-sem_t storing_cdr_next_threads_sem[2][2];
-list<Call*> *storing_cdr_next_threads_calls[2];
+pthread_t storing_cdr_next_threads[MAXIMUM_STORING_CDR_THREADS];	// ID of worker storing CDR next threads
+sem_t storing_cdr_next_threads_sem[MAXIMUM_STORING_CDR_THREADS][2];
+list<Call*> *storing_cdr_next_threads_calls[MAXIMUM_STORING_CDR_THREADS];
 int storing_cdr_next_threads_count = 0;
 pthread_t storing_registers_thread;	// ID of worker storing CDR thread 
 pthread_t scanpcapdir_thread;
@@ -6032,7 +6033,7 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_set_id", &opt_mysql_enable_set_id));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("storing_cdr_next_threads", &storing_cdr_next_threads_count))
-						->setMaximum(2));
+						->setMaximum(MAXIMUM_STORING_CDR_THREADS));
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
@@ -9248,7 +9249,7 @@ int eval_config(string inistr) {
 		opt_mysql_enable_set_id = yesno(value);
 	}
 	if((value = ini.GetValue("general", "storing_cdr_next_threads", NULL))) {
-		storing_cdr_next_threads_count = min(atoi(value), 2);
+		storing_cdr_next_threads_count = min(atoi(value), MAXIMUM_STORING_CDR_THREADS);
 	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strcpy_null_term(mysql_host, value);

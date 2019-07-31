@@ -7700,6 +7700,10 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 			process_packet_sip_alone_bye(packetS);
 		} else {
 			if(opt_t2_boost > 1 && preProcessPacketCallX[0]) {
+				static unsigned counter;
+				if(!(++counter % 1000)) {
+					_process_packet__cleanup_calls(packetS->header_pt);
+				}
 				Call *call = packetS->call ? packetS->call : packetS->call_created;
 				preProcessPacketCallX[call ? call->counter % 2 : 0]->push_packet(packetS);
 				return;
@@ -7739,17 +7743,11 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 
 void PreProcessPacket::process_CALLX(packet_s_process *packetS) {
 	process_packet_sip_call(packetS);
-	if(opt_quick_save_cdr != 2) {
-		_process_packet__cleanup_calls(packetS->header_pt);
-	}
 	if(packetS->_findCall && packetS->call) {
 		__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
 	}
 	if(packetS->_createCall && packetS->call_created) {
 		__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
-	}
-	if(opt_quick_save_cdr == 2) {
-		_process_packet__cleanup_calls(packetS->header_pt);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 1 + idPreProcessThread);
 }
