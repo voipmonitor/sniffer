@@ -164,7 +164,14 @@ if test "x$HAVE_LIBSSH" = "x1"; then
 	if test "x$PLATFORM" = "xFreeBSD"; then
 		AC_SUBST([LIBSSH],["-lssh"])
 	else
-		AC_SUBST([LIBSSH],["-lssh -lssh_threads"])
+		AC_RUN_IFELSE(
+			[AC_LANG_PROGRAM([[#include <libssh/libssh.h>]],
+				[[if (LIBSSH_VERSION_INT >= SSH_VERSION_INT(0,8,0)) {
+			                return(0);
+			        } else {
+			                return(1);
+			        }
+			]])], [AC_SUBST([LIBSSH],["-lssh"])], [AC_SUBST([LIBSSH],["-lssh -lssh_threads"])], [])
 	fi
 	HAVE_LIBSSH_T=yes
 fi
