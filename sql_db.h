@@ -60,15 +60,91 @@ public:
 	string operator [] (string fieldName);
 	string operator [] (int indexField);
 	operator int();
-	void add(const char *content, string fieldName = "", int type = 0, unsigned long length = 0);
-	void add(string content, string fieldName = "", bool null = false);
-	void add(int content, string fieldName, bool null = false);
-	void add(unsigned int content, string fieldName, bool null = false);
-	void add(long int content, string fieldName, bool null = false);
-	void add(unsigned long int content, string fieldName, bool null = false);
-	void add(long long int content, string fieldName, bool null = false);
-	void add(unsigned long long int content, string fieldName, bool null = false);
-	void add(double content, string fieldName, bool null = false);
+	void add(const char *content, string fieldName = "", int type = 0, unsigned long length = 0) {
+		if(fieldName != "") {
+			for(size_t i = 0; i < row.size(); i++) {
+				if(row[i].fieldName == fieldName) {
+					row[i] = SqlDb_rowField(content, fieldName, type, length);
+					return;
+				}
+			}
+		}
+		this->row.push_back(SqlDb_rowField(content, fieldName, type, length));
+	}
+	void add(string content, string fieldName = "", bool null = false) {
+		if(fieldName != "") {
+			for(size_t i = 0; i < row.size(); i++) {
+				if(row[i].fieldName == fieldName) {
+					row[i] = SqlDb_rowField(content, fieldName, null);
+					return;
+				}
+			}
+		}
+		this->row.push_back(SqlDb_rowField(content, fieldName, null));
+	}
+	void add(int content, string fieldName, bool null = false) {
+		if(!content && null) {
+			this->add((const char*)NULL, fieldName);
+		} else {
+			char str_content[100];
+			snprintf(str_content, sizeof(str_content), "%i", content);
+			this->add(str_content, fieldName);
+		}
+	}
+	void add(unsigned int content, string fieldName, bool null = false) {
+		if(!content && null) {
+			this->add((const char*)NULL, fieldName);
+		} else {
+			char str_content[100];
+			snprintf(str_content, sizeof(str_content), "%u", content);
+			this->add(str_content, fieldName);
+		}
+	}
+	void add(long int content, string fieldName, bool null = false) {
+		if(!content && null) {
+			this->add((const char*)NULL, fieldName);
+		} else {
+			char str_content[100];
+			snprintf(str_content, sizeof(str_content), "%li", content);
+			this->add(str_content, fieldName);
+		}
+	}
+	void add(unsigned long int content, string fieldName, bool null = false) {
+		if(!content && null) {
+			this->add((const char*)NULL, fieldName);
+		} else {
+			char str_content[100];
+			snprintf(str_content, sizeof(str_content), "%lu", content);
+			this->add(str_content, fieldName);
+		}
+	}
+	void add(long long int content, string fieldName, bool null = false) {
+		if(!content && null) {
+			this->add((const char*)NULL, fieldName);
+		} else {
+			char str_content[100];
+			snprintf(str_content, sizeof(str_content), "%lli", content);
+			this->add(str_content, fieldName);
+		}
+	}
+	void add(unsigned long long int content, string fieldName, bool null = false) {
+		if(!content && null) {
+			this->add((const char*)NULL, fieldName);
+		} else {
+			char str_content[100];
+			snprintf(str_content, sizeof(str_content), "%llu", content);
+			this->add(str_content, fieldName);
+		}
+	}
+	void add(double content, string fieldName, bool null = false) {
+		if(!content && null) {
+			this->add((const char*)NULL, fieldName);
+		} else {
+			char str_content[100];
+			snprintf(str_content, sizeof(str_content), "%lf", content);
+			this->add(str_content, fieldName);
+		}
+	}
 	void add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, const char *table);
 	int getIndexField(string fieldName) {
 		for(size_t i = 0; i < row.size(); i++) {
