@@ -274,6 +274,9 @@ public:
 	cBilling();
 	~cBilling();
 	void load(SqlDb *sqlDb = NULL);
+	bool isSet() {
+		return(set);
+	}
 	bool billing(time_t time, unsigned duration,
 		     vmIP ip_src, vmIP ip_dst,
 		     const char *number_src, const char *number_dst,
@@ -297,6 +300,7 @@ private:
 		__sync_lock_release(&_sync);
 	}
 private:
+	bool set;
 	cBillingRules *rules;
 	cBillingAssignments *assignments;
 	cBillingExclude *exclude;

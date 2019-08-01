@@ -809,6 +809,7 @@ double cCurrency::getExchangeRateToMainCurency(unsigned from_id) {
 
 cBilling::cBilling() {
 	_sync = 0;
+	set = false;
 	rules = new FILE_LINE(0) cBillingRules;
 	assignments = new FILE_LINE(0) cBillingAssignments;
 	exclude = new FILE_LINE(0) cBillingExclude;
@@ -847,6 +848,7 @@ void cBilling::load(SqlDb *sqlDb) {
 	agreg_settings->load(sqlDb);
 	currency->load(sqlDb);
 	gui_timezone = getGuiTimezone(sqlDb);
+	set = rules->rules.size() > 0;
 	unlock();
 	createMysqlPartitionsBillingAgregation(sqlDb);
 }

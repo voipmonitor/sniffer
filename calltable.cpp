@@ -4378,7 +4378,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	list<string> billingAgergationsInserts;
-	if(connect_time && billing) {
+	if(connect_time && billing && billing->isSet()) {
 		double operator_price = 0; 
 		double customer_price = 0;
 		unsigned operator_currency_id = 0;
