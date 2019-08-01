@@ -245,6 +245,7 @@ private:
 
 
 //#define PREPROCESS_DETACH2
+#define preProcessPacketCallX_count 3
 
 class PreProcessPacket {
 public:

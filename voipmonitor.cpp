@@ -768,7 +768,11 @@ int opt_upgrade_try_http_if_https_fail = 0;
 
 #define MAXIMUM_STORING_CDR_THREADS 5
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
+int storing_cdr_tid;
+pstat_data storing_cdr_thread_pstat_data[2];
 pthread_t storing_cdr_next_threads[MAXIMUM_STORING_CDR_THREADS];	// ID of worker storing CDR next threads
+int storing_cdr_next_tid[MAXIMUM_STORING_CDR_THREADS];	// ID of worker storing CDR next threads
+pstat_data storing_cdr_next_threads_pstat_data[MAXIMUM_STORING_CDR_THREADS][2];
 sem_t storing_cdr_next_threads_sem[MAXIMUM_STORING_CDR_THREADS][2];
 list<Call*> *storing_cdr_next_threads_calls[MAXIMUM_STORING_CDR_THREADS];
 int storing_cdr_next_threads_count = 0;
@@ -843,7 +847,7 @@ PcapQueue_readFromInterface *pcapQueueInterface;
 PcapQueue *pcapQueueStatInterface;
 
 PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-PreProcessPacket *preProcessPacketCallX[2];
+PreProcessPacket *preProcessPacketCallX[preProcessPacketCallX_count];
 ProcessRtpPacket *processRtpPacketHash;
 ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 
@@ -1651,6 +1655,7 @@ void *storing_cdr( void */*dummy*/ ) {
 	time_t dropPartitionBillingAgregationAt = 0;
 	time_t checkMysqlIdCdrChildTablesAt = 0;
 	bool firstIter = true;
+	storing_cdr_tid = get_unix_tid();
 	while(1) {
 		if(!opt_nocdr && !opt_disable_partition_operations && 
 		   !is_client() && 
@@ -1765,11 +1770,15 @@ void *storing_cdr( void */*dummy*/ ) {
 			unsigned calls_for_store_count = 0;
 			while(calls_queue_position < calls_queue_size) {
 				Call *call = calltable->calls_queue[calls_queue_position];
-				calltable->unlock_calls_queue();
-				// Close SIP and SIP+RTP dump files ASAP to save file handles
-				call->getPcap()->close();
-				call->getPcapSip()->close();
-				if(call->isReadyForWriteCdr()) {
+				if(opt_t2_boost != 2) {
+					calltable->unlock_calls_queue();
+					// Close SIP and SIP+RTP dump files ASAP to save file handles
+					call->getPcap()->close();
+					call->getPcapSip()->close();
+				}
+				if(opt_t2_boost == 2 ?
+				    call->isEmptyChunkBuffersCount() :
+				    call->isReadyForWriteCdr()) {
 					if(storing_cdr_next_threads_count) {
 						int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
 						if(!mod) {
@@ -1781,22 +1790,28 @@ void *storing_cdr( void */*dummy*/ ) {
 						calls_for_store.push_back(call);
 					}
 					++calls_for_store_count;
-					calltable->lock_calls_queue();
+					if(opt_t2_boost != 2) {
+						calltable->lock_calls_queue();
+					}
 					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
 					--calls_queue_size;
 				} else {
-					calltable->lock_calls_queue();
+					if(opt_t2_boost != 2) {
+						calltable->lock_calls_queue();
+					}
 				}
 				++calls_queue_position;
 			}
 			calltable->unlock_calls_queue();
 			if(calls_for_store_count) {
-				//cout << "*** " << calls_for_store_count << endl;
 				if(storing_cdr_next_threads_count) {
 					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
 						sem_post(&storing_cdr_next_threads_sem[i][0]);
 					}
 				}
+				bool useConvertToWav = false;
+				char *indikConvertToWav = new FILE_LINE(0) char[calls_for_store.size()];
+				unsigned counter = 0;
 				for(list<Call*>::iterator iter_call = calls_for_store.begin(); iter_call != calls_for_store.end(); iter_call++) {
 					Call *call = *iter_call;
 					bool needConvertToWavInThread = false;
@@ -1822,17 +1837,31 @@ void *storing_cdr( void */*dummy*/ ) {
 							call->saveAloneByeToDb();
 						}
 					}
+					indikConvertToWav[counter] = needConvertToWavInThread;
 					if(needConvertToWavInThread) {
-						calltable->lock_calls_audioqueue();
-						calltable->audio_queue.push_back(call);
-						calltable->processCallsInAudioQueue(false);
-						calltable->unlock_calls_audioqueue();
-					} else {
-						calltable->lock_calls_deletequeue();
-						calltable->calls_deletequeue.push_back(call);
-						calltable->unlock_calls_deletequeue();
+						useConvertToWav = true;
 					}
+					++counter;
 				}
+				calltable->lock_calls_deletequeue();
+				if(useConvertToWav) {
+					calltable->lock_calls_audioqueue();
+				}
+				counter = 0;
+				for(list<Call*>::iterator iter_call = calls_for_store.begin(); iter_call != calls_for_store.end(); iter_call++) {
+					if(indikConvertToWav[counter]) {
+						calltable->audio_queue.push_back(*iter_call);
+						calltable->processCallsInAudioQueue(false);
+					} else {
+						calltable->calls_deletequeue.push_back(*iter_call);
+					}
+					++counter;
+				}
+				calltable->unlock_calls_deletequeue();
+				if(useConvertToWav) {
+					calltable->unlock_calls_audioqueue();
+				}
+				delete [] indikConvertToWav;
 				if(storing_cdr_next_threads_count) {
 					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
 						sem_wait(&storing_cdr_next_threads_sem[i][1]);
@@ -1892,11 +1921,15 @@ void *storing_cdr( void */*dummy*/ ) {
 
 void *storing_cdr_next_thread( void *_indexNextThread ) {
 	int indexNextThread = (int)(long)_indexNextThread;
+	storing_cdr_next_tid[indexNextThread] = get_unix_tid();
 	while(terminating_storing_cdr < 2) {
 		sem_wait(&storing_cdr_next_threads_sem[indexNextThread][0]);
 		if(terminating_storing_cdr == 2) {
 			break;
 		}
+		bool useConvertToWav = false;
+		char *indikConvertToWav = new FILE_LINE(0) char[storing_cdr_next_threads_calls[indexNextThread]->size()];
+		unsigned counter = 0;
 		for(list<Call*>::iterator iter_call = storing_cdr_next_threads_calls[indexNextThread]->begin(); iter_call != storing_cdr_next_threads_calls[indexNextThread]->end(); iter_call++) {
 			Call *call = *iter_call;
 			bool needConvertToWavInThread = false;
@@ -1922,21 +1955,51 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 					call->saveAloneByeToDb();
 				}
 			}
+			indikConvertToWav[counter] = needConvertToWavInThread;
 			if(needConvertToWavInThread) {
-				calltable->lock_calls_audioqueue();
-				calltable->audio_queue.push_back(call);
-				calltable->processCallsInAudioQueue(false);
-				calltable->unlock_calls_audioqueue();
-			} else {
-				calltable->lock_calls_deletequeue();
-				calltable->calls_deletequeue.push_back(call);
-				calltable->unlock_calls_deletequeue();
+				useConvertToWav = true;
 			}
+			++counter;
 		}
+		calltable->lock_calls_deletequeue();
+		if(useConvertToWav) {
+			calltable->lock_calls_audioqueue();
+		}
+		counter = 0;
+		for(list<Call*>::iterator iter_call = storing_cdr_next_threads_calls[indexNextThread]->begin(); iter_call != storing_cdr_next_threads_calls[indexNextThread]->end(); iter_call++) {
+			if(indikConvertToWav[counter]) {
+				calltable->audio_queue.push_back(*iter_call);
+				calltable->processCallsInAudioQueue(false);
+			} else {
+				calltable->calls_deletequeue.push_back(*iter_call);
+			}
+			++counter;
+		}
+		calltable->unlock_calls_deletequeue();
+		if(useConvertToWav) {
+			calltable->unlock_calls_audioqueue();
+		}
+		delete [] indikConvertToWav;
 		storing_cdr_next_threads_calls[indexNextThread]->clear();
 		sem_post(&storing_cdr_next_threads_sem[indexNextThread][1]);
 	}
 	return NULL;
+}
+
+string storing_cdr_getCpuUsagePerc() {
+	ostringstream cpuStr;
+	cpuStr << fixed;
+	double cpu = get_cpu_usage_perc(storing_cdr_tid, storing_cdr_thread_pstat_data);
+	if(cpu > 0) {
+		cpuStr << setprecision(1) << cpu;
+	}
+	for(int i = 0; i < MAXIMUM_STORING_CDR_THREADS; i++) {
+		double cpu = get_cpu_usage_perc(storing_cdr_next_tid[i], storing_cdr_next_threads_pstat_data[i]);
+		if(cpu > 0) {
+			cpuStr << '/' << setprecision(1) << cpu;
+		}
+	}
+	return(cpuStr.str());
 }
 
 void *storing_registers( void */*dummy*/ ) {
@@ -3788,8 +3851,8 @@ int main_init_read() {
 			}
 		}
 		
-		if(opt_t2_boost > 1) {
-			for(int i = 0; i < 2; i++) {
+		if(opt_t2_boost == 2) {
+			for(int i = 0; i < preProcessPacketCallX_count; i++) {
 				preProcessPacketCallX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callx, i);
 				preProcessPacketCallX[i]->startOutThread();
 			}
@@ -4095,7 +4158,7 @@ void terminate_processpacket() {
 	}
 	
 	for(int termPass = 0; termPass < 2; termPass++) {
-		for(int i = 0; i < 2; i++) {
+		for(int i = 0; i < preProcessPacketCallX_count; i++) {
 			if(preProcessPacketCallX[i]) {
 				if(termPass == 0) {
 					preProcessPacketCallX[i]->terminate();

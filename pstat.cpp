@@ -101,6 +101,21 @@ void pstat_calc_cpu_usage(const pstat_data* cur_usage,
 			- (last_usage->stime_ticks + last_usage->cstime_ticks);
 }
 
+double get_cpu_usage_perc(const int pid, pstat_data *data) {
+	if(pid) {
+		if(data[0].cpu_total_time) {
+			data[1] = data[0];
+		}
+		pstat_get_data(pid, data);
+		double ucpu_usage, scpu_usage;
+		if(data[0].cpu_total_time && data[1].cpu_total_time) {
+			pstat_calc_cpu_usage_pct(&data[0], &data[1], &ucpu_usage, &scpu_usage);
+			return(ucpu_usage + scpu_usage);
+		}
+	}
+	return(-1);
+}
+
 long unsigned int getRss() {
 	pstat_data pstatData;
 	if(pstat_get_data(0, &pstatData)) {

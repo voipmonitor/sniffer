@@ -235,7 +235,7 @@ extern int opt_182queuedpauserecording;
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-extern PreProcessPacket *preProcessPacketCallX[2];
+extern PreProcessPacket *preProcessPacketCallX[];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern CustomHeaders *custom_headers_cdr;
@@ -7353,8 +7353,8 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					break;
 				case ppt_pp_call:
-					if(opt_t2_boost > 1 && preProcessPacketCallX[0]) {
-						for(int i = 0; i < 2; i++) {
+					if(opt_t2_boost == 2) {
+						for(int i = 0; i < preProcessPacketCallX_count - 1; i++) {
 							preProcessPacketCallX[i]->push_batch();
 						}
 					} else {
@@ -7362,7 +7362,9 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					break;
 				case ppt_pp_callx:
-					_process_packet__cleanup_calls();
+					if(opt_t2_boost == 2 && idPreProcessThread == preProcessPacketCallX_count - 1) {
+						_process_packet__cleanup_calls();
+					}
 					break;
 				case ppt_pp_register:
 					_process_packet__cleanup_registers();
@@ -7454,8 +7456,8 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		break;
 	case ppt_pp_call:
-		if(opt_t2_boost > 1 && preProcessPacketCallX[0]) {
-			for(int i = 0; i < 2; i++) {
+		if(opt_t2_boost == 2) {
+			for(int i = 0; i < preProcessPacketCallX_count - 1; i++) {
 				if(!preProcessPacketCallX[i]->outThreadState) {
 					preProcessPacketCallX[i]->push_batch();
 				}
@@ -7465,7 +7467,9 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		break;
 	case ppt_pp_callx:
-		_process_packet__cleanup_calls();
+		if(opt_t2_boost == 2 && idPreProcessThread == preProcessPacketCallX_count - 1) {
+			_process_packet__cleanup_calls();
+		}
 		break;
 	case ppt_pp_register:
 		_process_packet__cleanup_registers();
@@ -7699,13 +7703,9 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		    (packetS->_createCall && packetS->call_created && packetS->call_created->typeIs(BYE)))) {
 			process_packet_sip_alone_bye(packetS);
 		} else {
-			if(opt_t2_boost > 1 && preProcessPacketCallX[0]) {
-				static unsigned counter;
-				if(!(++counter % 1000)) {
-					_process_packet__cleanup_calls(packetS->header_pt);
-				}
+			if(opt_t2_boost == 2) {
 				Call *call = packetS->call ? packetS->call : packetS->call_created;
-				preProcessPacketCallX[call ? call->counter % 2 : 0]->push_packet(packetS);
+				preProcessPacketCallX[call ? call->counter % (preProcessPacketCallX_count - 1) : 0]->push_packet(packetS);
 				return;
 			} else {
 				process_packet_sip_call(packetS);

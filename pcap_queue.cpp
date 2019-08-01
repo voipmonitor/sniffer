@@ -120,7 +120,7 @@ extern Calltable *calltable;
 extern volatile int calls_counter;
 extern volatile int registers_counter;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-extern PreProcessPacket *preProcessPacketCallX[2];
+extern PreProcessPacket *preProcessPacketCallX[];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern TcpReassembly *tcpReassemblyHttp;
@@ -2004,7 +2004,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 			}
 			if(preProcessPacketCallX[0]) {
-				for(int i = 0; i < 2; i++) {
+				for(int i = 0; i < preProcessPacketCallX_count; i++) {
 					double percFullQring;
 					double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, &percFullQring);
 					if(t2cpu_preprocess_packet_out_thread >= 0) {
@@ -2214,6 +2214,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(last_tac_cpu < opt_cpu_limit_delete_thread) {
 				asyncClose->removeThread();
 			}
+		}
+		extern string storing_cdr_getCpuUsagePerc();
+		string storing_cdr_cpu = storing_cdr_getCpuUsagePerc();
+		if(!storing_cdr_cpu.empty()) {
+			outStrStat << "storing[" << storing_cdr_cpu << "] ";
 		}
 		if(sverb.log_profiler) {
 			lapTime.push_back(getTimeMS_rdtsc());

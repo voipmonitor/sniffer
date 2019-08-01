@@ -201,6 +201,7 @@ extern int opt_pcap_dump_tar_graph_use_pos;
 
 extern unsigned int glob_ssl_calls;
 extern bool opt_cdr_partition;
+extern int opt_t2_boost;
 
 extern cBilling *billing;
 
@@ -828,7 +829,6 @@ Call::_addtocachequeue(string file) {
 void
 Call::removeRTP() {
 	while(this->rtppacketsinqueue > 0) {
-		extern int opt_t2_boost;
 		if(!opt_t2_boost && rtp_threads) {
 			extern int num_threads_max;
 			for(int i = 0; i < num_threads_max; i++) {
@@ -7566,7 +7566,8 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose ) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 		}
 		// Close RTP dump file ASAP to save file handles
-		if(!currtime && is_terminating()) {
+		if((!currtime && is_terminating()) ||
+		   opt_t2_boost == 2) {
 			call->getPcap()->close();
 			call->getPcapSip()->close();
 		}
@@ -7582,15 +7583,6 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose ) {
 		}
 		// we have to close all raw files as there can be data in buffers 
 		call->closeRawFiles();
-		/* move call to queue for mysql processing */
-		lock_calls_queue();
-		if(call->push_call_to_calls_queue) {
-			syslog(LOG_WARNING,"try to duplicity push call %s / %i to calls_queue", call->call_id.c_str(), call->getTypeBase());
-		} else {
-			call->push_call_to_calls_queue = 1;
-			calls_queue.push_back(call);
-		}
-		unlock_calls_queue();
 		
 		if(opt_enable_fraud && currtime) {
 			fraudEndCall(call, *currtime);
@@ -7598,6 +7590,18 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose ) {
 		extern u_int64_t counter_calls_clean;
 		++counter_calls_clean;
 	}
+	/* move call to queue for mysql processing */
+	lock_calls_queue();
+	for(unsigned i = 0; i < closeCalls_count; i++) {
+		call = closeCalls[i];
+		if(call->push_call_to_calls_queue) {
+			syslog(LOG_WARNING,"try to duplicity push call %s / %i to calls_queue", call->call_id.c_str(), call->getTypeBase());
+		} else {
+			call->push_call_to_calls_queue = 1;
+			calls_queue.push_back(call);
+		}
+	}
+	unlock_calls_queue();
 	delete [] closeCalls;
 	
 	if(!currtime && is_terminating()) {

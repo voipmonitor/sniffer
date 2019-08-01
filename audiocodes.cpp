@@ -425,13 +425,15 @@ bool sAudiocodes::parse(u_char *ac_header, unsigned /*length*/) {
 }
 
 void sAudiocodes::set_ip(vmIP *ip, u_char *data, bool ipv6) {
+	#if VM_IPV6
 	if(ipv6) {
-		if(VM_IPV6_B) {
-			ip->setIPv6(*(in6_addr*)data, true);
-		}
+		ip->setIPv6(*(in6_addr*)data, true);
 	} else {
+	#endif
 		ip->setIPv4(*(u_int32_t*)data, true);
+	#if VM_IPV6
 	}
+	#endif
 }
 
 void sAudiocodes::set_port(vmPort *port, u_char *data) {
