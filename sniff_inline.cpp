@@ -422,7 +422,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
 					return(0);
 				}
-				if(ppd->header_ip->get_tot_len() + ppd->header_ip_offset > HPH(*header_packet)->len) {
+				if((ppd->header_ip->get_tot_len() + ppd->header_ip_offset > HPH(*header_packet)->len) && !sverb.process_rtp_header)  {
 					pcapProcessEvalError(bad_ip_length, *HPH(*header_packet), HPP(*header_packet),
 							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
 					return(0);
