@@ -2215,10 +2215,21 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				asyncClose->removeThread();
 			}
 		}
-		extern string storing_cdr_getCpuUsagePerc();
-		string storing_cdr_cpu = storing_cdr_getCpuUsagePerc();
+		extern string storing_cdr_getCpuUsagePerc(double *avg);
+		double storing_cdr_cpu_avg;
+		string storing_cdr_cpu = storing_cdr_getCpuUsagePerc(&storing_cdr_cpu_avg);
 		if(!storing_cdr_cpu.empty()) {
 			outStrStat << "storing[" << storing_cdr_cpu << "] ";
+		}
+		if(storing_cdr_cpu_avg > 70 &&
+		   calls_counter > 10000 &&
+		   calls_counter > calltable->calls_list_count() * 2) {
+			extern void storing_cdr_next_thread_add();
+			storing_cdr_next_thread_add();
+		} else if(storing_cdr_cpu_avg < 10 &&
+			  calls_counter < calltable->calls_list_count() * 1.5) {
+			extern void storing_cdr_next_thread_remove();
+			storing_cdr_next_thread_remove();
 		}
 		if(sverb.log_profiler) {
 			lapTime.push_back(getTimeMS_rdtsc());

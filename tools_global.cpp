@@ -33,8 +33,8 @@ int vm_pthread_create(const char *thread_description,
 		      const char *src_file, int src_file_line, bool autodestroy) {
 	#ifndef CLOUD_ROUTER_SERVER
 	if(sverb.thread_create && src_file && src_file_line) {
-		syslog(LOG_NOTICE, "create thread %sfrom %s : %i", 
-		       autodestroy ? "(autodestroy) " : "", src_file, src_file_line);
+		syslog(LOG_NOTICE, "create thread '%s' %sfrom %s : %i", 
+		       thread_description, autodestroy ? "(autodestroy) " : "", src_file, src_file_line);
 	}
 	#endif
 	bool create_attr = false;

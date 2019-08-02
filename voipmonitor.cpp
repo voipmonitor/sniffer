@@ -766,7 +766,7 @@ char opt_cachedir[1024];
 
 int opt_upgrade_try_http_if_https_fail = 0;
 
-#define MAXIMUM_STORING_CDR_THREADS 5
+#define MAXIMUM_STORING_CDR_THREADS 3
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 int storing_cdr_tid;
 pstat_data storing_cdr_thread_pstat_data[2];
@@ -774,8 +774,11 @@ pthread_t storing_cdr_next_threads[MAXIMUM_STORING_CDR_THREADS];	// ID of worker
 int storing_cdr_next_tid[MAXIMUM_STORING_CDR_THREADS];	// ID of worker storing CDR next threads
 pstat_data storing_cdr_next_threads_pstat_data[MAXIMUM_STORING_CDR_THREADS][2];
 sem_t storing_cdr_next_threads_sem[MAXIMUM_STORING_CDR_THREADS][2];
+bool storing_cdr_next_threads_init[MAXIMUM_STORING_CDR_THREADS];
 list<Call*> *storing_cdr_next_threads_calls[MAXIMUM_STORING_CDR_THREADS];
-int storing_cdr_next_threads_count = 0;
+volatile int storing_cdr_next_threads_count[2];
+volatile int storing_cdr_next_threads_count_sync;
+unsigned storing_cdr_next_threads_count_last_change;
 pthread_t storing_registers_thread;	// ID of worker storing CDR thread 
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
@@ -1768,6 +1771,24 @@ void *storing_cdr( void */*dummy*/ ) {
 			size_t calls_queue_position = 0;
 			list<Call*> calls_for_store;
 			unsigned calls_for_store_count = 0;
+			while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
+			if(storing_cdr_next_threads_count[1] > storing_cdr_next_threads_count[0]) {
+				if(!storing_cdr_next_threads_init[storing_cdr_next_threads_count[1] - 1]) {
+					storing_cdr_next_threads_calls[storing_cdr_next_threads_count[1] - 1] = new FILE_LINE(0) list<Call*>;
+					for(int i = 0; i < 2; i++) {
+						sem_init(&storing_cdr_next_threads_sem[storing_cdr_next_threads_count[1] - 1][i], 0, 0);
+					}
+					storing_cdr_next_threads_init[storing_cdr_next_threads_count[1] - 1] = true;
+				}
+				memset(storing_cdr_next_threads_pstat_data[storing_cdr_next_threads_count[1] - 1], 0, sizeof(storing_cdr_next_threads_pstat_data[storing_cdr_next_threads_count[1] - 1]));
+				void *storing_cdr_next_thread( void *_indexNextThread );
+				vm_pthread_create(("storing cdr - next thread " + intToString(storing_cdr_next_threads_count[1])).c_str(),
+						  &storing_cdr_next_threads[storing_cdr_next_threads_count[1] - 1], NULL, storing_cdr_next_thread, (void*)(long)(storing_cdr_next_threads_count[1] - 1), __FILE__, __LINE__);
+				while(storing_cdr_next_threads_count[1] > storing_cdr_next_threads_count[0]) {
+					usleep(100000);
+				}
+				usleep(100000);
+			}
 			while(calls_queue_position < calls_queue_size) {
 				Call *call = calltable->calls_queue[calls_queue_position];
 				if(opt_t2_boost != 2) {
@@ -1779,8 +1800,8 @@ void *storing_cdr( void */*dummy*/ ) {
 				if(opt_t2_boost == 2 ?
 				    call->isEmptyChunkBuffersCount() :
 				    call->isReadyForWriteCdr()) {
-					if(storing_cdr_next_threads_count) {
-						int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
+					if(storing_cdr_next_threads_count[0]) {
+						int mod = calls_for_store_count % (storing_cdr_next_threads_count[0] + 1);
 						if(!mod) {
 							calls_for_store.push_back(call);
 						} else {
@@ -1804,13 +1825,15 @@ void *storing_cdr( void */*dummy*/ ) {
 			}
 			calltable->unlock_calls_queue();
 			if(calls_for_store_count) {
-				if(storing_cdr_next_threads_count) {
-					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+				if(storing_cdr_next_threads_count[0]) {
+					for(int i = 0; i < storing_cdr_next_threads_count[0]; i++) {
 						sem_post(&storing_cdr_next_threads_sem[i][0]);
 					}
 				}
 				bool useConvertToWav = false;
-				char *indikConvertToWav = new FILE_LINE(0) char[calls_for_store.size()];
+				unsigned indikConvertToWavSize = calls_for_store.size();
+				char *indikConvertToWav = new FILE_LINE(0) char[indikConvertToWavSize];
+				memset(indikConvertToWav, 0, indikConvertToWavSize);
 				unsigned counter = 0;
 				for(list<Call*>::iterator iter_call = calls_for_store.begin(); iter_call != calls_for_store.end(); iter_call++) {
 					Call *call = *iter_call;
@@ -1837,7 +1860,9 @@ void *storing_cdr( void */*dummy*/ ) {
 							call->saveAloneByeToDb();
 						}
 					}
-					indikConvertToWav[counter] = needConvertToWavInThread;
+					if(counter < indikConvertToWavSize) {
+						indikConvertToWav[counter] = needConvertToWavInThread;
+					}
 					if(needConvertToWavInThread) {
 						useConvertToWav = true;
 					}
@@ -1849,7 +1874,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				}
 				counter = 0;
 				for(list<Call*>::iterator iter_call = calls_for_store.begin(); iter_call != calls_for_store.end(); iter_call++) {
-					if(indikConvertToWav[counter]) {
+					if(useConvertToWav && counter < indikConvertToWavSize && indikConvertToWav[counter]) {
 						calltable->audio_queue.push_back(*iter_call);
 						calltable->processCallsInAudioQueue(false);
 					} else {
@@ -1862,13 +1887,14 @@ void *storing_cdr( void */*dummy*/ ) {
 					calltable->unlock_calls_audioqueue();
 				}
 				delete [] indikConvertToWav;
-				if(storing_cdr_next_threads_count) {
-					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+				if(storing_cdr_next_threads_count[0]) {
+					for(int i = 0; i < storing_cdr_next_threads_count[0]; i++) {
 						sem_wait(&storing_cdr_next_threads_sem[i][1]);
 					}
 				}
 				storingCdrLastWriteAt = getActDateTimeF();
 			}
+			__sync_lock_release(&storing_cdr_next_threads_count_sync);
 			if(terminating_storing_cdr && (!calls_queue_size || terminating > 1)) {
 				break;
 			}
@@ -1922,13 +1948,18 @@ void *storing_cdr( void */*dummy*/ ) {
 void *storing_cdr_next_thread( void *_indexNextThread ) {
 	int indexNextThread = (int)(long)_indexNextThread;
 	storing_cdr_next_tid[indexNextThread] = get_unix_tid();
+	if(storing_cdr_next_threads_count[1] > storing_cdr_next_threads_count[0]) {
+		 storing_cdr_next_threads_count[0] = storing_cdr_next_threads_count[1];
+	}
 	while(terminating_storing_cdr < 2) {
 		sem_wait(&storing_cdr_next_threads_sem[indexNextThread][0]);
 		if(terminating_storing_cdr == 2) {
 			break;
 		}
 		bool useConvertToWav = false;
-		char *indikConvertToWav = new FILE_LINE(0) char[storing_cdr_next_threads_calls[indexNextThread]->size()];
+		unsigned indikConvertToWavSize = storing_cdr_next_threads_calls[indexNextThread]->size();
+		char *indikConvertToWav = new FILE_LINE(0) char[indikConvertToWavSize];
+		memset(indikConvertToWav, 0, indikConvertToWavSize);
 		unsigned counter = 0;
 		for(list<Call*>::iterator iter_call = storing_cdr_next_threads_calls[indexNextThread]->begin(); iter_call != storing_cdr_next_threads_calls[indexNextThread]->end(); iter_call++) {
 			Call *call = *iter_call;
@@ -1955,7 +1986,9 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 					call->saveAloneByeToDb();
 				}
 			}
-			indikConvertToWav[counter] = needConvertToWavInThread;
+			if(counter < indikConvertToWavSize) {
+				indikConvertToWav[counter] = needConvertToWavInThread;
+			}
 			if(needConvertToWavInThread) {
 				useConvertToWav = true;
 			}
@@ -1967,7 +2000,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 		}
 		counter = 0;
 		for(list<Call*>::iterator iter_call = storing_cdr_next_threads_calls[indexNextThread]->begin(); iter_call != storing_cdr_next_threads_calls[indexNextThread]->end(); iter_call++) {
-			if(indikConvertToWav[counter]) {
+			if(useConvertToWav && counter < indikConvertToWavSize && indikConvertToWav[counter]) {
 				calltable->audio_queue.push_back(*iter_call);
 				calltable->processCallsInAudioQueue(false);
 			} else {
@@ -1981,23 +2014,65 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 		}
 		delete [] indikConvertToWav;
 		storing_cdr_next_threads_calls[indexNextThread]->clear();
+		bool stop = false;
+		if(storing_cdr_next_threads_count[1] < storing_cdr_next_threads_count[0] &&
+		   (indexNextThread + 1) == storing_cdr_next_threads_count[0]) {
+			storing_cdr_next_threads_count[0] = storing_cdr_next_threads_count[1];
+			stop = true;
+		}
 		sem_post(&storing_cdr_next_threads_sem[indexNextThread][1]);
+		if(stop) {
+			break;
+		}
 	}
 	return NULL;
 }
 
-string storing_cdr_getCpuUsagePerc() {
+void storing_cdr_next_thread_add() {
+	if(getTimeS() > storing_cdr_next_threads_count_last_change + 60) {
+		while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
+		if(storing_cdr_next_threads_count[0] < MAXIMUM_STORING_CDR_THREADS &&
+		   storing_cdr_next_threads_count[1] == storing_cdr_next_threads_count[0]) {
+			++storing_cdr_next_threads_count[1];
+			storing_cdr_next_threads_count_last_change = getTimeS();
+		}
+		__sync_lock_release(&storing_cdr_next_threads_count_sync);
+	}
+}
+
+void storing_cdr_next_thread_remove() {
+	if(getTimeS() > storing_cdr_next_threads_count_last_change + 60) {
+		while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
+		if(storing_cdr_next_threads_count[0] > 0 &&
+		   storing_cdr_next_threads_count[1] == storing_cdr_next_threads_count[0]) {
+			--storing_cdr_next_threads_count[1];
+			storing_cdr_next_threads_count_last_change = getTimeS();
+		}
+		__sync_lock_release(&storing_cdr_next_threads_count_sync);
+	}
+}
+
+string storing_cdr_getCpuUsagePerc(double *avg) {
 	ostringstream cpuStr;
 	cpuStr << fixed;
+	double cpu_sum = 0;
+	unsigned cpu_count = 0;
 	double cpu = get_cpu_usage_perc(storing_cdr_tid, storing_cdr_thread_pstat_data);
 	if(cpu > 0) {
 		cpuStr << setprecision(1) << cpu;
+		cpu_sum += cpu;
+		++cpu_count;
 	}
-	for(int i = 0; i < MAXIMUM_STORING_CDR_THREADS; i++) {
+	for(int i = 0; i < storing_cdr_next_threads_count[0]; i++) {
 		double cpu = get_cpu_usage_perc(storing_cdr_next_tid[i], storing_cdr_next_threads_pstat_data[i]);
 		if(cpu > 0) {
 			cpuStr << '/' << setprecision(1) << cpu;
+			cpu_sum += cpu;
+			++cpu_count;
 		}
+	}
+	if(avg) {
+		*avg = cpu_count ? cpu_sum / cpu_count : 0;
 	}
 	return(cpuStr.str());
 }
@@ -3769,14 +3844,6 @@ int main_init_read() {
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
-		for(int i = 0; i < storing_cdr_next_threads_count; i++) {
-			storing_cdr_next_threads_calls[i] = new FILE_LINE(0) list<Call*>;
-			for(int j = 0; j < 2; j++) {
-				sem_init(&storing_cdr_next_threads_sem[i][j], 0, 0);
-			}
-			vm_pthread_create(("storing cdr - next thread " + intToString(i + 1)).c_str(),
-					  &storing_cdr_next_threads[i], NULL, storing_cdr_next_thread, (void*)(long)i, __FILE__, __LINE__);
-		}
 		vm_pthread_create("storing cdr",
 				  &storing_cdr_thread, NULL, storing_cdr, NULL, __FILE__, __LINE__);
 		vm_pthread_create("storing register",
@@ -4293,7 +4360,8 @@ void main_term_read() {
 	if(storing_cdr_thread) {
 		terminating_storing_cdr = 1;
 		pthread_join(storing_cdr_thread, NULL);
-		for(int i = 0; i < storing_cdr_next_threads_count; i++) {
+		while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
+		for(int i = 0; i < storing_cdr_next_threads_count[0]; i++) {
 			sem_post(&storing_cdr_next_threads_sem[i][0]);
 			pthread_join(storing_cdr_next_threads[i], NULL);
 			for(int j = 0; j < 2; j++) {
@@ -4301,6 +4369,7 @@ void main_term_read() {
 			}
 			delete storing_cdr_next_threads_calls[i];
 		}
+		__sync_lock_release(&storing_cdr_next_threads_count_sync);
 	}
 	if(storing_registers_thread) {
 		terminating_storing_registers = 1;
@@ -6095,8 +6164,6 @@ void cConfig::addConfigItems() {
 					->addValues("per_query:2"));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_set_id", &opt_mysql_enable_set_id));
-					addConfigItem((new FILE_LINE(0) cConfigItem_integer("storing_cdr_next_threads", &storing_cdr_next_threads_count))
-						->setMaximum(MAXIMUM_STORING_CDR_THREADS));
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
@@ -9310,9 +9377,6 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysql_enable_set_id"))) {
 		opt_mysql_enable_set_id = yesno(value);
-	}
-	if((value = ini.GetValue("general", "storing_cdr_next_threads", NULL))) {
-		storing_cdr_next_threads_count = min(atoi(value), MAXIMUM_STORING_CDR_THREADS);
 	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strcpy_null_term(mysql_host, value);
