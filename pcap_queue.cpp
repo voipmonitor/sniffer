@@ -108,7 +108,7 @@ extern int opt_mysqlstore_max_threads_register;
 extern int opt_mysqlstore_max_threads_http;
 extern int opt_mysqlstore_max_threads_ipacc_base;
 extern int opt_mysqlstore_max_threads_ipacc_agreg2;
-
+extern int opt_t2_boost;
 extern pcap_t *global_pcap_handle;
 extern u_int16_t global_pcap_handle_index;
 extern char *sipportmatrix;
@@ -1306,6 +1306,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 
 	extern int opt_cpu_limit_warning_t0;
 	extern int opt_cpu_limit_new_thread;
+	extern int opt_cpu_limit_new_thread_high;
 	extern int opt_cpu_limit_delete_thread;
 	extern int opt_cpu_limit_delete_t2sip_thread;
 
@@ -1951,6 +1952,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 			}
 			double last_t2cpu_preprocess_packet_out_thread_check_next_level = -2;
+			double call_t2cpu_preprocess_packet_out_thread = -2;
 			double last_t2cpu_preprocess_packet_out_thread_rtp = -2;
 			int count_t2cpu = 1;
 			double sum_t2cpu = t2cpu;
@@ -1994,6 +1996,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_rtp && 
 					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
 						last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
+					}
+					if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call) {
+						call_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
 					}
 					if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
 					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
@@ -2088,6 +2093,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_t2sip_thread) {
 					PreProcessPacket::autoStopLastLevelPreProcessPacket();
 				}
+			}
+			if(call_t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread_high &&
+			   heapPerc > 10 &&
+			   opt_t2_boost && !preProcessPacketCallX[0]->isActiveOutThread()) {
+				PreProcessPacket::autoStartCallX_PreProcessPacket();
 			}
 			if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
 				ProcessRtpPacket::autoStartProcessRtpPacket();
@@ -2221,12 +2231,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if(!storing_cdr_cpu.empty()) {
 			outStrStat << "storing[" << storing_cdr_cpu << "] ";
 		}
-		if(storing_cdr_cpu_avg > 70 &&
+		if(storing_cdr_cpu_avg > opt_cpu_limit_new_thread_high &&
 		   calls_counter > 10000 &&
-		   calls_counter > calltable->calls_list_count() * 2) {
+		   calls_counter > (int)calltable->calls_list_count() * 2) {
 			extern void storing_cdr_next_thread_add();
 			storing_cdr_next_thread_add();
-		} else if(storing_cdr_cpu_avg < 10 &&
+		} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread &&
 			  calls_counter < calltable->calls_list_count() * 1.5) {
 			extern void storing_cdr_next_thread_remove();
 			storing_cdr_next_thread_remove();

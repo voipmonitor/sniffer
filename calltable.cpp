@@ -59,6 +59,7 @@
 #include "dtls.h"
 #include "filter_call.h"
 #include "options.h"
+#include "sniff_proc_class.h"
 
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -163,6 +164,7 @@ extern int opt_rtp_check_both_sides_by_sdp;
 extern int opt_hash_modify_queue_length_ms;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
+extern PreProcessPacket *preProcessPacketCallX[];
 
 volatile int calls_counter = 0;
 /* probably not used any more */
@@ -7567,7 +7569,7 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose ) {
 		}
 		// Close RTP dump file ASAP to save file handles
 		if((!currtime && is_terminating()) ||
-		   opt_t2_boost == 2) {
+		   (opt_t2_boost && preProcessPacketCallX[0]->isActiveOutThread())) {
 			call->getPcap()->close();
 			call->getPcapSip()->close();
 		}

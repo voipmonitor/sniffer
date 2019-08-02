@@ -907,6 +907,7 @@ BogusDumper *bogusDumper;
 char opt_syslog_string[256];
 int opt_cpu_limit_warning_t0 = 80;
 int opt_cpu_limit_new_thread = 50;
+int opt_cpu_limit_new_thread_high = 75;
 int opt_cpu_limit_delete_thread = 5;
 int opt_cpu_limit_delete_t2sip_thread = 17;
 
@@ -1791,13 +1792,14 @@ void *storing_cdr( void */*dummy*/ ) {
 			}
 			while(calls_queue_position < calls_queue_size) {
 				Call *call = calltable->calls_queue[calls_queue_position];
-				if(opt_t2_boost != 2) {
+				bool isPcapClose = call->isPcapsClose();
+				if(!isPcapClose) {
 					calltable->unlock_calls_queue();
 					// Close SIP and SIP+RTP dump files ASAP to save file handles
 					call->getPcap()->close();
 					call->getPcapSip()->close();
 				}
-				if(opt_t2_boost == 2 ?
+				if(isPcapClose ?
 				    call->isEmptyChunkBuffersCount() :
 				    call->isReadyForWriteCdr()) {
 					if(storing_cdr_next_threads_count[0]) {
@@ -1811,13 +1813,13 @@ void *storing_cdr( void */*dummy*/ ) {
 						calls_for_store.push_back(call);
 					}
 					++calls_for_store_count;
-					if(opt_t2_boost != 2) {
+					if(!isPcapClose) {
 						calltable->lock_calls_queue();
 					}
 					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
 					--calls_queue_size;
 				} else {
-					if(opt_t2_boost != 2) {
+					if(!isPcapClose) {
 						calltable->lock_calls_queue();
 					}
 				}
@@ -3918,10 +3920,9 @@ int main_init_read() {
 			}
 		}
 		
-		if(opt_t2_boost == 2) {
+		if(opt_t2_boost) {
 			for(int i = 0; i < preProcessPacketCallX_count; i++) {
 				preProcessPacketCallX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callx, i);
-				preProcessPacketCallX[i]->startOutThread();
 			}
 		}
 		
@@ -6118,8 +6119,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("mysql_connect_timeout", &opt_mysql_connect_timeout));
 					addConfigItem(new FILE_LINE(42088) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));
-					addConfigItem((new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost))
-						->addValues("extend:2"));
+					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
@@ -6661,6 +6661,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42344) cConfigItem_string("php_path", opt_php_path, sizeof(opt_php_path)));
 		addConfigItem(new FILE_LINE(42345) cConfigItem_string("syslog_string", opt_syslog_string, sizeof(opt_syslog_string)));
 		addConfigItem(new FILE_LINE(42346) cConfigItem_integer("cpu_limit_new_thread", &opt_cpu_limit_new_thread));
+		addConfigItem(new FILE_LINE(0) cConfigItem_integer("cpu_limit_new_thread_high", &opt_cpu_limit_new_thread_high));
 		addConfigItem(new FILE_LINE(42347) cConfigItem_integer("cpu_limit_delete_thread", &opt_cpu_limit_delete_thread));
 		addConfigItem(new FILE_LINE(42348) cConfigItem_integer("cpu_limit_delete_t2sip_thread", &opt_cpu_limit_delete_t2sip_thread));
 		addConfigItem(new FILE_LINE(0) cConfigItem_integer("memory_purge_interval", &opt_memory_purge_interval));
@@ -9624,8 +9625,7 @@ int eval_config(string inistr) {
 		opt_callend = yesno(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost", NULL))) {
-		opt_t2_boost = !strcmp(value, "extend") ? 2 :
-			       yesno(value);
+		opt_t2_boost = yesno(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
@@ -10329,6 +10329,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "cpu_limit_new_thread", NULL))) {
 		opt_cpu_limit_new_thread = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cpu_limit_new_thread_high", NULL))) {
+		opt_cpu_limit_new_thread_high = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cpu_limit_delete_thread", NULL))) {
 		opt_cpu_limit_delete_thread = atoi(value);

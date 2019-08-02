@@ -624,6 +624,7 @@ public:
 	double getCpuUsagePerc(bool preparePstatData, double *percFullQring = NULL);
 	void terminate();
 	static void autoStartNextLevelPreProcessPacket();
+	static void autoStartCallX_PreProcessPacket();
 	static void autoStopLastLevelPreProcessPacket(bool force = false);
 	double getQringFillingPerc() {
 		unsigned int _readit = readit;

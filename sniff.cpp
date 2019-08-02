@@ -7351,7 +7351,7 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					break;
 				case ppt_pp_call:
-					if(opt_t2_boost == 2) {
+					if(opt_t2_boost && preProcessPacketCallX[0]->isActiveOutThread()) {
 						for(int i = 0; i < preProcessPacketCallX_count - 1; i++) {
 							preProcessPacketCallX[i]->push_batch();
 						}
@@ -7360,7 +7360,8 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					break;
 				case ppt_pp_callx:
-					if(opt_t2_boost == 2 && idPreProcessThread == preProcessPacketCallX_count - 1) {
+					if(opt_t2_boost && preProcessPacketCallX[0]->isActiveOutThread() &&
+					   idPreProcessThread == preProcessPacketCallX_count - 1) {
 						_process_packet__cleanup_calls();
 					}
 					break;
@@ -7454,18 +7455,17 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		break;
 	case ppt_pp_call:
-		if(opt_t2_boost == 2) {
+		if(opt_t2_boost && preProcessPacketCallX[0]->isActiveOutThread()) {
 			for(int i = 0; i < preProcessPacketCallX_count - 1; i++) {
-				if(!preProcessPacketCallX[i]->outThreadState) {
-					preProcessPacketCallX[i]->push_batch();
-				}
+				preProcessPacketCallX[i]->push_batch();
 			}
 		} else {
 			_process_packet__cleanup_calls();
 		}
 		break;
 	case ppt_pp_callx:
-		if(opt_t2_boost == 2 && idPreProcessThread == preProcessPacketCallX_count - 1) {
+		if(opt_t2_boost && preProcessPacketCallX[0]->isActiveOutThread() &&
+		   idPreProcessThread == preProcessPacketCallX_count - 1) {
 			_process_packet__cleanup_calls();
 		}
 		break;
@@ -7701,7 +7701,7 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		    (packetS->_createCall && packetS->call_created && packetS->call_created->typeIs(BYE)))) {
 			process_packet_sip_alone_bye(packetS);
 		} else {
-			if(opt_t2_boost == 2) {
+			if(opt_t2_boost && preProcessPacketCallX[0]->isActiveOutThread()) {
 				Call *call = packetS->call ? packetS->call : packetS->call_created;
 				preProcessPacketCallX[call ? call->counter % (preProcessPacketCallX_count - 1) : 0]->push_packet(packetS);
 				return;
@@ -8013,6 +8013,16 @@ void PreProcessPacket::autoStartNextLevelPreProcessPacket() {
 	if(i < PreProcessPacket::ppt_end_base) {
 		preProcessPacket[i]->startOutThread();
 		autoStartNextLevelPreProcessPacket_last_time_s = getTimeS();
+	}
+}
+
+void PreProcessPacket::autoStartCallX_PreProcessPacket() {
+	if(opt_t2_boost) {
+		for(int i = 0; i < preProcessPacketCallX_count; i++) {
+			if(!preProcessPacketCallX[i]->outThreadState) {
+				preProcessPacketCallX[i]->startOutThread();
+			}
+		}
 	}
 }
 
