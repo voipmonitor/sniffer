@@ -110,6 +110,7 @@ struct sVerbose {
 	int disable_cloudshare;
 	int screen_popup;
 	int screen_popup_syslog;
+	int cleanup_calls;
 	int _debug1;
 	int _debug2;
 	int _debug3;

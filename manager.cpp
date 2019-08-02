@@ -77,6 +77,7 @@ extern int manager_socket_server;
 extern int opt_nocdr;
 extern int global_livesniffer;
 extern map<unsigned int, octects_live_t*> ipacc_live;
+extern int opt_t2_boost;
 
 extern map<unsigned int, livesnifferfilter_t*> usersniffer;
 extern volatile int usersniffer_sync;
@@ -4437,7 +4438,11 @@ int Mgmt_t2sip_add_thread(Mgmt_params *params) {
 		params->registerCommand("t2sip_add_thread", "t2sip_add_thread");
 		return(0);
 	}
-	PreProcessPacket::autoStartNextLevelPreProcessPacket();
+	if(opt_t2_boost) {
+		PreProcessPacket::autoStartCallX_PreProcessPacket();
+	} else {
+		PreProcessPacket::autoStartNextLevelPreProcessPacket();
+	}
 	return(params->sendString("ok\n"));
 }
 
@@ -4446,7 +4451,9 @@ int Mgmt_t2sip_remove_thread(Mgmt_params *params) {
 		params->registerCommand("t2sip_remove_thread", "t2sip_remove_thread");
 		return(0);
 	}
-	PreProcessPacket::autoStopLastLevelPreProcessPacket(true);
+	if(!opt_t2_boost) {
+		PreProcessPacket::autoStopLastLevelPreProcessPacket(true);
+	}
 	return(params->sendString("ok\n"));
 }
 

@@ -2909,7 +2909,7 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 
 static inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS);
 static inline void process_packet__parse_rtcpxr(Call *call, packet_s_process *packetS, timeval tv);
-static inline void process_packet__cleanup_calls(pcap_pkthdr *header);
+static inline void process_packet__cleanup_calls(pcap_pkthdr *header, const char *file, int line);
 static inline void process_packet__cleanup_registers(pcap_pkthdr *header);
 static inline void process_packet__cleanup_ss7(pcap_pkthdr *header);
 static inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
@@ -4865,7 +4865,7 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 	call->rtcpXrData.add(ssrc_int, tv, moslq, nlr, ipLocal, ipRemote);
 }
 
-inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
+inline void process_packet__cleanup_calls(pcap_pkthdr* header, const char *file, int line) {
 	bool doQuickCleanup = false;
 	if(opt_quick_save_cdr &&
 	   (count_sip_bye != process_packet__last_cleanup_calls__count_sip_bye ||
@@ -4903,7 +4903,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header) {
 				(int)calltable->calls_list_count(), (int)calltable->calls_queue.size());
 		}
 	}
-	calltable->cleanup_calls(&ts);
+	calltable->cleanup_calls(&ts, false, file, line);
 	listening_cleanup();
 	process_packet__last_cleanup_calls = ts.tv_sec;
 	
@@ -6384,8 +6384,8 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 							}
 						}
 					}
-					void _process_packet__cleanup_calls(pcap_pkthdr *header);
-					_process_packet__cleanup_calls(HPH(header_packet));
+					void _process_packet__cleanup_calls(pcap_pkthdr *header, const char *file, int line);
+					_process_packet__cleanup_calls(HPH(header_packet), __FILE__, __LINE__);
 					ostringstream outStr;
 					outStr << fixed;
 					outStr << "calls[" << (calltable->calls_list_count() + calltable->calls_by_stream_callid_listMAP.size()) << ",r:" << calltable->registers_listMAP.size() << "]"
@@ -6578,16 +6578,16 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 }
 
 
-void _process_packet__cleanup_calls(pcap_pkthdr *header) {
-	process_packet__cleanup_calls(header);
+void _process_packet__cleanup_calls(pcap_pkthdr *header, const char *file, int line) {
+	process_packet__cleanup_calls(header, file, line);
 	if(header->ts.tv_sec - process_packet__last_destroy_calls >= 2) {
 		calltable->destroyCallsIfPcapsClosed();
 		process_packet__last_destroy_calls = header->ts.tv_sec;
 	}
 }
 
-void _process_packet__cleanup_calls() {
-	process_packet__cleanup_calls(NULL);
+void _process_packet__cleanup_calls(const char *file, int line) {
+	process_packet__cleanup_calls(NULL, file, line);
 	u_long timeS = getTimeS();
 	if(timeS - process_packet__last_destroy_calls >= 2) {
 		calltable->destroyCallsIfPcapsClosed();
@@ -7356,13 +7356,13 @@ void *PreProcessPacket::outThreadFunction() {
 							preProcessPacketCallX[i]->push_batch();
 						}
 					} else {
-						_process_packet__cleanup_calls();
+						_process_packet__cleanup_calls(__FILE__, __LINE__);
 					}
 					break;
 				case ppt_pp_callx:
 					if(opt_t2_boost && preProcessPacketCallX[0]->isActiveOutThread() &&
 					   idPreProcessThread == preProcessPacketCallX_count - 1) {
-						_process_packet__cleanup_calls();
+						_process_packet__cleanup_calls(__FILE__, __LINE__);
 					}
 					break;
 				case ppt_pp_register:
@@ -7460,13 +7460,13 @@ void PreProcessPacket::push_batch_nothread() {
 				preProcessPacketCallX[i]->push_batch();
 			}
 		} else {
-			_process_packet__cleanup_calls();
+			_process_packet__cleanup_calls(__FILE__, __LINE__);
 		}
 		break;
 	case ppt_pp_callx:
 		if(opt_t2_boost && preProcessPacketCallX[0]->isActiveOutThread() &&
 		   idPreProcessThread == preProcessPacketCallX_count - 1) {
-			_process_packet__cleanup_calls();
+			_process_packet__cleanup_calls(__FILE__, __LINE__);
 		}
 		break;
 	case ppt_pp_register:
@@ -7710,7 +7710,7 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 			}
 		}
 		if(opt_quick_save_cdr != 2) {
-			_process_packet__cleanup_calls(packetS->header_pt);
+			_process_packet__cleanup_calls(packetS->header_pt, __FILE__, __LINE__);
 		}
 		if(packetS->_findCall && packetS->call) {
 			__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
@@ -7719,20 +7719,20 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 			__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
 		}
 		if(opt_quick_save_cdr == 2) {
-			_process_packet__cleanup_calls(packetS->header_pt);
+			_process_packet__cleanup_calls(packetS->header_pt, __FILE__, __LINE__);
 		}
 	} else if(packetS->isSkinny) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
-		_process_packet__cleanup_calls(packetS->header_pt);
+		_process_packet__cleanup_calls(packetS->header_pt, __FILE__, __LINE__);
 		handle_skinny(packetS->header_pt, packetS->packet, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->data_(), packetS->datalen_(), packetS->dataoffset_(),
 			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip);
 	} else if(packetS->isMgcp) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
-		_process_packet__cleanup_calls(packetS->header_pt);
+		_process_packet__cleanup_calls(packetS->header_pt, __FILE__, __LINE__);
 		handle_mgcp(packetS/*,
 			    packetS->header_pt, packetS->packet, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()*/);
 	}

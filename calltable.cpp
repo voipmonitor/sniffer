@@ -7433,7 +7433,19 @@ Calltable::add_mgcp(sMgcpRequest *request, time_t time, vmIP saddr, vmPort sport
 */
 
 int
-Calltable::cleanup_calls( struct timeval *currtime, bool forceClose ) {
+Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char *file, int line ) {
+ 
+	u_int64_t beginTimeMS = getTimeMS_rdtsc();
+	if(sverb.cleanup_calls) {
+		cout << "*** cleanup_calls begin";
+		if(file) {
+			cout << " from: " << file;
+			if(line) {
+				cout << " : " << line;
+			}
+		}
+		cout << endl;
+	}
  
 	extern int opt_blockcleanupcalls;
 	if(opt_blockcleanupcalls) {
@@ -7610,6 +7622,11 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose ) {
 		extern int terminated_call_cleanup;
 		terminated_call_cleanup = 1;
 		syslog(LOG_NOTICE, "terminated - cleanup calls");
+	}
+	
+	if(sverb.cleanup_calls) {
+		cout << "*** cleanup_calls end "
+		     << setprecision(3) << (getTimeMS_rdtsc() - beginTimeMS) / 1000. << "s" << endl;
 	}
 	
 	return rejectedCalls_count;
