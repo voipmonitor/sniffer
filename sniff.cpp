@@ -4860,9 +4860,7 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 	if(ssrc.length() > 2 && ssrc[0] == '0' && ssrc[1] == 'x') {
 		sscanf(ssrc.c_str() + 2, "%x", &ssrc_int);
 	} else {
-		ssrc_int = string_is_numeric(ssrc.c_str()) ?
-			    atoll(ssrc.c_str()) :
-			    strtol(ssrc.c_str(), 0, 16);
+		ssrc_int = strtol(ssrc.c_str(), 0, 16);
 	}
 	call->rtcpXrData.add(ssrc_int, tv, moslq, nlr, ipLocal, ipRemote);
 }
