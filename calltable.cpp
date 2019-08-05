@@ -298,9 +298,7 @@ Call_abstract::get_sensordir() {
 			extern SensorsMap sensorsMap;
 			sensorDir = sensorsMap.getSensorNameFile(useSensorId);
 		} else if(opt_spooldir_by_sensor) {
-			char sensorDir_buff[10];
-			snprintf(sensorDir_buff, sizeof(sensorDir_buff), "%i", useSensorId);
-			sensorDir = sensorDir_buff;
+			sensorDir = intToString(useSensorId);
 		}
 	}
 	return(sensorDir);
@@ -385,7 +383,7 @@ Call_abstract::get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileEx
 /* returns name of the directory in format YYYY-MM-DD */
 string
 Call_abstract::dirnamesqlfiles() {
-	char sdirname[11];
+	char sdirname[50];
 	struct tm t = time_r(&first_packet_time);
 	snprintf(sdirname, sizeof(sdirname), "%04d%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
 	return(sdirname);
@@ -5531,7 +5529,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 					if (existsColumns.register_rrd_count) {
 						char rrdavg[12];
-						char rrdcount[4];
+						char rrdcount[12];
 						snprintf(rrdavg, sizeof(rrdavg), "%d", rrd_avg);
 						snprintf(rrdcount, sizeof(rrdcount), "%d", rrd_count);
 						reg.add(rrdavg,"rrd_avg");

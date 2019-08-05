@@ -361,13 +361,16 @@ friend void *_PcapQueue_threadFunction(void *arg);
 friend void *_PcapQueue_writeThreadFunction(void *arg);
 };
 
-#if __GNUC__ >= 8
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wclass-memaccess"
-#endif
 struct pcapProcessData {
 	pcapProcessData() {
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wclass-memaccess"
+		#endif
 		memset(this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic pop
+		#endif
 		extern int opt_dup_check;
 		if(opt_dup_check) {
 			this->prevmd5s = new FILE_LINE(16003) unsigned char[65536 * MD5_DIGEST_LENGTH]; // 1M
@@ -399,9 +402,6 @@ struct pcapProcessData {
 	u_int ipfrag_lastprune;
 	ipfrag_data_s ipfrag_data;
 };
-#if __GNUC__ >= 8
-#pragma GCC diagnostic pop
-#endif
 
 class PcapQueue_readFromInterface_base {
 public:

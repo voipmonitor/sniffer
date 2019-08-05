@@ -90,17 +90,20 @@ void data_tar::set(int typeSpoolFile, Call_abstract *call, const char *fileName)
 
 
 /* magic, version, and checksum */
-#if __GNUC__ >= 8
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-truncation"
-#endif
 void
 Tar::th_finish()
 {
 	int i, sum = 0;
 
 	strncpy(tar.th_buf.magic, "ustar", 6);
+	#if __GNUC__ >= 8
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wstringop-truncation"
+	#endif
 	strncpy(tar.th_buf.version, "  ", 2);
+	#if __GNUC__ >= 8
+	#pragma GCC diagnostic pop
+	#endif
 //	strncpy(tar.th_buf.magic, "ustar  ", 8);
 
 	for (i = 0; i < T_BLOCKSIZE; i++)
@@ -109,9 +112,6 @@ Tar::th_finish()
 		sum += (' ' - tar.th_buf.chksum[i]);
 	int_to_oct(sum, tar.th_buf.chksum, 8);
 }
-#if __GNUC__ >= 8
-#pragma GCC diagnostic pop
-#endif
 
 /* encode file path */
 void

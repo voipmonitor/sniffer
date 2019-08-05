@@ -1461,7 +1461,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				//if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u]\n", owner->flags);
 				/* open file for raw codec */
 				unsigned long unique = getTimestamp();
-				char tmp[1024+16];
+				char tmp[1024 + 100];
 				snprintf(tmp, sizeof(tmp), "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
 				if(gfileRAW)  {
 					jitterbuffer_fixed_flush(channel_record);

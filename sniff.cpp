@@ -757,10 +757,11 @@ void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirt
 							int contentLengthOrig = atoi(pointToModifyContLength);
 							int contentLengthNew = packetLen - (pointToBeginContLength - (char*)packet) - 4;
 							if(contentLengthNew > 0 && contentLengthOrig != contentLengthNew) {
-								char contLengthStr[10];
+								char contLengthStr[20];
 								snprintf(contLengthStr, sizeof(contLengthStr), "%i", contentLengthNew);
 								#if __GNUC__ >= 8
 								#pragma GCC diagnostic push
+								#pragma GCC diagnostic ignored "-Wstringop-overflow"
 								#pragma GCC diagnostic ignored "-Wstringop-truncation"
 								#endif
 								strncpy(pointToModifyContLength, contLengthStr, strlen(contLengthStr));

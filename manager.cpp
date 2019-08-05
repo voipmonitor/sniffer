@@ -2602,7 +2602,7 @@ int Mgmt_creategraph(Mgmt_params *params) {
 		}
 
 		char *fromat, *toat;
-		char filename[1000];
+		char filename[2000];
 		int resx, resy;
 		short slope, icon;
 		char *dstfile;
@@ -3803,7 +3803,6 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 	unsigned spool_index = 0;
 	int type_spool_file = (int)tsf_na;
 	*tarPosI = 0;
-	char buf_output[1024];
 
 	sscanf(params->buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s %u %i" : "getfile_in_tar %s %s %s %u %s %s %u %i", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI, &spool_index, &type_spool_file);
 	if(type_spool_file == tsf_na) {
@@ -3820,6 +3819,7 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 			getfile_in_tar_completed.add(tar_filename, filename, dateTimeKey);
 		}
 	} else {
+		char buf_output[2048 + 100];
 		snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", tar_filename);
 		params->sendString(buf_output);
 		delete [] tarPosI;
@@ -3929,8 +3929,8 @@ int Mgmt_genwav(Mgmt_params *params) {
 
 	char filename[2048];
 	unsigned int size;
-	char wavfile[2048];
-	char pcapfile[2048];
+	char wavfile[2048 + 10];
+	char pcapfile[2048 + 10];
 	char cmd[4092];
 	int secondrun = 0;
 	char buf_output[1024];
@@ -3974,13 +3974,12 @@ int Mgmt_getwav(Mgmt_params *params) {
 	char filename[2048];
 	int fd;
 	unsigned int size;
-	char wavfile[2048];
-	char pcapfile[2048];
+	char wavfile[2048 + 10];
+	char pcapfile[2048 + 10];
 	char cmd[4092];
 	char rbuf[4096];
 	ssize_t nread;
 	int secondrun = 0;
-	char buf_output[1024];
 
 	sscanf(params->buf, "getwav %s", filename);
 
@@ -3992,6 +3991,7 @@ getwav:
 	if(size) {
 		fd = open(wavfile, O_RDONLY);
 		if(fd < 0) {
+			char buf_output[2048 + 100];
 			snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", wavfile);
 			params->sendString(buf_output);
 			return -1;
@@ -4038,12 +4038,10 @@ int Mgmt_getsiptshark(Mgmt_params *params) {
 	char filename[2048];
 	int fd;
 	unsigned int size;
-	char tsharkfile[2048];
-	char pcapfile[2048];
-	char cmd[4092];
+	char tsharkfile[2048 + 10];
+	char pcapfile[2048 + 10];
 	char rbuf[4096];
 	ssize_t nread;
-	char buf_output[1024];
 
 	sscanf(params->buf, "getsiptshark %s", filename);
 
@@ -4054,6 +4052,7 @@ int Mgmt_getsiptshark(Mgmt_params *params) {
 	if(size) {
 		fd = open(tsharkfile, O_RDONLY);
 		if(fd < 0) {
+			char buf_output[2048 + 100];
 			snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", tsharkfile);
 			params->sendString(buf_output);
 			return -1;
@@ -4080,6 +4079,7 @@ int Mgmt_getsiptshark(Mgmt_params *params) {
 		return -1;
 	}
 
+	char cmd[10000];
 	snprintf(cmd, sizeof(cmd), "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin tshark -r \"%s.pcap\" -R sip > \"%s.pcap2txt\" 2>/dev/null", filename, filename);
 	system(cmd);
 	snprintf(cmd, sizeof(cmd), "echo ==== >> \"%s.pcap2txt\"", filename);
@@ -4091,6 +4091,7 @@ int Mgmt_getsiptshark(Mgmt_params *params) {
 	if(size) {
 		fd = open(tsharkfile, O_RDONLY);
 		if(fd < 0) {
+			char buf_output[2048 + 100];
 			snprintf(buf_output, sizeof(buf_output), "error: cannot open file [%s]", filename);
 			params->sendString(buf_output);
 			return -1;

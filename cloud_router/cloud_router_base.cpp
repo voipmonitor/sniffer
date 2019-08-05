@@ -35,7 +35,14 @@ cRsa::~cRsa() {
 }
 
 void cRsa::generate_keys() {
+	#if __GNUC__ >= 8
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+	#endif
 	RSA *rsa = RSA_generate_key(2048, RSA_F4, 0, 0);
+	#if __GNUC__ >= 8
+	#pragma GCC diagnostic pop
+	#endif
 	// priv key
 	BIO *priv_key_bio = BIO_new(BIO_s_mem());
 	PEM_write_bio_RSAPrivateKey(priv_key_bio, rsa, NULL, NULL, 0, NULL, NULL);

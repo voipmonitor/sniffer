@@ -2368,7 +2368,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if (opt_rrd) {
 		if (opt_rrd == 1) {
 			//CREATE rrd files:
-			char filename[1000];
+			char filename[2000];
 			snprintf(filename, sizeof(filename), "%s/rrd/" , getRrdDir());
 			spooldir_mkdir(filename);
 			snprintf(filename, sizeof(filename), "%s/rrd/2db-drop.rrd", getRrdDir());
@@ -2393,7 +2393,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			vm_rrd_create_rrdloadaverages(filename);
 			opt_rrd ++;
 		}
-		char filename[1000];
+		char filename[2000];
 		std::ostringstream cmdUpdate;
 //			UPDATES of rrd files:
 		//update rrddrop
@@ -2810,7 +2810,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 		usleep(100);
 	}
 	char errbuf[PCAP_ERRBUF_SIZE];
-	char errorstr[2048];
+	char errorstr[4096];
 	if(opt_pb_read_from_file[0]) {
 		if(opt_pb_read_from_file == string("/dev/stdin")) {
 			this->pcapHandle = pcap_open_offline("-", errbuf);
@@ -2901,24 +2901,26 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 		}
 	}
 	if(*user_filter != '\0') {
-		char filter_exp[2048] = "";
-		snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
 		// Compile and apply the filter
 		struct bpf_program fp;
-		if (pcap_compile(this->pcapHandle, &fp, filter_exp, 0, this->interfaceMask) == -1) {
-			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+		if (pcap_compile(this->pcapHandle, &fp, user_filter, 0, this->interfaceMask) == -1) {
+			char user_filter_err[2048];
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not parse filter %s: %s", this->getInterfaceName().c_str(), user_filter_err, pcap_geterr(this->pcapHandle));
 			if(opt_fork) {
 				ostringstream outStr;
-				outStr << this->getInterfaceName() << ": can not parse filter " << filter_exp << ": " << pcap_geterr(this->pcapHandle);
+				outStr << this->getInterfaceName() << ": can not parse filter " << user_filter_err << ": " << pcap_geterr(this->pcapHandle);
 				daemonizeOutput(outStr.str());
 			}
 			goto failed;
 		}
 		if (pcap_setfilter(this->pcapHandle, &fp) == -1) {
-			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceName().c_str(), filter_exp, pcap_geterr(this->pcapHandle));
+			char user_filter_err[2048];
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+			snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: can not install filter %s: %s", this->getInterfaceName().c_str(), user_filter_err, pcap_geterr(this->pcapHandle));
 			if(opt_fork) {
 				ostringstream outStr;
-				outStr << this->getInterfaceName() << ": can not install filter " << filter_exp << ": " << pcap_geterr(this->pcapHandle);
+				outStr << this->getInterfaceName() << ": can not install filter " << user_filter_err << ": " << pcap_geterr(this->pcapHandle);
 				daemonizeOutput(outStr.str());
 			}
 			goto failed;
@@ -4162,7 +4164,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 					this->pcapDumpLength = 0;
 				}
 				if(!this->pcapDumpHandle) {
-					char pname[1024];
+					char pname[2048];
 					snprintf(pname, sizeof(pname ), "%s/voipmonitordump-%s-%s.pcap", 
 						 opt_pcapdump_all_path[0] ? opt_pcapdump_all_path : getPcapdumpDir(),
 						 this->interfaceName.c_str(), 
@@ -5036,14 +5038,16 @@ bool PcapQueue_readFromInterface::openPcap(const char *filename, string *tempFil
 			pcap_freecode(&this->filterData);
 			this->filterDataUse = false;
 		}
-		char filter_exp[2048] = "";
-		snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
-		if (pcap_compile(pcapHandle, &this->filterData, filter_exp, 0, PCAP_NETMASK_UNKNOWN) == -1) {
-			syslog(LOG_NOTICE, "packetbuffer - %s: can not parse filter %s: %s", filename, filter_exp, pcap_geterr(pcapHandle));
+		if (pcap_compile(pcapHandle, &this->filterData, user_filter, 0, PCAP_NETMASK_UNKNOWN) == -1) {
+			char user_filter_err[2048];
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+			syslog(LOG_NOTICE, "packetbuffer - %s: can not parse filter %s: %s", filename, user_filter_err, pcap_geterr(pcapHandle));
 			return(false);
 		}
 		if (pcap_setfilter(pcapHandle, &this->filterData) == -1) {
-			syslog(LOG_NOTICE, "packetbuffer - %s: can not install filter %s: %s", filename, filter_exp, pcap_geterr(pcapHandle));
+			char user_filter_err[2048];
+			snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+			syslog(LOG_NOTICE, "packetbuffer - %s: can not install filter %s: %s", filename, user_filter_err, pcap_geterr(pcapHandle));
 			return(false);
 		}
 		this->filterDataUse = true;

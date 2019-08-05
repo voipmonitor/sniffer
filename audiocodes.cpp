@@ -67,16 +67,16 @@
 #define MTCE_MASK		0x20
 
 
-#if __GNUC__ >= 8
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wclass-memaccess"
-#endif
 void sAudiocodes::init() {
+	#if __GNUC__ >= 8
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wclass-memaccess"
+	#endif
 	memset(this, 0, sizeof(*this));
+	#if __GNUC__ >= 8
+	#pragma GCC diagnostic pop
+	#endif
 }
-#if __GNUC__ >= 8
-#pragma GCC diagnostic pop
-#endif
 
 bool sAudiocodes::parse(u_char *ac_header, unsigned /*length*/) {
 	init();

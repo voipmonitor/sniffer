@@ -41,8 +41,16 @@
 using namespace std;
 
 /* integer to NULL-terminated string-octal conversion */
-#define int_to_oct(num, oct, octlen) \
-	snprintf((oct), (octlen), "%*lo ", (octlen) - 2, (unsigned long)(num))
+inline void int_to_oct(unsigned long num, char *oct, int octlen) {
+	#if __GNUC__ >= 8
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wformat-truncation"
+	#endif
+	snprintf((oct), (octlen), "%*lo ", (octlen) - 2, (unsigned long)(num));
+	#if __GNUC__ >= 8
+	#pragma GCC diagnostic pop
+	#endif
+}
 
 class Tar : public ChunkBuffer_baseIterate, public CompressStream_baseEv {
 public:

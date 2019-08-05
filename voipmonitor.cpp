@@ -2248,7 +2248,7 @@ void *scanpcapdir( void */*dummy*/ ) {
 	}
 	sleep(1);
 	
-	char filename[1024];
+	char filename[4096];
 	struct inotify_event *event;
 	char buff[4096];
 	int i = 0, fd = 0, wd = 0, len = 0;
@@ -3715,16 +3715,18 @@ int main_init_read() {
 			return(2);
 		}
 		if(*user_filter != '\0') {
-			char filter_exp[2048] = "";
-			snprintf(filter_exp, sizeof(filter_exp), "%s", user_filter);
 			// Compile and apply the filter
 			struct bpf_program fp;
-			if (pcap_compile(global_pcap_handle, &fp, filter_exp, 0, interfaceMask) == -1) {
-				fprintf(stderr, "can not parse filter %s: %s", filter_exp, pcap_geterr(global_pcap_handle));
+			if (pcap_compile(global_pcap_handle, &fp, user_filter, 0, interfaceMask) == -1) {
+				char user_filter_err[2048];
+				snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+				fprintf(stderr, "can not parse filter %s: %s", user_filter_err, pcap_geterr(global_pcap_handle));
 				return(2);
 			}
 			if (pcap_setfilter(global_pcap_handle, &fp) == -1) {
-				fprintf(stderr, "can not install filter %s: %s", filter_exp, pcap_geterr(global_pcap_handle));
+				char user_filter_err[2048];
+				snprintf(user_filter_err, sizeof(user_filter_err), "%.2000s%s", user_filter, strlen(user_filter) > 2000 ? "..." : "");
+				fprintf(stderr, "can not install filter %s: %s", user_filter_err, pcap_geterr(global_pcap_handle));
 				return(2);
 			}
 		}

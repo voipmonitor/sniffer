@@ -34,14 +34,16 @@ struct pcap_pkthdr_fix_size {
 	uint32_t _filler2;
 };
 
-#if __GNUC__ >= 8
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wclass-memaccess"
-#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
-#endif
 struct pcap_pkthdr_plus {
 	inline pcap_pkthdr_plus() {
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wclass-memaccess"
+		#endif
 		memset(this, 0, sizeof(pcap_pkthdr_plus));
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic pop
+		#endif
 	}
 	inline void convertFromStdHeader(pcap_pkthdr *header) {
 		this->std = 0;
@@ -60,7 +62,14 @@ struct pcap_pkthdr_plus {
 			this->header_std = header;
 			this->std = 1;
 		}
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
+		#endif
 		return(&this->header_std);
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic pop
+		#endif
 	}
 	inline pcap_pkthdr getStdHeader() {
 		pcap_pkthdr header;
@@ -108,9 +117,6 @@ struct pcap_pkthdr_plus {
 	u_int16_t dlink;
 	sPacketInfoData pid;
 };
-#if __GNUC__ >= 8
-#pragma GCC diagnostic pop
-#endif
 
 struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {
 	inline pcap_pkthdr_plus2() {
@@ -128,10 +134,6 @@ struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {
 	u_int8_t ignore;
 };
 
-#if __GNUC__ >= 8
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-truncation"
-#endif
 struct pcap_block_store {
 	enum header_mode {
 		plus,
@@ -153,7 +155,14 @@ struct pcap_block_store {
 	struct pcap_block_store_header {
 		pcap_block_store_header() {
 			extern bool opt_pcap_queues_mirror_require_confirmation;
+			#if __GNUC__ >= 8
+			#pragma GCC diagnostic push
+			#pragma GCC diagnostic ignored "-Wstringop-truncation"
+			#endif
 			strncpy(this->title, PCAP_BLOCK_STORE_HEADER_STRING, PCAP_BLOCK_STORE_HEADER_STRING_LEN);
+			#if __GNUC__ >= 8
+			#pragma GCC diagnostic pop
+			#endif
 			this->version = PCAP_BLOCK_STORE_HEADER_VERSION;
 			this->hm = plus;
 			this->size = 0;
@@ -373,9 +382,6 @@ struct pcap_block_store {
 	#endif
 	u_int8_t *is_voip;
 };
-#if __GNUC__ >= 8
-#pragma GCC diagnostic pop
-#endif
 
 
 #endif
