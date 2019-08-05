@@ -1041,9 +1041,11 @@ void handle_error(const char *file, int lineno, const char *msg){
  
 /* This array will store all of the mutexes available to OpenSSL. */ 
 static MUTEX_TYPE *mutex_buf= NULL;
- 
+
+#if __GNUC__ >= 8
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
+#endif
 static void locking_function(int mode, int n, const char * /*file*/, int /*line*/)
 {
   if (mode & CRYPTO_LOCK)
@@ -1056,7 +1058,9 @@ static unsigned long id_function(void)
 {
   return ((unsigned long)THREAD_ID);
 }
+#if __GNUC__ >= 8
 #pragma GCC diagnostic pop
+#endif
  
 int thread_setup(void)
 {
@@ -7249,7 +7253,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "chunk_buffer")			sverb.chunk_buffer = 1;
 	else if(verbParam.substr(0, 15) == "tcp_debug_port=")
 								sverb.tcp_debug_port = atoi(verbParam.c_str() + 15);
-	else if(verbParam.substr(0, 13) == "tcp_debug_ip=")	((vmIP*)sverb.tcp_debug_ip)->setFromString(verbParam.c_str() + 13);
+	else if(verbParam.substr(0, 13) == "tcp_debug_ip=")	{ vmIP *tcp_debug_ip = (vmIP*)sverb.tcp_debug_ip; tcp_debug_ip->setFromString(verbParam.c_str() + 13); }
 	else if(verbParam.substr(0, 5) == "ssrc=")          	sverb.ssrc = strtol(verbParam.c_str() + 5, NULL, 16);
 	else if(verbParam == "jitter")				sverb.jitter = 1;
 	else if(verbParam == "jitter_na")			opt_jitterbuffer_adapt = 0;
@@ -7816,7 +7820,7 @@ void set_context_config() {
 				u_int64_t totalMemory = getTotalMemory();
 				if(buffersControl.getMaxBufferMem() > totalMemory / 2) {
 					buffersControl.setMaxBufferMem(totalMemory / 2);
-					syslog(LOG_NOTICE, "set buffer memory limit to %" __PRI64_PREFIX "u", totalMemory / 2);
+					syslog(LOG_NOTICE, "set buffer memory limit to %" int_64_format_prefix "lu", totalMemory / 2);
 				} else if(pass) {
 					break;
 				}

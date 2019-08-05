@@ -192,7 +192,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 								if(i) {
 									strcat(trace_string, " / ");
 								}
-								sprintf(trace_string + strlen(trace_string), "%" __PRI64_PREFIX "x", (u_int64_t)threadStack[tid][i]);
+								sprintf(trace_string + strlen(trace_string), "%" int_64_format_prefix "lx", (u_int64_t)threadStack[tid][i]);
 							}
 							while(__sync_lock_test_and_set(&memoryStat_sync, 1));
 							memoryStatOtherName[beginEx->memory_type_other] = trace_string;
@@ -232,7 +232,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 									} else if(strstr(messages[i + skip_top_traces], "libc")) {
 										strcat(trace_string, "libc");
 									} else if(strstr(messages[i + skip_top_traces], "voipmonitor()")) {
-										sprintf(trace_string + strlen(trace_string), "%" __PRI64_PREFIX "x", (u_int64_t)stack_addr[i + skip_top_traces]);
+										sprintf(trace_string + strlen(trace_string), "%" int_64_format_prefix "lx", (u_int64_t)stack_addr[i + skip_top_traces]);
 									} else {
 										strcat(trace_string, messages[i + skip_top_traces]);
 									}
@@ -731,7 +731,7 @@ std::string getMemoryStatQuick(bool all) {
 
 std::string addThousandSeparators(u_int64_t num) {
 	char length_str[20];
-	snprintf(length_str, sizeof(length_str), "%" __PRI64_PREFIX "u", num);
+	snprintf(length_str, sizeof(length_str), "%" int_64_format_prefix "lu", num);
 	std::string length;
 	while(strlen(length_str) > 3) {
 		length = std::string(length_str + strlen(length_str) - 3) + " " + length;

@@ -67,12 +67,16 @@
 #define MTCE_MASK		0x20
 
 
+#if __GNUC__ >= 8
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
 void sAudiocodes::init() {
 	memset(this, 0, sizeof(*this));
 }
+#if __GNUC__ >= 8
 #pragma GCC diagnostic pop
+#endif
 
 bool sAudiocodes::parse(u_char *ac_header, unsigned /*length*/) {
 	init();
@@ -243,7 +247,7 @@ bool sAudiocodes::parse(u_char *ac_header, unsigned /*length*/) {
 		case ac_mt_NATIVE:
 		case ac_mt_DTLS:
 			{
-			u_int8_t _ext_ip_bytes;
+			u_int8_t _ext_ip_bytes = EXT_HEADER_IPV4_ADDRESS_BYTE_COUNT;
 			if((version & 0xF) == 3) {
 			    _ext_ip_bytes = EXT_HEADER_IPV6_ADDRESS_BYTE_COUNT;
 			} else if((version & 0xF) >= 4) {

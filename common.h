@@ -116,4 +116,12 @@ struct sVerbose {
 	int _debug3;
 };
 
+
+#if defined __x86_64__ && !defined __ILP32__
+#define int_64_format_prefix ""
+#else
+#define int_64_format_prefix "l"
+#endif
+
+
 #endif

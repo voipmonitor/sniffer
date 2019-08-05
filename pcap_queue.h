@@ -361,8 +361,10 @@ friend void *_PcapQueue_threadFunction(void *arg);
 friend void *_PcapQueue_writeThreadFunction(void *arg);
 };
 
+#if __GNUC__ >= 8
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
 struct pcapProcessData {
 	pcapProcessData() {
 		memset(this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
@@ -397,7 +399,9 @@ struct pcapProcessData {
 	u_int ipfrag_lastprune;
 	ipfrag_data_s ipfrag_data;
 };
+#if __GNUC__ >= 8
 #pragma GCC diagnostic pop
+#endif
 
 class PcapQueue_readFromInterface_base {
 public:

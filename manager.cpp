@@ -1405,8 +1405,10 @@ void perror_syslog(const char *msg) {
 }
 
 #ifdef HAVE_LIBSSH
+#if __GNUC__ >= 8
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 void *manager_ssh_(void) {
 	ssh_session session;
 	int rc;
@@ -1510,7 +1512,9 @@ ssh_disconnect:
 	ssh_free(session);
 	return 0;
 }
+#if __GNUC__ >= 8
 #pragma GCC diagnostic pop
+#endif
 #endif
 
 #ifdef HAVE_LIBSSH
@@ -2483,6 +2487,7 @@ int Mgmt_listcalls(Mgmt_params *params) {
 }
 
 typedef struct {
+	const char *cmd;
 	int *setVar;
 	int setValue;
 	const char *helpText;
@@ -2491,23 +2496,27 @@ typedef struct {
 int Mgmt_offon(Mgmt_params *params) {
 	static std::map<string, cmdData> cmdsDataTable;
 	if (params->task == params->mgmt_task_DoInit) {
-		cmdsDataTable["unblocktar"] = {&opt_blocktarwrite, 0, "unblock tar files"};
-		cmdsDataTable["blocktar"] = {&opt_blocktarwrite, 1, "block tar files"};
-		cmdsDataTable["unblockasync"] = {&opt_blockasyncprocess, 0, "unblock async processing"};
-		cmdsDataTable["blockasync"] = {&opt_blockasyncprocess, 1, "block async processing"};
-		cmdsDataTable["unblockprocesspacket"] = {&opt_blockprocesspacket, 0, "unblock packet processing"};
-		cmdsDataTable["blockprocesspacket"] = {&opt_blockprocesspacket, 1, "block packet processing"};
-		cmdsDataTable["unblockcleanupcalls"] = {&opt_blockcleanupcalls, 0, "unblock cleanup calls"};
-		cmdsDataTable["blockcleanupcalls"] = {&opt_blockcleanupcalls, 1, "block cleanup calls"};
-		cmdsDataTable["unsleepprocesspacket"] = {&opt_sleepprocesspacket, 0, "unsleep packet processing"};
-		cmdsDataTable["sleepprocesspacket"] = {&opt_sleepprocesspacket, 1, "sleep packet processing"};
-		cmdsDataTable["unblockqfile"] = {&opt_blockqfile, 0, "unblock qfiles"};
-		cmdsDataTable["blockqfile"] = {&opt_blockqfile, 1, "block qfiles"};
-		cmdsDataTable["unblock_alloc_stack"] = {&opt_block_alloc_stack, 0, "unblock stack allocation"};
-		cmdsDataTable["block_alloc_stack"] = {&opt_block_alloc_stack, 1, "block stack allocation"};
-		cmdsDataTable["disablecdr"] = {&opt_nocdr, 1, "disable cdr creation"};
-		cmdsDataTable["enablecdr"] = {&opt_nocdr, 0, "enable cdr creation"};
-
+		cmdData cmdData_src[] = {
+			{ "unblocktar", &opt_blocktarwrite, 0, "unblock tar files"},
+			{ "blocktar", &opt_blocktarwrite, 1, "block tar files"},
+			{ "unblockasync", &opt_blockasyncprocess, 0, "unblock async processing"},
+			{ "blockasync", &opt_blockasyncprocess, 1, "block async processing"},
+			{ "unblockprocesspacket", &opt_blockprocesspacket, 0, "unblock packet processing"},
+			{ "blockprocesspacket", &opt_blockprocesspacket, 1, "block packet processing"},
+			{ "unblockcleanupcalls", &opt_blockcleanupcalls, 0, "unblock cleanup calls"},
+			{ "blockcleanupcalls", &opt_blockcleanupcalls, 1, "block cleanup calls"},
+			{ "unsleepprocesspacket", &opt_sleepprocesspacket, 0, "unsleep packet processing"},
+			{ "sleepprocesspacket", &opt_sleepprocesspacket, 1, "sleep packet processing"},
+			{ "unblockqfile", &opt_blockqfile, 0, "unblock qfiles"},
+			{ "blockqfile", &opt_blockqfile, 1, "block qfiles"},
+			{ "unblock_alloc_stack", &opt_block_alloc_stack, 0, "unblock stack allocation"},
+			{ "block_alloc_stack", &opt_block_alloc_stack, 1, "block stack allocation"},
+			{ "disablecdr", &opt_nocdr, 1, "disable cdr creation"},
+			{ "enablecdr", &opt_nocdr, 0, "enable cdr creation"}
+		};
+		for(unsigned i = 0; i < sizeof(cmdData_src) / sizeof(cmdData_src[0]); i++) {
+			cmdsDataTable[cmdData_src[i].cmd] = cmdData_src[i];
+		}
 		std::map<string, cmdData>::iterator cmdItem;
 		for (cmdItem = cmdsDataTable.begin(); cmdItem != cmdsDataTable.end(); cmdItem++) {
 			params->registerCommand(cmdItem->first.c_str(), cmdItem->second.helpText);
@@ -4346,7 +4355,6 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 	}
 
 	extern vm_atomic<string> storingCdrLastWriteAt;
-	extern vm_atomic<string> storingRegisterLastWriteAt;
 	extern vm_atomic<string> pbStatString;
 	extern vm_atomic<u_long> pbCountPacketDrop;
 	extern bool opt_upgrade_by_git;

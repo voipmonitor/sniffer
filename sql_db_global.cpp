@@ -680,9 +680,9 @@ void __store_prepare_queries(list<string> *queries, cSqlDbCodebooks *codebooks, 
 		u_int64_t idMainRecord = 0;
 		if(enable_set_id) {
 			for(unsigned i = 0; i < query_vect.size(); i++) {
-				size_t cbIdPrefixPos;
-				size_t cbIdLengthSeparatorPos;
-				size_t cbIdValueSeparatorPos;
+				size_t cbIdPrefixPos = string::npos;
+				size_t cbIdLengthSeparatorPos = string::npos;
+				size_t cbIdValueSeparatorPos = string::npos;
 				while((cbIdPrefixPos = query_vect[i].find(MYSQL_CODEBOOK_ID_PREFIX)) != string::npos &&
 				      (cbIdLengthSeparatorPos = query_vect[i].find(":", cbIdPrefixPos + MYSQL_CODEBOOK_ID_PREFIX.length())) != string::npos &&
 				      (cbIdValueSeparatorPos = query_vect[i].find(";", cbIdLengthSeparatorPos + 1)) != string::npos) {

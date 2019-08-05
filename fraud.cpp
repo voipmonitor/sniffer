@@ -1855,8 +1855,10 @@ FraudAlert_rc::~FraudAlert_rc() {
 	}
 }
 
+#if __GNUC__ >= 8
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Waddress-of-packed-member"
+#endif
 void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 	vmIP ip = typeBy == _typeBy_source_ip ? eventInfo->src_ip : eventInfo->dst_ip;
 	if((withResponse ?
@@ -1925,7 +1927,9 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 		}
 	}
 }
+#if __GNUC__ >= 8
 #pragma GCC diagnostic pop
+#endif
 
 void FraudAlert_rc::loadAlertVirt(SqlDb */*sqlDb*/) {
 	withResponse = atoi(dbRow["fraud_register_only_with_response"].c_str());

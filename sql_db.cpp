@@ -3270,7 +3270,7 @@ string MySqlStore::getQFilename(int idc, u_int64_t actTime) {
 	char fileName[100];
 	string dateTime = sqlDateTimeString(actTime / 1000).c_str();
 	find_and_replace(dateTime, " ", "T");
-	snprintf(fileName, sizeof(fileName), "%s-%i-%" __PRI64_PREFIX "u-%s", QFILE_PREFIX, idc, actTime, dateTime.c_str());
+	snprintf(fileName, sizeof(fileName), "%s-%i-%" int_64_format_prefix "lu-%s", QFILE_PREFIX, idc, actTime, dateTime.c_str());
 	return(qfileConfig.getDirectory() + "/" + fileName);
 }
 
@@ -3544,7 +3544,7 @@ MySqlStore::QFileData MySqlStore::parseQFilename(const char *filename) {
 	if(!strncmp(filename, QFILE_PREFIX, strlen(QFILE_PREFIX))) {
 		int id;
 		u_int64_t time;
-		if(sscanf(filename + strlen(QFILE_PREFIX) , "-%i-%" __PRI64_PREFIX "u", &id, &time) == 2) {
+		if(sscanf(filename + strlen(QFILE_PREFIX) , "-%i-%" int_64_format_prefix "lu", &id, &time) == 2) {
 			qfileData.filename = filename;
 			qfileData.id = id;
 			qfileData.time = time;
@@ -8004,7 +8004,7 @@ void checkMysqlIdCdrChildTables() {
 		if(autoIncrement < 0xFFFFFFFF - 1e6) {
 			continue;
 		}
-		syslog(LOG_ERR, "critical value %" __PRI64_PREFIX "u in column id / table %s", maxId, cdrTables[i].c_str());
+		syslog(LOG_ERR, "critical value %" int_64_format_prefix "lu in column id / table %s", maxId, cdrTables[i].c_str());
 		// check if main tables
 		if(cdrTables[i] == "cdr" || 
 		   reg_match(cdrTables[i].c_str(), "cdr_next", __FILE__, __LINE__)) {

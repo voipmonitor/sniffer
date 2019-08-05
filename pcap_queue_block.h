@@ -34,9 +34,11 @@ struct pcap_pkthdr_fix_size {
 	uint32_t _filler2;
 };
 
+#if __GNUC__ >= 8
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
 #pragma GCC diagnostic ignored "-Waddress-of-packed-member"
+#endif
 struct pcap_pkthdr_plus {
 	inline pcap_pkthdr_plus() {
 		memset(this, 0, sizeof(pcap_pkthdr_plus));
@@ -106,7 +108,9 @@ struct pcap_pkthdr_plus {
 	u_int16_t dlink;
 	sPacketInfoData pid;
 };
+#if __GNUC__ >= 8
 #pragma GCC diagnostic pop
+#endif
 
 struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {
 	inline pcap_pkthdr_plus2() {
@@ -124,8 +128,10 @@ struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {
 	u_int8_t ignore;
 };
 
+#if __GNUC__ >= 8
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
+#endif
 struct pcap_block_store {
 	enum header_mode {
 		plus,
@@ -367,7 +373,9 @@ struct pcap_block_store {
 	#endif
 	u_int8_t *is_voip;
 };
+#if __GNUC__ >= 8
 #pragma GCC diagnostic pop
+#endif
 
 
 #endif

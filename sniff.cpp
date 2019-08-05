@@ -3261,7 +3261,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					while(*partyEnd != ';' && (partyEnd - remoteParty) < (int)remotePartyLen) {
 						++partyEnd;
 					}
-					unsigned partyLen = MIN(partyEnd - partyBegin, sizeof(party) - 1);
+					unsigned partyLen = MIN(partyEnd - partyBegin, (int)sizeof(party) - 1);
 					strncpy(party, partyBegin, partyLen);
 					party[partyLen] = 0;
 				}

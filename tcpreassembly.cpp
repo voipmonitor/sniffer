@@ -2633,8 +2633,9 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 			return;
 		}
 	}
-	if(((vmIP*)sverb.tcp_debug_ip)->isSet()) {
-		if(header_ip->get_saddr() != *((vmIP*)sverb.tcp_debug_ip) && header_ip->get_daddr() != *((vmIP*)sverb.tcp_debug_ip)) {
+	vmIP *tcp_debug_ip = (vmIP*)sverb.tcp_debug_ip;
+	if(tcp_debug_ip->isSet()) {
+		if(header_ip->get_saddr() != *tcp_debug_ip && header_ip->get_daddr() != *tcp_debug_ip) {
 			return;
 		}
 	}
