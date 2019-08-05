@@ -759,7 +759,14 @@ void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirt
 							if(contentLengthNew > 0 && contentLengthOrig != contentLengthNew) {
 								char contLengthStr[10];
 								snprintf(contLengthStr, sizeof(contLengthStr), "%i", contentLengthNew);
+								#if __GNUC__ >= 8
+								#pragma GCC diagnostic push
+								#pragma GCC diagnostic ignored "-Wstringop-truncation"
+								#endif
 								strncpy(pointToModifyContLength, contLengthStr, strlen(contLengthStr));
+								#if __GNUC__ >= 8
+								#pragma GCC diagnostic pop
+								#endif
 								char *pointToEndModifyContLength = pointToModifyContLength + strlen(contLengthStr);
 								while(*pointToEndModifyContLength != '\r') {
 									*pointToEndModifyContLength = ' ';

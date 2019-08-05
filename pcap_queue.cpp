@@ -7302,7 +7302,7 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 	} else {
 		sll_header *header_sll;
 		ether_header *header_eth;
-		u_int header_ip_offset;
+		u_int header_ip_offset = 0;
 		int protocol;
 		u_int16_t vlan;
 		parseEtherHeader(hp->dlt, hp->packet,

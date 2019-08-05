@@ -106,7 +106,14 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 		if(MCB_PLUS) {
 			((sHeapSafeMemoryControlBlockPlus*)begin)->block_addr = (void*)((unsigned long)begin + sizeof(sHeapSafeMemoryControlBlockPlus));
 			if(memory_type1) {
+				#if __GNUC__ >= 8
+				#pragma GCC diagnostic push
+				#pragma GCC diagnostic ignored "-Wstringop-truncation"
+				#endif
 				strncpy(((sHeapSafeMemoryControlBlockPlus*)begin)->memory_type1, memory_type1, 20);
+				#if __GNUC__ >= 8
+				#pragma GCC diagnostic pop
+				#endif
 			}
 			if(memory_type2) {
 				((sHeapSafeMemoryControlBlockPlus*)begin)->memory_type2 = memory_type2;

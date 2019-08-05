@@ -372,7 +372,14 @@ size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength);
 
 inline char* strncpy_null_term(char *dst, const char *src, size_t size) {
 	if(src) {
-		strncpy(dst, src, size);
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wstringop-truncation"
+		#endif
+		strncpy(dst, src, size - 1);
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic pop
+		#endif
 		dst[size - 1] = 0;
 	} else {
 		dst[0] = 0;
