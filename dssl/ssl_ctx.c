@@ -62,7 +62,7 @@ static int password_cb_direct( char *buf, int size, int rwflag, void *userdata )
 	char* pwd = (char*) userdata;
 	int len = (int) strlen( pwd );
 
-	rwflag;
+	//rwflag;
 
 	strncpy( buf, pwd, size );
 	return len;
@@ -77,7 +77,7 @@ static int ServerInfo_LoadPrivateKey( EVP_PKEY **pkey, const char *keyfile, cons
 	f = fopen( keyfile, "r" );
 	if( !f ) return NM_ERROR( DSSL_E_SSL_PRIVATE_KEY_FILE_OPEN );
 
-	if( rc == DSSL_RC_OK && PEM_read_PrivateKey( f, pkey, password_cb_direct, pwd ) == NULL )
+	if( rc == DSSL_RC_OK && PEM_read_PrivateKey( f, pkey, password_cb_direct, (void*)pwd ) == NULL )
 	{
 		rc = NM_ERROR( DSSL_E_SSL_LOAD_PRIVATE_KEY );
 	}

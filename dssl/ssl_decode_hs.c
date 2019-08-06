@@ -198,7 +198,7 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 	data+= 2;
 
 	/* ServerRandom */
-	_ASSERT_STATIC( sizeof(sess->server_random) == 32 );
+	//_ASSERT_STATIC( sizeof(sess->server_random) == 32 );
 
 	memcpy( sess->server_random, data, sizeof( sess->server_random ) );
 	data+= 32;
@@ -206,7 +206,7 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 
 
 	/* session ID */
-	_ASSERT_STATIC( sizeof(sess->session_id) == 32 );
+	//_ASSERT_STATIC( sizeof(sess->session_id) == 32 );
 	session_id_len = data[0];
 	data++;
 
@@ -530,9 +530,9 @@ int ssl3_decode_client_key_exchange( DSSL_Session* sess, u_char* data, uint32_t 
 
 static int ssl3_decode_dummy( DSSL_Session* sess, u_char* data, uint32_t len )
 {
-	UNUSED_PARAM( sess );
-	UNUSED_PARAM( data );
-	UNUSED_PARAM( len );
+	//UNUSED_PARAM( sess );
+	//UNUSED_PARAM( data );
+	//UNUSED_PARAM( len );
 
 	return DSSL_RC_OK;
 }
@@ -564,7 +564,7 @@ static int ssl3_decode_server_certificate( DSSL_Session* sess, u_char* data, uin
 
 	if( sess->ssl_si->pkey && !sess->master_secret[0] )
 	{
-		x = d2i_X509( NULL, &data, llen );
+		x = d2i_X509( NULL, (const u_char**)&data, llen );
 		if( !x ) 
 		{
 			rc = NM_ERROR( DSSL_E_SSL_BAD_CERTIFICATE );
@@ -605,10 +605,10 @@ void ssl3_init_handshake_digests( DSSL_Session* sess )
 		DSSL_CipherSuite* suite = sess->dssl_cipher_suite;
 		if ( !suite )
 			suite = DSSL_GetSSL3CipherSuite( sess->cipher_suite );
-		digest = EVP_get_digestbyname( suite->digest );
+		digest = (EVP_MD*)EVP_get_digestbyname( suite->digest );
 		/* 'sha256' is the default for TLS 1.2 */
 		if ( !digest )
-			digest = EVP_sha256();
+			digest = (EVP_MD*)EVP_sha256();
 
 		if ( digest )
 			EVP_DigestInit_ex( sess->handshake_digest, digest, NULL );
@@ -637,7 +637,7 @@ void ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t l
 		DSSL_CipherSuite* suite = sess->dssl_cipher_suite;
 		if ( !suite )
 			suite = DSSL_GetSSL3CipherSuite( sess->cipher_suite );
-		digest = EVP_get_digestbyname( suite->digest );
+		digest = (EVP_MD*)EVP_get_digestbyname( suite->digest );
 		/* 'sha256' is the default for TLS 1.2, and can be replaced with a different (but stronger) hash */
 		if ( !digest ) 
 		{

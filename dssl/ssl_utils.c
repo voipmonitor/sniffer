@@ -73,7 +73,7 @@ static void tls1_P_hash( const EVP_MD *md, const unsigned char *sec,
 						int sec_len, unsigned char *seed, int seed_len,
 						unsigned char *out, int olen)
 {
-	int chunk,n;
+	int chunk;
 	unsigned int j;
 	HMAC_CTX *ctx;
 	HMAC_CTX *ctx_tmp;
@@ -89,7 +89,6 @@ static void tls1_P_hash( const EVP_MD *md, const unsigned char *sec,
 	HMAC_Update(ctx,seed,seed_len);
 	HMAC_Final(ctx,A1,&A1_len);
 
-	n=0;
 	for (;;)
 	{
 		HMAC_Init_ex(ctx,NULL,0,NULL,NULL); /* re-init */
@@ -121,9 +120,7 @@ int tls12_PRF( const EVP_MD *md, const u_char* secret, uint32_t secret_len, cons
 		u_char* random1, uint32_t random1_len, u_char* random2, uint32_t random2_len,
 		u_char *out, uint32_t out_len )
 {
-	uint32_t len;
 	uint32_t i;
-	const u_char *S1,*S2;
 	u_char* out_tmp;
 	u_char* seed;
 	uint32_t seed_len;

@@ -27,6 +27,8 @@
 #include "capenv.h"
 #include "fnv_hash.h"
 
+extern int StreamHasMissingPacket(TcpStream* stream, DSSL_Pkt* pkt);
+
 /* Calculates a hash key for a (ip1, port1)<->(ip2, port2) tcp session */
 static uint32_t getTcpSessionHash( uint32_t ip1, uint16_t port1, uint32_t ip2, uint16_t port2 )
 {
@@ -151,6 +153,7 @@ static const TcpStream* GetStream(const DSSL_Pkt* pkt, const TcpSession* sess )
 	return (dir == ePacketDirFromClient) ? & sess->clientStream : &sess->serverStream;
 }
 
+/*
 static const TcpStream* GetPeerStream(const DSSL_Pkt* pkt, const TcpSession* sess )
 {
 	NM_PacketDir dir = SessionGetPacketDirection( sess, pkt );
@@ -158,6 +161,7 @@ static const TcpStream* GetPeerStream(const DSSL_Pkt* pkt, const TcpSession* ses
 	_ASSERT( dir != ePacketDirInvalid );
 	return (dir == ePacketDirFromClient) ? & sess->clientStream : &sess->serverStream;
 }
+*/
 
 /* check if packet matches session streams IP/ports; also test for handshake state */
 static int PacketSessionMatch( const TcpSession* sess, const DSSL_Pkt* pkt )
@@ -304,7 +308,7 @@ static TcpSession* _SessionTable_FindSession( dssl_SessionTable* tbl, DSSL_Pkt* 
 
 	if( existingSessionCnt == 1 ) { /* single session - simple case */
 		_ASSERT( sess ); /* should be returned by GetSessionCountForPacket */
-		sess;
+		//sess;
 	} else {  /* multiple sessions */
 		sess = FindBestSessionForPacket( tbl, pkt, existingSessionCnt );
 	}

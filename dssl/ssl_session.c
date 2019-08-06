@@ -283,7 +283,7 @@ int ssls_decode_master_secret( DSSL_Session* sess )
 	}
 }
 
-
+/*
 static void ssl3_generate_export_iv( u_char* random1, u_char* random2, u_char* out )
 {
     MD5_CTX md5;
@@ -293,6 +293,7 @@ static void ssl3_generate_export_iv( u_char* random1, u_char* random2, u_char* o
 	MD5_Update( &md5, random2, SSL3_RANDOM_SIZE );
     MD5_Final( out, &md5 );
 }
+*/
 
 /* generate read/write keys for SSL v3+ session */
 #define TLS_MAX_KEYBLOCK_LEN ((EVP_MAX_KEY_LENGTH + EVP_MAX_IV_LENGTH + EVP_MAX_MD_SIZE*2)*2)
@@ -768,7 +769,7 @@ int ssls_get_decrypt_buffer( DSSL_Session* sess, u_char** data, uint32_t len )
 void ssls_release_decrypt_buffer( DSSL_Session* sess )
 {
 	/* no-op in a single threaded mode */
-	sess;
+	//sess;
 }
 
 int ssls_get_decompress_buffer( DSSL_Session* sess, u_char** data, uint32_t len )
@@ -788,7 +789,7 @@ int ssls_get_decompress_buffer( DSSL_Session* sess, u_char** data, uint32_t len 
 void ssls_release_decompress_buffer( DSSL_Session* sess )
 {
 	/* no-op in a single threaded mode */
-	sess;
+	//sess;
 }
 
 EVP_PKEY* ssls_try_ssl_keys( DSSL_Session* sess, u_char* data, uint32_t len)

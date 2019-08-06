@@ -94,10 +94,10 @@ static DSSL_SessionKeyData* CreateSessionKeyData( DSSL_Session* sess )
 	new_data = (DSSL_SessionKeyData*) malloc( sizeof(DSSL_SessionKeyData) );
 	if(!new_data) return NULL;
 
-	_ASSERT_STATIC( sizeof(new_data->id) == sizeof(sess->session_id ) );
+	//_ASSERT_STATIC( sizeof(new_data->id) == sizeof(sess->session_id ) );
 	memcpy( new_data->id, sess->session_id, sizeof(new_data->id) );
 
-	_ASSERT_STATIC( sizeof(new_data->master_secret) == sizeof(sess->master_secret ) );
+	//_ASSERT_STATIC( sizeof(new_data->master_secret) == sizeof(sess->master_secret ) );
 	memcpy( new_data->master_secret, sess->master_secret, sizeof(new_data->master_secret) );
 	new_data->master_secret_len = sess->master_key_len;
 

@@ -365,23 +365,23 @@ static DSSL_CipherSuite ssl3suites[] =
 	{ 0xC09D, 0, LN_rsa, 0, LN_aes_256_ccm, "null", NULL }, /* TLS_RSA_WITH_AES_256_CCM */
 	{ 0xC09E, 0, "dhe-rsa", 0, LN_aes_128_ccm, "null", NULL }, /* TLS_DHE_RSA_WITH_AES_128_CCM */
 	{ 0xC09F, 0, "dhe-rsa", 0, LN_aes_256_ccm, "null", NULL }, /* TLS_DHE_RSA_WITH_AES_256_CCM */
-	{ 0xC0A0, 0, LN_rsa, 0, LN_aes_128_ccm, "null", 8 }, /* TLS_RSA_WITH_AES_128_CCM_8 */
-	{ 0xC0A1, 0, LN_rsa, 0, LN_aes_256_ccm, "null", 8 }, /* TLS_RSA_WITH_AES_256_CCM_8 */
-	{ 0xC0A2, 0, "dhe-rsa", 0, LN_aes_128_ccm, "null", 8 }, /* TLS_DHE_RSA_WITH_AES_128_CCM_8 */
-	{ 0xC0A3, 0, "dhe-rsa", 0, LN_aes_256_ccm, "null", 8 }, /* TLS_DHE_RSA_WITH_AES_256_CCM_8 */
+	{ 0xC0A0, 0, LN_rsa, 0, LN_aes_128_ccm, "null", (void*)8 }, /* TLS_RSA_WITH_AES_128_CCM_8 */
+	{ 0xC0A1, 0, LN_rsa, 0, LN_aes_256_ccm, "null", (void*)8 }, /* TLS_RSA_WITH_AES_256_CCM_8 */
+	{ 0xC0A2, 0, "dhe-rsa", 0, LN_aes_128_ccm, "null", (void*)8 }, /* TLS_DHE_RSA_WITH_AES_128_CCM_8 */
+	{ 0xC0A3, 0, "dhe-rsa", 0, LN_aes_256_ccm, "null", (void*)8 }, /* TLS_DHE_RSA_WITH_AES_256_CCM_8 */
 	{ 0xC0A4, 0, "psk", 0, LN_aes_128_ccm, "null", NULL }, /* TLS_PSK_WITH_AES_128_CCM */
 	{ 0xC0A5, 0, "psk", 0, LN_aes_256_ccm, "null", NULL }, /* TLS_PSK_WITH_AES_256_CCM */
 	{ 0xC0A6, 0, "dhe-psk", 0, LN_aes_128_ccm, "null", NULL }, /* TLS_DHE_PSK_WITH_AES_128_CCM */
 	{ 0xC0A7, 0, "dhe-psk", 0, LN_aes_256_ccm, "null", NULL }, /* TLS_DHE_PSK_WITH_AES_256_CCM */
-	{ 0xC0A8, 0, "psk", 0, LN_aes_128_ccm, "null", 8 }, /* TLS_PSK_WITH_AES_128_CCM_8 */
-	{ 0xC0A9, 0, "psk", 0, LN_aes_256_ccm, "null", 8 }, /* TLS_PSK_WITH_AES_256_CCM_8 */
-	{ 0xC0AA, 0, "psk-dhe", 0, LN_aes_128_ccm, "null", 8 }, /* TLS_PSK_DHE_WITH_AES_128_CCM_8 */
-	{ 0xC0AB, 0, "psk-dhe", 0, LN_aes_256_ccm, "null", 8 }, /* TLS_PSK_DHE_WITH_AES_256_CCM_8 */
+	{ 0xC0A8, 0, "psk", 0, LN_aes_128_ccm, "null", (void*)8 }, /* TLS_PSK_WITH_AES_128_CCM_8 */
+	{ 0xC0A9, 0, "psk", 0, LN_aes_256_ccm, "null", (void*)8 }, /* TLS_PSK_WITH_AES_256_CCM_8 */
+	{ 0xC0AA, 0, "psk-dhe", 0, LN_aes_128_ccm, "null", (void*)8 }, /* TLS_PSK_DHE_WITH_AES_128_CCM_8 */
+	{ 0xC0AB, 0, "psk-dhe", 0, LN_aes_256_ccm, "null", (void*)8 }, /* TLS_PSK_DHE_WITH_AES_256_CCM_8 */
 	/* RFC 7251 */
 	{ 0xC0AC, 0, "ecdhe-ecdsa", 0, LN_aes_128_ccm, "null", NULL }, /* TLS_ECDHE_ECDSA_WITH_AES_128_CCM */
 	{ 0xC0AD, 0, "ecdhe-ecdsa", 0, LN_aes_256_ccm, "null", NULL }, /* TLS_ECDHE_ECDSA_WITH_AES_256_CCM */
-	{ 0xC0AE, 0, "ecdhe-ecdsa", 0, LN_aes_128_ccm, "null", 8 }, /* TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 */
-	{ 0xC0AF, 0, "ecdhe-ecdsa", 0, LN_aes_256_ccm, "null", 8 }, /* TLS_ECDHE_ECDSA_WITH_AES_256_CCM_8 */
+	{ 0xC0AE, 0, "ecdhe-ecdsa", 0, LN_aes_128_ccm, "null", (void*)8 }, /* TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 */
+	{ 0xC0AF, 0, "ecdhe-ecdsa", 0, LN_aes_256_ccm, "null", (void*)8 }, /* TLS_ECDHE_ECDSA_WITH_AES_256_CCM_8 */
 	/* http://tools.ietf.org/html/draft-agl-tls-chacha20poly1305 */
 	{ 0xCC13, 0, "ecdhe-rsa", 0, "chacha20-poly1305", LN_sha256, NULL }, /* TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 */
 	{ 0xCC14, 0, "ecdhe-ecdsa", 0, "chacha20-poly1305", LN_sha256, NULL }, /* TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 */

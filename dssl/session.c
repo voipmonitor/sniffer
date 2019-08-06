@@ -90,7 +90,7 @@ NM_PacketDir SessionGetPacketDirection( const TcpSession* sess,  const DSSL_Pkt*
 
 int SessionInit( CapEnv* env, TcpSession* sess, DSSL_Pkt* pkt, NM_SessionType s_type )
 {
-	int is_server = 0;
+	//int is_server = 0;
 	_ASSERT( pkt );
 
 	/* zero init first */
@@ -114,7 +114,7 @@ int SessionInit( CapEnv* env, TcpSession* sess, DSSL_Pkt* pkt, NM_SessionType s_
 		StreamInit( &sess->serverStream, sess, 
 			INADDR_IP( pkt->ip_header->ip_dst ), PKT_TCP_DPORT( pkt ) );
 
-		is_server = 0;
+		//is_server = 0;
 		break;
 
 	case TH_SYN | TH_ACK:
@@ -123,7 +123,7 @@ int SessionInit( CapEnv* env, TcpSession* sess, DSSL_Pkt* pkt, NM_SessionType s_
 		StreamInit( &sess->clientStream, sess,
 			INADDR_IP( pkt->ip_header->ip_dst ), PKT_TCP_DPORT( pkt ) );
 
-		is_server = 1;
+		//is_server = 1;
 		break;
 
 	default:

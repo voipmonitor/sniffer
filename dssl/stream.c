@@ -18,6 +18,7 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 **
 */
+#include <string.h>
 #include "stdinc.h"
 #include "stream.h"
 #include "session.h"
@@ -108,6 +109,7 @@ void StreamInit( TcpStream* stream, TcpSession* sess, uint32_t ip, uint16_t port
 	stream->queue_size = 0;
 }
 
+/*
 static int StreamGetPacketCount( TcpStream* stream )
 {
 	int cnt = 0;
@@ -121,6 +123,7 @@ static int StreamGetPacketCount( TcpStream* stream )
 
 	return cnt;
 }
+*/
 
 
 void StreamFreeData( TcpStream* stream )
@@ -395,7 +398,7 @@ static uint32_t PreProcessPacket( DSSL_Pkt* pkt )
 	int dir;
 	TcpStream* sender, *receiver;
 	int th_pkt_flags;
-	uint32_t th_seq;
+	//uint32_t th_seq;
 	TcpSession* sess = pkt->session;
 
 	dir = SessionGetPacketDirection( sess, pkt );
@@ -416,7 +419,7 @@ static uint32_t PreProcessPacket( DSSL_Pkt* pkt )
 	}
 
 	th_pkt_flags = pkt->tcp_header->th_flags;
-	th_seq = ntohl( pkt->tcp_header->th_seq );
+	//th_seq = ntohl( pkt->tcp_header->th_seq );
 
 	if( th_pkt_flags & TH_RST ) {
 		sender->flags |= DSSL_TCPSTREAM_SENT_RST; 

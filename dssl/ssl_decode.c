@@ -34,7 +34,7 @@ int ssl3_change_cipher_spec_decoder( void* decoder_stack, NM_PacketDir dir,
 	dssl_decoder_stack* stack = (dssl_decoder_stack*) decoder_stack;
 
 	/* unused parameters */
-	dir;
+	//dir;
 
 	/* check packet data to comply to CSS protocol */
 	if( len != 1 ) return NM_ERROR( NM_ERROR( DSSL_E_SSL_INVALID_RECORD_LENGTH ) );
@@ -68,7 +68,7 @@ int ssl3_alert_decoder( void* decoder_stack, NM_PacketDir dir,
 {
 	dssl_decoder_stack* stack = (dssl_decoder_stack*) decoder_stack;
 
-	UNUSED_PARAM(dir);
+	//UNUSED_PARAM(dir);
 
 	if( len != 2 ) return NM_ERROR( NM_ERROR( DSSL_E_SSL_INVALID_RECORD_LENGTH ) );
 

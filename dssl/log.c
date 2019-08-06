@@ -19,6 +19,7 @@
 **
 */
 
+#include <ctype.h>
 #include "stdinc.h"
 /*VC++ needs this include file to compile on Windows Server 2008 */
 #ifdef _MSC_VER
@@ -46,7 +47,7 @@ void NmDebugCatchError_enable_log()
 	NmDebugCatchError_disabled_log = 0;
 }
 
-
+/*
 static void nmLogCategory( uint32_t category )
 {
 	switch( category & LG_SEVERITY_MASK )
@@ -64,12 +65,13 @@ static void nmLogCategory( uint32_t category )
 	default: puts( "unknown>" ); break;
 	}
 }
+*/
 
 void nmLogMessage( uint32_t category, const char* fmt, ... )
 {
   /*TODO*/
-	category;
-	fmt;
+	//category;
+	//fmt;
 }
 
 void DumpBuffer(const char *label, const unsigned char *data, int data_len)

@@ -18,6 +18,7 @@
 ** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 **
 */
+#include <string.h>
 #include "stdinc.h"
 #include "decoder_stack.h"
 #include "ssl_session.h"
@@ -64,7 +65,7 @@ int ssl3_calculate_mac( dssl_decoder_stack* stack, u_char type,
 	u_char seq_buf[8];
 
 	_ASSERT( stack->md != NULL );
-	_ASSERT_STATIC( sizeof(stack->seq_num) == 8 );
+	//_ASSERT_STATIC( sizeof(stack->seq_num) == 8 );
 
 	mac_size = EVP_MD_size( md );
 	pad_size = (48/mac_size)*mac_size;
@@ -172,7 +173,7 @@ int tls1_calculate_mac( dssl_decoder_stack* stack, u_char type,
 	u_char hdr[5];
 
 	_ASSERT( stack->md != NULL );
-	_ASSERT_STATIC( sizeof(stack->seq_num) == 8 );
+	//_ASSERT_STATIC( sizeof(stack->seq_num) == 8 );
 
 	if( md == NULL ) return NM_ERROR( DSSL_E_INVALID_PARAMETER );
 

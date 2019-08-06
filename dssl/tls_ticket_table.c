@@ -108,7 +108,7 @@ static DSSL_SessionTicketData* CreateSessionTicketData( DSSL_Session* sess, cons
 	memcpy( new_data->ticket, ticket, len );
 	new_data->ticket_size = len;
 
-	_ASSERT_STATIC( sizeof(new_data->master_secret) == sizeof(sess->master_secret ) );
+	//_ASSERT_STATIC( sizeof(new_data->master_secret) == sizeof(->master_secret ) );
 	memcpy( new_data->master_secret, sess->master_secret, sizeof(new_data->master_secret) );
 
 	new_data->cipher_suite = sess->cipher_suite;

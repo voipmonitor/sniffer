@@ -175,7 +175,7 @@ void pcap_cb_ethernet( u_char *ptr, const struct pcap_pkthdr *header, const u_ch
 	int m_link_protocol_offset = 12;
 	int m_link_len = ETHER_HDRLEN;
 	int pkt_link_len = m_link_len;
-	u_char *pkt_data = packet_data;
+	u_char *pkt_data = (u_char*)packet_data;
 #ifdef NEED_ALIGNMENT
         u_char * _pkt_data = NULL;
 	int n = 0;
