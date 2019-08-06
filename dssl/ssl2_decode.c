@@ -78,7 +78,7 @@ int ssl2_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 	dssl_decoder* next_decoder = NULL;
 	int decrypt_buffer_aquired = 0;
 
-	dir; /* unused */
+	//dir; /* unused */
 
 	_ASSERT( stack );
 	_ASSERT( processed );

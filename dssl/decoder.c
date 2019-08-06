@@ -31,7 +31,7 @@ void dssl_decoder_init( dssl_decoder* decoder, sslc_decode_proc handler, void* h
 	#pragma GCC diagnostic push
 	#pragma GCC diagnostic ignored "-Wsizeof-pointer-memaccess"
 	#endif
-	memset( decoder, 0, sizeof(decoder) );
+	memset( decoder, 0, sizeof(*decoder) );
 	#if __GNUC__ >= 8
 	#pragma GCC diagnostic pop
 	#endif

@@ -3365,8 +3365,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		string rsltDestNumber;
 		string rsltSrcNumber;
 		unsigned int rsltContentLength;
-		unsigned int rsltDcs;
-		Call::eVoicemail rsltVoicemail;
+		unsigned int rsltDcs = 0;
+		Call::eVoicemail rsltVoicemail = Call::voicemail_na;
 		int rslt_parse_packet__message = 
 			parse_packet__message(packetS, call->message != NULL,
 					      &rsltMessage, &rsltMessageInfo, &rsltDestNumber, &rsltSrcNumber, &rsltContentLength,

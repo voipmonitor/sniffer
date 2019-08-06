@@ -212,7 +212,7 @@ int ssl2_calculate_mac( dssl_decoder_stack* stack, u_char type,
 	stack->seq_num = seq;
 
 	/* TODO */
-	type; data; len; mac;
+	//type; data; len; mac;
 	return NM_ERROR( DSSL_E_NOT_IMPL );
 }
 #endif //(OPENSSL_VERSION_NUMBER < 0x10100000L)

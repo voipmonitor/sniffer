@@ -417,7 +417,7 @@ static int ssl2_decode_server_finished(  DSSL_Session* sess, u_char* data, uint3
 /* ========== SERVER-FINISHED ========== */
 static int ssl2_decode_error(  DSSL_Session* sess, u_char* data, uint32_t len, uint32_t* processed )
 {
-	data; /*unused */
+	//data; /*unused */
 	/*TODO: error handling - store the error code */
 	sess->flags |= SSF_FATAL_ALERT_RECEIVED;
 
