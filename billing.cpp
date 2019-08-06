@@ -508,6 +508,7 @@ void cBillingRuleNumber::load(SqlDb_row *row) {
 	name = (*row)["name"];
 	number_prefix = (*row)["prefix_number"];
 	number_fixed = (*row)["fixed_number"];
+	number_regex = (*row)["regex_number"];
 	peak_definition.enable = atoi((*row)["override_default_peak_offpeak"].c_str());
 	peak_definition.load(row);
 	price = atof((*row)["price"].c_str());
@@ -571,16 +572,22 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 	if(numbers.size()) {
 		bool findNumber = false;
 		unsigned useNumberPrefixLength = 0;
-		for(unsigned pass = 0; pass < 2 && !findNumber; pass++) {
+		for(unsigned pass = 0; pass < 3 && !findNumber; pass++) {
 			for(list<cBillingRuleNumber>::iterator iter = numbers.begin(); iter != numbers.end(); iter++) {
-				if(pass == 0 ?
+				if( (pass == 0 &&
 				    iter->number_fixed.length() &&
 				    (iter->number_fixed == number ||
-				     (number_normalized && iter->number_fixed == number_normalized)) :
-				    iter->number_prefix.length() &&
+				     (number_normalized && iter->number_fixed == number_normalized)))
+					||
+				    (pass == 1 && iter->number_prefix.length() &&
 				    (iter->number_prefix == string(number, min(strlen(number), iter->number_prefix.length())) ||
 				     (number_normalized && iter->number_prefix == string(number_normalized, min(strlen(number_normalized), iter->number_prefix.length())))) &&
-				    (!useNumberPrefixLength || iter->number_prefix.length() > useNumberPrefixLength)) {
+				    (!useNumberPrefixLength || iter->number_prefix.length() > useNumberPrefixLength))
+					||
+				    (pass == 2 && iter->number_regex.length() &&
+				    (reg_match(number, iter->number_regex.c_str(), __FILE__, __LINE__) || (number_normalized &&
+				     reg_match(number_normalized, iter->number_regex.c_str(), __FILE__, __LINE__))))) {
+
 					if(iter->price) {
 						price = iter->price;
 					}
@@ -597,10 +604,10 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 						peak_definition = iter->peak_definition;
 					}
 					findNumber = true;
-					if(pass == 0) {
-						break;
-					} else {
+					if(pass == 1) {
 						useNumberPrefixLength = iter->number_prefix.length();
+					} else {
+						break;
 					}
 				}
 			}

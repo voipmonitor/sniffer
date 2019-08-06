@@ -160,6 +160,7 @@ private:
 	string name;
 	string number_prefix;
 	string number_fixed;
+	string number_regex;
 	cPeakDefinition peak_definition;
 	double price;
 	double price_peak;
