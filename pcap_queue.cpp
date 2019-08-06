@@ -1997,7 +1997,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
 						last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
 					}
-					if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call) {
+					if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_call) {
 						call_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
 					}
 					if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
