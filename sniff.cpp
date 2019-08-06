@@ -4887,7 +4887,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, const char *file,
 	if(header) {
 		process_packet__last_cleanup_calls_diff = getTimeMS(header) - actTimeMS;
 		if(!doQuickCleanup &&
-		   getTimeS(header) - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : opt_cleanup_calls_period)) {
+		   getTimeS(header) - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : (unsigned)opt_cleanup_calls_period)) {
 			return;
 		}
 	}
@@ -4900,7 +4900,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, const char *file,
 		ts.tv_usec = corTimeMS % 1000 * 1000;
 	}
 	if(!doQuickCleanup &&
-	   ts.tv_sec - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : opt_cleanup_calls_period)) {
+	   ts.tv_sec - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : (unsigned)opt_cleanup_calls_period)) {
 		return;
 	}
 	if(verbosity > 0 && is_read_from_file_simple()) {
