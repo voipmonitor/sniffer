@@ -400,6 +400,8 @@ int Mgmt_ac_add_thread(Mgmt_params *params);
 int Mgmt_ac_remove_thread(Mgmt_params *params);
 int Mgmt_t2sip_add_thread(Mgmt_params *params);
 int Mgmt_t2sip_remove_thread(Mgmt_params *params);
+int Mgmt_storing_cdr_add_thread(Mgmt_params *params);
+int Mgmt_storing_cdr_remove_thread(Mgmt_params *params);
 int Mgmt_rtpread_add_thread(Mgmt_params *params);
 int Mgmt_rtpread_remove_thread(Mgmt_params *params);
 int Mgmt_enable_bad_packet_order_warning(Mgmt_params *params);
@@ -503,6 +505,8 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_ac_remove_thread,
 	Mgmt_t2sip_add_thread,
 	Mgmt_t2sip_remove_thread,
+	Mgmt_storing_cdr_add_thread,
+	Mgmt_storing_cdr_remove_thread,
 	Mgmt_rtpread_add_thread,
 	Mgmt_rtpread_remove_thread,
 	Mgmt_enable_bad_packet_order_warning,
@@ -4463,6 +4467,26 @@ int Mgmt_t2sip_remove_thread(Mgmt_params *params) {
 	if(!opt_t2_boost) {
 		PreProcessPacket::autoStopLastLevelPreProcessPacket(true);
 	}
+	return(params->sendString("ok\n"));
+}
+
+int Mgmt_storing_cdr_add_thread(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("storing_cdr_add_thread", "storing_cdr_add_thread");
+		return(0);
+	}
+	extern void storing_cdr_next_thread_add();
+	storing_cdr_next_thread_add();
+	return(params->sendString("ok\n"));
+}
+
+int Mgmt_storing_cdr_remove_thread(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("storing_cdr_remove_thread", "storing_cdr_remove_thread");
+		return(0);
+	}
+	extern void storing_cdr_next_thread_remove();
+	storing_cdr_next_thread_remove();
 	return(params->sendString("ok\n"));
 }
 

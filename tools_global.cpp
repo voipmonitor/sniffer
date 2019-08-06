@@ -25,7 +25,14 @@ void *vm_pthread_create_start_routine(void *arg) {
 	#ifndef CLOUD_ROUTER_SERVER
 	threadMonitor.registerThread(thread_data.description.c_str());
 	#endif
-	return(thread_data.start_routine(thread_data.arg));
+	void *rslt = thread_data.start_routine(thread_data.arg);
+	#ifndef CLOUD_ROUTER_SERVER
+	if(sverb.thread_create) {
+		syslog(LOG_NOTICE, "end thread '%s'", 
+		       thread_data.description.c_str());
+	}
+	#endif
+	return(rslt);
 }
 int vm_pthread_create(const char *thread_description,
 		      pthread_t *thread, pthread_attr_t *attr,

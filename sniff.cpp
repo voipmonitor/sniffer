@@ -258,6 +258,7 @@ extern bool opt_get_reason_from_bye_cancel;
 extern int opt_hash_modify_queue_length_ms;
 extern int opt_sipalg_detect;
 extern int opt_quick_save_cdr;
+extern int opt_cleanup_calls_period;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
@@ -4886,7 +4887,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, const char *file,
 	if(header) {
 		process_packet__last_cleanup_calls_diff = getTimeMS(header) - actTimeMS;
 		if(!doQuickCleanup &&
-		   getTimeS(header) - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : 10)) {
+		   getTimeS(header) - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : opt_cleanup_calls_period)) {
 			return;
 		}
 	}
@@ -4899,7 +4900,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, const char *file,
 		ts.tv_usec = corTimeMS % 1000 * 1000;
 	}
 	if(!doQuickCleanup &&
-	   ts.tv_sec - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : 10)) {
+	   ts.tv_sec - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : opt_cleanup_calls_period)) {
 		return;
 	}
 	if(verbosity > 0 && is_read_from_file_simple()) {

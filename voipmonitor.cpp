@@ -362,6 +362,7 @@ unsigned int opt_process_rtp_packets_qring_length = 2000;
 unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
 bool opt_process_rtp_packets_qring_force_push = true;
+int opt_cleanup_calls_period = 10;
 int opt_enable_ss7 = 0;
 int opt_enable_http = 0;
 bool opt_http_cleanup_ext = false;
@@ -776,7 +777,9 @@ pstat_data storing_cdr_next_threads_pstat_data[MAXIMUM_STORING_CDR_THREADS][2];
 sem_t storing_cdr_next_threads_sem[MAXIMUM_STORING_CDR_THREADS][2];
 bool storing_cdr_next_threads_init[MAXIMUM_STORING_CDR_THREADS];
 list<Call*> *storing_cdr_next_threads_calls[MAXIMUM_STORING_CDR_THREADS];
-volatile int storing_cdr_next_threads_count[2];
+volatile int storing_cdr_next_threads_count;
+volatile int storing_cdr_next_threads_count_mod;
+volatile int storing_cdr_next_threads_count_mod_request;
 volatile int storing_cdr_next_threads_count_sync;
 unsigned storing_cdr_next_threads_count_last_change;
 pthread_t storing_registers_thread;	// ID of worker storing CDR thread 
@@ -1777,22 +1780,29 @@ void *storing_cdr( void */*dummy*/ ) {
 			list<Call*> calls_for_store;
 			unsigned calls_for_store_count = 0;
 			while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
-			if(storing_cdr_next_threads_count[1] > storing_cdr_next_threads_count[0]) {
-				if(!storing_cdr_next_threads_init[storing_cdr_next_threads_count[1] - 1]) {
-					storing_cdr_next_threads_calls[storing_cdr_next_threads_count[1] - 1] = new FILE_LINE(0) list<Call*>;
+			storing_cdr_next_threads_count_mod = storing_cdr_next_threads_count_mod_request;
+			storing_cdr_next_threads_count_mod_request = 0;
+			if((storing_cdr_next_threads_count_mod > 0 && storing_cdr_next_threads_count == MAXIMUM_STORING_CDR_THREADS) ||
+			   (storing_cdr_next_threads_count_mod < 0 && storing_cdr_next_threads_count == 0)) {
+				storing_cdr_next_threads_count_mod = 0;
+			}
+			if(storing_cdr_next_threads_count_mod > 0) {
+				if(!storing_cdr_next_threads_init[storing_cdr_next_threads_count]) {
+					storing_cdr_next_threads_calls[storing_cdr_next_threads_count] = new FILE_LINE(0) list<Call*>;
 					for(int i = 0; i < 2; i++) {
-						sem_init(&storing_cdr_next_threads_sem[storing_cdr_next_threads_count[1] - 1][i], 0, 0);
+						sem_init(&storing_cdr_next_threads_sem[storing_cdr_next_threads_count][i], 0, 0);
 					}
-					storing_cdr_next_threads_init[storing_cdr_next_threads_count[1] - 1] = true;
+					storing_cdr_next_threads_init[storing_cdr_next_threads_count] = true;
 				}
-				memset(storing_cdr_next_threads_pstat_data[storing_cdr_next_threads_count[1] - 1], 0, sizeof(storing_cdr_next_threads_pstat_data[storing_cdr_next_threads_count[1] - 1]));
+				memset(storing_cdr_next_threads_pstat_data[storing_cdr_next_threads_count], 0, sizeof(storing_cdr_next_threads_pstat_data[storing_cdr_next_threads_count]));
 				void *storing_cdr_next_thread( void *_indexNextThread );
-				vm_pthread_create(("storing cdr - next thread " + intToString(storing_cdr_next_threads_count[1])).c_str(),
-						  &storing_cdr_next_threads[storing_cdr_next_threads_count[1] - 1], NULL, storing_cdr_next_thread, (void*)(long)(storing_cdr_next_threads_count[1] - 1), __FILE__, __LINE__);
-				while(storing_cdr_next_threads_count[1] > storing_cdr_next_threads_count[0]) {
+				vm_pthread_create(("storing cdr - next thread " + intToString(storing_cdr_next_threads_count + 1)).c_str(),
+						  &storing_cdr_next_threads[storing_cdr_next_threads_count], NULL, storing_cdr_next_thread, (void*)(long)(storing_cdr_next_threads_count), __FILE__, __LINE__);
+				while(storing_cdr_next_threads_count_mod > 0) {
 					usleep(100000);
 				}
-				usleep(100000);
+				++storing_cdr_next_threads_count;
+				usleep(250000);
 			}
 			while(calls_queue_position < calls_queue_size) {
 				Call *call = calltable->calls_queue[calls_queue_position];
@@ -1806,8 +1816,8 @@ void *storing_cdr( void */*dummy*/ ) {
 				if(isPcapClose ?
 				    call->isEmptyChunkBuffersCount() :
 				    call->isReadyForWriteCdr()) {
-					if(storing_cdr_next_threads_count[0]) {
-						int mod = calls_for_store_count % (storing_cdr_next_threads_count[0] + 1);
+					if(storing_cdr_next_threads_count) {
+						int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
 						if(!mod) {
 							calls_for_store.push_back(call);
 						} else {
@@ -1831,8 +1841,8 @@ void *storing_cdr( void */*dummy*/ ) {
 			}
 			calltable->unlock_calls_queue();
 			if(calls_for_store_count) {
-				if(storing_cdr_next_threads_count[0]) {
-					for(int i = 0; i < storing_cdr_next_threads_count[0]; i++) {
+				if(storing_cdr_next_threads_count) {
+					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
 						sem_post(&storing_cdr_next_threads_sem[i][0]);
 					}
 				}
@@ -1893,10 +1903,14 @@ void *storing_cdr( void */*dummy*/ ) {
 					calltable->unlock_calls_audioqueue();
 				}
 				delete [] indikConvertToWav;
-				if(storing_cdr_next_threads_count[0]) {
-					for(int i = 0; i < storing_cdr_next_threads_count[0]; i++) {
+				if(storing_cdr_next_threads_count) {
+					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
 						sem_wait(&storing_cdr_next_threads_sem[i][1]);
 					}
+				}
+				if(storing_cdr_next_threads_count_mod < 0) {
+					--storing_cdr_next_threads_count;
+					storing_cdr_next_threads_count_mod = 0;
 				}
 				storingCdrLastWriteAt = getActDateTimeF();
 			}
@@ -1954,8 +1968,9 @@ void *storing_cdr( void */*dummy*/ ) {
 void *storing_cdr_next_thread( void *_indexNextThread ) {
 	int indexNextThread = (int)(long)_indexNextThread;
 	storing_cdr_next_tid[indexNextThread] = get_unix_tid();
-	if(storing_cdr_next_threads_count[1] > storing_cdr_next_threads_count[0]) {
-		 storing_cdr_next_threads_count[0] = storing_cdr_next_threads_count[1];
+	if(storing_cdr_next_threads_count_mod > 0 &&
+	   indexNextThread == storing_cdr_next_threads_count) {
+		 storing_cdr_next_threads_count_mod = 0;
 	}
 	while(terminating_storing_cdr < 2) {
 		sem_wait(&storing_cdr_next_threads_sem[indexNextThread][0]);
@@ -2021,9 +2036,8 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 		delete [] indikConvertToWav;
 		storing_cdr_next_threads_calls[indexNextThread]->clear();
 		bool stop = false;
-		if(storing_cdr_next_threads_count[1] < storing_cdr_next_threads_count[0] &&
-		   (indexNextThread + 1) == storing_cdr_next_threads_count[0]) {
-			storing_cdr_next_threads_count[0] = storing_cdr_next_threads_count[1];
+		if(storing_cdr_next_threads_count_mod < 0 &&
+		   (indexNextThread + 1) == storing_cdr_next_threads_count) {
 			stop = true;
 		}
 		sem_post(&storing_cdr_next_threads_sem[indexNextThread][1]);
@@ -2035,26 +2049,24 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 }
 
 void storing_cdr_next_thread_add() {
-	if(getTimeS() > storing_cdr_next_threads_count_last_change + 60) {
-		while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
-		if(storing_cdr_next_threads_count[0] < MAXIMUM_STORING_CDR_THREADS &&
-		   storing_cdr_next_threads_count[1] == storing_cdr_next_threads_count[0]) {
-			++storing_cdr_next_threads_count[1];
+	if(getTimeS() > storing_cdr_next_threads_count_last_change + 1/*20*/) {
+		if(storing_cdr_next_threads_count < MAXIMUM_STORING_CDR_THREADS &&
+		   storing_cdr_next_threads_count_mod == 0 &&
+		   storing_cdr_next_threads_count_mod_request == 0) {
+			storing_cdr_next_threads_count_mod_request = 1;
 			storing_cdr_next_threads_count_last_change = getTimeS();
 		}
-		__sync_lock_release(&storing_cdr_next_threads_count_sync);
 	}
 }
 
 void storing_cdr_next_thread_remove() {
-	if(getTimeS() > storing_cdr_next_threads_count_last_change + 60) {
-		while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
-		if(storing_cdr_next_threads_count[0] > 0 &&
-		   storing_cdr_next_threads_count[1] == storing_cdr_next_threads_count[0]) {
-			--storing_cdr_next_threads_count[1];
+	if(getTimeS() > storing_cdr_next_threads_count_last_change + 1/*20*/) {
+		if(storing_cdr_next_threads_count > 0 &&
+		   storing_cdr_next_threads_count_mod == 0 &&
+		   storing_cdr_next_threads_count_mod_request == 0) {
+			storing_cdr_next_threads_count_mod_request = -1;
 			storing_cdr_next_threads_count_last_change = getTimeS();
 		}
-		__sync_lock_release(&storing_cdr_next_threads_count_sync);
 	}
 }
 
@@ -2069,7 +2081,7 @@ string storing_cdr_getCpuUsagePerc(double *avg) {
 		cpu_sum += cpu;
 		++cpu_count;
 	}
-	for(int i = 0; i < storing_cdr_next_threads_count[0]; i++) {
+	for(int i = 0; i < storing_cdr_next_threads_count; i++) {
 		double cpu = get_cpu_usage_perc(storing_cdr_next_tid[i], storing_cdr_next_threads_pstat_data[i]);
 		if(cpu > 0) {
 			cpuStr << '/' << setprecision(1) << cpu;
@@ -4368,7 +4380,7 @@ void main_term_read() {
 		terminating_storing_cdr = 1;
 		pthread_join(storing_cdr_thread, NULL);
 		while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
-		for(int i = 0; i < storing_cdr_next_threads_count[0]; i++) {
+		for(int i = 0; i < storing_cdr_next_threads_count; i++) {
 			sem_post(&storing_cdr_next_threads_sem[i][0]);
 			pthread_join(storing_cdr_next_threads[i], NULL);
 			for(int j = 0; j < 2; j++) {
@@ -6275,6 +6287,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42159) cConfigItem_integer("process_rtp_packets_qring_item_length", &opt_process_rtp_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(42160) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
 					addConfigItem(new FILE_LINE(42161) cConfigItem_yesno("process_rtp_packets_qring_force_push", &opt_process_rtp_packets_qring_force_push));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 			setDisableIfEnd();
 	group("manager");
 		addConfigItem(new FILE_LINE(42162) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)));
@@ -10374,6 +10387,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "process_rtp_packets_qring_force_push", NULL))) {
 		opt_process_rtp_packets_qring_force_push = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cleanup_calls_period", NULL))) {
+		opt_cleanup_calls_period = atoi(value);
 	}
 
 	if((value = ini.GetValue("general", "rtp_qring_length", NULL))) {
