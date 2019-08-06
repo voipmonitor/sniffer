@@ -6590,7 +6590,7 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 
 void _process_packet__cleanup_calls(pcap_pkthdr *header, const char *file, int line) {
 	process_packet__cleanup_calls(header, file, line);
-	if(header->ts.tv_sec - process_packet__last_destroy_calls >= opt_destroy_calls_period) {
+	if(header->ts.tv_sec - process_packet__last_destroy_calls >= (unsigned)opt_destroy_calls_period) {
 		calltable->destroyCallsIfPcapsClosed();
 		process_packet__last_destroy_calls = header->ts.tv_sec;
 	}
@@ -6599,7 +6599,7 @@ void _process_packet__cleanup_calls(pcap_pkthdr *header, const char *file, int l
 void _process_packet__cleanup_calls(const char *file, int line) {
 	process_packet__cleanup_calls(NULL, file, line);
 	u_long timeS = getTimeS();
-	if(timeS - process_packet__last_destroy_calls >= opt_destroy_calls_period) {
+	if(timeS - process_packet__last_destroy_calls >= (unsigned)opt_destroy_calls_period) {
 		calltable->destroyCallsIfPcapsClosed();
 		process_packet__last_destroy_calls = timeS;
 	}
