@@ -2049,7 +2049,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 }
 
 void storing_cdr_next_thread_add() {
-	if(getTimeS() > storing_cdr_next_threads_count_last_change + 1/*20*/) {
+	if(getTimeS() > storing_cdr_next_threads_count_last_change + 120) {
 		if(storing_cdr_next_threads_count < MAXIMUM_STORING_CDR_THREADS &&
 		   storing_cdr_next_threads_count_mod == 0 &&
 		   storing_cdr_next_threads_count_mod_request == 0) {
@@ -2060,7 +2060,7 @@ void storing_cdr_next_thread_add() {
 }
 
 void storing_cdr_next_thread_remove() {
-	if(getTimeS() > storing_cdr_next_threads_count_last_change + 1/*20*/) {
+	if(getTimeS() > storing_cdr_next_threads_count_last_change + 120) {
 		if(storing_cdr_next_threads_count > 0 &&
 		   storing_cdr_next_threads_count_mod == 0 &&
 		   storing_cdr_next_threads_count_mod_request == 0) {
