@@ -2025,6 +2025,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						if(sverb.qring_full && percFullQring > sverb.qring_full) {
 							outStrStat << "#" << percFullQring;
 						}
+						++count_t2cpu;
+						sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 					}
 				}
 			}

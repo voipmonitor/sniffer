@@ -363,6 +363,7 @@ unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
 bool opt_process_rtp_packets_qring_force_push = true;
 int opt_cleanup_calls_period = 10;
+int opt_destroy_calls_period = 2;
 int opt_enable_ss7 = 0;
 int opt_enable_http = 0;
 bool opt_http_cleanup_ext = false;
@@ -6288,6 +6289,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42160) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
 					addConfigItem(new FILE_LINE(42161) cConfigItem_yesno("process_rtp_packets_qring_force_push", &opt_process_rtp_packets_qring_force_push));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
 			setDisableIfEnd();
 	group("manager");
 		addConfigItem(new FILE_LINE(42162) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)));
@@ -10390,6 +10392,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleanup_calls_period", NULL))) {
 		opt_cleanup_calls_period = atoi(value);
+	}
+	if((value = ini.GetValue("general", "destroy_calls_period", NULL))) {
+		opt_destroy_calls_period = atoi(value);
 	}
 
 	if((value = ini.GetValue("general", "rtp_qring_length", NULL))) {
