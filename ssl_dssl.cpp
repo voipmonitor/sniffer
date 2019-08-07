@@ -38,6 +38,7 @@ cSslDsslSession::cSslDsslSession(vmIP ip, vmPort port, string keyfile, string pa
 	client_random_master_secret = false;
 	stored_at = 0;
 	restored = false;
+	lastTimeSyslog = 0;
 	init();
 }
 
@@ -67,11 +68,21 @@ bool cSslDsslSession::initServer() {
 		FILE* file_keyfile = fopen(keyfile.c_str(), "r");
 		if(!file_keyfile) {
 			server_error = _se_keyfile_not_exists;
+			u_int64_t actTime = getTimeMS();
+			if(actTime - 1000 > lastTimeSyslog) {
+				syslog(LOG_NOTICE, "ssl - missing keyfile %s", keyfile.c_str());
+				lastTimeSyslog = actTime;
+			}
 			return(false);
 		}
 		if(!PEM_read_PrivateKey(file_keyfile, &pkey, cSslDsslSession::password_calback_direct, (void*)password.c_str())) {
 			fclose(file_keyfile);
 			server_error = _se_load_key_failed;
+			u_int64_t actTime = getTimeMS();
+			if(actTime - 1000 > lastTimeSyslog) {
+				syslog(LOG_NOTICE, "ssl - failed read keyfile %s", keyfile.c_str());
+				lastTimeSyslog = actTime;
+			}
 			return(false);
 		}
 		fclose(file_keyfile);
@@ -242,6 +253,9 @@ string cSslDsslSession::get_session_data(struct timeval ts) {
 }
 
 bool cSslDsslSession::restore_session_data(const char *data) {
+	if(!session) {
+		return(false);
+	}
 	JsonItem jsonData;
 	jsonData.parse(data);
 	session->version = atoi(jsonData.getValue("version").c_str());

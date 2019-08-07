@@ -990,7 +990,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		if(!owner || !owner->rtp_from_multiple_sensors) {
 			extern bool opt_disable_rtp_warning;
 			if(!opt_disable_rtp_warning) {
-				u_long actTime = getTimeMS();
+				u_int64_t actTime = getTimeMS();
 				if(actTime - 1000 > lastTimeSyslog) {
 					syslog(LOG_NOTICE, "warning - packet from sensor (%i/%s) in RTP created for sensor (%i/%s) - call %s", 
 					       sensor_id, sensor_ip.isSet() ? sensor_ip.getString().c_str() : "-", 
@@ -1012,8 +1012,8 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			if(pcap_header_ts < (this->last_pcap_header_ts - 200000)) {
 				extern bool opt_disable_rtp_warning;
 				if(!opt_disable_rtp_warning) {
-					u_long actTime = getTimeMS();
-					static u_long s_lastTimeSyslog;
+					u_int64_t actTime = getTimeMS();
+					static u_int64_t s_lastTimeSyslog;
 					if(actTime - 500 > s_lastTimeSyslog) {
 						syslog(LOG_NOTICE, "warning - packet (seq:%i, ssrc: %x) from sensor (%i) has bad pcap header time (-%" int_64_format_prefix "luus) - call %s", 
 						       getSeqNum(), getSSRC(), sensor_id, this->last_pcap_header_ts - pcap_header_ts, owner ? owner->fbasename : "unknown");
@@ -1079,7 +1079,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				owner->error_negative_payload_length = true;
 			}
 		} else {
-			u_long actTime = getTimeMS();
+			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
 				syslog(LOG_NOTICE, "warning - negative payload_len");
 				lastTimeSyslog = actTime;
@@ -1117,7 +1117,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		   (header->ts.tv_sec < this->_last_ts.tv_sec ||
 		    (header->ts.tv_sec == this->_last_ts.tv_sec &&
 		     header->ts.tv_usec < this->_last_ts.tv_usec))) {
-			u_long actTime = getTimeMS();
+			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
 				syslog(LOG_NOTICE, "warning - bad packet order (%llu us) in RTP::read (seq/lastseq: %u/%u, ifname/lastifname: %s/%s, sensor/lastsenspor: %i/%i)- packet ignored",
 				       this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec - header->ts.tv_sec * 1000000ull - header->ts.tv_usec,

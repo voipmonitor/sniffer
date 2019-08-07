@@ -77,6 +77,7 @@ private:
 	bool client_random_master_secret;
 	u_long stored_at;
 	bool restored;
+	u_int64_t lastTimeSyslog;
 friend class cSslDsslSessions;
 };
 
