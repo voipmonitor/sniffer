@@ -1789,6 +1789,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				storing_cdr_next_threads_count_mod = 0;
 			}
 			if(storing_cdr_next_threads_count_mod > 0) {
+				syslog(LOG_NOTICE, "storing cdr - add next thread %i", storing_cdr_next_threads_count + 1);
 				if(!storing_cdr_next_threads_init[storing_cdr_next_threads_count]) {
 					storing_cdr_next_threads_calls[storing_cdr_next_threads_count] = new FILE_LINE(0) list<Call*>;
 					for(int i = 0; i < 2; i++) {
@@ -1842,7 +1843,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				++calls_queue_position;
 			}
 			calltable->unlock_calls_queue();
-			if(calls_for_store_count) {
+			if(calls_for_store_count || storing_cdr_next_threads_count_mod < 0) {
 				if(storing_cdr_next_threads_count) {
 					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
 						sem_post(&storing_cdr_next_threads_sem[i][0]);
@@ -2056,6 +2057,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 		}
 		sem_post(&storing_cdr_next_threads_sem[indexNextThread][1]);
 		if(stop) {
+			syslog(LOG_NOTICE, "storing cdr - stop next thread %i", indexNextThread + 1);
 			break;
 		}
 	}

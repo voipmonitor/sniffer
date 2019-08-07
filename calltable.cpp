@@ -7446,6 +7446,7 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 			if(line) {
 				cout << " : " << line;
 			}
+			cout << " tid: " << get_unix_tid();
 		}
 		cout << endl;
 	}
