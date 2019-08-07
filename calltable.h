@@ -984,6 +984,8 @@ public:
 	void skinnyTablesRemove();
 	
 	void removeFindTables(struct timeval *ts, bool set_end_call = false, bool destroy = false);
+	
+	void destroyCall();
 
 	/**
 	 * @brief remove all RTP 

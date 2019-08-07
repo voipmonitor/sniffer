@@ -720,6 +720,13 @@ Call::removeFindTables(struct timeval *ts, bool set_end_call, bool destroy) {
 }
 
 void
+Call::destroyCall() {
+	this->removeFindTables(NULL, false, true);
+	this->atFinish();
+	this->calls_counter_dec();
+}
+
+void
 Call::addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, long long writeBytes) {
 	_addtofilesqueue(typeSpoolFile, file, dirnamesqlfiles(), writeBytes, getSpoolIndex());
 }
@@ -7041,9 +7048,7 @@ Calltable::destroyCallsIfPcapsClosed() {
 		for(size_t i = 0; i < size;) {
 			Call *call = this->calls_deletequeue[i];
 			if(call->isPcapsClose() && call->isEmptyChunkBuffersCount()) {
-				call->removeFindTables(NULL, false, true);
-				call->atFinish();
-				call->calls_counter_dec();
+				call->destroyCall();
 				delete call;
 				this->calls_deletequeue.erase(this->calls_deletequeue.begin() + i);
 				--size;

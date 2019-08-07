@@ -364,6 +364,7 @@ unsigned int opt_process_rtp_packets_qring_usleep = 10;
 bool opt_process_rtp_packets_qring_force_push = true;
 int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
+bool opt_destroy_calls_in_storing_cdr = false;
 int opt_enable_ss7 = 0;
 int opt_enable_http = 0;
 bool opt_http_cleanup_ext = false;
@@ -1895,7 +1896,13 @@ void *storing_cdr( void */*dummy*/ ) {
 						calltable->audio_queue.push_back(*iter_call);
 						calltable->processCallsInAudioQueue(false);
 					} else {
-						calltable->calls_deletequeue.push_back(*iter_call);
+						if(opt_destroy_calls_in_storing_cdr) {
+							Call *call = *iter_call;
+							call->destroyCall();
+							delete call;
+						} else {
+							calltable->calls_deletequeue.push_back(*iter_call);
+						}
 					}
 					++counter;
 				}
@@ -2026,7 +2033,13 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 				calltable->audio_queue.push_back(*iter_call);
 				calltable->processCallsInAudioQueue(false);
 			} else {
-				calltable->calls_deletequeue.push_back(*iter_call);
+				if(opt_destroy_calls_in_storing_cdr) {
+					Call *call = *iter_call;
+					call->destroyCall();
+					delete call;
+				} else {
+					calltable->calls_deletequeue.push_back(*iter_call);
+				}
 			}
 			++counter;
 		}
@@ -6290,6 +6303,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42161) cConfigItem_yesno("process_rtp_packets_qring_force_push", &opt_process_rtp_packets_qring_force_push));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("destroy_calls_in_storing_cdr", &opt_destroy_calls_in_storing_cdr));
 			setDisableIfEnd();
 	group("manager");
 		addConfigItem(new FILE_LINE(42162) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)));
@@ -10395,6 +10409,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "destroy_calls_period", NULL))) {
 		opt_destroy_calls_period = atoi(value);
+	}
+	if((value = ini.GetValue("general", "destroy_calls_in_storing_cdr", NULL))) {
+		opt_destroy_calls_in_storing_cdr = yesno(value);
 	}
 
 	if((value = ini.GetValue("general", "rtp_qring_length", NULL))) {
