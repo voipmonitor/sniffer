@@ -1789,7 +1789,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				storing_cdr_next_threads_count_mod = 0;
 			}
 			if(storing_cdr_next_threads_count_mod > 0) {
-				syslog(LOG_NOTICE, "storing cdr - add next thread %i", storing_cdr_next_threads_count + 1);
+				syslog(LOG_NOTICE, "storing cdr - creating next thread %i", storing_cdr_next_threads_count + 1);
 				if(!storing_cdr_next_threads_init[storing_cdr_next_threads_count]) {
 					storing_cdr_next_threads_calls[storing_cdr_next_threads_count] = new FILE_LINE(0) list<Call*>;
 					for(int i = 0; i < 2; i++) {
