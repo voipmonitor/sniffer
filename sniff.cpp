@@ -4888,7 +4888,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, const char *file,
 	if(header) {
 		process_packet__last_cleanup_calls_diff = getTimeMS(header) - actTimeMS;
 		if(!doQuickCleanup &&
-		   getTimeS(header) - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : (unsigned)opt_cleanup_calls_period)) {
+		   getTimeS(header) <= (time_t)(process_packet__last_cleanup_calls + (opt_quick_save_cdr ? 1 : (unsigned)opt_cleanup_calls_period))) {
 			return;
 		}
 	}
@@ -4901,7 +4901,7 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, const char *file,
 		ts.tv_usec = corTimeMS % 1000 * 1000;
 	}
 	if(!doQuickCleanup &&
-	   ts.tv_sec - process_packet__last_cleanup_calls < (opt_quick_save_cdr ? 1 : (unsigned)opt_cleanup_calls_period)) {
+	   ts.tv_sec <= (time_t)(process_packet__last_cleanup_calls + (opt_quick_save_cdr ? 1 : opt_cleanup_calls_period))) {
 		return;
 	}
 	if(verbosity > 0 && is_read_from_file_simple()) {
@@ -4913,9 +4913,9 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, const char *file,
 				(int)calltable->calls_list_count(), (int)calltable->calls_queue.size());
 		}
 	}
+	process_packet__last_cleanup_calls = ts.tv_sec;
 	calltable->cleanup_calls(&ts, false, file, line);
 	listening_cleanup();
-	process_packet__last_cleanup_calls = ts.tv_sec;
 	
 	process_packet__last_cleanup_calls__count_sip_bye = count_sip_bye;
 	process_packet__last_cleanup_calls__count_sip_bye_confirmed = count_sip_bye_confirmed;

@@ -744,7 +744,7 @@ void Registers::add(Call *call) {
 }
 
 void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
-	if(!last_cleanup_time) {
+	if(!last_cleanup_time && act_time) {
 		last_cleanup_time = act_time->tv_sec;
 		return;
 	}
