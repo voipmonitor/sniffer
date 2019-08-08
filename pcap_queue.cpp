@@ -228,6 +228,7 @@ static unsigned long maxBypassBufferSize;
 static unsigned long countBypassBufferSizeExceeded;
 static double heapPerc = 0;
 static double heapTrashPerc = 0;
+static unsigned heapFullCounter = 0;
 
 extern MySqlStore *sqlStore;
 extern MySqlStore *loadFromQFiles;
@@ -2480,10 +2481,15 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
 	}
 	
-	if(sverb.abort_if_heap_full &&
-	   (heapPerc + heapTrashPerc) > 98) {
-		syslog(LOG_ERR, "HEAP FULL - ABORT!");
-		abort();
+	if(sverb.abort_if_heap_full) {
+		if((heapPerc + heapTrashPerc) > 98) {
+			if(++heapFullCounter > 10) {
+				syslog(LOG_ERR, "HEAP FULL - ABORT!");
+				abort();
+			}
+		} else {
+			heapFullCounter = 0;
+		}
 	}
 }
 
