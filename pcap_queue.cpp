@@ -1422,11 +1422,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		heapPerc = memoryBufferPerc;
 		double memoryBufferPerc_trash = buffersControl.getPercUsePBtrash();
 		heapTrashPerc = memoryBufferPerc_trash;
-		if(sverb.abort_if_heap_full &&
-		   (memoryBufferPerc + memoryBufferPerc_trash) > 98) {
-			syslog(LOG_ERR, "HEAP FULL - ABORT!");
-			abort();
-		}
 		outStr << fixed;
 		if(sverb.log_profiler) {
 			lapTime.push_back(getTimeMS_rdtsc());
@@ -2483,6 +2478,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		cmdUpdate <<  ":" << rrdLA_15;
 		snprintf(filename, sizeof(filename), "%s/rrd/db-LA.rrd", getRrdDir());
 		vm_rrd_update(filename, cmdUpdate.str().c_str());
+	}
+	
+	if(sverb.abort_if_heap_full &&
+	   (heapPerc + heapTrashPerc) > 98) {
+		syslog(LOG_ERR, "HEAP FULL - ABORT!");
+		abort();
 	}
 }
 
