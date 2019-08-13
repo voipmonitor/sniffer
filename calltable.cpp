@@ -1848,7 +1848,8 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 			if(packetS->datalen_() >= RTP_FIXED_HEADERLEN &&
 			   packetS->header_pt->caplen > (unsigned)(packetS->datalen_() - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = packetS->header_pt->caplen;
-				packetS->header_pt->caplen = packetS->header_pt->caplen - (packetS->datalen_() - RTP_FIXED_HEADERLEN);
+				packetS->header_pt->caplen = min(packetS->header_pt->caplen - (packetS->datalen_() - RTP_FIXED_HEADERLEN),
+					packetS->dataoffset_() + RTP_FIXED_HEADERLEN);
 				save_packet(this, packetS, TYPE_RTP);
 				packetS->header_pt->caplen = tmp_u32;
 			}
