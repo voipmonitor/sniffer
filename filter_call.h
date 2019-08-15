@@ -37,6 +37,30 @@ public:
 };
 
 
+class cRecordFilterItem_CustomHeader : public cRecordFilterItem_CheckString {
+public:
+	cRecordFilterItem_CustomHeader(cRecordFilter *parent, const char *customHeader)
+	 : cRecordFilterItem_CheckString(parent, 0) {
+		this->customHeader = customHeader;
+	}
+	bool check(void *rec, bool *findInBlackList = NULL);
+private:
+	string customHeader;
+};
+
+
+class cRecordFilterItem_Call : public cRecordFilterItem_rec {
+public:
+	cRecordFilterItem_Call(cRecordFilter *parent, const char *filter)
+	 : cRecordFilterItem_rec(parent) {
+		this->filter = filter;
+	}
+	bool check(void *rec, bool *findInBlackList = NULL);
+private:
+	string filter;
+};
+
+
 class cCallFilter : public cRecordFilter {
 public:
 	cCallFilter(const char *filter);

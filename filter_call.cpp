@@ -2,6 +2,41 @@
 #include "calltable.h"
 
 
+extern CustomHeaders *custom_headers_cdr;
+
+
+bool cRecordFilterItem_CustomHeader::check(void *rec, bool *findInBlackList) {
+	if(custom_headers_cdr) {
+		string customHeaderContent = custom_headers_cdr->getValue((Call*)rec, INVITE, customHeader.c_str());
+		if(customHeaderContent.empty() ||
+		   !checkStringData.check(customHeaderContent.c_str(), findInBlackList)) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+
+bool cRecordFilterItem_Call::check(void *rec, bool */*findInBlackList*/) {
+	if(custom_headers_cdr) {
+		map<string, string> custom_headers;
+		custom_headers_cdr->getHeaderValues((Call*)rec, INVITE, &custom_headers);
+		string filter_data = filter;
+		size_t pos[2];
+		while((pos[0] = filter_data.find("{{")) != string::npos &&
+		      (pos[1] = filter_data.find("}}", pos[0])) != string::npos) {
+			string field = filter_data.substr(pos[0] + 2, pos[1] - pos[0] - 2);
+			map<string, string>::iterator iter = custom_headers.find(field);
+			string value = iter != custom_headers.end() ? iter->second : "";
+			filter_data = filter_data.substr(0, pos[0]) + "'" + value + "'" + filter_data.substr(pos[1] + 2);
+		}
+		cEvalFormula f;
+		return(f.e(filter_data.c_str()).getBool());
+	}
+	return(true);
+}
+
+
 cCallFilter::cCallFilter(const char *filter) {
 	setUseRecordArray(false);
 	setFilter(filter);
@@ -141,6 +176,21 @@ void cCallFilter::setFilter(const char *filter) {
 		cRecordFilterItem_numList *filter = new FILE_LINE(0) cRecordFilterItem_numList(this, cf_called_international);
 		filter->addNum(atoi(filterData["international"].c_str()));
 		addFilter(filter);
+	}
+	if(custom_headers_cdr) {
+		list<string> customHeaders;
+		custom_headers_cdr->getHeaders(&customHeaders);
+		for(list<string>::iterator iter = customHeaders.begin(); iter != customHeaders.end(); iter++) {
+			if(!filterData[*iter].empty()) {
+				cRecordFilterItem_CustomHeader *filter = new FILE_LINE(0) cRecordFilterItem_CustomHeader(this, iter->c_str());
+				filter->addWhite(filterData[*iter].c_str());
+				addFilter(filter);
+			}
+		}
+		if(!filterData["custom_headers_cdr_cond"].empty()) {
+			cRecordFilterItem_Call *filter = new FILE_LINE(0) cRecordFilterItem_Call(this, filterData["custom_headers_cdr_cond"].c_str());
+			addFilter(filter);
+		}
 	}
 	if(!filterData["OR"].empty() && atoi(filterData["OR"].c_str())) {
 		setCond(cRecordFilter::_or);

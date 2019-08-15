@@ -5210,6 +5210,11 @@ void test() {
 	 
 	case 1: {
 	 
+		cEvalFormula f(true);
+		f.e("3*(2 * 3 + 4 * 5 + (2+8))");
+		f.e("'abcd' like '%bc%' and 'abcd' like 'abc%' and 'abcd' like '%bcd'");
+		break;
+	 
 		IP ipt("192.168.0.0");
 	 
 		SqlDb *sqlDb0 = createSqlObject();

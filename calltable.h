@@ -304,6 +304,7 @@ enum eCallField {
 	cf_dst_loss_last10sec,
 	cf_id_sensor,
 	cf_vlan,
+	cf_custom_header,
 	cf__max
 };
 
@@ -767,6 +768,7 @@ public:
 	*/
 	map<int, map<int, dstring> > custom_headers_content_cdr;
 	map<int, map<int, dstring> > custom_headers_content_message;
+	volatile int _custom_headers_content_sync;
 
 	volatile int _proxies_lock;
 	list<vmIP> proxies;
@@ -1132,6 +1134,13 @@ public:
 	}
 	void call_id_alternative_unlock() {
 		__sync_lock_release(&this->_call_id_alternative_lock);
+	}
+	
+	void custom_headers_content_lock() {
+		while(__sync_lock_test_and_set(&this->_custom_headers_content_sync, 1));
+	}
+	void custom_headers_content_unlock() {
+		__sync_lock_release(&this->_custom_headers_content_sync);
 	}
 	
 	void forcemark_lock() {
@@ -2129,6 +2138,12 @@ public:
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
 	bool getPosForDbId(unsigned db_id, d_u_int32_t *pos);
 	static tCH_Content *getCustomHeadersCallContent(Call *call, int type);
+	void getHeaders(list<string> *rslt);
+	void getValues(Call *call, int type, list<string> *rslt);
+	void getHeaderValues(Call *call, int type, map<string, string> *rslt);
+	string getValue(Call *call, int type, const char *header);
+	static string tCH_Content_value(tCH_Content *ch_content, int i1, int i2);
+	unsigned getSize();
 private:
 	void lock_custom_headers() {
 		while(__sync_lock_test_and_set(&this->_sync_custom_headers, 1));

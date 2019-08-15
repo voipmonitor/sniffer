@@ -120,7 +120,7 @@ public:
 		}
 		return(true);
 	}
-private:
+protected:
 	ListCheckString_wb checkStringData;
 };
 
@@ -214,6 +214,16 @@ public:
 private:
 	list<int64_t> nums;
 	list<int64_t> nums_not;
+};
+
+class cRecordFilterItem_rec : public cRecordFilterItem_base {
+public:
+	cRecordFilterItem_rec(cRecordFilter *parent)
+	 : cRecordFilterItem_base(parent, 0) {
+	}
+	bool check(void */*rec*/, bool */*findInBlackList*/ = NULL) {
+		return(true);
+	}
 };
 
 class cRecordFilterItems {

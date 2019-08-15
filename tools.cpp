@@ -4021,6 +4021,16 @@ char *strlwr(char *string, u_int32_t maxLength) {
 	return(string);
 }
 
+string strlwr(string str) {
+	string rslt = str;
+	for(size_t i = 0; i < rslt.length(); i++) {
+		if(isupper(rslt[i])) {
+			rslt[i] = tolower(rslt[i]);
+		}
+	}
+	return(rslt);
+}
+
 bool isJsonObject(string str) {
 	return(!str.empty() && str[0] == '{' && str[str.length() - 1] == '}');
 }
@@ -5980,6 +5990,23 @@ int log10int(long int v) {
 	}
 	return(l - 1);
 }
+
+
+cEvalFormula::sLevelOperator cEvalFormula::b_operators[] = {
+	{ 0, "*" }, { 0, "/" },
+	{ 1, "+" }, { 1, "-" },
+	{ 2, "<" }, { 2, "<=" }, { 2, ">" }, { 2, ">=" }, { 2, "==" }, { 2, "!=" }, { 2, "<>" }, { 2, "like" },
+	{ 3, "&&" },
+	{ 4, "||" },
+	{ 5, "and" },
+	{ 6, "or" },
+	{ 0, NULL }
+};
+
+const char *cEvalFormula::u_operators[] = {
+	"not",
+	NULL
+};
 
 
 unsigned RTPSENSOR_VERSION_INT() {

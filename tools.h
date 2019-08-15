@@ -405,6 +405,7 @@ inline bool ip_is_localhost(vmIP ip) { return(ip.isLocalhost()); }
 string hexencode(unsigned char *src, int src_length);
 int hexdecode(unsigned char *dst, const char *src, int max);
 char *strlwr(char *string, u_int32_t maxLength = 0);
+string strlwr(string str);
 bool isJsonObject(string str);
 
 class CircularBuffer
@@ -3328,6 +3329,524 @@ private:
 	map<cItem, u_int32_t> map_items;
 	map<u_int32_t, cItem> map_ids;
 	volatile int _sync;
+};
+
+
+class cEvalFormula {
+public:
+	enum eValueType {
+		_v_na,
+		_v_int,
+		_v_float,
+		_v_string
+	};
+	struct sValue {
+		sValue() {
+			null();
+		}
+		sValue(int v) {
+			null();
+			v_type = _v_int;
+			v_int = v;
+		}
+		sValue(int64_t v) {
+			null();
+			v_type = _v_int;
+			v_int = v;
+		}
+		sValue(double v) {
+			null();
+			v_type = _v_float;
+			v_float = v;
+		}
+		sValue(string v) {
+			null();
+			v_type = _v_string;
+			v_string = v;
+		}
+		void null() {
+			v_type = _v_na;
+			v_int = 0;
+			v_float = 0;
+			v_string = "";
+		}
+		bool isEmpty() {
+			return(v_type == _v_na);
+		}
+		bool getBool() {
+			return(v_type == _v_int ? v_int != 0 :
+			       v_type == _v_float ? v_float != 0 :
+			       v_type == _v_string ? !v_string.empty() : false);
+		}
+		int64_t getInteger() {
+			return(v_type == _v_int ? v_int :
+			       v_type == _v_float ? (int64_t)v_float :
+			       v_type == _v_string ? atoll(v_string.c_str()) : 0);
+		}
+		double getFloat() {
+			return(v_type == _v_int ? (double)v_int :
+			       v_type == _v_float ? v_float :
+			       v_type == _v_string ? atof(v_string.c_str()) : 0);
+		}
+		string getString() {
+			return(v_type == _v_int ? intToString((long long)v_int) :
+			       v_type == _v_float ? floatToString(v_float) :
+			       v_type == _v_string ? v_string : "");
+		}
+		sValue arithm(sValue &v2, string oper) {
+			sValue rslt;
+			if(this->v_type != _v_na && v2.v_type != _v_na) {
+				if(this->v_type == v2.v_type) {
+					rslt.v_type = this->v_type;
+					if(oper == "*") {
+						switch(this->v_type) {
+						case _v_int:
+							rslt.v_int = this->v_int * v2.v_int;
+							break;
+						case _v_float:
+							rslt.v_float = this->v_float * v2.v_int;
+							break;
+						default:
+							break;
+						}
+					} else if(oper == "/") {
+						switch(this->v_type) {
+						case _v_int:
+							if(v2.v_int) {
+								rslt.v_int = this->v_int / v2.v_int;
+							}
+							break;
+						case _v_float:
+							if(v2.v_float) {
+								rslt.v_float = this->v_float / v2.v_float;
+							}
+							break;
+						default:
+							break;
+						}
+					} else if(oper == "+") {
+						switch(this->v_type) {
+						case _v_int:
+							rslt.v_int = this->v_int + v2.v_int;
+							break;
+						case _v_float:
+							rslt.v_float = this->v_float + v2.v_int;
+							break;
+						default:
+							break;
+						}
+					} else if(oper == "-") {
+						switch(this->v_type) {
+						case _v_int:
+							rslt.v_int = this->v_int - v2.v_int;
+							break;
+						case _v_float:
+							rslt.v_float = this->v_float - v2.v_int;
+							break;
+						default:
+							break;
+						}
+					}
+				} else {
+					if(oper == "*") {
+						rslt.v_float = this->getFloat() * v2.getFloat();
+					} else if(oper == "/") {
+						if(v2.getFloat()) {
+							rslt.v_float = this->getFloat() / v2.getFloat();
+						}
+					} else if(oper == "+") {
+						rslt.v_float = this->getFloat() + v2.getFloat();
+					} else if(oper == "-") {
+						rslt.v_float = this->getFloat() - v2.getFloat();
+					}
+				}
+			}
+			return(rslt);
+		}
+		sValue like(sValue pattern_v) {
+			string _pattern = pattern_v.getString();
+			const char *reg_spec_chars = ".\\+*?[^]$(){}=!<>|:-#";
+			string pattern;
+			for(unsigned i = 0; i < _pattern.length(); i++) {
+				if(strchr(reg_spec_chars, _pattern[i])) {
+					pattern += '\\';
+				}
+				pattern += _pattern[i];
+			}
+			if(pattern.length()) {
+				if(pattern[0] == '%') {
+					pattern = ".*" + pattern.substr(1);
+				} else {
+					pattern = "^" + pattern;
+				}
+				if(pattern[pattern.length() - 1] == '%') {
+					pattern = pattern.substr(0, pattern.length() - 1) + ".*";
+				} else {
+					pattern = pattern + "$";
+				}
+				return(sValue(reg_match(this->getString().c_str(), pattern.c_str())));
+			}
+			return(sValue());
+		}
+		friend sValue operator ! (sValue &v) {
+			sValue rslt;
+			if(v.v_type != _v_na) {
+				rslt.v_type = _v_int;
+				rslt.v_int = v.getBool();
+			}
+			return(rslt);
+		}
+		friend sValue operator * (sValue &v1, sValue &v2) {
+			return(v1.arithm(v2, "*"));
+		}
+		friend sValue operator / (sValue &v1, sValue &v2) {
+			return(v1.arithm(v2, "/"));
+		}
+		friend sValue operator + (sValue &v1, sValue &v2) {
+			return(v1.arithm(v2, "+"));
+		}
+		friend sValue operator - (sValue &v1, sValue &v2) {
+			return(v1.arithm(v2, "-"));
+		}
+		friend sValue operator < (sValue &v1, sValue &v2) {
+			return(v1.v_type != _v_na && v2.v_type != _v_na ?
+				sValue(v1.getInteger() < v2.getInteger() ? 1 : 0) :
+				sValue());
+		}
+		friend sValue operator <= (sValue &v1, sValue &v2) {
+			return(v1.v_type != _v_na && v2.v_type != _v_na ?
+				sValue(v1.getInteger() <= v2.getInteger() ? 1 : 0) :
+				sValue());
+		}
+		friend sValue operator > (sValue &v1, sValue &v2) {
+			return(v1.v_type != _v_na && v2.v_type != _v_na ?
+				sValue(v1.getInteger() > v2.getInteger() ? 1 : 0) :
+				sValue());
+		}
+		friend sValue operator >= (sValue &v1, sValue &v2) {
+			return(v1.v_type != _v_na && v2.v_type != _v_na ?
+				sValue(v1.getInteger() >= v2.getInteger() ? 1 : 0) :
+				sValue());
+		}
+		friend sValue operator == (sValue &v1, sValue &v2) {
+			return(v1.v_type != _v_na && v2.v_type != _v_na ?
+				sValue(v1.getInteger() == v2.getInteger() ? 1 : 0) :
+				sValue());
+		}
+		friend sValue operator != (sValue &v1, sValue &v2) {
+			return(v1.v_type != _v_na && v2.v_type != _v_na ?
+				sValue(v1.getInteger() != v2.getInteger() ? 1 : 0) :
+				sValue());
+		}
+		friend sValue operator && (sValue &v1, sValue &v2) {
+			return(v1.v_type != _v_na && v2.v_type != _v_na ?
+				sValue(v1.getInteger() && v2.getInteger() ? 1 : 0) :
+				sValue());
+		}
+		friend sValue operator || (sValue &v1, sValue &v2) {
+			return(v1.v_type != _v_na && v2.v_type != _v_na ?
+				sValue(v1.getInteger() || v2.getInteger() ? 1 : 0) :
+				sValue());
+		}
+		eValueType v_type;
+		int64_t v_int;
+		double v_float;
+		string v_string;
+	};
+	struct sLevelOperator {
+		unsigned level;
+		const char *oper;
+	};
+public:
+	cEvalFormula(bool debug = false) {
+		this->debug = debug;
+	}
+	sValue e(const char *formula, unsigned pos = 0, unsigned level = 0) {
+		unsigned length_max = strlen(formula);
+		sValue operand1;
+		while(pos < length_max) {
+			debug_output(level, string("*** ") + (formula + pos));
+			unsigned pos_operand1_end = 0;
+			string operand1_u_operator = "";
+			bool operand1_bb = false;
+			if(operand1.isEmpty()) {
+				operand1 = getOperand(formula, pos, &pos_operand1_end, &operand1_u_operator);
+				if(operand1.isEmpty()) {
+					operand1 = getBracketsBlock(formula, pos, &pos_operand1_end, &operand1_u_operator);
+					if(!operand1.isEmpty()) {
+						operand1_bb = true;
+					}
+				}
+			} else {
+				pos_operand1_end = pos;
+			}
+			debug_output(level, "operand1: " + operand1.getString());
+			if(operand1_bb) {
+				operand1 = e(operand1.getString().c_str(), 0, level + 1);
+				debug_output(level, "operand1: " + operand1.getString());
+			}
+			if(operand1.isEmpty()) {
+				return(sValue());
+			} else if(!operand1_u_operator.empty()) {
+				operand1 = e_u_operator(operand1, operand1_u_operator);
+				debug_output(level, "operand1: (" + operand1_u_operator + ") " + operand1.getString());
+			}
+			unsigned pos_operator1_end = 0;
+			unsigned operator1_level = 0;
+			string operator1 = getB_Operator(formula, pos_operand1_end, &pos_operator1_end, &operator1_level);
+			debug_output(level, "operator1: " + operator1 + " / " + intToString(operator1_level));
+			if(operator1.empty()) {
+				return(operand1);
+			}
+			unsigned pos_operand2_end = 0;
+			string operand2_u_operator = "";
+			bool operand2_bb = false;
+			sValue operand2 = getOperand(formula, pos_operator1_end, &pos_operand2_end, &operand2_u_operator);
+			if(operand2.isEmpty()) {
+				operand2 = getBracketsBlock(formula, pos_operator1_end, &pos_operand2_end, &operand2_u_operator);
+				if(!operand2.isEmpty()) {
+					operand2_bb = true;
+				}
+			}
+			debug_output(level, "operand2: " + operand2.getString());
+			if(operand2_bb) {
+				operand2 = e(operand2.getString().c_str(), 0, level + 1);
+				debug_output(level, "operand2: " + operand2.getString());
+			}
+			if(operand2.isEmpty()) {
+				return(operand1);
+			} else if(!operand2_u_operator.empty()) {
+				operand2 = e_u_operator(operand2, operand2_u_operator);
+				debug_output(level, "operand2: (" + operand2_u_operator + ") " + operand2.getString());
+			}
+			unsigned pos_operator2_end = 0; 
+			unsigned operator2_level = 0;
+			string operator2 = getB_Operator(formula, pos_operand2_end, &pos_operator2_end, &operator2_level);
+			debug_output(level, "operator2: " + operator2 + " / " + intToString(operator2_level));
+			if(!operator2.empty()) {
+				if(operator2_level < operator1_level) {
+					operand2 = e(formula, pos_operator1_end, level + 1);
+					sValue rslt = e_b_operator(operand1, operand2, operator1);
+					debug_output(level, "rslt: " + rslt.getString());
+					return(rslt);
+				} else {
+					operand1 = e_b_operator(operand1, operand2, operator1);
+					pos = pos_operand2_end;
+				}
+			} else {
+				sValue rslt = e_b_operator(operand1, operand2, operator1);
+				debug_output(level, "rslt: " + rslt.getString());
+				return(rslt);
+			}
+		}
+		return(sValue());
+	}
+	sValue e_u_operator(sValue operand, string oper) {
+		oper = strlwr(oper);
+		if(oper == "not") {
+			return(!operand);
+		}
+		return(sValue());
+	}
+	sValue e_b_operator(sValue operand1, sValue operand2, string oper) {
+		oper = strlwr(oper);
+		if(oper == "*") {
+			return(operand1 * operand2);
+		} else if(oper == "/") {
+			return(operand1 / operand2);
+		} else if(oper == "+") {
+			return(operand1 + operand2);
+		} else if(oper == "-") {
+			return(operand1 - operand2);
+		} else if(oper == "<") {
+			return(operand1 < operand2);
+		} else if(oper == "<=") {
+			return(operand1 <= operand2);
+		} else if(oper == ">") {
+			return(operand1 > operand2);
+		} else if(oper == ">=") {
+			return(operand1 >= operand2);
+		} else if(oper == "==") {
+			return(operand1 == operand2);
+		} else if(oper == "!=" || oper == "<>") {
+			return(operand1 != operand2);
+		} else if(oper == "like") {
+			return(operand1.like(operand2));
+		} else if(oper == "&&" || oper == "and") {
+			return(operand1 && operand2);
+		} else if(oper == "||" || oper == "or") {
+			return(operand1 || operand2);
+		}
+		return(sValue());
+	}
+	sValue getOperand(const char *formula, unsigned pos, unsigned *pos_end, string *u_operator) {
+		unsigned _pos_end;
+		*u_operator = getU_Operator(formula, pos, &_pos_end);
+		if(!u_operator->empty()) {
+			pos = _pos_end;
+		}
+		unsigned length = 0;
+		unsigned length_space = 0;
+		unsigned length_max = strlen(formula);
+		for(unsigned i = 0; (pos + i) < length_max && isSpace(formula[pos + i]); i++) {
+			++length_space;
+		}
+		pos += length_space;
+		char typeOperand = 0;
+		if(isDigit(formula[pos])) {
+			typeOperand = 'n';
+		} else if(formula[pos] == '"' || formula[pos] == '\'') {
+			typeOperand = 's';
+		} else {
+			return(sValue());
+		}
+		for(unsigned i = 0; (pos + i) < length_max; i++) {
+			if(typeOperand == 'n') {
+				if(isDigit(formula[pos + i])) {
+					++length;
+				} else {
+					break;
+				}
+			} else {
+				++length;
+				if(i > 0 && formula[pos + i] == formula[pos]) {
+					break;
+				}
+			}
+		}
+		if(length) {
+			*pos_end = pos + length;
+			return(typeOperand == 'n' ?
+				(string(formula + pos, length).find('.') != string::npos ? 
+				  sValue(atof(string(formula + pos, length).c_str())) :
+				  sValue((int64_t)atoll(string(formula + pos, length).c_str()))) :
+				sValue(string(formula + pos + 1, length - 2)));
+		} else {
+			return(sValue());
+		}
+	}
+	string getBracketsBlock(const char *formula, unsigned pos, unsigned *pos_end, string *u_operator) {
+		unsigned _pos_end;
+		*u_operator = getU_Operator(formula, pos, &_pos_end);
+		if(!u_operator->empty()) {
+			pos = _pos_end;
+		}
+		unsigned length = 0;
+		unsigned length_space = 0;
+		unsigned length_max = strlen(formula);
+		for(unsigned i = 0; (pos + i) < length_max && isSpace(formula[pos + i]); i++) {
+			++length_space;
+		}
+		pos += length_space;
+		int brackets = 0;
+		for(unsigned i = 0; (pos + i) < length_max; i++) {
+			if(brackets == 0 && length == 0 && isLeftBracket(formula[pos + i])) {
+				brackets = 1;
+				++length;
+			} else if(isLeftBracket(formula[pos + i])) {
+				++brackets;
+				++length;
+			} else if(isRightBracket(formula[pos + i])) {
+				--brackets;
+				++length;
+				if(brackets == 0) {
+					break;
+				}
+			} else {
+				++length;
+			}
+		}
+		if(length && brackets == 0) {
+			*pos_end = pos + length;
+			return(string(formula + pos + 1, length - 2));
+		} else {
+			return("");
+		}
+	}
+	string getU_Operator(const char *formula, unsigned pos, unsigned *pos_end) {
+		unsigned length = 0;
+		unsigned length_space = 0;
+		unsigned length_max = strlen(formula);
+		for(unsigned i = 0; (pos + i) < length_max && isSpace(formula[pos + i]); i++) {
+			++length_space;
+		}
+		pos += length_space;
+		for(unsigned i = 0; (pos + i) < length_max; i++) {
+			if(!isDigit(formula[pos + i]) &&
+			   !isBrackets(formula[pos + i]) &&
+			   !isSpace(formula[pos + i])) {
+				++length;
+			} else {
+				break;
+			}
+		}
+		if(length) {
+			string tryOperator = strlwr(string(formula + pos, length));
+			for(unsigned i = 0; u_operators[i]; i++) {
+				if(tryOperator == u_operators[i]) {
+					*pos_end = pos + length;
+					return(tryOperator);
+				}
+			}
+		}
+		return("");
+	}
+	string getB_Operator(const char *formula, unsigned pos, unsigned *pos_end, unsigned *level) {
+		unsigned length = 0;
+		unsigned length_space = 0;
+		unsigned length_max = strlen(formula);
+		for(unsigned i = 0; (pos + i) < length_max && isSpace(formula[pos + i]); i++) {
+			++length_space;
+		}
+		pos += length_space;
+		for(unsigned i = 0; (pos + i) < length_max; i++) {
+			if(!isDigit(formula[pos + i]) &&
+			   !isBrackets(formula[pos + i]) &&
+			   !isSpace(formula[pos + i])) {
+				++length;
+			} else {
+				break;
+			}
+		}
+		if(length) {
+			string tryOperator = strlwr(string(formula + pos, length));
+			for(unsigned i = 0; b_operators[i].oper; i++) {
+				if(tryOperator == b_operators[i].oper) {
+					*level = b_operators[i].level;
+					*pos_end = pos + length;
+					return(tryOperator);
+				}
+			}
+		}
+		return("");
+	}
+	bool isSpace(char ch) {
+		return(ch == ' ' || ch == '\t');
+	}
+	bool isDigit(char ch) {
+		return((ch >= '0' && ch <= '9') || ch == '.');
+	}
+	bool isLeftBracket(char ch) {
+		return(ch == '(');
+	}
+	bool isRightBracket(char ch) {
+		return(ch == ')');
+	}
+	bool isBrackets(char ch) {
+		return(isLeftBracket(ch) || isRightBracket(ch));
+	}
+	void debug_output(unsigned level, string debug_str) {
+		if(debug) {
+			for(unsigned i = 0; i < level * 3; i++) {
+				cout << ' ';
+			}
+			cout << debug_str << endl;
+		}
+	}
+private:
+	static sLevelOperator b_operators[];
+	static const char *u_operators[];
+	bool debug;
 };
 
 

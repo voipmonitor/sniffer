@@ -587,6 +587,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "CREATE CALL %s", this->call_id.c_str());
 	}
+	_custom_headers_content_sync = 0;
 	_forcemark_lock = 0;
 	_proxies_lock = 0;
 	a_mos_lqo = -1;
@@ -1848,7 +1849,8 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 			if(packetS->datalen_() >= RTP_FIXED_HEADERLEN &&
 			   packetS->header_pt->caplen > (unsigned)(packetS->datalen_() - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = packetS->header_pt->caplen;
-				packetS->header_pt->caplen = packetS->header_pt->caplen - (packetS->datalen_() - RTP_FIXED_HEADERLEN);
+				packetS->header_pt->caplen = min(packetS->header_pt->caplen - (packetS->datalen_() - RTP_FIXED_HEADERLEN),
+								 packetS->dataoffset_() + RTP_FIXED_HEADERLEN);
 				save_packet(this, packetS, TYPE_RTP);
 				packetS->header_pt->caplen = tmp_u32;
 			}
@@ -3584,13 +3586,28 @@ string Call::getJsonHeader() {
 		}
 		header += '"' + string(callFields[i].fieldName) + '"';
 	}
+	if(custom_headers_cdr) {
+		list<string> headers;
+		custom_headers_cdr->getHeaders(&headers);
+		for(list<string>::iterator iter = headers.begin(); iter != headers.end(); iter++) {
+			header += ",\"" + *iter + '"';
+		}
+	}
 	header += "]";
 	return(header);
 }
 
 void Call::getRecordData(RecordArray *rec) {
-	for(unsigned i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
+	unsigned i;
+	for(i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
 		getValue(callFields[i].fieldType, &rec->fields[i]);
+	}
+	if(custom_headers_cdr) {
+		list<string> values;
+		custom_headers_cdr->getValues(this, INVITE, &values);
+		for(list<string>::iterator iter = values.begin(); iter != values.end(); iter++) {
+			rec->fields[i++].set(iter->c_str());
+		}
 	}
 }
 
@@ -7161,7 +7178,13 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			*zip = false;
 		}
 	}
-	list<RecordArray> records;
+	unsigned custom_headers_size = 0;
+	unsigned custom_headers_reserve = 0;
+	if(custom_headers_cdr) {
+		custom_headers_size = custom_headers_cdr->getSize();
+		custom_headers_reserve = 5;
+	}
+	list<RecordArray*> records;
 	u_int32_t counter = 0;
 	map<int32_t, u_int32_t> sensor_map;
 	map<vmIP, u_int32_t> ip_src_map;
@@ -7211,10 +7234,11 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				}
 				if(okCallFilters) {
 					if(limit != 0) {
-						RecordArray rec(sizeof(callFields) / sizeof(callFields[0]));
-						call->getRecordData(&rec);
-						rec.sortBy = sortByIndex;
-						rec.sortBy2 = convCallFieldToFieldIndex(cf_calldate_num);
+						RecordArray *rec = new FILE_LINE(0) RecordArray(sizeof(callFields) / sizeof(callFields[0]) + 
+												custom_headers_size + custom_headers_reserve);
+						call->getRecordData(rec);
+						rec->sortBy = sortByIndex;
+						rec->sortBy2 = convCallFieldToFieldIndex(cf_calldate_num);
 						records.push_back(rec);
 					} else {
 						++counter;
@@ -7298,13 +7322,13 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		if(sortByIndex >= 0) {
 			records.sort();
 		}
-		list<RecordArray>::iterator iter_rec = sortDesc ? records.end() : records.begin();
+		list<RecordArray*>::iterator iter_rec = sortDesc ? records.end() : records.begin();
 		if(sortDesc) {
 			iter_rec--;
 		}
 		u_int32_t counter = 0;
 		while(counter < records.size() && iter_rec != records.end()) {
-			table += "," + iter_rec->getJson();
+			table += "," + (*iter_rec)->getJson();
 			if(sortDesc) {
 				if(iter_rec != records.begin()) {
 					iter_rec--;
@@ -7323,8 +7347,9 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 	} else {
 		table = total;
 	}
-	for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); iter_rec++) {
-		iter_rec->free();
+	for(list<RecordArray*>::iterator iter_rec = records.begin(); iter_rec != records.end(); iter_rec++) {
+		(*iter_rec)->free();
+		delete *iter_rec;
 	}
 	if(callFilters.size()) {
 		for(unsigned i = 0; i < callFilters.size(); i++) {
@@ -8356,6 +8381,9 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 	ParsePacket::ppContentsX *parseContents = &packetS->parseContents;
 
 	lock_custom_headers();
+	if(call) {
+		call->custom_headers_content_lock();
+	}
 	unsigned long gettagLimitLen = 0;
 	map<int, map<int, sCustomHeaderData> >::iterator iter;
 	for(iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
@@ -8467,6 +8495,9 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 			}
 		}
 	}
+	if(call) {
+		call->custom_headers_content_unlock();
+	}
 	unlock_custom_headers();
 }
 
@@ -8503,6 +8534,9 @@ void CustomHeaders::prepareSaveRows(Call *call, int type, tCH_Content *ch_conten
 			return;
 		}
 	}
+	if(call) {
+		call->custom_headers_content_lock();
+	}
 	tCH_Content::iterator iter;
 	for(iter = ch_content->begin(); iter != ch_content->end(); iter++) {
 		if(iter->first > CDR_NEXT_MAX) {
@@ -8527,6 +8561,9 @@ void CustomHeaders::prepareSaveRows(Call *call, int type, tCH_Content *ch_conten
 				cdr_next_ch[iter->first - 1].add(sqlEscapeString(iter2->second[1]), fieldName);
 			}
 		}
+	}
+	if(call) {
+		call->custom_headers_content_unlock();
 	}
 }
 
@@ -8771,6 +8808,91 @@ CustomHeaders::tCH_Content *CustomHeaders::getCustomHeadersCallContent(Call *cal
 	       type == MESSAGE ? 
 		&call->custom_headers_content_message :
 		NULL);
+}
+
+void CustomHeaders::getHeaders(list<string> *rslt) {
+	lock_custom_headers();
+	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			if(!iter->first) {
+				rslt->push_back("custom_header__" + iter2->second.header);
+			} else {
+				rslt->push_back("custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first));
+			}
+		}
+	}
+	unlock_custom_headers();
+}
+
+void CustomHeaders::getValues(Call *call, int type, list<string> *rslt) {
+	lock_custom_headers();
+	call->custom_headers_content_lock();
+	tCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			rslt->push_back(tCH_Content_value(ch_content, iter->first, iter2->first));
+		}
+	}
+	call->custom_headers_content_unlock();
+	unlock_custom_headers();
+}
+
+void CustomHeaders::getHeaderValues(Call *call, int type, map<string, string> *rslt) {
+	lock_custom_headers();
+	call->custom_headers_content_lock();
+	tCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			if(!iter->first) {
+				(*rslt)["custom_header__" + iter2->second.header] = tCH_Content_value(ch_content, iter->first, iter2->first);
+			} else {
+				(*rslt)["custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first)] = tCH_Content_value(ch_content, iter->first, iter2->first);
+			}
+		}
+	}
+	call->custom_headers_content_unlock();
+	unlock_custom_headers();
+}
+
+string CustomHeaders::getValue(Call *call, int type, const char *header) {
+	string rslt;
+	lock_custom_headers();
+	call->custom_headers_content_lock();
+	tCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end() && rslt.empty(); iter++) {
+		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end() && rslt.empty(); iter2++) {
+			string cmpHeaderName = !iter->first ?
+						"custom_header__" + iter2->second.header :
+						"custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first);
+			if(header == cmpHeaderName) {
+				rslt = tCH_Content_value(ch_content, iter->first, iter2->first);
+			}
+		}
+	}
+	call->custom_headers_content_unlock();
+	unlock_custom_headers();
+	return(rslt);
+}
+
+string CustomHeaders::tCH_Content_value(tCH_Content *ch_content, int i1, int i2) {
+	tCH_Content::iterator iter = ch_content->find(i1);
+	if(iter != ch_content->end()) {
+		map<int, dstring>::iterator iter2 = iter->second.find(i2);
+		if(iter2 != iter->second.end()) {
+			return(iter2->second[1]);
+		}
+	}
+	return("");
+}
+
+unsigned CustomHeaders::getSize() {
+	unsigned size = 0;
+	lock_custom_headers();
+	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		size += iter->second.size();
+	}
+	unlock_custom_headers();
+	return(size);
 }
 
 
