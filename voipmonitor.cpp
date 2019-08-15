@@ -218,6 +218,7 @@ int opt_saverfc2833 = 0;
 int opt_silencedetect = 0;
 int opt_clippingdetect = 0;
 int opt_dbdtmf = 0;
+int opt_pcapdtmf = 1;
 int opt_inbanddtmf = 0;
 int opt_fasdetect = 0;
 int opt_sipalg_detect = 0;
@@ -6654,6 +6655,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42310) cConfigItem_yesno("rtp-firstleg", &opt_rtp_firstleg));
 			addConfigItem(new FILE_LINE(42311) cConfigItem_yesno("saverfc2833", &opt_saverfc2833));
 			addConfigItem(new FILE_LINE(42312) cConfigItem_yesno("dtmf2db", &opt_dbdtmf));
+			addConfigItem(new FILE_LINE(42312) cConfigItem_yesno("dtmf2pcap", &opt_pcapdtmf));
 			addConfigItem(new FILE_LINE(42313) cConfigItem_yesno("inbanddtmf", &opt_inbanddtmf));
 			addConfigItem(new FILE_LINE(42314) cConfigItem_integer("silencethreshold", &opt_silencethreshold));
 			addConfigItem(new FILE_LINE(42315) cConfigItem_yesno("sipalg_detect", &opt_sipalg_detect));
@@ -9167,14 +9169,14 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "saverfc2833", NULL))) {
 		opt_saverfc2833 = yesno(value);
 	}
-	if((value = ini.GetValue("general", "dtmf2db", NULL))) {
-		opt_dbdtmf = yesno(value);
-	}
 	if((value = ini.GetValue("general", "inbanddtmf", NULL))) {
 		opt_inbanddtmf = yesno(value);
 	}
 	if((value = ini.GetValue("general", "dtmf2db", NULL))) {
 		opt_dbdtmf = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dtmf2pcap", NULL))) {
+		opt_pcapdtmf = yesno(value);
 	}
 	if((value = ini.GetValue("general", "saveudptl", NULL))) {
 		opt_saveudptl = yesno(value);

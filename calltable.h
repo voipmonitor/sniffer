@@ -92,7 +92,8 @@
 #define FLAG_RUNBMOSLQO		(1 << 12)
 #define FLAG_HIDEMESSAGE	(1 << 13)
 #define FLAG_USE_SPOOL_2	(1 << 14)
-#define FLAG_SAVEDTMF		(1 << 15)
+#define FLAG_SAVEDTMFDB		(1 << 15)
+#define FLAG_SAVEDTMFPCAP	(1 << 16)
 
 #define CDR_NEXT_MAX 10
 
@@ -122,7 +123,7 @@
 #define iscaller_description(iscaller) (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "unknown"))
 #define iscaller_inv_description(iscaller) (iscaller > 0 ? "called" : (iscaller == 0 ? "caller" : "unknown"))
 
-#define enable_save_dtmf	(flags & FLAG_SAVEDTMF)
+#define enable_save_dtmf	(flags & FLAG_SAVEDTMFDB)
 
 struct s_dtmf {
 	enum e_type {

@@ -74,8 +74,10 @@ unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 	if(baseRow->reg == 1)			flags |= FLAG_REGISTER;
 	else if(baseRow->reg == 0)		flags |= FLAG_NOREGISTER;
 
-	if(baseRow->dtmf == 1)			flags |= FLAG_DTMF;
-	else if(baseRow->dtmf == 0)		flags |= FLAG_NODTMF;
+	if(baseRow->dtmf == 1)			flags |= FLAG_DTMF_DB | FLAG_DTMF_PCAP;
+	else if(baseRow->dtmf == 0)		flags |= FLAG_NODTMF_DB | FLAG_NODTMF_PCAP;
+	else if(baseRow->dtmf == 2)		flags |= FLAG_DTMF_DB | FLAG_NODTMF_PCAP;
+	else if(baseRow->dtmf == 3)		flags |= FLAG_DTMF_PCAP | FLAG_NODTMF_DB;
 	
 	if(baseRow->graph == 1)			flags |= FLAG_GRAPH;
 	else if(baseRow->graph == 0)		flags |= FLAG_NOGRAPH;
@@ -118,8 +120,10 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned int *callFlags, 
 	if(filterFlags & FLAG_REGISTER)					*callFlags |= FLAG_SAVEREGISTER;
 	if(filterFlags & FLAG_NOREGISTER)				*callFlags &= ~FLAG_SAVEREGISTER;
 
-	if(filterFlags & FLAG_DTMF)					*callFlags |= FLAG_SAVEDTMF;
-	if(filterFlags & FLAG_NODTMF)					*callFlags &= ~FLAG_SAVEDTMF;
+	if(filterFlags & FLAG_DTMF_DB)					*callFlags |= FLAG_SAVEDTMFDB;
+	if(filterFlags & FLAG_NODTMF_DB)				*callFlags &= ~FLAG_SAVEDTMFDB;
+	if(filterFlags & FLAG_DTMF_PCAP)				*callFlags |= FLAG_SAVEDTMFPCAP;
+	if(filterFlags & FLAG_NODTMF_PCAP)				*callFlags &= ~FLAG_SAVEDTMFPCAP;
 	
 	if(filterFlags & FLAG_AUDIO)					*callFlags |= FLAG_SAVEAUDIO;
 	if(filterFlags & FLAG_AUDIO_WAV)				{*callFlags |= FLAG_SAVEAUDIO_WAV; *callFlags &= ~FLAG_FORMATAUDIO_OGG;}

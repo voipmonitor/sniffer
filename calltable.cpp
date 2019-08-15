@@ -1367,7 +1367,9 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	} else {
 		return(false);
 	}
-	
+	if (curpayload == 101 && !(this->flags & FLAG_SAVEDTMFPCAP)) {
+		*disable_save = true;
+	}
 	// chekc if packet is DTMF and saverfc2833 is enabled 
 	if(opt_saverfc2833 and curpayload == 101) {
 		*record_dtmf = true;
@@ -9349,7 +9351,8 @@ string printCallFlags(unsigned int flags) {
 	if(flags & FLAG_RUNBMOSLQO)		outStr << "runbmoslqo ";
 	if(flags & FLAG_HIDEMESSAGE)		outStr << "hidemessage ";
 	if(flags & FLAG_USE_SPOOL_2)		outStr << "use_spool_2 ";
-	if(flags & FLAG_SAVEDTMF)		outStr << "savedtmf ";
+	if(flags & FLAG_SAVEDTMFDB)		outStr << "savedtmfdb ";
+	if(flags & FLAG_SAVEDTMFPCAP)		outStr << "savedtmfpcap ";
 	return(outStr.str());
 }
 
