@@ -2966,7 +2966,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	bool called_invite_detected = false;
 	char to[1024] = "";
 	bool to_detected = false;
-	
+	bool dont_save = false;
+
 	s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
 	if(s && l <= 1023) {
 		strncpy(contenttypestr, s, l);
@@ -3771,24 +3772,34 @@ void process_packet_sip_call(packet_s_process *packetS) {
 
 	if(packetS->sip_method == INFO) {
 		s = gettag_sip(packetS, "\nSignal:", &l);
-		if(s && l < 33) {
-			char *tmp = s + 1;
-			char tmp2 = tmp[l - 1];
-			tmp[l - 1] = '\0';
-			if(verbosity >= 2)
-				syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-			call->handle_dtmf(*tmp, ts2double(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec), packetS->saddr_(), packetS->daddr_(), s_dtmf::sip_info);
-			tmp[l - 1] = tmp2;
+		if(s && l < 33 && call) {
+			if (call->flags & FLAG_SAVEDTMFDB) {
+				char *tmp = s + 1;
+				char tmp2 = tmp[l - 1];
+				tmp[l - 1] = '\0';
+				if(verbosity >= 2)
+					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
+				call->handle_dtmf(*tmp, ts2double(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec), packetS->saddr_(), packetS->daddr_(), s_dtmf::sip_info);
+				tmp[l - 1] = tmp2;
+			}
+			if (!(call->flags & FLAG_SAVEDTMFPCAP)) {
+				dont_save = true;
+			}
 		}
 		s = gettag_sip(packetS, "Signal=", &l);
-		if(s && l < 33) {
-			char *tmp = s;
-			char tmp2 = tmp[l];
-			tmp[l] = '\0';
-			if(verbosity >= 2)
-				syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
-			call->handle_dtmf(*tmp, ts2double(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec), packetS->saddr_(), packetS->daddr_(), s_dtmf::sip_info);
-			tmp[l] = tmp2;
+		if(s && l < 33 && call) {
+			if (call->flags & FLAG_SAVEDTMFDB) {
+				char *tmp = s;
+				char tmp2 = tmp[l];
+				tmp[l] = '\0';
+				if(verbosity >= 2)
+					syslog(LOG_NOTICE, "[%s] DTMF SIP INFO [%c]", call->fbasename, tmp[0]);
+				call->handle_dtmf(*tmp, ts2double(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec), packetS->saddr_(), packetS->daddr_(), s_dtmf::sip_info);
+				tmp[l] = tmp2;
+			}
+			if (!(call->flags & FLAG_SAVEDTMFPCAP)) {
+				dont_save = true;
+			}
 		}
 	}
 	
@@ -3914,7 +3925,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 
 endsip_save_packet:
-	save_packet(call, packetS, TYPE_SIP);
+	if (!dont_save) {
+		save_packet(call, packetS, TYPE_SIP);
+	}
 
 endsip:
 	if(_save_sip_history && call) {

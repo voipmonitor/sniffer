@@ -39,8 +39,10 @@
 #define FLAG_HIDEMSG	(1 << 23)
 #define FLAG_SHOWMSG	(1 << 24)
 #define FLAG_SPOOL_2	(1 << 25)
-#define FLAG_DTMF	(1 << 26)
-#define FLAG_NODTMF	(1 << 27)
+#define FLAG_DTMF_DB	(1 << 26)
+#define FLAG_NODTMF_DB	(1 << 27)
+#define FLAG_DTMF_PCAP	(1 << 28)
+#define FLAG_NODTMF_PCAP	(1 << 29)
 
 #define MAX_PREFIX 64
 
@@ -307,6 +309,7 @@ inline void set_global_flags(volatile unsigned int &flags) {
 	extern int opt_skipdefault;
 	extern int opt_hide_message_content;
 	extern int opt_dbdtmf;
+	extern int opt_pcapdtmf;
 	extern bool opt_sip_register_save_all;
 	
 	if(opt_saveSIP) {
@@ -337,7 +340,10 @@ inline void set_global_flags(volatile unsigned int &flags) {
 		flags |= FLAG_SAVEREGISTER;
 	}
 	if (opt_dbdtmf) {
-		flags |= FLAG_SAVEDTMF;
+		flags |= FLAG_SAVEDTMFDB;
+	}
+	if (opt_pcapdtmf) {
+		flags |= FLAG_SAVEDTMFPCAP;
 	}
 }
 
