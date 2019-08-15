@@ -123,7 +123,8 @@
 #define iscaller_description(iscaller) (iscaller > 0 ? "caller" : (iscaller == 0 ? "called" : "unknown"))
 #define iscaller_inv_description(iscaller) (iscaller > 0 ? "called" : (iscaller == 0 ? "caller" : "unknown"))
 
-#define enable_save_dtmf	(flags & FLAG_SAVEDTMFDB)
+#define enable_save_dtmf_db		(flags & FLAG_SAVEDTMFDB)
+#define enable_save_dtmf_pcap(call)	(call->flags & FLAG_SAVEDTMFPCAP)
 
 struct s_dtmf {
 	enum e_type {

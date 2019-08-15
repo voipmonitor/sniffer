@@ -1367,7 +1367,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	} else {
 		return(false);
 	}
-	if (curpayload == 101 && !(this->flags & FLAG_SAVEDTMFPCAP)) {
+	if (curpayload == 101 && !enable_save_dtmf_pcap(this)) {
 		*disable_save = true;
 	}
 	// chekc if packet is DTMF and saverfc2833 is enabled 
@@ -4603,7 +4603,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += string("") +
 					(opt_cdr_country_code ? "  delete from cdr_country_code where cdr_id = @exists_call_id;\n" : "") +
 					"  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
-					(enable_save_dtmf ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
+					(enable_save_dtmf_db ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
 					"  delete from cdr_sipresp where cdr_id = @exists_call_id;\n" +
 					(opt_pcap_dump_tar ? "  delete from cdr_tar_part where cdr_id = @exists_call_id;\n" : "") +
 					"  set @exists_call_id = 0;\n" +
@@ -4789,7 +4789,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 
-		if(enable_save_dtmf) {
+		if(enable_save_dtmf_db) {
 			vector<SqlDb_row> dtmf_rows;
 			while(dtmf_history.size()) {
 				s_dtmf q;
@@ -5148,7 +5148,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		if(enable_save_dtmf) {
+		if(enable_save_dtmf_db) {
 			while(dtmf_history.size()) {
 				s_dtmf q;
 				q = dtmf_history.front();
@@ -7849,7 +7849,7 @@ void Call::saveregister(struct timeval *currtime) {
 void
 Call::handle_dtmf(char dtmf, double dtmf_time, vmIP saddr, vmIP daddr, s_dtmf::e_type dtmf_type) {
 
-	if(enable_save_dtmf) {
+	if(enable_save_dtmf_db) {
 		s_dtmf q;
 		q.dtmf = dtmf;
 		q.ts = dtmf_time - ts2double(first_packet_time, first_packet_usec);
