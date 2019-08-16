@@ -1172,7 +1172,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 
 	/* in case there was packet loss we must predict lastTimeStamp to not add nonexistant delays */
 	forcemark = 0;
-	if(last_seq != 0 and ((last_seq + 1) != seq)) {
+	if(last_seq != 0 and (ROT_SEQ(last_seq + 1) != seq)) {
 		if(s->lastTimeStamp == getTimestamp() - samplerate / 1000 * packetization) {
 			// there was packet loss but the timestamp is like there was no packet loss 
 
@@ -1191,7 +1191,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				ast_jb_destroy(channel_fix2);
 			}
 
-			forcemark = 1;
+			forcemark = _forcemark_diff_seq;
 		} else {
 	
 			// this fixes jumps in .graph in case of pcaket loss 	
@@ -1354,7 +1354,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		}
 
 		forcemark_by_owner = false;
-		forcemark  = 1;
+		forcemark = _forcemark_sip_sdp;
 
 		// this fixes jumps in .graph in case of pcaket loss 	
 /*
@@ -1578,7 +1578,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	}
 
 	if(packetization_iterator == 0) {
-		if(last_ts != 0 && seq == (last_seq + 1) && (prev_codec != PAYLOAD_TELEVENT && codec != PAYLOAD_TELEVENT) && !sid && !prev_sid) {
+		if(last_ts != 0 && seq == ROT_SEQ(last_seq + 1) && (prev_codec != PAYLOAD_TELEVENT && codec != PAYLOAD_TELEVENT) && !sid && !prev_sid) {
 			// sequence numbers are ok, we can calculate packetization
 			if(curpayload == PAYLOAD_G729) {
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
@@ -1711,7 +1711,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			}
 		}
 	} else if(packetization_iterator == 1) {
-		if(last_ts != 0 && seq == (last_seq + 1) && codec != PAYLOAD_TELEVENT && prev_codec != PAYLOAD_TELEVENT && !sid && !prev_sid) {
+		if(last_ts != 0 && seq == ROT_SEQ(last_seq + 1) && codec != PAYLOAD_TELEVENT && prev_codec != PAYLOAD_TELEVENT && !sid && !prev_sid) {
 			// sequence numbers are ok, we can calculate packetization
 			if(curpayload == PAYLOAD_G729) {
 				// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
@@ -1819,7 +1819,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			}
 		}
 	} else {
-		if(last_ts != 0 and seq == (last_seq + 1) and codec != PAYLOAD_TELEVENT and !getMarker() and prev_payload_len > 8) {
+		if(last_ts != 0 and seq == ROT_SEQ(last_seq + 1) and codec != PAYLOAD_TELEVENT and !getMarker() and prev_payload_len > 8) {
 			// packetization can change over time
 			int curpacketization = 0;
 

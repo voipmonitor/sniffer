@@ -115,6 +115,9 @@ The RTP header has the following format:
 #define MAX_MISORDER 100
 #define MAX_DROPOUT 3000
 
+#define ROT_SEQ(seq) ((seq) & (RTP_SEQ_MOD - 1))
+
+
 struct RTPFixedHeader {
 #if     __BYTE_ORDER == __BIG_ENDIAN
 	// For big endian boxes
@@ -180,6 +183,13 @@ struct RTPMAP {
 	u_int16_t payload;
 	u_int16_t codec;
 	u_int16_t frame_size;
+};
+
+
+enum eRtpMarkType {
+	_mark_rtp = 1,
+	_forcemark_diff_seq = 2,
+	_forcemark_sip_sdp = 3
 };
 
 
@@ -255,8 +265,8 @@ public:
 	unsigned int first_packet_usec;
 	unsigned int last_end_timestamp;
 	char lastdtmf;
-	bool forcemark;
-	bool forcemark2;
+	u_int8_t forcemark;
+	u_int8_t forcemark2;
 	bool forcemark_by_owner;
 	bool forcemark_by_owner_set;
 	unsigned forcemark_owner_used;
@@ -481,7 +491,7 @@ public:
 	 *
 	 * @return received packets
 	*/
-	const int getMarker() { return forcemark ? 1 : getHeader()->marker; };
+	const int getMarker() { return getHeader()->marker ? 1 : forcemark; };
 
 	/**
 	 * @brief get padding
