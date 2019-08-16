@@ -96,6 +96,7 @@ extern bool useNewCONFIG;
 extern volatile bool cloud_activecheck_sshclose;
 
 extern char opt_call_id_alternative[256];
+extern string binaryNameWithPath;
 
 int opt_blocktarwrite = 0;
 int opt_blockasyncprocess = 0;
@@ -3963,7 +3964,7 @@ getwav2:
 		params->sendString("0");
 		return -1;
 	}
-	snprintf(cmd, sizeof(cmd), "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y -d %s 2>/dev/null >/dev/null", filename, getSpoolDir(tsf_main, 0));
+	snprintf(cmd, sizeof(cmd), "%s --rtp-firstleg -k -WRc -r \"%s.pcap\" -y -d %s 2>/dev/null >/dev/null", binaryNameWithPath.c_str(), filename, getSpoolDir(tsf_main, 0));
 	system(cmd);
 	secondrun = 1;
 	goto getwav2;
@@ -4027,7 +4028,7 @@ getwav:
 		params->sendString("0");
 		return -1;
 	}
-	snprintf(cmd, sizeof(cmd), "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/sbin:/usr/local/bin voipmonitor --rtp-firstleg -k -WRc -r \"%s.pcap\" -y 2>/dev/null >/dev/null", filename);
+	snprintf(cmd, sizeof(cmd), "%s --rtp-firstleg -k -WRc -r \"%s.pcap\" -y 2>/dev/null >/dev/null", binaryNameWithPath.c_str(), filename);
 	system(cmd);
 	secondrun = 1;
 	goto getwav;
@@ -5004,9 +5005,7 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 		extern string appname;
 		return(params->sendPexecOutput(("file " + rundir + "/" + appname).c_str()));
 	} else if(string(type_information) == "cmd_ldd") {
-		extern string rundir;
-		extern string appname;
-		return(params->sendPexecOutput(("ldd " + rundir + "/" + appname).c_str()));
+		return(params->sendPexecOutput(("ldd " + binaryNameWithPath).c_str()));
 	}
 	return(0);
 }

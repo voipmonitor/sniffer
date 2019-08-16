@@ -994,6 +994,7 @@ bool enable_wdt = true;
 string cmdline;
 string rundir;
 string appname;
+string binaryNameWithPath;
 string configfilename;
 
 char opt_crash_bt_filename[100];
@@ -2624,7 +2625,7 @@ void store_crash_bt_to_db() {
 			bool version_ok = false;
 			char tmpOut[L_tmpnam+1];
 			if(tmpnam(tmpOut)) {
-				system((string("/usr/local/sbin/voipmonitor | grep version > ") + tmpOut + " 2>/dev/null").c_str());
+				system((binaryNameWithPath + " | grep version > " + tmpOut + " 2>/dev/null").c_str());
 				vector<string> version_check_rows;
 				char version_check[20];
 				if(file_get_rows(tmpOut, &version_check_rows) &&
@@ -2639,7 +2640,7 @@ void store_crash_bt_to_db() {
 						for(unsigned i = 0; i < bt.size(); i++) {
 							bool addr2line_ok = false;
 							for(unsigned pass = 0; pass < 2 && !addr2line_ok; pass++) {
-								if(pass == 0 && bt[i].find("voipmonitor") == string::npos) {
+								if(pass == 0 && bt[i].find(appname) == string::npos) {
 									continue;
 								}
 								size_t posAddr = bt[i].find(pass == 0 ? "(+0x" : "[0x");
@@ -2647,7 +2648,7 @@ void store_crash_bt_to_db() {
 									size_t posAddrEnd = bt[i].find(pass == 0 ? ")" : "]", posAddr);
 									if(posAddrEnd != string::npos) {
 										string addr = bt[i].substr(posAddr + (pass == 0 ? 2 : 1), posAddrEnd - posAddr - (pass == 0 ? 2 : 1));
-										system((string("addr2line -e /usr/local/sbin/voipmonitor ") + addr + " > " + tmpOut + " 2>/dev/null").c_str());
+										system(("addr2line -e " + binaryNameWithPath + " " + addr + " > " + tmpOut + " 2>/dev/null").c_str());
 										vector<string> addr2line_rows;
 										if(file_get_rows(tmpOut, &addr2line_rows) &&
 										   addr2line_rows[0].find("??") == string::npos) {
@@ -2683,7 +2684,7 @@ void store_crash_bt_to_db() {
 							       "p \"terminating\"\np terminating\n"
 							       "p \"*** ALL THREADS BT ***\"\nthread apply all bt full\n"
 							       "quit\n"
-							       "' | gdb /usr/local/sbin/voipmonitor " + coredump + " 2>&1 >/dev/null"
+							       "' | gdb " + binaryNameWithPath + " " + coredump + " 2>&1 >/dev/null"
 							       ).c_str());
 							FILE *gdbOutput = fopen(tmpOut, "r");
 							if(gdbOutput) {
@@ -2888,6 +2889,15 @@ int main(int argc, char *argv[]) {
 			cmdline += '\'';
 		}
 	}
+
+	char exebuff[PATH_MAX];
+	ssize_t exelen = ::readlink("/proc/self/exe", exebuff, sizeof(exebuff)-1);
+	if (exelen != -1) {
+		exebuff[exelen] = '\0';
+		binaryNameWithPath = std::string(exebuff);
+	} else {
+		binaryNameWithPath = "/usr/local/sbin/voipmonitor";
+	}
 	
 	char _rundir[256];
 	getcwd(_rundir, sizeof(_rundir));
@@ -2957,7 +2967,7 @@ int main(int argc, char *argv[]) {
 
 	umask(0000);
 
-	openlog("voipmonitor", LOG_CONS | LOG_PERROR | LOG_PID, LOG_DAEMON);
+	openlog(appname.c_str(), LOG_CONS | LOG_PERROR | LOG_PID, LOG_DAEMON);
 
 	/*
 	string args;
@@ -8112,7 +8122,7 @@ void set_context_config() {
 	if(!tmpPath) {
 		tmpPath = "/tmp";
 	}
-	snprintf(opt_crash_bt_filename, sizeof(opt_crash_bt_filename), "%s/voipmonitor_crash_bt", tmpPath);
+	snprintf(opt_crash_bt_filename, sizeof(opt_crash_bt_filename), "%s/%s_crash_bt", tmpPath, appname.c_str());
 	
 	if(opt_call_id_alternative[0]) {
 		opt_call_id_alternative_v = split(opt_call_id_alternative, split(",|;", '|'), true);
@@ -8223,7 +8233,7 @@ bool check_complete_parameters() {
                          12345678901234567890123456789012345678901234567890123456789012345678901234567890
                         */
                 printf("\nvoipmonitor version %s\n"
-                        "\nUsage: voipmonitor [OPTIONS]\n"
+                        "\nUsage: %s [OPTIONS]\n"
                         "\n"
                         " -A, --save-raw\n"
                         "      Save RTP payload to RAW format. Default is disabled.\n"
@@ -8443,7 +8453,7 @@ bool check_complete_parameters() {
                         "\n"
                         "One of <-i interface> or <-r pcap-file> must be specified, otherwise you may\n"
                         "set interface in configuration file.\n\n"
-                        , RTPSENSOR_VERSION);
+                        , RTPSENSOR_VERSION, appname.c_str());
                         /*        1         2         3         4         5         6         7         8
                          12345678901234567890123456789012345678901234567890123456789012345678901234567890
                            Ruler to assist with keeping help description to max. 80 chars wide:
