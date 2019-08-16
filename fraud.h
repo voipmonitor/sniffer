@@ -1085,6 +1085,10 @@ public:
 		return(groupsIP.getGroupName(idGroup));
 	}
 private:
+	void pushToCallQueue(sFraudCallInfo *callInfo);
+	void pushToRtpStreamQueue(sFraudRtpStreamInfo *streamInfo);
+	void pushToEventQueue(sFraudEventInfo *eventInfo);
+	void pushToRegisterQueue(sFraudRegisterInfo *registerInfo);
 	void initPopCallInfoThread();
 	void popCallInfoThread();
 	void completeCallInfo(sFraudCallInfo *callInfo, Call *call, 
@@ -1107,6 +1111,11 @@ private:
 	SafeAsyncQueue<sFraudRtpStreamInfo> rtpStreamQueue;
 	SafeAsyncQueue<sFraudEventInfo> eventQueue;
 	SafeAsyncQueue<sFraudRegisterInfo> registerQueue;
+	u_int64_t lastTimeCallsIsFull;
+	u_int64_t lastTimeRtpStreamsIsFull;
+	u_int64_t lastTimeEventsIsFull;
+	u_int64_t lastTimeRegistersIsFull;
+	u_int32_t maxLengthAsyncQueue;
 	GroupsIP groupsIP;
 	pthread_t threadPopCallInfo;
 	bool runPopCallInfoThread;
