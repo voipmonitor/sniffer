@@ -82,6 +82,7 @@ extern int cloud_activecheck_timeout;
 extern volatile bool cloud_activecheck_inprogress;
 extern timeval cloud_last_activecheck;
 extern string appname;
+extern string binaryNameWithPath;
 extern char configfile[1024];
 extern int ownPidStart;
 extern int ownPidFork;
@@ -1731,8 +1732,8 @@ bool RestartUpgrade::runUpgrade() {
 		return(false);
 	}
 	unlink(this->upgradeTempFileName.c_str());
-	string binaryFilepathName = this->upgradeTempFileName + "/voipmonitor";
-	string binaryGzFilepathName = this->upgradeTempFileName + "/voipmonitor.gz";
+	string binaryFilepathName = this->upgradeTempFileName + "/" + appname;
+	string binaryGzFilepathName = this->upgradeTempFileName + "/" + appname + ".gz";
 	extern int opt_upgrade_try_http_if_https_fail;
 	for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
 		string error;
@@ -1844,17 +1845,17 @@ bool RestartUpgrade::runUpgrade() {
 			return(false);
 		}
 	}
-	unlink("/usr/local/sbin/voipmonitor");
-	if(!copy_file(binaryFilepathName.c_str(), "/usr/local/sbin/voipmonitor", true)) {
-		this->errorString = "failed copy new binary to /usr/local/sbin";
+	unlink(binaryNameWithPath.c_str());
+	if(!copy_file(binaryFilepathName.c_str(), binaryNameWithPath.c_str(), true)) {
+		this->errorString = "failed copy new binary to " + binaryNameWithPath;
 		rmdir_r(this->upgradeTempFileName.c_str());
 		if(verbosity > 0) {
 			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 		}
 		return(false);
 	}
-	if(chmod("/usr/local/sbin/voipmonitor", 0755)) {
-		this->errorString = "failed chmod 0755 voipmonitor";
+	if(chmod(binaryNameWithPath.c_str(), 0755)) {
+		this->errorString = "failed chmod 0755 " + binaryNameWithPath + " binary";
 		rmdir_r(this->upgradeTempFileName.c_str());
 		if(verbosity > 0) {
 			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
@@ -1910,7 +1911,7 @@ bool RestartUpgrade::createSafeRunScript() {
 	if(fileHandle) {
 		fputs(SCRIPT_SHELL, fileHandle);
 		fputs("sleep 60\n", fileHandle);
-		fprintf(fileHandle, "if [[ \"`ps -A -o comm,pid | grep %i`\" == \"voipmonitor\"* ]]; then kill -9 %i; sleep 1; fi\n", getpid(), getpid());
+		fprintf(fileHandle, "if [[ \"`ps -A -o comm,pid | grep %i`\" == \"%s\"* ]]; then kill -9 %i; sleep 1; fi\n", getpid(), appname.c_str(), getpid());
 		fprintf(fileHandle, "cd '%s'\n%s\n", getRunDir().c_str(), getCmdLine().c_str());
 		fprintf(fileHandle, "rm %s\n", this->safeRunTempScriptFileName.c_str());
 		fclose(fileHandle);
@@ -2277,10 +2278,10 @@ bool WDT::createScript() {
 		fputs("do\n", fileHandle);
 		fputs("sleep 5\n", fileHandle);
 		fprintf(fileHandle, 
-			"if [[ \"`ps -p %i -o comm,pid | grep %i`\" != \"voipmonitor\"* ]]; "
+			"if [[ \"`ps -p %i -o comm,pid | grep %i`\" != \"%s\"* ]]; "
 			"then cd '%s'; %s; "
 			"fi\n", 
-			getpid(), getpid(), 
+			getpid(), getpid(), appname.c_str(),
 			getRunDir().c_str(), 
 			getCmdLine().c_str());
 		fputs("done\n", fileHandle);
@@ -2305,7 +2306,7 @@ void WDT::unlinkScript() {
 }
 
 string WDT::getScriptName() {
-	string scriptName = "voipmonitor_watchdog";
+	string scriptName = appname + "_watchdog";
 	if(getConfigFile().length()) {
 		scriptName += '_' + getConfigFile();
 	}
