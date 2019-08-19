@@ -1731,7 +1731,7 @@ void CleanSpool::erase_dir_if_empty(string dir, string callFrom) {
 	}
 	if(dir_is_empty(dir, true)) {
 		if(!sverb.cleanspool_disable_rm) {
-			rmdir_r(dir.c_str());
+			rmdir_r(dir.c_str(), true);
 		}
 		string redukDir = dir;
 		string lastDir;
