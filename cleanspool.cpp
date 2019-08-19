@@ -1729,9 +1729,9 @@ void CleanSpool::erase_dir_if_empty(string dir, string callFrom) {
 	if(!callFrom.empty()) {
 		syslog(LOG_NOTICE, "cleanspool[%i]: call erase_dir_if_empty(%s) from %s", spoolIndex, dir.c_str(), callFrom.c_str());
 	}
-	if(dir_is_empty(dir)) {
+	if(dir_is_empty(dir, true)) {
 		if(!sverb.cleanspool_disable_rm) {
-			rmdir(dir.c_str());
+			rmdir_r(dir.c_str());
 		}
 		string redukDir = dir;
 		string lastDir;
@@ -1756,7 +1756,7 @@ void CleanSpool::erase_dir_if_empty(string dir, string callFrom) {
 	}
 }
 
-bool CleanSpool::dir_is_empty(string dir) {
+bool CleanSpool::dir_is_empty(string dir, bool enableRecursion) {
 	DIR* dp = opendir(dir.c_str());
 	if(!dp) {
 		return(false);
@@ -1765,8 +1765,15 @@ bool CleanSpool::dir_is_empty(string dir) {
 	dirent* de;
 	while((de = readdir(dp)) != NULL) {
 		if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
-		empty = false;
-		break;
+		if(enableRecursion && is_dir(de, dir.c_str())) {
+			if(!dir_is_empty(dir + "/" + de->d_name, enableRecursion)) {
+				empty = false;
+				break;
+			}
+		} else {
+			empty = false;
+			break;
+		}
 	}
 	closedir(dp);
 	return(empty);
