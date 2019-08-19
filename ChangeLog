@@ -1,3 +1,14 @@
+25.5 19.08.2019
+===============
+- fix savertp=header and store VSS-Monitoring ethernet trailer and other possible payloads
+- new voipmonitor.conf option dtmf2pcap (default yes) and support for the same in capture rules. For PCI compliance change it to no  [VG-1880], [VS-951], [VS-796]
+- allow restricting users using custom SIP headers, import/export user restrictions, show custom headers in active calls [VS-943], [VG-1703]
+- fix upgrading sniffer when binary is not named voipmonitor [VS-955]
+- fix audio sync for some cases [VS-954]
+- add limit in fraud async queues to prevent memory exhaustion [VS-948]
+- fix cleanspool - delete orphaned old empty directories (fixes spamming syslog with : cleanspool[0]: call erase_dir_if_empty... [VS-956]
+
+
 25.4 08.08.2019
 ===============
 - solve SIP processing bottleneck - SIP thread optimizations + automatically split workload to more threads, new option destroy_calls_in_storing_cdr
