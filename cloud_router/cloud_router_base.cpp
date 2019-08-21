@@ -2,6 +2,7 @@
 
 #include <netdb.h>
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <iostream>
 #include <sstream>
@@ -10,6 +11,7 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <sys/poll.h>
+#include <sys/socket.h>
 
 
 extern bool CR_TERMINATE();
