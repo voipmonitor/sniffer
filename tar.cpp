@@ -25,12 +25,12 @@
 #include <pwd.h>
 #include <grp.h>
 #include <stdio.h>
-#include <sys/sysmacros.h>
 
 #ifdef FREEBSD
 #include <sys/uio.h>
 #include <sys/thr.h>
 #else
+#include <sys/sysmacros.h>
 #include <sys/sendfile.h>
 #endif
 
