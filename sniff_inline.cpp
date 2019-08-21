@@ -416,8 +416,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->header_ip = NULL;
 			} else {
 				ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
-				if(!(((iphdr*)ppd->header_ip)->version == 4 ||
-				     (VM_IPV6_B && ((iphdr*)ppd->header_ip)->version == 6))) {
+				if(!(((iphdr2*)ppd->header_ip)->version == 4 ||
+				     (VM_IPV6_B && ((iphdr2*)ppd->header_ip)->version == 6))) {
 					pcapProcessEvalError(bad_ip_version, *HPH(*header_packet), HPP(*header_packet),
 							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
 					return(0);
@@ -471,8 +471,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->header_ip = NULL;
 			} else {
 				ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
-				if(!(((iphdr*)ppd->header_ip)->version == 4 ||
-				     (VM_IPV6_B && ((iphdr*)ppd->header_ip)->version == 6))) {
+				if(!(((iphdr2*)ppd->header_ip)->version == 4 ||
+				     (VM_IPV6_B && ((iphdr2*)ppd->header_ip)->version == 6))) {
 					pcapProcessEvalError(bad_ip_version, pcap_header_plus2, packet,
 							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
 					pcap_header_plus2->ignore = true;
