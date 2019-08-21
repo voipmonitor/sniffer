@@ -2,6 +2,7 @@
 #define ENDIAN_H
 
 /* For compatibility with Linux definitions... */
+#include "tools_define.h"
 
 #ifdef FREEBSD
 # include <sys/endian.h>
