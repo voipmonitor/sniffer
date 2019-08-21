@@ -91,6 +91,7 @@
 #include "ssl_dssl.h"
 #include "server.h"
 #include "billing.h"
+#include "audio_convert.h"
 
 #ifndef FREEBSD
 #define BACKTRACE 1
@@ -959,6 +960,7 @@ char *opt_untar_gui_params = NULL;
 char *opt_unlzo_gui_params = NULL;
 char *opt_waveform_gui_params = NULL;
 char *opt_spectrogram_gui_params = NULL;
+char *opt_audioconvert_params = NULL;
 char *opt_check_regexp_gui_params = NULL;
 char *opt_test_regexp_gui_params = NULL;
 char *opt_read_pcap_gui_params = NULL;
@@ -2808,6 +2810,7 @@ bool is_set_gui_params() {
 	       opt_unlzo_gui_params || 
 	       opt_waveform_gui_params ||
 	       opt_spectrogram_gui_params ||
+	       opt_audioconvert_params ||
 	       opt_check_regexp_gui_params ||
 	       opt_test_regexp_gui_params ||
 	       opt_read_pcap_gui_params ||
@@ -2980,7 +2983,7 @@ int main(int argc, char *argv[]) {
 	parse_command_line_arguments(argc, argv);
 	get_command_line_arguments();
 	
-	if(!is_read_from_file() && opt_fork) {
+	if(!is_read_from_file() && opt_fork && !is_set_gui_params()) {
 #ifndef FREEBSD
 		rightPSversion = isPSrightVersion();
 		if (!rightPSversion) {
@@ -3191,6 +3194,73 @@ int main(int argc, char *argv[]) {
 		return(!create_spectrogram_from_raw(inputRaw,
 						    sampleRate, msPerPixel, 0, channels,
 						    outputSpectrogramPng));
+	}
+	if(opt_audioconvert_params) {
+		vmChdir();
+		if(!strncmp(opt_audioconvert_params, "info", 4) && strlen(opt_audioconvert_params) > 5) {
+			cAudioConvert info;
+			info.fileName = opt_audioconvert_params + 5;
+			if(info.getAudioInfo() == cAudioConvert::_rslt_ok) {
+				cout << "audio-info: " << info.jsonAudioInfo() <<  endl;
+				return(0);
+			} else {
+				cerr << "audio-convert: get info failed" << endl;
+				return(1);
+			}
+		} else {
+			char inputFileName[1024];
+			char outputFormat[10];
+			char outputFileName[1024];
+			int sampleRate = 0;
+			int channels = 0;
+			int bitsPerSample = 0;
+			if(sscanf(opt_audioconvert_params, "%s %s %s %i %i %i", 
+				  inputFileName, outputFormat, outputFileName,
+				  &sampleRate, &channels, &bitsPerSample) < 3) {
+				cerr << "audio-convert: bad arguments" << endl;
+				return(1);
+			}
+			delete [] opt_audioconvert_params;
+			cAudioConvert info;
+			info.fileName = inputFileName;
+			if(info.getAudioInfo() == cAudioConvert::_rslt_ok ||
+			   (sampleRate && channels && bitsPerSample)) {
+				cAudioConvert src;
+				src.fileName = inputFileName;
+				cAudioConvert dst;
+				dst.formatType = !strcmp(outputFormat, "wav") ? cAudioConvert::_format_wav :
+						 !strcmp(outputFormat, "ogg") ? cAudioConvert::_format_ogg :
+										cAudioConvert::_format_raw;
+				dst.srcDstType = cAudioConvert::_dst;
+				dst.fileName = outputFileName;
+				src.destAudio = &dst;
+				cAudioConvert::eResult rslt;
+				if(info.formatType == cAudioConvert::_format_wav) {
+					rslt = src.readWav();
+				} else if(info.formatType == cAudioConvert::_format_ogg) {
+					rslt = src.readOgg();
+				} else {
+					cAudioConvert::sAudioInfo audioInfo;
+					audioInfo.sampleRate = sampleRate;
+					audioInfo.channels = channels;
+					audioInfo.bitsPerSample = bitsPerSample;
+					rslt = src.readRaw(&audioInfo);
+				}
+				if(rslt == cAudioConvert::_rslt_ok) {
+					cout << "convert ok" << endl;
+					return(0);
+				} else {
+					cerr << "audio-convert: convert failed" << endl;
+					return(1);
+				}
+			} else {
+				cerr << "audio-convert: get info failed" << endl;
+				return(1);			 
+			}
+			return(1);
+		}
+		cerr << "audio-convert: unknown request" << endl;
+		return(1);
 	}
 	if(opt_check_regexp_gui_params) {
 		bool okRegExp = check_regexp(opt_check_regexp_gui_params);
@@ -7194,6 +7264,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"unlzo-gui", 1, 0, 205},
 	    {"waveform-gui", 1, 0, 206},
 	    {"spectrogram-gui", 1, 0, 207},
+	    {"audio-convert", 1, 0, 331},
 	    {"update-schema", 0, 0, 208},
 	    {"new-config", 0, 0, 203},
 	    {"print-config-struct", 0, 0, 204},
@@ -7459,6 +7530,12 @@ void get_command_line_arguments() {
 				if(!opt_spectrogram_gui_params) {
 					opt_spectrogram_gui_params =  new FILE_LINE(42471) char[strlen(optarg) + 1];
 					strcpy(opt_spectrogram_gui_params, optarg);
+				}
+				break;
+			case 331:
+				if(!opt_audioconvert_params) {
+					opt_audioconvert_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
+					strcpy(opt_audioconvert_params, optarg);
 				}
 				break;
 			case 208:
