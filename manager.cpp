@@ -57,7 +57,7 @@
 #define BUFSIZE 4096		//block size?
 
 extern Calltable *calltable;
-extern int terminating;
+extern volatile int terminating;
 extern int opt_manager_port;
 extern char opt_manager_ip[32];
 extern int opt_manager_nonblock_mode;
@@ -1028,7 +1028,7 @@ int sendvm(int socket, cClient *c_client, const char *buf, size_t len, int /*mod
 		} else if(snifferClientService) {
 			snifferClientService->get_aes_keys(&aes_ckey, &aes_ivec);
 		}
-		c_client->writeAesEnc((u_char*)buf, len, aes_ckey.c_str(), aes_ivec.c_str());
+		res = c_client->writeAesEnc((u_char*)buf, len, aes_ckey.c_str(), aes_ivec.c_str()) ? 0: -1;
 	} else {
 		res = send(socket, buf, len, 0);
 	}
