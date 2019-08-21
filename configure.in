@@ -62,7 +62,6 @@ else
 	AC_MSG_ERROR([Bad curl version ($CURL_VER_MAJOR.$CURL_VER_MINOR). Version 7.34 or higher is required.])
 fi
 
-AC_CHECK_LIB([ssh], [ssh_forward_accept], HAVE_LIBSSH=1, AC_MSG_NOTICE([Your libssh is old or missing - cloud feature is disabled. apt-get install libssh-dev | yum install libssh-devel | or compile from source https://red.libssh.org/projects/libssh/files]))
 AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
 AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c')
 AC_CHECK_LIB([png], [main], HAVE_LIBPNG=1, AC_MSG_WARN([Unable to find libpng library. apt-get install libpng12-dev | yum install libpng-devel]))
@@ -158,24 +157,6 @@ if test "x$HAVE_LIBLZO" = "x1"; then
 	HAVE_LIBLZO_T=yes
 fi
 
-HAVE_LIBSSH_T=no
-if test "x$HAVE_LIBSSH" = "x1"; then 
-	AC_DEFINE([HAVE_LIBSSH], [1], [Define if using libss])
-	if test "x$PLATFORM" = "xFreeBSD"; then
-		AC_SUBST([LIBSSH],["-lssh"])
-	else
-		AC_RUN_IFELSE(
-			[AC_LANG_PROGRAM([[#include <libssh/libssh.h>]],
-				[[if (LIBSSH_VERSION_INT >= SSH_VERSION_INT(0,8,0)) {
-			                return(0);
-			        } else {
-			                return(1);
-			        }
-			]])], [AC_SUBST([LIBSSH],["-lssh"])], [AC_SUBST([LIBSSH],["-lssh -lssh_threads"])], [])
-	fi
-	HAVE_LIBSSH_T=yes
-fi
-
 LIBGNUTLS_T=no
 if test "x$HAVE_LIBGNUTLS" = "x1" && test "x$HAVE_LIBGCRYPT" = "x1"; then
 	AC_DEFINE([HAVE_LIBGNUTLS], [1], [Define if using gnutls])
@@ -245,7 +226,6 @@ AC_MSG_NOTICE([
                                                              
 
 lzma compression enabled               : $HAVE_LIBLZMA_T
-ssh library enabled (cloud)            : $HAVE_LIBSSH_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T

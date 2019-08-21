@@ -22,8 +22,6 @@
 using namespace std;
 
 void reload_config(const char *jsonConfig = NULL);
-bool cloud_register();
-bool cloud_activecheck_send();
 void hot_restart();
 void hot_restart_with_json_config(const char *jsonConfig);
 void set_request_for_reload_capture_rules();
@@ -319,22 +317,12 @@ inline unsigned spooldir_group_id() {
 	return(opt_spooldir_group_id);
 }
 
-inline bool isCloudRouter() {
+inline bool isCloud() {
 	extern bool cloud_router;
 	extern char cloud_host[256];
 	extern unsigned cloud_router_port;
 	extern char cloud_token[256];
 	return(cloud_router && cloud_host[0] && cloud_router_port && cloud_token[0]);
-}
-inline bool isCloudSsh() {
-	extern bool cloud_router;
-	extern char cloud_host[256];
-	extern char cloud_url[256];
-	extern char cloud_token[256];
-	return(!cloud_router && cloud_host[0] && cloud_url[0] && cloud_token[0]);
-}
-inline bool isCloud() {
-	return(isCloudRouter() || isCloudSsh());
 }
 
 int useNewStore();

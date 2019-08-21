@@ -1588,11 +1588,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		if(sverb.query_regex[0] && reg_match(prepareQueryForPrintf(preparedQuery).c_str(), sverb.query_regex)) {
 			cout << prepareQueryForPrintf(preparedQuery) << endl;
 		}
-		if(isCloudSsh()) {
-			return(this->queryByCurl(preparedQuery, callFromStoreProcessWithFixDeadlock));
-		} else {
-			return(this->queryByRemoteSocket(preparedQuery, callFromStoreProcessWithFixDeadlock, dropProcQuery));
-		}
+		return(this->queryByRemoteSocket(preparedQuery, callFromStoreProcessWithFixDeadlock, dropProcQuery));
 	}
 	if(opt_nocdr) {
 		return(true);
@@ -6642,16 +6638,16 @@ void SqlDb_mysql::updateSensorState() {
 			if(existsRowSensor) {
 				SqlDb_row rowU;
 				if(existsColumnCloudRouter) {
-					rowU.add(isCloudRouter(), "cloud_router");
+					rowU.add(isCloud(), "cloud_router");
 				}
-				if(isCloudRouter()) {
+				if(isCloud()) {
 					extern cCR_Receiver_service *cloud_receiver;
 					rowU.add(cloud_receiver->getConnectFrom(), "host");
 				}
 				if(!rowU.isEmpty()) {
 					this->update("sensors", rowU, ("id_sensor=" + intToString(opt_id_sensor)).c_str());
 				}
-			} else if(isCloudRouter()) {
+			} else if(isCloud()) {
 				SqlDb_row rowI;
 				rowI.add(opt_id_sensor, "id_sensor");
 				rowI.add("auto insert id " + intToString(opt_id_sensor), "name");
@@ -6670,11 +6666,11 @@ void SqlDb_mysql::updateSensorState() {
 			SqlDb_row row = this->fetchRow();
 			if(row) {
 				SqlDb_row rowU;
-				rowU.add(intToString(isCloudRouter()), "content");
+				rowU.add(intToString(isCloud()), "content");
 				this->update("system", rowU, "type='cloud_router_local_sensor'");
 			} else {
 				SqlDb_row rowI;
-				rowI.add(intToString(isCloudRouter()), "content");
+				rowI.add(intToString(isCloud()), "content");
 				rowI.add("cloud_router_local_sensor", "type");
 				this->insert("system", rowI);
 			}

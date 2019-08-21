@@ -18,14 +18,7 @@
 #include <pcap.h>
 #include <math.h>
 #include <time.h>
-
-#ifdef HAVE_LIBSSH
-#include <libssh/libssh.h>
-#include <libssh/callbacks.h>
-#endif 
-
 #include <openssl/crypto.h>  
-
 #include <sstream>
 
 #include "ipaccount.h"
@@ -108,7 +101,7 @@ int opt_block_alloc_stack = 0;
 
 using namespace std;
 
-int sendvm(int socket, ssh_channel channel, cClient *c_client, const char *buf, size_t len, int /*mode*/);
+int sendvm(int socket, cClient *c_client, const char *buf, size_t len, int /*mode*/);
 
 std::map<string, int> MgmtCmdsRegTable;
 std::map<string, string> MgmtHelpTable;
@@ -135,7 +128,7 @@ int Mgmt_params::sendString(const char *str) {
 }
 
 int Mgmt_params::sendString(const char *str, ssize_t size) {
-	if(sendvm(client.handler, sshchannel, c_client, str, size, 0) == -1){
+	if(sendvm(client.handler, c_client, str, size, 0) == -1){
 		cerr << "Error sending data to client" << endl;
 		return -1;
 	}
@@ -166,7 +159,7 @@ int Mgmt_params::sendString(string *str) {
 	if(zip &&
 	   ((*str)[0] != 0x1f || (str->length() > 1 && (unsigned char)(*str)[1] != 0x8b))) {
 		compressStream = new FILE_LINE(13021) CompressStream(CompressStream::gzip, 1024, 0);
-		compressStream->setSendParameters(client.handler, sshchannel, c_client);
+		compressStream->setSendParameters(client.handler, c_client);
 	}
 	unsigned chunkLength = 4096;
 	unsigned processedLength = 0;
@@ -179,7 +172,7 @@ int Mgmt_params::sendString(string *str) {
 			return -1;
 			}
 		} else {
-			if(sendvm(client.handler, sshchannel, c_client, (char*)str->c_str() + processedLength, processLength, 0) == -1){
+			if(sendvm(client.handler, c_client, (char*)str->c_str() + processedLength, processLength, 0) == -1){
 				cerr << "Error sending data to client" << endl;
 				return -1;
 			}
@@ -211,7 +204,7 @@ int Mgmt_params::sendFile(const char *fileName, u_int64_t tailMaxSize) {
 		lseek(fd, startPos);
 	}
 	RecompressStream *recompressStream = new FILE_LINE(0) RecompressStream(RecompressStream::compress_na, zip ? RecompressStream::gzip : RecompressStream::compress_na);
-	recompressStream->setSendParameters(client.handler, sshchannel, c_client);
+	recompressStream->setSendParameters(client.handler, c_client);
 	ssize_t nread;
 	size_t read_size = 0;
 	char rbuf[4096];
@@ -249,7 +242,7 @@ int Mgmt_params::sendConfigurationFile(const char *fileName, list<string> *hideP
 		return -1;
 	}
 	RecompressStream *recompressStream = new FILE_LINE(0) RecompressStream(RecompressStream::compress_na, zip ? RecompressStream::gzip : RecompressStream::compress_na);
-	recompressStream->setSendParameters(client.handler, sshchannel, c_client);
+	recompressStream->setSendParameters(client.handler, c_client);
 	char lineBuffer[10000];
 	while(fgets(lineBuffer, sizeof(lineBuffer), file)) {
 		string lineBufferSubst;
@@ -311,11 +304,10 @@ int Mgmt_params::sendPexecOutput(const char *cmd) {
 	}
 }
 
-Mgmt_params::Mgmt_params(char *ibuf, int isize, sClientInfo iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread) {
+Mgmt_params::Mgmt_params(char *ibuf, int isize, sClientInfo iclient, cClient *ic_client, ManagerClientThread **imanagerClientThread) {
 	buf = ibuf;
 	size = isize;
 	client = iclient;
-	sshchannel = isshchannel;
 	c_client = ic_client;
 	managerClientThread = imanagerClientThread;
 	index = 0;
@@ -1025,27 +1017,7 @@ void listening_remove_worker(Call *call) {
 	listening_master_unlock();
 }
 
-#ifdef HAVE_LIBSSH
-int sendssh(ssh_channel channel, const char *buf, int len) {
-	int wr, i;
-	wr = 0;
-	do {   
-		i = ssh_channel_write(channel, buf, len);
-		if (i < 0) {
-			fprintf(stderr, "libssh_channel_write: %d\n", i);
-			return -1;
-		}
-		wr += i;
-	} while(i > 0 && wr < len);
-	return wr;
-}
-#else 
-int sendssh(ssh_channel channel, const char *buf, int len) {
-	return 0;
-}
-#endif
-
-int sendvm(int socket, ssh_channel channel, cClient *c_client, const char *buf, size_t len, int /*mode*/) {
+int sendvm(int socket, cClient *c_client, const char *buf, size_t len, int /*mode*/) {
 	int res = 0;
 	if(c_client) {
 		extern cCR_Receiver_service *cloud_receiver;
@@ -1057,22 +1029,20 @@ int sendvm(int socket, ssh_channel channel, cClient *c_client, const char *buf, 
 			snifferClientService->get_aes_keys(&aes_ckey, &aes_ivec);
 		}
 		c_client->writeAesEnc((u_char*)buf, len, aes_ckey.c_str(), aes_ivec.c_str());
-	} else if(channel) {
-		res = sendssh(channel, buf, len);
 	} else {
 		res = send(socket, buf, len, 0);
 	}
 	return res;
 }
 
-int _sendvm(int socket, void *channel, void *c_client, const char *buf, size_t len, int mode) {
-	return(sendvm(socket, (ssh_channel)channel, (cClient*)c_client, buf, len, mode));
+int _sendvm(int socket, void *c_client, const char *buf, size_t len, int mode) {
+	return(sendvm(socket, (cClient*)c_client, buf, len, mode));
 }
 
-int sendvm_from_stdout_of_command(char *command, int socket, ssh_channel channel, cClient *c_client, char */*buf*/, size_t /*len*/, int /*mode*/) {
+int sendvm_from_stdout_of_command(char *command, int socket, cClient *c_client, char */*buf*/, size_t /*len*/, int /*mode*/) {
 	SimpleBuffer out;
 	if(vm_pexec(command, &out) && out.size()) {
-		if(sendvm(socket, channel, c_client, (const char*)out.data(), out.size(), 0) == -1) {
+		if(sendvm(socket, c_client, (const char*)out.data(), out.size(), 0) == -1) {
 			if (verbosity > 0) syslog(LOG_NOTICE, "sendvm_from_stdout_of_command: sending data problem");
 			return -1;
 		}
@@ -1156,11 +1126,11 @@ void manager_parse_command_disable() {
 	enable_parse_command = false;
 }
 
-static int _parse_command(char *buf, int size, sClientInfo client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread);
+static int _parse_command(char *buf, int size, sClientInfo client, cClient *c_client, ManagerClientThread **managerClientThread);
 
 int parse_command(string cmd, sClientInfo client, cClient *c_client) {
 	ManagerClientThread *managerClientThread = NULL;
-	int rslt = _parse_command((char*)cmd.c_str(), cmd.length(), client, NULL, c_client, &managerClientThread);
+	int rslt = _parse_command((char*)cmd.c_str(), cmd.length(), client, c_client, &managerClientThread);
 	if(managerClientThread) {
 		if(managerClientThread->parseCommand()) {
 			ClientThreads.add(managerClientThread);
@@ -1179,7 +1149,7 @@ int parse_command(string cmd, sClientInfo client, cClient *c_client) {
 	return(rslt);
 }
 
-int _parse_command(char *buf, int size, sClientInfo client, ssh_channel sshchannel, cClient *c_client, ManagerClientThread **managerClientThread) {
+int _parse_command(char *buf, int size, sClientInfo client, cClient *c_client, ManagerClientThread **managerClientThread) {
 	if(!enable_parse_command) {
 		return(0);
 	}
@@ -1210,7 +1180,7 @@ int _parse_command(char *buf, int size, sClientInfo client, ssh_channel sshchann
 			}
 		}
 	}
-	Mgmt_params* mparams = new FILE_LINE(0) Mgmt_params(buf, size, client, sshchannel, c_client, managerClientThread);
+	Mgmt_params* mparams = new FILE_LINE(0) Mgmt_params(buf, size, client, c_client, managerClientThread);
 	if(MgmtFuncIndex >= 0) {
 		mparams->command = MgmtCommand;
 		int ret = MgmtFuncArray[MgmtFuncIndex](mparams);
@@ -1408,138 +1378,6 @@ void perror_syslog(const char *msg) {
 	strerror_r(errno, buf, 1024);
 	syslog(LOG_ERR, "%s:%s\n", msg, buf);
 }
-
-#ifdef HAVE_LIBSSH
-#if __GNUC__ >= 8
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-void *manager_ssh_(void) {
-	ssh_session session;
-	int rc;
-	// Open session and set options
-	list<ssh_channel> ssh_chans;
-	list<ssh_channel>::iterator it1;
-	char buf[1024*1024]; 
-	int len;
-	session = ssh_new();
-	if (session == NULL)
-		exit(-1);
-	ssh_options_set(session, SSH_OPTIONS_HOST, ssh_host);
-	ssh_options_set(session, SSH_OPTIONS_PORT, &ssh_port);
-	ssh_options_set(session, SSH_OPTIONS_COMPRESSION, "yes");
-	ssh_options_set(session, SSH_OPTIONS_SSH_DIR, "/tmp");
-	ssh_options_set(session, SSH_OPTIONS_USER, "root");
-	// Connect to server
-	rc = ssh_connect(session);
-	if (rc != SSH_OK) {
-		syslog(LOG_ERR, "Error connecting to %s: %s\n", ssh_host, ssh_get_error(session));
-		ssh_free(session);
-		return 0;
-	}
-/*
-	// Verify the server's identity
-	// For the source code of verify_knowhost(), check previous example
-	if (verify_knownhost(session) < 0)
-	{
-		ssh_disconnect(session);
-		ssh_free(session);
-		exit(-1);
-	}
-*/
-	// Authenticate ourselves
-	rc = ssh_userauth_password(session, ssh_username, ssh_password);
-	if (rc != SSH_AUTH_SUCCESS) {
-		syslog(LOG_ERR, "Error authenticating with password: %s\n", ssh_get_error(session));
-		ssh_disconnect(session);
-		ssh_free(session);
-		goto ssh_disconnect;
-	}
-	syslog(LOG_NOTICE, "Connected to ssh\n");
-
-	int remote_listenport;
-	rc = ssh_forward_listen(session, ssh_remote_listenhost, ssh_remote_listenport, &remote_listenport);
-	if (rc != SSH_OK) {
-		syslog(LOG_ERR, "Error opening remote port: %s\n", ssh_get_error(session));
-		goto ssh_disconnect;
-	}
-	syslog(LOG_NOTICE, "connection established\n");
-
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-
-	cloud_activecheck_sshclose = false; //alow active checking operations from now
-	/* set the thread detach state */
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-	while(1) {
-		if (cloud_activecheck_sshclose) goto ssh_disconnect;
-		ssh_channel channel;
-		//int port;
-		//channel = ssh_channel_accept_forward(session, 0, &port);
-		channel = ssh_forward_accept(session, 0);
-		usleep(10000);
-		if (channel == NULL) {
-			if(!ssh_is_connected(session)) {
-				break;
-			}
-		} else {
-			ssh_chans.push_back(channel);
-		}
-		for (it1 = ssh_chans.begin(); it1 != ssh_chans.end();) {
-			ssh_channel channel = *it1;
-			if(ssh_channel_is_open(channel) && !ssh_channel_is_eof(channel)) {
-				len = ssh_channel_read_nonblocking(channel, buf, sizeof(buf), 0);
-				if(len == SSH_ERROR) {
-					// read error 
-					ssh_channel_free(channel);
-					ssh_chans.erase(it1++);
-					continue;
-				}
-				if (len <= 0) {
-					++it1;
-					continue;
-				}
-				buf[len] = '\0';
-				_parse_command(buf, len, 0, channel, NULL, NULL);
-				ssh_channel_send_eof(channel);
-				ssh_channel_free(channel);
-				ssh_chans.erase(it1++);
-			} else {
-				// channel is closed already, remove it
-				ssh_channel_free(channel);
-				ssh_chans.erase(it1++);
-			}
-		}
-	}
-ssh_disconnect:
-	ssh_disconnect(session);
-	ssh_free(session);
-	return 0;
-}
-#if __GNUC__ >= 8
-#pragma GCC diagnostic pop
-#endif
-#endif
-
-#ifdef HAVE_LIBSSH
-void *manager_ssh(void */*arg*/) {
-	while (ssh_host[0] == '\0') {	//wait until register.php POST done
-		sleep(1);
-	}
-
-	ssh_threads_set_callbacks(ssh_threads_get_pthread());
-	ssh_init();
-//	ssh_set_log_level(SSH_LOG_WARNING | SSH_LOG_PROTOCOL | SSH_LOG_PACKET | SSH_LOG_FUNCTIONS);
-	while(!is_terminating()) {
-		syslog(LOG_NOTICE, "Starting reverse SSH connection service\n");
-		manager_ssh_();
-		syslog(LOG_NOTICE, "SSH service stopped.\n");
-		sleep(1);
-	}
-	return 0;
-}
-#endif
 
 
 void *manager_server(void */*dummy*/) {
@@ -2689,7 +2527,7 @@ int Mgmt_creategraph(Mgmt_params *params) {
 		}
 		if ((dstfile == NULL) && (res == 0)) {		//send from stdout of a command (binary data)
 			if (sverb.rrd_info) syslog(LOG_NOTICE, "COMMAND for system pipe:%s", sendcommand);
-			if (sendvm_from_stdout_of_command(sendcommand, params->client.handler, params->sshchannel, params->c_client, sendbuf, sizeof(sendbuf), 0) == -1 ){
+			if (sendvm_from_stdout_of_command(sendcommand, params->client.handler, params->c_client, sendbuf, sizeof(sendbuf), 0) == -1 ){
 				cerr << "Error sending data to client 2" << endl;
 				delete [] manager_cmd_line;
 				delete [] manager_args;
@@ -3818,7 +3656,7 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 	if(!tar.tar_open(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + tar_filename, O_RDONLY)) {
 		string filename_conv = filename;
 		prepare_string_to_filename((char*)filename_conv.c_str());
-		tar.tar_read_send_parameters(params->client.handler, params->sshchannel, params->c_client, zip);
+		tar.tar_read_send_parameters(params->client.handler, params->c_client, zip);
 		tar.tar_read((filename_conv + ".*").c_str(), filename, recordId, tableType, tarPosI);
 		if(tar.isReadEnd()) {
 			getfile_in_tar_completed.add(tar_filename, filename, dateTimeKey);
@@ -5072,7 +4910,7 @@ int Mgmt_pausecall(Mgmt_params *params) {
 
 void init_management_functions(void) {
 	int i;
-	Mgmt_params params(NULL, 0, 0, NULL, NULL, NULL);
+	Mgmt_params params(NULL, 0, 0, NULL, NULL);
 	params.task = params.mgmt_task_DoInit;
 
 	for (i = 0;; i++) {

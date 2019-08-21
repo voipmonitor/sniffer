@@ -520,9 +520,8 @@ Tar::tar_read(const char *filename, const char *endFilename, u_int32_t recordId,
 }
 
 void 
-Tar::tar_read_send_parameters(int client, void *sshchannel, void *c_client, bool zip) {
+Tar::tar_read_send_parameters(int client, void *c_client, bool zip) {
 	this->readData.send_parameters_client = client;
-	this->readData.send_parameters_sshchannel = sshchannel;
 	this->readData.send_parameters_c_client = c_client;
 	this->readData.send_parameters_zip = zip;
 }
@@ -594,7 +593,7 @@ Tar::tar_read_block_ev(char *data) {
 	}
 }
 
-extern int _sendvm(int socket, void *channel, void *c_client, const char *buf, size_t len, int mode);
+extern int _sendvm(int socket, void *c_client, const char *buf, size_t len, int mode);
 void 
 Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t /*pos*/, u_int32_t len) {
 	int cmpLengthNameInTar = strlen(fileHeader.name);
@@ -951,8 +950,8 @@ bool Tar::ReadData::decompress_ev(char *data, u_int32_t len) {
 bool Tar::ReadData::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
 	if(this->output_file_handle) {
 		fwrite(data, len, 1, this->output_file_handle);
-	} else if(this->send_parameters_client || this->send_parameters_sshchannel || this->send_parameters_c_client) {
-		if(_sendvm(this->send_parameters_client, this->send_parameters_sshchannel, this->send_parameters_c_client, data, len, 0) == -1) {
+	} else if(this->send_parameters_client || this->send_parameters_c_client) {
+		if(_sendvm(this->send_parameters_client, this->send_parameters_c_client, data, len, 0) == -1) {
 			this->compressStreamToGzip->setError("send error");
 			return(false);
 		}

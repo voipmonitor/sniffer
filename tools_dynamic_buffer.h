@@ -61,7 +61,7 @@ public:
 	void setLzmaLevel(int lzmaLevel);
 	void enableAutoPrefixFile();
 	void enableForceStream();
-	void setSendParameters(int client, void *sshchannel, void *c_client);
+	void setSendParameters(int client, void *c_client);
 	void initCompress();
 	void initDecompress(u_int32_t dataLen);
 	void termCompress();
@@ -138,7 +138,6 @@ private:
 	bool forceStream;
 	u_int32_t processed_len;
 	int sendParameter_client;
-	void *sendParameter_sshchannel;
 	void *sendParameter_c_client;
 friend class ChunkBuffer;
 };
@@ -149,7 +148,7 @@ public:
 	~RecompressStream();
 	void setTypeDecompress(eTypeCompress typeDecompress, bool enableForceStream = false);
 	void setTypeCompress(eTypeCompress typeCompress);
-	void setSendParameters(int client, void *sshchannel, void *c_client);
+	void setSendParameters(int client, void *c_client);
 	void processData(char *data, u_int32_t len);
 	void end();
 	bool isError();

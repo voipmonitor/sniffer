@@ -661,7 +661,6 @@ char odbc_user[256];
 char odbc_password[256];
 char odbc_driver[256];
 
-char cloud_url_activecheck[1024] = "https://cloud.voipmonitor.org/reg/check_active.php";	//option in voipmonitor.conf cloud_url_activecheck
 int opt_cloud_activecheck_period = 60;				//0 = disable, how often to check if cloud tunnel is passable in [sec.]
 int cloud_activecheck_timeout = 5;				//2sec by default, how long to wait for response until restart of a cloud tunnel
 volatile bool cloud_activecheck_inprogress = false;		//is currently checking in progress?
@@ -669,7 +668,6 @@ volatile bool cloud_activecheck_sshclose = false;		//is forced close/re-open of 
 timeval cloud_last_activecheck;					//Time of a last check request sent
 
 char cloud_host[256] = "cloud.voipmonitor.org";
-char cloud_url[256] = "";
 char cloud_token[256] = "";
 bool cloud_router = true;
 unsigned cloud_router_port = 60023;
@@ -1874,7 +1872,7 @@ void *storing_cdr( void */*dummy*/ ) {
 					regfailedcache->prunecheck(call->first_packet_time);
 					if(!opt_nocdr) {
 						if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
-							call->saveToDb(!is_read_from_file_simple() || isCloudRouter() || is_client());
+							call->saveToDb(!is_read_from_file_simple() || isCloud() || is_client());
 						}
 						if(call->typeIs(MESSAGE)) {
 							call->saveMessageToDb();
@@ -2011,7 +2009,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 			regfailedcache->prunecheck(call->first_packet_time);
 			if(!opt_nocdr) {
 				if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
-					call->saveToDb(!is_read_from_file_simple() || isCloudRouter() || is_client());
+					call->saveToDb(!is_read_from_file_simple() || isCloud() || is_client());
 				}
 				if(call->typeIs(MESSAGE)) {
 					call->saveMessageToDb();
@@ -2187,14 +2185,6 @@ void *storing_registers( void */*dummy*/ ) {
 	return NULL;
 }
 
-void cloud_initial_register( void ) {
-	if (verbosity) syslog(LOG_NOTICE, "activechecking cloud initial register");
-	do {
-		if (cloud_register()) break;
-		sleep(2);
-	} while (terminating == 0);
-}
-
 void start_cloud_receiver() {
 	if(cloud_receiver) {
 		delete cloud_receiver;
@@ -2221,52 +2211,6 @@ void stop_cloud_receiver() {
 		cloud_receiver = NULL;
 	}
 }
-
-/* obsolete
-void *activechecking_cloud( void *dummy ) {
-	if (verbosity) syslog(LOG_NOTICE, "start - activechecking cloud thread");
-	cloud_activecheck_set();
-
-	do {
-		if (cloud_now_timeout()) {				//no reply in timeout? (re-register, recreate ssh)
-			if (!cloud_register()){
-				syslog(LOG_WARNING, "Repeating send cloud registration request");
-				sleep(2);				//what to do if unable to register to a cloud?
-				continue;
-			}
-			cloud_activecheck_sshclose = true;		//we need ssh tunnel recreation - after obtained new data from register
-									//now we need for flag get back to false - we know then that we are ready for activechecks
-			do {
-				if (terminating) break;
-				sleep(2);
-			} while (cloud_activecheck_sshclose);
-
-			cloud_activecheck_start();
-			do {
-				if (cloud_activecheck_send()||terminating) break;
-				syslog(LOG_WARNING, "Repeating send activecheck request");
-				sleep(2);				//what to do if unable to send check request to a cloud [repeat undefinitely]
-				continue;
-			} while (terminating == 0);
-			cloud_activecheck_set();
-		}
-
-		if (cloud_now_activecheck()) {				//is time to start activecheck?
-			cloud_activecheck_start();
-			if (verbosity) syslog(LOG_DEBUG, "Sending cloud activecheck request");
-			do {
-				if(cloud_activecheck_send()||terminating) break;
-				syslog(LOG_WARNING, "Repeating activecheck request");
-				sleep(2);				//what to do if unable to send check request to a cloud [repeat undefinitely]
-			} while (terminating == 0);
-			cloud_activecheck_set();
-		}
-		sleep(1);
-        } while (terminating == 0);
-	if(verbosity) syslog(LOG_NOTICE, "terminated - cloud activecheck thread");
-	return NULL;
-}
-*/
 
 void *scanpcapdir( void */*dummy*/ ) {
  
@@ -3405,11 +3349,7 @@ int main(int argc, char *argv[]) {
 
 	//cloud REGISTER has been moved to cloud_activecheck thread , if activecheck is disabled thread will end after registering and opening ssh
 	if(isCloud()) {
-		if(isCloudRouter()) {
-			start_cloud_receiver();
-		} else {
-			cloud_initial_register();
-		}
+		start_cloud_receiver();
 
 		//Override query_cache option in /etc/voipmonitor.conf  settings while in cloud mode always on:
 		if(opt_fork) {
@@ -3648,86 +3588,6 @@ int main(int argc, char *argv[]) {
 
 	return(0);
 }
-
-bool cloud_register() {
-	vector<dstring> postData;
-	postData.push_back(dstring("securitytoken", cloud_token));
-	char id_sensor_str[10];
-	snprintf(id_sensor_str, sizeof(id_sensor_str), "%i", opt_id_sensor);
-	postData.push_back(dstring("id_sensor", id_sensor_str));
-	SimpleBuffer responseBuffer;
-	string error;
-	syslog(LOG_NOTICE, "connecting to %s", cloud_url);
-	get_url_response_wt(10, cloud_url, &responseBuffer, &postData, &error);
-	if(error.empty()) {
-		if(!responseBuffer.empty()) {
-			if(responseBuffer.isJsonObject()) {
-				JsonItem jsonData;
-				jsonData.parse((char*)responseBuffer);
-				int res_num = atoi(jsonData.getValue("res_num").c_str());
-				string res_text = jsonData.getValue("res_text");
-				if(res_num != 0) {
-				syslog(LOG_ERR, "cloud registration error: %s", res_text.c_str());
-				exit(1);
-				}
-
-				//ssh
-				strcpy(ssh_host, jsonData.getValue("ssh_host").c_str());
-				ssh_port = atol(jsonData.getValue("ssh_port").c_str());
-				strcpy(ssh_username, jsonData.getValue("ssh_user").c_str());
-				strcpy(ssh_password, jsonData.getValue("ssh_password").c_str());
-				strcpy(ssh_remote_listenhost, jsonData.getValue("ssh_rhost").c_str());
-				ssh_remote_listenport = atol(jsonData.getValue("ssh_rport").c_str());
-
-				//sqlurl
-				strcpy(cloud_host, jsonData.getValue("sqlurl").c_str());
-				return true;
-			} else {
-				syslog(LOG_ERR, "cloud registration error: bad response - %s", (char*)responseBuffer);
-			}
-		} else {
-			syslog(LOG_ERR, "cloud registration error: response is empty");
-		}
-	} else {
-		syslog(LOG_ERR, "cloud registration error: %s", error.c_str());
-	}
-	return(false);
-}
-
-bool cloud_activecheck_send() {
-	vector<dstring> postData;
-	postData.push_back(dstring("ssh_rhost", ssh_remote_listenhost));
-	char str_port[10];
-	snprintf(str_port, sizeof(str_port), "%i", ssh_remote_listenport);
-	postData.push_back(dstring("ssh_rport", str_port));
-	SimpleBuffer responseBuffer;
-	string error;
-	syslog(LOG_NOTICE, "connecting to %s", cloud_url_activecheck);
-	get_url_response_wt(10, cloud_url_activecheck, &responseBuffer, &postData, &error);
-	if(error.empty()) {
-		if(!responseBuffer.empty()) {
-			if(responseBuffer.isJsonObject()) {
-				JsonItem jsonData;
-				jsonData.parse((char*)responseBuffer);
-				int res_num = atoi(jsonData.getValue("res_num").c_str());
-				string res_text = jsonData.getValue("res_text");
-				if(res_num != 0) {
-					syslog(LOG_ERR, "cloud tunnel check request error: %s", res_text.c_str());
-					return(false);
-				}
-				return true;
-			} else {
-				syslog(LOG_ERR, "cloud tunnel check: bad response - %s", (char*)responseBuffer);
-			}
-		} else {
-			syslog(LOG_ERR, "cloud tunnel check error: response is empty");
-		}
-	} else {
-		syslog(LOG_ERR, "cloud tunnel check error: %s", error.c_str());
-	}
-	return(false);
-}
-
 
 void set_global_vars() {
 	opt_save_sip_history = "bye";
@@ -3970,18 +3830,6 @@ int main_init_read() {
 		*/
 	}
 
-	// start activechecking cloud thread if in cloud mode and no zero activecheck_period
-	/* obsolete
-	if(isCloudSsh()) {
-		if (!opt_cloud_activecheck_period) {
-			if(verbosity) syslog(LOG_NOTICE, "notice - activechecking is disabled by config");
-		} else {
-			vm_pthread_create("checking cloud",
-					  &activechecking_cloud_thread, NULL, activechecking_cloud, NULL, __FILE__, __LINE__);
-		}
-	}
-	*/
-
 	if(opt_cachedir[0] != '\0') {
 		mv_r(opt_cachedir, opt_spooldir_main);
 		vm_pthread_create("moving cache",
@@ -3997,13 +3845,6 @@ int main_init_read() {
 			}
 		}
 	}
-
-#ifdef HAVE_LIBSSH
-	if(isCloudSsh()) {
-		vm_pthread_create("manager ssh",
-				  &manager_ssh_thread, NULL, manager_ssh, NULL, __FILE__, __LINE__);
-	}
-#endif
 
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
 		// start reading threads
@@ -6964,12 +6805,10 @@ void cConfig::addConfigItems() {
 						->addAlias("pcap_dump_asyncbuffer"));
 		subgroup("cloud");
 			addConfigItem(new FILE_LINE(42454) cConfigItem_string("cloud_host", cloud_host, sizeof(cloud_host)));
-			addConfigItem(new FILE_LINE(42455) cConfigItem_string("cloud_url", cloud_url, sizeof(cloud_url)));
 			addConfigItem(new FILE_LINE(42456) cConfigItem_string("cloud_token", cloud_token, sizeof(cloud_token)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cloud_router", &cloud_router));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cloud_router_port", &cloud_router_port));
 			addConfigItem(new FILE_LINE(42457) cConfigItem_integer("cloud_activecheck_period", &opt_cloud_activecheck_period));
-			addConfigItem(new FILE_LINE(42458) cConfigItem_string("cloud_url_activecheck", cloud_url_activecheck, sizeof(cloud_url_activecheck)));
 		subgroup("server / client");
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_bind", &snifferServerOptions.host));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_bind_port", &snifferServerOptions.port));
@@ -9573,12 +9412,6 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cloud_host", NULL))) {
 		strcpy_null_term(cloud_host, value);
 	}
-	if((value = ini.GetValue("general", "cloud_url", NULL))) {
-		strcpy_null_term(cloud_url, value);
-	}
-	if((value = ini.GetValue("general", "cloud_url_activecheck", NULL))) {
-		strcpy_null_term(cloud_url_activecheck, value);
-	}
 	if((value = ini.GetValue("general", "cloud_token", NULL))) {
 		strcpy_null_term(cloud_token, value);
 	}
@@ -11096,7 +10929,7 @@ void CR_SET_TERMINATE() {
 
 
 int useNewStore() {
-	if(isCloudRouter() && cloud_receiver) {
+	if(isCloud() && cloud_receiver) {
 		return(cloud_receiver->get_use_mysql_set_id());
 	} else if(is_client()) {
 		return(snifferClientOptions.mysql_new_store);
@@ -11109,7 +10942,7 @@ int useNewStore() {
 }
 
 bool useSetId() {
-	if(isCloudRouter() && cloud_receiver) {
+	if(isCloud() && cloud_receiver) {
 		return(cloud_receiver->get_use_mysql_set_id());
 	} else if(is_client()) {
 		return(snifferClientOptions.mysql_set_id);

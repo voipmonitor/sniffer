@@ -6,12 +6,6 @@
 #include <vector>
 #include <queue>
 
-#ifndef HAVE_LIBSSH
-typedef void* ssh_channel;
-#else
-#include <libssh/libssh.h>
-#include <libssh/callbacks.h>
-#endif
 
 void *manager_client(void *dummy);
 void *manager_server(void *dummy);
@@ -113,7 +107,7 @@ struct commandAndHelp {
 
 class Mgmt_params {
 public:
-	Mgmt_params(char *ibuf, int isize, sClientInfo iclient, ssh_channel isshchannel, cClient *ic_client, ManagerClientThread **imanagerClientThread);
+	Mgmt_params(char *ibuf, int isize, sClientInfo iclient, cClient *ic_client, ManagerClientThread **imanagerClientThread);
 	int sendString(const char *);
 	int sendString(const char *, ssize_t);
 	int sendString(string);
@@ -137,7 +131,6 @@ public:
 	char *buf;
 	int size;
 	sClientInfo client;
-	ssh_channel sshchannel;
 	cClient *c_client;
 	ManagerClientThread **managerClientThread;
 };

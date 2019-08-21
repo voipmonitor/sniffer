@@ -413,13 +413,7 @@ public:
 	bool getDisableLogError();
 	void setSilentConnect();
 	bool isCloud() {
-		return(isCloudRouter() || isCloudSsh());
-	}
-	bool isCloudRouter() {
 		return(cloud_host[0] && cloud_token[0] && cloud_router);
-	}
-	bool isCloudSsh() {
-		return(cloud_host[0] && cloud_token[0] && !cloud_router);
 	}
 	static void addDelayQuery(u_int32_t delay_ms, bool store = false);
 	static u_int32_t getAvgDelayQuery(bool store = false);
@@ -926,13 +920,7 @@ public:
 	void autoloadFromSqlVmExport();
 	string getSqlVmExportDirectory();
 	bool isCloud() {
-		return(isCloudRouter() || isCloudSsh());
-	}
-	bool isCloudRouter() {
 		return(cloud_host[0] && cloud_token[0] && cloud_router);
-	}
-	bool isCloudSsh() {
-		return(cloud_host[0] && cloud_token[0] && !cloud_router);
 	}
 	int convStoreId(int id);
 	int getMaxThreadsForStoreId(int id);
