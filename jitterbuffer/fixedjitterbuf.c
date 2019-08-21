@@ -328,7 +328,7 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, ch
 	
 #elif RESYNCH_V1
 
-	if(marker == 1) { // only for rtp marker (forcemark is > 1)
+	if(marker == 1 && jb->tail && (ts - jb->tail->ts - jb->tail->ms) != 0) { // only for rtp marker (forcemark is > 1)
 		if(debug) fprintf(stdout, "call resync_jb for marker\n");
 		jb->force_resynch = 1;
 		return resynch_jb(jb, data, ms, ts, now, audio_decode);
