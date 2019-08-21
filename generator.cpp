@@ -57,7 +57,7 @@ Generator::Generator(const char *src, const char *dst) {
  
 	socket_set_saddr(&src_addr, str_2_vmIP(src), 9095);
 	socket_set_saddr(&dest_addr, str_2_vmIP(dst), 9095);
-	if(bind(sockraw, (struct sockaddr *)&src_addr, sizeof(struct sockaddr)) == -1) {
+	if(::bind(sockraw, (struct sockaddr *)&src_addr, sizeof(struct sockaddr)) == -1) {
 		perror("bind");
 		//return -1;
 	}

@@ -211,12 +211,12 @@ int socket_bind(int socket, vmIP ip, vmPort port) {
 	if(ip.is_v6()) {
 		sockaddr_in6 addr;
 		socket_set_saddr(&addr, ip, port);
-		return(bind(socket, (sockaddr*)&addr, sizeof(addr)));
+		return(::bind(socket, (sockaddr*)&addr, sizeof(addr)));
 	} else {
 	#endif
 		sockaddr_in addr;
 		socket_set_saddr(&addr, ip, port);
-		return(bind(socket, (sockaddr*)&addr, sizeof(addr)));
+		return(::bind(socket, (sockaddr*)&addr, sizeof(addr)));
 	#if VM_IPV6
 	}
 	#endif
