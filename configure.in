@@ -178,6 +178,12 @@ fi
 
 AC_CHECK_LIB([rte_net], [main], HAVE_LIBDPDK=1)
 
+LIBSSH_8=1
+LIBSSH_VERSION=`dpkg -s libssh-dev | grep Version | cut -d ' ' -f 2 | cut -d '.' -f 2`
+if  test $LIBSSH_VERSION -lt 8; then
+    LIBSSH_8=0
+fi
+
 HAVE_LIBPNG_T=no
 if test "x$HAVE_LIBPNG" = "x1"; then 
 	AC_DEFINE([HAVE_LIBPNG], [1], [Define if using liblpng])
