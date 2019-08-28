@@ -212,7 +212,7 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 			return FIXED_JB_DROP;
 		} else {
 			jb->force_resynch = 0;
-			if(offset > jb->tail->ms * 2) {
+			if(offset > 0) {
 				jb_fixed_flush_deliver(jb->chan);
 				return fixed_jb_put_first(jb, data, ms, ts, now, 0, audio_decode);
 			} else {
@@ -328,7 +328,10 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, ch
 	
 #elif RESYNCH_V1
 
-	if(marker == 1 && jb->tail && (ts - jb->tail->ts - jb->tail->ms) != 0) { // only for rtp marker (forcemark is > 1)
+	if(marker == 1 &&  // only for rtp marker (forcemark is > 1)
+	   jb->tail && 
+	   (ts > jb->tail->ts + jb->tail->ms + jb->tail->ms * 2 ||
+	    ts < jb->tail->ts + jb->tail->ms - jb->tail->ms * 2)) {
 		if(debug) fprintf(stdout, "call resync_jb for marker\n");
 		jb->force_resynch = 1;
 		return resynch_jb(jb, data, ms, ts, now, audio_decode);
