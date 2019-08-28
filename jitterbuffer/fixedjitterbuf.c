@@ -212,7 +212,7 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 			return FIXED_JB_DROP;
 		} else {
 			jb->force_resynch = 0;
-			if(offset > 0) {
+			if(offset > jb->tail->ms * 2) {
 				jb_fixed_flush_deliver(jb->chan);
 				return fixed_jb_put_first(jb, data, ms, ts, now, 0, audio_decode);
 			} else {
