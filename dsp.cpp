@@ -964,7 +964,7 @@ static int __dsp_silence_noise(struct dsp *dsp, short *s, int len, int *totalsil
 
 	accum = 0;
 	for (x = 0; x < len; x++) {
-		if(s[x] == 0) {
+		if(s[x] <= 1) {
 			if(dsp->last_zero == true) {
 				dsp->counter++;
 			}
@@ -975,16 +975,19 @@ static int __dsp_silence_noise(struct dsp *dsp, short *s, int len, int *totalsil
 		}
 		accum += abs(s[x]);
 	}
-	if(dsp->counter >= 159) {
+	if(dsp->counter >= 159 and dsp->counter <= 195) { // tolerance 159-195 frames for 20ms 
 		// 20ms (8khz) silence - count loss and reset counter;
+		dsp->loss++;  // number of consecutive silence 20ms frames 
+		//if(dsp->counter > 161) printf("hit los %u ++ %d\n", dsp->counter, dsp->loss);
 		dsp->counter = 0;
-		dsp->loss++;
 	} else {
 		if(dsp->loss) {
-			if(dsp->loss < 32) {
+			if(dsp->loss <= 3) {
+				// store loss only if there were max 3 consecutive lost silence frames
 				dsp->loss_hist[dsp->loss]++;
+				dsp->loss = 0;
 			} else {
-				// any consecutive loss >32 resets to 0
+				// any consecutive loss > 2 resets loss counter to 0
 				dsp->loss = 0;
 			}
 		}
