@@ -165,10 +165,12 @@ void SqlDb_row::add_calldate(u_int64_t calldate_us, string fieldName, bool use_m
 }
 
 void SqlDb_row::add_duration(u_int64_t duration_us, string fieldName, bool use_ms, bool round_s) {
-	if(use_ms) {
-		add(TIME_US_TO_SF(duration_us), fieldName);
-	} else {
-		add(round_s ? (unsigned)round(TIME_US_TO_SF(duration_us)) : TIME_US_TO_S(duration_us), fieldName);
+	if((int64_t)duration_us >= 0) {
+		if(use_ms) {
+			add(TIME_US_TO_SF(duration_us), fieldName);
+		} else {
+			add(round_s ? (unsigned)round(TIME_US_TO_SF(duration_us)) : TIME_US_TO_S(duration_us), fieldName);
+		}
 	}
 }
 
@@ -6771,7 +6773,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				if(isSupportForDatetimeMs()) {
 					this->logNeedAlter("cdr",
 							   "time accuracy in milliseconds",
-							   "ALTER TABLE cdr\n" + implode(alters_ms, ",\n") + ";",
+							   "ALTER TABLE cdr " + implode(alters_ms, ", ") + ";",
 							   log, &tableSize, NULL);
 					continue;
 				} else {
@@ -6804,7 +6806,7 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 					if(isSupportForDatetimeMs()) {
 						this->logNeedAlter(childTablesCalldateMsIndik[i].table,
 								   "time accuracy in milliseconds",
-								   "ALTER TABLE " + childTablesCalldateMsIndik[i].table + "\n" + alter_ms + ";",
+								   "ALTER TABLE " + childTablesCalldateMsIndik[i].table + " " + alter_ms + ";",
 								   log, &tableSize, NULL);
 						continue;
 					} else {
@@ -7134,7 +7136,7 @@ void SqlDb_mysql::checkColumns_ss7(bool log) {
 				if(isSupportForDatetimeMs()) {
 					this->logNeedAlter("ss7",
 							   "time accuracy in milliseconds",
-							   "ALTER TABLE ss7\n" + implode(alters_ms, ",\n") + ";",
+							   "ALTER TABLE ss7 " + implode(alters_ms, ", ") + ";",
 							   log, &tableSize, NULL);
 					continue;
 				} else {
@@ -7159,7 +7161,7 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 				if(isSupportForDatetimeMs()) {
 					this->logNeedAlter("message",
 							   "time accuracy in milliseconds",
-							   "ALTER TABLE message\n" + alter_ms + ";",
+							   "ALTER TABLE message " + alter_ms + ";",
 							   log, &tableSize, NULL);
 					continue;
 				} else {
@@ -7185,7 +7187,7 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 					if(isSupportForDatetimeMs()) {
 						this->logNeedAlter(childTablesCalldateMsIndik[i].table,
 								   "time accuracy in milliseconds",
-								   "ALTER TABLE " + childTablesCalldateMsIndik[i].table + "\n" + alter_ms + ";",
+								   "ALTER TABLE " + childTablesCalldateMsIndik[i].table + " " + alter_ms + ";",
 								   log, &tableSize, NULL);
 						continue;
 					} else {
@@ -7244,7 +7246,7 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 					for(unsigned i = 0; i < alters_ms.size(); i++) {
 						this->logNeedAlter(alters_ms[i][0],
 								   "time accuracy in milliseconds",
-								   "ALTER TABLE " + alters_ms[i][0] + "\n" + alters_ms[i][1] + ";",
+								   "ALTER TABLE " + alters_ms[i][0] + " " + alters_ms[i][1] + ";",
 								   log, &tableSize, NULL);
 					}
 					continue;
@@ -7338,7 +7340,7 @@ void SqlDb_mysql::checkColumns_sip_msg(bool log) {
 				if(isSupportForDatetimeMs()) {
 					this->logNeedAlter("sip_msg",
 							   "time accuracy in milliseconds",
-							   "ALTER TABLE sip_msg\n" + implode(alters_ms, ",\n") + ";",
+							   "ALTER TABLE sip_msg " + implode(alters_ms, ", ") + ";",
 							   log, &tableSize, NULL);
 					continue;
 				} else {
