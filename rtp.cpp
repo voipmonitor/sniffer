@@ -2571,7 +2571,7 @@ int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP) {
 	int mos = 0;
 
 	for(int i = 0; i < 32; i++) {
-		//printf("loss_hist[%d] = %d \n", i, DSP->loss_hist[i] - DSP->last_interval_loss_hist[i]);
+		//if(DSP->loss_hist[i] > 0) printf("loss_hist[%d] = %d - %d\n", i, DSP->loss_hist[i], DSP->last_interval_loss_hist[i]);
 		lost += i * (DSP->loss_hist[i] - DSP->last_interval_loss_hist[i]);
 		bursts += DSP->loss_hist[i] - DSP->last_interval_loss_hist[i];
 	}
