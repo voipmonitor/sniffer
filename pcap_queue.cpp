@@ -3011,17 +3011,17 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		++packets_counter;
 		if(opt_pb_read_from_file_acttime) {
 			static u_int64_t diffTime;
-			u_int64_t packetTime = (*header)->ts.tv_sec * 1000000ull + (*header)->ts.tv_usec;
+			u_int64_t packetTime = getTimeUS(*header);
 			if(!diffTime) {
 				diffTime = getTimeUS() - packetTime - opt_pb_read_from_file_acttime_diff_days * 24 * 3600 *1000000ull;
 			}
 			packetTime += diffTime;
-			(*header)->ts.tv_sec = packetTime / 1000000ull;
-			(*header)->ts.tv_usec = packetTime % 1000000ull;
+			(*header)->ts.tv_sec = TIME_US_TO_S(packetTime);
+			(*header)->ts.tv_usec = TIME_US_TO_DEC_US(packetTime);
 		}
 		if(opt_pb_read_from_file_speed) {
 			static u_int64_t diffTime;
-			u_int64_t packetTime = (*header)->ts.tv_sec * 1000000ull + (*header)->ts.tv_usec;
+			u_int64_t packetTime = getTimeUS(*header);
 			if(this->lastPacketTimeUS) {
 				if(packetTime > this->lastPacketTimeUS) {
 					diffTime += packetTime - this->lastPacketTimeUS;
@@ -5963,7 +5963,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							pti.blockStoreIndex = i;
 							pti.header = (*blockStore)[i].header;
 							pti.packet = (*blockStore)[i].packet;
-							pti.utime = pti.header->header_fix_size.ts_tv_sec * 1000000ull + pti.header->header_fix_size.ts_tv_usec;
+							pti.utime = getTimeUS(pti.header->header_fix_size.ts_tv_sec, pti.header->header_fix_size.ts_tv_usec);
 							pti.at = at;
 							map<u_int64_t, list<sPacketTimeInfo>* >::iterator iter = listPacketTimeInfo.find(pti.utime);
 							if(iter != listPacketTimeInfo.end()) {
@@ -6019,10 +6019,10 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 					if(blockStore) {
 						blockInfo[blockInfoCount].blockStore = blockStore;
 						blockInfo[blockInfoCount].count_processed = 0;
-						blockInfo[blockInfoCount].utime_first = (*blockStore)[0].header->header_fix_size.ts_tv_sec * 1000000ull +
-											(*blockStore)[0].header->header_fix_size.ts_tv_usec;
-						blockInfo[blockInfoCount].utime_last = (*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_sec * 1000000ull +
-										       (*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_usec;
+						blockInfo[blockInfoCount].utime_first = getTimeUS((*blockStore)[0].header->header_fix_size.ts_tv_sec, 
+												  (*blockStore)[0].header->header_fix_size.ts_tv_usec);
+						blockInfo[blockInfoCount].utime_last = getTimeUS((*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_sec, 
+												 (*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_usec);
 						blockInfo[blockInfoCount].at = at;
 						if(!blockInfo_utime_first ||
 						   blockInfo[blockInfoCount].utime_first < blockInfo_utime_first) {
@@ -6106,8 +6106,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								}
 							}
 						} else {
-							actBlockInfo->utime_first = (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_sec * 1000000ull +
-										    (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec;
+							actBlockInfo->utime_first = getTimeUS((*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_sec,
+											      (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec);
 							blockInfo_utime_first = minUtime;
 						}
 						usleepCounter = 0;
@@ -6914,13 +6914,13 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	if(!this->_last_ts.tv_sec) {
 		this->_last_ts.tv_sec = header->ts.tv_sec;
 		this->_last_ts.tv_usec = header->ts.tv_usec;
-	} else if(this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec > header->ts.tv_sec * 1000000ull + header->ts.tv_usec + 1000) {
+	} else if(getTimeUS(this->_last_ts) > getTimeUS(header) + 1000) {
 		if(verbosity > 1 || enable_bad_packet_order_warning) {
 			static u_int64_t lastTimeSyslog = 0;
 			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
-				syslog(LOG_NOTICE, "warning - bad packet order (%llu us) in processPacket", 
-				       this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec - header->ts.tv_sec * 1000000ull - header->ts.tv_usec);
+				syslog(LOG_NOTICE, "warning - bad packet order (%" int_64_format_prefix "lu us) in processPacket", 
+				       getTimeUS(this->_last_ts) - getTimeUS(header));
 				lastTimeSyslog = actTime;
 			}
 		}

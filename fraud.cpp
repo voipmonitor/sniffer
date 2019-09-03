@@ -96,7 +96,7 @@ bool CacheNumber_location::checkNumber(const char *number, vmIP number_ip, const
 	if(!last_cleanup_at) {
 		last_cleanup_at = at;
 	}
-	if(at > last_cleanup_at + 600 * 1000000ull) {
+	if(at > last_cleanup_at + TIME_S_TO_US(600)) {
 		this->cleanup(at);
 	}
 	if(diffCountry) {
@@ -279,7 +279,7 @@ void CacheNumber_location::saveNumber(const char *number, vmIP number_ip, const 
 void CacheNumber_location::cleanup(u_int64_t at) {
 	map<sNumber, sIpRec>::iterator iterCache;
 	for(iterCache = cache.begin(); iterCache != cache.end();) {
-		if(at > iterCache->second.fresh_at + 600 * 1000000ull) {
+		if(at > iterCache->second.fresh_at + TIME_S_TO_US(600)) {
 			cache.erase(iterCache++);
 		} else {
 			++iterCache;
@@ -781,12 +781,12 @@ void FraudAlertReg_filter::evRegister(sFraudRegisterInfo *registerInfo) {
 	++ev_counter;
 	ev_map[*(sFraudRegisterInfo_id*)registerInfo] = *(sFraudRegisterInfo_data*)registerInfo;
 	ev_map[*(sFraudRegisterInfo_id*)registerInfo].time_from_prev_state =
-		registerInfo->at > registerInfo->prev_state_at ? (registerInfo->at - registerInfo->prev_state_at) / 1000000ull : 0;
+		registerInfo->at > registerInfo->prev_state_at ? TIME_US_TO_S(registerInfo->at - registerInfo->prev_state_at) : 0;
 	if(!start_interval) {
 		start_interval = registerInfo->at;
 	}
 	if(parent->intervalLength ?
-	    registerInfo->at - start_interval > parent->intervalLength * 1000000ull :
+	    registerInfo->at - start_interval > TIME_S_TO_US(parent->intervalLength) :
     	    ev_counter >= parent->intervalLimit) {
 		if(ev_counter >= parent->intervalLimit) {
 			FraudAlertInfo_reg *alertInfo = new FILE_LINE(7003) FraudAlertInfo_reg(parent);
@@ -856,7 +856,7 @@ bool FraudAlertReg::checkRegisterTimeSecLe(sFraudRegisterInfo *registerInfo) {
 	return((registerInfo->state != rs_OK && registerInfo->state != rs_UnknownMessageOK) &&
 	       (registerInfo->prev_state == rs_OK || registerInfo->prev_state == rs_UnknownMessageOK) &&
 	       registerInfo->at > registerInfo->prev_state_at &&
-	       registerInfo->at - registerInfo->prev_state_at <= registerTimeSecLe * 1000000ull);
+	       registerInfo->at - registerInfo->prev_state_at <= TIME_S_TO_US(registerTimeSecLe));
 }
 
 void FraudAlertReg::loadAlertVirt(SqlDb *sqlDb) {
@@ -1065,7 +1065,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 									     call->calls_local.size() + call->calls_international.size();
 					if(_concurentCallsLimit &&
 					   _actCalls >= _concurentCallsLimit &&
-					   callInfo->at_connect > call->last_alert_info_local + 1000000ull &&
+					   callInfo->at_connect > call->last_alert_info_local + TIME_S_TO_US(1) &&
 					   this->checkOkAlert(idAlert, _actCalls, callInfo->at_connect,
 							      _li, alert)) {
 						FraudAlertInfo_rcc *alertInfo = new FILE_LINE(7006) FraudAlertInfo_rcc(alert);
@@ -1250,7 +1250,7 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 									     call->calls_local.size() + call->calls_international.size();
 					if(_concurentCallsLimit &&
 					   _actCalls >= _concurentCallsLimit &&
-					   rtpStreamInfo->at > call->last_alert_info_local + 1000000ull &&
+					   rtpStreamInfo->at > call->last_alert_info_local + TIME_S_TO_US(1) &&
 					   this->checkOkAlert(idAlert, _actCalls, rtpStreamInfo->at,
 							      FraudAlert::_li_local, alert)) {
 						FraudAlertInfo_rcc *alertInfo = new FILE_LINE(7008) FraudAlertInfo_rcc(alert);
@@ -1350,7 +1350,7 @@ bool FraudAlert_rcc_base::checkOkAlert(sIdAlert idAlert, size_t concurentCalls, 
 		(*alerts)[idAlert] = sAlertInfo(concurentCalls, at);
 		return(true);
 	} else {
-		if(iter->second.at + alert->alertOncePerHours * 3600 * 1000000ull < at/* ||
+		if(iter->second.at + TIME_S_TO_US(alert->alertOncePerHours * 3600) < at/* ||
 		   iter->second.concurentCalls * 1.5 < concurentCalls*/) {
 			(*alerts)[idAlert] = sAlertInfo(concurentCalls, at);
 		} else {
@@ -1728,7 +1728,7 @@ bool FraudAlert_d::checkOkAlert(const char *src_number, const char *dst_number,
 		alerts[src_dst_number] = sAlertInfo(country_code, at);
 		return(true);
 	} else {
-		if(iter->second.at + this->alertOncePerHours * 3600 * 1000000ull < at ||
+		if(iter->second.at + TIME_S_TO_US(this->alertOncePerHours * 3600) < at ||
 		   iter->second.country_code != country_code) {
 			alerts[src_dst_number] = sAlertInfo(country_code, at);
 		} else {
@@ -1801,7 +1801,7 @@ void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
 	}
 	if(!start_interval) {
 		start_interval = eventInfo->at;
-	} else if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
+	} else if(eventInfo->at - start_interval > TIME_S_TO_US(intervalLength)) {
 		map<vmIP, sCounts>::iterator iter;
 		for(iter = count.begin(); iter != count.end(); iter++) {
 			if(iter->second.count >= intervalLimit &&
@@ -1829,7 +1829,7 @@ bool FraudAlert_spc::checkOkAlert(vmIP ip, u_int64_t count, u_int64_t at) {
 		alerts[ip] = sAlertInfo(count, at);
 		return(true);
 	} else {
-		if(iter->second.at + this->alertOncePerHours * 3600 * 1000000ull < at/* ||
+		if(iter->second.at + TIME_S_TO_US(this->alertOncePerHours * 3600) < at/* ||
 		   iter->second.count * 1.5 < count*/) {
 			alerts[ip] = sAlertInfo(count, at);
 		} else {
@@ -1873,7 +1873,7 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 	bool enable_dump = eventInfo->block_store != NULL;
 	if(!start_interval) {
 		start_interval = eventInfo->at;
-	} else if(eventInfo->at - start_interval > intervalLength * 1000000ull) {
+	} else if(eventInfo->at - start_interval > TIME_S_TO_US(intervalLength)) {
 		map<vmIP, u_int64_t>::iterator iter;
 		for(iter = count.begin(); iter != count.end(); iter++) {
 			if(iter->second >= intervalLimit) {
@@ -1944,7 +1944,7 @@ bool FraudAlert_rc::checkOkAlert(vmIP ip, u_int64_t count, u_int64_t at) {
 		alerts[ip] = sAlertInfo(count, at);
 		return(true);
 	} else {
-		if(iter->second.at + this->alertOncePerHours * 3600 * 1000000ull < at/* ||
+		if(iter->second.at + TIME_S_TO_US(this->alertOncePerHours * 3600) < at/* ||
 		   iter->second.count * 1.5 < count*/) {
 			alerts[ip] = sAlertInfo(count, at);
 		} else {
@@ -1956,7 +1956,7 @@ bool FraudAlert_rc::checkOkAlert(vmIP ip, u_int64_t count, u_int64_t at) {
 
 string FraudAlert_rc::getDumpName(vmIP ip, u_int64_t at) {
 	string path = storePcapsToPaths.empty() ? getStorePcaps() : storePcapsToPaths;
-	string name = this->descr + '_' + ip.getString() + '_' + sqlDateTimeString(at / 1000000ull) + ".pcap";
+	string name = this->descr + '_' + ip.getString() + '_' + sqlDateTimeString(TIME_US_TO_S(at)) + ".pcap";
 	prepare_string_to_filename(&name);
 	string path_name = path + '/' + name;
 	return(path_name);
@@ -2016,7 +2016,7 @@ void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
 	}
 	if(!start_interval) {
 		start_interval = callInfo->at_last;
-	} else if(callInfo->at_last - start_interval > intervalLength * 1000000ull) {
+	} else if(callInfo->at_last - start_interval > TIME_S_TO_US(intervalLength)) {
 		map<sIpNumber, u_int64_t>::iterator iter;
 		for(iter = count.begin(); iter != count.end(); iter++) {
 			if(iter->second >= intervalLimit &&
@@ -2044,7 +2044,7 @@ bool FraudAlert_seq::checkOkAlert(sIpNumber ipNumber, u_int64_t count, u_int64_t
 		alerts[ipNumber] = sAlertInfo(count, at);
 		return(true);
 	} else {
-		if(iter->second.at + this->alertOncePerHours * 3600 * 1000000ull < at/* ||
+		if(iter->second.at + TIME_S_TO_US(this->alertOncePerHours * 3600) < at/* ||
 		   iter->second.count * 1.5 < count*/) {
 			alerts[ipNumber] = sAlertInfo(count, at);
 		} else {
@@ -2088,8 +2088,8 @@ string FraudAlertInfo_reg::getJson() {
 		incident->add("ua", iter->second.ua);
 		incident->add("state", iter->second.state);
 		incident->add("prev_state", iter->second.prev_state);
-		incident->add("at", sqlDateTimeString(iter->second.at / 1000000ull));
-		incident->add("prev_state_at", sqlDateTimeString(iter->second.prev_state_at / 1000000ull));
+		incident->add("at", sqlDateTimeString(TIME_US_TO_S(iter->second.at)));
+		incident->add("prev_state_at", sqlDateTimeString(TIME_US_TO_S(iter->second.prev_state_at)));
 		incident->add("time_from_prev_state", iter->second.time_from_prev_state);
 	}
 	return(json.getJson());
@@ -2316,21 +2316,21 @@ void FraudAlerts::evRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, con
 	pushToEventQueue(&eventInfo);
 }
 
-void FraudAlerts::evRegister(Call *call, eRegisterState state, eRegisterState prev_state, time_t prev_state_at) {
+void FraudAlerts::evRegister(Call *call, eRegisterState state, eRegisterState prev_state, u_int64_t prev_state_at) {
 	sFraudRegisterInfo registerInfo;
 	this->completeRegisterInfo(&registerInfo, call);
 	registerInfo.state = state;
 	registerInfo.prev_state = prev_state;
-	registerInfo.prev_state_at = prev_state_at * 1000000ull;
+	registerInfo.prev_state_at = prev_state_at;
 	pushToRegisterQueue(&registerInfo);
 }
 
-void FraudAlerts::evRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state, time_t prev_state_at) {
+void FraudAlerts::evRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state, u_int64_t prev_state_at) {
 	sFraudRegisterInfo registerInfo;
 	this->completeRegisterInfo(&registerInfo, reg, regState);
 	registerInfo.state = state;
 	registerInfo.prev_state = prev_state;
-	registerInfo.prev_state_at = prev_state_at * 1000000ull;
+	registerInfo.prev_state_at = prev_state_at;
 	pushToRegisterQueue(&registerInfo);
 }
 
@@ -2548,7 +2548,7 @@ void FraudAlerts::completeRegisterInfo(sFraudRegisterInfo *registerInfo, Call *c
 	registerInfo->from_domain = call->caller_domain;
 	registerInfo->digest_realm = call->digest_realm;
 	registerInfo->ua = call->a_ua;
-	registerInfo->at = call->calltime() * 1000000ull;
+	registerInfo->at = call->calltime_us();
 }
 
 void FraudAlerts::completeRegisterInfo(sFraudRegisterInfo *registerInfo, Register *reg, RegisterState *regState) {
@@ -2564,7 +2564,7 @@ void FraudAlerts::completeRegisterInfo(sFraudRegisterInfo *registerInfo, Registe
 	registerInfo->from_domain = REG_CONV_STR(regState->from_domain == EQ_REG ? reg->from_domain : regState->from_domain);
 	registerInfo->digest_realm = REG_CONV_STR(regState->digest_realm == EQ_REG ? reg->digest_realm : regState->digest_realm);
 	registerInfo->ua = REG_CONV_STR(regState->ua == EQ_REG ? reg->ua : regState->ua);
-	registerInfo->at = regState->state_from * 1000000ull;
+	registerInfo->at = regState->state_from_us;
 }
 
 void FraudAlerts::refresh() {
@@ -2715,7 +2715,7 @@ void refreshFraud() {
 void fraudBeginCall(Call *call, timeval tv) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->beginCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts->beginCall(call, getTimeUS(tv));
 		fraudAlerts_unlock();
 	}
 }
@@ -2723,7 +2723,7 @@ void fraudBeginCall(Call *call, timeval tv) {
 void fraudConnectCall(Call *call, timeval tv) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->connectCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts->connectCall(call, getTimeUS(tv));
 		fraudAlerts_unlock();
 	}
 }
@@ -2731,7 +2731,7 @@ void fraudConnectCall(Call *call, timeval tv) {
 void fraudSeenByeCall(Call *call, timeval tv) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->seenByeCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts->seenByeCall(call, getTimeUS(tv));
 		fraudAlerts_unlock();
 	}
 }
@@ -2739,7 +2739,7 @@ void fraudSeenByeCall(Call *call, timeval tv) {
 void fraudEndCall(Call *call, timeval tv) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->endCall(call, tv.tv_sec * 1000000ull + tv.tv_usec);
+		fraudAlerts->endCall(call, getTimeUS(tv));
 		fraudAlerts_unlock();
 	}
 }
@@ -2749,7 +2749,7 @@ void fraudBeginRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_p
 	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->beginRtpStream(src_ip, src_port, dst_ip, dst_port,
-					    call, time * 1000000ull);
+					    call, TIME_S_TO_US(time));
 		fraudAlerts_unlock();
 	}
 }
@@ -2759,7 +2759,7 @@ void fraudEndRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_por
 	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->endRtpStream(src_ip, src_port, dst_ip, dst_port,
-					  call, time * 1000000ull);
+					  call, TIME_S_TO_US(time));
 		fraudAlerts_unlock();
 	}
 }
@@ -2767,7 +2767,7 @@ void fraudEndRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_por
 void fraudSipPacket(vmIP ip, unsigned sip_method, timeval tv, const char *ua, int ua_len) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->evSipPacket(ip, sip_method, tv.tv_sec * 1000000ull + tv.tv_usec, ua, ua_len);
+		fraudAlerts->evSipPacket(ip, sip_method, getTimeUS(tv), ua, ua_len);
 		fraudAlerts_unlock();
 	}
 }
@@ -2776,7 +2776,7 @@ void fraudRegister(vmIP src_ip, vmIP dst_ip, timeval tv, const char *ua, int ua_
 		   packet_s *packetS) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
-		fraudAlerts->evRegister(src_ip, dst_ip, tv.tv_sec * 1000000ull + tv.tv_usec, ua, ua_len,
+		fraudAlerts->evRegister(src_ip, dst_ip, getTimeUS(tv), ua, ua_len,
 					packetS ? packetS->block_store : NULL, packetS ? packetS->block_store_index : 0, packetS ? packetS->dlt : 0);
 		fraudAlerts_unlock();
 	}
@@ -2790,7 +2790,7 @@ void fraudRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *u
 	}
 }
 
-void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state, time_t prev_state_at) {
+void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state, u_int64_t prev_state_at) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->evRegister(call, state, prev_state, prev_state_at);
@@ -2798,7 +2798,7 @@ void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state, 
 	}
 }
 
-void fraudRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state, time_t prev_state_at) {
+void fraudRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state, u_int64_t prev_state_at) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->evRegister(reg, regState, state, prev_state, prev_state_at);

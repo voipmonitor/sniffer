@@ -1344,9 +1344,9 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 
 	// store this call only if it starts with invite
 	Call *call = calltable->add(state, s, l, NULL,
-				    header->ts.tv_sec, saddr, source, 
+				    getTimeUS(header), saddr, source, 
 				    handle, dlt, sensor_id);
-	call->set_first_packet_time(header->ts.tv_sec, header->ts.tv_usec);
+	call->set_first_packet_time_us(getTimeUS(header));
 	call->setSipcallerip(saddr, source);
 	call->setSipcalledip(daddr, dest);
 	call->flags = flags;
@@ -1505,8 +1505,8 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		case SKINNY_CONNECTED:
 			strcpy(call->lastSIPresponse, "CONNECTED");
 			call->lastSIPresponseNum = 200;
-			if(!call->connect_time) {
-				call->connect_time = header->ts.tv_sec;
+			if(!call->connect_time_us) {
+				call->connect_time_us = getTimeUS(header);
 			}
 			break;
 		case SKINNY_BUSY:
@@ -1572,7 +1572,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 			memcpy(call->caller, req.data.callinfo.callingParty, sizeof(req.data.callinfo.callingParty));
 			memcpy(call->called, req.data.callinfo.calledParty, sizeof(req.data.callinfo.calledParty));
 
-			u_int64_t _forcemark_time = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+			u_int64_t _forcemark_time = getTimeUS(header);
 			call->forcemark_lock();
 			call->forcemark_time.push_back(_forcemark_time);
 			if(sverb.forcemark) {
@@ -2022,7 +2022,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 	if(call) {
 		save_packet(call, header, packet, saddr, source, daddr, dest, 1, NULL, data, datalen, dataoffset, TYPE_SKINNY, 
 			    dlt, sensor_id, sensor_ip);
-		call->set_last_packet_time(header->ts.tv_sec);
+		call->set_last_packet_time_us(getTimeUS(header));
 	}
 	
 	return NULL;

@@ -75,8 +75,8 @@ public:
 	inline void copyFrom(const RegisterState *src);
 	inline bool isEq(Call *call, Register *reg);
 public:
-	u_int32_t state_from;
-	u_int32_t state_to;
+	u_int64_t state_from_us;
+	u_int64_t state_to_us;
 	u_int32_t counter;
 	eRegisterState state;
 	char *contact_num;
@@ -92,7 +92,7 @@ public:
 	int id_sensor;
 	u_int16_t vlan;
 	u_int64_t db_id;
-	u_int32_t save_at;
+	u_int64_t save_at;
 	u_int32_t save_at_counter;
 	bool is_sipalg_detected;
 };
@@ -113,7 +113,7 @@ public:
 	inline void saveStateToDb(RegisterState *state, bool enableBatchIfPossible = true);
 	inline void saveFailedToDb(RegisterState *state, bool force = false, bool enableBatchIfPossible = true);
 	inline eRegisterState getState();
-	inline u_int32_t getStateFrom();
+	inline u_int32_t getStateFrom_s();
 	inline RegisterState *states_last() {
 		return(countStates ? states[0] : NULL);
 	}

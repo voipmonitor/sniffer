@@ -631,8 +631,7 @@ protected:
 			}
 		}
 		if(readIndex && readIndexCount && readIndexPos < readIndexCount) {
-			return(HPH(this->qring[readIndex - 1]->hpis[readIndexPos].header_packet)->ts.tv_sec * 1000000ull + 
-			       HPH(this->qring[readIndex - 1]->hpis[readIndexPos].header_packet)->ts.tv_usec);
+			return(getTimeUS(HPH(this->qring[readIndex - 1]->hpis[readIndexPos].header_packet)));
 		}
 		return(0);
 	}

@@ -337,7 +337,7 @@ struct sCseq {
 
 class Call_abstract {
 public:
-	Call_abstract(int call_type, time_t time);
+	Call_abstract(int call_type, u_int64_t time_us);
 	~Call_abstract() {
 		alloc_flag = 0;
 	}
@@ -346,10 +346,11 @@ public:
 	bool typeIsOnly(int type) { return(type_base == type && type_next == 0); }
 	bool typeIsNot(int type) { return(!typeIs(type)); }
 	bool addNextType(int type);
-	int calltime() { return first_packet_time; };
-	struct timeval *get_calltime(struct timeval *ts) {
-		ts->tv_sec = first_packet_time;
-		ts->tv_usec = 0;
+	u_int32_t calltime_s() { return TIME_US_TO_S(first_packet_time_us); };
+	u_int64_t calltime_us() { return first_packet_time_us; };
+	struct timeval *get_calltime_tv(struct timeval *ts) {
+		ts->tv_sec = TIME_US_TO_S(first_packet_time_us);
+		ts->tv_usec = TIME_US_TO_DEC_US(first_packet_time_us);
 		return(ts);
 	}
 	string get_sensordir();
@@ -387,7 +388,7 @@ public:
 	uint16_t alloc_flag;
 	int type_base;
 	int type_next;
-	time_t first_packet_time;
+	u_int64_t first_packet_time_us;
 	char fbasename[MAX_FNAME];
 	char fbasename_safe[MAX_FNAME];
 	u_int64_t fname_register;
@@ -473,10 +474,10 @@ public:
 		int SIPresponseNum;
 	};
 	struct sSipHistory {
-		sSipHistory(u_int64_t time = 0,
+		sSipHistory(u_int64_t time_us = 0,
 			    const char *SIPrequest = NULL,
 			    const char *SIPresponse = NULL, int SIPresponseNum = 0) {
-			this->time = time;
+			this->time_us = time_us;
 			if(SIPrequest && SIPrequest[0]) {
 				this->SIPrequest = SIPrequest;
 			}
@@ -485,7 +486,7 @@ public:
 			}
 			this->SIPresponseNum = SIPresponseNum;
 		}
-		u_int64_t time;
+		u_int64_t time_us;
 		string SIPrequest;
 		string SIPresponse;
 		int SIPresponseNum;
@@ -659,25 +660,22 @@ public:
 	float a_mos_lqo;
 	float b_mos_lqo;
 
-	time_t progress_time;		//!< time in seconds of 18X response
-	time_t first_rtp_time;		//!< time in seconds of first RTP packet
-	unsigned int first_rtp_time_usec;
-	time_t connect_time;		//!< time in seconds of 200 OK
-	unsigned int connect_time_usec;
-	time_t last_packet_time;	
-	time_t last_rtp_a_packet_time;	
-	time_t last_rtp_b_packet_time;	
-	unsigned int first_packet_usec;
+	u_int64_t progress_time_us;	//!< time in u_seconds of 18X response
+	u_int64_t first_rtp_time_us;	//!< time in u_seconds of first RTP packet
+	u_int64_t connect_time_us;	//!< time in u_seconds of 200 OK
+	u_int64_t last_packet_time_us;
+	u_int64_t last_rtp_a_packet_time_us;
+	u_int64_t last_rtp_b_packet_time_us;
 	time_t destroy_call_at;
 	time_t destroy_call_at_bye;
 	time_t destroy_call_at_bye_confirmed;
 	std::queue <s_dtmf> dtmf_history;
 	
-	u_int64_t first_invite_time_usec;
-	u_int64_t first_response_100_time_usec;
-	u_int64_t first_response_xxx_time_usec;
-	u_int64_t first_message_time_usec;
-	u_int64_t first_response_200_time_usec;
+	u_int64_t first_invite_time_us;
+	u_int64_t first_response_100_time_us;
+	u_int64_t first_response_xxx_time_us;
+	u_int64_t first_message_time_us;
+	u_int64_t first_response_200_time_us;
 
 	uint8_t	caller_sipdscp;
 	uint8_t	called_sipdscp;
@@ -813,7 +811,7 @@ public:
 	list<u_int32_t> mgcp_transactions;
 	map<u_int32_t, sMgcpRequest> mgcp_requests;
 	map<u_int32_t, sMgcpResponse> mgcp_responses;
-	time_t last_mgcp_connect_packet_time;
+	u_int64_t last_mgcp_connect_packet_time_us;
 	
 	u_int64_t counter;
 	static u_int64_t counter_s;
@@ -826,7 +824,7 @@ public:
 	 * @param time time of the first packet
 	 * 
 	*/
-	Call(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative, time_t time);
+	Call(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative, u_int64_t time_us);
 
 	/**
 	 * destructor
@@ -905,14 +903,15 @@ public:
 	 *
 	 * @return time of the last packet in seconds from UNIX epoch
 	*/
-	time_t get_last_packet_time() { return last_packet_time; };
+	u_int64_t get_last_packet_time_us() { return last_packet_time_us; };
+	u_int32_t get_last_packet_time_s() { return TIME_US_TO_S(last_packet_time_us); };
 
 	/**
 	 * @brief get time of the last seen rtp packet which belongs to this call
 	 *
 	 * @return time of the last rtp packet in seconds from UNIX epoch
 	*/
-	time_t get_last_rtp_packet_time() { return max(last_rtp_a_packet_time, last_rtp_b_packet_time); };
+	u_int64_t get_last_rtp_packet_time_us() { return max(last_rtp_a_packet_time_us, last_rtp_b_packet_time_us); };
 
 	/**
 	 * @brief set time of the last seen packet which belongs to this call
@@ -920,8 +919,8 @@ public:
 	 * this time is used for calculating lenght of the call
 	 *
 	*/
-	void set_last_packet_time(time_t mtime) { if(mtime > last_packet_time) last_packet_time = mtime; };
-	void set_last_mgcp_connect_packet_time(time_t mtime) { if(mtime > last_mgcp_connect_packet_time) last_mgcp_connect_packet_time = mtime; };
+	void set_last_packet_time_us(u_int64_t time_us) { if(time_us > last_packet_time_us) last_packet_time_us = time_us; };
+	void set_last_mgcp_connect_packet_time_us(u_int64_t time_us) { if(time_us > last_mgcp_connect_packet_time_us) last_mgcp_connect_packet_time_us = time_us; };
 
 	/**
 	 * @brief get first time of the the packet which belongs to this call
@@ -930,13 +929,13 @@ public:
 	 *
 	 * @return time of the first packet in seconds from UNIX epoch
 	*/
-	time_t get_first_packet_time() { return first_packet_time; };
+	time_t get_first_packet_time_s() { return TIME_US_TO_S(first_packet_time_us); };
 
 	/**
 	 * @brief set first time of the the packet which belongs to this call
 	 *
 	*/
-	void set_first_packet_time(time_t mtime, unsigned int usec) { first_packet_time = mtime; first_packet_usec = usec;};
+	void set_first_packet_time_us(u_int64_t time_us) { first_packet_time_us = time_us; };
 
 	/**
 	 * handle hold times
@@ -973,11 +972,16 @@ public:
 	 *
 	 * @return lenght of the call in seconds
 	*/
-	int duration() { return (typeIs(MGCP) ? last_mgcp_connect_packet_time : last_packet_time) - first_packet_time; };
-	int connect_duration() { return(connect_time ? duration() - (connect_time - first_packet_time) : 0); };
+	u_int64_t duration_us() { return((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_packet_time_us) - first_packet_time_us); };
+	double duration_sf() { return(TIME_US_TO_SF(duration_us())); };
+	u_int32_t duration_s() { return(TIME_US_TO_S(duration_us())); };
+	u_int64_t connect_duration_us() { return(connect_time_us ? duration_us() - (connect_time_us - first_packet_time_us) : 0); };
+	u_int32_t connect_duration_s() { return(TIME_US_TO_S(connect_duration_us())); };
+	u_int64_t callend_us() { return calltime_us() + duration_us(); };
+	u_int32_t callend_s() { return TIME_US_TO_S(callend_us()); };
 	
-	int duration_active() { return(getGlobalPacketTimeS() - first_packet_time); };
-	int connect_duration_active() { return(connect_time ? duration_active() - (connect_time - first_packet_time) : 0); };
+	u_int32_t duration_active_s() { return(getGlobalPacketTimeS() - TIME_US_TO_S(first_packet_time_us)); };
+	u_int32_t connect_duration_active_s() { return(connect_time_us ? duration_active_s() - TIME_US_TO_S(connect_time_us - first_packet_time_us) : 0); };
 	
 	/**
 	 * @brief remove call from hash table
@@ -1226,10 +1230,10 @@ public:
 	bool selectRtpStreams();
 	bool selectRtpStreams_bySipcallerip();
 	bool selectRtpStreams_byMaxLengthInLink();
-	u_int64_t getLengthStreams(list<int> *streams_i);
-	u_int64_t getLengthStreams();
+	u_int64_t getLengthStreams_us(list<int> *streams_i);
+	u_int64_t getLengthStreams_us();
 	void setSkipConcurenceStreams(int caller);
-	u_int64_t getFirstTimeInRtpStreams(int caller, bool selected);
+	u_int64_t getFirstTimeInRtpStreams_us(int caller, bool selected);
 	void printSelectedRtpStreams(int caller, bool selected);
 	bool existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms);
 	bool existsBothDirectionsInSelectedRtpStream();
@@ -1531,7 +1535,7 @@ public:
 		unsigned isup_cause_indicator;
 	};
 public:
-	Ss7(time_t time);
+	Ss7(u_int64_t time_us);
 	void processData(packet_s_stack *packetS, sParseData *data);
 	void pushToQueue(string *ss7_id = NULL);
 	int saveToDb(bool enableBatchIfPossible = true);
@@ -1715,7 +1719,7 @@ public:
 	 * @return reference of the new Call class
 	*/
 	Call *add(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative,
-		  time_t time, vmIP saddr, vmPort port, 
+		  u_int64_t time_us, vmIP saddr, vmPort port, 
 		  pcap_t *handle, int dlt, int sensorId);
 	Ss7 *add_ss7(packet_s_stack *packetS, Ss7::sParseData *data);
 	Call *add_mgcp(sMgcpRequest *request, time_t time, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport,
@@ -2119,7 +2123,7 @@ public:
 	void addToStdParse(ParsePacket *parsePacket);
 	void parse(Call *call, int type, tCH_Content *ch_content, packet_s_process *packetS, eReqRespDirection reqRespDirection = dir_na);
 	void setCustomHeaderContent(Call *call, int type, tCH_Content *ch_content, int pos1, int pos2, dstring *content, bool useLastValue);
-	void prepareSaveRows(Call *call, int type, tCH_Content *ch_content, unsigned time_s, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
+	void prepareSaveRows(Call *call, int type, tCH_Content *ch_content, u_int64_t time_us, class SqlDb_row *cdr_next, class SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]);
 	string getScreenPopupFieldsString(Call *call, int type);
 	string getDeleteQuery(const char *id, const char *prefix, const char *suffix);
 	list<string> getAllNextTables() {
@@ -2134,9 +2138,11 @@ public:
 		return(loadTime);
 	}
 	string getQueryForSaveUseInfo(Call *call, int type, tCH_Content *ch_content);
-	string getQueryForSaveUseInfo(unsigned time, tCH_Content *ch_content);
+	string getQueryForSaveUseInfo(u_int64_t time_us, tCH_Content *ch_content);
 	void createTablesIfNotExists(SqlDb *sqlDb = NULL, bool enableOldPartition = false);
 	void createTableIfNotExists(const char *tableName, SqlDb *sqlDb = NULL, bool enableOldPartition = false);
+	void checkTablesColumns(SqlDb *sqlDb = NULL);
+	void checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb = NULL);
 	void createColumnsForFixedHeaders(SqlDb *sqlDb = NULL);
 	bool getPosForDbId(unsigned db_id, d_u_int32_t *pos);
 	static tCH_Content *getCustomHeadersCallContent(Call *call, int type);
@@ -2163,6 +2169,7 @@ private:
 	string relTimeColumn;
 	map<int, map<int, sCustomHeaderData> > custom_headers;
 	list<string> allNextTables;
+	map<int, bool> calldate_ms;
 	unsigned loadTime;
 	unsigned lastTimeSaveUseInfo;
 	volatile int _sync_custom_headers;

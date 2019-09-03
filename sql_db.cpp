@@ -63,6 +63,7 @@ extern int opt_ssl_store_sessions;
 extern int opt_cdr_country_code;
 extern int opt_message_country_code;
 extern int opt_mysql_enable_multiple_rows_insert;
+extern bool opt_time_precision_in_ms;
 
 extern char sql_driver[256];
 
@@ -152,6 +153,22 @@ void SqlDb_row::add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, con
 		char str_content[100];
 		snprintf(str_content, sizeof(str_content), "%u", content.getIPv4());
 		this->add(str_content, fieldName);
+	}
+}
+
+void SqlDb_row::add_calldate(u_int64_t calldate_us, string fieldName, bool use_ms) {
+	if(use_ms) {
+		add(sqlEscapeString(sqlDateTimeString_us2ms(calldate_us).c_str()), fieldName);
+	} else {
+		add(sqlEscapeString(sqlDateTimeString(TIME_US_TO_S(calldate_us)).c_str()), fieldName);
+	}
+}
+
+void SqlDb_row::add_duration(u_int64_t duration_us, string fieldName, bool use_ms, bool round_s) {
+	if(use_ms) {
+		add(TIME_US_TO_SF(duration_us), fieldName);
+	} else {
+		add(round_s ? (unsigned)round(TIME_US_TO_SF(duration_us)) : TIME_US_TO_S(duration_us), fieldName);
 	}
 }
 
@@ -1037,11 +1054,18 @@ bool SqlDb::isEnableExistColumnCache() {
 	return(rslt);
 }
 
-int SqlDb::existsColumnInCache(const char *table, const char *column) {
+int SqlDb::existsColumnInCache(const char *table, const char *column, string *type) {
 	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
-	map<string, list<string> >::iterator iter = this->existsColumn_cache.find(table);
+	map<string, map<string, string> >::iterator iter = this->existsColumn_cache.find(table);
 	if(iter != this->existsColumn_cache.end()) {
-		int rslt = find(iter->second.begin(), iter->second.end(), column) != iter->second.end();
+		int rslt = 0;
+		map<string, string>::iterator iter2 = iter->second.find(column);
+		if(iter2 != iter->second.end()) {
+			rslt = 1;
+			if(type) {
+				*type = iter2->second;
+			}
+		}
 		__sync_lock_release(&existsColumn_cache_sync);
 		return(rslt);
 	}
@@ -1049,9 +1073,9 @@ int SqlDb::existsColumnInCache(const char *table, const char *column) {
 	return(-1);
 }
 
-void SqlDb::addColumnToCache(const char *table, const char *column) {
+void SqlDb::addColumnToCache(const char *table, const char *column, const char *type) {
 	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
-	this->existsColumn_cache[table].push_back(column);
+	this->existsColumn_cache[table][column] = type;
 	__sync_lock_release(&existsColumn_cache_sync);
 }
 
@@ -1478,6 +1502,12 @@ int SqlDb_mysql::getMaximumPartitions() {
 	return(getDbName() == "mariadb" ? 
 		(getDbVersion() < 100004 ? 1024 : 8192) :
 		(getDbVersion() < 50607 ? 1024 : 8192));
+}
+
+bool SqlDb_mysql::isSupportForDatetimeMs() {
+	return(getDbName() == "mariadb" ? 
+		(getDbVersion() > 50300) :
+		(getDbVersion() > 50500));
 }
 
 bool SqlDb_mysql::_getDbVersion() {
@@ -1934,16 +1964,19 @@ bool SqlDb_mysql::existsDatabase() {
 	return(countRow > 0);
 }
 
-bool SqlDb_mysql::existsColumn(const char *table, const char *column) {
+bool SqlDb_mysql::existsColumn(const char *table, const char *column, string *type) {
 	if(isEnableExistColumnCache()) {
-		int exists = this->existsColumnInCache(table, column);
+		int exists = this->existsColumnInCache(table, column, type);
 		if(exists < 0) {
 			this->query(string("show columns from ") + escapeTableName(table));
 			SqlDb_row cdr_struct_row;
 			while((cdr_struct_row = this->fetchRow())) {
-				this->addColumnToCache(table, cdr_struct_row["field"].c_str());
+				this->addColumnToCache(table, cdr_struct_row["field"].c_str(), cdr_struct_row["type"].c_str());
 				if(cdr_struct_row["field"] == column) {
 					exists = true;
+					if(type) {
+						*type = cdr_struct_row["type"];
+					}
 				}
 			}
 			return(exists > 0);
@@ -1954,8 +1987,12 @@ bool SqlDb_mysql::existsColumn(const char *table, const char *column) {
 		this->query(string("show columns from ") + escapeTableName(table) + 
 			    " where Field='" + column + "'");
 		int countRow = 0;
-		while(this->fetchRow()) {
+		SqlDb_row cdr_struct_row;
+		while((cdr_struct_row = this->fetchRow())) {
 			++countRow;
+			if(type) {
+				*type = cdr_struct_row["type"];
+			}
 		}
 		return(countRow > 0);
 	}
@@ -1983,6 +2020,13 @@ string SqlDb_mysql::getTypeColumn(const char *table, const char *column, bool to
 			}
 		}
 		__sync_lock_release(&typeColumn_cache_sync);
+		return(type);
+	} else if(isEnableExistColumnCache()) {
+		string type;
+		existsColumn(table, column, &type);
+		if(toLower) {
+			std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+		}
 		return(type);
 	}
 	this->query(string("show columns from ") + escapeTableName(table) + " like '" + column + "'");
@@ -2429,7 +2473,7 @@ bool SqlDb_odbc::existsDatabase() {
 	return(false);
 }
 
-bool SqlDb_odbc::existsColumn(const char */*table*/, const char */*column*/) {
+bool SqlDb_odbc::existsColumn(const char */*table*/, const char */*column*/, string */*type*/) {
 	// TODO
 	return(false);
 }
@@ -4110,6 +4154,20 @@ string sqlDateTimeString(time_t unixTime, bool useGlobalTimeCache) {
 	return string(dateTimeBuffer);
 }
 
+string sqlDateTimeString_us2ms(u_int64_t unixTime_us, bool useGlobalTimeCache) {
+	time_t unixTime_s = TIME_US_TO_S(unixTime_us);
+	unsigned unixTime_dec_ms = round(TIME_US_TO_DEC_US(unixTime_us) / 1000.);
+	if(unixTime_dec_ms > 999) {
+		++unixTime_s;
+		unixTime_dec_ms = 0;
+	}
+	struct tm localTime = time_r(&unixTime_s, NULL, useGlobalTimeCache);
+	char dateTimeBuffer[50];
+	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &localTime);
+	snprintf(dateTimeBuffer + strlen(dateTimeBuffer), sizeof(dateTimeBuffer) - strlen(dateTimeBuffer), ".%03i", unixTime_dec_ms);
+	return string(dateTimeBuffer);
+}
+
 string sqlDateString(time_t unixTime, bool useGlobalTimeCache) {
 	struct tm localTime = time_r(&unixTime, NULL, useGlobalTimeCache);
 	char dateBuffer[50];
@@ -4442,12 +4500,12 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr` (\
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
-			`calldate` datetime NOT NULL,\
-			`callend` datetime NOT NULL,\
-			`duration` mediumint unsigned DEFAULT NULL,\
-			`connect_duration` mediumint unsigned DEFAULT NULL,\
-			`progress_time` mediumint unsigned DEFAULT NULL,\
-			`first_rtp_time` mediumint unsigned DEFAULT NULL,\
+			`calldate` ") + column_type_datetime_ms() + " NOT NULL,\
+			`callend` " + column_type_datetime_ms() + " NOT NULL,\
+			`duration` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
+			`connect_duration` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
+			`progress_time` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
+			`first_rtp_time` " + column_type_duration_ms() + " unsigned DEFAULT NULL,\
 			`caller` varchar(255) DEFAULT NULL,\
 			`caller_domain` varchar(255) DEFAULT NULL,\
 			`caller_reverse` varchar(255) DEFAULT NULL,\
@@ -4456,7 +4514,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`called` varchar(255) DEFAULT NULL,\
 			`called_domain` varchar(255) DEFAULT NULL,\
 			`called_reverse` varchar(255) DEFAULT NULL,\
-			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`sipcallerip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`sipcallerport` smallint unsigned DEFAULT NULL,\
 			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`sipcalledport` smallint unsigned DEFAULT NULL,\
@@ -4552,8 +4610,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`b_rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_maxjitter` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
-			`a_last_rtp_from_end` smallint unsigned DEFAULT NULL,\
-			`b_last_rtp_from_end` smallint unsigned DEFAULT NULL,\
+			`a_last_rtp_from_end` " + column_type_duration_ms("smallint") + " unsigned DEFAULT NULL,\
+			`b_last_rtp_from_end` " + column_type_duration_ms("smallint") + " unsigned DEFAULT NULL,\
 			`a_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
 			`b_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
 			`a_rtp_ptime` tinyint unsigned DEFAULT NULL,\
@@ -4715,7 +4773,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `cdr_next` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
-				"`calldate` datetime NOT NULL," :
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`custom_header1` varchar(255) DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
@@ -4752,7 +4810,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_proxy` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,\
-			`calldate` datetime NOT NULL,\
+			`calldate` " + column_type_datetime_child_ms() + " NOT NULL,\
 			`dst` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 		KEY `cdr_ID` (`cdr_ID`),\
 		KEY `calldate` (`calldate`),\
@@ -4773,14 +4831,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `cdr_rtp` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
-				"`calldate` datetime NOT NULL," :
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`saddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`daddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`ssrc` int unsigned DEFAULT NULL,\
 			`received` mediumint unsigned DEFAULT NULL,\
 			`loss` mediumint unsigned DEFAULT NULL,\
-			`firsttime` float DEFAULT NULL,\
+			`firsttime` " + column_type_duration_ms("float") + " DEFAULT NULL,\
 			`payload` smallint unsigned DEFAULT NULL,\
 			`maxjitter_mult10` smallint unsigned DEFAULT NULL,\
 			`index` tinyint unsigned DEFAULT NULL,\
@@ -4807,11 +4865,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
-				"`calldate` datetime NOT NULL," :
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`daddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`saddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
-			`firsttime` float DEFAULT NULL,\
+			`firsttime` " + column_type_duration_ms("float") + " DEFAULT NULL,\
 			`dtmf` char DEFAULT NULL,\
 			`type` tinyint unsigned DEFAULT NULL,\
 		KEY (`cdr_ID`)" + 
@@ -4836,7 +4894,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `cdr_sipresp` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
-				"`calldate` datetime NOT NULL," :
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`SIPresponse_id` mediumint unsigned DEFAULT NULL,\
 			`SIPresponseNum` smallint unsigned DEFAULT NULL,\
@@ -4861,7 +4919,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		"CREATE TABLE IF NOT EXISTS `cdr_siphistory` (\
 				`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 				(opt_cdr_partition ?
-					"`calldate` datetime NOT NULL," :
+					"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 					"") + 
 				"`time` bigint unsigned DEFAULT NULL,\
 				`SIPrequest_id` mediumint unsigned DEFAULT NULL,\
@@ -4888,7 +4946,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `cdr_tar_part` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
-				"`calldate` datetime NOT NULL," :
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`type` tinyint unsigned DEFAULT NULL,\
 			`pos` bigint unsigned DEFAULT NULL,\
@@ -4912,7 +4970,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `cdr_country_code` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
-				"`calldate` datetime NOT NULL," :
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			(opt_cdr_country_code == 2 ?
 				"`sipcallerip_country_code` smallint,\
@@ -4947,7 +5005,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `cdr_sdp` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
-				"`calldate` datetime NOT NULL," :
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`port` smallint unsigned DEFAULT NULL,\
@@ -4975,7 +5033,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `cdr_flags` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
-				"`calldate` datetime NOT NULL," :
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`deleted` smallint unsigned DEFAULT NULL,\
 		KEY (`cdr_ID`)" + 
@@ -5033,15 +5091,15 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `ss7` (\
 				`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
-				`time_iam` datetime NOT NULL,\
-				`time_acm` datetime,\
-				`time_cpg` datetime,\
-				`time_anm` datetime,\
-				`time_rel` datetime,\
-				`time_rlc` datetime,\
-				`duration` mediumint unsigned,\
-				`connect_duration` mediumint unsigned,\
-				`progress_time` mediumint unsigned,\
+				`time_iam` " + column_type_datetime_ms() + " NOT NULL,\
+				`time_acm` " + column_type_datetime_ms() + ",\
+				`time_cpg` " + column_type_datetime_ms() + ",\
+				`time_anm` " + column_type_datetime_ms() + ",\
+				`time_rel` " + column_type_datetime_ms() + ",\
+				`time_rlc` " + column_type_datetime_ms() + ",\
+				`duration` " + column_type_duration_ms() + " unsigned,\
+				`connect_duration` " + column_type_duration_ms() + " unsigned,\
+				`progress_time` " + column_type_duration_ms() + " unsigned,\
 				`cic` int unsigned,\
 				`satellite_indicator` int unsigned,\
 				`echo_control_device_indicator` int unsigned,\
@@ -5087,13 +5145,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				string(" PARTITION BY RANGE COLUMNS(time_iam)(\
 					 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 			""));
+		checkColumns_ss7(true);
 	}
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `message` (\
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`id_contenttype` int unsigned NOT NULL,\
-			`calldate` datetime NOT NULL,\
+			`calldate`" ) + column_type_datetime_ms() + " NOT NULL,\
 			`caller` varchar(255) DEFAULT NULL,\
 			`caller_domain` varchar(255) DEFAULT NULL,\
 			`caller_reverse` varchar(255) DEFAULT NULL,\
@@ -5102,7 +5161,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`called` varchar(255) DEFAULT NULL,\
 			`called_domain` varchar(255) DEFAULT NULL,\
 			`called_reverse` varchar(255) DEFAULT NULL,\
-			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`sipcallerip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`bye` tinyint unsigned DEFAULT NULL,\
 			`lastSIPresponse_id` mediumint unsigned DEFAULT NULL,\
@@ -5178,7 +5237,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `message_proxy` (\
 			`message_ID` " + messageIdType + " unsigned NOT NULL,\
-			`calldate` datetime NOT NULL,\
+			`calldate` " + column_type_datetime_child_ms() + " NOT NULL,\
 			`dst` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 		KEY `message_ID` (`message_ID`),\
 		KEY `calldate` (`calldate`),\
@@ -5199,7 +5258,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `message_country_code` (\
 			`message_ID` " + messageIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
-				"`calldate` datetime NOT NULL," :
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			(opt_message_country_code == 2 ?
 				"`sipcallerip_country_code` smallint,\
@@ -5234,7 +5293,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `message_flags` (\
 			`message_ID` " + messageIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
-				"`calldate` datetime NOT NULL," :
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`deleted` smallint unsigned DEFAULT NULL,\
 		KEY (`message_ID`)" + 
@@ -5258,8 +5317,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
-			`calldate` datetime NOT NULL,\
-			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`calldate` ") + column_type_datetime_ms() + " NOT NULL,\
+			`sipcallerip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`from_name` varchar(255) NULL DEFAULT NULL,\
@@ -5292,8 +5351,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
-			`created_at` datetime NOT NULL,\
-			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`created_at` ") + column_type_datetime_ms() + " NOT NULL,\
+			`sipcallerip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`to_num` varchar(255) NULL DEFAULT NULL,\
@@ -5329,8 +5388,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
 			`counter` int DEFAULT 0,\
-			`created_at` datetime NOT NULL,\
-			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`created_at` ") + column_type_datetime_ms() + " NOT NULL,\
+			`sipcallerip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`to_num` varchar(255) NULL DEFAULT NULL,\
@@ -5362,7 +5421,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `sip_msg` (\
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
-			`time` datetime NOT NULL,\
+			`time` " + column_type_datetime_ms() + " NOT NULL,\
 			`type` tinyint unsigned NOT NULL,\
 			`ip_src` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`ip_dst` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
@@ -5391,9 +5450,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`response_id` mediumint unsigned DEFAULT NULL,\
 			`time_us` bigint unsigned DEFAULT NULL,\
 			`request_repetition` smallint unsigned DEFAULT NULL,\
-			`request_time` datetime DEFAULT NULL,\
+			`request_time` " + column_type_datetime_ms() + " DEFAULT NULL,\
 			`request_time_us` int unsigned DEFAULT NULL,\
-			`response_time` datetime DEFAULT NULL,\
+			`response_time` " + column_type_datetime_ms() + " DEFAULT NULL,\
 			`response_time_us` int unsigned DEFAULT NULL,\
 			`response_duration_ms` int unsigned DEFAULT NULL,\
 			`qualify_ok` tinyint unsigned DEFAULT NULL,\
@@ -6599,6 +6658,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 		this->checkColumns_cdr_next();
 		this->checkColumns_cdr_rtp();
 		this->checkColumns_cdr_dtmf();
+		this->checkColumns_ss7();
 		this->checkColumns_message();
 		this->checkColumns_register();
 		this->checkColumns_sip_msg();
@@ -6680,6 +6740,82 @@ void SqlDb_mysql::updateSensorState() {
 
 void SqlDb_mysql::checkColumns_cdr(bool log) {
 	map<string, u_int64_t> tableSize;
+	for(int pass = 0; pass < 2; pass++) {
+		vector<string> alters_ms;
+		if(!(existsColumns.cdr_calldate_ms = this->getTypeColumn("cdr", "calldate").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column calldate " + column_type_datetime_ms() + " not null");
+		}
+		if(!(existsColumns.cdr_callend_ms = this->getTypeColumn("cdr", "callend").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column callend " + column_type_datetime_ms() + " not null");
+		}
+		if(!(existsColumns.cdr_duration_ms = this->getTypeColumn("cdr", "duration").find("decimal") != string::npos)) {
+			alters_ms.push_back("modify column duration " + column_type_duration_ms() + " unsigned default null");
+		}
+		if(!(existsColumns.cdr_connect_duration_ms = this->getTypeColumn("cdr", "connect_duration").find("decimal") != string::npos)) {
+			alters_ms.push_back("modify column connect_duration " + column_type_duration_ms() + " unsigned default null");
+		}
+		if(!(existsColumns.cdr_progress_time_ms = this->getTypeColumn("cdr", "progress_time").find("decimal") != string::npos)) {
+			alters_ms.push_back("modify column progress_time " + column_type_duration_ms() + " unsigned default null");
+		}
+		if(!(existsColumns.cdr_first_rtp_time_ms = this->getTypeColumn("cdr", "first_rtp_time").find("decimal") != string::npos)) {
+			alters_ms.push_back("modify column first_rtp_time " + column_type_duration_ms() + " unsigned default null");
+		}
+		if(!(existsColumns.cdr_a_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("decimal") != string::npos)) {
+			alters_ms.push_back("modify column a_last_rtp_from_end " + column_type_duration_ms() + " unsigned default null");
+		}
+		if(!(existsColumns.cdr_b_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("decimal") != string::npos)) {
+			alters_ms.push_back("modify column b_last_rtp_from_end " + column_type_duration_ms() + " unsigned default null");
+		}
+		if(pass == 0 && opt_time_precision_in_ms) {
+			if(alters_ms.size()) {
+				if(isSupportForDatetimeMs()) {
+					this->logNeedAlter("cdr",
+							   "time accuracy in milliseconds",
+							   "ALTER TABLE cdr\n" + implode(alters_ms, ",\n") + ";",
+							   log, &tableSize, NULL);
+					continue;
+				} else {
+					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+					opt_time_precision_in_ms = false;
+				}
+			}
+		}
+		break;
+	}
+	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_next_calldate_ms, "cdr_next"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_proxy_calldate_ms, "cdr_proxy"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_rtp_calldate_ms, "cdr_rtp"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_dtmf_calldate_ms, "cdr_dtmf"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_sipresp_calldate_ms, "cdr_sipresp"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_siphistory_calldate_ms, "cdr_siphistory"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_tar_part_calldate_ms, "cdr_tar_part"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_country_code_calldate_ms, "cdr_country_code"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_sdp_calldate_ms, "cdr_sdp"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_flags_calldate_ms, "cdr_flags"));
+	for(unsigned i = 0; i < childTablesCalldateMsIndik.size(); i++) {
+		for(int pass = 0; pass < 2; pass++) {
+			string alter_ms;
+			if(!(*(childTablesCalldateMsIndik[i].ms) = this->getTypeColumn(childTablesCalldateMsIndik[i].table.c_str(), childTablesCalldateMsIndik[i].calldate.c_str()).find("(3)") != string::npos)) {
+				alter_ms = "modify column " + childTablesCalldateMsIndik[i].calldate + " " + column_type_datetime_child_ms() + " not null";
+			}
+			if(pass == 0 && opt_time_precision_in_ms) {
+				if(!alter_ms.empty()) {
+					if(isSupportForDatetimeMs()) {
+						this->logNeedAlter(childTablesCalldateMsIndik[i].table,
+								   "time accuracy in milliseconds",
+								   "ALTER TABLE " + childTablesCalldateMsIndik[i].table + "\n" + alter_ms + ";",
+								   log, &tableSize, NULL);
+						continue;
+					} else {
+						cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+						opt_time_precision_in_ms = false;
+					}
+				}
+			}
+			break;
+		}
+	}
 	existsColumns.cdr_sipport = this->existsColumn("cdr", "sipcallerport");
 	if(opt_cdr_sipport && !existsColumns.cdr_sipport) {
 		this->logNeedAlter("cdr",
@@ -6839,10 +6975,10 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   "ALTER TABLE cdr "
 				   "ADD COLUMN response_time_100 smallint unsigned DEFAULT NULL, "
 				   "ADD COLUMN response_time_xxx smallint unsigned DEFAULT NULL;",
-				   log, &tableSize, &existsColumns.cdr_response_time);
-	} else {
-		existsColumns.cdr_response_time = true;
+				   log, &tableSize, &existsColumns.cdr_response_time_100);
 	}
+	existsColumns.cdr_response_time_100 = this->existsColumn("cdr", "cdr_response_time_100");
+	existsColumns.cdr_response_time_xxx = this->existsColumn("cdr", "cdr_response_time_xxx");
 
 	//14.0
 	existsColumns.cdr_mos_min = this->existsColumn("cdr", "a_mos_f1_min_mult10");
@@ -6962,8 +7098,105 @@ void SqlDb_mysql::checkColumns_cdr_dtmf(bool log) {
 	}
 }
 
+void SqlDb_mysql::checkColumns_ss7(bool log) {
+	map<string, u_int64_t> tableSize;
+	for(int pass = 0; pass < 2; pass++) {
+		vector<string> alters_ms;
+		if(!(existsColumns.ss7_time_iam_ms = this->getTypeColumn("ss7", "time_iam").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column time_iam " + column_type_datetime_ms() + " not null");
+		}
+		if(!(existsColumns.ss7_time_acm_ms = this->getTypeColumn("ss7", "time_acm").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column time_acm " + column_type_datetime_ms());
+		}
+		if(!(existsColumns.ss7_time_cpg_ms = this->getTypeColumn("ss7", "time_cpg").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column time_cpg " + column_type_datetime_ms());
+		}
+		if(!(existsColumns.ss7_time_anm_ms = this->getTypeColumn("ss7", "time_anm").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column time_anm " + column_type_datetime_ms());
+		}
+		if(!(existsColumns.ss7_time_rel_ms = this->getTypeColumn("ss7", "time_rel").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column time_rel " + column_type_datetime_ms());
+		}
+		if(!(existsColumns.ss7_time_rlc_ms = this->getTypeColumn("ss7", "time_rlc").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column time_rlc " + column_type_datetime_ms());
+		}
+		if(!(existsColumns.ss7_duration_ms = this->getTypeColumn("ss7", "duration").find("decimal") != string::npos)) {
+			alters_ms.push_back("modify column duration " + column_type_duration_ms() + " unsigned");
+		}
+		if(!(existsColumns.ss7_connect_duration_ms = this->getTypeColumn("ss7", "connect_duration").find("decimal") != string::npos)) {
+			alters_ms.push_back("modify column connect_duration " + column_type_duration_ms() + " unsigned");
+		}
+		if(!(existsColumns.ss7_progress_time_ms = this->getTypeColumn("ss7", "progress_time").find("decimal") != string::npos)) {
+			alters_ms.push_back("modify column progress_time " + column_type_duration_ms() + " unsigned");
+		}
+		if(pass == 0 && opt_time_precision_in_ms) {
+			if(alters_ms.size()) {
+				if(isSupportForDatetimeMs()) {
+					this->logNeedAlter("ss7",
+							   "time accuracy in milliseconds",
+							   "ALTER TABLE ss7\n" + implode(alters_ms, ",\n") + ";",
+							   log, &tableSize, NULL);
+					continue;
+				} else {
+					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+					opt_time_precision_in_ms = false;
+				}
+			}
+		}
+		break;
+	}
+}
+
 void SqlDb_mysql::checkColumns_message(bool log) {
 	map<string, u_int64_t> tableSize;
+	for(int pass = 0; pass < 2; pass++) {
+		string alter_ms;
+		if(!(existsColumns.message_calldate_ms = this->getTypeColumn("message", "calldate").find("(3)") != string::npos)) {
+			alter_ms = "modify column calldate " + column_type_datetime_ms() + " not null";
+		}
+		if(pass == 0 && opt_time_precision_in_ms) {
+			if(!alter_ms.empty()) {
+				if(isSupportForDatetimeMs()) {
+					this->logNeedAlter("message",
+							   "time accuracy in milliseconds",
+							   "ALTER TABLE message\n" + alter_ms + ";",
+							   log, &tableSize, NULL);
+					continue;
+				} else {
+					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+					opt_time_precision_in_ms = false;
+				}
+			}
+		}
+		break;
+	}
+	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.message_child_proxy_calldate_ms, "message_proxy"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.message_child_country_code_calldate_ms, "message_country_code"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.message_child_flags_calldate_ms, "message_flags"));
+	for(unsigned i = 0; i < childTablesCalldateMsIndik.size(); i++) {
+		for(int pass = 0; pass < 2; pass++) {
+			string alter_ms;
+			if(!(*(childTablesCalldateMsIndik[i].ms) = this->getTypeColumn(childTablesCalldateMsIndik[i].table.c_str(), childTablesCalldateMsIndik[i].calldate.c_str()).find("(3)") != string::npos)) {
+				alter_ms = "modify column " + childTablesCalldateMsIndik[i].calldate + " " + column_type_datetime_child_ms() + " not null";
+			}
+			if(pass == 0 && opt_time_precision_in_ms) {
+				if(!alter_ms.empty()) {
+					if(isSupportForDatetimeMs()) {
+						this->logNeedAlter(childTablesCalldateMsIndik[i].table,
+								   "time accuracy in milliseconds",
+								   "ALTER TABLE " + childTablesCalldateMsIndik[i].table + "\n" + alter_ms + ";",
+								   log, &tableSize, NULL);
+						continue;
+					} else {
+						cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+						opt_time_precision_in_ms = false;
+					}
+				}
+			}
+			break;
+		}
+	}
 	existsColumns.message_content_length = this->existsColumn("message", "content_length");
 	existsColumns.message_response_time = this->existsColumn("message", "response_time");
 	if(!existsColumns.message_response_time) {
@@ -6994,6 +7227,35 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 
 void SqlDb_mysql::checkColumns_register(bool log) {
 	map<string, u_int64_t> tableSize;
+	for(int pass = 0; pass < 2; pass++) {
+		vector<dstring> alters_ms;
+		if(!(existsColumns.register_calldate_ms = this->getTypeColumn("register", "calldate").find("(3)") != string::npos)) {
+			alters_ms.push_back(dstring("register", "modify column calldate " + column_type_datetime_ms() + " not null"));
+		}
+		if(!(existsColumns.register_state_created_at_ms = this->getTypeColumn("register_state", "created_at").find("(3)") != string::npos)) {
+			alters_ms.push_back(dstring("register_state", "modify column created_at " + column_type_datetime_ms() + " not null"));
+		}
+		if(!(existsColumns.register_failed_created_at_ms = this->getTypeColumn("register_failed", "created_at").find("(3)") != string::npos)) {
+			alters_ms.push_back(dstring("register_failed", "modify column created_at " + column_type_datetime_ms() + " not null"));
+		}
+		if(pass == 0 && opt_time_precision_in_ms) {
+			if(alters_ms.size()) {
+				if(isSupportForDatetimeMs()) {
+					for(unsigned i = 0; i < alters_ms.size(); i++) {
+						this->logNeedAlter(alters_ms[i][0],
+								   "time accuracy in milliseconds",
+								   "ALTER TABLE " + alters_ms[i][0] + "\n" + alters_ms[i][1] + ";",
+								   log, &tableSize, NULL);
+					}
+					continue;
+				} else {
+					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+					opt_time_precision_in_ms = false;
+				}
+			}
+		}
+		break;
+	}
 	extern int opt_sip_register;
 	if(opt_sip_register == 1) {
 		bool registerFailedIdIsBig = true;
@@ -7060,6 +7322,33 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 
 void SqlDb_mysql::checkColumns_sip_msg(bool log) {
 	map<string, u_int64_t> tableSize;
+	for(int pass = 0; pass < 2; pass++) {
+		vector<string> alters_ms;
+		if(!(existsColumns.sip_msg_time_ms = this->getTypeColumn("sip_msg", "time").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column time " + column_type_datetime_ms() + " not null");
+		}
+		if(!(existsColumns.sip_msg_request_time_ms = this->getTypeColumn("sip_msg", "request_time").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column request_time " + column_type_datetime_ms() + " not null");
+		}
+		if(!(existsColumns.sip_msg_response_time_ms = this->getTypeColumn("sip_msg", "response_time").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column response_time " + column_type_datetime_ms() + " not null");
+		}
+		if(pass == 0 && opt_time_precision_in_ms) {
+			if(alters_ms.size()) {
+				if(isSupportForDatetimeMs()) {
+					this->logNeedAlter("sip_msg",
+							   "time accuracy in milliseconds",
+							   "ALTER TABLE sip_msg\n" + implode(alters_ms, ",\n") + ";",
+							   log, &tableSize, NULL);
+					continue;
+				} else {
+					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+					opt_time_precision_in_ms = false;
+				}
+			}
+		}
+		break;
+	}
 	existsColumns.sip_msg_vlan = this->existsColumn("sip_msg", "vlan");
 	if(!existsColumns.sip_msg_vlan) {
 		this->logNeedAlter("sip_msg",
@@ -7115,6 +7404,24 @@ bool SqlDb_mysql::isExtPrecissionBilling() {
 		}
 	}
 	return(existsExtPrecisionBilling);
+}
+
+string SqlDb_mysql::column_type_datetime_ms() {
+	return(opt_time_precision_in_ms && isSupportForDatetimeMs() ?
+		"datetime(3)" :
+		"datetime");
+}
+
+string SqlDb_mysql::column_type_datetime_child_ms() {
+	return(opt_time_precision_in_ms && isSupportForDatetimeMs() ?
+		"datetime(3)" :
+		"datetime");
+}
+
+string SqlDb_mysql::column_type_duration_ms(const char *base_type) {
+	return(opt_time_precision_in_ms && isSupportForDatetimeMs() ?
+		"decimal(9,3)" :
+		(base_type ? base_type : "mediumint"));
 }
 
 bool SqlDb_mysql::checkSourceTables() {

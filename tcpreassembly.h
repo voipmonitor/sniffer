@@ -11,6 +11,7 @@
 #include "pcap_queue_block.h"
 #include "pstat.h"
 #include "heap_safe.h"
+#include "tools_global.h"
 
 
 extern int opt_tcpreassembly_thread;
@@ -145,6 +146,9 @@ public:
 	}
 	timeval getTime() {
 		return(this->time);
+	}
+	u_int64_t getTimeMS() {
+		return(::getTimeMS(&this->time));
 	}
 	u_int32_t getAck() {
 		return(this->ack);

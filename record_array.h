@@ -28,6 +28,7 @@ struct RecordArrayField {
 		tf_float,
 		tf_pointer,
 		tf_time,
+		tf_time_ms,
 		tf_string,
 		tf_json,
 		tf_bool
@@ -96,14 +97,16 @@ struct RecordArrayField {
 		}
 	}
 	int64_t get_int() {
-		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || tf == tf_time ?
+		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || 
+		       tf == tf_time || tf == tf_time_ms ?
 			v.i :
 		       tf == tf_float ?
 			(int64_t)v.d :
 			0);
 	}
 	u_int64_t get_uint() {
-		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || tf == tf_time ?
+		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || 
+		       tf == tf_time || tf == tf_time_ms ?
 			v.u :
 		       tf == tf_float ?
 			(u_int64_t)v.d :
@@ -123,14 +126,16 @@ struct RecordArrayField {
 		return(tf == tf_bool ? (bool)v.b : false);
 	}
 	double get_float() {
-		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || tf == tf_time ?
+		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || 
+		       tf == tf_time || tf == tf_time_ms ?
 			(double)v.i :
 		       tf == tf_float ?
 			v.d :
 			0);
 	}
 	void * get_pointer() {
-		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || tf == tf_time ?
+		return(tf == tf_int || tf == tf_uint || tf == tf_pointer || 
+		       tf == tf_time || tf == tf_time_ms ?
 			v.p :
 			NULL);
 	}
@@ -152,6 +157,7 @@ struct RecordArrayField {
 				return(v.i == other.v.i);
 			case tf_uint:
 			case tf_time:
+			case tf_time_ms:
 				return(v.u == other.v.u);
 			case tf_ip:
 			case tf_ip_n4:
@@ -180,6 +186,7 @@ struct RecordArrayField {
 				return(v.i < other.v.i);
 			case tf_uint:
 			case tf_time:
+			case tf_time_ms:
 				return(v.u < other.v.u);
 			case tf_ip:
 			case tf_ip_n4:

@@ -216,8 +216,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	DSP = NULL;
 	samplerate = 8000;
 	first = true;
-	first_packet_time = 0;
-	first_packet_usec = 0;
+	first_packet_time_us = 0;
 	s = new FILE_LINE(24001) source;
 	memset(s, 0, sizeof(source));
 	memset(&stats, 0, sizeof(stats));
@@ -319,7 +318,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	}
 	channel_record_seq_ringbuffer_pos = 0;
 	last_ts = 0;
-	last_pcap_header_ts = 0;
+	last_pcap_header_us = 0;
 	pcap_header_ts_bad_time = false;
 	packetization = 0;
 	last_packetization = 0;
@@ -1006,17 +1005,17 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		return(false);
 	}
 	
-	u_int64_t pcap_header_ts = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
-	if(this->last_pcap_header_ts && pcap_header_ts < (this->last_pcap_header_ts - 50000)) {
+	u_int64_t pcap_header_us = getTimeUS(header->ts);
+	if(this->last_pcap_header_us && pcap_header_us < (this->last_pcap_header_us - 50000)) {
 		if(!this->pcap_header_ts_bad_time) {
-			if(pcap_header_ts < (this->last_pcap_header_ts - 200000)) {
+			if(pcap_header_us < (this->last_pcap_header_us - 200000)) {
 				extern bool opt_disable_rtp_warning;
 				if(!opt_disable_rtp_warning) {
 					u_int64_t actTime = getTimeMS();
 					static u_int64_t s_lastTimeSyslog;
 					if(actTime - 500 > s_lastTimeSyslog) {
 						syslog(LOG_NOTICE, "warning - packet (seq:%i, ssrc: %x) from sensor (%i) has bad pcap header time (-%" int_64_format_prefix "luus) - call %s", 
-						       getSeqNum(), getSSRC(), sensor_id, this->last_pcap_header_ts - pcap_header_ts, owner ? owner->fbasename : "unknown");
+						       getSeqNum(), getSSRC(), sensor_id, this->last_pcap_header_us - pcap_header_us, owner ? owner->fbasename : "unknown");
 						s_lastTimeSyslog = actTime;
 					}
 				}
@@ -1025,11 +1024,10 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		}
 		return(false);
 	}
-	this->last_pcap_header_ts = pcap_header_ts;
+	this->last_pcap_header_us = pcap_header_us;
 
-	if(this->first_packet_time == 0 and this->first_packet_usec == 0) {
-		this->first_packet_time = header->ts.tv_sec;
-		this->first_packet_usec = header->ts.tv_usec;
+	if(this->first_packet_time_us == 0) {
+		this->first_packet_time_us = pcap_header_us;
 	}
 
 	if(owner && 
@@ -1050,7 +1048,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				u_int64_t _forcemark_time = owner->forcemark_time[forcemark_owner_used];
 				u_int64_t _header_time = getTimeUS(header);
 				if(_forcemark_time < _header_time) {
-					if(_forcemark_time > (first_packet_time * 1000000ull + first_packet_usec)) {
+					if(_forcemark_time > first_packet_time_us) {
 						if(sverb.forcemark) {
 							cout << "set forcemark: " << _forcemark_time 
 							     << " header time: " << _header_time 
@@ -1119,8 +1117,8 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		     header->ts.tv_usec < this->_last_ts.tv_usec))) {
 			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > lastTimeSyslog) {
-				syslog(LOG_NOTICE, "warning - bad packet order (%llu us) in RTP::read (seq/lastseq: %u/%u, ifname/lastifname: %s/%s, sensor/lastsenspor: %i/%i)- packet ignored",
-				       this->_last_ts.tv_sec * 1000000ull + this->_last_ts.tv_usec - header->ts.tv_sec * 1000000ull - header->ts.tv_usec,
+				syslog(LOG_NOTICE, "warning - bad packet order (%" int_64_format_prefix "lu us) in RTP::read (seq/lastseq: %u/%u, ifname/lastifname: %s/%s, sensor/lastsenspor: %i/%i)- packet ignored",
+				       getTimeUS(this->_last_ts) - getTimeUS(header),
 				       seq, last_seq,
 				       ifname && ifname[0] ? ifname : "--", this->_last_ifname[0] ? this->_last_ifname : "--",
 				       sensor_id, this->_last_sensor_id);
@@ -1385,13 +1383,11 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		recordingRequested_use_jitterbuffer_channel_record =
 			!owner ||
 			!((owner->flags & FLAG_RUNAMOSLQO) || (owner->flags & FLAG_RUNBMOSLQO)) || 
-			(owner->connect_time &&
-			 (header->ts.tv_sec *1000000ull + header->ts.tv_usec) > (owner->connect_time * 1000000ull + owner->connect_time_usec));
+			(owner->connect_time_us && getTimeUS(header) > owner->connect_time_us);
 		recordingRequested_enable_jitterbuffer_savepayload = 
 			!opt_saveaudio_answeronly ||
 			!owner ||
-			(owner->connect_time &&
-			 (header->ts.tv_sec *1000000ull + header->ts.tv_usec) > (owner->connect_time * 1000000ull + owner->connect_time_usec));
+			(owner->connect_time_us && getTimeUS(header) > owner->connect_time_us);
 	}
 
 	// codec changed 
@@ -1931,8 +1927,9 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	prev_sid = sid;
 
 	// DSP processing
-	bool do_fasdetect = opt_fasdetect && !this->iscaller &&  owner->connect_time && (this->header_ts.tv_sec - owner->connect_time < 10) &&
-			    (this->header_ts.tv_sec - owner->connect_time > 0);
+	bool do_fasdetect = opt_fasdetect && !this->iscaller &&  owner->connect_time_us && 
+			    (this->header_ts.tv_sec - TIME_US_TO_S(owner->connect_time_us) < 10) &&
+			    getTimeUS(this->header_ts) > owner->connect_time_us;
 	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or opt_clippingdetect or do_fasdetect)
 		and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
 
@@ -2754,7 +2751,7 @@ RTPstat::flush_and_clean(map<vmIP, node_t> *cmap, bool needLock) {
 			rtp_stat.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor");
 			rtp_stat.add(sqlDateTimeString(node->time), "time");
 			rtp_stat.add(sqlDateTimeString(node->time), "time");
-			rtp_stat.add(it->first, "saddr", NULL, sqlDbSaveCall, rtp_stat_table.c_str());
+			rtp_stat.add(it->first, "saddr", false, sqlDbSaveCall, rtp_stat_table.c_str());
 			rtp_stat.add(node->mosf1_min, "mosf1_min");
 			rtp_stat.add((int)(node->mosf1_avg), "mosf1_avg");
 			rtp_stat.add(node->mosf2_min, "mosf2_min");

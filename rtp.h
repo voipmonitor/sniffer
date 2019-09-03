@@ -236,7 +236,7 @@ public:
 	int packetization;	//!< packetization in millisenocds
 	int last_packetization;	//!< last packetization in millisenocds
 	int last_ts;		//!< last timestamp 
-	u_int64_t last_pcap_header_ts;
+	u_int64_t last_pcap_header_us;
 	bool pcap_header_ts_bad_time;
 	int packetization_iterator;	
 	int prev_payload;
@@ -261,8 +261,7 @@ public:
 	int sid;
 	int prev_sid;
 	int pinformed;
-	unsigned int first_packet_time;
-	unsigned int first_packet_usec;
+	u_int64_t first_packet_time_us;
 	unsigned int last_end_timestamp;
 	char lastdtmf;
 	u_int8_t forcemark;

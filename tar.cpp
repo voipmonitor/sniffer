@@ -77,7 +77,7 @@ extern int terminated_tar[2];
 
 void data_tar::set(int typeSpoolFile, Call_abstract *call, const char *fileName) {
 	this->sensorName = call->get_sensordir();
-	struct tm t = time_r(&call->first_packet_time);
+	struct tm t = time_r(call->first_packet_time_us);
 	this->year = t.tm_year + 1900;
 	this->mon = t.tm_mon + 1;
 	this->day = t.tm_mday;

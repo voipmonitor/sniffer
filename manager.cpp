@@ -1696,7 +1696,7 @@ bool cmpCallBy_destroy_call_at(Call* a, Call* b) {
 	return(a->destroy_call_at < b->destroy_call_at);   
 }
 bool cmpCallBy_first_packet_time(Call* a, Call* b) {
-	return(a->first_packet_time < b->first_packet_time);   
+	return(a->first_packet_time_us < b->first_packet_time_us);
 }
 
 
@@ -2585,9 +2585,9 @@ int Mgmt_d_lc_for_destroy(Mgmt_params *params) {
 				outStr << call->caller << " -> ";
 				outStr.width(15);
 				outStr << call->called << "  "
-					<< sqlDateTimeString(call->calltime()) << "  ";
+					<< sqlDateTimeString(call->calltime_s()) << "  ";
 				outStr.width(6);
-				outStr << call->duration() << "s  "
+				outStr << call->duration_s() << "s  "
 					<< sqlDateTimeString(call->destroy_call_at) << "  "
 					<< call->fbasename;
 				outStr << endl;
@@ -2635,9 +2635,9 @@ int Mgmt_d_lc_bye(Mgmt_params *params) {
 			outStr << call->caller << " -> ";
 			outStr.width(15);
 			outStr << call->called << "  "
-				<< sqlDateTimeString(call->calltime()) << "  ";
+				<< sqlDateTimeString(call->calltime_s()) << "  ";
 			outStr.width(6);
-			outStr << call->duration() << "s  "
+			outStr << call->duration_s() << "s  "
 				<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
 				<< call->fbasename;
 			outStr << endl;
@@ -2679,9 +2679,9 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 			outStr << call->caller << " -> ";
 			outStr.width(15);
 			outStr << call->called << "  "
-				<< sqlDateTimeString(call->calltime()) << "  ";
+				<< sqlDateTimeString(call->calltime_s()) << "  ";
 			outStr.width(6);
-			outStr << call->duration() << "s  "
+			outStr << call->duration_s() << "s  "
 				<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  ";
 			outStr.width(3);
 			outStr << call->lastSIPresponseNum << "  "

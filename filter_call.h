@@ -68,11 +68,11 @@ public:
 	int64_t getField_int(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case cf_calldate:
-			return(((Call*)rec)->calltime());
+			return(((Call*)rec)->calltime_s());
 		case cf_id_sensor:
 			return(((Call*)rec)->useSensorId);
 		case cf_connect_duration:
-			return(((Call*)rec)->connect_duration_active());
+			return(((Call*)rec)->connect_duration_active_s());
 		case cf_called_international:
 			return(!isLocalByPhoneNumber(((Call*)rec)->called));
 		case cf_vlan:

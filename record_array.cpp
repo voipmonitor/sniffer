@@ -23,6 +23,8 @@ string RecordArrayField::getJson() {
 		return('"' + pointerToString(v.p) + '"');
 	case tf_time:
 		return('"' + sqlDateTimeString(v.u) + '"');
+	case tf_time_ms:
+		return('"' + sqlDateTimeString_us2ms(v.u) + '"');
 	case tf_string:
 		if(v.s) {
 			return('"' + json_encode(v.s) + '"');

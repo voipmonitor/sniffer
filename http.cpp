@@ -183,7 +183,7 @@ void HttpData::processData(vmIP ip_src, vmIP ip_dst,
 				<< (response.length() ? " with response" : "")
 				<< endl;
 		}
-		this->cache.addRequest(request_data->getTime().tv_sec * 1000000ull + request_data->getTime().tv_usec,
+		this->cache.addRequest(getTimeUS(request_data->getTime()),
 				       ip_src, ip_dst,
 				       port_src, port_dst,
 				       uri.c_str(), http.c_str(), body.c_str(),
@@ -207,7 +207,7 @@ void HttpData::processData(vmIP ip_src, vmIP ip_dst,
 			if(!responseHttp.length()) {
 				responseHttp = response;
 			}
-			this->cache.addResponse(response_data->getTime().tv_sec * 1000000ull + response_data->getTime().tv_usec,
+			this->cache.addResponse(getTimeUS(response_data->getTime()),
 						ip_dst, ip_src,
 						port_dst, port_src,
 						responseHttp.c_str(), responseBody.c_str(),
@@ -487,8 +487,8 @@ void HttpDataCache_link::writeDataToDb(bool response, u_int64_t timestamp, const
 	string http_jj_table = "http_jj";
 	if(!response) {
 		SqlDb_row rowRequest;
-		rowRequest.add(sqlDateTimeString(timestamp / 1000000ull), "timestamp");
-		rowRequest.add((u_int32_t)(timestamp % 1000000ull), "usec");
+		rowRequest.add(sqlDateTimeString(TIME_US_TO_S(timestamp)), "timestamp");
+		rowRequest.add(TIME_US_TO_DEC_US(timestamp), "usec");
 		rowRequest.add(id->ip_src, "srcip", false, sqlDbSaveHttp, http_jj_table.c_str());
 		rowRequest.add(id->ip_dst, "dstip", false, sqlDbSaveHttp, http_jj_table.c_str());
 		rowRequest.add(id->port_src.getPort(), "srcport"); 
@@ -510,8 +510,8 @@ void HttpDataCache_link::writeDataToDb(bool response, u_int64_t timestamp, const
 	} else {
 		SqlDb_row rowResponse;
 		rowResponse.add(MYSQL_VAR_PREFIX + "@http_jj_request_id", "master_id");
-		rowResponse.add(sqlDateTimeString(timestamp / 1000000ull), "timestamp");
-		rowResponse.add((u_int32_t)(timestamp % 1000000ull), "usec");
+		rowResponse.add(sqlDateTimeString(TIME_US_TO_S(timestamp)), "timestamp");
+		rowResponse.add(TIME_US_TO_DEC_US(timestamp), "usec");
 		rowResponse.add(id->ip_dst, "srcip", false, sqlDbSaveHttp, http_jj_table.c_str()); 
 		rowResponse.add(id->ip_src, "dstip", false, sqlDbSaveHttp, http_jj_table.c_str()); 
 		rowResponse.add(id->port_dst.getPort(), "srcport"); 

@@ -24,6 +24,7 @@ extern int opt_save_sip_options;
 extern int opt_save_sip_subscribe;
 extern int opt_save_sip_notify;
 extern cSqlDbData *dbData;
+extern bool opt_time_precision_in_ms;
 
 cSipMsgRelations *sipMsgRelations;
 
@@ -211,7 +212,7 @@ cSipMsgRequestResponse::~cSipMsgRequestResponse() {
 }
 
 void cSipMsgRequestResponse::openPcap(packet_s_process *packetS, int type) {
-	cdp.call_data = new FILE_LINE(0) Call_abstract(type, time_us / 1000000);
+	cdp.call_data = new FILE_LINE(0) Call_abstract(type, time_us);
 	cdp.call_data->useHandle = get_pcap_handle(packetS->handle_index);
 	cdp.call_data->useDlt = packetS->dlt;
 	cdp.call_data->useSensorId = packetS->sensor_id_();
@@ -318,7 +319,10 @@ u_int64_t cSipMsgRelation::sHistoryData::getLastTime() {
 string cSipMsgRelation::sHistoryData::getJson(cStringCache *responseStringCache, int qualifyOk) {
 	JsonExport json;
 	json.setTypeItem(JsonExport::_array);
-	json.add(NULL, sqlDateTimeString(request_time_us / 1000000));
+	json.add(NULL, 
+		 opt_time_precision_in_ms ?
+		  sqlDateTimeString_us2ms(request_time_us) :
+		  sqlDateTimeString(TIME_US_TO_S(request_time_us)));
 	json.add(NULL, request_time_us);
 	if(response_time_us) {
 		json.add(NULL, (long long)round((response_time_us - request_time_us) / 1000.));
@@ -473,13 +477,25 @@ bool cSipMsgRelation::getDataRow(RecordArray *rec, u_int64_t limit_time_us, cSip
 			rec->fields[smf_ua_dst].set(relations->uaStringCache.getString(historyData->ua_dst_id).c_str());
 		}
 	}
-	rec->fields[smf_request_time].set(request_time_us / 1000000, RecordArrayField::tf_time);
-	rec->fields[smf_request_time_us].set(request_time_us % 1000000);
-	rec->fields[smf_request_first_time].set(request_first_time_us / 1000000, RecordArrayField::tf_time);
+	if(opt_time_precision_in_ms) {
+		rec->fields[smf_request_time].set(request_time_us, RecordArrayField::tf_time_ms);
+	} else {
+		rec->fields[smf_request_time].set(TIME_US_TO_S(request_time_us), RecordArrayField::tf_time);
+	}
+	rec->fields[smf_request_time_us].set(TIME_US_TO_DEC_US(request_time_us));
+	if(opt_time_precision_in_ms) {
+		rec->fields[smf_request_first_time].set(request_first_time_us, RecordArrayField::tf_time_ms);
+	} else {
+		rec->fields[smf_request_first_time].set(TIME_US_TO_S(request_first_time_us), RecordArrayField::tf_time);
+	}
 	rec->fields[smf_request_first_time_us_compl].set(request_first_time_us);
 	if(response_time_us) {
-		rec->fields[smf_response_time].set(response_time_us / 1000000, RecordArrayField::tf_time);
-		rec->fields[smf_response_time_us].set(response_time_us % 1000000);
+		if(opt_time_precision_in_ms) {
+			rec->fields[smf_response_time].set(response_time_us, RecordArrayField::tf_time_ms);
+		} else {
+			rec->fields[smf_response_time].set(TIME_US_TO_S(response_time_us), RecordArrayField::tf_time);
+		}
+		rec->fields[smf_response_time_us].set(TIME_US_TO_DEC_US(response_time_us));
 	}
 	rec->fields[smf_response_duration_ms].set(response_duration < 0 ? response_duration : round(response_duration / 1000.));
 	rec->fields[smf_response_number].set(response_number);
@@ -895,7 +911,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 		next_ch_name[i] = _next_ch_name[i];
 	}
 	string table = "sip_msg";
-	rec.add(sqlEscapeString(sqlDateTimeString(requestResponse->time_us / 1000000).c_str()), "time");
+	rec.add_calldate(requestResponse->time_us, "time", existsColumns.sip_msg_time_ms);
 	rec.add(requestResponse->request->type, "type");
 	rec.add(requestResponse->request->ip_src, "ip_src", false, sqlDbSaveSipMsg, table.c_str());
 	rec.add(requestResponse->request->ip_dst, "ip_dst", false, sqlDbSaveSipMsg, table.c_str());
@@ -929,11 +945,11 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 	}
 	rec.add(requestResponse->time_us, "time_us");
 	rec.add(requestResponse->next_requests_time_us.size(), "request_repetition");
-	rec.add(sqlEscapeString(sqlDateTimeString(requestResponse->request->time_us / 1000000).c_str()), "request_time");
-	rec.add(requestResponse->request->time_us % 1000000, "request_time_us");
+	rec.add_calldate(requestResponse->request->time_us, "request_time", existsColumns.sip_msg_request_time_ms);
+	rec.add(TIME_US_TO_DEC_US(requestResponse->request->time_us), "request_time_us");
 	if(requestResponse->response) {
-		rec.add(sqlEscapeString(sqlDateTimeString(requestResponse->response->time_us / 1000000).c_str()), "response_time");
-		rec.add(requestResponse->response->time_us % 1000000, "response_time_us");
+		rec.add_calldate(requestResponse->response->time_us, "response_time", existsColumns.sip_msg_response_time_ms);
+		rec.add(TIME_US_TO_DEC_US(requestResponse->response->time_us), "response_time_us");
 		int64_t response_duration = requestResponse->response->time_us - requestResponse->request->time_us;
 		if(response_duration >= 0) {
 			rec.add(round(response_duration / 1000.), "response_duration_ms");
@@ -1020,7 +1036,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 				     MYSQL_GET_MAIN_INSERT_ID;
 		}
 		if(custom_headers_sip_msg) {
-			custom_headers_sip_msg->prepareSaveRows(NULL, 0, &requestResponse->custom_headers_content, requestResponse->time_us / 1000000, NULL, next_ch, next_ch_name);
+			custom_headers_sip_msg->prepareSaveRows(NULL, 0, &requestResponse->custom_headers_content, requestResponse->time_us, NULL, next_ch, next_ch_name);
 			bool existsNextCh = false;
 			for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
 				if(next_ch_name[i][0]) {
@@ -1031,7 +1047,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 				}
 			}
 			if(existsNextCh) {
-				string queryForSaveUseInfo = custom_headers_sip_msg->getQueryForSaveUseInfo(requestResponse->time_us / 1000000, &requestResponse->custom_headers_content);
+				string queryForSaveUseInfo = custom_headers_sip_msg->getQueryForSaveUseInfo(requestResponse->time_us, &requestResponse->custom_headers_content);
 				if(!queryForSaveUseInfo.empty()) {
 					vector<string> queryForSaveUseInfo_vect = split(queryForSaveUseInfo.c_str(), ";");
 					for(unsigned i = 0; i < queryForSaveUseInfo_vect.size(); i++) {

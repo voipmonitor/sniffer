@@ -416,19 +416,19 @@ public:
 		if(!callInfo->at_last) {
 			return(true);
 		}
-		return(this->okDayHour(callInfo->at_last / 1000000ull));
+		return(this->okDayHour(TIME_US_TO_S(callInfo->at_last)));
 	}
 	virtual bool okDayHour(sFraudRtpStreamInfo *rtpStreamInfo) {
 		if(!rtpStreamInfo->at) {
 			return(true);
 		}
-		return(this->okDayHour(rtpStreamInfo->at / 1000000ull));
+		return(this->okDayHour(TIME_US_TO_S(rtpStreamInfo->at)));
 	}
 	virtual bool okDayHour(sFraudEventInfo *eventInfo) {
 		if(!eventInfo->at) {
 			return(true);
 		}
-		return(this->okDayHour(eventInfo->at / 1000000ull));
+		return(this->okDayHour(TIME_US_TO_S(eventInfo->at)));
 	}
 	virtual bool okDayHour(time_t at);
 	virtual void evAlert(FraudAlertInfo *alertInfo);
@@ -1071,8 +1071,8 @@ public:
 	void evRegister(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len,
 			pcap_block_store *block_store, u_int32_t block_store_index, u_int16_t dlt);
 	void evRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len);
-	void evRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
-	void evRegister(class Register *reg, class RegisterState *regState, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
+	void evRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, u_int64_t prev_state_at = 0);
+	void evRegister(class Register *reg, class RegisterState *regState, eRegisterState state, eRegisterState prev_state = rs_na, u_int64_t prev_state_at = 0);
 	void stopPopCallInfoThread(bool wait = false);
 	void refresh();
 	const char *getGuiTimezone() {
@@ -1185,8 +1185,8 @@ void fraudSipPacket(vmIP ip, unsigned sip_method, timeval tv, const char *ua, in
 void fraudRegister(vmIP src_ip, vmIP dst_ip, timeval tv, const char *ua, int ua_len,
 		   struct packet_s *packetS);
 void fraudRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len);
-void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
-void fraudRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state = rs_na, time_t prev_state_at = 0);
+void fraudRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, u_int64_t prev_state_at = 0);
+void fraudRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state = rs_na, u_int64_t prev_state_at = 0);
 string whereCondFraudAlerts();
 bool isExistsFraudAlerts(bool *storePcaps = NULL, SqlDb *sqlDb = NULL);
 bool selectSensorsContainSensorId(string select_sensors);

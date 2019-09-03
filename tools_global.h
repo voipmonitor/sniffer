@@ -74,6 +74,16 @@ __inline__ unsigned long long rdtsc(void)
 #endif
 
 
+#define TIME_S_TO_US(s) ((u_int64_t)((s) * 1000000ull))
+#define TIME_US_TO_S(us) ((u_int32_t)((us) / 1000000ull))
+#define TIME_US_TO_SF(us) ((double)((us) / 1000000.))
+#define TIME_US_TO_DEC_MS(us) ((u_int32_t)((us) % 1000000ull / 1000ull))
+#define TIME_US_TO_DEC_US(us) ((u_int32_t)((us) % 1000000ull))
+
+inline double ts2double(unsigned int sec, unsigned int usec) {
+	return double((double)sec + (0.000001f * (double)usec));
+}
+
 inline u_int32_t getTimeS(pcap_pkthdr* header = NULL) {
     if(header) {
          return(header->ts.tv_sec);
@@ -81,6 +91,15 @@ inline u_int32_t getTimeS(pcap_pkthdr* header = NULL) {
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
     return(time.tv_sec);
+}
+
+inline double getTimeSF(pcap_pkthdr* header = NULL) {
+    if(header) {
+         return(ts2double(header->ts.tv_sec, header->ts.tv_usec));
+    }
+    timespec time;
+    clock_gettime(CLOCK_REALTIME, &time);
+    return(ts2double(time.tv_sec, time.tv_nsec / 1000));
 }
 
 inline u_int64_t getTimeMS(pcap_pkthdr* header = NULL) {
@@ -94,6 +113,10 @@ inline u_int64_t getTimeMS(pcap_pkthdr* header = NULL) {
 
 inline u_int64_t getTimeMS(struct timeval *ts) {
     return(ts->tv_sec * 1000ull + ts->tv_usec / 1000);
+}
+
+inline u_int64_t getTimeMS(unsigned long tv_sec, unsigned long tv_usec) {
+    return(tv_sec * 1000ull + tv_usec / 1000);
 }
 
 extern u_int64_t rdtsc_by_100ms;
@@ -125,13 +148,33 @@ inline u_int64_t getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
     return(last_time);
 }
 
-inline unsigned long long getTimeUS() {
+inline u_int64_t getTimeUS() {
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
     return(time.tv_sec * 1000000ull + time.tv_nsec / 1000);
 }
 
-inline unsigned long long getTimeNS() {
+inline u_int64_t getTimeUS(pcap_pkthdr *pkthdr) {
+    return(pkthdr->ts.tv_sec * 1000000ull + pkthdr->ts.tv_usec);
+}
+
+inline u_int64_t getTimeUS(timeval &ts) {
+    return(ts.tv_sec * 1000000ull + ts.tv_usec);
+}
+
+inline u_int64_t getTimeUS(const timeval &ts) {
+    return(ts.tv_sec * 1000000ull + ts.tv_usec);
+}
+
+inline u_int64_t getTimeUS(volatile timeval &ts) {
+    return(ts.tv_sec * 1000000ull + ts.tv_usec);
+}
+
+inline u_int64_t getTimeUS(unsigned long tv_sec, unsigned long tv_usec) {
+    return(tv_sec * 1000000ull + tv_usec);
+}
+
+inline u_int64_t getTimeNS() {
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
     return(time.tv_sec * 1000000000ull + time.tv_nsec);

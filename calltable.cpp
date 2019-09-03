@@ -204,6 +204,7 @@ extern int opt_pcap_dump_tar_graph_use_pos;
 extern unsigned int glob_ssl_calls;
 extern bool opt_cdr_partition;
 extern int opt_t2_boost;
+extern bool opt_time_precision_in_ms;
 
 extern cBilling *billing;
 
@@ -258,11 +259,11 @@ sCallField callFields[] = {
 };
 
 
-Call_abstract::Call_abstract(int call_type, time_t time) {
+Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	alloc_flag = 1;
 	type_base = call_type;
 	type_next = 0;
-	first_packet_time = time;
+	first_packet_time_us = time_us;
 	fbasename[0] = 0;
 	fbasename_safe[0] = 0;
 	fname_register = 0;
@@ -316,7 +317,7 @@ Call_abstract::get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpool
 		    substSpoolDir :
 		    (opt_cachedir[0] ? opt_cachedir : getSpoolDir(typeSpoolFile));
 	sensorDir = get_sensordir();
-	struct tm t = time_r(&first_packet_time);
+	struct tm t = time_r(first_packet_time_us);
 	char timeDir_buffer[100];
 	if(opt_newdir) {
 		static volatile int timeDirCache_sync = 0;
@@ -384,7 +385,7 @@ Call_abstract::get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileEx
 string
 Call_abstract::dirnamesqlfiles() {
 	char sdirname[50];
-	struct tm t = time_r(&first_packet_time);
+	struct tm t = time_r(first_packet_time_us);
 	snprintf(sdirname, sizeof(sdirname), "%04d%02d%02d%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour);
 	return(sdirname);
 }
@@ -419,8 +420,8 @@ Call_abstract::addTarPos(u_int64_t pos, int type) {
 
 
 /* constructor */
-Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative, time_t time) :
- Call_abstract(call_type, time),
+Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative, u_int64_t time_us) :
+ Call_abstract(call_type, time_us),
  tmprtp(-1, 0),
  pcap(PcapDumper::na, this),
  pcapSip(PcapDumper::sip, this),
@@ -434,10 +435,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	last_callercodec = -1;
 	ipport_n = 0;
 	ssrc_n = 0;
-	first_packet_usec = 0;
-	last_packet_time = time;
-	last_rtp_a_packet_time = 0;
-	last_rtp_b_packet_time = 0;
+	last_packet_time_us = time_us;
+	last_rtp_a_packet_time_us = 0;
+	last_rtp_b_packet_time_us = 0;
 	if(call_id_len) {
 		this->call_id = string(call_id, call_id_len);
 		this->call_id_len = call_id_len;
@@ -488,16 +488,14 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	cancelcseq.null();
 	updatecseq.null();
 	sighup = false;
-	progress_time = 0;
-	first_rtp_time = 0;
-	first_rtp_time_usec = 0;
-	connect_time = 0;
-	connect_time_usec = 0;
-	first_invite_time_usec = 0;
-	first_response_100_time_usec = 0;
-	first_response_xxx_time_usec = 0;
-	first_message_time_usec = 0;
-	first_response_200_time_usec = 0;
+	progress_time_us = 0;
+	first_rtp_time_us = 0;
+	connect_time_us = 0;
+	first_invite_time_us = 0;
+	first_response_100_time_us = 0;
+	first_response_xxx_time_us = 0;
+	first_message_time_us = 0;
+	first_response_200_time_us = 0;
 	a_ua[0] = '\0';
 	b_ua[0] = '\0';
 	memset(rtpmap, 0, sizeof(rtpmap));
@@ -650,7 +648,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	iscaller_consecutive[0] = 0;
 	iscaller_consecutive[1] = 0;
 	
-	last_mgcp_connect_packet_time = 0;
+	last_mgcp_connect_packet_time_us = 0;
 	
 	_hash_add_lock = 0;
 	
@@ -1055,11 +1053,11 @@ Call::refresh_data_ip_port(vmIP addr, vmPort port, pcap_pkthdr *header,
 				}
 			}
 			// force mark bit for reinvite for both direction
-			u_int64_t _forcemark_time = header->ts.tv_sec * 1000000ull + header->ts.tv_usec;
+			u_int64_t _forcemark_time_us = getTimeUS(header);
 			forcemark_lock();
-			forcemark_time.push_back(_forcemark_time);
+			forcemark_time.push_back(_forcemark_time_us);
 			if(sverb.forcemark) {
-				cout << "add forcemark: " << _forcemark_time 
+				cout << "add forcemark: " << _forcemark_time_us 
 				     << " forcemarks size: " << forcemark_time.size() 
 				     << endl;
 			}
@@ -1337,9 +1335,8 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 		return(false);
 	}
 
-	if(first_rtp_time == 0) {
-		first_rtp_time = packetS->header_pt->ts.tv_sec;
-		first_rtp_time_usec = packetS->header_pt->ts.tv_usec;
+	if(first_rtp_time_us == 0) {
+		first_rtp_time_us = getTimeUS(packetS->header_pt);
 	}
 	
 	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
@@ -1376,9 +1373,9 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	}
 	
 	if(iscaller) {
-		last_rtp_a_packet_time = packetS->header_pt->ts.tv_sec;
+		last_rtp_a_packet_time_us = getTimeUS(packetS->header_pt);
 	} else {
-		last_rtp_b_packet_time = packetS->header_pt->ts.tv_sec;
+		last_rtp_b_packet_time_us = getTimeUS(packetS->header_pt);
 	}
 
 	/* TODO:IPHDR ?
@@ -2064,14 +2061,14 @@ Call::HandleHold(bool sdp_sendonly, bool sdp_sendrecv) {
 		if (sdp_sendrecv or (!sdp_sendrecv and !sdp_sendonly)) {
 			hold_status = false;
 			ostringstream o;
-			o << "-" << duration() << ",";
+			o << "-" << duration_s() << ",";
 			hold_times.append(o.str());
 		}
 	} else {
 		if (sdp_sendonly) {
 			hold_status = true;
 			ostringstream o;
-			o << "+" << duration() << ",";
+			o << "+" << duration_s() << ",";
 			hold_times.append(o.str());
 		}
 	}
@@ -2433,7 +2430,7 @@ Call::convertRawToWav() {
 				this->selectRtpStreams();
 				if(opt_saveaudio_filter_ext &&
 				   (this->existsConcurenceInSelectedRtpStream(-1, 200) ||
-				    (this->getLengthStreams() / 1000000ull) >= ((unsigned)duration() + 2))) {
+				    TIME_US_TO_S(this->getLengthStreams_us()) >= duration_s() + 2)) {
 					if(!selectRtpStreams_byMaxLengthInLink()) {
 						this->selectRtpStreams();
 					}
@@ -2513,12 +2510,12 @@ Call::convertRawToWav() {
 	u_int64_t minStartTime = 0;
 	if(useWavMix) {
 		if(opt_saveaudio_from_first_invite) {
-			minStartTime = this->first_packet_time * 1000000ull + this->first_packet_usec;
+			minStartTime = this->first_packet_time_us;
 		}
 		for(int i = 0; i < ssrc_n; i++) {
 			if(!minStartTime ||
-			   rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec < minStartTime) {
-				minStartTime = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec;
+			   rtp[i]->first_packet_time_us < minStartTime) {
+				minStartTime = rtp[i]->first_packet_time_us;
 			}
 		}
 	}
@@ -2742,8 +2739,8 @@ Call::convertRawToWav() {
 		cWavMix *wavMix = NULL;
 		if(useWavMix) {
 			wavMix = new FILE_LINE(0) cWavMix(2, maxsamplerate);
-			if(opt_saveaudio_afterconnect && (this->connect_time * 1000000ull + this->connect_time_usec) > minStartTime) {
-				minStartTime = this->connect_time * 1000000ull + this->connect_time_usec;
+			if(opt_saveaudio_afterconnect && this->connect_time_us > minStartTime) {
+				minStartTime = this->connect_time_us;
 			}
 			wavMix->setStartTime(minStartTime);
 		}
@@ -3009,7 +3006,7 @@ Call::convertRawToWav() {
 			if(!sverb.noaudiounlink) unlink(rawf->filename.c_str());
 			
 			if(wavMix && file_exists(wav)) {
-				wavMix->addWav(wav, rawf->tv.tv_sec * 1000000ull  + rawf->tv.tv_usec);
+				wavMix->addWav(wav, getTimeUS(rawf->tv));
 			}
 		}
 		if(!sverb.noaudiounlink) unlink(rawInfo);
@@ -3095,10 +3092,10 @@ bool Call::selectRtpStreams() {
 			if(A == B or A->skip or B->skip or A->stats.received < 50 or B->stats.received < 50) continue; // do not compare with ourself or already removed RTP or with RTP with <20 packets
 
 			// check if A or B time overlaps - if not we cannot treat it as duplicate stream 
-			u_int64_t Astart = A->first_packet_time * 1000000ull + A->first_packet_usec;
-			u_int64_t Astop = A->last_pcap_header_ts;
-			u_int64_t Bstart = B->first_packet_time * 1000000ull + B->first_packet_usec;
-			u_int64_t Bstop = B->last_pcap_header_ts;
+			u_int64_t Astart = A->first_packet_time_us;
+			u_int64_t Astop = A->last_pcap_header_us;
+			u_int64_t Bstart = B->first_packet_time_us;
+			u_int64_t Bstop = B->last_pcap_header_us;
 			if(((Bstart > Astart) and (Bstart > Astop)) or ((Astart > Bstart) and (Astart > Bstop))) {
 				if(verbosity > 1) syslog(LOG_ERR, "Not removing SSRC[%x][%p] and SSRC[%x][%p] %" int_64_format_prefix "lu %" int_64_format_prefix "lu\n", A->ssrc, A, B->ssrc, B, Astart, Bstop);
 				continue;
@@ -3196,7 +3193,7 @@ struct selectRtpStreams_byMaxLengthInLink_sLink {
 		bad = false;
 	}
 	u_int64_t getLength(Call *call) {
-		return(call->getLengthStreams(&streams_i));
+		return(call->getLengthStreams_us(&streams_i));
 	}
 	list<int> streams_i;
 	bool bad;
@@ -3254,28 +3251,28 @@ bool Call::selectRtpStreams_byMaxLengthInLink() {
 	return(false);
 }
 
-u_int64_t Call::getLengthStreams(list<int> *streams_i) {
+u_int64_t Call::getLengthStreams_us(list<int> *streams_i) {
 	u_int64_t minStart = 0;
 	u_int64_t maxEnd = 0;
 	for(list<int>::iterator iter = streams_i->begin(); iter != streams_i->end(); ++iter) {
 		if(!minStart ||
-		   minStart > rtp[*iter]->first_packet_time * 1000000ull + rtp[*iter]->first_packet_usec) {
-			minStart = rtp[*iter]->first_packet_time * 1000000ull + rtp[*iter]->first_packet_usec;
+		   minStart > rtp[*iter]->first_packet_time_us) {
+			minStart = rtp[*iter]->first_packet_time_us;
 		}
 		if(!maxEnd ||
-		   maxEnd < rtp[*iter]->last_pcap_header_ts) {
-			maxEnd = rtp[*iter]->last_pcap_header_ts;
+		   maxEnd < rtp[*iter]->last_pcap_header_us) {
+			maxEnd = rtp[*iter]->last_pcap_header_us;
 		}
 	}
 	return(maxEnd - minStart);
 }
 
-u_int64_t Call::getLengthStreams() {
+u_int64_t Call::getLengthStreams_us() {
 	list<int> streams_i;
 	for(int i = 0; i < ssrc_n; i++) {
 		streams_i.push_back(i);
 	}
-	return(getLengthStreams(&streams_i));
+	return(getLengthStreams_us(&streams_i));
 }
 
 void Call::setSkipConcurenceStreams(int caller) {
@@ -3286,14 +3283,14 @@ void Call::setSkipConcurenceStreams(int caller) {
 	}
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->iscaller == caller && !rtp[i]->skip) {
-			u_int64_t a_start = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec;
-			u_int64_t a_stop = rtp[i]->last_pcap_header_ts;
+			u_int64_t a_start = rtp[i]->first_packet_time_us;
+			u_int64_t a_stop = rtp[i]->last_pcap_header_us;
 			u_int64_t a_length = a_stop - a_start;
 			for(int j = 0; j < ssrc_n; j++) {
 				if(j != i && rtp[j]->iscaller == caller && !rtp[j]->skip &&
 				   !rtp[i]->eqAddrPort(rtp[j])) {
-					u_int64_t b_start = rtp[j]->first_packet_time * 1000000ull + rtp[j]->first_packet_usec;
-					u_int64_t b_stop = rtp[j]->last_pcap_header_ts;
+					u_int64_t b_start = rtp[j]->first_packet_time_us;
+					u_int64_t b_stop = rtp[j]->last_pcap_header_us;
 					u_int64_t b_length = b_stop - b_start;
 					if(b_start > a_start && b_start < a_stop &&
 					   a_length > 0 && b_length > 0 &&
@@ -3307,13 +3304,13 @@ void Call::setSkipConcurenceStreams(int caller) {
 	}
 }
 
-u_int64_t Call::getFirstTimeInRtpStreams(int caller, bool selected) {
+u_int64_t Call::getFirstTimeInRtpStreams_us(int caller, bool selected) {
 	u_int64_t firstTime = 0;
 	for(int i = 0; i < ssrc_n; i++) {
 		if((caller == -1 || rtp[i]->iscaller == caller) &&
 		   (!selected || !rtp[i]->skip)) {
-			if(!firstTime || (rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec) < firstTime) {
-				firstTime = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec;
+			if(!firstTime || rtp[i]->first_packet_time_us < firstTime) {
+				firstTime = rtp[i]->first_packet_time_us;
 			}
 		}
 	}
@@ -3321,14 +3318,14 @@ u_int64_t Call::getFirstTimeInRtpStreams(int caller, bool selected) {
 }
 
 void Call::printSelectedRtpStreams(int caller, bool selected) {
-	u_int64_t firstTime = this->getFirstTimeInRtpStreams(caller, selected);
+	u_int64_t firstTime = this->getFirstTimeInRtpStreams_us(caller, selected);
 	for(int pass_caller = 1; pass_caller >= 0; pass_caller--) {
 		for(int i = 0; i < ssrc_n; i++) {
 			if((caller == -1 || pass_caller == caller) && 
 			   rtp[i]->iscaller == pass_caller &&
 			   (!selected || !rtp[i]->skip)) {
-				u_int64_t start = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec - firstTime;
-				u_int64_t stop = rtp[i]->last_pcap_header_ts - firstTime;
+				u_int64_t start = rtp[i]->first_packet_time_us - firstTime;
+				u_int64_t stop = rtp[i]->last_pcap_header_us - firstTime;
 				cout << hex << setw(10) << rtp[i]->ssrc << dec << "   "
 				     << iscaller_description(rtp[i]->iscaller) << "   "
 				     << setw(10) << (start / 1000000.) << " - "
@@ -3349,13 +3346,13 @@ bool Call::existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms
 	}
 	for(int i = 0; i < ssrc_n; i++) {
 		if(rtp[i]->iscaller == caller && !rtp[i]->skip) {
-			u_int64_t a_start = rtp[i]->first_packet_time * 1000000ull + rtp[i]->first_packet_usec;
-			u_int64_t a_stop = rtp[i]->last_pcap_header_ts;
+			u_int64_t a_start = rtp[i]->first_packet_time_us;
+			u_int64_t a_stop = rtp[i]->last_pcap_header_us;
 			for(int j = 0; j < ssrc_n; j++) {
 				if(j != i && rtp[j]->iscaller == caller && !rtp[j]->skip &&
 				   !rtp[i]->eqAddrPort(rtp[j])) {
-					u_int64_t b_start = rtp[j]->first_packet_time * 1000000ull + rtp[j]->first_packet_usec;
-					u_int64_t b_stop = rtp[j]->last_pcap_header_ts;
+					u_int64_t b_start = rtp[j]->first_packet_time_us;
+					u_int64_t b_stop = rtp[j]->last_pcap_header_us;
 					if(!(b_start + tolerance_ms * 1000 > a_stop ||
 					     a_start + tolerance_ms * 1000 > b_stop)) {
 						return(true);
@@ -3421,19 +3418,23 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(call_id.c_str());
 		break;
 	case cf_calldate:
-		rfield->set(calltime(), RecordArrayField::tf_time);
+		if(opt_time_precision_in_ms) {
+			rfield->set(calltime_us(), RecordArrayField::tf_time_ms);
+		} else {
+			rfield->set(calltime_s(), RecordArrayField::tf_time);
+		}
 		break;
 	case cf_calldate_num:
-		rfield->set(calltime());
+		rfield->set(calltime_s());
 		break;
 	case cf_lastpackettime:
-		rfield->set(get_last_packet_time());
+		rfield->set(get_last_packet_time_s());
 		break;
 	case cf_duration:
-		rfield->set(duration_active());
+		rfield->set(duration_active_s());
 		break;
 	case cf_connect_duration:
-		rfield->set(connect_duration_active());
+		rfield->set(connect_duration_active_s());
 		break;
 	case cf_caller:
 		rfield->set(caller);
@@ -3662,8 +3663,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 
-	if((opt_cdronlyanswered and !connect_time) or 
-		(opt_cdronlyrtp and !ssrc_n)) {
+	if((opt_cdronlyanswered and !connect_time_us) or 
+	   (opt_cdronlyrtp and !ssrc_n)) {
 		// skip this CDR 
 		return 1;
 	}
@@ -3682,7 +3683,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		SqlDb_row cdr_next;
 		cdr_next.add(++last_id_cdr_next, "cdr_ID");
 		cdr_next.add(sqlEscapeString(fbasename), "fbasename");
-		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+		cdr_next.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_next_calldate_ms);
 		if(enableBatchIfPossible && isSqlDriver("mysql")) {
 			string query_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT + 
 					   sqlDbSaveCall->insertQuery(sql_cdr_next_table, cdr_next));
@@ -3758,7 +3759,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(*iter_undup == sipcalledip_rslt) { ++iter_undup; continue; }
 			SqlDb_row cdrproxy;
 			cdrproxy.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-			cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			cdrproxy.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_proxy_calldate_ms);
 			cdrproxy.add((vmIP)(*iter_undup), "dst", false, sqlDbSaveCall, sql_cdr_proxy_table.c_str() );
 			if(opt_mysql_enable_multiple_rows_insert) {
 				cdrproxy_rows.push_back(cdrproxy);
@@ -3863,30 +3864,30 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(getSipcallerport().getPort(), "sipcallerport");
 		cdr.add(sipcalledport_rslt.getPort(), "sipcalledport");
 	}
-	cdr.add(duration(), "duration");
-	if(progress_time) {
-		cdr.add(progress_time - first_packet_time, "progress_time");
+	cdr.add_duration(duration_us(), "duration", existsColumns.cdr_duration_ms);
+	if(progress_time_us) {
+		cdr.add_duration(progress_time_us - first_packet_time_us, "progress_time", existsColumns.cdr_progress_time_ms);
 	}
-	if(first_rtp_time) {
-		cdr.add(first_rtp_time  - first_packet_time, "first_rtp_time");
+	if(first_rtp_time_us) {
+		cdr.add_duration(first_rtp_time_us  - first_packet_time_us, "first_rtp_time", existsColumns.cdr_first_rtp_time_ms);
 	}
-	if(connect_time) {
-		cdr.add(connect_duration(), "connect_duration");
+	if(connect_time_us) {
+		cdr.add_duration(connect_duration_us(), "connect_duration", existsColumns.cdr_connect_duration_ms);
 	}
 	if(existsColumns.cdr_vlan && VLAN_IS_SET(vlan)) {
 		cdr.add(vlan, "vlan");
 	}
 	if(existsColumns.cdr_last_rtp_from_end && !use_sdp_sendonly) {
-		if(last_rtp_a_packet_time) {
-			cdr.add((typeIs(MGCP) ? last_mgcp_connect_packet_time : last_packet_time) - last_rtp_a_packet_time, "a_last_rtp_from_end");
+		if(last_rtp_a_packet_time_us) {
+			cdr.add_duration((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_packet_time_us) - last_rtp_a_packet_time_us, "a_last_rtp_from_end", existsColumns.cdr_a_last_rtp_from_end_time_ms);
 		}
-		if(last_rtp_b_packet_time) {
-			cdr.add((typeIs(MGCP) ? last_mgcp_connect_packet_time : last_packet_time) - last_rtp_b_packet_time, "b_last_rtp_from_end");
+		if(last_rtp_b_packet_time_us) {
+			cdr.add_duration((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_packet_time_us) - last_rtp_b_packet_time_us, "b_last_rtp_from_end", existsColumns.cdr_b_last_rtp_from_end_time_ms);
 		}
 	}
-	cdr.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+	cdr.add_calldate(calltime_us(), "calldate", existsColumns.cdr_calldate_ms);
 	if(opt_callend) {
-		cdr.add(sqlEscapeString(sqlDateTimeString(calltime() + duration()).c_str()), "callend");
+		cdr.add_calldate(callend_us(), "callend", existsColumns.cdr_callend_ms);
 	}
 	
 	cdr_next.add(sqlEscapeString(fbasename), "fbasename");
@@ -3907,12 +3908,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(reason_q850_cause, "reason_q850_cause");
 		}
 	}
-	if(existsColumns.cdr_response_time && this->first_invite_time_usec) {
-		if(this->first_response_100_time_usec) {
-			cdr.add(MIN(65535, round((this->first_response_100_time_usec - this->first_invite_time_usec) / 1000.0)), "response_time_100");
+	if(this->first_invite_time_us) {
+		if(existsColumns.cdr_response_time_100 && this->first_response_100_time_us) {
+			cdr.add(MIN(65535, round((this->first_response_100_time_us - this->first_invite_time_us) / 1000.0)), "response_time_100");
 		}
-		if(this->first_response_xxx_time_usec) {
-			cdr.add(MIN(65535, round((this->first_response_xxx_time_usec - this->first_invite_time_usec) / 1000.0)), "response_time_xxx");
+		if(existsColumns.cdr_response_time_xxx && this->first_response_xxx_time_us) {
+			cdr.add(MIN(65535, round((this->first_response_xxx_time_us - this->first_invite_time_us) / 1000.0)), "response_time_xxx");
 		}
 	}
 
@@ -3954,7 +3955,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	*/
 	if(existsColumns.cdr_next_calldate) {
-		cdr_next.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+		cdr_next.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_next_calldate_ms);
 	}
 	
 	if(custom_headers_cdr) {
@@ -4404,14 +4405,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	list<string> billingAgergationsInserts;
-	if(connect_time && billing && billing->isSet()) {
+	if(connect_time_us && billing && billing->isSet()) {
 		double operator_price = 0; 
 		double customer_price = 0;
 		unsigned operator_currency_id = 0;
 		unsigned customer_currency_id = 0;
 		unsigned operator_id = 0;
 		unsigned customer_id = 0;
-		if(billing->billing(calltime(), connect_duration(),
+		if(billing->billing(calltime_s(), connect_duration_s(),
 				    getSipcallerip(), getSipcalledip(),
 				    caller, called,
 				    &operator_price, &customer_price,
@@ -4437,7 +4438,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(operator_price > 0 || customer_price > 0) {
 				billingAgergationsInserts = 
-					billing->saveAgregation(calltime(),
+					billing->saveAgregation(calltime_s(),
 								getSipcallerip(), getSipcalledip(),
 								caller, called,
 								operator_price, customer_price,
@@ -4471,7 +4472,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
 		}
 		if(existsColumns.cdr_country_code_calldate) {
-			cdr_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			cdr_country_code.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_country_code_calldate_ms);
 		}
 	}
 	
@@ -4573,8 +4574,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					"set @exists_call_id = coalesce(\n") +
 					"(select cdr.ID from cdr\n" +
 					" join cdr_next on (cdr_next.cdr_ID = cdr.ID and cdr_next.calldate = cdr.calldate)\n" +
-					" where cdr.calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 hour) and\n" +
-					"       cdr.calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 hour) and\n" +
+					" where cdr.calldate > ('" + sqlDateTimeString(calltime_s()) + "' - interval 1 hour) and\n" +
+					"       cdr.calldate < ('" + sqlDateTimeString(calltime_s()) + "' + interval 1 hour) and\n" +
 					"       " + (opt_cdr_check_exists_callid != 2 ? 
 						      ((useSensorId > -1 ? 
 							 "id_sensor = " + intToString(useSensorId) : 
@@ -4615,8 +4616,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					"set @exists_call_id = coalesce(\n") +
 					"(select cdr.ID from cdr\n" +
 					" join cdr_next on (cdr_next.cdr_ID = cdr.ID and cdr_next.calldate = cdr.calldate)\n" +
-					" where cdr.calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 minute) and\n" +
-					"       cdr.calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 minute) and\n" +
+					" where cdr.calldate > ('" + sqlDateTimeString(calltime_s()) + "' - interval 1 minute) and\n" +
+					"       cdr.calldate < ('" + sqlDateTimeString(calltime_s()) + "' + interval 1 minute) and\n" +
 					"       " + (useSensorId > -1 ? 
 						      "id_sensor = " + intToString(useSensorId) : 
 						      "id_sensor is null") + " and\n" +
@@ -4705,8 +4706,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			   !(rtp[i]->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) and
 			   (rtp[i]->s->received or !existsColumns.cdr_rtp_index or (rtp[i]->s->received == 0 and rtp_zeropackets_stored == false))) {
 				if(rtp[i]->s->received == 0 and rtp_zeropackets_stored == false) rtp_zeropackets_stored = true;
-				double stime = this->first_packet_time + this->first_packet_usec / 1000000.0;
-				double rtime = rtp[i]->first_packet_time + rtp[i]->first_packet_usec / 1000000.0;
+				double stime = TIME_US_TO_SF(this->first_packet_time_us);
+				double rtime = TIME_US_TO_SF(rtp[i]->first_packet_time_us);
 				double diff = rtime - stime;
 
 				SqlDb_row rtps;
@@ -4744,7 +4745,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					rtps.add(flags, "flags", !flags);
 				}
 				if(existsColumns.cdr_rtp_calldate) {
-					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
 				}
 				if(opt_mysql_enable_multiple_rows_insert) {
 					rtp_rows.push_back(rtps);
@@ -4771,7 +4772,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						sdp.add(iter->port.getPort(), "port");
 						sdp.add(i == 0, "is_caller");
 						if(existsColumns.cdr_sdp_calldate) {
-							sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+							sdp.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_sdp_calldate_ms);
 						}
 						if(opt_mysql_enable_multiple_rows_insert) {
 							sdp_rows.push_back(sdp);
@@ -4807,7 +4808,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					dtmf.add(q.type, "type");
 				}
 				if(existsColumns.cdr_dtmf_calldate) {
-					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					dtmf.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_dtmf_calldate_ms);
 				}
 				if(opt_mysql_enable_multiple_rows_insert) {
 					dtmf_rows.push_back(dtmf);
@@ -4846,7 +4847,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 				sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
 				if(existsColumns.cdr_sipresp_calldate) {
-					sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					sipresp.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_sipresp_calldate_ms);
 				}
 				if(opt_mysql_enable_multiple_rows_insert && enableMultiInsert) {
 					sipresp_rows.push_back(sipresp);
@@ -4869,7 +4870,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				int indexMultiInsert = 0;
 				SqlDb_row siphist;
 				siphist.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-				siphist.add((u_int64_t)(iterSiphistory->time - (first_packet_time * 1000000ull + first_packet_usec)), "time");
+				siphist.add(iterSiphistory->time_us - first_packet_time_us, "time");
 				if(iterSiphistory->SIPrequest.length()) {
 					if(useSetId()) {
 						siphist.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_request, iterSiphistory->SIPrequest), "SIPrequest_id");
@@ -4908,7 +4909,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					}
 				}
 				if(existsColumns.cdr_siphistory_calldate) {
-					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					siphist.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_siphistory_calldate_ms);
 				}
 				if(opt_mysql_enable_multiple_rows_insert && enableMultiInsert && indexMultiInsert) {
 					siphist_rows[indexMultiInsert - 1].push_back(siphist);
@@ -4945,7 +4946,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					tar_part.add(i, "type");
 					tar_part.add(*it, "pos");
 					if(existsColumns.cdr_tar_part_calldate) {
-						tar_part.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+						tar_part.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_tar_part_calldate_ms);
 					}
 					if(opt_mysql_enable_multiple_rows_insert) {
 						tar_part_rows.push_back(tar_part);
@@ -5063,7 +5064,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(*iter_undup == sipcalledip_rslt) { ++iter_undup; continue; }
 				SqlDb_row cdrproxy;
 				cdrproxy.add(cdrID, "cdr_ID");
-				cdrproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				cdrproxy.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_proxy_calldate_ms);
 				cdrproxy.add((vmIP)(*iter_undup), "dst", false, sqlDbSaveCall, sql_cdr_proxy_table.c_str());
 				sqlDbSaveCall->insert(sql_cdr_proxy_table, cdrproxy);
 				++iter_undup;
@@ -5076,14 +5077,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			   !(rtp[i]->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) and
 			   (rtp[i]->s->received or (rtp[i]->s->received == 0 and rtp_zeropackets_stored == false))) {
 				if(rtp[i]->s->received == 0 and rtp_zeropackets_stored == false) rtp_zeropackets_stored = true;
-				double fpart = this->first_packet_usec;
-				while(fpart > 1) fpart /= 10;
-				double stime = this->first_packet_time + fpart;
-
-				fpart = rtp[i]->first_packet_usec;
-				while(fpart > 1) fpart /= 10;
-				double rtime = rtp[i]->first_packet_time + fpart;
-
+				double stime = TIME_US_TO_SF(this->first_packet_time_us);
+				double rtime = TIME_US_TO_SF(rtp[i]->first_packet_time_us);
 				double diff = rtime - stime;
 
 				if(rtp[i]->first_codec == -1) {
@@ -5124,7 +5119,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					}
 				}
 				if(existsColumns.cdr_rtp_calldate) {
-					rtps.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
 				}
 				sqlDbSaveCall->insert(sql_cdr_rtp_table, rtps);
 			}
@@ -5140,7 +5135,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						sdp.add(iter->port.getPort(), "port");
 						sdp.add(i == 0, "is_caller");
 						if(existsColumns.cdr_sdp_calldate) {
-							sdp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+							sdp.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_sdp_calldate_ms);
 						}
 						sqlDbSaveCall->insert(sql_cdr_sdp_table, sdp);
 					}
@@ -5166,7 +5161,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					dtmf.add(q.type, "type");
 				}
 				if(existsColumns.cdr_dtmf_calldate) {
-					dtmf.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					dtmf.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_dtmf_calldate_ms);
 				}
 				sqlDbSaveCall->insert(sql_cdr_dtmf_table, dtmf);
 			}
@@ -5178,7 +5173,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			sipresp.add(dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, iterSiprespUnique->SIPresponse.c_str(), true), "SIPresponse_id");
 			sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
 			if(existsColumns.cdr_sipresp_calldate) {
-				sipresp.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				sipresp.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_sipresp_calldate_ms);
 			}
 			sqlDbSaveCall->insert("cdr_sipresp", sipresp);
 		}
@@ -5187,7 +5182,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			for(list<sSipHistory>::iterator iterSiphistory = SIPhistory.begin(); iterSiphistory != SIPhistory.end(); iterSiphistory++) {
 				SqlDb_row siphist;
 				siphist.add(cdrID, "cdr_ID");
-				siphist.add((u_int64_t)(iterSiphistory->time - (first_packet_time * 1000000ull + first_packet_usec)), "time");
+				siphist.add(iterSiphistory->time_us - first_packet_time_us, "time");
 				if(iterSiphistory->SIPrequest.length()) {
 					 siphist.add(dbData->cb()->getId(cSqlDbCodebook::_cb_sip_request, iterSiphistory->SIPrequest.c_str(), true), "SIPrequest_id");
 				}
@@ -5196,7 +5191,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					 siphist.add(dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, iterSiphistory->SIPresponse.c_str(), true), "SIPresponse_id");
 				}
 				if(existsColumns.cdr_siphistory_calldate) {
-					siphist.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					siphist.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_siphistory_calldate_ms);
 				}
 				sqlDbSaveCall->insert("cdr_siphistory", siphist);
 			}
@@ -5265,7 +5260,7 @@ Call::saveAloneByeToDb(bool enableBatchIfPossible) {
 		where id = ( \
 			select max(cdr_id) \
 			from cdr_next \
-			where calldate > '" + sqlDateTimeString(calltime() - 60 * 60) + "' and \
+			where calldate > '" + sqlDateTimeString(calltime_s() - 60 * 60) + "' and \
 			      fbasename = '" + fbasename + "' \
 			limit 1)";
 	if(enableBatchIfPossible) {
@@ -5339,7 +5334,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		last_register_clean = now;
 	} else if((last_register_clean + REGISTER_CLEAN_PERIOD) < now){
 		// last clean was done older than CLEAN_PERIOD seconds
-		string calldate_str = sqlDateTimeString(calltime());
+		string calldate_str = sqlDateTimeString(calltime_s());
 
 		query = "INSERT INTO register_state \
 			 (created_at, \
@@ -5382,7 +5377,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 	case 3:
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			//stored procedure is much faster and eliminates latency reducing uuuuuuuuuuuuu
-			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + ", " +
+			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeStringBorder(sqlDateTimeString(calltime_s())) + ", " +
 				sqlEscapeStringBorder(caller) + "," +
 				sqlEscapeStringBorder(callername) + "," +
 				sqlEscapeStringBorder(caller_domain) + "," +
@@ -5395,7 +5390,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				sqlEscapeStringBorder(digest_username) + "," +
 				sqlEscapeStringBorder(digest_realm) + ",'" +
 				intToString(regstate) + "'," +
-				sqlEscapeStringBorder(sqlDateTimeString(calltime() + register_expires).c_str()) + ",'" + //mexpires_at
+				sqlEscapeStringBorder(sqlDateTimeString(calltime_s() + register_expires).c_str()) + ",'" + //mexpires_at
 				intToString(register_expires) + "', " +
 				sqlEscapeStringBorder(a_ua) + ", " +
 				sqlEscapeStringBorder(intToString(fname_register)) + ", " +
@@ -5412,7 +5407,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				query = string(
 					"SELECT ID, state, rrd_avg, rrd_count, ") +
 					       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
-					       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + "))] AS expired " +
+					       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime_s())) + "))] AS expired " +
 					"FROM " + register_table + " " +
 					"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + " AND " +
 					      "contact_num = " + sqlEscapeStringBorder(contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(contact_domain) + 
@@ -5423,7 +5418,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				query = string(
 					"SELECT ID, state, ") +
 					       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
-					       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime())) + "))] AS expired " +
+					       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime_s())) + "))] AS expired " +
 					"FROM " + register_table + " " +
 					"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + " AND " +
 					      "contact_num = " + sqlEscapeStringBorder(contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(contact_domain) + 
@@ -5485,7 +5480,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					if(atoi(rsltRow["state"].c_str()) != regstate || register_expires == 0) {
 						// state changed or device unregistered, store to register_state
 						SqlDb_row reg;
-						reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+						reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
 						reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_state");
 						reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_state");
 						reg.add(sqlEscapeString(caller), "from_num");
@@ -5506,7 +5501,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				} else {
 					// REGISTER message is new, store it to register_state
 					SqlDb_row reg;
-					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
 					reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_state");
 					reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_state");
 					reg.add(sqlEscapeString(caller), "from_num");
@@ -5530,7 +5525,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 
 					SqlDb_row reg;
-					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "calldate");
 					reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, register_table);
 					reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, register_table);
 					//reg.add(sqlEscapeString(fbasename), "fbasename");
@@ -5547,7 +5542,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(dbData->cb()->getId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
 					}
 					reg.add(register_expires, "expires");
-					reg.add(sqlEscapeString(sqlDateTimeString(calltime() + register_expires).c_str()), "expires_at");
+					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s() + register_expires).c_str()), "expires_at");
 					reg.add(intToString(fname_register), "fname");
 					reg.add(useSensorId, "id_sensor");
 					reg.add(regstate, "state");
@@ -5578,7 +5573,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			ssipcalledip << getSipcalledip().getString();
 
 			unsigned int count = 1;
-			int res = regfailedcache->check(getSipcallerip(), getSipcalledip(), calltime(), &count);
+			int res = regfailedcache->check(getSipcallerip(), getSipcalledip(), calltime_s(), &count);
 			if(res) {
 				break;
 			}
@@ -5586,7 +5581,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			stringstream cnt;
 			cnt << count;
 
-			string calldate_str = sqlDateTimeString(calltime());
+			string calldate_str = sqlDateTimeString(calltime_s());
 
 			string q1 = string(
 				"SELECT counter FROM register_failed ") +
@@ -5600,7 +5595,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				" AND created_at >= SUBTIME('" + calldate_str + "', '01:00:00')";
 
 			SqlDb_row reg;
-			reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+			reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
 			reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_failed");
 			reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_failed");
 			reg.add(sqlEscapeString(caller), "from_num");
@@ -5625,7 +5620,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 			sqlStore->query_lock(query.c_str(), storeId);
 		} else {
-			string calldate_str = sqlDateTimeString(calltime());
+			string calldate_str = sqlDateTimeString(calltime_s());
 			query = string(
 				"SELECT counter FROM register_failed ") +
 				"WHERE to_num = " + sqlEscapeStringBorder(called) + " AND to_domain = " + sqlEscapeStringBorder(called_domain) + 
@@ -5642,7 +5637,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				} else {
 					// this is new failed attempt within hour, insert
 					SqlDb_row reg;
-					reg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "created_at");
+					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
 					reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_failed");
 					reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_failed");
 					reg.add(sqlEscapeString(caller), "from_num");
@@ -5707,7 +5702,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			if(*iter_undup == getSipcalledip()) { ++iter_undup; continue; };
 			SqlDb_row messageproxy;
 			messageproxy.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "message_ID");
-			messageproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+			messageproxy.add_calldate(calltime_us(), "calldate", existsColumns.message_child_proxy_calldate_ms);
 			messageproxy.add((vmIP)(*iter_undup), "dst", false, sqlDbSaveCall, sql_message_proxy_table.c_str());
 			query_str_messageproxy += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
 						  sqlDbSaveCall->insertQuery(sql_message_proxy_table, messageproxy));
@@ -5728,7 +5723,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	msg.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
 	msg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, sql_message_table.c_str());
 	msg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, sql_message_table.c_str());
-	msg.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+	msg.add_calldate(calltime_us(), "calldate", existsColumns.message_calldate_ms);
 	if(!geoposition.empty()) {
 		msg.add(sqlEscapeString(geoposition), "GeoPosition");
 	}
@@ -5770,9 +5765,9 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 
 	msg.add(lastSIPresponseNum, "lastSIPresponseNum");
 	
-	if(existsColumns.message_response_time && this->first_message_time_usec) {
-		if(this->first_response_200_time_usec) {
-			msg.add(MIN(65535, round((this->first_response_200_time_usec - this->first_message_time_usec) / 1000.0)), "response_time");
+	if(existsColumns.message_response_time && this->first_message_time_us) {
+		if(this->first_response_200_time_us) {
+			msg.add(MIN(65535, round((this->first_response_200_time_us - this->first_message_time_us) / 1000.0)), "response_time");
 		}
 	}
 
@@ -5797,7 +5792,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			msg_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
 			msg_country_code.add(getCountryByPhoneNumber(called, true), "called_number_country_code");
 		}
-		msg_country_code.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+		msg_country_code.add_calldate(calltime_us(), "calldate", existsColumns.message_child_country_code_calldate_ms);
 	}
 	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
@@ -5871,8 +5866,8 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			query_str += "__NEXT_PASS_QUERY_BEGIN__";
 			query_str += string("set @exists_call_id = coalesce(\n") +
 				     "(select ID from message\n" +
-				     " where calldate > ('" + sqlDateTimeString(calltime()) + "' - interval 1 minute) and\n" +
-				     "       calldate < ('" + sqlDateTimeString(calltime()) + "' + interval 1 minute) and\n" +
+				     " where calldate > ('" + sqlDateTimeString(calltime_s()) + "' - interval 1 minute) and\n" +
+				     "       calldate < ('" + sqlDateTimeString(calltime_s()) + "' + interval 1 minute) and\n" +
 				     "       " + (useSensorId > -1 ? 
 						   "id_sensor = " + intToString(useSensorId) : 
 						   "id_sensor is null") + " and\n" +
@@ -5987,7 +5982,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			while(iter_undup != proxies_undup.end()) {
 				SqlDb_row messageproxy;
 				messageproxy.add(msgID, "message_ID");
-				messageproxy.add(sqlEscapeString(sqlDateTimeString(calltime()).c_str()), "calldate");
+				messageproxy.add_calldate(calltime_us(), "calldate", existsColumns.message_child_proxy_calldate_ms);
 				messageproxy.add((vmIP)(*iter_undup), "dst", false, sqlDbSaveCall, sql_message_proxy_table.c_str());
 				sqlDbSaveCall->insert(sql_message_proxy_table, messageproxy);
 				++iter_undup;
@@ -6019,7 +6014,7 @@ Call::dump(){
 	printf("cidl:%lu\n", call_id_len);
 	printf("-call dump %p---------------------------------\n", this);
 	printf("callid:%s\n", call_id.c_str());
-	printf("last packet time:%d\n", (int)get_last_packet_time());
+	printf("last packet time:%d\n", (int)get_last_packet_time_s());
 	printf("last SIP response [%d] [%s]\n", lastSIPresponseNum, lastSIPresponse);
 	
 	// print assigned IP:port 
@@ -6034,7 +6029,7 @@ Call::dump(){
 		printf("From:%s\n", caller);
 		printf("To:%s\n", called);
 	}
-	printf("First packet: %d, Last packet: %d\n", (int)get_first_packet_time(), (int)get_last_packet_time());
+	printf("First packet: %d, Last packet: %d\n", (int)get_first_packet_time_s(), (int)get_last_packet_time_s());
 	printf("ssrc_n:%d\n", ssrc_n);
 	printf("Call statistics:\n");
 	if(ssrc_n > 0) {
@@ -6066,7 +6061,7 @@ void Call::atFinish() {
 		string source(filtercommand);
 		find_and_replace(source, string("%callid%"), escapeShellArgument(this->fbasename));
 		find_and_replace(source, string("%dirname%"), escapeShellArgument(this->get_pathname(tsf_sip)));
-		find_and_replace(source, string("%calldate%"), escapeShellArgument(sqlDateTimeString(this->calltime())));
+		find_and_replace(source, string("%calldate%"), escapeShellArgument(sqlDateTimeString(this->calltime_s())));
 		find_and_replace(source, string("%caller%"), escapeShellArgument(this->caller));
 		find_and_replace(source, string("%called%"), escapeShellArgument(this->called));
 		if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
@@ -6372,8 +6367,8 @@ void Ss7::sParseData::debugOutput() {
 	     << "---" << endl;
 }
 
-Ss7::Ss7(time_t time) :
- Call_abstract(SS7, time),
+Ss7::Ss7(u_int64_t time_us) :
+ Call_abstract(SS7, time_us),
  pcap(PcapDumper::sip, this) {
 	init();
 }
@@ -6454,30 +6449,30 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 	}
 	string sql_ss7_table = "ss7";
 	SqlDb_row ss7;
-	ss7.add(sqlEscapeString(sqlDateTimeString(iam_time_us / 1000000ull)), "time_iam");
+	ss7.add_calldate(iam_time_us, "time_iam", existsColumns.ss7_time_iam_ms);
 	if(acm_time_us) {
-		ss7.add(sqlEscapeString(sqlDateTimeString(acm_time_us / 1000000ull)), "time_acm");
+		ss7.add_calldate(acm_time_us, "time_acm", existsColumns.ss7_time_acm_ms);
 	}
 	if(cpg_time_us) {
-		ss7.add(sqlEscapeString(sqlDateTimeString(cpg_time_us / 1000000ull)), "time_cpg");
+		ss7.add_calldate(cpg_time_us, "time_cpg", existsColumns.ss7_time_cpg_ms);
 	}
 	if(anm_time_us) {
-		ss7.add(sqlEscapeString(sqlDateTimeString(anm_time_us / 1000000ull)), "time_anm");
+		ss7.add_calldate(anm_time_us, "time_anm", existsColumns.ss7_time_anm_ms);
 	}
 	if(rel_time_us) {
-		ss7.add(sqlEscapeString(sqlDateTimeString(rel_time_us / 1000000ull)), "time_rel");
+		ss7.add_calldate(rel_time_us, "time_rel", existsColumns.ss7_time_rel_ms);
 	}
 	if(rlc_time_us) {
-		ss7.add(sqlEscapeString(sqlDateTimeString(rlc_time_us / 1000000ull)), "time_rlc");
+		ss7.add_calldate(rlc_time_us, "time_rlc", existsColumns.ss7_time_rlc_ms);
 	}
 	if(rlc_time_us) {
-		ss7.add((unsigned)round((rlc_time_us - iam_time_us) / 1000000.), "duration");
+		ss7.add_duration(rlc_time_us - iam_time_us, "duration", existsColumns.ss7_duration_ms, true);
 		if(anm_time_us) {
-			ss7.add((unsigned)round((rlc_time_us - anm_time_us) / 1000000.), "connect_duration");
+			ss7.add_duration(rlc_time_us - anm_time_us, "connect_duration", existsColumns.ss7_connect_duration_ms, true);
 		}
 	}
 	if(anm_time_us) {
-		ss7.add((unsigned)round((anm_time_us - iam_time_us) / 1000000.), "progress_time");
+		ss7.add_duration(anm_time_us - iam_time_us, "progress_time", existsColumns.ss7_progress_time_ms, true);
 	}
 	if(isset_unsigned(iam_data.isup_cic)) {
 		ss7.add(iam_data.isup_cic, "cic");
@@ -7363,11 +7358,11 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 
 Call*
 Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative,
-	       time_t time, vmIP saddr, vmPort port,
+	       u_int64_t time_us, vmIP saddr, vmPort port,
 	       pcap_t *handle, int dlt, int sensorId) {
-	Call *newcall = new FILE_LINE(1011) Call(call_type, call_id, call_id_len, call_id_alternative, time);
+	Call *newcall = new FILE_LINE(1011) Call(call_type, call_id, call_id_len, call_id_alternative, time_us);
 	newcall->in_preprocess_queue_before_process_packet = is_enable_packetbuffer() ? 1 : 0;
-	newcall->in_preprocess_queue_before_process_packet_at[0] = time;
+	newcall->in_preprocess_queue_before_process_packet_at[0] = TIME_US_TO_S(time_us);
 	newcall->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 
 	if(handle) {
@@ -7410,7 +7405,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 
 Ss7 *
 Calltable::add_ss7(packet_s_stack *packetS, Ss7::sParseData *data) {
-	Ss7 *newss7 = new FILE_LINE(0) Ss7(packetS->header_pt->ts.tv_sec);
+	Ss7 *newss7 = new FILE_LINE(0) Ss7(getTimeUS(packetS->header_pt));
 	newss7->useHandle = get_pcap_handle(packetS->handle_index);
 	newss7->useDlt = packetS->dlt;
 	newss7->processData(packetS, data);
@@ -7541,24 +7536,24 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 					  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currtime->tv_sec)) {
 					closeCall = true;
 					call->bye_timeout_exceeded = true;
-				} else if(call->first_rtp_time &&
-					  currtime->tv_sec - call->get_last_packet_time() > rtptimeout) {
+				} else if(call->first_rtp_time_us &&
+					  currtime->tv_sec - call->get_last_packet_time_s() > rtptimeout) {
 					closeCall = true;
 					call->rtp_timeout_exceeded = true;
-				} else if(!call->first_rtp_time &&
-					  currtime->tv_sec - call->first_packet_time > sipwithoutrtptimeout) {
+				} else if(!call->first_rtp_time_us &&
+					  currtime->tv_sec - call->get_first_packet_time_s() > sipwithoutrtptimeout) {
 					closeCall = true;
 					call->sipwithoutrtp_timeout_exceeded = true;
-				} else if(currtime->tv_sec - call->first_packet_time > absolute_timeout) {
+				} else if(currtime->tv_sec - call->get_first_packet_time_s() > absolute_timeout) {
 					closeCall = true;
 					call->absolute_timeout_exceeded = true;
-				} else if(currtime->tv_sec - call->first_packet_time > 300 &&
-					  !call->seenRES18X && !call->seenRES2XX && !call->first_rtp_time) {
+				} else if(currtime->tv_sec - call->get_first_packet_time_s() > 300 &&
+					  !call->seenRES18X && !call->seenRES2XX && !call->first_rtp_time_us) {
 					closeCall = true;
 					call->zombie_timeout_exceeded = true;
 				}
 				if(!closeCall &&
-				   (call->oneway == 1 && (currtime->tv_sec - call->get_last_packet_time() > opt_onewaytimeout))) {
+				   (call->oneway == 1 && (currtime->tv_sec - call->get_last_packet_time_s() > opt_onewaytimeout))) {
 					closeCall = true;
 					call->oneway_timeout_exceeded = true;
 				}
@@ -7689,16 +7684,16 @@ Calltable::cleanup_registers(struct timeval *currtime) {
 		} else {
 			if(reg->destroy_call_at != 0 && reg->destroy_call_at <= currtime->tv_sec) {
 				closeReg = true;
-			} else if(currtime->tv_sec - reg->first_packet_time > absolute_timeout) {
+			} else if(currtime->tv_sec - reg->get_first_packet_time_s() > absolute_timeout) {
 				closeReg = true;
 				reg->absolute_timeout_exceeded = true;
-			} else if(currtime->tv_sec - reg->first_packet_time > 300 &&
+			} else if(currtime->tv_sec - reg->get_first_packet_time_s() > 300 &&
 				  !reg->seenRES18X && !reg->seenRES2XX) {
 				closeReg = true;
 				reg->zombie_timeout_exceeded = true;
 			}
 			if(!closeReg &&
-			   (reg->oneway == 1 && (currtime->tv_sec - reg->get_last_packet_time() > opt_onewaytimeout))) {
+			   (reg->oneway == 1 && (currtime->tv_sec - reg->get_last_packet_time_s() > opt_onewaytimeout))) {
 				closeReg = true;
 				reg->oneway_timeout_exceeded = true;
 			}
@@ -7775,7 +7770,7 @@ int Calltable::cleanup_ss7( struct timeval *currtime ) {
 	for(iter = ss7_listMAP.begin(); iter != ss7_listMAP.end(); ) {
 		if(iter->second->last_message_type == Ss7::rlc || 
 		   !currtime ||
-		   (currtime->tv_sec - (long int)(iter->second->last_time_us / 1000000ull)) > absolute_timeout) {
+		   (currtime->tv_sec - TIME_US_TO_S(iter->second->last_time_us)) > absolute_timeout) {
 			iter->second->pushToQueue();
 			ss7_listMAP.erase(iter++);
 			continue;
@@ -7852,7 +7847,7 @@ Call::handle_dtmf(char dtmf, double dtmf_time, vmIP saddr, vmIP daddr, s_dtmf::e
 	if(enable_save_dtmf_db) {
 		s_dtmf q;
 		q.dtmf = dtmf;
-		q.ts = dtmf_time - ts2double(first_packet_time, first_packet_usec);
+		q.ts = dtmf_time - TIME_US_TO_SF(first_packet_time_us);
 		q.type = dtmf_type;
 		q.saddr = saddr;
 		q.daddr = daddr;
@@ -7915,12 +7910,12 @@ Call::handle_dtmf(char dtmf, double dtmf_time, vmIP saddr, vmIP daddr, s_dtmf::e
 					if(silencerecording == 0) {
 						if(sverb.dtmf)
 							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - pausing recording - %s / %lf s", fbasename, 
-							       dtmf_type_string, dtmf_time - ts2double(this->first_packet_time, this->first_packet_usec));
+							       dtmf_type_string, dtmf_time - TIME_US_TO_SF(this->first_packet_time_us));
 						silencerecording = 1;
 					} else {
 						if(sverb.dtmf)
 							syslog(LOG_NOTICE, "[%s] pause DTMF sequence detected - unpausing recording - %s / %lf s", fbasename, 
-							       dtmf_type_string, dtmf_time - ts2double(this->first_packet_time, this->first_packet_usec));
+							       dtmf_type_string, dtmf_time - TIME_US_TO_SF(this->first_packet_time_us));
 						silencerecording = 0;
 					}       
 					dtmfflag2[dtmfflag2_index] = 0;
@@ -8527,7 +8522,7 @@ void CustomHeaders::setCustomHeaderContent(Call *call, int type, tCH_Content *ch
 	}
 }
 
-void CustomHeaders::prepareSaveRows(Call *call, int type, tCH_Content *ch_content, unsigned time_s, SqlDb_row *cdr_next, SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]) {
+void CustomHeaders::prepareSaveRows(Call *call, int type, tCH_Content *ch_content, u_int64_t time_us, SqlDb_row *cdr_next, SqlDb_row cdr_next_ch[], char *cdr_next_ch_name[]) {
 	if(!ch_content) {
 		if(call) {
 			ch_content = getCustomHeadersCallContent(call, type);
@@ -8555,7 +8550,12 @@ void CustomHeaders::prepareSaveRows(Call *call, int type, tCH_Content *ch_conten
 				if(!cdr_next_ch_name[iter->first - 1][0]) {
 					sprintf(cdr_next_ch_name[iter->first - 1], "%s%i", this->nextTablePrefix.c_str(), iter->first);
 					if(opt_cdr_partition) {
-						cdr_next_ch[iter->first - 1].add(sqlEscapeString(sqlDateTimeString(call ? call->calltime() : time_s).c_str()), this->relTimeColumn);
+						bool use_ms = false;
+						map<int, bool>::iterator calldate_ms_iter = calldate_ms.find(iter->first - 1);
+						if(calldate_ms_iter != calldate_ms.end() && calldate_ms_iter->second) {
+							use_ms = true;
+						}
+						cdr_next_ch[iter->first - 1].add_calldate(call ? call->calltime_us() : time_us, this->relTimeColumn, use_ms);
 					}
 				}
 				char fieldName[20];
@@ -8647,12 +8647,12 @@ string CustomHeaders::getQueryForSaveUseInfo(Call* call, int type, tCH_Content *
 			return("");
 		}
 	}
-	return(getQueryForSaveUseInfo(call->calltime(), ch_content));
+	return(getQueryForSaveUseInfo(call->calltime_us(), ch_content));
 }
 
-string CustomHeaders::getQueryForSaveUseInfo(unsigned time_s, tCH_Content *ch_content) {
+string CustomHeaders::getQueryForSaveUseInfo(u_int64_t time_us, tCH_Content *ch_content) {
 	string query = "";
-	if(time_s > this->lastTimeSaveUseInfo + 60) {
+	if(TIME_US_TO_S(time_us) > this->lastTimeSaveUseInfo + 60) {
 		tCH_Content::iterator iter;
 		for(iter = ch_content->begin(); iter != ch_content->end(); iter++) {
 			if(iter->first > CDR_NEXT_MAX) {
@@ -8669,7 +8669,7 @@ string CustomHeaders::getQueryForSaveUseInfo(unsigned time_s, tCH_Content *ch_co
 						snprintf(queryBuff, sizeof(queryBuff),
 							 "update %s set use_at = '%s' where dynamic_table=%i and dynamic_column=%i",
 							 this->configTable.c_str(),
-							 sqlDateTimeString(time_s).c_str(),
+							 sqlDateTimeString(TIME_US_TO_S(time_us)).c_str(),
 							 iter->first,
 							 iter2->first);
 						query += queryBuff;
@@ -8677,7 +8677,7 @@ string CustomHeaders::getQueryForSaveUseInfo(unsigned time_s, tCH_Content *ch_co
 				}
 			}
 		}
-		this->lastTimeSaveUseInfo = time_s;
+		this->lastTimeSaveUseInfo = TIME_US_TO_S(time_us);
 	}
 	return(query);
 }
@@ -8720,11 +8720,12 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 		compress = "ROW_FORMAT=COMPRESSED";
 	}
 	
+	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 	sqlDb->query(string(
 	"CREATE TABLE IF NOT EXISTS `") + tableName + "` (\
 			`" + this->relIdColumn + "` bigint unsigned NOT NULL," +
 			(opt_cdr_partition ?
-				"`" + this->relTimeColumn + "` datetime NOT NULL," :
+				"`" + this->relTimeColumn + "` " + sqlDb_mysql->column_type_datetime_ms() + " NOT NULL," :
 				"") + 
 			"`custom_header_1` varchar(255) DEFAULT NULL,\
 			`custom_header_2` varchar(255) DEFAULT NULL,\
@@ -8758,6 +8759,48 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 		this->createMysqlPartitions(sqlDb, 0);
 	}
 	
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+}
+
+void CustomHeaders::checkTablesColumns(SqlDb *sqlDb) {
+	list<string> tables = getAllNextTables();
+	unsigned tableIndex = 0;
+	for(list<string>::iterator it = tables.begin(); it != tables.end(); it++) {
+		checkTableColumns(it->c_str(), tableIndex++, sqlDb);
+	}
+}
+
+void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+	map<string, u_int64_t> tableSize;
+	for(int pass = 0; pass < 2; pass++) {
+		string alter_ms;
+		if(!(calldate_ms[tableIndex] = sqlDb->getTypeColumn(tableName, "calldate").find("(3)") != string::npos)) {
+			alter_ms = "modify column " + this->relTimeColumn + " " + sqlDb_mysql->column_type_datetime_ms() + " not null";
+		}
+		if(pass == 0 && opt_time_precision_in_ms) {
+			if(!alter_ms.empty()) {
+				if(sqlDb_mysql->isSupportForDatetimeMs()) {
+					sqlDb->logNeedAlter(tableName,
+							    "support time accuracy in milliseconds",
+							    string("ALTER TABLE ") + tableName + "\n" + alter_ms + ";",
+							    false, &tableSize, NULL);
+					continue;
+				} else {
+					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+					opt_time_precision_in_ms = false;
+				}
+			}
+		}
+		break;
+	}
 	if(_createSqlObject) {
 		delete sqlDb;
 	}

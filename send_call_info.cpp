@@ -290,7 +290,7 @@ void refreshSendCallInfo() {
 void sendCallInfoEvCall(Call *call, sSciInfo::eTypeSci typeSci, struct timeval tv) {
 	if(sendCallInfo && _sendCallInfo_ready) {
 		sendCallInfo_lock();
-		sendCallInfo->evCall(call, typeSci, tv.tv_sec * 1000000ull + tv.tv_usec);
+		sendCallInfo->evCall(call, typeSci, getTimeUS(tv));
 		sendCallInfo_unlock();
 	}
 }

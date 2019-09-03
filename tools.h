@@ -286,6 +286,7 @@ queue<string> listFilesDir(char * dir);
 vector<string> listDir(string path, bool withDir = false);
 vector<string> explode(const char *, const char);
 vector<string> explode(const string&, const char);
+string implode(vector<string> vect, const char *sep);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);
@@ -327,7 +328,6 @@ bool cloud_now_timeout();
 
 bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL);
 bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL);
-double ts2double(unsigned int sec, unsigned int usec);
 long long GetFileSize(std::string filename);
 time_t GetFileCreateTime(std::string filename);
 long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
@@ -471,18 +471,6 @@ inline u_long getGlobalPacketTimeS() {
 	return(is_read_from_file() ?
 		getTimeMS_rdtsc() / 1000 :
 		glob_last_packet_time);
-}
-
-inline unsigned long long getTimeUS(pcap_pkthdr *pkthdr) {
-    return(pkthdr->ts.tv_sec * 1000000ull + pkthdr->ts.tv_usec);
-}
-
-inline unsigned long long getTimeUS(timeval &ts) {
-    return(ts.tv_sec * 1000000ull + ts.tv_usec);
-}
-
-inline unsigned long long getTimeUS(volatile timeval &ts) {
-    return(ts.tv_sec * 1000000ull + ts.tv_usec);
 }
 
 class FileZipHandler : public CompressStream_baseEv {
@@ -2552,6 +2540,12 @@ inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = N
 	if(useGlobalTimeCache) {
 		__sync_lock_release(&timeCache_global_sync);
 	}
+}
+inline struct tm time_r(u_int64_t timestamp_us, const char *timezone = NULL, bool useGlobalTimeCache = false) {
+	struct tm time;
+	time_t timestamp_s = TIME_US_TO_S(timestamp_us);
+	conv_tz(&timestamp_s, &time, timezone, useGlobalTimeCache);
+	return(time);
 }
 inline struct tm time_r(time_t *timestamp, const char *timezone = NULL, bool useGlobalTimeCache = false) {
 	struct tm time;

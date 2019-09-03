@@ -146,6 +146,8 @@ public:
 		}
 	}
 	void add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, const char *table);
+	void add_calldate(u_int64_t calldate_us, string fieldName, bool use_ms);
+	void add_duration(u_int64_t duration_us, string fieldName, bool use_ms, bool round_s = false);
 	int getIndexField(string fieldName) {
 		for(size_t i = 0; i < row.size(); i++) {
 			if(!strcasecmp(row[i].fieldName.c_str(), fieldName.c_str())) {
@@ -278,15 +280,15 @@ public:
 	virtual bool existsDatabase() = 0;
 	virtual bool existsTable(const char *table) = 0;
 	bool existsTable(string table) { return(existsTable(table.c_str())); }
-	virtual bool existsColumn(const char *table, const char *column) = 0;
-	bool existsColumn(string table, string column) { return(existsColumn(table.c_str(), column.c_str())); }
+	virtual bool existsColumn(const char *table, const char *column, string *type = NULL) = 0;
+	bool existsColumn(string table, string column, string *type = NULL) { return(existsColumn(table.c_str(), column.c_str(), type)); }
 	void startExistsColumnCache();
 	void stopExistsColumnCache();
 	void suspendExistsColumnCache();
 	void resumeExistsColumnCache();
 	bool isEnableExistColumnCache();
-	int existsColumnInCache(const char *table, const char *column);
-	void addColumnToCache(const char *table, const char *column);
+	int existsColumnInCache(const char *table, const char *column, string *type = NULL);
+	void addColumnToCache(const char *table, const char *column, const char *type);
 	virtual string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false) = 0;
 	string getTypeColumn(string table, string column, bool toLower = true, bool useCache = false) { return(getTypeColumn(table.c_str(), column.c_str(), toLower, useCache)); }
 	virtual bool existsColumnInTypeCache(const char *table, const char *column) = 0;
@@ -449,7 +451,7 @@ protected:
 	unsigned long maxAllowedPacket;
 	string prevQuery;
 	bool useCsvInRemoteResult;
-	map<string, list<string> > existsColumn_cache;
+	map<string, map<string, string> > existsColumn_cache;
 	bool existsColumn_cache_enable;
 	bool existsColumn_cache_suspend;
 	volatile int existsColumn_cache_sync;
@@ -519,7 +521,7 @@ public:
 	bool existsTable(const char *table);
 	list<string> getAllTables();
 	bool existsTable(string table) { return(existsTable(table.c_str())); }
-	bool existsColumn(const char *table, const char *column);
+	bool existsColumn(const char *table, const char *column, string *type = NULL);
 	string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false);
 	bool existsColumnInTypeCache(const char *table, const char *column);
 	static bool existsColumnInTypeCache_static(const char *table, const char *column);
@@ -557,11 +559,15 @@ public:
 	void checkColumns_cdr_next(bool log = false);
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_cdr_dtmf(bool log = false);
+	void checkColumns_ss7(bool log = false);
 	void checkColumns_message(bool log = false);
 	void checkColumns_register(bool log = false);
 	void checkColumns_sip_msg(bool log = false);
 	void checkColumns_other(bool log = false);
 	bool isExtPrecissionBilling();
+	string column_type_datetime_ms();
+	string column_type_datetime_child_ms();
+	string column_type_duration_ms(const char *base_type = NULL);
 	bool checkSourceTables();
 	void copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc);
 	void copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc,
@@ -589,6 +595,7 @@ public:
 	int getDbMinorVersion(int minorLevel  = 0);
 	string getDbName();
 	int getMaximumPartitions();
+	bool isSupportForDatetimeMs();
 	bool _getDbVersion();
 	bool createRoutine(string routine, string routineName, string routineParamsAndReturn, eRoutineType routineType, bool abortIfFailed = false);
 	bool createFunction(string routine, string routineName, string routineParamsAndReturn, bool abortIfFailed = false) {
@@ -651,7 +658,7 @@ public:
 	int64_t getInsertId();
 	bool existsDatabase();
 	bool existsTable(const char *table);
-	bool existsColumn(const char *table, const char *column);
+	bool existsColumn(const char *table, const char *column, string *type = NULL);
 	string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false);
 	bool existsColumnInTypeCache(const char *table, const char *column);
 	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
@@ -967,6 +974,7 @@ private:
 
 SqlDb *createSqlObject(int connectId = 0);
 string sqlDateTimeString(time_t unixTime, bool useGlobalTimeCache = false);
+string sqlDateTimeString_us2ms(u_int64_t unixTime_us, bool useGlobalTimeCache = false);
 string sqlDateString(time_t unixTime, bool useGlobalTimeCache = false);
 string sqlDateTimeString(tm &time);
 string sqlDateString(tm &time);
@@ -994,7 +1002,26 @@ void checkMysqlIdCdrChildTables();
 
 
 struct sExistsColumns {
-	bool cdr_response_time;
+	bool cdr_calldate_ms;
+	bool cdr_child_next_calldate_ms;
+	bool cdr_child_proxy_calldate_ms;
+	bool cdr_child_rtp_calldate_ms;
+	bool cdr_child_dtmf_calldate_ms;
+	bool cdr_child_sipresp_calldate_ms;
+	bool cdr_child_siphistory_calldate_ms;
+	bool cdr_child_tar_part_calldate_ms;
+	bool cdr_child_country_code_calldate_ms;
+	bool cdr_child_sdp_calldate_ms;
+	bool cdr_child_flags_calldate_ms;
+	bool cdr_callend_ms;
+	bool cdr_duration_ms;
+	bool cdr_connect_duration_ms;
+	bool cdr_progress_time_ms;
+	bool cdr_first_rtp_time_ms;
+	bool cdr_a_last_rtp_from_end_time_ms;
+	bool cdr_b_last_rtp_from_end_time_ms;
+	bool cdr_response_time_100;
+	bool cdr_response_time_xxx;
 	bool cdr_reason;
 	bool cdr_sipport;
 	bool cdr_last_rtp_from_end;
@@ -1032,19 +1059,48 @@ struct sExistsColumns {
 	bool cdr_sdp_calldate;
 	bool cdr_rtcp_loss_is_smallint_type;
 	bool cdr_vlan;
+	bool ss7_time_iam_ms;
+	bool ss7_time_acm_ms;
+	bool ss7_time_cpg_ms;
+	bool ss7_time_anm_ms;
+	bool ss7_time_rel_ms;
+	bool ss7_time_rlc_ms;
+	bool ss7_duration_ms;
+	bool ss7_connect_duration_ms;
+	bool ss7_progress_time_ms;
+	bool message_calldate_ms;
+	bool message_child_proxy_calldate_ms;
+	bool message_child_country_code_calldate_ms;
+	bool message_child_flags_calldate_ms;
 	bool message_content_length;
 	bool message_response_time;
 	bool message_spool_index;
 	bool message_vlan;
+	bool register_calldate_ms;
+	bool register_state_created_at_ms;
+	bool register_failed_created_at_ms;
 	bool register_rrd_count;
 	bool register_state_spool_index;
 	bool register_failed_spool_index;
 	bool register_state_flags;
 	bool register_state_vlan;
 	bool register_failed_vlan;
+	bool sip_msg_time_ms;
+	bool sip_msg_request_time_ms;
+	bool sip_msg_response_time_ms;
 	bool sip_msg_vlan;
 };
 
+struct sTableCalldateMsIndik {
+	sTableCalldateMsIndik(bool *ms, const char *table, const char *calldate = "calldate") {
+		this->ms = ms;
+		this->table = table;
+		this->calldate = calldate;
+	}
+	bool *ms;
+	string table;
+	string calldate;
+};
 
 class cLogSensor {
 public: 

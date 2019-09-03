@@ -352,7 +352,7 @@ struct pcap_block_store {
 	}
 	u_int64_t getLastPacketHeaderTimeMS() {
 		pcap_pkthdr_plus *pkthdr = (pcap_pkthdr_plus*)(this->block + this->offsets[this->count - 1]);
-		return(pkthdr->header_fix_size.ts_tv_sec * 1000ull + pkthdr->header_fix_size.ts_tv_usec / 1000);
+		return(getTimeMS(pkthdr->header_fix_size.ts_tv_sec, pkthdr->header_fix_size.ts_tv_usec));
 	}
 	header_mode hm;
 	uint32_t *offsets;

@@ -62,7 +62,7 @@ void TcpReassemblyStream_packet_var::push(TcpReassemblyStream_packet packet) {
 		this->queuePackets[packet.next_seq];
 		this->queuePackets[packet.next_seq] = packet;
 	}
-	this->last_packet_at_from_header = packet.time.tv_sec * 1000 + packet.time.tv_usec / 1000;
+	this->last_packet_at_from_header = getTimeMS(&packet.time);
 }
 
 void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
@@ -77,7 +77,7 @@ void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
 	if(PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
 		exists_data = true;
 	}
-	this->last_packet_at_from_header = packet.time.tv_sec * 1000 + packet.time.tv_usec / 1000;
+	this->last_packet_at_from_header = getTimeMS(&packet.time);
 }
 
 int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, u_int32_t maxNextSeq,
@@ -918,11 +918,11 @@ bool TcpReassemblyLink::push_normal(
 					runCompleteAfterZerodataAck = true;
 				}
 			}
-			this->last_packet_at_from_header = time.tv_sec * 1000 + time.tv_usec / 1000;
+			this->last_packet_at_from_header = getTimeMS(&time);
 		}
 		rslt = true;
 	} else {
-		this->last_packet_at_from_header = time.tv_sec * 1000 + time.tv_usec / 1000;
+		this->last_packet_at_from_header = getTimeMS(&time);
 	}
 	if(!reassembly->enableCleanupThread) {
 		bool final = !reassembly->simpleByAck &&
@@ -1057,7 +1057,7 @@ bool TcpReassemblyLink::push_crazy(
 		}
 	}
 	//this->last_packet_at = getTimeMS();
-	this->last_packet_at_from_header = time.tv_sec * 1000 + time.tv_usec / 1000;
+	this->last_packet_at_from_header = getTimeMS(&time);
 	if(!this->created_at_from_header) {
 		this->created_at_from_header = this->last_packet_at_from_header;
 	}
@@ -1141,7 +1141,7 @@ void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 		stream->max_next_seq = packet.next_seq;
 	}
 	this->last_ack = stream->ack;
-	this->last_packet_at_from_header = packet.time.tv_sec * 1000 + packet.time.tv_usec / 1000;
+	this->last_packet_at_from_header = getTimeMS(&packet.time);
 }
 
 void TcpReassemblyLink::printContent(int level) {
@@ -2697,7 +2697,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	}
 	
 	this->last_time = getTimeMS();
-	this->act_time_from_header = header->ts.tv_sec * 1000 + header->ts.tv_usec / 1000;
+	this->act_time_from_header = getTimeMS(header);
 	
 	TcpReassemblyLink *link = NULL;
 	map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iter;

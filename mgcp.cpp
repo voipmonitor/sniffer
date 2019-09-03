@@ -148,7 +148,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 	if(is_request) {
 		parse_mgcp_request(&request, &mgcp_lines);
 		if(request.is_set()) {
-			request.time = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
+			request.time = getTimeUS(packetS->header_pt);
 		} else {
 			return(NULL);
 		}
@@ -156,7 +156,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 	if(is_response) {
 		parse_mgcp_response(&response, &mgcp_lines);
 		if(response.is_set()) {
-			response.time = packetS->header_pt->ts.tv_sec * 1000000ull + packetS->header_pt->ts.tv_usec;
+			response.time = getTimeUS(packetS->header_pt);
 		} else {
 			return(NULL);
 		}
@@ -198,7 +198,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 				}       
 				call = calltable->add_mgcp(&request, packetS->header_pt->ts.tv_sec, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(),
 							   get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
-				call->set_first_packet_time(packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
+				call->set_first_packet_time_us(getTimeUS(packetS->header_pt));
 				strcpy_null_term(call->called, request.endpoint.c_str());
 				call->setSipcallerip(packetS->saddr_(), packetS->source_());
 				call->setSipcalledip(packetS->daddr_(), packetS->dest_());
@@ -291,18 +291,17 @@ void *handle_mgcp(packet_s_process *packetS) {
 			detect_branch_extern(packetS, branch, sizeof(branch), NULL);
 			process_sdp(call, packetS, iscaller, (char*)(sdp + sdp_separator_length), (char*)call->call_id.c_str(), to, branch);
 		}
-		if(!call->connect_time && is_request) {
+		if(!call->connect_time_us && is_request) {
 			if((request_type == _mgcp_CRCX && request.parameters.connection_mode == "SENDRECV") ||
 			   (request_type == _mgcp_RQNT && request.parameters.requested_events == "L/HF(N),L/HU(N)")) {
-				call->connect_time = packetS->header_pt->ts.tv_sec;
-				call->connect_time_usec = packetS->header_pt->ts.tv_usec;
+				call->connect_time_us = getTimeUS(packetS->header_pt);
 			}
 		}
 		save_packet(call, packetS, TYPE_MGCP);
 		if(request.type == _mgcp_CRCX || request.type == _mgcp_MDCX || request.type == _mgcp_DLCX) {
-			call->set_last_mgcp_connect_packet_time(packetS->header_pt->ts.tv_sec);
+			call->set_last_mgcp_connect_packet_time_us(getTimeUS(packetS->header_pt));
 		}
-		call->set_last_packet_time(packetS->header_pt->ts.tv_sec);
+		call->set_last_packet_time_us(getTimeUS(packetS->header_pt));
 	}
 	return(NULL);
 }

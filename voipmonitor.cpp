@@ -590,6 +590,7 @@ unsigned int graph_event = GRAPH_EVENT;
 int opt_mos_lqo = 0;
 char opt_capture_rules_telnum_file[1024];
 bool opt_detect_alone_bye = false;
+bool opt_time_precision_in_ms = false;
 bool opt_cdr_partition = 1;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
@@ -1254,16 +1255,19 @@ void *database_backup(void */*dummy*/) {
 					custom_headers_cdr->refresh(sqlDbSrc, false);
 					custom_headers_cdr->createColumnsForFixedHeaders(sqlDb);
 					custom_headers_cdr->createTablesIfNotExists(sqlDb, true);
+					custom_headers_cdr->checkTablesColumns(sqlDb);
 				}
 				if(custom_headers_message) {
 					custom_headers_message->refresh(sqlDbSrc, false);
 					custom_headers_message->createColumnsForFixedHeaders(sqlDb);
 					custom_headers_message->createTablesIfNotExists(sqlDb, true);
+					custom_headers_message->checkTablesColumns(sqlDb);
 				}
 				if(custom_headers_sip_msg) {
 					custom_headers_sip_msg->refresh(sqlDbSrc, false);
 					custom_headers_sip_msg->createColumnsForFixedHeaders(sqlDb);
 					custom_headers_sip_msg->createTablesIfNotExists(sqlDb, true);
+					custom_headers_sip_msg->checkTablesColumns(sqlDb);
 				}
 			
 				time_t actTime = time(NULL);
@@ -1869,7 +1873,7 @@ void *storing_cdr( void */*dummy*/ ) {
 							needConvertToWavInThread = true;
 						}
 					}
-					regfailedcache->prunecheck(call->first_packet_time);
+					regfailedcache->prunecheck(TIME_US_TO_S(call->first_packet_time_us));
 					if(!opt_nocdr) {
 						if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
 							call->saveToDb(!is_read_from_file_simple() || isCloud() || is_client());
@@ -2006,7 +2010,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 					needConvertToWavInThread = true;
 				}
 			}
-			regfailedcache->prunecheck(call->first_packet_time);
+			regfailedcache->prunecheck(TIME_US_TO_S(call->first_packet_time_us));
 			if(!opt_nocdr) {
 				if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
 					call->saveToDb(!is_read_from_file_simple() || isCloud() || is_client());
@@ -2137,7 +2141,7 @@ void *storing_registers( void */*dummy*/ ) {
 				
 				if(call->isReadyForWriteCdr()) {
 				
-					regfailedcache->prunecheck(call->first_packet_time);
+					regfailedcache->prunecheck(TIME_US_TO_S(call->first_packet_time_us));
 					if(!opt_nocdr) {
 						if(call->typeIs(REGISTER)) {
 							call->saveRegisterToDb();
@@ -3726,10 +3730,13 @@ int main_init_read() {
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
 		custom_headers_cdr = new FILE_LINE(42014) CustomHeaders(CustomHeaders::cdr, sqlDbInit);
 		custom_headers_cdr->createTablesIfNotExists(sqlDbInit);
+		custom_headers_cdr->checkTablesColumns(sqlDbInit);
 		custom_headers_message = new FILE_LINE(42015) CustomHeaders(CustomHeaders::message, sqlDbInit);
 		custom_headers_message->createTablesIfNotExists(sqlDbInit);
+		custom_headers_message->checkTablesColumns(sqlDbInit);
 		custom_headers_sip_msg = new FILE_LINE(0) CustomHeaders(CustomHeaders::sip_msg, sqlDbInit);
 		custom_headers_sip_msg->createTablesIfNotExists(sqlDbInit);
+		custom_headers_sip_msg->checkTablesColumns(sqlDbInit);
 		no_hash_message_rules = new FILE_LINE(42016) NoHashMessageRules(sqlDbInit);
 	}
 
@@ -4708,7 +4715,7 @@ void test_filebuffer() {
 	gettimeofday(&tv, &tz);
 	
 	cout << "---" << endl;
-	u_int64_t _start = tv.tv_sec * 1000000ull + tv.tv_usec;
+	u_int64_t _start = getTimeUS(tv);
 	
 	
 	for(int p = 0; p < 5; p++)
@@ -4718,7 +4725,7 @@ void test_filebuffer() {
 	
 	cout << "---" << endl;
 	gettimeofday(&tv, &tz);
-	u_int64_t _end = tv.tv_sec * 1000000ull + tv.tv_usec;
+	u_int64_t _end = getTimeUS(tv);
 	cout << (_end - _start) << endl;
 }
 
@@ -6199,6 +6206,7 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new FILE_LINE(42148) cConfigItem_string("capture_rules_telnum_file", opt_capture_rules_telnum_file, sizeof(opt_capture_rules_telnum_file)));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("detect_alone_bye", &opt_detect_alone_bye));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("time_precision_in_ms", &opt_time_precision_in_ms));
 		subgroup("scaling");
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem((new FILE_LINE(42149) cConfigItem_yesno("threading_mod"))
@@ -9801,6 +9809,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "detect_alone_bye", NULL))) {
 		opt_detect_alone_bye = yesno(value);
+	}
+	if((value = ini.GetValue("general", "time_precision_in_ms", NULL))) {
+		opt_time_precision_in_ms = yesno(value);
 	}
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :

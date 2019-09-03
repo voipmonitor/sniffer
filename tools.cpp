@@ -204,6 +204,17 @@ vector<string> explode(const string& str, const char ch) {
 	return result;
 }
 
+string implode(vector<string> vect, const char *sep) {
+	string rslt;
+	for(unsigned i = 0; i < vect.size(); i++) {
+		if(i) {
+			rslt += sep;
+		}
+		rslt += vect[i];
+	}
+	return(rslt);
+}
+
 int getUpdDifTime(struct timeval *before)
 {
 	int dif = getDifTime(before);
@@ -783,10 +794,6 @@ size_t CircularBuffer::read(char *data, size_t bytes)
 
 	size_ -= bytes_to_read;
 	return bytes_to_read;
-}
-
-double ts2double(unsigned int sec, unsigned int usec) {
-	return double((double)sec + (0.000001f * (double)usec));
 }
 
 long long GetFileSize(std::string filename)
@@ -3253,7 +3260,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->typeCompress = typeCompress;
 	this->dumpHandler = dumpHandler;
 	this->call = call;
-	this->time = call ? call->calltime() : 0;
+	this->time = call ? call->calltime_s() : 0;
 	this->size = 0;
 	this->existsData = false;
 	this->counter = ++scounter;

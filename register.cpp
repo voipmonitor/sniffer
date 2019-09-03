@@ -35,6 +35,8 @@ extern bool opt_sip_register_state_compare_sipalg;
 extern bool opt_sip_register_state_compare_vlan;
 extern bool opt_sipalg_detect;
 
+extern bool opt_time_precision_in_ms;
+
 extern Calltable *calltable;
 
 extern sExistsColumns existsColumns;
@@ -117,7 +119,7 @@ bool RegisterId:: operator < (const RegisterId& other) const {
 RegisterState::RegisterState(Call *call, Register *reg) {
 	if(call) {
 		char *tmp_str;
-		state_from = state_to = call->calltime();
+		state_from_us = state_to_us = call->calltime_us();
 		counter = 1;
 		state = convRegisterState(call);
 		contact_num = reg->contact_num && REG_EQ_STR(call->contact_num, reg->contact_num) ?
@@ -148,7 +150,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		is_sipalg_detected = call->is_sipalg_detected;
 		vlan = call->vlan;
 	} else {
-		state_from = state_to = 0;
+		state_from_us = state_to_us = 0;
 		counter = 0;
 		state = rs_na;
 		contact_num = NULL;
@@ -360,7 +362,7 @@ void Register::addState(Call *call) {
 	}
 	if(opt_enable_fraud && isFraudReady()) {
 		RegisterState *prevState = states_prev_last();
-		fraudRegister(call, state->state, prevState ? prevState->state : rs_na, prevState ? prevState->state_to : 0);
+		fraudRegister(call, state->state, prevState ? prevState->state : rs_na, prevState ? prevState->state_to_us : 0);
 	}
 	unlock_states();
 }
@@ -386,13 +388,13 @@ void Register::expire(bool need_lock_states, bool use_state_prev_last) {
 		newState->copyFrom(lastState);
 		newState->state = rs_Expired;
 		newState->expires = 0;
-		newState->state_from = newState->state_to = lastState->state_to + lastState->expires;
+		newState->state_from_us = newState->state_to_us = lastState->state_to_us + TIME_S_TO_US(lastState->expires);
 		states[0] = newState;
 		++countStates;
 		saveStateToDb(newState);
 		if(opt_enable_fraud && isFraudReady()) {
 			RegisterState *prevState = states_prev_last();
-			fraudRegister(this, prevState, rs_Expired, prevState ? prevState->state : rs_na, prevState ? prevState->state_to : 0);
+			fraudRegister(this, prevState, rs_Expired, prevState ? prevState->state : rs_na, prevState ? prevState->state_to_us : 0);
 		}
 	}
 	if(need_lock_states) {
@@ -403,7 +405,7 @@ void Register::expire(bool need_lock_states, bool use_state_prev_last) {
 void Register::updateLastState(Call *call) {
 	RegisterState *state = states_last();
 	if(state) {
-		state->state_to = call->calltime();
+		state->state_to_us = call->calltime_us();
 		state->fname = call->fname_register;
 		state->expires = call->register_expires;
 		if(!opt_sip_register_state_compare_digest_realm && 
@@ -479,7 +481,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	adjustUA(&adj_ua);
 	SqlDb_row reg;
 	string register_table = state->state == rs_Failed ? "register_failed" : "register_state";
-	reg.add(sqlEscapeString(sqlDateTimeString(state->state_from).c_str()), "created_at");
+	reg.add_calldate(state->state_from_us, "created_at", state->state == rs_Failed ? existsColumns.register_failed_created_at_ms : existsColumns.register_state_created_at_ms);
 	reg.add(sipcallerip, "sipcallerip", false, sqlDbSaveRegister, register_table.c_str());
 	reg.add(sipcalledip, "sipcalledip", false, sqlDbSaveRegister, register_table.c_str());
 	reg.add(sqlEscapeString(REG_CONV_STR(state->from_num == EQ_REG ? from_num : state->from_num)), "from_num");
@@ -561,12 +563,12 @@ void Register::saveFailedToDb(RegisterState *state, bool force, bool enableBatch
 			saveStateToDb(state);
 			save = true;
 		} else {
-			if(!force && (state->state_to - state->state_from) > NEW_REGISTER_NEW_RECORD_FAILED) {
-				state->state_from = state->state_to;
+			if(!force && TIME_US_TO_S(state->state_to_us - state->state_from_us) > NEW_REGISTER_NEW_RECORD_FAILED) {
+				state->state_from_us = state->state_to_us;
 				state->counter -= state->save_at_counter;
 				saveStateToDb(state);
 				save = true;
-			} else if(force || (state->state_to - state->save_at) > NEW_REGISTER_UPDATE_FAILED_PERIOD) {
+			} else if(force || TIME_US_TO_S(state->state_to_us - state->save_at) > NEW_REGISTER_UPDATE_FAILED_PERIOD) {
 				if(!sqlDbSaveRegister) {
 					sqlDbSaveRegister = createSqlObject();
 					sqlDbSaveRegister->setEnableSqlStringInContent(true);
@@ -593,7 +595,7 @@ void Register::saveFailedToDb(RegisterState *state, bool force, bool enableBatch
 		}
 	}
 	if(save) {
-		state->save_at = state->state_to;
+		state->save_at = state->state_to_us;
 		state->save_at_counter = state->counter;
 	}
 }
@@ -606,10 +608,10 @@ eRegisterState Register::getState() {
 	return(rslt_state);
 }
 
-u_int32_t Register::getStateFrom() {
+u_int32_t Register::getStateFrom_s() {
 	lock_states();
 	RegisterState *state = states_last();
-	u_int32_t state_from = state->state_from ? state->state_from : 0;
+	u_int32_t state_from = state->state_from_us ? TIME_US_TO_S(state->state_from_us) : 0;
 	unlock_states();
 	return(state_from);
 }
@@ -633,13 +635,17 @@ bool Register::getDataRow(RecordArray *rec) {
 	rec->fields[rf_digestusername].set(digest_username);
 	rec->fields[rf_id_sensor].set(state->id_sensor);
 	rec->fields[rf_fname].set(state->fname);
-	rec->fields[rf_calldate].set(state->state_to, RecordArrayField::tf_time);
+	if(opt_time_precision_in_ms) {
+		rec->fields[rf_calldate].set(state->state_to_us, RecordArrayField::tf_time_ms);
+	} else {
+		rec->fields[rf_calldate].set(TIME_US_TO_S(state->state_to_us), RecordArrayField::tf_time);
+	}
 	rec->fields[rf_from_num].set(state->from_num == EQ_REG ? from_num : state->from_num);
 	rec->fields[rf_from_name].set(state->from_name == EQ_REG ? from_name : state->from_name);
 	rec->fields[rf_from_domain].set(state->from_domain == EQ_REG ? from_domain : state->from_domain);
 	rec->fields[rf_digestrealm].set(state->digest_realm == EQ_REG ? digest_realm : state->digest_realm);
 	rec->fields[rf_expires].set(state->expires);
-	rec->fields[rf_expires_at].set(state->state_to + state->expires, RecordArrayField::tf_time);
+	rec->fields[rf_expires_at].set(TIME_US_TO_S(state->state_to_us) + state->expires, RecordArrayField::tf_time);
 	rec->fields[rf_state].set(state->state);
 	rec->fields[rf_ua].set(state->ua == EQ_REG ? ua : state->ua);
 	if(rrd_count) {
@@ -715,7 +721,7 @@ void Registers::add(Call *call) {
 		if(regstate &&
 		   (regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) &&
 		   regstate->expires &&
-		   regstate->state_to + regstate->expires < (unsigned)call->calltime()) {
+		   TIME_US_TO_S(regstate->state_to_us) + regstate->expires < call->calltime_s()) {
 			existsReg->expire(false);
 		}
 		existsReg->unlock_states();
@@ -731,7 +737,7 @@ void Registers::add(Call *call) {
 	*/
 	
 	struct timeval cleanup_time;
-	cleanup(call->get_calltime(&cleanup_time), false, 30);
+	cleanup(call->get_calltime_tv(&cleanup_time), false, 30);
 	
 	/*
 	eRegisterState states[] = {
@@ -761,7 +767,7 @@ void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
 				if(regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) {
 					if(act_time &&
 					   regstate->expires &&
-					   regstate->state_to + regstate->expires + expires_add < act_time->tv_sec) {
+					   TIME_US_TO_S(regstate->state_to_us) + regstate->expires + expires_add < act_time->tv_sec) {
 						reg->expire(false);
 						// cout << "expire" << endl;
 					}
@@ -773,7 +779,7 @@ void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
 						   regstate_prev &&
 						   (regstate_prev->state == rs_OK || regstate_prev->state == rs_UnknownMessageOK) &&
 						   regstate_prev->expires &&
-						   regstate_prev->state_to + regstate_prev->expires + expires_add < act_time->tv_sec) {
+						   TIME_US_TO_S(regstate_prev->state_to_us) + regstate_prev->expires + expires_add < act_time->tv_sec) {
 							reg->expire(false, true);
 							// cout << "expire prev state" << endl;
 						}
@@ -781,11 +787,11 @@ void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
 					if(!_sync_registers_erase) {
 						if(act_time &&
 						   regstate->state == rs_Failed && reg->countStates == 1 &&
-						   regstate->state_to + NEW_REGISTER_ERASE_FAILED_TIMEOUT < act_time->tv_sec) {
+						   TIME_US_TO_S(regstate->state_to_us) + NEW_REGISTER_ERASE_FAILED_TIMEOUT < act_time->tv_sec) {
 							eraseRegisterFailed = true;
 							// cout << "erase failed" << endl;
 						} else if(act_time &&
-							  regstate->state_to + NEW_REGISTER_ERASE_TIMEOUT < act_time->tv_sec) {
+							  TIME_US_TO_S(regstate->state_to_us) + NEW_REGISTER_ERASE_TIMEOUT < act_time->tv_sec) {
 							eraseRegister = true;
 							// cout << "erase" << endl;
 						}
@@ -900,7 +906,7 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 			}
 		}
 		if(stateFromLe) {
-			u_int32_t stateFrom = iter_reg->second->getStateFrom();
+			u_int32_t stateFrom = iter_reg->second->getStateFrom_s();
 			if(!stateFrom || stateFrom > stateFromLe) {
 				continue;
 			}
