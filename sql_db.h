@@ -374,7 +374,7 @@ public:
 	virtual bool createSchema(int connectId = 0) = 0;
 	virtual void createTable(const char *tableName) = 0;
 	virtual void checkDbMode() = 0;
-	virtual void checkSchema(int connectId = 0, bool checkColumns = false) = 0;
+	virtual void checkSchema(int connectId = 0, bool checkColumnsSilentLog = false) = 0;
 	virtual void updateSensorState() = 0;
 	virtual string getTypeDb() = 0;
 	virtual string getSubtypeDb() = 0;
@@ -553,14 +553,16 @@ public:
 	void saveTimezoneInformation();
 	void createTable(const char *tableName);
 	void checkDbMode();
-	void checkSchema(int connectId = 0, bool checkColumns = false);
+	void checkSchema(int connectId = 0, bool checkColumnsSilentLog = false);
 	void updateSensorState();
 	void checkColumns_cdr(bool log = false);
 	void checkColumns_cdr_next(bool log = false);
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_cdr_dtmf(bool log = false);
+	void checkColumns_cdr_child(bool log = false);
 	void checkColumns_ss7(bool log = false);
 	void checkColumns_message(bool log = false);
+	void checkColumns_message_child(bool log = false);
 	void checkColumns_register(bool log = false);
 	void checkColumns_sip_msg(bool log = false);
 	void checkColumns_other(bool log = false);
@@ -674,7 +676,7 @@ public:
 	bool createSchema(int connectId = 0);
 	void createTable(const char *tableName);
 	void checkDbMode();
-	void checkSchema(int connectId = 0, bool checkColumns = false);
+	void checkSchema(int connectId = 0, bool checkColumnsSilentLog = false);
 	void updateSensorState();
 	string getTypeDb() {
 		return("odbc");

@@ -4745,8 +4745,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			opt_cdr_partition = 0;
 		}
 	}
-
-	checkColumns_cdr(true);
 	
 	string cdrIdType = "bigint";
 	if(!opt_cdr_partition) {
@@ -4806,8 +4804,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			ADD COLUMN `") + opt_custom_headers_cdr[iCustHeaders][1] + "` VARCHAR(255);");
 	}
 	sql_noerror = 0;
-	
-	checkColumns_cdr_next(true);
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_proxy` (\
@@ -4861,8 +4857,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 
-	checkColumns_cdr_rtp(true);
-
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
@@ -4889,8 +4883,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
-	
-	checkColumns_cdr_dtmf(true);
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_sipresp` (\
@@ -5147,7 +5139,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				string(" PARTITION BY RANGE COLUMNS(time_iam)(\
 					 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 			""));
-		checkColumns_ss7(true);
 	}
 
 	this->query(string(
@@ -5220,8 +5211,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			ADD COLUMN `") + opt_custom_headers_message[iCustHeaders][1] + "` VARCHAR(255);");
 	}
 	sql_noerror = 0;
-	
-	checkColumns_message(true);
 
 	string messageIdType = "bigint";
 	if(!opt_cdr_partition) {
@@ -5417,8 +5406,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(created_at)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 	""));
-
-	checkColumns_register(true);
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `sip_msg` (\
@@ -5495,8 +5482,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(time)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
-
-	checkColumns_sip_msg(true);
 
 	this->query("CREATE TABLE IF NOT EXISTS `sensors` (\
 			`id_sensor` int unsigned NOT NULL,\
@@ -5639,8 +5624,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	if(opt_ssl_store_sessions) {
 		this->createTable("ssl_sessions:auto");
 	}
-	
-	checkColumns_other(true);
 
 	return(true);
 }
@@ -6626,7 +6609,7 @@ void SqlDb_mysql::createTable(const char *tableName) {
 	}
 }
 
-void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
+void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
 	this->clearLastError();
 	if(!(connectId == 0)) {
 		return;
@@ -6635,16 +6618,6 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 	sql_disable_next_attempt_if_error = 1;
 	startExistsColumnCache();
 	
-	existsColumns.cdr_next_calldate = this->existsColumn("cdr_next", "calldate");
-	existsColumns.cdr_rtp_calldate = this->existsColumn("cdr_rtp", "calldate");
-	existsColumns.cdr_dtmf_calldate = this->existsColumn("cdr_dtmf", "calldate");
-	existsColumns.cdr_sipresp_calldate = this->existsColumn("cdr_sipresp", "calldate");
-	if(_save_sip_history) {
-		existsColumns.cdr_siphistory_calldate = this->existsColumn("cdr_siphistory", "calldate");
-	}
-	existsColumns.cdr_tar_part_calldate = this->existsColumn("cdr_tar_part", "calldate");
-	existsColumns.cdr_country_code_calldate = this->existsColumn("cdr_country_code", "calldate");
-	existsColumns.cdr_sdp_calldate = this->existsColumn("cdr_sdp", "calldate");
 	if(!opt_cdr_partition &&
 	   (isCloud() ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
@@ -6653,19 +6626,18 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 			opt_cdr_partition = true;
 		}
 	}
-	existsColumns.register_rrd_count = this->existsColumn("register", "rrd_count");
 	
-	if(checkColumns) {
-		this->checkColumns_cdr();
-		this->checkColumns_cdr_next();
-		this->checkColumns_cdr_rtp();
-		this->checkColumns_cdr_dtmf();
-		this->checkColumns_ss7();
-		this->checkColumns_message();
-		this->checkColumns_register();
-		this->checkColumns_sip_msg();
-		this->checkColumns_other();
-	}
+	this->checkColumns_cdr(!checkColumnsSilentLog);
+	this->checkColumns_cdr_next(!checkColumnsSilentLog);
+	this->checkColumns_cdr_rtp(!checkColumnsSilentLog);
+	this->checkColumns_cdr_dtmf(!checkColumnsSilentLog);
+	this->checkColumns_cdr_child(!checkColumnsSilentLog);
+	this->checkColumns_ss7(!checkColumnsSilentLog);
+	this->checkColumns_message(!checkColumnsSilentLog);
+	this->checkColumns_message_child(!checkColumnsSilentLog);
+	this->checkColumns_register(!checkColumnsSilentLog);
+	this->checkColumns_sip_msg(!checkColumnsSilentLog);
+	this->checkColumns_other(!checkColumnsSilentLog);
 	
 	stopExistsColumnCache();
 	
@@ -6685,8 +6657,6 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumns) {
 			this->getTypeColumn(iter->c_str(), NULL, true, true);
 		}
 	}
-
-	existsColumns.cdr_rtcp_loss_is_smallint_type = this->getTypeColumn("cdr", "a_rtcp_loss", true) == "smallint(5) unsigned" ? true : false;
 
 	sql_disable_next_attempt_if_error = 0;
 }
@@ -6783,40 +6753,6 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 			}
 		}
 		break;
-	}
-	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_next_calldate_ms, "cdr_next"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_proxy_calldate_ms, "cdr_proxy"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_rtp_calldate_ms, "cdr_rtp"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_dtmf_calldate_ms, "cdr_dtmf"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_sipresp_calldate_ms, "cdr_sipresp"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_siphistory_calldate_ms, "cdr_siphistory"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_tar_part_calldate_ms, "cdr_tar_part"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_country_code_calldate_ms, "cdr_country_code"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_sdp_calldate_ms, "cdr_sdp"));
-	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_flags_calldate_ms, "cdr_flags"));
-	for(unsigned i = 0; i < childTablesCalldateMsIndik.size(); i++) {
-		for(int pass = 0; pass < 2; pass++) {
-			string alter_ms;
-			if(!(*(childTablesCalldateMsIndik[i].ms) = this->getTypeColumn(childTablesCalldateMsIndik[i].table.c_str(), childTablesCalldateMsIndik[i].calldate.c_str()).find("(3)") != string::npos)) {
-				alter_ms = "modify column " + childTablesCalldateMsIndik[i].calldate + " " + column_type_datetime_child_ms() + " not null";
-			}
-			if(pass == 0 && opt_time_precision_in_ms) {
-				if(!alter_ms.empty()) {
-					if(isSupportForDatetimeMs()) {
-						this->logNeedAlter(childTablesCalldateMsIndik[i].table,
-								   "time accuracy in milliseconds",
-								   "ALTER TABLE " + childTablesCalldateMsIndik[i].table + " " + alter_ms + ";",
-								   log, &tableSize, NULL);
-						continue;
-					} else {
-						cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
-						opt_time_precision_in_ms = false;
-					}
-				}
-			}
-			break;
-		}
 	}
 	existsColumns.cdr_sipport = this->existsColumn("cdr", "sipcallerport");
 	if(opt_cdr_sipport && !existsColumns.cdr_sipport) {
@@ -7029,6 +6965,8 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 					"ADD KEY `vlan` (`vlan`);",
 				   log, &tableSize, &existsColumns.cdr_vlan);
 	}
+	
+	existsColumns.cdr_rtcp_loss_is_smallint_type = this->getTypeColumn("cdr", "a_rtcp_loss", true) == "smallint(5) unsigned" ? true : false;
 }
 
 void SqlDb_mysql::checkColumns_cdr_next(bool log) {
@@ -7097,6 +7035,54 @@ void SqlDb_mysql::checkColumns_cdr_dtmf(bool log) {
 				   "ALTER TABLE cdr_dtmf "
 					"ADD COLUMN `type` tinyint unsigned DEFAULT NULL;",
 				   log, &tableSize, &existsColumns.cdr_dtmf_type);
+	}
+}
+
+void SqlDb_mysql::checkColumns_cdr_child(bool log) {
+	existsColumns.cdr_next_calldate = this->existsColumn("cdr_next", "calldate");
+	existsColumns.cdr_rtp_calldate = this->existsColumn("cdr_rtp", "calldate");
+	existsColumns.cdr_dtmf_calldate = this->existsColumn("cdr_dtmf", "calldate");
+	existsColumns.cdr_sipresp_calldate = this->existsColumn("cdr_sipresp", "calldate");
+	if(_save_sip_history) {
+		existsColumns.cdr_siphistory_calldate = this->existsColumn("cdr_siphistory", "calldate");
+	}
+	existsColumns.cdr_tar_part_calldate = this->existsColumn("cdr_tar_part", "calldate");
+	existsColumns.cdr_country_code_calldate = this->existsColumn("cdr_country_code", "calldate");
+	existsColumns.cdr_sdp_calldate = this->existsColumn("cdr_sdp", "calldate");
+	map<string, u_int64_t> tableSize;
+	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_next_calldate_ms, "cdr_next"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_proxy_calldate_ms, "cdr_proxy"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_rtp_calldate_ms, "cdr_rtp"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_dtmf_calldate_ms, "cdr_dtmf"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_sipresp_calldate_ms, "cdr_sipresp"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_siphistory_calldate_ms, "cdr_siphistory"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_tar_part_calldate_ms, "cdr_tar_part"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_country_code_calldate_ms, "cdr_country_code"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_sdp_calldate_ms, "cdr_sdp"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_flags_calldate_ms, "cdr_flags"));
+	for(unsigned i = 0; i < childTablesCalldateMsIndik.size(); i++) {
+		for(int pass = 0; pass < 2; pass++) {
+			string alter_ms;
+			if(!(*(childTablesCalldateMsIndik[i].ms) = this->getTypeColumn(childTablesCalldateMsIndik[i].table.c_str(), childTablesCalldateMsIndik[i].calldate.c_str()).find("(3)") != string::npos)) {
+				alter_ms = "modify column " + childTablesCalldateMsIndik[i].calldate + " " + column_type_datetime_child_ms() + " not null";
+			}
+			if(pass == 0 && opt_time_precision_in_ms) {
+				if(!alter_ms.empty()) {
+					if(isSupportForDatetimeMs()) {
+						this->logNeedAlter(childTablesCalldateMsIndik[i].table,
+								   "time accuracy in milliseconds",
+								   "ALTER TABLE " + childTablesCalldateMsIndik[i].table + " " + alter_ms + ";",
+								   log, &tableSize, NULL);
+						continue;
+					} else {
+						cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+						opt_time_precision_in_ms = false;
+					}
+				}
+			}
+			break;
+		}
 	}
 }
 
@@ -7172,6 +7158,36 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 		}
 		break;
 	}
+	existsColumns.message_content_length = this->existsColumn("message", "content_length");
+	existsColumns.message_response_time = this->existsColumn("message", "response_time");
+	if(!existsColumns.message_response_time) {
+		this->logNeedAlter("message",
+				   "SIP response time",
+				   "ALTER TABLE message "
+				   "ADD COLUMN response_time smallint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.message_response_time);
+	}
+	existsColumns.message_spool_index= this->existsColumn("message", "spool_index");
+	if(!existsColumns.message_spool_index) {
+		this->logNeedAlter("message",
+				   "message spool index",
+				   "ALTER TABLE message "
+				   "ADD COLUMN `spool_index` tinyint unsigned DEFAULT NULL;",
+				   log, &tableSize, &existsColumns.message_spool_index);
+	}
+	existsColumns.message_vlan = this->existsColumn("message", "vlan");
+	if(!existsColumns.message_vlan) {
+		this->logNeedAlter("message",
+				   "Vlan",
+				   "ALTER TABLE message "
+					"ADD COLUMN `vlan` smallint DEFAULT NULL,"
+					"ADD KEY `vlan` (`vlan`);",
+				   log, &tableSize, &existsColumns.message_vlan);
+	}
+}
+
+void SqlDb_mysql::checkColumns_message_child(bool log) {
+	map<string, u_int64_t> tableSize;
 	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.message_child_proxy_calldate_ms, "message_proxy"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.message_child_country_code_calldate_ms, "message_country_code"));
@@ -7198,32 +7214,6 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 			}
 			break;
 		}
-	}
-	existsColumns.message_content_length = this->existsColumn("message", "content_length");
-	existsColumns.message_response_time = this->existsColumn("message", "response_time");
-	if(!existsColumns.message_response_time) {
-		this->logNeedAlter("message",
-				   "SIP response time",
-				   "ALTER TABLE message "
-				   "ADD COLUMN response_time smallint unsigned DEFAULT NULL;",
-				   log, &tableSize, &existsColumns.message_response_time);
-	}
-	existsColumns.message_spool_index= this->existsColumn("message", "spool_index");
-	if(!existsColumns.message_spool_index) {
-		this->logNeedAlter("message",
-				   "message spool index",
-				   "ALTER TABLE message "
-				   "ADD COLUMN `spool_index` tinyint unsigned DEFAULT NULL;",
-				   log, &tableSize, &existsColumns.message_spool_index);
-	}
-	existsColumns.message_vlan = this->existsColumn("message", "vlan");
-	if(!existsColumns.message_vlan) {
-		this->logNeedAlter("message",
-				   "Vlan",
-				   "ALTER TABLE message "
-					"ADD COLUMN `vlan` smallint DEFAULT NULL,"
-					"ADD KEY `vlan` (`vlan`);",
-				   log, &tableSize, &existsColumns.message_vlan);
 	}
 }
 
@@ -7320,6 +7310,8 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 				   "ADD KEY `vlan` (`vlan`);",
 				   log, &tableSize, &existsColumns.register_failed_vlan);
 	}
+	
+	existsColumns.register_rrd_count = this->existsColumn("register", "rrd_count");
 }
 
 void SqlDb_mysql::checkColumns_sip_msg(bool log) {
@@ -7894,7 +7886,7 @@ void SqlDb_odbc::createTable(const char */*tableName*/) {
 void SqlDb_odbc::checkDbMode() {
 }
 
-void SqlDb_odbc::checkSchema(int /*connectId*/, bool /*checkColumns*/) {
+void SqlDb_odbc::checkSchema(int /*connectId*/, bool /*checkColumnsSilentLog*/) {
 }
 
 void SqlDb_odbc::updateSensorState() {
