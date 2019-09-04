@@ -2107,7 +2107,7 @@ void *rtp_read_thread_func(void *arg) {
 				}
 				rtpp_pq->call->shift_destroy_call_at(rtpp_pq->packet->header_pt);
 				if(rslt_read_rtp && !rtpp_pq->is_rtcp) {
-					rtpp_pq->call->set_last_packet_time_us(getTimeUS(rtpp_pq->packet->header_pt));
+					rtpp_pq->call->set_last_rtp_packet_time_us(getTimeUS(rtpp_pq->packet->header_pt));
 				}
 				rtpp_pq->packet->blockstore_addflag(71 /*pb lock flag*/);
 				//PACKET_S_PROCESS_DESTROY(&rtpp_pq->packet);
@@ -3179,7 +3179,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	// we have packet, extend pending destroy requests
 	call->shift_destroy_call_at(packetS->header_pt, lastSIPresponseNum);
 
-	call->set_last_packet_time_us(getTimeUS(packetS->header_pt));
+	call->set_last_signal_packet_time_us(getTimeUS(packetS->header_pt));
 	// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
 	if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && 
 	   (call->typeIsOnly(MESSAGE) ?
@@ -4096,7 +4096,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			goto endsip;
 		}
 	}
-	call->set_last_packet_time_us(getTimeUS(packetS->header_pt));
+	call->set_last_signal_packet_time_us(getTimeUS(packetS->header_pt));
 	
 	call->check_reset_oneway(packetS->saddr_(), packetS->source_());
 	
@@ -4500,7 +4500,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 				}
 			}
 			if(rslt_read_rtp && !is_rtcp) {
-				call->set_last_packet_time_us(getTimeUS(packetS->header_pt));
+				call->set_last_rtp_packet_time_us(getTimeUS(packetS->header_pt));
 			}
 			packetS->blockstore_addflag(59 /*pb lock flag*/);
 			PACKET_S_PROCESS_DESTROY(&packetS);

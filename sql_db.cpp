@@ -164,13 +164,45 @@ void SqlDb_row::add_calldate(u_int64_t calldate_us, string fieldName, bool use_m
 	}
 }
 
-void SqlDb_row::add_duration(u_int64_t duration_us, string fieldName, bool use_ms, bool round_s) {
+void SqlDb_row::add_duration(u_int64_t duration_us, string fieldName, bool use_ms, bool round_s, u_int64_t limit) {
 	if((int64_t)duration_us >= 0) {
 		if(use_ms) {
-			add(TIME_US_TO_SF(duration_us), fieldName);
+			double duration = TIME_US_TO_SF(duration_us);
+			if(limit && duration > limit) {
+				duration = limit;
+			}
+			add(duration, fieldName);
 		} else {
-			add(round_s ? (unsigned)round(TIME_US_TO_SF(duration_us)) : TIME_US_TO_S(duration_us), fieldName);
+			unsigned duration = round_s ? (unsigned)round(TIME_US_TO_SF(duration_us)) : TIME_US_TO_S(duration_us);
+			if(limit && duration > limit) {
+				duration = limit;
+			}
+			add(duration, fieldName);
 		}
+	}
+}
+
+void SqlDb_row::add_duration(int64_t duration_us, string fieldName, bool use_ms, bool round_s, int64_t limit) {
+	if(use_ms) {
+		double duration = TIME_US_TO_SF(duration_us);
+		if(limit) {
+			if(duration > limit) {
+				duration = limit;
+			} else if(duration < -limit) {
+				duration = -limit;
+			}
+		}
+		add(duration, fieldName);
+	} else {
+		int duration = round_s ? (int)round(TIME_US_TO_SF(duration_us)) : TIME_US_TO_S_signed(duration_us);
+		if(limit) {
+			if(duration > limit) {
+				duration = limit;
+			} else if(duration < -limit) {
+				duration = -limit;
+			}
+		}
+		add(duration, fieldName);
 	}
 }
 
@@ -1081,6 +1113,15 @@ void SqlDb::addColumnToCache(const char *table, const char *column, const char *
 	__sync_lock_release(&existsColumn_cache_sync);
 }
 
+void SqlDb::removeTableFromColumnCache(const char *table) {
+	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	map<string, map<string, string> >::iterator iter = this->existsColumn_cache.find(table);
+	if(iter != this->existsColumn_cache.end()) {
+		this->existsColumn_cache.erase(iter);
+	}
+	__sync_lock_release(&existsColumn_cache_sync);
+}
+
 bool SqlDb::isIPv6Column(string table, string column, bool useCache) {
 	if(!VM_IPV6_B) {
 		return(false);
@@ -1242,7 +1283,7 @@ void SqlDb::resetDelayQuery(bool store) {
 	}
 }
 
-void SqlDb::logNeedAlter(string table, string reason, string alter,
+bool SqlDb::logNeedAlter(string table, string reason, string alter,
 			 bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag) {
 	bool okAlter = false;
 	if(tableSize) {
@@ -1277,6 +1318,7 @@ void SqlDb::logNeedAlter(string table, string reason, string alter,
 			alter;
 		syslog(LOG_WARNING, "%s", msg.c_str());
 	}
+	return(okAlter);
 }
 
 volatile u_int64_t SqlDb::delayQuery_sum_ms = 0;
@@ -4612,8 +4654,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`b_rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_maxjitter` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
-			`a_last_rtp_from_end` " + column_type_duration_ms("smallint") + " unsigned DEFAULT NULL,\
-			`b_last_rtp_from_end` " + column_type_duration_ms("smallint") + " unsigned DEFAULT NULL,\
+			`a_last_rtp_from_end` " + column_type_duration_ms("smallint") + " DEFAULT NULL,\
+			`b_last_rtp_from_end` " + column_type_duration_ms("smallint") + " DEFAULT NULL,\
 			`a_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
 			`b_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
 			`a_rtp_ptime` tinyint unsigned DEFAULT NULL,\
@@ -6733,18 +6775,20 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 			alters_ms.push_back("modify column first_rtp_time " + column_type_duration_ms() + " unsigned default null");
 		}
 		if(!(existsColumns.cdr_a_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column a_last_rtp_from_end " + column_type_duration_ms() + " unsigned default null");
+			alters_ms.push_back("modify column a_last_rtp_from_end " + column_type_duration_ms() + " signed default null");
 		}
 		if(!(existsColumns.cdr_b_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("decimal") != string::npos)) {
-			alters_ms.push_back("modify column b_last_rtp_from_end " + column_type_duration_ms() + " unsigned default null");
+			alters_ms.push_back("modify column b_last_rtp_from_end " + column_type_duration_ms() + " signed default null");
 		}
 		if(pass == 0 && opt_time_precision_in_ms) {
 			if(alters_ms.size()) {
 				if(isSupportForDatetimeMs()) {
-					this->logNeedAlter("cdr",
-							   "time accuracy in milliseconds",
-							   "ALTER TABLE cdr " + implode(alters_ms, ", ") + ";",
-							   log, &tableSize, NULL);
+					if(this->logNeedAlter("cdr",
+							      "time accuracy in milliseconds",
+							      "ALTER TABLE cdr " + implode(alters_ms, ", ") + ";",
+							      log, &tableSize, NULL)) {
+						this->removeTableFromColumnCache("cdr");
+					}
 					continue;
 				} else {
 					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
@@ -6967,6 +7011,9 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	}
 	
 	existsColumns.cdr_rtcp_loss_is_smallint_type = this->getTypeColumn("cdr", "a_rtcp_loss", true) == "smallint(5) unsigned" ? true : false;
+	
+	existsColumns.cdr_a_last_rtp_from_end_unsigned = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("unsigned") != string::npos;
+	existsColumns.cdr_b_last_rtp_from_end_unsigned = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("unsigned") != string::npos;
 }
 
 void SqlDb_mysql::checkColumns_cdr_next(bool log) {
@@ -7070,10 +7117,12 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 			if(pass == 0 && opt_time_precision_in_ms) {
 				if(!alter_ms.empty()) {
 					if(isSupportForDatetimeMs()) {
-						this->logNeedAlter(childTablesCalldateMsIndik[i].table,
-								   "time accuracy in milliseconds",
-								   "ALTER TABLE " + childTablesCalldateMsIndik[i].table + " " + alter_ms + ";",
-								   log, &tableSize, NULL);
+						if(this->logNeedAlter(childTablesCalldateMsIndik[i].table,
+								      "time accuracy in milliseconds",
+								      "ALTER TABLE " + childTablesCalldateMsIndik[i].table + " " + alter_ms + ";",
+								      log, &tableSize, NULL)) {
+							this->removeTableFromColumnCache(childTablesCalldateMsIndik[i].table.c_str());
+						}
 						continue;
 					} else {
 						cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
@@ -7120,10 +7169,12 @@ void SqlDb_mysql::checkColumns_ss7(bool log) {
 		if(pass == 0 && opt_time_precision_in_ms) {
 			if(alters_ms.size()) {
 				if(isSupportForDatetimeMs()) {
-					this->logNeedAlter("ss7",
-							   "time accuracy in milliseconds",
-							   "ALTER TABLE ss7 " + implode(alters_ms, ", ") + ";",
-							   log, &tableSize, NULL);
+					if(this->logNeedAlter("ss7",
+							      "time accuracy in milliseconds",
+							      "ALTER TABLE ss7 " + implode(alters_ms, ", ") + ";",
+							      log, &tableSize, NULL)) {
+						this->removeTableFromColumnCache("ss7");
+					}
 					continue;
 				} else {
 					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
@@ -7145,10 +7196,12 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 		if(pass == 0 && opt_time_precision_in_ms) {
 			if(!alter_ms.empty()) {
 				if(isSupportForDatetimeMs()) {
-					this->logNeedAlter("message",
-							   "time accuracy in milliseconds",
-							   "ALTER TABLE message " + alter_ms + ";",
-							   log, &tableSize, NULL);
+					if(this->logNeedAlter("message",
+							      "time accuracy in milliseconds",
+							      "ALTER TABLE message " + alter_ms + ";",
+							      log, &tableSize, NULL)) {
+						this->removeTableFromColumnCache("message");
+					}
 					continue;
 				} else {
 					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
@@ -7201,10 +7254,12 @@ void SqlDb_mysql::checkColumns_message_child(bool log) {
 			if(pass == 0 && opt_time_precision_in_ms) {
 				if(!alter_ms.empty()) {
 					if(isSupportForDatetimeMs()) {
-						this->logNeedAlter(childTablesCalldateMsIndik[i].table,
-								   "time accuracy in milliseconds",
-								   "ALTER TABLE " + childTablesCalldateMsIndik[i].table + " " + alter_ms + ";",
-								   log, &tableSize, NULL);
+						if(this->logNeedAlter(childTablesCalldateMsIndik[i].table,
+								      "time accuracy in milliseconds",
+								      "ALTER TABLE " + childTablesCalldateMsIndik[i].table + " " + alter_ms + ";",
+								      log, &tableSize, NULL)) {
+							this->removeTableFromColumnCache(childTablesCalldateMsIndik[i].table.c_str());
+						}
 						continue;
 					} else {
 						cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
@@ -7234,10 +7289,12 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 			if(alters_ms.size()) {
 				if(isSupportForDatetimeMs()) {
 					for(unsigned i = 0; i < alters_ms.size(); i++) {
-						this->logNeedAlter(alters_ms[i][0],
-								   "time accuracy in milliseconds",
-								   "ALTER TABLE " + alters_ms[i][0] + " " + alters_ms[i][1] + ";",
-								   log, &tableSize, NULL);
+						if(this->logNeedAlter(alters_ms[i][0],
+								      "time accuracy in milliseconds",
+								      "ALTER TABLE " + alters_ms[i][0] + " " + alters_ms[i][1] + ";",
+								      log, &tableSize, NULL)) {
+							this->removeTableFromColumnCache(alters_ms[i][0].c_str());
+						}
 					}
 					continue;
 				} else {
@@ -7330,10 +7387,12 @@ void SqlDb_mysql::checkColumns_sip_msg(bool log) {
 		if(pass == 0 && opt_time_precision_in_ms) {
 			if(alters_ms.size()) {
 				if(isSupportForDatetimeMs()) {
-					this->logNeedAlter("sip_msg",
-							   "time accuracy in milliseconds",
-							   "ALTER TABLE sip_msg " + implode(alters_ms, ", ") + ";",
-							   log, &tableSize, NULL);
+					if(this->logNeedAlter("sip_msg",
+							      "time accuracy in milliseconds",
+							      "ALTER TABLE sip_msg " + implode(alters_ms, ", ") + ";",
+							      log, &tableSize, NULL)) {
+						this->removeTableFromColumnCache("sip_msg");
+					}
 					continue;
 				} else {
 					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");

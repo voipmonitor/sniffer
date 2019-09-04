@@ -2022,7 +2022,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 	if(call) {
 		save_packet(call, header, packet, saddr, source, daddr, dest, 1, NULL, data, datalen, dataoffset, TYPE_SKINNY, 
 			    dlt, sensor_id, sensor_ip);
-		call->set_last_packet_time_us(getTimeUS(header));
+		call->set_last_signal_packet_time_us(getTimeUS(header));
 	}
 	
 	return NULL;

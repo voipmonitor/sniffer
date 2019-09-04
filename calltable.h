@@ -663,7 +663,8 @@ public:
 	u_int64_t progress_time_us;	//!< time in u_seconds of 18X response
 	u_int64_t first_rtp_time_us;	//!< time in u_seconds of first RTP packet
 	u_int64_t connect_time_us;	//!< time in u_seconds of 200 OK
-	u_int64_t last_packet_time_us;
+	u_int64_t last_signal_packet_time_us;
+	u_int64_t last_rtp_packet_time_us;
 	u_int64_t last_rtp_a_packet_time_us;
 	u_int64_t last_rtp_b_packet_time_us;
 	time_t destroy_call_at;
@@ -903,8 +904,8 @@ public:
 	 *
 	 * @return time of the last packet in seconds from UNIX epoch
 	*/
-	u_int64_t get_last_packet_time_us() { return last_packet_time_us; };
-	u_int32_t get_last_packet_time_s() { return TIME_US_TO_S(last_packet_time_us); };
+	u_int64_t get_last_packet_time_us() { return max(last_signal_packet_time_us, last_rtp_packet_time_us); };
+	u_int32_t get_last_packet_time_s() { return TIME_US_TO_S(get_last_packet_time_us()); };
 
 	/**
 	 * @brief get time of the last seen rtp packet which belongs to this call
@@ -919,7 +920,8 @@ public:
 	 * this time is used for calculating lenght of the call
 	 *
 	*/
-	void set_last_packet_time_us(u_int64_t time_us) { if(time_us > last_packet_time_us) last_packet_time_us = time_us; };
+	void set_last_signal_packet_time_us(u_int64_t time_us) { if(time_us > last_signal_packet_time_us) last_signal_packet_time_us = time_us; };
+	void set_last_rtp_packet_time_us(u_int64_t time_us) { if(time_us > last_rtp_packet_time_us) last_rtp_packet_time_us = time_us; };
 	void set_last_mgcp_connect_packet_time_us(u_int64_t time_us) { if(time_us > last_mgcp_connect_packet_time_us) last_mgcp_connect_packet_time_us = time_us; };
 
 	/**
@@ -972,7 +974,7 @@ public:
 	 *
 	 * @return lenght of the call in seconds
 	*/
-	u_int64_t duration_us() { return((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_packet_time_us) - first_packet_time_us); };
+	u_int64_t duration_us() { return((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : get_last_packet_time_us()) - first_packet_time_us); };
 	double duration_sf() { return(TIME_US_TO_SF(duration_us())); };
 	u_int32_t duration_s() { return(TIME_US_TO_S(duration_us())); };
 	u_int64_t connect_duration_us() { return(connect_time_us ? duration_us() - (connect_time_us - first_packet_time_us) : 0); };

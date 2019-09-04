@@ -301,7 +301,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 		if(request.type == _mgcp_CRCX || request.type == _mgcp_MDCX || request.type == _mgcp_DLCX) {
 			call->set_last_mgcp_connect_packet_time_us(getTimeUS(packetS->header_pt));
 		}
-		call->set_last_packet_time_us(getTimeUS(packetS->header_pt));
+		call->set_last_signal_packet_time_us(getTimeUS(packetS->header_pt));
 	}
 	return(NULL);
 }

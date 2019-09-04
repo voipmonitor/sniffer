@@ -63,7 +63,6 @@ extern int opt_inbanddtmf;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
 extern int opt_fasdetect;
-extern char opt_pb_read_from_file[256];
 extern int opt_read_from_file;
 extern SqlDb *sqlDbSaveCall;
 extern int opt_mysqlstore_max_threads_cdr;
@@ -1030,8 +1029,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		this->first_packet_time_us = pcap_header_us;
 	}
 
-	if(owner && 
-	   !opt_pb_read_from_file[0] && !is_read_from_file()) {
+	if(owner && !is_read_from_file_simple()) {
 		u_int64_t seenbyeandok_time_usec = owner->getSeenbyeAndOkTimeUS();
 		if(seenbyeandok_time_usec && getTimeUS(header) > seenbyeandok_time_usec) {
 			return(false);

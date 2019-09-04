@@ -76,6 +76,7 @@ __inline__ unsigned long long rdtsc(void)
 
 #define TIME_S_TO_US(s) ((u_int64_t)((s) * 1000000ull))
 #define TIME_US_TO_S(us) ((u_int32_t)((us) / 1000000ull))
+#define TIME_US_TO_S_signed(us) ((int32_t)((us) / 1000000ll))
 #define TIME_US_TO_SF(us) ((double)((us) / 1000000.))
 #define TIME_US_TO_DEC_MS(us) ((u_int32_t)((us) % 1000000ull / 1000ull))
 #define TIME_US_TO_DEC_US(us) ((u_int32_t)((us) % 1000000ull))

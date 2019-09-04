@@ -435,7 +435,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	last_callercodec = -1;
 	ipport_n = 0;
 	ssrc_n = 0;
-	last_packet_time_us = time_us;
+	last_signal_packet_time_us = time_us;
+	last_rtp_packet_time_us = 0;
 	last_rtp_a_packet_time_us = 0;
 	last_rtp_b_packet_time_us = 0;
 	if(call_id_len) {
@@ -3879,10 +3880,26 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	if(existsColumns.cdr_last_rtp_from_end && !use_sdp_sendonly) {
 		if(last_rtp_a_packet_time_us) {
-			cdr.add_duration((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_packet_time_us) - last_rtp_a_packet_time_us, "a_last_rtp_from_end", existsColumns.cdr_a_last_rtp_from_end_time_ms);
+			if(existsColumns.cdr_a_last_rtp_from_end_unsigned) {
+				cdr.add_duration((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_signal_packet_time_us) - last_rtp_a_packet_time_us,
+						 "a_last_rtp_from_end", existsColumns.cdr_a_last_rtp_from_end_time_ms,
+						 false, existsColumns.cdr_a_last_rtp_from_end_time_ms ? 999999 : 65535);
+			} else {
+				cdr.add_duration((int64_t)((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_signal_packet_time_us) - last_rtp_a_packet_time_us),
+						 "a_last_rtp_from_end", existsColumns.cdr_a_last_rtp_from_end_time_ms,
+						 false, existsColumns.cdr_a_last_rtp_from_end_time_ms ? 999999 : 32767);
+			}
 		}
 		if(last_rtp_b_packet_time_us) {
-			cdr.add_duration((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_packet_time_us) - last_rtp_b_packet_time_us, "b_last_rtp_from_end", existsColumns.cdr_b_last_rtp_from_end_time_ms);
+			if(existsColumns.cdr_b_last_rtp_from_end_unsigned) {
+				cdr.add_duration((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_signal_packet_time_us) - last_rtp_b_packet_time_us,
+						 "b_last_rtp_from_end", existsColumns.cdr_b_last_rtp_from_end_time_ms,
+						 false, existsColumns.cdr_a_last_rtp_from_end_time_ms ? 999999 : 65535);
+			} else {
+				cdr.add_duration((int64_t)(typeIs(MGCP) ? last_mgcp_connect_packet_time_us : last_signal_packet_time_us) - last_rtp_b_packet_time_us,
+						 "b_last_rtp_from_end", existsColumns.cdr_b_last_rtp_from_end_time_ms,
+						 false, existsColumns.cdr_a_last_rtp_from_end_time_ms ? 999999 : 32767);
+			}
 		}
 	}
 	cdr.add_calldate(calltime_us(), "calldate", existsColumns.cdr_calldate_ms);

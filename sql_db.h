@@ -147,7 +147,8 @@ public:
 	}
 	void add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, const char *table);
 	void add_calldate(u_int64_t calldate_us, string fieldName, bool use_ms);
-	void add_duration(u_int64_t duration_us, string fieldName, bool use_ms, bool round_s = false);
+	void add_duration(u_int64_t duration_us, string fieldName, bool use_ms, bool round_s = false, u_int64_t limit = 0);
+	void add_duration(int64_t duration_us, string fieldName, bool use_ms, bool round_s = false, int64_t limit = 0);
 	int getIndexField(string fieldName) {
 		for(size_t i = 0; i < row.size(); i++) {
 			if(!strcasecmp(row[i].fieldName.c_str(), fieldName.c_str())) {
@@ -289,6 +290,7 @@ public:
 	bool isEnableExistColumnCache();
 	int existsColumnInCache(const char *table, const char *column, string *type = NULL);
 	void addColumnToCache(const char *table, const char *column, const char *type);
+	void removeTableFromColumnCache(const char *table);
 	virtual string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false) = 0;
 	string getTypeColumn(string table, string column, bool toLower = true, bool useCache = false) { return(getTypeColumn(table.c_str(), column.c_str(), toLower, useCache)); }
 	virtual bool existsColumnInTypeCache(const char *table, const char *column) = 0;
@@ -420,7 +422,7 @@ public:
 	static void addDelayQuery(u_int32_t delay_ms, bool store = false);
 	static u_int32_t getAvgDelayQuery(bool store = false);
 	static void resetDelayQuery(bool store = false);
-	void logNeedAlter(string table, string reason, string alter,
+	bool logNeedAlter(string table, string reason, string alter,
 			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
 protected:
 	string conn_server;
@@ -1022,6 +1024,8 @@ struct sExistsColumns {
 	bool cdr_first_rtp_time_ms;
 	bool cdr_a_last_rtp_from_end_time_ms;
 	bool cdr_b_last_rtp_from_end_time_ms;
+	bool cdr_a_last_rtp_from_end_unsigned;
+	bool cdr_b_last_rtp_from_end_unsigned;
 	bool cdr_response_time_100;
 	bool cdr_response_time_xxx;
 	bool cdr_reason;
