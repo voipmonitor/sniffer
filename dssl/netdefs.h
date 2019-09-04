@@ -38,6 +38,10 @@
   #include <netinet/in.h>
   #include <net/ethernet.h>
 
+#ifndef s6_addr32
+#define	s6_addr32	__u6_addr.__u6_addr32
+#endif
+
 #elif defined(__SunOS_5_10)
   #include <strings.h>		/* the ip_compat.h conflics bcopy->memmove */
   #include <netinet/ip_compat.h>

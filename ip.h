@@ -13,6 +13,7 @@
 
 
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
@@ -27,6 +28,9 @@
 #include "endian.h"
 
 
+#ifdef FREEBSD
+#define	__in6_u	__u6_addr
+#endif
 #define IP_STR_MAX_LENGTH 50
 
 
