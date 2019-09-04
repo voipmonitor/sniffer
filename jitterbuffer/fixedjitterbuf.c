@@ -209,14 +209,19 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 		if(debug) fprintf(stdout, "resynch_jb - dropping offset [%ld] < jb->conf.resync_threshold [%ld] && offset [%lu] > -jb->conf.resync_threshol [%ld] | ts[%lu] jb->tail->ts[%lu] jb->tail->ms[%lu]\n", 
 			offset, jb->conf.resync_threshold, offset, -jb->conf.resync_threshold, ts, jb->tail->ts, jb->tail->ms);
 		if (!jb->force_resynch) {
-			return FIXED_JB_DROP;
-		} else {
-			jb->force_resynch = 0;
-			if(offset > 0) {
+			if(offset < 0 || now - ts < jb->rxcore - jb->delay) {
+				return FIXED_JB_DROP;
+			} else {
 				jb_fixed_flush_deliver(jb->chan);
 				return fixed_jb_put_first(jb, data, ms, ts, now, 0, audio_decode);
-			} else {
+			}
+		} else {
+			jb->force_resynch = 0;
+			if(offset < 0) {
 				return FIXED_JB_DROP;
+			} else {
+				jb_fixed_flush_deliver(jb->chan);
+				return fixed_jb_put_first(jb, data, ms, ts, now, 0, audio_decode);
 			}
 		}
 	}
