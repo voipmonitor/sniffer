@@ -1295,6 +1295,9 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		}
 		lastframetype = AST_FRAME_VOICE;
 		lastcng = 1;
+		if(channel_record) {
+			channel_record->prev_frame_is_dtmf = true;
+		}
 		return(true);
 	}
 	if(codec == PAYLOAD_TELEVENT) {

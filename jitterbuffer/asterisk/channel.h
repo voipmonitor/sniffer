@@ -369,6 +369,7 @@ struct ast_channel {
 	unsigned int last_received;
 	
 	char audio_decode;
+	char prev_frame_is_dtmf;
 };
 
 /*! \brief ast_channel_tech Properties */
