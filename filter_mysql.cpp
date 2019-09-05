@@ -229,13 +229,11 @@ int IPfilter::_add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP dad
 		   ((node->direction == 0 or node->direction == 1) and (saddr.network(node->mask) == node->network))) {
 
 			*flags = origflags;
-		
+
 			if(node->mask < last_mask) {
-				// continue 
-				last_mask = node->mask;
 				continue;
 			}
-	
+
 			last_mask = node->mask;
 			
 			this->setCallFlagsFromFilterFlags(flags, node->flags);
