@@ -57,7 +57,7 @@ objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 j
 #headers = $(shell ls -1 *.h | tr "\n" " ") $(shell ls -1 jitterbuffer/*.h | tr "\n" " ") $(shell ls -1 jitterbuffer/asterisk/*.h | tr "\n" " ")
 
 JSONLIB = $(shell pkg-config --libs @LIBJSON_NAME@)
-JSONCFLAGS =-lgcrypt -lgpg-error $(shell pkg-config --cflags @LIBJSON_NAME@)
+JSONCFLAGS = $(shell pkg-config --cflags @LIBJSON_NAME@)
 
 MYSQLLIB=@MYSQLLIB@
 MYSQLINC=@MYSQLINCLUDE@
