@@ -1439,7 +1439,8 @@ public:
 			} else {
 				while(it_net != listNet.begin()) {
 					--it_net;
-					if(!it_net->ip.mask(check_ip).isSet()) {
+					if(!(!it_net->ip.isSet() && it_net->mask_length) &&
+					   !it_net->ip.mask(check_ip).isSet()) {
 						break;
 					}
 					if(it_net->checkIP(check_ip)) {
