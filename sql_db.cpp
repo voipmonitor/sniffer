@@ -7136,6 +7136,9 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 }
 
 void SqlDb_mysql::checkColumns_ss7(bool log) {
+	if(!this->existsTable("ss7")) {
+		return;
+	}
 	map<string, u_int64_t> tableSize;
 	for(int pass = 0; pass < 2; pass++) {
 		vector<string> alters_ms;
