@@ -424,6 +424,8 @@ public:
 	static void resetDelayQuery(bool store = false);
 	bool logNeedAlter(string table, string reason, string alter,
 			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
+	bool logNeedAlter(string table, string reason, vector<string> alters,
+			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
 protected:
 	string conn_server;
 	string conn_user;

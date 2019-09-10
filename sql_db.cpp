@@ -1285,6 +1285,14 @@ void SqlDb::resetDelayQuery(bool store) {
 
 bool SqlDb::logNeedAlter(string table, string reason, string alter,
 			 bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag) {
+	vector<string> alters;
+	alters.push_back(alter);
+	return(logNeedAlter(table, reason, alters,
+			    log, tableSize, existsColumnFlag));
+}
+
+bool SqlDb::logNeedAlter(string table, string reason, vector<string> alters,
+			 bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag) {
 	bool okAlter = false;
 	if(tableSize) {
 		map<string, u_int64_t>::iterator iter = tableSize->find(table);
@@ -1300,9 +1308,19 @@ bool SqlDb::logNeedAlter(string table, string reason, string alter,
 		if((*tableSize)[table] < 1000) {
 			int sql_disable_next_attempt_if_error_old = sql_disable_next_attempt_if_error;
 			sql_disable_next_attempt_if_error = 1;
-			okAlter = this->query(alter);
-			if(okAlter && existsColumnFlag) {
-				*existsColumnFlag = true;
+			unsigned okAlterCount = 0;
+			for(unsigned i = 0; i < alters.size(); i++) {
+				if(this->query(alters[i])) {
+					++okAlterCount;
+				} else {
+					break;
+				}
+			}
+			if(okAlterCount == alters.size()) {
+				okAlter = true;
+				if(existsColumnFlag) {
+					*existsColumnFlag = true;
+				}
 			}
 			sql_disable_next_attempt_if_error = sql_disable_next_attempt_if_error_old;
 		}
@@ -1315,7 +1333,7 @@ bool SqlDb::logNeedAlter(string table, string reason, string alter,
 			"The alter table will prevent the database to insert new rows and will probably block other operations. "
 			"It is recommended to alter the table in non working hours. "
 			"Login to the mysql voipmonitor database (mysql -uroot voipmonitor) and run on the CLI> " +
-			alter;
+			implode(alters, " ");
 		syslog(LOG_WARNING, "%s", msg.c_str());
 	}
 	return(okAlter);
@@ -6890,22 +6908,43 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				   log, &tableSize, &existsColumns.cdr_max_retransmission_invite);
 	}
 
-	if(!this->existsColumn("cdr", "price_operator_mult100") &&
-	   !this->existsColumn("cdr", "price_operator_mult1000000") &&
-	   this->existsTable("billing")) {
-		this->logNeedAlter("cdr",
-				   "billing feature",
-				   string("ALTER TABLE cdr ") +
-				   (this->isExtPrecissionBilling() ?
-					"ADD COLUMN price_operator_mult100 INT UNSIGNED, "
-					"ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
-					"ADD COLUMN price_customer_mult100 INT UNSIGNED, "
-					"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;" :
-					"ADD COLUMN price_operator_mult1000000 BIGINT UNSIGNED, "
-					"ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
-					"ADD COLUMN price_customer_mult1000000 BIGINT UNSIGNED, "
-					"ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;"),
-				   log, &tableSize, NULL);
+	if(this->existsTable("billing")) {
+		if(!this->existsColumn("cdr", "price_operator_mult100") &&
+		   !this->existsColumn("cdr", "price_operator_mult1000000")) {
+			if(this->logNeedAlter("cdr",
+					      "billing feature",
+					      string("ALTER TABLE cdr ") +
+					      (this->isExtPrecissionBilling() ?
+						   "ADD COLUMN price_operator_mult100 INT UNSIGNED, "
+						   "ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
+						   "ADD COLUMN price_customer_mult100 INT UNSIGNED, "
+						   "ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;" :
+						   "ADD COLUMN price_operator_mult1000000 BIGINT UNSIGNED, "
+						   "ADD COLUMN price_operator_currency_id TINYINT UNSIGNED, "
+						   "ADD COLUMN price_customer_mult1000000 BIGINT UNSIGNED, "
+						   "ADD COLUMN price_customer_currency_id TINYINT UNSIGNED;"),
+					      log, &tableSize, NULL)) {
+				this->removeTableFromColumnCache("cdr");
+			}
+		} else if(this->isExtPrecissionBilling() &&
+			  this->existsColumn("cdr", "price_operator_mult100") &&
+			  !this->existsColumn("cdr", "price_operator_mult1000000")) {
+			vector<string> alters;
+			alters.push_back(
+				"ALTER TABLE cdr "
+				"CHANGE COLUMN price_operator_mult100 price_operator_mult1000000 BIGINT UNSIGNED, "
+				"CHANGE COLUMN price_customer_mult100 price_customer_mult1000000 BIGINT UNSIGNED;");
+			alters.push_back(
+				"UPDATE cdr "
+				"set price_operator_mult1000000 = price_operator_mult1000000 * 10000, "
+				"price_customer_mult1000000 = price_customer_mult1000000 * 10000;");
+			if(this->logNeedAlter("cdr",
+					      "billing feature - add extended price precision",
+					      alters,
+					      log, &tableSize, NULL)) {
+				this->removeTableFromColumnCache("cdr");
+			}
+		}
 	}
 	existsColumns.cdr_price_operator_mult100 = this->existsColumn("cdr", "price_operator_mult100");
 	existsColumns.cdr_price_operator_mult1000000 = this->existsColumn("cdr", "price_operator_mult1000000");
@@ -6952,12 +6991,14 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 		}
 	}
 	if(missing_column_cdr_response_time) {
-		this->logNeedAlter("cdr",
-				   "SIP response time",
-				   "ALTER TABLE cdr "
-				   "ADD COLUMN response_time_100 smallint unsigned DEFAULT NULL, "
-				   "ADD COLUMN response_time_xxx smallint unsigned DEFAULT NULL;",
-				   log, &tableSize, &existsColumns.cdr_response_time_100);
+		if(this->logNeedAlter("cdr",
+				      "SIP response time",
+				      "ALTER TABLE cdr "
+				      "ADD COLUMN response_time_100 smallint unsigned DEFAULT NULL, "
+				      "ADD COLUMN response_time_xxx smallint unsigned DEFAULT NULL;",
+				      log, &tableSize, &existsColumns.cdr_response_time_100)) {
+			this->removeTableFromColumnCache("cdr");
+		}
 	}
 	existsColumns.cdr_response_time_100 = this->existsColumn("cdr", "cdr_response_time_100");
 	existsColumns.cdr_response_time_xxx = this->existsColumn("cdr", "cdr_response_time_xxx");
