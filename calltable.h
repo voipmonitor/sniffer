@@ -197,9 +197,6 @@ struct ip_port_call_info {
 	ip_port_call_info() {
 		rtp_crypto_config_list = NULL;
 		canceled = false;
-		for(int i = 0; i < 2; i++) {
-			callerd_confirm_sdp[i] = false;
-		}
 	}
 	~ip_port_call_info() {
 		if(rtp_crypto_config_list) {
@@ -248,7 +245,6 @@ struct ip_port_call_info {
 	s_sdp_flags sdp_flags;
 	ip_port_call_info_rtp rtp[2];
 	bool canceled;
-	int8_t callerd_confirm_sdp[2];
 };
 
 struct raws_t {
@@ -1410,6 +1406,7 @@ public:
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
+	bool callerd_confirm_rtp_by_both_sides_sdp[2];
 	bool exists_crypto_suite_key;
 	bool log_srtp_callid;
 	PcapDumper pcap;

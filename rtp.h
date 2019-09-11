@@ -301,6 +301,7 @@ public:
 	uint8_t change_packetization_iterator;
 	bool last_was_silence;
 	uint32_t sum_silence_changes;
+	bool confirm_both_sides_by_sdp;
 
 	/* RTCP data */
 	struct rtcp_t {

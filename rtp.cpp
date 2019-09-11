@@ -370,6 +370,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	tailedframes = 0;
 	last_was_silence = false;
 	sum_silence_changes = 0;
+	confirm_both_sides_by_sdp = false;
 
 	change_packetization_iterator = 0;
 	srtp_decrypt = NULL;

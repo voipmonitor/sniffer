@@ -626,6 +626,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	_mergecalls_lock = 0;
 	
 	exists_crypto_suite_key = false;
+	for(int i = 0; i < 2; i++) {
+		callerd_confirm_rtp_by_both_sides_sdp[i] = 0;
+	}
 	log_srtp_callid = false;
 	
 	error_negative_payload_length = false;
@@ -1520,29 +1523,37 @@ read:
 			return(true);
 		}
 		
+		bool confirm_both_sides_by_sdp = false;
 		int index_call_ip_port_find_side = this->get_index_by_ip_port(find_by_dest ? packetS->daddr_() : packetS->saddr_(),
 									      find_by_dest ? packetS->dest_() : packetS->source_());
 		int index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(),
 									       find_by_dest ? packetS->source_() : packetS->dest_());
 		if(opt_rtp_check_both_sides_by_sdp && index_call_ip_port_find_side >= 0 && iscaller_is_set(iscaller)) {
+			/*
+			cout << " * new rtp stream " 
+			     << packetS->saddr_().getString() << " : " << packetS->source_().getString() 
+			     << " -> "
+			     << packetS->daddr_().getString() << " : " << packetS->dest_().getString() 
+			     << endl;
+			*/
 			if(index_call_ip_port_other_side < 0) {
 				index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(),
 											   find_by_dest ? packetS->source_() : packetS->dest_(),
 											   true);
 			}
-			if(this->ip_port[index_call_ip_port_find_side].callerd_confirm_sdp[iscaller_index(iscaller)]) {
-				if(index_call_ip_port_other_side < 0) {
-					return(false);
+			if(index_call_ip_port_other_side < 0 &&
+			   callerd_confirm_rtp_by_both_sides_sdp[iscaller_index(iscaller)]) {
+				if(opt_rtp_check_both_sides_by_sdp == 1) {
+					*disable_save = true;
 				}
-			} else if(index_call_ip_port_other_side >= 0) {
-				this->ip_port[index_call_ip_port_find_side].callerd_confirm_sdp[iscaller_index(iscaller)] = true;
+				return(false);
+			}
+			if(index_call_ip_port_other_side >= 0) {
+				callerd_confirm_rtp_by_both_sides_sdp[iscaller_index(iscaller)] = true;
+				confirm_both_sides_by_sdp = true;
 				for(int i = 0; i < ssrc_n; i++) {
-					if(rtp[i]->iscaller == iscaller) {
+					if(rtp[i]->iscaller == iscaller && !rtp[i]->confirm_both_sides_by_sdp) {
 						rtp[i]->stopReadProcessing = true;
-						if(opt_rtp_check_both_sides_by_sdp == 1) {
-							*disable_save = true;
-							return(false);
-						}
 					}
 				}
 			}
@@ -1617,6 +1628,7 @@ read:
 						       this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr_() : packetS->daddr_()) ||
 						       (this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(), find_by_dest ? packetS->source_() : packetS->dest_()) >= 0 &&
 							this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr_() : packetS->saddr_()));
+		rtp[ssrc_n]->confirm_both_sides_by_sdp = confirm_both_sides_by_sdp;
 		if(rtp_cur[iscaller]) {
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}
