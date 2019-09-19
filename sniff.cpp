@@ -4123,11 +4123,11 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		   (call->last_sip_method == RES403 || call->last_sip_method == RES404)) {
 			call->saveregister(&packetS->header_pt->ts);
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
-			call->msgcount = 1;
-			call->regcount = 1;
 			if(call == NULL) {
 				goto endsip;
 			}
+			call->msgcount = 1;
+			call->regcount = 1;
 			if(packetS->cseq.is_set()) {
 				call->registercseq = packetS->cseq;
 			}
@@ -4138,11 +4138,11 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			call->regstate = 4;
 			call->saveregister(&packetS->header_pt->ts);
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
-			call->msgcount = 1;
-			call->regcount = 1;
 			if(call == NULL) {
 				goto endsip;
 			}
+			call->msgcount = 1;
+			call->regcount = 1;
 			if(packetS->cseq.is_set()) {
 				call->registercseq = packetS->cseq;
 			}
@@ -6488,6 +6488,105 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 	if(opt_pcapdump) {
 		pcap_dump_close(tmppcap);
 	}
+}
+
+int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
+	char errbuf[PCAP_ERRBUF_SIZE];
+	pcap_t *handle;
+	if(!(handle = pcap_open_offline_zip(pcap, errbuf))) {
+		fprintf(stderr, "Couldn't open pcap file '%s': %s\n", pcap, errbuf);
+		return(2);
+	}
+	int dlink = pcap_datalink(handle);
+	pcap_pkthdr *pcap_next_ex_header;
+	const u_char *pcap_next_ex_packet;
+	sHeaderPacket *header_packet = NULL;
+	pcapProcessData ppd;
+	packet_s *packetS = NULL;
+	Call *call = NULL;
+	int res;
+	while((res = pcap_next_ex(handle, &pcap_next_ex_header, &pcap_next_ex_packet)) > 0) {
+		if(header_packet && header_packet->packet_alloc_size != 0xFFFF) {
+			DESTROY_HP(&header_packet);
+		}
+		if(header_packet) {
+			header_packet->clearPcapProcessData();
+		} else {
+			header_packet = CREATE_HP(0xFFFF);
+		}
+		memcpy_heapsafe(HPH(header_packet), header_packet,
+				pcap_next_ex_header, NULL,
+				sizeof(pcap_pkthdr));
+		memcpy_heapsafe(HPP(header_packet), header_packet,
+				pcap_next_ex_packet, NULL,
+				pcap_next_ex_header->caplen);
+		if(!pcapProcess(&header_packet, -1,
+				NULL, 0,
+				ppf_all,
+				&ppd, dlink, NULL, NULL)) {
+			continue;
+		}
+		pcap_pkthdr *header = new FILE_LINE(0) pcap_pkthdr;
+		*header = *HPH(header_packet);
+		u_char *packet = new FILE_LINE(26018) u_char[header->caplen];
+		memcpy(packet, HPP(header_packet), header->caplen);
+		unsigned dataoffset = (u_char*)ppd.data - HPP(header_packet);
+		if(onlyRtp) {
+			if(!packetS) {
+				 packetS = new packet_s;
+				 #if __GNUC__ >= 8
+				 #pragma GCC diagnostic push
+				 #pragma GCC diagnostic ignored "-Wclass-memaccess"
+				 #endif
+				 memset(packetS, 0, sizeof(packet_s));
+				 #if __GNUC__ >= 8
+				 #pragma GCC diagnostic pop
+				 #endif
+			}
+			if(!call) {
+				call = new FILE_LINE(0) Call(INVITE, (char*)"", 0, NULL, 0);
+			}
+			packetS->_saddr = ppd.header_ip->get_saddr();
+			packetS->_source = ppd.header_udp->get_source();
+			packetS->_daddr = ppd.header_ip->get_daddr(); 
+			packetS->_dest = ppd.header_udp->get_dest();
+			packetS->_datalen = ppd.datalen; 
+			packetS->_datalen_set = 0; 
+			packetS->_dataoffset = dataoffset;
+			packetS->header_pt = header;
+			packetS->packet = packet; 
+			packetS->header_ip_offset = (u_char*)ppd.header_ip - packet; 
+			packetS->dlt = dlink; 
+			call->read_rtp(packetS, 1, true, false, false, false, (char*)"file");
+			delete header;
+			delete [] packet;
+		} else {
+			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+				false, 
+				#if USE_PACKET_NUMBER
+				packet_counter,
+				#endif
+				ppd.header_ip ? ppd.header_ip->get_saddr() : 0, 
+				ppd.header_ip ? ppd.header_udp->get_source() : vmPort(), 
+				ppd.header_ip ? ppd.header_ip->get_daddr() : 0, 
+				ppd.header_ip ? ppd.header_udp->get_dest() : vmPort(), 
+				ppd.datalen, dataoffset, 
+				0, header, packet, true,
+				ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_offset),
+				NULL, 0, global_pcap_dlink, opt_id_sensor, 0, ppd.pid);
+		}
+	}
+	if(packetS) {
+		delete packetS;
+	}
+	if(call) {
+		delete call;
+	}
+	if(header_packet) {
+		DESTROY_HP(&header_packet);
+	}
+	pcap_close(handle);
+	return(0);
 }
 
 void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIPresponseNum, pcap_pkthdr *header, 

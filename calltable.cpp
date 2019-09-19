@@ -210,6 +210,8 @@ extern cBilling *billing;
 
 extern cSqlDbData *dbData;
 
+extern char *opt_rtp_stream_analysis_params;
+
 
 sCallField callFields[] = {
 	{ cf_callreference, "callreference" },
@@ -1479,6 +1481,9 @@ read:
 								rtp[i]->stream_in_multiple_calls = true;
 							}
 						}
+						if(opt_rtp_stream_analysis_params) {
+							rtp[i]->rtp_stream_analysis_output();
+						}
 						packetS->set_datalen_(datalen);
 						rtp[i]->prev_sport = packetS->source_();
 						rtp[i]->prev_dport = packetS->dest_();
@@ -1691,6 +1696,9 @@ read:
 			if(stream_in_multiple_calls) {
 				rtp[ssrc_n]->stream_in_multiple_calls = true;
 			}
+		}
+		if(opt_rtp_stream_analysis_params) {
+			rtp[ssrc_n]->rtp_stream_analysis_output();
 		}
 		packetS->set_datalen_(datalen);
 		rtp[ssrc_n]->prev_sport = packetS->source_();

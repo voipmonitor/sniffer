@@ -960,6 +960,7 @@ char *opt_unlzo_gui_params = NULL;
 char *opt_waveform_gui_params = NULL;
 char *opt_spectrogram_gui_params = NULL;
 char *opt_audioconvert_params = NULL;
+char *opt_rtp_stream_analysis_params = NULL;
 char *opt_check_regexp_gui_params = NULL;
 char *opt_test_regexp_gui_params = NULL;
 char *opt_read_pcap_gui_params = NULL;
@@ -2759,6 +2760,7 @@ bool is_set_gui_params() {
 	       opt_waveform_gui_params ||
 	       opt_spectrogram_gui_params ||
 	       opt_audioconvert_params ||
+	       opt_rtp_stream_analysis_params ||
 	       opt_check_regexp_gui_params ||
 	       opt_test_regexp_gui_params ||
 	       opt_read_pcap_gui_params ||
@@ -3209,6 +3211,32 @@ int main(int argc, char *argv[]) {
 		}
 		cerr << "audio-convert: unknown request" << endl;
 		return(1);
+	}
+	if(opt_rtp_stream_analysis_params) {
+		char pcapFileName[1024];
+		if(sscanf(opt_rtp_stream_analysis_params, "%s", 
+			  pcapFileName) < 1) {
+			cerr << "rtp-stream-analysis: bad arguments" << endl;
+			return(1);
+		}
+		extern int rtp_stream_analysis(const char *pcap, bool onlyRtp);
+		opt_nocdr = true;
+		opt_jitterbuffer_f1 = 1;
+		opt_jitterbuffer_f2 = 1;
+		opt_jitterbuffer_adapt = 1;
+		opt_silencedetect = 1;
+		opt_saveSIP = 0;
+		opt_saveRTP = 0;
+		opt_saveGRAPH = 0;
+		opt_saveRAW = 0;
+		opt_saveWAV = 0;
+		sverb.process_rtp_header = 1;
+		for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
+			preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
+		}
+		_parse_packet_global_process_packet.setStdParse();
+		calltable = new FILE_LINE(0) Calltable();
+		return(rtp_stream_analysis(pcapFileName, false));
 	}
 	if(opt_check_regexp_gui_params) {
 		bool okRegExp = check_regexp(opt_check_regexp_gui_params);
@@ -7112,6 +7140,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"waveform-gui", 1, 0, 206},
 	    {"spectrogram-gui", 1, 0, 207},
 	    {"audio-convert", 1, 0, 331},
+	    {"rtp-streams-analysis", 1, 0, 332},
 	    {"update-schema", 0, 0, 208},
 	    {"new-config", 0, 0, 203},
 	    {"print-config-struct", 0, 0, 204},
@@ -7383,6 +7412,12 @@ void get_command_line_arguments() {
 				if(!opt_audioconvert_params) {
 					opt_audioconvert_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
 					strcpy(opt_audioconvert_params, optarg);
+				}
+				break;
+			case 332:
+				if(!opt_rtp_stream_analysis_params) {
+					opt_rtp_stream_analysis_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
+					strcpy(opt_rtp_stream_analysis_params, optarg);
 				}
 				break;
 			case 208:

@@ -72,6 +72,8 @@ extern bool opt_saveaudio_answeronly;
 extern bool opt_saveaudio_big_jitter_resync_threshold;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
+extern char *opt_rtp_stream_analysis_params;
+
 int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP);
 
 RTPstat rtp_stat;
@@ -311,7 +313,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	frame->frametype = AST_FRAME_VOICE;
 	lastframetype = AST_FRAME_VOICE;
 	//frame->src = "DUMMY";
-	last_seq = 0;
+	last_seq = -1;
 	for(unsigned i = 0; i < sizeof(channel_record_seq_ringbuffer) / sizeof(channel_record_seq_ringbuffer[0]); i++) {
 		channel_record_seq_ringbuffer[i] = 0;
 	}
@@ -1169,7 +1171,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 
 	/* in case there was packet loss we must predict lastTimeStamp to not add nonexistant delays */
 	forcemark = 0;
-	if(last_seq != 0 and (ROT_SEQ(last_seq + 1) != seq)) {
+	if(last_seq != -1 and (ROT_SEQ(last_seq + 1) != seq)) {
 		if(s->lastTimeStamp == getTimestamp() - samplerate / 1000 * packetization) {
 			// there was packet loss but the timestamp is like there was no packet loss 
 
@@ -2359,11 +2361,15 @@ RTP::update_seq(u_int16_t seq) {
 		first = false;
 		init_seq(seq);
 		s->max_seq = seq - 1;
-		s->probation = MIN_SEQUENTIAL;
+		s->probation = opt_rtp_stream_analysis_params ? 0 : MIN_SEQUENTIAL;
 		s->lastTimeRec = header_ts;
 		s->lastTimeRecJ = header_ts;
 		s->lastTimeStamp = getTimestamp();
 		s->lastTimeStampJ = getTimestamp();
+		if(opt_rtp_stream_analysis_params) {
+			last_voice_frame_ts = header_ts;
+			last_voice_frame_timestamp = getTimestamp();
+		}
 		return 0;
 	}
 
@@ -2416,7 +2422,75 @@ RTP::update_seq(u_int16_t seq) {
 	stats.received++;
 	s->received++;
 	return 1;
-}	
+}
+
+void RTP::rtp_stream_analysis_output() {
+	if(!rsa.first_packet_time_us) {
+		rsa.first_packet_time_us = getTimeUS(header_ts);
+		rsa.first_timestamp = getTimestamp();
+	}
+	if(!rsa.counter) {
+		cout << fixed << setprecision(3);
+		cout << "rsa,"
+		     << "counter" << ","
+		     << "time_real" << ","
+		     << "time_rtp" << ","
+		     << "seq" << ","
+		     << "delta_real" << ","
+		     << "delta_rtp" << ","
+		     << "transit" << ","
+		     << "skew" << ","
+		     << "jitter" << ","
+		     << "jitter_rsa" << ","
+		     << "marker" << ","
+		     << "bad_seq" << ","
+		     << "mos_f1" << ","
+		     << "mos_f2" << ","
+		     << "mos_adapt" << ","
+		     << "mos_silence" << ","
+		     << "payload_len" <<  ","
+		     << "codec"
+		     << endl;
+	}
+	++rsa.counter;
+	int64_t transit = rsa.counter > 1 ? 
+			   ((int64_t)(getTimeUS(header_ts) - rsa.last_packet_time_us) -
+			    (int64_t)((getTimestamp() - rsa.last_timestamp)/(samplerate/1000.0)*1000)) : 
+			   0;
+	double jitter = rsa.jitter + (double)(((transit < 0) ? -transit/1000. : transit/1000.) - rsa.jitter)/16. ;
+	cout << "rsa,"
+	     << rsa.counter << ","
+	     << (int64_t)(getTimeUS(header_ts) - rsa.first_packet_time_us) << ","
+	     << (int64_t)((getTimestamp() - rsa.first_timestamp)/(samplerate/1000.0)*1000) << ","
+	     << seq << ","
+	     << (rsa.counter > 1 ? (int64_t)(getTimeUS(header_ts) - rsa.last_packet_time_us) : 0) << ","
+	     << (rsa.counter > 1 ? (int64_t)((getTimestamp() - rsa.last_timestamp)/(samplerate/1000.0)*1000) : 0) << ","
+	     << transit << ","
+	     << ((int64_t)((getTimestamp() - rsa.first_timestamp)/(samplerate/1000.0)*1000) - 
+		 (int64_t)(getTimeUS(header_ts) - rsa.first_packet_time_us)) << ","
+	     << this->jitter << ","
+	     << jitter << ","
+	     << (getHeader()->marker ? 1 : 0) << ","
+	     << (rsa.counter > 1 ? getSeqNum() != ROT_SEQ(rsa.prev_seq + 1) : 0) << ","
+	     << (int)last_interval_mosf1 << ","
+	     << (int)last_interval_mosf2 << ","
+	     << (int)last_interval_mosAD << ","
+	     << (int)last_interval_mosSilence << ","
+	     << get_payload_len() << ","
+	     << codec
+	     << endl;
+	     /*
+	     << (int)calculate_mos_fromrtp(this, 1, 1) << ","
+	     << (int)calculate_mos_fromrtp(this, 2, 1) << ","
+	     << (int)calculate_mos_fromrtp(this, 3, 1) << ","
+	     << (DSP ? calculate_mos_fromdsp(this, DSP) : null) << ","
+	     */
+	cout << endl;
+	rsa.last_packet_time_us = getTimeUS(header_ts);
+	rsa.last_timestamp = getTimestamp();
+	rsa.jitter = jitter;
+	rsa.prev_seq = getSeqNum();
+}
 
 void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr, int lastinterval) {
 	int lost = 0;

@@ -198,10 +198,28 @@ enum eRtpMarkType {
  */
 class RTP {
        /* extension header */
-       typedef struct {
-	       u_int16_t profdef;
-	       u_int16_t length; // length of extension in 32bits, this header exluded.
-       } extension_hdr_t;
+	typedef struct {
+		u_int16_t profdef;
+		u_int16_t length; // length of extension in 32bits, this header exluded.
+	} extension_hdr_t;
+	struct sRSA {
+		sRSA() {
+			counter = 0;
+			first_packet_time_us = 0;
+			last_packet_time_us = 0;
+			first_timestamp = 0;
+			last_timestamp = 0;
+			jitter = 0;
+			prev_seq = 0;
+		}
+		u_int32_t counter;
+		u_int64_t first_packet_time_us;
+		u_int64_t last_packet_time_us;
+		u_int32_t first_timestamp;
+		u_int32_t last_timestamp;
+		u_int16_t prev_seq;
+		double jitter;
+	};
 public: 
 	u_int32_t ssrc;		//!< ssrc of this RTP class
 	u_int32_t ssrc2;	//!< ssrc of this RTP class
@@ -593,6 +611,8 @@ public:
 		return(true);
 	}
 
+	void rtp_stream_analysis_output();
+
 private: 
 	/*
 	* Per-source state information
@@ -623,6 +643,9 @@ private:
 	bool stopReadProcessing;
 	
 	class RTPsecure *srtp_decrypt;
+	
+	sRSA rsa;
+	
 friend class Call;
 };
 
