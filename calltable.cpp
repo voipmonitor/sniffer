@@ -8385,6 +8385,7 @@ void CustomHeaders::refresh(SqlDb *sqlDb, bool enableCreatePartitions) {
 	lock_custom_headers();
 	clear(false);
 	load(sqlDb, enableCreatePartitions, false);
+	checkTablesColumns(sqlDb);
 	unlock_custom_headers();
 }
 
