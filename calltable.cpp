@@ -8801,15 +8801,15 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 	}
 }
 
-void CustomHeaders::checkTablesColumns(SqlDb *sqlDb) {
+void CustomHeaders::checkTablesColumns(SqlDb *sqlDb, bool checkColumnsSilentLog) {
 	list<string> tables = getAllNextTables();
 	unsigned tableIndex = 0;
 	for(list<string>::iterator it = tables.begin(); it != tables.end(); it++) {
-		checkTableColumns(it->c_str(), tableIndex++, sqlDb);
+		checkTableColumns(it->c_str(), tableIndex++, sqlDb, checkColumnsSilentLog);
 	}
 }
 
-void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb) {
+void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, SqlDb *sqlDb, bool checkColumnsSilentLog) {
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
@@ -8828,7 +8828,7 @@ void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, Sql
 					sqlDb->logNeedAlter(tableName,
 							    "support time accuracy in milliseconds",
 							    string("ALTER TABLE ") + tableName + "\n" + alter_ms + ";",
-							    false, &tableSize, NULL);
+							    !checkColumnsSilentLog, &tableSize, NULL);
 					continue;
 				} else {
 					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
