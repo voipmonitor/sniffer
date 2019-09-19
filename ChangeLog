@@ -1,3 +1,11 @@
+25.6.1 11.09.2019
+=================
+- fix IPv6 in t2_boost mode
+- fix billing if subnet is 0.0.0.0 (all ip ranges) [VG-1892]
+- do not check ss7 db columns if table does not exist
+- fix rtp_check_both_sides_by_sdp behaviour for some cases [VS-962]
+
+
 25.6 07.09.2019
 ===============
 - SIP messages, start of the call etc. can be now stored with millisecond precision - time_precision_in_ms = yes (default disabled, DB needs upgrade) [VS-586]
