@@ -813,6 +813,8 @@ public:
 	u_int64_t counter;
 	static u_int64_t counter_s;
 	
+	bool syslog_sdp_multiplication;
+	
 	/**
 	 * constructor
 	 *

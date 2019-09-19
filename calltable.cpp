@@ -659,6 +659,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	_hash_add_lock = 0;
 	
 	counter = ++counter_s;
+	
+	syslog_sdp_multiplication = false;
+	
 }
 
 u_int64_t Call::counter_s = 0;
@@ -6784,18 +6787,22 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 				node_call = node_call->next;
 			}
 			if(count >= opt_sdp_multiplication) {
-				static Call *lastcall = NULL;
-				// this port/ip combination is already in 3 calls - do not add to 4th to not cause multiplication attack. 
-				if(lastcall != call and opt_sdp_multiplication >= 3) {
-					/*
-					syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls [%s] [%s] [%s]. Limit is %u to not cause multiplication DDOS. You can increas it sdp_multiplication = N\n", 
-						call->fbasename, addr.getString().c_str(), port,
-						node->calls->call->fbasename,
-						node->calls->next->call->fbasename,
-						node->calls->next->next->call->fbasename,
-						opt_sdp_multiplication);
-					*/
-					lastcall = call;
+				// this port/ip combination is already in (opt_sdp_multiplication) calls - do not add to (opt_sdp_multiplication+1)th to not cause multiplication attack. 
+				if(!call->syslog_sdp_multiplication) {
+					string call_ids;
+					node_call = (hash_node_call *)node->calls;
+					while(node_call != NULL) {
+						if(!call_ids.empty()) {
+							call_ids += " ";
+						}
+						call_ids += string("[") + node_call->call->fbasename + "]";
+						node_call = node_call->next;
+					}
+					syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls %s. Limit is %u to not cause multiplication DDOS. You can increase it sdp_multiplication = N\n", 
+					       call->fbasename, addr.getString().c_str(), (int)port,
+					       call_ids.c_str(),
+					       opt_sdp_multiplication);
+					call->syslog_sdp_multiplication = true;
 				}
 				if (useLock) unlock_calls_hash();
 				return;
