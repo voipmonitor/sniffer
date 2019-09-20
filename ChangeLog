@@ -1,3 +1,12 @@
+25.7 19.09.2019
+===============
+- add support for new RTP stream analysis in GUI [VG-1870]
+- fix rare crash in SIP REGISTER packet handling 
+- fix sniffer termination when stuck in bind loop (server mode) 
+- fix custom headers if millisecond precission was enabled [VS-967] [VS-968]
+- fix sdp_multiplication error message in syslog [VS-966]
+
+
 25.6.1 11.09.2019
 =================
 - fix IPv6 in t2_boost mode
