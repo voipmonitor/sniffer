@@ -435,6 +435,7 @@ bool opt_saveaudio_filter_ext = true;
 bool opt_saveaudio_wav_mix = true;
 bool opt_saveaudio_from_first_invite = true;
 bool opt_saveaudio_afterconnect = false;
+bool opt_saveaudio_from_rtp = false;
 int opt_saveaudio_stereo = 1;
 bool opt_saveaudio_big_jitter_resync_threshold = false;
 int opt_saveaudio_dedup_seq = 0;
@@ -7141,6 +7142,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"spectrogram-gui", 1, 0, 207},
 	    {"audio-convert", 1, 0, 331},
 	    {"rtp-streams-analysis", 1, 0, 332},
+	    {"saveaudio-from-rtp", 0, 0, 333},
 	    {"update-schema", 0, 0, 208},
 	    {"new-config", 0, 0, 203},
 	    {"print-config-struct", 0, 0, 204},
@@ -7419,6 +7421,10 @@ void get_command_line_arguments() {
 					opt_rtp_stream_analysis_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
 					strcpy(opt_rtp_stream_analysis_params, optarg);
 				}
+				break;
+			case 333:
+				opt_saveaudio_from_first_invite = false;
+				opt_saveaudio_afterconnect = false;
 				break;
 			case 208:
 				updateSchema = true;

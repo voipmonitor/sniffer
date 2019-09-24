@@ -890,6 +890,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 void 
 RTP::process_dtmf_rfc2833() {
+ 
+	if(len <= sizeof(RTPFixedHeader)) {
+		return;
+	}
 
 	unsigned int seqno = getSeqNum();
 	unsigned int event, event_end, samples;
