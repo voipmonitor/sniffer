@@ -1078,9 +1078,6 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 			if(actTime - 1000 > this->lastTimeLogErrMemoryIsFull) {
 				syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
 				this->lastTimeLogErrMemoryIsFull = actTime;
-				if(sverb.abort_if_heap_full) {
-					abort();
-				}
 			}
 			if(deleteBlockStoreIfFail) {
 				delete blockStore;
@@ -2482,7 +2479,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	
 	if(sverb.abort_if_heap_full) {
-		if((heapPerc + heapTrashPerc) > 98) {
+		if(packetbuffer_memory_is_full || (heapPerc + heapTrashPerc) > 98) {
 			if(++heapFullCounter > 10) {
 				syslog(LOG_ERR, "HEAP FULL - ABORT!");
 				abort();
