@@ -165,6 +165,7 @@ extern int opt_hash_modify_queue_length_ms;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
 extern PreProcessPacket *preProcessPacketCallX[];
+extern bool opt_disable_sdp_multiplication_warning;
 
 volatile int calls_counter = 0;
 /* probably not used any more */
@@ -6788,7 +6789,7 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 			}
 			if(count >= opt_sdp_multiplication) {
 				// this port/ip combination is already in (opt_sdp_multiplication) calls - do not add to (opt_sdp_multiplication+1)th to not cause multiplication attack. 
-				if(!call->syslog_sdp_multiplication) {
+				if(!opt_disable_sdp_multiplication_warning && !call->syslog_sdp_multiplication) {
 					string call_ids;
 					node_call = (hash_node_call *)node->calls;
 					while(node_call != NULL) {
