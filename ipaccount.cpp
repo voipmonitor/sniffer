@@ -84,6 +84,12 @@ extern char mysql_host[256];
 extern char mysql_database[256];
 extern char mysql_user[256];
 extern char mysql_password[256];
+extern int opt_mysql_port;
+extern char opt_mysql_ssl_key[PATH_MAX];
+extern char opt_mysql_ssl_cert[PATH_MAX];
+extern char opt_mysql_ssl_ca_cert[PATH_MAX];
+extern char opt_mysql_ssl_ca_path[PATH_MAX];
+extern string opt_mysql_ssl_ciphers;
 
 extern MySqlStore *sqlStore;
 
@@ -1059,7 +1065,8 @@ NextIpCache::~NextIpCache() {
 int NextIpCache::connect() {
 	if(isSqlDriver("mysql")) {
 		this->sqlDb = new FILE_LINE(12013) SqlDb_mysql();
-		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database);
+		sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, true,
+			opt_mysql_ssl_key, opt_mysql_ssl_cert, opt_mysql_ssl_ca_cert, opt_mysql_ssl_ca_path, opt_mysql_ssl_ciphers);
 		return(this->sqlDb->connect());
 	}
 	return(0);

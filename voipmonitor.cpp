@@ -413,6 +413,11 @@ char opt_database_backup_from_mysql_database[256] = "";
 char opt_database_backup_from_mysql_user[256] = "";
 char opt_database_backup_from_mysql_password[256] = "";
 unsigned int opt_database_backup_from_mysql_port = 0;
+char opt_database_backup_from_mysql_ssl_key[PATH_MAX];
+char opt_database_backup_from_mysql_ssl_cert[PATH_MAX];
+char opt_database_backup_from_mysql_ssl_ca_cert[PATH_MAX];
+char opt_database_backup_from_mysql_ssl_ca_path[PATH_MAX];
+string opt_database_backup_from_mysql_ssl_ciphers;
 int opt_database_backup_pause = 300;
 int opt_database_backup_insert_threads = 1;
 int opt_database_backup_pass_rows = 0;
@@ -638,14 +643,24 @@ char mysql_host_orig[256] = "";
 char mysql_database[256] = "voipmonitor";
 char mysql_user[256] = "root";
 char mysql_password[256] = "";
-int opt_mysql_port = 0; // 0 menas use standard port 
+int opt_mysql_port = 0; // 0 means use standard port
+char opt_mysql_ssl_key[PATH_MAX];
+char opt_mysql_ssl_cert[PATH_MAX];
+char opt_mysql_ssl_ca_cert[PATH_MAX];
+char opt_mysql_ssl_ca_path[PATH_MAX];
+string opt_mysql_ssl_ciphers;
 
 char mysql_2_host[256] = "";
 char mysql_2_host_orig[256] = "";
 char mysql_2_database[256] = "voipmonitor";
 char mysql_2_user[256] = "root";
 char mysql_2_password[256] = "";
-int opt_mysql_2_port = 0; // 0 menas use standard port 
+int opt_mysql_2_port = 0; // 0 means use standard port
+char opt_mysql_2_ssl_key[PATH_MAX];
+char opt_mysql_2_ssl_cert[PATH_MAX];
+char opt_mysql_2_ssl_ca_cert[PATH_MAX];
+char opt_mysql_2_ssl_ca_path[PATH_MAX];
+string opt_mysql_2_ssl_ciphers;
 bool opt_mysql_2_http = false;
 
 char opt_mysql_timezone[256] = "";
@@ -1233,7 +1248,8 @@ void *database_backup(void */*dummy*/) {
 		return NULL;
 	}
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
-	sqlStore = new FILE_LINE(42002) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port);
+	sqlStore = new FILE_LINE(42002) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
+			NULL, NULL, false, opt_mysql_ssl_key, opt_mysql_ssl_cert, opt_mysql_ssl_ca_cert, opt_mysql_ssl_ca_path, opt_mysql_ssl_ciphers);
 	bool callCreateSchema = false;
 	manager_parse_command_enable();
 	while(!is_terminating()) {
@@ -1244,7 +1260,13 @@ void *database_backup(void */*dummy*/) {
 					       opt_database_backup_from_mysql_user,
 					       opt_database_backup_from_mysql_password,
 					       opt_database_backup_from_mysql_database,
-					       opt_database_backup_from_mysql_port);
+					       opt_database_backup_from_mysql_port,
+					       true,
+					       opt_database_backup_from_mysql_ssl_key,
+					       opt_database_backup_from_mysql_ssl_cert,
+					       opt_database_backup_from_mysql_ssl_ca_cert,
+					       opt_database_backup_from_mysql_ssl_ca_path,
+					       opt_database_backup_from_mysql_ssl_ciphers);
 		if(sqlDbSrc->connect()) {
 			SqlDb_mysql *sqlDbSrc_mysql = dynamic_cast<SqlDb_mysql*>(sqlDbSrc);
 			if(sqlDbSrc_mysql->checkSourceTables()) {
@@ -3483,7 +3505,9 @@ int main(int argc, char *argv[]) {
 		} else {
 			if(opt_database_backup) {
 				sqlStore = new FILE_LINE(42010) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, 
-									   isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
+									   isCloud() ? cloud_host : NULL, cloud_token, cloud_router,
+									   opt_mysql_ssl_key, opt_mysql_ssl_cert, opt_mysql_ssl_ca_cert, opt_mysql_ssl_ca_path,
+									   opt_mysql_ssl_ciphers);
 				custom_headers_cdr = new FILE_LINE(42011) CustomHeaders(CustomHeaders::cdr);
 				custom_headers_message = new FILE_LINE(42012) CustomHeaders(CustomHeaders::message);
 				custom_headers_sip_msg = new FILE_LINE(0) CustomHeaders(CustomHeaders::sip_msg);
@@ -4505,12 +4529,15 @@ void main_init_sqlstore() {
 	if(isSqlDriver("mysql")) {
 		if(opt_load_query_from_files != 2) {
 			sqlStore = new FILE_LINE(42037) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-								   isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
+								   isCloud() ? cloud_host : NULL, cloud_token, cloud_router,
+								   opt_mysql_ssl_key, opt_mysql_ssl_cert, opt_mysql_ssl_ca_cert, opt_mysql_ssl_ca_path, opt_mysql_ssl_ciphers);
 			if(opt_save_query_to_files) {
 				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 			}
 			if(use_mysql_2()) {
-				sqlStore_2 = new FILE_LINE(42038) MySqlStore(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port);
+				sqlStore_2 = new FILE_LINE(42038) MySqlStore(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port,
+									     NULL, NULL, NULL, opt_mysql_2_ssl_key, opt_mysql_2_ssl_cert, opt_mysql_2_ssl_ca_cert,
+									     opt_mysql_2_ssl_ca_path, opt_mysql_2_ssl_ciphers);
 				if(opt_save_query_to_files) {
 					sqlStore_2->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 				}
@@ -4518,7 +4545,9 @@ void main_init_sqlstore() {
 		}
 		if(opt_load_query_from_files) {
 			loadFromQFiles = new FILE_LINE(42039) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-									 isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
+									 isCloud() ? cloud_host : NULL, cloud_token, cloud_router,
+									 opt_mysql_ssl_key, opt_mysql_ssl_cert, opt_mysql_ssl_ca_cert, opt_mysql_ssl_ca_path,
+									 opt_mysql_ssl_ciphers);
 			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
 		}
 		if(opt_load_query_from_files != 2) {
@@ -5576,7 +5605,8 @@ void test() {
 			}
 		}
 		sqlStore = new FILE_LINE(42059) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port,
-							   isCloud() ? cloud_host : NULL, cloud_token, cloud_router);
+							   isCloud() ? cloud_host : NULL, cloud_token, cloud_router,
+							   opt_mysql_ssl_key, opt_mysql_ssl_cert, opt_mysql_ssl_ca_cert, opt_mysql_ssl_ca_path, opt_mysql_ssl_ciphers);
 		for(int i = 0; i < 2; i++) {
 			if(isSetSpoolDir(i) &&
 			   CleanSpool::isSetCleanspoolParameters(i)) {
@@ -6087,6 +6117,16 @@ void cConfig::addConfigItems() {
 				->setPassword()
 				->setReadOnly()
 				->setMinor());
+			addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqlsslkey", opt_mysql_ssl_key, sizeof(opt_mysql_ssl_key)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqlsslcert", opt_mysql_ssl_cert, sizeof(opt_mysql_ssl_cert)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqlsslcacert", opt_mysql_ssl_ca_cert, sizeof(opt_mysql_ssl_ca_cert)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqlsslcapath", opt_mysql_ssl_ca_path, sizeof(opt_mysql_ssl_ca_path)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqlsslciphers", &opt_mysql_ssl_ciphers))
+				->setReadOnly());
 				advanced();
 				addConfigItem((new FILE_LINE(42073) cConfigItem_string("mysqlhost_2", mysql_2_host, sizeof(mysql_2_host)))
 					->setReadOnly());
@@ -6099,6 +6139,16 @@ void cConfig::addConfigItems() {
 					->setPassword()
 					->setReadOnly()
 					->setMinor());
+				addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqlsslkey_2", opt_mysql_2_ssl_key, sizeof(opt_mysql_2_ssl_key)))
+					->setReadOnly());
+				addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqlsslcert_2", opt_mysql_2_ssl_cert, sizeof(opt_mysql_2_ssl_cert)))
+					->setReadOnly());
+				addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqlsslcacert_2", opt_mysql_2_ssl_ca_cert, sizeof(opt_mysql_2_ssl_ca_cert)))
+					->setReadOnly());
+				addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqlsslcapath_2", opt_mysql_2_ssl_ca_path, sizeof(opt_mysql_2_ssl_ca_path)))
+					->setReadOnly());
+				addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqlsslciphers_2", &opt_mysql_2_ssl_ciphers))
+					->setReadOnly());
 				addConfigItem(new FILE_LINE(42077) cConfigItem_yesno("mysql_2_http",  &opt_mysql_2_http));
 		subgroup("main");
 			addConfigItem((new FILE_LINE(42078) cConfigItem_yesno("query_cache"))
@@ -6185,6 +6235,11 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42126) cConfigItem_string("database_backup_from_mysqlusername", opt_database_backup_from_mysql_user, sizeof(opt_database_backup_from_mysql_user)));
 				addConfigItem(new FILE_LINE(42127) cConfigItem_string("database_backup_from_mysqlpassword", opt_database_backup_from_mysql_password, sizeof(opt_database_backup_from_mysql_password)));
 				addConfigItem(new FILE_LINE(42128) cConfigItem_integer("database_backup_from_mysqlport", &opt_database_backup_from_mysql_port));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("database_backup_from_mysqlsslkey", opt_database_backup_from_mysql_ssl_key, sizeof(opt_database_backup_from_mysql_ssl_key)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("database_backup_from_mysqlsslcert", opt_database_backup_from_mysql_ssl_cert, sizeof(opt_database_backup_from_mysql_ssl_cert)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("database_backup_from_mysqlsslcacert", opt_database_backup_from_mysql_ssl_ca_cert, sizeof(opt_database_backup_from_mysql_ssl_ca_cert)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("database_backup_from_mysqlsslcapath", opt_database_backup_from_mysql_ssl_ca_path, sizeof(opt_database_backup_from_mysql_ssl_ca_path)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("database_backup_from_mysqlsslciphers", &opt_database_backup_from_mysql_ssl_ciphers));
 				addConfigItem(new FILE_LINE(42129) cConfigItem_integer("database_backup_pause", &opt_database_backup_pause));
 				addConfigItem(new FILE_LINE(42130) cConfigItem_integer("database_backup_insert_threads", &opt_database_backup_insert_threads));
 					expert();
@@ -9392,6 +9447,21 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mysqlport", NULL))) {
 		opt_mysql_port = atoi(value);
 	}
+	if((value = ini.GetValue("general", "mysqlsslkey", NULL))) {
+		strcpy_null_term(opt_mysql_ssl_key, value);
+	}
+	if((value = ini.GetValue("general", "mysqlsslcert", NULL))) {
+		strcpy_null_term(opt_mysql_ssl_cert, value);
+	}
+	if((value = ini.GetValue("general", "mysqlsslcacert", NULL))) {
+		strcpy_null_term(opt_mysql_ssl_ca_cert, value);
+	}
+	if((value = ini.GetValue("general", "mysqlsslcapath", NULL))) {
+		strcpy_null_term(opt_mysql_ssl_ca_path, value);
+	}
+	if((value = ini.GetValue("general", "mysqlsslciphers", NULL))) {
+		opt_mysql_ssl_ciphers = value;
+	}
 	if((value = ini.GetValue("general", "mysqlhost_2", NULL))) {
 		strcpy_null_term(mysql_2_host, value);
 	}
@@ -9426,6 +9496,21 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysqlpassword_2", NULL))) {
 		strcpy_null_term(mysql_2_password, value);
+	}
+	if((value = ini.GetValue("general", "mysqlsslkey_2", NULL))) {
+		strcpy_null_term(opt_mysql_2_ssl_key, value);
+	}
+	if((value = ini.GetValue("general", "mysqlsslcert_2", NULL))) {
+		strcpy_null_term(opt_mysql_2_ssl_cert, value);
+	}
+	if((value = ini.GetValue("general", "mysqlsslcacert_2", NULL))) {
+		strcpy_null_term(opt_mysql_2_ssl_ca_cert, value);
+	}
+	if((value = ini.GetValue("general", "mysqlsslcapath_2", NULL))) {
+		strcpy_null_term(opt_mysql_2_ssl_ca_path, value);
+	}
+	if((value = ini.GetValue("general", "mysqlsslciphers_2", NULL))) {
+		opt_mysql_2_ssl_ciphers = value;
 	}
 	if((value = ini.GetValue("general", "mysql_2_http", NULL))) {
 		opt_mysql_2_http = yesno(value);
@@ -9474,6 +9559,21 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "database_backup_from_mysqlport", NULL))) {
 		opt_database_backup_from_mysql_port = atol(value);
+	}
+	if((value = ini.GetValue("general", "database_backup_from_mysqlsslkey", NULL))) {
+		strcpy_null_term(opt_database_backup_from_mysql_ssl_key, value);
+	}
+	if((value = ini.GetValue("general", "database_backup_from_mysqlsslcert", NULL))) {
+		strcpy_null_term(opt_database_backup_from_mysql_ssl_cert, value);
+	}
+	if((value = ini.GetValue("general", "database_backup_from_mysqlsslcacert", NULL))) {
+		strcpy_null_term(opt_database_backup_from_mysql_ssl_ca_cert, value);
+	}
+	if((value = ini.GetValue("general", "database_backup_from_mysqlsslcapath", NULL))) {
+		strcpy_null_term(opt_database_backup_from_mysql_ssl_ca_path, value);
+	}
+	if((value = ini.GetValue("general", "database_backup_from_mysqlsslciphers", NULL))) {
+		opt_database_backup_from_mysql_ssl_ciphers = value;
 	}
 	if((value = ini.GetValue("general", "database_backup_pause", NULL))) {
 		opt_database_backup_pause = atoi(value);

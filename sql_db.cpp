@@ -72,11 +72,22 @@ extern char mysql_database[256];
 extern char mysql_user[256];
 extern char mysql_password[256];
 extern int opt_mysql_port;
+extern char opt_mysql_ssl_key[PATH_MAX];
+extern char opt_mysql_ssl_cert[PATH_MAX];
+extern char opt_mysql_ssl_ca_cert[PATH_MAX];
+extern char opt_mysql_ssl_ca_path[PATH_MAX];
+extern string opt_mysql_ssl_ciphers;
 
 extern char mysql_2_host[256];
 extern char mysql_2_database[256];
 extern char mysql_2_user[256];
 extern char mysql_2_password[256];
+extern char opt_mysql_2_ssl_key[PATH_MAX];
+extern char opt_mysql_2_ssl_cert[PATH_MAX];
+extern char opt_mysql_2_ssl_ca_cert[PATH_MAX];
+extern char opt_mysql_2_ssl_ca_path[PATH_MAX];
+extern string opt_mysql_2_ssl_ciphers;
+
 extern int opt_mysql_2_port;
 
 extern char opt_mysql_timezone[256];
@@ -376,13 +387,19 @@ SqlDb::~SqlDb() {
 	}
 }
 
-void SqlDb::setConnectParameters(string server, string user, string password, string database, u_int16_t port, bool showversion) {
+void SqlDb::setConnectParameters(string server, string user, string password, string database, u_int16_t port, bool showversion,
+				 char *sslkey, char *sslcert, char *sslcacert, char *sslcapath, string sslciphers) {
 	this->conn_server = server;
 	this->conn_user = user;
 	this->conn_password = password;
 	this->conn_database = database;
 	this->conn_port = port;
 	this->conn_showversion = showversion;
+	this->conn_sslkey = sslkey;
+	this->conn_sslcert = sslcert;
+	this->conn_sslcacert = sslcacert;
+	this->conn_sslcapath = sslcapath;
+	this->conn_sslciphers = sslciphers;
 }
 
 void SqlDb::setCloudParameters(string cloud_host, string cloud_token, bool cloud_router) {
@@ -1403,8 +1420,10 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			this->connecting = false;
 			return(false);
 		}
+
 		bool reconnect = 1;
 		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
+
 		for(int connectPass = 0; connectPass < 2; connectPass++) {
 			if(connectPass) {
 				if(this->hMysqlRes) {
@@ -1415,7 +1434,23 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				mysql_close(this->hMysqlConn);
 			}
 			this->hMysql = mysql_init(NULL);
-			if(this->conn_disable_secure_auth) {
+			bool enabledSSL = false;
+			if (strlen(this->conn_sslkey) && strlen(this->conn_sslcert) && (strlen(this->conn_sslcacert) || strlen(this->conn_sslcapath))) {
+				syslog(LOG_INFO, "Enabling SSL for mysql connection.");
+				mysql_options(this->hMysql, MYSQL_OPT_SSL_KEY, this->conn_sslkey);
+				mysql_options(this->hMysql, MYSQL_OPT_SSL_CERT, this->conn_sslcert);
+				if (strlen(this->conn_sslcacert)) {
+					mysql_options(this->hMysql, MYSQL_OPT_SSL_CA, this->conn_sslcacert);
+				}
+				if (strlen(this->conn_sslcapath)) {
+					mysql_options(this->hMysql, MYSQL_OPT_SSL_CAPATH, this->conn_sslcapath);
+				}
+				if (this->conn_sslciphers.length()) {
+					mysql_options(this->hMysql, MYSQL_OPT_SSL_CIPHER, this->conn_sslciphers.c_str());
+				}
+				enabledSSL = true;
+			}
+			if(!enabledSSL && this->conn_disable_secure_auth) {
 				int arg = 0;
 				mysql_options(this->hMysql, MYSQL_SECURE_AUTH, &arg);
 			}
@@ -2659,7 +2694,7 @@ void *MySqlStore_process_storing(void *storeProcess_addr) {
 MySqlStore_process::MySqlStore_process(int id, MySqlStore *parentStore,
 				       const char *host, const char *user, const char *password, const char *database, u_int16_t port,
 				       const char *cloud_host, const char *cloud_token, bool cloud_router,
-				       int concatLimit) {
+				       int concatLimit, char *sslkey, char *sslcert, char *sslcacert, char *sslcapath, string sslciphers) {
 	this->id = id;
 	this->parentStore = parentStore;
 	this->terminated = false;
@@ -2673,7 +2708,7 @@ MySqlStore_process::MySqlStore_process(int id, MySqlStore *parentStore,
 	this->lastQueryTime = 0;
 	this->queryCounter = 0;
 	this->sqlDb = new FILE_LINE(29003) SqlDb_mysql();
-	this->sqlDb->setConnectParameters(host, user, password, database, port);
+	this->sqlDb->setConnectParameters(host, user, password, database, port, true, sslkey, sslcert, sslcacert, sslcapath, sslciphers);
 	if(cloud_host && *cloud_host) {
 		this->sqlDb->setCloudParameters(cloud_host, cloud_token, cloud_router);
 	}
@@ -3172,12 +3207,18 @@ string MySqlStore::QFileConfig::getDirectory() {
 }
 
 MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port,
-		       const char *cloud_host, const char *cloud_token, bool cloud_router) {
+		       const char *cloud_host, const char *cloud_token, bool cloud_router,
+		        char *sslkey, char *sslcert, char *sslcacert, char *sslcapath, string sslciphers) {
 	this->host = host;
 	this->user = user;
 	this->password = password;
 	this->database = database;
 	this->port = port;
+	this->sslkey = sslkey;
+	this->sslcert = sslcert;
+	this->sslcacert = sslcacert;
+	this->sslcapath = sslcapath;
+	this->sslciphers = sslciphers;
 	if(cloud_host) {
 		this->cloud_host = cloud_host;
 	}
@@ -3847,7 +3888,12 @@ MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
 						store ? store->database.c_str() : this->database.c_str(),
 						store ? store->port : this->port,
 						this->isCloud() ? this->cloud_host.c_str() : NULL, this->cloud_token.c_str(), this->cloud_router,
-						this->defaultConcatLimit);
+						this->defaultConcatLimit,
+						store ? store->sslkey : this->sslkey,
+						store ? store->sslcert : this->sslcert,
+						store ? store->sslcacert : this->sslcacert,
+						store ? store->sslcapath : this->sslcapath,
+						store ? store->sslciphers : this->sslciphers);
 	process->setEnableTerminatingDirectly(this->enableTerminatingDirectly);
 	process->setEnableTerminatingIfEmpty(this->enableTerminatingIfEmpty);
 	process->setEnableTerminatingIfSqlError(this->enableTerminatingIfSqlError);
@@ -4220,9 +4266,11 @@ SqlDb *createSqlObject(int connectId) {
 		}
 		sqlDb = new FILE_LINE(29010) SqlDb_mysql();
 		if(connectId == 1) {
-			sqlDb->setConnectParameters(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port);
+			sqlDb->setConnectParameters(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port, true,
+				opt_mysql_2_ssl_key, opt_mysql_2_ssl_cert, opt_mysql_2_ssl_ca_cert, opt_mysql_2_ssl_ca_path, opt_mysql_2_ssl_ciphers);
 		} else {
-			sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port);
+			sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, true,
+				opt_mysql_ssl_key, opt_mysql_ssl_cert, opt_mysql_ssl_ca_cert, opt_mysql_ssl_ca_path, opt_mysql_ssl_ciphers);
 			if(isCloud()) {
 				extern char cloud_host[256];
 				extern char cloud_token[256];
@@ -4591,12 +4639,23 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		extern char opt_database_backup_from_mysql_user[256];
 		extern char opt_database_backup_from_mysql_password[256];
 		extern unsigned int opt_database_backup_from_mysql_port;
+		extern char opt_database_backup_from_mysql_ssl_key[PATH_MAX];
+		extern char opt_database_backup_from_mysql_ssl_cert[PATH_MAX];
+		extern char opt_database_backup_from_mysql_ssl_ca_cert[PATH_MAX];
+		extern char opt_database_backup_from_mysql_ssl_ca_path[PATH_MAX];
+		extern string opt_database_backup_from_mysql_ssl_ciphers;
 		SqlDb_mysql *sqlDbSrc = new FILE_LINE(29013) SqlDb_mysql();
 		sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
 					       opt_database_backup_from_mysql_user,
 					       opt_database_backup_from_mysql_password,
 					       opt_database_backup_from_mysql_database,
-					       opt_database_backup_from_mysql_port);
+					       opt_database_backup_from_mysql_port,
+						true,
+					       opt_database_backup_from_mysql_ssl_key,
+					       opt_database_backup_from_mysql_ssl_cert,
+					       opt_database_backup_from_mysql_ssl_ca_cert,
+					       opt_database_backup_from_mysql_ssl_ca_path,
+					       opt_database_backup_from_mysql_ssl_ciphers);
 		if(sqlDbSrc->existsColumn("cdr", "price_customer_mult1000000")) {
 			existsExtPrecisionBilling = true;
 		}
