@@ -332,7 +332,7 @@ cSocket::~cSocket() {
 }
 
 void cSocket::setHostPort(string host, u_int16_t port) {
-	this->host = host;
+	this->host = host.find('/') != string::npos ? host.substr(0, host.find('/')) : host;
 	this->port = port;
 }
 
@@ -401,7 +401,8 @@ bool cSocket::connect(unsigned loopSleepS) {
 bool cSocket::listen() {
 	if(!ip.isSet() && !host.empty()) {
 		ip = resolver.resolve(host);
-		if(!ip.isSet() && host != "0.0.0.0") {
+		if(!ip.isSet() && 
+		   !(ip.is_v6() ? host == "::" : host == "0.0.0.0")) {
 			setError("failed resolve host name %s", host.c_str());
 			return(false);
 		}
