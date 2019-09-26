@@ -891,7 +891,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 void 
 RTP::process_dtmf_rfc2833() {
  
-	if(len <= sizeof(RTPFixedHeader)) {
+	if(len <= (int)sizeof(RTPFixedHeader)) {
 		return;
 	}
 

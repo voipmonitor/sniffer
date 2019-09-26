@@ -4718,10 +4718,16 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				usleep(100);
 			}
 			if(!(++counter_pop % 1000)) {
-				int checkReadThreadsCount = min(this->readThreadsCount, (int)sizeof(existsThreadTimeFlags));
-				for(int i = 0; i < checkReadThreadsCount; i++) {
-					if(!existsThreadTimeFlags[i]) {
-						this->readThreads[i]->setForcePUSH();
+				if(this->readThreadsCount == 1) {
+					if(!fetchPacketOk) {
+						this->readThreads[0]->setForcePUSH();
+					}
+				} else {
+					int checkReadThreadsCount = min(this->readThreadsCount, (int)sizeof(existsThreadTimeFlags));
+					for(int i = 0; i < checkReadThreadsCount; i++) {
+						if(!existsThreadTimeFlags[i]) {
+							this->readThreads[i]->setForcePUSH();
+						}
 					}
 				}
 			}
