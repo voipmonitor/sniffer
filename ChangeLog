@@ -1,5 +1,6 @@
 25.7.1 26.09.2019
 =================
+- fix cisco skinny (broken since ipv6 release) [VS-971]
 - fix support for rtp stream analysis
 - fix CDR delay for low traffic and setting threadingmod >= 2 [VS-972]
 - fix bind to ipv6 :: [VS-973]
