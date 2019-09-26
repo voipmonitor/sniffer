@@ -915,9 +915,9 @@ inline vmIP str_2_vmIP(const char *str) {
 }
 
 
-inline vmIP ipv4_2_vmIP(u_int32_t ip) {
+inline vmIP ipv4_2_vmIP(u_int32_t ip, bool ntoh = false) {
 	vmIP vm_ip;
-	vm_ip.setIPv4(ip);
+	vm_ip.setIPv4(ip, ntoh);
 	return(vm_ip);
 }
 
