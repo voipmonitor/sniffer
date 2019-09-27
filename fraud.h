@@ -375,6 +375,12 @@ public:
 		_typeBy_rtp_stream_ip_group,
 		_typeBy_summary
 	};
+	enum eTypeByIP {
+		_typeByIP_NA,
+		_typeByIP_src,
+		_typeByIP_dst,
+		_typeByIP_both
+	};
 	enum eLocalInternational {
 		_li_local,
 		_li_international,
@@ -446,6 +452,7 @@ protected:
 	virtual bool defFilterDomain() { return(false); }
 	virtual bool defFraudDef() { return(false); }
 	virtual bool defConcuretCallsLimit() { return(false); }
+	virtual bool defByIP() { return(false); }
 	virtual bool defTypeBy() { return(false); }
 	virtual bool defTypeChangeLocation() { return(false); }
 	virtual bool defChangeLocationOk() { return(false); }
@@ -475,6 +482,7 @@ protected:
 	unsigned int concurentCallsLimitInternational;
 	unsigned int concurentCallsLimitBoth;
 	eTypeBy typeBy;
+	eTypeByIP typeByIP;
 	eTypeLocation typeChangeLocation;
 	vector<string> changeLocationOk;
 	vector<string> destLocation;
@@ -964,32 +972,35 @@ private:
 class FraudAlertInfo_seq : public FraudAlertInfo {
 public:
 	FraudAlertInfo_seq(FraudAlert *alert);
-	void set(vmIP ip,
+	void set(vmIP ips, vmIP ipd,
 		 const char *number,
 		 unsigned int count,
-		 const char *country_code_ip,
+		 const char *country_code_ips,
+		 const char *country_code_ipd,
 		 const char *country_code_number);
 	string getJson();
 private:
-	vmIP ip;
+	vmIP ips, ipd;
 	string number;
 	unsigned int count;
-	string country_code_ip;
+	string country_code_ips, country_code_ipd;
 	string country_code_number;
 };
 
 class FraudAlert_seq : public FraudAlert {
 private:
 	struct sIpNumber {
-		sIpNumber(vmIP ip = 0, const char *number = NULL) {
-			this->ip = ip;
+		sIpNumber(vmIP ips = 0, vmIP ipd = 0, const char *number = NULL) {
+			this->ips = ips;
+			this->ipd = ipd;
 			this->number = number ? number : "";
 		}
 		bool operator < (const sIpNumber& other) const { 
-			return(this->ip != other.ip ? this->ip < other.ip :
+			return(this->ips < other.ips ? 1 : this->ips > other.ips ? 0 :
+			       this->ipd < other.ipd ? 1 : this->ipd > other.ipd ? 0 :
 			       this->number < other.number); 
 		}
-		vmIP ip;
+		vmIP ips, ipd;
 		string number;
 	};
 	struct sAlertInfo {
@@ -1004,8 +1015,11 @@ public:
 	FraudAlert_seq(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
 protected:
+	bool defByIP() { return(true); }
 	bool defFilterIp() { return(true); }
+	bool defFilterIp2() { return(true); }
 	bool defFilterNumber() { return(true); }
+	bool defFilterNumber2() { return(true); }
 	bool defInterval() { return(true); }
 	bool defFilterInternational() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }

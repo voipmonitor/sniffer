@@ -324,6 +324,7 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	concurentCallsLimitInternational = 0;
 	concurentCallsLimitBoth = 0;
 	typeBy = _typeBy_NA;
+	typeByIP = _typeByIP_NA;
 	typeChangeLocation = _typeLocation_NA;
 	intervalLength = 0;
 	intervalLimit = 0;
@@ -416,6 +417,12 @@ bool FraudAlert::loadAlert(SqlDb *sqlDb) {
 			 dbRow["fraud_rcc_by"] == "rtp_stream_ip_group" ? _typeBy_rtp_stream_ip_group :
 			 dbRow["fraud_rcc_by"] == "summary" ? _typeBy_summary :
 				_typeBy_source_ip;
+	}
+	if(defByIP()) {
+		typeByIP = dbRow["fraud_by_ip"] == "src" ? _typeByIP_src :
+			   dbRow["fraud_by_ip"] == "dst" ? _typeByIP_dst :
+			   dbRow["fraud_by_ip"] == "both" ? _typeByIP_both :
+				_typeByIP_NA;
 	}
 	if(defFilterIp()) {
 		ipFilter.addWhite(dbRow["fraud_whitelist_ip"].c_str());
@@ -1966,32 +1973,50 @@ FraudAlertInfo_seq::FraudAlertInfo_seq(FraudAlert *alert)
  : FraudAlertInfo(alert) {
 }
 
-void FraudAlertInfo_seq::set(vmIP ip, 
+void FraudAlertInfo_seq::set(vmIP ips, vmIP ipd,  
 			     const char *number,
 			     unsigned int count,
-			     const char *country_code_ip,
+			     const char *country_code_ips,
+			     const char *country_code_ipd,
 			     const char *country_code_number) {
-	this->ip = ip;
+	this->ips = ips;
+	this->ipd = ipd;
 	this->number = number ? number : "";
 	this->count = count;
 	this->country_code_number = country_code_number ? country_code_number : "";
-	this->country_code_ip = country_code_ip ? country_code_ip : "";
+	this->country_code_ips = country_code_ips ? country_code_ips : "";
+	this->country_code_ipd = country_code_ipd ? country_code_ipd : "";
 }
 
 string FraudAlertInfo_seq::getJson() {
 	JsonExport json;
 	this->setAlertJsonBase(&json);
-	json.add("ip", ip.getString());
-	json.add("number", number);
-	json.add("count", count);
-	if(!country_code_ip.empty()) {
-		json.add("country_code_ip", country_code_ip);
-		json.add("country_name_ip", countryCodes->getNameCountry(country_code_ip.c_str()));
+	if(ips.isSet() && ipd.isSet()) {
+		json.add("ips", ips.getString());
+		json.add("ipd", ipd.getString());
+		if(!country_code_ips.empty()) {
+			json.add("country_code_ips", country_code_ips);
+			json.add("country_name_ips", countryCodes->getNameCountry(country_code_ips.c_str()));
+		}
+		if(!country_code_ipd.empty()) {
+			json.add("country_code_ipd", country_code_ipd);
+			json.add("country_name_ipd", countryCodes->getNameCountry(country_code_ipd.c_str()));
+		}
+	} else {
+		vmIP ip = ipd.isSet() ? ipd : ips;
+		string country_code_ip = ipd.isSet() ? country_code_ipd : country_code_ips;
+		json.add("ip", ip.getString());
+		if(!country_code_ip.empty()) {
+			json.add("country_code_ip", country_code_ip);
+			json.add("country_name_ip", countryCodes->getNameCountry(country_code_ip.c_str()));
+		}
 	}
+	json.add("number", number);
 	if(!country_code_number.empty()) {
 		json.add("country_code_number", country_code_number);
 		json.add("country_name_number", countryCodes->getNameCountry(country_code_number.c_str()));
 	}
+	json.add("count", count);
 	return(json.getJson());
 }
 
@@ -2006,7 +2031,9 @@ void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
 	   (!filterInternational || !callInfo->local_called_number) &&
 	   this->okFilter(callInfo) &&
 	   this->okDayHour(callInfo)) {
-		sIpNumber ipNumber(callInfo->caller_ip, callInfo->called_number.c_str());
+		sIpNumber ipNumber(typeByIP != _typeByIP_dst ? callInfo->caller_ip : 0,
+				   typeByIP == _typeByIP_dst || typeByIP == _typeByIP_both ? callInfo->called_ip : 0,
+				   callInfo->called_number.c_str());
 		map<sIpNumber, u_int64_t>::iterator iter = count.find(ipNumber);
 		if(iter == count.end()) {
 			count[ipNumber] = 1;
@@ -2022,10 +2049,12 @@ void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
 			if(iter->second >= intervalLimit &&
 			   this->checkOkAlert(iter->first, iter->second, callInfo->at_last)) {
 				FraudAlertInfo_seq *alertInfo = new FILE_LINE(7017) FraudAlertInfo_seq(this);
-				alertInfo->set(iter->first.ip,
+				alertInfo->set(iter->first.ips,
+					       iter->first.ipd,
 					       iter->first.number.c_str(),
 					       iter->second,
 					       callInfo->country_code_caller_ip.c_str(),
+					       callInfo->country_code_called_ip.c_str(),
 					       callInfo->country_code_called_number.c_str());
 				this->evAlert(alertInfo);
 			}
