@@ -1017,6 +1017,8 @@ cUtfConverter utfConverter;
 
 bool useIPv6 = false;
 
+long int runAt;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -3080,7 +3082,8 @@ int main(int argc, char *argv[]) {
 	
 	if(!is_read_from_file_simple() && !is_set_gui_params() && command_line_data.size()) {
 		printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
-		string localActTime = sqlDateTimeString(time(NULL));
+		runAt = time(NULL);
+		string localActTime = sqlDateTimeString(runAt);
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
 	}

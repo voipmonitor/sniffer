@@ -8835,7 +8835,7 @@ void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, Sql
 			if(!alter_ms.empty()) {
 				if(sqlDb_mysql->isSupportForDatetimeMs()) {
 					sqlDb->logNeedAlter(tableName,
-							    "support time accuracy in milliseconds",
+							    "time accuracy in milliseconds",
 							    string("ALTER TABLE ") + tableName + " " + alter_ms + ";",
 							    !checkColumnsSilentLog, &tableSize, NULL);
 					continue;

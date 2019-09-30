@@ -1309,12 +1309,29 @@ bool SqlDb::logNeedAlter(string table, string reason, vector<string> alters,
 			int sql_disable_next_attempt_if_error_old = sql_disable_next_attempt_if_error;
 			sql_disable_next_attempt_if_error = 1;
 			unsigned okAlterCount = 0;
+			bool error = false;
 			for(unsigned i = 0; i < alters.size(); i++) {
-				if(this->query(alters[i])) {
-					++okAlterCount;
-				} else {
-					break;
+				SqlDb_row dbAlterRow;
+				extern long int runAt;
+				if(opt_id_sensor > 0) {
+					dbAlterRow.add(opt_id_sensor, "id_sensor");
 				}
+				dbAlterRow.add(sqlDateTimeString(runAt), "at");
+				dbAlterRow.add(table, "table");
+				dbAlterRow.add(reason, "reason");
+				dbAlterRow.add(alters[i], "alter");
+				if(error) {
+					++okAlterCount;
+					dbAlterRow.add("skip_prev_error", "result");
+				} else if(this->query(alters[i])) {
+					++okAlterCount;
+					dbAlterRow.add("ok", "result");
+				} else {
+					error = true;
+					dbAlterRow.add("error", "result");
+					dbAlterRow.add(getLastErrorString(), "error");
+				}
+				insert("db_alters", dbAlterRow);
 			}
 			if(okAlterCount == alters.size()) {
 				okAlter = true;
@@ -1323,6 +1340,20 @@ bool SqlDb::logNeedAlter(string table, string reason, vector<string> alters,
 				}
 			}
 			sql_disable_next_attempt_if_error = sql_disable_next_attempt_if_error_old;
+		} else {
+			for(unsigned i = 0; i < alters.size(); i++) {
+				SqlDb_row dbAlterRow;
+				extern long int runAt;
+				if(opt_id_sensor > 0) {
+					dbAlterRow.add(opt_id_sensor, "id_sensor");
+				}
+				dbAlterRow.add(sqlDateTimeString(runAt), "at");
+				dbAlterRow.add(table, "table");
+				dbAlterRow.add(reason, "reason");
+				dbAlterRow.add(alters[i], "alter");
+				dbAlterRow.add("skip_too_rows", "result");
+				insert("db_alters", dbAlterRow);
+			}
 		}
 	}
 	if(log && !okAlter) {
@@ -4405,6 +4436,22 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	if(!okTableSensorConfig && this->getLastError()) {
 		return(false);
 	}
+	
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `db_alters` (\
+			`id` int NOT NULL AUTO_INCREMENT,\
+			`id_sensor` int unsigned DEFAULT NULL,\
+			`at` datetime,\
+			`table` varchar(1024),\
+			`reason` text,\
+			`alter` text,\
+			`result` enum('ok','error','skip_too_rows','skip_prev_error'),\
+			`error` text,\
+		PRIMARY KEY (`id`),\
+		KEY `id_sensor` (`id_sensor`),\
+		KEY `at` (`at`),\
+		KEY `id_sensor_at` (`id_sensor`,`at`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `sensor_config` (\
