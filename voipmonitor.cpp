@@ -6292,8 +6292,10 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(42168) cConfigItem_yesno("savertp-threaded", &opt_rtpsave_threaded));
 				addConfigItem(new FILE_LINE(42169) cConfigItem_yesno("packetbuffer_compress", &opt_pcap_queue_compress));
-				addConfigItem(new FILE_LINE(42170) cConfigItem_integer("pcap_queue_dequeu_window_length", &opt_pcap_queue_dequeu_window_length));
-				addConfigItem(new FILE_LINE(42171) cConfigItem_integer("pcap_queue_dequeu_need_blocks", &opt_pcap_queue_dequeu_need_blocks));
+				addConfigItem((new FILE_LINE(42170) cConfigItem_integer("pcap_queue_dequeu_window_length", &opt_pcap_queue_dequeu_window_length))
+					->addAlias("pcap_queue_deque_window_length"));
+				addConfigItem((new FILE_LINE(42171) cConfigItem_integer("pcap_queue_dequeu_need_blocks", &opt_pcap_queue_dequeu_need_blocks))
+					->addAlias("pcap_queue_deque_need_blocks"));
 				addConfigItem(new FILE_LINE(42172) cConfigItem_integer("pcap_queue_iface_qring_size", &opt_pcap_queue_iface_qring_size));
 					expert();
 					addConfigItem(new FILE_LINE(42173) cConfigItem_integer("pcap_queue_dequeu_method", &opt_pcap_queue_dequeu_method));

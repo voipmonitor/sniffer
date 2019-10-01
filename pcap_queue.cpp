@@ -195,6 +195,7 @@ int opt_pcap_queue_iface_dedup_separate_threads_extend	= 0;
 int opt_pcap_queue_iface_extend2_use_alloc_stack	= 1;
 int opt_pcap_queue_iface_qring_size 			= 5000;
 int opt_pcap_queue_dequeu_window_length			= -1;
+int opt_pcap_queue_dequeu_window_length_div		= 0;
 int opt_pcap_queue_dequeu_need_blocks			= 0;
 int opt_pcap_queue_dequeu_method			= 2;
 int opt_pcap_queue_use_blocks				= 0;
@@ -1926,6 +1927,29 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << "t2CPU[" << t2cpu;
 		} else {
 			outStrStat << "t2CPU[" << "pb:" << setprecision(1) << t2cpu;
+			if(opt_pcap_queue_dequeu_method &&
+			   opt_pcap_queue_dequeu_window_length > 0) {
+				if(heapPerc > 30 && t2cpu > opt_cpu_limit_new_thread_high) {
+					if(!opt_pcap_queue_dequeu_window_length_div) {
+						opt_pcap_queue_dequeu_window_length_div = 2;
+					} else {
+						opt_pcap_queue_dequeu_window_length_div *= 2;
+					}
+					syslog(LOG_INFO, "decrease pcap_queue_deque_window_length to %i", 
+					       opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div);
+				} else if(heapPerc < 5 && t2cpu < 30 &&
+					  opt_pcap_queue_dequeu_window_length_div > 0) {
+					if(opt_pcap_queue_dequeu_window_length_div > 2) {
+						opt_pcap_queue_dequeu_window_length_div /= 2;
+						syslog(LOG_INFO, "increase pcap_queue_deque_window_length to %i", 
+						       opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div);
+					} else {
+						opt_pcap_queue_dequeu_window_length_div = 0;
+						syslog(LOG_INFO, "restore pcap_queue_deque_window_length to %i", 
+						       opt_pcap_queue_dequeu_window_length);
+					}
+				}
+			}
 			if(pcapQueueQ_outThread_defrag) {
 				double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(true);
 				if(defrag_cpu >= 0) {
@@ -5955,8 +5979,12 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			}
 			if((opt_pcap_queue_dequeu_window_length > 0 ||
 			    opt_pcap_queue_dequeu_need_blocks > 0) &&
-			   (opt_pcap_queue_dequeu_method == 1 || opt_pcap_queue_dequeu_method == 2) &&
-			   (!opt_pb_read_from_file[0])) {
+			   (opt_pcap_queue_dequeu_method == 1 || opt_pcap_queue_dequeu_method == 2)) {
+				int _opt_pcap_queue_dequeu_window_length = opt_pcap_queue_dequeu_window_length;
+				int _opt_pcap_queue_dequeu_need_blocks = opt_pcap_queue_dequeu_need_blocks;
+				if(opt_pcap_queue_dequeu_window_length_div > 0) {
+					_opt_pcap_queue_dequeu_window_length = opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div;
+				}
 				if(opt_pcap_queue_dequeu_method == 1) {
 					u_int64_t at = getTimeUS();
 					if(blockStore) {
@@ -5984,10 +6012,10 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						map<u_int64_t, list<sPacketTimeInfo>* >::iterator last = listPacketTimeInfo.end();
 						--last;
 						while(listPacketTimeInfo.size() && !TERMINATING) {
-							if(opt_pcap_queue_dequeu_need_blocks ?
-							    (signed)listPacketTimeInfo.size() >= opt_pcap_queue_dequeu_need_blocks :
-							    (last->first - first->first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 && 
-							     at - first->second->begin()->at > (unsigned)opt_pcap_queue_dequeu_window_length * 1000)) {
+							if(_opt_pcap_queue_dequeu_need_blocks ?
+							    (signed)listPacketTimeInfo.size() >= _opt_pcap_queue_dequeu_need_blocks :
+							    (last->first - first->first > (unsigned)_opt_pcap_queue_dequeu_window_length * 1000 && 
+							     at - first->second->begin()->at > (unsigned)_opt_pcap_queue_dequeu_window_length * 1000)) {
 								sPacketTimeInfo pti = *(first->second->begin());
 								first->second->pop_front();
 								++sumPacketsCounterOut[0];
@@ -6047,11 +6075,11 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						++blockInfoCount;
 					}
 					while(blockInfoCount &&
-					      (opt_pcap_queue_dequeu_need_blocks ?
-						blockInfoCount >= opt_pcap_queue_dequeu_need_blocks :
-						((blockInfo_utime_last - blockInfo_utime_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 &&
-						  blockInfo_at_last - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000) ||
-						  at - blockInfo_at_first > (unsigned)opt_pcap_queue_dequeu_window_length * 1000 * 4 ||
+					      (_opt_pcap_queue_dequeu_need_blocks ?
+						blockInfoCount >= _opt_pcap_queue_dequeu_need_blocks :
+						((blockInfo_utime_last - blockInfo_utime_first > (unsigned)_opt_pcap_queue_dequeu_window_length * 1000 &&
+						  blockInfo_at_last - blockInfo_at_first > (unsigned)_opt_pcap_queue_dequeu_window_length * 1000) ||
+						  at - blockInfo_at_first > (unsigned)_opt_pcap_queue_dequeu_window_length * 1000 * 4 ||
 						  buffersControl.getPercUsePBtrash() > 50 ||
 						  blockInfoCount == blockInfoCountMax)) &&
 					      !TERMINATING) {
