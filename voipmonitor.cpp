@@ -196,6 +196,7 @@ int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
 int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
+bool opt_null_rtppayload = false;
 bool opt_srtp_rtp_decrypt = false;
 bool opt_srtp_rtp_audio_decrypt = false;
 bool opt_srtp_rtcp_decrypt = true;
@@ -6370,6 +6371,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtpip_find_endpoints", &opt_rtpip_find_endpoints));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("null_rtppayload", &opt_null_rtppayload));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
@@ -9166,6 +9168,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "rtpip_find_endpoints", NULL))) {
 		opt_rtpip_find_endpoints = yesno(value);
 		opt_rtpip_find_endpoints_set = true;
+	}
+	if((value = ini.GetValue("general", "null_rtppayload", NULL))) {
+		opt_null_rtppayload = yesno(value);
 	}
 	if((value = ini.GetValue("general", "savertp-threaded", NULL))) {
 		opt_rtpsave_threaded = yesno(value);

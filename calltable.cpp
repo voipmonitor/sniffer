@@ -1302,6 +1302,15 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 		return(true);
 	}
 	*/
+	extern bool opt_null_rtppayload;
+	if(opt_null_rtppayload) {
+		RTP tmprtp(0, 0);
+		tmprtp.fill_data((u_char*)packetS->data_(), packetS->datalen_());
+		int payload_len = tmprtp.get_payload_len();
+		if(payload_len > 0) {
+			memset(tmprtp.payload_data, 0, payload_len);
+		}
+	}
 	bool record_dtmf = false;
 	bool disable_save = false;
 	unsigned datalen_orig = packetS->datalen_();

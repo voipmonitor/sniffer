@@ -448,6 +448,8 @@ public:
 	 *
 	*/
 	void fill(unsigned char* data, iphdr2 *header_ip, int len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
+	
+	void fill_data(unsigned char* data, int len);
 
 	/**
 	 * @brief get version

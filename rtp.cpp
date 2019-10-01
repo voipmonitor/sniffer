@@ -2100,6 +2100,12 @@ RTP::fill(unsigned char* data, iphdr2 *header_ip, int len, struct pcap_pkthdr *h
 	this->dport = dport;
 }
 
+void
+RTP::fill_data(unsigned char* data, int len) {
+	this->data = data; 
+	this->len = len;
+}
+
 /* update statistics data */
 void
 RTP::update_stats() {
