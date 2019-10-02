@@ -357,6 +357,7 @@ public:
 	string getValueStr(bool configFile = false);
 	list<string> getValueListStr();
 	bool enableMultiValues() { return(true); }
+	static unsigned setPortMartix(const char *port_str, char *port_matrix, unsigned port_max);
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini);
 	bool setParamFromValueStr(string value_str);
@@ -369,6 +370,7 @@ protected:
 	}
 protected:
 	char *param_port_matrix;
+	unsigned port_max;
 };
 
 class cConfigItem_hosts : public cConfigItem {

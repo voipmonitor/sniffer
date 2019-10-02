@@ -893,6 +893,7 @@ cConfigItem_ports::cConfigItem_ports(const char* name, char *port_matrix)
  : cConfigItem(name) {
 	init();
 	param_port_matrix = port_matrix;
+	port_max = 65535;
 }
 
 string cConfigItem_ports::getValueStr(bool configFile) {
@@ -901,7 +902,7 @@ string cConfigItem_ports::getValueStr(bool configFile) {
 	}
 	ostringstream outStr;
 	int counter = 0;
-	for(unsigned i = 0; i < 65535; i++) {
+	for(unsigned i = 0; i <= port_max; i++) {
 		if(param_port_matrix[i]) {
 			if(counter) {
 				if(configFile) {
@@ -911,6 +912,12 @@ string cConfigItem_ports::getValueStr(bool configFile) {
 				}
 			}
 			outStr << i;
+			unsigned j;
+			for(j = i; j <= (port_max-1) && param_port_matrix[j+1]; j++);
+			if(j > i) {
+				outStr << '-' << j;
+				i = j;
+			}
 			++counter;
 		}
 	}
@@ -919,12 +926,46 @@ string cConfigItem_ports::getValueStr(bool configFile) {
 
 list<string> cConfigItem_ports::getValueListStr() {
 	list<string> l;
-	for(unsigned i = 0; i < 65535; i++) {
+	for(unsigned i = 0; i <= port_max; i++) {
 		if(param_port_matrix[i]) {
-			l.push_back(intToString(i));
+			unsigned j;
+			for(j = i; j <= (port_max-1) && param_port_matrix[j+1]; j++);
+			if(j > i) {
+				l.push_back(intToString(i) + "-" + intToString(j));
+				i = j;
+			} else  {
+				l.push_back(intToString(i));
+			}
 		}
 	}
 	return(l);
+}
+
+unsigned cConfigItem_ports::setPortMartix(const char *port_str, char *port_matrix, unsigned port_max) {
+	unsigned set = 0;
+	vector<string> ports_str = split(port_str, split(",|;", "|"), true);
+	for(unsigned i = 0; i < ports_str.size(); i++) {
+		if(ports_str[i].find('-') == string::npos) {
+			unsigned j = atoi(ports_str[i].c_str());
+			if(j <= port_max) {
+				port_matrix[j] = 1;
+				++set;
+			}
+		} else {
+			vector<string> ports_from_to = split(ports_str[i].c_str(), "-", true);
+			if(ports_from_to.size() >= 2) {
+				unsigned ports_from = atoi(ports_from_to[0].c_str());
+				unsigned ports_to = atoi(ports_from_to[1].c_str());
+				if(ports_from <= ports_to) {
+					for(unsigned j = ports_from; j <= ports_to && j <= port_max; j++) {
+						port_matrix[j] = 1;
+						++set;
+					}
+				}
+			}
+		}
+	}
+	return(set);
 }
 
 bool cConfigItem_ports::setParamFromConfigFile(CSimpleIniA *ini) {
@@ -945,8 +986,7 @@ bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str) {
 	int ok = 0;
 	initBeforeSet();
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
-		param_port_matrix[atoi(iter->c_str())] = 1;
-		++ok;
+		ok += setPortMartix(iter->c_str(), param_port_matrix, this->port_max);
 	}
 	return(ok > 0);
 }

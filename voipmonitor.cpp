@@ -7363,12 +7363,7 @@ void get_command_line_arguments() {
 				opt_ignoreRTCPjitter = atoi(optarg);
 				break;
 			case 199:
-				{
-					vector<string> result = explode(optarg, ',');
-					for (size_t iter = 0; iter < result.size(); iter++) {
-						skinnyportmatrix[atoi(result[iter].c_str())] = 1;
-					}
-				}
+				cConfigItem_ports::setPortMartix(optarg, skinnyportmatrix, 65535);
 				break;
 			case 315:
 				{
@@ -7480,12 +7475,7 @@ void get_command_line_arguments() {
 				sipportmatrix[80] = 1;
 				break;
 			case 'Y':
-				{
-					vector<string> result = explode(optarg, ',');
-					for (size_t iter = 0; iter < result.size(); iter++) {
-						sipportmatrix[atoi(result[iter].c_str())] = 1;
-					}
-				}
+				cConfigItem_ports::setPortMartix(optarg, sipportmatrix, 65535);
 				break;
 			case 'm':
 				rtptimeout = atoi(optarg);
@@ -8498,6 +8488,13 @@ void parse_config_item(const char *config, nat_aliases_t *item) {
 	}
 }
 
+void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, char *port_matrix) {
+	CSimpleIni::TNamesDepend::const_iterator i = values->begin();
+	for (; i != values->end(); ++i) {
+		cConfigItem_ports::setPortMartix(i->pItem, port_matrix, 65535);
+	}
+}
+
 int eval_config(string inistr) {
  
 	if(opt_test == 11) {
@@ -8517,28 +8514,17 @@ int eval_config(string inistr) {
 
 	// sip ports
 	if (ini.GetAllValues("general", "sipport", values)) {
-		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
-		for (; i != values.end(); ++i) {
-			sipportmatrix[atoi(i->pItem)] = 1;
-		}
+		parse_config_item_ports(&values, sipportmatrix);
 	}
 
 	// http ports
 	if (ini.GetAllValues("general", "httpport", values)) {
-		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
-		// reset default port 
-		for (; i != values.end(); ++i) {
-			httpportmatrix[atoi(i->pItem)] = 1;
-		}
+		parse_config_item_ports(&values, httpportmatrix);
 	}
 	
 	// webrtc ports
 	if (ini.GetAllValues("general", "webrtcport", values)) {
-		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
-		// reset default port 
-		for (; i != values.end(); ++i) {
-			webrtcportmatrix[atoi(i->pItem)] = 1;
-		}
+		parse_config_item_ports(&values, webrtcportmatrix);
 	}
 	
 	// ssl ip/ports
@@ -8554,11 +8540,7 @@ int eval_config(string inistr) {
 		ssl_client_random_enable = yesno(value);
 	}
 	if (ini.GetAllValues("general", "ssl_sessionkey_udp_port", values)) {
-		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
-		// reset default port 
-		for (; i != values.end(); ++i) {
-			ssl_client_random_portmatrix[atoi(i->pItem)] = 1;
-		}
+		parse_config_item_ports(&values, ssl_client_random_portmatrix);
 	}
 	if (ini.GetAllValues("general", "ssl_sessionkey_udp_ip", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
@@ -8597,11 +8579,7 @@ int eval_config(string inistr) {
 
 	// ipacc ports
 	if (ini.GetAllValues("general", "ipaccountport", values)) {
-		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
-		// reset default port 
-		for (; i != values.end(); ++i) {
-			ipaccountportmatrix[atoi(i->pItem)] = 1;
-		}
+		parse_config_item_ports(&values, ipaccountportmatrix);
 	}
 
 	// nat aliases
@@ -8954,10 +8932,7 @@ int eval_config(string inistr) {
 	}
 	// skinny ports
 	if (ini.GetAllValues("general", "skinny_port", values)) {
-		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
-		for (; i != values.end(); ++i) {
-			skinnyportmatrix[atoi(i->pItem)] = 1;
-		}
+		parse_config_item_ports(&values, skinnyportmatrix);
 	}
 	// mgcp
 	if((value = ini.GetValue("general", "mgcp", NULL))) {
