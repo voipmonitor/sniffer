@@ -4363,11 +4363,7 @@ int Mgmt_sipports(Mgmt_params *params) {
 	}
 	ostringstream outStrSipPorts;
 	extern char *sipportmatrix;
-	for(int i = 0; i < 65537; i++) {
-		if(sipportmatrix[i]) {
-			outStrSipPorts << i << ',';
-		}
-	}
+	outStrSipPorts << cConfigItem_ports::getPortString(sipportmatrix) << ',';
 	extern map<vmIPport, string> ssl_ipport;
 	for(map<vmIPport, string>::iterator it = ssl_ipport.begin(); it != ssl_ipport.end(); it++) {
 		outStrSipPorts << it->first.port << ',';
@@ -4387,11 +4383,7 @@ int Mgmt_skinnyports(Mgmt_params *params) {
 	extern char *skinnyportmatrix;
 	extern int opt_skinny;
 	if (opt_skinny) {
-		for(int i = 0; i < 65537; i++) {
-			if(skinnyportmatrix[i]) {
-				outStrSkinnyPorts << i << ',';
-			}
-		}
+		outStrSkinnyPorts << cConfigItem_ports::getPortString(skinnyportmatrix);
 	}
 	outStrSkinnyPorts << endl;
 	string strSkinnyPorts = outStrSkinnyPorts.str();

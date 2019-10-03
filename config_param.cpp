@@ -968,6 +968,26 @@ unsigned cConfigItem_ports::setPortMartix(const char *port_str, char *port_matri
 	return(set);
 }
 
+string cConfigItem_ports::getPortString(char *port_matrix, unsigned port_max) {
+	string rslt;
+	for(unsigned i = 0; i <= port_max; i++) {
+		if(port_matrix[i]) {
+			unsigned j;
+			for(j = i; j <= (port_max-1) && port_matrix[j+1]; j++);
+			if(!rslt.empty()) {
+				rslt += ',';
+			}
+			if(j > i) {
+				rslt += intToString(i) + "-" + intToString(j);
+				i = j;
+			} else  {
+				rslt += intToString(i);
+			}
+		}
+	}
+	return(rslt);
+}
+
 bool cConfigItem_ports::setParamFromConfigFile(CSimpleIniA *ini) {
 	return(setParamFromValuesStr(getValuesFromConfigFile(ini)));
 }
