@@ -1,3 +1,12 @@
+25.8 04.10.2019
+===============
+- add support for new field 'by ip' (src, dst, both) in fraud sequential alert [VG-1915]
+- support for checking mysql schema in GUI tools [VS-586]
+- auto adjust opt_pcap_queue_dequeu_window_length [VG-1837]
+- add option null_rtppayload which replaces voice in RTP by zeroing data - this option cannot be overriden by any other options [VS-818]
+- sipport can now accept port ranges and multiple values (sipport = 5060-5090,5098) [VG-1922]
+
+
 25.7.1 26.09.2019
 =================
 - fix cisco skinny (broken since ipv6 release) [VS-971]
