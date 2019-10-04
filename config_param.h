@@ -53,6 +53,8 @@ public:
 	virtual int64_t getValueInt() { return(0); }
 	virtual list<string> getValueListStr() { list<string> l; l.push_back(getValueStr()); return(l); }
 	virtual string normalizeStringValueForCmp(string value) { return(value); }
+	virtual string normalizeStringValuesForCmp(list<string> value) { return(""); }
+	virtual bool enable_normalizeStringValuesForCmp() { return(false); }
 	virtual bool enableMultiValues() { return(false); }
 protected:
 	virtual bool setParamFromConfigFile(CSimpleIniA *ini) = 0;
@@ -356,6 +358,9 @@ public:
 	cConfigItem_ports(const char* name, char *port_matrix);
 	string getValueStr(bool configFile = false);
 	list<string> getValueListStr();
+	string normalizeStringValueForCmp(string value);
+	string normalizeStringValuesForCmp(list<string> values);
+	bool enable_normalizeStringValuesForCmp() { return(true); }
 	bool enableMultiValues() { return(true); }
 	static unsigned setPortMartix(const char *port_str, char *port_matrix, unsigned port_max = 65535);
 	static string getPortString(char *port_matrix, unsigned port_max = 65535);

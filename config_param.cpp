@@ -941,6 +941,25 @@ list<string> cConfigItem_ports::getValueListStr() {
 	return(l);
 }
 
+string cConfigItem_ports::normalizeStringValueForCmp(string value) {
+	char *port_matrix = new char[this->port_max + 1];
+	cConfigItem_ports::setPortMartix(value.c_str(), port_matrix, this->port_max);
+	string rslt = getPortString(port_matrix, this->port_max);
+	delete [] port_matrix;
+	return(rslt);
+}
+
+string cConfigItem_ports::normalizeStringValuesForCmp(list<string> values) {
+	char *port_matrix = new char[this->port_max + 1];
+	memset(port_matrix, 0, this->port_max + 1);
+	for(list<string>::iterator iter = values.begin(); iter != values.end(); iter++) {
+		cConfigItem_ports::setPortMartix(iter->c_str(), port_matrix, this->port_max);
+	}
+	string rslt = getPortString(port_matrix, this->port_max);
+	delete [] port_matrix;
+	return(rslt);
+}
+
 unsigned cConfigItem_ports::setPortMartix(const char *port_str, char *port_matrix, unsigned port_max) {
 	unsigned set = 0;
 	vector<string> ports_str = split(port_str, split(",|;", "|"), true);
@@ -2226,6 +2245,17 @@ bool cConfig::testEqValues(const char *itemName, const char *value1, const char 
 
 bool cConfig::testEqValues(string itemName, list<string> values1, list<string> values2) {
 	if(values1.size() != values2.size()) {
+		map<string, cConfigItem*>::iterator iter = config_map.find(itemName);
+		if(iter == config_map.end()) {
+			return(false);
+		}
+		if(iter->second->enable_normalizeStringValuesForCmp()) {
+			string value1_str = iter->second->normalizeStringValuesForCmp(values1);
+			string value2_str = iter->second->normalizeStringValuesForCmp(values2);
+			if(value1_str == value2_str) {
+				return(true);
+			}
+		}
 		return(false);
 	}
 	values1.sort();
