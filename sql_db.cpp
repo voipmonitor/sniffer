@@ -2984,7 +2984,7 @@ void MySqlStore_process::__store(list<string> *queries) {
 	string queries_str;
 	list<string> queries_list;
 	list<string> ig;
-	__store_prepare_queries(queries, dbData->cb(), dbData->ai(), NULL,
+	__store_prepare_queries(queries, dbData, NULL,
 				&queries_str, &queries_list, NULL,
 				useNewStore(), useSetId(), opt_mysql_enable_multiple_rows_insert,
 				this->sqlDb->maxAllowedPacket);
@@ -8724,7 +8724,7 @@ u_int32_t cLogSensor::last_subject_db_at = 0;
 
 
 string MYSQL_CODEBOOK_ID(int type, string value) {
-	string nameValue = dbData->cb()->getNameForType((cSqlDbCodebook::eTypeCodebook)type) + ";" + value;
+	string nameValue = dbData->getCbNameForType((cSqlDbCodebook::eTypeCodebook)type) + ";" + value;
 	return(MYSQL_CODEBOOK_ID_PREFIX + intToString(nameValue.length()) + ":" + nameValue);
 }
 

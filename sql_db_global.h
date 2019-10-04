@@ -175,21 +175,25 @@ public:
 	cSqlDbData();
 	~cSqlDbData();
 	void init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb, bool reload = false);
-	cSqlDbCodebooks *cb() { return(codebooks); }
-	cSqlDbAutoIncrement *ai() { return(autoincrement); }
+	unsigned getCbId(cSqlDbCodebook::eTypeCodebook type, const char *stringValue, bool enableInsert = false, bool enableAutoLoad =  false,
+			 string *insertQuery = NULL, SqlDb *sqlDb = NULL);
+	unsigned getCbId(const char *type, const char *stringValue, bool enableInsert = false, bool enableAutoLoad =  false,
+			 string *insertQuery = NULL, SqlDb *sqlDb = NULL);
+	u_int64_t getAiId(const char *table, const char *idColumn = NULL, SqlDb *sqlDb = NULL);
+	string getCbNameForType(cSqlDbCodebook::eTypeCodebook type);
 private:
 	void initCodebooks(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb);
 	void initAutoIncrement(SqlDb *sqlDb);
-	void lock_init() {
-		while(__sync_lock_test_and_set(&_sync_init, 1));
+	void lock_data() {
+		while(__sync_lock_test_and_set(&_sync_data, 1));
 	}
-	void unlock_init() {
-		__sync_lock_release(&_sync_init);
+	void unlock_data() {
+		__sync_lock_release(&_sync_data);
 	}
 private:
 	cSqlDbCodebooks *codebooks;
 	cSqlDbAutoIncrement *autoincrement;
-	volatile int _sync_init;
+	volatile int _sync_data;
 };
 
 
@@ -244,7 +248,7 @@ string MYSQL_CODEBOOK_ID(int type, string value);
 string MYSQL_ADD_QUERY_END(string query, bool enableSubstQueryEnd = true);
 
 
-void __store_prepare_queries(list<string> *queries, cSqlDbCodebooks *codebooks, cSqlDbAutoIncrement *autoincerement, SqlDb *sqlDb,
+void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *sqlDb,
 			     string *queries_str, list<string> *queries_list, list<string> *cb_inserts,
 			     int enable_new_store, bool enable_set_id, bool enable_multiple_rows_insert,
 			     long unsigned maxAllowedPacket);

@@ -974,7 +974,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 				if(useSetId()) {
 					rec.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, adj_ua), field);
 				} else {
-					unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), false, true);
 					if(_cb_id) {
 						rec.add(_cb_id, field);
 					} else {
@@ -989,7 +989,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 			if(useSetId()) {
 				rec.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, requestResponse->response->response_string), "response_id");
 			} else {
-				unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, requestResponse->response->response_string.c_str(), false, true);
+				unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, requestResponse->response->response_string.c_str(), false, true);
 				if(_cb_id) {
 					rec.add(_cb_id, "response_id");
 				} else {
@@ -1006,7 +1006,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 				if(useSetId()) {
 					rec.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_contenttype, item->content_type), field_content_type);
 				} else {
-					unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_contenttype, item->content_type.c_str(), false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_contenttype, item->content_type.c_str(), false, true);
 					if(_cb_id) {
 						rec.add(_cb_id, field_content_type);
 					} else {
@@ -1076,17 +1076,17 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 			string &adj_ua = i == 0 ? adj_ua_src : adj_ua_dst;
 			if(!adj_ua.empty()) {
 				string field = i == 0 ? "ua_src_id" : "ua_dst_id";
-				rec.add(dbData->cb()->getId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), true), field);
+				rec.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), true), field);
 			}
 		}
 		if(requestResponse->response && !requestResponse->response->response_string.empty()) {
-			rec.add(dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, requestResponse->response->response_string.c_str(), true), "response_id");
+			rec.add(dbData->getCbId(cSqlDbCodebook::_cb_sip_response, requestResponse->response->response_string.c_str(), true), "response_id");
 		}
 		for(int i = 0; i < 2; i++) {
 			cSipMsgItem *item = i == 0 ? requestResponse->request : requestResponse->response;
 			if(item && !item->content_type.empty()) {
 				string field_content_type = i == 0 ? "request_id_content_type" : "response_id_content_type";
-				rec.add(dbData->cb()->getId(cSqlDbCodebook::_cb_contenttype, item->content_type.c_str(), true), field_content_type);
+				rec.add(dbData->getCbId(cSqlDbCodebook::_cb_contenttype, item->content_type.c_str(), true), field_content_type);
 			}
 		}
 		int64_t sipMsgID = sqlDbSaveSipMsg->insert(table, rec);

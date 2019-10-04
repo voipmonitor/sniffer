@@ -413,7 +413,7 @@ string cSqlDbCodebooks::getNameForType(cSqlDbCodebook::eTypeCodebook type) {
 cSqlDbData::cSqlDbData() {
 	codebooks = NULL;
 	autoincrement = NULL;
-	_sync_init = 0;
+	_sync_data = 0;
 }
 
 cSqlDbData::~cSqlDbData() {
@@ -426,7 +426,7 @@ cSqlDbData::~cSqlDbData() {
 }
 
 void cSqlDbData::init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb, bool reload) {
-	lock_init();
+	lock_data();
 	if(reload) {
 		if(codebooks) {
 			delete codebooks;
@@ -453,7 +453,55 @@ void cSqlDbData::init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb, bool 
 	if(_initAutoincrement && loadAll) {
 		initAutoIncrement(sqlDb);
 	}
-	unlock_init();
+	unlock_data();
+}
+
+unsigned cSqlDbData::getCbId(cSqlDbCodebook::eTypeCodebook type, const char *stringValue, bool enableInsert, bool enableAutoLoad,
+			     string *insertQuery, SqlDb *sqlDb) {
+	#ifdef CLOUD_ROUTER_SERVER
+	lock_data();
+	#endif
+	unsigned rslt = codebooks->getId(type, stringValue, enableInsert, enableAutoLoad,
+					 autoincrement, insertQuery, sqlDb);
+	#ifdef CLOUD_ROUTER_SERVER
+	unlock_data();
+	#endif
+	return(rslt);
+}
+
+unsigned cSqlDbData::getCbId(const char *type, const char *stringValue, bool enableInsert, bool enableAutoLoad,
+			     string *insertQuery, SqlDb *sqlDb) {
+	#ifdef CLOUD_ROUTER_SERVER
+	lock_data();
+	#endif
+	unsigned rslt = codebooks->getId(codebooks->getTypeForName(type), stringValue, enableInsert, enableAutoLoad,
+					 autoincrement, insertQuery, sqlDb);
+	#ifdef CLOUD_ROUTER_SERVER
+	unlock_data();
+	#endif
+	return(rslt);
+}
+
+u_int64_t cSqlDbData::getAiId(const char *table, const char *idColumn, SqlDb *sqlDb) {
+	#ifdef CLOUD_ROUTER_SERVER
+	lock_data();
+	#endif
+	u_int64_t rslt = autoincrement->getId(table, idColumn, sqlDb);
+	#ifdef CLOUD_ROUTER_SERVER
+	unlock_data();
+	#endif
+	return(rslt);
+}
+
+string cSqlDbData::getCbNameForType(cSqlDbCodebook::eTypeCodebook type) {
+	#ifdef CLOUD_ROUTER_SERVER
+	lock_data();
+	#endif
+	string rslt = codebooks->getNameForType(type);
+	#ifdef CLOUD_ROUTER_SERVER
+	unlock_data();
+	#endif
+	return(rslt);
 }
 
 void cSqlDbData::initCodebooks(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb) {
@@ -665,7 +713,7 @@ string sqlEscapeStringBorder(const char *inputStr, char borderChar, const char *
 }
 
 
-void __store_prepare_queries(list<string> *queries, cSqlDbCodebooks *codebooks, cSqlDbAutoIncrement *autoincrement, SqlDb *sqlDb,
+void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *sqlDb,
 			     string *queries_str, list<string> *queries_list, list<string> *cb_inserts,
 			     int enable_new_store, bool enable_set_id, bool enable_multiple_rows_insert,
 			     long unsigned maxAllowedPacket) {
@@ -696,8 +744,8 @@ void __store_prepare_queries(list<string> *queries, cSqlDbCodebooks *codebooks, 
 						string cb_value = query_vect[i].substr(cbIdValueSeparatorPos + 1, nameValueLength - (cbIdValueSeparatorPos - cbIdLengthSeparatorPos - 1) - 1);
 						//cout << "/" << cb_name << "/" << cb_value << "/" << endl;
 						string cb_insert;
-						unsigned cb_id = codebooks->getId(codebooks->getTypeForName(cb_name.c_str()), cb_value.c_str(), true, false,
-										  autoincrement, &cb_insert, sqlDb);
+						unsigned cb_id = dbData->getCbId(cb_name.c_str(), cb_value.c_str(), true, false,
+										 &cb_insert, sqlDb);
 						if(!cb_insert.empty()) {
 							cb_inserts->push_back(cb_insert);
 						}
@@ -725,7 +773,7 @@ void __store_prepare_queries(list<string> *queries, cSqlDbCodebooks *codebooks, 
 				}
 			}
 			if(setIdMainRecord) {
-				idMainRecord = autoincrement->getId(tableMainRecord.c_str(), NULL, sqlDb);
+				idMainRecord = dbData->getAiId(tableMainRecord.c_str(), NULL, sqlDb);
 			}
 		}
 		if(enable_multiple_rows_insert) {

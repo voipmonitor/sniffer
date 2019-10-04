@@ -525,7 +525,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 			if(useSetId()) {
 				reg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, adj_ua), "ua_id");
 			} else {
-				unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), false, true);
+				unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), false, true);
 				if(_cb_id) {
 					reg.add(_cb_id, "ua_id");
 				} else {
@@ -547,7 +547,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		sqlStore->query_lock(query_str.c_str(), storeId);
 	} else {
 		if(!adj_ua.empty()) {
-			reg.add(dbData->cb()->getId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), true), "ua_id");
+			reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), true), "ua_id");
 		}
 		sqlDbSaveRegister->insert(register_table, reg);
 	}

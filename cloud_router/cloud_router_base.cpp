@@ -19,7 +19,6 @@ extern void CR_SET_TERMINATE();
 extern sCloudRouterVerbose& CR_VERBOSE();
 extern bool opt_socket_use_poll;
 extern cResolver resolver;
-extern volatile int terminating;
 
 
 cRsa::cRsa() {
@@ -419,20 +418,22 @@ bool cSocket::listen() {
 	setsockopt(handle, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	int rsltListen;
 	do {
-		while(socket_bind(handle, ip, port) == -1 && !terminate && !terminating) {
-			setError("cannot bind to port [%d] - trying again after 5 seconds", port);
+		while(socket_bind(handle, ip, port) == -1 && !terminate && !CR_TERMINATE()) {
 			clearError();
+			setError("cannot bind to port [%d] - trying again after 5 seconds", port);
 			sleep(5);
 		}
-		if(terminate || terminating) {
+		if(terminate || CR_TERMINATE()) {
 			return(false);
 		}
 		rsltListen = ::listen(handle, 5);
 		if(rsltListen == -1) {
+			clearError();
 			setError("listen failed - trying again after 5 seconds");
 			sleep(5);
 		}
 	} while(rsltListen == -1);
+	clearError();
 	return(true);
 }
 

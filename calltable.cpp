@@ -4532,7 +4532,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(useSetId()) {
 			cdr.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, lastSIPresponse), "lastSIPresponse_id");
 		} else {
-			unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, false, true);
+			unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, false, true);
 			if(_cb_id) {
 				cdr.add(_cb_id, "lastSIPresponse_id");
 			} else {
@@ -4547,7 +4547,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(useSetId()) {
 					cdr.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_reason_sip, reason_sip_text), "reason_sip_text_id");
 				} else {
-					unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_reason_sip, reason_sip_text.c_str(), false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_sip, reason_sip_text.c_str(), false, true);
 					if(_cb_id) {
 						cdr.add(_cb_id, "reason_sip_text_id");
 					} else {
@@ -4562,7 +4562,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(useSetId()) {
 					cdr.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_reason_q850, reason_q850_text), "reason_q850_text_id");
 				} else {
-					unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_reason_q850, reason_q850_text.c_str(), false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_q850, reason_q850_text.c_str(), false, true);
 					if(_cb_id) {
 						cdr.add(_cb_id, "reason_q850_text_id");
 					} else {
@@ -4579,7 +4579,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(useSetId()) {
 					cdr.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, a_ua), "a_ua_id");
 				} else {
-					unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, a_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, false, true);
 					if(_cb_id) {
 						cdr.add(_cb_id, "a_ua_id");
 					} else {
@@ -4594,7 +4594,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(useSetId()) {
 					cdr.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, b_ua), "b_ua_id");
 				} else {
-					unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, b_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, b_ua, false, true);
 					if(_cb_id) {
 						cdr.add(_cb_id, "b_ua_id");
 					} else {
@@ -4884,7 +4884,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(useSetId()) {
 					sipresp.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, iterSiprespUnique->SIPresponse), "SIPresponse_id");
 				} else {
-					unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, iterSiprespUnique->SIPresponse.c_str(), false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, iterSiprespUnique->SIPresponse.c_str(), false, true);
 					if(_cb_id) {
 						sipresp.add(_cb_id, "SIPresponse_id");
 					} else {
@@ -4926,7 +4926,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						siphist.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_request, iterSiphistory->SIPrequest), "SIPrequest_id");
 						indexMultiInsert += 1;
 					} else {
-						unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_sip_request, iterSiphistory->SIPrequest.c_str(), false, true);
+						unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_request, iterSiphistory->SIPrequest.c_str(), false, true);
 						if(_cb_id) {
 							siphist.add(_cb_id, "SIPrequest_id");
 							indexMultiInsert += 1;
@@ -4945,7 +4945,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						siphist.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, iterSiphistory->SIPresponse), "SIPresponse_id");
 						indexMultiInsert += 2;
 					} else {
-						unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, iterSiphistory->SIPresponse.c_str(), false, true);
+						unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, iterSiphistory->SIPresponse.c_str(), false, true);
 						if(_cb_id) {
 							siphist.add(_cb_id, "SIPresponse_id");
 							indexMultiInsert += 2;
@@ -5065,20 +5065,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		return(0);
 	}
 
-	lastSIPresponse_id = dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, true);
+	lastSIPresponse_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, true);
 	if(existsColumns.cdr_reason) {
 		if(reason_sip_text.length()) {
-			reason_sip_id = dbData->cb()->getId(cSqlDbCodebook::_cb_reason_sip, reason_sip_text.c_str(), true);
+			reason_sip_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_sip, reason_sip_text.c_str(), true);
 		}
 		if(reason_q850_text.length()) {
-			reason_q850_id = dbData->cb()->getId(cSqlDbCodebook::_cb_reason_q850, reason_q850_text.c_str(), true);
+			reason_q850_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_q850, reason_q850_text.c_str(), true);
 		}
 	}
 	if(a_ua[0]) {
-		a_ua_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, a_ua, true);
+		a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true);
 	}
 	if(b_ua[0]) {
-		b_ua_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, b_ua, true);
+		b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, b_ua, true);
 	}
 
 	/*
@@ -5220,7 +5220,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
 			SqlDb_row sipresp;
 			sipresp.add(cdrID, "cdr_ID");
-			sipresp.add(dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, iterSiprespUnique->SIPresponse.c_str(), true), "SIPresponse_id");
+			sipresp.add(dbData->getCbId(cSqlDbCodebook::_cb_sip_response, iterSiprespUnique->SIPresponse.c_str(), true), "SIPresponse_id");
 			sipresp.add(iterSiprespUnique->SIPresponseNum, "SIPresponseNum");
 			if(existsColumns.cdr_sipresp_calldate) {
 				sipresp.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_sipresp_calldate_ms);
@@ -5234,11 +5234,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				siphist.add(cdrID, "cdr_ID");
 				siphist.add(iterSiphistory->time_us - first_packet_time_us, "time");
 				if(iterSiphistory->SIPrequest.length()) {
-					 siphist.add(dbData->cb()->getId(cSqlDbCodebook::_cb_sip_request, iterSiphistory->SIPrequest.c_str(), true), "SIPrequest_id");
+					 siphist.add(dbData->getCbId(cSqlDbCodebook::_cb_sip_request, iterSiphistory->SIPrequest.c_str(), true), "SIPrequest_id");
 				}
 				if(iterSiphistory->SIPresponseNum && iterSiphistory->SIPresponse.length()) {
 					 siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
-					 siphist.add(dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, iterSiphistory->SIPresponse.c_str(), true), "SIPresponse_id");
+					 siphist.add(dbData->getCbId(cSqlDbCodebook::_cb_sip_response, iterSiphistory->SIPresponse.c_str(), true), "SIPresponse_id");
 				}
 				if(existsColumns.cdr_siphistory_calldate) {
 					siphist.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_siphistory_calldate_ms);
@@ -5522,7 +5522,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(intToString(fname_register), "fname");
 						reg.add(useSensorId, "id_sensor");
 						if(a_ua[0]) {
-							reg.add(dbData->cb()->getId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
+							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
 						}
 						sqlDbSaveCall->insert("register_state", reg);
 					}
@@ -5542,7 +5542,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(register_expires, "expires");
 						reg.add(regstate, "state");
 						if(a_ua[0]) {
-							reg.add(dbData->cb()->getId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
+							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
 						}
 						reg.add(intToString(fname_register), "fname");
 						reg.add(useSensorId, "id_sensor");
@@ -5563,7 +5563,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(register_expires, "expires");
 					reg.add(regstate, "state");
 					if(a_ua[0]) {
-						reg.add(dbData->cb()->getId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
+						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
 					}
 					reg.add(intToString(fname_register), "fname");
 					reg.add(useSensorId, "id_sensor");
@@ -5589,7 +5589,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(digest_username), "digestusername");
 					reg.add(sqlEscapeString(digest_realm), "digestrealm");
 					if(a_ua[0]) {
-						reg.add(dbData->cb()->getId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
+						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
 					}
 					reg.add(register_expires, "expires");
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s() + register_expires).c_str()), "expires_at");
@@ -5697,7 +5697,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(digest_username), "digestusername");
 					if(a_ua[0]) {
-						reg.add(dbData->cb()->getId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
+						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
 					}
 					reg.add(intToString(fname_register), "fname");
 					if(useSensorId > -1) {
@@ -5851,7 +5851,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		if(useSetId()) {
 			msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, lastSIPresponse), "lastSIPresponse_id");
 		} else {
-			unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, false, true);
+			unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, false, true);
 			if(_cb_id) {
 				msg.add(_cb_id, "lastSIPresponse_id");
 			} else {
@@ -5866,7 +5866,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 				if(useSetId()) {
 					msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, a_ua), "a_ua_id");
 				} else {
-					unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, a_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, false, true);
 					if(_cb_id) {
 						msg.add(_cb_id, "a_ua_id");
 					} else {
@@ -5881,7 +5881,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 				if(useSetId()) {
 					msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, b_ua), "b_ua_id");
 				} else {
-					unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, b_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, b_ua, false, true);
 					if(_cb_id) {
 						msg.add(_cb_id, "b_ua_id");
 					} else {
@@ -5897,7 +5897,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			if(useSetId()) {
 				msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_contenttype, contenttype), "id_contenttype");
 			} else {
-				unsigned _cb_id = dbData->cb()->getId(cSqlDbCodebook::_cb_contenttype, contenttype, false, true);
+				unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_contenttype, contenttype, false, true);
 				if(_cb_id) {
 					msg.add(_cb_id, "id_contenttype");
 				} else {
@@ -6006,15 +6006,15 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			a_ua_id = 0,
 			b_ua_id = 0;
 
-	lastSIPresponse_id = dbData->cb()->getId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, true);
+	lastSIPresponse_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, true);
 	if(a_ua[0]) {
-		a_ua_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, a_ua, true);
+		a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true);
 	}
 	if(b_ua[0]) {
-		b_ua_id = dbData->cb()->getId(cSqlDbCodebook::_cb_ua, b_ua, true);
+		b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, b_ua, true);
 	}
 	if(contenttype && contenttype[0]) {
-		msg.add(dbData->cb()->getId(cSqlDbCodebook::_cb_contenttype, contenttype, true), "id_contenttype");
+		msg.add(dbData->getCbId(cSqlDbCodebook::_cb_contenttype, contenttype, true), "id_contenttype");
 	}
 
 	msg.add(lastSIPresponse_id, "lastSIPresponse_id", true);
