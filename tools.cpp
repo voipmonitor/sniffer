@@ -2886,6 +2886,7 @@ void ParsePacket::setStdParse() {
 	addNode("geoposition:", typeNode_std);
 	addNode("user-agent:", typeNode_std);
 	addNode("authorization:", typeNode_std);
+	addNode("proxy-authorization:", typeNode_std);
 	addNode("expires:", typeNode_std);
 	addNode("x-voipmonitor-norecord:", typeNode_std);
 	addNode("signal:", typeNode_std);

@@ -2689,10 +2689,13 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 			get_sip_domain(packetS, "\nContact:", "\nm:", call->contact_domain, sizeof(call->contact_domain), ppntt_contact, ppndt_contact_domain);
 
 			// copy Authorization
-			s = gettag_sip(packetS, "\nAuthorization:", &l);
-			if(s) {
-				get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "username=\"", call->digest_username, sizeof(call->digest_username));
-				get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
+			for(int pass_authorization = 0; pass_authorization < 2; pass_authorization++) {
+				s = gettag_sip(packetS, pass_authorization == 0 ? "\nAuthorization:" : "\nProxy-Authorization:", &l);
+				if(s) {
+					get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "username=\"", call->digest_username, sizeof(call->digest_username));
+					get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
+					break;
+				}
 			}
 			// get expires header
 			s = gettag_sip(packetS, "\nExpires:", &l);
@@ -4113,10 +4116,13 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		if(verbosity > 3) syslog(LOG_DEBUG, "REGISTER Call-ID[%s] regcount[%d]", call->call_id.c_str(), call->regcount);
 
 		// update Authorization
-		s = gettag_sip(packetS, "\nAuthorization:", &l);
-		if(s) {
-			get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "username=\"", call->digest_username, sizeof(call->digest_username));
-			get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
+		for(int pass_authorization = 0; pass_authorization < 2; pass_authorization++) {
+			s = gettag_sip(packetS, pass_authorization == 0 ? "\nAuthorization:" : "\nProxy-Authorization:", &l);
+			if(s) {
+				get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "username=\"", call->digest_username, sizeof(call->digest_username));
+				get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "realm=\"", call->digest_realm, sizeof(call->digest_realm));
+				break;
+			}
 		}
 
 		if(call->regstate == 2 &&
