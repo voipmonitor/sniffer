@@ -3622,11 +3622,16 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 }
 
 inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *block) {
-	while(!buffersControl.check__pcap_store_queue__push()) {
-		if(is_terminating()) {
-			return;
+	if(!buffersControl.check__pcap_store_queue__push()) {
+		if(!(opt_pcap_queue_store_queue_max_disk_size &&
+		     !opt_pcap_queue_disk_folder.empty())) {
+			do {
+				if(is_terminating()) {
+					return;
+				}
+				usleep(1000);
+			} while(!buffersControl.check__pcap_store_queue__push());
 		}
-		usleep(1000);
 	}
 	unsigned int _writeIndex = writeit % qringmax;
 	while(qring_blocks_used[_writeIndex]) {
@@ -5416,9 +5421,16 @@ void PcapQueue_readFromInterface::push_blockstore(pcap_block_store **block_store
 	if(!opt_pcap_queue_compress && this->instancePcapFifo && opt_pcap_queue_suppress_t1_thread) {
 		this->instancePcapFifo->addBlockStoreToPcapStoreQueue(*block_store);
 	} else if(this->block_qring) {
-		while(!TERMINATING &&
-		      !buffersControl.check__pcap_store_queue__push()) {
-			usleep(1000);
+		if(!buffersControl.check__pcap_store_queue__push()) {
+			if(!(opt_pcap_queue_store_queue_max_disk_size &&
+			     !opt_pcap_queue_disk_folder.empty())) {
+				do {
+					if(TERMINATING) {
+						break;
+					}
+					usleep(1000);
+				} while(!buffersControl.check__pcap_store_queue__push());
+			}
 		}
 		this->block_qring->push(block_store, true);
 	} else {
