@@ -430,7 +430,7 @@ bool SqlDb::queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock) 
 		string preparedQuery = this->prepareQuery(query, !callFromStoreProcessWithFixDeadlock && send_query_counter > 1);
 		if(pass > 0) {
 			sleep(1);
-			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(preparedQuery).c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(preparedQuery).substr(0, 100).c_str());
 		}
 		vector<dstring> postData;
 		postData.push_back(dstring("query", preparedQuery.c_str()));
@@ -503,7 +503,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 			} else {
 				sleep(1);
 			}
-			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(preparedQuery.c_str()).c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(preparedQuery.c_str()).substr(0, 100).c_str());
 		} else if(this->remote_socket && this->remote_socket->getLastTimeOkRead() && getTimeUS() > this->remote_socket->getLastTimeOkRead() + 10 * 1000000ull) {
 			if(!this->remote_socket->checkHandleRead()) {
 				delete this->remote_socket;
@@ -1766,7 +1766,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 			} else {
 				sleep(1);
 			}
-			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, prepareQueryForPrintf(preparedQuery).c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, prepareQueryForPrintf(preparedQuery).substr(0, 100).c_str());
 		}
 		if(!this->connected()) {
 			this->connect();
@@ -2760,7 +2760,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 			} else {
 				sleep(1);
 			}
-			syslog(LOG_INFO, "next attempt %u - query: %s", pass, prepareQueryForPrintf(query_str).c_str());
+			syslog(LOG_INFO, "next attempt %u - query: %s", pass, prepareQueryForPrintf(query_str).substr(0, 100).c_str());
 		}
 		if(!this->remote_socket) {
 			this->remote_socket = new FILE_LINE(0) cSocketBlock("sql store", true);
