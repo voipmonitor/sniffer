@@ -234,7 +234,8 @@ public:
 public:
 	SqlDb();
 	virtual ~SqlDb();
-	void setConnectParameters(string server, string user, string password, string database = "", u_int16_t port = 0, bool showversion = true);
+	void setConnectParameters(string server, string user, string password, string database = "", u_int16_t port = 0, bool showversion = true,
+		char *sslkey = NULL, char *sslcert = NULL, char *sslcacert = NULL, char *sslcapath = NULL, string sslciphers = "");
 	void setCloudParameters(string cloud_host, string cloud_token, bool cloud_router);
 	void setLoginTimeout(ulong loginTimeout);
 	void setDisableSecureAuth(bool disableSecureAuth = true);
@@ -432,6 +433,11 @@ protected:
 	string conn_password;
 	string conn_database;
 	u_int16_t conn_port;
+	char *conn_sslkey;
+	char *conn_sslcert;
+	char *conn_sslcacert;
+	char *conn_sslcapath;
+	string conn_sslciphers;
 	bool conn_disable_secure_auth;
 	string cloud_host;
 	string cloud_redirect;
@@ -706,7 +712,7 @@ public:
 	MySqlStore_process(int id, class MySqlStore *parentStore,
 			   const char *host, const char *user, const char *password, const char *database, u_int16_t port,
 			   const char *cloud_host, const char *cloud_token, bool cloud_router,
-			   int concatLimit);
+			   int concatLimit, char *sslkey, char *sslcert, char *sslcacert, char *sslcapath, string sslciphers);
 	~MySqlStore_process();
 	void connect();
 	void disconnect();
@@ -878,7 +884,8 @@ private:
 	};
 public:
 	MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port,
-		   const char *cloud_host = NULL, const char *cloud_token = NULL, bool cloud_router = true);
+		   const char *cloud_host = NULL, const char *cloud_token = NULL, bool cloud_router = true,
+		   char *sslkey = NULL, char *sslcert = NULL, char *sslcacert = NULL, char *sslcapath = NULL, string sslciphers = "");
 	~MySqlStore();
 	void queryToFiles(bool enable = true, const char *directory = NULL, int period = 0);
 	void queryToFilesTerminate();
@@ -961,6 +968,11 @@ private:
 	string password;
 	string database;
 	u_int16_t port;
+	char *sslkey;
+	char *sslcert;
+	char *sslcacert;
+	char *sslcapath;
+	string sslciphers;
 	string cloud_host;
 	string cloud_token;
 	bool cloud_router;
