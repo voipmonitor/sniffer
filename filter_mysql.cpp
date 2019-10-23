@@ -9,6 +9,10 @@
 #include <math.h>
 #include <vector>
 
+
+extern bool selectSensorsContainSensorId(string select_sensors);
+
+
 using namespace std;
 
 extern int opt_nocdr;
@@ -178,11 +182,21 @@ void IPfilter::load(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	sqlDb->query("SELECT * FROM filter_ip");
+	bool existsSensorsTable = sqlDb->existsTable("filter_ip_sensors");
+	sqlDb->query(string("SELECT filter_ip.*") +
+		     (existsSensorsTable ? 
+		       ",(select group_concat(coalesce(sensor_id, -2)) \
+  			  from filter_ip_sensors \
+			  where filter_ip_id = filter_ip.id) as sensors_id" :
+		       "") +
+		     " FROM filter_ip");
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
 	while((row = rows.fetchRow())) {
+		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"]))) {
+			continue;
+		}
 		count++;
 		db_row* filterRow = new FILE_LINE(4001) db_row;
 		filterRow->ip.setIP(&row, "ip");
@@ -400,11 +414,21 @@ void TELNUMfilter::load(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	sqlDb->query("SELECT * FROM filter_telnum");
+	bool existsSensorsTable = sqlDb->existsTable("filter_telnum_sensors");
+	sqlDb->query(string("SELECT filter_telnum.*") +
+		     (existsSensorsTable ? 
+		       ",(select group_concat(coalesce(sensor_id, -2)) \
+  			  from filter_telnum_sensors \
+			  where filter_telnum_id = filter_telnum.id) as sensors_id" :
+		       "") +
+		     " FROM filter_telnum");
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
 	while((row = rows.fetchRow())) {
+		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"]))) {
+			continue;
+		}
 		count++;
 		db_row* filterRow = new(db_row);
 		strcpy_null_term(filterRow->prefix, trim_str(row["prefix"]).c_str());
@@ -638,11 +662,21 @@ void DOMAINfilter::load(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	sqlDb->query("SELECT * FROM filter_domain");
+	bool existsSensorsTable = sqlDb->existsTable("filter_domain_sensors");
+	sqlDb->query(string("SELECT filter_domain.*") +
+		     (existsSensorsTable ? 
+		       ",(select group_concat(coalesce(sensor_id, -2)) \
+  			  from filter_domain_sensors \
+			  where filter_domain_id = filter_domain.id) as sensors_id" :
+		       "") +
+		     " FROM filter_domain");
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
 	while((row = rows.fetchRow())) {
+		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"]))) {
+			continue;
+		}
 		count++;
 		db_row* filterRow = new FILE_LINE(4006) db_row;
 		filterRow->domain = trim_str(row["domain"]);
@@ -788,11 +822,21 @@ void SIP_HEADERfilter::load(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	sqlDb->query("SELECT * FROM filter_sip_header");
+	bool existsSensorsTable = sqlDb->existsTable("filter_sip_header_sensors");
+	sqlDb->query(string("SELECT filter_sip_header.*") +
+		     (existsSensorsTable ? 
+		       ",(select group_concat(coalesce(sensor_id, -2)) \
+  			  from filter_sip_header_sensors \
+			  where filter_sip_header_id = filter_sip_header.id) as sensors_id" :
+		       "") +
+		     " FROM filter_sip_header");
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
 	while((row = rows.fetchRow())) {
+		if(!(!existsSensorsTable || selectSensorsContainSensorId(row["sensors_id"]))) {
+			continue;
+		}
 		count++;
 		db_row* filterRow = new FILE_LINE(4009) db_row;
 		filterRow->header = trim_str(row["header"]);
