@@ -543,15 +543,30 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				break;
 			} else if(next_header_ip_offset < 0) {
 				if(ppf & ppf_returnZeroInCheckData) {
-					//cout << "pcapProcess exit 004" << endl;
+					//cout << "pcapProcess exit 0041" << endl;
 					if(pcap_header_plus2) {
 						pcap_header_plus2->ignore = true;
 					}
 					return(0);
+				} else {
+					break;
 				}
 			} else {
-				ppd->header_ip = (iphdr2*)((u_char*)ppd->header_ip + next_header_ip_offset);
-				ppd->header_ip_offset += next_header_ip_offset;
+				iphdr2 *next_header_ip = (iphdr2*)((u_char*)ppd->header_ip + next_header_ip_offset);
+				if(next_header_ip->version == 4 || (VM_IPV6_B && next_header_ip->version == 6)) {
+					ppd->header_ip = next_header_ip;
+					ppd->header_ip_offset += next_header_ip_offset;
+				} else {
+					if(ppf & ppf_returnZeroInCheckData) {
+						//cout << "pcapProcess exit 0042" << endl;
+						if(pcap_header_plus2) {
+							pcap_header_plus2->ignore = true;
+						}
+						return(0);
+					} else {
+						break;
+					}
+				}
 			}
 			if(ppd->header_ip->get_protocol() == IPPROTO_UDP) {
 				u_int16_t frag_data = ppd->header_ip->get_frag_data();
