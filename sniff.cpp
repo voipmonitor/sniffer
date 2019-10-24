@@ -2587,6 +2587,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	call->set_first_packet_time_us(getTimeUS(packetS->header_pt));
 	call->setSipcallerip(packetS->saddr_(), packetS->source_(), packetS->get_callid());
 	call->setSipcalledip(packetS->daddr_(), packetS->dest_(), packetS->get_callid());
+	call->lastsipcallerip = packetS->saddr_();
 	call->flags = flags;
 	call->lastsrcip = packetS->saddr_();
 	call->lastdstip = packetS->daddr_();
@@ -3669,9 +3670,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 
 	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
-		if(call->getSipcallerip() == packetS->saddr_()) {
-			call->setSipcalledip(packetS->daddr_(), packetS->dest_(), packetS->get_callid());
-		}
 		detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 		if(branch[0] != '\0') {
 			detect_called_invite(packetS, called_invite, sizeof(called_invite), &called_invite_detected);
