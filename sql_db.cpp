@@ -5190,6 +5190,31 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		""));
 	
 	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_txt` (\
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
+				"") + 
+			"`time` bigint unsigned DEFAULT NULL,\
+			`type` tinyint unsigned DEFAULT NULL,\
+			`content` mediumtext DEFAULT NULL,\
+		KEY (`cdr_ID`)" + 
+		(opt_cdr_partition ? 
+			",KEY (`calldate`)" :
+			"") +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_txt_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	
+	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_flags` (\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
@@ -7243,6 +7268,7 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	existsColumns.cdr_tar_part_calldate = this->existsColumn("cdr_tar_part", "calldate");
 	existsColumns.cdr_country_code_calldate = this->existsColumn("cdr_country_code", "calldate");
 	existsColumns.cdr_sdp_calldate = this->existsColumn("cdr_sdp", "calldate");
+	existsColumns.cdr_txt_calldate = this->existsColumn("cdr_txt", "calldate");
 	map<string, u_int64_t> tableSize;
 	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_next_calldate_ms, "cdr_next"));
@@ -7254,6 +7280,7 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_tar_part_calldate_ms, "cdr_tar_part"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_country_code_calldate_ms, "cdr_country_code"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_sdp_calldate_ms, "cdr_sdp"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_txt_calldate_ms, "cdr_txt"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_flags_calldate_ms, "cdr_flags"));
 	for(unsigned i = 0; i < childTablesCalldateMsIndik.size(); i++) {
 		for(int pass = 0; pass < 2; pass++) {
@@ -8016,6 +8043,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 				tables.push_back("cdr_tar_part");
 				tables.push_back("cdr_country_code");
 				tables.push_back("cdr_sdp");
+				tables.push_back("cdr_txt");
 				tables.push_back("cdr_flags");
 			}
 		}
@@ -8316,6 +8344,7 @@ void dropMysqlPartitionsCdr() {
 	_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_country_code", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_sdp", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("cdr_txt", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_flags", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("message", opt_cleandatabase_cdr, 0, sqlDb);

@@ -956,6 +956,39 @@ int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseCo
 	return ok;
 }
 
+inline char * _gettag(const void *ptr, unsigned long len,
+		      const char *tag, unsigned long *gettaglen) {
+	char endChar = ((char*)ptr)[len - 1];
+	((char*)ptr)[len - 1] = 0;
+	char *tagPtr = strcasestr((char*)ptr, tag);
+	((char*)ptr)[len - 1] = endChar;
+	if(tagPtr) {
+		unsigned contentIndex = (tagPtr - (char*)ptr) + strlen(tag);
+		while(contentIndex < len - 1 && ((char*)ptr)[contentIndex] == ' ') {
+			++contentIndex;
+		}
+		if(contentIndex < len) {
+			unsigned contentIndexEnd = len - 1;
+			char *ptrEndLine;
+			if((ptrEndLine = (char*)memmem((char*)ptr + contentIndex, len - contentIndex, "\r", 1)) == NULL) {
+				ptrEndLine = (char*)memmem((char*)ptr + contentIndex, len - contentIndex, "\n", 1);
+			}
+			if(ptrEndLine) {
+				contentIndexEnd = ptrEndLine - (char*)ptr - 1;
+			}
+			while(contentIndexEnd > contentIndex && ((char*)ptr)[contentIndexEnd] == ' ') {
+				--contentIndexEnd;
+			}
+			if(contentIndexEnd >= contentIndex) {
+				*gettaglen = contentIndexEnd - contentIndex + 1;
+				return((char*)ptr + contentIndex);
+			}
+		}
+	}
+	*gettaglen = 0;
+	return(NULL);
+}
+
 char * gettag_ext(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		  const char *tag, unsigned long *gettaglen, unsigned long *limitLen) {
 	return(gettag(ptr, len, parseContents,
@@ -1609,233 +1642,6 @@ fail_exit:
 	return 1;
 }
 
-int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, size_t sdp_text_len,
-			 vmIP *addr, vmPort *port, int8_t *protocol, int8_t *fax, int8_t *inactive_ip0, 
-			 char *sessid, list<rtp_crypto_config> **rtp_crypto_config_list, int8_t *rtcp_mux, int sip_method){
-	unsigned long l;
-	char *s;
-	char s1[IP_STR_MAX_LENGTH];
-	unsigned long gettagLimitLen = 0;
-
-	if(!sdp_text_len) {
-		sdp_text_len = strlen(sdp_text);
-	}
-	
-	*protocol = 0;
-	*fax = 0;
-	*rtcp_mux = 0;
-	*inactive_ip0 = 0;
-	s = gettag(sdp_text,sdp_text_len, NULL,
-		   "o=", &l, &gettagLimitLen);
-	if(l == 0) return 1;
-	while(l > 0 && *s != ' ') {
-		++s;
-		--l;
-	}
-	if(l <= 1) return 1;
-	++s;
-	--l;
-	unsigned long ispace = 0;
-	char *space = s;
-	while(ispace < l - 1 && *space != ' ') {
-		++ispace;
-		++space;
-	}
-	memset(sessid, 0, MAXLEN_SDP_SESSID);
-	memcpy(sessid, s, MIN(ispace, MAXLEN_SDP_SESSID - 1));
-	s = gettag(sdp_text,sdp_text_len, NULL, 
-		   packetS->saddr_().is_v6() ? "c=IN IP6 " : "c=IN IP4 ",
-		   &l, &gettagLimitLen);
-	if(l == 0) return 1;
-	memset(s1, '\0', sizeof(s1));
-	memcpy(s1, s, MIN(l, IP_STR_MAX_LENGTH - 1));
-//	printf("---------- [%s]\n", s1);
-	if(!addr->setFromString(s1)) {
-		addr->clear();
-		port->clear();
-		return 1;
-	}
-	s = gettag(sdp_text, sdp_text_len, NULL,
-		   "m=audio ", &l, &gettagLimitLen);
-	if(l == 0 || !port->setFromString(s).isSet()) {
-		unsigned long l2;
-		s = gettag(sdp_text, sdp_text_len, NULL,
-			   "m=image ", &l2, &gettagLimitLen);
-		if(l2 == 0 || !port->setFromString(s).isSet()) {
-			port->clear();
-			if(l == 0 && l2 == 0) return 1;
-		} else {
-			*fax = 1;
-			l = l2;
-		}
-	}
-	if(s && l && port->isSet()) {
-		char *pointToBeginProtocol = strnchr(s, ' ', l);
-		if(pointToBeginProtocol) {
-			++pointToBeginProtocol;
-			char *pointToEndProtocol = strnchr(pointToBeginProtocol, ' ', l - (pointToBeginProtocol - s));
-			unsigned lengthProtocol = pointToEndProtocol ? pointToEndProtocol - pointToBeginProtocol : l - (pointToBeginProtocol - s);
-			if(lengthProtocol > 0 && lengthProtocol < 100) {
-				struct {
-					const char *protocol_str;
-					e_sdp_protocol protocol;
-				} sdp_protocols[] = {
-					 { "RTP/AVP", sdp_proto_rtp }, // RFC 4566
-					 { "UDPTL", sdp_proto_t38 }, // Note: IANA registry contains lower case
-					 { "RTP/AVPF", sdp_proto_rtp }, // RFC 4585
-					 { "RTP/SAVP", sdp_proto_srtp }, // RFC 3711
-					 { "RTP/SAVPF", sdp_proto_srtp }, // RFC 5124
-					 { "UDP/TLS/RTP/SAVP", sdp_proto_srtp }, // RFC 5764
-					 { "UDP/TLS/RTP/SAVPF", sdp_proto_srtp }, // RFC 5764
-					 { "msrp/tcp", sdp_proto_msrp }, // Not in IANA, where is this from?
-					 { "UDPSPRT", sdp_proto_sprt }, // Not in IANA, but draft-rajeshkumar-avt-v150-registration-00
-				};
-				for(unsigned i = 0; i < sizeof(sdp_protocols) / sizeof(sdp_protocols[0]); i++) {
-					if(!strncasecmp(pointToBeginProtocol, sdp_protocols[i].protocol_str, lengthProtocol) &&
-					   lengthProtocol == strlen(sdp_protocols[i].protocol_str)) {
-						*protocol = sdp_protocols[i].protocol;
-					}
-				}
-			}
-		}
-	}
-	s = gettag(sdp_text, sdp_text_len, NULL,
-		   "a=crypto:", &l, &gettagLimitLen);
-	if(l > 0) {
-		char *cryptoContent = s;
-		unsigned cryptoContentLength = l;
-		do {
-			char *pointToParam = s;
-			unsigned countParams = 0;
-			rtp_crypto_config crypto;
-			do {
-				++countParams;
-				char *pointToSeparator = strnchr(pointToParam, ' ', cryptoContentLength - (pointToParam - cryptoContent));
-				unsigned lengthParam = pointToSeparator ? pointToSeparator - pointToParam : cryptoContentLength - (pointToParam - cryptoContent);
-				switch(countParams) {
-				case 1:
-					crypto.tag = atoi(pointToParam);
-					break;
-				case 2:
-					crypto.suite = string(pointToParam, lengthParam);
-					break;
-				case 3:
-					if(!strncasecmp(pointToParam, "inline:", 7)) {
-						pointToParam += 7;
-						lengthParam -= 7;
-					}
-					char *lifeTimeSeparator = strnchr(pointToParam, '|', lengthParam);
-					crypto.key = string(pointToParam, lifeTimeSeparator ? (lifeTimeSeparator - pointToParam) : lengthParam);
-					break;
-				}
-				pointToParam = pointToSeparator ? pointToSeparator + 1 : NULL;
-			} while(pointToParam && countParams < 3);
-			if(crypto.suite.length() && crypto.key.length()) {
-				if(!*rtp_crypto_config_list) {
-					*rtp_crypto_config_list = new FILE_LINE(0) list<rtp_crypto_config>;
-				}
-				(*rtp_crypto_config_list)->push_back(crypto);
-			}
-			s = gettag(s, sdp_text_len - (s - sdp_text), NULL,
-				   "a=crypto:", &l, &gettagLimitLen);
-			if(l > 0) {
-				cryptoContent = s;
-				cryptoContentLength = l;
-			} else {
-				cryptoContent = NULL;
-			}
-		}
-		while(cryptoContent);
-	}
-	if(memmem(sdp_text, sdp_text_len, "a=rtcp-mux", 10)) {
-		*rtcp_mux = 1;
-		call->use_rtcp_mux = true;
-	}
-	bool sdp_sendonly = false;
-	bool sdp_sendrecv = false;
-	if(memmem(sdp_text, sdp_text_len, "a=sendonly", 10)) {
-		call->use_sdp_sendonly = true;
-		if (sip_method == INVITE)
-			sdp_sendonly = true;
-	}
-	if (sip_method == INVITE) {
-		if(memmem(sdp_text, sdp_text_len, "a=sendrecv", 10))
-			sdp_sendrecv = true;
-
-		call->HandleHold(sdp_sendonly, sdp_sendrecv);
-	}
-	if(!addr->isSet() && memmem(sdp_text, sdp_text_len, "a=inactive", 10)) {
-		*inactive_ip0 = true;
-	}
-
-	return 0;
-}
-
-int get_value_stringkeyval2(const char *data, unsigned int data_len, const char *key, char *value, int unsigned len) {
-	unsigned long r, tag_len;
-	char *tmp = gettag(data, data_len, NULL,
-			   key, &tag_len);
-	//gettag removes \r\n but we need it
-	if(!tag_len) {
-		goto fail_exit;
-	} else {
-		//gettag remove trailing \r but we need it 
-		tag_len++;
-	}
-	if ((r = (unsigned long)memmem(tmp, tag_len, ";", 1)) == 0){
-		if ((r = (unsigned long)memmem(tmp, tag_len, "\r", 1)) == 0){
-			goto fail_exit;
-		}
-	}
-	memcpy(value, (void*)tmp, MIN((r - (unsigned long)tmp), len));
-	value[MIN(r - (unsigned long)tmp, len - 1)] = '\0';
-	return 0;
-fail_exit:
-	strcpy(value, "");
-	return 1;
-}
-
-int get_expires_from_contact(packet_s_process *packetS, const char *from, int *expires){
-	char *s;
-	unsigned long l;
-
-	if(packetS->sipDataLen < 8) return 1;
-
-	s = gettag_sip_from(packetS, from, "\nContact:", "\nm:", &l);
-	if(s) {
-		char tmp[128];
-		int res = get_value_stringkeyval2(s, l + 2, "expires=", tmp, sizeof(tmp));
-		if(res) {
-			// not found, try again in case there is more Contact headers
-			return get_expires_from_contact(packetS, s, expires);
-		} else {
-			*expires = atoi(tmp);
-			return 0;
-		}
-	} else {
-		return 1;
-	}
-}
-
-int get_value_stringkeyval(const char *data, unsigned int data_len, const char *key, char *value, unsigned int len) {
-	unsigned long r, tag_len;
-	char *tmp = gettag(data, data_len, NULL,
-			   key, &tag_len);
-	if(!tag_len) {
-		goto fail_exit;
-	}
-	if ((r = (unsigned long)memmem(tmp, tag_len, "\"", 1)) == 0){
-		goto fail_exit;
-	}
-	memcpy(value, (void*)tmp, MIN(r - (unsigned long)tmp, len));
-	value[MIN(r - (unsigned long)tmp, len - 1)] = '\0';
-	return 0;
-fail_exit:
-	strcpy(value, "");
-	return 1;
-}
-
-
 int mimeSubtypeToInt(char *mimeSubtype) {
        if(strcasecmp(mimeSubtype,"G729") == 0)
 	       return PAYLOAD_G729;
@@ -1887,16 +1693,11 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, RTPMAP *rtpmap){
 	char mimeSubtype[255];
 	int i = 0;
 	int rate = 0;
-	unsigned long gettagLimitLen = 0;
 
-	s = gettag(sdp_text, len, NULL,
-		   "m=audio ", &l, &gettagLimitLen);
-	if(!l) {
-		return 0;
-	}
+	s = sdp_text;
+	
 	do {
-		s = gettag(s, len - (s - sdp_text), NULL,
-			   "a=rtpmap:", &l, &gettagLimitLen);
+		s = _gettag(s, len - (s - sdp_text), "a=rtpmap:", &l);
 		
 		char zchr;
 		if(l && 
@@ -2030,8 +1831,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, RTPMAP *rtpmap){
 			if(codec == PAYLOAD_ILBC) {
 				char tagFmtpWithPayload[100];
 				snprintf(tagFmtpWithPayload, sizeof(tagFmtpWithPayload), "a=fmtp:%i", payload);
-				char *s = gettag(sdp_text, len, NULL,
-						 tagFmtpWithPayload , &l, &gettagLimitLen);
+				char *s = _gettag(sdp_text, len, tagFmtpWithPayload , &l);
 				rtpmap[i].frame_size = s && strncasestr(s, "mode=20", l) ? 20 : 30;
 			}
 			i++;
@@ -2040,6 +1840,299 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, RTPMAP *rtpmap){
 	 } while(l && i < (MAX_RTPMAP - 2));
 	 rtpmap[i].clear(); //terminate rtpmap field
 	 return 0;
+}
+
+int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, size_t sdp_text_len,
+			 int sip_method, char *sessid, 
+			 s_sdp_media_data *sdp_media_data,
+			 list<s_sdp_media_data*> **next_sdp_media_data) {
+	unsigned long l;
+	char *s;
+
+	if(!sdp_text_len) {
+		sdp_text_len = strlen(sdp_text);
+	}
+	
+	s = _gettag(sdp_text,sdp_text_len, "o=", &l);
+	if(l == 0) return 1;
+	while(l > 0 && *s != ' ') {
+		++s;
+		--l;
+	}
+	if(l <= 1) return 1;
+	++s;
+	--l;
+	unsigned long ispace = 0;
+	char *space = s;
+	while(ispace < l - 1 && *space != ' ') {
+		++ispace;
+		++space;
+	}
+	unsigned sessid_length = MIN(ispace, MAXLEN_SDP_SESSID - 1);
+	memcpy(sessid, s, sessid_length);
+	sessid[sessid_length] = 0;
+	
+	vmIP ip;
+	s = _gettag(sdp_text, sdp_text_len,
+		    packetS->saddr_().is_v6() ? "c=IN IP6 " : "c=IN IP4 ",
+		    &l);
+	if(l > 0) {
+		char ip_str[IP_STR_MAX_LENGTH];
+		unsigned ip_length = MIN(l, IP_STR_MAX_LENGTH - 1);
+		memcpy(ip_str, s, ip_length);
+		ip_str[ip_length] = 0;
+		ip.setFromString(ip_str);
+	}
+	
+	unsigned sdp_media_start_max = 10;
+	unsigned sdp_media_start_count = 0;
+	char *sdp_media_start[sdp_media_start_max];
+	bool sdp_media_image[sdp_media_start_max];
+	vmPort sdp_media_port[sdp_media_start_max];
+	while(sdp_media_start_count < sdp_media_start_max) {
+		bool image = false;
+		vmPort port;
+		for(unsigned pass = 0; pass < 2; pass++) {
+			s = _gettag(sdp_media_start_count ? sdp_media_start[sdp_media_start_count - 1] + 1 : sdp_text,
+				    sdp_text_len - (sdp_media_start_count ? sdp_media_start[sdp_media_start_count - 1] + 1 - sdp_text: 0), 
+				    pass == 0 ? "m=audio " : "m=image ", 
+				    &l);
+			if(l > 0) {
+				if(port.setFromString(s).isSet()) {
+					if(pass == 1) {
+						image = true;
+					}
+					break;
+				}
+			}
+		}
+		if(l > 0) {
+			sdp_media_start[sdp_media_start_count] = s;
+			sdp_media_image[sdp_media_start_count] = image;
+			sdp_media_port[sdp_media_start_count] = port;
+			++sdp_media_start_count;
+		} else {
+			break;
+		}
+	}
+	
+	if(sdp_media_start_count > 1) {
+		*next_sdp_media_data = new FILE_LINE(0) list<s_sdp_media_data*>;
+	}
+	
+	for(unsigned sdp_media_i = 0; sdp_media_i < sdp_media_start_count; sdp_media_i++) {
+		char *sdp_media_text = sdp_media_start[sdp_media_i];
+		unsigned sdp_media_text_len = sdp_media_i < sdp_media_start_count - 1 ?
+					       sdp_media_start[sdp_media_i + 1] - sdp_media_start[sdp_media_i] :
+					       sdp_text_len - (sdp_media_start[sdp_media_i] - sdp_text);
+					       
+		s_sdp_media_data *sdp_media_data_item; 
+		if(sdp_media_i == 0) {
+			sdp_media_data_item = sdp_media_data;
+		} else {
+			sdp_media_data_item = new FILE_LINE(0) s_sdp_media_data;
+		}
+		sdp_media_data_item->ip = ip;
+		sdp_media_data_item->port = sdp_media_port[sdp_media_i];
+		sdp_media_data_item->sdp_flags.is_fax = sdp_media_image[sdp_media_i];
+		
+		if(sdp_media_i > 0) {
+			s = _gettag(sdp_media_text, sdp_media_text_len,
+				    packetS->saddr_().is_v6() ? "c=IN IP6 " : "c=IN IP4 ",
+				    &l);
+			if(l > 0) {
+				char ip_str[IP_STR_MAX_LENGTH];
+				unsigned ip_length = MIN(l, IP_STR_MAX_LENGTH - 1);
+				memcpy(ip_str, s, ip_length);
+				ip_str[ip_length] = 0;
+				vmIP ip;
+				if(ip.setFromString(ip_str)) {
+					sdp_media_data_item->ip = ip;
+				}
+			}
+		}
+		
+		char *pointToBeginProtocol = strnchr(sdp_media_text, ' ', sdp_media_text_len);
+		if(pointToBeginProtocol) {
+			++pointToBeginProtocol;
+			char *pointToEndProtocol = strnchr(pointToBeginProtocol, ' ', sdp_media_text_len - (pointToBeginProtocol - sdp_media_text));
+			unsigned lengthProtocol = pointToEndProtocol ? 
+						   pointToEndProtocol - pointToBeginProtocol : 
+						   sdp_media_text_len - (pointToBeginProtocol - sdp_media_text);
+			if(lengthProtocol > 0 && lengthProtocol < 100) {
+				static struct {
+					const char *protocol_str;
+					e_sdp_protocol protocol;
+				} sdp_protocols[] = {
+					 { "RTP/AVP", sdp_proto_rtp }, // RFC 4566
+					 { "UDPTL", sdp_proto_t38 }, // Note: IANA registry contains lower case
+					 { "RTP/AVPF", sdp_proto_rtp }, // RFC 4585
+					 { "RTP/SAVP", sdp_proto_srtp }, // RFC 3711
+					 { "RTP/SAVPF", sdp_proto_srtp }, // RFC 5124
+					 { "UDP/TLS/RTP/SAVP", sdp_proto_srtp }, // RFC 5764
+					 { "UDP/TLS/RTP/SAVPF", sdp_proto_srtp }, // RFC 5764
+					 { "msrp/tcp", sdp_proto_msrp }, // Not in IANA, where is this from?
+					 { "UDPSPRT", sdp_proto_sprt }, // Not in IANA, but draft-rajeshkumar-avt-v150-registration-00
+				};
+				for(unsigned i = 0; i < sizeof(sdp_protocols) / sizeof(sdp_protocols[0]); i++) {
+					if(!strncasecmp(pointToBeginProtocol, sdp_protocols[i].protocol_str, lengthProtocol) &&
+					   lengthProtocol == strlen(sdp_protocols[i].protocol_str)) {
+						sdp_media_data_item->sdp_flags.protocol = sdp_protocols[i].protocol;
+					}
+				}
+			}
+		}
+		
+		s = _gettag(sdp_media_text, sdp_media_text_len, "a=label:", &l);
+		if(l > 0) {
+			unsigned label_length = MIN(l, MAXLEN_SDP_LABEL - 1);
+			memcpy(sdp_media_data_item->label, s, label_length);
+			sdp_media_data_item->label[label_length] = 0;
+		}
+		
+		s = _gettag(sdp_media_text, sdp_media_text_len, "a=crypto:", &l);
+		if(l > 0) {
+			char *cryptoContent = s;
+			unsigned cryptoContentLength = l;
+			do {
+				char *pointToParam = s;
+				unsigned countParams = 0;
+				rtp_crypto_config crypto;
+				do {
+					++countParams;
+					char *pointToSeparator = strnchr(pointToParam, ' ', cryptoContentLength - (pointToParam - cryptoContent));
+					unsigned lengthParam = pointToSeparator ? pointToSeparator - pointToParam : cryptoContentLength - (pointToParam - cryptoContent);
+					switch(countParams) {
+					case 1:
+						crypto.tag = atoi(pointToParam);
+						break;
+					case 2:
+						crypto.suite = string(pointToParam, lengthParam);
+						break;
+					case 3:
+						if(!strncasecmp(pointToParam, "inline:", 7)) {
+							pointToParam += 7;
+							lengthParam -= 7;
+						}
+						char *lifeTimeSeparator = strnchr(pointToParam, '|', lengthParam);
+						crypto.key = string(pointToParam, lifeTimeSeparator ? (lifeTimeSeparator - pointToParam) : lengthParam);
+						break;
+					}
+					pointToParam = pointToSeparator ? pointToSeparator + 1 : NULL;
+				} while(pointToParam && countParams < 3);
+				if(crypto.suite.length() && crypto.key.length()) {
+					if(!sdp_media_data_item->rtp_crypto_config_list) {
+						sdp_media_data_item->rtp_crypto_config_list = new FILE_LINE(0) list<rtp_crypto_config>;
+					}
+					sdp_media_data_item->rtp_crypto_config_list->push_back(crypto);
+				}
+				s = _gettag(s, sdp_media_text_len - (s - sdp_media_text), "a=crypto:", &l);
+				if(l > 0) {
+					cryptoContent = s;
+					cryptoContentLength = l;
+				} else {
+					cryptoContent = NULL;
+				}
+			}
+			while(cryptoContent);
+		}
+		
+		if(memmem(sdp_media_text, sdp_media_text_len, "a=rtcp-mux", 10)) {
+			sdp_media_data_item->sdp_flags.rtcp_mux = 1;
+			call->use_rtcp_mux = true;
+		}
+		
+		bool sdp_sendonly = false;
+		bool sdp_sendrecv = false;
+		if(memmem(sdp_media_text, sdp_media_text_len, "a=sendonly", 10)) {
+			call->use_sdp_sendonly = true;
+			if (sip_method == INVITE)
+				sdp_sendonly = true;
+		}
+		if (sip_method == INVITE) {
+			if(memmem(sdp_media_text, sdp_media_text_len, "a=sendrecv", 10))
+				sdp_sendrecv = true;
+
+			call->HandleHold(sdp_sendonly, sdp_sendrecv);
+		}
+		
+		if(!sdp_media_data_item->ip.isSet() && memmem(sdp_media_text, sdp_media_text_len, "a=inactive", 10)) {
+			sdp_media_data_item->inactive_ip0 = true;
+		}
+		
+		get_rtpmap_from_sdp(sdp_media_text, sdp_media_text_len, sdp_media_data_item->rtpmap);
+
+		if(sdp_media_i > 0) {
+			(*next_sdp_media_data)->push_back(sdp_media_data_item);
+		}
+		
+	}
+	
+	return 0;
+}
+
+int get_value_stringkeyval2(const char *data, unsigned int data_len, const char *key, char *value, int unsigned len) {
+	unsigned long r, tag_len;
+	char *tmp = gettag(data, data_len, NULL,
+			   key, &tag_len);
+	//gettag removes \r\n but we need it
+	if(!tag_len) {
+		goto fail_exit;
+	} else {
+		//gettag remove trailing \r but we need it 
+		tag_len++;
+	}
+	if ((r = (unsigned long)memmem(tmp, tag_len, ";", 1)) == 0){
+		if ((r = (unsigned long)memmem(tmp, tag_len, "\r", 1)) == 0){
+			goto fail_exit;
+		}
+	}
+	memcpy(value, (void*)tmp, MIN((r - (unsigned long)tmp), len));
+	value[MIN(r - (unsigned long)tmp, len - 1)] = '\0';
+	return 0;
+fail_exit:
+	strcpy(value, "");
+	return 1;
+}
+
+int get_expires_from_contact(packet_s_process *packetS, const char *from, int *expires){
+	char *s;
+	unsigned long l;
+
+	if(packetS->sipDataLen < 8) return 1;
+
+	s = gettag_sip_from(packetS, from, "\nContact:", "\nm:", &l);
+	if(s) {
+		char tmp[128];
+		int res = get_value_stringkeyval2(s, l + 2, "expires=", tmp, sizeof(tmp));
+		if(res) {
+			// not found, try again in case there is more Contact headers
+			return get_expires_from_contact(packetS, s, expires);
+		} else {
+			*expires = atoi(tmp);
+			return 0;
+		}
+	} else {
+		return 1;
+	}
+}
+
+int get_value_stringkeyval(const char *data, unsigned int data_len, const char *key, char *value, unsigned int len) {
+	unsigned long r, tag_len;
+	char *tmp = gettag(data, data_len, NULL,
+			   key, &tag_len);
+	if(!tag_len) {
+		goto fail_exit;
+	}
+	if ((r = (unsigned long)memmem(tmp, tag_len, "\"", 1)) == 0){
+		goto fail_exit;
+	}
+	memcpy(value, (void*)tmp, MIN(r - (unsigned long)tmp, len));
+	value[MIN(r - (unsigned long)tmp, len - 1)] = '\0';
+	return 0;
+fail_exit:
+	strcpy(value, "");
+	return 1;
 }
 
 inline
@@ -2815,104 +2908,120 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	return call;
 }
 
-void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from_data, char *callidstr, char *to, char *branch) {
+void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from_data, unsigned sdplen, 
+		 char *callidstr, char *to, char *branch) {
  
-	unsigned int datalen;
 	char *sdp;
-	unsigned int sdplen;
-	
-	if(call->typeIs(MGCP)) {
-		datalen = packetS->datalen_() - (from_data - packetS->data_());
+	if(sdplen) {
 		sdp = from_data;
-		sdplen = datalen;
 	} else {
-		datalen = packetS->sipDataLen - (from_data - (packetS->data_()+ packetS->sipDataOffset));
-		sdp = strstr(from_data, "\r\n\r\n");
-		if(!sdp) return;
-		sdp += 4;
-		sdplen = datalen - (sdp - from_data);
+		if(call->typeIs(MGCP)) {
+			unsigned datalen = packetS->datalen_() - (from_data - packetS->data_());
+			sdp = from_data;
+			sdplen = datalen;
+		} else {
+			unsigned datalen = packetS->sipDataLen - (from_data - (packetS->data_()+ packetS->sipDataOffset));
+			sdp = strstr(from_data, "\r\n\r\n");
+			if(!sdp) return;
+			sdp += 4;
+			sdplen = datalen - (sdp - from_data);
+		}
 	}
 
-	vmIP tmp_addr;
-	vmPort tmp_port;
-	int8_t inactive_ip0;
-	RTPMAP rtpmap[MAX_RTPMAP];
-	s_sdp_flags sdp_flags;
 	char sessid[MAXLEN_SDP_SESSID];
-	list<rtp_crypto_config> *rtp_crypto_config_list = NULL;
+	s_sdp_media_data sdp_media_data;
+	list<s_sdp_media_data*> *next_sdp_media_data = NULL;
 	if (!get_ip_port_from_sdp(call, packetS, sdp, sdplen,
-				  &tmp_addr, &tmp_port, &sdp_flags.protocol, &sdp_flags.is_fax, &inactive_ip0, 
-				  sessid, &rtp_crypto_config_list, &sdp_flags.rtcp_mux, packetS->sip_method)){
-		if(tmp_addr.isSet() && tmp_port.isSet()) {
-			bool ok_ip_port = true;
-			if(opt_sdp_ignore_ip_port.size()) {
-				for(vector<vmIPport>::iterator iter = opt_sdp_ignore_ip_port.begin(); iter != opt_sdp_ignore_ip_port.end(); iter++) {
-					if(iter->ip == tmp_addr && iter->port == tmp_port) {
-						ok_ip_port = false;
-						break;
+				  packetS->sip_method, sessid,
+				  &sdp_media_data,
+				  &next_sdp_media_data)) {
+		unsigned sdp_media_data_count = 1 + (next_sdp_media_data ? next_sdp_media_data->size() : 0);
+		for(unsigned sdp_media_data_i = 0; sdp_media_data_i < sdp_media_data_count; sdp_media_data_i++) {
+			s_sdp_media_data *sdp_media_data_item;
+			if(sdp_media_data_i == 0) {
+				 sdp_media_data_item = &sdp_media_data;
+			} else {
+				list<s_sdp_media_data*>::iterator iter = next_sdp_media_data->begin();
+				for(unsigned i = 0; i < sdp_media_data_i - 1; i++) {
+					iter++;
+				}
+				sdp_media_data_item = *iter;
+			}
+			if(sdp_media_data_item->ip.isSet() && sdp_media_data_item->port.isSet()) {
+				bool ok_ip_port = true;
+				if(opt_sdp_ignore_ip_port.size()) {
+					for(vector<vmIPport>::iterator iter = opt_sdp_ignore_ip_port.begin(); iter != opt_sdp_ignore_ip_port.end(); iter++) {
+						if(iter->ip == sdp_media_data_item->ip && iter->port == sdp_media_data_item->port) {
+							ok_ip_port = false;
+							break;
+						}
 					}
 				}
-			}
-			if((opt_sdp_ignore_ip.size() || opt_sdp_ignore_net.size()) &&
-			   check_ip_in(tmp_addr, &opt_sdp_ignore_ip, &opt_sdp_ignore_net, false)) {
-				ok_ip_port = false;
-			}
-			if(ok_ip_port) {
-				if(sdp_flags.is_fax) { 
-					if(verbosity >= 2){
-						syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
-					}
-					call->isfax = T38FAX;
-				} else {
-					if(call->isfax) {
-						call->isfax = NOFAX;
-					}
+				if((opt_sdp_ignore_ip.size() || opt_sdp_ignore_net.size()) &&
+				   check_ip_in(sdp_media_data_item->ip, &opt_sdp_ignore_ip, &opt_sdp_ignore_net, false)) {
+					ok_ip_port = false;
 				}
-				// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg
-				if(opt_rtp_firstleg == 0 || 
-				   (opt_rtp_firstleg &&
-				    ((call->saddr == packetS->saddr_() && call->sport == packetS->source_()) || 
-				     (call->saddr == packetS->daddr_() && call->sport == packetS->dest_())))) {
-
-					//printf("sdp [%u] port[%u]\n", tmp_addr, tmp_port);
-
-					// store RTP stream
-					get_rtpmap_from_sdp(sdp, sdplen, rtpmap);
-
-					call->add_ip_port_hash(packetS->saddr_(), tmp_addr, ip_port_call_info::_ta_base, tmp_port, packetS->header_pt, 
-							       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
-					// check if the IP address is listed in nat_aliases
-					vmIP alias = match_nat_aliases(tmp_addr);
-					if(alias.isSet()) {
-						call->add_ip_port_hash(packetS->saddr_(), alias, ip_port_call_info::_ta_natalias, tmp_port, packetS->header_pt, 
-								       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
+				if(ok_ip_port) {
+					if(sdp_media_data_item->sdp_flags.is_fax) { 
+						if(verbosity >= 2){
+							syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
+						}
+						call->isfax = T38FAX;
+					} else {
+						if(call->isfax) {
+							call->isfax = NOFAX;
+						}
 					}
-					if(opt_sdp_reverse_ipport) {
-						call->add_ip_port_hash(packetS->saddr_(), packetS->saddr_(), ip_port_call_info::_ta_sdp_reverse_ipport, tmp_port, packetS->header_pt, 
-								       sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
+					// if rtp-firstleg enabled add RTP only in case the SIP msg belongs to first leg
+					if(opt_rtp_firstleg == 0 || 
+					   (opt_rtp_firstleg &&
+					    ((call->saddr == packetS->saddr_() && call->sport == packetS->source_()) || 
+					     (call->saddr == packetS->daddr_() && call->sport == packetS->dest_())))) {
+						//printf("sdp [%u] port[%u]\n", tmp_addr, tmp_port);
+						call->add_ip_port_hash(packetS->saddr_(), sdp_media_data_item->ip, ip_port_call_info::_ta_base, sdp_media_data_item->port, packetS->header_pt, 
+								       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, sdp_media_data_item->rtp_crypto_config_list, 
+								       to, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+						// check if the IP address is listed in nat_aliases
+						vmIP alias = match_nat_aliases(sdp_media_data_item->ip);
+						if(alias.isSet()) {
+							call->add_ip_port_hash(packetS->saddr_(), alias, ip_port_call_info::_ta_natalias, sdp_media_data_item->port, packetS->header_pt, 
+									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, sdp_media_data_item->rtp_crypto_config_list, 
+									       to, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+						}
+						if(opt_sdp_reverse_ipport) {
+							call->add_ip_port_hash(packetS->saddr_(), packetS->saddr_(), ip_port_call_info::_ta_sdp_reverse_ipport, sdp_media_data_item->port, packetS->header_pt, 
+									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, sdp_media_data_item->rtp_crypto_config_list, 
+									       to, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+						}
 					}
 				}
-				if(rtp_crypto_config_list) {
-					delete rtp_crypto_config_list;
+			} else if(!sdp_media_data_item->ip.isSet()) {
+				if(sdp_media_data_item->inactive_ip0) {
+					u_int64_t _forcemark_time = getTimeUS(packetS->header_pt);
+					call->forcemark_lock();
+					call->forcemark_time.push_back(_forcemark_time);
+					if(sverb.forcemark) {
+						cout << "add forcemark (inactive): " << _forcemark_time 
+						     << " forcemarks size: " << call->forcemark_time.size() 
+						     << endl;
+					}
+					call->forcemark_unlock();
+				}
+				int iscaller_index = iscaller_inv_index(iscaller);
+				if(!call->sdp_ip0_ports[iscaller_index].size() ||
+				   find(call->sdp_ip0_ports[iscaller_index].begin(), call->sdp_ip0_ports[iscaller_index].end(), sdp_media_data_item->port) == call->sdp_ip0_ports[iscaller_index].end()) {
+					call->sdp_ip0_ports[iscaller_index].push_back(sdp_media_data_item->port);
 				}
 			}
-		} else if(!tmp_addr.isSet()) {
-			if(inactive_ip0) {
-				u_int64_t _forcemark_time = getTimeUS(packetS->header_pt);
-				call->forcemark_lock();
-				call->forcemark_time.push_back(_forcemark_time);
-				if(sverb.forcemark) {
-					cout << "add forcemark (inactive): " << _forcemark_time 
-					     << " forcemarks size: " << call->forcemark_time.size() 
-					     << endl;
-				}
-				call->forcemark_unlock();
+			if(sdp_media_data_item->rtp_crypto_config_list) {
+				delete sdp_media_data_item->rtp_crypto_config_list;
 			}
-			int iscaller_index = iscaller_inv_index(iscaller);
-			if(!call->sdp_ip0_ports[iscaller_index].size() ||
-			   find(call->sdp_ip0_ports[iscaller_index].begin(), call->sdp_ip0_ports[iscaller_index].end(), tmp_port) == call->sdp_ip0_ports[iscaller_index].end()) {
-				call->sdp_ip0_ports[iscaller_index].push_back(tmp_port);
+			if(sdp_media_data_i > 0) {
+				delete sdp_media_data_item;
 			}
+		}
+		if(next_sdp_media_data) {
+			delete next_sdp_media_data;
 		}
 	} else {
 		if(verbosity >= 2){
@@ -2948,7 +3057,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	unsigned long l;
 	char contenttypestr[1024] = "";
 	char *contenttype_data_ptr = NULL;
+	int contenttypetaglen = 0;
 	int contenttypelen = 0;
+	char content_boundary[1024] = "";
+	int content_boundary_length = 0;
 	bool contenttype_is_rtcpxr = false;
 	char lastSIPresponse[128];
 	int lastSIPresponseNum = 0;
@@ -2977,7 +3089,29 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		strncpy(contenttypestr, s, l);
 		contenttypestr[l] = 0;
 		contenttype_data_ptr = s;
+		contenttypetaglen = l;
 		contenttypelen = l;
+		char *pointerToSeparator = strchr(contenttypestr, ';');
+		if(pointerToSeparator) {
+			*pointerToSeparator = 0;
+			contenttypelen = pointerToSeparator - contenttypestr;
+			char *pointerToBoundary = strcasestr(pointerToSeparator + 1, "boundary=");
+			if(pointerToBoundary) {
+				char *boundary = pointerToBoundary + 9;
+				while(*boundary && (*boundary == ' ' || *boundary == '"')) {
+					++boundary;
+				}
+				char *boundaryEnd = boundary;
+				while(*boundaryEnd && *boundary != ' ' && *boundary != '"' && *boundary != ';') {
+					++boundaryEnd;
+				}
+				if(boundaryEnd > boundary) {
+					content_boundary_length = MIN(sizeof(content_boundary) - 1, boundaryEnd - boundary);
+					strncpy(content_boundary, boundary, content_boundary_length);
+					content_boundary[content_boundary_length] = 0;
+				}
+			}
+		}
 		contenttype_is_rtcpxr = strcasestr(contenttypestr, "application/vq-rtcpxr") != NULL;
 	}
 	
@@ -3890,27 +4024,102 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(is_application_sdp) {
 				detect_to(packetS, to, sizeof(to), &to_detected);
 				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
-				process_sdp(call, packetS, _iscaller_process_sdp, contenttype_data_ptr, packetS->get_callid(), to, branch);
+				process_sdp(call, packetS, _iscaller_process_sdp, contenttype_data_ptr, 0,
+					    packetS->get_callid(), to, branch);
 			} else if(is_multipart_mixed) {
-				s = contenttype_data_ptr;
-				while(1) {
-					//continue searching  for another content-type
-					char *s2;
-					s2 = gettag_sip_from(packetS, s, "\nContent-Type:", "\nc:", &l);
-					if(s2 and l > 0) {
-						//Content-Type found try if it is SDP 
-						if(l > 0 && strcasestr(s2, "application/sdp")){
-							detect_to(packetS, to, sizeof(to), &to_detected);
-							detect_branch(packetS, branch, sizeof(branch), &branch_detected);
-							process_sdp(call, packetS, _iscaller_process_sdp, s2, packetS->get_callid(), to, branch);
-							break;	// stop searching
+				char *content_data = contenttype_data_ptr + contenttypetaglen;
+				unsigned content_data_len = packetS->sipDataLen - (content_data - (packetS->data_()+ packetS->sipDataOffset));
+				unsigned content_boundary_max = 10;
+				unsigned content_boundary_count = 0;
+				char *content_boundary_ptr[content_boundary_max];
+				if(content_boundary[0]) {
+					while(content_boundary_count < content_boundary_max) {
+						char *_content_boundary_ptr = strncasestr(content_boundary_count ? content_boundary_ptr[content_boundary_count - 1] + 1 : content_data,
+											  content_boundary,
+											  content_data_len - (content_boundary_count ? content_boundary_ptr[content_boundary_count - 1] + 1 - content_data: 0));
+						if(_content_boundary_ptr) {
+							content_boundary_ptr[content_boundary_count] = _content_boundary_ptr;
+							++content_boundary_count;
 						} else {
-							// it is not SDP continue searching for another content-type 
-							s = s2;
-							continue;
+							break;
 						}
-					} else {
-						break;
+					}
+				}
+				if(content_boundary_count > 1) {
+					for(unsigned content_boundary_i = 0; content_boundary_i < content_boundary_count - 1; content_boundary_i++) {
+						char *content_data_item = content_boundary_ptr[content_boundary_i] + content_boundary_length;
+						unsigned content_data_item_length = content_boundary_ptr[content_boundary_i + 1] - content_boundary_ptr[content_boundary_i] - content_boundary_length;
+						while(content_data_item_length > 0 && 
+						      content_data_item[content_data_item_length - 1] == '-') {
+							--content_data_item_length;
+						}
+						while(content_data_item_length > 0 && 
+						      (content_data_item[content_data_item_length - 1] == '\r' ||
+						       content_data_item[content_data_item_length - 1] == '\n')) {
+							--content_data_item_length;
+						}
+						char content_type[1024] = "";
+						for(unsigned pass = 0; pass < 2; pass++) {
+							long unsigned _content_type_length;
+							char *_content_type = _gettag(content_data_item, content_data_item_length,
+										      pass == 0 ? "\nContent-Type:" : "\nc:",
+										      &_content_type_length);
+							if(_content_type_length > 0) {
+								_content_type_length = MIN(_content_type_length, sizeof(content_type) - 1);
+								strncpy(content_type, _content_type, _content_type_length);
+								content_type[_content_type_length] = 0;
+								break;
+							}
+						}
+						if(content_type[0]) {
+							/*
+							int content_length = -1;
+							long unsigned _content_length_length;
+							char *_content_length = gettag(content_data_item, content_data_item_length, NULL,
+										       "\nContent-Length:",
+										       &_content_length_length, NULL);
+							if(_content_length_length > 0) {
+								content_length = atoi(_content_length);
+							}
+							*/
+							char *content_data_begin = strnstr(content_data_item, "\r\n\r\n", content_data_item_length);
+							if(content_data_begin) {
+								content_data_begin += 4;
+								unsigned content_data_offset = content_data_begin - content_data_item;
+								unsigned content_data_length = content_data_item_length - content_data_offset;
+								if(strcasestr(content_type, "application/sdp")) {
+									detect_to(packetS, to, sizeof(to), &to_detected);
+									detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+									process_sdp(call, packetS, _iscaller_process_sdp, content_data_begin, content_data_length,
+										    packetS->get_callid(), to, branch);
+								} else if(strcasestr(content_type, "application/rs-metadata+xml")) {
+									call->add_txt(getTimeUS(packetS->header_pt), Call::txt_type_sdp_xml, content_data_begin, content_data_length);
+								}
+							}
+						}
+					}
+				} else {
+					s = contenttype_data_ptr;
+					while(1) {
+						//continue searching  for another content-type
+						char *s2;
+						s2 = gettag_sip_from(packetS, s, "\nContent-Type:", "\nc:", &l);
+						if(s2 and l > 0) {
+							//Content-Type found try if it is SDP 
+							if(l > 0 && strcasestr(s2, "application/sdp")){
+								detect_to(packetS, to, sizeof(to), &to_detected);
+								detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+								process_sdp(call, packetS, _iscaller_process_sdp, s2, 0,
+									    packetS->get_callid(), to, branch);
+								break;	// stop searching
+							} else {
+								// it is not SDP continue searching for another content-type 
+								s = s2;
+								continue;
+							}
+						} else {
+							break;
+						}
 					}
 				}
 			}
@@ -4623,9 +4832,11 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 	}
 
 	call->add_ip_port_hash(saddr, daddr, ip_port_call_info::_ta_base, dest, header, 
-			       NULL, NULL, NULL, NULL, 1, rtpmap, s_sdp_flags());
+			       NULL, NULL, false, NULL, 
+			       NULL, NULL, 1, rtpmap, s_sdp_flags());
 	call->add_ip_port_hash(saddr, saddr, ip_port_call_info::_ta_base, source, header, 
-			       NULL, NULL, NULL, NULL, 0, rtpmap, s_sdp_flags());
+			       NULL, NULL, false, NULL, 
+			       NULL, NULL, 0, rtpmap, s_sdp_flags());
 	
 	return(call);
 }

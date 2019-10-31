@@ -663,6 +663,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	syslog_sdp_multiplication = false;
 	
+	_txt_lock = 0;
+	
 }
 
 u_int64_t Call::counter_s = 0;
@@ -966,7 +968,7 @@ Call::closeRawFiles() {
 /* add ip adress and port to this call */
 int
 Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, pcap_pkthdr *header, 
-		  char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+		  char *sessid, char *sdp_label, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return(-1);
 	}
@@ -1002,6 +1004,9 @@ Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr typ
 	this->ip_port[ipport_n].sdp_flags = sdp_flags;
 	if(sessid) {
 		this->ip_port[ipport_n].sessid = sessid;
+	}
+	if(sdp_label) {
+		this->ip_port[ipport_n].sdp_label = sdp_label;
 	}
 	if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
 		this->ip_port[ipport_n].setSdpCryptoList(rtp_crypto_config_list, getTimeUS(header));
@@ -1098,12 +1103,13 @@ Call::refresh_data_ip_port(vmIP addr, vmPort port, pcap_pkthdr *header,
 
 void
 Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, pcap_pkthdr *header, 
-		       char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+		       char *sessid, char *sdp_label, bool multipleSdpMedia, list<rtp_crypto_config> *rtp_crypto_config_list, 
+		       char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return;
 	}
 
-	if(sessid) {
+	if(sessid && !multipleSdpMedia) {
 		int sessidIndex = get_index_by_sessid_to(sessid, to, sip_src_addr, type_addr);
 		if(sessidIndex >= 0) {
 			if(this->ip_port[sessidIndex].sip_src_addr == sip_src_addr &&
@@ -1133,7 +1139,7 @@ Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAdd
 		}
 	}
 	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, header, 
-			     sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags) != -1) {
+			     sessid, sdp_label, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, &header->ts, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port.inc(), &header->ts, this, iscaller, 1, sdp_flags);
@@ -1546,6 +1552,20 @@ read:
 									      find_by_dest ? packetS->dest_() : packetS->source_());
 		int index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(),
 									       find_by_dest ? packetS->source_() : packetS->dest_());
+		if(this->txt.size()) {
+			const char *sdp_label = NULL;
+			if(index_call_ip_port_find_side >= 0 && !this->ip_port[index_call_ip_port_find_side].sdp_label.empty()) {
+				sdp_label = this->ip_port[index_call_ip_port_find_side].sdp_label.c_str();
+			} else if(index_call_ip_port_other_side >= 0 && !this->ip_port[index_call_ip_port_other_side].sdp_label.empty()) {
+				sdp_label = this->ip_port[index_call_ip_port_other_side].sdp_label.c_str();
+			}
+			if(sdp_label && *sdp_label) {
+				int _iscaller = this->detectCallerdByLabelInXml(sdp_label);
+				if(_iscaller >= 0) {
+					iscaller = _iscaller;
+				}
+			}
+		}
 		if(opt_rtp_check_both_sides_by_sdp && index_call_ip_port_find_side >= 0 && iscaller_is_set(iscaller)) {
 			/*
 			cout << " * new rtp stream " 
@@ -3673,6 +3693,88 @@ void Call::setRtpThreadNum() {
 	}
 }
 
+void Call::add_txt(u_int64_t time, eTxtType type, const char *txt, unsigned txt_length) {
+	sTxt txt_item;
+	txt_item.time = time;
+	txt_item.txt = string(txt, txt_length);
+	txt_item.type = type;
+	txt_lock();
+	this->txt.push_back(txt_item);
+	txt_unlock();
+}
+
+int Call::detectCallerdByLabelInXml(const char *label) {
+	int rslt = -1;
+	txt_lock();
+	for(list<sTxt>::iterator iter = txt.begin(); iter != txt.end(); iter++) {
+		if(iter->type == txt_type_sdp_xml) {
+			map<string, string> streams; // label -> stream_id
+			map<string, string> participantstreamassoc; // stream_id -> participant_id
+			struct sParticipant {
+				string participant_id;
+				string stream_id;
+			};
+			vector<sParticipant> participants;
+			list<string> streams_br;
+			if(!getbranch_xml("stream", iter->txt.c_str(), &streams_br)) {
+				continue;
+			}
+			for(list<string>::iterator iter = streams_br.begin(); iter != streams_br.end(); iter++) {
+				string stream_id = gettag_xml("stream_id", iter->c_str());
+				if(stream_id.empty()) {
+					stream_id = gettag_xml("id", iter->c_str());
+				}
+				string label = getvalue_xml("label", iter->c_str());
+				if(!stream_id.empty() && !label.empty()) {
+					streams[label] = stream_id;
+				}
+			}
+			list<string> participantstreamassoc_br;
+			if(getbranch_xml("participantstreamassoc", iter->txt.c_str(), &participantstreamassoc_br)) {
+				for(list<string>::iterator iter = participantstreamassoc_br.begin(); iter != participantstreamassoc_br.end(); iter++) {
+					string participant_id = gettag_xml("participant_id", iter->c_str());
+					string stream_id = getvalue_xml("send", iter->c_str());
+					if(!participant_id.empty() && !stream_id.empty()) {
+						participantstreamassoc[stream_id] = participant_id;
+					}
+				}
+			}
+			list<string> participants_br;
+			if(!getbranch_xml("participant", iter->txt.c_str(), &participants_br)) {
+				continue;
+			}
+			for(list<string>::iterator iter = participants_br.begin(); iter != participants_br.end(); iter++) {
+				sParticipant participant;
+				participant.participant_id = gettag_xml("participant_id", iter->c_str());
+				if(participant.participant_id.empty()) {
+					participant.participant_id = gettag_xml("id", iter->c_str());
+				}
+				if(!participant.participant_id.empty()) {
+					participant.stream_id = getvalue_xml("send", iter->c_str());
+					participants.push_back(participant);
+				}
+			}
+			string stream_id = streams[label];
+			if(stream_id.empty()) {
+				continue;
+			}
+			string participant_id = participantstreamassoc[stream_id];
+			for(unsigned participant_i = 0; participant_i < participants.size(); participant_i++) {
+				if(participants[participant_i].participant_id == participant_id ||
+				   participants[participant_i].stream_id == stream_id) {
+					rslt = participant_i == 0 ? 0 : 1;
+					break;
+				}
+			}
+			if(rslt >= 0) {
+				break;
+			}
+		}
+	}
+	txt_unlock();
+	return(rslt);
+}
+
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
@@ -3739,6 +3841,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	string sql_cdr_proxy_table = "cdr_proxy";
 	string sql_cdr_rtp_table = "cdr_rtp";
 	string sql_cdr_sdp_table = "cdr_sdp";
+	string sql_cdr_txt_table = "cdr_txt";
 	string sql_cdr_dtmf_table = "cdr_dtmf";
 	
 	SqlDb_row cdr,
@@ -4839,6 +4942,31 @@ Call::saveToDb(bool enableBatchIfPossible) {
 											    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
 			}
 		}
+		
+		if(txt.size()) {
+			vector<SqlDb_row> txt_rows;
+			for(list<sTxt>::iterator iter = txt.begin(); iter != txt.end(); iter++) {
+				SqlDb_row txt;
+				txt.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
+				txt.add(iter->time - this->first_packet_time_us, "time");
+				txt.add(iter->type, "type");
+				txt.add(sqlEscapeString(iter->txt), "content");
+				if(existsColumns.cdr_txt_calldate) {
+					txt.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_txt_calldate_ms);
+				}
+				if(opt_mysql_enable_multiple_rows_insert) {
+					txt_rows.push_back(txt);
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + 
+						     sqlDbSaveCall->insertQuery(sql_cdr_txt_table, txt));
+				}
+			}
+			if(opt_mysql_enable_multiple_rows_insert && txt_rows.size()) {
+				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+					     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_txt_table, &txt_rows, opt_mysql_max_multiple_rows_insert, 
+											    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+			}
+		}
 
 		if(enable_save_dtmf_db) {
 			vector<SqlDb_row> dtmf_rows;
@@ -5190,6 +5318,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						sqlDbSaveCall->insert(sql_cdr_sdp_table, sdp);
 					}
 				}
+			}
+		}
+		
+		if(txt.size()) {
+			for(list<sTxt>::iterator iter = txt.begin(); iter != txt.end(); iter++) {
+				SqlDb_row txt;
+				txt.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
+				txt.add(iter->time - this->first_packet_time_us, "time");
+				txt.add(iter->type, "type");
+				txt.add(sqlEscapeString(iter->txt), "content");
+				if(existsColumns.cdr_txt_calldate) {
+					txt.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_txt_calldate_ms);
+				}
+				sqlDbSaveCall->insert(sql_cdr_txt_table, txt);
 			}
 		}
 		

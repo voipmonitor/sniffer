@@ -38,6 +38,7 @@
 #define MAXNODE 150000
 #define MAX_SIPCALLERDIP 8
 #define MAXLEN_SDP_SESSID 30
+#define MAXLEN_SDP_LABEL 20
 
 #define INVITE 1
 #define BYE 2
@@ -193,6 +194,23 @@ struct rtp_crypto_config {
 	u_int64_t from_time_us;
 };
 
+struct s_sdp_media_data {
+	s_sdp_media_data() {
+		ip.clear();
+		port.clear();
+		label[0] = 0;
+		inactive_ip0 = 0;
+		rtp_crypto_config_list = NULL;
+	}
+	vmIP ip;
+	vmPort port;
+	char label[MAXLEN_SDP_LABEL];
+	s_sdp_flags sdp_flags;
+	int8_t inactive_ip0;
+	list<rtp_crypto_config> *rtp_crypto_config_list;
+	RTPMAP rtpmap[MAX_RTPMAP];
+};
+
 struct ip_port_call_info {
 	ip_port_call_info() {
 		rtp_crypto_config_list = NULL;
@@ -238,6 +256,7 @@ struct ip_port_call_info {
 	vmPort port;
 	int8_t iscaller;
 	string sessid;
+	string sdp_label;
 	list<rtp_crypto_config> *rtp_crypto_config_list;
 	string to;
 	string branch;
@@ -557,6 +576,15 @@ public:
 		u_int32_t last_ssrc;
 		u_int64_t last_ssrc_time_ms;
 	};
+	enum eTxtType {
+		txt_type_na,
+		txt_type_sdp_xml
+	};
+	struct sTxt {
+		u_int64_t time;
+		eTxtType type;
+		string txt;
+	};
 public:
 	bool is_ssl;			//!< call was decrypted
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
@@ -815,6 +843,9 @@ public:
 	
 	bool syslog_sdp_multiplication;
 	
+	list<sTxt> txt;
+	volatile int _txt_lock;
+	
 	/**
 	 * constructor
 	 *
@@ -878,13 +909,14 @@ public:
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
 	int add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, pcap_pkthdr *header, 
-			char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+			char *sessid, char *sdp_label, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 	
 	bool refresh_data_ip_port(vmIP addr, vmPort port, pcap_pkthdr *header, 
 				  list<rtp_crypto_config> *rtp_crypto_config_list, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 	
 	void add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, pcap_pkthdr *header, 
-			      char *sessid, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+			      char *sessid, char *sdp_label, bool multipleSdpMedia, list<rtp_crypto_config> *rtp_crypto_config_list, 
+			      char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 
 	void cancel_ip_port_hash(vmIP sip_src_addr, char *to, char *branch, struct timeval *ts);
 	
@@ -1404,6 +1436,15 @@ public:
 	}
 	void hash_add_unlock() {
 		__sync_lock_release(&this->_hash_add_lock);
+	}
+	
+	void add_txt(u_int64_t time, eTxtType type, const char *txt, unsigned txt_length);
+	int detectCallerdByLabelInXml(const char *label);
+	void txt_lock() {
+		while(__sync_lock_test_and_set(&this->_txt_lock, 1));
+	}
+	void txt_unlock() {
+		__sync_lock_release(&this->_txt_lock);
 	}
 
 private:

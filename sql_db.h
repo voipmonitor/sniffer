@@ -1030,6 +1030,7 @@ struct sExistsColumns {
 	bool cdr_child_tar_part_calldate_ms;
 	bool cdr_child_country_code_calldate_ms;
 	bool cdr_child_sdp_calldate_ms;
+	bool cdr_child_txt_calldate_ms;
 	bool cdr_child_flags_calldate_ms;
 	bool cdr_callend_ms;
 	bool cdr_duration_ms;
@@ -1077,6 +1078,7 @@ struct sExistsColumns {
 	bool cdr_tar_part_calldate;
 	bool cdr_country_code_calldate;
 	bool cdr_sdp_calldate;
+	bool cdr_txt_calldate;
 	bool cdr_rtcp_loss_is_smallint_type;
 	bool cdr_vlan;
 	bool ss7_time_iam_ms;

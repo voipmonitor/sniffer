@@ -2195,6 +2195,10 @@ char * gettag_json(const char *data, const char *tag, unsigned *contentlen, char
 char * gettag_json(const char *data, const char *tag, string *dest);
 char * gettag_json(const char *data, const char *tag, unsigned *dest, unsigned dest_not_exists = 0);
 
+int getbranch_xml(const char *branch, const char *str, list<string> *rslt);
+string gettag_xml(const char *tag, const char *str);
+string getvalue_xml(const char *branch, const char *str);
+
 class SocketSimpleBufferWrite {
 public:
 	SocketSimpleBufferWrite(const char *name, ip_port ipPort, bool udp = false, uint64_t maxSize = 100ul * 1024 * 1024);
