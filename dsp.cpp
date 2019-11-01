@@ -230,6 +230,7 @@ static void tone_detect_init(tone_detect_state_t *s, int freq, int duration, int
 
 	s->samples_pending = s->block_size;
 	s->hit_count = 0;
+	s->nohit_count = 0;
 	s->lhit = 0;
 	s->energy = 0.0;
 
@@ -302,7 +303,7 @@ static void digit_detect_init(digit_detect_state_t *s, int mf, unsigned int samp
 	}
 }
 
-static int tone_detect(struct dsp */*dsp*/, tone_detect_state_t *s, int16_t *amp, int samples)
+static int tone_detect(struct dsp */*dsp*/, tone_detect_state_t *s, int16_t *amp, int samples, int nohit_limit)
 {
 	float tone_energy;
 	int i;
@@ -361,10 +362,14 @@ static int tone_detect(struct dsp */*dsp*/, tone_detect_state_t *s, int16_t *amp
 
 		if (hit == s->lhit) {
 			if (!hit) {
-				/* Two successive misses. Tone ended */
-				s->hit_count = 0;
+				++s->nohit_count;
+				if (s->nohit_count >= nohit_limit) {
+					/* (nohit_limit + 1) successive misses. Tone ended */
+					s->hit_count = 0;
+				}
 			} else if (!s->hit_count) {
 				s->hit_count++;
+				s->nohit_count = 0;
 			}
 
 		}
@@ -1242,11 +1247,11 @@ int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, i
 	}
 
 	if ((dsp->features & DSP_FEATURE_FAX_DETECT)) {
-		if ((dsp->faxmode & DSP_FAXMODE_DETECT_CNG) && tone_detect(dsp, &dsp->cng_tone_state, shortdata, len)) {
+		if ((dsp->faxmode & DSP_FAXMODE_DETECT_CNG) && tone_detect(dsp, &dsp->cng_tone_state, shortdata, len, 1)) {
 			fax_digit = 'f';
 		}
 
-		if ((dsp->faxmode & DSP_FAXMODE_DETECT_CED) && tone_detect(dsp, &dsp->ced_tone_state, shortdata, len)) {
+		if ((dsp->faxmode & DSP_FAXMODE_DETECT_CED) && tone_detect(dsp, &dsp->ced_tone_state, shortdata, len, 2)) {
 			fax_digit = 'e';
 		}
 	}

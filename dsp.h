@@ -224,6 +224,7 @@ typedef struct
 	float threshold;	/* Energy of the tone relative to energy from all other signals to consider a hit */
 
 	int hit_count;		/* How many successive blocks we consider tone present */
+	int nohit_count;
 	int lhit;		/* Indicates if the last processed block was a hit */
 
 } tone_detect_state_t;
