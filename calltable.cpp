@@ -3710,11 +3710,7 @@ int Call::detectCallerdByLabelInXml(const char *label) {
 		if(iter->type == txt_type_sdp_xml) {
 			map<string, string> streams; // label -> stream_id
 			map<string, string> participantstreamassoc; // stream_id -> participant_id
-			struct sParticipant {
-				string participant_id;
-				string stream_id;
-			};
-			vector<sParticipant> participants;
+			vector<dstring> participants; // participant_id, stream_id
 			list<string> streams_br;
 			if(!getbranch_xml("stream", iter->txt.c_str(), &streams_br)) {
 				continue;
@@ -3744,14 +3740,15 @@ int Call::detectCallerdByLabelInXml(const char *label) {
 				continue;
 			}
 			for(list<string>::iterator iter = participants_br.begin(); iter != participants_br.end(); iter++) {
-				sParticipant participant;
-				participant.participant_id = gettag_xml("participant_id", iter->c_str());
-				if(participant.participant_id.empty()) {
-					participant.participant_id = gettag_xml("id", iter->c_str());
+				string participant_id;
+				string stream_id;
+				participant_id = gettag_xml("participant_id", iter->c_str());
+				if(participant_id.empty()) {
+					participant_id = gettag_xml("id", iter->c_str());
 				}
-				if(!participant.participant_id.empty()) {
-					participant.stream_id = getvalue_xml("send", iter->c_str());
-					participants.push_back(participant);
+				if(!participant_id.empty()) {
+					stream_id = getvalue_xml("send", iter->c_str());
+					participants.push_back(dstring(participant_id, stream_id));
 				}
 			}
 			string stream_id = streams[label];
@@ -3760,8 +3757,8 @@ int Call::detectCallerdByLabelInXml(const char *label) {
 			}
 			string participant_id = participantstreamassoc[stream_id];
 			for(unsigned participant_i = 0; participant_i < participants.size(); participant_i++) {
-				if(participants[participant_i].participant_id == participant_id ||
-				   participants[participant_i].stream_id == stream_id) {
+				if(participants[participant_i][0] == participant_id ||
+				   participants[participant_i][1] == stream_id) {
 					rslt = participant_i == 0 ? 0 : 1;
 					break;
 				}
@@ -5324,7 +5321,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(txt.size()) {
 			for(list<sTxt>::iterator iter = txt.begin(); iter != txt.end(); iter++) {
 				SqlDb_row txt;
-				txt.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
+				txt.add(cdrID, "cdr_ID");
 				txt.add(iter->time - this->first_packet_time_us, "time");
 				txt.add(iter->type, "type");
 				txt.add(sqlEscapeString(iter->txt), "content");
