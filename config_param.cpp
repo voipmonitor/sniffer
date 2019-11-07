@@ -1589,20 +1589,36 @@ string cConfigMap::getItems(const char *name, const char */*separator*/, bool to
 	return("");
 }
 
-string cConfigMap::comp(cConfigMap *other, cConfig *config) {
+string cConfigMap::comp(cConfigMap *other, cConfig *config, cConfig *defaultConfig) {
 	ostringstream outStr;
 	map<string, cItem>::iterator iter1;
 	map<string, cItem>::iterator iter2;
 	for(iter1 = config_map.begin(); iter1 != config_map.end(); iter1++) {
 		iter2 = other->config_map.find(iter1->first);
 		if(iter2 == other->config_map.end()) {
-			outStr << "(++) " << iter1->first << endl;
+			outStr << "(++) " << iter1->first << " = " << iter1->second.valuesToStr();
+			if(isObsoleteParameter(iter1->first)) {
+				outStr << " // (obsolete)";
+			}
+			if(defaultConfig) {
+				cConfigItem *item = defaultConfig->getItem(iter1->first.c_str());
+				if(item) {
+					string defaultValue = item->getValueStr();
+					if(!defaultValue.empty()) {
+						outStr << " // (default value:) "
+						       << defaultValue;
+					}
+				}
+			}
+			outStr << endl;
 		} else if(!(iter1->second == iter2->second)) {
 			if(!config ||
 			   !config->testEqValues(iter1->first, iter1->second.values, iter2->second.values)) {
 				outStr << "(//) " << iter1->first 
-				       << "   " << iter1->second.valuesToStr()
-				       << " // " << iter2->second.valuesToStr() << endl;
+				       << " = " 
+				       << iter1->second.valuesToStr()
+				       << " // (default value:) " 
+				       << iter2->second.valuesToStr() << endl;
 			}
 		}
 	}
@@ -1610,30 +1626,43 @@ string cConfigMap::comp(cConfigMap *other, cConfig *config) {
 		if(iter2->first == "new-config") {
 			continue;
 		}
-		const char *obsoleteParameters[] = {
-			"autocleanspool",
-			"packetbuffer_enable",
-			"destroy_call_at_bye",
-			"sip-register-active-nologbin",
-			"mysqltable",
-			"vmbuffer",
-			NULL
-		};
 		iter1 = config_map.find(iter2->first);
 		if(iter1 == config_map.end()) {
-			bool obsolete = false;
-			for(size_t io = 0; obsoleteParameters[io]; ++io) {
-				if(string(obsoleteParameters[io]) == iter2->first) {
-					obsolete = true;
-					break;
+			if(!isObsoleteParameter(iter2->first)) {
+				outStr << "(--) " << iter2->first << " = " << iter2->second.valuesToStr();
+				if(defaultConfig) {
+					cConfigItem *item = defaultConfig->getItem(iter2->first.c_str());
+					if(item) {
+						string defaultValue = item->getValueStr();
+						if(!defaultValue.empty()) {
+							outStr << " // (default value:) "
+							       << defaultValue;
+						}
+					}
 				}
-			}
-			if(!obsolete) {
-				outStr << "(--) " << iter2->first << endl;
+				outStr << endl;
 			}
 		}
 	}
 	return(outStr.str());
+}
+
+bool cConfigMap::isObsoleteParameter(string parameter) {
+	const char *obsoleteParameters[] = {
+		"autocleanspool",
+		"packetbuffer_enable",
+		"destroy_call_at_bye",
+		"sip-register-active-nologbin",
+		"mysqltable",
+		"vmbuffer",
+		NULL
+	};
+	for(size_t io = 0; obsoleteParameters[io]; ++io) {
+		if(string(obsoleteParameters[io]) == parameter) {
+			return(true);
+		}
+	}
+	return(false);
 }
 
 

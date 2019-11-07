@@ -982,6 +982,7 @@ char *opt_rtp_stream_analysis_params = NULL;
 char *opt_check_regexp_gui_params = NULL;
 char *opt_test_regexp_gui_params = NULL;
 char *opt_read_pcap_gui_params = NULL;
+char *opt_cmp_config_params = NULL;
 bool is_gui_param = false;
 char opt_test_str[1024];
 
@@ -2791,6 +2792,7 @@ bool is_set_gui_params() {
 	       opt_check_regexp_gui_params ||
 	       opt_test_regexp_gui_params ||
 	       opt_read_pcap_gui_params ||
+	       opt_cmp_config_params ||
 	       is_gui_param);
 }
 
@@ -2987,7 +2989,8 @@ int main(int argc, char *argv[]) {
 	cConfigMap configMap;
 	CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, configfile);
 	CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, "/etc/voipmonitor/conf.d/");
-	if(configMap.getFirstItem("new-config", true) == "yes" ||
+	if(opt_cmp_config_params ||
+	   configMap.getFirstItem("new-config", true) == "yes" ||
 	   !configMap.getFirstItem("server_bind").empty() ||
 	   !configMap.getFirstItem("server_destination").empty()) {
 		useNewCONFIG = true;
@@ -3007,7 +3010,7 @@ int main(int argc, char *argv[]) {
 	ownPidStart = getpid();
 	strcpy(ownPidStart_str, intToString(ownPidStart).c_str());
 	
-	if(opt_fork && !is_read_from_file() && configfile[0]) {
+	if(opt_fork && !is_read_from_file() && configfile[0] && !is_set_gui_params()) {
 		bool _existsAnotherInstance = false;
 		if(useSemaphoreLock) {
 			for(unsigned pass = 0; pass < 2; pass++) {
@@ -3293,6 +3296,26 @@ int main(int argc, char *argv[]) {
 	}
 	if(opt_read_pcap_gui_params) {
 		read_pcap(opt_read_pcap_gui_params);
+		return(0);
+	}
+	if(opt_cmp_config_params) {
+		cout << endl 
+		     << "(cmp)" << opt_cmp_config_params << endl 
+		     << "(cmp)" << configfile << endl
+		     << endl;
+		cConfig defaultConfig;
+		defaultConfig.addConfigItems();
+		cConfigMap configMap1 = CONFIG.getConfigMap();
+		cConfigMap configMap2;
+		CONFIG.loadConfigMapConfigFileOrDirectory(&configMap2, opt_cmp_config_params);
+		string diffConfigStr = configMap2.comp(&configMap1, &CONFIG, &defaultConfig);
+		if(!diffConfigStr.empty()) {
+			vector<string> diff = split(diffConfigStr.c_str(), "\n");
+			for(size_t i = 0; i < diff.size(); i++) {
+				cout << diff[i].c_str() << endl;
+			}
+			cout << endl;
+		}
 		return(0);
 	}
 	
@@ -7171,6 +7194,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"rtp-threads", 1, 0, 'e'},
 	    {"rtpthread-buffer", 1, 0, 'E'},
 	    {"config-file", 1, 0, '7'},
+    	    {"cmp-config", 1, 0, 334},
 	    {"manager-port", 1, 0, '8'},
 	    {"pcap-command", 1, 0, 'a'},
 	    {"norecord-header", 0, 0, 'N'},
@@ -7605,6 +7629,12 @@ void get_command_line_arguments() {
 				break;
 			case '7':
 				strcpy_null_term(configfile, optarg);
+				break;
+			case 334:
+				if(!opt_cmp_config_params) {
+					opt_cmp_config_params = new FILE_LINE(42473) char[strlen(optarg) + 1];
+					strcpy(opt_cmp_config_params, optarg);
+				}
 				break;
 			case '8':
 				opt_manager_port = atoi(optarg);

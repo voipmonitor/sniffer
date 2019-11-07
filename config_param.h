@@ -560,7 +560,8 @@ public:
 	bool existsItem(const char *name);
 	string getFirstItem(const char *name, bool toLower = false);
 	string getItems(const char *name, const char *separator = ";", bool toLower = false);
-	string comp(cConfigMap *other, class cConfig *config);
+	string comp(cConfigMap *other, class cConfig *config, cConfig *defaultConfig = NULL);
+	bool isObsoleteParameter(string parameter);
 public:
 	map<string, cItem> config_map;
 };
