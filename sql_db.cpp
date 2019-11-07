@@ -5824,7 +5824,8 @@ bool SqlDb_mysql::createSchema_tables_billing_agregation() {
 	agregSettingsInst.load();
 	sBillingAgregationSettings agregSettings = agregSettingsInst.getAgregSettings();
 	if(!agregSettings.enable_by_ip &&
-	   !agregSettings.enable_by_number) {
+	   !agregSettings.enable_by_number &&
+	   !agregSettings.enable_by_domain) {
 		return(true);
 	}
 	this->clearLastError();
@@ -5851,6 +5852,18 @@ bool SqlDb_mysql::createSchema_tables_billing_agregation() {
 				`price_operator_mult100000` BIGINT UNSIGNED,\
 				`price_customer_mult100000` BIGINT UNSIGNED,\
 				PRIMARY KEY (`part`,`time`,`number`))\
+			ENGINE=InnoDB DEFAULT CHARSET=latin1\
+			" + compress + "\
+			PARTITION BY RANGE (`part`)(\
+				PARTITION p0 VALUES LESS THAN (1) engine innodb)");
+		this->query(string(
+			"CREATE TABLE IF NOT EXISTS `billing_agregation_") + typeParts[i].type + "_domains` (\
+				`part` INT UNSIGNED,\
+				`time` INT UNSIGNED,\
+				`domain` CHAR(32),\
+				`price_operator_mult100000` BIGINT UNSIGNED,\
+				`price_customer_mult100000` BIGINT UNSIGNED,\
+				PRIMARY KEY (`part`,`time`,`domain`))\
 			ENGINE=InnoDB DEFAULT CHARSET=latin1\
 			" + compress + "\
 			PARTITION BY RANGE (`part`)(\
@@ -8214,7 +8227,8 @@ void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
 	agregSettingsInst.load(sqlDb);
 	sBillingAgregationSettings agregSettings = agregSettingsInst.getAgregSettings();
 	if(!agregSettings.enable_by_ip &&
-	   !agregSettings.enable_by_number) {
+	   !agregSettings.enable_by_number &&
+	   !agregSettings.enable_by_domain) {
 		return;
 	}
 	bool _createSqlObject = false;
@@ -8226,9 +8240,11 @@ void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
 	vector<cBilling::sAgregationTypePart> typeParts = cBilling::getAgregTypeParts(&agregSettings);
 	bool tablesExists = true;
 	for(unsigned i = 0; i < typeParts.size() && tablesExists; i++) {
-		for(unsigned j = 0; j < 2 && tablesExists; j++) {
+		for(unsigned j = 0; j < 3 && tablesExists; j++) {
 			string type = typeParts[i].type;
-			string type2 = (j == 0 ? "addresses" : "numbers");
+			string type2 = (j == 0 ? "addresses" : 
+				       (j == 1 ? "numbers" : 
+						 "domains"));
 			string table = "billing_agregation_" + type + '_' + type2;
 			if(!sqlDb->existsTable(table)) {
 				tablesExists = false;
@@ -8248,14 +8264,17 @@ void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
 			sqlDb->setMaxQueryPass(1);
 		}
 		for(unsigned i = 0; i < typeParts.size(); i++) {
-			for(unsigned j = 0; j < 2; j++) {
+			for(unsigned j = 0; j < 3; j++) {
 				if(!((j == 0 && agregSettings.enable_by_ip) ||
-				     (j == 1 && agregSettings.enable_by_number))) {
+				     (j == 1 && agregSettings.enable_by_number) ||
+				     (j == 2 && agregSettings.enable_by_domain))) {
 					continue;
 				}
 				string type = typeParts[i].type;
 				string type_part = typeParts[i].type_part;
-				string type2 = (j == 0 ? "addresses" : "numbers");
+				string type2 = (j == 0 ? "addresses" : 
+					       (j == 1 ? "numbers" :
+							 "domains"));
 				string table = "billing_agregation_" + type + '_' + type2;
 				if(typeParts[i].week) {
 					type_part += ':' + intToString(agregSettings.week_start);
@@ -8414,20 +8433,24 @@ void dropMysqlPartitionsBillingAgregation() {
 	agregSettingsInst.load();
 	sBillingAgregationSettings agregSettings = agregSettingsInst.getAgregSettings();
 	if(!agregSettings.enable_by_ip &&
-	   !agregSettings.enable_by_number) {
+	   !agregSettings.enable_by_number &&
+	   !agregSettings.enable_by_domain) {
 		return;
 	}
 	SqlDb *sqlDb = createSqlObject();
 	syslog(LOG_NOTICE, "%s", "drop billing old partitions - begin");
 	vector<cBilling::sAgregationTypePart> typeParts = cBilling::getAgregTypeParts(&agregSettings);
 		for(unsigned i = 0; i < typeParts.size(); i++) {
-			for(unsigned j = 0; j < 2; j++) {
+			for(unsigned j = 0; j < 3; j++) {
 				if(!((j == 0 && agregSettings.enable_by_ip) ||
-				     (j == 1 && agregSettings.enable_by_number))) {
+				     (j == 1 && agregSettings.enable_by_number) ||
+				     (j == 2 && agregSettings.enable_by_domain))) {
 					continue;
 				}
 				string type = typeParts[i].type;
-				string type2 = (j == 0 ? "addresses" : "numbers");
+				string type2 = (j == 0 ? "addresses" : 
+					       (j == 1 ? "numbers" : 
+							 "domains"));
 				string table = "billing_agregation_" + type + '_' + type2;
 				unsigned limit = typeParts[i].limit;
 				_dropMysqlPartitions(table.c_str(), 0, limit, sqlDb);

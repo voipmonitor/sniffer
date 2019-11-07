@@ -285,6 +285,22 @@ void cBillingExclude::load(SqlDb *sqlDb) {
 			}
 		}
 	}
+	if(sqlDb->existsTable(agregation ? "billing_agregation_exclude_domains" : "billing_exclude_domains")) {
+		sqlDb->query(string(
+			     "select * \
+			      from ") + (agregation ? "billing_agregation_exclude_domains" : "billing_exclude_domains"));
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
+		SqlDb_row row;
+		while((row = rows.fetchRow())) {
+			if(row["side"] == "src" || row["side"] == "both") {
+				list_domain_src.add(row["domain"].c_str());
+			}
+			if(row["side"] == "dst" || row["side"] == "both") {
+				list_domain_dst.add(row["domain"].c_str());
+			}
+		}
+	}
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
@@ -305,6 +321,15 @@ bool cBillingExclude::checkNumber(const char *number, eBilingSide side) {
 	bool rslt = side == _billing_side_src ? 
 		     list_number_src.checkNumber(number) :
 		     list_number_dst.checkNumber(number);
+	unlock();
+	return(rslt);
+}
+
+bool cBillingExclude::checkDomain(const char *domain, eBilingSide side) {
+	lock();
+	bool rslt = side == _billing_side_src ? 
+		     list_domain_src.check(domain) :
+		     list_domain_dst.check(domain);
 	unlock();
 	return(rslt);
 }
@@ -732,6 +757,7 @@ void cBillingAgregationSettings::load(SqlDb *sqlDb) {
 		while((row = rows.fetchRow())) {
 			settings.enable_by_ip = atoi(row["enable_by_ip"].c_str());
 			settings.enable_by_number = atoi(row["enable_by_number"].c_str());
+			settings.enable_by_domain = atoi(row["enable_by_domain"].c_str());
 			settings.week_start = atoi(row["week_start"].c_str());
 			settings.hours_history_in_days = atoi(row["hours_history_in_days"].c_str());
 			settings.days_history_in_weeks = atoi(row["days_history_in_weeks"].c_str());
@@ -747,6 +773,7 @@ void cBillingAgregationSettings::load(SqlDb *sqlDb) {
 void cBillingAgregationSettings::clear() {
 	settings.enable_by_ip = false;
 	settings.enable_by_number = false;
+	settings.enable_by_domain = false;
 	settings.week_start = 2;
 	settings.hours_history_in_days = 7;
 	settings.days_history_in_weeks = 4;
@@ -863,6 +890,7 @@ void cBilling::load(SqlDb *sqlDb) {
 bool cBilling::billing(time_t time, unsigned duration,
 		       vmIP ip_src, vmIP ip_dst,
 		       const char *number_src, const char *number_dst,
+		       const char *domain_src, const char *domain_dst,
 		       double *operator_price, double *customer_price,
 		       unsigned *operator_currency_id, unsigned *customer_currency_id,
 		       unsigned *operator_id, unsigned *customer_id) {
@@ -879,7 +907,9 @@ bool cBilling::billing(time_t time, unsigned duration,
 	if(!exclude->checkIP(ip_src, _billing_side_src) &&
 	   !exclude->checkIP(ip_dst, _billing_side_dst) &&
 	   !exclude->checkNumber(number_src_normalized.c_str(), _billing_side_src) &&
-	   !exclude->checkNumber(number_dst_normalized.c_str(), _billing_side_dst)) {
+	   !exclude->checkNumber(number_dst_normalized.c_str(), _billing_side_dst) &&
+	   !exclude->checkDomain(domain_src, _billing_side_src) &&
+	   !exclude->checkDomain(domain_dst, _billing_side_dst)) {
 		unsigned operator_assignment_id = 0;
 		unsigned customer_assignment_id = 0;
 		*operator_id = assignments->findBillingRuleIdForIP(ip_dst, _billing_ta_operator,
@@ -924,26 +954,31 @@ bool cBilling::billing(time_t time, unsigned duration,
 	return(rslt);
 }
 
-list<string> cBilling::saveAgregation(time_t time,
-				      vmIP ip_src, vmIP ip_dst,
-				      const char *number_src, const char *number_dst,
-				      double operator_price, double customer_price,
-				      unsigned operator_currency_id, unsigned customer_currency_id) {
-	list<string> inserts;
+bool cBilling::saveAggregation(time_t time,
+			       vmIP ip_src, vmIP ip_dst,
+			       const char *number_src, const char *number_dst,
+			       const char *domain_src, const char *domain_dst,
+			       double operator_price, double customer_price,
+			       unsigned operator_currency_id, unsigned customer_currency_id,
+			       list<string> *inserts) {
 	lock();
 	sBillingAgregationSettings agregSettings = this->getAgregSettings();
-	if(!agregSettings.enable_by_ip && !agregSettings.enable_by_number) {
+	if(!agregSettings.enable_by_ip && 
+	   !agregSettings.enable_by_number &&
+	   !agregSettings.enable_by_domain) {
 		unlock();
-		return(inserts);
+		return(false);
 	}
 	string number_src_normalized = checkInternational->numberNormalized(number_src, countryPrefixes);
 	string number_dst_normalized = checkInternational->numberNormalized(number_dst, countryPrefixes);
-	if(exclude->checkIP(ip_src, _billing_side_src) ||
-	   exclude->checkIP(ip_dst, _billing_side_dst) ||
-	   exclude->checkNumber(number_src_normalized.c_str(), _billing_side_src) ||
-	   exclude->checkNumber(number_dst_normalized.c_str(), _billing_side_dst)) {
+	if(agreg_exclude->checkIP(ip_src, _billing_side_src) ||
+	   agreg_exclude->checkIP(ip_dst, _billing_side_dst) ||
+	   agreg_exclude->checkNumber(number_src_normalized.c_str(), _billing_side_src) ||
+	   agreg_exclude->checkNumber(number_dst_normalized.c_str(), _billing_side_dst) ||
+	   agreg_exclude->checkDomain(domain_src, _billing_side_src) ||
+	   agreg_exclude->checkDomain(domain_dst, _billing_side_dst)) {
 		unlock();
-		return(inserts);
+		return(false);
 	}
 	tm time_tm = time_r(&time, gui_timezone.c_str());
 	int week_day = time_tm.tm_wday - (agregSettings.week_start - 1);
@@ -971,13 +1006,16 @@ list<string> cBilling::saveAgregation(time_t time,
 			strftime(partName, sizeof(partName), "%Y", &time_tm);
 			strftime(partTime, sizeof(partName), "%Y%m", &time_tm);
 		}
-		for(unsigned j = 0; j < 2; j++) {
+		for(unsigned j = 0; j < 3; j++) {
 			if(!((j == 0 && agregSettings.enable_by_ip && ip_src.isSet()) ||
-			     (j == 1 && agregSettings.enable_by_number && *number_src))) {
+			     (j == 1 && agregSettings.enable_by_number && *number_src) ||
+			     (j == 2 && agregSettings.enable_by_domain && *domain_src))) {
 				continue;
 			}
 			string type = typeParts[i].type;
-			string type2 = (j == 0 ? "addresses" : "numbers");
+			string type2 = (j == 0 ? "addresses" : 
+				       (j == 1 ? "numbers" :
+						 "domains"));
 			string table = "billing_agregation_" + type + '_' + type2;
 			string operator_price_str = intToString((u_int64_t)round(operator_price * 100000ll * 
 										 currency->getExchangeRateToMainCurency(operator_currency_id)));
@@ -989,17 +1027,19 @@ list<string> cBilling::saveAgregation(time_t time,
 					    partTime + ", " +
 					    (j == 0 ? 
 					      ip_src.getStringForMysqlIpColumn(table.c_str(), "ip") : 
-					      sqlEscapeStringBorder(string(number_src, min((int)strlen(number_src), 20)))) + ", " +
+					    (j == 1 ? 
+					      sqlEscapeStringBorder(string(number_src, min((int)strlen(number_src), 20))) :
+					      sqlEscapeStringBorder(string(domain_src, min((int)strlen(domain_src), 32))))) + ", " +
 					    operator_price_str + ", " +
 					    customer_price_str + ") " + 
 				"on duplicate key update " +
 				"price_operator_mult100000 = price_operator_mult100000 + " + operator_price_str + ", " +
 				"price_customer_mult100000 = price_customer_mult100000 + " + customer_price_str;
-			inserts.push_back(insert);
+			inserts->push_back(insert);
 		}
 	}
 	unlock();
-	return(inserts);
+	return(true);
 }
 
 vector<cBilling::sAgregationTypePart> cBilling::getAgregTypeParts(sBillingAgregationSettings *settings) {

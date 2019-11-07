@@ -78,6 +78,7 @@ public:
 	void load(SqlDb *sqlDb = NULL);
 	bool checkIP(vmIP ip, eBilingSide side);
 	bool checkNumber(const char *number, eBilingSide side);
+	bool checkDomain(const char *domain, eBilingSide side);
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
@@ -91,6 +92,8 @@ private:
 	ListIP list_ip_dst;
 	ListPhoneNumber list_number_src;
 	ListPhoneNumber list_number_dst;
+	ListCheckString list_domain_src;
+	ListCheckString list_domain_dst;
 	volatile int _sync;
 };
 
@@ -216,6 +219,7 @@ friend class cBilling;
 struct sBillingAgregationSettings {
 	bool enable_by_ip;
 	bool enable_by_number;
+	bool enable_by_domain;
 	unsigned week_start;
 	unsigned hours_history_in_days;
 	unsigned days_history_in_weeks;
@@ -281,14 +285,17 @@ public:
 	bool billing(time_t time, unsigned duration,
 		     vmIP ip_src, vmIP ip_dst,
 		     const char *number_src, const char *number_dst,
+		     const char *domain_src, const char *domain_dst,
 		     double *operator_price, double *customer_price,
 		     unsigned *operator_currency_id, unsigned *customer_currency_id,
 		     unsigned *operator_id, unsigned *customer_id);
-	list<string> saveAgregation(time_t time,
-				    vmIP ip_src, vmIP ip_dst,
-				    const char *number_src, const char *number_dst,
-				    double operator_price, double customer_price,
-				    unsigned operator_currency_id, unsigned customer_currency_id);
+	bool saveAggregation(time_t time,
+			     vmIP ip_src, vmIP ip_dst,
+			     const char *number_src, const char *number_dst,
+			     const char *domain_src, const char *domain_dst,
+			     double operator_price, double customer_price,
+			     unsigned operator_currency_id, unsigned customer_currency_id,
+			     list<string> *inserts);
 	sBillingAgregationSettings getAgregSettings() {
 		return(agreg_settings->settings);
 	}

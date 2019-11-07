@@ -5303,6 +5303,7 @@ void test() {
 		billing.billing(calldate_time , duration,
 				str_2_vmIP(ip_src.c_str()), str_2_vmIP(ip_dst.c_str()),
 				number_src.c_str(), number_dst.c_str(),
+				"", "",
 				&operator_price, &customer_price,
 				&operator_currency_id, &customer_currency_id,
 				&operator_id, &customer_id);
@@ -5719,6 +5720,7 @@ void test() {
 				billing.billing(calldate_time , atoi(call[1].c_str()),
 						str_2_vmIP(call[4].c_str()), str_2_vmIP(call[5].c_str()),
 						call[2].c_str(), call[3].c_str(),
+						"", "",
 						&operator_price, &customer_price,
 						&operator_currency_id, &customer_currency_id,
 						&operator_id, &customer_id);

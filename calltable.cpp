@@ -4554,7 +4554,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 	
-	list<string> billingAgergationsInserts;
+	list<string> billingAggregationsInserts;
 	if(connect_time_us && billing && billing->isSet()) {
 		double operator_price = 0; 
 		double customer_price = 0;
@@ -4565,6 +4565,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(billing->billing(calltime_s(), connect_duration_s(),
 				    getSipcallerip(), getSipcalledip(),
 				    caller, called,
+				    caller_domain, called_domain,
 				    &operator_price, &customer_price,
 				    &operator_currency_id, &customer_currency_id,
 				    &operator_id, &customer_id)) {
@@ -4587,12 +4588,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(customer_currency_id, "price_customer_currency_id");
 			}
 			if(operator_price > 0 || customer_price > 0) {
-				billingAgergationsInserts = 
-					billing->saveAgregation(calltime_s(),
-								getSipcallerip(), getSipcalledip(),
-								caller, called,
-								operator_price, customer_price,
-								operator_currency_id, customer_currency_id);
+				billing->saveAggregation(calltime_s(),
+							 getSipcallerip(), getSipcalledip(),
+							 caller, called,
+							 caller_domain, called_domain,
+							 operator_price, customer_price,
+							 operator_currency_id, customer_currency_id,
+							 &billingAggregationsInserts);
 			}
 		} else {
 			if(existsColumns.cdr_price_operator_currency_id) {
@@ -5138,8 +5140,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		if(billingAgergationsInserts.size()) {
-			for(list<string>::iterator iter = billingAgergationsInserts.begin(); iter != billingAgergationsInserts.end(); iter++) {
+		if(billingAggregationsInserts.size()) {
+			for(list<string>::iterator iter = billingAggregationsInserts.begin(); iter != billingAggregationsInserts.end(); iter++) {
 				query_str += MYSQL_ADD_QUERY_END(*iter);
 			}
 		}
@@ -5386,8 +5388,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		if(billingAgergationsInserts.size()) {
-			for(list<string>::iterator iter = billingAgergationsInserts.begin(); iter != billingAgergationsInserts.end(); iter++) {
+		if(billingAggregationsInserts.size()) {
+			for(list<string>::iterator iter = billingAggregationsInserts.begin(); iter != billingAggregationsInserts.end(); iter++) {
 				sqlDbSaveCall->query(*iter);
 			}
 		}
