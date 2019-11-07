@@ -1435,20 +1435,24 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 			this->hMysql = mysql_init(NULL);
 			bool enabledSSL = false;
-			if (strlen(this->conn_sslkey) && strlen(this->conn_sslcert) && (strlen(this->conn_sslcacert) || strlen(this->conn_sslcapath))) {
-				syslog(LOG_INFO, "Enabling SSL for mysql connection.");
+			if (strlen(this->conn_sslkey) && strlen(this->conn_sslcert)) {
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_KEY, this->conn_sslkey);
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_CERT, this->conn_sslcert);
-				if (strlen(this->conn_sslcacert)) {
-					mysql_options(this->hMysql, MYSQL_OPT_SSL_CA, this->conn_sslcacert);
-				}
-				if (strlen(this->conn_sslcapath)) {
-					mysql_options(this->hMysql, MYSQL_OPT_SSL_CAPATH, this->conn_sslcapath);
-				}
-				if (this->conn_sslciphers.length()) {
-					mysql_options(this->hMysql, MYSQL_OPT_SSL_CIPHER, this->conn_sslciphers.c_str());
-				}
 				enabledSSL = true;
+			}
+			if (strlen(this->conn_sslcacert)) {
+				mysql_options(this->hMysql, MYSQL_OPT_SSL_CA, this->conn_sslcacert);
+				enabledSSL = true;
+			}
+			if (strlen(this->conn_sslcapath)) {
+				mysql_options(this->hMysql, MYSQL_OPT_SSL_CAPATH, this->conn_sslcapath);
+				enabledSSL = true;
+			}
+			if (this->conn_sslciphers.length()) {
+				mysql_options(this->hMysql, MYSQL_OPT_SSL_CIPHER, this->conn_sslciphers.c_str());
+			}
+			if (enabledSSL) {
+				syslog(LOG_INFO, "Enabling SSL for mysql connection.");
 			}
 			if(!enabledSSL && this->conn_disable_secure_auth) {
 				int arg = 0;
