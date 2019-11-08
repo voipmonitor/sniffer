@@ -665,6 +665,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	_txt_lock = 0;
 	
+	televent_exists_request = false;
+	televent_exists_response = false;
+	
 }
 
 u_int64_t Call::counter_s = 0;
@@ -3875,6 +3878,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		   !ip_port[i].rtp_crypto_config_list) {
 			cdr_flags |= CDR_SRTP_WITHOUT_KEY;
 		}
+	}
+	if (televent_exists_request) {
+		cdr_flags |= CDR_TELEVENT_EXISTS_REQUEST;
+	}
+	if (televent_exists_response) {
+		cdr_flags |= CDR_TELEVENT_EXISTS_RESPONSE;
 	}
 
 	vmIP sipcalledip_confirmed;

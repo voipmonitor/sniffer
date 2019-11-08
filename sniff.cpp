@@ -1685,7 +1685,7 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return 0;
 }
 
-int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, RTPMAP *rtpmap){
+int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, RTPMAP *rtpmap, bool *existsPayloadTelevent){
 	unsigned long l = 0;
 	char *s, *z;
 	int payload;
@@ -1812,7 +1812,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, RTPMAP *rtpmap){
 						codec = PAYLOAD_VXOPUS48;
 						break;
 				}
-			} else if (codec == PAYLOAD_MP4ALATM128) {
+			} else if(codec == PAYLOAD_MP4ALATM128) {
 				switch(rate) {
 					case 128000:
 						codec = PAYLOAD_MP4ALATM128;
@@ -1821,6 +1821,8 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, RTPMAP *rtpmap){
 						codec = PAYLOAD_MP4ALATM64;
 						break;
 				}
+			} else if(codec == PAYLOAD_TELEVENT && existsPayloadTelevent) {
+				*existsPayloadTelevent = true;
 			}
 		}
 		// return '\r' into sdp_text
@@ -2060,7 +2062,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			sdp_media_data_item->inactive_ip0 = true;
 		}
 		
-		get_rtpmap_from_sdp(sdp_media_text, sdp_media_text_len, sdp_media_data_item->rtpmap);
+		get_rtpmap_from_sdp(sdp_media_text, sdp_media_text_len, sdp_media_data_item->rtpmap, &sdp_media_data_item->exists_payload_televent);
 
 		if(sdp_media_i > 0) {
 			(*next_sdp_media_data)->push_back(sdp_media_data_item);
@@ -3011,6 +3013,13 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 				if(!call->sdp_ip0_ports[iscaller_index].size() ||
 				   find(call->sdp_ip0_ports[iscaller_index].begin(), call->sdp_ip0_ports[iscaller_index].end(), sdp_media_data_item->port) == call->sdp_ip0_ports[iscaller_index].end()) {
 					call->sdp_ip0_ports[iscaller_index].push_back(sdp_media_data_item->port);
+				}
+			}
+			if(packetS->cseq.method == INVITE && sdp_media_data_item->exists_payload_televent) {
+				if(packetS->sip_method == INVITE) {
+					call->televent_exists_request = true;
+				} else if(packetS->sip_method == RES2XX) {
+					call->televent_exists_response = true;
 				}
 			}
 			if(sdp_media_data_item->rtp_crypto_config_list) {

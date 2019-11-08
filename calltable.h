@@ -106,6 +106,8 @@
 #define CDR_FAS_DETECTED		(1 << 5)
 #define CDR_ZEROSSRC_DETECTED		(1 << 6)
 #define CDR_SIPALG_DETECTED		(1 << 7)
+#define CDR_TELEVENT_EXISTS_REQUEST	(1 << 8)
+#define CDR_TELEVENT_EXISTS_RESPONSE	(1 << 9)
 
 #define SS7_IAM 1
 #define SS7_ACM 6
@@ -201,6 +203,7 @@ struct s_sdp_media_data {
 		label[0] = 0;
 		inactive_ip0 = 0;
 		rtp_crypto_config_list = NULL;
+		exists_payload_televent = false;
 	}
 	vmIP ip;
 	vmPort port;
@@ -209,6 +212,7 @@ struct s_sdp_media_data {
 	int8_t inactive_ip0;
 	list<rtp_crypto_config> *rtp_crypto_config_list;
 	RTPMAP rtpmap[MAX_RTPMAP];
+	bool exists_payload_televent;
 };
 
 struct ip_port_call_info {
@@ -845,6 +849,9 @@ public:
 	
 	list<sTxt> txt;
 	volatile int _txt_lock;
+	
+	bool televent_exists_request;
+	bool televent_exists_response;
 	
 	/**
 	 * constructor
