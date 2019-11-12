@@ -3,11 +3,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-
 #include <fstream>
+#include <algorithm>
 
 #include "voipmonitor.h"
 #include "pstat.h"
+
+
+using namespace std;
 
 
 bool pstat_quietly_errors = false;
@@ -184,4 +187,75 @@ int get_cpu_count() {
 	}
 	return(vm_cpu_count);
 	
+}
+
+bool get_interrupts_counters(map<string, pair<string, u_int64_t> > *counters) {
+	FILE *fint = fopen("/proc/interrupts", "r");
+	if(fint == NULL) {
+		#ifndef FREEBSD
+		if(!pstat_quietly_errors) {
+			perror("pstat fopen error (/proc/interrupts) ");
+		}
+		#endif
+		return(false);
+	}
+	char line[10000];
+	unsigned linesCounter = 0;
+	unsigned countCpu = 0;
+	while(fgets(line, sizeof(line), fint)) {
+		++linesCounter;
+		unsigned lineLength = strlen(line);
+		if(line[lineLength - 1] == '\n') {
+			line[lineLength - 1] = 0;
+			--lineLength;
+		}
+		if(linesCounter == 1) {
+			char *ptr = line;
+			while(*ptr) {
+				while(*ptr == ' ' || *ptr == '\t') {
+					++ptr;
+				}
+				if(!strncasecmp(ptr, "CPU", 3)) {
+					++countCpu;
+				}
+				++ptr;
+			}
+		} else {
+			string typeInt;
+			string descrInt;
+			u_int64_t count = 0;
+			unsigned countItems = 0;
+			char *ptr = line;
+			while(*ptr) {
+				while(*ptr == ' ' || *ptr == '\t') {
+					++ptr;
+				}
+				char *ptrEnd = ptr;
+				while(*ptrEnd &&
+				      !(*ptrEnd == ' ' || *ptrEnd == '\t')) {
+					++ptrEnd;
+				}
+				if(countItems == 0) {
+					typeInt = string(ptr, ptrEnd - ptr);
+					if(typeInt[typeInt.length() - 1] == ':') {
+						typeInt.resize(typeInt.length() - 1);
+					}
+					std::transform(typeInt.begin(), typeInt.end(), typeInt.begin(), ::tolower);
+				} else if(countItems <= countCpu) {
+					count += atoll(ptr);
+				} else {
+					descrInt = string(ptr);
+					break;
+				}
+				++countItems;
+				ptr = ptrEnd + 1;
+			}
+			pair<string, u_int64_t> descrCount;
+			descrCount.first = descrInt;
+			descrCount.second  = count;
+			(*counters)[typeInt] = descrCount;
+		}
+	}
+	fclose(fint);
+	return(true);
 }

@@ -3,6 +3,7 @@
 
 
 #include <string>
+#include <map>
 
 
 struct pstat_data {
@@ -30,6 +31,8 @@ void getLoadAvg(double *la_1, double *la_5, double *la_15);
 std::string getLoadAvgStr();
 bool get_cpu_ht();
 int get_cpu_count();
+
+bool get_interrupts_counters(std::map<std::string, std::pair<std::string, u_int64_t> > *counters);
 
 
 #endif

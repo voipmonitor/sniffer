@@ -2296,7 +2296,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	outStrStat << "]MB ";
 	//Get load average string
-	outStrStat << getLoadAvgStr();
+	outStrStat << getLoadAvgStr() << " ";
+	map<string, pair<string, u_int64_t> > counters;
+	get_interrupts_counters(&counters);
+	if(counters["tlb"].second) {
+		static u_int64_t oldCountersTlb;
+		if(oldCountersTlb) {
+			outStrStat << "TLB[" << (counters["tlb"].second - oldCountersTlb) / statPeriod << "] ";
+		}
+		oldCountersTlb = counters["tlb"].second;
+	}
 	outStrStat << "v" << RTPSENSOR_VERSION << " ";
 	//outStrStat << pcapStatCounter << " ";
 	if (opt_rrd) {
