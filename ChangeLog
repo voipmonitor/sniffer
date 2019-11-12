@@ -1,3 +1,20 @@
+25.9 11.10.2019
+===============
+- sipport can be now set also in range - sipport = 5060-5090 [VG-1922]
+- add support for billing aggregation based on domain [VG-1886]
+- added support for per-sensor capture rules [VG-686]
+- added support for MySQL TLS certs [VS-965]
+- support for capturing SIPREC (passively) store xml part from sip message body, multiple media description in sdp, detect rtp caller/called direction via media description label and xml part [VG-1751]
+- allow two packets drop in FAX CED tone detector [VS-979]
+- fix packetbuffer file cache 
+- skip packets with bogus ip_header version after GRE header (warning - incorrect dataoffset/caplen ) [VS-978]
+- detect telephone-event in invite / res2xx (allow search for RFC2833 DTMF calls) [VS-331]
+- SIP REGISTER - check 'Proxy-Authorization' if 'Authorization' is missing (fixes empty SIP REGISTER username) [VS-975]
+- limit SQL syslog to 100 chars for each new attempts
+- fix issue with reinvite and proxy detect [VS-977]
+- voipmonitor --config-file=base_configuration --cmp-config=actual_configuration
+
+
 25.8 04.10.2019
 ===============
 - add support for new field 'by ip' (src, dst, both) in fraud sequential alert [VG-1915]
