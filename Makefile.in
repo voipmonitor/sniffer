@@ -61,8 +61,13 @@ JSONCFLAGS = $(shell pkg-config --cflags @LIBJSON_NAME@)
 
 MYSQLLIB=@MYSQLLIB@
 MYSQLINC=@MYSQLINCLUDE@
+MYSQL_WITHOUT_SSL_SUPPORT=@MYSQL_WITHOUT_SSL_SUPPORT@
 DPDKINC=@DPDKINCLUDE@
 DPDKLIB=@DPDKLIBRARY@
+
+ifeq ($(MYSQL_WITHOUT_SSL_SUPPORT),yes)
+  MYSQL_WITHOUT_SSL_SUPPORT = -D MYSQL_WITHOUT_SSL_SUPPORT
+endif
 
 GLIBCFLAGS =$(shell pkg-config --cflags glib-2.0)
 GLIBLIB =$(shell pkg-config --libs glib-2.0)
@@ -77,7 +82,7 @@ SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbise
 STATIC_LIBS = -static @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl ${LIBLD} -lrt -lz -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lpcre -lz -ldbi -llzma ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBFFT} -lpthread ${SS7}
 INCLUDES = ${DPDKINC} -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS}
 LIBS_PATH = ${DPDKLIB} -L/usr/local/lib/
-CXXFLAGS +=  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) ${MTUNE} ${INCLUDES} ${FBSDDEF}
+CXXFLAGS +=  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) ${MTUNE} ${INCLUDES} ${FBSDDEF} ${MYSQL_WITHOUT_SSL_SUPPORT}
 CFLAGS += ${CXXFLAGS}
 LIBS = ${SHARED_LIBS} 
 LIBS2 = @LIBS2@

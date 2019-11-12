@@ -30,6 +30,14 @@
 
 #define QFILE_PREFIX "qoq"
 
+/* fake mysql options */
+#ifdef MYSQL_WITHOUT_SSL_SUPPORT
+mysql_option MYSQL_OPT_SSL_KEY = (mysql_option) 6661;
+mysql_option MYSQL_OPT_SSL_CERT = (mysql_option) 6662;
+mysql_option MYSQL_OPT_SSL_CA = (mysql_option) 6663;
+mysql_option MYSQL_OPT_SSL_CAPATH = (mysql_option) 6664;
+mysql_option MYSQL_OPT_SSL_CIPHER = (mysql_option) 6665;
+#endif
 
 extern int verbosity;
 extern int opt_mysql_port;
