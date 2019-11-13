@@ -30,15 +30,6 @@
 
 #define QFILE_PREFIX "qoq"
 
-/* fake mysql options */
-#ifdef MYSQL_WITHOUT_SSL_SUPPORT
-mysql_option MYSQL_OPT_SSL_KEY = (mysql_option) 6661;
-mysql_option MYSQL_OPT_SSL_CERT = (mysql_option) 6662;
-mysql_option MYSQL_OPT_SSL_CA = (mysql_option) 6663;
-mysql_option MYSQL_OPT_SSL_CAPATH = (mysql_option) 6664;
-mysql_option MYSQL_OPT_SSL_CIPHER = (mysql_option) 6665;
-#endif
-
 extern int verbosity;
 extern int opt_mysql_port;
 extern char opt_match_header[128];
@@ -1443,6 +1434,12 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 			this->hMysql = mysql_init(NULL);
 			bool enabledSSL = false;
+#ifdef MYSQL_WITHOUT_SSL_SUPPORT
+			if (strlen(this->conn_sslkey) || strlen(this->conn_sslcert) || strlen(this->conn_sslcacert) ||
+			    strlen(this->conn_sslcapath) || this->conn_sslciphers.length()) {
+				syslog(LOG_WARNING, "Mysql SSL options was not recognized in the mysql library so SSL/TLS connection to the Mysql server will not work.");
+			}
+#else
 			if (strlen(this->conn_sslkey) && strlen(this->conn_sslcert)) {
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_KEY, this->conn_sslkey);
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_CERT, this->conn_sslcert);
@@ -1459,6 +1456,7 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			if (this->conn_sslciphers.length()) {
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_CIPHER, this->conn_sslciphers.c_str());
 			}
+#endif
 			if (enabledSSL) {
 				syslog(LOG_INFO, "Enabling SSL for mysql connection.");
 			}

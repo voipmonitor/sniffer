@@ -4148,10 +4148,11 @@ fi
 
 
 # check if mysql knows the MYSQL_OPT_SSL_* options
+# mariadb 10.3 don't know --cxxflags option in mysql_config
 ORIGCFLAGS=$CFLAGS
 ORIGCXXFLAGS=$CXXFLAGS
 CFLAGS=`$MYSQL_CONFIG --cflags`
-CXXFLAGS=`$MYSQL_CONFIG --cxxflags`
+CXXFLAGS=`$MYSQL_CONFIG --cflags`
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <mysql.h>
@@ -4168,7 +4169,8 @@ if ac_fn_c_try_compile "$LINENO"; then :
 $as_echo "$as_me: Mysql SSL options found." >&6;}
 else
   MYSQL_WITHOUT_SSL_SUPPORT="yes"
-
+{ $as_echo "$as_me:${as_lineno-$LINENO}: Mysql SSL options NOT found!" >&5
+$as_echo "$as_me: Mysql SSL options NOT found!" >&6;}
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
 CFLAGS=$ORIGCFLAGS
