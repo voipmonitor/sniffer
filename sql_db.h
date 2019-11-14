@@ -234,8 +234,7 @@ public:
 public:
 	SqlDb();
 	virtual ~SqlDb();
-	void setConnectParameters(string server, string user, string password, string database = "", u_int16_t port = 0, bool showversion = true,
-		char *sslkey = NULL, char *sslcert = NULL, char *sslcacert = NULL, char *sslcapath = NULL, string sslciphers = "");
+	void setConnectParameters(string server, string user, string password, string database = "", u_int16_t port = 0, bool showversion = true, mysqlSSLOptions *sslOpt = NULL);
 	void setCloudParameters(string cloud_host, string cloud_token, bool cloud_router);
 	void setLoginTimeout(ulong loginTimeout);
 	void setDisableSecureAuth(bool disableSecureAuth = true);
@@ -711,8 +710,7 @@ class MySqlStore_process {
 public:
 	MySqlStore_process(int id, class MySqlStore *parentStore,
 			   const char *host, const char *user, const char *password, const char *database, u_int16_t port,
-			   const char *cloud_host, const char *cloud_token, bool cloud_router,
-			   int concatLimit, char *sslkey, char *sslcert, char *sslcacert, char *sslcapath, string sslciphers);
+			   const char *cloud_host, const char *cloud_token, bool cloud_router, int concatLimit, mysqlSSLOptions *mySSLOpt);
 	~MySqlStore_process();
 	void connect();
 	void disconnect();
@@ -884,8 +882,7 @@ private:
 	};
 public:
 	MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port,
-		   const char *cloud_host = NULL, const char *cloud_token = NULL, bool cloud_router = true,
-		   char *sslkey = NULL, char *sslcert = NULL, char *sslcacert = NULL, char *sslcapath = NULL, string sslciphers = "");
+		   const char *cloud_host = NULL, const char *cloud_token = NULL, bool cloud_router = true, mysqlSSLOptions *mySSLOpt = NULL);
 	~MySqlStore();
 	void queryToFiles(bool enable = true, const char *directory = NULL, int period = 0);
 	void queryToFilesTerminate();
@@ -968,11 +965,7 @@ private:
 	string password;
 	string database;
 	u_int16_t port;
-	char *sslkey;
-	char *sslcert;
-	char *sslcacert;
-	char *sslcapath;
-	string sslciphers;
+	mysqlSSLOptions *mySSLOptions;
 	string cloud_host;
 	string cloud_token;
 	bool cloud_router;
