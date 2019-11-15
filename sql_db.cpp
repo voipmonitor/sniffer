@@ -1451,6 +1451,8 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 #endif
 			if (enabledSSL) {
+				my_bool forceSSL = true;
+				mysql_options(this->hMysql, MYSQL_OPT_SSL_ENFORCE, &forceSSL);
 				syslog(LOG_INFO, "Enabling SSL for mysql connection.");
 			}
 			if(!enabledSSL && this->conn_disable_secure_auth) {
