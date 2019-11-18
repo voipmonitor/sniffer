@@ -1,7 +1,7 @@
 #ifndef VOIPMONITOR_H
 #define VOIPMONITOR_H
 
-
+#include <climits>
 #include <sys/types.h>
 #include <string>
 #include <netdb.h>
@@ -328,5 +328,12 @@ inline bool isCloud() {
 int useNewStore();
 bool useSetId();
 
+typedef struct mysqlSSLOptions {
+	char key[PATH_MAX];
+	char cert[PATH_MAX];
+	char caCert[PATH_MAX];
+	char caPath[PATH_MAX];
+	string ciphers;
+} mysqlSSLOptions;
 
 #endif //VOIPMONITOR_H

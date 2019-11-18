@@ -30,7 +30,6 @@
 
 #define QFILE_PREFIX "qoq"
 
-
 extern int verbosity;
 extern int opt_mysql_port;
 extern char opt_match_header[128];
@@ -72,21 +71,13 @@ extern char mysql_database[256];
 extern char mysql_user[256];
 extern char mysql_password[256];
 extern int opt_mysql_port;
-extern char opt_mysql_ssl_key[PATH_MAX];
-extern char opt_mysql_ssl_cert[PATH_MAX];
-extern char opt_mysql_ssl_ca_cert[PATH_MAX];
-extern char opt_mysql_ssl_ca_path[PATH_MAX];
-extern string opt_mysql_ssl_ciphers;
+extern mysqlSSLOptions optMySsl;
 
 extern char mysql_2_host[256];
 extern char mysql_2_database[256];
 extern char mysql_2_user[256];
 extern char mysql_2_password[256];
-extern char opt_mysql_2_ssl_key[PATH_MAX];
-extern char opt_mysql_2_ssl_cert[PATH_MAX];
-extern char opt_mysql_2_ssl_ca_cert[PATH_MAX];
-extern char opt_mysql_2_ssl_ca_path[PATH_MAX];
-extern string opt_mysql_2_ssl_ciphers;
+extern mysqlSSLOptions optMySsl_2;
 
 extern int opt_mysql_2_port;
 
@@ -387,19 +378,20 @@ SqlDb::~SqlDb() {
 	}
 }
 
-void SqlDb::setConnectParameters(string server, string user, string password, string database, u_int16_t port, bool showversion,
-				 char *sslkey, char *sslcert, char *sslcacert, char *sslcapath, string sslciphers) {
+void SqlDb::setConnectParameters(string server, string user, string password, string database, u_int16_t port, bool showversion, mysqlSSLOptions *sslOpt) {
 	this->conn_server = server;
 	this->conn_user = user;
 	this->conn_password = password;
 	this->conn_database = database;
 	this->conn_port = port;
 	this->conn_showversion = showversion;
-	this->conn_sslkey = sslkey;
-	this->conn_sslcert = sslcert;
-	this->conn_sslcacert = sslcacert;
-	this->conn_sslcapath = sslcapath;
-	this->conn_sslciphers = sslciphers;
+	if (sslOpt) {
+		this->conn_sslkey = sslOpt->key;
+		this->conn_sslcert = sslOpt->cert;
+		this->conn_sslcacert = sslOpt->caCert;
+		this->conn_sslcapath = sslOpt->caPath;
+		this->conn_sslciphers = sslOpt->ciphers;
+	}
 }
 
 void SqlDb::setCloudParameters(string cloud_host, string cloud_token, bool cloud_router) {
@@ -1435,6 +1427,12 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			}
 			this->hMysql = mysql_init(NULL);
 			bool enabledSSL = false;
+#ifdef MYSQL_WITHOUT_SSL_SUPPORT
+			if (strlen(this->conn_sslkey) || strlen(this->conn_sslcert) || strlen(this->conn_sslcacert) ||
+			    strlen(this->conn_sslcapath) || this->conn_sslciphers.length()) {
+				syslog(LOG_WARNING, "Mysql SSL options was not recognized in the mysql library so SSL/TLS connection to the Mysql server will not work.");
+			}
+#else
 			if (strlen(this->conn_sslkey) && strlen(this->conn_sslcert)) {
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_KEY, this->conn_sslkey);
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_CERT, this->conn_sslcert);
@@ -1451,7 +1449,10 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			if (this->conn_sslciphers.length()) {
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_CIPHER, this->conn_sslciphers.c_str());
 			}
+#endif
 			if (enabledSSL) {
+				my_bool forceSSL = true;
+				mysql_options(this->hMysql, MYSQL_OPT_SSL_ENFORCE, &forceSSL);
 				syslog(LOG_INFO, "Enabling SSL for mysql connection.");
 			}
 			if(!enabledSSL && this->conn_disable_secure_auth) {
@@ -2697,8 +2698,7 @@ void *MySqlStore_process_storing(void *storeProcess_addr) {
 	
 MySqlStore_process::MySqlStore_process(int id, MySqlStore *parentStore,
 				       const char *host, const char *user, const char *password, const char *database, u_int16_t port,
-				       const char *cloud_host, const char *cloud_token, bool cloud_router,
-				       int concatLimit, char *sslkey, char *sslcert, char *sslcacert, char *sslcapath, string sslciphers) {
+				       const char *cloud_host, const char *cloud_token, bool cloud_router, int concatLimit, mysqlSSLOptions *mySSLOpt) {
 	this->id = id;
 	this->parentStore = parentStore;
 	this->terminated = false;
@@ -2712,7 +2712,7 @@ MySqlStore_process::MySqlStore_process(int id, MySqlStore *parentStore,
 	this->lastQueryTime = 0;
 	this->queryCounter = 0;
 	this->sqlDb = new FILE_LINE(29003) SqlDb_mysql();
-	this->sqlDb->setConnectParameters(host, user, password, database, port, true, sslkey, sslcert, sslcacert, sslcapath, sslciphers);
+	this->sqlDb->setConnectParameters(host, user, password, database, port, true, mySSLOpt);
 	if(cloud_host && *cloud_host) {
 		this->sqlDb->setCloudParameters(cloud_host, cloud_token, cloud_router);
 	}
@@ -3211,18 +3211,13 @@ string MySqlStore::QFileConfig::getDirectory() {
 }
 
 MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port,
-		       const char *cloud_host, const char *cloud_token, bool cloud_router,
-		        char *sslkey, char *sslcert, char *sslcacert, char *sslcapath, string sslciphers) {
+		       const char *cloud_host, const char *cloud_token, bool cloud_router, mysqlSSLOptions *mySSLOpt) {
 	this->host = host;
 	this->user = user;
 	this->password = password;
 	this->database = database;
 	this->port = port;
-	this->sslkey = sslkey;
-	this->sslcert = sslcert;
-	this->sslcacert = sslcacert;
-	this->sslcapath = sslcapath;
-	this->sslciphers = sslciphers;
+	this->mySSLOptions = mySSLOpt;
 	if(cloud_host) {
 		this->cloud_host = cloud_host;
 	}
@@ -3893,11 +3888,7 @@ MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
 						store ? store->port : this->port,
 						this->isCloud() ? this->cloud_host.c_str() : NULL, this->cloud_token.c_str(), this->cloud_router,
 						this->defaultConcatLimit,
-						store ? store->sslkey : this->sslkey,
-						store ? store->sslcert : this->sslcert,
-						store ? store->sslcacert : this->sslcacert,
-						store ? store->sslcapath : this->sslcapath,
-						store ? store->sslciphers : this->sslciphers);
+						store ? store->mySSLOptions : this->mySSLOptions);
 	process->setEnableTerminatingDirectly(this->enableTerminatingDirectly);
 	process->setEnableTerminatingIfEmpty(this->enableTerminatingIfEmpty);
 	process->setEnableTerminatingIfSqlError(this->enableTerminatingIfSqlError);
@@ -4270,11 +4261,9 @@ SqlDb *createSqlObject(int connectId) {
 		}
 		sqlDb = new FILE_LINE(29010) SqlDb_mysql();
 		if(connectId == 1) {
-			sqlDb->setConnectParameters(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port, true,
-				opt_mysql_2_ssl_key, opt_mysql_2_ssl_cert, opt_mysql_2_ssl_ca_cert, opt_mysql_2_ssl_ca_path, opt_mysql_2_ssl_ciphers);
+			sqlDb->setConnectParameters(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port, true, &optMySsl_2);
 		} else {
-			sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, true,
-				opt_mysql_ssl_key, opt_mysql_ssl_cert, opt_mysql_ssl_ca_cert, opt_mysql_ssl_ca_path, opt_mysql_ssl_ciphers);
+			sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, true, &optMySsl);
 			if(isCloud()) {
 				extern char cloud_host[256];
 				extern char cloud_token[256];
@@ -4643,23 +4632,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		extern char opt_database_backup_from_mysql_user[256];
 		extern char opt_database_backup_from_mysql_password[256];
 		extern unsigned int opt_database_backup_from_mysql_port;
-		extern char opt_database_backup_from_mysql_ssl_key[PATH_MAX];
-		extern char opt_database_backup_from_mysql_ssl_cert[PATH_MAX];
-		extern char opt_database_backup_from_mysql_ssl_ca_cert[PATH_MAX];
-		extern char opt_database_backup_from_mysql_ssl_ca_path[PATH_MAX];
-		extern string opt_database_backup_from_mysql_ssl_ciphers;
+		extern mysqlSSLOptions optMySSLBackup;
 		SqlDb_mysql *sqlDbSrc = new FILE_LINE(29013) SqlDb_mysql();
 		sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
 					       opt_database_backup_from_mysql_user,
 					       opt_database_backup_from_mysql_password,
 					       opt_database_backup_from_mysql_database,
 					       opt_database_backup_from_mysql_port,
-						true,
-					       opt_database_backup_from_mysql_ssl_key,
-					       opt_database_backup_from_mysql_ssl_cert,
-					       opt_database_backup_from_mysql_ssl_ca_cert,
-					       opt_database_backup_from_mysql_ssl_ca_path,
-					       opt_database_backup_from_mysql_ssl_ciphers);
+						true, &optMySSLBackup);
 		if(sqlDbSrc->existsColumn("cdr", "price_customer_mult1000000")) {
 			existsExtPrecisionBilling = true;
 		}

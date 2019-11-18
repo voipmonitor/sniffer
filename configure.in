@@ -110,7 +110,7 @@ AC_ARG_WITH(mysql, [  --with-mysql=PATH path to mysql_config binary or mysql pre
 ])
 if test "x$MYSQL_CONFIG" = "x"
 then
-    AC_MSG_RESULT(not found - apt-get install libmysqlclient-dev)
+    AC_MSG_RESULT(not found - apt-get install libmysqlclient-dev | yum install mysql-devel or yum install mysql-community-devel)
     exit 3
 else
     AC_SUBST([MYSQLCFLAGS],[`$MYSQL_CONFIG --cflags`])
@@ -121,6 +121,19 @@ else
     AC_MSG_RESULT($MYSQL_CONFIG)
 fi
 AC_CHECK_LIB([mysqlclient], [main], , AC_MSG_ERROR([Unable to find libmysqlclient. apt-get install libmysqlclient-dev | yum install mysql-devel or yum install mysql-community-devel| pkg install mysql56-client]))
+
+# check if mysql knows the MYSQL_OPT_SSL_* options
+# mariadb 10.3 don't know --cxxflags option in mysql_config
+ORIGCFLAGS=$CFLAGS
+ORIGCXXFLAGS=$CXXFLAGS
+CFLAGS=`$MYSQL_CONFIG --cflags`
+CXXFLAGS=`$MYSQL_CONFIG --cflags`
+AC_COMPILE_IFELSE(
+	[AC_LANG_PROGRAM([[#include <mysql.h>]],
+		[[ int i = MYSQL_OPT_SSL_KEY;]])],
+	[AC_MSG_NOTICE([Mysql SSL options found.])], [AC_SUBST([MYSQL_WITHOUT_SSL_SUPPORT],["yes"])AC_MSG_NOTICE([Mysql SSL options NOT found!])])
+CFLAGS=$ORIGCFLAGS
+CXXFLAGS=$ORIGCXXFLAGS
 
 AC_CHECK_LIB([z], [main], , AC_MSG_ERROR([Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel]))
 AC_CHECK_LIB([lzma], [main], HAVE_LIBLZMA=1, AC_MSG_NOTICE([Unable to find lzma. apt-get install liblzma-dev | yum install xz-devel]))
