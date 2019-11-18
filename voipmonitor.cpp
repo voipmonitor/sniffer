@@ -1030,6 +1030,7 @@ long int runAt;
 cLogBuffer *logBuffer;
 bool opt_hugepages_anon = false;
 int opt_hugepages_max = 0;
+bool opt_hugepages_overcommit = false;
 
 
 #include <stdio.h>
@@ -6967,6 +6968,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipv6", &useIPv6));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hugepages_anon", &opt_hugepages_anon));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hugepages_max", &opt_hugepages_max));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hugepages_overcommit", &opt_hugepages_overcommit));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -10631,6 +10633,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "hugepages_max", NULL))) {
 		opt_hugepages_max = atoi(value);
+	}
+	if((value = ini.GetValue("general", "hugepages_overcommit", NULL))) {
+		opt_hugepages_overcommit = yesno(value);
 	}
 	
 	/*

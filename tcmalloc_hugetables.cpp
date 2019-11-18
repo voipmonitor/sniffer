@@ -18,6 +18,7 @@
 extern cLogBuffer *logBuffer;
 extern bool opt_hugepages_anon;
 extern int opt_hugepages_max;
+extern bool opt_hugepages_overcommit;
 
 
 class HugetlbSysAllocator: public SysAllocator {
@@ -221,7 +222,7 @@ bool HugetlbSysAllocator::Initialize() {
 	if(!opt_hugepages_anon) {
 		int need_hugepages_max = ((u_int64_t)opt_hugepages_max * 1024 * 1024 * 1024 / big_page_size_);
 		int act_hugepages_max = 0;
-		const char *hugepages_config_max = "/proc/sys/vm/nr_overcommit_hugepages";
+		const char *hugepages_config_max = opt_hugepages_overcommit ? "/proc/sys/vm/nr_overcommit_hugepages" : "/proc/sys/vm/nr_hugepages";
 		for(int pass = 0; pass < 2; pass++) {
 			FILE *f = fopen(hugepages_config_max, pass == 0 ? "r" : "w");
 			if (f) {
