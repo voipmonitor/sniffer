@@ -221,7 +221,7 @@ bool HugetlbSysAllocator::Initialize() {
 	
 	if(!opt_hugepages_anon) {
 		for(int type_max = 0; type_max < 2; type_max++) {
-			int need_hugepages_max = ((u_int64_t)(type_max == 0 ? opt_hugepages_max : opt_hugepages_overcommit_max) * 1024 * 1024 / big_page_size_);
+			int need_hugepages_max = ((u_int64_t)(type_max == 0 ? opt_hugepages_max : opt_hugepages_overcommit_max) * 1024ull * 1024 / big_page_size_);
 			int act_hugepages_max = 0;
 			const char *hugepages_config_max = type_max == 0 ? "/proc/sys/vm/nr_hugepages" : "/proc/sys/vm/nr_overcommit_hugepages";
 			for(int pass = 0; pass < 2; pass++) {
