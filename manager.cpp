@@ -415,7 +415,8 @@ int Mgmt_set_pcap_stat_period(Mgmt_params *params);
 int Mgmt_memcrash_test(Mgmt_params *params);
 int Mgmt_get_oldest_spooldir_date(Mgmt_params *params);
 int Mgmt_get_sensor_information(Mgmt_params *params);
-int Mgmt_malloc_trim(Mgmt_params *params);
+int Mgmt_alloc_trim(Mgmt_params *params);
+int Mgmt_alloc_test(Mgmt_params *params);
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -518,7 +519,8 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_memcrash_test,
 	Mgmt_get_oldest_spooldir_date,
 	Mgmt_get_sensor_information,
-	Mgmt_malloc_trim,
+	Mgmt_alloc_trim,
+	Mgmt_alloc_test,
 	NULL
 };
 
@@ -4515,12 +4517,59 @@ int Mgmt_cloud_activecheck(Mgmt_params *params) {
 }
 */
 
-int Mgmt_malloc_trim(Mgmt_params *params) {
+int Mgmt_alloc_trim(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("malloc_trim", "malloc_trim");
+		params->registerCommand("alloc_trim", "alloc_trim");
 		return(0);
 	}
 	rss_purge(true);
+	return(0);
+}
+
+int Mgmt_alloc_test(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("alloc_test", "alloc_test");
+		return(0);
+	}
+	unsigned gb = 0;
+	unsigned s = 0;
+	sscanf(params->buf, "alloc_test %u %u", &gb, &s);
+	if(gb && s < 1e4) {
+		s = 1e4;
+	}
+	static char **p;
+	static unsigned c;
+	if(p) {
+		for(unsigned i = 0; i < c; i++) {
+		unsigned ii = rand() % c;
+		if(p[ii]) {
+			delete [] p[ii];
+			p[ii] = NULL;
+		}
+		}
+		for(unsigned i = 0; i < c; i++) {
+			if(p[i]) {
+				delete [] p[i];
+			}
+		}
+		delete [] p;
+		p = NULL;
+	}
+	if(gb) {
+		c = (unsigned)(gb * 1024ull * 1024 * 1024 / s);
+		p = new char*[c];
+		long unsigned sss = 0;
+		for(unsigned i = 0; i < c; i++) {
+			if(sss < gb * 1024ull * 1024 * 1024) {
+				unsigned ss = s + rand() % s;
+				p[i] = new char[ss];
+				memset(p[i], 0, ss);
+				sss += ss;
+			} else {
+				p[i] = NULL;
+			}
+		}
+	}
 	return(0);
 }
 
