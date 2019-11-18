@@ -1,4 +1,5 @@
 #include <syslog.h>
+#include <stdio.h>
 
 #include "log_buffer.h"
 
