@@ -1030,7 +1030,7 @@ long int runAt;
 cLogBuffer *logBuffer;
 bool opt_hugepages_anon = false;
 int opt_hugepages_max = 0;
-bool opt_hugepages_overcommit = false;
+int opt_hugepages_overcommit_max = 0;
 
 
 #include <stdio.h>
@@ -3407,7 +3407,7 @@ int main(int argc, char *argv[]) {
 		atexit(exit_handler_fork_mode);
 	}
 	
-	if(opt_hugepages_anon || opt_hugepages_max) {
+	if(opt_hugepages_anon || opt_hugepages_max || opt_hugepages_overcommit_max) {
 		logBuffer = new FILE_LINE(0) cLogBuffer();
 		#if HAVE_LIBTCMALLOC
 		HugetlbSysAllocator_init();
@@ -6968,7 +6968,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipv6", &useIPv6));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hugepages_anon", &opt_hugepages_anon));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hugepages_max", &opt_hugepages_max));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hugepages_overcommit", &opt_hugepages_overcommit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hugepages_overcommit_max", &opt_hugepages_overcommit_max));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -10634,8 +10634,8 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "hugepages_max", NULL))) {
 		opt_hugepages_max = atoi(value);
 	}
-	if((value = ini.GetValue("general", "hugepages_overcommit", NULL))) {
-		opt_hugepages_overcommit = yesno(value);
+	if((value = ini.GetValue("general", "hugepages_overcommit_max", NULL))) {
+		opt_hugepages_overcommit_max = atoi(value);
 	}
 	
 	/*

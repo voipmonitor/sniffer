@@ -5165,7 +5165,8 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, const char *file,
 	extern int opt_memory_purge_interval;
 	extern bool opt_hugepages_anon;
 	extern int opt_hugepages_max;
-	if((!opt_hugepages_max || opt_hugepages_anon) &&
+	extern int opt_hugepages_overcommit_max;
+	if(((!opt_hugepages_max && !opt_hugepages_overcommit_max) || opt_hugepages_anon) &&
 	   ts.tv_sec - __last_memory_purge >= (unsigned)opt_memory_purge_interval) {
 		bool firstRun = __last_memory_purge == 0;
 		__last_memory_purge = ts.tv_sec;

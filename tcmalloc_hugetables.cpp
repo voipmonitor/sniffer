@@ -18,7 +18,7 @@
 extern cLogBuffer *logBuffer;
 extern bool opt_hugepages_anon;
 extern int opt_hugepages_max;
-extern bool opt_hugepages_overcommit;
+extern int opt_hugepages_overcommit_max;
 
 
 class HugetlbSysAllocator: public SysAllocator {
@@ -220,25 +220,27 @@ bool HugetlbSysAllocator::Initialize() {
 	failed_ = false;
 	
 	if(!opt_hugepages_anon) {
-		int need_hugepages_max = ((u_int64_t)opt_hugepages_max * 1024 * 1024 * 1024 / big_page_size_);
-		int act_hugepages_max = 0;
-		const char *hugepages_config_max = opt_hugepages_overcommit ? "/proc/sys/vm/nr_overcommit_hugepages" : "/proc/sys/vm/nr_hugepages";
-		for(int pass = 0; pass < 2; pass++) {
-			FILE *f = fopen(hugepages_config_max, pass == 0 ? "r" : "w");
-			if (f) {
-				if(pass == 0) {
-					fscanf(f, "%i", &act_hugepages_max);
+		for(int type_max = 0; type_max < 2; type_max++) {
+			int need_hugepages_max = ((u_int64_t)(type_max == 0 ? opt_hugepages_max : opt_hugepages_overcommit_max) * 1024 * 1024 / big_page_size_);
+			int act_hugepages_max = 0;
+			const char *hugepages_config_max = type_max == 0 ? "/proc/sys/vm/nr_hugepages" : "/proc/sys/vm/nr_overcommit_hugepages";
+			for(int pass = 0; pass < 2; pass++) {
+				FILE *f = fopen(hugepages_config_max, pass == 0 ? "r" : "w");
+				if (f) {
+					if(pass == 0) {
+						fscanf(f, "%i", &act_hugepages_max);
+					} else {
+						fprintf(f, "%i", (int)need_hugepages_max);
+					}
+					fclose(f);
+					if(pass == 0 && need_hugepages_max <= act_hugepages_max) {
+						break;
+					}
 				} else {
-					fprintf(f, "%i", (int)need_hugepages_max);
+					syslog(LOG_WARNING, "hugepages error: failed open for %s: '%s' error: '%s'", 
+					       pass == 0 ? "read" : "write", hugepages_config_max, strerror(errno));
+					return false;
 				}
-				fclose(f);
-				if(pass == 0 && need_hugepages_max <= act_hugepages_max) {
-					break;
-				}
-			} else {
-				syslog(LOG_WARNING, "hugepages error: failed open for %s: '%s' error: '%s'", 
-				       pass == 0 ? "read" : "write", hugepages_config_max, strerror(errno));
-				return false;
 			}
 		}
 	}
