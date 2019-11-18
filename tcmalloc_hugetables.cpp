@@ -190,18 +190,6 @@ void* HugetlbSysAllocator::AllocInternal(size_t size, size_t* actual_size,
 
 bool HugetlbSysAllocator::Initialize() {
  
-	if(!opt_hugepages_anon) {
-		const char *hugepages_config_max = "/proc/sys/vm/nr_overcommit_hugepages";
-		FILE *f = fopen(hugepages_config_max, "w");
-		if (f) {
-			fprintf(f, "%i", opt_hugepages_max);
-			fclose(f);
-		} else {
-			syslog(LOG_WARNING, "hugepages error: failed open for write: '%s' error: '%s'", hugepages_config_max, strerror(errno));
-			return false;
-		}
-	}
- 
 	char path[PATH_MAX];
 	strcpy(path, "/dev/hugepages/voipmonitor");
 	strcat(path, ".XXXXXX");
@@ -230,6 +218,30 @@ bool HugetlbSysAllocator::Initialize() {
 	big_page_size_ = page_size;
 	failed_ = false;
 	
+	if(!opt_hugepages_anon) {
+		int need_hugepages_max = ((u_int64_t)opt_hugepages_max * 1024 * 1024 * 1024 / big_page_size_);
+		int act_hugepages_max = 0;
+		const char *hugepages_config_max = "/proc/sys/vm/nr_overcommit_hugepages";
+		for(int pass = 0; pass < 2; pass++) {
+			FILE *f = fopen(hugepages_config_max, pass == 0 ? "r" : "w");
+			if (f) {
+				if(pass == 0) {
+					fscanf(f, "%i", &act_hugepages_max);
+				} else {
+					fprintf(f, "%i", (int)need_hugepages_max);
+				}
+				fclose(f);
+				if(pass == 0 && need_hugepages_max <= act_hugepages_max) {
+					break;
+				}
+			} else {
+				syslog(LOG_WARNING, "hugepages error: failed open for %s: '%s' error: '%s'", 
+				       pass == 0 ? "read" : "write", hugepages_config_max, strerror(errno));
+				return false;
+			}
+		}
+	}
+ 
 	return true;
 }
 
