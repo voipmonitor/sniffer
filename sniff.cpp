@@ -5163,36 +5163,14 @@ inline void process_packet__cleanup_calls(pcap_pkthdr* header, const char *file,
 	*/
 	
 	extern int opt_memory_purge_interval;
-	if(ts.tv_sec - __last_memory_purge >= (unsigned)opt_memory_purge_interval) {
+	extern bool opt_hugepages_anon;
+	extern int opt_hugepages_max;
+	if((!opt_hugepages_max || opt_hugepages_anon) &&
+	   ts.tv_sec - __last_memory_purge >= (unsigned)opt_memory_purge_interval) {
 		bool firstRun = __last_memory_purge == 0;
 		__last_memory_purge = ts.tv_sec;
 		if(!firstRun) {
-			
-			#ifndef FREEBSD
-				malloc_trim(0);
-				if(sverb.malloc_trim) {
-					syslog(LOG_NOTICE, "malloc trim");
-				}
-			#endif
-				
-			#if HAVE_LIBTCMALLOC
-				MallocExtension::instance()->ReleaseFreeMemory();
-				if(sverb.malloc_trim) {
-					syslog(LOG_NOTICE, "tcmalloc release free memory");
-				}
-			#endif
-				
-			#if HAVE_LIBJEMALLOC
-				size_t mib[3];
-				size_t miblen = sizeof(mib)/sizeof(size_t);
-				mallctlnametomib("arena.0.purge", mib, &miblen);
-				mib[1] = MALLCTL_ARENAS_ALL; //(size_t)arena_ind
-				mallctlbymib(mib, miblen, NULL, NULL, NULL, 0);
-				if(sverb.malloc_trim) {
-					syslog(LOG_NOTICE, "jemalloc purge memory");
-				}
-			#endif
-			
+			rss_purge();
                 }
         }
 

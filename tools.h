@@ -3858,4 +3858,6 @@ private:
 
 unsigned RTPSENSOR_VERSION_INT();
 
+void rss_purge(bool force = false);
+
 #endif

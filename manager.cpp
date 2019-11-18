@@ -415,9 +415,7 @@ int Mgmt_set_pcap_stat_period(Mgmt_params *params);
 int Mgmt_memcrash_test(Mgmt_params *params);
 int Mgmt_get_oldest_spooldir_date(Mgmt_params *params);
 int Mgmt_get_sensor_information(Mgmt_params *params);
-#ifndef FREEBSD
 int Mgmt_malloc_trim(Mgmt_params *params);
-#endif
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -520,9 +518,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_memcrash_test,
 	Mgmt_get_oldest_spooldir_date,
 	Mgmt_get_sensor_information,
-#ifndef FREEBSD
 	Mgmt_malloc_trim,
-#endif
 	NULL
 };
 
@@ -4519,16 +4515,14 @@ int Mgmt_cloud_activecheck(Mgmt_params *params) {
 }
 */
 
-#ifndef FREEBSD
 int Mgmt_malloc_trim(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
 		params->registerCommand("malloc_trim", "malloc_trim");
 		return(0);
 	}
-	malloc_trim(0);
+	rss_purge(true);
 	return(0);
 }
-#endif
 
 int Mgmt_memcrash_test(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {

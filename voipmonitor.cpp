@@ -92,6 +92,8 @@
 #include "server.h"
 #include "billing.h"
 #include "audio_convert.h"
+#include "tcmalloc_hugetables.h"
+#include "log_buffer.h"
 
 #ifndef FREEBSD
 #define BACKTRACE 1
@@ -1035,6 +1037,10 @@ cUtfConverter utfConverter;
 bool useIPv6 = false;
 
 long int runAt;
+
+cLogBuffer *logBuffer;
+bool opt_hugepages_anon = false;
+int opt_hugepages_max = 0;
 
 
 #include <stdio.h>
@@ -3414,7 +3420,16 @@ int main(int argc, char *argv[]) {
 		}
 		atexit(exit_handler_fork_mode);
 	}
-
+	
+	if(opt_hugepages_anon || opt_hugepages_max) {
+		logBuffer = new FILE_LINE(0) cLogBuffer();
+		#if HAVE_LIBTCMALLOC
+		HugetlbSysAllocator_init();
+		#else
+		syslog(LOG_WARNING, "hugepages error: hugepages supported only with tcmalloc");
+		#endif
+	}
+	
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size() && reloadLoopCounter == 0) {
 		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", RTPSENSOR_VERSION);
 		if(diffValuesMysqlLoadConfig.size()) {
@@ -3669,6 +3684,11 @@ int main(int argc, char *argv[]) {
 
 	if(wdt) {
 		delete wdt;
+	}
+	
+	if(logBuffer) {
+		delete logBuffer;
+		logBuffer = NULL;
 	}
 
 	return(0);
@@ -4175,6 +4195,9 @@ int main_init_read() {
 			}
 			for(long i = 0; i < ((sverb.pcap_stat_period * 100) - timeProcessStatMS / 10) && !is_terminating(); i++) {
 				usleep(10000);
+				if(logBuffer) {
+					logBuffer->apply();
+				}
 			}
 			++_counter;
 		}
@@ -6964,6 +6987,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("socket_use_poll",  &opt_socket_use_poll));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("new-config", &useNewCONFIG));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipv6", &useIPv6));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hugepages_anon", &opt_hugepages_anon));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hugepages_max", &opt_hugepages_max));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -10621,6 +10646,13 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "socket_use_poll", NULL))) {
 		opt_socket_use_poll = yesno(value);
+	}
+	
+	if((value = ini.GetValue("general", "hugepages_anon", NULL))) {
+		opt_hugepages_anon = yesno(value);
+	}
+	if((value = ini.GetValue("general", "hugepages_max", NULL))) {
+		opt_hugepages_max = atoi(value);
 	}
 	
 	/*

@@ -37,6 +37,7 @@
 #include "voipmonitor.h"
 #include "server.h"
 #include "ssl_dssl.h"
+#include "tcmalloc_hugetables.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -2295,6 +2296,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		lapTimeDescr.push_back("rss_vsz");
 	}
 	outStrStat << "]MB ";
+	u_int64_t hugepages_base = HugetlbSysAllocator_base();
+	if(hugepages_base) {
+		outStrStat << "HP["
+			   << setprecision(0) << (double)hugepages_base/1024/1024
+			   << "]MB ";
+	}
 	//Get load average string
 	outStrStat << getLoadAvgStr() << " ";
 	map<string, pair<string, u_int64_t> > counters;
