@@ -230,6 +230,8 @@ bool HugetlbSysAllocator::Initialize() {
 					if(pass == 0) {
 						fscanf(f, "%i", &act_hugepages_max);
 					} else {
+						system("echo 3 > /proc/sys/vm/drop_caches");
+						system("echo 1 > /proc/sys/vm/compact_memory");
 						fprintf(f, "%i", (int)need_hugepages_max);
 					}
 					fclose(f);
