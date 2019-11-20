@@ -1006,7 +1006,8 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 			sIdAlert idAlert;
 			switch(parent->typeBy) {
 			case FraudAlert::_typeBy_source_ip:
-				idAlert.ip = callInfo->caller_ip;
+				idAlert.ips = (alert->typeByIP != FraudAlert::_typeByIP_dst) ? callInfo->caller_ip : 0;
+				idAlert.ipd = (alert->typeByIP == FraudAlert::_typeByIP_dst || alert->typeByIP == FraudAlert::_typeByIP_both) ? callInfo->called_ip : 0;
 				callsIter_by_ip = calls_by_ip.find(callInfo->caller_ip);
 				if(callsIter_by_ip != calls_by_ip.end()) {
 					call = callsIter_by_ip->second;
@@ -1078,7 +1079,8 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 						FraudAlertInfo_rcc *alertInfo = new FILE_LINE(7006) FraudAlertInfo_rcc(alert);
 						if(parent->typeBy == FraudAlert::_typeBy_source_ip) {
 							alertInfo->set_ip(_li, this->getDescr().c_str(), 
-									  callInfo->caller_ip, callInfo->country_code_caller_ip.c_str(),
+									  idAlert.ips, idAlert.ipd,
+									  callInfo->country_code_caller_ip.c_str(), callInfo->country_code_called_ip.c_str(),
 									  _actCalls); 
 						} else if(parent->typeBy == FraudAlert::_typeBy_source_number) {
 							alertInfo->set_number(_li, this->getDescr().c_str(), 
@@ -1373,15 +1375,17 @@ FraudAlertInfo_rcc::FraudAlertInfo_rcc(FraudAlert *alert)
 
 void FraudAlertInfo_rcc::set_ip(FraudAlert::eLocalInternational localInternational,
 				const char *timeperiod_name,
-				vmIP ip, const char *ip_location_code,
+				vmIP ips, vmIP ipd, const char *ips_location_code, const char *ipd_location_code,
 				unsigned int concurentCalls) {
 	this->localInternational = localInternational;
 	if(timeperiod_name) {
 		this->timeperiod_name = timeperiod_name;
 	}
 	this->type_by = FraudAlert::_typeBy_source_ip;
-	this->ip = ip;
-	this->ip_location_code = ip_location_code;
+	this->ips = ips;
+	this->ipd = ipd;
+	this->ips_location_code = ips_location_code;
+	this->ipd_location_code = ipd_location_code;
 	this->concurentCalls = concurentCalls;
 }
 
@@ -1447,10 +1451,27 @@ string FraudAlertInfo_rcc::getJson() {
 	}
 	switch(type_by) {
 	case FraudAlert::_typeBy_source_ip:
-		json.add("ip", ip.getString());
-		json.add("ip_location_code", ip_location_code);
-		json.add("ip_country", countryCodes->getNameCountry(ip_location_code.c_str()));
-		json.add("ip_continent", countryCodes->getNameContinent(ip_location_code.c_str()));
+		if(ips.isSet() && ipd.isSet()) {
+			json.add("ips", ips.getString());
+			json.add("ipd", ipd.getString());
+			if (!ips_location_code.empty()) {
+				json.add("ips_location_code", ips_location_code);
+				json.add("ips_country", countryCodes->getNameCountry(ips_location_code.c_str()));
+				json.add("ips_continent", countryCodes->getNameContinent(ips_location_code.c_str()));
+			}
+			if (!ipd_location_code.empty()) {
+				json.add("ipd_location_code", ipd_location_code);
+				json.add("ipd_country", countryCodes->getNameCountry(ipd_location_code.c_str()));
+				json.add("ipd_continent", countryCodes->getNameContinent(ipd_location_code.c_str()));
+			}
+		} else {
+			vmIP ip = ipd.isSet() ? ipd : ips;
+			string ip_location_code = ipd.isSet() ? ipd_location_code : ips_location_code;
+			json.add("ip", ip.getString());
+			json.add("ip_location_code", ip_location_code);
+			json.add("ip_country", countryCodes->getNameCountry(ip_location_code.c_str()));
+			json.add("ip_continent", countryCodes->getNameContinent(ip_location_code.c_str()));
+		}
 		break;
 	case FraudAlert::_typeBy_source_number:
 		json.add("number", number);

@@ -616,9 +616,10 @@ private:
 		u_int64_t at;
 	};
 	struct sIdAlert {
-		sIdAlert(vmIP ip = 0) {
+		sIdAlert(vmIP ips = 0, vmIP ipd = 0) {
 			clear();
-			this->ip = ip;
+			this->ips = ips;
+			this->ipd = ipd;
 		}
 		sIdAlert(const char *number) {
 			clear();
@@ -633,7 +634,8 @@ private:
 			this->rtp_stream_id = rtp_stream_id;
 		}
 		void clear() {
-			ip.clear();
+			ips.clear();
+			ipd.clear();
 			number.clear();
 			rtp_stream_ip.items[0].clear();
 			rtp_stream_ip.items[1].clear();
@@ -641,8 +643,10 @@ private:
 			rtp_stream_id.val[1] = 0;
 		}
 		bool operator == (const sIdAlert& other) const { 
-			return(this->ip.isSet() ?
-				this->ip == other.ip :
+			return(this->ips.isSet() ?
+				this->ips == other.ips :
+			       this->ipd.isSet() ?
+				this->ipd == other.ipd :
 			       !this->number.empty() ?
 				this->number == other.number : 
 			       this->rtp_stream_ip.items[0].isSet() ?
@@ -650,15 +654,17 @@ private:
 				this->rtp_stream_id == other.rtp_stream_id); 
 		}
 		bool operator < (const sIdAlert& other) const { 
-			return(this->ip.isSet() ?
-				this->ip < other.ip :
+			return(this->ips.isSet() ?
+				this->ips < other.ips :
+			       this->ipd.isSet() ?
+				this->ipd < other.ipd :
 			       !this->number.empty() ?
 				this->number < other.number : 
 			       this->rtp_stream_ip.items[0].isSet() ?
 				this->rtp_stream_ip < other.rtp_stream_ip :
 				this->rtp_stream_id < other.rtp_stream_id); 
 		}
-		vmIP ip;
+		vmIP ips, ipd;
 		string number;
 		d_item<vmIP> rtp_stream_ip;
 		d_u_int32_t rtp_stream_id;
@@ -742,7 +748,7 @@ public:
 	FraudAlertInfo_rcc(FraudAlert *alert);
 	void set_ip(FraudAlert::eLocalInternational localInternational,
 		    const char *timeperiod_name,
-		    vmIP ip, const char *ip_location_code,
+		    vmIP ips, vmIP ipd, const char *ips_location_code, const char *ipd_location_code,
 		    unsigned int concurentCalls);
 	void set_number(FraudAlert::eLocalInternational localInternational,
 			const char *timeperiod_name,
@@ -764,8 +770,8 @@ private:
 	FraudAlert::eLocalInternational localInternational;
 	string timeperiod_name;
 	FraudAlert::eTypeBy type_by;
-	vmIP ip;
-	string ip_location_code;
+	vmIP ips, ipd;
+	string ips_location_code, ipd_location_code;
 	string number;
 	string number_location_code;
 	d_item<vmIP> rtp_stream_ip;
@@ -780,6 +786,7 @@ public:
 	void evRtpStream(sFraudRtpStreamInfo *rtpStreamInfo);
 protected:
 	void addFraudDef(SqlDb_row *row, SqlDb *sqlDb = NULL);
+	bool defByIP() { return(true); }
 	bool defFilterIp() { return(true); }
 	bool defFilterIp2() { return(true); }
 	bool defFilterIpCondition12() { return(true); }
