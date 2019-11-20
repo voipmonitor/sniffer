@@ -338,6 +338,7 @@ int opt_pb_read_from_file_acttime = 0;
 int opt_pb_read_from_file_acttime_diff_days = 0;
 unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
+bool opt_nonstop_read = false;
 int opt_time_to_terminate = 0;
 bool opt_receiver_check_id_sensor = true;
 int opt_dscp = 0;
@@ -7249,6 +7250,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"max-packets", 1, 0, 301},
 	    {"time-to-terminate", 1, 0, 323},
 	    {"continue-after-read", 0, 0, 302},
+	    {"nonstop-read", 0, 0, 335},
 	    {"diff-days", 1, 0, 303},
 	    {"reindex-all", 0, 0, 304},
 	    {"run-cleanspool", 0, 0, 305},
@@ -7701,6 +7703,9 @@ void get_command_line_arguments() {
 				break;
 			case 302:
 				opt_continue_after_read = true;
+				break;
+			case 335:
+				opt_nonstop_read = true;
 				break;
 			case 323:
 				opt_time_to_terminate = atoi(optarg);

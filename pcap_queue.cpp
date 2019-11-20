@@ -134,6 +134,7 @@ extern int opt_pb_read_from_file_acttime;
 extern int opt_pb_read_from_file_acttime_diff_days;
 extern unsigned int opt_pb_read_from_file_max_packets;
 extern bool opt_continue_after_read;
+extern bool opt_nonstop_read;
 extern int opt_time_to_terminate;
 extern char opt_scanpcapdir[2048];
 extern int global_pcap_dlink;
@@ -3022,6 +3023,11 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 	} else if(res == -2) {
 		if(VERBOSE && opt_pb_read_from_file[0]) {
 			syslog(LOG_NOTICE,"packetbuffer - %s: end of pcap file, exiting", this->getInterfaceName().c_str());
+			if(opt_nonstop_read) {
+				pcap_close(this->pcapHandle);
+				char errbuf[PCAP_ERRBUF_SIZE];
+				this->pcapHandle = pcap_open_offline_zip(opt_pb_read_from_file, errbuf);
+			}
 		}
 		return(-1);
 	} else if(res == 0) {
@@ -3323,7 +3329,7 @@ string PcapQueue_readFromInterface_base::getInterfaceName(bool simple) {
 }
 
 void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
-	if(opt_continue_after_read) {
+	if(opt_continue_after_read || opt_nonstop_read) {
 		unsigned sleepCounter = 0;
 		while(!is_terminating()) {
 			this->tryForcePush();
@@ -3346,6 +3352,11 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 					if(flushAllTars()) {
 						 syslog(LOG_NOTICE, "tars flushed");
 					}
+				}
+				if(sleepCounter > 30 && opt_nonstop_read) {
+					rss_purge();
+					syslog(LOG_NOTICE, "purge");
+					break;
 				}
 			}
 			sleep(1);
@@ -4803,9 +4814,17 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						blockStoreBypassQueue->push(blockStore[blockStoreIndex]);
 					}
 					++sumBlocksCounterIn[0];
-					blockStore[blockStoreIndex] = NULL;
+					if(opt_nonstop_read) {
+						this->new_blockstore(blockStoreIndex);
+					} else {
+						blockStore[blockStoreIndex] = NULL;
+					}
 					terminatingAtEndOfReadPcap();
-					break;
+					if(opt_nonstop_read) {
+						continue;
+					} else {
+						break;
+					}
 				}
 			} else if(res == 0) {
 				usleep(100);
