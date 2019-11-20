@@ -4159,7 +4159,7 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 int
 main ()
 {
- int i = MYSQL_OPT_SSL_KEY;
+ int i = MYSQL_OPT_SSL_ENFORCE;
   ;
   return 0;
 }
