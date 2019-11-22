@@ -76,6 +76,13 @@ AC_CHECK_LIB([rrd], [main], , AC_MSG_ERROR([Unable to find librrd library. apt-g
 AC_CHECK_LIB([glib-2.0], [main], , AC_MSG_ERROR([Unable to find libglib library. apt-get install  libglib2.0-dev | yum install glib2-devel]))
 AC_CHECK_LIB([xml2], [main], , AC_MSG_ERROR([Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel]))
 
+AC_ARG_WITH(libc-dir, [  --with-libc-dir=PATH path to explicit libc directory (for static building)], [
+	TMPLIBCDIRLIB=-I$withval/lib
+	TMPLIBCDIRINC=-I$withval/include
+	AC_SUBST([LIBCDIRLIB], [$TMPLIBCDIRLIB])
+	AC_SUBST([LIBCDIRINC], [$TMPLIBCDIRINC])
+])
+
 AC_ARG_WITH(dpdk-include, [  --with-dpdk-include=PATH path to explicit include files], [
 	TMPDPDK=-I$withval
 	AC_SUBST([DPDKINCLUDE], [$TMPDPDK])
