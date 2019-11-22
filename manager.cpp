@@ -52,6 +52,10 @@
 #include <malloc.h>
 #endif
 
+#if HAVE_LIBTCMALLOC
+#include <gperftools/malloc_extension.h>
+#endif
+
 //#define BUFSIZE 1024
 //define BUFSIZE 20480
 #define BUFSIZE 4096		//block size?
@@ -411,13 +415,14 @@ int Mgmt_sql_time_information(Mgmt_params *params);
 int Mgmt_pausecall(Mgmt_params *params);
 int Mgmt_unpausecall(Mgmt_params *params);
 int Mgmt_setverbparam(Mgmt_params *params);
+int Mgmt_cleanverbparams(Mgmt_params *params);
 int Mgmt_set_pcap_stat_period(Mgmt_params *params);
 int Mgmt_memcrash_test(Mgmt_params *params);
 int Mgmt_get_oldest_spooldir_date(Mgmt_params *params);
 int Mgmt_get_sensor_information(Mgmt_params *params);
-#ifndef FREEBSD
-int Mgmt_malloc_trim(Mgmt_params *params);
-#endif
+int Mgmt_alloc_trim(Mgmt_params *params);
+int Mgmt_alloc_test(Mgmt_params *params);
+int Mgmt_tcmalloc_stats(Mgmt_params *params);
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -516,13 +521,14 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_pausecall,
 	Mgmt_unpausecall,
 	Mgmt_setverbparam,
+	Mgmt_cleanverbparams,
 	Mgmt_set_pcap_stat_period,
 	Mgmt_memcrash_test,
 	Mgmt_get_oldest_spooldir_date,
 	Mgmt_get_sensor_information,
-#ifndef FREEBSD
-	Mgmt_malloc_trim,
-#endif
+	Mgmt_alloc_trim,
+	Mgmt_alloc_test,
+	Mgmt_tcmalloc_stats,
 	NULL
 };
 
@@ -4519,16 +4525,78 @@ int Mgmt_cloud_activecheck(Mgmt_params *params) {
 }
 */
 
-#ifndef FREEBSD
-int Mgmt_malloc_trim(Mgmt_params *params) {
+int Mgmt_alloc_trim(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("malloc_trim", "malloc_trim");
+		params->registerCommand("alloc_trim", "alloc_trim");
 		return(0);
 	}
-	malloc_trim(0);
+	rss_purge(true);
 	return(0);
 }
-#endif
+
+int Mgmt_alloc_test(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("alloc_test", "alloc_test");
+		return(0);
+	}
+	unsigned gb = 0;
+	unsigned s = 0;
+	sscanf(params->buf, "alloc_test %u %u", &gb, &s);
+	if(gb && s < 1e4) {
+		s = 1e4;
+	}
+	static char **p;
+	static unsigned c;
+	if(p) {
+		for(unsigned i = 0; i < c; i++) {
+		unsigned ii = rand() % c;
+		if(p[ii]) {
+			delete [] p[ii];
+			p[ii] = NULL;
+		}
+		}
+		for(unsigned i = 0; i < c; i++) {
+			if(p[i]) {
+				delete [] p[i];
+			}
+		}
+		delete [] p;
+		p = NULL;
+	}
+	if(gb) {
+		c = (unsigned)(gb * 1024ull * 1024 * 1024 / s);
+		p = new char*[c];
+		long unsigned sss = 0;
+		for(unsigned i = 0; i < c; i++) {
+			if(sss < gb * 1024ull * 1024 * 1024) {
+				unsigned ss = s + rand() % s;
+				p[i] = new char[ss];
+				memset(p[i], 0, ss);
+				sss += ss;
+			} else {
+				p[i] = NULL;
+			}
+		}
+	}
+	return(0);
+}
+
+int Mgmt_tcmalloc_stats(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("tcmalloc_stats", "tcmalloc_stats");
+		return(0);
+	}
+	#if HAVE_LIBTCMALLOC
+	unsigned stats_buffer_length = 1000000;
+	char *stats_buffer = new char[stats_buffer_length];
+	MallocExtension::instance()->GetStats(stats_buffer, stats_buffer_length);
+	int rslt = params->sendString(stats_buffer);
+	delete [] stats_buffer;
+	return(rslt);
+	#else
+	return(0);
+	#endif
+}
 
 int Mgmt_memcrash_test(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
@@ -4865,6 +4933,18 @@ int Mgmt_setverbparam(Mgmt_params *params) {
 		verbparam.resize(posEndLine);
 	}
 	parse_verb_param(verbparam);
+	return(0);
+}
+
+int Mgmt_cleanverbparams(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("cleanverbparams", "cleanverbparams");
+		return(0);
+	}
+
+	sverb.disable_process_packet_in_packetbuffer = 0;
+	sverb.disable_push_to_t2_in_packetbuffer = 0;
+	
 	return(0);
 }
 

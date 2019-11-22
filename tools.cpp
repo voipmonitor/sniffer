@@ -54,6 +54,18 @@
 #include <algorithm> // for std::min
 #include <iostream>
 
+#ifndef FREEBSD
+#include <malloc.h>
+#endif
+
+#if HAVE_LIBTCMALLOC    
+#include <gperftools/malloc_extension.h>
+#endif
+
+#if HAVE_LIBJEMALLOC
+#include <jemalloc/jemalloc.h>
+#endif
+
 #include "calltable.h"
 #include "rtp.h"
 #include "tools.h"
@@ -880,7 +892,7 @@ long long GetTotalDiskSpace(const char* absoluteFilePath) {
 }
 
 bool lseek(int fd, u_int64_t seekPos) {
-	if(sizeof(int) == 4) {
+	if(sizeof(int*) == 4) {
 		int counterSeek = 0;
 		while(seekPos) {
 			u_int64_t _seek = min((unsigned long long)seekPos, 2000000000ull);
@@ -6073,4 +6085,45 @@ unsigned RTPSENSOR_VERSION_INT() {
 		}
 	}
 	return(version_num);
+}
+
+
+void rss_purge(bool force) {
+	#ifndef FREEBSD
+		malloc_trim(0);
+		if(sverb.malloc_trim) {
+			syslog(LOG_NOTICE, "malloc trim");
+		}
+	#endif
+		
+	#if HAVE_LIBTCMALLOC
+		bool tcmalloc_need_purge = false;
+		if(force) {
+			tcmalloc_need_purge = true;
+		} else {
+			size_t allocated_bytes = 0;
+			MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes", &allocated_bytes);
+			size_t rss = getRss();
+			if(allocated_bytes < rss / 2) {
+				tcmalloc_need_purge = true;
+			}
+		}
+		if(tcmalloc_need_purge) {
+			MallocExtension::instance()->ReleaseFreeMemory();
+			if(sverb.malloc_trim) {
+				syslog(LOG_NOTICE, "tcmalloc release free memory");
+			}
+		}
+	#endif
+		
+	#if HAVE_LIBJEMALLOC
+		size_t mib[3];
+		size_t miblen = sizeof(mib)/sizeof(size_t);
+		mallctlnametomib("arena.0.purge", mib, &miblen);
+		mib[1] = MALLCTL_ARENAS_ALL; //(size_t)arena_ind
+		mallctlbymib(mib, miblen, NULL, NULL, NULL, 0);
+		if(sverb.malloc_trim) {
+			syslog(LOG_NOTICE, "jemalloc purge memory");
+		}
+	#endif
 }
