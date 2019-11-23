@@ -77,7 +77,7 @@ AC_CHECK_LIB([glib-2.0], [main], , AC_MSG_ERROR([Unable to find libglib library.
 AC_CHECK_LIB([xml2], [main], , AC_MSG_ERROR([Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel]))
 
 AC_ARG_WITH(libc-dir, [  --with-libc-dir=PATH path to explicit libc directory (for static building)], [
-	TMPLIBCDIRLIB=-I$withval/lib
+	TMPLIBCDIRLIB=-L$withval/lib
 	TMPLIBCDIRINC=-I$withval/include
 	AC_SUBST([LIBCDIRLIB], [$TMPLIBCDIRLIB])
 	AC_SUBST([LIBCDIRINC], [$TMPLIBCDIRINC])

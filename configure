@@ -4034,7 +4034,7 @@ fi
 # Check whether --with-libc-dir was given.
 if test "${with_libc_dir+set}" = set; then :
   withval=$with_libc_dir;
-	TMPLIBCDIRLIB=-I$withval/lib
+	TMPLIBCDIRLIB=-L$withval/lib
 	TMPLIBCDIRINC=-I$withval/include
 	LIBCDIRLIB=$TMPLIBCDIRLIB
 
