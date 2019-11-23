@@ -1,4 +1,10 @@
-25.9 11.10.2019
+26.0 23.11.2019
+===============
+- Statically compiled binaries (64bit) are now compiled with the latest tcmalloc (fixes TLB shootdown bottleneck issues on NUMA systems - multi cpu servers), GCC 8.3, glibc 2.28
+- statically compiled versions (64bit) from 26.0 ARE NOT COMPATIBLE with kernels <= 3.2 (do not upgrade if you are running kernel <= 3.2 
+
+
+25.9 11.11.2019
 ===============
 - sipport can be now set also in range - sipport = 5060-5090 [VG-1922]
 - add support for billing aggregation based on domain [VG-1886]
