@@ -929,6 +929,7 @@ int opt_cpu_limit_delete_thread = 5;
 int opt_cpu_limit_delete_t2sip_thread = 17;
 
 int opt_memory_purge_interval = 60;
+int opt_memory_purge_if_release_gt = 500;
 
 CleanSpool *cleanSpool[2] = { NULL, NULL };
 
@@ -6817,6 +6818,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42347) cConfigItem_integer("cpu_limit_delete_thread", &opt_cpu_limit_delete_thread));
 		addConfigItem(new FILE_LINE(42348) cConfigItem_integer("cpu_limit_delete_t2sip_thread", &opt_cpu_limit_delete_t2sip_thread));
 		addConfigItem(new FILE_LINE(0) cConfigItem_integer("memory_purge_interval", &opt_memory_purge_interval));
+		addConfigItem(new FILE_LINE(0) cConfigItem_integer("memory_purge_if_release_gt", &opt_memory_purge_if_release_gt));
 	group("upgrade");
 		addConfigItem(new FILE_LINE(42349) cConfigItem_yesno("upgrade_try_http_if_https_fail", &opt_upgrade_try_http_if_https_fail));
 		addConfigItem(new FILE_LINE(42350) cConfigItem_string("curlproxy", opt_curlproxy, sizeof(opt_curlproxy)));
@@ -10552,6 +10554,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "memory_purge_interval", NULL))) {
 		opt_memory_purge_interval = atoi(value);
+	}
+	if((value = ini.GetValue("general", "memory_purge_if_release_gt", NULL))) {
+		opt_memory_purge_if_release_gt = atoi(value);
 	}
 
 	if((value = ini.GetValue("general", "preprocess_packets_qring_length", NULL))) {

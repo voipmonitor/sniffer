@@ -6101,10 +6101,13 @@ void rss_purge(bool force) {
 		if(force) {
 			tcmalloc_need_purge = true;
 		} else {
+			extern int opt_memory_purge_if_release_gt;
+			extern u_int64_t all_ringbuffers_size;
 			size_t allocated_bytes = 0;
 			MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes", &allocated_bytes);
 			size_t rss = getRss();
-			if(allocated_bytes < rss / 2) {
+			int64_t release_size = rss - all_ringbuffers_size - allocated_bytes;
+			if(release_size > (int64_t)MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10)) {
 				tcmalloc_need_purge = true;
 			}
 		}

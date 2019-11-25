@@ -218,6 +218,7 @@ size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_
 
 int pcap_drop_flag = 0;
 int enable_bad_packet_order_warning = 0;
+u_int64_t all_ringbuffers_size = 0;
 
 static pcap_block_store_queue *blockStoreBypassQueue; 
 
@@ -2949,6 +2950,9 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 				daemonizeOutput(outStr.str());
 			}
 		}
+		if(rssAfterActivate > rssBeforeActivate) {
+			all_ringbuffers_size += (rssAfterActivate - rssBeforeActivate) * 1024 * 1024;
+		}
 	}
 	if(opt_mirrorip) {
 		if(opt_mirrorip_dst[0] == '\0') {
@@ -4593,6 +4597,7 @@ inline void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg) {
 
 PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
  : PcapQueue(readFromInterface, nameQueue) {
+	all_ringbuffers_size = 0;
 	memset(this->readThreads, 0, sizeof(this->readThreads));
 	this->readThreadsCount = 0;
 	this->lastReadThreadsIndex_pcapStatString_interface = -1;
