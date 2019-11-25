@@ -645,7 +645,9 @@ protected:
 		return(size > 0 ? size : 0);
 	}
 	unsigned getSIZE() {
-		return(this->dedupThread ? this->dedupThread->getSize() : this->getSize());
+		return(this->dedupThread ? this->dedupThread->getSize() : 
+		       this->pcapProcessThread ? this->pcapProcessThread->getSize() :
+		       this->getSize());
 	}
 	bool isTerminated() {
 		return(this->threadTerminated);
