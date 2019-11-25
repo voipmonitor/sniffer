@@ -1,3 +1,10 @@
+26.1 25.11.2019
+===============
+- Revert compatibility for older kernels for static builds 
+- add support for new field 'by ip' (src, dst, both) in fraud realtime concurrent calls [VG-1915]
+- release memory (if used tcmalloc) only if need (new config option memory_purge_if_release_gt default 500MB)
+
+
 26.0 23.11.2019
 ===============
 - Statically compiled binaries (64bit) are now compiled with the latest tcmalloc (fixes TLB shootdown bottleneck issues on NUMA systems - multi cpu servers), GCC 8.3, glibc 2.28
