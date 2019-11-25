@@ -11,9 +11,9 @@
 #include <malloc.h>
 #endif
 
-#ifdef HEAP_CHUNK_ENABLE
+//#ifdef HEAP_CHUNK_ENABLE
 #include "heap_chunk.h"
-#endif
+//#endif
 
 extern sVerbose sverb;
 
@@ -39,26 +39,50 @@ sFileLine AllocFileLines[] = {
 };
 
 
+#ifdef HEAP_CHUNK_ENABLE
+extern cHeap *heap_vm;
+extern bool heap_vm_active;
+extern size_t heap_vm_size_call;
+extern size_t heap_vm_size_packetbuffer;
+
+static unsigned heap_vm_shift = 4;
+#endif //HEAP_CHUNK_ENABLE
+
+
 inline void *_heapsafe_alloc(size_t sizeOfObject) {
-	return(
 	#ifdef HEAP_CHUNK_ENABLE
-		HeapChunk ? ChunkMAlloc(sizeOfObject) :
-	#endif
-		malloc(sizeOfObject));
+	if(heap_vm_active && 
+	   (sizeOfObject == heap_vm_size_call || sizeOfObject == heap_vm_size_packetbuffer)) {
+		u_int16_t heapItemIndex;
+		void *ptr = heap_vm->MAlloc(sizeOfObject + heap_vm_shift, &heapItemIndex);
+		if(ptr) {
+			*(u_int16_t*)ptr = heapItemIndex;
+			return((char*)ptr + heap_vm_shift);
+		}
+	}
+	#endif //HEAP_CHUNK_ENABLE
+	return(malloc(sizeOfObject));
 }
  
 inline void _heapsafe_free(void *pointerToObject) {
 	#ifdef HEAP_CHUNK_ENABLE
-	if(HeapChunk) {
-		ChunkFree(pointerToObject);
-	} else
-	#endif
-	{
-		free(pointerToObject);
+	if(heap_vm_active && (char*)pointerToObject > heap_vm->getMinPtr()) {
+		char *_pointerToObject = (char*)pointerToObject - heap_vm_shift;
+		if(heap_vm->Free(_pointerToObject, *(u_int16_t*)_pointerToObject)) {
+			return;
+		}
 	}
+	#endif //HEAP_CHUNK_ENABLE
+	free(pointerToObject);
 }
 
 inline void *_heapsafe_realloc(void *pointerToObject, size_t sizeOfObject) {
+	#ifdef HEAP_CHUNK_ENABLE
+	if(heap_vm_active && (char*)pointerToObject > heap_vm->getMinPtr()) {
+		_heapsafe_free(pointerToObject);
+		return(_heapsafe_alloc(sizeOfObject));
+	}
+	#endif //HEAP_CHUNK_ENABLE
 	return(realloc(pointerToObject, sizeOfObject));
 }
  

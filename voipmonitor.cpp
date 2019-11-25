@@ -94,6 +94,7 @@
 #include "audio_convert.h"
 #include "tcmalloc_hugetables.h"
 #include "log_buffer.h"
+#include "heap_chunk.h"
 
 #ifndef FREEBSD
 #define BACKTRACE 1
@@ -1032,6 +1033,7 @@ cLogBuffer *logBuffer;
 bool opt_hugepages_anon = false;
 int opt_hugepages_max = 0;
 int opt_hugepages_overcommit_max = 0;
+int opt_hugepages_second_heap = 0;
 
 
 #include <stdio.h>
@@ -2789,6 +2791,72 @@ bool is_set_gui_params() {
 	       is_gui_param);
 }
 
+
+#ifdef HEAP_CHUNK_ENABLE
+
+class cHeapVM : public cHeap {
+public:
+	cHeapVM();
+	bool setActive();
+protected:
+	void *initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve);
+	void termHeapBuffer(void *ptr, u_int32_t size, u_int32_t size_reserve);
+private:
+	bool initHugepages();
+private:
+	int hugepage_fd;
+	int64_t hugepage_size;
+};
+
+
+cHeapVM *heap_vm;
+bool heap_vm_active;
+size_t heap_vm_size_call;
+size_t heap_vm_size_packetbuffer;
+
+
+cHeapVM::cHeapVM() {
+	hugepage_fd = -1;
+	hugepage_size = 0;
+}
+
+bool cHeapVM::setActive() {
+	if(initHugepages()) {
+		return(cHeap::setActive());
+	}
+	return(false);
+}
+
+void *cHeapVM::initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve) {
+	size_t _size = 512 * 1024 * 1024;
+	size_t _size_reserve = 1 * 2048 * 1024;
+	_size += _size_reserve;
+	size_t size_mmap;
+	void *ptr = mmap_hugepage(hugepage_fd, 0, false,
+				  _size, &size_mmap, NULL, 
+				  hugepage_size, 1,
+				  false, NULL);
+	if(ptr) {
+		*size = size_mmap - _size_reserve;
+		*size_reserve = _size_reserve;
+		sum_size += size_mmap;
+		return(ptr);
+	}
+	return(NULL);
+}
+
+void cHeapVM::termHeapBuffer(void *ptr, u_int32_t size, u_int32_t size_reserve) {
+	munmap_hugepage(ptr, size + size_reserve);
+	sum_size -= size + size_reserve;
+}
+
+bool cHeapVM::initHugepages() {
+	return(init_hugepages(&hugepage_fd, &hugepage_size));
+}
+
+#endif //HEAP_CHUNK_ENABLE
+
+
 int main(int argc, char *argv[]) {
 	extern unsigned int HeapSafeCheck;
 	extern unsigned int MemoryStatQuick;
@@ -3415,6 +3483,23 @@ int main(int argc, char *argv[]) {
 		#else
 		syslog(LOG_WARNING, "hugepages error: hugepages supported only with tcmalloc");
 		#endif
+	}
+	
+	if(opt_hugepages_second_heap) {
+		#ifdef HEAP_CHUNK_ENABLE
+		heap_vm = new cHeapVM;
+		if(heap_vm->setActive()) {
+			heap_vm_active = true;
+			if(opt_hugepages_second_heap == 1 || opt_hugepages_second_heap == 2) {
+				heap_vm_size_call = sizeof(Call);
+			}
+			if(opt_hugepages_second_heap == 1 || opt_hugepages_second_heap == 3) {
+				heap_vm_size_packetbuffer = opt_pcap_queue_block_max_size;
+			}
+		}
+		#else
+		syslog(LOG_ERR, "option hugepages_second_heap need recompile with #define HEAP_CHUNK_ENABLE 1");
+		#endif //HEAP_CHUNK_ENABLE
 	}
 	
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size() && reloadLoopCounter == 0) {
@@ -5080,33 +5165,6 @@ void test_ip_groups() {
 	}
 	*/
 }
-
-#ifdef HEAP_CHUNK_ENABLE
-#include "heap_chunk.h"
-void test_heapchunk() {
-	void **testP = new FILE_LINE(42050) void*[1000000];
-	for(int pass = 0; pass < 2; pass++) {
-		u_int64_t startTime = getTimeNS();
-		unsigned allocSize = 1000;
-		for(int j = 0; j < 10; j++) {
-			for(int i = 0; i < 100000; i++) {
-				testP[i] = pass == 0 ?
-					    ChunkMAlloc(allocSize) :
-					    malloc(allocSize);
-			}
-			for(int i = 0; i < 100000 / 2; i++) {
-				if(pass == 0) {
-					ChunkFree(testP[i]);
-				} else {
-					free(testP[i]);
-				}
-			}
-		}
-		u_int64_t endTime = getTimeNS();
-		cout << endTime - startTime << endl;
-	}
-}
-#endif //HEAP_CHUNK_ENABLE
 
 void test_filezip_handler() {
 	FileZipHandler *fzh = new FILE_LINE(42051) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
@@ -6970,6 +7028,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hugepages_anon", &opt_hugepages_anon));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hugepages_max", &opt_hugepages_max));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hugepages_overcommit_max", &opt_hugepages_overcommit_max));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("hugepages_second_heap", &opt_hugepages_second_heap))
+						->addValues("all:1|call:2|packetbuffer:3")
+						->setDefaultValueStr("no"));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -10641,6 +10702,17 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "hugepages_overcommit_max", NULL))) {
 		opt_hugepages_overcommit_max = atoi(value);
+	}
+	if((value = ini.GetValue("general", "hugepages_second_heap", NULL))) {
+		if(!strcasecmp(value, "all")) {
+			opt_hugepages_second_heap = 1;
+		} else if(!strcasecmp(value, "call")) {
+			opt_hugepages_second_heap = 2;
+		} else if(!strcasecmp(value, "packetbuffer")) {
+			opt_hugepages_second_heap = 3;
+		} else {
+			opt_hugepages_second_heap = yesno(value);
+		}
 	}
 	
 	/*

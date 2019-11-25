@@ -38,6 +38,7 @@
 #include "server.h"
 #include "ssl_dssl.h"
 #include "tcmalloc_hugetables.h"
+#include "heap_chunk.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -2250,7 +2251,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double storing_cdr_cpu_avg;
 		string storing_cdr_cpu = storing_cdr_getCpuUsagePerc(&storing_cdr_cpu_avg);
 		if(!storing_cdr_cpu.empty()) {
-			outStrStat << "storing[" << storing_cdr_cpu << "] ";
+			outStrStat << "storing[" << storing_cdr_cpu << "%] ";
 		}
 		if(storing_cdr_cpu_avg > opt_cpu_limit_new_thread_high &&
 		   calls_counter > 10000 &&
@@ -2303,6 +2304,17 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			   << setprecision(0) << (double)hugepages_base/1024/1024
 			   << "]MB ";
 	}
+	#ifdef HEAP_CHUNK_ENABLE
+	extern cHeap *heap_vm;
+	if(heap_vm) {
+		u_int64_t hugepages_vm_heap_size = heap_vm->getSumSize();
+		if(hugepages_vm_heap_size) {
+			outStrStat << "HPSH["
+				   << setprecision(0) << (double)hugepages_vm_heap_size/1024/1024
+				   << "]MB ";
+		}
+	}
+	#endif //HEAP_CHUNK_ENABLE
 	//Get load average string
 	outStrStat << getLoadAvgStr() << " ";
 	map<string, pair<string, u_int64_t> > counters;
