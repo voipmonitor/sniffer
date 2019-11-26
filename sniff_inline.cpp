@@ -329,10 +329,12 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 	} else if(opt_audiocodes &&
 		  ((opt_udp_port_audiocodes &&
 		    header_ip->get_protocol() == IPPROTO_UDP &&
-		    (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_audiocodes) ||
+		    ((unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_source() == opt_udp_port_audiocodes ||
+		     (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_audiocodes)) ||
 		   (opt_tcp_port_audiocodes &&
 		    header_ip->get_protocol() == IPPROTO_TCP &&
-		    (unsigned)((tcphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_tcp_port_audiocodes))) {
+		    ((unsigned)((tcphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_source() == opt_tcp_port_audiocodes ||
+		     (unsigned)((tcphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_tcp_port_audiocodes)))) {
 		u_char *data;
 		unsigned datalen;
 		unsigned udp_tcp_header_length;
