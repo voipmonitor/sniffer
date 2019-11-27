@@ -404,6 +404,8 @@ int opt_mysql_enable_multiple_rows_insert = 1;
 int opt_mysql_max_multiple_rows_insert = 20;
 int opt_mysql_enable_new_store = 0;
 bool opt_mysql_enable_set_id = false;
+int opt_cdr_sip_response_number_max_length = 0;
+vector<string> opt_cdr_sip_response_reg_remove;
 int opt_cdr_ua_enable = 1;
 vector<string> opt_cdr_ua_reg_remove;
 vector<string> opt_cdr_ua_reg_whitelist;
@@ -6686,6 +6688,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("remoteparty_caller", opt_remoteparty_caller, sizeof(opt_remoteparty_caller)));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("remoteparty_called", opt_remoteparty_called, sizeof(opt_remoteparty_called)));
 				addConfigItem(new FILE_LINE(42282) cConfigItem_integer("destination_number_mode", &opt_destination_number_mode));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_sip_response_number_max_length", &opt_cdr_sip_response_number_max_length));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("cdr_sip_response_reg_remove", &opt_cdr_sip_response_reg_remove));
 				addConfigItem(new FILE_LINE(42283) cConfigItem_yesno("cdr_ua_enable", &opt_cdr_ua_enable));
 				addConfigItem(new FILE_LINE(42284) cConfigItem_string("cdr_ua_reg_remove", &opt_cdr_ua_reg_remove));
 				addConfigItem(new FILE_LINE(42284) cConfigItem_string("cdr_ua_reg_whitelist", &opt_cdr_ua_reg_whitelist));
@@ -7201,6 +7205,15 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	}
 	if(configItem->config_name == "cdr_ignore_response") {
 		parse_opt_nocdr_for_last_responses();
+	}
+	if(configItem->config_name == "cdr_sip_response_reg_remove") {
+		for(unsigned i = 0; i < opt_cdr_sip_response_reg_remove.size(); i++) {
+			if(!check_regexp(opt_cdr_sip_response_reg_remove[i].c_str())) {
+				syslog(LOG_WARNING, "invalid regexp %s for cdr_sip_response_reg_remove", opt_cdr_sip_response_reg_remove[i].c_str());
+				opt_cdr_ua_reg_remove.erase(opt_cdr_sip_response_reg_remove.begin() + i);
+				--i;
+			}
+		}
 	}
 	if(configItem->config_name == "cdr_ua_reg_remove") {
 		for(unsigned i = 0; i < opt_cdr_ua_reg_remove.size(); i++) {
@@ -9173,6 +9186,19 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "autoload_from_sqlvmexport", NULL))) {
 		opt_autoload_from_sqlvmexport = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_sip_response_number_max_length", NULL))) {
+		opt_cdr_sip_response_number_max_length = atoi(value);
+	}
+	if (ini.GetAllValues("general", "cdr_sip_response_reg_remove", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			if(!check_regexp(i->pItem)) {
+				syslog(LOG_WARNING, "invalid regexp %s for cdr_sip_response_reg_remove", i->pItem);
+			} else {
+				opt_cdr_sip_response_reg_remove.push_back(i->pItem);
+			}
+		}
 	}
 	if((value = ini.GetValue("general", "cdr_ua_enable", NULL))) {
 		opt_cdr_ua_enable = yesno(value);

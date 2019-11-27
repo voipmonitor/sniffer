@@ -125,6 +125,8 @@ extern int opt_pcap_dump_tar;
 extern struct pcap_stat pcapstat;
 extern int opt_filesclean;
 extern int opt_allow_zerossrc;
+extern int opt_cdr_sip_response_number_max_length;
+extern vector<string> opt_cdr_sip_response_reg_remove;
 extern int opt_cdr_ua_enable;
 extern vector<string> opt_cdr_ua_reg_remove;
 extern vector<string> opt_cdr_ua_reg_whitelist;
@@ -4637,6 +4639,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 	
+	adjustSipResponse(lastSIPresponse, 0);
+	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
@@ -6449,14 +6453,96 @@ unsigned Call::getMaxRetransmissionInvite() {
 	return(max_retrans);
 }
 
-void adjustUA(string *ua) {
-	const char *new_ua = adjustUA((char*)ua->c_str(), 0);
-	if(new_ua) {
-		*ua = new_ua;
+void adjustSipResponse(string *sipResponse) {
+	bool adjustLength = false;
+	const char *new_sipResponse = adjustSipResponse((char*)sipResponse->c_str(), 0, &adjustLength);
+	if(new_sipResponse) {
+		*sipResponse = new_sipResponse;
+	} else if(adjustLength) {
+		sipResponse->resize(strlen(sipResponse->c_str()));
 	}
 }
 
-const char *adjustUA(char *ua, unsigned ua_size) {
+const char *adjustSipResponse(char *sipResponse, unsigned sipResponse_size, bool *adjustLength) {
+	if(opt_cdr_sip_response_reg_remove.size()) {
+		bool adjust = false;
+		for(unsigned i = 0; i < opt_cdr_sip_response_reg_remove.size(); i++) {
+			vector<string> matches;
+			if(reg_match(sipResponse, opt_cdr_sip_response_reg_remove[i].c_str(), &matches, true, __FILE__, __LINE__)) {
+				for(unsigned j = 0; j < matches.size(); j++) {
+					char *str_pos = strstr(sipResponse, matches[j].c_str());
+					if(str_pos) {
+						char sipResponse_temp[1024];
+						strcpy_null_term(sipResponse_temp, str_pos + matches[j].size());
+						strcpy(str_pos, sipResponse_temp);
+						adjust = true;
+						if(adjustLength) {
+							*adjustLength = true;
+						}
+					}
+				}
+			}
+		}
+		if(adjust) {
+			int length = strlen(sipResponse);
+			while(sipResponse[length - 1] == ' ') {
+				sipResponse[length - 1] = 0;
+				--length;
+			}
+			int start = 0;
+			while(sipResponse[start] == ' ') {
+				++start;
+			}
+			if(start) {
+				char sipResponse_temp[1024];
+				strcpy_null_term(sipResponse_temp, sipResponse + start);
+				strcpy(sipResponse, sipResponse_temp);
+			}
+			if(adjustLength) {
+				*adjustLength = true;
+			}
+		}
+	}
+	if(opt_cdr_sip_response_number_max_length) {
+		char *pointer = sipResponse;
+		while(*pointer) {
+			if(isdigit(*pointer)) {
+				unsigned number_length = 1;
+				while(isdigit(*(pointer + number_length))) {
+					++number_length;
+				}
+				if(number_length > (unsigned)opt_cdr_sip_response_number_max_length) {
+					char sipResponse_temp[1024];
+					strcpy_null_term(sipResponse_temp, pointer + number_length);
+					unsigned ellipsis_length = min(3u, number_length - opt_cdr_sip_response_number_max_length);
+					strncpy(pointer + opt_cdr_sip_response_number_max_length, "...", ellipsis_length);
+					strcpy(pointer + opt_cdr_sip_response_number_max_length + ellipsis_length, sipResponse_temp);
+					pointer += opt_cdr_sip_response_number_max_length + ellipsis_length;
+					if(adjustLength) {
+						*adjustLength = true;
+					}
+				} else {
+					pointer += number_length;
+				}
+			} else {
+				++pointer;
+			}
+		}
+	}
+	return(NULL);
+}
+
+void adjustUA(string *ua) {
+	bool adjustLength = false;
+	const char *new_ua = adjustUA((char*)ua->c_str(), 0, &adjustLength);
+	if(new_ua) {
+		*ua = new_ua;
+	} else if(adjustLength) {
+		ua->resize(strlen(ua->c_str()));
+	}
+}
+
+const char *adjustUA(char *ua, unsigned ua_size, bool *adjustLength) {
 	if(opt_cdr_ua_reg_remove.size()) {
 		bool adjust = false;
 		for(unsigned i = 0; i < opt_cdr_ua_reg_remove.size(); i++) {
@@ -6469,6 +6555,9 @@ const char *adjustUA(char *ua, unsigned ua_size) {
 						strcpy_null_term(ua_temp, str_pos + matches[j].size());
 						strcpy(str_pos, ua_temp);
 						adjust = true;
+						if(adjustLength) {
+							*adjustLength = true;
+						}
 					}
 				}
 			}
@@ -6487,6 +6576,9 @@ const char *adjustUA(char *ua, unsigned ua_size) {
 				char ua_temp[1024];
 				strcpy_null_term(ua_temp, ua + start);
 				strcpy(ua, ua_temp);
+			}
+			if(adjustLength) {
+				*adjustLength = true;
 			}
 		}
 	}
