@@ -305,6 +305,7 @@ u_int64_t counter_sip_register_packets;
 u_int64_t counter_sip_message_packets;
 u_int64_t counter_rtp_packets;
 u_int64_t counter_all_packets;
+volatile u_int64_t counter_user_packets[5];
 u_int64_t process_rtp_counter;
 u_int64_t read_rtp_counter;
 
@@ -337,6 +338,11 @@ unsigned long process_packet__last_cleanup_calls__count_sip_bye;
 unsigned long process_packet__last_cleanup_calls__count_sip_bye_confirmed;
 unsigned long process_packet__last_cleanup_calls__count_sip_cancel;
 unsigned long process_packet__last_cleanup_calls__count_sip_cancel_confirmed;
+
+
+inline void inc_counter_user_packets(unsigned user_index) {
+	__sync_add_and_fetch(&counter_user_packets[user_index], 1);
+}
 
 
 // return IP from nat_aliases[ip] or 0 if not found

@@ -1232,6 +1232,9 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->counter_sip_message_packets_old = 0;
 	this->counter_rtp_packets_old = 0;
 	this->counter_all_packets_old = 0;
+	for(unsigned i = 0; i < sizeof(this->counter_user_packets_old) / sizeof(this->counter_user_packets_old[0]); i++) {
+		this->counter_user_packets_old[i] = 0;
+	}
 	this->lastTimeLogErrPcapNextExNullPacket = 0;
 	this->lastTimeLogErrPcapNextExErrorReading = 0;
 	this->pcapStatCounter = 0;
@@ -1480,6 +1483,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			extern u_int64_t counter_sip_message_packets;
 			extern u_int64_t counter_rtp_packets;
 			extern u_int64_t counter_all_packets;
+			extern volatile u_int64_t counter_user_packets[5];
 			if(this->counter_calls_old ||
 			   this->counter_calls_clean_old ||
 			   this->counter_registers_old ||
@@ -1557,6 +1561,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				} else {
 					outStr << "-";
 				}
+				for(unsigned i = 0; i < sizeof(this->counter_user_packets_old) / sizeof(this->counter_user_packets_old[0]); i++) {
+					if(counter_user_packets[i] && this->counter_user_packets_old[i]) {
+						outStr << " U" << i << ":";
+						outStr << (counter_user_packets[i] - this->counter_user_packets_old[i]) / statPeriod;
+					}
+				}
 				outStr << "] ";
 			}
 			this->counter_calls_old = counter_calls;
@@ -1569,6 +1579,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			this->counter_sip_message_packets_old = counter_sip_message_packets;
 			this->counter_rtp_packets_old = counter_rtp_packets;
 			this->counter_all_packets_old = counter_all_packets;
+			for(unsigned i = 0; i < sizeof(this->counter_user_packets_old) / sizeof(this->counter_user_packets_old[0]); i++) {
+				this->counter_user_packets_old[i] = counter_user_packets[i];
+			}
 			if(sverb.log_profiler) {
 				lapTime.push_back(getTimeMS_rdtsc());
 				lapTimeDescr.push_back("packet counters");

@@ -354,6 +354,7 @@ private:
 	u_int64_t counter_sip_message_packets_old;
 	u_int64_t counter_rtp_packets_old;
 	u_int64_t counter_all_packets_old;
+	u_int64_t counter_user_packets_old[5];
 	u_int64_t lastTimeLogErrPcapNextExNullPacket;
 	u_int64_t lastTimeLogErrPcapNextExErrorReading;
 	u_long pcapStatCounter;
