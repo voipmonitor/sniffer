@@ -303,7 +303,7 @@ u_int64_t counter_registers_clean;
 u_int64_t counter_sip_packets[2];
 u_int64_t counter_sip_register_packets;
 u_int64_t counter_sip_message_packets;
-u_int64_t counter_rtp_packets;
+u_int64_t counter_rtp_packets[2];
 u_int64_t counter_all_packets;
 volatile u_int64_t counter_user_packets[5];
 u_int64_t process_rtp_counter;
@@ -4651,7 +4651,6 @@ void process_packet_sip_other(packet_s_process *packetS) {
 inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_info,size_t call_info_length, packet_s_process_0 *packetS,
 					 bool find_by_dest, int preSyncRtp = false, int threadIndex = 0, int threadIndex2 = 0) {
 	packetS->blockstore_addflag(51 /*pb lock flag*/);
-	++counter_rtp_packets;
 	Call *call;
 	int iscaller;
 	bool is_rtcp;
@@ -4791,8 +4790,6 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 				pcap_pkthdr *header, const u_char */*packet*/, int /*istcp*/, struct iphdr2 *header_ip,
 				pcap_block_store */*block_store*/, int /*block_store_index*/, int dlt, int sensor_id, vmIP sensor_ip,
 				pcap_t *handle) {
-	++counter_rtp_packets;
-	
 	unsigned int flags = 0;
 	set_global_flags(flags);
 	IPfilter::add_call_flags(&flags, saddr, daddr);
@@ -4891,6 +4888,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 			packetS->blockstore_addflag(26 /*pb lock flag*/);
 		}
 		if(calls) {
+			++counter_rtp_packets[0];
 			hash_node_call *node_call;
 			for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
 				if((!(node_call->call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
@@ -4913,6 +4911,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 						continue;
 					}
 					*/
+					++counter_rtp_packets[1];
 					packetS->blockstore_addflag(27 /*pb lock flag*/);
 					call_info[call_info_length].call = node_call->call;
 					call_info[call_info_length].iscaller = node_call->iscaller;
@@ -8772,6 +8771,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	}
 	packetS->call_info_length = 0;
 	if(calls) {
+		++counter_rtp_packets[0];
 		hash_node_call *node_call;
 		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
 			if((!(node_call->call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
@@ -8791,6 +8791,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			     getTimeUS(packetS->header_pt) > node_call->call->seencancelandok_time_usec) &&
 			   !(opt_hash_modify_queue_length_ms && node_call->call->end_call_rtp) &&
 			   !(node_call->call->flags & FLAG_SKIPCDR)) {
+				++counter_rtp_packets[1];
 				packetS->blockstore_addflag(34 /*pb lock flag*/);
 				packetS->call_info[packetS->call_info_length].call = node_call->call;
 				packetS->call_info[packetS->call_info_length].iscaller = node_call->iscaller;

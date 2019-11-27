@@ -1230,7 +1230,8 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	this->counter_sip_packets_old[1] = 0;
 	this->counter_sip_register_packets_old = 0;
 	this->counter_sip_message_packets_old = 0;
-	this->counter_rtp_packets_old = 0;
+	this->counter_rtp_packets_old[0] = 0;
+	this->counter_rtp_packets_old[1] = 0;
 	this->counter_all_packets_old = 0;
 	for(unsigned i = 0; i < sizeof(this->counter_user_packets_old) / sizeof(this->counter_user_packets_old[0]); i++) {
 		this->counter_user_packets_old[i] = 0;
@@ -1481,7 +1482,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			extern u_int64_t counter_sip_packets[2];
 			extern u_int64_t counter_sip_register_packets;
 			extern u_int64_t counter_sip_message_packets;
-			extern u_int64_t counter_rtp_packets;
+			extern u_int64_t counter_rtp_packets[2];
 			extern u_int64_t counter_all_packets;
 			extern volatile u_int64_t counter_user_packets[5];
 			if(this->counter_calls_old ||
@@ -1490,7 +1491,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			   this->counter_registers_clean_old ||
 			   this->counter_sip_packets_old[0] ||
 			   this->counter_sip_packets_old[1] ||
-			   this->counter_rtp_packets_old ||
+			   this->counter_rtp_packets_old[0] ||
+			   this->counter_rtp_packets_old[1] ||
 			   this->counter_all_packets_old) {
 				outStr << "PS[C:";
 				if(this->counter_calls_old) {
@@ -1546,11 +1548,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				} else {
 					outStr << "-";
 				}
-
 				outStr << " R:";
-				if(this->counter_rtp_packets_old) {
-					outStr << (counter_rtp_packets - this->counter_rtp_packets_old) / statPeriod;
-					if (opt_rrd) rrdPS_R = (counter_rtp_packets - this->counter_rtp_packets_old) / statPeriod;
+				if(this->counter_rtp_packets_old[0]) {
+					outStr << (counter_rtp_packets[0] - this->counter_rtp_packets_old[0]) / statPeriod;
+					if (opt_rrd) rrdPS_R = (counter_rtp_packets[0] - this->counter_rtp_packets_old[0]) / statPeriod;
+				} else {
+					outStr << "-";
+				}
+				outStr << "/";
+				if(this->counter_rtp_packets_old[1]) {
+					outStr << (counter_rtp_packets[1] - this->counter_rtp_packets_old[1]) / statPeriod;
 				} else {
 					outStr << "-";
 				}
@@ -1577,7 +1584,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			this->counter_sip_packets_old[1] = counter_sip_packets[1];
 			this->counter_sip_register_packets_old = counter_sip_register_packets;
 			this->counter_sip_message_packets_old = counter_sip_message_packets;
-			this->counter_rtp_packets_old = counter_rtp_packets;
+			this->counter_rtp_packets_old[0] = counter_rtp_packets[0];
+			this->counter_rtp_packets_old[1] = counter_rtp_packets[1];
 			this->counter_all_packets_old = counter_all_packets;
 			for(unsigned i = 0; i < sizeof(this->counter_user_packets_old) / sizeof(this->counter_user_packets_old[0]); i++) {
 				this->counter_user_packets_old[i] = counter_user_packets[i];

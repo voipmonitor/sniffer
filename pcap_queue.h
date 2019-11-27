@@ -352,7 +352,7 @@ private:
 	u_int64_t counter_sip_packets_old[2];
 	u_int64_t counter_sip_register_packets_old;
 	u_int64_t counter_sip_message_packets_old;
-	u_int64_t counter_rtp_packets_old;
+	u_int64_t counter_rtp_packets_old[2];
 	u_int64_t counter_all_packets_old;
 	u_int64_t counter_user_packets_old[5];
 	u_int64_t lastTimeLogErrPcapNextExNullPacket;
