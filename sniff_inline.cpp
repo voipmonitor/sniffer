@@ -86,7 +86,7 @@ unsigned get_sctp_data_len(iphdr2 *header_ip, char** data, u_char *packet, unsig
 #if SNIFFER_INLINE_FUNCTIONS
 inline 
 #endif
-iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
+iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip, unsigned max_len) {
 	gre_hdr *grehdr = (gre_hdr*)((char*)header_ip + header_ip->get_hdr_size());
 	u_int16_t grehdr_protocol = ntohs(grehdr->protocol);
 	if(grehdr->version == 0 && (grehdr_protocol == 0x6558 || grehdr_protocol == 0x88BE)) {
@@ -117,21 +117,29 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip) {
 			protocol = header_eth->ether_type;
 		}
 		if(protocol == 8) {
-			header_ip = (struct iphdr2 *) ((char*)header_eth + sizeof(ether_header) + vlanoffset);
+			header_ip = (iphdr2*)((char*)header_eth + sizeof(ether_header) + vlanoffset);
 		} else {
 			return(NULL);
 		}
-	} else if(grehdr->version == 0 and grehdr_protocol == 0x800) {
-		header_ip = (struct iphdr2 *) ((char*)header_ip + header_ip->get_hdr_size() + 4);
-	} else if(grehdr->version == 0 and grehdr_protocol == 0x8847) {
+	} else if(grehdr->version == 0 && grehdr_protocol == 0x800 &&
+		  ((iphdr2*)((char*)header_ip + header_ip->get_hdr_size() + 4))->version_is_ok()) {
+		header_ip = (iphdr2*)((char*)header_ip + header_ip->get_hdr_size() + 4);
+	} else if(grehdr->version == 0 &&
+		  (grehdr_protocol == 0x8847 ||
+		   (grehdr_protocol == 0x800 &&
+		    !((iphdr2*)((char*)header_ip + header_ip->get_hdr_size() + 4))->version_is_ok()))) {
 		// 0x88BE - GRE & MPLS - + 4 bytes (GRE) + N * 4 bytes (MPLS)
 		u_int header_ip_offset = header_ip->get_hdr_size() + 4;
 		u_int8_t mpls_bottomOfLabelStackFlag;
 		do {
 			mpls_bottomOfLabelStackFlag = *((u_int8_t*)header_ip + header_ip_offset + 2) & 1;
 			header_ip_offset += 4;
-		} while(mpls_bottomOfLabelStackFlag == 0);
-		header_ip = (struct iphdr2 *) ((char*)header_ip + header_ip_offset);
+		} while(mpls_bottomOfLabelStackFlag == 0 && header_ip_offset + 4 + sizeof(iphdr2) < max_len);
+		if(((iphdr2*)((char*)header_ip + header_ip_offset))->version_is_ok()) {
+			header_ip = (iphdr2*)((char*)header_ip + header_ip_offset);
+		} else {
+			return(NULL);
+		}
 	} else {
 		return(NULL);
 	}
@@ -272,7 +280,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		return(header_ip->get_hdr_size());
 	} else if(header_ip->get_protocol() == IPPROTO_GRE) {
 		// gre protocol
-		iphdr2 *header_ip_next = convertHeaderIP_GRE(header_ip);
+		iphdr2 *header_ip_next = convertHeaderIP_GRE(header_ip, caplen - header_ip_offset);
 		if(header_ip_next) {
 			return((u_char*)header_ip_next - (u_char*)header_ip);
 		} else {

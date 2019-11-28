@@ -717,6 +717,13 @@ struct iphdr2 {
 		}
 		#endif
 	}
+	inline bool version_is_ok() {
+		return(version == 4
+		#if VM_IPV6
+		|| version == 6
+		#endif
+		);
+	}
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 	unsigned int _ihl:4;
 	unsigned int version:4;

@@ -22,7 +22,7 @@ unsigned get_sctp_data_len(iphdr2 *header_ip, char** data, u_char *packet, unsig
 #if SNIFFER_INLINE_FUNCTIONS
 inline
 #endif
-iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip);
+iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip, unsigned max_len);
 
 #if SNIFFER_INLINE_FUNCTIONS
 inline
