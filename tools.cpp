@@ -4596,7 +4596,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 	int pipe_stderr[2];
 	pipe(pipe_stdout);
 	pipe(pipe_stderr);
-	int fork_rslt = fork();
+	int fork_rslt = vfork();
 	if(fork_rslt == 0) {
 		close(pipe_stdout[0]);
 		close(pipe_stderr[0]);
