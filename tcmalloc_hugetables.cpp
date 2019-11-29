@@ -1,3 +1,4 @@
+#if 0
 #include "voipmonitor.h"
 
 #if HAVE_LIBTCMALLOC
@@ -467,3 +468,5 @@ void alloc_test_2() {
 void stat_hp() {
 	system("cat /proc/meminfo | grep -i huge");
 }
+
+#endif
