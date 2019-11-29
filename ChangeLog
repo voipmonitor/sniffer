@@ -1,3 +1,12 @@
+26.2 29.11.2019
+===============
+- fix t2_boost mode 
+- detect audiocodes port in source tcp/udp port [VS-988]
+- new options for truncating SIP response text cdr_sip_response_number_max_length and cdr_sip_response_reg_remove [VS-997]
+- workaround when MPLS GRE packets are constructed with wrong header type (GRE -> MPLS -> IP) [VS-651]
+- use vfork insted fork when generating RRD charts (fixes performance when sniffer allocates a lot of memory - TLB shootdowns) 
+
+
 26.1 25.11.2019
 ===============
 - Revert compatibility for older kernels for static builds 
