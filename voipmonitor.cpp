@@ -2352,7 +2352,7 @@ void *destroy_calls( void *dummy ) {
 }
 */
 
-char daemonizeErrorTempFileName[L_tmpnam+1];
+char daemonizeErrorTempFileName[MAX_TMPNAM2];
 pthread_mutex_t daemonizeErrorTempFileLock;
 
 static void daemonize(void)
@@ -2360,7 +2360,10 @@ static void daemonize(void)
  
 	curl_global_cleanup();
 	
-	tmpnam(daemonizeErrorTempFileName);
+	if (!tmpnam2(daemonizeErrorTempFileName, MAX_TMPNAM2)) {
+		syslog(LOG_ERR, "Can't get tmp filename in daemonize.");
+		exit(1);
+	}
 	pthread_mutex_init(&daemonizeErrorTempFileLock, NULL);
  
 	pid_t pid;
@@ -2599,8 +2602,8 @@ void store_crash_bt_to_db() {
 		fclose(crash_bt_fh);
 		if(header_ok && bt.size()) {
 			bool version_ok = false;
-			char tmpOut[L_tmpnam+1];
-			if(tmpnam(tmpOut)) {
+			char tmpOut[MAX_TMPNAM2];
+			if(tmpnam2(tmpOut, MAX_TMPNAM2)) {
 				system((binaryNameWithPath + " | grep version > " + tmpOut + " 2>/dev/null").c_str());
 				vector<string> version_check_rows;
 				char version_check[20];
@@ -6154,8 +6157,11 @@ void __cyg_profile_func_exit(void *this_fn, void */*call_site*/) {
 #include <jemalloc/jemalloc.h>
 string jeMallocStat(bool full) {
 	string rslt;
-	char tempFileName[L_tmpnam+1];
-	tmpnam(tempFileName);
+	char tempFileName[MAX_TMPNAM2];
+	if (tmpnam2(tempFileName, MAX_TMPNAM2)) {
+		syslog(LOG_ERR, "Can't get tmp filename in the jeMallocStat.");
+		return(rslt);
+	}
 	char *tempFileNamePointer = tempFileName;
 	mallctl("prof.dump", NULL, NULL, &tempFileNamePointer, sizeof(char*));
 	FILE *jeout = fopen(tempFileName, "rt");

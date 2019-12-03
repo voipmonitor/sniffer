@@ -630,9 +630,10 @@ void HttpPacketsDumper::setPcapName(const char *pcapName) {
 }
 
 void HttpPacketsDumper::setTemplatePcapName() {
-	char tempFileName[L_tmpnam+1];
-	tmpnam(tempFileName);
-	this->pcapName = tempFileName;
+	char tempFileName[MAX_TMPNAM2];
+	if (tmpnam2(tempFileName, MAX_TMPNAM2)) {
+		this->pcapName = tempFileName;
+	}
 }
 
 void HttpPacketsDumper::setPcapDumper(PcapDumper *pcapDumper) {
