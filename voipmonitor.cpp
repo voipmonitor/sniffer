@@ -3488,7 +3488,7 @@ int main(int argc, char *argv[]) {
 	if(opt_hugepages_anon || opt_hugepages_max || opt_hugepages_overcommit_max) {
 		logBuffer = new FILE_LINE(0) cLogBuffer();
 		#if HAVE_LIBTCMALLOC
-		//HugetlbSysAllocator_init();
+		HugetlbSysAllocator_init();
 		#else
 		syslog(LOG_WARNING, "hugepages error: hugepages supported only with tcmalloc");
 		#endif

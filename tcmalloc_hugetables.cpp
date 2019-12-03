@@ -1,7 +1,4 @@
-#if 0
 #include "voipmonitor.h"
-
-#if HAVE_LIBTCMALLOC
 
 #include <unistd.h>
 #include <string.h>
@@ -9,14 +6,17 @@
 #include <malloc.h>
 #include <sys/mman.h>
 #include <sys/statfs.h>
-#include <gperftools/malloc_extension.h>
 #include <syslog.h>
 #include <errno.h>
 
 #include "log_buffer.h"
 
-
 extern cLogBuffer *logBuffer;
+
+#if HAVE_LIBTCMALLOC
+
+#include <gperftools/malloc_extension.h>
+
 extern bool opt_hugepages_anon;
 extern int opt_hugepages_max;
 extern int opt_hugepages_overcommit_max;
@@ -283,6 +283,8 @@ u_int64_t HugetlbSysAllocator_base() {
 #endif
 
 
+#if defined(PROT_READ) && defined(PROT_WRITE) && defined(MAP_PRIVATE) && defined(MAP_ANONYMOUS) && defined(MADV_HUGEPAGE)
+
 bool init_hugepages(int *fd, int64_t *page_size) {
 	char path[PATH_MAX] = "/dev/hugepages/XXXXXX";
 	strcat(path, ".XXXXXX");
@@ -467,6 +469,22 @@ void alloc_test_2() {
 
 void stat_hp() {
 	system("cat /proc/meminfo | grep -i huge");
+}
+
+#else
+
+bool init_hugepages(int *fd, int64_t *page_size) {
+	return(false);
+}
+
+void *mmap_hugepage(int mmap_fd, long int mmap_offset, bool use_ftruncate,
+		    size_t size, size_t *actual_size, size_t *mmap_size,
+		    size_t alignment, size_t pagesize, 
+		    bool anon, bool *failed) {
+	return(NULL);
+}
+
+void munmap_hugepage(void *ptr, size_t size) {
 }
 
 #endif
