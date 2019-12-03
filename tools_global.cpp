@@ -342,6 +342,13 @@ string floatToString(double d) {
 	return(outStr.str());
 }
 
+string floatToString(double d, unsigned precision) {
+	ostringstream outStr;
+	outStr << setprecision(precision);
+	outStr << d;
+	return(outStr.str());
+}
+
 string pointerToString(void *p) {
 	char buff[100];
 	snprintf(buff, sizeof(buff), "%p", p);

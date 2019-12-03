@@ -1045,7 +1045,7 @@ int _sendvm(int socket, void *c_client, const char *buf, size_t len, int mode) {
 	return(sendvm(socket, (cClient*)c_client, buf, len, mode));
 }
 
-int sendvm_from_stdout_of_command(char *command, int socket, cClient *c_client, char */*buf*/, size_t /*len*/, int /*mode*/) {
+int sendvm_from_stdout_of_command(char *command, int socket, cClient *c_client) {
 	SimpleBuffer out;
 	if(vm_pexec(command, &out) && out.size()) {
 		if(sendvm(socket, c_client, (const char*)out.data(), out.size(), 0) == -1) {
@@ -1054,62 +1054,6 @@ int sendvm_from_stdout_of_command(char *command, int socket, cClient *c_client, 
 		}
 	}
 	return 0;
-	
-	/* obsolete
- 
-//using pipe for reading from stdout of given command;
-    int retch;
-    long total = 0;
-
-    FILE *inpipe;
-    
-    cout << command << endl;
-    
-    inpipe = popen(command, "r");
-
-    if (!inpipe) {
-        syslog(LOG_ERR, "sendvm_from_stdout_of_command: couldn't open pipe for command %s", command);
-        return -1;
-    }
-
-//     while (retch = fread(buf, sizeof(char), len, inpipe) > 0) {
-// 		total += retch;
-// 		syslog(LOG_ERR, "CTU: buflen:%d nacetl jsem %li create command",buflen, total);
-// 
-// 		if (sendvm(socket, channel, buf, retch, 0) == -1) {
-// 			if (verbosity > 1) syslog(LOG_NOTICE, "Pipe RET %li bytes, problem sending using sendvm", total);
-// 			return -1;
-// 		}
-//     }
-
-	int filler = 0;		//'offset' buf pointer
-	retch = 0;
-
-	//read char by char from a pipe
-    while ((retch = fread(buf + filler, 1, 1, inpipe)) > 0) {
-		total ++;
-		filler ++;
-
-		if (filler == BUFSIZE) {
-			filler = 0;
-			if (sendvm(socket, channel, buf, BUFSIZE, 0) == -1) 
-			{
-				if (verbosity > 0) syslog(LOG_NOTICE, "sendvm_from_stdout_of_command: Pipe RET %li bytes, but problem sending using sendvm1", total);
-				return -1;
-			}
-		}
-    }
-	if (filler > 0) {
-		if (sendvm(socket, channel, buf, filler, 0) == -1) {
-			if (verbosity > 0) syslog(LOG_NOTICE, "sendvm_from_stdout_of_command: Pipe RET %li bytes, but problem sending using sendvm2", total);
-			return -1;
-		}
-	}
-
-	if (verbosity > 1) syslog(LOG_NOTICE, "sendvm_from_stdout_of_command: Read total %li chars.", total);
-    pclose(inpipe);
-    return 0; 
-	*/
 }
 
 void try_ip_mask(vmIP &addr, vmIP &mask, string &ipstr) {
@@ -2389,177 +2333,130 @@ int Mgmt_creategraph(Mgmt_params *params) {
 		params->registerCommand("creategraph", "creates graphs");
 		return(0);
 	}
-
 	checkRrdVersion(true);
 	extern int vm_rrd_version;
-	if(!vm_rrd_version)
+	if(!vm_rrd_version) {
 		return(params->sendString("missing rrdtool"));
-
-	extern pthread_mutex_t vm_rrd_lock;
-	pthread_mutex_lock(&vm_rrd_lock);
-
-	int res = 0;
-	int manager_argc;
-	char *manager_cmd_line = NULL;	//command line passed to voipmonitor manager
-	char **manager_args = NULL;		//cuted voipmonitor manager commandline to separate arguments
-
-	char sendbuf[BUFSIZE];
-	sendbuf[0] = 0;			//for reseting sendbuf
-
-	if (( manager_argc = vm_rrd_countArgs(params->buf)) < 6) {	//few arguments passed
-		if (verbosity > 0) syslog(LOG_NOTICE, "parse_command creategraph too few arguments, passed%d need at least 6!\n", manager_argc);
-		snprintf(sendbuf, BUFSIZE, "Syntax: creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels  [ slope-mode  [ icon-mode  [ color  [ dstfile ]]]]\n");
-		if (params->sendString(sendbuf) == -1) {
-			cerr << "Error sending data to client 1" << endl;
+	}
+	int rslt = 0;
+	string error;
+	vector<string> args;
+	string params_buf = params->buf;
+	while(params_buf.size() && params_buf[params_buf.size() - 1] == '\n') {
+		params_buf.resize(params_buf.size() - 1);
+	}
+	parse_cmd_str(params_buf.c_str(), &args);
+	if(args.size() < 6) {
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "parse_command creategraph too few arguments, passed%zu need at least 6!\n", args.size());
 		}
-		pthread_mutex_unlock(&vm_rrd_lock);
-		return -1;
+		error = "Syntax: creategraph graph_type linuxTS_from linuxTS_to size_x_pixels size_y_pixels  [ slope-mode  [ icon-mode  [ color  [ dstfile ]]]]\n";
 	}
-	if ((manager_cmd_line = new FILE_LINE(13005) char[strlen(params->buf) + 1]) == NULL) {
-		syslog(LOG_ERR, "parse_command creategraph malloc error\n");
-		pthread_mutex_unlock(&vm_rrd_lock);
-		return -1;
-	}
-	if ((manager_args = new FILE_LINE(13006) char*[manager_argc + 1]) == NULL) {
-		delete [] manager_cmd_line;
-		syslog(LOG_ERR, "parse_command creategraph malloc error2\n");
-		pthread_mutex_unlock(&vm_rrd_lock);
-		return -1;
-	}
-
-	memcpy(manager_cmd_line, params->buf, strlen(params->buf));
-	manager_cmd_line[strlen(params->buf)] = '\0';
-
-	syslog(LOG_NOTICE, "creategraph VERBOSE ALL: %s", manager_cmd_line);
-	if ((manager_argc = vm_rrd_createArgs(manager_cmd_line, manager_args))) {
-		//Arguments:
-		//0-creategraphs
-		//1-graph type
-		//2-at-style time from
-		//3-at-style time to
-		//4-total size x
-		//5-total size y
-		//[6-zaobleni hran(slope-mode)]
-		//[7-discard graphs legend (for sizes bellow 600x240)]
-		//[8-color]
-		//[9-dstfile (if not defined PNG goes to stdout)]
-		if (sverb.rrd_info) {
-			syslog(LOG_NOTICE, "%d arguments detected. Showing them:\n", manager_argc);
-			for (int i = 0; i < manager_argc; i++) {
-				syslog (LOG_NOTICE, "%d.arg:%s",i, manager_args[i]);
-			}
-		}
-
-		char *fromat, *toat;
-		char filename[2000];
-		int resx, resy;
-		short slope, icon;
-		char *dstfile;
-		char *color;
-
-		fromat = manager_args[2];
-		toat = manager_args[3];
-		resx = atoi(manager_args[4]);
-		resy = atoi(manager_args[5]);
-		if ((manager_argc > 6) && (manager_args[6][0] == '1')) slope = 1; else slope = 0;
-		if ((manager_argc > 7) && (manager_args[7][0] == '1')) icon = 1; else icon = 0;
-		if ((manager_argc > 8) && (manager_args[8][0] != '-')) color = manager_args[8]; else  color = NULL;
-		if (manager_argc > 9) dstfile = manager_args[9]; else dstfile = NULL;			//set dstfile == NULL if not specified
-
-		//limits check discarding graph's legend and axis/grid
-		if ((resx < 400) or (resy < 200)) icon = 1;
-		//Possible graph types: #PS,PSC,PSS,PSSM,PSSR,PSR,PSA,SQLq,SQLf,tCPU,drop,speed,heap,calls,tacCPU,loadadvg
-
-
-		char sendcommand[2048];			//buffer for send command string;
-		if (!strncmp(manager_args[1], "PSA",4 )) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
-			rrd_vm_create_graph_PSA_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "PSR", 4)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
-			rrd_vm_create_graph_PSR_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "PSSR", 5)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
-			rrd_vm_create_graph_PSSR_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "PSSM", 5)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
-			rrd_vm_create_graph_PSSM_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "PSS", 4)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
-			rrd_vm_create_graph_PSS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "PSC", 4)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
-			rrd_vm_create_graph_PSC_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "PS", 3)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-PS.rrd", getRrdDir());
-			rrd_vm_create_graph_PS_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "SQLq", 5)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/3db-SQL.rrd", getRrdDir());
-			rrd_vm_create_graph_SQLq_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "SQLf", 5)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/3db-SQL.rrd", getRrdDir());
-			rrd_vm_create_graph_SQLf_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "tCPU", 5)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-tCPU.rrd", getRrdDir());
-			rrd_vm_create_graph_tCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "drop", 5)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-drop.rrd", getRrdDir());
-			rrd_vm_create_graph_drop_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "speed", 5)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-speedmbs.rrd", getRrdDir());
-			rrd_vm_create_graph_speed_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "heap", 5)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-heap.rrd", getRrdDir());
-			rrd_vm_create_graph_heap_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "calls", 6)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/3db-callscounter.rrd", getRrdDir());
-			rrd_vm_create_graph_calls_command(filename, fromat, toat, color, resx ,resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "tacCPU", 7)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/2db-tacCPU.rrd", getRrdDir());
-			rrd_vm_create_graph_tacCPU_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "memusage", 7)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/db-memusage.rrd", getRrdDir());
-			rrd_vm_create_graph_memusage_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
-		} else if (!strncmp(manager_args[1], "loadavg", 7)) {
-			snprintf(filename, sizeof(filename), "%s/rrd/db-LA.rrd", getRrdDir());
-			rrd_vm_create_graph_LA_command(filename, fromat, toat, color, resx, resy, slope, icon, dstfile, sendcommand, sizeof(sendcommand));
+	if(error.empty()) {
+		// Arguments:
+		//   0-creategraphs
+		//   1-graph type
+		//   2-at-style time from
+		//   3-at-style time to
+		//   4-total size x
+		//   5-total size y
+		//   [6-zaobleni hran(slope-mode)]
+		//   [7-discard graphs legend (for sizes bellow 600x240)]
+		//   [8-color]
+		string fromTime = args[2];
+		string toTime = args[3];
+		int resx = atoi(args[4].c_str());
+		int resy = atoi(args[5].c_str());
+		bool slope = args.size() > 6 && args[6][0] == '1';
+		bool icon = args.size() > 7 && args[7][0] == '1';
+		string color = args.size() > 8 ? args[8] : "";
+		string chart_type;
+		string series_type;
+		string error;
+		if(args[1] == "PSA") {
+			chart_type = RRD_CHART_PS;
+			series_type= RRD_CHART_SERIES_PSA;
+		} else if(args[1] == "PSR") {
+			chart_type = RRD_CHART_PS;
+			series_type= RRD_CHART_SERIES_PSR;
+		} else if(args[1] == "PSSR") {
+			chart_type = RRD_CHART_PS;
+			series_type= RRD_CHART_SERIES_PSSR;
+		} else if(args[1] == "PSSM") {
+			chart_type = RRD_CHART_PS;
+			series_type= RRD_CHART_SERIES_PSSM;
+		} else if(args[1] == "PSS") {
+			chart_type = RRD_CHART_PS;
+			series_type= RRD_CHART_SERIES_PSS;
+		} else if(args[1] == "PSC") {
+			chart_type = RRD_CHART_PS;
+			series_type= RRD_CHART_SERIES_PSC;
+		} else if(args[1] == "PS") {
+			chart_type = RRD_CHART_PS;
+		} else if(args[1] == "SQLq") {
+			chart_type = RRD_CHART_SQL;
+			series_type= RRD_CHART_SERIES_SQLq;
+		} else if(args[1] == "SQLf") {
+			chart_type = RRD_CHART_SQL;
+			series_type= RRD_CHART_SERIES_SQLf;
+		} else if(args[1] == "tCPU") {
+			chart_type = RRD_CHART_tCPU;
+		} else if(args[1] == "drop") {
+			chart_type = RRD_CHART_drop;
+		} else if(args[1] == "speed") {
+			chart_type = RRD_CHART_speedmbs;
+		} else if(args[1] == "heap") {
+			chart_type = RRD_CHART_heap;
+		} else if(args[1] == "calls") {
+			chart_type = RRD_CHART_callscounter;
+		} else if(args[1] == "tacCPU") {
+			chart_type = RRD_CHART_tacCPU;
+		} else if(args[1] == "memusage") {
+			chart_type = RRD_CHART_memusage;
+		} else if(args[1] == "loadavg") {
+			chart_type = RRD_CHART_LA;
 		} else {
-			snprintf(sendbuf, BUFSIZE, "Error: Graph type %s isn't known\n\tGraph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage\n", manager_args[1]);
-			if (verbosity > 0) {
-				syslog(LOG_NOTICE, "creategraph Error: Unrecognized graph type %s", manager_args[1]);
+			error =  "Error: Graph type " + args[1] + " isn't known\n\t"
+				 "Graph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage\n";
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "creategraph Error: Unrecognized graph type %s", args[1].c_str());
 				syslog(LOG_NOTICE, "    Graph types: PS PSC PSS PSSM PSSR PSR PSA SQLq SQLf tCPU drop speed heap calls tacCPU memusage loadavg");
 			}
-			res = -1;
 		}
-		if ((dstfile == NULL) && (res == 0)) {		//send from stdout of a command (binary data)
-			if (sverb.rrd_info) syslog(LOG_NOTICE, "COMMAND for system pipe:%s", sendcommand);
-			if (sendvm_from_stdout_of_command(sendcommand, params->client.handler, params->c_client, sendbuf, sizeof(sendbuf), 0) == -1 ){
-				cerr << "Error sending data to client 2" << endl;
-				delete [] manager_cmd_line;
-				delete [] manager_args;
-				pthread_mutex_unlock(&vm_rrd_lock);
-				return -1;
-			}
-		} else {									//send string data (text data or error response)
-			if (sverb.rrd_info) syslog(LOG_NOTICE, "COMMAND for system:%s", sendcommand);
-			res = system(sendcommand);
-			if ((verbosity > 0) && (res > 0)) snprintf(sendbuf, BUFSIZE, "ERROR while creating graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no");
-			if ((verbosity > 0) && (res == 0)) snprintf(sendbuf, BUFSIZE, "Created graph of type %s from:%s to:%s resx:%i resy:%i slopemode=%s, iconmode=%s in file %s\n", manager_args[1], fromat, toat, resx, resy, slope?"yes":"no", icon?"yes":"no", dstfile);
-			if (strlen(sendbuf)) {
-				if (params->sendString(sendbuf) == -1) {
-					cerr << "Error sending data to client 3" << endl;
-					delete [] manager_cmd_line;
-					delete [] manager_args;
-					pthread_mutex_unlock(&vm_rrd_lock);
-					return -1;
+		if(!chart_type.empty()) {
+			string createGraphCmd = rrd_chart_graphString(chart_type.c_str(),
+								      series_type.c_str(),
+								      NULL, fromTime.c_str(), toTime.c_str(),
+								      color.c_str(), resx, resy,
+								      slope, icon);
+			if(!createGraphCmd.empty()) {
+				createGraphCmd = "rrdtool " + createGraphCmd;
+				RrdChartQueueItem *queueItem = new FILE_LINE(0) RrdChartQueueItem;
+				queueItem->request_type = "graph";
+				queueItem->rrd_cmd = createGraphCmd;
+				rrd_add_to_queue(queueItem);
+				while(!queueItem->completed) {
+					usleep(10000);
 				}
+				if(!queueItem->error.empty()) {
+					error = queueItem->error;
+				} else {
+					if(sendvm(params->client.handler, params->c_client, (const char*)queueItem->result.data(), queueItem->result.size(), 0) == -1) {
+						if(verbosity > 0) {
+							syslog(LOG_NOTICE, "sendvm: sending data problem");
+						}
+						rslt = -1;
+					}
+				}
+				delete queueItem;
 			}
 		}
 	}
-	delete [] manager_cmd_line;
-	delete [] manager_args;
-	pthread_mutex_unlock(&vm_rrd_lock);
-	return res;
+	if(!error.empty()) {
+		params->sendString(error);
+		rslt = -1;
+	}
+	return(rslt);
 }
 
 int Mgmt_d_lc_for_destroy(Mgmt_params *params) {

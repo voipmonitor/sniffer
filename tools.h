@@ -3860,4 +3860,6 @@ unsigned RTPSENSOR_VERSION_INT();
 
 void rss_purge(bool force = false);
 
+void parse_cmd_str(const char *cmd_str, vector<string> *args);
+
 #endif

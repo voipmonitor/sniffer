@@ -6130,3 +6130,33 @@ void rss_purge(bool force) {
 		}
 	#endif
 }
+
+
+void parse_cmd_str(const char *cmd_str, vector<string> *args) {
+	char *ptr_cmd_str = (char*)cmd_str;
+	char *ptr_arg = NULL;
+	char border = 0;
+	while(*ptr_cmd_str) {
+		if(*ptr_cmd_str == ' ' || *ptr_cmd_str == '\t') {
+			if(!border && ptr_arg) {
+				args->push_back(string(ptr_arg, ptr_cmd_str - ptr_arg));
+				ptr_arg = NULL;
+			}
+		} else if(*ptr_cmd_str == '"' || *ptr_cmd_str == '\'') {
+			if(*ptr_cmd_str == border) {
+				args->push_back(string(ptr_arg, ptr_cmd_str - ptr_arg));
+				ptr_arg = NULL;
+				border = 0;
+			} else {
+				ptr_arg = ptr_cmd_str + 1;
+				border = *ptr_cmd_str;
+			}
+		} else if(!ptr_arg) {
+			ptr_arg = ptr_cmd_str;
+		}
+		++ptr_cmd_str;
+	}
+	if(ptr_arg) {
+		args->push_back(string(ptr_arg, ptr_cmd_str - ptr_arg));
+	}
+}

@@ -851,7 +851,6 @@ rtp_read_thread *rtp_threads;
 int manager_socket_server = 0;
 
 pthread_mutex_t mysqlconnect_lock;
-pthread_mutex_t vm_rrd_lock;
 pthread_mutex_t hostbyname_lock;
 pthread_mutex_t commmand_type_counter_sync;
 
@@ -3004,7 +3003,6 @@ int main(int argc, char *argv[]) {
 	memset(ssl_client_random_portmatrix, 0, 65537);
 
 	pthread_mutex_init(&mysqlconnect_lock, NULL);
-	pthread_mutex_init(&vm_rrd_lock, NULL);
 	pthread_mutex_init(&hostbyname_lock, NULL);
 	pthread_mutex_init(&terminate_packetbuffer_lock, NULL);
 	pthread_mutex_init(&commmand_type_counter_sync, NULL);
@@ -3449,7 +3447,10 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(!opt_test) {
-		checkRrdVersion();
+		if(opt_rrd) {
+			checkRrdVersion();
+			rrd_charts_init();
+		}
 		get_cpu_ht();
 		get_cpu_count();
 	}
@@ -3477,6 +3478,11 @@ int main(int argc, char *argv[]) {
 			return(1);
 		}
 		atexit(exit_handler_fork_mode);
+	}
+	
+	if(opt_rrd) {
+		extern RrdCharts rrd_charts;
+		rrd_charts.startQueueThread();
 	}
 	
 	if(opt_hugepages_anon || opt_hugepages_max || opt_hugepages_overcommit_max) {
