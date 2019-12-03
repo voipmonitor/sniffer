@@ -1,3 +1,4 @@
+#if 0
 #ifndef TCMALLOC_HUGEPAGES_H
 #define TCMALLOC_HUGEPAGES_H
 
@@ -11,4 +12,5 @@ void *mmap_hugepage(int mmap_fd, long int mmap_offset, bool use_ftruncate,
 		    bool anon, bool *failed);
 void munmap_hugepage(void *ptr, size_t size);
 
+#endif
 #endif

@@ -2319,12 +2319,14 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		lapTimeDescr.push_back("rss_vsz");
 	}
 	outStrStat << "]MB ";
+#if 0
 	u_int64_t hugepages_base = HugetlbSysAllocator_base();
 	if(hugepages_base) {
 		outStrStat << "HP["
 			   << setprecision(0) << (double)hugepages_base/1024/1024
 			   << "]MB ";
 	}
+#endif
 	#ifdef HEAP_CHUNK_ENABLE
 	extern cHeap *heap_vm;
 	if(heap_vm) {
