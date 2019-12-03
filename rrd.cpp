@@ -16,6 +16,8 @@
 #include <string.h>
 
 
+extern int opt_rrd;
+
 int vm_rrd_version;
 
 
@@ -682,24 +684,37 @@ void rrd_charts_init() {
 }
 
 void rrd_charts_create() {
-	rrd_charts.createAll();
+	if(opt_rrd) {
+		rrd_charts.createAll();
+	}
 }
 
 void rrd_set_value(const char *valuename, double value, const char *dbname) {
-	rrd_charts.setValue(valuename, value, dbname);
+	if(opt_rrd) {
+		rrd_charts.setValue(valuename, value, dbname);
+	}
 }
 
 void rrd_add_value(const char *valuename, double value, const char *dbname) {
-	rrd_charts.addValue(valuename, value, dbname);
+	if(opt_rrd) {
+		rrd_charts.addValue(valuename, value, dbname);
+	}
 }
 
 void rrd_update() {
-	rrd_charts.updateAll();
-	rrd_charts.clearValues();
+	if(opt_rrd) {
+		rrd_charts.updateAll();
+		rrd_charts.clearValues();
+	}
 }
 
 void rrd_add_to_queue(RrdChartQueueItem *queueItem) {
-	rrd_charts.addToQueue(queueItem);
+	if(opt_rrd) {
+		rrd_charts.addToQueue(queueItem);
+	} else {
+		queueItem->error = "rrd is disabled";
+		queueItem->completed = true;
+	}
 }
 
 string rrd_chart_graphString(const char *dbname,

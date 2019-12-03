@@ -2062,7 +2062,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 				}
 			}
-			rrd_set_value(RRD_VALUE_tCPU_t2, sum_t2cpu);
+			if(opt_rrd) {
+				rrd_set_value(RRD_VALUE_tCPU_t2, sum_t2cpu);
+			}
 			int countRtpRhThreads = 0;
 			bool needAddRtpRhThreads = false;
 			int countRtpRdThreads = 0;
