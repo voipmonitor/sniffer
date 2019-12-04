@@ -2,6 +2,9 @@
 #define RRD_H
 
 
+#include <values.h>
+
+
 #define RRD_CHART_tCPU "2db-tCPU"
 #define RRD_VALUE_tCPU_t0 "tCPU-t0"
 #define RRD_VALUE_tCPU_t1 "tCPU-t1"
