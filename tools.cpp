@@ -6166,7 +6166,7 @@ bool tmpnam2(char *s, int len) {
 	struct stat sbuf;
 	for (int i = 0; i < 3; i++) {
 		ns = getTimeNS();
-		snprintf(s, len, "%s/VM%i_%lu", P_tmpdir, getpid(), ns);
+		snprintf(s, len, "%s/VM%i_%lu", P_tmpdir, get_unix_tid(), ns);
 		if (stat(s, &sbuf) < 0 && errno == ENOENT) {
 			return(true);
 		}
