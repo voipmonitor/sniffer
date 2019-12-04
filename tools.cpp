@@ -2121,8 +2121,8 @@ string RestartUpgrade::getRsltString() {
 }
 
 bool RestartUpgrade::getUpgradeTempFileName() {
-	char upgradeTempFileName[L_tmpnam+1];
-	if(tmpnam(upgradeTempFileName)) {
+	char upgradeTempFileName[MAX_TMPNAM2];
+	if(tmpnam2(upgradeTempFileName, MAX_TMPNAM2)) {
 		this->upgradeTempFileName = upgradeTempFileName;
 		return(true);
 	}
@@ -2130,8 +2130,8 @@ bool RestartUpgrade::getUpgradeTempFileName() {
 }
 
 bool RestartUpgrade::getRestartTempScriptFileName() {
-	char restartTempScriptFileName[L_tmpnam+1];
-	if(tmpnam(restartTempScriptFileName)) {
+	char restartTempScriptFileName[MAX_TMPNAM2];
+	if(tmpnam2(restartTempScriptFileName, MAX_TMPNAM2)) {
 		this->restartTempScriptFileName = restartTempScriptFileName;
 		return(true);
 	}
@@ -2139,8 +2139,8 @@ bool RestartUpgrade::getRestartTempScriptFileName() {
 }
 
 bool RestartUpgrade::getSafeRunTempScriptFileName() {
-	char safeRunTempScriptFileName[L_tmpnam+1];
-	if(tmpnam(safeRunTempScriptFileName)) {
+	char safeRunTempScriptFileName[MAX_TMPNAM2];
+	if(tmpnam2(safeRunTempScriptFileName, MAX_TMPNAM2)) {
 		this->safeRunTempScriptFileName = safeRunTempScriptFileName;
 		return(true);
 	}
@@ -4085,8 +4085,8 @@ pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff, string *tempF
 }
 
 string gunzipToTemp(const char *zipFilename, string *error, bool autoDeleteAtExit, string *tempFileName) {
-	char unzipTempFileName[L_tmpnam+1];
-	if(tmpnam(unzipTempFileName)) {
+	char unzipTempFileName[MAX_TMPNAM2];
+	if(tmpnam2(unzipTempFileName, MAX_TMPNAM2)) {
 		if(autoDeleteAtExit) {
 			GlobalAutoDeleteAtExit.add(unzipTempFileName);
 		}
@@ -6159,4 +6159,17 @@ void parse_cmd_str(const char *cmd_str, vector<string> *args) {
 	if(ptr_arg) {
 		args->push_back(string(ptr_arg, ptr_cmd_str - ptr_arg));
 	}
+}
+
+bool tmpnam2(char *s, int len) {
+	u_int64_t ns;
+	struct stat sbuf;
+	for (int i = 0; i < 3; i++) {
+		ns = getTimeNS();
+		snprintf(s, len, "%s/VM%i_%lu", P_tmpdir, get_unix_tid(), ns);
+		if (stat(s, &sbuf) < 0 && errno == ENOENT) {
+			return(true);
+		}
+	}
+	return(false);
 }
