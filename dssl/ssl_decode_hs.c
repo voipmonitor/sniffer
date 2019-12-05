@@ -443,31 +443,35 @@ int ssl3_decode_client_key_exchange( DSSL_Session* sess, u_char* data, uint32_t 
 	TLS is different as it sends the record length, while SSL3 implementaions don't
 	(due to a bug in Netscape implementation)
 	*/
-	if( sess->version > SSL3_VERSION )
+	
+	if( !sess->master_secret[0] )
 	{
-		uint16_t recLen = 0;
-		if( !IS_ENOUGH_LENGTH( org_data, org_len, data, 2 ) ) 
+		if( sess->version > SSL3_VERSION )
+		{
+			uint16_t recLen = 0;
+			if( !IS_ENOUGH_LENGTH( org_data, org_len, data, 2 ) ) 
+			{
+				return NM_ERROR( DSSL_E_SSL_INVALID_RECORD_LENGTH );
+			}
+
+			recLen = MAKE_UINT16( data[0], data[1] );
+			if( len != (uint32_t)recLen + 2 )
+			{
+				/*TODO: set an option to tolerate this bug?*/
+				return NM_ERROR( DSSL_E_SSL_INVALID_RECORD_LENGTH );
+			}
+
+			/* advance */
+			data += len - recLen;
+			len = recLen;
+		}
+
+		if( !IS_ENOUGH_LENGTH( org_data, org_len, data, SSL_MAX_MASTER_KEY_LENGTH ) )
 		{
 			return NM_ERROR( DSSL_E_SSL_INVALID_RECORD_LENGTH );
 		}
-
-		recLen = MAKE_UINT16( data[0], data[1] );
-		if( len != (uint32_t)recLen + 2 )
-		{
-			/*TODO: set an option to tolerate this bug?*/
-			return NM_ERROR( DSSL_E_SSL_INVALID_RECORD_LENGTH );
-		}
-
-		/* advance */
-		data += len - recLen;
-		len = recLen;
 	}
-
-	if( !IS_ENOUGH_LENGTH( org_data, org_len, data, SSL_MAX_MASTER_KEY_LENGTH ) )
-	{
-		return NM_ERROR( DSSL_E_SSL_INVALID_RECORD_LENGTH );
-	}
-
+	
 	if( sess->ssl_si->pkey && !sess->master_secret[0] )
 	{
 		pk = ssls_get_session_private_key( sess );
@@ -777,7 +781,14 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 	
 	case SSL3_MT_SERVER_KEY_EXCHANGE:
 		/*at this point it is clear that the session is not decryptable due to ephemeral keys usage.*/
-		rc = NM_ERROR( DSSL_E_SSL_CANNOT_DECRYPT_EPHEMERAL );
+		if( sess->master_secret[0] ) 
+		{
+			rc = ssl3_decode_dummy( sess, data, recLen );
+		}
+		else
+		{
+			rc = NM_ERROR( DSSL_E_SSL_CANNOT_DECRYPT_EPHEMERAL );
+		}
 		break;
 
 	case SSL3_MT_CERTIFICATE_REQUEST:
