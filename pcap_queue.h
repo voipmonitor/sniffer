@@ -469,6 +469,7 @@ private:
 	u_char *libpcap_buffer_old;
 	u_int64_t packets_counter;
 	ListIP *filter_ip;
+	unsigned read_from_file_index;
 };
 
 

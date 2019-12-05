@@ -2758,6 +2758,7 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	} else {
 		filter_ip = NULL;
 	}
+	read_from_file_index = 0;
 }
 
 PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
@@ -2788,13 +2789,16 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 	char errbuf[PCAP_ERRBUF_SIZE];
 	char errorstr[4096];
 	if(opt_pb_read_from_file[0]) {
-		if(opt_pb_read_from_file == string("/dev/stdin")) {
+		string _file = split(opt_pb_read_from_file, "@@")[0];
+		if(_file == "/dev/stdin") {
 			this->pcapHandle = pcap_open_offline("-", errbuf);
 		} else {
-			this->pcapHandle = pcap_open_offline_zip(opt_pb_read_from_file, errbuf);
+			this->pcapHandle = pcap_open_offline_zip(_file.c_str(), errbuf);
 		}
-		if(!this->pcapHandle) {
-			snprintf(errorstr, sizeof(errorstr), "pcap_open_offline %s failed: %s", opt_pb_read_from_file, errbuf); 
+		if(this->pcapHandle) {
+			syslog(LOG_NOTICE, "packetbuffer - successfully opened file %s", _file.c_str());
+		} else {
+			snprintf(errorstr, sizeof(errorstr), "pcap_open_offline %s failed: %s", _file.c_str(), errbuf); 
 			syslog(LOG_ERR, "%s", errorstr);
 			*error = errorstr;
 			__sync_lock_release(&_sync_start_capture);
@@ -2805,6 +2809,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 		global_pcap_handle = this->pcapHandle;
 		global_pcap_handle_index = this->pcapHandleIndex;
 		global_pcap_dlink = this->pcapLinklayerHeaderType;
+		read_from_file_index = 0;
 		__sync_lock_release(&_sync_start_capture);
 		return(true);
 	}
@@ -2947,21 +2952,46 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		if(VERBOSE) {
 			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > this->lastTimeLogErrPcapNextExErrorReading) {
-				syslog(LOG_NOTICE,"packetbuffer - %s: error reading packets", this->getInterfaceName().c_str());
+				syslog(LOG_NOTICE,"packetbuffer - %s: error reading packets: %s", this->getInterfaceName().c_str(), pcap_geterr(this->pcapHandle));
 				this->lastTimeLogErrPcapNextExErrorReading = actTime;
 			}
 		}
 		return(0);
 	} else if(res == -2) {
 		if(VERBOSE && opt_pb_read_from_file[0]) {
-			syslog(LOG_NOTICE,"packetbuffer - %s: end of pcap file, exiting", this->getInterfaceName().c_str());
-			if(opt_nonstop_read) {
+			syslog(LOG_NOTICE,"packetbuffer - %s: end of pcap file", this->getInterfaceName().c_str());
+			vector<string> _files = split(opt_pb_read_from_file, "@@");
+			string _file;
+			bool _next_read = false;
+			if(read_from_file_index < _files.size() - 1) {
+				_file = _files[++read_from_file_index];
+				_next_read = true;
+			} else if(opt_nonstop_read) {
+				_file = _files[0];
+				read_from_file_index = 0;
+			}
+			if(!_file.empty()) {
 				pcap_close(this->pcapHandle);
 				char errbuf[PCAP_ERRBUF_SIZE];
-				this->pcapHandle = pcap_open_offline_zip(opt_pb_read_from_file, errbuf);
+				this->pcapHandle = pcap_open_offline_zip(_file.c_str(), errbuf);
+				if(this->pcapHandle) {
+					syslog(LOG_NOTICE, "packetbuffer - successfully opened file %s", _file.c_str());
+					this->pcapHandleIndex = register_pcap_handle(this->pcapHandle);
+					this->pcapLinklayerHeaderType = pcap_datalink(this->pcapHandle);
+					global_pcap_handle = this->pcapHandle;
+					global_pcap_handle_index = this->pcapHandleIndex;
+					global_pcap_dlink = this->pcapLinklayerHeaderType;
+					if(_next_read) {
+						res = ::pcap_next_ex(this->pcapHandle, header, (const u_char**)packet);
+					}
+				} else {
+					syslog(LOG_ERR, "pcap_open_offline %s failed: %s", _file.c_str(), errbuf);
+				}
 			}
 		}
-		return(-1);
+		if(res == -2) {
+			return(-1);
+		}
 	} else if(res == 0) {
 		return(0);
 	}
