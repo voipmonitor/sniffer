@@ -3489,6 +3489,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				get_sip_peertag(packetS, "\nTo:", "\nt:", tag_content_to, sizeof(tag_content_to), ppntt_to, ppndt_called_tag);
 				if(tag_content_to[0]) {
 					call->invitecseq_in_dialog.push_back(packetS->cseq);
+					if(call->invitecseq_in_dialog.size() > 10) {
+						call->invitecseq_in_dialog.pop_front();
+					}
 				} else {
 					call->invitecseq_next.push_back(packetS->cseq);
 				}

@@ -14,6 +14,7 @@
 #include <map>
 #include <list>
 #include <set>
+#include <deque>
 
 #include <arpa/inet.h>
 #include <time.h>
@@ -612,7 +613,7 @@ public:
 	sCseq byecseq[2];		
 	sCseq invitecseq;		
 	list<sCseq> invitecseq_next;
-	list<sCseq> invitecseq_in_dialog;
+	deque<sCseq> invitecseq_in_dialog;
 	sCseq messagecseq;
 	sCseq registercseq;
 	sCseq cancelcseq;		
