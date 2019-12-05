@@ -834,6 +834,7 @@ bool ssl_client_random_portmatrix_set = false;
 vector<vmIP> ssl_client_random_ip;
 vector<vmIPmask> ssl_client_random_net;
 int ssl_client_random_maxwait_ms = 0;
+char ssl_master_secret_file[1024];
 
 int opt_sdp_reverse_ipport = 0;
 bool opt_sdp_check_direction_ext = true;
@@ -4129,6 +4130,9 @@ int main_init_read() {
 			#endif
 		} else {
 			ssl_dssl_init();
+			if(ssl_master_secret_file[0]) {
+				ssl_parse_client_random(ssl_master_secret_file);
+			}
 		}
 		tcpReassemblySsl = new FILE_LINE(42029) TcpReassembly(TcpReassembly::ssl);
 		tcpReassemblySsl->setEnableIgnorePairReqResp();
@@ -7362,6 +7366,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"server-port", 1, 0, 329},
 	    {"server-pass", 1, 0, 330},
 	    {"disable-dbupgradecheck", 0, 0, 319},
+	    {"ssl-master-secret-file", 1, 0, 336},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -7936,6 +7941,9 @@ void get_command_line_arguments() {
 				if(!opt_test) {
 					opt_test = 1;
 				}
+				break;
+			case 336:
+				strcpy_null_term(ssl_master_secret_file, optarg);
 				break;
 		}
 		if(optarg) {

@@ -698,3 +698,31 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 	return(false);
 }
+
+void ssl_parse_client_random(const char *fileName) {
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(!SslDsslSessions) {
+		return;
+	}
+	FILE *file = fopen(fileName, "r");
+	if(!file) {
+		return;
+	}
+	char buff[1024];
+	while(fgets(buff, sizeof(buff), file)) {
+		vector<string> parts = split(buff, ' ');
+		if(parts.size() == 3 && parts[0] == "CLIENT_RANDOM") {
+			u_char client_random[SSL3_RANDOM_SIZE];
+			u_char master_secret[SSL3_MASTER_SECRET_SIZE];
+			hexdecode(client_random, parts[1].c_str(), SSL3_RANDOM_SIZE);
+			hexdecode(master_secret, parts[2].c_str(), SSL3_MASTER_SECRET_SIZE);
+			SslDsslSessions->clientRandomSet(client_random, master_secret);
+			if(sverb.ssl_sessionkey) {
+				cout << "set clientrandom" << endl;
+				hexdump(client_random, 32);
+			}
+		}
+	}
+	fclose(file);
+	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+}

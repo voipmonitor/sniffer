@@ -179,6 +179,7 @@ void ssl_dssl_clean();
 void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts);
 void end_decrypt_ssl_dssl(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
 bool ssl_parse_client_random(u_char *data, unsigned datalen);
+void ssl_parse_client_random(const char *fileName);
 
 
 #endif //SSL_DSSL_H
