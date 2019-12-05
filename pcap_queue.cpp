@@ -2846,6 +2846,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 	rssBeforeActivate = getRss() / 1024 / 1024;
 	if((status = pcap_activate(this->pcapHandle)) != 0) {
 		snprintf(errorstr, sizeof(errorstr), "packetbuffer - %s: libpcap error: %s", this->getInterfaceName().c_str(), pcap_geterr(this->pcapHandle)); 
+		cLogSensor::log(cLogSensor::error, errorstr);
 		if(opt_fork) {
 			ostringstream outStr;
 			outStr << this->getInterfaceName() << ": libpcap error: " << pcap_geterr(this->pcapHandle);
