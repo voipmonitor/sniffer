@@ -3336,13 +3336,13 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
 	if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && 
 	   (call->typeIsOnly(MESSAGE) ?
-		call->lastSIPresponseNum != 487 &&
-		lastSIPresponseNum > call->lastSIPresponseNum :
-		(call->lastSIPresponseNum != 487 || 
-		 (call->new_invite_after_lsr487 && lastSIPresponseNum == 200) ||
-		 (call->cancel_lsr487 && lastSIPresponseNum/10 == 48)) &&
-		!call->seeninviteok &&
-		!(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5)) &&
+		((call->lastSIPresponseNum != 487 && lastSIPresponseNum > call->lastSIPresponseNum) ||
+		 (call->lastSIPresponseNum == 407 && lastSIPresponseNum / 100 == 2)) :
+		((call->lastSIPresponseNum != 487 || 
+		  (call->new_invite_after_lsr487 && lastSIPresponseNum == 200) ||
+		  (call->cancel_lsr487 && lastSIPresponseNum/10 == 48)) &&
+		 !call->seeninviteok &&
+		 !(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5))) &&
 	   (lastSIPresponseNum != 200 || packetS->cseq.method == INVITE || packetS->cseq.method == MESSAGE) &&
 	   !(call->cancelcseq.is_set() && packetS->cseq.is_set() && packetS->cseq == call->cancelcseq)) {
 		strcpy_null_term(call->lastSIPresponse, lastSIPresponse);
