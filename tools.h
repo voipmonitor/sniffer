@@ -3688,7 +3688,7 @@ public:
 		return(sValue());
 	}
 	sValue getOperand(const char *formula, unsigned pos, unsigned *pos_end, string *u_operator) {
-		unsigned _pos_end;
+		unsigned _pos_end = 0;
 		*u_operator = getU_Operator(formula, pos, &_pos_end);
 		if(!u_operator->empty()) {
 			pos = _pos_end;
@@ -3734,7 +3734,7 @@ public:
 		}
 	}
 	string getBracketsBlock(const char *formula, unsigned pos, unsigned *pos_end, string *u_operator) {
-		unsigned _pos_end;
+		unsigned _pos_end = 0;
 		*u_operator = getU_Operator(formula, pos, &_pos_end);
 		if(!u_operator->empty()) {
 			pos = _pos_end;
