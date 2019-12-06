@@ -4723,17 +4723,58 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		
 		extern int opt_cdr_check_exists_callid;
+		extern string opt_cdr_check_unique_callid_in_sensors;
+		extern list<int> opt_cdr_check_unique_callid_in_sensors_list;
 		extern bool opt_cdr_check_duplicity_callid_in_next_pass_insert;
 		string cdr_callid_lock_name;
 		if(!useNewStore() &&
 		   (opt_cdr_check_exists_callid ||
+		    opt_cdr_check_unique_callid_in_sensors_list.size() ||
 		    opt_cdr_check_duplicity_callid_in_next_pass_insert)) {
 			// check if exists call-id & rtp records - begin if
-			if(opt_cdr_check_exists_callid) {
+			if(opt_cdr_check_exists_callid ||
+			   opt_cdr_check_unique_callid_in_sensors_list.size()) {
 				if(opt_cdr_check_exists_callid == 2) {
-					cdr_callid_lock_name = "vm_cdr_callid_" + GetStringMD5(fbasename);
+					cdr_callid_lock_name = "vm_cdr_callid_";
+					if(opt_cdr_check_unique_callid_in_sensors_list.size()) {
+						cdr_callid_lock_name += GetStringMD5(fbasename + opt_cdr_check_unique_callid_in_sensors);
+					} else {
+						cdr_callid_lock_name += GetStringMD5(fbasename);
+					}
 					query_str +=
 						"do get_lock('" + cdr_callid_lock_name + "', 60);\n";
+				}
+				string condIdSensor;
+				if(opt_cdr_check_unique_callid_in_sensors_list.size()) {
+					string inSensors;
+					bool nullSensor = false;
+					for(list<int>::iterator iter = opt_cdr_check_unique_callid_in_sensors_list.begin();
+					    iter != opt_cdr_check_unique_callid_in_sensors_list.end();
+					    iter++) {
+						if(*iter > -1) {
+							if(!inSensors.empty()) {
+								inSensors += ',';
+							}
+							inSensors += intToString(*iter);
+						} else {
+							nullSensor = true;
+						}
+					}
+					if(!inSensors.empty()) {
+						condIdSensor = "id_sensor in (" + inSensors + ")";
+					}
+					if(nullSensor) {
+						string condNullSensor = "id_sensor is null";
+						if(!condIdSensor.empty()) {
+							condIdSensor = "(" + condIdSensor + " or " + condNullSensor + ")";
+						} else {
+							condIdSensor = condNullSensor;
+						}
+					}
+				} else if(opt_cdr_check_exists_callid != 2) {
+					condIdSensor = useSensorId > -1 ? 
+							"id_sensor = " + intToString(useSensorId) : 
+							"id_sensor is null";
 				}
 				query_str += string(
 					"set @exists_call_id = coalesce(\n") +
@@ -4741,11 +4782,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					" join cdr_next on (cdr_next.cdr_ID = cdr.ID and cdr_next.calldate = cdr.calldate)\n" +
 					" where cdr.calldate > ('" + sqlDateTimeString(calltime_s()) + "' - interval 1 hour) and\n" +
 					"       cdr.calldate < ('" + sqlDateTimeString(calltime_s()) + "' + interval 1 hour) and\n" +
-					"       " + (opt_cdr_check_exists_callid != 2 ? 
-						      ((useSensorId > -1 ? 
-							 "id_sensor = " + intToString(useSensorId) : 
-							 "id_sensor is null") + " and\n") :
-						      "") +
+					"       " + (!condIdSensor.empty() ? (condIdSensor + " and\n") : "") +
 					"       fbasename = '" + sqlEscapeString(fbasename) + "' limit 1), 0);\n";
 				query_str += string(
 					"set @exists_rtp =\n") +
@@ -4815,8 +4852,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
 			     sqlDbSaveCall->insertQuery(sql_cdr_next_table, cdr_next));
 		
-		if(!useNewStore() &&
-		   opt_cdr_check_exists_callid == 2) {
+		if(!cdr_callid_lock_name.empty()) {
 			query_str +=
 				"do release_lock('" + cdr_callid_lock_name + "');\n";
 		}
@@ -5169,11 +5205,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		if(!useNewStore() &&
 		   (opt_cdr_check_exists_callid ||
+		    opt_cdr_check_unique_callid_in_sensors_list.size() ||
 		    opt_cdr_check_duplicity_callid_in_next_pass_insert)) {
 			// check if exists call-id & rtp records - end if
-			if(opt_cdr_check_exists_callid) {
+			if(opt_cdr_check_exists_callid ||
+			   opt_cdr_check_unique_callid_in_sensors_list.size()) {
 				query_str += ";\nend if";
-				if(opt_cdr_check_exists_callid == 2) {
+				if(!cdr_callid_lock_name.empty()) {
 					query_str +=
 						";\ndo release_lock('" + cdr_callid_lock_name + "')";
 				}

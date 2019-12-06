@@ -606,6 +606,8 @@ bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
 bool opt_cdr_rtpsrcport = 0;
 int opt_cdr_check_exists_callid = 0;
+string opt_cdr_check_unique_callid_in_sensors;
+list<int> opt_cdr_check_unique_callid_in_sensors_list;
 bool opt_cdr_check_duplicity_callid_in_next_pass_insert = 0;
 bool opt_message_check_duplicity_callid_in_next_pass_insert = 0;
 int opt_create_old_partitions = 0;
@@ -1062,6 +1064,8 @@ static void set_context_config_after_check_db_schema();
 static void create_spool_dirs();
 static bool check_complete_parameters();
 static void parse_opt_nocdr_for_last_responses();
+static void set_cdr_check_unique_callid_in_sensors_list();
+
 void init_management_functions(void);
  
  
@@ -6667,6 +6671,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42264) cConfigItem_yesno("cdronlyanswered", &opt_cdronlyanswered));
 			addConfigItem((new FILE_LINE(42265) cConfigItem_yesno("cdr_check_exists_callid", &opt_cdr_check_exists_callid))
 				->addValues("lock:2"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("cdr_check_unique_callid_in_sensors", &opt_cdr_check_unique_callid_in_sensors));
 			addConfigItem(new FILE_LINE(42266) cConfigItem_yesno("cdronlyrtp", &opt_cdronlyrtp));
 			addConfigItem(new FILE_LINE(42267) cConfigItem_integer("callslimit", &opt_callslimit));
 			addConfigItem(new FILE_LINE(42268) cConfigItem_yesno("cdrproxy", &opt_cdrproxy));
@@ -8303,6 +8308,9 @@ void set_context_config() {
 	} else {
 		opt_remoteparty_called_v.clear();
 	}
+	
+	set_cdr_check_unique_callid_in_sensors_list();
+	
 }
 
 void check_context_config() {
@@ -8685,6 +8693,22 @@ void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, char *port_matri
 	CSimpleIni::TNamesDepend::const_iterator i = values->begin();
 	for (; i != values->end(); ++i) {
 		cConfigItem_ports::setPortMartix(i->pItem, port_matrix, 65535);
+	}
+}
+
+void set_cdr_check_unique_callid_in_sensors_list() {
+	opt_cdr_check_unique_callid_in_sensors_list.clear();
+	if(!opt_cdr_check_unique_callid_in_sensors[0]) {
+		return;
+	}
+	vector<string> _list = split(opt_cdr_check_unique_callid_in_sensors.c_str(), split(",|;| ", '|'), true);
+	for(unsigned i = 0; i < _list.size(); i++) {
+		int _idSensor = atoi(_list[i].c_str());
+		if(_idSensor > 0) {
+			opt_cdr_check_unique_callid_in_sensors_list.push_back(_idSensor);
+		} else {
+			opt_cdr_check_unique_callid_in_sensors_list.push_back(-1);
+		}
 	}
 }
 
@@ -9158,6 +9182,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cdr_check_exists_callid", NULL))) {
 		opt_cdr_check_exists_callid = !strcasecmp(value, "lock") ? 2 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_check_unique_callid_in_sensors", NULL))) {
+		opt_cdr_check_unique_callid_in_sensors = value;
 	}
 	if((value = ini.GetValue("general", "check_duplicity_callid_in_next_pass_insert", NULL))) {
 		opt_cdr_check_duplicity_callid_in_next_pass_insert = 
