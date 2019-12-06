@@ -1,3 +1,14 @@
+26.2 06.12.2019
+===============
+- more RRD chart optimizations [VS-989]
+- fix ARM build [VS-1000]
+- log packetbuffer interface error to the MySQL LOG [VS-992]
+- add support for CLIENT_RANDOM/MASTER_KEY with SERVER_KEY_EXCHANGE [VS-985]
+- add support for load client_random/masterkey from file via new parameter --ssl-master-secret-file (for testing purpose) [VS-998]
+- fix SIP performance regression when there are multiple INVITE in one SIP session (or INVITE attacks with the same Call-ID) [VS-993]
+- fix last sip response for SIP text MESSAGE type - if previous response is 407, enable set to 2XX if next response is 2XX [VS-1004]
+
+
 26.2 29.11.2019
 ===============
 - fix t2_boost mode 
