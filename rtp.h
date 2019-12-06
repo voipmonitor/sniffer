@@ -25,7 +25,7 @@ int get_ticks_bycodec(int);
 void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr, int lastinterval);
 int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval);
 double calculate_mos_g711(double ppl, double burstr, int version);
-double calculate_mos(double ppl, double burstr, int codec, unsigned int received);
+double calculate_mos(double ppl, double burstr, int codec, unsigned int received, bool call_is_connected);
 
 
 /*

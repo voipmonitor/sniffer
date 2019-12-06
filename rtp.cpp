@@ -2629,21 +2629,21 @@ double calculate_mos_g711(double ppl, double burstr, int version) {
 	return mos;
 }
 
-double calculate_mos(double ppl, double burstr, int codec, unsigned int received) {
+double calculate_mos(double ppl, double burstr, int codec, unsigned int received, bool call_is_connected) {
 	if(codec == PAYLOAD_G729) {
 		if(opt_mos_g729) {
-			if(received < 100) {
+			if(!call_is_connected && received < 100) {
 				return 3.92;
 			}
 			return (double)mos_g729((long double)ppl, (long double)burstr);
 		} else {
-			if(received < 100) {
+			if(!call_is_connected && received < 100) {
 				return 4.5;
 			}
 			return calculate_mos_g711(ppl, burstr, 2);
 		}
 	} else {
-		if(received < 100) {
+		if(!call_is_connected && received < 100) {
 			return 4.5;
 		}
 		return calculate_mos_g711(ppl, burstr, 2); 
@@ -2687,7 +2687,7 @@ int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP) {
 	} else {
 		lossr = 0;
 	}
-	mos = (int)round(calculate_mos(lossr, burstr, rtp->first_codec, rtp->stats.received) * 10);
+	mos = (int)round(calculate_mos(lossr, burstr, rtp->first_codec, rtp->stats.received, rtp->call_owner && ((Call*)rtp->call_owner)->connect_time_us) * 10);
 	if(0) printf("[%p] SilenceMOS - burstr: %f lossr: %f lost[%d]/received[%d] mos[%u]\n", rtp, burstr, lossr, lost, DSP->received, mos);
 	return mos;
 }
@@ -2717,7 +2717,7 @@ int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval) {
 		}
 		break;  
 	}       
-	int mos = (int)round(calculate_mos(lossr, burstr, rtp->first_codec, rtp->stats.received) * 10);
+	int mos = (int)round(calculate_mos(lossr, burstr, rtp->first_codec, rtp->stats.received, rtp->call_owner && ((Call*)rtp->call_owner)->connect_time_us) * 10);
 	return mos;
 }       
 
