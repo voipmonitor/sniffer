@@ -2345,7 +2345,33 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(counters["tlb"].second) {
 		static u_int64_t oldCountersTlb;
 		if(oldCountersTlb) {
-			outStrStat << "TLB[" << (counters["tlb"].second - oldCountersTlb) / statPeriod << "] ";
+			unsigned tlb = (counters["tlb"].second - oldCountersTlb) / statPeriod;
+			outStrStat << "TLB[" << tlb << "] ";
+			static unsigned counter_high_tlb = 0;
+			if(tlb >= 500) {
+				++counter_high_tlb;
+				static bool try_disable_numa_balancing = false;
+				extern int opt_numa_balancing_set;
+				if(opt_numa_balancing_set == numa_balancing_set_autodisable &&
+				   !try_disable_numa_balancing &&
+				   counter_high_tlb >= (unsigned)(60 / sverb.pcap_stat_period)) {
+					SimpleBuffer content;
+					string error;
+					if(file_get_contents(numa_balancing_config_filename, &content, &error) &&
+					   atoi((char*)content) != 0) {
+						try_disable_numa_balancing = true;
+						syslog(LOG_NOTICE, "TLB is too high, try set numa_balancing to 0");
+						content.clear();
+						content.add("0");
+						if(!file_put_contents(numa_balancing_config_filename, &content, &error)) {
+							syslog(LOG_ERR, "%s", error.c_str());
+						}
+					}
+					counter_high_tlb = 0;
+				}
+			} else {
+				counter_high_tlb = 0;
+			}
 		}
 		oldCountersTlb = counters["tlb"].second;
 	}

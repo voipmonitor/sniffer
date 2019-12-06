@@ -1040,6 +1040,8 @@ int opt_hugepages_max = 0;
 int opt_hugepages_overcommit_max = 0;
 int opt_hugepages_second_heap = 0;
 
+int opt_numa_balancing_set = numa_balancing_set_autodisable;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -7058,6 +7060,10 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("hugepages_second_heap", &opt_hugepages_second_heap))
 						->addValues("all:1|call:2|packetbuffer:3")
 						->setDefaultValueStr("no"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("numa_balancing_set", &opt_numa_balancing_set))
+						->addValues(("autodisable:" + intToString(numa_balancing_set_autodisable) + "|" + 
+							     "enable:" + intToString(numa_balancing_set_enable) + "|" +
+							     "disable:" + intToString(numa_balancing_set_disable)).c_str()));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -8310,6 +8316,27 @@ void set_context_config() {
 	}
 	
 	set_cdr_check_unique_callid_in_sensors_list();
+	
+	if(opt_numa_balancing_set == numa_balancing_set_enable ||
+	   opt_numa_balancing_set == numa_balancing_set_disable) {
+		SimpleBuffer content;
+		string error;
+		if(file_get_contents(numa_balancing_config_filename, &content, &error)) {
+			if(opt_numa_balancing_set == numa_balancing_set_enable ?
+			    atoi((char*)content) == 0 :
+			    atoi((char*)content) != 0) {
+				content.clear();
+				content.add(opt_numa_balancing_set == numa_balancing_set_enable ? "1" : "0");
+				if(file_put_contents(numa_balancing_config_filename, &content, &error)) {
+					syslog(LOG_NOTICE, "%s set to %s", numa_balancing_config_filename, (char*)content);
+				} else {
+					syslog(LOG_ERR, "%s", error.c_str());
+				}
+			}
+		} else {
+			syslog(LOG_ERR, "%s", error.c_str());
+		}
+	}
 	
 }
 
@@ -10790,6 +10817,17 @@ int eval_config(string inistr) {
 			opt_hugepages_second_heap = 3;
 		} else {
 			opt_hugepages_second_heap = yesno(value);
+		}
+	}
+	if((value = ini.GetValue("general", "numa_balancing_set", NULL))) {
+		if(!strcasecmp(value, "autodisable")) {
+			opt_numa_balancing_set = numa_balancing_set_autodisable;
+		} else if(!strcasecmp(value, "enable")) {
+			opt_numa_balancing_set = numa_balancing_set_enable;
+		} else if(!strcasecmp(value, "disable")) {
+			opt_numa_balancing_set = numa_balancing_set_disable;
+		} else {
+			opt_numa_balancing_set = yesno(value);
 		}
 	}
 	

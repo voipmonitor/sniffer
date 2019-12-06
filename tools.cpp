@@ -6173,3 +6173,45 @@ bool tmpnam2(char *s, int len) {
 	}
 	return(false);
 }
+
+bool file_get_contents(const char *filename, SimpleBuffer *content, string *error) {
+	FILE *file = fopen(filename, "r");
+	if(!file) {
+		if(error) {
+			*error = string("failed open file: ") + filename;
+		}
+		return(false);
+	}
+	char buffer[10000];
+	unsigned length;
+	while((length = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+		content->add(buffer, length);
+	}
+	fclose(file);
+	return(true);
+}
+
+bool file_put_contents(const char *filename, SimpleBuffer *content, string *error) {
+	FILE *file = fopen(filename, "w");
+	if(!file) {
+		if(error) {
+			*error = string("failed open file for write: ") + filename;
+		}
+		return(false);
+	}
+	unsigned write_length = 0;
+	while(write_length < content->size()) {
+		unsigned _write_length = fwrite(content->data() + write_length, 1, content->size() - write_length, file);
+		if(_write_length > 0) {
+			write_length += _write_length;
+		} else {
+			if(error) {
+				*error = string("failed write to: ") + filename;
+			}
+			fclose(file);
+			return(false);
+		}
+	}
+	fclose(file);
+	return(true);
+}

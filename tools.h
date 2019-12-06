@@ -3864,4 +3864,8 @@ void rss_purge(bool force = false);
 
 void parse_cmd_str(const char *cmd_str, vector<string> *args);
 
+bool file_get_contents(const char *filename, SimpleBuffer *content, string *error);
+bool file_put_contents(const char *filename, SimpleBuffer *content, string *error);
+
+
 #endif

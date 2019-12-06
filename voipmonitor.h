@@ -336,4 +336,10 @@ typedef struct mysqlSSLOptions {
 	string ciphers;
 } mysqlSSLOptions;
 
+#define numa_balancing_set_autodisable 1
+#define numa_balancing_set_enable 2
+#define numa_balancing_set_disable 3
+
+#define numa_balancing_config_filename "/proc/sys/kernel/numa_balancing"
+
 #endif //VOIPMONITOR_H
