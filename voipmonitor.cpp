@@ -3160,9 +3160,14 @@ int main(int argc, char *argv[]) {
 	}
 	get_command_line_arguments();
 
-	if(is_read_from_file_simple() && is_client()) {
-		puts("Client mode does not support reading from a file.\n");
-		return(0);
+	if(is_read_from_file_simple()) {
+		if(is_client()) {
+			puts("Client mode does not support reading from a file.\n");
+			return(0);
+		} else if(is_sender()) {
+			puts("Mirror sender mode does not support reading from a file.\n");
+			return(0);
+		}
 	}
 	
 	if(updateSchema) {
