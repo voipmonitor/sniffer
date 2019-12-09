@@ -1,3 +1,8 @@
+26.4.1 09.12.2019
+=================
+- document new option numa_balancing_set (introduced in 26.4) autodisable|enable|disable (default is autodisable) - if TLB shootdown is over 500 per second sniffer will turn off numa balancing (echo 0 > /proc/sys/kernel/numa_balancing) - on multiple node numa systems (2 or more CPU) memory balancing causes too much overhead (TLB shootdowns) when sniffer uses GBs of memory). 
+
+
 26.4 09.12.2019
 ===============
 - Statically compiled binaries (64bit) are now compiled again with the latest tcmalloc (fixes TLB shootdown bottleneck issues on NUMA systems - multi cpu servers), GCC 8.3, glibc 2.19, kernel >= 2.6.18
