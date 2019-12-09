@@ -3448,8 +3448,12 @@ int Mgmt_options_qualify_refresh(Mgmt_params *params) {
 		return(0);
 	}
 	extern cSipMsgRelations *sipMsgRelations;
-	sipMsgRelations->loadParamsInBackground();
-	return(params->sendString("reload ok"));
+	if(sipMsgRelations) {
+		sipMsgRelations->loadParamsInBackground();
+		return(params->sendString("reload ok"));
+	} else {
+		return(params->sendString("subsystem SIP Opt.,Subsc.,Notify is not running"));
+	}
 }
 
 int Mgmt_custom_headers_refresh(Mgmt_params *params) {
