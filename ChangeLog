@@ -1,4 +1,12 @@
-26.2 06.12.2019
+26.4 09.12.2019
+===============
+- Statically compiled binaries (64bit) are now compiled again with the latest tcmalloc (fixes TLB shootdown bottleneck issues on NUMA systems - multi cpu servers), GCC 8.3, glibc 2.19, kernel >= 2.6.18
+- new option cdr_check_unique_callid_in_sensors [VS-1001]
+- calculate MOS score when call is connected and has less than 100 packets (all calls with <100 RTP packets were ignored for MOS calculateion) [VS-1002]
+- fix crash for options_qualify_refresh manager command in case OPTIONS/SUBSCRIBE/NOTIFY were not enabled 
+
+
+26.3 06.12.2019
 ===============
 - more RRD chart optimizations [VS-989]
 - fix ARM build [VS-1000]
