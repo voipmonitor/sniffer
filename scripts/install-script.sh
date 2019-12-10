@@ -47,14 +47,47 @@ echo "Installing $SENSOR binary to /$BINDIR/$SENSOR"
 mkdir -p /$BINDIR
 cp $BINDIR/$SENSOR /$BINDIR/$SENSOR
 
-echo "Installing $CFGDIR/$SENSOR.conf to /$CFGDIR/$SENSOR.conf. Edit this file to your needs"
-cp -i $CFGDIR/$SENSOR.conf /$CFGDIR/
-
 echo "Installing $INITDIR/$SENSOR starting script to /$INITDIR/$SENSOR. Start $SENSOR by /$INITDIR/$SENSOR start"
 cp $INITDIR/$SENSOR /$INITDIR/
 
+# ask/set spool directory, usage # as a delimiter in sed
+DEFSPOOLDIR=/var/spool/voipmonitor
+echo -n "Enter spool directory [$DEFSPOOLDIR]: "
+read TMPSPOOL
+if [ -z "$TMPSPOOL" ]; then
+	SPOOLDIR=$DEFSPOOLDIR
+else
+	SPOOLDIR=$TMPSPOOL
+fi
+sed -i "s#^spooldir[\t= ]\+.*\$#spooldir = $SPOOLDIR#" $CFGDIR/$SENSOR.conf
 echo "Creating $SPOOLDIR"
 mkdir $SPOOLDIR
+
+# ask/set sniffing interface(s)
+DEFINT=eth0
+echo -n "Enter sniffing interface(s). More interface names must separated by comma. [$DEFINT]: "
+read TMPINT
+if [ -z "$TMPINT" ]; then
+	INTERFACE=$DEFINT
+else
+	INTERFACE=$TMPINT
+fi
+sed -i "s#^interface[\t= ]\+.*\$#interface = $INTERFACE#" $CFGDIR/$SENSOR.conf
+
+# ask/set maxpool size
+DEFMAXPOOLSIZE=102400
+echo -n "Enter max pool size for pcaps store (in MB). [$DEFMAXPOOLSIZE]: "
+read TMPMAXPOOLSIZE
+if [ -z "$TMPMAXPOOLSIZE" ]; then
+	MAXPOOLSIZE=$DEFMAXPOOLSIZE
+else
+	MAXPOOLSIZE=$TMPMAXPOOLSIZE
+fi
+sed -i "s#^maxpoolsize[\t= ]\+.*\$#maxpoolsize = $MAXPOOLSIZE#" $CFGDIR/$SENSOR.conf
+
+
+echo "Installing $CFGDIR/$SENSOR.conf to /$CFGDIR/$SENSOR.conf. Edit this file to your needs"
+cp -i $CFGDIR/$SENSOR.conf /$CFGDIR/
 
 
 update-rc.d $SENSOR defaults &>/dev/null
