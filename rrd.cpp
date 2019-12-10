@@ -374,6 +374,7 @@ void RrdCharts::clearValues() {
 }
 
 void RrdCharts::createAll(bool skipIsExist) {
+	spooldir_mkdir(string(getRrdDir()) + "/rrd");
 	for(list<RrdChart*>::iterator iter = charts.begin(); iter != charts.end(); iter++) {
 		if(!skipIsExist || !file_exists((*iter)->getDbFilename().c_str())) {
 			string createString = (*iter)->createString();
