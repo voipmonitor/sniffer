@@ -2,7 +2,9 @@
 #define RRD_H
 
 
+#ifndef FREEBSD
 #include <values.h>
+#endif
 
 
 #define RRD_CHART_tCPU "2db-tCPU"
