@@ -7660,6 +7660,9 @@ Calltable::_applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_loc
 }
 
 string Calltable::getHashStats() {
+	#if USE_NEW_RTP_FIND
+	return("");
+	#else
 	lock_calls_hash();
 	unsigned count_use_nodes = 0;
 	unsigned max_node_size = 0;
@@ -7682,6 +7685,7 @@ string Calltable::getHashStats() {
 	       "max size: " + intToString(max_node_size) + "\n" +
 	       "sum size: " + intToString(sum_nodes_size) + "\n" + 
 	       "avg size: " + (count_use_nodes ? floatToString((double)sum_nodes_size / count_use_nodes, 1) : "-") + "\n");
+	#endif
 }
 
 void Calltable::processCallsInAudioQueue(bool lock) {
