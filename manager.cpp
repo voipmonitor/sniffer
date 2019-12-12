@@ -423,6 +423,7 @@ int Mgmt_get_sensor_information(Mgmt_params *params);
 int Mgmt_alloc_trim(Mgmt_params *params);
 int Mgmt_alloc_test(Mgmt_params *params);
 int Mgmt_tcmalloc_stats(Mgmt_params *params);
+int Mgmt_hashtable_stats(Mgmt_params *params);
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -529,6 +530,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_alloc_trim,
 	Mgmt_alloc_test,
 	Mgmt_tcmalloc_stats,
+	Mgmt_hashtable_stats,
 	NULL
 };
 
@@ -4496,6 +4498,18 @@ int Mgmt_tcmalloc_stats(Mgmt_params *params) {
 	return(rslt);
 	#else
 	return(0);
+	#endif
+}
+
+int Mgmt_hashtable_stats(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("hashtable_stats", "hashtable_stats");
+		return(0);
+	}
+	#if USE_NEW_RTP_FIND
+	return(0);
+	#else
+	return(params->sendString(calltable->getHashStats()));
 	#endif
 }
 

@@ -2140,6 +2140,7 @@ public:
 	inline int _hashRemove(Call *call, bool use_lock = true);
 	void applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash = true);
 	inline void _applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash = true);
+	string getHashStats();
 	
 	void processCallsInAudioQueue(bool lock = true);
 	static void *processAudioQueueThread(void *);

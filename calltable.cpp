@@ -7659,6 +7659,31 @@ Calltable::_applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_loc
 	}
 }
 
+string Calltable::getHashStats() {
+	lock_calls_hash();
+	unsigned count_use_nodes = 0;
+	unsigned max_node_size = 0;
+	unsigned sum_nodes_size = 0;
+	for(unsigned i = 0; i < MAXNODE; i++) {
+		if(calls_hash[i]) {
+			++count_use_nodes;
+			unsigned node_size = 0;
+			for(node_call_rtp_ip_port *node_ip_port = calltable->calls_hash[i]; node_ip_port; node_ip_port = node_ip_port->next) {
+				++node_size;
+			}
+			if(node_size > max_node_size) {
+				max_node_size = node_size;
+			}
+			sum_nodes_size += node_size;
+		}
+	}
+	unlock_calls_hash();
+	return("nodes: " + intToString(count_use_nodes) + "\n" +
+	       "max size: " + intToString(max_node_size) + "\n" +
+	       "sum size: " + intToString(sum_nodes_size) + "\n" + 
+	       "avg size: " + (count_use_nodes ? floatToString((double)sum_nodes_size / count_use_nodes, 1) : "-") + "\n");
+}
+
 void Calltable::processCallsInAudioQueue(bool lock) {
 	if(lock) {
 		lock_calls_audioqueue();
