@@ -338,13 +338,14 @@ string intToString(u_int64_t i) {
 
 string floatToString(double d) {
 	ostringstream outStr;
+	outStr << fixed;
 	outStr << d;
 	return(outStr.str());
 }
 
 string floatToString(double d, unsigned precision) {
 	ostringstream outStr;
-	outStr << setprecision(precision);
+	outStr << fixed << setprecision(precision);
 	outStr << d;
 	return(outStr.str());
 }
