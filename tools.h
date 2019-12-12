@@ -3868,4 +3868,281 @@ bool file_get_contents(const char *filename, SimpleBuffer *content, string *erro
 bool file_put_contents(const char *filename, SimpleBuffer *content, string *error);
 
 
+#if 0 // podpora pro různé délky v node struktuře
+
+template <class NODE_DATA>
+class cNodeData {
+public:
+	class cNodeItem {
+	public:
+		cNodeItem(cNodeItem *parent = NULL) {
+			this->parent = parent;
+			type = 0;
+			use_counter = 0;
+		}
+		~cNodeItem();
+	public:
+		cNodeItem *parent;
+		u_int8_t type;
+		volatile u_int32_t use_counter;
+	};
+	class cNodeItem_nodes_1 : public cNodeItem {
+	public:
+		cNodeItem_nodes_1(cNodeItem *parent = NULL) {
+			this->parent = parent;
+			this->type = 1;
+			memset(nodes, 0, sizeof(nodes));
+		}
+		void destruct() {
+			for(unsigned i = 0; i < sizeof(nodes) / sizeof(nodes[0]); i++) {
+				if(nodes[i]) {
+					delete nodes[i];
+				}
+			}
+		}
+	public:
+		cNodeItem *nodes[256];
+	};
+	class cNodeItem_nodes_2 : public cNodeItem {
+	public:
+		cNodeItem_nodes_2(cNodeItem *parent = NULL) {
+			this->parent = parent;
+			this->type = 2;
+			memset(nodes, 0, sizeof(nodes));
+		}
+		void destruct() {
+			for(unsigned i = 0; i < sizeof(nodes) / sizeof(nodes[0]); i++) {
+				if(nodes[i]) {
+					delete nodes[i];
+				}
+			}
+		}
+	public:
+		cNodeItem *nodes[65536];
+	};
+	class cNodeItem_data : public cNodeItem {
+	public:
+		cNodeItem_data(cNodeItem *parent = NULL) {
+			this->parent = parent;
+			this->type = 3;
+		}
+	public:
+		NODE_DATA node_data;
+	};
+public:
+	cNodeData() {
+		first = NULL;
+	}
+	~cNodeData() {
+		if(first) {
+			delete first;
+		}
+	}
+	NODE_DATA *add(u_char *bytes, u_int8_t bytes_length, u_int8_t type, 
+		       u_char *bytes_2 = NULL, u_int8_t bytes_2_length = 0, u_int8_t type_2 = 0, 
+		       cNodeItem **endNode = NULL) {
+		cNodeItem **node = &first;
+		cNodeItem *prev = NULL;
+		for(u_int8_t pass = 0; pass < (type_2 ? 2 : 1); pass++) {
+			if(pass) {
+				bytes = bytes_2;
+				bytes_length = bytes_2_length;
+				type = type_2;
+			}
+			for(u_int8_t i = 0; i < bytes_length; i += type) {
+				if(!*node) {
+					if(prev) {
+						++prev->use_counter;
+					}
+					inc_counter_user_packets(pass == 0 ? 0 : 1);
+					*node = type == 1 ?
+						 (cNodeItem*)new FILE_LINE(0) cNodeItem_nodes_1(prev) :
+						 (cNodeItem*)new FILE_LINE(0) cNodeItem_nodes_2(prev);
+				}
+				prev = *node;
+				node = type == 1 ?
+					&(((cNodeItem_nodes_1*)*node)->nodes[bytes[i]]) :
+					&(((cNodeItem_nodes_2*)*node)->nodes[*(u_int16_t*)(bytes + i)]);
+			}
+		}
+		if(!*node) {
+			++prev->use_counter;
+			inc_counter_user_packets(2);
+			*node = (cNodeItem*)new FILE_LINE(0) cNodeItem_data(prev);
+		}
+		if(endNode) {
+			*endNode = *node;
+		}
+		return(&(((cNodeItem_data*)*node)->node_data));
+	}
+	NODE_DATA *find(u_char *bytes, u_int8_t bytes_length, u_int8_t type, 
+			u_char *bytes_2 = NULL, u_int8_t bytes_2_length = 0, u_int8_t type_2 = 0, 
+			cNodeItem **endNode = NULL) {
+		cNodeItem **node = &first;
+		for(u_int8_t pass = 0; pass < (type_2 ? 2 : 1); pass++) {
+			if(pass) {
+				bytes = bytes_2;
+				bytes_length = bytes_2_length;
+				type = type_2;
+			}
+			for(u_int8_t i = 0; i < bytes_length; i += type) {
+				if(!*node) {
+					return(NULL);
+				}
+				node = type == 1 ?
+					&(((cNodeItem_nodes_1*)*node)->nodes[bytes[i]]) :
+					&(((cNodeItem_nodes_2*)*node)->nodes[*(u_int16_t*)(bytes + i)]);
+			}
+		}
+		if(!*node) {
+			return(NULL);
+		}
+		if(endNode) {
+			*endNode = *node;
+		}
+		return(&(((cNodeItem_data*)*node)->node_data));
+	}
+private:
+	cNodeItem *first;
+};
+
+template <class NODE_DATA>
+inline cNodeData<NODE_DATA>::cNodeItem::~cNodeItem() {
+	if(type == 1) {
+		((cNodeItem_nodes_1*)this)->destruct();
+	} else if(type == 2) {
+		((cNodeItem_nodes_2*)this)->destruct();
+	}
+}
+
+#endif
+
+template <class NODE_DATA>
+class cNodeData {
+public:
+	class cNodeItem {
+	public:
+		cNodeItem(cNodeItem *parent = NULL) {
+			this->parent = parent;
+			type = 0;
+			use_counter = 0;
+		}
+		~cNodeItem();
+	public:
+		cNodeItem *parent;
+		u_int8_t type;
+		volatile u_int32_t use_counter;
+	};
+	class cNodeItem_nodes : public cNodeItem {
+	public:
+		cNodeItem_nodes(cNodeItem *parent = NULL) {
+			this->parent = parent;
+			this->type = 1;
+			memset(nodes, 0, sizeof(nodes));
+		}
+		void destruct() {
+			for(unsigned i = 0; i < sizeof(nodes) / sizeof(nodes[0]); i++) {
+				if(nodes[i]) {
+					delete nodes[i];
+				}
+			}
+		}
+	public:
+		cNodeItem *nodes[256];
+	};
+	class cNodeItem_data : public cNodeItem {
+	public:
+		cNodeItem_data(cNodeItem *parent = NULL) {
+			this->parent = parent;
+			this->type = 3;
+		}
+	public:
+		NODE_DATA node_data;
+	};
+public:
+	cNodeData() {
+		first = NULL;
+	}
+	~cNodeData() {
+		if(first) {
+			delete first;
+		}
+	}
+	NODE_DATA *add(u_char *bytes, u_int8_t bytes_length,
+		       u_char *bytes_2 = NULL, u_int8_t bytes_2_length = 0/*,
+		       cNodeItem **endNode = NULL*/) {
+		cNodeItem **node = &first;
+		cNodeItem *prev = NULL;
+		for(u_int8_t i = 0; i < bytes_length; ++i) {
+			if(!*node) {
+				if(prev) {
+					++prev->use_counter;
+				}
+				//inc_counter_user_packets(0);
+				*node = (cNodeItem*)new FILE_LINE(0) cNodeItem_nodes(prev);
+			}
+			prev = *node;
+			node = &(((cNodeItem_nodes*)*node)->nodes[bytes[i]]);
+		}
+		for(u_int8_t i = 0; i < bytes_2_length; ++i) {
+			if(!*node) {
+				if(prev) {
+					++prev->use_counter;
+				}
+				//inc_counter_user_packets(1);
+				*node = (cNodeItem*)new FILE_LINE(0) cNodeItem_nodes(prev);
+			}
+			prev = *node;
+			node = &(((cNodeItem_nodes*)*node)->nodes[bytes_2[i]]);
+		}
+		if(!*node) {
+			++prev->use_counter;
+			//inc_counter_user_packets(2);
+			*node = (cNodeItem*)new FILE_LINE(0) cNodeItem_data(prev);
+		}
+		/*
+		if(endNode) {
+			*endNode = *node;
+		}
+		*/
+		return(&(((cNodeItem_data*)*node)->node_data));
+	}
+	NODE_DATA *find(u_char *bytes, u_int8_t bytes_length,
+			u_char *bytes_2 = NULL, u_int8_t bytes_2_length = 0/*,
+			cNodeItem **endNode = NULL*/) {
+		cNodeItem **node = &first;
+		for(u_int8_t i = 0; i < bytes_length; ++i) {
+			if(!*node) {
+				return(NULL);
+			}
+			node = &(((cNodeItem_nodes*)*node)->nodes[bytes[i]]);
+		}
+		for(u_int8_t i = 0; i < bytes_2_length; ++i) {
+			if(!*node) {
+				return(NULL);
+			}
+			node = &(((cNodeItem_nodes*)*node)->nodes[bytes_2[i]]);
+		}
+		if(!*node) {
+			return(NULL);
+		}
+		/*
+		if(endNode) {
+			*endNode = *node;
+		}
+		*/
+		return(&(((cNodeItem_data*)*node)->node_data));
+	}
+private:
+	cNodeItem *first;
+};
+
+template <class NODE_DATA>
+inline cNodeData<NODE_DATA>::cNodeItem::~cNodeItem() {
+	if(type == 1) {
+		((cNodeItem_nodes*)this)->destruct();
+	}
+}
+
+
 #endif

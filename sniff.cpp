@@ -340,11 +340,6 @@ unsigned long process_packet__last_cleanup_calls__count_sip_cancel;
 unsigned long process_packet__last_cleanup_calls__count_sip_cancel_confirmed;
 
 
-inline void inc_counter_user_packets(unsigned user_index) {
-	__sync_add_and_fetch(&counter_user_packets[user_index], 1);
-}
-
-
 // return IP from nat_aliases[ip] or 0 if not found
 vmIP match_nat_aliases(vmIP ip) {
 	nat_aliases_t::iterator iter;
@@ -4881,49 +4876,55 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 		packet_s_process_rtp_call_info call_info[MAX_LENGTH_CALL_INFO];
 		int call_info_length = 0;
 		bool call_info_find_by_dest = false;
-		hash_node_call *calls = NULL;
 		calltable->lock_calls_hash();
-		if((calls = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->dest_(), false))) {
+		node_call_rtp *n_call = NULL;
+		if((n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->dest_(), false))) {
 			call_info_find_by_dest = true;
 			packetS->blockstore_addflag(25 /*pb lock flag*/);
 		} else {
-			calls = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
+			n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
 			packetS->blockstore_addflag(26 /*pb lock flag*/);
 		}
-		if(calls) {
+		if(n_call) {
 			++counter_rtp_packets[0];
-			hash_node_call *node_call;
-			for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-				if((!(node_call->call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
+			#if USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST
+			for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
+				call_rtp *call_rtp = *iter;
+			#else
+			for (; n_call != NULL; n_call = n_call->next) {
+				call_rtp *call_rtp = n_call;
+			#endif
+				Call *call = call_rtp->call;
+				if((!(call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
 				    (call_info_find_by_dest ?
-				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr_()) :
-				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr_())) ||
+				      call->checkKnownIP_inSipCallerdIP(packetS->saddr_()) :
+				      call->checkKnownIP_inSipCallerdIP(packetS->daddr_())) ||
 				    (call_info_find_by_dest ?
-				      calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->saddr_(), packetS->source_(), false) &&
-				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr_()) :
-				      calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->daddr_(), packetS->dest_(), false) &&
-				      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr_()))) &&
+				      calltable->check_call_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) &&
+				      call->checkKnownIP_inSipCallerdIP(packetS->daddr_()) :
+				      calltable->check_call_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false) &&
+				      call->checkKnownIP_inSipCallerdIP(packetS->saddr_()))) &&
 				   !(opt_ignore_rtp_after_bye_confirmed &&
-				     node_call->call->seenbyeandok && node_call->call->seenbyeandok_time_usec &&
-				     getTimeUS(packetS->header_pt) > node_call->call->seenbyeandok_time_usec) &&
+				     call->seenbyeandok && call->seenbyeandok_time_usec &&
+				     getTimeUS(packetS->header_pt) > call->seenbyeandok_time_usec) &&
 				   !(opt_ignore_rtp_after_cancel_confirmed &&
-				     node_call->call->seencancelandok && node_call->call->seencancelandok_time_usec &&
-				     getTimeUS(packetS->header_pt) > node_call->call->seencancelandok_time_usec)) {
+				     call->seencancelandok && call->seencancelandok_time_usec &&
+				     getTimeUS(packetS->header_pt) > call->seencancelandok_time_usec)) {
 					/*
-					if(getTimeUS(packetS->header_pt) < (node_call->call->first_packet_time * 1000000ull + node_call->call->first_packet_usec) + (0 * 60 + 0) * 1000000ull) {
+					if(getTimeUS(packetS->header_pt) < (call->first_packet_time * 1000000ull + call->first_packet_usec) + (0 * 60 + 0) * 1000000ull) {
 						continue;
 					}
 					*/
 					++counter_rtp_packets[1];
 					packetS->blockstore_addflag(27 /*pb lock flag*/);
-					call_info[call_info_length].call = node_call->call;
-					call_info[call_info_length].iscaller = node_call->iscaller;
-					call_info[call_info_length].is_rtcp = node_call->is_rtcp;
-					call_info[call_info_length].sdp_flags = node_call->sdp_flags;
-					if(node_call->call->use_rtcp_mux && !call_info[call_info_length].sdp_flags.rtcp_mux) {
+					call_info[call_info_length].call = call;
+					call_info[call_info_length].iscaller = call_rtp->iscaller;
+					call_info[call_info_length].is_rtcp = call_rtp->is_rtcp;
+					call_info[call_info_length].sdp_flags = call_rtp->sdp_flags;
+					if(call->use_rtcp_mux && !call_info[call_info_length].sdp_flags.rtcp_mux) {
 						s_sdp_flags *sdp_flags_other_side = call_info_find_by_dest ?
-										     calltable->get_sdp_flags_in_hashfind_by_ip_port(node_call->call, packetS->saddr_(), packetS->source_(), false) :
-										     calltable->get_sdp_flags_in_hashfind_by_ip_port(node_call->call, packetS->daddr_(), packetS->dest_(), false);
+										     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) :
+										     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false);
 						if(sdp_flags_other_side && sdp_flags_other_side->rtcp_mux) {
 							call_info[call_info_length].sdp_flags.rtcp_mux = true;
 						}
@@ -8760,57 +8761,67 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	packetS->blockstore_addflag(31 /*pb lock flag*/);
 	packetS->call_info_length = 0;
-	hash_node_call *calls = NULL;
 	packetS->call_info_find_by_dest = false;
 	if(lock) {
 		calltable->lock_calls_hash();
 	}
-	if((calls = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->dest_(), false))) {
+	node_call_rtp *n_call = NULL;
+	if((n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->dest_(), false))) {
 		packetS->call_info_find_by_dest = true;
 		packetS->blockstore_addflag(32 /*pb lock flag*/);
 	} else {
-		calls = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
+		n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
 		packetS->blockstore_addflag(33 /*pb lock flag*/);
 	}
 	packetS->call_info_length = 0;
-	if(calls) {
+	#if USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST
+	if(n_call && n_call->size()) {
+	#else
+	if(n_call) {
+	#endif
 		++counter_rtp_packets[0];
-		hash_node_call *node_call;
-		for (node_call = (hash_node_call *)calls; node_call != NULL; node_call = node_call->next) {
-			if((!(node_call->call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
+		#if USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST
+		for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
+			call_rtp *call_rtp = *iter;
+		#else
+		for (; n_call != NULL; n_call = n_call->next) {
+			call_rtp *call_rtp = n_call;
+		#endif
+			Call *call = call_rtp->call;
+			if((!(call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
 			    (packetS->call_info_find_by_dest ?
-			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr_()) :
-			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr_())) ||
+			      call->checkKnownIP_inSipCallerdIP(packetS->saddr_()) :
+			      call->checkKnownIP_inSipCallerdIP(packetS->daddr_())) ||
 			    (packetS->call_info_find_by_dest ?
-			      calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->saddr_(), packetS->source_(), false) &&
-			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->daddr_()) :
-			      calltable->check_call_in_hashfind_by_ip_port(node_call->call, packetS->daddr_(), packetS->dest_(), false) &&
-			      node_call->call->checkKnownIP_inSipCallerdIP(packetS->saddr_()))) &&
+			      calltable->check_call_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) &&
+			      call->checkKnownIP_inSipCallerdIP(packetS->daddr_()) :
+			      calltable->check_call_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false) &&
+			      call->checkKnownIP_inSipCallerdIP(packetS->saddr_()))) &&
 			   !(opt_ignore_rtp_after_bye_confirmed &&
-			     node_call->call->seenbyeandok && node_call->call->seenbyeandok_time_usec &&
-			     getTimeUS(packetS->header_pt) > node_call->call->seenbyeandok_time_usec) &&
+			     call->seenbyeandok && call->seenbyeandok_time_usec &&
+			     getTimeUS(packetS->header_pt) > call->seenbyeandok_time_usec) &&
 			   !(opt_ignore_rtp_after_cancel_confirmed &&
-			     node_call->call->seencancelandok && node_call->call->seencancelandok_time_usec &&
-			     getTimeUS(packetS->header_pt) > node_call->call->seencancelandok_time_usec) &&
-			   !(opt_hash_modify_queue_length_ms && node_call->call->end_call_rtp) &&
-			   !(node_call->call->flags & FLAG_SKIPCDR)) {
+			     call->seencancelandok && call->seencancelandok_time_usec &&
+			     getTimeUS(packetS->header_pt) > call->seencancelandok_time_usec) &&
+			   !(opt_hash_modify_queue_length_ms && call->end_call_rtp) &&
+			   !(call->flags & FLAG_SKIPCDR)) {
 				++counter_rtp_packets[1];
 				packetS->blockstore_addflag(34 /*pb lock flag*/);
-				packetS->call_info[packetS->call_info_length].call = node_call->call;
-				packetS->call_info[packetS->call_info_length].iscaller = node_call->iscaller;
-				packetS->call_info[packetS->call_info_length].is_rtcp = node_call->is_rtcp;
-				packetS->call_info[packetS->call_info_length].sdp_flags = node_call->sdp_flags;
-				if(node_call->call->use_rtcp_mux && !packetS->call_info[packetS->call_info_length].sdp_flags.rtcp_mux) {
+				packetS->call_info[packetS->call_info_length].call = call;
+				packetS->call_info[packetS->call_info_length].iscaller = call_rtp->iscaller;
+				packetS->call_info[packetS->call_info_length].is_rtcp = call_rtp->is_rtcp;
+				packetS->call_info[packetS->call_info_length].sdp_flags = call_rtp->sdp_flags;
+				if(call->use_rtcp_mux && !packetS->call_info[packetS->call_info_length].sdp_flags.rtcp_mux) {
 					s_sdp_flags *sdp_flags_other_side = packetS->call_info_find_by_dest ?
-									     calltable->get_sdp_flags_in_hashfind_by_ip_port(node_call->call, packetS->saddr_(), packetS->source_(), false) :
-									     calltable->get_sdp_flags_in_hashfind_by_ip_port(node_call->call, packetS->daddr_(), packetS->dest_(), false);
+									     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) :
+									     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false);
 					if(sdp_flags_other_side && sdp_flags_other_side->rtcp_mux) {
 						packetS->call_info[packetS->call_info_length].sdp_flags.rtcp_mux = true;
 					}
 				}
 				packetS->call_info[packetS->call_info_length].use_sync = false;
 				packetS->call_info[packetS->call_info_length].multiple_calls = false;
-				__sync_add_and_fetch(&node_call->call->rtppacketsinqueue, 1);
+				__sync_add_and_fetch(&call->rtppacketsinqueue, 1);
 				++packetS->call_info_length;
 				if(packetS->call_info_length == (sizeof(packetS->call_info) / sizeof(packetS->call_info[0]))) {
 					break;

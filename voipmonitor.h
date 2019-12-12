@@ -342,4 +342,11 @@ typedef struct mysqlSSLOptions {
 
 #define numa_balancing_config_filename "/proc/sys/kernel/numa_balancing"
 
+
+inline void inc_counter_user_packets(unsigned user_index) {
+	extern volatile u_int64_t counter_user_packets[5];
+	__sync_add_and_fetch(&counter_user_packets[user_index], 1);
+}
+
+
 #endif //VOIPMONITOR_H

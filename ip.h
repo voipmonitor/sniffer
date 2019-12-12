@@ -311,6 +311,17 @@ struct vmIP {
 		}
 		#endif
 	}
+	inline void *getPointerToIP() {
+		#if VM_IPV6
+		if(!v6) {
+		#endif
+			return(&ip.v4.n);
+		#if VM_IPV6
+		} else {
+			return(&ip.v6);
+		}
+		#endif
+	}
 	inline bool is_v6() {
 		#if VM_IPV6
 			return(v6);
