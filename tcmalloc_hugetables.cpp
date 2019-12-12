@@ -3,9 +3,11 @@
 #include <unistd.h>
 #include <string.h>
 #include <limits.h>
+#ifndef FREEBSD
 #include <malloc.h>
-#include <sys/mman.h>
 #include <sys/statfs.h>
+#endif
+#include <sys/mman.h>
 #include <syslog.h>
 #include <errno.h>
 

@@ -1,3 +1,8 @@
+26.4.2 10.12.2019
+=================
+- fix RRD charts (create folder) 
+
+
 26.4.1 09.12.2019
 =================
 - document new option numa_balancing_set (introduced in 26.4) autodisable|enable|disable (default is autodisable) - if TLB shootdown is over 500 per second sniffer will turn off numa balancing (echo 0 > /proc/sys/kernel/numa_balancing) - on multiple node numa systems (2 or more CPU) memory balancing causes too much overhead (TLB shootdowns) when sniffer uses GBs of memory). 
