@@ -393,20 +393,33 @@ void RrdCharts::updateAll() {
 }
 
 bool RrdCharts::doRrdCmd(string cmd, string *error, bool syslogError) {
+	if(cmd.empty()) {
+		return(false);
+	}
 	vector<string> cmd_args;
 	parse_cmd_str(cmd.c_str(), &cmd_args);
-	char *_cmd_args[cmd_args.size() + 1];
-	for(unsigned i = 0; i < cmd_args.size(); i++) {
-		_cmd_args[i] = (char*)cmd_args[i].c_str();
+	if(cmd_args.empty()) {
+		return(false);
 	}
-	_cmd_args[cmd_args.size()] = NULL;
+	unsigned _cmd_args_length = cmd_args.size();
+	char *_cmd_args[_cmd_args_length + 1];
+	for(unsigned i = 0; i < _cmd_args_length; i++) {
+		unsigned arg_length = cmd_args[i].length();
+		_cmd_args[i] = new FILE_LINE(0) char[arg_length + 1];
+		strncpy(_cmd_args[i], cmd_args[i].c_str(), arg_length);
+		_cmd_args[i][arg_length] = 0;
+	}
+	_cmd_args[_cmd_args_length] = NULL;
 	bool dllRun = false;
 	if(cmd_args[0] == "create") {
-		rrd_create(cmd_args.size(), _cmd_args);
+		rrd_create(_cmd_args_length, _cmd_args);
 		dllRun = true;
 	} else if(cmd_args[0] == "update") {
-		rrd_update(cmd_args.size(), _cmd_args);
+		rrd_update(_cmd_args_length, _cmd_args);
 		dllRun = true;
+	}
+	for(unsigned i = 0; i < _cmd_args_length; i++) {
+		delete [] _cmd_args[i];
 	}
 	if(dllRun) {
 		if(rrd_test_error()) {
