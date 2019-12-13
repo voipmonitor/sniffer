@@ -13,6 +13,7 @@
 #define USE_NEW_RTP_FIND 0
 #define NEW_RTP_FIND_PORT_MODE 1
 #define NEW_RTP_FIND_USE_LIST 0
+#define HASH_RTP_FIND_USE_LIST 0
 
 #include <queue>
 #include <map>
@@ -178,7 +179,7 @@ struct call_rtp {
 	s_sdp_flags sdp_flags;
 };
 
-#if USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST
+#if (USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST) || HASH_RTP_FIND_USE_LIST
 struct node_call_rtp : public list<call_rtp*> {
 };
 #else
@@ -189,7 +190,11 @@ struct node_call_rtp : public call_rtp {
 
 struct node_call_rtp_ip_port {
 	node_call_rtp_ip_port *next;
+	#if HASH_RTP_FIND_USE_LIST
+	node_call_rtp calls;
+	#else
 	node_call_rtp *calls;
+	#endif
 	vmIP addr;
 	vmPort port;
 };
@@ -2059,7 +2064,11 @@ public:
 			}
 			for(node_call_rtp_ip_port *node = calls_hash[h]; node != NULL; node = node->next) {
 				if ((node->addr == addr) && (node->port == port)) {
-					rslt = node->calls;
+					rslt = 
+					       #if HASH_RTP_FIND_USE_LIST
+					       &
+					       #endif
+					       node->calls;
 				}
 			}
 			if(lock) {
@@ -2075,7 +2084,7 @@ public:
 		}
 		node_call_rtp *n_call = this->hashfind_by_ip_port(addr, port, false);
 		if(n_call) {
-			#if USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST
+			#if (USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST) || HASH_RTP_FIND_USE_LIST
 			for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
 				if((*iter)->call == call) {
 					rslt = true;
@@ -2105,7 +2114,7 @@ public:
 		}
 		node_call_rtp *n_call = this->hashfind_by_ip_port(addr, port, false);
 		if(n_call) {
-			#if USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST
+			#if (USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST) || HASH_RTP_FIND_USE_LIST
 			for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
 				if((*iter)->call == call) {
 					sdp_flags = &(*iter)->sdp_flags;
