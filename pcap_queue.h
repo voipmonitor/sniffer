@@ -425,7 +425,7 @@ protected:
 	inline int pcap_dispatch(pcap_t *pcapHandle);
 	inline int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			       pcap_block_store *block_store, int block_store_index,
-			       int ppf);
+			       int ppf, pcap_dumper_t *pcapDumpHandle = NULL);
 	virtual string pcapStatString_interface(int statPeriod);
 	virtual string pcapDropCountStat_interface();
 	virtual ulong getCountPacketDrop();

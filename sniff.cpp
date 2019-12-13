@@ -6535,7 +6535,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 	char pname[1024];
 
 	if(opt_pcapdump) {
-		snprintf(pname, sizeof(pname), "/var/spool/voipmonitor/voipmonitordump-%u.pcap", (unsigned int)time(NULL));
+		snprintf(pname, sizeof(pname), "%s/dump-%u.pcap", getPcapdumpDir(), (unsigned int)time(NULL));
 		tmppcap = pcap_dump_open(handle, pname);
 	}
 

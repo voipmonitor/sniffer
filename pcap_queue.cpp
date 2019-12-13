@@ -2836,6 +2836,13 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 		global_pcap_handle_index = this->pcapHandleIndex;
 		global_pcap_dlink = this->pcapLinklayerHeaderType;
 		read_from_file_index = 0;
+		if(opt_pcapdump) {
+			char pname[1024];
+			snprintf(pname, sizeof(pname), "%s/dump-%s-%u.pcap", 
+				 getPcapdumpDir(),
+				 this->interfaceName.c_str(), (unsigned int)time(NULL));
+			this->pcapDumpHandle = pcap_dump_open(this->pcapHandle, pname);
+		}
 		__sync_lock_release(&_sync_start_capture);
 		return(true);
 	}
@@ -2946,7 +2953,9 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 //	syslog(LOG_NOTICE, "DLT - %s: %i", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
 	if(opt_pcapdump) {
 		char pname[1024];
-		snprintf(pname, sizeof(pname), "/var/spool/voipmonitor/voipmonitordump-%s-%u.pcap", this->interfaceName.c_str(), (unsigned int)time(NULL));
+		snprintf(pname, sizeof(pname), "%s/dump-%s-%u.pcap", 
+			 getPcapdumpDir(),
+			 this->interfaceName.c_str(), (unsigned int)time(NULL));
 		this->pcapDumpHandle = pcap_dump_open(this->pcapHandle, pname);
 	}
 	__sync_lock_release(&_sync_start_capture);
@@ -3224,7 +3233,7 @@ inline int PcapQueue_readFromInterface_base::pcap_dispatch(pcap_t *pcapHandle) {
 
 inline int PcapQueue_readFromInterface_base::pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 							 pcap_block_store *block_store, int block_store_index,
-							 int ppf) {
+							 int ppf, pcap_dumper_t *pcapDumpHandle) {
 	return(::pcapProcess(header_packet, pushToStack_queue_index,
 			     block_store, block_store_index,
 			     ppf,
@@ -3936,6 +3945,12 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 	unsigned int read_counter = 0;
 	
 	hpi hpii;
+	pcap_dumper_t *_pcapDumpHandle = NULL;
+	if(opt_pcapdump) {
+		if(this->typeThread == dedup && this->readThread) {
+			_pcapDumpHandle = this->readThread->pcapDumpHandle;
+		}
+	}
 	while(!(is_terminating() || this->threadDoTerminate)) {
 		switch(this->typeThread) {
 		case read: {
@@ -4106,7 +4121,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 								 ppf_defrag | ppf_returnZeroInCheckData) :
 					       this->pcapProcess(&header_packet_read, this->typeThread,
 								 NULL, 0,
-								 ppf_all);
+								 ppf_all, this->pcapDumpHandle);
 					if(res == -1) {
 						break;
 					} else if(res > 0) {
@@ -4217,7 +4232,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 				}
 				if(!this->pcapDumpHandle) {
 					char pname[2048];
-					snprintf(pname, sizeof(pname ), "%s/voipmonitordump-%s-%s.pcap", 
+					snprintf(pname, sizeof(pname ), "%s/dump-%s-%s.pcap", 
 						 opt_pcapdump_all_path[0] ? opt_pcapdump_all_path : getPcapdumpDir(),
 						 this->interfaceName.c_str(), 
 						 sqlDateTimeString(time(NULL)).c_str());
@@ -4276,7 +4291,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 				if(opt_dup_check) {
 					res = this->pcapProcess(&hpii.header_packet, this->typeThread,
 								NULL, 0,
-								ppf_dedup | ppf_dump | ppf_returnZeroInCheckData);
+								ppf_dedup | ppf_dump | ppf_returnZeroInCheckData, _pcapDumpHandle);
 					if(res == -1) {
 						break;
 					} else if(res == 0) {
@@ -4286,7 +4301,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 					if(pcapDumpHandle || !hpii.header_packet->detect_headers) {
 						this->pcapProcess(&hpii.header_packet, this->typeThread,
 								  NULL, 0,
-								  ppf_dump | ppf_returnZeroInCheckData);
+								  ppf_dump | ppf_returnZeroInCheckData, _pcapDumpHandle);
 					}
 				}
 				if(okPush) {
@@ -4301,7 +4316,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 				bool okPush = true;
 				res = this->pcapProcess(&hpii.header_packet, this->typeThread,
 							NULL, 0,
-							ppf_calcMD5 | ppf_dedup | ppf_dump | ppf_returnZeroInCheckData);
+							ppf_calcMD5 | ppf_dedup | ppf_dump | ppf_returnZeroInCheckData, _pcapDumpHandle);
 				if(res == -1) {
 					break;
 				} else if(res == 0) {
@@ -4441,7 +4456,36 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 
 void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 	unsigned counter = 0;
-	for(unsigned i = 0;i < block->count; i++) {
+	int ppf = 0;
+	pcap_dumper_t *_pcapDumpHandle = NULL;
+	switch(this->typeThread) {
+	case md1:
+		ppf = (opt_dup_check ? ppf_calcMD5 : ppf_na) |
+		      (opt_udpfrag ? ppf_defragInPQout : ppf_returnZeroInCheckData);
+		break;
+	case md2:
+		ppf = (opt_dup_check ? ppf_calcMD5 : ppf_na) |
+		      (opt_udpfrag ? ppf_defragInPQout : ppf_returnZeroInCheckData);
+		break;
+	case dedup:
+		ppf = (opt_dup_check ? ppf_dedup : ppf_na) |
+		      (opt_udpfrag ? ppf_defragInPQout : ppf_returnZeroInCheckData);
+		if(opt_pcapdump && readThread) {
+			ppf |= ppf_dump;
+			_pcapDumpHandle = readThread->pcapDumpHandle;
+		}
+		break;
+	case pcap_process:
+		ppf = (opt_udpfrag ? ppf_defragInPQout : ppf_returnZeroInCheckData);
+		if(opt_pcapdump && readThread) {
+			ppf |= ppf_dump;
+			_pcapDumpHandle = readThread->pcapDumpHandle;
+		}
+		break;
+	default:
+		break;
+	}
+	for(unsigned i = 0; i < block->count; i++) {
 		if(block->is_ignore(i)) {
 			continue;
 		}
@@ -4462,30 +4506,19 @@ void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 		switch(this->typeThread) {
 		case md1:
 			if(!(counter % 2)) {
-				this->pcapProcess(NULL, 0,
-						  block, i,
-						  (opt_dup_check ? ppf_calcMD5 : ppf_na) |
-						  (opt_udpfrag ? ppf_defragInPQout : ppf_returnZeroInCheckData));
+				this->pcapProcess(NULL, 0, block, i, ppf, _pcapDumpHandle);
 			}
 			break;
 		case md2:
 			if(!((pcap_pkthdr_plus2*)block->get_header(i))->md5[0]) {
-				this->pcapProcess(NULL, 0,
-						  block, i,
-						  (opt_dup_check ? ppf_calcMD5 : ppf_na) |
-						  (opt_udpfrag ? ppf_defragInPQout : ppf_returnZeroInCheckData));
+				this->pcapProcess(NULL, 0, block, i, ppf, _pcapDumpHandle);
 			}
 			break;
 		case dedup:
-			this->pcapProcess(NULL, 0,
-					  block, i,
-					  (opt_dup_check ? ppf_dedup : ppf_na) |
-					  (opt_udpfrag ? ppf_defragInPQout : ppf_returnZeroInCheckData));
+			this->pcapProcess(NULL, 0, block, i, ppf, _pcapDumpHandle);
 			break;
 		case pcap_process:
-			this->pcapProcess(NULL, 0,
-					  block, i,
-					  (opt_udpfrag ? ppf_defragInPQout : ppf_returnZeroInCheckData));
+			this->pcapProcess(NULL, 0, block, i, ppf, _pcapDumpHandle);
 			break;
 		default:
 			break;
@@ -4837,7 +4870,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				}
 				res = this->pcapProcess(&header_packet_read, 0,
 							NULL, 0,
-							ppf_all);
+							ppf_all, this->pcapDumpHandle);
 				if(res == -1) {
 					break;
 				} else if(res == 0) {
