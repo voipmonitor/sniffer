@@ -1329,8 +1329,14 @@ static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_c
 Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap_pkthdr *header, char *callidstr, vmIP saddr, vmIP daddr, vmPort source, vmPort dest, char *s, long unsigned int l,
 			 pcap_t *handle, int dlt, int sensor_id){
 	if(opt_callslimit != 0 and opt_callslimit > (calls_counter + registers_counter)) {
-		if(verbosity > 0)
-			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter + registers_counter);
+		if(verbosity > 0) {
+			static u_int64_t lastTimeSyslog = 0;
+			u_int64_t actTime = getTimeMS();
+			if(actTime - 5 * 60000 > lastTimeSyslog) {
+				syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter + registers_counter);
+				lastTimeSyslog = actTime;
+			}
+		}
 	}
 
 	unsigned int flags = 0;

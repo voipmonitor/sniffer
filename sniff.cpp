@@ -2629,8 +2629,14 @@ void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned bran
 inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr){
  
 	if(opt_callslimit != 0 and opt_callslimit < (calls_counter + registers_counter)) {
-		if(verbosity > 0)
-			syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter + registers_counter);
+		if(verbosity > 0) {
+			static u_int64_t lastTimeSyslog = 0;
+			u_int64_t actTime = getTimeMS();
+			if(actTime - 5 * 60000 > lastTimeSyslog) {
+				syslog(LOG_NOTICE, "callslimit[%d] > calls[%d] ignoring call\n", opt_callslimit, calls_counter + registers_counter);
+				lastTimeSyslog = actTime;
+			}
+		}
 		return NULL;
 	}
 
