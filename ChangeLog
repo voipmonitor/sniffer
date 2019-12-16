@@ -1,3 +1,11 @@
+26.4.3 13.12.2019
+=================
+- Fix Freebsd build. Includes in the hugepage and rrd headers.
+- add manager command hashtable_stats
+- add support for dumpallpackets in all threading / t2_boost modes
+- fix potential crash issue in new rrd code
+
+
 26.4.2 10.12.2019
 =================
 - fix RRD charts (create folder) 
