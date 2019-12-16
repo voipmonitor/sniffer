@@ -4107,23 +4107,35 @@ public:
 		*/
 		return(&(((cNodeItem_data*)*node)->node_data));
 	}
+	void **_add(u_char *bytes, u_int8_t bytes_length) {
+		cNodeItem **node = &first;
+		cNodeItem *prev = NULL;
+		for(u_int8_t i = 0; i < bytes_length; ++i) {
+			if(!*node) {
+				*node = (cNodeItem*)new FILE_LINE(0) cNodeItem_nodes(prev);
+			}
+			prev = *node;
+			node = &(((cNodeItem_nodes*)*node)->nodes[bytes[i]]);
+		}
+		return((void**)node);
+	}
 	NODE_DATA *find(u_char *bytes, u_int8_t bytes_length,
 			u_char *bytes_2 = NULL, u_int8_t bytes_2_length = 0/*,
 			cNodeItem **endNode = NULL*/) {
-		cNodeItem **node = &first;
+		cNodeItem *node = first;
 		for(u_int8_t i = 0; i < bytes_length; ++i) {
-			if(!*node) {
+			if(!node) {
 				return(NULL);
 			}
-			node = &(((cNodeItem_nodes*)*node)->nodes[bytes[i]]);
+			node = ((cNodeItem_nodes*)node)->nodes[bytes[i]];
 		}
 		for(u_int8_t i = 0; i < bytes_2_length; ++i) {
-			if(!*node) {
+			if(!node) {
 				return(NULL);
 			}
-			node = &(((cNodeItem_nodes*)*node)->nodes[bytes_2[i]]);
+			node = ((cNodeItem_nodes*)node)->nodes[bytes_2[i]];
 		}
-		if(!*node) {
+		if(!node) {
 			return(NULL);
 		}
 		/*
@@ -4131,7 +4143,27 @@ public:
 			*endNode = *node;
 		}
 		*/
-		return(&(((cNodeItem_data*)*node)->node_data));
+		return(&(((cNodeItem_data*)node)->node_data));
+	}
+	void *_find(u_char *bytes, u_int8_t bytes_length) {
+		cNodeItem *node = first;
+		for(u_int8_t i = 0; i < bytes_length; ++i) {
+			if(!node) {
+				return(NULL);
+			}
+			node = ((cNodeItem_nodes*)node)->nodes[bytes[i]];
+		}
+		return(node);
+	}
+	void **_find_ptr(u_char *bytes, u_int8_t bytes_length) {
+		cNodeItem **node = &first;
+		for(u_int8_t i = 0; i < bytes_length; ++i) {
+			if(!*node) {
+				return(NULL);
+			}
+			node = &(((cNodeItem_nodes*)*node)->nodes[bytes[i]]);
+		}
+		return((void**)node);
 	}
 private:
 	cNodeItem *first;

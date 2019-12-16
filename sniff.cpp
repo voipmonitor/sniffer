@@ -4885,13 +4885,13 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 			n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
 			packetS->blockstore_addflag(26 /*pb lock flag*/);
 		}
-		#if (USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST) || HASH_RTP_FIND_USE_LIST
+		#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 		if(n_call && !n_call->empty()) {
 		#else
 		if(n_call) {
 		#endif
 			++counter_rtp_packets[0];
-			#if (USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST) || HASH_RTP_FIND_USE_LIST
+			#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 			for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
 				call_rtp *call_rtp = *iter;
 			#else
@@ -6536,9 +6536,8 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 	init_hash();
 
 	pcap_dumper_t *tmppcap = NULL;
-	char pname[1024];
-
 	if(opt_pcapdump) {
+		char pname[2048];
 		snprintf(pname, sizeof(pname), "%s/dump-%u.pcap", getPcapdumpDir(), (unsigned int)time(NULL));
 		tmppcap = pcap_dump_open(handle, pname);
 	}
@@ -8778,13 +8777,13 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 		packetS->blockstore_addflag(33 /*pb lock flag*/);
 	}
 	packetS->call_info_length = 0;
-	#if (USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST) || HASH_RTP_FIND_USE_LIST
+	#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 	if(n_call && !n_call->empty()) {
 	#else
 	if(n_call) {
 	#endif
 		++counter_rtp_packets[0];
-		#if (USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST) || HASH_RTP_FIND_USE_LIST
+		#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 		for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
 			call_rtp *call_rtp = *iter;
 		#else

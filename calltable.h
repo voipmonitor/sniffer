@@ -10,10 +10,15 @@
 #ifndef CALLTABLE_H
 #define CALLTABLE_H
 
-#define USE_NEW_RTP_FIND 0
-#define NEW_RTP_FIND_PORT_MODE 1
-#define NEW_RTP_FIND_USE_LIST 0
-#define HASH_RTP_FIND_USE_LIST 0
+
+// experimental modes:
+#define NEW_RTP_FIND__NODES 0
+#define NEW_RTP_FIND__PORT_NODES 0
+#define NEW_RTP_FIND__MAP_LIST 0
+#define NEW_RTP_FIND__NODES__PORT_MODE 1
+#define NEW_RTP_FIND__NODES__LIST 0
+#define HASH_RTP_FIND__LIST 0
+
 
 #include <queue>
 #include <map>
@@ -179,7 +184,7 @@ struct call_rtp {
 	s_sdp_flags sdp_flags;
 };
 
-#if (USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST) || HASH_RTP_FIND_USE_LIST
+#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 struct node_call_rtp : public list<call_rtp*> {
 };
 #else
@@ -190,7 +195,7 @@ struct node_call_rtp : public call_rtp {
 
 struct node_call_rtp_ip_port {
 	node_call_rtp_ip_port *next;
-	#if HASH_RTP_FIND_USE_LIST
+	#if HASH_RTP_FIND__LIST
 	node_call_rtp calls;
 	#else
 	node_call_rtp *calls;
@@ -201,20 +206,20 @@ struct node_call_rtp_ip_port {
 
 struct node_call_rtp_ports {
 	node_call_rtp_ports() {
-		#if USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST
+		#if NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST
 	 
 		#else
 		memset(ports, 0, sizeof(ports));
 		#endif
 	}
-	#if USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST
-		#if NEW_RTP_FIND_PORT_MODE == 1
+	#if NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST
+		#if NEW_RTP_FIND__NODES__PORT_MODE == 1
 		node_call_rtp ports[256];
 		#else
 		node_call_rtp ports[256*256];
 		#endif
 	#else
-		#if NEW_RTP_FIND_PORT_MODE == 1
+		#if NEW_RTP_FIND__NODES__PORT_MODE == 1
 		node_call_rtp *ports[256];
 		#else
 		node_call_rtp *ports[256*256];
@@ -1510,7 +1515,7 @@ public:
 	bool error_negative_payload_length;
 	bool use_removeRtp;
 	volatile int rtp_ip_port_counter;
-	#if USE_NEW_RTP_FIND
+	#if NEW_RTP_FIND__NODES
 	list<vmIPport> rtp_ip_port_list;
 	#endif
 	volatile int hash_queue_counter;
@@ -2023,36 +2028,61 @@ public:
 	*/
 	inline node_call_rtp *hashfind_by_ip_port(vmIP addr, vmPort port, bool lock = true) {
 		node_call_rtp *rslt = NULL;
-		#if USE_NEW_RTP_FIND
+		#if NEW_RTP_FIND__NODES
 			if(lock) {
 				lock_calls_hash();
 			}
 			node_call_rtp_ports *ports;
 			if(addr.is_v6()) {
 				ports = calls_ipv6_port->find((u_char*)addr.getPointerToIP(), 16
-							      #if NEW_RTP_FIND_PORT_MODE == 1
+							      #if NEW_RTP_FIND__NODES__PORT_MODE == 1
 							      ,(u_char*)&port.port + 1, 1
 							      #endif
 							      );
 			} else {
 				ports = calls_ip_port->find((u_char*)addr.getPointerToIP(), 4
-							    #if NEW_RTP_FIND_PORT_MODE == 1
+							    #if NEW_RTP_FIND__NODES__PORT_MODE == 1
 							    ,(u_char*)&port.port + 1, 1
 							    #endif
 							    );
 			}
 			if(ports) {
 				rslt = 
-				       #if NEW_RTP_FIND_USE_LIST
+				       #if NEW_RTP_FIND__NODES__LIST
 				       &
 				       #endif
 				       ports->ports[
-						    #if NEW_RTP_FIND_PORT_MODE == 1
+						    #if NEW_RTP_FIND__NODES__PORT_MODE == 1
 						    *((u_char*)&port.port + 0)
 						    #else
 						    port.port
 						    #endif
 						    ];
+			}
+			if(lock) {
+				unlock_calls_hash();
+			}
+		#elif NEW_RTP_FIND__PORT_NODES
+			if(lock) {
+				lock_calls_hash();
+			}
+			if(addr.is_v6()) {
+				rslt = (node_call_rtp*)calls_ipv6_port[port.port]._find((u_char*)addr.getPointerToIP(), 16);
+			} else {
+				rslt = (node_call_rtp*)calls_ip_port[port.port]._find((u_char*)addr.getPointerToIP(), 4);
+			}
+			if(lock) {
+				unlock_calls_hash();
+			}
+		#elif NEW_RTP_FIND__MAP_LIST
+			if(lock) {
+				lock_calls_hash();
+			}
+			u_int64_t ip_port = addr.ip.v4.n;
+			ip_port = (ip_port << 32) + port.port;
+			map<u_int64_t, node_call_rtp*>::iterator iter = calls_ip_port.find(ip_port);
+			if(iter != calls_ip_port.end()) {
+				rslt = iter->second;
 			}
 			if(lock) {
 				unlock_calls_hash();
@@ -2065,7 +2095,7 @@ public:
 			for(node_call_rtp_ip_port *node = calls_hash[h]; node != NULL; node = node->next) {
 				if ((node->addr == addr) && (node->port == port)) {
 					rslt = 
-					       #if HASH_RTP_FIND_USE_LIST
+					       #if HASH_RTP_FIND__LIST
 					       &
 					       #endif
 					       node->calls;
@@ -2084,7 +2114,7 @@ public:
 		}
 		node_call_rtp *n_call = this->hashfind_by_ip_port(addr, port, false);
 		if(n_call) {
-			#if (USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST) || HASH_RTP_FIND_USE_LIST
+			#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 			for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
 				if((*iter)->call == call) {
 					rslt = true;
@@ -2114,7 +2144,7 @@ public:
 		}
 		node_call_rtp *n_call = this->hashfind_by_ip_port(addr, port, false);
 		if(n_call) {
-			#if (USE_NEW_RTP_FIND && NEW_RTP_FIND_USE_LIST) || HASH_RTP_FIND_USE_LIST
+			#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 			for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
 				if((*iter)->call == call) {
 					sdp_flags = &(*iter)->sdp_flags;
@@ -2195,9 +2225,14 @@ private:
 	pthread_mutex_t registers_listMAPlock;
 	*/
 
-	#if USE_NEW_RTP_FIND
+	#if NEW_RTP_FIND__NODES
 	cNodeData<node_call_rtp_ports> *calls_ip_port;
 	cNodeData<node_call_rtp_ports> *calls_ipv6_port;
+	#elif NEW_RTP_FIND__PORT_NODES
+	cNodeData<node_call_rtp> calls_ip_port[65536];
+	cNodeData<node_call_rtp> calls_ipv6_port[65536];
+	#elif NEW_RTP_FIND__MAP_LIST
+	map<u_int64_t, node_call_rtp*> calls_ip_port;
 	#else
 	node_call_rtp_ip_port *calls_hash[MAXNODE];
 	#endif

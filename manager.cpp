@@ -4506,7 +4506,7 @@ int Mgmt_hashtable_stats(Mgmt_params *params) {
 		params->registerCommand("hashtable_stats", "hashtable_stats");
 		return(0);
 	}
-	#if USE_NEW_RTP_FIND
+	#if NEW_RTP_FIND__NODES
 	return(0);
 	#else
 	return(params->sendString(calltable->getHashStats()));

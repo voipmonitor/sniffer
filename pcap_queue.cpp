@@ -2837,7 +2837,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 		global_pcap_dlink = this->pcapLinklayerHeaderType;
 		read_from_file_index = 0;
 		if(opt_pcapdump) {
-			char pname[1024];
+			char pname[2048];
 			snprintf(pname, sizeof(pname), "%s/dump-%s-%u.pcap", 
 				 getPcapdumpDir(),
 				 this->interfaceName.c_str(), (unsigned int)time(NULL));
@@ -2952,7 +2952,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 	global_pcap_dlink = this->pcapLinklayerHeaderType;
 //	syslog(LOG_NOTICE, "DLT - %s: %i", this->getInterfaceName().c_str(), this->pcapLinklayerHeaderType);
 	if(opt_pcapdump) {
-		char pname[1024];
+		char pname[2048];
 		snprintf(pname, sizeof(pname), "%s/dump-%s-%u.pcap", 
 			 getPcapdumpDir(),
 			 this->interfaceName.c_str(), (unsigned int)time(NULL));
