@@ -4866,7 +4866,8 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 	}
 	if(packetS->audiocodes) {
 		if(packetS->audiocodes->media_type != sAudiocodes::ac_mt_RTP &&
-		   packetS->audiocodes->media_type != sAudiocodes::ac_mt_RTCP) {
+		   packetS->audiocodes->media_type != sAudiocodes::ac_mt_RTCP &&
+		   packetS->audiocodes->media_type != sAudiocodes::ac_mt_RTP_RFC2833) {
 			packetS->init2_rtp();
 			packetS->blockstore_addflag(22 /*pb lock flag*/);
 			return(false);

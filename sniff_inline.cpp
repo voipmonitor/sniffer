@@ -358,9 +358,9 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 			udp_tcp_header_length = header_tcp->doff * 4; 
 		}
 		sAudiocodes audiocodes;
-		audiocodes.parse(data, datalen);
-		if(audiocodes.ip_protocol_type == IPPROTO_UDP ||
-		   audiocodes.ip_protocol_type == IPPROTO_TCP) {
+		if(audiocodes.parse(data, datalen) && 
+		   (audiocodes.ip_protocol_type == IPPROTO_UDP ||
+		    audiocodes.ip_protocol_type == IPPROTO_TCP)) {
 			if(flags) {
 				*flags |= FLAG_AUDIOCODES;
 			}

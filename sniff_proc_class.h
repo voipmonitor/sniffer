@@ -361,11 +361,17 @@ public:
 		extern unsigned opt_tcp_port_audiocodes;
 		if(opt_audiocodes &&
 		   (istcp ?
-		     (opt_tcp_port_audiocodes && dest.getPort() == opt_tcp_port_audiocodes) : 
-		     (opt_udp_port_audiocodes && dest.getPort() == opt_udp_port_audiocodes))) {
+		     (opt_tcp_port_audiocodes && 
+		      (source.getPort() == opt_tcp_port_audiocodes || dest.getPort() == opt_tcp_port_audiocodes)) : 
+		     (opt_udp_port_audiocodes && 
+		      (source.getPort() == opt_udp_port_audiocodes || dest.getPort() == opt_udp_port_audiocodes)))) {
 			packetS.audiocodes = new FILE_LINE(0) sAudiocodes;
-			packetS.audiocodes->parse((u_char*)(packet + dataoffset), datalen);
-			packetS.pid.flags |= FLAG_AUDIOCODES;
+			if(packetS.audiocodes->parse((u_char*)(packet + dataoffset), datalen)) {
+				packetS.pid.flags |= FLAG_AUDIOCODES;
+			} else {
+				delete packetS.audiocodes;
+				packetS.audiocodes = NULL;
+			}
 		}
 		extern int opt_mgcp;
 		extern unsigned opt_tcp_port_mgcp_gateway;
