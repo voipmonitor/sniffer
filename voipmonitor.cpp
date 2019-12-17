@@ -2359,7 +2359,7 @@ void *destroy_calls( void *dummy ) {
 }
 */
 
-char daemonizeErrorTempFileName[MAX_TMPNAM2];
+string daemonizeErrorTempFileName;
 pthread_mutex_t daemonizeErrorTempFileLock;
 
 static void daemonize(void)
@@ -2367,7 +2367,8 @@ static void daemonize(void)
  
 	curl_global_cleanup();
 	
-	if (!tmpnam2(daemonizeErrorTempFileName, MAX_TMPNAM2)) {
+	daemonizeErrorTempFileName = tmpnam();
+	if (!daemonizeErrorTempFileName.empty()) {
 		syslog(LOG_ERR, "Can't get tmp filename in daemonize.");
 		exit(1);
 	}
@@ -2379,13 +2380,13 @@ static void daemonize(void)
 	if (pid) {
 		// parent
 		sleep(5);
-		FILE *daemonizeErrorFile = fopen(daemonizeErrorTempFileName, "r");
+		FILE *daemonizeErrorFile = fopen(daemonizeErrorTempFileName.c_str(), "r");
 		if(daemonizeErrorFile) {
 			char buff[1024];
 			while(fgets(buff, sizeof(buff), daemonizeErrorFile)) {
 				cout << buff;
 			}
-			unlink(daemonizeErrorTempFileName);
+			unlink(daemonizeErrorTempFileName.c_str());
 		}
 		opt_fork = 0;
 		exit(0);
@@ -2609,8 +2610,8 @@ void store_crash_bt_to_db() {
 		fclose(crash_bt_fh);
 		if(header_ok && bt.size()) {
 			bool version_ok = false;
-			char tmpOut[MAX_TMPNAM2];
-			if(tmpnam2(tmpOut, MAX_TMPNAM2)) {
+			string tmpOut = tmpnam();
+			if(!tmpOut.empty()) {
 				system((binaryNameWithPath + " | grep version > " + tmpOut + " 2>/dev/null").c_str());
 				vector<string> version_check_rows;
 				char version_check[20];
@@ -2655,7 +2656,7 @@ void store_crash_bt_to_db() {
 						bool pid_ok = false;
 						for(unsigned i = 0; i < coredumps.size(); i++) {
 							string coredump = coredumps[i];
-							unlink(tmpOut);
+							unlink(tmpOut.c_str());
 							system(string(
 							       "echo -e '"
 							       "set print elements 1000\n"
@@ -2672,7 +2673,7 @@ void store_crash_bt_to_db() {
 							       "quit\n"
 							       "' | gdb " + binaryNameWithPath + " " + coredump + " 2>&1 >/dev/null"
 							       ).c_str());
-							FILE *gdbOutput = fopen(tmpOut, "r");
+							FILE *gdbOutput = fopen(tmpOut.c_str(), "r");
 							if(gdbOutput) {
 								char buff[10000];
 								unsigned counter = 0;
@@ -2699,7 +2700,7 @@ void store_crash_bt_to_db() {
 					}
 				}
 			}
-			unlink(tmpOut);
+			unlink(tmpOut.c_str());
 			string crash_bt_content;
 			crash_bt_content = 
 				string("voipmonitor version: ") + version + "\n" +
@@ -6172,14 +6173,14 @@ void __cyg_profile_func_exit(void *this_fn, void */*call_site*/) {
 #include <jemalloc/jemalloc.h>
 string jeMallocStat(bool full) {
 	string rslt;
-	char tempFileName[MAX_TMPNAM2];
-	if (tmpnam2(tempFileName, MAX_TMPNAM2)) {
+	string tempFileName = tmpnam();
+	if(tempFileName.empty()) {
 		syslog(LOG_ERR, "Can't get tmp filename in the jeMallocStat.");
 		return(rslt);
 	}
-	char *tempFileNamePointer = tempFileName;
+	char *tempFileNamePointer = (char*)tempFileName.c_str();
 	mallctl("prof.dump", NULL, NULL, &tempFileNamePointer, sizeof(char*));
-	FILE *jeout = fopen(tempFileName, "rt");
+	FILE *jeout = fopen(tempFileName.c_str(), "rt");
 	if(jeout) {
 		char *buff = new FILE_LINE(42067) char[10000];
 		while(fgets(buff, 10000, jeout)) {
@@ -6205,7 +6206,7 @@ string jeMallocStat(bool full) {
 		delete [] buff;
 		fclose(jeout);
 	}
-	unlink(tempFileName);
+	unlink(tempFileName.c_str());
 	return(rslt);
 }
 #else

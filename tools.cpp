@@ -2121,30 +2121,18 @@ string RestartUpgrade::getRsltString() {
 }
 
 bool RestartUpgrade::getUpgradeTempFileName() {
-	char upgradeTempFileName[MAX_TMPNAM2];
-	if(tmpnam2(upgradeTempFileName, MAX_TMPNAM2)) {
-		this->upgradeTempFileName = upgradeTempFileName;
-		return(true);
-	}
-	return(false);
+	this->upgradeTempFileName = tmpnam();
+	return(!this->upgradeTempFileName.empty());
 }
 
 bool RestartUpgrade::getRestartTempScriptFileName() {
-	char restartTempScriptFileName[MAX_TMPNAM2];
-	if(tmpnam2(restartTempScriptFileName, MAX_TMPNAM2)) {
-		this->restartTempScriptFileName = restartTempScriptFileName;
-		return(true);
-	}
-	return(false);
+	this->restartTempScriptFileName = tmpnam();
+	return(!this->restartTempScriptFileName.empty());
 }
 
 bool RestartUpgrade::getSafeRunTempScriptFileName() {
-	char safeRunTempScriptFileName[MAX_TMPNAM2];
-	if(tmpnam2(safeRunTempScriptFileName, MAX_TMPNAM2)) {
-		this->safeRunTempScriptFileName = safeRunTempScriptFileName;
-		return(true);
-	}
-	return(false);
+	this->safeRunTempScriptFileName = tmpnam();
+	return(!this->safeRunTempScriptFileName.empty());
 }
 
 string RestartUpgrade::getCmdLine() {
@@ -4085,15 +4073,15 @@ pcap_t* pcap_open_offline_zip(const char *filename, char *errbuff, string *tempF
 }
 
 string gunzipToTemp(const char *zipFilename, string *error, bool autoDeleteAtExit, string *tempFileName) {
-	char unzipTempFileName[MAX_TMPNAM2];
-	if(tmpnam2(unzipTempFileName, MAX_TMPNAM2)) {
+	string unzipTempFileName = tmpnam();
+	if(!unzipTempFileName.empty()) {
 		if(autoDeleteAtExit) {
-			GlobalAutoDeleteAtExit.add(unzipTempFileName);
+			GlobalAutoDeleteAtExit.add(unzipTempFileName.c_str());
 		}
 		if(tempFileName) {
 			*tempFileName = unzipTempFileName;
 		}
-		string _error = _gunzip_s(zipFilename, unzipTempFileName);
+		string _error = _gunzip_s(zipFilename, unzipTempFileName.c_str());
 		if(error) {
 		       *error = _error;
 		}
@@ -5899,6 +5887,10 @@ unsigned file_get_rows(const char *filename, vector<string> *rows) {
 	return(countRows);
 }
 
+unsigned file_get_rows(string filename, vector<string> *rows) {
+	return(file_get_rows(filename.c_str(), rows));
+}
+
 vector<string> findCoredumps(int pid) {
 	vector<string> coredumps;
 	FILE *corePatternFile = fopen("/proc/sys/kernel/core_pattern", "r");
@@ -6161,21 +6153,18 @@ void parse_cmd_str(const char *cmd_str, vector<string> *args) {
 	}
 }
 
-bool tmpnam2(char *s, int len) {
+string tmpnam() {
+	char tmpfilename_buffer[TMP_MAX];
 	u_int64_t ns;
 	struct stat sbuf;
 	for (int i = 0; i < 3; i++) {
 		ns = getTimeNS();
-		snprintf(s, len, "%s/VM%i_%lu", P_tmpdir, get_unix_tid(), ns);
-		if (stat(s, &sbuf) < 0 && errno == ENOENT) {
-			return(true);
+		snprintf(tmpfilename_buffer, sizeof(tmpfilename_buffer), "%s/VM%i_%lu", P_tmpdir, get_unix_tid(), ns);
+		if (stat(tmpfilename_buffer, &sbuf) < 0 && errno == ENOENT) {
+			return(tmpfilename_buffer);
 		}
 	}
-	return(false);
-}
-
-char *tmpnam(char *s) throw () {
-        return(tmpnam2(s, L_tmpnam) ? s : NULL);
+	return("");
 }
 
 bool file_get_contents(const char *filename, SimpleBuffer *content, string *error) {

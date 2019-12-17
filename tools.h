@@ -41,16 +41,6 @@
 
 using namespace std;
 
-#define MAX_TMPNAM2 64
-#ifdef L_tmpnam
-	#undef L_tmpnam
-	#define L_tmpnam 64
-#else
-	#define L_tmpnam 64
-#endif
-bool tmpnam2(char *s, int len);
-char *tmpnam(char *s) throw ();
-
 struct TfileListElem {
     string filename;
     time_t mtime;
@@ -3306,6 +3296,7 @@ inline void hexdump(const char *data, unsigned size) {
 }
 
 unsigned file_get_rows(const char *filename, vector<string> *rows);
+unsigned file_get_rows(string, vector<string> *rows);
 
 vector<string> findCoredumps(int pid);
 
@@ -3871,6 +3862,7 @@ void rss_purge(bool force = false);
 
 void parse_cmd_str(const char *cmd_str, vector<string> *args);
 
+string tmpnam();
 bool file_get_contents(const char *filename, SimpleBuffer *content, string *error);
 bool file_put_contents(const char *filename, SimpleBuffer *content, string *error);
 
