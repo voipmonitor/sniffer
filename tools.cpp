@@ -6174,6 +6174,10 @@ bool tmpnam2(char *s, int len) {
 	return(false);
 }
 
+char *tmpnam(char *s) throw () {
+        return(tmpnam2(s, L_tmpnam) ? s : NULL);
+}
+
 bool file_get_contents(const char *filename, SimpleBuffer *content, string *error) {
 	FILE *file = fopen(filename, "r");
 	if(!file) {

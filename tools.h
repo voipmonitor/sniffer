@@ -42,7 +42,14 @@
 using namespace std;
 
 #define MAX_TMPNAM2 64
+#ifdef L_tmpnam
+	#undef L_tmpnam
+	#define L_tmpnam 64
+#else
+	#define L_tmpnam 64
+#endif
 bool tmpnam2(char *s, int len);
+char *tmpnam(char *s) throw ();
 
 struct TfileListElem {
     string filename;
