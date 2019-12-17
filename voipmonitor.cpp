@@ -2418,7 +2418,7 @@ static void daemonize(void)
 
 void daemonizeOutput(string error) {
 	pthread_mutex_lock(&daemonizeErrorTempFileLock);
-	ofstream daemonizeErrorStream(daemonizeErrorTempFileName, ofstream::out | ofstream::app);
+	ofstream daemonizeErrorStream(daemonizeErrorTempFileName.c_str(), ofstream::out | ofstream::app);
 	daemonizeErrorStream << error << endl;
 	daemonizeErrorStream.close();
 	pthread_mutex_unlock(&daemonizeErrorTempFileLock);
