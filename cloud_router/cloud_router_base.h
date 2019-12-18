@@ -29,8 +29,6 @@ using namespace std;
 #define SYNC_LOCK_USLEEP 100
 #define MAX_LISTEN_SOCKETS 2
 
-#define DEBUG_CR true
-
 
 struct sCloudRouterVerbose {
 	sCloudRouterVerbose() {

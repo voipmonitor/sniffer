@@ -145,9 +145,6 @@ void cCR_Receiver_service::evData(u_char *data, size_t dataLen) {
 	string idCommand = string((char*)data, dataLen);
 	size_t idCommandSeparatorPos = idCommand.find('/'); 
 	if(idCommandSeparatorPos != string::npos) {
-		#if DEBUG_CR
-		cout << " * evData" << endl;
-		#endif
 		cCR_Client_response *response = new FILE_LINE(0) cCR_Client_response(
 				idCommand.substr(0, idCommandSeparatorPos), 
 				idCommand.substr(idCommandSeparatorPos + 1),
@@ -167,15 +164,9 @@ bool cCR_Client_response::start(string host, u_int16_t port) {
 	if(response_sender) {
 		this->writeToBuffer();
 	} else {
-		#if DEBUG_CR
-		cout << " * connect to " << host << " : " << port << endl;
-		#endif
 		if(!_connect(host, port)) {
 			return(false);
 		}
-		#if DEBUG_CR
-		cout << " * connected" << endl;
-		#endif
 	}
 	if(!response_sender) {
 		string connectCmd = "{\"type_connection\":\"sniffer_response\",\"gui_task_id\":\"" + gui_task_id + "\"}\r\n";

@@ -1300,7 +1300,6 @@ void cReceiver::receive_process() {
 			data = receive_socket->readBlockTimeout(&dataLen, 30);
 			if(data) {
 				if(string((char*)data, dataLen) != "ping") {
-					cout << " * data from cloud router" << endl;
 					evData(data, dataLen);
 				} else {
 					receive_socket->writeBlock("pong");
