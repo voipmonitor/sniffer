@@ -2380,7 +2380,7 @@ static void daemonize(void)
 	curl_global_cleanup();
 	
 	daemonizeErrorTempFileName = tmpnam();
-	if (!daemonizeErrorTempFileName.empty()) {
+	if (daemonizeErrorTempFileName.empty()) {
 		syslog(LOG_ERR, "Can't get tmp filename in daemonize.");
 		exit(1);
 	}
