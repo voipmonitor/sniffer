@@ -689,6 +689,7 @@ bool cloud_router = true;
 unsigned cloud_router_port = 60023;
 
 cCR_Receiver_service *cloud_receiver = NULL;
+cCR_ResponseSender *cloud_response_sender = NULL;
 
 extern sSnifferServerOptions snifferServerOptions;
 extern sSnifferClientOptions snifferClientOptions;
@@ -2222,11 +2223,29 @@ void *storing_registers( void */*dummy*/ ) {
 	return NULL;
 }
 
-void start_cloud_receiver() {
+void stop_cloud_receiver() {
+	if(cloud_response_sender) {
+		cloud_response_sender->stop();
+	}
+	if(cloud_receiver) {
+		cloud_receiver->receive_stop();
+	}
 	if(cloud_receiver) {
 		delete cloud_receiver;
+		cloud_receiver = NULL;
 	}
+	if(cloud_response_sender) {
+		delete cloud_response_sender;
+		cloud_response_sender = NULL;
+	}
+}
+
+void start_cloud_receiver() {
+	stop_cloud_receiver();
+	cloud_response_sender = new FILE_LINE(0) cCR_ResponseSender();
+	cloud_response_sender->start(cloud_host, cloud_router_port, cloud_token);
 	cloud_receiver = new FILE_LINE(0) cCR_Receiver_service(cloud_token, opt_id_sensor > 0 ? opt_id_sensor : 0, opt_sensor_string, RTPSENSOR_VERSION_INT());
+	cloud_receiver->setResponseSender(cloud_response_sender);
 	cloud_receiver->setErrorTypeString(cSocket::_se_loss_connection, "connection to the cloud server has been lost - trying again");
 	if(is_read_from_file()) {
 		cloud_receiver->setEnableTermninateIfConnectFailed();
@@ -2239,13 +2258,6 @@ void start_cloud_receiver() {
 			break;
 		}
 		usleep(100000);
-	}
-}
-
-void stop_cloud_receiver() {
-	if(cloud_receiver) {
-		delete cloud_receiver;
-		cloud_receiver = NULL;
 	}
 }
 

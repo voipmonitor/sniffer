@@ -27,6 +27,9 @@ using namespace std;
 
 
 #define SYNC_LOCK_USLEEP 100
+#define MAX_LISTEN_SOCKETS 2
+
+#define DEBUG_CR true
 
 
 struct sCloudRouterVerbose {
@@ -393,17 +396,22 @@ protected:
 
 
 class cServer {
+private:
+	struct sListenParams {
+		cServer *server;
+		unsigned index;
+	};
 public:
 	 cServer();
 	 virtual ~cServer();
-	 bool listen_start(const char *name, string host, u_int16_t port);
-	 void listen_stop();
+	 bool listen_start(const char *name, string host, u_int16_t port, unsigned index = 0);
+	 void listen_stop(unsigned index = 0);
 	 static void *listen_process(void *arg);
-	 void listen_process();
+	 void listen_process(int index);
 	 virtual void createConnection(cSocket *socket);
 protected:
-	 cSocketBlock *listen_socket;
-	 pthread_t listen_thread;
+	 cSocketBlock *listen_socket[MAX_LISTEN_SOCKETS];
+	 pthread_t listen_thread[MAX_LISTEN_SOCKETS];
 };
 
 
@@ -422,6 +430,7 @@ public:
 protected:
 	cSocketBlock *socket;
 	pthread_t thread;
+	u_int64_t begin_time_ms;
 };
 
 
@@ -468,9 +477,11 @@ public:
 	bool writeXorKeyEnc(u_char *data, size_t dataLen, const char *key);
 	bool writeAesEnc(u_char *data, size_t dataLen, const char *ckey, const char *ivec);
 	bool writeFinal();
+	void writeToBuffer();
 protected:
 	cSocketBlock *client_socket;
 	pthread_t client_thread;
+	SimpleBuffer *buffer;
 };
 
 

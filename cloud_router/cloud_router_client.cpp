@@ -20,10 +20,15 @@ cCR_Receiver_service::cCR_Receiver_service(const char *token, int32_t sensor_id,
 	port = 0;
 	connection_ok = false;
 	use_mysql_set_id = false;
+	response_sender = NULL;
 }
 
 void cCR_Receiver_service::setEnableTermninateIfConnectFailed(bool enableTermninateIfConnectFailed) {
 	this->enableTermninateIfConnectFailed = enableTermninateIfConnectFailed;
+}
+
+void cCR_Receiver_service::setResponseSender(cCR_ResponseSender *response_sender) {
+	this->response_sender = response_sender;
 }
 
 bool cCR_Receiver_service::start(string host, u_int16_t port) {
@@ -140,26 +145,45 @@ void cCR_Receiver_service::evData(u_char *data, size_t dataLen) {
 	string idCommand = string((char*)data, dataLen);
 	size_t idCommandSeparatorPos = idCommand.find('/'); 
 	if(idCommandSeparatorPos != string::npos) {
-		cCR_Client_response *response = new FILE_LINE(0) cCR_Client_response(idCommand.substr(0, idCommandSeparatorPos), idCommand.substr(idCommandSeparatorPos + 1));
+		#if DEBUG_CR
+		cout << " * evData" << endl;
+		#endif
+		cCR_Client_response *response = new FILE_LINE(0) cCR_Client_response(
+				idCommand.substr(0, idCommandSeparatorPos), 
+				idCommand.substr(idCommandSeparatorPos + 1),
+				response_sender);
 		response->start(receive_socket->getHost(), receive_socket->getPort());
 	}
 }
 
 
-cCR_Client_response::cCR_Client_response(string gui_task_id, string command) {
+cCR_Client_response::cCR_Client_response(string gui_task_id, string command, cCR_ResponseSender *response_sender) {
 	this->gui_task_id = gui_task_id;
 	this->command = command;
+	this->response_sender = response_sender;
 }
 
 bool cCR_Client_response::start(string host, u_int16_t port) {
-	if(!_connect(host, port)) {
-		return(false);
+	if(response_sender) {
+		this->writeToBuffer();
+	} else {
+		#if DEBUG_CR
+		cout << " * connect to " << host << " : " << port << endl;
+		#endif
+		if(!_connect(host, port)) {
+			return(false);
+		}
+		#if DEBUG_CR
+		cout << " * connected" << endl;
+		#endif
 	}
-	string connectCmd = "{\"type_connection\":\"sniffer_response\",\"gui_task_id\":\"" + gui_task_id + "\"}\r\n";
-	if(!client_socket->write(connectCmd)) {
-		delete client_socket;
-		client_socket = NULL;
-		return(false);
+	if(!response_sender) {
+		string connectCmd = "{\"type_connection\":\"sniffer_response\",\"gui_task_id\":\"" + gui_task_id + "\"}\r\n";
+		if(!client_socket->write(connectCmd)) {
+			delete client_socket;
+			client_socket = NULL;
+			return(false);
+		}
 	}
 	_client_start();
 	return(true);
@@ -169,6 +193,152 @@ bool cCR_Client_response::start(string host, u_int16_t port) {
 void cCR_Client_response::client_process() {
 	extern int parse_command(string cmd, sClientInfo client, cClient *c_client);
 	parse_command(command, 0, this);
-	client_socket->writeAesEnc(NULL, 0, true);
+	if(response_sender) {
+		response_sender->add(gui_task_id, buffer);
+		buffer = NULL;
+	} else {
+		client_socket->writeAesEnc(NULL, 0, true);
+	}
 	delete this;
+}
+
+
+cCR_ResponseSender::cCR_ResponseSender() {
+	terminate = false;
+	socket = NULL;
+	send_process_thread = 0;
+	_sync_data = 0;
+}
+
+cCR_ResponseSender::~cCR_ResponseSender() {
+	stop();
+}
+
+void cCR_ResponseSender::add(string task_id, SimpleBuffer *buffer) {
+	lock_data();
+	sDataForSend data;
+	data.task_id = task_id;
+	data.buffer = buffer;
+	data_for_send.push(data);
+	unlock_data();
+}
+
+void cCR_ResponseSender::start(string host, u_int16_t port, string token) {
+	this->host = host;
+	this->port = port;
+	this->token = token;
+	vm_pthread_create("cCR_ResponseSender::start", &send_process_thread, NULL, cCR_ResponseSender::sendProcess, this, __FILE__, __LINE__);
+}
+
+void cCR_ResponseSender::stop() {
+	terminate = true;
+	if(send_process_thread) {
+		pthread_join(send_process_thread, NULL);
+		send_process_thread = 0;
+	}
+}
+
+void *cCR_ResponseSender::sendProcess(void *arg) {
+	((cCR_ResponseSender*)arg)->sendProcess();
+	return(NULL);
+}
+
+void cCR_ResponseSender::sendProcess() {
+	while(!terminate) {
+		lock_data();
+		unsigned data_for_send_size = data_for_send.size();
+		unlock_data();
+		if(!data_for_send_size) {
+			usleep(100000);
+			continue;
+		}
+		if(!socket) {
+			socket = new FILE_LINE(0) cSocketBlock("sniffer response", true);
+			socket->setHostPort(host, port);
+			if(!socket->connect()) {
+				delete socket;
+				socket = NULL;
+				// log "failed connect"
+				sleep(5);
+				continue;
+			}
+			string cmd = "{\"type_connection\":\"sniffer_responses\"}\r\n";
+			if(!socket->write(cmd)) {
+				delete socket;
+				socket = NULL;
+				// log "failed send command"
+				sleep(1);
+				continue;
+			}
+			string rsltRsaKey;
+			if(!socket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
+				delete socket;
+				socket = NULL;
+				// log "failed read rsa key"
+				sleep(1);
+				continue;
+			}
+			JsonItem jsonRsaKey;
+			jsonRsaKey.parse(rsltRsaKey);
+			string rsa_key = jsonRsaKey.getValue("rsa_key");
+			socket->set_rsa_pub_key(rsa_key);
+			socket->generate_aes_keys();
+			JsonExport json_keys;
+			json_keys.add("token", token);
+			string aes_ckey, aes_ivec;
+			socket->get_aes_keys(&aes_ckey, &aes_ivec);
+			json_keys.add("aes_ckey", aes_ckey);
+			json_keys.add("aes_ivec", aes_ivec);
+			if(!socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
+				delete socket;
+				socket = NULL;
+				// log "failed send token & aes keys"
+				sleep(1);
+				continue;
+			}
+			string connectResponse;
+			if(!socket->readBlock(&connectResponse) || connectResponse != "OK") {
+				delete socket;
+				socket = NULL;
+				// log "failed read response after send token & aes keys"
+				sleep(1);
+				continue;
+			}
+		}
+		sDataForSend data;
+		lock_data();
+		data = data_for_send.front();
+		unlock_data();
+		unsigned data_buffer_size = data.task_id.length() + 1 + data.buffer->size();
+		u_char *data_buffer = new u_char[data_buffer_size];
+		memcpy(data_buffer, data.task_id.c_str(), data.task_id.length());
+		memcpy(data_buffer + data.task_id.length(), "#", 1);
+		memcpy(data_buffer + data.task_id.length() + 1, data.buffer->data(), data.buffer->size());
+		if(!socket->writeBlock(data_buffer,data_buffer_size, cSocket::_te_aes)) {
+			delete [] data_buffer;
+			delete socket;
+			socket = NULL;
+			// log "failed write response"
+			sleep(1);
+			continue;
+		}
+		string dataResponse;
+		if(!socket->readBlock(&dataResponse, cSocket::_te_aes) || dataResponse != "OK") {
+			delete [] data_buffer;
+			delete socket;
+			socket = NULL;
+			// log "failed read response after send data"
+			sleep(1);
+			continue;
+		}
+		delete data.buffer;
+		delete [] data_buffer;
+		lock_data();
+		data_for_send.pop();
+		unlock_data();
+	}
+	if(socket) {
+		delete socket;
+		socket = NULL;
+	}
 }

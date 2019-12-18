@@ -426,7 +426,7 @@ bool cSocket::listen() {
 		if(terminate || CR_TERMINATE()) {
 			return(false);
 		}
-		rsltListen = ::listen(handle, 5);
+		rsltListen = ::listen(handle, 128);
 		if(rsltListen == -1) {
 			clearError();
 			setError("listen failed - trying again after 5 seconds");
@@ -1102,36 +1102,41 @@ u_int32_t cSocketBlock::dataSum(u_char *data, size_t dataLen) {
 
 
 cServer::cServer() {
-	listen_socket = NULL;
-	listen_thread = 0;
+	for(unsigned i = 0; i < MAX_LISTEN_SOCKETS; i++) {
+		listen_socket[i] = NULL;
+		listen_thread[i] = 0;
+	}
 }
 
 cServer::~cServer() {
 	listen_stop();
 }
 
-bool cServer::listen_start(const char *name, string host, u_int16_t port) {
-	listen_socket = new FILE_LINE(0) cSocketBlock(name);
-	listen_socket->setHostPort(host, port);
-	if(!listen_socket->listen()) {
-		delete listen_socket;
-		listen_socket = NULL;
+bool cServer::listen_start(const char *name, string host, u_int16_t port, unsigned index) {
+	listen_socket[index] = new FILE_LINE(0) cSocketBlock(name);
+	listen_socket[index]->setHostPort(host, port);
+	if(!listen_socket[index]->listen()) {
+		delete listen_socket[index];
+		listen_socket[index] = NULL;
 		return(false);
 	}
-	vm_pthread_create("cServer::listen_start", &listen_thread, NULL, cServer::listen_process, this, __FILE__, __LINE__);
+	sListenParams *listenParams = new sListenParams;
+	listenParams->server = this;
+	listenParams->index = index;
+	vm_pthread_create("cServer::listen_start", &listen_thread[index], NULL, cServer::listen_process, listenParams, __FILE__, __LINE__);
 	return(true);
 }
 
-void cServer::listen_stop() {
-	if(listen_socket) {
-		listen_socket->setTerminate();
-		listen_socket->close();
-		if(listen_thread) {
-			pthread_join(listen_thread, NULL);
-			listen_thread = 0;
+void cServer::listen_stop(unsigned index) {
+	if(listen_socket[index]) {
+		listen_socket[index]->setTerminate();
+		listen_socket[index]->close();
+		if(listen_thread[index]) {
+			pthread_join(listen_thread[index], NULL);
+			listen_thread[index] = 0;
 		}
-		delete listen_socket;
-		listen_socket = NULL;
+		delete listen_socket[index];
+		listen_socket[index] = NULL;
 	}
 }
 
@@ -1141,14 +1146,14 @@ void *cServer::listen_process(void *arg) {
 		verbstr << "START SERVER LISTEN";
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
-	((cServer*)arg)->listen_process();
+	((sListenParams*)arg)->server->listen_process(((sListenParams*)arg)->index);
 	return(NULL);
 }
 
-void cServer::listen_process() {
+void cServer::listen_process(int index) {
 	cSocket *clientSocket;
-	while(!((listen_socket && listen_socket->isTerminate()) || CR_TERMINATE())) {
-		if(listen_socket->await(&clientSocket)) {
+	while(!((listen_socket[index] && listen_socket[index]->isTerminate()) || CR_TERMINATE())) {
+		if(listen_socket[index]->await(&clientSocket)) {
 			#ifdef CLOUD_ROUTER_SERVER
 			extern cBlockIP blockIP;
 			if(blockIP.isBlocked(clientSocket->getIPL())) {
@@ -1181,6 +1186,7 @@ cServerConnection::cServerConnection(cSocket *socket) {
 	this->socket = new FILE_LINE(0) cSocketBlock(NULL);
 	*(cSocket*)this->socket = *socket;
 	delete socket;
+	begin_time_ms = getTimeMS();
 }
 
 cServerConnection::~cServerConnection() {
@@ -1294,6 +1300,7 @@ void cReceiver::receive_process() {
 			data = receive_socket->readBlockTimeout(&dataLen, 30);
 			if(data) {
 				if(string((char*)data, dataLen) != "ping") {
+					cout << " * data from cloud router" << endl;
 					evData(data, dataLen);
 				} else {
 					receive_socket->writeBlock("pong");
@@ -1317,6 +1324,7 @@ void cReceiver::evData(u_char *data, size_t dataLen) {
 
 cClient::cClient() {
 	client_socket = NULL;
+	buffer = NULL;
 }
 
 cClient::~cClient() {
@@ -1324,6 +1332,9 @@ cClient::~cClient() {
 		client_socket->close();
 		delete client_socket;
 		client_socket = NULL;
+	}
+	if(buffer) {
+		delete buffer;
 	}
 }
 
@@ -1361,19 +1372,42 @@ void cClient::client_process() {
 }
 
 bool cClient::write(u_char *data, size_t dataLen) {
-	return(client_socket->write(data, dataLen));
+	if(buffer) {
+		buffer->add(data, dataLen);
+		return(true);
+	} else {
+		return(client_socket->write(data, dataLen));
+	}
 }
 
 bool cClient::writeXorKeyEnc(u_char *data, size_t dataLen, const char *key) {
-	client_socket->setXorKey(key);
-	return(client_socket->writeXorKeyEnc(data, dataLen));
+	if(buffer) {
+		buffer->add(data, dataLen);
+		return(true);
+	} else {
+		client_socket->setXorKey(key);
+		return(client_socket->writeXorKeyEnc(data, dataLen));
+	}
 }
 
 bool cClient::writeAesEnc(u_char *data, size_t dataLen, const char *ckey, const char *ivec) {
-	client_socket->set_aes_keys(ckey, ivec);
-	return(client_socket->writeAesEnc(data, dataLen, false));
+	if(buffer) {
+		buffer->add(data, dataLen);
+		return(true);
+	} else {
+		client_socket->set_aes_keys(ckey, ivec);
+		return(client_socket->writeAesEnc(data, dataLen, false));
+	}
 }
 
 bool cClient::writeFinal() {
-	return(client_socket->writeAesEnc(NULL, 0, true));
+	if(buffer) {
+		return(true);
+	} else {
+		return(client_socket->writeAesEnc(NULL, 0, true));
+	}
+}
+
+void cClient::writeToBuffer() {
+	buffer = new SimpleBuffer;
 }
