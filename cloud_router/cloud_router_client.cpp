@@ -315,6 +315,12 @@ void cCR_ResponseSender::sendProcess() {
 		}
 		string dataResponse;
 		if(!socket->readBlock(&dataResponse, cSocket::_te_aes) || dataResponse != "OK") {
+			if(dataResponse.find("missing gui task id") != string::npos || 
+			   dataResponse.find("unknown gui task id") != string::npos) {
+				lock_data();
+				data_for_send.pop();
+				unlock_data();
+			}
 			delete [] data_buffer;
 			delete socket;
 			socket = NULL;
