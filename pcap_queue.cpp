@@ -6719,7 +6719,7 @@ bool PcapQueue_readFromFifo::socketListen() {
 		if(TERMINATING) {
 			return(false);
 		}
-		rsltListen = listen(this->socketHandle, 128);
+		rsltListen = listen(this->socketHandle, 512);
 		if(rsltListen == -1) {
 			syslog(LOG_ERR, "packetbuffer %s: listen failed - retrying in 5 seconds intervals", this->nameQueue.c_str());
 			sleep(5);

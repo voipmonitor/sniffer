@@ -426,7 +426,7 @@ bool cSocket::listen() {
 		if(terminate || CR_TERMINATE()) {
 			return(false);
 		}
-		rsltListen = ::listen(handle, 128);
+		rsltListen = ::listen(handle, 512);
 		if(rsltListen == -1) {
 			clearError();
 			setError("listen failed - trying again after 5 seconds");

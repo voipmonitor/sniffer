@@ -1354,7 +1354,7 @@ tryagain:
 		goto tryagain;
 	}
 	// create queue with 100 connections max 
-	if (listen(manager_socket_server, 100) == -1) {
+	if (listen(manager_socket_server, 512) == -1) {
 		cerr << "Cannot create manager queue" << endl;
 		return 0;
 	}

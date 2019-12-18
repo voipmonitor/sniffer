@@ -314,7 +314,7 @@ void cCR_ResponseSender::sendProcess() {
 			continue;
 		}
 		string dataResponse;
-		if(!socket->readBlock(&dataResponse, cSocket::_te_aes) || dataResponse != "OK") {
+		if(!socket->readBlock(&dataResponse, cSocket::_te_aes, "", true) || dataResponse != "OK") {
 			if(dataResponse.find("missing gui task id") != string::npos || 
 			   dataResponse.find("unknown gui task id") != string::npos) {
 				lock_data();
