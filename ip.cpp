@@ -82,7 +82,7 @@ bool vmIP::isLocalIP() {
 			vector<string> ip_mask = split(net_str[i], "/", true);
 			vmIP ip;
 			ip.setFromString(ip_mask[0].c_str());
-			ip = ip.network(atoi(ip_mask[1].c_str()));
+			net_mask[i] = ip.network(atoi(ip_mask[1].c_str()));
 		}
 	}
 	for(int i = 0; i < 3; i++) {
