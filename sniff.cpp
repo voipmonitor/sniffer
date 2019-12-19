@@ -3867,7 +3867,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	if(opt_silenceheader[0] != '\0') {
 		char *silenceheaderval = gettag_sip(packetS, opt_silenceheader, &l);
 		if(silenceheaderval) {
-			syslog(LOG_DEBUG, "opt_silenceheader found, its val: %s", silenceheaderval);
+			syslog(LOG_DEBUG, "opt_silenceheader found, its val: %.*s", (int)l, silenceheaderval);
 			if(strncmp(silenceheaderval, "pause", l) == 0) {
 				call->silencerecording = 1;
 				if (logPacketSipMethodCall_enable)

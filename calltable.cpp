@@ -1363,12 +1363,6 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	*record_dtmf = false;
 	*disable_save = false;
 	
-	if(!packetS->isRtpUdptlOkDataLen() && !sverb.process_rtp_header) {
-		//Ignoring RTP packets without data
-		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen_());
-		return(false);
-	}
-
 	if(opt_vlan_siprtpsame && VLAN_IS_SET(this->vlan) &&
 	   packetS->pid.vlan != this->vlan) {
 		*disable_save = true;
@@ -1416,6 +1410,12 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 		last_rtp_a_packet_time_us = getTimeUS(packetS->header_pt);
 	} else {
 		last_rtp_b_packet_time_us = getTimeUS(packetS->header_pt);
+	}
+
+	if(!packetS->isRtpUdptlOkDataLen() && !sverb.process_rtp_header) {
+		//Ignoring RTP packets without data
+		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen_());
+		return(false);
 	}
 
 	/* TODO:IPHDR ?
