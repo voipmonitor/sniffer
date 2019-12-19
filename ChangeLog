@@ -1,3 +1,14 @@
+26.4.4 19.12.2019
+=================
+- update libpcap to 1.9.
+- update librrd to 1.7.0 to prevent crashes
+- log 'callslimit/ignoring call' only once in five minutes
+- add support for RFC2833 in audiocodes mirroring [VS-1009]
+- fix slow cloud connections 
+- move check minimal length of rtp packet after set last_rtp_a/b_packet_time_us (fixes pauserecordingheader) [VS-1008]
+- fix save_empty_frame for PAYLOAD_G722 (fixes pauserecordingheader) [VS-1012]
+
+
 26.4.3 13.12.2019
 =================
 - Fix Freebsd build. Includes in the hugepage and rrd headers.
