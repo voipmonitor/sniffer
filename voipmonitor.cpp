@@ -185,6 +185,7 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 	
 int opt_disableplc = 0 ;	// On or Off packet loss concealment			
 int opt_rrd = 1;
+char *rrd_last_cmd_global = NULL;
 int opt_silencethreshold = 512; //values range from 1 to 32767 default 512
 int opt_passertedidentity = 0;	//Rewrite caller? If sip invite contain P-Asserted-Identity, caller num/name is overwritten by its values.
 int opt_ppreferredidentity = 0;	//Rewrite caller? If sip invite contain P-Preferred-Identity, caller num/name is overwritten by its values.
@@ -2573,6 +2574,11 @@ void bt_sighandler(int sig, siginfo_t */*info*/, void *secret)
 		for (int i = 1; i < trace_size; ++i) {
 			write(fh, "[bt] ", 5);
 			write(fh, messages[i], strlen(messages[i]));
+			write(fh, "\n", 1);
+		}
+		if(rrd_last_cmd_global) {
+			write(fh, "\n[--] rrd string : ", 19);
+			write(fh, rrd_last_cmd_global, strlen(rrd_last_cmd_global));
 			write(fh, "\n", 1);
 		}
 		close(fh);

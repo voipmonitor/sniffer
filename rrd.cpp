@@ -401,6 +401,10 @@ bool RrdCharts::doRrdCmd(string cmd, string *error, bool syslogError) {
 	if(cmd_args.empty()) {
 		return(false);
 	}
+	extern char *rrd_last_cmd_global;
+	rrd_last_cmd_global = new FILE_LINE(0) char[cmd.length() + 1];
+	strcpy(rrd_last_cmd_global, cmd.c_str());
+	rrd_last_cmd_global[cmd.length()] = 0;
 	unsigned _cmd_args_length = cmd_args.size();
 	char *_cmd_args[_cmd_args_length + 1];
 	for(unsigned i = 0; i < _cmd_args_length; i++) {
@@ -421,6 +425,8 @@ bool RrdCharts::doRrdCmd(string cmd, string *error, bool syslogError) {
 	for(unsigned i = 0; i < _cmd_args_length; i++) {
 		delete [] _cmd_args[i];
 	}
+	delete [] rrd_last_cmd_global;
+	rrd_last_cmd_global = NULL;
 	if(dllRun) {
 		if(rrd_test_error()) {
 			string _error = rrd_get_error();
