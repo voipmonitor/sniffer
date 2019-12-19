@@ -417,12 +417,14 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 void save_empty_frame(struct ast_channel *chan) {
 	if((chan->rawstream || chan->audiobuf) && (chan->codec != 13 && chan->codec != 19)) {
 		int i;
-		short int zero = 0;
-		int zero2 = 0;
-		short int zero3 = 32767;
 		//write frame to file
-		if(chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM || chan->codec == PAYLOAD_AMR) {
+		if(chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || 
+		   chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || 
+		   chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || 
+		   chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || 
+		   chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM || chan->codec == PAYLOAD_AMR) {
 			if(chan->codec == PAYLOAD_G723) {
+				short int zero = 0;
 				for(i = 1; (i * 30) <= chan->packetization; i++) {
 					if(chan->rawstream)
 						fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
@@ -431,6 +433,7 @@ void save_empty_frame(struct ast_channel *chan) {
 					//test_raw("empty frame", (const char*)(&zero), sizeof(short int));
 				}
 			} else if(chan->codec == PAYLOAD_G729) {
+				short int zero = 0;
 				for(i = 1; (i * 10) <= chan->packetization; i++) {
 					if(chan->rawstream)
 						fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
@@ -439,6 +442,7 @@ void save_empty_frame(struct ast_channel *chan) {
 					//test_raw("empty frame", (const char*)(&zero), sizeof(short int));
 				}
 			} else {
+				short int zero = 0;
 				for(i = 1; (i * 20) <= chan->packetization ; i++) {
 					if(chan->rawstream)
 						fwrite(&zero, 1, sizeof(short int), chan->rawstream);   // write zero packet
@@ -459,8 +463,7 @@ void save_empty_frame(struct ast_channel *chan) {
 			} else {
 				// write empty frame
 				if(chan->codec == PAYLOAD_PCMA || chan->codec == PAYLOAD_PCMU) {
-					char zero;
-					zero = chan->codec == PAYLOAD_PCMA ? 213 : 255;
+					unsigned char zero = chan->codec == PAYLOAD_PCMA ? 213 : 255;
 					for(i = 0; i < chan->last_datalen; i++) {
 						if(chan->rawstream)
 							fwrite(&zero, 1, 1, chan->rawstream);
@@ -469,12 +472,14 @@ void save_empty_frame(struct ast_channel *chan) {
 						//test_raw("empty frame", (const char*)(&zero), sizeof(char));
 					}
 				} else {
+					unsigned short int zero = chan->codec == PAYLOAD_G722 ? 65535 : 32767;
+					short int zero_audiobuff = 0;
 					for(i = 0; i < chan->last_datalen / 2; i++) {
 						if(chan->rawstream)
-							fwrite(&zero3, 2, 1, chan->rawstream);
+							fwrite(&zero, 2, 1, chan->rawstream);
 						if(chan->audiobuf)
-							fifobuff_add(chan->audiobuf,(const char*)(&zero2), sizeof(char));
-						//test_raw("empty frame", (const char*)(&zero2), sizeof(char));
+							fifobuff_add(chan->audiobuf,(const char*)(&zero_audiobuff), sizeof(char));
+						//test_raw("empty frame", (const char*)(&zero_audiobuff), sizeof(char));
 					}
 				}
 			}
