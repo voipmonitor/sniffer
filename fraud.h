@@ -807,6 +807,7 @@ class FraudAlertInfo_chc : public FraudAlertInfo {
 public:
 	FraudAlertInfo_chc(FraudAlert *alert);
 	void set(const char *number,
+		 const char *domain,
 		 FraudAlert::eTypeLocation typeLocation,
 		 vmIP ip,
 		 const char *location_code,
@@ -816,6 +817,7 @@ public:
 	string getJson();
 private:
 	string number;
+	string domain;
 	FraudAlert::eTypeLocation typeLocation;
 	vmIP ip;
 	vmIP ip_old;
@@ -832,6 +834,8 @@ protected:
 	bool defFilterIp() { return(true); }
 	bool defFilterIp2() { return(true); }
 	bool defFilterNumber() { return(true); }
+	bool defUseDomain() { return(true); }
+	bool defFilterDomain() { return(true); }
 	bool defTypeChangeLocation() { return(true); }
 	bool defChangeLocationOk() { return(true); }
 	bool defOnlyConnected() { return(true); }
