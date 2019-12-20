@@ -235,6 +235,7 @@ void *cCR_ResponseSender::sendProcess(void *arg) {
 }
 
 void cCR_ResponseSender::sendProcess() {
+	u_int64_t lastTimeOkSend_ms = 0;
 	while(!terminate) {
 		lock_data();
 		unsigned data_for_send_size = data_for_send.size();
@@ -296,6 +297,16 @@ void cCR_ResponseSender::sendProcess() {
 				continue;
 			}
 		}
+		u_int64_t actTime_ms = getTimeMS();
+		if(lastTimeOkSend_ms && actTime_ms > lastTimeOkSend_ms &&
+		   (actTime_ms - lastTimeOkSend_ms) > (60 - 5) * 1000) {
+			if(!socket->checkHandleRead()) {
+				delete socket;
+				socket = NULL;
+				cout << "****" << endl;
+				continue;
+			}
+		}
 		sDataForSend data;
 		lock_data();
 		data = data_for_send.front();
@@ -310,7 +321,6 @@ void cCR_ResponseSender::sendProcess() {
 			delete socket;
 			socket = NULL;
 			// log "failed write response"
-			sleep(1);
 			continue;
 		}
 		string dataResponse;
@@ -325,7 +335,6 @@ void cCR_ResponseSender::sendProcess() {
 			delete socket;
 			socket = NULL;
 			// log "failed read response after send data"
-			sleep(1);
 			continue;
 		}
 		delete data.buffer;
@@ -333,6 +342,7 @@ void cCR_ResponseSender::sendProcess() {
 		lock_data();
 		data_for_send.pop();
 		unlock_data();
+		lastTimeOkSend_ms = getTimeMS();
 	}
 	if(socket) {
 		delete socket;
