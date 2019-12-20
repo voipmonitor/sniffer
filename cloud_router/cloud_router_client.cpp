@@ -303,7 +303,6 @@ void cCR_ResponseSender::sendProcess() {
 			if(!socket->checkHandleRead()) {
 				delete socket;
 				socket = NULL;
-				cout << "****" << endl;
 				continue;
 			}
 		}
