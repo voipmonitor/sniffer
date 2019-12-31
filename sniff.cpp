@@ -1406,6 +1406,8 @@ void testPN() {
 		"<urn:service:sos>",
 		"sip:ravsgc01.ims.opt.nc",
 		"<sip:ravsgc01.ims.opt.nc>",
+		"<tel:011444444;phone-context=ims.mnc010.mcc283.3gppnetwork.org>",
+		"<tel:+33970660010>;tag=SDoduqd01-d87d01d6-0000-0bff-0000-0000",
 		"ů§jk§ůjsip:kljahfkjlahld",
 		"klhkjlh"
 	};
