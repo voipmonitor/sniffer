@@ -375,6 +375,9 @@ bool cSslDsslClientRandomItems::get(u_char *client_random, u_char *master_secret
 			}
 		}
 	} while(!rslt && waitUS >= 0);
+	if(sverb.ssl_sessionkey && rslt) {
+		cout << "* clientrandom found" << endl;
+	}
 	return(rslt);
 }
 
