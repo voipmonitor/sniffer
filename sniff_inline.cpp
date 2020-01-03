@@ -272,6 +272,7 @@ inline
 int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packet, unsigned caplen, u_int8_t *flags) {
 	extern unsigned opt_udp_port_l2tp;
 	extern unsigned opt_udp_port_tzsp;
+	extern unsigned opt_udp_port_vxlan;
 	extern bool opt_audiocodes;
 	extern unsigned opt_udp_port_audiocodes;
 	extern unsigned opt_tcp_port_audiocodes;
@@ -331,6 +332,23 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 			}
 			if(*((unsigned char*)header_ip + tzsp_offset + tzsp_length - 1) == 1) {			// check find end (1)
 				next_header_ip_offset = tzsp_offset + tzsp_length + sizeof(ether_header);
+			}
+		}
+		return(next_header_ip_offset);
+	} else if(opt_udp_port_vxlan &&
+		  header_ip->get_protocol() == IPPROTO_UDP &&									// VXLAN
+		  (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_vxlan &&	// check source port (default 0x9090)
+		  htons(((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->len) > 
+							 (sizeof(udphdr2) + 8 + sizeof(ether_header) + sizeof(iphdr2))) {	// check minimal length
+		unsigned int vxlan_length = 8;
+		unsigned int vxlan_offset = header_ip->get_hdr_size() + sizeof(udphdr2);
+		unsigned int next_header_ip_offset = 0;
+		if(*((unsigned char*)((char*)header_ip + vxlan_offset)) == 0x08 &&				// check first vxlan byte
+		   (htons(((ether_header*)((char*)header_ip + vxlan_offset + vxlan_length))->ether_type) == ETHERTYPE_IP ||
+		    (VM_IPV6_B && htons(((ether_header*)((char*)header_ip + vxlan_offset + vxlan_length))->ether_type) == ETHERTYPE_IPV6))) {
+			unsigned int _next_header_ip_offset = vxlan_offset + vxlan_length + sizeof(ether_header);
+			if(((iphdr2*)((char*)header_ip + _next_header_ip_offset))->version_is_ok()) {
+				next_header_ip_offset = _next_header_ip_offset;
 			}
 		}
 		return(next_header_ip_offset);

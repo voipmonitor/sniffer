@@ -996,6 +996,7 @@ bool updateSchema = false;
 
 unsigned opt_udp_port_l2tp = 1701;
 unsigned opt_udp_port_tzsp = 0x9090;
+unsigned opt_udp_port_vxlan = 4789;
 
 unsigned opt_tcp_port_mgcp_gateway = 2427;
 unsigned opt_udp_port_mgcp_gateway = 2427;
@@ -7072,6 +7073,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42465) cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_l2tp",  &opt_udp_port_l2tp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_vxlan",  &opt_udp_port_vxlan));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
@@ -10807,6 +10809,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "udp_port_tzsp", NULL))) {
 		opt_udp_port_tzsp = atoi(value);
+	}
+	if((value = ini.GetValue("general", "udp_port_vxlan", NULL))) {
+		opt_udp_port_vxlan = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "audiocodes", NULL))) {
