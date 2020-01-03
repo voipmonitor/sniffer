@@ -893,7 +893,8 @@ bool cBilling::billing(time_t time, unsigned duration,
 		       const char *domain_src, const char *domain_dst,
 		       double *operator_price, double *customer_price,
 		       unsigned *operator_currency_id, unsigned *customer_currency_id,
-		       unsigned *operator_id, unsigned *customer_id) {
+		       unsigned *operator_id, unsigned *customer_id,
+		       char *norm_src_num, char *norm_dst_num) {
 	bool rslt = false;
 	*operator_price = 0;
 	*customer_price = 0;
@@ -904,6 +905,10 @@ bool cBilling::billing(time_t time, unsigned duration,
 	lock();
 	string number_src_normalized = checkInternational->numberNormalized(number_src, countryPrefixes);
 	string number_dst_normalized = checkInternational->numberNormalized(number_dst, countryPrefixes);
+	if (norm_src_num && norm_dst_num) {
+		strncpy(norm_src_num, number_src_normalized.c_str(), 31);
+		strncpy(norm_dst_num, number_dst_normalized.c_str(), 31);
+	}
 	if(!exclude->checkIP(ip_src, _billing_side_src) &&
 	   !exclude->checkIP(ip_dst, _billing_side_dst) &&
 	   !exclude->checkNumber(number_src_normalized.c_str(), _billing_side_src) &&
