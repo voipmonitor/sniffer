@@ -5837,9 +5837,6 @@ void test() {
 		for(unsigned i = 0; i < calls.size(); i++) {
 			vector<string> call = split(calls[i], ',');
 			if(call.size() >= 6) {
-				cout << "calldate, duration:       " << call[0] << ", " << call[1] << endl;
-				cout << "numbers:                  " << call[2] << " -> " << call[3] << endl;
-				cout << "IP:                       " << call[4] << " -> " << call[5] << endl;
 				time_t calldate_time = stringToTime(call[0].c_str());
 				double operator_price; 
 				double customer_price;
@@ -5847,13 +5844,18 @@ void test() {
 				unsigned customer_currency_id;
 				unsigned operator_id;
 				unsigned customer_id;
+				char norm_dst_num[32], norm_src_num[32];
 				billing.billing(calldate_time , atoi(call[1].c_str()),
 						str_2_vmIP(call[4].c_str()), str_2_vmIP(call[5].c_str()),
 						call[2].c_str(), call[3].c_str(),
 						"", "",
 						&operator_price, &customer_price,
 						&operator_currency_id, &customer_currency_id,
-						&operator_id, &customer_id);
+						&operator_id, &customer_id, norm_src_num, norm_dst_num);
+				cout << "calldate, duration:       " << call[0] << ", " << call[1] << endl;
+				cout << "numbers:                  " << call[2] << " -> " << call[3] << endl;
+				cout << "normalized numbers:       " << norm_src_num << " -> " << norm_dst_num << endl;
+				cout << "IP:                       " << call[4] << " -> " << call[5] << endl;
 				cout << "rslt operator price:      " << operator_price;
 				if(call.size() >= 7 && call[6].length()) {
 					double test_operator_price = atof(call[6].c_str());

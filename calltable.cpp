@@ -4589,7 +4589,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				    caller_domain, called_domain,
 				    &operator_price, &customer_price,
 				    &operator_currency_id, &customer_currency_id,
-				    &operator_id, &customer_id)) {
+				    &operator_id, &customer_id, NULL, NULL)) {
 			if(existsColumns.cdr_price_operator_mult100) {
 				cdr.add(round(operator_price * 100), "price_operator_mult100");
 			}

@@ -288,7 +288,8 @@ public:
 		     const char *domain_src, const char *domain_dst,
 		     double *operator_price, double *customer_price,
 		     unsigned *operator_currency_id, unsigned *customer_currency_id,
-		     unsigned *operator_id, unsigned *customer_id);
+		     unsigned *operator_id, unsigned *customer_id,
+		     char *norm_dst_num, char *norm_src_num);
 	bool saveAggregation(time_t time,
 			     vmIP ip_src, vmIP ip_dst,
 			     const char *number_src, const char *number_dst,
