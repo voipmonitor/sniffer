@@ -1,3 +1,9 @@
+26.5 06.01.2020
+===============
+- added vxlan hedaer support (vmware mirroring) [VG-1972]
+- implemented domain check in fraud alert change cdr country [VG-1609]
+
+
 26.4.4 19.12.2019
 =================
 - update libpcap to 1.9.
