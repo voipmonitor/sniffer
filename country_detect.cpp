@@ -179,7 +179,7 @@ void CheckInternational::setInternationalPrefixes(const char *prefixes, vector<s
 	for(unsigned i = 0; i < internationalPrefixes.size(); i++) {
 		if(internationalPrefixes[i].length()) {
 			if(internationalPrefixes[i][0] == '^') {
-				this->internationalPrefixes_regexp.push_back(new FILE_LINE(0) cRegExp(internationalPrefixes[i].c_str(), cRegExp::_regexp_icase_mathes));
+				this->internationalPrefixes_regexp.push_back(new FILE_LINE(0) cRegExp(internationalPrefixes[i].c_str(), cRegExp::_regexp_icase_matches));
 			} else {
 				this->internationalPrefixes_string.push_back(internationalPrefixes[i]);
 			}
@@ -195,7 +195,7 @@ void CheckInternational::setSkipPrefixes(const char *prefixes, vector<string> *s
 	for(unsigned i = 0; i < skipPrefixes.size(); i++) {
 		if(skipPrefixes[i].length()) {
 			if(skipPrefixes[i][0] == '^') {
-				this->skipPrefixes_regexp.push_back(new FILE_LINE(0) cRegExp(skipPrefixes[i].c_str(), cRegExp::_regexp_icase_mathes));
+				this->skipPrefixes_regexp.push_back(new FILE_LINE(0) cRegExp(skipPrefixes[i].c_str(), cRegExp::_regexp_icase_matches));
 			} else {
 				this->skipPrefixes_string.push_back(skipPrefixes[i]);
 			}
@@ -325,7 +325,7 @@ bool CheckInternational::loadCustomerPrefixAdv(SqlDb *sqlDb) {
 				for(unsigned i = 0; i < trim_prefixes.size(); i++) {
 					if(trim_prefixes[i].length()) {
 						if(trim_prefixes[i][0] == '^') {
-							recAdv->trim_prefixes_regexp.push_back(new FILE_LINE(0) cRegExp(trim_prefixes[i].c_str(), cRegExp::_regexp_icase_mathes));
+							recAdv->trim_prefixes_regexp.push_back(new FILE_LINE(0) cRegExp(trim_prefixes[i].c_str(), cRegExp::_regexp_icase_matches));
 						} else {
 							recAdv->trim_prefixes_string.push_back(trim_prefixes[i]);
 						}

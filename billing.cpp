@@ -529,6 +529,16 @@ bool cPeakDefinition::peakCheck(tm &time, cStateHolidays *holidays, tm *toTime, 
 }
 
 
+cBillingRuleNumber::cBillingRuleNumber() {
+	regexp = NULL;
+}
+
+cBillingRuleNumber::~cBillingRuleNumber() {
+	if(regexp) {
+		delete regexp;
+	}
+}
+
 void cBillingRuleNumber::load(SqlDb_row *row) {
 	name = (*row)["name"];
 	number_prefix = (*row)["prefix_number"];
@@ -540,8 +550,58 @@ void cBillingRuleNumber::load(SqlDb_row *row) {
 	price_peak = atof((*row)["price_peak"].c_str());
 	t1 = atoi((*row)["t1"].c_str());
 	t2 = atoi((*row)["t2"].c_str());
+	use_for_number_format = numberFormatEnum((*row)["use_for_number_format"].c_str());
+	use_for_number_type = numberTypeEnum((*row)["use_for_number_type"].c_str());
 }
 
+void cBillingRuleNumber::regexp_create() {
+	if(regexp) {
+		delete regexp;
+		regexp = NULL;
+	}
+	if(number_regex.length()) {
+		regexp = new FILE_LINE(0) cRegExp(number_regex.c_str(), cRegExp::_regexp_icase_matches);
+	}
+}
+
+cBillingRuleNumber::eNumberFormat cBillingRuleNumber::numberFormatEnum(const char *str) {
+	return(!strcasecmp(str, "original") ? 
+		_number_format_original :
+	       !strcasecmp(str, "normalized") ? 
+		 _number_format_normalized : 
+	       !strcasecmp(str, "both") ? 
+		_number_format_both :
+		_number_format_na);
+}
+
+cBillingRuleNumber::eNumberType cBillingRuleNumber::numberTypeEnum(const char *str) {
+	return(!strcasecmp(str, "local") ? 
+		_number_type_local : 
+	       !strcasecmp(str, "international") ? 
+		_number_type_international :
+	       !strcasecmp(str, "both") ? 
+		_number_type_both :
+		_number_type_na);
+}
+
+string cBillingRuleNumber::numberFormatString(eNumberFormat numbFormat) {
+	return(numbFormat == _number_format_na ? "na" :
+	       numbFormat == _number_format_original ? "original" :
+	       numbFormat == _number_format_normalized ? "normalized" :
+	       numbFormat == _number_format_both ? "both" : "unknown");
+}
+
+string cBillingRuleNumber::numberTypeString(eNumberType numbType) {
+	return(numbType == _number_type_na ? "na" :
+	       numbType == _number_type_local ? "local" :
+	       numbType == _number_type_international ? "international" :
+	       numbType == _number_type_both ? "both" : "unknown");
+}
+
+
+cBillingRule::~cBillingRule() {
+	freeNumbers();
+}
 
 void cBillingRule::load(SqlDb_row *row) {
 	id = atol((*row)["id"].c_str());
@@ -553,6 +613,8 @@ void cBillingRule::load(SqlDb_row *row) {
 	price_peak = atof((*row)["default_price_peak"].c_str());
 	t1 = atoi((*row)["default_t1"].c_str());
 	t2 = atoi((*row)["default_t2"].c_str());
+	use_for_number_format = cBillingRuleNumber::numberFormatEnum((*row)["default_use_for_number_format"].c_str());
+	use_for_number_type = cBillingRuleNumber::numberTypeEnum((*row)["default_use_for_number_type"].c_str());
 	default_customer = atoi((*row)["default_customer_billing"].c_str());
 	currency_code = (*row)["currency_code"];
 	currency_id = atoi((*row)["currency_id"].c_str());
@@ -565,6 +627,7 @@ void cBillingRule::loadNumbers(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
+	freeNumbers();
 	if(sqlDb->existsTable("billing_rule")) {
 		sqlDb->query("select * \
 			      from billing_rule \
@@ -573,8 +636,8 @@ void cBillingRule::loadNumbers(SqlDb *sqlDb) {
 		sqlDb->fetchRows(&rows);
 		SqlDb_row row;
 		while((row = rows.fetchRow())) {
-			cBillingRuleNumber number;
-			number.load(&row);
+			cBillingRuleNumber *number = new FILE_LINE(0) cBillingRuleNumber;
+			number->load(&row);
 			numbers.push_back(number);
 		}
 	}
@@ -583,8 +646,16 @@ void cBillingRule::loadNumbers(SqlDb *sqlDb) {
 	}
 }
 
+void cBillingRule::freeNumbers() {
+	for(list<cBillingRuleNumber*>::iterator iter = numbers.begin(); iter != numbers.end(); iter++) {
+		delete *iter;
+	}
+	numbers.clear();
+}
+
 double cBillingRule::billing(time_t time, unsigned duration, const char *number, const char *number_normalized,
-			     cStateHolidays *holidays, const char *timezone) {
+			     bool isLocalNumber, cStateHolidays *holidays, const char *timezone,
+			     vector<dstring> *debug) {
 	tm time_tm = time_r(&time, timezone_name.length() ? timezone_name.c_str() : timezone);
 	if(!duration) {
 		duration = 1;
@@ -593,46 +664,133 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 	double price_peak = this->price_peak;
 	unsigned t1 = this->t1;
 	unsigned t2 = this->t2;
+	cBillingRuleNumber::eNumberFormat number_format_default = this->use_for_number_format == cBillingRuleNumber::_number_format_na ?
+								   cBillingRuleNumber::_number_format_both : this->use_for_number_format;
+	cBillingRuleNumber::eNumberType number_type_default = this->use_for_number_type == cBillingRuleNumber::_number_type_na ?
+							       cBillingRuleNumber::_number_type_both : this->use_for_number_type;
 	cPeakDefinition peak_definition = this->peak_definition;
 	if(numbers.size()) {
 		bool findNumber = false;
+		unsigned useRegexMatchLength = 0;
 		unsigned useNumberPrefixLength = 0;
 		for(unsigned pass = 0; pass < 3 && !findNumber; pass++) {
-			for(list<cBillingRuleNumber>::iterator iter = numbers.begin(); iter != numbers.end(); iter++) {
-				if( (pass == 0 &&
-				    iter->number_fixed.length() &&
-				    (iter->number_fixed == number ||
-				     (number_normalized && iter->number_fixed == number_normalized)))
-					||
-				    (pass == 1 && iter->number_prefix.length() &&
-				    (iter->number_prefix == string(number, min(strlen(number), iter->number_prefix.length())) ||
-				     (number_normalized && iter->number_prefix == string(number_normalized, min(strlen(number_normalized), iter->number_prefix.length())))) &&
-				    (!useNumberPrefixLength || iter->number_prefix.length() > useNumberPrefixLength))
-					||
-				    (pass == 2 && iter->number_regex.length() &&
-				    (reg_match(number, iter->number_regex.c_str(), __FILE__, __LINE__) || (number_normalized &&
-				     reg_match(number_normalized, iter->number_regex.c_str(), __FILE__, __LINE__))))) {
-
-					if(iter->price) {
-						price = iter->price;
+			for(list<cBillingRuleNumber*>::iterator iter = numbers.begin(); iter != numbers.end(); iter++) {
+				cBillingRuleNumber::eNumberFormat number_format = (*iter)->use_for_number_format == cBillingRuleNumber::_number_format_na ?
+										   number_format_default : (*iter)->use_for_number_format;
+				cBillingRuleNumber::eNumberType number_type = (*iter)->use_for_number_type == cBillingRuleNumber::_number_type_na ?
+									       number_type_default : (*iter)->use_for_number_type;
+				if(!(number_type == cBillingRuleNumber::_number_type_both ||
+				     number_type == (isLocalNumber ? cBillingRuleNumber::_number_type_local : cBillingRuleNumber::_number_type_international))) {
+					continue;
+				}
+				bool ok = false;
+				unsigned regex_match_length = 0;
+				switch(pass) {
+				case 0:
+					if((*iter)->number_fixed.length() &&
+					   (((number_format == cBillingRuleNumber::_number_format_original || 
+					      number_format == cBillingRuleNumber::_number_format_both) &&
+					     (*iter)->number_fixed == number) ||
+					    (number_normalized &&
+					     (number_format == cBillingRuleNumber::_number_format_normalized || 
+					      number_format == cBillingRuleNumber::_number_format_both) &&
+					     (*iter)->number_fixed == number_normalized))) {
+						if(debug) {
+							debug->push_back(dstring("fixed", 
+										 (*iter)->number_fixed + 
+										 " format: " + cBillingRuleNumber::numberFormatString(number_format) + 
+										 " type: " + cBillingRuleNumber::numberTypeString(number_type)));
+						}
+						ok = true;
 					}
-					if(iter->price_peak) {
-						price_peak = iter->price_peak;
+					break;
+				case 1:
+					if((*iter)->number_regex.length()) {
+						if(!(*iter)->regexp) {
+							(*iter)->regexp_create();
+						}
+						if((*iter)->regexp->isOK()) {
+							if(number_format == cBillingRuleNumber::_number_format_original || 
+							   number_format == cBillingRuleNumber::_number_format_both) {
+								vector<string> matches;
+								if((*iter)->regexp->match(number, &matches) > 0) {
+									for(unsigned i = 0; i < matches.size(); i++) {
+										if(matches[i].length() > regex_match_length) {
+											regex_match_length = matches[i].length();
+										}
+									}
+								}
+							}
+							if(number_normalized &&
+							   (number_format == cBillingRuleNumber::_number_format_normalized || 
+							    number_format == cBillingRuleNumber::_number_format_both)) {
+								vector<string> matches;
+								if((*iter)->regexp->match(number_normalized, &matches) > 0) {
+									for(unsigned i = 0; i < matches.size(); i++) {
+										if(matches[i].length() > regex_match_length) {
+											regex_match_length = matches[i].length();
+										}
+									}
+								}
+							}
+							if(regex_match_length > 0 &&
+							   (!useRegexMatchLength || regex_match_length > useRegexMatchLength)) {
+								if(debug) {
+									debug->push_back(dstring("regex", 
+												 (*iter)->number_regex + 
+												 " match length: " + intToString(regex_match_length) +
+												 " format: " + cBillingRuleNumber::numberFormatString(number_format) + 
+												 " type: " + cBillingRuleNumber::numberTypeString(number_type)));
+								}
+								ok = true;
+							}
+						}
 					}
-					if(iter->t1) {
-						t1 = iter->t1;
+					break;
+				case 2:
+					if((*iter)->number_prefix.length() &&
+					   (((number_format == cBillingRuleNumber::_number_format_original || 
+					      number_format == cBillingRuleNumber::_number_format_both) &&
+					     (*iter)->number_prefix == string(number, min(strlen(number), (*iter)->number_prefix.length()))) ||
+					    (number_normalized &&
+					     (number_format == cBillingRuleNumber::_number_format_normalized || 
+					      number_format == cBillingRuleNumber::_number_format_both) &&
+					     (*iter)->number_prefix == string(number_normalized, min(strlen(number_normalized), (*iter)->number_prefix.length())))) &&
+					   (!useNumberPrefixLength || (*iter)->number_prefix.length() > useNumberPrefixLength)) {
+						if(debug) {
+							debug->push_back(dstring("prefix", 
+										 (*iter)->number_prefix + 
+										 " prefix length: " + intToString((*iter)->number_prefix.length()) +
+										 " format: " + cBillingRuleNumber::numberFormatString(number_format) + 
+										 " type: " + cBillingRuleNumber::numberTypeString(number_type)));
+						}
+						ok = true;
 					}
-					if(iter->t2) {
-						t2 = iter->t2;
+					break;
+				}
+				if(ok) {
+					if((*iter)->price) {
+						price = (*iter)->price;
 					}
-					if(iter->peak_definition.enable) {
-						peak_definition = iter->peak_definition;
+					if((*iter)->price_peak) {
+						price_peak = (*iter)->price_peak;
+					}
+					if((*iter)->t1) {
+						t1 = (*iter)->t1;
+					}
+					if((*iter)->t2) {
+						t2 = (*iter)->t2;
+					}
+					if((*iter)->peak_definition.enable) {
+						peak_definition = (*iter)->peak_definition;
 					}
 					findNumber = true;
-					if(pass == 1) {
-						useNumberPrefixLength = iter->number_prefix.length();
-					} else {
+					if(pass == 0) {
 						break;
+					} else if(pass == 1) {
+						useRegexMatchLength = regex_match_length;
+					} else if(pass == 2) {
+						useNumberPrefixLength = (*iter)->number_prefix.length();
 					}
 				}
 			}
@@ -894,7 +1052,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 		       double *operator_price, double *customer_price,
 		       unsigned *operator_currency_id, unsigned *customer_currency_id,
 		       unsigned *operator_id, unsigned *customer_id,
-		       char *norm_src_num, char *norm_dst_num) {
+		       vector<dstring> *operator_debug, vector<dstring> *customer_debug) {
 	bool rslt = false;
 	*operator_price = 0;
 	*customer_price = 0;
@@ -905,10 +1063,6 @@ bool cBilling::billing(time_t time, unsigned duration,
 	lock();
 	string number_src_normalized = checkInternational->numberNormalized(number_src, countryPrefixes);
 	string number_dst_normalized = checkInternational->numberNormalized(number_dst, countryPrefixes);
-	if (norm_src_num && norm_dst_num) {
-		strncpy(norm_src_num, number_src_normalized.c_str(), 31);
-		strncpy(norm_dst_num, number_dst_normalized.c_str(), 31);
-	}
 	if(!exclude->checkIP(ip_src, _billing_side_src) &&
 	   !exclude->checkIP(ip_dst, _billing_side_dst) &&
 	   !exclude->checkNumber(number_src_normalized.c_str(), _billing_side_src) &&
@@ -938,8 +1092,14 @@ bool cBilling::billing(time_t time, unsigned duration,
 			cStateHolidays *holidays = rules->rules[*operator_id]->holiday_id ?
 						     &this->holidays->holidays[rules->rules[*operator_id]->holiday_id] :
 						     NULL;
+			bool isLocalNumber = countryPrefixes->isLocal(number_dst, &assignments->operators[operator_assignment_id]->checkInternational);
+			if(operator_debug) {
+				operator_debug->push_back(dstring("dst number normalized", number_dst_normalized_billing));
+				operator_debug->push_back(dstring("type number", isLocalNumber ? "local" : "international"));
+			}
 			*operator_price = rules->rules[*operator_id]->billing(time, duration, number_dst, number_dst_normalized.c_str(),
-									      holidays, gui_timezone.c_str());
+									      isLocalNumber, holidays, gui_timezone.c_str(),
+									      operator_debug);
 			*operator_currency_id = rules->rules[*operator_id]->currency_id;
 		}
 		if(*customer_id) {
@@ -950,8 +1110,17 @@ bool cBilling::billing(time_t time, unsigned duration,
 			cStateHolidays *holidays = rules->rules[*customer_id]->holiday_id ?
 						     &this->holidays->holidays[rules->rules[*customer_id]->holiday_id] :
 						     NULL;
+			CheckInternational *_checkInternational = customer_assignment_id ?
+								   &assignments->customers[customer_assignment_id]->checkInternational :
+								   checkInternational;
+			bool isLocalNumber = countryPrefixes->isLocal(number_dst, _checkInternational);
+			if(customer_debug) {
+				customer_debug->push_back(dstring("dst number normalized", number_dst_normalized_billing));
+				customer_debug->push_back(dstring("type number", isLocalNumber ? "local" : "international"));
+			}
 			*customer_price = rules->rules[*customer_id]->billing(time, duration, number_dst, number_dst_normalized.c_str(),
-									      holidays, gui_timezone.c_str());
+									      isLocalNumber, holidays, gui_timezone.c_str(),
+									      customer_debug);
 			*customer_currency_id = rules->rules[*customer_id]->currency_id;
 		}
 	}

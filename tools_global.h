@@ -382,7 +382,7 @@ public:
 		_regexp_icase = 1,
 		_regexp_sub = 2,
 		_regexp_matches = 2,
-		_regexp_icase_mathes = 3
+		_regexp_icase_matches = 3
 	};
 public:
 	cRegExp(const char *pattern, eFlags flags = _regexp_icase,

@@ -158,7 +158,27 @@ friend class cBillingRule;
 
 class cBillingRuleNumber {
 public:
+	enum eNumberFormat {
+		_number_format_na,
+		_number_format_original,
+		_number_format_normalized,
+		_number_format_both
+	};
+	enum eNumberType {
+		_number_type_na,
+		_number_type_local,
+		_number_type_international,
+		_number_type_both
+	};
+public:
+	cBillingRuleNumber();
+	~cBillingRuleNumber();
 	void load(SqlDb_row *row);
+	void regexp_create();
+	static eNumberFormat numberFormatEnum(const char *str);
+	static eNumberType numberTypeEnum(const char *str);
+	static string numberFormatString(eNumberFormat numbFormat);
+	static string numberTypeString(eNumberType numbType);
 private:
 	string name;
 	string number_prefix;
@@ -169,15 +189,21 @@ private:
 	double price_peak;
 	unsigned t1;
 	unsigned t2;
+	eNumberFormat use_for_number_format;
+	eNumberType use_for_number_type;
+	cRegExp *regexp;
 friend class cBillingRule;
 };
 
 class cBillingRule {
 public:
+	~cBillingRule();
 	void load(SqlDb_row *row);
 	void loadNumbers(SqlDb *sqlDb = NULL);
+	void freeNumbers();
 	double billing(time_t time, unsigned duration, const char *number, const char *number_normalized,
-		       cStateHolidays *holidays, const char *timezone);
+		       bool isLocalNumber, cStateHolidays *holidays, const char *timezone,
+		       vector<dstring> *debug = NULL);
 private:
 	unsigned id;
 	string name;
@@ -187,11 +213,13 @@ private:
 	double price_peak;
 	unsigned t1;
 	unsigned t2;
+	cBillingRuleNumber::eNumberFormat use_for_number_format;
+	cBillingRuleNumber::eNumberType use_for_number_type;
 	bool default_customer;
 	string currency_code;
 	unsigned currency_id;
 	string timezone_name;
-	list<cBillingRuleNumber> numbers;
+	list<cBillingRuleNumber*> numbers;
 friend class cBillingRules;
 friend class cBilling;
 };
@@ -289,7 +317,7 @@ public:
 		     double *operator_price, double *customer_price,
 		     unsigned *operator_currency_id, unsigned *customer_currency_id,
 		     unsigned *operator_id, unsigned *customer_id,
-		     char *norm_dst_num, char *norm_src_num);
+		     vector<dstring> *operator_debug = NULL, vector<dstring> *customer_debug = NULL);
 	bool saveAggregation(time_t time,
 			     vmIP ip_src, vmIP ip_dst,
 			     const char *number_src, const char *number_dst,

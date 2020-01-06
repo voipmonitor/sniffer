@@ -5845,19 +5845,20 @@ void test() {
 				unsigned customer_currency_id;
 				unsigned operator_id;
 				unsigned customer_id;
-				char norm_dst_num[32], norm_src_num[32];
+				vector<dstring> operator_debug, customer_debug;
 				billing.billing(calldate_time , atoi(call[1].c_str()),
 						str_2_vmIP(call[4].c_str()), str_2_vmIP(call[5].c_str()),
 						call[2].c_str(), call[3].c_str(),
 						"", "",
 						&operator_price, &customer_price,
 						&operator_currency_id, &customer_currency_id,
-						&operator_id, &customer_id, norm_src_num, norm_dst_num);
-				cout << "calldate, duration:       " << call[0] << ", " << call[1] << endl;
-				cout << "numbers:                  " << call[2] << " -> " << call[3] << endl;
-				cout << "normalized numbers:       " << norm_src_num << " -> " << norm_dst_num << endl;
-				cout << "IP:                       " << call[4] << " -> " << call[5] << endl;
-				cout << "rslt operator price:      " << operator_price;
+						&operator_id, &customer_id, &operator_debug, &customer_debug);
+				unsigned labelWidth = 30;
+				cout << fixed;
+				cout << setw(labelWidth) << left << "calldate, duration:" << call[0] << ", " << call[1] << endl;
+				cout << setw(labelWidth) << left << "numbers:" << call[2] << " -> " << call[3] << endl;
+				cout << setw(labelWidth) << left << "IP:" << call[4] << " -> " << call[5] << endl;
+				cout << setw(labelWidth) << left << "rslt operator price:" << operator_price;
 				if(call.size() >= 7 && call[6].length()) {
 					double test_operator_price = atof(call[6].c_str());
 					if(round(test_operator_price * 1e6) == round(operator_price * 1e6)) {
@@ -5867,7 +5868,10 @@ void test() {
 					}
 				}
 				cout << " / currency id: " << operator_currency_id << " / operator id: " << operator_id << endl;
-				cout << "rslt customer price:      " << customer_price;
+				for(unsigned i = 0; i < operator_debug.size(); i++) {
+					cout << " - " << setw(labelWidth - 3) << left << operator_debug[i][0] << operator_debug[i][1] << endl;
+				}
+				cout << setw(labelWidth) << left << "rslt customer price:" << customer_price;
 				if(call.size() >= 8 && call[7].length()) {
 					double test_customer_price = atof(call[7].c_str());
 					if(round(test_customer_price * 1e6) == round(customer_price * 1e6)) {
@@ -5877,6 +5881,9 @@ void test() {
 					}
 				}
 				cout << " / currency id: " << customer_currency_id << " / customer id: " << customer_id << endl;
+				for(unsigned i = 0; i < customer_debug.size(); i++) {
+					cout << " - " << setw(labelWidth - 3) << left << customer_debug[i][0] << customer_debug[i][1] << endl;
+				}
 				cout << "---" << endl;
 			}
 		}
