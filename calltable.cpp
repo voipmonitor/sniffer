@@ -437,6 +437,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	seenudptl = 0;
 	exists_udptl_data = false;
 	not_acceptable = false;
+	sip_fragmented = false;
+	rtp_fragmented = false;
 	last_callercodec = -1;
 	ipport_n = 0;
 	ssrc_n = 0;
@@ -1338,6 +1340,9 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 	bool rtp_read_rslt = _read_rtp(packetS, iscaller, find_by_dest, stream_in_multiple_calls, ifname, &record_dtmf, &disable_save);
 	if(!disable_save) {
 		_save_rtp(packetS, is_fax, enable_save_packet, record_dtmf, packetS->datalen_() != datalen_orig);
+	}
+	if(packetS->pid.flags & FLAG_FRAGMENTED) {
+		this->rtp_fragmented = true;
 	}
 	return(rtp_read_rslt);
 }
@@ -3896,6 +3901,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	if (televent_exists_response) {
 		cdr_flags |= CDR_TELEVENT_EXISTS_RESPONSE;
+	}
+	if (sip_fragmented) {
+		cdr_flags |= CDR_SIP_FRAGMENTED;
+	}
+	if (rtp_fragmented) {
+		cdr_flags |= CDR_RTP_FRAGMENTED;
 	}
 
 	vmIP sipcalledip_confirmed;

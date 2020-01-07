@@ -119,6 +119,8 @@
 #define CDR_SIPALG_DETECTED		(1 << 7)
 #define CDR_TELEVENT_EXISTS_REQUEST	(1 << 8)
 #define CDR_TELEVENT_EXISTS_RESPONSE	(1 << 9)
+#define CDR_SIP_FRAGMENTED		(1 << 10)
+#define CDR_RTP_FRAGMENTED		(1 << 11)
 
 #define SS7_IAM 1
 #define SS7_ACM 6
@@ -759,6 +761,9 @@ public:
 	char seenudptl;
 	bool exists_udptl_data;
 	bool not_acceptable;
+	
+	bool sip_fragmented;
+	bool rtp_fragmented;
 
 	void *rtp_cur[2];		//!< last RTP structure in direction 0 and 1 (iscaller = 1)
 	void *rtp_prev[2];		//!< previouse RTP structure in direction 0 and 1 (iscaller = 1)

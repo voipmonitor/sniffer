@@ -3210,6 +3210,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		goto endsip;
 	}
 	
+	if(packetS->pid.flags & FLAG_FRAGMENTED) {
+		call->sip_fragmented = true;
+	}
+	
 	if((packetS->sip_method == INVITE && call->typeIsOnly(MESSAGE)) ||
 	   (packetS->sip_method == MESSAGE && call->typeIsOnly(INVITE))) {
 		call->addNextType(packetS->sip_method);

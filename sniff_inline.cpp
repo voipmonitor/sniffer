@@ -547,6 +547,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
 					// packets are reassembled
 					ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+					ppd->pid.flags |= FLAG_FRAGMENTED;
 					if(sverb.defrag) {
 						defrag_counter++;
 						cout << "*** DEFRAG 1 " << defrag_counter << endl;
@@ -609,6 +610,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 								header_ip_prev->set_tot_len(ppd->header_ip->get_tot_len() + (ppd->header_ip_offset - headers_ip_offset[i]));
 								header_ip_prev->clear_frag_data();
 							}
+							ppd->pid.flags |= FLAG_FRAGMENTED;
 							if(sverb.defrag) {
 								defrag_counter++;
 								cout << "*** DEFRAG 2 " << defrag_counter << endl;

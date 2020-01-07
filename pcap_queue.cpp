@@ -4705,7 +4705,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	int res;
 	u_int header_ip_offset = 0;
 	sPacketInfoData pid;
-	pid.init();
+	pid.clear();
 	u_int dlink = global_pcap_dlink;
 
 	if(this->readThreadsCount) {
@@ -4852,6 +4852,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			} else if(res == 0) {
 				usleep(100);
 			} else if(res > 0) {
+				this->ppd.pid.clear();
 				if(pcap_next_ex_header->caplen > SNAPLEN) {
 					pcap_next_ex_header->caplen = SNAPLEN;
 				}
@@ -7443,6 +7444,7 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 		if(rsltDefrag > 0) {
 			// packets are reassembled
 			header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+			hp->header->pid.flags |= FLAG_FRAGMENTED;
 			if(sverb.defrag) {
 				defrag_counter++;
 				cout << "*** DEFRAG 1 " << defrag_counter << endl;
@@ -7483,6 +7485,7 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 						header_ip_prev->set_tot_len(header_ip->get_tot_len() + (hp->header->header_ip_offset - headers_ip_offset[i]));
 						header_ip_prev->clear_frag_data();
 					}
+					hp->header->pid.flags |= FLAG_FRAGMENTED;
 					if(sverb.defrag) {
 						defrag_counter++;
 						cout << "*** DEFRAG 2 " << defrag_counter << endl;

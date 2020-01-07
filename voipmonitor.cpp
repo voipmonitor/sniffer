@@ -7413,6 +7413,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"server-pass", 1, 0, 330},
 	    {"disable-dbupgradecheck", 0, 0, 319},
 	    {"ssl-master-secret-file", 1, 0, 336},
+	    {"t2_boost", 0, 0, 337},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -7990,6 +7991,9 @@ void get_command_line_arguments() {
 				break;
 			case 336:
 				strcpy_null_term(ssl_master_secret_file, optarg);
+				break;
+			case 337:
+				opt_t2_boost = true;
 				break;
 		}
 		if(optarg) {

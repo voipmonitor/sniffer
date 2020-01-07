@@ -14,7 +14,7 @@
 struct sPacketInfoData {
 	u_int16_t vlan;
 	u_int8_t flags;
-	inline void init() {
+	inline void clear() {
 		vlan = VLAN_UNSET;
 		flags = 0;
 	}

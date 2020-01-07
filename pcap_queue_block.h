@@ -18,6 +18,7 @@
 #define PCAP_BLOCK_STORE_HEADER_VERSION		6
 
 #define FLAG_AUDIOCODES 1
+#define FLAG_FRAGMENTED 2
 
 
 extern int opt_enable_ss7;
@@ -126,6 +127,7 @@ struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {
 		detect_headers = 0;
 		md5[0] = 0;
 		ignore = false;
+		pid.clear();
 	}
 	u_int8_t detect_headers;
 	u_int16_t header_ip_first_offset;
