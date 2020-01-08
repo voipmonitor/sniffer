@@ -1,3 +1,14 @@
+26.6 06.01.2020
+===============
+- add UDP fragmented flag to CDR if UDP is defragmented (which is SIP RFC violation) 
+changes in billing: [VG-1971]
+- add resolution to rules for number format (original, normalized, both)
+- add resolution to rules for number type (local, international, both)
+- increase priority for regex match in rules (regex rules are now matched before prefix rules)
+- allow check multiple regex rules and select rule with the greatest match length
+- extend debug output for command line option --test-billing
+
+
 26.5 06.01.2020
 ===============
 - added vxlan hedaer support (vmware mirroring) [VG-1972]
