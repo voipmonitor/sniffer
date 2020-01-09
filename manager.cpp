@@ -1106,9 +1106,11 @@ int _parse_command(char *buf, int size, sClientInfo client, cClient *c_client, M
 		return(0);
 	}
 
-	char *pointerToEndSeparator = strstr(buf, "\r\n");
-	if(pointerToEndSeparator) {
-		*pointerToEndSeparator = 0;
+	for(int i = 0; i < 2; i++) {
+		char *pointerToEndSeparator = strstr(buf, i == 0 ? "\r" : "\n");
+		if(pointerToEndSeparator) {
+			*pointerToEndSeparator = 0;
+		}
 	}
 	if(sverb.manager) {
 		cout << "manager command: " << buf << "|END" << endl;
@@ -3403,11 +3405,23 @@ int Mgmt_hot_restart(Mgmt_params *params) {
 }
 
 int Mgmt_get_json_config(Mgmt_params *params) {
+	string cmd = "get_json_config";
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("get_json_config", "export JSON config");
+		params->registerCommand(cmd.c_str(), "export JSON config");
 		return(0);
 	}
-	string rslt = useNewCONFIG ? CONFIG.getJson() : "not supported";
+	string rslt;
+	vector<string> filter;
+	if(strlen(params->buf) > cmd.length() + 1) {
+		split(params->buf + cmd.length() + 1, ',', filter);
+	}
+	if(CONFIG.isSet()) {
+		rslt = CONFIG.getJson(false, &filter);
+	} else {
+		cConfig config;
+		config.addConfigItems();
+		rslt = config.getJson(false, &filter);
+	}
 	return(params->sendString(&rslt));
 }
 

@@ -989,6 +989,8 @@ char opt_test_str[1024];
 map<int, string> command_line_data;
 cConfig CONFIG;
 bool useNewCONFIG = 0;
+bool useCmdLineConfig = false;
+
 bool printConfigStruct = false;
 bool printConfigFile = false;
 bool printConfigFile_default = false;
@@ -3151,15 +3153,17 @@ int main(int argc, char *argv[]) {
 		if(useNewCONFIG) {
 			CONFIG.loadFromConfigFileOrDirectory(configfile);
 			CONFIG.loadFromConfigFileOrDirectory("/etc/voipmonitor/conf.d/");
-			cConfigMap configMap1 = CONFIG.getConfigMap();
-			cConfigMap configMap2;
-			CONFIG.loadConfigMapConfigFileOrDirectory(&configMap2, configfile);
-			CONFIG.loadConfigMapConfigFileOrDirectory(&configMap2, "/etc/voipmonitor/conf.d/");
-			string diffConfigStr = configMap1.comp(&configMap2, &CONFIG);
-			if(!diffConfigStr.empty()) {
-				vector<string> diff = split(diffConfigStr.c_str(), "\n");
-				for(size_t i = 0; i < diff.size(); i++) {
-					syslog(LOG_WARNING, "MISMATCH CONFIGURATION PARAMETER : %s", diff[i].c_str());
+			if(!useCmdLineConfig) {
+				cConfigMap configMap1 = CONFIG.getConfigMap();
+				cConfigMap configMap2;
+				CONFIG.loadConfigMapConfigFileOrDirectory(&configMap2, configfile);
+				CONFIG.loadConfigMapConfigFileOrDirectory(&configMap2, "/etc/voipmonitor/conf.d/");
+				string diffConfigStr = configMap1.comp(&configMap2, &CONFIG);
+				if(!diffConfigStr.empty()) {
+					vector<string> diff = split(diffConfigStr.c_str(), "\n");
+					for(size_t i = 0; i < diff.size(); i++) {
+						syslog(LOG_WARNING, "MISMATCH CONFIGURATION PARAMETER : %s", diff[i].c_str());
+					}
 				}
 			}
 		} else {
@@ -7414,6 +7418,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"disable-dbupgradecheck", 0, 0, 319},
 	    {"ssl-master-secret-file", 1, 0, 336},
 	    {"t2_boost", 0, 0, 337},
+	    {"json_config", 1, 0, 338},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -7994,6 +7999,16 @@ void get_command_line_arguments() {
 				break;
 			case 337:
 				opt_t2_boost = true;
+				break;
+			case 338:
+				if(CONFIG.isSet()) {
+					CONFIG.setFromJson(optarg);
+				} else {
+					cConfig config;
+					config.addConfigItems();
+					config.setFromJson(optarg);
+				}
+				useCmdLineConfig = true;
 				break;
 		}
 		if(optarg) {

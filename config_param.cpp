@@ -2026,10 +2026,22 @@ string cConfig::getContentConfig(bool configFile, bool putDefault) {
 	return(outStr.str());
 }
 
-string cConfig::getJson(bool onlyIfSet) {
+string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 	JsonExport json;
 	int counter = 1;
 	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
+		if(filter && filter->size()) {
+			bool filter_ok = false;
+			for(vector<string>::iterator iter_filter = filter->begin(); iter_filter != filter->end(); iter_filter++) {
+				if(!strcasecmp(iter_filter->c_str(), iter->c_str())) {
+					filter_ok = true;
+					break;
+				}
+			}
+			if(!filter_ok) {
+				continue;
+			}
+		}
 		map<string, cConfigItem*>::iterator iter_map = config_map.find(*iter);
 		if(iter_map != config_map.end()) {
 			if(!onlyIfSet || iter_map->second->set) {
@@ -2040,9 +2052,22 @@ string cConfig::getJson(bool onlyIfSet) {
 			}
 		}
 	}
-	JsonExport nextData;
-	nextData.add("setFromMysqlOk", setFromMysqlOk);
-	json.addJson("nextData", nextData.getJson());
+	bool okNextData = false;
+	if(filter && filter->size()) {
+		for(vector<string>::iterator iter_filter = filter->begin(); iter_filter != filter->end(); iter_filter++) {
+			if(!strcasecmp(iter_filter->c_str(), "nextData")) {
+				okNextData = true;
+				break;
+			}
+		}
+	} else {
+		okNextData = true;
+	}
+	if(okNextData) {
+		JsonExport nextData;
+		nextData.add("setFromMysqlOk", setFromMysqlOk);
+		json.addJson("nextData", nextData.getJson());
+	}
 	return(json.getJson());
 }
 
@@ -2230,6 +2255,10 @@ cConfigItem *cConfig::getItem(const char *itemName) {
 		return(config_map[mainItemName]);
 	}
 	return(NULL);
+}
+
+bool cConfig::isSet() {
+	return(config_map.size() > 0);
 }
 
 bool cConfig::isSet(const char *itemName) {

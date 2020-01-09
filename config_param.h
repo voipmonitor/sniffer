@@ -601,7 +601,7 @@ public:
 	void evSetConfigItem(cConfigItem *configItem);
 	cConfigMap getConfigMap();
 	string getContentConfig(bool configFile = false, bool putDefaultValues = false);
-	string getJson(bool onlyIfSet = false);
+	string getJson(bool onlyIfSet = false, vector<string> *filter = NULL);
 	void setFromJson(const char *jsonStr, bool onlyIfSet = true);
 	void setFromMysql(bool checkConnect = false, bool onlyIfSet = true);
 	void putToMysql();
@@ -613,6 +613,7 @@ public:
 	bool testEqValues(const char *itemName, const char *value1, const char *value2);
 	bool testEqValues(string itemName, list<string> values1, list<string> values2);
 	cConfigItem *getItem(const char *itemName);
+	bool isSet();
 	bool isSet(const char *itemName);
 	void beginTrackDiffValues();
 	void endTrackDiffValues(list<sDiffValue> *diffValues);
