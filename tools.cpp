@@ -2443,6 +2443,36 @@ char *strncasechr(const char *haystack, char needle, size_t len)
         return NULL;
 }
 
+int strcasecmp_wildcard(const char *str, const char *pattern, const char *wildcard) {
+	return(strncasecmp_wildcard(str, pattern, SIZE_MAX, wildcard));
+}
+
+int strncasecmp_wildcard(const char *str, const char *pattern, size_t len, const char *wildcard) {
+	size_t wildcard_lenght = strlen(wildcard);
+	size_t cmp_len = 0;
+	while((*str || *pattern) && cmp_len < len) {
+		if(toupper(*str) != toupper(*pattern)) {
+			if(*str && *pattern) {
+				bool is_wildcard = false;
+				for(unsigned i = 0; i < wildcard_lenght; i++) {
+					if(*pattern == wildcard[i]) {
+						is_wildcard = true;
+					}
+				}
+				if(!is_wildcard) {
+					return(*str - *pattern);
+				}
+			} else {
+				return(*str - *pattern);
+			}
+		}
+		++str;
+		++pattern;
+		++cmp_len;
+	}
+	return(0);
+}
+
 
 size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength) {
 	if(eqMinLength) {

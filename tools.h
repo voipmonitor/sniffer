@@ -367,6 +367,8 @@ char *strnstr(const char *haystack, const char *needle, size_t len);
 char *strncasestr(const char *haystack, const char *needle, size_t len);
 char *strnchr(const char *haystack, char needle, size_t len);
 char *strncasechr(const char *haystack, char needle, size_t len);
+int strcasecmp_wildcard(const char *str, const char *pattern, const char *wildcard);
+int strncasecmp_wildcard(const char *str, const char *pattern, size_t len, const char *wildcard);
 size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength);
 
 inline char* strncpy_null_term(char *dst, const char *src, size_t size) {
@@ -1251,6 +1253,9 @@ public:
 	CheckString(const char *checkString) {
 		this->checkString = checkString;
 		this->checkString_length = this->checkString.length();
+		boundLeft = false;
+		boundRight = false;
+		wildcard = false;
 		interval = false;
 		interval_num_length = -1;
 		interval_from = -1;
@@ -1313,6 +1318,7 @@ public:
 		} else {
 			this->boundRight = true;
 		}
+		this->wildcard = this->checkString.find('_') != string::npos;
 	}
 	bool check(const char *checkString) {
 		if(!this->checkString_length) {
@@ -1356,13 +1362,19 @@ public:
 			return(true);
 		}
 		if(this->boundLeft && this->boundRight) {
-			return(!strcasecmp(checkString, this->checkString.c_str()));
+			return(this->wildcard ?
+				!strcasecmp_wildcard(checkString, this->checkString.c_str(), "_") :
+				!strcasecmp(checkString, this->checkString.c_str()));
 		} else if(this->boundLeft) {
-			return(!strncasecmp(checkString, this->checkString.c_str(), this->checkString_length));
+			return(this->wildcard ?
+				!strncasecmp_wildcard(checkString, this->checkString.c_str(), this->checkString_length, "_") :
+				!strncasecmp(checkString, this->checkString.c_str(), this->checkString_length));
 		} else if(this->boundRight) {
 			uint length = strlen(checkString);
 			if(length >= this->checkString_length) {
-				return(!strcasecmp(checkString + length - this->checkString_length, this->checkString.c_str()));
+				return(this->wildcard ?
+					!strcasecmp_wildcard(checkString + length - this->checkString_length, this->checkString.c_str(), "_") :
+					!strcasecmp(checkString + length - this->checkString_length, this->checkString.c_str()));
 			} else {
 				return(false);
 			}
@@ -1375,6 +1387,7 @@ public:
 	uint checkString_length;
 	bool boundLeft;
 	bool boundRight;
+	bool wildcard;
 	bool interval;
 	std::string interval_eq;
 	int interval_num_length;
