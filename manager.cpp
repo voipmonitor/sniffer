@@ -2434,7 +2434,7 @@ int Mgmt_creategraph(Mgmt_params *params) {
 								      color.c_str(), resx, resy,
 								      slope, icon);
 			if(!createGraphCmd.empty()) {
-				createGraphCmd = "rrdtool " + createGraphCmd;
+				createGraphCmd = string(RRDTOOL_CMD) + " " + createGraphCmd;
 				RrdChartQueueItem *queueItem = new FILE_LINE(0) RrdChartQueueItem;
 				queueItem->request_type = "graph";
 				queueItem->rrd_cmd = createGraphCmd;

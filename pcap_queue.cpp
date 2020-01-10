@@ -2469,6 +2469,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if (opt_rrd) {
 		if (opt_rrd == 1) {
 			rrd_charts_create();
+			rrd_charts_alter();
 			opt_rrd ++;
 		}
 		rrd_update();

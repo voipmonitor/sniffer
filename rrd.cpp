@@ -93,7 +93,8 @@ RrdChartValue::RrdChartValue(const char *name, const char *descr, const char *co
 }
 
 string RrdChartValue::createString(unsigned chartStep) {
-	return("DS:" + name + ":GAUGE:" + intToString(chartStep * 2) + ":" + floatToString(min, precision) + ":" + floatToString(max, precision) + " ");
+	return("DS:" + name + ":GAUGE:" + intToString(chartStep * 2) + ":" + 
+	       floatToString(min, precision) + ":" + floatToString(max, precision) + " ");
 }
 
 void RrdChartValue::setValue(double value, bool add) {
@@ -222,6 +223,63 @@ string RrdChart::createString() {
 	return(rslt);
 }
 
+void RrdChart::parseStructFromInfo(const char *info, list<RrdChartValue> *values) {
+	vector<string> infoA = split(info, "\n");
+	RrdChartValue rrdValue("", "", "", 0, 0);
+	for(unsigned i = 0; i < infoA.size(); i++) {
+		if(infoA[i].substr(0, 3) == "ds[") {
+			size_t endNamePos = infoA[i].find("].");
+			size_t valueSeparator = infoA[i].find(" = ");
+			if(endNamePos != string::npos && valueSeparator != string::npos) {
+				string series = infoA[i].substr(3, endNamePos - 3);
+				string name = infoA[i].substr(endNamePos + 2, valueSeparator - endNamePos - 2);
+				string value = infoA[i].substr(valueSeparator + 3);
+				if(!series.empty() && !name.empty() && !value.empty()) {
+					if(value.length() > 1 && value[0] == '"' && value[value.length() - 1] == '"') {
+						value = value.substr(1, value.length() - 2);
+					}
+					if(name == "index") {
+						if(!rrdValue.name.empty()) {
+							values->push_back(rrdValue);
+						}
+						rrdValue = RrdChartValue(series.c_str(), "", "", 0, 0);
+					} else if(name == "max") {
+						rrdValue.max = rrd_atof(value);
+					} else if(name == "min") {
+						rrdValue.min = rrd_atof(value);
+					}
+				}
+			}
+		}
+	}
+	if(!rrdValue.name.empty()) {
+		values->push_back(rrdValue);
+	}
+}
+
+void RrdChart::alterIfNeed(list<RrdChartValue> *valuesFromInfo, RrdCharts *rrdCharts) {
+	for(list<RrdChartValue*>::iterator iter = values.begin(); iter != values.end(); iter++) {
+		for(list<RrdChartValue>::iterator iter_info = valuesFromInfo->begin(); iter_info != valuesFromInfo->end(); iter_info++) {
+			if((*iter)->name == iter_info->name) {
+				if((*iter)->max != iter_info->max) {
+					syslog(LOG_NOTICE, "rrd alter : %s",
+					       (getDbFilename() + " : " + (*iter)->name + " : " + 
+						floatToString(iter_info->max, (*iter)->precision) + " -> " + floatToString((*iter)->max, (*iter)->precision)).c_str());
+					string alterStr = "tune " + getDbFilename() + " " +
+							  "--maximum " + (*iter)->name + ":" + floatToString((*iter)->max, (*iter)->precision);
+					rrdCharts->doRrdCmd(alterStr);
+				}
+			}
+		}
+	}
+}
+
+string RrdChart::infoString() {
+	string rslt =
+		"info " + getDbFilename();
+	return(rslt);
+}
+
 string RrdChart::graphString(const char *seriesGroupName,
 			     const char *dstfile, const char *fromTime, const char *toTime, 
 			     const char *backgroundColor, unsigned resx, unsigned resy, 
@@ -294,6 +352,12 @@ void RrdChart::clearValues() {
 	for(list<RrdChartValue*>::iterator iter = values.begin(); iter != values.end(); iter++) {
 		(*iter)->value = RRD_VALUE_UNSET;
 	}
+}
+
+double RrdChart::rrd_atof(string value) {
+	return(value == "U" ?
+		RRD_VALUE_UNSET :
+		atof(find_and_replace(value, ",", ".").c_str()));
 }
 
 RrdCharts::RrdCharts() {
@@ -373,12 +437,31 @@ void RrdCharts::clearValues() {
 	unlock_values();
 }
 
-void RrdCharts::createAll(bool skipIsExist) {
+void RrdCharts::createAll(bool skipIfExist) {
 	spooldir_mkdir(string(getRrdDir()) + "/rrd");
 	for(list<RrdChart*>::iterator iter = charts.begin(); iter != charts.end(); iter++) {
-		if(!skipIsExist || !file_exists((*iter)->getDbFilename().c_str())) {
+		if(!skipIfExist || !file_exists((*iter)->getDbFilename().c_str())) {
 			string createString = (*iter)->createString();
 			doRrdCmd(createString);
+		}
+	}
+}
+
+void RrdCharts::alterAll() {
+	for(list<RrdChart*>::iterator iter = charts.begin(); iter != charts.end(); iter++) {
+		if(file_exists((*iter)->getDbFilename().c_str())) {
+			string infoString = (*iter)->infoString();
+			SimpleBuffer out;
+			rrd_lock();
+			vm_pexec((string(RRDTOOL_CMD) + " " + infoString).c_str(), &out);
+			rrd_unlock();
+			if(out.size() > 0) {
+				list<RrdChartValue> structFromInfo;
+				(*iter)->parseStructFromInfo((char*)out, &structFromInfo);
+				if(structFromInfo.size() > 0) {
+					(*iter)->alterIfNeed(&structFromInfo, this);
+				}
+			}
 		}
 	}
 }
@@ -415,13 +498,18 @@ bool RrdCharts::doRrdCmd(string cmd, string *error, bool syslogError) {
 	}
 	_cmd_args[_cmd_args_length] = NULL;
 	bool dllRun = false;
+	rrd_lock();
 	if(cmd_args[0] == "create") {
 		rrd_create(_cmd_args_length, _cmd_args);
 		dllRun = true;
 	} else if(cmd_args[0] == "update") {
 		rrd_update(_cmd_args_length, _cmd_args);
 		dllRun = true;
+	} else if(cmd_args[0] == "tune") {
+		rrd_tune(_cmd_args_length, _cmd_args);
+		dllRun = true;
 	}
+	rrd_unlock();
 	for(unsigned i = 0; i < _cmd_args_length; i++) {
 		delete [] _cmd_args[i];
 	}
@@ -480,6 +568,7 @@ void RrdCharts::_queueThread() {
 		unlock_queue();
 		if(item) {
 			if(item->request_type == "graph") {
+				rrd_lock();
 				if(vm_pexec(item->rrd_cmd.c_str(), &item->result)) {
 					if(!item->result.size()) {
 						item->error = "failed output from rrdtool";
@@ -488,6 +577,7 @@ void RrdCharts::_queueThread() {
 					item->error = "failed run rrdtool";
 				}
 				item->completed = true;
+				rrd_unlock();
 			}
 		} else {
 			usleep(10000);
@@ -536,6 +626,8 @@ void RrdCharts::createMapValues() {
 	}
 }
 
+volatile int RrdCharts::sync_rrd = 0;
+
 
 RrdCharts rrd_charts;
 
@@ -552,7 +644,7 @@ void rrd_charts_init() {
 			->setPrecision(1, 1);
 	ch->addValue(RRD_VALUE_tCPU_t1, "t1 CPU Usage %", "00FF00", 0, 120)
 			->setPrecision(1, 1);
-	ch->addValue(RRD_VALUE_tCPU_t2, "t2 CPU Usage %", "FF0000", 0, 120)
+	ch->addValue(RRD_VALUE_tCPU_t2, "t2 CPU Usage %", "FF0000", 0, 120 * 20)
 			->setPrecision(1, 1);
 	
 	// * heap
@@ -706,6 +798,12 @@ void rrd_charts_init() {
 void rrd_charts_create() {
 	if(opt_rrd) {
 		rrd_charts.createAll();
+	}
+}
+
+void rrd_charts_alter() {
+	if(opt_rrd) {
+		rrd_charts.alterAll();
 	}
 }
 

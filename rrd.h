@@ -67,6 +67,8 @@
 
 #define RRD_VALUE_UNSET DBL_MAX
 
+#define RRDTOOL_CMD "rrdtool"
+
 
 #include <list>
 #include <map>
@@ -145,6 +147,9 @@ public:
 	void addSeriesGroup(const char *name, RrdChartSeriesGroup *group);
 	virtual void setStdDb(unsigned rows = 0);
 	string createString();
+	void parseStructFromInfo(const char *info, list<RrdChartValue> *values);
+	void alterIfNeed(list<RrdChartValue> *valuesFromInfo, class RrdCharts *rrdCharts);
+	string infoString();
 	string graphString(const char *seriesGroupName,
 			   const char *dstfile, const char *fromTime, const char *toTime, 
 			   const char *backgroundColor, unsigned resx, unsigned resy, 
@@ -153,6 +158,8 @@ public:
 	string getDbFilename();
 	bool setValue(const char *valuename, double value, bool add = false);
 	void clearValues();
+private:
+	double rrd_atof(string value);
 private:
 	string dbname;
 	string name;
@@ -199,7 +206,8 @@ public:
 	int setValue(const char *valuename, double value, const char *dbname = NULL, bool add = false);
 	int addValue(const char *valuename, double value, const char *dbname = NULL);
 	void clearValues();
-	void createAll(bool skipIsExist = true);
+	void createAll(bool skipIfExist = true);
+	void alterAll();
 	void updateAll();
 	bool doRrdCmd(string cmd, string *error = NULL, bool syslogError = false);
 	void addToQueue(RrdChartQueueItem *queueItem);
@@ -209,6 +217,12 @@ public:
 	void prepareQueueThreadPstatData();
 	double getCpuUsageQueueThreadPerc(bool preparePstatData);
 	void createMapValues();
+	static void rrd_lock() {
+		while(__sync_lock_test_and_set(&sync_rrd, 1));
+	}
+	static void rrd_unlock() {
+		__sync_lock_release(&sync_rrd);
+	}
 private:
 	void lock_values() {
 		while(__sync_lock_test_and_set(&sync_values, 1));
@@ -231,11 +245,13 @@ private:
 	pthread_t queue_thread_handle;
 	int queueThreadId;
 	pstat_data queueThreadPstatData[2];
+	static volatile int sync_rrd;
 };
 
 
 void rrd_charts_init();
 void rrd_charts_create();
+void rrd_charts_alter();
 void rrd_set_value(const char *valuename, double value, const char *dbname = NULL);
 void rrd_add_value(const char *valuename, double value, const char *dbname = NULL);
 void rrd_update();
