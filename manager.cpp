@@ -1113,7 +1113,7 @@ int _parse_command(char *buf, int size, sClientInfo client, cClient *c_client, M
 		}
 	}
 	if(sverb.manager) {
-		cout << "manager command: " << buf << "|END" << endl;
+		syslog(LOG_NOTICE, "manager command: %s|END", buf);
 	}
 	
 	int MgmtFuncIndex = -1;
