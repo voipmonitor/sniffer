@@ -282,7 +282,7 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 }
 
 void cSslDsslSession::store_session(cSslDsslSessions *sessions, struct timeval ts) {
-	if(opt_ssl_store_sessions && !opt_nocdr &&
+	if(opt_ssl_store_sessions && !opt_nocdr && sessions->exists_sessions_table &&
 	   this->process_data_counter > 0 &&
 	   this->session->c_dec.version && this->session->s_dec.version &&
 	   (!this->stored_at || this->stored_at < (u_long)(ts.tv_sec - 3600))) {
@@ -424,6 +424,7 @@ cSslDsslSessions::cSslDsslSessions() {
 	_sync_sessions_db = 0;
 	sqlDb = NULL;
 	last_delete_old_sessions_at = 0;
+	exists_sessions_table = false;
 	loadSessions();
 	init();
 }
@@ -596,7 +597,8 @@ void cSslDsslSessions::loadSessions() {
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 	}
-	if(!sqlDb->existsTable(storeSessionsTableName())) {
+	exists_sessions_table = sqlDb->existsTable(storeSessionsTableName());
+	if(!exists_sessions_table) {
 		return;
 	}
 	list<SqlDb_condField> cond;
@@ -616,15 +618,12 @@ void cSslDsslSessions::loadSessions() {
 }
 
 void cSslDsslSessions::deleteOldSessions(struct timeval ts) {
-	if(!opt_ssl_store_sessions || opt_nocdr) {
+	if(!opt_ssl_store_sessions || opt_nocdr || !exists_sessions_table) {
 		return;
 	}
 	if(!last_delete_old_sessions_at || last_delete_old_sessions_at < (u_long)(ts.tv_sec - 3600)) {
 		if(!sqlDb) {
 			sqlDb = createSqlObject();
-		}
-		if(!sqlDb->existsTable(storeSessionsTableName())) {
-			return;
 		}
 		list<SqlDb_condField> cond;
 		cond.push_back(SqlDb_condField("id_sensor", intToString(opt_id_sensor)));

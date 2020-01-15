@@ -167,6 +167,7 @@ private:
 	cSslDsslClientRandomItems client_random;
 	SqlDb *sqlDb;
 	u_long last_delete_old_sessions_at;
+	bool exists_sessions_table;
 friend class cSslDsslSession;
 };
 
