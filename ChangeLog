@@ -1,3 +1,11 @@
+26.7 15.01.2020
+===============
+- add new command line parameter json_config, add filter to manager command get_json_config
+- rrd - add auto-alter maximum of series, set maximum for "t2 CPU Usage %" to 120 * 20 % [VS-805]
+- add support for like wildcard '_' in filters [VS-1018]
+- change output for verbose 'manager' from cout to syslog
+
+
 26.6 06.01.2020
 ===============
 - add UDP fragmented flag to CDR if UDP is defragmented (which is SIP RFC violation) 
