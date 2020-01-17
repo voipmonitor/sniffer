@@ -220,6 +220,7 @@ public:
 		_tc_gui_command,
 		_tc_service,
 		_tc_response,
+		_tc_responses,
 		_tc_query,
 		_tc_store,
 		_tc_packetbuffer_block,
@@ -243,6 +244,7 @@ protected:
 	void cp_gui_command(int32_t sensor_id, string command);
 	void cp_service();
 	void cp_respone(string gui_task_id, u_char *remainder, size_t remainder_length);
+	void cp_responses();
 	void cp_query();
 	void cp_store();
 	void cp_packetbuffer_block();
@@ -276,6 +278,7 @@ private:
 class cSnifferClientService : public cReceiver {
 public:
 	cSnifferClientService(int32_t sensor_id, const char *sensor_string, unsigned sensor_version);
+	void setResponseSender(class cSnifferClientResponseSender *response_sender);
 	bool start(string host, u_int16_t port);
 	virtual bool receive_process_loop_begin();
 	virtual void evData(u_char *data, size_t dataLen);
@@ -287,17 +290,53 @@ protected:
 	u_int16_t port;
 	bool connection_ok;
 	string connect_from;
+	cSnifferClientResponseSender *response_sender;
 };
 
 
 class cSnifferClientResponse : public cClient {
 public:
-	cSnifferClientResponse(string gui_task_id, string command);
+	cSnifferClientResponse(string gui_task_id, string command, cSnifferClientResponseSender *response_sender = NULL);
 	bool start(string host, u_int16_t port);
 	virtual void client_process();
 protected:
 	string gui_task_id;
 	string command;
+	cSnifferClientResponseSender *response_sender;
+};
+
+
+class cSnifferClientResponseSender {
+private:
+	struct sDataForSend {
+		string task_id;
+		SimpleBuffer *buffer;
+	};
+public:
+	cSnifferClientResponseSender();
+	~cSnifferClientResponseSender();
+	void add(string task_id, SimpleBuffer *buffer);
+	void start(string host, u_int16_t port);
+	void stop();
+	static void *sendProcess(void*);
+	void sendProcess();
+private:
+	void lock_data() {
+		while(__sync_lock_test_and_set(&_sync_data, 1)) {
+			usleep(10);
+		}
+	}
+	void unlock_data() {
+		__sync_lock_release(&_sync_data);
+	}
+private:
+	string host;
+	u_int16_t port;
+	volatile bool terminate;
+	cSocketBlock *socket;
+	pthread_t send_process_thread;
+	queue<sDataForSend> data_for_send;
+	volatile int _sync_data;
 };
 
 

@@ -16,6 +16,9 @@ sSnifferServerGuiTasks snifferServerGuiTasks;
 sSnifferServerServices snifferServerServices;
 cSnifferServer *snifferServer;
 cSnifferClientService *snifferClientService;
+cSnifferClientResponseSender *snifferClientResponseSender;
+
+static bool opt_enable_responses_sender;
 
 
 sSnifferServerVerbose SS_VERBOSE() {
@@ -293,6 +296,9 @@ void cSnifferServerConnection::connection_process() {
 	case _tc_response:
 		cp_respone(jsonData.getValue("gui_task_id"), remainder, remainder_length);
 		break;
+	case _tc_responses:
+		cp_responses();
+		break;
 	case _tc_query:
 		cp_query();
 		break;
@@ -453,6 +459,7 @@ void cSnifferServerConnection::cp_service() {
 		if(useSetId()) {
 			ok_parameters.add("mysql_set_id", useSetId());
 		}
+		ok_parameters.add("enable_responses_sender", true);
 		okAndParameters = ok_parameters.getJson();
 	} else {
 		okAndParameters = "OK";
@@ -563,6 +570,45 @@ void cSnifferServerConnection::cp_respone(string gui_task_id, u_char *remainder,
 	socket->set_aes_keys(aes_ckey, aes_ivec);
 	socket->readDecodeAesAndResendTo(gui_connection->socket, remainder, remainder_length);
 	snifferServerGuiTasks.setTaskState(gui_task_id, sSnifferServerGuiTask::_complete);
+	delete this;
+}
+
+void cSnifferServerConnection::cp_responses() {
+	if(!rsaAesInit()) {
+		delete this;
+		return;
+	}
+	if(SS_VERBOSE().connect_info_ext) {
+		ostringstream verbstr;
+		verbstr << "RESPONSES";
+		syslog(LOG_INFO, "%s", verbstr.str().c_str());
+	}
+	u_char *response;
+	size_t responseLength;
+	unsigned counter = 0;
+	while(!server->isTerminate() &&
+	      (response = socket->readBlock(&responseLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
+		u_char response_last_char = response[responseLength - 1];
+		response[responseLength - 1] = 0;
+		u_char *response_task_id_separator = (u_char*)strchr((char*)response, '#');
+		response[responseLength - 1] = response_last_char;
+		if(!response_task_id_separator) {
+			socket->writeBlock("missing gui task id", cSocket::_te_aes);
+			continue;
+		}
+		string gui_task_id = string((char*)response, response_task_id_separator - response);
+		cSnifferServerConnection *gui_connection = snifferServerGuiTasks.getGuiConnection(gui_task_id);
+		if(!gui_connection) {
+			socket->writeBlock("unknown gui task id", cSocket::_te_aes);
+			continue;
+		}
+		if(gui_connection->socket->write(response_task_id_separator + 1,
+						 responseLength - (response_task_id_separator - response) - 1)) {
+			if(socket->writeBlock("OK", cSocket::_te_aes)) {
+				snifferServerGuiTasks.setTaskState(gui_task_id, sSnifferServerGuiTask::_complete);
+			}
+		}
+	}
 	delete this;
 }
 
@@ -775,6 +821,8 @@ cSnifferServerConnection::eTypeConnection cSnifferServerConnection::convTypeConn
 		return(_tc_service);
 	} else if(typeConnection == "response") {
 		return(_tc_response);
+	} else if(typeConnection == "responses") {
+		return(_tc_responses);
 	} else if(typeConnection == "query") {
 		return(_tc_query);
 	} else if(typeConnection == "store") {
@@ -812,6 +860,7 @@ string cSnifferServerConnection::getTypeConnectionStr() {
 	case _tc_gui_command: return("gui_command");
 	case _tc_service: return("service");
 	case _tc_response: return("response");
+	case _tc_responses: return("responses");
 	case _tc_query: return("query");
 	case _tc_store: return("store");
 	case _tc_packetbuffer_block: return("packetbuffer_block");
@@ -827,6 +876,11 @@ cSnifferClientService::cSnifferClientService(int32_t sensor_id, const char *sens
 	this->sensor_version = sensor_version;
 	port = 0;
 	connection_ok = false;
+	response_sender = NULL;
+}
+
+void cSnifferClientService::setResponseSender(cSnifferClientResponseSender *response_sender) {
+	this->response_sender = response_sender;
 }
 
 bool cSnifferClientService::start(string host, u_int16_t port) {
@@ -942,6 +996,7 @@ bool cSnifferClientService::receive_process_loop_begin() {
 						snifferClientOptions.mysql_set_id = !rsltConnectData_json.getValue("mysql_set_id").empty() &&
 										    atoi(rsltConnectData_json.getValue("mysql_set_id").c_str());
 					}
+					opt_enable_responses_sender = !rsltConnectData_json.getValue("enable_responses_sender").empty();
 				} else {
 					if(!receive_socket->isError()) {
 						receive_socket->setError(rsltConnectData.c_str());
@@ -971,26 +1026,36 @@ void cSnifferClientService::evData(u_char *data, size_t dataLen) {
 	string idCommand = string((char*)data, dataLen);
 	size_t idCommandSeparatorPos = idCommand.find('/'); 
 	if(idCommandSeparatorPos != string::npos) {
-		cSnifferClientResponse *response = new FILE_LINE(0) cSnifferClientResponse(idCommand.substr(0, idCommandSeparatorPos), idCommand.substr(idCommandSeparatorPos + 1));
+		cSnifferClientResponse *response = new FILE_LINE(0) cSnifferClientResponse(
+				idCommand.substr(0, idCommandSeparatorPos), 
+				idCommand.substr(idCommandSeparatorPos + 1),
+				opt_enable_responses_sender ? response_sender : NULL);
 		response->start(receive_socket->getHost(), receive_socket->getPort());
 	}
 }
 
 
-cSnifferClientResponse::cSnifferClientResponse(string gui_task_id, string command) {
+cSnifferClientResponse::cSnifferClientResponse(string gui_task_id, string command, cSnifferClientResponseSender *response_sender) {
 	this->gui_task_id = gui_task_id;
-	this->command = command;	
+	this->command = command;
+	this->response_sender = response_sender;
 }
 
 bool cSnifferClientResponse::start(string host, u_int16_t port) {
-	if(!_connect(host, port)) {
-		return(false);
+	if(response_sender) {
+		this->writeToBuffer();
+	} else {
+		if(!_connect(host, port)) {
+			return(false);
+		}
 	}
-	string connectCmd = "{\"type_connection\":\"response\",\"gui_task_id\":\"" + gui_task_id + "\"}\r\n";
-	if(!client_socket->write(connectCmd)) {
-		delete client_socket;
-		client_socket = NULL;
-		return(false);
+	if(!response_sender) {
+		string connectCmd = "{\"type_connection\":\"response\",\"gui_task_id\":\"" + gui_task_id + "\"}\r\n";
+		if(!client_socket->write(connectCmd)) {
+			delete client_socket;
+			client_socket = NULL;
+			return(false);
+		}
 	}
 	_client_start();
 	return(true);
@@ -999,8 +1064,157 @@ bool cSnifferClientResponse::start(string host, u_int16_t port) {
 void cSnifferClientResponse::client_process() {
 	extern int parse_command(string cmd, sClientInfo client, cClient *c_client);
 	parse_command(command, 0, this);
-	client_socket->writeAesEnc(NULL, 0, true);
+	if(response_sender) {
+		response_sender->add(gui_task_id, buffer);
+		buffer = NULL;
+	} else {
+		client_socket->writeAesEnc(NULL, 0, true);
+	}
 	delete this;
+}
+
+
+cSnifferClientResponseSender::cSnifferClientResponseSender() {
+	terminate = false;
+	socket = NULL;
+	send_process_thread = 0;
+	_sync_data = 0;
+}
+
+cSnifferClientResponseSender::~cSnifferClientResponseSender() {
+	stop();
+}
+
+void cSnifferClientResponseSender::add(string task_id, SimpleBuffer *buffer) {
+	lock_data();
+	sDataForSend data;
+	data.task_id = task_id;
+	data.buffer = buffer;
+	data_for_send.push(data);
+	unlock_data();
+}
+
+void cSnifferClientResponseSender::start(string host, u_int16_t port) {
+	this->host = host;
+	this->port = port;
+	vm_pthread_create("cSnifferClientResponseSender::start", &send_process_thread, NULL, cSnifferClientResponseSender::sendProcess, this, __FILE__, __LINE__);
+}
+
+void cSnifferClientResponseSender::stop() {
+	terminate = true;
+	if(send_process_thread) {
+		pthread_join(send_process_thread, NULL);
+		send_process_thread = 0;
+	}
+}
+
+void *cSnifferClientResponseSender::sendProcess(void *arg) {
+	((cSnifferClientResponseSender*)arg)->sendProcess();
+	return(NULL);
+}
+
+void cSnifferClientResponseSender::sendProcess() {
+	while(!terminate) {
+		lock_data();
+		unsigned data_for_send_size = data_for_send.size();
+		unlock_data();
+		if(!data_for_send_size) {
+			usleep(100000);
+			continue;
+		}
+		if(!socket) {
+			socket = new FILE_LINE(0) cSocketBlock("responses", true);
+			socket->setHostPort(host, port);
+			if(!socket->connect()) {
+				delete socket;
+				socket = NULL;
+				// log "failed connect"
+				sleep(5);
+				continue;
+			}
+			string cmd = "{\"type_connection\":\"responses\"}\r\n";
+			if(!socket->write(cmd)) {
+				delete socket;
+				socket = NULL;
+				// log "failed send command"
+				sleep(1);
+				continue;
+			}
+			string rsltRsaKey;
+			if(!socket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
+				delete socket;
+				socket = NULL;
+				// log "failed read rsa key"
+				sleep(1);
+				continue;
+			}
+			JsonItem jsonRsaKey;
+			jsonRsaKey.parse(rsltRsaKey);
+			string rsa_key = jsonRsaKey.getValue("rsa_key");
+			socket->set_rsa_pub_key(rsa_key);
+			socket->generate_aes_keys();
+			JsonExport json_keys;
+			json_keys.add("password", snifferServerClientOptions.password);
+			string aes_ckey, aes_ivec;
+			socket->get_aes_keys(&aes_ckey, &aes_ivec);
+			json_keys.add("aes_ckey", aes_ckey);
+			json_keys.add("aes_ivec", aes_ivec);
+			if(!socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
+				delete socket;
+				socket = NULL;
+				// log "failed send password & aes keys"
+				sleep(1);
+				continue;
+			}
+			string connectResponse;
+			if(!socket->readBlock(&connectResponse) || connectResponse != "OK") {
+				delete socket;
+				socket = NULL;
+				// log "failed read response after send password & aes keys"
+				sleep(1);
+				continue;
+			}
+		}
+		sDataForSend data;
+		lock_data();
+		data = data_for_send.front();
+		unlock_data();
+		unsigned data_buffer_size = data.task_id.length() + 1 + data.buffer->size();
+		u_char *data_buffer = new u_char[data_buffer_size];
+		memcpy(data_buffer, data.task_id.c_str(), data.task_id.length());
+		memcpy(data_buffer + data.task_id.length(), "#", 1);
+		memcpy(data_buffer + data.task_id.length() + 1, data.buffer->data(), data.buffer->size());
+		if(!socket->writeBlock(data_buffer,data_buffer_size, cSocket::_te_aes)) {
+			delete [] data_buffer;
+			delete socket;
+			socket = NULL;
+			// log "failed write response"
+			continue;
+		}
+		string dataResponse;
+		if(!socket->readBlock(&dataResponse, cSocket::_te_aes, "", true) || dataResponse != "OK") {
+			if(dataResponse.find("missing gui task id") != string::npos || 
+			   dataResponse.find("unknown gui task id") != string::npos) {
+				lock_data();
+				data_for_send.pop();
+				unlock_data();
+			}
+			delete [] data_buffer;
+			delete socket;
+			socket = NULL;
+			// log "failed read response after send data"
+			continue;
+		}
+		delete data.buffer;
+		delete [] data_buffer;
+		lock_data();
+		data_for_send.pop();
+		unlock_data();
+	}
+	if(socket) {
+		delete socket;
+		socket = NULL;
+	}
 }
 
 
@@ -1029,11 +1243,12 @@ void snifferServerSetSqlStore(MySqlStore *sqlStore) {
 
 
 void snifferClientStart() {
-	if(snifferClientService) {
-		delete snifferClientService;
-	}
+	snifferClientStop();
+	snifferClientResponseSender = new FILE_LINE(0) cSnifferClientResponseSender();
+	snifferClientResponseSender->start(snifferClientOptions.host, snifferClientOptions.port);
 	extern char opt_sensor_string[128];
 	snifferClientService = new FILE_LINE(0) cSnifferClientService(opt_id_sensor > 0 ? opt_id_sensor : 0, opt_sensor_string, RTPSENSOR_VERSION_INT());
+	snifferClientService->setResponseSender(snifferClientResponseSender);
 	snifferClientService->setErrorTypeString(cSocket::_se_loss_connection, "connection to the server has been lost - trying again");
 	snifferClientService->start(snifferClientOptions.host, snifferClientOptions.port);
 	while(!snifferClientService->isStartOk() && !is_terminating()) {
@@ -1043,8 +1258,15 @@ void snifferClientStart() {
 
 
 void snifferClientStop() {
+	if(snifferClientResponseSender) {
+		snifferClientResponseSender->stop();
+	}
 	if(snifferClientService) {
 		delete snifferClientService;
 		snifferClientService = NULL;
+	}
+	if(snifferClientResponseSender) {
+		delete snifferClientResponseSender;
+		snifferClientResponseSender = NULL;
 	}
 }
