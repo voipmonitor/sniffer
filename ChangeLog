@@ -1,3 +1,10 @@
+26.7.1 17.01.2020
+=================
+- fix direct mysql access in cSslDsslSessions::deleteOldSessions which fixes stuck in packet processing [VS-1021]
+- suppress too much sdp_multiplication warnings - enable one warning per 10s [VS-1019]
+- add response sender thread in client / server mode (fixes latency in the sniffer and invalid utf-8 chars in crontab log) [VG-1709]
+
+
 26.7 15.01.2020
 ===============
 - add new command line parameter json_config, add filter to manager command get_json_config
