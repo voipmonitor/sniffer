@@ -1,3 +1,9 @@
+26.8 23.01.2020
+===============
+- store q850 reason from all packets but if BYE / CANCEL will have reason it will be not overwriten from another packet
+- fix static compiles - snappy regretion (30% faster)
+
+
 26.7.1 17.01.2020
 =================
 - fix direct mysql access in cSslDsslSessions::deleteOldSessions which fixes stuck in packet processing [VS-1021]
