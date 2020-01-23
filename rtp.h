@@ -442,13 +442,10 @@ public:
 	 *
 	 * Used for temporary operations on RTP packet
 	 *
-	 * @param data pointer to the packet buffer
-	 * @param header header structure of the packet
-	 * @param saddr source IP adress of the packet
+	 * @param data pointer to the data packet buffer
+	 * @param len data length
 	 *
 	*/
-	void fill(unsigned char* data, iphdr2 *header_ip, int len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
-	
 	void fill_data(unsigned char* data, int len);
 
 	/**
@@ -459,6 +456,7 @@ public:
 	 * @return padding RTP version
 	*/
 	const unsigned char getVersion() { return getHeader()->version; };
+	static const unsigned char getVersion(void *data) { return getHeader(data)->version; };
 	
 	/**
 	 * @brief get sequence sumber
@@ -486,6 +484,7 @@ public:
 	 * @return SSRC
 	*/
 	const u_int32_t getSSRC() { return htonl(getHeader()->sources[0]); };
+	static const u_int32_t getSSRC(void *data) { return htonl(getHeader(data)->sources[0]); };
 
 	/**
 	 * @brief get Payload 
@@ -495,6 +494,7 @@ public:
 	 * @return SSRC
 	*/
 	const int getPayload() { return getHeader()->payload; };
+	static const int getPayload(void *data) { return getHeader(data)->payload; };
 	/**
 	 * @brief get SSRC
 	 *
@@ -625,6 +625,7 @@ private:
 	int nintervals;
 
 	inline RTPFixedHeader* getHeader() const { return reinterpret_cast<RTPFixedHeader*>(data); }
+	static inline RTPFixedHeader* getHeader(void *data) { return reinterpret_cast<RTPFixedHeader*>(data); }
 	
 	void update_stats();
 	void update_graph_silence();

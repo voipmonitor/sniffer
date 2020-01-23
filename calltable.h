@@ -685,7 +685,6 @@ public:
 	char a_ua[1024];		//!< caller user agent 
 	char b_ua[1024];		//!< callee user agent 
 	RTPMAP rtpmap[MAX_IP_PER_CALL][MAX_RTPMAP]; //!< rtpmap for every rtp stream
-	RTP tmprtp;			//!< temporary structure used to decode information from frame
 	RTP *lastcallerrtp;		//!< last RTP stream from caller
 	RTP *lastcalledrtp;		//!< last RTP stream from called
 	vmIP saddr;		//!< source IP address of first INVITE

@@ -2089,18 +2089,6 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 
 /* fill internal structures by the input RTP packet */
 void
-RTP::fill(unsigned char* data, iphdr2 *header_ip, int len, struct pcap_pkthdr *header,  vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
-	this->data = data; 
-	this->header_ip = header_ip; 
-	this->len = len;
-	this->header_ts = header->ts;
-	this->saddr = saddr;
-	this->daddr = daddr;
-	this->sport = sport;
-	this->dport = dport;
-}
-
-void
 RTP::fill_data(unsigned char* data, int len) {
 	this->data = data; 
 	this->len = len;

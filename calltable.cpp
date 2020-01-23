@@ -427,7 +427,6 @@ Call_abstract::addTarPos(u_int64_t pos, int type) {
 /* constructor */
 Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative, u_int64_t time_us) :
  Call_abstract(call_type, time_us),
- tmprtp(-1, 0),
  pcap(PcapDumper::na, this),
  pcapSip(PcapDumper::sip, this),
  pcapRtp(PcapDumper::rtp, this) {
@@ -539,7 +538,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	}
 	rtplock = 0;
 	listening_worker_run = NULL;
-	tmprtp.call_owner = this;
 	lastcallerrtp = NULL;
 	lastcalledrtp = NULL;
 	saddr.clear();
@@ -1378,21 +1376,19 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 		first_rtp_time_us = getTimeUS(packetS->header_pt);
 	}
 	
-	//RTP tmprtp; moved to Call structure to avoid creating and destroying class which is not neccessary
-	tmprtp.fill((u_char*)packetS->data_(), packetS->header_ip_(), packetS->datalen_(), packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_());
-	
 	unsigned int curSSRC;
 	bool udptl = false;
 	if(packetS->isRtp()) {
-		if(tmprtp.getVersion() == 2) {
-			curSSRC = tmprtp.getSSRC();
+		void *data = packetS->data_();
+		if(RTP::getVersion(data) == 2) {
+			curSSRC = RTP::getSSRC(data);
 			if(curSSRC == 0) {
 				is_zerossrc_detected = true;
 				if(!opt_allow_zerossrc) {
 					return(false);
 				}
 			}
-			curpayload = tmprtp.getPayload();
+			curpayload = RTP::getPayload(data);
 		} else {
 			return(false);
 		}
