@@ -3360,7 +3360,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 	
 	if(existsColumns.cdr_reason &&
-	   (!opt_get_reason_from_bye_cancel || (opt_get_reason_from_bye_cancel && (packetS->sip_method == BYE || packetS->sip_method == CANCEL))) &&
+	   (!opt_get_reason_from_bye_cancel || call->reason_q850_cause == 0 || (opt_get_reason_from_bye_cancel && (packetS->sip_method == BYE || packetS->sip_method == CANCEL))) &&
 	   !(packetS->sip_method == CANCEL && call->seeninviteok && 
 	     (call->called_invite_branch_map.size() > 1 || call->is_multiple_to_branch()))) {
 		char *reason = gettag_sip(packetS, "reason:", &l);
