@@ -1775,6 +1775,14 @@ read:
 				if(this->rtp[ssrc_n]->rtpmap[i].is_set() && curpayload == this->rtp[ssrc_n]->rtpmap[i].payload) {
 					this->rtp[ssrc_n]->codec = this->rtp[ssrc_n]->rtpmap[i].codec;
 					this->rtp[ssrc_n]->frame_size = this->rtp[ssrc_n]->rtpmap[i].frame_size;
+					if (this->rtp[ssrc_n]->rtpmap[i].codec == PAYLOAD_TELEVENT) {
+						if (!enable_save_dtmf_pcap(this)) {
+							*disable_save = true;
+						}
+						if (opt_saverfc2833) {
+							*record_dtmf = true;
+						}
+					}
 				}
 			}
 		} else {
