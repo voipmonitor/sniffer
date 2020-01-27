@@ -1,6 +1,13 @@
+26.8.1 28.01.2020
+=================
+- use new static RTP functions instead of Call::tmprtp and RTP::fill (should be faster) 
+- handle dynamic DTMF events correctly (fixes dtmf2pcap=no for DTMF with dynamic payload) [VS-1025]
+- store RTP->iscaller/d to cdr_rtp.flags (used in GUI to determine to which side RTP belongs to) [VS-1030]
+
+
 26.8 23.01.2020
 ===============
-- store q850 reason from all packets but if BYE / CANCEL will have reason it will be not overwriten from another packet
+- get q.850 reason from all packets now until BYE / CANCEL packet is received which will set final q.850 (q.850 was parsed only from BYE/CANCEL and not from 4X 5X and 6X responses by default) 
 - fix static compiles - snappy regretion (30% faster)
 
 
