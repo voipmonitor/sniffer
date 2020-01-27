@@ -1435,6 +1435,19 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 			}
 */
 
+			if (opt_saverfc2833 || !enable_save_dtmf_pcap(this)) { // DTMF in dynamic payload types (rfc4733)
+				for(int j = 0; j < MAX_RTPMAP; j++) {
+					if(this->rtpmap[i][j].is_set() && this->rtpmap[i][j].codec == PAYLOAD_TELEVENT && this->rtpmap[i][j].payload == curpayload) {
+						if (!enable_save_dtmf_pcap(this)) {
+							*disable_save = true;
+						}
+						if (opt_saverfc2833) {
+							*record_dtmf = true;
+						}
+						break;
+					}
+				}
+			}
 			if(rtp[i]->eqAddrPort(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_())) {
 				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), packetS->saddr_(), packetS->dest_());
 				// found 
@@ -1762,6 +1775,14 @@ read:
 				if(this->rtp[ssrc_n]->rtpmap[i].is_set() && curpayload == this->rtp[ssrc_n]->rtpmap[i].payload) {
 					this->rtp[ssrc_n]->codec = this->rtp[ssrc_n]->rtpmap[i].codec;
 					this->rtp[ssrc_n]->frame_size = this->rtp[ssrc_n]->rtpmap[i].frame_size;
+					if (this->rtp[ssrc_n]->rtpmap[i].codec == PAYLOAD_TELEVENT) {
+						if (!enable_save_dtmf_pcap(this)) {
+							*disable_save = true;
+						}
+						if (opt_saverfc2833) {
+							*record_dtmf = true;
+						}
+					}
 				}
 			}
 		} else {
