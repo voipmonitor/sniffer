@@ -122,6 +122,11 @@
 #define CDR_SIP_FRAGMENTED		(1 << 10)
 #define CDR_RTP_FRAGMENTED		(1 << 11)
 
+#define CDR_RTP_STREAM_IN_MULTIPLE_CALLS	(1 << 0)
+#define CDR_RTP_STREAM_IS_AB			(1 << 1)
+#define CDR_RTP_STREAM_IS_CALLER		(1 << 2)
+#define CDR_RTP_STREAM_IS_CALLED		(1 << 3)
+
 #define SS7_IAM 1
 #define SS7_ACM 6
 #define SS7_CPG 44

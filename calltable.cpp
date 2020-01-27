@@ -4954,12 +4954,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(existsColumns.cdr_rtp_flags) {
 					u_int64_t flags = 0;
 					if(rtp[i]->stream_in_multiple_calls) {
-						flags |= 1;
+						flags |= CDR_RTP_STREAM_IN_MULTIPLE_CALLS;
 					}
 					// mark used rtp stream in a/b
-					if (rtp[i] == rtpab[0] or rtp[i] == rtpab[1])
-						flags |= 2;
-
+					if (rtp[i] == rtpab[0] or rtp[i] == rtpab[1]) {
+						flags |= CDR_RTP_STREAM_IS_AB;
+					}
+					flags |= rtp[i]->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
 					rtps.add(flags, "flags", !flags);
 				}
 				if(existsColumns.cdr_rtp_calldate) {
@@ -5353,12 +5354,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(existsColumns.cdr_rtp_flags) {
 					u_int64_t flags = 0;
 					if(rtp[i]->stream_in_multiple_calls) {
-						flags |= 1;
+						flags |= CDR_RTP_STREAM_IN_MULTIPLE_CALLS;
 					}
 					// mark used rtp stream in a/b
-					if (rtp[i] == rtpab[0] or rtp[i] == rtpab[1])
-						flags |= 2;
-
+					if (rtp[i] == rtpab[0] or rtp[i] == rtpab[1]) {
+						flags |= CDR_RTP_STREAM_IS_AB;
+					}
+					flags |= rtp[i]->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
 					if(flags) {
 						rtps.add(flags, "flags");
 					}
