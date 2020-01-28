@@ -65,7 +65,7 @@ RrdChartSeries* RrdChartSeries::setAdjust(const char *adj_operator, const char *
 
 string RrdChartSeries::graphString(const char *dbFilename) {
 	string rslt;
-	string var_name = "_" + name + "_" + fce;
+	string var_name = "_" + find_and_replace(name.c_str(), "-", "_") + "_" + fce;
 	rslt = 
 		"DEF:" + var_name + "=" + dbFilename + ":" + name + ":" + fce + " ";
 	if(!adj_operator.empty() && !adj_number.empty()) {
@@ -453,6 +453,9 @@ void RrdCharts::alterAll() {
 			string infoString = (*iter)->infoString();
 			SimpleBuffer out;
 			rrd_lock();
+			if(sverb.rrd_info) {
+				syslog(LOG_NOTICE, "call rrdttol: %s", (string(RRDTOOL_CMD) + " " + infoString).c_str());
+			}
 			vm_pexec((string(RRDTOOL_CMD) + " " + infoString).c_str(), &out);
 			rrd_unlock();
 			if(out.size() > 0) {
@@ -483,6 +486,9 @@ bool RrdCharts::doRrdCmd(string cmd, string *error, bool syslogError) {
 	parse_cmd_str(cmd.c_str(), &cmd_args);
 	if(cmd_args.empty()) {
 		return(false);
+	}
+	if(sverb.rrd_info) {
+		syslog(LOG_NOTICE, "call rrd command: %s", cmd.c_str());
 	}
 	extern char *rrd_last_cmd_global;
 	rrd_last_cmd_global = new FILE_LINE(0) char[cmd.length() + 1];
@@ -569,6 +575,9 @@ void RrdCharts::_queueThread() {
 		if(item) {
 			if(item->request_type == "graph") {
 				rrd_lock();
+				if(sverb.rrd_info) {
+					syslog(LOG_NOTICE, "call rrdttol: %s", item->rrd_cmd.c_str());
+				}
 				if(vm_pexec(item->rrd_cmd.c_str(), &item->result)) {
 					if(!item->result.size()) {
 						item->error = "failed output from rrdtool";
