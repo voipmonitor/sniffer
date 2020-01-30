@@ -283,6 +283,7 @@ public:
 	bool existsTable(string table) { return(existsTable(table.c_str())); }
 	virtual bool existsColumn(const char *table, const char *column, string *type = NULL) = 0;
 	bool existsColumn(string table, string column, string *type = NULL) { return(existsColumn(table.c_str(), column.c_str(), type)); }
+	bool existsMultipleColumns(const char *table, ...);
 	void startExistsColumnCache();
 	void stopExistsColumnCache();
 	void suspendExistsColumnCache();
@@ -424,6 +425,9 @@ public:
 	static void resetDelayQuery(bool store = false);
 	bool logNeedAlter(string table, string reason, string alter,
 			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
+	int checkNeedAlterAdd(string table, string reason, bool tryAlter,
+			      bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag,
+			      ...);
 	bool logNeedAlter(string table, string reason, vector<string> alters,
 			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
 protected:
