@@ -1,3 +1,8 @@
+26.8.2 28.01.2020
+=================
+- fix variable name in RRD (for DEF and CDEF) (rrdtool v.1.5) 
+
+
 26.8.1 28.01.2020
 =================
 - use new static RTP functions instead of Call::tmprtp and RTP::fill (should be faster) 
