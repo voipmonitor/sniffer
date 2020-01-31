@@ -5075,6 +5075,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`maxjitter_mult10` smallint unsigned DEFAULT NULL,\
 			`index` tinyint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
+			`duration` " + column_type_duration_ms("float") + " DEFAULT NULL,\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -7206,6 +7207,10 @@ void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 	this->checkNeedAlterAdd("cdr_rtp", "flags", true,
 				log, &tableSize, &existsColumns.cdr_rtp_flags,
 				"flags", "bigint unsigned DEFAULT NULL", NULL,
+				NULL);
+	this->checkNeedAlterAdd("cdr_rtp", "rtp duration", true,
+				log, &tableSize, &existsColumns.cdr_rtp_duration,
+				"duration", string(column_type_duration_ms("float") + " DEFAULT NULL").c_str(), NULL,
 				NULL);
 }
 

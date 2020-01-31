@@ -1035,6 +1035,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	if(this->first_packet_time_us == 0) {
 		this->first_packet_time_us = pcap_header_us;
 	}
+	this->last_packet_time_us = pcap_header_us;
 
 	if(owner && !is_read_from_file_simple()) {
 		u_int64_t seenbyeandok_time_usec = owner->getSeenbyeAndOkTimeUS();

@@ -4982,6 +4982,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					flags |= rtp[i]->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
 					rtps.add(flags, "flags", !flags);
 				}
+				if(existsColumns.cdr_rtp_duration) {
+					double ltime = TIME_US_TO_SF(rtp[i]->last_packet_time_us);
+					double duration = ltime - rtime;
+					rtps.add(duration, "duration");
+				}
 				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
 				}
@@ -5383,6 +5388,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					if(flags) {
 						rtps.add(flags, "flags");
 					}
+				}
+				if(existsColumns.cdr_rtp_duration) {
+					double ltime = TIME_US_TO_SF(rtp[i]->last_packet_time_us);
+					double duration = ltime - rtime;
+					rtps.add(duration, "duration");
 				}
 				if(existsColumns.cdr_rtp_calldate) {
 					rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);

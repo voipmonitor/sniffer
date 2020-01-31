@@ -280,6 +280,7 @@ public:
 	int prev_sid;
 	int pinformed;
 	u_int64_t first_packet_time_us;
+	u_int64_t last_packet_time_us;
 	unsigned int last_end_timestamp;
 	char lastdtmf;
 	u_int8_t forcemark;
