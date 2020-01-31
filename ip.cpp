@@ -76,17 +76,19 @@ bool vmIP::isLocalIP() {
 		"10.0.0.0/8",
 		"172.16.0.0/20"
 	};
+	static unsigned net_mask_bits[3];
 	static vmIP net_mask[3];
-	if(!net_mask[0].isSet()) {
+	if(!net_mask_bits[0]) {
 		for(int i = 0; i < 3; i++) {
 			vector<string> ip_mask = split(net_str[i], "/", true);
+			net_mask_bits[i] = atoi(ip_mask[1].c_str());
 			vmIP ip;
 			ip.setFromString(ip_mask[0].c_str());
-			net_mask[i] = ip.network(atoi(ip_mask[1].c_str()));
+			net_mask[i] = ip.network(net_mask_bits[i]);
 		}
 	}
 	for(int i = 0; i < 3; i++) {
-		if(this->mask(net_mask[i]) == net_mask[i]) {
+		if(this->network(net_mask_bits[i]) == net_mask[i]) {
 			return(true);
 		}
 	}
