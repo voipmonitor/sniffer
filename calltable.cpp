@@ -4618,17 +4618,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				    &operator_price, &customer_price,
 				    &operator_currency_id, &customer_currency_id,
 				    &operator_id, &customer_id)) {
-			if(existsColumns.cdr_price_operator_mult100) {
-				cdr.add(round(operator_price * 100), "price_operator_mult100");
-			}
 			if(existsColumns.cdr_price_operator_mult1000000) {
 				cdr.add(round(operator_price * 1000000), "price_operator_mult1000000");
-			}
-			if(existsColumns.cdr_price_customer_mult100) {
-				cdr.add(round(customer_price * 100), "price_customer_mult100");
+			} else if(existsColumns.cdr_price_operator_mult100) {
+				cdr.add(round(operator_price * 100), "price_operator_mult100");
 			}
 			if(existsColumns.cdr_price_customer_mult1000000) {
 				cdr.add(round(customer_price * 1000000), "price_customer_mult1000000");
+			} else if(existsColumns.cdr_price_customer_mult100) {
+				cdr.add(round(customer_price * 100), "price_customer_mult100");
 			}
 			if(existsColumns.cdr_price_operator_currency_id) {
 				cdr.add(operator_currency_id, "price_operator_currency_id");

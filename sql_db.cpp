@@ -7101,12 +7101,16 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 			vector<string> alters;
 			alters.push_back(
 				"ALTER TABLE cdr "
-				"CHANGE COLUMN price_operator_mult100 price_operator_mult1000000 BIGINT UNSIGNED, "
-				"CHANGE COLUMN price_customer_mult100 price_customer_mult1000000 BIGINT UNSIGNED;");
+				"ADD COLUMN price_operator_mult1000000 BIGINT UNSIGNED, "
+				"ADD COLUMN price_customer_mult1000000 BIGINT UNSIGNED;");
 			alters.push_back(
 				"UPDATE cdr "
-				"set price_operator_mult1000000 = price_operator_mult1000000 * 10000, "
-				"price_customer_mult1000000 = price_customer_mult1000000 * 10000;");
+				"set price_operator_mult1000000 = price_operator_mult100 * 10000 "
+				"where price_operator_mult100 <> 0;");
+			alters.push_back(
+				"UPDATE cdr "
+				"set price_customer_mult1000000 = price_customer_mult100 * 10000 "
+				"where price_customer_mult100 <> 0;");
 			if(this->logNeedAlter("cdr",
 					      "billing feature - add extended price precision",
 					      alters,
@@ -7115,11 +7119,11 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 			}
 		}
 	}
-	existsColumns.cdr_price_operator_mult100 = this->existsColumn("cdr", "price_operator_mult100");
 	existsColumns.cdr_price_operator_mult1000000 = this->existsColumn("cdr", "price_operator_mult1000000");
+	existsColumns.cdr_price_operator_mult100 = this->existsColumn("cdr", "price_operator_mult100");
 	existsColumns.cdr_price_operator_currency_id = this->existsColumn("cdr", "price_operator_currency_id");
-	existsColumns.cdr_price_customer_mult100 = this->existsColumn("cdr", "price_customer_mult100");
 	existsColumns.cdr_price_customer_mult1000000 = this->existsColumn("cdr", "price_customer_mult1000000");
+	existsColumns.cdr_price_customer_mult100 = this->existsColumn("cdr", "price_customer_mult100");
 	existsColumns.cdr_price_customer_currency_id = this->existsColumn("cdr", "price_customer_currency_id");
 	
 	this->checkNeedAlterAdd("cdr", "SIP header 'reason'", true,
