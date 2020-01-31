@@ -4711,7 +4711,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		UNIQUE KEY `ua` (`ua`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 ") + compress + ";");
 
-	bool existsExtPrecisionBilling = false;
+	bool extPrecisionBilling = true;
 	extern bool opt_database_backup;
 	if(opt_database_backup) {
 		extern char opt_database_backup_from_mysql_host[256];
@@ -4727,12 +4727,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 					       opt_database_backup_from_mysql_database,
 					       opt_database_backup_from_mysql_port,
 						true, &optMySSLBackup);
-		if(sqlDbSrc->existsColumn("cdr", "price_customer_mult1000000")) {
-			existsExtPrecisionBilling = true;
-		}
-	} else {
-		if(this->isExtPrecissionBilling()) {
-			existsExtPrecisionBilling = true;
+		if(sqlDbSrc->existsColumn("cdr", "price_operator_mult100") &&
+		   sqlDbSrc->existsColumn("cdr", "price_customer_mult100")) {
+			extPrecisionBilling = false;
 		}
 	}
 
@@ -4893,7 +4890,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`called_customer_id` int DEFAULT NULL,\
 				`called_reseller_id` char(10) DEFAULT NULL," :
 				"") +
-			(existsExtPrecisionBilling ?
+			(extPrecisionBilling ?
 				"`price_operator_mult1000000` bigint unsigned DEFAULT NULL,\
 				 `price_operator_currency_id` tinyint unsigned DEFAULT NULL,\
 				 `price_customer_mult1000000` bigint unsigned DEFAULT NULL,\
@@ -7091,24 +7088,14 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	if(this->existsTable("billing")) {
 		if(!this->existsColumn("cdr", "price_operator_mult100") &&
 		   !this->existsColumn("cdr", "price_operator_mult1000000")) {
-			if(this->isExtPrecissionBilling()) {
-				this->checkNeedAlterAdd("cdr", "billing feature", true,
-							log, &tableSize, NULL,
-							"price_operator_mult1000000", "BIGINT UNSIGNED", NULL,
-							"price_operator_currency_id", "TINYINT UNSIGNED", NULL,
-							"price_customer_mult1000000", "BIGINT UNSIGNED", NULL,
-							"price_customer_currency_id", "TINYINT UNSIGNED", NULL,
-							NULL);
-			} else {
-				this->checkNeedAlterAdd("cdr", "billing feature", true,
-							log, &tableSize, NULL,
-							"price_operator_mult100", "INT UNSIGNED", NULL,
-							"price_operator_currency_id", "TINYINT UNSIGNED", NULL,
-							"price_customer_mult100", "INT UNSIGNED", NULL,
-							"price_customer_currency_id", "TINYINT UNSIGNED", NULL,
-							NULL);
-			}
-		} else if(this->isExtPrecissionBilling() &&
+			this->checkNeedAlterAdd("cdr", "billing feature", true,
+						log, &tableSize, NULL,
+						"price_operator_mult1000000", "BIGINT UNSIGNED", NULL,
+						"price_operator_currency_id", "TINYINT UNSIGNED", NULL,
+						"price_customer_mult1000000", "BIGINT UNSIGNED", NULL,
+						"price_customer_currency_id", "TINYINT UNSIGNED", NULL,
+						NULL);
+		} else if(this->existsExtPrecissionBilling() &&
 			  this->existsColumn("cdr", "price_operator_mult100") &&
 			  !this->existsColumn("cdr", "price_operator_mult1000000")) {
 			vector<string> alters;
@@ -7544,7 +7531,7 @@ void SqlDb_mysql::checkColumns_other(bool /*log*/) {
 	}
 }
 
-bool SqlDb_mysql::isExtPrecissionBilling() {
+bool SqlDb_mysql::existsExtPrecissionBilling() {
 	bool existsExtPrecisionBilling = false;
 	for(int i = 0; i < 2 && !existsExtPrecisionBilling; i++) {
 		string table = string("billing") + (i ? "_rule" : "");

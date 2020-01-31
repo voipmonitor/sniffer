@@ -579,7 +579,7 @@ public:
 	void checkColumns_register(bool log = false);
 	void checkColumns_sip_msg(bool log = false);
 	void checkColumns_other(bool log = false);
-	bool isExtPrecissionBilling();
+	bool existsExtPrecissionBilling();
 	string column_type_datetime_ms();
 	string column_type_datetime_child_ms();
 	string column_type_duration_ms(const char *base_type = NULL);
