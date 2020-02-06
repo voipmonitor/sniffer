@@ -1,3 +1,10 @@
+26.9 06.02.2020
+===============
+- fix fraud change country alert (broken since IPV6 support) [VG-2031]
+- use enhanced billing accuracy as default [VS-1032]
+- add duration time for rtp streams (new column in cdr_rtp) [VS-2008]
+
+
 26.8.2 28.01.2020
 =================
 - fix variable name in RRD (for DEF and CDEF) (rrdtool v.1.5) 
