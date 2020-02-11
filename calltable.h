@@ -2210,10 +2210,7 @@ public:
 	void lock_calls_hash() {
 		unsigned usleepCounter = 0;
 		while(__sync_lock_test_and_set(&this->_sync_lock_calls_hash, 1)) {
-			usleep(10 *
-			       (usleepCounter > 10 ? 50 :
-				usleepCounter > 5 ? 10 :
-				usleepCounter > 2 ? 5 : 1));
+			usleep(10, usleepCounter);
 			++usleepCounter;
 		}
 	}

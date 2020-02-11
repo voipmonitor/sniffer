@@ -6016,7 +6016,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 	u_int64_t blockInfo_at_first = 0;
 	u_int64_t blockInfo_at_last = 0;
 	sBlockInfo blockInfo[blockInfoCountMax];
-	unsigned usleepCounter = 0;
+	unsigned int usleepCounter = 0;
+	unsigned long usleepSumTime = 0;
+	unsigned long usleepSumTime_lastPush = 0;
 	sHeaderPacketPQout hp_out;
 	//
 	while(!TERMINATING) {
@@ -6113,6 +6115,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 									first = listPacketTimeInfo.begin();
 								}
 								usleepCounter = 0;
+								usleepSumTime = 0;
+								usleepSumTime_lastPush = 0;
 							} else {
 								break;
 							}
@@ -6215,6 +6219,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							blockInfo_utime_first = minUtime;
 						}
 						usleepCounter = 0;
+						usleepSumTime = 0;
+						usleepSumTime_lastPush = 0;
 					}
 				}
 			} else {
@@ -6235,15 +6241,18 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 					}
 					this->blockStoreTrashPush(blockStore);
 					usleepCounter = 0;
+					usleepSumTime = 0;
+					usleepSumTime_lastPush = 0;
 				}
 			}
 		}
 		if(!blockStore) {
-			if(usleepCounter && !(usleepCounter % 500) &&
+			if(usleepSumTime > usleepSumTime_lastPush + 100000 &&
 			   this->packetServerDirection != directionWrite) {
 				this->pushBatchProcessPacket();
+				usleepSumTime_lastPush = usleepSumTime;
 			}
-			usleep(1000);
+			usleepSumTime += usleep(100, usleepCounter);
 			++usleepCounter;
 		}
 		if(!(this->packetServerDirection != directionWrite &&
@@ -7322,10 +7331,7 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 			if(is_terminating()) {
 				return;
 			}
-			usleep(20 *
-			       (usleepCounter > 10 ? 50 :
-				usleepCounter > 5 ? 10 :
-				usleepCounter > 2 ? 5 : 1));
+			usleep(20, usleepCounter);
 			++usleepCounter;
 		}
 		qring_push_index = this->writeit + 1;
@@ -7367,7 +7373,9 @@ void *PcapQueue_outputThread::outThreadFunction() {
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start thread t2_%s/%i", this->getNameOutputThread().c_str(), this->outThreadId);
 	sBatchHP *batch;
-	unsigned usleepCounter = 0;
+	unsigned int usleepCounter = 0;
+	unsigned long usleepSumTime = 0;
+	unsigned long usleepSumTime_lastPush = 0;
 	while(!is_terminating() && !this->terminatingThread) {
 		if(this->qring[this->readit]->used == 1) {
 			batch = this->qring[this->readit];
@@ -7389,13 +7397,12 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				this->readit++;
 			}
 			usleepCounter = 0;
+			usleepSumTime = 0;
+			usleepSumTime_lastPush = 0;
 		} else {
-			unsigned usleepTime = opt_preprocess_packets_qring_usleep * 
-					      (usleepCounter > 1000 ? 20 :
-					       usleepCounter > 100 ? 5 : 1);
-			usleep(usleepTime);
+			usleepSumTime += usleep(opt_preprocess_packets_qring_usleep, usleepCounter);
 			++usleepCounter;
-			if(!(usleepCounter % 100)) {
+			if(usleepSumTime > usleepSumTime_lastPush + 100000) {
 				switch(typeOutputThread) {
 				case defrag:
 					if(pcapQueueQ_outThread_dedup) {
@@ -7406,6 +7413,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 					preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
 					break;
 				}
+				usleepSumTime_lastPush = usleepSumTime;
 			}
 		}
 	}

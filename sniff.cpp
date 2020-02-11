@@ -2184,7 +2184,9 @@ void *rtp_read_thread_func(void *arg) {
 	rtp_read_thread *read_thread = (rtp_read_thread*)arg;
 	read_thread->threadId = get_unix_tid();
 	read_thread->last_use_time_s = getTimeMS_rdtsc() / 1000;
-	unsigned usleepCounter = 0;
+	unsigned int usleepCounter = 0;
+	unsigned long usleepSumTime = 0;
+	unsigned long usleepSumTime_lastPush = 0;
 	while(!is_terminating() && !is_readend()) {
 		if(read_thread->qring[read_thread->readit]->used == 1) {
 			rtp_read_thread::batch_packet_rtp *batch = read_thread->qring[read_thread->readit];
@@ -2226,6 +2228,8 @@ void *rtp_read_thread_func(void *arg) {
 				}
 			#endif
 			usleepCounter = 0;
+			usleepSumTime = 0;
+			usleepSumTime_lastPush = 0;
 		} else {
 			if(read_thread->remove_flag &&
 				  ((getTimeMS_rdtsc() / 1000) > (read_thread->last_use_time_s + (opt_ipaccount ? 10 : 60)))) {
@@ -2235,16 +2239,14 @@ void *rtp_read_thread_func(void *arg) {
 				}
 				unlock_add_remove_rtp_threads();
 				if(!opt_t2_boost && read_thread->remove_flag &&
-				   (opt_ipaccount || !(usleepCounter % 1000))) {
+				   (opt_ipaccount || 
+				    (usleepSumTime > usleepSumTime_lastPush + 100000))) {
 					read_thread->push_batch();
+					usleepSumTime_lastPush = usleepSumTime;
 				}
 			}
 			// no packet to read, wait and try again
-			unsigned usleepTime = rtp_qring_usleep * 
-					      (usleepCounter > 1000 ? 20 :
-					       usleepCounter > 100 ? 10 :
-					       usleepCounter > 10 ? 5 : 1);
-			usleep(usleepTime);
+			usleepSumTime += usleep(rtp_qring_usleep, usleepCounter);
 			++usleepCounter;
 		}
 	}
@@ -7735,12 +7737,8 @@ void *PreProcessPacket::outThreadFunction() {
 				}
 				usleepSumTimeForPushBatch = 0;
 			}
-			unsigned usleepTime = opt_preprocess_packets_qring_usleep * 
-					      (usleepCounter > 1000 ? 20 :
-					       usleepCounter > 100 ? 5 : 1);
-			usleep(usleepTime);
+			usleepSumTimeForPushBatch += usleep(opt_preprocess_packets_qring_usleep, usleepCounter);
 			++usleepCounter;
-			usleepSumTimeForPushBatch += usleepTime;
 		}
 	}
 	this->outThreadState = 0;
@@ -8556,12 +8554,8 @@ void *ProcessRtpPacket::outThreadFunction() {
 				}
 				usleepSumTimeForPushBatch = 0;
 			}
-			unsigned usleepTime = opt_process_rtp_packets_qring_usleep * 
-					      (usleepCounter > 1000 ? 20 :
-					       usleepCounter > 100 ? 5 : 1);
-			usleep(usleepTime);
+			usleepSumTimeForPushBatch += usleep(opt_process_rtp_packets_qring_usleep, usleepCounter);
 			++usleepCounter;
-			usleepSumTimeForPushBatch += usleepTime;
 		}
 	}
 	return(NULL);
@@ -8603,9 +8597,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 				sem_post(&sem_sync_next_thread[next_thread_index_plus - 1][1]);
 			}
 		} else {
-			usleep(usleepUseconds * 
-			       (usleepCounter > 1000 ? 20 :
-				usleepCounter > 100 ? 5 : 1));
+			usleep(usleepUseconds, usleepCounter);
 			++usleepCounter;
 		}
 	}

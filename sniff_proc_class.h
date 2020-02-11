@@ -414,10 +414,7 @@ public:
 			if(!qring_push_index) {
 				unsigned usleepCounter = 0;
 				while(this->qring_detach[this->writeit]->used != 0) {
-					usleep(20 *
-					       (usleepCounter > 10 ? 50 :
-						usleepCounter > 5 ? 10 :
-						usleepCounter > 2 ? 5 : 1));
+					usleep(20, usleepCounter);
 					++usleepCounter;
 				}
 				qring_push_index = this->writeit + 1;
@@ -472,10 +469,7 @@ public:
 			if(!qring_push_index) {
 				unsigned usleepCounter = 0;
 				while(this->qring[this->writeit]->used != 0) {
-					usleep(20 *
-					       (usleepCounter > 10 ? 50 :
-						usleepCounter > 5 ? 10 :
-						usleepCounter > 2 ? 5 : 1));
+					usleep(20, usleepCounter);
 					if(usleepCounter == 0) {
 						++qringPushCounter_full;
 					}
@@ -1110,10 +1104,7 @@ public:
 			++qringPushCounter;
 			unsigned usleepCounter = 0;
 			while(this->qring[this->writeit]->used != 0) {
-				usleep(20 *
-				       (usleepCounter > 10 ? 50 :
-					usleepCounter > 5 ? 10 :
-					usleepCounter > 2 ? 5 : 1));
+				usleep(20, usleepCounter);
 				if(usleepCounter == 0) {
 					++qringPushCounter_full;
 				}
