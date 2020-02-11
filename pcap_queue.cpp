@@ -5958,12 +5958,15 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 	} else {
 		if(opt_pcap_queue_compress || !opt_pcap_queue_suppress_t1_thread) {
 			pcap_block_store *blockStore;
+			unsigned int usleepCounter = 0;
 			while(!TERMINATING) {
 				blockStore = blockStoreBypassQueue->pop(false);
 				if(!blockStore) {
-					usleep(1000);
+					usleep(100, usleepCounter);
+					++usleepCounter;
 					continue;
 				}
+				usleepCounter = 0;
 				size_t blockSize = blockStore->size;
 				size_t blockSizePackets = blockStore->size_packets;
 				if(blockStore->compress()) {
