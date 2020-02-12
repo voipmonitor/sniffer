@@ -373,6 +373,37 @@ void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, si
 }
 
 
+unsigned int usleep(unsigned int useconds, unsigned int counter) {
+ 	unsigned int rslt_useconds = useconds;
+	if(useconds < 5000) {
+		unsigned int useconds_min = 0;
+		double useconds_multiple_inc = 0.02;
+		extern double last_traffic;
+		if(last_traffic >= 0) {
+			if(last_traffic < 0.1) {
+				useconds_min = 500;
+				useconds_multiple_inc = 0.3;
+			} else if(last_traffic < 1) {
+				useconds_multiple_inc = 0.2;
+			} else if(last_traffic < 10) {
+				useconds_multiple_inc = 0.1;
+			} else if(last_traffic < 50) {
+				useconds_multiple_inc = 0.05;
+			}
+		}
+		rslt_useconds = min(200, (int)(1 + counter * useconds_multiple_inc)) * useconds;
+		if(rslt_useconds > 100000) {
+			rslt_useconds = 100000;
+		}
+		if(useconds_min && rslt_useconds < useconds_min) {
+			rslt_useconds = useconds_min;
+		}
+	}
+	usleep(rslt_useconds);
+	return(rslt_useconds);
+}
+
+
 static char base64[64];
 static char b2a[256];
 

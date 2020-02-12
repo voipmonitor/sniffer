@@ -219,6 +219,7 @@ size_t _opt_pcap_queue_block_restore_buffer_inc_size	= opt_pcap_queue_block_max_
 int pcap_drop_flag = 0;
 int enable_bad_packet_order_warning = 0;
 u_int64_t all_ringbuffers_size = 0;
+double last_traffic = -1;
 
 static pcap_block_store_queue *blockStoreBypassQueue; 
 
@@ -1829,6 +1830,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if (opt_rrd) {
 				rrd_set_value(RRD_VALUE_mbs, speed);
 			}
+			last_traffic = speed;
 		}
 		if(opt_cachedir[0] != '\0') {
 			outStr << "cdq[" << calltable->files_queue.size() << "][" << ((float)(cachedirtransfered - lastcachedirtransfered) / 1024.0 / 1024.0 / (float)statPeriod) << " MB/s] ";
@@ -7137,6 +7139,16 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		}
 		return(0);
 	}
+	
+	#if TRACE_INVITE_BYE
+	if(memmem(data, datalen, "INVITE sip", 10)) {
+		cout << "processPacket INVITE" << endl;
+	} else if(memmem(data, datalen, "BYE sip", 7)) {
+		cout << "processPacket BYE " << endl;
+	} else if(memmem(data, datalen, "REGISTER sip", 12)) {
+		cout << "processPacket REGISTER " << endl;
+	}
+	#endif
 
 	if(opt_mirrorip && (sipportmatrix[sport] || sipportmatrix[dport])) {
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - hp->packet)));

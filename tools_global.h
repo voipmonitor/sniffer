@@ -182,23 +182,7 @@ inline u_int64_t getTimeNS() {
 }
 
 
-inline unsigned int usleep(unsigned int useconds, unsigned int counter) {
- 	unsigned int rslt_useconds = useconds;
-	if(useconds < 5000) {
-		rslt_useconds = (counter > 2000 ? 200 :
-				 counter > 1500 ? 100 :
-				 counter > 1000 ? 50 :
-				 counter > 500 ? 20 :
-				 counter > 200 ? 10 :
-				 counter > 100 ? 5 :
-				 counter > 50 ? 2 : 1) * useconds;
-		if(rslt_useconds > 100000) {
-			rslt_useconds = 100000;
-		}
-	}
-	usleep(rslt_useconds);
-	return(rslt_useconds);
-}
+unsigned int usleep(unsigned int useconds, unsigned int counter);
 
 
 int vm_pthread_create(const char *thread_description,
