@@ -412,10 +412,9 @@ public:
 	inline void push_packet_detach(packet_s *packetS) {
 		if(this->outThreadState == 2) {
 			if(!qring_push_index) {
-				unsigned usleepCounter = 0;
+				unsigned int usleepCounter = 0;
 				while(this->qring_detach[this->writeit]->used != 0) {
-					usleep(20, usleepCounter);
-					++usleepCounter;
+					usleep(20, usleepCounter++);
 				}
 				qring_push_index = this->writeit + 1;
 				qring_push_index_count = 0;
@@ -453,8 +452,9 @@ public:
 				qring_push_index_count = 0;
 			}
 		} else {
+			unsigned int usleepCounter = 0;
 			while(this->outThreadState) {
-				usleep(10);
+				usleep(10, usleepCounter++);
 			}
 			this->process_DETACH(packetS);
 		}
@@ -467,13 +467,12 @@ public:
 		if(this->outThreadState == 2) {
 			++qringPushCounter;
 			if(!qring_push_index) {
-				unsigned usleepCounter = 0;
+				unsigned int usleepCounter = 0;
 				while(this->qring[this->writeit]->used != 0) {
-					usleep(20, usleepCounter);
 					if(usleepCounter == 0) {
 						++qringPushCounter_full;
 					}
-					++usleepCounter;
+					usleep(20, usleepCounter++);
 				}
 				qring_push_index = this->writeit + 1;
 				qring_push_index_count = 0;
@@ -499,8 +498,9 @@ public:
 				qring_push_index_count = 0;
 			}
 		} else {
+			unsigned int usleepCounter = 0;
 			while(this->outThreadState) {
-				usleep(10);
+				usleep(10, usleepCounter++);
 			}
 			if(qring_push_index && qring_push_index_count) {
 				for(unsigned int i = 0; i < qring_push_index_count; i++) {
@@ -610,8 +610,9 @@ public:
 				qring_push_index_count = 0;
 			}
 		} else {
+			unsigned int usleepCounter = 0;
 			while(this->outThreadState) {
-				usleep(10);
+				usleep(10, usleepCounter++);
 			}
 			push_batch_nothread();
 		}
@@ -1102,13 +1103,12 @@ public:
 		}
 		if(!qring_push_index) {
 			++qringPushCounter;
-			unsigned usleepCounter = 0;
+			unsigned int usleepCounter = 0;
 			while(this->qring[this->writeit]->used != 0) {
-				usleep(20, usleepCounter);
 				if(usleepCounter == 0) {
 					++qringPushCounter_full;
 				}
-				++usleepCounter;
+				usleep(20, usleepCounter++);
 			}
 			qring_push_index = this->writeit + 1;
 			qring_push_index_count = 0;

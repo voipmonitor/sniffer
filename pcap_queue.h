@@ -713,6 +713,8 @@ private:
 	volatile int _sync_detachBuffer[2];
 	unsigned int counter;
 	unsigned int counter_pop_usleep;
+	unsigned long pop_usleep_sum;
+	unsigned long pop_usleep_sum_last_push;
 	bool force_push;
 	volatile bool threadTerminated;
 	pstat_data threadPstatData[2];

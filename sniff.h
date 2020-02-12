@@ -558,10 +558,9 @@ public:
 				*/
 				
 				batch_packet_rtp *current_batch = this->qring[this->writeit];
-				unsigned usleepCounter = 0;
+				unsigned int usleepCounter = 0;
 				while(current_batch->used != 0) {
-					usleep(20, usleepCounter);
-					++usleepCounter;
+					usleep(20, usleepCounter++);
 				}
 				memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
 				#if RQUEUE_SAFE
@@ -615,10 +614,9 @@ public:
 			
 			if(!qring_push_index) {
 				packet->blockstore_addflag(62 /*pb lock flag*/);
-				unsigned usleepCounter = 0;
+				unsigned int usleepCounter = 0;
 				while(this->qring[this->writeit]->used != 0) {
-					usleep(20, usleepCounter);
-					++usleepCounter;
+					usleep(20, usleepCounter++);
 				}
 				qring_push_index = this->writeit + 1;
 				qring_push_index_count = 0;
@@ -711,10 +709,9 @@ public:
 		 
 			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
 			batch_packet_rtp *current_batch = this->qring[this->writeit];
-			unsigned usleepCounter = 0;
+			unsigned int usleepCounter = 0;
 			while(current_batch->used != 0) {
-				usleep(20, usleepCounter);
-				++usleepCounter;
+				usleep(20, usleepCounter++);
 			}
 			memcpy(current_batch->batch, thread_buffer->batch, sizeof(rtp_packet_pcap_queue) * thread_buffer->count);
 			#if RQUEUE_SAFE

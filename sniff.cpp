@@ -2246,8 +2246,7 @@ void *rtp_read_thread_func(void *arg) {
 				}
 			}
 			// no packet to read, wait and try again
-			usleepSumTime += usleep(rtp_qring_usleep, usleepCounter);
-			++usleepCounter;
+			usleepSumTime += usleep(rtp_qring_usleep, usleepCounter++);
 		}
 	}
 	
@@ -7556,7 +7555,7 @@ void *PreProcessPacket::outThreadFunction() {
 	packet_s_process *packetS;
 	batch_packet_s *batch_detach;
 	batch_packet_s_process *batch;
-	unsigned usleepCounter = 0;
+	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_preProcess) {
 		if(this->typePreProcessThread == ppt_detach ?
@@ -7737,8 +7736,7 @@ void *PreProcessPacket::outThreadFunction() {
 				}
 				usleepSumTimeForPushBatch = 0;
 			}
-			usleepSumTimeForPushBatch += usleep(opt_preprocess_packets_qring_usleep, usleepCounter);
-			++usleepCounter;
+			usleepSumTimeForPushBatch += usleep(opt_preprocess_packets_qring_usleep, usleepCounter++);
 		}
 	}
 	this->outThreadState = 0;
@@ -7876,8 +7874,9 @@ double PreProcessPacket::getCpuUsagePerc(bool preparePstatData, double *percFull
 
 void PreProcessPacket::terminate() {
 	this->term_preProcess = true;
+	unsigned int usleepCounter = 0;
 	while(this->outThreadState) {
-		usleep(10);
+		usleep(10, usleepCounter++);
 	}
 }
 
@@ -8493,7 +8492,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 	}
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start ProcessRtpPacket %s out thread %i", this->type == hash ? "hash" : "distribute", this->outThreadId);
-	unsigned usleepCounter = 0;
+	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_processRtp) {
 		if(this->qring[this->readit]->used == 1) {
@@ -8554,8 +8553,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 				}
 				usleepSumTimeForPushBatch = 0;
 			}
-			usleepSumTimeForPushBatch += usleep(opt_process_rtp_packets_qring_usleep, usleepCounter);
-			++usleepCounter;
+			usleepSumTimeForPushBatch += usleep(opt_process_rtp_packets_qring_usleep, usleepCounter++);
 		}
 	}
 	return(NULL);
@@ -8565,7 +8563,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 	this->nextThreadId[next_thread_index_plus - 1] = get_unix_tid();
 	syslog(LOG_NOTICE, "start ProcessRtpPacket %s next thread %i", this->type == hash ? "hash" : "distribute", this->nextThreadId[next_thread_index_plus - 1]);
 	int usleepUseconds = 20;
-	unsigned usleepCounter = 0;
+	unsigned int usleepCounter = 0;
 	while(!this->term_processRtp) {
 		if(opt_process_rtp_packets_hash_next_thread_sem_sync) {
 			sem_wait(&sem_sync_next_thread[next_thread_index_plus - 1][0]);
@@ -8597,8 +8595,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 				sem_post(&sem_sync_next_thread[next_thread_index_plus - 1][1]);
 			}
 		} else {
-			usleep(usleepUseconds, usleepCounter);
-			++usleepCounter;
+			usleep(usleepUseconds, usleepCounter++);
 		}
 	}
 	return(NULL);

@@ -2208,10 +2208,9 @@ public:
 	string getCallTableJson(char *params, bool *zip = NULL);
 	
 	void lock_calls_hash() {
-		unsigned usleepCounter = 0;
+		unsigned int usleepCounter = 0;
 		while(__sync_lock_test_and_set(&this->_sync_lock_calls_hash, 1)) {
-			usleep(10, usleepCounter);
-			++usleepCounter;
+			usleep(10, usleepCounter++);
 		}
 	}
 	void unlock_calls_hash() {
