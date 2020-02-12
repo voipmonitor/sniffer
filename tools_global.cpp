@@ -380,12 +380,12 @@ unsigned int usleep(unsigned int useconds, unsigned int counter) {
 		double useconds_multiple_inc = 0.02;
 		extern double last_traffic;
 		if(last_traffic >= 0) {
-			if(last_traffic < 0.1) {
+			if(last_traffic < 1) {
 				useconds_min = 500;
 				useconds_multiple_inc = 0.3;
-			} else if(last_traffic < 1) {
+			} else if(last_traffic < 5) {
 				useconds_multiple_inc = 0.2;
-			} else if(last_traffic < 10) {
+			} else if(last_traffic < 20) {
 				useconds_multiple_inc = 0.1;
 			} else if(last_traffic < 50) {
 				useconds_multiple_inc = 0.05;
