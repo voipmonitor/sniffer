@@ -255,7 +255,7 @@ openssl >= 101 found		       : $OPENSSL_T
 shared binary: run make 
 static binary: run make static
 
-check README.*
+check README_*.md
 
 #############################################################
 

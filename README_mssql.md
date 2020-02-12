@@ -1,8 +1,6 @@
-MS SQL configuration
-====================
+# MS SQL configuration
 
-example configuration:
-----------------------
+## example configuration:
 
 	server: 	192.192.1.101
 	ms sql port:	1433 (default port)
@@ -10,8 +8,7 @@ example configuration:
 	username: 	sa
 	password: 	abc123
 
-config sniffer:
----------------
+## config sniffer:
 
 	install: unixODBC, unixODBC-devel (for compile voipmonitor), freetds
 
@@ -34,8 +31,7 @@ config sniffer:
 
 		sqldriver = odbc
 
-config web-gui:
----------------
+## config web-gui:
 
 	install: php-mssql
 

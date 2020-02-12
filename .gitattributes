@@ -2,15 +2,6 @@
 /.cleancount -text
 /ChangeLog -text
 /Makefile.in -text
-/README -text
-/README.centos -text
-/README.debian -text
-/README.freebsd -text
-/README.gentoo -text
-/README.mssql -text
-/README.piaf -text
-/README.ubuntu-10.04LTS -text
-/README.ubuntu-12.04LTS -text
 /calltable.cpp -text
 /calltable.h -text
 /cleanspool.cpp -text
