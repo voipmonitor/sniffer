@@ -1,7 +1,8 @@
 # Debian 6.0
 
-apt-get install build-essential subversion libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd mysql-server unixodbc-dev libapache2-mod-php5 tshark libmysqlclient-dev zlib1g-dev
+`apt-get install build-essential subversion libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd mysql-server unixodbc-dev libapache2-mod-php5 tshark libmysqlclient-dev zlib1g-dev`
 
+```
 cd /usr/src
 svn co https://voipmonitor.svn.sourceforge.net/svnroot/voipmonitor/trunk  voipmonitor-svn
 cd voipmonitor-svn
@@ -17,3 +18,4 @@ cp config/voipmonitor.conf /etc/
 cp config/init.d/voipmonitor /etc/init.d/
 update-rc.d voipmonitor defaults
 /etc/init.d/voipmonitor start
+```
