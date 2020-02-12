@@ -1,5 +1,4 @@
-Debian 6.0
-----------
+# Debian 6.0
 
 apt-get install build-essential subversion libvorbis-dev libpcap-dev apache2 php5-mysql php5-gd mysql-server unixodbc-dev libapache2-mod-php5 tshark libmysqlclient-dev zlib1g-dev
 

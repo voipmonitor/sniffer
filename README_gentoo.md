@@ -1,10 +1,8 @@
-Install voipmonitor dependencies
-================================
+# Install voipmonitor dependencies
 
 emerge libpcap zlib
 
-Install voipmonitor
-===================
+# Install voipmonitor
 
 cd /path/to/voipmonitor
 make clean
@@ -16,8 +14,7 @@ cp config/init.d/voipmonitor /etc/init.d/
 Edit the config file, prepare the mysql table and run voipmonitor
 
 
-Install voipmonitor
---------------------------------
+## Install voipmonitor
 
 cd /path/to/voipmonitor
 make
