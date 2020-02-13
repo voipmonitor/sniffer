@@ -1,5 +1,4 @@
-What is VoIPmonitor
--------------------
+# What is VoIPmonitor
 
 VoIPmonitor is open source live network packet sniffer which analyze SIP 
 and RTP protocol. It can run as daemon or analyzes already captured pcap 
@@ -13,8 +12,7 @@ BYE or OK was not seen. To accuratly transform latency to loss packets,
 voipmonitor simulates fixed and adaptive jitterbuffer.
 
 
-Key features
-------------
+## Key features
 
 - Fast C++ SIP/RTP packet analyzer
 - Predicts MOS-LQE score according to ITU-T G.107 E-model
@@ -22,15 +20,14 @@ Key features
 - Each call is saved as standalone pcap file
 - Call recorder
 
-Sponsors and contributors
--------------------------
+## Sponsors and contributors
+
 - Telephonic http://telephonic.ca
 * init script, configuration file
 
-Installation
--------------
+## Installation
 
-Check README.*
+Check README_*.md
 
 
 

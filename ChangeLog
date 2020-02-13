@@ -1,3 +1,8 @@
+26.10 12.02.2020
+================
+- signifficantly reduce calling usleep/nanosleep in busy wait loops. Some virtualisation plaforms are sensitive to low usleep(<400) and causes almost 100% CPU load on host even when sniffer is doing nothing [VS-1034]
+
+
 26.9 06.02.2020
 ===============
 - fix fraud change country alert (broken since IPV6 support) [VG-2031]
