@@ -2395,7 +2395,7 @@ void FraudAlerts::evRegister(Register *reg, RegisterState *regState, eRegisterSt
 void FraudAlerts::stopPopCallInfoThread(bool wait) {
 	termPopCallInfoThread = true;
 	while(wait && runPopCallInfoThread) {
-		usleep(1000);
+		USLEEP(1000);
 	}
 }
 
@@ -2506,7 +2506,7 @@ void FraudAlerts::popCallInfoThread() {
 			okPop = true;
 		}
 		if(!okPop) {
-			usleep(1000);
+			USLEEP(1000);
 		}
 	}
 	runPopCallInfoThread = false;

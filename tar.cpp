@@ -1356,7 +1356,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 			}
 		}
 		// quque is empty - sleep before next run
-		usleep(is_terminating() ? 100000 : 250000);
+		USLEEP(is_terminating() ? 100000 : 250000);
 		if(terminate_pass) {
 			break;
 		}
@@ -1790,7 +1790,7 @@ void *TarQueueThread(void *_tarQueue) {
 			}
 		}
 		if(is_terminating()) {
-			usleep(100000);
+			USLEEP(100000);
 		} else {
 			sleep(1);
 		}

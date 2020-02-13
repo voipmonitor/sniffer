@@ -699,7 +699,7 @@ public:
 	bool checkDuplicitySeq(u_int32_t newSeq);
 private:
 	void lock_queue() {
-		while(__sync_lock_test_and_set(&this->_sync_queue, 1)) usleep(100);
+		while(__sync_lock_test_and_set(&this->_sync_queue, 1)) USLEEP(100);
 	}
 	void unlock_queue() {
 		__sync_lock_release(&this->_sync_queue);
@@ -930,13 +930,13 @@ private:
 	void *cleanupThreadFunction(void *);
 	void *packetThreadFunction(void *);
 	void lock_links() {
-		while(__sync_lock_test_and_set(&this->_sync_links, 1)) usleep(100);
+		while(__sync_lock_test_and_set(&this->_sync_links, 1)) USLEEP(100);
 	}
 	void unlock_links() {
 		__sync_lock_release(&this->_sync_links);
 	}
 	void lock_push() {
-		while(__sync_lock_test_and_set(&this->_sync_push, 1)) usleep(100);
+		while(__sync_lock_test_and_set(&this->_sync_push, 1)) USLEEP(100);
 	}
 	void unlock_push() {
 		__sync_lock_release(&this->_sync_push);

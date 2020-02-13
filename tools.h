@@ -270,7 +270,7 @@ public:
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1)) {
-			usleep(10);
+			USLEEP(10);
 		}
 	}
 	void unlock() {
@@ -996,7 +996,7 @@ public:
 	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
 		extern cBuffersControl buffersControl;
 		while(!buffersControl.check__AsyncClose__add(item->dataLength) && !is_terminating()) {
-			usleep(1000);
+			USLEEP(1000);
 		}
 		lock(threadIndex);
 		if(!activeThread[threadIndex]) {
@@ -1027,7 +1027,7 @@ public:
 private:
 	void lock(int threadIndex) {
 		while(__sync_lock_test_and_set(&this->_sync[threadIndex], 1)) {
-			usleep(10);
+			USLEEP(10);
 		}
 	}
 	void unlock(int threadIndex) {

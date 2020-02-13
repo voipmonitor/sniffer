@@ -1320,7 +1320,7 @@ void cSipMsgRelations::internalThread() {
 		}
 		do_cleanup_cdq();
 		for(int i = 0; i < 5 * 100 && !terminate; i++) {
-			usleep(10000);
+			USLEEP(10000);
 		}
 	}
 }

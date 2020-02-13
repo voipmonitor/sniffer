@@ -368,7 +368,7 @@ bool cSslDsslClientRandomItems::get(u_char *client_random, u_char *master_secret
 		unlock_map();
 		if(!rslt) {
 			if(waitUS >= 0 && waitUS < ssl_client_random_maxwait_ms * 1000ll) {
-				usleep(1000);
+				USLEEP(1000);
 				waitUS += 1000;
 			} else {
 				break;

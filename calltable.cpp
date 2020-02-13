@@ -860,10 +860,10 @@ Call::removeRTP() {
 				}
 			}
 		}
-		usleep(100);
+		USLEEP(100);
 	}
 	while(__sync_lock_test_and_set(&rtplock, 1)) {
-		usleep(100);
+		USLEEP(100);
 	}
 	closeRawFiles();
 	ssrc_n = 0;
@@ -1557,7 +1557,7 @@ read:
 	 
 		if(udptl) {
 			while(__sync_lock_test_and_set(&rtplock, 1)) {
-				usleep(100);
+				USLEEP(100);
 			}
 			rtp[ssrc_n] = new FILE_LINE(0) RTP(packetS->sensor_id_(), packetS->sensor_ip);
 			rtp[ssrc_n]->call_owner = this;
@@ -1639,7 +1639,7 @@ read:
 			}
 		}
 		while(__sync_lock_test_and_set(&rtplock, 1)) {
-			usleep(100);
+			USLEEP(100);
 		}
 		
 		/*
@@ -8095,7 +8095,7 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 			if((getTimeS() - last_use_at) > 5 * 60) {
 				break;
 			} else {
-				usleep(1000);
+				USLEEP(1000);
 			}
 		}
 	}
@@ -10355,7 +10355,7 @@ void AsyncSystemCommand::popSystemCommandThread() {
 			okPop = true;
 		}
 		if(!okPop) {
-			usleep(1000);
+			USLEEP(1000);
 		}
 	}
 }

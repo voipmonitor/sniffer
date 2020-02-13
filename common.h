@@ -111,6 +111,7 @@ struct sVerbose {
 	int screen_popup;
 	int screen_popup_syslog;
 	int cleanup_calls;
+	int usleep_stats;
 	int _debug1;
 	int _debug2;
 	int _debug3;

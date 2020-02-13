@@ -197,7 +197,7 @@ void SendCallInfo::refresh() {
 void SendCallInfo::stopPopCallInfoThread(bool wait) {
 	termPopCallInfoThread = true;
 	while(wait && runPopCallInfoThread) {
-		usleep(1000);
+		USLEEP(1000);
 	}
 }
 
@@ -230,7 +230,7 @@ void SendCallInfo::popCallInfoThread() {
 			okPop = true;
 		}
 		if(!okPop) {
-			usleep(1000);
+			USLEEP(1000);
 		}
 	}
 	runPopCallInfoThread = false;

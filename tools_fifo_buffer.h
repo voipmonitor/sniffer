@@ -284,13 +284,13 @@ public:
 		this->debug_out_file = fopen(debug_out_filename, "w");
 	}
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1)) usleep(20);
+		while(__sync_lock_test_and_set(&this->_sync, 1)) USLEEP(20);
 	}
 	void unlock() {
 		__sync_lock_release(&this->_sync);
 	}
 	void lock_master() {
-		while(__sync_lock_test_and_set(&this->_sync_master, 1)) usleep(20);
+		while(__sync_lock_test_and_set(&this->_sync_master, 1)) USLEEP(20);
 	}
 	void unlock_master() {
 		__sync_lock_release(&this->_sync_master);

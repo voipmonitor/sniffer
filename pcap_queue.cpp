@@ -1017,7 +1017,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 	if(opt_scanpcapdir[0]) {
 		unsigned int usleepCounter = 0;
 		while(!is_terminating() && buffersControl.getPercUsePB() > 20) {
-			usleep(100, usleepCounter++);
+			USLEEP_C(100, usleepCounter++);
 		}
 		if(is_terminating()) {
 			return(false);
@@ -1119,7 +1119,7 @@ bool pcap_store_queue::pop(pcap_block_store **blockStore) {
 			}
 			unsigned int usleepCounter = 0;
 			while(!__config_ENABLE_TOGETHER_READ_WRITE_FILE && !_fileStore->full) {
-				usleep(100, usleepCounter++);
+				USLEEP_C(100, usleepCounter++);
 			}
 			if(!_fileStore->pop(*blockStore)) {
 				delete *blockStore;
@@ -2816,7 +2816,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 	long unsigned int rssBeforeActivate, rssAfterActivate;
 	unsigned int usleepCounter = 0;
 	while(__sync_lock_test_and_set(&_sync_start_capture, 1)) {
-		usleep(100, usleepCounter++);
+		USLEEP_C(100, usleepCounter++);
 	}
 	char errbuf[PCAP_ERRBUF_SIZE];
 	char errorstr[4096];
@@ -2895,7 +2895,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error) {
 	}
 	if(rssBeforeActivate) {
 		for(int i = 0; i < 50; i++) {
-			usleep(100);
+			USLEEP(100);
 			rssAfterActivate = getRss() / 1024 / 1024;
 			if(!rssAfterActivate ||
 			   rssAfterActivate > rssBeforeActivate + this->pcap_buffer_size * 0.9 / 1024 / 1024) {
@@ -3073,7 +3073,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 				if(packetTime > this->lastPacketTimeUS) {
 					diffTime += packetTime - this->lastPacketTimeUS;
 					if(diffTime > 1000) {
-						usleep(diffTime / opt_pb_read_from_file_speed);
+						USLEEP(diffTime / opt_pb_read_from_file_speed);
 						diffTime = 0;
 					}
 				}
@@ -3081,7 +3081,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			this->lastPacketTimeUS = packetTime;
 		} else {
 			if((heapPerc + heapTrashPerc) > 80) {
-				usleep(1);
+				USLEEP(1);
 			}
 		}
 		if(opt_pb_read_from_file_max_packets && packets_counter > opt_pb_read_from_file_max_packets) {
@@ -3507,43 +3507,43 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 PcapQueue_readFromInterfaceThread::~PcapQueue_readFromInterfaceThread() {
 	if(this->detachThread) {
 		while(this->detachThread->threadInitOk && !this->detachThread->isTerminated()) {
-			usleep(100000);
+			USLEEP(100000);
 		}
 		delete this->detachThread;
 	}
 	if(this->pcapProcessThread) {
 		while(this->pcapProcessThread->threadInitOk && !this->pcapProcessThread->isTerminated()) {
-			usleep(100000);
+			USLEEP(100000);
 		}
 		delete this->pcapProcessThread;
 	}
 	if(this->defragThread) {
 		while(this->defragThread->threadInitOk && !this->defragThread->isTerminated()) {
-			usleep(100000);
+			USLEEP(100000);
 		}
 		delete this->defragThread;
 	}
 	if(this->md1Thread) {
 		while(this->md1Thread->threadInitOk && !this->md1Thread->isTerminated()) {
-			usleep(100000);
+			USLEEP(100000);
 		}
 		delete this->md1Thread;
 	}
 	if(this->md2Thread) {
 		while(this->md2Thread->threadInitOk && !this->md2Thread->isTerminated()) {
-			usleep(100000);
+			USLEEP(100000);
 		}
 		delete this->md2Thread;
 	}
 	if(this->dedupThread) {
 		while(this->dedupThread->threadInitOk && !this->dedupThread->isTerminated()) {
-			usleep(100000);
+			USLEEP(100000);
 		}
 		delete this->dedupThread;
 	}
 	if(this->serviceThread) {
 		while(this->serviceThread->threadInitOk && !this->serviceThread->isTerminated()) {
-			usleep(100000);
+			USLEEP(100000);
 		}
 		delete this->serviceThread;
 	}
@@ -3602,7 +3602,7 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 			if(is_terminating()) {
 				return;
 			}
-			usleep(100, usleepCounter++);
+			USLEEP_C(100, usleepCounter++);
 		}
 		writeIndex = _writeIndex + 1;
 		writeIndexCount = 0;
@@ -3628,7 +3628,7 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
 	while(this->qring[index][writeIndex].used > 0) {
 		//__sync_lock_release(&this->_sync_qring);
-		usleep(100);
+		USLEEP(100);
 		//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
 	}
 	if(this->qring[index][writeIndex].used < 0) {
@@ -3664,7 +3664,7 @@ inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *bloc
 				if(is_terminating()) {
 					return;
 				}
-				usleep(100, usleepCounter++);
+				USLEEP_C(100, usleepCounter++);
 			} while(!buffersControl.check__pcap_store_queue__push());
 		}
 	}
@@ -3674,7 +3674,7 @@ inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *bloc
 		if(is_terminating()) {
 			return;
 		}
-		usleep(100, usleepCounter++);
+		USLEEP_C(100, usleepCounter++);
 	}
 	qring_blocks[_writeIndex] = block;
 	qring_blocks_used[_writeIndex] = 1;
@@ -3814,7 +3814,7 @@ void PcapQueue_readFromInterfaceThread::cancelThread() {
 #define POP_FROM_PREV_THREAD \
 	hpii = this->prevThread->pop(); \
 	if(!hpii.header_packet) { \
-		this->pop_usleep_sum += usleep(100, this->counter_pop_usleep++); \
+		this->pop_usleep_sum += USLEEP_C(100, this->counter_pop_usleep++); \
 		if(this->pop_usleep_sum > this->pop_usleep_sum_last_push + 200000) { \
 			this->prevThread->setForcePush(); \
 			this->pop_usleep_sum_last_push = this->pop_usleep_sum; \
@@ -3909,7 +3909,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			if(is_terminating()) {
 				return(NULL);
 			}
-			usleep(1000);
+			USLEEP(1000);
 		}
 		this->initStat_interface();
 		if(this->detachThread) {
@@ -3935,7 +3935,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		}
 	} else {
 		while(!is_terminating() && this->readThread->threadInitOk != 2) {
-			usleep(1000);
+			USLEEP(1000);
 		}
 		if(is_terminating()) {
 			return(NULL);
@@ -3971,7 +3971,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 				if(!this->detachBufferWritePos) {
 					unsigned int usleepCounter = 0;
 					while(this->detachBuffer[this->detachBufferActiveIndex][0] && !is_terminating()) {
-						usleep(10, usleepCounter++);
+						USLEEP_C(10, usleepCounter++);
 					}
 					if(is_terminating()) {
 						break;
@@ -3995,7 +3995,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 					forcePushDetachBufferWrite = true;
 				} else if(res <= 0) {
 					if(res == 0) {
-						usleep(100);
+						USLEEP(100);
 					}
 					if(getTimeMS_rdtsc() > startDetachBufferWrite_ms + 500 &&
 					   this->detachBufferWritePos > 1) {
@@ -4113,7 +4113,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 						this->tryForcePush();
 					}
 					if(res == 0) {
-						usleep(100);
+						USLEEP(100);
 					}
 					continue;
 				}
@@ -4162,7 +4162,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 							}
 							usleepSumTime_lastPush = usleepSumTime;
 						}
-						usleepSumTime += usleep(10, usleepCounter++);
+						usleepSumTime += USLEEP_C(10, usleepCounter++);
 					}
 					if(is_terminating()) {
 						break;
@@ -4349,7 +4349,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		case service:
 			if(!this->prepareHeaderPacketPool ||
 			   !this->readThread->headerPacketStackSnaplen->pop_queue_prepare()) {
-				usleep(10);
+				USLEEP(10);
 			}
 			break;
 		case pcap_process:
@@ -4407,7 +4407,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				break;
 			} else if(res <= 0) {
 				if(res == 0) {
-					usleep(100);
+					USLEEP(100);
 				}
 				continue;
 			}
@@ -4447,7 +4447,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 		default:
 			block = this->prevThread->pop_block();
 			if(!block) {
-				this->pop_usleep_sum += usleep(100, this->counter_pop_usleep++);
+				this->pop_usleep_sum += USLEEP_C(100, this->counter_pop_usleep++);
 				if(this->pop_usleep_sum > this->pop_usleep_sum_last_push + 200000) {
 					this->prevThread->setForcePush();
 					this->pop_usleep_sum_last_push = this->pop_usleep_sum;
@@ -4742,7 +4742,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			if(allInit_1) {
 				break;
 			}
-			usleep(50000);
+			USLEEP(50000);
 		}
 		for(int i = 0; i < this->readThreadsCount; i++) {
 			if(this->readThreads[i]->threadInitOk) {
@@ -4815,7 +4815,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			if(fetchPacketOk) {
 				usleepCounter = 0;
 			} else {
-				usleep(100, usleepCounter++);
+				USLEEP_C(100, usleepCounter++);
 			}
 			if(!(++counter_pop % 1000)) {
 				if(this->readThreadsCount == 1) {
@@ -4832,7 +4832,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				}
 			}
 		} else if(opt_scanpcapdir[0] && this->pcapEnd) {
-			usleep(10000);
+			USLEEP(10000);
 		} else {
 			if(!headerPacketStack) {
 				headerPacketStack = new FILE_LINE(15049) cHeaderPacketStack(opt_pcap_queue_iface_qring_size, SNAPLEN);
@@ -4871,7 +4871,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					}
 				}
 			} else if(res == 0) {
-				usleep(100);
+				USLEEP(100);
 			} else if(res > 0) {
 				this->ppd.pid.clear();
 				if(pcap_next_ex_header->caplen > SNAPLEN) {
@@ -5000,7 +5000,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	while(this->readThreadsCount) {
 		unsigned counter = 0;
 		while(!this->readThreads[this->readThreadsCount - 1]->isTerminated() && counter < 50) {
-			usleep(100000);
+			USLEEP(100000);
 			++counter;
 		}
 		if(!this->readThreads[this->readThreadsCount - 1]->isTerminated()) {
@@ -5054,14 +5054,14 @@ void PcapQueue_readFromInterface::threadFunction_blocks() {
 			}
 			usleepCounter = 0;
 		} else {
-			usleep(100, usleepCounter++);
+			USLEEP_C(100, usleepCounter++);
 		}
 	}
 
 	while(this->readThreadsCount) {
 		unsigned counter = 0;
 		while(!this->readThreads[this->readThreadsCount - 1]->isTerminated() && counter < 50) {
-			usleep(100000);
+			USLEEP(100000);
 			++counter;
 		}
 		if(!this->readThreads[this->readThreadsCount - 1]->isTerminated()) {
@@ -5097,7 +5097,7 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 		if(is_terminating()) {
 			return(NULL);
 		}
-		usleep(50000);
+		USLEEP(50000);
 	}
 	if(this->block_qring) {
 		sHeaderPacket *hp;
@@ -5118,7 +5118,7 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 				blockStoreBypassQueue->push(blockStore);
 				usleepCounter = 0;
 			} else {
-				usleep(100, usleepCounter++);
+				USLEEP_C(100, usleepCounter++);
 			}
 		}
 	}
@@ -5478,7 +5478,7 @@ void PcapQueue_readFromInterface::check_bypass_buffer() {
 	unsigned int usleepCounter = 0;
 	while(!TERMINATING && (blockStoreBypassQueueSize = blockStoreBypassQueue->getUseSize()) > opt_pcap_queue_bypass_max_size) {
 		if(opt_scanpcapdir[0]) {
-			usleep(100, usleepCounter++);
+			USLEEP_C(100, usleepCounter++);
 		} else {
 			u_int64_t actTime = getTimeMS();
 			if(actTime - 1000 > this->lastTimeLogErrThread0BufferIsFull) {
@@ -5490,7 +5490,7 @@ void PcapQueue_readFromInterface::check_bypass_buffer() {
 				++countBypassBufferSizeExceeded;
 				countBypassBufferSizeExceeded_inc = true;
 			}
-			usleep(100, usleepCounter++);
+			USLEEP_C(100, usleepCounter++);
 			maxBypassBufferSize = 0;
 			maxBypassBufferItems = 0;
 		}
@@ -5514,7 +5514,7 @@ void PcapQueue_readFromInterface::push_blockstore(pcap_block_store **block_store
 					if(TERMINATING) {
 						break;
 					}
-					usleep(100, usleepCounter++);
+					USLEEP_C(100, usleepCounter++);
 				} while(!buffersControl.check__pcap_store_queue__push());
 			}
 		}
@@ -5635,7 +5635,7 @@ bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, size_
 				if(TERMINATING) {
 					break;
 				} else {
-					usleep(100, usleepCounter++);
+					USLEEP_C(100, usleepCounter++);
 				}
 			}
 			sumPacketsCounterIn[0] += blockStore->count;
@@ -5658,7 +5658,7 @@ inline void PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(pcap_block_sto
 			sumPacketsSize[0] += blockStore->size_packets ? blockStore->size_packets : blockStore->size;
 			break;
 		} else {
-			usleep(100, usleepCounter++);
+			USLEEP_C(100, usleepCounter++);
 		}
 	}
 }
@@ -5923,7 +5923,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 												if(TERMINATING || forceStop) {
 													break;
 												} else {
-													usleep(100, usleepCounter++);
+													USLEEP_C(100, usleepCounter++);
 												}
 											}
 											sumPacketsCounterIn[0] += blockStore->count;
@@ -5976,7 +5976,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 							this->packetServerConnections[arg2]->active = false;
 							forceStop = true;
 						} else {
-							usleep(100);
+							USLEEP(100);
 						}
 					}
 				}
@@ -5991,7 +5991,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 			while(!TERMINATING) {
 				blockStore = blockStoreBypassQueue->pop(false);
 				if(!blockStore) {
-					usleep(100, usleepCounter++);
+					USLEEP_C(100, usleepCounter++);
 					continue;
 				}
 				size_t blockSize = blockStore->size;
@@ -6002,7 +6002,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 						blockStoreBypassQueue->pop(true, blockSize);
 						usleepCounter = 0;
 					} else {
-						usleep(100, usleepCounter++);
+						USLEEP_C(100, usleepCounter++);
 					}
 				} else {
 					blockStoreBypassQueue->pop(true, blockSize);
@@ -6284,7 +6284,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 				this->pushBatchProcessPacket();
 				usleepSumTime_lastPush = usleepSumTime;
 			}
-			usleepSumTime += usleep(100, usleepCounter++);
+			usleepSumTime += USLEEP_C(100, usleepCounter++);
 		}
 		if(!(this->packetServerDirection != directionWrite &&
 		     opt_ipaccount)) {
@@ -6325,7 +6325,7 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigne
 	}
 	while(!TERMINATING) {
 		if(this->blockStoreTrash.size() < 3) {
-			usleep(1000);
+			USLEEP(1000);
 			continue;
 		}
 		pcap_block_store *block = NULL;
@@ -6367,7 +6367,7 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigne
 			buffersControl.sub__PcapQueue_readFromFifo__blockStoreTrash_size(block->getUseSize());
 			delete block;
 		} else {
-			usleep(1000);
+			USLEEP(1000);
 			continue;
 		}
 	}
@@ -6577,7 +6577,7 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 				this->clientSocket = NULL;
 			}
 			if(is_terminating()) {
-				usleep(100000);
+				USLEEP(100000);
 			} else {
 				sleep(pass < 10 ? 1 : 5);
 			}
@@ -6803,7 +6803,7 @@ bool PcapQueue_readFromFifo::socketAwaitConnection(int *socketClient, vmIP *sock
 				}
 			}
 		}
-		usleep(100000);
+		USLEEP(100000);
 	}
 	return(*socketClient >= 0);
 }
@@ -6820,7 +6820,7 @@ bool PcapQueue_readFromFifo::socketWrite(u_char *data, size_t dataLen, bool disa
 	if(!this->socketHandle && !disableAutoConnect) {
 		while(!this->socketConnect()) {
 			for(int i = 0; i < 20; i++) {
-				usleep(100000);
+				USLEEP(100000);
 				if(TERMINATING) {
 					return(false);
 				}
@@ -6835,7 +6835,7 @@ bool PcapQueue_readFromFifo::socketWrite(u_char *data, size_t dataLen, bool disa
 				this->socketClose();
 				while(!this->socketConnect()) {
 					for(int i = 0; i < 20; i++) {
-						usleep(100000);
+						USLEEP(100000);
 						if(TERMINATING) {
 							return(false);
 						}
@@ -6996,7 +6996,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	/*
 	extern int opt_sleepprocesspacket;
 	if(opt_sleepprocesspacket) {
-		usleep(100000);
+		USLEEP(100000);
 	}
 	*/
  
@@ -7372,7 +7372,7 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 			if(is_terminating()) {
 				return;
 			}
-			usleep(20, usleepCounter++);
+			USLEEP_C(20, usleepCounter++);
 		}
 		qring_push_index = this->writeit + 1;
 		qring_push_index_count = 0;
@@ -7440,7 +7440,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			usleepSumTime = 0;
 			usleepSumTime_lastPush = 0;
 		} else {
-			usleepSumTime += usleep(opt_preprocess_packets_qring_usleep, usleepCounter++);
+			usleepSumTime += USLEEP_C(opt_preprocess_packets_qring_usleep, usleepCounter++);
 			if(usleepSumTime > usleepSumTime_lastPush + 100000) {
 				switch(typeOutputThread) {
 				case defrag:

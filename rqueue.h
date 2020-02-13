@@ -10,6 +10,7 @@
 
 #include "heap_safe.h"
 #include "sync.h"
+#include "tools_global.h"
 
 
 typedef volatile int v_int;
@@ -49,7 +50,7 @@ public:
 					return(false);
 				}
 				if(useLock) unlock();
-				usleep(pushUsleep);
+				USLEEP(pushUsleep);
 				if(useLock) lock();
 			} else {
 				if(useLock) unlock();
@@ -83,7 +84,7 @@ public:
 					if(useLock) unlock();
 					return(false);
 				}
-				usleep(popUsleep);
+				USLEEP(popUsleep);
 			} else {
 				if(useLock) unlock();
 				return(false);

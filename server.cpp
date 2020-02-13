@@ -182,7 +182,7 @@ cSnifferServer::~cSnifferServer() {
 	terminateSocketInConnectionThreads();
 	unsigned counter = 0;
 	while(existConnectionThread() && counter < 100 && is_terminating() < 2) {
-		usleep(100000);
+		USLEEP(100000);
 		++counter;
 	}
 	cancelConnectionThreads();
@@ -197,7 +197,7 @@ void cSnifferServer::sql_query_lock(const char *query_str, int id) {
 		if(is_terminating()) {
 			return;
 		}
-		usleep(1000);
+		USLEEP(1000);
 	}
 	// TODO NEW STORE
 	sqlStore->query_lock(query_str, sqlStore->convStoreId(id));
@@ -376,7 +376,7 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command)
 	service_connection->addTask(task);
 	u_int64_t startTime = getTimeUS();
 	while(snifferServerGuiTasks.getTaskState(task.id) != sSnifferServerGuiTask::_complete && !is_terminating()) {
-		usleep(1000);
+		USLEEP(1000);
 		if(getTimeUS() > startTime + 5 * 60 * 1000000ull) {
 			socket->write("timeout");
 			break;
@@ -532,7 +532,7 @@ void cSnifferServerConnection::cp_service() {
 				}
 				lastWriteTimeUS = time_us;
 			}
-			usleep(1000);
+			USLEEP(1000);
 		}
 	}
 	if(!orphan) {
@@ -708,7 +708,7 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 	       socket->getIP().c_str(), socket->getPort(), socket->getHandle());
 	extern PcapQueue_readFromFifo *pcapQueueQ;
 	while(!pcapQueueQ || !pcapQueueQ->threadInitIsOk()) {
-		usleep(10000);
+		USLEEP(10000);
 	}
 	if(!rsaAesInit()) {
 		delete this;
@@ -1119,7 +1119,7 @@ void cSnifferClientResponseSender::sendProcess() {
 		unsigned data_for_send_size = data_for_send.size();
 		unlock_data();
 		if(!data_for_send_size) {
-			usleep(100000);
+			USLEEP(100000);
 			continue;
 		}
 		if(!socket) {
@@ -1252,7 +1252,7 @@ void snifferClientStart() {
 	snifferClientService->setErrorTypeString(cSocket::_se_loss_connection, "connection to the server has been lost - trying again");
 	snifferClientService->start(snifferClientOptions.host, snifferClientOptions.port);
 	while(!snifferClientService->isStartOk() && !is_terminating()) {
-		usleep(100000);
+		USLEEP(100000);
 	}
 }
 

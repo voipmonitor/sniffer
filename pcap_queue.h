@@ -666,7 +666,7 @@ protected:
 	}
 	void cancelThread();
 	inline void lock_detach_buffer(int index) {
-		while(__sync_lock_test_and_set(&this->_sync_detachBuffer[index], 1)) usleep(10);
+		while(__sync_lock_test_and_set(&this->_sync_detachBuffer[index], 1)) USLEEP(10);
 	}
 	inline void unlock_detach_buffer(int index) {
 		__sync_lock_release(&this->_sync_detachBuffer[index]);

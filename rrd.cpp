@@ -589,7 +589,7 @@ void RrdCharts::_queueThread() {
 				rrd_unlock();
 			}
 		} else {
-			usleep(10000);
+			USLEEP(10000);
 		}
 	}
 }

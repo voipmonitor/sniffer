@@ -373,34 +373,89 @@ void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, si
 }
 
 
-unsigned int usleep(unsigned int useconds, unsigned int counter) {
- 	unsigned int rslt_useconds = useconds;
-	if(useconds < 5000) {
-		unsigned int useconds_min = 0;
-		double useconds_multiple_inc = 0.02;
-		extern double last_traffic;
-		if(last_traffic >= 0) {
-			if(last_traffic < 1) {
-				useconds_min = 500;
-				useconds_multiple_inc = 0.3;
-			} else if(last_traffic < 5) {
-				useconds_multiple_inc = 0.2;
-			} else if(last_traffic < 20) {
-				useconds_multiple_inc = 0.1;
-			} else if(last_traffic < 50) {
-				useconds_multiple_inc = 0.05;
-			}
-		}
-		rslt_useconds = min(200, (int)(1 + counter * useconds_multiple_inc)) * useconds;
-		if(rslt_useconds > 100000) {
-			rslt_useconds = 100000;
-		}
-		if(useconds_min && rslt_useconds < useconds_min) {
-			rslt_useconds = useconds_min;
-		}
+struct sUsleepStatsId {
+	string file;
+	int line;
+	int tid;
+	unsigned int us;
+	bool operator < (const sUsleepStatsId& other) const { 
+		return(this->file < other.file ? 1 : this->file > other.file ? 0 :
+		       this->line < other.line ? 1 : this->line > other.line ? 0 :
+		       this->tid < other.tid ? 1 : this->tid > other.tid ? 0 :
+		       this->us < other.us); 
 	}
-	usleep(rslt_useconds);
-	return(rslt_useconds);
+};
+struct sUsleepStatsIdCnt {
+	sUsleepStatsId id;
+	unsigned int cnt;
+	bool operator < (const sUsleepStatsIdCnt& other) const { 
+		return(this->cnt < other.cnt); 
+	}
+};
+
+static map<sUsleepStatsId, unsigned int> usleepStats;
+static volatile int usleepStatsSync;
+
+void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line) {
+	if(sverb.usleep_stats) {
+		__SYNC_LOCK(usleepStatsSync);
+		sUsleepStatsId id;
+		id.file = file;
+		id.line = line;
+		id.tid = get_unix_tid();
+		id.us = fix ? 
+			 useconds :
+			 (useconds < 100 ?
+			   useconds / 10 * 10 :
+			   useconds / 100 * 100);
+		++usleepStats[id];
+		__SYNC_UNLOCK(usleepStatsSync);
+	}
+}
+
+string usleep_stats(unsigned int useconds_lt) {
+	if(sverb.usleep_stats) {
+		list<sUsleepStatsIdCnt> _usleepStat;
+		__SYNC_LOCK(usleepStatsSync);
+		for(map<sUsleepStatsId, unsigned int>::iterator iter = usleepStats.begin(); iter != usleepStats.end(); iter++) {
+			if(useconds_lt && iter->first.us >= useconds_lt) {
+				continue;
+			}
+			sUsleepStatsIdCnt idCnt;
+			idCnt.id = iter->first;
+			idCnt.cnt = iter->second;
+			_usleepStat.push_back(idCnt);
+		}
+		__SYNC_UNLOCK(usleepStatsSync);
+		if(_usleepStat.size()) {
+			_usleepStat.sort();
+			ostringstream outStr;
+			list<sUsleepStatsIdCnt>::iterator iter = _usleepStat.end();
+			do {
+				--iter;
+				outStr << fixed
+				       << left << setw(20) << iter->id.file << " : " 
+				       << right << setw(6) << iter->id.line << " (" 
+				       << right << setw(6) << iter->id.tid << ") " 
+				       << right << setw(7) << iter->id.us << "us" 
+				       << right << setw(20) << iter->cnt
+				       << endl;
+			} while(iter != _usleepStat.begin());
+			return(outStr.str());
+		} else  {
+			return("usleep stat is empty\n");
+		}
+	} else {
+		return("usleep stat is not activated\n");
+	}
+}
+
+void usleep_stats_clear() {
+	if(sverb.usleep_stats) {
+		__SYNC_LOCK(usleepStatsSync);
+		usleepStats.clear();
+		__SYNC_UNLOCK(usleepStatsSync);
+	}
 }
 
 

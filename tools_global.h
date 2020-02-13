@@ -18,6 +18,10 @@
 #include "tools_local.h"
 #include "ip.h"
 
+#ifndef CLOUD_ROUTER_SERVER
+#include "common.h"
+#endif
+
 #ifdef FREEBSD
 #include <sys/thr.h>
 #endif
@@ -182,7 +186,48 @@ inline u_int64_t getTimeNS() {
 }
 
 
-unsigned int usleep(unsigned int useconds, unsigned int counter);
+#ifdef CLOUD_ROUTER_SERVER
+#define USLEEP(us) usleep(us);
+#else
+#define USLEEP(us) usleep(us, -1, __FILE__, __LINE__);
+#define USLEEP_C(us, c) usleep(us, c, __FILE__, __LINE__);
+inline unsigned int usleep(unsigned int useconds, unsigned int counter, const char *file, int line) {
+ 	unsigned int rslt_useconds = useconds;
+	if(useconds < 5000 && counter != (unsigned int)-1) {
+		unsigned int useconds_min = 0;
+		double useconds_multiple_inc = 0.01;
+		extern double last_traffic;
+		if(last_traffic >= 0) {
+			if(last_traffic < 1) {
+				useconds_min = 500;
+				useconds_multiple_inc = 0.3;
+			} else if(last_traffic < 5) {
+				useconds_multiple_inc = 0.2;
+			} else if(last_traffic < 20) {
+				useconds_multiple_inc = 0.1;
+			} else if(last_traffic < 50) {
+				useconds_multiple_inc = 0.05;
+			} else if(last_traffic < 100) {
+				useconds_multiple_inc = 0.02;
+			}
+		}
+		rslt_useconds = min(200, (int)(1 + counter * useconds_multiple_inc)) * useconds;
+		if(rslt_useconds > 100000) {
+			rslt_useconds = 100000;
+		}
+		if(useconds_min && rslt_useconds < useconds_min) {
+			rslt_useconds = useconds_min;
+		}
+	}
+	extern sVerbose sverb;
+	if(sverb.usleep_stats) {
+		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
+		usleep_stats_add(rslt_useconds, counter == (unsigned int)-1, file, line);
+	}
+	usleep(rslt_useconds);
+	return(rslt_useconds);
+}
+#endif
 
 
 int vm_pthread_create(const char *thread_description,
@@ -596,7 +641,7 @@ private:
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
-			usleep(100);
+			USLEEP(100);
 		}
 	}
 	void unlock() {
@@ -624,7 +669,7 @@ private:
 	void term();
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
-			usleep(100);
+			USLEEP(100);
 		}
 	}
 	void unlock() {

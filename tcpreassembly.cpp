@@ -2449,7 +2449,7 @@ void* TcpReassembly::cleanupThreadFunction(void*) {
 			this->cleanup();
 			this->dataCallback->writeToDb();
 		}
-		usleep(100000);
+		USLEEP(100000);
 	}
 	return(NULL);
 }
@@ -2479,7 +2479,7 @@ void* TcpReassembly::packetThreadFunction(void*) {
 				packet.block_store->unlock_packet(packet.block_store_index);
 			}
 		} else {
-			usleep(1000);
+			USLEEP(1000);
 		}
 	}
 	return(NULL);

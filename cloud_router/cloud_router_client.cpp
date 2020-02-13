@@ -241,7 +241,7 @@ void cCR_ResponseSender::sendProcess() {
 		unsigned data_for_send_size = data_for_send.size();
 		unlock_data();
 		if(!data_for_send_size) {
-			usleep(100000);
+			USLEEP(100000);
 			continue;
 		}
 		if(!socket) {

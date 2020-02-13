@@ -123,7 +123,7 @@ private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
 			if(SYNC_LOCK_USLEEP) {
-				usleep(SYNC_LOCK_USLEEP);
+				USLEEP(SYNC_LOCK_USLEEP);
 			}
 		}
 	}
@@ -168,7 +168,7 @@ private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
 			if(SYNC_LOCK_USLEEP) {
-				usleep(SYNC_LOCK_USLEEP);
+				USLEEP(SYNC_LOCK_USLEEP);
 			}
 		}
 	}
@@ -256,7 +256,7 @@ private:
 	void lock_tasks() {
 		while(__sync_lock_test_and_set(&_sync_tasks, 1)) {
 			if(SYNC_LOCK_USLEEP) {
-				usleep(SYNC_LOCK_USLEEP);
+				USLEEP(SYNC_LOCK_USLEEP);
 			}
 		}
 	}
@@ -323,7 +323,7 @@ public:
 private:
 	void lock_data() {
 		while(__sync_lock_test_and_set(&_sync_data, 1)) {
-			usleep(10);
+			USLEEP(10);
 		}
 	}
 	void unlock_data() {

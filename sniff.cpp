@@ -2246,7 +2246,7 @@ void *rtp_read_thread_func(void *arg) {
 				}
 			}
 			// no packet to read, wait and try again
-			usleepSumTime += usleep(rtp_qring_usleep, usleepCounter++);
+			usleepSumTime += USLEEP_C(rtp_qring_usleep, usleepCounter++);
 		}
 	}
 	
@@ -7736,7 +7736,7 @@ void *PreProcessPacket::outThreadFunction() {
 				}
 				usleepSumTimeForPushBatch = 0;
 			}
-			usleepSumTimeForPushBatch += usleep(opt_preprocess_packets_qring_usleep, usleepCounter++);
+			usleepSumTimeForPushBatch += USLEEP_C(opt_preprocess_packets_qring_usleep, usleepCounter++);
 		}
 	}
 	this->outThreadState = 0;
@@ -7876,7 +7876,7 @@ void PreProcessPacket::terminate() {
 	this->term_preProcess = true;
 	unsigned int usleepCounter = 0;
 	while(this->outThreadState) {
-		usleep(10, usleepCounter++);
+		USLEEP_C(10, usleepCounter++);
 	}
 }
 
@@ -8553,7 +8553,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 				}
 				usleepSumTimeForPushBatch = 0;
 			}
-			usleepSumTimeForPushBatch += usleep(opt_process_rtp_packets_qring_usleep, usleepCounter++);
+			usleepSumTimeForPushBatch += USLEEP_C(opt_process_rtp_packets_qring_usleep, usleepCounter++);
 		}
 	}
 	return(NULL);
@@ -8595,7 +8595,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 				sem_post(&sem_sync_next_thread[next_thread_index_plus - 1][1]);
 			}
 		} else {
-			usleep(usleepUseconds, usleepCounter++);
+			USLEEP_C(usleepUseconds, usleepCounter++);
 		}
 	}
 	return(NULL);
@@ -8645,7 +8645,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 						}
 						++batch_index_distribute;
 					} else {
-						usleep(20);
+						USLEEP(20);
 					}
 				}
 			} else {
@@ -8667,7 +8667,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 						sem_wait(&sem_sync_next_thread[i][1]);
 					} else {
 						while(this->hash_thread_data[i].batch) { 
-							usleep(20); 
+							USLEEP(20); 
 						}
 					}
 				}

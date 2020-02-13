@@ -424,6 +424,7 @@ int Mgmt_alloc_trim(Mgmt_params *params);
 int Mgmt_alloc_test(Mgmt_params *params);
 int Mgmt_tcmalloc_stats(Mgmt_params *params);
 int Mgmt_hashtable_stats(Mgmt_params *params);
+int Mgmt_usleep_stats(Mgmt_params *params);
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -531,6 +532,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_alloc_test,
 	Mgmt_tcmalloc_stats,
 	Mgmt_hashtable_stats,
+	Mgmt_usleep_stats,
 	NULL
 };
 
@@ -790,7 +792,7 @@ public:
 			if(!listening_clients.exists(iter->second->call)) {
 				stop(iter->second);
 				while(iter->second->running) {
-					usleep(100);
+					USLEEP(100);
 				}
 			}
 			if(!iter->second->running) {
@@ -872,7 +874,7 @@ void* c_listening_workers::worker_thread_function(void *arguments) {
 
 		/*
 		while(max(call->audiobuffer1->size_get(), call->audiobuffer2->size_get()) < period_msec * 2) {
-			usleep(period_msec * 1000);
+			USLEEP(period_msec * 1000);
 		}
 		*/
 	 
@@ -1701,7 +1703,7 @@ void ManagerClientThread::run() {
 				disconnect = true;
 			}
 		}
-		usleep(100000);
+		USLEEP(100000);
 	}
 	close(client.handler);
 	finished = true;
@@ -2440,7 +2442,7 @@ int Mgmt_creategraph(Mgmt_params *params) {
 				queueItem->rrd_cmd = createGraphCmd;
 				rrd_add_to_queue(queueItem);
 				while(!queueItem->completed) {
-					usleep(10000);
+					USLEEP(10000);
 				}
 				if(!queueItem->error.empty()) {
 					error = queueItem->error;
@@ -3236,7 +3238,7 @@ int Mgmt_listen_stop(Mgmt_params *params) {
 	if(l_worker && !listening_clients.exists(l_worker->call)) {
 		listening_workers.stop(l_worker);
 		while(l_worker->running) {
-			usleep(100);
+			USLEEP(100);
 		}
 		listening_workers.remove(l_worker);
 	}
@@ -4525,6 +4527,22 @@ int Mgmt_hashtable_stats(Mgmt_params *params) {
 	#else
 	return(params->sendString(calltable->getHashStats()));
 	#endif
+}
+
+int Mgmt_usleep_stats(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("usleep_stats", "usleep_stats");
+		return(0);
+	}
+	extern string usleep_stats(unsigned int useconds_lt);
+	extern void usleep_stats_clear();
+	unsigned int useconds_lt = 0;
+	if(strlen(params->buf) + params->command.length() + 1) {
+		useconds_lt = atoi(params->buf + params->command.length() + 1);
+	}
+	string usleepStats = usleep_stats(useconds_lt);
+	usleep_stats_clear();
+	return(params->sendString(usleepStats));
 }
 
 int Mgmt_memcrash_test(Mgmt_params *params) {

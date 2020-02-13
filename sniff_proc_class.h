@@ -414,7 +414,7 @@ public:
 			if(!qring_push_index) {
 				unsigned int usleepCounter = 0;
 				while(this->qring_detach[this->writeit]->used != 0) {
-					usleep(20, usleepCounter++);
+					USLEEP_C(20, usleepCounter++);
 				}
 				qring_push_index = this->writeit + 1;
 				qring_push_index_count = 0;
@@ -454,7 +454,7 @@ public:
 		} else {
 			unsigned int usleepCounter = 0;
 			while(this->outThreadState) {
-				usleep(10, usleepCounter++);
+				USLEEP_C(10, usleepCounter++);
 			}
 			this->process_DETACH(packetS);
 		}
@@ -472,7 +472,7 @@ public:
 					if(usleepCounter == 0) {
 						++qringPushCounter_full;
 					}
-					usleep(20, usleepCounter++);
+					USLEEP_C(20, usleepCounter++);
 				}
 				qring_push_index = this->writeit + 1;
 				qring_push_index_count = 0;
@@ -500,7 +500,7 @@ public:
 		} else {
 			unsigned int usleepCounter = 0;
 			while(this->outThreadState) {
-				usleep(10, usleepCounter++);
+				USLEEP_C(10, usleepCounter++);
 			}
 			if(qring_push_index && qring_push_index_count) {
 				for(unsigned int i = 0; i < qring_push_index_count; i++) {
@@ -612,7 +612,7 @@ public:
 		} else {
 			unsigned int usleepCounter = 0;
 			while(this->outThreadState) {
-				usleep(10, usleepCounter++);
+				USLEEP_C(10, usleepCounter++);
 			}
 			push_batch_nothread();
 		}
@@ -907,7 +907,7 @@ private:
 	void *outThreadFunction();
 	void lock_push() {
 		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
-			usleep(10);
+			USLEEP(10);
 		}
 	}
 	void unlock_push() {
@@ -1108,7 +1108,7 @@ public:
 				if(usleepCounter == 0) {
 					++qringPushCounter_full;
 				}
-				usleep(20, usleepCounter++);
+				USLEEP_C(20, usleepCounter++);
 			}
 			qring_push_index = this->writeit + 1;
 			qring_push_index_count = 0;

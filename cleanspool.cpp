@@ -957,7 +957,7 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 				fts_close(tree);
 				if(!is_terminating()) {
 					u_int64_t end = getTimeMS();
-					usleep((end - start) * 1000);
+					USLEEP((end - start) * 1000);
 					syslog(LOG_NOTICE, "cleanspool[%i]: load date/hour - %s/%i", spoolIndex, indexHour.date.c_str(), indexHour.hour);
 					if(countFiles) {
 						sSpoolDataDirIndex _index = index;
@@ -1339,7 +1339,7 @@ void CleanSpool::reindex_all(const char *reason) {
 	syslog(LOG_NOTICE, "cleanspool[%i]: reindex_all done", spoolIndex);
 	// wait for flush sql store
 	while(sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL_SERVICE + spoolIndex) > 0) {
-		usleep(100000);
+		USLEEP(100000);
 	}
 	sleep(1);
 }

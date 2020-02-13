@@ -1579,7 +1579,7 @@ void AsyncClose::processTask(int threadIndex) {
 			}
 			unlock(threadIndex);
 		}
-		usleep(10000);
+		USLEEP(10000);
 	} while(!terminated_call_cleanup);
 }
 
@@ -1621,7 +1621,7 @@ void AsyncClose::processAll(int threadIndex) {
 					readyItem->process();
 					delete readyItem;
 				} else {
-					usleep(100000);
+					USLEEP(100000);
 				}
 			}
 		} else {
@@ -1634,7 +1634,7 @@ void AsyncClose::processAll(int threadIndex) {
 void AsyncClose::safeTerminate() {
 	extern int terminated_call_cleanup;
 	while(!terminated_call_cleanup) {
-		usleep(100000);
+		USLEEP(100000);
 	}
 	for(int i = 0; i < getCountThreads(); i++) {
 		pthread_join(this->thread[i], NULL);
@@ -3220,14 +3220,14 @@ bool SafeAsyncQueue_base::isRunTimerThread() {
 void SafeAsyncQueue_base::stopTimerThread(bool wait) {
 	terminateTimerThread = true;
 	while(wait && runTimerThread) {
-		usleep(100000);
+		USLEEP(100000);
 	}
 }
 
 void SafeAsyncQueue_base::timerThread() {
 	runTimerThread = true;
 	while(!terminateTimerThread) {
-		usleep(100000);
+		USLEEP(100000);
 		lock_list_saq();
 		list<SafeAsyncQueue_base*>::iterator iter;
 		for(iter = list_saq.begin(); iter != list_saq.end(); iter++) {
@@ -4392,7 +4392,7 @@ SocketSimpleBufferWrite::~SocketSimpleBufferWrite() {
 }
 
 void *_SocketSimpleBufferWrite_writeFunction(void *arg) {
-	usleep(1000);
+	USLEEP(1000);
 	((SocketSimpleBufferWrite*)arg)->write();
 	return(NULL);
 }
@@ -4445,7 +4445,7 @@ void SocketSimpleBufferWrite::write() {
 			socketWrite(simpleBuffer->data(), simpleBuffer->size());
 			delete simpleBuffer;
 		} else {
-			usleep(1000);
+			USLEEP(1000);
 		}
 	}
 }
@@ -4703,7 +4703,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 					}
 					break;
 				} else {
-					usleep(10000);
+					USLEEP(10000);
 				}
 			}
 			if(timeout_sec && (getTimeMS() - start_time) > timeout_sec * 1000) {

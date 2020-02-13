@@ -1846,10 +1846,10 @@ void *storing_cdr( void */*dummy*/ ) {
 				vm_pthread_create(("storing cdr - next thread " + intToString(storing_cdr_next_threads_count + 1)).c_str(),
 						  &storing_cdr_next_threads[storing_cdr_next_threads_count], NULL, storing_cdr_next_thread, (void*)(long)(storing_cdr_next_threads_count), __FILE__, __LINE__);
 				while(storing_cdr_next_threads_count_mod > 0) {
-					usleep(100000);
+					USLEEP(100000);
 				}
 				++storing_cdr_next_threads_count;
-				usleep(250000);
+				USLEEP(250000);
 			}
 			while(calls_queue_position < calls_queue_size) {
 				Call *call = calltable->calls_queue[calls_queue_position];
@@ -1971,7 +1971,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			if(terminating_storing_cdr && (!calls_queue_size || terminating > 1)) {
 				break;
 			}
-			usleep(100000);
+			USLEEP(100000);
 		}
 		
 		calltable->lock_calls_queue();
@@ -1998,7 +1998,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			}
 			syslog(LOG_NOTICE, "wait for convert audio for %zd calls (or next terminating)", callsInAudioQueue);
 			for(int i = 0; i < 10 && terminating == _terminating; i++) {
-				usleep(100000);
+				USLEEP(100000);
 			}
 		}
 	}
@@ -2010,7 +2010,7 @@ void *storing_cdr( void */*dummy*/ ) {
 		if(!audioQueueThreads) {
 			break;
 		}
-		usleep(100000);
+		USLEEP(100000);
 	}
 	
 	terminating_storing_cdr = 2;
@@ -2209,7 +2209,7 @@ void *storing_registers( void */*dummy*/ ) {
 				break;
 			}
 		
-			usleep(100000);
+			USLEEP(100000);
 		}
 		
 		calltable->lock_registers_queue();
@@ -2261,7 +2261,7 @@ void start_cloud_receiver() {
 			vm_terminate();
 			break;
 		}
-		usleep(100000);
+		USLEEP(100000);
 	}
 }
 
@@ -2270,7 +2270,7 @@ void *scanpcapdir( void */*dummy*/ ) {
 #ifndef FREEBSD
  
 	while(!pcapQueueInterface && !is_terminating()) {
-		usleep(100000);
+		USLEEP(100000);
 	}
 	if(is_terminating()) {
 		return(NULL);
@@ -2318,7 +2318,7 @@ void *scanpcapdir( void */*dummy*/ ) {
 				fileList = listFilesDir(opt_scanpcapdir);
 			}
 			if (fileList.empty()) {
-				usleep(10000);
+				USLEEP(10000);
 				continue;
 			}
 		}
@@ -2340,7 +2340,7 @@ void *scanpcapdir( void */*dummy*/ ) {
 			continue;
 		}
 		while(!is_terminating() && !pcapQueueInterface->isPcapEnd()) {
-			usleep(10000);
+			USLEEP(10000);
 		}
 		
 		if(!tempFileName.empty()) {
@@ -3472,7 +3472,7 @@ int main(int argc, char *argv[]) {
  
 	#if defined(__i386__) or  defined(__x86_64__)
 	u_int64_t _rdtsc_1 = rdtsc();
-	usleep(100000);
+	USLEEP(100000);
 	u_int64_t _rdtsc_2 = rdtsc();
 	rdtsc_by_100ms = _rdtsc_2 - _rdtsc_1;
 	#endif
@@ -3761,7 +3761,7 @@ int main(int argc, char *argv[]) {
 		res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
 		if(res == -1) {
 			// if shutdown failed it can happen when reding very short pcap file and the bind socket was not created in manager
-			usleep(10000); 
+			USLEEP(10000); 
 			res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
 		}
 		struct timespec ts;
@@ -4315,7 +4315,7 @@ int main_init_read() {
 				}
 			}
 			for(long i = 0; i < ((sverb.pcap_stat_period * 100) - timeProcessStatMS / 10) && !is_terminating(); i++) {
-				usleep(10000);
+				USLEEP(10000);
 				if(logBuffer) {
 					logBuffer->apply();
 				}
@@ -4409,7 +4409,7 @@ void terminate_processpacket() {
 			}
 		}
 		if(termPass == 0) {
-			usleep(100000);
+			USLEEP(100000);
 		}
 	}
 	
@@ -4435,7 +4435,7 @@ void terminate_processpacket() {
 			}
 		}
 		if(termPass == 0) {
-			usleep(100000);
+			USLEEP(100000);
 		}
 	}
 	
@@ -4444,7 +4444,7 @@ void terminate_processpacket() {
 		for(int i = 0; i < num_threads_max; i++) {
 			if(i < num_threads_active) {
 				while(rtp_threads[i].threadId) {
-					usleep(100000);
+					USLEEP(100000);
 				}
 			}
 			rtp_threads[i].term();
@@ -5270,7 +5270,7 @@ void test_thread() {
 	vm_pthread_create("test_thread",
 			  &test_thread_handle, NULL, _test_thread, NULL, __FILE__, __LINE__);
 	while(!terminating) {
-		usleep(10000);
+		USLEEP(10000);
 	}
 }
 
@@ -5337,6 +5337,26 @@ void test() {
 	} break;
 	 
 	case 1: {
+	 
+		{
+		 
+		unsigned int usleepSumTime = 0;
+		unsigned int usleepCounter = 0;
+		
+		unsigned _last = 0;
+		unsigned useconds = 100;
+		while(!terminating) {
+			unsigned _act = USLEEP_C(useconds, usleepCounter);
+			if(_act != _last) {
+				cout << usleepSumTime << " / " << usleepCounter << " / " << _act << " / " << (_act / useconds) << endl;
+				_last = _act;
+			}
+			usleepSumTime += _act; 
+			++usleepCounter;
+		}
+		break;
+		 
+		}
 	 
 		cEvalFormula f(true);
 		f.e("3*(2 * 3 + 4 * 5 + (2+8))");
@@ -7419,6 +7439,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"ssl-master-secret-file", 1, 0, 336},
 	    {"t2_boost", 0, 0, 337},
 	    {"json_config", 1, 0, 338},
+	    {"sip-msg-save", 0, 0, 339},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -7572,6 +7593,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "screen_popup")			sverb.screen_popup = 1;
 	else if(verbParam == "screen_popup_syslog")		sverb.screen_popup_syslog = 1;
 	else if(verbParam == "cleanup_calls")			sverb.cleanup_calls = 1;
+	else if(verbParam == "usleep_stats")			sverb.usleep_stats = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -8009,6 +8031,14 @@ void get_command_line_arguments() {
 					config.setFromJson(optarg);
 				}
 				useCmdLineConfig = true;
+				break;
+			case 339:
+				opt_sip_options = true;
+				opt_sip_subscribe = true;
+				opt_sip_notify = true;
+				opt_save_sip_options = true;
+				opt_save_sip_subscribe = true;
+				opt_save_sip_notify = true;
 				break;
 		}
 		if(optarg) {

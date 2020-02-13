@@ -509,7 +509,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 				this->remote_socket = NULL;
 			}
 			if(is_terminating()) {
-				usleep(100000);
+				USLEEP(100000);
 			} else {
 				sleep(1);
 			}
@@ -1889,7 +1889,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		}
 		if(pass > 0) {
 			if(is_terminating()) {
-				usleep(100000);
+				USLEEP(100000);
 			} else {
 				sleep(1);
 			}
@@ -2602,7 +2602,7 @@ bool SqlDb_odbc::query(string query, bool /*callFromStoreProcessWithFixDeadlock*
 		}
 		if(pass > 0) {
 			if(is_terminating()) {
-				usleep(100000);
+				USLEEP(100000);
 			} else {
 				sleep(1);
 			}
@@ -2882,7 +2882,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 				this->remote_socket = NULL;
 			}
 			if(is_terminating()) {
-				usleep(100000);
+				USLEEP(100000);
 			} else {
 				sleep(1);
 			}
@@ -3166,7 +3166,7 @@ void MySqlStore_process::__store(string beginProcedure, string endProcedure, str
 		} else if(this->sqlDb->getLastError() == ER_LOCK_DEADLOCK) {
 			if(passComplete < maxPassComplete - 1) {
 				syslog(LOG_INFO, "DEADLOCK in store %u - next attempt %u", this->id, passComplete + 1);
-				usleep(500000);
+				USLEEP(500000);
 			}
 		} else {
 			if(sverb.store_process_query) {
@@ -3278,7 +3278,7 @@ void MySqlStore_process::waitForTerminate() {
 				pthread_cancel(this->thread);
 				break;
 			}
-			usleep(100000);
+			USLEEP(100000);
 		}
 		this->thread = (pthread_t)NULL;
 	}
@@ -3369,7 +3369,7 @@ void MySqlStore::queryToFiles(bool enable, const char *directory, int period) {
 void MySqlStore::queryToFilesTerminate() {
 	if(qfileConfig.enable) {
 		qfileConfig.terminate = true;
-		usleep(250000);
+		USLEEP(250000);
 		closeAllQFiles();
 		clearAllQFiles();
 	}
@@ -3785,7 +3785,7 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 
 void MySqlStore::addFileFromINotify(const char *filename) {
 	while(!loadFromQFileConfig.inotify_ready) {
-		usleep(100000);
+		USLEEP(100000);
 	}
 	QFileData qfileData = parseQFilename(filename);
 	if(qfileData.id) {
@@ -4255,7 +4255,7 @@ void *MySqlStore::threadQFilesCheckPeriod(void *arg) {
 			iter->second->unlock();
 		}
 		me->unlock_qfiles();
-		usleep(250000);
+		USLEEP(250000);
 	}
 	return(NULL);
 }
@@ -4276,7 +4276,7 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 		}
 		string minFile = me->getMinQFile(id);
 		if(minFile.empty()) {
-			usleep(250000);
+			USLEEP(250000);
 		} else {
 			extern int opt_query_cache_speed;
 			while((me->isCloud() ?
@@ -4285,12 +4285,12 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 			        (me->getActiveIdsVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) == me->loadFromQFilesThreadData[id].storeThreads) :
 			        (me->getSizeVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) > 0)) && 
 			      !is_terminating()) {
-				usleep(100000);
+				USLEEP(100000);
 			}
 			if(!is_terminating()) {
 				if(me->existFilenameInQFiles(minFile.c_str()) ||
 				   !me->loadFromQFile(minFile.c_str(), id)) {
-					usleep(250000);
+					USLEEP(250000);
 				}
 			}
 		}
@@ -7728,7 +7728,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 					rows.clear();
 				}
 				while(!is_terminating() && sqlStore->getAllSize() > 1000) {
-					usleep(100000);
+					USLEEP(100000);
 				}
 			}
 			if(is_terminating() < 2 && rows.size()) {
@@ -7905,7 +7905,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 				rows.clear();
 			}
 			while(!is_terminating() && sqlStore->getAllSize() > 1000) {
-				usleep(100000);
+				USLEEP(100000);
 			}
 		}
 		if(is_terminating() < 2) {

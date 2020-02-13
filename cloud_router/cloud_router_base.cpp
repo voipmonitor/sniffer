@@ -813,7 +813,7 @@ void cSocket::clearError() {
 void cSocket::sleep(int s) {
 	int sx10 = s * 10;
 	while(sx10 > 0 && !terminate) {
-		usleep(100000);
+		USLEEP(100000);
 		sx10 -= 1;
 	}
 }
@@ -939,7 +939,7 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 				}
 			}
 		} else {
-			usleep(1000);
+			USLEEP(1000);
 			if((timeout && getTimeUS() > startTime + timeout * 1000000ull) || terminate) {
 				rsltRead = false;
 				break;
@@ -1010,7 +1010,7 @@ string cSocketBlock::readLine(u_char **remainder, size_t *remainder_length) {
 			}
 			
 		} else {
-			usleep(1000);
+			USLEEP(1000);
 		}
 		readLength = bufferLength;
 	}
@@ -1214,7 +1214,7 @@ void cServerConnection::connection_process() {
 		if(data) {
 			evData(data, dataLen);
 		} else {
-			usleep(1000);
+			USLEEP(1000);
 		}
 	}
 }

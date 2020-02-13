@@ -9,6 +9,8 @@
 #include <string>
 #include <unistd.h>
 
+#include "tools_global.h"
+
 
 using namespace std;
 
@@ -121,7 +123,7 @@ private:
 			if(timeout_us < 0) {
 				return(false);
 			}
-			usleep(100);
+			USLEEP(100);
 		}
 		return(true);
 	}

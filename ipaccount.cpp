@@ -127,7 +127,7 @@ Ipacc::~Ipacc() {
 
 inline void Ipacc::push(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, int proto, int packetlen, int voippacket) {
 	while(this->qring[this->writeit].used != 0) {
-		usleep(10);
+		USLEEP(10);
 	}
 	packet *_packet = &this->qring[this->writeit];
 	_packet->timestamp = timestamp;
@@ -459,7 +459,7 @@ void *Ipacc::outThreadFunction() {
 				this->readit++;
 			}
 		} else {
-			usleep(1000);
+			USLEEP(1000);
 		}
 	}
 	return(NULL);
